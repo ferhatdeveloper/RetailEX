@@ -1,3 +1,5 @@
+import { IS_TAURI } from '../../utils/env';
+
 /**
  * Doğrudan WhatsApp (QR / Baileys) — tarayıcıda Baileys çalışmaz; yerel HTTP köprüsü gerekir.
  *
@@ -20,7 +22,7 @@ export interface EmbeddedBridgeConfig {
  * Aynı origin (ör. Vite `/__wa_bridge` proxy) → normal `fetch` (CORS yok).
  */
 function shouldUseTauriFetch(url: string): boolean {
-    if (typeof window === 'undefined') return false;
+    if (!IS_TAURI || typeof window === 'undefined') return false;
     try {
         const u = new URL(url);
         const page = new URL(window.location.href);

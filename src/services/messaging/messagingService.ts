@@ -3,6 +3,7 @@
  * Baileys köprüsü (EMBEDDED), Evolution, Meta — clinicMessaging ile aynı sağlayıcılar.
  */
 import { v4 as uuidv4 } from 'uuid';
+import { shouldUseTenantPostgrestApi } from '../../config/postgrest.config';
 import { postgres, ERP_SETTINGS, DB_SETTINGS } from '../postgres';
 import {
   buildReminderText,
@@ -33,7 +34,29 @@ function periodNrRow(): string {
 }
 
 function isRestApi(): boolean {
-  return DB_SETTINGS.connectionProvider === 'rest_api';
+  return shouldUseTenantPostgrestApi();
+}
+
+const MESSAGING_TABLE_MISSING_HINT =
+  'rex_*_messaging_settings tablosu API\'de yok. Kiracı veritabanında migration 042/044 çalıştırın; ardından NOTIFY pgrst, \'reload schema\'.';
+
+function isPostgrestMissingTableError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  return msg.includes('404') && msg.includes('messaging_settings');
+}
+
+async function getSettingsViaSql(): Promise<MessagingSettings | null> {
+  const t = settingsTable();
+  const { rows } = await postgres.query(`SELECT * FROM ${t} ORDER BY created_at LIMIT 1`);
+  if (!rows[0]) {
+    await postgres.query(
+      `INSERT INTO ${t} (id, whatsapp_provider, notify_invoice_whatsapp) VALUES ($1, 'NONE', false)`,
+      [uuidv4()]
+    );
+    const r2 = await postgres.query(`SELECT * FROM ${t} LIMIT 1`);
+    return r2.rows[0] ?? null;
+  }
+  return rows[0];
 }
 
 function settingsTable(): string {
@@ -79,38 +102,42 @@ export const messagingService = {
   async getSettings(): Promise<MessagingSettings | null> {
     const fn = firmNrRow();
     if (isRestApi()) {
-      const { postgrest } = await import('../api/postgrestClient');
-      const rows = await postgrest.get<MessagingSettings[]>(
-        `/rex_${fn}_messaging_settings`,
-        { select: '*', order: 'created_at.asc', limit: '1' },
-        { schema: 'public' }
-      );
-      if (!rows[0]) {
-        await postgrest.post(
+      try {
+        const { postgrest } = await import('../api/postgrestClient');
+        const rows = await postgrest.get<MessagingSettings[]>(
           `/rex_${fn}_messaging_settings`,
-          [{ id: uuidv4(), whatsapp_provider: 'NONE', notify_invoice_whatsapp: false }],
-          { schema: 'public', prefer: 'return=minimal' }
-        );
-        const refreshed = await postgrest.get<MessagingSettings[]>(
-          `/rex_${fn}_messaging_settings`,
-          { select: '*', limit: '1' },
+          { select: '*', order: 'created_at.asc', limit: '1' },
           { schema: 'public' }
         );
-        return refreshed[0] ?? null;
+        if (!rows[0]) {
+          await postgrest.post(
+            `/rex_${fn}_messaging_settings`,
+            [{ id: uuidv4(), whatsapp_provider: 'NONE', notify_invoice_whatsapp: false }],
+            { schema: 'public', prefer: 'return=minimal' }
+          );
+          const refreshed = await postgrest.get<MessagingSettings[]>(
+            `/rex_${fn}_messaging_settings`,
+            { select: '*', limit: '1' },
+            { schema: 'public' }
+          );
+          return refreshed[0] ?? null;
+        }
+        return rows[0];
+      } catch (e: unknown) {
+        if (isPostgrestMissingTableError(e) && DB_SETTINGS.connectionProvider !== 'rest_api') {
+          try {
+            return await getSettingsViaSql();
+          } catch {
+            /* SQL yolu da yoksa aşağıdaki mesaj */
+          }
+        }
+        if (isPostgrestMissingTableError(e)) {
+          throw new Error(MESSAGING_TABLE_MISSING_HINT);
+        }
+        throw e;
       }
-      return rows[0];
     }
-    const t = settingsTable();
-    const { rows } = await postgres.query(`SELECT * FROM ${t} ORDER BY created_at LIMIT 1`);
-    if (!rows[0]) {
-      await postgres.query(
-        `INSERT INTO ${t} (id, whatsapp_provider, notify_invoice_whatsapp) VALUES ($1, 'NONE', false)`,
-        [uuidv4()]
-      );
-      const r2 = await postgres.query(`SELECT * FROM ${t} LIMIT 1`);
-      return r2.rows[0] ?? null;
-    }
-    return rows[0];
+    return getSettingsViaSql();
   },
 
   async updateSettings(data: Partial<MessagingSettings>): Promise<void> {
@@ -286,13 +313,19 @@ export const messagingService = {
     const fn = firmNrRow();
     const pn = periodNrRow();
     if (isRestApi()) {
-      const { postgrest } = await import('../api/postgrestClient');
-      const rows = await postgrest.get<NotificationQueueRow[]>(
-        `/rex_${fn}_${pn}_notification_queue`,
-        { select: '*', order: 'created_at.desc', limit: String(limit) },
-        { schema: 'public' }
-      );
-      return Array.isArray(rows) ? rows : [];
+      try {
+        const { postgrest } = await import('../api/postgrestClient');
+        const rows = await postgrest.get<NotificationQueueRow[]>(
+          `/rex_${fn}_${pn}_notification_queue`,
+          { select: '*', order: 'created_at.desc', limit: String(limit) },
+          { schema: 'public' }
+        );
+        return Array.isArray(rows) ? rows : [];
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : String(e);
+        if (msg.includes('404') && msg.includes('notification_queue')) return [];
+        throw e;
+      }
     }
     const t = queueTable();
     const { rows } = await postgres.query(

@@ -36,6 +36,7 @@
 31. **041_beauty_follow_up_reminder_actions_ensure.sql** – Eksik `beauty.rex_{firm}_follow_up_reminder_actions` tablolarını oluşturur (037 atlanmış veya boş döngüyle işaretlenmiş ortamlar için).
 32. **042_messaging_whatsapp_queue.sql** – `rex_{firm}_messaging_settings` (WhatsApp/SMS ayarları) ve `rex_{firm}_{period}_notification_queue` (fatura/randevu bildirim kuyruğu).
 33. **043_messaging_meta_templates.sql** – `messaging_settings`: Meta Cloud API onaylı şablon adı/dili (`meta_invoice_*`, `meta_appointment_*`).
+34. **044_messaging_postgrest_sync.sql** – Eksik `messaging_settings` / `notification_queue` tablolarını oluşturur, `anon` yetkisi ve `NOTIFY pgrst` (API 404 düzeltmesi).
 
 **Mevcut veritabanı:** `config.db` (DeskApp ayarları) ile bekleyen migration’ları uygulamak için proje kökünde `npm run db:migrate` (ayrıntı: `.cursor/rules/database-migrate-config-db.mdc`).
 

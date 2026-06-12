@@ -20,6 +20,15 @@ import {
 const DEFAULT_INVOICE_TEMPLATE =
   'Sayın {customer_name}, {date} tarihli {fiche_no} numaralı {category} faturanız: {amount} {currency}. RetailEX';
 
+function isLocalBridgeUrl(url: string): boolean {
+  try {
+    const u = new URL(url.trim());
+    return u.hostname === '127.0.0.1' || u.hostname === 'localhost';
+  } catch {
+    return false;
+  }
+}
+
 export function WhatsAppIntegrationModule() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -67,7 +76,8 @@ export function WhatsAppIntegrationModule() {
       setStats(await messagingService.getQueueStats());
       setQueue(await messagingService.listQueue(25));
     } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : 'Ayarlar yüklenemedi');
+      const msg = e instanceof Error ? e.message : 'Ayarlar yüklenemedi';
+      toast.error(msg, { duration: msg.includes('migration') ? 12000 : 5000 });
     } finally {
       setLoading(false);
     }
@@ -82,6 +92,14 @@ export function WhatsAppIntegrationModule() {
       setEmbedQrImg(null);
       setEmbedStatus('');
       setEmbedErr(null);
+      return;
+    }
+    if (!import.meta.env.DEV && isLocalBridgeUrl(waBaseUrl)) {
+      setEmbedQrImg(null);
+      setEmbedStatus('');
+      setEmbedErr(
+        'Baileys köprüsü (127.0.0.1:3000) yalnızca yerel geliştirmede çalışır. Canlı ortamda Meta Cloud API veya harici Evolution API kullanın.'
+      );
       return;
     }
     let cancelled = false;
