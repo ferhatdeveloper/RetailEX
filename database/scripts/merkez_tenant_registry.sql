@@ -43,7 +43,13 @@ VALUES
   ('bestcom',       'BESTCOM',        'hrm',               'bestcom_db',      'İK / HRM'),
   ('siti_pdks',     'Siti PDKS',      'pdks',              'siti_pdks',       'PDKS'),
   ('pdks_demo',     'PDKS Demo',      'pdks',              'pdks_demo',       'Demo'),
-  ('retailex_demo', 'RetailEX Demo', 'retail',            'retailex_demo',   'Demo')
+  ('retailex_demo', 'RetailEX Demo', 'retail',            'retailex_demo',   'Demo'),
+  ('kasap',         'Kasaphane',      'retail',            'kasap',           'Kasap / perakende'),
+  ('testere',       'Usta Testere',   'retail',            'testere',         'Testere'),
+  ('mettu',         'Mettu Market',   'retail',            'mettu',           'Market'),
+  ('jiber',         'Jiber giyim Mağazası', 'retail',      'jiber',           'Giyim'),
+  ('canon',         'Canon Retail',   'retail',            'canon',           'Perakende'),
+  ('lovan',         'Lovan Retail',   'retail',            'lovan',           'Perakende')
 ON CONFLICT (code) DO UPDATE SET
   display_name  = EXCLUDED.display_name,
   module        = EXCLUDED.module,

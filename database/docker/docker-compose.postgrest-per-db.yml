@@ -169,3 +169,87 @@ services:
       - "0.0.0.0:3012:3000"
     networks:
       berqenas_net: {}
+
+  postgrest_kasap:
+    image: postgrest/postgrest:v12.2.0
+    container_name: saas_postgrest_kasap
+    restart: always
+    depends_on:
+      - postgres
+    environment:
+      <<: *postgrest-env
+      PGRST_DB_URI: postgres://postgres:${POSTGRES_PASSWORD:-root_password_2026}@postgres:5432/kasap
+    ports:
+      - "0.0.0.0:3013:3000"
+    networks:
+      berqenas_net: {}
+
+  postgrest_testere:
+    image: postgrest/postgrest:v12.2.0
+    container_name: saas_postgrest_testere
+    restart: always
+    depends_on:
+      - postgres
+    environment:
+      <<: *postgrest-env
+      PGRST_DB_URI: postgres://postgres:${POSTGRES_PASSWORD:-root_password_2026}@postgres:5432/testere
+    ports:
+      - "0.0.0.0:3014:3000"
+    networks:
+      berqenas_net: {}
+
+  postgrest_mettu:
+    image: postgrest/postgrest:v12.2.0
+    container_name: saas_postgrest_mettu
+    restart: always
+    depends_on:
+      - postgres
+    environment:
+      <<: *postgrest-env
+      PGRST_DB_URI: postgres://postgres:${POSTGRES_PASSWORD:-root_password_2026}@postgres:5432/mettu
+    ports:
+      - "0.0.0.0:3015:3000"
+    networks:
+      berqenas_net: {}
+
+  postgrest_jiber:
+    image: postgrest/postgrest:v12.2.0
+    container_name: saas_postgrest_jiber
+    restart: always
+    depends_on:
+      - postgres
+    environment:
+      <<: *postgrest-env
+      PGRST_DB_URI: postgres://postgres:${POSTGRES_PASSWORD:-root_password_2026}@postgres:5432/jiber
+    ports:
+      - "0.0.0.0:3016:3000"
+    networks:
+      berqenas_net: {}
+
+  postgrest_canon:
+    image: postgrest/postgrest:v12.2.0
+    container_name: saas_postgrest_canon
+    restart: always
+    depends_on:
+      - postgres
+    environment:
+      <<: *postgrest-env
+      PGRST_DB_URI: postgres://postgres:${POSTGRES_PASSWORD:-root_password_2026}@postgres:5432/canon
+    ports:
+      - "0.0.0.0:3017:3000"
+    networks:
+      berqenas_net: {}
+
+  postgrest_lovan:
+    image: postgrest/postgrest:v12.2.0
+    container_name: saas_postgrest_lovan
+    restart: always
+    depends_on:
+      - postgres
+    environment:
+      <<: *postgrest-env
+      PGRST_DB_URI: postgres://postgres:${POSTGRES_PASSWORD:-root_password_2026}@postgres:5432/lovan
+    ports:
+      - "0.0.0.0:3018:3000"
+    networks:
+      berqenas_net: {}

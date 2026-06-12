@@ -18,6 +18,12 @@ berqenas_default_dbs_array() {
     berzin_com
     sho_aksesuar
     kupeli
+    kasap
+    testere
+    mettu
+    jiber
+    canon
+    lovan
   )
 }
 

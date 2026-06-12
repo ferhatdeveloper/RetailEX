@@ -38,6 +38,12 @@ DBS=(
   berzin_com
   sho_aksesuar
   kupeli
+  kasap
+  testere
+  mettu
+  jiber
+  canon
+  lovan
 )
 
 POSTGREST_SERVICES=(
@@ -52,6 +58,12 @@ POSTGREST_SERVICES=(
   postgrest_berzin_com
   postgrest_sho_aksesuar
   postgrest_kupeli
+  postgrest_kasap
+  postgrest_testere
+  postgrest_mettu
+  postgrest_jiber
+  postgrest_canon
+  postgrest_lovan
 )
 
 ALL_SERVICES=(
@@ -190,7 +202,13 @@ VALUES
   (gen_random_uuid(), 'retailex_demo', 'RetailEX Demo', 'retail', 'rest_api', :'api' || '/retailex_demo', 'retailex_demo'),
   (gen_random_uuid(), 'berzin_com', 'Berzin Company - Magaza', 'retail', 'rest_api', :'api' || '/berzin_com', 'berzin_com'),
   (gen_random_uuid(), 'sho_aksesuar', 'Sho Aksesuar - Magaza', 'retail', 'rest_api', :'api' || '/sho_aksesuar', 'sho_aksesuar'),
-  (gen_random_uuid(), 'kupeli', 'Kupeli - Magaza', 'retail', 'rest_api', :'api' || '/kupeli', 'kupeli')
+  (gen_random_uuid(), 'kupeli', 'Kupeli - Magaza', 'retail', 'rest_api', :'api' || '/kupeli', 'kupeli'),
+  (gen_random_uuid(), 'kasap', 'Kasaphane', 'retail', 'rest_api', :'api' || '/kasap', 'kasap'),
+  (gen_random_uuid(), 'testere', 'Usta Testere', 'retail', 'rest_api', :'api' || '/testere', 'testere'),
+  (gen_random_uuid(), 'mettu', 'Mettu Market', 'retail', 'rest_api', :'api' || '/mettu', 'mettu'),
+  (gen_random_uuid(), 'jiber', 'Jiber giyim Mağazası', 'retail', 'rest_api', :'api' || '/jiber', 'jiber'),
+  (gen_random_uuid(), 'canon', 'Canon Retail', 'retail', 'rest_api', :'api' || '/canon', 'canon'),
+  (gen_random_uuid(), 'lovan', 'Lovan Retail', 'retail', 'rest_api', :'api' || '/lovan', 'lovan')
 ON CONFLICT (code) DO UPDATE SET
   connection_provider = EXCLUDED.connection_provider,
   rest_base_url = EXCLUDED.rest_base_url,

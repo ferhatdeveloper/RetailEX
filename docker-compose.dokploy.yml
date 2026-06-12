@@ -57,6 +57,12 @@ services:
       - postgrest_berzin_com
       - postgrest_sho_aksesuar
       - postgrest_kupeli
+      - postgrest_kasap
+      - postgrest_testere
+      - postgrest_mettu
+      - postgrest_jiber
+      - postgrest_canon
+      - postgrest_lovan
     volumes:
       - ./database/docker/Caddyfile.api-gateway:/etc/caddy/Caddyfile:ro
     networks:
@@ -317,6 +323,96 @@ services:
       PGRST_DB_URI: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/kupeli
     ports:
       - "${POSTGREST_PORT_KUPELI:-3012}:3000"
+    networks:
+      - berqenas_net
+
+  postgrest_kasap:
+    image: postgrest/postgrest:v12.2.0
+    container_name: saas_postgrest_kasap
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      <<: *postgrest-env
+      PGRST_DB_URI: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/kasap
+    ports:
+      - "${POSTGREST_PORT_KASAP:-3013}:3000"
+    networks:
+      - berqenas_net
+
+  postgrest_testere:
+    image: postgrest/postgrest:v12.2.0
+    container_name: saas_postgrest_testere
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      <<: *postgrest-env
+      PGRST_DB_URI: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/testere
+    ports:
+      - "${POSTGREST_PORT_TESTERE:-3014}:3000"
+    networks:
+      - berqenas_net
+
+  postgrest_mettu:
+    image: postgrest/postgrest:v12.2.0
+    container_name: saas_postgrest_mettu
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      <<: *postgrest-env
+      PGRST_DB_URI: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/mettu
+    ports:
+      - "${POSTGREST_PORT_METTU:-3015}:3000"
+    networks:
+      - berqenas_net
+
+  postgrest_jiber:
+    image: postgrest/postgrest:v12.2.0
+    container_name: saas_postgrest_jiber
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      <<: *postgrest-env
+      PGRST_DB_URI: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/jiber
+    ports:
+      - "${POSTGREST_PORT_JIBER:-3016}:3000"
+    networks:
+      - berqenas_net
+
+  postgrest_canon:
+    image: postgrest/postgrest:v12.2.0
+    container_name: saas_postgrest_canon
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      <<: *postgrest-env
+      PGRST_DB_URI: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/canon
+    ports:
+      - "${POSTGREST_PORT_CANON:-3017}:3000"
+    networks:
+      - berqenas_net
+
+  postgrest_lovan:
+    image: postgrest/postgrest:v12.2.0
+    container_name: saas_postgrest_lovan
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      <<: *postgrest-env
+      PGRST_DB_URI: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/lovan
+    ports:
+      - "${POSTGREST_PORT_LOVAN:-3018}:3000"
     networks:
       - berqenas_net
 
