@@ -2,13 +2,13 @@
  * Baileys köprüsü — WhatsApp QR ile cihaz bağlama paneli (backoffice / klinik).
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { CheckCheck, Loader2, QrCode, RefreshCw, Smartphone } from 'lucide-react';
+import { AlertCircle, CheckCheck, Loader2, QrCode, RefreshCw, Smartphone, Wifi, WifiOff } from 'lucide-react';
 import { getEmbeddedBridgeStatus, type EmbeddedBridgeStatus } from '../../services/messaging/whatsappEmbeddedBridge';
+import { useTheme } from '../../contexts/ThemeContext';
 
 export interface WhatsAppQrConnectPanelProps {
   baseUrl: string;
   token?: string | null;
-  /** Köprü yoklanmasını aç/kapat */
   enabled?: boolean;
   pollIntervalMs?: number;
   className?: string;
@@ -23,6 +23,7 @@ export function WhatsAppQrConnectPanel({
   className = '',
   onStatusChange,
 }: WhatsAppQrConnectPanelProps) {
+  const { darkMode } = useTheme();
   const [status, setStatus] = useState<EmbeddedBridgeStatus | ''>('');
   const [qrImg, setQrImg] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -37,7 +38,7 @@ export function WhatsAppQrConnectPanel({
     if (!url) {
       setStatus('');
       setQrImg(null);
-      setError('Köprü URL girin (ör. http://127.0.0.1:3000 veya /__wa_bridge).');
+      setError('Köprü URL girin (canlıda /__wa_bridge).');
       return;
     }
     setPolling(true);
@@ -97,111 +98,130 @@ export function WhatsAppQrConnectPanel({
 
   const connected = status === 'connected';
   const scanning = status === 'scanning' || (!connected && !!qrImg);
+  const waitingQr = status === 'disconnected' && !qrImg && !error;
+
+  const cardBg = darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-emerald-100';
+  const muted = darkMode ? 'text-gray-400' : 'text-gray-500';
 
   return (
-    <div
-      className={`rounded-xl border-2 border-emerald-200 bg-gradient-to-br from-emerald-50/80 to-white overflow-hidden ${className}`}
-    >
-      <div className="flex items-center gap-2 px-4 py-3 bg-emerald-600 text-white">
-        <QrCode className="w-5 h-5 shrink-0" />
-        <div>
-          <p className="font-semibold text-sm">QR ile WhatsApp bağlantısı</p>
-          <p className="text-[11px] text-emerald-100">Telefondan okutun — Baileys köprüsü</p>
+    <div className={`rounded-2xl border shadow-sm overflow-hidden ${cardBg} ${className}`}>
+      <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4 bg-gradient-to-r from-[#075E54] to-[#128C7E] text-white">
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/15">
+            <QrCode className="w-5 h-5" />
+          </div>
+          <div>
+            <p className="font-semibold">Telefon ile bağlan</p>
+            <p className="text-xs text-emerald-100/90">WhatsApp → Bağlı cihazlar → QR okut</p>
+          </div>
         </div>
+        <StatusBadge status={status} connected={connected} polling={polling} darkMode={darkMode} />
       </div>
 
-      <div className="grid gap-4 p-4 sm:grid-cols-[1fr,min(280px,100%)] sm:items-start">
-        <div className="space-y-3 text-sm text-gray-700">
-          <p className="font-medium text-emerald-900">Bağlantı adımları</p>
-          <ol className="space-y-2 list-none">
-            <li className="flex gap-2">
-              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-xs font-bold text-emerald-800">
-                1
-              </span>
-              <span>
-                Telefonda <strong>WhatsApp</strong> uygulamasını açın
-              </span>
-            </li>
-            <li className="flex gap-2">
-              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-xs font-bold text-emerald-800">
-                2
-              </span>
-              <span>
-                <strong>Ayarlar → Bağlı cihazlar → Cihaz bağla</strong>
-              </span>
-            </li>
-            <li className="flex gap-2">
-              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-xs font-bold text-emerald-800">
-                3
-              </span>
-              <span>Sağdaki <strong>QR kodu telefon kamerasıyla okutun</strong></span>
-            </li>
+      <div className="grid gap-6 p-5 lg:grid-cols-[1fr_300px] lg:items-center">
+        <div className="space-y-4">
+          <ol className="grid gap-3 sm:grid-cols-3 text-sm">
+            {[
+              'WhatsApp uygulamasını açın',
+              'Ayarlar → Bağlı cihazlar',
+              'QR kodu kamerayla okutun',
+            ].map((step, i) => (
+              <li
+                key={step}
+                className={`flex gap-2 rounded-xl border p-3 ${
+                  darkMode ? 'border-gray-700 bg-gray-900/50' : 'border-gray-100 bg-gray-50'
+                }`}
+              >
+                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[#25D366] text-xs font-bold text-white">
+                  {i + 1}
+                </span>
+                <span className={darkMode ? 'text-gray-200' : 'text-gray-700'}>{step}</span>
+              </li>
+            ))}
           </ol>
-          <div className="flex flex-wrap items-center gap-2 pt-1">
-            <span className="text-xs text-gray-500">Durum:</span>
-            <StatusBadge status={status} connected={connected} polling={polling} />
+
+          <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
               onClick={() => void refresh()}
               disabled={polling || !baseUrl.trim()}
-              className="inline-flex items-center gap-1 rounded-lg border border-emerald-300 bg-white px-2.5 py-1 text-xs font-medium text-emerald-800 hover:bg-emerald-50 disabled:opacity-50"
+              className="inline-flex items-center gap-2 rounded-lg bg-[#25D366] px-4 py-2 text-sm font-medium text-white hover:bg-[#1da851] disabled:opacity-50"
             >
-              {polling ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+              {polling ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
               QR yenile
             </button>
+            {baseUrl.trim() && (
+              <span className={`text-xs ${muted}`}>
+                Köprü: <code className="rounded bg-black/5 px-1.5 py-0.5 font-mono">{baseUrl}</code>
+              </span>
+            )}
           </div>
+
           {error && (
-            <p className="text-xs text-amber-900 bg-amber-50 border border-amber-200 rounded-lg p-2">{error}</p>
+            <div
+              className={`flex gap-2 rounded-xl border p-3 text-sm ${
+                darkMode ? 'border-amber-800 bg-amber-950/40 text-amber-200' : 'border-amber-200 bg-amber-50 text-amber-900'
+              }`}
+            >
+              <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
+              <div>
+                <p className="font-medium">Bağlantı kurulamadı</p>
+                <p className="text-xs mt-1 opacity-90">{error}</p>
+                {(error.includes('fetch') || baseUrl.includes('trycloudflare') || baseUrl.startsWith('http')) && (
+                  <p className="text-xs mt-2">
+                    Canlı ortamda köprü URL olarak <strong>/__wa_bridge</strong> kullanın ve üstteki{' '}
+                    <strong>Kaydet</strong> butonuna basın.
+                  </p>
+                )}
+              </div>
+            </div>
           )}
-          <p className="text-[11px] text-gray-500">
-            Köprü: <code className="bg-gray-100 px-1 rounded">npm run whatsapp:bridge</code>
-            {' · '}
-            Canlıda aynı sunucuda köprü için URL: <code className="bg-gray-100 px-1 rounded">/__wa_bridge</code>
-          </p>
+
+          {waitingQr && !polling && (
+            <p className={`text-sm ${muted}`}>
+              Köprü hazır — QR kod birkaç saniye içinde görünecek. Görünmezse <strong>QR yenile</strong>ye basın.
+            </p>
+          )}
         </div>
 
-        <div className="flex flex-col items-center justify-center mx-auto w-full max-w-[300px]">
+        <div className="flex flex-col items-center mx-auto w-full max-w-[300px]">
           <div
-            className={`relative flex aspect-square w-full max-w-[280px] items-center justify-center rounded-2xl border-2 border-dashed p-3 shadow-inner ${
+            className={`relative flex aspect-square w-full items-center justify-center rounded-2xl border-2 p-4 transition-colors ${
               connected
-                ? 'border-green-400 bg-green-50'
-                : scanning && qrImg
-                  ? 'border-emerald-300 bg-white'
-                  : 'border-gray-300 bg-gray-50'
+                ? 'border-green-400 bg-green-50 dark:bg-green-950/30'
+                : qrImg
+                  ? 'border-[#25D366] bg-white dark:bg-gray-900'
+                  : darkMode
+                    ? 'border-gray-600 border-dashed bg-gray-900/50'
+                    : 'border-gray-200 border-dashed bg-gray-50'
             }`}
           >
             {connected ? (
-              <div className="flex flex-col items-center gap-2 text-center px-4">
-                <CheckCheck className="w-14 h-14 text-green-600" />
-                <p className="font-semibold text-green-800">Bağlandı</p>
-                <p className="text-xs text-green-700">WhatsApp oturumu aktif</p>
+              <div className="flex flex-col items-center gap-3 text-center">
+                <div className="flex h-16 w-16 items-center justify-center rounded-full bg-green-100 dark:bg-green-900/50">
+                  <CheckCheck className="w-9 h-9 text-green-600" />
+                </div>
+                <p className="font-semibold text-green-800 dark:text-green-300">Bağlandı</p>
+                <p className="text-xs text-green-700 dark:text-green-400">Mesaj göndermeye hazır</p>
               </div>
             ) : qrImg ? (
-              <img
-                src={qrImg}
-                alt="WhatsApp bağlantı QR kodu"
-                className="w-full h-full object-contain rounded-lg"
-              />
+              <img src={qrImg} alt="WhatsApp QR" className="w-full h-full object-contain rounded-lg" />
             ) : polling ? (
-              <div className="flex flex-col items-center gap-2 text-gray-500">
-                <Loader2 className="w-10 h-10 animate-spin text-emerald-600" />
-                <p className="text-xs">QR hazırlanıyor…</p>
+              <div className="flex flex-col items-center gap-3 text-gray-500">
+                <Loader2 className="w-12 h-12 animate-spin text-[#25D366]" />
+                <p className="text-sm font-medium">QR hazırlanıyor…</p>
               </div>
             ) : (
-              <div className="flex flex-col items-center gap-2 text-center text-gray-400 px-3">
-                <Smartphone className="w-12 h-12 opacity-50" />
-                <p className="text-xs">
-                  {error
-                    ? `Köprüye ulaşılamadı${error.includes('fetch') || error.includes('HTTP') ? '' : `: ${error}`}`
-                    : status === 'disconnected'
-                      ? 'WhatsApp henüz bağlı değil — QR birazdan görünecek'
-                      : 'QR bekleniyor — köprüyü başlatın'}
+              <div className="flex flex-col items-center gap-3 text-center px-2">
+                <Smartphone className={`w-14 h-14 ${muted}`} />
+                <p className={`text-sm ${muted}`}>
+                  {error ? 'Önce köprü ayarını düzeltin' : 'QR kod burada görünecek'}
                 </p>
               </div>
             )}
           </div>
-          {!connected && qrImg && (
-            <p className="mt-2 text-center text-[11px] text-gray-500 max-w-[280px]">
+          {scanning && qrImg && (
+            <p className={`mt-3 text-center text-xs ${muted}`}>
               QR süresi dolarsa <strong>QR yenile</strong> ile güncelleyin
             </p>
           )}
@@ -215,43 +235,47 @@ function StatusBadge({
   status,
   connected,
   polling,
+  darkMode,
 }: {
   status: string;
   connected: boolean;
   polling: boolean;
+  darkMode: boolean;
 }) {
   if (polling && !status) {
     return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600">
-        <Loader2 className="w-3 h-3 animate-spin" />
-        Kontrol…
+      <span className="inline-flex items-center gap-1.5 rounded-full bg-white/15 px-3 py-1 text-xs font-medium">
+        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+        Kontrol ediliyor…
       </span>
     );
   }
   if (connected) {
     return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2 py-0.5 text-xs font-bold text-green-800">
-        <CheckCheck className="w-3 h-3" />
+      <span className="inline-flex items-center gap-1.5 rounded-full bg-white/20 px-3 py-1 text-xs font-bold">
+        <Wifi className="w-3.5 h-3.5" />
         Bağlı
       </span>
     );
   }
   if (status === 'scanning') {
     return (
-      <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-bold text-amber-900">
-        QR okutun
+      <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-400/90 px-3 py-1 text-xs font-bold text-amber-950">
+        <QrCode className="w-3.5 h-3.5" />
+        QR bekleniyor
       </span>
     );
   }
   if (status === 'disconnected') {
     return (
-      <span className="rounded-full bg-gray-200 px-2 py-0.5 text-xs font-medium text-gray-700">
+      <span className="inline-flex items-center gap-1.5 rounded-full bg-white/15 px-3 py-1 text-xs font-medium">
+        <WifiOff className="w-3.5 h-3.5" />
         Bağlı değil
       </span>
     );
   }
   return (
-    <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600">
+    <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs ${darkMode ? 'bg-gray-700' : 'bg-white/15'}`}>
       {status || '—'}
     </span>
   );
