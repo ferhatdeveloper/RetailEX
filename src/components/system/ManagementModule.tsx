@@ -1360,7 +1360,11 @@ export function ManagementModule({
         case 'logaudit':
           return <AuditTrailModule />;
         case 'whatsapp':
-          return <WhatsAppIntegrationModule />;
+          return (
+            <div className="h-full min-h-0 overflow-hidden">
+              <WhatsAppIntegrationModule />
+            </div>
+          );
         case 'restaurant':
           return (
             <Suspense

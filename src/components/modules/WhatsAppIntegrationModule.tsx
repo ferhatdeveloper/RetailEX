@@ -213,7 +213,12 @@ export function WhatsAppIntegrationModule() {
   }
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6 p-4 sm:p-6">
+    <div
+      className={`h-full min-h-0 overflow-y-auto overflow-x-hidden overscroll-y-contain ${
+        darkMode ? 'bg-gray-900' : 'bg-gray-50'
+      }`}
+    >
+    <div className="mx-auto max-w-6xl space-y-6 p-4 pb-8 sm:p-6 sm:pb-10">
       {/* Üst başlık */}
       <div className="overflow-hidden rounded-2xl border border-emerald-200/60 shadow-sm dark:border-emerald-900/50">
         <div className="bg-gradient-to-r from-[#075E54] via-[#128C7E] to-[#25D366] px-5 py-6 text-white sm:px-8">
@@ -605,6 +610,7 @@ export function WhatsAppIntegrationModule() {
         Baileys resmi WhatsApp API değildir. Üretimde Meta Cloud API önerilir.
         {settings?.updated_at ? ` · Son güncelleme: ${String(settings.updated_at).split('T')[0]}` : ''}
       </p>
+    </div>
     </div>
   );
 }
