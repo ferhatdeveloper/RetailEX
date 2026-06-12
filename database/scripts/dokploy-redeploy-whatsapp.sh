@@ -30,9 +30,9 @@ fi
 cd "${REPO_ROOT}"
 export POSTGRES_PASSWORD
 
-echo "=== Dokploy compose: retailex_whatsapp_bridge + retailex_frontend ==="
-docker compose -f "${COMPOSE_FILE}" build retailex_whatsapp_bridge retailex_frontend
-docker compose -f "${COMPOSE_FILE}" up -d retailex_whatsapp_bridge retailex_frontend
+echo "=== Dokploy compose: retailex_whatsapp_bridge + retailex_frontend (yeniden BUILD) ==="
+docker compose -f "${COMPOSE_FILE}" build --no-cache retailex_whatsapp_bridge retailex_frontend
+docker compose -f "${COMPOSE_FILE}" up -d --force-recreate retailex_whatsapp_bridge retailex_frontend
 
 sleep 3
 echo ""
