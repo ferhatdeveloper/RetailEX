@@ -229,7 +229,12 @@ export async function sendViaEmbeddedBridge(
         });
         if (!res.ok) {
             const t = await res.text().catch(() => '');
-            return { success: false, error: t || `HTTP ${res.status}` };
+            try {
+                const j = JSON.parse(t) as { error?: string; message?: string };
+                return { success: false, error: j.error || j.message || t || `HTTP ${res.status}` };
+            } catch {
+                return { success: false, error: t || `HTTP ${res.status}` };
+            }
         }
         return { success: true };
     } catch (e: unknown) {

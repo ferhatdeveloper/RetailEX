@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useTheme } from '../../contexts/ThemeContext';
+import { normalizePhoneDigits } from '../../services/messaging/clinicMessaging';
 import { messagingService } from '../../services/messaging/messagingService';
 import type { MessagingSettings, NotificationQueueRow } from '../../services/messaging/messagingTypes';
 import {
@@ -81,6 +82,8 @@ export function WhatsAppIntegrationModule() {
   const [metaInvoiceTplId, setMetaInvoiceTplId] = useState('retailex_invoice_tr');
   const [metaAppointmentTplId, setMetaAppointmentTplId] = useState('retailex_appointment_tr');
   const [testPhone, setTestPhone] = useState('');
+  const [testMessage, setTestMessage] = useState('RetailEX — WhatsApp test mesajı. Bağlantınız çalışıyor.');
+  const [testSending, setTestSending] = useState(false);
   const [embedStatus, setEmbedStatus] = useState('');
   const [stats, setStats] = useState({ pending: 0, sent: 0, failed: 0 });
   const [queue, setQueue] = useState<NotificationQueueRow[]>([]);
@@ -169,6 +172,45 @@ export function WhatsAppIntegrationModule() {
       toast.error(e instanceof Error ? e.message : 'Kayıt başarısız');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleTestSend = async () => {
+    const phone = testPhone.trim();
+    if (!phone) {
+      toast.error('Telefon numarası girin');
+      return;
+    }
+    const digits = normalizePhoneDigits(phone);
+    if (digits.length < 10) {
+      toast.error('Geçerli numara girin (ör. 905551234567 veya 05551234567)');
+      return;
+    }
+    if (!testMessage.trim()) {
+      toast.error('Test mesajı metnini girin');
+      return;
+    }
+    if (waProvider === 'EMBEDDED' && embedStatus !== 'connected') {
+      toast.error('Önce QR ile WhatsApp bağlantısı kurun');
+      return;
+    }
+    setTestSending(true);
+    try {
+      await handleSave();
+      const r = await messagingService.sendTestWhatsApp(phone, {
+        message: testMessage.trim(),
+        provider: waProvider,
+        whatsapp_base_url: waBaseUrl || null,
+        whatsapp_token: waToken.trim() || null,
+        whatsapp_instance_id: waInstance.trim() || null,
+        whatsapp_phone_id: waPhoneId.trim() || null,
+      });
+      if (r.success) toast.success(`Test mesajı gönderildi (${digits})`);
+      else toast.error(r.error || 'Gönderilemedi');
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'Gönderilemedi');
+    } finally {
+      setTestSending(false);
     }
   };
 
@@ -528,46 +570,81 @@ export function WhatsAppIntegrationModule() {
         </section>
       )}
 
-      {/* Test & kuyruk */}
+      {/* Test mesajı */}
+      {waProvider !== 'NONE' && (
+        <section className={`rounded-2xl border p-5 shadow-sm ${panel}`}>
+          <h2 className={`mb-1 flex items-center gap-2 text-base font-semibold ${headingCls}`}>
+            <Send className="h-5 w-5 text-[#25D366]" />
+            Test mesajı gönder
+          </h2>
+          <p className={`mb-4 text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+            Bağlantıyı doğrulamak için numara yazıp anında WhatsApp mesajı gönderin.
+            {waProvider === 'EMBEDDED' && embedStatus !== 'connected' && (
+              <span className="block mt-1 text-amber-600 dark:text-amber-400">
+                QR bağlantısı kurulmadan test gönderilemez.
+              </span>
+            )}
+          </p>
+          <div className="grid gap-4 lg:grid-cols-2">
+            <div>
+              <label className={labelCls}>Alıcı telefon</label>
+              <div className="relative mt-1">
+                <Phone className={`absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`} />
+                <input
+                  className={`${inputCls} pl-10 font-mono`}
+                  placeholder="905551234567 veya 0555 123 45 67"
+                  value={testPhone}
+                  onChange={(e) => setTestPhone(e.target.value)}
+                  inputMode="tel"
+                  autoComplete="tel"
+                />
+              </div>
+              {testPhone.trim() && (
+                <p className={`mt-1 text-[11px] ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                  Gönderim: {normalizePhoneDigits(testPhone)}
+                </p>
+              )}
+            </div>
+            <div>
+              <label className={labelCls}>Mesaj metni</label>
+              <textarea
+                className={`${inputCls} mt-1 min-h-[88px]`}
+                value={testMessage}
+                onChange={(e) => setTestMessage(e.target.value)}
+                placeholder="Test mesajınız…"
+              />
+            </div>
+          </div>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <button
+              type="button"
+              disabled={testSending || !testPhone.trim() || !testMessage.trim() || (waProvider === 'EMBEDDED' && embedStatus !== 'connected')}
+              onClick={() => void handleTestSend()}
+              className="inline-flex items-center gap-2 rounded-lg bg-[#25D366] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#1da851] disabled:opacity-40"
+            >
+              {testSending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+              Test mesajı gönder
+            </button>
+          </div>
+        </section>
+      )}
+
+      {/* Kuyruk */}
       {waProvider !== 'NONE' && (
         <section className={`rounded-2xl border p-5 shadow-sm ${panel}`}>
           <h2 className={`mb-4 flex items-center gap-2 text-base font-semibold ${headingCls}`}>
-            <Send className="h-5 w-5 text-[#25D366]" />
-            Test ve kuyruk
+            <Inbox className="h-5 w-5 text-blue-500" />
+            Bildirim kuyruğu
           </h2>
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-            <input
-              className={`${inputCls} sm:max-w-xs`}
-              placeholder="905551234567"
-              value={testPhone}
-              onChange={(e) => setTestPhone(e.target.value)}
-            />
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                disabled={!testPhone.trim()}
-                onClick={async () => {
-                  await handleSave();
-                  const r = await messagingService.sendTestWhatsApp(testPhone.trim());
-                  if (r.success) toast.success('Test mesajı gönderildi');
-                  else toast.error(r.error || 'Gönderilemedi');
-                }}
-                className="inline-flex items-center gap-2 rounded-lg bg-[#25D366] px-4 py-2.5 text-sm font-medium text-white hover:bg-[#1da851] disabled:opacity-40"
-              >
-                <Send className="h-4 w-4" />
-                Test gönder
-              </button>
-              <button
-                type="button"
-                disabled={processing || stats.pending === 0}
-                onClick={() => void handleProcessQueue()}
-                className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-40"
-              >
-                {processing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
-                Kuyruğu işle ({stats.pending})
-              </button>
-            </div>
-          </div>
+          <button
+            type="button"
+            disabled={processing || stats.pending === 0}
+            onClick={() => void handleProcessQueue()}
+            className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-40"
+          >
+            {processing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
+            Bekleyenleri gönder ({stats.pending})
+          </button>
         </section>
       )}
 

@@ -227,31 +227,72 @@ export const messagingService = {
     });
   },
 
-  async sendTestWhatsApp(phone: string): Promise<{ success: boolean; error?: string }> {
+  async sendTestWhatsApp(
+    phone: string,
+    options?: {
+      message?: string;
+      provider?: string;
+      whatsapp_base_url?: string | null;
+      whatsapp_token?: string | null;
+      whatsapp_instance_id?: string | null;
+      whatsapp_phone_id?: string | null;
+    }
+  ): Promise<{ success: boolean; error?: string }> {
     const s = await messagingService.getSettings();
-    const portal = settingsToPortalConfig(s);
-    const provider = (s?.whatsapp_provider || 'NONE').toString().toUpperCase();
-    if (provider === 'META' && s) {
+    const merged: MessagingSettings | null = s
+      ? {
+          ...s,
+          whatsapp_provider: options?.provider ?? s.whatsapp_provider,
+          whatsapp_base_url: options?.whatsapp_base_url ?? s.whatsapp_base_url,
+          whatsapp_token: options?.whatsapp_token ?? s.whatsapp_token,
+          whatsapp_instance_id: options?.whatsapp_instance_id ?? s.whatsapp_instance_id,
+          whatsapp_phone_id: options?.whatsapp_phone_id ?? s.whatsapp_phone_id,
+        }
+      : null;
+    const portal = settingsToPortalConfig(merged);
+    const provider = (merged?.whatsapp_provider || 'NONE').toString().toUpperCase();
+    const digits = phone.replace(/\D/g, '');
+    if (!digits || digits.length < 10) {
+      return { success: false, error: 'Geçerli telefon numarası girin (ör. 905551234567).' };
+    }
+    if (provider === 'NONE') {
+      return { success: false, error: 'WhatsApp sağlayıcısı kapalı.' };
+    }
+    if (provider === 'EMBEDDED') {
+      const st = await getEmbeddedBridgeStatus({
+        whatsapp_base_url: portal.whatsapp_base_url,
+        whatsapp_token: portal.whatsapp_token,
+      });
+      if (!st.ok) {
+        return { success: false, error: st.error || 'Köprüye ulaşılamadı.' };
+      }
+      if (st.status !== 'connected') {
+        return {
+          success: false,
+          error: 'WhatsApp bağlı değil. Önce QR kodu okutarak bağlantı kurun.',
+        };
+      }
+    }
+    const text = (options?.message || 'RetailEX — WhatsApp test mesajı.').trim();
+    if (provider === 'META' && merged) {
       const tpl = resolveMetaInvoiceTemplate(
-        s.meta_invoice_template_name,
-        s.meta_invoice_template_language
+        merged.meta_invoice_template_name,
+        merged.meta_invoice_template_language
       );
       const params = tpl.sampleValues;
       const preview = previewMetaTemplateBody(tpl, params);
       return sendWhatsAppNotification(portal, phone, {
-        text: preview,
-        metaTemplate: {
-          name: tpl.metaName,
-          language: tpl.language,
-          bodyParameters: params,
-        },
+        text: options?.message?.trim() ? text : preview,
+        metaTemplate: options?.message?.trim()
+          ? undefined
+          : {
+              name: tpl.metaName,
+              language: tpl.language,
+              bodyParameters: params,
+            },
       });
     }
-    return sendWhatsAppText(
-      portal,
-      phone,
-      'RetailEX — WhatsApp test mesajı.'
-    );
+    return sendWhatsAppText(portal, phone, text);
   },
 
   async enqueueNotification(params: {
