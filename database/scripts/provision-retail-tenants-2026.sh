@@ -80,7 +80,11 @@ for entry in "${TENANTS[@]}"; do
   IFS='|' read -r _code display_name db <<<"${entry}"
   echo "  -- ${db} (${display_name})"
   has_firms="$(psql_exec "${db}" -tAc "SELECT to_regclass('public.firms') IS NOT NULL;" 2>/dev/null || echo f)"
-  if [[ "${has_firms}" != "t" ]]; then
+  has_rex_items="$(psql_exec "${db}" -tAc "SELECT to_regclass('public.rex_001_items') IS NOT NULL;" 2>/dev/null || echo f)"
+  if [[ "${has_firms}" != "t" ]] || [[ "${has_rex_items}" != "t" ]]; then
+    if [[ "${has_firms}" == "t" && "${has_rex_items}" != "t" ]]; then
+      echo "    (yarım şema — master yeniden uygulanıyor)"
+    fi
     psql_file "${db}" "${MASTER_SQL}"
   fi
   psql_file "${db}" "${ROLE_SQL}"
