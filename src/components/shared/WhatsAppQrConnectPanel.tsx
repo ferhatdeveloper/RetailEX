@@ -3,7 +3,11 @@
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { AlertCircle, CheckCheck, Loader2, QrCode, RefreshCw, Smartphone, Wifi, WifiOff } from 'lucide-react';
-import { getEmbeddedBridgeStatus, type EmbeddedBridgeStatus } from '../../services/messaging/whatsappEmbeddedBridge';
+import {
+  getEmbeddedBridgeStatus,
+  resetEmbeddedBridgeSession,
+  type EmbeddedBridgeStatus,
+} from '../../services/messaging/whatsappEmbeddedBridge';
 import { useTheme } from '../../contexts/ThemeContext';
 
 export interface WhatsAppQrConnectPanelProps {
@@ -28,6 +32,7 @@ export function WhatsAppQrConnectPanel({
   const [qrImg, setQrImg] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [polling, setPolling] = useState(false);
+  const [resetting, setResetting] = useState(false);
   const onStatusChangeRef = useRef(onStatusChange);
   useEffect(() => {
     onStatusChangeRef.current = onStatusChange;
@@ -76,6 +81,42 @@ export function WhatsAppQrConnectPanel({
     }
   }, [baseUrl, token]);
 
+  const handleReset = useCallback(async () => {
+    const url = baseUrl.trim();
+    if (!url) return;
+    setResetting(true);
+    try {
+      const r = await resetEmbeddedBridgeSession({
+        whatsapp_base_url: url,
+        whatsapp_token: token ?? null,
+      });
+      if (r.ok) {
+        setError(null);
+        if (r.status) {
+          setStatus(r.status);
+          onStatusChangeRef.current?.(r.status, r.status === 'connected');
+        }
+        if (r.qr) {
+          if (r.qr.startsWith('data:')) setQrImg(r.qr);
+          else {
+            try {
+              const QRCode = (await import('qrcode')).default;
+              setQrImg(await QRCode.toDataURL(r.qr, { margin: 2, width: 280 }));
+            } catch {
+              setQrImg(null);
+            }
+          }
+        } else {
+          await refresh();
+        }
+      } else {
+        setError(r.error ?? 'Oturum sıfırlanamadı');
+      }
+    } finally {
+      setResetting(false);
+    }
+  }, [baseUrl, token, refresh]);
+
   useEffect(() => {
     if (!enabled || !baseUrl.trim()) {
       setStatus('');
@@ -89,12 +130,13 @@ export function WhatsAppQrConnectPanel({
       await refresh();
     };
     void tick();
-    const id = window.setInterval(tick, pollIntervalMs);
+    const interval = status === 'connected' ? pollIntervalMs : Math.min(pollIntervalMs, 2500);
+    const id = window.setInterval(tick, interval);
     return () => {
       cancelled = true;
       window.clearInterval(id);
     };
-  }, [enabled, baseUrl, token, pollIntervalMs, refresh]);
+  }, [enabled, baseUrl, token, pollIntervalMs, refresh, status]);
 
   const connected = status === 'connected';
   const scanning = status === 'scanning' || (!connected && !!qrImg);
@@ -144,11 +186,24 @@ export function WhatsAppQrConnectPanel({
             <button
               type="button"
               onClick={() => void refresh()}
-              disabled={polling || !baseUrl.trim()}
+              disabled={polling || resetting || !baseUrl.trim()}
               className="inline-flex items-center gap-2 rounded-lg bg-[#25D366] px-4 py-2 text-sm font-medium text-white hover:bg-[#1da851] disabled:opacity-50"
             >
               {polling ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
               QR yenile
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleReset()}
+              disabled={polling || resetting || !baseUrl.trim()}
+              className={`inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-medium disabled:opacity-50 ${
+                darkMode
+                  ? 'border-gray-600 text-gray-200 hover:bg-gray-800'
+                  : 'border-gray-300 text-gray-700 hover:bg-gray-50'
+              }`}
+            >
+              {resetting ? <Loader2 className="w-4 h-4 animate-spin" /> : <QrCode className="w-4 h-4" />}
+              Yeni QR oluştur
             </button>
             {baseUrl.trim() && (
               <span className={`text-xs ${muted}`}>

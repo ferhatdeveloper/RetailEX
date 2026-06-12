@@ -1,22 +1,23 @@
 /**
  * RetailEX WhatsApp köprüsü — Baileys tabanlı HTTP API.
- * Sözleşme: src/services/messaging/whatsappEmbeddedBridge.ts
  *
- *   GET  /status  → { status: "scanning"|"connected"|"disconnected", qr?: string }
- *   POST /send    → { to: "905551234567", text: "..." }
- *
- * Ortam:
- *   WA_BRIDGE_PORT=3000
- *   WA_BRIDGE_TOKEN=...   (isteğe bağlı Bearer)
- *   WA_BRIDGE_AUTH_DIR=./.wa-auth
+ *   GET  /status  → { status, qr? }
+ *   POST /send    → { to, text }
+ *   POST /reset   → oturumu sıfırla, yeni QR üret
  */
 import http from 'node:http';
-import { mkdir } from 'node:fs/promises';
+import { mkdir, rm } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import pino from 'pino';
 import QRCode from 'qrcode';
-import makeWASocket, { DisconnectReason, useMultiFileAuthState } from '@whiskeysockets/baileys';
+import makeWASocket, {
+  Browsers,
+  DisconnectReason,
+  fetchLatestBaileysVersion,
+  makeCacheableSignalKeyStore,
+  useMultiFileAuthState,
+} from '@whiskeysockets/baileys';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.WA_BRIDGE_PORT || 3000);
@@ -27,6 +28,7 @@ let sock = null;
 let connectionStatus = 'disconnected';
 let lastQrRaw = null;
 let starting = false;
+let resetInProgress = false;
 
 function json(res, statusCode, body) {
   const payload = JSON.stringify(body);
@@ -76,19 +78,54 @@ async function qrToDataUrl(raw) {
   }
 }
 
+function publicStatus() {
+  if (lastQrRaw && connectionStatus !== 'connected') {
+    return 'scanning';
+  }
+  return connectionStatus;
+}
+
+async function destroySocket() {
+  if (sock) {
+    try {
+      sock.end(undefined);
+    } catch {
+      /* ignore */
+    }
+    sock = null;
+  }
+  starting = false;
+}
+
+async function clearAuthDir() {
+  await destroySocket();
+  connectionStatus = 'disconnected';
+  lastQrRaw = null;
+  await rm(AUTH_DIR, { recursive: true, force: true });
+  await mkdir(AUTH_DIR, { recursive: true });
+}
+
 async function startSocket() {
-  if (sock || starting) return;
+  if (sock || starting || resetInProgress) return;
   starting = true;
   try {
     await mkdir(AUTH_DIR, { recursive: true });
+    const { version } = await fetchLatestBaileysVersion();
     const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
     const logger = pino({ level: 'silent' });
+
     sock = makeWASocket({
-      auth: state,
+      version,
+      auth: {
+        creds: state.creds,
+        keys: makeCacheableSignalKeyStore(state.keys, logger),
+      },
       logger,
       printQRInTerminal: false,
       syncFullHistory: false,
       markOnlineOnConnect: false,
+      browser: Browsers.ubuntu('Chrome'),
+      getMessage: async () => undefined,
     });
 
     sock.ev.on('creds.update', saveCreds);
@@ -98,34 +135,75 @@ async function startSocket() {
       if (qr) {
         lastQrRaw = qr;
         connectionStatus = 'scanning';
+        console.log('[wa-bridge] QR üretildi');
       }
       if (connection === 'open') {
         connectionStatus = 'connected';
         lastQrRaw = null;
+        console.log('[wa-bridge] WhatsApp bağlandı');
       }
       if (connection === 'close') {
-        connectionStatus = 'disconnected';
         const code = lastDisconnect?.error?.output?.statusCode;
-        sock = null;
-        starting = false;
-        if (code !== DisconnectReason.loggedOut) {
-          setTimeout(() => void startSocket(), 3000);
+        console.log('[wa-bridge] Bağlantı kapandı, kod:', code ?? '—');
+        await destroySocket();
+        connectionStatus = 'disconnected';
+        if (code === DisconnectReason.loggedOut) {
+          lastQrRaw = null;
+          await rm(AUTH_DIR, { recursive: true, force: true }).catch(() => {});
+          await mkdir(AUTH_DIR, { recursive: true }).catch(() => {});
+        }
+        if (!resetInProgress && code !== DisconnectReason.loggedOut) {
+          setTimeout(() => void startSocket(), 2000);
+        } else if (code === DisconnectReason.loggedOut) {
+          setTimeout(() => void startSocket(), 1000);
         }
       }
     });
   } catch (e) {
     console.error('[wa-bridge] Başlatma hatası:', e);
     connectionStatus = 'disconnected';
-    sock = null;
+    await destroySocket();
   } finally {
     starting = false;
   }
 }
 
+async function waitForQr(maxMs = 8000) {
+  const start = Date.now();
+  while (Date.now() - start < maxMs) {
+    if (lastQrRaw || connectionStatus === 'connected') return;
+    if (!sock && !starting) await startSocket();
+    await new Promise((r) => setTimeout(r, 400));
+  }
+}
+
 async function handleStatus(_req, res) {
-  if (!sock) await startSocket();
-  const qr = connectionStatus === 'scanning' ? await qrToDataUrl(lastQrRaw) : null;
-  json(res, 200, { status: connectionStatus, qr });
+  if (!sock && !starting) await startSocket();
+  if (!lastQrRaw && connectionStatus !== 'connected') {
+    await waitForQr(6000);
+  }
+  const qr = lastQrRaw ? await qrToDataUrl(lastQrRaw) : null;
+  json(res, 200, { status: publicStatus(), qr });
+}
+
+async function handleReset(_req, res) {
+  resetInProgress = true;
+  try {
+    await clearAuthDir();
+    await startSocket();
+    await waitForQr(10000);
+    const qr = lastQrRaw ? await qrToDataUrl(lastQrRaw) : null;
+    json(res, 200, {
+      success: true,
+      status: publicStatus(),
+      qr,
+      message: qr ? 'Yeni QR hazır' : 'QR henüz üretilmedi — /status ile tekrar deneyin',
+    });
+  } catch (e) {
+    json(res, 500, { success: false, error: e?.message || String(e) });
+  } finally {
+    resetInProgress = false;
+  }
 }
 
 async function handleSend(req, res) {
@@ -174,11 +252,15 @@ const server = http.createServer(async (req, res) => {
     await handleStatus(req, res);
     return;
   }
+  if (req.method === 'POST' && url.pathname === '/reset') {
+    await handleReset(req, res);
+    return;
+  }
   if (req.method === 'POST' && url.pathname === '/send') {
     await handleSend(req, res);
     return;
   }
-  json(res, 404, { success: false, error: 'Bilinmeyen uç nokta. GET /status, POST /send' });
+  json(res, 404, { success: false, error: 'Bilinmeyen uç nokta. GET /status, POST /send, POST /reset' });
 });
 
 void startSocket();

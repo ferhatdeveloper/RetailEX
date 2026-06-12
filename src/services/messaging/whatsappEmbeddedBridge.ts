@@ -38,8 +38,11 @@ function shouldUseTauriFetch(url: string): boolean {
 
 /** Geliştirmede whatshapp :3000 → Vite proxy; canlıda `/__wa_bridge` aynı origin. */
 function resolveBridgeBaseUrl(cfg: EmbeddedBridgeConfig): string {
-    const base = baseUrl(cfg);
+    let base = baseUrl(cfg);
     if (!base) return '';
+    if (typeof window !== 'undefined' && isStaleEmbeddedBridgeUrl(base)) {
+        base = '/__wa_bridge';
+    }
     if (typeof window !== 'undefined') {
         if (base.startsWith('/')) {
             return `${window.location.origin}${base}`.replace(/\/$/, '');
@@ -88,6 +91,18 @@ export interface EmbeddedBridgeStatusResponse {
     /** PNG data URL veya boş */
     qr?: string | null;
     error?: string;
+}
+
+/** Canlıda geçersiz / geçici harici köprü URL'lerini aynı origin yoluna çevir. */
+export function isStaleEmbeddedBridgeUrl(url: string | null | undefined): boolean {
+    const u = (url || '').trim().toLowerCase();
+    if (!u) return false;
+    return (
+        u.includes('trycloudflare') ||
+        u.includes('ngrok') ||
+        u.includes('loca.lt') ||
+        (!import.meta.env.DEV && u.startsWith('http://') && !u.includes('127.0.0.1') && !u.includes('localhost'))
+    );
 }
 
 function baseUrl(cfg: EmbeddedBridgeConfig): string {
@@ -154,6 +169,34 @@ export async function getEmbeddedBridgeStatus(
                 ? ' Ağ/CORS: köprü çalışıyor mu? Tauri masaüstünde yerel HTTP için izin gerekir.'
                 : '';
         return { ok: false, error: msg + hint };
+    }
+}
+
+export async function resetEmbeddedBridgeSession(
+    cfg: EmbeddedBridgeConfig
+): Promise<{ ok: boolean; status?: string; qr?: string | null; error?: string }> {
+    const base = resolveBridgeBaseUrl(cfg);
+    if (!base) return { ok: false, error: 'Köprü URL girilmedi.' };
+    try {
+        const res = await bridgeFetch(`${base}/reset`, {
+            method: 'POST',
+            headers: {
+                ...authHeaders(cfg),
+                'Content-Type': 'application/json',
+            },
+            body: '{}',
+            signal: typeof AbortSignal !== 'undefined' && 'timeout' in AbortSignal
+                ? AbortSignal.timeout(30_000)
+                : undefined,
+        });
+        const text = await res.text();
+        if (!res.ok) {
+            return { ok: false, error: `HTTP ${res.status}${text ? `: ${text.slice(0, 200)}` : ''}` };
+        }
+        const data = JSON.parse(text) as { status?: string; qr?: string | null; error?: string; message?: string };
+        return { ok: true, status: data.status, qr: data.qr ?? null, error: data.error };
+    } catch (e: unknown) {
+        return { ok: false, error: e instanceof Error ? e.message : String(e) };
     }
 }
 

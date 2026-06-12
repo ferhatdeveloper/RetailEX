@@ -34,6 +34,7 @@ import {
   type MetaWhatsAppTemplateDef,
 } from '../../services/messaging/metaWhatsAppTemplates';
 import { WhatsAppQrConnectPanel } from '../shared/WhatsAppQrConnectPanel';
+import { isStaleEmbeddedBridgeUrl } from '../../services/messaging/whatsappEmbeddedBridge';
 
 const DEFAULT_INVOICE_TEMPLATE =
   'Sayın {customer_name}, {date} tarihli {fiche_no} numaralı {category} faturanız: {amount} {currency}. RetailEX';
@@ -53,12 +54,7 @@ const QUEUE_STATUS_TR: Record<string, string> = {
 };
 
 function isStaleBridgeUrl(url: string): boolean {
-  const u = url.trim().toLowerCase();
-  return (
-    u.includes('trycloudflare') ||
-    u.includes('ngrok') ||
-    (u.startsWith('http') && !import.meta.env.DEV)
-  );
+  return isStaleEmbeddedBridgeUrl(url);
 }
 
 export function WhatsAppIntegrationModule() {
@@ -107,7 +103,21 @@ export function WhatsAppIntegrationModule() {
       setSettings(s);
       if (s) {
         setWaProvider((s.whatsapp_provider || 'NONE').toString());
-        setWaBaseUrl(s.whatsapp_base_url || defaultBridgeUrl);
+        let loadedUrl = s.whatsapp_base_url || defaultBridgeUrl;
+        if (isStaleBridgeUrl(loadedUrl)) {
+          loadedUrl = defaultBridgeUrl;
+          setWaProvider('EMBEDDED');
+          try {
+            await messagingService.updateSettings({
+              whatsapp_provider: 'EMBEDDED',
+              whatsapp_base_url: defaultBridgeUrl,
+            });
+            toast.info('Köprü adresi /__wa_bridge olarak güncellendi');
+          } catch {
+            toast.warning('Köprü URL eski — Kaydet ile /__wa_bridge kullanın');
+          }
+        }
+        setWaBaseUrl(loadedUrl);
         setWaToken(s.whatsapp_token || '');
         setWaInstance(s.whatsapp_instance_id || '');
         setWaPhoneId(s.whatsapp_phone_id || '');
