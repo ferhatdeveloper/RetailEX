@@ -21,7 +21,8 @@ Pop-Location
 Remove-Item Env:RUSTFLAGS -ErrorAction SilentlyContinue
 
 # VC++ Runtime (VCRUNTIME140.dll) yoksa kur
-if (-not (Test-Path 'C:\Windows\System32\vcruntime140.dll')) {
+$VcDllOk = (Test-Path 'C:\Windows\System32\vcruntime140.dll') -and (Test-Path 'C:\Windows\System32\vcruntime140_1.dll')
+if (-not $VcDllOk) {
     Write-Host 'Visual C++ Runtime kuruluyor...'
     $VcTmp = Join-Path $env:TEMP 'vc_redist.x64.exe'
     if (-not (Test-Path $VcTmp)) {

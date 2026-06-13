@@ -87,13 +87,21 @@ end;
 
 function VcRuntimeDllOk: Boolean;
 begin
-  Result := FileExists(ExpandConstant('{sys}\vcruntime140.dll'));
+  { Node.js ve Rust ikilileri için VC++ 2015-2022 x64 DLL'leri }
+  Result :=
+    FileExists(ExpandConstant('{sys}\vcruntime140.dll')) and
+    FileExists(ExpandConstant('{sys}\vcruntime140_1.dll'));
 end;
 
 function NeedsVCRedistInstall: Boolean;
 begin
-  { DLL veya kayıt defteri — biri yeterli }
-  Result := (not VcRuntimeDllOk) and (not VcRuntimeRegistryOk);
+  { DLL eksikse kur (kayıt defteri "yüklü" dese bile bozuk kurulum olabilir) }
+  if not VcRuntimeDllOk then
+  begin
+    Result := True;
+    Exit;
+  end;
+  Result := not VcRuntimeRegistryOk;
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);

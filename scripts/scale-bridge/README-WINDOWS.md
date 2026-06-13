@@ -116,14 +116,15 @@ powershell -ExecutionPolicy Bypass -File "C:\Program Files\RetailEX\ScaleBridge\
 
 Çıktının tamamını kopyalayıp gönderin.
 
-### VCRUNTIME140.dll hatası (hemen)
+### VCRUNTIME140.dll hatası
 
 Pencere: `RetailEX_ScaleBridge_Manager.exe - System Error`  
 Metin: `VCRUNTIME140.dll was not found`
 
-1. **Hızlı çözüm** — Microsoft VC++ Runtime kurun (x64), sonra Setup’ı tekrar çalıştırın:  
-   https://aka.ms/vs/17/release/vc_redist.x64.exe  
-2. **Kalıcı çözüm** — GitHub’dan **güncel** `RetailEX-ScaleBridge-Setup.exe` indirin (runtime kurulumu + statik CRT içerir).
+**Güncel Setup.exe** bu DLL yoksa kurulum sırasında otomatik VC++ Runtime kurar. Eski paket kullanıyorsanız:
+
+1. https://github.com/ferhatdeveloper/RetailEX/releases — **scale-bridge-v0.1.76** veya üzeri Setup indirin  
+2. veya elle: https://aka.ms/vs/17/release/vc_redist.x64.exe
 
 ## Servis komutları
 
