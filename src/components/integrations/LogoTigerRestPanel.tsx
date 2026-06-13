@@ -42,6 +42,13 @@ import {
   type LogoFirmOption,
   type LogoPeriodOption,
 } from '../../services/logoRestApi';
+import {
+  syncLogoAllFromRest,
+  type LogoSyncProgress,
+  type LogoSyncResult,
+} from '../../services/logoRestSync';
+import { useProductStore } from '../../store/useProductStore';
+import { useCustomerStore } from '../../store/useCustomerStore';
 
 type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error';
 
@@ -70,6 +77,14 @@ export function LogoTigerRestPanel() {
   const [newDbName, setNewDbName] = useState('');
   const [activeContext, setActiveContext] = useState(() => resolveLogoContext(loadLogoRestConfig()));
   const [urlSource, setUrlSource] = useState<'tenant' | 'manual' | 'none'>(() => resolveLogoRestUrlSource());
+
+  const [syncOptions, setSyncOptions] = useState({ products: true, customers: true, suppliers: true });
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [syncProgress, setSyncProgress] = useState<LogoSyncProgress | null>(null);
+  const [syncResult, setSyncResult] = useState<LogoSyncResult | null>(null);
+
+  const loadProducts = useProductStore((s) => s.loadProducts);
+  const loadCustomers = useCustomerStore((s) => s.loadCustomers);
 
   const logoDbOptions = Array.from(
     new Set([...(config.logoDbs || []), config.logoDb].filter((x) => x && String(x).trim()))
@@ -285,6 +300,38 @@ export function LogoTigerRestPanel() {
       setCreateMsg(e instanceof Error ? e.message : String(e));
     } finally {
       setIsCreating(false);
+    }
+  };
+
+  const handleSyncFromLogo = async () => {
+    if (connectionStatus !== 'connected') return;
+    setIsSyncing(true);
+    setSyncProgress(null);
+    setSyncResult(null);
+    setConnectionError('');
+    try {
+      const result = await syncLogoAllFromRest(
+        config,
+        {
+          products: syncOptions.products,
+          customers: syncOptions.customers,
+          suppliers: syncOptions.suppliers,
+        },
+        (p) => setSyncProgress(p)
+      );
+      setSyncResult(result);
+      if (!result.ok) {
+        setConnectionError(result.error || 'Senkronizasyon başarısız');
+        return;
+      }
+      await Promise.all([
+        syncOptions.products ? loadProducts(true) : Promise.resolve(),
+        syncOptions.customers ? loadCustomers() : Promise.resolve(),
+      ]);
+    } catch (e: unknown) {
+      setConnectionError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setIsSyncing(false);
     }
   };
 
@@ -595,6 +642,113 @@ export function LogoTigerRestPanel() {
                     </div>
                   </div>
                 ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Logo → RetailEX senkronizasyonu */}
+      {connectionStatus === 'connected' && (
+        <div>
+          <div className="flex items-center gap-2 mb-4">
+            <div className="w-8 h-8 bg-green-600 rounded-full flex items-center justify-center text-white">2b</div>
+            <h3 className="text-lg text-gray-900">Logo&apos;dan RetailEX&apos;e aktar</h3>
+          </div>
+          <div className="pl-10 space-y-4">
+            <p className="text-sm text-gray-600">
+              Bağlantı kurulduktan sonra Logo&apos;daki stok kartları, cari ve tedarikçi hesapları seçili
+              RetailEX firmasına (<code>rex_{erpFirmPeriod.firmLabel}_*</code>) yazılır. Mevcut kayıtlar{' '}
+              <strong>kod</strong> alanına göre güncellenir.
+            </p>
+
+            <div className="flex flex-wrap gap-4 text-sm">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={syncOptions.products}
+                  onChange={(e) => setSyncOptions((o) => ({ ...o, products: e.target.checked }))}
+                  className="rounded border-gray-300 text-green-600"
+                />
+                <Package className="w-4 h-4 text-orange-600" />
+                Ürünler (items)
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={syncOptions.customers}
+                  onChange={(e) => setSyncOptions((o) => ({ ...o, customers: e.target.checked }))}
+                  className="rounded border-gray-300 text-green-600"
+                />
+                <Users className="w-4 h-4 text-blue-600" />
+                Cari hesaplar (Arps)
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={syncOptions.suppliers}
+                  onChange={(e) => setSyncOptions((o) => ({ ...o, suppliers: e.target.checked }))}
+                  className="rounded border-gray-300 text-green-600"
+                />
+                <Users className="w-4 h-4 text-purple-600" />
+                Tedarikçiler (Arps)
+              </label>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleSyncFromLogo}
+              disabled={
+                isSyncing ||
+                (!syncOptions.products && !syncOptions.customers && !syncOptions.suppliers)
+              }
+              className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 flex items-center gap-2"
+            >
+              {isSyncing ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Senkronize ediliyor…
+                </>
+              ) : (
+                <>
+                  <Download className="w-4 h-4" />
+                  Logo verilerini içe aktar
+                </>
+              )}
+            </button>
+
+            {syncProgress && (
+              <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-sm text-green-900">
+                {syncProgress.message}
+                {syncProgress.total != null && syncProgress.current != null && (
+                  <span className="ml-2 text-green-700">
+                    ({syncProgress.current}/{syncProgress.total})
+                  </span>
+                )}
+              </div>
+            )}
+
+            {syncResult && (
+              <div
+                className={`p-4 rounded-lg border text-sm ${
+                  syncResult.ok
+                    ? 'bg-green-50 border-green-200 text-green-900'
+                    : 'bg-red-50 border-red-200 text-red-800'
+                }`}
+              >
+                <div className="flex items-center gap-2 mb-2 font-medium">
+                  {syncResult.ok ? (
+                    <CheckCircle className="w-4 h-4" />
+                  ) : (
+                    <XCircle className="w-4 h-4" />
+                  )}
+                  {syncResult.ok ? 'Senkronizasyon tamamlandı' : 'Senkronizasyon hatası'}
+                </div>
+                <ul className="list-disc list-inside space-y-1">
+                  {syncResult.messages.map((m, i) => (
+                    <li key={i}>{m}</li>
+                  ))}
+                </ul>
               </div>
             )}
           </div>
