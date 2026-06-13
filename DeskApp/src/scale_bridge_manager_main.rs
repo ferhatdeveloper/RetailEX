@@ -60,9 +60,14 @@ fn cmd_install(bridge_exe: &PathBuf) -> Result<(), Box<dyn std::error::Error>> {
     let status = Command::new(bridge_exe)
         .arg("--install")
         .status()
-        .map_err(|e| format!("Servis kurulumu başlatılamadı: {}", e))?;
+        .map_err(|e| format!("Servis kurulumu baslatilamadi: {}", e))?;
     if !status.success() {
-        return Err("Servis kurulumu başarısız".into());
+        let detail = read_install_error_hint();
+        return Err(format!(
+            "Servis kurulumu basarisiz. {}\nLog: C:\\ProgramData\\RetailEX\\RetailEX_Scale_Bridge_install_last_error.txt",
+            detail
+        )
+        .into());
     }
     let _ = std::fs::create_dir_all(CONFIG_DIR);
     let _ = try_start_service();
@@ -120,6 +125,17 @@ fn open_ui_browser() -> Result<(), Box<dyn std::error::Error>> {
     Command::new("cmd")
         .args(["/C", "start", "", UI_URL])
         .spawn()
-        .map_err(|e| format!("Tarayıcı açılamadı: {}", e))?;
+        .map_err(|e| format!("Tarayici acilamadi: {}", e))?;
     Ok(())
+}
+
+fn read_install_error_hint() -> String {
+    let path = r"C:\ProgramData\RetailEX\RetailEX_Scale_Bridge_install_last_error.txt";
+    std::fs::read_to_string(path)
+        .ok()
+        .map(|s| {
+            let tail: String = s.lines().rev().take(3).collect::<Vec<_>>().into_iter().rev().collect::<Vec<_>>().join(" | ");
+            if tail.is_empty() { "Yonetici olarak calistirin.".to_string() } else { tail }
+        })
+        .unwrap_or_else(|| "Yonetici olarak calistirin.".to_string())
 }

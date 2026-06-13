@@ -44,6 +44,7 @@ Copy-Item -Force (Join-Path $ScaleDir 'server.mjs') (Join-Path $Staging 'scale-b
 Copy-Item -Force (Join-Path $ScaleDir 'rongtaTcp.mjs') (Join-Path $Staging 'scale-bridge\rongtaTcp.mjs')
 Copy-Item -Force (Join-Path $ScaleDir 'scan.mjs') (Join-Path $Staging 'scale-bridge\scan.mjs')
 Copy-Item -Force (Join-Path $ScaleDir 'admin\index.html') (Join-Path $Staging 'scale-bridge\admin\index.html')
+Copy-Item -Force (Join-Path $ScaleDir 'diagnose-windows.ps1') (Join-Path $Staging 'scale-bridge\diagnose-windows.ps1')
 Copy-Item -Force (Join-Path $ScaleDir 'scale-bridge.example.json') $Staging
 
 Write-Host '3) Portable Node.js...'
@@ -83,7 +84,7 @@ if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 $SetupExe = Join-Path $Dist 'RetailEX-ScaleBridge-Setup.exe'
 if (-not (Test-Path $SetupExe)) {
-    Write-Error "Kurulum dosyası oluşmadı: $SetupExe"
+    Write-Error "Kurulum dosyasi olusmadi: $SetupExe"
 }
 
 Write-Host ''

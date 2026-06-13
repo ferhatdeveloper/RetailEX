@@ -94,6 +94,26 @@ Mağaza PC `scale-bridge.json` örneği:
 
 `authToken` merkez DB'deki `scale_bridge_token` ile aynı olmalı.
 
+## Windows hataları (sık görülen)
+
+| Ekrandaki hata | Çözüm |
+|----------------|--------|
+| **Windows korunması / SmartScreen** | Dosya Özellikleri → **Engellemeyi kaldır** → Yönetici olarak çalıştır |
+| **Servis kurulumu başarısız** | Yönetici PowerShell; antivirüs geçici kapat; `RetailEX_Scale_Bridge_install_last_error.txt` oku |
+| **node.exe not found** | GitHub **Setup.exe** kullanın (Node dahil); eski kurulumu kaldırıp yeniden kurun |
+| **3012/status açılmıyor** | `net start RetailEX_Scale_Bridge`; log: `scale_bridge_service.log` |
+| **RetailEX_Scale_Bridge.exe bulunamadı** | Kurulum: `C:\Program Files\RetailEX\ScaleBridge` — Setup'ı yeniden çalıştırın |
+
+### Teşhis betiği (çıktıyı paylaşın)
+
+Yönetici PowerShell:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File "C:\Program Files\RetailEX\ScaleBridge\scale-bridge\diagnose-windows.ps1"
+```
+
+Çıktının tamamını kopyalayıp gönderin.
+
 ## Servis komutları
 
 ```powershell
