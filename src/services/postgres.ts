@@ -1,9 +1,9 @@
-import { IS_TAURI, safeInvoke, getBridgeUrl } from '../utils/env';
+import { IS_TAURI, safeInvoke, getBridgeUrl, isRetailExProductionWeb } from '../utils/env';
 import { fetchRetailexAware } from '../utils/retailexDevProxy';
 import { logger } from './loggingService';
 import { setGlobalCurrency } from '../utils/currency';
 
-const IS_PRODUCTION = typeof window !== 'undefined' && window.location.hostname === 'retailex.app';
+const IS_PRODUCTION = isRetailExProductionWeb();
 
 export type ConnectionMode = 'online' | 'offline' | 'hybrid';
 export type ConnectionProvider = 'db' | 'rest_api';
@@ -152,6 +152,12 @@ async function executePgQueryRows(
       return data.rows;
     } catch (err) {
       lastError = err;
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg === 'Failed to fetch') {
+        lastError = new Error(
+          `PostgreSQL köprüsüne ulaşılamadı (${getBridgeUrl()}/api/pg_query). retailex_bridge çalışıyor mu?`
+        );
+      }
       const canRetry = attempt < PG_WEB_QUERY_MAX_ATTEMPTS && isLikelyConnectivityFailure(err);
       if (canRetry) {
         const wait = PG_WEB_QUERY_RETRY_BASE_MS * attempt;

@@ -412,19 +412,65 @@ async function logoHttpViaBridge(
   } = {}
 ): Promise<Response> {
   const bridge = getBridgeUrl();
-  const res = await fetch(`${bridge}/api/logo/proxy`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      baseUrl: normalizeBaseUrl(baseUrl),
-      method,
-      path: path.startsWith('/') ? path : `/${path}`,
-      headers: opts.headers || {},
-      body: opts.body,
-      query: opts.query || {},
-    }),
-  });
-  return res;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 90_000);
+  try {
+    const res = await fetch(`${bridge}/api/logo/proxy`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        baseUrl: normalizeBaseUrl(baseUrl),
+        method,
+        path: path.startsWith('/') ? path : `/${path}`,
+        headers: opts.headers || {},
+        body: opts.body,
+        query: opts.query || {},
+      }),
+      signal: controller.signal,
+    });
+    return res;
+  } catch (e: unknown) {
+    const raw = e instanceof Error ? e.message : String(e);
+    const isNetwork =
+      raw === 'Failed to fetch' ||
+      raw.includes('NetworkError') ||
+      raw.includes('aborted') ||
+      raw.includes('AbortError');
+    if (isNetwork) {
+      throw new Error(
+        `Logo REST köprüsüne ulaşılamadı (${bridge}/api/logo/proxy). ` +
+          'Sunucuda pg_bridge (retailex_bridge) çalışmıyor olabilir veya tarayıcı ağ/CORS engeli var. ' +
+          `${bridge}/api/status adresini kontrol edin.`
+      );
+    }
+    throw e instanceof Error ? e : new Error(raw);
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+/** Web modunda senkron öncesi köprü erişilebilirliği */
+export async function ensureLogoBridgeReachable(): Promise<void> {
+  if (IS_TAURI) return;
+  const bridge = getBridgeUrl();
+  try {
+    const res = await fetch(`${bridge}/api/status`, { method: 'GET' });
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status}`);
+    }
+    const data = (await res.json().catch(() => ({}))) as { status?: string };
+    if (data.status !== 'RUNNING') {
+      throw new Error('Bridge RUNNING değil');
+    }
+  } catch (e: unknown) {
+    const raw = e instanceof Error ? e.message : String(e);
+    const isNetwork = raw === 'Failed to fetch' || raw.includes('Failed to fetch');
+    throw new Error(
+      isNetwork
+        ? `PostgreSQL köprüsü yanıt vermiyor (${bridge}). retailex_bridge konteynerini yeniden başlatın.`
+        : `PostgreSQL köprüsü yanıt vermiyor (${bridge}): ${raw}`
+    );
+  }
 }
 
 async function logoHttp(

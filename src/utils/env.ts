@@ -88,6 +88,29 @@ export async function deleteCRetailexFolderIfTauri(): Promise<{ ok: boolean; det
 }
 
 /**
+ * SaaS web (retailex.app, VPS IP, alt alan adları) — köprü Docker içinde `saas_postgres` kullanır.
+ * Yalnızca tam `retailex.app` hostname kontrolü kiracıları 127.0.0.1 connStr ile bozar.
+ */
+export function isRetailExProductionWeb(): boolean {
+  if (typeof window === 'undefined') return false;
+  const h = window.location.hostname.toLowerCase();
+  if (
+    h === 'localhost' ||
+    h === '127.0.0.1' ||
+    h === '::1' ||
+    h.endsWith('.localhost')
+  ) {
+    return false;
+  }
+  return (
+    h === 'retailex.app' ||
+    h === 'www.retailex.app' ||
+    h.endsWith('.retailex.app') ||
+    h === '72.60.182.107'
+  );
+}
+
+/**
  * PostgreSQL Bridge tabanı (tarayıcıda `/api/pg_query` vb. için).
  * Vite dev: aynı origin + `vite.config` proxy → bridge :3001 (köprü yine çalışır durumda olmalı).
  */

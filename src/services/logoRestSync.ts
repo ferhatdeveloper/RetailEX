@@ -3,9 +3,10 @@
  */
 
 import {
+  ensureLogoBridgeReachable,
+  logoEnsureSession,
   logoFetchAllPaginated,
   logoListResource,
-  logoRefreshSession,
   resolveLogoContext,
   type LogoRestConfig,
 } from './logoRestApi';
@@ -124,6 +125,10 @@ function resolveArpRoles(rec: Record<string, unknown>): { customer: boolean; sup
 }
 
 async function ensureFirmTables(firmNr: string): Promise<void> {
+  // SaaS rest_api: tablolar sunucu migration ile hazır; köprüye 127.0.0.1 connStr göndermek ECONNREFUSED üretir.
+  if (DB_SETTINGS.connectionProvider === 'rest_api') {
+    return;
+  }
   await postgres.query('SELECT public.CREATE_FIRM_TABLES($1)', [firmNr]);
 }
 
@@ -524,8 +529,18 @@ export async function syncLogoAllFromRest(
   const syncSuppliers = options.suppliers !== false;
 
   try {
-    onProgress?.({ phase: 'prepare', message: 'Logo oturumu yenileniyor…' });
-    await logoRefreshSession(cfg);
+    onProgress?.({ phase: 'prepare', message: 'Köprü bağlantısı kontrol ediliyor…' });
+    await ensureLogoBridgeReachable();
+    nowLog(options.onLog, {
+      entity: 'system',
+      action: 'read',
+      code: 'bridge',
+      detail: 'pg_bridge erişilebilir',
+      ok: true,
+    });
+
+    onProgress?.({ phase: 'prepare', message: 'Logo oturumu kontrol ediliyor…' });
+    await logoEnsureSession(cfg);
     const ctx = resolveLogoContext(cfg);
     const firmNr = firmNrPadded();
 
