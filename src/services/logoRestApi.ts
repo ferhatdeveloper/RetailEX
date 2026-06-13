@@ -43,7 +43,40 @@ export interface LogoRestConfig {
   password: string;
   clientId: string;
   clientSecret: string;
+  /** Aktif Logo veritabanı (çoklu DB) */
   logoDb?: string;
+  /** Bilinen Logo DB listesi — dropdown için */
+  logoDbs?: string[];
+  /** Manuel seçilen Logo firma no */
+  selectedFirmNr?: number;
+  /** Manuel seçilen Logo dönem no */
+  selectedPeriodNr?: number;
+  /** true: RetailEX ERP_SETTINGS; false: selectedFirmNr/selectedPeriodNr */
+  useErpContext?: boolean;
+}
+
+export interface LogoFirmOption {
+  firmNr: number;
+  name: string;
+  title: string;
+  defaultPeriod?: number;
+  periods: LogoPeriodOption[];
+}
+
+export interface LogoPeriodOption {
+  number: number;
+  beginDate?: string;
+  endDate?: string;
+  active: boolean;
+}
+
+export interface LogoContextSelection {
+  logoDb: string;
+  firmNr: number;
+  periodNr: number;
+  source: 'erp' | 'manual';
+  firmLabel: string;
+  periodLabel: string;
 }
 
 export interface LogoRestSession {
@@ -66,6 +99,7 @@ export interface LogoDescribeEntry {
 export interface LogoDataPreview {
   firmNr: number;
   periodNr: number;
+  logoDb?: string;
   resources: Record<string, number | null>;
   fetchedAt: string;
 }
@@ -112,6 +146,77 @@ export function getErpFirmPeriodLabel(): { firmNr: number; periodNr: number; fir
   };
 }
 
+/** Çoklu DB / firma / dönem — ERP veya manuel seçim */
+export function resolveLogoContext(cfg: LogoRestConfig): LogoContextSelection {
+  const erp = getErpFirmPeriodLabel();
+  const useErp = cfg.useErpContext !== false;
+
+  const firmNr = useErp
+    ? erp.firmNr
+    : (cfg.selectedFirmNr != null && cfg.selectedFirmNr > 0 ? cfg.selectedFirmNr : erp.firmNr);
+  const periodNr = useErp
+    ? erp.periodNr
+    : (cfg.selectedPeriodNr != null && cfg.selectedPeriodNr > 0 ? cfg.selectedPeriodNr : erp.periodNr);
+
+  return {
+    logoDb: (cfg.logoDb || '').trim(),
+    firmNr,
+    periodNr,
+    source: useErp ? 'erp' : 'manual',
+    firmLabel: useErp ? erp.firmLabel : String(firmNr).padStart(3, '0'),
+    periodLabel: useErp ? erp.periodLabel : String(periodNr).padStart(2, '0'),
+  };
+}
+
+function parseLogoPeriods(raw: unknown): LogoPeriodOption[] {
+  if (!raw || typeof raw !== 'object') return [];
+  const o = raw as Record<string, unknown>;
+  const item = o.Item ?? o.item ?? o.items ?? o;
+  const list = extractItems<Record<string, unknown>>(item);
+  return list
+    .map((p) => ({
+      number: Number(p.number ?? p.Number ?? p.nr ?? 0),
+      beginDate: String(p.BeginDate ?? p.beginDate ?? ''),
+      endDate: String(p.endDate ?? p.EndDate ?? ''),
+      active: Boolean(p.Active ?? p.active ?? false),
+    }))
+    .filter((p) => p.number > 0)
+    .sort((a, b) => a.number - b.number);
+}
+
+export function parseLogoFirmsResponse(data: unknown): LogoFirmOption[] {
+  if (!data || typeof data !== 'object') return [];
+  const root = data as Record<string, unknown>;
+  const item = root.Item ?? root.item ?? root;
+  const firms = extractItems<Record<string, unknown>>(item);
+  return firms
+    .map((f) => {
+      const firmNr = Number(f.FirmNr ?? f.firmNr ?? f.NR ?? f.nr ?? 0);
+      return {
+        firmNr,
+        name: String(f.name ?? f.Name ?? ''),
+        title: String(f.Title ?? f.title ?? f.name ?? ''),
+        defaultPeriod: Number(f.DefaultPeriod ?? f.defaultPeriod ?? 0) || undefined,
+        periods: parseLogoPeriods(f.Periods ?? f.periods),
+      };
+    })
+    .filter((f) => f.firmNr > 0)
+    .sort((a, b) => a.firmNr - b.firmNr);
+}
+
+export function periodsForFirm(firms: LogoFirmOption[], firmNr: number): LogoPeriodOption[] {
+  return firms.find((f) => f.firmNr === firmNr)?.periods ?? [];
+}
+
+function sessionMatchesContext(session: LogoRestSession, ctx: LogoContextSelection, cfg: LogoRestConfig): boolean {
+  const db = (cfg.logoDb || '').trim();
+  return (
+    session.firmNr === ctx.firmNr &&
+    session.periodNr === ctx.periodNr &&
+    (session.logoDb || '') === db
+  );
+}
+
 export function loadLogoRestConfig(): LogoRestConfig {
   const defaults: LogoRestConfig = {
     baseUrl: LOGO_DEFAULT_BASE_URL,
@@ -120,6 +225,8 @@ export function loadLogoRestConfig(): LogoRestConfig {
     clientId: 'logotigerrestservice',
     clientSecret: '',
     logoDb: '',
+    logoDbs: [],
+    useErpContext: true,
   };
   if (typeof window === 'undefined') return defaults;
   try {
@@ -130,6 +237,7 @@ export function loadLogoRestConfig(): LogoRestConfig {
       ...defaults,
       ...parsed,
       baseUrl: normalizeBaseUrl(parsed.baseUrl || defaults.baseUrl),
+      logoDbs: Array.isArray(parsed.logoDbs) ? parsed.logoDbs.filter(Boolean) : [],
     };
   } catch {
     return defaults;
@@ -286,20 +394,19 @@ function extractItems<T>(data: unknown): T[] {
   return [];
 }
 
-export async function logoAuthenticate(
+export async function logoObtainToken(
   cfg: LogoRestConfig,
-  firmNr?: number,
-  periodNr?: number
+  firmNrHint?: number
 ): Promise<LogoRestSession> {
   const baseUrl = normalizeBaseUrl(cfg.baseUrl);
-  const fNr = firmNr ?? logoFirmNrFromErp();
-  const pNr = periodNr ?? logoPeriodNrFromErp();
+  const ctx = resolveLogoContext(cfg);
+  const fNr = firmNrHint ?? ctx.firmNr ?? 1;
 
   if (!cfg.username?.trim() || !cfg.password) {
     throw new Error('Logo kullanıcı adı ve şifre gerekli');
   }
   if (!cfg.clientId?.trim()) {
-    throw new Error('Logo client_id gerekli (Logo REST uygulama kaydı)');
+    throw new Error('Logo client_id gerekli');
   }
 
   const tokenBody = new URLSearchParams({
@@ -308,7 +415,7 @@ export async function logoAuthenticate(
     password: cfg.password,
     firmno: String(fNr),
   });
-  if (cfg.logoDb?.trim()) tokenBody.set('logodb', cfg.logoDb.trim());
+  if (ctx.logoDb) tokenBody.set('logodb', ctx.logoDb);
 
   const tokenRes = await logoHttp(baseUrl, 'POST', '/token', {
     headers: {
@@ -335,41 +442,99 @@ export async function logoAuthenticate(
   if (!tok?.access_token) throw new Error('Logo access_token alınamadı');
 
   const expiresIn = typeof tok.expires_in === 'number' ? tok.expires_in : 3600;
-  const session: LogoRestSession = {
+  const resolvedDb = tok.logoDB || ctx.logoDb;
+  return {
     accessToken: tok.access_token,
     refreshToken: tok.refresh_token,
     expiresAt: Date.now() + expiresIn * 1000 - 30_000,
     firmNr: fNr,
-    periodNr: pNr,
+    periodNr: ctx.periodNr,
     userName: tok.userName,
-    logoDb: tok.logoDB || cfg.logoDb,
+    logoDb: resolvedDb,
   };
+}
 
-  const loginRes = await logoHttp(baseUrl, 'GET', `/methods/CompanyLogin/${fNr}/${pNr}`, {
+export async function logoCompanyLogin(
+  cfg: LogoRestConfig,
+  session: LogoRestSession,
+  firmNr: number,
+  periodNr: number
+): Promise<LogoRestSession> {
+  const baseUrl = normalizeBaseUrl(cfg.baseUrl);
+  const loginRes = await logoHttp(baseUrl, 'GET', `/methods/CompanyLogin/${firmNr}/${periodNr}`, {
     headers: { Authorization: `Bearer ${session.accessToken}` },
   });
 
   if (!loginRes.ok) {
     throw new Error(
-      `Firma/dönem seçimi başarısız (${fNr}/${pNr}): HTTP ${loginRes.status} — ${loginRes.text?.slice(0, 200)}`
+      `CompanyLogin(${firmNr}/${periodNr}) HTTP ${loginRes.status} — ${loginRes.text?.slice(0, 200)}`
     );
   }
 
-  const loginOk = loginRes.data === true || (loginRes.data as { value?: boolean })?.value === true;
-  if (loginRes.data !== true && !loginOk && loginRes.status !== 200) {
-    throw new Error(`CompanyLogin(${fNr}/${pNr}) başarısız`);
-  }
+  const next: LogoRestSession = { ...session, firmNr, periodNr };
+  saveLogoRestSession(next);
+  return next;
+}
 
-  saveLogoRestSession(session);
-  return session;
+export async function logoAuthenticate(
+  cfg: LogoRestConfig,
+  firmNr?: number,
+  periodNr?: number
+): Promise<LogoRestSession> {
+  const ctx = resolveLogoContext(cfg);
+  const fNr = firmNr ?? ctx.firmNr;
+  const pNr = periodNr ?? ctx.periodNr;
+
+  const session = await logoObtainToken(cfg, fNr);
+  return logoCompanyLogin(cfg, session, fNr, pNr);
 }
 
 export async function logoEnsureSession(cfg: LogoRestConfig): Promise<LogoRestSession> {
+  const ctx = resolveLogoContext(cfg);
   const existing = loadLogoRestSession();
-  const fNr = logoFirmNrFromErp();
-  const pNr = logoPeriodNrFromErp();
-  if (existing && existing.firmNr === fNr && existing.periodNr === pNr) return existing;
-  return logoAuthenticate(cfg, fNr, pNr);
+  if (existing && Date.now() < existing.expiresAt && sessionMatchesContext(existing, ctx, cfg)) {
+    return existing;
+  }
+  return logoAuthenticate(cfg, ctx.firmNr, ctx.periodNr);
+}
+
+export async function logoSwitchContext(
+  cfg: LogoRestConfig,
+  patch: { logoDb?: string; firmNr?: number; periodNr?: number; useErpContext?: boolean }
+): Promise<LogoRestSession> {
+  const nextCfg: LogoRestConfig = {
+    ...cfg,
+    ...patch,
+    logoDb: patch.logoDb !== undefined ? patch.logoDb : cfg.logoDb,
+    selectedFirmNr: patch.firmNr ?? cfg.selectedFirmNr,
+    selectedPeriodNr: patch.periodNr ?? cfg.selectedPeriodNr,
+    useErpContext: patch.useErpContext ?? cfg.useErpContext,
+  };
+  saveLogoRestConfig(nextCfg);
+  saveLogoRestSession(null);
+  return logoAuthenticate(nextCfg);
+}
+
+export async function logoListFirmCatalog(cfg: LogoRestConfig): Promise<LogoFirmOption[]> {
+  const ctx = resolveLogoContext(cfg);
+  const session = await logoObtainToken(cfg, ctx.firmNr || 1);
+  const baseUrl = normalizeBaseUrl(cfg.baseUrl);
+  const res = await logoHttp(baseUrl, 'GET', '/methods/CAPI/Firms', {
+    headers: { Authorization: `Bearer ${session.accessToken}` },
+  });
+  if (!res.ok) {
+    throw new Error(`Firma listesi HTTP ${res.status} — ${res.text?.slice(0, 200)}`);
+  }
+  return parseLogoFirmsResponse(res.data);
+}
+
+export async function logoCheckDatabase(cfg: LogoRestConfig, dbName: string): Promise<boolean> {
+  const session = await logoObtainToken(cfg, 1);
+  const baseUrl = normalizeBaseUrl(cfg.baseUrl);
+  const res = await logoHttp(baseUrl, 'GET', `/methods/CheckLogoDB/${encodeURIComponent(dbName)}`, {
+    headers: { Authorization: `Bearer ${session.accessToken}` },
+  });
+  return res.ok && res.data === true;
 }
 
 export async function logoRevokeSession(cfg: LogoRestConfig): Promise<void> {
@@ -387,10 +552,12 @@ export async function logoTestConnection(cfg: LogoRestConfig): Promise<{
   session?: LogoRestSession;
   currentFirm?: number;
   currentPeriod?: number;
+  context?: LogoContextSelection;
   error?: string;
 }> {
   try {
-    const session = await logoAuthenticate(cfg);
+    const ctx = resolveLogoContext(cfg);
+    const session = await logoAuthenticate(cfg, ctx.firmNr, ctx.periodNr);
     const baseUrl = normalizeBaseUrl(cfg.baseUrl);
     const auth = { Authorization: `Bearer ${session.accessToken}` };
 
@@ -400,6 +567,7 @@ export async function logoTestConnection(cfg: LogoRestConfig): Promise<{
     return {
       ok: true,
       session,
+      context: ctx,
       currentFirm: typeof firmRes.data === 'number' ? firmRes.data : undefined,
       currentPeriod: typeof periodRes.data === 'number' ? periodRes.data : undefined,
     };
@@ -555,7 +723,7 @@ export async function logoFetchAllPaginated<T = unknown>(
 }
 
 export async function logoGetDataPreview(cfg: LogoRestConfig): Promise<LogoDataPreview> {
-  const { firmNr, periodNr } = getErpFirmPeriodLabel();
+  const ctx = resolveLogoContext(cfg);
   const resources: Record<string, number | null> = {};
   const targets = ['items', 'Arps', 'salesInvoices', 'purchaseInvoices', 'salesOrders', 'purchaseOrders'];
 
@@ -569,8 +737,9 @@ export async function logoGetDataPreview(cfg: LogoRestConfig): Promise<LogoDataP
   }
 
   return {
-    firmNr,
-    periodNr,
+    firmNr: ctx.firmNr,
+    periodNr: ctx.periodNr,
+    logoDb: ctx.logoDb || undefined,
     resources,
     fetchedAt: new Date().toISOString(),
   };

@@ -14,7 +14,6 @@ import {
   Plus,
   Search,
 } from 'lucide-react';
-import { ERP_SETTINGS } from '../../services/postgres';
 import {
   LOGO_DEFAULT_BASE_URL,
   LOGO_KEY_RESOURCES,
@@ -26,10 +25,17 @@ import {
   logoCreateResource,
   logoDescribeServices,
   logoRevokeSession,
+  logoListFirmCatalog,
+  logoSwitchContext,
+  logoCheckDatabase,
+  resolveLogoContext,
   getErpFirmPeriodLabel,
+  periodsForFirm,
   type LogoRestConfig,
   type LogoDataPreview,
   type LogoDescribeEntry,
+  type LogoFirmOption,
+  type LogoPeriodOption,
 } from '../../services/logoRestApi';
 
 type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error';
@@ -53,9 +59,20 @@ export function LogoTigerRestPanel() {
   const [createMsg, setCreateMsg] = useState('');
   const [isCreating, setIsCreating] = useState(false);
 
+  const [firms, setFirms] = useState<LogoFirmOption[]>([]);
+  const [periods, setPeriods] = useState<LogoPeriodOption[]>([]);
+  const [isLoadingFirms, setIsLoadingFirms] = useState(false);
+  const [newDbName, setNewDbName] = useState('');
+  const [activeContext, setActiveContext] = useState(() => resolveLogoContext(loadLogoRestConfig()));
+
+  const logoDbOptions = Array.from(
+    new Set([...(config.logoDbs || []), config.logoDb].filter((x) => x && String(x).trim()))
+  ) as string[];
+
   const refreshErpContext = useCallback(() => {
     setErpFirmPeriod(getErpFirmPeriodLabel());
-  }, []);
+    setActiveContext(resolveLogoContext(config));
+  }, [config]);
 
   useEffect(() => {
     refreshErpContext();
@@ -68,8 +85,75 @@ export function LogoTigerRestPanel() {
     setConfig((prev) => {
       const next = { ...prev, ...patch };
       saveLogoRestConfig(next);
+      setActiveContext(resolveLogoContext(next));
+      if (patch.selectedFirmNr != null) {
+        setPeriods(periodsForFirm(firms, patch.selectedFirmNr));
+      }
       return next;
     });
+  };
+
+  const handleLoadFirms = async () => {
+    setIsLoadingFirms(true);
+    setConnectionError('');
+    try {
+      const list = await logoListFirmCatalog(config);
+      setFirms(list);
+      const ctx = resolveLogoContext(config);
+      const match = list.find((f) => f.firmNr === ctx.firmNr) ?? list[0];
+      if (match) {
+        const firmNr = config.useErpContext !== false ? ctx.firmNr : (config.selectedFirmNr ?? match.firmNr);
+        const firm = list.find((f) => f.firmNr === firmNr) ?? match;
+        const pList = firm.periods;
+        setPeriods(pList);
+        const periodNr =
+          config.useErpContext !== false
+            ? ctx.periodNr
+            : (config.selectedPeriodNr ?? firm.defaultPeriod ?? pList.find((p) => p.active)?.number ?? pList[0]?.number);
+        if (config.useErpContext === false) {
+          updateConfig({ selectedFirmNr: firm.firmNr, selectedPeriodNr: periodNr });
+        }
+      }
+    } catch (e: unknown) {
+      setConnectionError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setIsLoadingFirms(false);
+    }
+  };
+
+  const handleAddLogoDb = async () => {
+    const name = newDbName.trim();
+    if (!name) return;
+    try {
+      const ok = await logoCheckDatabase(config, name);
+      if (!ok) {
+        setConnectionError(`Logo DB bulunamadı veya erişilemiyor: ${name}`);
+        return;
+      }
+      const dbs = Array.from(new Set([...(config.logoDbs || []), name]));
+      updateConfig({ logoDbs: dbs, logoDb: name });
+      setNewDbName('');
+      setConnectionError('');
+    } catch (e: unknown) {
+      setConnectionError(e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  const handleFirmChange = (firmNr: number) => {
+    const pList = periodsForFirm(firms, firmNr);
+    setPeriods(pList);
+    const defaultP = pList.find((p) => p.active)?.number ?? pList[0]?.number ?? 1;
+    updateConfig({ selectedFirmNr: firmNr, selectedPeriodNr: defaultP, useErpContext: false });
+  };
+
+  const handlePeriodChange = (periodNr: number) => {
+    updateConfig({ selectedPeriodNr: periodNr, useErpContext: false });
+  };
+
+  const handleDbChange = (logoDb: string) => {
+    updateConfig({ logoDb });
+    setFirms([]);
+    setPeriods([]);
   };
 
   const handleTestConnection = async () => {
@@ -80,12 +164,33 @@ export function LogoTigerRestPanel() {
     const result = await logoTestConnection(config);
     if (result.ok) {
       setConnectionStatus('connected');
-      if (result.currentFirm != null && result.currentPeriod != null) {
-        setConnectionError('');
-      }
+      if (result.context) setActiveContext(result.context);
     } else {
       setConnectionStatus('error');
       setConnectionError(result.error || 'Bağlantı hatası');
+    }
+  };
+
+  const handleApplyContext = async () => {
+    setConnectionStatus('connecting');
+    setConnectionError('');
+    try {
+      const ctx = resolveLogoContext(config);
+      await logoSwitchContext(config, {
+        logoDb: ctx.logoDb,
+        firmNr: ctx.firmNr,
+        periodNr: ctx.periodNr,
+        useErpContext: config.useErpContext,
+      });
+      const reloaded = loadLogoRestConfig();
+      setConfig(reloaded);
+      setActiveContext(resolveLogoContext(reloaded));
+      setConnectionStatus('connected');
+      setPreviewData(null);
+      setListResult(null);
+    } catch (e: unknown) {
+      setConnectionStatus('error');
+      setConnectionError(e instanceof Error ? e.message : String(e));
     }
   };
 
@@ -169,30 +274,138 @@ export function LogoTigerRestPanel() {
 
   return (
     <div className="space-y-6">
-      {/* Firma / dönem — RetailEX oturumundan */}
-      <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
-        <div className="flex items-center gap-2 text-blue-800 mb-2">
-          <Database className="w-4 h-4" />
-          <span className="text-sm font-medium">Aktif firma / dönem (RetailEX oturumu)</span>
+      {/* Çoklu DB / firma / dönem */}
+      <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg space-y-4">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 text-blue-800">
+            <Database className="w-4 h-4" />
+            <span className="text-sm font-medium">Logo DB · Firma · Dönem</span>
+          </div>
+          <label className="flex items-center gap-2 text-sm cursor-pointer">
+            <input
+              type="checkbox"
+              checked={config.useErpContext !== false}
+              onChange={(e) => updateConfig({ useErpContext: e.target.checked })}
+              className="rounded border-gray-300 text-orange-600"
+            />
+            RetailEX oturumu ile eşle
+          </label>
         </div>
-        <div className="grid grid-cols-2 gap-4 text-sm">
+
+        {config.useErpContext !== false ? (
+          <div className="grid grid-cols-2 gap-4 text-sm">
+            <div>
+              <span className="text-gray-600">Firma:</span>{' '}
+              <code className="font-mono bg-white px-2 py-0.5 rounded border">
+                {erpFirmPeriod.firmLabel} → Logo {erpFirmPeriod.firmNr}
+              </code>
+            </div>
+            <div>
+              <span className="text-gray-600">Dönem:</span>{' '}
+              <code className="font-mono bg-white px-2 py-0.5 rounded border">
+                {erpFirmPeriod.periodLabel} → Logo {erpFirmPeriod.periodNr}
+              </code>
+            </div>
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs text-gray-600 mb-1">Logo firma</label>
+              <select
+                value={config.selectedFirmNr ?? ''}
+                onChange={(e) => handleFirmChange(Number(e.target.value))}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+              >
+                <option value="">Seçin…</option>
+                {firms.map((f) => (
+                  <option key={f.firmNr} value={f.firmNr}>
+                    {f.firmNr} — {f.title || f.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs text-gray-600 mb-1">Logo dönem</label>
+              <select
+                value={config.selectedPeriodNr ?? ''}
+                onChange={(e) => handlePeriodChange(Number(e.target.value))}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                disabled={!periods.length}
+              >
+                <option value="">Seçin…</option>
+                {periods.map((p) => (
+                  <option key={p.number} value={p.number}>
+                    {p.number}
+                    {p.active ? ' (aktif)' : ''}
+                    {p.beginDate ? ` — ${p.beginDate.slice(0, 10)}` : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+        )}
+
+        <div className="grid grid-cols-2 gap-4">
           <div>
-            <span className="text-gray-600">Firma no → Logo:</span>{' '}
-            <code className="font-mono bg-white px-2 py-0.5 rounded border">
-              {erpFirmPeriod.firmLabel} → {erpFirmPeriod.firmNr}
-            </code>
+            <label className="block text-xs text-gray-600 mb-1">Logo veritabanı (logodb)</label>
+            <select
+              value={config.logoDb || ''}
+              onChange={(e) => handleDbChange(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono"
+            >
+              <option value="">Varsayılan (sunucu)</option>
+              {logoDbOptions.map((db) => (
+                <option key={db} value={db}>{db}</option>
+              ))}
+            </select>
           </div>
           <div>
-            <span className="text-gray-600">Dönem no → Logo:</span>{' '}
-            <code className="font-mono bg-white px-2 py-0.5 rounded border">
-              {erpFirmPeriod.periodLabel} → {erpFirmPeriod.periodNr}
-            </code>
+            <label className="block text-xs text-gray-600 mb-1">Yeni DB ekle</label>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={newDbName}
+                onChange={(e) => setNewDbName(e.target.value)}
+                placeholder="TIGERDB_2"
+                className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono"
+              />
+              <button
+                type="button"
+                onClick={handleAddLogoDb}
+                className="px-3 py-2 border border-gray-300 rounded-lg text-sm hover:bg-white"
+              >
+                Ekle
+              </button>
+            </div>
           </div>
         </div>
-        <p className="text-xs text-blue-700 mt-2">
-          Token ve <code>CompanyLogin/{'{'}firmNr{'}'}/{'{'}periodNr{'}'}</code> çağrısında{' '}
-          <code>ERP_SETTINGS.firmNr</code> ({ERP_SETTINGS.firmNr}) ve{' '}
-          <code>periodNr</code> ({ERP_SETTINGS.periodNr}) kullanılır.
+
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={handleLoadFirms}
+            disabled={isLoadingFirms || !config.username || !config.password}
+            className="px-3 py-1.5 text-sm bg-white border border-blue-300 text-blue-800 rounded-lg hover:bg-blue-100 disabled:opacity-50 flex items-center gap-2"
+          >
+            {isLoadingFirms ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
+            Firmaları / dönemleri yükle
+          </button>
+          {connectionStatus === 'connected' && (
+            <button
+              type="button"
+              onClick={handleApplyContext}
+              className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+            >
+              Firma/dönem/DB uygula
+            </button>
+          )}
+        </div>
+
+        <p className="text-xs text-blue-700">
+          Token <code>logodb</code> + <code>firmno</code> ile alınır; ardından{' '}
+          <code>CompanyLogin/{'{'}firma{'}'}/{'{'}dönem{'}'}</code> çalışır.
+          {activeContext.logoDb ? ` Aktif DB: ${activeContext.logoDb}.` : ''}
+          {firms.length > 0 ? ` ${firms.length} firma listelendi.` : ''}
         </p>
       </div>
 
@@ -261,16 +474,6 @@ export function LogoTigerRestPanel() {
             />
           </div>
 
-          <div className="col-span-2">
-            <label className="block text-sm text-gray-700 mb-1.5">Logo DB (isteğe bağlı)</label>
-            <input
-              type="text"
-              value={config.logoDb || ''}
-              onChange={(e) => updateConfig({ logoDb: e.target.value })}
-              placeholder="TIGERDB veya boş bırakın"
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 font-mono text-sm"
-            />
-          </div>
         </div>
 
         {connectionError && (
@@ -294,7 +497,8 @@ export function LogoTigerRestPanel() {
             ) : (
               <>
                 <RefreshCw className="w-4 h-4" />
-                Bağlan ({erpFirmPeriod.firmNr}/{erpFirmPeriod.periodNr})
+                Bağlan ({activeContext.firmNr}/{activeContext.periodNr}
+                {activeContext.logoDb ? ` · ${activeContext.logoDb}` : ''})
               </>
             )}
           </button>
@@ -460,7 +664,9 @@ export function LogoTigerRestPanel() {
       {connectionStatus === 'connected' && (
         <div className="ml-10 flex items-center gap-2 text-sm text-green-700">
           <CheckCircle className="w-4 h-4" />
-          Logo REST oturumu açık — firma {erpFirmPeriod.firmNr}, dönem {erpFirmPeriod.periodNr}
+          Logo REST — firma {activeContext.firmNr}, dönem {activeContext.periodNr}
+          {activeContext.logoDb ? `, DB ${activeContext.logoDb}` : ''}
+          ({activeContext.source === 'erp' ? 'RetailEX eşlemesi' : 'manuel seçim'})
         </div>
       )}
       {connectionStatus === 'error' && (
