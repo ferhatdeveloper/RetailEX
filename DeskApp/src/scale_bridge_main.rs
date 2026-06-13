@@ -241,6 +241,14 @@ fn spawn_bridge_child() -> Result<Child, Box<dyn std::error::Error>> {
 }
 
 fn resolve_node_path() -> Option<PathBuf> {
+    if let Ok(exe) = env::current_exe() {
+        if let Some(base) = exe.parent() {
+            let bundled = base.join("node").join("node.exe");
+            if bundled.exists() {
+                return Some(bundled);
+            }
+        }
+    }
     let fixed = PathBuf::from(r"C:\Program Files\nodejs\node.exe");
     if fixed.exists() {
         return Some(fixed);

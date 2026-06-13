@@ -7,12 +7,14 @@
  */
 import http from 'node:http';
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
-import { existsSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { existsSync, readFileSync } from 'node:fs';
+import { dirname, resolve, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { rongtaTcpSendPlu, rongtaTcpTest } from './rongtaTcp.mjs';
+import { scanNetworkForScales, guessLocalSubnet } from './scan.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+const ADMIN_DIR = join(__dirname, 'admin');
 const DEFAULT_CONFIG_PATH = process.env.SCALE_BRIDGE_CONFIG
   || 'C:\\ProgramData\\RetailEX\\scale-bridge.json';
 const PORT = Number(process.env.SCALE_BRIDGE_PORT || 3012);
@@ -59,6 +61,18 @@ function authOk(req) {
   if (!token) return true;
   const h = req.headers.authorization || '';
   return h === `Bearer ${token}`;
+}
+
+function isLocalRequest(req) {
+  const ip = req.socket?.remoteAddress || '';
+  return ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1';
+}
+
+function requiresAuth(req, path) {
+  if (path === '/status') return false;
+  if (path.startsWith('/ui')) return false;
+  if (isLocalRequest(req)) return false;
+  return true;
 }
 
 async function loadConfig() {
@@ -116,6 +130,17 @@ function recordsFromProducts(products, pluStart = 1) {
   }));
 }
 
+function serveAdminFile(res, relPath, contentType) {
+  const filePath = join(ADMIN_DIR, relPath);
+  if (!filePath.startsWith(ADMIN_DIR) || !existsSync(filePath)) {
+    res.writeHead(404);
+    return res.end('not found');
+  }
+  const body = readFileSync(filePath);
+  res.writeHead(200, { 'Content-Type': contentType });
+  res.end(body);
+}
+
 async function handle(req, res) {
   const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
   const path = url.pathname.replace(/\/+$/, '') || '/';
@@ -129,7 +154,20 @@ async function handle(req, res) {
     return res.end();
   }
 
-  if (path !== '/status' && !authOk(req)) {
+  if (req.method === 'GET' && (path === '/ui' || path === '/ui/')) {
+    res.writeHead(302, { Location: '/ui/index.html' });
+    return res.end();
+  }
+
+  if (req.method === 'GET' && path.startsWith('/ui/')) {
+    const rel = path.slice('/ui/'.length) || 'index.html';
+    if (rel === 'index.html' || rel.endsWith('.html')) {
+      return serveAdminFile(res, rel === 'index.html' ? 'index.html' : rel, 'text/html; charset=utf-8');
+    }
+    return json(res, 404, { error: 'not_found' });
+  }
+
+  if (requiresAuth(req, path) && !authOk(req)) {
     return json(res, 401, { error: 'Unauthorized' });
   }
 
@@ -147,14 +185,34 @@ async function handle(req, res) {
     }
 
     if (req.method === 'GET' && path === '/config') {
-      return json(res, 200, { ...config, authToken: config.authToken ? '***' : '' });
+      const maskToken = requiresAuth(req, path);
+      return json(res, 200, {
+        ...config,
+        listenPort: config.listenPort || PORT,
+        authToken: maskToken && config.authToken ? '***' : (config.authToken || ''),
+      });
+    }
+
+    if (req.method === 'GET' && path === '/scan/defaults') {
+      const d = guessLocalSubnet();
+      return json(res, 200, d);
+    }
+
+    if (req.method === 'POST' && path === '/scan') {
+      const body = await readBody(req);
+      const result = await scanNetworkForScales({
+        startIP: body.startIP,
+        endIP: body.endIP,
+        concurrency: body.concurrency,
+      });
+      return json(res, 200, result);
     }
 
     if (req.method === 'PUT' && path === '/config') {
       const body = await readBody(req);
       if (body.storeCode !== undefined) config.storeCode = String(body.storeCode);
       if (body.storeName !== undefined) config.storeName = String(body.storeName);
-      if (body.authToken !== undefined) config.authToken = String(body.authToken);
+      if (body.authToken !== undefined && body.authToken !== '***') config.authToken = String(body.authToken);
       if (Array.isArray(body.scales)) config.scales = body.scales;
       await saveConfig();
       return json(res, 200, { ok: true });
@@ -230,4 +288,5 @@ await loadConfig();
 const server = http.createServer((req, res) => { handle(req, res); });
 server.listen(PORT, HOST, () => {
   console.log(`[scale-bridge] http://${HOST}:${PORT} config=${configPath}`);
+  console.log(`[scale-bridge] Yönetim UI: http://127.0.0.1:${PORT}/ui/`);
 });

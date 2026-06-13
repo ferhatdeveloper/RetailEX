@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>RetailEX Terazi Köprüsü</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --panel: #1e293b;
+      --border: #334155;
+      --text: #e2e8f0;
+      --muted: #94a3b8;
+      --accent: #3b82f6;
+      --ok: #22c55e;
+      --warn: #f59e0b;
+      --danger: #ef4444;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", system-ui, sans-serif;
+      background: linear-gradient(160deg, #0f172a 0%, #1e3a5f 100%);
+      color: var(--text);
+      min-height: 100vh;
+    }
+    header {
+      padding: 20px 28px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      background: rgba(15, 23, 42, 0.85);
+      backdrop-filter: blur(8px);
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+    h1 { margin: 0; font-size: 1.25rem; font-weight: 700; }
+    .sub { color: var(--muted); font-size: 0.85rem; margin-top: 4px; }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 12px;
+      border-radius: 999px;
+      font-size: 0.8rem;
+      border: 1px solid var(--border);
+      background: var(--panel);
+    }
+    .badge.ok { border-color: #166534; color: #86efac; }
+    .badge.off { border-color: #7f1d1d; color: #fca5a5; }
+    main { max-width: 1100px; margin: 0 auto; padding: 24px 28px 48px; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+    @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 18px 20px;
+      box-shadow: 0 10px 30px rgba(0,0,0,.25);
+    }
+    .card h2 { margin: 0 0 14px; font-size: 1rem; }
+    label { display: block; font-size: 0.8rem; color: var(--muted); margin-bottom: 6px; }
+    input, select, textarea {
+      width: 100%;
+      background: #0f172a;
+      border: 1px solid var(--border);
+      color: var(--text);
+      border-radius: 8px;
+      padding: 10px 12px;
+      font-size: 0.9rem;
+      margin-bottom: 12px;
+    }
+    textarea { min-height: 120px; font-family: Consolas, monospace; font-size: 0.8rem; }
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    button {
+      border: none;
+      border-radius: 8px;
+      padding: 10px 16px;
+      font-weight: 600;
+      cursor: pointer;
+      font-size: 0.85rem;
+    }
+    .btn-primary { background: var(--accent); color: white; }
+    .btn-secondary { background: #334155; color: white; }
+    .btn-danger { background: var(--danger); color: white; }
+    .btn-ghost { background: transparent; border: 1px solid var(--border); color: var(--text); }
+    .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+    th, td { text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--border); }
+    th { color: var(--muted); font-weight: 600; }
+    .progress {
+      height: 8px;
+      background: #0f172a;
+      border-radius: 999px;
+      overflow: hidden;
+      margin: 10px 0;
+    }
+    .progress > div { height: 100%; background: var(--accent); width: 0%; transition: width .2s; }
+    .msg { font-size: 0.85rem; margin-top: 10px; min-height: 1.2em; }
+    .msg.err { color: #fca5a5; }
+    .msg.ok { color: #86efac; }
+    .scan-hit {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 12px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      margin-bottom: 8px;
+      background: #0f172a;
+    }
+    .full { grid-column: 1 / -1; }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>RetailEX Terazi Köprüsü</h1>
+      <div class="sub">Windows servisi yapılandırması ve ağ taraması</div>
+    </div>
+    <div id="statusBadge" class="badge off">Bağlanıyor…</div>
+  </header>
+
+  <main>
+    <div class="grid">
+      <section class="card">
+        <h2>Genel ayarlar</h2>
+        <div class="row">
+          <div>
+            <label>Mağaza kodu (storeCode)</label>
+            <input id="storeCode" placeholder="kasap" />
+          </div>
+          <div>
+            <label>Mağaza adı</label>
+            <input id="storeName" placeholder="Kasaphane Merkez" />
+          </div>
+        </div>
+        <label>Kimlik doğrulama token (authToken)</label>
+        <input id="authToken" placeholder="rex-bridge-kasap" />
+        <div class="row">
+          <div>
+            <label>Dinleme portu</label>
+            <input id="listenPort" type="number" value="3012" />
+          </div>
+          <div>
+            <label>Config dosyası</label>
+            <input id="configPath" readonly />
+          </div>
+        </div>
+        <div class="actions">
+          <button class="btn-primary" id="btnSave">Kaydet</button>
+          <button class="btn-ghost" id="btnReload">Yenile</button>
+        </div>
+        <div id="saveMsg" class="msg"></div>
+      </section>
+
+      <section class="card">
+        <h2>Ağ taraması (Rongta)</h2>
+        <div class="row">
+          <div>
+            <label>Başlangıç IP</label>
+            <input id="scanStart" value="192.168.1.1" />
+          </div>
+          <div>
+            <label>Bitiş IP</label>
+            <input id="scanEnd" value="192.168.1.254" />
+          </div>
+        </div>
+        <div class="progress"><div id="scanBar"></div></div>
+        <div id="scanInfo" class="sub">Tarama başlatılmadı</div>
+        <div class="actions">
+          <button class="btn-primary" id="btnScan">Ağı Tara</button>
+          <button class="btn-secondary" id="btnAddFound" disabled>Bulunanları ekle</button>
+        </div>
+        <div id="scanResults"></div>
+      </section>
+
+      <section class="card full">
+        <h2>Kayıtlı teraziler</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Ad</th>
+              <th>IP</th>
+              <th>Port</th>
+              <th>Marka</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="scaleRows"></tbody>
+        </table>
+        <div class="actions" style="margin-top:14px">
+          <button class="btn-secondary" id="btnAddScale">Manuel terazi ekle</button>
+        </div>
+      </section>
+
+      <section class="card full">
+        <h2>JSON (gelişmiş)</h2>
+        <textarea id="jsonEditor"></textarea>
+        <div class="actions">
+          <button class="btn-primary" id="btnApplyJson">JSON uygula</button>
+        </div>
+        <div id="jsonMsg" class="msg"></div>
+      </section>
+    </div>
+  </main>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    let token = '';
+    let scanFound = [];
+
+    async function api(path, opts = {}) {
+      const headers = { 'Content-Type': 'application/json', ...(opts.headers || {}) };
+      if (token) headers.Authorization = 'Bearer ' + token;
+      const res = await fetch(path, { ...opts, headers });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || data.message || ('HTTP ' + res.status));
+      return data;
+    }
+
+    function setBadge(online, text) {
+      const el = $('statusBadge');
+      el.className = 'badge ' + (online ? 'ok' : 'off');
+      el.textContent = text;
+    }
+
+    async function loadStatus() {
+      try {
+        const st = await api('/status');
+        setBadge(true, 'Köprü çalışıyor · ' + (st.storeCode || 'mağaza yok'));
+        $('configPath').value = st.configPath || '';
+      } catch {
+        setBadge(false, 'Köprü kapalı');
+      }
+    }
+
+    async function loadConfig() {
+      const cfg = await api('/config');
+      $('storeCode').value = cfg.storeCode || '';
+      $('storeName').value = cfg.storeName || '';
+      $('authToken').value = cfg.authToken && cfg.authToken !== '***' ? cfg.authToken : '';
+      $('listenPort').value = cfg.listenPort || 3012;
+      token = $('authToken').value.trim();
+      $('jsonEditor').value = JSON.stringify({
+        storeCode: cfg.storeCode,
+        storeName: cfg.storeName,
+        authToken: token,
+        listenPort: cfg.listenPort || 3012,
+        scales: cfg.scales || [],
+      }, null, 2);
+      renderScales(cfg.scales || []);
+    }
+
+    function renderScales(scales) {
+      const tbody = $('scaleRows');
+      tbody.innerHTML = '';
+      for (const s of scales) {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${escapeHtml(s.name || '')}</td>
+          <td><code>${escapeHtml(s.ipAddress || '')}</code></td>
+          <td>${s.port || 20304}</td>
+          <td>${escapeHtml(s.brand || 'rongta')}</td>
+          <td>
+            <button class="btn-ghost" data-test="${s.id}">Test</button>
+            <button class="btn-danger" data-del="${s.id}">Sil</button>
+          </td>`;
+        tbody.appendChild(tr);
+      }
+      tbody.querySelectorAll('[data-test]').forEach((btn) => {
+        btn.onclick = async () => {
+          try {
+            const r = await api('/scales/' + encodeURIComponent(btn.dataset.test) + '/test', { method: 'POST', body: '{}' });
+            alert(r.ok ? 'Bağlantı başarılı' : 'Bağlantı başarısız');
+          } catch (e) { alert(e.message); }
+        };
+      });
+      tbody.querySelectorAll('[data-del]').forEach((btn) => {
+        btn.onclick = async () => {
+          if (!confirm('Terazi silinsin mi?')) return;
+          await api('/scales/' + encodeURIComponent(btn.dataset.del), { method: 'DELETE' });
+          await loadConfig();
+        };
+      });
+    }
+
+    function escapeHtml(s) {
+      return String(s).replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    }
+
+    async function saveConfig(scalesOverride) {
+      const body = {
+        storeCode: $('storeCode').value.trim(),
+        storeName: $('storeName').value.trim(),
+        authToken: $('authToken').value.trim(),
+        scales: scalesOverride,
+      };
+      token = body.authToken;
+      await api('/config', { method: 'PUT', body: JSON.stringify(body) });
+      $('saveMsg').className = 'msg ok';
+      $('saveMsg').textContent = 'Kaydedildi.';
+      await loadConfig();
+    }
+
+    $('btnSave').onclick = async () => {
+      try {
+        const cfg = await api('/config');
+        await saveConfig(cfg.scales || []);
+      } catch (e) {
+        $('saveMsg').className = 'msg err';
+        $('saveMsg').textContent = e.message;
+      }
+    };
+
+    $('btnReload').onclick = async () => {
+      try { await loadConfig(); $('saveMsg').textContent = ''; } catch (e) { alert(e.message); }
+    };
+
+    $('btnScan').onclick = async () => {
+      $('btnScan').disabled = true;
+      $('scanInfo').textContent = 'Taranıyor…';
+      $('scanBar').style.width = '0%';
+      scanFound = [];
+      $('btnAddFound').disabled = true;
+      $('scanResults').innerHTML = '';
+      try {
+        const body = {
+          startIP: $('scanStart').value.trim(),
+          endIP: $('scanEnd').value.trim(),
+        };
+        const res = await api('/scan', { method: 'POST', body: JSON.stringify(body) });
+        scanFound = res.devices || [];
+        $('scanBar').style.width = '100%';
+        $('scanInfo').textContent = res.scanned + ' IP tarandı, ' + scanFound.length + ' terazi bulundu';
+        const box = $('scanResults');
+        for (const d of scanFound) {
+          const div = document.createElement('div');
+          div.className = 'scan-hit';
+          div.innerHTML = `<span><strong>${d.ipAddress}</strong> : ${d.port} · ${d.brand}</span><span class="sub">${d.model || ''}</span>`;
+          box.appendChild(div);
+        }
+        $('btnAddFound').disabled = scanFound.length === 0;
+      } catch (e) {
+        $('scanInfo').textContent = e.message;
+      } finally {
+        $('btnScan').disabled = false;
+      }
+    };
+
+    $('btnAddFound').onclick = async () => {
+      const cfg = await api('/config');
+      const scales = [...(cfg.scales || [])];
+      for (const [i, d] of scanFound.entries()) {
+        scales.push({
+          id: 'scale-' + d.ipAddress.replace(/\./g, '-'),
+          name: 'Rongta ' + d.ipAddress,
+          brand: 'rongta',
+          model: d.model || 'RLS1100',
+          ipAddress: d.ipAddress,
+          port: d.port,
+          enabled: true,
+        });
+      }
+      await saveConfig(scales);
+      $('saveMsg').textContent = scanFound.length + ' terazi eklendi.';
+    };
+
+    $('btnAddScale').onclick = async () => {
+      const ip = prompt('Terazi IP adresi');
+      if (!ip) return;
+      const cfg = await api('/config');
+      const scales = [...(cfg.scales || [])];
+      scales.push({
+        id: 'scale-' + Date.now(),
+        name: 'Terazi ' + ip,
+        brand: 'rongta',
+        model: 'RLS1100',
+        ipAddress: ip.trim(),
+        port: 20304,
+        enabled: true,
+      });
+      await saveConfig(scales);
+    };
+
+    $('btnApplyJson').onclick = async () => {
+      try {
+        const parsed = JSON.parse($('jsonEditor').value);
+        if (!Array.isArray(parsed.scales)) throw new Error('scales dizisi gerekli');
+        await api('/config', { method: 'PUT', body: JSON.stringify(parsed) });
+        $('jsonMsg').className = 'msg ok';
+        $('jsonMsg').textContent = 'JSON uygulandı';
+        await loadConfig();
+      } catch (e) {
+        $('jsonMsg').className = 'msg err';
+        $('jsonMsg').textContent = e.message;
+      }
+    };
+
+    (async () => {
+      await loadStatus();
+      try { await loadConfig(); } catch (e) { setBadge(false, e.message); }
+      setInterval(loadStatus, 15000);
+    })();
+  </script>
+</body>
+</html>

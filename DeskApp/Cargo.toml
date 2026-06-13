@@ -89,6 +89,10 @@ name = "RetailEX_Scale_Bridge"
 path = "src/scale_bridge_main.rs"
 
 [[bin]]
+name = "RetailEX_ScaleBridge_Manager"
+path = "src/scale_bridge_manager_main.rs"
+
+[[bin]]
 name = "RetailEX_Tools"
 path = "src/tools_main.rs"
 
