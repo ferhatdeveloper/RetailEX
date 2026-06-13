@@ -1,10 +1,12 @@
 # RetailEX Terazi Köprüsü — Windows kurulum paketi derleme
-# Gereksinimler: Rust (cargo), Inno Setup 6 (iscc PATH'te), internet (Node indirme)
+# Gereksinimler: Rust (cargo), Inno Setup 6 (iscc), internet (Node indirme)
 #
+# Yerel:
 #   powershell -ExecutionPolicy Bypass -File scripts/scale-bridge/build-windows-installer.ps1
 #
+# CI (GitHub Actions): otomatik — tag scale-bridge-v* veya workflow_dispatch
+#
 # Çıktı: dist/RetailEX-ScaleBridge-Setup.exe
-# GitHub Release'e bu exe'yi yükleyin; mağaza PC'de tek tık kurulum.
 
 $ErrorActionPreference = 'Stop'
 $Root = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
@@ -13,6 +15,13 @@ $ScaleDir = Join-Path $Root 'scripts\scale-bridge'
 $Staging = Join-Path $ScaleDir 'installer\staging'
 $NodeDir = Join-Path $Staging 'node'
 $Dist = Join-Path $Root 'dist'
+$StrictCi = ($env:CI -eq 'true') -or ($env:STRICT_CI -eq '1')
+
+if (-not $env:PACKAGE_VERSION) {
+    $env:PACKAGE_VERSION = node -p "require('$Root/package.json').version"
+}
+$AppVersion = $env:PACKAGE_VERSION
+Write-Host "Sürüm: $AppVersion"
 
 Write-Host '== RetailEX Scale Bridge installer build =='
 
@@ -48,24 +57,36 @@ if (-not (Test-Path (Join-Path $NodeDir 'node.exe'))) {
 }
 
 Write-Host '4) Inno Setup...'
-$Iscc = Get-Command iscc -ErrorAction SilentlyContinue
-if (-not $Iscc) {
+$IsccPath = $null
+if (Get-Command iscc -ErrorAction SilentlyContinue) {
+    $IsccPath = (Get-Command iscc).Source
+} else {
     $IsccPath = @(
         "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
         "$env:ProgramFiles\Inno Setup 6\ISCC.exe"
     ) | Where-Object { Test-Path $_ } | Select-Object -First 1
-    if (-not $IsccPath) {
-        Write-Warning 'Inno Setup (iscc) bulunamadı. Staging hazır; ISS dosyasını Inno Setup IDE ile derleyin:'
-        Write-Host "  scripts\scale-bridge\installer\RetailEX.ScaleBridge.iss"
-        exit 0
+}
+
+if (-not $IsccPath) {
+    if ($StrictCi) {
+        Write-Error 'Inno Setup (iscc) bulunamadı.'
     }
-    $Iscc = @{ Source = $IsccPath }
+    Write-Warning 'Inno Setup (iscc) bulunamadı. Staging hazır; ISS dosyasını Inno Setup IDE ile derleyin:'
+    Write-Host "  scripts\scale-bridge\installer\RetailEX.ScaleBridge.iss"
+    exit 0
 }
 
 New-Item -ItemType Directory -Force -Path $Dist | Out-Null
-& $Iscc.Source (Join-Path $ScaleDir 'installer\RetailEX.ScaleBridge.iss')
+$IssFile = Join-Path $ScaleDir 'installer\RetailEX.ScaleBridge.iss'
+& $IsccPath "/DMyAppVersion=$AppVersion" $IssFile
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+$SetupExe = Join-Path $Dist 'RetailEX-ScaleBridge-Setup.exe'
+if (-not (Test-Path $SetupExe)) {
+    Write-Error "Kurulum dosyası oluşmadı: $SetupExe"
+}
 
 Write-Host ''
-Write-Host "TAMAMLANDI: $Dist\RetailEX-ScaleBridge-Setup.exe"
+Write-Host "TAMAMLANDI: $SetupExe"
 Write-Host 'Mağaza PC: Setup çalıştır → servis + yönetim UI otomatik açılır.'
 Write-Host 'Yönetim: http://127.0.0.1:3012/ui/'

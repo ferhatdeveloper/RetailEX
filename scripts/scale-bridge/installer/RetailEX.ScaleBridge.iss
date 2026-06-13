@@ -3,7 +3,9 @@
 ; Çıktı: dist/RetailEX-ScaleBridge-Setup.exe
 
 #define MyAppName "RetailEX Terazi Köprüsü"
+#ifndef MyAppVersion
 #define MyAppVersion "0.1.74"
+#endif
 #define MyAppPublisher "RetailEX"
 #define MyAppURL "https://github.com/ferhatdeveloper/RetailEX"
 #define MyAppExeName "RetailEX_ScaleBridge_Manager.exe"

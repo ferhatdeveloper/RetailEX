@@ -2,58 +2,74 @@
 
 Mağaza PC'de RetailEX kapalıyken bile merkezden teraziye PLU gönderimi için Windows servisi.
 
-## Tek kurulum (önerilen)
+## Yol 1 — GitHub Release (önerilen)
 
-1. GitHub **Releases** → `RetailEX-ScaleBridge-Setup.exe` indirin  
-   (veya geliştirici makinede `build-windows-installer.ps1` ile üretin)
-2. Kurulumu **yönetici** olarak çalıştırın
-3. Kurulum sonunda **yönetim arayüzü** tarayıcıda açılır: `http://127.0.0.1:3012/ui/`
+### Mağaza PC (tek kurulum)
 
-Kurulum içeriği:
+1. GitHub Releases sayfasını açın:  
+   https://github.com/ferhatdeveloper/RetailEX/releases  
+2. En güncel **`RetailEX Terazi Köprüsü`** yayınından  
+   **`RetailEX-ScaleBridge-Setup.exe`** dosyasını indirin.
+3. Dosyayı **yönetici olarak** çalıştırın.
+4. Kurulum bitince tarayıcıda yönetim arayüzü açılır:  
+   **http://127.0.0.1:3012/ui/**
 
-| Bileşen | Açıklama |
-|---------|----------|
-| `RetailEX_Scale_Bridge.exe` | Windows servisi (Node köprüsünü başlatır) |
-| `RetailEX_ScaleBridge_Manager.exe` | Kurulum / kaldırma / UI başlatıcı |
-| `node.exe` | Taşınabilir Node (ayrı kurulum gerekmez) |
-| `scale-bridge/*.mjs` | HTTP API + ağ taraması |
-| Config | `C:\ProgramData\RetailEX\scale-bridge.json` |
+Kurulum otomatik olarak:
+
+- Windows servisini kurar (`RetailEX_Scale_Bridge`)
+- Taşınabilir Node + köprü scriptlerini kopyalar
+- Başlat menüsü kısayolu oluşturur
+- Örnek config üretir: `C:\ProgramData\RetailEX\scale-bridge.json`
+
+### Geliştirici — yeni Release üretme
+
+**Otomatik (GitHub Actions):**
+
+```bash
+# package.json sürümünü güncelledikten sonra:
+git tag scale-bridge-v0.1.74
+git push origin scale-bridge-v0.1.74
+```
+
+Workflow: `.github/workflows/scale-bridge-release.yml`  
+Çıktı: `RetailEX-ScaleBridge-Setup.exe` → GitHub Release'e yüklenir.
+
+İsterseniz GitHub → **Actions** → **Scale Bridge Windows Release** → **Run workflow** ile etiket olmadan da derleyebilirsiniz.
+
+**Yerel derleme (isteğe bağlı):**
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\scale-bridge\build-windows-installer.ps1
+# Çıktı: dist\RetailEX-ScaleBridge-Setup.exe
+```
+
+---
 
 ## Yönetim arayüzü
 
-- Mağaza kodu, token, terazi listesi düzenleme
-- **Ağ taraması**: yerel subnet'te Rongta terazileri (TCP probe)
-- JSON gelişmiş düzenleme
-- Terazi bağlantı testi
+| Özellik | Açıklama |
+|---------|----------|
+| Genel ayarlar | Mağaza kodu, token, port |
+| Terazi listesi | Ekle / sil / test |
+| Ağ taraması | Subnet'te Rongta terazi bulma |
+| JSON | Gelişmiş config düzenleme |
 
-Başlat menüsü → **RetailEX Terazi Köprüsü** veya masaüstü kısayolu.
+Başlat menüsü → **RetailEX Terazi Köprüsü**
 
-## Geliştirici kurulum (repo)
+## Kurulum içeriği
 
-```powershell
-# Yönetici PowerShell
-powershell -ExecutionPolicy Bypass -File scripts\scale-bridge\build-windows-installer.ps1
-```
-
-veya kaynak kurulum:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts\install-scale-bridge-service.ps1
-.\DeskApp\target\release\RetailEX_ScaleBridge_Manager.exe
-```
-
-Geliştirme modu (servis olmadan):
-
-```bash
-npm run scale:bridge
-# UI: http://127.0.0.1:3012/ui/
-```
+| Bileşen | Açıklama |
+|---------|----------|
+| `RetailEX_Scale_Bridge.exe` | Windows servisi |
+| `RetailEX_ScaleBridge_Manager.exe` | Kur / kaldır / UI aç |
+| `node.exe` | Taşınabilir Node |
+| `scale-bridge/*.mjs` | HTTP API + tarama |
 
 ## Merkez bağlantısı
 
-RetailEX bulutta kiracı girişinden sonra köprü URL/token otomatik gelir (`tenant_registry` / `stores`).
+Buluttan kiracı girişinde köprü URL/token otomatik gelir (`tenant_registry` / `stores`).
 
-Mağaza PC config örneği:
+Mağaza PC `scale-bridge.json` örneği:
 
 ```json
 {
@@ -76,6 +92,8 @@ Mağaza PC config örneği:
 }
 ```
 
+`authToken` merkez DB'deki `scale_bridge_token` ile aynı olmalı.
+
 ## Servis komutları
 
 ```powershell
@@ -92,4 +110,17 @@ Başlat → **Terazi Köprüsü Kaldır** veya:
 
 ```powershell
 & "C:\Program Files\RetailEX\ScaleBridge\RetailEX_ScaleBridge_Manager.exe" --uninstall
+```
+
+## Yol 2 — Repo kaynak kurulum (geliştirici)
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\install-scale-bridge-service.ps1
+```
+
+Geliştirme modu (servis olmadan):
+
+```bash
+npm run scale:bridge
+# UI: http://127.0.0.1:3012/ui/
 ```

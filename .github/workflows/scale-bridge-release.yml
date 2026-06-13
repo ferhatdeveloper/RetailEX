@@ -1,0 +1,95 @@
+name: Scale Bridge Windows Release
+
+# Yol 1: GitHub Release — RetailEX-ScaleBridge-Setup.exe
+# Tetikleme:
+#   git tag scale-bridge-v0.1.74 && git push origin scale-bridge-v0.1.74
+# veya Actions → "Scale Bridge Windows Release" → Run workflow
+
+on:
+  push:
+    tags:
+      - 'scale-bridge-v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Read package version
+        shell: pwsh
+        run: |
+          $v = node -p "require('./package.json').version"
+          echo "PACKAGE_VERSION=$v" >> $env:GITHUB_ENV
+          if ("${{ github.ref_type }}" -eq "tag" -and "${{ github.ref }}" -like "refs/tags/scale-bridge-v*") {
+            $tag = "${{ github.ref_name }}"
+            echo "RELEASE_TAG=$tag" >> $env:GITHUB_ENV
+          } else {
+            echo "RELEASE_TAG=scale-bridge-v$v" >> $env:GITHUB_ENV
+          }
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './DeskApp -> target'
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: |
+          choco install innosetup -y --no-progress
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { throw "ISCC not found: $iscc" }
+          echo "ISCC=$iscc" >> $env:GITHUB_ENV
+
+      - name: Build installer
+        shell: pwsh
+        env:
+          CI: 'true'
+          STRICT_CI: '1'
+        run: |
+          powershell -ExecutionPolicy Bypass -File scripts/scale-bridge/build-windows-installer.ps1
+
+      - name: Verify artifact
+        shell: pwsh
+        run: |
+          $exe = "dist/RetailEX-ScaleBridge-Setup.exe"
+          if (-not (Test-Path $exe)) { throw "Missing $exe" }
+          (Get-Item $exe).Length | Out-Host
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          name: RetailEX Terazi Köprüsü ${{ env.PACKAGE_VERSION }}
+          body: |
+            ## RetailEX Terazi Köprüsü (Windows)
+
+            Mağaza PC'de tek kurulum: servis + yönetim arayüzü + taşınabilir Node.
+
+            ### Kurulum
+            1. `RetailEX-ScaleBridge-Setup.exe` indirin (yönetici olarak çalıştırın)
+            2. Kurulum sonunda yönetim UI açılır: http://127.0.0.1:3012/ui/
+            3. Mağaza kodu, token ve terazi IP'lerini yapılandırın (ağ taraması desteklenir)
+
+            ### Dosyalar
+            - **RetailEX-ScaleBridge-Setup.exe** — Inno Setup kurulumu
+
+            Sürüm: `${{ env.PACKAGE_VERSION }}` (kök `package.json`)
+          files: dist/RetailEX-ScaleBridge-Setup.exe
+          draft: false
+          prerelease: false
+          make_latest: true
+          generate_release_notes: false
