@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import {
   LOGO_DEFAULT_BASE_URL,
+  LOGO_DEFAULT_CLIENT_ID,
   LOGO_KEY_RESOURCES,
   loadLogoRestConfig,
   saveLogoRestConfig,
@@ -459,7 +460,7 @@ export function LogoTigerRestPanel() {
               type="text"
               value={config.clientId}
               onChange={(e) => updateConfig({ clientId: e.target.value })}
-              placeholder="logotigerrestservice"
+              placeholder={LOGO_DEFAULT_CLIENT_ID}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 font-mono text-sm"
             />
           </div>
@@ -469,7 +470,7 @@ export function LogoTigerRestPanel() {
               type="password"
               value={config.clientSecret}
               onChange={(e) => updateConfig({ clientSecret: e.target.value })}
-              placeholder="Logo REST uygulama kaydı"
+              placeholder="Logo REST client secret (gömülü)"
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
             />
           </div>

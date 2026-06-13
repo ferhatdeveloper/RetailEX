@@ -16,6 +16,10 @@ const STORAGE_SESSION = 'retailex_logo_rest_session';
 
 export const LOGO_DEFAULT_BASE_URL = 'http://185.206.80.132:32001/api/v1';
 
+/** Logo REST OAuth uygulama kaydı (RetailEX gömülü) */
+export const LOGO_DEFAULT_CLIENT_ID = 'ARZEN';
+export const LOGO_DEFAULT_CLIENT_SECRET = 'r1k1C+lyPK6BKFkrLdA3IFXawk2fiuFdCqbrMc5zQd8=';
+
 /** Önemli kaynaklar — describe listesinden seçilmiş */
 export const LOGO_KEY_RESOURCES = [
   'items',
@@ -222,8 +226,8 @@ export function loadLogoRestConfig(): LogoRestConfig {
     baseUrl: LOGO_DEFAULT_BASE_URL,
     username: '',
     password: '',
-    clientId: 'logotigerrestservice',
-    clientSecret: '',
+    clientId: LOGO_DEFAULT_CLIENT_ID,
+    clientSecret: LOGO_DEFAULT_CLIENT_SECRET,
     logoDb: '',
     logoDbs: [],
     useErpContext: true,
@@ -233,11 +237,16 @@ export function loadLogoRestConfig(): LogoRestConfig {
     const raw = localStorage.getItem(STORAGE_CONFIG);
     if (!raw) return defaults;
     const parsed = JSON.parse(raw) as Partial<LogoRestConfig>;
+    const storedId = String(parsed.clientId ?? '').trim();
+    const storedSecret = String(parsed.clientSecret ?? '').trim();
     return {
       ...defaults,
       ...parsed,
       baseUrl: normalizeBaseUrl(parsed.baseUrl || defaults.baseUrl),
       logoDbs: Array.isArray(parsed.logoDbs) ? parsed.logoDbs.filter(Boolean) : [],
+      clientId:
+        storedId && storedId !== 'logotigerrestservice' ? storedId : LOGO_DEFAULT_CLIENT_ID,
+      clientSecret: storedSecret || LOGO_DEFAULT_CLIENT_SECRET,
     };
   } catch {
     return defaults;
@@ -581,7 +590,7 @@ export async function logoDescribeServices(cfg: LogoRestConfig): Promise<LogoDes
   const baseUrl = normalizeBaseUrl(cfg.baseUrl);
   const res = await logoHttp(baseUrl, 'GET', '/services/describe', {
     headers: { Authorization: `Bearer ${session.accessToken}` },
-    query: { api_key: cfg.clientId || 'logotigerrestservice' },
+    query: { api_key: cfg.clientId || LOGO_DEFAULT_CLIENT_ID },
   });
   if (!res.ok) throw new Error(`describe hatası: HTTP ${res.status}`);
   const data = res.data as { apis?: Array<{ path?: string; description?: string; schema?: { href?: string } }> };
