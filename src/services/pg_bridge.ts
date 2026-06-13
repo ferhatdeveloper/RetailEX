@@ -203,6 +203,75 @@ app.get('/api/status', (c) => {
 });
 
 /**
+ * Logo Tiger REST API proxy — tarayıcı CORS engelini aşmak için.
+ * POST /api/logo/proxy { baseUrl, method, path, headers?, body?, query? }
+ */
+app.post('/api/logo/proxy', async (c) => {
+    try {
+        const body = await c.req.json().catch(() => ({})) as {
+            baseUrl?: string;
+            method?: string;
+            path?: string;
+            headers?: Record<string, string>;
+            body?: string | null;
+            query?: Record<string, string>;
+        };
+
+        const baseUrl = String(body.baseUrl || '').trim().replace(/\/+$/, '');
+        const method = String(body.method || 'GET').toUpperCase();
+        const path = String(body.path || '/').trim();
+        if (!baseUrl || !baseUrl.startsWith('http')) {
+            return c.json({ error: 'baseUrl gerekli (http/https)' }, 400);
+        }
+        if (!path.startsWith('/')) {
+            return c.json({ error: 'path / ile başlamalı' }, 400);
+        }
+
+        const qs = body.query && typeof body.query === 'object'
+            ? '?' + Object.entries(body.query)
+                .filter(([, v]) => v != null && String(v) !== '')
+                .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`)
+                .join('&')
+            : '';
+        const url = `${baseUrl}${path}${qs}`;
+
+        const headers: Record<string, string> = {};
+        if (body.headers && typeof body.headers === 'object') {
+            for (const [k, v] of Object.entries(body.headers)) {
+                if (v != null) headers[k] = String(v);
+            }
+        }
+
+        const upstream = await fetch(url, {
+            method,
+            headers,
+            body: method === 'GET' || method === 'HEAD' ? undefined : (body.body ?? undefined),
+        });
+
+        const text = await upstream.text();
+        let data: unknown = null;
+        try {
+            data = text ? JSON.parse(text) : null;
+        } catch {
+            data = text;
+        }
+
+        return c.json({
+            proxy: {
+                ok: upstream.ok,
+                status: upstream.status,
+                data,
+                text,
+            },
+        });
+    } catch (error: unknown) {
+        const msg = error instanceof Error ? error.message : String(error);
+        console.error('[PG Bridge] Logo proxy error:', msg);
+        return c.json({ error: msg }, 500);
+    }
+});
+
+/**
  * Santral / ara yazılım buraya POST atar. Örnek: { "phone": "905321234567", "name": "..." }
  * Güvenlik: CALLER_ID_PUSH_TOKEN ortam değişkeni tanımlıysa Authorization: Bearer <token> veya ?token=
  */

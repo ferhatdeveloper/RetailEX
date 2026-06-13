@@ -3,6 +3,7 @@ import { AlertCircle, Loader2, Download, RefreshCw, Server, Package, Users, Chec
 import type { Product, Customer } from '../../App';
 import { exportInvoicesToLogoXML, downloadXMLFile } from '../../shared/logoXmlExport';
 import { LogoGo3Integration } from './LogoGo3Integration';
+import { LogoTigerRestPanel } from './LogoTigerRestPanel';
 
 interface LogoIntegrationProps {
   products: Product[];
@@ -26,7 +27,7 @@ interface PendingInvoice {
 
 export function LogoIntegration({ products, setProducts, customers, setCustomers }: LogoIntegrationProps) {
   // Logo Type Selection
-  const [logoType, setLogoType] = useState<'tiger' | 'go3'>('go3');
+  const [logoType, setLogoType] = useState<'tiger' | 'go3'>('tiger');
   
   // Logo API Connection settings (Tiger only)
   const [apiUrl, setApiUrl] = useState('');
@@ -399,6 +400,9 @@ export function LogoIntegration({ products, setProducts, customers, setCustomers
         </div>
         
         {/* Step 1: Connection Settings */}
+        {logoType === 'tiger' ? (
+          <LogoTigerRestPanel />
+        ) : (
         <div>
           <div className="flex items-center gap-2 mb-4">
             <div className="w-8 h-8 bg-orange-600 rounded-full flex items-center justify-center text-white">
@@ -506,9 +510,10 @@ export function LogoIntegration({ products, setProducts, customers, setCustomers
             </button>
           </div>
         </div>
+        )}
         
         {/* Step 2: Data Preview */}
-        {connectionStatus === 'connected' && (
+        {logoType !== 'tiger' && connectionStatus === 'connected' && (
           <div>
             <div className="flex items-center gap-2 mb-4">
               <div className="w-8 h-8 bg-orange-600 rounded-full flex items-center justify-center text-white">
@@ -594,6 +599,7 @@ export function LogoIntegration({ products, setProducts, customers, setCustomers
         )}
         
         {/* Step 3: Pending Invoices (Offline Kesilen Faturalar) */}
+        {logoType !== 'tiger' && (
         <div>
           <div className="flex items-center gap-2 mb-4">
             <div className="w-8 h-8 bg-orange-600 rounded-full flex items-center justify-center text-white">
@@ -765,6 +771,7 @@ export function LogoIntegration({ products, setProducts, customers, setCustomers
             )}
           </div>
         </div>
+        )}
       </div>
     </div>
   );
