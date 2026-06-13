@@ -1,6 +1,7 @@
 ; RetailEX Terazi Köprüsü — Inno Setup kurulumu
 ; Derleme: scripts/scale-bridge/build-windows-installer.ps1
 ; Çıktı: dist/RetailEX-ScaleBridge-Setup.exe
+; VC++ Runtime (VCRUNTIME140.dll): yüklü değilse kurulum sırasında sessizce kurulur.
 
 #define MyAppName "RetailEX Terazi Köprüsü"
 #ifndef MyAppVersion
@@ -38,7 +39,7 @@ Name: "turkish"; MessagesFile: "compiler:Languages\Turkish.isl"
 Name: "desktopicon"; Description: "Masaüstü kısayolu oluştur"; GroupDescription: "Ek kısayollar:"; Flags: unchecked
 
 [Files]
-Source: "staging\vc_redist.x64.exe"; DestDir: "{tmp}"; Flags: deleteafterinstall
+Source: "staging\vc_redist.x64.exe"; DestDir: "{tmp}"; Flags: deleteafterinstall; Check: NeedsVCRedistInstall
 Source: "staging\RetailEX_Scale_Bridge.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "staging\RetailEX_ScaleBridge_Manager.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "staging\node\node.exe"; DestDir: "{app}\node"; Flags: ignoreversion
@@ -54,7 +55,7 @@ Name: "{group}\Terazi Köprüsü Kaldır"; Filename: "{app}\{#MyAppExeName}"; Pa
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
 
 [Run]
-Filename: "{tmp}\vc_redist.x64.exe"; Parameters: "/install /quiet /norestart"; StatusMsg: "Visual C++ Runtime kuruluyor…"; Flags: waituntilterminated
+Filename: "{tmp}\vc_redist.x64.exe"; Parameters: "/install /quiet /norestart"; StatusMsg: "Visual C++ Runtime kuruluyor (VCRUNTIME140)…"; Check: NeedsVCRedistInstall; Flags: waituntilterminated
 Filename: "{app}\{#MyAppExeName}"; Parameters: "--install"; StatusMsg: "Windows servisi kuruluyor…"; Flags: waituntilterminated
 Filename: "{app}\{#MyAppExeName}"; Description: "Terazi Köprüsü yönetim arayüzünü aç"; Flags: postinstall nowait skipifsilent
 
@@ -62,10 +63,48 @@ Filename: "{app}\{#MyAppExeName}"; Description: "Terazi Köprüsü yönetim aray
 Filename: "{app}\{#MyAppExeName}"; Parameters: "--uninstall"; Flags: waituntilterminated
 
 [Code]
+{ VC++ 2015-2022 x64 (VCRUNTIME140.dll) yüklü mü? }
+
+function VcRuntimeRegistryOk: Boolean;
+var
+  Installed: String;
+begin
+  Result := False;
+  if RegQueryStringValue(HKLM, 'SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\x64', 'Installed', Installed) then
+  begin
+    if Installed = '1' then
+    begin
+      Result := True;
+      Exit;
+    end;
+  end;
+  if RegQueryStringValue(HKLM64, 'SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\x64', 'Installed', Installed) then
+  begin
+    if Installed = '1' then
+      Result := True;
+  end;
+end;
+
+function VcRuntimeDllOk: Boolean;
+begin
+  Result := FileExists(ExpandConstant('{sys}\vcruntime140.dll'));
+end;
+
+function NeedsVCRedistInstall: Boolean;
+begin
+  { DLL veya kayıt defteri — biri yeterli }
+  Result := (not VcRuntimeDllOk) and (not VcRuntimeRegistryOk);
+end;
+
 procedure CurStepChanged(CurStep: TSetupStep);
 var
   ConfigPath: String;
 begin
+  if CurStep = ssInstall then
+  begin
+    if NeedsVCRedistInstall then
+      WizardForm.StatusLabel.Caption := 'Microsoft Visual C++ Runtime kurulacak…';
+  end;
   if CurStep = ssPostInstall then
   begin
     ConfigPath := ExpandConstant('{commonappdata}\RetailEX\scale-bridge.json');

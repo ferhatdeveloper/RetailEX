@@ -16,6 +16,7 @@ Mağaza PC'de RetailEX kapalıyken bile merkezden teraziye PLU gönderimi için 
 
 Kurulum otomatik olarak:
 
+- **Visual C++ Runtime** yoksa kurar (`VCRUNTIME140.dll` — `vc_redist.x64.exe` gömülü)
 - Windows servisini kurar (`RetailEX_Scale_Bridge`)
 - Taşınabilir Node + köprü scriptlerini kopyalar
 - Başlat menüsü kısayolu oluşturur

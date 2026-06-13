@@ -13,10 +13,22 @@ Write-Host '== RetailEX Terazi Köprüsü kurulumu =='
 
 New-Item -ItemType Directory -Force -Path $InstallDir, $ConfigDir, (Join-Path $InstallDir 'scale-bridge\admin') | Out-Null
 
-Write-Host 'Derleniyor: RetailEX_Scale_Bridge + Manager...'
+Write-Host 'Derleniyor: RetailEX_Scale_Bridge + Manager (statik CRT)...'
+$env:RUSTFLAGS = '-C target-feature=+crt-static'
 Push-Location $DeskApp
 cargo build --release --bin RetailEX_Scale_Bridge --bin RetailEX_ScaleBridge_Manager
 Pop-Location
+Remove-Item Env:RUSTFLAGS -ErrorAction SilentlyContinue
+
+# VC++ Runtime (VCRUNTIME140.dll) yoksa kur
+if (-not (Test-Path 'C:\Windows\System32\vcruntime140.dll')) {
+    Write-Host 'Visual C++ Runtime kuruluyor...'
+    $VcTmp = Join-Path $env:TEMP 'vc_redist.x64.exe'
+    if (-not (Test-Path $VcTmp)) {
+        Invoke-WebRequest -Uri 'https://aka.ms/vs/17/release/vc_redist.x64.exe' -OutFile $VcTmp
+    }
+    Start-Process -FilePath $VcTmp -ArgumentList '/install','/quiet','/norestart' -Wait
+}
 
 $ExeSrc = Join-Path $DeskApp 'target\release\RetailEX_Scale_Bridge.exe'
 $MgrSrc = Join-Path $DeskApp 'target\release\RetailEX_ScaleBridge_Manager.exe'

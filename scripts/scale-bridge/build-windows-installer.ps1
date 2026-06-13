@@ -59,10 +59,14 @@ if (-not (Test-Path (Join-Path $NodeDir 'node.exe'))) {
     Copy-Item -Force (Join-Path $env:TEMP "node-$NodeVer-win-x64\node.exe") (Join-Path $NodeDir 'node.exe')
 }
 
-Write-Host '3b) Visual C++ Redistributable (VCRUNTIME140.dll)...'
+Write-Host '3b) Visual C++ Redistributable (kuruluma gomulu; yoksa Setup kurar)...'
 $VcRedist = Join-Path $Staging 'vc_redist.x64.exe'
 if (-not (Test-Path $VcRedist)) {
+    Write-Host '  Indiriliyor: vc_redist.x64.exe'
     Invoke-WebRequest -Uri 'https://aka.ms/vs/17/release/vc_redist.x64.exe' -OutFile $VcRedist
+}
+if (-not (Test-Path $VcRedist)) {
+    Write-Error 'vc_redist.x64.exe indirilemedi'
 }
 
 Write-Host '4) Inno Setup...'
