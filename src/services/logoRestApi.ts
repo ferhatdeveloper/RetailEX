@@ -10,11 +10,13 @@
 
 import { ERP_SETTINGS } from './postgres';
 import { getBridgeUrl, IS_TAURI } from '../utils/env';
+import { parseStoredRetailexWebConfig } from '../utils/retailexWebConfigMerge';
 
 const STORAGE_CONFIG = 'retailex_logo_rest_config';
 const STORAGE_SESSION = 'retailex_logo_rest_session';
+const STORAGE_MANUAL_URL = 'retailex_logo_rest_manual_url';
 
-export const LOGO_DEFAULT_BASE_URL = 'http://185.206.80.132:32001/api/v1';
+export const LOGO_API_URL_EXAMPLE = 'http://SUNUCU-IP:32001/api/v1';
 
 /** Logo REST OAuth uygulama kaydı (RetailEX gömülü) */
 export const LOGO_DEFAULT_CLIENT_ID = 'ARZEN';
@@ -115,12 +117,27 @@ export interface LogoListResult<T = unknown> {
 }
 
 function normalizeBaseUrl(url: string): string {
+  return normalizeLogoRestBaseUrl(url);
+}
+
+/** Logo REST API taban URL — sabit IP yok; kiracı / kullanıcı tanımlar */
+export function normalizeLogoRestBaseUrl(url: string): string {
   let u = (url || '').trim().replace(/\/+$/, '');
-  if (!u) return LOGO_DEFAULT_BASE_URL;
+  if (!u) return '';
   u = u.replace(/\/services\/help.*$/i, '');
   if (!u.endsWith('/api/v1')) {
     if (u.endsWith('/api')) u += '/v1';
     else if (!u.includes('/api/v1')) u += '/api/v1';
+  }
+  return u;
+}
+
+function requireBaseUrl(cfg: LogoRestConfig): string {
+  const u = normalizeLogoRestBaseUrl(cfg.baseUrl);
+  if (!u) {
+    throw new Error(
+      'Logo API URL tanımlı değil. Entegrasyonlar ekranından girin veya merkez tenant_registry.logo_rest_api_url alanını doldurun.'
+    );
   }
   return u;
 }
@@ -221,9 +238,48 @@ function sessionMatchesContext(session: LogoRestSession, ctx: LogoContextSelecti
   );
 }
 
+export function isLogoRestUrlManualOverride(): boolean {
+  if (typeof window === 'undefined') return false;
+  return localStorage.getItem(STORAGE_MANUAL_URL) === '1';
+}
+
+export function clearLogoRestUrlManualOverride(): void {
+  if (typeof window === 'undefined') return;
+  localStorage.removeItem(STORAGE_MANUAL_URL);
+}
+
+/** Kiracı girişinde tenant_registry.logo_rest_api_url → logo config */
+export function syncLogoRestUrlFromWebConfig(force = false): void {
+  if (typeof window === 'undefined') return;
+  if (!force && isLogoRestUrlManualOverride()) return;
+  const cfg = parseStoredRetailexWebConfig();
+  const url = normalizeLogoRestBaseUrl(String(cfg.logo_rest_api_url || ''));
+  if (!url) return;
+  const current = loadLogoRestConfig();
+  saveLogoRestConfig({ ...current, baseUrl: url });
+}
+
+export function setLogoRestBaseUrl(url: string, options?: { manual?: boolean }): void {
+  const current = loadLogoRestConfig();
+  saveLogoRestConfig({ ...current, baseUrl: normalizeLogoRestBaseUrl(url) });
+  if (typeof window !== 'undefined') {
+    if (options?.manual) localStorage.setItem(STORAGE_MANUAL_URL, '1');
+    else if (!url.trim()) localStorage.removeItem(STORAGE_MANUAL_URL);
+  }
+}
+
+export function resolveLogoRestUrlSource(): 'tenant' | 'manual' | 'none' {
+  if (typeof window === 'undefined') return 'none';
+  if (isLogoRestUrlManualOverride()) return 'manual';
+  const cfg = parseStoredRetailexWebConfig();
+  if (normalizeLogoRestBaseUrl(String(cfg.logo_rest_api_url || ''))) return 'tenant';
+  if (normalizeLogoRestBaseUrl(loadLogoRestConfig().baseUrl)) return 'manual';
+  return 'none';
+}
+
 export function loadLogoRestConfig(): LogoRestConfig {
   const defaults: LogoRestConfig = {
-    baseUrl: LOGO_DEFAULT_BASE_URL,
+    baseUrl: '',
     username: '',
     password: '',
     clientId: LOGO_DEFAULT_CLIENT_ID,
@@ -235,14 +291,24 @@ export function loadLogoRestConfig(): LogoRestConfig {
   if (typeof window === 'undefined') return defaults;
   try {
     const raw = localStorage.getItem(STORAGE_CONFIG);
-    if (!raw) return defaults;
+    const webCfg = parseStoredRetailexWebConfig();
+    const tenantUrl = normalizeLogoRestBaseUrl(String(webCfg.logo_rest_api_url || ''));
+    if (!raw) {
+      return tenantUrl && !isLogoRestUrlManualOverride()
+        ? { ...defaults, baseUrl: tenantUrl }
+        : defaults;
+    }
     const parsed = JSON.parse(raw) as Partial<LogoRestConfig>;
     const storedId = String(parsed.clientId ?? '').trim();
     const storedSecret = String(parsed.clientSecret ?? '').trim();
+    const storedUrl = normalizeLogoRestBaseUrl(String(parsed.baseUrl ?? ''));
+    const baseUrl =
+      storedUrl ||
+      (!isLogoRestUrlManualOverride() && tenantUrl ? tenantUrl : '');
     return {
       ...defaults,
       ...parsed,
-      baseUrl: normalizeBaseUrl(parsed.baseUrl || defaults.baseUrl),
+      baseUrl,
       logoDbs: Array.isArray(parsed.logoDbs) ? parsed.logoDbs.filter(Boolean) : [],
       clientId:
         storedId && storedId !== 'logotigerrestservice' ? storedId : LOGO_DEFAULT_CLIENT_ID,
@@ -257,7 +323,7 @@ export function saveLogoRestConfig(cfg: LogoRestConfig): void {
   if (typeof window === 'undefined') return;
   localStorage.setItem(
     STORAGE_CONFIG,
-    JSON.stringify({ ...cfg, baseUrl: normalizeBaseUrl(cfg.baseUrl) })
+    JSON.stringify({ ...cfg, baseUrl: normalizeLogoRestBaseUrl(cfg.baseUrl) })
   );
 }
 
@@ -407,7 +473,7 @@ export async function logoObtainToken(
   cfg: LogoRestConfig,
   firmNrHint?: number
 ): Promise<LogoRestSession> {
-  const baseUrl = normalizeBaseUrl(cfg.baseUrl);
+  const baseUrl = requireBaseUrl(cfg);
   const ctx = resolveLogoContext(cfg);
   const fNr = firmNrHint ?? ctx.firmNr ?? 1;
 
@@ -469,7 +535,7 @@ export async function logoCompanyLogin(
   firmNr: number,
   periodNr: number
 ): Promise<LogoRestSession> {
-  const baseUrl = normalizeBaseUrl(cfg.baseUrl);
+  const baseUrl = requireBaseUrl(cfg);
   const loginRes = await logoHttp(baseUrl, 'GET', `/methods/CompanyLogin/${firmNr}/${periodNr}`, {
     headers: { Authorization: `Bearer ${session.accessToken}` },
   });
@@ -527,7 +593,7 @@ export async function logoSwitchContext(
 export async function logoListFirmCatalog(cfg: LogoRestConfig): Promise<LogoFirmOption[]> {
   const ctx = resolveLogoContext(cfg);
   const session = await logoObtainToken(cfg, ctx.firmNr || 1);
-  const baseUrl = normalizeBaseUrl(cfg.baseUrl);
+  const baseUrl = requireBaseUrl(cfg);
   const res = await logoHttp(baseUrl, 'GET', '/methods/CAPI/Firms', {
     headers: { Authorization: `Bearer ${session.accessToken}` },
   });
@@ -539,7 +605,7 @@ export async function logoListFirmCatalog(cfg: LogoRestConfig): Promise<LogoFirm
 
 export async function logoCheckDatabase(cfg: LogoRestConfig, dbName: string): Promise<boolean> {
   const session = await logoObtainToken(cfg, 1);
-  const baseUrl = normalizeBaseUrl(cfg.baseUrl);
+  const baseUrl = requireBaseUrl(cfg);
   const res = await logoHttp(baseUrl, 'GET', `/methods/CheckLogoDB/${encodeURIComponent(dbName)}`, {
     headers: { Authorization: `Bearer ${session.accessToken}` },
   });
@@ -549,7 +615,7 @@ export async function logoCheckDatabase(cfg: LogoRestConfig, dbName: string): Pr
 export async function logoRevokeSession(cfg: LogoRestConfig): Promise<void> {
   const session = loadLogoRestSession();
   if (session?.accessToken) {
-    await logoHttp(normalizeBaseUrl(cfg.baseUrl), 'GET', '/revoke', {
+    await logoHttp(requireBaseUrl(cfg), 'GET', '/revoke', {
       headers: { Authorization: `Bearer ${session.accessToken}` },
     }).catch(() => {});
   }
@@ -567,7 +633,7 @@ export async function logoTestConnection(cfg: LogoRestConfig): Promise<{
   try {
     const ctx = resolveLogoContext(cfg);
     const session = await logoAuthenticate(cfg, ctx.firmNr, ctx.periodNr);
-    const baseUrl = normalizeBaseUrl(cfg.baseUrl);
+    const baseUrl = requireBaseUrl(cfg);
     const auth = { Authorization: `Bearer ${session.accessToken}` };
 
     const firmRes = await logoHttp(baseUrl, 'GET', '/methods/CurrentFirm', { headers: auth });
@@ -587,7 +653,7 @@ export async function logoTestConnection(cfg: LogoRestConfig): Promise<{
 
 export async function logoDescribeServices(cfg: LogoRestConfig): Promise<LogoDescribeEntry[]> {
   const session = await logoEnsureSession(cfg);
-  const baseUrl = normalizeBaseUrl(cfg.baseUrl);
+  const baseUrl = requireBaseUrl(cfg);
   const res = await logoHttp(baseUrl, 'GET', '/services/describe', {
     headers: { Authorization: `Bearer ${session.accessToken}` },
     query: { api_key: cfg.clientId || LOGO_DEFAULT_CLIENT_ID },
@@ -612,7 +678,7 @@ export async function logoListResource<T = unknown>(
   opts: { limit?: number; offset?: number; q?: string; withCount?: boolean; expandLevel?: string } = {}
 ): Promise<LogoListResult<T>> {
   const session = await logoEnsureSession(cfg);
-  const baseUrl = normalizeBaseUrl(cfg.baseUrl);
+  const baseUrl = requireBaseUrl(cfg);
   const query: Record<string, string> = {};
   if (opts.limit != null) query.limit = String(opts.limit);
   if (opts.offset != null) query.offset = String(opts.offset);
@@ -642,7 +708,7 @@ export async function logoGetResource<T = unknown>(
   opts: { expandLevel?: string } = {}
 ): Promise<T> {
   const session = await logoEnsureSession(cfg);
-  const baseUrl = normalizeBaseUrl(cfg.baseUrl);
+  const baseUrl = requireBaseUrl(cfg);
   const query: Record<string, string> = {};
   if (opts.expandLevel) query.expandLevel = opts.expandLevel;
 
@@ -660,7 +726,7 @@ export async function logoCreateResource<T = unknown>(
   restRecord: Record<string, unknown>
 ): Promise<T> {
   const session = await logoEnsureSession(cfg);
-  const baseUrl = normalizeBaseUrl(cfg.baseUrl);
+  const baseUrl = requireBaseUrl(cfg);
   const res = await logoHttp(baseUrl, 'POST', `/${resource}`, {
     headers: {
       Authorization: `Bearer ${session.accessToken}`,
@@ -683,7 +749,7 @@ export async function logoUpdateResource<T = unknown>(
   method: 'PUT' | 'PATCH' = 'PUT'
 ): Promise<T> {
   const session = await logoEnsureSession(cfg);
-  const baseUrl = normalizeBaseUrl(cfg.baseUrl);
+  const baseUrl = requireBaseUrl(cfg);
   const res = await logoHttp(baseUrl, method, `/${resource}/${id}`, {
     headers: {
       Authorization: `Bearer ${session.accessToken}`,
@@ -704,7 +770,7 @@ export async function logoDeleteResource(
   id: string | number
 ): Promise<void> {
   const session = await logoEnsureSession(cfg);
-  const baseUrl = normalizeBaseUrl(cfg.baseUrl);
+  const baseUrl = requireBaseUrl(cfg);
   const res = await logoHttp(baseUrl, 'DELETE', `/${resource}/${id}`, {
     headers: { Authorization: `Bearer ${session.accessToken}` },
   });
@@ -755,7 +821,7 @@ export async function logoGetDataPreview(cfg: LogoRestConfig): Promise<LogoDataP
 }
 
 export async function logoHealthCheck(cfg: LogoRestConfig): Promise<boolean> {
-  const baseUrl = normalizeBaseUrl(cfg.baseUrl);
+  const baseUrl = requireBaseUrl(cfg);
   const res = await logoHttp(baseUrl, 'GET', '/sys/healthcheck', {});
   return res.ok || res.status === 204;
 }

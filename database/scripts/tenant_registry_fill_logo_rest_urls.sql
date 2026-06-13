@@ -1,0 +1,2 @@
+-- Örnek: merkez_db kiracı başına Logo REST URL (değişken sunucu)
+-- UPDATE public.tenant_registry SET logo_rest_api_url = 'http://185.206.80.132:32001/api/v1', updated_at = now() WHERE code = 'kasap';

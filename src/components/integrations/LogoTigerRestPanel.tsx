@@ -15,7 +15,7 @@ import {
   Search,
 } from 'lucide-react';
 import {
-  LOGO_DEFAULT_BASE_URL,
+  LOGO_API_URL_EXAMPLE,
   LOGO_DEFAULT_CLIENT_ID,
   LOGO_KEY_RESOURCES,
   loadLogoRestConfig,
@@ -30,6 +30,10 @@ import {
   logoSwitchContext,
   logoCheckDatabase,
   resolveLogoContext,
+  resolveLogoRestUrlSource,
+  syncLogoRestUrlFromWebConfig,
+  setLogoRestBaseUrl,
+  clearLogoRestUrlManualOverride,
   getErpFirmPeriodLabel,
   periodsForFirm,
   type LogoRestConfig,
@@ -65,6 +69,7 @@ export function LogoTigerRestPanel() {
   const [isLoadingFirms, setIsLoadingFirms] = useState(false);
   const [newDbName, setNewDbName] = useState('');
   const [activeContext, setActiveContext] = useState(() => resolveLogoContext(loadLogoRestConfig()));
+  const [urlSource, setUrlSource] = useState<'tenant' | 'manual' | 'none'>(() => resolveLogoRestUrlSource());
 
   const logoDbOptions = Array.from(
     new Set([...(config.logoDbs || []), config.logoDb].filter((x) => x && String(x).trim()))
@@ -76,8 +81,16 @@ export function LogoTigerRestPanel() {
   }, [config]);
 
   useEffect(() => {
+    syncLogoRestUrlFromWebConfig();
+    setConfig(loadLogoRestConfig());
+    setUrlSource(resolveLogoRestUrlSource());
     refreshErpContext();
-    const onStorage = () => refreshErpContext();
+    const onStorage = () => {
+      syncLogoRestUrlFromWebConfig();
+      setConfig(loadLogoRestConfig());
+      setUrlSource(resolveLogoRestUrlSource());
+      refreshErpContext();
+    };
     window.addEventListener('storage', onStorage);
     return () => window.removeEventListener('storage', onStorage);
   }, [refreshErpContext]);
@@ -92,6 +105,20 @@ export function LogoTigerRestPanel() {
       }
       return next;
     });
+  };
+
+  const handleBaseUrlChange = (url: string) => {
+    setLogoRestBaseUrl(url, { manual: true });
+    setConfig(loadLogoRestConfig());
+    setUrlSource(resolveLogoRestUrlSource());
+    setActiveContext(resolveLogoContext(loadLogoRestConfig()));
+  };
+
+  const handleResetUrlFromTenant = () => {
+    clearLogoRestUrlManualOverride();
+    syncLogoRestUrlFromWebConfig(true);
+    setConfig(loadLogoRestConfig());
+    setUrlSource(resolveLogoRestUrlSource());
   };
 
   const handleLoadFirms = async () => {
@@ -426,13 +453,26 @@ export function LogoTigerRestPanel() {
             <input
               type="text"
               value={config.baseUrl}
-              onChange={(e) => updateConfig({ baseUrl: e.target.value })}
-              placeholder={LOGO_DEFAULT_BASE_URL}
+              onChange={(e) => handleBaseUrlChange(e.target.value)}
+              placeholder={LOGO_API_URL_EXAMPLE}
+              required
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 font-mono text-sm"
             />
             <p className="text-xs text-gray-500 mt-1">
-              Örnek: http://185.206.80.132:32001/api/v1 — help URL'si otomatik kırpılır.
+              Kiracı başına farklı sunucu olabilir — sabit IP yok. Merkez:{' '}
+              <code>tenant_registry.logo_rest_api_url</code>
+              {urlSource === 'tenant' && ' · kiracı kaydından yüklendi'}
+              {urlSource === 'manual' && ' · manuel girildi'}
             </p>
+            {urlSource === 'manual' && (
+              <button
+                type="button"
+                onClick={handleResetUrlFromTenant}
+                className="mt-1 text-xs text-blue-700 hover:underline"
+              >
+                Kiracı URL'sine sıfırla
+              </button>
+            )}
           </div>
 
           <div>
@@ -487,7 +527,7 @@ export function LogoTigerRestPanel() {
         <div className="mt-4 ml-10 flex flex-wrap gap-2">
           <button
             onClick={handleTestConnection}
-            disabled={!config.username || !config.password || !config.clientId || connectionStatus === 'connecting'}
+            disabled={!config.baseUrl?.trim() || !config.username || !config.password || !config.clientId || connectionStatus === 'connecting'}
             className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors disabled:opacity-50 flex items-center gap-2"
           >
             {connectionStatus === 'connecting' ? (

@@ -4,6 +4,7 @@
  */
 
 import { fetchRetailexAware } from '../utils/retailexDevProxy';
+import { normalizeLogoRestBaseUrl } from './logoRestApi';
 
 export type TenantRegistryRow = {
   id: string;
@@ -20,6 +21,7 @@ export type TenantRegistryRow = {
   db_sslmode: string | null;
   scale_bridge_url?: string | null;
   scale_bridge_token?: string | null;
+  logo_rest_api_url?: string | null;
   notes?: string | null;
   is_active?: boolean;
 };
@@ -392,6 +394,9 @@ export function tenantRowToAppConfigPatch(
   const bridgeToken = row.scale_bridge_token != null ? String(row.scale_bridge_token) : '';
   if (bridgeUrl) patch.scale_bridge_url = normalizeBaseUrl(bridgeUrl);
   if (bridgeToken.trim()) patch.scale_bridge_token = bridgeToken.trim();
+
+  const logoRestUrl = (row.logo_rest_api_url || '').trim();
+  if (logoRestUrl) patch.logo_rest_api_url = normalizeLogoRestBaseUrl(logoRestUrl);
 
   const host = (row.db_host || '').trim() || '127.0.0.1';
   const port = row.db_port && row.db_port > 0 ? row.db_port : 5432;
