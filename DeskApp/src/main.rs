@@ -17,6 +17,7 @@ mod backup_service;
 mod bank_ops;
 mod license;
 mod caller_id_serial;
+mod rongta_scale;
 
 use sync::BackgroundSyncService;
 use std::os::windows::process::CommandExt;
@@ -1903,7 +1904,9 @@ fn main() {
         show_touch_keyboard,
         caller_id_serial::list_caller_serial_ports,
         caller_id_serial::caller_serial_start,
-        caller_id_serial::caller_serial_stop
+        caller_id_serial::caller_serial_stop,
+        rongta_scale::rongta_scale_test,
+        rongta_scale::rongta_scale_send_plu
     ])
     .run(tauri::generate_context!())
     .expect("error while running tauri application");

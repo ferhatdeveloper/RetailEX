@@ -8,14 +8,17 @@
  * - Digi
  * - CAS
  * - Dibal
+ * - Rongta (RLS1000 / RLS1100)
  */
 
 import type { Product } from '../App';
+import { productsToRongtaPluRecords, RONGTA_DEFAULT_PORT } from './rongtaRlsProtocol';
+import { rongtaSendPluRecords, rongtaTestConnection } from '../services/rongtaScaleTransport';
 
 export interface ScaleDevice {
   id: string;
   name: string;
-  brand: 'bizerba' | 'toledo' | 'mettler' | 'digi' | 'cas' | 'dibal' | 'generic';
+  brand: 'bizerba' | 'toledo' | 'mettler' | 'digi' | 'cas' | 'dibal' | 'rongta' | 'generic';
   model: string;
   connectionType: 'tcp' | 'usb' | 'serial';
   ipAddress?: string;
@@ -52,6 +55,13 @@ export interface ScaleSyncResult {
  */
 export async function testScaleConnection(device: ScaleDevice): Promise<boolean> {
   try {
+    if (device.brand === 'rongta' && device.connectionType === 'tcp' && device.ipAddress) {
+      return rongtaTestConnection({
+        ipAddress: device.ipAddress,
+        port: device.port,
+      });
+    }
+
     // Electron API kontrolü
     if (typeof window !== 'undefined' && (window as any).electronAPI?.scale?.testConnection) {
       const result = await (window as any).electronAPI.scale.testConnection({
@@ -101,6 +111,30 @@ export async function sendProductsToScale(
       shelfLife: 0,
       expiryDays: 0
     }));
+
+    if (device.brand === 'rongta' && device.connectionType === 'tcp' && device.ipAddress) {
+      const records = productsToRongtaPluRecords(
+        scaleProducts.map((p) => ({
+          pluCode: p.pluCode,
+          name: p.name,
+          price: p.price,
+          unit: p.unit,
+          barcode: p.barcode,
+        })),
+        pluStartIndex
+      );
+      const result = await rongtaSendPluRecords(
+        { ipAddress: device.ipAddress, port: device.port },
+        records
+      );
+      return {
+        success: result.success,
+        message: result.message,
+        sentCount: result.sentCount,
+        failedCount: result.failedCount,
+        errors: result.errors,
+      };
+    }
     
     // Electron API kontrolü
     if (typeof window !== 'undefined' && (window as any).electronAPI?.scale?.sendProducts) {
@@ -337,6 +371,8 @@ export function getDefaultPort(brand: ScaleDevice['brand']): number {
       return 5000;
     case 'dibal':
       return 8000;
+    case 'rongta':
+      return RONGTA_DEFAULT_PORT;
     default:
       return 3000;
   }
@@ -355,6 +391,7 @@ export function getDefaultBaudRate(brand: ScaleDevice['brand']): number {
       return 19200;
     case 'cas':
     case 'dibal':
+    case 'rongta':
       return 9600;
     default:
       return 9600;

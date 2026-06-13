@@ -217,7 +217,7 @@ type ExtendedScreen = ManagementScreen | 'dashboard' | 'finance' | 'stock' | 'pu
   'waybill-sales' | 'waybill-purchase' | 'waybill-transfer' | 'waybill-fire' |
   'roleauth' | 'roles' | 'role_management' | 'authorization' |
   'financereports' | 'generalsettings' | 'definitions' | 'backuprestore' | 'systemhealth' | 'smsmanage' | 'emailcamp' | 'logaudit' | 'databroadcast' |
-  'modulemanagement' | 'menumanagement' | 'onlineorders' | 'productsync' | 'price-change-vouchers' | 'new-modules' | 'accounting-mgmt' | 'workflow-automation' | 'voice-assistant' | 'cashier-scale' | 'db-migrations' | 'store-management' | 'security-modules' | 'demo-data' |
+  'modulemanagement' | 'menumanagement' | 'onlineorders' | 'productsync' | 'price-change-vouchers' | 'new-modules' | 'accounting-mgmt' | 'workflow-automation' | 'voice-assistant' | 'cashier-scale' | 'scale-management' | 'db-migrations' | 'store-management' | 'security-modules' | 'demo-data' |
   'product-analytics' | 'profit-dashboard' | 'graphanalysis' | 'reconciliation' | 'wave-picking' | 'ai-stock-prediction' | 'material-extract' | 'cost-centers' |
   'universal-report-hub' | 'customer-extract' | 'store-performance' | 'inventory-aging' | 'nebim-migration' |
   'cash-slips' | 'bank-slips' | 'pos-slips' | 'current-slips' | 'stockcounting' | 'stockcounting-mobile' |
@@ -1441,6 +1441,8 @@ export function ManagementModule({
           return <ProductAnalyticsDashboard onBack={() => setCurrentScreen('dashboard')} />;
         case 'cashier-scale':
           return <CashierScale onBack={() => setCurrentScreen('dashboard')} />;
+        case 'scale-management':
+          return <ScaleManagementWrapper products={products} />;
         case 'db-migrations':
           return <DatabaseMigrations onBack={() => setCurrentScreen('dashboard')} />;
         case 'store-management':

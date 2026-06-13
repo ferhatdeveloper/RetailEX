@@ -242,7 +242,8 @@ export const getStaticMenuSections = (t: Translations) => [
                 label: t.menu.priceAndCampaign,
                 screen: 'pricing'
             },
-            { label: t.menu.scaleAndWeighedSales, screen: 'cashier-scale', icon: Scale, badge: t.menu.newBadge }
+            { label: t.menu.scaleAndWeighedSales, screen: 'cashier-scale', icon: Scale, badge: t.menu.newBadge },
+            { label: t.menu.scaleManagement, screen: 'scale-management', icon: Scale }
         ]
     },
     {
@@ -398,6 +399,7 @@ export const staticMenuSections = getStaticMenuSections({
         accountingVouchers: 'Muhasebe Fişleri',
         priceAndCampaign: 'Fiyat & Kampanya',
         scaleAndWeighedSales: 'Terazi & Tartılı Satış',
+        scaleManagement: 'Terazi Yönetimi (Rongta)',
         whatsappIntegration: 'WhatsApp Entegrasyonu',
         notificationCenter: 'Bildirim Merkezi',
         smsManagement: 'SMS Yönetimi',

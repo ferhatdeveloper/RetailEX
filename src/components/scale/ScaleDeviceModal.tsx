@@ -2,6 +2,7 @@
 import { X, Wifi } from 'lucide-react';
 import type { ScaleDevice } from '../../utils/scaleProtocol';
 import { getDefaultPort, getDefaultBaudRate, testScaleConnection } from '../../utils/scaleProtocol';
+import { RONGTA_DEFAULT_IP } from '../../utils/rongtaRlsProtocol';
 import { validateIPAddress } from '../../utils/scaleScanner';
 
 interface ScaleDeviceModalProps {
@@ -13,10 +14,10 @@ interface ScaleDeviceModalProps {
 export function ScaleDeviceModal({ device, onSave, onClose }: ScaleDeviceModalProps) {
   const [formData, setFormData] = useState<Partial<ScaleDevice>>({
     name: device?.name || '',
-    brand: device?.brand || 'bizerba',
-    model: device?.model || '',
+    brand: device?.brand || 'rongta',
+    model: device?.model || 'RLS1100',
     connectionType: device?.connectionType || 'tcp',
-    ipAddress: device?.ipAddress || '192.168.1.100',
+    ipAddress: device?.ipAddress || RONGTA_DEFAULT_IP,
     port: device?.port || 3001,
     comPort: device?.comPort || 'COM1',
     baudRate: device?.baudRate || 9600,
@@ -33,7 +34,10 @@ export function ScaleDeviceModal({ device, onSave, onClose }: ScaleDeviceModalPr
       setFormData(prev => ({
         ...prev,
         port: getDefaultPort(formData.brand as ScaleDevice['brand']),
-        baudRate: getDefaultBaudRate(formData.brand as ScaleDevice['brand'])
+        baudRate: getDefaultBaudRate(formData.brand as ScaleDevice['brand']),
+        ...(formData.brand === 'rongta'
+          ? { ipAddress: RONGTA_DEFAULT_IP, model: 'RLS1100', connectionType: 'tcp' as const }
+          : {}),
       }));
     }
   }, [formData.brand, device]);
@@ -207,6 +211,7 @@ export function ScaleDeviceModal({ device, onSave, onClose }: ScaleDeviceModalPr
                 onChange={(e) => setFormData({ ...formData, brand: e.target.value as ScaleDevice['brand'] })}
                 className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
+                <option value="rongta">Rongta (RLS1000 / RLS1100)</option>
                 <option value="bizerba">Bizerba</option>
                 <option value="toledo">Toledo</option>
                 <option value="mettler">Mettler Toledo</option>
@@ -291,7 +296,7 @@ export function ScaleDeviceModal({ device, onSave, onClose }: ScaleDeviceModalPr
                     className={`w-full px-3 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500 ${
                       errors.port ? 'border-red-500' : 'border-gray-300'
                     }`}
-                    placeholder="3001"
+                    placeholder="20304"
                     min="1"
                     max="65535"
                   />
@@ -351,6 +356,15 @@ export function ScaleDeviceModal({ device, onSave, onClose }: ScaleDeviceModalPr
                 <p className="text-sm text-gray-700">
                   USB bağlantısı otomatik olarak tespit edilecektir. Teraziyi USB portuna bağlayın ve test edin.
                 </p>
+              </div>
+            )}
+
+            {formData.brand === 'rongta' && formData.connectionType === 'tcp' && (
+              <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg text-sm text-gray-700">
+                <p className="font-medium text-gray-900 mb-1">Rongta RLS1000 / RLS1100</p>
+                <p>RLS1000 Windows yazılımı gerekmez. Terazi ile PC aynı LAN segmentinde olmalıdır.</p>
+                <p className="mt-1">Varsayılan IP: <span className="font-mono">{RONGTA_DEFAULT_IP}</span> — terazi açılış ekranından doğrulayın.</p>
+                <p className="mt-1">Port: 20304 (otomatik olarak 4001, 9100 da denenir).</p>
               </div>
             )}
 

@@ -118,6 +118,7 @@ export function ScaleManagement({ onScanNetwork, onAddDevice, onEditDevice, onSy
       digi: 'bg-orange-500',
       cas: 'bg-red-500',
       dibal: 'bg-cyan-500',
+      rongta: 'bg-amber-500',
       generic: 'bg-gray-500'
     };
     

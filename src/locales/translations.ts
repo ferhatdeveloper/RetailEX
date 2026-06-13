@@ -115,6 +115,7 @@ export interface MenuTranslations {
   salesReturn: string;
   salesWaybill: string;
   scaleAndWeighedSales: string;
+  scaleManagement: string;
   serviceInvoiceIssued: string;
   serviceInvoiceReceived: string;
   serviceInvoices: string;
@@ -1025,6 +1026,7 @@ export interface Translations {
   saving: string;
   scale: string;
   scaleAndWeighedSales: string;
+  scaleManagement: string;
   scanQRCode: string;
   scanToSearchPlaceholder: string;
   scheduledBroadcastsLabel: string;
@@ -1943,6 +1945,7 @@ export const translations: any = {
       salesReturn: 'Satış İade',
       salesWaybill: 'Satış İrsaliyesi',
       scaleAndWeighedSales: 'Terazi & Tartılı Satış',
+      scaleManagement: 'Terazi Yönetimi (Rongta)',
       serviceCards: 'Hizmet Kartları',
       serviceInvoiceIssued: 'Verilen Hizmet Faturası',
       serviceInvoiceReceived: 'Alınan Hizmet Faturası',
@@ -2386,6 +2389,7 @@ export const translations: any = {
     saving: 'Kaydediliyor...',
     scale: 'Terazi',
     scaleAndWeighedSales: 'Terazi & Tartılı Satış',
+    scaleManagement: 'Terazi Yönetimi (Rongta)',
     scaleDefDesc: 'Terazi tanımlarını yönetin',
     scanQRCode: 'QR Kodu Okutun',
     scanToSearchPlaceholder: 'Ürün aramak için tarayın...',
@@ -3448,6 +3452,7 @@ export const translations: any = {
       salesReturn: 'Sales Return',
       salesWaybill: 'Sales Waybill',
       scaleAndWeighedSales: 'Scale & Weighed Sales',
+      scaleManagement: 'Scale Management (Rongta)',
       serviceInvoiceIssued: 'Service Invoice Issued',
       serviceInvoiceReceived: 'Service Invoice Received',
       serviceInvoices: 'Service Invoices',
@@ -3842,6 +3847,7 @@ export const translations: any = {
     saving: 'Saving...',
     scale: 'Scale',
     scaleAndWeighedSales: 'Scale & Weighed Sales',
+    scaleManagement: 'Scale Management (Rongta)',
     scaleDefDesc: 'Manage scale definitions',
     scanQRCode: 'Scan QR Code',
     scanToSearchPlaceholder: 'Scan barcode to search',
@@ -4788,6 +4794,7 @@ export const translations: any = {
       salesReturn: 'مرتجع مبيعات',
       salesWaybill: 'سند شحن مبيعات',
       scaleAndWeighedSales: 'مبيعات الميزان',
+      scaleManagement: 'إدارة الميزان (Rongta)',
       serviceInvoiceIssued: 'فاتورة خدمة صادرة',
       serviceInvoiceReceived: 'فاتورة خدمة واردة',
       serviceInvoices: 'فواتير الخدمات',
@@ -5181,6 +5188,7 @@ export const translations: any = {
     saving: 'جاري الحفظ...',
     scale: 'الميزان',
     scaleAndWeighedSales: 'مبيعات الميزان',
+    scaleManagement: 'إدارة الميزان (Rongta)',
     scaleDefDesc: 'Terazi tanımlarını yönetin',
     scanQRCode: 'امسح رمز QR',
     scanToSearchPlaceholder: 'امسح للبحث عن المنتج...',
@@ -6129,6 +6137,7 @@ export const translations: any = {
       salesReturn: 'مرتجع مبيعات',
       salesWaybill: 'سند شحن مبيعات',
       scaleAndWeighedSales: 'مبيعات الميزان',
+      scaleManagement: 'إدارة الميزان (Rongta)',
       serviceInvoiceIssued: 'فاتورة خدمة صادرة',
       serviceInvoiceReceived: 'فاتورة خدمة واردة',
       serviceInvoices: 'فواتير الخدمات',
@@ -6519,6 +6528,7 @@ export const translations: any = {
     saving: 'پاشەکەوت دەکرێت...',
     scale: 'تەرازوو',
     scaleAndWeighedSales: 'تەرازوو و فرۆشتنی کێشراو',
+    scaleManagement: 'بەڕێوەبردنی تەرازوو (Rongta)',
     scaleDefDesc: 'بەڕێوەبردنی پێناسەی تەرازوو',
     scanQRCode: 'QR Kodu Okutun',
     scanToSearchPlaceholder: 'بۆ گەڕان سکان بکە...',

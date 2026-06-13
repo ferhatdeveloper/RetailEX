@@ -281,6 +281,44 @@ app.get('/api/caller_id/customer_last', (c) => {
     return c.json(callerCustomerLast);
 });
 
+/** Rongta RLS1000/RLS1100 — doğrudan TCP PLU (RLS1000.exe olmadan). Mağaza LAN'ında çalışır. */
+app.post('/api/scale/rongta/test', async (c) => {
+    try {
+        const body = await c.req.json().catch(() => ({})) as Record<string, unknown>;
+        const ipAddress = typeof body.ipAddress === 'string' ? body.ipAddress.trim() : '';
+        const port = typeof body.port === 'number' ? body.port : undefined;
+        if (!ipAddress) return c.json({ error: 'ipAddress gerekli' }, 400);
+        const { rongtaTcpTest } = await import('./rongtaTcpNode');
+        const result = await rongtaTcpTest(ipAddress, port);
+        return c.json(result);
+    } catch (error: any) {
+        console.error('[Rongta test]', error);
+        return c.json({ ok: false, error: error?.message || 'test failed' }, 500);
+    }
+});
+
+app.post('/api/scale/rongta/send-plu', async (c) => {
+    try {
+        const body = await c.req.json().catch(() => ({})) as Record<string, unknown>;
+        const ipAddress = typeof body.ipAddress === 'string' ? body.ipAddress.trim() : '';
+        const port = typeof body.port === 'number' ? body.port : undefined;
+        const records = Array.isArray(body.records) ? body.records : [];
+        if (!ipAddress) return c.json({ success: false, message: 'ipAddress gerekli' }, 400);
+        if (!records.length) return c.json({ success: false, message: 'records boş' }, 400);
+        const { rongtaTcpSendPlu } = await import('./rongtaTcpNode');
+        const result = await rongtaTcpSendPlu(ipAddress, port, records);
+        return c.json(result);
+    } catch (error: any) {
+        console.error('[Rongta send-plu]', error);
+        return c.json({
+            success: false,
+            message: error?.message || 'send-plu failed',
+            sentCount: 0,
+            failedCount: 0,
+        }, 500);
+    }
+});
+
 /**
  * Paket servis: Yemeksepeti / Getir / aracı entegratör gibi dış sistemlerden sipariş oluşturma.
  * Güvenlik: DELIVERY_PUSH_TOKEN tanımlıysa Authorization: Bearer veya ?token= veya body.token

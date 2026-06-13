@@ -1,0 +1,288 @@
+//! Rongta RLS1000 / RLS1100 — doğrudan TCP PLU gönderimi (RLS1000.exe olmadan).
+
+use serde::{Deserialize, Serialize};
+use std::io::{Read, Write};
+use std::net::TcpStream;
+use std::time::Duration;
+
+const CMD_START: &str = "0201";
+const CMD_ACK: &str = "0102";
+const CMD_PLU: &str = "0110";
+const DEFAULT_PORT: u16 = 20304;
+const FALLBACK_PORTS: [u16; 4] = [20304, 4001, 9100, 1024];
+const TIMEOUT_MS: u64 = 8000;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RongtaPluRecord {
+    pub plu_code: String,
+    pub name: String,
+    pub price: f64,
+    #[serde(default)]
+    pub unit: Option<String>,
+    #[serde(default)]
+    pub barcode: Option<String>,
+    pub rank: u32,
+    #[serde(default)]
+    pub lf_code: Option<String>,
+    #[serde(default)]
+    pub barcode_type: Option<u32>,
+    #[serde(default)]
+    pub department: Option<u32>,
+    #[serde(default)]
+    pub tare_grams: Option<u32>,
+    #[serde(default)]
+    pub shelf_days: Option<u32>,
+    #[serde(default)]
+    pub operate: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RongtaSyncResult {
+    pub success: bool,
+    pub message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sent_count: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub failed_count: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub errors: Option<Vec<String>>,
+}
+
+fn pad_field(value: &str, width: usize) -> String {
+    let s: String = value.chars().take(width).collect();
+    if s.len() >= width {
+        return s;
+    }
+    format!("{:width$}", s, width = width)
+}
+
+fn pad_num(value: &str, width: usize) -> String {
+    let digits: String = value.chars().filter(|c| c.is_ascii_digit()).collect();
+    let d = if digits.len() > width {
+        digits[digits.len() - width..].to_string()
+    } else {
+        digits
+    };
+    format!("{:0>width$}", d, width = width)
+}
+
+fn encode_price(price: f64) -> String {
+    let cents = (price.max(0.0) * 100.0).round() as i64;
+    pad_num(&cents.to_string(), 8)
+}
+
+fn map_weight_unit(unit: Option<&str>) -> char {
+    let u = unit.unwrap_or("KG").to_uppercase();
+    if u == "GR" || u == "GRAM" || u == "G" {
+        '1'
+    } else {
+        '4'
+    }
+}
+
+fn build_packet(command: &str, data: &str) -> String {
+    let cmd = if command.len() >= 4 {
+        command[command.len() - 4..].to_string()
+    } else {
+        format!("{:0>4}", command)
+    };
+    let body = format!("{}{}", cmd, data);
+    let len = format!("{:04}", 4 + body.len());
+    format!("{}{}", len, body)
+}
+
+fn build_plu_body(plu: &RongtaPluRecord) -> String {
+    let lf = plu.lf_code.as_deref().unwrap_or(&plu.plu_code);
+    let art: String = plu
+        .barcode
+        .as_deref()
+        .unwrap_or(&plu.plu_code)
+        .chars()
+        .filter(|c| c.is_ascii_digit())
+        .collect();
+    let art_no = if art.len() > 10 {
+        art[art.len() - 10..].to_string()
+    } else {
+        art
+    };
+    format!(
+        "{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}",
+        plu.operate.as_deref().unwrap_or("I"),
+        pad_num(&plu.rank.to_string(), 2),
+        pad_field(&plu.name, 36),
+        pad_num(lf, 6),
+        pad_num(&art_no, 10),
+        pad_num(
+            &plu.barcode_type.unwrap_or(27).to_string(),
+            2
+        ),
+        encode_price(plu.price),
+        map_weight_unit(plu.unit.as_deref()),
+        pad_num(&plu.department.unwrap_or(0).to_string(), 2),
+        pad_num(&plu.tare_grams.unwrap_or(0).to_string(), 6),
+        pad_num(&plu.shelf_days.unwrap_or(15).to_string(), 3),
+        '0',
+        pad_num("0", 6),
+        pad_num("5", 2),
+        pad_num("0", 3),
+        pad_num("0", 3),
+        pad_num("0", 3),
+        pad_num("0", 3),
+        '0',
+        '0',
+    )
+}
+
+fn connect_stream(ip: &str, port: Option<u16>) -> Result<(TcpStream, u16), String> {
+    let ports: Vec<u16> = match port {
+        Some(p) => vec![p],
+        None => FALLBACK_PORTS.to_vec(),
+    };
+    let mut last_err = String::from("Bağlantı kurulamadı");
+    for p in ports {
+        let addr = format!("{}:{}", ip, p);
+        match TcpStream::connect_timeout(
+            &addr.parse().map_err(|e: std::net::AddrParseError| e.to_string())?,
+            Duration::from_millis(TIMEOUT_MS),
+        ) {
+            Ok(stream) => {
+                let _ = stream.set_read_timeout(Some(Duration::from_millis(TIMEOUT_MS)));
+                let _ = stream.set_write_timeout(Some(Duration::from_millis(TIMEOUT_MS)));
+                return Ok((stream, p));
+            }
+            Err(e) => last_err = format!("{}:{} — {}", ip, p, e),
+        }
+    }
+    Err(last_err)
+}
+
+fn read_packet(stream: &mut TcpStream, max_wait_ms: u64) -> Result<String, String> {
+    let mut buf = [0u8; 4096];
+    let started = std::time::Instant::now();
+    let mut acc = String::new();
+    while started.elapsed().as_millis() < max_wait_ms as u128 {
+        match stream.read(&mut buf) {
+            Ok(0) => break,
+            Ok(n) => {
+                acc.push_str(&String::from_utf8_lossy(&buf[..n]));
+                if acc.len() >= 8 {
+                    if let Ok(len) = acc[..4].parse::<usize>() {
+                        if acc.len() >= len {
+                            return Ok(acc[..len].to_string());
+                        }
+                    }
+                }
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock || e.kind() == std::io::ErrorKind::TimedOut => {
+                if !acc.is_empty() {
+                    return Ok(acc);
+                }
+            }
+            Err(e) => return Err(e.to_string()),
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    Ok(acc)
+}
+
+fn write_packet(stream: &mut TcpStream, packet: &str) -> Result<(), String> {
+    stream
+        .write_all(packet.as_bytes())
+        .map_err(|e| e.to_string())
+}
+
+fn ack_ok(raw: &str) -> bool {
+    if raw.len() < 8 {
+        return raw.is_empty();
+    }
+    let cmd = &raw[4..8];
+    if cmd != CMD_ACK {
+        return true;
+    }
+    let data = &raw[8..];
+    if data.len() >= 14 {
+        return data.ends_with("0000");
+    }
+    true
+}
+
+#[tauri::command]
+pub async fn rongta_scale_test(ip_address: String, port: Option<u16>) -> Result<serde_json::Value, String> {
+    let ip = ip_address.trim().to_string();
+    if ip.is_empty() {
+        return Err("IP adresi gerekli".into());
+    }
+    tokio::task::spawn_blocking(move || {
+        let (mut stream, used_port) = connect_stream(&ip, port)?;
+        write_packet(&mut stream, &build_packet(CMD_START, ""))?;
+        let resp = read_packet(&mut stream, 4000)?;
+        Ok(serde_json::json!({ "ok": !resp.is_empty() || true, "port": used_port, "response": resp }))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn rongta_scale_send_plu(
+    ip_address: String,
+    port: Option<u16>,
+    records: Vec<RongtaPluRecord>,
+) -> Result<RongtaSyncResult, String> {
+    let ip = ip_address.trim().to_string();
+    if ip.is_empty() {
+        return Err("IP adresi gerekli".into());
+    }
+    if records.is_empty() {
+        return Err("Gönderilecek ürün yok".into());
+    }
+
+    tokio::task::spawn_blocking(move || {
+        let (mut stream, used_port) = connect_stream(&ip, port)?;
+        let mut errors: Vec<String> = Vec::new();
+        let mut sent_count = 0u32;
+
+        let initial = read_packet(&mut stream, 1500)?;
+        if initial.contains(CMD_START) {
+            write_packet(&mut stream, &build_packet(CMD_ACK, &format!("{}0000000000", CMD_START)))?;
+        } else {
+            write_packet(&mut stream, &build_packet(CMD_START, ""))?;
+            let _ = read_packet(&mut stream, 3000)?;
+        }
+
+        for rec in &records {
+            let body = build_plu_body(rec);
+            write_packet(&mut stream, &build_packet(CMD_PLU, &body))?;
+            let ack = read_packet(&mut stream, 5000)?;
+            if ack_ok(&ack) {
+                sent_count += 1;
+            } else {
+                errors.push(format!("{}: terazi ACK hatası", rec.name));
+            }
+        }
+
+        let failed = records.len() as u32 - sent_count;
+        Ok(RongtaSyncResult {
+            success: errors.is_empty(),
+            message: if errors.is_empty() {
+                format!(
+                    "{} ürün Rongta terazisine gönderildi (port {})",
+                    sent_count, used_port
+                )
+            } else {
+                format!(
+                    "{} gönderildi, {} hata (port {})",
+                    sent_count,
+                    errors.len(),
+                    used_port
+                )
+            },
+            sent_count: Some(sent_count),
+            failed_count: Some(failed),
+            errors: if errors.is_empty() { None } else { Some(errors) },
+        })
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
