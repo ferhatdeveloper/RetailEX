@@ -26,6 +26,9 @@ export const LOGO_DEFAULT_CLIENT_SECRET = 'r1k1C+lyPK6BKFkrLdA3IFXawk2fiuFdCqbrM
 export const LOGO_DEFAULT_USERNAME = 'LOGO';
 export const LOGO_DEFAULT_PASSWORD = '2661';
 
+/** Logo Tiger REST — tek istekte en fazla 25 kayıt (sunucu doğrulaması) */
+export const LOGO_REST_MAX_PAGE_SIZE = 25;
+
 /** Önemli kaynaklar — describe listesinden seçilmiş */
 export const LOGO_KEY_RESOURCES = [
   'items',
@@ -744,8 +747,12 @@ export async function logoListResource<T = unknown>(
   const session = await logoEnsureSession(cfg);
   const baseUrl = requireBaseUrl(cfg);
   const query: Record<string, string> = {};
-  if (opts.limit != null) query.limit = String(opts.limit);
-  if (opts.offset != null) query.offset = String(opts.offset);
+  const limit =
+    opts.limit != null
+      ? Math.min(Math.max(1, Math.floor(opts.limit)), LOGO_REST_MAX_PAGE_SIZE)
+      : undefined;
+  if (limit != null) query.limit = String(limit);
+  if (opts.offset != null) query.offset = String(Math.max(0, Math.floor(opts.offset)));
   if (opts.q) query.q = opts.q;
   if (opts.withCount) query.withCount = 'true';
   if (opts.expandLevel) query.expandLevel = opts.expandLevel;
@@ -755,8 +762,22 @@ export async function logoListResource<T = unknown>(
     query,
   });
   if (!res.ok) {
-    const err = res.data as { message?: string; error?: string };
-    throw new Error(err?.message || err?.error || `${resource} listesi HTTP ${res.status}`);
+    const err = res.data as {
+      message?: string;
+      Message?: string;
+      error?: string;
+      ModelState?: Record<string, string[]>;
+    };
+    const modelMsg = err?.ModelState
+      ? Object.values(err.ModelState).flat().join('; ')
+      : '';
+    throw new Error(
+      modelMsg ||
+        err?.message ||
+        err?.Message ||
+        err?.error ||
+        `${resource} listesi HTTP ${res.status}`
+    );
   }
   return {
     count: extractCount(res.data),
@@ -846,7 +867,10 @@ export async function logoFetchAllPaginated<T = unknown>(
   resource: LogoResourceName,
   opts: { pageSize?: number; maxPages?: number; q?: string } = {}
 ): Promise<T[]> {
-  const pageSize = opts.pageSize ?? 25;
+  const pageSize = Math.min(
+    opts.pageSize ?? LOGO_REST_MAX_PAGE_SIZE,
+    LOGO_REST_MAX_PAGE_SIZE
+  );
   const maxPages = opts.maxPages ?? 200;
   const all: T[] = [];
   for (let page = 0; page < maxPages; page++) {

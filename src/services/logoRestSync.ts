@@ -262,7 +262,6 @@ export async function syncLogoProductsFromRest(
   onProgress?.({ phase: 'products', message: 'Logo stok kartları okunuyor…', current: 0 });
 
   const rawItems = await logoFetchAllPaginated<unknown>(cfg, 'items', {
-    pageSize: 100,
     maxPages: 500,
   });
 
@@ -318,7 +317,6 @@ export async function syncLogoArpsFromRest(
   onProgress?.({ phase: 'customers', message: 'Logo cari hesaplar okunuyor…' });
 
   const rawArps = await logoFetchAllPaginated<unknown>(cfg, 'Arps', {
-    pageSize: 100,
     maxPages: 500,
   });
 
