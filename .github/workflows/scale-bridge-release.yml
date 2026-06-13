@@ -59,6 +59,7 @@ jobs:
         env:
           CI: 'true'
           STRICT_CI: '1'
+          RUSTFLAGS: '-C target-feature=+crt-static'
         run: |
           powershell -ExecutionPolicy Bypass -File scripts/scale-bridge/build-windows-installer.ps1
 

@@ -38,6 +38,7 @@ Name: "turkish"; MessagesFile: "compiler:Languages\Turkish.isl"
 Name: "desktopicon"; Description: "Masaüstü kısayolu oluştur"; GroupDescription: "Ek kısayollar:"; Flags: unchecked
 
 [Files]
+Source: "staging\vc_redist.x64.exe"; DestDir: "{tmp}"; Flags: deleteafterinstall
 Source: "staging\RetailEX_Scale_Bridge.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "staging\RetailEX_ScaleBridge_Manager.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "staging\node\node.exe"; DestDir: "{app}\node"; Flags: ignoreversion
@@ -53,6 +54,7 @@ Name: "{group}\Terazi Köprüsü Kaldır"; Filename: "{app}\{#MyAppExeName}"; Pa
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
 
 [Run]
+Filename: "{tmp}\vc_redist.x64.exe"; Parameters: "/install /quiet /norestart"; StatusMsg: "Visual C++ Runtime kuruluyor…"; Flags: waituntilterminated
 Filename: "{app}\{#MyAppExeName}"; Parameters: "--install"; StatusMsg: "Windows servisi kuruluyor…"; Flags: waituntilterminated
 Filename: "{app}\{#MyAppExeName}"; Description: "Terazi Köprüsü yönetim arayüzünü aç"; Flags: postinstall nowait skipifsilent
 

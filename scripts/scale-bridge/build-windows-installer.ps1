@@ -29,10 +29,12 @@ if (-not (Get-Command cargo -ErrorAction SilentlyContinue)) {
     Write-Error 'Rust cargo gerekli: https://rustup.rs'
 }
 
-Write-Host '1) Rust release derleme...'
+Write-Host '1) Rust release derleme (statik CRT - VCRUNTIME140.dll gerekmez)...'
+$env:RUSTFLAGS = '-C target-feature=+crt-static'
 Push-Location $DeskApp
 cargo build --release --bin RetailEX_Scale_Bridge --bin RetailEX_ScaleBridge_Manager
 Pop-Location
+Remove-Item Env:RUSTFLAGS -ErrorAction SilentlyContinue
 
 Write-Host '2) Staging dizini...'
 if (Test-Path $Staging) { Remove-Item -Recurse -Force $Staging }
@@ -55,6 +57,12 @@ if (-not (Test-Path (Join-Path $NodeDir 'node.exe'))) {
     Invoke-WebRequest -Uri $NodeUrl -OutFile $NodeZip
     Expand-Archive -Path $NodeZip -DestinationPath $env:TEMP -Force
     Copy-Item -Force (Join-Path $env:TEMP "node-$NodeVer-win-x64\node.exe") (Join-Path $NodeDir 'node.exe')
+}
+
+Write-Host '3b) Visual C++ Redistributable (VCRUNTIME140.dll)...'
+$VcRedist = Join-Path $Staging 'vc_redist.x64.exe'
+if (-not (Test-Path $VcRedist)) {
+    Invoke-WebRequest -Uri 'https://aka.ms/vs/17/release/vc_redist.x64.exe' -OutFile $VcRedist
 }
 
 Write-Host '4) Inno Setup...'

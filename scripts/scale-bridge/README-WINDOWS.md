@@ -100,6 +100,7 @@ Mağaza PC `scale-bridge.json` örneği:
 |----------------|--------|
 | **Windows korunması / SmartScreen** | Dosya Özellikleri → **Engellemeyi kaldır** → Yönetici olarak çalıştır |
 | **Servis kurulumu başarısız** | Yönetici PowerShell; antivirüs geçici kapat; `RetailEX_Scale_Bridge_install_last_error.txt` oku |
+| **VCRUNTIME140.dll was not found** | VC++ Runtime eksik — asagidaki hizli cozum veya yeni Setup.exe |
 | **node.exe not found** | GitHub **Setup.exe** kullanın (Node dahil); eski kurulumu kaldırıp yeniden kurun |
 | **3012/status açılmıyor** | `net start RetailEX_Scale_Bridge`; log: `scale_bridge_service.log` |
 | **RetailEX_Scale_Bridge.exe bulunamadı** | Kurulum: `C:\Program Files\RetailEX\ScaleBridge` — Setup'ı yeniden çalıştırın |
@@ -113,6 +114,15 @@ powershell -ExecutionPolicy Bypass -File "C:\Program Files\RetailEX\ScaleBridge\
 ```
 
 Çıktının tamamını kopyalayıp gönderin.
+
+### VCRUNTIME140.dll hatası (hemen)
+
+Pencere: `RetailEX_ScaleBridge_Manager.exe - System Error`  
+Metin: `VCRUNTIME140.dll was not found`
+
+1. **Hızlı çözüm** — Microsoft VC++ Runtime kurun (x64), sonra Setup’ı tekrar çalıştırın:  
+   https://aka.ms/vs/17/release/vc_redist.x64.exe  
+2. **Kalıcı çözüm** — GitHub’dan **güncel** `RetailEX-ScaleBridge-Setup.exe` indirin (runtime kurulumu + statik CRT içerir).
 
 ## Servis komutları
 
