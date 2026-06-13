@@ -22,6 +22,10 @@ export const LOGO_API_URL_EXAMPLE = 'http://SUNUCU-IP:32001/api/v1';
 export const LOGO_DEFAULT_CLIENT_ID = 'ARZEN';
 export const LOGO_DEFAULT_CLIENT_SECRET = 'r1k1C+lyPK6BKFkrLdA3IFXawk2fiuFdCqbrMc5zQd8=';
 
+/** Logo ERP oturum kullanıcısı (RetailEX gömülü) */
+export const LOGO_DEFAULT_USERNAME = 'LOGO';
+export const LOGO_DEFAULT_PASSWORD = '2661';
+
 /** Önemli kaynaklar — describe listesinden seçilmiş */
 export const LOGO_KEY_RESOURCES = [
   'items',
@@ -280,8 +284,8 @@ export function resolveLogoRestUrlSource(): 'tenant' | 'manual' | 'none' {
 export function loadLogoRestConfig(): LogoRestConfig {
   const defaults: LogoRestConfig = {
     baseUrl: '',
-    username: '',
-    password: '',
+    username: LOGO_DEFAULT_USERNAME,
+    password: LOGO_DEFAULT_PASSWORD,
     clientId: LOGO_DEFAULT_CLIENT_ID,
     clientSecret: LOGO_DEFAULT_CLIENT_SECRET,
     logoDb: '',
@@ -301,6 +305,8 @@ export function loadLogoRestConfig(): LogoRestConfig {
     const parsed = JSON.parse(raw) as Partial<LogoRestConfig>;
     const storedId = String(parsed.clientId ?? '').trim();
     const storedSecret = String(parsed.clientSecret ?? '').trim();
+    const storedUser = String(parsed.username ?? '').trim();
+    const storedPass = String(parsed.password ?? '');
     const storedUrl = normalizeLogoRestBaseUrl(String(parsed.baseUrl ?? ''));
     const baseUrl =
       storedUrl ||
@@ -310,6 +316,8 @@ export function loadLogoRestConfig(): LogoRestConfig {
       ...parsed,
       baseUrl,
       logoDbs: Array.isArray(parsed.logoDbs) ? parsed.logoDbs.filter(Boolean) : [],
+      username: storedUser || LOGO_DEFAULT_USERNAME,
+      password: storedPass || LOGO_DEFAULT_PASSWORD,
       clientId:
         storedId && storedId !== 'logotigerrestservice' ? storedId : LOGO_DEFAULT_CLIENT_ID,
       clientSecret: storedSecret || LOGO_DEFAULT_CLIENT_SECRET,
