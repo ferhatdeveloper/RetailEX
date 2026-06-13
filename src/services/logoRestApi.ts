@@ -537,6 +537,34 @@ export async function logoObtainToken(
   };
 }
 
+async function logoGetCurrentFirmPeriod(
+  cfg: LogoRestConfig,
+  session: LogoRestSession
+): Promise<{ firm: number | null; period: number | null }> {
+  const baseUrl = requireBaseUrl(cfg);
+  const auth = { Authorization: `Bearer ${session.accessToken}` };
+  const firmRes = await logoHttp(baseUrl, 'GET', '/methods/CurrentFirm', { headers: auth });
+  const periodRes = await logoHttp(baseUrl, 'GET', '/methods/CurrentPeriod', { headers: auth });
+  const firm = typeof firmRes.data === 'number' ? firmRes.data : null;
+  const period = typeof periodRes.data === 'number' ? periodRes.data : null;
+  return { firm, period };
+}
+
+function isAlreadyConnectedError(text: string, data: unknown): boolean {
+  const blob = `${text} ${JSON.stringify(data ?? '')}`.toLowerCase();
+  return blob.includes('already connected');
+}
+
+export async function logoCompanyLogout(
+  cfg: LogoRestConfig,
+  session: LogoRestSession
+): Promise<void> {
+  const baseUrl = requireBaseUrl(cfg);
+  await logoHttp(baseUrl, 'GET', '/methods/CompanyLogout', {
+    headers: { Authorization: `Bearer ${session.accessToken}` },
+  }).catch(() => {});
+}
+
 export async function logoCompanyLogin(
   cfg: LogoRestConfig,
   session: LogoRestSession,
@@ -544,13 +572,40 @@ export async function logoCompanyLogin(
   periodNr: number
 ): Promise<LogoRestSession> {
   const baseUrl = requireBaseUrl(cfg);
-  const loginRes = await logoHttp(baseUrl, 'GET', `/methods/CompanyLogin/${firmNr}/${periodNr}`, {
-    headers: { Authorization: `Bearer ${session.accessToken}` },
-  });
+  const auth = { Authorization: `Bearer ${session.accessToken}` };
 
-  if (!loginRes.ok) {
+  const current = await logoGetCurrentFirmPeriod(cfg, session);
+  if (current.firm === firmNr && current.period === periodNr) {
+    const next: LogoRestSession = { ...session, firmNr, periodNr };
+    saveLogoRestSession(next);
+    return next;
+  }
+
+  await logoCompanyLogout(cfg, session);
+
+  const tryLogin = async (): Promise<{ ok: boolean; status: number; text: string; data: unknown }> => {
+    const loginRes = await logoHttp(baseUrl, 'GET', `/methods/CompanyLogin/${firmNr}/${periodNr}`, {
+      headers: auth,
+    });
+    return { ok: loginRes.ok, status: loginRes.status, text: loginRes.text, data: loginRes.data };
+  };
+
+  let login = await tryLogin();
+
+  if (!login.ok && isAlreadyConnectedError(login.text, login.data)) {
+    const after = await logoGetCurrentFirmPeriod(cfg, session);
+    if (after.firm === firmNr && after.period === periodNr) {
+      const next: LogoRestSession = { ...session, firmNr, periodNr };
+      saveLogoRestSession(next);
+      return next;
+    }
+    await logoCompanyLogout(cfg, session);
+    login = await tryLogin();
+  }
+
+  if (!login.ok) {
     throw new Error(
-      `CompanyLogin(${firmNr}/${periodNr}) HTTP ${loginRes.status} — ${loginRes.text?.slice(0, 200)}`
+      `CompanyLogin(${firmNr}/${periodNr}) HTTP ${login.status} — ${login.text?.slice(0, 300)}`
     );
   }
 
@@ -623,6 +678,7 @@ export async function logoCheckDatabase(cfg: LogoRestConfig, dbName: string): Pr
 export async function logoRevokeSession(cfg: LogoRestConfig): Promise<void> {
   const session = loadLogoRestSession();
   if (session?.accessToken) {
+    await logoCompanyLogout(cfg, session).catch(() => {});
     await logoHttp(requireBaseUrl(cfg), 'GET', '/revoke', {
       headers: { Authorization: `Bearer ${session.accessToken}` },
     }).catch(() => {});
