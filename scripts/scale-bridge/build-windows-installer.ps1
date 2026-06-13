@@ -21,7 +21,7 @@ if (-not $env:PACKAGE_VERSION) {
     $env:PACKAGE_VERSION = node -p "require('$Root/package.json').version"
 }
 $AppVersion = $env:PACKAGE_VERSION
-Write-Host "Sürüm: $AppVersion"
+Write-Host "Surum: $AppVersion"
 
 Write-Host '== RetailEX Scale Bridge installer build =='
 
@@ -69,9 +69,9 @@ if (Get-Command iscc -ErrorAction SilentlyContinue) {
 
 if (-not $IsccPath) {
     if ($StrictCi) {
-        Write-Error 'Inno Setup (iscc) bulunamadı.'
+        Write-Error 'Inno Setup (iscc) bulunamadi.'
     }
-    Write-Warning 'Inno Setup (iscc) bulunamadı. Staging hazır; ISS dosyasını Inno Setup IDE ile derleyin:'
+    Write-Warning 'Inno Setup (iscc) bulunamadi. Staging hazir; ISS dosyasini Inno Setup IDE ile derleyin:'
     Write-Host "  scripts\scale-bridge\installer\RetailEX.ScaleBridge.iss"
     exit 0
 }
@@ -88,5 +88,5 @@ if (-not (Test-Path $SetupExe)) {
 
 Write-Host ''
 Write-Host "TAMAMLANDI: $SetupExe"
-Write-Host 'Mağaza PC: Setup çalıştır → servis + yönetim UI otomatik açılır.'
-Write-Host 'Yönetim: http://127.0.0.1:3012/ui/'
+Write-Host 'Magaza PC: Setup calistir -> servis + yonetim UI acilir.'
+Write-Host 'Yonetim: http://127.0.0.1:3012/ui/'
