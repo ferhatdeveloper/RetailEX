@@ -1,8 +1,5 @@
 /**
  * Logo Tiger REST → RetailEX veri senkronizasyonu
- * MSSQL sync_logo_data (DeskApp/mssql.rs) ile aynı hedef tablolar:
- *   /items  → rex_{firm}_products
- *   /Arps   → rex_{firm}_customers / rex_{firm}_suppliers (CARDTYPE)
  */
 
 import {
@@ -12,19 +9,34 @@ import {
   resolveLogoContext,
   type LogoRestConfig,
 } from './logoRestApi';
+import { productAPI } from './api/products';
+import { customerAPI } from './api/customers';
+import { supplierAPI } from './api/suppliers';
 import { DB_SETTINGS, ERP_SETTINGS, postgres } from './postgres';
+
+export type LogoSyncLogEntry = {
+  at: string;
+  entity: 'product' | 'customer' | 'supplier' | 'invoice' | 'system';
+  action: 'read' | 'create' | 'update' | 'skip' | 'error';
+  code: string;
+  name?: string;
+  detail?: string;
+  ok: boolean;
+};
 
 export type LogoSyncProgress = {
   phase: 'prepare' | 'products' | 'customers' | 'suppliers' | 'done' | 'error';
   message: string;
   current?: number;
   total?: number;
+  lastLog?: LogoSyncLogEntry;
 };
 
 export type LogoSyncEntityResult = {
   fetched: number;
   upserted: number;
   errors: number;
+  skipped: number;
 };
 
 export type LogoSyncOptions = {
@@ -33,6 +45,7 @@ export type LogoSyncOptions = {
   suppliers?: boolean;
   pageSize?: number;
   maxPages?: number;
+  onLog?: (entry: LogoSyncLogEntry) => void;
 };
 
 export type LogoSyncResult = {
@@ -44,7 +57,7 @@ export type LogoSyncResult = {
   error?: string;
 };
 
-const BATCH_SIZE = 50;
+const LOG_EVERY = 10;
 
 function firmNrPadded(): string {
   const raw = String(ERP_SETTINGS.firmNr || '001').replace(/\D/g, '') || '1';
@@ -59,6 +72,15 @@ function numVal(v: unknown, fallback = 0): number {
   if (v == null || v === '') return fallback;
   const n = Number(v);
   return Number.isFinite(n) ? n : fallback;
+}
+
+function nowLog(
+  onLog: LogoSyncOptions['onLog'],
+  entry: Omit<LogoSyncLogEntry, 'at'>
+): LogoSyncLogEntry {
+  const full: LogoSyncLogEntry = { ...entry, at: new Date().toISOString() };
+  onLog?.(full);
+  return full;
 }
 
 function unwrapLogoRecord(raw: unknown): Record<string, unknown> {
@@ -85,110 +107,42 @@ function logoField(rec: Record<string, unknown>, ...keys: string[]): unknown {
   return undefined;
 }
 
-function arpCardType(rec: Record<string, unknown>): number {
-  const v = logoField(rec, 'CARDTYPE', 'CARD_TYPE', 'cardType', 'cardtype');
-  return Math.round(numVal(v, 0));
-}
+/** Logo REST: CARDTYPE yok; ACCOUNT_TYPE kullanılır */
+function resolveArpRoles(rec: Record<string, unknown>): { customer: boolean; supplier: boolean } {
+  const cardType = Math.round(numVal(logoField(rec, 'CARDTYPE', 'CARD_TYPE', 'cardType'), -1));
+  if (cardType === 1) return { customer: true, supplier: false };
+  if (cardType === 2) return { customer: false, supplier: true };
+  if (cardType === 3) return { customer: true, supplier: true };
 
-function isCustomerCard(cardType: number): boolean {
-  return cardType === 1 || cardType === 3;
-}
-
-function isSupplierCard(cardType: number): boolean {
-  return cardType === 2 || cardType === 3;
+  const accountType = Math.round(numVal(logoField(rec, 'ACCOUNT_TYPE', 'accountType'), -1));
+  // Logo REST örnekleri: 3=müşteri/tedarikçi, 22=özel kart
+  if (accountType === 1) return { customer: false, supplier: true };
+  if (accountType === 2) return { customer: true, supplier: false };
+  if (accountType === 3 || accountType === 22) return { customer: true, supplier: true };
+  if (accountType <= 0) return { customer: true, supplier: false };
+  return { customer: true, supplier: accountType === 4 };
 }
 
 async function ensureFirmTables(firmNr: string): Promise<void> {
   await postgres.query('SELECT public.CREATE_FIRM_TABLES($1)', [firmNr]);
 }
 
-async function upsertRowsSql(
-  table: string,
-  rows: Record<string, unknown>[],
-  conflictCol: string,
-  updateCols: string[]
-): Promise<{ upserted: number; errors: number }> {
-  if (rows.length === 0) return { upserted: 0, errors: 0 };
-
-  let upserted = 0;
-  let errors = 0;
-
-  for (let i = 0; i < rows.length; i += BATCH_SIZE) {
-    const batch = rows.slice(i, i + BATCH_SIZE);
-    for (const row of batch) {
-      const cols = Object.keys(row);
-      const vals = cols.map((c) => row[c]);
-      const placeholders = cols.map((_, idx) => `$${idx + 1}`).join(', ');
-      const setClause = updateCols.map((c) => `${c} = EXCLUDED.${c}`).join(', ');
-      const sql = `
-        INSERT INTO ${table} (${cols.join(', ')})
-        VALUES (${placeholders})
-        ON CONFLICT (${conflictCol}) DO UPDATE SET ${setClause}
-      `;
-      try {
-        await postgres.query(sql, vals);
-        upserted += 1;
-      } catch (e) {
-        errors += 1;
-        console.warn(`[LogoRestSync] SQL upsert hata (${table}):`, e);
-      }
-    }
-  }
-
-  return { upserted, errors };
-}
-
-async function upsertRowsPostgrest(
-  table: string,
-  rows: Record<string, unknown>[],
-  conflictCol: string
-): Promise<{ upserted: number; errors: number }> {
-  if (rows.length === 0) return { upserted: 0, errors: 0 };
-
-  const { getPostgrestUrl } = await import('../config/postgrest.config');
-  const { fetchRetailexAware } = await import('../utils/retailexDevProxy');
-  let upserted = 0;
-  let errors = 0;
-
-  for (let i = 0; i < rows.length; i += BATCH_SIZE) {
-    const batch = rows.slice(i, i + BATCH_SIZE);
-    try {
-      const res = await fetchRetailexAware(getPostgrestUrl(`/${table}`), {
-        method: 'POST',
-        headers: {
-          Accept: 'application/json',
-          'Content-Type': 'application/json',
-          'Accept-Profile': 'public',
-          'Content-Profile': 'public',
-          Prefer: 'resolution=merge-duplicates,return=minimal',
-          'On-Conflict': conflictCol,
-        },
-        body: JSON.stringify(batch),
-      });
-      if (!res.ok) {
-        const text = await res.text();
-        throw new Error(`${res.status} ${text.slice(0, 200)}`);
-      }
-      upserted += batch.length;
-    } catch (e) {
-      errors += batch.length;
-      console.warn(`[LogoRestSync] PostgREST upsert hata (${table}):`, e);
-    }
-  }
-
-  return { upserted, errors };
-}
-
-async function upsertRows(
-  table: string,
-  rows: Record<string, unknown>[],
-  conflictCol: string,
-  updateCols: string[]
-): Promise<{ upserted: number; errors: number }> {
+async function findCustomerByCode(code: string): Promise<{ id: string } | null> {
+  const table = `rex_${ERP_SETTINGS.firmNr}_customers`;
   if (DB_SETTINGS.connectionProvider === 'rest_api') {
-    return upsertRowsPostgrest(table, rows, conflictCol);
+    const { postgrest } = await import('./api/postgrestClient');
+    const rows = await postgrest.get<{ id: string }[]>(
+      `/${table}`,
+      { select: 'id', code: `eq.${code}`, firm_nr: `eq.${ERP_SETTINGS.firmNr}`, limit: 1 },
+      { schema: 'public' }
+    );
+    return Array.isArray(rows) && rows[0]?.id ? rows[0] : null;
   }
-  return upsertRowsSql(table, rows, conflictCol, updateCols);
+  const { rows } = await postgres.query<{ id: string }>(
+    `SELECT id FROM ${table} WHERE code = $1 AND firm_nr = $2 LIMIT 1`,
+    [code, ERP_SETTINGS.firmNr]
+  );
+  return rows[0] ?? null;
 }
 
 function mapLogoItem(rec: Record<string, unknown>, firmNr: string): Record<string, unknown> | null {
@@ -196,7 +150,6 @@ function mapLogoItem(rec: Record<string, unknown>, firmNr: string): Record<strin
   if (!code) return null;
 
   const name = trunc(logoField(rec, 'NAME', 'name', 'DESCRIPTION', 'description'), 255) || 'İsimsiz';
-  const refId = Math.round(numVal(logoField(rec, 'INTERNAL_REFERENCE', 'LOGICALREF', 'internalReference'), 0));
   const barcode = trunc(logoField(rec, 'BARCODE', 'barcode'), 100);
   const vat = numVal(logoField(rec, 'VAT', 'SELLVAT', 'vat', 'sellvat'), 18);
   const price = numVal(logoField(rec, 'PRICE', 'SELLPRICE', 'price', 'sellprice'), 0);
@@ -205,78 +158,282 @@ function mapLogoItem(rec: Record<string, unknown>, firmNr: string): Record<strin
   const activeFlag = numVal(logoField(rec, 'ACTIVE', 'active'), 0);
   const isActive = cancelled !== 1 && activeFlag !== 1;
 
-  const row: Record<string, unknown> = {
+  return {
     firm_nr: firmNr,
     code,
     name,
+    barcode: barcode || `L${code}`.slice(0, 100),
     vat_rate: vat,
     unit,
     price,
     is_active: isActive,
   };
-  if (refId > 0) row.ref_id = refId;
-  if (barcode) row.barcode = barcode;
-
-  return row;
 }
 
-function mapLogoCustomer(rec: Record<string, unknown>, firmNr: string): Record<string, unknown> | null {
+function mapLogoArp(rec: Record<string, unknown>, firmNr: string): Record<string, unknown> | null {
   const code = trunc(logoField(rec, 'CODE', 'code'), 50);
   if (!code) return null;
 
   const name =
     trunc(logoField(rec, 'TITLE', 'DEFINITION_', 'NAME', 'title', 'definition', 'name'), 255) || 'İsimsiz';
-  const phone = trunc(logoField(rec, 'TELNRS', 'TELNRS2', 'PHONE', 'phone'), 50);
-  const email = trunc(logoField(rec, 'EMAILADDR', 'EMAIL', 'email'), 255);
-  const taxNr = trunc(logoField(rec, 'TAXNR', 'TAX_ID', 'taxnr'), 50);
-  const taxOffice = trunc(logoField(rec, 'TAXOFFICE', 'taxoffice'), 100);
-  const address = trunc(logoField(rec, 'ADDR1', 'ADDRESS', 'addr1', 'address'), 2000);
-  const city = trunc(logoField(rec, 'CITY', 'city'), 100);
 
   return {
     firm_nr: firmNr,
     code,
     name,
-    phone,
-    email,
-    tax_nr: taxNr,
-    tax_office: taxOffice,
-    address,
-    city,
+    phone: trunc(logoField(rec, 'TELNRS', 'TELNRS2', 'PHONE', 'phone'), 50),
+    email: trunc(logoField(rec, 'EMAILADDR', 'EMAIL', 'email'), 255),
+    tax_nr: trunc(logoField(rec, 'TAXNR', 'TAX_ID', 'taxnr'), 50),
+    tax_office: trunc(logoField(rec, 'TAXOFFICE', 'taxoffice'), 100),
+    address: trunc(logoField(rec, 'ADDR1', 'ADDRESS', 'addr1', 'address'), 2000),
+    city: trunc(logoField(rec, 'CITY', 'city'), 100),
     is_active: true,
   };
 }
 
-function mapLogoSupplier(rec: Record<string, unknown>, firmNr: string): Record<string, unknown> | null {
-  const base = mapLogoCustomer(rec, firmNr);
-  if (!base) return null;
-  return base;
+async function upsertProductsWithApi(
+  rows: Record<string, unknown>[],
+  onLog?: LogoSyncOptions['onLog'],
+  onProgress?: (p: LogoSyncProgress) => void
+): Promise<LogoSyncEntityResult> {
+  let upserted = 0;
+  let errors = 0;
+  let skipped = 0;
+  const total = rows.length;
+  let firstError = '';
+
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
+    const code = String(row.code || '');
+    const name = String(row.name || '');
+
+    try {
+      const existing = await productAPI.getByCode(code);
+      if (existing?.id) {
+        await productAPI.update(existing.id, {
+          name,
+          barcode: String(row.barcode || ''),
+          taxRate: numVal(row.vat_rate, 18),
+          price: numVal(row.price, 0),
+          unit: String(row.unit || 'Adet'),
+          isActive: row.is_active !== false,
+        } as never);
+        upserted += 1;
+        if (i % LOG_EVERY === 0 || i === total - 1) {
+          const lastLog = nowLog(onLog, {
+            entity: 'product',
+            action: 'update',
+            code,
+            name,
+            ok: true,
+          });
+          onProgress?.({
+            phase: 'products',
+            message: `Ürünler: ${upserted}/${total}`,
+            current: upserted,
+            total,
+            lastLog,
+          });
+        }
+      } else {
+        await productAPI.create({
+          code,
+          name,
+          barcode: String(row.barcode || `L${code}`).slice(0, 100),
+          taxRate: numVal(row.vat_rate, 18),
+          price: numVal(row.price, 0),
+          unit: String(row.unit || 'Adet'),
+          stock: 0,
+          cost: 0,
+          firm_nr: ERP_SETTINGS.firmNr,
+          isActive: row.is_active !== false,
+        } as never);
+        upserted += 1;
+        if (i % LOG_EVERY === 0 || i === total - 1) {
+          const lastLog = nowLog(onLog, {
+            entity: 'product',
+            action: 'create',
+            code,
+            name,
+            ok: true,
+          });
+          onProgress?.({
+            phase: 'products',
+            message: `Ürünler: ${upserted}/${total}`,
+            current: upserted,
+            total,
+            lastLog,
+          });
+        }
+      }
+    } catch (e: unknown) {
+      errors += 1;
+      const msg = e instanceof Error ? e.message : String(e);
+      if (!firstError) firstError = `${code}: ${msg}`;
+      nowLog(onLog, {
+        entity: 'product',
+        action: 'error',
+        code,
+        name,
+        detail: msg,
+        ok: false,
+      });
+    }
+  }
+
+  if (firstError && errors === total) {
+    throw new Error(`Ürün yazımı tamamen başarısız. İlk hata: ${firstError}`);
+  }
+
+  return { fetched: total, upserted, errors, skipped };
+}
+
+async function upsertCustomersWithApi(
+  rows: Record<string, unknown>[],
+  onLog?: LogoSyncOptions['onLog'],
+  onProgress?: (p: LogoSyncProgress) => void
+): Promise<LogoSyncEntityResult> {
+  let upserted = 0;
+  let errors = 0;
+  const total = rows.length;
+
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
+    const code = String(row.code || '');
+    const name = String(row.name || '');
+    try {
+      const existing = await findCustomerByCode(code);
+      if (existing?.id) {
+        await customerAPI.update(existing.id, {
+          name,
+          phone: String(row.phone || ''),
+          email: String(row.email || ''),
+          address: String(row.address || ''),
+          city: String(row.city || ''),
+          taxNumber: String(row.tax_nr || ''),
+          taxOffice: String(row.tax_office || ''),
+        } as never);
+        upserted += 1;
+        if (i % LOG_EVERY === 0 || i === total - 1) {
+          const lastLog = nowLog(onLog, { entity: 'customer', action: 'update', code, name, ok: true });
+          onProgress?.({
+            phase: 'customers',
+            message: `Cariler: ${upserted}/${total}`,
+            current: upserted,
+            total,
+            lastLog,
+          });
+        }
+      } else {
+        await customerAPI.create({
+          code,
+          name,
+          phone: String(row.phone || ''),
+          email: String(row.email || ''),
+          address: String(row.address || ''),
+          city: String(row.city || ''),
+          taxNumber: String(row.tax_nr || ''),
+          taxOffice: String(row.tax_office || ''),
+          firm_nr: ERP_SETTINGS.firmNr,
+        } as never);
+        upserted += 1;
+        if (i % LOG_EVERY === 0 || i === total - 1) {
+          const lastLog = nowLog(onLog, { entity: 'customer', action: 'create', code, name, ok: true });
+          onProgress?.({
+            phase: 'customers',
+            message: `Cariler: ${upserted}/${total}`,
+            current: upserted,
+            total,
+            lastLog,
+          });
+        }
+      }
+    } catch (e: unknown) {
+      errors += 1;
+      const msg = e instanceof Error ? e.message : String(e);
+      nowLog(onLog, { entity: 'customer', action: 'error', code, name, detail: msg, ok: false });
+    }
+  }
+
+  return { fetched: total, upserted, errors, skipped: 0 };
+}
+
+async function upsertSuppliersWithApi(
+  rows: Record<string, unknown>[],
+  onLog?: LogoSyncOptions['onLog'],
+  onProgress?: (p: LogoSyncProgress) => void
+): Promise<LogoSyncEntityResult> {
+  let upserted = 0;
+  let errors = 0;
+  const total = rows.length;
+
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
+    const code = String(row.code || '');
+    const name = String(row.name || '');
+    try {
+      const existing = await supplierAPI.getByCode(code);
+      if (existing?.id) {
+        await supplierAPI.update(existing.id, {
+          name,
+          phone: String(row.phone || ''),
+          email: String(row.email || ''),
+          address: String(row.address || ''),
+          city: String(row.city || ''),
+          tax_number: String(row.tax_nr || ''),
+          tax_office: String(row.tax_office || ''),
+        } as never);
+      } else {
+        await supplierAPI.create({
+          code,
+          name,
+          phone: String(row.phone || ''),
+          email: String(row.email || ''),
+          address: String(row.address || ''),
+          city: String(row.city || ''),
+          tax_number: String(row.tax_nr || ''),
+          tax_office: String(row.tax_office || ''),
+          cardType: 'supplier',
+          firm_nr: ERP_SETTINGS.firmNr,
+        } as never);
+      }
+      upserted += 1;
+      if (i % LOG_EVERY === 0 || i === total - 1) {
+        const lastLog = nowLog(onLog, { entity: 'supplier', action: 'update', code, name, ok: true });
+        onProgress?.({
+          phase: 'suppliers',
+          message: `Tedarikçiler: ${upserted}/${total}`,
+          current: upserted,
+          total,
+          lastLog,
+        });
+      }
+    } catch (e: unknown) {
+      errors += 1;
+      const msg = e instanceof Error ? e.message : String(e);
+      nowLog(onLog, { entity: 'supplier', action: 'error', code, name, detail: msg, ok: false });
+    }
+  }
+
+  return { fetched: total, upserted, errors, skipped: 0 };
 }
 
 export async function syncLogoProductsFromRest(
   cfg: LogoRestConfig,
+  options: Pick<LogoSyncOptions, 'onLog'> = {},
   onProgress?: (p: LogoSyncProgress) => void
 ): Promise<LogoSyncEntityResult> {
   const firmNr = firmNrPadded();
-  const table = `rex_${firmNr}_products`;
 
   onProgress?.({ phase: 'products', message: 'Logo stok kartları okunuyor…', current: 0 });
+  nowLog(options.onLog, { entity: 'system', action: 'read', code: 'items', detail: 'Logo /items okunuyor', ok: true });
 
-  try {
-    await logoListResource(cfg, 'items', { limit: 1, withCount: true });
-  } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : String(e);
-    throw new Error(`Logo ürün listesi ön kontrolü başarısız: ${msg}`);
-  }
+  await logoListResource(cfg, 'items', { limit: 1, withCount: true });
 
-  const rawItems = await logoFetchAllPaginated<unknown>(cfg, 'items', {
-    maxPages: 500,
-  });
-
+  const rawItems = await logoFetchAllPaginated<unknown>(cfg, 'items', { maxPages: 500 });
   const rows: Record<string, unknown>[] = [];
   for (const raw of rawItems) {
-    const rec = unwrapLogoRecord(raw);
-    const mapped = mapLogoItem(rec, firmNr);
+    const mapped = mapLogoItem(unwrapLogoRecord(raw), firmNr);
     if (mapped) rows.push(mapped);
   }
 
@@ -287,124 +444,67 @@ export async function syncLogoProductsFromRest(
     total: rows.length,
   });
 
-  const { upserted, errors } = await upsertRows(table, rows, 'code', [
-    'ref_id',
-    'name',
-    'barcode',
-    'vat_rate',
-    'price',
-    'unit',
-    'is_active',
-  ]);
+  const result = await upsertProductsWithApi(rows, options.onLog, onProgress);
 
   onProgress?.({
     phase: 'products',
-    message: `Ürünler tamamlandı: ${upserted} kayıt, ${errors} hata`,
-    current: upserted,
+    message: `Ürünler: ${result.upserted} OK, ${result.errors} hata`,
+    current: result.upserted,
     total: rows.length,
   });
 
-  return { fetched: rawItems.length, upserted, errors };
+  return { ...result, fetched: rawItems.length };
 }
 
 export async function syncLogoArpsFromRest(
   cfg: LogoRestConfig,
-  opts: { customers: boolean; suppliers: boolean },
+  opts: { customers: boolean; suppliers: boolean; onLog?: LogoSyncOptions['onLog'] },
   onProgress?: (p: LogoSyncProgress) => void
 ): Promise<{ customers: LogoSyncEntityResult; suppliers: LogoSyncEntityResult }> {
   const firmNr = firmNrPadded();
-  const custTable = `rex_${firmNr}_customers`;
-  const suppTable = `rex_${firmNr}_suppliers`;
-
-  const empty: LogoSyncEntityResult = { fetched: 0, upserted: 0, errors: 0 };
+  const empty: LogoSyncEntityResult = { fetched: 0, upserted: 0, errors: 0, skipped: 0 };
 
   if (!opts.customers && !opts.suppliers) {
     return { customers: empty, suppliers: empty };
   }
 
   onProgress?.({ phase: 'customers', message: 'Logo cari hesaplar okunuyor…' });
-
-  const rawArps = await logoFetchAllPaginated<unknown>(cfg, 'Arps', {
-    maxPages: 500,
-  });
+  const rawArps = await logoFetchAllPaginated<unknown>(cfg, 'Arps', { maxPages: 500 });
 
   const customerRows: Record<string, unknown>[] = [];
   const supplierRows: Record<string, unknown>[] = [];
 
   for (const raw of rawArps) {
     const rec = unwrapLogoRecord(raw);
-    const cardType = arpCardType(rec);
-    if (opts.customers && isCustomerCard(cardType)) {
-      const mapped = mapLogoCustomer(rec, firmNr);
-      if (mapped) customerRows.push(mapped);
-    }
-    if (opts.suppliers && isSupplierCard(cardType)) {
-      const mapped = mapLogoSupplier(rec, firmNr);
-      if (mapped) supplierRows.push(mapped);
-    }
+    const roles = resolveArpRoles(rec);
+    const mapped = mapLogoArp(rec, firmNr);
+    if (!mapped) continue;
+    if (opts.customers && roles.customer) customerRows.push(mapped);
+    if (opts.suppliers && roles.supplier) supplierRows.push({ ...mapped });
   }
 
   let customerResult = empty;
   let supplierResult = empty;
 
   if (opts.customers && customerRows.length > 0) {
-    onProgress?.({
-      phase: 'customers',
-      message: `${customerRows.length} cari RetailEX'e yazılıyor…`,
-      total: customerRows.length,
-    });
-    const { upserted, errors } = await upsertRows(custTable, customerRows, 'code', [
-      'name',
-      'phone',
-      'email',
-      'tax_nr',
-      'tax_office',
-      'address',
-      'city',
-      'is_active',
-    ]);
-    customerResult = { fetched: customerRows.length, upserted, errors };
-    onProgress?.({
-      phase: 'customers',
-      message: `Cariler tamamlandı: ${upserted} kayıt, ${errors} hata`,
-      current: upserted,
-      total: customerRows.length,
-    });
+    customerResult = await upsertCustomersWithApi(customerRows, opts.onLog, onProgress);
   } else if (opts.customers) {
-    customerResult = { fetched: 0, upserted: 0, errors: 0 };
+    nowLog(opts.onLog, {
+      entity: 'customer',
+      action: 'skip',
+      code: '-',
+      detail: `${rawArps.length} Arps kaydından cari eşleşmedi`,
+      ok: true,
+    });
   }
 
   if (opts.suppliers && supplierRows.length > 0) {
-    onProgress?.({
-      phase: 'suppliers',
-      message: `${supplierRows.length} tedarikçi RetailEX'e yazılıyor…`,
-      total: supplierRows.length,
-    });
-    const { upserted, errors } = await upsertRows(suppTable, supplierRows, 'code', [
-      'name',
-      'phone',
-      'email',
-      'tax_nr',
-      'tax_office',
-      'address',
-      'city',
-      'is_active',
-    ]);
-    supplierResult = { fetched: supplierRows.length, upserted, errors };
-    onProgress?.({
-      phase: 'suppliers',
-      message: `Tedarikçiler tamamlandı: ${upserted} kayıt, ${errors} hata`,
-      current: upserted,
-      total: supplierRows.length,
-    });
-  } else if (opts.suppliers) {
-    supplierResult = { fetched: 0, upserted: 0, errors: 0 };
+    supplierResult = await upsertSuppliersWithApi(supplierRows, opts.onLog, onProgress);
   }
 
   return { customers: customerResult, suppliers: supplierResult };
 }
 
-/** Logo REST oturumu açıkken tüm seçili kaynakları RetailEX'e aktarır */
 export async function syncLogoAllFromRest(
   cfg: LogoRestConfig,
   options: LogoSyncOptions = {},
@@ -413,9 +513,9 @@ export async function syncLogoAllFromRest(
   const messages: string[] = [];
   const result: LogoSyncResult = {
     ok: false,
-    products: { fetched: 0, upserted: 0, errors: 0 },
-    customers: { fetched: 0, upserted: 0, errors: 0 },
-    suppliers: { fetched: 0, upserted: 0, errors: 0 },
+    products: { fetched: 0, upserted: 0, errors: 0, skipped: 0 },
+    customers: { fetched: 0, upserted: 0, errors: 0, skipped: 0 },
+    suppliers: { fetched: 0, upserted: 0, errors: 0, skipped: 0 },
     messages,
   };
 
@@ -424,20 +524,18 @@ export async function syncLogoAllFromRest(
   const syncSuppliers = options.suppliers !== false;
 
   try {
-    onProgress?.({ phase: 'prepare', message: 'Logo oturumu yenileniyor (CompanyLogin)…' });
+    onProgress?.({ phase: 'prepare', message: 'Logo oturumu yenileniyor…' });
     await logoRefreshSession(cfg);
     const ctx = resolveLogoContext(cfg);
     const firmNr = firmNrPadded();
 
-    messages.push(
-      `Senkron: Logo firma ${ctx.firmNr} / dönem ${ctx.periodNr} → RetailEX ${firmNr}`
-    );
-    onProgress?.({ phase: 'prepare', message: `Firma tabloları kontrol ediliyor (rex_${firmNr}_*)…` });
+    messages.push(`Senkron: Logo ${ctx.firmNr}/${ctx.periodNr} → RetailEX ${firmNr}`);
+    onProgress?.({ phase: 'prepare', message: `Tablolar hazırlanıyor (rex_${firmNr}_*)…` });
     await ensureFirmTables(firmNr);
     messages.push(`Tablolar hazır: rex_${firmNr}_products, rex_${firmNr}_customers`);
 
     if (syncProducts) {
-      result.products = await syncLogoProductsFromRest(cfg, onProgress);
+      result.products = await syncLogoProductsFromRest(cfg, options, onProgress);
       messages.push(
         `Ürünler: ${result.products.upserted}/${result.products.fetched} aktarıldı (${result.products.errors} hata)`
       );
@@ -446,7 +544,7 @@ export async function syncLogoAllFromRest(
     if (syncCustomers || syncSuppliers) {
       const arp = await syncLogoArpsFromRest(
         cfg,
-        { customers: syncCustomers, suppliers: syncSuppliers },
+        { customers: syncCustomers, suppliers: syncSuppliers, onLog: options.onLog },
         onProgress
       );
       result.customers = arp.customers;
@@ -463,15 +561,26 @@ export async function syncLogoAllFromRest(
       }
     }
 
-    result.ok = true;
-    onProgress?.({ phase: 'done', message: 'Logo → RetailEX senkronizasyonu tamamlandı.' });
-    messages.push('Senkronizasyon tamamlandı.');
+    const failedProducts = syncProducts && result.products.fetched > 0 && result.products.upserted === 0;
+    const failedCustomers =
+      syncCustomers && result.customers.fetched > 0 && result.customers.upserted === 0;
+    result.ok = !failedProducts && !failedCustomers;
+
+    if (!result.ok) {
+      result.error = 'Kayıtlar okundu ancak RetailEX\'e yazılamadı. Canlı logdaki hata satırlarına bakın.';
+      onProgress?.({ phase: 'error', message: result.error });
+    } else {
+      onProgress?.({ phase: 'done', message: 'Logo → RetailEX senkronizasyonu tamamlandı.' });
+      messages.push('Senkronizasyon tamamlandı.');
+    }
+
     return result;
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
     result.error = msg;
     messages.push(`Hata: ${msg}`);
     onProgress?.({ phase: 'error', message: msg });
+    nowLog(options.onLog, { entity: 'system', action: 'error', code: 'sync', detail: msg, ok: false });
     return result;
   }
 }

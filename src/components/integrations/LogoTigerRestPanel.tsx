@@ -44,9 +44,19 @@ import {
 } from '../../services/logoRestApi';
 import {
   syncLogoAllFromRest,
+  type LogoSyncLogEntry,
   type LogoSyncProgress,
   type LogoSyncResult,
 } from '../../services/logoRestSync';
+import {
+  getLogoInvoicePushIntervalSec,
+  isLogoInvoiceAutoPushEnabled,
+  pushPendingSalesToLogo,
+  setLogoInvoiceAutoPushEnabled,
+  setLogoInvoicePushIntervalSec,
+  startLogoInvoiceAutoPush,
+  stopLogoInvoiceAutoPush,
+} from '../../services/logoRestInvoicePush';
 import { useProductStore } from '../../store/useProductStore';
 import { useCustomerStore } from '../../store/useCustomerStore';
 
@@ -82,6 +92,15 @@ export function LogoTigerRestPanel() {
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncProgress, setSyncProgress] = useState<LogoSyncProgress | null>(null);
   const [syncResult, setSyncResult] = useState<LogoSyncResult | null>(null);
+  const [syncLog, setSyncLog] = useState<LogoSyncLogEntry[]>([]);
+  const [autoInvoicePush, setAutoInvoicePush] = useState(() => isLogoInvoiceAutoPushEnabled());
+  const [invoicePushInterval, setInvoicePushInterval] = useState(() => getLogoInvoicePushIntervalSec());
+  const [isPushingInvoices, setIsPushingInvoices] = useState(false);
+  const [invoicePushMsg, setInvoicePushMsg] = useState('');
+
+  const appendSyncLog = useCallback((entry: LogoSyncLogEntry) => {
+    setSyncLog((prev) => [...prev.slice(-199), entry]);
+  }, []);
 
   const loadProducts = useProductStore((s) => s.loadProducts);
   const loadCustomers = useCustomerStore((s) => s.loadCustomers);
@@ -109,6 +128,15 @@ export function LogoTigerRestPanel() {
     window.addEventListener('storage', onStorage);
     return () => window.removeEventListener('storage', onStorage);
   }, [refreshErpContext]);
+
+  useEffect(() => {
+    if (connectionStatus !== 'connected' || !autoInvoicePush) {
+      stopLogoInvoiceAutoPush();
+      return;
+    }
+    startLogoInvoiceAutoPush(config, appendSyncLog);
+    return () => stopLogoInvoiceAutoPush();
+  }, [connectionStatus, autoInvoicePush, config, appendSyncLog, invoicePushInterval]);
 
   const updateConfig = (patch: Partial<LogoRestConfig>) => {
     setConfig((prev) => {
@@ -308,6 +336,7 @@ export function LogoTigerRestPanel() {
     setIsSyncing(true);
     setSyncProgress(null);
     setSyncResult(null);
+    setSyncLog([]);
     setConnectionError('');
     try {
       const result = await syncLogoAllFromRest(
@@ -316,8 +345,12 @@ export function LogoTigerRestPanel() {
           products: syncOptions.products,
           customers: syncOptions.customers,
           suppliers: syncOptions.suppliers,
+          onLog: appendSyncLog,
         },
-        (p) => setSyncProgress(p)
+        (p) => {
+          setSyncProgress(p);
+          if (p.lastLog) appendSyncLog(p.lastLog);
+        }
       );
       setSyncResult(result);
       if (!result.ok) {
@@ -333,6 +366,32 @@ export function LogoTigerRestPanel() {
     } finally {
       setIsSyncing(false);
     }
+  };
+
+  const handlePushInvoicesNow = async () => {
+    if (connectionStatus !== 'connected') return;
+    setIsPushingInvoices(true);
+    setInvoicePushMsg('');
+    try {
+      const r = await pushPendingSalesToLogo(config, { onLog: appendSyncLog, limit: 25 });
+      setInvoicePushMsg(r.messages.join(' · '));
+    } catch (e: unknown) {
+      setInvoicePushMsg(e instanceof Error ? e.message : String(e));
+    } finally {
+      setIsPushingInvoices(false);
+    }
+  };
+
+  const handleToggleAutoInvoicePush = (enabled: boolean) => {
+    setAutoInvoicePush(enabled);
+    setLogoInvoiceAutoPushEnabled(enabled);
+    if (!enabled) stopLogoInvoiceAutoPush();
+  };
+
+  const handleInvoiceIntervalChange = (sec: number) => {
+    const v = Math.max(30, Math.min(3600, sec));
+    setInvoicePushInterval(v);
+    setLogoInvoicePushIntervalSec(v);
   };
 
   const resourceLabel: Record<string, string> = {
@@ -728,6 +787,24 @@ export function LogoTigerRestPanel() {
               </div>
             )}
 
+            {syncLog.length > 0 && (
+              <div className="border border-gray-200 rounded-lg overflow-hidden">
+                <div className="px-3 py-2 bg-gray-50 text-xs text-gray-600 border-b">
+                  Canlı aktarım günlüğü ({syncLog.length} satır)
+                </div>
+                <div className="max-h-48 overflow-y-auto p-2 font-mono text-xs bg-gray-900 text-green-400 space-y-0.5">
+                  {syncLog.map((line, i) => (
+                    <div key={`${line.at}-${i}`} className={line.ok ? '' : 'text-red-400'}>
+                      [{new Date(line.at).toLocaleTimeString('tr-TR')}] {line.entity}{' '}
+                      {line.action} {line.code}
+                      {line.name ? ` — ${line.name}` : ''}
+                      {line.detail ? ` (${line.detail})` : ''}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {syncResult && (
               <div
                 className={`p-4 rounded-lg border text-sm ${
@@ -750,6 +827,68 @@ export function LogoTigerRestPanel() {
                   ))}
                 </ul>
               </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* RetailEX → Logo fatura aktarımı */}
+      {connectionStatus === 'connected' && (
+        <div>
+          <div className="flex items-center gap-2 mb-4">
+            <div className="w-8 h-8 bg-indigo-600 rounded-full flex items-center justify-center text-white">2c</div>
+            <h3 className="text-lg text-gray-900">RetailEX faturalarını Logo&apos;ya gönder</h3>
+          </div>
+          <div className="pl-10 space-y-4">
+            <p className="text-sm text-gray-600">
+              <code>rex_{erpFirmPeriod.firmLabel}_{erpFirmPeriod.periodLabel}_sales</code> tablosunda{' '}
+              <code>logo_sync_status=pending</code> olan satış faturaları Logo <code>salesInvoices</code> kaynağına
+              yazılır.
+            </p>
+            <div className="flex flex-wrap items-center gap-4 text-sm">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={autoInvoicePush}
+                  onChange={(e) => handleToggleAutoInvoicePush(e.target.checked)}
+                  className="rounded border-gray-300 text-indigo-600"
+                />
+                Otomatik gönder (periyodik)
+              </label>
+              <label className="flex items-center gap-2">
+                <span className="text-gray-600">Aralık (sn)</span>
+                <input
+                  type="number"
+                  min={30}
+                  max={3600}
+                  value={invoicePushInterval}
+                  onChange={(e) => handleInvoiceIntervalChange(Number(e.target.value))}
+                  className="w-24 px-2 py-1 border border-gray-300 rounded"
+                />
+              </label>
+              <button
+                type="button"
+                onClick={handlePushInvoicesNow}
+                disabled={isPushingInvoices}
+                className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 flex items-center gap-2"
+              >
+                {isPushingInvoices ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Gönderiliyor…
+                  </>
+                ) : (
+                  <>
+                    <FileText className="w-4 h-4" />
+                    Bekleyen faturaları şimdi gönder
+                  </>
+                )}
+              </button>
+            </div>
+            {invoicePushMsg && (
+              <p className="text-sm text-indigo-800 bg-indigo-50 border border-indigo-200 rounded-lg p-3">
+                {invoicePushMsg}
+              </p>
             )}
           </div>
         </div>

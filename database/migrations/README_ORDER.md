@@ -38,6 +38,7 @@
 33. **043_messaging_meta_templates.sql** – `messaging_settings`: Meta Cloud API onaylı şablon adı/dili (`meta_invoice_*`, `meta_appointment_*`).
 34. **044_messaging_postgrest_sync.sql** – Eksik `messaging_settings` / `notification_queue` tablolarını oluşturur, `anon` yetkisi ve `NOTIFY pgrst` (API 404 düzeltmesi).
 35. **045_stores_scale_bridge.sql** – `stores.scale_bridge_url` / `scale_bridge_token` (mağaza PC terazi köprüsü).
+36. **046_sales_logo_sync_meta.sql** – `rex_*_*_sales.logo_sync_error`, `logo_sync_date` (Logo REST fatura aktarımı).
 
 **Mevcut veritabanı:** `config.db` (DeskApp ayarları) ile bekleyen migration’ları uygulamak için proje kökünde `npm run db:migrate` (ayrıntı: `.cursor/rules/database-migrate-config-db.mdc`).
 

@@ -1428,6 +1428,8 @@ BEGIN
       currency_rate  DECIMAL(15,6) DEFAULT 1,
       status         VARCHAR(20) DEFAULT ''completed'',
       logo_sync_status VARCHAR(20) DEFAULT ''pending'',
+      logo_sync_error TEXT,
+      logo_sync_date TIMESTAMPTZ,
       payment_method VARCHAR(50),
       cashier        VARCHAR(100),
       is_cancelled   BOOLEAN DEFAULT false,
