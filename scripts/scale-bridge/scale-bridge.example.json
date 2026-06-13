@@ -1,0 +1,18 @@
+{
+  "listenHost": "0.0.0.0",
+  "listenPort": 3012,
+  "authToken": "degistirin-guclu-bir-token",
+  "storeCode": "kasap",
+  "storeName": "Kasaphane Merkez",
+  "scales": [
+    {
+      "id": "kasap-terazi-1",
+      "name": "Kasap Etiket Terazisi",
+      "brand": "rongta",
+      "model": "RLS1100",
+      "ipAddress": "192.168.1.87",
+      "port": 20304,
+      "enabled": true
+    }
+  ]
+}

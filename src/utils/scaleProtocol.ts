@@ -12,8 +12,14 @@
  */
 
 import type { Product } from '../App';
-import { productsToRongtaPluRecords, RONGTA_DEFAULT_PORT } from './rongtaRlsProtocol';
-import { rongtaSendPluRecords, rongtaTestConnection } from '../services/rongtaScaleTransport';
+import { RONGTA_DEFAULT_PORT } from './rongtaRlsProtocol';
+import { rongtaTestConnection, rongtaSendPluRecords } from '../services/rongtaScaleTransport';
+import { productsToRongtaPluRecords } from './rongtaRlsProtocol';
+import {
+  scaleBridgeTestDevice,
+  scaleBridgeSendProducts,
+  isScaleBridgeMode,
+} from '../services/scaleBridgeApi';
 
 export interface ScaleDevice {
   id: string;
@@ -55,6 +61,10 @@ export interface ScaleSyncResult {
  */
 export async function testScaleConnection(device: ScaleDevice): Promise<boolean> {
   try {
+    if (isScaleBridgeMode() && device.id) {
+      return scaleBridgeTestDevice(device);
+    }
+
     if (device.brand === 'rongta' && device.connectionType === 'tcp' && device.ipAddress) {
       return rongtaTestConnection({
         ipAddress: device.ipAddress,
@@ -111,6 +121,10 @@ export async function sendProductsToScale(
       shelfLife: 0,
       expiryDays: 0
     }));
+
+    if (isScaleBridgeMode() && device.id) {
+      return scaleBridgeSendProducts(device, products, pluStartIndex);
+    }
 
     if (device.brand === 'rongta' && device.connectionType === 'tcp' && device.ipAddress) {
       const records = productsToRongtaPluRecords(

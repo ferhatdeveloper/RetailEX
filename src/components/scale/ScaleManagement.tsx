@@ -4,21 +4,36 @@ import type { ScaleDevice } from '../../utils/scaleProtocol';
 import { testScaleConnection, getScaleInfo } from '../../utils/scaleProtocol';
 
 interface ScaleManagementProps {
+  devices: ScaleDevice[];
+  onDevicesChange: (devices: ScaleDevice[]) => void;
+  bridgeMode?: boolean;
+  bridgeOnline?: boolean;
+  onOpenBridgeSettings?: () => void;
+  onDeleteDevice?: (id: string) => void;
   onScanNetwork: () => void;
   onAddDevice: () => void;
   onEditDevice: (device: ScaleDevice) => void;
   onSyncProducts: (device: ScaleDevice) => void;
 }
 
-export function ScaleManagement({ onScanNetwork, onAddDevice, onEditDevice, onSyncProducts }: ScaleManagementProps) {
-  const [devices, setDevices] = useState<ScaleDevice[]>(() => {
-    const saved = localStorage.getItem('retailos_scale_devices');
-    return saved ? JSON.parse(saved) : [];
-  });
+export function ScaleManagement({
+  devices,
+  onDevicesChange,
+  bridgeMode,
+  bridgeOnline,
+  onOpenBridgeSettings,
+  onDeleteDevice,
+  onScanNetwork,
+  onAddDevice,
+  onEditDevice,
+  onSyncProducts,
+}: ScaleManagementProps) {
   const [testingDevice, setTestingDevice] = useState<string | null>(null);
   const [refreshingDevice, setRefreshingDevice] = useState<string | null>(null);
 
-  // Save devices to localStorage
+  const setDevices = onDevicesChange;
+
+  // Save devices to localStorage (yedek)
   useEffect(() => {
     localStorage.setItem('retailos_scale_devices', JSON.stringify(devices));
   }, [devices]);
@@ -98,7 +113,11 @@ export function ScaleManagement({ onScanNetwork, onAddDevice, onEditDevice, onSy
   // Delete device
   const handleDeleteDevice = (deviceId: string) => {
     if (confirm('Bu teraziyi silmek istediğinizden emin misiniz?')) {
-      setDevices(devices.filter(d => d.id !== deviceId));
+      if (onDeleteDevice) {
+        onDeleteDevice(deviceId);
+      } else {
+        setDevices(devices.filter(d => d.id !== deviceId));
+      }
     }
   };
 
@@ -164,10 +183,24 @@ export function ScaleManagement({ onScanNetwork, onAddDevice, onEditDevice, onSy
             <h1 className="text-gray-900">Terazi Yönetimi</h1>
             <p className="text-sm text-gray-600 mt-1">
               Terazileri yönetin, ürün gönderimi yapın
+              {bridgeMode && (
+                <span className={`ml-2 inline-flex items-center gap-1 ${bridgeOnline ? 'text-green-600' : 'text-amber-600'}`}>
+                  · Köprü {bridgeOnline ? 'çevrimiçi' : 'bağlantı yok'}
+                </span>
+              )}
             </p>
           </div>
           
           <div className="flex items-center gap-3">
+            {onOpenBridgeSettings && (
+              <button
+                onClick={onOpenBridgeSettings}
+                className="flex items-center gap-2 px-4 py-2 bg-amber-100 text-amber-900 rounded hover:bg-amber-200 transition-colors text-sm"
+              >
+                <Settings className="w-4 h-4" />
+                <span>Köprü Ayarları</span>
+              </button>
+            )}
             <button
               onClick={handleTestAllConnections}
               className="flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded hover:bg-gray-200 transition-colors"

@@ -2931,7 +2931,7 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
   serialLotDefinitions: { tr: 'Seri/Parti Tanımları', en: 'Serial/Lot Definitions', ar: 'تعريفات التسلسل/المجموعة', ku: 'پێناسەکانی زنجیرە/پارچە' },
   supplierDefDesc: { tr: 'Tedarikçi bilgileri ve yönetimi', en: 'Supplier information and management', ar: 'معلومات المورد وإدارتها', ku: 'زانیاری دابینکەر و بەڕێوەبردن' },
   barcodeDefDesc: { tr: 'Ürün barkod eşleştirmeleri', en: 'Product barcode mappings', ar: 'تعيينات باركود المنتج', ku: 'نەخشەکێشانی بارکۆدی بەرهەم' },
-  scaleDefDesc: { tr: 'Terazi entegrasyon ayarları', en: 'Scale integration settings', ar: 'إعدادات تكامل الميزان', ku: 'ڕێکخستنەکانی یەکگرتنی تەرازوو' },
+  scaleDefDesc: { tr: 'Terazi tanımlarını yönetin — Rongta PLU gönderimi ve köprü servisi', en: 'Manage scale definitions — Rongta PLU sync and bridge service', ar: 'إدارة تعريفات الموازين — مزامنة PLU', ku: 'بەڕێوەبردنی پێناسەی تەرازوو' },
   serialLotDefDesc: { tr: 'Seri ve parti numarası takibi', en: 'Serial and lot number tracking', ar: 'تتبع الرقم التسلسلي ورقم الدفعة', ku: 'شوێنکەوتنی ژمارەی زنجیرە و پارچە' },
   moduleComingSoon: { tr: 'Bu modül yakında aktif olacaktır.', en: 'This module will be active soon.', ar: 'ستكون هذه الوحدة نشطة قريبًا.', ku: 'ئەم مۆدیولە بەم زووانە چالاک دەبێت.' },
 

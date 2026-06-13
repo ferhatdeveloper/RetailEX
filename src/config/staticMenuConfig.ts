@@ -54,6 +54,7 @@ export const getStaticMenuSections = (t: Translations) => [
                     { label: t.menu.variants, screen: 'variants', icon: Tag },
                     { label: t.menu.specialCodes, screen: 'special-codes', icon: Tag },
                     { label: t.menu.brandDefinitions, screen: 'brand-definitions', icon: Tag },
+                    { label: t.menu.scaleDefinitions, screen: 'scale', icon: Scale },
                     { label: t.menu.groupCodes, screen: 'group-codes', icon: Tag },
                     { label: t.menu.productCategories, screen: 'product-categories', icon: Tag },
                     { label: t.menu.serviceCards, screen: 'service-cards', icon: Briefcase }
@@ -400,6 +401,7 @@ export const staticMenuSections = getStaticMenuSections({
         priceAndCampaign: 'Fiyat & Kampanya',
         scaleAndWeighedSales: 'Terazi & Tartılı Satış',
         scaleManagement: 'Terazi Yönetimi (Rongta)',
+        scaleDefinitions: 'Terazi Tanımları',
         whatsappIntegration: 'WhatsApp Entegrasyonu',
         notificationCenter: 'Bildirim Merkezi',
         smsManagement: 'SMS Yönetimi',

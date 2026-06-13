@@ -116,6 +116,7 @@ export interface MenuTranslations {
   salesWaybill: string;
   scaleAndWeighedSales: string;
   scaleManagement: string;
+  scaleDefinitions: string;
   serviceInvoiceIssued: string;
   serviceInvoiceReceived: string;
   serviceInvoices: string;
@@ -1946,6 +1947,7 @@ export const translations: any = {
       salesWaybill: 'Satış İrsaliyesi',
       scaleAndWeighedSales: 'Terazi & Tartılı Satış',
       scaleManagement: 'Terazi Yönetimi (Rongta)',
+      scaleDefinitions: 'Terazi Tanımları',
       serviceCards: 'Hizmet Kartları',
       serviceInvoiceIssued: 'Verilen Hizmet Faturası',
       serviceInvoiceReceived: 'Alınan Hizmet Faturası',
@@ -3453,6 +3455,7 @@ export const translations: any = {
       salesWaybill: 'Sales Waybill',
       scaleAndWeighedSales: 'Scale & Weighed Sales',
       scaleManagement: 'Scale Management (Rongta)',
+      scaleDefinitions: 'Scale Definitions',
       serviceInvoiceIssued: 'Service Invoice Issued',
       serviceInvoiceReceived: 'Service Invoice Received',
       serviceInvoices: 'Service Invoices',
@@ -4795,6 +4798,7 @@ export const translations: any = {
       salesWaybill: 'سند شحن مبيعات',
       scaleAndWeighedSales: 'مبيعات الميزان',
       scaleManagement: 'إدارة الميزان (Rongta)',
+      scaleDefinitions: 'تعريفات الميزان',
       serviceInvoiceIssued: 'فاتورة خدمة صادرة',
       serviceInvoiceReceived: 'فاتورة خدمة واردة',
       serviceInvoices: 'فواتير الخدمات',
@@ -6138,6 +6142,7 @@ export const translations: any = {
       salesWaybill: 'سند شحن مبيعات',
       scaleAndWeighedSales: 'مبيعات الميزان',
       scaleManagement: 'إدارة الميزان (Rongta)',
+      scaleDefinitions: 'تعريفات الميزان',
       serviceInvoiceIssued: 'فاتورة خدمة صادرة',
       serviceInvoiceReceived: 'فاتورة خدمة واردة',
       serviceInvoices: 'فواتير الخدمات',

@@ -1034,7 +1034,7 @@ export function ManagementModule({
           return <SerialLotModule />;
 
         case 'scale':
-          return <MaterialMasterRecords viewType="scale" />;
+          return <ScaleManagementWrapper products={products} />;
 
         case 'warehousetransfer_def':
         case 'warehouse-definitions':

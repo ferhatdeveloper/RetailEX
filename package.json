@@ -142,6 +142,7 @@
             "bridge": "npx tsx src/services/pg_bridge.ts",
             "whatsapp:bridge:install": "npm install --prefix scripts/whatsapp-bridge",
             "whatsapp:bridge": "node scripts/whatsapp-bridge/server.mjs",
+            "scale:bridge": "node scripts/scale-bridge/server.mjs",
             "dev:with-bridge": "npx --yes concurrently -k -n bridge,vite -c blue,green \"npm run bridge\" \"npm run dev\"",
             "dev:with-wa": "npx --yes concurrently -k -n wa,vite -c magenta,green \"npm run whatsapp:bridge\" \"npm run dev\"",
             "postgrest": "postgrest config/postgrest.conf",
