@@ -6,8 +6,9 @@
  */
 
 import {
-  logoEnsureSession,
   logoFetchAllPaginated,
+  logoListResource,
+  logoRefreshSession,
   resolveLogoContext,
   type LogoRestConfig,
 } from './logoRestApi';
@@ -261,6 +262,13 @@ export async function syncLogoProductsFromRest(
 
   onProgress?.({ phase: 'products', message: 'Logo stok kartları okunuyor…', current: 0 });
 
+  try {
+    await logoListResource(cfg, 'items', { limit: 1, withCount: true });
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    throw new Error(`Logo ürün listesi ön kontrolü başarısız: ${msg}`);
+  }
+
   const rawItems = await logoFetchAllPaginated<unknown>(cfg, 'items', {
     maxPages: 500,
   });
@@ -416,8 +424,8 @@ export async function syncLogoAllFromRest(
   const syncSuppliers = options.suppliers !== false;
 
   try {
-    onProgress?.({ phase: 'prepare', message: 'Logo oturumu ve RetailEX tabloları hazırlanıyor…' });
-    await logoEnsureSession(cfg);
+    onProgress?.({ phase: 'prepare', message: 'Logo oturumu yenileniyor (CompanyLogin)…' });
+    await logoRefreshSession(cfg);
     const ctx = resolveLogoContext(cfg);
     const firmNr = firmNrPadded();
 

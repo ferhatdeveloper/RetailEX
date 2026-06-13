@@ -361,6 +361,13 @@ function saveLogoRestSession(session: LogoRestSession | null): void {
   sessionStorage.setItem(STORAGE_SESSION, JSON.stringify(session));
 }
 
+/** Senkron öncesi taze Logo oturumu (bayat token / firma-dönem kayması önlenir) */
+export async function logoRefreshSession(cfg: LogoRestConfig): Promise<LogoRestSession> {
+  saveLogoRestSession(null);
+  const ctx = resolveLogoContext(cfg);
+  return logoAuthenticate(cfg, ctx.firmNr, ctx.periodNr);
+}
+
 function basicAuth(clientId: string, clientSecret: string): string {
   const id = clientId.trim();
   const secret = clientSecret;
@@ -754,7 +761,11 @@ export async function logoListResource<T = unknown>(
       ? Math.min(Math.max(1, Math.floor(opts.limit)), LOGO_REST_MAX_PAGE_SIZE)
       : undefined;
   if (limit != null) query.limit = String(limit);
-  if (opts.offset != null) query.offset = String(Math.max(0, Math.floor(opts.offset)));
+  if (opts.offset != null) {
+    const off = Math.max(0, Math.floor(opts.offset));
+    // Logo bazı sürümlerde offset=0 gönderilince 400 dönebiliyor — yalnızca >0 iken ekle
+    if (off > 0) query.offset = String(off);
+  }
   if (opts.q) query.q = opts.q;
   if (opts.withCount) query.withCount = 'true';
   if (opts.expandLevel) query.expandLevel = opts.expandLevel;
@@ -773,13 +784,16 @@ export async function logoListResource<T = unknown>(
     const modelMsg = err?.ModelState
       ? Object.values(err.ModelState).flat().join('; ')
       : '';
-    throw new Error(
+    const detail =
       modelMsg ||
-        err?.message ||
-        err?.Message ||
-        err?.error ||
-        `${resource} listesi HTTP ${res.status}`
-    );
+      err?.message ||
+      err?.Message ||
+      err?.error ||
+      (typeof res.text === 'string' && res.text.trim() ? res.text.trim().slice(0, 400) : '');
+    const qs = Object.keys(query).length
+      ? ` (${Object.entries(query).map(([k, v]) => `${k}=${v}`).join('&')})`
+      : '';
+    throw new Error(detail || `${resource} listesi HTTP ${res.status}${qs}`);
   }
   return {
     count: extractCount(res.data),
@@ -864,6 +878,25 @@ export async function logoDeleteResource(
   if (!res.ok) throw new Error(`${resource}/${id} silme HTTP ${res.status}`);
 }
 
+function parseLogoNextQuery(raw: unknown): Record<string, string> | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const o = raw as Record<string, unknown>;
+  const next = o.next ?? o.Next;
+  if (!next || typeof next !== 'object') return null;
+  const href = (next as Record<string, unknown>).href;
+  if (typeof href !== 'string' || !href.trim()) return null;
+  try {
+    const u = new URL(href);
+    const q: Record<string, string> = {};
+    u.searchParams.forEach((v, k) => {
+      if (v !== '') q[k] = v;
+    });
+    return Object.keys(q).length > 0 ? q : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function logoFetchAllPaginated<T = unknown>(
   cfg: LogoRestConfig,
   resource: LogoResourceName,
@@ -875,14 +908,32 @@ export async function logoFetchAllPaginated<T = unknown>(
   );
   const maxPages = opts.maxPages ?? 200;
   const all: T[] = [];
+  let offset = 0;
+
   for (let page = 0; page < maxPages; page++) {
-    const batch = await logoListResource<T>(cfg, resource, {
-      limit: pageSize,
-      offset: page * pageSize,
-      q: opts.q,
-    });
+    const listOpts: {
+      limit: number;
+      offset?: number;
+      q?: string;
+    } = { limit: pageSize };
+    if (offset > 0) listOpts.offset = offset;
+    if (opts.q) listOpts.q = opts.q;
+
+    const batch = await logoListResource<T>(cfg, resource, listOpts);
     all.push(...batch.items);
+
+    if (batch.items.length === 0) break;
     if (batch.items.length < pageSize) break;
+
+    const nextQ = parseLogoNextQuery(batch.raw);
+    if (nextQ?.offset != null) {
+      const nextOff = parseInt(nextQ.offset, 10);
+      if (Number.isFinite(nextOff) && nextOff > offset) {
+        offset = nextOff;
+        continue;
+      }
+    }
+    offset += batch.items.length;
   }
   return all;
 }
