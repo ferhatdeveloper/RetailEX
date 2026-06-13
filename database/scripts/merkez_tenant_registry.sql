@@ -20,6 +20,8 @@ CREATE TABLE IF NOT EXISTS tenant_registry (
   db_user         TEXT,
   db_pass         TEXT,
   db_sslmode      TEXT,
+  scale_bridge_url TEXT,
+  scale_bridge_token TEXT,
   database_name   TEXT NOT NULL,
   notes           TEXT,
   is_active       BOOLEAN NOT NULL DEFAULT true,
@@ -60,6 +62,8 @@ ON CONFLICT (code) DO UPDATE SET
   db_user       = COALESCE(NULLIF(EXCLUDED.db_user, ''), tenant_registry.db_user),
   db_pass       = COALESCE(NULLIF(EXCLUDED.db_pass, ''), tenant_registry.db_pass),
   db_sslmode    = COALESCE(NULLIF(EXCLUDED.db_sslmode, ''), tenant_registry.db_sslmode),
+  scale_bridge_url = COALESCE(NULLIF(EXCLUDED.scale_bridge_url, ''), tenant_registry.scale_bridge_url),
+  scale_bridge_token = COALESCE(NULLIF(EXCLUDED.scale_bridge_token, ''), tenant_registry.scale_bridge_token),
   database_name = EXCLUDED.database_name,
   notes         = EXCLUDED.notes,
   updated_at    = now();

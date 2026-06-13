@@ -18,6 +18,8 @@ export type TenantRegistryRow = {
   db_user: string | null;
   db_pass: string | null;
   db_sslmode: string | null;
+  scale_bridge_url?: string | null;
+  scale_bridge_token?: string | null;
   notes?: string | null;
   is_active?: boolean;
 };
@@ -385,6 +387,11 @@ export function tenantRowToAppConfigPatch(
     merkez_tenant_id: row.id,
     merkez_display_name: row.display_name,
   };
+
+  const bridgeUrl = (row.scale_bridge_url || '').trim();
+  const bridgeToken = row.scale_bridge_token != null ? String(row.scale_bridge_token) : '';
+  if (bridgeUrl) patch.scale_bridge_url = normalizeBaseUrl(bridgeUrl);
+  if (bridgeToken.trim()) patch.scale_bridge_token = bridgeToken.trim();
 
   const host = (row.db_host || '').trim() || '127.0.0.1';
   const port = row.db_port && row.db_port > 0 ? row.db_port : 5432;

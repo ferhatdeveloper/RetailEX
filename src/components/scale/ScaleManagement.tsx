@@ -8,6 +8,7 @@ interface ScaleManagementProps {
   onDevicesChange: (devices: ScaleDevice[]) => void;
   bridgeMode?: boolean;
   bridgeOnline?: boolean;
+  bridgeSourceLabel?: string;
   onOpenBridgeSettings?: () => void;
   onDeleteDevice?: (id: string) => void;
   onScanNetwork: () => void;
@@ -21,6 +22,7 @@ export function ScaleManagement({
   onDevicesChange,
   bridgeMode,
   bridgeOnline,
+  bridgeSourceLabel,
   onOpenBridgeSettings,
   onDeleteDevice,
   onScanNetwork,
@@ -186,6 +188,7 @@ export function ScaleManagement({
               {bridgeMode && (
                 <span className={`ml-2 inline-flex items-center gap-1 ${bridgeOnline ? 'text-green-600' : 'text-amber-600'}`}>
                   · Köprü {bridgeOnline ? 'çevrimiçi' : 'bağlantı yok'}
+                  {bridgeSourceLabel ? ` (${bridgeSourceLabel})` : ''}
                 </span>
               )}
             </p>

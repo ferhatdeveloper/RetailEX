@@ -1,10 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { ScaleManagement } from './ScaleManagement';
 import { ScaleDeviceModal } from './ScaleDeviceModal';
 import { ScaleScannerModal } from './ScaleScannerModal';
 import { ScaleProductSyncModal } from './ScaleProductSyncModal';
 import type { ScaleDevice } from '../../utils/scaleProtocol';
 import type { Product } from '../../App';
+import { ERP_SETTINGS } from '../../services/postgres';
 import {
   getScaleBridgeUrl,
   setScaleBridgeUrl,
@@ -15,6 +16,15 @@ import {
   scaleBridgeSaveDevice,
   scaleBridgeDeleteDevice,
   isScaleBridgeMode,
+  resolveScaleBridgeSource,
+  applyScaleBridgeFromStore,
+  autoApplyScaleBridgeForFirm,
+  loadStoresWithScaleBridge,
+  clearScaleBridgeManualOverride,
+  setScaleBridgeStoreId,
+  getScaleBridgeStoreId,
+  syncScaleBridgeFromWebConfig,
+  type StoreScaleBridgeRow,
 } from '../../services/scaleBridgeApi';
 
 interface ScaleManagementWrapperProps {
@@ -30,12 +40,22 @@ function loadLocalDevices(): ScaleDevice[] {
   }
 }
 
+const SOURCE_LABELS: Record<string, string> = {
+  manual: 'Manuel ayar',
+  store: 'Mağaza kaydı',
+  tenant: 'Merkez kiracı kaydı',
+  none: 'Tanımsız',
+};
+
 export function ScaleManagementWrapper({ products }: ScaleManagementWrapperProps) {
   const [devices, setDevices] = useState<ScaleDevice[]>(loadLocalDevices);
   const [bridgeUrl, setBridgeUrl] = useState(getScaleBridgeUrl);
   const [bridgeToken, setBridgeToken] = useState(getScaleBridgeToken);
   const [bridgeOnline, setBridgeOnline] = useState(false);
+  const [bridgeSource, setBridgeSource] = useState(resolveScaleBridgeSource);
   const [showBridgeSettings, setShowBridgeSettings] = useState(false);
+  const [storeRows, setStoreRows] = useState<StoreScaleBridgeRow[]>([]);
+  const [selectedStoreId, setSelectedStoreId] = useState(getScaleBridgeStoreId);
 
   const [showDeviceModal, setShowDeviceModal] = useState(false);
   const [showScannerModal, setShowScannerModal] = useState(false);
@@ -48,6 +68,13 @@ export function ScaleManagementWrapper({ products }: ScaleManagementWrapperProps
   const persistLocal = (list: ScaleDevice[]) => {
     localStorage.setItem('retailos_scale_devices', JSON.stringify(list));
   };
+
+  const refreshBridgeState = useCallback(() => {
+    setBridgeUrl(getScaleBridgeUrl());
+    setBridgeToken(getScaleBridgeToken());
+    setBridgeSource(resolveScaleBridgeSource());
+    setSelectedStoreId(getScaleBridgeStoreId());
+  }, []);
 
   const refreshFromBridge = async () => {
     if (!getScaleBridgeUrl()) return;
@@ -62,20 +89,69 @@ export function ScaleManagementWrapper({ products }: ScaleManagementWrapperProps
   };
 
   useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      syncScaleBridgeFromWebConfig();
+      const firmNr = ERP_SETTINGS.firmNr || '001';
+      await autoApplyScaleBridgeForFirm(firmNr);
+      if (cancelled) return;
+      refreshBridgeState();
+      const rows = await loadStoresWithScaleBridge(firmNr);
+      if (cancelled) return;
+      setStoreRows(rows);
+      if (getScaleBridgeUrl()) {
+        const ok = await scaleBridgePing();
+        if (!cancelled) {
+          setBridgeOnline(ok);
+          if (ok) await refreshFromBridge();
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [refreshBridgeState]);
+
+  useEffect(() => {
     if (bridgeMode) {
       void refreshFromBridge();
     }
   }, [bridgeUrl]);
 
+  const handleStoreBridgeSelect = async (storeId: string) => {
+    setSelectedStoreId(storeId);
+    const store = storeRows.find((s) => s.id === storeId);
+    if (!store) return;
+    clearScaleBridgeManualOverride();
+    applyScaleBridgeFromStore(store);
+    refreshBridgeState();
+    const ok = await scaleBridgePing();
+    setBridgeOnline(ok);
+    if (ok) await refreshFromBridge();
+  };
+
   const handleSaveBridgeSettings = async () => {
-    setScaleBridgeUrl(bridgeUrl);
-    setScaleBridgeToken(bridgeToken);
+    setScaleBridgeUrl(bridgeUrl, { manual: true });
+    setScaleBridgeToken(bridgeToken, { manual: true });
+    setScaleBridgeStoreId('');
+    setSelectedStoreId('');
     setShowBridgeSettings(false);
+    refreshBridgeState();
     if (bridgeUrl) {
       const ok = await scaleBridgePing();
       setBridgeOnline(ok);
       if (ok) await refreshFromBridge();
     }
+  };
+
+  const handleResetToTenant = () => {
+    clearScaleBridgeManualOverride();
+    setScaleBridgeStoreId('');
+    setSelectedStoreId('');
+    syncScaleBridgeFromWebConfig(true);
+    refreshBridgeState();
+    setBridgeUrl(getScaleBridgeUrl());
+    setBridgeToken(getScaleBridgeToken());
   };
 
   const handleSaveDevice = async (device: ScaleDevice) => {
@@ -114,16 +190,44 @@ export function ScaleManagementWrapper({ products }: ScaleManagementWrapperProps
     setSyncDevice(undefined);
   };
 
+  const storesWithBridge = storeRows.filter((s) => (s.scale_bridge_url || '').trim());
+
   return (
     <>
       {showBridgeSettings && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-lg shadow-xl max-w-lg w-full p-6">
             <h3 className="text-lg text-gray-900 mb-2">Terazi Köprüsü (Windows Servisi)</h3>
-            <p className="text-sm text-gray-600 mb-4">
+            <p className="text-sm text-gray-600 mb-2">
               Mağaza PC&apos;sindeki köprü URL&apos;si. Merkezden gönderimde bu adrese istek gider;
               uygulama kapalı olsa bile servis teraziye iletir.
             </p>
+            <p className="text-xs text-blue-700 mb-4">
+              Kaynak: {SOURCE_LABELS[bridgeSource] || bridgeSource}
+              {bridgeUrl ? ` — ${bridgeUrl}` : ''}
+            </p>
+
+            {storesWithBridge.length > 0 && (
+              <div className="mb-4">
+                <label className="block text-sm text-gray-700 mb-1">Mağaza köprüsü</label>
+                <select
+                  className="w-full border rounded px-3 py-2 text-sm"
+                  value={selectedStoreId}
+                  onChange={(e) => void handleStoreBridgeSelect(e.target.value)}
+                >
+                  <option value="">— Mağaza seçin —</option>
+                  {storesWithBridge.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name} ({s.scale_bridge_url})
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-gray-500 mt-1">
+                  Mağaza kaydındaki URL, merkez kiracı varsayılanının üzerine yazar.
+                </p>
+              </div>
+            )}
+
             <label className="block text-sm text-gray-700 mb-1">Köprü URL</label>
             <input
               className="w-full border rounded px-3 py-2 mb-3 font-mono text-sm"
@@ -140,20 +244,31 @@ export function ScaleManagementWrapper({ products }: ScaleManagementWrapperProps
             />
             <p className="text-xs text-gray-500 mb-4">
               Yerel config: <code>C:\ProgramData\RetailEX\scale-bridge.json</code>
+              <br />
+              Merkez kayıt: <code>merkez_db.tenant_registry.scale_bridge_url</code>
             </p>
-            <div className="flex justify-end gap-2">
+            <div className="flex justify-between gap-2">
               <button
-                className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded"
-                onClick={() => setShowBridgeSettings(false)}
+                type="button"
+                className="px-3 py-2 text-sm text-indigo-700 hover:bg-indigo-50 rounded"
+                onClick={handleResetToTenant}
               >
-                İptal
+                Merkez kaydına dön
               </button>
-              <button
-                className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
-                onClick={() => void handleSaveBridgeSettings()}
-              >
-                Kaydet
-              </button>
+              <div className="flex gap-2">
+                <button
+                  className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded"
+                  onClick={() => setShowBridgeSettings(false)}
+                >
+                  İptal
+                </button>
+                <button
+                  className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+                  onClick={() => void handleSaveBridgeSettings()}
+                >
+                  Kaydet
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -164,7 +279,13 @@ export function ScaleManagementWrapper({ products }: ScaleManagementWrapperProps
         onDevicesChange={setDevices}
         bridgeMode={bridgeMode}
         bridgeOnline={bridgeOnline}
-        onOpenBridgeSettings={() => setShowBridgeSettings(true)}
+        bridgeSourceLabel={SOURCE_LABELS[bridgeSource]}
+        onOpenBridgeSettings={() => {
+          refreshBridgeState();
+          setBridgeUrl(getScaleBridgeUrl());
+          setBridgeToken(getScaleBridgeToken());
+          setShowBridgeSettings(true);
+        }}
         onDeleteDevice={(id) => void handleDeleteDevice(id)}
         onScanNetwork={() => setShowScannerModal(true)}
         onAddDevice={() => { setEditingDevice(undefined); setShowDeviceModal(true); }}

@@ -127,6 +127,7 @@ SQL
 done
 
 echo "== 3) merkez_db tenant_registry =="
+psql_file merkez_db "${REPO_ROOT}/database/scripts/merkez_tenant_registry_add_scale_bridge_fields.sql" 2>/dev/null || true
 psql_exec merkez_db -v api="${API_BASE_URL}" <<'SQL'
 INSERT INTO tenant_registry (id, code, display_name, module, connection_provider, rest_base_url, database_name, is_active)
 VALUES

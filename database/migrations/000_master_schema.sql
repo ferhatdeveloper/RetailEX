@@ -137,6 +137,8 @@ CREATE TABLE IF NOT EXISTS stores (
   logo_warehouse_id INTEGER,
   logo_division_id  INTEGER,
   logo_firm_id      INTEGER,
+  scale_bridge_url  TEXT,
+  scale_bridge_token TEXT,
   created_at       TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
   updated_at       TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );

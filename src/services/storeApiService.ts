@@ -16,6 +16,8 @@ export interface Store {
   size: number;
   employeeCount: number;
   isMain: boolean;
+  scaleBridgeUrl?: string;
+  scaleBridgeToken?: string;
 }
 
 export interface StoreStats {
@@ -135,7 +137,9 @@ class StoreApiService {
         openingDate: dbStore.created_at,
         size: 0,
         employeeCount: 0,
-        isMain: dbStore.is_main
+        isMain: dbStore.is_main,
+        scaleBridgeUrl: dbStore.scale_bridge_url || undefined,
+        scaleBridgeToken: dbStore.scale_bridge_token || undefined,
       }));
 
       const nextCursor = cursor + limit < totalStores ? cursor + limit : null;
@@ -436,6 +440,8 @@ class StoreApiService {
       if (updates.status) { fields.push(`is_active = $${i++}`); values.push(updates.status === 'active'); }
       if (updates.isMain !== undefined) { fields.push(`is_main = $${i++}`); values.push(updates.isMain); }
       if (updates.manager) { fields.push(`manager_name = $${i++}`); values.push(updates.manager); }
+      if (updates.scaleBridgeUrl !== undefined) { fields.push(`scale_bridge_url = $${i++}`); values.push(updates.scaleBridgeUrl || null); }
+      if (updates.scaleBridgeToken !== undefined) { fields.push(`scale_bridge_token = $${i++}`); values.push(updates.scaleBridgeToken || null); }
 
       if (fields.length === 0) throw new Error("No updates provided");
 
@@ -460,7 +466,9 @@ class StoreApiService {
         openingDate: data.created_at,
         size: 0,
         employeeCount: 0,
-        isMain: data.is_main
+        isMain: data.is_main,
+        scaleBridgeUrl: data.scale_bridge_url || undefined,
+        scaleBridgeToken: data.scale_bridge_token || undefined,
       };
     } catch (error) {
       console.error('Error updating store:', error);

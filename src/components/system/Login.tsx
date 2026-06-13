@@ -1689,6 +1689,8 @@ export function Login({ onLogin }: LoginProps) {
                           localStorage.setItem('retailex_web_config', JSON.stringify(merged));
                           localStorage.setItem('exretail_firma_donem_configured', 'true');
                         }
+                        const { applyScaleBridgeAfterTenantMerge } = await import('../../utils/scaleBridgeTenantSync');
+                        applyScaleBridgeAfterTenantMerge(prev, merged);
                         const emDir = merged.enabled_modules;
                         if (Array.isArray(emDir) && emDir.length > 0) {
                           localStorage.setItem('retailex_enabled_modules', JSON.stringify(emDir));
@@ -1752,6 +1754,8 @@ export function Login({ onLogin }: LoginProps) {
                         localStorage.setItem('retailex_web_config', JSON.stringify(merged));
                         localStorage.setItem('exretail_firma_donem_configured', 'true');
                       }
+                      const { applyScaleBridgeAfterTenantMerge } = await import('../../utils/scaleBridgeTenantSync');
+                      applyScaleBridgeAfterTenantMerge(prev, merged);
                       const emReg = merged.enabled_modules;
                       if (Array.isArray(emReg) && emReg.length > 0) {
                         localStorage.setItem('retailex_enabled_modules', JSON.stringify(emReg));
