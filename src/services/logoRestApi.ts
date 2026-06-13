@@ -454,6 +454,8 @@ async function logoHttp(
 function extractCount(data: unknown): number | null {
   if (!data || typeof data !== 'object') return null;
   const o = data as Record<string, unknown>;
+  if (typeof o.totalCount === 'number') return o.totalCount;
+  if (typeof o.TotalCount === 'number') return o.TotalCount;
   if (typeof o.count === 'number') return o.count;
   if (typeof o.Count === 'number') return o.Count;
   const meta = o.Meta ?? o.meta;
