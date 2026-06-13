@@ -91,8 +91,12 @@ echo "== 1) merkez_db.tenant_registry — scale_bridge kolonları =="
 if db_exists merkez_db; then
   psql_db merkez_db -f - < "${MERKEZ_SQL}"
   if [[ "${FILL_SAMPLE_URLS:-0}" == "1" && -f "${FILL_URLS_SQL}" ]]; then
-    echo "  -- örnek köprü URL'leri (gerçek mağaza IP'lerini sonra güncelleyin)"
+    echo "  -- örnek köprü URL + token (gerçek mağaza IP'lerini sonra güncelleyin)"
     psql_db merkez_db -f - < "${FILL_URLS_SQL}"
+    if [[ -f "${REPO_ROOT}/database/scripts/sync-scale-bridge-stores-from-registry.sh" ]]; then
+      POSTGRES_PASSWORD="${POSTGRES_PASSWORD}" POSTGRES_CONTAINER="${POSTGRES_CONTAINER}" \
+        bash "${REPO_ROOT}/database/scripts/sync-scale-bridge-stores-from-registry.sh"
+    fi
   fi
   psql_db merkez_db -c "NOTIFY pgrst, 'reload schema';" >/dev/null 2>&1 || true
 else
