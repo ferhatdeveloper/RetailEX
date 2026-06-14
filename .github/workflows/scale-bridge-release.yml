@@ -80,8 +80,9 @@ jobs:
 
             Mağaza PC'de tek kurulum: servis + yönetim arayüzü + taşınabilir Node.
 
-            ### Yenilikler (0.1.84)
-            - Test/tarama/probe: tüm bilinen terazi portları sırayla denenir (20304, 4001, 3001, 3000, 4000, 5000, 8000, 8001, 8080, 9000, 10001)
+            ### Yenilikler (0.1.85)
+            - **Masaüstü yönetim** (WinForms benzeri Slint pencere): terazi ekle/düzenle, test, tarama — tarayıcı zorunlu değil
+            - `--web` ile eski HTML arayüzü; varsayılan: `RetailEX_ScaleBridge_Manager.exe` penceresi
 
             ### Kurulum / güncelleme
             1. `RetailEX-ScaleBridge-Setup.exe` indirin (yönetici olarak çalıştırın)

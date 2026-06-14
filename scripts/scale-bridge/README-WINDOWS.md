@@ -12,8 +12,7 @@ Mağaza PC'de RetailEX kapalıyken bile merkezden teraziye PLU gönderimi için 
    https://github.com/ferhatdeveloper/RetailEX/releases/tag/scale-bridge-v0.1.80
 2. **`RetailEX-ScaleBridge-Setup.exe`** dosyasını indirin.
 3. Dosyayı **yönetici olarak** çalıştırın.
-4. Kurulum bitince tarayıcıda yönetim arayüzü açılır:  
-   **http://127.0.0.1:3012/ui/**
+4. Kurulum bitince **masaüstü yönetim penceresi** açılır (tarayıcı gerekmez). İsterseniz: `RetailEX_ScaleBridge_Manager.exe --web`
 
 ### Güncelleme (eski sürümün üzerine kurulum)
 
@@ -66,7 +65,9 @@ powershell -ExecutionPolicy Bypass -File scripts\scale-bridge\build-windows-inst
 | Ağ taraması | Subnet'te Rongta terazi bulma |
 | JSON | Gelişmiş config düzenleme |
 
-Başlat menüsü → **RetailEX Terazi Köprüsü**
+Başlat menüsü → **RetailEX Terazi Köprüsü** (masaüstü pencere)
+
+İsteğe bağlı web arayüzü: `RetailEX_ScaleBridge_Manager.exe --web` veya penceredeki **Web arayüz** düğmesi → http://127.0.0.1:3012/ui/
 
 ## Kurulum içeriği
 

@@ -1,12 +1,15 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-//! RetailEX Terazi Köprüsü — kurulum sihirbazı ve yönetim arayüzü başlatıcısı.
-//! Varsayılan: Windows servisini başlatır ve http://127.0.0.1:3012/ui/ açar.
+//! RetailEX Terazi Köprüsü — kurulum ve masaüstü yönetim arayüzü (Slint).
 
 use std::env;
 use std::path::PathBuf;
 use std::process::Command;
 use std::time::Duration;
+
+slint::include_modules!();
+
+mod scale_bridge_gui;
 
 const SERVICE_NAME: &str = "RetailEX_Scale_Bridge";
 const BRIDGE_EXE: &str = "RetailEX_Scale_Bridge.exe";
@@ -46,13 +49,14 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     match args.get(1).map(|s| s.as_str()) {
         Some("--install") => return cmd_install(&bridge_exe, quiet),
         Some("--uninstall") => return cmd_uninstall(&bridge_exe, quiet),
+        Some("--web") => return cmd_open_web(&bridge_exe),
         Some("--help") | Some("-h") => {
             println!(
-                "RetailEX_ScaleBridge_Manager\n  (varsayılan) Yönetim arayüzünü aç\n  --install    Windows servisini kur\n  --uninstall  Windows servisini kaldır"
+                "RetailEX_ScaleBridge_Manager\n  (varsayılan) Masaüstü yönetim penceresi\n  --web        Tarayıcı arayüzü\n  --install    Windows servisini kur\n  --uninstall  Windows servisini kaldır"
             );
             return Ok(());
         }
-        _ => cmd_open_ui(&bridge_exe),
+        _ => scale_bridge_gui::launch_gui(&bridge_exe),
     }
 }
 
@@ -82,7 +86,7 @@ fn cmd_install(bridge_exe: &PathBuf, quiet: bool) -> Result<(), Box<dyn std::err
         native_dialog::MessageDialog::new()
             .set_title("RetailEX Terazi Köprüsü")
             .set_text(&format!(
-                "Kurulum tamamlandı.\n\nServis: {}\nConfig: {}\\scale-bridge.json\n\nYönetim arayüzü açılıyor…",
+                "Kurulum tamamlandı.\n\nServis: {}\nConfig: {}\\scale-bridge.json\n\nYönetim penceresi açılıyor…",
                 SERVICE_NAME, CONFIG_DIR
             ))
             .show_alert();
@@ -93,7 +97,7 @@ fn cmd_install(bridge_exe: &PathBuf, quiet: bool) -> Result<(), Box<dyn std::err
         );
     }
     if !quiet {
-        open_ui_browser()?;
+        scale_bridge_gui::launch_gui(bridge_exe)?;
     }
     Ok(())
 }
@@ -172,7 +176,7 @@ fn cmd_uninstall(bridge_exe: &PathBuf, quiet: bool) -> Result<(), Box<dyn std::e
     Ok(())
 }
 
-fn cmd_open_ui(bridge_exe: &PathBuf) -> Result<(), Box<dyn std::error::Error>> {
+fn cmd_open_web(bridge_exe: &PathBuf) -> Result<(), Box<dyn std::error::Error>> {
     let _ = try_start_service();
     if !wait_for_bridge_ready(45) {
         let detail = read_service_log_hint();
@@ -204,7 +208,6 @@ fn try_start_service() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 fn open_ui_browser() -> Result<(), Box<dyn std::error::Error>> {
-    // cmd start bazen varsayılan tarayıcıyı açmaz; rundll32 yedek.
     let started = Command::new("cmd")
         .args(["/C", "start", "", UI_URL])
         .spawn()
