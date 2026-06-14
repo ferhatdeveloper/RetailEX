@@ -5,9 +5,22 @@ import os from 'node:os';
 import net from 'node:net';
 import { rongtaTcpQuickProbe } from './rongtaTcp.mjs';
 
-const FALLBACK_PORTS = [20304, 4001, 9100, 1024];
+const FALLBACK_PORTS = [20304, 4001];
 const DEFAULT_CONCURRENCY = 48;
 const TCP_PROBE_TIMEOUT_MS = 500;
+
+function parsePortsList(ports) {
+  if (!ports) return [...FALLBACK_PORTS];
+  if (Array.isArray(ports)) {
+    const list = ports.map((p) => Number(p)).filter((p) => Number.isInteger(p) && p > 0 && p <= 65535);
+    return list.length ? [...new Set(list)] : [...FALLBACK_PORTS];
+  }
+  const list = String(ports)
+    .split(/[,\s;]+/)
+    .map((p) => parseInt(p, 10))
+    .filter((p) => Number.isInteger(p) && p > 0 && p <= 65535);
+  return list.length ? [...new Set(list)] : [...FALLBACK_PORTS];
+}
 
 function parseIp(ip) {
   const parts = String(ip || '').trim().split('.').map((x) => Number(x));
@@ -116,9 +129,6 @@ function tryTcpPort(ip, port, timeoutMs = TCP_PROBE_TIMEOUT_MS) {
 
 async function probeHost(ip, ports = FALLBACK_PORTS) {
   for (const port of ports) {
-    const open = await tryTcpPort(ip, port);
-    if (!open) continue;
-
     try {
       const verified = await rongtaTcpQuickProbe(ip, port);
       if (verified?.ok) {
@@ -131,16 +141,8 @@ async function probeHost(ip, ports = FALLBACK_PORTS) {
         };
       }
     } catch {
-      /* protokol doğrulaması başarısız — port açık kabul et */
+      /* sonraki port */
     }
-
-    return {
-      ipAddress: ip,
-      port,
-      brand: 'rongta',
-      model: 'RLS1000/RLS1100',
-      isResponding: true,
-    };
   }
   return null;
 }
@@ -178,13 +180,14 @@ function resolveScanRanges(opts = {}) {
  */
 export async function scanNetworkForScales(opts = {}) {
   const ranges = resolveScanRanges(opts);
+  const ports = parsePortsList(opts.ports);
   const concurrency = Number(opts.concurrency) > 0 ? Number(opts.concurrency) : DEFAULT_CONCURRENCY;
   const hosts = [...new Set(ranges.flatMap((r) => expandRange(r.startIP, r.endIP)))];
   const found = [];
   let done = 0;
 
   await mapPool(hosts, concurrency, async (ip) => {
-    const hit = await probeHost(ip);
+    const hit = await probeHost(ip, ports);
     done += 1;
     if (opts.onProgress) {
       opts.onProgress({ current: done, total: hosts.length, currentIP: ip, found: found.length });
@@ -198,9 +201,10 @@ export async function scanNetworkForScales(opts = {}) {
     startIP: primary.startIP,
     endIP: primary.endIP,
     ranges,
+    ports,
     scanned: hosts.length,
     devices: found.sort((a, b) => a.ipAddress.localeCompare(b.ipAddress, undefined, { numeric: true })),
   };
 }
 
-export { guessLocalSubnet, guessLocalSubnets, expandRange };
+export { guessLocalSubnet, guessLocalSubnets, expandRange, parsePortsList };

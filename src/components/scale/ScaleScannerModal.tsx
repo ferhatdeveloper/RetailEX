@@ -16,6 +16,7 @@ export function ScaleScannerModal({ onDevicesFound, onClose }: ScaleScannerModal
   const [scanning, setScanning] = useState(false);
   const [progress, setProgress] = useState<ScanProgress>({ current: 0, total: 0 });
   const [foundDevices, setFoundDevices] = useState<ScannedDevice[]>([]);
+  const [devicePorts, setDevicePorts] = useState<Record<string, number>>({});
   const [selectedDevices, setSelectedDevices] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
 
@@ -59,7 +60,10 @@ export function ScaleScannerModal({ onDevicesFound, onClose }: ScaleScannerModal
       });
 
       setFoundDevices(devices);
-      
+      setDevicePorts(
+        Object.fromEntries(devices.map((d) => [d.ipAddress, d.port || 20304]))
+      );
+
       // Auto-select all found devices
       const deviceIPs = new Set(devices.map(d => d.ipAddress));
       setSelectedDevices(deviceIPs);
@@ -90,7 +94,7 @@ export function ScaleScannerModal({ onDevicesFound, onClose }: ScaleScannerModal
         model: d.model || 'Unknown',
         connectionType: 'tcp' as const,
         ipAddress: d.ipAddress,
-        port: d.port,
+        port: devicePorts[d.ipAddress] || d.port,
         status: 'online' as const
       }));
 
@@ -248,9 +252,22 @@ export function ScaleScannerModal({ onDevicesFound, onClose }: ScaleScannerModal
                           <p className="text-sm text-gray-600 mt-1">
                             Model: {device.model || 'Bilinmiyor'}
                           </p>
-                          <p className="text-xs text-gray-500 font-mono mt-1">
-                            {device.ipAddress}:{device.port}
-                          </p>
+                          <div className="flex items-center gap-2 mt-2">
+                            <span className="text-xs text-gray-500 font-mono">{device.ipAddress}</span>
+                            <label className="text-xs text-gray-500">Port</label>
+                            <input
+                              type="number"
+                              min={1}
+                              max={65535}
+                              value={devicePorts[device.ipAddress] ?? device.port}
+                              onClick={(e) => e.stopPropagation()}
+                              onChange={(e) => {
+                                const port = parseInt(e.target.value, 10) || device.port;
+                                setDevicePorts((prev) => ({ ...prev, [device.ipAddress]: port }));
+                              }}
+                              className="w-24 px-2 py-1 border border-gray-300 rounded text-xs font-mono"
+                            />
+                          </div>
                         </div>
                       </div>
 

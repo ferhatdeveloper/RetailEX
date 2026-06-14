@@ -2,7 +2,7 @@
 import { X, Wifi } from 'lucide-react';
 import type { ScaleDevice } from '../../utils/scaleProtocol';
 import { getDefaultPort, getDefaultBaudRate, testScaleConnection } from '../../utils/scaleProtocol';
-import { RONGTA_DEFAULT_IP } from '../../utils/rongtaRlsProtocol';
+import { RONGTA_DEFAULT_IP, RONGTA_DEFAULT_PORT } from '../../utils/rongtaRlsProtocol';
 import { validateIPAddress } from '../../utils/scaleScanner';
 
 interface ScaleDeviceModalProps {
@@ -18,7 +18,7 @@ export function ScaleDeviceModal({ device, onSave, onClose }: ScaleDeviceModalPr
     model: device?.model || 'RLS1100',
     connectionType: device?.connectionType || 'tcp',
     ipAddress: device?.ipAddress || RONGTA_DEFAULT_IP,
-    port: device?.port || 3001,
+    port: device?.port || RONGTA_DEFAULT_PORT,
     comPort: device?.comPort || 'COM1',
     baudRate: device?.baudRate || 9600,
     status: device?.status || 'offline'

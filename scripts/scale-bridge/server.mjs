@@ -210,6 +210,7 @@ async function handle(req, res) {
         startIP: body.startIP,
         endIP: body.endIP,
         concurrency: body.concurrency,
+        ports: body.ports,
       });
       return json(res, 200, result);
     }
