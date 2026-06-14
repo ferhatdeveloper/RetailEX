@@ -18,6 +18,11 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.join(__dirname, "..");
 const cwd = path.join(root, "tools", "postgresql-remote-enable");
 
+if (!require("node:fs").existsSync(path.join(cwd, "Cargo.toml"))) {
+  console.error("build-postgres-remote-enable: tools/postgresql-remote-enable eksik");
+  process.exit(1);
+}
+
 const r = spawnSync("cargo", ["build", "--release"], {
   cwd,
   stdio: "inherit",
