@@ -104,6 +104,8 @@ export interface Product {
    * X gün sonra müşteri için takip hatırlatması (null / ≤0 = kapalı).
    */
   followUpReminderDays?: number | null;
+  /** Tartı ürünü — teraziye PLU aktarımına dahil edilir */
+  isScaleProduct?: boolean;
 }
 
 export interface ProductVariant {

@@ -10,10 +10,12 @@ import { useAuthStore } from '../../store/useAuthStore';
 
 /** Malzeme listesi: uzun metin kolonları hariç (ağ payload + parse maliyeti) */
 const PRODUCT_LIST_SELECT =
-  'id,firm_nr,code,barcode,name,name2,image_url,image_url_cdn,category_code,group_code,sub_group_code,brand,model,manufacturer,supplier,origin,material_type,unit,unitset_id,vat_rate,price,cost,stock,min_stock,max_stock,critical_stock,is_active,has_variants,special_code_1,special_code_2,special_code_3,special_code_4,special_code_5,special_code_6,price_list_1,price_list_2,price_list_3,price_list_4,price_list_5,price_list_6,currency,purchase_price_usd,purchase_price_eur,sale_price_usd,sale_price_eur,custom_exchange_rate,auto_calculate_usd,follow_up_reminder_days,created_at,updated_at';
+  'id,firm_nr,code,barcode,name,name2,image_url,image_url_cdn,category_code,group_code,sub_group_code,brand,model,manufacturer,supplier,origin,material_type,unit,unitset_id,vat_rate,price,cost,stock,min_stock,max_stock,critical_stock,is_active,has_variants,special_code_1,special_code_2,special_code_3,special_code_4,special_code_5,special_code_6,price_list_1,price_list_2,price_list_3,price_list_4,price_list_5,price_list_6,currency,purchase_price_usd,purchase_price_eur,sale_price_usd,sale_price_eur,custom_exchange_rate,auto_calculate_usd,follow_up_reminder_days,is_scale_product,created_at,updated_at';
 const PRODUCT_LIST_SELECT_SQL = PRODUCT_LIST_SELECT.replace(/,/g, ', ');
-/** Migration 035 öncesi tenant şemaları (ör. kupeli) — follow_up_reminder_days yok */
-const PRODUCT_LIST_SELECT_FALLBACK = PRODUCT_LIST_SELECT.replace(',follow_up_reminder_days', '');
+/** Migration 035/047 öncesi tenant şemaları */
+const PRODUCT_LIST_SELECT_FALLBACK = PRODUCT_LIST_SELECT
+  .replace(',is_scale_product', '')
+  .replace(',follow_up_reminder_days', '');
 const PRODUCT_LIST_SELECT_FALLBACK_SQL = PRODUCT_LIST_SELECT_FALLBACK.replace(/,/g, ', ');
 
 /** Malzeme / stok raporları: yalnızca rapor kolonları (payload ve parse süresini kısaltır). */
@@ -944,6 +946,7 @@ export const productAPI = {
         follow_up_reminder_days: normalizeProductFollowUpReminderDays(
           (product as any).followUpReminderDays ?? (product as any).follow_up_reminder_days,
         ),
+        is_scale_product: Boolean((product as any).isScaleProduct ?? (product as any).is_scale_product ?? false),
       };
 
       // PostgREST: yalnızca GET değil; INSERT de aynı uç üzerinden (pg_bridge / SQL yok)
@@ -1045,6 +1048,7 @@ export const productAPI = {
         unitsetId: 'unitset_id',
         image_url_cdn: 'image_url_cdn',
         followUpReminderDays: 'follow_up_reminder_days',
+        isScaleProduct: 'is_scale_product',
       };
 
       const finalData: Record<string, any> = {};
@@ -1057,6 +1061,10 @@ export const productAPI = {
       Object.entries(productData).forEach(([key, value]) => {
         if (value !== undefined) {
           const dbKey = fieldMapping[key] || key;
+          if (dbKey === 'is_scale_product') {
+            finalData[dbKey] = Boolean(value);
+            return;
+          }
           finalData[dbKey] = value;
         }
       });
@@ -1121,6 +1129,7 @@ export const productAPI = {
         salePriceEUR: 'sale_price_eur',
         purchasePriceEUR: 'purchase_price_eur',
         followUpReminderDays: 'follow_up_reminder_days',
+        isScaleProduct: 'is_scale_product',
       };
 
       const fieldValues = new Map<string, any>();
@@ -1128,6 +1137,10 @@ export const productAPI = {
       Object.entries(updates).forEach(([key, value]) => {
         if (key !== 'id' && value !== undefined) {
           const dbKey = fieldMapping[key] || key;
+          if (dbKey === 'is_scale_product') {
+            fieldValues.set(dbKey, Boolean(value));
+            return;
+          }
           fieldValues.set(dbKey, value);
         }
       });
@@ -1535,6 +1548,7 @@ function mapDatabaseProductToProduct(dbProduct: any): Product {
     autoCalculateUSD: dbProduct.auto_calculate_usd === true,
     unitsetId: dbProduct.unitset_id || dbProduct.unit_set_id,
     followUpReminderDays: normalizeProductFollowUpReminderDaysForProduct(dbProduct.follow_up_reminder_days),
+    isScaleProduct: dbProduct.is_scale_product === true,
     created_at: dbProduct.created_at != null ? String(dbProduct.created_at) : undefined,
     updated_at: dbProduct.updated_at != null ? String(dbProduct.updated_at) : undefined,
   };

@@ -429,6 +429,7 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
     isPurchase: true,
     isProduction: false,
     isService: false,
+    isScaleProduct: false,
     autoCalculateUSD: false,
     customExchangeRate: 0,
   });
@@ -772,6 +773,7 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
             if (!Number.isFinite(n) || n <= 0) return '' as number | '';
             return Math.min(3650, n) as number | '';
           })(),
+          isScaleProduct: product.isScaleProduct === true || (product as any).is_scale_product === true,
         }));
 
         // Restore unitset selection
@@ -1706,6 +1708,7 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
         if (!Number.isFinite(n) || n <= 0) return null;
         return Math.min(3650, n);
       })(),
+      isScaleProduct: formData.isScaleProduct === true,
     } as any;
 
     try {
@@ -2264,6 +2267,15 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                       className="w-4 h-4 text-blue-600 border-gray-300 rounded"
                     />
                     <span className="text-xs text-gray-700">{tm('service')}</span>
+                  </label>
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={formData.isScaleProduct}
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleInputChange('isScaleProduct', e.target.checked)}
+                      className="w-4 h-4 text-blue-600 border-gray-300 rounded"
+                    />
+                    <span className="text-xs text-gray-700">{tm('scaleProduct')}</span>
                   </label>
                 </div>
               </div>

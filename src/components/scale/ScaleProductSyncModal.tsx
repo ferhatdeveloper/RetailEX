@@ -3,6 +3,7 @@ import { X, Send, CheckCircle2, XCircle, Loader2, Filter } from 'lucide-react';
 import type { Product } from '../../App';
 import type { ScaleDevice } from '../../utils/scaleProtocol';
 import { sendProductsToScale } from '../../utils/scaleProtocol';
+import { isScaleProductFlag } from '../../utils/scaleProductFilter';
 
 interface ScaleProductSyncModalProps {
   device: ScaleDevice;
@@ -24,20 +25,17 @@ export function ScaleProductSyncModal({ device, products, onClose, onSyncComplet
     failedCount?: number;
   } | null>(null);
 
-  // Filter products by weight-based units (KG, GR, LT)
-  const weightBasedProducts = products.filter(p => {
-    const unit = p.unit.toUpperCase();
-    return unit === 'KG' || unit === 'GR' || unit === 'GRAM' || unit === 'LT' || unit === 'LİTRE';
-  });
+  // Yalnızca "Tartı ürünü" işaretli ürünler
+  const scaleProducts = products.filter((p) => isScaleProductFlag(p));
 
   // Get unique categories
-  const categories = Array.from(new Set(weightBasedProducts.map(p => p.category)));
+  const categories = Array.from(new Set(scaleProducts.map(p => p.category)));
 
   // Get unique units
-  const units = Array.from(new Set(weightBasedProducts.map(p => p.unit)));
+  const units = Array.from(new Set(scaleProducts.map(p => p.unit)));
 
   // Apply filters
-  const filteredProducts = weightBasedProducts.filter(p => {
+  const filteredProducts = scaleProducts.filter(p => {
     if (filterCategory !== 'all' && p.category !== filterCategory) return false;
     if (filterUnit !== 'all' && p.unit !== filterUnit) return false;
     return true;
@@ -192,7 +190,7 @@ export function ScaleProductSyncModal({ device, products, onClose, onSyncComplet
             <div className="bg-gray-50 px-4 py-3 border-b border-gray-200">
               <div className="flex items-center justify-between">
                 <span className="text-sm text-gray-700">
-                  {filteredProducts.length} ürün bulundu (Tartılı ürünler)
+                  {filteredProducts.length} tartı ürünü bulundu
                 </span>
                 <span className="text-sm text-gray-600">
                   {selectedProducts.size} ürün seçildi
@@ -203,8 +201,8 @@ export function ScaleProductSyncModal({ device, products, onClose, onSyncComplet
             <div className="max-h-96 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-400 scrollbar-track-gray-100 hover:scrollbar-thumb-gray-500">
               {filteredProducts.length === 0 ? (
                 <div className="p-8 text-center text-gray-500">
-                  <p>Tartılı ürün bulunamadı (KG, GR, LT)</p>
-                  <p className="text-sm mt-1">Sadece ağırlık bazlı ürünler teraziye gönderilebilir</p>
+                  <p>Tartı ürünü bulunamadı</p>
+                  <p className="text-sm mt-1">Ürün kartında &quot;Tartı ürünü&quot; seçeneğini işaretleyin</p>
                 </div>
               ) : (
                 <div className="divide-y divide-gray-200">
