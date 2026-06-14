@@ -112,16 +112,6 @@ fn parse_packet_cmd(raw: &str) -> Option<(String, String)> {
     Some((cmd, data))
 }
 
-    pub success: bool,
-    pub message: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub sent_count: Option<u32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub failed_count: Option<u32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub errors: Option<Vec<String>>,
-}
-
 fn pad_field(value: &str, width: usize) -> String {
     let s: String = value.chars().take(width).collect();
     if s.len() >= width {
