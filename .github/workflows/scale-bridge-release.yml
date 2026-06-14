@@ -80,6 +80,11 @@ jobs:
 
             Mağaza PC'de tek kurulum: servis + yönetim arayüzü + taşınabilir Node.
 
+            ### Yenilikler (0.1.78)
+            - Ağ taraması: yerel subnet otomatik algılama + hızlı TCP probe
+            - Test bağlantısı: terazi ekranına **EXFIN RETAIL** yazar (PLU 99)
+            - Yönetim UI: `/scan/defaults` ile IP aralığı otomatik yüklenir
+
             ### Kurulum
             1. `RetailEX-ScaleBridge-Setup.exe` indirin (yönetici olarak çalıştırın)
             2. Kurulum sonunda yönetim UI açılır: http://127.0.0.1:3012/ui/

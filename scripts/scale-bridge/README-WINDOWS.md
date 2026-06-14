@@ -6,10 +6,11 @@ Mağaza PC'de RetailEX kapalıyken bile merkezden teraziye PLU gönderimi için 
 
 ### Mağaza PC (tek kurulum)
 
-1. GitHub Releases sayfasını açın:  
-   https://github.com/ferhatdeveloper/RetailEX/releases  
-2. En güncel **`RetailEX Terazi Köprüsü`** yayınından  
-   **`RetailEX-ScaleBridge-Setup.exe`** dosyasını indirin.
+1. **En güncel sürüm** (önerilen):  
+   https://github.com/ferhatdeveloper/RetailEX/releases/latest  
+   veya doğrudan:  
+   https://github.com/ferhatdeveloper/RetailEX/releases/tag/scale-bridge-v0.1.78
+2. **`RetailEX-ScaleBridge-Setup.exe`** dosyasını indirin.
 3. Dosyayı **yönetici olarak** çalıştırın.
 4. Kurulum bitince tarayıcıda yönetim arayüzü açılır:  
    **http://127.0.0.1:3012/ui/**
