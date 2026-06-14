@@ -1,11 +1,16 @@
 ﻿/**
  * Terazi Ağ Tarayıcı
- * 
- * Ağdaki terazileri otomatik olarak bulur
+ *
+ * Gerçek tarama: Terazi köprüsü (scale-bridge) üzerinden yapılır.
+ * Tarayıcı doğrudan LAN'a erişemez; mağaza PC'deki köprü servisi tarar.
  */
 
 import type { ScaleDevice } from './scaleProtocol';
-import { getDefaultPort } from './scaleProtocol';
+import {
+  resolveScaleBridgeBaseUrl,
+  scaleBridgeScanDefaults,
+  scaleBridgeScanNetwork,
+} from '../services/scaleBridgeApi';
 
 export interface ScanProgress {
   current: number;
@@ -21,75 +26,60 @@ export interface ScannedDevice {
   isResponding: boolean;
 }
 
+function isTauriRuntime(): boolean {
+  return typeof window !== 'undefined' && !!(window as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__;
+}
+
 /**
- * IP aralığını tarar ve terazileri bulur
+ * IP aralığını tarar ve terazileri bulur (köprü servisi üzerinden).
  */
 export async function scanNetwork(
-  startIP: string = '192.168.1.1',
-  endIP: string = '192.168.1.254',
+  startIP?: string,
+  endIP?: string,
   onProgress?: (progress: ScanProgress) => void
 ): Promise<ScannedDevice[]> {
   try {
-    // Electron API kontrolü
-    if (typeof window !== 'undefined' && (window as any).electronAPI?.scale?.scanNetwork) {
-      const result = await (window as any).electronAPI.scale.scanNetwork({
+    if (typeof window !== 'undefined' && (window as { electronAPI?: { scale?: { scanNetwork?: Function } } }).electronAPI?.scale?.scanNetwork) {
+      const result = await (window as { electronAPI: { scale: { scanNetwork: (opts: object) => Promise<{ devices?: ScannedDevice[] }> } } }).electronAPI.scale.scanNetwork({
         startIP,
         endIP,
-        onProgress
+        onProgress,
       });
-      
       return result.devices || [];
     }
-    
-    // Web ortamında simülasyon
-    console.log('Scanning network:', startIP, 'to', endIP);
-    
-    // IP aralığını parse et
-    const startParts = startIP.split('.').map(Number);
-    const endParts = endIP.split('.').map(Number);
-    
-    const startLastOctet = startParts[3];
-    const endLastOctet = endParts[3];
-    const baseIP = `${startParts[0]}.${startParts[1]}.${startParts[2]}`;
-    
-    const total = endLastOctet - startLastOctet + 1;
-    const foundDevices: ScannedDevice[] = [];
-    
-    // Simülasyon: Bazı IP'lerde terazi var gibi davran
-    for (let i = startLastOctet; i <= endLastOctet; i++) {
-      const currentIP = `${baseIP}.${i}`;
-      
-      // Progress callback
-      if (onProgress) {
-        onProgress({
-          current: i - startLastOctet + 1,
-          total,
-          currentIP
-        });
-      }
-      
-      // Simülasyon gecikmesi (gerçekte network request olacak)
-      await new Promise(resolve => setTimeout(resolve, 10));
-      
-      // %5 ihtimalle terazi bul (simülasyon)
-      if (Math.random() < 0.05) {
-        const brands: ScaleDevice['brand'][] = ['bizerba', 'toledo', 'digi', 'cas'];
-        const randomBrand = brands[Math.floor(Math.random() * brands.length)];
-        
-        foundDevices.push({
-          ipAddress: currentIP,
-          port: getDefaultPort(randomBrand),
-          brand: randomBrand,
-          model: `${randomBrand.toUpperCase()}-${Math.floor(Math.random() * 9000) + 1000}`,
-          isResponding: true
-        });
-      }
+
+    const bridgeBase = resolveScaleBridgeBaseUrl();
+    if (!bridgeBase) {
+      throw new Error(
+        'Ağ taraması için terazi köprüsü gerekli. Mağaza bilgisayarında köprü servisini başlatın veya Terazi Yönetimi\'nden köprü URL\'sini tanımlayın (ör. http://127.0.0.1:3012).'
+      );
     }
-    
-    return foundDevices;
+
+    if (onProgress) {
+      onProgress({ current: 0, total: 254, currentIP: 'Köprü üzerinden taranıyor…' });
+    }
+
+    const result = await scaleBridgeScanNetwork(startIP, endIP);
+    const devices = (result.devices || []).map((d) => ({
+      ipAddress: d.ipAddress,
+      port: d.port,
+      brand: (d.brand || 'rongta') as ScaleDevice['brand'],
+      model: d.model,
+      isResponding: d.isResponding !== false,
+    }));
+
+    if (onProgress) {
+      onProgress({
+        current: result.scanned || devices.length,
+        total: result.scanned || 254,
+        currentIP: undefined,
+      });
+    }
+
+    return devices;
   } catch (error) {
     console.error('Network scan error:', error);
-    return [];
+    throw error instanceof Error ? error : new Error('Tarama sırasında hata oluştu');
   }
 }
 
@@ -98,48 +88,42 @@ export async function scanNetwork(
  */
 export async function probeScaleAtIP(
   ipAddress: string,
-  port: number = 3000
+  port: number = 20304
 ): Promise<ScannedDevice | null> {
   try {
-    // Electron API kontrolü
-    if (typeof window !== 'undefined' && (window as any).electronAPI?.scale?.probe) {
-      const result = await (window as any).electronAPI.scale.probe({
+    if (typeof window !== 'undefined' && (window as { electronAPI?: { scale?: { probe?: Function } } }).electronAPI?.scale?.probe) {
+      const result = await (window as { electronAPI: { scale: { probe: (opts: object) => Promise<{ success?: boolean; brand?: string; model?: string }> } } }).electronAPI.scale.probe({
         ipAddress,
-        port
+        port,
       });
-      
+
       if (result.success) {
         return {
           ipAddress,
           port,
-          brand: result.brand,
+          brand: result.brand as ScaleDevice['brand'],
           model: result.model,
-          isResponding: true
+          isResponding: true,
         };
       }
-      
+
       return null;
     }
-    
-    // Web ortamında simülasyon
-    console.log('Probing scale at:', ipAddress, port);
-    await new Promise(resolve => setTimeout(resolve, 500));
-    
-    // %20 ihtimalle terazi bul (simülasyon)
-    if (Math.random() < 0.2) {
-      const brands: ScaleDevice['brand'][] = ['bizerba', 'toledo', 'digi', 'cas'];
-      const randomBrand = brands[Math.floor(Math.random() * brands.length)];
-      
-      return {
-        ipAddress,
-        port,
-        brand: randomBrand,
-        model: `${randomBrand.toUpperCase()}-${Math.floor(Math.random() * 9000) + 1000}`,
-        isResponding: true
-      };
-    }
-    
-    return null;
+
+    const bridgeBase = resolveScaleBridgeBaseUrl();
+    if (!bridgeBase) return null;
+
+    const result = await scaleBridgeScanNetwork(ipAddress, ipAddress);
+    const hit = (result.devices || []).find((d) => d.ipAddress === ipAddress);
+    if (!hit) return null;
+
+    return {
+      ipAddress: hit.ipAddress,
+      port: hit.port || port,
+      brand: (hit.brand || 'rongta') as ScaleDevice['brand'],
+      model: hit.model,
+      isResponding: true,
+    };
   } catch (error) {
     console.error('Probe error:', error);
     return null;
@@ -151,22 +135,11 @@ export async function probeScaleAtIP(
  */
 export async function scanSerialPorts(): Promise<{ port: string; description?: string }[]> {
   try {
-    // Electron API kontrolü
-    if (typeof window !== 'undefined' && (window as any).electronAPI?.scale?.scanSerialPorts) {
-      const result = await (window as any).electronAPI.scale.scanSerialPorts();
+    if (typeof window !== 'undefined' && (window as { electronAPI?: { scale?: { scanSerialPorts?: Function } } }).electronAPI?.scale?.scanSerialPorts) {
+      const result = await (window as { electronAPI: { scale: { scanSerialPorts: () => Promise<{ ports?: { port: string; description?: string }[] }> } } }).electronAPI.scale.scanSerialPorts();
       return result.ports || [];
     }
-    
-    // Web ortamında simülasyon
-    console.log('Scanning serial ports...');
-    await new Promise(resolve => setTimeout(resolve, 500));
-    
-    // Simülasyon: Bazı COM portları
-    return [
-      { port: 'COM1', description: 'Communications Port' },
-      { port: 'COM3', description: 'USB Serial Port' },
-      { port: 'COM5', description: 'Scale Device' }
-    ];
+    return [];
   } catch (error) {
     console.error('Serial port scan error:', error);
     return [];
@@ -178,21 +151,11 @@ export async function scanSerialPorts(): Promise<{ port: string; description?: s
  */
 export async function scanUSBDevices(): Promise<{ deviceId: string; name?: string }[]> {
   try {
-    // Electron API kontrolü
-    if (typeof window !== 'undefined' && (window as any).electronAPI?.scale?.scanUSBDevices) {
-      const result = await (window as any).electronAPI.scale.scanUSBDevices();
+    if (typeof window !== 'undefined' && (window as { electronAPI?: { scale?: { scanUSBDevices?: Function } } }).electronAPI?.scale?.scanUSBDevices) {
+      const result = await (window as { electronAPI: { scale: { scanUSBDevices: () => Promise<{ devices?: { deviceId: string; name?: string }[] }> } } }).electronAPI.scale.scanUSBDevices();
       return result.devices || [];
     }
-    
-    // Web ortamında simülasyon
-    console.log('Scanning USB devices...');
-    await new Promise(resolve => setTimeout(resolve, 500));
-    
-    // Simülasyon: Bazı USB cihazları
-    return [
-      { deviceId: 'USB001', name: 'Bizerba Scale USB' },
-      { deviceId: 'USB002', name: 'Generic Scale Device' }
-    ];
+    return [];
   } catch (error) {
     console.error('USB device scan error:', error);
     return [];
@@ -204,13 +167,13 @@ export async function scanUSBDevices(): Promise<{ deviceId: string; name?: strin
  */
 export function validateIPAddress(ip: string): boolean {
   const ipRegex = /^(\d{1,3}\.){3}\d{1,3}$/;
-  
+
   if (!ipRegex.test(ip)) {
     return false;
   }
-  
+
   const parts = ip.split('.').map(Number);
-  return parts.every(part => part >= 0 && part <= 255);
+  return parts.every((part) => part >= 0 && part <= 255);
 }
 
 /**
@@ -220,29 +183,35 @@ export function validateIPRange(startIP: string, endIP: string): boolean {
   if (!validateIPAddress(startIP) || !validateIPAddress(endIP)) {
     return false;
   }
-  
+
   const startParts = startIP.split('.').map(Number);
   const endParts = endIP.split('.').map(Number);
-  
-  // İlk 3 oktet aynı olmalı
-  if (startParts[0] !== endParts[0] || 
-      startParts[1] !== endParts[1] || 
+
+  if (startParts[0] !== endParts[0] ||
+      startParts[1] !== endParts[1] ||
       startParts[2] !== endParts[2]) {
     return false;
   }
-  
-  // Son oktet: start <= end
+
   return startParts[3] <= endParts[3];
 }
 
 /**
- * Varsayılan ağ aralığını tahmin eder
+ * Varsayılan ağ aralığını köprüden veya yerel tahminden alır
  */
-export function getDefaultIPRange(): { startIP: string; endIP: string } {
-  // Varsayılan olarak 192.168.1.x ağını tara
-  return {
-    startIP: '192.168.1.1',
-    endIP: '192.168.1.254'
-  };
-}
+export async function getDefaultIPRange(): Promise<{ startIP: string; endIP: string }> {
+  try {
+    const defaults = await scaleBridgeScanDefaults();
+    if (defaults.startIP && defaults.endIP) {
+      return { startIP: defaults.startIP, endIP: defaults.endIP };
+    }
+  } catch {
+    /* köprü yok — aşağıdaki yedek */
+  }
 
+  if (isTauriRuntime()) {
+    return { startIP: '192.168.0.1', endIP: '192.168.0.254' };
+  }
+
+  return { startIP: '192.168.1.1', endIP: '192.168.1.254' };
+}

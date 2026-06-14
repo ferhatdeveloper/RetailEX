@@ -6,6 +6,8 @@ import net from 'node:net';
 const CMD = { START: '0201', ACK: '0102', PLU_SEND: '0110' };
 const FALLBACK_PORTS = [20304, 4001, 9100, 1024];
 const SOCKET_TIMEOUT_MS = 8000;
+const QUICK_PROBE_TIMEOUT_MS = 1200;
+const QUICK_CONNECT_TIMEOUT_MS = 500;
 
 function padField(value, width) {
   const s = String(value ?? '').normalize('NFC');
@@ -88,10 +90,10 @@ function writePacket(socket, packet) {
   });
 }
 
-function tryConnect(ip, port) {
+function tryConnect(ip, port, timeoutMs = SOCKET_TIMEOUT_MS) {
   return new Promise((resolve, reject) => {
     const socket = new net.Socket();
-    socket.setTimeout(SOCKET_TIMEOUT_MS);
+    socket.setTimeout(timeoutMs);
     socket.once('error', reject);
     socket.once('timeout', () => { socket.destroy(); reject(new Error('Bağlantı zaman aşımı')); });
     socket.connect(port, ip, () => { socket.setTimeout(0); resolve(socket); });
@@ -106,6 +108,27 @@ async function resolveSocket(ipAddress, port) {
     catch (e) { lastErr = e; }
   }
   throw lastErr ?? new Error('Teraziye bağlanılamadı');
+}
+
+export async function rongtaTcpQuickProbe(ipAddress, port) {
+  const ports = port ? [port] : FALLBACK_PORTS;
+  for (const p of ports) {
+    let socket;
+    try {
+      socket = await tryConnect(ipAddress, p, QUICK_CONNECT_TIMEOUT_MS);
+      await writePacket(socket, buildPacket(CMD.START));
+      const resp = await readOnce(socket, QUICK_PROBE_TIMEOUT_MS);
+      if (resp && resp.length >= 4) {
+        return { ok: true, port: p, response: resp };
+      }
+      return { ok: true, port: p, response: resp || '' };
+    } catch {
+      /* sonraki port */
+    } finally {
+      socket?.destroy();
+    }
+  }
+  return { ok: false };
 }
 
 export async function rongtaTcpTest(ipAddress, port) {

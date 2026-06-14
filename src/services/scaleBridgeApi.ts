@@ -197,6 +197,72 @@ export async function scaleBridgeTestDevice(device: ScaleDevice): Promise<boolea
   return !!json.ok;
 }
 
+export type ScaleBridgeScanDefaults = {
+  startIP: string;
+  endIP: string;
+  subnets?: { startIP: string; endIP: string; sourceIp?: string | null }[];
+};
+
+export type ScaleBridgeScanResult = {
+  startIP: string;
+  endIP: string;
+  scanned: number;
+  devices: {
+    ipAddress: string;
+    port: number;
+    brand?: string;
+    model?: string;
+    isResponding: boolean;
+  }[];
+};
+
+/** Tauri masaüstünde köprü URL yoksa yerel servisi kullan. */
+export function resolveScaleBridgeBaseUrl(): string {
+  const configured = getScaleBridgeUrl();
+  if (configured) return configured;
+  if (typeof window !== 'undefined' && !!(window as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__) {
+    return 'http://127.0.0.1:3012';
+  }
+  return '';
+}
+
+export async function scaleBridgeScanDefaults(): Promise<ScaleBridgeScanDefaults> {
+  const base = resolveScaleBridgeBaseUrl();
+  if (!base) {
+    return { startIP: '192.168.1.1', endIP: '192.168.1.254' };
+  }
+  const res = await fetch(`${base}/scan/defaults`, { headers: headers() });
+  const json = (await res.json().catch(() => ({}))) as ScaleBridgeScanDefaults & { error?: string };
+  if (!res.ok) {
+    throw new Error(json.error || `HTTP ${res.status}`);
+  }
+  return json;
+}
+
+export async function scaleBridgeScanNetwork(
+  startIP?: string,
+  endIP?: string,
+  concurrency = 48
+): Promise<ScaleBridgeScanResult> {
+  const base = resolveScaleBridgeBaseUrl();
+  if (!base) {
+    throw new Error('Terazi köprüsüne erişilemiyor. Mağaza PC\'de köprü servisinin çalıştığından emin olun.');
+  }
+  const body: Record<string, string | number> = { concurrency };
+  if (startIP) body.startIP = startIP;
+  if (endIP) body.endIP = endIP;
+  const res = await fetch(`${base}/scan`, {
+    method: 'POST',
+    headers: headers(),
+    body: JSON.stringify(body),
+  });
+  const json = (await res.json().catch(() => ({}))) as ScaleBridgeScanResult & { error?: string };
+  if (!res.ok) {
+    throw new Error(json.error || `HTTP ${res.status}`);
+  }
+  return json;
+}
+
 export async function scaleBridgeSendProducts(
   device: ScaleDevice,
   products: Product[],

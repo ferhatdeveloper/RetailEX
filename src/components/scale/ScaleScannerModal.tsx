@@ -1,4 +1,4 @@
-﻿import { useState } from 'react';
+﻿import { useState, useEffect } from 'react';
 import { X, Search, Wifi, CheckCircle2, AlertCircle } from 'lucide-react';
 import type { ScaleDevice } from '../../utils/scaleProtocol';
 import type { ScanProgress, ScannedDevice } from '../../utils/scaleScanner';
@@ -10,15 +10,34 @@ interface ScaleScannerModalProps {
 }
 
 export function ScaleScannerModal({ onDevicesFound, onClose }: ScaleScannerModalProps) {
-  const defaultRange = getDefaultIPRange();
-  
-  const [startIP, setStartIP] = useState(defaultRange.startIP);
-  const [endIP, setEndIP] = useState(defaultRange.endIP);
+  const [startIP, setStartIP] = useState('192.168.1.1');
+  const [endIP, setEndIP] = useState('192.168.1.254');
+  const [rangeHint, setRangeHint] = useState<string | null>(null);
   const [scanning, setScanning] = useState(false);
   const [progress, setProgress] = useState<ScanProgress>({ current: 0, total: 0 });
   const [foundDevices, setFoundDevices] = useState<ScannedDevice[]>([]);
   const [selectedDevices, setSelectedDevices] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const defaults = await getDefaultIPRange();
+        if (cancelled) return;
+        setStartIP(defaults.startIP);
+        setEndIP(defaults.endIP);
+        setRangeHint('Köprü servisinden algılanan yerel ağ aralığı yüklendi.');
+      } catch {
+        if (!cancelled) {
+          setRangeHint('Köprüye bağlanılamadı — IP aralığını elle girin veya mağaza PC\'de köprüyü başlatın.');
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const handleStartScan = async () => {
     setError(null);
@@ -66,8 +85,8 @@ export function ScaleScannerModal({ onDevicesFound, onClose }: ScaleScannerModal
       .filter(d => selectedDevices.has(d.ipAddress) && d.isResponding)
       .map((d, index) => ({
         id: `scale-${Date.now()}-${index}`,
-        name: `${d.brand?.toUpperCase() || 'Terazi'} - ${d.ipAddress}`,
-        brand: d.brand || 'generic',
+        name: `${d.brand?.toUpperCase() || 'Rongta'} - ${d.ipAddress}`,
+        brand: (d.brand || 'rongta') as ScaleDevice['brand'],
         model: d.model || 'Unknown',
         connectionType: 'tcp' as const,
         ipAddress: d.ipAddress,
@@ -133,6 +152,10 @@ export function ScaleScannerModal({ onDevicesFound, onClose }: ScaleScannerModal
                 />
               </div>
             </div>
+
+            {rangeHint && !error && (
+              <p className="mt-2 text-xs text-gray-500">{rangeHint}</p>
+            )}
 
             {error && (
               <div className="mt-3 px-4 py-3 bg-red-50 border border-red-200 rounded text-sm text-red-700 flex items-start gap-2">

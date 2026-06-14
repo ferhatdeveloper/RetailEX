@@ -1,10 +1,13 @@
 /**
  * Yerel ağda Rongta terazi taraması (TCP probe).
  */
-import { rongtaTcpTest } from './rongtaTcp.mjs';
+import os from 'node:os';
+import net from 'node:net';
+import { rongtaTcpQuickProbe } from './rongtaTcp.mjs';
 
 const FALLBACK_PORTS = [20304, 4001, 9100, 1024];
-const DEFAULT_CONCURRENCY = 24;
+const DEFAULT_CONCURRENCY = 48;
+const TCP_PROBE_TIMEOUT_MS = 500;
 
 function parseIp(ip) {
   const parts = String(ip || '').trim().split('.').map((x) => Number(x));
@@ -12,10 +15,6 @@ function parseIp(ip) {
     throw new Error('Geçersiz IP adresi');
   }
   return parts;
-}
-
-function ipToString(parts) {
-  return parts.join('.');
 }
 
 function expandRange(startIP, endIP) {
@@ -31,26 +30,117 @@ function expandRange(startIP, endIP) {
   return list;
 }
 
+function isPrivateIPv4(parts) {
+  const [a, b] = parts;
+  if (a === 10) return true;
+  if (a === 172 && b >= 16 && b <= 31) return true;
+  if (a === 192 && b === 168) return true;
+  return false;
+}
+
+function subnetRangeFromIp(ip) {
+  const parts = parseIp(ip);
+  const base = `${parts[0]}.${parts[1]}.${parts[2]}`;
+  return { startIP: `${base}.1`, endIP: `${base}.254`, sourceIp: ip };
+}
+
+function guessLocalSubnets() {
+  const nets = os.networkInterfaces();
+  const seen = new Set();
+  const ranges = [];
+
+  for (const entries of Object.values(nets)) {
+    for (const entry of entries || []) {
+      const family = entry.family;
+      if (family !== 'IPv4' && family !== 4) continue;
+      if (entry.internal) continue;
+      try {
+        const parts = parseIp(entry.address);
+        if (!isPrivateIPv4(parts)) continue;
+        const base = `${parts[0]}.${parts[1]}.${parts[2]}`;
+        if (seen.has(base)) continue;
+        seen.add(base);
+        ranges.push(subnetRangeFromIp(entry.address));
+      } catch {
+        /* geçersiz adres */
+      }
+    }
+  }
+
+  if (ranges.length === 0) {
+    return [{ startIP: '192.168.1.1', endIP: '192.168.1.254', sourceIp: null }];
+  }
+
+  return ranges.sort((a, b) => {
+    const aParts = parseIp(a.sourceIp || a.startIP);
+    const bParts = parseIp(b.sourceIp || b.startIP);
+    for (let i = 0; i < 4; i += 1) {
+      if (aParts[i] !== bParts[i]) return aParts[i] - bParts[i];
+    }
+    return 0;
+  });
+}
+
 function guessLocalSubnet() {
-  return { startIP: '192.168.1.1', endIP: '192.168.1.254' };
+  const subnets = guessLocalSubnets();
+  const primary = subnets[0];
+  return {
+    startIP: primary.startIP,
+    endIP: primary.endIP,
+    sourceIp: primary.sourceIp || null,
+    subnets,
+  };
+}
+
+function tryTcpPort(ip, port, timeoutMs = TCP_PROBE_TIMEOUT_MS) {
+  return new Promise((resolve) => {
+    const socket = new net.Socket();
+    let settled = false;
+    const finish = (ok) => {
+      if (settled) return;
+      settled = true;
+      socket.destroy();
+      resolve(ok);
+    };
+    socket.setTimeout(timeoutMs);
+    socket.once('connect', () => finish(true));
+    socket.once('timeout', () => finish(false));
+    socket.once('error', () => finish(false));
+    try {
+      socket.connect(port, ip);
+    } catch {
+      finish(false);
+    }
+  });
 }
 
 async function probeHost(ip, ports = FALLBACK_PORTS) {
   for (const port of ports) {
+    const open = await tryTcpPort(ip, port);
+    if (!open) continue;
+
     try {
-      const result = await rongtaTcpTest(ip, port);
-      if (result?.ok) {
+      const verified = await rongtaTcpQuickProbe(ip, port);
+      if (verified?.ok) {
         return {
           ipAddress: ip,
-          port: result.port || port,
+          port: verified.port || port,
           brand: 'rongta',
           model: 'RLS1000/RLS1100',
           isResponding: true,
         };
       }
     } catch {
-      /* sonraki port */
+      /* protokol doğrulaması başarısız — port açık kabul et */
     }
+
+    return {
+      ipAddress: ip,
+      port,
+      brand: 'rongta',
+      model: 'RLS1000/RLS1100',
+      isResponding: true,
+    };
   }
   return null;
 }
@@ -69,15 +159,27 @@ async function mapPool(items, concurrency, worker) {
   return results;
 }
 
+function resolveScanRanges(opts = {}) {
+  if (opts.startIP && opts.endIP) {
+    return [{ startIP: opts.startIP, endIP: opts.endIP }];
+  }
+  if (opts.startIP || opts.endIP) {
+    const defaults = guessLocalSubnet();
+    return [{
+      startIP: opts.startIP || defaults.startIP,
+      endIP: opts.endIP || defaults.endIP,
+    }];
+  }
+  return guessLocalSubnets().map(({ startIP, endIP }) => ({ startIP, endIP }));
+}
+
 /**
  * @param {{ startIP?: string, endIP?: string, concurrency?: number, onProgress?: (p: object) => void }} opts
  */
 export async function scanNetworkForScales(opts = {}) {
-  const defaults = guessLocalSubnet();
-  const startIP = opts.startIP || defaults.startIP;
-  const endIP = opts.endIP || defaults.endIP;
+  const ranges = resolveScanRanges(opts);
   const concurrency = Number(opts.concurrency) > 0 ? Number(opts.concurrency) : DEFAULT_CONCURRENCY;
-  const hosts = expandRange(startIP, endIP);
+  const hosts = [...new Set(ranges.flatMap((r) => expandRange(r.startIP, r.endIP)))];
   const found = [];
   let done = 0;
 
@@ -91,12 +193,14 @@ export async function scanNetworkForScales(opts = {}) {
     return hit;
   });
 
+  const primary = ranges[0];
   return {
-    startIP,
-    endIP,
+    startIP: primary.startIP,
+    endIP: primary.endIP,
+    ranges,
     scanned: hosts.length,
     devices: found.sort((a, b) => a.ipAddress.localeCompare(b.ipAddress, undefined, { numeric: true })),
   };
 }
 
-export { guessLocalSubnet, expandRange };
+export { guessLocalSubnet, guessLocalSubnets, expandRange };

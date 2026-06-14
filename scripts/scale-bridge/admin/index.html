@@ -321,6 +321,22 @@
       try { await loadConfig(); $('saveMsg').textContent = ''; } catch (e) { alert(e.message); }
     };
 
+    async function loadScanDefaults() {
+      try {
+        const d = await api('/scan/defaults');
+        if (d.startIP) $('scanStart').value = d.startIP;
+        if (d.endIP) $('scanEnd').value = d.endIP;
+        const subnets = d.subnets || [];
+        if (subnets.length > 1) {
+          $('scanInfo').textContent = subnets.length + ' yerel alt ağ algılandı; tarama tümünü kapsar (elle IP girerseniz yalnızca o aralık taranır).';
+        } else if (d.sourceIp) {
+          $('scanInfo').textContent = 'Yerel ağ: ' + d.sourceIp + ' → ' + d.startIP + ' – ' + d.endIP;
+        }
+      } catch (e) {
+        $('scanInfo').textContent = 'Varsayılan IP aralığı kullanılıyor (' + e.message + ')';
+      }
+    }
+
     $('btnScan').onclick = async () => {
       $('btnScan').disabled = true;
       $('scanInfo').textContent = 'Taranıyor…';
@@ -404,6 +420,7 @@
     (async () => {
       await loadStatus();
       try { await loadConfig(); } catch (e) { setBadge(false, e.message); }
+      try { await loadScanDefaults(); } catch (_) { /* yukarıda mesaj */ }
       setInterval(loadStatus, 15000);
     })();
   </script>
