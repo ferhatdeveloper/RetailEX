@@ -1,6 +1,8 @@
 /**
- * Rongta RLS1000/RLS1100 TCP protokolü — RLS1000 Software User Manual §2.2–2.5
- * Paket: 4 bayt uzunluk + 4 bayt komut + veri (ASCII)
+ * Rongta RLS1000/RLS1100 TCP protokolü.
+ * Resmi kaynak: https://www.rongtatech.com/download/ → Label Scale Software User Manual (§2.2)
+ * PDF: https://file.globalso.com/file_manage/4365/20251121/label-scale-software-user-manual.pdf
+ * RetailEX SDK: scripts/scale-bridge/sdk/rongta/
  */
 
 export const RONGTA_CMD = {

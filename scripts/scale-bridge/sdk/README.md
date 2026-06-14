@@ -2,14 +2,33 @@
 
 ## Rongta RLS1000 / RLS1100
 
-Rongta resmi sitesindeki [SDK indirme](https://www.rongtatech.com/category/downloads/9) sayfası **yalnızca termal/yazıcı** cihazları içerir; etiket terazisi (RLS1000/RLS1100) için DLL/npm paketi **yayımlanmamıştır**.
+Resmi indirme portalı: [rongtatech.com/download/](https://www.rongtatech.com/download/)
 
-Etiket terazisi entegrasyonu, **RLS1000 Software User Manual** içindeki **TCP/IP protokol spesifikasyonuna** dayanır:
+Ayrıntılı dosya listesi: [OFFICIAL_SOURCES.md](./OFFICIAL_SOURCES.md)
+
+### Sitede ne var, ne yok?
+
+| İndirme kategorisi | Terazi için? |
+|--------------------|--------------|
+| [SDK](https://www.rongtatech.com/category/downloads/9) | **Hayır** — yalnızca termal/yazıcı (RP, RPP, ACE…) |
+| [Tool Download](https://www.rongtatech.com/category/downloads/4) | **Hayır** — yazıcı araçları |
+| [Driver Download](https://www.rongtatech.com/category/downloads/1) | **Hayır** — yazıcı sürücüleri |
+| **User Manual** (portal araması: «label scale» / «RLS») | **Evet** |
+
+Etiket terazisi için resmi **DLL/npm SDK yok**. Entegrasyon kaynağı:
+
+**[Label Scale Software User Manual](https://file.globalso.com/file_manage/4365/20251121/label-scale-software-user-manual.pdf)** — §2.2 TCP/IP protokolü:
 
 - Paket: `4 bayt uzunluk + 4 bayt komut + ASCII veri`
 - Komutlar: `0201` başlat, `0102` ACK, `0110` PLU, `0120` satış isteği, `0210` satış kaydı, `0220` satış sonu
 
-Bu dizindeki `rongta/` modülü bu spesifikasyonun RetailEX uygulamasıdır (iç SDK).
+`rongta/` modülü bu PDF spesifikasyonunun RetailEX uygulamasıdır (iç SDK). RLS1000.exe veya yazıcı SDK zip’leri kullanılmaz.
+
+Resmi PDF’leri yerel indirmek için:
+
+```bash
+npm run scale-bridge:fetch-docs
+```
 
 ## Kullanım (Node / scale-bridge)
 
