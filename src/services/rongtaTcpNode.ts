@@ -1,15 +1,21 @@
 /**
  * Rongta RLS TCP istemcisi (Node.js) — pg_bridge tarafında kullanılır.
+ * Protokol: src/utils/rongtaRlsProtocol.ts (scale-bridge SDK ile uyumlu)
  */
 
 import net from 'node:net';
 import {
   buildRongtaPacket,
   buildRongtaPluBody,
+  buildRongtaRequestSalesPacket,
   buildRongtaStartAckPacket,
   buildRongtaStartPacket,
   buildRongtaTestPluRecord,
+  parseRongtaAck,
+  parseRongtaPacket,
+  parseRongtaSalesRecord,
   type RongtaPluRecord,
+  type RongtaSalesRecord,
   RONGTA_CMD,
   RONGTA_FALLBACK_PORTS,
   RONGTA_TEST_DISPLAY_TEXT,
@@ -18,13 +24,23 @@ import {
 const SOCKET_TIMEOUT_MS = 8000;
 
 function parseAck(raw: string): { ok: boolean; errorCode: string; raw: string } {
-  const s = raw.trim();
-  if (s.length < 8) return { ok: false, errorCode: '????', raw: s };
-  const cmd = s.slice(4, 8);
-  if (cmd !== RONGTA_CMD.ACK) return { ok: true, errorCode: '0000', raw: s };
-  const data = s.slice(8);
-  const errorCode = data.length >= 14 ? data.slice(-4) : '0000';
-  return { ok: errorCode === '0000', errorCode, raw: s };
+  const ack = parseRongtaAck(raw);
+  if (!ack) return { ok: false, errorCode: '????', raw: raw.trim() };
+  return { ok: ack.ok, errorCode: ack.errorCode, raw: ack.raw };
+}
+
+async function performHandshake(socket: net.Socket) {
+  const initial = await Promise.race([
+    readOnce(socket, 1500),
+    new Promise<string>((r) => setTimeout(() => r(''), 1500)),
+  ]);
+
+  if (initial.includes(RONGTA_CMD.START)) {
+    await writePacket(socket, buildRongtaStartAckPacket());
+  } else {
+    await writePacket(socket, buildRongtaStartPacket());
+    await readOnce(socket, 3000);
+  }
 }
 
 function readOnce(socket: net.Socket, timeoutMs = SOCKET_TIMEOUT_MS): Promise<string> {
@@ -104,17 +120,7 @@ export async function rongtaTcpTest(ipAddress: string, port?: number) {
   const testPlu = buildRongtaTestPluRecord();
   const { socket, port: usedPort } = await resolveSocket(ipAddress, port);
   try {
-    const initial = await Promise.race([
-      readOnce(socket, 1500),
-      new Promise<string>((r) => setTimeout(() => r(''), 1500)),
-    ]);
-
-    if (initial.includes(RONGTA_CMD.START)) {
-      await writePacket(socket, buildRongtaStartAckPacket());
-    } else {
-      await writePacket(socket, buildRongtaStartPacket());
-      await readOnce(socket, 3000);
-    }
+    await performHandshake(socket);
 
     const packet = buildRongtaPacket(RONGTA_CMD.PLU_SEND, buildRongtaPluBody(testPlu));
     await writePacket(socket, packet);
@@ -149,17 +155,7 @@ export async function rongtaTcpSendPlu(
   let sentCount = 0;
 
   try {
-    const initial = await Promise.race([
-      readOnce(socket, 1500),
-      new Promise<string>((r) => setTimeout(() => r(''), 1500)),
-    ]);
-
-    if (initial.includes(RONGTA_CMD.START)) {
-      await writePacket(socket, buildRongtaStartAckPacket());
-    } else {
-      await writePacket(socket, buildRongtaStartPacket());
-      await readOnce(socket, 3000);
-    }
+    await performHandshake(socket);
 
     for (const rec of records) {
       const packet = buildRongtaPacket(RONGTA_CMD.PLU_SEND, buildRongtaPluBody(rec));
@@ -191,6 +187,60 @@ export async function rongtaTcpSendPlu(
       sentCount,
       failedCount: records.length - sentCount,
       errors: [e instanceof Error ? e.message : String(e)],
+    };
+  } finally {
+    socket.destroy();
+  }
+}
+
+export async function rongtaTcpFetchSales(
+  ipAddress: string,
+  port?: number,
+  options?: { maxRecords?: number; timeoutMs?: number }
+) {
+  const maxRecords = options?.maxRecords ?? 500;
+  const timeoutMs = options?.timeoutMs ?? 15000;
+  const { socket, port: usedPort } = await resolveSocket(ipAddress, port);
+  const records: RongtaSalesRecord[] = [];
+
+  try {
+    await performHandshake(socket);
+    await writePacket(socket, buildRongtaRequestSalesPacket());
+
+    const deadline = Date.now() + timeoutMs;
+    while (records.length < maxRecords && Date.now() < deadline) {
+      const raw = await readOnce(socket, Math.min(3000, deadline - Date.now()));
+      if (!raw || raw.length < 8) continue;
+      const pkt = parseRongtaPacket(raw);
+      if (!pkt) continue;
+
+      if (pkt.command === RONGTA_CMD.SALES_END) break;
+      if (pkt.command === RONGTA_CMD.SALES_RECORD) {
+        const rec = parseRongtaSalesRecord(pkt.data);
+        if (rec) records.push(rec);
+      }
+      if (pkt.command === RONGTA_CMD.ACK) {
+        const ack = parseAck(raw);
+        if (!ack.ok) break;
+      }
+    }
+
+    return {
+      success: true,
+      port: usedPort,
+      count: records.length,
+      records,
+      message: records.length
+        ? `${records.length} satış kaydı alındı (port ${usedPort})`
+        : `Satış kaydı yok veya terazi yanıt vermedi (port ${usedPort})`,
+    };
+  } catch (e) {
+    return {
+      success: false,
+      port: usedPort,
+      count: records.length,
+      records,
+      message: e instanceof Error ? e.message : 'Satış kaydı okuma hatası',
     };
   } finally {
     socket.destroy();

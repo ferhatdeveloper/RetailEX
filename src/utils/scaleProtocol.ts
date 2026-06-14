@@ -272,6 +272,37 @@ export async function sendSingleProductToScale(
  */
 export async function readProductsFromScale(device: ScaleDevice): Promise<ScaleProduct[]> {
   try {
+    if (isScaleBridgeMode() && device.id && device.brand === 'rongta') {
+      const { scaleBridgeFetchSales } = await import('../services/scaleBridgeApi');
+      const result = await scaleBridgeFetchSales(device);
+      if (result.records?.length) {
+        return result.records.map((r) => ({
+          pluCode: r.freshCode,
+          name: r.freshCode,
+          price: r.unitPrice,
+          unit: 'KG',
+        }));
+      }
+      return [];
+    }
+
+    if (device.brand === 'rongta' && device.connectionType === 'tcp' && device.ipAddress) {
+      const { rongtaFetchSalesRecords } = await import('../services/rongtaScaleTransport');
+      const result = await rongtaFetchSalesRecords({
+        ipAddress: device.ipAddress,
+        port: device.port,
+      });
+      if (result.records?.length) {
+        return result.records.map((r) => ({
+          pluCode: r.freshCode,
+          name: r.freshCode,
+          price: r.unitPrice,
+          unit: 'KG',
+        }));
+      }
+      return [];
+    }
+
     // Electron API kontrolü
     if (typeof window !== 'undefined' && (window as any).electronAPI?.scale?.readProducts) {
       const result = await (window as any).electronAPI.scale.readProducts({

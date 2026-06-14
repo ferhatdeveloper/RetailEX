@@ -58,7 +58,47 @@ export async function rongtaTestConnectionDetailed(
   };
 }
 
-export async function rongtaSendPluRecords(
+export interface RongtaSalesFetchResult {
+  success: boolean;
+  message: string;
+  count?: number;
+  records?: import('../utils/rongtaRlsProtocol').RongtaSalesRecord[];
+  port?: number;
+}
+
+export async function rongtaFetchSalesRecords(
+  target: RongtaDeviceTarget,
+  options?: { maxRecords?: number; timeoutMs?: number }
+): Promise<RongtaSalesFetchResult> {
+  const body = {
+    ipAddress: target.ipAddress,
+    port: target.port,
+    maxRecords: options?.maxRecords,
+    timeoutMs: options?.timeoutMs,
+  };
+
+  if (IS_TAURI) {
+    const { invoke } = await import('@tauri-apps/api/core');
+    return invoke<RongtaSalesFetchResult>('rongta_scale_fetch_sales', body);
+  }
+
+  const res = await fetch(`${getBridgeUrl()}/api/scale/rongta/fetch-sales`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const json = (await res.json().catch(() => ({}))) as RongtaSalesFetchResult & { error?: string };
+  if (!res.ok) {
+    return {
+      success: false,
+      message: json.message || json.error || `HTTP ${res.status}`,
+      count: 0,
+      records: [],
+    };
+  }
+  return json;
+}
+
   target: RongtaDeviceTarget,
   records: RongtaPluRecord[]
 ): Promise<RongtaSyncResponse> {

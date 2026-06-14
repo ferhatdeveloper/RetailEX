@@ -8,6 +8,9 @@ use std::time::Duration;
 const CMD_START: &str = "0201";
 const CMD_ACK: &str = "0102";
 const CMD_PLU: &str = "0110";
+const CMD_REQUEST_SALES: &str = "0120";
+const CMD_SALES_RECORD: &str = "0210";
+const CMD_SALES_END: &str = "0220";
 const DEFAULT_PORT: u16 = 20304;
 const FALLBACK_PORTS: [u16; 11] = [20304, 4001, 3001, 3000, 4000, 5000, 8000, 8001, 8080, 9000, 10001];
 const TIMEOUT_MS: u64 = 8000;
@@ -38,9 +41,77 @@ pub struct RongtaPluRecord {
     pub operate: Option<String>,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RongtaSalesRecord {
+    pub scale_no: String,
+    pub user_id: String,
+    pub fresh_code: String,
+    pub unit_price: f64,
+    pub weight_unit: String,
+    pub total_amount: f64,
+    pub weight: f64,
+    pub sale_date: String,
+    pub discount_type: String,
+    pub final_online_time: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RongtaSalesFetchResult {
+    pub success: bool,
+    pub message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub count: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub records: Option<Vec<RongtaSalesRecord>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub port: Option<u16>,
+}
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RongtaSyncResult {
+    pub success: bool,
+    pub message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sent_count: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub failed_count: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub errors: Option<Vec<String>>,
+}
+
+fn parse_sales_record(data: &str) -> Option<RongtaSalesRecord> {
+    if data.len() < 74 {
+        return None;
+    }
+    let unit_price_raw: i64 = data[20..28].parse().unwrap_or(0);
+    let total_raw: i64 = data[29..39].parse().unwrap_or(0);
+    let weight_raw: i64 = data[39..45].parse().unwrap_or(0);
+    Some(RongtaSalesRecord {
+        scale_no: data[0..8].trim().to_string(),
+        user_id: data[8..14].trim().to_string(),
+        fresh_code: data[14..20].trim().to_string(),
+        unit_price: unit_price_raw as f64 / 100.0,
+        weight_unit: data[28..29].to_string(),
+        total_amount: total_raw as f64 / 100.0,
+        weight: weight_raw as f64 / 1000.0,
+        sale_date: data[45..59].to_string(),
+        discount_type: data[59..60].to_string(),
+        final_online_time: data[60..74].to_string(),
+    })
+}
+
+fn parse_packet_cmd(raw: &str) -> Option<(String, String)> {
+    if raw.len() < 8 {
+        return None;
+    }
+    let cmd = raw[4..8].to_string();
+    let data = if raw.len() > 8 { raw[8..].to_string() } else { String::new() };
+    Some((cmd, data))
+}
+
     pub success: bool,
     pub message: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -328,6 +399,74 @@ pub async fn rongta_scale_send_plu(
             sent_count: Some(sent_count),
             failed_count: Some(failed),
             errors: if errors.is_empty() { None } else { Some(errors) },
+        })
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn rongta_scale_fetch_sales(
+    ip_address: String,
+    port: Option<u16>,
+    max_records: Option<u32>,
+    timeout_ms: Option<u64>,
+) -> Result<RongtaSalesFetchResult, String> {
+    let ip = ip_address.trim().to_string();
+    if ip.is_empty() {
+        return Err("IP adresi gerekli".into());
+    }
+    let max_records = max_records.unwrap_or(500).min(5000);
+    let timeout_ms = timeout_ms.unwrap_or(15000).min(120_000);
+
+    tokio::task::spawn_blocking(move || {
+        let (mut stream, used_port) = connect_stream(&ip, port)?;
+        let mut records: Vec<RongtaSalesRecord> = Vec::new();
+
+        let initial = read_packet(&mut stream, 1500)?;
+        if initial.contains(CMD_START) {
+            write_packet(&mut stream, &build_packet(CMD_ACK, &format!("{}0000000000", CMD_START)))?;
+        } else {
+            write_packet(&mut stream, &build_packet(CMD_START, ""))?;
+            let _ = read_packet(&mut stream, 3000)?;
+        }
+
+        write_packet(&mut stream, &build_packet(CMD_REQUEST_SALES, ""))?;
+
+        let deadline = std::time::Instant::now() + Duration::from_millis(timeout_ms);
+        while (records.len() as u32) < max_records && std::time::Instant::now() < deadline {
+            let wait = deadline.saturating_duration_since(std::time::Instant::now()).as_millis() as u64;
+            let raw = read_packet(&mut stream, wait.min(3000))?;
+            if raw.len() < 8 {
+                continue;
+            }
+            let Some((cmd, data)) = parse_packet_cmd(&raw) else {
+                continue;
+            };
+            if cmd == CMD_SALES_END {
+                break;
+            }
+            if cmd == CMD_SALES_RECORD {
+                if let Some(rec) = parse_sales_record(&data) {
+                    records.push(rec);
+                }
+            }
+            if cmd == CMD_ACK && !ack_ok(&raw) {
+                break;
+            }
+        }
+
+        let count = records.len() as u32;
+        Ok(RongtaSalesFetchResult {
+            success: true,
+            message: if count > 0 {
+                format!("{} satış kaydı alındı (port {})", count, used_port)
+            } else {
+                format!("Satış kaydı yok veya terazi yanıt vermedi (port {})", used_port)
+            },
+            count: Some(count),
+            records: Some(records),
+            port: Some(used_port),
         })
     })
     .await

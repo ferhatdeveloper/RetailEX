@@ -1,6 +1,7 @@
 /**
  * Rongta RLS1000 / RLS1100 etiket terazisi TCP protokolü.
- * Kaynak: RLS1000 Software User Manual — paket: 4 bayt uzunluk + 4 bayt komut + veri (ASCII).
+ * Kaynak: RLS1000 Software User Manual §2.2–2.5 (resmi terazi SDK yok; TCP spesifikasyonu esas alınır).
+ * Node SDK eşleniği: scripts/scale-bridge/sdk/rongta/
  */
 
 export const RONGTA_DEFAULT_IP = '192.168.1.87';
@@ -188,6 +189,44 @@ export function buildRongtaTxuLine(plu: RongtaPluRecord): string {
     ['PCS Type', '0'],
   ];
   return fields.map(([k, v]) => `${k} ${v}`).join('\r\n') + '\r\n';
+}
+
+export interface RongtaSalesRecord {
+  scaleNo: string;
+  userId: string;
+  freshCode: string;
+  unitPrice: number;
+  weightUnit: string;
+  totalAmount: number;
+  weight: number;
+  saleDate: string;
+  discountType: string;
+  finalOnlineTime: string;
+}
+
+/** 0210 satış kaydı gövdesi (manual alan sırası). */
+export function parseRongtaSalesRecord(data: string): RongtaSalesRecord | null {
+  const d = data;
+  if (d.length < 74) return null;
+  const unitPriceRaw = parseInt(d.slice(20, 28), 10);
+  const totalRaw = parseInt(d.slice(29, 39), 10);
+  const weightRaw = parseInt(d.slice(39, 45), 10);
+  return {
+    scaleNo: d.slice(0, 8).trim(),
+    userId: d.slice(8, 14).trim(),
+    freshCode: d.slice(14, 20).trim(),
+    unitPrice: unitPriceRaw / 100,
+    weightUnit: d.slice(28, 29),
+    totalAmount: totalRaw / 100,
+    weight: weightRaw / 1000,
+    saleDate: d.slice(45, 59),
+    discountType: d.slice(59, 60),
+    finalOnlineTime: d.slice(60, 74),
+  };
+}
+
+export function buildRongtaRequestSalesPacket(): string {
+  return buildRongtaPacket(RONGTA_CMD.REQUEST_SALES);
 }
 
 export function buildRongtaTestPluRecord(): RongtaPluRecord {

@@ -1,7 +1,8 @@
 /**
- * Rongta RLS TCP — scale-bridge servisi.
- * Uygulama mantığı: sdk/rongta/ (RLS1000 TCP protokol SDK)
+ * @module @retailex/rongta-rls-sdk
+ * Rongta RLS1000/RLS1100 TCP SDK — RLS1000 Software User Manual tabanlı.
  */
+export * from './protocol.mjs';
 export {
   RongtaScaleClient,
   buildScaleConnectionHelp,
@@ -12,4 +13,4 @@ export {
   rongtaTcpSendPlu,
   rongtaTcpTest,
   tcpProbePorts,
-} from './sdk/rongta/index.mjs';
+} from './client.mjs';

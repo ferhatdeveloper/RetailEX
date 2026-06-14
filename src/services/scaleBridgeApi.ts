@@ -313,6 +313,24 @@ export async function scaleBridgeSendProducts(
   });
 }
 
+export async function scaleBridgeFetchSales(
+  device: ScaleDevice,
+  options?: { maxRecords?: number; timeoutMs?: number }
+): Promise<{
+  success: boolean;
+  message: string;
+  count?: number;
+  records?: import('../utils/rongtaRlsProtocol').RongtaSalesRecord[];
+}> {
+  return bridgeFetch(`/scales/${encodeURIComponent(device.id)}/sales`, {
+    method: 'POST',
+    body: JSON.stringify({
+      maxRecords: options?.maxRecords ?? 500,
+      timeoutMs: options?.timeoutMs ?? 15000,
+    }),
+  });
+}
+
 export function isScaleBridgeMode(): boolean {
   return !!getScaleBridgeUrl();
 }

@@ -10,7 +10,7 @@ import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { rongtaTcpSendPlu, rongtaTcpTest, discoverRongtaPort, tcpProbePorts } from './rongtaTcp.mjs';
+import { rongtaTcpSendPlu, rongtaTcpTest, rongtaTcpFetchSales, discoverRongtaPort, tcpProbePorts } from './rongtaTcp.mjs';
 import { scanNetworkForScales, guessLocalSubnet } from './scan.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -304,6 +304,18 @@ async function handle(req, res) {
         scale.productCount = (scale.productCount || 0) + (result.sentCount || 0);
         await saveConfig();
       }
+      return json(res, result.success ? 200 : 502, result);
+    }
+
+    if (req.method === 'POST' && path.match(/^\/scales\/[^/]+\/sales$/)) {
+      const id = decodeURIComponent(path.split('/')[2]);
+      const scale = findScale(id);
+      if (!scale) return json(res, 404, { success: false, message: 'Terazi bulunamadı' });
+      const body = await readBody(req);
+      const result = await rongtaTcpFetchSales(scale.ipAddress, scale.port, {
+        maxRecords: Number(body.maxRecords) || 500,
+        timeoutMs: Number(body.timeoutMs) || 15000,
+      });
       return json(res, result.success ? 200 : 502, result);
     }
 

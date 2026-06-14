@@ -1906,7 +1906,8 @@ fn main() {
         caller_id_serial::caller_serial_start,
         caller_id_serial::caller_serial_stop,
         rongta_scale::rongta_scale_test,
-        rongta_scale::rongta_scale_send_plu
+        rongta_scale::rongta_scale_send_plu,
+        rongta_scale::rongta_scale_fetch_sales
     ])
     .run(tauri::generate_context!())
     .expect("error while running tauri application");

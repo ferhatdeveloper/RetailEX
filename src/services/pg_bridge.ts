@@ -388,6 +388,28 @@ app.post('/api/scale/rongta/send-plu', async (c) => {
     }
 });
 
+app.post('/api/scale/rongta/fetch-sales', async (c) => {
+    try {
+        const body = await c.req.json().catch(() => ({})) as Record<string, unknown>;
+        const ipAddress = typeof body.ipAddress === 'string' ? body.ipAddress.trim() : '';
+        const port = typeof body.port === 'number' ? body.port : undefined;
+        const maxRecords = typeof body.maxRecords === 'number' ? body.maxRecords : undefined;
+        const timeoutMs = typeof body.timeoutMs === 'number' ? body.timeoutMs : undefined;
+        if (!ipAddress) return c.json({ success: false, message: 'ipAddress gerekli' }, 400);
+        const { rongtaTcpFetchSales } = await import('./rongtaTcpNode');
+        const result = await rongtaTcpFetchSales(ipAddress, port, { maxRecords, timeoutMs });
+        return c.json(result);
+    } catch (error: any) {
+        console.error('[Rongta fetch-sales]', error);
+        return c.json({
+            success: false,
+            message: error?.message || 'fetch-sales failed',
+            count: 0,
+            records: [],
+        }, 500);
+    }
+});
+
 /**
  * Paket servis: Yemeksepeti / Getir / aracı entegratör gibi dış sistemlerden sipariş oluşturma.
  * Güvenlik: DELIVERY_PUSH_TOKEN tanımlıysa Authorization: Bearer veya ?token= veya body.token
