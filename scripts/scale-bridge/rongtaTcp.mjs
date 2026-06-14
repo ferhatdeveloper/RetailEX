@@ -2,13 +2,16 @@
  * Rongta RLS TCP — scale-bridge servisi (Node, bağımsız).
  */
 import net from 'node:net';
+import {
+  SCALE_DISCOVERY_PORTS,
+  SCALE_PRINTER_PORTS,
+  buildScalePortTryList,
+} from './scalePorts.mjs';
 
 const CMD = { START: '0201', ACK: '0102', PLU_SEND: '0110' };
 const RONGTA_TEST_DISPLAY_TEXT = 'EXFIN RETAIL';
-const SCALE_PORTS = [20304, 4001, 3001];
-/** Yazıcı / paylaşım portları — tarama ve otomatik denemede kullanılmaz */
-const PRINTER_PORTS = new Set([9100, 515, 631, 80, 443, 1024]);
-const FALLBACK_PORTS = SCALE_PORTS;
+const FALLBACK_PORTS = SCALE_DISCOVERY_PORTS;
+const PRINTER_PORTS = SCALE_PRINTER_PORTS;
 const SOCKET_TIMEOUT_MS = 8000;
 const QUICK_PROBE_TIMEOUT_MS = 1200;
 const QUICK_CONNECT_TIMEOUT_MS = 500;
@@ -105,8 +108,7 @@ function tryConnect(ip, port, timeoutMs = SOCKET_TIMEOUT_MS) {
 }
 
 function buildPortTryList(port) {
-  if (!port) return [...FALLBACK_PORTS];
-  return [port, ...FALLBACK_PORTS.filter((p) => p !== port)];
+  return buildScalePortTryList(port).filter((p) => !PRINTER_PORTS.has(p));
 }
 
 function errorCode(err) {
@@ -199,7 +201,8 @@ export function buildScaleConnectionHelp(ipAddress, preferredPort, discovery) {
   }
 
   lines.push('');
-  lines.push('Öneri: Terazide IP’yi tekrar kaydedin; RLS1000 ile bağlantı testi yapın; port 4001 deneyin.');
+  lines.push(`Denenen terazi portları: ${checks.map((c) => c.port).join(', ')}`);
+  lines.push('Öneri: RLS1000 yazılımında bağlantı testi yapın; terazi menüsünden IP kaydedin.');
 
   return lines.join('\n');
 }
@@ -228,7 +231,7 @@ function isRongtaAck(raw) {
 }
 
 export async function rongtaTcpQuickProbe(ipAddress, port) {
-  const ports = port ? [port] : FALLBACK_PORTS;
+  const ports = buildPortTryList(port);
   for (const p of ports) {
     if (PRINTER_PORTS.has(p)) continue;
     let socket;

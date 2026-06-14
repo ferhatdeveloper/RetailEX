@@ -184,11 +184,11 @@
         </div>
         <div class="row">
           <div>
-            <label>Tarama portları (virgülle)</label>
-            <input id="scanPorts" value="20304" placeholder="20304 veya 20304,4001" />
+            <label>Tarama portları (virgülle, boş = tüm terazi portları)</label>
+            <input id="scanPorts" value="" placeholder="Boş bırakın veya 20304,4001,3001,8001…" />
           </div>
           <div>
-            <label class="sub" style="margin-top:22px">Yazıcı (Canon 9100 vb.) taranmaz — yalnızca terazi portu: 20304</label>
+            <label class="sub" style="margin-top:22px">Varsayılan: 20304, 4001, 3001, 3000, 4000, 5000, 8000, 8001, 8080, 9000, 10001 (yazıcı 9100 hariç)</label>
           </div>
         </div>
         <div class="progress"><div id="scanBar"></div></div>
@@ -292,7 +292,7 @@
           const refused = (r.checks || []).filter((c) => c.refused).length;
           msg.className = 'msg err';
           msg.textContent = refused > 0
-            ? ip + ' erişiliyor ama terazi portu kapalı (ECONNREFUSED). Terazi IP/ağ ayarını ve port 4001/3001 deneyin.'
+            ? ip + ' erişiliyor ama terazi portu kapalı. Tüm terazi portları denendi — RLS1000 ile IP/port doğrulayın.'
             : ip + ' yanıt vermiyor — ping ve terazi ethernet ayarını kontrol edin.';
         }
       } catch (e) {
@@ -473,7 +473,7 @@
         const body = {
           startIP: $('scanStart').value.trim(),
           endIP: $('scanEnd').value.trim(),
-          ports: $('scanPorts').value.trim() || '20304',
+          ports: $('scanPorts').value.trim() || 'all',
         };
         const res = await api('/scan', { method: 'POST', body: JSON.stringify(body) });
         scanFound = res.devices || [];

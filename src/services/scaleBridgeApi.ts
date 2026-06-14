@@ -265,9 +265,10 @@ export async function scaleBridgeScanNetwork(
   if (!base) {
     throw new Error('Terazi köprüsüne erişilemiyor. Mağaza PC\'de köprü servisinin çalıştığından emin olun.');
   }
-  const body: Record<string, string | number> = { concurrency, ports: '20304' };
+  const body: Record<string, string | number> = { concurrency };
   if (startIP) body.startIP = startIP;
   if (endIP) body.endIP = endIP;
+  body.ports = 'all';
   const res = await fetch(`${base}/scan`, {
     method: 'POST',
     headers: headers(),

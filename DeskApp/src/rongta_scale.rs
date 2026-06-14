@@ -9,7 +9,7 @@ const CMD_START: &str = "0201";
 const CMD_ACK: &str = "0102";
 const CMD_PLU: &str = "0110";
 const DEFAULT_PORT: u16 = 20304;
-const FALLBACK_PORTS: [u16; 4] = [20304, 4001, 9100, 1024];
+const FALLBACK_PORTS: [u16; 11] = [20304, 4001, 3001, 3000, 4000, 5000, 8000, 8001, 8080, 9000, 10001];
 const TIMEOUT_MS: u64 = 8000;
 const TEST_DISPLAY_TEXT: &str = "EXFIN RETAIL";
 
@@ -138,7 +138,15 @@ fn build_plu_body(plu: &RongtaPluRecord) -> String {
 
 fn connect_stream(ip: &str, port: Option<u16>) -> Result<(TcpStream, u16), String> {
     let ports: Vec<u16> = match port {
-        Some(p) => vec![p],
+        Some(p) => {
+            let mut list = vec![p];
+            for fp in FALLBACK_PORTS {
+                if fp != p {
+                    list.push(fp);
+                }
+            }
+            list
+        }
         None => FALLBACK_PORTS.to_vec(),
     };
     let mut last_err = String::from("Bağlantı kurulamadı");

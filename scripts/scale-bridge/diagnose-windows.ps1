@@ -66,8 +66,9 @@ if (Test-Path $ConfigPath) {
         foreach ($s in ($cfg.scales | Where-Object { $_.ipAddress })) {
             $ip = $s.ipAddress
             $port = if ($s.port) { [int]$s.port } else { 20304 }
-            Write-Host "Terazi: $ip port $port"
-            foreach ($p in @($port, 20304, 4001, 3001 | Select-Object -Unique)) {
+            $probePorts = @(20304, 4001, 3001, 3000, 4000, 5000, 8000, 8001, 8080, 9000, 10001)
+            Write-Host "Terazi: $ip (config port $port)"
+            foreach ($p in ($probePorts | Sort-Object -Unique)) {
                 $t = Test-NetConnection -ComputerName $ip -Port $p -WarningAction SilentlyContinue
                 $state = if ($t.TcpTestSucceeded) { 'ACIK' } else { 'KAPALI/RED' }
                 Write-Host "  TCP $p -> $state"

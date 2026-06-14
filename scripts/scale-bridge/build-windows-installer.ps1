@@ -46,6 +46,7 @@ Copy-Item -Force (Join-Path $ScaleDir 'server.mjs') (Join-Path $Staging 'scale-b
 Copy-Item -Force (Join-Path $ScaleDir 'server.mjs') (Join-Path $Staging 'scale_bridge_server.mjs')
 Copy-Item -Force (Join-Path $ScaleDir 'rongtaTcp.mjs') (Join-Path $Staging 'scale-bridge\rongtaTcp.mjs')
 Copy-Item -Force (Join-Path $ScaleDir 'scan.mjs') (Join-Path $Staging 'scale-bridge\scan.mjs')
+Copy-Item -Force (Join-Path $ScaleDir 'scalePorts.mjs') (Join-Path $Staging 'scale-bridge\scalePorts.mjs')
 Copy-Item -Force (Join-Path $ScaleDir 'admin\index.html') (Join-Path $Staging 'scale-bridge\admin\index.html')
 Copy-Item -Force (Join-Path $ScaleDir 'diagnose-windows.ps1') (Join-Path $Staging 'scale-bridge\diagnose-windows.ps1')
 Copy-Item -Force (Join-Path $ScaleDir 'configure-firewall.ps1') (Join-Path $Staging 'scale-bridge\configure-firewall.ps1')

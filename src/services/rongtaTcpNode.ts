@@ -85,7 +85,9 @@ function tryConnect(ip: string, port: number): Promise<net.Socket> {
 }
 
 async function resolveSocket(ipAddress: string, port?: number) {
-  const ports = port ? [port] : [...RONGTA_FALLBACK_PORTS];
+  const ports = port
+    ? [port, ...RONGTA_FALLBACK_PORTS.filter((p) => p !== port)]
+    : [...RONGTA_FALLBACK_PORTS];
   let lastErr: unknown = null;
   for (const p of ports) {
     try {

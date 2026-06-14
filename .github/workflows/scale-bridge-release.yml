@@ -80,9 +80,8 @@ jobs:
 
             Mağaza PC'de tek kurulum: servis + yönetim arayüzü + taşınabilir Node.
 
-            ### Yenilikler (0.1.83)
-            - Terazi test: ECONNREFUSED için açıklayıcı mesaj; port 20304/4001/3001 otomatik deneme
-            - Köprü UI: manuel eklemede «Bağlantıyı kontrol et»; `/scales/probe` API
+            ### Yenilikler (0.1.84)
+            - Test/tarama/probe: tüm bilinen terazi portları sırayla denenir (20304, 4001, 3001, 3000, 4000, 5000, 8000, 8001, 8080, 9000, 10001)
 
             ### Kurulum / güncelleme
             1. `RetailEX-ScaleBridge-Setup.exe` indirin (yönetici olarak çalıştırın)

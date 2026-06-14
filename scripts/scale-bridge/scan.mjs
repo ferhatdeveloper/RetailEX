@@ -4,28 +4,14 @@
 import os from 'node:os';
 import net from 'node:net';
 import { rongtaTcpQuickProbe } from './rongtaTcp.mjs';
+import { parseScalePortsList, SCALE_PORTS_CSV } from './scalePorts.mjs';
 
-const FALLBACK_PORTS = [20304, 4001, 3001];
-/** Yazıcı portları (Canon vb.) — taramada yok sayılır */
-const PRINTER_PORTS = new Set([9100, 515, 631, 80, 443, 1024]);
+const FALLBACK_PORTS = parseScalePortsList(null);
 const DEFAULT_CONCURRENCY = 48;
 const TCP_PROBE_TIMEOUT_MS = 500;
 
 function parsePortsList(ports) {
-  const normalize = (list) => {
-    const filtered = list.filter((p) => !PRINTER_PORTS.has(p));
-    return filtered.length ? [...new Set(filtered)] : [...FALLBACK_PORTS];
-  };
-  if (!ports) return [...FALLBACK_PORTS];
-  if (Array.isArray(ports)) {
-    const list = ports.map((p) => Number(p)).filter((p) => Number.isInteger(p) && p > 0 && p <= 65535);
-    return list.length ? normalize(list) : [...FALLBACK_PORTS];
-  }
-  const list = String(ports)
-    .split(/[,\s;]+/)
-    .map((p) => parseInt(p, 10))
-    .filter((p) => Number.isInteger(p) && p > 0 && p <= 65535);
-  return list.length ? normalize(list) : [...FALLBACK_PORTS];
+  return parseScalePortsList(ports);
 }
 
 function parseIp(ip) {
@@ -213,4 +199,4 @@ export async function scanNetworkForScales(opts = {}) {
   };
 }
 
-export { guessLocalSubnet, guessLocalSubnets, expandRange, parsePortsList };
+export { guessLocalSubnet, guessLocalSubnets, expandRange, parsePortsList, SCALE_PORTS_CSV };
