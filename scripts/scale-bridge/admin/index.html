@@ -276,7 +276,9 @@
         btn.onclick = async () => {
           try {
             const r = await api('/scales/' + encodeURIComponent(btn.dataset.test) + '/test', { method: 'POST', body: '{}' });
-            alert(r.ok ? 'Bağlantı başarılı' : 'Bağlantı başarısız');
+            alert(r.ok
+              ? (r.message || 'Test başarılı — terazi ekranında EXFIN RETAIL görünmeli')
+              : (r.message || 'Bağlantı başarısız'));
           } catch (e) { alert(e.message); }
         };
       });

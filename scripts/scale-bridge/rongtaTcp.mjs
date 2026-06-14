@@ -4,6 +4,7 @@
 import net from 'node:net';
 
 const CMD = { START: '0201', ACK: '0102', PLU_SEND: '0110' };
+const RONGTA_TEST_DISPLAY_TEXT = 'EXFIN RETAIL';
 const FALLBACK_PORTS = [20304, 4001, 9100, 1024];
 const SOCKET_TIMEOUT_MS = 8000;
 const QUICK_PROBE_TIMEOUT_MS = 1200;
@@ -132,11 +133,44 @@ export async function rongtaTcpQuickProbe(ipAddress, port) {
 }
 
 export async function rongtaTcpTest(ipAddress, port) {
+  const testPlu = {
+    operate: 'I',
+    rank: 99,
+    name: RONGTA_TEST_DISPLAY_TEXT,
+    pluCode: '99999',
+    lfCode: '999999',
+    barcode: '9999900001',
+    barcodeType: 27,
+    price: 0.01,
+    unit: 'KG',
+  };
   const { socket, port: usedPort } = await resolveSocket(ipAddress, port);
   try {
-    await writePacket(socket, buildPacket(CMD.START));
-    const resp = await readOnce(socket, 4000);
-    return { ok: true, port: usedPort, response: resp };
+    const initial = await Promise.race([readOnce(socket, 1500), new Promise((r) => setTimeout(() => r(''), 1500))]);
+    if (String(initial).includes(CMD.START)) {
+      await writePacket(socket, buildPacket(CMD.ACK, `${CMD.START}0000000000`));
+    } else {
+      await writePacket(socket, buildPacket(CMD.START));
+      await readOnce(socket, 3000);
+    }
+    await writePacket(socket, buildPacket(CMD.PLU_SEND, buildPluBody(testPlu)));
+    const ack = parseAck(await readOnce(socket, 5000));
+    const displayOk = ack.ok;
+    return {
+      ok: displayOk,
+      port: usedPort,
+      displayText: RONGTA_TEST_DISPLAY_TEXT,
+      message: displayOk
+        ? `Test başarılı — terazi ekranında "${RONGTA_TEST_DISPLAY_TEXT}" görünmeli (PLU 99)`
+        : `Bağlantı var ancak test PLU gönderilemedi (hata ${ack.errorCode})`,
+    };
+  } catch (e) {
+    return {
+      ok: false,
+      port: usedPort,
+      displayText: RONGTA_TEST_DISPLAY_TEXT,
+      message: e instanceof Error ? e.message : 'Terazi test hatası',
+    };
   } finally { socket.destroy(); }
 }
 

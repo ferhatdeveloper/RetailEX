@@ -13,10 +13,10 @@
 
 import type { Product } from '../App';
 import { RONGTA_DEFAULT_PORT } from './rongtaRlsProtocol';
-import { rongtaTestConnection, rongtaSendPluRecords } from '../services/rongtaScaleTransport';
+import { rongtaTestConnectionDetailed, rongtaSendPluRecords } from '../services/rongtaScaleTransport';
 import { productsToRongtaPluRecords } from './rongtaRlsProtocol';
 import {
-  scaleBridgeTestDevice,
+  scaleBridgeTestDeviceDetailed,
   scaleBridgeSendProducts,
   isScaleBridgeMode,
 } from '../services/scaleBridgeApi';
@@ -56,49 +56,64 @@ export interface ScaleSyncResult {
   errors?: string[];
 }
 
+export interface ScaleTestResult {
+  ok: boolean;
+  message?: string;
+  displayText?: string;
+}
+
 /**
- * Terazi bağlantısını test eder
+ * Terazi bağlantısını test eder (terazi ekranına EXFIN RETAIL yazar).
  */
-export async function testScaleConnection(device: ScaleDevice): Promise<boolean> {
+export async function testScaleConnectionDetailed(device: ScaleDevice): Promise<ScaleTestResult> {
   try {
     if (isScaleBridgeMode() && device.id) {
-      return scaleBridgeTestDevice(device);
+      return scaleBridgeTestDeviceDetailed(device);
     }
 
     if (device.brand === 'rongta' && device.connectionType === 'tcp' && device.ipAddress) {
-      return rongtaTestConnection({
+      return rongtaTestConnectionDetailed({
         ipAddress: device.ipAddress,
         port: device.port,
       });
     }
 
-    // Electron API kontrolü
     if (typeof window !== 'undefined' && (window as any).electronAPI?.scale?.testConnection) {
       const result = await (window as any).electronAPI.scale.testConnection({
         type: device.connectionType,
         ipAddress: device.ipAddress,
         port: device.port,
         comPort: device.comPort,
-        baudRate: device.baudRate
+        baudRate: device.baudRate,
       });
-      return result.success;
+      return {
+        ok: !!result.success,
+        message: result.success ? 'Bağlantı başarılı' : 'Bağlantı başarısız',
+      };
     }
-    
-    // Web ortamında simülasyon
-    console.log('Testing scale connection:', device);
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
-    // IP validasyonu
+
     if (device.connectionType === 'tcp' && device.ipAddress) {
       const ipRegex = /^(\d{1,3}\.){3}\d{1,3}$/;
-      return ipRegex.test(device.ipAddress);
+      const ok = ipRegex.test(device.ipAddress);
+      return { ok, message: ok ? 'IP formatı geçerli' : 'Geçersiz IP' };
     }
-    
-    return true;
+
+    return { ok: false, message: 'Test desteklenmiyor' };
   } catch (error) {
     console.error('Scale connection test error:', error);
-    return false;
+    return {
+      ok: false,
+      message: error instanceof Error ? error.message : 'Test hatası',
+    };
   }
+}
+
+/**
+ * Terazi bağlantısını test eder
+ */
+export async function testScaleConnection(device: ScaleDevice): Promise<boolean> {
+  const result = await testScaleConnectionDetailed(device);
+  return result.ok;
 }
 
 /**

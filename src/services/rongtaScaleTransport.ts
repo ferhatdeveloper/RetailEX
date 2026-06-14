@@ -20,6 +20,13 @@ export interface RongtaSyncResponse {
 }
 
 export async function rongtaTestConnection(target: RongtaDeviceTarget): Promise<boolean> {
+  const result = await rongtaTestConnectionDetailed(target);
+  return result.ok;
+}
+
+export async function rongtaTestConnectionDetailed(
+  target: RongtaDeviceTarget
+): Promise<{ ok: boolean; message?: string; displayText?: string }> {
   const body = {
     ipAddress: target.ipAddress,
     port: target.port,
@@ -27,8 +34,12 @@ export async function rongtaTestConnection(target: RongtaDeviceTarget): Promise<
 
   if (IS_TAURI) {
     const { invoke } = await import('@tauri-apps/api/core');
-    const result = await invoke<{ ok: boolean }>('rongta_scale_test', body);
-    return !!result?.ok;
+    const result = await invoke<{ ok?: boolean; message?: string; displayText?: string }>('rongta_scale_test', body);
+    return {
+      ok: !!result?.ok,
+      message: result?.message,
+      displayText: result?.displayText,
+    };
   }
 
   const res = await fetch(`${getBridgeUrl()}/api/scale/rongta/test`, {
@@ -36,9 +47,15 @@ export async function rongtaTestConnection(target: RongtaDeviceTarget): Promise<
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
-  if (!res.ok) return false;
-  const json = (await res.json()) as { ok?: boolean };
-  return !!json.ok;
+  if (!res.ok) {
+    return { ok: false, message: `HTTP ${res.status}` };
+  }
+  const json = (await res.json()) as { ok?: boolean; message?: string; displayText?: string };
+  return {
+    ok: !!json.ok,
+    message: json.message,
+    displayText: json.displayText,
+  };
 }
 
 export async function rongtaSendPluRecords(

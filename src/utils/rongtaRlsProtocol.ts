@@ -6,6 +6,8 @@
 export const RONGTA_DEFAULT_IP = '192.168.1.87';
 export const RONGTA_DEFAULT_PORT = 20304;
 export const RONGTA_FALLBACK_PORTS = [20304, 4001, 9100, 1024] as const;
+/** Bağlantı testinde terazi ekranına yazdırılacak metin (PLU adı). */
+export const RONGTA_TEST_DISPLAY_TEXT = 'EXFIN RETAIL';
 
 export const RONGTA_CMD = {
   START: '0201',
@@ -181,6 +183,19 @@ export function buildRongtaTxuLine(plu: RongtaPluRecord): string {
     ['PCS Type', '0'],
   ];
   return fields.map(([k, v]) => `${k} ${v}`).join('\r\n') + '\r\n';
+}
+
+export function buildRongtaTestPluRecord(): RongtaPluRecord {
+  return {
+    pluCode: '99999',
+    name: RONGTA_TEST_DISPLAY_TEXT,
+    price: 0.01,
+    unit: 'KG',
+    barcode: '9999900001',
+    rank: 99,
+    lfCode: '999999',
+    operate: 'I',
+  };
 }
 
 export function productsToRongtaPluRecords(

@@ -1,7 +1,8 @@
 ﻿import { useState, useEffect } from 'react';
 import { Plus, Wifi, WifiOff, Settings, Trash2, RefreshCw, Send, Search, Download, Upload } from 'lucide-react';
+import { toast } from 'sonner';
 import type { ScaleDevice } from '../../utils/scaleProtocol';
-import { testScaleConnection, getScaleInfo } from '../../utils/scaleProtocol';
+import { testScaleConnectionDetailed, getScaleInfo } from '../../utils/scaleProtocol';
 
 interface ScaleManagementProps {
   devices: ScaleDevice[];
@@ -47,7 +48,8 @@ export function ScaleManagement({
     setTestingDevice(device.id);
     
     try {
-      const isConnected = await testScaleConnection(device);
+      const testResult = await testScaleConnectionDetailed(device);
+      const isConnected = testResult.ok;
       
       // Update device status
       setDevices(devices.map(d => 
@@ -57,17 +59,21 @@ export function ScaleManagement({
       ));
       
       if (isConnected) {
+        toast.success(testResult.message || 'Test başarılı');
         // Get device info
         const info = await getScaleInfo(device);
         setDevices(devices.map(d => 
           d.id === device.id 
             ? { 
                 ...d, 
+                status: 'online',
                 firmwareVersion: info.firmwareVersion,
                 productCount: info.productCount
               }
             : d
         ));
+      } else {
+        toast.error(testResult.message || 'Bağlantı başarısız');
       }
     } catch (error) {
       console.error('Test connection error:', error);

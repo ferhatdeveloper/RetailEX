@@ -11,6 +11,7 @@ const CMD_PLU: &str = "0110";
 const DEFAULT_PORT: u16 = 20304;
 const FALLBACK_PORTS: [u16; 4] = [20304, 4001, 9100, 1024];
 const TIMEOUT_MS: u64 = 8000;
+const TEST_DISPLAY_TEXT: &str = "EXFIN RETAIL";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -216,9 +217,47 @@ pub async fn rongta_scale_test(ip_address: String, port: Option<u16>) -> Result<
     }
     tokio::task::spawn_blocking(move || {
         let (mut stream, used_port) = connect_stream(&ip, port)?;
-        write_packet(&mut stream, &build_packet(CMD_START, ""))?;
-        let resp = read_packet(&mut stream, 4000)?;
-        Ok(serde_json::json!({ "ok": !resp.is_empty() || true, "port": used_port, "response": resp }))
+        let test_plu = RongtaPluRecord {
+            plu_code: "99999".into(),
+            name: TEST_DISPLAY_TEXT.into(),
+            price: 0.01,
+            unit: Some("KG".into()),
+            barcode: Some("9999900001".into()),
+            rank: 99,
+            lf_code: Some("999999".into()),
+            barcode_type: Some(27),
+            department: None,
+            tare_grams: None,
+            shelf_days: None,
+            operate: Some("I".into()),
+        };
+
+        let initial = read_packet(&mut stream, 1500)?;
+        if initial.contains(CMD_START) {
+            write_packet(&mut stream, &build_packet(CMD_ACK, &format!("{}0000000000", CMD_START)))?;
+        } else {
+            write_packet(&mut stream, &build_packet(CMD_START, ""))?;
+            let _ = read_packet(&mut stream, 3000)?;
+        }
+
+        write_packet(&mut stream, &build_packet(CMD_PLU, &build_plu_body(&test_plu)))?;
+        let ack = read_packet(&mut stream, 5000)?;
+        let display_ok = ack_ok(&ack);
+        let message = if display_ok {
+            format!(
+                "Test başarılı — terazi ekranında \"{}\" görünmeli (PLU 99)",
+                TEST_DISPLAY_TEXT
+            )
+        } else {
+            "Bağlantı var ancak test PLU gönderilemedi".into()
+        };
+
+        Ok(serde_json::json!({
+            "ok": display_ok,
+            "port": used_port,
+            "displayText": TEST_DISPLAY_TEXT,
+            "message": message,
+        }))
     })
     .await
     .map_err(|e| e.to_string())?

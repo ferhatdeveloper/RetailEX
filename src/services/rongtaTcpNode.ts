@@ -8,9 +8,11 @@ import {
   buildRongtaPluBody,
   buildRongtaStartAckPacket,
   buildRongtaStartPacket,
+  buildRongtaTestPluRecord,
   type RongtaPluRecord,
   RONGTA_CMD,
   RONGTA_FALLBACK_PORTS,
+  RONGTA_TEST_DISPLAY_TEXT,
 } from '../utils/rongtaRlsProtocol';
 
 const SOCKET_TIMEOUT_MS = 8000;
@@ -97,11 +99,39 @@ async function resolveSocket(ipAddress: string, port?: number) {
 }
 
 export async function rongtaTcpTest(ipAddress: string, port?: number) {
+  const testPlu = buildRongtaTestPluRecord();
   const { socket, port: usedPort } = await resolveSocket(ipAddress, port);
   try {
-    await writePacket(socket, buildRongtaStartPacket());
-    const resp = await readOnce(socket, 4000);
-    return { ok: true, port: usedPort, response: resp };
+    const initial = await Promise.race([
+      readOnce(socket, 1500),
+      new Promise<string>((r) => setTimeout(() => r(''), 1500)),
+    ]);
+
+    if (initial.includes(RONGTA_CMD.START)) {
+      await writePacket(socket, buildRongtaStartAckPacket());
+    } else {
+      await writePacket(socket, buildRongtaStartPacket());
+      await readOnce(socket, 3000);
+    }
+
+    const packet = buildRongtaPacket(RONGTA_CMD.PLU_SEND, buildRongtaPluBody(testPlu));
+    await writePacket(socket, packet);
+    const ack = parseAck(await readOnce(socket, 5000));
+    return {
+      ok: ack.ok,
+      port: usedPort,
+      displayText: RONGTA_TEST_DISPLAY_TEXT,
+      message: ack.ok
+        ? `Test başarılı — terazi ekranında "${RONGTA_TEST_DISPLAY_TEXT}" görünmeli (PLU 99)`
+        : `Bağlantı var ancak test PLU gönderilemedi (hata ${ack.errorCode})`,
+    };
+  } catch (e) {
+    return {
+      ok: false,
+      port: usedPort,
+      displayText: RONGTA_TEST_DISPLAY_TEXT,
+      message: e instanceof Error ? e.message : 'Terazi test hatası',
+    };
   } finally {
     socket.destroy();
   }

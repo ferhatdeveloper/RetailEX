@@ -189,12 +189,29 @@ export async function scaleBridgeDeleteDevice(id: string): Promise<void> {
   await bridgeFetch(`/scales/${encodeURIComponent(id)}`, { method: 'DELETE' });
 }
 
+export type ScaleBridgeTestResult = {
+  ok: boolean;
+  message?: string;
+  displayText?: string;
+  port?: number;
+};
+
 export async function scaleBridgeTestDevice(device: ScaleDevice): Promise<boolean> {
-  const json = await bridgeFetch<{ ok?: boolean }>(
+  const result = await scaleBridgeTestDeviceDetailed(device);
+  return result.ok;
+}
+
+export async function scaleBridgeTestDeviceDetailed(device: ScaleDevice): Promise<ScaleBridgeTestResult> {
+  const json = await bridgeFetch<ScaleBridgeTestResult>(
     `/scales/${encodeURIComponent(device.id)}/test`,
     { method: 'POST', body: '{}' }
   );
-  return !!json.ok;
+  return {
+    ok: !!json.ok,
+    message: json.message,
+    displayText: json.displayText,
+    port: json.port,
+  };
 }
 
 export type ScaleBridgeScanDefaults = {
