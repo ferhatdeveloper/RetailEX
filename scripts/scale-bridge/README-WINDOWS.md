@@ -26,6 +26,7 @@ Eski sürümü elle kaldırmanız gerekmez. Yeni **Setup.exe** dosyasını yöne
 
 Kurulum otomatik olarak:
 
+- **Windows Güvenlik Duvarı** kurallarını ekler (gelen TCP 3012, giden terazi/node yerel ağ)
 - **Visual C++ Runtime** yoksa kurar (`VCRUNTIME140.dll` — `vc_redist.x64.exe` gömülü)
 - Windows servisini kurar (`RetailEX_Scale_Bridge`)
 - Taşınabilir Node + köprü scriptlerini kopyalar
@@ -113,7 +114,7 @@ Mağaza PC `scale-bridge.json` örneği:
 | **Servis kurulumu başarısız** | Yönetici PowerShell; antivirüs geçici kapat; `RetailEX_Scale_Bridge_install_last_error.txt` oku |
 | **VCRUNTIME140.dll was not found** | VC++ Runtime eksik — asagidaki hizli cozum veya yeni Setup.exe |
 | **node.exe not found** | GitHub **Setup.exe** kullanın (Node dahil); eski kurulumu kaldırıp yeniden kurun |
-| **3012/status açılmıyor** | `net start RetailEX_Scale_Bridge`; log: `scale_bridge_service.log` |
+| **3012/status açılmıyor** | `net start RetailEX_Scale_Bridge`; güvenlik duvarında «RetailEX Terazi Koprusu» kurallarını kontrol edin; log: `scale_bridge_service.log` |
 | **RetailEX_Scale_Bridge.exe bulunamadı** | Kurulum: `C:\Program Files\RetailEX\ScaleBridge` — Setup'ı yeniden çalıştırın |
 
 ### Teşhis betiği (çıktıyı paylaşın)
@@ -135,6 +136,23 @@ Metin: `VCRUNTIME140.dll was not found`
 
 1. https://github.com/ferhatdeveloper/RetailEX/releases — **scale-bridge-v0.1.76** veya üzeri Setup indirin  
 2. veya elle: https://aka.ms/vs/17/release/vc_redist.x64.exe
+
+## Güvenlik duvarı (otomatik)
+
+Kurulum sırasında (yönetici olarak) şu kurallar eklenir:
+
+| Kural | Yön | Açıklama |
+|-------|-----|----------|
+| `RetailEX Terazi Koprusu — gelen HTTP (TCP 3012)` | Gelen | Köprü API ve yönetim UI (`/ui/`) |
+| `RetailEX Terazi Koprusu — node.exe yerel ag (giden)` | Giden | Terazi tarama ve PLU gönderimi (yerel ağ) |
+
+Profil: **Özel** ve **Etki alanı** (genel/kafe ağı açılmaz).
+
+Elle yeniden uygulamak için (yönetici PowerShell):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File "C:\Program Files\RetailEX\ScaleBridge\scale-bridge\configure-firewall.ps1" -Action Install -InstallDir "C:\Program Files\RetailEX\ScaleBridge"
+```
 
 ## Servis komutları
 

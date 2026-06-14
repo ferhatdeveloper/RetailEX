@@ -80,8 +80,8 @@ jobs:
 
             Mağaza PC'de tek kurulum: servis + yönetim arayüzü + taşınabilir Node.
 
-            ### Yenilikler (0.1.81)
-            - Tarama: Canon/yazıcı yanlış alarmı giderildi — yalnızca Rongta ACK (0102) yanıtı kabul edilir; 9100 vb. portlar hariç
+            ### Yenilikler (0.1.82)
+            - Kurulum: Windows Güvenlik Duvarı kuralları otomatik (gelen TCP 3012, giden node yerel ağ/terazi)
 
             ### Kurulum / güncelleme
             1. `RetailEX-ScaleBridge-Setup.exe` indirin (yönetici olarak çalıştırın)

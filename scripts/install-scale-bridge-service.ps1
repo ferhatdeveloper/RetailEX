@@ -67,6 +67,12 @@ if (-not (Test-Path $ConfigPath)) {
 $Manager = Join-Path $InstallDir 'RetailEX_ScaleBridge_Manager.exe'
 & $Manager --install
 
+$FirewallScript = Join-Path $ScaleScripts 'configure-firewall.ps1'
+if (Test-Path $FirewallScript) {
+    Write-Host 'Guvenlik duvari kurallari uygulaniyor...'
+    & powershell -NoProfile -ExecutionPolicy Bypass -File $FirewallScript -Action Install -InstallDir $InstallDir
+}
+
 Write-Host ''
 Write-Host "Kurulum tamamlandı."
 Write-Host "Yönetim UI: http://127.0.0.1:3012/ui/"

@@ -48,6 +48,7 @@ Copy-Item -Force (Join-Path $ScaleDir 'rongtaTcp.mjs') (Join-Path $Staging 'scal
 Copy-Item -Force (Join-Path $ScaleDir 'scan.mjs') (Join-Path $Staging 'scale-bridge\scan.mjs')
 Copy-Item -Force (Join-Path $ScaleDir 'admin\index.html') (Join-Path $Staging 'scale-bridge\admin\index.html')
 Copy-Item -Force (Join-Path $ScaleDir 'diagnose-windows.ps1') (Join-Path $Staging 'scale-bridge\diagnose-windows.ps1')
+Copy-Item -Force (Join-Path $ScaleDir 'configure-firewall.ps1') (Join-Path $Staging 'scale-bridge\configure-firewall.ps1')
 Copy-Item -Force (Join-Path $ScaleDir 'scale-bridge.example.json') $Staging
 
 Write-Host '3) Portable Node.js...'

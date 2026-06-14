@@ -60,9 +60,11 @@ Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: de
 [Run]
 Filename: "{tmp}\vc_redist.x64.exe"; Parameters: "/install /quiet /norestart"; StatusMsg: "Visual C++ Runtime kuruluyor (VCRUNTIME140)…"; Check: NeedsVCRedistInstall; Flags: waituntilterminated
 Filename: "{app}\{#MyAppExeName}"; Parameters: "--install --quiet"; StatusMsg: "Windows servisi kuruluyor…"; Flags: waituntilterminated
+Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\scale-bridge\configure-firewall.ps1"" -Action Install -InstallDir ""{app}"""; StatusMsg: "Windows Güvenlik Duvarı kuralları uygulanıyor…"; Flags: waituntilterminated
 Filename: "{app}\{#MyAppExeName}"; Description: "Terazi Köprüsü yönetim arayüzünü aç"; Flags: postinstall nowait skipifsilent
 
 [UninstallRun]
+Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\scale-bridge\configure-firewall.ps1"" -Action Uninstall -InstallDir ""{app}"""; Flags: waituntilterminated
 Filename: "{app}\{#MyAppExeName}"; Parameters: "--uninstall --quiet"; Flags: waituntilterminated
 
 [Code]
