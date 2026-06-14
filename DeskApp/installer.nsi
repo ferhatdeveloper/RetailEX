@@ -20,55 +20,22 @@ SetCompressor lzma
 ${StrCase}
 ${StrLoc}
 
-!ifndef MANUFACTURER
-  !define MANUFACTURER "retailex"
-!endif
-!ifndef PRODUCTNAME
-  !define PRODUCTNAME "RetailEX"
-!endif
-!ifndef VERSION
-  !define VERSION "0.1.19"
-!endif
-!ifndef VERSIONWITHBUILD
-  !define VERSIONWITHBUILD "0.1.19.0"
-!endif
-!ifndef INSTALLMODE
-  ; Tauri bundle.windows.nsis.installMode ile uyumlu: servis kurulumu icin baslangicta UAC
-  !define INSTALLMODE "perMachine"
-!endif
-!ifndef LICENSE
-  !define LICENSE ""
-!endif
-!ifndef INSTALLERICON
-  !define INSTALLERICON "D:\RetailEX\DeskApp\icons\icon.ico"
-!endif
-!ifndef SIDEBARIMAGE
-  !define SIDEBARIMAGE "D:\RetailEX\DeskApp\branding\sidebar.bmp"
-!endif
-!ifndef HEADERIMAGE
-  !define HEADERIMAGE "D:\RetailEX\DeskApp\branding\header.bmp"
-!endif
-!ifndef MAINBINARYNAME
-  !define MAINBINARYNAME "RetailEX"
-!endif
-!ifndef MAINBINARYSRCPATH
-  !define MAINBINARYSRCPATH "D:\RetailEX\DeskApp\target\release\retailex.exe"
-!endif
-!ifndef POSTGRESREMOTEENABLESRCPATH
-  !define POSTGRESREMOTEENABLESRCPATH "D:\RetailEX\tools\postgresql-remote-enable\target\release\PostgreSQLRemoteEnable.exe"
-!endif
-!ifndef BUNDLEID
-  !define BUNDLEID "com.retailex.app"
-!endif
-!ifndef COPYRIGHT
-  !define COPYRIGHT ""
-!endif
-!ifndef OUTFILE
-  !define OUTFILE "nsis-output.exe"
-!endif
-!ifndef ARCH
-  !define ARCH "x64"
-!endif
+!define MANUFACTURER "{{manufacturer}}"
+!define PRODUCTNAME "{{product_name}}"
+!define VERSION "{{version}}"
+!define VERSIONWITHBUILD "{{version_with_build}}"
+!define INSTALLMODE "{{install_mode}}"
+!define LICENSE "{{license}}"
+!define INSTALLERICON "{{installer_icon}}"
+!define SIDEBARIMAGE "{{sidebar_image}}"
+!define HEADERIMAGE "{{header_image}}"
+!define MAINBINARYNAME "{{main_binary_name}}"
+!define MAINBINARYSRCPATH "{{main_binary_path}}"
+!define POSTGRESREMOTEENABLESRCPATH "__REPO_ROOT__\tools\postgresql-remote-enable\target\release\PostgreSQLRemoteEnable.exe"
+!define BUNDLEID "{{bundle_id}}"
+!define COPYRIGHT "{{copyright}}"
+!define OUTFILE "{{out_file}}"
+!define ARCH "{{arch}}"
 !define PLUGINSPATH ""
 !define ALLOWDOWNGRADES "true"
 !define DISPLAYLANGUAGESELECTOR "false"
@@ -781,8 +748,8 @@ Function InstallPostgRESTBinary
   pgrst_have_exe:
   CreateDirectory "$INSTDIR\_up_\config"
   IfFileExists "$INSTDIR\_up_\config\postgrest.conf" pgrst_done
-  IfFileExists "D:\RetailEX\config\postgrest.conf" 0 pgrst_done
-    File "/oname=_up_\config\postgrest.conf" "D:\RetailEX\config\postgrest.conf"
+  IfFileExists "__REPO_ROOT__\config\postgrest.conf" 0 pgrst_done
+    File "/oname=_up_\config\postgrest.conf" "__REPO_ROOT__\config\postgrest.conf"
   pgrst_done:
 FunctionEnd
 
@@ -807,7 +774,7 @@ Section WebView2
 
     Delete "$TEMP\MicrosoftEdgeWebview2Setup.exe"
     DetailPrint "$(webview2Downloading)"
-    ; File "/oname=$TEMP\MicrosoftEdgeWebview2Setup.exe" "D:\RetailEX\DeskApp\dependencies\webview2-offline.exe"
+    ; File "/oname=$TEMP\MicrosoftEdgeWebview2Setup.exe" "__REPO_ROOT__\DeskApp\dependencies\webview2-offline.exe"
     ; We removed the hardcoded embedding to keep installer light. 
     ; If not found locally, download it.
     ExecWait 'powershell -Command "Invoke-WebRequest -Uri https://go.microsoft.com/fwlink/p/?LinkId=2124703 -OutFile $TEMP\MicrosoftEdgeWebview2Setup.exe"' $0
@@ -883,16 +850,16 @@ Section Install
 
    ; Copy main executable
    File "${MAINBINARYSRCPATH}"
-   File "D:\RetailEX\DeskApp\wintun.dll"
+   File "__REPO_ROOT__\DeskApp\wintun.dll"
 
    ; Copy resources
     CreateDirectory "$INSTDIR\_up_\database\init"
     CreateDirectory "$INSTDIR\_up_\database\sys"
     CreateDirectory "$INSTDIR\_up_\database\migrations"
-    File /a "/oname=_up_\database\init\04_demo.sql" "D:\RetailEX\database\init\04_demo.sql"
-    File /a "/oname=_up_\database\migrations\000_master_schema.sql" "D:\RetailEX\database\migrations\000_master_schema.sql"
-    File /a "/oname=_up_\database\migrations\001_demo_data.sql" "D:\RetailEX\database\migrations\001_demo_data.sql"
-    File /a "/oname=_up_\database\sys\.keep" "D:\RetailEX\database\sys\.keep"
+    File /a "/oname=_up_\database\init\04_demo.sql" "__REPO_ROOT__\database\init\04_demo.sql"
+    File /a "/oname=_up_\database\migrations\000_master_schema.sql" "__REPO_ROOT__\database\migrations\000_master_schema.sql"
+    File /a "/oname=_up_\database\migrations\001_demo_data.sql" "__REPO_ROOT__\database\migrations\001_demo_data.sql"
+    File /a "/oname=_up_\database\sys\.keep" "__REPO_ROOT__\database\sys\.keep"
 
   ; dependency installation logic moved here
   ${If} $InstallRole == 1
@@ -940,29 +907,29 @@ Section Install
   ${EndIf}
 
   ; Copy external binaries
-    File /a "/oname=RetailEX_Service.exe" "D:\RetailEX\DeskApp\target\release\RetailEX_Service.exe"
-    File /a "/oname=RetailEX_Logo.exe" "D:\RetailEX\DeskApp\target\release\RetailEX_Logo.exe"
-    File /a "/oname=RetailEX_SQL_Bridge.exe" "D:\RetailEX\DeskApp\target\release\RetailEX_SQL_Bridge.exe"
-    File /a "/oname=RetailEX_Config.exe" "D:\RetailEX\DeskApp\target\release\RetailEX_Config.exe"
-    File /a "/oname=bridge.cjs" "D:\RetailEX\DeskApp\resources\bridge.cjs"
-    File /a "/oname=package.json" "D:\RetailEX\DeskApp\resources\package.json"
-    File /a "/oname=install-bridge.ps1" "D:\RetailEX\DeskApp\resources\install-bridge.ps1"
-    File /a "/oname=install-bridge.cmd" "D:\RetailEX\DeskApp\resources\install-bridge.cmd"
-    File /a "/oname=install-bridge-npm.ps1" "D:\RetailEX\DeskApp\resources\install-bridge-npm.ps1"
-    File /a "/oname=install-bridge-npm.cmd" "D:\RetailEX\DeskApp\resources\install-bridge-npm.cmd"
-    File /a "/oname=install-services-manual.ps1" "D:\RetailEX\DeskApp\resources\install-services-manual.ps1"
-    File /a "/oname=install-services-manual.cmd" "D:\RetailEX\DeskApp\resources\install-services-manual.cmd"
-    File /a "/oname=install-services-setup.ps1" "D:\RetailEX\DeskApp\resources\install-services-setup.ps1"
-    File /a "/oname=retailex-admin.ps1" "D:\RetailEX\DeskApp\resources\retailex-admin.ps1"
-    File /a "/oname=retailex-admin.cmd" "D:\RetailEX\DeskApp\resources\retailex-admin.cmd"
-    File /a "/oname=install-postgrest.ps1" "D:\RetailEX\DeskApp\resources\install-postgrest.ps1"
+    File /a "/oname=RetailEX_Service.exe" "__REPO_ROOT__\DeskApp\target\release\RetailEX_Service.exe"
+    File /a "/oname=RetailEX_Logo.exe" "__REPO_ROOT__\DeskApp\target\release\RetailEX_Logo.exe"
+    File /a "/oname=RetailEX_SQL_Bridge.exe" "__REPO_ROOT__\DeskApp\target\release\RetailEX_SQL_Bridge.exe"
+    File /a "/oname=RetailEX_Config.exe" "__REPO_ROOT__\DeskApp\target\release\RetailEX_Config.exe"
+    File /a "/oname=bridge.cjs" "__REPO_ROOT__\DeskApp\resources\bridge.cjs"
+    File /a "/oname=package.json" "__REPO_ROOT__\DeskApp\resources\package.json"
+    File /a "/oname=install-bridge.ps1" "__REPO_ROOT__\DeskApp\resources\install-bridge.ps1"
+    File /a "/oname=install-bridge.cmd" "__REPO_ROOT__\DeskApp\resources\install-bridge.cmd"
+    File /a "/oname=install-bridge-npm.ps1" "__REPO_ROOT__\DeskApp\resources\install-bridge-npm.ps1"
+    File /a "/oname=install-bridge-npm.cmd" "__REPO_ROOT__\DeskApp\resources\install-bridge-npm.cmd"
+    File /a "/oname=install-services-manual.ps1" "__REPO_ROOT__\DeskApp\resources\install-services-manual.ps1"
+    File /a "/oname=install-services-manual.cmd" "__REPO_ROOT__\DeskApp\resources\install-services-manual.cmd"
+    File /a "/oname=install-services-setup.ps1" "__REPO_ROOT__\DeskApp\resources\install-services-setup.ps1"
+    File /a "/oname=retailex-admin.ps1" "__REPO_ROOT__\DeskApp\resources\retailex-admin.ps1"
+    File /a "/oname=retailex-admin.cmd" "__REPO_ROOT__\DeskApp\resources\retailex-admin.cmd"
+    File /a "/oname=install-postgrest.ps1" "__REPO_ROOT__\DeskApp\resources\install-postgrest.ps1"
     ; Gömülü PostgREST (npm run postgrest:fetch — yoksa /nonfatal ile atlanır, kurulumda GitHub yedeği)
     File /nonfatal /a "/oname=postgrest.exe" "resources\postgrest\postgrest.exe"
-    File /a "/oname=pg-windows-expose-remote.ps1" "D:\RetailEX\DeskApp\resources\pg-windows-expose-remote.ps1"
-    File /a "/oname=pg-windows-expose-remote.cmd" "D:\RetailEX\DeskApp\resources\pg-windows-expose-remote.cmd"
+    File /a "/oname=pg-windows-expose-remote.ps1" "__REPO_ROOT__\DeskApp\resources\pg-windows-expose-remote.ps1"
+    File /a "/oname=pg-windows-expose-remote.cmd" "__REPO_ROOT__\DeskApp\resources\pg-windows-expose-remote.cmd"
     File /a "/oname=RetailEX_PostgreSQLRemote.exe" "${POSTGRESREMOTEENABLESRCPATH}"
     CreateDirectory "$INSTDIR\RetailEXTools"
-    File /a "/oname=RetailEXTools\RetailEX_Tools.exe" "D:\RetailEX\DeskApp\target\release\RetailEX_Tools.exe"
+    File /a "/oname=RetailEXTools\RetailEX_Tools.exe" "__REPO_ROOT__\DeskApp\target\release\RetailEX_Tools.exe"
 
   ${If} $InstallPostgREST == 1
     Call InstallPostgRESTBinary
