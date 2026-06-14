@@ -35,6 +35,10 @@ import {
   setLogoRestBaseUrl,
   clearLogoRestUrlManualOverride,
   getErpFirmPeriodLabel,
+  getErpFirmKey,
+  getLogoMappingForErp,
+  saveLogoFirmMappingForErp,
+  saveLogoFirmCatalog,
   periodsForFirm,
   type LogoRestConfig,
   type LogoDataPreview,
@@ -59,6 +63,7 @@ import {
 } from '../../services/logoRestInvoicePush';
 import { useProductStore } from '../../store/useProductStore';
 import { useCustomerStore } from '../../store/useCustomerStore';
+import { useFirmaDonem } from '../../contexts/FirmaDonemContext';
 
 type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error';
 
@@ -81,7 +86,7 @@ export function LogoTigerRestPanel() {
   const [createMsg, setCreateMsg] = useState('');
   const [isCreating, setIsCreating] = useState(false);
 
-  const [firms, setFirms] = useState<LogoFirmOption[]>([]);
+  const [firms, setFirms] = useState<LogoFirmOption[]>(() => loadLogoRestConfig().firmCatalog ?? []);
   const [periods, setPeriods] = useState<LogoPeriodOption[]>([]);
   const [isLoadingFirms, setIsLoadingFirms] = useState(false);
   const [newDbName, setNewDbName] = useState('');
@@ -104,6 +109,7 @@ export function LogoTigerRestPanel() {
 
   const loadProducts = useProductStore((s) => s.loadProducts);
   const loadCustomers = useCustomerStore((s) => s.loadCustomers);
+  const { selectedFirm, selectedPeriod } = useFirmaDonem();
 
   const logoDbOptions = Array.from(
     new Set([...(config.logoDbs || []), config.logoDb].filter((x) => x && String(x).trim()))
@@ -116,18 +122,35 @@ export function LogoTigerRestPanel() {
 
   useEffect(() => {
     syncLogoRestUrlFromWebConfig();
-    setConfig(loadLogoRestConfig());
+    const loaded = loadLogoRestConfig();
+    setConfig(loaded);
+    setFirms(loaded.firmCatalog ?? []);
     setUrlSource(resolveLogoRestUrlSource());
     refreshErpContext();
+    const mapping = getLogoMappingForErp(loaded);
+    if (mapping) {
+      setPeriods(periodsForFirm(loaded.firmCatalog ?? [], mapping.logoFirmNr));
+    }
     const onStorage = () => {
       syncLogoRestUrlFromWebConfig();
-      setConfig(loadLogoRestConfig());
+      const cfg = loadLogoRestConfig();
+      setConfig(cfg);
+      setFirms(cfg.firmCatalog ?? []);
       setUrlSource(resolveLogoRestUrlSource());
       refreshErpContext();
     };
     window.addEventListener('storage', onStorage);
     return () => window.removeEventListener('storage', onStorage);
   }, [refreshErpContext]);
+
+  useEffect(() => {
+    refreshErpContext();
+    const mapping = getLogoMappingForErp(config);
+    setActiveContext(resolveLogoContext(config));
+    if (mapping && firms.length > 0) {
+      setPeriods(periodsForFirm(firms, mapping.logoFirmNr));
+    }
+  }, [selectedFirm?.firm_nr, selectedPeriod?.nr, config, firms, refreshErpContext]);
 
   useEffect(() => {
     if (connectionStatus !== 'connected' || !autoInvoicePush) {
@@ -164,25 +187,50 @@ export function LogoTigerRestPanel() {
     setUrlSource(resolveLogoRestUrlSource());
   };
 
+  const persistMappingForCurrentErp = (
+    logoFirmNr: number,
+    logoPeriodNr: number,
+    patch?: { logoDb?: string; firm?: LogoFirmOption }
+  ) => {
+    const firm = patch?.firm ?? firms.find((f) => f.firmNr === logoFirmNr);
+    const next = saveLogoFirmMappingForErp(config, {
+      logoFirmNr,
+      logoPeriodNr,
+      logoDb: patch?.logoDb ?? config.logoDb,
+      logoFirmName: firm?.name,
+      logoFirmTitle: firm?.title || firm?.name,
+    });
+    setConfig(next);
+    setActiveContext(resolveLogoContext(next));
+    return next;
+  };
+
   const handleLoadFirms = async () => {
     setIsLoadingFirms(true);
     setConnectionError('');
     try {
       const list = await logoListFirmCatalog(config);
       setFirms(list);
-      const ctx = resolveLogoContext(config);
-      const match = list.find((f) => f.firmNr === ctx.firmNr) ?? list[0];
+      const next = saveLogoFirmCatalog(config, list);
+      setConfig(next);
+
+      const erpKey = getErpFirmKey();
+      const existing = next.firmMappings?.[erpKey];
+      const ctx = resolveLogoContext(next);
+      const match =
+        list.find((f) => f.firmNr === existing?.logoFirmNr) ??
+        list.find((f) => f.firmNr === ctx.firmNr) ??
+        list[0];
+
       if (match) {
-        const firmNr = config.useErpContext !== false ? ctx.firmNr : (config.selectedFirmNr ?? match.firmNr);
-        const firm = list.find((f) => f.firmNr === firmNr) ?? match;
-        const pList = firm.periods;
+        const pList = match.periods;
         setPeriods(pList);
         const periodNr =
-          config.useErpContext !== false
-            ? ctx.periodNr
-            : (config.selectedPeriodNr ?? firm.defaultPeriod ?? pList.find((p) => p.active)?.number ?? pList[0]?.number);
-        if (config.useErpContext === false) {
-          updateConfig({ selectedFirmNr: firm.firmNr, selectedPeriodNr: periodNr });
+          existing?.logoPeriodNr && existing.logoPeriodNr > 0
+            ? existing.logoPeriodNr
+            : match.defaultPeriod ?? pList.find((p) => p.active)?.number ?? pList[0]?.number ?? 1;
+        if (!existing?.logoFirmNr && list.length === 1) {
+          persistMappingForCurrentErp(match.firmNr, periodNr, { firm: match });
         }
       }
     } catch (e: unknown) {
@@ -211,20 +259,28 @@ export function LogoTigerRestPanel() {
   };
 
   const handleFirmChange = (firmNr: number) => {
+    const firm = firms.find((f) => f.firmNr === firmNr);
     const pList = periodsForFirm(firms, firmNr);
     setPeriods(pList);
-    const defaultP = pList.find((p) => p.active)?.number ?? pList[0]?.number ?? 1;
-    updateConfig({ selectedFirmNr: firmNr, selectedPeriodNr: defaultP, useErpContext: false });
+    const defaultP = firm?.defaultPeriod ?? pList.find((p) => p.active)?.number ?? pList[0]?.number ?? 1;
+    persistMappingForCurrentErp(firmNr, defaultP, { firm });
   };
 
   const handlePeriodChange = (periodNr: number) => {
-    updateConfig({ selectedPeriodNr: periodNr, useErpContext: false });
+    const mapping = getLogoMappingForErp(config);
+    const firmNr = mapping?.logoFirmNr ?? config.selectedFirmNr ?? resolveLogoContext(config).firmNr;
+    persistMappingForCurrentErp(firmNr, periodNr);
   };
 
   const handleDbChange = (logoDb: string) => {
-    updateConfig({ logoDb });
-    setFirms([]);
-    setPeriods([]);
+    const mapping = getLogoMappingForErp(config);
+    if (mapping) {
+      const next = saveLogoFirmMappingForErp(config, { ...mapping, logoDb });
+      setConfig(next);
+      setActiveContext(resolveLogoContext(next));
+    } else {
+      updateConfig({ logoDb });
+    }
   };
 
   const handleTestConnection = async () => {
@@ -236,6 +292,7 @@ export function LogoTigerRestPanel() {
     if (result.ok) {
       setConnectionStatus('connected');
       if (result.context) setActiveContext(result.context);
+      void handleLoadFirms();
     } else {
       setConnectionStatus('error');
       setConnectionError(result.error || 'Bağlantı hatası');
@@ -406,6 +463,10 @@ export function LogoTigerRestPanel() {
     GLAccounts: 'Muhasebe hesapları',
   };
 
+  const savedMapping = getLogoMappingForErp(config);
+  const mappedFirmNr = savedMapping?.logoFirmNr ?? activeContext.firmNr;
+  const mappedPeriodNr = savedMapping?.logoPeriodNr ?? activeContext.periodNr;
+
   return (
     <div className="space-y-6">
       {/* Çoklu DB / firma / dönem */}
@@ -413,71 +474,69 @@ export function LogoTigerRestPanel() {
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 text-blue-800">
             <Database className="w-4 h-4" />
-            <span className="text-sm font-medium">Logo DB · Firma · Dönem</span>
+            <span className="text-sm font-medium">Logo DB · Firma · Dönem eşlemesi</span>
           </div>
-          <label className="flex items-center gap-2 text-sm cursor-pointer">
-            <input
-              type="checkbox"
-              checked={config.useErpContext !== false}
-              onChange={(e) => updateConfig({ useErpContext: e.target.checked })}
-              className="rounded border-gray-300 text-orange-600"
-            />
-            RetailEX oturumu ile eşle
-          </label>
         </div>
 
-        {config.useErpContext !== false ? (
-          <div className="grid grid-cols-2 gap-4 text-sm">
-            <div>
-              <span className="text-gray-600">Firma:</span>{' '}
-              <code className="font-mono bg-white px-2 py-0.5 rounded border">
-                {erpFirmPeriod.firmLabel} → Logo {erpFirmPeriod.firmNr}
-              </code>
-            </div>
-            <div>
-              <span className="text-gray-600">Dönem:</span>{' '}
-              <code className="font-mono bg-white px-2 py-0.5 rounded border">
-                {erpFirmPeriod.periodLabel} → Logo {erpFirmPeriod.periodNr}
-              </code>
-            </div>
+        <div className="text-sm bg-white border border-blue-100 rounded-lg px-3 py-2">
+          <span className="text-gray-600">RetailEX oturumu:</span>{' '}
+          <code className="font-mono">firma {erpFirmPeriod.firmLabel}</code>
+          {' · '}
+          <code className="font-mono">dönem {erpFirmPeriod.periodLabel}</code>
+          {savedMapping ? (
+            <span className="block mt-1 text-blue-800">
+              Kayıtlı Logo eşlemesi: <strong>{savedMapping.logoFirmNr}</strong>
+              {savedMapping.logoFirmTitle || savedMapping.logoFirmName
+                ? ` — ${savedMapping.logoFirmTitle || savedMapping.logoFirmName}`
+                : ''}
+              {' / dönem '}
+              <strong>{savedMapping.logoPeriodNr}</strong>
+              {savedMapping.logoDb ? ` · DB ${savedMapping.logoDb}` : ''}
+            </span>
+          ) : (
+            <span className="block mt-1 text-amber-700">
+              Bu RetailEX firması için Logo eşlemesi yok — aşağıdan Logo firmasını seçin (ör. 001 → Logo 2).
+            </span>
+          )}
+        </div>
+
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="block text-xs text-gray-600 mb-1">
+              Logo firma (RetailEX {erpFirmPeriod.firmLabel} için)
+            </label>
+            <select
+              value={mappedFirmNr || ''}
+              onChange={(e) => handleFirmChange(Number(e.target.value))}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+            >
+              <option value="">Seçin…</option>
+              {firms.map((f) => (
+                <option key={f.firmNr} value={f.firmNr}>
+                  {f.firmNr} — {f.title || f.name}
+                </option>
+              ))}
+            </select>
           </div>
-        ) : (
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs text-gray-600 mb-1">Logo firma</label>
-              <select
-                value={config.selectedFirmNr ?? ''}
-                onChange={(e) => handleFirmChange(Number(e.target.value))}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
-              >
-                <option value="">Seçin…</option>
-                {firms.map((f) => (
-                  <option key={f.firmNr} value={f.firmNr}>
-                    {f.firmNr} — {f.title || f.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs text-gray-600 mb-1">Logo dönem</label>
-              <select
-                value={config.selectedPeriodNr ?? ''}
-                onChange={(e) => handlePeriodChange(Number(e.target.value))}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
-                disabled={!periods.length}
-              >
-                <option value="">Seçin…</option>
-                {periods.map((p) => (
-                  <option key={p.number} value={p.number}>
-                    {p.number}
-                    {p.active ? ' (aktif)' : ''}
-                    {p.beginDate ? ` — ${p.beginDate.slice(0, 10)}` : ''}
-                  </option>
-                ))}
-              </select>
-            </div>
+          <div>
+            <label className="block text-xs text-gray-600 mb-1">Logo dönem</label>
+            <select
+              value={mappedPeriodNr || ''}
+              onChange={(e) => handlePeriodChange(Number(e.target.value))}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+              disabled={!periods.length}
+            >
+              <option value="">Seçin…</option>
+              {periods.map((p) => (
+                <option key={p.number} value={p.number}>
+                  {p.number}
+                  {p.active ? ' (aktif)' : ''}
+                  {p.beginDate ? ` — ${p.beginDate.slice(0, 10)}` : ''}
+                </option>
+              ))}
+            </select>
           </div>
-        )}
+        </div>
 
         <div className="grid grid-cols-2 gap-4">
           <div>
@@ -536,10 +595,11 @@ export function LogoTigerRestPanel() {
         </div>
 
         <p className="text-xs text-blue-700">
-          Token <code>logodb</code> + <code>firmno</code> ile alınır; ardından{' '}
+          Her RetailEX firması için Logo firma/dönem eşlemesi ayrı kaydedilir (
+          <code>firmMappings</code>). Token <code>logodb</code> + <code>firmno</code> ile alınır; ardından{' '}
           <code>CompanyLogin/{'{'}firma{'}'}/{'{'}dönem{'}'}</code> çalışır.
           {activeContext.logoDb ? ` Aktif DB: ${activeContext.logoDb}.` : ''}
-          {firms.length > 0 ? ` ${firms.length} firma listelendi.` : ''}
+          {firms.length > 0 ? ` ${firms.length} Logo firması yüklendi.` : ' Bağlanınca firmalar otomatik yüklenir.'}
         </p>
       </div>
 

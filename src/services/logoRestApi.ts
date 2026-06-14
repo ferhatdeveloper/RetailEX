@@ -60,12 +60,25 @@ export interface LogoRestConfig {
   logoDb?: string;
   /** Bilinen Logo DB listesi — dropdown için */
   logoDbs?: string[];
-  /** Manuel seçilen Logo firma no */
+  /** Manuel seçilen Logo firma no (eski — firmMappings tercih edilir) */
   selectedFirmNr?: number;
   /** Manuel seçilen Logo dönem no */
   selectedPeriodNr?: number;
   /** true: RetailEX ERP_SETTINGS; false: selectedFirmNr/selectedPeriodNr */
   useErpContext?: boolean;
+  /** RetailEX firma kodu (001) → Logo firma/dönem/DB eşlemesi */
+  firmMappings?: Record<string, LogoFirmMapping>;
+  /** Logo CAPI firmaları önbelleği */
+  firmCatalog?: LogoFirmOption[];
+}
+
+/** RetailEX firma başına Logo bağlamı */
+export interface LogoFirmMapping {
+  logoFirmNr: number;
+  logoPeriodNr: number;
+  logoDb?: string;
+  logoFirmName?: string;
+  logoFirmTitle?: string;
 }
 
 export interface LogoFirmOption {
@@ -174,17 +187,102 @@ export function getErpFirmPeriodLabel(): { firmNr: number; periodNr: number; fir
   };
 }
 
-/** Çoklu DB / firma / dönem — ERP veya manuel seçim */
+export function getErpFirmKey(raw?: string | null): string {
+  const d = String(raw ?? ERP_SETTINGS.firmNr ?? '001').replace(/\D/g, '') || '1';
+  return d.padStart(3, '0').slice(0, 3);
+}
+
+export function getLogoMappingForErp(cfg: LogoRestConfig, erpFirmKey?: string): LogoFirmMapping | null {
+  const key = erpFirmKey ?? getErpFirmKey();
+  const m = cfg.firmMappings?.[key];
+  if (!m || !(m.logoFirmNr > 0)) return null;
+  return m;
+}
+
+/** Aktif RetailEX firması için Logo eşlemesini kaydeder */
+export function saveLogoFirmMappingForErp(
+  cfg: LogoRestConfig,
+  mapping: LogoFirmMapping,
+  erpFirmKey?: string
+): LogoRestConfig {
+  const key = erpFirmKey ?? getErpFirmKey();
+  const next: LogoRestConfig = {
+    ...cfg,
+    firmMappings: {
+      ...(cfg.firmMappings || {}),
+      [key]: {
+        logoFirmNr: mapping.logoFirmNr,
+        logoPeriodNr: mapping.logoPeriodNr > 0 ? mapping.logoPeriodNr : 1,
+        logoDb: mapping.logoDb?.trim() || cfg.logoDb,
+        logoFirmName: mapping.logoFirmName,
+        logoFirmTitle: mapping.logoFirmTitle,
+      },
+    },
+    selectedFirmNr: mapping.logoFirmNr,
+    selectedPeriodNr: mapping.logoPeriodNr,
+    logoDb: mapping.logoDb?.trim() || cfg.logoDb,
+    useErpContext: true,
+  };
+  saveLogoRestConfig(next);
+  return next;
+}
+
+export function saveLogoFirmCatalog(cfg: LogoRestConfig, firms: LogoFirmOption[]): LogoRestConfig {
+  const next = { ...cfg, firmCatalog: firms };
+  saveLogoRestConfig(next);
+  return next;
+}
+
+function migrateLegacyLogoMapping(cfg: LogoRestConfig): LogoRestConfig {
+  const key = getErpFirmKey();
+  if (cfg.firmMappings?.[key]?.logoFirmNr) return cfg;
+  if (cfg.useErpContext === false && cfg.selectedFirmNr != null && cfg.selectedFirmNr > 0) {
+    return {
+      ...cfg,
+      firmMappings: {
+        ...(cfg.firmMappings || {}),
+        [key]: {
+          logoFirmNr: cfg.selectedFirmNr,
+          logoPeriodNr: cfg.selectedPeriodNr && cfg.selectedPeriodNr > 0 ? cfg.selectedPeriodNr : 1,
+          logoDb: cfg.logoDb,
+        },
+      },
+      useErpContext: true,
+    };
+  }
+  return cfg;
+}
+
+/** Çoklu DB / firma / dönem — önce kayıtlı eşleme, sonra ERP/manuel */
 export function resolveLogoContext(cfg: LogoRestConfig): LogoContextSelection {
   const erp = getErpFirmPeriodLabel();
+  const erpKey = getErpFirmKey();
+  const mapping = getLogoMappingForErp(cfg, erpKey);
+
+  if (mapping) {
+    const periodNr = mapping.logoPeriodNr > 0 ? mapping.logoPeriodNr : erp.periodNr;
+    return {
+      logoDb: (mapping.logoDb || cfg.logoDb || '').trim(),
+      firmNr: mapping.logoFirmNr,
+      periodNr,
+      source: 'erp',
+      firmLabel: erp.firmLabel,
+      periodLabel: String(periodNr).padStart(2, '0'),
+    };
+  }
+
   const useErp = cfg.useErpContext !== false;
 
   const firmNr = useErp
     ? erp.firmNr
-    : (cfg.selectedFirmNr != null && cfg.selectedFirmNr > 0 ? cfg.selectedFirmNr : erp.firmNr);
+    : cfg.selectedFirmNr != null && cfg.selectedFirmNr > 0
+      ? cfg.selectedFirmNr
+      : erp.firmNr;
   const periodNr = useErp
     ? erp.periodNr
-    : (cfg.selectedPeriodNr != null && cfg.selectedPeriodNr > 0 ? cfg.selectedPeriodNr : erp.periodNr);
+    : cfg.selectedPeriodNr != null && cfg.selectedPeriodNr > 0
+      ? cfg.selectedPeriodNr
+      : erp.periodNr;
 
   return {
     logoDb: (cfg.logoDb || '').trim(),
@@ -197,39 +295,79 @@ export function resolveLogoContext(cfg: LogoRestConfig): LogoContextSelection {
 }
 
 function parseLogoPeriods(raw: unknown): LogoPeriodOption[] {
-  if (!raw || typeof raw !== 'object') return [];
+  if (!raw) return [];
+  if (Array.isArray(raw)) {
+    return raw
+      .map((p) => {
+        if (!p || typeof p !== 'object') return null;
+        const row = p as Record<string, unknown>;
+        const number = Number(row.number ?? row.Number ?? row.nr ?? row.NR ?? row.period ?? row.Period ?? 0);
+        if (!(number > 0)) return null;
+        return {
+          number,
+          beginDate: String(row.BeginDate ?? row.beginDate ?? row.BEGDATE ?? ''),
+          endDate: String(row.endDate ?? row.EndDate ?? row.ENDDATE ?? ''),
+          active: Boolean(row.Active ?? row.active ?? row.ACTIVE ?? false),
+        };
+      })
+      .filter((p): p is LogoPeriodOption => p != null)
+      .sort((a, b) => a.number - b.number);
+  }
+  if (typeof raw !== 'object') return [];
   const o = raw as Record<string, unknown>;
-  const item = o.Item ?? o.item ?? o.items ?? o;
-  const list = extractItems<Record<string, unknown>>(item);
-  return list
-    .map((p) => ({
-      number: Number(p.number ?? p.Number ?? p.nr ?? 0),
-      beginDate: String(p.BeginDate ?? p.beginDate ?? ''),
-      endDate: String(p.endDate ?? p.EndDate ?? ''),
-      active: Boolean(p.Active ?? p.active ?? false),
-    }))
-    .filter((p) => p.number > 0)
-    .sort((a, b) => a.number - b.number);
+  const item = o.Item ?? o.item ?? o.items ?? o.Items ?? o.List ?? o.list ?? o.Period ?? o.periods ?? o;
+  return parseLogoPeriods(item);
 }
 
 export function parseLogoFirmsResponse(data: unknown): LogoFirmOption[] {
-  if (!data || typeof data !== 'object') return [];
+  if (!data) return [];
+  if (Array.isArray(data)) {
+    return data
+      .map((f) => parseOneLogoFirm(f))
+      .filter((f): f is LogoFirmOption => f != null);
+  }
+  if (typeof data !== 'object') return [];
+
+  const single = parseOneLogoFirm(data);
+  if (single) return [single];
+
   const root = data as Record<string, unknown>;
-  const item = root.Item ?? root.item ?? root;
-  const firms = extractItems<Record<string, unknown>>(item);
-  return firms
-    .map((f) => {
-      const firmNr = Number(f.FirmNr ?? f.firmNr ?? f.NR ?? f.nr ?? 0);
-      return {
-        firmNr,
-        name: String(f.name ?? f.Name ?? ''),
-        title: String(f.Title ?? f.title ?? f.name ?? ''),
-        defaultPeriod: Number(f.DefaultPeriod ?? f.defaultPeriod ?? 0) || undefined,
-        periods: parseLogoPeriods(f.Periods ?? f.periods),
-      };
-    })
-    .filter((f) => f.firmNr > 0)
-    .sort((a, b) => a.firmNr - b.firmNr);
+  const candidates = [
+    root.Item,
+    root.item,
+    root.items,
+    root.Items,
+    root.List,
+    root.list,
+    root.firms,
+    root.Firms,
+    root.FIRM,
+  ];
+  for (const c of candidates) {
+    if (c == null) continue;
+    const parsed = parseLogoFirmsResponse(c);
+    if (parsed.length > 0) return parsed;
+  }
+  return [];
+}
+
+function parseOneLogoFirm(raw: unknown): LogoFirmOption | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const f = raw as Record<string, unknown>;
+  const firmNr = Number(
+    f.FirmNr ?? f.firmNr ?? f.FIRMNR ?? f.firmno ?? f.FirmNo ?? f.NR ?? f.nr ?? f.Number ?? f.number ?? 0
+  );
+  if (!(firmNr > 0)) return null;
+  const name = String(f.name ?? f.Name ?? f.FIRMNAME ?? '');
+  const title = String(f.Title ?? f.title ?? f.DEFINITION_ ?? f.definition ?? name);
+  const defaultPeriod = Number(f.DefaultPeriod ?? f.defaultPeriod ?? f.ACTIVEPERIOD ?? 0) || undefined;
+  return {
+    firmNr,
+    name,
+    title,
+    defaultPeriod,
+    periods: parseLogoPeriods(f.Periods ?? f.periods ?? f.PeriodList ?? f.periodList),
+  };
 }
 
 export function periodsForFirm(firms: LogoFirmOption[], firmNr: number): LogoPeriodOption[] {
@@ -314,17 +452,22 @@ export function loadLogoRestConfig(): LogoRestConfig {
     const baseUrl =
       storedUrl ||
       (!isLogoRestUrlManualOverride() && tenantUrl ? tenantUrl : '');
-    return {
+    return migrateLegacyLogoMapping({
       ...defaults,
       ...parsed,
       baseUrl,
       logoDbs: Array.isArray(parsed.logoDbs) ? parsed.logoDbs.filter(Boolean) : [],
+      firmMappings:
+        parsed.firmMappings && typeof parsed.firmMappings === 'object'
+          ? (parsed.firmMappings as Record<string, LogoFirmMapping>)
+          : {},
+      firmCatalog: Array.isArray(parsed.firmCatalog) ? parsed.firmCatalog : [],
       username: storedUser || LOGO_DEFAULT_USERNAME,
       password: storedPass || LOGO_DEFAULT_PASSWORD,
       clientId:
         storedId && storedId !== 'logotigerrestservice' ? storedId : LOGO_DEFAULT_CLIENT_ID,
       clientSecret: storedSecret || LOGO_DEFAULT_CLIENT_SECRET,
-    };
+    });
   } catch {
     return defaults;
   }
@@ -712,16 +855,30 @@ export async function logoSwitchContext(
 }
 
 export async function logoListFirmCatalog(cfg: LogoRestConfig): Promise<LogoFirmOption[]> {
-  const ctx = resolveLogoContext(cfg);
-  const session = await logoObtainToken(cfg, ctx.firmNr || 1);
   const baseUrl = requireBaseUrl(cfg);
-  const res = await logoHttp(baseUrl, 'GET', '/methods/CAPI/Firms', {
-    headers: { Authorization: `Bearer ${session.accessToken}` },
-  });
-  if (!res.ok) {
-    throw new Error(`Firma listesi HTTP ${res.status} — ${res.text?.slice(0, 200)}`);
+  const tokenFirm = getLogoMappingForErp(cfg)?.logoFirmNr ?? logoFirmNrFromErp();
+  const session = await logoObtainToken(cfg, tokenFirm > 0 ? tokenFirm : 1);
+  const auth = { Authorization: `Bearer ${session.accessToken}` };
+
+  const endpoints = ['/methods/CAPI/Firms', '/methods/Firms', '/methods/CAPI/GetFirms'];
+  let lastErr = '';
+
+  for (const path of endpoints) {
+    const res = await logoHttp(baseUrl, 'GET', path, { headers: auth });
+    if (!res.ok) {
+      lastErr = `${path} HTTP ${res.status}`;
+      continue;
+    }
+    const firms = parseLogoFirmsResponse(res.data);
+    if (firms.length > 0) return firms;
+    lastErr = `${path} boş firma listesi`;
   }
-  return parseLogoFirmsResponse(res.data);
+
+  throw new Error(
+    lastErr
+      ? `Logo firma listesi alınamadı: ${lastErr}`
+      : 'Logo firma listesi boş döndü. CAPI/Firms yanıtını kontrol edin.'
+  );
 }
 
 export async function logoCheckDatabase(cfg: LogoRestConfig, dbName: string): Promise<boolean> {
