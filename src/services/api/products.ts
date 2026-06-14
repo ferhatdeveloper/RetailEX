@@ -46,6 +46,67 @@ function sanitizePostgrestIlike(q: string): string {
     .slice(0, 80);
 }
 
+function isPostgrestMissingColumnError(error: unknown, column: string): boolean {
+  const message = String((error as { message?: string })?.message ?? error ?? '');
+  return (
+    message.includes('PGRST204') &&
+    message.toLowerCase().includes(String(column).toLowerCase())
+  );
+}
+
+async function postgrestCreateProductRow(
+  tableName: string,
+  row: Record<string, unknown>
+): Promise<unknown> {
+  const { postgrest } = await import('./postgrestClient');
+  try {
+    return await postgrest.post<unknown>(`/${tableName}`, row, {
+      schema: 'public',
+      prefer: 'return=representation',
+    });
+  } catch (error) {
+    if (isPostgrestMissingColumnError(error, 'is_scale_product') && 'is_scale_product' in row) {
+      const { is_scale_product: _drop, ...fallback } = row;
+      return postgrest.post<unknown>(`/${tableName}`, fallback, {
+        schema: 'public',
+        prefer: 'return=representation',
+      });
+    }
+    if (isPostgrestMissingColumnError(error, 'follow_up_reminder_days') && 'follow_up_reminder_days' in row) {
+      const { follow_up_reminder_days: _drop, ...fallback } = row;
+      return postgrestCreateProductRow(tableName, fallback);
+    }
+    throw error;
+  }
+}
+
+async function postgrestPatchProductRow(
+  tableName: string,
+  id: string,
+  patchBody: Record<string, unknown>
+): Promise<unknown> {
+  const { postgrest } = await import('./postgrestClient');
+  const path = `/${tableName}?id=eq.${encodeURIComponent(id)}&firm_nr=eq.${encodeURIComponent(String(ERP_SETTINGS.firmNr))}`;
+  try {
+    return await postgrest.patch<unknown[]>(path, patchBody, {
+      schema: 'public',
+      prefer: 'return=representation',
+    });
+  } catch (error) {
+    if (isPostgrestMissingColumnError(error, 'is_scale_product') && 'is_scale_product' in patchBody) {
+      const next = { ...patchBody };
+      delete next.is_scale_product;
+      return postgrestPatchProductRow(tableName, id, next);
+    }
+    if (isPostgrestMissingColumnError(error, 'follow_up_reminder_days') && 'follow_up_reminder_days' in patchBody) {
+      const next = { ...patchBody };
+      delete next.follow_up_reminder_days;
+      return postgrestPatchProductRow(tableName, id, next);
+    }
+    throw error;
+  }
+}
+
 function isUndefinedColumnError(error: unknown): boolean {
   const message = String((error as { message?: string })?.message ?? error ?? '').toLowerCase();
   return message.includes('42703') || (message.includes('column') && message.includes('does not exist'));
@@ -951,19 +1012,10 @@ export const productAPI = {
 
       // PostgREST: yalnızca GET değil; INSERT de aynı uç üzerinden (pg_bridge / SQL yok)
       if (DB_SETTINGS.connectionProvider === 'rest_api') {
-        const { postgrest } = await import('./postgrestClient');
-        // PGRST204: şema önbelleğinde kolon yoksa gövde reddedilir (migration 035 / şema reload öncesi).
-        const { follow_up_reminder_days: _skipFollowUpForPostgrest, ...row } = productData as typeof productData & {
-          follow_up_reminder_days?: unknown;
-        };
-        if (!row.barcode || String(row.barcode).trim() === '') {
-          row.barcode = `B${Date.now()}`.slice(0, 100);
+        if (!productData.barcode || String(productData.barcode).trim() === '') {
+          productData.barcode = `B${Date.now()}`.slice(0, 100);
         }
-        const created = await postgrest.post<unknown>(
-          `/${tableName}`,
-          row,
-          { schema: 'public', prefer: 'return=representation' },
-        );
+        const created = await postgrestCreateProductRow(tableName, productData as Record<string, unknown>);
         const first = Array.isArray(created) ? (created as any[])[0] : (created as any);
         return first ? mapDatabaseProductToProduct(first) : null;
       }
@@ -1183,14 +1235,8 @@ export const productAPI = {
       }
 
       if (DB_SETTINGS.connectionProvider === 'rest_api') {
-        const { postgrest } = await import('./postgrestClient');
         const patchBody: Record<string, unknown> = Object.fromEntries(fieldValues);
-        delete patchBody.follow_up_reminder_days;
-        const patched = await postgrest.patch<any[]>(
-          `/${tableName}?id=eq.${encodeURIComponent(id)}&firm_nr=eq.${encodeURIComponent(String(ERP_SETTINGS.firmNr))}`,
-          patchBody,
-          { schema: 'public', prefer: 'return=representation' }
-        );
+        const patched = await postgrestPatchProductRow(tableName, id, patchBody);
         const row = Array.isArray(patched) ? patched[0] : patched;
         return row ? mapDatabaseProductToProduct(row) : null;
       }
