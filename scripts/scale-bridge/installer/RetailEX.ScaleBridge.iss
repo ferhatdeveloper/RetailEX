@@ -22,6 +22,8 @@ AppUpdatesURL={#MyAppURL}/releases
 DefaultDirName={autopf}\RetailEX\ScaleBridge
 DefaultGroupName=RetailEX
 DisableProgramGroupPage=yes
+UsePreviousAppDir=yes
+DisableDirPage=auto
 OutputDir=..\..\..\dist
 OutputBaseFilename=RetailEX-ScaleBridge-Setup
 Compression=lzma2/ultra64
@@ -57,13 +59,52 @@ Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: de
 
 [Run]
 Filename: "{tmp}\vc_redist.x64.exe"; Parameters: "/install /quiet /norestart"; StatusMsg: "Visual C++ Runtime kuruluyor (VCRUNTIME140)…"; Check: NeedsVCRedistInstall; Flags: waituntilterminated
-Filename: "{app}\{#MyAppExeName}"; Parameters: "--install"; StatusMsg: "Windows servisi kuruluyor…"; Flags: waituntilterminated
+Filename: "{app}\{#MyAppExeName}"; Parameters: "--install --quiet"; StatusMsg: "Windows servisi kuruluyor…"; Flags: waituntilterminated
 Filename: "{app}\{#MyAppExeName}"; Description: "Terazi Köprüsü yönetim arayüzünü aç"; Flags: postinstall nowait skipifsilent
 
 [UninstallRun]
-Filename: "{app}\{#MyAppExeName}"; Parameters: "--uninstall"; Flags: waituntilterminated
+Filename: "{app}\{#MyAppExeName}"; Parameters: "--uninstall --quiet"; Flags: waituntilterminated
 
 [Code]
+const
+  ScaleBridgeUninstallKey = 'SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{A8F3C2E1-9B4D-4E5F-A1C2-3D4E5F6A7B8C}_is1';
+  ScaleBridgeServiceName = 'RetailEX_Scale_Bridge';
+
+function GetPriorInstallDir(): String;
+var
+  Path: String;
+begin
+  Result := '';
+  if RegQueryStringValue(HKLM64, ScaleBridgeUninstallKey, 'InstallLocation', Path) then
+    Result := RemoveBackslashUnlessRoot(Path);
+  if (Result = '') and RegQueryStringValue(HKLM, ScaleBridgeUninstallKey, 'InstallLocation', Path) then
+    Result := RemoveBackslashUnlessRoot(Path);
+end;
+
+function StopScaleBridgeService(): Boolean;
+var
+  ResultCode: Integer;
+begin
+  Result := True;
+  Exec('net', 'stop ' + ScaleBridgeServiceName, '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  Sleep(2000);
+end;
+
+procedure PrepareUpgradeInstall;
+var
+  PrevDir, ManagerExe: String;
+  ResultCode: Integer;
+begin
+  PrevDir := GetPriorInstallDir();
+  if PrevDir = '' then
+    Exit;
+  WizardForm.StatusLabel.Caption := 'Önceki sürüm durduruluyor…';
+  StopScaleBridgeService();
+  ManagerExe := PrevDir + '\RetailEX_ScaleBridge_Manager.exe';
+  if FileExists(ManagerExe) then
+    Exec(ManagerExe, '--uninstall --quiet', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+end;
+
 { VC++ 2015-2022 x64 (VCRUNTIME140.dll) yüklü mü? }
 
 function VcRuntimeRegistryOk: Boolean;
@@ -111,6 +152,7 @@ var
 begin
   if CurStep = ssInstall then
   begin
+    PrepareUpgradeInstall();
     if NeedsVCRedistInstall then
       WizardForm.StatusLabel.Caption := 'Microsoft Visual C++ Runtime kurulacak…';
   end;

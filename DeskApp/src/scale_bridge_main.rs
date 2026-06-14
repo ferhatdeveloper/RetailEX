@@ -89,7 +89,13 @@ fn install_service() -> Result<(), Box<dyn std::error::Error>> {
             println!("Terazi köprüsü servisi kuruldu.");
         }
         windows_service_install::CreateServiceOutcome::AlreadyExisted => {
-            println!("Servis zaten mevcut.");
+            windows_service_install::replace_existing_service(
+                &manager,
+                &info,
+                ServiceAccess::all(),
+                "RetailEX_Scale_Bridge",
+            )?;
+            println!("Terazi köprüsü servisi güncellendi.");
         }
     }
     Ok(())

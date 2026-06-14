@@ -96,3 +96,25 @@ pub fn create_service_or_accept_exists(
         }
     }
 }
+
+/// Mevcut servisi durdurur, kaldırır ve yeni yürütülebilir yolu ile yeniden kurar (güncelleme).
+pub fn replace_existing_service(
+    manager: &ServiceManager,
+    info: &ServiceInfo,
+    access: ServiceAccess,
+    log_stem: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let name = info.name.clone();
+    if let Ok(service) = manager.open_service(&name, ServiceAccess::STOP | ServiceAccess::DELETE) {
+        let _ = service.stop();
+        service.delete()?;
+        std::thread::sleep(std::time::Duration::from_secs(2));
+    }
+    match manager.create_service(info, access) {
+        Ok(_svc) => Ok(()),
+        Err(e) => {
+            log_service_install_failure(log_stem, &e);
+            Err(Box::new(e))
+        }
+    }
+}

@@ -38,9 +38,14 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         .into());
     }
 
+    let quiet = args.iter().any(|a| {
+        let s = a.trim().to_ascii_lowercase();
+        s == "--quiet" || s == "/quiet" || s == "-quiet" || s == "/silent" || s == "--silent"
+    });
+
     match args.get(1).map(|s| s.as_str()) {
-        Some("--install") => return cmd_install(&bridge_exe),
-        Some("--uninstall") => return cmd_uninstall(&bridge_exe),
+        Some("--install") => return cmd_install(&bridge_exe, quiet),
+        Some("--uninstall") => return cmd_uninstall(&bridge_exe, quiet),
         Some("--help") | Some("-h") => {
             println!(
                 "RetailEX_ScaleBridge_Manager\n  (varsayılan) Yönetim arayüzünü aç\n  --install    Windows servisini kur\n  --uninstall  Windows servisini kaldır"
@@ -58,7 +63,7 @@ fn resolve_install_dir() -> Result<PathBuf, Box<dyn std::error::Error>> {
         .ok_or_else(|| "Kurulum dizini çözülemedi".into())
 }
 
-fn cmd_install(bridge_exe: &PathBuf) -> Result<(), Box<dyn std::error::Error>> {
+fn cmd_install(bridge_exe: &PathBuf, quiet: bool) -> Result<(), Box<dyn std::error::Error>> {
     let status = Command::new(bridge_exe)
         .arg("--install")
         .status()
@@ -73,19 +78,23 @@ fn cmd_install(bridge_exe: &PathBuf) -> Result<(), Box<dyn std::error::Error>> {
     }
     let _ = std::fs::create_dir_all(CONFIG_DIR);
     let _ = try_start_service();
-    native_dialog::MessageDialog::new()
-        .set_title("RetailEX Terazi Köprüsü")
-        .set_text(&format!(
-            "Kurulum tamamlandı.\n\nServis: {}\nConfig: {}\\scale-bridge.json\n\nYönetim arayüzü açılıyor…",
-            SERVICE_NAME, CONFIG_DIR
-        ))
-        .show_alert();
+    if !quiet {
+        native_dialog::MessageDialog::new()
+            .set_title("RetailEX Terazi Köprüsü")
+            .set_text(&format!(
+                "Kurulum tamamlandı.\n\nServis: {}\nConfig: {}\\scale-bridge.json\n\nYönetim arayüzü açılıyor…",
+                SERVICE_NAME, CONFIG_DIR
+            ))
+            .show_alert();
+    }
     if !wait_for_bridge_ready(45) {
         return Err(
             "Kurulum tamamlandı ancak köprü HTTP yanıt vermiyor. diagnose-windows.ps1 çalıştırın.".into(),
         );
     }
-    open_ui_browser()?;
+    if !quiet {
+        open_ui_browser()?;
+    }
     Ok(())
 }
 
@@ -143,7 +152,10 @@ fn read_service_log_hint() -> String {
         .unwrap_or_else(|| "Log dosyası yok: scale_bridge_service.log".to_string())
 }
 
-fn cmd_uninstall(bridge_exe: &PathBuf) -> Result<(), Box<dyn std::error::Error>> {
+fn cmd_uninstall(bridge_exe: &PathBuf, quiet: bool) -> Result<(), Box<dyn std::error::Error>> {
+    let _ = Command::new("net")
+        .args(["stop", SERVICE_NAME])
+        .status();
     let status = Command::new(bridge_exe)
         .arg("--uninstall")
         .status()
@@ -151,10 +163,12 @@ fn cmd_uninstall(bridge_exe: &PathBuf) -> Result<(), Box<dyn std::error::Error>>
     if !status.success() {
         return Err("Servis kaldırma başarısız".into());
     }
-    native_dialog::MessageDialog::new()
-        .set_title("RetailEX Terazi Köprüsü")
-        .set_text("Servis kaldırıldı.")
-        .show_alert();
+    if !quiet {
+        native_dialog::MessageDialog::new()
+            .set_title("RetailEX Terazi Köprüsü")
+            .set_text("Servis kaldırıldı.")
+            .show_alert();
+    }
     Ok(())
 }
 

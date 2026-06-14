@@ -9,11 +9,20 @@ Mağaza PC'de RetailEX kapalıyken bile merkezden teraziye PLU gönderimi için 
 1. **En güncel sürüm** (önerilen):  
    https://github.com/ferhatdeveloper/RetailEX/releases/latest  
    veya doğrudan:  
-   https://github.com/ferhatdeveloper/RetailEX/releases/tag/scale-bridge-v0.1.78
+   https://github.com/ferhatdeveloper/RetailEX/releases/tag/scale-bridge-v0.1.80
 2. **`RetailEX-ScaleBridge-Setup.exe`** dosyasını indirin.
 3. Dosyayı **yönetici olarak** çalıştırın.
 4. Kurulum bitince tarayıcıda yönetim arayüzü açılır:  
    **http://127.0.0.1:3012/ui/**
+
+### Güncelleme (eski sürümün üzerine kurulum)
+
+Eski sürümü elle kaldırmanız gerekmez. Yeni **Setup.exe** dosyasını yönetici olarak çalıştırmanız yeterli:
+
+1. Köprü servisi otomatik durdurulur
+2. Dosyalar aynı klasöre (`C:\Program Files\RetailEX\ScaleBridge`) güncellenir
+3. Servis yeni sürümle yeniden kurulur ve başlatılır
+4. `C:\ProgramData\RetailEX\scale-bridge.json` ayarlarınız korunur
 
 Kurulum otomatik olarak:
 

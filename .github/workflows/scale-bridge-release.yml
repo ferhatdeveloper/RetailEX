@@ -80,15 +80,16 @@ jobs:
 
             Mağaza PC'de tek kurulum: servis + yönetim arayüzü + taşınabilir Node.
 
-            ### Yenilikler (0.1.78)
-            - Ağ taraması: yerel subnet otomatik algılama + hızlı TCP probe
-            - Test bağlantısı: terazi ekranına **EXFIN RETAIL** yazar (PLU 99)
-            - Yönetim UI: `/scan/defaults` ile IP aralığı otomatik yüklenir
+            ### Yenilikler (0.1.80)
+            - **Güncelleme kurulumu:** Eski sürümü kaldırmadan yeni Setup.exe çalıştırın; servis durdurulur, dosyalar güncellenir, config korunur
+            - Tarama: yalnızca Rongta protokol doğrulaması (yazıcı yanlış alarmı azaltıldı)
+            - Manuel terazi ekleme/düzenlemede port alanı
 
-            ### Kurulum
+            ### Kurulum / güncelleme
             1. `RetailEX-ScaleBridge-Setup.exe` indirin (yönetici olarak çalıştırın)
-            2. Kurulum sonunda yönetim UI açılır: http://127.0.0.1:3012/ui/
-            3. Mağaza kodu, token ve terazi IP'lerini yapılandırın (ağ taraması desteklenir)
+            2. Eski sürüm varsa Setup üzerine kurar; ayar dosyanız (`scale-bridge.json`) silinmez
+            3. Yönetim UI: http://127.0.0.1:3012/ui/
+            4. Mağaza kodu, token ve terazi IP/port yapılandırması
 
             ### Dosyalar
             - **RetailEX-ScaleBridge-Setup.exe** — Inno Setup kurulumu
