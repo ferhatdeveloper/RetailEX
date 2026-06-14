@@ -10,6 +10,7 @@ interface ScaleManagementProps {
   bridgeOnline?: boolean;
   bridgeSourceLabel?: string;
   onOpenBridgeSettings?: () => void;
+  onOpenLocalBridgeAdmin?: () => void;
   onDeleteDevice?: (id: string) => void;
   onScanNetwork: () => void;
   onAddDevice: () => void;
@@ -24,6 +25,7 @@ export function ScaleManagement({
   bridgeOnline,
   bridgeSourceLabel,
   onOpenBridgeSettings,
+  onOpenLocalBridgeAdmin,
   onDeleteDevice,
   onScanNetwork,
   onAddDevice,
@@ -195,6 +197,17 @@ export function ScaleManagement({
           </div>
           
           <div className="flex items-center gap-3">
+            {onOpenLocalBridgeAdmin && (
+              <button
+                type="button"
+                onClick={onOpenLocalBridgeAdmin}
+                className="flex items-center gap-2 px-4 py-2 bg-slate-800 text-white rounded hover:bg-slate-900 transition-colors text-sm"
+                title="Mağaza PC'de kurulu Windows terazi köprüsü yönetim paneli"
+              >
+                <Settings className="w-4 h-4" />
+                <span>Köprü Arayüzü (3012)</span>
+              </button>
+            )}
             {onOpenBridgeSettings && (
               <button
                 onClick={onOpenBridgeSettings}

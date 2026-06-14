@@ -223,6 +223,16 @@ fn spawn_bridge_child() -> Result<Child, Box<dyn std::error::Error>> {
 
     let node = resolve_node_path().ok_or("node.exe not found")?;
     let script = resolve_server_script(&base).ok_or("scale bridge server.mjs not found")?;
+    let admin_ui = script
+        .parent()
+        .map(|p| p.join("admin").join("index.html"))
+        .filter(|p| p.exists());
+    if admin_ui.is_none() {
+        log_line(&format!(
+            "WARN: admin UI missing next to {} (expected admin/index.html)",
+            script.display()
+        ));
+    }
 
     const CREATE_NO_WINDOW: u32 = 0x08000000;
     let child = Command::new(node)

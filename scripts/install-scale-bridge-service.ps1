@@ -40,6 +40,8 @@ $BridgeDir = Join-Path $InstallDir 'scale-bridge'
 foreach ($f in @('server.mjs','rongtaTcp.mjs','scan.mjs')) {
     Copy-Item -Force (Join-Path $ScaleScripts $f) (Join-Path $BridgeDir $f)
 }
+# Rust servis çözümleyicisi kökte scale_bridge_server.mjs de arar
+Copy-Item -Force (Join-Path $ScaleScripts 'server.mjs') (Join-Path $InstallDir 'scale_bridge_server.mjs')
 Copy-Item -Force (Join-Path $ScaleScripts 'admin\index.html') (Join-Path $BridgeDir 'admin\index.html')
 Copy-Item -Force (Join-Path $ScaleScripts 'scale-bridge.example.json') (Join-Path $ConfigDir 'scale-bridge.example.json')
 

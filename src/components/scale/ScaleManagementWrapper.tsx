@@ -91,20 +91,24 @@ export function ScaleManagementWrapper({ products }: ScaleManagementWrapperProps
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      syncScaleBridgeFromWebConfig();
-      const firmNr = ERP_SETTINGS.firmNr || '001';
-      await autoApplyScaleBridgeForFirm(firmNr);
-      if (cancelled) return;
-      refreshBridgeState();
-      const rows = await loadStoresWithScaleBridge(firmNr);
-      if (cancelled) return;
-      setStoreRows(rows);
-      if (getScaleBridgeUrl()) {
-        const ok = await scaleBridgePing();
-        if (!cancelled) {
-          setBridgeOnline(ok);
-          if (ok) await refreshFromBridge();
+      try {
+        syncScaleBridgeFromWebConfig();
+        const firmNr = ERP_SETTINGS.firmNr || '001';
+        await autoApplyScaleBridgeForFirm(firmNr);
+        if (cancelled) return;
+        refreshBridgeState();
+        const rows = await loadStoresWithScaleBridge(firmNr);
+        if (cancelled) return;
+        setStoreRows(rows);
+        if (getScaleBridgeUrl()) {
+          const ok = await scaleBridgePing();
+          if (!cancelled) {
+            setBridgeOnline(ok);
+            if (ok) await refreshFromBridge();
+          }
         }
+      } catch (e) {
+        console.warn('[ScaleBridge] init:', e);
       }
     })();
     return () => {
@@ -190,12 +194,17 @@ export function ScaleManagementWrapper({ products }: ScaleManagementWrapperProps
     setSyncDevice(undefined);
   };
 
+  const openLocalBridgeAdmin = () => {
+    const url = 'http://127.0.0.1:3012/ui/';
+    window.open(url, '_blank', 'noopener,noreferrer');
+  };
+
   const storesWithBridge = storeRows.filter((s) => (s.scale_bridge_url || '').trim());
 
   return (
     <>
       {showBridgeSettings && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[200] p-4">
           <div className="bg-white rounded-lg shadow-xl max-w-lg w-full p-6">
             <h3 className="text-lg text-gray-900 mb-2">Terazi Köprüsü (Windows Servisi)</h3>
             <p className="text-sm text-gray-600 mb-2">
@@ -245,7 +254,16 @@ export function ScaleManagementWrapper({ products }: ScaleManagementWrapperProps
             <p className="text-xs text-gray-500 mb-4">
               Yerel config: <code>C:\ProgramData\RetailEX\scale-bridge.json</code>
               <br />
-              Merkez kayıt: <code>merkez_db.tenant_registry.scale_bridge_url</code>
+              Mağaza PC yönetim arayüzü:{' '}
+              <a
+                href="http://127.0.0.1:3012/ui/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-blue-600 hover:underline"
+              >
+                http://127.0.0.1:3012/ui/
+              </a>
+              {' '}(yalnızca köprü kurulu PC&apos;de)
             </p>
             <div className="flex justify-between gap-2">
               <button
@@ -286,6 +304,7 @@ export function ScaleManagementWrapper({ products }: ScaleManagementWrapperProps
           setBridgeToken(getScaleBridgeToken());
           setShowBridgeSettings(true);
         }}
+        onOpenLocalBridgeAdmin={openLocalBridgeAdmin}
         onDeleteDevice={(id) => void handleDeleteDevice(id)}
         onScanNetwork={() => setShowScannerModal(true)}
         onAddDevice={() => { setEditingDevice(undefined); setShowDeviceModal(true); }}

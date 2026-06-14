@@ -6,10 +6,12 @@
 use std::env;
 use std::path::PathBuf;
 use std::process::Command;
+use std::time::Duration;
 
 const SERVICE_NAME: &str = "RetailEX_Scale_Bridge";
 const BRIDGE_EXE: &str = "RetailEX_Scale_Bridge.exe";
 const UI_URL: &str = "http://127.0.0.1:3012/ui/";
+const STATUS_URL: &str = "http://127.0.0.1:3012/status";
 const CONFIG_DIR: &str = "C:\\ProgramData\\RetailEX";
 
 fn main() {
@@ -78,8 +80,67 @@ fn cmd_install(bridge_exe: &PathBuf) -> Result<(), Box<dyn std::error::Error>> {
             SERVICE_NAME, CONFIG_DIR
         ))
         .show_alert();
+    if !wait_for_bridge_ready(45) {
+        return Err(
+            "Kurulum tamamlandı ancak köprü HTTP yanıt vermiyor. diagnose-windows.ps1 çalıştırın.".into(),
+        );
+    }
     open_ui_browser()?;
     Ok(())
+}
+
+fn wait_for_bridge_ready(max_wait_secs: u64) -> bool {
+    let attempts = max_wait_secs * 2;
+    for i in 0..attempts {
+        if bridge_http_ready() {
+            return true;
+        }
+        if i == 0 || i % 4 == 0 {
+            let _ = try_start_service();
+        }
+        std::thread::sleep(Duration::from_millis(500));
+    }
+    false
+}
+
+fn bridge_http_ready() -> bool {
+    let script = format!(
+        "try {{ $r = Invoke-WebRequest -Uri '{}' -UseBasicParsing -TimeoutSec 2; $r.StatusCode -eq 200 }} catch {{ $false }}",
+        STATUS_URL
+    );
+    let out = Command::new("powershell")
+        .args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", &script])
+        .output();
+    match out {
+        Ok(o) if o.status.success() => {
+            let s = String::from_utf8_lossy(&o.stdout);
+            s.trim().eq_ignore_ascii_case("true")
+        }
+        _ => false,
+    }
+}
+
+fn read_service_log_hint() -> String {
+    let path = r"C:\ProgramData\RetailEX\scale_bridge_service.log";
+    std::fs::read_to_string(path)
+        .ok()
+        .map(|s| {
+            let tail: String = s
+                .lines()
+                .rev()
+                .take(4)
+                .collect::<Vec<_>>()
+                .into_iter()
+                .rev()
+                .collect::<Vec<_>>()
+                .join("\n");
+            if tail.is_empty() {
+                "Servis logu boş — node.exe veya scale-bridge/server.mjs eksik olabilir.".to_string()
+            } else {
+                format!("Son log satırları:\n{}", tail)
+            }
+        })
+        .unwrap_or_else(|| "Log dosyası yok: scale_bridge_service.log".to_string())
 }
 
 fn cmd_uninstall(bridge_exe: &PathBuf) -> Result<(), Box<dyn std::error::Error>> {
@@ -99,17 +160,24 @@ fn cmd_uninstall(bridge_exe: &PathBuf) -> Result<(), Box<dyn std::error::Error>>
 
 fn cmd_open_ui(bridge_exe: &PathBuf) -> Result<(), Box<dyn std::error::Error>> {
     let _ = try_start_service();
-    std::thread::sleep(std::time::Duration::from_millis(800));
-    if let Err(e) = open_ui_browser() {
-        let _ = native_dialog::MessageDialog::new()
-            .set_title("RetailEX Terazi Köprüsü")
-            .set_text(&format!(
-                "Tarayıcı açılamadı: {}\n\nServis kurulu değilse yönetici olarak --install çalıştırın.",
-                e
-            ))
-            .show_alert();
-        return Err(e);
+    if !wait_for_bridge_ready(45) {
+        let detail = read_service_log_hint();
+        return Err(format!(
+            "Terazi köprüsü HTTP yanıt vermiyor (port 3012).\n\n\
+             1) Yönetici olarak: \"{}\" --install\n\
+             2) services.msc → {} → Başlat\n\
+             3) Teşhis: scale-bridge\\diagnose-windows.ps1\n\n\
+             {}",
+            env::current_exe()
+                .ok()
+                .map(|p| p.display().to_string())
+                .unwrap_or_else(|| "RetailEX_ScaleBridge_Manager.exe".into()),
+            SERVICE_NAME,
+            detail
+        )
+        .into());
     }
+    open_ui_browser()?;
     let _ = bridge_exe;
     Ok(())
 }
@@ -122,8 +190,16 @@ fn try_start_service() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 fn open_ui_browser() -> Result<(), Box<dyn std::error::Error>> {
-    Command::new("cmd")
+    // cmd start bazen varsayılan tarayıcıyı açmaz; rundll32 yedek.
+    let started = Command::new("cmd")
         .args(["/C", "start", "", UI_URL])
+        .spawn()
+        .is_ok();
+    if started {
+        return Ok(());
+    }
+    Command::new("rundll32")
+        .args(["url.dll,FileProtocolHandler", UI_URL])
         .spawn()
         .map_err(|e| format!("Tarayici acilamadi: {}", e))?;
     Ok(())

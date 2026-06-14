@@ -133,8 +133,9 @@ function recordsFromProducts(products, pluStart = 1) {
 function serveAdminFile(res, relPath, contentType) {
   const filePath = join(ADMIN_DIR, relPath);
   if (!filePath.startsWith(ADMIN_DIR) || !existsSync(filePath)) {
-    res.writeHead(404);
-    return res.end('not found');
+    console.error('[scale-bridge] admin file missing:', filePath);
+    res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+    return res.end(`admin dosyasi bulunamadi: ${relPath}\nADMIN_DIR=${ADMIN_DIR}`);
   }
   const body = readFileSync(filePath);
   res.writeHead(200, { 'Content-Type': contentType });
@@ -151,6 +152,11 @@ async function handle(req, res) {
       'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
       'Access-Control-Allow-Headers': 'Content-Type, Authorization',
     });
+    return res.end();
+  }
+
+  if (req.method === 'GET' && path === '/') {
+    res.writeHead(302, { Location: '/ui/' });
     return res.end();
   }
 

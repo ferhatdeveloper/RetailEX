@@ -42,6 +42,7 @@ Name: "desktopicon"; Description: "Masaüstü kısayolu oluştur"; GroupDescript
 Source: "staging\vc_redist.x64.exe"; DestDir: "{tmp}"; Flags: deleteafterinstall; Check: NeedsVCRedistInstall
 Source: "staging\RetailEX_Scale_Bridge.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "staging\RetailEX_ScaleBridge_Manager.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "staging\scale_bridge_server.mjs"; DestDir: "{app}"; Flags: ignoreversion
 Source: "staging\node\node.exe"; DestDir: "{app}\node"; Flags: ignoreversion
 Source: "staging\scale-bridge\*"; DestDir: "{app}\scale-bridge"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "staging\scale-bridge.example.json"; DestDir: "{commonappdata}\RetailEX"; DestName: "scale-bridge.example.json"; Flags: ignoreversion onlyifdoesntexist

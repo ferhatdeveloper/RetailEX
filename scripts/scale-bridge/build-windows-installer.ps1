@@ -43,6 +43,7 @@ New-Item -ItemType Directory -Force -Path $Staging, $NodeDir, (Join-Path $Stagin
 Copy-Item -Force (Join-Path $DeskApp 'target\release\RetailEX_Scale_Bridge.exe') $Staging
 Copy-Item -Force (Join-Path $DeskApp 'target\release\RetailEX_ScaleBridge_Manager.exe') $Staging
 Copy-Item -Force (Join-Path $ScaleDir 'server.mjs') (Join-Path $Staging 'scale-bridge\server.mjs')
+Copy-Item -Force (Join-Path $ScaleDir 'server.mjs') (Join-Path $Staging 'scale_bridge_server.mjs')
 Copy-Item -Force (Join-Path $ScaleDir 'rongtaTcp.mjs') (Join-Path $Staging 'scale-bridge\rongtaTcp.mjs')
 Copy-Item -Force (Join-Path $ScaleDir 'scan.mjs') (Join-Path $Staging 'scale-bridge\scan.mjs')
 Copy-Item -Force (Join-Path $ScaleDir 'admin\index.html') (Join-Path $Staging 'scale-bridge\admin\index.html')
