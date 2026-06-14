@@ -108,101 +108,173 @@ async fn process_sync_queue(_app: &tauri::AppHandle) -> Result<(), String> {
     process_sync_queue_internal().await
 }
 
-pub async fn process_sync_queue_internal() -> Result<(), String> {
-    // 1. Fetch Config
-    let config = crate::config::get_app_config_internal().map_err(|e| e.to_string())?;
-    
-    // Skip if not configured or integration is skipped
-    if !config.is_configured || config.skip_integration { return Ok(()); }
-    
-    let api_url = if config.central_api_url.is_empty() || config.central_api_url == "https://api.retailex.app/sync" { 
-        "http://localhost:8000/api/v1/sync".to_string() 
-    } else { 
-        config.central_api_url.clone() 
-    };
+fn parse_pg_endpoint(db_str: &str) -> (String, u16, String) {
+    let host_part = db_str.split(':').next().unwrap_or("127.0.0.1").to_string();
+    let host_port_str = db_str.split('/').next().unwrap_or("127.0.0.1:5432");
+    let port = host_port_str
+        .split(':')
+        .nth(1)
+        .and_then(|p| p.parse::<u16>().ok())
+        .unwrap_or(5432);
+    let db_name = db_str
+        .split('/')
+        .last()
+        .unwrap_or("retailex_local")
+        .to_string();
+    (host_part, port, db_name)
+}
 
-    if api_url.contains("10.8.0.") {
-        eprintln!("⚠️ WARNING: API URL Mesh aralığına (10.8.0.x) işaret ediyor; bağlantı başarısız olabilir.");
-    }
-
-    // 2. Connect to Local DB - Use Configured Credentials
-    let host_part = config.local_db.split(':').next().unwrap_or("127.0.0.1");
-    let db_name = config.local_db.split('/').last().unwrap_or("retailex_local");
-
+async fn connect_pg(
+    host: &str,
+    port: u16,
+    user: &str,
+    pass: &str,
+    db: &str,
+) -> Result<tokio_postgres::Client, String> {
     let mut pg_config = tokio_postgres::Config::new();
-    pg_config.host(host_part)
-             .user(&config.pg_local_user)
-             .password(&config.pg_local_pass)
-             .dbname(db_name)
-             .connect_timeout(Duration::from_secs(5));
+    pg_config
+        .host(host)
+        .port(port)
+        .user(user)
+        .password(pass)
+        .dbname(db)
+        .connect_timeout(Duration::from_secs(8));
 
-    let (client, connection) = pg_config.connect(NoTls).await.map_err(|e| format_pg_error(e))?;
+    let (client, connection) = pg_config
+        .connect(NoTls)
+        .await
+        .map_err(|e| format_pg_error(e))?;
 
     tauri::async_runtime::spawn(async move {
         if let Err(e) = connection.await {
-            eprintln!("connection error: {}", e);
+            eprintln!("hybrid sync connection error: {}", e);
         }
     });
 
-    // 3. Fetch PENDING items
-    let rows = client.query(
-        "SELECT id::text, table_name, record_id::text, action, firm_nr, data, status, retry_count 
-         FROM sync_queue 
-         WHERE status = 'pending' AND retry_count < 10 
-         ORDER BY created_at ASC LIMIT 50", 
-        &[]
-    ).await.map_err(|e| format_pg_error(e))?;
+    Ok(client)
+}
 
-    if rows.is_empty() {
+async fn sync_one_direction(
+    source: &tokio_postgres::Client,
+    target: &tokio_postgres::Client,
+) -> Result<(i32, i32), String> {
+    let rows = source
+        .query(
+            "SELECT id, table_name, record_id, action, data
+             FROM sync_queue
+             WHERE status = 'pending' AND retry_count < 10
+             ORDER BY created_at ASC
+             LIMIT 50",
+            &[],
+        )
+        .await
+        .map_err(|e| format_pg_error(e))?;
+
+    let mut synced = 0i32;
+    let mut failed = 0i32;
+
+    for row in rows {
+        let id: uuid::Uuid = row.get("id");
+        let table_name: String = row.get("table_name");
+        let record_id: uuid::Uuid = row.get("record_id");
+        let action: String = row.get("action");
+        let data: Option<serde_json::Value> = row.get("data");
+
+        let apply = target
+            .execute(
+                "SELECT public.apply_sync_queue_item($1, $2, $3, $4::jsonb)",
+                &[&table_name, &action, &record_id, &data],
+            )
+            .await;
+
+        match apply {
+            Ok(_) => {
+                let _ = source
+                    .execute(
+                        "UPDATE sync_queue SET status = 'completed', synced_at = NOW(), error_message = NULL WHERE id = $1",
+                        &[&id],
+                    )
+                    .await;
+                synced += 1;
+                crate::logger::log_sync_success(&record_id.to_string(), &action);
+            }
+            Err(e) => {
+                let error_msg = format_pg_error(e);
+                let _ = source
+                    .execute(
+                        "UPDATE sync_queue SET retry_count = retry_count + 1, error_message = $2 WHERE id = $1",
+                        &[&id, &error_msg],
+                    )
+                    .await;
+                failed += 1;
+                crate::logger::log_sync_error(&record_id.to_string(), &action, &error_msg);
+            }
+        }
+    }
+
+    Ok((synced, failed))
+}
+
+pub async fn process_sync_queue_internal() -> Result<(), String> {
+    let config = crate::config::get_app_config_internal().map_err(|e| e.to_string())?;
+
+    if !config.is_configured {
         return Ok(());
     }
 
-    // 4. Process Batch
-    let client_http = reqwest::Client::new();
+    let db_mode = config.db_mode.to_lowercase();
+    if db_mode != "hybrid" {
+        return Ok(());
+    }
 
-    for row in rows {
-        let item = SyncItem {
-            id: row.get("id"),
-            table_name: row.get("table_name"),
-            record_id: row.get("record_id"),
-            action: row.get("action"),
-            firm_nr: row.get("firm_nr"),
-            data: row.get("data"),
-            status: row.get("status"),
-            retry_count: row.get("retry_count"),
-        };
+    if config.connection_provider == "rest_api" {
+        return Ok(());
+    }
 
-        match send_to_center(&client_http, &api_url, &item).await {
-            Ok(_) => {
-                if let Ok(id_uuid) = uuid::Uuid::parse_str(&item.id) {
-                    let _ = client.execute(
-                        "UPDATE sync_queue SET status = 'completed', synced_at = NOW() WHERE id = $1",
-                        &[&id_uuid]
-                    ).await;
-                }
-                
-                crate::logger::log_sync_success(&item.record_id.clone().unwrap_or_default(), &item.action);
-            },
-            Err(e) => {
-                let error_msg = e.to_string();
-                if let Ok(id_uuid) = uuid::Uuid::parse_str(&item.id) {
-                    let _ = client.execute(
-                        "UPDATE sync_queue SET retry_count = retry_count + 1, error_message = $2 WHERE id = $1",
-                        &[&id_uuid as &(dyn tokio_postgres::types::ToSql + Sync), &error_msg as &(dyn tokio_postgres::types::ToSql + Sync)]
-                    ).await;
-                }
+    let (local_host, local_port, local_db) = parse_pg_endpoint(&config.local_db);
+    let (remote_host, remote_port, remote_db) = parse_pg_endpoint(&config.remote_db);
 
-                crate::logger::log_sync_error(&item.record_id.clone().unwrap_or_default(), &item.action, &error_msg);
-            }
-        }
+    let local = connect_pg(
+        &local_host,
+        local_port,
+        &config.pg_local_user,
+        &config.pg_local_pass,
+        &local_db,
+    )
+    .await?;
+
+    let remote = connect_pg(
+        &remote_host,
+        remote_port,
+        &config.pg_remote_user,
+        &config.pg_remote_pass,
+        &remote_db,
+    )
+    .await?;
+
+    let direction = config.hybrid_sync_direction.to_lowercase();
+    let mut total = 0i32;
+
+    if direction == "local_to_remote" || direction == "bidirectional" {
+        let (s, _) = sync_one_direction(&local, &remote).await?;
+        total += s;
+    }
+    if direction == "remote_to_local" || direction == "bidirectional" {
+        let (s, _) = sync_one_direction(&remote, &local).await?;
+        total += s;
+    }
+
+    if total > 0 {
+        println!("✅ Hibrit PG senkron: {} kayıt eşlendi ({})", total, direction);
     }
 
     Ok(())
 }
 
-async fn send_to_center(client: &reqwest::Client, api_url: &str, item: &SyncItem) -> Result<(), String> {
-    // Real HTTP POST
-    let res = client.post(api_url)
+#[allow(dead_code)]
+async fn send_to_center_legacy(client: &reqwest::Client, api_url: &str, item: &SyncItem) -> Result<(), String> {
+    let res = client
+        .post(api_url)
         .json(&item)
         .timeout(Duration::from_secs(10))
         .send()

@@ -40,6 +40,7 @@
 35. **045_stores_scale_bridge.sql** – `stores.scale_bridge_url` / `scale_bridge_token` (mağaza PC terazi köprüsü).
 36. **046_sales_logo_sync_meta.sql** – `rex_*_*_sales.logo_sync_error`, `logo_sync_date` (Logo REST fatura aktarımı).
 37. **047_rex_products_is_scale_product.sql** – `rex_*_products.is_scale_product` (tartı ürünü / terazi PLU aktarımı).
+38. **048_hybrid_sync_apply.sql** – Hibrit PG senkronu: `apply_sync_queue_item`, `resolve_table_schema`, `enqueue_sync_event` döngü koruması.
 
 **Mevcut veritabanı:** `config.db` (DeskApp ayarları) ile bekleyen migration’ları uygulamak için proje kökünde `npm run db:migrate` (ayrıntı: `.cursor/rules/database-migrate-config-db.mdc`).
 

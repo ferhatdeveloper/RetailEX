@@ -770,7 +770,11 @@ export function Login({ onLogin }: LoginProps) {
           : r.direction
             ? `Yön: ${r.direction}`
             : undefined;
-      toast.info(r.message || 'Senkron tamamlandı.', detail ? { description: detail } : undefined);
+      if (r.totalSynced != null && r.totalSynced > 0) {
+        toast.success(r.message || 'Senkron tamamlandı.', detail ? { description: detail } : undefined);
+      } else {
+        toast.info(r.message || 'Bekleyen kayıt yok.', detail ? { description: detail } : undefined);
+      }
     } catch (e: any) {
       toast.error('Senkron hatası: ' + (e?.message || String(e)));
     } finally {
@@ -2203,7 +2207,7 @@ export function Login({ onLogin }: LoginProps) {
                           </div>
                           <div className="space-y-1">
                             <label className={`px-1 text-[9px] font-black uppercase tracking-widest ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>
-                              Hibrit — senkron yönü (plan)
+                              Hibrit — senkron yönü
                             </label>
                             <select
                               value={hybridSyncDirection}
@@ -2215,7 +2219,7 @@ export function Login({ onLogin }: LoginProps) {
                               <option value="bidirectional">Çift yönlü</option>
                             </select>
                             <p className={`px-1 text-[9px] font-bold leading-relaxed ${darkMode ? 'text-slate-500' : 'text-slate-600'}`}>
-                              Şu an <strong>kayıt ve senkron motoru</strong> için yön tercihi; otomatik çoğaltma bağlandığında bu ayar kullanılacak. Şema migrasyonları hibritte varsayılan olarak <strong>yerel</strong> uca uygulanır.
+                              Yerel ve uzak PostgreSQL arasında <strong>sync_queue</strong> kuyruğu ile otomatik eşleme. Masaüstünde arka planda ~5 sn; web’de «Şimdi senkronize et» veya otomatik döngü. Her iki PG’de <strong>048_hybrid_sync_apply</strong> migration gerekir.
                             </p>
                             <button
                               type="button"

@@ -2,6 +2,7 @@ import { IS_TAURI, safeInvoke, getBridgeUrl, isRetailExProductionWeb } from '../
 import { fetchRetailexAware } from '../utils/retailexDevProxy';
 import { logger } from './loggingService';
 import { setGlobalCurrency } from '../utils/currency';
+import { runHybridSync } from './hybridSyncEngine';
 
 const IS_PRODUCTION = isRetailExProductionWeb();
 
@@ -747,6 +748,7 @@ async function syncRuntimeSettingsFromPostgres(): Promise<void> {
 
 export class PostgresConnection {
   private static instance: PostgresConnection;
+  private hybridSyncTimer: ReturnType<typeof setInterval> | null = null;
   private status: PostgresStatus = {
     connected: false,
     host: '',
@@ -754,6 +756,18 @@ export class PostgresConnection {
     database: '',
     mode: 'hybrid'
   };
+
+  private startHybridAutoSync(): void {
+    if (typeof window === 'undefined') return;
+    if (this.hybridSyncTimer) {
+      clearInterval(this.hybridSyncTimer);
+      this.hybridSyncTimer = null;
+    }
+    if (DB_SETTINGS.activeMode !== 'hybrid' || DB_SETTINGS.connectionProvider !== 'db') return;
+    this.hybridSyncTimer = setInterval(() => {
+      void this.sync().catch((e) => console.warn('[Postgres] Otomatik hibrit senkron:', e));
+    }, 30_000);
+  }
 
   private constructor() { }
 
@@ -814,6 +828,7 @@ export class PostgresConnection {
       }
     }
 
+    this.startHybridAutoSync();
     return this.status;
   }
 
@@ -1133,14 +1148,25 @@ export class PostgresConnection {
           'Senkron yalnızca hibrit bağlantı modunda kullanılabilir. Modu «Hybrid» yapın veya ayarı kaydedin.',
       };
     }
-    const msg =
-      direction === 'local_to_remote'
-        ? 'Hedef: yerel → uzak (çift taraflı çoğaltma motoru henüz bağlı değil).'
-        : direction === 'remote_to_local'
-          ? 'Hedef: uzak → yerel (çift taraflı çoğaltma motoru henüz bağlı değil).'
-          : 'Hedef: çift yönlü (çoğaltma motoru henüz bağlı değil).';
-    console.log(`[Postgres] Hybrid sync — ${direction}:`, msg);
-    return { success: true, totalSynced: 0, direction, message: msg };
+
+    const result = await runHybridSync({
+      direction,
+      local: LOCAL_CONFIG,
+      remote: REMOTE_CONFIG,
+      connectionProvider: DB_SETTINGS.connectionProvider,
+    });
+
+    if (result.success && result.totalSynced > 0) {
+      DB_SETTINGS.lastSync = new Date().toISOString();
+      await updateConfigs({ settings: { lastSync: DB_SETTINGS.lastSync } });
+    }
+
+    return {
+      success: result.success,
+      totalSynced: result.totalSynced,
+      direction: result.direction,
+      message: result.message,
+    };
   }
 }
 

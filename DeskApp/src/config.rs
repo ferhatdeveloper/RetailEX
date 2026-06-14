@@ -17,7 +17,7 @@ pub struct AppConfig {
     /// Hibrit + DB: SQL için önce hangi PG (local_first | remote_first)
     #[serde(default = "default_hybrid_read_preference")]
     pub hybrid_read_preference: String,
-    /// Hibrit senkron hedef yönü (yerleşik çoğaltma gelene kadar kayıt / UI)
+    /// Hibrit senkron yönü (local_to_remote | remote_to_local | bidirectional)
     #[serde(default = "default_hybrid_sync_direction")]
     pub hybrid_sync_direction: String,
     pub terminal_name: String,
