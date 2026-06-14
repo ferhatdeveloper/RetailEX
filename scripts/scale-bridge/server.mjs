@@ -10,7 +10,7 @@ import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { rongtaTcpSendPlu, rongtaTcpTest } from './rongtaTcp.mjs';
+import { rongtaTcpSendPlu, rongtaTcpTest, discoverRongtaPort, tcpProbePorts } from './rongtaTcp.mjs';
 import { scanNetworkForScales, guessLocalSubnet } from './scan.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -255,11 +255,34 @@ async function handle(req, res) {
       return json(res, 200, { ok: true });
     }
 
+    if (req.method === 'POST' && path === '/scales/probe') {
+      const body = await readBody(req);
+      const ipAddress = String(body.ipAddress || '').trim();
+      const port = Number(body.port) || 0;
+      if (!ipAddress) return json(res, 400, { error: 'ipAddress gerekli' });
+      const discovery = await discoverRongtaPort(ipAddress, port || undefined);
+      const tcp = await tcpProbePorts(ipAddress, port || undefined);
+      return json(res, 200, {
+        ipAddress,
+        found: discovery.found,
+        suggestedPort: discovery.found ? discovery.port : null,
+        checks: discovery.checks,
+        tcpChecks: tcp,
+      });
+    }
+
     if (req.method === 'POST' && path.match(/^\/scales\/[^/]+\/test$/)) {
       const id = decodeURIComponent(path.split('/')[2]);
       const scale = findScale(id);
       if (!scale) return json(res, 404, { error: 'Terazi bulunamadı' });
       const result = await rongtaTcpTest(scale.ipAddress, scale.port);
+      if (result.ok && result.suggestedPort && result.suggestedPort !== scale.port) {
+        const idx = config.scales.findIndex((s) => s.id === scale.id);
+        if (idx >= 0) {
+          config.scales[idx].port = result.suggestedPort;
+          await saveConfig();
+        }
+      }
       return json(res, 200, { ok: !!result.ok, ...result });
     }
 

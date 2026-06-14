@@ -5,7 +5,7 @@
 
 export const RONGTA_DEFAULT_IP = '192.168.1.87';
 export const RONGTA_DEFAULT_PORT = 20304;
-export const RONGTA_FALLBACK_PORTS = [20304, 4001] as const;
+export const RONGTA_FALLBACK_PORTS = [20304, 4001, 3001] as const;
 export const RONGTA_PRINTER_PORTS = [9100, 515, 631, 80, 443, 1024] as const;
 /** Bağlantı testinde terazi ekranına yazdırılacak metin (PLU adı). */
 export const RONGTA_TEST_DISPLAY_TEXT = 'EXFIN RETAIL';

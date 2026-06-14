@@ -59,6 +59,27 @@ if (Test-Path $InstallErr) {
     Write-Host 'Yok (servis kurulumu hata vermemis olabilir)'
 }
 
+Write-Host '--- Terazi TCP (config scales) ---'
+if (Test-Path $ConfigPath) {
+    try {
+        $cfg = Get-Content $ConfigPath -Raw -Encoding UTF8 | ConvertFrom-Json
+        foreach ($s in ($cfg.scales | Where-Object { $_.ipAddress })) {
+            $ip = $s.ipAddress
+            $port = if ($s.port) { [int]$s.port } else { 20304 }
+            Write-Host "Terazi: $ip port $port"
+            foreach ($p in @($port, 20304, 4001, 3001 | Select-Object -Unique)) {
+                $t = Test-NetConnection -ComputerName $ip -Port $p -WarningAction SilentlyContinue
+                $state = if ($t.TcpTestSucceeded) { 'ACIK' } else { 'KAPALI/RED' }
+                Write-Host "  TCP $p -> $state"
+            }
+        }
+    } catch {
+        Write-Host "Config terazi testi okunamadi: $_"
+    }
+} else {
+    Write-Host 'Config yok — terazi testi atlandi'
+}
+
 Write-Host '--- Ag IP ---'
 Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.IPAddress -notlike '127.*' } | Select-Object IPAddress, InterfaceAlias
 

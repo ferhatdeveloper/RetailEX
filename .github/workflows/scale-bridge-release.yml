@@ -80,8 +80,9 @@ jobs:
 
             Mağaza PC'de tek kurulum: servis + yönetim arayüzü + taşınabilir Node.
 
-            ### Yenilikler (0.1.82)
-            - Kurulum: Windows Güvenlik Duvarı kuralları otomatik (gelen TCP 3012, giden node yerel ağ/terazi)
+            ### Yenilikler (0.1.83)
+            - Terazi test: ECONNREFUSED için açıklayıcı mesaj; port 20304/4001/3001 otomatik deneme
+            - Köprü UI: manuel eklemede «Bağlantıyı kontrol et»; `/scales/probe` API
 
             ### Kurulum / güncelleme
             1. `RetailEX-ScaleBridge-Setup.exe` indirin (yönetici olarak çalıştırın)

@@ -239,6 +239,10 @@
       <input id="modalScaleIp" placeholder="192.168.1.200" />
       <label>Port</label>
       <input id="modalScalePort" type="number" min="1" max="65535" value="20304" />
+      <div id="modalProbeMsg" class="msg" style="margin-top:4px"></div>
+      <div class="actions" style="margin-top:8px">
+        <button type="button" class="btn-ghost" id="modalScaleProbe">Bağlantıyı kontrol et</button>
+      </div>
       <div class="actions" style="margin-top:16px">
         <button type="button" class="btn-primary" id="modalScaleSave">Kaydet</button>
         <button type="button" class="btn-ghost" id="modalScaleCancel">İptal</button>
@@ -258,6 +262,8 @@
       $('modalScaleName').value = opts.name || '';
       $('modalScaleIp').value = opts.ipAddress || '';
       $('modalScalePort').value = opts.port || 20304;
+      $('modalProbeMsg').textContent = '';
+      $('modalProbeMsg').className = 'msg';
       $('scaleModal').classList.add('open');
     }
 
@@ -268,6 +274,32 @@
 
     $('modalScaleCancel').onclick = closeScaleModal;
     $('scaleModal').onclick = (e) => { if (e.target === $('scaleModal')) closeScaleModal(); };
+
+    $('modalScaleProbe').onclick = async () => {
+      const ip = $('modalScaleIp').value.trim();
+      const port = parseInt($('modalScalePort').value, 10) || 20304;
+      const msg = $('modalProbeMsg');
+      if (!ip) { msg.className = 'msg err'; msg.textContent = 'IP gerekli'; return; }
+      msg.className = 'msg';
+      msg.textContent = 'Kontrol ediliyor…';
+      try {
+        const r = await api('/scales/probe', { method: 'POST', body: JSON.stringify({ ipAddress: ip, port }) });
+        if (r.found && r.suggestedPort) {
+          $('modalScalePort').value = r.suggestedPort;
+          msg.className = 'msg ok';
+          msg.textContent = 'Terazi bulundu — port ' + r.suggestedPort + ' kullanın.';
+        } else {
+          const refused = (r.checks || []).filter((c) => c.refused).length;
+          msg.className = 'msg err';
+          msg.textContent = refused > 0
+            ? ip + ' erişiliyor ama terazi portu kapalı (ECONNREFUSED). Terazi IP/ağ ayarını ve port 4001/3001 deneyin.'
+            : ip + ' yanıt vermiyor — ping ve terazi ethernet ayarını kontrol edin.';
+        }
+      } catch (e) {
+        msg.className = 'msg err';
+        msg.textContent = e.message;
+      }
+    };
 
     $('modalScaleSave').onclick = async () => {
       const ip = $('modalScaleIp').value.trim();
@@ -366,9 +398,10 @@
         btn.onclick = async () => {
           try {
             const r = await api('/scales/' + encodeURIComponent(btn.dataset.test) + '/test', { method: 'POST', body: '{}' });
+            const extra = r.suggestedPort ? '\nÖnerilen port: ' + r.suggestedPort : '';
             alert(r.ok
-              ? (r.message || 'Test başarılı — terazi ekranında EXFIN RETAIL görünmeli')
-              : (r.message || 'Bağlantı başarısız'));
+              ? (r.message || 'Test başarılı — terazi ekranında EXFIN RETAIL görünmeli') + extra
+              : (r.message || 'Bağlantı başarısız') + extra);
           } catch (e) { alert(e.message); }
         };
       });

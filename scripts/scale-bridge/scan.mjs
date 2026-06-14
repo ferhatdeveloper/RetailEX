@@ -5,7 +5,7 @@ import os from 'node:os';
 import net from 'node:net';
 import { rongtaTcpQuickProbe } from './rongtaTcp.mjs';
 
-const FALLBACK_PORTS = [20304, 4001];
+const FALLBACK_PORTS = [20304, 4001, 3001];
 /** Yazıcı portları (Canon vb.) — taramada yok sayılır */
 const PRINTER_PORTS = new Set([9100, 515, 631, 80, 443, 1024]);
 const DEFAULT_CONCURRENCY = 48;

@@ -114,7 +114,7 @@ Mağaza PC `scale-bridge.json` örneği:
 | **Servis kurulumu başarısız** | Yönetici PowerShell; antivirüs geçici kapat; `RetailEX_Scale_Bridge_install_last_error.txt` oku |
 | **VCRUNTIME140.dll was not found** | VC++ Runtime eksik — asagidaki hizli cozum veya yeni Setup.exe |
 | **node.exe not found** | GitHub **Setup.exe** kullanın (Node dahil); eski kurulumu kaldırıp yeniden kurun |
-| **3012/status açılmıyor** | `net start RetailEX_Scale_Bridge`; güvenlik duvarında «RetailEX Terazi Koprusu» kurallarını kontrol edin; log: `scale_bridge_service.log` |
+| **ECONNREFUSED 192.168.x.x:20304** | Terazi IP/port yanlış veya terazi ethernet kapalı. Köprü UI → Manuel ekle → **Bağlantıyı kontrol et**; port **4001** deneyin; terazi menüsünden IP doğrulayın |
 | **RetailEX_Scale_Bridge.exe bulunamadı** | Kurulum: `C:\Program Files\RetailEX\ScaleBridge` — Setup'ı yeniden çalıştırın |
 
 ### Teşhis betiği (çıktıyı paylaşın)

@@ -5,7 +5,7 @@ import net from 'node:net';
 
 const CMD = { START: '0201', ACK: '0102', PLU_SEND: '0110' };
 const RONGTA_TEST_DISPLAY_TEXT = 'EXFIN RETAIL';
-const SCALE_PORTS = [20304, 4001];
+const SCALE_PORTS = [20304, 4001, 3001];
 /** Yazıcı / paylaşım portları — tarama ve otomatik denemede kullanılmaz */
 const PRINTER_PORTS = new Set([9100, 515, 631, 80, 443, 1024]);
 const FALLBACK_PORTS = SCALE_PORTS;
@@ -104,11 +104,110 @@ function tryConnect(ip, port, timeoutMs = SOCKET_TIMEOUT_MS) {
   });
 }
 
+function buildPortTryList(port) {
+  if (!port) return [...FALLBACK_PORTS];
+  return [port, ...FALLBACK_PORTS.filter((p) => p !== port)];
+}
+
+function errorCode(err) {
+  if (!err) return '';
+  if (typeof err === 'object' && 'code' in err) return String(err.code);
+  const m = String(err.message || err);
+  const match = m.match(/\b(ECONNREFUSED|ETIMEDOUT|EHOSTUNREACH|ENOTFOUND)\b/);
+  return match ? match[1] : '';
+}
+
+function tcpConnectCheck(ip, port, timeoutMs = QUICK_CONNECT_TIMEOUT_MS) {
+  return new Promise((resolve) => {
+    const socket = new net.Socket();
+    let settled = false;
+    const finish = (result) => {
+      if (settled) return;
+      settled = true;
+      socket.destroy();
+      resolve(result);
+    };
+    socket.setTimeout(timeoutMs);
+    socket.once('connect', () => finish({ port, reachable: true, refused: false }));
+    socket.once('timeout', () => finish({ port, reachable: false, refused: false, timeout: true }));
+    socket.once('error', (err) => {
+      const code = errorCode(err);
+      finish({
+        port,
+        reachable: false,
+        refused: code === 'ECONNREFUSED',
+        timeout: code === 'ETIMEDOUT',
+        hostUnreachable: code === 'EHOSTUNREACH' || code === 'ENOTFOUND',
+        error: err instanceof Error ? err.message : String(err),
+        code,
+      });
+    });
+    try {
+      socket.connect(port, ip);
+    } catch (err) {
+      finish({ port, reachable: false, error: String(err), code: errorCode(err) });
+    }
+  });
+}
+
+export async function tcpProbePorts(ipAddress, preferredPort) {
+  const ports = buildPortTryList(preferredPort).filter((p) => !PRINTER_PORTS.has(p));
+  const checks = await Promise.all(ports.map((p) => tcpConnectCheck(ipAddress, p)));
+  return checks;
+}
+
+export async function discoverRongtaPort(ipAddress, preferredPort) {
+  const ports = buildPortTryList(preferredPort).filter((p) => !PRINTER_PORTS.has(p));
+  const checks = [];
+  for (const p of ports) {
+    const tcp = await tcpConnectCheck(ipAddress, p);
+    checks.push({ ...tcp, protocolOk: false });
+    if (!tcp.reachable) continue;
+    const probe = await rongtaTcpQuickProbe(ipAddress, p);
+    checks[checks.length - 1].protocolOk = !!probe.ok;
+    if (probe.ok) {
+      return { found: true, port: p, checks };
+    }
+  }
+  return { found: false, checks };
+}
+
+export function buildScaleConnectionHelp(ipAddress, preferredPort, discovery) {
+  const checks = discovery?.checks || [];
+  const refused = checks.filter((c) => c.refused);
+  const timeout = checks.filter((c) => c.timeout || c.hostUnreachable);
+  const reachableNoProto = checks.filter((c) => c.reachable && !c.protocolOk);
+
+  if (discovery?.found) {
+    return `Terazi bulundu: ${ipAddress}:${discovery.port}`;
+  }
+
+  const lines = [`${ipAddress}:${preferredPort || 20304} adresinde Rongta terazi yanıt vermiyor.`];
+
+  if (refused.length === checks.length && checks.length > 0) {
+    lines.push('');
+    lines.push('ECONNREFUSED: IP erişilebilir ama terazi portu kapalı veya bu IP terazi değil.');
+    lines.push('• Terazi menüsü → Ağ/Ethernet → IP ve “PLU aktarımı” açık mı?');
+    lines.push('• Terazi fişinden veya RLS1000 yazılımından IP/port doğrulayın.');
+    lines.push(`• Denenen portlar: ${checks.map((c) => c.port).join(', ')}`);
+  } else if (timeout.length > 0 && refused.length === 0) {
+    lines.push('');
+    lines.push('Ağ zaman aşımı: PC ile terazi aynı alt ağda mı? Kablo/Wi‑Fi ve ping kontrol edin.');
+  } else if (reachableNoProto.length > 0) {
+    lines.push('');
+    lines.push('TCP bağlantısı var ama Rongta protokolü yok — yazıcı veya farklı cihaz olabilir.');
+  }
+
+  lines.push('');
+  lines.push('Öneri: Terazide IP’yi tekrar kaydedin; RLS1000 ile bağlantı testi yapın; port 4001 deneyin.');
+
+  return lines.join('\n');
+}
+
 async function resolveSocket(ipAddress, port) {
-  const ports = port ? [port] : FALLBACK_PORTS;
+  const ports = buildPortTryList(port).filter((p) => !PRINTER_PORTS.has(p));
   let lastErr = null;
   for (const p of ports) {
-    if (PRINTER_PORTS.has(p)) continue;
     try { return { socket: await tryConnect(ipAddress, p), port: p }; }
     catch (e) { lastErr = e; }
   }
@@ -173,7 +272,23 @@ export async function rongtaTcpTest(ipAddress, port) {
     price: 0.01,
     unit: 'KG',
   };
-  const { socket, port: usedPort } = await resolveSocket(ipAddress, port);
+  let socket;
+  let usedPort = port || FALLBACK_PORTS[0];
+  try {
+    const resolved = await resolveSocket(ipAddress, port);
+    socket = resolved.socket;
+    usedPort = resolved.port;
+  } catch (e) {
+    const discovery = await discoverRongtaPort(ipAddress, port);
+    return {
+      ok: false,
+      port: port || usedPort,
+      displayText: RONGTA_TEST_DISPLAY_TEXT,
+      message: buildScaleConnectionHelp(ipAddress, port, discovery),
+      suggestedPort: discovery.found ? discovery.port : undefined,
+      probe: discovery.checks,
+    };
+  }
   try {
     const initial = await Promise.race([readOnce(socket, 1500), new Promise((r) => setTimeout(() => r(''), 1500))]);
     if (String(initial).includes(CMD.START)) {
@@ -190,8 +305,9 @@ export async function rongtaTcpTest(ipAddress, port) {
       port: usedPort,
       displayText: RONGTA_TEST_DISPLAY_TEXT,
       message: displayOk
-        ? `Test başarılı — terazi ekranında "${RONGTA_TEST_DISPLAY_TEXT}" görünmeli (PLU 99)`
-        : `Bağlantı var ancak test PLU gönderilemedi (hata ${ack.errorCode})`,
+        ? `Test başarılı — terazi ekranında "${RONGTA_TEST_DISPLAY_TEXT}" görünmeli (PLU 99, port ${usedPort})`
+        : `Bağlantı var ancak test PLU gönderilemedi (hata ${ack.errorCode}, port ${usedPort})`,
+      suggestedPort: usedPort !== port ? usedPort : undefined,
     };
   } catch (e) {
     return {
