@@ -99,6 +99,7 @@ export async function rongtaFetchSalesRecords(
   return json;
 }
 
+export async function rongtaSendPluRecords(
   target: RongtaDeviceTarget,
   records: RongtaPluRecord[]
 ): Promise<RongtaSyncResponse> {
