@@ -157,62 +157,90 @@ async fn connect_pg(
 async fn sync_one_direction(
     source: &tokio_postgres::Client,
     target: &tokio_postgres::Client,
+    store_id: Option<&str>,
 ) -> Result<(i32, i32), String> {
-    let rows = source
-        .query(
-            "SELECT id, table_name, record_id, action, data
-             FROM sync_queue
-             WHERE status = 'pending' AND retry_count < 10
-             ORDER BY created_at ASC
-             LIMIT 50",
-            &[],
-        )
-        .await
+    let mut total_synced = 0i32;
+    let mut total_failed = 0i32;
+    let store_uuid = store_id
+        .filter(|s| !s.trim().is_empty())
+        .and_then(|s| uuid::Uuid::parse_str(s).ok());
+
+    for _round in 0..100 {
+        let rows = if let Some(sid) = store_uuid {
+            source
+                .query(
+                    "SELECT id, table_name, record_id, action, data
+                     FROM sync_queue
+                     WHERE status = 'pending' AND retry_count < 10
+                       AND (
+                         source_store_id = $1
+                         OR target_store_id = $1
+                         OR (data->>'store_id')::uuid = $1
+                       )
+                     ORDER BY created_at ASC
+                     LIMIT 50",
+                    &[&sid],
+                )
+                .await
+        } else {
+            source
+                .query(
+                    "SELECT id, table_name, record_id, action, data
+                     FROM sync_queue
+                     WHERE status = 'pending' AND retry_count < 10
+                     ORDER BY created_at ASC
+                     LIMIT 50",
+                    &[],
+                )
+                .await
+        }
         .map_err(|e| format_pg_error(e))?;
 
-    let mut synced = 0i32;
-    let mut failed = 0i32;
+        if rows.is_empty() {
+            break;
+        }
 
-    for row in rows {
-        let id: uuid::Uuid = row.get("id");
-        let table_name: String = row.get("table_name");
-        let record_id: uuid::Uuid = row.get("record_id");
-        let action: String = row.get("action");
-        let data: Option<serde_json::Value> = row.get("data");
+        for row in rows {
+            let id: uuid::Uuid = row.get("id");
+            let table_name: String = row.get("table_name");
+            let record_id: uuid::Uuid = row.get("record_id");
+            let action: String = row.get("action");
+            let data: Option<serde_json::Value> = row.get("data");
 
-        let apply = target
-            .execute(
-                "SELECT public.apply_sync_queue_item($1, $2, $3, $4::jsonb)",
-                &[&table_name, &action, &record_id, &data],
-            )
-            .await;
+            let apply = target
+                .execute(
+                    "SELECT public.apply_sync_queue_item($1, $2, $3, $4::jsonb)",
+                    &[&table_name, &action, &record_id, &data],
+                )
+                .await;
 
-        match apply {
-            Ok(_) => {
-                let _ = source
-                    .execute(
-                        "UPDATE sync_queue SET status = 'completed', synced_at = NOW(), error_message = NULL WHERE id = $1",
-                        &[&id],
-                    )
-                    .await;
-                synced += 1;
-                crate::logger::log_sync_success(&record_id.to_string(), &action);
-            }
-            Err(e) => {
-                let error_msg = format_pg_error(e);
-                let _ = source
-                    .execute(
-                        "UPDATE sync_queue SET retry_count = retry_count + 1, error_message = $2 WHERE id = $1",
-                        &[&id, &error_msg],
-                    )
-                    .await;
-                failed += 1;
-                crate::logger::log_sync_error(&record_id.to_string(), &action, &error_msg);
+            match apply {
+                Ok(_) => {
+                    let _ = source
+                        .execute(
+                            "UPDATE sync_queue SET status = 'completed', synced_at = NOW(), error_message = NULL WHERE id = $1",
+                            &[&id],
+                        )
+                        .await;
+                    total_synced += 1;
+                    crate::logger::log_sync_success(&record_id.to_string(), &action);
+                }
+                Err(e) => {
+                    let error_msg = format_pg_error(e);
+                    let _ = source
+                        .execute(
+                            "UPDATE sync_queue SET retry_count = retry_count + 1, error_message = $2 WHERE id = $1",
+                            &[&id, &error_msg],
+                        )
+                        .await;
+                    total_failed += 1;
+                    crate::logger::log_sync_error(&record_id.to_string(), &action, &error_msg);
+                }
             }
         }
     }
 
-    Ok((synced, failed))
+    Ok((total_synced, total_failed))
 }
 
 pub async fn process_sync_queue_internal() -> Result<(), String> {
@@ -253,14 +281,19 @@ pub async fn process_sync_queue_internal() -> Result<(), String> {
     .await?;
 
     let direction = config.hybrid_sync_direction.to_lowercase();
+    let store_filter = if config.store_id.trim().is_empty() {
+        None
+    } else {
+        Some(config.store_id.as_str())
+    };
     let mut total = 0i32;
 
     if direction == "local_to_remote" || direction == "bidirectional" {
-        let (s, _) = sync_one_direction(&local, &remote).await?;
+        let (s, _) = sync_one_direction(&local, &remote, store_filter).await?;
         total += s;
     }
     if direction == "remote_to_local" || direction == "bidirectional" {
-        let (s, _) = sync_one_direction(&remote, &local).await?;
+        let (s, _) = sync_one_direction(&remote, &local, store_filter).await?;
         total += s;
     }
 

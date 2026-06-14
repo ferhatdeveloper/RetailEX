@@ -10,6 +10,19 @@ export type PgEndpointConfig = {
   isConfigured?: boolean;
 };
 
+/** Gönder = yerel→uzak, Al = uzak→yerel, Her ikisi = çift yönlü */
+export type HybridSyncFlow = 'send' | 'receive' | 'both';
+
+/** pending = bir parti; all = tüm bekleyenler bitene kadar */
+export type HybridSyncScopeMode = 'pending' | 'all';
+
+export type HybridSyncFilter = {
+  storeId?: string | null;
+  userId?: string | null;
+  cashierUsername?: string | null;
+  firmNr?: string | null;
+};
+
 export type SyncQueueRow = {
   id: string;
   table_name: string;
@@ -25,11 +38,23 @@ export type HybridSyncResult = {
   totalSynced: number;
   failed: number;
   direction?: HybridSyncDirection;
+  flow?: HybridSyncFlow;
   message?: string;
+};
+
+export type HybridSyncRunOptions = {
+  direction?: HybridSyncDirection;
+  flow?: HybridSyncFlow;
+  scope?: HybridSyncScopeMode;
+  filter?: HybridSyncFilter;
+  local: PgEndpointConfig;
+  remote: PgEndpointConfig;
+  connectionProvider?: 'db' | 'rest_api';
 };
 
 const BATCH_LIMIT = 50;
 const MAX_RETRY = 10;
+const MAX_ALL_ROUNDS = 100;
 
 function buildConnStr(config: PgEndpointConfig): string {
   const host = config.host === 'localhost' ? '127.0.0.1' : config.host;
@@ -39,7 +64,7 @@ function buildConnStr(config: PgEndpointConfig): string {
   return `postgresql://${u}:${p}@${host}:${config.port}/${d}`;
 }
 
-async function queryRows(
+export async function queryPgRows(
   config: PgEndpointConfig,
   sql: string,
   params: unknown[] = []
@@ -73,15 +98,61 @@ async function queryRows(
   return data.rows ?? [];
 }
 
-async function fetchPendingQueue(source: PgEndpointConfig): Promise<SyncQueueRow[]> {
-  const rows = await queryRows(
+function flowToDirection(flow: HybridSyncFlow): HybridSyncDirection {
+  if (flow === 'send') return 'local_to_remote';
+  if (flow === 'receive') return 'remote_to_local';
+  return 'bidirectional';
+}
+
+function buildQueueWhere(filter?: HybridSyncFilter): { sql: string; params: unknown[] } {
+  const params: unknown[] = [MAX_RETRY];
+  let sql = `status = 'pending' AND retry_count < $1`;
+
+  if (filter?.firmNr) {
+    params.push(filter.firmNr);
+    sql += ` AND firm_nr = $${params.length}`;
+  }
+
+  if (filter?.storeId) {
+    params.push(filter.storeId);
+    const i = params.length;
+    sql += ` AND (
+      source_store_id = $${i}::uuid
+      OR target_store_id = $${i}::uuid
+      OR (data->>'store_id')::uuid = $${i}::uuid
+    )`;
+  }
+
+  if (filter?.userId) {
+    params.push(filter.userId);
+    sql += ` AND source_user_id = $${params.length}::uuid`;
+  }
+
+  if (filter?.cashierUsername) {
+    params.push(filter.cashierUsername);
+    sql += ` AND (
+      data->>'cashier' = $${params.length}
+      OR data->>'username' = $${params.length}
+    )`;
+  }
+
+  return { sql, params };
+}
+
+async function fetchPendingQueue(
+  source: PgEndpointConfig,
+  filter?: HybridSyncFilter
+): Promise<SyncQueueRow[]> {
+  const where = buildQueueWhere(filter);
+  const limitIdx = where.params.length + 1;
+  const rows = await queryPgRows(
     source,
     `SELECT id::text, table_name, record_id::text, action, firm_nr, data, retry_count::text
      FROM sync_queue
-     WHERE status = 'pending' AND retry_count < $1
+     WHERE ${where.sql}
      ORDER BY created_at ASC
-     LIMIT $2`,
-    [MAX_RETRY, BATCH_LIMIT]
+     LIMIT $${limitIdx}`,
+    [...where.params, BATCH_LIMIT]
   );
   return rows.map((r: any) => ({
     id: String(r.id),
@@ -96,7 +167,7 @@ async function fetchPendingQueue(source: PgEndpointConfig): Promise<SyncQueueRow
 
 async function applyItem(target: PgEndpointConfig, item: SyncQueueRow): Promise<void> {
   const dataJson = item.data ? JSON.stringify(item.data) : null;
-  await queryRows(
+  await queryPgRows(
     target,
     `SELECT public.apply_sync_queue_item($1, $2, $3::uuid, $4::jsonb)`,
     [item.table_name, item.action, item.record_id, dataJson]
@@ -104,7 +175,7 @@ async function applyItem(target: PgEndpointConfig, item: SyncQueueRow): Promise<
 }
 
 async function markCompleted(source: PgEndpointConfig, id: string): Promise<void> {
-  await queryRows(
+  await queryPgRows(
     source,
     `UPDATE sync_queue SET status = 'completed', synced_at = NOW(), error_message = NULL WHERE id = $1::uuid RETURNING id`,
     [id]
@@ -113,7 +184,7 @@ async function markCompleted(source: PgEndpointConfig, id: string): Promise<void
 
 async function markFailed(source: PgEndpointConfig, id: string, error: string): Promise<void> {
   const msg = error.slice(0, 2000);
-  await queryRows(
+  await queryPgRows(
     source,
     `UPDATE sync_queue SET retry_count = retry_count + 1, error_message = $2 WHERE id = $1::uuid RETURNING id`,
     [id, msg]
@@ -121,7 +192,7 @@ async function markFailed(source: PgEndpointConfig, id: string, error: string): 
 }
 
 async function ensureSyncFunctions(endpoint: PgEndpointConfig): Promise<void> {
-  const rows = await queryRows(
+  const rows = await queryPgRows(
     endpoint,
     `SELECT 1 AS ok FROM pg_proc p
      JOIN pg_namespace n ON n.oid = p.pronamespace
@@ -131,39 +202,63 @@ async function ensureSyncFunctions(endpoint: PgEndpointConfig): Promise<void> {
   if (rows.length > 0) return;
   throw new Error(
     `${endpoint.host}:${endpoint.port}/${endpoint.database} üzerinde apply_sync_queue_item yok. ` +
-      'database/migrations/048_hybrid_sync_apply.sql dosyasını her iki PG\'de çalıştırın (npm run db:migrate).'
+      'npm run db:migrate ile 048 ve 049 migration dosyalarını her iki PG\'de çalıştırın.'
   );
+}
+
+export async function countPendingQueue(
+  endpoint: PgEndpointConfig,
+  filter?: HybridSyncFilter
+): Promise<number> {
+  const where = buildQueueWhere(filter);
+  const rows = await queryPgRows(
+    endpoint,
+    `SELECT COUNT(*)::text AS cnt FROM sync_queue WHERE ${where.sql}`,
+    where.params
+  );
+  return Number(rows[0]?.cnt ?? 0);
 }
 
 export async function syncOneDirection(
   source: PgEndpointConfig,
   target: PgEndpointConfig,
-  label: string
+  label: string,
+  opts?: { filter?: HybridSyncFilter; scope?: HybridSyncScopeMode }
 ): Promise<{ synced: number; failed: number; errors: string[] }> {
   await ensureSyncFunctions(source);
   await ensureSyncFunctions(target);
 
-  const pending = await fetchPendingQueue(source);
+  const scope = opts?.scope ?? 'pending';
+  const filter = opts?.filter;
   let synced = 0;
   let failed = 0;
   const errors: string[] = [];
+  let rounds = 0;
 
-  for (const item of pending) {
-    try {
-      await applyItem(target, item);
-      await markCompleted(source, item.id);
-      synced += 1;
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      failed += 1;
-      errors.push(`${label} ${item.table_name}/${item.record_id}: ${msg}`);
+  do {
+    const pending = await fetchPendingQueue(source, filter);
+    if (pending.length === 0) break;
+
+    for (const item of pending) {
       try {
-        await markFailed(source, item.id, msg);
-      } catch {
-        /* kaynak kuyruk güncellenemedi */
+        await applyItem(target, item);
+        await markCompleted(source, item.id);
+        synced += 1;
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        failed += 1;
+        errors.push(`${label} ${item.table_name}/${item.record_id}: ${msg}`);
+        try {
+          await markFailed(source, item.id, msg);
+        } catch {
+          /* kaynak kuyruk güncellenemedi */
+        }
       }
     }
-  }
+
+    rounds += 1;
+    if (scope !== 'all') break;
+  } while (rounds < MAX_ALL_ROUNDS);
 
   return { synced, failed, errors };
 }
@@ -185,49 +280,49 @@ export function getSyncLegs(
   ];
 }
 
-export async function runHybridSync(opts: {
-  direction: HybridSyncDirection;
-  local: PgEndpointConfig;
-  remote: PgEndpointConfig;
-  connectionProvider?: 'db' | 'rest_api';
-}): Promise<HybridSyncResult> {
+export async function runHybridSync(opts: HybridSyncRunOptions): Promise<HybridSyncResult> {
   if (opts.connectionProvider === 'rest_api') {
     return {
       success: false,
       totalSynced: 0,
       failed: 0,
-      direction: opts.direction,
+      flow: opts.flow,
       message:
         'Hibrit PG senkronu yalnızca «Doğrudan PostgreSQL» bağlantısında çalışır. PostgREST modunda uzak uç SQL replikasyonu desteklenmiyor.',
     };
   }
 
-  const legs = getSyncLegs(opts.direction, opts.local, opts.remote);
+  const flow = opts.flow ?? 'both';
+  const direction = opts.direction ?? flowToDirection(flow);
+  const scope = opts.scope ?? 'pending';
+  const legs = getSyncLegs(direction, opts.local, opts.remote);
   let totalSynced = 0;
   let failed = 0;
   const allErrors: string[] = [];
 
   for (const leg of legs) {
-    const r = await syncOneDirection(leg.source, leg.target, leg.label);
+    const r = await syncOneDirection(leg.source, leg.target, leg.label, {
+      filter: opts.filter,
+      scope,
+    });
     totalSynced += r.synced;
     failed += r.failed;
     allErrors.push(...r.errors);
   }
 
-  const directionLabel =
-    opts.direction === 'local_to_remote'
-      ? 'Yerel → uzak'
-      : opts.direction === 'remote_to_local'
-        ? 'Uzak → yerel'
-        : 'Çift yönlü';
+  const flowLabel =
+    flow === 'send' ? 'Gönder (yerel→uzak)' : flow === 'receive' ? 'Al (uzak→yerel)' : 'Gönder + Al';
+
+  const scopeLabel = scope === 'all' ? 'tüm bekleyenler' : 'bekleyen parti';
 
   if (totalSynced === 0 && failed === 0) {
     return {
       success: true,
       totalSynced: 0,
       failed: 0,
-      direction: opts.direction,
-      message: `${directionLabel}: bekleyen kayıt yok.`,
+      direction,
+      flow,
+      message: `${flowLabel}: ${scopeLabel} — eşlenecek kayıt yok.`,
     };
   }
 
@@ -236,17 +331,19 @@ export async function runHybridSync(opts: {
       success: false,
       totalSynced: 0,
       failed,
-      direction: opts.direction,
-      message: `${directionLabel} senkron başarısız. ${allErrors[0] ?? 'Bilinmeyen hata'}`,
+      direction,
+      flow,
+      message: `${flowLabel} başarısız. ${allErrors[0] ?? 'Bilinmeyen hata'}`,
     };
   }
 
-  const partial = failed > 0 ? ` (${failed} kayıt hata)` : '';
+  const partial = failed > 0 ? ` (${failed} hata)` : '';
   return {
     success: true,
     totalSynced,
     failed,
-    direction: opts.direction,
-    message: `${directionLabel}: ${totalSynced} kayıt eşlendi${partial}.`,
+    direction,
+    flow,
+    message: `${flowLabel}: ${totalSynced} kayıt eşlendi (${scopeLabel})${partial}.`,
   };
 }

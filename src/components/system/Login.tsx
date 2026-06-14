@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { Lock, User, CheckCircle, Store, MoreHorizontal, Grid3x3, Languages, AlertCircle, Building2, Settings as Gear, Loader2, ArrowRight, Maximize2, ShieldCheck, Shield, X as CloseIcon, Activity, ChevronRight, Terminal, Trash2, Download, Search, RotateCcw, Database, Save, RefreshCw } from 'lucide-react';
+import { HybridSyncPanel } from './HybridSyncPanel';
 import { logger, LogEntry } from '../../services/loggingService';
 import type { User as UserType } from '../../core/types';
 import { APP_VERSION } from '../../core/version';
@@ -2219,26 +2220,11 @@ export function Login({ onLogin }: LoginProps) {
                               <option value="bidirectional">Çift yönlü</option>
                             </select>
                             <p className={`px-1 text-[9px] font-bold leading-relaxed ${darkMode ? 'text-slate-500' : 'text-slate-600'}`}>
-                              Yerel ve uzak PostgreSQL arasında <strong>sync_queue</strong> kuyruğu ile otomatik eşleme. Masaüstünde arka planda ~5 sn; web’de «Şimdi senkronize et» veya otomatik döngü. Her iki PG’de <strong>048_hybrid_sync_apply</strong> migration gerekir.
+                              Varsayılan senkron yönü (kayıt). Gönder / Al işlemleri aşağıdaki panelden şube ve kasiyer seçerek yapılır.
                             </p>
-                            <button
-                              type="button"
-                              disabled={isHybridSyncLoading || isDbTestLoading}
-                              onClick={() => void handleHybridSyncNow()}
-                              className={`mt-2 flex w-full items-center justify-center gap-2 rounded-lg border-2 px-3 py-2.5 text-[10px] font-black uppercase tracking-wide transition-colors disabled:opacity-50 ${darkMode ? 'border-blue-500/60 bg-blue-950/50 text-blue-100 hover:bg-blue-900/50' : 'border-blue-400 bg-blue-50 text-blue-900 hover:bg-blue-100'}`}
-                            >
-                              {isHybridSyncLoading ? (
-                                <>
-                                  <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
-                                  Senkron çalışıyor…
-                                </>
-                              ) : (
-                                <>
-                                  <RefreshCw className="h-4 w-4 shrink-0" />
-                                  Şimdi senkronize et
-                                </>
-                              )}
-                            </button>
+                            <div className="mt-2">
+                              <HybridSyncPanel compact darkMode={darkMode} />
+                            </div>
                           </div>
                         </div>
                       )}

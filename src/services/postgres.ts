@@ -2,10 +2,11 @@ import { IS_TAURI, safeInvoke, getBridgeUrl, isRetailExProductionWeb } from '../
 import { fetchRetailexAware } from '../utils/retailexDevProxy';
 import { logger } from './loggingService';
 import { setGlobalCurrency } from '../utils/currency';
-import { runHybridSync } from './hybridSyncEngine';
+import { runHybridSync, type HybridSyncFilter, type HybridSyncFlow, type HybridSyncScopeMode } from './hybridSyncEngine';
 
 const IS_PRODUCTION = isRetailExProductionWeb();
 
+export type { HybridSyncFlow, HybridSyncScopeMode, HybridSyncFilter } from './hybridSyncEngine';
 export type ConnectionMode = 'online' | 'offline' | 'hybrid';
 export type ConnectionProvider = 'db' | 'rest_api';
 /** Hibrit modda SQL sorgularında denenecek PG sırası (bağlantı hatasında yedek uca geçiş). */
@@ -13,10 +14,13 @@ export type HybridReadPreference = 'local_first' | 'remote_first';
 /** Planlanan senkron yönü (`sync()` ve ilerideki çoğaltma için). */
 export type HybridSyncDirection = 'local_to_remote' | 'remote_to_local' | 'bidirectional';
 
-/** `sync()` — kayıtlı ayar yerine giriş ekranı formundan tek seferlik deneme için. */
+/** `sync()` — şube/kasiyer gönder-al ve kapsam seçenekleri */
 export type PostgresSyncOptions = {
   mode?: ConnectionMode;
   hybridSyncDirection?: HybridSyncDirection;
+  flow?: HybridSyncFlow;
+  scope?: HybridSyncScopeMode;
+  filter?: HybridSyncFilter;
 };
 
 export function normalizeHybridReadPreference(raw: unknown): HybridReadPreference {
@@ -1151,6 +1155,9 @@ export class PostgresConnection {
 
     const result = await runHybridSync({
       direction,
+      flow: opts?.flow,
+      scope: opts?.scope ?? 'all',
+      filter: opts?.filter,
       local: LOCAL_CONFIG,
       remote: REMOTE_CONFIG,
       connectionProvider: DB_SETTINGS.connectionProvider,

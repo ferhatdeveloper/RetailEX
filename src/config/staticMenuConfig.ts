@@ -10,7 +10,7 @@ import {
     Globe, Receipt, Building, Calculator, TrendingUpDown, Gift, Percent, Send,
     PackageSearch, Wrench, Shield, UserCog, UtensilsCrossed, Phone, Bell,
     Smartphone, Mail, BarChart3, TrendingUp, UserCheck, Layers, Clock, AlertCircle,
-    Radio, ArrowRightLeft, MoreVertical, Menu, Sparkles, Banknote, Mic, Landmark, Layout, HardDrive
+    Radio, ArrowRightLeft, MoreVertical, Menu, Sparkles, Banknote, Mic, Landmark, Layout, HardDrive, RefreshCw
 } from 'lucide-react';
 import { Translations } from '../locales/translations';
 
@@ -28,6 +28,7 @@ export const getStaticMenuSections = (t: Translations) => [
                 badge: t.menu.newBadge,
                 children: [
                     { label: t.menu.storePanel, screen: 'store-management', icon: Store },
+                    { label: 'Şube Veri Senkronu', screen: 'hybrid-sync', icon: RefreshCw },
                     { label: t.menu.storeTransfer, screen: 'interstore-transfer', icon: ArrowRightLeft },
                     { label: t.menu.multiStoreManagement, screen: 'multistore', icon: Store },
                     { label: t.menu.regionalFranchiseManagement, screen: 'regional', icon: Map },

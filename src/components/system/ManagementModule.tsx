@@ -140,6 +140,7 @@ const VoiceAssistantWeb = lazyWithChunkRecovery(() => import('../modules/VoiceAs
 const ProductAnalyticsDashboard = lazyWithChunkRecovery(() => import('../inventory/products/ProductAnalyticsDashboard').then(m => ({ default: m.ProductAnalyticsDashboard })));
 const CashierScale = lazyWithChunkRecovery(() => import('../scale/CashierScale').then(m => ({ default: m.CashierScale })));
 const DatabaseMigrations = lazyWithChunkRecovery(() => import('./DatabaseMigrations').then(m => ({ default: m.DatabaseMigrations })));
+const HybridSyncModule = lazyWithChunkRecovery(() => import('./HybridSyncPanel').then(m => ({ default: m.HybridSyncModule })));
 const SupabaseMigrationModule = lazyWithChunkRecovery(() => import('./SupabaseMigrationModule'));
 const StoreManagementDashboard = lazyWithChunkRecovery(() => import('./StoreManagementDashboard').then(m => ({ default: m.StoreManagementDashboard })));
 const SecurityModulesWeb = lazyWithChunkRecovery(() => import('./SecurityModulesWeb').then(m => ({ default: m.SecurityModulesWeb })));
@@ -217,7 +218,7 @@ type ExtendedScreen = ManagementScreen | 'dashboard' | 'finance' | 'stock' | 'pu
   'waybill-sales' | 'waybill-purchase' | 'waybill-transfer' | 'waybill-fire' |
   'roleauth' | 'roles' | 'role_management' | 'authorization' |
   'financereports' | 'generalsettings' | 'definitions' | 'backuprestore' | 'systemhealth' | 'smsmanage' | 'emailcamp' | 'logaudit' | 'databroadcast' |
-  'modulemanagement' | 'menumanagement' | 'onlineorders' | 'productsync' | 'price-change-vouchers' | 'new-modules' | 'accounting-mgmt' | 'workflow-automation' | 'voice-assistant' | 'cashier-scale' | 'scale-management' | 'db-migrations' | 'store-management' | 'security-modules' | 'demo-data' |
+  'modulemanagement' | 'menumanagement' | 'onlineorders' | 'productsync' | 'price-change-vouchers' | 'new-modules' | 'accounting-mgmt' | 'workflow-automation' | 'voice-assistant' | 'cashier-scale' | 'scale-management' | 'db-migrations' | 'hybrid-sync' | 'store-management' | 'security-modules' | 'demo-data' |
   'product-analytics' | 'profit-dashboard' | 'graphanalysis' | 'reconciliation' | 'wave-picking' | 'ai-stock-prediction' | 'material-extract' | 'cost-centers' |
   'universal-report-hub' | 'customer-extract' | 'store-performance' | 'inventory-aging' | 'nebim-migration' |
   'cash-slips' | 'bank-slips' | 'pos-slips' | 'current-slips' | 'stockcounting' | 'stockcounting-mobile' |
@@ -1445,6 +1446,8 @@ export function ManagementModule({
           return <ScaleManagementWrapper products={products} />;
         case 'db-migrations':
           return <DatabaseMigrations onBack={() => setCurrentScreen('dashboard')} />;
+        case 'hybrid-sync':
+          return <HybridSyncModule onBack={() => setCurrentScreen('dashboard')} />;
         case 'store-management':
           return <StoreManagementDashboard />;
         case 'demo-data':
