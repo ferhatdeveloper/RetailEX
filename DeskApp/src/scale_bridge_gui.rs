@@ -2,6 +2,7 @@
 
 use crate::{ScaleBridgeWindow, ScaleRow};
 use serde::{Deserialize, Serialize};
+use slint::ComponentHandle;
 use slint::{ModelRc, VecModel};
 use std::path::PathBuf;
 use std::process::Command;
