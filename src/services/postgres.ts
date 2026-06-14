@@ -3,6 +3,10 @@ import { fetchRetailexAware } from '../utils/retailexDevProxy';
 import { logger } from './loggingService';
 import { setGlobalCurrency } from '../utils/currency';
 import { runHybridSync, type HybridSyncFilter, type HybridSyncFlow, type HybridSyncScopeMode } from './hybridSyncEngine';
+import {
+  REMOTE_PG_DEFAULTS,
+  parsePgEndpointString,
+} from '../core/remotePgDefaults';
 
 const IS_PRODUCTION = isRetailExProductionWeb();
 
@@ -51,13 +55,13 @@ function sleepMs(ms: number): Promise<void> {
 const PG_WEB_QUERY_MAX_ATTEMPTS = 3;
 const PG_WEB_QUERY_RETRY_BASE_MS = 500;
 
-// Remote PostgreSQL (Global/Main Server)
+// Remote PostgreSQL (Global/Main Server) — varsayılanlar: config/remote-pg.defaults.json
 export let REMOTE_CONFIG = {
-  host: '127.0.0.1',
-  port: 5432,
-  database: 'retailex_local',
-  user: 'postgres',
-  password: 'Yq7xwQpt6c',
+  host: REMOTE_PG_DEFAULTS.host,
+  port: REMOTE_PG_DEFAULTS.port,
+  database: REMOTE_PG_DEFAULTS.database,
+  user: REMOTE_PG_DEFAULTS.user,
+  password: REMOTE_PG_DEFAULTS.password,
   isConfigured: false,
 };
 
@@ -220,14 +224,10 @@ function applyDefaultCurrencyFromConfig(config: any): void {
  * `host:port/dbname` biçimi (Tauri + Login web — `remote_db` tek alanda).
  */
 function applyRemoteFromHostPortDbString(remoteDb: string): void {
-  if (!remoteDb || typeof remoteDb !== 'string' || !remoteDb.includes(':') || !remoteDb.includes('/')) return;
-  const host = remoteDb.split(':')[0] || '127.0.0.1';
-  REMOTE_CONFIG.host = host;
-  const portPart = remoteDb.split(':')[1] || '';
-  const portStr = portPart.split('/')[0];
-  if (portStr) REMOTE_CONFIG.port = parseInt(portStr, 10) || 5432;
-  const dbPart = remoteDb.split('/').slice(1).join('/');
-  if (dbPart) REMOTE_CONFIG.database = dbPart;
+  const parsed = parsePgEndpointString(remoteDb);
+  REMOTE_CONFIG.host = parsed.host;
+  REMOTE_CONFIG.port = parsed.port;
+  REMOTE_CONFIG.database = parsed.database;
 }
 
 function syncRemoteConfigFromRestUrl(restUrl: unknown): void {
@@ -403,16 +403,10 @@ export async function initializeFromSQLite(preloadedConfig?: any) {
 
       // Load Remote DB Settings
       if (config.remote_db && typeof config.remote_db === 'string') {
-          // Format: host:port/dbname
-          const host = config.remote_db.split(':')[0] || '26.154.3.237';
-          REMOTE_CONFIG.host = host;
-          if (config.remote_db.includes(':')) {
-            const portPart = config.remote_db.split(':')[1] || '';
-            const portStr = portPart.split('/')[0];
-            if (portStr) REMOTE_CONFIG.port = parseInt(portStr, 10) || 5432;
-            const dbPart = config.remote_db.split('/').slice(1).join('/');
-            if (dbPart) REMOTE_CONFIG.database = dbPart;
-          }
+          const parsed = parsePgEndpointString(config.remote_db);
+          REMOTE_CONFIG.host = parsed.host;
+          REMOTE_CONFIG.port = parsed.port;
+          REMOTE_CONFIG.database = parsed.database;
       }
       if (config.pg_remote_user) REMOTE_CONFIG.user = config.pg_remote_user;
       if (config.pg_remote_pass) REMOTE_CONFIG.password = config.pg_remote_pass;

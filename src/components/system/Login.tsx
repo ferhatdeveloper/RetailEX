@@ -6,6 +6,7 @@ import { HybridSyncPanel } from './HybridSyncPanel';
 import { logger, LogEntry } from '../../services/loggingService';
 import type { User as UserType } from '../../core/types';
 import { APP_VERSION } from '../../core/version';
+import { REMOTE_PG_DEFAULTS, formatRemotePgEndpoint } from '../../core/remotePgDefaults';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import { toast } from 'sonner';
@@ -72,13 +73,13 @@ export function Login({ onLogin }: LoginProps) {
     user: 'postgres',
     password: ''
   });
-  /** Hibrit / online: uzak PostgreSQL (aynı LAN’da merkez PG IP’si) — REMOTE_CONFIG */
+  /** Hibrit / online: uzak PostgreSQL (merkez PG) — REMOTE_CONFIG / remote-pg.defaults.json */
   const [remoteDbConfig, setRemoteDbConfig] = useState({
-    host: '127.0.0.1',
-    port: 5432,
-    database: 'retailex_local',
-    user: 'postgres',
-    password: '',
+    host: REMOTE_PG_DEFAULTS.host,
+    port: REMOTE_PG_DEFAULTS.port,
+    database: REMOTE_PG_DEFAULTS.database,
+    user: REMOTE_PG_DEFAULTS.user,
+    password: REMOTE_PG_DEFAULTS.password,
   });
   const [connectionProvider, setConnectionProvider] = useState<ConnectionProvider>('db');
   const [remoteRestUrl, setRemoteRestUrl] = useState<string>('http://172.20.0.10:3002');
@@ -446,9 +447,13 @@ export function Login({ onLogin }: LoginProps) {
         ...currentConfig,
         is_configured: true,
         db_mode: "hybrid",
-        remote_db: `${conn.host || '91.205.41.130'}:${conn.port || 5432}/${conn.database || 'EXFINOPS'}`,
-        pg_remote_user: conn.username || 'postgres',
-        pg_remote_pass: conn.password || '',
+        remote_db: formatRemotePgEndpoint(
+          conn.host || REMOTE_PG_DEFAULTS.host,
+          conn.port || REMOTE_PG_DEFAULTS.port,
+          conn.database || REMOTE_PG_DEFAULTS.database,
+        ),
+        pg_remote_user: conn.username || REMOTE_PG_DEFAULTS.user,
+        pg_remote_pass: conn.password || REMOTE_PG_DEFAULTS.password,
         erp_firm_nr: data.firma_id,
         terminal_name: data.firma_adi || '',
         // License Info (User Rights & Expiry)

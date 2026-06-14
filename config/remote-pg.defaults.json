@@ -1,0 +1,8 @@
+{
+  "host": "91.205.41.130",
+  "port": 5432,
+  "database": "retailos_db",
+  "user": "postgres",
+  "password": "Yq7xwQpt6c",
+  "endpoint": "91.205.41.130:5432/retailos_db"
+}

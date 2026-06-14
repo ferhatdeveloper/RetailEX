@@ -19,6 +19,7 @@ import { readFileSync, readdirSync, existsSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { spawnSync } from 'child_process';
+import { loadRemotePgDefaults, parsePgEndpoint } from './pg-endpoint-parse.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const MIGRATIONS_DIR = join(__dirname, '..', 'migrations');
@@ -36,27 +37,16 @@ function decodeConfigPass(s) {
 }
 
 function parseLocalDb(localDb) {
-  const out = { host: '127.0.0.1', port: 5432, database: 'retailex_local' };
-  if (!localDb || typeof localDb !== 'string') return out;
-  const host = localDb.split(':')[0] || '127.0.0.1';
-  out.host = host;
-  if (localDb.includes(':')) {
-    const after = localDb.split(':')[1] || '';
-    const portPart = after.split('/')[0];
-    if (portPart) out.port = parseInt(portPart, 10) || 5432;
-    if (localDb.includes('/')) {
-      const dbPart = localDb.split('/').slice(1).join('/');
-      if (dbPart) out.database = dbPart;
-    }
-  }
-  return out;
+  return parsePgEndpoint(localDb, { host: '127.0.0.1', port: 5432, database: 'retailex_local' });
 }
 
 function parseRemoteDb(remoteDb) {
-  const out = { host: '127.0.0.1', port: 5432, database: 'retailex_local' };
-  if (!remoteDb || typeof remoteDb !== 'string') return out;
-  out.host = remoteDb.split(':')[0] || '127.0.0.1';
-  return out;
+  const remote = loadRemotePgDefaults();
+  return parsePgEndpoint(remoteDb, {
+    host: remote.host,
+    port: remote.port,
+    database: remote.database,
+  });
 }
 
 function resolveConfigDbPath() {

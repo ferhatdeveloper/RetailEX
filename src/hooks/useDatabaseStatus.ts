@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { REMOTE_PG_DEFAULTS, formatRemotePgHostPort } from '../core/remotePgDefaults';
 
 interface DatabaseStatus {
   status: 'connected' | 'disconnected' | 'error' | 'checking';
@@ -55,8 +56,8 @@ export function useDatabaseStatus(checkInterval: number = 30000) {
         setDbStatus({
           status: 'disconnected',
           message: 'Backend servisi çalışmıyor',
-          host: '91.205.41.130:5432',
-          database: 'retailos_db'
+          host: formatRemotePgHostPort(),
+          database: REMOTE_PG_DEFAULTS.database
         });
         return;
       }
@@ -68,15 +69,15 @@ export function useDatabaseStatus(checkInterval: number = 30000) {
         setDbStatus({
           status: 'connected',
           message: 'PostgreSQL bağlantısı başarılı',
-          host: data.database.host || '91.205.41.130:5432',
-          database: data.database.database || 'retailos_db'
+          host: data.database.host || formatRemotePgHostPort(),
+          database: data.database.database || REMOTE_PG_DEFAULTS.database
         });
       } else {
         setDbStatus({
           status: 'error',
           message: data.database?.message || 'Database bağlantı hatası',
-          host: '91.205.41.130:5432',
-          database: 'retailos_db'
+          host: formatRemotePgHostPort(),
+          database: REMOTE_PG_DEFAULTS.database
         });
       }
     } catch (error) {
@@ -84,8 +85,8 @@ export function useDatabaseStatus(checkInterval: number = 30000) {
       setDbStatus({
         status: 'disconnected',
         message: 'Backend servisi çalışmıyor',
-        host: '91.205.41.130:5432',
-        database: 'retailos_db'
+        host: formatRemotePgHostPort(),
+        database: REMOTE_PG_DEFAULTS.database
       });
     }
   };
