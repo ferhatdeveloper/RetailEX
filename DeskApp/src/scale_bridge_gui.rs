@@ -1,6 +1,5 @@
 //! Terazi köprüsü — Slint masaüstü yönetim arayüzü (WinForms benzeri).
 
-use crate::scale_bridge_ui::{ScaleBridgeWindow, ScaleRow};
 use serde::{Deserialize, Serialize};
 use slint::{ModelRc, VecModel};
 use std::path::PathBuf;
