@@ -6,20 +6,26 @@ import net from 'node:net';
 import { rongtaTcpQuickProbe } from './rongtaTcp.mjs';
 
 const FALLBACK_PORTS = [20304, 4001];
+/** Yazıcı portları (Canon vb.) — taramada yok sayılır */
+const PRINTER_PORTS = new Set([9100, 515, 631, 80, 443, 1024]);
 const DEFAULT_CONCURRENCY = 48;
 const TCP_PROBE_TIMEOUT_MS = 500;
 
 function parsePortsList(ports) {
+  const normalize = (list) => {
+    const filtered = list.filter((p) => !PRINTER_PORTS.has(p));
+    return filtered.length ? [...new Set(filtered)] : [...FALLBACK_PORTS];
+  };
   if (!ports) return [...FALLBACK_PORTS];
   if (Array.isArray(ports)) {
     const list = ports.map((p) => Number(p)).filter((p) => Number.isInteger(p) && p > 0 && p <= 65535);
-    return list.length ? [...new Set(list)] : [...FALLBACK_PORTS];
+    return list.length ? normalize(list) : [...FALLBACK_PORTS];
   }
   const list = String(ports)
     .split(/[,\s;]+/)
     .map((p) => parseInt(p, 10))
     .filter((p) => Number.isInteger(p) && p > 0 && p <= 65535);
-  return list.length ? [...new Set(list)] : [...FALLBACK_PORTS];
+  return list.length ? normalize(list) : [...FALLBACK_PORTS];
 }
 
 function parseIp(ip) {

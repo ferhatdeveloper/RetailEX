@@ -80,10 +80,8 @@ jobs:
 
             Mağaza PC'de tek kurulum: servis + yönetim arayüzü + taşınabilir Node.
 
-            ### Yenilikler (0.1.80)
-            - **Güncelleme kurulumu:** Eski sürümü kaldırmadan yeni Setup.exe çalıştırın; servis durdurulur, dosyalar güncellenir, config korunur
-            - Tarama: yalnızca Rongta protokol doğrulaması (yazıcı yanlış alarmı azaltıldı)
-            - Manuel terazi ekleme/düzenlemede port alanı
+            ### Yenilikler (0.1.81)
+            - Tarama: Canon/yazıcı yanlış alarmı giderildi — yalnızca Rongta ACK (0102) yanıtı kabul edilir; 9100 vb. portlar hariç
 
             ### Kurulum / güncelleme
             1. `RetailEX-ScaleBridge-Setup.exe` indirin (yönetici olarak çalıştırın)

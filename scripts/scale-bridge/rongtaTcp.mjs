@@ -5,7 +5,10 @@ import net from 'node:net';
 
 const CMD = { START: '0201', ACK: '0102', PLU_SEND: '0110' };
 const RONGTA_TEST_DISPLAY_TEXT = 'EXFIN RETAIL';
-const FALLBACK_PORTS = [20304, 4001, 9100, 1024];
+const SCALE_PORTS = [20304, 4001];
+/** Yazıcı / paylaşım portları — tarama ve otomatik denemede kullanılmaz */
+const PRINTER_PORTS = new Set([9100, 515, 631, 80, 443, 1024]);
+const FALLBACK_PORTS = SCALE_PORTS;
 const SOCKET_TIMEOUT_MS = 8000;
 const QUICK_PROBE_TIMEOUT_MS = 1200;
 const QUICK_CONNECT_TIMEOUT_MS = 500;
@@ -105,24 +108,50 @@ async function resolveSocket(ipAddress, port) {
   const ports = port ? [port] : FALLBACK_PORTS;
   let lastErr = null;
   for (const p of ports) {
+    if (PRINTER_PORTS.has(p)) continue;
     try { return { socket: await tryConnect(ipAddress, p), port: p }; }
     catch (e) { lastErr = e; }
   }
   throw lastErr ?? new Error('Teraziye bağlanılamadı');
 }
 
+function isRongtaFrame(raw) {
+  const s = String(raw || '');
+  if (s.length < 8) return false;
+  const len = parseInt(s.slice(0, 4), 10);
+  if (!Number.isFinite(len) || len < 8 || len > 8192) return false;
+  const cmd = s.slice(4, 8);
+  return cmd === CMD.START || cmd === CMD.ACK || cmd === CMD.PLU_SEND;
+}
+
+function isRongtaAck(raw) {
+  return isRongtaFrame(raw) && String(raw).slice(4, 8) === CMD.ACK;
+}
+
 export async function rongtaTcpQuickProbe(ipAddress, port) {
   const ports = port ? [port] : FALLBACK_PORTS;
   for (const p of ports) {
+    if (PRINTER_PORTS.has(p)) continue;
     let socket;
     try {
       socket = await tryConnect(ipAddress, p, QUICK_CONNECT_TIMEOUT_MS);
+
+      const initial = await Promise.race([
+        readOnce(socket, 450),
+        new Promise((resolve) => setTimeout(() => resolve(''), 450)),
+      ]);
+      if (isRongtaFrame(initial)) {
+        const cmd = String(initial).slice(4, 8);
+        if (cmd === CMD.START || cmd === CMD.ACK) {
+          return { ok: true, port: p, response: initial };
+        }
+      }
+
       await writePacket(socket, buildPacket(CMD.START));
       const resp = await readOnce(socket, QUICK_PROBE_TIMEOUT_MS);
-      if (resp && resp.length >= 4) {
+      if (isRongtaAck(resp)) {
         return { ok: true, port: p, response: resp };
       }
-      return { ok: true, port: p, response: resp || '' };
     } catch {
       /* sonraki port */
     } finally {
