@@ -6,6 +6,7 @@
  *   ENV SKIP_POSTGRES_REMOTE_ENABLE=1
  */
 import { spawnSync } from "node:child_process";
+import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -18,7 +19,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.join(__dirname, "..");
 const cwd = path.join(root, "tools", "postgresql-remote-enable");
 
-if (!require("node:fs").existsSync(path.join(cwd, "Cargo.toml"))) {
+if (!fs.existsSync(path.join(cwd, "Cargo.toml"))) {
   console.error("build-postgres-remote-enable: tools/postgresql-remote-enable eksik");
   process.exit(1);
 }
