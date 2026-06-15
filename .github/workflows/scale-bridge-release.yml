@@ -80,6 +80,10 @@ jobs:
 
             Mağaza PC'de tek kurulum: servis + yönetim arayüzü + taşınabilir Node.
 
+            ### Yenilikler (0.1.87)
+            - Terazi Köprüsü masaüstü yönetici penceresi tam ekran (maximize) açılır
+            - Web yönetim arayüzü (`/ui/`) tam sayfa genişliği kullanır
+
             ### Yenilikler (0.1.85)
             - **Masaüstü yönetim** (WinForms benzeri Slint pencere): terazi ekle/düzenle, test, tarama — tarayıcı zorunlu değil
             - `--web` ile eski HTML arayüzü; varsayılan: `RetailEX_ScaleBridge_Manager.exe` penceresi
