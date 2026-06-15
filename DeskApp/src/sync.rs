@@ -315,8 +315,9 @@ async fn postgrest_mark_completed(http: &reqwest::Client, base: &str, id: &uuid:
         .await
         .map_err(|e| e.to_string())?;
     if !res.status().is_success() {
+        let status = res.status();
         let t = res.text().await.unwrap_or_default();
-        return Err(format!("PostgREST sync_queue PATCH: {} {}", res.status(), t));
+        return Err(format!("PostgREST sync_queue PATCH: {} {}", status, t));
     }
     Ok(())
 }
