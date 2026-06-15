@@ -1850,6 +1850,7 @@ BEGIN
       product_name VARCHAR(255),
       status VARCHAR(30) NOT NULL DEFAULT ''due'',
       postponed_due_date DATE,
+      show_natural_when_postponed BOOLEAN NOT NULL DEFAULT false,
       note TEXT,
       created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP

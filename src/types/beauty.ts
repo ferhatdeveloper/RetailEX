@@ -153,6 +153,12 @@ export interface BeautyFollowUpReminder {
     product_name?: string;
     follow_up_status?: BeautyFollowUpReminderStatus;
     note?: string;
+    /** Ertelenmiş kayıtta seçilen yeni hatırlatma tarihi */
+    postponed_due_date?: string;
+    /** Ertelenmiş hatırlatmada orijinal vade sütununda soluk gösterim */
+    is_natural_shadow?: boolean;
+    /** Orijinal vade tarihinde de (soluk) gösterilsin mi */
+    show_natural_when_postponed?: boolean;
 }
 
 /** Takvim panosunda hatırlatma kartına eklenen not / erteleme kaydı */
@@ -172,6 +178,8 @@ export interface BeautyFollowUpReminderAction {
     product_name?: string;
     status: BeautyFollowUpReminderStatus;
     postponed_due_date?: string;
+    /** true: erteleme sonrası orijinal vade tarihinde de (soluk) göster */
+    show_natural_when_postponed?: boolean;
     note?: string;
 }
 

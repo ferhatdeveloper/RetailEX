@@ -2002,6 +2002,7 @@ export const beautyService = {
                 product_name: r.product_name != null ? String(r.product_name) : undefined,
                 status: String(r.status ?? 'due') as BeautyFollowUpReminderStatus,
                 postponed_due_date: r.postponed_due_date ? pgCellToYmd(r.postponed_due_date) : undefined,
+                show_natural_when_postponed: Boolean(r.show_natural_when_postponed),
                 note: r.note != null ? String(r.note) : undefined,
             }));
         } catch (e: unknown) {
@@ -2028,17 +2029,18 @@ export const beautyService = {
             firm_nr, customer_id, service_id, product_id, reminder_kind,
             last_completed_date, natural_due_date, reminder_days,
             customer_name, customer_phone, service_name, product_name,
-            status, postponed_due_date, note, updated_at
+            status, postponed_due_date, show_natural_when_postponed, note, updated_at
           ) VALUES (
             $1, $2::uuid, $3::uuid, $4::uuid, $5,
             $6::date, $7::date, $8,
             $9, $10, $11, $12,
-            $13, $14::date, $15, NOW()
+            $13, $14::date, $15, $16, NOW()
           )
           ON CONFLICT (customer_id, service_id, COALESCE(product_id, '00000000-0000-0000-0000-000000000000'::uuid), last_completed_date, natural_due_date, reminder_kind)
           DO UPDATE SET
             status = EXCLUDED.status,
             postponed_due_date = EXCLUDED.postponed_due_date,
+            show_natural_when_postponed = EXCLUDED.show_natural_when_postponed,
             note = EXCLUDED.note,
             customer_name = EXCLUDED.customer_name,
             customer_phone = EXCLUDED.customer_phone,
@@ -2062,6 +2064,7 @@ export const beautyService = {
             payload.product_name ?? null,
             status,
             postponed,
+            status === 'postponed' && Boolean(payload.show_natural_when_postponed),
             payload.note?.trim() || null,
         ]);
     },

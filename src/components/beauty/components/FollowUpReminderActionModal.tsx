@@ -24,6 +24,9 @@ export interface FollowUpReminderActionModalProps {
     note: string;
     notePlaceholder: string;
     postponeDate: string;
+    naturalDueLabel: string;
+    showNaturalWhenPostponed: string;
+    showNaturalWhenPostponedHint: string;
     cancel: string;
     save: string;
     saving: string;
@@ -43,6 +46,7 @@ export function FollowUpReminderActionModal({
   const [status, setStatus] = useState<BeautyFollowUpReminderStatus>('due');
   const [note, setNote] = useState('');
   const [postponedDate, setPostponedDate] = useState('');
+  const [showNaturalWhenPostponed, setShowNaturalWhenPostponed] = useState(false);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -50,11 +54,13 @@ export function FollowUpReminderActionModal({
     setStatus(reminder.follow_up_status ?? 'due');
     setNote(reminder.note ?? '');
     const natural = reminder.natural_due_date ?? reminder.due_date;
-    setPostponedDate(
-      reminder.follow_up_status === 'postponed' && reminder.due_date
+    const postponed =
+      reminder.postponed_due_date ??
+      (reminder.follow_up_status === 'postponed' && !reminder.is_natural_shadow
         ? reminder.due_date
-        : natural,
-    );
+        : natural);
+    setPostponedDate(postponed);
+    setShowNaturalWhenPostponed(Boolean(reminder.show_natural_when_postponed));
   }, [open, reminder]);
 
   if (!open || !reminder || typeof document === 'undefined') return null;
@@ -85,6 +91,8 @@ export function FollowUpReminderActionModal({
         note: trimmedNote || undefined,
         postponed_due_date:
           effectiveStatus === 'postponed' && postponedDate.trim() ? postponedDate.trim() : undefined,
+        show_natural_when_postponed:
+          effectiveStatus === 'postponed' ? showNaturalWhenPostponed : undefined,
       };
       await beautyService.upsertFollowUpReminderAction(payload);
       onSaved();
@@ -147,8 +155,24 @@ export function FollowUpReminderActionModal({
                   className="w-full px-4 py-3 border border-slate-200 rounded-2xl text-slate-800 font-medium outline-none focus:ring-2 focus:ring-amber-500 bg-white"
                 />
                 <p className="text-[10px] text-slate-500 mt-1">
-                  Orijinal vade: {naturalDue}
+                  {labels.naturalDueLabel.replace('{date}', naturalDue)}
                 </p>
+                <label className="mt-3 flex items-start gap-2.5 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={showNaturalWhenPostponed}
+                    onChange={(e) => setShowNaturalWhenPostponed(e.target.checked)}
+                    className="mt-0.5 h-4 w-4 rounded border-slate-300 text-amber-600 focus:ring-amber-500"
+                  />
+                  <span className="min-w-0">
+                    <span className="block text-[11px] font-bold text-slate-600">
+                      {labels.showNaturalWhenPostponed}
+                    </span>
+                    <span className="block text-[10px] text-slate-500 mt-0.5">
+                      {labels.showNaturalWhenPostponedHint}
+                    </span>
+                  </span>
+                </label>
               </div>
             )}
             <div>

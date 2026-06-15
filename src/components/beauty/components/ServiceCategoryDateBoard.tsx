@@ -145,10 +145,12 @@ function ServiceBoardServiceCell({
                 {svcFollowUps.map(fu => {
                     const followUpPhone = followUpPhoneLine(fu.customer_phone);
                     const hasNote = Boolean(fu.note?.trim());
+                    const isShadow = Boolean(fu.is_natural_shadow);
                     const theme = getFollowUpReminderCardTheme(fu.follow_up_status, hasNote);
                     const statusKey = fu.follow_up_status ?? 'due';
-                    const badgeText =
-                        hasNote && statusKey === 'due'
+                    const badgeText = isShadow
+                        ? (followUpStatusLabels?.shadow ?? 'Ertelendi (orijinal)')
+                        : hasNote && statusKey === 'due'
                             ? (followUpStatusLabels?.noted ?? 'Notlu')
                             : followUpStatusLabels?.[statusKey] ??
                               (statusKey === 'postponed'
@@ -158,15 +160,17 @@ function ServiceBoardServiceCell({
                                     : statusKey === 'other'
                                       ? 'Notlu'
                                       : followUpBadgeLabel);
+                    const cardOpacity = isShadow ? 0.52 : 1;
                     return (
                         <div
-                            key={`fu-${fu.customer_id}-${fu.service_id}-${fu.due_date}-${fu.product_id ?? 'svc'}`}
+                            key={`fu-${fu.customer_id}-${fu.service_id}-${fu.due_date}-${fu.product_id ?? 'svc'}${isShadow ? '-shadow' : ''}`}
                             style={{
                                 borderRadius: 6,
-                                border: theme.border,
-                                borderLeft: theme.borderLeft,
-                                background: theme.background,
+                                border: isShadow ? '1px dashed #d1d5db' : theme.border,
+                                borderLeft: isShadow ? '3px dashed #9ca3af' : theme.borderLeft,
+                                background: isShadow ? '#f9fafb' : theme.background,
                                 padding: '8px 10px',
+                                opacity: cardOpacity,
                             }}
                         >
                             <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
@@ -188,12 +192,20 @@ function ServiceBoardServiceCell({
                                 {formatFollowUpLine(fu)}
                             </p>
                             {fu.follow_up_status === 'postponed' &&
+                            !isShadow &&
                             fu.natural_due_date &&
                             fu.natural_due_date !== fu.due_date ? (
                                 <p style={{ margin: '4px 0 0', fontSize: 9, fontWeight: 700, color: theme.badgeColor }}>
                                     {formatFollowUpPostponedLine
                                         ? formatFollowUpPostponedLine(fu.due_date)
                                         : `Yeni tarih: ${fu.due_date}`}
+                                </p>
+                            ) : null}
+                            {isShadow && fu.postponed_due_date ? (
+                                <p style={{ margin: '4px 0 0', fontSize: 9, fontWeight: 700, color: theme.badgeColor }}>
+                                    {formatFollowUpPostponedLine
+                                        ? formatFollowUpPostponedLine(fu.postponed_due_date)
+                                        : `Yeni tarih: ${fu.postponed_due_date}`}
                                 </p>
                             ) : null}
                             {fu.note?.trim() ? (

@@ -109,7 +109,7 @@ export function getFollowUpReminderCardTheme(
   return THEMES.due;
 }
 
-/** SQL hatırlatmaları + DB aksiyonlarını birleştirir; görünür `due_date` etkin tarihtir. */
+/** SQL hatırlatmaları + DB aksiyonlarını birleştirir; görünür `due_date` takvim sütunudur. */
 export function mergeFollowUpRemindersWithActions(
   base: BeautyFollowUpReminder[],
   actions: BeautyFollowUpReminderAction[],
@@ -125,46 +125,70 @@ export function mergeFollowUpRemindersWithActions(
   const out: BeautyFollowUpReminder[] = [];
   const injected = new Set<string>();
 
-  for (const row of base) {
-    const natural = row.due_date;
-    const key = followUpReminderNaturalKey({ ...row, natural_due_date: natural });
-    const act = actionMap.get(key);
-    const status = (act?.status ?? 'due') as BeautyFollowUpReminderStatus;
-    if (status === 'dismissed') continue;
-
-    const effectiveDue =
-      status === 'postponed' && act?.postponed_due_date
-        ? act.postponed_due_date
-        : natural;
-
-    if (!inRange(effectiveDue)) continue;
-    if (status === 'postponed' && act?.postponed_due_date && act.postponed_due_date !== natural) {
-      if (inRange(natural)) continue;
-    }
-
+  const appendEntry = (
+    row: BeautyFollowUpReminder,
+    displayDue: string,
+    natural: string,
+    status: BeautyFollowUpReminderStatus,
+    act: BeautyFollowUpReminderAction | undefined,
+    isShadow = false,
+  ) => {
+    const postponed =
+      status === 'postponed' && act?.postponed_due_date ? act.postponed_due_date : undefined;
     out.push({
       ...row,
       natural_due_date: natural,
-      due_date: effectiveDue,
+      due_date: displayDue,
       follow_up_status: status,
       note: act?.note?.trim() || undefined,
+      show_natural_when_postponed: act?.show_natural_when_postponed,
+      postponed_due_date: postponed,
+      is_natural_shadow: isShadow || undefined,
     });
+  };
+
+  const processReminder = (
+    natural: string,
+    row: BeautyFollowUpReminder,
+    act: BeautyFollowUpReminderAction | undefined,
+    key: string,
+  ) => {
+    const status = (act?.status ?? 'due') as BeautyFollowUpReminderStatus;
+    if (status === 'dismissed') return;
+
+    const postponed =
+      status === 'postponed' && act?.postponed_due_date ? act.postponed_due_date : undefined;
+
+    if (postponed && postponed !== natural) {
+      if (inRange(postponed)) {
+        appendEntry(row, postponed, natural, status, act, false);
+      }
+      if (inRange(natural) && act?.show_natural_when_postponed) {
+        appendEntry(row, natural, natural, status, act, true);
+      }
+    } else {
+      const effectiveDue = postponed ?? natural;
+      if (inRange(effectiveDue)) {
+        appendEntry(row, effectiveDue, natural, status, act, false);
+      }
+    }
     injected.add(key);
+  };
+
+  for (const row of base) {
+    const natural = row.due_date;
+    const key = followUpReminderNaturalKey({ ...row, natural_due_date: natural });
+    processReminder(natural, row, actionMap.get(key), key);
   }
 
   for (const act of actions) {
     if (act.status === 'dismissed') continue;
-    const effective =
-      act.status === 'postponed' && act.postponed_due_date
-        ? act.postponed_due_date
-        : act.natural_due_date;
-    if (!inRange(effective)) continue;
     const key = followUpActionKey(act);
     if (injected.has(key)) continue;
     if (base.some((b) => followUpReminderNaturalKey(b) === key)) continue;
 
-    out.push({
-      due_date: effective,
+    const row: BeautyFollowUpReminder = {
+      due_date: act.natural_due_date,
       natural_due_date: act.natural_due_date,
       last_completed_date: act.last_completed_date,
       reminder_days: Math.max(1, act.reminder_days ?? 1),
@@ -176,14 +200,15 @@ export function mergeFollowUpRemindersWithActions(
       reminder_kind: act.reminder_kind === 'product' ? 'product' : 'service',
       product_id: act.product_id,
       product_name: act.product_name,
-      follow_up_status: act.status,
-      note: act.note?.trim() || undefined,
-    });
+    };
+    processReminder(act.natural_due_date, row, act, key);
   }
 
   out.sort((a, b) => {
     const d = a.due_date.localeCompare(b.due_date);
     if (d !== 0) return d;
+    const shadow = Number(Boolean(b.is_natural_shadow)) - Number(Boolean(a.is_natural_shadow));
+    if (shadow !== 0) return shadow;
     return (a.customer_name ?? '').localeCompare(b.customer_name ?? '', 'tr');
   });
 

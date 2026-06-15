@@ -523,6 +523,7 @@ export function SmartScheduler() {
             contacted: tm('bFollowUpStatusContacted'),
             other: tm('bFollowUpStatusOther'),
             dismissed: tm('bFollowUpStatusDismissed'),
+            shadow: tm('bFollowUpShadowBadge'),
         }),
         [tm],
     );
@@ -2709,6 +2710,9 @@ export function SmartScheduler() {
                     note: tm('bFollowUpNoteLabel'),
                     notePlaceholder: tm('bFollowUpNotePlaceholder'),
                     postponeDate: tm('bFollowUpPostponeDate'),
+                    naturalDueLabel: tm('bFollowUpNaturalDueLabel'),
+                    showNaturalWhenPostponed: tm('bFollowUpShowNaturalWhenPostponed'),
+                    showNaturalWhenPostponedHint: tm('bFollowUpShowNaturalWhenPostponedHint'),
                     cancel: tm('bFollowUpModalCancel'),
                     save: tm('bFollowUpModalSave'),
                     saving: tm('bFollowUpModalSaving'),
