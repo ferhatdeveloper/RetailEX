@@ -2578,7 +2578,7 @@ const SetupWizard: React.FC = () => {
                                                                     className="w-full bg-black/40 border border-white/10 rounded-2xl px-6 py-4 text-white focus:outline-none focus:border-indigo-500 transition-all font-mono text-sm placeholder:text-blue-200/30"
                                                                     value={config.remote_db}
                                                                     onChange={(e) => setConfig({ ...config, remote_db: e.target.value })}
-                                                                    placeholder="91.205.41.130:5432/retailos_db"
+                                                                    placeholder="72.60.182.107:5432/retailex_demo"
                                                                 />
                                                             </>
                                                         )}

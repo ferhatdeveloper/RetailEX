@@ -153,6 +153,8 @@
             "db:migrate:env": "node database/scripts/run-pending-migrations.mjs --env-only",
             "db:migrate:remote": "node scripts/migrate-remote-pg.mjs",
             "db:migrate:remote:dry": "node scripts/migrate-remote-pg.mjs --dry-run",
+            "db:migrate:tenants": "node scripts/migrate-all-tenant-dbs.mjs",
+            "db:migrate:tenants:dry": "node scripts/migrate-all-tenant-dbs.mjs --dry-run",
             "db:test:remote": "node scripts/test-remote-pg.mjs",
             "db:firm": "node database/scripts/firm-quick.mjs",
             "db:merkez:tenant-retail-seed": "node scripts/run-merkez-tenant-registry-retail-seed.mjs",

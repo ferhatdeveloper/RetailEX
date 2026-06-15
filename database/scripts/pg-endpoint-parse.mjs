@@ -19,12 +19,12 @@ export function loadRemotePgDefaults() {
     return cachedRemoteDefaults;
   }
   cachedRemoteDefaults = {
-    host: '91.205.41.130',
+    host: '72.60.182.107',
     port: 5432,
-    database: 'retailos_db',
+    database: 'retailex_demo',
     user: 'postgres',
     password: 'Yq7xwQpt6c',
-    endpoint: '91.205.41.130:5432/retailos_db',
+    endpoint: '72.60.182.107:5432/retailex_demo',
   };
   return cachedRemoteDefaults;
 }

@@ -151,7 +151,7 @@ impl Default for AppConfig {
             is_configured: false,
             db_mode: "hybrid".to_string(),
             local_db: "localhost:5432/retailex_local".to_string(),
-            remote_db: "91.205.41.130:5432/retailos_db".to_string(), // sync: config/remote-pg.defaults.json
+            remote_db: "72.60.182.107:5432/retailex_demo".to_string(), // sync: config/remote-pg.defaults.json
             connection_provider: default_connection_provider(),
             remote_rest_url: default_remote_rest_url(),
             hybrid_read_preference: default_hybrid_read_preference(),
