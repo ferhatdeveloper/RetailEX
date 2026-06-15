@@ -6,6 +6,7 @@ import { runHybridSync, type HybridSyncFilter, type HybridSyncFlow, type HybridS
 import {
   REMOTE_PG_DEFAULTS,
   parsePgEndpointString,
+  DEFAULT_REMOTE_REST_URL,
 } from '../core/remotePgDefaults';
 
 const IS_PRODUCTION = isRetailExProductionWeb();
@@ -80,9 +81,8 @@ export let DB_SETTINGS = {
   activeMode: 'hybrid' as ConnectionMode,
   systemType: 'retail' as 'retail' | 'market' | 'wms',
   // Remote tarafı DB mi yoksa PostgREST mü kullanacak?
-  connectionProvider: 'db' as ConnectionProvider,
-  // PostgREST base URL (örn: http://172.20.0.10:3002)
-  remoteRestUrl: '' as string,
+  connectionProvider: 'rest_api' as ConnectionProvider,
+  remoteRestUrl: DEFAULT_REMOTE_REST_URL as string,
   lastSync: null as string | null,
   hybridReadPreference: 'local_first' as HybridReadPreference,
   hybridSyncDirection: 'local_to_remote' as HybridSyncDirection,
@@ -761,7 +761,7 @@ export class PostgresConnection {
       clearInterval(this.hybridSyncTimer);
       this.hybridSyncTimer = null;
     }
-    if (DB_SETTINGS.activeMode !== 'hybrid' || DB_SETTINGS.connectionProvider !== 'db') return;
+    if (DB_SETTINGS.activeMode !== 'hybrid') return;
     this.hybridSyncTimer = setInterval(() => {
       void this.sync().catch((e) => console.warn('[Postgres] Otomatik hibrit senkron:', e));
     }, 30_000);
@@ -784,15 +784,23 @@ export class PostgresConnection {
     // Şimdilik bu mod, PostgREST endpoint'inin erişilebilirliğini doğrular.
     if (DB_SETTINGS.connectionProvider === 'rest_api' && DB_SETTINGS.activeMode !== 'offline') {
       const pr = await testPostgrestUrl(DB_SETTINGS.remoteRestUrl);
+      let localOk = true;
+      if (DB_SETTINGS.activeMode === 'hybrid') {
+        const localSt = await testDbConfig(LOCAL_CONFIG);
+        localOk = localSt.connected;
+      }
       this.status = {
-        connected: pr.connected,
+        connected: pr.connected && localOk,
         host: pr.baseUrl,
         port: 0,
-        database: 'postgrest',
+        database: DB_SETTINGS.activeMode === 'hybrid' ? 'hybrid:local-pg+postgrest' : 'postgrest',
         mode: DB_SETTINGS.activeMode,
-        error: pr.error
+        error: !pr.connected ? pr.error : !localOk ? 'Yerel PostgreSQL bağlantısı yok' : undefined,
       };
-      console.log(`🔌 Connected in ${DB_SETTINGS.activeMode} mode to PostgREST: ${pr.baseUrl}`);
+      console.log(
+        `🔌 ${DB_SETTINGS.activeMode} + PostgREST: uzak=${pr.baseUrl}, yerel PG=${localOk ? 'ok' : 'hata'}`,
+      );
+      if (this.status.connected) this.startHybridAutoSync();
       return this.status;
     }
 
@@ -818,7 +826,7 @@ export class PostgresConnection {
       console.log(`🔌 Connected in ${DB_SETTINGS.activeMode} mode to ${this.status.host}`);
     }
 
-    if (this.status.connected && DB_SETTINGS.connectionProvider === 'db') {
+    if (this.status.connected && (DB_SETTINGS.connectionProvider === 'db' || DB_SETTINGS.activeMode === 'hybrid')) {
       try {
         await syncRuntimeSettingsFromPostgres();
       } catch (e: any) {
@@ -1155,6 +1163,7 @@ export class PostgresConnection {
       local: LOCAL_CONFIG,
       remote: REMOTE_CONFIG,
       connectionProvider: DB_SETTINGS.connectionProvider,
+      remoteRestUrl: DB_SETTINGS.remoteRestUrl,
     });
 
     if (result.success && result.totalSynced > 0) {

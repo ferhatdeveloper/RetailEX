@@ -57,7 +57,7 @@ export function HybridSyncPanel({ compact = false, darkMode = false, directionOv
   const effectiveStoreId = storeId || user?.store_id || '';
 
   const refreshStats = useCallback(async () => {
-    if (!isHybrid || DB_SETTINGS.connectionProvider !== 'db') return;
+    if (!isHybrid) return;
     setStatsLoading(true);
     try {
       const filter = buildSyncFilter({
@@ -147,6 +147,7 @@ export function HybridSyncPanel({ compact = false, darkMode = false, directionOv
         local: LOCAL_CONFIG,
         remote: REMOTE_CONFIG,
         connectionProvider: DB_SETTINGS.connectionProvider,
+        remoteRestUrl: DB_SETTINGS.remoteRestUrl,
       });
 
       if (!result.success) {
@@ -316,8 +317,17 @@ export function HybridSyncPanel({ compact = false, darkMode = false, directionOv
       </div>
 
       <p className={`text-[9px] leading-relaxed ${muted}`}>
-        Web ve masaüstünde çalışır. Satış/hareket değişiklikleri <code>sync_queue</code> kuyruğuna düşer;
-        Gönder yerel→merkez, Al merkez→yerel aktarır. Migration 048+049 her iki PG&apos;de gerekli.
+        {DB_SETTINGS.connectionProvider === 'rest_api' ? (
+          <>
+            Yerel <strong>PostgreSQL</strong> ↔ uzak <strong>PostgREST API</strong> ({DB_SETTINGS.remoteRestUrl || 'kiracı URL'}).
+            Satış/hareketler <code>sync_queue</code> üzerinden aktarılır; uzakta migration 048+049 ve PostgREST şema yenilemesi gerekir.
+          </>
+        ) : (
+          <>
+            Web ve masaüstünde çalışır. Satış/hareket değişiklikleri <code>sync_queue</code> kuyruğuna düşer;
+            Gönder yerel→merkez, Al merkez→yerel aktarır. Migration 048+049 her iki PG&apos;de gerekli.
+          </>
+        )}
       </p>
     </div>
   );

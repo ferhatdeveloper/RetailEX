@@ -83,8 +83,8 @@ pub struct AppConfig {
 fn default_true() -> bool { true }
 fn default_menu_mode() -> i32 { 1 }
 fn default_update_source() -> String { "central".to_string() }
-fn default_connection_provider() -> String { "db".to_string() }
-fn default_remote_rest_url() -> String { "http://localhost:3002".to_string() }
+fn default_connection_provider() -> String { "rest_api".to_string() }
+fn default_remote_rest_url() -> String { "https://api.retailex.app".to_string() }
 
 fn default_hybrid_read_preference() -> String {
     "local_first".to_string()

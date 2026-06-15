@@ -17,6 +17,14 @@ export const REMOTE_PG_DEFAULTS: RemotePgEndpoint = {
   password: remotePgJson.password,
 };
 
+export const DEFAULT_REMOTE_REST_URL =
+  (remotePgJson as { remoteRestUrl?: string }).remoteRestUrl || 'https://api.retailex.app';
+
+export const DEFAULT_CONNECTION_PROVIDER =
+  (remotePgJson as { defaultConnectionProvider?: string }).defaultConnectionProvider === 'db'
+    ? 'db'
+    : 'rest_api';
+
 export function formatRemotePgEndpoint(
   host: string = REMOTE_PG_DEFAULTS.host,
   port: number = REMOTE_PG_DEFAULTS.port,

@@ -6,7 +6,7 @@ import { HybridSyncPanel } from './HybridSyncPanel';
 import { logger, LogEntry } from '../../services/loggingService';
 import type { User as UserType } from '../../core/types';
 import { APP_VERSION } from '../../core/version';
-import { REMOTE_PG_DEFAULTS, formatRemotePgEndpoint } from '../../core/remotePgDefaults';
+import { REMOTE_PG_DEFAULTS, formatRemotePgEndpoint, DEFAULT_REMOTE_REST_URL } from '../../core/remotePgDefaults';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import { toast } from 'sonner';
@@ -81,8 +81,8 @@ export function Login({ onLogin }: LoginProps) {
     user: REMOTE_PG_DEFAULTS.user,
     password: REMOTE_PG_DEFAULTS.password,
   });
-  const [connectionProvider, setConnectionProvider] = useState<ConnectionProvider>('db');
-  const [remoteRestUrl, setRemoteRestUrl] = useState<string>('http://172.20.0.10:3002');
+  const [connectionProvider, setConnectionProvider] = useState<ConnectionProvider>('rest_api');
+  const [remoteRestUrl, setRemoteRestUrl] = useState<string>(DEFAULT_REMOTE_REST_URL);
   /** Veritabanı modalı: RetailEX bulutunda yalnızca kiracı segmenti vs tam URL */
   const [tenantPostgrestEntryMode, setTenantPostgrestEntryMode] = useState<'retailex_cloud' | 'custom_url'>(
     'custom_url',
@@ -234,7 +234,7 @@ export function Login({ onLogin }: LoginProps) {
       });
       setConnectionProvider(DB_SETTINGS.connectionProvider);
       const restLoaded = DB_SETTINGS.remoteRestUrl || '';
-      setRemoteRestUrl(restLoaded || 'http://172.20.0.10:3002');
+      setRemoteRestUrl(restLoaded || DEFAULT_REMOTE_REST_URL);
       applyRemoteRestUrlToTenantInputs(restLoaded);
       setDbConnectionMode(DB_SETTINGS.activeMode);
       setHybridReadPreference(DB_SETTINGS.hybridReadPreference);
@@ -249,7 +249,7 @@ export function Login({ onLogin }: LoginProps) {
       setDbConnectionMode(DB_SETTINGS.activeMode);
       setConnectionProvider(DB_SETTINGS.connectionProvider);
       const restLoaded = DB_SETTINGS.remoteRestUrl || '';
-      setRemoteRestUrl(restLoaded || 'http://172.20.0.10:3002');
+      setRemoteRestUrl(restLoaded || DEFAULT_REMOTE_REST_URL);
       applyRemoteRestUrlToTenantInputs(restLoaded);
       setHybridReadPreference(DB_SETTINGS.hybridReadPreference);
       setHybridSyncDirection(DB_SETTINGS.hybridSyncDirection);

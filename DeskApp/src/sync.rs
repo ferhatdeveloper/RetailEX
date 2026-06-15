@@ -243,6 +243,288 @@ async fn sync_one_direction(
     Ok((total_synced, total_failed))
 }
 
+fn normalize_rest_base(url: &str) -> String {
+    url.trim().trim_end_matches('/').to_string()
+}
+
+async fn postgrest_apply_item(
+    http: &reqwest::Client,
+    base: &str,
+    table: &str,
+    action: &str,
+    record_id: &uuid::Uuid,
+    data: &Option<serde_json::Value>,
+) -> Result<(), String> {
+    let base = normalize_rest_base(base);
+    if action.eq_ignore_ascii_case("DELETE") {
+        let url = format!("{}/{}?id=eq.{}", base, table, record_id);
+        let res = http
+            .delete(&url)
+            .header("Accept", "application/json")
+            .header("Accept-Profile", "public")
+            .header("Content-Profile", "public")
+            .send()
+            .await
+            .map_err(|e| e.to_string())?;
+        if !res.status().is_success() && res.status() != reqwest::StatusCode::NOT_FOUND {
+            let status = res.status();
+            let body = res.text().await.unwrap_or_default();
+            return Err(format!("PostgREST DELETE {}: {} {}", table, status, body));
+        }
+        return Ok(());
+    }
+    if let Some(d) = data {
+        let url = format!("{}/{}", base, table);
+        let res = http
+            .post(&url)
+            .header("Accept", "application/json")
+            .header("Content-Type", "application/json")
+            .header("Accept-Profile", "public")
+            .header("Content-Profile", "public")
+            .header("Prefer", "resolution=merge-duplicates,return=minimal")
+            .json(d)
+            .send()
+            .await
+            .map_err(|e| e.to_string())?;
+        if !res.status().is_success() {
+            let status = res.status();
+            let body = res.text().await.unwrap_or_default();
+            return Err(format!("PostgREST UPSERT {}: {} {}", table, status, body));
+        }
+    }
+    Ok(())
+}
+
+async fn postgrest_mark_completed(http: &reqwest::Client, base: &str, id: &uuid::Uuid) -> Result<(), String> {
+    let base = normalize_rest_base(base);
+    let url = format!("{}/sync_queue?id=eq.{}", base, id);
+    let body = serde_json::json!({
+        "status": "completed",
+        "synced_at": chrono::Utc::now().to_rfc3339(),
+        "error_message": serde_json::Value::Null
+    });
+    let res = http
+        .patch(&url)
+        .header("Accept", "application/json")
+        .header("Content-Type", "application/json")
+        .header("Accept-Profile", "public")
+        .header("Content-Profile", "public")
+        .header("Prefer", "return=minimal")
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    if !res.status().is_success() {
+        let t = res.text().await.unwrap_or_default();
+        return Err(format!("PostgREST sync_queue PATCH: {} {}", res.status(), t));
+    }
+    Ok(())
+}
+
+async fn sync_pg_to_postgrest(
+    source: &tokio_postgres::Client,
+    http: &reqwest::Client,
+    rest_base: &str,
+    store_id: Option<&str>,
+) -> Result<(i32, i32), String> {
+    let mut total_synced = 0i32;
+    let mut total_failed = 0i32;
+    let store_uuid = store_id
+        .filter(|s| !s.trim().is_empty())
+        .and_then(|s| uuid::Uuid::parse_str(s).ok());
+
+    for _round in 0..100 {
+        let rows = if let Some(sid) = store_uuid {
+            source
+                .query(
+                    "SELECT id, table_name, record_id, action, data
+                     FROM sync_queue
+                     WHERE status = 'pending' AND retry_count < 10
+                       AND (
+                         source_store_id = $1
+                         OR target_store_id = $1
+                         OR (data->>'store_id')::uuid = $1
+                       )
+                     ORDER BY created_at ASC
+                     LIMIT 50",
+                    &[&sid],
+                )
+                .await
+        } else {
+            source
+                .query(
+                    "SELECT id, table_name, record_id, action, data
+                     FROM sync_queue
+                     WHERE status = 'pending' AND retry_count < 10
+                     ORDER BY created_at ASC
+                     LIMIT 50",
+                    &[],
+                )
+                .await
+        }
+        .map_err(|e| format_pg_error(e))?;
+
+        if rows.is_empty() {
+            break;
+        }
+
+        for row in rows {
+            let id: uuid::Uuid = row.get("id");
+            let table_name: String = row.get("table_name");
+            let record_id: uuid::Uuid = row.get("record_id");
+            let action: String = row.get("action");
+            let data: Option<serde_json::Value> = row.get("data");
+
+            match postgrest_apply_item(http, rest_base, &table_name, &action, &record_id, &data).await {
+                Ok(_) => {
+                    let _ = source
+                        .execute(
+                            "UPDATE sync_queue SET status = 'completed', synced_at = NOW(), error_message = NULL WHERE id = $1",
+                            &[&id],
+                        )
+                        .await;
+                    total_synced += 1;
+                }
+                Err(e) => {
+                    let _ = source
+                        .execute(
+                            "UPDATE sync_queue SET retry_count = retry_count + 1, error_message = $2 WHERE id = $1",
+                            &[&id, &e],
+                        )
+                        .await;
+                    total_failed += 1;
+                }
+            }
+        }
+    }
+
+    Ok((total_synced, total_failed))
+}
+
+async fn sync_postgrest_to_pg(
+    http: &reqwest::Client,
+    rest_base: &str,
+    target: &tokio_postgres::Client,
+    store_id: Option<&str>,
+) -> Result<(i32, i32), String> {
+    let mut total_synced = 0i32;
+    let mut total_failed = 0i32;
+    let base = normalize_rest_base(rest_base);
+    let mut query = format!(
+        "{}/sync_queue?status=eq.pending&retry_count=lt.10&order=created_at.asc&limit=50&select=id,table_name,record_id,action,data",
+        base
+    );
+    if let Some(sid) = store_id.filter(|s| !s.trim().is_empty()) {
+        if let Ok(u) = uuid::Uuid::parse_str(sid) {
+            query = format!(
+                "{}/sync_queue?status=eq.pending&retry_count=lt.10&or=(source_store_id.eq.{},target_store_id.eq.{})&order=created_at.asc&limit=50&select=id,table_name,record_id,action,data",
+                base, u, u
+            );
+        }
+    }
+
+    for _round in 0..100 {
+        let res = http
+            .get(&query)
+            .header("Accept", "application/json")
+            .header("Accept-Profile", "public")
+            .send()
+            .await
+            .map_err(|e| e.to_string())?;
+        if !res.status().is_success() {
+            let t = res.text().await.unwrap_or_default();
+            return Err(format!("PostgREST sync_queue GET: {} {}", res.status(), t));
+        }
+        let items: Vec<serde_json::Value> = res.json().await.map_err(|e| e.to_string())?;
+        if items.is_empty() {
+            break;
+        }
+
+        for item in items {
+            let id = item.get("id").and_then(|v| v.as_str()).and_then(|s| uuid::Uuid::parse_str(s).ok());
+            let table_name = item.get("table_name").and_then(|v| v.as_str()).unwrap_or("").to_string();
+            let record_id = item
+                .get("record_id")
+                .and_then(|v| v.as_str())
+                .and_then(|s| uuid::Uuid::parse_str(s).ok());
+            let action = item.get("action").and_then(|v| v.as_str()).unwrap_or("").to_string();
+            let data = item.get("data").cloned();
+
+            let (Some(id), Some(record_id)) = (id, record_id) else {
+                continue;
+            };
+
+            let apply = target
+                .execute(
+                    "SELECT public.apply_sync_queue_item($1, $2, $3, $4::jsonb)",
+                    &[&table_name, &action, &record_id, &data],
+                )
+                .await;
+
+            match apply {
+                Ok(_) => {
+                    let _ = postgrest_mark_completed(http, rest_base, &id).await;
+                    total_synced += 1;
+                }
+                Err(e) => {
+                    total_failed += 1;
+                    eprintln!("postgrest→pg apply error: {}", format_pg_error(e));
+                }
+            }
+        }
+    }
+
+    Ok((total_synced, total_failed))
+}
+
+async fn process_sync_queue_rest_api(config: &crate::config::AppConfig) -> Result<(), String> {
+    let rest_base = config.remote_rest_url.trim();
+    if rest_base.is_empty() {
+        return Ok(());
+    }
+
+    let (local_host, local_port, local_db) = parse_pg_endpoint(&config.local_db);
+    let local = connect_pg(
+        &local_host,
+        local_port,
+        &config.pg_local_user,
+        &config.pg_local_pass,
+        &local_db,
+    )
+    .await?;
+
+    let http = reqwest::Client::builder()
+        .timeout(Duration::from_secs(15))
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    let direction = config.hybrid_sync_direction.to_lowercase();
+    let store_filter = if config.store_id.trim().is_empty() {
+        None
+    } else {
+        Some(config.store_id.as_str())
+    };
+    let mut total = 0i32;
+
+    if direction == "local_to_remote" || direction == "bidirectional" {
+        let (s, _) = sync_pg_to_postgrest(&local, &http, rest_base, store_filter).await?;
+        total += s;
+    }
+    if direction == "remote_to_local" || direction == "bidirectional" {
+        let (s, _) = sync_postgrest_to_pg(&http, rest_base, &local, store_filter).await?;
+        total += s;
+    }
+
+    if total > 0 {
+        println!(
+            "✅ Hibrit PostgREST senkron: {} kayıt eşlendi ({}) → {}",
+            total, direction, rest_base
+        );
+    }
+
+    Ok(())
+}
+
 pub async fn process_sync_queue_internal() -> Result<(), String> {
     let config = crate::config::get_app_config_internal().map_err(|e| e.to_string())?;
 
@@ -256,7 +538,7 @@ pub async fn process_sync_queue_internal() -> Result<(), String> {
     }
 
     if config.connection_provider == "rest_api" {
-        return Ok(());
+        return process_sync_queue_rest_api(&config).await;
     }
 
     let (local_host, local_port, local_db) = parse_pg_endpoint(&config.local_db);

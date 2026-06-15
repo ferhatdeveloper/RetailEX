@@ -1,6 +1,8 @@
 import { ERP_SETTINGS, LOCAL_CONFIG, REMOTE_CONFIG, DB_SETTINGS } from './postgres';
 import {
+  buildSyncEndpoints,
   countPendingQueue,
+  countPendingQueueEndpoint,
   queryPgRows,
   type HybridSyncFilter,
   type PgEndpointConfig,
@@ -67,10 +69,20 @@ export async function getBranchSyncStats(filter?: HybridSyncFilter): Promise<Bra
     cashierUsername: filter?.cashierUsername ?? null,
   };
 
-  const [localPending, remotePending] = await Promise.all([
-    countPendingQueue(LOCAL_CONFIG, baseFilter),
-    countPendingQueue(REMOTE_CONFIG, baseFilter).catch(() => -1),
-  ]);
+  let remotePending = -1;
+  try {
+    const { remote } = buildSyncEndpoints({
+      local: LOCAL_CONFIG,
+      remote: REMOTE_CONFIG,
+      connectionProvider: DB_SETTINGS.connectionProvider,
+      remoteRestUrl: DB_SETTINGS.remoteRestUrl,
+    });
+    remotePending = await countPendingQueueEndpoint(remote, baseFilter);
+  } catch {
+    remotePending = -1;
+  }
+
+  const localPending = await countPendingQueue(LOCAL_CONFIG, baseFilter);
 
   let lastSyncedAt: string | null = null;
   try {

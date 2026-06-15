@@ -1,5 +1,17 @@
 import { IS_TAURI, safeInvoke, getBridgeUrl } from '../utils/env';
 import type { HybridSyncDirection } from './postgres';
+import {
+  applyItemPostgrest,
+  countPendingQueuePostgrest,
+  fetchPendingQueuePostgrest,
+  markCompletedPostgrest,
+  markFailedPostgrest,
+  normalizeRestBase,
+  resolveTableSchema,
+  testPostgrestSyncEndpoint,
+  warmTableSchemaCache,
+  type PgSchemaName,
+} from './hybridSyncPostgrest';
 
 export type PgEndpointConfig = {
   host: string;
@@ -9,6 +21,11 @@ export type PgEndpointConfig = {
   password: string;
   isConfigured?: boolean;
 };
+
+/** Senkron uç noktası: yerel PG veya uzak PostgREST */
+export type SyncEndpoint =
+  | { kind: 'pg'; config: PgEndpointConfig }
+  | { kind: 'postgrest'; baseUrl: string };
 
 /** Gönder = yerel→uzak, Al = uzak→yerel, Her ikisi = çift yönlü */
 export type HybridSyncFlow = 'send' | 'receive' | 'both';
@@ -49,6 +66,7 @@ export type HybridSyncRunOptions = {
   filter?: HybridSyncFilter;
   local: PgEndpointConfig;
   remote: PgEndpointConfig;
+  remoteRestUrl?: string;
   connectionProvider?: 'db' | 'rest_api';
 };
 
@@ -139,7 +157,7 @@ function buildQueueWhere(filter?: HybridSyncFilter): { sql: string; params: unkn
   return { sql, params };
 }
 
-async function fetchPendingQueue(
+async function fetchPendingQueuePg(
   source: PgEndpointConfig,
   filter?: HybridSyncFilter
 ): Promise<SyncQueueRow[]> {
@@ -165,7 +183,7 @@ async function fetchPendingQueue(
   }));
 }
 
-async function applyItem(target: PgEndpointConfig, item: SyncQueueRow): Promise<void> {
+async function applyItemPg(target: PgEndpointConfig, item: SyncQueueRow): Promise<void> {
   const dataJson = item.data ? JSON.stringify(item.data) : null;
   await queryPgRows(
     target,
@@ -174,7 +192,7 @@ async function applyItem(target: PgEndpointConfig, item: SyncQueueRow): Promise<
   );
 }
 
-async function markCompleted(source: PgEndpointConfig, id: string): Promise<void> {
+async function markCompletedPg(source: PgEndpointConfig, id: string): Promise<void> {
   await queryPgRows(
     source,
     `UPDATE sync_queue SET status = 'completed', synced_at = NOW(), error_message = NULL WHERE id = $1::uuid RETURNING id`,
@@ -182,7 +200,7 @@ async function markCompleted(source: PgEndpointConfig, id: string): Promise<void
   );
 }
 
-async function markFailed(source: PgEndpointConfig, id: string, error: string): Promise<void> {
+async function markFailedPg(source: PgEndpointConfig, id: string, error: string): Promise<void> {
   const msg = error.slice(0, 2000);
   await queryPgRows(
     source,
@@ -191,7 +209,7 @@ async function markFailed(source: PgEndpointConfig, id: string, error: string): 
   );
 }
 
-async function ensureSyncFunctions(endpoint: PgEndpointConfig): Promise<void> {
+async function ensureSyncFunctionsPg(endpoint: PgEndpointConfig): Promise<void> {
   const rows = await queryPgRows(
     endpoint,
     `SELECT 1 AS ok FROM pg_proc p
@@ -204,6 +222,75 @@ async function ensureSyncFunctions(endpoint: PgEndpointConfig): Promise<void> {
     `${endpoint.host}:${endpoint.port}/${endpoint.database} üzerinde apply_sync_queue_item yok. ` +
       'npm run db:migrate ile 048 ve 049 migration dosyalarını her iki PG\'de çalıştırın.'
   );
+}
+
+export function buildSyncEndpoints(opts: HybridSyncRunOptions): {
+  local: SyncEndpoint;
+  remote: SyncEndpoint;
+} {
+  const local: SyncEndpoint = { kind: 'pg', config: opts.local };
+  if (opts.connectionProvider === 'rest_api') {
+    const baseUrl = normalizeRestBase(opts.remoteRestUrl || '');
+    if (!baseUrl) {
+      throw new Error('Hibrit PostgREST modu için remote_rest_url (kiracı API adresi) zorunludur.');
+    }
+    return { local, remote: { kind: 'postgrest', baseUrl } };
+  }
+  return { local, remote: { kind: 'pg', config: opts.remote } };
+}
+
+async function ensureSyncFunctions(endpoint: SyncEndpoint, localPg: PgEndpointConfig): Promise<void> {
+  if (endpoint.kind === 'pg') {
+    await ensureSyncFunctionsPg(endpoint.config);
+    return;
+  }
+  await ensureSyncFunctionsPg(localPg);
+  const probe = await testPostgrestSyncEndpoint(endpoint.baseUrl);
+  if (!probe.ok) {
+    throw new Error(probe.message);
+  }
+}
+
+async function fetchPendingQueue(endpoint: SyncEndpoint, filter?: HybridSyncFilter): Promise<SyncQueueRow[]> {
+  if (endpoint.kind === 'pg') return fetchPendingQueuePg(endpoint.config, filter);
+  return fetchPendingQueuePostgrest(endpoint.baseUrl, filter);
+}
+
+async function applyItem(
+  target: SyncEndpoint,
+  item: SyncQueueRow,
+  schemaCache: Map<string, PgSchemaName>,
+): Promise<void> {
+  if (target.kind === 'pg') {
+    await applyItemPg(target.config, item);
+    return;
+  }
+  const schema = resolveTableSchema(item.table_name, schemaCache);
+  await applyItemPostgrest(target.baseUrl, item, schema);
+}
+
+async function markCompleted(source: SyncEndpoint, id: string): Promise<void> {
+  if (source.kind === 'pg') {
+    await markCompletedPg(source.config, id);
+    return;
+  }
+  await markCompletedPostgrest(source.baseUrl, id);
+}
+
+async function markFailed(source: SyncEndpoint, id: string, error: string): Promise<void> {
+  if (source.kind === 'pg') {
+    await markFailedPg(source.config, id, error);
+    return;
+  }
+  await markFailedPostgrest(source.baseUrl, id, error);
+}
+
+export async function countPendingQueueEndpoint(
+  endpoint: SyncEndpoint,
+  filter?: HybridSyncFilter,
+): Promise<number> {
+  if (endpoint.kind === 'pg') return countPendingQueue(endpoint.config, filter);
+  return countPendingQueuePostgrest(endpoint.baseUrl, filter);
 }
 
 export async function countPendingQueue(
@@ -220,13 +307,22 @@ export async function countPendingQueue(
 }
 
 export async function syncOneDirection(
-  source: PgEndpointConfig,
-  target: PgEndpointConfig,
+  source: SyncEndpoint,
+  target: SyncEndpoint,
   label: string,
-  opts?: { filter?: HybridSyncFilter; scope?: HybridSyncScopeMode }
+  opts?: {
+    filter?: HybridSyncFilter;
+    scope?: HybridSyncScopeMode;
+    localPg?: PgEndpointConfig;
+    schemaCache?: Map<string, PgSchemaName>;
+  }
 ): Promise<{ synced: number; failed: number; errors: string[] }> {
-  await ensureSyncFunctions(source);
-  await ensureSyncFunctions(target);
+  const localPg = opts?.localPg;
+  if (!localPg) throw new Error('syncOneDirection: localPg gerekli');
+  const schemaCache = opts?.schemaCache ?? new Map<string, PgSchemaName>();
+  await warmTableSchemaCache(localPg, schemaCache);
+  await ensureSyncFunctions(source, localPg);
+  await ensureSyncFunctions(target, localPg);
 
   const scope = opts?.scope ?? 'pending';
   const filter = opts?.filter;
@@ -241,7 +337,7 @@ export async function syncOneDirection(
 
     for (const item of pending) {
       try {
-        await applyItem(target, item);
+        await applyItem(target, item, schemaCache);
         await markCompleted(source, item.id);
         synced += 1;
       } catch (err) {
@@ -265,9 +361,9 @@ export async function syncOneDirection(
 
 export function getSyncLegs(
   direction: HybridSyncDirection,
-  local: PgEndpointConfig,
-  remote: PgEndpointConfig
-): Array<{ source: PgEndpointConfig; target: PgEndpointConfig; label: string }> {
+  local: SyncEndpoint,
+  remote: SyncEndpoint
+): Array<{ source: SyncEndpoint; target: SyncEndpoint; label: string }> {
   if (direction === 'local_to_remote') {
     return [{ source: local, target: remote, label: 'yerel→uzak' }];
   }
@@ -281,29 +377,37 @@ export function getSyncLegs(
 }
 
 export async function runHybridSync(opts: HybridSyncRunOptions): Promise<HybridSyncResult> {
-  if (opts.connectionProvider === 'rest_api') {
+  const flow = opts.flow ?? 'both';
+  const direction = opts.direction ?? flowToDirection(flow);
+  const scope = opts.scope ?? 'pending';
+
+  let endpoints: { local: SyncEndpoint; remote: SyncEndpoint };
+  try {
+    endpoints = buildSyncEndpoints(opts);
+  } catch (err) {
     return {
       success: false,
       totalSynced: 0,
       failed: 0,
-      flow: opts.flow,
-      message:
-        'Hibrit PG senkronu yalnızca «Doğrudan PostgreSQL» bağlantısında çalışır. PostgREST modunda uzak uç SQL replikasyonu desteklenmiyor.',
+      flow,
+      message: err instanceof Error ? err.message : String(err),
     };
   }
 
-  const flow = opts.flow ?? 'both';
-  const direction = opts.direction ?? flowToDirection(flow);
-  const scope = opts.scope ?? 'pending';
-  const legs = getSyncLegs(direction, opts.local, opts.remote);
+  const legs = getSyncLegs(direction, endpoints.local, endpoints.remote);
+  const schemaCache = new Map<string, PgSchemaName>();
   let totalSynced = 0;
   let failed = 0;
   const allErrors: string[] = [];
+
+  const remoteLabel = opts.connectionProvider === 'rest_api' ? 'PostgREST' : 'uzak PG';
 
   for (const leg of legs) {
     const r = await syncOneDirection(leg.source, leg.target, leg.label, {
       filter: opts.filter,
       scope,
+      localPg: opts.local,
+      schemaCache,
     });
     totalSynced += r.synced;
     failed += r.failed;
@@ -311,7 +415,11 @@ export async function runHybridSync(opts: HybridSyncRunOptions): Promise<HybridS
   }
 
   const flowLabel =
-    flow === 'send' ? 'Gönder (yerel→uzak)' : flow === 'receive' ? 'Al (uzak→yerel)' : 'Gönder + Al';
+    flow === 'send'
+      ? `Gönder (yerel PG→${remoteLabel})`
+      : flow === 'receive'
+        ? `Al (${remoteLabel}→yerel PG)`
+        : `Gönder + Al (yerel↔${remoteLabel})`;
 
   const scopeLabel = scope === 'all' ? 'tüm bekleyenler' : 'bekleyen parti';
 
