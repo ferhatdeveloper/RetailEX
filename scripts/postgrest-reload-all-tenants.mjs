@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 /**
- * Tüm kiracı (veya TENANT_DBS) veritabanlarında PostgREST şema yenilemesi.
+ * Tüm veritabanlarında PostgREST şema yenilemesi (şablon DB'ler hariç).
  * Kullanım: npm run db:postgrest:reload:tenants
+ * Yalnızca kiracı: POSTGREST_SKIP_DBS=postgres,merkez_db
  */
 
 import pg from 'pg';
@@ -19,7 +20,12 @@ const user = process.env.PGUSER || defaults.user;
 const password = process.env.PGPASSWORD || defaults.password;
 const maintenanceDb = process.env.PG_MAINTENANCE_DATABASE || 'postgres';
 
-const SKIP_DBS = new Set(['postgres', 'template0', 'template1', 'merkez_db']);
+const SKIP_DBS = new Set(
+  (process.env.POSTGREST_SKIP_DBS || 'template0,template1')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean),
+);
 
 function pgClient(database) {
   return new pg.Client({
