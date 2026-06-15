@@ -146,6 +146,7 @@ export interface MenuTranslations {
   wasteWaybill: string;
   waybills: string;
   whatsappIntegration: string;
+  mesajBildirim: string;
   wholesaleSales: string;
   supabaseDataTransfer: string;
   /** Sanal santral / Caller ID (pg_bridge webhook + poll) */
@@ -1975,6 +1976,7 @@ export const translations: any = {
       wasteWaybill: 'Fire İrsaliyesi',
       waybills: 'İrsaliyeler',
       whatsappIntegration: 'WhatsApp Entegrasyonu',
+      mesajBildirim: 'Mesaj Bildirim',
       wholesaleSales: 'Toptan Satış',
       workflowAutomation: 'Workflow Otomasyonu',
       salesOrders: 'Satış Siparişleri',
@@ -3482,6 +3484,7 @@ export const translations: any = {
       wasteWaybill: 'Waste Waybill',
       waybills: 'Waybills',
       whatsappIntegration: 'WhatsApp Integration',
+      mesajBildirim: 'Message Notification',
       wholesaleSales: 'Wholesale Sales',
       workflowAutomation: 'Workflow Automation',
       minMaxStock: 'Min/Max Stock',
@@ -4825,6 +4828,7 @@ export const translations: any = {
       wasteWaybill: 'سند هالك',
       waybills: 'سندات الشحن (Waybills)',
       whatsappIntegration: 'تكامل واتساب',
+      mesajBildirim: 'إشعار الرسائل',
       wholesaleSales: 'مبيعات الجملة',
       workflowAutomation: 'أتمتة سير العمل',
     },
@@ -6169,6 +6173,7 @@ export const translations: any = {
       wasteWaybill: 'سند هالك',
       waybills: 'سندات الشحن (Waybills)',
       whatsappIntegration: 'تكامل واتساب',
+      mesajBildirim: 'إشعار الرسائل',
       wholesaleSales: 'مبيعات الجملة',
       workflowAutomation: 'أتمتة سير العمل',
     },
@@ -6830,6 +6835,7 @@ export const translations: any = {
     welcomeDashboard: 'بۆ سیستم بەخێر بێن',
     welcomeSubtitle: 'Hoş geldiniz, işletme performansınızı takip edin',
     whatsappIntegration: 'بەستنەوەی واتسئەپ',
+    mesajBildirim: 'ئاگادارکردنەوەی پەیام',
     wholesaleSales: 'فرۆشتنی کۆ',
     wholesaleSalesDesc: 'کردارەکانی فرۆشتنی کۆ',
     wholesaleSalesTitle: 'فرۆشتنی کۆ',

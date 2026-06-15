@@ -56,6 +56,8 @@ import { usePermission } from '../../../shared/hooks/usePermission';
 import { ClinicDetailClinicalEmbed } from '../specialty/ClinicDetailClinicalEmbed';
 import { ServiceCategoryDateBoard, type ServiceBoardMainLayout } from './ServiceCategoryDateBoard';
 import { FollowUpReminderActionModal } from './FollowUpReminderActionModal';
+import { sendFollowUpReminderWhatsApp } from '../../../utils/followUpWhatsAppSend';
+import { toast } from 'sonner';
 import { useClinicErpSpecialtyOptional } from '../context/ClinicErpSpecialtyContext';
 import { useResponsive } from '../../../hooks/useResponsive';
 type ViewType = 'day' | 'workweek' | 'week' | 'month' | 'agenda' | 'timeline' | 'device' | 'list' | 'svcboard';
@@ -480,6 +482,22 @@ export function SmartScheduler() {
 
     const [followUpReminders, setFollowUpReminders] = useState<BeautyFollowUpReminder[]>([]);
     const [followUpActionTarget, setFollowUpActionTarget] = useState<BeautyFollowUpReminder | null>(null);
+    const [followUpWhatsAppSendingKey, setFollowUpWhatsAppSendingKey] = useState<string | null>(null);
+
+    const handleFollowUpWhatsApp = useCallback(async (reminder: BeautyFollowUpReminder) => {
+        const key = `${reminder.customer_id}-${reminder.service_id}-${reminder.due_date}`;
+        setFollowUpWhatsAppSendingKey(key);
+        try {
+            const r = await sendFollowUpReminderWhatsApp(reminder);
+            if (r.success) {
+                toast.success(tm('bFollowUpWhatsAppSent'));
+            } else {
+                toast.error(r.error || tm('bFollowUpWhatsAppFailed'));
+            }
+        } finally {
+            setFollowUpWhatsAppSendingKey(null);
+        }
+    }, [tm]);
 
     const reloadFollowUpReminders = useCallback(async () => {
         try {
@@ -2067,6 +2085,9 @@ export function SmartScheduler() {
                                               .replace('{days}', String(r.reminder_days))}
                                 onFollowUpManage={setFollowUpActionTarget}
                                 followUpManageLabel={tm('bFollowUpManage')}
+                                onFollowUpWhatsApp={(r) => void handleFollowUpWhatsApp(r)}
+                                followUpWhatsAppLabel={tm('bFollowUpWhatsApp')}
+                                followUpWhatsAppSendingId={followUpWhatsAppSendingKey}
                                 followUpStatusLabels={followUpStatusLabels}
                                 formatFollowUpPostponedLine={date =>
                                     tm('bFollowUpPostponedLine').replace('{date}', date)}

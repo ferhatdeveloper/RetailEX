@@ -92,6 +92,7 @@ const CurrencyManagement = lazyWithChunkRecovery(() => import('../accounting/fin
 const CommissionModule = lazyWithChunkRecovery(() => import('../modules/CommissionModule').then(m => ({ default: m.CommissionModule })));
 const UserManagementModule = lazyWithChunkRecovery(() => import('./UserManagementModule').then(m => ({ default: m.UserManagementModule })));
 const WhatsAppIntegrationModule = lazyWithChunkRecovery(() => import('../modules/WhatsAppIntegrationModule').then(m => ({ default: m.WhatsAppIntegrationModule })));
+const MesajBildirimModule = lazyWithChunkRecovery(() => import('../modules/MesajBildirimModule').then(m => ({ default: m.MesajBildirimModule })));
 const AppointmentModule = lazyWithChunkRecovery(() => import('../modules/AppointmentModule').then(m => ({ default: m.AppointmentModule })));
 const BIDashboardModule = lazyWithChunkRecovery(() => import('../modules/BIDashboardModule').then(m => ({ default: m.BIDashboardModule })));
 const EcommerceModule = lazyWithChunkRecovery(() => import('../modules/EcommerceModule').then(m => ({ default: m.EcommerceModule })));
@@ -202,7 +203,7 @@ type ExtendedScreen = ManagementScreen | 'dashboard' | 'finance' | 'stock' | 'pu
   'purchaseinvoice' | 'purchase-invoice-standard' | 'purchase-invoice-return' |
   'serviceinvoice' | 'serviceinvoice-given' | 'serviceinvoice-received' |
   'etransform' | 'return' | 'production' | 'assets' | 'budget' | 'contracts' | 'quality' | 'service' | 'projects' | 'excel' | 'scale' |
-  'multistore' | 'regional' | 'storeconfig' | 'campaigns_mgmt' | 'roles_mgmt' | 'loyalty' | 'giftcard' | 'notifications' | 'multicurrency' | 'commission' | 'usermanagement' | 'whatsapp' | 'restaurant' | 'appointment' | 'bi-dashboard' | 'ecommerce' | 'cargo' | 'marketplace' | 'payment' | 'accounting-integration' | 'proforma' | 'einvoice' | 'ewaybill' | 'eledger' |
+  'multistore' | 'regional' | 'storeconfig' | 'campaigns_mgmt' | 'roles_mgmt' | 'loyalty' | 'giftcard' | 'notifications' | 'multicurrency' | 'commission' | 'usermanagement' | 'whatsapp' | 'mesaj-bildirim' | 'restaurant' | 'appointment' | 'bi-dashboard' | 'ecommerce' | 'cargo' | 'marketplace' | 'payment' | 'accounting-integration' | 'proforma' | 'einvoice' | 'ewaybill' | 'eledger' |
   'salesquote' | 'purchaserequest' | 'stockmovements' | 'stock-dashboard' | 'warehousetransfer' | 'stockcount' | 'barcode' | 'seriallot' | 'warehouse-definitions' | 'service-cards' | 'virman' | 'firm-period-definitions' | 'payment-plans' | 'bank-payment-plans' |
   'productionrecipe' | 'capacityplan' | 'cashbank' | 'banks' | 'checkpromissory' | 'collectionpayment' | 'currentaccounts' | 'revenueexpense' |
   'storetransfer' | 'mobile-inventory-count' | 'interstore-transfer' | 'store-controlled-count' |
@@ -1364,6 +1365,12 @@ export function ManagementModule({
           return (
             <div className="h-full min-h-0 overflow-hidden">
               <WhatsAppIntegrationModule />
+            </div>
+          );
+        case 'mesaj-bildirim':
+          return (
+            <div className="h-full min-h-0 overflow-hidden">
+              <MesajBildirimModule />
             </div>
           );
         case 'restaurant':

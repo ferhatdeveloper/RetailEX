@@ -3,7 +3,7 @@
  * Ana kategori: `parent_category` doluysa o, değilse `category` (beautyServiceMainKey).
  */
 import React, { useMemo } from 'react';
-import { Plus, Layers, Bell, Phone, CalendarClock } from 'lucide-react';
+import { Plus, Layers, Bell, Phone, CalendarClock, MessageCircle } from 'lucide-react';
 import type { BeautyAppointment, BeautyFollowUpReminder, BeautyService } from '../../../types/beauty';
 import { getFollowUpReminderCardTheme } from '../../../utils/beautyFollowUpReminderUtils';
 import { beautyAppointmentDateKey } from '../../../utils/dateLocal';
@@ -74,6 +74,9 @@ export interface ServiceCategoryDateBoardProps {
     formatFollowUpLine: (r: BeautyFollowUpReminder) => string;
     onFollowUpManage?: (reminder: BeautyFollowUpReminder) => void;
     followUpManageLabel?: string;
+    onFollowUpWhatsApp?: (reminder: BeautyFollowUpReminder) => void;
+    followUpWhatsAppLabel?: string;
+    followUpWhatsAppSendingId?: string | null;
     followUpStatusLabels?: Partial<Record<string, string>>;
     formatFollowUpPostponedLine?: (dueDate: string) => string;
     noServicesLabel: string;
@@ -101,6 +104,9 @@ function ServiceBoardServiceCell({
     formatFollowUpLine,
     onFollowUpManage,
     followUpManageLabel,
+    onFollowUpWhatsApp,
+    followUpWhatsAppLabel,
+    followUpWhatsAppSendingId,
     followUpStatusLabels,
     formatFollowUpPostponedLine,
     noAppointmentsInSlotLabel,
@@ -117,6 +123,9 @@ function ServiceBoardServiceCell({
     formatFollowUpLine: (r: BeautyFollowUpReminder) => string;
     onFollowUpManage?: (reminder: BeautyFollowUpReminder) => void;
     followUpManageLabel?: string;
+    onFollowUpWhatsApp?: (reminder: BeautyFollowUpReminder) => void;
+    followUpWhatsAppLabel?: string;
+    followUpWhatsAppSendingId?: string | null;
     followUpStatusLabels?: Partial<Record<string, string>>;
     formatFollowUpPostponedLine?: (dueDate: string) => string;
     noAppointmentsInSlotLabel: string;
@@ -247,6 +256,36 @@ function ServiceBoardServiceCell({
                                         {followUpManageLabel ?? 'Not / ertele'}
                                     </button>
                                 ) : null}
+                                {onFollowUpWhatsApp && followUpPhone ? (
+                                    <button
+                                        type="button"
+                                        onClick={() => onFollowUpWhatsApp(fu)}
+                                        disabled={followUpWhatsAppSendingId === `${fu.customer_id}-${fu.service_id}-${fu.due_date}`}
+                                        style={{
+                                            height: 30,
+                                            minWidth: 36,
+                                            padding: '0 8px',
+                                            borderRadius: 5,
+                                            border: '1px solid #86efac',
+                                            background: '#ecfdf5',
+                                            fontSize: 10,
+                                            fontWeight: 700,
+                                            color: '#047857',
+                                            cursor: 'pointer',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            gap: 4,
+                                            opacity:
+                                                followUpWhatsAppSendingId === `${fu.customer_id}-${fu.service_id}-${fu.due_date}`
+                                                    ? 0.6
+                                                    : 1,
+                                        }}
+                                        title={followUpWhatsAppLabel ?? 'WhatsApp'}
+                                    >
+                                        <MessageCircle size={12} />
+                                    </button>
+                                ) : null}
                                 <button
                                     type="button"
                                     onClick={() => onAddClick(dayStr, String(svc.id))}
@@ -332,6 +371,9 @@ export function ServiceCategoryDateBoard({
     formatFollowUpLine,
     onFollowUpManage,
     followUpManageLabel,
+    onFollowUpWhatsApp,
+    followUpWhatsAppLabel,
+    followUpWhatsAppSendingId,
     followUpStatusLabels,
     formatFollowUpPostponedLine,
     noServicesLabel,

@@ -122,6 +122,7 @@ export function buildRbacModuleGroups(tm: (k: string) => string): RbacModuleGrou
         m('reports.advanced', ['READ', 'EXECUTE']),
         m('settings.system', ['READ', 'UPDATE']),
         m('crm', ['READ', 'CREATE', 'UPDATE', 'DELETE']),
+        m('mesaj-bildirim', ['READ', 'CREATE', 'EXECUTE']),
       ],
     },
   ];

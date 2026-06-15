@@ -253,6 +253,7 @@ export const getStaticMenuSections = (t: Translations) => [
         title: t.menu.communicationAndNotifications,
         items: [
             { label: t.menu.whatsappIntegration, screen: 'whatsapp', icon: Phone },
+            { label: t.menu.mesajBildirim, screen: 'mesaj-bildirim', icon: Send },
             { label: t.menu.notificationCenter, screen: 'notifications', icon: Bell },
             { label: t.menu.smsManagement, screen: 'smsmanage', icon: Smartphone },
             { label: t.menu.emailCampaigns, screen: 'emailcamp', icon: Mail }
