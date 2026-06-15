@@ -433,8 +433,9 @@ async fn sync_postgrest_to_pg(
             .await
             .map_err(|e| e.to_string())?;
         if !res.status().is_success() {
+            let status = res.status();
             let t = res.text().await.unwrap_or_default();
-            return Err(format!("PostgREST sync_queue GET: {} {}", res.status(), t));
+            return Err(format!("PostgREST sync_queue GET: {} {}", status, t));
         }
         let items: Vec<serde_json::Value> = res.json().await.map_err(|e| e.to_string())?;
         if items.is_empty() {
