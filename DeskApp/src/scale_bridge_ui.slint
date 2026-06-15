@@ -10,8 +10,8 @@ export struct ScaleRow {
 
 export component ScaleBridgeWindow inherits Window {
     title: "RetailEX Terazi Köprüsü";
-    width: 720px;
-    height: 620px;
+    min-width: 900px;
+    min-height: 640px;
     background: #f0f4f8;
 
     callback save-settings();
@@ -85,6 +85,8 @@ export component ScaleBridgeWindow inherits Window {
         }
 
         Rectangle {
+            vertical-stretch: 1;
+            min-height: 160px;
             background: white;
             border-radius: 8px;
             border-width: 1px;
@@ -94,7 +96,7 @@ export component ScaleBridgeWindow inherits Window {
                 spacing: 8px;
                 Text { text: "KAYITLI TERAZİLER"; font-size: 11px; font-weight: 700; color: #64748b; }
                 ScrollView {
-                    height: 140px;
+                    vertical-stretch: 1;
                     VerticalBox {
                         alignment: start;
                         spacing: 4px;

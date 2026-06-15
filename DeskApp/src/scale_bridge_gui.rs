@@ -210,6 +210,7 @@ pub fn launch_gui(bridge_exe: &PathBuf) -> Result<(), Box<dyn std::error::Error>
     }
 
     let ui = ScaleBridgeWindow::new()?;
+    ui.window().set_maximized(true);
     let state = Arc::new(Mutex::new(AppState {
         config: BridgeConfig {
             store_code: String::new(),
