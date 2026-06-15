@@ -9,6 +9,7 @@ import { useFirmaDonem } from '../../contexts/FirmaDonemContext';
 import { getReceiptSettings, resolveDefaultReceiptLang } from '../../services/receiptSettingsService';
 import { APP_VERSION } from '../../core/version';
 import { productAPI } from '../../services/api/products';
+import { resolveScaleBarcodeSale } from '../../utils/scaleBarcodeSale';
 import { printThermalReceipt } from '../../utils/thermalPrinter';
 import { postgres } from '../../services/postgres';
 
@@ -208,6 +209,21 @@ export function MobilePOS({ products, customers, campaigns, onSaleComplete, onBa
 
           addToCart(product, undefined, unitInfo?.unit, unitMultiplier, price);
           setBarcodeInput('');
+        } else if (searchTerm.length === 13) {
+          const scaleSale = await resolveScaleBarcodeSale(searchTerm, exchangeRate);
+          if (scaleSale) {
+            addToCart(
+              scaleSale.product,
+              undefined,
+              scaleSale.unitName,
+              1,
+              scaleSale.unitPrice,
+              scaleSale.quantity,
+            );
+            setBarcodeInput('');
+          } else {
+            showNotif('Ürün bulunamadı!', 'error');
+          }
         } else {
           showNotif('Ürün bulunamadı!', 'error');
         }
@@ -218,7 +234,15 @@ export function MobilePOS({ products, customers, campaigns, onSaleComplete, onBa
     }
   };
 
-  const addToCart = (product: Product, variant?: any, unit?: string, multiplier?: number, customPrice?: number) => {
+  const addToCart = (
+    product: Product,
+    variant?: any,
+    unit?: string,
+    multiplier?: number,
+    customPrice?: number,
+    customQuantity?: number,
+  ) => {
+    const qtyAdd = customQuantity ?? 1;
     // Unique ID for cart matching
     const itemMatch = (item: SaleItem) => {
       if (variant) {
@@ -233,17 +257,21 @@ export function MobilePOS({ products, customers, campaigns, onSaleComplete, onBa
     if (existingItem) {
       setCart(cart.map(item =>
         itemMatch(item)
-          ? { ...item, quantity: item.quantity + 1, total: (item.quantity + 1) * price * (1 - item.discount / 100) }
+          ? {
+              ...item,
+              quantity: item.quantity + qtyAdd,
+              total: (item.quantity + qtyAdd) * price * (1 - item.discount / 100),
+            }
           : item
       ));
     } else {
       setCart([...cart, {
         productId: product.id,
         productName: product.name,
-        quantity: 1,
+        quantity: qtyAdd,
         price: price,
         discount: 0,
-        total: price,
+        total: price * qtyAdd,
         variant,
         unit,
         multiplier
@@ -1082,6 +1110,24 @@ export function MobilePOS({ products, customers, campaigns, onSaleComplete, onBa
                 const price = (unitInfo && unitInfo.sale_price > 0) ? unitInfo.sale_price : (product.price * (unitInfo?.multiplier || 1));
                 addToCart(product, undefined, unitInfo?.unit_code, unitInfo?.multiplier, price);
                 showNotif(`${product.name} sepete eklendi`, 'success');
+              } else if (code.length === 13) {
+                const scaleSale = await resolveScaleBarcodeSale(code, exchangeRate);
+                if (scaleSale) {
+                  addToCart(
+                    scaleSale.product,
+                    undefined,
+                    scaleSale.unitName,
+                    1,
+                    scaleSale.unitPrice,
+                    scaleSale.quantity,
+                  );
+                  showNotif(
+                    `${scaleSale.product.name} — ${scaleSale.quantity} ${scaleSale.unitName} sepete eklendi`,
+                    'success',
+                  );
+                } else {
+                  showNotif(`Ürün bulunamadı!\nAranan barkod: ${code}`, 'error');
+                }
               } else {
                 showNotif(`Ürün bulunamadı!\nAranan barkod: ${code}`, 'error');
               }

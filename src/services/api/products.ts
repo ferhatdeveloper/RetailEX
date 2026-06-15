@@ -561,6 +561,107 @@ export const productAPI = {
     }
   },
 
+  /** Tartılı barkod PLU — special_code_1 veya kod varyantları */
+  async getBySpecialCode(code: string): Promise<Product | null> {
+    const c = String(code ?? '').trim();
+    if (!c) return null;
+    try {
+      const tableName = `rex_${firmNrPadded()}_products`;
+      const firmEq = firmNrPadded();
+      if (DB_SETTINGS.connectionProvider === 'rest_api') {
+        const { postgrest } = await import('./postgrestClient');
+        for (const variant of [c, c.replace(/^0+/, '') || '0', c.padStart(4, '0'), c.padStart(5, '0')]) {
+          const rows = await postgrest.get<any[]>(
+            `/${tableName}`,
+            {
+              select: '*',
+              special_code_1: `eq.${variant}`,
+              firm_nr: `eq.${firmEq}`,
+              is_active: 'eq.true',
+              limit: '1',
+            },
+            { schema: 'public' },
+          );
+          const row = Array.isArray(rows) ? rows[0] : null;
+          if (row) return mapDatabaseProductToProduct(row);
+        }
+        return null;
+      }
+      const { rows } = await postgres.query(
+        `SELECT * FROM ${tableName}
+         WHERE firm_nr = $1 AND is_active = true
+           AND special_code_1 IN ($2, $3, $4, $5)
+         LIMIT 1`,
+        [ERP_SETTINGS.firmNr, c, c.replace(/^0+/, '') || '0', c.padStart(4, '0'), c.padStart(5, '0')],
+      );
+      return rows[0] ? mapDatabaseProductToProduct(rows[0]) : null;
+    } catch (error) {
+      console.error('[ProductAPI] getBySpecialCode failed:', error);
+      return null;
+    }
+  },
+
+  /** Tartı ürünü — PLU/kod eşleşmesi (is_scale_product öncelikli) */
+  async getScaleProductByPlu(plu: string): Promise<Product | null> {
+    const variants = [
+      String(plu ?? '').trim(),
+      String(plu ?? '').trim().replace(/^0+/, '') || '0',
+      String(plu ?? '').trim().padStart(4, '0'),
+      String(plu ?? '').trim().padStart(5, '0'),
+    ];
+    const uniq = [...new Set(variants.filter(Boolean))];
+    if (uniq.length === 0) return null;
+    try {
+      const tableName = `rex_${firmNrPadded()}_products`;
+      const firmEq = firmNrPadded();
+      if (DB_SETTINGS.connectionProvider === 'rest_api') {
+        const { postgrest } = await import('./postgrestClient');
+        for (const code of uniq) {
+          let rows = await postgrest.get<any[]>(
+            `/${tableName}`,
+            {
+              select: '*',
+              code: `eq.${code}`,
+              firm_nr: `eq.${firmEq}`,
+              is_active: 'eq.true',
+              is_scale_product: 'eq.true',
+              limit: '1',
+            },
+            { schema: 'public' },
+          ).catch(() => []);
+          let row = Array.isArray(rows) ? rows[0] : null;
+          if (!row) {
+            rows = await postgrest.get<any[]>(
+              `/${tableName}`,
+              {
+                select: '*',
+                code: `eq.${code}`,
+                firm_nr: `eq.${firmEq}`,
+                is_active: 'eq.true',
+                limit: '1',
+              },
+              { schema: 'public' },
+            ).catch(() => []);
+            row = Array.isArray(rows) ? rows[0] : null;
+          }
+          if (row) return mapDatabaseProductToProduct(row);
+        }
+        return null;
+      }
+      const { rows } = await postgres.query(
+        `SELECT * FROM ${tableName}
+         WHERE firm_nr = $1 AND is_active = true AND code = ANY($2::text[])
+         ORDER BY CASE WHEN is_scale_product = true THEN 0 ELSE 1 END
+         LIMIT 1`,
+        [ERP_SETTINGS.firmNr, uniq],
+      );
+      return rows[0] ? mapDatabaseProductToProduct(rows[0]) : null;
+    } catch (error) {
+      console.error('[ProductAPI] getScaleProductByPlu failed:', error);
+      return null;
+    }
+  },
+
   /**
    * Get product by barcode
    */

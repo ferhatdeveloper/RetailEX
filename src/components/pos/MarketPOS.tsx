@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useFirmaDonem } from '../../contexts/FirmaDonemContext';
 import { logger } from '../../utils/logger';
+import { resolveScaleBarcodeSale } from '../../utils/scaleBarcodeSale';
 import {
   ShoppingCart,
   CreditCard,
@@ -705,6 +706,23 @@ export default function MarketPOS({
         addToCart(product, undefined, quantity, unitName, unitMultiplier, price);
         return true;
       } else {
+        if (trimmedBarcode.length === 13) {
+          const scaleSale = await resolveScaleBarcodeSale(trimmedBarcode, exchangeRate);
+          if (scaleSale) {
+            addToCart(
+              scaleSale.product,
+              undefined,
+              scaleSale.quantity,
+              scaleSale.unitName,
+              1,
+              scaleSale.unitPrice,
+            );
+            logger.log(
+              `[MarketPOS] Tartılı satış: ${scaleSale.formatInfo} — ${scaleSale.quantity} ${scaleSale.unitName} × ${scaleSale.unitPrice}`,
+            );
+            return true;
+          }
+        }
         logger.log('❌ Barkod bulunamadı');
         showNotif(t.barcodeNotFoundWarning.replace('{barcode}', trimmedBarcode), 'error');
         if (!missingBarcodes.includes(trimmedBarcode)) {
