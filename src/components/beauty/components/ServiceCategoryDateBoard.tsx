@@ -281,9 +281,10 @@ function ServiceBoardServiceCell({
                                                     ? 0.6
                                                     : 1,
                                         }}
-                                        title={followUpWhatsAppLabel ?? 'WhatsApp'}
+                                        title={followUpWhatsAppLabel ?? 'Mesaj'}
                                     >
                                         <MessageCircle size={12} />
+                                        {followUpWhatsAppLabel ?? 'Mesaj'}
                                     </button>
                                 ) : null}
                                 <button

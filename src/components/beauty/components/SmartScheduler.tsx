@@ -4,7 +4,7 @@ import { createPortal } from 'react-dom';
 import {
     ChevronLeft, ChevronRight, Plus, Clock,
     User, Cpu, List, Search, X,
-    CalendarDays, Banknote, Undo2, Phone,
+    CalendarDays, Banknote, Undo2, Phone, MessageSquare, Send,
 } from 'lucide-react';
 import { useBeautyStore } from '../store/useBeautyStore';
 import {
@@ -56,7 +56,12 @@ import { usePermission } from '../../../shared/hooks/usePermission';
 import { ClinicDetailClinicalEmbed } from '../specialty/ClinicDetailClinicalEmbed';
 import { ServiceCategoryDateBoard, type ServiceBoardMainLayout } from './ServiceCategoryDateBoard';
 import { FollowUpReminderActionModal } from './FollowUpReminderActionModal';
-import { sendFollowUpReminderWhatsApp } from '../../../utils/followUpWhatsAppSend';
+import { FollowUpMesajBildirimModal } from './FollowUpMesajBildirimModal';
+import {
+    filterFollowUpRemindersForBulk,
+    sendFollowUpReminderWhatsApp,
+    sendFollowUpRemindersBulkWhatsApp,
+} from '../../../utils/followUpWhatsAppSend';
 import { toast } from 'sonner';
 import { useClinicErpSpecialtyOptional } from '../context/ClinicErpSpecialtyContext';
 import { useResponsive } from '../../../hooks/useResponsive';
@@ -483,6 +488,8 @@ export function SmartScheduler() {
     const [followUpReminders, setFollowUpReminders] = useState<BeautyFollowUpReminder[]>([]);
     const [followUpActionTarget, setFollowUpActionTarget] = useState<BeautyFollowUpReminder | null>(null);
     const [followUpWhatsAppSendingKey, setFollowUpWhatsAppSendingKey] = useState<string | null>(null);
+    const [showMesajBildirim, setShowMesajBildirim] = useState(false);
+    const [followUpBulkSending, setFollowUpBulkSending] = useState(false);
 
     const handleFollowUpWhatsApp = useCallback(async (reminder: BeautyFollowUpReminder) => {
         const key = `${reminder.customer_id}-${reminder.service_id}-${reminder.due_date}`;
@@ -498,6 +505,37 @@ export function SmartScheduler() {
             setFollowUpWhatsAppSendingKey(null);
         }
     }, [tm]);
+
+    const followUpBulkCount = useMemo(
+        () => filterFollowUpRemindersForBulk(followUpReminders).length,
+        [followUpReminders],
+    );
+
+    const handleFollowUpBulkWhatsApp = useCallback(async () => {
+        if (followUpBulkCount === 0) {
+            toast.warning(tm('msgNotifyNoRecipients'));
+            return;
+        }
+        setFollowUpBulkSending(true);
+        try {
+            const result = await sendFollowUpRemindersBulkWhatsApp(followUpReminders);
+            if (result.queued > 0) {
+                toast.success(
+                    tm('msgNotifySentSummary')
+                        .replace('{queued}', String(result.queued))
+                        .replace('{sent}', String(result.sent)),
+                );
+            }
+            if (result.errors.length > 0) {
+                toast.error(result.errors.slice(0, 3).join('\n'));
+            }
+            if (result.queued === 0 && result.errors.length === 0) {
+                toast.warning(tm('msgNotifyNoRecipients'));
+            }
+        } finally {
+            setFollowUpBulkSending(false);
+        }
+    }, [followUpReminders, followUpBulkCount, tm]);
 
     const reloadFollowUpReminders = useCallback(async () => {
         try {
@@ -1548,6 +1586,53 @@ export function SmartScheduler() {
                         }}
                     >
                         {tm('bApplyDateRange')}
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => setShowMesajBildirim(true)}
+                        style={{
+                            height: 30,
+                            padding: '0 12px',
+                            borderRadius: 6,
+                            border: '1px solid #a7f3d0',
+                            background: '#ecfdf5',
+                            color: '#047857',
+                            fontSize: 11,
+                            fontWeight: 700,
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 6,
+                        }}
+                    >
+                        <MessageSquare size={13} />
+                        {tm('bFollowUpMesajBildirim')}
+                    </button>
+                    <button
+                        type="button"
+                        disabled={followUpBulkSending || followUpBulkCount === 0}
+                        onClick={() => void handleFollowUpBulkWhatsApp()}
+                        title={tm('bFollowUpBulkWhatsAppHint').replace('{n}', String(followUpBulkCount))}
+                        style={{
+                            height: 30,
+                            padding: '0 12px',
+                            borderRadius: 6,
+                            border: '1px solid #86efac',
+                            background: followUpBulkCount > 0 ? '#10b981' : '#e5e7eb',
+                            color: followUpBulkCount > 0 ? '#fff' : '#9ca3af',
+                            fontSize: 11,
+                            fontWeight: 700,
+                            cursor: followUpBulkCount > 0 && !followUpBulkSending ? 'pointer' : 'not-allowed',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 6,
+                            opacity: followUpBulkSending ? 0.7 : 1,
+                        }}
+                    >
+                        <Send size={13} />
+                        {followUpBulkSending
+                            ? tm('bFollowUpBulkWhatsAppSending')
+                            : tm('bFollowUpBulkWhatsApp').replace('{n}', String(followUpBulkCount))}
                     </button>
                     <span style={{ fontSize: 10, fontWeight: 600, color: '#9ca3af' }}>{tm('bServiceDateBoardScrollHint')}</span>
                 </div>
@@ -2720,6 +2805,16 @@ export function SmartScheduler() {
                 reminder={followUpActionTarget}
                 onClose={() => setFollowUpActionTarget(null)}
                 onSaved={() => void reloadFollowUpReminders()}
+                onWhatsApp={
+                    followUpActionTarget
+                        ? () => void handleFollowUpWhatsApp(followUpActionTarget)
+                        : undefined
+                }
+                whatsAppSending={
+                    followUpActionTarget != null &&
+                    followUpWhatsAppSendingKey ===
+                        `${followUpActionTarget.customer_id}-${followUpActionTarget.service_id}-${followUpActionTarget.due_date}`
+                }
                 labels={{
                     title: tm('bFollowUpModalTitle'),
                     status: tm('bFollowUpStatusLabel'),
@@ -2737,7 +2832,17 @@ export function SmartScheduler() {
                     cancel: tm('bFollowUpModalCancel'),
                     save: tm('bFollowUpModalSave'),
                     saving: tm('bFollowUpModalSaving'),
+                    whatsApp: tm('bFollowUpModalWhatsApp'),
                 }}
+            />
+
+            <FollowUpMesajBildirimModal
+                open={showMesajBildirim}
+                onClose={() => setShowMesajBildirim(false)}
+                followUpReminders={followUpReminders}
+                dateStart={serviceBoardRange.start}
+                dateEnd={serviceBoardRange.end}
+                title={tm('bFollowUpMesajBildirim')}
             />
         </div>
     );

@@ -17,6 +17,7 @@ import {
   AlertTriangle,
   CheckCircle2,
   ExternalLink,
+  CalendarRange,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useTheme } from '../../contexts/ThemeContext';
@@ -31,8 +32,23 @@ import {
 import {
   previewMetaTemplateBody,
 } from '../../services/messaging/metaWhatsAppTemplates';
+import type { BeautyFollowUpReminder } from '../../types/beauty';
+import {
+  filterFollowUpRemindersForBulk,
+  sendFollowUpRemindersBulkWhatsApp,
+} from '../../utils/followUpWhatsAppSend';
 
-const AUDIENCE_MODES: Array<{
+export interface MesajBildirimModuleProps {
+  embedded?: boolean;
+  onClose?: () => void;
+  followUpReminders?: BeautyFollowUpReminder[];
+  dateStart?: string;
+  dateEnd?: string;
+}
+
+type NotifyMode = CustomerNotifyAudience | 'follow_up_range';
+
+const BASE_AUDIENCE_MODES: Array<{
   id: CustomerNotifyAudience;
   icon: React.ElementType;
   labelKey: string;
@@ -47,9 +63,25 @@ const AUDIENCE_MODES: Array<{
 const DEFAULT_FREE_TEXT =
   'Merhaba {customer_name}, sizinle iletişime geçmek istedik. RetailEX';
 
-export function MesajBildirimModule() {
+export function MesajBildirimModule({
+  embedded = false,
+  onClose,
+  followUpReminders = [],
+  dateStart,
+  dateEnd,
+}: MesajBildirimModuleProps = {}) {
   const { darkMode } = useTheme();
   const { tm } = useLanguage();
+
+  const hasFollowUpContext = followUpReminders.length > 0;
+
+  const audienceModes = useMemo((): Array<{ id: NotifyMode; icon: React.ElementType; labelKey: string }> => {
+    const modes: Array<{ id: NotifyMode; icon: React.ElementType; labelKey: string }> = [];
+    if (hasFollowUpContext) {
+      modes.push({ id: 'follow_up_range', icon: CalendarRange, labelKey: 'msgNotifyModeFollowUpRange' });
+    }
+    return [...modes, ...BASE_AUDIENCE_MODES];
+  }, [hasFollowUpContext]);
 
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
@@ -58,7 +90,7 @@ export function MesajBildirimModule() {
   const [provider, setProvider] = useState('NONE');
   const [stats, setStats] = useState({ pending: 0, sent: 0, failed: 0 });
 
-  const [mode, setMode] = useState<CustomerNotifyAudience>('single');
+  const [mode, setMode] = useState<NotifyMode>(hasFollowUpContext ? 'follow_up_range' : 'single');
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [groupFilter, setGroupFilter] = useState<CustomerGroupFilter>({});
   const [messageText, setMessageText] = useState(DEFAULT_FREE_TEXT);
@@ -121,9 +153,18 @@ export function MesajBildirimModule() {
     );
   }, [customers, customerSearch]);
 
+  const followUpBulkRows = useMemo(
+    () => filterFollowUpRemindersForBulk(followUpReminders),
+    [followUpReminders],
+  );
+
   const [resolvedCount, setResolvedCount] = useState(0);
 
   useEffect(() => {
+    if (mode === 'follow_up_range') {
+      setResolvedCount(followUpBulkRows.length);
+      return;
+    }
     let cancelled = false;
     void customerNotificationService
       .resolveRecipients({ mode, customerIds: selectedIds, groupFilter })
@@ -133,9 +174,27 @@ export function MesajBildirimModule() {
     return () => {
       cancelled = true;
     };
-  }, [mode, selectedIds, groupFilter, customers]);
+  }, [mode, selectedIds, groupFilter, customers, followUpBulkRows.length]);
 
   const previewMessage = useMemo(() => {
+    if (mode === 'follow_up_range' && followUpBulkRows[0]) {
+      const r = followUpBulkRows[0];
+      const name = r.customer_name?.trim() || 'Müşteri';
+      const service =
+        r.reminder_kind === 'product' && r.product_name?.trim()
+          ? r.product_name.trim()
+          : r.service_name?.trim() || 'Hizmet';
+      if (isMeta && selectedMetaTpl) {
+        const params = [
+          name,
+          r.due_date,
+          'Hatırlatma',
+          service,
+        ];
+        return previewMetaTemplateBody(selectedMetaTpl, params);
+      }
+      return `Merhaba ${name}, ${r.due_date} tarihinde ${service} için takip hatırlatmanız bulunmaktadır. RetailEX`;
+    }
     const sample = customers[0];
     if (!sample) return messageText;
     if (isMeta && selectedMetaTpl) {
@@ -153,10 +212,10 @@ export function MesajBildirimModule() {
       .replace(/\{name\}/g, sample.name)
       .replace(/\{city\}/g, sample.city ?? '')
       .replace(/\{date\}/g, new Date().toISOString().slice(0, 10));
-  }, [customers, messageText, isMeta, selectedMetaTpl, metaParams]);
+  }, [customers, messageText, isMeta, selectedMetaTpl, metaParams, mode, followUpBulkRows]);
 
   const toggleCustomer = (id: string) => {
-    if (mode === 'single') {
+    if (mode === 'single' || mode === 'follow_up_range') {
       setSelectedIds([id]);
       return;
     }
@@ -172,8 +231,29 @@ export function MesajBildirimModule() {
     }
     setSending(true);
     try {
+      if (mode === 'follow_up_range') {
+        if (followUpBulkRows.length === 0) {
+          toast.warning(tm('msgNotifyNoRecipients'));
+          return;
+        }
+        const result = await sendFollowUpRemindersBulkWhatsApp(followUpReminders);
+        const statsNow = await messagingService.getQueueStats();
+        setStats(statsNow);
+        if (result.queued > 0) {
+          toast.success(
+            tm('msgNotifySentSummary')
+              .replace('{queued}', String(result.queued))
+              .replace('{sent}', String(result.sent)),
+          );
+        }
+        if (result.errors.length > 0) {
+          toast.error(result.errors.slice(0, 3).join('\n'));
+        }
+        return;
+      }
+
       const recipients = await customerNotificationService.resolveRecipients({
-        mode,
+        mode: mode as CustomerNotifyAudience,
         customerIds: selectedIds,
         groupFilter,
       });
@@ -236,6 +316,7 @@ export function MesajBildirimModule() {
 
   return (
     <div className={`h-full min-h-0 overflow-y-auto p-4 md:p-6 space-y-5 ${darkMode ? 'bg-gray-900' : 'bg-slate-50'}`}>
+      {!embedded && (
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
@@ -254,6 +335,18 @@ export function MesajBildirimModule() {
           {tm('msgNotifyRefresh')}
         </button>
       </div>
+      )}
+
+      {embedded && hasFollowUpContext && dateStart && dateEnd ? (
+        <div className={`rounded-xl border p-3 text-sm ${panel}`}>
+          <p className={`font-semibold ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>
+            {tm('msgNotifyFollowUpRangeHint')
+              .replace('{start}', dateStart)
+              .replace('{end}', dateEnd)
+              .replace('{n}', String(followUpBulkRows.length))}
+          </p>
+        </div>
+      ) : null}
 
       {provider === 'NONE' ? (
         <div className="rounded-xl border border-amber-300 bg-amber-50 text-amber-900 p-4 flex gap-3">
@@ -300,7 +393,7 @@ export function MesajBildirimModule() {
             {tm('msgNotifyAudienceTitle')}
           </h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            {AUDIENCE_MODES.map((m) => {
+            {audienceModes.map((m) => {
               const Icon = m.icon;
               const active = mode === m.id;
               return (
@@ -376,6 +469,39 @@ export function MesajBildirimModule() {
             </div>
           )}
 
+          {mode === 'follow_up_range' && (
+            <div className="space-y-2">
+              {followUpBulkRows.length === 0 ? (
+                <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                  {tm('msgNotifyFollowUpRangeEmpty')}
+                </p>
+              ) : (
+                <div className="max-h-52 overflow-y-auto rounded-lg border border-gray-200 divide-y divide-gray-100">
+                  {followUpBulkRows.map((r) => {
+                    const service =
+                      r.reminder_kind === 'product' && r.product_name?.trim()
+                        ? r.product_name.trim()
+                        : r.service_name?.trim() || '—';
+                    return (
+                      <div
+                        key={`${r.customer_id}-${r.service_id}-${r.due_date}-${r.product_id ?? ''}`}
+                        className="flex items-center gap-3 px-3 py-2 text-sm"
+                      >
+                        <span className="font-medium truncate">{r.customer_name ?? '—'}</span>
+                        <span className="text-xs text-gray-500 truncate">{service}</span>
+                        <span className="text-xs text-gray-400 shrink-0">{r.due_date}</span>
+                        <span className="text-xs text-gray-500 ml-auto shrink-0">{r.customer_phone}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+              <p className={`text-[11px] ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                {tm('msgNotifyFollowUpRangeAutoMsg')}
+              </p>
+            </div>
+          )}
+
           {(mode === 'single' || mode === 'multiple') && (
             <div className="space-y-2">
               <input
@@ -420,51 +546,53 @@ export function MesajBildirimModule() {
             {tm('msgNotifyMessageTitle')}
           </h2>
 
-          {isMeta ? (
-            <>
-              <div>
-                <label className={labelCls}>{tm('msgNotifyMetaTemplate')}</label>
-                <select
-                  value={metaTemplateId}
-                  onChange={(e) => setMetaTemplateId(e.target.value)}
-                  className={inputCls}
-                >
-                  {metaTemplates.map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.label} ({t.language})
-                    </option>
-                  ))}
-                </select>
-              </div>
-              {selectedMetaTpl?.parameterLabels.map((lbl, i) => (
-                <div key={lbl}>
-                  <label className={labelCls}>
-                    {lbl} — {tm('msgNotifyParamHint')}
-                  </label>
-                  <input
-                    value={metaParams[i] ?? ''}
-                    onChange={(e) => {
-                      const next = [...metaParams];
-                      next[i] = e.target.value;
-                      setMetaParams(next);
-                    }}
+          {mode !== 'follow_up_range' && (
+            isMeta ? (
+              <>
+                <div>
+                  <label className={labelCls}>{tm('msgNotifyMetaTemplate')}</label>
+                  <select
+                    value={metaTemplateId}
+                    onChange={(e) => setMetaTemplateId(e.target.value)}
                     className={inputCls}
-                    placeholder={selectedMetaTpl.sampleValues[i] ?? ''}
-                  />
+                  >
+                    {metaTemplates.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.label} ({t.language})
+                      </option>
+                    ))}
+                  </select>
                 </div>
-              ))}
-            </>
-          ) : (
-            <div>
-              <label className={labelCls}>{tm('msgNotifyFreeText')}</label>
-              <textarea
-                value={messageText}
-                onChange={(e) => setMessageText(e.target.value)}
-                rows={5}
-                className={inputCls}
-              />
-              <p className="text-[11px] text-gray-500 mt-1">{tm('msgNotifyPlaceholderHint')}</p>
-            </div>
+                {selectedMetaTpl?.parameterLabels.map((lbl, i) => (
+                  <div key={lbl}>
+                    <label className={labelCls}>
+                      {lbl} — {tm('msgNotifyParamHint')}
+                    </label>
+                    <input
+                      value={metaParams[i] ?? ''}
+                      onChange={(e) => {
+                        const next = [...metaParams];
+                        next[i] = e.target.value;
+                        setMetaParams(next);
+                      }}
+                      className={inputCls}
+                      placeholder={selectedMetaTpl.sampleValues[i] ?? ''}
+                    />
+                  </div>
+                ))}
+              </>
+            ) : (
+              <div>
+                <label className={labelCls}>{tm('msgNotifyFreeText')}</label>
+                <textarea
+                  value={messageText}
+                  onChange={(e) => setMessageText(e.target.value)}
+                  rows={5}
+                  className={inputCls}
+                />
+                <p className="text-[11px] text-gray-500 mt-1">{tm('msgNotifyPlaceholderHint')}</p>
+              </div>
+            )
           )}
 
           <div className={`rounded-lg p-3 text-sm ${darkMode ? 'bg-gray-900' : 'bg-slate-100'}`}>

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Calendar, StickyNote } from 'lucide-react';
+import { X, Calendar, StickyNote, MessageCircle } from 'lucide-react';
 import type {
   BeautyFollowUpReminder,
   BeautyFollowUpReminderAction,
@@ -13,6 +13,8 @@ export interface FollowUpReminderActionModalProps {
   reminder: BeautyFollowUpReminder | null;
   onClose: () => void;
   onSaved: () => void;
+  onWhatsApp?: () => void;
+  whatsAppSending?: boolean;
   labels: {
     title: string;
     status: string;
@@ -30,6 +32,7 @@ export interface FollowUpReminderActionModalProps {
     cancel: string;
     save: string;
     saving: string;
+    whatsApp?: string;
   };
 }
 
@@ -41,6 +44,8 @@ export function FollowUpReminderActionModal({
   reminder,
   onClose,
   onSaved,
+  onWhatsApp,
+  whatsAppSending = false,
   labels,
 }: FollowUpReminderActionModalProps) {
   const [status, setStatus] = useState<BeautyFollowUpReminderStatus>('due');
@@ -66,6 +71,7 @@ export function FollowUpReminderActionModal({
   if (!open || !reminder || typeof document === 'undefined') return null;
 
   const naturalDue = reminder.natural_due_date ?? reminder.due_date;
+  const hasPhone = String(reminder.customer_phone ?? '').replace(/\D/g, '').length >= 10;
 
   const handleSave = async () => {
     setSaving(true);
@@ -200,7 +206,19 @@ export function FollowUpReminderActionModal({
               />
             </div>
           </div>
-          <div className="p-4 border-t border-slate-100 bg-slate-50/50 flex gap-3 shrink-0">
+          <div className="p-4 border-t border-slate-100 bg-slate-50/50 flex flex-col gap-3 shrink-0">
+            {onWhatsApp && hasPhone ? (
+              <button
+                type="button"
+                onClick={onWhatsApp}
+                disabled={saving || whatsAppSending}
+                className="w-full rounded-2xl border-2 border-emerald-200 bg-emerald-50 text-emerald-800 font-bold uppercase text-sm tracking-wider py-3 hover:bg-emerald-100 disabled:opacity-50 inline-flex items-center justify-center gap-2"
+              >
+                <MessageCircle className="w-4 h-4" />
+                {whatsAppSending ? '…' : (labels.whatsApp ?? 'Mesaj')}
+              </button>
+            ) : null}
+            <div className="flex gap-3">
             <button
               type="button"
               onClick={onClose}
@@ -217,6 +235,7 @@ export function FollowUpReminderActionModal({
             >
               {saving ? labels.saving : labels.save}
             </button>
+            </div>
           </div>
         </div>
       </div>
