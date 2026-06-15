@@ -95,3 +95,5 @@ BEGIN
   EXECUTE v_sql USING p_data;
 END;
 $$ LANGUAGE plpgsql;
+
+NOTIFY pgrst, 'reload schema';

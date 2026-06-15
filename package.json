@@ -155,6 +155,8 @@
             "db:migrate:remote:dry": "node scripts/migrate-remote-pg.mjs --dry-run",
             "db:migrate:tenants": "node scripts/migrate-all-tenant-dbs.mjs",
             "db:migrate:tenants:dry": "node scripts/migrate-all-tenant-dbs.mjs --dry-run",
+            "db:postgrest:reload": "node database/scripts/postgrest-reload-schema.mjs",
+            "db:postgrest:reload:tenants": "node scripts/postgrest-reload-all-tenants.mjs",
             "db:test:remote": "node scripts/test-remote-pg.mjs",
             "db:firm": "node database/scripts/firm-quick.mjs",
             "db:merkez:tenant-retail-seed": "node scripts/run-merkez-tenant-registry-retail-seed.mjs",

@@ -19,6 +19,7 @@ import { readFileSync, readdirSync, existsSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { spawnSync } from 'child_process';
+import { notifyPostgrestReloadSchemaConn } from './postgrest-reload-schema.mjs';
 import { loadRemotePgDefaults, parsePgEndpoint } from './pg-endpoint-parse.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -332,6 +333,11 @@ async function main() {
     await recordMigration(pg, file);
     console.log('[db:migrate] Tamamlandı:', file);
   }
+
+  if (pending.length > 0 && !dryRun && process.env.SKIP_POSTGREST_RELOAD !== '1') {
+    await notifyPostgrestReloadSchemaConn(pg);
+  }
+
   console.log('[db:migrate] Bitti.');
 }
 

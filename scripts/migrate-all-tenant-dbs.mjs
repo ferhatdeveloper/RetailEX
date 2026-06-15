@@ -19,6 +19,7 @@ import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import pg from 'pg';
 import { loadRemotePgDefaults } from '../database/scripts/pg-endpoint-parse.mjs';
+import { notifyPostgrestReloadSchemaConn } from '../database/scripts/postgrest-reload-schema.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const defaults = loadRemotePgDefaults();
@@ -187,6 +188,20 @@ async function main() {
     }
     const r = migrateOneDb(db);
     if (r.out) console.log(r.out);
+    if (r.ok && !dryRun && process.env.SKIP_POSTGREST_RELOAD !== '1') {
+      try {
+        await notifyPostgrestReloadSchemaConn({
+          host,
+          port,
+          user,
+          password,
+          database: db,
+        });
+        console.log(`[db:migrate:tenants] PostgREST reload: ${db}`);
+      } catch (e) {
+        console.warn(`[db:migrate:tenants] PostgREST reload uyarı (${db}):`, e?.message || e);
+      }
+    }
     results.push(r);
     console.log(r.ok ? `[db:migrate:tenants] OK: ${db}` : `[db:migrate:tenants] HATA: ${db} (çıkış ${r.code})`);
   }
