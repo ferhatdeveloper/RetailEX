@@ -9,7 +9,7 @@
 | `WindowsFormsApplication1/labelScale.cs` | DLL sarmalayıcı |
 | `WindowsFormsApplication1/uDefine.cs` | Yapılar / sabitler |
 | `WindowsFormsApplication1/lib/rtslabelscale.dll` | Rongta resmi kütüphane |
-| `WindowsFormsApplication1/SYSTEM.CFG` | DLL yapılandırması (repoda yok — aşağıya bakın) |
+| `WindowsFormsApplication1/SYSTEM.CFG` | DLL yapılandırması (repoda varsayılan) |
 
 ## Repoya ekleme (PowerShell — `C:\RetailEX` git değilse)
 
@@ -37,14 +37,26 @@ Node köprüsü (`scripts/scale-bridge/`) Windows'ta bu DLL'i `rongta-dll-bridge
 
 C# `button9` akışı ile aynı: **Connect → DownLoadPLU (4/paket) → DownLoadHotkey → Disconnect**
 
-## SYSTEM.CFG (önemli)
+## SYSTEM.CFG
 
-Repoda yalnızca placeholder var. Çalışan terazi bağlantısı için masaüstü projesindeki dosyayı kopyalayın:
+Repoda **varsayılan** dosya var:
+
+- `scripts/scale-bridge/rongta-dll-bridge/SYSTEM.CFG`
+- `TeraziRongta/WindowsFormsApplication1/SYSTEM.CFG`
+
+Terazi bağlanmazsa çalışan masaüstü kopyanızı kullanın:
 
 ```powershell
 copy "C:\Users\FERHAT\Desktop\TeraziRongta\WindowsFormsApplication1\bin\x86\Debug\SYSTEM.CFG" `
      "scripts\scale-bridge\rongta-dll-bridge\SYSTEM.CFG"
-git add scripts/scale-bridge/rongta-dll-bridge/SYSTEM.CFG
-git commit -m "chore: Rongta SYSTEM.CFG"
-git push origin main
+```
+
+## Kurulum (Windows)
+
+```powershell
+cd C:\Users\FERHAT\RetailEX-git
+git pull origin main
+# Sürüm: package.json → 0.1.91
+npm run scale:bridge
+# veya Scale Bridge kurulum paketi: dist\RetailEX-ScaleBridge-Setup.exe (derleme makinesinde)
 ```

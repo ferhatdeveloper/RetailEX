@@ -49,8 +49,13 @@ foreach ($f in $copyFiles) {
 $dllSrc = "$SourceDesktop\WindowsFormsApplication1\bin\x86\Debug"
 if (Test-Path "$dllSrc\rtslabelscale.dll") {
     Copy-Item "$dllSrc\rtslabelscale.dll" $projDest
-    Copy-Item "$dllSrc\SYSTEM.CFG" $projDest -ErrorAction SilentlyContinue
-    Write-Host "rtslabelscale.dll ve SYSTEM.CFG kopyalandi"
+    if (Test-Path "$dllSrc\SYSTEM.CFG") {
+        Copy-Item "$dllSrc\SYSTEM.CFG" $projDest -Force
+        $bridgeCfg = Join-Path $CloneDir "scripts\scale-bridge\rongta-dll-bridge\SYSTEM.CFG"
+        Copy-Item "$dllSrc\SYSTEM.CFG" $bridgeCfg -Force
+        Write-Host "SYSTEM.CFG -> reference + rongta-dll-bridge"
+    }
+    Write-Host "rtslabelscale.dll kopyalandi"
 } else {
     Write-Warning "rtslabelscale.dll bulunamadi: $dllSrc"
 }
