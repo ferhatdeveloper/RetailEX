@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { X, Plus, Minus, Percent, Trash2, Package, Calculator, Scale, StickyNote } from 'lucide-react';
+import { X, Plus, Minus, Percent, Trash2, Package, Calculator, StickyNote } from 'lucide-react';
 import type { CartItem, ProductVariant } from './types';
 import { POSNumpad } from './POSNumpad';
 import { formatNumber as formatNumberUtil } from '../../utils/formatNumber';
@@ -56,7 +56,6 @@ export function POSCartItemActionModal({
   const discountAmount = lineDiscountMoneyFromPercent(itemTotal, discountPercent);
   const newTotal = lineNetAfterPercentDiscount(itemTotal, discountPercent);
 
-  // Sync state if item changes
   useEffect(() => {
     setQuantity(item.quantity.toString());
     setPrice((item.price ?? item.variant?.price ?? item.product.price).toString());
@@ -64,7 +63,6 @@ export function POSCartItemActionModal({
     setNote(item.note ?? '');
   }, [item]);
 
-  // Handle Numpad input routing
   const handleNumpadChange = (val: string) => {
     if (focusedInput === 'quantity') setQuantity(val);
     else if (focusedInput === 'price') setPrice(val);
@@ -73,11 +71,10 @@ export function POSCartItemActionModal({
 
   const currentNumpadValue = focusedInput === 'quantity' ? quantity : focusedInput === 'price' ? price : discount;
 
-  // Get color hex code helper
   const getColorHex = (colorName?: string, colorHex?: string) => {
     if (colorHex) return colorHex;
     if (!colorName) return '#9CA3AF';
-    
+
     const colorMap: Record<string, string> = {
       'kırmızı': '#DC2626', 'kirmizi': '#DC2626', 'red': '#DC2626',
       'mavi': '#2563EB', 'blue': '#2563EB',
@@ -90,7 +87,7 @@ export function POSCartItemActionModal({
       'beyaz': '#FFFFFF', 'white': '#FFFFFF',
       'gri': '#6B7280', 'gray': '#6B7280', 'grey': '#6B7280',
     };
-    
+
     return colorMap[colorName?.toLowerCase() || ''] || '#9CA3AF';
   };
 
@@ -100,31 +97,27 @@ export function POSCartItemActionModal({
     const prc = parseFloat(price || '0');
 
     if (qty <= 0) {
-      alert('Miktar 0\'dan büyük olmalıdır!');
+      alert(tm('posCartModalQtyMinError'));
       return;
     }
 
     if (disc < 0 || disc > 100) {
-      alert('İndirim yüzdesi 0-100 arasında olmalıdır!');
+      alert(tm('posCartModalDiscountRangeError'));
       return;
     }
 
-    // Update quantity
     if (qty !== item.quantity) {
       onUpdateQuantity(itemIndex, qty);
     }
 
-    // Update discount (only if changed)
     if (Math.abs(disc - item.discount) > 0.01) {
       onApplyDiscount(itemIndex, disc);
     }
 
-    // Update price
     if (onUpdatePrice && prc !== (item.price ?? item.variant?.price ?? item.product.price)) {
       onUpdatePrice(itemIndex, prc);
     }
 
-    // Update variant if changed
     if (onUpdateVariant && selectedVariant && selectedVariant.id !== item.variant?.id) {
       onUpdateVariant(itemIndex, selectedVariant);
     }
@@ -139,10 +132,10 @@ export function POSCartItemActionModal({
   const handleRemove = async () => {
     const ok = await confirmDialog({
       variant: 'danger',
-      title: tm('removeFromCart') || 'Üründü Kaldır',
-      description: (tm('confirmRemoveFromCart') || '{name} ürününü sepetten çıkarmak istediğinizden emin misiniz?').replace('{name}', item.product.name),
-      confirmLabel: tm('removeAction') || 'Kaldır',
-      cancelLabel: tm('cancel') || 'İptal',
+      title: tm('removeFromCart'),
+      description: tm('confirmRemoveFromCart').replace('{name}', item.product.name),
+      confirmLabel: tm('removeAction'),
+      cancelLabel: tm('cancel'),
     });
     if (ok) {
       onRemoveItem(itemIndex);
@@ -155,13 +148,12 @@ export function POSCartItemActionModal({
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
       <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} w-full max-w-5xl max-h-[95vh] flex flex-col shadow-2xl rounded-2xl overflow-hidden`}>
-        {/* Header */}
         <div className={`p-5 border-b ${darkMode ? 'border-gray-700 bg-gray-800' : 'border-gray-200 bg-gradient-to-r from-blue-700 to-indigo-800'}`}>
           <div className="flex items-center justify-between">
             <div className="flex-1">
               <h3 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-white'} flex items-center gap-2`}>
                 <Package className="w-6 h-6" />
-                Ürün Düzenle
+                {tm('posCartModalEditProduct')}
               </h3>
               <p className={`text-base mt-1 font-medium ${darkMode ? 'text-gray-400' : 'text-blue-100'}`}>
                 {item.product.name}
@@ -181,7 +173,6 @@ export function POSCartItemActionModal({
           </div>
         </div>
 
-        {/* Tabs */}
         <div className={`flex border-b ${darkMode ? 'border-gray-700 bg-gray-800' : 'border-gray-200 bg-gray-50'}`}>
           <button
             onClick={() => { setActiveTab('main'); setFocusedInput('quantity'); }}
@@ -193,7 +184,7 @@ export function POSCartItemActionModal({
           >
             <div className="flex items-center justify-center gap-2">
               <Plus className="w-5 h-5" />
-              Miktar & Fiyat
+              {tm('posCartModalTabQtyPrice')}
             </div>
           </button>
           <button
@@ -206,7 +197,7 @@ export function POSCartItemActionModal({
           >
             <div className="flex items-center justify-center gap-2">
               <Percent className="w-5 h-5" />
-              İndirim
+              {tm('discount')}
             </div>
           </button>
           {item.product.variants && item.product.variants.length > 0 && (
@@ -220,7 +211,7 @@ export function POSCartItemActionModal({
             >
               <div className="flex items-center justify-center gap-2">
                 <Package className="w-5 h-5" />
-                Varyant
+                {tm('variant')}
               </div>
             </button>
           )}
@@ -234,37 +225,31 @@ export function POSCartItemActionModal({
           >
             <div className="flex items-center justify-center gap-2">
               <Trash2 className="w-5 h-5" />
-              Sil
+              {tm('delete')}
             </div>
           </button>
         </div>
 
-        {/* Content Area */}
         <div className="flex-1 overflow-hidden flex flex-col">
           <div className="flex-1 flex overflow-hidden">
-            {/* Left Side - Form Controls */}
             <div className="flex-1 overflow-y-auto p-6 space-y-6">
-              {/* Product Info Summary */}
               <div className={`rounded-xl p-4 border flex items-center justify-between ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-blue-50 border-blue-100 text-blue-900'}`}>
                 <div>
                   <h4 className="font-bold text-lg leading-tight">{item.product.name}</h4>
-                  <p className="text-sm opacity-70 font-medium">Barkod: {item.product.barcode}</p>
+                  <p className="text-sm opacity-70 font-medium">{tm('barcode')}: {item.product.barcode}</p>
                 </div>
                 <div className="text-right">
-                  <p className="text-xs uppercase font-black opacity-50 tracking-widest">Birim Fiyat</p>
+                  <p className="text-xs uppercase font-black opacity-50 tracking-widest">{tm('unitPrice')}</p>
                   <p className="text-xl font-black">{formatMoneyAmount(currentPrice)}</p>
                 </div>
               </div>
 
-              {/* Main Tab: Combined Quantity, Price and Units */}
               {activeTab === 'main' && (
                 <div className="space-y-6">
-                  {/* Quantity and Price Grid */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    {/* Quantity Control */}
                     <div className="space-y-2">
                       <label className={`block text-xs font-black uppercase tracking-widest ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                        MİKTAR
+                        {tm('quantity')}
                       </label>
                       <div className="flex gap-2">
                         <button
@@ -307,10 +292,9 @@ export function POSCartItemActionModal({
                       </div>
                     </div>
 
-                    {/* Price Control */}
                     <div className="space-y-2">
                       <label className={`block text-xs font-black uppercase tracking-widest ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                        FİYAT
+                        {tm('price')}
                       </label>
                       <div className="relative">
                         <input
@@ -328,26 +312,25 @@ export function POSCartItemActionModal({
                     </div>
                   </div>
 
-                  {/* Unit Selection Integration */}
                   <div className="space-y-2 pt-4 border-t border-dashed border-gray-200 dark:border-gray-700">
                     <label className={`block text-xs font-black uppercase tracking-widest ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                      BİRİM SEÇİMİ
+                      {tm('posCartModalUnitSelection')}
                     </label>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                       {(() => {
-                        const pUnitsetId = (item.product as any).unitset_id || (item.product as any).unitsetId;
-                        const productUnits = unitSets.find(us => us.id === pUnitsetId)?.lines || (item.product as any).unitSets?.[0]?.units;
-                        
+                        const pUnitsetId = (item.product as { unitset_id?: string; unitsetId?: string }).unitset_id || (item.product as { unitsetId?: string }).unitsetId;
+                        const productUnits = unitSets.find(us => us.id === pUnitsetId)?.lines || (item.product as { unitSets?: { units?: unknown[] }[] }).unitSets?.[0]?.units;
+
                         if (!productUnits || productUnits.length === 0) {
                           return (
                             <div className={`col-span-full p-4 text-center border-2 border-dashed rounded-xl ${darkMode ? 'border-gray-700 text-gray-500' : 'border-gray-200 text-gray-400'}`}>
-                              Birim tanımlanmamış.
+                              {tm('posCartModalUnitNotDefined')}
                             </div>
                           );
                         }
 
-                        return productUnits.map((u: any) => {
-                          const isCurrent = (item.unit || item.product.unit) === (u.name || u.name);
+                        return productUnits.map((u: { id: string; name: string; multiplier?: number; conv_fact1?: number }) => {
+                          const isCurrent = (item.unit || item.product.unit) === u.name;
                           return (
                             <button
                               key={u.id}
@@ -373,16 +356,15 @@ export function POSCartItemActionModal({
                     </div>
                   </div>
 
-                  {/* Ürün notu */}
                   <div className="space-y-2 pt-4 border-t border-dashed border-gray-200 dark:border-gray-700">
                     <label className={`block text-xs font-black uppercase tracking-widest flex items-center gap-2 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
                       <StickyNote className="w-4 h-4" />
-                      {tm('productNote') || 'Ürün notu'}
+                      {tm('productNote')}
                     </label>
                     <textarea
                       value={note}
                       onChange={e => setNote(e.target.value)}
-                      placeholder={tm('productNotePlaceholder') || 'Örn. hediye paketi, alerji bilgisi...'}
+                      placeholder={tm('productNotePlaceholder')}
                       rows={3}
                       className={`w-full px-4 py-3 border-2 rounded-xl text-sm font-medium resize-none transition-all outline-none ${
                         darkMode
@@ -394,12 +376,11 @@ export function POSCartItemActionModal({
                 </div>
               )}
 
-              {/* Discount Tab */}
               {activeTab === 'discount' && (
                 <div className="space-y-6">
                   <div className="space-y-2">
                     <label className={`block text-xs font-black uppercase tracking-widest ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                      İNDİRİM YÜZDESİ
+                      {tm('posCartModalDiscountPercent')}
                     </label>
                     <div className="relative">
                       <input
@@ -437,7 +418,6 @@ export function POSCartItemActionModal({
                 </div>
               )}
 
-              {/* Variant selection */}
               {activeTab === 'variant' && item.product.variants && item.product.variants.length > 0 && (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[300px] overflow-y-auto pr-2">
                   {item.product.variants.map((v, idx) => {
@@ -464,7 +444,7 @@ export function POSCartItemActionModal({
                         </div>
                         <div className="flex justify-between items-center text-xs">
                           <span className="font-bold text-purple-600">{formatMoneyAmount(v.price || 0)}</span>
-                          <span className={v.stock > 0 ? 'text-green-600' : 'text-red-500'}>Stok: {v.stock}</span>
+                          <span className={v.stock > 0 ? 'text-green-600' : 'text-red-500'}>{tm('stock')}: {v.stock}</span>
                         </div>
                       </button>
                     );
@@ -477,40 +457,40 @@ export function POSCartItemActionModal({
                   <div className="w-20 h-20 bg-red-100 dark:bg-red-900/30 rounded-full flex items-center justify-center mx-auto">
                     <Trash2 className="w-10 h-10 text-red-600" />
                   </div>
-                  <h4 className="text-xl font-black">Ürünü Kaldır</h4>
-                  <p className="opacity-70 font-medium">Bu ürünü sepetten silmek istediğinizden emin misiniz?</p>
-                  <button onClick={handleRemove} className="w-full py-4 bg-red-600 text-white rounded-xl font-black text-lg">SİL</button>
+                  <h4 className="text-xl font-black">{tm('removeFromCart')}</h4>
+                  <p className="opacity-70 font-medium">{tm('posCartModalRemoveConfirmShort')}</p>
+                  <button onClick={handleRemove} className="w-full py-4 bg-red-600 text-white rounded-xl font-black text-lg uppercase">
+                    {tm('delete')}
+                  </button>
                 </div>
               )}
 
-              {/* Subtotal Summary */}
               {activeTab !== 'remove' && (
                 <div className={`rounded-xl p-4 space-y-1 ${darkMode ? 'bg-gray-900/50' : 'bg-gray-50'}`}>
                   <div className="flex justify-between items-center text-[10px] font-black opacity-50 uppercase tracking-widest">
-                    <span>Ara Toplam</span>
+                    <span>{tm('subTotal')}</span>
                     <span>{formatMoneyAmount(itemTotal)}</span>
                   </div>
                   {discountPercent > 0 && (
                     <div className="flex justify-between items-center text-[10px] font-black text-orange-600 uppercase tracking-widest">
-                      <span>İndirim (%{discount})</span>
+                      <span>{tm('posCartModalDiscountLine').replace('{pct}', discount)}</span>
                       <span>-{formatMoneyAmount(discountAmount)}</span>
                     </div>
                   )}
                   <div className="pt-2 border-t border-gray-200 dark:border-gray-800 flex justify-between items-baseline">
-                    <span className="text-xs font-black uppercase tracking-widest opacity-80">NET TOPLAM</span>
+                    <span className="text-xs font-black uppercase tracking-widest opacity-80">{tm('netTotal')}</span>
                     <span className="text-3xl font-black text-blue-600">{formatMoneyAmount(newTotal)}</span>
                   </div>
                 </div>
               )}
             </div>
 
-            {/* Right Side - Numpad */}
             {showNumpad && activeTab !== 'variant' && activeTab !== 'remove' && (
               <div className={`w-[340px] border-l p-6 flex flex-col justify-center ${darkMode ? 'bg-gray-800/50 border-gray-700' : 'bg-gray-50/50 border-gray-100'}`}>
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-2">
                     <Calculator className="w-4 h-4 text-blue-600" />
-                    <span className="text-[10px] font-black uppercase tracking-widest opacity-60">Tuş Takımı</span>
+                    <span className="text-[10px] font-black uppercase tracking-widest opacity-60">{tm('posCartModalNumpad')}</span>
                   </div>
                   <div className="flex bg-gray-200 dark:bg-gray-700 p-0.5 rounded-lg">
                     <button
@@ -519,7 +499,7 @@ export function POSCartItemActionModal({
                         numpadMode === 'replace' ? 'bg-white dark:bg-gray-600 text-blue-600' : 'text-gray-500'
                       }`}
                     >
-                      SİL
+                      {tm('posCartModalNumpadClear')}
                     </button>
                     <button
                       onClick={() => setNumpadMode('concat')}
@@ -527,7 +507,7 @@ export function POSCartItemActionModal({
                         numpadMode === 'concat' ? 'bg-white dark:bg-gray-600 text-blue-600' : 'text-gray-500'
                       }`}
                     >
-                      EKLE
+                      {tm('posCartModalNumpadAppend')}
                     </button>
                   </div>
                 </div>
@@ -536,6 +516,7 @@ export function POSCartItemActionModal({
                     value={currentNumpadValue}
                     onChange={handleNumpadChange}
                     showSubmitButton={false}
+                    showHeading={false}
                     allowDecimal={focusedInput !== 'quantity'}
                     darkMode={darkMode}
                   />
@@ -545,7 +526,6 @@ export function POSCartItemActionModal({
           </div>
         </div>
 
-        {/* Footer Actions */}
         <div className={`p-6 border-t flex gap-4 ${darkMode ? 'border-gray-700 bg-gray-800' : 'border-gray-200 bg-white'}`}>
           <button
             onClick={() => setShowNumpad(!showNumpad)}
@@ -554,9 +534,9 @@ export function POSCartItemActionModal({
             }`}
           >
             <Calculator className="w-6 h-6" />
-            {showNumpad ? 'Klavye' : 'Pad'}
+            {showNumpad ? tm('posCartModalKeyboard') : tm('posCartModalPad')}
           </button>
-          
+
           <div className="flex-1 flex gap-4">
             <button
               onClick={onClose}
@@ -564,13 +544,13 @@ export function POSCartItemActionModal({
                 darkMode ? 'border-gray-700 text-gray-400 hover:bg-gray-700' : 'border-gray-200 text-gray-500 hover:bg-gray-50'
               }`}
             >
-              Vazgeç
+              {tm('giveUp')}
             </button>
             <button
               onClick={handleApply}
               className="flex-[2] h-16 rounded-2xl font-black text-xl uppercase tracking-widest transition-all bg-blue-600 hover:bg-blue-700 text-white shadow-xl shadow-blue-600/20 active:scale-[0.98]"
             >
-              GÜNCELLE VE KAPAT
+              {tm('posCartModalUpdateClose')}
             </button>
           </div>
         </div>
@@ -578,5 +558,3 @@ export function POSCartItemActionModal({
     </div>
   );
 }
-
-

@@ -1,4 +1,5 @@
 import { Delete, Eraser } from 'lucide-react';
+import { useLanguage } from '../../contexts/LanguageContext';
 
 interface POSNumpadProps {
   value: string;
@@ -10,6 +11,8 @@ interface POSNumpadProps {
   allowDecimal?: boolean;
   submitLabel?: string;
   showSubmitButton?: boolean;
+  /** false ise üst başlık gizlenir (üst bileşende zaten etiket varsa) */
+  showHeading?: boolean;
   quickAmountButton?: {
     label: string;
     value: number;
@@ -23,10 +26,13 @@ export function POSNumpad({
   onEnter,
   darkMode = false,
   allowDecimal = true,
-  submitLabel = 'TAMAM',
+  submitLabel,
   showSubmitButton = true,
+  showHeading = true,
   quickAmountButton
 }: POSNumpadProps) {
+  const { tm } = useLanguage();
+  const resolvedSubmitLabel = submitLabel ?? tm('posNumpadOk');
 
   const handleClick = (input: string) => {
     if (input === 'clear') {
@@ -52,9 +58,11 @@ export function POSNumpad({
 
   return (
     <div>
-      <h4 className={`text-sm mb-2 font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-        Numpad:
-      </h4>
+      {showHeading && (
+        <h4 className={`text-sm mb-2 font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+          {tm('posCartModalNumpad')}:
+        </h4>
+      )}
       <div className="grid grid-cols-4 gap-0.5">
         {/* Row 1: 00, 000, Clear icon, Backspace icon */}
         <button
@@ -172,7 +180,7 @@ export function POSNumpad({
                 : 'bg-blue-600 hover:bg-blue-700 text-white active:bg-blue-800'
               }`}
           >
-            {submitLabel}
+            {resolvedSubmitLabel}
           </button>
         ) : (
           <div className={`row-span-2 ${darkMode ? 'bg-gray-900' : 'bg-gray-100'}`}></div>
