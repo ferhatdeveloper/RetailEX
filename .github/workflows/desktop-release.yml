@@ -84,7 +84,8 @@ jobs:
             3. Giriş: demo `admin` / `admin` (yerel PostgreSQL yapılandırmasına bağlı)
 
             ### Notlar
-            - CI derlemesi: kod imzasız (`WINDOWS_CODESIGN_DISABLE`); müşteri PC'de SmartScreen uyarısı görülebilir
+            - CI derlemesi: kod imzasız (`WINDOWS_CODESIGN_DISABLE`); SmartScreen uyarısı görülebilir
+            - Terazi köprüsü ayrı release: **RetailEX Terazi Köprüsü 0.1.91**
             - Sürüm: `${{ env.PACKAGE_VERSION }}` (kök `package.json`)
 
             ### Dosyalar

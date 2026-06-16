@@ -54,6 +54,9 @@ jobs:
           if (-not (Test-Path $iscc)) { throw "ISCC not found: $iscc" }
           echo "ISCC=$iscc" >> $env:GITHUB_ENV
 
+      - name: Setup MSBuild (RongtaDllBridge)
+        uses: microsoft/setup-msbuild@v2
+
       - name: Build installer
         shell: pwsh
         env:
@@ -78,21 +81,28 @@ jobs:
           body: |
             ## RetailEX Terazi Köprüsü (Windows)
 
-            Mağaza PC'de tek kurulum: servis + yönetim arayüzü + taşınabilir Node.
+            Mağaza PC'de tek kurulum: servis + yönetim arayüzü + taşınabilir Node + **Rongta rtslabelscale.dll**.
 
-            ### Yenilikler (0.1.87)
-            - Terazi Köprüsü masaüstü yönetici penceresi tam ekran (maximize) açılır
-            - Web yönetim arayüzü (`/ui/`) tam sayfa genişliği kullanır
+            ### Yenilikler (0.1.91)
+            - Varsayılan **SYSTEM.CFG** (Rongta DLL yapılandırması)
+            - `copy-rongta-system-cfg.ps1` — masaüstü Debug SYSTEM.CFG kopyalama
 
-            ### Yenilikler (0.1.85)
-            - **Masaüstü yönetim** (WinForms benzeri Slint pencere): terazi ekle/düzenle, test, tarama — tarayıcı zorunlu değil
-            - `--web` ile eski HTML arayüzü; varsayılan: `RetailEX_ScaleBridge_Manager.exe` penceresi
+            ### Yenilikler (0.1.90)
+            - C# TeraziRongta ile tam DLL parity: **hotkey**, Pludata JSON, satış okuma (DLL)
+            - `scaleClearBeforeSend` / `scaleSendHotkeys` config
+
+            ### Yenilikler (0.1.89)
+            - **RongtaDllBridge.exe** — resmi `rtslabelscale.dll` köprüsü (ham TCP yedek)
+            - `scaleBackend: auto|dll|tcp`
+
+            ### Yenilikler (0.1.88)
+            - İki aşamalı ağ taraması + gelen TCP dinleme (RLS1000 background modu)
 
             ### Kurulum / güncelleme
             1. `RetailEX-ScaleBridge-Setup.exe` indirin (yönetici olarak çalıştırın)
-            2. Eski sürüm varsa Setup üzerine kurar; ayar dosyanız (`scale-bridge.json`) silinmez
-            3. Yönetim UI: http://127.0.0.1:3012/ui/
-            4. Mağaza kodu, token ve terazi IP/port yapılandırması
+            2. Eski sürüm varsa Setup üzerine kurar; `scale-bridge.json` korunur
+            3. Yönetim: `RetailEX_ScaleBridge_Manager.exe` veya http://127.0.0.1:3012/ui/
+            4. Terazi IP + (isteğe bağlı) çalışan `SYSTEM.CFG` kopyası
 
             ### Dosyalar
             - **RetailEX-ScaleBridge-Setup.exe** — Inno Setup kurulumu
