@@ -234,7 +234,7 @@ export type ScaleBridgeScanResult = {
     model?: string;
     isResponding: boolean;
     protocolVerified?: boolean;
-    discoveryMethod?: 'protocol' | 'tcp';
+    discoveryMethod?: 'protocol' | 'tcp' | 'inbound';
     openPorts?: number[];
   }[];
 };
@@ -260,6 +260,15 @@ export async function scaleBridgeScanDefaults(): Promise<ScaleBridgeScanDefaults
     throw new Error(json.error || `HTTP ${res.status}`);
   }
   return json;
+}
+
+export async function scaleBridgeListInboundDevices(): Promise<ScaleBridgeScanResult['devices']> {
+  try {
+    const json = await bridgeFetch<{ devices: ScaleBridgeScanResult['devices'] }>('/scales/inbound');
+    return json.devices || [];
+  } catch {
+    return [];
+  }
 }
 
 export async function scaleBridgeScanNetwork(

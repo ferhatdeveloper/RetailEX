@@ -258,7 +258,12 @@ export function ScaleScannerModal({ onDevicesFound, onClose }: ScaleScannerModal
                             <h4 className="text-gray-900">
                               {device.brand?.toUpperCase() || 'Bilinmeyen Terazi'}
                             </h4>
-                            {device.protocolVerified === false && (
+                            {device.discoveryMethod === 'inbound' && (
+                              <span className="px-2 py-0.5 bg-indigo-100 text-indigo-800 text-xs rounded">
+                                Terazi PC&apos;ye bağlandı
+                              </span>
+                            )}
+                            {device.protocolVerified === false && device.discoveryMethod !== 'inbound' && (
                               <span className="px-2 py-0.5 bg-amber-100 text-amber-800 text-xs rounded">
                                 TCP adayı — test edin
                               </span>

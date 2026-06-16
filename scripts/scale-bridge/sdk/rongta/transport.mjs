@@ -19,18 +19,55 @@ export function errorCode(err) {
 }
 
 export function readOnce(socket, timeoutMs = SOCKET_TIMEOUT_MS) {
+  return readFrame(socket, timeoutMs);
+}
+
+/** Tam Rongta paketi oku (TCP parçalanmasına dayanıklı). */
+export function readFrame(socket, timeoutMs = SOCKET_TIMEOUT_MS) {
   return new Promise((resolve, reject) => {
-    let buf = '';
-    const timer = setTimeout(() => { cleanup(); resolve(buf); }, timeoutMs);
-    const onData = (chunk) => {
-      buf += chunk.toString('ascii');
-      if (buf.length >= 8) {
-        const len = parseInt(buf.slice(0, 4), 10);
-        if (Number.isFinite(len) && buf.length >= len) { cleanup(); resolve(buf.slice(0, len)); }
-      }
+    const chunks = [];
+    let timer;
+
+    const cleanup = () => {
+      clearTimeout(timer);
+      socket.off('data', onData);
+      socket.off('error', onError);
     };
-    const cleanup = () => { clearTimeout(timer); socket.off('data', onData); socket.off('error', onError); };
-    const onError = (err) => { cleanup(); reject(err); };
+
+    const tryResolve = () => {
+      const buf = Buffer.concat(chunks).toString('ascii');
+      if (buf.length < 4) return false;
+      const len = parseInt(buf.slice(0, 4), 10);
+      if (!Number.isFinite(len) || len < 8) return false;
+      if (len > 16384) {
+        cleanup();
+        reject(new Error('Geçersiz paket uzunluğu'));
+        return true;
+      }
+      if (buf.length >= len) {
+        cleanup();
+        resolve(buf.slice(0, len));
+        return true;
+      }
+      return false;
+    };
+
+    const onData = (chunk) => {
+      chunks.push(chunk);
+      tryResolve();
+    };
+
+    const onError = (err) => {
+      cleanup();
+      reject(err);
+    };
+
+    timer = setTimeout(() => {
+      cleanup();
+      const partial = Buffer.concat(chunks).toString('ascii');
+      resolve(partial);
+    }, timeoutMs);
+
     socket.on('data', onData);
     socket.on('error', onError);
   });

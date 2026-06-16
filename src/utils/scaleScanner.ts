@@ -10,6 +10,7 @@ import {
   resolveScaleBridgeBaseUrl,
   scaleBridgeScanDefaults,
   scaleBridgeScanNetwork,
+  scaleBridgeListInboundDevices,
 } from '../services/scaleBridgeApi';
 
 export interface ScanProgress {
@@ -25,7 +26,7 @@ export interface ScannedDevice {
   model?: string;
   isResponding: boolean;
   protocolVerified?: boolean;
-  discoveryMethod?: 'protocol' | 'tcp';
+  discoveryMethod?: 'protocol' | 'tcp' | 'inbound';
   openPorts?: number[];
 }
 
@@ -64,22 +65,33 @@ export async function scanNetwork(
     }
 
     const scanAllSubnets = options?.allSubnets !== false;
-    const result = await scaleBridgeScanNetwork(
-      scanAllSubnets ? undefined : startIP,
-      scanAllSubnets ? undefined : endIP,
-      32,
-      { allSubnets: scanAllSubnets }
-    );
-    const devices = (result.devices || []).map((d) => ({
-      ipAddress: d.ipAddress,
-      port: d.port,
-      brand: (d.brand || 'rongta') as ScaleDevice['brand'],
-      model: d.model,
-      isResponding: d.isResponding !== false,
-      protocolVerified: d.protocolVerified,
-      discoveryMethod: d.discoveryMethod,
-      openPorts: d.openPorts,
-    }));
+    const [inbound, result] = await Promise.all([
+      scaleBridgeListInboundDevices(),
+      scaleBridgeScanNetwork(
+        scanAllSubnets ? undefined : startIP,
+        scanAllSubnets ? undefined : endIP,
+        32,
+        { allSubnets: scanAllSubnets }
+      ),
+    ]);
+
+    const seen = new Set<string>();
+    const devices = [...(result.devices || []), ...inbound]
+      .filter((d) => {
+        if (seen.has(d.ipAddress)) return false;
+        seen.add(d.ipAddress);
+        return true;
+      })
+      .map((d) => ({
+        ipAddress: d.ipAddress,
+        port: d.port,
+        brand: (d.brand || 'rongta') as ScaleDevice['brand'],
+        model: d.model,
+        isResponding: d.isResponding !== false,
+        protocolVerified: d.protocolVerified,
+        discoveryMethod: d.discoveryMethod,
+        openPorts: d.openPorts,
+      }));
 
     if (onProgress) {
       onProgress({

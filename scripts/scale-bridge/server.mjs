@@ -12,6 +12,7 @@ import { dirname, resolve, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { rongtaTcpSendPlu, rongtaTcpTest, rongtaTcpFetchSales, discoverRongtaPort, tcpProbePorts } from './rongtaTcp.mjs';
 import { scanNetworkForScales, guessLocalSubnet } from './scan.mjs';
+import { startScaleInboundListeners, getInboundScales } from './listen.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ADMIN_DIR = join(__dirname, 'admin');
@@ -27,6 +28,11 @@ const DEFAULT_CONFIG = {
   storeCode: '',
   storeName: '',
   scales: [],
+  scaleInboundListen: {
+    enabled: true,
+    host: '0.0.0.0',
+    ports: [20304, 4001, 8888, 3000, 9200, 19204],
+  },
 };
 
 let config = { ...DEFAULT_CONFIG };
@@ -87,6 +93,9 @@ async function loadConfig() {
     const raw = await readFile(configPath, 'utf8');
     config = { ...DEFAULT_CONFIG, ...JSON.parse(raw) };
     if (!Array.isArray(config.scales)) config.scales = [];
+    if (!config.scaleInboundListen || typeof config.scaleInboundListen !== 'object') {
+      config.scaleInboundListen = { ...DEFAULT_CONFIG.scaleInboundListen };
+    }
   } catch (e) {
     console.error('[scale-bridge] config load error:', e);
     config = { ...DEFAULT_CONFIG };
@@ -100,6 +109,36 @@ async function saveConfig() {
 
 function findScale(id) {
   return config.scales.find((s) => s.id === id);
+}
+
+async function applyInboundListen() {
+  const cfg = config.scaleInboundListen || DEFAULT_CONFIG.scaleInboundListen;
+  try {
+    const result = await startScaleInboundListeners(cfg);
+    if (result.started?.length) {
+      console.log(`[scale-bridge] Gelen terazi dinleme portları: ${result.started.join(', ')}`);
+    }
+    if (result.skipped?.length) {
+      for (const s of result.skipped) {
+        console.warn(`[scale-bridge] Dinleme portu ${s.port} atlandı: ${s.reason}`);
+      }
+    }
+    return result;
+  } catch (e) {
+    console.error('[scale-bridge] inbound listen error:', e);
+    return { started: [], skipped: [], error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+function mergeInboundDevices(devices) {
+  const merged = [...(devices || [])];
+  const seen = new Set(merged.map((d) => d.ipAddress));
+  for (const row of getInboundScales()) {
+    if (seen.has(row.ipAddress)) continue;
+    seen.add(row.ipAddress);
+    merged.push(row);
+  }
+  return merged.sort((a, b) => a.ipAddress.localeCompare(b.ipAddress, undefined, { numeric: true }));
 }
 
 function scaleToDevice(scale) {
@@ -179,14 +218,17 @@ async function handle(req, res) {
 
   try {
     if (req.method === 'GET' && path === '/status') {
+      const inbound = getInboundScales();
       return json(res, 200, {
         ok: true,
         service: 'retailex-scale-bridge',
         storeCode: config.storeCode,
         storeName: config.storeName,
         scaleCount: config.scales.length,
+        inboundScaleCount: inbound.length,
         configPath,
         port: PORT,
+        inboundListen: config.scaleInboundListen?.enabled !== false,
       });
     }
 
@@ -215,7 +257,14 @@ async function handle(req, res) {
         includeTcpCandidates: body.includeTcpCandidates !== false,
         tcpTimeoutMs: body.tcpTimeoutMs,
       });
+      const inbound = getInboundScales();
+      result.inboundCount = inbound.length;
+      result.devices = mergeInboundDevices(result.devices);
       return json(res, 200, result);
+    }
+
+    if (req.method === 'GET' && path === '/scales/inbound') {
+      return json(res, 200, { devices: getInboundScales() });
     }
 
     if (req.method === 'PUT' && path === '/config') {
@@ -224,7 +273,11 @@ async function handle(req, res) {
       if (body.storeName !== undefined) config.storeName = String(body.storeName);
       if (body.authToken !== undefined && body.authToken !== '***') config.authToken = String(body.authToken);
       if (Array.isArray(body.scales)) config.scales = body.scales;
+      if (body.scaleInboundListen && typeof body.scaleInboundListen === 'object') {
+        config.scaleInboundListen = { ...config.scaleInboundListen, ...body.scaleInboundListen };
+      }
       await saveConfig();
+      await applyInboundListen();
       return json(res, 200, { ok: true });
     }
 
@@ -330,8 +383,10 @@ async function handle(req, res) {
 }
 
 await loadConfig();
+await applyInboundListen();
 const server = http.createServer((req, res) => { handle(req, res); });
 server.listen(PORT, HOST, () => {
   console.log(`[scale-bridge] http://${HOST}:${PORT} config=${configPath}`);
   console.log(`[scale-bridge] Yönetim UI: http://127.0.0.1:${PORT}/ui/`);
+  console.log('[scale-bridge] Terazi gelen TCP dinleme aktif (RLS1000 background modu)');
 });

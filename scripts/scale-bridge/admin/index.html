@@ -192,6 +192,19 @@
       </section>
 
       <section class="card">
+        <h2>Gelen terazi bağlantıları (RLS1000 background)</h2>
+        <p class="sub" style="margin-top:0">
+          Terazi menüsünde PC IP adresiniz tanımlıysa terazi bu PC&apos;ye TCP ile bağlanır — IP taraması gerekmez.
+          Köprü portları: 20304, 4001, 8888, 3000, 9200, 19204
+        </p>
+        <div class="actions">
+          <button class="btn-secondary" id="btnInboundRefresh">Gelen bağlantıları yenile</button>
+        </div>
+        <div id="inboundInfo" class="sub">Yükleniyor…</div>
+        <div id="inboundResults"></div>
+      </section>
+
+      <section class="card">
         <h2>Ağ taraması (Rongta)</h2>
         <div class="row">
           <div>
@@ -467,6 +480,54 @@
       try { await loadConfig(); $('saveMsg').textContent = ''; } catch (e) { alert(e.message); }
     };
 
+    async function loadInbound() {
+      try {
+        const res = await api('/scales/inbound');
+        const list = res.devices || [];
+        $('inboundInfo').textContent = list.length
+          ? list.length + ' terazi PC\'ye bağlandı (son gelen TCP)'
+          : 'Henüz gelen bağlantı yok — terazi menüsünde bu PC\'nin IP\'sini kaydedin, ardından yenileyin.';
+        const box = $('inboundResults');
+        box.innerHTML = '';
+        for (const d of list) {
+          const div = document.createElement('div');
+          div.className = 'scan-hit';
+          div.innerHTML = `
+            <span><strong>${escapeHtml(d.ipAddress)}</strong> · gelen TCP</span>
+            <span class="sub">dinleme portu ${d.listenPort || '—'} · ${escapeHtml(d.lastSeen || '')}</span>
+            <button type="button" class="btn-secondary" data-inbound-add="${escapeHtml(d.ipAddress)}">Ekle</button>
+          `;
+          box.appendChild(div);
+        }
+        box.querySelectorAll('[data-inbound-add]').forEach((btn) => {
+          btn.onclick = async () => {
+            const ip = btn.getAttribute('data-inbound-add');
+            const cfg = await api('/config');
+            const scales = [...(cfg.scales || [])];
+            if (scales.some((s) => s.ipAddress === ip)) {
+              $('saveMsg').textContent = ip + ' zaten kayıtlı.';
+              return;
+            }
+            scales.push({
+              id: 'scale-' + ip.replace(/\./g, '-'),
+              name: 'Rongta ' + ip,
+              brand: 'rongta',
+              model: 'RLS1100',
+              ipAddress: ip,
+              port: 20304,
+              enabled: true,
+            });
+            await saveConfig(scales);
+            $('saveMsg').textContent = ip + ' eklendi.';
+          };
+        });
+      } catch (e) {
+        $('inboundInfo').textContent = e.message;
+      }
+    }
+
+    $('btnInboundRefresh').onclick = () => loadInbound();
+
     async function loadScanDefaults() {
       try {
         const d = await api('/scan/defaults');
@@ -566,8 +627,10 @@
     (async () => {
       await loadStatus();
       try { await loadConfig(); } catch (e) { setBadge(false, e.message); }
+      try { await loadInbound(); } catch (_) { /* */ }
       try { await loadScanDefaults(); } catch (_) { /* yukarıda mesaj */ }
       setInterval(loadStatus, 15000);
+      setInterval(loadInbound, 20000);
     })();
   </script>
 </body>
