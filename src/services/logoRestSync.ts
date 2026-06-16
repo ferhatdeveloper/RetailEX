@@ -59,6 +59,23 @@ export type LogoSyncResult = {
 };
 
 const LOG_EVERY = 10;
+const REST_UPSERT_CHUNK = 80;
+
+function isRestApiMode(): boolean {
+  return DB_SETTINGS.connectionProvider === 'rest_api';
+}
+
+async function bulkUpsertTableRest(
+  table: string,
+  rows: Record<string, unknown>[],
+  onConflict: string
+): Promise<void> {
+  const { postgrest } = await import('./api/postgrestClient');
+  for (let i = 0; i < rows.length; i += REST_UPSERT_CHUNK) {
+    const chunk = rows.slice(i, i + REST_UPSERT_CHUNK);
+    await postgrest.upsert(`/${table}`, chunk, onConflict, { schema: 'public' });
+  }
+}
 
 function firmNrPadded(): string {
   const raw = String(ERP_SETTINGS.firmNr || '001').replace(/\D/g, '') || '1';
@@ -201,10 +218,55 @@ async function upsertProductsWithApi(
   onLog?: LogoSyncOptions['onLog'],
   onProgress?: (p: LogoSyncProgress) => void
 ): Promise<LogoSyncEntityResult> {
+  const total = rows.length;
+
+  if (isRestApiMode() && total > 0) {
+    const table = `rex_${firmNrPadded()}_products`;
+    const firmEq = firmNrPadded();
+    const payloads = rows.map((row) => ({
+      firm_nr: firmEq,
+      code: String(row.code || ''),
+      name: String(row.name || 'İsimsiz'),
+      barcode: String(row.barcode || `L${row.code}`).slice(0, 100),
+      vat_rate: numVal(row.vat_rate, 18),
+      price: numVal(row.price, 0),
+      unit: String(row.unit || 'Adet'),
+      is_active: row.is_active !== false,
+      updated_at: new Date().toISOString(),
+    }));
+
+    try {
+      onProgress?.({
+        phase: 'products',
+        message: `${total} ürün toplu yazılıyor…`,
+        current: 0,
+        total,
+      });
+      await bulkUpsertTableRest(table, payloads, 'firm_nr,code');
+      nowLog(onLog, {
+        entity: 'product',
+        action: 'update',
+        code: '*',
+        detail: `${total} ürün toplu upsert`,
+        ok: true,
+      });
+      onProgress?.({
+        phase: 'products',
+        message: `Ürünler: ${total}/${total}`,
+        current: total,
+        total,
+      });
+      return { fetched: total, upserted: total, errors: 0, skipped: 0 };
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      nowLog(onLog, { entity: 'product', action: 'error', code: '*', detail: msg, ok: false });
+      throw new Error(`Ürün toplu yazımı başarısız: ${msg}`);
+    }
+  }
+
   let upserted = 0;
   let errors = 0;
   let skipped = 0;
-  const total = rows.length;
   let firstError = '';
 
   for (let i = 0; i < rows.length; i++) {
@@ -298,9 +360,42 @@ async function upsertCustomersWithApi(
   onLog?: LogoSyncOptions['onLog'],
   onProgress?: (p: LogoSyncProgress) => void
 ): Promise<LogoSyncEntityResult> {
+  const total = rows.length;
+
+  if (isRestApiMode() && total > 0) {
+    const table = `rex_${firmNrPadded()}_customers`;
+    const firmEq = firmNrPadded();
+    const payloads = rows.map((row) => ({
+      firm_nr: firmEq,
+      code: String(row.code || ''),
+      name: String(row.name || 'İsimsiz'),
+      phone: String(row.phone || ''),
+      email: String(row.email || ''),
+      address: String(row.address || ''),
+      city: String(row.city || ''),
+      tax_nr: String(row.tax_nr || ''),
+      tax_office: String(row.tax_office || ''),
+      is_active: true,
+    }));
+
+    try {
+      onProgress?.({
+        phase: 'customers',
+        message: `${total} cari toplu yazılıyor…`,
+        current: 0,
+        total,
+      });
+      await bulkUpsertTableRest(table, payloads, 'code');
+      return { fetched: total, upserted: total, errors: 0, skipped: 0 };
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      nowLog(onLog, { entity: 'customer', action: 'error', code: '*', detail: msg, ok: false });
+      throw new Error(`Cari toplu yazımı başarısız: ${msg}`);
+    }
+  }
+
   let upserted = 0;
   let errors = 0;
-  const total = rows.length;
 
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i];
@@ -368,9 +463,42 @@ async function upsertSuppliersWithApi(
   onLog?: LogoSyncOptions['onLog'],
   onProgress?: (p: LogoSyncProgress) => void
 ): Promise<LogoSyncEntityResult> {
+  const total = rows.length;
+
+  if (isRestApiMode() && total > 0) {
+    const table = `rex_${firmNrPadded()}_suppliers`;
+    const firmEq = firmNrPadded();
+    const payloads = rows.map((row) => ({
+      firm_nr: firmEq,
+      code: String(row.code || ''),
+      name: String(row.name || 'İsimsiz'),
+      phone: String(row.phone || ''),
+      email: String(row.email || ''),
+      address: String(row.address || ''),
+      city: String(row.city || ''),
+      tax_nr: String(row.tax_nr || ''),
+      tax_office: String(row.tax_office || ''),
+      is_active: true,
+    }));
+
+    try {
+      onProgress?.({
+        phase: 'suppliers',
+        message: `${total} tedarikçi toplu yazılıyor…`,
+        current: 0,
+        total,
+      });
+      await bulkUpsertTableRest(table, payloads, 'code');
+      return { fetched: total, upserted: total, errors: 0, skipped: 0 };
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      nowLog(onLog, { entity: 'supplier', action: 'error', code: '*', detail: msg, ok: false });
+      throw new Error(`Tedarikçi toplu yazımı başarısız: ${msg}`);
+    }
+  }
+
   let upserted = 0;
   let errors = 0;
-  const total = rows.length;
 
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i];

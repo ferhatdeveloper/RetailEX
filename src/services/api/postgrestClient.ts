@@ -69,6 +69,33 @@ export async function postgrestGet<T = unknown>(
 }
 
 /**
+ * POST upsert — on_conflict ile birleştirme (Logo senkron gibi toplu yazımlar)
+ */
+export async function postgrestUpsert<T = unknown>(
+  path: string,
+  body: Record<string, unknown> | unknown[],
+  onConflict: string,
+  options?: PostgrestClientOptions & { prefer?: 'return=representation' | 'return=minimal' }
+): Promise<T> {
+  const sep = path.includes('?') ? '&' : '?';
+  const url = getPostgrestUrl(`${path}${sep}on_conflict=${encodeURIComponent(onConflict)}`);
+  const headers = buildHeaders(options);
+  headers.Prefer = options?.prefer ?? 'resolution=merge-duplicates,return=minimal';
+  const res = await fetchRetailexAware(url, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`PostgREST UPSERT ${path}: ${res.status} ${res.statusText}${text ? ` — ${text}` : ''}`);
+  }
+  const ct = res.headers.get('Content-Type');
+  if (ct?.includes('application/json')) return res.json() as Promise<T>;
+  return undefined as unknown as T;
+}
+
+/**
  * POST — yeni kayıt (Prefer: return=representation ile oluşturulan satır döner)
  */
 export async function postgrestPost<T = unknown>(
@@ -150,6 +177,7 @@ export function postgrestPathOne(table: string, column: string, value: string): 
 export const postgrest = {
   get: postgrestGet,
   post: postgrestPost,
+  upsert: postgrestUpsert,
   patch: postgrestPatch,
   delete: postgrestDelete,
   pathOne: postgrestPathOne,

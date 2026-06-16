@@ -1037,7 +1037,16 @@ export async function logoEnsureSession(cfg: LogoRestConfig): Promise<LogoRestSe
   const ctx = resolveLogoContext(cfg);
   const existing = loadLogoRestSession();
   if (existing && Date.now() < existing.expiresAt && sessionMatchesContext(existing, ctx, cfg)) {
-    return existing;
+    // Firma kataloğu (CAPI/Firms) CompanyLogout sonrası token geçerli kalır; Logo tarafında firma oturumu kapanmış olabilir.
+    try {
+      const current = await logoGetCurrentFirmPeriod(cfg, existing);
+      if (current.firm === ctx.firmNr && current.period === ctx.periodNr) {
+        return existing;
+      }
+    } catch {
+      /* CurrentFirm/Period okunamadı — yeniden CompanyLogin */
+    }
+    return logoCompanyLogin(cfg, existing, ctx.firmNr, ctx.periodNr);
   }
   return logoAuthenticate(cfg, ctx.firmNr, ctx.periodNr);
 }
@@ -1071,6 +1080,7 @@ export async function logoListFirmCatalog(cfg: LogoRestConfig): Promise<LogoFirm
 
   // CAPI firma listesi firma oturumundan bağımsız; aktif CompanyLogin bazen yanıtı geciktirir.
   await logoCompanyLogout(cfg, session);
+  saveLogoRestSession(null);
 
   let lastErr = '';
   for (let attempt = 0; attempt < 2; attempt++) {

@@ -390,7 +390,10 @@ export function LogoTigerRestPanel() {
   };
 
   const handleSyncFromLogo = async () => {
-    if (connectionStatus !== 'connected') return;
+    if (connectionStatus !== 'connected') {
+      setConnectionError('Önce Logo bağlantısını test edin (Bağlan).');
+      return;
+    }
     setIsSyncing(true);
     setSyncProgress(null);
     setSyncResult(null);
