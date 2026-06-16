@@ -20,6 +20,8 @@ export function ScaleScannerModal({ onDevicesFound, onClose }: ScaleScannerModal
   const [selectedDevices, setSelectedDevices] = useState<Set<string>>(new Set());
   const [scanAllSubnets, setScanAllSubnets] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
