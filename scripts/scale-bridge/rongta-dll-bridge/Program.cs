@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Text;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
@@ -10,6 +11,11 @@ namespace RetailEX.RongtaDllBridge
     internal static class Program
     {
         private static readonly string BaseDir = AppDomain.CurrentDomain.BaseDirectory;
+
+        // GC delegate pin — callback'ler toplanmasın
+        private static RtscaleJsonCallback _saleCallbackRef;
+        private static RtscaleJsonCallback _pluUploadCallbackRef;
+        private static readonly List<string> _callbackBuffer = new List<string>();
 
         private static int Main()
         {
@@ -40,8 +46,12 @@ namespace RetailEX.RongtaDllBridge
                         return 0;
                     case "test":
                         return RunTest(ip);
+                    case "clear-plu":
+                        return RunClearPlu(ip);
                     case "send-plu":
                         return RunSendPlu(ip, req);
+                    case "upload-sales":
+                        return RunUploadSales(ip, req);
                     case "probe":
                         return RunTest(ip);
                     default:
@@ -73,8 +83,7 @@ namespace RetailEX.RongtaDllBridge
         private static int Connect(string ip, out int connid)
         {
             connid = 0;
-            var rc = LabelScaleNative.rtscaleConnect(ip, 0, ref connid);
-            return rc;
+            return LabelScaleNative.rtscaleConnect(ip, 0, ref connid);
         }
 
         private static int RunTest(string ip)
@@ -111,6 +120,29 @@ namespace RetailEX.RongtaDllBridge
             return 0;
         }
 
+        private static int RunClearPlu(string ip)
+        {
+            int connid;
+            var rc = Connect(ip, out connid);
+            if (rc < 0)
+            {
+                WriteResponse(new { success = false, message = "rtscaleConnect basarisiz (kod " + rc + ")" });
+                return 1;
+            }
+
+            var clearRc = LabelScaleNative.rtscaleClearPLUData(connid);
+            LabelScaleNative.rtscaleDisConnect(connid);
+
+            var ok = clearRc == 0;
+            WriteResponse(new
+            {
+                success = ok,
+                message = ok ? "PLU verisi temizlendi" : "PLU temizleme basarisiz (kod " + clearRc + ")",
+                backend = "rtslabelscale.dll",
+            });
+            return ok ? 0 : 1;
+        }
+
         private static int RunSendPlu(string ip, JObject req)
         {
             var records = req["records"] as JArray;
@@ -120,6 +152,10 @@ namespace RetailEX.RongtaDllBridge
                 return 2;
             }
 
+            var clearBefore = req["clearBeforeSend"] != null && req["clearBeforeSend"].Value<bool>();
+            var sendHotkeys = req["sendHotkeys"] == null || req["sendHotkeys"].Value<bool>();
+            var hotkeyMode = (req["hotkeyMode"] ?? "auto").ToString().Trim().ToLowerInvariant();
+
             int connid;
             var rc = Connect(ip, out connid);
             if (rc < 0)
@@ -128,14 +164,27 @@ namespace RetailEX.RongtaDllBridge
                 return 1;
             }
 
+            var errors = new List<string>();
+            var lfCodes = new List<int>();
+
+            if (clearBefore)
+            {
+                var clearRc = LabelScaleNative.rtscaleClearPLUData(connid);
+                if (clearRc != 0)
+                {
+                    errors.Add("PLU temizleme hatasi kod " + clearRc);
+                }
+            }
+
             var pluList = new List<JObject>();
             foreach (var item in records)
             {
-                pluList.Add(MapRecordToPluJson(item as JObject));
+                var mapped = PluJsonMapper.MapRecordToPluJson(item as JObject);
+                pluList.Add(mapped);
+                lfCodes.Add(mapped["LFCode"].Value<int>());
             }
 
             int sent = 0;
-            var errors = new List<string>();
             const int packSize = 4;
 
             for (int pack = 0; pack * packSize < pluList.Count; pack++)
@@ -152,12 +201,18 @@ namespace RetailEX.RongtaDllBridge
                 var dlRc = LabelScaleNative.rtscaleDownLoadPLU(connid, json, pack);
                 if (dlRc != 0)
                 {
-                    errors.Add("paket " + pack + " hata kodu " + dlRc);
+                    errors.Add("PLU paket " + pack + " hata kodu " + dlRc);
                 }
                 else
                 {
                     sent += batch.Count;
                 }
+            }
+
+            var hotkeyOk = true;
+            if (sendHotkeys && sent > 0)
+            {
+                hotkeyOk = DownloadHotkeys(connid, lfCodes, hotkeyMode, errors);
             }
 
             LabelScaleNative.rtscaleDisConnect(connid);
@@ -167,81 +222,93 @@ namespace RetailEX.RongtaDllBridge
             {
                 success = ok,
                 message = ok
-                    ? sent + " urun gonderildi (rtslabelscale.dll)"
-                    : sent + " gonderildi, " + errors.Count + " paket hatasi",
+                    ? sent + " urun gonderildi" + (sendHotkeys ? " + hotkey" : "") + " (rtslabelscale.dll)"
+                    : sent + " gonderildi, " + errors.Count + " hata",
                 sentCount = sent,
                 failedCount = pluList.Count - sent,
+                hotkeysSent = sendHotkeys && hotkeyOk,
                 errors = errors.Count > 0 ? errors : null,
                 backend = "rtslabelscale.dll",
             });
             return ok ? 0 : 1;
         }
 
-        private static JObject MapRecordToPluJson(JObject rec)
+        private static bool DownloadHotkeys(int connid, IList<int> lfCodes, string mode, IList<string> errors)
         {
-            if (rec == null) return new JObject();
-
-            var name = (rec["name"] ?? rec["PluName"] ?? "").ToString();
-            if (name.Length > 36) name = name.Substring(0, 36);
-
-            var lfRaw = rec["lfCode"] ?? rec["LFCode"] ?? rec["pluCode"];
-            int lfCode = 0;
-            if (lfRaw != null)
+            IList<int[]> tables;
+            if (mode == "demo")
             {
-                int.TryParse(lfRaw.ToString().Replace(" ", ""), out lfCode);
+                tables = HotkeyHelper.BuildDemoHotkeyTables();
             }
-            if (lfCode <= 0) lfCode = 1;
-
-            var code = (rec["barcode"] ?? rec["Code"] ?? lfCode.ToString()).ToString();
-            if (code.Length > 10) code = code.Substring(code.Length - 10);
-
-            double price = 0;
-            if (rec["price"] != null) double.TryParse(rec["price"].ToString(), out price);
-            else if (rec["UnitPrice"] != null) double.TryParse(rec["UnitPrice"].ToString(), out price);
-
-            int unitPrice = (int)Math.Round(price * 100);
-            if (rec["UnitPrice"] != null && rec["price"] == null)
+            else
             {
-                int.TryParse(rec["UnitPrice"].ToString(), out unitPrice);
+                tables = HotkeyHelper.BuildHotkeyTables(lfCodes);
             }
 
-            return new JObject
+            for (var tableIndex = 0; tableIndex < tables.Count; tableIndex++)
             {
-                ["PluName"] = name,
-                ["LFCode"] = lfCode,
-                ["Code"] = code,
-                ["BarCode"] = rec["barcodeType"] ?? rec["BarCode"] ?? 27,
-                ["UnitPrice"] = unitPrice,
-                ["WeightUnit"] = MapWeightUnit((rec["unit"] ?? rec["WeightUnit"])?.ToString()),
-                ["Deptment"] = rec["department"] ?? rec["Deptment"] ?? 0,
-                ["Tare"] = rec["tareGrams"] ?? rec["Tare"] ?? 0,
-                ["ShlefTime"] = rec["shelfDays"] ?? rec["ShlefTime"] ?? 15,
-                ["PackageType"] = rec["packageType"] ?? rec["PackageType"] ?? 0,
-                ["PackageWeight"] = rec["packageWeight"] ?? rec["PackageWeight"] ?? 0,
-                ["Tolerance"] = rec["tolerance"] ?? rec["Tolerance"] ?? 0,
-                ["Message1"] = rec["message1"] ?? rec["Message1"] ?? 0,
-                ["Message2"] = rec["message2"] ?? rec["Message2"] ?? 0,
-                ["MultiLabel"] = rec["multiLabel"] ?? rec["MultiLabel"] ?? 0,
-                ["Rebate"] = rec["rebate"] ?? rec["Rebate"] ?? 0,
-                ["Account"] = rec["account"] ?? rec["Account"] ?? 0,
-                ["QtyUnit"] = rec["qtyUnit"] ?? rec["QtyUnit"] ?? 0,
-            };
+                var hkRc = LabelScaleNative.rtscaleDownLoadHotkey(connid, tables[tableIndex], tableIndex);
+                if (hkRc != 0)
+                {
+                    errors.Add("hotkey paket " + tableIndex + " hata kodu " + hkRc);
+                    return false;
+                }
+            }
+            return true;
         }
 
-        private static int MapWeightUnit(string unit)
+        private static int RunUploadSales(string ip, JObject req)
         {
-            if (string.IsNullOrEmpty(unit)) return 4;
-            var u = unit.Trim().ToUpperInvariant();
-            if (u == "KG" || u == "LT" || u == "L") return 4;
-            if (u == "G" || u == "GR") return 1;
-            if (u == "10G") return 2;
-            if (u == "100G") return 3;
-            if (u == "50G") return 0;
-            if (u == "OZ") return 5;
-            if (u == "LB") return 6;
-            if (u == "500G") return 7;
-            if (u == "600G") return 8;
-            return 4;
+            var clearData = req["clearData"] != null && req["clearData"].Value<bool>();
+
+            int connid;
+            var rc = Connect(ip, out connid);
+            if (rc < 0)
+            {
+                WriteResponse(new { success = false, message = "rtscaleConnect basarisiz (kod " + rc + ")" });
+                return 1;
+            }
+
+            _callbackBuffer.Clear();
+            _saleCallbackRef = OnSaleCallback;
+            var ptr = Marshal.GetFunctionPointerForDelegate(_saleCallbackRef);
+
+            var uploadRc = LabelScaleNative.rtscaleUploadSaleData(connid, clearData, ptr);
+            LabelScaleNative.rtscaleDisConnect(connid);
+
+            var records = new JArray();
+            foreach (var json in _callbackBuffer)
+            {
+                try
+                {
+                    records.Add(JObject.Parse(json));
+                }
+                catch
+                {
+                    records.Add(new JObject { ["raw"] = json });
+                }
+            }
+
+            var ok = uploadRc >= 0;
+            WriteResponse(new
+            {
+                success = ok,
+                message = ok
+                    ? records.Count + " satis kaydi alindi (rtslabelscale.dll)"
+                    : "Satis okuma basarisiz (kod " + uploadRc + ")",
+                count = records.Count,
+                records = records,
+                backend = "rtslabelscale.dll",
+            });
+            return ok ? 0 : 1;
+        }
+
+        private static void OnSaleCallback(string json, int index, int total)
+        {
+            if (!string.IsNullOrWhiteSpace(json))
+            {
+                _callbackBuffer.Add(json);
+            }
         }
 
         private static void WriteResponse(object payload)

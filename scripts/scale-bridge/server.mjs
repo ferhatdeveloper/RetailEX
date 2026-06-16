@@ -13,7 +13,7 @@ import { fileURLToPath } from 'node:url';
 import { rongtaTcpSendPlu, rongtaTcpTest, rongtaTcpFetchSales, discoverRongtaPort, tcpProbePorts } from './rongtaTcp.mjs';
 import { scanNetworkForScales, guessLocalSubnet } from './scan.mjs';
 import { startScaleInboundListeners, getInboundScales } from './listen.mjs';
-import { shouldUseRongtaDll, isRongtaDllBridgeAvailable, rongtaDllTest, rongtaDllSendPlu } from './rongtaDll.mjs';
+import { shouldUseRongtaDll, isRongtaDllBridgeAvailable, resolveRongtaSystemCfg, rongtaDllTest, rongtaDllSendPlu, rongtaDllClearPlu, rongtaDllFetchSales } from './rongtaDll.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ADMIN_DIR = join(__dirname, 'admin');
@@ -36,6 +36,10 @@ const DEFAULT_CONFIG = {
   },
   /** auto | dll | tcp — Windows'ta rtslabelscale.dll varsa auto=dll öncelikli */
   scaleBackend: 'auto',
+  /** PLU gönderiminden önce teraziyi temizle (C# clearPludata) */
+  scaleClearBeforeSend: false,
+  /** PLU sonrası hotkey tablosu gönder (C# SendHotKey — terazi tuşları) */
+  scaleSendHotkeys: true,
 };
 
 let config = { ...DEFAULT_CONFIG };
@@ -160,16 +164,24 @@ function scaleToDevice(scale) {
 }
 
 function recordsFromProducts(products, pluStart = 1) {
-  return products.map((p, idx) => ({
-    pluCode: String(p.pluCode || pluStart + idx).padStart(5, '0'),
-    name: String(p.name || '').slice(0, 36),
-    price: Number(p.price) || 0,
-    unit: p.unit || 'KG',
-    barcode: p.barcode,
-    rank: pluStart + idx,
-    lfCode: String(p.pluCode || pluStart + idx).replace(/\D/g, '').slice(-6).padStart(6, '0'),
-    operate: 'I',
-  }));
+  return products.map((p, idx) => {
+    const rank = pluStart + idx;
+    const pluCode = String(p.pluCode || rank).padStart(5, '0');
+    const lfDigits = pluCode.replace(/\D/g, '');
+    const lfCode = lfDigits ? String(parseInt(lfDigits, 10) || rank) : String(rank);
+    return {
+      pluCode,
+      name: String(p.name || '').slice(0, 36),
+      price: Number(p.price) || 0,
+      unit: p.unit || 'KG',
+      barcodeType: p.barcodeType ?? 40,
+      department: p.department ?? 4,
+      lfCode,
+      Code: lfCode,
+      rank,
+      operate: 'I',
+    };
+  });
 }
 
 function serveAdminFile(res, relPath, contentType) {
@@ -234,7 +246,10 @@ async function handle(req, res) {
         inboundListen: config.scaleInboundListen?.enabled !== false,
         scaleBackend: config.scaleBackend || 'auto',
         dllBridgeAvailable: isRongtaDllBridgeAvailable(),
+        systemCfgFound: !!resolveRongtaSystemCfg(),
         usingDll: shouldUseRongtaDll(config),
+        scaleClearBeforeSend: config.scaleClearBeforeSend === true,
+        scaleSendHotkeys: config.scaleSendHotkeys !== false,
       });
     }
 
@@ -283,6 +298,8 @@ async function handle(req, res) {
         config.scaleInboundListen = { ...config.scaleInboundListen, ...body.scaleInboundListen };
       }
       if (body.scaleBackend !== undefined) config.scaleBackend = String(body.scaleBackend);
+      if (body.scaleClearBeforeSend !== undefined) config.scaleClearBeforeSend = !!body.scaleClearBeforeSend;
+      if (body.scaleSendHotkeys !== undefined) config.scaleSendHotkeys = !!body.scaleSendHotkeys;
       await saveConfig();
       await applyInboundListen();
       return json(res, 200, { ok: true });
@@ -344,6 +361,17 @@ async function handle(req, res) {
       });
     }
 
+    if (req.method === 'POST' && path.match(/^\/scales\/[^/]+\/clear-plu$/)) {
+      const id = decodeURIComponent(path.split('/')[2]);
+      const scale = findScale(id);
+      if (!scale) return json(res, 404, { success: false, message: 'Terazi bulunamadı' });
+      if (!shouldUseRongtaDll(config)) {
+        return json(res, 400, { success: false, message: 'PLU temizleme yalnızca rtslabelscale.dll ile desteklenir' });
+      }
+      const result = await rongtaDllClearPlu(scale.ipAddress);
+      return json(res, result.success ? 200 : 502, result);
+    }
+
     if (req.method === 'POST' && path.match(/^\/scales\/[^/]+\/test$/)) {
       const id = decodeURIComponent(path.split('/')[2]);
       const scale = findScale(id);
@@ -377,7 +405,11 @@ async function handle(req, res) {
 
       let result;
       if (shouldUseRongtaDll(config)) {
-        result = await rongtaDllSendPlu(scale.ipAddress, records);
+        result = await rongtaDllSendPlu(scale.ipAddress, records, {
+          clearBeforeSend: body.clearBeforeSend === true || config.scaleClearBeforeSend === true,
+          sendHotkeys: body.sendHotkeys !== false && config.scaleSendHotkeys !== false,
+          hotkeyMode: body.hotkeyMode || 'auto',
+        });
       } else {
         result = await rongtaTcpSendPlu(scale.ipAddress, scale.port, records);
       }
@@ -394,10 +426,25 @@ async function handle(req, res) {
       const scale = findScale(id);
       if (!scale) return json(res, 404, { success: false, message: 'Terazi bulunamadı' });
       const body = await readBody(req);
-      const result = await rongtaTcpFetchSales(scale.ipAddress, scale.port, {
-        maxRecords: Number(body.maxRecords) || 500,
-        timeoutMs: Number(body.timeoutMs) || 15000,
-      });
+      let result;
+      if (shouldUseRongtaDll(config)) {
+        const dllResult = await rongtaDllFetchSales(scale.ipAddress, {
+          clearData: body.clearData === true,
+          timeoutMs: Number(body.timeoutMs) || 120000,
+        });
+        result = {
+          success: dllResult.success,
+          message: dllResult.message,
+          count: dllResult.count,
+          records: dllResult.records,
+          backend: dllResult.backend,
+        };
+      } else {
+        result = await rongtaTcpFetchSales(scale.ipAddress, scale.port, {
+          maxRecords: Number(body.maxRecords) || 500,
+          timeoutMs: Number(body.timeoutMs) || 15000,
+        });
+      }
       return json(res, result.success ? 200 : 502, result);
     }
 

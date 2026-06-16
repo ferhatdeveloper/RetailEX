@@ -30,7 +30,9 @@
     <Reference Include="System.Core" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="HotkeyHelper.cs" />
     <Compile Include="LabelScaleNative.cs" />
+    <Compile Include="PluJsonMapper.cs" />
     <Compile Include="Program.cs" />
   </ItemGroup>
   <ItemGroup>

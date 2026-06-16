@@ -9,6 +9,9 @@
     "host": "0.0.0.0",
     "ports": [20304, 4001, 8888, 3000, 9200, 19204]
   },
+  "scaleBackend": "auto",
+  "scaleClearBeforeSend": false,
+  "scaleSendHotkeys": true,
   "scales": [
     {
       "id": "kasap-terazi-1",

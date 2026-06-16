@@ -1,6 +1,6 @@
 /**
  * Windows: rtslabelscale.dll köprüsü (TeraziRongta / RongtaDllBridge.exe).
- * Ham TCP yerine resmi DLL kullanır — C# örneği ile aynı yol.
+ * C# Form1 ile aynı akış: Connect → (Clear) → DownLoadPLU (4/paket) → DownLoadHotkey → Disconnect
  */
 import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
@@ -14,15 +14,22 @@ function bridgeExeCandidates() {
   return [
     join(__dirname, 'rongta-dll-bridge', 'bin', 'x86', 'Release', 'RongtaDllBridge.exe'),
     join(__dirname, 'rongta-dll-bridge', 'bin', 'x86', 'Debug', 'RongtaDllBridge.exe'),
+    join(process.env.ProgramFiles || 'C:\\Program Files', 'RetailEX', 'ScaleBridge', 'scale-bridge', 'rongta-dll-bridge', 'RongtaDllBridge.exe'),
+    join(process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)', 'RetailEX', 'ScaleBridge', 'scale-bridge', 'rongta-dll-bridge', 'RongtaDllBridge.exe'),
     join(process.env.ProgramFiles || 'C:\\Program Files', 'RetailEX', 'ScaleBridge', 'rongta-dll-bridge', 'RongtaDllBridge.exe'),
-    join(process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)', 'RetailEX', 'ScaleBridge', 'rongta-dll-bridge', 'RongtaDllBridge.exe'),
-    join(root, 'TeraziRongta', 'WindowsFormsApplication1', 'bin', 'x86', 'Debug', 'WindowsFormsApplication1.exe'),
   ].filter(Boolean);
 }
 
 export function resolveRongtaDllBridgeExe() {
   if (process.platform !== 'win32') return null;
   return bridgeExeCandidates().find((p) => existsSync(p)) || null;
+}
+
+export function resolveRongtaSystemCfg() {
+  const exe = resolveRongtaDllBridgeExe();
+  if (!exe) return null;
+  const cfg = join(dirname(exe), 'SYSTEM.CFG');
+  return existsSync(cfg) ? cfg : null;
 }
 
 export function isRongtaDllBridgeAvailable() {
@@ -102,14 +109,46 @@ export async function rongtaDllTest(ipAddress) {
   };
 }
 
-export async function rongtaDllSendPlu(ipAddress, records) {
-  const json = await invokeBridge({ command: 'send-plu', ipAddress, records });
+export async function rongtaDllClearPlu(ipAddress) {
+  const json = await invokeBridge({ command: 'clear-plu', ipAddress });
+  return {
+    success: !!json.success,
+    message: json.message || '',
+    backend: 'rtslabelscale.dll',
+  };
+}
+
+export async function rongtaDllSendPlu(ipAddress, records, options = {}) {
+  const json = await invokeBridge({
+    command: 'send-plu',
+    ipAddress,
+    records,
+    clearBeforeSend: options.clearBeforeSend === true,
+    sendHotkeys: options.sendHotkeys !== false,
+    hotkeyMode: options.hotkeyMode || 'auto',
+  });
   return {
     success: !!json.success,
     message: json.message || '',
     sentCount: json.sentCount,
     failedCount: json.failedCount,
+    hotkeysSent: json.hotkeysSent,
     errors: json.errors,
+    backend: 'rtslabelscale.dll',
+  };
+}
+
+export async function rongtaDllFetchSales(ipAddress, options = {}) {
+  const json = await invokeBridge({
+    command: 'upload-sales',
+    ipAddress,
+    clearData: options.clearData === true,
+  }, Number(options.timeoutMs) || 120000);
+  return {
+    success: !!json.success,
+    message: json.message || '',
+    count: json.count,
+    records: json.records,
     backend: 'rtslabelscale.dll',
   };
 }

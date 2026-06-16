@@ -33,7 +33,9 @@ powershell -ExecutionPolicy Bypass -File scripts\scale-bridge\import-terazi-rong
 
 ## RetailEX köprüsü
 
-Node köprüsü (`scripts/scale-bridge/`) Windows'ta bu DLL'i `rongta-dll-bridge` yardımcı exe ile çağırır (0.1.89+).
+Node köprüsü (`scripts/scale-bridge/`) Windows'ta bu DLL'i `rongta-dll-bridge` yardımcı exe ile çağırır (0.1.90+).
+
+C# `button9` akışı ile aynı: **Connect → DownLoadPLU (4/paket) → DownLoadHotkey → Disconnect**
 
 ## SYSTEM.CFG (önemli)
 
