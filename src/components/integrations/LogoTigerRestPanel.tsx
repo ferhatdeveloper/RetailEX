@@ -626,8 +626,9 @@ export function LogoTigerRestPanel() {
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 font-mono text-sm"
             />
             <p className="text-xs text-gray-500 mt-1">
-              Kiracı başına farklı sunucu olabilir — sabit IP yok. Merkez:{' '}
-              <code>tenant_registry.logo_rest_api_url</code>
+              Kiracı başına farklı sunucu olabilir. Örnek (internet):{' '}
+              <code className="text-orange-800">{LOGO_API_URL_EXAMPLE}</code>
+              {' · '}Merkez: <code>tenant_registry.logo_rest_api_url</code>
               {urlSource === 'tenant' && ' · kiracı kaydından yüklendi'}
               {urlSource === 'manual' && ' · manuel girildi'}
             </p>

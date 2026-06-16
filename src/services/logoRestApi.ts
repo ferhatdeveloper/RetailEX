@@ -16,7 +16,10 @@ const STORAGE_CONFIG = 'retailex_logo_rest_config';
 const STORAGE_SESSION = 'retailex_logo_rest_session';
 const STORAGE_MANUAL_URL = 'retailex_logo_rest_manual_url';
 
-export const LOGO_API_URL_EXAMPLE = 'http://SUNUCU-IP:32001/api/v1';
+export const LOGO_API_URL_EXAMPLE = 'http://185.206.80.132:32001/api/v1';
+
+/** Bu kurulumdaki internet üzerinden erişilebilir Logo REST (kiracı kaydı boşsa önerilen) */
+export const LOGO_DEFAULT_PUBLIC_BASE_URL = LOGO_API_URL_EXAMPLE;
 
 /** Logo REST OAuth uygulama kaydı (RetailEX gömülü) */
 export const LOGO_DEFAULT_CLIENT_ID = 'ARZEN';
@@ -543,7 +546,8 @@ export function loadLogoRestConfig(): LogoRestConfig {
     const storedUrl = normalizeLogoRestBaseUrl(String(parsed.baseUrl ?? ''));
     const baseUrl =
       storedUrl ||
-      (!isLogoRestUrlManualOverride() && tenantUrl ? tenantUrl : '');
+      (!isLogoRestUrlManualOverride() && tenantUrl ? tenantUrl : '') ||
+      LOGO_DEFAULT_PUBLIC_BASE_URL;
     return migrateLegacyLogoMapping({
       ...defaults,
       ...parsed,
@@ -809,6 +813,9 @@ export async function logoObtainToken(
     throw new Error('Logo client_id gerekli');
   }
 
+  const clientId = cfg.clientId.trim();
+  const clientSecret = cfg.clientSecret || '';
+
   const tokenBody = new URLSearchParams({
     grant_type: 'password',
     username: cfg.username.trim(),
@@ -817,13 +824,44 @@ export async function logoObtainToken(
   });
   if (ctx.logoDb) tokenBody.set('logodb', ctx.logoDb);
 
-  const tokenRes = await logoHttp(baseUrl, 'POST', '/token', {
-    headers: {
-      'Content-Type': 'application/x-www-form-urlencoded',
-      Authorization: basicAuth(cfg.clientId, cfg.clientSecret || ''),
-    },
-    body: tokenBody.toString(),
-  });
+  const tokenHeaders: Record<string, string> = {
+    'Content-Type': 'application/x-www-form-urlencoded',
+  };
+
+  /**
+   * Logo REST token (Postman: grant_type=password&username&firmno&password).
+   * 185.206.80.132 kurulumu Secret Post ister: client_id + client_secret gövdede.
+   * Eski kurulumlar için Basic Authorization yedek denenir.
+   */
+  let tokenRes: Awaited<ReturnType<typeof logoHttp>>;
+  if (clientId && clientSecret) {
+    const bodyPost = new URLSearchParams(tokenBody);
+    bodyPost.set('client_id', clientId);
+    bodyPost.set('client_secret', clientSecret);
+    tokenRes = await logoHttp(baseUrl, 'POST', '/token', {
+      headers: tokenHeaders,
+      body: bodyPost.toString(),
+    });
+  } else {
+    tokenRes = await logoHttp(baseUrl, 'POST', '/token', {
+      headers: { ...tokenHeaders, Authorization: basicAuth(clientId, clientSecret) },
+      body: tokenBody.toString(),
+    });
+  }
+
+  if (!tokenRes.ok && clientId && clientSecret) {
+    const err = tokenRes.data as { error?: string };
+    if (err?.error === 'invalid_client') {
+      const basicBody = new URLSearchParams(tokenBody);
+      tokenRes = await logoHttp(baseUrl, 'POST', '/token', {
+        headers: {
+          ...tokenHeaders,
+          Authorization: basicAuth(clientId, clientSecret),
+        },
+        body: basicBody.toString(),
+      });
+    }
+  }
 
   if (!tokenRes.ok) {
     throw new Error(formatLogoHttpFailure(baseUrl, tokenRes.status, tokenRes.data, tokenRes.text));
