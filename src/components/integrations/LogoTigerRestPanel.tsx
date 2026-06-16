@@ -40,6 +40,7 @@ import {
   saveLogoFirmMappingForErp,
   saveLogoFirmCatalog,
   periodsForFirm,
+  getLogoCloudWebPrivateUrlHint,
   type LogoRestConfig,
   type LogoDataPreview,
   type LogoDescribeEntry,
@@ -630,6 +631,12 @@ export function LogoTigerRestPanel() {
               {urlSource === 'tenant' && ' · kiracı kaydından yüklendi'}
               {urlSource === 'manual' && ' · manuel girildi'}
             </p>
+            {getLogoCloudWebPrivateUrlHint(config.baseUrl) && (
+              <div className="mt-2 flex items-start gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                <AlertCircle className="w-4 h-4 text-amber-700 flex-shrink-0 mt-0.5" />
+                <p className="text-xs text-amber-900">{getLogoCloudWebPrivateUrlHint(config.baseUrl)}</p>
+              </div>
+            )}
             {urlSource === 'manual' && (
               <button
                 type="button"

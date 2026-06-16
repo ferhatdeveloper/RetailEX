@@ -199,7 +199,12 @@ function getPool(connStr: string): Pool {
 }
 
 app.get('/api/status', (c) => {
-    return c.json({ status: 'RUNNING', version: '1.0.0', service: 'PostgreSQL Bridge' });
+    return c.json({
+        status: 'RUNNING',
+        version: '1.0.0',
+        service: 'PostgreSQL Bridge',
+        logoProxy: true,
+    });
 });
 
 /**
@@ -242,11 +247,27 @@ app.post('/api/logo/proxy', async (c) => {
             }
         }
 
-        const upstream = await fetch(url, {
-            method,
-            headers,
-            body: method === 'GET' || method === 'HEAD' ? undefined : (body.body ?? undefined),
-        });
+        let upstream: Response;
+        try {
+            upstream = await fetch(url, {
+                method,
+                headers,
+                body: method === 'GET' || method === 'HEAD' ? undefined : (body.body ?? undefined),
+                signal: AbortSignal.timeout(60_000),
+            });
+        } catch (upstreamErr: unknown) {
+            const msg = upstreamErr instanceof Error ? upstreamErr.message : String(upstreamErr);
+            console.error('[PG Bridge] Logo upstream fetch failed:', url.replace(/:[^:@]+@/, ':***@'), msg);
+            return c.json({
+                proxy: {
+                    ok: false,
+                    status: 0,
+                    data: { upstreamError: msg, upstreamUrl: url },
+                    text: msg,
+                    upstreamUnreachable: true,
+                },
+            });
+        }
 
         const text = await upstream.text();
         let data: unknown = null;

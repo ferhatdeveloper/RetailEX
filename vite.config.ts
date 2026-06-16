@@ -110,6 +110,10 @@ export default defineConfig({
         target: 'http://localhost:3001',
         changeOrigin: true,
       },
+      '/api/logo': {
+        target: 'http://localhost:3001',
+        changeOrigin: true,
+      },
       '/api/caller_id': {
         target: 'http://localhost:3001',
         changeOrigin: true,

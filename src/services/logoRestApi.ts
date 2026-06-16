@@ -9,7 +9,7 @@
  */
 
 import { ERP_SETTINGS } from './postgres';
-import { getBridgeUrl, IS_TAURI } from '../utils/env';
+import { getBridgeUrl, IS_TAURI, isRetailExProductionWeb } from '../utils/env';
 import { parseStoredRetailexWebConfig } from '../utils/retailexWebConfigMerge';
 
 const STORAGE_CONFIG = 'retailex_logo_rest_config';
@@ -160,6 +160,98 @@ function requireBaseUrl(cfg: LogoRestConfig): string {
     );
   }
   return u;
+}
+
+/** Logo REST host localhost / RFC1918 mi? */
+export function isPrivateOrLocalLogoHost(baseUrl: string): boolean {
+  try {
+    const raw = (baseUrl || '').trim();
+    if (!raw) return false;
+    const u = new URL(raw.startsWith('http') ? raw : `http://${raw}`);
+    const h = u.hostname.toLowerCase();
+    if (h === 'localhost' || h === '127.0.0.1' || h === '::1' || h.endsWith('.local')) return true;
+    const m = h.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+    if (!m) return false;
+    const a = Number(m[1]);
+    const b = Number(m[2]);
+    if (a === 10) return true;
+    if (a === 172 && b >= 16 && b <= 31) return true;
+    if (a === 192 && b === 168) return true;
+    return false;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * retailex.app (bulut) üzerinden yerel Logo adresine köprü ile gidilemez.
+ * Masaüstü veya erişilebilir public URL gerekir.
+ */
+export function assertLogoReachableInWebContext(baseUrl: string): void {
+  if (IS_TAURI || typeof window === 'undefined') return;
+  if (!isRetailExProductionWeb()) return;
+  if (!isPrivateOrLocalLogoHost(baseUrl)) return;
+  throw new Error(
+    'Logo REST adresi yerel ağda (localhost / 192.168.x.x / 10.x). ' +
+      'retailex.app bulut köprüsü bu adrese erişemez; /api/status çalışsa bile Logo senkronu başarısız olur. ' +
+      'Çözüm: RetailEX masaüstü (Logo ile aynı ağ), Logo için VPN/tünel, veya internetten erişilebilir API Base URL.'
+  );
+}
+
+export function getLogoCloudWebPrivateUrlHint(baseUrl: string): string | null {
+  if (IS_TAURI || typeof window === 'undefined' || !isRetailExProductionWeb()) return null;
+  if (!isPrivateOrLocalLogoHost(baseUrl)) return null;
+  return (
+    'Bu Logo adresi yerel ağda. retailex.app üzerinden senkron yapılamaz; masaüstü uygulaması veya public URL kullanın.'
+  );
+}
+
+function formatLogoUpstreamError(baseUrl: string, detail?: string): string {
+  const host = (() => {
+    try {
+      return new URL(normalizeBaseUrl(baseUrl)).hostname;
+    } catch {
+      return baseUrl;
+    }
+  })();
+  const privateHint = isPrivateOrLocalLogoHost(baseUrl)
+    ? ' Adres yerel ağda görünüyor; bulut köprüsü (retailex.app) bu sunucuya ulaşamaz.'
+    : '';
+  const tail = detail ? ` (${detail})` : '';
+  return `Logo REST sunucusuna köprü üzerinden ulaşılamadı (${host}).${privateHint}${tail}`;
+}
+
+function formatLogoBridgeFetchError(bridge: string, raw: string): string {
+  const aborted = raw.includes('aborted') || raw.includes('AbortError');
+  if (aborted) {
+    return `Logo REST köprüsü zaman aşımına uğradı (${bridge}/api/logo/proxy).`;
+  }
+  return (
+    `Logo REST köprüsüne istek gönderilemedi (${bridge}/api/logo/proxy). ` +
+    'Tarayıcı ağı veya güvenlik duvarı POST isteğini engelliyor olabilir. ' +
+    `${bridge}/api/status yanıt verse bile /api/logo/proxy için redeploy gerekebilir.`
+  );
+}
+
+function formatLogoHttpFailure(baseUrl: string, status: number, data: unknown, text: string): string {
+  if (data && typeof data === 'object') {
+    const o = data as Record<string, unknown>;
+    if (typeof o.upstreamError === 'string' && o.upstreamError) {
+      return formatLogoUpstreamError(baseUrl, o.upstreamError);
+    }
+    if (typeof o.error === 'string' && o.error) {
+      if (o.error === 'fetch failed' || String(o.error).includes('fetch failed')) {
+        return formatLogoUpstreamError(baseUrl, o.error);
+      }
+      return String(o.error);
+    }
+    const err = o as { error_description?: string; message?: string };
+    if (err.error_description) return err.error_description;
+    if (err.message) return err.message;
+  }
+  const blob = `${text || ''}`.trim();
+  if (blob && blob.length < 240) return blob;
+  return `Logo REST hatası HTTP ${status}`;
 }
 
 /** RetailEX firma no → Logo integer (001 → 1) */
@@ -570,7 +662,14 @@ async function logoHttpViaBridge(
         query: opts.query || {},
       }),
       signal: controller.signal,
+      credentials: 'same-origin',
+      mode: 'cors',
     });
+    if (res.status === 404) {
+      throw new Error(
+        `Logo REST proxy route bulunamadı (${bridge}/api/logo/proxy). retailex_bridge imajını güncelleyip yeniden deploy edin.`
+      );
+    }
     return res;
   } catch (e: unknown) {
     const raw = e instanceof Error ? e.message : String(e);
@@ -580,11 +679,7 @@ async function logoHttpViaBridge(
       raw.includes('aborted') ||
       raw.includes('AbortError');
     if (isNetwork) {
-      throw new Error(
-        `Logo REST köprüsüne ulaşılamadı (${bridge}/api/logo/proxy). ` +
-          'Sunucuda pg_bridge (retailex_bridge) çalışmıyor olabilir veya tarayıcı ağ/CORS engeli var. ' +
-          `${bridge}/api/status adresini kontrol edin.`
-      );
+      throw new Error(formatLogoBridgeFetchError(bridge, raw));
     }
     throw e instanceof Error ? e : new Error(raw);
   } finally {
@@ -597,13 +692,30 @@ export async function ensureLogoBridgeReachable(): Promise<void> {
   if (IS_TAURI) return;
   const bridge = getBridgeUrl();
   try {
-    const res = await fetch(`${bridge}/api/status`, { method: 'GET' });
+    const res = await fetch(`${bridge}/api/status`, { method: 'GET', credentials: 'same-origin' });
     if (!res.ok) {
       throw new Error(`HTTP ${res.status}`);
     }
-    const data = (await res.json().catch(() => ({}))) as { status?: string };
+    const data = (await res.json().catch(() => ({}))) as { status?: string; logoProxy?: boolean };
     if (data.status !== 'RUNNING') {
       throw new Error('Bridge RUNNING değil');
+    }
+
+    const probe = await fetch(`${bridge}/api/logo/proxy`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'same-origin',
+      body: JSON.stringify({
+        baseUrl: 'http://127.0.0.1:1/api/v1',
+        method: 'GET',
+        path: '/',
+      }),
+    });
+    if (probe.status === 404) {
+      throw new Error('Logo proxy route yok (/api/logo/proxy). retailex_bridge güncelleyin.');
+    }
+    if (data.logoProxy === false) {
+      throw new Error('Köprü sürümü Logo proxy desteklemiyor. retailex_bridge redeploy edin.');
     }
   } catch (e: unknown) {
     const raw = e instanceof Error ? e.message : String(e);
@@ -639,9 +751,13 @@ async function logoHttp(
     data = text;
   }
 
-  if (useBridge && res.ok && data && typeof data === 'object' && data !== null && 'proxy' in data) {
+  if (useBridge && data && typeof data === 'object' && data !== null && 'proxy' in data) {
     const wrapped = data as { proxy: { ok: boolean; status: number; data: unknown; text: string } };
     return wrapped.proxy;
+  }
+
+  if (useBridge && !res.ok && data && typeof data === 'object' && data !== null && 'error' in data) {
+    return { ok: false, status: res.status, data, text };
   }
 
   return { ok: res.ok, status: res.status, data, text };
@@ -710,10 +826,7 @@ export async function logoObtainToken(
   });
 
   if (!tokenRes.ok) {
-    const err = tokenRes.data as { error_description?: string; error?: string; message?: string };
-    throw new Error(
-      err?.error_description || err?.error || err?.message || `Token hatası HTTP ${tokenRes.status}`
-    );
+    throw new Error(formatLogoHttpFailure(baseUrl, tokenRes.status, tokenRes.data, tokenRes.text));
   }
 
   const tok = tokenRes.data as {
@@ -829,6 +942,8 @@ export async function logoAuthenticate(
 }
 
 export async function logoEnsureSession(cfg: LogoRestConfig): Promise<LogoRestSession> {
+  const baseUrl = requireBaseUrl(cfg);
+  assertLogoReachableInWebContext(baseUrl);
   const ctx = resolveLogoContext(cfg);
   const existing = loadLogoRestSession();
   if (existing && Date.now() < existing.expiresAt && sessionMatchesContext(existing, ctx, cfg)) {
