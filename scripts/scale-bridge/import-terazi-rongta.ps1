@@ -6,6 +6,7 @@
 
 $ErrorActionPreference = "Stop"
 $SourceDesktop = "C:\Users\FERHAT\Desktop\TeraziRongta"
+$SystemCfg = "C:\Users\FERHAT\Desktop\TeraziRongta\WindowsFormsApplication1\bin\x86\Debug\SYSTEM.CFG"
 $CloneDir = "C:\Users\FERHAT\RetailEX-git"
 $RepoUrl = "https://github.com/ferhatdeveloper/RetailEX.git"
 $Target = Join-Path $CloneDir "reference\TeraziRongta"
