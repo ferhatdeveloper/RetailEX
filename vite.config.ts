@@ -114,6 +114,10 @@ export default defineConfig({
         target: 'http://localhost:3001',
         changeOrigin: true,
       },
+      '/api/erp-logo-proxy': {
+        target: 'http://localhost:3001',
+        changeOrigin: true,
+      },
       '/api/caller_id': {
         target: 'http://localhost:3001',
         changeOrigin: true,

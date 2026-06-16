@@ -224,16 +224,48 @@ function formatLogoUpstreamError(baseUrl: string, detail?: string): string {
   return `Logo REST sunucusuna köprü üzerinden ulaşılamadı (${host}).${privateHint}${tail}`;
 }
 
-function formatLogoBridgeFetchError(bridge: string, raw: string): string {
+/** Önce reklam engelleyici dostu yol; /api/logo/* bazı eklentilerde bloklanır */
+export const LOGO_BRIDGE_PROXY_PATHS = ['/api/erp-logo-proxy', '/api/logo/proxy'] as const;
+
+function formatLogoBridgeFetchError(bridge: string, raw: string, triedPaths: readonly string[]): string {
+  const paths = triedPaths.join(', ');
   const aborted = raw.includes('aborted') || raw.includes('AbortError');
   if (aborted) {
-    return `Logo REST köprüsü zaman aşımına uğradı (${bridge}/api/logo/proxy).`;
+    return `Logo REST köprüsü zaman aşımına uğradı (${paths}).`;
   }
   return (
-    `Logo REST köprüsüne istek gönderilemedi (${bridge}/api/logo/proxy). ` +
-    'Tarayıcı ağı veya güvenlik duvarı POST isteğini engelliyor olabilir. ' +
-    `${bridge}/api/status yanıt verse bile /api/logo/proxy için redeploy gerekebilir.`
+    `Logo REST köprüsüne ulaşılamadı (${paths}). ` +
+    `${bridge}/api/status çalışıyorsa köprü ayaktadır; sorun büyük olasılıkla tarayıcı reklam engelleyicisi ` +
+    '(/api/logo/ yolunu keser) veya ağ güvenlik duvarıdır. Gizli pencerede veya eklentisiz deneyin. ' +
+    'Sorun sürerse retailex_bridge ve retailex_frontend imajlarını yeniden deploy edin.'
   );
+}
+
+async function fetchLogoBridgeStatus(bridge: string): Promise<{ ok: boolean; logoProxy?: boolean }> {
+  try {
+    const res = await fetch(`${bridge}/api/status`, { method: 'GET', credentials: 'same-origin' });
+    if (!res.ok) return { ok: false };
+    const data = (await res.json().catch(() => ({}))) as { status?: string; logoProxy?: boolean };
+    return { ok: data.status === 'RUNNING', logoProxy: data.logoProxy };
+  } catch {
+    return { ok: false };
+  }
+}
+
+async function postLogoBridgeProxy(
+  bridge: string,
+  proxyPath: string,
+  payload: Record<string, unknown>,
+  signal: AbortSignal
+): Promise<Response> {
+  return fetch(`${bridge}${proxyPath}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+    signal,
+    credentials: 'same-origin',
+    mode: 'cors',
+  });
 }
 
 function formatLogoHttpFailure(baseUrl: string, status: number, data: unknown, text: string): string {
@@ -653,29 +685,46 @@ async function logoHttpViaBridge(
   const bridge = getBridgeUrl();
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 90_000);
+  const payload = {
+    baseUrl: normalizeBaseUrl(baseUrl),
+    method,
+    path: path.startsWith('/') ? path : `/${path}`,
+    headers: opts.headers || {},
+    body: opts.body,
+    query: opts.query || {},
+  };
+  const triedPaths: string[] = [];
+  let lastNetworkError = 'Failed to fetch';
+
   try {
-    const res = await fetch(`${bridge}/api/logo/proxy`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        baseUrl: normalizeBaseUrl(baseUrl),
-        method,
-        path: path.startsWith('/') ? path : `/${path}`,
-        headers: opts.headers || {},
-        body: opts.body,
-        query: opts.query || {},
-      }),
-      signal: controller.signal,
-      credentials: 'same-origin',
-      mode: 'cors',
-    });
-    if (res.status === 404) {
+    for (const proxyPath of LOGO_BRIDGE_PROXY_PATHS) {
+      triedPaths.push(`${bridge}${proxyPath}`);
+      try {
+        const res = await postLogoBridgeProxy(bridge, proxyPath, payload, controller.signal);
+        if (res.status === 404) continue;
+        return res;
+      } catch (e: unknown) {
+        const raw = e instanceof Error ? e.message : String(e);
+        const isNetwork =
+          raw === 'Failed to fetch' ||
+          raw.includes('NetworkError') ||
+          raw.includes('aborted') ||
+          raw.includes('AbortError');
+        if (!isNetwork) throw e instanceof Error ? e : new Error(raw);
+        lastNetworkError = raw;
+      }
+    }
+
+    const status = await fetchLogoBridgeStatus(bridge);
+    if (!status.ok) {
       throw new Error(
-        `Logo REST proxy route bulunamadı (${bridge}/api/logo/proxy). retailex_bridge imajını güncelleyip yeniden deploy edin.`
+        `PostgreSQL köprüsü yanıt vermiyor (${bridge}/api/status). retailex_bridge konteynerini yeniden başlatın.`
       );
     }
-    return res;
+    throw new Error(formatLogoBridgeFetchError(bridge, lastNetworkError, triedPaths));
   } catch (e: unknown) {
+    if (e instanceof Error && e.message.includes('PostgreSQL köprüsü')) throw e;
+    if (e instanceof Error && e.message.includes('Logo REST köprüsüne')) throw e;
     const raw = e instanceof Error ? e.message : String(e);
     const isNetwork =
       raw === 'Failed to fetch' ||
@@ -683,7 +732,13 @@ async function logoHttpViaBridge(
       raw.includes('aborted') ||
       raw.includes('AbortError');
     if (isNetwork) {
-      throw new Error(formatLogoBridgeFetchError(bridge, raw));
+      const status = await fetchLogoBridgeStatus(bridge);
+      if (!status.ok) {
+        throw new Error(
+          `PostgreSQL köprüsü yanıt vermiyor (${bridge}/api/status). retailex_bridge konteynerini yeniden başlatın.`
+        );
+      }
+      throw new Error(formatLogoBridgeFetchError(bridge, raw, triedPaths.length ? triedPaths : LOGO_BRIDGE_PROXY_PATHS.map((p) => `${bridge}${p}`)));
     }
     throw e instanceof Error ? e : new Error(raw);
   } finally {
@@ -695,39 +750,36 @@ async function logoHttpViaBridge(
 export async function ensureLogoBridgeReachable(): Promise<void> {
   if (IS_TAURI) return;
   const bridge = getBridgeUrl();
-  try {
-    const res = await fetch(`${bridge}/api/status`, { method: 'GET', credentials: 'same-origin' });
-    if (!res.ok) {
-      throw new Error(`HTTP ${res.status}`);
-    }
-    const data = (await res.json().catch(() => ({}))) as { status?: string; logoProxy?: boolean };
-    if (data.status !== 'RUNNING') {
-      throw new Error('Bridge RUNNING değil');
-    }
-
-    const probe = await fetch(`${bridge}/api/logo/proxy`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'same-origin',
-      body: JSON.stringify({
-        baseUrl: 'http://127.0.0.1:1/api/v1',
-        method: 'GET',
-        path: '/',
-      }),
-    });
-    if (probe.status === 404) {
-      throw new Error('Logo proxy route yok (/api/logo/proxy). retailex_bridge güncelleyin.');
-    }
-    if (data.logoProxy === false) {
-      throw new Error('Köprü sürümü Logo proxy desteklemiyor. retailex_bridge redeploy edin.');
-    }
-  } catch (e: unknown) {
-    const raw = e instanceof Error ? e.message : String(e);
-    const isNetwork = raw === 'Failed to fetch' || raw.includes('Failed to fetch');
+  const status = await fetchLogoBridgeStatus(bridge);
+  if (!status.ok) {
     throw new Error(
-      isNetwork
-        ? `PostgreSQL köprüsü yanıt vermiyor (${bridge}). retailex_bridge konteynerini yeniden başlatın.`
-        : `PostgreSQL köprüsü yanıt vermiyor (${bridge}): ${raw}`
+      `PostgreSQL köprüsü yanıt vermiyor (${bridge}/api/status). retailex_bridge konteynerini yeniden başlatın.`
+    );
+  }
+  if (status.logoProxy === false) {
+    throw new Error('Köprü sürümü Logo proxy desteklemiyor. retailex_bridge redeploy edin.');
+  }
+
+  const probeBody = {
+    baseUrl: 'http://127.0.0.1:1/api/v1',
+    method: 'GET',
+    path: '/',
+  };
+  let proxyOk = false;
+  for (const proxyPath of LOGO_BRIDGE_PROXY_PATHS) {
+    try {
+      const probe = await postLogoBridgeProxy(bridge, proxyPath, probeBody, AbortSignal.timeout(15_000));
+      if (probe.status !== 404) {
+        proxyOk = true;
+        break;
+      }
+    } catch {
+      /* sonraki yolu dene */
+    }
+  }
+  if (!proxyOk) {
+    throw new Error(
+      `Logo proxy route bulunamadı (${LOGO_BRIDGE_PROXY_PATHS.join(', ')}). retailex_bridge güncelleyin.`
     );
   }
 }

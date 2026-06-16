@@ -198,67 +198,68 @@ function getPool(connStr: string): Pool {
     return pools.get(connStr)!;
 }
 
+/** Logo REST proxy yolları — /api/logo/* bazı reklam engelleyicilerde bloklanır */
+export const LOGO_PROXY_ROUTE_PATHS = ['/api/erp-logo-proxy', '/api/logo/proxy'] as const;
+
 app.get('/api/status', (c) => {
     return c.json({
         status: 'RUNNING',
         version: '1.0.0',
         service: 'PostgreSQL Bridge',
         logoProxy: true,
+        logoProxyPaths: [...LOGO_PROXY_ROUTE_PATHS],
     });
 });
 
-/**
- * Logo Tiger REST API proxy — tarayıcı CORS engelini aşmak için.
- * POST /api/logo/proxy { baseUrl, method, path, headers?, body?, query? }
- */
-app.post('/api/logo/proxy', async (c) => {
+type LogoProxyBody = {
+    baseUrl?: string;
+    method?: string;
+    path?: string;
+    headers?: Record<string, string>;
+    body?: string | null;
+    query?: Record<string, string>;
+};
+
+async function handleLogoProxyRequest(body: LogoProxyBody) {
+    const baseUrl = String(body.baseUrl || '').trim().replace(/\/+$/, '');
+    const method = String(body.method || 'GET').toUpperCase();
+    const path = String(body.path || '/').trim();
+    if (!baseUrl || !baseUrl.startsWith('http')) {
+        return { status: 400 as const, json: { error: 'baseUrl gerekli (http/https)' } };
+    }
+    if (!path.startsWith('/')) {
+        return { status: 400 as const, json: { error: 'path / ile başlamalı' } };
+    }
+
+    const qs = body.query && typeof body.query === 'object'
+        ? '?' + Object.entries(body.query)
+            .filter(([, v]) => v != null && String(v) !== '')
+            .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`)
+            .join('&')
+        : '';
+    const url = `${baseUrl}${path}${qs}`;
+
+    const headers: Record<string, string> = {};
+    if (body.headers && typeof body.headers === 'object') {
+        for (const [k, v] of Object.entries(body.headers)) {
+            if (v != null) headers[k] = String(v);
+        }
+    }
+
+    let upstream: Response;
     try {
-        const body = await c.req.json().catch(() => ({})) as {
-            baseUrl?: string;
-            method?: string;
-            path?: string;
-            headers?: Record<string, string>;
-            body?: string | null;
-            query?: Record<string, string>;
-        };
-
-        const baseUrl = String(body.baseUrl || '').trim().replace(/\/+$/, '');
-        const method = String(body.method || 'GET').toUpperCase();
-        const path = String(body.path || '/').trim();
-        if (!baseUrl || !baseUrl.startsWith('http')) {
-            return c.json({ error: 'baseUrl gerekli (http/https)' }, 400);
-        }
-        if (!path.startsWith('/')) {
-            return c.json({ error: 'path / ile başlamalı' }, 400);
-        }
-
-        const qs = body.query && typeof body.query === 'object'
-            ? '?' + Object.entries(body.query)
-                .filter(([, v]) => v != null && String(v) !== '')
-                .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`)
-                .join('&')
-            : '';
-        const url = `${baseUrl}${path}${qs}`;
-
-        const headers: Record<string, string> = {};
-        if (body.headers && typeof body.headers === 'object') {
-            for (const [k, v] of Object.entries(body.headers)) {
-                if (v != null) headers[k] = String(v);
-            }
-        }
-
-        let upstream: Response;
-        try {
-            upstream = await fetch(url, {
-                method,
-                headers,
-                body: method === 'GET' || method === 'HEAD' ? undefined : (body.body ?? undefined),
-                signal: AbortSignal.timeout(60_000),
-            });
-        } catch (upstreamErr: unknown) {
-            const msg = upstreamErr instanceof Error ? upstreamErr.message : String(upstreamErr);
-            console.error('[PG Bridge] Logo upstream fetch failed:', url.replace(/:[^:@]+@/, ':***@'), msg);
-            return c.json({
+        upstream = await fetch(url, {
+            method,
+            headers,
+            body: method === 'GET' || method === 'HEAD' ? undefined : (body.body ?? undefined),
+            signal: AbortSignal.timeout(60_000),
+        });
+    } catch (upstreamErr: unknown) {
+        const msg = upstreamErr instanceof Error ? upstreamErr.message : String(upstreamErr);
+        console.error('[PG Bridge] Logo upstream fetch failed:', url.replace(/:[^:@]+@/, ':***@'), msg);
+        return {
+            status: 200 as const,
+            json: {
                 proxy: {
                     ok: false,
                     status: 0,
@@ -266,31 +267,50 @@ app.post('/api/logo/proxy', async (c) => {
                     text: msg,
                     upstreamUnreachable: true,
                 },
-            });
-        }
+            },
+        };
+    }
 
-        const text = await upstream.text();
-        let data: unknown = null;
-        try {
-            data = text ? JSON.parse(text) : null;
-        } catch {
-            data = text;
-        }
+    const text = await upstream.text();
+    let data: unknown = null;
+    try {
+        data = text ? JSON.parse(text) : null;
+    } catch {
+        data = text;
+    }
 
-        return c.json({
+    return {
+        status: 200 as const,
+        json: {
             proxy: {
                 ok: upstream.ok,
                 status: upstream.status,
                 data,
                 text,
             },
-        });
+        },
+    };
+}
+
+/**
+ * Logo Tiger REST API proxy — tarayıcı CORS engelini aşmak için.
+ * POST { baseUrl, method, path, headers?, body?, query? }
+ */
+async function logoProxyRoute(c: { req: { json: () => Promise<unknown> } }) {
+    try {
+        const body = await c.req.json().catch(() => ({})) as LogoProxyBody;
+        const result = await handleLogoProxyRequest(body);
+        return c.json(result.json, result.status);
     } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : String(error);
         console.error('[PG Bridge] Logo proxy error:', msg);
         return c.json({ error: msg }, 500);
     }
-});
+}
+
+for (const routePath of LOGO_PROXY_ROUTE_PATHS) {
+    app.post(routePath, logoProxyRoute);
+}
 
 /**
  * Santral / ara yazılım buraya POST atar. Örnek: { "phone": "905321234567", "name": "..." }
