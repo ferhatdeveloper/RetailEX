@@ -4,7 +4,9 @@
  */
 export const SCALE_DISCOVERY_PORTS = [
   20304, // Rongta RLS (birincil)
-  4001,  // Rongta alternatif
+  4001,  // Rongta alternatif (RLS1000 yazılımı)
+  19204, // Rongta / üçüncü parti araçlar
+  20104, // Bazı etiket terazisi keşif portları
   3001,  // Rongta / Bizerba
   3000,  // Digi
   4000,  // Genel etiket terazisi

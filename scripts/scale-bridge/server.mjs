@@ -211,6 +211,9 @@ async function handle(req, res) {
         endIP: body.endIP,
         concurrency: body.concurrency,
         ports: body.ports,
+        allSubnets: body.allSubnets !== false,
+        includeTcpCandidates: body.includeTcpCandidates !== false,
+        tcpTimeoutMs: body.tcpTimeoutMs,
       });
       return json(res, 200, result);
     }

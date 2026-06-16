@@ -8,7 +8,7 @@ export const RONGTA_DEFAULT_IP = '192.168.1.87';
 export const RONGTA_DEFAULT_PORT = 20304;
 /** Bağlantı testinde sırayla denenen terazi portları (yazıcı portları hariç) */
 export const RONGTA_FALLBACK_PORTS = [
-  20304, 4001, 3001, 3000, 4000, 5000, 8000, 8001, 8080, 9000, 10001,
+  20304, 4001, 19204, 20104, 3001, 3000, 4000, 5000, 8000, 8001, 8080, 9000, 10001,
 ] as const;
 export const RONGTA_PORTS_CSV = RONGTA_FALLBACK_PORTS.join(',');
 export const RONGTA_PRINTER_PORTS = [9100, 515, 631, 80, 443, 1024] as const;

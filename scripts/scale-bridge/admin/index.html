@@ -492,20 +492,27 @@
       $('scanResults').innerHTML = '';
       try {
         const body = {
-          startIP: $('scanStart').value.trim(),
-          endIP: $('scanEnd').value.trim(),
+          startIP: $('scanStart').value.trim() || undefined,
+          endIP: $('scanEnd').value.trim() || undefined,
           ports: $('scanPorts').value.trim() || 'all',
+          allSubnets: !($('scanStart').value.trim() && $('scanEnd').value.trim()),
         };
         const res = await api('/scan', { method: 'POST', body: JSON.stringify(body) });
         scanFound = res.devices || [];
         $('scanBar').style.width = '100%';
-        $('scanInfo').textContent = res.scanned + ' IP tarandı, ' + scanFound.length + ' terazi bulundu';
+        const proto = res.protocolVerified ?? scanFound.filter((d) => d.protocolVerified).length;
+        const tcpOnly = res.tcpOnly ?? scanFound.filter((d) => !d.protocolVerified).length;
+        $('scanInfo').textContent =
+          res.scanned + ' IP tarandı · ' + scanFound.length + ' cihaz (' + proto + ' protokol, ' + tcpOnly + ' TCP adayı)';
         const box = $('scanResults');
         for (const [i, d] of scanFound.entries()) {
           const div = document.createElement('div');
           div.className = 'scan-hit';
+          const badge = d.protocolVerified
+            ? '<span class="sub" style="color:#86efac">protokol OK</span>'
+            : '<span class="sub" style="color:#fcd34d">TCP adayı</span>';
           div.innerHTML = `
-            <span><strong>${escapeHtml(d.ipAddress)}</strong> · ${escapeHtml(d.brand || 'rongta')}</span>
+            <span><strong>${escapeHtml(d.ipAddress)}</strong> · ${escapeHtml(d.brand || 'rongta')} ${badge}</span>
             <span class="sub">${escapeHtml(d.model || '')}</span>
             <label style="margin:0;font-size:0.75rem">Port</label>
             <input type="number" min="1" max="65535" data-scan-port="${i}" value="${d.port || 20304}" />

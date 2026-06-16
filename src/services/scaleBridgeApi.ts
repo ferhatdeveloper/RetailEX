@@ -224,12 +224,18 @@ export type ScaleBridgeScanResult = {
   startIP: string;
   endIP: string;
   scanned: number;
+  tcpCandidates?: number;
+  protocolVerified?: number;
+  tcpOnly?: number;
   devices: {
     ipAddress: string;
     port: number;
     brand?: string;
     model?: string;
     isResponding: boolean;
+    protocolVerified?: boolean;
+    discoveryMethod?: 'protocol' | 'tcp';
+    openPorts?: number[];
   }[];
 };
 
@@ -259,15 +265,17 @@ export async function scaleBridgeScanDefaults(): Promise<ScaleBridgeScanDefaults
 export async function scaleBridgeScanNetwork(
   startIP?: string,
   endIP?: string,
-  concurrency = 48
+  concurrency = 32,
+  options?: { allSubnets?: boolean }
 ): Promise<ScaleBridgeScanResult> {
   const base = resolveScaleBridgeBaseUrl();
   if (!base) {
     throw new Error('Terazi köprüsüne erişilemiyor. Mağaza PC\'de köprü servisinin çalıştığından emin olun.');
   }
-  const body: Record<string, string | number> = { concurrency };
+  const body: Record<string, string | number | boolean> = { concurrency };
   if (startIP) body.startIP = startIP;
   if (endIP) body.endIP = endIP;
+  if (options?.allSubnets !== undefined) body.allSubnets = options.allSubnets;
   body.ports = 'all';
   const res = await fetch(`${base}/scan`, {
     method: 'POST',

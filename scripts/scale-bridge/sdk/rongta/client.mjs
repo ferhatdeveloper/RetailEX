@@ -111,8 +111,8 @@ export class RongtaScaleClient {
         socket = await tryConnect(this.ipAddress, p, QUICK_CONNECT_TIMEOUT_MS);
 
         const initial = await Promise.race([
-          readOnce(socket, 450),
-          new Promise((resolve) => setTimeout(() => resolve(''), 450)),
+          readOnce(socket, 900),
+          new Promise((resolve) => setTimeout(() => resolve(''), 900)),
         ]);
         if (isRongtaFrame(initial)) {
           const cmd = String(initial).slice(4, 8);

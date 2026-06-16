@@ -24,6 +24,9 @@ export interface ScannedDevice {
   brand?: ScaleDevice['brand'];
   model?: string;
   isResponding: boolean;
+  protocolVerified?: boolean;
+  discoveryMethod?: 'protocol' | 'tcp';
+  openPorts?: number[];
 }
 
 function isTauriRuntime(): boolean {
@@ -36,7 +39,8 @@ function isTauriRuntime(): boolean {
 export async function scanNetwork(
   startIP?: string,
   endIP?: string,
-  onProgress?: (progress: ScanProgress) => void
+  onProgress?: (progress: ScanProgress) => void,
+  options?: { allSubnets?: boolean }
 ): Promise<ScannedDevice[]> {
   try {
     if (typeof window !== 'undefined' && (window as { electronAPI?: { scale?: { scanNetwork?: Function } } }).electronAPI?.scale?.scanNetwork) {
@@ -59,13 +63,22 @@ export async function scanNetwork(
       onProgress({ current: 0, total: 254, currentIP: 'Köprü üzerinden taranıyor…' });
     }
 
-    const result = await scaleBridgeScanNetwork(startIP, endIP);
+    const scanAllSubnets = options?.allSubnets !== false;
+    const result = await scaleBridgeScanNetwork(
+      scanAllSubnets ? undefined : startIP,
+      scanAllSubnets ? undefined : endIP,
+      32,
+      { allSubnets: scanAllSubnets }
+    );
     const devices = (result.devices || []).map((d) => ({
       ipAddress: d.ipAddress,
       port: d.port,
       brand: (d.brand || 'rongta') as ScaleDevice['brand'],
       model: d.model,
       isResponding: d.isResponding !== false,
+      protocolVerified: d.protocolVerified,
+      discoveryMethod: d.discoveryMethod,
+      openPorts: d.openPorts,
     }));
 
     if (onProgress) {

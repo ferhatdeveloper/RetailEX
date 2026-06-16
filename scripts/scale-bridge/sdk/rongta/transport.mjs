@@ -6,8 +6,9 @@ import { buildScalePortTryList } from '../../scalePorts.mjs';
 import { SCALE_PRINTER_PORTS } from '../../scalePorts.mjs';
 
 export const SOCKET_TIMEOUT_MS = 8000;
-export const QUICK_PROBE_TIMEOUT_MS = 1200;
-export const QUICK_CONNECT_TIMEOUT_MS = 500;
+export const QUICK_PROBE_TIMEOUT_MS = 2500;
+export const QUICK_CONNECT_TIMEOUT_MS = 1200;
+export const SCAN_TCP_TIMEOUT_MS = 900;
 
 export function errorCode(err) {
   if (!err) return '';

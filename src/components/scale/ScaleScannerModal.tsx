@@ -18,9 +18,8 @@ export function ScaleScannerModal({ onDevicesFound, onClose }: ScaleScannerModal
   const [foundDevices, setFoundDevices] = useState<ScannedDevice[]>([]);
   const [devicePorts, setDevicePorts] = useState<Record<string, number>>({});
   const [selectedDevices, setSelectedDevices] = useState<Set<string>>(new Set());
+  const [scanAllSubnets, setScanAllSubnets] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
@@ -57,7 +56,7 @@ export function ScaleScannerModal({ onDevicesFound, onClose }: ScaleScannerModal
     try {
       const devices = await scanNetwork(startIP, endIP, (prog) => {
         setProgress(prog);
-      });
+      }, { allSubnets: scanAllSubnets });
 
       setFoundDevices(devices);
       setDevicePorts(
@@ -157,6 +156,22 @@ export function ScaleScannerModal({ onDevicesFound, onClose }: ScaleScannerModal
               </div>
             </div>
 
+            <label className="mt-3 flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={scanAllSubnets}
+                onChange={(e) => setScanAllSubnets(e.target.checked)}
+                disabled={scanning}
+                className="rounded border-gray-300"
+              />
+              Tüm yerel ağ kartlarını tara (önerilen)
+            </label>
+            {!scanAllSubnets && (
+              <p className="mt-1 text-xs text-amber-700">
+                Yalnızca yukarıdaki IP aralığı taranır. Terazi farklı alt ağdaysa bulunamaz.
+              </p>
+            )}
+
             {rangeHint && !error && (
               <p className="mt-2 text-xs text-gray-500">{rangeHint}</p>
             )}
@@ -243,7 +258,17 @@ export function ScaleScannerModal({ onDevicesFound, onClose }: ScaleScannerModal
                             <h4 className="text-gray-900">
                               {device.brand?.toUpperCase() || 'Bilinmeyen Terazi'}
                             </h4>
-                            {device.isResponding && (
+                            {device.protocolVerified === false && (
+                              <span className="px-2 py-0.5 bg-amber-100 text-amber-800 text-xs rounded">
+                                TCP adayı — test edin
+                              </span>
+                            )}
+                            {device.protocolVerified !== false && device.isResponding && (
+                              <span className="px-2 py-0.5 bg-green-100 text-green-700 text-xs rounded">
+                                Protokol doğrulandı
+                              </span>
+                            )}
+                            {device.isResponding && device.protocolVerified === undefined && (
                               <span className="px-2 py-0.5 bg-green-100 text-green-700 text-xs rounded">
                                 Çevrimiçi
                               </span>
