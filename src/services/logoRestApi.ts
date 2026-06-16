@@ -684,7 +684,7 @@ async function logoHttpViaBridge(
 ): Promise<Response> {
   const bridge = getBridgeUrl();
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 90_000);
+  const timeoutId = setTimeout(() => controller.abort(), 240_000);
   const payload = {
     baseUrl: normalizeBaseUrl(baseUrl),
     method,

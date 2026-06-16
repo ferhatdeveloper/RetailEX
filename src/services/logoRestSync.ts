@@ -563,7 +563,7 @@ export async function syncLogoProductsFromRest(
 
   await logoListResource(cfg, 'items', { limit: 1, withCount: true });
 
-  const rawItems = await logoFetchAllPaginated<unknown>(cfg, 'items', { maxPages: 500 });
+  const rawItems = await logoFetchAllPaginated<unknown>(cfg, 'items', { maxPages: 500, pageSize: 15 });
   const rows: Record<string, unknown>[] = [];
   for (const raw of rawItems) {
     const mapped = mapLogoItem(unwrapLogoRecord(raw), firmNr);
@@ -602,7 +602,7 @@ export async function syncLogoArpsFromRest(
   }
 
   onProgress?.({ phase: 'customers', message: 'Logo cari hesaplar okunuyor…' });
-  const rawArps = await logoFetchAllPaginated<unknown>(cfg, 'Arps', { maxPages: 500 });
+  const rawArps = await logoFetchAllPaginated<unknown>(cfg, 'Arps', { maxPages: 500, pageSize: 10 });
 
   const customerRows: Record<string, unknown>[] = [];
   const supplierRows: Record<string, unknown>[] = [];
