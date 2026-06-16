@@ -161,6 +161,7 @@
             "db:test:remote": "node scripts/test-remote-pg.mjs",
             "db:firm": "node database/scripts/firm-quick.mjs",
             "db:merkez:tenant-retail-seed": "node scripts/run-merkez-tenant-registry-retail-seed.mjs",
+            "db:provision-tenant": "node scripts/provision-tenant.mjs",
             "db:merkez:tenant-retail-full-setup": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/merkez-tenant-retail-full-setup.ps1",
             "db:tenant-post-schema": "node scripts/tenant-databases-post-schema.mjs",
             "db:tenant-ensure-app-users": "node scripts/tenant-databases-ensure-app-users.mjs"
