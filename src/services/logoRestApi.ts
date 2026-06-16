@@ -1061,28 +1061,49 @@ export async function logoSwitchContext(
 
 export async function logoListFirmCatalog(cfg: LogoRestConfig): Promise<LogoFirmOption[]> {
   const baseUrl = requireBaseUrl(cfg);
+  assertLogoReachableInWebContext(baseUrl);
   const tokenFirm = getLogoMappingForErp(cfg)?.logoFirmNr ?? logoFirmNrFromErp();
   const session = await logoObtainToken(cfg, tokenFirm > 0 ? tokenFirm : 1);
   const auth = { Authorization: `Bearer ${session.accessToken}` };
+  const apiKey = cfg.clientId || LOGO_DEFAULT_CLIENT_ID;
+  const query = { api_key: apiKey, expandLevel: 'full' };
+  const path = '/methods/CAPI/Firms';
 
-  const endpoints = ['/methods/CAPI/Firms', '/methods/Firms', '/methods/CAPI/GetFirms'];
+  // CAPI firma listesi firma oturumundan bağımsız; aktif CompanyLogin bazen yanıtı geciktirir.
+  await logoCompanyLogout(cfg, session);
+
   let lastErr = '';
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const res = await logoHttp(baseUrl, 'GET', path, { headers: auth, query });
+    if (res.ok) {
+      const firms = parseLogoFirmsResponse(res.data);
+      if (firms.length > 0) return firms;
+      lastErr = `${path} boş firma listesi`;
+      break;
+    }
 
-  for (const path of endpoints) {
-    const res = await logoHttp(baseUrl, 'GET', path, { headers: auth });
-    if (!res.ok) {
-      lastErr = `${path} HTTP ${res.status}`;
+    const upstream =
+      res.data && typeof res.data === 'object'
+        ? String((res.data as { upstreamError?: string; Message?: string }).upstreamError
+            || (res.data as { Message?: string }).Message
+            || '')
+        : '';
+    const statusLabel = res.status > 0 ? String(res.status) : '0';
+    lastErr = upstream
+      ? `${path} HTTP ${statusLabel} — ${upstream}`
+      : `${path} HTTP ${statusLabel}`;
+
+    if (attempt === 0 && (res.status === 0 || res.status >= 500)) {
+      await new Promise((r) => setTimeout(r, 2000));
       continue;
     }
-    const firms = parseLogoFirmsResponse(res.data);
-    if (firms.length > 0) return firms;
-    lastErr = `${path} boş firma listesi`;
+    break;
   }
 
   throw new Error(
     lastErr
-      ? `Logo firma listesi alınamadı: ${lastErr}`
-      : 'Logo firma listesi boş döndü. CAPI/Firms yanıtını kontrol edin.'
+      ? `Logo firma listesi alınamadı: ${lastErr}. Bu Logo kurulumunda doğru uç GET /methods/CAPI/Firms; GetFirms yoktur. Logo LObjects (REST servisi) çalışıyor mu kontrol edin.`
+      : 'Logo firma listesi boş döndü. GET /methods/CAPI/Firms yanıtını kontrol edin.'
   );
 }
 

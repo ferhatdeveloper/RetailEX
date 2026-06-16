@@ -252,7 +252,7 @@ async function handleLogoProxyRequest(body: LogoProxyBody) {
             method,
             headers,
             body: method === 'GET' || method === 'HEAD' ? undefined : (body.body ?? undefined),
-            signal: AbortSignal.timeout(60_000),
+                signal: AbortSignal.timeout(120_000),
         });
     } catch (upstreamErr: unknown) {
         const msg = upstreamErr instanceof Error ? upstreamErr.message : String(upstreamErr);
