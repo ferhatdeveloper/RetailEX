@@ -47,13 +47,16 @@ foreach ($f in $copyFiles) {
 
 # Resmi Rongta DLL + config (calisan exe ile ayni)
 $dllSrc = "$SourceDesktop\WindowsFormsApplication1\bin\x86\Debug"
+$cfgSrc = if (Test-Path $SystemCfg) { $SystemCfg } else { Join-Path $dllSrc "SYSTEM.CFG" }
 if (Test-Path "$dllSrc\rtslabelscale.dll") {
     Copy-Item "$dllSrc\rtslabelscale.dll" $projDest
-    if (Test-Path "$dllSrc\SYSTEM.CFG") {
-        Copy-Item "$dllSrc\SYSTEM.CFG" $projDest -Force
+    if (Test-Path $cfgSrc) {
+        Copy-Item $cfgSrc $projDest -Force
         $bridgeCfg = Join-Path $CloneDir "scripts\scale-bridge\rongta-dll-bridge\SYSTEM.CFG"
-        Copy-Item "$dllSrc\SYSTEM.CFG" $bridgeCfg -Force
-        Write-Host "SYSTEM.CFG -> reference + rongta-dll-bridge"
+        Copy-Item $cfgSrc $bridgeCfg -Force
+        Write-Host "SYSTEM.CFG -> reference + rongta-dll-bridge ($cfgSrc)"
+    } else {
+        Write-Warning "SYSTEM.CFG bulunamadi: $cfgSrc"
     }
     Write-Host "rtslabelscale.dll kopyalandi"
 } else {

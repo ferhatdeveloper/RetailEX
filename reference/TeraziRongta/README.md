@@ -39,12 +39,23 @@ C# `button9` akışı ile aynı: **Connect → DownLoadPLU (4/paket) → DownLoa
 
 ## SYSTEM.CFG
 
-Repoda **varsayılan** dosya var:
+**Sizin çalışan dosya:**
+`C:\Users\FERHAT\Desktop\TeraziRongta\WindowsFormsApplication1\bin\x86\Debug\SYSTEM.CFG`
 
-- `scripts/scale-bridge/rongta-dll-bridge/SYSTEM.CFG`
-- `TeraziRongta/WindowsFormsApplication1/SYSTEM.CFG`
+Repoda varsayılan şablon var; terazi bağlanmazsa **bu dosyayı kopyalayın**:
 
-Terazi bağlanmazsa çalışan masaüstü kopyanızı kullanın:
+```powershell
+cd C:\Users\FERHAT\RetailEX-git
+powershell -ExecutionPolicy Bypass -File scripts\scale-bridge\copy-rongta-system-cfg.ps1
+```
+
+Git'e de yüklemek için:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\scale-bridge\copy-rongta-system-cfg.ps1 -Commit
+```
+
+Manuel kopya:
 
 ```powershell
 copy "C:\Users\FERHAT\Desktop\TeraziRongta\WindowsFormsApplication1\bin\x86\Debug\SYSTEM.CFG" `
