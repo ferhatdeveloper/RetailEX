@@ -3094,6 +3094,13 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
   deleteCurrency: { tr: 'Para Birimini Sil', en: 'Delete Currency', ar: 'حذف العملة', ku: 'سڕینەوەی دراو' },
   deleteExchangeRate: { tr: 'Kuru Sil', en: 'Delete Exchange Rate', ar: 'حذف سعر الصرف', ku: 'سڕینەوەی نرخی ئاڵوگۆڕ' },
   removeFromCart: { tr: 'Ürünü Sepetten Çıkar', en: 'Remove from Cart', ar: 'إزالة من السلة', ku: 'لابردن لە سەبەتە' },
+  productNote: { tr: 'Ürün notu', en: 'Product note', ar: 'ملاحظة المنتج', ku: 'تێبینی بەرهەم' },
+  productNotePlaceholder: {
+    tr: 'Örn. hediye paketi, alerji bilgisi...',
+    en: 'e.g. gift wrap, allergy info...',
+    ar: 'مثال: تغليف هدية، معلومات حساسية...',
+    ku: 'نموونە: پاکێجی دیاری، زانیاری هەستیاری...',
+  },
   confirmRemoveFromCart: { tr: '{name} ürününü sepetten çıkarmak istediğinizden emin misiniz?', en: 'Are you sure you want to remove {name} from the cart?', ar: 'هل أنت متأكد من إزالة {name} من السلة؟', ku: 'دڵنیایت لە لابردنی {name} لە سەبەتە؟' },
   removeAction: { tr: 'Kaldır', en: 'Remove', ar: 'إزالة', ku: 'لابردن' },
   stockWarningTitle: { tr: 'Yetersiz Stok', en: 'Insufficient Stock', ar: 'مخزون غير كافٍ', ku: 'کۆگای ناتەواو' },
