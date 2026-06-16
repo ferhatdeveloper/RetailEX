@@ -1,0 +1,28 @@
+# Build outputs
+[Bb]in/
+[Oo]bj/
+[Pp]ublish/
+
+# Visual Studio
+.vs/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# Signing keys
+*.pfx
+
+# Logs / upgrade
+UpgradeLog.htm
+*.log
+
+# Archives
+*.rar
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Debug symbols (DLL/XML repoda)
+*.pdb
