@@ -1,0 +1,15 @@
+# Visual Studio / derleme çıktıları repoya girmesin
+.vs/
+bin/
+obj/
+*.suo
+*.user
+*.pfx
+.DS_Store
+UpgradeLog.htm
+publish/
+*.rar
+
+# DLL ve config kaynak kopyada kalsın (WindowsFormsApplication1/ altında tutulacak)
+!WindowsFormsApplication1/rtslabelscale.dll
+!WindowsFormsApplication1/SYSTEM.CFG
