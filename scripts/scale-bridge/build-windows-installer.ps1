@@ -51,6 +51,34 @@ Copy-Item -Force (Join-Path $ScaleDir 'admin\index.html') (Join-Path $Staging 's
 Copy-Item -Force (Join-Path $ScaleDir 'diagnose-windows.ps1') (Join-Path $Staging 'scale-bridge\diagnose-windows.ps1')
 Copy-Item -Force (Join-Path $ScaleDir 'configure-firewall.ps1') (Join-Path $Staging 'scale-bridge\configure-firewall.ps1')
 Copy-Item -Force (Join-Path $ScaleDir 'scale-bridge.example.json') $Staging
+Copy-Item -Force (Join-Path $ScaleDir 'rongtaDll.mjs') (Join-Path $Staging 'scale-bridge\rongtaDll.mjs')
+
+Write-Host '2b) RongtaDllBridge (rtslabelscale.dll)...'
+$DllBridgeDir = Join-Path $ScaleDir 'rongta-dll-bridge'
+$DllBridgeOut = Join-Path $DllBridgeDir 'bin\x86\Release'
+$Msbuild = @(
+    "${env:ProgramFiles(x86)}\Microsoft Visual Studio\2022\BuildTools\MSBuild\Current\Bin\MSBuild.exe",
+    "${env:ProgramFiles}\Microsoft Visual Studio\2022\Community\MSBuild\Current\Bin\MSBuild.exe",
+    "${env:ProgramFiles(x86)}\Microsoft Visual Studio\2019\BuildTools\MSBuild\Current\Bin\MSBuild.exe"
+) | Where-Object { Test-Path $_ } | Select-Object -First 1
+
+if ($Msbuild -and (Test-Path (Join-Path $DllBridgeDir 'RongtaDllBridge.csproj'))) {
+    & $Msbuild (Join-Path $DllBridgeDir 'RongtaDllBridge.csproj') /p:Configuration=Release /p:Platform=x86 /v:minimal
+    if ($LASTEXITCODE -eq 0 -and (Test-Path (Join-Path $DllBridgeOut 'RongtaDllBridge.exe'))) {
+        $RongtaStaging = Join-Path $Staging 'scale-bridge\rongta-dll-bridge'
+        New-Item -ItemType Directory -Force -Path $RongtaStaging | Out-Null
+        Copy-Item -Force (Join-Path $DllBridgeOut 'RongtaDllBridge.exe') $RongtaStaging
+        Copy-Item -Force (Join-Path $DllBridgeOut 'rtslabelscale.dll') $RongtaStaging
+        if (Test-Path (Join-Path $DllBridgeOut 'SYSTEM.CFG')) {
+            Copy-Item -Force (Join-Path $DllBridgeOut 'SYSTEM.CFG') $RongtaStaging
+        }
+        Write-Host '  RongtaDllBridge paketlendi.' -ForegroundColor Green
+    } else {
+        Write-Warning 'RongtaDllBridge derlenemedi; TCP köprüsü kullanılacak.'
+    }
+} else {
+    Write-Warning 'MSBuild veya RongtaDllBridge.csproj yok; DLL köprüsü atlandı.'
+}
 
 Write-Host '3) Portable Node.js...'
 $NodeZip = Join-Path $env:TEMP 'node-win-x64.zip'

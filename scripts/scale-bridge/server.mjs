@@ -13,6 +13,7 @@ import { fileURLToPath } from 'node:url';
 import { rongtaTcpSendPlu, rongtaTcpTest, rongtaTcpFetchSales, discoverRongtaPort, tcpProbePorts } from './rongtaTcp.mjs';
 import { scanNetworkForScales, guessLocalSubnet } from './scan.mjs';
 import { startScaleInboundListeners, getInboundScales } from './listen.mjs';
+import { shouldUseRongtaDll, isRongtaDllBridgeAvailable, rongtaDllTest, rongtaDllSendPlu } from './rongtaDll.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ADMIN_DIR = join(__dirname, 'admin');
@@ -33,6 +34,8 @@ const DEFAULT_CONFIG = {
     host: '0.0.0.0',
     ports: [20304, 4001, 8888, 3000, 9200, 19204],
   },
+  /** auto | dll | tcp — Windows'ta rtslabelscale.dll varsa auto=dll öncelikli */
+  scaleBackend: 'auto',
 };
 
 let config = { ...DEFAULT_CONFIG };
@@ -229,6 +232,9 @@ async function handle(req, res) {
         configPath,
         port: PORT,
         inboundListen: config.scaleInboundListen?.enabled !== false,
+        scaleBackend: config.scaleBackend || 'auto',
+        dllBridgeAvailable: isRongtaDllBridgeAvailable(),
+        usingDll: shouldUseRongtaDll(config),
       });
     }
 
@@ -276,6 +282,7 @@ async function handle(req, res) {
       if (body.scaleInboundListen && typeof body.scaleInboundListen === 'object') {
         config.scaleInboundListen = { ...config.scaleInboundListen, ...body.scaleInboundListen };
       }
+      if (body.scaleBackend !== undefined) config.scaleBackend = String(body.scaleBackend);
       await saveConfig();
       await applyInboundListen();
       return json(res, 200, { ok: true });
@@ -316,6 +323,16 @@ async function handle(req, res) {
       const ipAddress = String(body.ipAddress || '').trim();
       const port = Number(body.port) || 0;
       if (!ipAddress) return json(res, 400, { error: 'ipAddress gerekli' });
+      if (shouldUseRongtaDll(config)) {
+        const dll = await rongtaDllTest(ipAddress);
+        return json(res, 200, {
+          ipAddress,
+          found: !!dll.ok,
+          suggestedPort: 20304,
+          backend: 'rtslabelscale.dll',
+          message: dll.message,
+        });
+      }
       const discovery = await discoverRongtaPort(ipAddress, port || undefined);
       const tcp = await tcpProbePorts(ipAddress, port || undefined);
       return json(res, 200, {
@@ -331,6 +348,10 @@ async function handle(req, res) {
       const id = decodeURIComponent(path.split('/')[2]);
       const scale = findScale(id);
       if (!scale) return json(res, 404, { error: 'Terazi bulunamadı' });
+      if (shouldUseRongtaDll(config)) {
+        const result = await rongtaDllTest(scale.ipAddress);
+        return json(res, 200, { ok: !!result.ok, ...result });
+      }
       const result = await rongtaTcpTest(scale.ipAddress, scale.port);
       if (result.ok && result.suggestedPort && result.suggestedPort !== scale.port) {
         const idx = config.scales.findIndex((s) => s.id === scale.id);
@@ -354,7 +375,12 @@ async function handle(req, res) {
         : recordsFromProducts(products, pluStart);
       if (!records.length) return json(res, 400, { success: false, message: 'Ürün listesi boş' });
 
-      const result = await rongtaTcpSendPlu(scale.ipAddress, scale.port, records);
+      let result;
+      if (shouldUseRongtaDll(config)) {
+        result = await rongtaDllSendPlu(scale.ipAddress, records);
+      } else {
+        result = await rongtaTcpSendPlu(scale.ipAddress, scale.port, records);
+      }
       if (result.success) {
         scale.lastSync = new Date().toISOString();
         scale.productCount = (scale.productCount || 0) + (result.sentCount || 0);

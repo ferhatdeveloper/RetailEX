@@ -8,8 +8,8 @@
 |-------|-----|
 | `WindowsFormsApplication1/labelScale.cs` | DLL sarmalayıcı |
 | `WindowsFormsApplication1/uDefine.cs` | Yapılar / sabitler |
-| `WindowsFormsApplication1/rtslabelscale.dll` | Rongta resmi kütüphane |
-| `WindowsFormsApplication1/SYSTEM.CFG` | DLL yapılandırması |
+| `WindowsFormsApplication1/lib/rtslabelscale.dll` | Rongta resmi kütüphane |
+| `WindowsFormsApplication1/SYSTEM.CFG` | DLL yapılandırması (repoda yok — aşağıya bakın) |
 
 ## Repoya ekleme (PowerShell — `C:\RetailEX` git değilse)
 
@@ -34,3 +34,15 @@ powershell -ExecutionPolicy Bypass -File scripts\scale-bridge\import-terazi-rong
 ## RetailEX köprüsü
 
 Node köprüsü (`scripts/scale-bridge/`) Windows'ta bu DLL'i `rongta-dll-bridge` yardımcı exe ile çağırır (0.1.89+).
+
+## SYSTEM.CFG (önemli)
+
+Repoda yalnızca placeholder var. Çalışan terazi bağlantısı için masaüstü projesindeki dosyayı kopyalayın:
+
+```powershell
+copy "C:\Users\FERHAT\Desktop\TeraziRongta\WindowsFormsApplication1\bin\x86\Debug\SYSTEM.CFG" `
+     "scripts\scale-bridge\rongta-dll-bridge\SYSTEM.CFG"
+git add scripts/scale-bridge/rongta-dll-bridge/SYSTEM.CFG
+git commit -m "chore: Rongta SYSTEM.CFG"
+git push origin main
+```
