@@ -232,6 +232,8 @@ export const RestPOS: React.FC<RestPOSProps> = ({
     const [cart, setCart] = useState<CartItem[]>([]);
     const cartRef = useRef<CartItem[]>(cart);
     cartRef.current = cart;
+    /** Sepette olmayan ürün için uzun basma modalından girilen not (sepete eklenince uygulanır) */
+    const [pendingProductNotes, setPendingProductNotes] = useState<Record<string, string>>({});
     const notePersistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const [expandedCartItem, setExpandedCartItem] = useState<number | null>(null);
     const [cartView, setCartView] = useState<'table' | 'card'>('card');
@@ -343,7 +345,7 @@ export const RestPOS: React.FC<RestPOSProps> = ({
 
     const updateItemNote = (idx: number, note: string) => {
         const next = [...cart];
-        (next[idx] as any).note = note;
+        next[idx] = { ...next[idx], note };
         setCart(next);
 
         if (posMode !== 'table' || !table?.id) return;
@@ -375,7 +377,7 @@ export const RestPOS: React.FC<RestPOSProps> = ({
                               ? [String((rowNow as any).id)]
                               : [];
                     if (idsNow.length === 0) return;
-                    const raw = typeof (rowNow as any).note === 'string' ? (rowNow as any).note : '';
+                    const raw = typeof rowNow.note === 'string' ? rowNow.note : '';
                     const payload = raw.trim() === '' ? null : raw;
                     for (const id of idsNow) {
                         await RestaurantService.updateOrderItem(id, { note: payload });
@@ -945,9 +947,38 @@ export const RestPOS: React.FC<RestPOSProps> = ({
 
     const subsForMain = catMain ? (subsByMain[catMain] ?? []) : [];
 
+    const findCartIndexForProduct = (productId: string, items: CartItem[] = cart): number =>
+        items.findIndex(i =>
+            i.product.id === productId &&
+            (activePlate ? (i as { plate?: string }).plate === activePlate : !(i as { plate?: string }).plate)
+        );
+
+    const getNoteForProduct = (productId: string): string => {
+        const idx = findCartIndexForProduct(productId);
+        if (idx >= 0) return cart[idx].note ?? '';
+        return pendingProductNotes[productId] ?? '';
+    };
+
+    const saveProductNoteFromModal = (productId: string, note: string) => {
+        const idx = findCartIndexForProduct(productId);
+        if (idx >= 0) {
+            updateItemNote(idx, note);
+            notify(tmR('resOptProductNoteSaved'));
+            return;
+        }
+        setPendingProductNotes(prev => {
+            const next = { ...prev };
+            if (note.trim() === '') delete next[productId];
+            else next[productId] = note;
+            return next;
+        });
+        notify(tmR('resOptProductNotePending'));
+    };
+
     /* ---------- cart ---------- */
     const addToCart = async (product: Product, addQty: number = 1) => {
         const dq = Math.max(1, Math.min(999, Math.floor(Number(addQty) || 1)));
+        const pendingNote = pendingProductNotes[product.id]?.trim();
         // Önce sepete anında ekle — setCart(prev=>...) kullan ki art arda tıklamalarda 1,2,3... doğru artsın (closure'daki eski cart'a göre silinmesin)
         let rollbackCart: CartItem[] | null = null;
         setCart(prev => {
@@ -963,9 +994,17 @@ export const RestPOS: React.FC<RestPOSProps> = ({
                 return next;
             }
             const newItem = { product, quantity: dq, price: product.price, subtotal: product.price * dq, discount: 0, taxAmount: 0 } as CartItem;
-            if (activePlate) (newItem as any).plate = activePlate;
+            if (pendingNote) newItem.note = pendingNote;
+            if (activePlate) (newItem as { plate?: string }).plate = activePlate;
             return [...prev, newItem];
         });
+
+        if (pendingNote) {
+            setPendingProductNotes(prev => {
+                const { [product.id]: _removed, ...rest } = prev;
+                return rest;
+            });
+        }
 
         // Masa modunda: DB'yi arka planda güncelle; hata olursa sepeti geri al
         if (posMode === 'table' && table?.id) {
@@ -3081,7 +3120,8 @@ export const RestPOS: React.FC<RestPOSProps> = ({
                     onAddToCart={(p, q = 1) => {
                         void addToCart(p, q);
                     }}
-                    onAddNote={() => setShowNoteModal(true)}
+                    initialNote={getNoteForProduct(longPressedProduct.id)}
+                    onSaveNote={(note) => saveProductNoteFromModal(longPressedProduct.id, note)}
                     onSendToKitchen={() => setShowKitchenConfirm(true)}
                     onMarkComplementary={async () => {
                         if (!table || !longPressedProduct) return;

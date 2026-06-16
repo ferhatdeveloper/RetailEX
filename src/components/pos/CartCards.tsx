@@ -18,6 +18,7 @@ interface CartCardsProps {
   onApplyItemDiscount?: (index: number, discountPercent: number) => void; // Yeni modal için
   updateCartItemPrice?: (index: number, newPrice: number) => void;
   updateCartItemUnit?: (index: number, unit: string, multiplier: number) => void;
+  updateCartItemNote?: (index: number, note: string) => void;
   campaignResult?: CampaignResult;
   unitSets?: any[];
 }
@@ -33,6 +34,7 @@ export function CartCards({
   onApplyItemDiscount,
   updateCartItemPrice,
   updateCartItemUnit,
+  updateCartItemNote,
   campaignResult,
   unitSets = []
 }: CartCardsProps) {
@@ -150,6 +152,7 @@ export function CartCards({
           onUpdateVariant={updateCartItemVariant}
           onUpdatePrice={updateCartItemPrice}
           onUpdateUnit={updateCartItemUnit}
+          onUpdateNote={updateCartItemNote}
           formatNumber={formatNumber}
           unitSets={unitSets}
         />
@@ -238,6 +241,11 @@ export function CartCards({
                       <p className={cn('text-[10px] font-mono mb-0.5', darkMode ? 'text-gray-500' : 'text-slate-500')}>
                         {item.product.barcode}
                       </p>
+                      {item.note?.trim() ? (
+                        <p className={cn('text-[10px] font-semibold italic truncate mb-0.5', darkMode ? 'text-amber-400' : 'text-amber-700')}>
+                          {item.note}
+                        </p>
+                      ) : null}
                       {item.variant && (
                         <button
                           onClick={() => {

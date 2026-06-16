@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { X, Plus, Minus, Percent, Trash2, Package, Calculator, Scale } from 'lucide-react';
+import { X, Plus, Minus, Percent, Trash2, Package, Calculator, Scale, StickyNote } from 'lucide-react';
 import type { CartItem, ProductVariant } from './types';
 import { POSNumpad } from './POSNumpad';
 import { formatNumber as formatNumberUtil } from '../../utils/formatNumber';
@@ -19,6 +19,7 @@ interface POSCartItemActionModalProps {
   onUpdateVariant?: (index: number, variant: ProductVariant) => void;
   onUpdatePrice?: (index: number, newPrice: number) => void;
   onUpdateUnit?: (index: number, unit: string, multiplier: number) => void;
+  onUpdateNote?: (index: number, note: string) => void;
   formatNumber?: (num: number, decimals?: number, showDecimals?: boolean) => string;
   unitSets?: any[];
 }
@@ -33,6 +34,7 @@ export function POSCartItemActionModal({
   onUpdateVariant,
   onUpdatePrice,
   onUpdateUnit,
+  onUpdateNote,
   formatNumber = formatNumberUtil,
   unitSets = []
 }: POSCartItemActionModalProps) {
@@ -41,6 +43,7 @@ export function POSCartItemActionModal({
   const [quantity, setQuantity] = useState(item.quantity.toString());
   const [discount, setDiscount] = useState(item.discount.toString());
   const [price, setPrice] = useState((item.price ?? item.variant?.price ?? item.product.price).toString());
+  const [note, setNote] = useState(item.note ?? '');
   const [activeTab, setActiveTab] = useState<'main' | 'discount' | 'variant' | 'remove'>('main');
   const [showNumpad, setShowNumpad] = useState(true);
   const [selectedVariant, setSelectedVariant] = useState<ProductVariant | null>(item.variant || null);
@@ -58,6 +61,7 @@ export function POSCartItemActionModal({
     setQuantity(item.quantity.toString());
     setPrice((item.price ?? item.variant?.price ?? item.product.price).toString());
     setDiscount(item.discount.toString());
+    setNote(item.note ?? '');
   }, [item]);
 
   // Handle Numpad input routing
@@ -123,6 +127,10 @@ export function POSCartItemActionModal({
     // Update variant if changed
     if (onUpdateVariant && selectedVariant && selectedVariant.id !== item.variant?.id) {
       onUpdateVariant(itemIndex, selectedVariant);
+    }
+
+    if (onUpdateNote && note !== (item.note ?? '')) {
+      onUpdateNote(itemIndex, note);
     }
 
     onClose();
@@ -363,6 +371,25 @@ export function POSCartItemActionModal({
                         });
                       })()}
                     </div>
+                  </div>
+
+                  {/* Ürün notu */}
+                  <div className="space-y-2 pt-4 border-t border-dashed border-gray-200 dark:border-gray-700">
+                    <label className={`block text-xs font-black uppercase tracking-widest flex items-center gap-2 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                      <StickyNote className="w-4 h-4" />
+                      {tm('productNote') || 'Ürün notu'}
+                    </label>
+                    <textarea
+                      value={note}
+                      onChange={e => setNote(e.target.value)}
+                      placeholder={tm('productNotePlaceholder') || 'Örn. hediye paketi, alerji bilgisi...'}
+                      rows={3}
+                      className={`w-full px-4 py-3 border-2 rounded-xl text-sm font-medium resize-none transition-all outline-none ${
+                        darkMode
+                          ? 'bg-gray-700 border-gray-600 text-white placeholder:text-gray-500 focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20'
+                          : 'bg-white border-gray-200 text-gray-900 placeholder:text-gray-400 focus:border-amber-400 focus:ring-2 focus:ring-amber-400/20'
+                      }`}
+                    />
                   </div>
                 </div>
               )}

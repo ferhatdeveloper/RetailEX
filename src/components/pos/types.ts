@@ -12,6 +12,8 @@ export interface CartItem {
   price?: number; // Overridden price
   /** Mutfak durumu — sadece Restoran POS'unda kullanılır */
   kitchenStatus?: 'pending' | 'cooking' | 'ready' | 'served';
+  /** Satır notu / açıklama (mutfak, paket vb.) */
+  note?: string;
 }
 
 export interface ParkedReceipt {

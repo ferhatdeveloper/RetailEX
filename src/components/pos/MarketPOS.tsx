@@ -904,6 +904,10 @@ export default function MarketPOS({
     showNotif(unitChangedMsg, 'success');
   };
 
+  const updateCartItemNote = (index: number, note: string) => {
+    setCart(cart.map((item, i) => (i === index ? { ...item, note } : item)));
+  };
+
   // Clear cart
   const clearCart = () => {
     setShowCancelReasonModal(true);
@@ -1483,6 +1487,7 @@ export default function MarketPOS({
               isAdmin={currentUser.role === 'admin'}
               updateCartItemPrice={updateCartItemPrice}
               updateCartItemUnit={updateCartItemUnit}
+              updateCartItemNote={updateCartItemNote}
               unitSets={unitSets}
             />
           ) : (
@@ -1498,6 +1503,7 @@ export default function MarketPOS({
               onApplyItemDiscount={handleApplyItemDiscountByIndex}
               updateCartItemPrice={updateCartItemPrice}
               updateCartItemUnit={updateCartItemUnit}
+              updateCartItemNote={updateCartItemNote}
               unitSets={unitSets}
             />
           )}

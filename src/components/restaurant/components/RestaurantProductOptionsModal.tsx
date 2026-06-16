@@ -8,7 +8,10 @@ interface RestaurantProductOptionsModalProps {
     product: Product;
     onClose: () => void;
     onAddToCart: (product: Product, quantity?: number) => void;
-    onAddNote: () => void;
+    /** Sepetteki mevcut satır notu (yoksa bekleyen not) */
+    initialNote?: string;
+    /** Ürün satırına not kaydet */
+    onSaveNote?: (note: string) => void;
     onSendToKitchen: () => void;
     /** İkram DB güncellemesi bitene kadar bekleyebilir; hata olursa modal kapanmaz */
     onMarkComplementary: () => void | Promise<void>;
@@ -24,7 +27,8 @@ export function RestaurantProductOptionsModal({
     product,
     onClose,
     onAddToCart,
-    onAddNote,
+    initialNote = '',
+    onSaveNote,
     onSendToKitchen,
     onMarkComplementary,
     onVoidItem,
@@ -38,11 +42,13 @@ export function RestaurantProductOptionsModal({
     const [priceInput, setPriceInput] = useState('');
     /** Uzun basma: sepete eklenecek adet */
     const [quantityInput, setQuantityInput] = useState('1');
+    const [noteInput, setNoteInput] = useState(initialNote);
     const displayPrice = priceOverride ?? product.price;
 
     useEffect(() => {
         setQuantityInput('1');
-    }, [product.id]);
+        setNoteInput(initialNote);
+    }, [product.id, initialNote]);
 
     const applyPrice = () => {
         const num = parseFloat(priceInput.replace(/,/g, '.'));
@@ -145,12 +151,28 @@ export function RestaurantProductOptionsModal({
                             </div>
                             <p className="text-[10px] text-slate-500 font-medium leading-tight">{tm('resOptQtyHint')}</p>
                         </div>
-                        <button
-                            onClick={() => { onAddNote(); onClose(); }}
-                            className="w-full py-4 bg-slate-50 hover:bg-amber-50 text-slate-700 hover:text-amber-600 rounded-2xl font-black uppercase text-xs transition-all flex items-center justify-center gap-3 border-2 border-slate-100 hover:border-amber-200 active:scale-95"
-                        >
-                            <StickyNote className="w-4 h-4" /> {tm('resOptAddNote')}
-                        </button>
+                        <div className="rounded-2xl border-2 border-amber-100 bg-amber-50/50 p-4 space-y-3">
+                            <div className="text-[10px] font-black uppercase tracking-widest text-amber-800/80 flex items-center gap-2">
+                                <StickyNote className="w-4 h-4 shrink-0" /> {tm('resOptProductNote')}
+                            </div>
+                            <textarea
+                                value={noteInput}
+                                onChange={e => setNoteInput(e.target.value)}
+                                placeholder={tm('resOptProductNotePlaceholder')}
+                                rows={3}
+                                className="w-full px-4 py-3 rounded-xl border-2 border-amber-100 bg-white text-slate-900 text-sm font-medium resize-none focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-amber-300"
+                                aria-label={tm('resOptProductNote')}
+                            />
+                            {onSaveNote && (
+                                <button
+                                    type="button"
+                                    onClick={() => onSaveNote(noteInput)}
+                                    className="w-full py-3 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-black uppercase text-xs tracking-wide shadow-md active:scale-[0.98] transition-all"
+                                >
+                                    {tm('resOptAddNote')}
+                                </button>
+                            )}
+                        </div>
                         <button
                             onClick={() => { onSendToKitchen(); onClose(); }}
                             className="w-full py-4 bg-slate-50 hover:bg-emerald-50 text-slate-700 hover:text-emerald-600 rounded-2xl font-black uppercase text-xs transition-all flex items-center justify-center gap-3 border-2 border-slate-100 hover:border-emerald-200 active:scale-95"
