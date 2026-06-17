@@ -14,7 +14,8 @@ import { printHtmlInHiddenIframe } from '../../utils/restaurantReceiptPrint';
 import { receiptNotesForDisplay } from '../../utils/receiptNotes';
 import { RECEIPT_80MM_DOCUMENT_CSS, RECEIPT_80MM_VIEWPORT_FOR_HEADLESS } from '../../utils/receipt80mmDocumentCss';
 import { RECEIPT_A4_DOCUMENT_CSS } from '../../utils/receiptA4DocumentCss';
-import { ReceiptA4Document } from './ReceiptA4Document';
+import { RECEIPT_A5_DOCUMENT_CSS } from '../../utils/receiptA5DocumentCss';
+import { ReceiptStandardDocument } from './ReceiptStandardDocument';
 
 interface Receipt80mmProps {
   sale: Sale;
@@ -139,8 +140,15 @@ export function Receipt80mm({
   const receiptVariantClassName = isA4Format ? 'receipt-a4' : isA5Format ? 'receipt-a5' : 'receipt-80mm';
   const receiptWidthMm = resolvedPaperFormat === 'A4' ? 210 : resolvedPaperFormat === 'A5' ? 148 : 80;
   const printPageSize = isThermalFormat ? '80mm auto' : `${resolvedPaperFormat} portrait`;
-  const printPageMargin = isThermalFormat ? '0' : isA4Format ? '12mm' : '6mm';
-  const documentBaseCss = isThermalFormat ? RECEIPT_80MM_DOCUMENT_CSS : isA4Format ? RECEIPT_A4_DOCUMENT_CSS : '';
+  const isStandardFormat = isA4Format || isA5Format;
+  const printPageMargin = isThermalFormat ? '0' : isA4Format ? '12mm' : isA5Format ? '10mm' : '6mm';
+  const documentBaseCss = isThermalFormat
+    ? RECEIPT_80MM_DOCUMENT_CSS
+    : isA4Format
+      ? RECEIPT_A4_DOCUMENT_CSS
+      : isA5Format
+        ? RECEIPT_A5_DOCUMENT_CSS
+        : '';
   const viewportMeta = isThermalFormat ? RECEIPT_80MM_VIEWPORT_FOR_HEADLESS : '';
   const previewModalWidth = isThermalFormat
     ? 'min(94vw, 400px)'
@@ -159,6 +167,16 @@ export function Receipt80mm({
         box-shadow: none;
         padding: 0;
       }
+      .receipt-a5 #receipt-content {
+        width: 100% !important;
+        max-width: 100% !important;
+        background: transparent;
+        border: none;
+        border-radius: 0;
+        box-shadow: none;
+        padding: 0;
+      }
+
       .receipt-a4 .receipt-divider {
         border-top-style: solid !important;
         border-top-width: 2px !important;
@@ -422,7 +440,7 @@ export function Receipt80mm({
         Sabit yükseklik + flex column + flex:1;minHeight:0;overflow inline ile zorlanır.
       */}
       <div
-        className={`flex flex-col rounded-2xl overflow-hidden shadow-2xl ${darkMode ? 'bg-gray-900' : 'bg-white'} ${printImmediately ? `fixed left-[-9999px] top-0 opacity-0 pointer-events-none ${isA4Format ? 'w-[210mm]' : 'w-[min(94vw,400px)]'} h-[min(90vh,800px)]` : ''}`}
+        className={`flex flex-col rounded-2xl overflow-hidden shadow-2xl ${darkMode ? 'bg-gray-900' : 'bg-white'} ${printImmediately ? `fixed left-[-9999px] top-0 opacity-0 pointer-events-none ${isA4Format ? 'w-[210mm]' : isA5Format ? 'w-[148mm]' : 'w-[min(94vw,400px)]'} h-[min(90vh,800px)]` : ''}`}
         style={{
           width: previewModalWidth,
           maxWidth: previewModalWidth,
@@ -503,13 +521,13 @@ export function Receipt80mm({
             id="receipt-content"
             className={`w-full ${isRTL ? 'text-right' : 'text-left'}`}
             style={{
-              width: isA4Format ? '100%' : `${receiptWidthMm}mm`,
-              maxWidth: isA4Format ? '100%' : `${receiptWidthMm}mm`,
+              width: isStandardFormat ? '100%' : `${receiptWidthMm}mm`,
+              maxWidth: isStandardFormat ? '100%' : `${receiptWidthMm}mm`,
               direction: isRTL ? 'rtl' : 'ltr',
             }}
           >
-            {isA4Format ? (
-              <ReceiptA4Document
+            {isStandardFormat ? (
+              <ReceiptStandardDocument
                 sale={sale}
                 paymentData={paymentData}
                 receiptSettings={receiptSettings}
@@ -523,6 +541,7 @@ export function Receipt80mm({
                 headerBanner={headerBanner}
                 isRTL={isRTL}
                 formatDate={formatDate}
+                paperFormat={isA5Format ? 'A5' : 'A4'}
               />
             ) : (
             <>
