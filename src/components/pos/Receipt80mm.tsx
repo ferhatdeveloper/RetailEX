@@ -13,6 +13,8 @@ import { getAccountReceiptSystemPrinterName } from '../../utils/restaurantAccoun
 import { printHtmlInHiddenIframe } from '../../utils/restaurantReceiptPrint';
 import { receiptNotesForDisplay } from '../../utils/receiptNotes';
 import { RECEIPT_80MM_DOCUMENT_CSS, RECEIPT_80MM_VIEWPORT_FOR_HEADLESS } from '../../utils/receipt80mmDocumentCss';
+import { RECEIPT_A4_DOCUMENT_CSS } from '../../utils/receiptA4DocumentCss';
+import { ReceiptA4Document } from './ReceiptA4Document';
 
 interface Receipt80mmProps {
   sale: Sale;
@@ -137,9 +139,9 @@ export function Receipt80mm({
   const receiptVariantClassName = isA4Format ? 'receipt-a4' : isA5Format ? 'receipt-a5' : 'receipt-80mm';
   const receiptWidthMm = resolvedPaperFormat === 'A4' ? 210 : resolvedPaperFormat === 'A5' ? 148 : 80;
   const printPageSize = isThermalFormat ? '80mm auto' : `${resolvedPaperFormat} portrait`;
-  const printPageMargin = isThermalFormat ? '0' : '6mm';
+  const printPageMargin = isThermalFormat ? '0' : isA4Format ? '12mm' : '6mm';
+  const documentBaseCss = isThermalFormat ? RECEIPT_80MM_DOCUMENT_CSS : isA4Format ? RECEIPT_A4_DOCUMENT_CSS : '';
   const viewportMeta = isThermalFormat ? RECEIPT_80MM_VIEWPORT_FOR_HEADLESS : '';
-  const documentBaseCss = isThermalFormat ? RECEIPT_80MM_DOCUMENT_CSS : '';
   const previewModalWidth = isThermalFormat
     ? 'min(94vw, 400px)'
     : resolvedPaperFormat === 'A5'
@@ -149,12 +151,13 @@ export function Receipt80mm({
   const logoMaxWidth = isThermalFormat ? '60mm' : resolvedPaperFormat === 'A5' ? '100mm' : '130mm';
   const receiptVariantCss = `
       .receipt-a4 #receipt-content {
-        font-family: Inter, "Segoe UI", Arial, sans-serif;
-        background: #ffffff;
-        border: 1px solid #d8e2f3;
-        border-radius: 14px;
-        box-shadow: 0 14px 30px rgba(15, 23, 42, 0.06);
-        padding: 8mm 9mm;
+        width: 100% !important;
+        max-width: 100% !important;
+        background: transparent;
+        border: none;
+        border-radius: 0;
+        box-shadow: none;
+        padding: 0;
       }
       .receipt-a4 .receipt-divider {
         border-top-style: solid !important;
@@ -419,7 +422,7 @@ export function Receipt80mm({
         Sabit yükseklik + flex column + flex:1;minHeight:0;overflow inline ile zorlanır.
       */}
       <div
-        className={`flex flex-col rounded-2xl overflow-hidden shadow-2xl ${darkMode ? 'bg-gray-900' : 'bg-white'} ${printImmediately ? 'fixed left-[-9999px] top-0 opacity-0 pointer-events-none w-[min(94vw,400px)] h-[min(90vh,800px)]' : ''}`}
+        className={`flex flex-col rounded-2xl overflow-hidden shadow-2xl ${darkMode ? 'bg-gray-900' : 'bg-white'} ${printImmediately ? `fixed left-[-9999px] top-0 opacity-0 pointer-events-none ${isA4Format ? 'w-[210mm]' : 'w-[min(94vw,400px)]'} h-[min(90vh,800px)]` : ''}`}
         style={{
           width: previewModalWidth,
           maxWidth: previewModalWidth,
@@ -499,8 +502,30 @@ export function Receipt80mm({
           <div
             id="receipt-content"
             className={`w-full ${isRTL ? 'text-right' : 'text-left'}`}
-            style={{ width: `${receiptWidthMm}mm`, maxWidth: `${receiptWidthMm}mm`, direction: isRTL ? 'rtl' : 'ltr' }}
+            style={{
+              width: isA4Format ? '100%' : `${receiptWidthMm}mm`,
+              maxWidth: isA4Format ? '100%' : `${receiptWidthMm}mm`,
+              direction: isRTL ? 'rtl' : 'ltr',
+            }}
           >
+            {isA4Format ? (
+              <ReceiptA4Document
+                sale={sale}
+                paymentData={paymentData}
+                receiptSettings={receiptSettings}
+                firmTitle={selectedFirm?.title || selectedFirm?.name || ''}
+                translations={{ receipt: t.receipt as Record<string, string | undefined>, cash: t.cash, card: t.card, qrScanCode: t.qrScanCode }}
+                fmtMoney={fmtMoney}
+                baseCurrency={baseCurrency}
+                moneyDecimals={moneyDecimals}
+                lineProductName={lineProductName}
+                receiptDeviceName={receiptDeviceName}
+                headerBanner={headerBanner}
+                isRTL={isRTL}
+                formatDate={formatDate}
+              />
+            ) : (
+            <>
             {/* Store Header - fiş ayarlarından logo ve firma bilgisi */}
             <div data-section="header" className="text-center border-b-[3px] border-dashed border-gray-900 pb-2 mb-2 receipt-print-dark">
               {receiptSettings?.logoDataUrl && (
@@ -782,6 +807,8 @@ export function Receipt80mm({
             </div>
 
             <div className="receipt-divider border-t-[3px] border-dashed border-gray-900 mt-2 print:mt-1 print:mb-0"></div>
+            </>
+            )}
           </div>
           </div>
         </div>
