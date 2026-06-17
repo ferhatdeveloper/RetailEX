@@ -71,6 +71,7 @@ import { useLanguage } from '../../contexts/LanguageContext';
 import { usePermission } from '../../shared/hooks/usePermission';
 import { useTheme } from '../../contexts/ThemeContext';
 import { formatCurrency, getGlobalCurrency, roundMoneyAmount } from '../../utils/currency';
+import { buildSaleCustomerSnapshot } from '../../utils/saleCustomerSnapshot';
 import { formatNumber as formatNumberUtil } from '../../utils/formatNumber';
 import { LanguageSelectionModal } from '../system/LanguageSelectionModal';
 import type { Product, Customer, Campaign, User as UserType, Sale } from '../../core/types';
@@ -1020,9 +1021,12 @@ export default function MarketPOS({
       date: new Date().toISOString(),
       customerId: selectedCustomer?.id,
       customerName: selectedCustomer?.name || t.retailCustomer,
+      ...buildSaleCustomerSnapshot(selectedCustomer),
       items: cart.map(item => ({
         productId: item.product.id,
         productName: item.product.name,
+        productCode: item.product.code,
+        barcode: item.product.barcode,
         quantity: item.quantity,
         unit: item.unit || item.product.unit,
         multiplier: item.multiplier || 1,

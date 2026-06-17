@@ -31,7 +31,11 @@ export function CartTable({
   unitSets = []
 }: CartTableProps) {
   const { darkMode } = useTheme();
-  const { t } = useLanguage();
+  const { t, tm } = useLanguage();
+  const productCodeLabel = (() => {
+    const label = tm('code');
+    return label === 'code' ? 'Kod' : label;
+  })();
 
   return (
     <div className="flex-1 overflow-auto">
@@ -39,6 +43,7 @@ export function CartTable({
         <thead className={`border-b sticky top-0 ${darkMode ? 'bg-gradient-to-r from-gray-700 to-gray-600 border-gray-600' : 'bg-gradient-to-r from-blue-600 to-blue-700 border-blue-800'}`}>
           <tr>
             <th className={`px-3 py-2 text-start text-xs text-white border-ie ${darkMode ? 'border-gray-500' : 'border-blue-500'}`}>{t.rowOrder}</th>
+            <th className={`px-3 py-2 text-start text-xs text-white border-ie ${darkMode ? 'border-gray-500' : 'border-blue-500'}`}>{productCodeLabel}</th>
             <th className={`px-3 py-2 text-start text-xs text-white border-ie ${darkMode ? 'border-gray-500' : 'border-blue-500'}`}>{t.barcode}</th>
             <th className={`px-3 py-2 text-start text-xs text-white border-ie ${darkMode ? 'border-gray-500' : 'border-blue-500'}`}>{t.productName}</th>
             <th className={`px-3 py-2 text-center text-xs text-white border-ie ${darkMode ? 'border-gray-500' : 'border-blue-500'}`}>{t.quantity}</th>
@@ -51,7 +56,7 @@ export function CartTable({
         <tbody>
           {cart.length === 0 ? (
             <tr>
-              <td colSpan={8} className={`px-3 py-8 text-center ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+              <td colSpan={9} className={`px-3 py-8 text-center ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
                 {t.cartEmpty} - {t.scanToSearchPlaceholder}
               </td>
             </tr>
@@ -61,6 +66,7 @@ export function CartTable({
               return (
                 <tr key={index} className={`border-b transition-colors ${darkMode ? 'border-gray-700 hover:bg-gray-700/50' : 'border-gray-100 hover:bg-blue-50/50'}`}>
                   <td className={`px-3 py-2.5 text-sm border-ie ${darkMode ? 'text-gray-300 border-gray-700' : 'text-gray-700 border-gray-100'}`}>{index + 1}</td>
+                  <td className={`px-3 py-2.5 text-sm border-ie font-mono ${darkMode ? 'text-gray-300 border-gray-700' : 'text-gray-700 border-gray-100'}`}>{item.product.code?.trim() || '-'}</td>
                   <td className={`px-3 py-2.5 text-sm border-ie ${darkMode ? 'text-gray-300 border-gray-700' : 'text-gray-700 border-gray-100'}`}>{item.product.barcode}</td>
                   <td className={`px-3 py-2.5 text-sm border-ie ${darkMode ? 'text-white border-gray-700' : 'text-gray-900 border-gray-100'}`}>
                     {item.product.name}

@@ -3,6 +3,7 @@ import type { ReceiptSettings } from '../../services/receiptSettingsService';
 import { formatMoneyWithCode } from '../../utils/currency';
 import { formatNumber } from '../../utils/formatNumber';
 import { receiptNotesForDisplay } from '../../utils/receiptNotes';
+import { customerReceiptRows } from '../../utils/saleCustomerSnapshot';
 import { RECEIPT_A4_DOCUMENT_CSS } from '../../utils/receiptA4DocumentCss';
 import { RECEIPT_A5_DOCUMENT_CSS } from '../../utils/receiptA5DocumentCss';
 
@@ -91,6 +92,7 @@ export function ReceiptStandardDocument({
 
   const lbl = (key: string, fallback: string) => r[key] || fallback;
   const productLabel = lbl('productLabel', 'Ürün');
+  const codeLabel = lbl('productCodeLabel', 'Kod');
   const unitPriceLabel = lbl('unitPriceLabel', 'Birim Fiyat');
   const qtyLabel = lbl('qtyLabel', 'Adet');
   const amountLabel = lbl('amountLabel', 'Tutar');
@@ -130,16 +132,12 @@ export function ReceiptStandardDocument({
           <div className={rx('info-grid')}>
             <div className={rx('info-card')}>
               <h3>{lbl('customer', 'MÜŞTERİ')}</h3>
-              <div className={rx('info-row')}>
-                <span>{lbl('customer', 'Müşteri')}</span>
-                <span>{sale.customerName?.trim() || '—'}</span>
-              </div>
-              {sale.customerPhone?.trim() ? (
-                <div className={rx('info-row')}>
-                  <span>Tel</span>
-                  <span>{sale.customerPhone.trim()}</span>
+              {customerReceiptRows(sale).map((row) => (
+                <div className={rx('info-row')} key={row.label}>
+                  <span>{row.label}</span>
+                  <span>{row.value}</span>
                 </div>
-              ) : null}
+              ))}
               {sale.table ? (
                 <div className={rx('info-row')}>
                   <span>{lbl('table', 'Masa')}</span>
@@ -182,6 +180,7 @@ export function ReceiptStandardDocument({
               <thead>
                 <tr>
                   <th className={rx('num')}>#</th>
+                  <th className={rx('code')}>{codeLabel}</th>
                   <th className={rx('desc')}>{productLabel}</th>
                   <th className={rx('unit')}>{unitPriceLabel}</th>
                   <th className={rx('qty')}>{qtyLabel}</th>
@@ -196,9 +195,11 @@ export function ReceiptStandardDocument({
                       ? `${(item.variant as any).color || ''} ${(item.variant as any).size || ''}`.trim()
                       : '';
                   const staff = si.beautyStaffName?.trim();
+                  const productCode = (si.productCode || '').trim() || '—';
                   return (
                     <tr key={`${item.productId}-${index}`}>
                       <td className={rx('num')}>{index + 1}</td>
+                      <td className={rx('code')}>{productCode}</td>
                       <td className={rx('desc')}>
                         <div className={rx('item-name')}>{lineProductName(item)}</div>
                         <div className={rx('item-sub')}>

@@ -39,7 +39,11 @@ export function CartCards({
   unitSets = []
 }: CartCardsProps) {
   const { darkMode } = useTheme();
-  const { t } = useLanguage();
+  const { t, tm } = useLanguage();
+  const productCodeLabel = (() => {
+    const label = tm('code');
+    return label === 'code' ? 'Kod' : label;
+  })();
   const [actionModalIndex, setActionModalIndex] = useState<number | null>(null);
   const [variantPanelIndex, setVariantPanelIndex] = useState<number | null>(null);
   const [deleteConfirmIndex, setDeleteConfirmIndex] = useState<number | null>(null);
@@ -238,9 +242,14 @@ export function CartCards({
                       >
                         {item.product.name}
                       </h4>
-                      <p className={cn('text-[10px] font-mono mb-0.5', darkMode ? 'text-gray-500' : 'text-slate-500')}>
-                        {item.product.barcode}
+                      <p className={cn('text-[10px] font-mono mb-0.5', darkMode ? 'text-gray-400' : 'text-slate-500')}>
+                        {productCodeLabel}: {item.product.code?.trim() || '-'}
                       </p>
+                      {item.product.barcode?.trim() ? (
+                        <p className={cn('text-[10px] font-mono mb-0.5', darkMode ? 'text-gray-500' : 'text-slate-500')}>
+                          {t.barcode}: {item.product.barcode.trim()}
+                        </p>
+                      ) : null}
                       {item.note?.trim() ? (
                         <p className={cn('text-[10px] font-semibold italic truncate mb-0.5', darkMode ? 'text-amber-400' : 'text-amber-700')}>
                           {item.note}

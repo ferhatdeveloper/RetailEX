@@ -67,6 +67,7 @@ import { RestaurantSplitBillModal } from './RestaurantSplitBillModal';
 import { RestaurantVoidReasonModal } from './RestaurantVoidReasonModal';
 import { RestaurantTableCloseConfirmModal } from './RestaurantTableCloseConfirmModal';
 import type { Product, Customer, Campaign, User as UserType, Sale } from '../../../core/types';
+import { buildSaleCustomerSnapshot } from '../../../utils/saleCustomerSnapshot';
 import type { CartItem } from '../../pos/types';
 import type { Table, Staff, RestaurantCallerIdPickRequest } from '../types';
 import { RestaurantService, type DeliveryExpectedPaymentMethod } from '../../../services/restaurant';
@@ -1338,9 +1339,12 @@ export const RestPOS: React.FC<RestPOSProps> = ({
                 date: new Date().toISOString(),
                 customerId: selectedCustomer?.id,
                 customerName: selectedCustomer?.name,
+                ...buildSaleCustomerSnapshot(selectedCustomer),
                 items: cart.map(item => ({
                     productId: String(item.product?.id ?? (item as any).product?.id ?? ''),
                     productName: item.product?.name ?? (item as any).product?.name ?? (item as any).name ?? tmR('resPosProductFallback'),
+                    productCode: item.product?.code,
+                    barcode: item.product?.barcode,
                     quantity: item.quantity,
                     price: item.price ?? item.product?.price ?? 0,
                     discount: item.discount || 0,

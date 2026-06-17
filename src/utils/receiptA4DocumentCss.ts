@@ -211,8 +211,9 @@ export const RECEIPT_A4_DOCUMENT_CSS = `
     line-height: 1.35;
   }
 
-  .rx-a4-num { width: 6%; text-align: center; color: #64748b; font-weight: 700; }
-  .rx-a4-desc { width: 38%; }
+  .rx-a4-num { width: 5%; text-align: center; color: #64748b; font-weight: 700; }
+  .rx-a4-code { width: 12%; font-family: ui-monospace, monospace; font-size: 8pt; color: #475569; word-break: break-all; }
+  .rx-a4-desc { width: 29%; }
   .rx-a4-unit { width: 16%; text-align: end; font-variant-numeric: tabular-nums; }
   .rx-a4-qty { width: 10%; text-align: center; font-weight: 700; }
   .rx-a4-money { width: 18%; text-align: end; font-weight: 800; font-variant-numeric: tabular-nums; white-space: nowrap; }

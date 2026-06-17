@@ -197,6 +197,20 @@ export interface Sale {
   customerId?: string;
   customerName?: string;
   customerPhone?: string;
+  customerPhone2?: string;
+  customerCode?: string;
+  customerEmail?: string;
+  customerAddress?: string;
+  customerDistrict?: string;
+  customerCity?: string;
+  customerPostalCode?: string;
+  customerCountry?: string;
+  customerCompany?: string;
+  customerTitle?: string;
+  customerTaxNumber?: string;
+  customerTaxOffice?: string;
+  customerOccupation?: string;
+  customerNotes?: string;
   items: SaleItem[];
   subtotal: number;
   discount: number;
@@ -233,6 +247,7 @@ export interface Sale {
 export interface SaleItem {
   productId: string;
   productName: string;
+  productCode?: string;
   barcode?: string;
   quantity: number;
   price: number;

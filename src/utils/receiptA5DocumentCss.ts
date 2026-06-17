@@ -179,8 +179,9 @@ export const RECEIPT_A5_DOCUMENT_CSS = `
   .rx-a5-item-name { font-weight: 700; color: #0f172a; word-break: break-word; }
   .rx-a5-item-sub { margin-top: 3px; font-size: 7.5pt; color: #64748b; font-weight: 600; line-height: 1.3; }
 
-  .rx-a5-num { width: 7%; text-align: center; color: #64748b; font-weight: 700; }
-  .rx-a5-desc { width: 36%; }
+  .rx-a5-num { width: 6%; text-align: center; color: #64748b; font-weight: 700; }
+  .rx-a5-code { width: 11%; font-family: ui-monospace, monospace; font-size: 7pt; color: #475569; word-break: break-all; }
+  .rx-a5-desc { width: 28%; }
   .rx-a5-unit { width: 17%; text-align: end; font-variant-numeric: tabular-nums; }
   .rx-a5-qty { width: 10%; text-align: center; font-weight: 700; }
   .rx-a5-money { width: 20%; text-align: end; font-weight: 800; font-variant-numeric: tabular-nums; white-space: nowrap; }
