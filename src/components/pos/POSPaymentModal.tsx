@@ -13,7 +13,7 @@ import {
 } from '../../services/receiptSettingsService';
 import { useTheme } from '../../contexts/ThemeContext';
 import { paymentGateway, type PaymentProvider } from '../../services/paymentGateway';
-import { formatCurrency, formatNumber } from '../../utils/currency';
+import { formatCurrency, formatNumber, formatMoneyWithCode, getGlobalCurrency, roundMoneyAmount, moneyEpsilon } from '../../utils/currency';
 import { formatNumber as formatNumberTR } from '../../utils/formatNumber';
 import { roundPosDiscountAmountUp } from '../../utils/discountRounding';
 import { POSCancelReasonModal } from './POSCancelReasonModal';
@@ -119,10 +119,17 @@ export function POSPaymentModal({
   onClose,
   onComplete
 }: POSPaymentModalProps) {
+  const { t, language: uiLanguage } = useLanguage();
+  const { selectedFirm } = useFirmaDonem();
+  const baseCurrency = useMemo(
+    () => (selectedFirm?.ana_para_birimi?.trim().toUpperCase() || getGlobalCurrency()) as 'IQD' | 'USD' | 'EUR',
+    [selectedFirm?.ana_para_birimi]
+  );
+
   const [payments, setPayments] = useState<Payment[]>([]);
   const [currentMethod, setCurrentMethod] = useState<'cash' | 'card' | 'gateway' | 'veresiye'>('cash');
   const [currentAmount, setCurrentAmount] = useState('');
-  const [currentCurrency, setCurrentCurrency] = useState<'IQD' | 'USD' | 'EUR'>('IQD');
+  const [currentCurrency, setCurrentCurrency] = useState<'IQD' | 'USD' | 'EUR'>(baseCurrency);
   const [discountType, setDiscountType] = useState<'percentage' | 'amount'>('percentage');
   const [discountValue, setDiscountValue] = useState('');
   const [showNumpad, setShowNumpad] = useState(false);
@@ -135,8 +142,6 @@ export function POSPaymentModal({
   
   // Receipt Settings (restoran: Tauri sessiz yazdır; Market POS’ta kapalı)
   const [autoPrint, setAutoPrint] = useState(false);
-  const { t, language: uiLanguage } = useLanguage();
-  const { selectedFirm } = useFirmaDonem();
   const receiptFirmNr = useMemo(() => {
     const f = selectedFirm;
     if (!f) return undefined;
@@ -178,6 +183,10 @@ export function POSPaymentModal({
       cancelled = true;
     };
   }, [receiptFirmNr, uiLanguage]);
+
+  useEffect(() => {
+    setCurrentCurrency(baseCurrency);
+  }, [baseCurrency]);
 
   const handlePrintFormatChange = async (nextFormat: PosReceiptPrintFormat) => {
     setPrintFormat(nextFormat);
@@ -221,16 +230,22 @@ export function POSPaymentModal({
     }
   }
 
-  const finalTotal = total - calculatedDiscount;
+  const finalTotal = roundMoneyAmount(total - calculatedDiscount, baseCurrency);
 
-  // Calculate total paid (convert all to IQD)
-  const totalPaid = payments.reduce((sum, payment) => {
-    const amountInIQD = payment.amount * (exchangeRates[payment.currency] ?? 1);
-    return sum + amountInIQD;
+  // Calculate total paid (convert all to base currency)
+  const totalPaidRaw = payments.reduce((sum, payment) => {
+    const amountInBase = payment.amount * (exchangeRates[payment.currency] ?? 1);
+    return sum + amountInBase;
   }, 0);
+  const totalPaid = roundMoneyAmount(totalPaidRaw, baseCurrency);
 
-  const remaining = finalTotal - totalPaid;
-  const change = totalPaid > finalTotal ? totalPaid - finalTotal : 0;
+  const remainingRaw = finalTotal - totalPaid;
+  const remaining = remainingRaw > moneyEpsilon(baseCurrency)
+    ? roundMoneyAmount(remainingRaw, baseCurrency)
+    : 0;
+  const change = totalPaid > finalTotal + moneyEpsilon(baseCurrency)
+    ? roundMoneyAmount(totalPaid - finalTotal, baseCurrency)
+    : 0;
 
   const handleNumpadClick = (value: string) => {
     if (value === 'clear') {
@@ -316,7 +331,7 @@ export function POSPaymentModal({
 
   const handleConfirmPayment = async () => {
     if (isLoading) return;
-    if (remaining > 0.01) {
+    if (remaining > moneyEpsilon(baseCurrency)) {
       alert(t.insufficientPayment || 'Ödeme tutarı yetersiz!');
       return;
     }
@@ -396,7 +411,7 @@ export function POSPaymentModal({
                     provider.id,
                     {
                       amount: amount,
-                      currency: 'IQD',
+                      currency: baseCurrency,
                       orderId: `ORDER-${Date.now()}`,
                       description: 'POS Satış Ödemesi'
                     }
@@ -464,7 +479,7 @@ export function POSPaymentModal({
                       }`}
                   >
                     <Banknote className="w-3.5 h-3.5 inline mr-1" />
-                    IQD
+                    {baseCurrency}
                   </button>
                 </div>
 
@@ -550,7 +565,7 @@ export function POSPaymentModal({
                     </span>
                     <span className={`font-bold font-mono px-3 py-1 rounded ${darkMode ? 'text-blue-400 bg-blue-900/30' : 'text-blue-700 bg-blue-50'
                       }`}>
-                      {formatNumber(finalTotal)} IQD
+                      {formatCurrency(finalTotal)}
                     </span>
                   </div>
 
@@ -558,13 +573,13 @@ export function POSPaymentModal({
                     <>
                       <div className="flex justify-between text-green-600">
                         <span>{t.totalPaid || 'Ödenen'}:</span>
-                        <span className="font-medium font-mono">{formatNumber(totalPaid)} IQD</span>
+                        <span className="font-medium font-mono">{formatCurrency(totalPaid)}</span>
                       </div>
 
                       {remaining > 0 ? (
                         <div className="flex justify-between text-red-600 font-medium">
                           <span>{t.remainingAmount || 'Kalan'}:</span>
-                          <span className="font-mono">{formatNumber(remaining)} IQD</span>
+                          <span className="font-mono">{formatCurrency(remaining)}</span>
                         </div>
                       ) : (
                         <div className={`p-3 rounded-lg mt-2 ${darkMode ? 'bg-green-900/30 border-2 border-green-600' : 'bg-green-50 border-2 border-green-400'
@@ -574,7 +589,7 @@ export function POSPaymentModal({
                               {t.changeAmount || 'Para Üstü'}:
                             </span>
                             <span className="text-2xl font-bold font-mono text-green-700 dark:text-green-300">
-                              {formatNumber(change)} IQD
+                              {formatCurrency(change)}
                             </span>
                           </div>
                         </div>
@@ -603,9 +618,9 @@ export function POSPaymentModal({
                             <Smartphone className="w-4 h-4 text-purple-600" />
                           )}
                           <span className="text-sm font-medium font-mono">
-                            {payment.currency === 'IQD'
-                              ? `${formatNumber(payment.amount)} IQD`
-                              : `${formatNumberTR(payment.amount, 2, true)} ${payment.currency}`}
+                            {payment.currency === baseCurrency
+                              ? formatCurrency(payment.amount)
+                              : formatMoneyWithCode(payment.amount, payment.currency)}
                           </span>
                           {payment.gatewayProvider && (
                             <span className="text-xs px-1.5 py-0.5 bg-purple-100 text-purple-700 rounded">
@@ -684,9 +699,9 @@ export function POSPaymentModal({
                           <span>{curr.flag}</span>
                           <span className="font-medium">{curr.code}</span>
                         </div>
-                        {curr.code !== 'IQD' && (
+                        {curr.code !== baseCurrency && (
                           <span className="text-xs text-gray-500">
-                            1 = {exchangeRates[curr.code]} IQD
+                            1 = {exchangeRates[curr.code]} {baseCurrency}
                           </span>
                         )}
                       </div>
@@ -749,13 +764,14 @@ export function POSPaymentModal({
                 <button
                   onClick={async () => {
                     const rate = exchangeRates[currentCurrency] ?? 1;
-                    const remainingInSelectedCurrency = currentCurrency === 'IQD'
+                    const remainingInSelectedCurrency = currentCurrency === baseCurrency
                       ? Math.max(0, remaining)
                       : Math.max(0, remaining) / rate;
                     const amountToAdd = Number(
-                      (currentCurrency === 'IQD'
-                        ? Math.round(remainingInSelectedCurrency)
-                        : remainingInSelectedCurrency.toFixed(2))
+                      roundMoneyAmount(
+                        remainingInSelectedCurrency,
+                        currentCurrency
+                      )
                     );
                     if (!Number.isFinite(amountToAdd) || amountToAdd <= 0) return;
                     setCurrentAmount(formatNumberInput(amountToAdd.toString()));
@@ -1126,9 +1142,9 @@ export function POSPaymentModal({
                 <p className="text-5xl font-bold text-white font-mono">
                   {formatNumberTR(parseFloat(currentAmount), 2, true)} <span className="text-3xl text-gray-300">{currentCurrency}</span>
                 </p>
-                {currentCurrency !== 'IQD' && (
+                {currentCurrency !== baseCurrency && (
                   <p className="text-lg text-gray-400 mt-2">
-                    ≈ {formatNumberTR(parseFloat(currentAmount) * exchangeRates[currentCurrency], 2, true)} IQD
+                    ≈ {formatCurrency(parseFormattedNumber(currentAmount) * (exchangeRates[currentCurrency] ?? 1))}
                   </p>
                 )}
               </div>

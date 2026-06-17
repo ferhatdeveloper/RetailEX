@@ -6,6 +6,7 @@ import type { Sale, SaleItem } from '../core/types/models';
 import { RECEIPT_80MM_DOCUMENT_CSS, RECEIPT_80MM_VIEWPORT_FOR_HEADLESS } from './receipt80mmDocumentCss';
 import type { ReceiptSettings } from '../services/receiptSettingsService';
 import { formatNumber } from './formatNumber';
+import { formatCurrency, formatMoneyWithCode, getGlobalCurrency, getCurrencyDecimalPlaces, moneyEpsilon } from './currency';
 import { receiptNotesForDisplay } from './receiptNotes';
 /** Receipt80mm / POS fiş dili */
 export type Receipt80mmPrintLocale = 'tr' | 'en' | 'ar' | 'ku';
@@ -188,14 +189,15 @@ function paymentLabel(method: string, T: RText): string {
   return `📱 ${T.qr}`;
 }
 
-function itemSubline(item: SaleItem): string {
+function itemSubline(item: SaleItem, decimals: number): string {
   const mult = (item as any).multiplier && (item as any).multiplier > 1 ? (item as any).multiplier : 1;
   const unit = (item as any).unit || '';
   const basePrice = mult > 1 ? item.price / mult : item.price;
+  const showDecimals = decimals > 0;
   if (mult > 1 && unit) {
-    return `${item.quantity} ${unit} × ${formatNumber(basePrice, 0, true)}`;
+    return `${item.quantity} ${unit} × ${formatNumber(basePrice, decimals, showDecimals)}`;
   }
-  return `${item.quantity} × ${formatNumber(item.price, 0, true)}`;
+  return `${item.quantity} × ${formatNumber(item.price, decimals, showDecimals)}`;
 }
 
 function resolveReceiptDeviceName(sale: Sale): string {
@@ -225,6 +227,8 @@ export type BuildReceipt80mmPrintHtmlInput = {
   companyNameFallback?: string;
   /** Alt satır — seçili firma unvanı */
   firmTitle?: string;
+  /** Fiş tutarları için ana para birimi (firma ayarı) */
+  currencyCode?: string;
   locale?: Receipt80mmPrintLocale;
   /** Doluysa üstte kesik çizgili bant (örn. ön hesap / taslak) */
   interimBanner?: string | null;
@@ -240,9 +244,18 @@ export function buildReceipt80mmPrintHtml(input: BuildReceipt80mmPrintHtmlInput)
     receiptSettings,
     companyNameFallback = 'RetailEX',
     firmTitle = '',
+    currencyCode,
     locale: localeIn = 'tr',
     interimBanner,
   } = input;
+
+  const baseCurrency = (currencyCode?.trim().toUpperCase() || getGlobalCurrency());
+  const moneyDecimals = getCurrencyDecimalPlaces(baseCurrency);
+  const fmtMoney = (amount: number) => formatCurrency(amount, undefined, false);
+  const fmtPayment = (amount: number, currency?: string) => {
+    const code = (currency || baseCurrency).trim().toUpperCase();
+    return code === baseCurrency ? fmtMoney(amount) : formatMoneyWithCode(amount, code);
+  };
 
   const locale: Receipt80mmPrintLocale =
     localeIn === 'tr' || localeIn === 'en' || localeIn === 'ar' || localeIn === 'ku' ? localeIn : 'tr';
@@ -330,7 +343,7 @@ export function buildReceipt80mmPrintHtml(input: BuildReceipt80mmPrintHtmlInput)
 
   const itemRows = (sale.items || [])
     .map((item) => {
-      const sub = itemSubline(item);
+      const sub = itemSubline(item, moneyDecimals);
       const variantExtra =
         item.variant && ((item.variant as any).color || (item.variant as any).size)
           ? `<div style="font-size:9px;font-weight:700;color:#374151">${escapeHtml(String((item.variant as any).color || ''))} ${escapeHtml(String((item.variant as any).size || ''))}</div>`
@@ -347,7 +360,7 @@ ${variantExtra}
 <span style="font-size:9px;font-weight:700;color:#374151;display:block">${escapeHtml(sub)}</span>
 </td>
 <td style="padding:5px 2px;text-align:center;vertical-align:top;font-weight:800;border-bottom:1px solid #e5e7eb">${escapeHtml(String(item.quantity))}</td>
-<td style="padding:5px 2px;text-align:end;vertical-align:top;font-weight:800;white-space:nowrap;border-bottom:1px solid #e5e7eb">${formatNumber(item.total, 0, true)} IQD</td>
+<td style="padding:5px 2px;text-align:end;vertical-align:top;font-weight:800;white-space:nowrap;border-bottom:1px solid #e5e7eb">${escapeHtml(fmtMoney(item.total))}</td>
 </tr>`;
     })
     .join('');
@@ -367,7 +380,7 @@ ${variantExtra}
       ? `<div style="margin:6px 0">
   <div style="display:flex;justify-content:space-between;font-size:10px;color:#c2410c;font-weight:700">
     <span>${escapeHtml(T.campaign)}:</span>
-    <span>${sale.campaignDiscount && sale.campaignDiscount > 0 ? `-${formatNumber(sale.campaignDiscount, 0, true)} IQD` : '0 IQD'}</span>
+    <span>${sale.campaignDiscount && sale.campaignDiscount > 0 ? `-${escapeHtml(fmtMoney(sale.campaignDiscount))}` : escapeHtml(fmtMoney(0))}</span>
   </div>
   ${sale.campaignName ? `<div style="font-size:9px;font-weight:700;color:#1f2937;margin-top:2px;padding-${isRTL ? 'right' : 'left'}:6px">(${escapeHtml(sale.campaignName)})</div>` : ''}
 </div>`
@@ -375,25 +388,23 @@ ${variantExtra}
 
   const discBlock =
     sale.discount > 0
-      ? `<div style="display:flex;justify-content:space-between;font-size:10px;color:#b91c1c;font-weight:700;margin:2px 0"><span>${escapeHtml(T.discount)}:</span><span>-${formatNumber(sale.discount, 0, true)} IQD</span></div>`
+      ? `<div style="display:flex;justify-content:space-between;font-size:10px;color:#b91c1c;font-weight:700;margin:2px 0"><span>${escapeHtml(T.discount)}:</span><span>-${escapeHtml(fmtMoney(sale.discount))}</span></div>`
       : '';
 
   const payments = paymentData.payments || [];
   const payLines = payments
     .map((payment) => {
       const left = paymentLabel(payment.method, T);
-      const right =
-        payment.currency === 'IQD' || !payment.currency
-          ? `${formatNumber(payment.amount ?? 0, 0, true)} IQD`
-          : `${payment.amount} ${payment.currency}`;
-      return `<div style="display:flex;justify-content:space-between;font-size:10px;margin:4px 0;padding-${isRTL ? 'right' : 'left'}:8px"><span>${left}${payment.currency && payment.currency !== 'IQD' ? ` (${escapeHtml(payment.currency)})` : ''}</span><span>${right}</span></div>`;
+      const payCode = (payment.currency || baseCurrency).trim().toUpperCase();
+      const right = fmtPayment(payment.amount ?? 0, payCode);
+      return `<div style="display:flex;justify-content:space-between;font-size:10px;margin:4px 0;padding-${isRTL ? 'right' : 'left'}:8px"><span>${left}${payCode !== baseCurrency ? ` (${escapeHtml(payCode)})` : ''}</span><span>${escapeHtml(right)}</span></div>`;
     })
     .join('');
 
   const remaining = paymentData.remaining ?? 0;
   const remainingBlock =
-    remaining > 0.01
-      ? `<div style="display:flex;justify-content:space-between;font-size:10px;font-weight:800;margin-top:6px"><span>${escapeHtml(T.remaining)}:</span><span>${formatNumber(remaining, 0, true)} IQD</span></div>`
+    remaining > moneyEpsilon(baseCurrency)
+      ? `<div style="display:flex;justify-content:space-between;font-size:10px;font-weight:800;margin-top:6px"><span>${escapeHtml(T.remaining)}:</span><span>${escapeHtml(fmtMoney(remaining))}</span></div>`
       : '';
 
   const barcodeSvg = `<svg width="160" height="32" style="display:block;margin:0 auto">${Array.from({ length: 20 })
@@ -416,22 +427,22 @@ ${variantExtra}
   ${itemsTableHtml}
   <div style="border-top:2px dashed #000;margin:10px 0"></div>
   <div style="font-size:10px;margin-bottom:8px">
-    <div style="display:flex;justify-content:space-between;font-weight:700;margin:3px 0"><span>${escapeHtml(T.subtotal)}:</span><span>${formatNumber(sale.subtotal ?? 0, 0, true)} IQD</span></div>
+    <div style="display:flex;justify-content:space-between;font-weight:700;margin:3px 0"><span>${escapeHtml(T.subtotal)}:</span><span>${escapeHtml(fmtMoney(sale.subtotal ?? 0))}</span></div>
     ${discBlock}
     ${campaignBlock}
     <div style="border-top:1px solid #000;margin:8px 0"></div>
-    <div style="display:flex;justify-content:space-between;font-size:12px;font-weight:800;margin-top:4px"><span>${escapeHtml(T.total)}:</span><span>${formatNumber(sale.total ?? 0, 0, true)} IQD</span></div>
+    <div style="display:flex;justify-content:space-between;font-size:12px;font-weight:800;margin-top:4px"><span>${escapeHtml(T.total)}:</span><span>${escapeHtml(fmtMoney(sale.total ?? 0))}</span></div>
   </div>
   <div style="border-top:2px dashed #000;margin:10px 0"></div>
   <div style="font-size:10px;margin-bottom:8px">
     <div style="font-weight:800;margin-bottom:8px">${escapeHtml(T.paymentDetails)}:</div>
     ${payLines}
     <div style="border-top:1px solid #000;margin:8px 0"></div>
-    <div style="display:flex;justify-content:space-between;font-weight:700"><span>${escapeHtml(T.paid)}:</span><span>${formatNumber(paymentData.totalPaid || 0, 0, true)} IQD</span></div>
+    <div style="display:flex;justify-content:space-between;font-weight:700"><span>${escapeHtml(T.paid)}:</span><span>${escapeHtml(fmtMoney(paymentData.totalPaid || 0))}</span></div>
     ${remainingBlock}
     ${
-      paymentData.change > 0
-        ? `<div style="display:flex;justify-content:space-between;font-weight:800;color:#15803d;margin-top:8px;font-size:11px"><span>${escapeHtml(T.change)}:</span><span>${formatNumber(paymentData.change, 0, true)} IQD</span></div>`
+      paymentData.change > moneyEpsilon(baseCurrency)
+        ? `<div style="display:flex;justify-content:space-between;font-weight:800;color:#15803d;margin-top:8px;font-size:11px"><span>${escapeHtml(T.change)}:</span><span>${escapeHtml(fmtMoney(paymentData.change))}</span></div>`
         : ''
     }
   </div>

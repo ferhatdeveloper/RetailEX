@@ -1668,6 +1668,7 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
           companyNameFallback: selectedFirm?.name?.trim() || selectedFirm?.title?.trim() || 'RetailEX',
           firmTitle: selectedFirm?.title?.trim() || selectedFirm?.name?.trim() || '',
           locale: language === 'en' || language === 'ar' || language === 'ku' ? language : 'tr',
+          currencyCode: reportCurrency || selectedFirm?.ana_para_birimi || undefined,
         });
         setDailyRowReceiptHtml(html);
         setDailyRowReceiptPreviewH(400);

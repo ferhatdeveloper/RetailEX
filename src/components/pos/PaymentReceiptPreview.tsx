@@ -3,7 +3,7 @@ import type { Sale } from '../../core/types';
 import { useTheme } from '../../contexts/ThemeContext';
 import { Banknote } from 'lucide-react';
 import JsBarcode from 'jsbarcode';
-import { formatNumber } from '../../utils/formatNumber';
+import { formatCurrency } from '../../utils/currency';
 
 interface PaymentReceiptPreviewProps {
   sale: Sale;
@@ -52,11 +52,7 @@ export function PaymentReceiptPreview({
     });
   };
 
-  const formatMoney = (amount: number) => {
-    // Türkiye formatı: binlik ayırıcı nokta (.), ondalık ayırıcı virgül (,)
-    // Örnek: 1.800.000,00
-    return formatNumber(amount, 2, true);
-  };
+  const fmtMoney = (amount: number) => formatCurrency(amount);
 
   const getPaymentMethodName = (method: string) => {
     const methods: Record<string, string> = {
@@ -137,13 +133,13 @@ export function PaymentReceiptPreview({
                   )}
                 </div>
                 <div className="text-right ml-4">
-                  <div className="font-semibold">{formatMoney(itemTotal)} IQD</div>
+                  <div className="font-semibold">{fmtMoney(itemTotal)}</div>
                 </div>
               </div>
               <div className="flex justify-between text-sm text-gray-600">
-                <span>{item.quantity} x {formatMoney(item.price)} IQD</span>
+                <span>{item.quantity} x {fmtMoney(item.price)}</span>
                 {item.discount && item.discount > 0 && (
-                  <span className="text-red-600">-{formatMoney(item.discount)} IQD</span>
+                  <span className="text-red-600">-{fmtMoney(item.discount)}</span>
                 )}
               </div>
             </div>
@@ -155,7 +151,7 @@ export function PaymentReceiptPreview({
       <div className="p-4 border-b border-gray-200 space-y-2">
         <div className="flex justify-between">
           <span className="text-gray-600">ARA TOPLAM:</span>
-          <span className="font-semibold">{formatMoney(sale.subtotal)} IQD</span>
+          <span className="font-semibold">{fmtMoney(sale.subtotal)}</span>
         </div>
 
         {(sale.campaignDiscount && sale.campaignDiscount > 0) || sale.campaignName ? (
@@ -166,7 +162,7 @@ export function PaymentReceiptPreview({
                 <span className="text-green-600">✓</span>
               </span>
               {sale.campaignDiscount && sale.campaignDiscount > 0 && (
-                <span className="text-sm font-semibold text-orange-600">-{formatMoney(sale.campaignDiscount)} IQD</span>
+                <span className="text-sm font-semibold text-orange-600">-{fmtMoney(sale.campaignDiscount)}</span>
               )}
             </div>
             {sale.campaignName && (
@@ -180,13 +176,13 @@ export function PaymentReceiptPreview({
         {sale.discount > 0 && (
           <div className="flex justify-between text-red-600">
             <span>İNDİRİM:</span>
-            <span>-{formatMoney(sale.discount)} IQD</span>
+            <span>-{fmtMoney(sale.discount)}</span>
           </div>
         )}
 
         <div className="flex justify-between pt-2 border-t border-gray-300">
           <span className="text-lg font-bold">TOPLAM:</span>
-          <span className="text-xl font-bold text-blue-600">{formatMoney(sale.total)} IQD</span>
+          <span className="text-xl font-bold text-blue-600">{fmtMoney(sale.total)}</span>
         </div>
       </div>
 
@@ -201,11 +197,11 @@ export function PaymentReceiptPreview({
               ) : null}
               <span className="font-medium">{getPaymentMethodName(sale.paymentMethod)}</span>
             </div>
-            <span className="font-semibold">{formatMoney(sale.total)} IQD</span>
+            <span className="font-semibold">{fmtMoney(sale.total)}</span>
           </div>
           <div className="flex justify-between pt-2 border-t border-gray-200">
             <span className="font-semibold text-gray-700">ÖDENEN:</span>
-            <span className="font-bold text-green-600">{formatMoney(sale.total)} IQD</span>
+            <span className="font-bold text-green-600">{fmtMoney(sale.total)}</span>
           </div>
         </div>
       </div>

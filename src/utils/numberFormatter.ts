@@ -3,6 +3,8 @@
  * Automatic formatting for number inputs across the system
  */
 
+import { getCurrencyDecimalPlaces, roundMoneyAmount } from './currency';
+
 /**
  * Format number with thousand separators as user types
  * @param value - Input value from user
@@ -117,22 +119,22 @@ export function formatDecimalForTrInput(n: number): string {
  * @returns Formatted currency string
  */
 export const formatCurrencyDisplay = (
-  value: number, 
+  value: number,
   currency: string = 'IQD'
 ): string => {
-  // Türkiye formatı: binlik ayırıcı nokta (.), ondalık ayırıcı virgül (,)
-  const decimals = currency === 'IQD' ? 2 : 2;
-  let formatted = value.toLocaleString('tr-TR', {
+  const code = String(currency || 'IQD').trim().toUpperCase();
+  const decimals = getCurrencyDecimalPlaces(code);
+  const rounded = roundMoneyAmount(value, code);
+  let formatted = rounded.toLocaleString('tr-TR', {
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals,
   });
-  
-  // Eğer ondalık kısım sıfırsa (örn: ,00), virgül ve sıfırları kaldır
-  if (formatted.endsWith(',00') || formatted.endsWith(',0')) {
+
+  if (decimals > 0 && (formatted.endsWith(',00') || formatted.endsWith(',0'))) {
     formatted = formatted.replace(/[,]0+$/, '');
   }
-  
-  return `${formatted} ${currency}`;
+
+  return `${formatted} ${code}`;
 };
 
 /**

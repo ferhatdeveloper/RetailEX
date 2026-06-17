@@ -163,6 +163,8 @@ export type RestaurantAdisyonPrintInput = {
   draftLabel?: string;
   /** Fiş metinleri — Receipt80mm ile aynı kodlar */
   locale?: KitchenReceiptLocale;
+  /** Ana para birimi (firma ayarı) */
+  currencyCode?: string;
 };
 
 /**
@@ -181,6 +183,7 @@ export function buildRestaurantAdisyonHtml(input: RestaurantAdisyonPrintInput): 
     firmTitle,
     draftLabel: draftLabelIn,
     locale: localeIn = 'tr',
+    currencyCode,
   } = input;
 
   const locale: KitchenReceiptLocale = localeIn in ADISYON_I18N ? localeIn : 'tr';
@@ -209,6 +212,7 @@ export function buildRestaurantAdisyonHtml(input: RestaurantAdisyonPrintInput): 
     firmTitle,
     locale,
     interimBanner,
+    currencyCode,
   });
 }
 

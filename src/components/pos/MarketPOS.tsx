@@ -70,6 +70,7 @@ import { postgres } from '../../services/postgres';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { usePermission } from '../../shared/hooks/usePermission';
 import { useTheme } from '../../contexts/ThemeContext';
+import { formatCurrency, getGlobalCurrency, roundMoneyAmount } from '../../utils/currency';
 import { formatNumber as formatNumberUtil } from '../../utils/formatNumber';
 import { LanguageSelectionModal } from '../system/LanguageSelectionModal';
 import type { Product, Customer, Campaign, User as UserType, Sale } from '../../core/types';
@@ -1012,6 +1013,7 @@ export default function MarketPOS({
       paymentMethod = paymentData.method === 'gateway' ? 'card' : paymentData.method;
     }
 
+    const baseCurrency = selectedFirm?.ana_para_birimi?.trim().toUpperCase() || getGlobalCurrency();
     const sale: Sale = {
       id: Date.now().toString(),
       receiptNumber,
@@ -1030,9 +1032,9 @@ export default function MarketPOS({
         total: item.subtotal,
         variant: item.variant
       })),
-      subtotal,
-      discount: totalDiscount + campaignDiscount + (paymentData.discount || 0),
-      total: paymentData.finalTotal || paymentData.total,
+      subtotal: roundMoneyAmount(subtotal, baseCurrency),
+      discount: roundMoneyAmount(totalDiscount + campaignDiscount + (paymentData.discount || 0), baseCurrency),
+      total: roundMoneyAmount(paymentData.finalTotal || paymentData.total, baseCurrency),
       paymentMethod: paymentMethod,
       campaignId: selectedCampaign?.id,
       campaignName: selectedCampaign?.name,

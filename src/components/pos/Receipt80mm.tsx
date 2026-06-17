@@ -2,6 +2,7 @@ import { X, Printer, Download, Languages } from 'lucide-react';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useLanguage } from '../../contexts/LanguageContext';
 import type { Sale, SaleItem } from '../../core/types';
+import { formatCurrency, formatMoneyWithCode, getGlobalCurrency, getCurrencyDecimalPlaces } from '../../utils/currency';
 import { formatNumber } from '../../utils/formatNumber';
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { useFirmaDonem } from '../../contexts/FirmaDonemContext';
@@ -122,6 +123,12 @@ export function Receipt80mm({
 
   const isRTL = selectedLang === 'ar' || selectedLang === 'ku';
   const receiptDeviceName = resolveReceiptDeviceName(sale);
+  const baseCurrency = useMemo(
+    () => (selectedFirm?.ana_para_birimi?.trim().toUpperCase() || getGlobalCurrency()),
+    [selectedFirm?.ana_para_birimi]
+  );
+  const moneyDecimals = getCurrencyDecimalPlaces(baseCurrency);
+  const fmtMoney = useCallback((amount: number) => formatCurrency(amount), [baseCurrency]);
   const resolvedPaperFormat: PosReceiptPrintFormat =
     isPosReceiptPrintFormat(printPaperFormat) ? printPaperFormat : '80mm';
   const isThermalFormat = resolvedPaperFormat === '80mm';
@@ -652,7 +659,7 @@ export function Receipt80mm({
                           const mult = (item as any).multiplier && (item as any).multiplier > 1 ? (item as any).multiplier : 1;
                           const unit = (item as any).unit || 'Adet';
                           const basePrice = mult > 1 ? item.price / mult : item.price;
-                          return mult > 1 ? `${item.quantity} ${unit} × ${formatNumber(basePrice, 0, true)}` : `${item.quantity} × ${formatNumber(item.price, 0, true)}`;
+                          return mult > 1 ? `${item.quantity} ${unit} × ${formatNumber(basePrice, moneyDecimals, moneyDecimals > 0)}` : `${item.quantity} × ${formatNumber(item.price, moneyDecimals, moneyDecimals > 0)}`;
                         })()}
                       </span>
                     </td>
@@ -660,7 +667,7 @@ export function Receipt80mm({
                       {item.quantity}
                     </td>
                     <td className="py-1 text-end font-black whitespace-nowrap text-[14px] tabular-nums print:text-[11px] align-top">
-                      {formatNumber(item.total, 0, true)} IQD
+                      {fmtMoney(item.total)}
                     </td>
                   </tr>
                 ))}
@@ -673,13 +680,13 @@ export function Receipt80mm({
             <div data-section="totals" className="text-[14px] space-y-0.5 mb-2 font-bold print:text-[11px]">
               <div className="flex justify-between">
                 <span className="font-extrabold">{t.receipt.subtotal}:</span>
-                <span className="font-extrabold tabular-nums">{formatNumber(sale.subtotal, 0, true)} IQD</span>
+                <span className="font-extrabold tabular-nums">{fmtMoney(sale.subtotal)}</span>
               </div>
 
               {sale.discount > 0 && (
                 <div className="flex justify-between text-red-600 font-bold">
                   <span>{t.receipt.discount}:</span>
-                  <span className="tabular-nums">-{formatNumber(sale.discount, 0, true)} IQD</span>
+                  <span className="tabular-nums">-{fmtMoney(sale.discount)}</span>
                 </div>
               )}
 
@@ -688,9 +695,9 @@ export function Receipt80mm({
                   <div className="flex justify-between text-orange-600">
                     <span>{t.receipt.campaign}:</span>
                     {sale.campaignDiscount && sale.campaignDiscount > 0 ? (
-                      <span className="font-semibold">-{formatNumber(sale.campaignDiscount, 0, true)} IQD</span>
+                      <span className="font-semibold">-{fmtMoney(sale.campaignDiscount)}</span>
                     ) : (
-                      <span className="font-semibold">0 IQD</span>
+                      <span className="font-semibold">{fmtMoney(0)}</span>
                     )}
                   </div>
                   {sale.campaignName && (
@@ -705,7 +712,7 @@ export function Receipt80mm({
 
               <div className="flex justify-between text-[1.05rem] font-black text-gray-950 pt-1 print:text-base print:font-black">
                 <span>{t.receipt.total}:</span>
-                <span className="tabular-nums">{formatNumber(sale.total, 0, true)} IQD</span>
+                <span className="tabular-nums">{fmtMoney(sale.total)}</span>
               </div>
             </div>
 
@@ -720,12 +727,12 @@ export function Receipt80mm({
                     {payment.method === 'cash' ? '💵 ' + t.cash :
                       payment.method === 'card' ? '💳 ' + t.card :
                         '📱 ' + t.qrScanCode}
-                    {payment.currency !== 'IQD' && ` (${payment.currency})`}
+                    {payment.currency !== baseCurrency && ` (${payment.currency})`}
                   </span>
                   <span>
-                    {payment.currency === 'IQD'
-                      ? `${formatNumber(payment.amount, 0, true)} IQD`
-                      : `${payment.amount} ${payment.currency}`
+                    {payment.currency === baseCurrency || !payment.currency
+                      ? fmtMoney(payment.amount)
+                      : formatMoneyWithCode(payment.amount, payment.currency)
                     }
                   </span>
                 </div>
@@ -735,13 +742,13 @@ export function Receipt80mm({
 
               <div className="flex justify-between font-extrabold text-gray-950">
                 <span>{t.receipt.paid}:</span>
-                <span className="tabular-nums font-black">{formatNumber(paymentData.totalPaid || 0, 0, true)} IQD</span>
+                <span className="tabular-nums font-black">{fmtMoney(paymentData.totalPaid || 0)}</span>
               </div>
 
               {paymentData.change > 0 && (
                 <div className="flex justify-between text-green-800 font-black text-base mt-2 print:text-sm print:font-black">
                   <span>{t.receipt.change}:</span>
-                  <span>{formatNumber(paymentData.change, 0, true)} IQD</span>
+                  <span>{fmtMoney(paymentData.change)}</span>
                 </div>
               )}
             </div>
