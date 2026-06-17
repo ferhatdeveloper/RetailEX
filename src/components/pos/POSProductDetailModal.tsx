@@ -3,6 +3,7 @@ import { X, Package, MapPin, TrendingUp } from 'lucide-react';
 import type { Product } from '../../core/types';
 
 import { useLanguage } from '../../contexts/LanguageContext';
+import { FullscreenBodyPortal, MODAL_OVERLAY_NESTED_Z } from '../shared/FullscreenBodyPortal';
 
 interface POSProductDetailModalProps {
   product: Product;
@@ -31,8 +32,17 @@ export function POSProductDetailModal({ product, onClose }: POSProductDetailModa
   ];
 
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[2147483647]">
-      <div className="bg-white w-full max-w-5xl h-[80vh] flex flex-col shadow-2xl">
+    <FullscreenBodyPortal
+      zIndex={MODAL_OVERLAY_NESTED_Z}
+      className="bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
+      role="dialog"
+      aria-modal
+      onClick={onClose}
+    >
+      <div
+        className="bg-white w-full max-w-5xl h-[80vh] flex flex-col shadow-2xl relative z-10"
+        onClick={(e) => e.stopPropagation()}
+      >
         {/* Header */}
         <div className="bg-gradient-to-r from-blue-600 to-blue-700 text-white px-6 py-4 flex items-center justify-between flex-shrink-0">
           <div className="flex items-center gap-3">
@@ -173,6 +183,6 @@ export function POSProductDetailModal({ product, onClose }: POSProductDetailModa
           </button>
         </div>
       </div>
-    </div>
+    </FullscreenBodyPortal>
   );
 }

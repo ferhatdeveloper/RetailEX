@@ -12,6 +12,9 @@ export const MODAL_OVERLAY_Z = 2147483646;
 /** Hafif tam ekran katmanlar (mobil aksiyon sheet vb.) */
 export const FULLSCREEN_BODY_PORTAL_Z = 25200;
 
+/** İç içe modal (detay, onay) — ana tam ekran modalın üstünde */
+export const MODAL_OVERLAY_NESTED_Z = MODAL_OVERLAY_Z + 1;
+
 export type FullscreenBodyPortalProps = {
   children: ReactNode;
   /** `fixed inset-0` dışındaki sınıflar (flex, bg, padding, …) */

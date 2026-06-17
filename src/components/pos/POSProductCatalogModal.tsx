@@ -4,6 +4,7 @@ import type { Product } from '../../core/types';
 import { POSProductDetailModal } from './POSProductDetailModal';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useLanguage } from '../../contexts/LanguageContext';
+import { FullscreenBodyPortal, MODAL_OVERLAY_Z } from '../shared/FullscreenBodyPortal';
 
 interface POSProductCatalogModalProps {
   products: Product[];
@@ -160,10 +161,15 @@ export function POSProductCatalogModal({
   };
 
   return (
-    <div className="fixed inset-0 z-[2147483646] overflow-y-auto overflow-x-hidden bg-black/60 backdrop-blur-md flex items-center justify-center">
-      <div className="bg-white w-full h-full flex flex-col shadow-2xl">
+    <FullscreenBodyPortal
+      zIndex={MODAL_OVERLAY_Z}
+      className="overflow-y-auto overflow-x-hidden bg-black/60 backdrop-blur-md flex items-stretch justify-center"
+      role="dialog"
+      aria-modal
+    >
+      <div className="bg-white w-full h-full min-h-[100dvh] flex flex-col shadow-2xl relative isolate">
         {/* Header */}
-        <div className="bg-gradient-to-r from-blue-600 to-blue-700 text-white px-4 py-3 flex items-center justify-between flex-shrink-0">
+        <div className="relative z-30 bg-gradient-to-r from-blue-600 to-blue-700 text-white px-4 py-3 flex items-center justify-between flex-shrink-0 shadow-md">
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 bg-blue-500 flex items-center justify-center">
               <Package className="w-5 h-5" />
@@ -192,9 +198,9 @@ export function POSProductCatalogModal({
         </div>
 
         {/* Main Content */}
-        <div className="flex-1 flex overflow-hidden">
+        <div className="flex-1 flex overflow-hidden min-h-0 relative z-0">
           {/* Left Sidebar - Categories */}
-          <div className="w-56 bg-white border-r border-gray-200 flex flex-col flex-shrink-0">
+          <div className="w-56 bg-white border-r border-gray-200 flex flex-col flex-shrink-0 relative z-10">
             <div className="px-4 py-3 border-b border-gray-200">
               <h3 className="text-sm text-gray-600">{t.categories}</h3>
             </div>
@@ -216,9 +222,9 @@ export function POSProductCatalogModal({
           </div>
 
           {/* Center - Product List */}
-          <div className="flex-1 flex flex-col bg-gray-50">
+          <div className="flex-1 flex flex-col bg-gray-50 min-w-0 relative z-0">
             {/* Search Bar */}
-            <div className="bg-white px-4 py-3 border-b border-gray-200 flex-shrink-0">
+            <div className="sticky top-0 z-20 bg-white px-4 py-3 border-b border-gray-200 flex-shrink-0 shadow-sm">
               <div className="flex items-center gap-3">
                 <div className="flex-1 relative">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -264,7 +270,7 @@ export function POSProductCatalogModal({
             </div>
 
             {/* Products */}
-            <div className="flex-1 overflow-y-auto p-6">
+            <div className="flex-1 overflow-y-auto p-6 relative z-0">
               {viewMode === 'grid' ? (
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-4">
                   {filteredProducts.map((product) => {
@@ -443,7 +449,7 @@ export function POSProductCatalogModal({
 
             {/* Variant Selector - Bottom Panel */}
             {selectedProduct && selectedProduct.variants && selectedProduct.variants.length > 0 && mode === 'add-to-cart' && !isInvoiceMultiSelect && (
-              <div className="bg-white border-t-2 border-blue-600 p-4 flex-shrink-0">
+              <div className="relative z-20 bg-white border-t-2 border-blue-600 p-4 flex-shrink-0 shadow-[0_-8px_24px_rgba(15,23,42,0.08)]">
                 <div className="flex items-start gap-4">
                   {/* Product Info */}
                   <div className="flex items-center gap-3 flex-shrink-0">
@@ -549,7 +555,7 @@ export function POSProductCatalogModal({
         </div>
 
         {isInvoiceMultiSelect && (
-          <div className="px-4 py-3 bg-gray-50 border-t border-gray-200 flex items-center justify-between flex-shrink-0">
+          <div className="relative z-20 px-4 py-3 bg-gray-50 border-t border-gray-200 flex items-center justify-between flex-shrink-0 shadow-[0_-4px_16px_rgba(15,23,42,0.06)]">
             <span className="text-sm text-gray-600">
               {(productsSelectedLabel === 'catalogProductsSelected' ? productsSelectedFallback : productsSelectedLabel)
                 .replace('{count}', String(multiSelectedIds.size))}
@@ -586,6 +592,6 @@ export function POSProductCatalogModal({
           }}
         />
       )}
-    </div>
+    </FullscreenBodyPortal>
   );
 }
