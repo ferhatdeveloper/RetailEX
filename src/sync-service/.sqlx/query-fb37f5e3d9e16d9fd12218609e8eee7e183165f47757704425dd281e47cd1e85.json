@@ -1,0 +1,88 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT \n                id, message_type, action, priority, status,\n                target_stores, payload, created_at,\n                total_targets, successful, failed, pending\n            FROM broadcast_messages\n            WHERE id = $1\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "message_type",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "action",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "priority",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "status",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 5,
+        "name": "target_stores",
+        "type_info": "UuidArray"
+      },
+      {
+        "ordinal": 6,
+        "name": "payload",
+        "type_info": "Jsonb"
+      },
+      {
+        "ordinal": 7,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 8,
+        "name": "total_targets",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 9,
+        "name": "successful",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 10,
+        "name": "failed",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 11,
+        "name": "pending",
+        "type_info": "Int4"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "fb37f5e3d9e16d9fd12218609e8eee7e183165f47757704425dd281e47cd1e85"
+}

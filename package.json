@@ -2,7 +2,7 @@
       "name": "retailex",
       "description": "RetailEX Next-Gen ERP OS",
       "type": "module",
-      "version": "0.1.93",
+      "version": "0.1.94",
       "private": true,
       "dependencies": {
             "@ant-design/icons": "^6.1.0",
@@ -128,6 +128,7 @@
             "prebuild": "node scripts/sync-app-version.mjs && node scripts/sync-pg-expose.mjs && node scripts/build-postgres-remote-enable.mjs",
             "build": "vite build",
             "build:analyze": "vite build --mode analyze",
+            "build:services:win": "node scripts/build-service-exes.mjs",
             "preview": "vite preview",
             "deploy": "vercel --prod",
             "deploy:preview": "vercel",

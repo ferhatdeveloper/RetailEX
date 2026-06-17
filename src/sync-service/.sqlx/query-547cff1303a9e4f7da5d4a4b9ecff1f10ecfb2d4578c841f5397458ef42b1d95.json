@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n                UPDATE sync_queue \n                SET retry_count = retry_count + 1,\n                    status = CASE \n                        WHEN retry_count + 1 >= max_retries THEN 'failed'\n                        ELSE 'pending'\n                    END,\n                    error_message = $2,\n                    last_error_at = NOW(),\n                    next_retry_at = NOW() + INTERVAL '5 minutes',\n                    updated_at = NOW()\n                WHERE id = $1\n                ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "547cff1303a9e4f7da5d4a4b9ecff1f10ecfb2d4578c841f5397458ef42b1d95"
+}

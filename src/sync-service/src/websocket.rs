@@ -43,6 +43,12 @@ impl WebSocketManager {
     pub fn online_stores_count(&self) -> usize {
         self.connections.len()
     }
+
+    pub async fn broadcast(&self, message: Message) {
+        for sender in self.connections.values() {
+            let _ = sender.send(message.clone());
+        }
+    }
 }
 
 pub async fn handle_connection(socket: WebSocket, store_id: String, state: AppState) {

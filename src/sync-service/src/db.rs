@@ -783,6 +783,8 @@ impl Database {
                 .bind(product.get("price").and_then(|v| v.as_f64()).unwrap_or(0.0))
                 .bind(product.get("stock").and_then(|v| v.as_f64()).unwrap_or(0.0))
                 .bind(product.get("category_code").and_then(|v| v.as_str()))
+                .execute(&self.pool)
+                .await?;
         }
         Ok(())
     }

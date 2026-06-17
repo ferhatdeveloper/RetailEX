@@ -128,8 +128,8 @@ tools/**/.git
 add_files.ps1
 add_all_files.ps1
 
-# Separate Repositories
-logo-connector/
+# Separate Repositories (kök dizin; services/logo-connector repoda)
+/logo-connector/
 tools/*/
 !tools/postgresql-remote-enable/
 !tools/.gitkeep

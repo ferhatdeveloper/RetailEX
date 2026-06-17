@@ -1,0 +1,80 @@
+# RetailEX Arka Plan Servisleri
+
+Bu klasörde iki bağımsız Windows yürütülebilir dosyası bulunur. Entegrasyonlar → **Sistem Gözlemlenebilirliği** panelindeki servis adlarıyla eşleşir.
+
+| Dosya | Sürüm | Görev |
+|-------|-------|--------|
+| `windows-x64/RetailEX-Logo-Connector.exe` | 1.0.0 | Logo Tiger **SQL Server (MSSQL)** ↔ PostgreSQL köprüsü |
+| `windows-x64/RetailEX-Sync-Service.exe` | 2.0.0 | Çok mağazalı **WebSocket** senkron motoru |
+
+## Derleme
+
+**Windows (Visual Studio Build Tools / MSVC):**
+
+```powershell
+npm run build:services:win
+```
+
+**Linux cross-compile (MinGW):**
+
+```bash
+sudo apt-get install -y gcc-mingw-w64-x86-64
+npm run build:services:win
+```
+
+Çıktı: `services/windows-x64/*.exe` + `manifest.json`
+
+## RetailEX-Logo-Connector
+
+Logo veritabanına doğrudan bağlanır; REST API kullanmaz.
+
+**Ortam değişkenleri:**
+
+| Değişken | Açıklama |
+|----------|----------|
+| `DATABASE_URL` | PostgreSQL bağlantı dizesi |
+| `LOGO_DATABASE_URL` | Logo MSSQL ADO bağlantı dizesi |
+
+**Kurulum (yönetici PowerShell):**
+
+```powershell
+$env:DATABASE_URL = "postgres://postgres:ŞİFRE@127.0.0.1:5432/retailex_local"
+$env:LOGO_DATABASE_URL = "Server=LOGO-SERVER;Database=TIGERDB;User Id=sa;Password=..."
+.\RetailEX-Logo-Connector.exe --install
+```
+
+**Kaldırma:** `RetailEX-Logo-Connector.exe --uninstall`  
+**Konsol testi:** `RetailEX-Logo-Connector.exe --console`
+
+Windows servis adı: `RetailEXLogoConnector`
+
+## RetailEX-Sync-Service
+
+Mağaza POS cihazları için WebSocket sunucusu (varsayılan `:8080`).
+
+**Ortam değişkenleri:**
+
+| Değişken | Varsayılan |
+|----------|------------|
+| `DATABASE_URL` | `postgres://postgres:postgres@localhost/exretail` |
+| `BIND_ADDRESS` | `0.0.0.0:8080` |
+
+**Çalıştırma:**
+
+```powershell
+$env:DATABASE_URL = "postgres://..."
+.\RetailEX-Sync-Service.exe
+```
+
+Sağlık kontrolü: `GET http://localhost:8080/health`
+
+## Kaynak kod
+
+| Bileşen | Yol |
+|---------|-----|
+| Logo Connector | `services/logo-connector/` (ortak: `DeskApp/src/logo_bridge.rs`) |
+| Sync Service | `src/sync-service/` |
+
+## Not
+
+Web / SaaS (`retailex.app`) Logo **REST** içe aktarma `pg_bridge` üzerinden çalışır; bu exe'ler zorunlu değildir. Logo SQL veya mağaza senkronu için kullanılır.

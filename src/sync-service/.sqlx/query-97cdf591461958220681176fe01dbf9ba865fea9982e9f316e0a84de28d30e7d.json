@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT nr \n            FROM periods p\n            JOIN firms f ON f.id = p.firm_id\n            WHERE f.firm_nr = $1 AND p.is_active = true\n            ORDER BY p.nr DESC\n            LIMIT 1\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "nr",
+        "type_info": "Int4"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "97cdf591461958220681176fe01dbf9ba865fea9982e9f316e0a84de28d30e7d"
+}

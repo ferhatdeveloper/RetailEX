@@ -1,8 +1,9 @@
 use serde::{Deserialize, Serialize};
+use sqlx::FromRow;
 use uuid::Uuid;
 use chrono::{DateTime, Utc};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct BroadcastMessage {
     pub id: Uuid,
     pub message_type: String,
@@ -31,7 +32,7 @@ pub struct BroadcastRecipient {
     pub error_message: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct StoreDevice {
     pub id: Uuid,
     pub store_id: Uuid,
