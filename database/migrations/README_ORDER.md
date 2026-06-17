@@ -44,6 +44,7 @@
 39. **049_hybrid_sync_branch_scope.sql** – `sync_queue` şube/kasiyer kapsamı (`source_store_id`, `source_user_id`, `terminal_name`).
 40. **050_beauty_follow_up_show_natural_when_postponed.sql** – Güzellik takip hatırlatması: ertelenince orijinal vade tarihinde isteğe bağlı gösterim (`show_natural_when_postponed`).
 41. **051_system_health_sync_logs.sql** – `sync_logs`, `upsert_service_health()`, `cleanup_stale_services()` (Entegrasyonlar sistem sağlığı paneli).
+42. **052_pos_cart_audit.sql** – POS sepet satır iptali ve fiyat değişikliği audit kayıtları (`pos_cart_audit`).
 
 **Mevcut veritabanı:** `config.db` (DeskApp ayarları) ile bekleyen migration’ları uygulamak için proje kökünde `npm run db:migrate` (ayrıntı: `.cursor/rules/database-migrate-config-db.mdc`).
 

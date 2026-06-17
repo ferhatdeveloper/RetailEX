@@ -72,6 +72,8 @@ import { usePermission } from '../../shared/hooks/usePermission';
 import { useTheme } from '../../contexts/ThemeContext';
 import { formatCurrency, getGlobalCurrency, roundMoneyAmount } from '../../utils/currency';
 import { buildSaleCustomerSnapshot } from '../../utils/saleCustomerSnapshot';
+import { loadPosCartSession, savePosCartSession, clearPosCartSession } from '../../utils/posCartSession';
+import { logPosCartAudit } from '../../services/posCartAuditService';
 import { formatNumber as formatNumberUtil } from '../../utils/formatNumber';
 import { LanguageSelectionModal } from '../system/LanguageSelectionModal';
 import type { Product, Customer, Campaign, User as UserType, Sale } from '../../core/types';
@@ -136,7 +138,9 @@ export default function MarketPOS({
   const { darkMode } = useTheme();
 
   // Permission check
-  const { hasPermission } = usePermission();
+  const { hasPermission, isAdmin } = usePermission();
+  const canChangePrice = currentUser.role === 'admin' || hasPermission('pos.change_price');
+  const showInstantProfit = currentUser.role === 'admin' || isAdmin();
 
   // Keyboard shortcuts
   const [showShortcutOverlay, setShowShortcutOverlay] = useState(false);
@@ -176,6 +180,7 @@ export default function MarketPOS({
 
   // Cart and customer state
   const [cart, setCart] = useState<CartItem[]>([]);
+  const [cartSessionRestored, setCartSessionRestored] = useState(false);
   const [selectedCampaign, setSelectedCampaign] = useState<Campaign | null>(null);
 
   // Parked receipts state
@@ -314,6 +319,7 @@ export default function MarketPOS({
     | { type: 'REFUND' }
     | { type: 'CANCEL_RECEIPT' }
     | { type: 'DISCOUNT'; index: number }
+    | { type: 'CHANGE_PRICE'; index: number; newPrice: number }
     | { type: 'MANAGEMENT_ACCESS' }
     | null;
 
@@ -364,6 +370,31 @@ export default function MarketPOS({
   const [receiptNumber, setReceiptNumber] = useState(() =>
     `MRK-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${String(Math.floor(Math.random() * 999999) + 1).padStart(6, '0')}`
   );
+
+  // Sayfa yenilemede sepeti geri yükle (ödeme alınana kadar)
+  useEffect(() => {
+    if (cartSessionRestored) return;
+    const saved = loadPosCartSession(selectedFirm?.firm_nr, currentUser.storeId, currentUser.id);
+    if (saved?.cart?.length) {
+      setCart(saved.cart);
+      if (saved.receiptNumber) setReceiptNumber(saved.receiptNumber);
+      if (saved.selectedCampaignId && campaigns.length > 0) {
+        const camp = campaigns.find((c) => c.id === saved.selectedCampaignId);
+        if (camp) setSelectedCampaign(camp);
+      }
+    }
+    setCartSessionRestored(true);
+  }, [cartSessionRestored, selectedFirm?.firm_nr, currentUser.storeId, currentUser.id, campaigns]);
+
+  useEffect(() => {
+    if (!cartSessionRestored) return;
+    savePosCartSession(selectedFirm?.firm_nr, currentUser.storeId, currentUser.id, {
+      receiptNumber,
+      cart,
+      selectedCampaignId: selectedCampaign?.id ?? null,
+      savedAt: new Date().toISOString(),
+    });
+  }, [cart, receiptNumber, selectedCampaign?.id, cartSessionRestored, selectedFirm?.firm_nr, currentUser.storeId, currentUser.id]);
 
   // Generate new receipt number when cart is cleared or payment is completed
   const generateNewReceiptNumber = async () => {
@@ -833,7 +864,9 @@ export default function MarketPOS({
   // Update cart item quantity
   const updateCartItemQuantity = (index: number, newQuantity: number) => {
     if (newQuantity <= 0) {
-      removeFromCart(index);
+      const item = cart[index];
+      if (item) logCartItemRemoved(item, 'quantity_zero');
+      setCart(cart.filter((_, i) => i !== index));
       return;
     }
 
@@ -850,22 +883,78 @@ export default function MarketPOS({
     }));
   };
 
-  // Sepet satırı birim fiyatı (kart görünümünde tutara tıklayarak da düzenlenebilir)
+  const auditContext = useCallback(
+    () => ({
+      receiptNumber,
+      storeId: currentUser.storeId,
+      userId: currentUser.id,
+      userName: currentUser.fullName || currentUser.username,
+      staffName: currentStaff,
+    }),
+    [receiptNumber, currentUser, currentStaff]
+  );
+
+  const logCartItemRemoved = useCallback(
+    (item: CartItem, reason: 'delete' | 'quantity_zero') => {
+      const price = item.price ?? item.variant?.price ?? item.product.price;
+      void logPosCartAudit({
+        ...auditContext(),
+        eventType: reason === 'quantity_zero' ? 'quantity_zero_removed' : 'item_removed',
+        productId: item.product.id,
+        productName: item.product.name,
+        productCode: item.product.code,
+        barcode: item.product.barcode,
+        quantity: item.quantity,
+        oldPrice: price,
+        metadata: { reason, discount: item.discount },
+      });
+    },
+    [auditContext]
+  );
+
+  // Sepet satırı birim fiyatı (yetki veya yönetici onayı gerekir)
   const updateCartItemPrice = (index: number, newPrice: number) => {
-    setCart(cart.map((item, i) => {
-      if (i === index) {
-        return {
-          ...item,
-          price: newPrice,
-          subtotal: lineNetAfterPercentDiscount(item.quantity * newPrice, item.discount)
-        };
-      }
-      return item;
-    }));
+    const item = cart[index];
+    if (!item) return;
+    const oldPrice = item.price ?? item.variant?.price ?? item.product.price;
+    setCart(
+      cart.map((row, i) => {
+        if (i === index) {
+          return {
+            ...row,
+            price: newPrice,
+            subtotal: lineNetAfterPercentDiscount(row.quantity * newPrice, row.discount),
+          };
+        }
+        return row;
+      })
+    );
+    void logPosCartAudit({
+      ...auditContext(),
+      eventType: 'price_changed',
+      productId: item.product.id,
+      productName: item.product.name,
+      productCode: item.product.code,
+      barcode: item.product.barcode,
+      quantity: item.quantity,
+      oldPrice,
+      newPrice,
+    });
+  };
+
+  const requestCartItemPriceChange = (index: number, newPrice: number) => {
+    if (canChangePrice) {
+      updateCartItemPrice(index, newPrice);
+      return;
+    }
+    setPendingAction({ type: 'CHANGE_PRICE', index, newPrice });
+    setShowManagerAuthModal(true);
   };
 
   // Remove from cart
   const removeFromCart = (index: number) => {
+    const item = cart[index];
+    if (item) logCartItemRemoved(item, 'delete');
     setCart(cart.filter((_, i) => i !== index));
     showNotif(t.productRemovedFromCart, 'info');
   };
@@ -918,6 +1007,7 @@ export default function MarketPOS({
   const handleCancelConfirm = (reason: string) => {
     setCart([]);
     setSelectedCampaign(null);
+    clearPosCartSession(selectedFirm?.firm_nr, currentUser.storeId, currentUser.id);
     generateNewReceiptNumber();
     showNotif(t.receiptCancelled.replace('{reason}', reason), 'info');
     setShowCancelReasonModal(false);
@@ -943,6 +1033,7 @@ export default function MarketPOS({
     setParkedReceipts([...parkedReceipts, parkedReceipt]);
     setCart([]);
     setSelectedCampaign(null);
+    clearPosCartSession(selectedFirm?.firm_nr, currentUser.storeId, currentUser.id);
     generateNewReceiptNumber();
     showNotif(t.receiptParked, 'success');
   };
@@ -1063,6 +1154,7 @@ export default function MarketPOS({
       // Sepeti temizle
       setCart([]);
       setSelectedCampaign(null);
+      clearPosCartSession(selectedFirm?.firm_nr, currentUser.storeId, currentUser.id);
       generateNewReceiptNumber();
       setShowPaymentModal(false);
 
@@ -1491,7 +1583,7 @@ export default function MarketPOS({
               handleItemDiscountClick={handleItemDiscountClick}
               removeFromCart={removeFromCart}
               isAdmin={currentUser.role === 'admin'}
-              updateCartItemPrice={updateCartItemPrice}
+              updateCartItemPrice={requestCartItemPriceChange}
               updateCartItemUnit={updateCartItemUnit}
               updateCartItemNote={updateCartItemNote}
               unitSets={unitSets}
@@ -1507,7 +1599,7 @@ export default function MarketPOS({
               updateCartItemVariant={updateCartItemVariant}
               onVariantPanelOpen={(index) => setVariantSelectionCartIndex(index)}
               onApplyItemDiscount={handleApplyItemDiscountByIndex}
-              updateCartItemPrice={updateCartItemPrice}
+              updateCartItemPrice={requestCartItemPriceChange}
               updateCartItemUnit={updateCartItemUnit}
               updateCartItemNote={updateCartItemNote}
               unitSets={unitSets}
@@ -1714,7 +1806,8 @@ export default function MarketPOS({
                   </div>
                 </div>
 
-                {/* Instant Profit Display */}
+                {/* Instant Profit Display — yalnızca admin */}
+                {showInstantProfit && (
                 <div className={`pt-2 border-t border-dashed ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
                   <div className="flex items-center justify-between opacity-80">
                     <div className="flex items-center gap-1.5">
@@ -1726,6 +1819,7 @@ export default function MarketPOS({
                     </div>
                   </div>
                 </div>
+                )}
               </div>
             </div>
           </div>
@@ -2113,6 +2207,9 @@ export default function MarketPOS({
                   setShowItemDiscountModal(true);
                 }
                 break;
+              case 'CHANGE_PRICE':
+                updateCartItemPrice(pendingAction.index, pendingAction.newPrice);
+                break;
               case 'MANAGEMENT_ACCESS':
                 const event = new CustomEvent('switchToManagement');
                 window.dispatchEvent(event);
@@ -2166,6 +2263,7 @@ export default function MarketPOS({
       {showReturnModal && (
         <POSReturnModal
           sales={sales}
+          products={products}
           onClose={() => setShowReturnModal(false)}
           onReturnComplete={(returnData) => {
             showNotif(t.returnCompleted, 'success');

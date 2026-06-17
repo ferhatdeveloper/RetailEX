@@ -1,30 +1,40 @@
-﻿import React, { useState, useEffect } from 'react';
-import { X, RotateCcw, Search, AlertTriangle, Check } from 'lucide-react';
-import type { Sale, SaleItem } from '../../core/types';
+﻿import React, { useState, useEffect, useRef } from 'react';
+import { X, RotateCcw, Search, Check, Barcode } from 'lucide-react';
+import type { Sale, SaleItem, Product } from '../../core/types';
 import { useLanguage } from '../../contexts/LanguageContext';
 
 interface POSReturnModalProps {
   sales: Sale[];
+  products?: Product[];
   onReturn?: (sale: Sale, returnItems: { item: SaleItem; quantity: number }[], reason: string) => void;
-  onReturnComplete?: (returnData: any) => void; // MarketPOS uyumluluğu için
+  onReturnComplete?: (returnData: any) => void;
   onClose: () => void;
 }
 
 export function POSReturnModal({
   sales,
+  products = [],
   onReturn,
   onReturnComplete,
   onClose
 }: POSReturnModalProps) {
   const { t, language } = useLanguage();
-  const [returnType, setReturnType] = useState<'receipt' | 'product'>('receipt'); // 'receipt' = Fatura Bazında, 'product' = Ürün Bazında
+  const [returnType, setReturnType] = useState<'receipt' | 'product' | 'barcode'>('barcode');
   const [searchTerm, setSearchTerm] = useState('');
+  const [barcodeInput, setBarcodeInput] = useState('');
+  const [barcodeHint, setBarcodeHint] = useState('');
+  const barcodeRef = useRef<HTMLInputElement>(null);
   const [selectedSale, setSelectedSale] = useState<Sale | null>(null);
   const [returnItems, setReturnItems] = useState<{ [key: string]: number }>({});
   const [returnReason, setReturnReason] = useState('');
   const [customReason, setCustomReason] = useState('');
 
-  // Ürün için unique key oluştur (varyantlı ürünler için variantId dahil)
+  useEffect(() => {
+    if (returnType === 'barcode') {
+      setTimeout(() => barcodeRef.current?.focus(), 100);
+    }
+  }, [returnType]);
+
   const getItemKey = (item: SaleItem | (SaleItem & { saleId?: string })): string => {
     if (item.variant?.id) {
       return `${item.productId}_${item.variant.id}`;
@@ -32,7 +42,6 @@ export function POSReturnModal({
     return item.productId;
   };
 
-  // Ürün bazında iade için tüm satışlardan ürün listesi
   const allItemsFromSales = sales.flatMap(sale =>
     sale.items.map(item => ({
       ...item,
@@ -43,7 +52,6 @@ export function POSReturnModal({
     }))
   );
 
-  // Ürün bazında iade için unique ürünleri grupla
   const groupedItems = allItemsFromSales.reduce((acc, item) => {
     const itemKey = getItemKey(item);
     if (!acc[itemKey]) {
@@ -89,13 +97,72 @@ export function POSReturnModal({
     sale.customerName?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  // Ürün bazında arama
   const filteredGroupedItems = Object.entries(groupedItems).filter(([key, group]) => {
     if (!searchTerm.trim()) return true;
     const query = searchTerm.toLowerCase();
+    const barcode = (group.item.barcode || '').toLowerCase();
+    const code = (group.item.productCode || '').toLowerCase();
     return group.item.productName.toLowerCase().includes(query) ||
-      group.item.productId.toLowerCase().includes(query);
+      group.item.productId.toLowerCase().includes(query) ||
+      barcode.includes(query) ||
+      code.includes(query);
   });
+
+  const findProductByBarcode = (raw: string): Product | undefined => {
+    const q = raw.trim();
+    if (!q) return undefined;
+    const qLower = q.toLowerCase();
+    return products.find(
+      (p) =>
+        (p.barcode || '').trim() === q ||
+        (p.code || '').trim().toLowerCase() === qLower ||
+        (p.barcode || '').toLowerCase() === qLower
+    );
+  };
+
+  const findSalesForBarcode = (raw: string): Array<{ sale: Sale; item: SaleItem; itemKey: string }> => {
+    const q = raw.trim().toLowerCase();
+    if (!q) return [];
+    const product = findProductByBarcode(raw);
+    const hits: Array<{ sale: Sale; item: SaleItem; itemKey: string }> = [];
+
+    for (const sale of sales) {
+      for (const item of sale.items) {
+        const itemBarcode = (item.barcode || '').toLowerCase();
+        const itemCode = (item.productCode || '').toLowerCase();
+        const matchProduct = product && item.productId === product.id;
+        const matchBarcode = itemBarcode && (itemBarcode === q || itemBarcode.includes(q));
+        const matchCode = itemCode && itemCode === q;
+        if (matchProduct || matchBarcode || matchCode) {
+          hits.push({ sale, item, itemKey: getItemKey(item) });
+        }
+      }
+    }
+    return hits.sort((a, b) => new Date(b.sale.date).getTime() - new Date(a.sale.date).getTime());
+  };
+
+  const handleBarcodeScan = () => {
+    const code = barcodeInput.trim();
+    if (!code) return;
+
+    const matches = findSalesForBarcode(code);
+    if (matches.length === 0) {
+      setBarcodeHint('Bu barkod/kod ile tamamlanmış satış bulunamadı.');
+      return;
+    }
+
+    const best = matches[0];
+    setSelectedSale(best.sale);
+    setReturnType('receipt');
+    setReturnItems({ [best.itemKey]: 1 });
+    const product = findProductByBarcode(code);
+    setBarcodeHint(
+      product
+        ? `${product.name} — Fiş: ${best.sale.receiptNumber}`
+        : `${best.item.productName} — Fiş: ${best.sale.receiptNumber}`
+    );
+    setBarcodeInput('');
+  };
 
   const handleQuantityChange = (itemKey: string, quantity: number) => {
     if (quantity <= 0) {
@@ -130,9 +197,9 @@ export function POSReturnModal({
 
     const finalReason = returnReason === t.other ? customReason : returnReason;
 
-    if (returnType === 'receipt') {
-      // Fatura bazında iade
-      const returnItemsList = selectedSale!.items
+    if (returnType === 'receipt' || (returnType === 'barcode' && selectedSale)) {
+      const sale = selectedSale!;
+      const returnItemsList = sale.items
         .filter(item => {
           const itemKey = getItemKey(item);
           return returnItems[itemKey] && returnItems[itemKey] > 0;
@@ -148,11 +215,13 @@ export function POSReturnModal({
       const returnReceipt = {
         id: `RETURN-${Date.now()}`,
         returnNumber: `IADE-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`,
-        originalReceiptNumber: selectedSale!.receiptNumber,
+        originalReceiptNumber: sale.receiptNumber,
         date: new Date().toISOString(),
         items: returnItemsList.map(({ item, quantity }) => ({
           productId: item.productId,
           productName: item.productName,
+          productCode: item.productCode,
+          barcode: item.barcode,
           quantity: quantity,
           price: item.price,
           total: quantity * item.price,
@@ -160,9 +229,9 @@ export function POSReturnModal({
         })),
         subtotal: totalReturnAmount,
         total: totalReturnAmount,
-        refundMethod: selectedSale!.paymentMethod as 'cash' | 'card' | 'original',
-        cashier: selectedSale!.cashier,
-        customerName: selectedSale!.customerName,
+        refundMethod: sale.paymentMethod as 'cash' | 'card' | 'original',
+        cashier: sale.cashier,
+        customerName: sale.customerName,
         returnReason: finalReason
       };
 
@@ -171,20 +240,18 @@ export function POSReturnModal({
       });
 
       if (onReturn) {
-        onReturn(selectedSale!, returnItemsList, finalReason);
+        onReturn(sale, returnItemsList, finalReason);
       }
       if (onReturnComplete) {
         onReturnComplete(returnReceipt);
       }
     } else {
-      // Ürün bazında iade
       const returnItemsList = Object.entries(returnItems)
         .filter(([key, qty]) => (qty as number) > 0)
         .map(([key, qty]) => {
           const group = groupedItems[key];
           if (!group) return null;
 
-          // İade miktarını satışlara dağıt
           let remainingQty = qty as number;
           const distributedItems: Array<{ item: SaleItem; quantity: number; saleId: string; receiptNumber: string }> = [];
 
@@ -213,6 +280,8 @@ export function POSReturnModal({
         items: returnItemsList.map(({ item, quantity }) => ({
           productId: item.productId,
           productName: item.productName,
+          productCode: item.productCode,
+          barcode: item.barcode,
           quantity: quantity,
           price: item.price,
           total: quantity * item.price,
@@ -238,7 +307,7 @@ export function POSReturnModal({
     onClose();
   };
 
-  const totalReturnAmount = returnType === 'receipt' && selectedSale
+  const totalReturnAmount = (returnType === 'receipt' || returnType === 'barcode') && selectedSale
     ? selectedSale.items.reduce((sum, item) => {
       const itemKey = getItemKey(item);
       const returnQty = returnItems[itemKey] || 0;
@@ -248,22 +317,20 @@ export function POSReturnModal({
       const group = groupedItems[key];
       const qtyNum = qty as number;
       if (!group || qtyNum <= 0) return sum;
-      // Ortalama fiyat kullan (veya ilk satışın fiyatı)
       const avgPrice = group.sales[0]?.price || group.item.price;
       return sum + (qtyNum * avgPrice);
     }, 0);
 
-  // Keyboard shortcuts
   useEffect(() => {
     const handleKeyPress = (e: KeyboardEvent) => {
       const key = e.key;
       if (key >= '1' && key <= '5') {
         const index = parseInt(key) - 1;
-        if (index < returnReasons.length && (returnType === 'receipt' ? selectedSale : Object.keys(returnItems).length > 0)) {
+        if (index < returnReasons.length && ((returnType === 'receipt' || returnType === 'barcode') ? selectedSale : Object.keys(returnItems).length > 0)) {
           setReturnReason(returnReasons[index]);
         }
       } else if (key === 'Enter' && returnReason && Object.keys(returnItems).length > 0) {
-        if (returnType === 'receipt' && selectedSale) {
+        if ((returnType === 'receipt' || returnType === 'barcode') && selectedSale) {
           handleConfirmReturn();
         } else if (returnType === 'product') {
           handleConfirmReturn();
@@ -277,33 +344,48 @@ export function POSReturnModal({
     return () => window.removeEventListener('keydown', handleKeyPress);
   }, [returnType, selectedSale, returnReason, returnItems, customReason]);
 
+  const showReturnDetails =
+    (returnType === 'receipt' || returnType === 'barcode') && selectedSale
+      ? true
+      : returnType === 'product' && Object.keys(returnItems).length > 0;
+
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-white w-full max-w-5xl max-h-[90vh] flex flex-col shadow-2xl">
-        {/* Header */}
+      <div className="bg-white w-full max-w-5xl max-h-[90vh] flex flex-col shadow-2xl rounded-xl overflow-hidden">
         <div className="p-3 border-b border-gray-200 flex items-center justify-between bg-gradient-to-r from-blue-600 to-blue-700">
           <h3 className="text-base text-white flex items-center gap-2">
             <RotateCcw className="w-5 h-5" />
             {t.returnCancelTitle}
           </h3>
-          <button
-            onClick={onClose}
-            className="text-white hover:text-gray-200 p-1"
-          >
+          <button onClick={onClose} className="text-white hover:text-gray-200 p-1">
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* İade Tipi Seçimi */}
         <div className="p-3 border-b border-gray-200 bg-gray-50">
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap">
+            <button
+              onClick={() => {
+                setReturnType('barcode');
+                setSelectedSale(null);
+                setReturnItems({});
+                setBarcodeHint('');
+              }}
+              className={`flex-1 min-w-[120px] px-3 py-2 rounded border-2 text-sm transition-all flex items-center justify-center gap-1.5 ${returnType === 'barcode'
+                ? 'bg-blue-600 text-white border-blue-600'
+                : 'bg-white text-gray-700 border-gray-300 hover:border-blue-400'
+                }`}
+            >
+              <Barcode className="w-4 h-4" />
+              Barkod ile
+            </button>
             <button
               onClick={() => {
                 setReturnType('receipt');
                 setSelectedSale(null);
                 setReturnItems({});
               }}
-              className={`flex-1 px-4 py-2 rounded border-2 transition-all ${returnType === 'receipt'
+              className={`flex-1 min-w-[120px] px-3 py-2 rounded border-2 text-sm transition-all ${returnType === 'receipt'
                 ? 'bg-blue-600 text-white border-blue-600'
                 : 'bg-white text-gray-700 border-gray-300 hover:border-blue-400'
                 }`}
@@ -316,7 +398,7 @@ export function POSReturnModal({
                 setSelectedSale(null);
                 setReturnItems({});
               }}
-              className={`flex-1 px-4 py-2 rounded border-2 transition-all ${returnType === 'product'
+              className={`flex-1 min-w-[120px] px-3 py-2 rounded border-2 text-sm transition-all ${returnType === 'product'
                 ? 'bg-blue-600 text-white border-blue-600'
                 : 'bg-white text-gray-700 border-gray-300 hover:border-blue-400'
                 }`}
@@ -326,26 +408,65 @@ export function POSReturnModal({
           </div>
         </div>
 
-        <div className="flex-1 flex overflow-hidden">
-          {/* Left: Receipt/Product Selection */}
-          <div className="w-1/2 border-r border-gray-200 flex flex-col">
-            <div className="p-4 border-b border-gray-200">
-              <div className="relative">
-                <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                <input
-                  type="text"
-                  placeholder={returnType === 'receipt' ? t.searchReceiptPlaceholder : t.searchProductByName}
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full pl-9 pr-4 py-2 border border-gray-300 rounded focus:outline-none focus:border-blue-600 text-sm"
-                  autoFocus
-                />
-              </div>
+        {returnType === 'barcode' && (
+          <div className="p-4 border-b border-gray-200 bg-blue-50/50">
+            <label className="text-xs font-semibold text-gray-600 mb-1.5 block">Barkod / ürün kodu okutun</label>
+            <div className="flex gap-2">
+              <input
+                ref={barcodeRef}
+                type="text"
+                value={barcodeInput}
+                onChange={(e) => setBarcodeInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleBarcodeScan();
+                  }
+                }}
+                placeholder="Barkod okutun veya yazın…"
+                className="flex-1 px-3 py-2.5 border border-blue-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm"
+                autoFocus
+              />
+              <button
+                type="button"
+                onClick={handleBarcodeScan}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium"
+              >
+                Bul
+              </button>
             </div>
+            {barcodeHint ? (
+              <p className="mt-2 text-sm text-blue-800 font-medium">{barcodeHint}</p>
+            ) : (
+              <p className="mt-2 text-xs text-gray-500">Son satışlarda eşleşen ürün otomatik seçilir.</p>
+            )}
+          </div>
+        )}
+
+        <div className="flex-1 flex overflow-hidden min-h-0">
+          <div className="w-1/2 border-r border-gray-200 flex flex-col">
+            {returnType !== 'barcode' && (
+              <div className="p-4 border-b border-gray-200">
+                <div className="relative">
+                  <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                  <input
+                    type="text"
+                    placeholder={returnType === 'receipt' ? t.searchReceiptPlaceholder : 'Ürün adı, kod veya barkod…'}
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="w-full pl-9 pr-4 py-2 border border-gray-300 rounded focus:outline-none focus:border-blue-600 text-sm"
+                  />
+                </div>
+              </div>
+            )}
 
             <div className="flex-1 overflow-auto p-3">
-              {returnType === 'receipt' ? (
-                // Fatura bazında - Fiş listesi
+              {returnType === 'barcode' && !selectedSale ? (
+                <div className="flex flex-col items-center justify-center h-full text-gray-400 p-6 text-center">
+                  <Barcode className="w-14 h-14 mb-3 opacity-40" />
+                  <p className="text-sm">İade için barkodu okutun</p>
+                </div>
+              ) : returnType === 'receipt' ? (
                 filteredSales.length === 0 ? (
                   <div className="flex flex-col items-center justify-center h-full text-gray-400">
                     <Search className="w-12 h-12 mb-2 opacity-50" />
@@ -366,12 +487,8 @@ export function POSReturnModal({
                           }`}
                       >
                         <div className="flex items-start justify-between mb-1">
-                          <span className="font-mono text-sm font-medium text-gray-900">
-                            {sale.receiptNumber}
-                          </span>
-                          <span className="text-sm text-gray-900">
-                            {sale.total.toFixed(2)}
-                          </span>
+                          <span className="font-mono text-sm font-medium text-gray-900">{sale.receiptNumber}</span>
+                          <span className="text-sm text-gray-900">{sale.total.toFixed(2)}</span>
                         </div>
                         <div className="text-xs text-gray-600">
                           {new Date(sale.date).toLocaleString('tr-TR')}
@@ -383,8 +500,7 @@ export function POSReturnModal({
                     ))}
                   </div>
                 )
-              ) : (
-                // Ürün bazında - Ürün listesi
+              ) : returnType === 'product' ? (
                 filteredGroupedItems.length === 0 ? (
                   <div className="flex flex-col items-center justify-center h-full text-gray-400">
                     <Search className="w-12 h-12 mb-2 opacity-50" />
@@ -398,20 +514,21 @@ export function POSReturnModal({
                         : null;
 
                       return (
-                        <div
-                          key={key}
-                          className="p-3 rounded border-2 border-gray-200 bg-white"
-                        >
+                        <div key={key} className="p-3 rounded border-2 border-gray-200 bg-white">
                           <div className="flex items-start justify-between mb-2">
                             <div className="flex-1">
                               <h5 className="text-sm font-medium text-gray-900">
                                 {group.item.productName}
                                 {variantInfo && (
-                                  <span className="ml-2 text-xs text-gray-500 font-normal">
-                                    ({variantInfo})
-                                  </span>
+                                  <span className="ml-2 text-xs text-gray-500 font-normal">({variantInfo})</span>
                                 )}
                               </h5>
+                              {(group.item.productCode || group.item.barcode) && (
+                                <p className="text-xs text-gray-500 font-mono mt-0.5">
+                                  {group.item.productCode ? `Kod: ${group.item.productCode}` : ''}
+                                  {group.item.barcode ? ` • ${group.item.barcode}` : ''}
+                                </p>
+                              )}
                               <p className="text-xs text-gray-600 mt-1">
                                 {t.totalSale}: {group.totalQuantity} {t.pieces} • {group.sales.length} {t.differentReceipts}
                               </p>
@@ -433,9 +550,7 @@ export function POSReturnModal({
                                 value={returnItems[key] || 0}
                                 onChange={(e) => {
                                   const val = parseInt(e.target.value) || 0;
-                                  if (val <= group.totalQuantity) {
-                                    handleQuantityChange(key, val);
-                                  }
+                                  if (val <= group.totalQuantity) handleQuantityChange(key, val);
                                 }}
                                 className="w-12 text-center border border-gray-300 rounded text-sm"
                               />
@@ -445,12 +560,6 @@ export function POSReturnModal({
                               >
                                 +
                               </button>
-                              <button
-                                onClick={() => handleQuantityChange(key, group.totalQuantity)}
-                                className="ml-2 px-2 py-1 text-xs bg-orange-600 text-white rounded hover:bg-orange-700 transition-colors"
-                              >
-                                Tümü
-                              </button>
                             </div>
                           </div>
                         </div>
@@ -458,36 +567,35 @@ export function POSReturnModal({
                     })}
                   </div>
                 )
-              )}
+              ) : selectedSale ? (
+                <div className="p-3 bg-orange-50 border border-orange-200 rounded-lg">
+                  <p className="text-xs text-orange-700 font-semibold mb-1">Seçili fiş</p>
+                  <p className="font-mono text-sm font-bold">{selectedSale.receiptNumber}</p>
+                  <p className="text-xs text-gray-600 mt-1">{new Date(selectedSale.date).toLocaleString('tr-TR')}</p>
+                </div>
+              ) : null}
             </div>
           </div>
 
-          {/* Right: Return Details */}
           <div className="w-1/2 flex flex-col">
-            {returnType === 'receipt' && !selectedSale ? (
+            {!showReturnDetails ? (
               <div className="flex-1 flex items-center justify-center text-gray-400">
                 <div className="text-center">
                   <RotateCcw className="w-12 h-12 mx-auto mb-2 opacity-50" />
-                  <p className="text-sm">{t.selectReceiptForReturn}</p>
-                </div>
-              </div>
-            ) : returnType === 'product' && Object.keys(returnItems).length === 0 ? (
-              <div className="flex-1 flex items-center justify-center text-gray-400">
-                <div className="text-center">
-                  <RotateCcw className="w-12 h-12 mx-auto mb-2 opacity-50" />
-                  <p className="text-sm">{t.selectProductForReturn}</p>
+                  <p className="text-sm">
+                    {returnType === 'barcode' ? 'Barkod okutun veya fiş seçin' : t.selectReceiptForReturn}
+                  </p>
                 </div>
               </div>
             ) : (
               <>
                 <div className="flex-1 overflow-auto p-4">
                   <h4 className="text-sm font-medium text-gray-900 mb-3">
-                    {returnType === 'receipt' ? t.productsToReturn : t.selectedProducts}
+                    {returnType === 'product' ? t.selectedProducts : t.productsToReturn}
                   </h4>
                   <div className="space-y-2">
-                    {returnType === 'receipt' ? (
-                      // Fatura bazında - seçili fişin ürünleri
-                      selectedSale!.items.map((item) => {
+                    {selectedSale && (returnType === 'receipt' || returnType === 'barcode')
+                      ? selectedSale.items.map((item) => {
                         const itemKey = getItemKey(item);
                         const variantInfo = item.variant
                           ? `${item.variant.color || ''} ${item.variant.size || ''}`.trim()
@@ -500,9 +608,7 @@ export function POSReturnModal({
                                 <h5 className="text-sm font-medium text-gray-900 mb-1">
                                   {item.productName}
                                   {variantInfo && (
-                                    <span className="ml-2 text-xs text-gray-500 font-normal">
-                                      ({variantInfo})
-                                    </span>
+                                    <span className="ml-2 text-xs text-gray-500 font-normal">({variantInfo})</span>
                                   )}
                                 </h5>
                                 <p className="text-xs text-gray-600">
@@ -526,9 +632,7 @@ export function POSReturnModal({
                                   value={returnItems[itemKey] || 0}
                                   onChange={(e) => {
                                     const val = parseInt(e.target.value) || 0;
-                                    if (val <= item.quantity) {
-                                      handleQuantityChange(itemKey, val);
-                                    }
+                                    if (val <= item.quantity) handleQuantityChange(itemKey, val);
                                   }}
                                   className="w-12 text-center border border-gray-300 rounded text-sm"
                                 />
@@ -540,7 +644,7 @@ export function POSReturnModal({
                                 </button>
                                 <button
                                   onClick={() => handleQuantityChange(itemKey, item.quantity)}
-                                  className="ml-2 px-2 py-1 text-xs bg-orange-600 text-white rounded hover:bg-orange-700 transition-colors"
+                                  className="ml-2 px-2 py-1 text-xs bg-orange-600 text-white rounded hover:bg-orange-700"
                                 >
                                   {String(t.all)}
                                 </button>
@@ -549,76 +653,7 @@ export function POSReturnModal({
                           </div>
                         );
                       })
-                    ) : (
-                      // Ürün bazında - seçilen ürünler
-                      Object.entries(returnItems)
-                        .filter(([key, qty]) => (qty as number) > 0)
-                        .map(([key, qty]) => {
-                          const group = groupedItems[key];
-                          if (!group) return null;
-                          const itemKey = key;
-                          const variantInfo = group.item.variant
-                            ? `${group.item.variant.color || ''} ${group.item.variant.size || ''}`.trim()
-                            : null;
-
-                          return (
-                            <div key={itemKey} className="p-3 border border-gray-200 rounded bg-white">
-                              <div className="flex items-start justify-between mb-2">
-                                <div className="flex-1">
-                                  <h5 className="text-sm font-medium text-gray-900 mb-1">
-                                    {group.item.productName}
-                                    {variantInfo && (
-                                      <span className="ml-2 text-xs text-gray-500 font-normal">
-                                        ({variantInfo})
-                                      </span>
-                                    )}
-                                  </h5>
-                                  <p className="text-xs text-gray-600">
-                                    {t.totalSale}: {group.totalQuantity} {t.pieces} • {t.unitPrice}: {group.item.price.toFixed(2)} IQD • {t.return}: {qty} {t.pieces}
-                                  </p>
-                                </div>
-                              </div>
-                              <div className="flex items-center gap-2">
-                                <span className="text-xs text-gray-600">{t.returnQuantity}:</span>
-                                <div className="flex items-center gap-1">
-                                  <button
-                                    onClick={() => handleQuantityChange(itemKey, Math.max(0, qty - 1))}
-                                    className="w-6 h-6 bg-white hover:bg-gray-100 rounded flex items-center justify-center border border-gray-300"
-                                  >
-                                    -
-                                  </button>
-                                  <input
-                                    type="number"
-                                    min="0"
-                                    max={group.totalQuantity}
-                                    value={qty}
-                                    onChange={(e) => {
-                                      const val = parseInt(e.target.value) || 0;
-                                      if (val <= group.totalQuantity) {
-                                        handleQuantityChange(itemKey, val);
-                                      }
-                                    }}
-                                    className="w-12 text-center border border-gray-300 rounded text-sm"
-                                  />
-                                  <button
-                                    onClick={() => handleQuantityChange(itemKey, Math.min(qty + 1, group.totalQuantity))}
-                                    className="w-6 h-6 bg-white hover:bg-gray-100 rounded flex items-center justify-center border border-gray-300"
-                                  >
-                                    +
-                                  </button>
-                                  <button
-                                    onClick={() => handleQuantityChange(itemKey, group.totalQuantity)}
-                                    className="ml-2 px-2 py-1 text-xs bg-orange-600 text-white rounded hover:bg-orange-700 transition-colors"
-                                  >
-                                    {String(t.all)}
-                                  </button>
-                                </div>
-                              </div>
-                            </div>
-                          );
-                        })
-                        .filter(Boolean)
-                    )}
+                      : null}
                   </div>
 
                   <div className="mt-4 pt-4 border-t border-gray-200">
@@ -661,13 +696,11 @@ export function POSReturnModal({
                 <div className="p-4 border-t border-gray-200 bg-gray-50">
                   <div className="flex items-center justify-between mb-3">
                     <span className="text-sm text-gray-600">{t.returnAmount}:</span>
-                    <span className="text-lg font-medium text-gray-900">
-                      {totalReturnAmount.toFixed(2)}
-                    </span>
+                    <span className="text-lg font-medium text-gray-900">{totalReturnAmount.toFixed(2)}</span>
                   </div>
                   <button
                     onClick={handleConfirmReturn}
-                    disabled={Object.keys(returnItems).length === 0}
+                    disabled={Object.keys(returnItems).length === 0 || !returnReason}
                     className="w-full py-2.5 bg-orange-600 text-white rounded hover:bg-orange-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
                   >
                     <Check className="w-4 h-4" />
