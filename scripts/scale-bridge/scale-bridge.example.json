@@ -12,6 +12,7 @@
   "scaleBackend": "auto",
   "scaleClearBeforeSend": false,
   "scaleSendHotkeys": true,
+  "lfCodeBase": 10000,
   "scales": [
     {
       "id": "kasap-terazi-1",
@@ -19,7 +20,7 @@
       "brand": "rongta",
       "model": "RLS1100",
       "ipAddress": "192.168.1.87",
-      "port": 20304,
+      "port": null,
       "enabled": true
     }
   ]

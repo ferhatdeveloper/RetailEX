@@ -20,6 +20,7 @@ import {
   resolveScaleBridgeSource,
   applyScaleBridgeFromStore,
   autoApplyScaleBridgeForFirm,
+  probeAndAutoConfigureLocalScaleBridge,
   loadStoresWithScaleBridge,
   clearScaleBridgeManualOverride,
   setScaleBridgeStoreId,
@@ -119,6 +120,7 @@ export function ScaleManagementWrapper({ products }: ScaleManagementWrapperProps
     (async () => {
       try {
         syncScaleBridgeFromWebConfig();
+        await probeAndAutoConfigureLocalScaleBridge();
         const firmNr = ERP_SETTINGS.firmNr || '001';
         await autoApplyScaleBridgeForFirm(firmNr);
         if (cancelled) return;

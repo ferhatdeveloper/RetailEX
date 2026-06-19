@@ -38,22 +38,31 @@ Remove-Item Env:RUSTFLAGS -ErrorAction SilentlyContinue
 
 Write-Host '2) Staging dizini...'
 if (Test-Path $Staging) { Remove-Item -Recurse -Force $Staging }
-New-Item -ItemType Directory -Force -Path $Staging, $NodeDir, (Join-Path $Staging 'scale-bridge'), (Join-Path $Staging 'scale-bridge\admin') | Out-Null
+New-Item -ItemType Directory -Force -Path $Staging, $NodeDir | Out-Null
 
 Copy-Item -Force (Join-Path $DeskApp 'target\release\RetailEX_Scale_Bridge.exe') $Staging
 Copy-Item -Force (Join-Path $DeskApp 'target\release\RetailEX_ScaleBridge_Manager.exe') $Staging
-Copy-Item -Force (Join-Path $ScaleDir 'server.mjs') (Join-Path $Staging 'scale-bridge\server.mjs')
-Copy-Item -Force (Join-Path $ScaleDir 'server.mjs') (Join-Path $Staging 'scale_bridge_server.mjs')
-Copy-Item -Force (Join-Path $ScaleDir 'rongtaTcp.mjs') (Join-Path $Staging 'scale-bridge\rongtaTcp.mjs')
-Copy-Item -Force (Join-Path $ScaleDir 'scan.mjs') (Join-Path $Staging 'scale-bridge\scan.mjs')
-Copy-Item -Force (Join-Path $ScaleDir 'scalePorts.mjs') (Join-Path $Staging 'scale-bridge\scalePorts.mjs')
-Copy-Item -Force (Join-Path $ScaleDir 'admin\index.html') (Join-Path $Staging 'scale-bridge\admin\index.html')
-Copy-Item -Force (Join-Path $ScaleDir 'diagnose-windows.ps1') (Join-Path $Staging 'scale-bridge\diagnose-windows.ps1')
-Copy-Item -Force (Join-Path $ScaleDir 'configure-firewall.ps1') (Join-Path $Staging 'scale-bridge\configure-firewall.ps1')
-Copy-Item -Force (Join-Path $ScaleDir 'scale-bridge.example.json') $Staging
-Copy-Item -Force (Join-Path $ScaleDir 'rongtaDll.mjs') (Join-Path $Staging 'scale-bridge\rongtaDll.mjs')
 
-Write-Host '2b) RongtaDllBridge (rtslabelscale.dll)...'
+$CopyScript = Join-Path $ScaleDir 'copy-bridge-runtime.ps1'
+& $CopyScript -TargetScaleBridgeDir (Join-Path $Staging 'scale-bridge') -SourceScaleDir $ScaleDir
+
+Copy-Item -Force (Join-Path $ScaleDir 'scale-bridge.example.json') $Staging
+
+Write-Host '2a) TeraziRongta SYSTEM.CFG / DLL (varsa)...'
+$TeraziRoot = Join-Path $Root 'TeraziRongta\WindowsFormsApplication1'
+$TeraziCfg = Join-Path $TeraziRoot 'SYSTEM.CFG'
+$TeraziDll = Join-Path $TeraziRoot 'lib\rtslabelscale.dll'
+$DllBridgeDir = Join-Path $ScaleDir 'rongta-dll-bridge'
+if (Test-Path $TeraziCfg) {
+    Copy-Item -Force $TeraziCfg (Join-Path $DllBridgeDir 'SYSTEM.CFG')
+    Write-Host '  SYSTEM.CFG <- TeraziRongta'
+}
+if (Test-Path $TeraziDll) {
+    New-Item -ItemType Directory -Force -Path (Join-Path $TeraziRoot 'lib') | Out-Null
+    Write-Host '  rtslabelscale.dll repoda — MSBuild paketleyecek'
+}
+
+Write-Host '2b) RongtaDllBridge (TeraziRongta / rtslabelscale.dll)...'
 $DllBridgeDir = Join-Path $ScaleDir 'rongta-dll-bridge'
 $DllBridgeOut = Join-Path $DllBridgeDir 'bin\x86\Release'
 $Msbuild = @(
@@ -100,7 +109,11 @@ if (-not (Test-Path $VcRedist)) {
     Write-Error 'vc_redist.x64.exe indirilemedi'
 }
 
-Write-Host '4) Inno Setup...'
+Write-Host '4) Paket doğrulama...'
+node (Join-Path $ScaleDir 'validate-package.mjs') (Join-Path $Staging 'scale-bridge')
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+Write-Host '5) Inno Setup...'
 $IsccPath = $null
 if (Get-Command iscc -ErrorAction SilentlyContinue) {
     $IsccPath = (Get-Command iscc).Source

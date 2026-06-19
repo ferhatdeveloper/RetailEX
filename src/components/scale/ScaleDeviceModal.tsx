@@ -384,9 +384,10 @@ export function ScaleDeviceModal({ device, onSave, onClose }: ScaleDeviceModalPr
             {formData.brand === 'rongta' && formData.connectionType === 'tcp' && (
               <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg text-sm text-gray-700">
                 <p className="font-medium text-gray-900 mb-1">Rongta RLS1000 / RLS1100</p>
-                <p>RLS1000 Windows yazılımı gerekmez. Terazi ile PC aynı LAN segmentinde olmalıdır.</p>
+                <p>Windows köprüsünde TeraziRongta ile aynı yöntem: <strong>rtslabelscale.dll</strong> — yalnızca IP yeterli (TCP port DLL modunda kullanılmaz).</p>
+                <p className="mt-1">RLS1000 Windows yazılımı gerekmez. Terazi ile PC aynı LAN segmentinde olmalıdır.</p>
                 <p className="mt-1">Varsayılan IP: <span className="font-mono">{RONGTA_DEFAULT_IP}</span> — terazi açılış ekranından doğrulayın.</p>
-                <p className="mt-1">Port: boş bırakılırsa 20304, 4001, 3001, 3000, 4000, 5000, 8000, 8001, 8080, 9000, 10001 sırayla denenir.</p>
+                <p className="mt-1">TCP köprüsü modunda port boş bırakılırsa 20304, 4001, 3001, 3000, 4000, 5000, 8000, 8001, 8080, 9000, 10001 sırayla denenir.</p>
               </div>
             )}
 

@@ -425,6 +425,26 @@ export function isScaleBridgeMode(): boolean {
   return !!getScaleBridgeUrl();
 }
 
+/** Tauri masaüstünde yerel köprü servisi (3012) çalışıyorsa URL'yi otomatik tanımla. */
+export async function probeAndAutoConfigureLocalScaleBridge(): Promise<boolean> {
+  if (typeof window === 'undefined') return false;
+  if (isScaleBridgeManualOverride()) return false;
+  if (getScaleBridgeUrl()) return true;
+
+  const isTauri = !!(window as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__;
+  if (!isTauri) return false;
+
+  const base = 'http://127.0.0.1:3012';
+  try {
+    const res = await fetch(`${base}/status`, { signal: AbortSignal.timeout(2500) });
+    if (!res.ok) return false;
+    setScaleBridgeUrl(base);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** Aktif mağazaları köprü alanlarıyla yükle (mağaza seçimi için). */
 export async function loadStoresWithScaleBridge(firmNr: string): Promise<StoreScaleBridgeRow[]> {
   const nr = firmNr.trim();

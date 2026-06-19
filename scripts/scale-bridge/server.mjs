@@ -39,8 +39,10 @@ const DEFAULT_CONFIG = {
   scaleBackend: 'auto',
   /** PLU gönderiminden önce teraziyi temizle (C# clearPludata) */
   scaleClearBeforeSend: false,
-  /** PLU sonrası hotkey tablosu gönder (C# SendHotKey — terazi tuşları) */
+  /** PLU sonrası hotkey tablosu gönder (TeraziRongta Form1.SendHotKey) */
   scaleSendHotkeys: true,
+  /** TeraziRongta (rtslabelscale.dll) LFCode tabanı — demo 10001; 0 = ham PLU no */
+  lfCodeBase: 10000,
 };
 
 let config = { ...DEFAULT_CONFIG };
@@ -189,12 +191,14 @@ function scaleToDevice(scale) {
   };
 }
 
-function recordsFromProducts(products, pluStart = 1) {
+function recordsFromProducts(products, pluStart = 1, lfCodeBase = 0) {
   return products.map((p, idx) => {
     const rank = pluStart + idx;
     const pluCode = String(p.pluCode || rank).padStart(5, '0');
     const lfDigits = pluCode.replace(/\D/g, '');
-    const lfCode = lfDigits ? String(parseInt(lfDigits, 10) || rank) : String(rank);
+    let numericLf = lfDigits ? parseInt(lfDigits, 10) || rank : rank;
+    if (lfCodeBase > 0 && numericLf < lfCodeBase) numericLf += lfCodeBase;
+    const lfCode = String(numericLf);
     return {
       pluCode,
       name: String(p.name || '').slice(0, 36),
@@ -274,6 +278,8 @@ async function handle(req, res) {
         dllBridgeAvailable: isRongtaDllBridgeAvailable(),
         systemCfgFound: !!resolveRongtaSystemCfg(),
         usingDll: shouldUseRongtaDll(config),
+        lfCodeBase: config.lfCodeBase ?? 10000,
+        teraziRongtaMode: shouldUseRongtaDll(config) ? 'rtslabelscale.dll (IP + SYSTEM.CFG, TCP port yok)' : 'tcp',
         scaleClearBeforeSend: config.scaleClearBeforeSend === true,
         scaleSendHotkeys: config.scaleSendHotkeys !== false,
       });
@@ -371,9 +377,10 @@ async function handle(req, res) {
         return json(res, 200, {
           ipAddress,
           found: !!dll.ok,
-          suggestedPort: 20304,
+          suggestedPort: null,
           backend: 'rtslabelscale.dll',
           message: dll.message,
+          weight: dll.weight ?? null,
         });
       }
       const discovery = await discoverRongtaPort(ipAddress, port ?? undefined);
@@ -424,9 +431,10 @@ async function handle(req, res) {
       if (!scale) return json(res, 404, { success: false, message: 'Terazi bulunamadı' });
       const products = Array.isArray(body.products) ? body.products : [];
       const pluStart = Number(body.pluStartIndex) || 1;
+      const lfBase = shouldUseRongtaDll(config) ? Number(config.lfCodeBase ?? 10000) : 0;
       const records = Array.isArray(body.records) && body.records.length
         ? body.records
-        : recordsFromProducts(products, pluStart);
+        : recordsFromProducts(products, pluStart, lfBase);
       if (!records.length) return json(res, 400, { success: false, message: 'Ürün listesi boş' });
 
       let result;

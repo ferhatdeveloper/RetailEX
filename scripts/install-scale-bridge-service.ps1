@@ -1,4 +1,4 @@
-# RetailEX Terazi Köprüsü — Windows servisi kurulumu
+# RetailEX Terazi Köprüsü — Windows servisi kurulumu (kaynak ağacından)
 # Yönetici PowerShell'de çalıştırın.
 # Tek EXE kurulum için: scripts/scale-bridge/build-windows-installer.ps1
 
@@ -11,7 +11,7 @@ $ConfigDir = 'C:\ProgramData\RetailEX'
 
 Write-Host '== RetailEX Terazi Köprüsü kurulumu =='
 
-New-Item -ItemType Directory -Force -Path $InstallDir, $ConfigDir, (Join-Path $InstallDir 'scale-bridge\admin') | Out-Null
+New-Item -ItemType Directory -Force -Path $InstallDir, $ConfigDir | Out-Null
 
 Write-Host 'Derleniyor: RetailEX_Scale_Bridge + Manager (statik CRT)...'
 $env:RUSTFLAGS = '-C target-feature=+crt-static'
@@ -20,7 +20,6 @@ cargo build --release --bin RetailEX_Scale_Bridge --bin RetailEX_ScaleBridge_Man
 Pop-Location
 Remove-Item Env:RUSTFLAGS -ErrorAction SilentlyContinue
 
-# VC++ Runtime (VCRUNTIME140.dll) yoksa kur
 $VcDllOk = (Test-Path 'C:\Windows\System32\vcruntime140.dll') -and (Test-Path 'C:\Windows\System32\vcruntime140_1.dll')
 if (-not $VcDllOk) {
     Write-Host 'Visual C++ Runtime kuruluyor...'
@@ -37,15 +36,18 @@ Copy-Item -Force $ExeSrc (Join-Path $InstallDir 'RetailEX_Scale_Bridge.exe')
 Copy-Item -Force $MgrSrc (Join-Path $InstallDir 'RetailEX_ScaleBridge_Manager.exe')
 
 $BridgeDir = Join-Path $InstallDir 'scale-bridge'
-foreach ($f in @('server.mjs','rongtaTcp.mjs','scan.mjs')) {
-    Copy-Item -Force (Join-Path $ScaleScripts $f) (Join-Path $BridgeDir $f)
+& (Join-Path $ScaleScripts 'copy-bridge-runtime.ps1') -TargetScaleBridgeDir $BridgeDir -SourceScaleDir $ScaleScripts
+
+$TeraziCfg = Join-Path $Root 'TeraziRongta\WindowsFormsApplication1\SYSTEM.CFG'
+if (Test-Path $TeraziCfg) {
+    $DllOut = Join-Path $ScaleScripts 'rongta-dll-bridge\bin\x86\Release'
+    if (Test-Path $DllOut) {
+        Copy-Item -Force $TeraziCfg (Join-Path $DllOut 'SYSTEM.CFG') -ErrorAction SilentlyContinue
+    }
 }
-# Rust servis çözümleyicisi kökte scale_bridge_server.mjs de arar
-Copy-Item -Force (Join-Path $ScaleScripts 'server.mjs') (Join-Path $InstallDir 'scale_bridge_server.mjs')
-Copy-Item -Force (Join-Path $ScaleScripts 'admin\index.html') (Join-Path $BridgeDir 'admin\index.html')
+
 Copy-Item -Force (Join-Path $ScaleScripts 'scale-bridge.example.json') (Join-Path $ConfigDir 'scale-bridge.example.json')
 
-# Portable Node (varsa staging'den, yoksa sistem node)
 $NodeStaging = Join-Path $ScaleScripts 'installer\staging\node\node.exe'
 $NodeDst = Join-Path $InstallDir 'node\node.exe'
 if (Test-Path $NodeStaging) {
@@ -57,6 +59,9 @@ if (Test-Path $NodeStaging) {
 } elseif (-not (Get-Command node -ErrorAction SilentlyContinue)) {
     Write-Warning 'Node.js bulunamadı. build-windows-installer.ps1 ile portable node dahil paket üretin.'
 }
+
+node (Join-Path $ScaleScripts 'validate-package.mjs') $BridgeDir
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 $ConfigPath = Join-Path $ConfigDir 'scale-bridge.json'
 if (-not (Test-Path $ConfigPath)) {
@@ -77,3 +82,4 @@ Write-Host ''
 Write-Host "Kurulum tamamlandı."
 Write-Host "Yönetim UI: http://127.0.0.1:3012/ui/"
 Write-Host "Config: $ConfigPath"
+Write-Host "TeraziRongta DLL modu: rtslabelscale.dll + SYSTEM.CFG (IP yeterli, TCP port gerekmez)"

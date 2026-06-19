@@ -14,6 +14,7 @@ function bridgeExeCandidates() {
   return [
     join(__dirname, 'rongta-dll-bridge', 'bin', 'x86', 'Release', 'RongtaDllBridge.exe'),
     join(__dirname, 'rongta-dll-bridge', 'bin', 'x86', 'Debug', 'RongtaDllBridge.exe'),
+    join(root, 'TeraziRongta', 'WindowsFormsApplication1', 'bin', 'x86', 'Release', 'RongtaDllBridge.exe'),
     join(process.env.ProgramFiles || 'C:\\Program Files', 'RetailEX', 'ScaleBridge', 'scale-bridge', 'rongta-dll-bridge', 'RongtaDllBridge.exe'),
     join(process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)', 'RetailEX', 'ScaleBridge', 'scale-bridge', 'rongta-dll-bridge', 'RongtaDllBridge.exe'),
     join(process.env.ProgramFiles || 'C:\\Program Files', 'RetailEX', 'ScaleBridge', 'rongta-dll-bridge', 'RongtaDllBridge.exe'),

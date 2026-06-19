@@ -33,9 +33,11 @@ powershell -ExecutionPolicy Bypass -File scripts\scale-bridge\import-terazi-rong
 
 ## RetailEX köprüsü
 
-Node köprüsü (`scripts/scale-bridge/`) Windows'ta bu DLL'i `rongta-dll-bridge` yardımcı exe ile çağırır (0.1.90+).
+Node köprüsü (`scripts/scale-bridge/`) Windows'ta bu DLL'i `RongtaDllBridge.exe` ile çağırır.
 
-C# `button9` akışı ile aynı: **Connect → DownLoadPLU (4/paket) → DownLoadHotkey → Disconnect**
+C# `button9` akışı ile aynı: **Connect(IP, 0) → DownLoadPLU (4/paket) → DownLoadHotkey → Disconnect**
+
+Kaynak kod: `TeraziRongta/` (repo kökü) — `Form1.cs`, `labelScale.cs`, `uDefine.cs`
 
 ## SYSTEM.CFG
 

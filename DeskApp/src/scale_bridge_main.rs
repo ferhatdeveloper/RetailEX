@@ -207,10 +207,12 @@ fn run_service() -> windows_service::Result<()> {
 }
 
 fn resolve_server_script(base: &PathBuf) -> Option<PathBuf> {
+    // scale-bridge/ altındaki server.mjs bağımlılıkları (listen.mjs, sdk/) ile birlikte gelir.
+    // Kökteki scale_bridge_server.mjs yalnızca geriye dönük uyumluluk (eksik paketlerde çalışmaz).
     let candidates = [
-        base.join("scale_bridge_server.mjs"),
         base.join("scale-bridge").join("server.mjs"),
         base.join("scripts").join("scale-bridge").join("server.mjs"),
+        base.join("scale_bridge_server.mjs"),
     ];
     for c in candidates {
         if c.exists() {
