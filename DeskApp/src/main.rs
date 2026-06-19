@@ -18,9 +18,10 @@ mod bank_ops;
 mod license;
 mod caller_id_serial;
 mod rongta_scale;
+mod platform;
 
 use sync::BackgroundSyncService;
-use std::os::windows::process::CommandExt;
+use platform::PlatformCommandExt;
 use std::path::Path;
 use std::process::{Command, Stdio};
 use tauri::{Manager, Emitter};
@@ -42,40 +43,47 @@ pub struct DbState(pub Arc<Mutex<DbConnection>>);
 
 #[tauri::command]
 async fn check_pg16() -> Result<bool, String> {
-    // Fast path 1: Check common PostgreSQL install paths (microseconds, no process spawn)
-    let pg_paths = [
-        "C:\\Program Files\\PostgreSQL\\17\\bin\\pg_ctl.exe",
-        "C:\\Program Files\\PostgreSQL\\16\\bin\\pg_ctl.exe",
-        "C:\\Program Files\\PostgreSQL\\15\\bin\\pg_ctl.exe",
-        "C:\\Program Files\\PostgreSQL\\14\\bin\\pg_ctl.exe",
-    ];
-    for path in &pg_paths {
-        if std::path::Path::new(path).exists() {
-            return Ok(true);
-        }
-    }
-
-    // Fast path 2: Check if PostgreSQL is already accepting connections on port 5432 (200ms max)
     use std::net::TcpStream;
     use std::time::Duration;
     if let Ok(addr) = "127.0.0.1:5432".parse() {
-        if TcpStream::connect_timeout(&addr, Duration::from_millis(200)).is_ok() {
+        if TcpStream::connect_timeout(&addr, Duration::from_millis(500)).is_ok() {
             return Ok(true);
         }
     }
 
-    // Slow path: PowerShell service check (only reached if above checks fail)
-    let output = Command::new("powershell")
-        .args(["-Command", "Get-Service -Name 'postgresql*' -ErrorAction SilentlyContinue"])
-        .creation_flags(0x08000000)
-        .output()
-        .map_err(|e| e.to_string())?;
+    #[cfg(windows)]
+    {
+        let pg_paths = [
+            "C:\\Program Files\\PostgreSQL\\17\\bin\\pg_ctl.exe",
+            "C:\\Program Files\\PostgreSQL\\16\\bin\\pg_ctl.exe",
+            "C:\\Program Files\\PostgreSQL\\15\\bin\\pg_ctl.exe",
+            "C:\\Program Files\\PostgreSQL\\14\\bin\\pg_ctl.exe",
+        ];
+        for path in &pg_paths {
+            if std::path::Path::new(path).exists() {
+                return Ok(true);
+            }
+        }
 
-    Ok(output.status.success() && !output.stdout.is_empty())
+        let output = Command::new("powershell")
+            .args(["-Command", "Get-Service -Name 'postgresql*' -ErrorAction SilentlyContinue"])
+            .platform_no_window()
+            .output()
+            .map_err(|e| e.to_string())?;
+
+        return Ok(output.status.success() && !output.stdout.is_empty());
+    }
+
+    #[cfg(not(windows))]
+    {
+        Ok(false)
+    }
 }
 
 #[tauri::command]
 async fn install_pg16(app: tauri::AppHandle) -> Result<String, String> {
+    #[cfg(windows)]
+    {
     let script = r#"
         $url = "https://get.enterprisedb.com/postgresql/postgresql-16.1-1-windows-x64.exe"
         $installer = "$env:TEMP\postgresql-setup.exe"
@@ -89,7 +97,7 @@ async fn install_pg16(app: tauri::AppHandle) -> Result<String, String> {
 
     let output = Command::new("powershell")
         .args(["-Command", script])
-        .creation_flags(0x08000000) 
+        .platform_no_window() 
         .output()
         .map_err(|e| e.to_string())?;
 
@@ -118,7 +126,7 @@ async fn install_pg16(app: tauri::AppHandle) -> Result<String, String> {
                     ps1,
                     "-AllowAllNetworks",
                 ])
-                .creation_flags(0x08000000)
+                .platform_no_window()
                 .output();
             match expose {
                 Ok(o) => {
@@ -147,6 +155,13 @@ async fn install_pg16(app: tauri::AppHandle) -> Result<String, String> {
     }
 
     Ok("Installation completed successfully".to_string())
+    }
+
+    #[cfg(not(windows))]
+    {
+        let _ = app;
+        Err("PostgreSQL kurulum sihirbazi yalnizca Windows masaustu surumunde.".into())
+    }
 }
 
 #[tauri::command]
@@ -1369,13 +1384,15 @@ async fn write_bytes(path: String, data: Vec<u8>) -> Result<(), String> {
 
 #[tauri::command]
 async fn list_system_printers() -> Result<Vec<serde_json::Value>, String> {
+    #[cfg(windows)]
+    {
     let ps_script = r#"
         Get-Printer | Select-Object Name, PrinterStatus, Type, DriverName, PortName | ConvertTo-Json
     "#;
 
     let output = Command::new("powershell")
         .args(["-Command", ps_script])
-        .creation_flags(0x08000000) 
+        .platform_no_window() 
         .output()
         .map_err(|e| e.to_string())?;
 
@@ -1396,9 +1413,31 @@ async fn list_system_printers() -> Result<Vec<serde_json::Value>, String> {
     } else {
         Err(String::from_utf8_lossy(&output.stderr).to_string())
     }
+    }
+
+    #[cfg(not(windows))]
+    {
+        let output = Command::new("lpstat")
+            .args(["-p"])
+            .output()
+            .map_err(|e| format!("lpstat calistirilamadi: {}", e))?;
+        if !output.status.success() {
+            return Ok(vec![]);
+        }
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let printers: Vec<serde_json::Value> = stdout
+            .lines()
+            .filter_map(|line| {
+                let name = line.strip_prefix("printer ")?.split_whitespace().next()?;
+                Some(serde_json::json!({ "Name": name, "Type": "CUPS" }))
+            })
+            .collect();
+        Ok(printers)
+    }
 }
 
 /// Windows varsayılan yazıcı adı (Sumatra `-print-to-default` bazı termal sürücülerde güvenilir değil).
+#[cfg(windows)]
 fn get_default_printer_name_windows() -> Option<String> {
     use std::process::Command;
     const CREATE_NO_WINDOW: u32 = 0x08000000;
@@ -1413,7 +1452,7 @@ fn get_default_printer_name_windows() -> Option<String> {
             "-Command",
             ps,
         ])
-        .creation_flags(CREATE_NO_WINDOW)
+        .platform_no_window()
         .output()
         .ok()?;
     if !output.status.success() {
@@ -1428,6 +1467,7 @@ fn get_default_printer_name_windows() -> Option<String> {
 }
 
 /// `printer_name` doluysa onu kullan; değilse Windows varsayılan yazıcı adını çöz (fiziksel yazıcı için gerekli).
+#[cfg(windows)]
 fn resolve_target_printer_name(printer_name: Option<String>) -> Option<String> {
     let trimmed = printer_name
         .map(|s| s.trim().to_string())
@@ -1440,6 +1480,7 @@ fn resolve_target_printer_name(printer_name: Option<String>) -> Option<String> {
 
 /// Sessiz yazdırma için SumatraPDF.exe yolu: `RETEX_SUMATRA_EXE`, Tauri Resource, `resource_dir` varyantları,
 /// `tauri dev` çıktısı (`target/.../resources/sumatra`), sistem kurulumu.
+#[cfg(windows)]
 fn resolve_sumatra_pdf_exe(app: &tauri::AppHandle) -> Option<std::path::PathBuf> {
     use std::path::PathBuf;
 
@@ -1499,6 +1540,7 @@ fn resolve_sumatra_pdf_exe(app: &tauri::AppHandle) -> Option<std::path::PathBuf>
 
 /// Windows: Edge headless ile PDF üret; ardından SumatraPDF varsa sessiz yazdır (cmd/WebView önizlemesi yok).
 /// Sumatra yoksa PDF için sistem yazdırma iletişim kutusu açılır (WebView2 önizleme hatasından kaçınır).
+#[cfg(windows)]
 fn print_html_via_edge_windows(
     html: String,
     printer_name: Option<String>,
@@ -1524,7 +1566,7 @@ fn print_html_via_edge_windows(
         }
         let mut w = Command::new("where");
         w.arg("msedge.exe");
-        w.creation_flags(CREATE_NO_WINDOW);
+        w.platform_no_window();
         if let Ok(out) = w.output() {
             if out.status.success() {
                 let line = String::from_utf8_lossy(&out.stdout).lines().next().unwrap_or("").trim().to_string();
@@ -1559,7 +1601,7 @@ fn print_html_via_edge_windows(
         }
         let mut w = Command::new("where");
         w.arg("chrome.exe");
-        w.creation_flags(CREATE_NO_WINDOW);
+        w.platform_no_window();
         if let Ok(out) = w.output() {
             if out.status.success() {
                 let line = String::from_utf8_lossy(&out.stdout).lines().next().unwrap_or("").trim().to_string();
@@ -1626,7 +1668,7 @@ fn print_html_via_edge_windows(
         cmd.stdin(Stdio::null());
         cmd.stdout(Stdio::piped());
         cmd.stderr(Stdio::piped());
-        cmd.creation_flags(CREATE_NO_WINDOW);
+        cmd.platform_no_window();
 
         let out = cmd
             .output()
@@ -1724,7 +1766,7 @@ fn print_html_via_edge_windows(
     if let Some(sumatra) = sumatra_exe.filter(|p| p.is_file()) {
         // Her zaman -exit-on-print: Sumatra çok erken çıkınca kuyruk bazen boş kalıyor (sessiz yol «çalışmıyor» gibi).
         let mut s = Command::new(&sumatra);
-        s.creation_flags(CREATE_NO_WINDOW);
+        s.platform_no_window();
         s.stdin(Stdio::null());
         s.stdout(Stdio::null());
         s.stderr(Stdio::null());
@@ -1922,7 +1964,7 @@ async fn show_touch_keyboard() -> Result<(), String> {
         let tabtip = r"C:\Program Files\Common Files\microsoft shared\ink\TabTip.exe";
         if std::path::Path::new(tabtip).exists() {
             let _ = Command::new(tabtip)
-                .creation_flags(0x08000000) // CREATE_NO_WINDOW
+                .platform_no_window() // CREATE_NO_WINDOW
                 .spawn();
         }
     }
@@ -1982,13 +2024,13 @@ fn remove_retailex_windows_services() -> Result<String, String> {
             let exe_path = exe_dir.join(exe_name);
             let _ = Command::new(SC)
                 .args(["stop", svc_name])
-                .creation_flags(CREATE_NO_WINDOW)
+                .platform_no_window()
                 .output();
 
             if exe_path.exists() {
                 match Command::new(&exe_path)
                     .arg("--uninstall")
-                    .creation_flags(CREATE_NO_WINDOW)
+                    .platform_no_window()
                     .output()
                 {
                     Ok(o) => {
@@ -2006,7 +2048,7 @@ fn remove_retailex_windows_services() -> Result<String, String> {
                         if !o.status.success() {
                             let del = Command::new(SC)
                                 .args(["delete", svc_name])
-                                .creation_flags(CREATE_NO_WINDOW)
+                                .platform_no_window()
                                 .output();
                             if let Ok(d) = del {
                                 lines.push(format!(
@@ -2022,7 +2064,7 @@ fn remove_retailex_windows_services() -> Result<String, String> {
             } else {
                 let del = Command::new(SC)
                     .args(["delete", svc_name])
-                    .creation_flags(CREATE_NO_WINDOW)
+                    .platform_no_window()
                     .output();
                 match del {
                     Ok(o) => lines.push(format!(
@@ -2046,12 +2088,13 @@ fn remove_retailex_windows_services() -> Result<String, String> {
 
 #[tauri::command]
 async fn request_elevation() -> Result<(), String> {
+    #[cfg(windows)]
+    {
     let current_exe = std::env::current_exe().map_err(|e| e.to_string())?;
     let path = current_exe.to_str().ok_or("Invalid executable path")?;
 
     println!("Elevation requested for: {}", path);
 
-    // Use PowerShell's Start-Process with -Verb RunAs to trigger UAC
     let script = format!(
         "Start-Process -FilePath '{}' -Verb RunAs",
         path
@@ -2059,13 +2102,17 @@ async fn request_elevation() -> Result<(), String> {
 
     Command::new("powershell")
         .args(["-Command", &script])
-        .creation_flags(0x08000000) // CREATE_NO_WINDOW
+        .platform_no_window() // CREATE_NO_WINDOW
         .spawn()
         .map_err(|e| format!("Failed to spawn elevation process: {}", e))?;
 
-    // The app will relaunch; the current instance should probably stay or close depending on UX
-    // For now we just return success and let the frontend handle closing if needed.
     Ok(())
+    }
+
+    #[cfg(not(windows))]
+    {
+        Err("Yonetici yukseltme yalnizca Windows'ta desteklenir.".into())
+    }
 }
 
 
@@ -2086,17 +2133,24 @@ fn ensure_bridge_service(_handle: &tauri::AppHandle) {
         return;
     }
     println!("🛠️ Startup: SQL Bridge node_modules eksik; npm install deneniyor ({})", dir.display());
-    let npm = std::path::PathBuf::from(r"C:\Program Files\nodejs\npm.cmd");
-    let npm_cmd = if npm.exists() {
-        npm
-    } else {
+    #[cfg(windows)]
+    let npm_cmd = {
+        let npm = std::path::PathBuf::from(r"C:\Program Files\nodejs\npm.cmd");
+        if npm.exists() { Some(npm) } else { None }
+    };
+    #[cfg(not(windows))]
+    let npm_cmd = {
+        let npm = std::path::PathBuf::from("npm");
+        Some(npm)
+    };
+    let Some(npm_cmd) = npm_cmd else {
         return;
     };
     tauri::async_runtime::spawn(async move {
         let out = Command::new(npm_cmd)
             .args(["install", "--omit=dev", "--no-audit", "--prefix"])
             .arg(&dir)
-            .creation_flags(0x08000000)
+            .platform_no_window()
             .output();
         match out {
             Ok(o) if o.status.success() => println!("✅ SQL Bridge npm deps tamam."),
