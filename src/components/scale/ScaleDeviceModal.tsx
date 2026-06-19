@@ -2,7 +2,7 @@
 import { X, Wifi } from 'lucide-react';
 import type { ScaleDevice } from '../../utils/scaleProtocol';
 import { getDefaultPort, getDefaultBaudRate, testScaleConnection } from '../../utils/scaleProtocol';
-import { RONGTA_DEFAULT_IP, RONGTA_DEFAULT_PORT } from '../../utils/rongtaRlsProtocol';
+import { RONGTA_DEFAULT_IP } from '../../utils/rongtaRlsProtocol';
 import { validateIPAddress } from '../../utils/scaleScanner';
 
 interface ScaleDeviceModalProps {
@@ -18,27 +18,40 @@ export function ScaleDeviceModal({ device, onSave, onClose }: ScaleDeviceModalPr
     model: device?.model || 'RLS1100',
     connectionType: device?.connectionType || 'tcp',
     ipAddress: device?.ipAddress || RONGTA_DEFAULT_IP,
-    port: device?.port || RONGTA_DEFAULT_PORT,
+    port: device?.port,
     comPort: device?.comPort || 'COM1',
     baudRate: device?.baudRate || 9600,
     status: device?.status || 'offline'
   });
+  const [portInput, setPortInput] = useState(() =>
+    device?.port != null && device.port > 0 ? String(device.port) : ''
+  );
 
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<'success' | 'error' | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  // Update port when brand changes
+  const resolvePortFromInput = (raw: string): number | undefined => {
+    const trimmed = raw.trim();
+    if (!trimmed) return undefined;
+    const parsed = parseInt(trimmed, 10);
+    return Number.isFinite(parsed) ? parsed : undefined;
+  };
+
+  // Update defaults when brand changes (new device only)
   useEffect(() => {
     if (formData.brand && !device) {
+      const brand = formData.brand as ScaleDevice['brand'];
+      const suggestedPort = brand === 'rongta' ? undefined : getDefaultPort(brand);
       setFormData(prev => ({
         ...prev,
-        port: getDefaultPort(formData.brand as ScaleDevice['brand']),
-        baudRate: getDefaultBaudRate(formData.brand as ScaleDevice['brand']),
-        ...(formData.brand === 'rongta'
+        port: suggestedPort,
+        baudRate: getDefaultBaudRate(brand),
+        ...(brand === 'rongta'
           ? { ipAddress: RONGTA_DEFAULT_IP, model: 'RLS1100', connectionType: 'tcp' as const }
           : {}),
       }));
+      setPortInput(suggestedPort != null ? String(suggestedPort) : '');
     }
   }, [formData.brand, device]);
 
@@ -60,8 +73,11 @@ export function ScaleDeviceModal({ device, onSave, onClose }: ScaleDeviceModalPr
         newErrors.ipAddress = 'Geçersiz IP adresi';
       }
 
-      if (!formData.port || formData.port < 1 || formData.port > 65535) {
-        newErrors.port = 'Geçersiz port numarası (1-65535)';
+      if (portInput.trim() !== '') {
+        const port = resolvePortFromInput(portInput);
+        if (port == null || port < 1 || port > 65535) {
+          newErrors.port = 'Geçerli port (1-65535) girin veya alanı boş bırakın';
+        }
       }
     }
 
@@ -88,6 +104,7 @@ export function ScaleDeviceModal({ device, onSave, onClose }: ScaleDeviceModalPr
     setTestResult(null);
 
     try {
+      const resolvedPort = resolvePortFromInput(portInput);
       const tempDevice: ScaleDevice = {
         id: device?.id || 'temp',
         name: formData.name!,
@@ -95,7 +112,7 @@ export function ScaleDeviceModal({ device, onSave, onClose }: ScaleDeviceModalPr
         model: formData.model!,
         connectionType: formData.connectionType!,
         ipAddress: formData.ipAddress,
-        port: formData.port,
+        port: resolvedPort,
         comPort: formData.comPort,
         baudRate: formData.baudRate,
         status: 'offline'
@@ -119,6 +136,7 @@ export function ScaleDeviceModal({ device, onSave, onClose }: ScaleDeviceModalPr
       return;
     }
 
+    const resolvedPort = resolvePortFromInput(portInput);
     const newDevice: ScaleDevice = {
       id: device?.id || `scale-${Date.now()}`,
       name: formData.name!,
@@ -126,7 +144,7 @@ export function ScaleDeviceModal({ device, onSave, onClose }: ScaleDeviceModalPr
       model: formData.model!,
       connectionType: formData.connectionType!,
       ipAddress: formData.ipAddress,
-      port: formData.port,
+      port: resolvedPort,
       comPort: formData.comPort,
       baudRate: formData.baudRate,
       status: formData.status || 'offline',
@@ -287,18 +305,21 @@ export function ScaleDeviceModal({ device, onSave, onClose }: ScaleDeviceModalPr
 
                 <div>
                   <label className="block text-sm text-gray-700 mb-2">
-                    Port <span className="text-red-500">*</span>
+                    Port <span className="text-gray-400 text-xs">(isteğe bağlı)</span>
                   </label>
                   <input
-                    type="number"
-                    value={formData.port}
-                    onChange={(e) => setFormData({ ...formData, port: parseInt(e.target.value) || 0 })}
+                    type="text"
+                    inputMode="numeric"
+                    value={portInput}
+                    onChange={(e) => {
+                      const raw = e.target.value.replace(/[^\d]/g, '');
+                      setPortInput(raw);
+                      setFormData({ ...formData, port: resolvePortFromInput(raw) });
+                    }}
                     className={`w-full px-3 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500 ${
                       errors.port ? 'border-red-500' : 'border-gray-300'
                     }`}
-                    placeholder="20304"
-                    min="1"
-                    max="65535"
+                    placeholder="Boş = otomatik tarama"
                   />
                   {errors.port && (
                     <p className="text-xs text-red-500 mt-1">{errors.port}</p>

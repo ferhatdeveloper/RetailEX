@@ -357,7 +357,7 @@ export function ScaleManagement({
                       </div>
                       <div className="flex justify-between">
                         <span className="text-gray-600">Port:</span>
-                        <span className="text-gray-900">{device.port}</span>
+                        <span className="text-gray-900">{device.port ?? 'Otomatik'}</span>
                       </div>
                     </>
                   )}

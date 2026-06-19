@@ -120,7 +120,7 @@ export function ScaleScannerModal({ onDevicesFound, onClose }: ScaleScannerModal
         model: d.model || 'Unknown',
         connectionType: 'tcp' as const,
         ipAddress: d.ipAddress,
-        port: devicePorts[d.ipAddress] || d.port,
+        port: devicePorts[d.ipAddress] ?? d.port,
         status: 'online' as const
       }));
 
@@ -330,14 +330,31 @@ export function ScaleScannerModal({ onDevicesFound, onClose }: ScaleScannerModal
                             <span className="text-xs text-gray-500 font-mono">{device.ipAddress}</span>
                             <label className="text-xs text-gray-500">Port</label>
                             <input
-                              type="number"
-                              min={1}
-                              max={65535}
-                              value={devicePorts[device.ipAddress] ?? device.port}
+                              type="text"
+                              inputMode="numeric"
+                              value={
+                                devicePorts[device.ipAddress] != null
+                                  ? String(devicePorts[device.ipAddress])
+                                  : device.port != null
+                                    ? String(device.port)
+                                    : ''
+                              }
+                              placeholder="Otomatik"
                               onClick={(e) => e.stopPropagation()}
                               onChange={(e) => {
-                                const port = parseInt(e.target.value, 10) || device.port;
-                                setDevicePorts((prev) => ({ ...prev, [device.ipAddress]: port }));
+                                const raw = e.target.value.replace(/[^\d]/g, '');
+                                if (!raw) {
+                                  setDevicePorts((prev) => {
+                                    const next = { ...prev };
+                                    delete next[device.ipAddress];
+                                    return next;
+                                  });
+                                  return;
+                                }
+                                const port = parseInt(raw, 10);
+                                if (Number.isFinite(port)) {
+                                  setDevicePorts((prev) => ({ ...prev, [device.ipAddress]: port }));
+                                }
                               }}
                               className="w-24 px-2 py-1 border border-gray-300 rounded text-xs font-mono"
                             />
