@@ -37,9 +37,81 @@ pub struct DbConnection {
     pub conn_str: Option<String>,
 }
 
-pub struct DbState(pub Arc<Mutex<DbConnection>>);
+pub struct DbState {
+    pub inner: Arc<Mutex<DbConnection>>,
+    /// Aynı PG client üzerinde eşzamanlı sorgu yasak (BEGIN/COMMIT + paralel invoke).
+    pub query_serial: Arc<Mutex<()>>,
+}
 
+use std::time::Duration;
+use tokio::time::timeout;
 
+const PG_CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
+const PG_QUERY_TIMEOUT: Duration = Duration::from_secs(30);
+
+async fn invalidate_pg_cache(state: &DbState, conn_str: &str) {
+    let mut db = state.inner.lock().await;
+    if db.conn_str.as_deref() == Some(conn_str) {
+        db.client = None;
+        db.conn_str = None;
+    }
+}
+
+async fn acquire_pg_client(state: &DbState, conn_str: &str) -> Result<Arc<Client>, String> {
+    use tokio_postgres::NoTls;
+    use std::str::FromStr;
+
+    {
+        let db = state.inner.lock().await;
+        if let Some(ref c) = db.client {
+            if db.conn_str.as_deref() == Some(conn_str) && !c.is_closed() {
+                return Ok(c.clone());
+            }
+        }
+    }
+
+    let connect_fut = async {
+        let mut pg_config = tokio_postgres::Config::from_str(conn_str)
+            .map_err(|e| format!("Invalid connection string: {}", e))?;
+        pg_config.connect_timeout(PG_CONNECT_TIMEOUT);
+
+        let (client, connection) = pg_config
+            .connect(NoTls)
+            .await
+            .map_err(|e| format!("Connection failed: {}", crate::db_ops::format_pg_error(e)))?;
+
+        tauri::async_runtime::spawn(async move {
+            if let Err(e) = connection.await {
+                eprintln!("connection error: {}", e);
+            }
+        });
+
+        Ok::<Client, String>(client)
+    };
+
+    let client = match timeout(PG_CONNECT_TIMEOUT + Duration::from_secs(2), connect_fut).await {
+        Ok(Ok(c)) => c,
+        Ok(Err(e)) => return Err(e),
+        Err(_) => {
+            return Err(format!(
+                "PostgreSQL bağlantısı zaman aşımı ({} sn)",
+                PG_CONNECT_TIMEOUT.as_secs()
+            ));
+        }
+    };
+
+    if let Err(e) = client.batch_execute("SET statement_timeout = '25000'").await {
+        eprintln!("statement_timeout set failed: {}", e);
+    }
+
+    let client = Arc::new(client);
+    {
+        let mut db = state.inner.lock().await;
+        db.client = Some(client.clone());
+        db.conn_str = Some(conn_str.to_string());
+    }
+    Ok(client)
+}
 
 #[tauri::command]
 async fn check_pg16() -> Result<bool, String> {
@@ -217,45 +289,22 @@ async fn pg_execute(
     conn_str: String, 
     sql: String
 ) -> Result<String, String> {
-    use tokio_postgres::NoTls;
-    use std::time::Duration;
-    use tokio::time::timeout;
-
-    let mut db = state.0.lock().await;
-    
-    // Check if we can reuse connection
-    let mut client_to_use = None;
-    if let Some(ref c) = db.client {
-        if db.conn_str.as_ref() == Some(&conn_str) && !c.is_closed() {
-            client_to_use = Some(c.clone());
+    let _serial = state.query_serial.lock().await;
+    let client = acquire_pg_client(state.inner(), &conn_str).await?;
+    match timeout(PG_QUERY_TIMEOUT, client.batch_execute(&sql)).await {
+        Ok(Ok(())) => Ok("Success".to_string()),
+        Ok(Err(e)) => {
+            invalidate_pg_cache(state.inner(), &conn_str).await;
+            Err(crate::db_utils::format_pg_error(e))
+        }
+        Err(_) => {
+            invalidate_pg_cache(state.inner(), &conn_str).await;
+            Err(format!(
+                "SQL zaman aşımı ({} sn). Yerel PostgreSQL yanıt vermiyor olabilir.",
+                PG_QUERY_TIMEOUT.as_secs()
+            ))
         }
     }
-
-    if client_to_use.is_none() {
-        use std::str::FromStr;
-        let mut pg_config = tokio_postgres::Config::from_str(&conn_str)
-            .map_err(|e| format!("Invalid connection string: {}", e))?;
-        pg_config.connect_timeout(Duration::from_secs(5));
-
-        let (client, connection) = pg_config.connect(NoTls)
-            .await
-            .map_err(|e| format!("Connection failed: {}", crate::db_ops::format_pg_error(e)))?;
-
-        tauri::async_runtime::spawn(async move {
-            if let Err(e) = connection.await {
-                eprintln!("connection error: {}", e);
-            }
-        });
-        
-        let client = Arc::new(client);
-        db.client = Some(client.clone());
-        db.conn_str = Some(conn_str.clone());
-        client_to_use = Some(client);
-    }
-
-    let client = client_to_use.unwrap();
-    client.batch_execute(&sql).await.map_err(|e| crate::db_utils::format_pg_error(e))?;
-    Ok("Success".to_string())
 }
 
 // get_app_version removed because it was unused
@@ -268,10 +317,7 @@ async fn pg_query(
     sql: String, 
     params: Vec<serde_json::Value>
 ) -> Result<String, String> {
-    use tokio_postgres::NoTls;
     use tokio_postgres::types::ToSql;
-    use std::time::Duration;
-    use tokio::time::timeout;
     use uuid::Uuid;
     use chrono::{DateTime, NaiveTime, Utc};
     use rust_decimal::prelude::ToPrimitive;
@@ -464,52 +510,32 @@ async fn pg_query(
         .map(|p| p as &(dyn ToSql + Sync))
         .collect();
 
-    let mut db = state.0.lock().await;
-    
-    // Check if we can reuse connection
-    let mut client_to_use = None;
-    if let Some(ref c) = db.client {
-        if db.conn_str.as_ref() == Some(&conn_str) && !c.is_closed() {
-            client_to_use = Some(c.clone());
-        }
-    }
-
-    if client_to_use.is_none() {
-        use std::str::FromStr;
-        let mut pg_config = tokio_postgres::Config::from_str(&conn_str)
-            .map_err(|e| format!("Invalid connection string: {}", e))?;
-        pg_config.connect_timeout(Duration::from_secs(5));
-
-        let (client, connection) = pg_config.connect(NoTls)
-            .await
-            .map_err(|e| format!("Connection failed: {}", crate::db_ops::format_pg_error(e)))?;
-
-        tauri::async_runtime::spawn(async move {
-            if let Err(e) = connection.await {
-                eprintln!("connection error: {}", e);
+    let _serial = state.query_serial.lock().await;
+    let client = acquire_pg_client(state.inner(), &conn_str).await?;
+    let rows = match timeout(PG_QUERY_TIMEOUT, client.query(&sql, &params_to_sql)).await {
+        Ok(Ok(rows)) => rows,
+        Ok(Err(e)) => {
+            invalidate_pg_cache(state.inner(), &conn_str).await;
+            let mut msg = e.to_string();
+            if let Some(db_err) = e.as_db_error() {
+                msg = format!(
+                    "PG Error {}: {} | Detail: {} | Hint: {}",
+                    db_err.code().code(),
+                    db_err.message(),
+                    db_err.detail().unwrap_or("yok"),
+                    db_err.hint().unwrap_or("yok"),
+                );
             }
-        });
-        
-        let client = Arc::new(client);
-        db.client = Some(client.clone());
-        db.conn_str = Some(conn_str.clone());
-        client_to_use = Some(client);
-    }
-
-    let client = client_to_use.unwrap();
-    let rows = client.query(&sql, &params_to_sql).await.map_err(|e| {
-        // Expose the real Postgres error with source chain
-        let mut msg = e.to_string();
-        if let Some(db_err) = e.as_db_error() {
-            msg = format!("PG Error {}: {} | Detail: {} | Hint: {}",
-                db_err.code().code(),
-                db_err.message(),
-                db_err.detail().unwrap_or("yok"),
-                db_err.hint().unwrap_or("yok"),
-            );
+            return Err(msg);
         }
-        msg
-    })?;
+        Err(_) => {
+            invalidate_pg_cache(state.inner(), &conn_str).await;
+            return Err(format!(
+                "SQL sorgusu zaman aşımı ({} sn). Başka bir işlem veritabanını meşgul ediyor olabilir.",
+                PG_QUERY_TIMEOUT.as_secs()
+            ));
+        }
+    };
 
     let mut results = Vec::new();
     for row in rows {
@@ -1890,10 +1916,13 @@ fn main() {
         let _ = db::init_db(&handle);
         ensure_bridge_service(&handle);
 
-        app.manage(DbState(Arc::new(Mutex::new(DbConnection {
-            client: None,
-            conn_str: None,
-        }))));
+        app.manage(DbState {
+            inner: Arc::new(Mutex::new(DbConnection {
+                client: None,
+                conn_str: None,
+            })),
+            query_serial: Arc::new(Mutex::new(())),
+        });
         app.manage(caller_id_serial::CallerSerialHandle::default());
         
         check_bootstrap_config(&handle);

@@ -1142,7 +1142,9 @@ export default function MarketPOS({
 
     try {
       await onSaleComplete(sale);
-      await refreshProducts(true);
+      void refreshProducts(true).catch((err) =>
+        console.warn('[MarketPOS] refreshProducts after sale:', err),
+      );
 
       // Store sale and payment data for receipt
       setCompletedSale(sale);

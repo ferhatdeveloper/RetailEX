@@ -337,20 +337,37 @@ export function POSPaymentModal({
     }
 
     setIsLoading(true);
+    const paymentPayload = {
+      payments: payments,
+      totalPaid: totalPaid,
+      change: change,
+      discount: calculatedDiscount,
+      finalTotal: finalTotal,
+      autoPrint: showAutoPrintOption ? autoPrint : false,
+      language: receiptLanguage,
+      printFormat,
+      showReceiptPreview,
+    };
+    const PAYMENT_TIMEOUT_MS = 45_000;
     try {
-      await onComplete({
-        payments: payments,
-        totalPaid: totalPaid,
-        change: change,
-        discount: calculatedDiscount,
-        finalTotal: finalTotal,
-        autoPrint: showAutoPrintOption ? autoPrint : false,
-        language: receiptLanguage,
-        printFormat,
-        showReceiptPreview,
-      });
+      await Promise.race([
+        Promise.resolve(onComplete(paymentPayload)),
+        new Promise<never>((_, reject) => {
+          setTimeout(
+            () =>
+              reject(
+                new Error(
+                  'Ödeme işlemi zaman aşımına uğradı (45 sn). Yerel PostgreSQL veya ağ bağlantısını kontrol edin.',
+                ),
+              ),
+            PAYMENT_TIMEOUT_MS,
+          );
+        }),
+      ]);
     } catch (error) {
       console.error('Payment confirmation error:', error);
+      const msg = error instanceof Error ? error.message : String(error);
+      alert(msg || 'Ödeme tamamlanamadı.');
     } finally {
       setIsLoading(false);
     }

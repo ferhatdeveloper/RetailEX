@@ -33,6 +33,8 @@ export const postgrestConfig = {
 export function shouldUseTenantPostgrestApi(): boolean {
   if (DB_SETTINGS.connectionProvider === 'rest_api') return true;
   if (DB_SETTINGS.activeMode === 'offline') return false;
+  // Hibrit + yerel PG (Tauri/masaüstü): okuma/yazım pg_query; PostgREST yalnızca senkron motoru.
+  if (DB_SETTINGS.activeMode === 'hybrid' && DB_SETTINGS.connectionProvider === 'db') return false;
   return String(DB_SETTINGS.remoteRestUrl || '').trim().length > 0;
 }
 

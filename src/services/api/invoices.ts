@@ -3,6 +3,7 @@
  */
 
 import { postgres, ERP_SETTINGS, DB_SETTINGS } from '../postgres';
+import { IS_TAURI } from '../../utils/env';
 import { type Invoice } from '../../core/types';
 import { customerAPI } from './customers';
 import { productAPI } from './products';
@@ -834,7 +835,10 @@ export const invoicesAPI = {
       }
 
       // PostgREST-only: fatura ve yan etkiler doğrudan HTTP (SQL köprüsü yok / kullanılmıyor)
-      if (DB_SETTINGS.connectionProvider === 'rest_api') {
+      if (
+        DB_SETTINGS.connectionProvider === 'rest_api' &&
+        !(IS_TAURI && DB_SETTINGS.activeMode === 'hybrid')
+      ) {
         const saved = await createInvoiceViaPostgrest(invoice, { firmNr, periodNr, trcode, ficheType });
         if (!saved?.id) throw new Error('Fatura PostgREST ile oluşturulamadı');
         await applyInvoiceStockUpdatesRestApi(invoice, createOptions, trcode);

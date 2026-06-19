@@ -543,6 +543,11 @@ pub async fn process_sync_queue_internal() -> Result<(), String> {
         return process_sync_queue_rest_api(&config).await;
     }
 
+    // Hibrit masaüstü: merkez uç PostgREST (remote_rest_url); doğrudan remote_db PG genelde erişilemez.
+    if !config.remote_rest_url.trim().is_empty() {
+        return process_sync_queue_rest_api(&config).await;
+    }
+
     let (local_host, local_port, local_db) = parse_pg_endpoint(&config.local_db);
     let (remote_host, remote_port, remote_db) = parse_pg_endpoint(&config.remote_db);
 

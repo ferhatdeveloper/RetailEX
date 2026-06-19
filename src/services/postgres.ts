@@ -90,8 +90,24 @@ export let DB_SETTINGS = {
 
 type PgEndpointConfig = typeof LOCAL_CONFIG;
 
+/** Hibrit modda yazım (INSERT/UPDATE/…) yalnızca yerel PG — uzak uca düşme. */
+function isSqlWriteStatement(sql: string): boolean {
+  const head = sql
+    .trim()
+    .replace(/^\/\*[\s\S]*?\*\//, '')
+    .trim()
+    .slice(0, 24)
+    .toUpperCase();
+  return /^(INSERT|UPDATE|DELETE|BEGIN|COMMIT|ROLLBACK|TRUNCATE|CREATE|ALTER|DROP|GRANT|REVOKE|COPY|MERGE|CALL|DO\s)/.test(
+    head,
+  );
+}
+
 /** Online/Offline tek uç; hibritte okuma önceliğine göre iki uç (bağlantı hatasında yedek). */
-export function getDbSqlTargetChain(): PgEndpointConfig[] {
+export function getDbSqlTargetChain(opts?: { write?: boolean }): PgEndpointConfig[] {
+  if (DB_SETTINGS.activeMode === 'hybrid' && opts?.write) {
+    return [LOCAL_CONFIG];
+  }
   if (DB_SETTINGS.activeMode === 'online') return [REMOTE_CONFIG];
   if (DB_SETTINGS.activeMode === 'offline') return [LOCAL_CONFIG];
   if (DB_SETTINGS.hybridReadPreference === 'remote_first') {
@@ -377,6 +393,14 @@ export async function initializeFromSQLite(preloadedConfig?: any) {
       DB_SETTINGS.remoteRestUrl = typeof config.remote_rest_url === 'string' ? config.remote_rest_url : '';
       DB_SETTINGS.hybridReadPreference = normalizeHybridReadPreference(config.hybrid_read_preference);
       DB_SETTINGS.hybridSyncDirection = normalizeHybridSyncDirection(config.hybrid_sync_direction);
+
+      // Tauri hibrit: POS ve sync_queue yazımları yerel PG'de; PostgREST yalnızca senkron hedefi.
+      if (IS_TAURI && DB_SETTINGS.activeMode === 'hybrid' && DB_SETTINGS.connectionProvider === 'rest_api') {
+        DB_SETTINGS.connectionProvider = 'db';
+        console.warn(
+          '[Postgres] Tauri hibrit: connection_provider rest_api → db (yerel satış/fatura yazımı için).',
+        );
+      }
 
       // Load ERP Settings — firma/dönem biçimi Logo/SQLite ile aynı (2 ↔ 002; cari tablo rex_{nr}_customers)
       const dF = String(config.erp_firm_nr ?? '').replace(/\D/g, '');
@@ -747,6 +771,7 @@ async function syncRuntimeSettingsFromPostgres(): Promise<void> {
 export class PostgresConnection {
   private static instance: PostgresConnection;
   private hybridSyncTimer: ReturnType<typeof setInterval> | null = null;
+  private hybridSyncInProgress = false;
   private status: PostgresStatus = {
     connected: false,
     host: '',
@@ -757,13 +782,21 @@ export class PostgresConnection {
 
   private startHybridAutoSync(): void {
     if (typeof window === 'undefined') return;
+    // Tauri: Rust BackgroundSyncService (sync.rs) zaten sync_queue işler; JS timer pg_query mutex'ini POS ödemesiyle çakıştırır.
+    if (IS_TAURI) return;
     if (this.hybridSyncTimer) {
       clearInterval(this.hybridSyncTimer);
       this.hybridSyncTimer = null;
     }
     if (DB_SETTINGS.activeMode !== 'hybrid') return;
     this.hybridSyncTimer = setInterval(() => {
-      void this.sync().catch((e) => console.warn('[Postgres] Otomatik hibrit senkron:', e));
+      if (this.hybridSyncInProgress) return;
+      this.hybridSyncInProgress = true;
+      void this.sync()
+        .catch((e) => console.warn('[Postgres] Otomatik hibrit senkron:', e))
+        .finally(() => {
+          this.hybridSyncInProgress = false;
+        });
     }, 30_000);
   }
 
@@ -983,7 +1016,7 @@ export class PostgresConnection {
 
     const startTime = Date.now();
     try {
-      const chain = getDbSqlTargetChain();
+      const chain = getDbSqlTargetChain({ write: isSqlWriteStatement(resolvedSql) });
       let lastError: unknown;
       let rows: any[] | undefined;
 
