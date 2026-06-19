@@ -11,7 +11,7 @@ import {
   setScaleBridgeUrl,
   getScaleBridgeToken,
   setScaleBridgeToken,
-  scaleBridgePing,
+  scaleBridgeHealthCheck,
   scaleBridgeListDevices,
   scaleBridgeSaveDevice,
   scaleBridgeDeleteDevice,
@@ -52,6 +52,8 @@ export function ScaleManagementWrapper({ products }: ScaleManagementWrapperProps
   const [bridgeUrl, setBridgeUrl] = useState(getScaleBridgeUrl);
   const [bridgeToken, setBridgeToken] = useState(getScaleBridgeToken);
   const [bridgeOnline, setBridgeOnline] = useState(false);
+  const [bridgeAuthOk, setBridgeAuthOk] = useState(true);
+  const [bridgeStatusMessage, setBridgeStatusMessage] = useState<string | undefined>();
   const [bridgeSource, setBridgeSource] = useState(resolveScaleBridgeSource);
   const [showBridgeSettings, setShowBridgeSettings] = useState(false);
   const [storeRows, setStoreRows] = useState<StoreScaleBridgeRow[]>([]);
@@ -76,17 +78,32 @@ export function ScaleManagementWrapper({ products }: ScaleManagementWrapperProps
     setSelectedStoreId(getScaleBridgeStoreId());
   }, []);
 
-  const refreshFromBridge = async () => {
+  const refreshFromBridge = useCallback(async () => {
     if (!getScaleBridgeUrl()) return;
     try {
       const list = await scaleBridgeListDevices();
       setDevices(list);
       persistLocal(list);
-      setBridgeOnline(true);
-    } catch {
-      setBridgeOnline(false);
+    } catch (e) {
+      console.warn('[ScaleBridge] cihaz listesi:', e);
     }
-  };
+  }, []);
+
+  const applyBridgeHealth = useCallback(async () => {
+    if (!getScaleBridgeUrl()) {
+      setBridgeOnline(false);
+      setBridgeAuthOk(false);
+      setBridgeStatusMessage('Köprü URL tanımlı değil — Köprü Ayarlarından mağaza adresini girin');
+      return;
+    }
+    const health = await scaleBridgeHealthCheck();
+    setBridgeOnline(health.reachable);
+    setBridgeAuthOk(health.authenticated);
+    setBridgeStatusMessage(health.message);
+    if (health.reachable && health.authenticated) {
+      await refreshFromBridge();
+    }
+  }, [refreshFromBridge]);
 
   useEffect(() => {
     let cancelled = false;
@@ -100,12 +117,8 @@ export function ScaleManagementWrapper({ products }: ScaleManagementWrapperProps
         const rows = await loadStoresWithScaleBridge(firmNr);
         if (cancelled) return;
         setStoreRows(rows);
-        if (getScaleBridgeUrl()) {
-          const ok = await scaleBridgePing();
-          if (!cancelled) {
-            setBridgeOnline(ok);
-            if (ok) await refreshFromBridge();
-          }
+        if (getScaleBridgeUrl() && !cancelled) {
+          await applyBridgeHealth();
         }
       } catch (e) {
         console.warn('[ScaleBridge] init:', e);
@@ -114,13 +127,21 @@ export function ScaleManagementWrapper({ products }: ScaleManagementWrapperProps
     return () => {
       cancelled = true;
     };
-  }, [refreshBridgeState]);
+  }, [refreshBridgeState, applyBridgeHealth]);
 
   useEffect(() => {
-    if (bridgeMode) {
-      void refreshFromBridge();
+    if (bridgeMode && bridgeUrl) {
+      void applyBridgeHealth();
     }
-  }, [bridgeUrl]);
+  }, [bridgeUrl, bridgeMode, applyBridgeHealth]);
+
+  useEffect(() => {
+    if (!bridgeMode || !bridgeUrl) return;
+    const id = window.setInterval(() => {
+      void applyBridgeHealth();
+    }, 20_000);
+    return () => window.clearInterval(id);
+  }, [bridgeMode, bridgeUrl, applyBridgeHealth]);
 
   const handleStoreBridgeSelect = async (storeId: string) => {
     setSelectedStoreId(storeId);
@@ -129,9 +150,7 @@ export function ScaleManagementWrapper({ products }: ScaleManagementWrapperProps
     clearScaleBridgeManualOverride();
     applyScaleBridgeFromStore(store);
     refreshBridgeState();
-    const ok = await scaleBridgePing();
-    setBridgeOnline(ok);
-    if (ok) await refreshFromBridge();
+    await applyBridgeHealth();
   };
 
   const handleSaveBridgeSettings = async () => {
@@ -142,9 +161,7 @@ export function ScaleManagementWrapper({ products }: ScaleManagementWrapperProps
     setShowBridgeSettings(false);
     refreshBridgeState();
     if (bridgeUrl) {
-      const ok = await scaleBridgePing();
-      setBridgeOnline(ok);
-      if (ok) await refreshFromBridge();
+      await applyBridgeHealth();
     }
   };
 
@@ -297,7 +314,10 @@ export function ScaleManagementWrapper({ products }: ScaleManagementWrapperProps
         onDevicesChange={setDevices}
         bridgeMode={bridgeMode}
         bridgeOnline={bridgeOnline}
+        bridgeAuthOk={bridgeAuthOk}
+        bridgeStatusMessage={bridgeStatusMessage}
         bridgeSourceLabel={SOURCE_LABELS[bridgeSource]}
+        onRefreshBridge={() => void applyBridgeHealth()}
         onOpenBridgeSettings={() => {
           refreshBridgeState();
           setBridgeUrl(getScaleBridgeUrl());

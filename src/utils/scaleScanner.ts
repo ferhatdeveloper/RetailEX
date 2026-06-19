@@ -41,7 +41,7 @@ export async function scanNetwork(
   startIP?: string,
   endIP?: string,
   onProgress?: (progress: ScanProgress) => void,
-  options?: { allSubnets?: boolean }
+  options?: { allSubnets?: boolean; signal?: AbortSignal }
 ): Promise<ScannedDevice[]> {
   try {
     if (typeof window !== 'undefined' && (window as { electronAPI?: { scale?: { scanNetwork?: Function } } }).electronAPI?.scale?.scanNetwork) {
@@ -65,15 +65,31 @@ export async function scanNetwork(
     }
 
     const scanAllSubnets = options?.allSubnets !== false;
-    const [inbound, result] = await Promise.all([
-      scaleBridgeListInboundDevices(),
-      scaleBridgeScanNetwork(
-        scanAllSubnets ? undefined : startIP,
-        scanAllSubnets ? undefined : endIP,
-        32,
-        { allSubnets: scanAllSubnets }
-      ),
-    ]);
+    const signal = options?.signal;
+    let pulseTimer: ReturnType<typeof setInterval> | undefined;
+    let pulseStep = 0;
+    if (onProgress && !signal?.aborted) {
+      pulseTimer = setInterval(() => {
+        pulseStep = (pulseStep + 1) % 4;
+        const dots = '.'.repeat(pulseStep + 1);
+        onProgress({
+          current: 0,
+          total: 254,
+          currentIP: `Köprü ağ taraması devam ediyor${dots} (birkaç dakika sürebilir)`,
+        });
+      }, 2500);
+    }
+
+    try {
+      const [inbound, result] = await Promise.all([
+        scaleBridgeListInboundDevices(),
+        scaleBridgeScanNetwork(
+          scanAllSubnets ? undefined : startIP,
+          scanAllSubnets ? undefined : endIP,
+          32,
+          { allSubnets: scanAllSubnets, signal }
+        ),
+      ]);
 
     const seen = new Set<string>();
     const devices = [...(result.devices || []), ...inbound]
@@ -102,6 +118,9 @@ export async function scanNetwork(
     }
 
     return devices;
+    } finally {
+      if (pulseTimer) clearInterval(pulseTimer);
+    }
   } catch (error) {
     console.error('Network scan error:', error);
     throw error instanceof Error ? error : new Error('Tarama sırasında hata oluştu');

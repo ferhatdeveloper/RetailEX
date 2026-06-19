@@ -9,7 +9,10 @@ interface ScaleManagementProps {
   onDevicesChange: (devices: ScaleDevice[]) => void;
   bridgeMode?: boolean;
   bridgeOnline?: boolean;
+  bridgeAuthOk?: boolean;
+  bridgeStatusMessage?: string;
   bridgeSourceLabel?: string;
+  onRefreshBridge?: () => void;
   onOpenBridgeSettings?: () => void;
   onOpenLocalBridgeAdmin?: () => void;
   onDeleteDevice?: (id: string) => void;
@@ -24,7 +27,10 @@ export function ScaleManagement({
   onDevicesChange,
   bridgeMode,
   bridgeOnline,
+  bridgeAuthOk = true,
+  bridgeStatusMessage,
   bridgeSourceLabel,
+  onRefreshBridge,
   onOpenBridgeSettings,
   onOpenLocalBridgeAdmin,
   onDeleteDevice,
@@ -194,10 +200,27 @@ export function ScaleManagement({
             <p className="text-sm text-gray-600 mt-1">
               Terazileri yönetin, ürün gönderimi yapın
               {bridgeMode && (
-                <span className={`ml-2 inline-flex items-center gap-1 ${bridgeOnline ? 'text-green-600' : 'text-amber-600'}`}>
-                  · Köprü {bridgeOnline ? 'çevrimiçi' : 'bağlantı yok'}
+                <span
+                  className={`ml-2 inline-flex items-center gap-1 ${
+                    bridgeOnline && bridgeAuthOk
+                      ? 'text-green-600'
+                      : bridgeOnline
+                        ? 'text-orange-600'
+                        : 'text-amber-600'
+                  }`}
+                  title={bridgeStatusMessage}
+                >
+                  · Köprü{' '}
+                  {bridgeOnline && bridgeAuthOk
+                    ? 'çevrimiçi'
+                    : bridgeOnline
+                      ? 'token/ yetki hatası'
+                      : 'bağlantı yok'}
                   {bridgeSourceLabel ? ` (${bridgeSourceLabel})` : ''}
                 </span>
+              )}
+              {bridgeMode && bridgeStatusMessage && (!bridgeOnline || !bridgeAuthOk) && (
+                <span className="block text-xs text-amber-700 mt-1 max-w-xl">{bridgeStatusMessage}</span>
               )}
             </p>
           </div>
@@ -223,6 +246,15 @@ export function ScaleManagement({
                 <span>Köprü Ayarları</span>
               </button>
             )}
+            <button
+              type="button"
+              onClick={() => onRefreshBridge?.()}
+              className="flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded hover:bg-gray-200 transition-colors"
+              title="Köprü bağlantısını yeniden dene"
+            >
+              <RefreshCw className="w-4 h-4" />
+              <span>Köprüyü Yenile</span>
+            </button>
             <button
               onClick={handleTestAllConnections}
               className="flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded hover:bg-gray-200 transition-colors"

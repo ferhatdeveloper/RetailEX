@@ -366,10 +366,19 @@
       const url = (path.startsWith('http') ? path : (window.location.origin + path));
       const headers = { 'Content-Type': 'application/json', ...(opts.headers || {}) };
       if (token) headers.Authorization = 'Bearer ' + token;
-      const res = await fetch(url, { ...opts, headers });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || data.message || ('HTTP ' + res.status));
-      return data;
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 10000);
+      try {
+        const res = await fetch(url, { ...opts, headers, signal: controller.signal });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || data.message || ('HTTP ' + res.status));
+        return data;
+      } catch (e) {
+        if (e && e.name === 'AbortError') throw new Error('Köprü yanıt vermiyor (zaman aşımı)');
+        throw e;
+      } finally {
+        clearTimeout(timer);
+      }
     }
 
     function setBadge(online, text) {
@@ -626,7 +635,10 @@
 
     (async () => {
       await loadStatus();
-      try { await loadConfig(); } catch (e) { setBadge(false, e.message); }
+      try { await loadConfig(); } catch (e) {
+        const msg = $('jsonMsg');
+        if (msg) { msg.className = 'msg err'; msg.textContent = 'Config: ' + e.message; }
+      }
       try { await loadInbound(); } catch (_) { /* */ }
       try { await loadScanDefaults(); } catch (_) { /* yukarıda mesaj */ }
       setInterval(loadStatus, 15000);

@@ -137,13 +137,13 @@ function headers(): Record<string, string> {
   return h;
 }
 
-async function bridgeFetch<T>(path: string, init?: RequestInit): Promise<T> {
+async function bridgeFetch<T>(path: string, init?: RequestInit, timeoutMs?: number): Promise<T> {
   const base = getScaleBridgeUrl();
   if (!base) throw new Error('Terazi köprü URL tanımlı değil');
-  const res = await fetch(`${base}${path}`, {
+  const res = await fetchWithTimeout(`${base}${path}`, {
     ...init,
     headers: { ...headers(), ...(init?.headers as Record<string, string>) },
-  });
+  }, timeoutMs);
   const json = (await res.json().catch(() => ({}))) as T & { error?: string };
   if (!res.ok) {
     throw new Error((json as { error?: string }).error || `HTTP ${res.status}`);
@@ -151,17 +151,72 @@ async function bridgeFetch<T>(path: string, init?: RequestInit): Promise<T> {
   return json;
 }
 
-export async function scaleBridgePing(): Promise<boolean> {
-  try {
-    const base = getScaleBridgeUrl();
-    if (!base) return false;
-    const res = await fetch(`${base}/status`, { headers: headers() });
-    if (!res.ok) return false;
-    const json = (await res.json()) as { ok?: boolean };
-    return !!json.ok;
-  } catch {
-    return false;
+const BRIDGE_FETCH_TIMEOUT_MS = 12_000;
+
+async function fetchWithTimeout(
+  url: string,
+  init?: RequestInit,
+  timeoutMs = BRIDGE_FETCH_TIMEOUT_MS
+): Promise<Response> {
+  const controller = new AbortController();
+  const timer = globalThis.setTimeout(() => controller.abort(), timeoutMs);
+  const extSignal = init?.signal;
+  const onExternalAbort = () => controller.abort();
+  if (extSignal) {
+    if (extSignal.aborted) controller.abort();
+    else extSignal.addEventListener('abort', onExternalAbort, { once: true });
   }
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    globalThis.clearTimeout(timer);
+    if (extSignal) extSignal.removeEventListener('abort', onExternalAbort);
+  }
+}
+
+export type ScaleBridgeHealth = {
+  reachable: boolean;
+  authenticated: boolean;
+  message?: string;
+};
+
+/** Köprü erişilebilirliği (/status) ve yetkili API (/scales) ayrı değerlendirilir. */
+export async function scaleBridgeHealthCheck(): Promise<ScaleBridgeHealth> {
+  const base = getScaleBridgeUrl();
+  if (!base) {
+    return { reachable: false, authenticated: false, message: 'Köprü URL tanımlı değil' };
+  }
+  try {
+    const res = await fetchWithTimeout(`${base}/status`, { headers: headers() }, 8_000);
+    if (!res.ok) {
+      return { reachable: false, authenticated: false, message: `Köprü yanıt vermiyor (HTTP ${res.status})` };
+    }
+    const json = (await res.json()) as { ok?: boolean };
+    if (!json.ok) {
+      return { reachable: false, authenticated: false, message: 'Köprü servisi hazır değil' };
+    }
+  } catch (e) {
+    const msg = e instanceof Error && e.name === 'AbortError'
+      ? 'Köprü zaman aşımı — servis çalışıyor mu? (port 3012)'
+      : 'Köprüye ulaşılamıyor — URL veya firewall kontrol edin';
+    return { reachable: false, authenticated: false, message: msg };
+  }
+
+  try {
+    await scaleBridgeListDevices();
+    return { reachable: true, authenticated: true };
+  } catch (e) {
+    const errMsg = e instanceof Error ? e.message : String(e);
+    const tokenHint = /401|403|yetki|token|unauthorized/i.test(errMsg)
+      ? 'Token uyuşmuyor — Köprü Ayarlarından authToken ile eşleştirin'
+      : errMsg;
+    return { reachable: true, authenticated: false, message: tokenHint };
+  }
+}
+
+export async function scaleBridgePing(): Promise<boolean> {
+  const h = await scaleBridgeHealthCheck();
+  return h.reachable;
 }
 
 export async function scaleBridgeListDevices(): Promise<ScaleDevice[]> {
@@ -275,7 +330,7 @@ export async function scaleBridgeScanNetwork(
   startIP?: string,
   endIP?: string,
   concurrency = 32,
-  options?: { allSubnets?: boolean }
+  options?: { allSubnets?: boolean; signal?: AbortSignal }
 ): Promise<ScaleBridgeScanResult> {
   const base = resolveScaleBridgeBaseUrl();
   if (!base) {
@@ -286,11 +341,12 @@ export async function scaleBridgeScanNetwork(
   if (endIP) body.endIP = endIP;
   if (options?.allSubnets !== undefined) body.allSubnets = options.allSubnets;
   body.ports = 'all';
-  const res = await fetch(`${base}/scan`, {
+  const res = await fetchWithTimeout(`${base}/scan`, {
     method: 'POST',
     headers: headers(),
     body: JSON.stringify(body),
-  });
+    signal: options?.signal,
+  }, 600_000);
   const json = (await res.json().catch(() => ({}))) as ScaleBridgeScanResult & { error?: string };
   if (!res.ok) {
     throw new Error(json.error || `HTTP ${res.status}`);

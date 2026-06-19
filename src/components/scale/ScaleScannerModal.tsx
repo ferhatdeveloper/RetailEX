@@ -1,4 +1,4 @@
-﻿import { useState, useEffect } from 'react';
+﻿import { useState, useEffect, useRef } from 'react';
 import { X, Search, Wifi, CheckCircle2, AlertCircle } from 'lucide-react';
 import type { ScaleDevice } from '../../utils/scaleProtocol';
 import type { ScanProgress, ScannedDevice } from '../../utils/scaleScanner';
@@ -20,6 +20,20 @@ export function ScaleScannerModal({ onDevicesFound, onClose }: ScaleScannerModal
   const [selectedDevices, setSelectedDevices] = useState<Set<string>>(new Set());
   const [scanAllSubnets, setScanAllSubnets] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [scanElapsedSec, setScanElapsedSec] = useState(0);
+  const scanAbortRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    if (!scanning) {
+      setScanElapsedSec(0);
+      return;
+    }
+    const started = Date.now();
+    const timer = window.setInterval(() => {
+      setScanElapsedSec(Math.floor((Date.now() - started) / 1000));
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [scanning]);
 
   useEffect(() => {
     let cancelled = false;
@@ -53,12 +67,13 @@ export function ScaleScannerModal({ onDevicesFound, onClose }: ScaleScannerModal
     setScanning(true);
     setFoundDevices([]);
     setSelectedDevices(new Set());
-    setProgress({ current: 0, total: 0 });
+    setProgress({ current: 0, total: 254, currentIP: 'Köprüye bağlanılıyor…' });
+    scanAbortRef.current = new AbortController();
 
     try {
       const devices = await scanNetwork(startIP, endIP, (prog) => {
         setProgress(prog);
-      }, { allSubnets: scanAllSubnets });
+      }, { allSubnets: scanAllSubnets, signal: scanAbortRef.current.signal });
 
       setFoundDevices(devices);
       setDevicePorts(
@@ -69,10 +84,20 @@ export function ScaleScannerModal({ onDevicesFound, onClose }: ScaleScannerModal
       const deviceIPs = new Set(devices.map(d => d.ipAddress));
       setSelectedDevices(deviceIPs);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Tarama sırasında hata oluştu');
+      if (err instanceof Error && err.name === 'AbortError') {
+        setError('Tarama iptal edildi');
+      } else {
+        setError(err instanceof Error ? err.message : 'Tarama sırasında hata oluştu');
+      }
     } finally {
+      scanAbortRef.current = null;
       setScanning(false);
     }
+  };
+
+  const handleCancelScan = () => {
+    scanAbortRef.current?.abort();
+    setScanning(false);
   };
 
   const handleToggleDevice = (ipAddress: string) => {
@@ -105,6 +130,7 @@ export function ScaleScannerModal({ onDevicesFound, onClose }: ScaleScannerModal
   const progressPercentage = progress.total > 0 
     ? Math.round((progress.current / progress.total) * 100) 
     : 0;
+  const indeterminateProgress = scanning && progressPercentage === 0;
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
@@ -122,6 +148,7 @@ export function ScaleScannerModal({ onDevicesFound, onClose }: ScaleScannerModal
           </div>
           <button
             onClick={onClose}
+            disabled={false}
             className="text-white/80 hover:text-white transition-colors"
           >
             <X className="w-5 h-5" />
@@ -191,8 +218,17 @@ export function ScaleScannerModal({ onDevicesFound, onClose }: ScaleScannerModal
               className="mt-4 w-full px-4 py-3 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
             >
               <Search className="w-5 h-5" />
-              <span>{scanning ? 'Taranıyor...' : 'Taramayı Başlat'}</span>
+              <span>{scanning ? 'Taranıyor…' : 'Taramayı Başlat'}</span>
             </button>
+            {scanning && (
+              <button
+                type="button"
+                onClick={handleCancelScan}
+                className="mt-2 w-full px-4 py-2 text-sm text-red-700 bg-red-50 border border-red-200 rounded hover:bg-red-100"
+              >
+                Taramayı İptal Et
+              </button>
+            )}
           </div>
 
           {/* Progress */}
@@ -200,21 +236,27 @@ export function ScaleScannerModal({ onDevicesFound, onClose }: ScaleScannerModal
             <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-sm text-gray-700">Tarama İlerlemesi</span>
-                <span className="text-sm text-gray-900">{progressPercentage}%</span>
+                <span className="text-sm text-gray-900">
+                  {indeterminateProgress ? '…' : `${progressPercentage}%`}
+                </span>
               </div>
               <div className="w-full bg-white rounded-full h-2 overflow-hidden">
-                <div
-                  className="h-full bg-blue-600 transition-all duration-300"
-                  style={{ width: `${progressPercentage}%` }}
-                />
+                {indeterminateProgress ? (
+                  <div className="h-full w-1/3 bg-blue-600 rounded-full animate-pulse" style={{ animation: 'pulse 1.2s ease-in-out infinite' }} />
+                ) : (
+                  <div
+                    className="h-full bg-blue-600 transition-all duration-300"
+                    style={{ width: `${Math.max(progressPercentage, 2)}%` }}
+                  />
+                )}
               </div>
               {progress.currentIP && (
                 <p className="text-xs text-gray-600 mt-2 font-mono">
-                  Taranan: {progress.currentIP}
+                  {progress.currentIP}
                 </p>
               )}
               <p className="text-xs text-gray-600 mt-1">
-                {progress.current} / {progress.total} IP adresi tarandı
+                Köprü taraması birkaç dakika sürebilir ({scanElapsedSec} sn geçti)
               </p>
             </div>
           )}
