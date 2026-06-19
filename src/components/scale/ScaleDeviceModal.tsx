@@ -4,6 +4,7 @@ import type { ScaleDevice } from '../../utils/scaleProtocol';
 import { getDefaultPort, getDefaultBaudRate, testScaleConnection } from '../../utils/scaleProtocol';
 import { RONGTA_DEFAULT_IP } from '../../utils/rongtaRlsProtocol';
 import { validateIPAddress } from '../../utils/scaleScanner';
+import { formatScalePortInput, normalizeOptionalScalePort } from '../../utils/scalePort';
 
 interface ScaleDeviceModalProps {
   device?: ScaleDevice;
@@ -18,25 +19,18 @@ export function ScaleDeviceModal({ device, onSave, onClose }: ScaleDeviceModalPr
     model: device?.model || 'RLS1100',
     connectionType: device?.connectionType || 'tcp',
     ipAddress: device?.ipAddress || RONGTA_DEFAULT_IP,
-    port: device?.port,
+    port: normalizeOptionalScalePort(device?.port),
     comPort: device?.comPort || 'COM1',
     baudRate: device?.baudRate || 9600,
     status: device?.status || 'offline'
   });
-  const [portInput, setPortInput] = useState(() =>
-    device?.port != null && device.port > 0 ? String(device.port) : ''
-  );
+  const [portInput, setPortInput] = useState(() => formatScalePortInput(device?.port));
 
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<'success' | 'error' | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  const resolvePortFromInput = (raw: string): number | undefined => {
-    const trimmed = raw.trim();
-    if (!trimmed) return undefined;
-    const parsed = parseInt(trimmed, 10);
-    return Number.isFinite(parsed) ? parsed : undefined;
-  };
+  const resolvePortFromInput = (raw: string): number | undefined => normalizeOptionalScalePort(raw);
 
   // Update defaults when brand changes (new device only)
   useEffect(() => {
@@ -315,6 +309,13 @@ export function ScaleDeviceModal({ device, onSave, onClose }: ScaleDeviceModalPr
                       const raw = e.target.value.replace(/[^\d]/g, '');
                       setPortInput(raw);
                       setFormData({ ...formData, port: resolvePortFromInput(raw) });
+                    }}
+                    onBlur={() => {
+                      const normalized = formatScalePortInput(portInput);
+                      if (normalized !== portInput) {
+                        setPortInput(normalized);
+                        setFormData({ ...formData, port: resolvePortFromInput(normalized) });
+                      }
                     }}
                     className={`w-full px-3 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500 ${
                       errors.port ? 'border-red-500' : 'border-gray-300'

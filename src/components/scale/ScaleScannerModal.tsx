@@ -3,6 +3,7 @@ import { X, Search, Wifi, CheckCircle2, AlertCircle } from 'lucide-react';
 import type { ScaleDevice } from '../../utils/scaleProtocol';
 import type { ScanProgress, ScannedDevice } from '../../utils/scaleScanner';
 import { scanNetwork, validateIPRange, getDefaultIPRange } from '../../utils/scaleScanner';
+import { normalizeOptionalScalePort } from '../../utils/scalePort';
 
 interface ScaleScannerModalProps {
   onDevicesFound: (devices: ScaleDevice[]) => void;
@@ -77,7 +78,11 @@ export function ScaleScannerModal({ onDevicesFound, onClose }: ScaleScannerModal
 
       setFoundDevices(devices);
       setDevicePorts(
-        Object.fromEntries(devices.map((d) => [d.ipAddress, d.port || 20304]))
+        Object.fromEntries(
+          devices
+            .map((d) => [d.ipAddress, normalizeOptionalScalePort(d.port)] as const)
+            .filter((entry): entry is [string, number] => entry[1] != null)
+        )
       );
 
       // Auto-select all found devices
@@ -120,7 +125,7 @@ export function ScaleScannerModal({ onDevicesFound, onClose }: ScaleScannerModal
         model: d.model || 'Unknown',
         connectionType: 'tcp' as const,
         ipAddress: d.ipAddress,
-        port: devicePorts[d.ipAddress] ?? d.port,
+        port: normalizeOptionalScalePort(devicePorts[d.ipAddress]) ?? normalizeOptionalScalePort(d.port),
         status: 'online' as const
       }));
 

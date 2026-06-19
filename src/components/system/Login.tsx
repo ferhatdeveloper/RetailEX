@@ -1359,9 +1359,15 @@ export function Login({ onLogin }: LoginProps) {
                         <div className="col-span-1 space-y-1">
                           <label className="text-[8px] font-black uppercase tracking-widest text-gray-500">Port</label>
                           <input
-                            type="number"
-                            value={dbConfig.port}
-                            onChange={(e) => setDbConfig({ ...dbConfig, port: parseInt(e.target.value) })}
+                            type="text"
+                            inputMode="numeric"
+                            value={Number.isFinite(dbConfig.port) && dbConfig.port > 0 ? String(dbConfig.port) : ''}
+                            onChange={(e) => {
+                              const raw = e.target.value.replace(/[^\d]/g, '');
+                              const port = raw ? parseInt(raw, 10) : 5432;
+                              setDbConfig({ ...dbConfig, port: Number.isFinite(port) ? port : 5432 });
+                            }}
+                            placeholder="5432"
                             className={`w-full px-3 py-2 border-2 focus:border-blue-600 rounded-sm font-bold text-[10px] ${darkMode ? 'bg-gray-800 border-gray-700 text-white' : 'bg-white border-gray-200 text-gray-900'}`}
                           />
                         </div>

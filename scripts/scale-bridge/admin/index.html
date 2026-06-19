@@ -271,8 +271,8 @@
       <input id="modalScaleName" placeholder="Etiket terazisi" />
       <label>IP adresi</label>
       <input id="modalScaleIp" placeholder="192.168.1.200" />
-      <label>Port</label>
-      <input id="modalScalePort" type="number" min="1" max="65535" value="20304" />
+      <label>Port <span style="color:var(--muted);font-size:0.85em">(isteğe bağlı — boş = otomatik)</span></label>
+      <input id="modalScalePort" type="text" inputmode="numeric" placeholder="Boş = otomatik tarama" />
       <div id="modalProbeMsg" class="msg" style="margin-top:4px"></div>
       <div class="actions" style="margin-top:8px">
         <button type="button" class="btn-ghost" id="modalScaleProbe">Bağlantıyı kontrol et</button>
@@ -290,12 +290,30 @@
     let scanFound = [];
     let modalEditId = null;
 
+    function normalizeOptionalScalePort(raw) {
+      if (raw === null || raw === undefined) return null;
+      const s = String(raw).trim();
+      if (!s) return null;
+      const n = parseInt(s, 10);
+      if (!Number.isFinite(n) || n < 1 || n > 65535) return null;
+      return n;
+    }
+
+    function formatScalePortInput(raw) {
+      const n = normalizeOptionalScalePort(raw);
+      return n != null ? String(n) : '';
+    }
+
+    function readModalScalePort() {
+      return normalizeOptionalScalePort($('modalScalePort').value.replace(/[^\d]/g, ''));
+    }
+
     function openScaleModal(opts = {}) {
       modalEditId = opts.id || null;
       $('scaleModalTitle').textContent = opts.id ? 'Terazi düzenle' : 'Manuel terazi ekle';
       $('modalScaleName').value = opts.name || '';
       $('modalScaleIp').value = opts.ipAddress || '';
-      $('modalScalePort').value = opts.port || 20304;
+      $('modalScalePort').value = formatScalePortInput(opts.port);
       $('modalProbeMsg').textContent = '';
       $('modalProbeMsg').className = 'msg';
       $('scaleModal').classList.add('open');
@@ -311,13 +329,15 @@
 
     $('modalScaleProbe').onclick = async () => {
       const ip = $('modalScaleIp').value.trim();
-      const port = parseInt($('modalScalePort').value, 10) || 20304;
+      const port = readModalScalePort();
       const msg = $('modalProbeMsg');
       if (!ip) { msg.className = 'msg err'; msg.textContent = 'IP gerekli'; return; }
       msg.className = 'msg';
       msg.textContent = 'Kontrol ediliyor…';
       try {
-        const r = await api('/scales/probe', { method: 'POST', body: JSON.stringify({ ipAddress: ip, port }) });
+        const body = { ipAddress: ip };
+        if (port != null) body.port = port;
+        const r = await api('/scales/probe', { method: 'POST', body: JSON.stringify(body) });
         if (r.found && r.suggestedPort) {
           $('modalScalePort').value = r.suggestedPort;
           msg.className = 'msg ok';
@@ -337,7 +357,7 @@
 
     $('modalScaleSave').onclick = async () => {
       const ip = $('modalScaleIp').value.trim();
-      const port = parseInt($('modalScalePort').value, 10) || 20304;
+      const port = readModalScalePort();
       const name = $('modalScaleName').value.trim() || ('Terazi ' + ip);
       if (!ip) { alert('IP adresi gerekli'); return; }
       const cfg = await api('/config');
@@ -422,7 +442,7 @@
         tr.innerHTML = `
           <td>${escapeHtml(s.name || '')}</td>
           <td><code>${escapeHtml(s.ipAddress || '')}</code></td>
-          <td>${s.port || 20304}</td>
+          <td>${formatScalePortInput(s.port) || 'Otomatik'}</td>
           <td>${escapeHtml(s.brand || 'rongta')}</td>
           <td>
             <button class="btn-ghost" data-edit="${s.id}">Düzenle</button>
@@ -434,7 +454,7 @@
       tbody.querySelectorAll('[data-edit]').forEach((btn) => {
         btn.onclick = () => {
           const s = scales.find((x) => x.id === btn.dataset.edit);
-          if (s) openScaleModal({ id: s.id, name: s.name, ipAddress: s.ipAddress, port: s.port || 20304 });
+          if (s) openScaleModal({ id: s.id, name: s.name, ipAddress: s.ipAddress, port: s.port });
         };
       });
       tbody.querySelectorAll('[data-test]').forEach((btn) => {
@@ -523,7 +543,7 @@
               brand: 'rongta',
               model: 'RLS1100',
               ipAddress: ip,
-              port: 20304,
+              port: null,
               enabled: true,
             });
             await saveConfig(scales);
@@ -585,7 +605,7 @@
             <span><strong>${escapeHtml(d.ipAddress)}</strong> · ${escapeHtml(d.brand || 'rongta')} ${badge}</span>
             <span class="sub">${escapeHtml(d.model || '')}</span>
             <label style="margin:0;font-size:0.75rem">Port</label>
-            <input type="number" min="1" max="65535" data-scan-port="${i}" value="${d.port || 20304}" />
+            <input type="text" inputmode="numeric" data-scan-port="${i}" value="${formatScalePortInput(d.port)}" placeholder="Otomatik" />
           `;
           box.appendChild(div);
         }
@@ -602,7 +622,9 @@
       const scales = [...(cfg.scales || [])];
       for (const [i, d] of scanFound.entries()) {
         const portInput = document.querySelector('[data-scan-port="' + i + '"]');
-        const port = portInput ? (parseInt(portInput.value, 10) || d.port || 20304) : (d.port || 20304);
+        const port = portInput
+          ? normalizeOptionalScalePort(portInput.value.replace(/[^\d]/g, ''))
+          : normalizeOptionalScalePort(d.port);
         scales.push({
           id: 'scale-' + d.ipAddress.replace(/\./g, '-'),
           name: 'Rongta ' + d.ipAddress,
@@ -617,7 +639,7 @@
       $('saveMsg').textContent = scanFound.length + ' terazi eklendi.';
     };
 
-    $('btnAddScale').onclick = () => openScaleModal({ port: 20304 });
+    $('btnAddScale').onclick = () => openScaleModal({});
 
     $('btnApplyJson').onclick = async () => {
       try {

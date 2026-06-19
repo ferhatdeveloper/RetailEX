@@ -166,7 +166,15 @@ function mergeInboundDevices(devices) {
   return merged.sort((a, b) => a.ipAddress.localeCompare(b.ipAddress, undefined, { numeric: true }));
 }
 
+function normalizeOptionalScalePort(port) {
+  if (port === null || port === undefined || port === '') return null;
+  const n = Number(port);
+  if (!Number.isFinite(n) || n < 1 || n > 65535) return null;
+  return n;
+}
+
 function scaleToDevice(scale) {
+  const port = normalizeOptionalScalePort(scale.port);
   return {
     id: scale.id,
     name: scale.name,
@@ -174,7 +182,7 @@ function scaleToDevice(scale) {
     model: scale.model || 'RLS1100',
     connectionType: 'tcp',
     ipAddress: scale.ipAddress,
-    port: scale.port || 20304,
+    ...(port != null ? { port } : {}),
     status: scale.enabled === false ? 'offline' : 'online',
     lastSync: scale.lastSync,
     productCount: scale.productCount,
@@ -335,7 +343,7 @@ async function handle(req, res) {
         brand: body.brand || 'rongta',
         model: body.model || 'RLS1100',
         ipAddress: body.ipAddress,
-        port: body.port || 20304,
+        port: normalizeOptionalScalePort(body.port),
         enabled: body.enabled !== false,
       };
       if (!scale.ipAddress) return json(res, 400, { error: 'ipAddress gerekli' });
@@ -356,7 +364,7 @@ async function handle(req, res) {
     if (req.method === 'POST' && path === '/scales/probe') {
       const body = await readBody(req);
       const ipAddress = String(body.ipAddress || '').trim();
-      const port = Number(body.port) || 0;
+      const port = normalizeOptionalScalePort(body.port);
       if (!ipAddress) return json(res, 400, { error: 'ipAddress gerekli' });
       if (shouldUseRongtaDll(config)) {
         const dll = await rongtaDllTest(ipAddress);
@@ -368,8 +376,8 @@ async function handle(req, res) {
           message: dll.message,
         });
       }
-      const discovery = await discoverRongtaPort(ipAddress, port || undefined);
-      const tcp = await tcpProbePorts(ipAddress, port || undefined);
+      const discovery = await discoverRongtaPort(ipAddress, port ?? undefined);
+      const tcp = await tcpProbePorts(ipAddress, port ?? undefined);
       return json(res, 200, {
         ipAddress,
         found: discovery.found,

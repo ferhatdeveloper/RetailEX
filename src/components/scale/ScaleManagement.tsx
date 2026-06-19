@@ -3,6 +3,7 @@ import { Plus, Wifi, WifiOff, Settings, Trash2, RefreshCw, Send, Search, Downloa
 import { toast } from 'sonner';
 import type { ScaleDevice } from '../../utils/scaleProtocol';
 import { testScaleConnectionDetailed, getScaleInfo } from '../../utils/scaleProtocol';
+import { formatScalePortLabel } from '../../utils/scalePort';
 
 interface ScaleManagementProps {
   devices: ScaleDevice[];
@@ -357,7 +358,7 @@ export function ScaleManagement({
                       </div>
                       <div className="flex justify-between">
                         <span className="text-gray-600">Port:</span>
-                        <span className="text-gray-900">{device.port ?? 'Otomatik'}</span>
+                        <span className="text-gray-900">{formatScalePortLabel(device.port)}</span>
                       </div>
                     </>
                   )}

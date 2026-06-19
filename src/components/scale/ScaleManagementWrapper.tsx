@@ -6,6 +6,7 @@ import { ScaleProductSyncModal } from './ScaleProductSyncModal';
 import type { ScaleDevice } from '../../utils/scaleProtocol';
 import type { Product } from '../../App';
 import { ERP_SETTINGS } from '../../services/postgres';
+import { normalizeOptionalScalePort } from '../../utils/scalePort';
 import {
   getScaleBridgeUrl,
   setScaleBridgeUrl,
@@ -34,7 +35,11 @@ interface ScaleManagementWrapperProps {
 function loadLocalDevices(): ScaleDevice[] {
   try {
     const saved = localStorage.getItem('retailos_scale_devices');
-    return saved ? JSON.parse(saved) : [];
+    const parsed: ScaleDevice[] = saved ? JSON.parse(saved) : [];
+    return parsed.map((d) => {
+      const port = normalizeOptionalScalePort(d.port);
+      return port != null ? { ...d, port } : { ...d, port: undefined };
+    });
   } catch {
     return [];
   }
@@ -68,7 +73,11 @@ export function ScaleManagementWrapper({ products }: ScaleManagementWrapperProps
   const bridgeMode = isScaleBridgeMode();
 
   const persistLocal = (list: ScaleDevice[]) => {
-    localStorage.setItem('retailos_scale_devices', JSON.stringify(list));
+    const normalized = list.map((d) => {
+      const port = normalizeOptionalScalePort(d.port);
+      return port != null ? { ...d, port } : { ...d, port: undefined };
+    });
+    localStorage.setItem('retailos_scale_devices', JSON.stringify(normalized));
   };
 
   const refreshBridgeState = useCallback(() => {
@@ -334,6 +343,7 @@ export function ScaleManagementWrapper({ products }: ScaleManagementWrapperProps
 
       {showDeviceModal && (
         <ScaleDeviceModal
+          key={editingDevice?.id ?? 'new-scale-device'}
           device={editingDevice}
           onSave={(d) => void handleSaveDevice(d)}
           onClose={() => { setShowDeviceModal(false); setEditingDevice(undefined); }}

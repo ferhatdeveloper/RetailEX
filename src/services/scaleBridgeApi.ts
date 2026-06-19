@@ -12,6 +12,12 @@ import type { ScaleDevice } from '../utils/scaleProtocol';
 import type { Product } from '../App';
 import { productsToRongtaPluRecords } from '../utils/rongtaRlsProtocol';
 import { parseStoredRetailexWebConfig } from '../utils/retailexWebConfigMerge';
+import { normalizeOptionalScalePort } from '../utils/scalePort';
+
+function normalizeScaleDevice(device: ScaleDevice): ScaleDevice {
+  const port = normalizeOptionalScalePort(device.port);
+  return port != null ? { ...device, port } : { ...device, port: undefined };
+}
 
 const STORAGE_URL = 'retailex_scale_bridge_url';
 const STORAGE_TOKEN = 'retailex_scale_bridge_token';
@@ -229,23 +235,26 @@ export async function scaleBridgePing(): Promise<boolean> {
 
 export async function scaleBridgeListDevices(): Promise<ScaleDevice[]> {
   const json = await bridgeFetch<{ scales: ScaleDevice[] }>('/scales');
-  return json.scales || [];
+  return (json.scales || []).map(normalizeScaleDevice);
 }
 
 export async function scaleBridgeSaveDevice(device: ScaleDevice): Promise<ScaleDevice> {
+  const port = normalizeOptionalScalePort(device.port);
+  const payload: Record<string, unknown> = {
+    id: device.id,
+    name: device.name,
+    brand: device.brand,
+    model: device.model,
+    ipAddress: device.ipAddress,
+    enabled: device.status !== 'offline',
+  };
+  if (port != null) payload.port = port;
+
   const json = await bridgeFetch<{ scale: ScaleDevice }>('/scales', {
     method: 'POST',
-    body: JSON.stringify({
-      id: device.id,
-      name: device.name,
-      brand: device.brand,
-      model: device.model,
-      ipAddress: device.ipAddress,
-      port: device.port,
-      enabled: device.status !== 'offline',
-    }),
+    body: JSON.stringify(payload),
   });
-  return json.scale;
+  return normalizeScaleDevice(json.scale);
 }
 
 export async function scaleBridgeDeleteDevice(id: string): Promise<void> {
