@@ -10,9 +10,10 @@ import {
   Users,
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
-import { useFirmaDonem } from '../../contexts/FirmaDonemContext';
+import { useOptionalFirmaDonem } from '../../contexts/FirmaDonemContext';
 import {
   DB_SETTINGS,
+  ERP_SETTINGS,
   LOCAL_CONFIG,
   REMOTE_CONFIG,
   type HybridSyncDirection,
@@ -38,7 +39,8 @@ type Props = {
 
 export function HybridSyncPanel({ compact = false, darkMode = false, directionOverride }: Props) {
   const { user } = useAuth();
-  const { selectedFirm } = useFirmaDonem();
+  const firmaCtx = useOptionalFirmaDonem();
+  const firmNr = firmaCtx?.selectedFirm?.firm_nr ?? ERP_SETTINGS.firmNr ?? '001';
 
   const [stores, setStores] = useState<BranchStoreOption[]>([]);
   const [cashiers, setCashiers] = useState<BranchCashierOption[]>([]);
@@ -86,7 +88,7 @@ export function HybridSyncPanel({ compact = false, darkMode = false, directionOv
     if (!isHybrid) return;
     void (async () => {
       try {
-        const list = await listActiveStores(selectedFirm?.firm_nr);
+        const list = await listActiveStores(firmNr);
         setStores(list);
         if (!storeId && user?.store_id) setStoreId(user.store_id);
         else if (!storeId && list.length === 1) setStoreId(list[0].id);
@@ -94,7 +96,7 @@ export function HybridSyncPanel({ compact = false, darkMode = false, directionOv
         /* PG hazır değil */
       }
     })();
-  }, [isHybrid, selectedFirm?.firm_nr, user?.store_id, storeId]);
+  }, [isHybrid, firmNr, user?.store_id, storeId]);
 
   useEffect(() => {
     if (!effectiveStoreId) {

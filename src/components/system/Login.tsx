@@ -2199,46 +2199,6 @@ export function Login({ onLogin }: LoginProps) {
                           <strong>Yönetim → Veritabanı → uzak (Ana sunucu)</strong> satırına yazıp kaydedin veya modu <strong>Hybrid / Offline</strong> yapıp HOST’a merkez sunucu IP’sini girin.
                         </div>
                       )}
-                      {dbConnectionMode === 'hybrid' && connectionProvider === 'db' && (
-                        <div className="space-y-3 pt-1">
-                          <div className="space-y-1">
-                            <label className={`px-1 text-[9px] font-black uppercase tracking-widest ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>
-                              Hibrit — SQL önceliği
-                            </label>
-                            <select
-                              value={hybridReadPreference}
-                              onChange={(e) => setHybridReadPreference(e.target.value as HybridReadPreference)}
-                              className={`w-full rounded-sm border-2 px-4 py-3 text-xs font-bold transition-all focus:border-blue-600 focus:outline-none ${darkMode ? 'border-gray-700 bg-gray-800 text-blue-200' : 'border-gray-200 bg-white text-gray-900'}`}
-                            >
-                              <option value="local_first">Önce yerel PG, bağlantı hatasında uzak</option>
-                              <option value="remote_first">Önce uzak PG, bağlantı hatasında yerel</option>
-                            </select>
-                            <p className={`px-1 text-[9px] font-bold leading-relaxed ${darkMode ? 'text-slate-500' : 'text-slate-600'}`}>
-                              POS yoğun şubede genelde <strong>yerel önce</strong>; merkez kesintisinde yedek için <strong>uzak önce</strong> seçilebilir. İkinci uç yalnızca ağ/bağlantı hatalarında denenir (SQL hatasında yedeklenmez).
-                            </p>
-                          </div>
-                          <div className="space-y-1">
-                            <label className={`px-1 text-[9px] font-black uppercase tracking-widest ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>
-                              Hibrit — senkron yönü
-                            </label>
-                            <select
-                              value={hybridSyncDirection}
-                              onChange={(e) => setHybridSyncDirection(e.target.value as HybridSyncDirection)}
-                              className={`w-full rounded-sm border-2 px-4 py-3 text-xs font-bold transition-all focus:border-blue-600 focus:outline-none ${darkMode ? 'border-gray-700 bg-gray-800 text-blue-200' : 'border-gray-200 bg-white text-gray-900'}`}
-                            >
-                              <option value="local_to_remote">Yerel → uzak</option>
-                              <option value="remote_to_local">Uzak → yerel</option>
-                              <option value="bidirectional">Çift yönlü</option>
-                            </select>
-                            <p className={`px-1 text-[9px] font-bold leading-relaxed ${darkMode ? 'text-slate-500' : 'text-slate-600'}`}>
-                              Varsayılan senkron yönü (kayıt). Gönder / Al işlemleri aşağıdaki panelden şube ve kasiyer seçerek yapılır.
-                            </p>
-                            <div className="mt-2">
-                              <HybridSyncPanel compact darkMode={darkMode} />
-                            </div>
-                          </div>
-                        </div>
-                      )}
                     </div>
                   )}
 
@@ -2422,6 +2382,47 @@ export function Login({ onLogin }: LoginProps) {
                           Kiracı / merkez REST adresi. Aynı ağda örnek: <strong>http://192.168.1.10:3002</strong> veya RetailEX bulutunda yalnızca kiracı adı. Kaydedilir; <strong>Rest API</strong> modunda sorgular buradan gider.
                         </p>
                         {renderTenantPostgrestUrlFields('hybrid')}
+                      </div>
+
+                      <div
+                        className={`space-y-3 rounded-xl border-2 p-4 ${darkMode ? 'border-amber-800/70 bg-amber-950/20' : 'border-amber-300 bg-amber-50/50'}`}
+                      >
+                        <h3 className={`text-[10px] font-black uppercase tracking-wider ${darkMode ? 'text-amber-200' : 'text-amber-900'}`}>
+                          3. Hibrit senkron
+                        </h3>
+                        <div className="space-y-1">
+                          <label className={`px-1 text-[9px] font-black uppercase tracking-widest ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>
+                            Hibrit — SQL önceliği
+                          </label>
+                          <select
+                            value={hybridReadPreference}
+                            onChange={(e) => setHybridReadPreference(e.target.value as HybridReadPreference)}
+                            className={`w-full rounded-sm border-2 px-4 py-3 text-xs font-bold transition-all focus:border-blue-600 focus:outline-none ${darkMode ? 'border-gray-700 bg-gray-800 text-blue-200' : 'border-gray-200 bg-white text-gray-900'}`}
+                          >
+                            <option value="local_first">Önce yerel PG, bağlantı hatasında uzak</option>
+                            <option value="remote_first">Önce uzak PG, bağlantı hatasında yerel</option>
+                          </select>
+                          <p className={`px-1 text-[9px] font-bold leading-relaxed ${darkMode ? 'text-slate-500' : 'text-slate-600'}`}>
+                            {connectionProvider === 'rest_api'
+                              ? 'Yerel satışlar PostgreSQL\'de; merkeze PostgREST ile sync_queue üzerinden gider.'
+                              : 'POS yoğun şubede genelde yerel önce; merkez kesintisinde yedek için uzak önce seçilebilir.'}
+                          </p>
+                        </div>
+                        <div className="space-y-1">
+                          <label className={`px-1 text-[9px] font-black uppercase tracking-widest ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>
+                            Hibrit — senkron yönü
+                          </label>
+                          <select
+                            value={hybridSyncDirection}
+                            onChange={(e) => setHybridSyncDirection(e.target.value as HybridSyncDirection)}
+                            className={`w-full rounded-sm border-2 px-4 py-3 text-xs font-bold transition-all focus:border-blue-600 focus:outline-none ${darkMode ? 'border-gray-700 bg-gray-800 text-blue-200' : 'border-gray-200 bg-white text-gray-900'}`}
+                          >
+                            <option value="local_to_remote">Yerel → uzak</option>
+                            <option value="remote_to_local">Uzak → yerel</option>
+                            <option value="bidirectional">Çift yönlü</option>
+                          </select>
+                        </div>
+                        <HybridSyncPanel compact darkMode={darkMode} />
                       </div>
                     </div>
                   ) : connectionProvider === 'rest_api' ? (

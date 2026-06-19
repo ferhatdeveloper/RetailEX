@@ -679,3 +679,6 @@ export const useFirmaDonem = () => {
   if (!context) throw new Error('useFirmaDonem must be used within FirmaDonemProvider');
   return context;
 };
+
+/** Login / ayar ekranı gibi FirmaDonemProvider dışı ağaçlarda güvenli kullanım */
+export const useOptionalFirmaDonem = () => useContext(FirmaDonemContext);

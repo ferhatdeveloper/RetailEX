@@ -13,6 +13,7 @@ import { retailexAntdTheme } from './theme/retailexAntdTheme';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { LanguageProvider } from './contexts/LanguageContext';
 import { AuthProvider } from './contexts/AuthContext';
+import { FirmaDonemProvider } from './contexts/FirmaDonemContext';
 import { Login } from './components/system/Login';
 import { InfrastructureSettingsPage } from './components/system/InfrastructureSettingsPage';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
@@ -61,7 +62,7 @@ export function AppRouter() {
               <ConfigProvider theme={retailexAntdTheme}>
                 <Routes>
                   {/* Public routes */}
-                  <Route path="/login" element={<Login onLogin={() => { }} />} />
+                  <Route path="/login" element={<FirmaDonemProvider><Login onLogin={() => { }} /></FirmaDonemProvider>} />
                   <Route path="/infra-settings" element={<InfrastructureSettingsPage />} />
                   <Route path="/book/:firmNr" element={<PublicBeautyBooking />} />
 
