@@ -214,7 +214,7 @@ export function ScaleManagement({
                   {bridgeOnline && bridgeAuthOk
                     ? 'çevrimiçi'
                     : bridgeOnline
-                      ? 'token/ yetki hatası'
+                      ? 'yetki hatası (token)'
                       : 'bağlantı yok'}
                   {bridgeSourceLabel ? ` (${bridgeSourceLabel})` : ''}
                 </span>

@@ -207,10 +207,18 @@ export async function scaleBridgeHealthCheck(): Promise<ScaleBridgeHealth> {
     return { reachable: true, authenticated: true };
   } catch (e) {
     const errMsg = e instanceof Error ? e.message : String(e);
-    const tokenHint = /401|403|yetki|token|unauthorized/i.test(errMsg)
-      ? 'Token uyuşmuyor — Köprü Ayarlarından authToken ile eşleştirin'
-      : errMsg;
-    return { reachable: true, authenticated: false, message: tokenHint };
+    if (/401|403|unauthorized/i.test(errMsg)) {
+      const url = getScaleBridgeUrl();
+      const onLoopback = /127\.0\.0\.1|localhost/i.test(url);
+      return {
+        reachable: true,
+        authenticated: false,
+        message: onLoopback
+          ? 'Token uyuşmuyor — Köprü Ayarları → Token alanı, scale-bridge.json içindeki authToken ile aynı olmalı'
+          : 'Uzak erişim için token gerekli — mağaza PC\'de authToken\'ı Köprü Ayarlarına girin veya URL\'yi http://127.0.0.1:3012 yapın',
+      };
+    }
+    return { reachable: true, authenticated: false, message: errMsg || 'Köprü API hatası' };
   }
 }
 

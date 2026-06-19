@@ -6,6 +6,7 @@
  * Port: SCALE_BRIDGE_PORT (3012)
  */
 import http from 'node:http';
+import { networkInterfaces } from 'node:os';
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve, join } from 'node:path';
@@ -76,9 +77,26 @@ function authOk(req) {
   return h === `Bearer ${token}`;
 }
 
+function normalizeClientIp(raw) {
+  return String(raw || '').replace(/^::ffff:/, '').trim();
+}
+
+/** Aynı PC'den 192.168.x.x ile bağlanınca da yerel say (token zorunlu olmasın). */
 function isLocalRequest(req) {
-  const ip = req.socket?.remoteAddress || '';
-  return ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1';
+  const ip = normalizeClientIp(req.socket?.remoteAddress);
+  if (!ip) return false;
+  if (ip === '127.0.0.1' || ip === '::1') return true;
+  try {
+    const nets = networkInterfaces();
+    for (const name of Object.keys(nets)) {
+      for (const net of nets[name] || []) {
+        if (net.address && normalizeClientIp(net.address) === ip) return true;
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+  return false;
 }
 
 function requiresAuth(req, path) {
