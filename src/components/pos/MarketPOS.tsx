@@ -3,6 +3,10 @@ import { useFirmaDonem } from '../../contexts/FirmaDonemContext';
 import { logger } from '../../utils/logger';
 import { resolveScaleBarcodeSale } from '../../utils/scaleBarcodeSale';
 import { isCompositeScaleBarcode } from '../../utils/barcodeParser';
+import {
+  BARCODE_SCANNER_DEBOUNCE_MS,
+  isBarcodeReadyForAutoSubmit,
+} from '../../utils/barcodeScannerInput';
 import { isProductExpired } from '../../utils/productExpiry';
 import {
   ShoppingCart,
@@ -207,6 +211,9 @@ export default function MarketPOS({
 
   // Barcode input ref for numpad support
   const barcodeInputRef = React.useRef<HTMLInputElement>(null);
+  const barcodeInputLatestRef = React.useRef('');
+  const barcodeAutoSubmitTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const barcodeSubmitInFlightRef = React.useRef(false);
 
   // Exchange rate state
   const [exchangeRate, setExchangeRate] = useState<number>(1310); // Default fallback
@@ -555,6 +562,14 @@ export default function MarketPOS({
     }
   }, [cart, subtotal, totalDiscount, campaigns, selectedCampaign]);
 
+  useEffect(() => {
+    return () => {
+      if (barcodeAutoSubmitTimerRef.current) {
+        clearTimeout(barcodeAutoSubmitTimerRef.current);
+      }
+    };
+  }, []);
+
   const handleNumberClick = (num: string) => {
     // İlk tıklamada quantity moduna geç
     if (numpadMode === 'barcode') {
@@ -572,6 +587,7 @@ export default function MarketPOS({
   const handleClear = () => {
     if (numpadMode === 'barcode') {
       setBarcodeInput('');
+      barcodeInputLatestRef.current = '';
       setTimeout(() => barcodeInputRef.current?.focus(), 0);
     } else {
       setInputValue('');
@@ -611,7 +627,7 @@ export default function MarketPOS({
     }
 
     // Barkod girildikten sonra Enter/Tamam'a basıldığında işlemi yap
-    let barcodeToSearch = barcodeInput.trim();
+    let barcodeToSearch = (barcodeInputLatestRef.current || barcodeInput).trim();
     let quantity = savedQuantity || 1;
 
     if (!barcodeToSearch && inputValue) {
@@ -627,9 +643,10 @@ export default function MarketPOS({
       return;
     }
 
-    const found = await searchByBarcode(barcodeToSearch, quantity);
+    const found = await submitBarcodeSearch(barcodeToSearch, quantity);
     if (found) {
       setBarcodeInput('');
+      barcodeInputLatestRef.current = '';
       setInputValue('');
       setSavedQuantity(null);
       setNumpadMode('barcode');
@@ -915,33 +932,72 @@ export default function MarketPOS({
     }
   };
 
-  // Handle barcode search (barcodeInput'tan okur)
-  const handleBarcodeSearch = async () => {
-    logger.log('Search handleBarcodeSearch called, barcodeInput:', barcodeInput);
-
-    if (!barcodeInput.trim()) {
+  // Barkod arama — override ile okuyucu Enter/stale state sorununu önler
+  const submitBarcodeSearch = async (
+    rawBarcode?: string,
+    quantityOverride?: number,
+  ): Promise<boolean> => {
+    const searchText = String(rawBarcode ?? barcodeInputLatestRef.current ?? barcodeInput).trim();
+    if (!searchText) {
       logger.log('⚠️ Barkod boş, çıkılıyor');
-      return;
+      return false;
+    }
+    if (barcodeSubmitInFlightRef.current) return false;
+
+    barcodeSubmitInFlightRef.current = true;
+    if (barcodeAutoSubmitTimerRef.current) {
+      clearTimeout(barcodeAutoSubmitTimerRef.current);
+      barcodeAutoSubmitTimerRef.current = null;
     }
 
-    const searchText = barcodeInput.trim();
-    const quantity = savedQuantity || 1;
+    logger.log('Search submitBarcodeSearch:', searchText);
+    const quantity = quantityOverride ?? savedQuantity ?? 1;
 
-    const found = await searchByBarcode(searchText, quantity);
+    try {
+      const found = await searchByBarcode(searchText, quantity);
 
-    // Eğer barkod bulunamadıysa, ürün arama ekranını aç
-    if (!found) {
-      setProductSearchQuery(searchText);
-      setCatalogMode('add-to-cart');
-      setShowProductCatalogModal(true);
+      if (!found) {
+        setProductSearchQuery(searchText);
+        setCatalogMode('add-to-cart');
+        setShowProductCatalogModal(true);
+        setBarcodeInput('');
+        barcodeInputLatestRef.current = '';
+        setSavedQuantity(null);
+        return false;
+      }
+
       setBarcodeInput('');
-      setSavedQuantity(null);
-    } else {
-      setBarcodeInput('');
+      barcodeInputLatestRef.current = '';
       setSavedQuantity(null);
       setNumpadMode('barcode');
       setTimeout(() => barcodeInputRef.current?.focus(), 0);
+      return true;
+    } finally {
+      barcodeSubmitInFlightRef.current = false;
     }
+  };
+
+  const handleBarcodeSearch = () => {
+    void submitBarcodeSearch();
+  };
+
+  const scheduleBarcodeAutoSubmit = (value: string) => {
+    if (barcodeAutoSubmitTimerRef.current) {
+      clearTimeout(barcodeAutoSubmitTimerRef.current);
+    }
+    barcodeAutoSubmitTimerRef.current = setTimeout(() => {
+      barcodeAutoSubmitTimerRef.current = null;
+      const latest = barcodeInputLatestRef.current.trim();
+      if (!latest || latest !== value.trim()) return;
+      if (!isBarcodeReadyForAutoSubmit(latest)) return;
+      void submitBarcodeSearch(latest);
+    }, BARCODE_SCANNER_DEBOUNCE_MS);
+  };
+
+  const handleBarcodeInputChange = (value: string) => {
+    barcodeInputLatestRef.current = value;
+    setBarcodeInput(value);
+    scheduleBarcodeAutoSubmit(value);
   };
 
   // Update cart item quantity
@@ -1632,11 +1688,12 @@ export default function MarketPOS({
                 <input
                   type="text"
                   value={barcodeInput}
-                  onChange={(e) => setBarcodeInput(e.target.value)}
+                  onChange={(e) => handleBarcodeInputChange(e.target.value)}
                   onFocus={() => setNumpadMode('barcode')}
                   onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      handleBarcodeSearch();
+                    if (e.key === 'Enter' || e.key === 'Tab') {
+                      e.preventDefault();
+                      void submitBarcodeSearch(barcodeInputLatestRef.current);
                     }
                   }}
                   placeholder={t.barcodeSearchPlaceholder}

@@ -11,6 +11,10 @@ import { APP_VERSION } from '../../core/version';
 import { productAPI } from '../../services/api/products';
 import { resolveScaleBarcodeSale } from '../../utils/scaleBarcodeSale';
 import { isCompositeScaleBarcode } from '../../utils/barcodeParser';
+import {
+  BARCODE_SCANNER_DEBOUNCE_MS,
+  isBarcodeReadyForAutoSubmit,
+} from '../../utils/barcodeScannerInput';
 import { isProductExpired } from '../../utils/productExpiry';
 import { printThermalReceipt } from '../../utils/thermalPrinter';
 import { postgres } from '../../services/postgres';
@@ -47,6 +51,15 @@ export function MobilePOS({ products, customers, campaigns, onSaleComplete, onBa
   const [appliedCampaign, setAppliedCampaign] = useState<Campaign | null>(null);
   const [showBarcodeScanner, setShowBarcodeScanner] = useState(false);
   const barcodeRef = useRef<HTMLInputElement>(null);
+  const barcodeLatestRef = useRef('');
+  const barcodeAutoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const barcodeSubmitBusyRef = useRef(false);
+
+  useEffect(() => {
+    return () => {
+      if (barcodeAutoTimerRef.current) clearTimeout(barcodeAutoTimerRef.current);
+    };
+  }, []);
 
   // Printing options
   const [autoPrint, setAutoPrint] = useState(false);
@@ -158,100 +171,122 @@ export function MobilePOS({ products, customers, campaigns, onSaleComplete, onBa
     return matchesCategory && matchesSearch;
   });
 
-  const handleBarcodeSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (barcodeInput.trim()) {
-      const searchTerm = barcodeInput.trim();
+  const processBarcodeScan = async (raw: string) => {
+    const searchTerm = raw.trim();
+    if (!searchTerm || barcodeSubmitBusyRef.current) return;
 
-      try {
-        if (isCompositeScaleBarcode(searchTerm)) {
-          const scaleSale = await resolveScaleBarcodeSale(searchTerm, exchangeRate);
-          if (scaleSale) {
-            addToCart(
-              scaleSale.product,
-              undefined,
-              scaleSale.unitName,
-              1,
-              scaleSale.unitPrice,
-              scaleSale.quantity,
-            );
-            setBarcodeInput('');
-            return;
+    barcodeSubmitBusyRef.current = true;
+    if (barcodeAutoTimerRef.current) {
+      clearTimeout(barcodeAutoTimerRef.current);
+      barcodeAutoTimerRef.current = null;
+    }
+
+    try {
+      if (isCompositeScaleBarcode(searchTerm)) {
+        const scaleSale = await resolveScaleBarcodeSale(searchTerm, exchangeRate);
+        if (scaleSale) {
+          addToCart(
+            scaleSale.product,
+            undefined,
+            scaleSale.unitName,
+            1,
+            scaleSale.unitPrice,
+            scaleSale.quantity,
+          );
+          setBarcodeInput('');
+          barcodeLatestRef.current = '';
+          return;
+        }
+      }
+
+      const result = await productAPI.lookupByBarcode(searchTerm);
+
+      if (result && result.product) {
+        const product = result.product;
+        const unitInfo = result.unitInfo;
+
+        if (product.hasVariants || (product.variants && product.variants.length > 0)) {
+          showNotif('Lütfen varyant seçimi için market ekranını kullanın veya ürünü listeden seçin.', 'info');
+          return;
+        }
+
+        let price = product.price;
+        let unitMultiplier = unitInfo?.multiplier || 1;
+
+        if (unitInfo && unitMultiplier === 1 && unitInfo.unit) {
+          const pUnitsetId = (product as any).unitset_id || (product as any).unitsetId;
+          if (pUnitsetId) {
+            const unitSet = unitSets.find(us => us.id === pUnitsetId);
+            const line = unitSet?.lines?.find((l: any) => l.name === unitInfo.unit || l.code === unitInfo.unit);
+            if (line) {
+              unitMultiplier = line.conv_fact1 || 1;
+            }
           }
         }
 
-        const result = await productAPI.lookupByBarcode(searchTerm);
-
-        if (result && result.product) {
-          const product = result.product;
-          const unitInfo = result.unitInfo;
-
-          // Varyant kontrolü (Basit mobil versiyon için varyant desteği ekleyebiliriz veya direkt ekleriz)
-          if (product.hasVariants || (product.variants && product.variants.length > 0)) {
-            // Mobil için varyant seçim modalı gerekebilir. Şimdilik MarketPOS'taki gibi basit geçiyoruz
-            showNotif('Lütfen varyant seçimi için market ekranını kullanın veya ürünü listeden seçin.', 'info');
-            return;
+        if (unitInfo) {
+          if (unitInfo.sale_price && unitInfo.sale_price > 0) {
+            price = unitInfo.sale_price;
+          } else if (unitMultiplier > 1) {
+            price = product.price * unitMultiplier;
           }
+        }
 
-          // Pricing logic: First check unit multiplier, then USD calculation
-          let price = product.price;
-          let unitMultiplier = unitInfo?.multiplier || 1;
+        const isAutoCalc = (product as any).autoCalculateUSD || (product as any).auto_calculate_usd;
+        if (isAutoCalc && (product as any).salePriceUSD > 0 && (!unitInfo || !unitInfo.sale_price)) {
+          let effectiveRate = (product as any).customExchangeRate || (product as any).custom_exchange_rate || exchangeRate;
+          if (effectiveRate > 0 && effectiveRate < 10) effectiveRate *= 1000;
+          price = (product as any).salePriceUSD * effectiveRate * unitMultiplier;
+        }
 
-          // If unitMultiplier is 1 or missing, try to find in unitSets
-          if (unitInfo && unitMultiplier === 1 && unitInfo.unit) {
-            const pUnitsetId = (product as any).unitset_id || (product as any).unitsetId;
-            if (pUnitsetId) {
-              const unitSet = unitSets.find(us => us.id === pUnitsetId);
-              const line = unitSet?.lines?.find((l: any) => l.name === unitInfo.unit || l.code === unitInfo.unit);
-              if (line) {
-                unitMultiplier = line.conv_fact1 || 1;
-              }
-            }
-          }
-
-          if (unitInfo) {
-            if (unitInfo.sale_price && unitInfo.sale_price > 0) {
-              price = unitInfo.sale_price;
-            } else if (unitMultiplier > 1) {
-              price = product.price * unitMultiplier;
-            }
-          }
-
-          // USD Auto-calculation
-          const isAutoCalc = (product as any).autoCalculateUSD || (product as any).auto_calculate_usd;
-          if (isAutoCalc && (product as any).salePriceUSD > 0 && (!unitInfo || !unitInfo.sale_price)) {
-            let effectiveRate = (product as any).customExchangeRate || (product as any).custom_exchange_rate || exchangeRate;
-            if (effectiveRate > 0 && effectiveRate < 10) effectiveRate *= 1000;
-            price = (product as any).salePriceUSD * effectiveRate * unitMultiplier;
-          }
-
-          addToCart(product, undefined, unitInfo?.unit, unitMultiplier, price);
+        addToCart(product, undefined, unitInfo?.unit, unitMultiplier, price);
+        setBarcodeInput('');
+        barcodeLatestRef.current = '';
+      } else if (
+        searchTerm.length >= 13 && searchTerm.length <= 15 && /^\d+$/.test(searchTerm)
+      ) {
+        const scaleSale = await resolveScaleBarcodeSale(searchTerm, exchangeRate);
+        if (scaleSale) {
+          addToCart(
+            scaleSale.product,
+            undefined,
+            scaleSale.unitName,
+            1,
+            scaleSale.unitPrice,
+            scaleSale.quantity,
+          );
           setBarcodeInput('');
-        } else if (
-          searchTerm.length >= 13 && searchTerm.length <= 15 && /^\d+$/.test(searchTerm)
-        ) {
-          const scaleSale = await resolveScaleBarcodeSale(searchTerm, exchangeRate);
-          if (scaleSale) {
-            addToCart(
-              scaleSale.product,
-              undefined,
-              scaleSale.unitName,
-              1,
-              scaleSale.unitPrice,
-              scaleSale.quantity,
-            );
-            setBarcodeInput('');
-          } else {
-            showNotif('Ürün bulunamadı!', 'error');
-          }
+          barcodeLatestRef.current = '';
         } else {
           showNotif('Ürün bulunamadı!', 'error');
         }
-      } catch (error) {
-        console.error('[MobilePOS] Barcode lookup error:', error);
-        showNotif('Barkod sorgulama hatası!', 'error');
+      } else {
+        showNotif('Ürün bulunamadı!', 'error');
       }
+    } catch (error) {
+      console.error('[MobilePOS] Barcode lookup error:', error);
+      showNotif('Barkod sorgulama hatası!', 'error');
+    } finally {
+      barcodeSubmitBusyRef.current = false;
     }
+  };
+
+  const handleBarcodeInputChange = (value: string) => {
+    barcodeLatestRef.current = value;
+    setBarcodeInput(value);
+    if (barcodeAutoTimerRef.current) clearTimeout(barcodeAutoTimerRef.current);
+    barcodeAutoTimerRef.current = setTimeout(() => {
+      barcodeAutoTimerRef.current = null;
+      const latest = barcodeLatestRef.current.trim();
+      if (!latest || latest !== value.trim()) return;
+      if (!isBarcodeReadyForAutoSubmit(latest)) return;
+      void processBarcodeScan(latest);
+    }, BARCODE_SCANNER_DEBOUNCE_MS);
+  };
+
+  const handleBarcodeSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await processBarcodeScan(barcodeLatestRef.current || barcodeInput);
   };
 
   const addToCart = (
@@ -616,7 +651,13 @@ export function MobilePOS({ products, customers, campaigns, onSaleComplete, onBa
                   ref={barcodeRef}
                   type="text"
                   value={barcodeInput}
-                  onChange={(e) => setBarcodeInput(e.target.value)}
+                  onChange={(e) => handleBarcodeInputChange(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === 'Tab') {
+                      e.preventDefault();
+                      void processBarcodeScan(barcodeLatestRef.current);
+                    }
+                  }}
                   placeholder="Ara"
                   className="w-full border-0 outline-none text-base p-0 bg-transparent placeholder-gray-400"
                   autoFocus
