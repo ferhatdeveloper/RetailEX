@@ -24,7 +24,7 @@ export interface ParsedBarcode {
   isWeightBased: boolean;
   isPriceBased?: boolean;
   productCode?: string;
-  weight?: number; // gram
+  weight?: number; // Rongta ağırlık alanı (÷1000 = kg; 01300 → 1,300 kg)
   price?: number; // kuruş (fiyat barkodu)
   originalBarcode: string;
   format?: BarcodeFormat;
@@ -66,20 +66,33 @@ function parseFixedPrefixWeight(trimmed: string): ParsedBarcode | null {
   };
 }
 
-/** PLU ayarı tip 27–29: D(1) + PLU(6) + ağırlık(5) */
+/** PLU ayarı tip 25–29 (grup 21–29): D(1) + PLU(6) + WW.WWW(5) — barkod 20… ile başlayabilir */
 function parseDeptPlus6Plu(trimmed: string): ParsedBarcode | null {
-  const prefixNum = parseInt(trimmed.substring(0, 2), 10);
-  if (prefixNum < 21 || prefixNum > 29) return null;
+  const deptDigit = trimmed[0];
+  if (!deptDigit || deptDigit < '2' || deptDigit > '9') return null;
   const weight = parseWeightDigits(trimmed.substring(7, 12));
   if (weight <= 0) return null;
+  const productCode = trimmed.substring(1, 7);
+  if (!productCode.replace(/0/g, '')) return null;
   return {
     isWeightBased: true,
-    productCode: trimmed.substring(1, 7),
+    productCode,
     weight,
     originalBarcode: trimmed,
     format: 'rongta_dept_plu6',
-    rongtaTypeHint: prefixNum,
+    rongtaTypeHint: parseInt(deptDigit, 10),
   };
+}
+
+/**
+ * Rongta EAN-13 ağırlık alanı → kilogram.
+ * WW.WWW(5) / WWWWW(5): 01300 = 1,300 kg (alan ÷ 1000).
+ */
+export function rongtaWeightFieldToKg(fieldValue: number): number {
+  if (!Number.isFinite(fieldValue) || fieldValue <= 0) return 0;
+  const kg = fieldValue / 1000;
+  if (kg > 50) return 0;
+  return Math.round(kg * 1000) / 1000;
 }
 
 function dedupeParsed(list: ParsedBarcode[]): ParsedBarcode[] {
@@ -147,18 +160,14 @@ export function parseBarcode(barcode: string): ParsedBarcode {
     };
   }
 
-  // Logo Tiger — 20/21 + 4 hane PLU
-  if (prefixNum === 20 || prefixNum === 21) {
-    return {
-      isWeightBased: true,
-      productCode: trimmed.substring(2, 6),
-      weight: parseWeightDigits(trimmed.substring(6, 11)),
-      originalBarcode: trimmed,
-      format: 'logo_tiger',
-    };
+  // Rongta PLU barkod tipi 25–29: D + 6 hane PLU + ağırlık (barkod 20… / 21… ile başlar)
+  // Logo Tiger sanılmasın — yanlış parse ~8–10× şişkin fiyat üretir (1,3 kg → ~10 kg)
+  if (prefixNum >= 20 && prefixNum <= 24) {
+    const dept6 = parseDeptPlus6Plu(trimmed);
+    if (dept6) return dept6;
   }
 
-  // Prefix 22: tip 12 fiyat veya nadir ağırlık — 5 hane PLU + ağırlık dene
+  // Prefix 22: sabit prefix ağırlık (tip 12)
   if (prefixNum === 22) {
     return {
       isWeightBased: true,
@@ -173,24 +182,8 @@ export function parseBarcode(barcode: string): ParsedBarcode {
   return { isWeightBased: false, originalBarcode: trimmed };
 }
 
-export function convertWeight(weightInGrams: number, unit: string): number {
-  const upperUnit = unit.toUpperCase().replace(/İ/g, 'I');
-  switch (upperUnit) {
-    case 'GR':
-    case 'G':
-    case 'GRAM':
-    case 'GRM':
-    case 'KG':
-    case 'KILO':
-    case 'KILOGRAM':
-    case 'LT':
-    case 'L':
-    case 'LITRE':
-    case 'LITER':
-      return weightInGrams / 1000;
-    default:
-      return weightInGrams / 1000;
-  }
+export function convertWeight(weightFieldValue: number, _unit?: string): number {
+  return rongtaWeightFieldToKg(weightFieldValue);
 }
 
 export function scaleSaleUnitLabel(unit: string): string {

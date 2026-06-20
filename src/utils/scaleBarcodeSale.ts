@@ -6,9 +6,9 @@ import type { Product } from '../core/types';
 import { productAPI } from '../services/api/products';
 import {
   convertPrice,
-  convertWeight,
   getBarcodeFormatInfo,
   parseBarcodeVariants,
+  rongtaWeightFieldToKg,
   scaleSaleUnitLabel,
   type ParsedBarcode,
 } from './barcodeParser';
@@ -130,20 +130,21 @@ async function resolveParsedScaleBarcode(
 
   if (!parsed.isWeightBased || parsed.weight == null) return null;
 
-  const weightGrams = parsed.weight;
-  if (!(weightGrams > 0)) return null;
+  const weightField = parsed.weight;
+  if (!(weightField > 0)) return null;
 
-  const qty = convertWeight(weightGrams, unitUpper);
-  if (!(qty > 0)) return null;
+  const weightKg = rongtaWeightFieldToKg(weightField);
+  if (!(weightKg > 0)) return null;
 
   const unitPrice = resolveUnitPricePerKg(product, exchangeRate);
   if (!(unitPrice > 0) && !isScaleProductFlag(product)) return null;
 
   const unitName = scaleSaleUnitLabel(unitUpper);
+  const weightGrams = Math.round(weightKg * 1000);
 
   return {
     product,
-    quantity: Math.round(qty * 1000) / 1000,
+    quantity: weightKg,
     unitName,
     unitPrice,
     parsed,
