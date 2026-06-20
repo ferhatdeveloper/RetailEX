@@ -24,6 +24,20 @@ describe('barcodeParser — tartılı barkod', () => {
     expect(rongtaWeightFieldToKg(parsed.weight!)).toBe(1.3);
   });
 
+  it('Ürün kodu 100000001: dept 1 + PLU 000001 + 1,300 kg', () => {
+    const parsed = parseBarcode('1000001013000');
+    expect(parsed.isWeightBased).toBe(true);
+    expect(parsed.format).toBe('rongta_dept_plu6');
+    expect(parsed.productCode).toBe('000001');
+    expect(parsed.weight).toBe(1300);
+    expect(rongtaWeightFieldToKg(parsed.weight!)).toBe(1.3);
+  });
+
+  it('100000001 sabit ürün kodu tartılı etiket değil', () => {
+    expect(parseBarcode('100000001').isWeightBased).toBe(false);
+    expect(parseBarcodeVariants('100000001')).toHaveLength(0);
+  });
+
   it('PLU tip 27: dept 2 + PLU 000001 + 1,300 kg — Logo Tiger değil', () => {
     const parsed = parseBarcode('2000001013000');
     expect(parsed.format).toBe('rongta_dept_plu6');

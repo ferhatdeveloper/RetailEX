@@ -44,6 +44,17 @@ function pluCodeVariants(code: string): string[] {
     t.padStart(5, '0'),
     t.padStart(6, '0'),
   ]);
+
+  // Uzun tartı kodu: 100000001 ↔ terazi PLU 000001 (dept 1 + 8 hane)
+  for (const dept of ['1', '2', '3', '4', '5', '6', '7', '8', '9']) {
+    out.add(`${dept}${stripped.padStart(8, '0')}`);
+    out.add(`${dept}${t.padStart(8, '0')}`);
+  }
+  if (t.length > 6) out.add(t.slice(-6));
+  if (stripped.length > 0 && stripped.length <= 6) {
+    out.add(`1${stripped.padStart(8, '0')}`);
+  }
+
   return [...out].filter(Boolean);
 }
 
@@ -51,6 +62,10 @@ async function findProductByPlu(productCode: string): Promise<Product | null> {
   for (const code of pluCodeVariants(productCode)) {
     const scaleProduct = await productAPI.getScaleProductByPlu(code);
     if (scaleProduct) return scaleProduct;
+  }
+  for (const code of pluCodeVariants(productCode)) {
+    const byBarcode = await productAPI.getByBarcode(code);
+    if (byBarcode && isScaleProductFlag(byBarcode)) return byBarcode;
   }
   for (const code of pluCodeVariants(productCode)) {
     const p = await productAPI.getByCode(code);

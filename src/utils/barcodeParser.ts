@@ -67,10 +67,10 @@ function parseFixedPrefixWeight(trimmed: string): ParsedBarcode | null {
   };
 }
 
-/** PLU ayarı tip 25–29 (grup 21–29): D(1) + PLU(6) + WW.WWW(5) — barkod 20… ile başlayabilir */
+/** PLU ayarı tip 25–29 (grup 21–29): D(1) + PLU(6) + WW.WWW(5) — barkod 10… / 20… ile başlayabilir */
 function parseDeptPlus6Plu(trimmed: string): ParsedBarcode | null {
   const deptDigit = trimmed[0];
-  if (!deptDigit || deptDigit < '2' || deptDigit > '9') return null;
+  if (!deptDigit || deptDigit < '1' || deptDigit > '9') return null;
   const weight = parseWeightDigits(trimmed.substring(7, 12));
   if (weight <= 0) return null;
   const productCode = trimmed.substring(1, 7);
@@ -123,8 +123,14 @@ export function parseBarcodeVariants(barcode: string): ParsedBarcode[] {
   }
 
   if (trimmed.length === 13 && /^\d{13}$/.test(trimmed)) {
-    const alt6 = parseDeptPlus6Plu(trimmed);
-    if (alt6) variants.push(alt6);
+    const prefixNum = parseInt(trimmed.substring(0, 2), 10);
+    if (prefixNum >= 10 && prefixNum <= 19) {
+      const dept6 = parseDeptPlus6Plu(trimmed);
+      if (dept6) variants.push(dept6);
+    } else {
+      const alt6 = parseDeptPlus6Plu(trimmed);
+      if (alt6) variants.push(alt6);
+    }
   }
 
   return dedupeParsed(variants);
@@ -141,6 +147,14 @@ export function parseBarcode(barcode: string): ParsedBarcode {
   }
 
   const prefixNum = parseInt(trimmed.substring(0, 2), 10);
+
+  // Ürün kodu 100000001 → etiket 1000001013000 (dept 1 + PLU 6 + ağırlık 5)
+  if (prefixNum >= 10 && prefixNum <= 19) {
+    const dept6 = parseDeptPlus6Plu(trimmed);
+    if (dept6) return dept6;
+    return { isWeightBased: false, originalBarcode: trimmed };
+  }
+
   if (prefixNum < 20 || prefixNum > 29) {
     return { isWeightBased: false, originalBarcode: trimmed };
   }
@@ -207,6 +221,7 @@ export function isWeightBasedBarcode(barcode: string): boolean {
   const trimmed = barcode.trim();
   if (trimmed.length !== 13 || !/^\d{13}$/.test(trimmed)) return false;
   const prefix = parseInt(trimmed.substring(0, 2), 10);
+  if (prefix >= 10 && prefix <= 19) return parseDeptPlus6Plu(trimmed) != null;
   if (prefix < 20 || prefix > 29) return false;
   if (prefix === 23 || prefix === 24) return false;
   return true;

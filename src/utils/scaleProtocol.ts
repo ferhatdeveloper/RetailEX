@@ -125,17 +125,23 @@ export async function sendProductsToScale(
   pluStartIndex: number = 1
 ): Promise<ScaleSyncResult> {
   try {
-    // Ürünleri terazi formatına dönüştür
-    const scaleProducts: ScaleProduct[] = products.map((product, index) => ({
-      pluCode: String(pluStartIndex + index).padStart(5, '0'),
-      name: product.name.substring(0, 40), // Max 40 karakter
-      price: product.price,
-      unit: product.unit,
-      barcode: product.barcode,
-      tare: 0,
-      shelfLife: 0,
-      expiryDays: 0
-    }));
+    // Ürünleri terazi formatına dönüştür — kod/barkod son 6 hane PLU (örn. 100000001 → 000001)
+    const scaleProducts: ScaleProduct[] = products.map((product, index) => {
+      const numeric = String(product.code || product.barcode || '').replace(/\D/g, '');
+      const lfPlu =
+        numeric.slice(-6).padStart(6, '0') ||
+        String(pluStartIndex + index).padStart(5, '0');
+      return {
+        pluCode: lfPlu,
+        name: product.name.substring(0, 40),
+        price: product.price,
+        unit: product.unit,
+        barcode: product.barcode || product.code,
+        tare: 0,
+        shelfLife: 0,
+        expiryDays: 0,
+      };
+    });
 
     if (isScaleBridgeMode() && device.id) {
       return scaleBridgeSendProducts(device, products, pluStartIndex);
