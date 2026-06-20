@@ -682,6 +682,29 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
     [columnVisibility, showPurchasePricing, columnLabelOverrides]
   );
 
+  const columnVisibilityControl = (
+    <ColumnVisibilityMenu
+      variant="filterBar"
+      columns={columnVisibilityItems}
+      onToggle={(columnId) => {
+        setColumnVisibility((prev) => ({
+          ...prev,
+          [columnId]: !(prev[columnId] !== false),
+        }));
+      }}
+      onShowAll={() => {
+        setColumnVisibility(
+          Object.fromEntries(PRODUCT_GRID_COLUMN_ORDER.map((id) => [id, true]))
+        );
+      }}
+      onHideAll={() => {
+        setColumnVisibility(
+          Object.fromEntries(PRODUCT_GRID_COLUMN_ORDER.map((id) => [id, false]))
+        );
+      }}
+    />
+  );
+
   return (
     <div className="h-full flex flex-col">
       {/* Header - Minimal */}
@@ -784,26 +807,6 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
                 </span>
               )}
             </button>
-            <ColumnVisibilityMenu
-              variant="toolbar"
-              columns={columnVisibilityItems}
-              onToggle={(columnId) => {
-                setColumnVisibility((prev) => ({
-                  ...prev,
-                  [columnId]: !(prev[columnId] !== false),
-                }));
-              }}
-              onShowAll={() => {
-                setColumnVisibility(
-                  Object.fromEntries(PRODUCT_GRID_COLUMN_ORDER.map((id) => [id, true]))
-                );
-              }}
-              onHideAll={() => {
-                setColumnVisibility(
-                  Object.fromEntries(PRODUCT_GRID_COLUMN_ORDER.map((id) => [id, false]))
-                );
-              }}
-            />
             <button
               onClick={() => setShowServicesOnly(!showServicesOnly)}
               className={`flex items-center gap-1 px-2 py-1 transition-colors text-[10px] font-bold ${
@@ -875,7 +878,7 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
                 className="w-full pl-10 pr-4 py-2 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2 min-w-0">
               <button
                 type="button"
                 onClick={() => setShowTodayOnly((v) => !v)}
@@ -898,6 +901,7 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
                   </span>
                 )}
               </button>
+              {columnVisibilityControl}
               <select
                 value={duplicateDetectBy}
                 onChange={(e) => setDuplicateDetectBy(e.target.value as 'none' | 'code' | 'barcode')}
