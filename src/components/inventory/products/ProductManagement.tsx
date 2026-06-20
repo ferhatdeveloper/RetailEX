@@ -2,12 +2,18 @@ import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { ColumnDef } from '@tanstack/react-table';
 import { DevExDataGrid } from '../../shared/DevExDataGrid';
 import { ColumnVisibilityMenu } from '../../shared/ColumnVisibilityMenu';
-import { createColumnHelper } from '@tanstack/react-table';
 import type { Product } from '../../../App';
 import { useProductStore } from '../../../store';
 import { productAPI } from '../../../services/api/products';
 import { ProductFormPage } from './ProductFormPage';
 import { ProductOperationHub, HubTab } from './ProductOperationHub';
+import {
+  buildProductGridColumns,
+  loadProductColumnVisibility,
+  productColumnVisibilityMenuItems,
+  PRODUCT_COLUMN_VISIBILITY_KEY,
+  PRODUCT_GRID_COLUMN_ORDER,
+} from './productGridColumns';
 import { ContextMenu } from '../../shared/ContextMenu';
 import { formatNumber, formatCurrency as formatAmountWithCode } from '../../../utils/formatNumber';
 import { formatCurrency } from '../../../utils/currency';
@@ -231,37 +237,6 @@ const LONG_PRESS_MS = 480;
 const LONG_PRESS_MOVE_PX = 14;
 /** Arka plan stok yenilemesi: 30 sn çok sık (web + büyük liste); sekme görünürken 2 dk */
 const PRODUCT_STOCK_REFRESH_MS = 120000;
-const PRODUCT_COLUMN_VISIBILITY_KEY = 'retailex_productManagement_columnVisibility';
-
-const DEFAULT_PRODUCT_COLUMN_VISIBILITY: Record<string, boolean> = {
-  barcode: true,
-  code: true,
-  name: true,
-  category: true,
-  specialCode2: true,
-  cost: true,
-  price: true,
-  salePriceUSD: true,
-  purchasePriceUSD: true,
-  taxRate: true,
-  totalSales: true,
-  totalPurchased: true,
-  stock: true,
-  unit: true,
-  created_at: true,
-};
-
-function loadProductColumnVisibility(): Record<string, boolean> {
-  try {
-    const saved = localStorage.getItem(PRODUCT_COLUMN_VISIBILITY_KEY);
-    if (saved) {
-      return { ...DEFAULT_PRODUCT_COLUMN_VISIBILITY, ...JSON.parse(saved) };
-    }
-  } catch {
-    /* ignore */
-  }
-  return { ...DEFAULT_PRODUCT_COLUMN_VISIBILITY };
-}
 
 export function ProductManagement({ products, setProducts }: ProductManagementProps) {
   const { t, tm } = useLanguage();
@@ -426,7 +401,10 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
 
   useEffect(() => {
     try {
-      localStorage.setItem(PRODUCT_COLUMN_VISIBILITY_KEY, JSON.stringify(columnVisibility));
+      const payload = Object.fromEntries(
+        PRODUCT_GRID_COLUMN_ORDER.map((id) => [id, columnVisibility[id] !== false])
+      );
+      localStorage.setItem(PRODUCT_COLUMN_VISIBILITY_KEY, JSON.stringify(payload));
     } catch {
       /* ignore */
     }
@@ -663,153 +641,45 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
     closeProductForm();
   };
 
-  const columnHelper = createColumnHelper<Product>();
+  const columnLabelOverrides = useMemo(
+    () => ({
+      barcode: tm('barcode'),
+      code: tm('invThProductCode'),
+      name: tm('productName'),
+      category: tm('category'),
+      cost: tm('cost'),
+      price: tm('unitPrice'),
+      taxRate: tm('tax'),
+      stock: tm('stock'),
+      unit: tm('unit'),
+      totalSales: tm('salesTotal'),
+      totalPurchased: tm('purchaseTotal'),
+      specialCode2: `${tm('specialCode')} 2`,
+      created_at: tm('productCreatedAt'),
+    }),
+    [tm]
+  );
 
-  const columns = useMemo<ColumnDef<Product, any>[]>(() => [
-    columnHelper.accessor('barcode', {
-      header: tm('barcode').toUpperCase(),
-      cell: info => info.getValue(),
-      size: 140
-    }),
-    columnHelper.accessor('code', {
-      header: tm('invThProductCode').toUpperCase(),
-      cell: info => {
-        const value = info.getValue();
-        return value != null && String(value).trim() !== '' ? String(value) : '—';
-      },
-      size: 130
-    }),
-    columnHelper.accessor('name', {
-      header: tm('productName').toUpperCase(),
-      cell: info => info.getValue(),
-      size: 250
-    }),
-    columnHelper.accessor('category', {
-      header: tm('category').toUpperCase(),
-      cell: info => info.getValue(),
-      size: 140
-    }),
-    columnHelper.accessor('specialCode2', {
-      header: `${tm('specialCode')} 2`.toUpperCase(),
-      cell: (info) => {
-        const v = info.getValue();
-        return v != null && String(v).trim() !== '' ? String(v) : '—';
-      },
-      size: 110
-    }),
-    ...(showPurchasePricing
-      ? [
-          columnHelper.accessor('cost', {
-            header: tm('cost').toUpperCase(),
-            cell: info => info.getValue() != null && String(info.getValue()).trim() !== '' ? formatCurrency(Number(info.getValue()), 2, false) : '-',
-            size: 120
-          }),
-        ]
-      : []),
-    columnHelper.accessor('price', {
-      header: tm('unitPrice').toUpperCase(),
-      cell: info => info.getValue() != null && String(info.getValue()).trim() !== '' ? formatCurrency(Number(info.getValue()), 2, false) : '-',
-      size: 140
-    }),
-    columnHelper.accessor('salePriceUSD' as any, {
-      header: 'FİYAT (USD)',
-      cell: info => info.getValue() != null && String(info.getValue()).trim() !== '' ? formatAmountWithCode(Number(info.getValue()), 'USD', 2) : '-',
-      size: 120
-    }),
-    ...(showPurchasePricing
-      ? [
-          columnHelper.accessor('purchasePriceUSD' as any, {
-            header: 'ALIŞ (USD)',
-            cell: info => info.getValue() != null && String(info.getValue()).trim() !== '' ? formatAmountWithCode(Number(info.getValue()), 'USD', 2) : '-',
-            size: 120
-          }),
-        ]
-      : []),
-    columnHelper.accessor('taxRate', {
-      header: tm('tax').toUpperCase(),
-      cell: info => `%${info.getValue()}`,
-      size: 100
-    }),
-    columnHelper.accessor('totalSales', {
-      header: tm('salesTotal').toUpperCase(),
-      cell: info => (
-        <span className="text-green-600 font-medium font-bold">
-          {info.getValue() || 0}
-        </span>
-      ),
-      size: 120
-    }),
-    ...(showPurchasePricing
-      ? [
-          columnHelper.accessor('totalPurchased', {
-            header: tm('purchaseTotal').toUpperCase(),
-            cell: info => (
-              <span className="text-blue-600 font-medium font-bold">
-                {info.getValue() || 0}
-              </span>
-            ),
-            size: 120
-          }),
-        ]
-      : []),
-    columnHelper.accessor('stock', {
-      header: tm('stock').toUpperCase(),
-      cell: (info) => {
-        const raw = info.getValue();
-        const stock = typeof raw === 'number' ? raw : Number(raw ?? 0);
-        const safeStock = Number.isFinite(stock) ? stock : 0;
-        return (
-          <span className={safeStock < 10 ? 'text-red-600 font-medium' : 'text-gray-700'}>
-            {safeStock}
-          </span>
-        );
-      },
-      size: 100
-    }),
-    columnHelper.accessor('unit', {
-      header: tm('unit').toUpperCase(),
-      cell: info => info.getValue(),
-      size: 100
-    }),
-    ...(showTodayOnly
-      ? [
-          columnHelper.accessor('created_at', {
-            header: tm('productCreatedAt').toUpperCase(),
-            cell: (info) => {
-              const raw = info.getValue();
-              if (raw == null || String(raw).trim() === '') return '—';
-              const d = new Date(raw);
-              if (!Number.isFinite(d.getTime())) return '—';
-              return d.toLocaleString('tr-TR', {
-                day: '2-digit',
-                month: '2-digit',
-                year: 'numeric',
-                hour: '2-digit',
-                minute: '2-digit',
-              });
-            },
-            size: 150,
-          }),
-        ]
-      : []),
-  ], [tm, showPurchasePricing, showTodayOnly]);
+  const columns = useMemo<ColumnDef<Product, unknown>[]>(
+    () =>
+      buildProductGridColumns({
+        columnVisibility,
+        showPurchasePricing,
+        labelOverrides: columnLabelOverrides,
+      }),
+    [columnVisibility, showPurchasePricing, columnLabelOverrides]
+  );
 
   const columnVisibilityItems = useMemo(
     () =>
-      columns
-        .map((col) => {
-          const id = String((col as { id?: string; accessorKey?: string }).accessorKey ?? col.id ?? '');
-          if (!id || id === 'select' || id === 'actions') return null;
-          const header = col.header;
-          const label = typeof header === 'string' ? header : id;
-          return {
-            id,
-            label,
-            visible: columnVisibility[id] !== false,
-          };
-        })
-        .filter((x): x is { id: string; label: string; visible: boolean } => x != null),
-    [columns, columnVisibility]
+      productColumnVisibilityMenuItems({
+        columnVisibility,
+        showPurchasePricing,
+      }).map((item) => ({
+        ...item,
+        label: columnLabelOverrides[item.id as keyof typeof columnLabelOverrides] ?? item.label,
+      })),
+    [columnVisibility, showPurchasePricing, columnLabelOverrides]
   );
 
   return (
@@ -925,12 +795,12 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
               }}
               onShowAll={() => {
                 setColumnVisibility(
-                  Object.fromEntries(columnVisibilityItems.map((col) => [col.id, true]))
+                  Object.fromEntries(PRODUCT_GRID_COLUMN_ORDER.map((id) => [id, true]))
                 );
               }}
               onHideAll={() => {
                 setColumnVisibility(
-                  Object.fromEntries(columnVisibilityItems.map((col) => [col.id, false]))
+                  Object.fromEntries(PRODUCT_GRID_COLUMN_ORDER.map((id) => [id, false]))
                 );
               }}
             />

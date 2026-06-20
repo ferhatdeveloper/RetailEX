@@ -1,5 +1,5 @@
-﻿import { useState, useEffect, useRef } from 'react';
-import { Eye, EyeOff, Columns3 } from 'lucide-react';
+﻿import { useState, useEffect, useRef, useMemo } from 'react';
+import { Eye, EyeOff, Columns3, Search } from 'lucide-react';
 
 interface Column {
   id: string;
@@ -24,6 +24,7 @@ export function ColumnVisibilityMenu({
   variant = 'default',
 }: ColumnVisibilityMenuProps) {
   const [isOpen, setIsOpen] = useState(false);
+  const [search, setSearch] = useState('');
   const rootRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -38,6 +39,16 @@ export function ColumnVisibilityMenu({
   }, [isOpen]);
 
   const isToolbar = variant === 'toolbar';
+
+  const filteredColumns = useMemo(() => {
+    const q = search.trim().toLocaleLowerCase('tr-TR');
+    if (!q) return columns;
+    return columns.filter(
+      (c) =>
+        c.label.toLocaleLowerCase('tr-TR').includes(q) ||
+        c.id.toLocaleLowerCase('tr-TR').includes(q)
+    );
+  }, [columns, search]);
 
   return (
     <div className="relative" ref={rootRef}>
@@ -88,10 +99,23 @@ export function ColumnVisibilityMenu({
                 Tümünü Gizle
               </button>
             </div>
+            <div className="relative mt-2">
+              <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Kolon ara..."
+                className="w-full pl-8 pr-2 py-1.5 text-xs border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+              />
+            </div>
           </div>
 
           <div className="max-h-96 overflow-y-auto p-2">
-            {columns.map((column) => (
+            {filteredColumns.length === 0 ? (
+              <p className="text-xs text-gray-400 text-center py-4">Eşleşen kolon yok</p>
+            ) : (
+              filteredColumns.map((column) => (
               <label
                 key={column.id}
                 className="flex items-center gap-2 px-3 py-2 hover:bg-gray-50 rounded cursor-pointer"
@@ -109,8 +133,12 @@ export function ColumnVisibilityMenu({
                   <EyeOff className="w-4 h-4 text-gray-400 shrink-0" />
                 )}
               </label>
-            ))}
+            ))
+            )}
           </div>
+          <p className="px-3 py-2 text-[10px] text-gray-400 border-t border-gray-100">
+            Seçimler tarayıcıda kaydedilir (localStorage).
+          </p>
         </div>
       )}
     </div>
