@@ -10,7 +10,7 @@ import { useAuthStore } from '../../store/useAuthStore';
 
 /** Malzeme listesi: uzun metin kolonları hariç (ağ payload + parse maliyeti) */
 const PRODUCT_LIST_SELECT =
-  'id,firm_nr,code,barcode,name,name2,image_url,image_url_cdn,category_code,group_code,sub_group_code,brand,model,manufacturer,supplier,origin,material_type,unit,unitset_id,vat_rate,price,cost,stock,min_stock,max_stock,critical_stock,is_active,has_variants,special_code_1,special_code_2,special_code_3,special_code_4,special_code_5,special_code_6,price_list_1,price_list_2,price_list_3,price_list_4,price_list_5,price_list_6,currency,purchase_price_usd,purchase_price_eur,sale_price_usd,sale_price_eur,custom_exchange_rate,auto_calculate_usd,follow_up_reminder_days,is_scale_product,created_at,updated_at';
+  'id,firm_nr,code,barcode,name,name2,description_tr,description_en,description_ar,description_ku,image_url,image_url_cdn,category_code,group_code,sub_group_code,brand,model,manufacturer,supplier,origin,material_type,unit,unitset_id,vat_rate,price,cost,stock,min_stock,max_stock,critical_stock,is_active,has_variants,special_code_1,special_code_2,special_code_3,special_code_4,special_code_5,special_code_6,price_list_1,price_list_2,price_list_3,price_list_4,price_list_5,price_list_6,currency,purchase_price_usd,purchase_price_eur,sale_price_usd,sale_price_eur,custom_exchange_rate,auto_calculate_usd,follow_up_reminder_days,is_scale_product,created_at,updated_at';
 const PRODUCT_LIST_SELECT_SQL = PRODUCT_LIST_SELECT.replace(/,/g, ', ');
 /** Migration 035/047 öncesi tenant şemaları */
 const PRODUCT_LIST_SELECT_FALLBACK = PRODUCT_LIST_SELECT

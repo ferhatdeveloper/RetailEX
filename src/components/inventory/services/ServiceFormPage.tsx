@@ -311,18 +311,30 @@ export const ServiceFormPage = React.memo(({ serviceId, onClose, onSave }: Servi
     try {
       const translations = await translateToAllLanguages(trimmed);
       lastTranslatedTrRef.current = trimmed;
-      setFormData((prev: any) => ({
-        ...prev,
+      const descriptionPatch = {
+        description_tr: trimmed,
         description_en: translations.en,
         description_ar: translations.ar,
         description_ku: translations.ku,
+      };
+      setFormData((prev: any) => ({
+        ...prev,
+        ...descriptionPatch,
       }));
+
+      if (serviceId) {
+        await serviceAPI.update(serviceId, {
+          ...descriptionPatch,
+          name: trimmed,
+          description: trimmed,
+        });
+      }
     } catch (error) {
       console.error('Translation failed:', error);
     } finally {
       setIsTranslating(false);
     }
-  }, []);
+  }, [serviceId]);
 
   const handleDescriptionTrBlur = useCallback(
     (e: React.FocusEvent<HTMLInputElement>) => {
@@ -658,7 +670,7 @@ export const ServiceFormPage = React.memo(({ serviceId, onClose, onSave }: Servi
                       value={formData.description_en || ''}
                       onChange={(e) => handleInputChange('description_en', e.target.value)}
                       placeholder="Auto translated..."
-                      className="w-full px-2 py-1 border border-gray-200 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 bg-gray-50"
+                      className={`w-full px-2 py-1 border text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 ${formData.description_en ? 'border-gray-300 bg-white' : 'border-gray-200 bg-gray-50'}`}
                     />
                   </div>
 
@@ -672,7 +684,7 @@ export const ServiceFormPage = React.memo(({ serviceId, onClose, onSave }: Servi
                       onChange={(e) => handleInputChange('description_ar', e.target.value)}
                       placeholder="Auto translated..."
                       dir="rtl"
-                      className="w-full px-2 py-1 border border-gray-200 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 bg-gray-50"
+                      className={`w-full px-2 py-1 border text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 ${formData.description_ar ? 'border-gray-300 bg-white' : 'border-gray-200 bg-gray-50'}`}
                     />
                   </div>
 
@@ -686,7 +698,7 @@ export const ServiceFormPage = React.memo(({ serviceId, onClose, onSave }: Servi
                       onChange={(e) => handleInputChange('description_ku', e.target.value)}
                       placeholder="Auto translated..."
                       dir="rtl"
-                      className="w-full px-2 py-1 border border-gray-200 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 bg-gray-50"
+                      className={`w-full px-2 py-1 border text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 ${formData.description_ku ? 'border-gray-300 bg-white' : 'border-gray-200 bg-gray-50'}`}
                     />
                   </div>
                   <div className="col-span-6"></div>

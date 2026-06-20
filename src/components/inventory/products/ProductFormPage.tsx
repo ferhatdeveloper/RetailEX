@@ -708,169 +708,171 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
   /** Otomatik atanan değerin tekrar tekrar set edilmesini önlemek için flag. */
   const autoBarcodeAppliedRef = useRef(false);
 
-  // Load existing product
-  useEffect(() => {
-    if (productId && productId !== lastLoadedIdRef.current) {
-      const product = products.find((p: Product) => p.id === productId);
-      console.log('[ProductFormPage] Loading product data from store:', productId, product);
+  const applyProductToForm = useCallback((product: Product) => {
+    setFormData((prev: any) => ({
+      ...prev,
+      id: product.id || '',
+      code: product.code || '',
+      materialType: product.materialType || 'commercial_goods',
+      name: product.name || '',
+      category: product.category || '',
+      categoryId: product.categoryId || '',
+      unit: product.unit || 'Adet',
+      taxRate: product.taxRate || 0,
+      purchasePrice: product.cost || 0,
+      salePrice: product.price || 0,
+      stock: product.stock || 0,
+      minStock: product.minStock ?? product.min_stock ?? 0,
+      maxStock: (product as any).maxStock ?? product.max_stock ?? 0,
+      criticalStock: product.criticalStock ?? (product as any).critical_stock ?? 0,
+      description_tr: product.description_tr || product.name || '',
+      description_en: product.description_en || '',
+      description_ar: product.description_ar || '',
+      description_ku: product.description_ku || '',
+      brand: product.brand || '',
+      model: product.model || '',
+      manufacturer: product.manufacturer || '',
+      supplier: product.supplier || '',
+      origin: product.origin || '',
+      categoryCode: product.categoryCode || '',
+      groupCode: product.groupCode || '',
+      subGroupCode: product.subGroupCode || '',
+      image_url: product.image_url || '',
+      image_url_cdn: (product as any).image_url_cdn || '',
+      specialCode1: product.specialCode1 || '',
+      specialCode2: product.specialCode2 || '',
+      specialCode3: product.specialCode3 || '',
+      specialCode4: product.specialCode4 || '',
+      specialCode5: product.specialCode5 || '',
+      specialCode6: product.specialCode6 || '',
+      priceList1: product.priceList1 || 0,
+      priceList2: product.priceList2 || 0,
+      priceList3: product.priceList3 || 0,
+      priceList4: product.priceList4 || 0,
+      priceList5: product.priceList5 || 0,
+      priceList6: product.priceList6 || 0,
+      salePriceUSD: product.salePriceUSD || 0,
+      purchasePriceUSD: product.purchasePriceUSD || 0,
+      salePriceEUR: (product as any).salePriceEUR || 0,
+      purchasePriceEUR: (product as any).purchasePriceEUR || 0,
+      customExchangeRate: product.customExchangeRate || usdExchangeRate || 0,
+      autoCalculateUSD: product.autoCalculateUSD || false,
+      currency: (product as any).currency || prev.currency || 'IQD',
+      followUpReminderDays: (() => {
+        const v = (product as any).followUpReminderDays ?? (product as any).follow_up_reminder_days;
+        if (v == null || v === '') return '' as number | '';
+        const n = Math.round(Number(v));
+        if (!Number.isFinite(n) || n <= 0) return '' as number | '';
+        return Math.min(3650, n) as number | '';
+      })(),
+      isScaleProduct: product.isScaleProduct === true || (product as any).is_scale_product === true,
+    }));
+    lastTranslatedTrRef.current = (product.description_tr || product.name || '').trim();
+    setSelectedUnitSetId((product as any).unitsetId || '');
 
-      if (product) {
-        setFormData((prev: any) => ({
-          ...prev,
-          id: product.id || '',
-          code: product.code || '',
-          materialType: product.materialType || 'commercial_goods',
-          name: product.name || '',
-          category: product.category || '',
-          categoryId: product.categoryId || '',
-          unit: product.unit || 'Adet',
-          taxRate: product.taxRate || 0,
-          purchasePrice: product.cost || 0,
-          salePrice: product.price || 0,
-          stock: product.stock || 0,
-          minStock: product.minStock ?? product.min_stock ?? 0,
-          maxStock: (product as any).maxStock ?? product.max_stock ?? 0,
-          criticalStock: product.criticalStock ?? (product as any).critical_stock ?? 0,
-          // Load multilingual descriptions
-          description_tr: product.description_tr || product.name || '',
-          description_en: product.description_en || '',
-          description_ar: product.description_ar || '',
-          description_ku: product.description_ku || '',
-          // Load additional metadata if available
-          brand: product.brand || '',
-          model: product.model || '',
-          manufacturer: product.manufacturer || '',
-          supplier: product.supplier || '',
-          origin: product.origin || '',
-          categoryCode: product.categoryCode || '',
-          groupCode: product.groupCode || '',
-          subGroupCode: product.subGroupCode || '',
-          image_url: product.image_url || '',
-          image_url_cdn: (product as any).image_url_cdn || '',
-          specialCode1: product.specialCode1 || '',
-          specialCode2: product.specialCode2 || '',
-          specialCode3: product.specialCode3 || '',
-          specialCode4: product.specialCode4 || '',
-          specialCode5: product.specialCode5 || '',
-          specialCode6: product.specialCode6 || '',
-          priceList1: product.priceList1 || 0,
-          priceList2: product.priceList2 || 0,
-          priceList3: product.priceList3 || 0,
-          priceList4: product.priceList4 || 0,
-          priceList5: product.priceList5 || 0,
-          priceList6: product.priceList6 || 0,
-          salePriceUSD: product.salePriceUSD || 0,
-          purchasePriceUSD: product.purchasePriceUSD || 0,
-          salePriceEUR: (product as any).salePriceEUR || 0,
-          purchasePriceEUR: (product as any).purchasePriceEUR || 0,
-          customExchangeRate: product.customExchangeRate || usdExchangeRate || 0,
-          autoCalculateUSD: product.autoCalculateUSD || false,
-          currency: (product as any).currency || prev.currency || 'IQD',
-          followUpReminderDays: (() => {
-            const v = (product as any).followUpReminderDays ?? (product as any).follow_up_reminder_days;
-            if (v == null || v === '') return '' as number | '';
-            const n = Math.round(Number(v));
-            if (!Number.isFinite(n) || n <= 0) return '' as number | '';
-            return Math.min(3650, n) as number | '';
-          })(),
-          isScaleProduct: product.isScaleProduct === true || (product as any).is_scale_product === true,
-        }));
-        lastTranslatedTrRef.current = (product.description_tr || product.name || '').trim();
-
-        // Restore unitset selection
-        setSelectedUnitSetId((product as any).unitsetId || '');
-
-        // Load barcodes from product_barcodes table; fall back to single barcode field
-        productUnitsAPI.getBarcodesByProductId(product.id).then(dbBarcodes => {
-          if (dbBarcodes.length > 0) {
-            setBarcodes(dbBarcodes.map(b => ({
-              id: b.id,
-              code: b.barcode_code,
-              unit: b.unit || product.unit || '',
-              isPrimary: b.is_primary,
-            })));
-          } else if (product.barcode) {
-            setBarcodes([{ id: '1', code: product.barcode, unit: product.unit || '', isPrimary: true }]);
-          }
-        });
-
-        // Load unit conversions from product_unit_conversions table
-        productUnitsAPI.getUnitConversionsByProductId(product.id).then(dbConversions => {
-          if (dbConversions.length > 0) {
-            setUnitConversions(dbConversions.map(c => ({
-              id: c.id,
-              fromUnit: c.from_unit,
-              toUnit: c.to_unit,
-              factor: Number(c.factor),
-            })));
-          }
-        });
-
-        // VARYANTLARI YÜKLE - Doğrudan DB'den çek (product store variants içermez!)
-        setHasVariants(product.hasVariants || false);
-        productVariantAPI.getByProductId(product.id).then(dbVariants => {
-          if (dbVariants && dbVariants.length > 0) {
-            setHasVariants(true);
-
-            // Varyant özelliklerini tüm attribute alanlarından çıkar
-            const attributeMap = new Map<string, Set<string>>();
-            dbVariants.forEach((v: ProductVariant & { is_active?: boolean }) => {
-              if (v.size) {
-                if (!attributeMap.has('Beden')) attributeMap.set('Beden', new Set());
-                attributeMap.get('Beden')!.add(v.size);
-              }
-              if (v.color) {
-                if (!attributeMap.has('Renk')) attributeMap.set('Renk', new Set());
-                attributeMap.get('Renk')!.add(v.color);
-              }
-            });
-
-            // Attribute state'ini oluştur
-            const loadedAttributes: VariantAttribute[] = [];
-            attributeMap.forEach((values, name) => {
-              loadedAttributes.push({
-                id: Date.now().toString() + Math.random(),
-                name,
-                values: Array.from(values)
-              });
-            });
-            setVariantAttributes(loadedAttributes);
-
-            // Varyant listesini oluştur
-            const loadedVariants: FormVariant[] = dbVariants.map((v: ProductVariant) => ({
-              id: v.id,
-              attributes: {
-                ...(v.size ? { 'Beden': v.size } : {}),
-                ...(v.color ? { 'Renk': v.color } : {})
-              },
-              barcode: v.barcode || '',
-              code: v.code || '',
-              stock: v.stock || 0,
-              purchasePrice: v.cost || product.cost || 0,
-              salePrice: v.price || product.price || 0,
-              enabled: true
-            }));
-            setVariants(loadedVariants);
-          } else {
-            setVariants([]);
-            setVariantAttributes([]);
-          }
-        }).catch(err => {
-          console.error('[ProductFormPage] Variant load error:', err);
-          setVariants([]);
-          setVariantAttributes([]);
-        });
-
-        // Mark as loaded
-        lastLoadedIdRef.current = productId;
+    productUnitsAPI.getBarcodesByProductId(product.id).then(dbBarcodes => {
+      if (dbBarcodes.length > 0) {
+        setBarcodes(dbBarcodes.map(b => ({
+          id: b.id,
+          code: b.barcode_code,
+          unit: b.unit || product.unit || '',
+          isPrimary: b.is_primary,
+        })));
+      } else if (product.barcode) {
+        setBarcodes([{ id: '1', code: product.barcode, unit: product.unit || '', isPrimary: true }]);
       }
-    } else if (!productId) {
-      // Clear ref when switching to "Add" mode so that if we return to the same product 
-      // later (even with same ID if deleted and recreated, though unlikely here), it works.
-      // More importantly, it resets the loading logic state.
+    });
+
+    productUnitsAPI.getUnitConversionsByProductId(product.id).then(dbConversions => {
+      if (dbConversions.length > 0) {
+        setUnitConversions(dbConversions.map(c => ({
+          id: c.id,
+          fromUnit: c.from_unit,
+          toUnit: c.to_unit,
+          factor: Number(c.factor),
+        })));
+      }
+    });
+
+    setHasVariants(product.hasVariants || false);
+    productVariantAPI.getByProductId(product.id).then(dbVariants => {
+      if (dbVariants && dbVariants.length > 0) {
+        setHasVariants(true);
+        const attributeMap = new Map<string, Set<string>>();
+        dbVariants.forEach((v: ProductVariant & { is_active?: boolean }) => {
+          if (v.size) {
+            if (!attributeMap.has('Beden')) attributeMap.set('Beden', new Set());
+            attributeMap.get('Beden')!.add(v.size);
+          }
+          if (v.color) {
+            if (!attributeMap.has('Renk')) attributeMap.set('Renk', new Set());
+            attributeMap.get('Renk')!.add(v.color);
+          }
+        });
+        const loadedAttributes: VariantAttribute[] = [];
+        attributeMap.forEach((values, name) => {
+          loadedAttributes.push({
+            id: Date.now().toString() + Math.random(),
+            name,
+            values: Array.from(values),
+          });
+        });
+        setVariantAttributes(loadedAttributes);
+        const loadedVariants: FormVariant[] = dbVariants.map((v: ProductVariant) => ({
+          id: v.id,
+          attributes: {
+            ...(v.size ? { Beden: v.size } : {}),
+            ...(v.color ? { Renk: v.color } : {}),
+          },
+          barcode: v.barcode || '',
+          code: v.code || '',
+          stock: v.stock || 0,
+          purchasePrice: v.cost || product.cost || 0,
+          salePrice: v.price || product.price || 0,
+          enabled: true,
+        }));
+        setVariants(loadedVariants);
+      } else {
+        setVariants([]);
+        setVariantAttributes([]);
+      }
+    }).catch(err => {
+      console.error('[ProductFormPage] Variant load error:', err);
+      setVariants([]);
+      setVariantAttributes([]);
+    });
+  }, [usdExchangeRate]);
+
+  // Load existing product — tam kayıt DB'den (liste sorgusu çeviri kolonlarını atlayabilir)
+  useEffect(() => {
+    if (!productId) {
       lastLoadedIdRef.current = null;
+      return;
     }
-  }, [productId, products]);
+    if (productId === lastLoadedIdRef.current) return;
+
+    let cancelled = false;
+    const storeProduct = products.find((p: Product) => p.id === productId);
+
+    (async () => {
+      try {
+        const product = (await productAPI.getById(productId)) ?? storeProduct ?? null;
+        if (cancelled || !product) return;
+        applyProductToForm(product);
+        lastLoadedIdRef.current = productId;
+      } catch (error) {
+        console.error('[ProductFormPage] getById failed:', error);
+        if (!cancelled && storeProduct) {
+          applyProductToForm(storeProduct);
+          lastLoadedIdRef.current = productId;
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [productId, products, applyProductToForm]);
 
   /**
    * Mevcut ürün barkodlarının numerik en büyüğünü bulup +1 eklenmiş haliyle döner.
@@ -999,20 +1001,32 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
     try {
       const translations = await translateToAllLanguages(trimmed);
       lastTranslatedTrRef.current = trimmed;
-      setFormData((prev: any) => ({
-        ...prev,
+      const descriptionPatch = {
+        description_tr: trimmed,
         description_en: translations.en,
         description_ar: translations.ar,
         description_ku: translations.ku,
+      };
+      setFormData((prev: any) => ({
+        ...prev,
+        ...descriptionPatch,
       }));
-      toast.success('Çeviri tamamlandı!');
+
+      if (productId) {
+        await productAPI.update(productId, {
+          ...descriptionPatch,
+          name: trimmed,
+        });
+      }
+
+      toast.success(productId ? 'Çeviri tamamlandı ve kaydedildi!' : 'Çeviri tamamlandı!');
     } catch (error) {
       console.error('Translation failed:', error);
       toast.error('Çeviri başarısız oldu');
     } finally {
       setIsTranslating(false);
     }
-  }, []);
+  }, [productId]);
 
   const handleDescriptionTrBlur = useCallback(
     (e: React.FocusEvent<HTMLInputElement>) => {
@@ -1955,7 +1969,7 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                       value={formData.description_en || ''}
                       onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleInputChange('description_en', e.target.value)}
                       placeholder={tm('autoTranslatedFromTurkish')}
-                      className="w-full px-2 py-1 border border-gray-200 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 bg-gray-50"
+                      className={`w-full px-2 py-1 border text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 ${formData.description_en ? 'border-gray-300 bg-white' : 'border-gray-200 bg-gray-50'}`}
                     />
                   </div>
 
@@ -1969,7 +1983,7 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                       onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleInputChange('description_ar', e.target.value)}
                       placeholder={tm('autoTranslatedFromTurkish')}
                       dir="rtl"
-                      className="w-full px-2 py-1 border border-gray-200 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 bg-gray-50"
+                      className={`w-full px-2 py-1 border text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 ${formData.description_ar ? 'border-gray-300 bg-white' : 'border-gray-200 bg-gray-50'}`}
                     />
                   </div>
 
@@ -1983,7 +1997,7 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                       onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleInputChange('description_ku', e.target.value)}
                       placeholder={tm('autoTranslatedFromTurkish')}
                       dir="rtl"
-                      className="w-full px-2 py-1 border border-gray-200 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 bg-gray-50"
+                      className={`w-full px-2 py-1 border text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 ${formData.description_ku ? 'border-gray-300 bg-white' : 'border-gray-200 bg-gray-50'}`}
                     />
                   </div>
                   <div className="col-span-6 max-lg:hidden" aria-hidden />
