@@ -128,15 +128,17 @@ export async function sendProductsToScale(
     // Ürünleri terazi formatına dönüştür — kod/barkod son 6 hane PLU (örn. 100000001 → 000001)
     const scaleProducts: ScaleProduct[] = products.map((product, index) => {
       const numeric = String(product.code || product.barcode || '').replace(/\D/g, '');
-      const lfPlu =
-        numeric.slice(-6).padStart(6, '0') ||
-        String(pluStartIndex + index).padStart(5, '0');
+      const pluCode =
+        numeric.length >= 10
+          ? numeric.padStart(10, '0').slice(-10)
+          : numeric.slice(-6).padStart(6, '0') ||
+            String(pluStartIndex + index).padStart(5, '0');
       return {
-        pluCode: lfPlu,
+        pluCode,
         name: product.name.substring(0, 40),
         price: product.price,
         unit: product.unit,
-        barcode: product.barcode || product.code,
+        barcode: product.barcode || product.code || pluCode,
         tare: 0,
         shelfLife: 0,
         expiryDays: 0,

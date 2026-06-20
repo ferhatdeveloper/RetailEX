@@ -753,7 +753,8 @@ export default function MarketPOS({
         addToCart(product, undefined, quantity, unitName, unitMultiplier, price);
         return true;
       } else {
-        if (trimmedBarcode.length === 13) {
+        const scaleBarcodeLen = trimmedBarcode.length;
+        if (scaleBarcodeLen >= 13 && scaleBarcodeLen <= 15 && /^\d+$/.test(trimmedBarcode)) {
           const scaleSale = await resolveScaleBarcodeSale(trimmedBarcode, exchangeRate);
           if (scaleSale) {
             addToCart(

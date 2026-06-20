@@ -15,6 +15,7 @@ export type BarcodeFormat =
   | 'rongta_type99'
   | 'rongta_fixed_weight'
   | 'rongta_dept_plu6'
+  | 'code10_weight'
   | 'logo_tiger'
   | 'price_based'
   | 'weight_end'
@@ -67,6 +68,26 @@ function parseFixedPrefixWeight(trimmed: string): ParsedBarcode | null {
   };
 }
 
+/**
+ * 14+ hane: ürün kodu(10) + ağırlık(4+)
+ * Örn. 10000000091610 → kod 1000000009, ağırlık 1610 (gr veya ÷1000 kg)
+ */
+function parseCode10WeightSuffix(trimmed: string): ParsedBarcode | null {
+  if (!/^\d{14,15}$/.test(trimmed)) return null;
+  if (!trimmed.startsWith('10')) return null;
+  const productCode = trimmed.substring(0, 10);
+  if (!productCode.replace(/0/g, '')) return null;
+  const weight = parseWeightDigits(trimmed.substring(10));
+  if (weight <= 0) return null;
+  return {
+    isWeightBased: true,
+    productCode,
+    weight,
+    originalBarcode: trimmed,
+    format: 'code10_weight',
+  };
+}
+
 /** PLU ayarı tip 25–29 (grup 21–29): D(1) + PLU(6) + WW.WWW(5) — barkod 10… / 20… ile başlayabilir */
 function parseDeptPlus6Plu(trimmed: string): ParsedBarcode | null {
   const deptDigit = trimmed[0];
@@ -96,6 +117,30 @@ export function rongtaWeightFieldToKg(fieldValue: number): number {
   return Math.round(kg * 1000) / 1000;
 }
 
+function normalizeScaleUnit(unit?: string): string {
+  return (unit ?? 'KG').toUpperCase().replace(/İ/g, 'I');
+}
+
+export function isGramScaleUnit(unit?: string): boolean {
+  const u = normalizeScaleUnit(unit);
+  return u === 'GR' || u === 'G' || u === 'GRAM' || u === 'GRM';
+}
+
+/** Tartı ağırlık alanı → satış miktarı (GR: gram; KG/LT: kg). */
+export function scaleWeightFieldToQuantity(
+  fieldValue: number,
+  unit?: string,
+): { quantity: number; unitName: string } {
+  if (!Number.isFinite(fieldValue) || fieldValue <= 0) {
+    return { quantity: 0, unitName: scaleSaleUnitLabel(normalizeScaleUnit(unit)) };
+  }
+  if (isGramScaleUnit(unit)) {
+    return { quantity: Math.round(fieldValue), unitName: 'GR' };
+  }
+  const kg = rongtaWeightFieldToKg(fieldValue);
+  return { quantity: kg, unitName: scaleSaleUnitLabel(normalizeScaleUnit(unit)) };
+}
+
 function dedupeParsed(list: ParsedBarcode[]): ParsedBarcode[] {
   const seen = new Set<string>();
   const out: ParsedBarcode[] = [];
@@ -122,6 +167,9 @@ export function parseBarcodeVariants(barcode: string): ParsedBarcode[] {
     variants.push(primary);
   }
 
+  const composite = parseCode10WeightSuffix(trimmed);
+  if (composite) variants.push(composite);
+
   if (trimmed.length === 13 && /^\d{13}$/.test(trimmed)) {
     const prefixNum = parseInt(trimmed.substring(0, 2), 10);
     if (prefixNum >= 10 && prefixNum <= 19) {
@@ -141,6 +189,9 @@ export function parseBarcodeVariants(barcode: string): ParsedBarcode[] {
  */
 export function parseBarcode(barcode: string): ParsedBarcode {
   const trimmed = barcode.trim();
+
+  const composite = parseCode10WeightSuffix(trimmed);
+  if (composite) return composite;
 
   if (trimmed.length !== 13 || !/^\d{13}$/.test(trimmed)) {
     return { isWeightBased: false, originalBarcode: trimmed };
@@ -219,6 +270,7 @@ export function convertPrice(priceFieldValue: number, currency?: string | null):
 
 export function isWeightBasedBarcode(barcode: string): boolean {
   const trimmed = barcode.trim();
+  if (parseCode10WeightSuffix(trimmed)) return true;
   if (trimmed.length !== 13 || !/^\d{13}$/.test(trimmed)) return false;
   const prefix = parseInt(trimmed.substring(0, 2), 10);
   if (prefix >= 10 && prefix <= 19) return parseDeptPlus6Plu(trimmed) != null;
@@ -241,6 +293,8 @@ export function getBarcodeFormatInfo(parsed: ParsedBarcode): string {
       return `Rongta sabit prefix + PLU + gram${typeHint}`;
     case 'rongta_dept_plu6':
       return `Rongta: dept + 6 PLU + gram${typeHint}`;
+    case 'code10_weight':
+      return 'Tartılı: 10 hane kod + ağırlık (gr/kg)';
     case 'logo_tiger':
       return 'Logo Tiger: 20/21 + 4 PLU + gram';
     case 'price_based':

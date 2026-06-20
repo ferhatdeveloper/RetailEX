@@ -7,9 +7,9 @@ import { productAPI } from '../services/api/products';
 import {
   convertPrice,
   getBarcodeFormatInfo,
+  isGramScaleUnit,
   parseBarcodeVariants,
-  rongtaWeightFieldToKg,
-  scaleSaleUnitLabel,
+  scaleWeightFieldToQuantity,
   type ParsedBarcode,
 } from './barcodeParser';
 import { getGlobalCurrency, roundMoneyAmount } from './currency';
@@ -40,9 +40,11 @@ function pluCodeVariants(code: string): string[] {
     stripped.padStart(4, '0'),
     stripped.padStart(5, '0'),
     stripped.padStart(6, '0'),
+    stripped.padStart(10, '0'),
     t.padStart(4, '0'),
     t.padStart(5, '0'),
     t.padStart(6, '0'),
+    t.padStart(10, '0'),
   ]);
 
   // Uzun tartı kodu: 100000001 ↔ terazi PLU 000001 (dept 1 + 8 hane)
@@ -80,11 +82,12 @@ async function findProductByPlu(productCode: string): Promise<Product | null> {
   return productAPI.getScaleProductByPlu(productCode);
 }
 
-function resolveUnitPricePerKg(
+function resolveUnitPriceForScale(
   product: Product,
   exchangeRate: number,
+  unitUpper: string,
 ): number {
-  let price = Number(product.price) || 0;
+  let pricePerKg = Number(product.price) || 0;
   const isAutoCalc =
     (product as Product & { autoCalculateUSD?: boolean }).autoCalculateUSD ||
     (product as Product & { auto_calculate_usd?: boolean }).auto_calculate_usd;
@@ -101,9 +104,13 @@ function resolveUnitPricePerKg(
           0,
       ) || exchangeRate;
     if (rate > 0 && rate < 10) rate *= 1000;
-    if (rate > 0) price = saleUsd * rate;
+    if (rate > 0) pricePerKg = saleUsd * rate;
   }
-  return roundMoneyAmount(price, resolveSaleCurrency(product));
+  const currency = resolveSaleCurrency(product);
+  if (isGramScaleUnit(unitUpper)) {
+    return roundMoneyAmount(pricePerKg / 1000, currency);
+  }
+  return roundMoneyAmount(pricePerKg, currency);
 }
 
 /**
@@ -155,18 +162,19 @@ async function resolveParsedScaleBarcode(
   const weightField = parsed.weight;
   if (!(weightField > 0)) return null;
 
-  const weightKg = rongtaWeightFieldToKg(weightField);
-  if (!(weightKg > 0)) return null;
+  const { quantity, unitName } = scaleWeightFieldToQuantity(weightField, unitUpper);
+  if (!(quantity > 0)) return null;
 
-  const unitPrice = resolveUnitPricePerKg(product, exchangeRate);
+  const unitPrice = resolveUnitPriceForScale(product, exchangeRate, unitUpper);
   if (!(unitPrice > 0) && !isScaleProductFlag(product)) return null;
 
-  const unitName = scaleSaleUnitLabel(unitUpper);
-  const weightGrams = Math.round(weightKg * 1000);
+  const weightGrams = isGramScaleUnit(unitUpper)
+    ? Math.round(quantity)
+    : Math.round(quantity * 1000);
 
   return {
     product,
-    quantity: weightKg,
+    quantity,
     unitName,
     unitPrice,
     parsed,

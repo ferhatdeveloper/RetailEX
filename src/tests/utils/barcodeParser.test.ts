@@ -5,6 +5,7 @@ import {
   parseBarcode,
   parseBarcodeVariants,
   rongtaWeightFieldToKg,
+  scaleWeightFieldToQuantity,
   isWeightBasedBarcode,
 } from '../../utils/barcodeParser';
 import { roundMoneyAmount } from '../../utils/currency';
@@ -22,6 +23,23 @@ describe('barcodeParser — tartılı barkod', () => {
     expect(parsed.productCode).toBe('00001');
     expect(parsed.weight).toBe(1300);
     expect(rongtaWeightFieldToKg(parsed.weight!)).toBe(1.3);
+  });
+
+  it('14 hane: 1000000009 + 1610 (1,61 kg)', () => {
+    const parsed = parseBarcode('10000000091610');
+    expect(parsed.isWeightBased).toBe(true);
+    expect(parsed.format).toBe('code10_weight');
+    expect(parsed.productCode).toBe('1000000009');
+    expect(parsed.weight).toBe(1610);
+    const kg = scaleWeightFieldToQuantity(parsed.weight!, 'KG');
+    expect(kg.quantity).toBe(1.61);
+    expect(kg.unitName).toBe('KG');
+  });
+
+  it('14 hane GR birimi: ağırlık alanı gram olarak kalır', () => {
+    const gr = scaleWeightFieldToQuantity(1610, 'GR');
+    expect(gr.quantity).toBe(1610);
+    expect(gr.unitName).toBe('GR');
   });
 
   it('Ürün kodu 100000001: dept 1 + PLU 000001 + 1,300 kg', () => {
@@ -88,6 +106,7 @@ describe('barcodeParser — tartılı barkod', () => {
   });
 
   it('isWeightBasedBarcode', () => {
+    expect(isWeightBasedBarcode('10000000091610')).toBe(true);
     expect(isWeightBasedBarcode('2700001013000')).toBe(true);
     expect(isWeightBasedBarcode('2000001013000')).toBe(true);
     expect(isWeightBasedBarcode('2312345012990')).toBe(false);
