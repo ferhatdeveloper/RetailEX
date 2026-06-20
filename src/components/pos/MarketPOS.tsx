@@ -818,6 +818,12 @@ export default function MarketPOS({
       price = customPrice;
     }
 
+    const saleCurrency =
+      (product.currency || selectedFirm?.ana_para_birimi || getGlobalCurrency())
+        .trim()
+        .toUpperCase();
+    price = roundMoneyAmount(price, saleCurrency);
+
     const parsedQty = customQuantity != null
       ? parsePosQuantityForProduct(customQuantity, product)
       : 1;
@@ -835,7 +841,14 @@ export default function MarketPOS({
       if (existingItem) {
         return prev.map(item =>
           (variant ? item.product.id === product.id && item.variant?.id === variant.id : item.product.id === product.id && !item.variant && item.unit === itemUnit)
-            ? { ...item, quantity: item.quantity + quantity, subtotal: lineNetAfterPercentDiscount((item.quantity + quantity) * price, item.discount) }
+            ? {
+                ...item,
+                quantity: item.quantity + quantity,
+                subtotal: lineNetAfterPercentDiscount(
+                  roundMoneyAmount((item.quantity + quantity) * price, saleCurrency),
+                  item.discount,
+                ),
+              }
             : item
         );
       }
@@ -846,7 +859,7 @@ export default function MarketPOS({
         unit: itemUnit,
         multiplier,
         discount: 0,
-        subtotal: price * quantity,
+        subtotal: roundMoneyAmount(price * quantity, saleCurrency),
         price
       }];
     });

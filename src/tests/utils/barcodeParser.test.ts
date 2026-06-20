@@ -1,11 +1,13 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
+  convertPrice,
   convertWeight,
   parseBarcode,
   parseBarcodeVariants,
   rongtaWeightFieldToKg,
   isWeightBasedBarcode,
 } from '../../utils/barcodeParser';
+import { roundMoneyAmount } from '../../utils/currency';
 import { getScaleBarcodeType, setScaleBarcodeType } from '../../utils/scaleBarcodeConfig';
 
 describe('barcodeParser — tartılı barkod', () => {
@@ -79,5 +81,20 @@ describe('barcodeParser — tartılı barkod', () => {
 
   it('varsayılan barkod tipi 99', () => {
     expect(getScaleBarcodeType()).toBe(99);
+  });
+
+  it('convertPrice IQD: barkod alanı doğrudan tam dinar', () => {
+    expect(convertPrice(1299, 'IQD')).toBe(1299);
+    expect(convertPrice(15000, 'IQD')).toBe(15000);
+  });
+
+  it('convertPrice USD: alan cent/kuruş (÷100)', () => {
+    expect(convertPrice(1299, 'USD')).toBe(12.99);
+  });
+
+  it('tartılı satır IQD: 1,3 kg × 15.000 IQD/kg = 19.500', () => {
+    const qty = rongtaWeightFieldToKg(1300);
+    expect(qty).toBe(1.3);
+    expect(roundMoneyAmount(qty * 15000, 'IQD')).toBe(19500);
   });
 });

@@ -7,6 +7,7 @@
  * **Tip 27 (PLU ayarı)**: D(1) + PLU(6) + WW.WWW(5) — alternatif parse denenir.
  */
 
+import { getCurrencyDecimalPlaces } from './currency';
 import { getScaleBarcodeType } from './scaleBarcodeConfig';
 
 export type BarcodeFormat =
@@ -194,8 +195,12 @@ export function scaleSaleUnitLabel(unit: string): string {
   return unit || 'KG';
 }
 
-export function convertPrice(priceInCents: number): number {
-  return priceInCents / 100;
+/** Fiyat barkodu alanı → para birimi tutarı (IQD tam sayı; USD/EUR ÷100). */
+export function convertPrice(priceFieldValue: number, currency?: string | null): number {
+  const n = Number(priceFieldValue);
+  if (!Number.isFinite(n)) return 0;
+  if (getCurrencyDecimalPlaces(currency) === 0) return Math.round(n);
+  return n / 100;
 }
 
 export function isWeightBasedBarcode(barcode: string): boolean {

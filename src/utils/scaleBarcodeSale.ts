@@ -12,6 +12,7 @@ import {
   scaleSaleUnitLabel,
   type ParsedBarcode,
 } from './barcodeParser';
+import { getGlobalCurrency, roundMoneyAmount } from './currency';
 import { isScaleProductFlag } from './scaleProductFilter';
 
 export interface ScaleBarcodeSaleResult {
@@ -22,6 +23,11 @@ export interface ScaleBarcodeSaleResult {
   parsed: ParsedBarcode;
   formatInfo: string;
   weightGrams: number;
+}
+
+function resolveSaleCurrency(product: Product): string {
+  const raw = (product as Product & { currency?: string }).currency;
+  return String(raw ?? getGlobalCurrency()).trim().toUpperCase() || 'IQD';
 }
 
 function pluCodeVariants(code: string): string[] {
@@ -82,7 +88,7 @@ function resolveUnitPricePerKg(
     if (rate > 0 && rate < 10) rate *= 1000;
     if (rate > 0) price = saleUsd * rate;
   }
-  return price;
+  return roundMoneyAmount(price, resolveSaleCurrency(product));
 }
 
 /**
@@ -116,7 +122,8 @@ async function resolveParsedScaleBarcode(
   const unitUpper = unit.toUpperCase().replace(/İ/g, 'I');
 
   if (parsed.isPriceBased && parsed.price != null) {
-    const lineTotal = convertPrice(parsed.price);
+    const currency = resolveSaleCurrency(product);
+    const lineTotal = roundMoneyAmount(convertPrice(parsed.price, currency), currency);
     return {
       product,
       quantity: 1,
