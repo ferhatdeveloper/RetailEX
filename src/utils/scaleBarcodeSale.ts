@@ -1,14 +1,15 @@
 /**
  * Tartılı ürün barkodu → satış satırı (kg × birim fiyat veya gömülü fiyat).
- * Format: 20PPPPWWWWWC (Logo Tiger / XXXX + KGDEGERİ gram)
+ * Rongta tip 27: 27 + PLU(5) + gram(5) + kontrol hanesi
  */
-import type { Product } from '../App';
+import type { Product } from '../core/types';
 import { productAPI } from '../services/api/products';
 import {
   convertPrice,
   convertWeight,
   getBarcodeFormatInfo,
   parseBarcode,
+  scaleSaleUnitLabel,
   type ParsedBarcode,
 } from './barcodeParser';
 import { isScaleProductFlag } from './scaleProductFilter';
@@ -20,6 +21,7 @@ export interface ScaleBarcodeSaleResult {
   unitPrice: number;
   parsed: ParsedBarcode;
   formatInfo: string;
+  weightGrams: number;
 }
 
 function pluCodeVariants(code: string): string[] {
@@ -31,19 +33,29 @@ function pluCodeVariants(code: string): string[] {
     stripped,
     stripped.padStart(4, '0'),
     stripped.padStart(5, '0'),
+    stripped.padStart(6, '0'),
     t.padStart(4, '0'),
     t.padStart(5, '0'),
+    t.padStart(6, '0'),
   ]);
   return [...out].filter(Boolean);
 }
 
 async function findProductByPlu(productCode: string): Promise<Product | null> {
   for (const code of pluCodeVariants(productCode)) {
+    const scaleProduct = await productAPI.getScaleProductByPlu(code);
+    if (scaleProduct) return scaleProduct;
+  }
+  for (const code of pluCodeVariants(productCode)) {
     const p = await productAPI.getByCode(code);
-    if (p) return p;
+    if (p && isScaleProductFlag(p)) return p;
   }
   const bySpecial = await productAPI.getBySpecialCode(productCode);
   if (bySpecial) return bySpecial;
+  for (const code of pluCodeVariants(productCode)) {
+    const p = await productAPI.getByCode(code);
+    if (p) return p;
+  }
   return productAPI.getScaleProductByPlu(productCode);
 }
 
@@ -74,7 +86,7 @@ function resolveUnitPricePerKg(
 }
 
 /**
- * Tam barkod eşleşmesi yoksa tartılı EAN-13 parse eder; kg × fiyat hesaplar.
+ * Tam barkod eşleşmesi yoksa tartılı EAN-13 parse eder; kg × birim fiyat hesaplar.
  */
 export async function resolveScaleBarcodeSale(
   barcode: string,
@@ -88,7 +100,7 @@ export async function resolveScaleBarcodeSale(
   if (!product) return null;
 
   const unit = (product.unit || 'KG').toString();
-  const unitUpper = unit.toUpperCase();
+  const unitUpper = unit.toUpperCase().replace(/İ/g, 'I');
 
   if (parsed.isPriceBased && parsed.price != null) {
     const lineTotal = convertPrice(parsed.price);
@@ -99,23 +111,30 @@ export async function resolveScaleBarcodeSale(
       unitPrice: lineTotal,
       parsed,
       formatInfo: getBarcodeFormatInfo(parsed),
+      weightGrams: 0,
     };
   }
 
   if (!parsed.isWeightBased || parsed.weight == null) return null;
 
-  const qty = convertWeight(parsed.weight, unitUpper);
+  const weightGrams = parsed.weight;
+  if (!(weightGrams > 0)) return null;
+
+  const qty = convertWeight(weightGrams, unitUpper);
   if (!(qty > 0)) return null;
 
   const unitPrice = resolveUnitPricePerKg(product, exchangeRate);
   if (!(unitPrice > 0) && !isScaleProductFlag(product)) return null;
 
+  const unitName = scaleSaleUnitLabel(unitUpper);
+
   return {
     product,
     quantity: Math.round(qty * 1000) / 1000,
-    unitName: unitUpper === 'KG' || unitUpper === 'KİLO' ? 'KG' : unit,
+    unitName,
     unitPrice,
     parsed,
     formatInfo: getBarcodeFormatInfo(parsed),
+    weightGrams,
   };
 }

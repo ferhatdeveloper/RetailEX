@@ -765,7 +765,7 @@ export default function MarketPOS({
               scaleSale.unitPrice,
             );
             logger.log(
-              `[MarketPOS] Tartılı satış: ${scaleSale.formatInfo} — ${scaleSale.quantity} ${scaleSale.unitName} × ${scaleSale.unitPrice}`,
+              `[MarketPOS] Tartılı satış: ${scaleSale.formatInfo} — PLU ${scaleSale.parsed.productCode} — ${scaleSale.weightGrams}g → ${scaleSale.quantity} ${scaleSale.unitName} × ${scaleSale.unitPrice}`,
             );
             return true;
           }
