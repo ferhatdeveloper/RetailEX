@@ -71,12 +71,29 @@ function cellToFilterKey(value: unknown): string {
   return String(value);
 }
 
-function formatFilterLabel(value: unknown, columnId: string): string {
-  if (value == null || value === EMPTY_FILTER_KEY || String(value).trim() === '') return '(Boş)';
-  if (columnId === 'created_at') {
+const BOOL_FILTER_COLUMNS = new Set(['hasVariants', 'isScaleProduct']);
+
+function formatFilterLabel(
+  value: unknown,
+  columnId: string,
+  tm?: (key: string) => string,
+  localeCode?: string
+): string {
+  if (value == null || value === EMPTY_FILTER_KEY || String(value).trim() === '') {
+    return tm ? tm('gridFilterEmpty') : '(Boş)';
+  }
+  const boolLike =
+    BOOL_FILTER_COLUMNS.has(columnId) &&
+    (typeof value === 'boolean' || value === 'true' || value === 'false' || value === 1 || value === 0);
+  if (boolLike) {
+    const yes = value === true || value === 'true' || value === 1;
+    if (tm) return yes ? tm('gridBoolYes') : tm('gridBoolNo');
+    return yes ? 'Evet' : 'Hayır';
+  }
+  if (columnId === 'created_at' || columnId === 'updated_at') {
     const d = new Date(String(value));
     if (Number.isFinite(d.getTime())) {
-      return d.toLocaleString('tr-TR', {
+      return d.toLocaleString(localeCode || 'tr-TR', {
         day: '2-digit',
         month: '2-digit',
         year: 'numeric',
@@ -150,6 +167,8 @@ export const gridColumnFilterFn: FilterFn<any> = (row, columnId, filterValue) =>
 
 function FilterMenu({ column, onClose }: FilterMenuProps) {
   const { tm } = useLanguage();
+  const localeCode = tm('localeCode');
+  const sortLocale = localeCode.split('-')[0] || 'tr';
   const existing = column.getFilterValue() as GridFilterPayload | undefined;
   const columnId = column.id;
 
@@ -175,11 +194,11 @@ function FilterMenu({ column, onClose }: FilterMenuProps) {
     return Array.from(counts.entries())
       .map(([key, count]) => ({
         key,
-        label: formatFilterLabel(key === EMPTY_FILTER_KEY ? null : key, columnId),
+        label: formatFilterLabel(key === EMPTY_FILTER_KEY ? null : key, columnId, tm, localeCode),
         count,
       }))
-      .sort((a, b) => a.label.localeCompare(b.label, 'tr'));
-  }, [column, columnId]);
+      .sort((a, b) => a.label.localeCompare(b.label, sortLocale));
+  }, [column, columnId, tm, localeCode, sortLocale]);
 
   const allKeys = useMemo(() => valueEntries.map((e) => e.key), [valueEntries]);
 
@@ -480,7 +499,7 @@ export function DevExDataGrid<T>({
             <input
               type="checkbox"
               className="w-3.5 h-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-              title="Tümü (Ctrl+A)"
+              title={tm('gridSelectAllTitle')}
               checked={allSelected}
               onChange={(e) => {
                 if (e.target.checked) {
@@ -510,7 +529,7 @@ export function DevExDataGrid<T>({
     };
 
     return [selectionColumn, ...columns];
-  }, [columns, enableSelection, setRowSelection]);
+  }, [columns, enableSelection, setRowSelection, tm]);
 
   const table = useReactTable({
     data,

@@ -233,6 +233,7 @@ interface ProductManagementProps {
   setProducts: (products: Product[]) => void;
 }
 
+const ALL_CATEGORIES = '__ALL__';
 const MOBILE_PAGE_SIZE = 40;
 const LONG_PRESS_MS = 480;
 const LONG_PRESS_MOVE_PX = 14;
@@ -280,7 +281,7 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
   };
 
   const [searchQuery, setSearchQuery] = useState('');
-  const [categoryFilter, setCategoryFilter] = useState('Tümü');
+  const [categoryFilter, setCategoryFilter] = useState(ALL_CATEGORIES);
   const [showProductForm, setShowProductForm] = useState(false);
   const [showProductHub, setShowProductHub] = useState(false);
   const [activeHubProduct, setActiveHubProduct] = useState<Product | null>(null);
@@ -419,7 +420,7 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
         (product.code?.toLocaleLowerCase('tr-TR') || '').includes(searchLower) ||
         (product.barcode || '').includes(searchQuery) ||
         (product.category?.toLocaleLowerCase('tr-TR') || '').includes(searchLower);
-      const matchesCategory = categoryFilter === 'Tümü' || product.category === categoryFilter;
+      const matchesCategory = categoryFilter === ALL_CATEGORIES || product.category === categoryFilter;
       const matchesService = showServicesOnly ? (product.materialType === 'service' || product.isService === true) : true;
       const matchesToday = !showTodayOnly || isProductCreatedToday(product.created_at);
       const duplicateKey = duplicateDetectBy === 'code'
@@ -798,7 +799,7 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
               }`}
             >
               <FileText className="w-3 h-3" />
-              <span>Hizmet Kartları</span>
+              <span>{tm('serviceCardsEntities')}</span>
             </button>
             {selectedProducts.length > 0 && (
               <>
@@ -818,21 +819,21 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
                   className="flex items-center gap-1 px-2 py-1 bg-red-600 text-white hover:bg-red-700 transition-colors text-[10px] font-bold"
                 >
                   <Trash2 className="w-3 h-3" />
-                  <span>Toplu Sil {selectedProducts.length}</span>
+                  <span>{tm('productBulkDeleteBtn').replace('{count}', String(selectedProducts.length))}</span>
                 </button>
                 <button
                   onClick={() => setShowBulkImageModal(true)}
                   className="flex items-center gap-1 px-2 py-1 bg-emerald-600 text-white hover:bg-emerald-700 transition-colors text-[10px] font-bold"
                 >
                   <ImageIcon className="w-3 h-3" />
-                  <span>Toplu resim {selectedProducts.length}</span>
+                  <span>{tm('productBulkImageBtn').replace('{count}', String(selectedProducts.length))}</span>
                 </button>
                 <button
                   onClick={() => setShowBulkRateModal(true)}
                   className="flex items-center gap-1 px-2 py-1 bg-orange-500 text-white hover:bg-orange-600 transition-colors text-[10px] font-bold"
                 >
                   <TrendingUp className="w-3 h-3" />
-                  <span>Toplu Kur {selectedProducts.length}</span>
+                  <span>{tm('productBulkRateBtn').replace('{count}', String(selectedProducts.length))}</span>
                 </button>
               </>
             )}
@@ -847,9 +848,7 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
         {/* Search Box */}
         <div className="mb-3 bg-white p-3 border border-gray-200 rounded shrink-0 relative z-20">
           {isMobile && (
-            <p className="text-[11px] text-gray-500 mb-2">
-              Satıra basılı tutun: detay ve işlemler (düzenle, sil, etiket…).
-            </p>
+            <p className="text-[11px] text-gray-500 mb-2">{tm('productMobileRowHint')}</p>
           )}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
             <div className="relative md:col-span-2">
@@ -985,7 +984,7 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
                               e.stopPropagation();
                               toggleProductSelected(p, e.target.checked);
                             }}
-                            aria-label="Seç"
+                            aria-label={tm('selectRow')}
                           />
                         </div>
                         <div className="min-w-0 flex flex-col justify-center gap-0.5">
@@ -1120,10 +1119,10 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
                     ]
                   : []),
                 [tm('unitPrice').toUpperCase(), formatCurrency(Number(mobileActionProduct.price) || 0, 2, false)],
-                ['FİYAT (USD)', (mobileActionProduct as any).salePriceUSD != null && (mobileActionProduct as any).salePriceUSD !== '' ? formatAmountWithCode(Number((mobileActionProduct as any).salePriceUSD), 'USD', 2) : '—'],
+                [tm('productGridColPriceUsd').toUpperCase(), (mobileActionProduct as any).salePriceUSD != null && (mobileActionProduct as any).salePriceUSD !== '' ? formatAmountWithCode(Number((mobileActionProduct as any).salePriceUSD), 'USD', 2) : '—'],
                 ...(showPurchasePricing
                   ? [
-                      ['ALIŞ (USD)', (mobileActionProduct as any).purchasePriceUSD != null && (mobileActionProduct as any).purchasePriceUSD !== '' ? formatAmountWithCode(Number((mobileActionProduct as any).purchasePriceUSD), 'USD', 2) : '—'] as [string, string],
+                      [tm('productGridColPurchaseUsd').toUpperCase(), (mobileActionProduct as any).purchasePriceUSD != null && (mobileActionProduct as any).purchasePriceUSD !== '' ? formatAmountWithCode(Number((mobileActionProduct as any).purchasePriceUSD), 'USD', 2) : '—'] as [string, string],
                     ]
                   : []),
                 [tm('tax').toUpperCase(), `%${mobileActionProduct.taxRate ?? 0}`],
