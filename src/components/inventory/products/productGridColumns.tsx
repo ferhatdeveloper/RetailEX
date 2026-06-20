@@ -98,7 +98,12 @@ export function loadProductColumnVisibility(): Record<string, boolean> {
   }
 }
 
-function formatCellValue(value: unknown, format: ColumnMeta['format']): string {
+function formatCellValue(
+  value: unknown,
+  format: ColumnMeta['format'],
+  tm?: (key: string) => string,
+  localeCode?: string
+): string {
   if (value == null || String(value).trim() === '') return '—';
   switch (format) {
     case 'currency':
@@ -112,11 +117,14 @@ function formatCellValue(value: unknown, format: ColumnMeta['format']): string {
     case 'number':
       return String(Number(value));
     case 'bool':
+      if (tm) {
+        return value === true || value === 'true' || value === 1 ? tm('gridBoolYes') : tm('gridBoolNo');
+      }
       return value === true || value === 'true' || value === 1 ? 'Evet' : 'Hayır';
     case 'date': {
       const d = new Date(String(value));
       if (!Number.isFinite(d.getTime())) return '—';
-      return d.toLocaleString('tr-TR', {
+      return d.toLocaleString(localeCode || 'tr-TR', {
         day: '2-digit',
         month: '2-digit',
         year: 'numeric',
@@ -129,14 +137,74 @@ function formatCellValue(value: unknown, format: ColumnMeta['format']): string {
   }
 }
 
+/** Tüm grid kolon etiketleri — i18n */
+export function getProductGridColumnLabels(tm: (key: string) => string): Record<string, string> {
+  const specialCode = (n: number) => `${tm('specialCode')} ${n}`;
+  const priceList = (n: number) => `${tm('priceList')} ${n}`;
+  return {
+    barcode: tm('barcode'),
+    code: tm('productGridColCode'),
+    name: tm('productName'),
+    name2: tm('productGridColName2'),
+    description_tr: tm('productGridColDescTr'),
+    description_en: tm('productGridColDescEn'),
+    description_ar: tm('productGridColDescAr'),
+    description_ku: tm('productGridColDescKu'),
+    category: tm('category'),
+    groupCode: tm('groupCode'),
+    subGroupCode: tm('subGroupCode'),
+    brand: tm('brand'),
+    model: tm('model'),
+    manufacturer: tm('manufacturer'),
+    supplier: tm('supplier'),
+    origin: tm('origin'),
+    materialType: tm('productGridColMaterialType'),
+    specialCode1: specialCode(1),
+    specialCode2: specialCode(2),
+    specialCode3: specialCode(3),
+    specialCode4: specialCode(4),
+    specialCode5: specialCode(5),
+    specialCode6: specialCode(6),
+    cost: tm('cost'),
+    price: tm('unitPrice'),
+    salePriceUSD: tm('productGridColPriceUsd'),
+    purchasePriceUSD: tm('productGridColPurchaseUsd'),
+    salePriceEUR: tm('productGridColPriceEur'),
+    purchasePriceEUR: tm('productGridColPurchaseEur'),
+    currency: tm('currency'),
+    customExchangeRate: tm('customExchangeRate'),
+    taxRate: tm('productGridColTax'),
+    stock: tm('stock'),
+    minStock: tm('minStock'),
+    maxStock: tm('maxStock'),
+    criticalStock: tm('criticalStock'),
+    unit: tm('unit'),
+    priceList1: priceList(1),
+    priceList2: priceList(2),
+    priceList3: priceList(3),
+    priceList4: priceList(4),
+    priceList5: priceList(5),
+    priceList6: priceList(6),
+    totalSales: tm('salesTotal'),
+    totalPurchased: tm('purchaseTotal'),
+    hasVariants: tm('productGridColHasVariants'),
+    isScaleProduct: tm('scaleProduct'),
+    followUpReminderDays: tm('productGridColFollowUpDays'),
+    created_at: tm('productCreatedAt'),
+    updated_at: tm('productGridColUpdatedAt'),
+  };
+}
+
 const columnHelper = createColumnHelper<Product>();
 
 export function buildProductGridColumns(options: {
   columnVisibility: Record<string, boolean>;
   showPurchasePricing: boolean;
   labelOverrides?: Partial<Record<string, string>>;
+  tm?: (key: string) => string;
+  localeCode?: string;
 }): ColumnDef<Product, unknown>[] {
-  const { columnVisibility, showPurchasePricing, labelOverrides = {} } = options;
+  const { columnVisibility, showPurchasePricing, labelOverrides = {}, tm, localeCode } = options;
 
   return PRODUCT_GRID_COLUMN_ORDER.filter((id) => {
     const meta = PRODUCT_GRID_COLUMN_META[id];
@@ -172,7 +240,7 @@ export function buildProductGridColumns(options: {
           );
         }
         if (meta.format) {
-          return formatCellValue(raw, meta.format);
+          return formatCellValue(raw, meta.format, tm, localeCode);
         }
         return raw != null && String(raw).trim() !== '' ? String(raw) : '—';
       },
@@ -183,15 +251,16 @@ export function buildProductGridColumns(options: {
 export function productColumnVisibilityMenuItems(options: {
   columnVisibility: Record<string, boolean>;
   showPurchasePricing: boolean;
+  labels?: Record<string, string>;
 }): { id: string; label: string; visible: boolean }[] {
-  const { columnVisibility, showPurchasePricing } = options;
+  const { columnVisibility, showPurchasePricing, labels = {} } = options;
   return PRODUCT_GRID_COLUMN_ORDER.filter((id) => {
     const meta = PRODUCT_GRID_COLUMN_META[id];
     if (meta.purchaseOnly && !showPurchasePricing) return false;
     return true;
   }).map((id) => ({
     id,
-    label: PRODUCT_GRID_COLUMN_META[id].label,
+    label: labels[id] ?? PRODUCT_GRID_COLUMN_META[id].label,
     visible: columnVisibility[id] !== false,
   }));
 }

@@ -9,6 +9,7 @@ import { ProductFormPage } from './ProductFormPage';
 import { ProductOperationHub, HubTab } from './ProductOperationHub';
 import {
   buildProductGridColumns,
+  getProductGridColumnLabels,
   loadProductColumnVisibility,
   productColumnVisibilityMenuItems,
   PRODUCT_COLUMN_VISIBILITY_KEY,
@@ -641,24 +642,7 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
     closeProductForm();
   };
 
-  const columnLabelOverrides = useMemo(
-    () => ({
-      barcode: tm('barcode'),
-      code: tm('invThProductCode'),
-      name: tm('productName'),
-      category: tm('category'),
-      cost: tm('cost'),
-      price: tm('unitPrice'),
-      taxRate: tm('tax'),
-      stock: tm('stock'),
-      unit: tm('unit'),
-      totalSales: tm('salesTotal'),
-      totalPurchased: tm('purchaseTotal'),
-      specialCode2: `${tm('specialCode')} 2`,
-      created_at: tm('productCreatedAt'),
-    }),
-    [tm]
-  );
+  const columnLabelOverrides = useMemo(() => getProductGridColumnLabels(tm), [tm]);
 
   const columns = useMemo<ColumnDef<Product, unknown>[]>(
     () =>
@@ -666,8 +650,10 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
         columnVisibility,
         showPurchasePricing,
         labelOverrides: columnLabelOverrides,
+        tm,
+        localeCode: tm('localeCode'),
       }),
-    [columnVisibility, showPurchasePricing, columnLabelOverrides]
+    [columnVisibility, showPurchasePricing, columnLabelOverrides, tm]
   );
 
   const columnVisibilityItems = useMemo(
@@ -675,10 +661,8 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
       productColumnVisibilityMenuItems({
         columnVisibility,
         showPurchasePricing,
-      }).map((item) => ({
-        ...item,
-        label: columnLabelOverrides[item.id as keyof typeof columnLabelOverrides] ?? item.label,
-      })),
+        labels: columnLabelOverrides,
+      }),
     [columnVisibility, showPurchasePricing, columnLabelOverrides]
   );
 
@@ -800,7 +784,7 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
             >
               <CalendarDays className="w-3 h-3 shrink-0" />
               <span className="hidden sm:inline">{tm('productFilterTodayBtn')}</span>
-              <span className="sm:hidden">Bugün</span>
+              <span className="sm:hidden">{tm('productFilterTodayBtn')}</span>
               {todayProductsCount > 0 && (
                 <span className={`tabular-nums ${showTodayOnly ? 'text-emerald-100' : 'text-blue-100'}`}>
                   ({todayProductsCount})
@@ -907,13 +891,13 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
                 onChange={(e) => setDuplicateDetectBy(e.target.value as 'none' | 'code' | 'barcode')}
                 className="flex-1 min-w-0 px-3 py-2 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
-                <option value="none">Tekrar Filtresi: Kapalı</option>
-                <option value="code">Tekrar Filtresi: Ürün Kodu</option>
-                <option value="barcode">Tekrar Filtresi: Barkod</option>
+                <option value="none">{tm('productDuplicateFilterOff')}</option>
+                <option value="code">{tm('productDuplicateFilterCode')}</option>
+                <option value="barcode">{tm('productDuplicateFilterBarcode')}</option>
               </select>
               {duplicateDetectBy !== 'none' && (
                 <span className="text-[11px] px-2 py-1 rounded bg-amber-100 text-amber-700 font-semibold whitespace-nowrap">
-                  {duplicateKeys.size} tekrar anahtarı
+                  {tm('productDuplicateKeysCount').replace('{count}', String(duplicateKeys.size))}
                 </span>
               )}
             </div>
@@ -932,7 +916,7 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
             <div className="flex items-center justify-center h-96">
               <div className="text-center">
                 <RefreshCw className="w-8 h-8 animate-spin text-blue-600 mx-auto mb-2" />
-                <p className="text-gray-600 text-sm">Veriler yükleniyor...</p>
+                <p className="text-gray-600 text-sm">{tm('dataLoading')}</p>
               </div>
             </div>
           ) : isMobile ? (

@@ -206,10 +206,11 @@ function FilterMenu({ column, onClose }: FilterMenuProps) {
   }, [columnId, allKeys, existing]);
 
   const filteredEntries = useMemo(() => {
-    const q = listSearch.trim().toLocaleLowerCase('tr-TR');
+    const locale = tm('localeCode');
+    const q = listSearch.trim().toLocaleLowerCase(locale);
     if (!q) return valueEntries;
-    return valueEntries.filter((e) => e.label.toLocaleLowerCase('tr-TR').includes(q));
-  }, [valueEntries, listSearch]);
+    return valueEntries.filter((e) => e.label.toLocaleLowerCase(locale).includes(q));
+  }, [valueEntries, listSearch, tm]);
 
   const filteredKeys = filteredEntries.map((e) => e.key);
   const allFilteredSelected =
@@ -292,7 +293,7 @@ function FilterMenu({ column, onClose }: FilterMenuProps) {
             onChange={toggleSelectAllFiltered}
             className="w-3.5 h-3.5 shrink-0"
           />
-          <span className="flex-1">(Tümünü Seç)</span>
+          <span className="flex-1">({tm('catalogSelectAll')})</span>
           <span className="text-gray-400 tabular-nums">{filteredEntries.length}</span>
         </label>
       </div>
@@ -332,7 +333,7 @@ function FilterMenu({ column, onClose }: FilterMenuProps) {
           onClick={() => setShowTextFilter((v) => !v)}
           className="text-[10px] text-blue-600 hover:underline"
         >
-          {showTextFilter ? '▾ Değer listesi' : '▸ Metin filtresi'}
+          {showTextFilter ? `▾ ${tm('gridFilterValueList')}` : `▸ ${tm('gridFilterTextFilter')}`}
         </button>
 
         {showTextFilter && (
