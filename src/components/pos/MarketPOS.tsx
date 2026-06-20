@@ -8,6 +8,7 @@ import {
   isBarcodeReadyForAutoSubmit,
 } from '../../utils/barcodeScannerInput';
 import { isProductExpired } from '../../utils/productExpiry';
+import { isScaleProductFlag } from '../../utils/scaleProductFilter';
 import {
   ShoppingCart,
   CreditCard,
@@ -470,11 +471,15 @@ export default function MarketPOS({
 
   // Calculate totals - Optimized with useMemo
   const subtotal = useMemo(() => {
+    const baseCurrency = selectedFirm?.ana_para_birimi?.trim().toUpperCase() || getGlobalCurrency();
     return cart.reduce((sum, item) => {
+      if (typeof item.subtotal === 'number' && Number.isFinite(item.subtotal)) {
+        return sum + item.subtotal;
+      }
       const price = item.price || item.variant?.price || item.product.price;
-      return sum + (item.quantity * price);
+      return sum + roundMoneyAmount(item.quantity * price, baseCurrency);
     }, 0);
-  }, [cart]);
+  }, [cart, selectedFirm?.ana_para_birimi]);
 
   const totalDiscount = useMemo(() => {
     return cart.reduce((sum, item) => {
@@ -711,9 +716,11 @@ export default function MarketPOS({
             scaleSale.unitName,
             1,
             scaleSale.unitPrice,
+            scaleSale.lineTotal,
+            true,
           );
           logger.log(
-            `[MarketPOS] Tartılı satış: ${scaleSale.formatInfo} — kod ${scaleSale.parsed.productCode} — ${scaleSale.weightGrams}g → ${scaleSale.quantity} ${scaleSale.unitName} × ${scaleSale.unitPrice}`,
+            `[MarketPOS] Tartılı satış: ${scaleSale.formatInfo} — kod ${scaleSale.parsed.productCode} — ${scaleSale.weightGrams}g → ${scaleSale.quantity} ${scaleSale.unitName} × ${scaleSale.unitPrice} = ${scaleSale.lineTotal}`,
           );
           return true;
         }
@@ -801,9 +808,11 @@ export default function MarketPOS({
               scaleSale.unitName,
               1,
               scaleSale.unitPrice,
+              scaleSale.lineTotal,
+              true,
             );
             logger.log(
-              `[MarketPOS] Tartılı satış: ${scaleSale.formatInfo} — PLU ${scaleSale.parsed.productCode} — ${scaleSale.weightGrams}g → ${scaleSale.quantity} ${scaleSale.unitName} × ${scaleSale.unitPrice}`,
+              `[MarketPOS] Tartılı satış: ${scaleSale.formatInfo} — PLU ${scaleSale.parsed.productCode} — ${scaleSale.weightGrams}g → ${scaleSale.quantity} ${scaleSale.unitName} × ${scaleSale.unitPrice} = ${scaleSale.lineTotal}`,
             );
             return true;
           }
@@ -823,7 +832,16 @@ export default function MarketPOS({
   };
 
   // Add to cart
-  const addToCart = (product: Product, variant?: any, customQuantity?: number, unit?: string, multiplier?: number, customPrice?: number) => {
+  const addToCart = (
+    product: Product,
+    variant?: any,
+    customQuantity?: number,
+    unit?: string,
+    multiplier?: number,
+    customPrice?: number,
+    lineSubtotal?: number,
+    preserveExactQuantity = false,
+  ) => {
     if (isProductExpired(product)) {
       showNotif(tm('productExpiredCannotSell').replace('{name}', product.name || ''), 'error');
       return;
@@ -863,11 +881,20 @@ export default function MarketPOS({
     price = roundMoneyAmount(price, saleCurrency);
 
     const parsedQty = customQuantity != null
-      ? parsePosQuantityForProduct(customQuantity, product)
+      ? (preserveExactQuantity || isScaleProductFlag(product)
+          ? customQuantity
+          : parsePosQuantityForProduct(customQuantity, product))
       : 1;
     if (!Number.isFinite(parsedQty) || parsedQty <= 0) return;
     const quantity = parsedQty;
     const itemUnit = unit || product.unit || t.pcs;
+    const lineGross =
+      lineSubtotal != null
+        ? roundMoneyAmount(lineSubtotal, saleCurrency)
+        : roundMoneyAmount(price * quantity, saleCurrency);
+    if (lineSubtotal != null && quantity > 0) {
+      price = roundMoneyAmount(lineGross / quantity, saleCurrency);
+    }
 
     setCart(prev => {
       const existingItem = prev.find(item =>
@@ -897,7 +924,7 @@ export default function MarketPOS({
         unit: itemUnit,
         multiplier,
         discount: 0,
-        subtotal: roundMoneyAmount(price * quantity, saleCurrency),
+        subtotal: lineNetAfterPercentDiscount(lineGross, 0),
         price
       }];
     });

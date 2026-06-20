@@ -31,7 +31,7 @@ describe('barcodeParser — tartılı barkod', () => {
     expect(parsed.format).toBe('code10_weight');
     expect(parsed.productCode).toBe('1000000009');
     expect(parsed.weight).toBe(1610);
-    const kg = scaleWeightFieldToQuantity(parsed.weight!, 'KG');
+    const kg = scaleWeightFieldToQuantity(parsed.weight!, 'KG', 'code10_weight');
     expect(kg.quantity).toBe(1.61);
     expect(kg.unitName).toBe('KG');
   });

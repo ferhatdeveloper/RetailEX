@@ -8,6 +8,7 @@
  */
 
 import { getCurrencyDecimalPlaces } from './currency';
+import { getCode10SuffixMode } from './scaleBarcodeConfig';
 import { getScaleBarcodeType } from './scaleBarcodeConfig';
 
 export type BarcodeFormat =
@@ -32,6 +33,8 @@ export interface ParsedBarcode {
   format?: BarcodeFormat;
   /** Rongta barkod tipi referansı (17, 99 vb.) */
   rongtaTypeHint?: number;
+  /** code10: sonek gram mı satır tutarı (IQD) mı */
+  code10SuffixMode?: 'weight_grams' | 'total_iqd';
 }
 
 /** Sabit prefix 25–29 (Rongta tablo: tip 15–19, ağırlık barkodu) */
@@ -85,6 +88,7 @@ function parseCode10WeightSuffix(trimmed: string): ParsedBarcode | null {
     weight,
     originalBarcode: trimmed,
     format: 'code10_weight',
+    code10SuffixMode: getCode10SuffixMode(),
   };
 }
 
@@ -135,9 +139,18 @@ export function isGramScaleUnit(unit?: string): boolean {
 export function scaleWeightFieldToQuantity(
   fieldValue: number,
   unit?: string,
+  format?: BarcodeFormat,
 ): { quantity: number; unitName: string } {
   if (!Number.isFinite(fieldValue) || fieldValue <= 0) {
     return { quantity: 0, unitName: scaleSaleUnitLabel(normalizeScaleUnit(unit)) };
+  }
+  if (format === 'code10_weight') {
+    const grams = Math.round(fieldValue);
+    if (isGramScaleUnit(unit)) {
+      return { quantity: grams, unitName: 'GR' };
+    }
+    const kg = Math.round((grams / 1000) * 1000) / 1000;
+    return { quantity: kg, unitName: scaleSaleUnitLabel(normalizeScaleUnit(unit)) };
   }
   if (isGramScaleUnit(unit)) {
     return { quantity: Math.round(fieldValue), unitName: 'GR' };

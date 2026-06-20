@@ -34,3 +34,26 @@ export function resolvePluBarcodeType(productType?: number | null): number {
   }
   return getScaleBarcodeType();
 }
+
+/** 14 hane barkod (10000000091610) sonek anlamı. */
+export type Code10SuffixMode = 'weight_grams' | 'total_iqd';
+
+const CODE10_SUFFIX_STORAGE_KEY = 'retailex_code10_suffix_mode';
+const CODE10_SUFFIX_DEFAULT: Code10SuffixMode = 'weight_grams';
+
+/** 10 hane kod + sonek: weight_grams = gram; total_iqd = satır tutarı (IQD). */
+export function getCode10SuffixMode(): Code10SuffixMode {
+  if (typeof localStorage === 'undefined') return CODE10_SUFFIX_DEFAULT;
+  try {
+    const raw = localStorage.getItem(CODE10_SUFFIX_STORAGE_KEY);
+    if (raw === 'total_iqd' || raw === 'weight_grams') return raw;
+  } catch {
+    /* ignore */
+  }
+  return CODE10_SUFFIX_DEFAULT;
+}
+
+export function setCode10SuffixMode(mode: Code10SuffixMode): void {
+  if (typeof localStorage === 'undefined') return;
+  localStorage.setItem(CODE10_SUFFIX_STORAGE_KEY, mode);
+}

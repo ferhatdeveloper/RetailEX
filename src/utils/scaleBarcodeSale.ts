@@ -9,10 +9,10 @@ import {
   getBarcodeFormatInfo,
   isGramScaleUnit,
   parseBarcodeVariants,
-  scaleWeightFieldToQuantity,
   type ParsedBarcode,
 } from './barcodeParser';
 import { getGlobalCurrency, roundMoneyAmount } from './currency';
+import { buildScaleCartLineAmounts } from './scaleBarcodeLine';
 import { isScaleProductFlag } from './scaleProductFilter';
 
 export interface ScaleBarcodeSaleResult {
@@ -20,6 +20,7 @@ export interface ScaleBarcodeSaleResult {
   quantity: number;
   unitName: string;
   unitPrice: number;
+  lineTotal: number;
   parsed: ParsedBarcode;
   formatInfo: string;
   weightGrams: number;
@@ -82,37 +83,6 @@ async function findProductByPlu(productCode: string): Promise<Product | null> {
   return productAPI.getScaleProductByPlu(productCode);
 }
 
-function resolveUnitPriceForScale(
-  product: Product,
-  exchangeRate: number,
-  unitUpper: string,
-): number {
-  let pricePerKg = Number(product.price) || 0;
-  const isAutoCalc =
-    (product as Product & { autoCalculateUSD?: boolean }).autoCalculateUSD ||
-    (product as Product & { auto_calculate_usd?: boolean }).auto_calculate_usd;
-  const saleUsd = Number(
-    (product as Product & { salePriceUSD?: number }).salePriceUSD ??
-      (product as Product & { sale_price_usd?: number }).sale_price_usd ??
-      0,
-  );
-  if (isAutoCalc && saleUsd > 0) {
-    let rate =
-      Number(
-        (product as Product & { customExchangeRate?: number }).customExchangeRate ??
-          (product as Product & { custom_exchange_rate?: number }).custom_exchange_rate ??
-          0,
-      ) || exchangeRate;
-    if (rate > 0 && rate < 10) rate *= 1000;
-    if (rate > 0) pricePerKg = saleUsd * rate;
-  }
-  const currency = resolveSaleCurrency(product);
-  if (isGramScaleUnit(unitUpper)) {
-    return roundMoneyAmount(pricePerKg / 1000, currency);
-  }
-  return roundMoneyAmount(pricePerKg, currency);
-}
-
 /**
  * Tam barkod eşleşmesi yoksa tartılı EAN-13 parse eder; kg × birim fiyat hesaplar.
  */
@@ -151,6 +121,7 @@ async function resolveParsedScaleBarcode(
       quantity: 1,
       unitName: unit,
       unitPrice: lineTotal,
+      lineTotal,
       parsed,
       formatInfo: getBarcodeFormatInfo(parsed),
       weightGrams: 0,
@@ -159,24 +130,22 @@ async function resolveParsedScaleBarcode(
 
   if (!parsed.isWeightBased || parsed.weight == null) return null;
 
-  const weightField = parsed.weight;
-  if (!(weightField > 0)) return null;
+  const line = buildScaleCartLineAmounts(product, parsed, exchangeRate);
+  if (!line) return null;
 
-  const { quantity, unitName } = scaleWeightFieldToQuantity(weightField, unitUpper);
-  if (!(quantity > 0)) return null;
-
-  const unitPrice = resolveUnitPriceForScale(product, exchangeRate, unitUpper);
+  const unitPrice = line.unitPrice;
   if (!(unitPrice > 0) && !isScaleProductFlag(product)) return null;
 
   const weightGrams = isGramScaleUnit(unitUpper)
-    ? Math.round(quantity)
-    : Math.round(quantity * 1000);
+    ? Math.round(line.quantity)
+    : Math.round(line.quantity * 1000);
 
   return {
     product,
-    quantity,
-    unitName,
+    quantity: line.quantity,
+    unitName: line.unitName,
     unitPrice,
+    lineTotal: line.lineTotal,
     parsed,
     formatInfo: getBarcodeFormatInfo(parsed),
     weightGrams,
