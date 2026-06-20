@@ -34,6 +34,8 @@ interface DevExDataGridProps<T> {
   pageSizeOptions?: number[];
   /** Kolon göster/gizle menüsü (masaüstü) */
   enableColumnVisibility?: boolean;
+  /** false ise kolon menüsü grid üstünde gösterilmez (harici toolbar kullanımı) */
+  showColumnVisibilityToolbar?: boolean;
   columnVisibility?: Record<string, boolean>;
   onColumnVisibilityChange?: (visibility: any) => void;
   pageSize?: number;
@@ -61,6 +63,30 @@ type GridFilterPayload =
       to?: string;
       values?: string[];
     };
+
+const EMPTY_FILTER_KEY = '__EMPTY__';
+
+function cellToFilterKey(value: unknown): string {
+  if (value == null || String(value).trim() === '') return EMPTY_FILTER_KEY;
+  return String(value);
+}
+
+function formatFilterLabel(value: unknown, columnId: string): string {
+  if (value == null || value === EMPTY_FILTER_KEY || String(value).trim() === '') return '(Boş)';
+  if (columnId === 'created_at') {
+    const d = new Date(String(value));
+    if (Number.isFinite(d.getTime())) {
+      return d.toLocaleString('tr-TR', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+    }
+  }
+  return String(value);
+}
 
 function parseCellDate(value: unknown): number | null {
   if (value == null || value === '') return null;
@@ -98,8 +124,8 @@ export const gridColumnFilterFn: FilterFn<any> = (row, columnId, filterValue) =>
 
   if (mode === 'multiselect') {
     const values = payload.values ?? [];
-    if (values.length === 0) return true;
-    const cellStr = cellRaw == null ? '' : String(cellRaw);
+    if (values.length === 0) return false;
+    const cellStr = cellToFilterKey(cellRaw);
     return values.includes(cellStr);
   }
 
@@ -125,83 +151,100 @@ export const gridColumnFilterFn: FilterFn<any> = (row, columnId, filterValue) =>
 function FilterMenu({ column, onClose }: FilterMenuProps) {
   const { tm } = useLanguage();
   const existing = column.getFilterValue() as GridFilterPayload | undefined;
+  const columnId = column.id;
 
-  const readExisting = () => {
-    if (existing == null || existing === '') {
-      return {
-        filterMode: 'contains' as const,
-        inputValue: '',
-        dateFrom: '',
-        dateTo: '',
-        selectedValues: [] as string[],
-      };
-    }
-    if (typeof existing === 'string') {
-      return {
-        filterMode: 'contains' as const,
-        inputValue: existing,
-        dateFrom: '',
-        dateTo: '',
-        selectedValues: [] as string[],
-      };
-    }
-    const mode = (existing.mode ?? existing.operator ?? 'contains') as
-      'contains' | 'equals' | 'startsWith' | 'endsWith' | 'range' | 'multiselect';
-    return {
-      filterMode: mode,
-      inputValue: existing.value ?? '',
-      dateFrom: existing.from ?? '',
-      dateTo: existing.to ?? '',
-      selectedValues: existing.values ?? [],
-    };
-  };
-
-  const initial = readExisting();
-  const [inputValue, setInputValue] = useState(initial.inputValue);
-  const [filterMode, setFilterMode] = useState<
-    'contains' | 'equals' | 'startsWith' | 'endsWith' | 'range' | 'multiselect'
-  >(initial.filterMode);
-  const [dateFrom, setDateFrom] = useState(initial.dateFrom);
-  const [dateTo, setDateTo] = useState(initial.dateTo);
-  const [selectedValues, setSelectedValues] = useState<string[]>(initial.selectedValues);
-
-  const uniqueValues = useMemo(() => {
+  const valueEntries = useMemo(() => {
+    const counts = new Map<string, number>();
     try {
       const faceted = column.getFacetedUniqueValues?.();
       if (faceted && faceted.size > 0) {
-        return Array.from(faceted.keys())
-          .map((v) => (v == null ? '' : String(v)))
-          .filter(Boolean)
-          .sort((a, b) => a.localeCompare(b, 'tr'));
+        faceted.forEach((count, raw) => {
+          const key = cellToFilterKey(raw);
+          counts.set(key, (counts.get(key) ?? 0) + count);
+        });
       }
     } catch {
-      /* fallback below */
+      /* fallback */
     }
-    return Array.from(
-      new Set(
-        column.getPreFilteredRowModel().rows.map((row) => {
-          const value = row.getValue(column.id);
-          return value != null ? String(value) : '';
-        }).filter(Boolean)
-      )
-    ).sort((a, b) => a.localeCompare(b, 'tr'));
-  }, [column]);
+    if (counts.size === 0) {
+      column.getPreFilteredRowModel().rows.forEach((row) => {
+        const key = cellToFilterKey(row.getValue(column.id));
+        counts.set(key, (counts.get(key) ?? 0) + 1);
+      });
+    }
+    return Array.from(counts.entries())
+      .map(([key, count]) => ({
+        key,
+        label: formatFilterLabel(key === EMPTY_FILTER_KEY ? null : key, columnId),
+        count,
+      }))
+      .sort((a, b) => a.label.localeCompare(b.label, 'tr'));
+  }, [column, columnId]);
 
-  const handleApply = () => {
-    if (filterMode === 'range') {
-      if (dateFrom || dateTo) {
-        column.setFilterValue({ mode: 'range', from: dateFrom, to: dateTo });
-      } else {
-        column.setFilterValue(undefined);
-      }
-    } else if (filterMode === 'multiselect') {
-      if (selectedValues.length > 0) {
-        column.setFilterValue({ mode: 'multiselect', values: selectedValues });
-      } else {
-        column.setFilterValue(undefined);
-      }
-    } else if (inputValue.trim()) {
-      column.setFilterValue({ mode: filterMode, value: inputValue.trim() });
+  const allKeys = useMemo(() => valueEntries.map((e) => e.key), [valueEntries]);
+
+  const [listSearch, setListSearch] = useState('');
+  const [selectedValues, setSelectedValues] = useState<string[]>([]);
+  const [showTextFilter, setShowTextFilter] = useState(
+    () => !!(existing && typeof existing === 'object' && existing.mode && existing.mode !== 'multiselect')
+  );
+  const [textMode, setTextMode] = useState<'contains' | 'equals' | 'startsWith' | 'endsWith'>(
+    existing && typeof existing === 'object' && existing.mode && existing.mode !== 'multiselect' && existing.mode !== 'range'
+      ? (existing.mode as 'contains' | 'equals' | 'startsWith' | 'endsWith')
+      : 'contains'
+  );
+  const [textValue, setTextValue] = useState(
+    existing && typeof existing === 'object' && existing.value ? String(existing.value) : ''
+  );
+
+  useEffect(() => {
+    if (existing && typeof existing === 'object' && existing.mode === 'multiselect' && existing.values) {
+      setSelectedValues(existing.values);
+      return;
+    }
+    setSelectedValues(allKeys);
+  }, [columnId, allKeys, existing]);
+
+  const filteredEntries = useMemo(() => {
+    const q = listSearch.trim().toLocaleLowerCase('tr-TR');
+    if (!q) return valueEntries;
+    return valueEntries.filter((e) => e.label.toLocaleLowerCase('tr-TR').includes(q));
+  }, [valueEntries, listSearch]);
+
+  const filteredKeys = filteredEntries.map((e) => e.key);
+  const allFilteredSelected =
+    filteredKeys.length > 0 && filteredKeys.every((k) => selectedValues.includes(k));
+  const someFilteredSelected =
+    filteredKeys.some((k) => selectedValues.includes(k)) && !allFilteredSelected;
+
+  const toggleValue = (key: string) => {
+    setSelectedValues((prev) =>
+      prev.includes(key) ? prev.filter((v) => v !== key) : [...prev, key]
+    );
+  };
+
+  const toggleSelectAllFiltered = () => {
+    if (allFilteredSelected) {
+      setSelectedValues((prev) => prev.filter((k) => !filteredKeys.includes(k)));
+    } else {
+      setSelectedValues((prev) => Array.from(new Set([...prev, ...filteredKeys])));
+    }
+  };
+
+  const handleApplyValues = () => {
+    if (selectedValues.length === 0) {
+      column.setFilterValue({ mode: 'multiselect', values: [] });
+    } else if (selectedValues.length >= allKeys.length) {
+      column.setFilterValue(undefined);
+    } else {
+      column.setFilterValue({ mode: 'multiselect', values: selectedValues });
+    }
+    onClose();
+  };
+
+  const handleApplyText = () => {
+    if (textValue.trim()) {
+      column.setFilterValue({ mode: textMode, value: textValue.trim() });
     } else {
       column.setFilterValue(undefined);
     }
@@ -210,114 +253,122 @@ function FilterMenu({ column, onClose }: FilterMenuProps) {
 
   const handleClear = () => {
     column.setFilterValue(undefined);
-    setInputValue('');
-    setDateFrom('');
-    setDateTo('');
-    setSelectedValues([]);
+    setSelectedValues(allKeys);
+    setListSearch('');
+    setTextValue('');
     onClose();
-  };
-
-  const toggleValue = (value: string) => {
-    setSelectedValues(prev =>
-      prev.includes(value)
-        ? prev.filter(v => v !== value)
-        : [...prev, value]
-    );
   };
 
   return (
     <div
-      className="bg-white border border-gray-300 rounded shadow-lg min-w-[220px] max-w-[300px]"
+      className="bg-white border border-gray-300 rounded shadow-xl min-w-[280px] max-w-[320px]"
       onClick={(e) => e.stopPropagation()}
     >
+      <div className="px-2 py-1.5 border-b border-gray-200 bg-[#E3F2FD]">
+        <span className="text-[10px] font-semibold text-gray-700">{tm('filterType')}</span>
+      </div>
+
       <div className="p-2 space-y-2">
-        {/* Filter Mode Selector */}
         <div>
-          <label className="text-[9px] text-gray-600 block mb-1">{tm('filterType')}</label>
-          <select
-            value={filterMode}
-            onChange={(e) => setFilterMode(e.target.value as any)}
-            className="w-full px-2 py-1 text-[10px] border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
-          >
-            <option value="contains">{tm('contains')}</option>
-            <option value="equals">{tm('equals')}</option>
-            <option value="startsWith">{tm('startsWith')}</option>
-            <option value="endsWith">{tm('endsWith')}</option>
-            <option value="range">{tm('dateRange')}</option>
-            <option value="multiselect">{tm('multiSelect')}</option>
-          </select>
+          <input
+            type="text"
+            value={listSearch}
+            onChange={(e) => setListSearch(e.target.value)}
+            placeholder={`${tm('search')}...`}
+            className="w-full px-2 py-1.5 text-[11px] border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+            autoFocus
+          />
         </div>
 
-        {/* Text Input for basic filters */}
-        {!['range', 'multiselect'].includes(filterMode) && (
-          <div>
-            <label className="text-[9px] text-gray-600 block mb-1">{tm('value')}</label>
-            <input
-              type="text"
-              value={inputValue}
-              onChange={(e) => setInputValue(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleApply()}
-              placeholder={tm('search') + '...'}
-              className="w-full px-2 py-1 text-[10px] border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
-              autoFocus
-            />
-          </div>
-        )}
+        <label className="flex items-center gap-2 px-1 py-1 text-[11px] font-medium text-gray-700 border-b border-gray-100 cursor-pointer hover:bg-gray-50 rounded">
+          <input
+            type="checkbox"
+            checked={allFilteredSelected}
+            ref={(el) => {
+              if (el) el.indeterminate = someFilteredSelected;
+            }}
+            onChange={toggleSelectAllFiltered}
+            className="w-3.5 h-3.5"
+          />
+          <span className="flex-1">(Tümünü Seç)</span>
+          <span className="text-gray-400 tabular-nums">{filteredEntries.length}</span>
+        </label>
 
-        {/* Date Range Inputs */}
-        {filterMode === 'range' && (
-          <div className="space-y-2">
-            <div>
-              <label className="text-[9px] text-gray-600 block mb-1">{tm('startDate')}</label>
-              <input
-                type="date"
-                value={dateFrom}
-                onChange={(e) => setDateFrom(e.target.value)}
-                className="w-full px-2 py-1 text-[10px] border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
-              />
-            </div>
-            <div>
-              <label className="text-[9px] text-gray-600 block mb-1">{tm('endDate')}</label>
-              <input
-                type="date"
-                value={dateTo}
-                onChange={(e) => setDateTo(e.target.value)}
-                className="w-full px-2 py-1 text-[10px] border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
-              />
-            </div>
-          </div>
-        )}
-
-        {/* Multi-select Checkboxes */}
-        {filterMode === 'multiselect' && (
-          <div className="max-h-48 overflow-y-auto border border-gray-200 rounded p-2">
-            <div className="space-y-1">
-              {uniqueValues.slice(0, 50).map(value => (
-                <label key={value} className="flex items-center gap-2 text-[10px] hover:bg-gray-50 p-1 rounded cursor-pointer">
+        <div className="max-h-56 overflow-y-auto border border-gray-200 rounded">
+          {filteredEntries.length === 0 ? (
+            <div className="p-3 text-[10px] text-gray-400 text-center">{tm('noDataFound')}</div>
+          ) : (
+            <div className="divide-y divide-gray-50">
+              {filteredEntries.map((entry) => (
+                <label
+                  key={entry.key}
+                  className="flex items-center gap-2 px-2 py-1.5 text-[11px] hover:bg-blue-50/60 cursor-pointer"
+                >
                   <input
                     type="checkbox"
-                    checked={selectedValues.includes(value)}
-                    onChange={() => toggleValue(value)}
-                    className="w-3 h-3"
+                    checked={selectedValues.includes(entry.key)}
+                    onChange={() => toggleValue(entry.key)}
+                    className="w-3.5 h-3.5 shrink-0"
                   />
-                  <span className="flex-1 truncate">{value}</span>
+                  <span className="flex-1 truncate" title={entry.label}>
+                    {entry.label}
+                  </span>
+                  <span className="text-gray-400 tabular-nums shrink-0">({entry.count})</span>
                 </label>
               ))}
             </div>
+          )}
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setShowTextFilter((v) => !v)}
+          className="text-[10px] text-blue-600 hover:underline"
+        >
+          {showTextFilter ? '▾ Değer listesi' : '▸ Metin filtresi'}
+        </button>
+
+        {showTextFilter && (
+          <div className="space-y-2 pt-1 border-t border-gray-100">
+            <select
+              value={textMode}
+              onChange={(e) => setTextMode(e.target.value as typeof textMode)}
+              className="w-full px-2 py-1 text-[10px] border border-gray-300 rounded"
+            >
+              <option value="contains">{tm('contains')}</option>
+              <option value="equals">{tm('equals')}</option>
+              <option value="startsWith">{tm('startsWith')}</option>
+              <option value="endsWith">{tm('endsWith')}</option>
+            </select>
+            <input
+              type="text"
+              value={textValue}
+              onChange={(e) => setTextValue(e.target.value)}
+              placeholder={tm('value')}
+              className="w-full px-2 py-1 text-[10px] border border-gray-300 rounded"
+            />
+            <button
+              type="button"
+              onClick={handleApplyText}
+              className="w-full px-2 py-1 text-[10px] bg-gray-100 text-gray-700 rounded hover:bg-gray-200"
+            >
+              {tm('apply')} ({tm('contains')})
+            </button>
           </div>
         )}
 
-        {/* Action Buttons */}
         <div className="flex gap-1 pt-1 border-t">
           <button
-            onClick={handleApply}
-            className="flex-1 px-2 py-1 text-[10px] bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+            type="button"
+            onClick={handleApplyValues}
+            className="flex-1 px-2 py-1.5 text-[11px] bg-blue-600 text-white rounded hover:bg-blue-700 font-medium"
           >
             {tm('apply')}
           </button>
           <button
+            type="button"
             onClick={handleClear}
-            className="flex-1 px-2 py-1 text-[10px] bg-gray-200 text-gray-700 rounded hover:bg-gray-300 transition-colors"
+            className="flex-1 px-2 py-1.5 text-[11px] bg-gray-200 text-gray-700 rounded hover:bg-gray-300"
           >
             {tm('clear')}
           </button>
@@ -336,6 +387,7 @@ export function DevExDataGrid<T>({
   enablePagination = true,
   pageSizeOptions = DEFAULT_PAGE_SIZE_OPTIONS,
   enableColumnVisibility = false,
+  showColumnVisibilityToolbar = true,
   columnVisibility,
   onColumnVisibilityChange,
   pageSize = 20,
@@ -559,7 +611,7 @@ export function DevExDataGrid<T>({
       }
       filterColumnsRef.current.set(headerId, column);
       const rect = anchorEl.getBoundingClientRect();
-      const menuWidth = 240;
+      const menuWidth = 300;
       const left = Math.max(8, Math.min(rect.right - menuWidth, window.innerWidth - menuWidth - 8));
       setFilterMenuAnchor({ top: rect.bottom + 4, left });
       setOpenFilterColumn(headerId);
@@ -593,7 +645,7 @@ export function DevExDataGrid<T>({
           : undefined
       }
     >
-      {enableColumnVisibility && (
+      {enableColumnVisibility && showColumnVisibilityToolbar && (
         <div className="flex items-center justify-end gap-2 px-3 py-1.5 bg-gray-50 border border-gray-300 border-b-0 shrink-0">
           {enableFiltering && columnFilters.length > 0 && (
             <button

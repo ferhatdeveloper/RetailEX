@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { ColumnDef } from '@tanstack/react-table';
 import { DevExDataGrid } from '../../shared/DevExDataGrid';
+import { ColumnVisibilityMenu } from '../../shared/ColumnVisibilityMenu';
 import { createColumnHelper } from '@tanstack/react-table';
 import type { Product } from '../../../App';
 import { useProductStore } from '../../../store';
@@ -793,6 +794,24 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
       : []),
   ], [tm, showPurchasePricing, showTodayOnly]);
 
+  const columnVisibilityItems = useMemo(
+    () =>
+      columns
+        .map((col) => {
+          const id = String((col as { id?: string; accessorKey?: string }).accessorKey ?? col.id ?? '');
+          if (!id || id === 'select' || id === 'actions') return null;
+          const header = col.header;
+          const label = typeof header === 'string' ? header : id;
+          return {
+            id,
+            label,
+            visible: columnVisibility[id] !== false,
+          };
+        })
+        .filter((x): x is { id: string; label: string; visible: boolean } => x != null),
+    [columns, columnVisibility]
+  );
+
   return (
     <div className="h-full flex flex-col">
       {/* Header - Minimal */}
@@ -895,6 +914,26 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
                 </span>
               )}
             </button>
+            <ColumnVisibilityMenu
+              variant="toolbar"
+              columns={columnVisibilityItems}
+              onToggle={(columnId) => {
+                setColumnVisibility((prev) => ({
+                  ...prev,
+                  [columnId]: !(prev[columnId] !== false),
+                }));
+              }}
+              onShowAll={() => {
+                setColumnVisibility(
+                  Object.fromEntries(columnVisibilityItems.map((col) => [col.id, true]))
+                );
+              }}
+              onHideAll={() => {
+                setColumnVisibility(
+                  Object.fromEntries(columnVisibilityItems.map((col) => [col.id, false]))
+                );
+              }}
+            />
             <button
               onClick={() => setShowServicesOnly(!showServicesOnly)}
               className={`flex items-center gap-1 px-2 py-1 transition-colors text-[10px] font-bold ${
@@ -1164,6 +1203,7 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
               data={filteredProducts}
               columns={columns}
               enableColumnVisibility
+              showColumnVisibilityToolbar={false}
               columnVisibility={columnVisibility}
               onColumnVisibilityChange={setColumnVisibility}
               onRowContextMenu={(e, product) => {
