@@ -260,6 +260,7 @@ function FilterMenu({ column, onClose }: FilterMenuProps) {
   };
 
   const FILTER_MENU_HEIGHT = 440;
+  const filterListHeight = showTextFilter ? 120 : 220;
 
   return (
     <div
@@ -297,8 +298,8 @@ function FilterMenu({ column, onClose }: FilterMenuProps) {
       </div>
 
       <div
-        className="flex-1 min-h-0 overflow-y-scroll overscroll-contain border-b border-gray-200 bg-white"
-        style={{ scrollbarWidth: 'thin', scrollbarColor: '#94a3b8 #f1f5f9' }}
+        className="panel-menu-scroll shrink-0 border-b border-gray-200 bg-white"
+        style={{ height: filterListHeight }}
       >
         {filteredEntries.length === 0 ? (
           <div className="p-4 text-[10px] text-gray-400 text-center">{tm('noDataFound')}</div>

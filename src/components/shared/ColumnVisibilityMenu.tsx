@@ -33,6 +33,7 @@ export function ColumnVisibilityMenu({
 
   const MENU_WIDTH = 300;
   const MENU_HEIGHT = 440;
+  const LIST_SCROLL_HEIGHT = 250;
 
   const updateMenuPos = () => {
     const rect = buttonRef.current?.getBoundingClientRect();
@@ -133,10 +134,7 @@ export function ColumnVisibilityMenu({
         </p>
       </div>
 
-      <div
-        className="flex-1 min-h-0 overflow-y-scroll overscroll-contain p-2 border-b border-gray-100"
-        style={{ scrollbarWidth: 'thin', scrollbarColor: '#94a3b8 #f1f5f9' }}
-      >
+      <div className="panel-menu-scroll shrink-0 p-2 border-b border-gray-100" style={{ height: LIST_SCROLL_HEIGHT }}>
         {filteredColumns.length === 0 ? (
           <p className="text-xs text-gray-400 text-center py-8">Eşleşen kolon yok</p>
         ) : (
