@@ -6,15 +6,19 @@ import {
   getSortedRowModel,
   getFilteredRowModel,
   getPaginationRowModel,
+  getFacetedRowModel,
+  getFacetedUniqueValues,
   flexRender,
   ColumnDef,
   SortingState,
   ColumnFiltersState,
   Column,
+  FilterFn,
 } from '@tanstack/react-table';
 import { ChevronDown, ChevronUp, Filter } from 'lucide-react';
 import { useResponsive } from '../../hooks/useResponsive';
 import { useLanguage } from '../../contexts/LanguageContext';
+import { ColumnVisibilityMenu } from './ColumnVisibilityMenu';
 
 const DEFAULT_PAGE_SIZE_OPTIONS = [10, 15, 20, 25, 50, 100];
 const FILTER_MENU_Z_INDEX = 12000;
@@ -28,6 +32,8 @@ interface DevExDataGridProps<T> {
   enablePagination?: boolean;
   /** Sayfa başına satır seçenekleri (masaüstü alt çubuk). Varsayılan: 10…100 */
   pageSizeOptions?: number[];
+  /** Kolon göster/gizle menüsü (masaüstü) */
+  enableColumnVisibility?: boolean;
   columnVisibility?: Record<string, boolean>;
   onColumnVisibilityChange?: (visibility: any) => void;
   pageSize?: number;
@@ -41,36 +47,163 @@ interface DevExDataGridProps<T> {
 }
 
 interface FilterMenuProps {
-  column: any;
+  column: Column<any, unknown>;
   onClose: () => void;
 }
 
-function FilterMenu({ column, onClose }: { column: Column<any, unknown>; onClose: () => void }) {
-  const { tm } = useLanguage();
-  const filterValue = (column.getFilterValue() ?? '') as string;
-  const [inputValue, setInputValue] = useState(filterValue);
-  const [filterMode, setFilterMode] = useState<'contains' | 'equals' | 'startsWith' | 'endsWith' | 'range' | 'multiselect'>('contains');
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
-  const [selectedValues, setSelectedValues] = useState<string[]>([]);
+type GridFilterPayload =
+  | string
+  | {
+      mode?: string;
+      operator?: string;
+      value?: string;
+      from?: string;
+      to?: string;
+      values?: string[];
+    };
 
-  // Get unique values for multi-select
-  const uniqueValues = Array.from(
-    new Set(
-      column.getFacetedRowModel().rows.map(row => {
-        const value = row.getValue(column.id);
-        return value != null ? String(value) : '';
-      }).filter(Boolean)
-    )
-  ).sort();
+function parseCellDate(value: unknown): number | null {
+  if (value == null || value === '') return null;
+  const d = new Date(String(value));
+  return Number.isFinite(d.getTime()) ? d.getTime() : null;
+}
+
+/** Kolon huni filtresi — FilterMenu `{ mode, value }` ile uyumlu */
+export const gridColumnFilterFn: FilterFn<any> = (row, columnId, filterValue) => {
+  const payload = filterValue as GridFilterPayload | undefined;
+  if (payload == null || payload === '') return true;
+
+  if (typeof payload === 'string') {
+    const cellValue = String(row.getValue(columnId) ?? '').toLowerCase();
+    return cellValue.includes(payload.toLowerCase());
+  }
+
+  const mode = payload.mode ?? payload.operator ?? 'contains';
+  const cellRaw = row.getValue(columnId);
+
+  if (mode === 'range') {
+    const fromMs = payload.from ? parseCellDate(payload.from) : null;
+    const toMs = payload.to ? parseCellDate(payload.to) : null;
+    if (fromMs == null && toMs == null) return true;
+    const cellMs = parseCellDate(cellRaw);
+    if (cellMs == null) return false;
+    if (fromMs != null && cellMs < fromMs) return false;
+    if (toMs != null) {
+      const end = new Date(payload.to!);
+      end.setHours(23, 59, 59, 999);
+      if (cellMs > end.getTime()) return false;
+    }
+    return true;
+  }
+
+  if (mode === 'multiselect') {
+    const values = payload.values ?? [];
+    if (values.length === 0) return true;
+    const cellStr = cellRaw == null ? '' : String(cellRaw);
+    return values.includes(cellStr);
+  }
+
+  const searchValue = String(payload.value ?? '').toLowerCase();
+  if (!searchValue) return true;
+  const cellValue = String(cellRaw ?? '').toLowerCase();
+
+  switch (mode) {
+    case 'equals':
+      return cellValue === searchValue;
+    case 'startsWith':
+      return cellValue.startsWith(searchValue);
+    case 'endsWith':
+      return cellValue.endsWith(searchValue);
+    case 'notContains':
+      return !cellValue.includes(searchValue);
+    case 'contains':
+    default:
+      return cellValue.includes(searchValue);
+  }
+};
+
+function FilterMenu({ column, onClose }: FilterMenuProps) {
+  const { tm } = useLanguage();
+  const existing = column.getFilterValue() as GridFilterPayload | undefined;
+
+  const readExisting = () => {
+    if (existing == null || existing === '') {
+      return {
+        filterMode: 'contains' as const,
+        inputValue: '',
+        dateFrom: '',
+        dateTo: '',
+        selectedValues: [] as string[],
+      };
+    }
+    if (typeof existing === 'string') {
+      return {
+        filterMode: 'contains' as const,
+        inputValue: existing,
+        dateFrom: '',
+        dateTo: '',
+        selectedValues: [] as string[],
+      };
+    }
+    const mode = (existing.mode ?? existing.operator ?? 'contains') as
+      'contains' | 'equals' | 'startsWith' | 'endsWith' | 'range' | 'multiselect';
+    return {
+      filterMode: mode,
+      inputValue: existing.value ?? '',
+      dateFrom: existing.from ?? '',
+      dateTo: existing.to ?? '',
+      selectedValues: existing.values ?? [],
+    };
+  };
+
+  const initial = readExisting();
+  const [inputValue, setInputValue] = useState(initial.inputValue);
+  const [filterMode, setFilterMode] = useState<
+    'contains' | 'equals' | 'startsWith' | 'endsWith' | 'range' | 'multiselect'
+  >(initial.filterMode);
+  const [dateFrom, setDateFrom] = useState(initial.dateFrom);
+  const [dateTo, setDateTo] = useState(initial.dateTo);
+  const [selectedValues, setSelectedValues] = useState<string[]>(initial.selectedValues);
+
+  const uniqueValues = useMemo(() => {
+    try {
+      const faceted = column.getFacetedUniqueValues?.();
+      if (faceted && faceted.size > 0) {
+        return Array.from(faceted.keys())
+          .map((v) => (v == null ? '' : String(v)))
+          .filter(Boolean)
+          .sort((a, b) => a.localeCompare(b, 'tr'));
+      }
+    } catch {
+      /* fallback below */
+    }
+    return Array.from(
+      new Set(
+        column.getPreFilteredRowModel().rows.map((row) => {
+          const value = row.getValue(column.id);
+          return value != null ? String(value) : '';
+        }).filter(Boolean)
+      )
+    ).sort((a, b) => a.localeCompare(b, 'tr'));
+  }, [column]);
 
   const handleApply = () => {
-    if (filterMode === 'range' && dateFrom && dateTo) {
-      column.setFilterValue({ mode: 'range', from: dateFrom, to: dateTo });
-    } else if (filterMode === 'multiselect' && selectedValues.length > 0) {
-      column.setFilterValue({ mode: 'multiselect', values: selectedValues });
-    } else if (inputValue) {
-      column.setFilterValue({ mode: filterMode, value: inputValue });
+    if (filterMode === 'range') {
+      if (dateFrom || dateTo) {
+        column.setFilterValue({ mode: 'range', from: dateFrom, to: dateTo });
+      } else {
+        column.setFilterValue(undefined);
+      }
+    } else if (filterMode === 'multiselect') {
+      if (selectedValues.length > 0) {
+        column.setFilterValue({ mode: 'multiselect', values: selectedValues });
+      } else {
+        column.setFilterValue(undefined);
+      }
+    } else if (inputValue.trim()) {
+      column.setFilterValue({ mode: filterMode, value: inputValue.trim() });
+    } else {
+      column.setFilterValue(undefined);
     }
     onClose();
   };
@@ -202,6 +335,7 @@ export function DevExDataGrid<T>({
   enableColumnResizing = true,
   enablePagination = true,
   pageSizeOptions = DEFAULT_PAGE_SIZE_OPTIONS,
+  enableColumnVisibility = false,
   columnVisibility,
   onColumnVisibilityChange,
   pageSize = 20,
@@ -273,32 +407,6 @@ export function DevExDataGrid<T>({
     }
   }, [rowSelection]);
 
-  // Custom filter function for DevExpress-style operators
-  const customFilterFn = (row: any, columnId: string, filterValue: any) => {
-    if (!filterValue || typeof filterValue !== 'object') {
-      return true;
-    }
-
-    const { operator, value } = filterValue;
-    const cellValue = String(row.getValue(columnId) || '').toLowerCase();
-    const searchValue = String(value).toLowerCase();
-
-    switch (operator) {
-      case 'contains':
-        return cellValue.includes(searchValue);
-      case 'equals':
-        return cellValue === searchValue;
-      case 'startsWith':
-        return cellValue.startsWith(searchValue);
-      case 'endsWith':
-        return cellValue.endsWith(searchValue);
-      case 'notContains':
-        return !cellValue.includes(searchValue);
-      default:
-        return true;
-    }
-  };
-
   const finalColumns = useMemo(() => {
     if (!enableSelection) return columns;
 
@@ -360,10 +468,16 @@ export function DevExDataGrid<T>({
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
+    getFacetedRowModel: getFacetedRowModel(),
+    getFacetedUniqueValues: getFacetedUniqueValues(),
     ...(enablePagination ? { getPaginationRowModel: getPaginationRowModel() } : {}),
     enableRowSelection: true,
     filterFns: {
-      custom: customFilterFn,
+      gridColumnFilter: gridColumnFilterFn,
+    },
+    defaultColumn: {
+      filterFn: 'gridColumnFilter',
+      enableColumnFilter: enableFiltering,
     },
     initialState: {
       pagination: {
@@ -457,6 +571,10 @@ export function DevExDataGrid<T>({
     openFilterColumn != null ? filterColumnsRef.current.get(openFilterColumn) : undefined;
 
   // Desktop Table View
+  const leafColumnsForVisibility = table
+    .getAllLeafColumns()
+    .filter((col) => col.id !== 'select' && col.id !== 'actions' && col.getCanHide());
+
   return (
     <div
       className="flex flex-col h-full outline-none"
@@ -475,6 +593,50 @@ export function DevExDataGrid<T>({
           : undefined
       }
     >
+      {enableColumnVisibility && (
+        <div className="flex items-center justify-end gap-2 px-3 py-1.5 bg-gray-50 border border-gray-300 border-b-0 shrink-0">
+          {enableFiltering && columnFilters.length > 0 && (
+            <button
+              type="button"
+              onClick={() => {
+                table.resetColumnFilters();
+                closeFilterMenu();
+              }}
+              className="px-2 py-1 text-[10px] text-blue-700 bg-blue-50 border border-blue-200 rounded hover:bg-blue-100"
+            >
+              {tm('clear')} ({columnFilters.length})
+            </button>
+          )}
+          <ColumnVisibilityMenu
+            columns={leafColumnsForVisibility.map((col) => {
+              const header = col.columnDef.header;
+              const label = typeof header === 'string' ? header : col.id;
+              return {
+                id: col.id,
+                label,
+                visible: col.getIsVisible(),
+              };
+            })}
+            onToggle={(columnId) => {
+              handleColumnVisibilityChange((prev: Record<string, boolean>) => ({
+                ...prev,
+                [columnId]: !(prev[columnId] !== false),
+              }));
+            }}
+            onShowAll={() => {
+              handleColumnVisibilityChange(
+                Object.fromEntries(leafColumnsForVisibility.map((col) => [col.id, true]))
+              );
+            }}
+            onHideAll={() => {
+              handleColumnVisibilityChange(
+                Object.fromEntries(leafColumnsForVisibility.map((col) => [col.id, false]))
+              );
+            }}
+          />
+        </div>
+      )}
+
       {/* Table Container */}
       <div className="flex-1 overflow-auto border border-gray-300 bg-white">
         <table className="w-full border-collapse">
@@ -505,8 +667,8 @@ export function DevExDataGrid<T>({
                         )}
                       </div>
 
-                      {/* Filter Icon */}
-                      {header.column.getCanFilter() && header.id !== 'select' && header.id !== 'actions' && (
+                      {/* Filter Icon (huni) */}
+                      {enableFiltering && header.column.getCanFilter() && header.id !== 'select' && header.id !== 'actions' && (
                         <button
                           type="button"
                           onClick={(e) => {
@@ -515,7 +677,7 @@ export function DevExDataGrid<T>({
                           }}
                           className={`p-0.5 hover:bg-gray-200 rounded transition-colors ${header.column.getFilterValue() ? 'text-blue-600' : 'text-gray-500'
                             }`}
-                          title="Filter"
+                          title={tm('filterType')}
                         >
                           <Filter className="w-2.5 h-2.5" />
                         </button>
@@ -576,7 +738,7 @@ export function DevExDataGrid<T>({
               style={{ top: filterMenuAnchor.top, left: filterMenuAnchor.left }}
               onMouseDown={(e) => e.stopPropagation()}
             >
-              <FilterMenu column={portalFilterColumn} onClose={closeFilterMenu} />
+              <FilterMenu key={openFilterColumn} column={portalFilterColumn} onClose={closeFilterMenu} />
             </div>
           </div>,
           document.body

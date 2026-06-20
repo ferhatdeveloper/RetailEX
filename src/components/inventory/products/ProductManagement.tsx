@@ -230,6 +230,37 @@ const LONG_PRESS_MS = 480;
 const LONG_PRESS_MOVE_PX = 14;
 /** Arka plan stok yenilemesi: 30 sn çok sık (web + büyük liste); sekme görünürken 2 dk */
 const PRODUCT_STOCK_REFRESH_MS = 120000;
+const PRODUCT_COLUMN_VISIBILITY_KEY = 'retailex_productManagement_columnVisibility';
+
+const DEFAULT_PRODUCT_COLUMN_VISIBILITY: Record<string, boolean> = {
+  barcode: true,
+  code: true,
+  name: true,
+  category: true,
+  specialCode2: true,
+  cost: true,
+  price: true,
+  salePriceUSD: true,
+  purchasePriceUSD: true,
+  taxRate: true,
+  totalSales: true,
+  totalPurchased: true,
+  stock: true,
+  unit: true,
+  created_at: true,
+};
+
+function loadProductColumnVisibility(): Record<string, boolean> {
+  try {
+    const saved = localStorage.getItem(PRODUCT_COLUMN_VISIBILITY_KEY);
+    if (saved) {
+      return { ...DEFAULT_PRODUCT_COLUMN_VISIBILITY, ...JSON.parse(saved) };
+    }
+  } catch {
+    /* ignore */
+  }
+  return { ...DEFAULT_PRODUCT_COLUMN_VISIBILITY };
+}
 
 export function ProductManagement({ products, setProducts }: ProductManagementProps) {
   const { t, tm } = useLanguage();
@@ -291,6 +322,7 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
   const [purchaseDraftBusy, setPurchaseDraftBusy] = useState(false);
   const [bulkRate, setBulkRate] = useState(1530); // Default common rate
   const [roundTo, setRoundTo] = useState(250); // Default rounding for IQD
+  const [columnVisibility, setColumnVisibility] = useState(loadProductColumnVisibility);
   const [mobilePage, setMobilePage] = useState(0);
   const [mobileActionProduct, setMobileActionProduct] = useState<Product | null>(null);
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -390,6 +422,14 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
   useEffect(() => {
     setMobilePage(0);
   }, [searchQuery, categoryFilter, showServicesOnly, showTodayOnly, duplicateDetectBy]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(PRODUCT_COLUMN_VISIBILITY_KEY, JSON.stringify(columnVisibility));
+    } catch {
+      /* ignore */
+    }
+  }, [columnVisibility]);
 
   const filteredProducts = useMemo(() => {
     const list = displayProducts.filter(product => {
@@ -1123,6 +1163,9 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
             <DevExDataGrid
               data={filteredProducts}
               columns={columns}
+              enableColumnVisibility
+              columnVisibility={columnVisibility}
+              onColumnVisibilityChange={setColumnVisibility}
               onRowContextMenu={(e, product) => {
                 e.preventDefault();
                 setContextMenu({ x: e.clientX, y: e.clientY, product });

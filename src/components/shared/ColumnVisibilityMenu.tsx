@@ -1,4 +1,4 @@
-﻿import { useState } from 'react';
+﻿import { useState, useEffect, useRef } from 'react';
 import { Eye, EyeOff, Settings } from 'lucide-react';
 
 interface Column {
@@ -16,9 +16,21 @@ interface ColumnVisibilityMenuProps {
 
 export function ColumnVisibilityMenu({ columns, onToggle, onShowAll, onHideAll }: ColumnVisibilityMenuProps) {
     const [isOpen, setIsOpen] = useState(false);
+    const rootRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        if (!isOpen) return;
+        const onDoc = (e: MouseEvent) => {
+            if (rootRef.current && !rootRef.current.contains(e.target as Node)) {
+                setIsOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', onDoc);
+        return () => document.removeEventListener('mousedown', onDoc);
+    }, [isOpen]);
 
     return (
-        <div className="relative">
+        <div className="relative" ref={rootRef}>
             <button
                 onClick={() => setIsOpen(!isOpen)}
                 className="px-3 py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 flex items-center gap-2 text-sm"
