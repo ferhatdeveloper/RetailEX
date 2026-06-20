@@ -10,10 +10,11 @@ import { useAuthStore } from '../../store/useAuthStore';
 
 /** Malzeme listesi: uzun metin kolonları hariç (ağ payload + parse maliyeti) */
 const PRODUCT_LIST_SELECT =
-  'id,firm_nr,code,barcode,name,name2,description_tr,description_en,description_ar,description_ku,image_url,image_url_cdn,category_code,group_code,sub_group_code,brand,model,manufacturer,supplier,origin,material_type,unit,unitset_id,vat_rate,price,cost,stock,min_stock,max_stock,critical_stock,is_active,has_variants,special_code_1,special_code_2,special_code_3,special_code_4,special_code_5,special_code_6,price_list_1,price_list_2,price_list_3,price_list_4,price_list_5,price_list_6,currency,purchase_price_usd,purchase_price_eur,sale_price_usd,sale_price_eur,custom_exchange_rate,auto_calculate_usd,follow_up_reminder_days,is_scale_product,created_at,updated_at';
+  'id,firm_nr,code,barcode,name,name2,description_tr,description_en,description_ar,description_ku,image_url,image_url_cdn,category_code,group_code,sub_group_code,brand,model,manufacturer,supplier,origin,material_type,unit,unitset_id,vat_rate,price,cost,stock,min_stock,max_stock,critical_stock,is_active,has_variants,special_code_1,special_code_2,special_code_3,special_code_4,special_code_5,special_code_6,price_list_1,price_list_2,price_list_3,price_list_4,price_list_5,price_list_6,currency,purchase_price_usd,purchase_price_eur,sale_price_usd,sale_price_eur,custom_exchange_rate,auto_calculate_usd,follow_up_reminder_days,is_scale_product,expiry_date,expiry_tracking,shelf_life_days,created_at,updated_at';
 const PRODUCT_LIST_SELECT_SQL = PRODUCT_LIST_SELECT.replace(/,/g, ', ');
 /** Migration 035/047 öncesi tenant şemaları */
 const PRODUCT_LIST_SELECT_FALLBACK = PRODUCT_LIST_SELECT
+  .replace(',expiry_date,expiry_tracking,shelf_life_days', '')
   .replace(',is_scale_product', '')
   .replace(',follow_up_reminder_days', '');
 const PRODUCT_LIST_SELECT_FALLBACK_SQL = PRODUCT_LIST_SELECT_FALLBACK.replace(/,/g, ', ');
@@ -35,6 +36,64 @@ function firmNrPadded(): string {
 function periodNrPadded(): string {
   return String(ERP_SETTINGS.periodNr ?? '01').trim().padStart(2, '0').slice(0, 10);
 }
+
+/** camelCase → snake_case (create / update / bulkUpdate) */
+const PRODUCT_DB_FIELD_MAPPING: Record<string, string> = {
+  minStock: 'min_stock',
+  maxStock: 'max_stock',
+  criticalStock: 'critical_stock',
+  category: 'category_code',
+  categoryCode: 'category_code',
+  groupCode: 'group_code',
+  subGroupCode: 'sub_group_code',
+  specialCode1: 'special_code_1',
+  specialCode2: 'special_code_2',
+  specialCode3: 'special_code_3',
+  specialCode4: 'special_code_4',
+  specialCode5: 'special_code_5',
+  specialCode6: 'special_code_6',
+  priceList1: 'price_list_1',
+  priceList2: 'price_list_2',
+  priceList3: 'price_list_3',
+  priceList4: 'price_list_4',
+  priceList5: 'price_list_5',
+  priceList6: 'price_list_6',
+  taxRate: 'vat_rate',
+  vatRate: 'vat_rate',
+  materialType: 'material_type',
+  isActive: 'is_active',
+  hasVariants: 'has_variants',
+  customExchangeRate: 'custom_exchange_rate',
+  autoCalculateUSD: 'auto_calculate_usd',
+  salePriceUSD: 'sale_price_usd',
+  purchasePriceUSD: 'purchase_price_usd',
+  salePriceEUR: 'sale_price_eur',
+  purchasePriceEUR: 'purchase_price_eur',
+  unitsetId: 'unitset_id',
+  image_url_cdn: 'image_url_cdn',
+  followUpReminderDays: 'follow_up_reminder_days',
+  isScaleProduct: 'is_scale_product',
+  expiryTracking: 'expiry_tracking',
+  expiryDate: 'expiry_date',
+  shelfLifeDays: 'shelf_life_days',
+  description_tr: 'description_tr',
+  description_en: 'description_en',
+  description_ar: 'description_ar',
+  description_ku: 'description_ku',
+  price: 'price',
+  cost: 'cost',
+  stock: 'stock',
+  unit: 'unit',
+  brand: 'brand',
+  model: 'model',
+  manufacturer: 'manufacturer',
+  supplier: 'supplier',
+  origin: 'origin',
+  currency: 'currency',
+  barcode: 'barcode',
+  code: 'code',
+  name: 'name',
+};
 
 /** PostgREST `or=(col.ilike.*x*)` içinde güvenli alt string */
 function sanitizePostgrestIlike(q: string): string {
@@ -697,6 +756,51 @@ export const productAPI = {
   },
 
   /**
+   * Ürün kodu / barkod tekilliği — kayıt öncesi doğrulama
+   */
+  async assertUniqueProductIdentity(params: {
+    excludeId?: string;
+    code?: string;
+    barcodes?: string[];
+  }): Promise<{ ok: true } | { ok: false; field: 'code' | 'barcode'; message: string }> {
+    const excludeId = params.excludeId?.trim() || undefined;
+    const code = String(params.code ?? '').trim();
+    if (code) {
+      const existing = await this.getByCode(code);
+      if (existing?.id && existing.id !== excludeId) {
+        return {
+          ok: false,
+          field: 'code',
+          message: `Ürün kodu zaten kullanılıyor: ${code}`,
+        };
+      }
+    }
+
+    const seen = new Set<string>();
+    for (const raw of params.barcodes ?? []) {
+      const bc = String(raw ?? '').trim();
+      if (!bc) continue;
+      if (seen.has(bc)) {
+        return {
+          ok: false,
+          field: 'barcode',
+          message: `Aynı barkod listede tekrar ediyor: ${bc}`,
+        };
+      }
+      seen.add(bc);
+      const existing = await this.getByBarcode(bc);
+      if (existing?.id && existing.id !== excludeId) {
+        return {
+          ok: false,
+          field: 'barcode',
+          message: `Barkod başka üründe kayıtlı: ${bc}`,
+        };
+      }
+    }
+    return { ok: true };
+  },
+
+  /**
    * Deep lookup by any barcode (primary or unit-specific)
    */
   async lookupByBarcode(barcode: string): Promise<{ product: Product, unitInfo?: any } | null> {
@@ -1049,6 +1153,14 @@ export const productAPI = {
    */
   async create(product: Omit<Product, 'id'>): Promise<Product | null> {
     try {
+      const uniqueCheck = await productAPI.assertUniqueProductIdentity({
+        code: product.code,
+        barcodes: product.barcode ? [product.barcode] : [],
+      });
+      if (!uniqueCheck.ok) {
+        throw new Error(uniqueCheck.message);
+      }
+
       const tableName = `rex_${firmNrPadded()}_products`;
       const p = product as any;
       const trunc = (s: unknown, max: number) => String(s ?? '').slice(0, max);
@@ -1109,6 +1221,11 @@ export const productAPI = {
           (product as any).followUpReminderDays ?? (product as any).follow_up_reminder_days,
         ),
         is_scale_product: Boolean((product as any).isScaleProduct ?? (product as any).is_scale_product ?? false),
+        expiry_tracking: Boolean((product as any).expiryTracking ?? (product as any).expiry_tracking ?? false),
+        expiry_date: (product as any).expiryDate ?? (product as any).expiry_date ?? null,
+        shelf_life_days: normalizeProductShelfLifeDays(
+          (product as any).shelfLifeDays ?? (product as any).shelf_life_days,
+        ),
       };
 
       // PostgREST: yalnızca GET değil; INSERT de aynı uç üzerinden (pg_bridge / SQL yok)
@@ -1283,15 +1400,41 @@ export const productAPI = {
         purchasePriceEUR: 'purchase_price_eur',
         followUpReminderDays: 'follow_up_reminder_days',
         isScaleProduct: 'is_scale_product',
+        expiryTracking: 'expiry_tracking',
+        expiryDate: 'expiry_date',
+        shelfLifeDays: 'shelf_life_days',
       };
 
       const fieldValues = new Map<string, any>();
 
+      if (updates.code || updates.barcode) {
+        const unique = await productAPI.assertUniqueProductIdentity({
+          excludeId: id,
+          code: updates.code,
+          barcodes: updates.barcode ? [updates.barcode] : undefined,
+        });
+        if (!unique.ok) {
+          throw new Error(unique.message);
+        }
+      }
+
       Object.entries(updates).forEach(([key, value]) => {
         if (key !== 'id' && value !== undefined) {
           const dbKey = fieldMapping[key] || key;
-          if (dbKey === 'is_scale_product') {
+          if (dbKey === 'is_scale_product' || dbKey === 'expiry_tracking') {
             fieldValues.set(dbKey, Boolean(value));
+            return;
+          }
+          if (dbKey === 'follow_up_reminder_days') {
+            fieldValues.set(dbKey, normalizeProductFollowUpReminderDays(value));
+            return;
+          }
+          if (dbKey === 'shelf_life_days') {
+            fieldValues.set(dbKey, normalizeProductShelfLifeDays(value));
+            return;
+          }
+          if (dbKey === 'expiry_date') {
+            fieldValues.set(dbKey, value == null || String(value).trim() === '' ? null : String(value).slice(0, 10));
             return;
           }
           fieldValues.set(dbKey, value);
@@ -1544,21 +1687,32 @@ export const productAPI = {
   async bulkUpdate(ids: string[], updates: Partial<Product>): Promise<number> {
     try {
       const tableName = `rex_${firmNrPadded()}_products`;
-      const fieldMapping: Record<string, string> = {
-        price: 'price',
-        cost: 'cost',
-        isActive: 'is_active',
-        taxRate: 'vat_rate',
-        salePriceUSD: 'sale_price_usd',
-        purchasePriceUSD: 'purchase_price_usd',
-      };
-
       const patchBody: Record<string, unknown> = {};
+
       Object.entries(updates).forEach(([key, value]) => {
-        if (key !== 'id' && value !== undefined) {
-          const dbKey = fieldMapping[key] || key;
-          patchBody[dbKey] = value;
+        if (key === 'id' || value === undefined) return;
+        const dbKey = PRODUCT_DB_FIELD_MAPPING[key] || key;
+        if (dbKey === 'is_scale_product' || dbKey === 'expiry_tracking' || dbKey === 'is_active' || dbKey === 'has_variants' || dbKey === 'auto_calculate_usd') {
+          patchBody[dbKey] = Boolean(value);
+          return;
         }
+        if (dbKey === 'follow_up_reminder_days') {
+          patchBody[dbKey] = normalizeProductFollowUpReminderDays(value);
+          return;
+        }
+        if (dbKey === 'shelf_life_days') {
+          patchBody[dbKey] = normalizeProductShelfLifeDays(value);
+          return;
+        }
+        if (dbKey === 'expiry_date') {
+          patchBody[dbKey] = value == null || String(value).trim() === '' ? null : String(value).slice(0, 10);
+          return;
+        }
+        if (dbKey === 'category_code') {
+          patchBody[dbKey] = String(value ?? '').slice(0, 50);
+          return;
+        }
+        patchBody[dbKey] = value;
       });
 
       if (Object.keys(patchBody).length === 0) return 0;
@@ -1696,6 +1850,9 @@ function mapDatabaseProductToProduct(dbProduct: any): Product {
     unitsetId: dbProduct.unitset_id || dbProduct.unit_set_id,
     followUpReminderDays: normalizeProductFollowUpReminderDaysForProduct(dbProduct.follow_up_reminder_days),
     isScaleProduct: dbProduct.is_scale_product === true,
+    expiryTracking: dbProduct.expiry_tracking === true,
+    expiryDate: dbProduct.expiry_date != null ? String(dbProduct.expiry_date).slice(0, 10) : null,
+    shelfLifeDays: normalizeProductShelfLifeDaysForProduct(dbProduct.shelf_life_days),
     created_at: dbProduct.created_at != null ? String(dbProduct.created_at) : undefined,
     updated_at: dbProduct.updated_at != null ? String(dbProduct.updated_at) : undefined,
   };
@@ -1715,4 +1872,16 @@ function normalizeProductFollowUpReminderDays(v: unknown): number | null {
   const n = Math.round(Number(v));
   if (!Number.isFinite(n) || n <= 0) return null;
   return Math.min(3650, n);
+}
+
+function normalizeProductShelfLifeDays(v: unknown): number | null {
+  if (v === null || v === undefined || v === '') return null;
+  const n = Math.round(Number(v));
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return Math.min(36500, n);
+}
+
+function normalizeProductShelfLifeDaysForProduct(v: unknown): number | undefined {
+  const n = normalizeProductShelfLifeDays(v);
+  return n == null ? undefined : n;
 }

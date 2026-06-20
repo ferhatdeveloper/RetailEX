@@ -10,6 +10,7 @@ import { getReceiptSettings, resolveDefaultReceiptLang } from '../../services/re
 import { APP_VERSION } from '../../core/version';
 import { productAPI } from '../../services/api/products';
 import { resolveScaleBarcodeSale } from '../../utils/scaleBarcodeSale';
+import { isProductExpired } from '../../utils/productExpiry';
 import { printThermalReceipt } from '../../utils/thermalPrinter';
 import { postgres } from '../../services/postgres';
 
@@ -23,7 +24,7 @@ interface MobilePOSProps {
 
 export function MobilePOS({ products, customers, campaigns, onSaleComplete, onBack }: MobilePOSProps) {
   const { darkMode } = useTheme();
-  const { language: uiLanguage } = useLanguage();
+  const { language: uiLanguage, tm } = useLanguage();
   const { selectedFirm } = useFirmaDonem();
   const receiptFirmNr = useMemo(() => {
     const f = selectedFirm;
@@ -242,6 +243,10 @@ export function MobilePOS({ products, customers, campaigns, onSaleComplete, onBa
     customPrice?: number,
     customQuantity?: number,
   ) => {
+    if (isProductExpired(product)) {
+      showNotif(tm('productExpiredCannotSell').replace('{name}', product.name || ''), 'error');
+      return;
+    }
     const qtyAdd = customQuantity ?? 1;
     // Unique ID for cart matching
     const itemMatch = (item: SaleItem) => {

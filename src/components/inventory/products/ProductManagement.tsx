@@ -33,6 +33,7 @@ import {
   X,
   FileText,
   ImageIcon,
+  SlidersHorizontal,
   Printer,
   ShoppingCart,
   Loader2,
@@ -43,6 +44,7 @@ import { useFirmaDonem } from '../../../contexts/FirmaDonemContext';
 import { usePermission } from '../../../shared/hooks/usePermission';
 import { useResponsive } from '../../../hooks/useResponsive';
 import { BulkProductImageUpdateModal } from './BulkProductImageUpdateModal';
+import { BulkProductFieldUpdateModal } from './BulkProductFieldUpdateModal';
 import { BulkProductLabelPrint } from './BulkProductLabelPrint';
 import { ReportViewerModule } from '../../reports/ReportViewerModule';
 import { ReportTemplate } from '../../reports/designerUtils';
@@ -293,6 +295,7 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
   const [duplicateDetectBy, setDuplicateDetectBy] = useState<'none' | 'code' | 'barcode'>('none');
   const [selectedProducts, setSelectedProducts] = useState<Product[]>([]);
   const [showBulkRateModal, setShowBulkRateModal] = useState(false);
+  const [showBulkFieldModal, setShowBulkFieldModal] = useState(false);
   const [showBulkImageModal, setShowBulkImageModal] = useState(false);
   const [showBulkLabelPrint, setShowBulkLabelPrint] = useState(false);
   const [bulkLabelModalKey, setBulkLabelModalKey] = useState(0);
@@ -820,6 +823,13 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
                 >
                   <Trash2 className="w-3 h-3" />
                   <span>{tm('productBulkDeleteBtn').replace('{count}', String(selectedProducts.length))}</span>
+                </button>
+                <button
+                  onClick={() => setShowBulkFieldModal(true)}
+                  className="flex items-center gap-1 px-2 py-1 bg-blue-600 text-white hover:bg-blue-700 transition-colors text-[10px] font-bold"
+                >
+                  <SlidersHorizontal className="w-3 h-3" />
+                  <span>{tm('productBulkUpdateBtn').replace('{count}', String(selectedProducts.length))}</span>
                 </button>
                 <button
                   onClick={() => setShowBulkImageModal(true)}
@@ -1421,6 +1431,18 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
               await updateProduct(u.id, { image_url: u.image_url, image_url_cdn: '' });
             }
             toast.success(`${updates.length} ürünün resmi güncellendi.`);
+            await loadProducts(true);
+            setSelectedProducts([]);
+          }}
+        />
+      )}
+
+      {showBulkFieldModal && selectedProducts.length > 0 && (
+        <BulkProductFieldUpdateModal
+          products={selectedProducts}
+          showPurchasePricing={showPurchasePricing}
+          onClose={() => setShowBulkFieldModal(false)}
+          onApplied={async () => {
             await loadProducts(true);
             setSelectedProducts([]);
           }}

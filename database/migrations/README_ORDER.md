@@ -45,6 +45,7 @@
 40. **050_beauty_follow_up_show_natural_when_postponed.sql** – Güzellik takip hatırlatması: ertelenince orijinal vade tarihinde isteğe bağlı gösterim (`show_natural_when_postponed`).
 41. **051_system_health_sync_logs.sql** – `sync_logs`, `upsert_service_health()`, `cleanup_stale_services()` (Entegrasyonlar sistem sağlığı paneli).
 42. **052_pos_cart_audit.sql** – POS sepet satır iptali ve fiyat değişikliği audit kayıtları (`pos_cart_audit`).
+43. **053_rex_products_expiry_tracking.sql** – `rex_*_products`: `expiry_date`, `expiry_tracking`, `shelf_life_days` (SKT / raf ömrü).
 
 **Mevcut veritabanı:** `config.db` (DeskApp ayarları) ile bekleyen migration’ları uygulamak için proje kökünde `npm run db:migrate` (ayrıntı: `.cursor/rules/database-migrate-config-db.mdc`).
 

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useFirmaDonem } from '../../contexts/FirmaDonemContext';
 import { logger } from '../../utils/logger';
 import { resolveScaleBarcodeSale } from '../../utils/scaleBarcodeSale';
+import { isProductExpired } from '../../utils/productExpiry';
 import {
   ShoppingCart,
   CreditCard,
@@ -130,7 +131,7 @@ export default function MarketPOS({
   const refreshProducts = useProductStore((state) => state.loadProducts);
 
   // Language support
-  const { t } = useLanguage();
+  const { t, tm } = useLanguage();
   const { selectedFirm, selectedPeriod } = useFirmaDonem();
   const [showLanguageModal, setShowLanguageModal] = useState(false);
 
@@ -772,6 +773,10 @@ export default function MarketPOS({
 
   // Add to cart
   const addToCart = (product: Product, variant?: any, customQuantity?: number, unit?: string, multiplier?: number, customPrice?: number) => {
+    if (isProductExpired(product)) {
+      showNotif(tm('productExpiredCannotSell').replace('{name}', product.name || ''), 'error');
+      return;
+    }
     // Kasa açık mı kontrol et
     if (!isCashRegisterOpen) {
       showNotif(t.openCashRegisterToAddProduct, 'error');

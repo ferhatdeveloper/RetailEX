@@ -397,6 +397,7 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
     warrantyPeriod: 0, // Ay
     warrantyType: '',
     shelfLife: 0, // Gün
+    expiryDate: '' as string,
     /** Güzellik sarf sonrası takip (gün); boş = kapalı */
     followUpReminderDays: '' as number | '',
 
@@ -766,6 +767,9 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
         return Math.min(3650, n) as number | '';
       })(),
       isScaleProduct: product.isScaleProduct === true || (product as any).is_scale_product === true,
+      expiryTracking: (product as any).expiryTracking === true || (product as any).expiry_tracking === true,
+      expiryDate: (product as any).expiryDate ?? ((product as any).expiry_date ? String((product as any).expiry_date).slice(0, 10) : ''),
+      shelfLife: Number((product as any).shelfLifeDays ?? (product as any).shelf_life_days ?? 0) || 0,
     }));
     lastTranslatedTrRef.current = (product.description_tr || product.name || '').trim();
     setSelectedUnitSetId((product as any).unitsetId || '');
@@ -1642,6 +1646,25 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
     }
 
     const primaryBarcode = barcodes[0]?.code || '';
+    const barcodeList = barcodes.map((b) => b.code).filter((c) => String(c || '').trim());
+
+    const uniqueCheck = await productAPI.assertUniqueProductIdentity({
+      excludeId: productId,
+      code: formData.code,
+      barcodes: barcodeList,
+    });
+    if (!uniqueCheck.ok) {
+      if (uniqueCheck.field === 'code') {
+        toast.error(tm('productDuplicateCodeError').replace('{value}', formData.code));
+      } else {
+        const match = uniqueCheck.message.match(/: (.+)$/);
+        toast.error(
+          tm('productDuplicateBarcodeError').replace('{value}', match?.[1] || primaryBarcode)
+        );
+      }
+      return;
+    }
+
     let localImageUrl = formData.image_url;
 
     // CDN görsel girilmiş ama local/base64 boşsa, kaydetmeden önce sisteme de al.
@@ -1716,6 +1739,12 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
         return Math.min(3650, n);
       })(),
       isScaleProduct: formData.isScaleProduct === true,
+      expiryTracking: formData.expiryTracking === true,
+      expiryDate: formData.expiryDate?.trim() ? formData.expiryDate.trim().slice(0, 10) : null,
+      shelfLifeDays: (() => {
+        const n = Math.round(Number(formData.shelfLife ?? 0));
+        return Number.isFinite(n) && n > 0 ? Math.min(36500, n) : null;
+      })(),
     } as any;
 
     try {
@@ -2712,6 +2741,29 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                     <span className="text-xs text-gray-700">{tm('expiryTracking')}</span>
                   </label>
                 </div>
+                {formData.expiryTracking && (
+                  <div className="px-3 pb-3 grid grid-cols-2 gap-2 max-lg:grid-cols-1 border-t border-gray-100 pt-2">
+                    <div>
+                      <label className="text-xs text-gray-700 block mb-1">{tm('productExpiryDateLabel')}</label>
+                      <input
+                        type="date"
+                        value={formData.expiryDate || ''}
+                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleInputChange('expiryDate', e.target.value)}
+                        className="w-full px-2 py-1 border border-gray-300 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-700 block mb-1">{tm('shelfLife')} ({tm('days')})</label>
+                      <input
+                        type="number"
+                        min={0}
+                        value={formData.shelfLife || 0}
+                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleInputChange('shelfLife', Number(e.target.value))}
+                        className="w-full px-2 py-1 border border-gray-300 text-xs text-right focus:outline-none focus:ring-1 focus:ring-blue-500"
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Boyut ve Ağırlık */}
