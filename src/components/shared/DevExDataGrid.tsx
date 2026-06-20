@@ -259,28 +259,29 @@ function FilterMenu({ column, onClose }: FilterMenuProps) {
     onClose();
   };
 
+  const FILTER_MENU_HEIGHT = 440;
+
   return (
     <div
-      className="bg-white border border-gray-300 rounded shadow-xl min-w-[280px] max-w-[320px]"
+      className="bg-white border border-gray-300 rounded shadow-xl w-[300px] flex flex-col overflow-hidden"
+      style={{ height: Math.min(FILTER_MENU_HEIGHT, window.innerHeight - 16) }}
       onClick={(e) => e.stopPropagation()}
     >
-      <div className="px-2 py-1.5 border-b border-gray-200 bg-[#E3F2FD]">
+      <div className="shrink-0 px-2 py-1.5 border-b border-gray-200 bg-[#E3F2FD]">
         <span className="text-[10px] font-semibold text-gray-700">{tm('filterType')}</span>
       </div>
 
-      <div className="p-2 space-y-2">
-        <div>
-          <input
-            type="text"
-            value={listSearch}
-            onChange={(e) => setListSearch(e.target.value)}
-            placeholder={`${tm('search')}...`}
-            className="w-full px-2 py-1.5 text-[11px] border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
-            autoFocus
-          />
-        </div>
+      <div className="shrink-0 p-2 space-y-2 border-b border-gray-100">
+        <input
+          type="text"
+          value={listSearch}
+          onChange={(e) => setListSearch(e.target.value)}
+          placeholder={`${tm('search')}...`}
+          className="w-full px-2 py-1.5 text-[11px] border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+          autoFocus
+        />
 
-        <label className="flex items-center gap-2 px-1 py-1 text-[11px] font-medium text-gray-700 border-b border-gray-100 cursor-pointer hover:bg-gray-50 rounded">
+        <label className="flex items-center gap-2 px-1 py-1 text-[11px] font-medium text-gray-700 cursor-pointer hover:bg-gray-50 rounded">
           <input
             type="checkbox"
             checked={allFilteredSelected}
@@ -288,38 +289,43 @@ function FilterMenu({ column, onClose }: FilterMenuProps) {
               if (el) el.indeterminate = someFilteredSelected;
             }}
             onChange={toggleSelectAllFiltered}
-            className="w-3.5 h-3.5"
+            className="w-3.5 h-3.5 shrink-0"
           />
           <span className="flex-1">(Tümünü Seç)</span>
           <span className="text-gray-400 tabular-nums">{filteredEntries.length}</span>
         </label>
+      </div>
 
-        <div className="max-h-56 overflow-y-auto border border-gray-200 rounded">
-          {filteredEntries.length === 0 ? (
-            <div className="p-3 text-[10px] text-gray-400 text-center">{tm('noDataFound')}</div>
-          ) : (
-            <div className="divide-y divide-gray-50">
-              {filteredEntries.map((entry) => (
-                <label
-                  key={entry.key}
-                  className="flex items-center gap-2 px-2 py-1.5 text-[11px] hover:bg-blue-50/60 cursor-pointer"
-                >
-                  <input
-                    type="checkbox"
-                    checked={selectedValues.includes(entry.key)}
-                    onChange={() => toggleValue(entry.key)}
-                    className="w-3.5 h-3.5 shrink-0"
-                  />
-                  <span className="flex-1 truncate" title={entry.label}>
-                    {entry.label}
-                  </span>
-                  <span className="text-gray-400 tabular-nums shrink-0">({entry.count})</span>
-                </label>
-              ))}
-            </div>
-          )}
-        </div>
+      <div
+        className="flex-1 min-h-0 overflow-y-scroll overscroll-contain border-b border-gray-200 bg-white"
+        style={{ scrollbarWidth: 'thin', scrollbarColor: '#94a3b8 #f1f5f9' }}
+      >
+        {filteredEntries.length === 0 ? (
+          <div className="p-4 text-[10px] text-gray-400 text-center">{tm('noDataFound')}</div>
+        ) : (
+          <div className="divide-y divide-gray-50">
+            {filteredEntries.map((entry) => (
+              <label
+                key={entry.key}
+                className="flex items-center gap-2 px-2 py-1.5 text-[11px] hover:bg-blue-50/60 cursor-pointer"
+              >
+                <input
+                  type="checkbox"
+                  checked={selectedValues.includes(entry.key)}
+                  onChange={() => toggleValue(entry.key)}
+                  className="w-3.5 h-3.5 shrink-0"
+                />
+                <span className="flex-1 truncate" title={entry.label}>
+                  {entry.label}
+                </span>
+                <span className="text-gray-400 tabular-nums shrink-0">({entry.count})</span>
+              </label>
+            ))}
+          </div>
+        )}
+      </div>
 
+      <div className="shrink-0 p-2 space-y-2 bg-gray-50/80">
         <button
           type="button"
           onClick={() => setShowTextFilter((v) => !v)}
@@ -329,11 +335,11 @@ function FilterMenu({ column, onClose }: FilterMenuProps) {
         </button>
 
         {showTextFilter && (
-          <div className="space-y-2 pt-1 border-t border-gray-100">
+          <div className="space-y-2 pt-1 border-t border-gray-200">
             <select
               value={textMode}
               onChange={(e) => setTextMode(e.target.value as typeof textMode)}
-              className="w-full px-2 py-1 text-[10px] border border-gray-300 rounded"
+              className="w-full px-2 py-1 text-[10px] border border-gray-300 rounded bg-white"
             >
               <option value="contains">{tm('contains')}</option>
               <option value="equals">{tm('equals')}</option>
@@ -345,7 +351,7 @@ function FilterMenu({ column, onClose }: FilterMenuProps) {
               value={textValue}
               onChange={(e) => setTextValue(e.target.value)}
               placeholder={tm('value')}
-              className="w-full px-2 py-1 text-[10px] border border-gray-300 rounded"
+              className="w-full px-2 py-1 text-[10px] border border-gray-300 rounded bg-white"
             />
             <button
               type="button"
@@ -357,7 +363,7 @@ function FilterMenu({ column, onClose }: FilterMenuProps) {
           </div>
         )}
 
-        <div className="flex gap-1 pt-1 border-t">
+        <div className="flex gap-1 pt-1 border-t border-gray-200">
           <button
             type="button"
             onClick={handleApplyValues}
@@ -612,8 +618,13 @@ export function DevExDataGrid<T>({
       filterColumnsRef.current.set(headerId, column);
       const rect = anchorEl.getBoundingClientRect();
       const menuWidth = 300;
+      const menuHeight = 440;
+      let top = rect.bottom + 4;
+      if (top + menuHeight > window.innerHeight - 8) {
+        top = Math.max(8, rect.top - menuHeight - 4);
+      }
       const left = Math.max(8, Math.min(rect.right - menuWidth, window.innerWidth - menuWidth - 8));
-      setFilterMenuAnchor({ top: rect.bottom + 4, left });
+      setFilterMenuAnchor({ top, left });
       setOpenFilterColumn(headerId);
     },
     [openFilterColumn, closeFilterMenu]

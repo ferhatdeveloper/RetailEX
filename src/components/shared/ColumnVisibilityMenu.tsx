@@ -31,12 +31,18 @@ export function ColumnVisibilityMenu({
   const buttonRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
+  const MENU_WIDTH = 300;
+  const MENU_HEIGHT = 440;
+
   const updateMenuPos = () => {
     const rect = buttonRef.current?.getBoundingClientRect();
     if (!rect) return;
-    const menuWidth = 280;
-    const left = Math.max(8, Math.min(rect.left, window.innerWidth - menuWidth - 8));
-    setMenuPos({ top: rect.bottom + 6, left });
+    const left = Math.max(8, Math.min(rect.left, window.innerWidth - MENU_WIDTH - 8));
+    let top = rect.bottom + 6;
+    if (top + MENU_HEIGHT > window.innerHeight - 8) {
+      top = Math.max(8, rect.top - MENU_HEIGHT - 6);
+    }
+    setMenuPos({ top, left });
   };
 
   const openMenu = () => {
@@ -80,11 +86,16 @@ export function ColumnVisibilityMenu({
   const menuPanel = isOpen && menuPos ? (
     <div
       ref={menuRef}
-      className="fixed w-[280px] bg-white rounded-lg shadow-2xl border border-gray-200 z-[14000]"
-      style={{ top: menuPos.top, left: menuPos.left }}
+      className="fixed flex flex-col bg-white rounded-lg shadow-2xl border border-gray-300 z-[14000] overflow-hidden"
+      style={{
+        top: menuPos.top,
+        left: menuPos.left,
+        width: MENU_WIDTH,
+        height: Math.min(MENU_HEIGHT, window.innerHeight - 16),
+      }}
       onMouseDown={(e) => e.stopPropagation()}
     >
-      <div className="p-3 border-b border-gray-200">
+      <div className="shrink-0 p-3 border-b border-gray-200 bg-gray-50">
         <div className="flex items-center justify-between mb-2">
           <span className="text-sm font-semibold text-gray-800">Kolon Görünürlüğü</span>
           <button type="button" onClick={closeMenu} className="text-gray-400 hover:text-gray-600 text-lg leading-none">
@@ -117,11 +128,17 @@ export function ColumnVisibilityMenu({
             className="w-full pl-8 pr-2 py-1.5 text-xs border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
           />
         </div>
+        <p className="mt-2 text-[10px] text-gray-500 tabular-nums">
+          {filteredColumns.filter((c) => c.visible).length}/{filteredColumns.length} kolon görünür
+        </p>
       </div>
 
-      <div className="max-h-[min(24rem,50vh)] overflow-y-auto p-2">
+      <div
+        className="flex-1 min-h-0 overflow-y-scroll overscroll-contain p-2 border-b border-gray-100"
+        style={{ scrollbarWidth: 'thin', scrollbarColor: '#94a3b8 #f1f5f9' }}
+      >
         {filteredColumns.length === 0 ? (
-          <p className="text-xs text-gray-400 text-center py-4">Eşleşen kolon yok</p>
+          <p className="text-xs text-gray-400 text-center py-8">Eşleşen kolon yok</p>
         ) : (
           filteredColumns.map((column) => (
             <label
@@ -132,9 +149,11 @@ export function ColumnVisibilityMenu({
                 type="checkbox"
                 checked={column.visible}
                 onChange={() => onToggle(column.id)}
-                className="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500"
+                className="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500 shrink-0"
               />
-              <span className="text-sm text-gray-700 flex-1 truncate">{column.label}</span>
+              <span className="text-sm text-gray-700 flex-1 truncate" title={column.label}>
+                {column.label}
+              </span>
               {column.visible ? (
                 <Eye className="w-4 h-4 text-green-600 shrink-0" />
               ) : (
@@ -144,7 +163,8 @@ export function ColumnVisibilityMenu({
           ))
         )}
       </div>
-      <p className="px-3 py-2 text-[10px] text-gray-400 border-t border-gray-100">
+
+      <p className="shrink-0 px-3 py-2 text-[10px] text-gray-400 bg-gray-50 border-t border-gray-100">
         Seçimler tarayıcıda kaydedilir (localStorage).
       </p>
     </div>
