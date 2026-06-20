@@ -4,7 +4,7 @@ import type { Product } from '../../core/types';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { formatPosQuantityInput, parsePosQuantityForProduct } from '../../utils/numberFormatter';
 import { productUnitLabel, productUsesDecimalQuantity } from '../../utils/productUnits';
-import { formatMoneyWithCode, formatCurrency } from '../../utils/currency';
+import { formatMoneyWithCode, getGlobalCurrency } from '../../utils/currency';
 
 interface POSProductQuantityModalProps {
   product: Product;
@@ -51,9 +51,10 @@ export function POSProductQuantityModal({
     onClose();
   };
 
-  const priceText = product.currency
-    ? formatMoneyWithCode(product.price, product.currency)
-    : formatCurrency(product.price);
+  const priceText = formatMoneyWithCode(
+    product.price ?? 0,
+    product.currency || getGlobalCurrency()
+  );
 
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[6000] flex items-center justify-center p-4">

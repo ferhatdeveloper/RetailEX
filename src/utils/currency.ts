@@ -23,6 +23,15 @@ function normalizeCurrencyCode(currency?: string | null): string {
   return code.length >= 3 ? code.slice(0, 10) : 'IQD';
 }
 
+/** Intl ondalık basamak aralığı (0–20); yanlış tip (örn. para birimi string) geçilince çökmez. */
+function normalizeDecimalPlaces(decimals: unknown, fallback: number): number {
+  if (typeof decimals !== 'number') return fallback;
+  if (!Number.isFinite(decimals)) return fallback;
+  const n = Math.trunc(decimals);
+  if (n < 0 || n > 20) return fallback;
+  return n;
+}
+
 /**
  * Set global currency codes (called from context)
  */
@@ -111,7 +120,11 @@ export const formatCurrency = (
   useReportingCurrency: boolean = false
 ): string => {
   const currency = useReportingCurrency ? globalReportingCurrency : globalCurrency;
-  const dec = decimals ?? getCurrencyDecimalPlaces(currency);
+  const defaultDecimals = getCurrencyDecimalPlaces(currency);
+  const dec =
+    decimals === undefined
+      ? defaultDecimals
+      : normalizeDecimalPlaces(decimals, defaultDecimals);
   const rounded = roundMoneyAmount(value, currency);
   return baseFormatCurrency(rounded, currency, dec);
 };

@@ -1,4 +1,13 @@
-﻿/**
+﻿function clampFractionDigits(decimals: unknown, fallback = 2): number {
+  const n = typeof decimals === 'number' ? decimals : Number(decimals);
+  if (!Number.isFinite(n)) return fallback;
+  const clamped = Math.trunc(n);
+  if (clamped < 0) return 0;
+  if (clamped > 20) return 20;
+  return clamped;
+}
+
+/**
  * Format number with Turkish formatting (dot for thousands, comma for decimals)
  * @param value - Number to format
  * @param decimals - Number of decimal places (default: 2 for Turkish standard)
@@ -11,10 +20,12 @@ export const formatNumber = (value: number, decimals: number = 2, showDecimals: 
     return '0';
   }
 
+  const safeDecimals = clampFractionDigits(decimals);
+
   // Turkish format: 20.000,50 (dot for thousands, comma for decimals)
   const options: Intl.NumberFormatOptions = {
-    minimumFractionDigits: showDecimals ? decimals : 0,
-    maximumFractionDigits: decimals,
+    minimumFractionDigits: showDecimals ? safeDecimals : 0,
+    maximumFractionDigits: safeDecimals,
   };
 
   let formatted = value.toLocaleString('tr-TR', options);
