@@ -113,6 +113,29 @@ function isPostgrestMissingColumnError(error: unknown, column: string): boolean 
   );
 }
 
+/** Eski tenant şemalarında henüz migration uygulanmamış kolonlar (053, 047, 035) */
+const OPTIONAL_PRODUCT_DB_COLUMNS = [
+  'expiry_date',
+  'expiry_tracking',
+  'shelf_life_days',
+  'is_scale_product',
+  'follow_up_reminder_days',
+] as const;
+
+function stripOptionalProductColumns(row: Record<string, unknown>, column: string): Record<string, unknown> {
+  const next = { ...row };
+  delete next[column];
+  return next;
+}
+
+function extractMissingPgColumn(error: unknown): string | null {
+  const msg = String((error as { message?: string })?.message ?? error ?? '');
+  const quoted = msg.match(/column "([^"]+)" (?:of relation )?does not exist/i);
+  if (quoted?.[1]) return quoted[1];
+  const unquoted = msg.match(/column ([a-z0-9_]+) does not exist/i);
+  return unquoted?.[1] ?? null;
+}
+
 async function postgrestCreateProductRow(
   tableName: string,
   row: Record<string, unknown>
@@ -124,16 +147,10 @@ async function postgrestCreateProductRow(
       prefer: 'return=representation',
     });
   } catch (error) {
-    if (isPostgrestMissingColumnError(error, 'is_scale_product') && 'is_scale_product' in row) {
-      const { is_scale_product: _drop, ...fallback } = row;
-      return postgrest.post<unknown>(`/${tableName}`, fallback, {
-        schema: 'public',
-        prefer: 'return=representation',
-      });
-    }
-    if (isPostgrestMissingColumnError(error, 'follow_up_reminder_days') && 'follow_up_reminder_days' in row) {
-      const { follow_up_reminder_days: _drop, ...fallback } = row;
-      return postgrestCreateProductRow(tableName, fallback);
+    for (const col of OPTIONAL_PRODUCT_DB_COLUMNS) {
+      if (col in row && isPostgrestMissingColumnError(error, col)) {
+        return postgrestCreateProductRow(tableName, stripOptionalProductColumns(row, col));
+      }
     }
     throw error;
   }
@@ -152,17 +169,63 @@ async function postgrestPatchProductRow(
       prefer: 'return=representation',
     });
   } catch (error) {
-    if (isPostgrestMissingColumnError(error, 'is_scale_product') && 'is_scale_product' in patchBody) {
-      const next = { ...patchBody };
-      delete next.is_scale_product;
-      return postgrestPatchProductRow(tableName, id, next);
-    }
-    if (isPostgrestMissingColumnError(error, 'follow_up_reminder_days') && 'follow_up_reminder_days' in patchBody) {
-      const next = { ...patchBody };
-      delete next.follow_up_reminder_days;
-      return postgrestPatchProductRow(tableName, id, next);
+    for (const col of OPTIONAL_PRODUCT_DB_COLUMNS) {
+      if (col in patchBody && isPostgrestMissingColumnError(error, col)) {
+        return postgrestPatchProductRow(tableName, id, stripOptionalProductColumns(patchBody, col));
+      }
     }
     throw error;
+  }
+}
+
+async function postgrestPatchProductRowsBulk(
+  tableName: string,
+  idInList: string,
+  patchBody: Record<string, unknown>
+): Promise<unknown> {
+  const { postgrest } = await import('./postgrestClient');
+  const path = `/${tableName}?id=in.(${idInList})&firm_nr=eq.${encodeURIComponent(String(ERP_SETTINGS.firmNr))}`;
+  try {
+    return await postgrest.patch<unknown[]>(path, patchBody, {
+      schema: 'public',
+      prefer: 'return=representation',
+    });
+  } catch (error) {
+    for (const col of OPTIONAL_PRODUCT_DB_COLUMNS) {
+      if (col in patchBody && isPostgrestMissingColumnError(error, col)) {
+        return postgrestPatchProductRowsBulk(tableName, idInList, stripOptionalProductColumns(patchBody, col));
+      }
+    }
+    throw error;
+  }
+}
+
+async function insertProductRowSql(
+  tableName: string,
+  productData: Record<string, unknown>
+): Promise<any | null> {
+  let data = { ...productData };
+  while (true) {
+    const columns = Object.keys(data);
+    const values = Object.values(data);
+    const placeholders = columns.map((_, i) => `$${i + 1}`).join(', ');
+    const query = `INSERT INTO ${tableName} (${columns.join(', ')}) VALUES (${placeholders}) RETURNING *`;
+    try {
+      const { rows } = await postgres.query(query, values);
+      return rows[0] ?? null;
+    } catch (error) {
+      if (!isUndefinedColumnError(error)) throw error;
+      const missing = extractMissingPgColumn(error);
+      if (
+        !missing ||
+        !(missing in data) ||
+        !(OPTIONAL_PRODUCT_DB_COLUMNS as readonly string[]).includes(missing)
+      ) {
+        throw error;
+      }
+      data = stripOptionalProductColumns(data, missing);
+      if (Object.keys(data).length === 0) throw error;
+    }
   }
 }
 
@@ -1238,14 +1301,9 @@ export const productAPI = {
         return first ? mapDatabaseProductToProduct(first) : null;
       }
 
-      const columns = Object.keys(productData);
-      const values = Object.values(productData);
-      const placeholders = columns.map((_, i) => `$${i + 1}`).join(', ');
+      const rows = await insertProductRowSql(tableName, productData as Record<string, unknown>);
 
-      const query = `INSERT INTO ${tableName} (${columns.join(', ')}) VALUES (${placeholders}) RETURNING *`;
-      const { rows } = await postgres.query(query, values);
-
-      return rows[0] ? mapDatabaseProductToProduct(rows[0]) : null;
+      return rows ? mapDatabaseProductToProduct(rows) : null;
     } catch (error: any) {
       console.error('[ProductAPI] create failed:', error);
       const errCode = error?.code;
@@ -1722,11 +1780,7 @@ export const productAPI = {
         const { postgrest } = await import('./postgrestClient');
         const inList = ids.map((x) => String(x).trim()).filter(Boolean).join(',');
         if (!inList) return 0;
-        const patched = await postgrest.patch<any[]>(
-          `/${tableName}?id=in.(${inList})&firm_nr=eq.${encodeURIComponent(String(ERP_SETTINGS.firmNr))}`,
-          patchBody,
-          { schema: 'public', prefer: 'return=representation' }
-        );
+        const patched = await postgrestPatchProductRowsBulk(tableName, inList, patchBody);
         return Array.isArray(patched) ? patched.length : patched ? 1 : 0;
       }
 
