@@ -81,7 +81,9 @@ import type { Product, Customer, Campaign, User as UserType, Sale } from '../../
 import type { CartItem, ParkedReceipt, SaleRecord, PaymentType } from './types';
 import { applyCampaign, CampaignResult } from '../../utils/campaignEngine';
 import { lineDiscountMoneyFromPercent, lineNetAfterPercentDiscount } from '../../utils/discountRounding';
-import { formatPosQuantityInput, parsePosQuantity, formatDecimalForTrInput } from '../../utils/numberFormatter';
+import { formatPosQuantityInput, parsePosQuantity, formatDecimalForTrInput, parsePosQuantityForProduct } from '../../utils/numberFormatter';
+import { POSProductQuantityModal } from './POSProductQuantityModal';
+import { QuickProductSlotButton } from './QuickProductSlotButton';
 // import type { LayoutOrder } from './ScreenSettingsModal';
 export type LayoutOrder = 'cart-numpad-quick' | 'cart-fullscreen' | 'cart-wide-quick' | 'quick-dominant' | 'numpad-dominant' | 'cart-top-actions-bottom' | 'quick-top-cart-bottom' | 'quick-with-detail-sidebar' | 'quick-sidebar-numpad' | 'cart-quick-numpad-float' | string;
 
@@ -309,6 +311,8 @@ export default function MarketPOS({
   const [quickProductPage, setQuickProductPage] = useState<number>(0); // 0=1-12, 1=13-24, 2=25-36, 3=37-48
   const [showVariantSelection, setShowVariantSelection] = useState(false);
   const [variantSelectionProduct, setVariantSelectionProduct] = useState<Product | null>(null);
+  const [quantityModalProduct, setQuantityModalProduct] = useState<Product | null>(null);
+  const [pendingCartQuantity, setPendingCartQuantity] = useState<number | null>(null);
   const [selectedCartItem, setSelectedCartItem] = useState<CartItem | null>(null); // For detail sidebar
   const [variantSelectionCartIndex, setVariantSelectionCartIndex] = useState<number | null>(null); // Sepet içi varyant değiştirme için
   const [productSearchQuery, setProductSearchQuery] = useState<string>(''); // Ürün kataloğu arama sorgusu
@@ -814,7 +818,11 @@ export default function MarketPOS({
       price = customPrice;
     }
 
-    const quantity = customQuantity || 1;
+    const parsedQty = customQuantity != null
+      ? parsePosQuantityForProduct(customQuantity, product)
+      : 1;
+    if (!Number.isFinite(parsedQty) || parsedQty <= 0) return;
+    const quantity = parsedQty;
     const itemUnit = unit || product.unit || t.pcs;
 
     setCart(prev => {
@@ -844,6 +852,33 @@ export default function MarketPOS({
     });
 
     showNotif(t.productAddedToCart.replace('{productName}', product.name), 'success');
+  };
+
+  const productHasVariants = (product: Product) =>
+    product.hasVariants || (product.variants && product.variants.length > 0);
+
+  const handleQuickProductShortPress = (product: Product) => {
+    if (productHasVariants(product)) {
+      setPendingCartQuantity(null);
+      setVariantSelectionProduct(product);
+      setShowVariantSelection(true);
+    } else {
+      addToCart(product);
+    }
+  };
+
+  const handleQuickProductLongPress = (product: Product) => {
+    setQuantityModalProduct(product);
+  };
+
+  const handleQuantityModalConfirm = (product: Product, qty: number) => {
+    if (productHasVariants(product)) {
+      setPendingCartQuantity(qty);
+      setVariantSelectionProduct(product);
+      setShowVariantSelection(true);
+    } else {
+      addToCart(product, undefined, qty);
+    }
   };
 
   // Handle barcode search (barcodeInput'tan okur)
@@ -1888,7 +1923,8 @@ export default function MarketPOS({
                   product={variantSelectionProduct}
                   currentVariant={undefined}
                   onSelect={(variant) => {
-                    addToCart(variantSelectionProduct, variant);
+                    addToCart(variantSelectionProduct, variant, pendingCartQuantity ?? undefined);
+                    setPendingCartQuantity(null);
                     setShowVariantSelection(false);
                     setVariantSelectionProduct(null);
                   }}
@@ -1904,64 +1940,36 @@ export default function MarketPOS({
           {/* Quick Actions - Her zaman render edilir ama varyant paneli üstte overlay yapar */}
           {/* Top - Quick Product Add (Shift basılı tutarak) */}
           <div className={`p-2.5 border-b flex-shrink-0 ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
-            <div className={`text-xs mb-1.5 font-medium ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{t.quickProductAdd} ({t.shiftClick})</div>
+            <div className={`text-xs mb-1.5 font-medium ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+              {t.quickProductAdd} ({t.shiftClick}) · {tm('posLongPressQtyHint')}
+            </div>
             <div className="grid grid-cols-4 gap-1.5">
               {/* First 11 product slots (0-10) */}
               {Array.from({ length: 11 }).map((_, index) => {
                 const slotIndex = quickProductPage * 12 + index;
                 const product = quickProducts[slotIndex];
-                const stock = product?.stock || 0;
                 return (
-                  <button
+                  <QuickProductSlotButton
                     key={index}
-                    onClick={(e) => {
-                      if (e.shiftKey) {
-                        // Shift + Click: Ürün kataloğunu aç (assign-to-slot modu)
-                        setSelectedQuickSlot(slotIndex);
-                        setCatalogMode('assign-to-slot');
-                        setShowProductCatalogModal(true);
-                      } else if (product) {
-                        // Debug: Ürün bilgilerini logla
-                        console.log('[Quick Button] Product:', product.name);
-                        console.log('[Quick Button] hasVariants:', product.hasVariants);
-                        console.log('[Quick Button] variants:', product.variants);
-                        console.log('[Quick Button] variants length:', product.variants?.length);
-
-                        // Normal click: Varyant kontrolü yap
-                        // Hem hasVariants flag'ini hem de variants array'ini kontrol et
-                        const hasVariants = product.hasVariants || (product.variants && product.variants.length > 0);
-
-                        if (hasVariants) {
-                          // Varyantlı ürün - varyant seçim panelini aç
-                          console.log('[Quick Button] Opening variant selection panel');
-                          setVariantSelectionProduct(product);
-                          setShowVariantSelection(true);
-                        } else {
-                          // Varyantsız ürün - direkt sepete ekle
-                          console.log('[Quick Button] Adding to cart directly');
-                          addToCart(product);
-                        }
-                      }
+                    product={product}
+                    slotIndex={slotIndex}
+                    onShortPress={handleQuickProductShortPress}
+                    onLongPress={handleQuickProductLongPress}
+                    onShiftPress={(_product, slot) => {
+                      setSelectedQuickSlot(slot);
+                      setCatalogMode('assign-to-slot');
+                      setShowProductCatalogModal(true);
+                    }}
+                    onEmptyPress={() => {
+                      setSelectedQuickSlot(slotIndex);
+                      setCatalogMode('assign-to-slot');
+                      setShowProductCatalogModal(true);
                     }}
                     className={`aspect-square border transition-all flex flex-col items-center justify-center text-xs leading-tight p-2 relative ${product
                       ? 'bg-blue-50 border-blue-400 text-blue-700 hover:bg-blue-100'
                       : 'bg-white border-gray-300 text-gray-400 hover:border-blue-400 hover:bg-blue-50'
                       }`}
-                  >
-                    {product ? (
-                      <>
-                        <div className="font-semibold truncate w-full text-center mb-1 text-[11px]">{product.name}</div>
-                        <div className="text-[10px] text-blue-600 font-bold">{product.price.toFixed(2)}</div>
-                        {stock !== undefined && (
-                          <div className="absolute top-1 right-1 bg-blue-600 text-white text-[9px] px-1 py-0.5 leading-none font-medium">
-                            {stock}
-                          </div>
-                        )}
-                      </>
-                    ) : (
-                      <span className="text-gray-400 font-medium">{slotIndex + 1}</span>
-                    )}
-                  </button>
+                  />
                 );
               })}
 
@@ -2349,8 +2357,8 @@ export default function MarketPOS({
             setBarcodeInput('');
             showNotif(t.productAssignedToSlot.replace('{productName}', product.name).replace('{slotNumber}', (selectedQuickSlot + 1).toString()), 'success');
           }}
-          onAddToCart={(product, variant) => {
-            addToCart(product, variant);
+          onAddToCart={(product, variant, quantity) => {
+            addToCart(product, variant, quantity);
             setShowProductCatalogModal(false);
             setProductSearchQuery('');
             setBarcodeInput('');
@@ -2361,6 +2369,15 @@ export default function MarketPOS({
             setBarcodeInput('');
           }}
           mode={catalogMode}
+        />
+      )}
+
+      {quantityModalProduct && (
+        <POSProductQuantityModal
+          product={quantityModalProduct}
+          darkMode={darkMode}
+          onClose={() => setQuantityModalProduct(null)}
+          onConfirm={handleQuantityModalConfirm}
         />
       )}
 

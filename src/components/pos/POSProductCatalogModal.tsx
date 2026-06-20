@@ -2,9 +2,11 @@ import React, { useState, useMemo } from 'react';
 import { X, Search, Grid3x3, List, Package, Check } from 'lucide-react';
 import type { Product } from '../../core/types';
 import { POSProductDetailModal } from './POSProductDetailModal';
+import { POSProductQuantityModal } from './POSProductQuantityModal';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { FullscreenBodyPortal, MODAL_OVERLAY_Z } from '../shared/FullscreenBodyPortal';
+import { useLongPressHandlers } from '../../hooks/useLongPress';
 
 interface POSProductCatalogModalProps {
   products: Product[];
@@ -13,8 +15,47 @@ interface POSProductCatalogModalProps {
   initialSearchQuery?: string;
   onSelect?: (product: Product) => void;
   onClose: () => void;
-  onAddToCart?: (product: Product, variant?: any) => void;
+  onAddToCart?: (product: Product, variant?: any, quantity?: number) => void;
   onAddMultiple?: (products: Product[]) => void;
+}
+
+function CatalogProductPressable({
+  as = 'button',
+  className,
+  children,
+  onShortPress,
+  onLongPress,
+  disabled,
+}: {
+  as?: 'button' | 'div';
+  className?: string;
+  children: React.ReactNode;
+  onShortPress: () => void;
+  onLongPress?: () => void;
+  disabled?: boolean;
+}) {
+  const handlers = useLongPressHandlers(
+    () => {
+      if (!disabled) onShortPress();
+    },
+    () => {
+      if (!disabled && onLongPress) onLongPress();
+    }
+  );
+
+  if (as === 'div') {
+    return (
+      <div className={className} {...handlers} role="button" tabIndex={0}>
+        {children}
+      </div>
+    );
+  }
+
+  return (
+    <button type="button" className={className} disabled={disabled} {...handlers}>
+      {children}
+    </button>
+  );
 }
 
 export function POSProductCatalogModal({
@@ -41,6 +82,8 @@ export function POSProductCatalogModal({
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [selectedVariant, setSelectedVariant] = useState<any | null>(null);
   const [multiSelectedIds, setMultiSelectedIds] = useState<Set<string>>(new Set());
+  const [quantityModalProduct, setQuantityModalProduct] = useState<Product | null>(null);
+  const [pendingAddQuantity, setPendingAddQuantity] = useState<number | null>(null);
 
   const isInvoiceMultiSelect = mode === 'invoice-multi-select';
   const multiSelectHint = tm('invoiceCatalogMultiSelectHint');
@@ -78,10 +121,28 @@ export function POSProductCatalogModal({
       if (product.variants && product.variants.length > 0) {
         setSelectedProduct(product);
         setSelectedVariant(null);
+        setPendingAddQuantity(null);
       } else if (onAddToCart) {
         onAddToCart(product);
       }
     }
+  };
+
+  const handleProductLongPress = (product: Product) => {
+    if (isInvoiceMultiSelect || mode !== 'add-to-cart') return;
+    setQuantityModalProduct(product);
+  };
+
+  const handleQuantityModalConfirm = (product: Product, qty: number) => {
+    if (product.variants && product.variants.length > 0) {
+      setPendingAddQuantity(qty);
+      setSelectedProduct(product);
+      setSelectedVariant(null);
+    } else if (onAddToCart) {
+      onAddToCart(product, undefined, qty);
+      onClose();
+    }
+    setQuantityModalProduct(null);
   };
 
   // Get categories with counts
@@ -276,14 +337,16 @@ export function POSProductCatalogModal({
                   {filteredProducts.map((product) => {
                     const isMultiSelected = multiSelectedIds.has(product.id);
                     return (
-                    <button
+                    <CatalogProductPressable
                       key={product.id}
-                      onClick={(e) => handleProductPrimaryClick(e, product)}
                       className={`bg-white border transition-all flex flex-col p-3 group relative ${
                         isInvoiceMultiSelect && isMultiSelected
                           ? 'border-blue-500 ring-2 ring-blue-200 shadow-md'
                           : 'border-gray-200 hover:border-blue-400 hover:shadow-lg'
                       }`}
+                      onShortPress={() => handleProductPrimaryClick({ ctrlKey: false, metaKey: false } as React.MouseEvent, product)}
+                      onLongPress={() => handleProductLongPress(product)}
+                      disabled={isInvoiceMultiSelect}
                     >
                       {isInvoiceMultiSelect && (
                         <div
@@ -331,7 +394,7 @@ export function POSProductCatalogModal({
                           </div>
                         )}
                       </div>
-                    </button>
+                    </CatalogProductPressable>
                   );
                   })}
                 </div>
@@ -340,14 +403,17 @@ export function POSProductCatalogModal({
                   {filteredProducts.map((product) => {
                     const isMultiSelected = multiSelectedIds.has(product.id);
                     return (
-                    <div
+                    <CatalogProductPressable
                       key={product.id}
-                      onClick={(e) => handleProductPrimaryClick(e, product)}
+                      as="div"
                       className={`w-full bg-white border transition-all p-4 flex items-center gap-4 cursor-pointer relative overflow-hidden ${
                         isInvoiceMultiSelect && isMultiSelected
                           ? 'border-blue-500 ring-2 ring-blue-200 shadow-md'
                           : 'border-gray-200 hover:border-blue-400 hover:shadow-lg'
                       }`}
+                      onShortPress={() => handleProductPrimaryClick({ ctrlKey: false, metaKey: false } as React.MouseEvent, product)}
+                      onLongPress={() => handleProductLongPress(product)}
+                      disabled={isInvoiceMultiSelect}
                     >
                       {isInvoiceMultiSelect && (
                         <div
@@ -364,7 +430,6 @@ export function POSProductCatalogModal({
                           {isMultiSelected && <Check className="w-3 h-3 text-white" />}
                         </div>
                       )}
-                      {/* Color Bar - Left side */}
                       {product.variants && product.variants.length > 0 && product.variants[0].color && (
                         <div
                           className="absolute top-0 left-0 bottom-0 w-1.5"
@@ -372,7 +437,6 @@ export function POSProductCatalogModal({
                         />
                       )}
 
-                      {/* Product Image */}
                       {(product.image_url_cdn || product.image_url) ? (
                         <div className="w-16 h-16 bg-gray-50 rounded overflow-hidden flex items-center justify-center flex-shrink-0">
                           <img
@@ -440,7 +504,7 @@ export function POSProductCatalogModal({
                           {t.assignToSlot}
                         </button>
                       )}
-                    </div>
+                    </CatalogProductPressable>
                   );
                   })}
                 </div>
@@ -529,6 +593,7 @@ export function POSProductCatalogModal({
                       onClick={() => {
                         setSelectedProduct(null);
                         setSelectedVariant(null);
+                        setPendingAddQuantity(null);
                       }}
                       className="px-4 py-2 border border-gray-300 text-gray-700 hover:bg-gray-50 text-sm transition-colors"
                     >
@@ -536,10 +601,11 @@ export function POSProductCatalogModal({
                     </button>
                     <button
                       onClick={() => {
-                        if (selectedVariant && onAddToCart) {
-                          onAddToCart(selectedProduct, selectedVariant);
+                        if (selectedVariant && onAddToCart && selectedProduct) {
+                          onAddToCart(selectedProduct, selectedVariant, pendingAddQuantity ?? undefined);
                           setSelectedProduct(null);
                           setSelectedVariant(null);
+                          setPendingAddQuantity(null);
                         }
                       }}
                       disabled={!selectedVariant}
@@ -590,6 +656,15 @@ export function POSProductCatalogModal({
             setShowDetailModal(false);
             setSelectedProduct(null);
           }}
+        />
+      )}
+
+      {quantityModalProduct && (
+        <POSProductQuantityModal
+          product={quantityModalProduct}
+          darkMode={darkMode}
+          onClose={() => setQuantityModalProduct(null)}
+          onConfirm={handleQuantityModalConfirm}
         />
       )}
     </FullscreenBodyPortal>
