@@ -10,7 +10,7 @@ import { getCurrencyDecimalPlaces, roundMoneyAmount } from './currency';
  * @param value - Input value from user
  * @returns Formatted string with thousand separators
  */
-export const formatNumberInput = (value: string): string => {
+export const formatNumberInput = (value: string, maxDecimalDigits = 2): string => {
   // Türkiye formatı: binlik ayırıcı nokta (.), ondalık ayırıcı virgül (,)
   // Kullanıcının yazdığı nokta ve virgülleri koru, sadece geçersiz karakterleri temizle
   const cleanValue = value.replace(/[^\d.,]/g, '');
@@ -26,7 +26,7 @@ export const formatNumberInput = (value: string): string => {
   if (commaIndex !== -1) {
     // Virgül varsa, ondalık ayırıcı olarak kabul et
     integerPart = cleanValue.slice(0, commaIndex).replace(/\./g, '');
-    decimalPart = cleanValue.slice(commaIndex + 1).replace(/[^\d]/g, '').slice(0, 2);
+    decimalPart = cleanValue.slice(commaIndex + 1).replace(/[^\d]/g, '').slice(0, maxDecimalDigits);
   } else {
     // Sadece rakamlar ve noktalar varsa, noktaları binlik ayırıcı olarak kabul et
     integerPart = cleanValue.replace(/\./g, '');
@@ -104,6 +104,22 @@ export function parseDecimalStringForInput(value: string): number {
   }
   const n = parseFloat(s);
   return Number.isFinite(n) ? n : NaN;
+}
+
+const POS_QTY_MIN = 0.001;
+const POS_QTY_MAX = 9999;
+
+/** POS miktar: TR girişinden sayıya (örn. "1,250" → 1.25) ve 0,001–9999 aralığına sıkıştır */
+export function parsePosQuantity(value: string | number): number {
+  const raw = typeof value === 'number' ? value : parseDecimalStringForInput(value);
+  if (!Number.isFinite(raw) || raw <= 0) return NaN;
+  const clamped = Math.max(POS_QTY_MIN, Math.min(POS_QTY_MAX, raw));
+  return Math.round(clamped * 1000) / 1000;
+}
+
+/** POS miktar alanı yazarken format (en fazla 3 ondalık, örn. 1,250) */
+export function formatPosQuantityInput(value: string): string {
+  return formatNumberInput(value, 3);
 }
 
 /** Gösterim: 1.54 → "1,54" (virgüllü ondalık, grup yok) */

@@ -86,6 +86,7 @@ import { usePermission } from '../../../shared/hooks/usePermission';
 import { formatCurrency } from '../../../utils/currency';
 import { resolveProductNameForReceipt } from '../../../utils/receiptProductName';
 import { lineNetAfterPercentDiscount, roundPosDiscountAmountUp } from '../../../utils/discountRounding';
+import { parsePosQuantity } from '../../../utils/numberFormatter';
 import { MainCategoryIcon, SubCategoryIcon } from '../utils/restaurantCategoryIcons';
 
 interface RestPOSProps {
@@ -978,7 +979,12 @@ export const RestPOS: React.FC<RestPOSProps> = ({
 
     /* ---------- cart ---------- */
     const addToCart = async (product: Product, addQty: number = 1) => {
-        const dq = Math.max(1, Math.min(999, Math.floor(Number(addQty) || 1)));
+        const parsedQty = typeof addQty === 'number' && Number.isFinite(addQty)
+            ? addQty
+            : parsePosQuantity(String(addQty));
+        const dq = Number.isFinite(parsedQty)
+            ? parsePosQuantity(parsedQty)
+            : 1;
         const pendingNote = pendingProductNotes[product.id]?.trim();
         // Önce sepete anında ekle — setCart(prev=>...) kullan ki art arda tıklamalarda 1,2,3... doğru artsın (closure'daki eski cart'a göre silinmesin)
         let rollbackCart: CartItem[] | null = null;

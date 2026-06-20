@@ -3,6 +3,7 @@ import { X, ShoppingBag, Plus, StickyNote, ChefHat, Gift, Trash2, Info, Pencil }
 import { cn } from '../../ui/utils';
 import type { Product } from '../../../core/types';
 import { useRestaurantModuleTm } from '../hooks/useRestaurantModuleTm';
+import { formatPosQuantityInput, parsePosQuantity } from '../../../utils/numberFormatter';
 
 interface RestaurantProductOptionsModalProps {
     product: Product;
@@ -63,7 +64,8 @@ export function RestaurantProductOptionsModal({
     const productWithPrice = (): Product => priceOverride != null ? { ...product, price: priceOverride } : product;
 
     const applyQuantityAdd = () => {
-        const n = Math.max(1, Math.min(999, parseInt(String(quantityInput).replace(/\D/g, '') || '1', 10) || 1));
+        const n = parsePosQuantity(quantityInput);
+        if (!Number.isFinite(n)) return;
         onAddToCart(productWithPrice(), n);
         onClose();
     };
@@ -126,11 +128,10 @@ export function RestaurantProductOptionsModal({
                             <div className="flex gap-2 items-stretch">
                                 <input
                                     type="text"
-                                    inputMode="numeric"
-                                    pattern="[0-9]*"
+                                    inputMode="decimal"
                                     autoComplete="off"
                                     value={quantityInput}
-                                    onChange={e => setQuantityInput(e.target.value.replace(/\D/g, ''))}
+                                    onChange={e => setQuantityInput(formatPosQuantityInput(e.target.value))}
                                     onKeyDown={e => {
                                         if (e.key === 'Enter') {
                                             e.preventDefault();
