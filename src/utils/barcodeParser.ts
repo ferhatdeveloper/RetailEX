@@ -88,6 +88,11 @@ function parseCode10WeightSuffix(trimmed: string): ParsedBarcode | null {
   };
 }
 
+/** 14+ hane tartı etiketi (10 hane kod + ağırlık). */
+export function isCompositeScaleBarcode(barcode: string): boolean {
+  return parseCode10WeightSuffix(barcode.trim()) != null;
+}
+
 /** PLU ayarı tip 25–29 (grup 21–29): D(1) + PLU(6) + WW.WWW(5) — barkod 10… / 20… ile başlayabilir */
 function parseDeptPlus6Plu(trimmed: string): ParsedBarcode | null {
   const deptDigit = trimmed[0];

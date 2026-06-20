@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useFirmaDonem } from '../../contexts/FirmaDonemContext';
 import { logger } from '../../utils/logger';
 import { resolveScaleBarcodeSale } from '../../utils/scaleBarcodeSale';
+import { isCompositeScaleBarcode } from '../../utils/barcodeParser';
 import { isProductExpired } from '../../utils/productExpiry';
 import {
   ShoppingCart,
@@ -682,6 +683,25 @@ export default function MarketPOS({
     logger.log('?? Aranan barkod:', trimmedBarcode);
 
     try {
+      // 14 hane tartı etiketi önce parse edilir (1000000009 + 1610) — tam barkod kaydı 1 adet eklemesin
+      if (isCompositeScaleBarcode(trimmedBarcode)) {
+        const scaleSale = await resolveScaleBarcodeSale(trimmedBarcode, exchangeRate);
+        if (scaleSale) {
+          addToCart(
+            scaleSale.product,
+            undefined,
+            scaleSale.quantity,
+            scaleSale.unitName,
+            1,
+            scaleSale.unitPrice,
+          );
+          logger.log(
+            `[MarketPOS] Tartılı satış: ${scaleSale.formatInfo} — kod ${scaleSale.parsed.productCode} — ${scaleSale.weightGrams}g → ${scaleSale.quantity} ${scaleSale.unitName} × ${scaleSale.unitPrice}`,
+          );
+          return true;
+        }
+      }
+
       const result = await productAPI.lookupByBarcode(trimmedBarcode);
 
       if (result && result.product) {

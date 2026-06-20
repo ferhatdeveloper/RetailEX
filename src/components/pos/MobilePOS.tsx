@@ -10,6 +10,7 @@ import { getReceiptSettings, resolveDefaultReceiptLang } from '../../services/re
 import { APP_VERSION } from '../../core/version';
 import { productAPI } from '../../services/api/products';
 import { resolveScaleBarcodeSale } from '../../utils/scaleBarcodeSale';
+import { isCompositeScaleBarcode } from '../../utils/barcodeParser';
 import { isProductExpired } from '../../utils/productExpiry';
 import { printThermalReceipt } from '../../utils/thermalPrinter';
 import { postgres } from '../../services/postgres';
@@ -163,6 +164,22 @@ export function MobilePOS({ products, customers, campaigns, onSaleComplete, onBa
       const searchTerm = barcodeInput.trim();
 
       try {
+        if (isCompositeScaleBarcode(searchTerm)) {
+          const scaleSale = await resolveScaleBarcodeSale(searchTerm, exchangeRate);
+          if (scaleSale) {
+            addToCart(
+              scaleSale.product,
+              undefined,
+              scaleSale.unitName,
+              1,
+              scaleSale.unitPrice,
+              scaleSale.quantity,
+            );
+            setBarcodeInput('');
+            return;
+          }
+        }
+
         const result = await productAPI.lookupByBarcode(searchTerm);
 
         if (result && result.product) {
@@ -210,7 +227,9 @@ export function MobilePOS({ products, customers, campaigns, onSaleComplete, onBa
 
           addToCart(product, undefined, unitInfo?.unit, unitMultiplier, price);
           setBarcodeInput('');
-        } else if (searchTerm.length === 13) {
+        } else if (
+          searchTerm.length >= 13 && searchTerm.length <= 15 && /^\d+$/.test(searchTerm)
+        ) {
           const scaleSale = await resolveScaleBarcodeSale(searchTerm, exchangeRate);
           if (scaleSale) {
             addToCart(
@@ -1101,6 +1120,25 @@ export function MobilePOS({ products, customers, campaigns, onSaleComplete, onBa
             console.log('Scanned barcode:', code);
 
             try {
+              if (isCompositeScaleBarcode(code)) {
+                const scaleSale = await resolveScaleBarcodeSale(code, exchangeRate);
+                if (scaleSale) {
+                  addToCart(
+                    scaleSale.product,
+                    undefined,
+                    scaleSale.unitName,
+                    1,
+                    scaleSale.unitPrice,
+                    scaleSale.quantity,
+                  );
+                  showNotif(
+                    `${scaleSale.product.name} — ${scaleSale.quantity} ${scaleSale.unitName} sepete eklendi`,
+                    'success',
+                  );
+                  return;
+                }
+              }
+
               const lookupResult = await productAPI.lookupByBarcode(code);
 
               if (lookupResult && lookupResult.product) {
@@ -1115,7 +1153,7 @@ export function MobilePOS({ products, customers, campaigns, onSaleComplete, onBa
                 const price = (unitInfo && unitInfo.sale_price > 0) ? unitInfo.sale_price : (product.price * (unitInfo?.multiplier || 1));
                 addToCart(product, undefined, unitInfo?.unit_code, unitInfo?.multiplier, price);
                 showNotif(`${product.name} sepete eklendi`, 'success');
-              } else if (code.length === 13) {
+              } else if (code.length >= 13 && code.length <= 15 && /^\d+$/.test(code)) {
                 const scaleSale = await resolveScaleBarcodeSale(code, exchangeRate);
                 if (scaleSale) {
                   addToCart(
