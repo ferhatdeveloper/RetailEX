@@ -1,21 +1,19 @@
 ﻿/**
- * Tartılı Ürün Barkod Parser
+ * Tartılı ürün barkod parser — Rongta RLS1000/1100 (tip 0–99).
  *
- * EAN-13 tartılı barkod formatları (prefix 20–29):
- *
- * **Rongta / GS1 (tip 27 vb.)**: 2XPPPPPWWWWWC
- *   - Örnek: 2700010125001 → PLU 00001, 1250 gram
- *   - Prefix: 22, 24, 26–29 (Rongta varsayılan tip 27)
- *
- * **Logo Tiger**: 20PPPPWWWWWC / 21PPPPWWWWWC
- *   - Örnek: 2000010125001 → PLU 0001 (4 hane), 1250 gram
- *
- * **Fiyat bazlı**: 23PPPPFFFFFC – 24PPPPFFFFFC – 25PPPPFFFFFC
- *   - Gömülü fiyat (kuruş); ağırlık yok
+ * **Tip 99 (özel)**: Yazılımda genelde tip 17 kopyası → prefix **27** + PLU(5) + gram(5).
+ * **Tip 17**: 27 + PLU(5) + WW.WWW(5) — ağırlık alanı gram (örn. 01250 = 1250 g).
+ * **Tip 19**: 29 + PLU(5) + WWWWW(5).
+ * **Tip 27 (PLU ayarı)**: D(1) + PLU(6) + WW.WWW(5) — alternatif parse denenir.
  */
 
+import { getScaleBarcodeType } from './scaleBarcodeConfig';
+
 export type BarcodeFormat =
-  | 'rongta_gs1'
+  | 'rongta_type17'
+  | 'rongta_type99'
+  | 'rongta_fixed_weight'
+  | 'rongta_dept_plu6'
   | 'logo_tiger'
   | 'price_based'
   | 'weight_end'
@@ -26,40 +24,119 @@ export interface ParsedBarcode {
   isWeightBased: boolean;
   isPriceBased?: boolean;
   productCode?: string;
-  weight?: number; // gram cinsinden
-  price?: number; // fiyat bazlı ise (kuruş cinsinden)
+  weight?: number; // gram
+  price?: number; // kuruş (fiyat barkodu)
   originalBarcode: string;
   format?: BarcodeFormat;
+  /** Rongta barkod tipi referansı (17, 99 vb.) */
+  rongtaTypeHint?: number;
 }
+
+/** Sabit prefix 25–29 (Rongta tablo: tip 15–19, ağırlık barkodu) */
+const FIXED_WEIGHT_SPECS: Record<
+  string,
+  { pluFrom: number; pluTo: number; weightFrom: number; weightTo: number; rongtaType: number }
+> = {
+  '25': { pluFrom: 2, pluTo: 8, weightFrom: 8, weightTo: 12, rongtaType: 15 },
+  '26': { pluFrom: 2, pluTo: 8, weightFrom: 8, weightTo: 12, rongtaType: 16 },
+  '27': { pluFrom: 2, pluTo: 7, weightFrom: 7, weightTo: 12, rongtaType: 17 },
+  '28': { pluFrom: 2, pluTo: 7, weightFrom: 7, weightTo: 12, rongtaType: 18 },
+  '29': { pluFrom: 2, pluTo: 7, weightFrom: 7, weightTo: 12, rongtaType: 19 },
+};
 
 function parseWeightDigits(value: string): number {
   const n = parseInt(value, 10);
   return Number.isFinite(n) ? n : 0;
 }
 
+function parseFixedPrefixWeight(trimmed: string): ParsedBarcode | null {
+  const spec = FIXED_WEIGHT_SPECS[trimmed.substring(0, 2)];
+  if (!spec) return null;
+  const weight = parseWeightDigits(trimmed.substring(spec.weightFrom, spec.weightTo));
+  const configuredType = getScaleBarcodeType();
+  const format: BarcodeFormat =
+    configuredType === 99 ? 'rongta_type99' : spec.rongtaType === 17 ? 'rongta_type17' : 'rongta_fixed_weight';
+  return {
+    isWeightBased: true,
+    productCode: trimmed.substring(spec.pluFrom, spec.pluTo),
+    weight,
+    originalBarcode: trimmed,
+    format,
+    rongtaTypeHint: configuredType === 99 ? 99 : spec.rongtaType,
+  };
+}
+
+/** PLU ayarı tip 27–29: D(1) + PLU(6) + ağırlık(5) */
+function parseDeptPlus6Plu(trimmed: string): ParsedBarcode | null {
+  const prefixNum = parseInt(trimmed.substring(0, 2), 10);
+  if (prefixNum < 21 || prefixNum > 29) return null;
+  const weight = parseWeightDigits(trimmed.substring(7, 12));
+  if (weight <= 0) return null;
+  return {
+    isWeightBased: true,
+    productCode: trimmed.substring(1, 7),
+    weight,
+    originalBarcode: trimmed,
+    format: 'rongta_dept_plu6',
+    rongtaTypeHint: prefixNum,
+  };
+}
+
+function dedupeParsed(list: ParsedBarcode[]): ParsedBarcode[] {
+  const seen = new Set<string>();
+  const out: ParsedBarcode[] = [];
+  for (const p of list) {
+    if (!p.isWeightBased && !p.isPriceBased) continue;
+    const key = `${p.format}|${p.productCode}|${p.weight}|${p.price}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(p);
+  }
+  return out;
+}
+
 /**
- * Barkodu parse eder ve tartılı ürün bilgilerini çıkarır.
+ * Olası tüm tartılı parse sonuçları (PLU eşleşmesi için sırayla denenir).
+ * Tip 99 → önce tip 17 (prefix 27 + 5 PLU), gerekirse 6 haneli PLU alternatifi.
+ */
+export function parseBarcodeVariants(barcode: string): ParsedBarcode[] {
+  const trimmed = barcode.trim();
+  const primary = parseBarcode(trimmed);
+  const variants: ParsedBarcode[] = [];
+
+  if (primary.isWeightBased || primary.isPriceBased) {
+    variants.push(primary);
+  }
+
+  if (trimmed.length === 13 && /^\d{13}$/.test(trimmed)) {
+    const alt6 = parseDeptPlus6Plu(trimmed);
+    if (alt6) variants.push(alt6);
+  }
+
+  return dedupeParsed(variants);
+}
+
+/**
+ * Barkodu parse eder — birincil tartılı format.
  */
 export function parseBarcode(barcode: string): ParsedBarcode {
   const trimmed = barcode.trim();
 
   if (trimmed.length !== 13 || !/^\d{13}$/.test(trimmed)) {
-    return {
-      isWeightBased: false,
-      originalBarcode: trimmed,
-    };
+    return { isWeightBased: false, originalBarcode: trimmed };
   }
 
   const prefixNum = parseInt(trimmed.substring(0, 2), 10);
   if (prefixNum < 20 || prefixNum > 29) {
-    return {
-      isWeightBased: false,
-      originalBarcode: trimmed,
-    };
+    return { isWeightBased: false, originalBarcode: trimmed };
   }
 
-  // Fiyat bazlı (23–25)
-  if (prefixNum >= 23 && prefixNum <= 25) {
+  // Ağırlık: sabit prefix 25–29 (tip 15–19; tip 99 genelde tip 17 = prefix 27)
+  const fixedWeight = parseFixedPrefixWeight(trimmed);
+  if (fixedWeight) return fixedWeight;
+
+  // Fiyat: sabit prefix 23–24 (tip 13–14)
+  if (prefixNum === 23 || prefixNum === 24) {
     return {
       isWeightBased: false,
       isPriceBased: true,
@@ -70,7 +147,7 @@ export function parseBarcode(barcode: string): ParsedBarcode {
     };
   }
 
-  // Logo Tiger — 4 haneli PLU (20, 21)
+  // Logo Tiger — 20/21 + 4 hane PLU
   if (prefixNum === 20 || prefixNum === 21) {
     return {
       isWeightBased: true,
@@ -81,89 +158,41 @@ export function parseBarcode(barcode: string): ParsedBarcode {
     };
   }
 
-  // Rongta / GS1 — 5 haneli PLU (22, 24, 26–29; terazi tip 27 dahil)
-  if (
-    prefixNum === 22 ||
-    prefixNum === 24 ||
-    (prefixNum >= 26 && prefixNum <= 29)
-  ) {
+  // Prefix 22: tip 12 fiyat veya nadir ağırlık — 5 hane PLU + ağırlık dene
+  if (prefixNum === 22) {
     return {
       isWeightBased: true,
       productCode: trimmed.substring(2, 7),
       weight: parseWeightDigits(trimmed.substring(7, 12)),
       originalBarcode: trimmed,
-      format: 'rongta_gs1',
+      format: 'rongta_fixed_weight',
+      rongtaTypeHint: 22,
     };
   }
 
-  // Eski heuristic (nadir formatlar / geriye dönük)
-  const format1ProductCode = trimmed.substring(1, 6);
-  const format1Weight = parseWeightDigits(trimmed.substring(6, 11));
-  const format2Weight = parseWeightDigits(trimmed.substring(1, 6));
-  const format2ProductCode = trimmed.substring(6, 11);
-
-  const isFormat1Valid = format1Weight >= 0 && format1Weight <= 50000;
-  const isFormat2Valid = format2Weight >= 0 && format2Weight <= 50000;
-
-  if (isFormat1Valid) {
-    return {
-      isWeightBased: true,
-      productCode: format1ProductCode,
-      weight: format1Weight,
-      originalBarcode: trimmed,
-      format: 'weight_end',
-    };
-  }
-  if (isFormat2Valid) {
-    return {
-      isWeightBased: true,
-      productCode: format2ProductCode,
-      weight: format2Weight,
-      originalBarcode: trimmed,
-      format: 'weight_start',
-    };
-  }
-
-  return {
-    isWeightBased: true,
-    productCode: format1ProductCode,
-    weight: format1Weight,
-    originalBarcode: trimmed,
-    format: 'weight_end',
-  };
+  return { isWeightBased: false, originalBarcode: trimmed };
 }
 
-/**
- * Gram cinsinden ağırlığı birime göre dönüştürür.
- * Tartılı satışta fiyat genelde KG başına olduğundan KG/LT için kg/litre döner.
- */
 export function convertWeight(weightInGrams: number, unit: string): number {
   const upperUnit = unit.toUpperCase().replace(/İ/g, 'I');
-
   switch (upperUnit) {
     case 'GR':
     case 'G':
     case 'GRAM':
     case 'GRM':
-      return weightInGrams / 1000;
-
     case 'KG':
     case 'KILO':
     case 'KILOGRAM':
-      return weightInGrams / 1000;
-
     case 'LT':
     case 'L':
     case 'LITRE':
     case 'LITER':
       return weightInGrams / 1000;
-
     default:
       return weightInGrams / 1000;
   }
 }
 
-/** Sepet gösterimi için birim etiketi (tartılı satır). */
 export function scaleSaleUnitLabel(unit: string): string {
   const u = unit.toUpperCase().replace(/İ/g, 'I');
   if (u === 'GR' || u === 'G' || u === 'GRAM' || u === 'GRM') return 'KG';
@@ -172,44 +201,41 @@ export function scaleSaleUnitLabel(unit: string): string {
   return unit || 'KG';
 }
 
-/**
- * Kuruş cinsinden fiyatı TL'ye dönüştürür
- */
 export function convertPrice(priceInCents: number): number {
   return priceInCents / 100;
 }
 
-/**
- * Barkod tartılı ürün barkodu mu kontrol eder (hızlı kontrol)
- */
 export function isWeightBasedBarcode(barcode: string): boolean {
   const trimmed = barcode.trim();
   if (trimmed.length !== 13 || !/^\d{13}$/.test(trimmed)) return false;
   const prefix = parseInt(trimmed.substring(0, 2), 10);
   if (prefix < 20 || prefix > 29) return false;
-  if (prefix >= 23 && prefix <= 25) return false;
+  if (prefix === 23 || prefix === 24) return false;
   return true;
 }
 
-/**
- * Barkod formatını açıklama olarak döndürür (debug/log için)
- */
 export function getBarcodeFormatInfo(parsed: ParsedBarcode): string {
   if (!parsed.isWeightBased && !parsed.isPriceBased) {
     return 'Normal ürün barkodu';
   }
-
+  const typeHint = parsed.rongtaTypeHint != null ? ` (tip ${parsed.rongtaTypeHint})` : '';
   switch (parsed.format) {
-    case 'rongta_gs1':
-      return 'Rongta/GS1: 2X + 5 hane PLU + 5 hane gram';
+    case 'rongta_type99':
+      return `Rongta tip 99: 27 + 5 PLU + gram${typeHint}`;
+    case 'rongta_type17':
+      return `Rongta tip 17: 27 + 5 PLU + gram${typeHint}`;
+    case 'rongta_fixed_weight':
+      return `Rongta sabit prefix + PLU + gram${typeHint}`;
+    case 'rongta_dept_plu6':
+      return `Rongta: dept + 6 PLU + gram${typeHint}`;
     case 'logo_tiger':
-      return 'Logo Tiger: 20/21 + 4 hane PLU + 5 hane gram';
-    case 'weight_end':
-      return 'Format 1: Ağırlık sonda (2PPPPPWWWWW)';
-    case 'weight_start':
-      return 'Format 2: Ağırlık başta (2WWWWWPPPPP)';
+      return 'Logo Tiger: 20/21 + 4 PLU + gram';
     case 'price_based':
-      return 'Format 4: Fiyat bazlı (23PPPPFFFFF)';
+      return 'Fiyat gömülü barkod';
+    case 'weight_end':
+      return 'Format 1: Ağırlık sonda';
+    case 'weight_start':
+      return 'Format 2: Ağırlık başta';
     default:
       return 'Bilinmeyen format';
   }

@@ -8,7 +8,7 @@ import {
   convertPrice,
   convertWeight,
   getBarcodeFormatInfo,
-  parseBarcode,
+  parseBarcodeVariants,
   scaleSaleUnitLabel,
   type ParsedBarcode,
 } from './barcodeParser';
@@ -92,7 +92,20 @@ export async function resolveScaleBarcodeSale(
   barcode: string,
   exchangeRate = 1,
 ): Promise<ScaleBarcodeSaleResult | null> {
-  const parsed = parseBarcode(barcode.trim());
+  const variants = parseBarcodeVariants(barcode.trim());
+  if (variants.length === 0) return null;
+
+  for (const parsed of variants) {
+    const result = await resolveParsedScaleBarcode(parsed, exchangeRate);
+    if (result) return result;
+  }
+  return null;
+}
+
+async function resolveParsedScaleBarcode(
+  parsed: ParsedBarcode,
+  exchangeRate: number,
+): Promise<ScaleBarcodeSaleResult | null> {
   if (!parsed.isWeightBased && !parsed.isPriceBased) return null;
   if (!parsed.productCode) return null;
 

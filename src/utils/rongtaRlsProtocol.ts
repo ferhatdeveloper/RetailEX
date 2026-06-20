@@ -4,6 +4,8 @@
  * Node SDK eşleniği: scripts/scale-bridge/sdk/rongta/
  */
 
+import { getScaleBarcodeType } from './scaleBarcodeConfig';
+
 export const RONGTA_DEFAULT_IP = '192.168.1.87';
 export const RONGTA_DEFAULT_PORT = 20304;
 /** Bağlantı testinde sırayla denenen terazi portları (yazıcı portları hariç) */
@@ -78,9 +80,9 @@ export function rongtaMapWeightUnit(unit?: string): string {
   return '4';
 }
 
-/** Varsayılan barkod tipi: EAN-13 tartılı (27). */
-export function rongtaDefaultBarcodeType(): string {
-  return '27';
+/** Varsayılan barkod tipi: 99 (özel — tip 17 yapısı: 27 + PLU + gram). */
+export function rongtaDefaultBarcodeType(): number {
+  return getScaleBarcodeType();
 }
 
 export function buildRongtaPacket(command: string, data = ''): string {
@@ -254,6 +256,7 @@ export function productsToRongtaPluRecords(
     barcode: item.barcode,
     rank: startRank + idx,
     lfCode: item.pluCode.replace(/\D/g, '').slice(-6).padStart(6, '0'),
+    barcodeType: rongtaDefaultBarcodeType(),
     operate: 'I' as const,
   }));
 }
