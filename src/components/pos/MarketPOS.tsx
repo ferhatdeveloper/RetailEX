@@ -81,6 +81,7 @@ import type { Product, Customer, Campaign, User as UserType, Sale } from '../../
 import type { CartItem, ParkedReceipt, SaleRecord, PaymentType } from './types';
 import { applyCampaign, CampaignResult } from '../../utils/campaignEngine';
 import { lineDiscountMoneyFromPercent, lineNetAfterPercentDiscount } from '../../utils/discountRounding';
+import { formatPosQuantityInput, parsePosQuantity, formatDecimalForTrInput } from '../../utils/numberFormatter';
 // import type { LayoutOrder } from './ScreenSettingsModal';
 export type LayoutOrder = 'cart-numpad-quick' | 'cart-fullscreen' | 'cart-wide-quick' | 'quick-dominant' | 'numpad-dominant' | 'cart-top-actions-bottom' | 'quick-top-cart-bottom' | 'quick-with-detail-sidebar' | 'quick-sidebar-numpad' | 'cart-quick-numpad-float' | string;
 
@@ -553,12 +554,13 @@ export default function MarketPOS({
     // İlk tıklamada quantity moduna geç
     if (numpadMode === 'barcode') {
       setNumpadMode('quantity');
-      setInputValue(num); // İlk sayıyı ekle
+      setInputValue(num === ',' ? '0,' : formatPosQuantityInput(num));
       // Barkod input'undan focus'u al
       barcodeInputRef.current?.blur();
+    } else if (num === ',') {
+      setInputValue((prev) => formatPosQuantityInput(prev.includes(',') ? prev : `${prev || '0'},`));
     } else {
-      // Quantity/price modunda - inputValue'ya yaz
-      setInputValue(prev => prev + num);
+      setInputValue((prev) => formatPosQuantityInput((prev || '') + num));
     }
   };
 
@@ -584,13 +586,20 @@ export default function MarketPOS({
   const handleQuantity = async () => {
     // * tuşuna basıldığında: Eğer adet girilmişse kaydet, barkod moduna geç
     if (inputValue && !savedQuantity) {
-      const quantity = parseInt(inputValue) || 1;
+      const quantity = parsePosQuantity(inputValue);
+      if (!Number.isFinite(quantity)) {
+        showNotif(t.pleaseEnterQuantityFirst, 'error');
+        return;
+      }
       setSavedQuantity(quantity);
       setInputValue('');
       setNumpadMode('barcode');
       barcodeInputRef.current?.focus();
       showNotif(
-        safeTpl(t.quantitySavedMessage, 'Adet kaydedildi: {quantity}').replace('{quantity}', quantity.toString()),
+        safeTpl(t.quantitySavedMessage, 'Adet kaydedildi: {quantity}').replace(
+          '{quantity}',
+          formatDecimalForTrInput(quantity) || String(quantity)
+        ),
         'info'
       );
       return;
@@ -1654,12 +1663,14 @@ export default function MarketPOS({
                 <div className="flex items-center justify-between mb-2">
                   <span className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{t.sales}</span>
                   <span className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                    {savedQuantity ? `${savedQuantity}x` : t.defaultQuantity}
+                    {savedQuantity
+                      ? `${formatDecimalForTrInput(savedQuantity) || savedQuantity}x`
+                      : t.defaultQuantity}
                   </span>
                 </div>
                 <input
                   type="text"
-                  value={savedQuantity ? t.quantitySavedBarcodeEnter.replace('{quantity}', savedQuantity.toString()) : inputValue}
+                  value={savedQuantity ? t.quantitySavedBarcodeEnter.replace('{quantity}', formatDecimalForTrInput(savedQuantity) || String(savedQuantity)) : inputValue}
                   readOnly
                   onClick={() => {
                     if (!savedQuantity) {

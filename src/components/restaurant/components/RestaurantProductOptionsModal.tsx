@@ -3,7 +3,11 @@ import { X, ShoppingBag, Plus, StickyNote, ChefHat, Gift, Trash2, Info, Pencil }
 import { cn } from '../../ui/utils';
 import type { Product } from '../../../core/types';
 import { useRestaurantModuleTm } from '../hooks/useRestaurantModuleTm';
-import { formatPosQuantityInput, parsePosQuantity } from '../../../utils/numberFormatter';
+import { formatPosQuantityInput, parsePosQuantityForProduct } from '../../../utils/numberFormatter';
+import {
+  productUnitLabel,
+  productUsesDecimalQuantity,
+} from '../../../utils/productUnits';
 
 interface RestaurantProductOptionsModalProps {
     product: Product;
@@ -41,15 +45,17 @@ export function RestaurantProductOptionsModal({
     const [priceOverride, setPriceOverride] = useState<number | null>(null);
     const [showPriceEdit, setShowPriceEdit] = useState(false);
     const [priceInput, setPriceInput] = useState('');
-    /** Uzun basma: sepete eklenecek adet */
+    /** Uzun basma: sepete eklenecek miktar (adet veya KG/GR) */
     const [quantityInput, setQuantityInput] = useState('1');
     const [noteInput, setNoteInput] = useState(initialNote);
     const displayPrice = priceOverride ?? product.price;
+    const decimalQty = productUsesDecimalQuantity(product);
+    const unitLabel = productUnitLabel(product.unit);
 
     useEffect(() => {
-        setQuantityInput('1');
+        setQuantityInput(decimalQty ? '' : '1');
         setNoteInput(initialNote);
-    }, [product.id, initialNote]);
+    }, [product.id, initialNote, decimalQty]);
 
     const applyPrice = () => {
         const num = parseFloat(priceInput.replace(/,/g, '.'));
@@ -64,11 +70,22 @@ export function RestaurantProductOptionsModal({
     const productWithPrice = (): Product => priceOverride != null ? { ...product, price: priceOverride } : product;
 
     const applyQuantityAdd = () => {
-        const n = parsePosQuantity(quantityInput);
+        const n = parsePosQuantityForProduct(quantityInput, product);
         if (!Number.isFinite(n)) return;
         onAddToCart(productWithPrice(), n);
         onClose();
     };
+
+    const qtyHint = decimalQty
+        ? unitLabel === 'GR'
+            ? tm('resOptQtyHintGram')
+            : tm('resOptQtyHintWeight').replace('{unit}', unitLabel || 'KG')
+        : tm('resOptQtyHint');
+    const qtyPlaceholder = decimalQty
+        ? unitLabel === 'GR'
+            ? '350'
+            : '1,250'
+        : '1';
 
     return (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[5000] overflow-y-auto overflow-x-hidden animate-in fade-in duration-300">
@@ -123,25 +140,36 @@ export function RestaurantProductOptionsModal({
                     <div className="grid grid-cols-1 gap-3">
                         <div className="rounded-2xl border-2 border-blue-100 bg-blue-50/50 p-4 space-y-3">
                             <div className="text-[10px] font-black uppercase tracking-widest text-blue-800/80 flex items-center gap-2">
-                                <Plus className="w-4 h-4 shrink-0" /> {tm('resOptCartQty')}
+                                <Plus className="w-4 h-4 shrink-0" />
+                                {decimalQty
+                                    ? tm('resOptCartQtyWeight').replace('{unit}', unitLabel || 'KG')
+                                    : tm('resOptCartQty')}
                             </div>
                             <div className="flex gap-2 items-stretch">
-                                <input
-                                    type="text"
-                                    inputMode="decimal"
-                                    autoComplete="off"
-                                    value={quantityInput}
-                                    onChange={e => setQuantityInput(formatPosQuantityInput(e.target.value))}
-                                    onKeyDown={e => {
-                                        if (e.key === 'Enter') {
-                                            e.preventDefault();
-                                            applyQuantityAdd();
-                                        }
-                                    }}
-                                    placeholder="1"
-                                    className="flex-1 min-w-0 px-4 py-3 rounded-xl border-2 border-blue-100 bg-white text-slate-900 text-center text-lg font-black tabular-nums focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-blue-300"
-                                    aria-label={tm('resOptQtyAria')}
-                                />
+                                <div className="flex-1 min-w-0 flex items-stretch">
+                                    <input
+                                        type="text"
+                                        inputMode="decimal"
+                                        autoComplete="off"
+                                        value={quantityInput}
+                                        onChange={e => setQuantityInput(formatPosQuantityInput(e.target.value, decimalQty))}
+                                        onKeyDown={e => {
+                                            if (e.key === 'Enter') {
+                                                e.preventDefault();
+                                                applyQuantityAdd();
+                                            }
+                                        }}
+                                        placeholder={qtyPlaceholder}
+                                        className="flex-1 min-w-0 px-4 py-3 rounded-xl border-2 border-blue-100 bg-white text-slate-900 text-center text-lg font-black tabular-nums focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-blue-300"
+                                        aria-label={tm('resOptQtyAria')}
+                                        autoFocus={decimalQty}
+                                    />
+                                    {unitLabel ? (
+                                        <span className="shrink-0 self-center px-3 text-sm font-black uppercase text-blue-700 tabular-nums">
+                                            {unitLabel}
+                                        </span>
+                                    ) : null}
+                                </div>
                                 <button
                                     type="button"
                                     onClick={applyQuantityAdd}
@@ -150,7 +178,7 @@ export function RestaurantProductOptionsModal({
                                     {tm('resOptOk')}
                                 </button>
                             </div>
-                            <p className="text-[10px] text-slate-500 font-medium leading-tight">{tm('resOptQtyHint')}</p>
+                            <p className="text-[10px] text-slate-500 font-medium leading-tight">{qtyHint}</p>
                         </div>
                         <div className="rounded-2xl border-2 border-amber-100 bg-amber-50/50 p-4 space-y-3">
                             <div className="text-[10px] font-black uppercase tracking-widest text-amber-800/80 flex items-center gap-2">

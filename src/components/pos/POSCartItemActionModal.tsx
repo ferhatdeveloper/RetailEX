@@ -5,6 +5,8 @@ import { POSNumpad } from './POSNumpad';
 import { formatNumber as formatNumberUtil } from '../../utils/formatNumber';
 import { formatMoneyAmount } from '../../utils/formatMoney';
 import { lineDiscountMoneyFromPercent, lineNetAfterPercentDiscount } from '../../utils/discountRounding';
+import { parsePosQuantityForProduct } from '../../utils/numberFormatter';
+import { productUsesDecimalQuantity } from '../../utils/productUnits';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { confirm as confirmDialog } from '../shared/ConfirmDialog';
@@ -91,8 +93,10 @@ export function POSCartItemActionModal({
     return colorMap[colorName?.toLowerCase() || ''] || '#9CA3AF';
   };
 
+  const decimalQty = productUsesDecimalQuantity(item.product);
+
   const handleApply = () => {
-    const qty = parseFloat(quantity || '0');
+    const qty = parsePosQuantityForProduct(quantity, item.product);
     const disc = parseFloat(discount || '0');
     const prc = parseFloat(price || '0');
 
@@ -517,7 +521,7 @@ export function POSCartItemActionModal({
                     onChange={handleNumpadChange}
                     showSubmitButton={false}
                     showHeading={false}
-                    allowDecimal={focusedInput !== 'quantity'}
+                    allowDecimal={focusedInput !== 'quantity' || decimalQty}
                     darkMode={darkMode}
                   />
                 </div>

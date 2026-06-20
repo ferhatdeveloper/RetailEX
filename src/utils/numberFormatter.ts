@@ -4,6 +4,8 @@
  */
 
 import { getCurrencyDecimalPlaces, roundMoneyAmount } from './currency';
+import { productUsesDecimalQuantity } from './productUnits';
+import type { Product } from '../core/types';
 
 /**
  * Format number with thousand separators as user types
@@ -109,7 +111,7 @@ export function parseDecimalStringForInput(value: string): number {
 const POS_QTY_MIN = 0.001;
 const POS_QTY_MAX = 9999;
 
-/** POS miktar: TR girişinden sayıya (örn. "1,250" → 1.25) ve 0,001–9999 aralığına sıkıştır */
+/** POS miktar: TR girişinden sayıya (örn. "1,250" → 1,25 kg) ve 0,001–9999 aralığına sıkıştır */
 export function parsePosQuantity(value: string | number): number {
   const raw = typeof value === 'number' ? value : parseDecimalStringForInput(value);
   if (!Number.isFinite(raw) || raw <= 0) return NaN;
@@ -117,15 +119,32 @@ export function parsePosQuantity(value: string | number): number {
   return Math.round(clamped * 1000) / 1000;
 }
 
-/** POS miktar alanı yazarken format (en fazla 3 ondalık, örn. 1,250) */
-export function formatPosQuantityInput(value: string): string {
-  return formatNumberInput(value, 3);
+/** Ürün birimine göre miktar: KG/GR → ondalık; adet → tam sayı. */
+export function parsePosQuantityForProduct(
+  value: string | number,
+  product?: Pick<Product, 'unit' | 'isScaleProduct'> | Record<string, unknown>
+): number {
+  const n = parsePosQuantity(value);
+  if (!Number.isFinite(n)) return NaN;
+  if (product && !productUsesDecimalQuantity(product)) {
+    const rounded = Math.round(n);
+    return rounded >= 1 ? Math.min(POS_QTY_MAX, rounded) : NaN;
+  }
+  return n;
 }
 
-/** Gösterim: 1.54 → "1,54" (virgüllü ondalık, grup yok) */
-export function formatDecimalForTrInput(n: number): string {
+/** POS miktar alanı yazarken format (en fazla 3 ondalık, örn. 1,250) */
+export function formatPosQuantityInput(value: string, allowDecimals = true): string {
+  return formatNumberInput(value, allowDecimals ? 3 : 0);
+}
+
+/** Gösterim: 1.25 → "1,25" / 1.25 → "1,250" (virgüllü ondalık) */
+export function formatDecimalForTrInput(n: number, maxDecimals = 3): string {
   if (!Number.isFinite(n) || n === 0) return '';
-  return String(n).replace('.', ',');
+  return n.toLocaleString('tr-TR', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: maxDecimals,
+  });
 }
 
 /**

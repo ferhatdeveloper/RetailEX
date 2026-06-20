@@ -86,7 +86,8 @@ import { usePermission } from '../../../shared/hooks/usePermission';
 import { formatCurrency } from '../../../utils/currency';
 import { resolveProductNameForReceipt } from '../../../utils/receiptProductName';
 import { lineNetAfterPercentDiscount, roundPosDiscountAmountUp } from '../../../utils/discountRounding';
-import { parsePosQuantity } from '../../../utils/numberFormatter';
+import { parsePosQuantityForProduct } from '../../../utils/numberFormatter';
+import { formatPosQuantityDisplay } from '../../../utils/productUnits';
 import { MainCategoryIcon, SubCategoryIcon } from '../utils/restaurantCategoryIcons';
 
 interface RestPOSProps {
@@ -981,9 +982,9 @@ export const RestPOS: React.FC<RestPOSProps> = ({
     const addToCart = async (product: Product, addQty: number = 1) => {
         const parsedQty = typeof addQty === 'number' && Number.isFinite(addQty)
             ? addQty
-            : parsePosQuantity(String(addQty));
+            : parsePosQuantityForProduct(String(addQty), product);
         const dq = Number.isFinite(parsedQty)
-            ? parsePosQuantity(parsedQty)
+            ? parsePosQuantityForProduct(parsedQty, product)
             : 1;
         const pendingNote = pendingProductNotes[product.id]?.trim();
         // Önce sepete anında ekle — setCart(prev=>...) kullan ki art arda tıklamalarda 1,2,3... doğru artsın (closure'daki eski cart'a göre silinmesin)
@@ -2326,7 +2327,7 @@ export const RestPOS: React.FC<RestPOSProps> = ({
                                                     className="flex-shrink-0 w-11 h-11 rounded-[12px] text-white flex flex-col items-center justify-center shadow-md transition-transform active:scale-90"
                                                     style={{ backgroundColor: plateColor, boxShadow: `0 4px 10px ${plateColor}33` }}
                                                 >
-                                                    <div className="text-[16px] font-black leading-none drop-shadow-sm">{item.quantity}</div>
+                                                    <div className="text-[16px] font-black leading-none drop-shadow-sm">{formatPosQuantityDisplay(item.quantity, item.product.unit)}</div>
                                                     <div className="text-[8px] font-black opacity-80 leading-none mt-0.5 uppercase tracking-tighter">{item.product.unit || 'ADET'}</div>
                                                 </div>
 
@@ -2547,7 +2548,7 @@ export const RestPOS: React.FC<RestPOSProps> = ({
                                                                     <Minus className="w-4 h-4" />
                                                                 </button>
                                                                 <div className="flex flex-col items-center min-w-[30px]">
-                                                                    <span className="text-[14px] font-black text-slate-900 leading-none">{item.quantity}</span>
+                                                                    <span className="text-[14px] font-black text-slate-900 leading-none">{formatPosQuantityDisplay(item.quantity, item.product.unit)}</span>
                                                                 </div>
                                                                 <button onClick={() => updateQty(idx, 1)} className="w-8 h-8 flex items-center justify-center text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-md transition-all active:scale-95">
                                                                     <Plus className="w-4 h-4" />
