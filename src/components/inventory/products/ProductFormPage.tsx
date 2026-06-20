@@ -451,7 +451,7 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
   const [showLabelPrint, setShowLabelPrint] = useState(false);
   const [showBarcodeTemplateModal, setShowBarcodeTemplateModal] = useState(false);
   const [isTranslating, setIsTranslating] = useState(false);
-  const translationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const lastTranslatedTrRef = useRef('');
   const [showImageSearchModal, setShowImageSearchModal] = useState(false);
   const [uploadingToSupabase, setUploadingToSupabase] = useState(false);
   const [uploadingToSystem, setUploadingToSystem] = useState(false);
@@ -775,6 +775,7 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
           })(),
           isScaleProduct: product.isScaleProduct === true || (product as any).is_scale_product === true,
         }));
+        lastTranslatedTrRef.current = (product.description_tr || product.name || '').trim();
 
         // Restore unitset selection
         setSelectedUnitSetId((product as any).unitsetId || '');
@@ -989,44 +990,36 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
     }
   }, [productId]);
 
-  // Auto-translate descriptions when Turkish changes
-  useEffect(() => {
-    // Clear previous timeout
-    if (translationTimeoutRef.current) {
-      clearTimeout(translationTimeoutRef.current);
+  // Auto-translate descriptions when Turkish field loses focus
+  const translateDescriptionFromTurkish = useCallback(async (turkishText: string) => {
+    const trimmed = turkishText.trim();
+    if (!trimmed || trimmed === lastTranslatedTrRef.current) return;
+
+    setIsTranslating(true);
+    try {
+      const translations = await translateToAllLanguages(trimmed);
+      lastTranslatedTrRef.current = trimmed;
+      setFormData((prev: any) => ({
+        ...prev,
+        description_en: translations.en,
+        description_ar: translations.ar,
+        description_ku: translations.ku,
+      }));
+      toast.success('Çeviri tamamlandı!');
+    } catch (error) {
+      console.error('Translation failed:', error);
+      toast.error('Çeviri başarısız oldu');
+    } finally {
+      setIsTranslating(false);
     }
+  }, []);
 
-    // Only translate if Turkish description exists and is not empty
-    if (formData.description_tr && formData.description_tr.trim() !== '') {
-      // Debounce: wait 1 second after user stops typing
-      translationTimeoutRef.current = setTimeout(async () => {
-        setIsTranslating(true);
-        try {
-          const translations = await translateToAllLanguages(formData.description_tr);
-          setFormData((prev: any) => ({
-            ...prev,
-            description_en: translations.en,
-            description_ar: translations.ar,
-            description_ku: translations.ku,
-          }));
-          toast.success('Çeviri tamamlandı!');
-        } catch (error) {
-          console.error('Translation failed:', error);
-          toast.error('Çeviri başarısız oldu');
-        } finally {
-          setIsTranslating(false);
-        }
-      }, 1000); // 1 second debounce
-    }
-
-    // Cleanup
-    return () => {
-      if (translationTimeoutRef.current) {
-        clearTimeout(translationTimeoutRef.current);
-      }
-    };
-  }, [formData.description_tr]);
-
+  const handleDescriptionTrBlur = useCallback(
+    (e: React.FocusEvent<HTMLInputElement>) => {
+      void translateDescriptionFromTurkish(e.target.value);
+    },
+    [translateDescriptionFromTurkish]
+  );
 
 
   const handleInputChange = (field: string, value: any) => {
@@ -1947,9 +1940,9 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                       type="text"
                       value={formData.description_tr || ''}
                       onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleInputChange('description_tr', e.target.value)}
+                      onBlur={handleDescriptionTrBlur}
                       placeholder={tm('mainDescriptionPlaceholder')}
                       className="w-full px-2 py-1 border border-gray-300 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
-                      disabled={isTranslating}
                     />
                   </div>
 

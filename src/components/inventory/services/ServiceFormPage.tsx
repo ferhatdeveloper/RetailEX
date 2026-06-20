@@ -32,7 +32,7 @@ export const ServiceFormPage = React.memo(({ serviceId, onClose, onSave }: Servi
   const [activeTab, setActiveTab] = useState<TabType>('genel');
   const [loading, setLoading] = useState(false);
   const [isTranslating, setIsTranslating] = useState(false);
-  const translationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const lastTranslatedTrRef = useRef('');
   const [usdExchangeRate, setUsdExchangeRate] = useState<number>(1316);
   const [showImageSearchModal, setShowImageSearchModal] = useState(false);
 
@@ -252,6 +252,7 @@ export const ServiceFormPage = React.memo(({ serviceId, onClose, onSave }: Servi
               priceList5: service.priceList5 || 0,
               priceList6: service.priceList6 || 0,
             }));
+            lastTranslatedTrRef.current = (service.description_tr || service.name || '').trim();
           }
           setLoading(false);
         }
@@ -301,33 +302,34 @@ export const ServiceFormPage = React.memo(({ serviceId, onClose, onSave }: Servi
     });
   };
 
-  // Auto-translate descriptions (matching ProductFormPage)
-  useEffect(() => {
-    if (translationTimeoutRef.current) clearTimeout(translationTimeoutRef.current);
+  // Auto-translate descriptions when Turkish field loses focus (matching ProductFormPage)
+  const translateDescriptionFromTurkish = useCallback(async (turkishText: string) => {
+    const trimmed = turkishText.trim();
+    if (!trimmed || trimmed === lastTranslatedTrRef.current) return;
 
-    if (formData.description_tr && formData.description_tr.trim() !== '') {
-      translationTimeoutRef.current = setTimeout(async () => {
-        setIsTranslating(true);
-        try {
-          const translations = await translateToAllLanguages(formData.description_tr);
-          setFormData((prev: any) => ({
-            ...prev,
-            description_en: translations.en,
-            description_ar: translations.ar,
-            description_ku: translations.ku,
-          }));
-        } catch (error) {
-          console.error('Translation failed:', error);
-        } finally {
-          setIsTranslating(false);
-        }
-      }, 1000);
+    setIsTranslating(true);
+    try {
+      const translations = await translateToAllLanguages(trimmed);
+      lastTranslatedTrRef.current = trimmed;
+      setFormData((prev: any) => ({
+        ...prev,
+        description_en: translations.en,
+        description_ar: translations.ar,
+        description_ku: translations.ku,
+      }));
+    } catch (error) {
+      console.error('Translation failed:', error);
+    } finally {
+      setIsTranslating(false);
     }
+  }, []);
 
-    return () => {
-      if (translationTimeoutRef.current) clearTimeout(translationTimeoutRef.current);
-    };
-  }, [formData.description_tr]);
+  const handleDescriptionTrBlur = useCallback(
+    (e: React.FocusEvent<HTMLInputElement>) => {
+      void translateDescriptionFromTurkish(e.target.value);
+    },
+    [translateDescriptionFromTurkish]
+  );
 
   const handleSubmit = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -641,6 +643,7 @@ export const ServiceFormPage = React.memo(({ serviceId, onClose, onSave }: Servi
                       type="text"
                       value={formData.description_tr || ''}
                       onChange={(e) => handleInputChange('description_tr', e.target.value)}
+                      onBlur={handleDescriptionTrBlur}
                       placeholder="Ana açıklama..."
                       className="w-full px-2 py-1 border border-gray-300 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
                     />
