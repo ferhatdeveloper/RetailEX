@@ -37,6 +37,26 @@ function periodNrPadded(): string {
   return String(ERP_SETTINGS.periodNr ?? '01').trim().padStart(2, '0').slice(0, 10);
 }
 
+/** Tartılı barkod PLU — kod/barkod/özel kod varyantları (10 hane: 1000000009). */
+export function scalePluLookupVariants(plu: string): string[] {
+  const t = String(plu ?? '').trim();
+  if (!t) return [];
+  const stripped = t.replace(/^0+/, '') || '0';
+  const out = new Set<string>([
+    t,
+    stripped,
+    stripped.padStart(4, '0'),
+    stripped.padStart(5, '0'),
+    stripped.padStart(6, '0'),
+    stripped.padStart(10, '0'),
+    t.padStart(4, '0'),
+    t.padStart(5, '0'),
+    t.padStart(6, '0'),
+    t.padStart(10, '0'),
+  ]);
+  return [...out].filter(Boolean);
+}
+
 /** camelCase → snake_case (create / update / bulkUpdate) */
 const PRODUCT_DB_FIELD_MAPPING: Record<string, string> = {
   minStock: 'min_stock',
@@ -723,15 +743,9 @@ export const productAPI = {
     }
   },
 
-  /** Tartı ürünü — PLU/kod eşleşmesi (is_scale_product öncelikli) */
+  /** Tartı ürünü — PLU/kod/barkod eşleşmesi (is_scale_product öncelikli) */
   async getScaleProductByPlu(plu: string): Promise<Product | null> {
-    const variants = [
-      String(plu ?? '').trim(),
-      String(plu ?? '').trim().replace(/^0+/, '') || '0',
-      String(plu ?? '').trim().padStart(4, '0'),
-      String(plu ?? '').trim().padStart(5, '0'),
-    ];
-    const uniq = [...new Set(variants.filter(Boolean))];
+    const uniq = scalePluLookupVariants(plu);
     if (uniq.length === 0) return null;
     try {
       const tableName = `rex_${firmNrPadded()}_products`;
@@ -739,40 +753,43 @@ export const productAPI = {
       if (DB_SETTINGS.connectionProvider === 'rest_api') {
         const { postgrest } = await import('./postgrestClient');
         for (const code of uniq) {
-          let rows = await postgrest.get<any[]>(
-            `/${tableName}`,
-            {
-              select: '*',
-              code: `eq.${code}`,
-              firm_nr: `eq.${firmEq}`,
-              is_active: 'eq.true',
-              is_scale_product: 'eq.true',
-              limit: '1',
-            },
-            { schema: 'public' },
-          ).catch(() => []);
-          let row = Array.isArray(rows) ? rows[0] : null;
-          if (!row) {
-            rows = await postgrest.get<any[]>(
+          for (const field of ['code', 'barcode', 'special_code_1'] as const) {
+            let rows = await postgrest.get<any[]>(
               `/${tableName}`,
               {
                 select: '*',
-                code: `eq.${code}`,
+                [field]: `eq.${code}`,
                 firm_nr: `eq.${firmEq}`,
                 is_active: 'eq.true',
+                is_scale_product: 'eq.true',
                 limit: '1',
               },
               { schema: 'public' },
             ).catch(() => []);
-            row = Array.isArray(rows) ? rows[0] : null;
+            let row = Array.isArray(rows) ? rows[0] : null;
+            if (!row) {
+              rows = await postgrest.get<any[]>(
+                `/${tableName}`,
+                {
+                  select: '*',
+                  [field]: `eq.${code}`,
+                  firm_nr: `eq.${firmEq}`,
+                  is_active: 'eq.true',
+                  limit: '1',
+                },
+                { schema: 'public' },
+              ).catch(() => []);
+              row = Array.isArray(rows) ? rows[0] : null;
+            }
+            if (row) return mapDatabaseProductToProduct(row);
           }
-          if (row) return mapDatabaseProductToProduct(row);
         }
         return null;
       }
       const { rows } = await postgres.query(
         `SELECT * FROM ${tableName}
-         WHERE firm_nr = $1 AND is_active = true AND code = ANY($2::text[])
+         WHERE firm_nr = $1 AND is_active = true
+           AND (code = ANY($2::text[]) OR barcode = ANY($2::text[]) OR special_code_1 = ANY($2::text[]))
          ORDER BY CASE WHEN is_scale_product = true THEN 0 ELSE 1 END
          LIMIT 1`,
         [ERP_SETTINGS.firmNr, uniq],

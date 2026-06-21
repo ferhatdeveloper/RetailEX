@@ -68,7 +68,7 @@ async function findProductByPlu(productCode: string): Promise<Product | null> {
   }
   for (const code of pluCodeVariants(productCode)) {
     const byBarcode = await productAPI.getByBarcode(code);
-    if (byBarcode && isScaleProductFlag(byBarcode)) return byBarcode;
+    if (byBarcode) return byBarcode;
   }
   for (const code of pluCodeVariants(productCode)) {
     const p = await productAPI.getByCode(code);
@@ -134,7 +134,7 @@ async function resolveParsedScaleBarcode(
   if (!line) return null;
 
   const unitPrice = line.unitPrice;
-  if (!(unitPrice > 0) && !isScaleProductFlag(product)) return null;
+  if (!(line.lineTotal > 0) && !(unitPrice > 0) && !isScaleProductFlag(product)) return null;
 
   const weightGrams = isGramScaleUnit(unitUpper)
     ? Math.round(line.quantity)

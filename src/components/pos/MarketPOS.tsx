@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useFirmaDonem } from '../../contexts/FirmaDonemContext';
 import { logger } from '../../utils/logger';
 import { resolveScaleBarcodeSale } from '../../utils/scaleBarcodeSale';
-import { isCompositeScaleBarcode } from '../../utils/barcodeParser';
+import { isCompositeScaleBarcode, parseBarcode } from '../../utils/barcodeParser';
 import {
   BARCODE_SCANNER_DEBOUNCE_MS,
   isBarcodeReadyForAutoSubmit,
@@ -700,8 +700,21 @@ export default function MarketPOS({
   };
 
   // Barkod ile arama yap - ürün bulunursa true, bulunamazsa false döner
+  const notifyScaleBarcodeFailure = (trimmedBarcode: string) => {
+    const parsed = parseBarcode(trimmedBarcode);
+    const plu = parsed.productCode?.trim();
+    if (plu) {
+      showNotif(
+        `Tartılı ürün satılamadı (PLU/kod: ${plu}). Ürün kartında kod veya barkod "${plu}", satış fiyatı > 0 ve "Tartılı ürün" işaretli olmalı; kasa açık olmalı.`,
+        'error',
+      );
+      return;
+    }
+    showNotif(t.barcodeNotFoundWarning.replace('{barcode}', trimmedBarcode), 'error');
+  };
+
   const searchByBarcode = async (barcode: string, quantity: number = 1): Promise<boolean> => {
-    const trimmedBarcode = barcode.trim();
+    const trimmedBarcode = barcode.trim().replace(/\s/g, '');
     logger.log('?? Aranan barkod:', trimmedBarcode);
 
     try {
@@ -709,7 +722,7 @@ export default function MarketPOS({
       if (isCompositeScaleBarcode(trimmedBarcode)) {
         const scaleSale = await resolveScaleBarcodeSale(trimmedBarcode, exchangeRate);
         if (scaleSale) {
-          addToCart(
+          const added = addToCart(
             scaleSale.product,
             undefined,
             scaleSale.quantity,
@@ -719,11 +732,19 @@ export default function MarketPOS({
             scaleSale.lineTotal,
             true,
           );
-          logger.log(
-            `[MarketPOS] Tartılı satış: ${scaleSale.formatInfo} — kod ${scaleSale.parsed.productCode} — ${scaleSale.weightGrams}g → ${scaleSale.quantity} ${scaleSale.unitName} × ${scaleSale.unitPrice} = ${scaleSale.lineTotal}`,
-          );
-          return true;
+          if (added) {
+            logger.log(
+              `[MarketPOS] Tartılı satış: ${scaleSale.formatInfo} — kod ${scaleSale.parsed.productCode} — ${scaleSale.weightGrams}g → ${scaleSale.quantity} ${scaleSale.unitName} × ${scaleSale.unitPrice} = ${scaleSale.lineTotal}`,
+            );
+            return true;
+          }
+          return false;
         }
+        notifyScaleBarcodeFailure(trimmedBarcode);
+        if (!missingBarcodes.includes(trimmedBarcode)) {
+          setMissingBarcodes(prev => [trimmedBarcode, ...prev]);
+        }
+        return false;
       }
 
       const result = await productAPI.lookupByBarcode(trimmedBarcode);
@@ -801,7 +822,7 @@ export default function MarketPOS({
         if (scaleBarcodeLen >= 13 && scaleBarcodeLen <= 15 && /^\d+$/.test(trimmedBarcode)) {
           const scaleSale = await resolveScaleBarcodeSale(trimmedBarcode, exchangeRate);
           if (scaleSale) {
-            addToCart(
+            const added = addToCart(
               scaleSale.product,
               undefined,
               scaleSale.quantity,
@@ -811,14 +832,17 @@ export default function MarketPOS({
               scaleSale.lineTotal,
               true,
             );
-            logger.log(
-              `[MarketPOS] Tartılı satış: ${scaleSale.formatInfo} — PLU ${scaleSale.parsed.productCode} — ${scaleSale.weightGrams}g → ${scaleSale.quantity} ${scaleSale.unitName} × ${scaleSale.unitPrice} = ${scaleSale.lineTotal}`,
-            );
-            return true;
+            if (added) {
+              logger.log(
+                `[MarketPOS] Tartılı satış: ${scaleSale.formatInfo} — PLU ${scaleSale.parsed.productCode} — ${scaleSale.weightGrams}g → ${scaleSale.quantity} ${scaleSale.unitName} × ${scaleSale.unitPrice} = ${scaleSale.lineTotal}`,
+              );
+              return true;
+            }
+            return false;
           }
         }
         logger.log('❌ Barkod bulunamadı');
-        showNotif(t.barcodeNotFoundWarning.replace('{barcode}', trimmedBarcode), 'error');
+        notifyScaleBarcodeFailure(trimmedBarcode);
         if (!missingBarcodes.includes(trimmedBarcode)) {
           setMissingBarcodes(prev => [trimmedBarcode, ...prev]);
         }
@@ -841,10 +865,10 @@ export default function MarketPOS({
     customPrice?: number,
     lineSubtotal?: number,
     preserveExactQuantity = false,
-  ) => {
+  ): boolean => {
     if (isProductExpired(product)) {
       showNotif(tm('productExpiredCannotSell').replace('{name}', product.name || ''), 'error');
-      return;
+      return false;
     }
     // Kasa açık mı kontrol et
     if (!isCashRegisterOpen) {
@@ -852,7 +876,7 @@ export default function MarketPOS({
       setTimeout(() => {
         setShowOpenCashRegisterModal(true);
       }, 1000);
-      return;
+      return false;
     }
 
     let price: number = 0;
@@ -885,7 +909,7 @@ export default function MarketPOS({
           ? customQuantity
           : parsePosQuantityForProduct(customQuantity, product))
       : 1;
-    if (!Number.isFinite(parsedQty) || parsedQty <= 0) return;
+    if (!Number.isFinite(parsedQty) || parsedQty <= 0) return false;
     const quantity = parsedQty;
     const itemUnit = unit || product.unit || t.pcs;
     const lineGross =
@@ -930,6 +954,7 @@ export default function MarketPOS({
     });
 
     showNotif(t.productAddedToCart.replace('{productName}', product.name), 'success');
+    return true;
   };
 
   const productHasVariants = (product: Product) =>
