@@ -1,6 +1,10 @@
 ﻿/**
  * Tartılı ürün barkod parser — Rongta RLS1000/1100 (tip 0–99).
  *
+ * **Ana format (code10)**: İlk **10 hane** ürün kodu/barkod, **kalan hane(ler)** ağırlık.
+ * GR biriminde sonek gram; KG/LT biriminde sonek gram (÷1000 → kg).
+ * Örn. 10000000091610 → kod 1000000009, ağırlık 1610 → 1,61 kg.
+ *
  * **Tip 99 (özel)**: Yazılımda genelde tip 17 kopyası → prefix **27** + PLU(5) + gram(5).
  * **Tip 17**: 27 + PLU(5) + WW.WWW(5) — ağırlık alanı gram (örn. 01250 = 1250 g).
  * **Tip 19**: 29 + PLU(5) + WWWWW(5).
@@ -49,9 +53,62 @@ const FIXED_WEIGHT_SPECS: Record<
   '29': { pluFrom: 2, pluTo: 7, weightFrom: 7, weightTo: 12, rongtaType: 19 },
 };
 
+/** Okuyucudan gelen barkodu temizler (boşluk, görünmez karakter). */
+export function normalizeScannedBarcode(raw: string): string {
+  return String(raw ?? '')
+    .trim()
+    .replace(/[\u0000-\u001F\u007F-\u009F\u200B-\u200D\uFEFF]/g, '')
+    .replace(/\s/g, '');
+}
+
 function parseWeightDigits(value: string): number {
   const n = parseInt(value, 10);
   return Number.isFinite(n) ? n : 0;
+}
+
+/** 13 haneli tartı etiketi (EAN-13 gövdesi). */
+function parseScaleBarcode13(trimmed: string): ParsedBarcode | null {
+  if (trimmed.length !== 13 || !/^\d{13}$/.test(trimmed)) return null;
+
+  const prefixNum = parseInt(trimmed.substring(0, 2), 10);
+
+  if (prefixNum >= 10 && prefixNum <= 19) {
+    return parseDeptPlus6Plu(trimmed);
+  }
+
+  if (prefixNum < 20 || prefixNum > 29) return null;
+
+  const fixedWeight = parseFixedPrefixWeight(trimmed);
+  if (fixedWeight) return fixedWeight;
+
+  if (prefixNum === 23 || prefixNum === 24) {
+    return {
+      isWeightBased: false,
+      isPriceBased: true,
+      productCode: trimmed.substring(2, 7),
+      price: parseWeightDigits(trimmed.substring(7, 12)),
+      originalBarcode: trimmed,
+      format: 'price_based',
+    };
+  }
+
+  if (prefixNum >= 20 && prefixNum <= 24) {
+    const dept6 = parseDeptPlus6Plu(trimmed);
+    if (dept6) return dept6;
+  }
+
+  if (prefixNum === 22) {
+    return {
+      isWeightBased: true,
+      productCode: trimmed.substring(2, 7),
+      weight: parseWeightDigits(trimmed.substring(7, 12)),
+      originalBarcode: trimmed,
+      format: 'rongta_fixed_weight',
+      rongtaTypeHint: 22,
+    };
+  }
+
+  return null;
 }
 
 function parseFixedPrefixWeight(trimmed: string): ParsedBarcode | null {
@@ -71,16 +128,34 @@ function parseFixedPrefixWeight(trimmed: string): ParsedBarcode | null {
   };
 }
 
+/** 14 hane Rongta EAN-13 + kontrol — code10 ile karışmasın (27… / 20…). */
+function shouldSkipCode10ForRongta14(trimmed: string): boolean {
+  if (trimmed.length !== 14) return false;
+  const prefixNum = parseInt(trimmed.substring(0, 2), 10);
+  return prefixNum >= 20 && prefixNum <= 29;
+}
+
 /**
- * 14+ hane: ürün kodu(10) + ağırlık(4+)
- * Örn. 10000000091610 → kod 1000000009, ağırlık 1610 (gr veya ÷1000 kg)
+ * İlk 10 hane ürün kodu + sonek ağırlık (11–16 hane toplam).
+ * GR: sonek gram; KG: sonek gram → ÷1000 kg.
+ * 13 hane: yalnızca tartı prefix aralığında (10–29) ve Rongta/dept parse edilemediğinde.
  */
 function parseCode10WeightSuffix(trimmed: string): ParsedBarcode | null {
-  if (!/^\d{14,15}$/.test(trimmed)) return null;
-  if (!trimmed.startsWith('10')) return null;
+  if (!/^\d{11,16}$/.test(trimmed)) return null;
+  if (shouldSkipCode10ForRongta14(trimmed)) return null;
+
+  if (trimmed.length === 13) {
+    const prefixNum = parseInt(trimmed.substring(0, 2), 10);
+    if (prefixNum < 10 || prefixNum > 29) return null;
+    const scale13 = parseScaleBarcode13(trimmed);
+    if (scale13?.isWeightBased || scale13?.isPriceBased) return null;
+  }
+
   const productCode = trimmed.substring(0, 10);
   if (!productCode.replace(/0/g, '')) return null;
-  const weight = parseWeightDigits(trimmed.substring(10));
+  const weightStr = trimmed.substring(10);
+  if (!weightStr) return null;
+  const weight = parseWeightDigits(weightStr);
   if (weight <= 0) return null;
   return {
     isWeightBased: true,
@@ -92,9 +167,41 @@ function parseCode10WeightSuffix(trimmed: string): ParsedBarcode | null {
   };
 }
 
-/** 14+ hane tartı etiketi (10 hane kod + ağırlık). */
+/** code10 formatında mı (10 hane kod + ağırlık soneki)? */
+export function isCode10WeightBarcode(barcode: string): boolean {
+  return parseCode10WeightSuffix(normalizeScannedBarcode(barcode)) != null;
+}
+
+/**
+ * Tartı parse adayları: tam barkod + olası EAN kontrol hanesi (14→13) veya code10 kısaltma.
+ */
+export function expandScaleBarcodeCandidates(barcode: string): string[] {
+  const normalized = normalizeScannedBarcode(barcode);
+  const out = new Set<string>([normalized]);
+  if (!/^\d+$/.test(normalized)) return [...out];
+
+  const code10Full = parseCode10WeightSuffix(normalized);
+
+  // Geçerli code10 barkodu 13 haneye bölünmesin (10000000091610 → 1000000009161 hatalı olur)
+  if (normalized.length === 14 && !code10Full) {
+    const head13 = normalized.substring(0, 13);
+    const prefix2 = parseInt(head13.substring(0, 2), 10);
+    if (prefix2 >= 10 && prefix2 <= 29) out.add(head13);
+  }
+
+  if ((normalized.length === 15 || normalized.length === 16) && !code10Full) {
+    const head14 = normalized.substring(0, 14);
+    if (parseCode10WeightSuffix(head14)) out.add(head14);
+  }
+
+  return [...out];
+}
+
+/** 14+ hane tartı etiketi (10 hane kod + ağırlık) veya tartılı aday barkod. */
 export function isCompositeScaleBarcode(barcode: string): boolean {
-  return parseCode10WeightSuffix(barcode.trim()) != null;
+  return expandScaleBarcodeCandidates(barcode).some(
+    (candidate) => parseCode10WeightSuffix(candidate) != null || parseScaleBarcode13(candidate) != null,
+  );
 }
 
 /** PLU ayarı tip 25–29 (grup 21–29): D(1) + PLU(6) + WW.WWW(5) — barkod 10… / 20… ile başlayabilir */
@@ -145,6 +252,7 @@ export function scaleWeightFieldToQuantity(
     return { quantity: 0, unitName: scaleSaleUnitLabel(normalizeScaleUnit(unit)) };
   }
   if (format === 'code10_weight') {
+    // Sonek: GR biriminde doğrudan gram; KG/LT biriminde gram (÷1000 → kg)
     const grams = Math.round(fieldValue);
     if (isGramScaleUnit(unit)) {
       return { quantity: grams, unitName: 'GR' };
@@ -177,25 +285,27 @@ function dedupeParsed(list: ParsedBarcode[]): ParsedBarcode[] {
  * Tip 99 → önce tip 17 (prefix 27 + 5 PLU), gerekirse 6 haneli PLU alternatifi.
  */
 export function parseBarcodeVariants(barcode: string): ParsedBarcode[] {
-  const trimmed = barcode.trim();
-  const primary = parseBarcode(trimmed);
   const variants: ParsedBarcode[] = [];
 
-  if (primary.isWeightBased || primary.isPriceBased) {
-    variants.push(primary);
-  }
+  for (const candidate of expandScaleBarcodeCandidates(barcode)) {
+    const code10 = parseCode10WeightSuffix(candidate);
+    if (code10) {
+      variants.push(code10);
+      continue;
+    }
 
-  const composite = parseCode10WeightSuffix(trimmed);
-  if (composite) variants.push(composite);
+    if (candidate.length === 13 && /^\d{13}$/.test(candidate)) {
+      const scale13 = parseScaleBarcode13(candidate);
+      if (scale13) variants.push(scale13);
 
-  if (trimmed.length === 13 && /^\d{13}$/.test(trimmed)) {
-    const prefixNum = parseInt(trimmed.substring(0, 2), 10);
-    if (prefixNum >= 10 && prefixNum <= 19) {
-      const dept6 = parseDeptPlus6Plu(trimmed);
-      if (dept6) variants.push(dept6);
-    } else {
-      const alt6 = parseDeptPlus6Plu(trimmed);
-      if (alt6) variants.push(alt6);
+      const prefixNum = parseInt(candidate.substring(0, 2), 10);
+      if (prefixNum >= 10 && prefixNum <= 19) {
+        const dept6 = parseDeptPlus6Plu(candidate);
+        if (dept6) variants.push(dept6);
+      } else {
+        const alt6 = parseDeptPlus6Plu(candidate);
+        if (alt6) variants.push(alt6);
+      }
     }
   }
 
@@ -206,62 +316,13 @@ export function parseBarcodeVariants(barcode: string): ParsedBarcode[] {
  * Barkodu parse eder — birincil tartılı format.
  */
 export function parseBarcode(barcode: string): ParsedBarcode {
-  const trimmed = barcode.trim();
+  const trimmed = normalizeScannedBarcode(barcode);
 
   const composite = parseCode10WeightSuffix(trimmed);
   if (composite) return composite;
 
-  if (trimmed.length !== 13 || !/^\d{13}$/.test(trimmed)) {
-    return { isWeightBased: false, originalBarcode: trimmed };
-  }
-
-  const prefixNum = parseInt(trimmed.substring(0, 2), 10);
-
-  // Ürün kodu 100000001 → etiket 1000001013000 (dept 1 + PLU 6 + ağırlık 5)
-  if (prefixNum >= 10 && prefixNum <= 19) {
-    const dept6 = parseDeptPlus6Plu(trimmed);
-    if (dept6) return dept6;
-    return { isWeightBased: false, originalBarcode: trimmed };
-  }
-
-  if (prefixNum < 20 || prefixNum > 29) {
-    return { isWeightBased: false, originalBarcode: trimmed };
-  }
-
-  // Ağırlık: sabit prefix 25–29 (tip 15–19; tip 99 genelde tip 17 = prefix 27)
-  const fixedWeight = parseFixedPrefixWeight(trimmed);
-  if (fixedWeight) return fixedWeight;
-
-  // Fiyat: sabit prefix 23–24 (tip 13–14)
-  if (prefixNum === 23 || prefixNum === 24) {
-    return {
-      isWeightBased: false,
-      isPriceBased: true,
-      productCode: trimmed.substring(2, 7),
-      price: parseWeightDigits(trimmed.substring(7, 12)),
-      originalBarcode: trimmed,
-      format: 'price_based',
-    };
-  }
-
-  // Rongta PLU barkod tipi 25–29: D + 6 hane PLU + ağırlık (barkod 20… / 21… ile başlar)
-  // Logo Tiger sanılmasın — yanlış parse ~8–10× şişkin fiyat üretir (1,3 kg → ~10 kg)
-  if (prefixNum >= 20 && prefixNum <= 24) {
-    const dept6 = parseDeptPlus6Plu(trimmed);
-    if (dept6) return dept6;
-  }
-
-  // Prefix 22: sabit prefix ağırlık (tip 12)
-  if (prefixNum === 22) {
-    return {
-      isWeightBased: true,
-      productCode: trimmed.substring(2, 7),
-      weight: parseWeightDigits(trimmed.substring(7, 12)),
-      originalBarcode: trimmed,
-      format: 'rongta_fixed_weight',
-      rongtaTypeHint: 22,
-    };
-  }
+  const scale13 = parseScaleBarcode13(trimmed);
+  if (scale13) return scale13;
 
   return { isWeightBased: false, originalBarcode: trimmed };
 }
@@ -287,14 +348,19 @@ export function convertPrice(priceFieldValue: number, currency?: string | null):
 }
 
 export function isWeightBasedBarcode(barcode: string): boolean {
-  const trimmed = barcode.trim();
-  if (parseCode10WeightSuffix(trimmed)) return true;
-  if (trimmed.length !== 13 || !/^\d{13}$/.test(trimmed)) return false;
-  const prefix = parseInt(trimmed.substring(0, 2), 10);
-  if (prefix >= 10 && prefix <= 19) return parseDeptPlus6Plu(trimmed) != null;
-  if (prefix < 20 || prefix > 29) return false;
-  if (prefix === 23 || prefix === 24) return false;
-  return true;
+  return expandScaleBarcodeCandidates(barcode).some((candidate) => {
+    if (parseCode10WeightSuffix(candidate)) return true;
+    const scale13 = parseScaleBarcode13(candidate);
+    if (scale13?.isWeightBased) return true;
+    return false;
+  });
+}
+
+/** POS: 11–16 hane sayısal barkod tartılı etiket olabilir mi? */
+export function isLikelyScaleBarcodeInput(barcode: string): boolean {
+  const normalized = normalizeScannedBarcode(barcode);
+  if (!/^\d{11,16}$/.test(normalized)) return false;
+  return isWeightBasedBarcode(normalized);
 }
 
 export function getBarcodeFormatInfo(parsed: ParsedBarcode): string {

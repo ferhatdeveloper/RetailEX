@@ -2,7 +2,8 @@ import { describe, it, expect } from 'vitest';
 import { isBarcodeReadyForAutoSubmit } from '../../utils/barcodeScannerInput';
 
 describe('barcodeScannerInput', () => {
-  it('14 hane tartı barkodu otomatik gönderime hazır', () => {
+  it('11–16 hane tartı barkodu otomatik gönderime hazır', () => {
+    expect(isBarcodeReadyForAutoSubmit('1000000009161')).toBe(true);
     expect(isBarcodeReadyForAutoSubmit('10000000091610')).toBe(true);
   });
 

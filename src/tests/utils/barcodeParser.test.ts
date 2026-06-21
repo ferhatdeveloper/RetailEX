@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import {
   convertPrice,
   convertWeight,
+  expandScaleBarcodeCandidates,
   parseBarcode,
   parseBarcodeVariants,
   rongtaWeightFieldToKg,
@@ -34,6 +35,27 @@ describe('barcodeParser — tartılı barkod', () => {
     const kg = scaleWeightFieldToQuantity(parsed.weight!, 'KG', 'code10_weight');
     expect(kg.quantity).toBe(1.61);
     expect(kg.unitName).toBe('KG');
+  });
+
+  it('13 hane code10: 1000000009 + 161 gram', () => {
+    const parsed = parseBarcode('1000000009161');
+    expect(parsed.format).toBe('code10_weight');
+    expect(parsed.productCode).toBe('1000000009');
+    expect(parsed.weight).toBe(161);
+    const gr = scaleWeightFieldToQuantity(parsed.weight!, 'GR', 'code10_weight');
+    expect(gr.quantity).toBe(161);
+    expect(gr.unitName).toBe('GR');
+  });
+
+  it('code10 öncelikli: 1000001013000 hâlâ dept+PLU6 (sonek 000)', () => {
+    const parsed = parseBarcode('1000001013000');
+    expect(parsed.format).toBe('rongta_dept_plu6');
+    expect(parsed.productCode).toBe('000001');
+  });
+
+  it('expandScaleBarcodeCandidates: 14 hane code10 13 haneye bölünmez', () => {
+    const candidates = expandScaleBarcodeCandidates('10000000091610');
+    expect(candidates).toEqual(['10000000091610']);
   });
 
   it('14 hane GR birimi: ağırlık alanı gram olarak kalır', () => {

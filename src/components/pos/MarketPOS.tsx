@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useFirmaDonem } from '../../contexts/FirmaDonemContext';
 import { logger } from '../../utils/logger';
 import { resolveScaleBarcodeSale } from '../../utils/scaleBarcodeSale';
-import { isCompositeScaleBarcode, parseBarcode } from '../../utils/barcodeParser';
+import { isCompositeScaleBarcode, normalizeScannedBarcode, parseBarcode, parseBarcodeVariants } from '../../utils/barcodeParser';
 import {
   BARCODE_SCANNER_DEBOUNCE_MS,
   isBarcodeReadyForAutoSubmit,
@@ -714,37 +714,43 @@ export default function MarketPOS({
   };
 
   const searchByBarcode = async (barcode: string, quantity: number = 1): Promise<boolean> => {
-    const trimmedBarcode = barcode.trim().replace(/\s/g, '');
+    const trimmedBarcode = normalizeScannedBarcode(barcode);
     logger.log('?? Aranan barkod:', trimmedBarcode);
 
+    const tryAddScaleSale = async (): Promise<boolean> => {
+      const scaleSale = await resolveScaleBarcodeSale(trimmedBarcode, exchangeRate);
+      if (!scaleSale) return false;
+      const added = addToCart(
+        scaleSale.product,
+        undefined,
+        scaleSale.quantity,
+        scaleSale.unitName,
+        1,
+        scaleSale.unitPrice,
+        scaleSale.lineTotal,
+        true,
+      );
+      if (added) {
+        logger.log(
+          `[MarketPOS] Tartılı satış: ${scaleSale.formatInfo} — kod ${scaleSale.parsed.productCode} — ${scaleSale.weightGrams}g → ${scaleSale.quantity} ${scaleSale.unitName} × ${scaleSale.unitPrice} = ${scaleSale.lineTotal}`,
+        );
+        return true;
+      }
+      return false;
+    };
+
     try {
-      // 14 hane tartı etiketi önce parse edilir (1000000009 + 1610) — tam barkod kaydı 1 adet eklemesin
-      if (isCompositeScaleBarcode(trimmedBarcode)) {
-        const scaleSale = await resolveScaleBarcodeSale(trimmedBarcode, exchangeRate);
-        if (scaleSale) {
-          const added = addToCart(
-            scaleSale.product,
-            undefined,
-            scaleSale.quantity,
-            scaleSale.unitName,
-            1,
-            scaleSale.unitPrice,
-            scaleSale.lineTotal,
-            true,
-          );
-          if (added) {
-            logger.log(
-              `[MarketPOS] Tartılı satış: ${scaleSale.formatInfo} — kod ${scaleSale.parsed.productCode} — ${scaleSale.weightGrams}g → ${scaleSale.quantity} ${scaleSale.unitName} × ${scaleSale.unitPrice} = ${scaleSale.lineTotal}`,
-            );
-            return true;
+      // 11–16 hane: 10 hane kod + ağırlık — önce tartılı parse (tam barkod 1 adet eklemesin)
+      if (/^\d{11,16}$/.test(trimmedBarcode)) {
+        const scaleAdded = await tryAddScaleSale();
+        if (scaleAdded) return true;
+        if (parseBarcodeVariants(trimmedBarcode).length > 0) {
+          notifyScaleBarcodeFailure(trimmedBarcode);
+          if (!missingBarcodes.includes(trimmedBarcode)) {
+            setMissingBarcodes(prev => [trimmedBarcode, ...prev]);
           }
           return false;
         }
-        notifyScaleBarcodeFailure(trimmedBarcode);
-        if (!missingBarcodes.includes(trimmedBarcode)) {
-          setMissingBarcodes(prev => [trimmedBarcode, ...prev]);
-        }
-        return false;
       }
 
       const result = await productAPI.lookupByBarcode(trimmedBarcode);
@@ -817,37 +823,14 @@ export default function MarketPOS({
 
         addToCart(product, undefined, quantity, unitName, unitMultiplier, price);
         return true;
-      } else {
-        const scaleBarcodeLen = trimmedBarcode.length;
-        if (scaleBarcodeLen >= 13 && scaleBarcodeLen <= 15 && /^\d+$/.test(trimmedBarcode)) {
-          const scaleSale = await resolveScaleBarcodeSale(trimmedBarcode, exchangeRate);
-          if (scaleSale) {
-            const added = addToCart(
-              scaleSale.product,
-              undefined,
-              scaleSale.quantity,
-              scaleSale.unitName,
-              1,
-              scaleSale.unitPrice,
-              scaleSale.lineTotal,
-              true,
-            );
-            if (added) {
-              logger.log(
-                `[MarketPOS] Tartılı satış: ${scaleSale.formatInfo} — PLU ${scaleSale.parsed.productCode} — ${scaleSale.weightGrams}g → ${scaleSale.quantity} ${scaleSale.unitName} × ${scaleSale.unitPrice} = ${scaleSale.lineTotal}`,
-              );
-              return true;
-            }
-            return false;
-          }
-        }
-        logger.log('❌ Barkod bulunamadı');
-        notifyScaleBarcodeFailure(trimmedBarcode);
-        if (!missingBarcodes.includes(trimmedBarcode)) {
-          setMissingBarcodes(prev => [trimmedBarcode, ...prev]);
-        }
-        return false;
       }
+
+      logger.log('❌ Barkod bulunamadı');
+      notifyScaleBarcodeFailure(trimmedBarcode);
+      if (!missingBarcodes.includes(trimmedBarcode)) {
+        setMissingBarcodes(prev => [trimmedBarcode, ...prev]);
+      }
+      return false;
     } catch (error) {
       console.error('[MarketPOS] Barcode lookup error:', error);
       showNotif('Barkod sorgulama hatası!', 'error');
