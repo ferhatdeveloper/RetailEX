@@ -6,6 +6,8 @@ import { useLanguage } from '../../contexts/LanguageContext';
 import { POSCartItemActionModal } from './POSCartItemActionModal';
 import { CampaignResult } from '../../utils/campaignEngine';
 import { cn } from '../ui/utils';
+import { productUsesDecimalQuantity } from '../../utils/productUnits';
+import { formatScaleQuantityDisplay } from '../../utils/scaleQuantity';
 
 interface CartCardsProps {
   cart: CartItem[];
@@ -221,7 +223,11 @@ export function CartCards({
                         boxShadow: darkMode ? `0 4px 12px ${stripeColor}44` : `0 4px 10px ${stripeColor}33`
                       }}
                     >
-                      <div className="text-[16px] font-black leading-none drop-shadow-sm">{formatNumber(item.quantity)}</div>
+                      <div className="text-[16px] font-black leading-none drop-shadow-sm">
+                        {productUsesDecimalQuantity(item.product)
+                          ? formatScaleQuantityDisplay(item.quantity, item.unit || item.product.unit)
+                          : formatNumber(item.quantity)}
+                      </div>
                       <div className="text-[8px] font-bold opacity-90 leading-none mt-0.5 uppercase tracking-tighter">
                         {item.unit || item.product.unit || t.pcs}
                       </div>

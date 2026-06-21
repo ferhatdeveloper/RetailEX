@@ -153,9 +153,19 @@ export function parsePosQuantityForProduct(
   return normalizeWeightProductQuantity(n, (product as Product)?.unit);
 }
 
+/** POS miktar alanı: nokta ondalığını virgüle çevir (numpad `.` → kg 1,415) */
+function normalizePosQtyTyping(value: string): string {
+  const clean = String(value ?? '').replace(/[^\d.,]/g, '');
+  if (!clean.includes(',') && /^\d{1,4}\.\d{0,3}$/.test(clean)) {
+    return clean.replace('.', ',');
+  }
+  return clean;
+}
+
 /** POS miktar alanı yazarken format (en fazla 3 ondalık, örn. 1,250) */
 export function formatPosQuantityInput(value: string, allowDecimals = true): string {
-  return formatNumberInput(value, allowDecimals ? 3 : 0);
+  const normalized = allowDecimals ? normalizePosQtyTyping(value) : value.replace(/[^\d]/g, '');
+  return formatNumberInput(normalized, allowDecimals ? 3 : 0);
 }
 
 /** Gösterim: 1.25 → "1,25" / 1.25 → "1,250" (virgüllü ondalık) */

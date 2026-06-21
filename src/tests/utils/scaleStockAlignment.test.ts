@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseDecimalStringForInput, parsePosQuantity } from '../../utils/numberFormatter';
+import { parseDecimalStringForInput, parsePosQuantity, formatPosQuantityInput } from '../../utils/numberFormatter';
 import {
   hydrateWeightLineFromDb,
   mergeScaleCartQuantity,
@@ -71,5 +71,16 @@ describe('parsePosQuantity — numpad kg girişi', () => {
   it('nokta ondalık: 69.500 → 69,5 kg (69500 değil)', () => {
     expect(parsePosQuantity('69.500')).toBe(69.5);
     expect(parseDecimalStringForInput('69.500')).toBe(69500);
+  });
+
+  it('99.999 kg nokta — 99999 birleştirmesi olmasın', () => {
+    expect(parsePosQuantity('99.999')).toBe(99.999);
+    expect(parseDecimalStringForInput('99.999')).toBe(99999);
+  });
+});
+
+describe('formatPosQuantityInput — numpad kg', () => {
+  it('1.415 yazımı → 1,415 gösterim', () => {
+    expect(formatPosQuantityInput('1.415', true)).toBe('1,415');
   });
 });

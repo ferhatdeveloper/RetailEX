@@ -5,7 +5,7 @@ import { POSNumpad } from './POSNumpad';
 import { formatNumber as formatNumberUtil } from '../../utils/formatNumber';
 import { formatMoneyAmount } from '../../utils/formatMoney';
 import { lineDiscountMoneyFromPercent, lineNetAfterPercentDiscount } from '../../utils/discountRounding';
-import { parsePosQuantityForProduct, formatDecimalForTrInput } from '../../utils/numberFormatter';
+import { parsePosQuantityForProduct, formatDecimalForTrInput, formatPosQuantityInput } from '../../utils/numberFormatter';
 import { productUsesDecimalQuantity } from '../../utils/productUnits';
 import { normalizeWeightProductQuantity } from '../../utils/scaleQuantity';
 import { useTheme } from '../../contexts/ThemeContext';
@@ -43,7 +43,12 @@ export function POSCartItemActionModal({
 }: POSCartItemActionModalProps) {
   const { darkMode } = useTheme();
   const { tm } = useLanguage();
-  const [quantity, setQuantity] = useState(item.quantity.toString());
+  const decimalQty = productUsesDecimalQuantity(item.product);
+
+  const formatQtyDisplay = (n: number) =>
+    formatDecimalForTrInput(n, decimalQty ? 3 : 0) || String(n);
+
+  const [quantity, setQuantity] = useState(() => formatQtyDisplay(item.quantity));
   const [discount, setDiscount] = useState(item.discount.toString());
   const [price, setPrice] = useState((item.price ?? item.variant?.price ?? item.product.price).toString());
   const [note, setNote] = useState(item.note ?? '');
@@ -53,23 +58,29 @@ export function POSCartItemActionModal({
   const [numpadMode, setNumpadMode] = useState<'replace' | 'concat'>('replace');
   const [focusedInput, setFocusedInput] = useState<'quantity' | 'price' | 'discount'>('quantity');
 
+  const parsedQuantity = parsePosQuantityForProduct(quantity, item.product);
+  const qtyForTotal = Number.isFinite(parsedQuantity) ? parsedQuantity : 0;
   const currentPrice = parseFloat(price || '0');
-  const itemTotal = parseFloat(quantity || '0') * currentPrice;
+  const itemTotal = qtyForTotal * currentPrice;
   const discountPercent = parseFloat(discount || '0');
   const discountAmount = lineDiscountMoneyFromPercent(itemTotal, discountPercent);
   const newTotal = lineNetAfterPercentDiscount(itemTotal, discountPercent);
 
   useEffect(() => {
-    setQuantity(item.quantity.toString());
+    setQuantity(formatQtyDisplay(item.quantity));
     setPrice((item.price ?? item.variant?.price ?? item.product.price).toString());
     setDiscount(item.discount.toString());
     setNote(item.note ?? '');
   }, [item]);
 
   const handleNumpadChange = (val: string) => {
-    if (focusedInput === 'quantity') setQuantity(val);
-    else if (focusedInput === 'price') setPrice(val);
-    else if (focusedInput === 'discount') setDiscount(val);
+    if (focusedInput === 'quantity') {
+      setQuantity(formatPosQuantityInput(val, decimalQty));
+    } else if (focusedInput === 'price') {
+      setPrice(val);
+    } else if (focusedInput === 'discount') {
+      setDiscount(val);
+    }
   };
 
   const currentNumpadValue = focusedInput === 'quantity' ? quantity : focusedInput === 'price' ? price : discount;
@@ -93,8 +104,6 @@ export function POSCartItemActionModal({
 
     return colorMap[colorName?.toLowerCase() || ''] || '#9CA3AF';
   };
-
-  const decimalQty = productUsesDecimalQuantity(item.product);
 
   const handleApply = () => {
     const qty = parsePosQuantityForProduct(quantity, item.product);

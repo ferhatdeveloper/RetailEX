@@ -39,9 +39,9 @@ export function POSNumpad({
       onChange('');
     } else if (input === 'backspace') {
       onChange(value.slice(0, -1));
-    } else if (input === '.') {
-      if (allowDecimal && !value.includes('.')) {
-        onChange(value + '.');
+    } else if (input === '.' || input === ',') {
+      if (allowDecimal && !value.includes(',') && !value.includes('.')) {
+        onChange(`${value},`);
       }
     } else {
       // Append number
@@ -199,14 +199,14 @@ export function POSNumpad({
 
         {allowDecimal ? (
           <button
-            onClick={() => handleClick('.')}
-            disabled={value.includes('.')}
+            onClick={() => handleClick(',')}
+            disabled={value.includes(',') || value.includes('.')}
             className={`p-4 text-lg font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${darkMode
                 ? 'bg-gray-800 hover:bg-gray-700 text-white active:bg-gray-600'
                 : 'bg-gray-200 hover:bg-gray-300 text-gray-800 active:bg-gray-400'
               }`}
           >
-            .
+            ,
           </button>
         ) : (
           <div className={`${darkMode ? 'bg-gray-900' : 'bg-gray-100'}`}></div>
