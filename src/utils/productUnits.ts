@@ -22,6 +22,12 @@ export function isWeightBasedUnit(unit?: string | null): boolean {
   return u.length > 0 && WEIGHT_VOLUME_UNITS.has(u);
 }
 
+/** Gram birimi (tartı code10 soneki doğrudan gram). */
+export function isGramScaleUnit(unit?: string | null): boolean {
+  const u = normalizeProductUnit(unit);
+  return u === 'GR' || u === 'G' || u === 'GRAM' || u === 'GRM';
+}
+
 /** Tartılı ürün veya ağırlık/hacim biriminde küsüratlı miktar kullanılır. */
 export function productUsesDecimalQuantity(
   product: Pick<Product, 'unit' | 'isScaleProduct'> | Record<string, unknown>

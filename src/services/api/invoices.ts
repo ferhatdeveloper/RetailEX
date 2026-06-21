@@ -7,6 +7,7 @@ import { IS_TAURI } from '../../utils/env';
 import { type Invoice } from '../../core/types';
 import { customerAPI } from './customers';
 import { productAPI } from './products';
+import { normalizeWeightProductQuantity } from '../../utils/scaleQuantity';
 export type { Invoice };
 
 // Helper to validate UUID format
@@ -19,6 +20,13 @@ const isValidUuid = (uuid: any): boolean => {
 function isNonEmptyScalar(v: string | number | undefined | null): boolean {
   if (v === undefined || v === null) return false;
   return String(v).trim() !== '';
+}
+
+/** Stok hareketi miktarı — KG/GR alış 1,610 = tartı satış 1610 g */
+function invoiceLineStockQuantity(item: Record<string, unknown>): number {
+  const unitMultiplier = Number(item.multiplier || 1);
+  const raw = Number(item.baseQuantity ?? (Number(item.quantity) * unitMultiplier));
+  return normalizeWeightProductQuantity(raw, String(item.unit ?? ''));
 }
 
 /** Restoran `closeBill` notu — ERP fatura silinince adisyon da iptal */
@@ -273,8 +281,7 @@ async function collectInvoiceStockDeltasByProduct(inv: Invoice, trcode: number):
   for (const item of inv.items) {
     const productId = item.code || item.productId;
     if (!productId) continue;
-    const unitMultiplier = Number((item as any).multiplier || 1);
-    const baseQty = Number((item as any).baseQuantity ?? (Number(item.quantity) * unitMultiplier));
+    const baseQty = invoiceLineStockQuantity(item as Record<string, unknown>);
     let stockModifier = 0;
     if (category === 'Alis') stockModifier = baseQty;
     else if (category === 'Satis') stockModifier = -baseQty;
@@ -553,7 +560,7 @@ async function createInvoiceViaPostgrest(invoice: Invoice, opts: {
   if (invoice.items?.length) {
     const itemEnhancedList = invoice.items.map((item) => {
       const unitMultiplier = Number((item as any).multiplier || 1);
-      const baseQty = Number((item as any).baseQuantity ?? (Number(item.quantity) * unitMultiplier));
+      const baseQty = invoiceLineStockQuantity(item as Record<string, unknown>);
       const unitPriceFC = Number((item as any).unitPriceFC || item.unitPrice || item.price || 0);
       const itemCurrency = String((item as any).currency || (invoice as any).currency || 'IQD');
       return {
@@ -645,8 +652,7 @@ async function applyInvoiceStockUpdatesRestApi(
   for (const item of invoice.items) {
     const productId = item.code || item.productId;
     if (!productId) continue;
-    const unitMultiplier = Number((item as any).multiplier || 1);
-    const baseQty = Number((item as any).baseQuantity ?? (Number(item.quantity) * unitMultiplier));
+    const baseQty = invoiceLineStockQuantity(item as Record<string, unknown>);
     let stockModifier = 0;
     if (category === 'Alis') stockModifier = baseQty;
     else if (category === 'Satis') stockModifier = -baseQty;
@@ -963,7 +969,7 @@ export const invoicesAPI = {
           const item = invoice.items[idx]!;
           const productId = item.code || item.productId;
           const unitMultiplier = Number((item as any).multiplier || 1);
-          const baseQty = Number((item as any).baseQuantity ?? (Number(item.quantity) * unitMultiplier));
+          const baseQty = invoiceLineStockQuantity(item as Record<string, unknown>);
           const unitPriceFC = Number((item as any).unitPriceFC || item.unitPrice || item.price || 0);
           const itemCurrency = String((item as any).currency || (invoice as any).currency || 'IQD');
 
@@ -1697,7 +1703,7 @@ export const invoicesAPI = {
           for (const item of invoice.items) {
             const productId = item.code || item.productId;
             const unitMultiplier = Number((item as any).multiplier || 1);
-            const baseQty = Number((item as any).baseQuantity ?? (Number(item.quantity) * unitMultiplier));
+            const baseQty = invoiceLineStockQuantity(item as Record<string, unknown>);
             const unitPriceFC = Number((item as any).unitPriceFC || item.unitPrice || item.price || 0);
             const itemCurrency = String((item as any).currency || (invoice as any).currency || 'IQD');
             const itemEnhanced: Record<string, unknown> = {
@@ -1795,7 +1801,7 @@ export const invoicesAPI = {
         for (const item of invoice.items) {
           const productId = item.code || item.productId;
           const unitMultiplier = Number((item as any).multiplier || 1);
-          const baseQty = Number((item as any).baseQuantity ?? (Number(item.quantity) * unitMultiplier));
+          const baseQty = invoiceLineStockQuantity(item as Record<string, unknown>);
           const unitPriceFC = Number((item as any).unitPriceFC || item.unitPrice || item.price || 0);
           const itemCurrency = String((item as any).currency || (invoice as any).currency || 'IQD');
           await postgres.query(

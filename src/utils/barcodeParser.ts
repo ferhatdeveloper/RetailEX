@@ -3,7 +3,7 @@
  *
  * **Ana format (code10)**: İlk **10 hane** ürün kodu/barkod, **kalan hane(ler)** ağırlık.
  * GR biriminde sonek gram; KG/LT biriminde sonek gram (÷1000 → kg).
- * Örn. 10000000091610 → kod 1000000009, ağırlık 1610 → 1,61 kg.
+ * Örn. 10000000091610 → kod 1000000009, ağırlık 1610 → 1,610 kg.
  *
  * **Tip 99 (özel)**: Yazılımda genelde tip 17 kopyası → prefix **27** + PLU(5) + gram(5).
  * **Tip 17**: 27 + PLU(5) + WW.WWW(5) — ağırlık alanı gram (örn. 01250 = 1250 g).
@@ -12,8 +12,9 @@
  */
 
 import { getCurrencyDecimalPlaces } from './currency';
-import { getCode10SuffixMode } from './scaleBarcodeConfig';
-import { getScaleBarcodeType } from './scaleBarcodeConfig';
+import { getCode10SuffixMode, getScaleBarcodeType } from './scaleBarcodeConfig';
+import { isGramScaleUnit } from './productUnits';
+import { scaleGramsToProductQuantity } from './scaleQuantity';
 
 export type BarcodeFormat =
   | 'rongta_type17'
@@ -237,12 +238,8 @@ function normalizeScaleUnit(unit?: string): string {
   return (unit ?? 'KG').toUpperCase().replace(/İ/g, 'I');
 }
 
-export function isGramScaleUnit(unit?: string): boolean {
-  const u = normalizeScaleUnit(unit);
-  return u === 'GR' || u === 'G' || u === 'GRAM' || u === 'GRM';
-}
+export { isGramScaleUnit } from './productUnits';
 
-/** Tartı ağırlık alanı → satış miktarı (GR: gram; KG/LT: kg). */
 export function scaleWeightFieldToQuantity(
   fieldValue: number,
   unit?: string,
@@ -252,13 +249,10 @@ export function scaleWeightFieldToQuantity(
     return { quantity: 0, unitName: scaleSaleUnitLabel(normalizeScaleUnit(unit)) };
   }
   if (format === 'code10_weight') {
-    // Sonek: GR biriminde doğrudan gram; KG/LT biriminde gram (÷1000 → kg)
-    const grams = Math.round(fieldValue);
-    if (isGramScaleUnit(unit)) {
-      return { quantity: grams, unitName: 'GR' };
-    }
-    const kg = Math.round((grams / 1000) * 1000) / 1000;
-    return { quantity: kg, unitName: scaleSaleUnitLabel(normalizeScaleUnit(unit)) };
+    // Sonek gram: KG → 1,610 kg; GR → 1610 gr (alış faturası ile aynı birim)
+    const qty = scaleGramsToProductQuantity(fieldValue, unit);
+    const unitName = isGramScaleUnit(unit) ? 'GR' : scaleSaleUnitLabel(normalizeScaleUnit(unit));
+    return { quantity: qty, unitName };
   }
   if (isGramScaleUnit(unit)) {
     return { quantity: Math.round(fieldValue), unitName: 'GR' };

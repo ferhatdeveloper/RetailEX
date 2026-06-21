@@ -5,6 +5,7 @@
 
 import { getCurrencyDecimalPlaces, roundMoneyAmount } from './currency';
 import { productUsesDecimalQuantity } from './productUnits';
+import { normalizeWeightProductQuantity } from './scaleQuantity';
 import type { Product } from '../core/types';
 
 /**
@@ -130,7 +131,7 @@ export function parsePosQuantityForProduct(
     const rounded = Math.round(n);
     return rounded >= 1 ? Math.min(POS_QTY_MAX, rounded) : NaN;
   }
-  return n;
+  return normalizeWeightProductQuantity(n, (product as Product)?.unit);
 }
 
 /** POS miktar alanı yazarken format (en fazla 3 ondalık, örn. 1,250) */

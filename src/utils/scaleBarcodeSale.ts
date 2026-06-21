@@ -3,17 +3,18 @@
  * Rongta tip 27: 27 + PLU(5) + gram(5) + kontrol hanesi
  */
 import type { Product } from '../core/types';
-import { productAPI } from '../services/api/products';
+import { productAPI, scalePluLookupVariants } from '../services/api/products';
 import {
   convertPrice,
   getBarcodeFormatInfo,
-  isGramScaleUnit,
+  normalizeScannedBarcode,
   parseBarcodeVariants,
   type ParsedBarcode,
 } from './barcodeParser';
 import { getGlobalCurrency, roundMoneyAmount } from './currency';
 import { buildScaleCartLineAmounts } from './scaleBarcodeLine';
 import { isScaleProductFlag } from './scaleProductFilter';
+import { normalizeWeightProductQuantity, productQuantityToGrams } from './scaleQuantity';
 
 export interface ScaleBarcodeSaleResult {
   product: Product;
@@ -31,52 +32,22 @@ function resolveSaleCurrency(product: Product): string {
   return String(raw ?? getGlobalCurrency()).trim().toUpperCase() || 'IQD';
 }
 
-function pluCodeVariants(code: string): string[] {
-  const t = String(code ?? '').trim();
-  if (!t) return [];
-  const stripped = t.replace(/^0+/, '') || '0';
-  const out = new Set<string>([
-    t,
-    stripped,
-    stripped.padStart(4, '0'),
-    stripped.padStart(5, '0'),
-    stripped.padStart(6, '0'),
-    stripped.padStart(10, '0'),
-    t.padStart(4, '0'),
-    t.padStart(5, '0'),
-    t.padStart(6, '0'),
-    t.padStart(10, '0'),
-  ]);
-
-  // Uzun tartı kodu: 100000001 ↔ terazi PLU 000001 (dept 1 + 8 hane)
-  for (const dept of ['1', '2', '3', '4', '5', '6', '7', '8', '9']) {
-    out.add(`${dept}${stripped.padStart(8, '0')}`);
-    out.add(`${dept}${t.padStart(8, '0')}`);
-  }
-  if (t.length > 6) out.add(t.slice(-6));
-  if (stripped.length > 0 && stripped.length <= 6) {
-    out.add(`1${stripped.padStart(8, '0')}`);
-  }
-
-  return [...out].filter(Boolean);
-}
-
 async function findProductByPlu(productCode: string): Promise<Product | null> {
-  for (const code of pluCodeVariants(productCode)) {
+  for (const code of scalePluLookupVariants(productCode)) {
     const scaleProduct = await productAPI.getScaleProductByPlu(code);
     if (scaleProduct) return scaleProduct;
   }
-  for (const code of pluCodeVariants(productCode)) {
+  for (const code of scalePluLookupVariants(productCode)) {
     const byBarcode = await productAPI.getByBarcode(code);
     if (byBarcode) return byBarcode;
   }
-  for (const code of pluCodeVariants(productCode)) {
+  for (const code of scalePluLookupVariants(productCode)) {
     const p = await productAPI.getByCode(code);
     if (p && isScaleProductFlag(p)) return p;
   }
   const bySpecial = await productAPI.getBySpecialCode(productCode);
   if (bySpecial) return bySpecial;
-  for (const code of pluCodeVariants(productCode)) {
+  for (const code of scalePluLookupVariants(productCode)) {
     const p = await productAPI.getByCode(code);
     if (p) return p;
   }
@@ -90,7 +61,7 @@ export async function resolveScaleBarcodeSale(
   barcode: string,
   exchangeRate = 1,
 ): Promise<ScaleBarcodeSaleResult | null> {
-  const variants = parseBarcodeVariants(barcode.trim());
+  const variants = parseBarcodeVariants(normalizeScannedBarcode(barcode));
   if (variants.length === 0) return null;
 
   for (const parsed of variants) {
@@ -136,13 +107,12 @@ async function resolveParsedScaleBarcode(
   const unitPrice = line.unitPrice;
   if (!(line.lineTotal > 0) && !(unitPrice > 0) && !isScaleProductFlag(product)) return null;
 
-  const weightGrams = isGramScaleUnit(unitUpper)
-    ? Math.round(line.quantity)
-    : Math.round(line.quantity * 1000);
+  const quantity = normalizeWeightProductQuantity(line.quantity, unitUpper);
+  const weightGrams = productQuantityToGrams(quantity, unitUpper);
 
   return {
     product,
-    quantity: line.quantity,
+    quantity,
     unitName: line.unitName,
     unitPrice,
     lineTotal: line.lineTotal,

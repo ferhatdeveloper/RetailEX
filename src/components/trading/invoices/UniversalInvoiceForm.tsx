@@ -12,6 +12,7 @@ import { useAutoJournal, formatJournalResult } from '../../../hooks/useAutoJourn
 import { toast } from 'sonner';
 import { formatNumber } from '../../../utils/formatNumber';
 import { parseDecimalStringForInput, formatDecimalForTrInput } from '../../../utils/numberFormatter';
+import { normalizeWeightProductQuantity } from '../../../utils/scaleQuantity';
 import { DocumentManager } from '../../shared/DocumentManager';
 import { printInvoice } from '../../../utils/printUtils';
 import type { Invoice } from '../../../core/types';
@@ -1560,7 +1561,14 @@ export function UniversalInvoiceForm({
     setItems(prev => {
       const updated = [...prev];
       const prevRow = updated[index];
-      const item = { ...prevRow, [field]: value };
+      let nextValue = value;
+      if (field === 'quantity') {
+        const parsed = typeof value === 'number' ? value : parseDecimalStringForInput(String(value ?? ''));
+        nextValue = Number.isFinite(parsed)
+          ? normalizeWeightProductQuantity(parsed, prevRow.unit)
+          : 0;
+      }
+      const item = { ...prevRow, [field]: nextValue };
 
       // Birim değişince çarpan ve birim fiyatı (baz birime göre) güncelle
       if (field === 'unit' && item.unitsetId) {

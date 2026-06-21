@@ -4,6 +4,7 @@
 import type { Product } from '../core/types';
 import { isGramScaleUnit, scaleWeightFieldToQuantity, type ParsedBarcode } from './barcodeParser';
 import { roundMoneyAmount } from './currency';
+import { normalizeWeightProductQuantity } from './scaleQuantity';
 
 export interface ScaleCartLineAmounts {
   quantity: number;
@@ -72,11 +73,12 @@ export function buildScaleCartLineAmounts(
     return { quantity, unitName: 'KG', unitPrice, lineTotal };
   }
 
-  const { quantity, unitName } = scaleWeightFieldToQuantity(
+  const { quantity: rawQty, unitName } = scaleWeightFieldToQuantity(
     suffixValue,
     unitUpper,
     parsed.format,
   );
+  const quantity = normalizeWeightProductQuantity(rawQty, unitUpper);
   if (!(quantity > 0)) return null;
 
   const pricePerKg = roundMoneyAmount(resolvePricePerKg(product, exchangeRate), currency);
