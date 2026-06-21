@@ -265,6 +265,8 @@ export interface SaleItem {
   variant?: ProductVariant;
   unit?: string;
   multiplier?: number;
+  /** Stok düşüm miktarı (tartılı: quantity × multiplier, normalize) */
+  baseQuantity?: number;
   /** Güzellik: bu satırdaki personel adı (fiş) */
   beautyStaffName?: string;
   /** Eski / alternatif POS bileşenleri — camelCase ile birlikte kullanılabilir */

@@ -1,0 +1,59 @@
+import { describe, it, expect } from 'vitest';
+import { parseDecimalStringForInput } from '../../utils/numberFormatter';
+import {
+  hydrateWeightLineFromDb,
+  mergeScaleCartQuantity,
+  productQuantityToGrams,
+  resolveStockQuantityFromLine,
+  scaleGramsToProductQuantity,
+  syncWeightLineQuantities,
+} from '../../utils/scaleQuantity';
+
+describe('scaleStockAlignment — alış 1,610 kg ↔ tartı 1610 g', () => {
+  it('alış faturası TR virgül: 1,610 → 1,61 kg', () => {
+    const parsed = parseDecimalStringForInput('1,610');
+    const synced = syncWeightLineQuantities(parsed, 'KG', 1);
+    expect(synced.quantity).toBe(1.61);
+    expect(synced.baseQuantity).toBe(1.61);
+  });
+
+  it('tartı satış ile alış aynı gram stok etkisi', () => {
+    const purchase = syncWeightLineQuantities(1.61, 'KG', 1);
+    const sale = scaleGramsToProductQuantity(1610, 'KG');
+    expect(productQuantityToGrams(purchase.baseQuantity, 'KG')).toBe(1610);
+    expect(productQuantityToGrams(sale, 'KG')).toBe(1610);
+    expect(purchase.baseQuantity).toBe(sale);
+  });
+
+  it('sepet birleştirme: 1,610 + 1,610 = 3,22 kg', () => {
+    expect(mergeScaleCartQuantity(1.61, 1.61, 'KG')).toBe(3.22);
+  });
+
+  it('POS satır stok miktarı baseQuantity ile', () => {
+    expect(
+      resolveStockQuantityFromLine({
+        quantity: 1.61,
+        unit: 'KG',
+        multiplier: 1,
+        baseQuantity: 1.61,
+      }),
+    ).toBe(1.61);
+  });
+
+  it('DB yükleme: quantity ve baseQuantity hizalı', () => {
+    const h = hydrateWeightLineFromDb({
+      quantity: 1.61,
+      baseQuantity: 1.61,
+      unit: 'KG',
+      multiplier: 1,
+    });
+    expect(h.quantity).toBe(1.61);
+    expect(h.baseQuantity).toBe(1.61);
+  });
+
+  it('GR biriminde 1610 gram stok', () => {
+    const synced = syncWeightLineQuantities(1610, 'GR', 1);
+    expect(synced.baseQuantity).toBe(1610);
+    expect(scaleGramsToProductQuantity(1610, 'GR')).toBe(1610);
+  });
+});

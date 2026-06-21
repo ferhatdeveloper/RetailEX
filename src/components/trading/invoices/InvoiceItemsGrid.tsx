@@ -293,10 +293,11 @@ export const InvoiceItemsGrid = React.memo(({
                                         <label className="flex flex-col gap-0.5 min-w-0">
                                             <span className="text-[10px] font-medium text-gray-500">{tm('itemQuantity')}</span>
                                             <input
-                                                type="number"
-                                                value={item.quantity || ''}
+                                                type="text"
+                                                inputMode="decimal"
+                                                value={item.quantity != null && item.quantity !== 0 ? String(item.quantity) : ''}
                                                 onChange={(e) =>
-                                                    updateItem(index, 'quantity', parseFloat(e.target.value) || 0)
+                                                    updateItem(index, 'quantity', e.target.value)
                                                 }
                                                 onFocus={() => setCurrentRowIndex(index)}
                                                 className="w-full px-2 py-1.5 rounded-lg border border-gray-200 text-xs text-right tabular-nums bg-white"
@@ -535,9 +536,10 @@ export const InvoiceItemsGrid = React.memo(({
                                 {isColumnVisible('quantity') && (
                                     <td className="border-r border-gray-100 p-0 w-24">
                                         <input
-                                            type="number"
-                                            value={item.quantity || ''}
-                                            onChange={(e) => updateItem(index, 'quantity', parseFloat(e.target.value) || 0)}
+                                            type="text"
+                                            inputMode="decimal"
+                                            value={item.quantity != null && item.quantity !== 0 ? String(item.quantity) : ''}
+                                            onChange={(e) => updateItem(index, 'quantity', e.target.value)}
                                             onFocus={() => setCurrentRowIndex(index)}
                                             className="w-full px-1.5 py-1 border-0 focus:outline-none text-sm text-right bg-transparent"
                                         />
@@ -546,7 +548,7 @@ export const InvoiceItemsGrid = React.memo(({
                                             <div className="text-xs text-orange-600 text-right px-1.5 leading-tight" title={tm('multiplierLogicDesc')}>
                                                 → {formatNumber(
                                                     item.baseQuantity ?? (item.quantity * (item.multiplier || 1)),
-                                                    0,
+                                                    3,
                                                     false
                                                 )}{' '}
                                                 {tm('pieceUnitShort')}

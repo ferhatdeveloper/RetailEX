@@ -5,6 +5,7 @@
 
 import * as XLSX from 'xlsx';
 import { parseDecimalStringForInput } from './numberFormatter';
+import { normalizeWeightProductQuantity } from './scaleQuantity';
 
 export const PURCHASE_INVOICE_EXCEL_SHEET = 'Alış Kalemleri';
 
@@ -46,9 +47,11 @@ export function applyPurchaseExcelRowQuantityAsBaseStock<T extends {
   quantity?: number;
   multiplier?: number;
   baseQuantity?: number;
+  unit?: string;
 }>(item: T, excelQuantity: number, unitHint?: string): T {
   if (!isPurchaseExcelBaseStockUnitHint(unitHint)) return item;
-  const qty = Math.max(0, Number(excelQuantity) || 0);
+  const unit = String((item as T & { unit?: string }).unit ?? unitHint ?? 'Adet');
+  const qty = normalizeWeightProductQuantity(Math.max(0, Number(excelQuantity) || 0), unit);
   return {
     ...item,
     quantity: qty,

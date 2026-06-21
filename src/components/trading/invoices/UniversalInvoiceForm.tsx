@@ -12,7 +12,7 @@ import { useAutoJournal, formatJournalResult } from '../../../hooks/useAutoJourn
 import { toast } from 'sonner';
 import { formatNumber } from '../../../utils/formatNumber';
 import { parseDecimalStringForInput, formatDecimalForTrInput } from '../../../utils/numberFormatter';
-import { normalizeWeightProductQuantity } from '../../../utils/scaleQuantity';
+import { normalizeWeightProductQuantity, syncWeightLineQuantities, hydrateWeightLineFromDb } from '../../../utils/scaleQuantity';
 import { DocumentManager } from '../../shared/DocumentManager';
 import { printInvoice } from '../../../utils/printUtils';
 import type { Invoice } from '../../../core/types';
@@ -601,13 +601,19 @@ export function UniversalInvoiceForm({
       const hdrRate = parseFloat(String((editData as any)?.currency_rate)) || 1;
       return editData.items.map((item: any, index: number) => {
         const fc = invoiceEditLineToFormAmounts(item, hdrCur, hdrRate);
+        const hydrated = hydrateWeightLineFromDb({
+          quantity: item.quantity || 0,
+          baseQuantity: item.baseQuantity || item.base_quantity,
+          unit: item.unit || 'Adet',
+          multiplier: item.multiplier || item.unit_multiplier || 1,
+        });
         return {
           id: item.id || `item-${index}`,
           type: canonicalInvoiceLineType(item.type),
           code: item.code || item.productId || '',
           description: item.description || item.productName || '',
           description2: '',
-          quantity: item.quantity || 0,
+          quantity: hydrated.quantity,
           unit: item.unit || 'Adet',
           unitPrice: fc.unitPrice,
           discountPercent: item.discountPercent || item.discount || 0,
@@ -620,7 +626,7 @@ export function UniversalInvoiceForm({
           priceDifferencePercent: item.priceDifferencePercent,
           unitsetId: item.unitsetId || item.unitset_id,
           multiplier: item.multiplier || item.unit_multiplier || 1,
-          baseQuantity: item.baseQuantity || item.base_quantity || item.quantity,
+          baseQuantity: hydrated.baseQuantity,
           unitPriceFC: item.unitPriceFC ?? item.unit_price_fc,
         };
       });
@@ -1410,7 +1416,10 @@ export function UniversalInvoiceForm({
           item.description2 = pr.lineNote;
         }
         item = finalizePurchaseLineAmounts(item);
-        item = applyPurchaseExcelRowQuantityAsBaseStock(item, pr.quantity, pr.unitHint);
+        const synced = syncWeightLineQuantities(item.quantity || 0, item.unit, item.multiplier || 1);
+        item.quantity = synced.quantity;
+        item.baseQuantity = synced.baseQuantity;
+        item = applyPurchaseExcelRowQuantityAsBaseStock(item, synced.quantity, pr.unitHint);
         built.push(item);
       }
       if (built.length === 0) {
@@ -1586,7 +1595,9 @@ export function UniversalInvoiceForm({
 
       // Miktar veya birim değişince base_quantity'yi güncelle
       if (field === 'quantity' || field === 'unit') {
-        item.baseQuantity = (item.quantity || 0) * (item.multiplier || 1);
+        const synced = syncWeightLineQuantities(item.quantity || 0, item.unit, item.multiplier || 1);
+        item.quantity = synced.quantity;
+        item.baseQuantity = synced.baseQuantity;
       }
 
       const grossAmount = (field === 'quantity' || field === 'unitPrice' || field === 'unit')
@@ -2546,7 +2557,7 @@ export function UniversalInvoiceForm({
                 return {
                   productId,
                   productCode: item.code,
-                  quantity: item.quantity,
+                  quantity: item.baseQuantity ?? (item.quantity * (item.multiplier || 1)),
                 };
               }),
               firmaId: (selectedFirm?.logicalref || 0).toString(),

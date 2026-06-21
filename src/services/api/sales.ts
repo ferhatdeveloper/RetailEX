@@ -10,6 +10,7 @@ import type { Sale, SaleItem } from '../../core/types/models';
 import { invoicesAPI } from './invoices';
 import { batchCalculateFIFOCost } from '../../hooks/useFIFOCost';
 import { fetchKasalar, createKasaIslemi, type KasaIslemi } from './kasa';
+import { normalizeWeightProductQuantity, resolveStockQuantityFromLine } from '../../utils/scaleQuantity';
 
 export const salesAPI = {
   /**
@@ -25,12 +26,12 @@ export const salesAPI = {
       const firmNr = sale.firmNr || ERP_SETTINGS.firmNr;
       const periodNr = sale.periodNr || ERP_SETTINGS.periodNr;
 
-      // 1. Calculate Costs (FIFO)
+      // 1. Calculate Costs (FIFO) — stok miktarı (baseQuantity / normalize)
       const itemsForFIFO = sale.items.map(item => ({
         productId: item.productId,
-        productCode: item.productId, // FIFO hook might expect this, mapping ID as code fallback
-        quantity: item.quantity
-      })).filter(i => i.productId); // Ensure we have product IDs
+        productCode: item.productId,
+        quantity: resolveStockQuantityFromLine(item),
+      })).filter(i => i.productId);
 
       let costMap = new Map<string, { unitCost: number; totalCost: number; available: boolean }>();
 
@@ -52,38 +53,30 @@ export const salesAPI = {
         const costInfo = costMap.get(item.productId || '');
         const unitCost = costInfo?.unitCost || 0;
         const totalCost = costInfo?.totalCost || 0;
-
-        // Calculate Gross Profit
-        // Net Amount (Sales Price * Qty - Discount) - Cost
         const netAmount = item.total || 0;
         const grossProfit = netAmount - totalCost;
+        const unit = item.unit || 'Adet';
+        const multiplier = item.multiplier || 1;
+        const quantity = normalizeWeightProductQuantity(Number(item.quantity), unit);
+        const baseQuantity = resolveStockQuantityFromLine({ ...item, quantity, unit, multiplier });
 
         return {
           productId: item.productId,
-          code: item.productId, // Fallback since SaleItem usually doesn't have code
+          code: item.productId,
           productName: item.productName,
           description: item.productName,
-          quantity: item.quantity,
+          quantity,
+          unit,
+          multiplier,
+          baseQuantity,
           unitPrice: item.price,
           price: item.price,
-          discount: item.discount, // This might be total discount amount or rate? MarketPOS sends total discount per item usually? 
-          // MarketPOS item: { discount: number (amount), subtotal: (qty*price - discount) }
-          // InvoiceItem: discount (amount or rate? InvoicesAPI map assumes discount_rate from DB but input item handles amounts differently depending on context)
-          // UniversalInvoiceForm sends: discount: item.discountPercent (rate)
-          // MarketPOS sends: discount: item.discount (amount?)
-          // Let's check MarketPOS again. 
-          // MarketPOS: discount: item.discount (which seems to be amount based on `subtotal: item.subtotal` calculation in `handleApplyItemDiscount`)
-          // Actually `handleApplyItemDiscount` sets `discount: discountPercent`. But `cart` item has `discount` as percent?
-          // MarketPOS: `discount: discountPercent`.
-          // MarketPOS `sale.items`: `discount: item.discount` (which is percent).
-          // invoicesAPI `create` -> `INSERT`: `discount_rate` takes `item.discount` (which is mapped to `discount_rate`).
-          // So if MarketPOS sends percent, we are good.
-
-          total: item.total ?? (item.quantity * item.price - (item.discount || 0)),
-          netAmount: item.total ?? (item.quantity * item.price - (item.discount || 0)),
-          unitCost: unitCost,
-          totalCost: totalCost,
-          grossProfit: grossProfit
+          discount: item.discount,
+          total: item.total ?? (quantity * item.price - (item.discount || 0)),
+          netAmount: item.total ?? (quantity * item.price - (item.discount || 0)),
+          unitCost,
+          totalCost,
+          grossProfit,
         };
       });
 

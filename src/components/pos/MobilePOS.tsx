@@ -9,6 +9,8 @@ import { useFirmaDonem } from '../../contexts/FirmaDonemContext';
 import { getReceiptSettings, resolveDefaultReceiptLang } from '../../services/receiptSettingsService';
 import { APP_VERSION } from '../../core/version';
 import { productAPI } from '../../services/api/products';
+import { mergeScaleCartQuantity, normalizeWeightProductQuantity } from '../../utils/scaleQuantity';
+import { parsePosQuantityForProduct, formatDecimalForTrInput } from '../../utils/numberFormatter';
 import { resolveScaleBarcodeSale } from '../../utils/scaleBarcodeSale';
 import { isCompositeScaleBarcode } from '../../utils/barcodeParser';
 import {
@@ -301,7 +303,14 @@ export function MobilePOS({ products, customers, campaigns, onSaleComplete, onBa
       showNotif(tm('productExpiredCannotSell').replace('{name}', product.name || ''), 'error');
       return;
     }
-    const qtyAdd = customQuantity ?? 1;
+    const productUnit = unit || product.unit || 'Adet';
+    let qtyAdd = customQuantity ?? 1;
+    if (customQuantity != null) {
+      qtyAdd = normalizeWeightProductQuantity(
+        parsePosQuantityForProduct(customQuantity, product) || customQuantity,
+        productUnit,
+      );
+    }
     // Unique ID for cart matching
     const itemMatch = (item: SaleItem) => {
       if (variant) {
@@ -314,12 +323,13 @@ export function MobilePOS({ products, customers, campaigns, onSaleComplete, onBa
     const price = customPrice !== undefined ? customPrice : (variant?.price || product.price);
 
     if (existingItem) {
+      const mergedQty = mergeScaleCartQuantity(existingItem.quantity, qtyAdd, productUnit);
       setCart(cart.map(item =>
         itemMatch(item)
           ? {
               ...item,
-              quantity: item.quantity + qtyAdd,
-              total: (item.quantity + qtyAdd) * price * (1 - item.discount / 100),
+              quantity: mergedQty,
+              total: mergedQty * price * (1 - item.discount / 100),
             }
           : item
       ));
@@ -345,8 +355,10 @@ export function MobilePOS({ products, customers, campaigns, onSaleComplete, onBa
     }
     setCart(cart.map((item, idx) => {
       if (idx === index) {
-        const newTotal = quantity * item.price * (1 - item.discount / 100);
-        return { ...item, quantity, total: newTotal };
+        const unit = item.unit || 'Adet';
+        const q = normalizeWeightProductQuantity(quantity, unit);
+        const newTotal = q * item.price * (1 - item.discount / 100);
+        return { ...item, quantity: q, total: newTotal };
       }
       return item;
     }));

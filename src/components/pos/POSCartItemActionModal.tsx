@@ -5,8 +5,9 @@ import { POSNumpad } from './POSNumpad';
 import { formatNumber as formatNumberUtil } from '../../utils/formatNumber';
 import { formatMoneyAmount } from '../../utils/formatMoney';
 import { lineDiscountMoneyFromPercent, lineNetAfterPercentDiscount } from '../../utils/discountRounding';
-import { parsePosQuantityForProduct } from '../../utils/numberFormatter';
+import { parsePosQuantityForProduct, formatDecimalForTrInput } from '../../utils/numberFormatter';
 import { productUsesDecimalQuantity } from '../../utils/productUnits';
+import { normalizeWeightProductQuantity } from '../../utils/scaleQuantity';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { confirm as confirmDialog } from '../shared/ConfirmDialog';
@@ -258,8 +259,11 @@ export function POSCartItemActionModal({
                       <div className="flex gap-2">
                         <button
                           onClick={() => {
-                            const qty = parseFloat(quantity || '0');
-                            if (qty > 1) setQuantity((qty - 1).toString());
+                            const step = decimalQty ? 0.001 : 1;
+                            const q = parsePosQuantityForProduct(quantity, item.product);
+                            if (!Number.isFinite(q)) return;
+                            const next = normalizeWeightProductQuantity(Math.max(step, q - step), item.product.unit);
+                            setQuantity(formatDecimalForTrInput(next, decimalQty ? 3 : 0));
                             setFocusedInput('quantity');
                           }}
                           className={`w-14 h-14 rounded-xl flex items-center justify-center transition-all ${
@@ -283,8 +287,11 @@ export function POSCartItemActionModal({
                         </div>
                         <button
                           onClick={() => {
-                            const qty = parseFloat(quantity || '0');
-                            setQuantity((qty + 1).toString());
+                            const step = decimalQty ? 0.001 : 1;
+                            const q = parsePosQuantityForProduct(quantity, item.product);
+                            const base = Number.isFinite(q) ? q : 0;
+                            const next = normalizeWeightProductQuantity(base + step, item.product.unit);
+                            setQuantity(formatDecimalForTrInput(next, decimalQty ? 3 : 0));
                             setFocusedInput('quantity');
                           }}
                           className={`w-14 h-14 rounded-xl flex items-center justify-center transition-all ${

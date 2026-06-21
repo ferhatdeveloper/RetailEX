@@ -88,6 +88,7 @@ import type { CartItem, ParkedReceipt, SaleRecord, PaymentType } from './types';
 import { applyCampaign, CampaignResult } from '../../utils/campaignEngine';
 import { lineDiscountMoneyFromPercent, lineNetAfterPercentDiscount } from '../../utils/discountRounding';
 import { formatPosQuantityInput, parsePosQuantity, formatDecimalForTrInput, parsePosQuantityForProduct } from '../../utils/numberFormatter';
+import { mergeScaleCartQuantity, normalizeWeightProductQuantity } from '../../utils/scaleQuantity';
 import { POSProductQuantityModal } from './POSProductQuantityModal';
 import { QuickProductSlotButton } from './QuickProductSlotButton';
 // import type { LayoutOrder } from './ScreenSettingsModal';
@@ -895,12 +896,13 @@ export default function MarketPOS({
     if (!Number.isFinite(parsedQty) || parsedQty <= 0) return false;
     const quantity = parsedQty;
     const itemUnit = unit || product.unit || t.pcs;
+    const normalizedQty = normalizeWeightProductQuantity(quantity, itemUnit);
     const lineGross =
       lineSubtotal != null
         ? roundMoneyAmount(lineSubtotal, saleCurrency)
-        : roundMoneyAmount(price * quantity, saleCurrency);
-    if (lineSubtotal != null && quantity > 0) {
-      price = roundMoneyAmount(lineGross / quantity, saleCurrency);
+        : roundMoneyAmount(price * normalizedQty, saleCurrency);
+    if (lineSubtotal != null && normalizedQty > 0) {
+      price = roundMoneyAmount(lineGross / normalizedQty, saleCurrency);
     }
 
     setCart(prev => {
@@ -911,13 +913,14 @@ export default function MarketPOS({
       );
 
       if (existingItem) {
+        const mergedQty = mergeScaleCartQuantity(existingItem.quantity, normalizedQty, itemUnit);
         return prev.map(item =>
           (variant ? item.product.id === product.id && item.variant?.id === variant.id : item.product.id === product.id && !item.variant && item.unit === itemUnit)
             ? {
                 ...item,
-                quantity: item.quantity + quantity,
+                quantity: mergedQty,
                 subtotal: lineNetAfterPercentDiscount(
-                  roundMoneyAmount((item.quantity + quantity) * price, saleCurrency),
+                  roundMoneyAmount(mergedQty * price, saleCurrency),
                   item.discount,
                 ),
               }
@@ -927,7 +930,7 @@ export default function MarketPOS({
       return [...prev, {
         product,
         variant,
-        quantity,
+        quantity: normalizedQty,
         unit: itemUnit,
         multiplier,
         discount: 0,
@@ -1295,7 +1298,10 @@ export default function MarketPOS({
         quantity: item.quantity,
         unit: item.unit || item.product.unit,
         multiplier: item.multiplier || 1,
-        baseQuantity: item.quantity * (item.multiplier || 1),
+        baseQuantity: normalizeWeightProductQuantity(
+          item.quantity * (item.multiplier || 1),
+          item.unit || item.product.unit,
+        ),
         price: item.price || item.variant?.price || item.product.price,
         discount: item.discount,
         total: item.subtotal,

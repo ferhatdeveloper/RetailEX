@@ -7,7 +7,7 @@ import { IS_TAURI } from '../../utils/env';
 import { type Invoice } from '../../core/types';
 import { customerAPI } from './customers';
 import { productAPI } from './products';
-import { normalizeWeightProductQuantity } from '../../utils/scaleQuantity';
+import { hydrateWeightLineFromDb, resolveStockQuantityFromLine } from '../../utils/scaleQuantity';
 export type { Invoice };
 
 // Helper to validate UUID format
@@ -24,9 +24,12 @@ function isNonEmptyScalar(v: string | number | undefined | null): boolean {
 
 /** Stok hareketi miktarı — KG/GR alış 1,610 = tartı satış 1610 g */
 function invoiceLineStockQuantity(item: Record<string, unknown>): number {
-  const unitMultiplier = Number(item.multiplier || 1);
-  const raw = Number(item.baseQuantity ?? (Number(item.quantity) * unitMultiplier));
-  return normalizeWeightProductQuantity(raw, String(item.unit ?? ''));
+  return resolveStockQuantityFromLine({
+    quantity: Number(item.quantity),
+    baseQuantity: item.baseQuantity != null ? Number(item.baseQuantity) : undefined,
+    unit: String(item.unit ?? ''),
+    multiplier: Number(item.multiplier || 1),
+  });
 }
 
 /** Restoran `closeBill` notu — ERP fatura silinince adisyon da iptal */
@@ -772,14 +775,22 @@ export function mapSaleItemRowToInvoiceLine(item: any, inv: Invoice) {
   const unitPrice = useFc ? uFC : uLoc;
   const netAmount = useFc ? netIQD / rate : netIQD;
   const total = useFc ? grossIQD / rate : grossIQD;
+  const unit = item.unit || 'Adet';
+  const multiplier = parseFloat(item.unit_multiplier || 1);
+  const hydrated = hydrateWeightLineFromDb({
+    quantity: parseFloat(item.quantity),
+    baseQuantity: parseFloat(item.base_quantity ?? item.quantity),
+    unit,
+    multiplier,
+  });
   return {
     id: item.id,
     productId: item.product_id != null ? String(item.product_id) : code,
     code,
     description: item.item_name || '',
     productName: item.item_name || '',
-    quantity: parseFloat(item.quantity),
-    unit: item.unit || 'Adet',
+    quantity: hydrated.quantity,
+    unit,
     unitPrice,
     price: unitPrice,
     discount: parseFloat(item.discount_rate || 0),
@@ -789,8 +800,8 @@ export function mapSaleItemRowToInvoiceLine(item: any, inv: Invoice) {
     unitCost: parseFloat(item.unit_cost || 0),
     totalCost: parseFloat(item.total_cost || 0),
     grossProfit: parseFloat(item.gross_profit || 0),
-    multiplier: parseFloat(item.unit_multiplier || 1),
-    baseQuantity: parseFloat(item.base_quantity ?? item.quantity),
+    multiplier,
+    baseQuantity: hydrated.baseQuantity,
     unitPriceFC: Number.isFinite(uFC) ? uFC : uLoc,
     currency: item.currency || inv.currency || 'IQD',
   };

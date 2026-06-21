@@ -1,4 +1,5 @@
 import type { Invoice } from '../core/types/models';
+import { normalizeWeightProductQuantity, mergeScaleCartQuantity } from './scaleQuantity';
 
 /** Logo / ERP: sayım fazlası alış faturası */
 const SAYIM_FAZLASI_TRCODE = 26;
@@ -30,7 +31,8 @@ type DraftLine = {
 };
 
 function rawLineToDraft(item: Record<string, unknown>): DraftLine | null {
-    const qty = parseFloat(String(item.quantity ?? item.qty ?? 0)) || 0;
+    const unit = (String(item.unit ?? 'Adet').trim() || 'Adet');
+    const qty = normalizeWeightProductQuantity(parseFloat(String(item.quantity ?? item.qty ?? 0)) || 0, unit);
     if (qty <= 0.000001) return null;
     const pidRaw = item.product_id ?? item.productId;
     const productId = pidRaw != null && String(pidRaw).trim() !== '' ? String(pidRaw).trim() : '';
@@ -50,7 +52,6 @@ function rawLineToDraft(item: Record<string, unknown>): DraftLine | null {
     const description = String(
         item.item_name ?? item.description ?? item.product_name ?? item.productName ?? ''
     ).trim();
-    const unit = (String(item.unit ?? 'Adet').trim() || 'Adet');
     const discountPercent = parseFloat(String(item.discount_rate ?? item.discountPercent ?? 0)) || 0;
     return {
         type: 'Malzeme',
@@ -96,7 +97,7 @@ export function buildPurchaseEditDataFromSayimInvoices(
             }
             const q1 = prev.quantity;
             const q2 = line.quantity;
-            const sumQ = q1 + q2;
+            const sumQ = mergeScaleCartQuantity(q1, q2, prev.unit || line.unit);
             const w =
                 sumQ > 0.000001 ? (q1 * prev.unitPrice + q2 * line.unitPrice) / sumQ : prev.unitPrice;
             map.set(k, {

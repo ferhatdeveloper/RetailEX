@@ -47,3 +47,57 @@ export function formatScaleQuantityDisplay(qty: number, unit?: string | null): s
     maximumFractionDigits: isWeight ? SCALE_QTY_DECIMALS : 0,
   });
 }
+
+/** Fatura satırı: miktar + stok birimi (baseQuantity) — alış 1,610 = stok 1,610 kg */
+export function syncWeightLineQuantities(
+  quantity: number,
+  unit?: string | null,
+  multiplier = 1,
+): { quantity: number; baseQuantity: number } {
+  const q = normalizeWeightProductQuantity(quantity, unit);
+  const mult = Number(multiplier) || 1;
+  return {
+    quantity: q,
+    baseQuantity: normalizeWeightProductQuantity(q * mult, unit),
+  };
+}
+
+/** DB / Excel yükleme: baseQuantity ve quantity tutarlı hale getirilir */
+export function hydrateWeightLineFromDb(item: {
+  quantity?: number;
+  baseQuantity?: number;
+  base_quantity?: number;
+  unit?: string | null;
+  multiplier?: number;
+}): { quantity: number; baseQuantity: number } {
+  const unit = item.unit;
+  const mult = Number(item.multiplier || 1) || 1;
+  const rawBase = Number(item.baseQuantity ?? item.base_quantity ?? (Number(item.quantity || 0) * mult));
+  const baseQuantity = normalizeWeightProductQuantity(rawBase, unit);
+  const quantity = normalizeWeightProductQuantity(
+    mult !== 0 ? baseQuantity / mult : baseQuantity,
+    unit,
+  );
+  return { quantity, baseQuantity };
+}
+
+/** Sepette aynı tartılı ürün birleştirme — 1,610 + 1,610 = 3,220 kg */
+export function mergeScaleCartQuantity(
+  existingQty: number,
+  addQty: number,
+  unit?: string | null,
+): number {
+  return normalizeWeightProductQuantity(Number(existingQty) + Number(addQty), unit);
+}
+
+/** POS / fatura stok miktarı (baseQuantity öncelikli) */
+export function resolveStockQuantityFromLine(item: {
+  quantity?: number;
+  baseQuantity?: number;
+  unit?: string | null;
+  multiplier?: number;
+}): number {
+  const mult = Number(item.multiplier || 1) || 1;
+  const raw = Number(item.baseQuantity ?? (Number(item.quantity || 0) * mult));
+  return normalizeWeightProductQuantity(raw, item.unit);
+}

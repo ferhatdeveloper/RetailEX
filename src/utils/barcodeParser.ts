@@ -14,7 +14,7 @@
 import { getCurrencyDecimalPlaces } from './currency';
 import { getCode10SuffixMode, getScaleBarcodeType } from './scaleBarcodeConfig';
 import { isGramScaleUnit } from './productUnits';
-import { scaleGramsToProductQuantity } from './scaleQuantity';
+import { scaleGramsToProductQuantity, normalizeWeightProductQuantity } from './scaleQuantity';
 
 export type BarcodeFormat =
   | 'rongta_type17'
@@ -257,7 +257,7 @@ export function scaleWeightFieldToQuantity(
   if (isGramScaleUnit(unit)) {
     return { quantity: Math.round(fieldValue), unitName: 'GR' };
   }
-  const kg = rongtaWeightFieldToKg(fieldValue);
+  const kg = normalizeWeightProductQuantity(rongtaWeightFieldToKg(fieldValue), unit);
   return { quantity: kg, unitName: scaleSaleUnitLabel(normalizeScaleUnit(unit)) };
 }
 

@@ -1,10 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import {
   formatScaleQuantityDisplay,
+  mergeScaleCartQuantity,
   normalizeWeightProductQuantity,
   productQuantityToGrams,
   roundScaleQuantity,
   scaleGramsToProductQuantity,
+  syncWeightLineQuantities,
 } from '../../utils/scaleQuantity';
 
 describe('scaleQuantity — alış 1,610 kg = tartı 1610 g', () => {
@@ -32,5 +34,14 @@ describe('scaleQuantity — alış 1,610 kg = tartı 1610 g', () => {
 
   it('adet biriminde yuvarlama yapılmaz', () => {
     expect(normalizeWeightProductQuantity(5, 'Adet')).toBe(5);
+  });
+
+  it('syncWeightLineQuantities: miktar × çarpan = baseQuantity', () => {
+    const synced = syncWeightLineQuantities(1.61, 'KG', 1);
+    expect(synced).toEqual({ quantity: 1.61, baseQuantity: 1.61 });
+  });
+
+  it('mergeScaleCartQuantity: 1,61 + 1,61 = 3,22', () => {
+    expect(mergeScaleCartQuantity(1.61, 1.61, 'KG')).toBe(3.22);
   });
 });
