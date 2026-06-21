@@ -1,6 +1,6 @@
 /**
- * Tartı barkod test: 10000000381415 → kod 1000000038, 1415 g = 1,415 kg
- * Kullanım: PGHOST=127.0.0.1 PGUSER=postgres PGPASSWORD=postgres PGDATABASE=retailex_local node scripts/test/test-scale-barcode-1000000038.mjs
+ * Tartı barkod testleri (code10: ilk 10 hane kod + gram)
+ * Kullanım: PGHOST=127.0.0.1 PGUSER=postgres PGPASSWORD=postgres PGDATABASE=retailex_local npx tsx scripts/test/test-scale-barcode-1000000038.mjs
  */
 import { ERP_SETTINGS, DB_SETTINGS, LOCAL_CONFIG } from '../../src/services/postgres.ts';
 import { productAPI } from '../../src/services/api/products.ts';
@@ -16,29 +16,24 @@ if (process.env.PGDATABASE) LOCAL_CONFIG.database = process.env.PGDATABASE;
 ERP_SETTINGS.firmNr = '1';
 ERP_SETTINGS.periodNr = '01';
 
-const bc = '10000000381415';
-const plu = '1000000038';
+const CASES = [
+  { bc: '10000000381415', plu: '1000000038', qty: 1.415, grams: 1415 },
+  { bc: '10000000441415', plu: '1000000044', qty: 1.415, grams: 1415 },
+];
 
-async function main() {
+async function runCase({ bc, plu, qty, grams }) {
+  console.log('\n---', bc, '---');
   console.log('parse:', parseBarcode(bc));
 
-  const byPlu = await productAPI.getScaleProductByPlu(plu);
-  console.log(
-    'getScaleProductByPlu:',
-    byPlu
-      ? { id: byPlu.id, code: byPlu.code, unit: byPlu.unit, price: byPlu.price, isScale: byPlu.isScaleProduct }
-      : 'BULUNAMADI',
-  );
-
-  const byFull = await productAPI.lookupByBarcode(bc);
-  console.log('lookupByBarcode(tam):', byFull?.product?.code ?? 'yok');
-
+  const t0 = performance.now();
   const sale = await resolveScaleBarcodeSale(bc, 1310);
+  const ms = Math.round(performance.now() - t0);
+
   if (!sale) {
     console.error('FAIL: resolveScaleBarcodeSale null');
     process.exit(1);
   }
-  console.log('OK resolveScaleBarcodeSale:', {
+  console.log(`OK (${ms}ms):`, {
     code: sale.product.code,
     qty: sale.quantity,
     unit: sale.unitName,
@@ -47,9 +42,18 @@ async function main() {
     weightGrams: sale.weightGrams,
   });
   if (sale.product.code !== plu) process.exit(1);
-  if (Math.abs(sale.quantity - 1.415) > 0.001) process.exit(1);
-  if (sale.weightGrams !== 1415) process.exit(1);
-  console.log('Tüm kontroller geçti.');
+  if (Math.abs(sale.quantity - qty) > 0.001) process.exit(1);
+  if (sale.weightGrams !== grams) process.exit(1);
+  if (ms > 800) {
+    console.warn(`WARN: ${ms}ms yavaş (>800ms)`);
+  }
+}
+
+async function main() {
+  for (const c of CASES) {
+    await runCase(c);
+  }
+  console.log('\nTüm kontroller geçti.');
 }
 
 main().catch((e) => {

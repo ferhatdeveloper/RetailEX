@@ -143,6 +143,16 @@ ON CONFLICT (code) DO UPDATE SET
   is_scale_product = EXCLUDED.is_scale_product,
   is_active = EXCLUDED.is_active;
 
+-- Tartılı ürün (code10: 1000000044 + 1415 g = 1,415 kg)
+INSERT INTO rex_001_products (firm_nr, code, barcode, name, vat_rate, price, cost, stock, unit, currency, is_active, is_scale_product) VALUES
+  ('001', '1000000044', '1000000044', 'Tartılı Demo Ürün 44', 0, 12000.00, 8000.00, 100, 'KG', 'IQD', true, true)
+ON CONFLICT (code) DO UPDATE SET
+  barcode = EXCLUDED.barcode,
+  unit = EXCLUDED.unit,
+  price = EXCLUDED.price,
+  is_scale_product = EXCLUDED.is_scale_product,
+  is_active = EXCLUDED.is_active;
+
 -- Birim seti ata: koli olan ürünler (06-KOLI24 = Adet ana birim, Koli ×24)
 UPDATE rex_001_products SET
   unitset_id = (SELECT id FROM rex_001_unitsets WHERE code = '06-KOLI24')

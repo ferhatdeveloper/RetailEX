@@ -35,6 +35,15 @@ describe('barcodeParser — tartılı barkod', () => {
     expect(kg.quantity).toBe(1.415);
   });
 
+  it('10000000441415 → kod 1000000044, 1415 g', () => {
+    const parsed = parseBarcode('10000000441415');
+    expect(parsed.format).toBe('code10_weight');
+    expect(parsed.productCode).toBe('1000000044');
+    expect(parsed.weight).toBe(1415);
+    const kg = scaleWeightFieldToQuantity(parsed.weight!, 'KG', 'code10_weight');
+    expect(kg.quantity).toBe(1.415);
+  });
+
   it('10000000091610 → kod 1000000009, 1610 g', () => {
     const parsed = parseBarcode('10000000091610');
     expect(parsed.isWeightBased).toBe(true);

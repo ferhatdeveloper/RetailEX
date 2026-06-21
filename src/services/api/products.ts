@@ -62,13 +62,17 @@ export function scalePluLookupVariants(plu: string): string[] {
     t.padStart(10, '0'),
   ]);
 
-  for (const dept of ['1', '2', '3', '4', '5', '6', '7', '8', '9']) {
-    out.add(`${dept}${stripped.padStart(8, '0')}`);
-    out.add(`${dept}${t.padStart(8, '0')}`);
-  }
-  if (t.length > 6) out.add(t.slice(-6));
-  if (stripped.length > 0 && stripped.length <= 6) {
-    out.add(`1${stripped.padStart(8, '0')}`);
+  // 10 haneli sabit tartı kodu (code10): dept+PLU6 varyantları gereksiz — sorgu yükünü azaltır
+  if (t.length < 10) {
+    for (const dept of ['1', '2', '3', '4', '5', '6', '7', '8', '9']) {
+      out.add(`${dept}${stripped.padStart(8, '0')}`);
+      out.add(`${dept}${t.padStart(8, '0')}`);
+    }
+    if (stripped.length > 0 && stripped.length <= 6) {
+      out.add(`1${stripped.padStart(8, '0')}`);
+    }
+  } else if (t.length > 6) {
+    out.add(t.slice(-6));
   }
 
   return [...out].filter(Boolean);

@@ -6,5 +6,6 @@ describe('scalePluLookupVariants', () => {
     const variants = scalePluLookupVariants('1000000009');
     expect(variants).toContain('1000000009');
     expect(variants).toContain('1000000009'.padStart(10, '0'));
+    expect(variants).not.toContain('11000000009');
   });
 });

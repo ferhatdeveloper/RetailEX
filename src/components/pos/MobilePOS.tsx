@@ -276,6 +276,15 @@ export function MobilePOS({ products, customers, campaigns, onSaleComplete, onBa
   const handleBarcodeInputChange = (value: string) => {
     barcodeLatestRef.current = value;
     setBarcodeInput(value);
+    const trimmed = value.trim();
+    if (/^\d{14}$/.test(trimmed) && isBarcodeReadyForAutoSubmit(trimmed)) {
+      if (barcodeAutoTimerRef.current) {
+        clearTimeout(barcodeAutoTimerRef.current);
+        barcodeAutoTimerRef.current = null;
+      }
+      void processBarcodeScan(trimmed);
+      return;
+    }
     if (barcodeAutoTimerRef.current) clearTimeout(barcodeAutoTimerRef.current);
     barcodeAutoTimerRef.current = setTimeout(() => {
       barcodeAutoTimerRef.current = null;

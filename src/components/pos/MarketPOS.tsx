@@ -1035,6 +1035,16 @@ export default function MarketPOS({
   const handleBarcodeInputChange = (value: string) => {
     barcodeInputLatestRef.current = value;
     setBarcodeInput(value);
+    const trimmed = value.trim();
+    // 14 hane code10 tartı: okuyucu Enter göndermese bile anında işle
+    if (/^\d{14}$/.test(trimmed) && isBarcodeReadyForAutoSubmit(trimmed)) {
+      if (barcodeAutoSubmitTimerRef.current) {
+        clearTimeout(barcodeAutoSubmitTimerRef.current);
+        barcodeAutoSubmitTimerRef.current = null;
+      }
+      void submitBarcodeSearch(trimmed);
+      return;
+    }
     scheduleBarcodeAutoSubmit(value);
   };
 

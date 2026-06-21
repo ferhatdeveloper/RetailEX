@@ -3,7 +3,7 @@
  * Rongta tip 27: 27 + PLU(5) + gram(5) + kontrol hanesi
  */
 import type { Product } from '../core/types';
-import { productAPI, scalePluLookupVariants } from '../services/api/products';
+import { productAPI } from '../services/api/products';
 import {
   convertPrice,
   getBarcodeFormatInfo,
@@ -33,25 +33,26 @@ function resolveSaleCurrency(product: Product): string {
 }
 
 async function findProductByPlu(productCode: string): Promise<Product | null> {
-  for (const code of scalePluLookupVariants(productCode)) {
-    const scaleProduct = await productAPI.getScaleProductByPlu(code);
-    if (scaleProduct) return scaleProduct;
-  }
-  for (const code of scalePluLookupVariants(productCode)) {
-    const byBarcode = await productAPI.getByBarcode(code);
+  const code = String(productCode ?? '').trim();
+  if (!code) return null;
+
+  // Tek sorgu: getScaleProductByPlu zaten tüm PLU varyantlarını ANY() ile arar
+  const scaleProduct = await productAPI.getScaleProductByPlu(code);
+  if (scaleProduct) return scaleProduct;
+
+  const bySpecial = await productAPI.getBySpecialCode(code);
+  if (bySpecial) return bySpecial;
+
+  const directKeys = [...new Set([code, code.replace(/^0+/, '') || '0', code.padStart(10, '0')])];
+  for (const k of directKeys) {
+    const byBarcode = await productAPI.getByBarcode(k);
     if (byBarcode) return byBarcode;
   }
-  for (const code of scalePluLookupVariants(productCode)) {
-    const p = await productAPI.getByCode(code);
-    if (p && isScaleProductFlag(p)) return p;
-  }
-  const bySpecial = await productAPI.getBySpecialCode(productCode);
-  if (bySpecial) return bySpecial;
-  for (const code of scalePluLookupVariants(productCode)) {
-    const p = await productAPI.getByCode(code);
+  for (const k of directKeys) {
+    const p = await productAPI.getByCode(k);
     if (p) return p;
   }
-  return productAPI.getScaleProductByPlu(productCode);
+  return null;
 }
 
 /**
