@@ -112,9 +112,28 @@ export function parseDecimalStringForInput(value: string): number {
 const POS_QTY_MIN = 0.001;
 const POS_QTY_MAX = 9999;
 
+/**
+ * POS kg girişi: tek nokta + ondalık (1.415, 69.500) — tartı etiketi / klavye nokta ondalığı.
+ * Aksi halde parseDecimalStringForInput "1.415" → 1415, "69.500" → 69500 (TR binlik) yapar.
+ */
+function parsePosScaleDotKg(value: string): number | null {
+  const s = String(value).trim().replace(/\s/g, '');
+  if (!/^\d{1,4}\.\d{1,3}$/.test(s)) return null;
+  const n = parseFloat(s);
+  if (!Number.isFinite(n) || n <= 0 || n > POS_QTY_MAX) return null;
+  return Math.round(n * 1000) / 1000;
+}
+
 /** POS miktar: TR girişinden sayıya (örn. "1,250" → 1,25 kg) ve 0,001–9999 aralığına sıkıştır */
 export function parsePosQuantity(value: string | number): number {
-  const raw = typeof value === 'number' ? value : parseDecimalStringForInput(value);
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value) || value <= 0) return NaN;
+    const clamped = Math.max(POS_QTY_MIN, Math.min(POS_QTY_MAX, value));
+    return Math.round(clamped * 1000) / 1000;
+  }
+  const scaleDot = parsePosScaleDotKg(value);
+  if (scaleDot != null) return scaleDot;
+  const raw = parseDecimalStringForInput(value);
   if (!Number.isFinite(raw) || raw <= 0) return NaN;
   const clamped = Math.max(POS_QTY_MIN, Math.min(POS_QTY_MAX, raw));
   return Math.round(clamped * 1000) / 1000;

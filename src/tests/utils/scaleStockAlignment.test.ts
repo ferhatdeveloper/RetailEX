@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseDecimalStringForInput } from '../../utils/numberFormatter';
+import { parseDecimalStringForInput, parsePosQuantity } from '../../utils/numberFormatter';
 import {
   hydrateWeightLineFromDb,
   mergeScaleCartQuantity,
@@ -55,5 +55,21 @@ describe('scaleStockAlignment — alış 1,610 kg ↔ tartı 1610 g', () => {
     const synced = syncWeightLineQuantities(1610, 'GR', 1);
     expect(synced.baseQuantity).toBe(1610);
     expect(scaleGramsToProductQuantity(1610, 'GR')).toBe(1610);
+  });
+});
+
+describe('parsePosQuantity — numpad kg girişi', () => {
+  it('TR virgül: 1,415 kg', () => {
+    expect(parsePosQuantity('1,415')).toBe(1.415);
+  });
+
+  it('nokta ondalık (tartı): 1.415 → 1,415 kg (1415 değil)', () => {
+    expect(parsePosQuantity('1.415')).toBe(1.415);
+    expect(parseDecimalStringForInput('1.415')).toBe(1415);
+  });
+
+  it('nokta ondalık: 69.500 → 69,5 kg (69500 değil)', () => {
+    expect(parsePosQuantity('69.500')).toBe(69.5);
+    expect(parseDecimalStringForInput('69.500')).toBe(69500);
   });
 });
