@@ -133,6 +133,16 @@ INSERT INTO rex_001_products (firm_nr, code, barcode, name, name2, category_id, 
   ('001', 'MENU-007',  NULL, 'Hamburger Menü',       'Patates + İçecek',   (SELECT id FROM rex_001_categories WHERE code='REST-FAST'),  10,   180.00,    55.00,999,  1, 'Porsiyon', 'IQD', true)
 ON CONFLICT (code) DO NOTHING;
 
+-- Tartılı ürün (code10: 1000000038 + 1415 g = 1,415 kg) — POS barkod testi
+INSERT INTO rex_001_products (firm_nr, code, barcode, name, vat_rate, price, cost, stock, unit, currency, is_active, is_scale_product) VALUES
+  ('001', '1000000038', '1000000038', 'Tartılı Demo Ürün 38', 0, 15000.00, 10000.00, 100, 'KG', 'IQD', true, true)
+ON CONFLICT (code) DO UPDATE SET
+  barcode = EXCLUDED.barcode,
+  unit = EXCLUDED.unit,
+  price = EXCLUDED.price,
+  is_scale_product = EXCLUDED.is_scale_product,
+  is_active = EXCLUDED.is_active;
+
 -- Birim seti ata: koli olan ürünler (06-KOLI24 = Adet ana birim, Koli ×24)
 UPDATE rex_001_products SET
   unitset_id = (SELECT id FROM rex_001_unitsets WHERE code = '06-KOLI24')

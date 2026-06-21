@@ -33,6 +33,13 @@ function firmNrPadded(): string {
   return String(ERP_SETTINGS.firmNr ?? '001').trim().padStart(3, '0').slice(0, 10);
 }
 
+/** DB firm_nr: hem 001 hem 1 formatı (Tauri/web firma seçimi) */
+function firmNrMatchValues(): { eq: string; raw: string } {
+  const raw = String(ERP_SETTINGS.firmNr ?? '').trim();
+  const eq = firmNrPadded();
+  return { eq, raw: raw || eq };
+}
+
 function periodNrPadded(): string {
   return String(ERP_SETTINGS.periodNr ?? '01').trim().padStart(2, '0').slice(0, 10);
 }
@@ -54,6 +61,16 @@ export function scalePluLookupVariants(plu: string): string[] {
     t.padStart(6, '0'),
     t.padStart(10, '0'),
   ]);
+
+  for (const dept of ['1', '2', '3', '4', '5', '6', '7', '8', '9']) {
+    out.add(`${dept}${stripped.padStart(8, '0')}`);
+    out.add(`${dept}${t.padStart(8, '0')}`);
+  }
+  if (t.length > 6) out.add(t.slice(-6));
+  if (stripped.length > 0 && stripped.length <= 6) {
+    out.add(`1${stripped.padStart(8, '0')}`);
+  }
+
   return [...out].filter(Boolean);
 }
 
@@ -693,8 +710,10 @@ export const productAPI = {
         return row ? mapDatabaseProductToProduct(row) : null;
       }
       const { rows } = await postgres.query(
-        `SELECT * FROM ${tableName} WHERE code = $1 AND firm_nr = $2 LIMIT 1`,
-        [code.trim(), ERP_SETTINGS.firmNr]
+        `SELECT * FROM ${tableName} WHERE code = $1 AND is_active = true
+           AND (LPAD(TRIM(COALESCE(firm_nr, '')), 3, '0') = $2 OR TRIM(COALESCE(firm_nr, '')) = $3)
+         LIMIT 1`,
+        [code.trim(), firmNrMatchValues().eq, firmNrMatchValues().raw],
       );
       return rows[0] ? mapDatabaseProductToProduct(rows[0]) : null;
     } catch (error) {
@@ -709,7 +728,7 @@ export const productAPI = {
     if (!c) return null;
     try {
       const tableName = `rex_${firmNrPadded()}_products`;
-      const firmEq = firmNrPadded();
+      const { eq: firmEq, raw: firmRaw } = firmNrMatchValues();
       if (DB_SETTINGS.connectionProvider === 'rest_api') {
         const { postgrest } = await import('./postgrestClient');
         for (const variant of [c, c.replace(/^0+/, '') || '0', c.padStart(4, '0'), c.padStart(5, '0')]) {
@@ -749,7 +768,7 @@ export const productAPI = {
     if (uniq.length === 0) return null;
     try {
       const tableName = `rex_${firmNrPadded()}_products`;
-      const firmEq = firmNrPadded();
+      const { eq: firmEq, raw: firmRaw } = firmNrMatchValues();
       if (DB_SETTINGS.connectionProvider === 'rest_api') {
         const { postgrest } = await import('./postgrestClient');
         for (const code of uniq) {
@@ -788,11 +807,12 @@ export const productAPI = {
       }
       const { rows } = await postgres.query(
         `SELECT * FROM ${tableName}
-         WHERE firm_nr = $1 AND is_active = true
-           AND (code = ANY($2::text[]) OR barcode = ANY($2::text[]) OR special_code_1 = ANY($2::text[]))
+         WHERE is_active = true
+           AND (LPAD(TRIM(COALESCE(firm_nr, '')), 3, '0') = $1 OR TRIM(COALESCE(firm_nr, '')) = $2)
+           AND (code = ANY($3::text[]) OR barcode = ANY($3::text[]) OR special_code_1 = ANY($3::text[]))
          ORDER BY CASE WHEN is_scale_product = true THEN 0 ELSE 1 END
          LIMIT 1`,
-        [ERP_SETTINGS.firmNr, uniq],
+        [firmEq, firmRaw, uniq],
       );
       return rows[0] ? mapDatabaseProductToProduct(rows[0]) : null;
     } catch (error) {
@@ -807,7 +827,7 @@ export const productAPI = {
   async getByBarcode(barcode: string): Promise<Product | null> {
     try {
         const tableName = `rex_${firmNrPadded()}_products`;
-        const firmEq = firmNrPadded();
+        const { eq: firmEq, raw: firmRaw } = firmNrMatchValues();
         if (DB_SETTINGS.connectionProvider === 'rest_api') {
           const { postgrest } = await import('./postgrestClient');
           const rows = await postgrest.get<any[]>(
@@ -825,8 +845,10 @@ export const productAPI = {
         return row ? mapDatabaseProductToProduct(row) : null;
       }
       const { rows } = await postgres.query(
-        `SELECT * FROM ${tableName} WHERE barcode = $1 AND firm_nr = $2 AND is_active = true LIMIT 1`,
-        [barcode.trim(), ERP_SETTINGS.firmNr]
+        `SELECT * FROM ${tableName} WHERE barcode = $1 AND is_active = true
+           AND (LPAD(TRIM(COALESCE(firm_nr, '')), 3, '0') = $2 OR TRIM(COALESCE(firm_nr, '')) = $3)
+         LIMIT 1`,
+        [barcode.trim(), firmEq, firmRaw],
       );
       return rows[0] ? mapDatabaseProductToProduct(rows[0]) : null;
     } catch (error) {

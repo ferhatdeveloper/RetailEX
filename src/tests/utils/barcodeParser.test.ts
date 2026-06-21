@@ -26,7 +26,16 @@ describe('barcodeParser — tartılı barkod', () => {
     expect(rongtaWeightFieldToKg(parsed.weight!)).toBe(1.3);
   });
 
-  it('14 hane: 1000000009 + 1610 (1,61 kg)', () => {
+  it('10000000381415 → kod 1000000038, 1415 g', () => {
+    const parsed = parseBarcode('10000000381415');
+    expect(parsed.format).toBe('code10_weight');
+    expect(parsed.productCode).toBe('1000000038');
+    expect(parsed.weight).toBe(1415);
+    const kg = scaleWeightFieldToQuantity(parsed.weight!, 'KG', 'code10_weight');
+    expect(kg.quantity).toBe(1.415);
+  });
+
+  it('10000000091610 → kod 1000000009, 1610 g', () => {
     const parsed = parseBarcode('10000000091610');
     expect(parsed.isWeightBased).toBe(true);
     expect(parsed.format).toBe('code10_weight');
