@@ -1,4 +1,4 @@
-import { Delete } from 'lucide-react';
+import { Delete, Lock } from 'lucide-react';
 import { cn } from '../ui/utils';
 
 export interface PinNumpadInputProps {
@@ -15,6 +15,11 @@ export interface PinNumpadInputProps {
   /** Form içi daha kompakt tuşlar */
   compact?: boolean;
   darkMode?: boolean;
+  /** Klavye ile serbest giriş (harf/rakam) */
+  allowKeyboard?: boolean;
+  keyboardPlaceholder?: string;
+  /** false: numpad gizlenir (yalnızca klavye) */
+  showNumpad?: boolean;
   className?: string;
 }
 
@@ -30,6 +35,9 @@ export function PinNumpadInput({
   errorText,
   compact = false,
   darkMode = false,
+  allowKeyboard = false,
+  keyboardPlaceholder = '••••••••',
+  showNumpad = true,
   className,
 }: PinNumpadInputProps) {
   const addDigit = (digit: string) => {
@@ -64,6 +72,34 @@ export function PinNumpadInput({
         </div>
       )}
 
+      {allowKeyboard && (
+        <div className="relative mb-3 group">
+          <Lock
+            className={cn(
+              'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 transition-colors',
+              darkMode ? 'text-gray-500 group-focus-within:text-blue-400' : 'text-slate-400 group-focus-within:text-blue-600',
+            )}
+          />
+          <input
+            type="password"
+            value={value}
+            disabled={disabled}
+            maxLength={maxLength}
+            placeholder={keyboardPlaceholder}
+            onChange={(e) => onChange(e.target.value.slice(0, maxLength))}
+            className={cn(
+              'w-full pl-10 pr-4 py-3 border-2 rounded-lg font-bold text-sm outline-none transition-all focus:border-blue-600',
+              darkMode
+                ? 'bg-gray-900/80 border-gray-600 text-white placeholder-gray-600'
+                : 'bg-white border-slate-200 text-slate-900 placeholder-slate-400',
+            )}
+            autoComplete="current-password"
+          />
+        </div>
+      )}
+
+      {(showNumpad || !allowKeyboard) && (
+        <>
       <div className="flex justify-center gap-2 mb-3">
         {Array.from({ length: dotSlots }, (_, i) => {
           const filled = value.length > i;
@@ -150,6 +186,8 @@ export function PinNumpadInput({
 
       {error && errorText && (
         <p className="text-center text-xs font-semibold text-red-600 mt-2">{errorText}</p>
+      )}
+        </>
       )}
     </div>
   );

@@ -1271,10 +1271,12 @@ export function Login({ onLogin }: LoginProps) {
                     <PinNumpadInput
                       value={password}
                       onChange={setPassword}
-                      maxLength={16}
+                      maxLength={64}
                       dotSlots={4}
                       compact
                       darkMode={darkMode}
+                      allowKeyboard
+                      showNumpad
                       className="border-0"
                     />
                   </div>
