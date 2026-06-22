@@ -1,4 +1,4 @@
-﻿import { useState, useRef, useEffect } from 'react';
+﻿import { useState, useRef, useEffect, useMemo } from 'react';
 import { FullscreenBodyPortal } from '../../shared/FullscreenBodyPortal';
 import { FileText, FileCheck, Plus, Search, Printer, Send, Eye, Edit, Trash2, X, Save, Calendar, User, MoreVertical, AlertCircle, CheckCircle2, Barcode } from 'lucide-react';
 import { DevExDataGrid } from '../../shared/DevExDataGrid';
@@ -13,6 +13,8 @@ import { DocumentManager } from '../../shared/DocumentManager';
 import { unitAPI } from '../../../services/api/masterData';
 import { unitSetAPI } from '../../../services/unitSetAPI';
 import { buildUnitSelectOptions, withMissingUnitValue, type UnitSelectOption } from '../../../utils/unitOptions';
+import { InvoiceCariSelectModal, type InvoiceCariItem } from '../invoices/InvoiceCariSelectModal';
+import { supplierAPI, type Supplier } from '../../../services/api/suppliers';
 
 interface SalesInvoiceModuleProps {
   customers: Customer[];
@@ -98,7 +100,7 @@ export function SalesInvoiceModule({ customers, products, onCreateInvoice, onSwi
   const [activeTab, setActiveTab] = useState<'fatura' | 'detaylar' | 'ekliDosyalar'>('fatura');
   const [editingInvoiceId, setEditingInvoiceId] = useState<string | null>(null);
   const [showCustomerModal, setShowCustomerModal] = useState(false);
-  const [customerSearchModal, setCustomerSearchModal] = useState('');
+  const [extraCustomers, setExtraCustomers] = useState<Customer[]>([]);
   const [barcodeInput, setBarcodeInput] = useState('');
   const barcodeInputRef = useRef<HTMLInputElement>(null);
 
@@ -253,7 +255,7 @@ Lütfen bu bilgiyi ekran görüntüsü olarak paylaşın!`);
       const apiInvoice = {
         invoice_no: invoiceNo || `SAT-${Date.now()}`,
         invoice_category: 'Satis',
-        customer_id: customers.find(c => c.title === customerTitle)?.id,
+        customer_id: customerId || customers.find(c => c.title === customerTitle || c.name === customerTitle)?.id,
         subtotal: total,
         tax: tax,
         discount: 0,
@@ -285,7 +287,7 @@ Lütfen bu bilgiyi ekran görüntüsü olarak paylaşın!`);
         });
 
         // 9. MUHASEBELEŞTİRME (Otomatik)
-        if (isReady && customers.find(c => c.title === customerTitle)?.id) {
+        if (isReady && (customerId || customers.find(c => c.title === customerTitle || c.name === customerTitle)?.id)) {
           // Auto journal logic can remain here or move to API later.
         }
 
@@ -323,10 +325,13 @@ Lütfen bu bilgiyi ekran görüntüsü olarak paylaşın!`);
     setTransactionDate(invoice.date);
 
     // Set customer code based on customer name
-    const customer = customers.find(c => c.title === invoice.customer);
+    const customer = displayCustomers.find(c => c.title === invoice.customer || c.name === invoice.customer);
     if (customer) {
+      setCustomerId(customer.id);
       setCustomerCode(customer.code || '');
+      setCustomerTitle(customer.title || customer.name || '');
     } else {
+      setCustomerId('');
       setCustomerCode('MUS-001');
     }
 
@@ -468,8 +473,16 @@ Lütfen bu bilgiyi ekran görüntüsü olarak paylaşın!`);
   const [transactionNo, setTransactionNo] = useState('0000004');
   const [transactionDate, setTransactionDate] = useState(new Date().toLocaleDateString('tr-TR'));
   const [specialCode, setSpecialCode] = useState('');
+  const [customerId, setCustomerId] = useState('');
   const [customerCode, setCustomerCode] = useState('');
   const [customerTitle, setCustomerTitle] = useState('');
+
+  const displayCustomers = useMemo(() => {
+    const map = new Map<string, Customer>();
+    for (const c of customers) map.set(c.id, c);
+    for (const c of extraCustomers) map.set(c.id, c);
+    return Array.from(map.values());
+  }, [customers, extraCustomers]);
   const [tradingGroup, setTradingGroup] = useState('');
 
   // Invoice Items
@@ -707,6 +720,33 @@ Lütfen bu bilgiyi ekran görüntüsü olarak paylaşın!`);
   };
 
   const totals = calculateTotals();
+
+  const handleQuickCreateCari = async (
+    payload: { name: string; phone?: string },
+  ): Promise<InvoiceCariItem | null> => {
+    try {
+      const code = await supplierAPI.generateCode('customer');
+      const created = await supplierAPI.create({
+        code,
+        name: payload.name,
+        phone: payload.phone,
+        cardType: 'customer',
+      } as Omit<Supplier, 'id'>);
+      const customerRow = created as unknown as Customer;
+      setExtraCustomers((prev) => [...prev, customerRow]);
+      toast.success('Müşteri eklendi');
+      return {
+        id: created.id,
+        code: created.code,
+        name: created.name,
+        phone: created.phone,
+        email: created.email,
+      };
+    } catch (e: any) {
+      toast.error(e?.message || 'Müşteri eklenemedi');
+      return null;
+    }
+  };
 
   const columnHelper = createColumnHelper<any>();
 
@@ -1323,110 +1363,30 @@ Lütfen bu bilgiyi ekran görüntüsü olarak paylaşın!`);
 
         {/* Customer Selection Modal */}
         {showCustomerModal && (
-          <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[60]">
-            <div className="bg-white w-[95vw] max-w-[1400px] h-[85vh] flex flex-col shadow-2xl">
-              {/* Modal Header - Flat Blue */}
-              <div className="bg-[#2196F3] px-8 py-5 flex items-center justify-between">
-                <div className="flex items-center gap-4">
-                  <User className="w-6 h-6 text-white" />
-                  <h3 className="text-xl text-white">Müşteri Seçimi</h3>
-                </div>
-                <button
-                  onClick={() => {
-                    setShowCustomerModal(false);
-                    setCustomerSearchModal('');
-                  }}
-                  className="text-white hover:bg-white/20 rounded p-2 transition-colors"
-                >
-                  <X className="w-6 h-6" />
-                </button>
-              </div>
-
-              {/* Search Bar - Flat */}
-              <div className="px-8 py-5 border-b border-gray-200 bg-gray-50">
-                <div className="relative">
-                  <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                  <input
-                    type="text"
-                    value={customerSearchModal}
-                    onChange={(e) => setCustomerSearchModal(e.target.value)}
-                    placeholder="Müşteri kodu veya ünvanı ile ara..."
-                    className="w-full pl-12 pr-4 py-3.5 border-2 border-gray-300 text-base focus:outline-none focus:border-[#2196F3] transition-colors"
-                    autoFocus
-                  />
-                </div>
-              </div>
-
-              {/* Customer List - Full Height Table */}
-              <div className="flex-1 overflow-auto bg-white">
-                <table className="w-full">
-                  <thead className="bg-gray-100 sticky top-0 border-b-2 border-gray-300">
-                    <tr>
-                      <th className="px-8 py-4 text-left text-sm text-gray-700 uppercase tracking-wide">Kod</th>
-                      <th className="px-8 py-4 text-left text-sm text-gray-700 uppercase tracking-wide">Ünvan</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {customers
-                      .filter(cust =>
-                        (cust?.code?.toLowerCase() || '').includes((customerSearchModal || '').toLowerCase()) ||
-                        (cust?.title?.toLowerCase() || '').includes((customerSearchModal || '').toLowerCase())
-                      )
-                      .map((cust, custIndex) => (
-                        <tr
-                          key={cust.code || `customer-${custIndex}`}
-                          onClick={() => {
-                            setCustomerCode(cust.code || '');
-                            setCustomerTitle(cust.title || '');
-                            setShowCustomerModal(false);
-                            setCustomerSearchModal('');
-                          }}
-                          className="cursor-pointer hover:bg-[#E3F2FD] transition-colors border-b border-gray-200"
-                        >
-                          <td className="px-8 py-4 text-base text-gray-900 font-medium">{cust.code || ''}</td>
-                          <td className="px-8 py-4 text-base text-gray-800">{cust.title || ''}</td>
-                        </tr>
-                      ))}
-                    {customers
-                      .filter(cust =>
-                        (cust?.code?.toLowerCase() || '').includes((customerSearchModal || '').toLowerCase()) ||
-                        (cust?.title?.toLowerCase() || '').includes((customerSearchModal || '').toLowerCase())
-                      )
-                      .length === 0 && (
-                        <tr>
-                          <td colSpan={2} className="px-8 py-16 text-center text-gray-500 text-base">
-                            <div className="flex flex-col items-center gap-3">
-                              <Search className="w-12 h-12 text-gray-300" />
-                              <p>Müşteri bulunamadı</p>
-                              <p className="text-sm text-gray-400">Farklı bir anahtar kelime deneyin</p>
-                            </div>
-                          </td>
-                        </tr>
-                      )}
-                  </tbody>
-                </table>
-              </div>
-
-              {/* Modal Footer - Flat */}
-              <div className="px-8 py-5 border-t-2 border-gray-200 bg-gray-50 flex justify-between items-center">
-                <div className="text-sm text-gray-600">
-                  {customers.filter(cust =>
-                    (cust?.code?.toLowerCase() || '').includes((customerSearchModal || '').toLowerCase()) ||
-                    (cust?.title?.toLowerCase() || '').includes((customerSearchModal || '').toLowerCase())
-                  ).length} müşteri bulundu
-                </div>
-                <button
-                  onClick={() => {
-                    setShowCustomerModal(false);
-                    setCustomerSearchModal('');
-                  }}
-                  className="px-6 py-2.5 bg-gray-600 hover:bg-gray-700 text-white text-base transition-colors"
-                >
-                  İptal
-                </button>
-              </div>
-            </div>
-          </div>
+          <InvoiceCariSelectModal
+            mode="customer"
+            items={displayCustomers.map((c) => ({
+              id: String(c.id),
+              code: c.code,
+              name: c.name || c.title || '',
+              phone: c.phone,
+              email: c.email,
+            }))}
+            selectedId={customerId || undefined}
+            onSelect={(item) => {
+              if (!item) {
+                setCustomerId('');
+                setCustomerCode('');
+                setCustomerTitle('');
+              } else {
+                setCustomerId(item.id);
+                setCustomerCode(item.code || '');
+                setCustomerTitle(item.name);
+              }
+            }}
+            onClose={() => setShowCustomerModal(false)}
+            onCreate={(p) => handleQuickCreateCari(p)}
+          />
         )}
       </FullscreenBodyPortal>
     );
