@@ -425,8 +425,9 @@ export const supplierAPI = {
         const cashPath = `/rex_${fn}_${pn}_cash_lines`;
 
         const salesByIdQuery: Record<string, string> = {
-          select: 'fiche_no,date,trcode,fiche_type,net_amount,currency,notes',
+          select: 'fiche_no,date,trcode,fiche_type,net_amount,currency,notes,is_cancelled',
           customer_id: `eq.${accountId}`,
+          is_cancelled: 'eq.false',
           order: 'date.asc',
         };
         if (startDate && endDate) {
@@ -454,8 +455,9 @@ export const supplierAPI = {
         const nameTrim = String(accountName || '').trim();
         const nameSalesQuery: Record<string, string> | null = nameTrim
           ? {
-              select: 'fiche_no,date,trcode,fiche_type,net_amount,currency,notes,customer_id,customer_name',
+              select: 'fiche_no,date,trcode,fiche_type,net_amount,currency,notes,customer_id,customer_name,is_cancelled',
               customer_name: `ilike.${nameTrim}`,
+              is_cancelled: 'eq.false',
               order: 'date.asc',
             }
           : null;

@@ -603,6 +603,9 @@ export function SupplierModule() {
         </div>
 
         <div className="flex-1 min-h-0 flex flex-col rounded border border-gray-200 bg-white overflow-hidden">
+          <p className="text-[10px] text-gray-500 px-3 py-1.5 border-b border-gray-100 bg-gray-50 shrink-0">
+            {tm('accountStatementClickHint') || 'Ekstre için satıra tıklayın veya dosya ikonuna basın'}
+          </p>
           {loading ? (
             <div className="flex items-center justify-center h-full">
               <RefreshCw className="w-6 h-6 animate-spin text-blue-600 mr-2" />
@@ -617,7 +620,7 @@ export function SupplierModule() {
               enableColumnResizing={true}
               onRowClick={selectAccount}
               onRowContextMenu={(e, supplier) => { e.preventDefault(); setContextMenu({ x: e.clientX, y: e.clientY, supplier }); }}
-              onRowDoubleClick={handleEditClick}
+              onRowDoubleClick={selectAccount}
               pageSize={50}
               height="100%"
             />
@@ -714,9 +717,20 @@ export function SupplierModule() {
                 <span className="text-sm">{tm('loading')}</span>
               </div>
             ) : ekstresiRows.length === 0 ? (
-              <div className="flex flex-col items-center justify-center min-h-[40vh] gap-2 text-gray-300">
-                <FileText className="w-10 h-10" />
-                <span className="text-sm">{tm('noRecordFound')}</span>
+              <div className="flex flex-col items-center justify-center min-h-[40vh] gap-3 text-gray-500 px-6 text-center">
+                <FileText className="w-10 h-10 text-gray-300" />
+                <p className="text-sm font-medium">{tm('noRecordFound')}</p>
+                <p className="text-xs text-gray-400 max-w-md">
+                  {tm('accountStatementEmptyHint') ||
+                    'Seçili tarih aralığında fatura veya kasa hareketi yok. Üstteki tarihleri genişletip «Getir»e basın. Silinen faturalar ekstrede görünmez.'}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => loadEkstresi(selectedAccount, ekstresiStart, ekstresiEnd)}
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg"
+                >
+                  {tm('bring')}
+                </button>
               </div>
             ) : (
               <table className="w-full text-sm">

@@ -577,7 +577,8 @@ export function DevExDataGrid<T>({
             table.getRowModel().rows.map((row) => (
               <div
                 key={row.id}
-                className="bg-white border border-gray-200 shadow-sm rounded-lg p-3 sm:p-4 space-y-2 sm:space-y-3 active:scale-[0.98] transition-transform"
+                className="bg-white border border-gray-200 shadow-sm rounded-lg p-3 sm:p-4 space-y-2 sm:space-y-3 active:scale-[0.98] transition-transform cursor-pointer"
+                onClick={() => onRowClick?.(row.original)}
                 onDoubleClick={() => onRowDoubleClick?.(row.original)}
                 onContextMenu={(e) => onRowContextMenu?.(e, row.original)}
               >

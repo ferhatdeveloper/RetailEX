@@ -4645,6 +4645,18 @@ export const supplierTranslations = {
   edit: { tr: 'Düzenle', en: 'Edit', ar: 'تعديل', ku: 'دەستکاریکردن' },
   deleteAction: { tr: 'Sil', en: 'Delete', ar: 'حذف', ku: 'سڕینەوە' },
   accountStatement: { tr: 'Ekstre', en: 'Account Statement', ar: 'كشف حساب', ku: 'کەشف حساب' },
+  accountStatementEmptyHint: {
+    tr: 'Seçili tarih aralığında fatura veya kasa hareketi yok. Tarihleri genişletip «Getir»e basın. Silinen faturalar ekstrede görünmez.',
+    en: 'No invoice or cash movement in this date range. Widen dates and click Fetch. Deleted invoices are excluded.',
+    ar: 'لا حركات في هذا النطاق. وسّع التاريخ واضغط جلب.',
+    ku: 'لەم ماوەیەدا حەرەکەت نییە. بەروار فراوان بکە و «Getir» بگرە.',
+  },
+  accountStatementClickHint: {
+    tr: 'Ekstre için satıra tıklayın veya dosya ikonuna basın',
+    en: 'Click a row or the document icon for the statement',
+    ar: 'انقر على الصف أو أيقونة الملف لكشف الحساب',
+    ku: 'بۆ کەشف حساب ڕیز یان ئایکۆنی پەڕە دابگرە',
+  },
   customer: { tr: 'Müşteri', en: 'Customer', ar: 'عميل', ku: 'کڕیار' },
   supplierLabel: { tr: 'Tedarikçi', en: 'Supplier', ar: 'مورد', ku: 'دابینکەر' },
   currentAccountTitle: { tr: 'Cari Hesap', en: 'Current Account', ar: 'الحساب الجاري', ku: 'هەژماری جاری' },
