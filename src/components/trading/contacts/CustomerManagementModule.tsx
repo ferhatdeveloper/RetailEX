@@ -11,6 +11,7 @@ import { customerAPI } from '../../../services/api/customers';
 import { toast } from 'sonner';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { DEMO_CUSTOMER_CODES } from '../../../utils/demoSeedCodes';
+import { SupplierModule } from './SupplierModule';
 
 interface CustomerManagementModuleProps {
   customers: Customer[];
@@ -52,6 +53,8 @@ export function CustomerManagementModule({ customers, setCustomers, sales }: Cus
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showDetailModal, setShowDetailModal] = useState(false);
+  /** CRM müşteri kartları vs cari hesap / bakiye / satıcı */
+  const [viewMode, setViewMode] = useState<'crm' | 'cari'>('cari');
 
   // Context menu state
   const [contextMenu, setContextMenu] = useState<{
@@ -500,12 +503,52 @@ export function CustomerManagementModule({ customers, setCustomers, sales }: Cus
     })
   ];
 
+  if (viewMode === 'cari') {
+    return (
+      <div className="h-full min-h-0 flex flex-col bg-gray-50">
+        <div className="bg-white border-b px-4 py-2 flex flex-wrap items-center gap-2 flex-shrink-0">
+          <button
+            type="button"
+            onClick={() => setViewMode('crm')}
+            className="rounded-lg px-3 py-1.5 text-[10px] font-black uppercase tracking-wide bg-gray-100 text-gray-600 hover:bg-gray-200"
+          >
+            {tm('custTabCrm')}
+          </button>
+          <button
+            type="button"
+            className="rounded-lg px-3 py-1.5 text-[10px] font-black uppercase tracking-wide bg-blue-600 text-white"
+          >
+            {tm('custTabCari')}
+          </button>
+        </div>
+        <div className="flex-1 min-h-0">
+          <SupplierModule />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="h-full flex flex-col bg-gray-50" onClick={() => setContextMenu(null)}>
       {/* Header */}
       <div className="bg-white border-b px-6 py-4 flex-shrink-0">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
+            <div className="flex flex-wrap gap-2 mb-3">
+              <button
+                type="button"
+                className="rounded-lg px-3 py-1.5 text-[10px] font-black uppercase tracking-wide bg-blue-600 text-white"
+              >
+                {tm('custTabCrm')}
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode('cari')}
+                className="rounded-lg px-3 py-1.5 text-[10px] font-black uppercase tracking-wide bg-gray-100 text-gray-600 hover:bg-gray-200"
+              >
+                {tm('custTabCari')}
+              </button>
+            </div>
             <h2 className="text-2xl flex items-center gap-2 font-bold text-gray-800">
               <Users className="w-6 h-6 text-blue-600" />
               {tm('custMgmtTitle')}

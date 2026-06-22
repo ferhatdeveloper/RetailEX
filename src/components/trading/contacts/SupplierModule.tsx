@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { formatNumber } from '../../../utils/formatNumber';
 import {
-  Truck, Users, Plus, X, Search, Edit, Trash2, Mail, Phone, MapPin,
+  Truck, Users, X, Search, Edit, Trash2, Mail, Phone, MapPin,
   FileText, Loader2, Printer, RefreshCw, Download
 } from 'lucide-react';
 import { supplierAPI, type Supplier } from '../../../services/api/suppliers';
@@ -49,6 +49,8 @@ export function SupplierModule() {
   /** Ekstre tablosunda birincil sütunları raporlama dövizinde göster */
   const [showReportingPrimary, setShowReportingPrimary] = useState(false);
   const [exportingExcel, setExportingExcel] = useState(false);
+  /** Liste filtresi: tümü / müşteri (alıcı) / satıcı (tedarikçi) */
+  const [accountTypeFilter, setAccountTypeFilter] = useState<'all' | 'customer' | 'supplier'>('all');
 
   useEffect(() => {
     const fetchRates = async () => {
@@ -170,13 +172,22 @@ export function SupplierModule() {
     }
   };
 
-  const selectAccount = (supplier: Supplier) => {
-    setSelectedAccount(supplier);
+  const selectAccount = async (supplier: Supplier) => {
+    let fresh = supplier;
+    try {
+      const all = await supplierAPI.getAll();
+      fresh = all.find((s) => s.id === supplier.id) ?? supplier;
+    } catch {
+      /* listedeki bakiye ile devam */
+    }
+    setSelectedAccount(fresh);
     setEkstresiData([]);
-    loadEkstresi(supplier, ekstresiStart, ekstresiEnd);
+    loadEkstresi(fresh, ekstresiStart, ekstresiEnd);
   };
 
   const filteredSuppliers = suppliers.filter(s => {
+    if (accountTypeFilter === 'customer' && s.cardType !== 'customer') return false;
+    if (accountTypeFilter === 'supplier' && s.cardType !== 'supplier') return false;
     const q = searchQuery.toLowerCase();
     return (s.name?.toLowerCase() || '').includes(q) ||
       (s.code?.toLowerCase() || '').includes(q) ||
@@ -195,12 +206,28 @@ export function SupplierModule() {
     });
   }, [suppliers]);
 
-  const handleAddClick = () => {
-    setFormData({ code: '', name: '', phone: '', email: '', address: '', city: '', payment_terms: 30, credit_limit: 0, tax_number: '', tax_office: '', notes: '', cardType: 'supplier' });
+  const openAddModal = (cardType: 'customer' | 'supplier') => {
+    setFormData({
+      code: '',
+      name: '',
+      phone: '',
+      email: '',
+      address: '',
+      city: '',
+      payment_terms: 30,
+      credit_limit: 0,
+      tax_number: '',
+      tax_office: '',
+      notes: '',
+      cardType,
+    });
     setEditingSupplier(null);
     setShowAddModal(true);
-    supplierAPI.generateCode('supplier').then(code => setFormData(prev => ({ ...prev, code }))).catch(() => { });
+    void supplierAPI.generateCode(cardType).then((code) => setFormData((prev) => ({ ...prev, code }))).catch(() => { });
   };
+
+  const handleAddCustomerClick = () => openAddModal('customer');
+  const handleAddSupplierClick = () => openAddModal('supplier');
 
   const handleEditClick = (supplier: Supplier) => {
     setFormData({
@@ -217,10 +244,18 @@ export function SupplierModule() {
   const handleSave = async () => {
     if (!formData.name.trim()) { toast.error('Ad zorunludur'); return; }
     try {
-      if (editingSupplier) { await supplierAPI.update(editingSupplier.id, formData); toast.success('Güncellendi'); }
-      else { await supplierAPI.create(formData); toast.success('Eklendi'); }
-      setShowAddModal(false);
-      loadSuppliers();
+      if (editingSupplier) {
+        await supplierAPI.update(editingSupplier.id, formData);
+        toast.success('Güncellendi');
+        setShowAddModal(false);
+        await loadSuppliers();
+      } else {
+        const created = await supplierAPI.create(formData);
+        toast.success(formData.cardType === 'customer' ? 'Müşteri cari hesabı eklendi' : 'Satıcı cari hesabı eklendi');
+        setShowAddModal(false);
+        await loadSuppliers();
+        void selectAccount({ ...created, cardType: formData.cardType, balance: 0 });
+      }
     } catch (e: any) { toast.error(e.message || 'Kayıt başarısız'); }
   };
 
@@ -474,6 +509,16 @@ export function SupplierModule() {
   const alacHdr = fmtEkstreAmount(totalAlacak);
   const netHdr = fmtEkstreSignedNet();
 
+  const currentBalanceHdr = selectedAccount
+    ? fmtEkstreAmount(Math.abs(selectedAccount.balance || 0))
+    : null;
+  const currentBalanceLabel =
+    selectedAccount && (selectedAccount.balance || 0) > 0
+      ? 'B'
+      : selectedAccount && (selectedAccount.balance || 0) < 0
+        ? 'A'
+        : '';
+
   return (
     <div className="h-full min-h-0 flex flex-col" onClick={() => setContextMenu(null)}>
       {/* Header */}
@@ -499,16 +544,52 @@ export function SupplierModule() {
               <Download className={`w-3 h-3 ${exportingExcel ? 'animate-pulse' : ''}`} />
               <span>{tm('export')} Excel</span>
             </button>
-            <button onClick={handleAddClick} className="flex items-center gap-1 px-2 py-1 bg-white text-blue-700 hover:bg-blue-50 transition-colors text-[10px] font-bold">
-              <Plus className="w-3 h-3" />
-              <span>{tm('newCustomer')} / {tm('supplierLabel')}</span>
+            <button
+              type="button"
+              onClick={handleAddCustomerClick}
+              className="flex items-center gap-1 px-2 py-1 bg-white text-blue-700 hover:bg-blue-50 transition-colors text-[10px] font-bold"
+            >
+              <Users className="w-3 h-3" />
+              <span>{tm('newCustomer')}</span>
+            </button>
+            <button
+              type="button"
+              onClick={handleAddSupplierClick}
+              className="flex items-center gap-1 px-2 py-1 bg-orange-100 text-orange-800 hover:bg-orange-50 transition-colors text-[10px] font-bold"
+            >
+              <Truck className="w-3 h-3" />
+              <span>{tm('newSupplier') || tm('supplierLabel')}</span>
             </button>
           </div>
         </div>
       </div>
 
       <div className="flex-1 flex flex-col min-h-0 overflow-hidden bg-gray-50 p-3 gap-3">
-        <div className="bg-white px-3 py-2 border border-gray-200 rounded flex-shrink-0">
+        <div className="bg-white px-3 py-2 border border-gray-200 rounded flex-shrink-0 space-y-2">
+          <div className="flex flex-wrap gap-1.5">
+            {(
+              [
+                { key: 'all' as const, label: tm('all') },
+                { key: 'customer' as const, label: tm('buyersLabel') || `${tm('customer')} (Alıcı)` },
+                { key: 'supplier' as const, label: tm('sellersLabel') || `${tm('supplierLabel')} (Satıcı)` },
+              ] as const
+            ).map((tab) => (
+              <button
+                key={tab.key}
+                type="button"
+                onClick={() => setAccountTypeFilter(tab.key)}
+                className={`rounded-lg px-3 py-1.5 text-[10px] font-black uppercase tracking-wide transition-colors ${
+                  accountTypeFilter === tab.key
+                    ? tab.key === 'supplier'
+                      ? 'bg-orange-600 text-white'
+                      : 'bg-blue-600 text-white'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             <input
@@ -564,6 +645,20 @@ export function SupplierModule() {
                 <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase shrink-0 ${selectedAccount.cardType === 'customer' ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700'}`}>
                   {selectedAccount.cardType === 'customer' ? tm('customer') : tm('supplierLabel')}
                 </span>
+                {currentBalanceHdr && (
+                  <span
+                    className={`shrink-0 border text-xs font-black px-2.5 py-1 rounded-lg ${
+                      currentBalanceLabel === 'B'
+                        ? 'bg-red-50 border-red-200 text-red-700'
+                        : currentBalanceLabel === 'A'
+                          ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
+                          : 'bg-gray-50 border-gray-200 text-gray-500'
+                    }`}
+                  >
+                    {tm('custColBalance')}: {currentBalanceHdr.primary} {currentBalanceHdr.code}
+                    {currentBalanceLabel ? ` ${currentBalanceLabel}` : ''}
+                  </span>
+                )}
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 <input type="date" value={ekstresiStart} onChange={e => setEkstresiStart(e.target.value)} className="px-2 py-1.5 border border-gray-300 rounded text-xs focus:outline-none focus:ring-2 focus:ring-blue-500" />
