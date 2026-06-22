@@ -7,10 +7,11 @@
  */
 
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
-import { ConfigProvider } from 'antd';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { retailexAntdTheme } from './theme/retailexAntdTheme';
+import { AntDesignThemeProvider } from './theme/AntDesignThemeProvider';
 import { ThemeProvider } from './contexts/ThemeContext';
+import { ThemeSyncToaster } from './components/system/ThemeSyncToaster';
+import { ThemeAwarePageShell } from './components/system/ThemeAwarePageShell';
 import { LanguageProvider } from './contexts/LanguageContext';
 import { AuthProvider } from './contexts/AuthContext';
 import { FirmaDonemProvider } from './contexts/FirmaDonemContext';
@@ -19,7 +20,6 @@ import { InfrastructureSettingsPage } from './components/system/InfrastructureSe
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
 import App from './App';
 import PublicBeautyBooking from './components/beauty/components/PublicBeautyBooking';
-import { Toaster } from 'sonner';
 import { RoleManagement } from './components/system/RoleManagement';
 import { RoleForm } from './components/system/RoleForm';
 
@@ -46,20 +46,9 @@ export function AppRouter() {
             Aksi düzende veya çift React kopyasında usePermission → useAuth “provider yok” hatası görülebilir.
           */}
           <AuthProvider>
-            <Toaster
-              richColors
-              position="bottom-right"
-              expand={true}
-              visibleToasts={5}
-              toastOptions={{
-                style: {
-                  marginBottom: '8px',
-                },
-                className: 'toast-item',
-              }}
-            />
+            <ThemeSyncToaster />
             <Router>
-              <ConfigProvider theme={retailexAntdTheme}>
+              <AntDesignThemeProvider>
                 <Routes>
                   {/* Public routes */}
                   <Route path="/login" element={<FirmaDonemProvider><Login onLogin={() => { }} /></FirmaDonemProvider>} />
@@ -71,7 +60,7 @@ export function AppRouter() {
                     path="/system/roles"
                     element={
                       <ProtectedRoute>
-                        <div className="h-screen w-full bg-slate-50"><RoleManagement /></div>
+                        <ThemeAwarePageShell><RoleManagement /></ThemeAwarePageShell>
                       </ProtectedRoute>
                     }
                   />
@@ -79,7 +68,7 @@ export function AppRouter() {
                     path="/system/roles/new"
                     element={
                       <ProtectedRoute>
-                        <div className="h-screen w-full overflow-hidden bg-slate-50"><RoleForm /></div>
+                        <ThemeAwarePageShell><RoleForm /></ThemeAwarePageShell>
                       </ProtectedRoute>
                     }
                   />
@@ -87,7 +76,7 @@ export function AppRouter() {
                     path="/system/roles/:id"
                     element={
                       <ProtectedRoute>
-                        <div className="h-screen w-full overflow-hidden bg-slate-50"><RoleForm /></div>
+                        <ThemeAwarePageShell><RoleForm /></ThemeAwarePageShell>
                       </ProtectedRoute>
                     }
                   />
@@ -96,7 +85,7 @@ export function AppRouter() {
                     element={<App />}
                   />
                 </Routes>
-              </ConfigProvider>
+              </AntDesignThemeProvider>
             </Router>
           </AuthProvider>
         </ThemeProvider>

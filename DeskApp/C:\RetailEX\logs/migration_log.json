@@ -1,0 +1,267 @@
+[
+  {
+    "name": "000_master_schema.sql",
+    "status": "Already Applied",
+    "error": null
+  },
+  {
+    "name": "001_demo_data.sql",
+    "status": "Demo Skipped",
+    "error": null
+  },
+  {
+    "name": "002_rest_return_log.sql",
+    "status": "Already Applied",
+    "error": null
+  },
+  {
+    "name": "003_user_allowed_firms_periods.sql",
+    "status": "Already Applied",
+    "error": null
+  },
+  {
+    "name": "004_roles_landing_route.sql",
+    "status": "Already Applied",
+    "error": null
+  },
+  {
+    "name": "005_receipt_settings_comment.sql",
+    "status": "Already Applied",
+    "error": null
+  },
+  {
+    "name": "006_supabase_firm_and_product_cdn.sql",
+    "status": "Already Applied",
+    "error": null
+  },
+  {
+    "name": "007_postgrest_anon_role.sql",
+    "status": "Already Applied",
+    "error": null
+  },
+  {
+    "name": "008_postgrest_verify_login_rpc.sql",
+    "status": "Already Applied",
+    "error": null
+  },
+  {
+    "name": "009_firms_regulatory_region.sql",
+    "status": "Already Applied",
+    "error": null
+  },
+  {
+    "name": "010_system_settings.sql",
+    "status": "Already Applied",
+    "error": null
+  },
+  {
+    "name": "011_gib_edocument_queue.sql",
+    "status": "Already Applied",
+    "error": null
+  },
+  {
+    "name": "012_firms_gib_columns.sql",
+    "status": "Already Applied",
+    "error": null
+  },
+  {
+    "name": "013_gib_mode_nilvera_qnb_comments.sql",
+    "status": "Already Applied",
+    "error": null
+  },
+  {
+    "name": "014_rest_orders_order_discount_pct.sql",
+    "status": "Already Applied",
+    "error": null
+  },
+  {
+    "name": "015_remove_template_firm_001_retailex_os.sql",
+    "status": "Already Applied",
+    "error": null
+  },
+  {
+    "name": "016_firm_services.sql",
+    "status": "Already Applied",
+    "error": null
+  },
+  {
+    "name": "017_beauty_satisfaction_surveys.sql",
+    "status": "Already Applied",
+    "error": null
+  },
+  {
+    "name": "018_beauty_clinic_operations.sql",
+    "status": "Already Applied",
+    "error": null
+  },
+  {
+    "name": "019_beauty_portal_messaging.sql",
+    "status": "Already Applied",
+    "error": null
+  },
+  {
+    "name": "020_beauty_monthly_session_series.sql",
+    "status": "Already Applied",
+    "error": null
+  },
+  {
+    "name": "021_beauty_service_default_sessions.sql",
+    "status": "Already Applied",
+    "error": null
+  },
+  {
+    "name": "022_beauty_appointment_call_activity.sql",
+    "status": "Already Applied",
+    "error": null
+  },
+  {
+    "name": "023_rex_customers_total_spent_notes.sql",
+    "status": "Already Applied",
+    "error": null
+  },
+  {
+    "name": "024_rex_customers_phone2_age_occupation.sql",
+    "status": "Already Applied",
+    "error": null
+  },
+  {
+    "name": "025_rex_customers_file_id.sql",
+    "status": "Already Applied",
+    "error": null
+  },
+  {
+    "name": "026_beauty_appointment_treatment_degree_shots.sql",
+    "status": "Already Applied",
+    "error": null
+  },
+  {
+    "name": "027_beauty_appointment_clinical_data.sql",
+    "status": "Already Applied",
+    "error": null
+  },
+  {
+    "name": "028_beauty_portal_allow_staff_slot_overlap.sql",
+    "status": "Already Applied",
+    "error": null
+  },
+  {
+    "name": "029_rex_customers_gender_customer_tier.sql",
+    "status": "Already Applied",
+    "error": null
+  },
+  {
+    "name": "030_post_0_1_65_to_0_1_69_schema_align.sql",
+    "status": "Already Applied",
+    "error": null
+  },
+  {
+    "name": "031_rex_customers_heard_from.sql",
+    "status": "Already Applied",
+    "error": null
+  },
+  {
+    "name": "032_beauty_specialist_product_unit_commission.sql",
+    "status": "Already Applied",
+    "error": null
+  },
+  {
+    "name": "033_beauty_service_follow_up_reminder_days.sql",
+    "status": "Already Applied",
+    "error": null
+  },
+  {
+    "name": "034_beauty_service_parent_category.sql",
+    "status": "Already Applied",
+    "error": null
+  },
+  {
+    "name": "035_rex_products_follow_up_reminder_days.sql",
+    "status": "Already Applied",
+    "error": null
+  },
+  {
+    "name": "036_rex_tax_rates_special_codes.sql",
+    "status": "Already Applied",
+    "error": null
+  },
+  {
+    "name": "037_beauty_follow_up_reminder_actions.sql",
+    "status": "Already Applied",
+    "error": null
+  },
+  {
+    "name": "038_anket_role.sql",
+    "status": "Already Applied",
+    "error": null
+  },
+  {
+    "name": "039_beauty_default_satisfaction_survey.sql",
+    "status": "Already Applied",
+    "error": null
+  },
+  {
+    "name": "040_beauty_satisfaction_survey_expand.sql",
+    "status": "Already Applied",
+    "error": null
+  },
+  {
+    "name": "041_beauty_follow_up_reminder_actions_ensure.sql",
+    "status": "Already Applied",
+    "error": null
+  },
+  {
+    "name": "042_messaging_whatsapp_queue.sql",
+    "status": "Already Applied",
+    "error": null
+  },
+  {
+    "name": "043_messaging_meta_templates.sql",
+    "status": "Already Applied",
+    "error": null
+  },
+  {
+    "name": "044_messaging_postgrest_sync.sql",
+    "status": "Already Applied",
+    "error": null
+  },
+  {
+    "name": "045_stores_scale_bridge.sql",
+    "status": "Already Applied",
+    "error": null
+  },
+  {
+    "name": "046_sales_logo_sync_meta.sql",
+    "status": "Already Applied",
+    "error": null
+  },
+  {
+    "name": "047_rex_products_is_scale_product.sql",
+    "status": "Already Applied",
+    "error": null
+  },
+  {
+    "name": "048_hybrid_sync_apply.sql",
+    "status": "Already Applied",
+    "error": null
+  },
+  {
+    "name": "049_hybrid_sync_branch_scope.sql",
+    "status": "Already Applied",
+    "error": null
+  },
+  {
+    "name": "050_beauty_follow_up_show_natural_when_postponed.sql",
+    "status": "Already Applied",
+    "error": null
+  },
+  {
+    "name": "051_system_health_sync_logs.sql",
+    "status": "Already Applied",
+    "error": null
+  },
+  {
+    "name": "052_pos_cart_audit.sql",
+    "status": "Already Applied",
+    "error": null
+  }
+]

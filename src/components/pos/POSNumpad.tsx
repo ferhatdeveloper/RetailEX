@@ -1,5 +1,6 @@
 import { Delete, Eraser } from 'lucide-react';
 import { useLanguage } from '../../contexts/LanguageContext';
+import { useTheme } from '../../contexts/ThemeContext';
 
 interface POSNumpadProps {
   value: string;
@@ -24,7 +25,7 @@ export function POSNumpad({
   onChange,
   onSubmit,
   onEnter,
-  darkMode = false,
+  darkMode: darkModeProp,
   allowDecimal = true,
   submitLabel,
   showSubmitButton = true,
@@ -32,6 +33,8 @@ export function POSNumpad({
   quickAmountButton
 }: POSNumpadProps) {
   const { tm } = useLanguage();
+  const { darkMode: themeDarkMode } = useTheme();
+  const darkMode = darkModeProp ?? themeDarkMode;
   const resolvedSubmitLabel = submitLabel ?? tm('posNumpadOk');
 
   const handleClick = (input: string) => {

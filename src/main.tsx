@@ -4,6 +4,7 @@ import { Capacitor } from "@capacitor/core";
 import { AppRouter } from "./AppRouter";
 import { ErrorBoundary } from "./components/shared/ErrorBoundary";
 import "./index.css";
+import "./styles/dark-mode-global.css";
 
 /** Capacitor Android WebView’da safe-area-inset-top çoğu zaman 0; CSS ile üst boşluk tetiklenir */
 function CapacitorAndroidHtmlClass() {

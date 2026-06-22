@@ -14,6 +14,7 @@ import { useProductStore } from '../../store';
 import { fetchExpiringSoonLots } from '../../services/api/lots';
 import { useFirmaDonem } from '../../contexts/FirmaDonemContext';
 import { useLanguage } from '../../contexts/LanguageContext';
+import { useTheme } from '../../contexts/ThemeContext';
 import { moduleTranslations, translate as translateModule, type Language as ModuleLanguage } from '../../locales/module-translations';
 import {
   BarChart, Bar, LineChart, Line, PieChart as RePieChart, Pie, Cell,
@@ -565,6 +566,7 @@ function filterReportMenuGroups(groups: { type?: string; children?: { key?: stri
 
 export function ReportsModule({ sales, products, initialBusinessType = 'retail' }: ReportsModuleProps) {
   const { language, t, tm: globalTm } = useLanguage();
+  const { darkMode } = useTheme();
   const { isMobile } = useResponsive();
   const tm = useCallback((key: string) => moduleTranslations[key]?.[language] || globalTm(key), [language, globalTm]);
   const { hasPermission } = usePermission();
@@ -3747,8 +3749,8 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
     : ['grp-general', 'grp-design', 'grp-sales'];
 
   return (
-    <ConfigProvider theme={retailexAntdThemeWithPrimary(bizConfig.color)}>
-      <Layout className="h-full min-w-0 bg-slate-50 overflow-hidden">
+    <ConfigProvider theme={retailexAntdThemeWithPrimary(bizConfig.color, darkMode)}>
+      <Layout className={`h-full min-w-0 overflow-hidden ${darkMode ? 'bg-slate-900' : 'bg-slate-50'}`}>
         {/* Sol Sidebar */}
         <Sider
           collapsible
@@ -3758,8 +3760,8 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
           collapsedWidth={isMobile ? 0 : 80}
           breakpoint="md"
           trigger={isMobile ? null : undefined}
-          theme="light"
-          className="border-r border-slate-200 shadow-sm z-10"
+          theme={darkMode ? 'dark' : 'light'}
+          className={`shadow-sm z-10 ${darkMode ? 'border-r border-slate-700' : 'border-r border-slate-200'}`}
           style={{ overflow: 'auto', height: '100%', position: 'relative' }}
         >
           <div className="p-4 border-b border-slate-100 flex items-center gap-3 bg-white sticky top-0 z-20 h-[72px]">

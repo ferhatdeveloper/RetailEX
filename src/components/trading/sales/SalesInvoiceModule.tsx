@@ -4,7 +4,6 @@ import { FileText, FileCheck, Plus, Search, Printer, Send, Eye, Edit, Trash2, X,
 import { DevExDataGrid } from '../../shared/DevExDataGrid';
 import { createColumnHelper } from '@tanstack/react-table';
 import type { Customer, Product } from '../../../App';
-import { useTheme } from '../../../contexts/ThemeContext';
 import { useFirmaDonem } from '../../../contexts/FirmaDonemContext';
 import { useAutoJournal, formatJournalResult } from '../../../hooks/useAutoJournal';
 import { toast } from 'sonner';

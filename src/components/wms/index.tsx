@@ -1,5 +1,6 @@
 // WMS Main Entry Point
 import { useState, useEffect } from 'react';
+import { useTheme } from '../../contexts/ThemeContext';
 import { Dashboard } from './components/Dashboard';
 import { WMSReceiving } from './components/WMSReceiving';
 import { WMSDispatch } from './components/WMSDispatch';
@@ -37,7 +38,7 @@ interface WarehouseManagementProps {
 }
 
 function WarehouseManagementInner() {
-  const [darkMode, setDarkMode] = useState(false);
+  const { darkMode } = useTheme();
   const [currentPage, setCurrentPage] = useState('dashboard');
 
   // Initialize deep-linking and toast system
@@ -115,10 +116,8 @@ function WarehouseManagementInner() {
   };
 
   return (
-    <div className={darkMode ? 'dark' : ''}>
-      <div className="relative h-full">
-        {renderPage()}
-      </div>
+    <div className="relative h-full">
+      {renderPage()}
     </div>
   );
 }

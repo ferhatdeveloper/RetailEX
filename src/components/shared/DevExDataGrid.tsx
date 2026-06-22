@@ -18,6 +18,7 @@ import {
 import { ChevronDown, ChevronUp, Filter } from 'lucide-react';
 import { useResponsive } from '../../hooks/useResponsive';
 import { useLanguage } from '../../contexts/LanguageContext';
+import { useTheme } from '../../contexts/ThemeContext';
 import { ColumnVisibilityMenu } from './ColumnVisibilityMenu';
 
 const DEFAULT_PAGE_SIZE_OPTIONS = [10, 15, 20, 25, 50, 100];
@@ -435,6 +436,11 @@ export function DevExDataGrid<T>({
   const filterColumnsRef = useRef<Map<string, Column<any, unknown>>>(new Map());
   const { isMobile, isTablet } = useResponsive();
   const { tm } = useLanguage();
+  const { darkMode } = useTheme();
+  const headerBg = darkMode ? 'bg-gray-700' : 'bg-[#E3F2FD]';
+  const rowHover = darkMode ? 'hover:bg-gray-700' : 'hover:bg-[#BBDEFB]';
+  const rowStripeEven = darkMode ? 'bg-gray-800' : 'bg-white';
+  const rowStripeOdd = darkMode ? 'bg-gray-800/60' : 'bg-gray-50/40';
 
   const closeFilterMenu = useCallback(() => {
     setOpenFilterColumn(null);
@@ -568,7 +574,7 @@ export function DevExDataGrid<T>({
   // Mobile Card View
   if (isMobile) {
     return (
-      <div className="flex flex-col h-full bg-gray-50">
+      <div className={`flex flex-col h-full ${darkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
         {/* Mobile Cards */}
         <div className="flex-1 overflow-auto p-3 space-y-3">
           {table.getRowModel().rows.length === 0 ? (
@@ -723,7 +729,7 @@ export function DevExDataGrid<T>({
       )}
 
       {/* Table Container */}
-      <div className="flex-1 overflow-auto border border-gray-300 bg-white">
+      <div className={`flex-1 overflow-auto border ${darkMode ? 'border-gray-600 bg-gray-800' : 'border-gray-300 bg-white'}`}>
         <table className="w-full border-collapse">
           <thead className="sticky top-0 z-30 bg-[#E3F2FD] shadow-[0_1px_0_0_rgba(0,0,0,0.08)]">
             {table.getHeaderGroups().map((headerGroup) => (
@@ -731,7 +737,7 @@ export function DevExDataGrid<T>({
                 {headerGroup.headers.map((header) => (
                   <th
                     key={header.id}
-                    className="px-2 py-1 text-left text-[10px] text-gray-700 border-r border-gray-300 last:border-r-0 relative bg-[#E3F2FD]"
+                    className={`px-2 py-1 text-left text-[10px] border-r last:border-r-0 relative ${headerBg} ${darkMode ? 'text-gray-100 border-gray-600' : 'text-gray-700 border-gray-300'}`}
                     style={{ width: header.getSize() }}
                   >
                     <div className="flex items-center justify-between gap-1">
@@ -787,8 +793,7 @@ export function DevExDataGrid<T>({
                 }}
                 onDoubleClick={() => onRowDoubleClick?.(row.original)}
                 onContextMenu={(e) => onRowContextMenu?.(e, row.original)}
-                className={`border-b border-gray-200 hover:bg-[#BBDEFB] transition-colors cursor-pointer ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/40'
-                  } ${enableSelection && row.getIsSelected() ? 'bg-blue-100/60' : ''}`}
+                className={`border-b transition-colors cursor-pointer ${darkMode ? 'border-gray-700' : 'border-gray-200'} ${rowHover} ${idx % 2 === 0 ? rowStripeEven : rowStripeOdd} ${enableSelection && row.getIsSelected() ? (darkMode ? 'bg-blue-900/40' : 'bg-blue-100/60') : ''}`}
               >
                 {row.getVisibleCells().map((cell) => (
                   <td

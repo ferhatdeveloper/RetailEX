@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { applyDocumentTheme } from '../theme/applyDocumentTheme';
 
 interface ThemeContextType {
   darkMode: boolean;
@@ -17,39 +18,21 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const setDarkMode = (dark: boolean) => {
     setDarkModeState(dark);
     localStorage.setItem('retailos_darkmode', dark.toString());
-    
-    // Apply to document element
-    if (dark) {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-    }
+    applyDocumentTheme(dark);
   };
 
   const toggleDarkMode = () => {
-    setDarkModeState(prev => {
+    setDarkModeState((prev) => {
       const newValue = !prev;
       localStorage.setItem('retailos_darkmode', newValue.toString());
-      
-      // Apply to document element
-      if (newValue) {
-        document.documentElement.classList.add('dark');
-      } else {
-        document.documentElement.classList.remove('dark');
-      }
-      
+      applyDocumentTheme(newValue);
       return newValue;
     });
   };
 
-  // Set initial dark mode
   useEffect(() => {
-    if (darkMode) {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-    }
-  }, []);
+    applyDocumentTheme(darkMode);
+  }, [darkMode]);
 
   return (
     <ThemeContext.Provider
@@ -71,6 +54,3 @@ export function useTheme() {
   }
   return context;
 }
-
-
-

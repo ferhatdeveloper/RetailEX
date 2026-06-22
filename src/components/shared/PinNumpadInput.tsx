@@ -1,5 +1,6 @@
 import { Delete, Lock } from 'lucide-react';
 import { cn } from '../ui/utils';
+import { useTheme } from '../../contexts/ThemeContext';
 
 export interface PinNumpadInputProps {
   value: string;
@@ -34,12 +35,15 @@ export function PinNumpadInput({
   error = false,
   errorText,
   compact = false,
-  darkMode = false,
+  darkMode: darkModeProp,
   allowKeyboard = false,
   keyboardPlaceholder = '••••••••',
   showNumpad = true,
   className,
 }: PinNumpadInputProps) {
+  const { darkMode: themeDarkMode } = useTheme();
+  const darkMode = darkModeProp ?? themeDarkMode;
+
   const addDigit = (digit: string) => {
     if (disabled || value.length >= maxLength) return;
     onChange(value + digit);

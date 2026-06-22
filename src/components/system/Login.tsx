@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
-import { Lock, User, CheckCircle, Store, MoreHorizontal, Grid3x3, Languages, AlertCircle, Building2, Settings as Gear, Loader2, ArrowRight, ArrowLeft, Maximize2, ShieldCheck, Shield, X as CloseIcon, Activity, ChevronRight, Terminal, Trash2, Download, Search, RotateCcw, Database, Save, RefreshCw } from 'lucide-react';
+import { Lock, User, CheckCircle, Store, MoreHorizontal, Grid3x3, Languages, AlertCircle, Building2, Settings as Gear, Loader2, ArrowRight, ArrowLeft, Maximize2, ShieldCheck, Shield, X as CloseIcon, Activity, ChevronRight, Terminal, Trash2, Download, Search, RotateCcw, Database, Save, RefreshCw, Moon, Sun } from 'lucide-react';
 import { HybridSyncPanel } from './HybridSyncPanel';
 import { logger, LogEntry } from '../../services/loggingService';
 import type { User as UserType } from '../../core/types';
@@ -158,7 +158,7 @@ export function Login({ onLogin }: LoginProps) {
   const [stores, setStores] = useState<any[]>([]);
   const [loadingStores, setLoadingStores] = useState(false);
 
-  const { darkMode } = useTheme();
+  const { darkMode, toggleDarkMode } = useTheme();
 
   const applyRemoteRestUrlToTenantInputs = (rest: string) => {
     const p = parseSaaSOrCustomPostgrestUrl(rest);
@@ -1136,6 +1136,14 @@ export function Login({ onLogin }: LoginProps) {
 
             {/* Toolpad */}
             <div className="absolute top-4 right-4 z-20 flex gap-1">
+              <button
+                type="button"
+                onClick={toggleDarkMode}
+                className="p-2.5 bg-white/10 hover:bg-white/20 rounded-sm border border-white/10 transition-all backdrop-blur-md"
+                title={darkMode ? 'Açık Tema' : 'Koyu Tema'}
+              >
+                {darkMode ? <Sun className="w-3.5 h-3.5" /> : <Moon className="w-3.5 h-3.5" />}
+              </button>
               <button
                 type="button"
                 title="Tenant bağlantısı"

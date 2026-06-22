@@ -8,6 +8,7 @@ import {
 import { postgres } from '../../../services/postgres';
 import { stockCountAPI } from '../../../services/stockCountAPI';
 import { BarcodeScanner } from './BarcodeScanner';
+import { useTheme } from '../../../contexts/ThemeContext';
 
 interface CountedItem {
   barcode: string;
@@ -26,6 +27,7 @@ interface InventoryCountProps {
 }
 
 export function InventoryCount({ onBack }: InventoryCountProps) {
+  const { darkMode } = useTheme();
   const [step, setStep] = useState<'type-select' | 'warehouse-select' | 'location-scan' | 'item-count' | 'summary'>('type-select');
   const [countType, setCountType] = useState<'full' | 'cycle' | 'location'>('full');
   const [warehouses, setWarehouses] = useState<any[]>([]);
@@ -439,7 +441,7 @@ export function InventoryCount({ onBack }: InventoryCountProps) {
         </div>
 
         <BarcodeScanner
-          darkMode={false}
+          darkMode={darkMode}
           isOpen={showCameraScanner}
           title="Lokasyon Barkodu Tara"
           onClose={() => setShowCameraScanner(false)}
@@ -672,7 +674,7 @@ export function InventoryCount({ onBack }: InventoryCountProps) {
         <div className="h-20"></div>
 
         <BarcodeScanner
-          darkMode={false}
+          darkMode={darkMode}
           isOpen={showCameraScanner}
           title="Ürün Barkodu Tara"
           onClose={() => setShowCameraScanner(false)}
@@ -800,7 +802,7 @@ export function InventoryCount({ onBack }: InventoryCountProps) {
       <div className="h-20"></div>
 
       <BarcodeScanner
-        darkMode={false}
+        darkMode={darkMode}
         isOpen={showCameraScanner}
         title="Ürün Barkodu Tara"
         onClose={() => setShowCameraScanner(false)}

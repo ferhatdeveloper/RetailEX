@@ -997,7 +997,7 @@ export function MainLayout({
 
   return (
     <div
-      className="flex flex-col bg-gray-100 overflow-hidden"
+      className={`flex flex-col overflow-hidden ${darkMode ? 'bg-slate-900' : 'bg-gray-100'}`}
       style={{
         width: compensatedWidth,
         height: compensatedHeight,
@@ -1677,7 +1677,7 @@ export function MainLayout({
       {/* Date Modal */}
       {showDateModal && (
         <div className="fixed inset-0 bg-blue-900/20 backdrop-blur-sm flex items-center justify-center z-50 p-3 sm:p-4">
-          <div className="bg-white rounded-lg sm:rounded-xl w-full max-w-md shadow-2xl max-h-[90vh] overflow-y-auto">
+          <div className={`rounded-lg sm:rounded-xl w-full max-w-md shadow-2xl max-h-[90vh] overflow-y-auto ${darkMode ? 'bg-gray-800 border border-gray-700' : 'bg-white'}`}>
             <div className="p-3 border-b border-gray-200 flex items-center justify-between bg-gradient-to-r from-blue-600 to-blue-700">
               <h3 className="text-base text-white flex items-center gap-2">
                 <Calendar className="w-5 h-5" />
@@ -1695,35 +1695,35 @@ export function MainLayout({
             </div>
 
             <div className="p-4">
-              <div className="bg-yellow-50 border border-yellow-200 rounded p-3 mb-4">
-                <p className="text-xs text-yellow-800">
+              <div className={`border rounded p-3 mb-4 ${darkMode ? 'bg-yellow-900/30 border-yellow-700' : 'bg-yellow-50 border-yellow-200'}`}>
+                <p className={`text-xs ${darkMode ? 'text-yellow-200' : 'text-yellow-800'}`}>
                   <Lock className="w-4 h-4 inline mr-1" />
                   {t.requiresAdminPassword}
                 </p>
               </div>
 
               <div className="mb-4">
-                <label className="block text-sm text-gray-700 mb-2">Tarih:</label>
+                <label className={`block text-sm mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Tarih:</label>
                 <input
                   type="date"
                   value={customDate}
                   onChange={(e) => setCustomDate(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:border-blue-600"
+                  className={`w-full px-3 py-2 border rounded focus:outline-none focus:border-blue-600 ${darkMode ? 'bg-gray-900 border-gray-600 text-white' : 'border-gray-300'}`}
                 />
               </div>
 
               <div className="mb-4">
-                <label className="block text-sm text-gray-700 mb-2">Saat:</label>
+                <label className={`block text-sm mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Saat:</label>
                 <input
                   type="time"
                   value={customTime}
                   onChange={(e) => setCustomTime(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:border-blue-600"
+                  className={`w-full px-3 py-2 border rounded focus:outline-none focus:border-blue-600 ${darkMode ? 'bg-gray-900 border-gray-600 text-white' : 'border-gray-300'}`}
                 />
               </div>
 
               <div className="mb-4">
-                <label className="block text-sm text-gray-700 mb-2">Yönetici Şifresi:</label>
+                <label className={`block text-sm mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Yönetici Şifresi:</label>
                 <input
                   type="password"
                   value={datePassword}
@@ -1734,19 +1734,19 @@ export function MainLayout({
                     }
                   }}
                   placeholder="Yönetici şifresini girin"
-                  className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:border-blue-600"
+                  className={`w-full px-3 py-2 border rounded focus:outline-none focus:border-blue-600 ${darkMode ? 'bg-gray-900 border-gray-600 text-white placeholder-gray-500' : 'border-gray-300'}`}
                 />
-                <p className="text-xs text-gray-500 mt-1">Test için şifre: 1234</p>
+                <p className={`text-xs mt-1 ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>Test için şifre: 1234</p>
               </div>
             </div>
 
-            <div className="p-4 border-t border-gray-200 bg-gray-50 flex gap-2">
+            <div className={`p-4 border-t flex gap-2 ${darkMode ? 'border-gray-700 bg-gray-900' : 'border-gray-200 bg-gray-50'}`}>
               <button
                 onClick={() => {
                   setShowDateModal(false);
                   setDatePassword('');
                 }}
-                className="flex-1 px-4 py-2 text-sm bg-gray-200 text-gray-700 rounded hover:bg-gray-300 transition-colors"
+                className={`flex-1 px-4 py-2 text-sm rounded transition-colors ${darkMode ? 'bg-gray-700 text-gray-200 hover:bg-gray-600' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}
               >
                 İptal
               </button>

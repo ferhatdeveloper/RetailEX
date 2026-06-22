@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ShieldCheck, ArrowLeft, Monitor, Activity } from 'lucide-react';
+import { ShieldCheck, ArrowLeft, Monitor, Activity, Moon, Sun } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { toast } from 'sonner';
 import { useTheme } from '../../contexts/ThemeContext';
@@ -15,7 +15,7 @@ export function InfrastructureSettingsPage() {
     const [infraAuthRole, setInfraAuthRole] = useState<'admin' | 'it' | null>(null);
     const [activeTab, setActiveTab] = useState<'diagnostics' | 'remote'>('diagnostics');
     const [selectedPeer, setSelectedPeer] = useState<any>(null);
-    const { darkMode } = useTheme();
+    const { darkMode, toggleDarkMode } = useTheme();
     const navigate = useNavigate();
     const location = useLocation();
 
@@ -65,13 +65,23 @@ export function InfrastructureSettingsPage() {
                     </div>
                 </div>
 
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={toggleDarkMode}
+                    className={`p-2 rounded transition-colors ${darkMode ? 'hover:bg-gray-800 text-gray-300' : 'hover:bg-blue-700 text-white'}`}
+                    title={darkMode ? 'Açık Tema' : 'Koyu Tema'}
+                  >
+                    {darkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+                  </button>
                 {infraAuthRole && (
-                    <div className={`px-4 py-1.5 text-[10px] font-black border uppercase tracking-[0.2em] hidden md:flex items-center gap-2 ${infraAuthRole === 'admin' ? 'bg-green-500/10 text-green-400 border-green-500/30' : 'bg-blue-500/10 text-blue-400 border-blue-500/30'
+                  <div className={`px-4 py-1.5 text-[10px] font-black border uppercase tracking-[0.2em] hidden md:flex items-center gap-2 ${infraAuthRole === 'admin' ? 'bg-green-500/10 text-green-400 border-green-500/30' : 'bg-blue-500/10 text-blue-400 border-blue-500/30'
                         }`}>
                         <ShieldCheck className="w-3 h-3" />
                         Erişim Yetkili: {infraAuthRole === 'admin' ? 'ADMINISTRATOR' : 'IT TECHNICAL ENGINEER'}
                     </div>
                 )}
+                </div>
             </div>
 
             {infraAuthRole === 'it' && (

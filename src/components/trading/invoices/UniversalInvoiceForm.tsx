@@ -4,6 +4,7 @@ import { FULLSCREEN_BODY_PORTAL_Z } from '../../shared/FullscreenBodyPortal';
 import { FileText, Plus, Search, X, Save, User, MoreVertical, AlertCircle, CheckCircle2, Calendar, Truck, Package, Clock, ChevronDown, ChevronRight, History, TrendingUp, TrendingDown, Percent, MoreHorizontal, Trash2, Settings, Minus, Square, Filter, ChevronUp, Check, Printer, PlusCircle, ArrowRight, ArrowLeft, RefreshCw, BarChart2, Edit3, Clipboard, ExternalLink, Camera, FileSpreadsheet, Upload } from 'lucide-react';
 import { moduleTranslations, type Language } from '../../../locales/module-translations';
 import { useLanguage } from '../../../contexts/LanguageContext';
+import { useTheme } from '../../../contexts/ThemeContext';
 import { usePermission } from '../../../shared/hooks/usePermission';
 import { InvoiceItemsGrid } from './InvoiceItemsGrid';
 import { InvoiceHeader } from './InvoiceHeader';
@@ -356,6 +357,7 @@ export function UniversalInvoiceForm({
   createSaveOptions,
 }: UniversalInvoiceFormProps) {
   const { language, tm } = useLanguage();
+  const { darkMode } = useTheme();
   const { canViewPurchasePricing } = usePermission();
 
   const { selectedFirm, selectedPeriod, selectedBranch, selectedWarehouse } = useFirmaDonem();
@@ -4168,7 +4170,7 @@ export function UniversalInvoiceForm({
           )}
 
           <InventoryBarcodeScanner
-            darkMode={false}
+            darkMode={darkMode}
             isOpen={showCameraScanner}
             title="Ürün Barkodu Tara"
             onClose={() => setShowCameraScanner(false)}
