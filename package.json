@@ -161,6 +161,8 @@
             "db:postgrest:reload": "node database/scripts/postgrest-reload-schema.mjs",
             "db:postgrest:reload:tenants": "node scripts/postgrest-reload-all-tenants.mjs",
             "db:test:remote": "node scripts/test-remote-pg.mjs",
+            "db:validate:stock": "node scripts/db/validate-stock.mjs",
+            "db:validate:stock:kasap": "node scripts/db/validate-stock.mjs --database kasap --firm 001 --period 01",
             "db:firm": "node database/scripts/firm-quick.mjs",
             "db:merkez:tenant-retail-seed": "node scripts/run-merkez-tenant-registry-retail-seed.mjs",
             "db:provision-tenant": "node scripts/provision-tenant.mjs",
