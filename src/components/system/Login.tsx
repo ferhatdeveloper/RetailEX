@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
-import { User, CheckCircle, Store, MoreHorizontal, Languages, AlertCircle, Building2, Settings as Gear, Loader2, ArrowRight, ArrowLeft, Maximize2, ShieldCheck, Shield, X as CloseIcon, Activity, ChevronRight, Terminal, Trash2, Download, Search, RotateCcw, Database, Save, RefreshCw } from 'lucide-react';
+import { Lock, User, CheckCircle, Store, MoreHorizontal, Grid3x3, Languages, AlertCircle, Building2, Settings as Gear, Loader2, ArrowRight, ArrowLeft, Maximize2, ShieldCheck, Shield, X as CloseIcon, Activity, ChevronRight, Terminal, Trash2, Download, Search, RotateCcw, Database, Save, RefreshCw } from 'lucide-react';
 import { HybridSyncPanel } from './HybridSyncPanel';
 import { logger, LogEntry } from '../../services/loggingService';
 import type { User as UserType } from '../../core/types';
@@ -12,7 +12,6 @@ import { useTheme } from '../../contexts/ThemeContext';
 import { toast } from 'sonner';
 import { useAuth } from '../../contexts/AuthContext';
 import { NeonLogo } from '../ui/NeonLogo';
-import { PinNumpadInput } from '../shared/PinNumpadInput';
 import { readNeonProductLineFromStorage } from '../../utils/neonProductLine';
 import { LanguageSelectionModal } from './LanguageSelectionModal';
 import type {
@@ -55,6 +54,7 @@ export function Login({ onLogin }: LoginProps) {
   const [rememberMe, setRememberMe] = useState(false);
   const [showUserSearch, setShowUserSearch] = useState(false);
   const [showStoreSearch, setShowStoreSearch] = useState(false);
+  const [showNumpad, setShowNumpad] = useState(false);
   const [showLanguageSelector, setShowLanguageSelector] = useState(false);
   const [showSetupWizard, setShowSetupWizard] = useState(false);
   const [setupFirmId, setSetupFirmId] = useState('');
@@ -1264,22 +1264,30 @@ export function Login({ onLogin }: LoginProps) {
                   )}
                 </div>
 
-                {/* PASSWORD — personel değiştir ile aynı PIN numpad */}
+                {/* PASSWORD */}
                 <div className="space-y-2">
                   <label className={`block text-[10px] font-black uppercase tracking-[0.2em] px-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{t.password}</label>
-                  <div className={`rounded-sm border-2 overflow-hidden ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
-                    <PinNumpadInput
+                  <div className="relative flex group">
+                    <Lock className={`absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 transition-colors z-10 ${darkMode ? 'text-blue-400' : 'text-gray-400 group-focus-within:text-blue-600'}`} />
+                    <input
+                      type="password"
                       value={password}
-                      onChange={setPassword}
-                      maxLength={64}
-                      dotSlots={4}
-                      compact
-                      darkMode={darkMode}
-                      allowKeyboard
-                      showNumpad
-                      className="border-0"
+                      onChange={(e) => setPassword(e.target.value)}
+                      className={`w-full pl-12 pr-4 py-4 border-2 focus:outline-none focus:border-blue-600 transition-all rounded-sm font-bold text-sm ${darkMode ? 'bg-gray-800/50 border-gray-700 text-white placeholder-white/20' : 'bg-gray-50 border-gray-200 text-gray-900'}`}
+                      placeholder="••••••••"
+                      required
                     />
+                    <button type="button" onClick={() => setShowNumpad(!showNumpad)} className={`px-4 py-4 border-2 border-l-0 transition-colors rounded-sm ${showNumpad ? 'bg-blue-600 text-white border-blue-600' : darkMode ? 'bg-gray-800 border-gray-700 text-gray-400 hover:text-white hover:bg-gray-700' : 'bg-white border-gray-200 text-gray-400 hover:text-blue-600'}`}>
+                      <Grid3x3 className="w-4 h-4" />
+                    </button>
                   </div>
+                  {showNumpad && (
+                    <div className={`mt-2 border-2 p-2 grid grid-cols-3 gap-1 shadow-2xl rounded-sm ${darkMode ? 'bg-gray-700 border-gray-600' : 'bg-white border-gray-200'}`}>
+                      {['1', '2', '3', '4', '5', '6', '7', '8', '9', 'C', '0', '?'].map(k => (
+                        <button key={k} type="button" onClick={() => k === 'C' ? setPassword('') : k === '?' ? setPassword(password.slice(0, -1)) : setPassword(password + k)} className={`py-3.5 text-sm font-black hover:bg-blue-600 hover:text-white transition-all rounded-sm active:scale-95 ${darkMode ? 'bg-gray-800 text-white' : 'bg-gray-50 text-gray-900'}`}>{k}</button>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
                 <div className="flex items-center gap-2 pt-2">
