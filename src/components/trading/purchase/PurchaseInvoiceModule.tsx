@@ -47,7 +47,8 @@ export function PurchaseInvoiceModule({ onCreateInvoice, onSwitchTab, activeTab:
   // Invoice list state
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [showDeletedInvoices, setShowDeletedInvoices] = useState(false);
+  type ListFilter = 'active' | 'deleted' | 'all';
+  const [listFilter, setListFilter] = useState<ListFilter>('active');
 
   // Context menu state
   const [contextMenu, setContextMenu] = useState<{
@@ -104,8 +105,7 @@ export function PurchaseInvoiceModule({ onCreateInvoice, onSwitchTab, activeTab:
         invoiceCategory: 'Alis',
         firmNr: selectedFirm.firm_nr || selectedFirm.id,
         periodNr: selectedPeriod.nr || selectedPeriod.id,
-        includeCancelled: showDeletedInvoices,
-        cancelledOnly: showDeletedInvoices,
+        includeCancelled: true,
       });
 
       console.log('[PurchaseInvoiceModule] Alış Faturaları yüklendi:', {
@@ -126,9 +126,9 @@ export function PurchaseInvoiceModule({ onCreateInvoice, onSwitchTab, activeTab:
           invoiceType: 5,
           invoiceCategory: 'Alis',
           firmaId: selectedFirm.id,
-          donemId: selectedPeriod.id
+          donemId: selectedPeriod.id,
+          listFilter,
         });
-        toast.info(tm('noInvoicesFound') || 'Listelenecek alış faturası bulunamadı.');
       }
     } catch (error) {
       console.error('[PurchaseInvoiceModule] Faturalar yüklenirken hata:', error);
@@ -155,10 +155,22 @@ export function PurchaseInvoiceModule({ onCreateInvoice, onSwitchTab, activeTab:
       window.removeEventListener('invoiceCreated', handleInvoiceCreated as EventListener);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedFirm, selectedPeriod, showDeletedInvoices]);
+  }, [selectedFirm, selectedPeriod]);
 
-  // Filtered invoices (state zaten filtrelenmiş geliyor ama emin olmak için)
-  const filteredInvoices = invoices;
+  const isInvoiceDeleted = (inv: Invoice) =>
+    inv.is_cancelled === true ||
+    String(inv.status || '').toLowerCase() === 'silindi' ||
+    String(inv.status || '').toLowerCase() === 'iptal';
+
+  const activeInvoices = invoices.filter((inv) => !isInvoiceDeleted(inv));
+  const deletedInvoices = invoices.filter((inv) => isInvoiceDeleted(inv));
+
+  const filteredInvoices =
+    listFilter === 'deleted'
+      ? deletedInvoices
+      : listFilter === 'all'
+        ? invoices
+        : activeInvoices;
 
   // CRUD Functions
 
@@ -171,7 +183,8 @@ export function PurchaseInvoiceModule({ onCreateInvoice, onSwitchTab, activeTab:
           toast.error(tm('deleteError') || 'Silme işleminde hata oluştu');
           return;
         }
-        toast.success(tm('invoiceDeleted') || tm('invoiceCancelled') || 'Fatura silindi');
+        toast.success(tm('invoiceSoftDeletedToast') || 'Fatura silindi. «Silinen» sekmesinden görebilirsiniz.');
+        setListFilter('deleted');
         loadInvoices();
       } catch (error) {
         console.error('Silme hatası:', error);
@@ -258,12 +271,17 @@ export function PurchaseInvoiceModule({ onCreateInvoice, onSwitchTab, activeTab:
     columnHelper.display({
       id: 'actions',
       header: tm('actions'),
-      cell: ({ row }: { row: any }) => (
+      cell: ({ row }: { row: any }) => {
+        const inv = row.original as Invoice;
+        if (isInvoiceDeleted(inv)) {
+          return <span className="text-[10px] text-gray-400 px-1">{tm('deleted') || 'Silindi'}</span>;
+        }
+        return (
         <div className="flex gap-1">
           <button
             onClick={(e: React.MouseEvent) => {
               e.stopPropagation();
-              handleEditInvoice(row.original);
+              handleEditInvoice(inv);
             }}
             className="p-1 text-blue-600 hover:bg-blue-50 rounded transition-colors"
             title={tm('edit')}
@@ -271,7 +289,8 @@ export function PurchaseInvoiceModule({ onCreateInvoice, onSwitchTab, activeTab:
             <Edit className="w-4 h-4" />
           </button>
         </div>
-      ),
+        );
+      },
     })
   ];
 
@@ -341,20 +360,48 @@ export function PurchaseInvoiceModule({ onCreateInvoice, onSwitchTab, activeTab:
             }}
           />
 
+          <div className="flex items-center rounded-lg border border-gray-200 overflow-hidden bg-white shadow-sm">
+            {(['active', 'deleted', 'all'] as const).map((key) => {
+              const count =
+                key === 'active'
+                  ? activeInvoices.length
+                  : key === 'deleted'
+                    ? deletedInvoices.length
+                    : invoices.length;
+              const label =
+                key === 'active'
+                  ? tm('invoiceListFilterActive') || 'Aktif'
+                  : key === 'deleted'
+                    ? tm('invoiceListFilterDeleted') || 'Silinen'
+                    : tm('invoiceListFilterAll') || 'Tümü';
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setListFilter(key)}
+                  className={`px-3 py-2 text-sm border-r border-gray-200 last:border-r-0 flex items-center gap-1.5 transition-colors ${
+                    listFilter === key
+                      ? key === 'deleted'
+                        ? 'bg-red-50 text-red-700 font-medium'
+                        : 'bg-teal-50 text-teal-700 font-medium'
+                      : 'text-gray-600 hover:bg-gray-50'
+                  }`}
+                >
+                  {key === 'deleted' && <Archive className="w-3.5 h-3.5" />}
+                  {label}
+                  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-600">{count}</span>
+                </button>
+              );
+            })}
+          </div>
+
           <button
             type="button"
-            onClick={() => setShowDeletedInvoices((v) => !v)}
-            className={`px-3 py-2 rounded text-sm border flex items-center gap-2 transition-colors ${
-              showDeletedInvoices
-                ? 'bg-red-50 text-red-700 border-red-200'
-                : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
-            }`}
-            title={tm('showDeletedInvoices') || 'Silinen alış faturalarını göster'}
+            onClick={() => loadInvoices()}
+            className="px-3 py-2 rounded text-sm border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 flex items-center gap-2"
+            title={tm('refresh') || 'Yenile'}
           >
-            <Archive className="w-4 h-4" />
-            {showDeletedInvoices
-              ? (tm('hideDeletedInvoices') || 'Aktif faturalar')
-              : (tm('showDeletedInvoices') || 'Silinenler')}
+            <RefreshCw className="w-4 h-4" />
           </button>
 
           <button
@@ -398,6 +445,12 @@ export function PurchaseInvoiceModule({ onCreateInvoice, onSwitchTab, activeTab:
 
       {/* Table Area */}
       <div className="flex-1 overflow-auto p-6">
+        {listFilter === 'deleted' && deletedInvoices.length === 0 && !isLoading && (
+          <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            {tm('deletedInvoicesHint') ||
+              'Dün eski sürümle tamamen silinen faturalar burada görünmez. Güncel sürümde silinen kayıtlar bu sekmede kalır.'}
+          </div>
+        )}
         {isLoading ? (
           <div className="flex items-center justify-center h-96">
             <div className="text-center">
