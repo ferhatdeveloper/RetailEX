@@ -4680,8 +4680,18 @@ export const supplierTranslations = {
   description: { tr: 'Açıklama', en: 'Description', ar: 'الوصف', ku: 'تێبینی' },
   debtor: { tr: 'Borç', en: 'Debit', ar: 'مدين', ku: 'قەرزار' },
   creditor: { tr: 'Alacak', en: 'Credit', ar: 'دائن', ku: 'خاوەن قەرز' },
-  balanceSideB: { tr: 'B', en: 'D', ar: 'م', ku: 'B' },
-  balanceSideA: { tr: 'A', en: 'C', ar: 'د', ku: 'A' },
+  balanceSideDebtor: {
+    tr: 'B (BORÇLU)',
+    en: 'D (DEBTOR)',
+    ar: 'م (مدين)',
+    ku: 'B (قەرزدار)',
+  },
+  balanceSideCreditor: {
+    tr: 'A (ALACAKLI)',
+    en: 'C (CREDITOR)',
+    ar: 'د (دائن)',
+    ku: 'A (خاوەن قەرز)',
+  },
   balanceHintCustomerReceivable: {
     tr: 'Müşteri borçlu — tahsil edilecek',
     en: 'Customer owes you — to collect',

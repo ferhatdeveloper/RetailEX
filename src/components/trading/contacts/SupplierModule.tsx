@@ -28,22 +28,25 @@ function preferIntegerAmountDisplay(code: string): boolean {
   return c === 'IQD' || c === 'JPY' || c === 'VND' || c === 'KHR' || c === 'UZS';
 }
 
-/** Bakiye yönü: B/A kodu + müşteri/tedarikçiye göre Türkçe açıklama */
+/** Bakiye yönü: dile göre BORÇLU / ALACAKLI etiketi + açıklama */
 function getCariBalanceDirection(
   cardType: 'customer' | 'supplier' | undefined,
   balance: number,
   tm: (key: string) => string,
-): { side: 'B' | 'A' | ''; hint: string } {
-  if (!balance) return { side: '', hint: '' };
+): { side: 'B' | 'A' | ''; sideLabel: string; hint: string } {
+  if (!balance) return { side: '', sideLabel: '', hint: '' };
   const side: 'B' | 'A' = balance > 0 ? 'B' : 'A';
+  const sideLabel = balance > 0 ? tm('balanceSideDebtor') : tm('balanceSideCreditor');
   if (cardType === 'supplier') {
     return {
       side,
+      sideLabel,
       hint: balance > 0 ? tm('balanceHintSupplierPayable') : tm('balanceHintSupplierReceivable'),
     };
   }
   return {
     side,
+    sideLabel,
     hint: balance > 0 ? tm('balanceHintCustomerReceivable') : tm('balanceHintCustomerPayable'),
   };
 }
@@ -424,22 +427,22 @@ export function SupplierModule() {
       cell: info => {
         const val = info.getValue() || 0;
         const rep = reportingCurrency !== mainCurrency ? toReporting(Math.abs(val)) : null;
-        const { side, hint } = getCariBalanceDirection(info.row.original.cardType, val, tm);
+        const { side, sideLabel, hint } = getCariBalanceDirection(info.row.original.cardType, val, tm);
         const colorClass = side === 'B' ? 'text-red-600' : 'text-orange-600';
         const badgeClass = side === 'B' ? 'bg-red-100 text-red-700' : 'bg-orange-100 text-orange-700';
         return (
           <div className="flex flex-col items-end gap-0.5 font-bold">
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-1.5 flex-wrap justify-end">
               <span className={colorClass}>
                 {formatNumber(Math.abs(val), mainDec, mainShowDec)} {mainCurrency}
               </span>
-              {side && (
-                <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-black ${badgeClass}`} title={hint}>
-                  {side}
+              {sideLabel && (
+                <span className={`text-[8px] px-1.5 py-0.5 rounded font-black whitespace-nowrap ${badgeClass}`} title={hint}>
+                  {sideLabel}
                 </span>
               )}
             </div>
-            {hint && side && (
+            {hint && sideLabel && (
               <span className="text-[9px] text-gray-500 font-medium max-w-[140px] text-right leading-tight">{hint}</span>
             )}
             {rep != null && reportingCurrency !== mainCurrency && (
@@ -554,7 +557,7 @@ export function SupplierModule() {
     : null;
   const currentBalanceDir = selectedAccount
     ? getCariBalanceDirection(selectedAccount.cardType, selectedAccount.balance || 0, tm)
-    : { side: '' as const, hint: '' };
+    : { side: '' as const, sideLabel: '', hint: '' };
 
   return (
     <div className="h-full min-h-0 flex flex-col" onClick={() => setContextMenu(null)}>
@@ -697,7 +700,7 @@ export function SupplierModule() {
                     title={currentBalanceDir.hint}
                   >
                     {tm('custColBalance')}: {currentBalanceHdr.primary} {currentBalanceHdr.code}
-                    {currentBalanceDir.side ? ` ${currentBalanceDir.side}` : ''}
+                    {currentBalanceDir.sideLabel ? ` · ${currentBalanceDir.sideLabel}` : ''}
                     {currentBalanceDir.hint ? (
                       <span className="block text-[9px] font-medium normal-case opacity-90 mt-0.5">{currentBalanceDir.hint}</span>
                     ) : null}
@@ -718,7 +721,7 @@ export function SupplierModule() {
                     const netCls = netBalanceDir.side === 'B' ? 'bg-red-50 border-red-200 text-red-700' : netBalanceDir.side === 'A' ? 'bg-orange-50 border-orange-200 text-orange-700' : 'bg-gray-50 border-gray-200 text-gray-500';
                     return (
                       <span className={`border text-xs font-black px-2 py-0.5 rounded ${netCls}`} title={netBalanceDir.hint}>
-                        {tm('netAmount')}: {netHdr.primary} {netHdr.code} {netBalanceDir.side}
+                        {tm('netAmount')}: {netHdr.primary} {netHdr.code}{netBalanceDir.sideLabel ? ` · ${netBalanceDir.sideLabel}` : ''}
                       </span>
                     );
                   })()}
@@ -814,7 +817,7 @@ export function SupplierModule() {
                           <div className="flex flex-col items-end">
                             {balD ? (
                               <>
-                                <span>{balD.primary} {balD.code}{rowBalDir.side ? <span className="ml-0.5 text-[10px]" title={rowBalDir.hint}>{rowBalDir.side}</span> : null}</span>
+                                <span>{balD.primary} {balD.code}{rowBalDir.sideLabel ? <span className="ml-1 text-[9px] font-black whitespace-nowrap" title={rowBalDir.hint}>{rowBalDir.sideLabel}</span> : null}</span>
                                 {balD.secondary ? <span className="text-[10px] opacity-50 font-normal">{balD.secondary}</span> : null}
                               </>
                             ) : (
