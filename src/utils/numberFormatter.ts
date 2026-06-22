@@ -162,6 +162,33 @@ function normalizePosQtyTyping(value: string): string {
   return clean;
 }
 
+/** Fatura / alış satırı KG miktarı — binlik nokta yok, virgül yazılırken korunur (2, → 2,) */
+export function formatWeightQuantityInput(value: string): string {
+  let s = String(value ?? '').trim().replace(/[^\d.,]/g, '');
+  if (!s) return '';
+  if (!s.includes(',') && /^\d{1,4}\.\d{0,3}$/.test(s)) {
+    s = s.replace('.', ',');
+  }
+  const commaIndex = s.lastIndexOf(',');
+  if (commaIndex !== -1) {
+    const intPart = s.slice(0, commaIndex).replace(/\./g, '').slice(0, 4);
+    const fracPart = s.slice(commaIndex + 1).replace(/[^\d]/g, '').slice(0, 3);
+    const intDisplay = intPart || '0';
+    if (s.endsWith(',') && fracPart.length === 0) {
+      return `${intDisplay},`;
+    }
+    return fracPart.length > 0 ? `${intDisplay},${fracPart}` : intDisplay;
+  }
+  return s.replace(/\./g, '').slice(0, 4);
+}
+
+/** Fatura miktar parse — yarım giriş (2,) için NaN, tam giriş 2,250 → 2.25 */
+export function parseInvoiceWeightQuantity(value: string): number {
+  const s = String(value ?? '').trim();
+  if (!s || s.endsWith(',')) return NaN;
+  return parseDecimalStringForInput(s);
+}
+
 /** POS miktar alanı yazarken format (en fazla 3 ondalık, örn. 1,250) */
 export function formatPosQuantityInput(value: string, allowDecimals = true): string {
   const normalized = allowDecimals ? normalizePosQtyTyping(value) : value.replace(/[^\d]/g, '');

@@ -11,7 +11,7 @@ import { useFirmaDonem } from '../../../contexts/FirmaDonemContext';
 import { useAutoJournal, formatJournalResult } from '../../../hooks/useAutoJournal';
 import { toast } from 'sonner';
 import { formatNumber } from '../../../utils/formatNumber';
-import { parseDecimalStringForInput, formatDecimalForTrInput } from '../../../utils/numberFormatter';
+import { parseDecimalStringForInput, formatDecimalForTrInput, parseInvoiceWeightQuantity } from '../../../utils/numberFormatter';
 import { normalizeWeightProductQuantity, syncWeightLineQuantities, hydrateWeightLineFromDb } from '../../../utils/scaleQuantity';
 import { DocumentManager } from '../../shared/DocumentManager';
 import { printInvoice } from '../../../utils/printUtils';
@@ -1572,10 +1572,16 @@ export function UniversalInvoiceForm({
       const prevRow = updated[index];
       let nextValue = value;
       if (field === 'quantity') {
-        const parsed = typeof value === 'number' ? value : parseDecimalStringForInput(String(value ?? ''));
-        nextValue = Number.isFinite(parsed)
-          ? normalizeWeightProductQuantity(parsed, prevRow.unit)
-          : 0;
+        const parsed = typeof value === 'number'
+          ? value
+          : parseInvoiceWeightQuantity(String(value ?? ''));
+        if (Number.isFinite(parsed) && parsed > 0) {
+          nextValue = normalizeWeightProductQuantity(parsed, prevRow.unit);
+        } else if (typeof value === 'number') {
+          nextValue = value;
+        } else {
+          return prev;
+        }
       }
       const item = { ...prevRow, [field]: nextValue };
 

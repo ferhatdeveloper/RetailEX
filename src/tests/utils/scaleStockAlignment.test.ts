@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseDecimalStringForInput, parsePosQuantity, formatPosQuantityInput } from '../../utils/numberFormatter';
+import { parseDecimalStringForInput, parsePosQuantity, formatPosQuantityInput, formatWeightQuantityInput, parseInvoiceWeightQuantity } from '../../utils/numberFormatter';
 import {
   hydrateWeightLineFromDb,
   mergeScaleCartQuantity,
@@ -55,6 +55,27 @@ describe('scaleStockAlignment — alış 1,610 kg ↔ tartı 1610 g', () => {
     const synced = syncWeightLineQuantities(1610, 'GR', 1);
     expect(synced.baseQuantity).toBe(1610);
     expect(scaleGramsToProductQuantity(1610, 'GR')).toBe(1610);
+  });
+});
+
+describe('formatWeightQuantityInput — alış faturası miktar', () => {
+  it('2,250 yazımı korunur ve parse edilir (2 kg 250 g)', () => {
+    expect(formatWeightQuantityInput('2,250')).toBe('2,250');
+    expect(parseInvoiceWeightQuantity('2,250')).toBe(2.25);
+  });
+
+  it('yazarken virgül silinmez: 2,', () => {
+    expect(formatWeightQuantityInput('2,')).toBe('2,');
+    expect(parseInvoiceWeightQuantity('2,')).toBeNaN();
+  });
+
+  it('2250 binlik noktaya çevrilmez', () => {
+    expect(formatWeightQuantityInput('2250')).toBe('2250');
+  });
+
+  it('nokta ondalık: 2.250 → 2,250', () => {
+    expect(formatWeightQuantityInput('2.250')).toBe('2,250');
+    expect(parseInvoiceWeightQuantity('2,250')).toBe(2.25);
   });
 });
 

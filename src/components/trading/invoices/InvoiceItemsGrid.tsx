@@ -9,9 +9,9 @@ import {
   type UnitMasterRow,
   type UnitSelectOption,
 } from '../../../utils/unitOptions';
-import { isWeightBasedUnit } from '../../../utils/productUnits';
 import { formatInvoiceLineQuantityDisplay } from '../../../utils/scaleQuantity';
-import { formatPosQuantityInput } from '../../../utils/numberFormatter';
+import { formatWeightQuantityInput, parseInvoiceWeightQuantity } from '../../../utils/numberFormatter';
+import { isWeightBasedUnit } from '../../../utils/productUnits';
 
 function quantityInputPlaceholder(unit: string | undefined, tm: (k: string) => string): string {
   if (isWeightBasedUnit(unit)) {
@@ -25,6 +25,10 @@ function quantityInputTitle(unit: string | undefined, tm: (k: string) => string)
     return tm('weightQuantityTitle') || 'KG: 2,500 (iki buçuk kilo)';
   }
   return '';
+}
+
+function rowAllowsWeightQuantity(item: InvoiceItem): boolean {
+  return isWeightBasedUnit(item.unit) || item.type === 'scale' || Boolean((item as { isScaleProduct?: boolean }).isScaleProduct);
 }
 
 function useInvoiceQuantityField(
@@ -51,25 +55,66 @@ function useInvoiceQuantityField(
     }));
   }, []);
 
-  const onChange = useCallback(
-    (index: number, item: InvoiceItem, raw: string) => {
-      const nextDraft = isWeightBasedUnit(item.unit)
-        ? formatPosQuantityInput(raw, true)
-        : raw.replace(/[^\d]/g, '');
-      setDraftByIndex((prev) => ({ ...prev, [index]: nextDraft }));
-      updateItem(index, 'quantity', nextDraft);
+  const commitQuantity = useCallback(
+    (index: number, item: InvoiceItem, draft: string) => {
+      const trimmed = String(draft ?? '').trim();
+      if (!trimmed) {
+        updateItem(index, 'quantity', 0);
+        return;
+      }
+      if (rowAllowsWeightQuantity(item)) {
+        const parsed = parseInvoiceWeightQuantity(trimmed);
+        if (Number.isFinite(parsed) && parsed > 0) {
+          updateItem(index, 'quantity', trimmed);
+        }
+        return;
+      }
+      const n = parseInt(trimmed.replace(/[^\d]/g, ''), 10);
+      if (Number.isFinite(n) && n > 0) {
+        updateItem(index, 'quantity', n);
+      }
     },
     [updateItem],
   );
 
-  const onBlur = useCallback((index: number) => {
-    setFocusedIndex((cur) => (cur === index ? null : cur));
-    setDraftByIndex((prev) => {
-      const next = { ...prev };
-      delete next[index];
-      return next;
-    });
-  }, []);
+  const onChange = useCallback(
+    (index: number, item: InvoiceItem, raw: string) => {
+      const nextDraft = rowAllowsWeightQuantity(item)
+        ? formatWeightQuantityInput(raw)
+        : raw.replace(/[^\d]/g, '');
+      setDraftByIndex((prev) => ({ ...prev, [index]: nextDraft }));
+      if (rowAllowsWeightQuantity(item)) {
+        const parsed = parseInvoiceWeightQuantity(nextDraft);
+        if (Number.isFinite(parsed) && parsed > 0) {
+          updateItem(index, 'quantity', nextDraft);
+        }
+      } else {
+        const n = parseInt(nextDraft, 10);
+        if (Number.isFinite(n) && n > 0) {
+          updateItem(index, 'quantity', n);
+        } else if (!nextDraft) {
+          updateItem(index, 'quantity', 0);
+        }
+      }
+    },
+    [updateItem],
+  );
+
+  const onBlur = useCallback(
+    (index: number, item: InvoiceItem) => {
+      const draft = draftByIndex[index];
+      if (draft !== undefined) {
+        commitQuantity(index, item, draft);
+      }
+      setFocusedIndex((cur) => (cur === index ? null : cur));
+      setDraftByIndex((prev) => {
+        const next = { ...prev };
+        delete next[index];
+        return next;
+      });
+    },
+    [commitQuantity, draftByIndex],
+  );
 
   return { getDisplayValue, onFocus, onChange, onBlur };
 }
@@ -368,7 +413,7 @@ export const InvoiceItemsGrid = React.memo(({
                                                     setCurrentRowIndex(index);
                                                     qtyField.onFocus(index, item);
                                                 }}
-                                                onBlur={() => qtyField.onBlur(index)}
+                                                onBlur={() => qtyField.onBlur(index, item)}
                                                 placeholder={quantityInputPlaceholder(item.unit, tm)}
                                                 title={quantityInputTitle(item.unit, tm) || undefined}
                                                 className="w-full px-2 py-1.5 rounded-lg border border-gray-200 text-xs text-right tabular-nums bg-white"
@@ -615,7 +660,7 @@ export const InvoiceItemsGrid = React.memo(({
                                                 setCurrentRowIndex(index);
                                                 qtyField.onFocus(index, item);
                                             }}
-                                            onBlur={() => qtyField.onBlur(index)}
+                                            onBlur={() => qtyField.onBlur(index, item)}
                                             placeholder={quantityInputPlaceholder(item.unit, tm)}
                                             title={quantityInputTitle(item.unit, tm) || undefined}
                                             className="w-full px-1.5 py-1 border-0 focus:outline-none text-sm text-right bg-transparent"
