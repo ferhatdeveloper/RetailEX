@@ -28,22 +28,27 @@ function preferIntegerAmountDisplay(code: string): boolean {
   return c === 'IQD' || c === 'JPY' || c === 'VND' || c === 'KHR' || c === 'UZS';
 }
 
-/** Bakiye yönü: dile göre BORÇLU / ALACAKLI etiketi + açıklama */
+/** Bakiye yönü: dile göre BORÇLU / ALACAKLI etiketi + açıklama
+ *  Müşteri: (+) = B (müşteri borçlu). Tedarikçi: (+) = A (tedarikçi alacaklı, alış borcu). */
 function getCariBalanceDirection(
   cardType: 'customer' | 'supplier' | undefined,
   balance: number,
   tm: (key: string) => string,
 ): { side: 'B' | 'A' | ''; sideLabel: string; hint: string } {
   if (!balance) return { side: '', sideLabel: '', hint: '' };
-  const side: 'B' | 'A' = balance > 0 ? 'B' : 'A';
-  const sideLabel = balance > 0 ? tm('balanceSideDebtor') : tm('balanceSideCreditor');
+
   if (cardType === 'supplier') {
+    const side: 'B' | 'A' = balance > 0 ? 'A' : 'B';
+    const sideLabel = balance > 0 ? tm('balanceSideCreditor') : tm('balanceSideDebtor');
     return {
       side,
       sideLabel,
       hint: balance > 0 ? tm('balanceHintSupplierPayable') : tm('balanceHintSupplierReceivable'),
     };
   }
+
+  const side: 'B' | 'A' = balance > 0 ? 'B' : 'A';
+  const sideLabel = balance > 0 ? tm('balanceSideDebtor') : tm('balanceSideCreditor');
   return {
     side,
     sideLabel,
