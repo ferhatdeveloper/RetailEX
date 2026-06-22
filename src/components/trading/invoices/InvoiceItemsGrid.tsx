@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { History, Trash2, Percent, Calendar, Barcode } from 'lucide-react';
 import { moduleTranslations, type Language } from '../../../locales/module-translations';
 import { useLanguage } from '../../../contexts/LanguageContext';
@@ -10,19 +10,68 @@ import {
   type UnitSelectOption,
 } from '../../../utils/unitOptions';
 import { isWeightBasedUnit } from '../../../utils/productUnits';
+import { formatInvoiceLineQuantityDisplay } from '../../../utils/scaleQuantity';
+import { formatPosQuantityInput } from '../../../utils/numberFormatter';
 
 function quantityInputPlaceholder(unit: string | undefined, tm: (k: string) => string): string {
   if (isWeightBasedUnit(unit)) {
-    return tm('weightQuantityHint') || '2,5';
+    return tm('weightQuantityHint') || '2,500';
   }
   return '';
 }
 
 function quantityInputTitle(unit: string | undefined, tm: (k: string) => string): string {
   if (isWeightBasedUnit(unit)) {
-    return tm('weightQuantityTitle') || 'KG: 2,5 veya 2.5';
+    return tm('weightQuantityTitle') || 'KG: 2,500 (iki buçuk kilo)';
   }
   return '';
+}
+
+function useInvoiceQuantityField(
+  updateItem: (index: number, field: keyof InvoiceItem, value: unknown) => void,
+) {
+  const [focusedIndex, setFocusedIndex] = useState<number | null>(null);
+  const [draftByIndex, setDraftByIndex] = useState<Record<number, string>>({});
+
+  const getDisplayValue = useCallback(
+    (item: InvoiceItem, index: number) => {
+      if (focusedIndex === index && draftByIndex[index] !== undefined) {
+        return draftByIndex[index];
+      }
+      return formatInvoiceLineQuantityDisplay(item.quantity, item.unit);
+    },
+    [focusedIndex, draftByIndex],
+  );
+
+  const onFocus = useCallback((index: number, item: InvoiceItem) => {
+    setFocusedIndex(index);
+    setDraftByIndex((prev) => ({
+      ...prev,
+      [index]: formatInvoiceLineQuantityDisplay(item.quantity, item.unit),
+    }));
+  }, []);
+
+  const onChange = useCallback(
+    (index: number, item: InvoiceItem, raw: string) => {
+      const nextDraft = isWeightBasedUnit(item.unit)
+        ? formatPosQuantityInput(raw, true)
+        : raw.replace(/[^\d]/g, '');
+      setDraftByIndex((prev) => ({ ...prev, [index]: nextDraft }));
+      updateItem(index, 'quantity', nextDraft);
+    },
+    [updateItem],
+  );
+
+  const onBlur = useCallback((index: number) => {
+    setFocusedIndex((cur) => (cur === index ? null : cur));
+    setDraftByIndex((prev) => {
+      const next = { ...prev };
+      delete next[index];
+      return next;
+    });
+  }, []);
+
+  return { getDisplayValue, onFocus, onChange, onBlur };
 }
 
 const formatNumber = (num: number | undefined, decimals: number = 2, thousandSeparator: boolean = true) => {
@@ -122,6 +171,7 @@ export const InvoiceItemsGrid = React.memo(({
     const { language } = useLanguage();
     const { isMobile } = useResponsive();
     const tm = (key: string) => moduleTranslations[key]?.[language] || key;
+    const qtyField = useInvoiceQuantityField(updateItem);
 
     const isColumnVisible = (columnId: string) => {
         return itemColumnVisibility[columnId] !== false;
@@ -310,11 +360,15 @@ export const InvoiceItemsGrid = React.memo(({
                                             <input
                                                 type="text"
                                                 inputMode="decimal"
-                                                value={item.quantity != null && item.quantity !== 0 ? String(item.quantity) : ''}
+                                                value={qtyField.getDisplayValue(item, index)}
                                                 onChange={(e) =>
-                                                    updateItem(index, 'quantity', e.target.value)
+                                                    qtyField.onChange(index, item, e.target.value)
                                                 }
-                                                onFocus={() => setCurrentRowIndex(index)}
+                                                onFocus={() => {
+                                                    setCurrentRowIndex(index);
+                                                    qtyField.onFocus(index, item);
+                                                }}
+                                                onBlur={() => qtyField.onBlur(index)}
                                                 placeholder={quantityInputPlaceholder(item.unit, tm)}
                                                 title={quantityInputTitle(item.unit, tm) || undefined}
                                                 className="w-full px-2 py-1.5 rounded-lg border border-gray-200 text-xs text-right tabular-nums bg-white"
@@ -555,9 +609,13 @@ export const InvoiceItemsGrid = React.memo(({
                                         <input
                                             type="text"
                                             inputMode="decimal"
-                                            value={item.quantity != null && item.quantity !== 0 ? String(item.quantity) : ''}
-                                            onChange={(e) => updateItem(index, 'quantity', e.target.value)}
-                                            onFocus={() => setCurrentRowIndex(index)}
+                                            value={qtyField.getDisplayValue(item, index)}
+                                            onChange={(e) => qtyField.onChange(index, item, e.target.value)}
+                                            onFocus={() => {
+                                                setCurrentRowIndex(index);
+                                                qtyField.onFocus(index, item);
+                                            }}
+                                            onBlur={() => qtyField.onBlur(index)}
                                             placeholder={quantityInputPlaceholder(item.unit, tm)}
                                             title={quantityInputTitle(item.unit, tm) || undefined}
                                             className="w-full px-1.5 py-1 border-0 focus:outline-none text-sm text-right bg-transparent"

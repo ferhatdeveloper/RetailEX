@@ -3473,12 +3473,12 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
     ar: 'الفواتير المحذوفة نهائياً بالإصدار القديم لن تظهر. في الإصدار الحالي تبقى السجلات المحذوفة في تبويب المحذوف.',
     ku: 'وەسڵەکانی بە وەشانی کۆن بە تەواوی سڕدراو نیشان نادرێن. لە وەشانی ئێستادا لە تابی سڕدراو دەمێننەوە.',
   },
-  weightQuantityHint: { tr: '2,5', en: '2.5', ar: '2,5', ku: '2,5' },
+  weightQuantityHint: { tr: '2,500', en: '2.500', ar: '2,500', ku: '2,500' },
   weightQuantityTitle: {
-    tr: 'KG biriminde ondalık: 2,5 veya 2.5 (iki buçuk kilo)',
-    en: 'Decimal for KG unit: 2.5 (two and a half kilograms)',
-    ar: 'الكمية العشرية لوحدة KG: 2,5',
-    ku: 'بۆ یەکەی KG: 2,5',
+    tr: 'KG biriminde 3 hane: 2,500 (iki buçuk kilo). 2,5 ile aynı miktardır.',
+    en: 'KG unit with 3 decimals: 2.500 (two and a half kg). Same as 2.5.',
+    ar: 'وحدة KG بثلاث خانات: 2,500',
+    ku: 'یەکەی KG بە 3 خانە: 2,500',
   },
   invoiceSoftDeletedToast: {
     tr: 'Fatura silindi. «Silinen» sekmesinden görebilirsiniz; cari borç ve stok geri alındı.',

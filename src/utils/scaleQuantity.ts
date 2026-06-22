@@ -90,6 +90,13 @@ export function mergeScaleCartQuantity(
   return normalizeWeightProductQuantity(Number(existingQty) + Number(addQty), unit);
 }
 
+/** Fatura satırı miktar gösterimi — KG: 2,500 | adet: tam sayı */
+export function formatInvoiceLineQuantityDisplay(qty: number, unit?: string | null): string {
+  if (!Number.isFinite(qty) || qty === 0) return '';
+  if (isWeightBasedUnit(unit)) return formatScaleQuantityDisplay(qty, unit);
+  return qty.toLocaleString('tr-TR', { maximumFractionDigits: 0 });
+}
+
 /** POS / fatura stok miktarı (baseQuantity öncelikli) */
 export function resolveStockQuantityFromLine(item: {
   quantity?: number;
