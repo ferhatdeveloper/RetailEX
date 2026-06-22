@@ -2543,7 +2543,7 @@ const SetupWizard: React.FC = () => {
                                                                                         buildSaaSTenantPostgrestUrl(slug),
                                                                                 }));
                                                                             }}
-                                                                            placeholder="sho_aksesuar"
+                                                                            placeholder="retailex_demo"
                                                                             autoComplete="off"
                                                                         />
                                                                     </div>

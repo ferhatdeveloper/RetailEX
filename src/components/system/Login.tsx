@@ -1099,7 +1099,7 @@ export function Login({ onLogin }: LoginProps) {
                 setTenantPostgrestSlug(slug);
                 setRemoteRestUrl(buildSaaSTenantPostgrestUrl(slug));
               }}
-              placeholder="sho_aksesuar"
+              placeholder="retailex_demo"
               className={flexInputCls}
               autoComplete="off"
             />
@@ -1583,7 +1583,7 @@ export function Login({ onLogin }: LoginProps) {
                   autoComplete="off"
                   value={tenantConnectionDraft}
                   onChange={(e) => setTenantConnectionDraft(e.target.value)}
-                  placeholder="Örn. sho_aksesuar — veya https://baska-host/postgrest-yolu"
+                  placeholder="Örn. retailex_demo — veya https://baska-host/postgrest-yolu"
                   className="w-full px-4 py-3 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-blue-500 focus:border-blue-400 outline-none text-slate-800 font-mono text-sm"
                 />
                   </>
@@ -1609,7 +1609,7 @@ export function Login({ onLogin }: LoginProps) {
                               ?.replace(/[/?#].*$/, '') ?? '';
                           setTenantModalCloudSlug(slug);
                         }}
-                        placeholder="sho_aksesuar"
+                        placeholder="retailex_demo"
                         className="min-w-0 flex-1 border-0 bg-transparent px-3 py-3 font-mono text-sm text-slate-800 outline-none focus:ring-0"
                       />
                     </div>
@@ -1620,7 +1620,7 @@ export function Login({ onLogin }: LoginProps) {
                 )}
 
                 <p className="mt-2 text-[11px] text-slate-500 leading-relaxed">
-                  <strong className="text-slate-600"> Kod / UUID:</strong> merkez <code className="text-[10px] bg-slate-100 px-1 rounded">tenant_registry</code> üzerinden çözülür; çoğu kurulumda yalnızca <code className="text-[10px] bg-slate-100 px-1 rounded">sho_aksesuar</code> yeterlidir (üstte «Kiracı kodu / UUID»).
+                  <strong className="text-slate-600"> Kod / UUID:</strong> merkez <code className="text-[10px] bg-slate-100 px-1 rounded">tenant_registry</code> üzerinden çözülür; çoğu kurulumda yalnızca <code className="text-[10px] bg-slate-100 px-1 rounded">retailex_demo</code> yeterlidir (üstte «Kiracı kodu / UUID»).
                   <strong className="text-slate-600"> Bulut yolu:</strong> yalnızca üstteki «api.retailex.app / yol» sekmesinde segment yazın.
                 </p>
                 <details className="mt-4 rounded-2xl border border-slate-200 bg-slate-50/80 px-4 py-3">
@@ -1653,7 +1653,7 @@ export function Login({ onLogin }: LoginProps) {
                     if (tenantModalConnectMode === 'cloud') {
                       const slug = tenantModalCloudSlug.trim();
                       if (!slug) {
-                        toast.error('api.retailex.app altında kiracı yolunu girin (örn. sho_aksesuar).');
+                        toast.error('api.retailex.app altında kiracı yolunu girin (örn. retailex_demo).');
                         return;
                       }
                       line = buildSaaSTenantPostgrestUrl(slug);
