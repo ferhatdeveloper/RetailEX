@@ -1,5 +1,6 @@
 /**
- * Cari bakiye — sales + cash_lines (customer_id veya ünvan eşleşmesi) + saklanan balance yedeği.
+ * Cari bakiye — sales + cash_lines (customer_id veya ünvan eşleşmesi).
+ * Müşteri: hareket yoksa saklanan balance yedeği. Tedarikçi: yalnızca alış/iade defteri.
  */
 import { ERP_SETTINGS } from '../postgres';
 
@@ -46,7 +47,7 @@ export function sqlCustomerAccountBalancesCte(custTable: string, firmNrBind: str
     )`;
 }
 
-/** Tedarikçi bakiye CTE */
+/** Tedarikçi bakiye CTE — yalnızca alış / alış iade faturaları + cari ödeme/tahsilat */
 export function sqlSupplierAccountBalancesCte(suppTable: string): string {
   return `
     supplier_balances AS (
@@ -56,22 +57,25 @@ export function sqlSupplierAccountBalancesCte(suppTable: string): string {
           CASE
             WHEN fiche_type = 'purchase_invoice' THEN net_amount
             WHEN fiche_type = 'return_invoice' THEN -net_amount
-            ELSE -net_amount
+            ELSE 0
           END AS line_contrib
         FROM sales
-        WHERE customer_id IS NOT NULL AND COALESCE(is_cancelled, false) = false
+        WHERE customer_id IS NOT NULL
+          AND COALESCE(is_cancelled, false) = false
+          AND fiche_type IN ('purchase_invoice', 'return_invoice')
         UNION ALL
         SELECT s.id,
           CASE
             WHEN sl.fiche_type = 'purchase_invoice' THEN sl.net_amount
             WHEN sl.fiche_type = 'return_invoice' THEN -sl.net_amount
-            ELSE -sl.net_amount
-          END
+            ELSE 0
+          END AS line_contrib
         FROM sales sl
         INNER JOIN ${suppTable} s ON TRIM(LOWER(COALESCE(sl.customer_name, ''))) = TRIM(LOWER(s.name))
         WHERE (sl.customer_id IS NULL OR sl.customer_id::text <> s.id::text)
           AND COALESCE(sl.is_cancelled, false) = false
           AND TRIM(COALESCE(sl.customer_name, '')) <> ''
+          AND sl.fiche_type IN ('purchase_invoice', 'return_invoice')
         UNION ALL
         SELECT customer_id AS id, amount AS line_contrib
         FROM cash_lines
@@ -82,15 +86,13 @@ export function sqlSupplierAccountBalancesCte(suppTable: string): string {
     )`;
 }
 
-/** Hareket varsa ledger; yoksa veresiye/manuel saklanan balance */
-export function sqlResolvedCustomerBalanceExpr(cardAlias = 'c'): string {
-  return `CASE
-    WHEN b.txn_count > 0 THEN COALESCE(b.calculated_balance, 0)
-    ELSE COALESCE(${cardAlias}.balance, 0)
-  END`;
+/** Tedarikçi: bakiye yalnızca defterden; manuel kart bakiyesi kullanılmaz */
+export function sqlResolvedSupplierBalanceExpr(_cardAlias = 's'): string {
+  return `COALESCE(b.calculated_balance, 0)`;
 }
 
-export function sqlResolvedSupplierBalanceExpr(cardAlias = 's'): string {
+/** Hareket varsa ledger; yoksa veresiye/manuel saklanan balance (müşteri) */
+export function sqlResolvedCustomerBalanceExpr(cardAlias = 'c'): string {
   return `CASE
     WHEN b.txn_count > 0 THEN COALESCE(b.calculated_balance, 0)
     ELSE COALESCE(${cardAlias}.balance, 0)
@@ -148,23 +150,21 @@ export function computeCustomerBalanceFromSales(
   return Number(storedBalance) || 0;
 }
 
-/** PostgREST: tedarikçi bakiyesi */
+/** PostgREST: tedarikçi bakiyesi — yalnızca alış / alış iade; manuel kart bakiyesi yok */
 export function computeSupplierBalanceFromSales(
   accountId: string,
   accountName: string,
   sales: LedgerSaleRow[],
-  storedBalance = 0,
+  _storedBalance = 0,
 ): number {
   const idStr = String(accountId || '');
   const nameKey = normalizeAccountName(accountName);
-  let txnCount = 0;
   let sum = 0;
   for (const s of sales) {
-    const amt = parseFloat(String(s.net_amount ?? 0)) || 0;
-    if (!amt) continue;
     const ft = String(s.fiche_type || '').toLowerCase();
-    const contrib =
-      ft === 'purchase_invoice' ? amt : ft === 'return_invoice' ? -amt : -amt;
+    if (ft !== 'purchase_invoice' && ft !== 'return_invoice') continue;
+    const amt = parseFloat(String(s.net_amount ?? 0)) || 0;
+    const contrib = ft === 'purchase_invoice' ? amt : -amt;
     const cid = s.customer_id ? String(s.customer_id) : '';
     const matchesId = cid && cid === idStr;
     const matchesName =
@@ -172,9 +172,7 @@ export function computeSupplierBalanceFromSales(
       nameKey &&
       normalizeAccountName(s.customer_name) === nameKey;
     if (!matchesId && !matchesName) continue;
-    txnCount += 1;
     sum += contrib;
   }
-  if (txnCount > 0) return sum;
-  return Number(storedBalance) || 0;
+  return sum;
 }
