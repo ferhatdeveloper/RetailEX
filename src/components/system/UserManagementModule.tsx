@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
-import { Users, Plus, Edit, Trash2, Search, UserCheck, UserX, Shield, Lock, X, ChevronDown, Building2, Calendar, Store, Package, ChevronRight } from 'lucide-react';
+import { Users, Plus, Edit, Trash2, Search, UserCheck, UserX, Shield, X, ChevronDown, Building2, Calendar, Store, Package, ChevronRight } from 'lucide-react';
 import { DevExDataGrid } from '../shared/DevExDataGrid';
+import { PinNumpadInput } from '../shared/PinNumpadInput';
 import { createColumnHelper, ColumnDef } from '@tanstack/react-table';
 import { useLanguage } from '../../contexts/LanguageContext';
 
@@ -473,20 +474,18 @@ export function UserManagementModule() {
                     placeholder="+964 750 123 4567"
                   />
                 </div>
-                <div>
+                <div className="col-span-2">
                     <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
                   {editingUser ? tm('passwordOptional') : `${tm('passwordLabel')} *`}
                 </label>
-                <div className="relative">
-                      <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-                  <input
-                    type="password"
-                    value={formData.password}
-                    onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                        className="w-full pl-12 pr-4 py-3 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-blue-500 focus:border-blue-400 outline-none transition-all text-slate-800 font-medium"
-                    placeholder={tm('passwordPlaceholder')}
-                  />
-                </div>
+                <PinNumpadInput
+                  value={formData.password}
+                  onChange={(password) => setFormData({ ...formData, password })}
+                  maxLength={8}
+                  dotSlots={4}
+                  hint={tm('passwordPlaceholder')}
+                  compact={false}
+                />
               </div>
             </div>
 

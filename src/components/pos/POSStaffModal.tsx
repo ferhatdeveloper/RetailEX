@@ -1,10 +1,11 @@
 ﻿import { useState, useEffect } from 'react';
-import { X, User, Lock, Loader2, Delete } from 'lucide-react';
+import { X, User, Loader2 } from 'lucide-react';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { userAPI, type User as APIUser } from '../../services/api/users';
 import { useAuth } from '../../contexts/AuthContext';
 import { toast } from 'sonner';
 import { cn } from '../ui/utils';
+import { PinNumpadInput } from '../shared/PinNumpadInput';
 
 interface POSStaffModalProps {
   currentStaff: string;
@@ -43,13 +44,6 @@ export function POSStaffModal({ currentStaff, onSelect, onClose }: POSStaffModal
       void handleLogin();
     }
   }, [password, selectedUser]);
-
-  const addDigit = (digit: string) => {
-    if (password.length < 4) {
-      setPassword((prev) => prev + digit);
-      setError(false);
-    }
-  };
 
   const handleLogin = async () => {
     if (!selectedUser || authLoading) return;
@@ -143,69 +137,32 @@ export function POSStaffModal({ currentStaff, onSelect, onClose }: POSStaffModal
 
               <div
                 className={cn(
-                  'rounded-xl border p-3 transition-opacity',
-                  selectedUser ? 'border-slate-200 bg-white' : 'border-dashed border-slate-200 bg-slate-50 opacity-60 pointer-events-none'
+                  'transition-opacity',
+                  selectedUser ? '' : 'opacity-60 pointer-events-none'
                 )}
               >
-                <div className="flex items-center gap-2 mb-3">
-                  <Lock className="w-4 h-4 text-slate-400" />
-                  <span className="text-xs font-medium text-slate-600">
-                    {selectedUser
+                <PinNumpadInput
+                  value={password}
+                  onChange={(v) => {
+                    setPassword(v);
+                    setError(false);
+                  }}
+                  maxLength={4}
+                  dotSlots={4}
+                  disabled={!selectedUser || authLoading}
+                  label={
+                    selectedUser
                       ? `${selectedUser.full_name || selectedUser.username} — PIN`
-                      : 'Önce personel seçin'}
-                  </span>
-                </div>
-
-                <div className="flex justify-center gap-2 mb-3">
-                  {[0, 1, 2, 3].map((i) => (
-                    <div
-                      key={i}
-                      className={cn(
-                        'w-2.5 h-2.5 rounded-full transition-all',
-                        password.length > i ? 'bg-blue-600 scale-110' : 'bg-slate-200'
-                      )}
-                    />
-                  ))}
-                </div>
-
-                <div className="grid grid-cols-3 gap-2">
-                  {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((num) => (
-                    <button
-                      key={num}
-                      type="button"
-                      onClick={() => addDigit(String(num))}
-                      disabled={!selectedUser || authLoading}
-                      className="h-11 rounded-lg bg-slate-50 hover:bg-slate-100 border border-slate-200 text-lg font-semibold text-slate-800 active:scale-95 disabled:opacity-40"
-                    >
-                      {num}
-                    </button>
-                  ))}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setPassword('');
-                      setError(false);
-                    }}
-                    disabled={!selectedUser}
-                    className="h-11 rounded-lg bg-red-50 hover:bg-red-100 border border-red-100 flex items-center justify-center text-red-500 disabled:opacity-40"
-                  >
-                    <Delete className="w-4 h-4" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => addDigit('0')}
-                    disabled={!selectedUser || authLoading}
-                    className="h-11 rounded-lg bg-slate-50 hover:bg-slate-100 border border-slate-200 text-lg font-semibold text-slate-800 active:scale-95 disabled:opacity-40"
-                  >
-                    0
-                  </button>
-                  <div className="h-11 flex items-center justify-center">
-                    {authLoading && <Loader2 className="w-5 h-5 text-blue-600 animate-spin" />}
+                      : 'Önce personel seçin'
+                  }
+                  error={error}
+                  errorText="Hatalı PIN"
+                  compact
+                />
+                {authLoading && (
+                  <div className="flex justify-center mt-2">
+                    <Loader2 className="w-5 h-5 text-blue-600 animate-spin" />
                   </div>
-                </div>
-
-                {error && (
-                  <p className="text-center text-xs font-semibold text-red-600 mt-2">Hatalı PIN</p>
                 )}
               </div>
             </>
