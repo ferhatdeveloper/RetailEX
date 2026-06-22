@@ -28,6 +28,26 @@ function preferIntegerAmountDisplay(code: string): boolean {
   return c === 'IQD' || c === 'JPY' || c === 'VND' || c === 'KHR' || c === 'UZS';
 }
 
+/** Bakiye yönü: B/A kodu + müşteri/tedarikçiye göre Türkçe açıklama */
+function getCariBalanceDirection(
+  cardType: 'customer' | 'supplier' | undefined,
+  balance: number,
+  tm: (key: string) => string,
+): { side: 'B' | 'A' | ''; hint: string } {
+  if (!balance) return { side: '', hint: '' };
+  const side: 'B' | 'A' = balance > 0 ? 'B' : 'A';
+  if (cardType === 'supplier') {
+    return {
+      side,
+      hint: balance > 0 ? tm('balanceHintSupplierPayable') : tm('balanceHintSupplierReceivable'),
+    };
+  }
+  return {
+    side,
+    hint: balance > 0 ? tm('balanceHintCustomerReceivable') : tm('balanceHintCustomerPayable'),
+  };
+}
+
 /** Ekstre varsayılan tarih aralığı: yıl başı — yıl sonu (gelecekteki fişler de görünsün) */
 function defaultEkstreDateRange(): { start: string; end: string } {
   const year = new Date().getFullYear();
@@ -404,17 +424,24 @@ export function SupplierModule() {
       cell: info => {
         const val = info.getValue() || 0;
         const rep = reportingCurrency !== mainCurrency ? toReporting(Math.abs(val)) : null;
-        const label = val === 0 ? '' : val > 0 ? 'B' : 'A';
-        const colorClass = label === 'B' ? 'text-red-600' : 'text-orange-600';
-        const badgeClass = label === 'B' ? 'bg-red-100 text-red-700' : 'bg-orange-100 text-orange-700';
+        const { side, hint } = getCariBalanceDirection(info.row.original.cardType, val, tm);
+        const colorClass = side === 'B' ? 'text-red-600' : 'text-orange-600';
+        const badgeClass = side === 'B' ? 'bg-red-100 text-red-700' : 'bg-orange-100 text-orange-700';
         return (
           <div className="flex flex-col items-end gap-0.5 font-bold">
             <div className="flex items-center gap-1.5">
               <span className={colorClass}>
                 {formatNumber(Math.abs(val), mainDec, mainShowDec)} {mainCurrency}
               </span>
-              {label && <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-black ${badgeClass}`}>{label}</span>}
+              {side && (
+                <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-black ${badgeClass}`} title={hint}>
+                  {side}
+                </span>
+              )}
             </div>
+            {hint && side && (
+              <span className="text-[9px] text-gray-500 font-medium max-w-[140px] text-right leading-tight">{hint}</span>
+            )}
             {rep != null && reportingCurrency !== mainCurrency && (
               <span className="text-[10px] text-gray-400 font-medium">
                 ({formatNumber(rep, repDec, repShowDec)} {reportingCurrency})
@@ -466,8 +493,12 @@ export function SupplierModule() {
     const amount = parseFloat(row.total_amount || 0);
     const cancelled = row.is_cancelled === true;
     const { isReturn } = ficheTypeToInfo(row.fiche_type || '', Number(row.trcode), cancelled);
-    // İptal/silinen fiş bakiyeye dahil edilmez; yine de listede görünür
-    const delta = cancelled ? 0 : (isSupplierAccount ? (isReturn ? +amount : -amount) : (isReturn ? -amount : +amount));
+    // Müşteri: satış borç artırır. Tedarikçi: alış borç artırır (ödenecek tutar).
+    const delta = cancelled
+      ? 0
+      : isSupplierAccount
+        ? (isReturn ? -amount : amount)
+        : (isReturn ? -amount : amount);
     runningBalance += delta;
     const isBorcEntry = isSupplierAccount ? isReturn : !isReturn;
     return {
@@ -479,7 +510,8 @@ export function SupplierModule() {
   });
   const totalBorc = ekstresiRows.reduce((s, r) => s + r.borcAmount, 0);
   const totalAlacak = ekstresiRows.reduce((s, r) => s + r.alacakAmount, 0);
-  const netBalance = totalBorc - totalAlacak;
+  const netBalance = isSupplierAccount ? totalAlacak - totalBorc : totalBorc - totalAlacak;
+  const netBalanceDir = getCariBalanceDirection(selectedAccount?.cardType, netBalance, tm);
 
   const fmtEkstreSignedNet = () => {
     if (reportingCurrency === mainCurrency) {
@@ -520,12 +552,9 @@ export function SupplierModule() {
   const currentBalanceHdr = selectedAccount
     ? fmtEkstreAmount(Math.abs(selectedAccount.balance || 0))
     : null;
-  const currentBalanceLabel =
-    selectedAccount && (selectedAccount.balance || 0) > 0
-      ? 'B'
-      : selectedAccount && (selectedAccount.balance || 0) < 0
-        ? 'A'
-        : '';
+  const currentBalanceDir = selectedAccount
+    ? getCariBalanceDirection(selectedAccount.cardType, selectedAccount.balance || 0, tm)
+    : { side: '' as const, hint: '' };
 
   return (
     <div className="h-full min-h-0 flex flex-col" onClick={() => setContextMenu(null)}>
@@ -659,15 +688,19 @@ export function SupplierModule() {
                 {currentBalanceHdr && (
                   <span
                     className={`shrink-0 border text-xs font-black px-2.5 py-1 rounded-lg ${
-                      currentBalanceLabel === 'B'
+                      currentBalanceDir.side === 'B'
                         ? 'bg-red-50 border-red-200 text-red-700'
-                        : currentBalanceLabel === 'A'
+                        : currentBalanceDir.side === 'A'
                           ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
                           : 'bg-gray-50 border-gray-200 text-gray-500'
                     }`}
+                    title={currentBalanceDir.hint}
                   >
                     {tm('custColBalance')}: {currentBalanceHdr.primary} {currentBalanceHdr.code}
-                    {currentBalanceLabel ? ` ${currentBalanceLabel}` : ''}
+                    {currentBalanceDir.side ? ` ${currentBalanceDir.side}` : ''}
+                    {currentBalanceDir.hint ? (
+                      <span className="block text-[9px] font-medium normal-case opacity-90 mt-0.5">{currentBalanceDir.hint}</span>
+                    ) : null}
                   </span>
                 )}
               </div>
@@ -682,11 +715,10 @@ export function SupplierModule() {
                   <span className="bg-red-50 border border-red-200 text-red-600 text-xs font-black px-2 py-0.5 rounded">B: {borcHdr.primary} {borcHdr.code}</span>
                   <span className="bg-orange-50 border border-orange-200 text-orange-600 text-xs font-black px-2 py-0.5 rounded">A: {alacHdr.primary} {alacHdr.code}</span>
                   {(() => {
-                    const netLabel = netBalance > 0 ? 'B' : netBalance < 0 ? 'A' : '';
-                    const netCls = netBalance > 0 ? 'bg-red-50 border-red-200 text-red-700' : netBalance < 0 ? 'bg-orange-50 border-orange-200 text-orange-700' : 'bg-gray-50 border-gray-200 text-gray-500';
+                    const netCls = netBalanceDir.side === 'B' ? 'bg-red-50 border-red-200 text-red-700' : netBalanceDir.side === 'A' ? 'bg-orange-50 border-orange-200 text-orange-700' : 'bg-gray-50 border-gray-200 text-gray-500';
                     return (
-                      <span className={`border text-xs font-black px-2 py-0.5 rounded ${netCls}`}>
-                        {tm('netAmount')}: {netHdr.primary} {netHdr.code} {netLabel}
+                      <span className={`border text-xs font-black px-2 py-0.5 rounded ${netCls}`} title={netBalanceDir.hint}>
+                        {tm('netAmount')}: {netHdr.primary} {netHdr.code} {netBalanceDir.side}
                       </span>
                     );
                   })()}
@@ -755,6 +787,7 @@ export function SupplierModule() {
                     const borcD = row.borcAmount > 0 ? fmtEkstreAmount(row.borcAmount) : null;
                     const alacD = row.alacakAmount > 0 ? fmtEkstreAmount(row.alacakAmount) : null;
                     const balD = row.balance !== 0 ? fmtEkstreAmount(Math.abs(row.balance)) : null;
+                    const rowBalDir = getCariBalanceDirection(selectedAccount?.cardType, row.balance, tm);
                     return (
                       <tr key={idx} className={`border-b border-gray-100 hover:bg-blue-50/40 ${idx % 2 ? 'bg-gray-50/50' : ''}`}>
                         <td className="px-4 py-2 font-mono text-gray-600">{row.date ? String(row.date).split('T')[0] : '-'}</td>
@@ -781,7 +814,7 @@ export function SupplierModule() {
                           <div className="flex flex-col items-end">
                             {balD ? (
                               <>
-                                <span>{balD.primary} {balD.code}{row.balance !== 0 ? <span className="ml-0.5 text-[10px]">{row.balance > 0 ? 'B' : 'A'}</span> : null}</span>
+                                <span>{balD.primary} {balD.code}{rowBalDir.side ? <span className="ml-0.5 text-[10px]" title={rowBalDir.hint}>{rowBalDir.side}</span> : null}</span>
                                 {balD.secondary ? <span className="text-[10px] opacity-50 font-normal">{balD.secondary}</span> : null}
                               </>
                             ) : (

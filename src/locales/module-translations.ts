@@ -4680,6 +4680,32 @@ export const supplierTranslations = {
   description: { tr: 'Açıklama', en: 'Description', ar: 'الوصف', ku: 'تێبینی' },
   debtor: { tr: 'Borç', en: 'Debit', ar: 'مدين', ku: 'قەرزار' },
   creditor: { tr: 'Alacak', en: 'Credit', ar: 'دائن', ku: 'خاوەن قەرز' },
+  balanceSideB: { tr: 'B', en: 'D', ar: 'م', ku: 'B' },
+  balanceSideA: { tr: 'A', en: 'C', ar: 'د', ku: 'A' },
+  balanceHintCustomerReceivable: {
+    tr: 'Müşteri borçlu — tahsil edilecek',
+    en: 'Customer owes you — to collect',
+    ar: 'العميل مدين — للتحصيل',
+    ku: 'کڕیار قەرزدارە — وەسڵ دەکرێت',
+  },
+  balanceHintCustomerPayable: {
+    tr: 'Siz borçlusunuz — müşteriye iade/avans',
+    en: 'You owe customer — refund/credit',
+    ar: 'أنت مدين — للعميل',
+    ku: 'تۆ قەرزداری — بۆ کڕیار',
+  },
+  balanceHintSupplierPayable: {
+    tr: 'Siz borçlusunuz — tedarikçiye ödenecek',
+    en: 'You owe supplier — to pay',
+    ar: 'أنت مدين — للمورد',
+    ku: 'تۆ قەرزداری — بۆ دابینکەر',
+  },
+  balanceHintSupplierReceivable: {
+    tr: 'Tedarikçi borçlu — sizden alacak/iade',
+    en: 'Supplier owes you — credit/refund',
+    ar: 'المورد مدين — لك',
+    ku: 'دابینکەر قەرزدارە — بۆ تۆ',
+  },
 };
 
 export const wmsModuleTranslations = {
