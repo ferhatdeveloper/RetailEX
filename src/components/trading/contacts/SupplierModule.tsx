@@ -275,8 +275,14 @@ export function SupplierModule() {
     if (!formData.name.trim()) { toast.error('Ad zorunludur'); return; }
     try {
       if (editingSupplier) {
-        await supplierAPI.update(editingSupplier.id, formData);
-        toast.success('Güncellendi');
+        const prevType = editingSupplier.cardType || 'supplier';
+        if (prevType !== formData.cardType) {
+          await supplierAPI.transferCardType(editingSupplier.id, prevType, formData.cardType, formData);
+          toast.success(tm('accountTypeChanged') || 'Cari tipi değiştirildi');
+        } else {
+          await supplierAPI.update(editingSupplier.id, formData);
+          toast.success('Güncellendi');
+        }
         setShowAddModal(false);
         await loadSuppliers();
       } else {
@@ -407,7 +413,18 @@ export function SupplierModule() {
     }),
     columnHelper.accessor('name', {
       header: tm('currentAccountTitle'),
-      cell: info => <span className="font-semibold text-gray-800">{info.getValue()}</span>
+      cell: info => {
+        const row = info.row.original;
+        const isCustomer = row.cardType === 'customer';
+        return (
+          <div className="min-w-0">
+            <span className="font-semibold text-gray-800">{info.getValue()}</span>
+            <span className={`ml-2 text-[9px] font-black uppercase px-1.5 py-0.5 rounded ${isCustomer ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700'}`}>
+              {row.code || '—'}
+            </span>
+          </div>
+        );
+      }
     }),
     columnHelper.accessor('phone', {
       header: tm('contact'),
@@ -890,19 +907,36 @@ export function SupplierModule() {
             </div>
 
             <div className="p-5 space-y-4 overflow-y-auto">
-              {!editingSupplier && (
-                <div className="grid grid-cols-2 gap-3">
-                  <button type="button" onClick={async () => { const c = await supplierAPI.generateCode('customer'); setFormData({ ...formData, cardType: 'customer', code: c }); }}
-                    className={`flex items-center gap-2 p-3 rounded-xl border-2 transition-all ${formData.cardType === 'customer' ? 'border-blue-600 bg-blue-50' : 'border-gray-200'}`}>
-                    <Users className={`w-5 h-5 ${formData.cardType === 'customer' ? 'text-blue-600' : 'text-gray-400'}`} />
-                    <span className={`text-sm font-bold ${formData.cardType === 'customer' ? 'text-blue-700' : 'text-gray-500'}`}>{tm('customer')}</span>
-                  </button>
-                  <button type="button" onClick={async () => { const c = await supplierAPI.generateCode('supplier'); setFormData({ ...formData, cardType: 'supplier', code: c }); }}
-                    className={`flex items-center gap-2 p-3 rounded-xl border-2 transition-all ${formData.cardType === 'supplier' ? 'border-orange-500 bg-orange-50' : 'border-gray-200'}`}>
-                    <Truck className={`w-5 h-5 ${formData.cardType === 'supplier' ? 'text-orange-500' : 'text-gray-400'}`} />
-                    <span className={`text-sm font-bold ${formData.cardType === 'supplier' ? 'text-orange-700' : 'text-gray-500'}`}>{tm('supplierLabel')}</span>
-                  </button>
-                </div>
+              <div className="grid grid-cols-2 gap-3">
+                <button type="button" onClick={async () => {
+                  if (!editingSupplier) {
+                    const c = await supplierAPI.generateCode('customer');
+                    setFormData((prev) => ({ ...prev, cardType: 'customer', code: c }));
+                    return;
+                  }
+                  setFormData((prev) => ({ ...prev, cardType: 'customer' }));
+                }}
+                  className={`flex items-center gap-2 p-3 rounded-xl border-2 transition-all ${formData.cardType === 'customer' ? 'border-blue-600 bg-blue-50' : 'border-gray-200'}`}>
+                  <Users className={`w-5 h-5 ${formData.cardType === 'customer' ? 'text-blue-600' : 'text-gray-400'}`} />
+                  <span className={`text-sm font-bold ${formData.cardType === 'customer' ? 'text-blue-700' : 'text-gray-500'}`}>{tm('customer')}</span>
+                </button>
+                <button type="button" onClick={async () => {
+                  if (!editingSupplier) {
+                    const c = await supplierAPI.generateCode('supplier');
+                    setFormData((prev) => ({ ...prev, cardType: 'supplier', code: c }));
+                    return;
+                  }
+                  setFormData((prev) => ({ ...prev, cardType: 'supplier' }));
+                }}
+                  className={`flex items-center gap-2 p-3 rounded-xl border-2 transition-all ${formData.cardType === 'supplier' ? 'border-orange-500 bg-orange-50' : 'border-gray-200'}`}>
+                  <Truck className={`w-5 h-5 ${formData.cardType === 'supplier' ? 'text-orange-500' : 'text-gray-400'}`} />
+                  <span className={`text-sm font-bold ${formData.cardType === 'supplier' ? 'text-orange-700' : 'text-gray-500'}`}>{tm('supplierLabel')}</span>
+                </button>
+              </div>
+              {editingSupplier && editingSupplier.cardType !== formData.cardType && (
+                <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                  {tm('accountTypeChanged') || 'Kayıt yeni tipe taşınacak; fişler yeni cari kartına aktarılır.'}
+                </p>
               )}
               <div className="grid grid-cols-2 gap-4">
                 <Field label={tm('code')}><input type="text" value={formData.code} onChange={e => setFormData({ ...formData, code: e.target.value })} placeholder="Otomatik" /></Field>
@@ -915,12 +949,19 @@ export function SupplierModule() {
               <Field label={tm('address')}><input type="text" value={formData.address} onChange={e => setFormData({ ...formData, address: e.target.value })} /></Field>
               <div className="grid grid-cols-2 gap-4">
                 <Field label={tm('city')}><input type="text" value={formData.city} onChange={e => setFormData({ ...formData, city: e.target.value })} /></Field>
-                <Field label={tm('paymentTermDays')}><input type="number" value={formData.payment_terms} onChange={e => setFormData({ ...formData, payment_terms: parseInt(e.target.value) || 30 })} /></Field>
+                {formData.cardType === 'supplier' && (
+                  <Field label={tm('paymentTermDays')}><input type="number" value={formData.payment_terms} onChange={e => setFormData({ ...formData, payment_terms: parseInt(e.target.value) || 30 })} /></Field>
+                )}
               </div>
+              {formData.cardType === 'supplier' && (
               <div className="grid grid-cols-2 gap-4">
                 <Field label={tm('creditLimit')}><input type="number" value={formData.credit_limit} onChange={e => setFormData({ ...formData, credit_limit: parseFloat(e.target.value) || 0 })} /></Field>
                 <Field label={tm('taxNumberLabel')}><input type="text" value={formData.tax_number} onChange={e => setFormData({ ...formData, tax_number: e.target.value })} /></Field>
               </div>
+              )}
+              {formData.cardType === 'customer' && (
+              <Field label={tm('taxNumberLabel')}><input type="text" value={formData.tax_number} onChange={e => setFormData({ ...formData, tax_number: e.target.value })} /></Field>
+              )}
               <Field label={tm('notesLabel')}><textarea value={formData.notes} onChange={e => setFormData({ ...formData, notes: e.target.value })} rows={2} /></Field>
             </div>
 

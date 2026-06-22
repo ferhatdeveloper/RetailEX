@@ -17,7 +17,10 @@ import {
   normalizeFirmTableNr,
   accountLedgerNameMatch,
 } from './accountBalance';
+import { buildCariDbPayload } from './cariAccountFields';
 export type { Supplier };
+
+export type CariListFilter = 'all' | 'customer' | 'supplier';
 
 function dedupeEkstreRows(rows: any[]): any[] {
   const seen = new Set<string>();
@@ -59,7 +62,8 @@ export const supplierAPI = {
   /**
    * Get all suppliers
    */
-  async getAll(): Promise<Supplier[]> {
+  async getAll(options?: { cardType?: CariListFilter }): Promise<Supplier[]> {
+    const cardFilter = options?.cardType ?? 'all';
     try {
       const firmNr = normalizeFirmTableNr(ERP_SETTINGS.firmNr);
       const custTable = firmCustomersTable(firmNr);
@@ -123,6 +127,10 @@ export const supplierAPI = {
         }));
         return [...customerRows, ...supplierRows]
           .map(mapDatabaseSupplierToSupplier)
+          .filter((row) => {
+            if (cardFilter === 'all') return true;
+            return row.cardType === cardFilter;
+          })
           .sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
       }
 
@@ -152,7 +160,10 @@ export const supplierAPI = {
         firmNr,
         periodNr: ERP_SETTINGS.periodNr,
       });
-      return rows.map(mapDatabaseSupplierToSupplier);
+      return rows.map(mapDatabaseSupplierToSupplier).filter((row) => {
+        if (cardFilter === 'all') return true;
+        return row.cardType === cardFilter;
+      });
     } catch (error) {
       console.error('[SupplierAPI] getAll failed:', error);
       return [];
@@ -273,18 +284,25 @@ export const supplierAPI = {
 
       if (DB_SETTINGS.connectionProvider === 'rest_api') {
         const { postgrest } = await import('./postgrestClient');
-        const body: Record<string, unknown> = {
-          code: account.code,
-          name: account.name,
-          phone: account.phone,
-          email: account.email,
-          address: account.address,
-          city: account.city,
-          tax_nr: account.tax_number,
-          tax_office: account.tax_office,
-          is_active: true,
-          firm_nr: ERP_SETTINGS.firmNr,
-        };
+        const body = buildCariDbPayload(
+          {
+            code: account.code,
+            name: account.name,
+            phone: account.phone,
+            email: account.email,
+            address: account.address,
+            city: account.city,
+            tax_number: account.tax_number,
+            tax_office: account.tax_office,
+            notes: account.notes,
+            payment_terms: account.payment_terms,
+            credit_limit: account.credit_limit,
+            firm_nr: ERP_SETTINGS.firmNr,
+          },
+          isSupplier ? 'supplier' : 'customer',
+          { forceActive: true },
+        );
+        body.firm_nr = ERP_SETTINGS.firmNr;
         const rows = await postgrest.post<any[]>(
           `/${tableName}`,
           body,
@@ -320,26 +338,17 @@ export const supplierAPI = {
       const values: any[] = [];
       let i = 1;
 
-      Object.entries(account).forEach(([key, value]) => {
-        if (key !== 'id' && value !== undefined && key !== 'created_at' && key !== 'updated_at' && key !== 'cardType') {
-          const dbKey = key === 'tax_number' ? 'tax_nr' : key;
-          fields.push(`${dbKey} = $${i++}`);
-          values.push(value);
-        }
+      const patchFields = buildCariDbPayload(account as Record<string, unknown>, isSupplier ? 'supplier' : 'customer');
+      Object.entries(patchFields).forEach(([dbKey, value]) => {
+        fields.push(`${dbKey} = $${i++}`);
+        values.push(value);
       });
 
       if (fields.length === 0) throw new Error('No fields to update');
 
       if (DB_SETTINGS.connectionProvider === 'rest_api') {
         const { postgrest } = await import('./postgrestClient');
-        const patchBody: Record<string, unknown> = {};
-        const skipKeys = new Set(['id', 'cardType', 'created_at', 'updated_at']);
-        Object.entries(account).forEach(([key, value]) => {
-          if (skipKeys.has(key) || value === undefined) return;
-          let col = key === 'tax_number' || key === 'taxNumber' ? 'tax_nr' : key;
-          if (key === 'tax_office' || key === 'taxOffice') col = 'tax_office';
-          patchBody[col] = value;
-        });
+        const patchBody = buildCariDbPayload(account as Record<string, unknown>, isSupplier ? 'supplier' : 'customer');
         if (Object.keys(patchBody).length === 0) throw new Error('No fields to update');
         const path = isSupplier
           ? `/${tableName}?id=eq.${encodeURIComponent(id)}`
@@ -368,6 +377,90 @@ export const supplierAPI = {
       console.error('[SupplierAPI] update failed:', error);
       throw new Error(error.message || 'Cari hesap güncellenemedi');
     }
+  },
+
+  /**
+   * Müşteri ↔ tedarikçi tip değişimi (yeni kart + eski pasif + fiş customer_id taşıma)
+   */
+  async transferCardType(
+    id: string,
+    fromType: 'customer' | 'supplier',
+    toType: 'customer' | 'supplier',
+    account: Partial<Supplier>,
+  ): Promise<Supplier> {
+    if (fromType === toType) {
+      return this.update(id, { ...account, cardType: toType });
+    }
+
+    const firmNr = normalizeFirmTableNr(ERP_SETTINGS.firmNr);
+    const fromTable = fromType === 'supplier' ? firmSuppliersTable(firmNr) : firmCustomersTable(firmNr);
+    const toTable = toType === 'supplier' ? firmSuppliersTable(firmNr) : firmCustomersTable(firmNr);
+    const queryOpts = { firmNr, periodNr: ERP_SETTINGS.periodNr };
+
+    let existing: Record<string, unknown> = {};
+    if (DB_SETTINGS.connectionProvider === 'rest_api') {
+      const { postgrest } = await import('./postgrestClient');
+      const path =
+        fromType === 'supplier'
+          ? `/${fromTable}?id=eq.${encodeURIComponent(id)}&limit=1`
+          : `/${fromTable}?id=eq.${encodeURIComponent(id)}&firm_nr=eq.${encodeURIComponent(firmNr)}&limit=1`;
+      const rows = await postgrest.get<any[]>(path, { select: '*' }, { schema: 'public' });
+      existing = Array.isArray(rows) && rows[0] ? rows[0] : {};
+    } else {
+      const sql =
+        fromType === 'supplier'
+          ? `SELECT * FROM ${fromTable} WHERE id = $1::uuid LIMIT 1`
+          : `SELECT * FROM ${fromTable} WHERE id = $1::uuid AND firm_nr = $2::text LIMIT 1`;
+      const params = fromType === 'supplier' ? [id] : [id, firmNr];
+      const { rows } = await postgres.query(sql, params, queryOpts);
+      existing = rows[0] || {};
+    }
+
+    const merged = {
+      ...existing,
+      code: account.code ?? existing.code,
+      name: account.name ?? existing.name,
+      phone: account.phone ?? existing.phone,
+      email: account.email ?? existing.email,
+      address: account.address ?? existing.address,
+      city: account.city ?? existing.city,
+      tax_number: account.tax_number ?? existing.tax_nr,
+      tax_office: account.tax_office ?? existing.tax_office,
+      notes: account.notes ?? existing.notes,
+      payment_terms: account.payment_terms ?? existing.payment_terms,
+      credit_limit: account.credit_limit ?? existing.credit_limit,
+      cardType: toType,
+    };
+
+    const created = await this.create(merged as Omit<Supplier, 'id'>);
+    const newId = String(created.id);
+
+    try {
+      if (DB_SETTINGS.connectionProvider === 'rest_api') {
+        const { postgrest } = await import('./postgrestClient');
+        const pn = String(ERP_SETTINGS.periodNr ?? '01').padStart(2, '0');
+        const salesPath = `/rex_${firmNr}_${pn}_sales?customer_id=eq.${encodeURIComponent(id)}`;
+        await postgrest.patch(salesPath, { customer_id: newId }, { schema: 'public', prefer: 'return=minimal' }).catch(() => {});
+        const cashPath = `/rex_${firmNr}_${pn}_cash_lines?customer_id=eq.${encodeURIComponent(id)}`;
+        await postgrest.patch(cashPath, { customer_id: newId }, { schema: 'public', prefer: 'return=minimal' }).catch(() => {});
+      } else {
+        await postgres.query(
+          `UPDATE sales SET customer_id = $1::uuid WHERE customer_id::text = $2::text`,
+          [newId, id],
+          queryOpts,
+        );
+        await postgres.query(
+          `UPDATE cash_lines SET customer_id = $1::uuid WHERE customer_id::text = $2::text`,
+          [newId, id],
+          queryOpts,
+        );
+      }
+    } catch (migrateErr) {
+      console.warn('[SupplierAPI] transferCardType ledger migrate:', migrateErr);
+    }
+
+    await this.delete(id, fromType);
+    return created;
   },
 
   /**
