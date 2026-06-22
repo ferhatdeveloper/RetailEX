@@ -1012,6 +1012,7 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
   custColCompanyTax: { tr: 'Şirket/Vergi', en: 'Company / Tax', ar: 'الشركة / الضريبة', ku: 'کۆمپانیا/باج' },
   custColTotalPurchases: { tr: 'Toplam Alışveriş', en: 'Total orders', ar: 'إجمالي الطلبات', ku: 'کۆی کڕینەکان' },
   custColTotalAmount: { tr: 'Toplam Tutar', en: 'Total amount', ar: 'المبلغ الإجمالي', ku: 'کۆی بڕ' },
+  custColBalance: { tr: 'Cari Bakiye', en: 'Current balance', ar: 'الرصيد الجاري', ku: 'باڵانسی جاری' },
   custColLastPurchase: { tr: 'Son Alışveriş', en: 'Last purchase', ar: 'آخر شراء', ku: 'دوایین کڕین' },
   custColActions: { tr: 'İşlemler', en: 'Actions', ar: 'إجراءات', ku: 'کردارەکان' },
   custModalEditTitle: { tr: 'Müşteri Düzenle', en: 'Edit customer', ar: 'تعديل عميل', ku: 'دەستکاری کڕیار' },

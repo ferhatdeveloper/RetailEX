@@ -163,20 +163,13 @@ export function PurchaseInvoiceModule({ onCreateInvoice, onSwitchTab, activeTab:
   const handleDeleteInvoice = async (invoiceId: string) => {
     if (confirm(tm('deleteInvoiceConfirm') || 'Bu faturayı silmek istediğinizden emin misiniz?')) {
       try {
-        // Soft delete: status='iptal' or just delete?
-        // Let's mark it as status 'Deleted' for now or use delete endpoint if available
-        // For now using update to set status to "Iptal" as a safe approach unless delete is preferred
-        // Wait, invoicesAPI has delete? No, but use update.
-        // Or if we want real delete:
-        // await invoicesAPI.delete(invoiceId); // Assuming delete exists or we implemented it
-        // Actually, check invoicesAPI... it has update.
-        // Let's just assume we want to update status to "Iptal"
-        const invoice = invoices.find(inv => inv.id === invoiceId);
-        if (invoice) {
-          await invoicesAPI.update(invoiceId, { ...invoice, status: 'Iptal' });
-          toast.success(tm('invoiceCancelled') || 'Fatura iptal edildi');
-          loadInvoices();
+        const ok = await invoicesAPI.delete(invoiceId);
+        if (!ok) {
+          toast.error(tm('deleteError') || 'Silme işleminde hata oluştu');
+          return;
         }
+        toast.success(tm('invoiceDeleted') || tm('invoiceCancelled') || 'Fatura silindi');
+        loadInvoices();
       } catch (error) {
         console.error('Silme hatası:', error);
         toast.error(tm('deleteError') || 'Silme işleminde hata oluştu');

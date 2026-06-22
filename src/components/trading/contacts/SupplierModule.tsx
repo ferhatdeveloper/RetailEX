@@ -148,6 +148,8 @@ export function SupplierModule() {
   const loadSuppliers = async () => {
     setLoading(true);
     try {
+      const { repairCariLedgerConsistency } = await import('../../../services/api/accountLedgerRepair');
+      await repairCariLedgerConsistency().catch(() => { /* sessiz */ });
       setSuppliers(await supplierAPI.getAll());
     } catch (e: any) {
       toast.error(e.message || 'Cari hesaplar yüklenemedi');

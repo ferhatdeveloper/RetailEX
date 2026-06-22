@@ -117,6 +117,17 @@ export function CustomerManagementModule({ customers, setCustomers, sales }: Cus
   };
 
   useEffect(() => {
+    void (async () => {
+      try {
+        const { repairCariLedgerConsistency } = await import('../../../services/api/accountLedgerRepair');
+        await repairCariLedgerConsistency();
+      } catch { /* sessiz */ }
+      const rows = await customerAPI.getAll();
+      if (rows.length > 0) setCustomers(rows);
+    })();
+  }, [setCustomers]);
+
+  useEffect(() => {
     const fromStorage = localStorage.getItem('callerid_customer_phone')?.trim();
     if (fromStorage) {
       localStorage.removeItem('callerid_customer_phone');
@@ -424,6 +435,23 @@ export function CustomerManagementModule({ customers, setCustomers, sales }: Cus
       cell: ({ row }) => {
         const stats = getCustomerStats(row.original.id);
         return <span className="font-medium">{formatNumber(stats.totalSpent, 2, true)} IQD</span>;
+      },
+      meta: { align: 'right' }
+    }),
+    columnHelper.display({
+      id: 'balance',
+      header: tm('custColBalance'),
+      cell: ({ row }) => {
+        const bal = Number(row.original.balance ?? 0);
+        if (Math.abs(bal) < 0.005) {
+          return <span className="text-gray-400 text-xs">—</span>;
+        }
+        return (
+          <span className={`font-bold whitespace-nowrap ${bal > 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+            {formatNumber(Math.abs(bal), 2, true)} IQD
+            <span className="ml-1 text-[10px] opacity-80">{bal > 0 ? 'B' : 'A'}</span>
+          </span>
+        );
       },
       meta: { align: 'right' }
     }),

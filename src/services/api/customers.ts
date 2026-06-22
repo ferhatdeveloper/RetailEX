@@ -28,7 +28,26 @@ export const customerAPI = {
         return (Array.isArray(rows) ? rows : []).map(mapDatabaseCustomerToCustomer);
       }
       const { rows } = await postgres.query(
-        `SELECT * FROM ${tableName} WHERE firm_nr = $1 AND is_active = true ORDER BY name ASC`,
+        `WITH account_balances AS (
+          SELECT customer_id AS id, SUM(line_contrib) AS calculated_balance
+          FROM (
+            SELECT customer_id,
+              CASE WHEN fiche_type = 'return_invoice' THEN -net_amount ELSE net_amount END AS line_contrib
+            FROM sales
+            WHERE customer_id IS NOT NULL
+              AND COALESCE(is_cancelled, false) = false
+            UNION ALL
+            SELECT customer_id, -amount AS line_contrib
+            FROM cash_lines
+            WHERE transaction_type IN ('CH_ODEME', 'CH_TAHSILAT')
+          ) customer_tx
+          GROUP BY customer_id
+        )
+        SELECT c.*, COALESCE(b.calculated_balance, 0) AS balance
+        FROM ${tableName} c
+        LEFT JOIN account_balances b ON c.id = b.id
+        WHERE c.firm_nr = $1 AND c.is_active = true
+        ORDER BY c.name ASC`,
         [ERP_SETTINGS.firmNr]
       );
       return rows.map(mapDatabaseCustomerToCustomer);

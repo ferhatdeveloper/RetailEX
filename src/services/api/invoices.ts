@@ -52,6 +52,21 @@ export function paymentMethodImpliesCustomerDebt(pm: string | undefined | null):
   return false;
 }
 
+const CANCELLED_INVOICE_STATUSES = new Set(['iptal', 'cancelled', 'canceled', 'deleted']);
+
+function isInvoiceCancelledStatus(status: string | undefined | null): boolean {
+  return CANCELLED_INVOICE_STATUSES.has(String(status || '').toLowerCase().trim());
+}
+
+function salesHeaderRowToRevertInvoice(h: Record<string, unknown>, id: string): Invoice {
+  return mapDatabaseInvoiceToInvoice({
+    ...h,
+    id,
+    firma_id: h.firm_nr,
+    donem_id: h.period_nr,
+  });
+}
+
 /** Satış faturasında kasa defterine yansıyacak tahsilat (nakit / POS cash) */
 export function paymentMethodImpliesCashInKasa(pm: string | undefined | null): boolean {
   const p = String(pm || '').trim().toLowerCase();
@@ -1650,6 +1665,23 @@ export const invoicesAPI = {
       const fn0 = normalizeFirmNrForRow((existingFull as any).firma_id ?? ERP_SETTINGS.firmNr);
       const pn0 = normalizePeriodNrForRow((existingFull as any).donem_id ?? ERP_SETTINGS.periodNr);
       const resyncLedger = Array.isArray(invoice.items);
+      const prevStatus = String(existingFull.status || '').toLowerCase().trim();
+      const nextStatus =
+        invoice.status != null ? String(invoice.status).toLowerCase().trim() : '';
+      const isNewCancel =
+        !resyncLedger &&
+        nextStatus.length > 0 &&
+        isInvoiceCancelledStatus(nextStatus) &&
+        !isInvoiceCancelledStatus(prevStatus);
+
+      if (isNewCancel) {
+        try {
+          await revertInvoiceLedgerSideEffects(existingFull, fn0, pn0);
+        } catch (e) {
+          console.warn('[InvoicesAPI] cancel ledger revert:', e);
+        }
+        (invoice as Record<string, unknown>).is_cancelled = true;
+      }
 
       if (resyncLedger) {
         try {
@@ -1684,6 +1716,7 @@ export const invoicesAPI = {
         if (invoice.currency !== undefined) patchBody.currency = invoice.currency;
         if (invoice.currency_rate !== undefined) patchBody.currency_rate = Number(invoice.currency_rate);
         if (invoice.payment_method !== undefined) patchBody.payment_method = String(invoice.payment_method);
+        if ((invoice as Record<string, unknown>).is_cancelled === true) patchBody.is_cancelled = true;
 
         if (Object.keys(patchBody).length > 0) {
           await postgrest.patch(
@@ -1795,6 +1828,10 @@ export const invoicesAPI = {
       if (invoice.currency !== undefined) { fields.push(`currency = $${i++}`); values.push(invoice.currency); }
       if (invoice.currency_rate !== undefined) { fields.push(`currency_rate = $${i++}`); values.push(invoice.currency_rate); }
       if (invoice.payment_method !== undefined) { fields.push(`payment_method = $${i++}`); values.push(String(invoice.payment_method)); }
+      if ((invoice as Record<string, unknown>).is_cancelled === true) {
+        fields.push(`is_cancelled = $${i++}`);
+        values.push(true);
+      }
 
       const sqlOpts = { firmNr: fn0, periodNr: pn0 };
       if (fields.length > 0) {
@@ -2248,6 +2285,7 @@ export const invoicesAPI = {
       let totalAmt = Number(header?.total_amount ?? header?.total ?? 0);
       let saleFirmNr: string | null = header ? String((header as any).firma_id ?? '').trim() || null : null;
       let salePeriodNr: string | null = header ? String((header as any).donem_id ?? '').trim() || null : null;
+      let invoiceForRevert: Invoice | null = header;
 
       if (!header) {
         if (DB_SETTINGS.connectionProvider === 'rest_api') {
@@ -2259,7 +2297,8 @@ export const invoicesAPI = {
             const rows = await postgrest.get<any[]>(
               path,
               {
-                select: 'fiche_no,notes,payment_method,customer_id,net_amount,firm_nr,period_nr',
+                select:
+                  'id,fiche_no,notes,payment_method,customer_id,net_amount,firm_nr,period_nr,fiche_type,trcode,status,customer_name',
                 id: `eq.${String(id).trim()}`,
                 limit: 1,
               },
@@ -2274,6 +2313,7 @@ export const invoicesAPI = {
               if (!totalAmt && h.net_amount != null) totalAmt = parseFloat(String(h.net_amount)) || 0;
               if (h.firm_nr != null) saleFirmNr = String(h.firm_nr).trim();
               if (h.period_nr != null) salePeriodNr = String(h.period_nr).trim();
+              invoiceForRevert = salesHeaderRowToRevertInvoice(h, String(id).trim());
             }
           } catch {
             /* yedek başlık okunamazsa silme yine denenir */
@@ -2281,7 +2321,8 @@ export const invoicesAPI = {
         } else {
           try {
             const { rows: hdrRows } = await postgres.query(
-              `SELECT fiche_no, notes, payment_method, customer_id, net_amount, firm_nr, period_nr FROM sales WHERE id::text = $1::text LIMIT 1`,
+              `SELECT id, fiche_no, notes, payment_method, customer_id, net_amount, firm_nr, period_nr, fiche_type, trcode, status, customer_name
+               FROM sales WHERE id::text = $1::text LIMIT 1`,
               [String(id).trim()]
             );
             const h = hdrRows?.[0];
@@ -2293,6 +2334,7 @@ export const invoicesAPI = {
               if (!totalAmt && h.net_amount != null) totalAmt = parseFloat(String(h.net_amount)) || 0;
               if (h.firm_nr != null) saleFirmNr = String(h.firm_nr).trim();
               if (h.period_nr != null) salePeriodNr = String(h.period_nr).trim();
+              invoiceForRevert = salesHeaderRowToRevertInvoice(h, String(id).trim());
             }
           } catch {
             /* yedek başlık okunamazsa yalnızca sales silinir */
@@ -2302,18 +2344,26 @@ export const invoicesAPI = {
 
       const restOrderId = extractRestOrderIdFromInvoiceNotes(notes);
 
-      // 1) Kasa: `cash_lines` dönem tablosunda (rex_*_*_cash_lines); satışın firm_nr/period_nr ile aynı tabloya gidilmeli
-      const cashOpts = buildCashLinePgOpts(saleFirmNr, salePeriodNr);
-      if (ficheNo) {
-        await removeCashRegisterLinesForSaleFiche(ficheNo, cashOpts);
-      }
+      const fnR = normalizeFirmNrForRow(saleFirmNr ?? ERP_SETTINGS.firmNr);
+      const pnR = normalizePeriodNrForRow(salePeriodNr ?? ERP_SETTINGS.periodNr);
 
-      // 2) Veresiye: satışta eklenen cari borç geri alınır
-      if (paymentMethodImpliesCustomerDebt(paymentMethod) && customerId && totalAmt !== 0 && !Number.isNaN(totalAmt)) {
+      if (invoiceForRevert) {
         try {
-          await customerAPI.addBalance(customerId, -totalAmt);
+          await revertInvoiceLedgerSideEffects(invoiceForRevert, fnR, pnR);
         } catch (e) {
-          console.warn('[InvoicesAPI] Veresiye bakiye geri alınamadı:', e);
+          console.warn('[InvoicesAPI] delete ledger revert:', e);
+        }
+      } else {
+        const cashOptsFallback = buildCashLinePgOpts(saleFirmNr, salePeriodNr);
+        if (ficheNo) {
+          await removeCashRegisterLinesForSaleFiche(ficheNo, cashOptsFallback);
+        }
+        if (paymentMethodImpliesCustomerDebt(paymentMethod) && customerId && totalAmt !== 0 && !Number.isNaN(totalAmt)) {
+          try {
+            await customerAPI.addBalance(customerId, -totalAmt);
+          } catch (e) {
+            console.warn('[InvoicesAPI] Veresiye bakiye geri alınamadı:', e);
+          }
         }
       }
 
