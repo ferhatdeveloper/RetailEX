@@ -104,8 +104,18 @@ export type LedgerSaleRow = {
   fiche_type?: string | null;
 };
 
-function normalizeAccountName(name: string | null | undefined): string {
+export function normalizeAccountName(name: string | null | undefined): string {
   return String(name || '').trim().toLocaleLowerCase('tr-TR');
+}
+
+/** Ekstre / bakiye: ünvan eşleşmesi (Türkçe locale) */
+export function accountLedgerNameMatch(
+  stored: string | null | undefined,
+  expected: string | null | undefined,
+): boolean {
+  const a = normalizeAccountName(stored);
+  const b = normalizeAccountName(expected);
+  return a.length > 0 && b.length > 0 && a === b;
 }
 
 /** PostgREST: sales satırlarından müşteri bakiyesi (id + ünvan) */

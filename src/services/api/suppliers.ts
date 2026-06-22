@@ -15,14 +15,9 @@ import {
   computeCustomerBalanceFromSales,
   computeSupplierBalanceFromSales,
   normalizeFirmTableNr,
+  accountLedgerNameMatch,
 } from './accountBalance';
 export type { Supplier };
-
-function accountNamesMatch(stored: string | null | undefined, expected: string): boolean {
-  const a = String(stored || '').trim().toLocaleUpperCase('tr-TR');
-  const b = String(expected || '').trim().toLocaleUpperCase('tr-TR');
-  return a.length > 0 && b.length > 0 && a === b;
-}
 
 function dedupeEkstreRows(rows: any[]): any[] {
   const seen = new Set<string>();
@@ -35,6 +30,7 @@ function dedupeEkstreRows(rows: any[]): any[] {
 }
 
 function mapSalesRowToEkstre(r: any) {
+  const cancelled = r.is_cancelled === true || String(r.fiche_type || '').toLowerCase() === 'cancelled';
   return {
     fiche_no: r.fiche_no,
     date: r.date,
@@ -43,6 +39,7 @@ function mapSalesRowToEkstre(r: any) {
     total_amount: r.net_amount,
     currency: r.currency,
     notes: r.notes,
+    is_cancelled: cancelled,
   };
 }
 
@@ -425,9 +422,8 @@ export const supplierAPI = {
         const cashPath = `/rex_${fn}_${pn}_cash_lines`;
 
         const salesByIdQuery: Record<string, string> = {
-          select: 'fiche_no,date,trcode,fiche_type,net_amount,currency,notes,is_cancelled',
+          select: 'fiche_no,date,trcode,fiche_type,net_amount,currency,notes,is_cancelled,customer_id,customer_name',
           customer_id: `eq.${accountId}`,
-          is_cancelled: 'eq.false',
           order: 'date.asc',
         };
         if (startDate && endDate) {
@@ -456,9 +452,9 @@ export const supplierAPI = {
         const nameSalesQuery: Record<string, string> | null = nameTrim
           ? {
               select: 'fiche_no,date,trcode,fiche_type,net_amount,currency,notes,customer_id,customer_name,is_cancelled',
-              customer_name: `ilike.${nameTrim}`,
-              is_cancelled: 'eq.false',
+              customer_name: `not.is.null`,
               order: 'date.asc',
+              limit: '5000',
             }
           : null;
         if (nameSalesQuery) {
@@ -471,14 +467,22 @@ export const supplierAPI = {
           }
         }
 
+        const safeFetch = async (path: string, q: Record<string, string>, label: string) => {
+          try {
+            const rows = await postgrest.get<any[]>(path, q, { schema: 'public' });
+            return Array.isArray(rows) ? rows : [];
+          } catch (err) {
+            console.warn(`[SupplierAPI] getAccountStatement ${label}:`, err);
+            return [] as any[];
+          }
+        };
+
         const fetches: Promise<any[]>[] = [
-          postgrest.get<any[]>(salesPath, salesByIdQuery, { schema: 'public' }).catch(() => [] as any[]),
-          postgrest.get<any[]>(cashPath, cashByIdQuery, { schema: 'public' }).catch(() => [] as any[]),
+          safeFetch(salesPath, salesByIdQuery, 'salesById'),
+          safeFetch(cashPath, cashByIdQuery, 'cashById'),
         ];
         if (nameSalesQuery) {
-          fetches.push(
-            postgrest.get<any[]>(salesPath, nameSalesQuery, { schema: 'public' }).catch(() => [] as any[])
-          );
+          fetches.push(safeFetch(salesPath, nameSalesQuery, 'salesByName'));
         }
         const [saleRows, cashRows, nameSaleRows = []] = await Promise.all(fetches);
 
@@ -486,7 +490,7 @@ export const supplierAPI = {
         const byIdSales = (Array.isArray(saleRows) ? saleRows : []).map(mapSalesRowToEkstre);
         const byNameSales = (Array.isArray(nameSaleRows) ? nameSaleRows : [])
           .filter((r) => {
-            if (!accountNamesMatch(r.customer_name, nameTrim)) return false;
+            if (!accountLedgerNameMatch(r.customer_name, nameTrim)) return false;
             const cid = r.customer_id ? String(r.customer_id) : '';
             return !cid || cid !== accountIdStr;
           })
@@ -510,19 +514,20 @@ export const supplierAPI = {
         t.customer_id::text = $1::text
         OR (
           $2::text IS NOT NULL AND TRIM($2::text) <> ''
-          AND TRIM(t.customer_name) ILIKE TRIM($2::text)
+          AND TRIM(LOWER(COALESCE(t.customer_name, ''))) = TRIM(LOWER($2::text))
           AND (t.customer_id IS NULL OR t.customer_id::text <> $1::text)
         )
       )`;
-      const activeOnly = `COALESCE(t.is_cancelled, false) = false`;
 
       const sql = `
-        SELECT fiche_no, date, trcode, fiche_type, net_amount AS total_amount, currency, notes
+        SELECT fiche_no, date, trcode, fiche_type, net_amount AS total_amount, currency, notes,
+               COALESCE(is_cancelled, false) AS is_cancelled
         FROM sales t
-        WHERE ${activeOnly} AND ${accountMatch}${dateFilter}
+        WHERE ${accountMatch}${dateFilter}
         UNION ALL
         SELECT fiche_no, date, 0 AS trcode, transaction_type AS fiche_type,
-               amount AS total_amount, currency_code AS currency, definition AS notes
+               amount AS total_amount, currency_code AS currency, definition AS notes,
+               false AS is_cancelled
         FROM cash_lines t
         WHERE ${accountMatch}${dateFilter}
           AND t.transaction_type IN ('CH_ODEME', 'CH_TAHSILAT')

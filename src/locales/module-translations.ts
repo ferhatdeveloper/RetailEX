@@ -4646,10 +4646,10 @@ export const supplierTranslations = {
   deleteAction: { tr: 'Sil', en: 'Delete', ar: 'حذف', ku: 'سڕینەوە' },
   accountStatement: { tr: 'Ekstre', en: 'Account Statement', ar: 'كشف حساب', ku: 'کەشف حساب' },
   accountStatementEmptyHint: {
-    tr: 'Seçili tarih aralığında fatura veya kasa hareketi yok. Tarihleri genişletip «Getir»e basın. Silinen faturalar ekstrede görünmez.',
-    en: 'No invoice or cash movement in this date range. Widen dates and click Fetch. Deleted invoices are excluded.',
-    ar: 'لا حركات في هذا النطاق. وسّع التاريخ واضغط جلب.',
-    ku: 'لەم ماوەیەدا حەرەکەت نییە. بەروار فراوان بکە و «Getir» بگرە.',
+    tr: 'Seçili tarih aralığında fatura veya kasa hareketi yok. Bitiş tarihini ileri alın (ör. yıl sonu) ve «Getir»e basın. Varsayılan aralık yıl başı–yıl sonudur.',
+    en: 'No invoice or cash movement in this date range. Move the end date forward (e.g. end of year) and click Fetch. Default range is Jan 1 – Dec 31.',
+    ar: 'لا حركات في هذا النطاق. قدّم تاريخ النهاية (مثلاً نهاية السنة) واضغط جلب.',
+    ku: 'لەم ماوەیەدا حەرەکەت نییە. بەرواری کۆتایی بەرز بکەرەوە (وەک کۆتایی ساڵ) و «Getir» بگرە.',
   },
   accountStatementClickHint: {
     tr: 'Ekstre için satıra tıklayın veya dosya ikonuna basın',

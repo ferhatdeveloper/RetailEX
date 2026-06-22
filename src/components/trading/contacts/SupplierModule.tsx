@@ -28,6 +28,12 @@ function preferIntegerAmountDisplay(code: string): boolean {
   return c === 'IQD' || c === 'JPY' || c === 'VND' || c === 'KHR' || c === 'UZS';
 }
 
+/** Ekstre varsayılan tarih aralığı: yıl başı — yıl sonu (gelecekteki fişler de görünsün) */
+function defaultEkstreDateRange(): { start: string; end: string } {
+  const year = new Date().getFullYear();
+  return { start: `${year}-01-01`, end: `${year}-12-31` };
+}
+
 export function SupplierModule() {
   const { t, tm } = useLanguage();
   const { selectedFirm } = useFirmaDonem();
@@ -70,8 +76,9 @@ export function SupplierModule() {
   const [selectedAccount, setSelectedAccount] = useState<Supplier | null>(null);
   const [ekstresiData, setEkstresiData] = useState<any[]>([]);
   const [ekstresiLoading, setEkstresiLoading] = useState(false);
-  const [ekstresiStart, setEkstresiStart] = useState(new Date().getFullYear() + '-01-01');
-  const [ekstresiEnd, setEkstresiEnd] = useState(new Date().toISOString().split('T')[0]);
+  const defaultEkstre = useMemo(() => defaultEkstreDateRange(), []);
+  const [ekstresiStart, setEkstresiStart] = useState(defaultEkstre.start);
+  const [ekstresiEnd, setEkstresiEnd] = useState(defaultEkstre.end);
 
   // Form state
   const [formData, setFormData] = useState({
@@ -440,7 +447,8 @@ export function SupplierModule() {
   // Ekstresi computed values
   let runningBalance = 0;
   // fiche_type → category eşleştirmesi (invoice_category DB'de saklanmaz)
-  const ficheTypeToInfo = (ficheType: string, trcode: number) => {
+  const ficheTypeToInfo = (ficheType: string, trcode: number, cancelled?: boolean) => {
+    if (cancelled) return { label: 'Silindi', color: 'bg-gray-200 text-gray-600 line-through', isReturn: false };
     if (ficheType === 'purchase_invoice') return { label: 'Alış', color: 'bg-orange-100 text-orange-700', isReturn: false };
     if (ficheType === 'return_invoice') return { label: 'İade', color: 'bg-red-100 text-red-700', isReturn: true };
     if (ficheType === 'waybill') return { label: 'İrsaliye', color: 'bg-purple-100 text-purple-700', isReturn: false };
@@ -456,16 +464,16 @@ export function SupplierModule() {
   const isSupplierAccount = selectedAccount?.cardType === 'supplier';
   const ekstresiRows = ekstresiData.map(row => {
     const amount = parseFloat(row.total_amount || 0);
-    const { isReturn } = ficheTypeToInfo(row.fiche_type || '', Number(row.trcode));
-    // Müşteri: satış → BORÇ (onlar bize borçlu), iade → ALACAK
-    // Tedarikçi: alış → ALACAK (biz onlara borçluyuz), iade → BORÇ
-    const isBorcEntry = isSupplierAccount ? isReturn : !isReturn;
-    const delta = isBorcEntry ? +amount : -amount;
+    const cancelled = row.is_cancelled === true;
+    const { isReturn } = ficheTypeToInfo(row.fiche_type || '', Number(row.trcode), cancelled);
+    // İptal/silinen fiş bakiyeye dahil edilmez; yine de listede görünür
+    const delta = cancelled ? 0 : (isSupplierAccount ? (isReturn ? +amount : -amount) : (isReturn ? -amount : +amount));
     runningBalance += delta;
+    const isBorcEntry = isSupplierAccount ? isReturn : !isReturn;
     return {
       ...row,
-      borcAmount: isBorcEntry ? amount : 0,
-      alacakAmount: isBorcEntry ? 0 : amount,
+      borcAmount: cancelled ? 0 : (isBorcEntry ? amount : 0),
+      alacakAmount: cancelled ? 0 : (isBorcEntry ? 0 : amount),
       balance: runningBalance
     };
   });
@@ -503,7 +511,7 @@ export function SupplierModule() {
     };
   };
 
-  const typeInfo = (row: any) => ficheTypeToInfo(row.fiche_type || '', Number(row.trcode));
+  const typeInfo = (row: any) => ficheTypeToInfo(row.fiche_type || '', Number(row.trcode), row.is_cancelled === true);
 
   const borcHdr = fmtEkstreAmount(totalBorc);
   const alacHdr = fmtEkstreAmount(totalAlacak);
@@ -722,7 +730,7 @@ export function SupplierModule() {
                 <p className="text-sm font-medium">{tm('noRecordFound')}</p>
                 <p className="text-xs text-gray-400 max-w-md">
                   {tm('accountStatementEmptyHint') ||
-                    'Seçili tarih aralığında fatura veya kasa hareketi yok. Üstteki tarihleri genişletip «Getir»e basın. Silinen faturalar ekstrede görünmez.'}
+                    'Seçili tarih aralığında hareket yok. Bitiş tarihini ileri alıp «Getir»e basın (varsayılan: yıl başı–yıl sonu).'}
                 </p>
                 <button
                   type="button"
