@@ -27,7 +27,7 @@ import { localCalendarDateKey, localTodayDateKey, formatIsoDateTr, toSqlDateInpu
 import { BeautyServiceReportCrmModal } from './BeautyServiceReportCrmModal';
 import { useBeautyStore } from '../beauty/store/useBeautyStore';
 import { CommissionReport } from '../beauty/components/CommissionReport';
-import { Layout, Menu, ConfigProvider, theme, Input, Button, Dropdown, Modal, Table, Spin, Select, Tabs, Steps } from 'antd';
+import { Layout, Menu, ConfigProvider, theme, Input, Button, Dropdown, Modal, Table, Spin, Select } from 'antd';
 import { toast } from 'sonner';
 import { usePermission } from '../../shared/hooks/usePermission';
 import { useResponsive } from '../../hooks/useResponsive';
@@ -576,9 +576,6 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
     (selectedFirm?.ana_para_birimi && String(selectedFirm.ana_para_birimi).trim()) ||
     getReportingCurrency();
   const [selectedTab, setSelectedTab] = useState<ReportTab>('daily');
-  const [reportGroupKey, setReportGroupKey] = useState('grp-general');
-  const [sidebarNav, setSidebarNav] = useState(false);
-  const [dailyViewTab, setDailyViewTab] = useState<'summary' | 'list'>('summary');
   const [selectedDateFrom, setSelectedDateFrom] = useState(localTodayDateKey);
   const [selectedDateTo, setSelectedDateTo] = useState(localTodayDateKey);
   const reportDateInputMin = '1990-01-01';
@@ -611,7 +608,7 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
   const [expiringProducts, setExpiringProducts] = useState<any[]>([]);
   const [expiringDays, setExpiringDays] = useState<number>(30);
   const [loadingExpiring, setLoadingExpiring] = useState(false);
-  const [collapsed, setCollapsed] = useState(true);
+  const [collapsed, setCollapsed] = useState(false);
   const prevIsMobileRef = useRef(false);
   useEffect(() => {
     if (isMobile && !prevIsMobileRef.current) {
@@ -3741,24 +3738,6 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
   };
 
   const menuItems = getMenuItems();
-  const visibleReportGroups = useMemo(
-    () => menuItems.filter((g) => Array.isArray(g.children) && g.children.length > 0),
-    [menuItems],
-  );
-  const activeReportGroupChildren = useMemo(() => {
-    const g = visibleReportGroups.find((x) => x.key === reportGroupKey);
-    return (g?.children ?? []) as { key: string; label: React.ReactNode; icon?: React.ReactNode }[];
-  }, [visibleReportGroups, reportGroupKey]);
-
-  useEffect(() => {
-    const grp = visibleReportGroups.find((g) =>
-      g.children?.some((c: { key?: string }) => c?.key === selectedTab),
-    );
-    if (grp?.key && String(grp.key) !== reportGroupKey) {
-      setReportGroupKey(String(grp.key));
-    }
-  }, [selectedTab, visibleReportGroups, reportGroupKey]);
-
   const isBeautyServiceReportTab = selectedTab === 'beauty-service-report';
   const isBeautyCancelledReportTab = selectedTab === 'beauty-cancelled-report';
   const isBeautyAppointmentProductReportTab = selectedTab === 'beauty-appointment-product-report';
@@ -3770,8 +3749,7 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
   return (
     <ConfigProvider theme={retailexAntdThemeWithPrimary(bizConfig.color)}>
       <Layout className="h-full min-w-0 bg-slate-50 overflow-hidden">
-        {/* Sol Sidebar — isteğe bağlı (varsayılan: üst sekme sihirbazı) */}
-        {sidebarNav && (
+        {/* Sol Sidebar */}
         <Sider
           collapsible
           collapsed={collapsed}
@@ -3805,7 +3783,6 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
             className="border-none py-2"
           />
         </Sider>
-        )}
 
         <Layout className="h-full min-w-0 flex flex-col overflow-hidden bg-slate-50">
           {/* Header */}
@@ -3816,22 +3793,10 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
                   type="text"
                   className="shrink-0 !px-2"
                   icon={<MenuOutlined className="text-lg" />}
-                  onClick={() => setSidebarNav((v) => !v)}
+                  onClick={() => setCollapsed((c) => !c)}
                   aria-label={tm('mainMenu')}
                   title={tm('mainMenu')}
                 />
-              )}
-              {!isMobile && (
-                <Button
-                  type={sidebarNav ? 'primary' : 'default'}
-                  size="small"
-                  className="shrink-0"
-                  icon={<MenuOutlined />}
-                  onClick={() => setSidebarNav((v) => !v)}
-                  title={sidebarNav ? 'Klasik menüyü kapat' : 'Klasik yan menü'}
-                >
-                  {sidebarNav ? 'Sekmeler' : 'Menü'}
-                </Button>
               )}
               <div className="min-w-0 flex-1">
                 <h1 className="text-lg sm:text-xl font-black text-slate-800 flex items-center gap-2 leading-tight">
@@ -3860,60 +3825,6 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
           </div>
 
           <Content className="flex-1 overflow-y-auto p-3 sm:p-6 min-w-0" style={{ scrollbarWidth: 'thin' }}>
-
-            {/* Wizard tarzı: kategori → rapor sekmeleri */}
-            {!sidebarNav && (
-              <div className="bg-white rounded-xl border border-slate-200 shadow-sm mb-4 overflow-hidden">
-                <div className="px-3 pt-3 pb-1 border-b border-slate-100">
-                  <Steps
-                    size="small"
-                    current={Math.max(
-                      0,
-                      visibleReportGroups.findIndex((g) => g.key === reportGroupKey),
-                    )}
-                    onChange={(idx) => {
-                      const grp = visibleReportGroups[idx];
-                      if (!grp?.key) return;
-                      setReportGroupKey(String(grp.key));
-                      const first = grp.children?.[0] as { key?: string } | undefined;
-                      if (first?.key) setSelectedTab(first.key as ReportTab);
-                    }}
-                    items={visibleReportGroups.map((g) => ({
-                      title: (
-                        <span className="text-[11px] font-bold uppercase tracking-wide hidden sm:inline">
-                          {g.label}
-                        </span>
-                      ),
-                      description: (
-                        <span className="text-[10px] font-semibold text-slate-500 sm:hidden">
-                          {String(g.label).slice(0, 12)}
-                        </span>
-                      ),
-                    }))}
-                    className="reports-wizard-steps"
-                  />
-                </div>
-                <div className="px-2 pb-1">
-                  <Tabs
-                    activeKey={selectedTab}
-                    onChange={(key) => setSelectedTab(key as ReportTab)}
-                    size="small"
-                    tabBarGutter={8}
-                    items={activeReportGroupChildren.map((c) => ({
-                      key: c.key,
-                      label: (
-                        <span className="inline-flex items-center gap-1.5 text-xs font-semibold max-w-[140px] truncate">
-                          {c.icon}
-                          <span className="truncate">{c.label}</span>
-                        </span>
-                      ),
-                    }))}
-                    className="reports-sub-tabs"
-                    style={{ marginBottom: 0 }}
-                  />
-                </div>
-              </div>
-            )}
 
             {selectedTab === 'daily' && (
               <div className="space-y-4">
@@ -3963,17 +3874,7 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
                   </div>
                 </div>
 
-                <Tabs
-                  activeKey={dailyViewTab}
-                  onChange={(k) => setDailyViewTab(k as 'summary' | 'list')}
-                  className="reports-daily-inner-tabs"
-                  items={[
-                    { key: 'summary', label: 'Özet' },
-                    { key: 'list', label: tm('salesDetails') },
-                  ]}
-                />
-
-                {dailyViewTab === 'summary' && (
+                {/* Stats */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
                   <div className="bg-white rounded-lg p-4 border-2" style={{ borderColor: `${bizConfig.color}44` }}>
                     <div className="flex items-center justify-between">
@@ -4028,9 +3929,8 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
                     </div>
                   </div>
                 </div>
-                )}
 
-                {dailyViewTab === 'list' && (
+                {/* Sales List */}
                 <div className="bg-white rounded-lg border">
                   <div className="p-4 border-b flex flex-wrap items-center justify-between gap-2">
                     <div>
@@ -4152,7 +4052,6 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
                     </table>
                   </div>
                 </div>
-                )}
               </div>
             )}
 

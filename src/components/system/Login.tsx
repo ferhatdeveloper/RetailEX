@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
-import { Lock, User, CheckCircle, Store, MoreHorizontal, Grid3x3, Languages, AlertCircle, Building2, Settings as Gear, Loader2, ArrowRight, Maximize2, ShieldCheck, Shield, X as CloseIcon, Activity, ChevronRight, Terminal, Trash2, Download, Search, RotateCcw, Database, Save, RefreshCw } from 'lucide-react';
+import { Lock, User, CheckCircle, Store, MoreHorizontal, Grid3x3, Languages, AlertCircle, Building2, Settings as Gear, Loader2, ArrowRight, ArrowLeft, Maximize2, ShieldCheck, Shield, X as CloseIcon, Activity, ChevronRight, Terminal, Trash2, Download, Search, RotateCcw, Database, Save, RefreshCw } from 'lucide-react';
 import { HybridSyncPanel } from './HybridSyncPanel';
 import { logger, LogEntry } from '../../services/loggingService';
 import type { User as UserType } from '../../core/types';
@@ -105,6 +105,29 @@ export function Login({ onLogin }: LoginProps) {
         target: string;
       }
   >(null);
+  /** Veritabanı modalı: adım adım sihirbaz (uzun scroll yerine) */
+  const [dbSettingsStep, setDbSettingsStep] = useState(0);
+  type DbSettingsWizardStepId = 'mode' | 'local_pg' | 'remote_pg' | 'postgrest' | 'sync' | 'single_pg';
+  const dbSettingsWizardSteps = useMemo((): { id: DbSettingsWizardStepId; label: string }[] => {
+    const steps: { id: DbSettingsWizardStepId; label: string }[] = [
+      { id: 'mode', label: 'Mod' },
+    ];
+    if (dbConnectionMode === 'hybrid') {
+      steps.push({ id: 'local_pg', label: 'Yerel' });
+      if (connectionProvider === 'db') {
+        steps.push({ id: 'remote_pg', label: 'Uzak' });
+      }
+      steps.push({ id: 'postgrest', label: 'REST' });
+      steps.push({ id: 'sync', label: 'Senkron' });
+    } else if (connectionProvider === 'rest_api') {
+      steps.push({ id: 'postgrest', label: 'PostgREST' });
+    } else {
+      steps.push({ id: 'single_pg', label: 'PostgreSQL' });
+    }
+    return steps;
+  }, [dbConnectionMode, connectionProvider]);
+  const currentDbSettingsStepId =
+    dbSettingsWizardSteps[Math.min(dbSettingsStep, dbSettingsWizardSteps.length - 1)]?.id ?? 'mode';
 
   const { login: authLogin } = useAuth();
   const navigate = useNavigate();
@@ -268,8 +291,13 @@ export function Login({ onLogin }: LoginProps) {
         password: REMOTE_CONFIG.password,
       });
       setDbTestFeedback(null);
+      setDbSettingsStep(0);
     });
   }, [showDbSettings]);
+
+  useEffect(() => {
+    setDbSettingsStep((prev) => Math.min(prev, Math.max(0, dbSettingsWizardSteps.length - 1)));
+  }, [dbSettingsWizardSteps.length]);
 
   useEffect(() => {
     if (selectedFirmNr) {
@@ -2171,8 +2199,52 @@ export function Login({ onLogin }: LoginProps) {
                 </div>
               </div>
 
-              <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain px-6 pb-4 pt-6">
+              <div
+                className={`shrink-0 border-b px-4 py-3 sm:px-5 ${darkMode ? 'border-gray-700 bg-gray-900/80' : 'border-slate-200 bg-slate-50'}`}
+              >
+                <div className="flex gap-1 overflow-x-auto pb-0.5" role="tablist" aria-label="Bağlantı ayarı adımları">
+                  {dbSettingsWizardSteps.map((step, idx) => {
+                    const active = idx === dbSettingsStep;
+                    return (
+                      <button
+                        key={step.id}
+                        type="button"
+                        role="tab"
+                        aria-selected={active}
+                        onClick={() => setDbSettingsStep(idx)}
+                        className={`flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-2 text-[9px] font-black uppercase tracking-wide transition-colors ${
+                          active
+                            ? darkMode
+                              ? 'bg-blue-600 text-white shadow'
+                              : 'bg-blue-600 text-white shadow'
+                            : darkMode
+                              ? 'bg-gray-800 text-slate-400 hover:text-white'
+                              : 'bg-white text-slate-500 hover:bg-slate-100'
+                        }`}
+                      >
+                        <span
+                          className={`flex h-5 w-5 items-center justify-center rounded-full text-[8px] ${
+                            active ? 'bg-white/25' : darkMode ? 'bg-gray-700' : 'bg-slate-200'
+                          }`}
+                        >
+                          {idx + 1}
+                        </span>
+                        <span className="whitespace-nowrap">{step.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className={`mt-2 text-[9px] font-bold ${darkMode ? 'text-slate-500' : 'text-slate-500'}`}>
+                  Adım {dbSettingsStep + 1} / {dbSettingsWizardSteps.length}
+                  {' — '}
+                  {dbSettingsWizardSteps[dbSettingsStep]?.label}
+                </p>
+              </div>
+
+              <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain px-6 pb-4 pt-4">
                 <div className="space-y-4">
+                  {currentDbSettingsStepId === 'mode' && (
+                    <>
                   {isTauri && (
                     <div className="space-y-1">
                       <label className="px-1 text-[9px] font-black uppercase tracking-widest text-gray-500">
@@ -2213,162 +2285,166 @@ export function Login({ onLogin }: LoginProps) {
                       <option value="rest_api">Rest API (PostgREST)</option>
                     </select>
                   </div>
+                    </>
+                  )}
 
-                  {dbConnectionMode === 'hybrid' ? (
-                    <div className="space-y-5">
-                      <div
-                        className={`space-y-3 rounded-xl border-2 p-4 ${darkMode ? 'border-emerald-800/70 bg-emerald-950/25' : 'border-emerald-300 bg-emerald-50/60'}`}
-                      >
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                          <h3 className={`text-[10px] font-black uppercase tracking-wider ${darkMode ? 'text-emerald-200' : 'text-emerald-900'}`}>
-                            1. Yerel PostgreSQL
-                          </h3>
-                          <button
-                            type="button"
-                            disabled={isDbTestLoading || isHybridSyncLoading}
-                            onClick={() => void handleTestHybridLocalPg()}
-                            className={`rounded-lg px-3 py-1.5 text-[9px] font-black uppercase tracking-wide ${darkMode ? 'bg-emerald-900 text-emerald-100 hover:bg-emerald-800' : 'bg-emerald-600 text-white hover:bg-emerald-700'}`}
-                          >
-                            Yerel PG test
-                          </button>
-                        </div>
-                        <p className={`text-[9px] font-bold leading-relaxed ${darkMode ? 'text-slate-400' : 'text-slate-600'}`}>
-                          Şube / bu makine: genelde <strong>127.0.0.1</strong> veya yerel PG sunucusu.
-                        </p>
-                        <div className="grid grid-cols-3 gap-2">
-                          <div className="col-span-2 space-y-1">
-                            <label className="px-1 text-[9px] font-black uppercase tracking-widest text-gray-500">HOST</label>
-                            <input
-                              type="text"
-                              value={dbConfig.host}
-                              onChange={(e) => setDbConfig({ ...dbConfig, host: e.target.value })}
-                              placeholder="127.0.0.1"
-                              className={`w-full rounded-sm border-2 px-4 py-3 text-xs font-bold transition-all focus:border-blue-600 focus:outline-none ${darkMode ? 'border-gray-800 bg-black text-blue-400' : 'border-gray-200 bg-gray-50'}`}
-                            />
-                          </div>
-                          <div className="space-y-1">
-                            <label className="px-1 text-[9px] font-black uppercase tracking-widest text-gray-500">PORT</label>
-                            <input
-                              type="number"
-                              value={dbConfig.port}
-                              onChange={(e) => setDbConfig({ ...dbConfig, port: parseInt(e.target.value, 10) || 5432 })}
-                              className={`w-full rounded-sm border-2 px-4 py-3 text-xs font-bold transition-all focus:border-blue-600 focus:outline-none ${darkMode ? 'border-gray-800 bg-black text-blue-400' : 'border-gray-200 bg-gray-50'}`}
-                            />
-                          </div>
-                        </div>
-                        <div className="space-y-1">
-                          <label className="px-1 text-[10px] font-black uppercase tracking-widest text-gray-500">VERİTABANI</label>
+                  {currentDbSettingsStepId === 'local_pg' && (
+                    <div
+                      className={`space-y-3 rounded-xl border-2 p-4 ${darkMode ? 'border-emerald-800/70 bg-emerald-950/25' : 'border-emerald-300 bg-emerald-50/60'}`}
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <h3 className={`text-[10px] font-black uppercase tracking-wider ${darkMode ? 'text-emerald-200' : 'text-emerald-900'}`}>
+                          Yerel PostgreSQL
+                        </h3>
+                        <button
+                          type="button"
+                          disabled={isDbTestLoading || isHybridSyncLoading}
+                          onClick={() => void handleTestHybridLocalPg()}
+                          className={`rounded-lg px-3 py-1.5 text-[9px] font-black uppercase tracking-wide ${darkMode ? 'bg-emerald-900 text-emerald-100 hover:bg-emerald-800' : 'bg-emerald-600 text-white hover:bg-emerald-700'}`}
+                        >
+                          Yerel PG test
+                        </button>
+                      </div>
+                      <p className={`text-[9px] font-bold leading-relaxed ${darkMode ? 'text-slate-400' : 'text-slate-600'}`}>
+                        Şube / bu makine: genelde <strong>127.0.0.1</strong> veya yerel PG sunucusu.
+                      </p>
+                      <div className="grid grid-cols-3 gap-2">
+                        <div className="col-span-2 space-y-1">
+                          <label className="px-1 text-[9px] font-black uppercase tracking-widest text-gray-500">HOST</label>
                           <input
                             type="text"
-                            value={dbConfig.database}
-                            onChange={(e) => setDbConfig({ ...dbConfig, database: e.target.value })}
+                            value={dbConfig.host}
+                            onChange={(e) => setDbConfig({ ...dbConfig, host: e.target.value })}
+                            placeholder="127.0.0.1"
                             className={`w-full rounded-sm border-2 px-4 py-3 text-xs font-bold transition-all focus:border-blue-600 focus:outline-none ${darkMode ? 'border-gray-800 bg-black text-blue-400' : 'border-gray-200 bg-gray-50'}`}
                           />
                         </div>
-                        <div className="grid grid-cols-2 gap-2">
-                          <div className="space-y-1">
-                            <label className="px-1 text-[9px] font-black uppercase tracking-widest text-gray-500">KULLANICI</label>
-                            <input
-                              type="text"
-                              value={dbConfig.user}
-                              onChange={(e) => setDbConfig({ ...dbConfig, user: e.target.value })}
-                              className={`w-full rounded-sm border-2 px-4 py-3 text-xs font-bold transition-all focus:border-blue-600 focus:outline-none ${darkMode ? 'border-gray-800 bg-black text-blue-400' : 'border-gray-200 bg-gray-50'}`}
-                            />
-                          </div>
-                          <div className="space-y-1">
-                            <label className="px-1 text-[10px] font-black uppercase tracking-widest text-gray-500">ŞİFRE</label>
-                            <input
-                              type="password"
-                              value={dbConfig.password}
-                              onChange={(e) => setDbConfig({ ...dbConfig, password: e.target.value })}
-                              placeholder="••••••••"
-                              className={`w-full rounded-sm border-2 px-4 py-3 text-xs font-bold transition-all focus:border-blue-600 focus:outline-none ${darkMode ? 'border-gray-800 bg-black text-blue-400' : 'border-gray-200 bg-gray-50'}`}
-                            />
-                          </div>
+                        <div className="space-y-1">
+                          <label className="px-1 text-[9px] font-black uppercase tracking-widest text-gray-500">PORT</label>
+                          <input
+                            type="number"
+                            value={dbConfig.port}
+                            onChange={(e) => setDbConfig({ ...dbConfig, port: parseInt(e.target.value, 10) || 5432 })}
+                            className={`w-full rounded-sm border-2 px-4 py-3 text-xs font-bold transition-all focus:border-blue-600 focus:outline-none ${darkMode ? 'border-gray-800 bg-black text-blue-400' : 'border-gray-200 bg-gray-50'}`}
+                          />
                         </div>
                       </div>
-
-                      {connectionProvider === 'db' && (
-                        <div
-                          className={`space-y-3 rounded-xl border-2 p-4 ${darkMode ? 'border-sky-800/70 bg-sky-950/25' : 'border-sky-300 bg-sky-50/60'}`}
-                        >
-                          <div className="flex flex-wrap items-center justify-between gap-2">
-                            <h3 className={`text-[10px] font-black uppercase tracking-wider ${darkMode ? 'text-sky-200' : 'text-sky-900'}`}>
-                              2. Uzak PostgreSQL (aynı LAN veya internet üzerinden erişilebilir adres)
-                            </h3>
-                            <button
-                              type="button"
-                              disabled={isDbTestLoading || isHybridSyncLoading}
-                              onClick={() => void handleTestRemotePgConnection()}
-                              className={`rounded-lg px-3 py-1.5 text-[9px] font-black uppercase tracking-wide ${darkMode ? 'bg-sky-900 text-sky-100 hover:bg-sky-800' : 'bg-sky-600 text-white hover:bg-sky-700'}`}
-                            >
-                              Uzak PG test
-                            </button>
-                          </div>
-                          <p className={`text-[9px] font-bold leading-relaxed ${darkMode ? 'text-slate-400' : 'text-slate-600'}`}>
-                            Merkez veya ağdaki PostgreSQL sunucusunun <strong>IP adresi</strong> (örn. <strong>192.168.1.80</strong>) ve port <strong>5432</strong>. Hibrit SQL önceliği bu adresi de kullanır.
-                          </p>
-                          <div className="grid grid-cols-3 gap-2">
-                            <div className="col-span-2 space-y-1">
-                              <label className="px-1 text-[9px] font-black uppercase tracking-widest text-gray-500">HOST (LAN IP)</label>
-                              <input
-                                type="text"
-                                value={remoteDbConfig.host}
-                                onChange={(e) => setRemoteDbConfig({ ...remoteDbConfig, host: e.target.value })}
-                                placeholder="192.168.x.x veya merkez hostname"
-                                className={`w-full rounded-sm border-2 px-4 py-3 text-xs font-bold transition-all focus:border-blue-600 focus:outline-none ${darkMode ? 'border-gray-800 bg-black text-sky-300' : 'border-gray-200 bg-white'}`}
-                              />
-                            </div>
-                            <div className="space-y-1">
-                              <label className="px-1 text-[9px] font-black uppercase tracking-widest text-gray-500">PORT</label>
-                              <input
-                                type="number"
-                                value={remoteDbConfig.port}
-                                onChange={(e) => setRemoteDbConfig({ ...remoteDbConfig, port: parseInt(e.target.value, 10) || 5432 })}
-                                className={`w-full rounded-sm border-2 px-4 py-3 text-xs font-bold transition-all focus:border-blue-600 focus:outline-none ${darkMode ? 'border-gray-800 bg-black text-sky-300' : 'border-gray-200 bg-white'}`}
-                              />
-                            </div>
-                          </div>
-                          <div className="space-y-1">
-                            <label className="px-1 text-[10px] font-black uppercase tracking-widest text-gray-500">VERİTABANI</label>
-                            <input
-                              type="text"
-                              value={remoteDbConfig.database}
-                              onChange={(e) => setRemoteDbConfig({ ...remoteDbConfig, database: e.target.value })}
-                              className={`w-full rounded-sm border-2 px-4 py-3 text-xs font-bold transition-all focus:border-blue-600 focus:outline-none ${darkMode ? 'border-gray-800 bg-black text-sky-300' : 'border-gray-200 bg-white'}`}
-                            />
-                          </div>
-                          <div className="grid grid-cols-2 gap-2">
-                            <div className="space-y-1">
-                              <label className="px-1 text-[9px] font-black uppercase tracking-widest text-gray-500">KULLANICI</label>
-                              <input
-                                type="text"
-                                value={remoteDbConfig.user}
-                                onChange={(e) => setRemoteDbConfig({ ...remoteDbConfig, user: e.target.value })}
-                                className={`w-full rounded-sm border-2 px-4 py-3 text-xs font-bold transition-all focus:border-blue-600 focus:outline-none ${darkMode ? 'border-gray-800 bg-black text-sky-300' : 'border-gray-200 bg-white'}`}
-                              />
-                            </div>
-                            <div className="space-y-1">
-                              <label className="px-1 text-[10px] font-black uppercase tracking-widest text-gray-500">ŞİFRE</label>
-                              <input
-                                type="password"
-                                value={remoteDbConfig.password}
-                                onChange={(e) => setRemoteDbConfig({ ...remoteDbConfig, password: e.target.value })}
-                                placeholder="••••••••"
-                                className={`w-full rounded-sm border-2 px-4 py-3 text-xs font-bold transition-all focus:border-blue-600 focus:outline-none ${darkMode ? 'border-gray-800 bg-black text-sky-300' : 'border-gray-200 bg-white'}`}
-                              />
-                            </div>
-                          </div>
+                      <div className="space-y-1">
+                        <label className="px-1 text-[10px] font-black uppercase tracking-widest text-gray-500">VERİTABANI</label>
+                        <input
+                          type="text"
+                          value={dbConfig.database}
+                          onChange={(e) => setDbConfig({ ...dbConfig, database: e.target.value })}
+                          className={`w-full rounded-sm border-2 px-4 py-3 text-xs font-bold transition-all focus:border-blue-600 focus:outline-none ${darkMode ? 'border-gray-800 bg-black text-blue-400' : 'border-gray-200 bg-gray-50'}`}
+                        />
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="space-y-1">
+                          <label className="px-1 text-[9px] font-black uppercase tracking-widest text-gray-500">KULLANICI</label>
+                          <input
+                            type="text"
+                            value={dbConfig.user}
+                            onChange={(e) => setDbConfig({ ...dbConfig, user: e.target.value })}
+                            className={`w-full rounded-sm border-2 px-4 py-3 text-xs font-bold transition-all focus:border-blue-600 focus:outline-none ${darkMode ? 'border-gray-800 bg-black text-blue-400' : 'border-gray-200 bg-gray-50'}`}
+                          />
                         </div>
-                      )}
+                        <div className="space-y-1">
+                          <label className="px-1 text-[10px] font-black uppercase tracking-widest text-gray-500">ŞİFRE</label>
+                          <input
+                            type="password"
+                            value={dbConfig.password}
+                            onChange={(e) => setDbConfig({ ...dbConfig, password: e.target.value })}
+                            placeholder="••••••••"
+                            className={`w-full rounded-sm border-2 px-4 py-3 text-xs font-bold transition-all focus:border-blue-600 focus:outline-none ${darkMode ? 'border-gray-800 bg-black text-blue-400' : 'border-gray-200 bg-gray-50'}`}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
 
-                      <div
-                        className={`space-y-3 rounded-xl border-2 p-4 ${darkMode ? 'border-violet-800/70 bg-violet-950/25' : 'border-violet-300 bg-violet-50/60'}`}
-                      >
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                          <h3 className={`text-[10px] font-black uppercase tracking-wider ${darkMode ? 'text-violet-200' : 'text-violet-900'}`}>
-                            {connectionProvider === 'db' ? '3.' : '2.'} PostgREST (REST API)
-                          </h3>
+                  {currentDbSettingsStepId === 'remote_pg' && (
+                    <div
+                      className={`space-y-3 rounded-xl border-2 p-4 ${darkMode ? 'border-sky-800/70 bg-sky-950/25' : 'border-sky-300 bg-sky-50/60'}`}
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <h3 className={`text-[10px] font-black uppercase tracking-wider ${darkMode ? 'text-sky-200' : 'text-sky-900'}`}>
+                          Uzak PostgreSQL
+                        </h3>
+                        <button
+                          type="button"
+                          disabled={isDbTestLoading || isHybridSyncLoading}
+                          onClick={() => void handleTestRemotePgConnection()}
+                          className={`rounded-lg px-3 py-1.5 text-[9px] font-black uppercase tracking-wide ${darkMode ? 'bg-sky-900 text-sky-100 hover:bg-sky-800' : 'bg-sky-600 text-white hover:bg-sky-700'}`}
+                        >
+                          Uzak PG test
+                        </button>
+                      </div>
+                      <p className={`text-[9px] font-bold leading-relaxed ${darkMode ? 'text-slate-400' : 'text-slate-600'}`}>
+                        Merkez veya ağdaki PostgreSQL sunucusunun <strong>IP adresi</strong> (örn. <strong>192.168.1.80</strong>) ve port <strong>5432</strong>. Hibrit SQL önceliği bu adresi de kullanır.
+                      </p>
+                      <div className="grid grid-cols-3 gap-2">
+                        <div className="col-span-2 space-y-1">
+                          <label className="px-1 text-[9px] font-black uppercase tracking-widest text-gray-500">HOST (LAN IP)</label>
+                          <input
+                            type="text"
+                            value={remoteDbConfig.host}
+                            onChange={(e) => setRemoteDbConfig({ ...remoteDbConfig, host: e.target.value })}
+                            placeholder="192.168.x.x veya merkez hostname"
+                            className={`w-full rounded-sm border-2 px-4 py-3 text-xs font-bold transition-all focus:border-blue-600 focus:outline-none ${darkMode ? 'border-gray-800 bg-black text-sky-300' : 'border-gray-200 bg-white'}`}
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="px-1 text-[9px] font-black uppercase tracking-widest text-gray-500">PORT</label>
+                          <input
+                            type="number"
+                            value={remoteDbConfig.port}
+                            onChange={(e) => setRemoteDbConfig({ ...remoteDbConfig, port: parseInt(e.target.value, 10) || 5432 })}
+                            className={`w-full rounded-sm border-2 px-4 py-3 text-xs font-bold transition-all focus:border-blue-600 focus:outline-none ${darkMode ? 'border-gray-800 bg-black text-sky-300' : 'border-gray-200 bg-white'}`}
+                          />
+                        </div>
+                      </div>
+                      <div className="space-y-1">
+                        <label className="px-1 text-[10px] font-black uppercase tracking-widest text-gray-500">VERİTABANI</label>
+                        <input
+                          type="text"
+                          value={remoteDbConfig.database}
+                          onChange={(e) => setRemoteDbConfig({ ...remoteDbConfig, database: e.target.value })}
+                          className={`w-full rounded-sm border-2 px-4 py-3 text-xs font-bold transition-all focus:border-blue-600 focus:outline-none ${darkMode ? 'border-gray-800 bg-black text-sky-300' : 'border-gray-200 bg-white'}`}
+                        />
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="space-y-1">
+                          <label className="px-1 text-[9px] font-black uppercase tracking-widest text-gray-500">KULLANICI</label>
+                          <input
+                            type="text"
+                            value={remoteDbConfig.user}
+                            onChange={(e) => setRemoteDbConfig({ ...remoteDbConfig, user: e.target.value })}
+                            className={`w-full rounded-sm border-2 px-4 py-3 text-xs font-bold transition-all focus:border-blue-600 focus:outline-none ${darkMode ? 'border-gray-800 bg-black text-sky-300' : 'border-gray-200 bg-white'}`}
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="px-1 text-[10px] font-black uppercase tracking-widest text-gray-500">ŞİFRE</label>
+                          <input
+                            type="password"
+                            value={remoteDbConfig.password}
+                            onChange={(e) => setRemoteDbConfig({ ...remoteDbConfig, password: e.target.value })}
+                            placeholder="••••••••"
+                            className={`w-full rounded-sm border-2 px-4 py-3 text-xs font-bold transition-all focus:border-blue-600 focus:outline-none ${darkMode ? 'border-gray-800 bg-black text-sky-300' : 'border-gray-200 bg-white'}`}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {currentDbSettingsStepId === 'postgrest' && (
+                    <div
+                      className={`space-y-3 rounded-xl border-2 p-4 ${dbConnectionMode === 'hybrid' ? (darkMode ? 'border-violet-800/70 bg-violet-950/25' : 'border-violet-300 bg-violet-50/60') : ''}`}
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <h3 className={`text-[10px] font-black uppercase tracking-wider ${darkMode ? 'text-violet-200' : 'text-violet-900'}`}>
+                          PostgREST (REST API)
+                        </h3>
+                        {dbConnectionMode === 'hybrid' && (
                           <button
                             type="button"
                             disabled={isDbTestLoading || isHybridSyncLoading}
@@ -2377,65 +2453,62 @@ export function Login({ onLogin }: LoginProps) {
                           >
                             PostgREST test
                           </button>
-                        </div>
-                        <p className={`text-[9px] font-bold leading-relaxed ${darkMode ? 'text-slate-400' : 'text-slate-600'}`}>
-                          Kiracı / merkez REST adresi. Aynı ağda örnek: <strong>http://192.168.1.10:3002</strong> veya RetailEX bulutunda yalnızca kiracı adı. Kaydedilir; <strong>Rest API</strong> modunda sorgular buradan gider.
-                        </p>
-                        {renderTenantPostgrestUrlFields('hybrid')}
+                        )}
                       </div>
-
-                      <div
-                        className={`space-y-3 rounded-xl border-2 p-4 ${darkMode ? 'border-amber-800/70 bg-amber-950/20' : 'border-amber-300 bg-amber-50/50'}`}
-                      >
-                        <h3 className={`text-[10px] font-black uppercase tracking-wider ${darkMode ? 'text-amber-200' : 'text-amber-900'}`}>
-                          3. Hibrit senkron
-                        </h3>
-                        <div className="space-y-1">
-                          <label className={`px-1 text-[9px] font-black uppercase tracking-widest ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>
-                            Hibrit — SQL önceliği
-                          </label>
-                          <select
-                            value={hybridReadPreference}
-                            onChange={(e) => setHybridReadPreference(e.target.value as HybridReadPreference)}
-                            className={`w-full rounded-sm border-2 px-4 py-3 text-xs font-bold transition-all focus:border-blue-600 focus:outline-none ${darkMode ? 'border-gray-700 bg-gray-800 text-blue-200' : 'border-gray-200 bg-white text-gray-900'}`}
-                          >
-                            <option value="local_first">Önce yerel PG, bağlantı hatasında uzak</option>
-                            <option value="remote_first">Önce uzak PG, bağlantı hatasında yerel</option>
-                          </select>
-                          <p className={`px-1 text-[9px] font-bold leading-relaxed ${darkMode ? 'text-slate-500' : 'text-slate-600'}`}>
-                            {connectionProvider === 'rest_api'
-                              ? 'Yerel satışlar PostgreSQL\'de; merkeze PostgREST ile sync_queue üzerinden gider.'
-                              : 'POS yoğun şubede genelde yerel önce; merkez kesintisinde yedek için uzak önce seçilebilir.'}
-                          </p>
-                        </div>
-                        <div className="space-y-1">
-                          <label className={`px-1 text-[9px] font-black uppercase tracking-widest ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>
-                            Hibrit — senkron yönü
-                          </label>
-                          <select
-                            value={hybridSyncDirection}
-                            onChange={(e) => setHybridSyncDirection(e.target.value as HybridSyncDirection)}
-                            className={`w-full rounded-sm border-2 px-4 py-3 text-xs font-bold transition-all focus:border-blue-600 focus:outline-none ${darkMode ? 'border-gray-700 bg-gray-800 text-blue-200' : 'border-gray-200 bg-white text-gray-900'}`}
-                          >
-                            <option value="local_to_remote">Yerel → uzak</option>
-                            <option value="remote_to_local">Uzak → yerel</option>
-                            <option value="bidirectional">Çift yönlü</option>
-                          </select>
-                        </div>
-                        <HybridSyncPanel compact darkMode={darkMode} />
-                      </div>
-                    </div>
-                  ) : connectionProvider === 'rest_api' ? (
-                    <div className="space-y-2">
-                      <label className="px-1 text-[10px] font-black uppercase tracking-widest text-gray-500">
-                        PostgREST API URL
-                      </label>
-                      {renderTenantPostgrestUrlFields('rest_api')}
-                      <p className={`text-[9px] font-bold ${darkMode ? 'text-slate-500' : 'text-slate-600'}`}>
-                        Kiracıyı üstteki bina ikonundan da tek satırda (kod veya aynı tam URL) kaydedebilirsiniz; burada elle düzeltme yapıyorsanız aynı mantığı kullanın.
+                      <p className={`text-[9px] font-bold leading-relaxed ${darkMode ? 'text-slate-400' : 'text-slate-600'}`}>
+                        Kiracı / merkez REST adresi. Aynı ağda örnek: <strong>http://192.168.1.10:3002</strong> veya RetailEX bulutunda yalnızca kiracı adı.
+                        {dbConnectionMode !== 'hybrid' && (
+                          <> Kiracıyı üstteki bina ikonundan da tek satırda kaydedebilirsiniz.</>
+                        )}
                       </p>
+                      {renderTenantPostgrestUrlFields(dbConnectionMode === 'hybrid' ? 'hybrid' : 'rest_api')}
                     </div>
-                  ) : (
+                  )}
+
+                  {currentDbSettingsStepId === 'sync' && (
+                    <div
+                      className={`space-y-3 rounded-xl border-2 p-4 ${darkMode ? 'border-amber-800/70 bg-amber-950/20' : 'border-amber-300 bg-amber-50/50'}`}
+                    >
+                      <h3 className={`text-[10px] font-black uppercase tracking-wider ${darkMode ? 'text-amber-200' : 'text-amber-900'}`}>
+                        Hibrit senkron
+                      </h3>
+                      <div className="space-y-1">
+                        <label className={`px-1 text-[9px] font-black uppercase tracking-widest ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>
+                          Hibrit — SQL önceliği
+                        </label>
+                        <select
+                          value={hybridReadPreference}
+                          onChange={(e) => setHybridReadPreference(e.target.value as HybridReadPreference)}
+                          className={`w-full rounded-sm border-2 px-4 py-3 text-xs font-bold transition-all focus:border-blue-600 focus:outline-none ${darkMode ? 'border-gray-700 bg-gray-800 text-blue-200' : 'border-gray-200 bg-white text-gray-900'}`}
+                        >
+                          <option value="local_first">Önce yerel PG, bağlantı hatasında uzak</option>
+                          <option value="remote_first">Önce uzak PG, bağlantı hatasında yerel</option>
+                        </select>
+                        <p className={`px-1 text-[9px] font-bold leading-relaxed ${darkMode ? 'text-slate-500' : 'text-slate-600'}`}>
+                          {connectionProvider === 'rest_api'
+                            ? 'Yerel satışlar PostgreSQL\'de; merkeze PostgREST ile sync_queue üzerinden gider.'
+                            : 'POS yoğun şubede genelde yerel önce; merkez kesintisinde yedek için uzak önce seçilebilir.'}
+                        </p>
+                      </div>
+                      <div className="space-y-1">
+                        <label className={`px-1 text-[9px] font-black uppercase tracking-widest ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>
+                          Hibrit — senkron yönü
+                        </label>
+                        <select
+                          value={hybridSyncDirection}
+                          onChange={(e) => setHybridSyncDirection(e.target.value as HybridSyncDirection)}
+                          className={`w-full rounded-sm border-2 px-4 py-3 text-xs font-bold transition-all focus:border-blue-600 focus:outline-none ${darkMode ? 'border-gray-700 bg-gray-800 text-blue-200' : 'border-gray-200 bg-white text-gray-900'}`}
+                        >
+                          <option value="local_to_remote">Yerel → uzak</option>
+                          <option value="remote_to_local">Uzak → yerel</option>
+                          <option value="bidirectional">Çift yönlü</option>
+                        </select>
+                      </div>
+                      <HybridSyncPanel compact darkMode={darkMode} />
+                    </div>
+                  )}
+
+                  {currentDbSettingsStepId === 'single_pg' && (
                     <div className="space-y-2">
                       <div className="grid grid-cols-3 gap-2">
                         <div className="col-span-2 space-y-1">
@@ -2526,6 +2599,34 @@ export function Login({ onLogin }: LoginProps) {
                         {dbTestFeedback.detail}
                       </p>
                     )}
+                  </div>
+                )}
+                {dbSettingsWizardSteps.length > 1 && (
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      disabled={dbSettingsStep === 0 || isDbTestLoading || isHybridSyncLoading}
+                      onClick={() => setDbSettingsStep((s) => Math.max(0, s - 1))}
+                      className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg border-2 py-2.5 text-[9px] font-black uppercase tracking-wide transition-all disabled:opacity-40 ${darkMode ? 'border-gray-600 text-slate-300 hover:bg-gray-800' : 'border-slate-300 text-slate-700 hover:bg-slate-50'}`}
+                    >
+                      <ArrowLeft className="h-3.5 w-3.5" />
+                      Geri
+                    </button>
+                    <button
+                      type="button"
+                      disabled={
+                        dbSettingsStep >= dbSettingsWizardSteps.length - 1 ||
+                        isDbTestLoading ||
+                        isHybridSyncLoading
+                      }
+                      onClick={() =>
+                        setDbSettingsStep((s) => Math.min(dbSettingsWizardSteps.length - 1, s + 1))
+                      }
+                      className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg border-2 py-2.5 text-[9px] font-black uppercase tracking-wide transition-all disabled:opacity-40 ${darkMode ? 'border-blue-500/50 text-blue-200 hover:bg-blue-950/40' : 'border-blue-400 text-blue-700 hover:bg-blue-50'}`}
+                    >
+                      İleri
+                      <ArrowRight className="h-3.5 w-3.5" />
+                    </button>
                   </div>
                 )}
                 {/* Her zaman tam genişlik dikey — iki sütun dar ekranda sol düğümü kırpabiliyordu */}
