@@ -5,6 +5,13 @@
 
 import { postgres, ERP_SETTINGS, DB_SETTINGS } from '../postgres';
 import type { Customer } from '../../core/types';
+import {
+  firmCustomersTable,
+  sqlCustomerAccountBalancesCte,
+  sqlResolvedCustomerBalanceExpr,
+  computeCustomerBalanceFromSales,
+  normalizeFirmTableNr,
+} from './accountBalance';
 
 export const customerAPI = {
   /**
@@ -12,43 +19,56 @@ export const customerAPI = {
    */
   async getAll(): Promise<Customer[]> {
     try {
-      const tableName = `rex_${ERP_SETTINGS.firmNr}_customers`;
+      const firmNr = normalizeFirmTableNr(ERP_SETTINGS.firmNr);
+      const tableName = firmCustomersTable(firmNr);
       if (DB_SETTINGS.connectionProvider === 'rest_api') {
         const { postgrest } = await import('./postgrestClient');
-        const rows = await postgrest.get<any[]>(
-          `/${tableName}`,
-          {
-            select: '*',
-            firm_nr: `eq.${ERP_SETTINGS.firmNr}`,
-            is_active: 'eq.true',
-            order: 'name.asc',
-          },
-          { schema: 'public' }
+        const pn = String(ERP_SETTINGS.periodNr ?? '01').padStart(2, '0');
+        const salesPath = `/rex_${firmNr}_${pn}_sales`;
+        const [rows, salesRows] = await Promise.all([
+          postgrest.get<any[]>(
+            `/${tableName}`,
+            {
+              select: '*',
+              firm_nr: `eq.${firmNr}`,
+              is_active: 'eq.true',
+              order: 'name.asc',
+            },
+            { schema: 'public' }
+          ),
+          postgrest
+            .get<any[]>(
+              salesPath,
+              {
+                select: 'customer_id,customer_name,net_amount,fiche_type,is_cancelled',
+                is_cancelled: 'eq.false',
+                limit: '10000',
+              },
+              { schema: 'public' }
+            )
+            .catch(() => [] as any[]),
+        ]);
+        return (Array.isArray(rows) ? rows : []).map((r) =>
+          mapDatabaseCustomerToCustomer({
+            ...r,
+            balance: computeCustomerBalanceFromSales(
+              String(r.id),
+              String(r.name || ''),
+              Array.isArray(salesRows) ? salesRows : [],
+              parseFloat(String(r.balance ?? 0)) || 0,
+            ),
+          }),
         );
-        return (Array.isArray(rows) ? rows : []).map(mapDatabaseCustomerToCustomer);
       }
       const { rows } = await postgres.query(
-        `WITH account_balances AS (
-          SELECT customer_id AS id, SUM(line_contrib) AS calculated_balance
-          FROM (
-            SELECT customer_id,
-              CASE WHEN fiche_type = 'return_invoice' THEN -net_amount ELSE net_amount END AS line_contrib
-            FROM sales
-            WHERE customer_id IS NOT NULL
-              AND COALESCE(is_cancelled, false) = false
-            UNION ALL
-            SELECT customer_id, -amount AS line_contrib
-            FROM cash_lines
-            WHERE transaction_type IN ('CH_ODEME', 'CH_TAHSILAT')
-          ) customer_tx
-          GROUP BY customer_id
-        )
-        SELECT c.*, COALESCE(b.calculated_balance, 0) AS balance
+        `WITH ${sqlCustomerAccountBalancesCte(tableName, '$1::text')}
+        SELECT c.*, ${sqlResolvedCustomerBalanceExpr('c')} AS balance
         FROM ${tableName} c
         LEFT JOIN account_balances b ON c.id = b.id
         WHERE c.firm_nr = $1 AND c.is_active = true
         ORDER BY c.name ASC`,
-        [ERP_SETTINGS.firmNr]
+        [firmNr],
+        { firmNr, periodNr: ERP_SETTINGS.periodNr },
       );
       return rows.map(mapDatabaseCustomerToCustomer);
     } catch (error) {

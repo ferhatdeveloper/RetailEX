@@ -409,6 +409,7 @@ export interface Invoice {
   status?: string;
   notes?: string;
   created_at?: string;
+  is_cancelled?: boolean;
   campaign_id?: string;
   campaign_name?: string;
   campaign_discount?: number;

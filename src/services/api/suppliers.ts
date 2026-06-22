@@ -5,6 +5,17 @@
 
 import { postgres, ERP_SETTINGS, DB_SETTINGS } from '../postgres';
 import type { Supplier } from '../../core/types';
+import {
+  firmCustomersTable,
+  firmSuppliersTable,
+  sqlCustomerAccountBalancesCte,
+  sqlSupplierAccountBalancesCte,
+  sqlResolvedCustomerBalanceExpr,
+  sqlResolvedSupplierBalanceExpr,
+  computeCustomerBalanceFromSales,
+  computeSupplierBalanceFromSales,
+  normalizeFirmTableNr,
+} from './accountBalance';
 export type { Supplier };
 
 function accountNamesMatch(stored: string | null | undefined, expected: string): boolean {
@@ -53,8 +64,9 @@ export const supplierAPI = {
    */
   async getAll(): Promise<Supplier[]> {
     try {
-      const custTable = `rex_${ERP_SETTINGS.firmNr}_customers`;
-      const suppTable = `rex_${ERP_SETTINGS.firmNr}_suppliers`;
+      const firmNr = normalizeFirmTableNr(ERP_SETTINGS.firmNr);
+      const custTable = firmCustomersTable(firmNr);
+      const suppTable = firmSuppliersTable(firmNr);
       if (DB_SETTINGS.connectionProvider === 'rest_api') {
         const { postgrest } = await import('./postgrestClient');
         const safeGet = async (path: string, query: Record<string, string>) => {
@@ -66,12 +78,14 @@ export const supplierAPI = {
             return [] as any[];
           }
         };
-        const [customers, suppliers] = await Promise.all([
+        const pn = String(ERP_SETTINGS.periodNr ?? '01').padStart(2, '0');
+        const salesPath = `/rex_${firmNr}_${pn}_sales`;
+        const [customers, suppliers, salesRows] = await Promise.all([
           safeGet(
             `/${custTable}`,
             {
               select: '*',
-              firm_nr: `eq.${ERP_SETTINGS.firmNr}`,
+              firm_nr: `eq.${firmNr}`,
               is_active: 'eq.true',
               order: 'name.asc',
             }
@@ -84,14 +98,31 @@ export const supplierAPI = {
               order: 'name.asc',
             }
           ),
+          safeGet(salesPath, {
+            select: 'customer_id,customer_name,net_amount,fiche_type,is_cancelled',
+            is_cancelled: 'eq.false',
+            limit: '10000',
+          }),
         ]);
         const customerRows = (Array.isArray(customers) ? customers : []).map((r) => ({
           ...r,
           card_type: 'customer',
+          balance: computeCustomerBalanceFromSales(
+            String(r.id),
+            String(r.name || ''),
+            salesRows,
+            parseFloat(String(r.balance ?? 0)) || 0,
+          ),
         }));
         const supplierRows = (Array.isArray(suppliers) ? suppliers : []).map((r) => ({
           ...r,
           card_type: 'supplier',
+          balance: computeSupplierBalanceFromSales(
+            String(r.id),
+            String(r.name || ''),
+            salesRows,
+            parseFloat(String(r.balance ?? 0)) || 0,
+          ),
         }));
         return [...customerRows, ...supplierRows]
           .map(mapDatabaseSupplierToSupplier)
@@ -99,27 +130,11 @@ export const supplierAPI = {
       }
 
       const sql = `
-        WITH account_balances AS (
-          /* Müşteri bakiyesi = ekstre (getAccountStatement) ile aynı kaynaklar ve SupplierModule işaret kuralları:
-             - sales: iade hariç tüm fiş türleri (alış, satış, irsaliye, sipariş, hizmet…) +net_amount; iade -net_amount
-             - kasa: CH_ODEME ve CH_TAHSILAT her ikisi de cari alacağı artırır → -amount */
-          SELECT customer_id AS id, SUM(line_contrib) AS calculated_balance
-          FROM (
-            SELECT customer_id,
-              CASE WHEN fiche_type = 'return_invoice' THEN -net_amount ELSE net_amount END AS line_contrib
-            FROM sales
-            WHERE customer_id IS NOT NULL
-              AND COALESCE(is_cancelled, false) = false
-            UNION ALL
-            SELECT customer_id, -amount AS line_contrib
-            FROM cash_lines
-            WHERE transaction_type IN ('CH_ODEME', 'CH_TAHSILAT')
-          ) customer_tx
-          GROUP BY customer_id
-        )
+        WITH ${sqlCustomerAccountBalancesCte(custTable, '$1::text')},
+        ${sqlSupplierAccountBalancesCte(suppTable)}
         SELECT 
           c.id, c.code, c.name, c.phone, c.email, c.address, c.city, 
-          COALESCE(b.calculated_balance, 0) as balance, 
+          ${sqlResolvedCustomerBalanceExpr('c')} as balance, 
           c.is_active, c.created_at, 'customer' as card_type 
         FROM ${custTable} c
         LEFT JOIN account_balances b ON c.id = b.id
@@ -129,29 +144,17 @@ export const supplierAPI = {
         
         SELECT 
           s.id, s.code, s.name, s.phone, s.email, s.address, s.city, 
-          COALESCE(b.calculated_balance, 0) as balance, 
+          ${sqlResolvedSupplierBalanceExpr('s')} as balance, 
           s.is_active, s.created_at, 'supplier' as card_type 
         FROM ${suppTable} s
-        LEFT JOIN (
-          /* Tedarikçi: ekstre ile uyum — alış/irsaliye/sipariş vb. -net; iade +net; kasa CH ikisi +amount */
-          SELECT customer_id AS id, SUM(line_contrib) AS calculated_balance
-          FROM (
-            SELECT customer_id,
-              CASE WHEN fiche_type = 'return_invoice' THEN net_amount ELSE -net_amount END AS line_contrib
-            FROM sales
-            WHERE customer_id IS NOT NULL
-              AND COALESCE(is_cancelled, false) = false
-            UNION ALL
-            SELECT customer_id, amount AS line_contrib
-            FROM cash_lines
-            WHERE transaction_type IN ('CH_ODEME', 'CH_TAHSILAT')
-          ) supplier_tx
-          GROUP BY customer_id
-        ) b ON s.id = b.id
+        LEFT JOIN supplier_balances b ON s.id = b.id
         WHERE s.is_active = true
         ORDER BY name ASC`;
 
-      const { rows } = await postgres.query(sql, [ERP_SETTINGS.firmNr]);
+      const { rows } = await postgres.query(sql, [firmNr], {
+        firmNr,
+        periodNr: ERP_SETTINGS.periodNr,
+      });
       return rows.map(mapDatabaseSupplierToSupplier);
     } catch (error) {
       console.error('[SupplierAPI] getAll failed:', error);

@@ -52,7 +52,7 @@ export function paymentMethodImpliesCustomerDebt(pm: string | undefined | null):
   return false;
 }
 
-const CANCELLED_INVOICE_STATUSES = new Set(['iptal', 'cancelled', 'canceled', 'deleted']);
+const CANCELLED_INVOICE_STATUSES = new Set(['iptal', 'cancelled', 'canceled', 'deleted', 'silindi']);
 
 function isInvoiceCancelledStatus(status: string | undefined | null): boolean {
   return CANCELLED_INVOICE_STATUSES.has(String(status || '').toLowerCase().trim());
@@ -1227,6 +1227,10 @@ export const invoicesAPI = {
     invoiceType?: number;
     firmNr?: string | number;
     periodNr?: string | number;
+    /** false (varsayılan): iptal/silinen faturalar listede görünmez */
+    includeCancelled?: boolean;
+    /** true: yalnızca silinen/iptal faturalar */
+    cancelledOnly?: boolean;
   }): Promise<{ data: Invoice[]; total: number; page: number; pageSize: number; totalPages: number }> {
     const {
       page = 1,
@@ -1237,7 +1241,9 @@ export const invoicesAPI = {
       endDate,
       customerId,
       invoiceCategory,
-      invoiceType
+      invoiceType,
+      includeCancelled = false,
+      cancelledOnly = false,
     } = options;
 
     try {
@@ -1285,6 +1291,10 @@ export const invoicesAPI = {
         );
 
         const filteredRows = (Array.isArray(fullRows) ? fullRows : []).filter((r: any) => {
+          const cancelled =
+            r?.is_cancelled === true || isInvoiceCancelledStatus(String(r?.status || ''));
+          if (cancelledOnly && !cancelled) return false;
+          if (!includeCancelled && !cancelledOnly && cancelled) return false;
           const d = String(r?.date || '').substring(0, 10);
           if (startDate && d < String(startDate).substring(0, 10)) return false;
           if (endDate && d > String(endDate).substring(0, 10)) return false;
@@ -1372,6 +1382,12 @@ export const invoicesAPI = {
         // Fix: Truncate to YYYY-MM-DD to avoid "error serializing parameter"
         params.push(String(endDate).substring(0, 10));
         paramIndex++;
+      }
+
+      if (cancelledOnly) {
+        sql += ` AND (COALESCE(is_cancelled, false) = true OR LOWER(TRIM(COALESCE(status, ''))) IN ('iptal', 'silindi', 'cancelled', 'canceled', 'deleted'))`;
+      } else if (!includeCancelled) {
+        sql += ` AND COALESCE(is_cancelled, false) = false AND LOWER(TRIM(COALESCE(status, ''))) NOT IN ('iptal', 'silindi', 'cancelled', 'canceled', 'deleted')`;
       }
 
       // Count total
@@ -2267,7 +2283,7 @@ export const invoicesAPI = {
 
   async delete(id: string): Promise<boolean> {
     try {
-      console.log('[InvoicesAPI] Deleting invoice (cascade side effects)...', id);
+      console.log('[InvoicesAPI] Soft-deleting invoice (revert ledger + is_cancelled)...', id);
       const firmNr = ERP_SETTINGS.firmNr;
       const firmNrStr = String(firmNr ?? '').trim();
 
@@ -2276,6 +2292,10 @@ export const invoicesAPI = {
         header = await this.getById(id);
       } catch {
         header = null;
+      }
+
+      if (header && (header as Invoice & { is_cancelled?: boolean }).is_cancelled === true) {
+        return true;
       }
 
       let ficheNo = header?.invoice_no ? String(header.invoice_no).trim() : '';
@@ -2368,48 +2388,40 @@ export const invoicesAPI = {
       }
 
       const sid = String(id).trim();
+      const softDeleteBody = {
+        is_cancelled: true,
+        status: 'Silindi',
+        updated_at: new Date().toISOString(),
+      };
+
       if (DB_SETTINGS.connectionProvider === 'rest_api') {
         try {
           const { postgrest } = await import('./postgrestClient');
           const fnD = normalizeFirmNrForRow(saleFirmNr ?? ERP_SETTINGS.firmNr);
           const pnD = normalizePeriodNrForRow(salePeriodNr ?? ERP_SETTINGS.periodNr);
-          const itemsPath = `/rex_${fnD}_${pnD}_sale_items`;
           const salesPath = `/rex_${fnD}_${pnD}_sales`;
-          try {
-            await postgrest.delete(
-              `${itemsPath}?invoice_id=eq.${encodeURIComponent(sid)}`,
-              { schema: 'public', prefer: 'return=minimal' }
-            );
-          } catch {
-            /* yoksa */
-          }
-          try {
-            await postgrest.delete(
-              `${itemsPath}?sale_id=eq.${encodeURIComponent(sid)}`,
-              { schema: 'public', prefer: 'return=minimal' }
-            );
-          } catch {
-            /* sale_id kolonu yoksa */
-          }
-          try {
-            await postgrest.delete(
-              `${salesPath}?id=eq.${encodeURIComponent(sid)}&firm_nr=eq.${encodeURIComponent(String(fnD).trim())}`,
-              { schema: 'public', prefer: 'return=minimal' }
-            );
-          } catch {
-            await postgrest
-              .delete(`${salesPath}?id=eq.${encodeURIComponent(sid)}`, {
-                schema: 'public',
-                prefer: 'return=minimal',
-              })
-              .catch(() => { });
-          }
+          await postgrest.patch(
+            `${salesPath}?id=eq.${encodeURIComponent(sid)}`,
+            softDeleteBody,
+            { schema: 'public', prefer: 'return=minimal' }
+          );
         } catch (e) {
-          console.warn('[InvoicesAPI] delete PostgREST:', e);
+          console.warn('[InvoicesAPI] soft delete PostgREST:', e);
+          return false;
         }
       } else {
-        await postgres.query(`DELETE FROM sale_items WHERE invoice_id::text::uuid = $1::text::uuid`, [id]);
-        await postgres.query(`DELETE FROM sales WHERE id::text::uuid = $1::text::uuid AND firm_nr::text = $2::text`, [id, firmNrStr]);
+        const { rowCount } = await postgres.query(
+          `UPDATE sales
+           SET is_cancelled = true, status = 'Silindi', updated_at = NOW()
+           WHERE id::text = $1::text AND firm_nr::text = $2::text`,
+          [sid, firmNrStr]
+        );
+        if (!rowCount) {
+          await postgres.query(
+            `UPDATE sales SET is_cancelled = true, status = 'Silindi', updated_at = NOW() WHERE id::text = $1::text`,
+            [sid]
+          );
+        }
       }
 
       // 3) Restoran adisyonu (DB transaction dışında — farklı bağlantı / şema)
@@ -2420,6 +2432,13 @@ export const invoicesAPI = {
         } catch (e) {
           console.warn('[InvoicesAPI] Bağlı restoran adisyonu iptal edilemedi:', e);
         }
+      }
+
+      try {
+        const { repairCariLedgerConsistency } = await import('./accountLedgerRepair');
+        await repairCariLedgerConsistency();
+      } catch (e) {
+        console.warn('[InvoicesAPI] Cari bakiye onarımı atlandı:', e);
       }
 
       return true;
@@ -2451,14 +2470,28 @@ function normalizeSalesHeaderNetAmount(dbInv: any, category: Invoice['invoice_ca
   return rawNet;
 }
 
-function mapDatabaseInvoiceToInvoice(dbInv: any): Invoice {
-  let category: Invoice['invoice_category'] = 'Hizmet';
+function inferInvoiceCategoryFromDbRow(dbInv: any): Invoice['invoice_category'] {
+  const ft = String(dbInv?.fiche_type || '').toLowerCase();
+  if (ft === 'purchase_invoice') return 'Alis';
+  if (ft === 'sales_invoice') return 'Satis';
+  if (ft === 'return_invoice') return 'Iade';
+  if (ft === 'waybill') return 'Irsaliye';
+  if (ft === 'order') return 'Siparis';
+  if (ft === 'quote') return 'Teklif';
+  const tc = Number(dbInv?.trcode ?? dbInv?.invoice_type ?? 0);
+  if (tc) {
+    for (const [cat, codes] of Object.entries(TRCODES_BY_INVOICE_CATEGORY)) {
+      if ((codes as readonly number[]).includes(tc)) {
+        if (cat === 'Hizmet') continue;
+        return cat as Invoice['invoice_category'];
+      }
+    }
+  }
+  return 'Hizmet';
+}
 
-  if (dbInv.fiche_type === 'purchase_invoice') category = 'Alis';
-  else if (dbInv.fiche_type === 'sales_invoice') category = 'Satis';
-  else if (dbInv.fiche_type === 'return_invoice') category = 'Iade';
-  else if (dbInv.fiche_type === 'waybill') category = 'Irsaliye';
-  else if (dbInv.fiche_type === 'order') category = 'Siparis';
+function mapDatabaseInvoiceToInvoice(dbInv: any): Invoice {
+  const category = inferInvoiceCategoryFromDbRow(dbInv);
 
   const joinCust = dbInv.join_customer_name;
   const joinSup = dbInv.join_supplier_name;
@@ -2499,5 +2532,6 @@ function mapDatabaseInvoiceToInvoice(dbInv: any): Invoice {
     currency: String(dbInv.currency ?? dbInv.currency_code ?? '').trim() || 'IQD',
     currency_rate: parseFloat(dbInv.currency_rate || 1),
     payment_method: dbInv.payment_method,
+    is_cancelled: dbInv.is_cancelled === true || isInvoiceCancelledStatus(dbInv.status),
   } as Invoice;
 }

@@ -1,5 +1,5 @@
 ﻿import { useState, useEffect } from 'react';
-import { FileText, Plus, Edit, Trash2, RefreshCw } from 'lucide-react';
+import { FileText, Plus, Edit, Trash2, RefreshCw, Archive } from 'lucide-react';
 import { DevExDataGrid } from '../../shared/DevExDataGrid';
 import { createColumnHelper, ColumnDef } from '@tanstack/react-table';
 import { useFirmaDonem } from '../../../contexts/FirmaDonemContext';
@@ -47,6 +47,7 @@ export function PurchaseInvoiceModule({ onCreateInvoice, onSwitchTab, activeTab:
   // Invoice list state
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [showDeletedInvoices, setShowDeletedInvoices] = useState(false);
 
   // Context menu state
   const [contextMenu, setContextMenu] = useState<{
@@ -103,6 +104,8 @@ export function PurchaseInvoiceModule({ onCreateInvoice, onSwitchTab, activeTab:
         invoiceCategory: 'Alis',
         firmNr: selectedFirm.firm_nr || selectedFirm.id,
         periodNr: selectedPeriod.nr || selectedPeriod.id,
+        includeCancelled: showDeletedInvoices,
+        cancelledOnly: showDeletedInvoices,
       });
 
       console.log('[PurchaseInvoiceModule] Alış Faturaları yüklendi:', {
@@ -152,7 +155,7 @@ export function PurchaseInvoiceModule({ onCreateInvoice, onSwitchTab, activeTab:
       window.removeEventListener('invoiceCreated', handleInvoiceCreated as EventListener);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedFirm, selectedPeriod]);
+  }, [selectedFirm, selectedPeriod, showDeletedInvoices]);
 
   // Filtered invoices (state zaten filtrelenmiş geliyor ama emin olmak için)
   const filteredInvoices = invoices;
@@ -239,9 +242,17 @@ export function PurchaseInvoiceModule({ onCreateInvoice, onSwitchTab, activeTab:
           'Beklemede': 'bg-yellow-100 text-yellow-700',
           'Onaylandı': 'bg-blue-100 text-blue-700',
           'Iptal': 'bg-red-100 text-red-700',
+          'Silindi': 'bg-red-100 text-red-700 line-through',
         };
-        // Normalize status for translation lookup if needed, or translate display
-        return <span className={`px-1.5 py-0.5 rounded text-[10px] ${colors[status] || 'bg-gray-100'}`}>{status}</span>;
+        const displayStatus =
+          (info.row.original as Invoice).is_cancelled || status === 'Silindi'
+            ? (tm('deleted') || 'Silindi')
+            : status;
+        return (
+          <span className={`px-1.5 py-0.5 rounded text-[10px] ${colors[displayStatus] || colors[status] || 'bg-gray-100'}`}>
+            {displayStatus}
+          </span>
+        );
       }
     }),
     columnHelper.display({
@@ -331,6 +342,22 @@ export function PurchaseInvoiceModule({ onCreateInvoice, onSwitchTab, activeTab:
           />
 
           <button
+            type="button"
+            onClick={() => setShowDeletedInvoices((v) => !v)}
+            className={`px-3 py-2 rounded text-sm border flex items-center gap-2 transition-colors ${
+              showDeletedInvoices
+                ? 'bg-red-50 text-red-700 border-red-200'
+                : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+            }`}
+            title={tm('showDeletedInvoices') || 'Silinen alış faturalarını göster'}
+          >
+            <Archive className="w-4 h-4" />
+            {showDeletedInvoices
+              ? (tm('hideDeletedInvoices') || 'Aktif faturalar')
+              : (tm('showDeletedInvoices') || 'Silinenler')}
+          </button>
+
+          <button
             onClick={() => {
               setEditingInvoiceId(null);
               setEditInvoiceFull(null);
@@ -402,8 +429,11 @@ export function PurchaseInvoiceModule({ onCreateInvoice, onSwitchTab, activeTab:
           x={contextMenu.x}
           y={contextMenu.y}
           onClose={() => setContextMenu(null)}
-          onEdit={() => contextMenu.invoice && handleEditInvoice(contextMenu.invoice)}
-          onDelete={() => contextMenu.invoice?.id && handleDeleteInvoice(contextMenu.invoice.id)}
+          onEdit={() => contextMenu.invoice && !contextMenu.invoice.is_cancelled && handleEditInvoice(contextMenu.invoice)}
+          onDelete={() => {
+            if (contextMenu.invoice?.is_cancelled) return;
+            if (contextMenu.invoice?.id) handleDeleteInvoice(contextMenu.invoice.id);
+          }}
         />
       )}
     </div>

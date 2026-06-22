@@ -9,6 +9,14 @@ import {
   type UnitMasterRow,
   type UnitSelectOption,
 } from '../../../utils/unitOptions';
+import { isWeightBasedUnit } from '../../../utils/productUnits';
+
+function quantityInputPlaceholder(unit: string | undefined, tm: (k: string) => string): string {
+  if (isWeightBasedUnit(unit)) {
+    return tm('weightQuantityHint') || '2,5 (kg)';
+  }
+  return '';
+}
 
 const formatNumber = (num: number | undefined, decimals: number = 2, thousandSeparator: boolean = true) => {
     if (num === undefined || num === null) return '0';
@@ -300,6 +308,8 @@ export const InvoiceItemsGrid = React.memo(({
                                                     updateItem(index, 'quantity', e.target.value)
                                                 }
                                                 onFocus={() => setCurrentRowIndex(index)}
+                                                placeholder={quantityInputPlaceholder(item.unit, tm)}
+                                                title={quantityInputPlaceholder(item.unit, tm) || undefined}
                                                 className="w-full px-2 py-1.5 rounded-lg border border-gray-200 text-xs text-right tabular-nums bg-white"
                                             />
                                         </label>
@@ -541,6 +551,8 @@ export const InvoiceItemsGrid = React.memo(({
                                             value={item.quantity != null && item.quantity !== 0 ? String(item.quantity) : ''}
                                             onChange={(e) => updateItem(index, 'quantity', e.target.value)}
                                             onFocus={() => setCurrentRowIndex(index)}
+                                            placeholder={quantityInputPlaceholder(item.unit, tm)}
+                                            title={quantityInputPlaceholder(item.unit, tm) || undefined}
                                             className="w-full px-1.5 py-1 border-0 focus:outline-none text-sm text-right bg-transparent"
                                         />
                                         {/* Çarpan göstergesi: 5 KOLI → 120 ADET */}
