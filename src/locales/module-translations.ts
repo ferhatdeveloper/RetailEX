@@ -4717,16 +4717,16 @@ export const supplierTranslations = {
     ku: 'تۆ قەرزداری — بۆ کڕیار',
   },
   balanceHintSupplierPayable: {
-    tr: 'Siz borçlusunuz — tedarikçiye ödenecek',
-    en: 'You owe supplier — to pay',
-    ar: 'أنت مدين — للمورد',
-    ku: 'تۆ قەرزداری — بۆ دابینکەر',
+    tr: 'Tedarikçi alacaklı — alış borcu, ödenecek',
+    en: 'Supplier is creditor — purchase balance to pay',
+    ar: 'المورد دائن — رصيد مشتريات للدفع',
+    ku: 'دابینکەر خاوەن قەرزە — قەرزی کڕین، دەدرێت',
   },
   balanceHintSupplierReceivable: {
-    tr: 'Tedarikçi borçlu — sizden alacak/iade',
-    en: 'Supplier owes you — credit/refund',
-    ar: 'المورد مدين — لك',
-    ku: 'دابینکەر قەرزدارە — بۆ تۆ',
+    tr: 'Tedarikçi borçlu — iade veya fazla ödeme',
+    en: 'Supplier is debtor — return or overpayment',
+    ar: 'المورد مدين — إرجاع أو دفع زائد',
+    ku: 'دابینکەر قەرزدارە — گەڕاندنەوە یان پارەی زیاد',
   },
 };
 
