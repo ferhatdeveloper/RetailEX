@@ -58,6 +58,7 @@ export const STORAGE_KEYS = {
   USER: 'retailos_user',
   LANGUAGE: 'retailos_language',
   NUMPAD_VISIBLE: 'retailos_numpad_visible',
+  POS_SHOW_EXCHANGE_RATE: 'retailos_pos_show_exchange_rate',
   THEME: 'retailos_theme',
 } as const;
 

@@ -492,6 +492,10 @@ export function MainLayout({
     const saved = localStorage.getItem('retailos_layout_order');
     return (saved as LayoutOrder) || 'cart-numpad-quick';
   });
+  const [showExchangeRate, setShowExchangeRate] = useState(() => {
+    const saved = localStorage.getItem('retailos_pos_show_exchange_rate');
+    return saved !== 'false';
+  });
   const { callerIdConfig } = useRestaurantStore();
   const callerIdActive = callerIdConfig.mode !== 'off';
   const { incomingCall, dismissIncoming, pollError } = useRestaurantCallerId(callerIdConfig, callerIdActive);
@@ -1587,6 +1591,7 @@ export function MainLayout({
               rtlMode={rtlMode}
               setRtlMode={setRtlMode}
               layoutOrder={layoutOrder}
+              showExchangeRate={showExchangeRate}
             />
           </Suspense>
         ) : currentModule === 'wms' ? (
@@ -1797,6 +1802,8 @@ export function MainLayout({
           setRtlMode={setRtlMode}
           layoutOrder={layoutOrder}
           setLayoutOrder={setLayoutOrder}
+          showExchangeRate={showExchangeRate}
+          setShowExchangeRate={setShowExchangeRate}
           onClose={() => setShowZoomModal(false)}
         />
       )}

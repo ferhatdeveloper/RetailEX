@@ -62,6 +62,8 @@ interface ScreenSettingsModalProps {
   setRtlMode: (value: boolean) => void;
   layoutOrder: LayoutOrder;
   setLayoutOrder: (value: LayoutOrder) => void;
+  showExchangeRate: boolean;
+  setShowExchangeRate: (value: boolean) => void;
   onClose: () => void;
 }
 
@@ -85,6 +87,8 @@ export function ScreenSettingsModal({
   setRtlMode,
   layoutOrder,
   setLayoutOrder,
+  showExchangeRate,
+  setShowExchangeRate,
   onClose
 }: ScreenSettingsModalProps) {
 
@@ -262,6 +266,46 @@ export function ScreenSettingsModal({
                     <div className="text-sm font-medium">Çerçeve</div>
                   </button>
                 </div>
+              </div>
+
+              {/* Güncel kur satırı (MarketPOS) */}
+              <div>
+                <label className={`block text-sm font-medium mb-3 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                  Güncel Kur (MarketPOS)
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowExchangeRate(true);
+                      localStorage.setItem('retailos_pos_show_exchange_rate', 'true');
+                    }}
+                    className={`px-4 py-3 rounded-lg transition-all text-center border ${showExchangeRate
+                      ? darkMode ? 'bg-blue-600 text-white border-blue-600' : 'bg-blue-600 text-white border-blue-600'
+                      : darkMode ? 'bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-750' : 'bg-gray-50 border-gray-200 text-gray-700 hover:bg-gray-100'
+                      }`}
+                  >
+                    <ArrowLeftRight className="w-5 h-5 mx-auto mb-1" />
+                    <div className="text-sm font-medium">Göster</div>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowExchangeRate(false);
+                      localStorage.setItem('retailos_pos_show_exchange_rate', 'false');
+                    }}
+                    className={`px-4 py-3 rounded-lg transition-all text-center border ${!showExchangeRate
+                      ? darkMode ? 'bg-blue-600 text-white border-blue-600' : 'bg-blue-600 text-white border-blue-600'
+                      : darkMode ? 'bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-750' : 'bg-gray-50 border-gray-200 text-gray-700 hover:bg-gray-100'
+                      }`}
+                  >
+                    <X className="w-5 h-5 mx-auto mb-1" />
+                    <div className="text-sm font-medium">Gizle</div>
+                  </button>
+                </div>
+                <p className={`text-xs mt-2 ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>
+                  Numpad panelindeki yeşil &quot;1$ = … IQD&quot; satırı. Kur hesaplamaları gizli olsa da çalışır.
+                </p>
               </div>
             </div>
 

@@ -113,6 +113,8 @@ interface MarketPOSProps {
   rtlMode?: boolean;
   setRtlMode?: (value: boolean) => void;
   layoutOrder?: LayoutOrder;
+  /** Müşteri bilgi panelinde güncel USD/IQD kur satırı */
+  showExchangeRate?: boolean;
 }
 
 export default function MarketPOS({
@@ -134,6 +136,7 @@ export default function MarketPOS({
   rtlMode = false,
   setRtlMode,
   layoutOrder = 'cart-numpad-quick',
+  showExchangeRate = true,
 }: MarketPOSProps) {
   const { selectedFirma } = useFirmaDonem();
   // Get sales from store
@@ -1816,13 +1819,15 @@ export default function MarketPOS({
                     {selectedCustomer?.name || customer.name}
                   </span>
                 </div>
-                <div className="mt-2 flex items-center justify-between px-2 py-1 bg-green-50 rounded-lg border border-green-100">
-                  <div className="flex items-center gap-1.5 grayscale opacity-70">
-                    <ArrowRightLeft className="w-3 h-3 text-green-700" />
-                    <span className="text-[10px] uppercase font-bold text-green-800">Güncel Kur</span>
+                {showExchangeRate && (
+                  <div className="mt-2 flex items-center justify-between px-2 py-1 bg-green-50 rounded-lg border border-green-100">
+                    <div className="flex items-center gap-1.5 grayscale opacity-70">
+                      <ArrowRightLeft className="w-3 h-3 text-green-700" />
+                      <span className="text-[10px] uppercase font-bold text-green-800">Güncel Kur</span>
+                    </div>
+                    <span className="text-xs font-black text-green-700">1$ = {exchangeRate} IQD</span>
                   </div>
-                  <span className="text-xs font-black text-green-700">1$ = {exchangeRate} IQD</span>
-                </div>
+                )}
               </div>
               <div className="flex justify-between items-center text-sm mb-1">
                 <span className={darkMode ? 'text-gray-400' : 'text-gray-600'}>{t.productCount}:</span>
