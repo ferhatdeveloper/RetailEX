@@ -147,7 +147,7 @@ export default function MarketPOS({
   const addReturn = useSaleStore((state) => state.addReturn);
   const refreshProducts = useProductStore((state) => state.loadProducts);
   const navigateToReturnInvoiceInBackoffice = useCallback((returnNumber: string) => {
-    const detail = { screen: 'salesinvoice' as const, invoiceSearch: returnNumber };
+    const detail = { screen: 'sales-invoice-return' as const, invoiceSearch: returnNumber };
     window.dispatchEvent(new CustomEvent('switchToManagement'));
     window.dispatchEvent(new CustomEvent('navigateToScreen', { detail }));
     window.setTimeout(() => {

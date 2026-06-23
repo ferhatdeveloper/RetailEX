@@ -140,13 +140,6 @@ export function POSReturnModal({
       /* katalog yoksa devam */
     }
 
-    try {
-      const scale = await resolveScaleBarcodeSale(q, 1);
-      if (scale?.product) return scale.product;
-    } catch {
-      /* tartılı parse başarısız */
-    }
-
     return undefined;
   };
 
@@ -163,19 +156,22 @@ export function POSReturnModal({
 
     let scaleQty: number | undefined;
     let scaleUnit: string | undefined;
-    let product = await findProductByBarcode(q);
+    let product: Product | undefined;
+
+    // Tartılı etiket: alış/POS ile aynı — miktar ve birim her okutmada etiketten alınır
+    try {
+      const scale = await resolveScaleBarcodeSale(q, 1);
+      if (scale) {
+        product = scale.product;
+        scaleUnit = scale.unitName;
+        scaleQty = normalizeWeightProductQuantity(scale.quantity, scaleUnit);
+      }
+    } catch {
+      /* tartılı parse başarısız */
+    }
 
     if (!product) {
-      try {
-        const scale = await resolveScaleBarcodeSale(q, 1);
-        if (scale) {
-          product = scale.product;
-          scaleQty = scale.quantity;
-          scaleUnit = scale.unitName;
-        }
-      } catch {
-        /* ignore */
-      }
+      product = await findProductByBarcode(q);
     }
 
     const lookupKeys = new Set(expandBarcodeLookupKeys(q).map((k) => k.toLowerCase()));
@@ -219,9 +215,11 @@ export function POSReturnModal({
     }
 
     const best = matches[0];
-    const unit = scaleUnit || best.item.unit || 'Adet';
-    const defaultQty = scaleQty && scaleQty > 0
-      ? Math.min(scaleQty, best.item.quantity)
+    const unit = scaleUnit || product?.unit || best.item.unit || 'Adet';
+    const parsedScaleQty =
+      scaleQty && scaleQty > 0 ? normalizeWeightProductQuantity(scaleQty, unit) : undefined;
+    const defaultQty = parsedScaleQty && parsedScaleQty > 0
+      ? Math.min(parsedScaleQty, best.item.quantity)
       : (isWeightBasedUnit(unit) ? best.item.quantity : 1);
 
     setSelectedSale(best.sale);
@@ -584,6 +582,8 @@ export function POSReturnModal({
                       const variantInfo = group.item.variant
                         ? `${group.item.variant.color || ''} ${group.item.variant.size || ''}`.trim()
                         : null;
+                      const unit = group.item.unit || 'Adet';
+                      const isWeight = isWeightBasedUnit(unit);
 
                       return (
                         <div key={key} className="p-3 rounded border-2 border-gray-200 bg-white">
@@ -602,7 +602,7 @@ export function POSReturnModal({
                                 </p>
                               )}
                               <p className="text-xs text-gray-600 mt-1">
-                                {t.totalSale}: {group.totalQuantity} {t.pieces} • {group.sales.length} {t.differentReceipts}
+                                {t.totalSale}: {formatScaleQuantityDisplay(group.totalQuantity, unit)} {unit} • {group.sales.length} {t.differentReceipts}
                               </p>
                             </div>
                           </div>
@@ -610,24 +610,31 @@ export function POSReturnModal({
                             <span className="text-xs text-gray-600">İade miktarı:</span>
                             <div className="flex items-center gap-1">
                               <button
-                                onClick={() => handleQuantityChange(key, Math.max(0, (returnItems[key] || 0) - 1))}
+                                onClick={() => handleQuantityChange(
+                                  key,
+                                  normalizeWeightProductQuantity((returnItems[key] || 0) - (isWeight ? 0.1 : 1), unit),
+                                  group.totalQuantity,
+                                )}
                                 className="w-6 h-6 bg-white hover:bg-gray-100 rounded flex items-center justify-center border border-gray-300"
                               >
                                 -
                               </button>
                               <input
-                                type="number"
-                                min="0"
-                                max={group.totalQuantity}
-                                value={returnItems[key] || 0}
+                                type="text"
+                                inputMode="decimal"
+                                value={returnItems[key] ? formatScaleQuantityDisplay(returnItems[key], unit) : ''}
                                 onChange={(e) => {
-                                  const val = parseInt(e.target.value) || 0;
-                                  if (val <= group.totalQuantity) handleQuantityChange(key, val);
+                                  const val = parsePosQuantityForProduct(e.target.value, { unit });
+                                  if (val <= group.totalQuantity) handleQuantityChange(key, val, group.totalQuantity);
                                 }}
-                                className="w-12 text-center border border-gray-300 rounded text-sm"
+                                className="w-16 text-center border border-gray-300 rounded text-sm"
                               />
                               <button
-                                onClick={() => handleQuantityChange(key, Math.min((returnItems[key] || 0) + 1, group.totalQuantity))}
+                                onClick={() => handleQuantityChange(
+                                  key,
+                                  normalizeWeightProductQuantity((returnItems[key] || 0) + (isWeight ? 0.1 : 1), unit),
+                                  group.totalQuantity,
+                                )}
                                 className="w-6 h-6 bg-white hover:bg-gray-100 rounded flex items-center justify-center border border-gray-300"
                               >
                                 +
