@@ -3,6 +3,7 @@ import {
   convertPrice,
   convertWeight,
   expandScaleBarcodeCandidates,
+  expandBarcodeLookupKeys,
   parseBarcode,
   parseBarcodeVariants,
   rongtaWeightFieldToKg,
@@ -169,5 +170,11 @@ describe('barcodeParser — tartılı barkod', () => {
     const qty = rongtaWeightFieldToKg(1300);
     expect(qty).toBe(1.3);
     expect(roundMoneyAmount(qty * 15000, 'IQD')).toBe(19500);
+  });
+
+  it('expandBarcodeLookupKeys: UPC-A 12 hane ve EAN-13 baştaki 0', () => {
+    expect(expandBarcodeLookupKeys('033844002084')).toEqual(
+      expect.arrayContaining(['033844002084', '33844002084', '0033844002084']),
+    );
   });
 });

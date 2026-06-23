@@ -6,6 +6,7 @@
 import { shouldUseTenantPostgrestApi } from '../../config/postgrest.config';
 import { postgres, ERP_SETTINGS, DB_SETTINGS } from '../postgres';
 import type { Product } from '../../core/types';
+import { expandBarcodeLookupKeys } from '../../utils/barcodeParser';
 import { useAuthStore } from '../../store/useAuthStore';
 
 /** Malzeme listesi: uzun metin kolonları hariç (ağ payload + parse maliyeti) */
@@ -911,11 +912,28 @@ export const productAPI = {
    */
   async lookupByBarcode(barcode: string): Promise<{ product: Product, unitInfo?: any } | null> {
     try {
-      // 1. Try primary barcode first
-      const product = await this.getByBarcode(barcode);
-      if (product) return { product };
+      const lookupKeys = expandBarcodeLookupKeys(barcode);
+      if (lookupKeys.length === 0) return null;
 
-      // 2. Try unit-specific barcodes
+      for (const key of lookupKeys) {
+        const product = await this.getByBarcode(key);
+        if (product) return { product };
+      }
+
+      for (const key of lookupKeys) {
+        const unitMatch = await this.lookupUnitBarcode(key);
+        if (unitMatch) return unitMatch;
+      }
+
+      return null;
+    } catch (error) {
+      console.error('[ProductAPI] lookupByBarcode failed:', error);
+      return null;
+    }
+  },
+
+  async lookupUnitBarcode(barcode: string): Promise<{ product: Product, unitInfo?: any } | null> {
+    try {
       if (DB_SETTINGS.connectionProvider === 'rest_api') {
         const { postgrest } = await import('./postgrestClient');
         const pbPath = `/rex_${firmNrPadded()}_product_barcodes`;
@@ -1042,7 +1060,7 @@ export const productAPI = {
 
       return null;
     } catch (error) {
-      console.error('[ProductAPI] lookupByBarcode failed:', error);
+      console.error('[ProductAPI] lookupUnitBarcode failed:', error);
       return null;
     }
   },

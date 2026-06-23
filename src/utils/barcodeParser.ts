@@ -62,6 +62,32 @@ export function normalizeScannedBarcode(raw: string): string {
     .replace(/\s/g, '');
 }
 
+/**
+ * POS / stok: aynı etiketin farklı kayıtlı biçimleri (UPC-A 12 hane, EAN-13 baştaki 0 vb.).
+ */
+export function expandBarcodeLookupKeys(barcode: string): string[] {
+  const normalized = normalizeScannedBarcode(barcode);
+  if (!normalized) return [];
+
+  const keys = new Set<string>([normalized]);
+  if (!/^\d+$/.test(normalized)) return [...keys];
+
+  const noLeadingZeros = normalized.replace(/^0+/, '') || '0';
+  keys.add(noLeadingZeros);
+
+  if (normalized.length === 12) {
+    keys.add(`0${normalized}`);
+  }
+  if (normalized.length === 13 && normalized.startsWith('0')) {
+    keys.add(normalized.slice(1));
+  }
+  if (noLeadingZeros.length === 12) {
+    keys.add(`0${noLeadingZeros}`);
+  }
+
+  return [...keys];
+}
+
 function parseWeightDigits(value: string): number {
   const n = parseInt(value, 10);
   return Number.isFinite(n) ? n : 0;

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useFirmaDonem } from '../../contexts/FirmaDonemContext';
 import { logger } from '../../utils/logger';
 import { resolveScaleBarcodeSale } from '../../utils/scaleBarcodeSale';
-import { isCompositeScaleBarcode, normalizeScannedBarcode, parseBarcode, parseBarcodeVariants } from '../../utils/barcodeParser';
+import { isCompositeScaleBarcode, normalizeScannedBarcode, parseBarcode, parseBarcodeVariants, expandBarcodeLookupKeys } from '../../utils/barcodeParser';
 import {
   BARCODE_SCANNER_DEBOUNCE_MS,
   isBarcodeReadyForAutoSubmit,
@@ -289,6 +289,26 @@ export default function MarketPOS({
     });
     return [t.allCategories, ...Array.from(uniqueCategories)];
   }, [products, t.allCategories]);
+
+  const primaryBarcodeIndex = useMemo(() => {
+    const map = new Map<string, Product>();
+    for (const product of products ?? []) {
+      const barcode = String(product.barcode ?? '').trim();
+      if (!barcode) continue;
+      for (const key of expandBarcodeLookupKeys(barcode)) {
+        if (!map.has(key)) map.set(key, product);
+      }
+    }
+    return map;
+  }, [products]);
+
+  const lookupProductLocally = useCallback((barcode: string): Product | null => {
+    for (const key of expandBarcodeLookupKeys(barcode)) {
+      const hit = primaryBarcodeIndex.get(key);
+      if (hit) return hit;
+    }
+    return null;
+  }, [primaryBarcodeIndex]);
 
   // Initialize selectedCategory when categories change
   useEffect(() => {
@@ -690,11 +710,8 @@ export default function MarketPOS({
     // Direkt bu barkod ile arama yap
     const found = await searchByBarcode(barcodeToSearch);
 
-    // Eğer barkod bulunamadıysa, ürün arama ekranını aç
     if (!found) {
-      setProductSearchQuery(barcodeToSearch);
-      setCatalogMode('add-to-cart');
-      setShowProductCatalogModal(true);
+      notifyScaleBarcodeFailure(normalizeScannedBarcode(barcodeToSearch));
     }
 
     // Input'ları temizle
@@ -721,6 +738,61 @@ export default function MarketPOS({
     const trimmedBarcode = normalizeScannedBarcode(barcode);
     logger.log('?? Aranan barkod:', trimmedBarcode);
 
+    const addFromLookup = (result: { product: Product; unitInfo?: any } | null): boolean => {
+      if (!result?.product) return false;
+
+      const product = result.product;
+      const unitInfo = result.unitInfo;
+
+      if (product.hasVariants || (product.variants && product.variants.length > 0)) {
+        logger.log('✅ Varyantlı ürün bulundu, varyant seçim paneli açılıyor');
+        showNotif(t.pleaseSelectVariant, 'info');
+        setVariantSelectionProduct(product);
+        setShowVariantSelection(true);
+        return true;
+      }
+
+      let price = product.price;
+      let unitName: string | undefined = undefined;
+      let unitMultiplier: number | undefined = undefined;
+
+      if (unitInfo) {
+        unitName = unitInfo.unit || undefined;
+        unitMultiplier = unitInfo.multiplier || undefined;
+
+        if ((!unitMultiplier || unitMultiplier === 1) && unitName) {
+          const pUnitsetId = (product as any).unitset_id || (product as any).unitsetId;
+          if (pUnitsetId) {
+            const unitSet = unitSets.find(us => us.id === pUnitsetId);
+            const line = unitSet?.lines?.find((l: any) => l.name === unitName || l.code === unitName);
+            if (line) {
+              unitMultiplier = line.conv_fact1 || 1;
+              logger.log(`[MarketPOS] Multiplier found in unitSets for ${unitName}: ${unitMultiplier}`);
+            }
+          }
+        }
+
+        if (unitInfo.sale_price && unitInfo.sale_price > 0) {
+          price = unitInfo.sale_price;
+        } else if (unitMultiplier && unitMultiplier > 1) {
+          price = product.price * unitMultiplier;
+        }
+      }
+
+      if (product.autoCalculateUSD && product.salePriceUSD && product.salePriceUSD > 0 && (!unitInfo || !unitInfo.sale_price)) {
+        let effectiveRate = (product.customExchangeRate ?? 0) > 0 ? product.customExchangeRate! : exchangeRate;
+        if (effectiveRate > 0 && effectiveRate < 10) {
+          effectiveRate = effectiveRate * 1000;
+        }
+        const convertedPrice = product.salePriceUSD * effectiveRate;
+        price = convertedPrice * (unitMultiplier || 1);
+        logger.log(`💵 USD Fiyat Dönüşümü: ${product.salePriceUSD}$ * ${effectiveRate} = ${price} IQD`);
+      }
+
+      addToCart(product, undefined, quantity, unitName, unitMultiplier, price);
+      return true;
+    };
+
     const tryAddScaleSale = async (): Promise<boolean> => {
       const scaleSale = await resolveScaleBarcodeSale(trimmedBarcode, exchangeRate);
       if (!scaleSale) return false;
@@ -744,89 +816,19 @@ export default function MarketPOS({
     };
 
     try {
-      // 11–16 hane: 10 hane kod + ağırlık — önce tartılı parse (tam barkod 1 adet eklemesin)
-      if (/^\d{11,16}$/.test(trimmedBarcode)) {
-        const scaleAdded = await tryAddScaleSale();
-        if (scaleAdded) return true;
-        if (parseBarcodeVariants(trimmedBarcode).length > 0) {
-          notifyScaleBarcodeFailure(trimmedBarcode);
-          if (!missingBarcodes.includes(trimmedBarcode)) {
-            setMissingBarcodes(prev => [trimmedBarcode, ...prev]);
-          }
-          return false;
-        }
+      const localProduct = lookupProductLocally(trimmedBarcode);
+      if (addFromLookup(localProduct ? { product: localProduct } : null)) {
+        return true;
       }
 
       const result = await productAPI.lookupByBarcode(trimmedBarcode);
-
-      if (result && result.product) {
-        const product = result.product;
-        const unitInfo = result.unitInfo;
-
-        // Varyant kontrolü (Eğer ana ürün barkodu okutulmuşsa ve varyantları varsa)
-        if (product.hasVariants || (product.variants && product.variants.length > 0)) {
-          // Eğer okutulan barkod bir varyanta ait DEĞİLSE (yani birim barkodu veya ana barkod ise)
-          // varyant seçimini aç. Eğer unitInfo varsa (birim barkodu ise), varyantı da belirlemiş olabiliriz.
-          // Şimdilik ana ürün barkodu veya birim barkodu senaryosunda varyant kataloğunu açıyoruz.
-          logger.log('✅ Varyantlı ürün bulundu, varyant seçim paneli açılıyor');
-          showNotif(t.pleaseSelectVariant, 'info');
-          setVariantSelectionProduct(product);
-          setShowVariantSelection(true);
-          return true;
-        }
-
-        // Fiyat belirleme: Önce birim fiyatı, sonra USD hesaplaması, en son baz fiyat
-        let price = product.price;
-        let unitName: string | undefined = undefined;
-        let unitMultiplier: number | undefined = undefined;
-
-        if (unitInfo) {
-          unitName = unitInfo.unit || undefined;        // "Koli", "Palet" vb.
-          unitMultiplier = unitInfo.multiplier || undefined;
-
-          // If unitMultiplier is missing or 1, try to find it in unitSets
-          if ((!unitMultiplier || unitMultiplier === 1) && unitName) {
-            const pUnitsetId = (product as any).unitset_id || (product as any).unitsetId;
-            if (pUnitsetId) {
-              const unitSet = unitSets.find(us => us.id === pUnitsetId);
-              const line = unitSet?.lines?.find((l: any) => l.name === unitName || l.code === unitName);
-              if (line) {
-                unitMultiplier = line.conv_fact1 || 1;
-                logger.log(`[MarketPOS] Multiplier found in unitSets for ${unitName}: ${unitMultiplier}`);
-              } else {
-                logger.log(`[MarketPOS] Unit ${unitName} not found in unitSet ${pUnitsetId}`);
-              }
-            } else {
-              logger.log(`[MarketPOS] Product has no unitset_id for unit lookup`);
-            }
-          }
-
-          // Öncelik 1: Birim barkoduna özel yerel satış fiyatı
-          if (unitInfo.sale_price && unitInfo.sale_price > 0) {
-            price = unitInfo.sale_price;
-          }
-          // Öncelik 2: Çarpan varsa ve kendi özel fiyatı yoksa çarpanla fiyatlandır
-          else if (unitMultiplier && unitMultiplier > 1) {
-            price = product.price * unitMultiplier;
-          }
-        }
-
-        // USD fiyat kontrolü — yerel fiyat birim barkodundan gelmediyse USD'den hesapla
-        if (product.autoCalculateUSD && product.salePriceUSD && product.salePriceUSD > 0 && (!unitInfo || !unitInfo.sale_price)) {
-          let effectiveRate = (product.customExchangeRate ?? 0) > 0 ? product.customExchangeRate! : exchangeRate;
-          
-          if (effectiveRate > 0 && effectiveRate < 10) {
-            effectiveRate = effectiveRate * 1000;
-          }
-          
-          const convertedPrice = product.salePriceUSD * effectiveRate;
-          // Eğer birim barkodu ise çarpanla çarp, değilse direkt convertedPrice
-          price = convertedPrice * (unitMultiplier || 1);
-          logger.log(`💵 USD Fiyat Dönüşümü: ${product.salePriceUSD}$ * ${effectiveRate} = ${price} IQD`);
-        }
-
-        addToCart(product, undefined, quantity, unitName, unitMultiplier, price);
+      if (addFromLookup(result)) {
         return true;
+      }
+
+      if (isCompositeScaleBarcode(trimmedBarcode) || /^\d{11,16}$/.test(trimmedBarcode)) {
+        const scaleAdded = await tryAddScaleSale();
+        if (scaleAdded) return true;
       }
 
       logger.log('❌ Barkod bulunamadı');
@@ -998,9 +1000,7 @@ export default function MarketPOS({
       const found = await searchByBarcode(searchText, quantity);
 
       if (!found) {
-        setProductSearchQuery(searchText);
-        setCatalogMode('add-to-cart');
-        setShowProductCatalogModal(true);
+        notifyScaleBarcodeFailure(normalizeScannedBarcode(searchText));
         setBarcodeInput('');
         barcodeInputLatestRef.current = '';
         setSavedQuantity(null);
