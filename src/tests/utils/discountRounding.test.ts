@@ -28,6 +28,12 @@ describe('discountRounding — IQD POS kademesi', () => {
     expect(lineNetAfterPercentDiscount(10255, 0) % POS_DISCOUNT_MONETARY_STEP).toBe(0);
   });
 
+  it('küçük pozitif tutarlar (birim fiyat) tam IQD kalır', () => {
+    expect(roundPosMoneyAmount(1)).toBe(1);
+    expect(roundPosMoneyAmount(124)).toBe(124);
+    expect(roundPosMoneyAmount(127)).toBe(250);
+  });
+
   it('USD için roundPosMoneyAmount delegasyonu', () => {
     expect(roundPosMoneyAmount(12.345, 'USD')).toBe(12.35);
   });

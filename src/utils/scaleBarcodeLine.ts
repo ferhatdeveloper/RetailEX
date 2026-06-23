@@ -3,6 +3,7 @@
  */
 import type { Product } from '../core/types';
 import { isGramScaleUnit, scaleWeightFieldToQuantity, type ParsedBarcode } from './barcodeParser';
+import { roundMoneyAmount } from './currency';
 import { roundPosMoneyAmount } from './discountRounding';
 import { normalizeWeightProductQuantity } from './scaleQuantity';
 
@@ -39,7 +40,7 @@ function resolvePricePerKg(product: Product, exchangeRate: number): number {
   return pricePerKg;
 }
 
-/** Birim fiyat × miktar = satır tutarı; yuvarlama sonrası birim fiyat hizalanır. */
+/** Birim fiyat × miktar = satır tutarı; satır toplamı 250 IQD kademesine yuvarlanır. */
 export function buildScaleCartLineAmounts(
   product: Product,
   parsed: ParsedBarcode,
@@ -57,9 +58,9 @@ export function buildScaleCartLineAmounts(
 
   if (parsed.format === 'code10_weight' && suffixMode === 'total_iqd') {
     const lineTotal = roundPosMoneyAmount(suffixValue, currency);
-    const pricePerKg = roundPosMoneyAmount(resolvePricePerKg(product, exchangeRate), currency);
+    const pricePerKg = roundMoneyAmount(resolvePricePerKg(product, exchangeRate), currency);
     if (isGramScaleUnit(unitUpper)) {
-      const pricePerGr = pricePerKg > 0 ? roundPosMoneyAmount(pricePerKg / 1000, currency) : 0;
+      const pricePerGr = pricePerKg > 0 ? roundMoneyAmount(pricePerKg / 1000, currency) : 0;
       const quantity =
         pricePerGr > 0 ? Math.max(1, Math.round(lineTotal / pricePerGr)) : 1;
       const unitPrice =
@@ -81,9 +82,9 @@ export function buildScaleCartLineAmounts(
   const quantity = normalizeWeightProductQuantity(rawQty, unitUpper);
   if (!(quantity > 0)) return null;
 
-  const pricePerKg = roundPosMoneyAmount(resolvePricePerKg(product, exchangeRate), currency);
+  const pricePerKg = roundMoneyAmount(resolvePricePerKg(product, exchangeRate), currency);
   const unitPriceBase = isGramScaleUnit(unitUpper)
-    ? roundPosMoneyAmount(pricePerKg / 1000, currency)
+    ? roundMoneyAmount(pricePerKg / 1000, currency)
     : pricePerKg;
   const lineTotal = roundPosMoneyAmount(unitPriceBase * quantity, currency);
   const unitPrice =

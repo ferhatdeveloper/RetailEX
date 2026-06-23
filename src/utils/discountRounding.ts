@@ -13,7 +13,10 @@ export function roundPosMoneyAmount(value: number, currency: string = 'IQD'): nu
   if (code !== 'IQD') return roundMoneyAmount(n, code);
   if (n === 0) return 0;
   const step = POS_DISCOUNT_MONETARY_STEP;
-  return Math.round(n / step) * step;
+  const rounded = Math.round(n / step) * step;
+  // Ara birim fiyatlar (örn. 1 IQD/gr) — satır toplamı ayrı yuvarlanır
+  if (rounded === 0 && n > 0) return Math.round(n);
+  return rounded;
 }
 
 /** IQD POS ödeme toleransı (yarım kademe). */

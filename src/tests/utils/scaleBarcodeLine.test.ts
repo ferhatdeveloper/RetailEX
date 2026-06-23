@@ -38,7 +38,7 @@ describe('scaleBarcodeLine', () => {
     };
     const line = buildScaleCartLineAmounts(baseProduct, parsed, 1310);
     expect(line!.lineTotal).toBe(1500);
-    expect(line!.quantity).toBe(1.61);
+    expect(line!.quantity).toBe(1.5);
   });
 
   it('GR birimi: 1610 gr — satır tutarı 250 kademe', () => {
