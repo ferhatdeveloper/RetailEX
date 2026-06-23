@@ -45,6 +45,9 @@ export interface InvoiceListModuleProps {
   /** Sayım → alış: ManagementModule navigasyonu ile gelen taslak (sessionStorage’dan bağımsız) */
   countPurchaseDraftPrefill?: CountPurchaseDraftPrefill | null;
   onCountPurchaseDraftPrefillConsumed?: () => void;
+  /** POS iade sonrası fatura listesinde arama (ör. IADE-2026-…) */
+  initialSearchQuery?: string | null;
+  onInitialSearchConsumed?: () => void;
 }
 
 interface InvoiceType {
@@ -86,6 +89,8 @@ export function InvoiceListModule({
   description,
   countPurchaseDraftPrefill = null,
   onCountPurchaseDraftPrefillConsumed,
+  initialSearchQuery = null,
+  onInitialSearchConsumed,
 }: InvoiceListModuleProps) {
   const { tm } = useLanguage();
   const { isMobile } = useResponsive();
@@ -304,6 +309,14 @@ export function InvoiceListModule({
     setBulkSelectedInvoices([]);
     setInvoiceGridNonce((n) => n + 1);
   }, [defaultCategory]);
+
+  useEffect(() => {
+    const q = initialSearchQuery?.trim();
+    if (!q) return;
+    setSearchQuery(q);
+    setCurrentPage(1);
+    onInitialSearchConsumed?.();
+  }, [initialSearchQuery, onInitialSearchConsumed]);
 
   // Arama için debounce
   useEffect(() => {

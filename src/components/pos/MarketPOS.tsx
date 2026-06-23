@@ -146,6 +146,14 @@ export default function MarketPOS({
   const sales = useSaleStore((state) => state.sales);
   const addReturn = useSaleStore((state) => state.addReturn);
   const refreshProducts = useProductStore((state) => state.loadProducts);
+  const navigateToReturnInvoiceInBackoffice = useCallback((returnNumber: string) => {
+    const detail = { screen: 'salesinvoice' as const, invoiceSearch: returnNumber };
+    window.dispatchEvent(new CustomEvent('switchToManagement'));
+    window.dispatchEvent(new CustomEvent('navigateToScreen', { detail }));
+    window.setTimeout(() => {
+      window.dispatchEvent(new CustomEvent('navigateToScreen', { detail }));
+    }, 150);
+  }, []);
 
   // Language support
   const { t, tm } = useLanguage();
@@ -2494,6 +2502,7 @@ export default function MarketPOS({
                 await addReturn(savedReturn);
               }
               showNotif(t.returnCompleted, 'success');
+              navigateToReturnInvoiceInBackoffice(returnData.returnNumber);
             } catch (err: unknown) {
               const msg = err instanceof Error ? err.message : String(err);
               showNotif(`İade kaydedilemedi: ${msg}`, 'error');

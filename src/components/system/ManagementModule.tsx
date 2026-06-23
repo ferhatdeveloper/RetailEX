@@ -359,6 +359,10 @@ export function ManagementModule({
   const clearCountPurchaseDraftPrefill = useCallback(() => {
     setCountPurchaseDraftPrefill(null);
   }, []);
+  const [invoiceSearchPrefill, setInvoiceSearchPrefill] = useState<string | null>(null);
+  const clearInvoiceSearchPrefill = useCallback(() => {
+    setInvoiceSearchPrefill(null);
+  }, []);
   const { isMobile, isTablet } = useResponsive();
   const { darkMode } = useTheme();
   const { language: currentLanguage, setLanguage, t } = useLanguage(); // Use global language context
@@ -518,8 +522,14 @@ export function ManagementModule({
         const o = d as {
           screen: ExtendedScreen;
           countPurchaseDraft?: { editData: Record<string, unknown>; skipProductStockUpdate?: boolean };
+          invoiceSearch?: string;
         };
         screenId = o.screen;
+        if (o.invoiceSearch?.trim()) {
+          setInvoiceSearchPrefill(o.invoiceSearch.trim());
+        } else {
+          setInvoiceSearchPrefill(null);
+        }
         if (o.countPurchaseDraft?.editData) {
           setCountPurchaseDraftPrefill({
             editData: o.countPurchaseDraft.editData,
@@ -1230,7 +1240,18 @@ export function ManagementModule({
           return <LogisticsModule />;
         case 'salesinvoice':
         case 'sales-invoice-view': // Generic view — satış + müşteri iade faturaları
-          return <InvoiceListModule products={products} defaultCategory="Satis" includeCategories={['Iade']} defaultInvoiceTypeFilter="all" title={t.salesInvoicesTitle} description={t.salesInvoicesDesc} />;
+          return (
+            <InvoiceListModule
+              products={products}
+              defaultCategory="Satis"
+              includeCategories={['Iade']}
+              defaultInvoiceTypeFilter="all"
+              title={t.salesInvoicesTitle}
+              description={t.salesInvoicesDesc}
+              initialSearchQuery={invoiceSearchPrefill}
+              onInitialSearchConsumed={clearInvoiceSearchPrefill}
+            />
+          );
         case 'sales-invoice-standard':
           return <InvoiceListModule products={products} defaultCategory="Satis" defaultInvoiceTypeFilter="8" title={t.salesInvoicesTitle} description={t.salesInvoicesDesc} />;
         case 'sales-invoice-retail':
@@ -1240,7 +1261,17 @@ export function ManagementModule({
         case 'sales-invoice-consignment':
           return <InvoiceListModule products={products} defaultCategory="Satis" defaultInvoiceTypeFilter="8" title={t.salesInvoicesTitle} description={t.salesInvoicesDesc} />;
         case 'sales-invoice-return':
-          return <InvoiceListModule products={products} defaultCategory="Iade" defaultInvoiceTypeFilter="3" title={t.salesReturnTitle} description={t.salesReturnDesc} />;
+          return (
+            <InvoiceListModule
+              products={products}
+              defaultCategory="Iade"
+              defaultInvoiceTypeFilter="3"
+              title={t.salesReturnTitle}
+              description={t.salesReturnDesc}
+              initialSearchQuery={invoiceSearchPrefill}
+              onInitialSearchConsumed={clearInvoiceSearchPrefill}
+            />
+          );
         case 'purchaseinvoice':
           return (
             <InvoiceListModule
