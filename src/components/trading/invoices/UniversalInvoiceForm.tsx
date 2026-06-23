@@ -2707,9 +2707,17 @@ export function UniversalInvoiceForm({
       toast.error('❌ ' + tm('supplierNotSelected'));
       return;
     }
-    if ((invoiceType.category === 'Satis' || invoiceType.category === 'Iade') && !customerTitle) {
+    const isSalesReturnInvoice = invoiceType.category === 'Iade' && invoiceType.code === 3;
+    if (invoiceType.category === 'Satis' && !customerTitle) {
       toast.error('❌ ' + tm('customerNotSelected'));
       return;
+    }
+    if (invoiceType.category === 'Iade' && !isSalesReturnInvoice && !customerTitle) {
+      toast.error('❌ ' + tm('customerNotSelected'));
+      return;
+    }
+    if (isSalesReturnInvoice && !customerTitle) {
+      toast.warning('⚠️ ' + tm('salesReturnCustomerOptionalWarning'));
     }
 
     // Kalem kontrolü — sayım fazlası taslağında birim fiyat 0 olabilir; alışta yine de kayda izin verilir

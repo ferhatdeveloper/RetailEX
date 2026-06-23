@@ -2739,6 +2739,12 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
   transactionNotAllowedDate: { tr: 'Bu tarihte işlem yapılamaz!', en: 'Transaction not allowed on this date!', ar: 'العملية غير مسموح بها في هذا التاريخ!', ku: 'لەم بەروارەدا کردار ڕێگەپێدراو نییە!' },
   supplierNotSelected: { tr: 'Tedarikçi seçilmedi!', en: 'Supplier not selected!', ar: 'لم يتم اختيار المورد!', ku: 'دابینکەر هەڵنەبژێردراوە!' },
   customerNotSelected: { tr: 'Müşteri seçilmedi!', en: 'Customer not selected!', ar: 'لم يتم اختيار العميل!', ku: 'کڕیار هەڵنەبژێردراوە!' },
+  salesReturnCustomerOptionalWarning: {
+    tr: 'Cari hesap seçilmedi. İade kaydedilecek; cari ekstresine yansımayacaktır.',
+    en: 'No customer account selected. The return will be saved but will not post to the account ledger.',
+    ar: 'لم يُختر حساب جاري. سيتم حفظ الإرجاع دون تسجيله في كشف الحساب.',
+    ku: 'هەژماری جاری هەڵنەبژێردراوە. گەڕاندنەوە پاشەکەوت دەکرێت بەڵام لە کۆکراوەی هەژماردا تۆمار نابێت.',
+  },
   noInvoiceItems: { tr: 'Fatura kalemi yok!', en: 'No invoice items!', ar: 'لا توجد عناصر للفاتورة!', ku: 'هیچ بڕگەیەکی وەسڵ نییە!' },
   invoiceSaved: { tr: 'Fatura kaydedildi!', en: 'Invoice saved successfully!', ar: 'تم حفظ الفاتورة بنجاح!', ku: 'وەسڵەکە بە سەرکەوتوویی پاشەکەوت کرا!' },
   invoiceSaveError: { tr: 'Fatura kaydedilemedi!', en: 'Failed to save invoice!', ar: 'فشل في حفظ الفاتورة!', ku: 'وەسڵەکە پاشەکەوت نەکرا!' },
