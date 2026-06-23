@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useFirmaDonem } from '../../contexts/FirmaDonemContext';
 import { logger } from '../../utils/logger';
 import { resolveScaleBarcodeSale } from '../../utils/scaleBarcodeSale';
-import { isCompositeScaleBarcode, normalizeScannedBarcode, parseBarcode, parseBarcodeVariants, expandBarcodeLookupKeys } from '../../utils/barcodeParser';
+import { isCompositeScaleBarcode, normalizeScannedBarcode, parseBarcode, expandBarcodeLookupKeys } from '../../utils/barcodeParser';
 import {
   BARCODE_SCANNER_DEBOUNCE_MS,
   isBarcodeReadyForAutoSubmit,
