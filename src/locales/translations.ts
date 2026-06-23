@@ -626,6 +626,10 @@ export interface Translations {
   groupCodes: string;
   handoverAmount: string;
   handoverFromCashier: string;
+  sessionCashBreakdownHint: string;
+  sessionCashSales: string;
+  sessionCashReturns: string;
+  sessionCashierPerformance: string;
   helpMessage: string;
   historyMovements: string;
   holdPhoneToQr: string;
@@ -1731,6 +1735,10 @@ export const translations: any = {
     groupCodes: 'Grup Kodları',
     handoverAmount: 'Devir Tutarı:',
     handoverFromCashier: 'Devreden Kasiyer:',
+    sessionCashBreakdownHint: 'Bu oturum — önceki kasiyer satışları hariç',
+    sessionCashSales: 'Bu oturum nakit tahsilat',
+    sessionCashReturns: 'Bu oturum nakit iade',
+    sessionCashierPerformance: 'Bu Oturum — Kasiyer Cirosu',
     helpMessage: 'Bu hata devam ederse, lütfen tarayıcı konsolunu (F12) kontrol edin ve teknik destek ekibiyle iletişime geçin.',
     historyMovements: 'Geçmiş Hareketler',
     holdPhoneToQr: 'Telefonu QR koda tutun',
@@ -3190,6 +3198,10 @@ export const translations: any = {
     groupCodes: 'Group Codes',
     handoverAmount: 'Handover Amount:',
     handoverFromCashier: 'Handover From Cashier:',
+    sessionCashBreakdownHint: 'This session only — excludes previous cashier sales',
+    sessionCashSales: 'Session cash collected',
+    sessionCashReturns: 'Session cash returns',
+    sessionCashierPerformance: 'This Session — Cashier Performance',
     helpMessage: 'If this error persists, please check the browser console (F12) and contact the technical support team.',
     historyMovements: 'History Movements',
     holdPhoneToQr: 'Hold phone to QR code',
@@ -4544,6 +4556,10 @@ export const translations: any = {
     groupCodes: 'أكواد المجموعات',
     handoverAmount: 'مبلغ التسليم:',
     handoverFromCashier: 'الصراف المسلم:',
+    sessionCashBreakdownHint: 'هذه الجلسة فقط — باستثناء مبيعات الصراف السابق',
+    sessionCashSales: 'تحصيل نقدي للجلسة',
+    sessionCashReturns: 'مرتجعات نقدية للجلسة',
+    sessionCashierPerformance: 'هذه الجلسة — أداء الصراف',
     helpMessage: 'إذا استمر هذا الخطأ، يرجى التحقق من وحدة تحكم المتصفح (F12) والاتصال بفريق الدعم الفني.',
     historyMovements: 'حركات السجل',
     holdPhoneToQr: 'وجه الهاتف نحو رمز الاستجابة السريعة',
@@ -5891,6 +5907,10 @@ export const translations: any = {
     groupCodes: 'کۆدی گروپەکان',
     handoverAmount: 'Devir Tutarı:',
     handoverFromCashier: 'Devreden Kasiyer:',
+    sessionCashBreakdownHint: 'ئەم دانیشتنە — فرۆشتنی سندوقداری پێشوو لە دەرەوە',
+    sessionCashSales: 'وەرگرتنی نەقدی ئەم دانیشتنە',
+    sessionCashReturns: 'گەڕاندنەوەی نەقدی ئەم دانیشتنە',
+    sessionCashierPerformance: 'ئەم دانیشتنە — ئەدای سندوقدار',
     helpMessage: 'Bu hata devam ederse, lütfen tarayıcı konsolunu (F12) kontrol edin ve teknik destek ekibiyle iletişime geçin.',
     historyMovements: 'مێژووی جوڵەکان',
     holdPhoneToQr: 'مۆبایلەکە بەرەو کۆدی QR بگرە',

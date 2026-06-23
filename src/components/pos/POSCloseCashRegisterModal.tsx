@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { X, Banknote, Printer, CheckCircle, AlertTriangle, Calculator, Users, FileText } from 'lucide-react';
 import type { Sale } from '../../core/types';
 import { POSClosePrintPreview } from './POSClosePrintPreview';
@@ -8,12 +8,15 @@ import { POSNumpad } from './POSNumpad';
 import { POSCashHandoverModal } from './POSCashHandoverModal';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { aggregatePosPayments, aggregateReturnPayments, buildPosZReport, isReturnSale, printPosZReport } from '../../utils/posZReport';
+import type { PosCashSession } from '../../utils/posCashSession';
+import { buildSessionCashBreakdown, filterSalesForCashSession } from '../../utils/posCashSession';
 
 interface POSCloseCashRegisterModalProps {
   onClose: () => void;
   sales: Sale[];
   currentStaff: string;
   openingCash: number;
+  cashSession?: PosCashSession | null;
   onCashRegisterClosed: (closedCash: number, note: string) => void;
   onCashHandover?: (toStaff: string, amount: number, note: string) => void;
 }
@@ -29,6 +32,7 @@ export function POSCloseCashRegisterModal({
   sales,
   currentStaff,
   openingCash,
+  cashSession = null,
   onCashRegisterClosed,
   onCashHandover
 }: POSCloseCashRegisterModalProps) {
@@ -52,15 +56,15 @@ export function POSCloseCashRegisterModal({
     { value: 250, count: 0 },
   ]);
 
-  // Hesaplamalar
-  const todaySales = sales.filter(sale => {
-    const saleDate = new Date(sale.date);
+  // Yalnızca bu kasa oturumundaki satışlar (önceki kasiyer / vardiya hariç)
+  const sessionSales = useMemo(() => {
+    if (cashSession) return filterSalesForCashSession(sales, cashSession);
     const today = new Date();
-    return saleDate.toDateString() === today.toDateString();
-  });
+    return sales.filter((sale) => new Date(sale.date).toDateString() === today.toDateString());
+  }, [sales, cashSession]);
 
-  const positiveSales = todaySales.filter((s) => !isReturnSale(s) && !String(s.status ?? '').toLowerCase().includes('cancel'));
-  const returnSales = todaySales.filter(isReturnSale);
+  const positiveSales = sessionSales.filter((s) => !isReturnSale(s) && !String(s.status ?? '').toLowerCase().includes('cancel'));
+  const returnSales = sessionSales.filter(isReturnSale);
   const paymentBreakdown = aggregatePosPayments(positiveSales);
   const returnPaymentBreakdown = aggregateReturnPayments(returnSales);
 
@@ -72,10 +76,18 @@ export function POSCloseCashRegisterModal({
   const returnTotal = returnSales.reduce((sum, sale) => sum + Math.abs(Number(sale.total) || 0), 0);
   const netSales = totalSales - returnTotal;
 
-  const zReport = buildPosZReport(sales);
+  const zReport = buildPosZReport(sessionSales);
 
-  // Kart ödemeleri kasada değil; beklenen nakit = açılış + nakit tahsilat − nakit iade
-  const expectedCash = openingCash + cashTotal - returnPaymentBreakdown.cash;
+  const cashBreakdown = buildSessionCashBreakdown(
+    openingCash,
+    cashTotal,
+    returnPaymentBreakdown.cash,
+    cashSession?.handoverFrom,
+    cashSession?.handoverAmount,
+  );
+
+  // Kart ödemeleri kasada değil; beklenen nakit = açılış + bu oturum nakit − bu oturum nakit iade
+  const expectedCash = cashBreakdown.expectedCash;
   const actualCash = showDenominationCounter 
     ? denominations.reduce((sum, d) => sum + (d.value * d.count), 0)
     : parseFormattedNumber(countedCash);
@@ -214,22 +226,38 @@ export function POSCloseCashRegisterModal({
                 </div>
               </div>
 
-              {/* Kasa Durumu */}
+              {/* Kasa Durumu — oturum bazlı ayrıştırma */}
               <div className="bg-orange-50 border border-orange-200 p-4">
-                <h4 className="text-sm font-medium text-orange-900 mb-3">{t.cashStatus}</h4>
+                <h4 className="text-sm font-medium text-orange-900 mb-1">{t.cashStatus}</h4>
+                {cashSession && (
+                  <p className="text-xs text-orange-800 mb-3">
+                    {t.sessionCashBreakdownHint} ·{' '}
+                    {new Date(cashSession.openedAt).toLocaleString('tr-TR')}
+                  </p>
+                )}
                 <div className="space-y-2 text-sm">
                   <div className="flex justify-between">
                     <span className="text-gray-600">{t.openingCashRegister}</span>
-                    <span className="font-medium text-gray-900">{formatCurrency(openingCash)}</span>
+                    <span className="font-medium text-gray-900">{formatCurrency(cashBreakdown.openingCash)}</span>
                   </div>
+                  {cashBreakdown.handoverFrom && (
+                    <div className="flex justify-between text-purple-800">
+                      <span>
+                        {t.handoverFromCashier}: {cashBreakdown.handoverFrom}
+                      </span>
+                      {cashBreakdown.handoverAmount != null && cashBreakdown.handoverAmount > 0 && (
+                        <span className="font-medium">{formatCurrency(cashBreakdown.handoverAmount)}</span>
+                      )}
+                    </div>
+                  )}
                   <div className="flex justify-between">
-                    <span className="text-gray-600">{t.cashSales}:</span>
-                    <span className="font-medium text-gray-900">{formatCurrency(cashTotal)}</span>
+                    <span className="text-gray-600">{t.sessionCashSales}:</span>
+                    <span className="font-medium text-gray-900">{formatCurrency(cashBreakdown.sessionCashSales)}</span>
                   </div>
-                  {returnPaymentBreakdown.cash > 0 && (
+                  {cashBreakdown.sessionCashReturns > 0 && (
                     <div className="flex justify-between text-red-600">
-                      <span>Nakit iade (-):</span>
-                      <span className="font-medium">-{formatCurrency(returnPaymentBreakdown.cash)}</span>
+                      <span>{t.sessionCashReturns} (-):</span>
+                      <span className="font-medium">-{formatCurrency(cashBreakdown.sessionCashReturns)}</span>
                     </div>
                   )}
                   <div className="flex justify-between">
@@ -385,7 +413,9 @@ export function POSCloseCashRegisterModal({
           {/* Kasiyer / personel ciro özeti */}
           {zReport.cashierStats.length > 0 && (
             <div className="mt-4 bg-indigo-50 border border-indigo-200 p-4">
-              <h4 className="text-sm font-semibold text-indigo-900 mb-3">Kasiyer / Personel Cirosu (Bugün)</h4>
+              <h4 className="text-sm font-semibold text-indigo-900 mb-3">
+                {cashSession ? t.sessionCashierPerformance : 'Kasiyer / Personel Cirosu (Bugün)'}
+              </h4>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
@@ -498,12 +528,14 @@ export function POSCloseCashRegisterModal({
           onPrint={handleActualPrint}
           printFormat={printFormat}
           setPrintFormat={setPrintFormat}
-          sales={sales}
+          sales={sessionSales}
           currentStaff={currentStaff}
           openingCash={openingCash}
+          cashSession={cashSession}
           actualCash={actualCash}
           expectedCash={expectedCash}
           difference={difference}
+          cashBreakdown={cashBreakdown}
           note={note}
         />
       )}

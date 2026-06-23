@@ -79,6 +79,14 @@ import { useTheme } from '../../contexts/ThemeContext';
 import { formatCurrency, getGlobalCurrency } from '../../utils/currency';
 import { buildSaleCustomerSnapshot } from '../../utils/saleCustomerSnapshot';
 import { loadPosCartSession, savePosCartSession, clearPosCartSession } from '../../utils/posCartSession';
+import {
+  clearPosCashSession,
+  createPosCashSession,
+  loadPosCashSession,
+  recoverPosCashSessionFromLegacyOpen,
+  savePosCashSession,
+  type PosCashSession,
+} from '../../utils/posCashSession';
 import { logPosCartAudit } from '../../services/posCartAuditService';
 import { formatNumber as formatNumberUtil } from '../../utils/formatNumber';
 import { LanguageSelectionModal } from '../system/LanguageSelectionModal';
@@ -407,6 +415,22 @@ export default function MarketPOS({
     const saved = localStorage.getItem('retailos_cash_register_open');
     return saved === 'true';
   });
+  const [cashSession, setCashSession] = useState<PosCashSession | null>(() => {
+    const existing = loadPosCashSession();
+    if (existing) return existing;
+    const registerOpen = localStorage.getItem('retailos_cash_register_open') === 'true';
+    return registerOpen ? recoverPosCashSessionFromLegacyOpen() : null;
+  });
+
+  useEffect(() => {
+    if (isCashRegisterOpen && !cashSession) {
+      const recovered = recoverPosCashSessionFromLegacyOpen();
+      if (recovered) {
+        savePosCashSession(recovered);
+        setCashSession(recovered);
+      }
+    }
+  }, [isCashRegisterOpen, cashSession]);
 
   // Pending cash handover state
   const [pendingHandover, setPendingHandover] = useState<{
@@ -2567,11 +2591,14 @@ export default function MarketPOS({
           sales={sales}
           currentStaff={currentStaff}
           openingCash={cashRegisterOpeningCash}
+          cashSession={cashSession}
           onCashRegisterClosed={(closedCash, note) => {
             // Kasa kapatıldı - Yeni kasa açma modalını göster
             setShowCloseCashRegisterModal(false);
             setIsCashRegisterOpen(false);
             localStorage.setItem('retailos_cash_register_open', 'false');
+            clearPosCashSession();
+            setCashSession(null);
 
             // Kasa kapatma kaydını localStorage'a ekle
             const closeRecord = {
@@ -2602,6 +2629,8 @@ export default function MarketPOS({
             setShowCloseCashRegisterModal(false);
             setIsCashRegisterOpen(false);
             localStorage.setItem('retailos_cash_register_open', 'false');
+            clearPosCashSession();
+            setCashSession(null);
 
             // Bilgilendirme
             alert(t.cashHandedOverMessage.replace('{staff}', toStaff).replace('{amount}', amount.toFixed(2)));
@@ -2615,7 +2644,18 @@ export default function MarketPOS({
           currentStaff={currentStaff}
           pendingHandover={pendingHandover}
           onOpenRegister={(openingCash, note) => {
-            // Kasayı aç
+            // Kasayı aç — yeni oturum başlat
+            const session = createPosCashSession({
+              staff: currentStaff,
+              openingCash,
+              openNote: note,
+              handoverFrom: pendingHandover?.fromStaff,
+              handoverAmount: pendingHandover?.amount,
+              storeId: currentUser.storeId,
+              firmNr: selectedFirm?.firm_nr,
+            });
+            savePosCashSession(session);
+            setCashSession(session);
             setCashRegisterOpeningCash(openingCash);
             setIsCashRegisterOpen(true);
             localStorage.setItem('retailos_opening_cash', openingCash.toString());
@@ -2623,10 +2663,13 @@ export default function MarketPOS({
 
             // Kasa açma kaydını localStorage'a ekle
             const openRecord = {
-              date: new Date().toISOString(),
+              date: session.openedAt,
+              sessionId: session.sessionId,
               staff: currentStaff,
               openingCash: openingCash,
-              note: note
+              note: note,
+              handoverFrom: pendingHandover?.fromStaff,
+              handoverAmount: pendingHandover?.amount,
             };
             localStorage.setItem('retailos_last_open', JSON.stringify(openRecord));
 

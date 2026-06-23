@@ -2,6 +2,7 @@ import { X, Printer } from 'lucide-react';
 import type { Sale } from '../../core/types';
 import { formatNumber } from '../../utils/formatNumber';
 import { aggregatePosPayments, buildPosZReport } from '../../utils/posZReport';
+import type { PosCashSession, PosSessionCashBreakdown } from '../../utils/posCashSession';
 
 interface POSClosePrintPreviewProps {
   onClose: () => void;
@@ -11,9 +12,11 @@ interface POSClosePrintPreviewProps {
   sales: Sale[];
   currentStaff: string;
   openingCash: number;
+  cashSession?: PosCashSession | null;
   actualCash: number;
   expectedCash: number;
   difference: number;
+  cashBreakdown?: PosSessionCashBreakdown;
   note: string;
 }
 
@@ -25,19 +28,15 @@ export function POSClosePrintPreview({
   sales,
   currentStaff,
   openingCash,
+  cashSession = null,
   actualCash,
   expectedCash,
   difference,
+  cashBreakdown,
   note
 }: POSClosePrintPreviewProps) {
-  const todaySales = sales.filter(sale => {
-    const saleDate = new Date(sale.date);
-    const today = new Date();
-    return saleDate.toDateString() === today.toDateString();
-  });
-
-  const positiveSales = todaySales.filter((s) => Number(s.total) > 0 && String(s.status ?? '').toLowerCase() !== 'cancelled');
-  const returnSales = todaySales.filter(s => Number(s.total) < 0 || String(s.status ?? '').toLowerCase() === 'return');
+  const positiveSales = sales.filter((s) => Number(s.total) > 0 && String(s.status ?? '').toLowerCase() !== 'cancelled');
+  const returnSales = sales.filter(s => Number(s.total) < 0 || String(s.status ?? '').toLowerCase() === 'return');
   const paymentBreakdown = aggregatePosPayments(positiveSales);
 
   const totalSales = positiveSales.reduce((sum, sale) => sum + sale.total, 0);
@@ -49,6 +48,12 @@ export function POSClosePrintPreview({
   const netSales = totalSales - returnTotal;
   const zReport = buildPosZReport(sales);
   const cashierStats = zReport.cashierStats;
+  const bd = cashBreakdown ?? {
+    openingCash,
+    sessionCashSales: cashTotal,
+    sessionCashReturns: 0,
+    expectedCash,
+  };
 
   return (
     <>
@@ -207,19 +212,33 @@ export function POSClosePrintPreview({
 
                     <div className="border-t border-dashed border-gray-400 my-2"></div>
 
-                    <div className="font-bold mb-1">KASA DURUMU</div>
+                    <div className="font-bold mb-1">KASA DURUMU{cashSession ? ' (OTURUM)' : ''}</div>
                     <div className="space-y-1 mb-3">
                       <div className="flex justify-between">
-                        <span>Açılış:</span>
-                        <span>{formatNumber(openingCash, 2, false)}</span>
+                        <span>Açılış / devir:</span>
+                        <span>{formatNumber(bd.openingCash, 2, false)}</span>
                       </div>
+                      {bd.handoverFrom && (
+                        <div className="flex justify-between text-xs">
+                          <span>Devreden: {bd.handoverFrom}</span>
+                          {bd.handoverAmount != null && bd.handoverAmount > 0 && (
+                            <span>{formatNumber(bd.handoverAmount, 2, false)}</span>
+                          )}
+                        </div>
+                      )}
                       <div className="flex justify-between">
-                        <span>Nakit Satış:</span>
-                        <span>{formatNumber(cashTotal, 2, false)}</span>
+                        <span>Oturum nakit satış:</span>
+                        <span>{formatNumber(bd.sessionCashSales, 2, false)}</span>
                       </div>
+                      {bd.sessionCashReturns > 0 && (
+                        <div className="flex justify-between">
+                          <span>Oturum nakit iade (-):</span>
+                          <span>-{formatNumber(bd.sessionCashReturns, 2, false)}</span>
+                        </div>
+                      )}
                       <div className="flex justify-between font-bold">
                         <span>Beklenen:</span>
-                        <span>{formatNumber(expectedCash, 2, false)}</span>
+                        <span>{formatNumber(bd.expectedCash, 2, false)}</span>
                       </div>
                       <div className="flex justify-between font-bold">
                         <span>Sayılan:</span>
