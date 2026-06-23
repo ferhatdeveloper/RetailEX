@@ -13,9 +13,9 @@ import {
 } from '../../services/receiptSettingsService';
 import { useTheme } from '../../contexts/ThemeContext';
 import { paymentGateway, type PaymentProvider } from '../../services/paymentGateway';
-import { formatCurrency, formatNumber, formatMoneyWithCode, getGlobalCurrency, roundMoneyAmount, moneyEpsilon } from '../../utils/currency';
+import { formatCurrency, formatNumber, formatMoneyWithCode, getGlobalCurrency } from '../../utils/currency';
 import { formatNumber as formatNumberTR } from '../../utils/formatNumber';
-import { roundPosDiscountAmountUp } from '../../utils/discountRounding';
+import { roundPosDiscountAmountUp, roundPosMoneyAmount, posMoneyEpsilon } from '../../utils/discountRounding';
 import { POSCancelReasonModal } from './POSCancelReasonModal';
 
 // Helper function to format number with Turkish formatting (nokta binlik, virgül ondalık)
@@ -230,21 +230,21 @@ export function POSPaymentModal({
     }
   }
 
-  const finalTotal = roundMoneyAmount(total - calculatedDiscount, baseCurrency);
+  const finalTotal = roundPosMoneyAmount(total - calculatedDiscount, baseCurrency);
 
   // Calculate total paid (convert all to base currency)
   const totalPaidRaw = payments.reduce((sum, payment) => {
     const amountInBase = payment.amount * (exchangeRates[payment.currency] ?? 1);
     return sum + amountInBase;
   }, 0);
-  const totalPaid = roundMoneyAmount(totalPaidRaw, baseCurrency);
+  const totalPaid = roundPosMoneyAmount(totalPaidRaw, baseCurrency);
 
   const remainingRaw = finalTotal - totalPaid;
-  const remaining = remainingRaw > moneyEpsilon(baseCurrency)
-    ? roundMoneyAmount(remainingRaw, baseCurrency)
+  const remaining = remainingRaw > posMoneyEpsilon(baseCurrency)
+    ? roundPosMoneyAmount(remainingRaw, baseCurrency)
     : 0;
-  const change = totalPaid > finalTotal + moneyEpsilon(baseCurrency)
-    ? roundMoneyAmount(totalPaid - finalTotal, baseCurrency)
+  const change = totalPaid > finalTotal + posMoneyEpsilon(baseCurrency)
+    ? roundPosMoneyAmount(totalPaid - finalTotal, baseCurrency)
     : 0;
 
   const handleNumpadClick = (value: string) => {
@@ -331,7 +331,7 @@ export function POSPaymentModal({
 
   const handleConfirmPayment = async () => {
     if (isLoading) return;
-    if (remaining > moneyEpsilon(baseCurrency)) {
+    if (remaining > posMoneyEpsilon(baseCurrency)) {
       alert(t.insufficientPayment || 'Ödeme tutarı yetersiz!');
       return;
     }
@@ -785,7 +785,7 @@ export function POSPaymentModal({
                       ? Math.max(0, remaining)
                       : Math.max(0, remaining) / rate;
                     const amountToAdd = Number(
-                      roundMoneyAmount(
+                      roundPosMoneyAmount(
                         remainingInSelectedCurrency,
                         currentCurrency
                       )

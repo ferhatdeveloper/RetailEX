@@ -1,14 +1,32 @@
 /**
- * POS indirim tutarları — 250’lik kademelere yukarı yuvarlanır (250, 500, 750, 1000, …).
- * 250’den küçük ham tutarlar aşırı şişmemesi için yalnızca tam sayıya yuvarlanır.
+ * POS para tutarları — IQD: 250’lik kademe (…000, …250, …500, …750).
+ * İndirimler yukarı; satış satırı ve toplamlar en yakın 250.
  */
+import { roundMoneyAmount } from './currency';
+
 export const POS_DISCOUNT_MONETARY_STEP = 250;
+
+export function roundPosMoneyAmount(value: number, currency: string = 'IQD'): number {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return 0;
+  const code = String(currency ?? 'IQD').trim().toUpperCase();
+  if (code !== 'IQD') return roundMoneyAmount(n, code);
+  if (n === 0) return 0;
+  const step = POS_DISCOUNT_MONETARY_STEP;
+  return Math.round(n / step) * step;
+}
+
+/** IQD POS ödeme toleransı (yarım kademe). */
+export function posMoneyEpsilon(currency: string = 'IQD'): number {
+  const code = String(currency ?? 'IQD').trim().toUpperCase();
+  if (code === 'IQD') return POS_DISCOUNT_MONETARY_STEP / 2;
+  return 0.005;
+}
 
 export function roundPosDiscountAmountUp(raw: number): number {
   const n = Number(raw);
   if (!Number.isFinite(n) || n <= 0) return 0;
   const step = POS_DISCOUNT_MONETARY_STEP;
-  if (n < step) return Math.round(n);
   return Math.ceil(n / step) * step;
 }
 
@@ -19,7 +37,13 @@ export function lineDiscountMoneyFromPercent(gross: number, discountPercent: num
   return Math.min(roundPosDiscountAmountUp(raw), gross);
 }
 
-/** Satır net tutarı = brüt − (yuvarlanmış indirim). */
-export function lineNetAfterPercentDiscount(gross: number, discountPercent: number): number {
-  return Math.max(0, gross - lineDiscountMoneyFromPercent(gross, discountPercent));
+/** Satır net tutarı = yuvarlanmış brüt − (yuvarlanmış indirim). */
+export function lineNetAfterPercentDiscount(
+  gross: number,
+  discountPercent: number,
+  currency: string = 'IQD',
+): number {
+  const roundedGross = roundPosMoneyAmount(gross, currency);
+  const net = roundedGross - lineDiscountMoneyFromPercent(roundedGross, discountPercent);
+  return Math.max(0, roundPosMoneyAmount(net, currency));
 }

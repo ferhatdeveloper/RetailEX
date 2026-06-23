@@ -3,7 +3,7 @@
  */
 import type { Product } from '../core/types';
 import { isGramScaleUnit, scaleWeightFieldToQuantity, type ParsedBarcode } from './barcodeParser';
-import { roundMoneyAmount } from './currency';
+import { roundPosMoneyAmount } from './discountRounding';
 import { normalizeWeightProductQuantity } from './scaleQuantity';
 
 export interface ScaleCartLineAmounts {
@@ -56,20 +56,20 @@ export function buildScaleCartLineAmounts(
   const suffixMode = parsed.code10SuffixMode ?? 'weight_grams';
 
   if (parsed.format === 'code10_weight' && suffixMode === 'total_iqd') {
-    const lineTotal = roundMoneyAmount(suffixValue, currency);
-    const pricePerKg = roundMoneyAmount(resolvePricePerKg(product, exchangeRate), currency);
+    const lineTotal = roundPosMoneyAmount(suffixValue, currency);
+    const pricePerKg = roundPosMoneyAmount(resolvePricePerKg(product, exchangeRate), currency);
     if (isGramScaleUnit(unitUpper)) {
-      const pricePerGr = pricePerKg > 0 ? roundMoneyAmount(pricePerKg / 1000, currency) : 0;
+      const pricePerGr = pricePerKg > 0 ? roundPosMoneyAmount(pricePerKg / 1000, currency) : 0;
       const quantity =
         pricePerGr > 0 ? Math.max(1, Math.round(lineTotal / pricePerGr)) : 1;
       const unitPrice =
-        quantity > 0 ? roundMoneyAmount(lineTotal / quantity, currency) : lineTotal;
+        quantity > 0 ? roundPosMoneyAmount(lineTotal / quantity, currency) : lineTotal;
       return { quantity, unitName: 'GR', unitPrice, lineTotal };
     }
     const quantity =
       pricePerKg > 0 ? Math.round((lineTotal / pricePerKg) * 1000) / 1000 : 1;
     const unitPrice =
-      quantity > 0 ? roundMoneyAmount(lineTotal / quantity, currency) : lineTotal;
+      quantity > 0 ? roundPosMoneyAmount(lineTotal / quantity, currency) : lineTotal;
     return { quantity, unitName: 'KG', unitPrice, lineTotal };
   }
 
@@ -81,13 +81,13 @@ export function buildScaleCartLineAmounts(
   const quantity = normalizeWeightProductQuantity(rawQty, unitUpper);
   if (!(quantity > 0)) return null;
 
-  const pricePerKg = roundMoneyAmount(resolvePricePerKg(product, exchangeRate), currency);
+  const pricePerKg = roundPosMoneyAmount(resolvePricePerKg(product, exchangeRate), currency);
   const unitPriceBase = isGramScaleUnit(unitUpper)
-    ? roundMoneyAmount(pricePerKg / 1000, currency)
+    ? roundPosMoneyAmount(pricePerKg / 1000, currency)
     : pricePerKg;
-  const lineTotal = roundMoneyAmount(unitPriceBase * quantity, currency);
+  const lineTotal = roundPosMoneyAmount(unitPriceBase * quantity, currency);
   const unitPrice =
-    quantity > 0 ? roundMoneyAmount(lineTotal / quantity, currency) : unitPriceBase;
+    quantity > 0 ? roundPosMoneyAmount(lineTotal / quantity, currency) : unitPriceBase;
 
   return { quantity, unitName, unitPrice, lineTotal };
 }

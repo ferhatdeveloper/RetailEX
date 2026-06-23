@@ -77,7 +77,7 @@ import { postgres } from '../../services/postgres';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { usePermission } from '../../shared/hooks/usePermission';
 import { useTheme } from '../../contexts/ThemeContext';
-import { formatCurrency, getGlobalCurrency, roundMoneyAmount } from '../../utils/currency';
+import { formatCurrency, getGlobalCurrency } from '../../utils/currency';
 import { buildSaleCustomerSnapshot } from '../../utils/saleCustomerSnapshot';
 import { loadPosCartSession, savePosCartSession, clearPosCartSession } from '../../utils/posCartSession';
 import { logPosCartAudit } from '../../services/posCartAuditService';
@@ -86,7 +86,7 @@ import { LanguageSelectionModal } from '../system/LanguageSelectionModal';
 import type { Product, Customer, Campaign, User as UserType, Sale } from '../../core/types';
 import type { CartItem, ParkedReceipt, SaleRecord, PaymentType } from './types';
 import { applyCampaign, CampaignResult } from '../../utils/campaignEngine';
-import { lineDiscountMoneyFromPercent, lineNetAfterPercentDiscount } from '../../utils/discountRounding';
+import { lineDiscountMoneyFromPercent, lineNetAfterPercentDiscount, roundPosMoneyAmount } from '../../utils/discountRounding';
 import { formatPosQuantityInput, parsePosQuantity, formatDecimalForTrInput, parsePosQuantityForProduct } from '../../utils/numberFormatter';
 import { mergeScaleCartQuantity, normalizeWeightProductQuantity } from '../../utils/scaleQuantity';
 import { POSProductQuantityModal } from './POSProductQuantityModal';
@@ -146,6 +146,10 @@ export default function MarketPOS({
   // Language support
   const { t, tm } = useLanguage();
   const { selectedFirm, selectedPeriod } = useFirmaDonem();
+  const posBaseCurrency = useMemo(
+    () => selectedFirm?.ana_para_birimi?.trim().toUpperCase() || getGlobalCurrency(),
+    [selectedFirm?.ana_para_birimi],
+  );
   const [showLanguageModal, setShowLanguageModal] = useState(false);
 
   // Theme support
@@ -501,7 +505,7 @@ export default function MarketPOS({
         return sum + item.subtotal;
       }
       const price = item.price || item.variant?.price || item.product.price;
-      return sum + roundMoneyAmount(item.quantity * price, baseCurrency);
+      return sum + roundPosMoneyAmount(item.quantity * price, baseCurrency);
     }, 0);
   }, [cart, selectedFirm?.ana_para_birimi]);
 
@@ -525,8 +529,9 @@ export default function MarketPOS({
   }, [campaignResult]);
 
   const total = useMemo(() => {
-    return subtotal - totalDiscount - campaignDiscount;
-  }, [subtotal, totalDiscount, campaignDiscount]);
+    const baseCurrency = selectedFirm?.ana_para_birimi?.trim().toUpperCase() || getGlobalCurrency();
+    return roundPosMoneyAmount(subtotal - totalDiscount - campaignDiscount, baseCurrency);
+  }, [subtotal, totalDiscount, campaignDiscount, selectedFirm?.ana_para_birimi]);
 
   // Brüt Kar Hesaplama (Instant Profit)
   const instantProfit = useMemo(() => {
@@ -891,7 +896,7 @@ export default function MarketPOS({
       (product.currency || selectedFirm?.ana_para_birimi || getGlobalCurrency())
         .trim()
         .toUpperCase();
-    price = roundMoneyAmount(price, saleCurrency);
+    price = roundPosMoneyAmount(price, saleCurrency);
 
     const parsedQty = customQuantity != null
       ? (preserveExactQuantity || isScaleProductFlag(product)
@@ -904,10 +909,10 @@ export default function MarketPOS({
     const normalizedQty = normalizeWeightProductQuantity(quantity, itemUnit);
     const lineGross =
       lineSubtotal != null
-        ? roundMoneyAmount(lineSubtotal, saleCurrency)
-        : roundMoneyAmount(price * normalizedQty, saleCurrency);
+        ? roundPosMoneyAmount(lineSubtotal, saleCurrency)
+        : roundPosMoneyAmount(price * normalizedQty, saleCurrency);
     if (lineSubtotal != null && normalizedQty > 0) {
-      price = roundMoneyAmount(lineGross / normalizedQty, saleCurrency);
+      price = roundPosMoneyAmount(lineGross / normalizedQty, saleCurrency);
     }
 
     setCart(prev => {
@@ -925,8 +930,9 @@ export default function MarketPOS({
                 ...item,
                 quantity: mergedQty,
                 subtotal: lineNetAfterPercentDiscount(
-                  roundMoneyAmount(mergedQty * price, saleCurrency),
+                  roundPosMoneyAmount(mergedQty * price, saleCurrency),
                   item.discount,
+                  saleCurrency,
                 ),
               }
             : item
@@ -939,7 +945,7 @@ export default function MarketPOS({
         unit: itemUnit,
         multiplier,
         discount: 0,
-        subtotal: lineNetAfterPercentDiscount(lineGross, 0),
+        subtotal: lineNetAfterPercentDiscount(lineGross, 0, saleCurrency),
         price
       }];
     });
@@ -1066,7 +1072,7 @@ export default function MarketPOS({
         return {
           ...item,
           quantity: newQuantity,
-          subtotal: lineNetAfterPercentDiscount(newQuantity * price, item.discount)
+          subtotal: lineNetAfterPercentDiscount(newQuantity * price, item.discount, posBaseCurrency)
         };
       }
       return item;
@@ -1113,7 +1119,7 @@ export default function MarketPOS({
           return {
             ...row,
             price: newPrice,
-            subtotal: lineNetAfterPercentDiscount(row.quantity * newPrice, row.discount),
+            subtotal: lineNetAfterPercentDiscount(row.quantity * newPrice, row.discount, posBaseCurrency),
           };
         }
         return row;
@@ -1152,7 +1158,7 @@ export default function MarketPOS({
   const updateCartItemVariant = (index: number, variant: any) => {
     const item = cart[index];
     const newPrice = variant.price;
-    const newSubtotal = lineNetAfterPercentDiscount(newPrice * item.quantity, item.discount);
+    const newSubtotal = lineNetAfterPercentDiscount(newPrice * item.quantity, item.discount, posBaseCurrency);
 
     setCart(cart.map((cartItem, i) =>
       i === index
@@ -1172,7 +1178,7 @@ export default function MarketPOS({
           ...item,
           unit: unit,
           multiplier: multiplier,
-          subtotal: lineNetAfterPercentDiscount(item.quantity * price, item.discount)
+          subtotal: lineNetAfterPercentDiscount(item.quantity * price, item.discount, posBaseCurrency)
         };
       }
       return item;
@@ -1320,9 +1326,9 @@ export default function MarketPOS({
         total: item.subtotal,
         variant: item.variant
       })),
-      subtotal: roundMoneyAmount(subtotal, baseCurrency),
-      discount: roundMoneyAmount(totalDiscount + campaignDiscount + (paymentData.discount || 0), baseCurrency),
-      total: roundMoneyAmount(paymentData.finalTotal || paymentData.total, baseCurrency),
+      subtotal: roundPosMoneyAmount(subtotal, baseCurrency),
+      discount: roundPosMoneyAmount(totalDiscount + campaignDiscount + (paymentData.discount || 0), baseCurrency),
+      total: roundPosMoneyAmount(paymentData.finalTotal || paymentData.total, baseCurrency),
       paymentMethod: paymentMethod,
       campaignId: selectedCampaign?.id,
       campaignName: selectedCampaign?.name,
@@ -1402,7 +1408,7 @@ export default function MarketPOS({
         return {
           ...item,
           discount: discountPercent,
-          subtotal: lineNetAfterPercentDiscount(item.quantity * price, discountPercent)
+          subtotal: lineNetAfterPercentDiscount(item.quantity * price, discountPercent, posBaseCurrency)
         };
       }
       return item;
