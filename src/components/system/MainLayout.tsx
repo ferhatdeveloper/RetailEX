@@ -13,6 +13,7 @@ import { useDatabaseStatus } from '../../hooks/useDatabaseStatus';
 import { useTheme } from '../../contexts/ThemeContext';
 import { FirmaDonemQuickSetup } from './FirmaDonemQuickSetup';
 import { useFirmaDonem } from '../../contexts/FirmaDonemContext';
+import { STORAGE_KEYS } from '../../core/config/constants';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { usePermission } from '../../shared/hooks/usePermission';
 import { useResponsive } from '../../hooks/useResponsive';
@@ -493,8 +494,12 @@ export function MainLayout({
     return (saved as LayoutOrder) || 'cart-numpad-quick';
   });
   const [showExchangeRate, setShowExchangeRate] = useState(() => {
-    const saved = localStorage.getItem('retailos_pos_show_exchange_rate');
+    const saved = localStorage.getItem(STORAGE_KEYS.POS_SHOW_EXCHANGE_RATE);
     return saved !== 'false';
+  });
+  const [showInstantProfit, setShowInstantProfit] = useState(() => {
+    const saved = localStorage.getItem(STORAGE_KEYS.POS_SHOW_INSTANT_PROFIT);
+    return saved === 'true';
   });
   const { callerIdConfig } = useRestaurantStore();
   const callerIdActive = callerIdConfig.mode !== 'off';
@@ -1592,6 +1597,7 @@ export function MainLayout({
               setRtlMode={setRtlMode}
               layoutOrder={layoutOrder}
               showExchangeRate={showExchangeRate}
+              showInstantProfit={showInstantProfit}
             />
           </Suspense>
         ) : currentModule === 'wms' ? (
@@ -1804,6 +1810,9 @@ export function MainLayout({
           setLayoutOrder={setLayoutOrder}
           showExchangeRate={showExchangeRate}
           setShowExchangeRate={setShowExchangeRate}
+          showInstantProfit={showInstantProfit}
+          setShowInstantProfit={setShowInstantProfit}
+          isAdminUser={currentUser.role === 'admin'}
           onClose={() => setShowZoomModal(false)}
         />
       )}

@@ -3645,6 +3645,12 @@ export function UniversalInvoiceForm({
                           <option value="PROMOTION">Promosyon</option>
                           <option value="DAMAGED">Hasarlı</option>
                         </select>
+                        {invoiceType.category === 'Alis' && transactionType === 'PROMOTION' && (
+                          <p className="text-xs text-amber-700 mt-1.5 bg-amber-50 border border-amber-200 rounded px-2 py-1.5">
+                            Ücretsiz / hediye gelen ürünler için satırda <strong>birim fiyatı 0</strong> girin.
+                            Stok artışı miktar kadar işlenir; maliyet dağıtımı gerekiyorsa aynı faturada ücretli satırlarla birlikte kaydedin.
+                          </p>
+                        )}
                       </div>
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Toplam ({ledgerCurrency})</label>

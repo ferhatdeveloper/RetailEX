@@ -1229,8 +1229,8 @@ export function ManagementModule({
         case 'routeplan':
           return <LogisticsModule />;
         case 'salesinvoice':
-        case 'sales-invoice-view': // Generic view
-          return <InvoiceListModule products={products} defaultCategory="Satis" title={t.salesInvoicesTitle} description={t.salesInvoicesDesc} />;
+        case 'sales-invoice-view': // Generic view — satış + müşteri iade faturaları
+          return <InvoiceListModule products={products} defaultCategory="Satis" includeCategories={['Iade']} defaultInvoiceTypeFilter="all" title={t.salesInvoicesTitle} description={t.salesInvoicesDesc} />;
         case 'sales-invoice-standard':
           return <InvoiceListModule products={products} defaultCategory="Satis" defaultInvoiceTypeFilter="8" title={t.salesInvoicesTitle} description={t.salesInvoicesDesc} />;
         case 'sales-invoice-retail':

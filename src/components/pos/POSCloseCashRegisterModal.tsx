@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Banknote, Printer, CheckCircle, AlertTriangle, Calculator, Users } from 'lucide-react';
+import { X, Banknote, Printer, CheckCircle, AlertTriangle, Calculator, Users, FileText } from 'lucide-react';
 import type { Sale } from '../../core/types';
 import { POSClosePrintPreview } from './POSClosePrintPreview';
 import { formatCurrency, formatNumber } from '../../utils/formatNumber';
@@ -7,6 +7,7 @@ import { formatNumberInput, parseFormattedNumber } from '../../utils/numberForma
 import { POSNumpad } from './POSNumpad';
 import { POSCashHandoverModal } from './POSCashHandoverModal';
 import { useLanguage } from '../../contexts/LanguageContext';
+import { aggregatePosPayments, buildPosZReport, printPosZReport } from '../../utils/posZReport';
 
 interface POSCloseCashRegisterModalProps {
   onClose: () => void;
@@ -58,30 +59,22 @@ export function POSCloseCashRegisterModal({
     return saleDate.toDateString() === today.toDateString();
   });
 
-  // More robust filtering - check for all possible payment method values
-  // If paymentMethod is undefined/null, treat as cash (default)
-  const cashSales = todaySales.filter(s => {
-    if (!s.paymentMethod) return true; // Default to cash if undefined
-    const pm = String(s.paymentMethod).toLowerCase().trim();
-    return pm === 'cash' || pm === 'nakit' || pm === '';
-  });
-  
-  const cardSales = todaySales.filter(s => {
-    if (!s.paymentMethod) return false; // Skip undefined for card
-    const pm = String(s.paymentMethod).toLowerCase().trim();
-    return pm === 'card' || pm === 'kredi kartı' || pm === 'gateway' || pm === 'kart';
-  });
-  
-  const returnSales = todaySales.filter(s => s.total < 0);
+  const positiveSales = todaySales.filter((s) => Number(s.total) > 0 && String(s.status ?? '').toLowerCase() !== 'cancelled');
+  const returnSales = todaySales.filter(s => Number(s.total) < 0 || String(s.status ?? '').toLowerCase() === 'return');
+  const paymentBreakdown = aggregatePosPayments(positiveSales);
 
-  const totalSales = todaySales.reduce((sum, sale) => sum + (sale.total > 0 ? sale.total : 0), 0);
-  const cashTotal = cashSales.reduce((sum, sale) => sum + sale.total, 0);
-  const cardTotal = cardSales.reduce((sum, sale) => sum + sale.total, 0);
+  const totalSales = positiveSales.reduce((sum, sale) => sum + sale.total, 0);
+  const cashTotal = paymentBreakdown.cash;
+  const cardTotal = paymentBreakdown.card;
+  const creditTotal = paymentBreakdown.credit;
+  const otherTotal = paymentBreakdown.other;
   const returnTotal = returnSales.reduce((sum, sale) => sum + Math.abs(sale.total), 0);
   const netSales = totalSales - returnTotal;
 
-  // Kart ödemeleri de kasaya yansımalı (nakit + kart)
-  const expectedCash = openingCash + cashTotal + cardTotal;
+  const zReport = buildPosZReport(sales);
+
+  // Kart ödemeleri kasada değil; beklenen nakit = açılış + nakit tahsilat
+  const expectedCash = openingCash + cashTotal;
   const actualCash = showDenominationCounter 
     ? denominations.reduce((sum, d) => sum + (d.value * d.count), 0)
     : parseFormattedNumber(countedCash);
@@ -95,6 +88,15 @@ export function POSCloseCashRegisterModal({
 
   const handlePrintReport = () => {
     setShowPrintPreview(true);
+  };
+
+  const handlePrintZReport = () => {
+    printPosZReport(zReport, {
+      companyName: 'ExRetailOS',
+      cashier: currentStaff,
+      openingCash,
+      actualCash: actualCash > 0 ? actualCash : undefined,
+    });
   };
 
   const handleActualPrint = () => {
@@ -167,7 +169,7 @@ export function POSCloseCashRegisterModal({
                 <div className="space-y-2 text-sm">
                   <div className="flex justify-between">
                     <span className="text-gray-600">{t.totalSalesCount}</span>
-                    <span className="font-medium text-gray-900">{todaySales.length}</span>
+                    <span className="font-medium text-gray-900">{positiveSales.length}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-gray-600">{t.grossSales}:</span>
@@ -189,16 +191,24 @@ export function POSCloseCashRegisterModal({
                 <h4 className="text-sm font-medium text-green-900 mb-3">{t.paymentMethods}</h4>
                 <div className="space-y-2 text-sm">
                   <div className="flex justify-between">
-                    <span className="text-gray-600">{t.cashSales} ({cashSales.length}):</span>
+                    <span className="text-gray-600">{t.cashSales} ({paymentBreakdown.cashCount}):</span>
                     <span className="font-medium text-gray-900">{formatCurrency(cashTotal)}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-gray-600">{t.creditCard} ({cardSales.length}):</span>
+                    <span className="text-gray-600">{t.creditCard} ({paymentBreakdown.cardCount}):</span>
                     <span className="font-medium text-gray-900">{formatCurrency(cardTotal)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Veresiye / Cari ({paymentBreakdown.creditCount}):</span>
+                    <span className="font-medium text-gray-900">{formatCurrency(creditTotal)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Diğer ({paymentBreakdown.otherCount}):</span>
+                    <span className="font-medium text-gray-900">{formatCurrency(otherTotal)}</span>
                   </div>
                   <div className="flex justify-between pt-2 border-t border-green-300">
                     <span className="text-green-900 font-medium">{t.totalCollection}</span>
-                    <span className="font-bold text-green-900">{formatCurrency(cashTotal + cardTotal)}</span>
+                    <span className="font-bold text-green-900">{formatCurrency(cashTotal + cardTotal + creditTotal + otherTotal)}</span>
                   </div>
                 </div>
               </div>
@@ -414,6 +424,13 @@ export function POSCloseCashRegisterModal({
               {t.transferToOtherCashier}
             </button>
           )}
+          <button
+            onClick={handlePrintZReport}
+            className="px-4 py-2.5 text-sm bg-indigo-600 text-white hover:bg-indigo-700 transition-colors flex items-center justify-center gap-2"
+          >
+            <FileText className="w-4 h-4" />
+            Z Raporu Yazdır
+          </button>
           <button
             onClick={handlePrintReport}
             disabled={!actualCash || actualCash === 0}

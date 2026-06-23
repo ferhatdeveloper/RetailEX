@@ -115,6 +115,8 @@ interface MarketPOSProps {
   layoutOrder?: LayoutOrder;
   /** Müşteri bilgi panelinde güncel USD/IQD kur satırı */
   showExchangeRate?: boolean;
+  /** Anlık kazanç gösterimi (yalnızca admin + ayar açık) */
+  showInstantProfit?: boolean;
 }
 
 export default function MarketPOS({
@@ -137,10 +139,12 @@ export default function MarketPOS({
   setRtlMode,
   layoutOrder = 'cart-numpad-quick',
   showExchangeRate = true,
+  showInstantProfit = false,
 }: MarketPOSProps) {
   const { selectedFirma } = useFirmaDonem();
   // Get sales from store
   const sales = useSaleStore((state) => state.sales);
+  const addReturn = useSaleStore((state) => state.addReturn);
   const refreshProducts = useProductStore((state) => state.loadProducts);
 
   // Language support
@@ -158,7 +162,7 @@ export default function MarketPOS({
   // Permission check
   const { hasPermission, isAdmin } = usePermission();
   const canChangePrice = currentUser.role === 'admin' || hasPermission('pos.change_price');
-  const showInstantProfit = currentUser.role === 'admin' || isAdmin();
+  const canShowInstantProfit = (currentUser.role === 'admin' || isAdmin()) && showInstantProfit;
 
   // Keyboard shortcuts
   const [showShortcutOverlay, setShowShortcutOverlay] = useState(false);
@@ -1330,6 +1334,11 @@ export default function MarketPOS({
       discount: roundPosMoneyAmount(totalDiscount + campaignDiscount + (paymentData.discount || 0), baseCurrency),
       total: roundPosMoneyAmount(paymentData.finalTotal || paymentData.total, baseCurrency),
       paymentMethod: paymentMethod,
+      payments: paymentData.payments?.map((p: { method?: string; amount?: number; currency?: string }) => ({
+        method: p.method === 'gateway' ? 'card' : String(p.method || 'cash'),
+        amount: Number(p.amount) || 0,
+        currency: p.currency,
+      })),
       campaignId: selectedCampaign?.id,
       campaignName: selectedCampaign?.name,
       campaignDiscount: campaignDiscount,
@@ -2013,7 +2022,7 @@ export default function MarketPOS({
                 </div>
 
                 {/* Instant Profit Display — yalnızca admin */}
-                {showInstantProfit && (
+                {canShowInstantProfit && (
                 <div className={`pt-2 border-t border-dashed ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
                   <div className="flex items-center justify-between opacity-80">
                     <div className="flex items-center gap-1.5">
@@ -2444,9 +2453,52 @@ export default function MarketPOS({
           sales={sales}
           products={products}
           onClose={() => setShowReturnModal(false)}
-          onReturnComplete={(returnData) => {
-            showNotif(t.returnCompleted, 'success');
-            setShowReturnModal(false);
+          onReturnComplete={async (returnData) => {
+            try {
+              const savedReturn = await salesAPI.createReturn({
+                returnNumber: returnData.returnNumber,
+                originalReceiptNumber: returnData.originalReceiptNumber,
+                date: returnData.date,
+                customerId: returnData.customerId,
+                customerName: returnData.customerName,
+                cashier: returnData.cashier || currentStaff,
+                firmNr: selectedFirm?.firm_nr,
+                periodNr: selectedPeriod?.nr?.toString().padStart(2, '0'),
+                storeId: currentUser.storeId,
+                paymentMethod: returnData.refundMethod === 'card' ? 'card' : 'cash',
+                returnReason: returnData.returnReason,
+                items: (returnData.items || []).map((row: {
+                  productId: string;
+                  productName: string;
+                  productCode?: string;
+                  barcode?: string;
+                  quantity: number;
+                  unit?: string;
+                  multiplier?: number;
+                  price: number;
+                  variant?: Sale['items'][0]['variant'];
+                }) => ({
+                  productId: row.productId,
+                  productName: row.productName,
+                  productCode: row.productCode,
+                  barcode: row.barcode,
+                  quantity: row.quantity,
+                  unit: row.unit,
+                  multiplier: row.multiplier,
+                  price: row.price,
+                  variant: row.variant,
+                })),
+              });
+              if (savedReturn) {
+                await addReturn(savedReturn);
+              }
+              showNotif(t.returnCompleted, 'success');
+            } catch (err: unknown) {
+              const msg = err instanceof Error ? err.message : String(err);
+              showNotif(`İade kaydedilemedi: ${msg}`, 'error');
+            } finally {
+              setShowReturnModal(false);
+            }
           }}
         />
       )}

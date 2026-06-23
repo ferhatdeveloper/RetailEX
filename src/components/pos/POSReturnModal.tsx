@@ -2,6 +2,12 @@
 import { X, RotateCcw, Search, Check, Barcode } from 'lucide-react';
 import type { Sale, SaleItem, Product } from '../../core/types';
 import { useLanguage } from '../../contexts/LanguageContext';
+import { expandBarcodeLookupKeys } from '../../utils/barcodeParser';
+import { resolveScaleBarcodeSale } from '../../utils/scaleBarcodeSale';
+import { productAPI } from '../../services/api/products';
+import { formatScaleQuantityDisplay, normalizeWeightProductQuantity } from '../../utils/scaleQuantity';
+import { isWeightBasedUnit } from '../../utils/productUnits';
+import { parsePosQuantityForProduct } from '../../utils/numberFormatter';
 
 interface POSReturnModalProps {
   sales: Sale[];
@@ -35,12 +41,17 @@ export function POSReturnModal({
     }
   }, [returnType]);
 
-  const getItemKey = (item: SaleItem | (SaleItem & { saleId?: string })): string => {
+  const getItemKey = (item: SaleItem | (SaleItem & { saleId?: string }), saleId?: string, lineIndex?: number): string => {
+    if (saleId != null && lineIndex != null) {
+      return `${saleId}_${lineIndex}`;
+    }
     if (item.variant?.id) {
       return `${item.productId}_${item.variant.id}`;
     }
     return item.productId;
   };
+
+  const getReceiptLineKey = (saleId: string, lineIndex: number): string => `${saleId}_${lineIndex}`;
 
   const allItemsFromSales = sales.flatMap(sale =>
     sale.items.map(item => ({
@@ -108,69 +119,130 @@ export function POSReturnModal({
       code.includes(query);
   });
 
-  const findProductByBarcode = (raw: string): Product | undefined => {
+  const findProductByBarcode = async (raw: string): Promise<Product | undefined> => {
     const q = raw.trim();
     if (!q) return undefined;
-    const qLower = q.toLowerCase();
-    return products.find(
-      (p) =>
-        (p.barcode || '').trim() === q ||
-        (p.code || '').trim().toLowerCase() === qLower ||
-        (p.barcode || '').toLowerCase() === qLower
-    );
+
+    for (const key of expandBarcodeLookupKeys(q)) {
+      const fromList = products.find(
+        (p) =>
+          (p.barcode || '').trim() === key ||
+          (p.code || '').trim().toLowerCase() === key.toLowerCase() ||
+          (p.barcode || '').toLowerCase() === key.toLowerCase(),
+      );
+      if (fromList) return fromList;
+    }
+
+    try {
+      const lookup = await productAPI.lookupByBarcode(q);
+      if (lookup?.product) return lookup.product;
+    } catch {
+      /* katalog yoksa devam */
+    }
+
+    try {
+      const scale = await resolveScaleBarcodeSale(q, 1);
+      if (scale?.product) return scale.product;
+    } catch {
+      /* tartılı parse başarısız */
+    }
+
+    return undefined;
   };
 
-  const findSalesForBarcode = (raw: string): Array<{ sale: Sale; item: SaleItem; itemKey: string }> => {
-    const q = raw.trim().toLowerCase();
-    if (!q) return [];
-    const product = findProductByBarcode(raw);
-    const hits: Array<{ sale: Sale; item: SaleItem; itemKey: string }> = [];
+  const findSalesForBarcode = async (
+    raw: string,
+  ): Promise<{
+    matches: Array<{ sale: Sale; item: SaleItem; itemKey: string; lineIndex: number }>;
+    scaleQty?: number;
+    scaleUnit?: string;
+    product?: Product;
+  }> => {
+    const q = raw.trim();
+    if (!q) return { matches: [] };
+
+    let scaleQty: number | undefined;
+    let scaleUnit: string | undefined;
+    let product = await findProductByBarcode(q);
+
+    if (!product) {
+      try {
+        const scale = await resolveScaleBarcodeSale(q, 1);
+        if (scale) {
+          product = scale.product;
+          scaleQty = scale.quantity;
+          scaleUnit = scale.unitName;
+        }
+      } catch {
+        /* ignore */
+      }
+    }
+
+    const lookupKeys = new Set(expandBarcodeLookupKeys(q).map((k) => k.toLowerCase()));
+    const hits: Array<{ sale: Sale; item: SaleItem; itemKey: string; lineIndex: number }> = [];
 
     for (const sale of sales) {
-      for (const item of sale.items) {
+      sale.items.forEach((item, lineIndex) => {
         const itemBarcode = (item.barcode || '').toLowerCase();
         const itemCode = (item.productCode || '').toLowerCase();
         const matchProduct = product && item.productId === product.id;
-        const matchBarcode = itemBarcode && (itemBarcode === q || itemBarcode.includes(q));
-        const matchCode = itemCode && itemCode === q;
+        const matchBarcode = itemBarcode && lookupKeys.has(itemBarcode);
+        const matchCode = itemCode && lookupKeys.has(itemCode);
         if (matchProduct || matchBarcode || matchCode) {
-          hits.push({ sale, item, itemKey: getItemKey(item) });
+          hits.push({
+            sale,
+            item,
+            itemKey: getReceiptLineKey(sale.id, lineIndex),
+            lineIndex,
+          });
         }
-      }
+      });
     }
-    return hits.sort((a, b) => new Date(b.sale.date).getTime() - new Date(a.sale.date).getTime());
+
+    return {
+      matches: hits.sort((a, b) => new Date(b.sale.date).getTime() - new Date(a.sale.date).getTime()),
+      scaleQty,
+      scaleUnit,
+      product,
+    };
   };
 
-  const handleBarcodeScan = () => {
+  const handleBarcodeScan = async () => {
     const code = barcodeInput.trim();
     if (!code) return;
 
-    const matches = findSalesForBarcode(code);
+    setBarcodeHint('Aranıyor…');
+    const { matches, scaleQty, scaleUnit, product } = await findSalesForBarcode(code);
     if (matches.length === 0) {
       setBarcodeHint('Bu barkod/kod ile tamamlanmış satış bulunamadı.');
       return;
     }
 
     const best = matches[0];
+    const unit = scaleUnit || best.item.unit || 'Adet';
+    const defaultQty = scaleQty && scaleQty > 0
+      ? Math.min(scaleQty, best.item.quantity)
+      : (isWeightBasedUnit(unit) ? best.item.quantity : 1);
+
     setSelectedSale(best.sale);
     setReturnType('receipt');
-    setReturnItems({ [best.itemKey]: 1 });
-    const product = findProductByBarcode(code);
+    setReturnItems({ [best.itemKey]: defaultQty });
     setBarcodeHint(
       product
-        ? `${product.name} — Fiş: ${best.sale.receiptNumber}`
-        : `${best.item.productName} — Fiş: ${best.sale.receiptNumber}`
+        ? `${product.name} — ${formatScaleQuantityDisplay(defaultQty, unit)} ${unit} — Fiş: ${best.sale.receiptNumber}`
+        : `${best.item.productName} — Fiş: ${best.sale.receiptNumber}`,
     );
     setBarcodeInput('');
   };
 
-  const handleQuantityChange = (itemKey: string, quantity: number) => {
-    if (quantity <= 0) {
+  const handleQuantityChange = (itemKey: string, quantity: number, maxQty?: number) => {
+    const capped = maxQty != null ? Math.min(Math.max(0, quantity), maxQty) : Math.max(0, quantity);
+    if (capped <= 0) {
       const newItems = { ...returnItems };
       delete newItems[itemKey];
       setReturnItems(newItems);
     } else {
-      setReturnItems({ ...returnItems, [itemKey]: quantity });
+      setReturnItems({ ...returnItems, [itemKey]: capped });
     }
   };
 
@@ -200,17 +272,13 @@ export function POSReturnModal({
     if (returnType === 'receipt' || (returnType === 'barcode' && selectedSale)) {
       const sale = selectedSale!;
       const returnItemsList = sale.items
-        .filter(item => {
-          const itemKey = getItemKey(item);
-          return returnItems[itemKey] && returnItems[itemKey] > 0;
+        .map((item, lineIndex) => {
+          const itemKey = getReceiptLineKey(sale.id, lineIndex);
+          const qty = returnItems[itemKey];
+          if (!qty || qty <= 0) return null;
+          return { item, quantity: qty };
         })
-        .map(item => {
-          const itemKey = getItemKey(item);
-          return {
-            item,
-            quantity: returnItems[itemKey]
-          };
-        });
+        .filter(Boolean) as Array<{ item: SaleItem; quantity: number }>;
 
       const returnReceipt = {
         id: `RETURN-${Date.now()}`,
@@ -223,6 +291,8 @@ export function POSReturnModal({
           productCode: item.productCode,
           barcode: item.barcode,
           quantity: quantity,
+          unit: item.unit,
+          multiplier: item.multiplier,
           price: item.price,
           total: quantity * item.price,
           variant: item.variant
@@ -283,6 +353,8 @@ export function POSReturnModal({
           productCode: item.productCode,
           barcode: item.barcode,
           quantity: quantity,
+          unit: item.unit,
+          multiplier: item.multiplier,
           price: item.price,
           total: quantity * item.price,
           variant: item.variant
@@ -308,8 +380,8 @@ export function POSReturnModal({
   };
 
   const totalReturnAmount = (returnType === 'receipt' || returnType === 'barcode') && selectedSale
-    ? selectedSale.items.reduce((sum, item) => {
-      const itemKey = getItemKey(item);
+    ? selectedSale.items.reduce((sum, item, lineIndex) => {
+      const itemKey = getReceiptLineKey(selectedSale.id, lineIndex);
       const returnQty = returnItems[itemKey] || 0;
       return sum + (returnQty * item.price);
     }, 0)
@@ -595,8 +667,10 @@ export function POSReturnModal({
                   </h4>
                   <div className="space-y-2">
                     {selectedSale && (returnType === 'receipt' || returnType === 'barcode')
-                      ? selectedSale.items.map((item) => {
-                        const itemKey = getItemKey(item);
+                      ? selectedSale.items.map((item, lineIndex) => {
+                        const itemKey = getReceiptLineKey(selectedSale.id, lineIndex);
+                        const unit = item.unit || 'Adet';
+                        const isWeight = isWeightBasedUnit(unit);
                         const variantInfo = item.variant
                           ? `${item.variant.color || ''} ${item.variant.size || ''}`.trim()
                           : null;
@@ -612,7 +686,7 @@ export function POSReturnModal({
                                   )}
                                 </h5>
                                 <p className="text-xs text-gray-600">
-                                  {t.saleQuantity}: {item.quantity} • {t.unitPrice}: {item.price.toFixed(2)} IQD
+                                  {t.saleQuantity}: {formatScaleQuantityDisplay(item.quantity, unit)} {unit} • {t.unitPrice}: {item.price.toFixed(2)} IQD
                                 </p>
                               </div>
                             </div>
@@ -620,30 +694,37 @@ export function POSReturnModal({
                               <span className="text-xs text-gray-600">{t.returnQuantity}:</span>
                               <div className="flex items-center gap-1">
                                 <button
-                                  onClick={() => handleQuantityChange(itemKey, Math.max(0, (returnItems[itemKey] || 0) - 1))}
+                                  onClick={() => handleQuantityChange(
+                                    itemKey,
+                                    normalizeWeightProductQuantity((returnItems[itemKey] || 0) - (isWeight ? 0.1 : 1), unit),
+                                    item.quantity,
+                                  )}
                                   className="w-6 h-6 bg-white hover:bg-gray-100 rounded flex items-center justify-center border border-gray-300"
                                 >
                                   -
                                 </button>
                                 <input
-                                  type="number"
-                                  min="0"
-                                  max={item.quantity}
-                                  value={returnItems[itemKey] || 0}
+                                  type="text"
+                                  inputMode="decimal"
+                                  value={returnItems[itemKey] ? formatScaleQuantityDisplay(returnItems[itemKey], unit) : ''}
                                   onChange={(e) => {
-                                    const val = parseInt(e.target.value) || 0;
-                                    if (val <= item.quantity) handleQuantityChange(itemKey, val);
+                                    const val = parsePosQuantityForProduct(e.target.value, { unit });
+                                    if (val <= item.quantity) handleQuantityChange(itemKey, val, item.quantity);
                                   }}
-                                  className="w-12 text-center border border-gray-300 rounded text-sm"
+                                  className="w-16 text-center border border-gray-300 rounded text-sm"
                                 />
                                 <button
-                                  onClick={() => handleQuantityChange(itemKey, Math.min((returnItems[itemKey] || 0) + 1, item.quantity))}
+                                  onClick={() => handleQuantityChange(
+                                    itemKey,
+                                    normalizeWeightProductQuantity((returnItems[itemKey] || 0) + (isWeight ? 0.1 : 1), unit),
+                                    item.quantity,
+                                  )}
                                   className="w-6 h-6 bg-white hover:bg-gray-100 rounded flex items-center justify-center border border-gray-300"
                                 >
                                   +
                                 </button>
                                 <button
-                                  onClick={() => handleQuantityChange(itemKey, item.quantity)}
+                                  onClick={() => handleQuantityChange(itemKey, item.quantity, item.quantity)}
                                   className="ml-2 px-2 py-1 text-xs bg-orange-600 text-white rounded hover:bg-orange-700"
                                 >
                                   {String(t.all)}

@@ -1,4 +1,5 @@
-﻿import { X, ZoomIn, ZoomOut, Monitor, Moon, Sun, ArrowLeftRight } from 'lucide-react';
+﻿import { X, ZoomIn, ZoomOut, Monitor, Moon, Sun, ArrowLeftRight, TrendingUp } from 'lucide-react';
+import { STORAGE_KEYS } from '../../core/config/constants';
 import { useState } from 'react';
 
 const ZOOM_MIN = 50;
@@ -64,6 +65,9 @@ interface ScreenSettingsModalProps {
   setLayoutOrder: (value: LayoutOrder) => void;
   showExchangeRate: boolean;
   setShowExchangeRate: (value: boolean) => void;
+  showInstantProfit?: boolean;
+  setShowInstantProfit?: (value: boolean) => void;
+  isAdminUser?: boolean;
   onClose: () => void;
 }
 
@@ -89,6 +93,9 @@ export function ScreenSettingsModal({
   setLayoutOrder,
   showExchangeRate,
   setShowExchangeRate,
+  showInstantProfit = false,
+  setShowInstantProfit,
+  isAdminUser = false,
   onClose
 }: ScreenSettingsModalProps) {
 
@@ -192,6 +199,47 @@ export function ScreenSettingsModal({
                   Numpad panelindeki yeşil &quot;1$ = … IQD&quot; satırı. Kur hesaplamaları gizli olsa da çalışır.
                 </p>
               </div>
+
+              {isAdminUser && setShowInstantProfit && (
+                <div>
+                  <label className={`block text-sm font-medium mb-3 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                    Anlık Kazanç (MarketPOS)
+                  </label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowInstantProfit(true);
+                        localStorage.setItem(STORAGE_KEYS.POS_SHOW_INSTANT_PROFIT, 'true');
+                      }}
+                      className={`px-4 py-3 rounded-lg transition-all text-center border ${showInstantProfit
+                        ? darkMode ? 'bg-blue-600 text-white border-blue-600' : 'bg-blue-600 text-white border-blue-600'
+                        : darkMode ? 'bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-750' : 'bg-gray-50 border-gray-200 text-gray-700 hover:bg-gray-100'
+                        }`}
+                    >
+                      <TrendingUp className="w-5 h-5 mx-auto mb-1" />
+                      <div className="text-sm font-medium">Göster</div>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowInstantProfit(false);
+                        localStorage.setItem(STORAGE_KEYS.POS_SHOW_INSTANT_PROFIT, 'false');
+                      }}
+                      className={`px-4 py-3 rounded-lg transition-all text-center border ${!showInstantProfit
+                        ? darkMode ? 'bg-blue-600 text-white border-blue-600' : 'bg-blue-600 text-white border-blue-600'
+                        : darkMode ? 'bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-750' : 'bg-gray-50 border-gray-200 text-gray-700 hover:bg-gray-100'
+                        }`}
+                    >
+                      <X className="w-5 h-5 mx-auto mb-1" />
+                      <div className="text-sm font-medium">Gizle</div>
+                    </button>
+                  </div>
+                  <p className={`text-xs mt-2 ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>
+                    Varsayılan gizlidir. Yalnızca yönetici hesabı bu satırı açabilir; sepet toplamının altında brüt kâr görünür.
+                  </p>
+                </div>
+              )}
 
               {/* Grid Columns */}
               <div>

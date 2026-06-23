@@ -16,6 +16,7 @@ interface SaleState {
   removeSaleById: (id: string) => void;
   loadSales: (limit?: number) => Promise<void>;
   addSale: (sale: Sale) => Promise<void>;
+  addReturn: (sale: Sale) => Promise<void>;
   getSaleById: (id: string) => Promise<Sale | null>;
   getSalesByDateRange: (startDate: string, endDate: string) => Promise<Sale[]>;
   getSummary: (startDate?: string, endDate?: string) => Promise<any>;
@@ -69,6 +70,21 @@ export const useSaleStore = create<SaleState>()(
         } catch (error) {
           console.error('[SaleStore] Error adding sale:', error);
           set({ isLoading: false, error: 'Failed to add sale' });
+          throw error;
+        }
+      },
+
+      addReturn: async (sale) => {
+        set({ isLoading: true, error: null });
+        try {
+          set((state) => ({
+            sales: [sale, ...state.sales],
+            isLoading: false,
+            lastSync: Date.now(),
+          }));
+        } catch (error) {
+          console.error('[SaleStore] Error adding return:', error);
+          set({ isLoading: false, error: 'Failed to add return' });
           throw error;
         }
       },

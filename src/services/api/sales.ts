@@ -202,6 +202,158 @@ export const salesAPI = {
   },
 
   /**
+   * POS iade — müşteri iade faturası (trcode 3, kategori Iade)
+   */
+  async createReturn(params: {
+    originalReceiptNumber?: string;
+    returnNumber: string;
+    date: string;
+    customerId?: string;
+    customerName?: string;
+    cashier: string;
+    firmNr?: string;
+    periodNr?: string;
+    storeId?: string;
+    paymentMethod?: string;
+    returnReason?: string;
+    items: Array<{
+      productId: string;
+      productName: string;
+      productCode?: string;
+      barcode?: string;
+      quantity: number;
+      price: number;
+      unit?: string;
+      multiplier?: number;
+      variant?: SaleItem['variant'];
+    }>;
+  }): Promise<Sale | null> {
+    try {
+      const firmNr = params.firmNr || ERP_SETTINGS.firmNr;
+      const periodNr = params.periodNr || ERP_SETTINGS.periodNr;
+
+      const invoiceItems = params.items.map((item) => {
+        const unit = item.unit || 'Adet';
+        const multiplier = item.multiplier || 1;
+        const quantity = normalizeWeightProductQuantity(Number(item.quantity), unit);
+        const baseQuantity = resolveStockQuantityFromLine({ ...item, quantity, unit, multiplier });
+        const lineTotal = quantity * item.price;
+
+        return {
+          productId: item.productId,
+          code: item.productId,
+          productName: item.productName,
+          description: item.productName,
+          quantity,
+          unit,
+          multiplier,
+          baseQuantity,
+          unitPrice: item.price,
+          price: item.price,
+          discount: 0,
+          total: lineTotal,
+          netAmount: lineTotal,
+          unitCost: 0,
+          totalCost: 0,
+          grossProfit: 0,
+        };
+      });
+
+      const subtotal = invoiceItems.reduce((sum, row) => sum + row.total, 0);
+      const reasonNote = params.returnReason
+        ? `POS İade — ${params.returnReason}${params.originalReceiptNumber ? ` (Fiş: ${params.originalReceiptNumber})` : ''}`
+        : `POS İade${params.originalReceiptNumber ? ` — Fiş: ${params.originalReceiptNumber}` : ''}`;
+
+      const invoiceData: any = {
+        invoice_no: params.returnNumber,
+        invoice_date: params.date,
+        invoice_type: 3,
+        invoice_category: 'Iade',
+        customer_id: params.customerId || undefined,
+        customer_name: params.customerName || 'Peşin Müşteri',
+        subtotal,
+        discount: 0,
+        tax: 0,
+        total_amount: subtotal,
+        total: subtotal,
+        firma_id: firmNr,
+        donem_id: periodNr,
+        payment_method: params.paymentMethod || 'Nakit',
+        cashier: params.cashier || '',
+        status: 'completed',
+        notes: reasonNote,
+        store_id: params.storeId,
+        items: invoiceItems,
+      };
+
+      const savedInvoice = await invoicesAPI.create(invoiceData);
+      if (!savedInvoice) throw new Error('İade faturası oluşturulamadı');
+
+      if (params.paymentMethod === 'cash' || !params.paymentMethod) {
+        try {
+          let targetKasaId = ERP_SETTINGS.selected_cash_registers?.[0];
+          if (!targetKasaId) {
+            const kasalar = await fetchKasalar({ firm_nr: String(firmNr), aktif: true });
+            if (kasalar.length > 0) targetKasaId = kasalar[0].id;
+          }
+          if (targetKasaId && subtotal > 0) {
+            const islem: KasaIslemi = {
+              firma_id: String(firmNr),
+              kasa_id: targetKasaId,
+              islem_no: params.returnNumber,
+              islem_tarihi: params.date || new Date().toISOString(),
+              islem_tipi: 'KASA_CIKIS',
+              tutar: subtotal,
+              islem_aciklamasi: `POS İade — ${params.returnNumber}`,
+              cari_hesap_id: params.customerId || undefined,
+              cari_hesap_unvani: params.customerName || 'Peşin Müşteri',
+              doviz_kodu: 'YEREL',
+              dovizli_tutar: 0,
+            };
+            await createKasaIslemi(islem);
+          }
+        } catch (kasaError) {
+          console.warn('[SalesAPI] Return cash transaction failed:', kasaError);
+        }
+      }
+
+      return {
+        id: savedInvoice.id || `RETURN-${Date.now()}`,
+        receiptNumber: params.returnNumber,
+        date: params.date,
+        customerId: params.customerId,
+        customerName: params.customerName,
+        items: params.items.map((item) => ({
+          productId: item.productId,
+          productName: item.productName,
+          productCode: item.productCode,
+          barcode: item.barcode,
+          quantity: item.quantity,
+          unit: item.unit,
+          multiplier: item.multiplier,
+          price: item.price,
+          discount: 0,
+          total: item.quantity * item.price,
+          variant: item.variant,
+        })),
+        subtotal: -subtotal,
+        discount: 0,
+        total: -subtotal,
+        paymentMethod: params.paymentMethod || 'cash',
+        status: 'return',
+        notes: reasonNote,
+        cashier: params.cashier,
+        firmNr: String(firmNr),
+        periodNr: String(periodNr),
+        storeId: params.storeId,
+      } as Sale;
+    } catch (error: any) {
+      console.error('[SalesAPI] createReturn failed:', error);
+      throw new Error(error.message || 'İade kaydedilemedi');
+    }
+  },
+
+  /**
    * Get all sales
    */
   async getAll(limit: number = 100): Promise<Sale[]> {

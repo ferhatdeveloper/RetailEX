@@ -38,6 +38,8 @@ export interface InvoiceListModuleProps {
   description?: string;
   defaultInvoiceTypeFilter?: string;
   defaultCategory?: 'Satis' | 'Alis' | 'Iade' | 'Irsaliye' | 'Siparis' | 'Teklif' | 'Hizmet';
+  /** Varsayılan kategori dışında listelenecek ek kategoriler (ör. Satış listesinde iade faturaları) */
+  includeCategories?: Array<'Satis' | 'Alis' | 'Iade' | 'Irsaliye' | 'Siparis' | 'Teklif' | 'Hizmet'>;
   customers?: any[];
   products?: any[];
   /** Sayım → alış: ManagementModule navigasyonu ile gelen taslak (sessionStorage’dan bağımsız) */
@@ -79,6 +81,7 @@ export function InvoiceListModule({
   products = [],
   defaultInvoiceTypeFilter,
   defaultCategory,
+  includeCategories,
   title,
   description,
   countPurchaseDraftPrefill = null,
@@ -388,6 +391,12 @@ export function InvoiceListModule({
 
       const dateRange = getDateRange();
 
+      const categoryFilterList = includeCategories?.length
+        ? Array.from(new Set([defaultCategory, ...includeCategories].filter(Boolean))) as string[]
+        : defaultCategory
+          ? [defaultCategory]
+          : [];
+
       const result = await invoicesAPI.getPaginated({
         page: currentPage,
         pageSize: pageSize,
@@ -395,7 +404,7 @@ export function InvoiceListModule({
         status: statusFilter !== 'all' ? statusFilter : undefined,
         startDate: dateRange.start ? String(dateRange.start) : undefined,
         endDate: dateRange.end ? String(dateRange.end) : undefined,
-        invoiceCategory: defaultCategory || undefined,
+        invoiceCategory: includeCategories?.length ? undefined : (defaultCategory || undefined),
         invoiceType: invoiceTypeFilter && invoiceTypeFilter !== 'all' ? parseInt(invoiceTypeFilter) : 0
       });
 
@@ -411,7 +420,11 @@ export function InvoiceListModule({
       }
 
       /* Kategori: API ile aynı Logo trcode grupları (INVOICE_TYPES tek kod=tek kategori değil; 4,13,6 çakışıyor) */
-      if (defaultCategory) {
+      if (categoryFilterList.length > 0) {
+        filteredData = filteredData.filter((inv) =>
+          categoryFilterList.some((cat) => invoiceMatchesModuleCategory(inv, cat)),
+        );
+      } else if (defaultCategory) {
         filteredData = filteredData.filter((inv) => invoiceMatchesModuleCategory(inv, defaultCategory));
       }
 

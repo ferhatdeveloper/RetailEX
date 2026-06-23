@@ -1,6 +1,7 @@
 import { X, Printer } from 'lucide-react';
 import type { Sale } from '../../core/types';
 import { formatNumber } from '../../utils/formatNumber';
+import { aggregatePosPayments } from '../../utils/posZReport';
 
 interface POSClosePrintPreviewProps {
   onClose: () => void;
@@ -35,24 +36,15 @@ export function POSClosePrintPreview({
     return saleDate.toDateString() === today.toDateString();
   });
 
-  // More robust filtering - check for all possible payment method values
-  // If paymentMethod is undefined/null, treat as cash (default)
-  const cashSales = todaySales.filter(s => {
-    if (!s.paymentMethod) return true; // Default to cash if undefined
-    const pm = String(s.paymentMethod).toLowerCase().trim();
-    return pm === 'cash' || pm === 'nakit' || pm === '';
-  });
-  
-  const cardSales = todaySales.filter(s => {
-    if (!s.paymentMethod) return false; // Skip undefined for card
-    const pm = String(s.paymentMethod).toLowerCase().trim();
-    return pm === 'card' || pm === 'kredi kartı' || pm === 'gateway' || pm === 'kart';
-  });
-  const returnSales = todaySales.filter(s => s.total < 0);
+  const positiveSales = todaySales.filter((s) => Number(s.total) > 0 && String(s.status ?? '').toLowerCase() !== 'cancelled');
+  const returnSales = todaySales.filter(s => Number(s.total) < 0 || String(s.status ?? '').toLowerCase() === 'return');
+  const paymentBreakdown = aggregatePosPayments(positiveSales);
 
-  const totalSales = todaySales.reduce((sum, sale) => sum + (sale.total > 0 ? sale.total : 0), 0);
-  const cashTotal = cashSales.reduce((sum, sale) => sum + sale.total, 0);
-  const cardTotal = cardSales.reduce((sum, sale) => sum + sale.total, 0);
+  const totalSales = positiveSales.reduce((sum, sale) => sum + sale.total, 0);
+  const cashTotal = paymentBreakdown.cash;
+  const cardTotal = paymentBreakdown.card;
+  const creditTotal = paymentBreakdown.credit;
+  const otherTotal = paymentBreakdown.other;
   const returnTotal = returnSales.reduce((sum, sale) => sum + Math.abs(sale.total), 0);
   const netSales = totalSales - returnTotal;
 
@@ -144,7 +136,7 @@ export function POSClosePrintPreview({
                     <div className="space-y-1 mb-3">
                       <div className="flex justify-between">
                         <span>Satış Adedi:</span>
-                        <span>{todaySales.length}</span>
+                        <span>{positiveSales.length}</span>
                       </div>
                       <div className="flex justify-between">
                         <span>Brüt Satış:</span>
@@ -165,16 +157,24 @@ export function POSClosePrintPreview({
                     <div className="font-bold mb-1">ÖDEME YÖNTEMLERİ</div>
                     <div className="space-y-1 mb-3">
                       <div className="flex justify-between">
-                        <span>Nakit ({cashSales.length}):</span>
+                        <span>Nakit ({paymentBreakdown.cashCount}):</span>
                         <span>{formatNumber(cashTotal, 2, false)}</span>
                       </div>
                       <div className="flex justify-between">
-                        <span>K.Kartı ({cardSales.length}):</span>
+                        <span>K.Kartı ({paymentBreakdown.cardCount}):</span>
                         <span>{formatNumber(cardTotal, 2, false)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Veresiye ({paymentBreakdown.creditCount}):</span>
+                        <span>{formatNumber(creditTotal, 2, false)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Diğer ({paymentBreakdown.otherCount}):</span>
+                        <span>{formatNumber(otherTotal, 2, false)}</span>
                       </div>
                       <div className="flex justify-between font-bold">
                         <span>Toplam:</span>
-                        <span>{formatNumber(cashTotal + cardTotal, 2, false)}</span>
+                        <span>{formatNumber(cashTotal + cardTotal + creditTotal + otherTotal, 2, false)}</span>
                       </div>
                     </div>
 
@@ -261,7 +261,7 @@ export function POSClosePrintPreview({
                         <div className="space-y-2 text-sm">
                           <div className="flex justify-between">
                             <span>Toplam Satış Adedi:</span>
-                            <span className="font-medium">{todaySales.length}</span>
+                            <span className="font-medium">{positiveSales.length}</span>
                           </div>
                           <div className="flex justify-between">
                             <span>Brüt Satış:</span>
@@ -282,16 +282,24 @@ export function POSClosePrintPreview({
                         <h3 className="font-bold mb-3 text-green-900">ÖDEME YÖNTEMLERİ</h3>
                         <div className="space-y-2 text-sm">
                           <div className="flex justify-between">
-                            <span>Nakit Satışlar ({cashSales.length}):</span>
+                            <span>Nakit Satışlar ({paymentBreakdown.cashCount}):</span>
                             <span className="font-medium">{formatNumber(cashTotal, 2, false)}</span>
                           </div>
                           <div className="flex justify-between">
-                            <span>Kredi Kartı ({cardSales.length}):</span>
+                            <span>Kredi Kartı ({paymentBreakdown.cardCount}):</span>
                             <span className="font-medium">{formatNumber(cardTotal, 2, false)}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span>Veresiye / Cari ({paymentBreakdown.creditCount}):</span>
+                            <span className="font-medium">{formatNumber(creditTotal, 2, false)}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span>Diğer ({paymentBreakdown.otherCount}):</span>
+                            <span className="font-medium">{formatNumber(otherTotal, 2, false)}</span>
                           </div>
                           <div className="flex justify-between pt-2 border-t border-green-300 font-bold">
                             <span>Toplam Tahsilat:</span>
-                            <span>{formatNumber(cashTotal + cardTotal, 2, false)}</span>
+                            <span>{formatNumber(cashTotal + cardTotal + creditTotal + otherTotal, 2, false)}</span>
                           </div>
                         </div>
                       </div>
@@ -420,7 +428,7 @@ export function POSClosePrintPreview({
               <div className="border-t border-dashed border-black my-2"></div>
               <div className="font-bold text-[10px] mb-1">SATIŞ ÖZETİ</div>
               <div className="space-y-0.5 mb-2 text-[10px]">
-                <div className="flex justify-between"><span>Satış Adedi:</span><span>{todaySales.length}</span></div>
+                <div className="flex justify-between"><span>Satış Adedi:</span><span>{positiveSales.length}</span></div>
                 <div className="flex justify-between"><span>Brüt Satış:</span><span>{formatNumber(totalSales, 2, false)}</span></div>
                 <div className="flex justify-between"><span>İade:</span><span>-{formatNumber(returnTotal, 2, false)}</span></div>
                 <div className="flex justify-between font-bold"><span>Net Satış:</span><span>{formatNumber(netSales, 2, false)}</span></div>
@@ -429,9 +437,11 @@ export function POSClosePrintPreview({
               <div className="border-t border-dashed border-black my-2"></div>
               <div className="font-bold text-[10px] mb-1">ÖDEME YÖNTEMLERİ</div>
               <div className="space-y-0.5 mb-2 text-[10px]">
-                <div className="flex justify-between"><span>Nakit ({cashSales.length}):</span><span>{formatNumber(cashTotal, 2, false)}</span></div>
-                <div className="flex justify-between"><span>K.Kartı ({cardSales.length}):</span><span>{formatNumber(cardTotal, 2, false)}</span></div>
-                <div className="flex justify-between font-bold"><span>Toplam:</span><span>{formatNumber(cashTotal + cardTotal, 2, false)}</span></div>
+                <div className="flex justify-between"><span>Nakit ({paymentBreakdown.cashCount}):</span><span>{formatNumber(cashTotal, 2, false)}</span></div>
+                <div className="flex justify-between"><span>K.Kartı ({paymentBreakdown.cardCount}):</span><span>{formatNumber(cardTotal, 2, false)}</span></div>
+                <div className="flex justify-between"><span>Veresiye ({paymentBreakdown.creditCount}):</span><span>{formatNumber(creditTotal, 2, false)}</span></div>
+                <div className="flex justify-between"><span>Diğer ({paymentBreakdown.otherCount}):</span><span>{formatNumber(otherTotal, 2, false)}</span></div>
+                <div className="flex justify-between font-bold"><span>Toplam:</span><span>{formatNumber(cashTotal + cardTotal + creditTotal + otherTotal, 2, false)}</span></div>
               </div>
 
               <div className="border-t border-dashed border-black my-2"></div>
@@ -498,7 +508,7 @@ export function POSClosePrintPreview({
                 <div className="bg-blue-50 border border-blue-200 p-4">
                   <h3 className="font-bold mb-3 text-blue-900">SATIŞ ÖZETİ</h3>
                   <div className="space-y-2 text-sm">
-                    <div className="flex justify-between"><span>Toplam Satış Adedi:</span><span className="font-medium">{todaySales.length}</span></div>
+                    <div className="flex justify-between"><span>Toplam Satış Adedi:</span><span className="font-medium">{positiveSales.length}</span></div>
                     <div className="flex justify-between"><span>Brüt Satış:</span><span className="font-medium">{formatNumber(totalSales, 2, false)}</span></div>
                     <div className="flex justify-between text-red-600"><span>İade Toplamı:</span><span className="font-medium">-{formatNumber(returnTotal, 2, false)}</span></div>
                     <div className="flex justify-between pt-2 border-t border-blue-300 font-bold"><span>Net Satış:</span><span>{formatNumber(netSales, 2, false)}</span></div>
@@ -508,9 +518,11 @@ export function POSClosePrintPreview({
                 <div className="bg-green-50 border border-green-200 p-4">
                   <h3 className="font-bold mb-3 text-green-900">ÖDEME YÖNTEMLERİ</h3>
                   <div className="space-y-2 text-sm">
-                    <div className="flex justify-between"><span>Nakit Satışlar ({cashSales.length}):</span><span className="font-medium">{formatNumber(cashTotal, 2, false)}</span></div>
-                    <div className="flex justify-between"><span>Kredi Kartı ({cardSales.length}):</span><span className="font-medium">{formatNumber(cardTotal, 2, false)}</span></div>
-                    <div className="flex justify-between pt-2 border-t border-green-300 font-bold"><span>Toplam Tahsilat:</span><span>{formatNumber(cashTotal + cardTotal, 2, false)}</span></div>
+                    <div className="flex justify-between"><span>Nakit Satışlar ({paymentBreakdown.cashCount}):</span><span className="font-medium">{formatNumber(cashTotal, 2, false)}</span></div>
+                    <div className="flex justify-between"><span>Kredi Kartı ({paymentBreakdown.cardCount}):</span><span className="font-medium">{formatNumber(cardTotal, 2, false)}</span></div>
+                    <div className="flex justify-between"><span>Veresiye ({paymentBreakdown.creditCount}):</span><span className="font-medium">{formatNumber(creditTotal, 2, false)}</span></div>
+                    <div className="flex justify-between"><span>Diğer ({paymentBreakdown.otherCount}):</span><span className="font-medium">{formatNumber(otherTotal, 2, false)}</span></div>
+                    <div className="flex justify-between pt-2 border-t border-green-300 font-bold"><span>Toplam Tahsilat:</span><span>{formatNumber(cashTotal + cardTotal + creditTotal + otherTotal, 2, false)}</span></div>
                   </div>
                 </div>
               </div>
