@@ -2256,6 +2256,12 @@ export function UniversalInvoiceForm({
         if (draftNotes != null && String(draftNotes).trim() !== '') {
           setDescription((prev) => (prev.trim() ? prev : String(draftNotes)));
         }
+        const draftCashier = (editData as any).cashier;
+        if (draftCashier != null && String(draftCashier).trim() !== '') {
+          setCashierName(String(draftCashier).trim());
+        }
+      } else if ((editData as any).cashier) {
+        setCashierName(String((editData as any).cashier).trim());
       }
 
       // Farklı field isimlerini kontrol et: items, invoice_items, lines, sale_items
@@ -2719,6 +2725,10 @@ export function UniversalInvoiceForm({
     if (isSalesReturnInvoice && !customerTitle) {
       toast.warning('⚠️ ' + tm('salesReturnCustomerOptionalWarning'));
     }
+    if (isSalesReturnInvoice && !cashierName.trim()) {
+      toast.error('❌ ' + tm('salesReturnCashierRequired'));
+      return;
+    }
 
     // Kalem kontrolü — sayım fazlası taslağında birim fiyat 0 olabilir; alışta yine de kayda izin verilir
     const validItems = items.filter((item) => {
@@ -2880,6 +2890,7 @@ export function UniversalInvoiceForm({
         donem_name: selectedPeriod?.donem_adi || '',
         payment_method: paymentMethod || 'Nakit',
         cashier: cashierName,
+        store_id: (editData as any)?.store_id || undefined,
         status: (invoiceType.category === 'Alis' || invoiceType.category === 'Iade') ? 'completed' : 'unpaid',
         notes: description,
         currency: currency || ledgerCurrency,
@@ -3212,6 +3223,10 @@ export function UniversalInvoiceForm({
                   warehouse={warehouse}
                   workplace={workplace}
                   salespersonCode={salespersonCode}
+                  cashierName={cashierName}
+                  onCashierNameChange={setCashierName}
+                  cashierReadOnly={(editData as any)?.source === 'pos'}
+                  showCashierField={invoiceType.code === 3}
 
                   setShowTransactionDateModal={setShowTransactionDateModal}
                   setShowEditDateModal={setShowEditDateModal}
@@ -3243,6 +3258,17 @@ export function UniversalInvoiceForm({
                       <li>{tm('countPurchaseInvoiceFormBannerPoint2')}</li>
                       <li>{tm('countPurchaseInvoiceFormBannerPoint3')}</li>
                     </ul>
+                  </div>
+                )}
+
+                {invoiceType.code === 3 && (editData as any)?.source === 'pos' && cashierName.trim() && (
+                  <div
+                    className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950 shadow-sm dark:border-amber-800/80 dark:bg-amber-950/35 dark:text-amber-100"
+                    role="status"
+                  >
+                    <p className="font-semibold">
+                      {tm('posSalesReturnCashierBanner').replace('{cashier}', cashierName.trim())}
+                    </p>
                   </div>
                 )}
 

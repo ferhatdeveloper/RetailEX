@@ -32,6 +32,11 @@ export type CountPurchaseDraftPrefill = {
   skipProductStockUpdate?: boolean;
 };
 
+export type PosSalesReturnPrefill = {
+  editData: Record<string, unknown>;
+  openForm?: boolean;
+};
+
 export interface InvoiceListModuleProps {
   onInvoiceSelect?: (invoice: Invoice) => void;
   title?: string;
@@ -45,6 +50,9 @@ export interface InvoiceListModuleProps {
   /** Sayım → alış: ManagementModule navigasyonu ile gelen taslak (sessionStorage’dan bağımsız) */
   countPurchaseDraftPrefill?: CountPurchaseDraftPrefill | null;
   onCountPurchaseDraftPrefillConsumed?: () => void;
+  /** POS → Satış İade: kasiyer ve mağaza ön doldurma */
+  posSalesReturnPrefill?: PosSalesReturnPrefill | null;
+  onPosSalesReturnPrefillConsumed?: () => void;
   /** POS iade sonrası fatura listesinde arama (ör. IADE-2026-…) */
   initialSearchQuery?: string | null;
   onInitialSearchConsumed?: () => void;
@@ -89,6 +97,8 @@ export function InvoiceListModule({
   description,
   countPurchaseDraftPrefill = null,
   onCountPurchaseDraftPrefillConsumed,
+  posSalesReturnPrefill = null,
+  onPosSalesReturnPrefillConsumed,
   initialSearchQuery = null,
   onInitialSearchConsumed,
 }: InvoiceListModuleProps) {
@@ -396,6 +406,29 @@ export function InvoiceListModule({
       sessionStorage.removeItem(PREFILL_PURCHASE_FROM_COUNT_STORAGE_KEY);
     }
   }, [defaultCategory, countPurchaseDraftPrefill, onCountPurchaseDraftPrefillConsumed]);
+
+  /** POS → Satış İade: kasiyer bilgisiyle formu otomatik aç */
+  useEffect(() => {
+    if (defaultInvoiceTypeFilter !== '3') return;
+    const ext = posSalesReturnPrefill;
+    if (!ext?.editData || ext.openForm === false) return;
+
+    const returnType = INVOICE_TYPES.find((t) => t.code === 3);
+    if (!returnType) return;
+
+    setShowInvoiceTypeModal(false);
+    setEditInvoiceData(ext.editData as unknown as Invoice);
+    setNewFormCounter((c) => c + 1);
+    setSelectedInvoiceType(returnType);
+    setPurchaseCreateSaveOptions(null);
+
+    const clearPrefillTimer = window.setTimeout(() => {
+      onPosSalesReturnPrefillConsumed?.();
+    }, 0);
+    return () => {
+      window.clearTimeout(clearPrefillTimer);
+    };
+  }, [defaultInvoiceTypeFilter, posSalesReturnPrefill, onPosSalesReturnPrefillConsumed]);
 
   const loadInvoices = async () => {
     setIsLoading(true);

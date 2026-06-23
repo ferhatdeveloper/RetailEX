@@ -149,13 +149,22 @@ export default function MarketPOS({
     const detail = {
       screen: 'sales-invoice-return' as const,
       ...(invoiceSearch?.trim() ? { invoiceSearch: invoiceSearch.trim() } : {}),
+      posSalesReturn: {
+        editData: {
+          cashier: currentStaff,
+          store_id: currentUser.storeId || undefined,
+          source: 'pos',
+          notes: 'POS İade',
+        },
+        openForm: true,
+      },
     };
     window.dispatchEvent(new CustomEvent('switchToManagement'));
     window.dispatchEvent(new CustomEvent('navigateToScreen', { detail }));
     window.setTimeout(() => {
       window.dispatchEvent(new CustomEvent('navigateToScreen', { detail }));
     }, 150);
-  }, []);
+  }, [currentStaff, currentUser.storeId]);
   const { t, tm } = useLanguage();
   const { selectedFirm, selectedPeriod } = useFirmaDonem();
   const posBaseCurrency = useMemo(

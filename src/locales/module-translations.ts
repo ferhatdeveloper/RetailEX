@@ -2745,6 +2745,18 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
     ar: 'لم يُختر حساب جاري. سيتم حفظ الإرجاع دون تسجيله في كشف الحساب.',
     ku: 'هەژماری جاری هەڵنەبژێردراوە. گەڕاندنەوە پاشەکەوت دەکرێت بەڵام لە کۆکراوەی هەژماردا تۆمار نابێت.',
   },
+  salesReturnCashierRequired: {
+    tr: 'Satış iade için kasiyer bilgisi zorunludur.',
+    en: 'Cashier information is required for sales returns.',
+    ar: 'معلومات الصراف مطلوبة لمرتجعات المبيعات.',
+    ku: 'زانیاری سندوقدار بۆ گەڕاندنەوەی فرۆشتن پێویستە.',
+  },
+  posSalesReturnCashierBanner: {
+    tr: 'POS ekranından iade — iadeyi alan kasiyer: {cashier}',
+    en: 'Return from POS — cashier handling return: {cashier}',
+    ar: 'إرجاع من نقطة البيع — الصراف المسؤول: {cashier}',
+    ku: 'گەڕاندنەوە لە POS — سندوقداری گەڕاندنەوە: {cashier}',
+  },
   noInvoiceItems: { tr: 'Fatura kalemi yok!', en: 'No invoice items!', ar: 'لا توجد عناصر للفاتورة!', ku: 'هیچ بڕگەیەکی وەسڵ نییە!' },
   invoiceSaved: { tr: 'Fatura kaydedildi!', en: 'Invoice saved successfully!', ar: 'تم حفظ الفاتورة بنجاح!', ku: 'وەسڵەکە بە سەرکەوتوویی پاشەکەوت کرا!' },
   invoiceSaveError: { tr: 'Fatura kaydedilemedi!', en: 'Failed to save invoice!', ar: 'فشل في حفظ الفاتورة!', ku: 'وەسڵەکە پاشەکەوت نەکرا!' },

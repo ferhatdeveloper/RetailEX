@@ -78,7 +78,7 @@ const ProfitDashboard = lazyWithChunkRecovery(() => import('../reports/ProfitDas
 const SettingsPanel = lazyWithChunkRecovery(() => import('./SettingsPanel').then(m => ({ default: m.SettingsPanel })));
 const ExcelModule = lazyWithChunkRecovery(() => import('../modules/ExcelModule').then(m => ({ default: m.ExcelModule })));
 
-import type { CountPurchaseDraftPrefill } from '../trading/invoices/InvoiceListModule';
+import type { CountPurchaseDraftPrefill, PosSalesReturnPrefill } from '../trading/invoices/InvoiceListModule';
 const ScaleManagementWrapper = lazyWithChunkRecovery(() => import('../scale/ScaleManagementWrapper').then(m => ({ default: m.ScaleManagementWrapper })));
 const MultiStoreManagement = lazyWithChunkRecovery(() => import('./MultiStoreManagement').then(m => ({ default: m.MultiStoreManagement })));
 const RegionalManagement = lazyWithChunkRecovery(() => import('../inventory/warehouse/RegionalManagement').then(m => ({ default: m.RegionalManagement })));
@@ -359,6 +359,10 @@ export function ManagementModule({
   const clearCountPurchaseDraftPrefill = useCallback(() => {
     setCountPurchaseDraftPrefill(null);
   }, []);
+  const [posSalesReturnPrefill, setPosSalesReturnPrefill] = useState<PosSalesReturnPrefill | null>(null);
+  const clearPosSalesReturnPrefill = useCallback(() => {
+    setPosSalesReturnPrefill(null);
+  }, []);
   const [invoiceSearchPrefill, setInvoiceSearchPrefill] = useState<string | null>(null);
   const clearInvoiceSearchPrefill = useCallback(() => {
     setInvoiceSearchPrefill(null);
@@ -522,6 +526,7 @@ export function ManagementModule({
         const o = d as {
           screen: ExtendedScreen;
           countPurchaseDraft?: { editData: Record<string, unknown>; skipProductStockUpdate?: boolean };
+          posSalesReturn?: { editData: Record<string, unknown>; openForm?: boolean };
           invoiceSearch?: string;
         };
         screenId = o.screen;
@@ -538,9 +543,18 @@ export function ManagementModule({
         } else {
           setCountPurchaseDraftPrefill(null);
         }
+        if (o.posSalesReturn?.editData) {
+          setPosSalesReturnPrefill({
+            editData: o.posSalesReturn.editData,
+            openForm: o.posSalesReturn.openForm !== false,
+          });
+        } else {
+          setPosSalesReturnPrefill(null);
+        }
       } else {
         screenId = d as ExtendedScreen;
         setCountPurchaseDraftPrefill(null);
+        setPosSalesReturnPrefill(null);
       }
       if (
         selectedFirm != null &&
@@ -549,6 +563,7 @@ export function ManagementModule({
       ) {
         screenId = 'dashboard';
         setCountPurchaseDraftPrefill(null);
+        setPosSalesReturnPrefill(null);
       }
       setCurrentScreen(screenId);
       if (isMobile) effectiveSetSidebarOpen(false);
@@ -1270,6 +1285,8 @@ export function ManagementModule({
               description={t.salesReturnDesc}
               initialSearchQuery={invoiceSearchPrefill}
               onInitialSearchConsumed={clearInvoiceSearchPrefill}
+              posSalesReturnPrefill={posSalesReturnPrefill}
+              onPosSalesReturnPrefillConsumed={clearPosSalesReturnPrefill}
             />
           );
         case 'purchaseinvoice':
