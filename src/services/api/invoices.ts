@@ -544,6 +544,7 @@ async function createInvoiceViaPostgrest(invoice: Invoice, opts: {
     payment_method: String((invoice as any).payment_method || 'Nakit'),
     cashier: String((invoice as any).cashier || ''),
     store_id: isValidUuid((invoice as any).store_id) ? (invoice as any).store_id : null,
+    created_by_user_id: isValidUuid((invoice as any).created_by_user_id) ? (invoice as any).created_by_user_id : null,
   };
 
   const legacyPayload: Record<string, unknown> = {
@@ -896,8 +897,8 @@ export const invoicesAPI = {
               customer_id, customer_name, total_net, total_vat, total_discount, net_amount, 
               total_cost, gross_profit, profit_margin, currency, currency_rate,
               status, notes, document_no,
-              payment_method, cashier, store_id
-          ) VALUES ($1::text::uuid, $2::text, $3::text, $4::text, $5::text::timestamptz, $6::text, $7::text::int, $8::text::uuid, $9::text, $10::text::numeric, $11::text::numeric, $12::text::numeric, $13::text::numeric, $14::text::numeric, $15::text::numeric, $16::text::numeric, $17::text, $18::text::numeric, $19::text, $20::text, $21::text, $22::text, $23::text, $24::text::uuid) RETURNING id`,
+              payment_method, cashier, store_id, created_by_user_id
+          ) VALUES ($1::text::uuid, $2::text, $3::text, $4::text, $5::text::timestamptz, $6::text, $7::text::int, $8::text::uuid, $9::text, $10::text::numeric, $11::text::numeric, $12::text::numeric, $13::text::numeric, $14::text::numeric, $15::text::numeric, $16::text::numeric, $17::text, $18::text::numeric, $19::text, $20::text, $21::text, $22::text, $23::text, $24::text::uuid, $25::text::uuid) RETURNING id`,
           [
             newId,
             String(firmNr),
@@ -924,7 +925,8 @@ export const invoicesAPI = {
             String(invoice.invoice_no),
             String((invoice as any).payment_method || 'Nakit'),
             String((invoice as any).cashier || ''),
-            isValidUuid((invoice as any).store_id) ? (invoice as any).store_id : null
+            isValidUuid((invoice as any).store_id) ? (invoice as any).store_id : null,
+            isValidUuid((invoice as any).created_by_user_id) ? (invoice as any).created_by_user_id : null
           ],
           queryOptions
         );
@@ -2543,6 +2545,7 @@ function mapDatabaseInvoiceToInvoice(dbInv: any): Invoice {
     payment_method: dbInv.payment_method,
     cashier: String(dbInv.cashier || '').trim() || undefined,
     store_id: dbInv.store_id || undefined,
+    created_by_user_id: dbInv.created_by_user_id || undefined,
     is_cancelled: dbInv.is_cancelled === true || isInvoiceCancelledStatus(dbInv.status),
   } as Invoice;
 }

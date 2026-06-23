@@ -105,6 +105,8 @@ export function InvoiceListModule({
   const { tm } = useLanguage();
   const { isMobile } = useResponsive();
   const { selectedFirm } = useFirmaDonem();
+  const isSalesReturnList = defaultInvoiceTypeFilter === '3';
+  const returnProcessorColumnLabel = isSalesReturnList ? tm('salesReturnProcessedBy') : tm('cashier');
   const showGibQueueAction = selectedFirm?.regulatory_region === 'TR';
 
   const INVOICE_TYPES: InvoiceType[] = [
@@ -867,7 +869,7 @@ export function InvoiceListModule({
       }
     }),
     columnHelper.accessor('cashier', {
-      header: tm('cashier'),
+      header: returnProcessorColumnLabel,
       cell: info => {
         const value = info.getValue();
         return <span className="text-sm font-medium text-gray-900">{value || '—'}</span>;
@@ -1143,7 +1145,7 @@ export function InvoiceListModule({
                           </span>
                         </div>
                         <div className="flex justify-between gap-2">
-                          <span className="text-gray-500 shrink-0">{tm('cashier')}</span>
+                          <span className="text-gray-500 shrink-0">{returnProcessorColumnLabel}</span>
                           <span>{inv.cashier || '—'}</span>
                         </div>
                       </div>
@@ -1312,7 +1314,7 @@ export function InvoiceListModule({
                   })()
                 ],
                 [tm('status'), tm(mobileActionInvoice.status || '') || mobileActionInvoice.status || '—'],
-                [tm('cashier'), mobileActionInvoice.cashier || '—']
+                [returnProcessorColumnLabel, mobileActionInvoice.cashier || '—']
               ].map(([label, val]) => (
                 <div key={String(label)} className="flex justify-between gap-3 border-b border-gray-50 pb-2 last:border-0">
                   <span className="text-[10px] text-gray-500 font-semibold shrink-0">{label}</span>
@@ -1657,7 +1659,13 @@ export function InvoiceListModule({
                         <div className="text-xs text-gray-500 uppercase tracking-wide mb-1">{tm('paymentMethod')}</div>
                         <div className="text-base font-semibold text-gray-900">{selectedInvoice.payment_method || '-'}</div>
                       </div>
-                      {selectedInvoice.cashier && (
+                      {(isSalesReturnList || selectedInvoice.invoice_type === 3 || selectedInvoice.trcode === 3) && (
+                        <div>
+                          <div className="text-xs text-gray-500 uppercase tracking-wide mb-1">{tm('salesReturnProcessedBy')}</div>
+                          <div className="text-base font-semibold text-gray-900">{selectedInvoice.cashier || '—'}</div>
+                        </div>
+                      )}
+                      {!isSalesReturnList && selectedInvoice.invoice_type !== 3 && selectedInvoice.trcode !== 3 && selectedInvoice.cashier && (
                         <div>
                           <div className="text-xs text-gray-500 uppercase tracking-wide mb-1">{tm('cashier')}</div>
                           <div className="text-base font-semibold text-gray-900">{selectedInvoice.cashier}</div>

@@ -46,6 +46,7 @@ interface InvoiceHeaderProps {
     onCashierNameChange?: (val: string) => void;
     cashierReadOnly?: boolean;
     showCashierField?: boolean;
+    cashierFieldLabel?: string;
     setSupplierCode?: (val: string) => void;
 
     // Modal Triggers
@@ -105,6 +106,7 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
     onCashierNameChange,
     cashierReadOnly = false,
     showCashierField = false,
+    cashierFieldLabel = 'Kasiyer',
 
     setShowTransactionDateModal,
     setShowEditDateModal,
@@ -452,7 +454,7 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
 
                         {showCashierField && (
                             <div>
-                                <label className="block mb-1 text-gray-700 text-xs">Kasiyer</label>
+                                <label className="block mb-1 text-gray-700 text-xs">{cashierFieldLabel}</label>
                                 <input
                                     type="text"
                                     value={cashierName}

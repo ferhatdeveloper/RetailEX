@@ -2746,10 +2746,16 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
     ku: 'هەژماری جاری هەڵنەبژێردراوە. گەڕاندنەوە پاشەکەوت دەکرێت بەڵام لە کۆکراوەی هەژماردا تۆمار نابێت.',
   },
   salesReturnCashierRequired: {
-    tr: 'Satış iade için kasiyer bilgisi zorunludur.',
-    en: 'Cashier information is required for sales returns.',
-    ar: 'معلومات الصراف مطلوبة لمرتجعات المبيعات.',
-    ku: 'زانیاری سندوقدار بۆ گەڕاندنەوەی فرۆشتن پێویستە.',
+    tr: 'Satış iade için iade yapan kullanıcı bilgisi zorunludur.',
+    en: 'User who processed the return is required for sales returns.',
+    ar: 'مطلوب تحديد المستخدم الذي نفّذ الإرجاع.',
+    ku: 'بەکارهێنەری گەڕاندنەوە پێویستە بۆ گەڕاندنەوەی فرۆشتن.',
+  },
+  salesReturnProcessedBy: {
+    tr: 'İade Yapan',
+    en: 'Return processed by',
+    ar: 'نفّذ الإرجاع',
+    ku: 'گەڕاندنەوەی لەلایەن',
   },
   posSalesReturnCashierBanner: {
     tr: 'POS ekranından iade — iadeyi alan kasiyer: {cashier}',

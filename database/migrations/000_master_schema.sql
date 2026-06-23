@@ -1570,6 +1570,7 @@ BEGIN
       logo_sync_date TIMESTAMPTZ,
       payment_method VARCHAR(50),
       cashier        VARCHAR(100),
+      created_by_user_id UUID REFERENCES public.users(id) ON DELETE SET NULL,
       is_cancelled   BOOLEAN DEFAULT false,
       credit_amount  DECIMAL(15,2) DEFAULT 0,
       notes          TEXT,

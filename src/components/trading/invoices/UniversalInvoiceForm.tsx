@@ -9,6 +9,7 @@ import { usePermission } from '../../../shared/hooks/usePermission';
 import { InvoiceItemsGrid } from './InvoiceItemsGrid';
 import { InvoiceHeader } from './InvoiceHeader';
 import { useFirmaDonem } from '../../../contexts/FirmaDonemContext';
+import { useAuth } from '../../../contexts/AuthContext';
 import { useAutoJournal, formatJournalResult } from '../../../hooks/useAutoJournal';
 import { toast } from 'sonner';
 import { formatNumber } from '../../../utils/formatNumber';
@@ -357,6 +358,7 @@ export function UniversalInvoiceForm({
   createSaveOptions,
 }: UniversalInvoiceFormProps) {
   const { language, tm } = useLanguage();
+  const { user } = useAuth();
   const { darkMode } = useTheme();
   const { canViewPurchasePricing } = usePermission();
 
@@ -533,7 +535,12 @@ export function UniversalInvoiceForm({
   const [orderDate, setOrderDate] = useState(''); // Sipariş için
   const [dueDate, setDueDate] = useState(''); // Satış faturası vade tarihi
   const [paymentMethod, setPaymentMethod] = useState(''); // Ödeme şekli (boşsa açık hesap/cari olarak işlem görür)
-  const [cashierName, setCashierName] = useState(() => editData?.cashier || ''); // Kasiyer (perakende için)
+  const [cashierName, setCashierName] = useState(() => editData?.cashier || ''); // Kasiyer / iade yapan
+  const isSalesReturnForm = invoiceType.code === 3;
+  const resolveAuthUserDisplayName = useCallback(() => {
+    const name = String(user?.full_name || user?.username || '').trim();
+    return name;
+  }, [user?.full_name, user?.username]);
   const [warehouse, setWarehouse] = useState('000, Merkez'); // Depo (Ambar)
   const [fromWarehouse, setFromWarehouse] = useState(''); // Çıkış deposu (Transfer)
   const [toWarehouse, setToWarehouse] = useState(''); // Giriş deposu (Transfer)
@@ -2245,6 +2252,16 @@ export function UniversalInvoiceForm({
     setShowCameraScanner(false);
   }, [editData?.id, invoiceType.code]);
 
+  /** Satış iade: backoffice'ten yeni form — oturum açmış kullanıcıyı varsayılan iade yapan olarak doldur */
+  useEffect(() => {
+    if (!isSalesReturnForm) return;
+    if ((editData as any)?.id) return;
+    if ((editData as any)?.source === 'pos') return;
+    if (cashierName.trim()) return;
+    const authName = resolveAuthUserDisplayName();
+    if (authName) setCashierName(authName);
+  }, [isSalesReturnForm, editData, cashierName, resolveAuthUserDisplayName]);
+
   // EditData değiştiğinde items'ı güncelle
   useEffect(() => {
     if (editData) {
@@ -2726,6 +2743,13 @@ export function UniversalInvoiceForm({
       toast.warning('⚠️ ' + tm('salesReturnCustomerOptionalWarning'));
     }
     if (isSalesReturnInvoice && !cashierName.trim()) {
+      const fallbackCashier = resolveAuthUserDisplayName();
+      if (fallbackCashier) {
+        setCashierName(fallbackCashier);
+      }
+    }
+    const effectiveCashierName = cashierName.trim() || resolveAuthUserDisplayName();
+    if (isSalesReturnInvoice && !effectiveCashierName) {
       toast.error('❌ ' + tm('salesReturnCashierRequired'));
       return;
     }
@@ -2889,7 +2913,8 @@ export function UniversalInvoiceForm({
         donem_id: selectedPeriod?.logicalref?.toString() || '0',
         donem_name: selectedPeriod?.donem_adi || '',
         payment_method: paymentMethod || 'Nakit',
-        cashier: cashierName,
+        cashier: effectiveCashierName,
+        created_by_user_id: (editData as any)?.created_by_user_id || user?.id || undefined,
         store_id: (editData as any)?.store_id || undefined,
         status: (invoiceType.category === 'Alis' || invoiceType.category === 'Iade') ? 'completed' : 'unpaid',
         notes: description,
@@ -3226,7 +3251,8 @@ export function UniversalInvoiceForm({
                   cashierName={cashierName}
                   onCashierNameChange={setCashierName}
                   cashierReadOnly={(editData as any)?.source === 'pos'}
-                  showCashierField={invoiceType.code === 3}
+                  showCashierField={isSalesReturnForm}
+                  cashierFieldLabel={tm('salesReturnProcessedBy')}
 
                   setShowTransactionDateModal={setShowTransactionDateModal}
                   setShowEditDateModal={setShowEditDateModal}
@@ -3261,7 +3287,7 @@ export function UniversalInvoiceForm({
                   </div>
                 )}
 
-                {invoiceType.code === 3 && (editData as any)?.source === 'pos' && cashierName.trim() && (
+                {isSalesReturnForm && (editData as any)?.source === 'pos' && cashierName.trim() && (
                   <div
                     className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950 shadow-sm dark:border-amber-800/80 dark:bg-amber-950/35 dark:text-amber-100"
                     role="status"

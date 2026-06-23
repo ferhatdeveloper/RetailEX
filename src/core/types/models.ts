@@ -406,6 +406,7 @@ export interface Invoice {
   donem_name: string;
   cashier?: string;
   cashier_id?: string;
+  created_by_user_id?: string;
   cash_register_id?: string;
   payment_method?: string;
   store_id?: string;

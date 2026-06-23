@@ -151,7 +151,8 @@ export default function MarketPOS({
       ...(invoiceSearch?.trim() ? { invoiceSearch: invoiceSearch.trim() } : {}),
       posSalesReturn: {
         editData: {
-          cashier: currentStaff,
+          cashier: currentStaff || currentUser.full_name || currentUser.username || '',
+          created_by_user_id: currentUser.id,
           store_id: currentUser.storeId || undefined,
           source: 'pos',
           notes: 'POS İade',
@@ -164,7 +165,7 @@ export default function MarketPOS({
     window.setTimeout(() => {
       window.dispatchEvent(new CustomEvent('navigateToScreen', { detail }));
     }, 150);
-  }, [currentStaff, currentUser.storeId]);
+  }, [currentStaff, currentUser.storeId, currentUser.id, currentUser.full_name, currentUser.username]);
   const { t, tm } = useLanguage();
   const { selectedFirm, selectedPeriod } = useFirmaDonem();
   const posBaseCurrency = useMemo(
