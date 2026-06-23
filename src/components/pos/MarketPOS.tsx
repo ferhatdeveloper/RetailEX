@@ -48,7 +48,6 @@ import { POSPaymentModal } from './POSPaymentModal';
 import { POSManagerAuthModal } from './POSManagerAuthModal';
 import { POSParkedReceiptsModal } from './POSParkedReceiptsModal';
 import { POSSalesHistoryModal } from './POSSalesHistoryModal';
-import { POSReturnModal } from './POSReturnModal';
 import { POSCampaignModal } from './POSCampaignModal';
 import { POSCancelReasonModal } from './POSCancelReasonModal';
 import { POSItemDiscountModal } from './POSItemDiscountModal';
@@ -144,18 +143,18 @@ export default function MarketPOS({
   const { selectedFirma } = useFirmaDonem();
   // Get sales from store
   const sales = useSaleStore((state) => state.sales);
-  const addReturn = useSaleStore((state) => state.addReturn);
   const refreshProducts = useProductStore((state) => state.loadProducts);
-  const navigateToReturnInvoiceInBackoffice = useCallback((returnNumber: string) => {
-    const detail = { screen: 'sales-invoice-return' as const, invoiceSearch: returnNumber };
+  const openSalesReturnBackoffice = useCallback((invoiceSearch?: string) => {
+    const detail = {
+      screen: 'sales-invoice-return' as const,
+      ...(invoiceSearch?.trim() ? { invoiceSearch: invoiceSearch.trim() } : {}),
+    };
     window.dispatchEvent(new CustomEvent('switchToManagement'));
     window.dispatchEvent(new CustomEvent('navigateToScreen', { detail }));
     window.setTimeout(() => {
       window.dispatchEvent(new CustomEvent('navigateToScreen', { detail }));
     }, 150);
   }, []);
-
-  // Language support
   const { t, tm } = useLanguage();
   const { selectedFirm, selectedPeriod } = useFirmaDonem();
   const posBaseCurrency = useMemo(
@@ -340,7 +339,6 @@ export default function MarketPOS({
   const [showParkedReceiptsModal, setShowParkedReceiptsModal] = useState(false);
   const [showSalesHistoryModal, setShowSalesHistoryModal] = useState(false);
   const [showLastReceiptModal, setShowLastReceiptModal] = useState(false);
-  const [showReturnModal, setShowReturnModal] = useState(false);
   const [showCampaignModal, setShowCampaignModal] = useState(false);
   const [showCategoryModal, setShowCategoryModal] = useState(false);
   const [showStockQueryModal, setShowStockQueryModal] = useState(false);
@@ -379,6 +377,15 @@ export default function MarketPOS({
     | null;
 
   const [pendingAction, setPendingAction] = useState<PendingAction>(null);
+
+  const handleReturnAction = useCallback(() => {
+    if (currentUser.role === 'admin' || hasPermission('pos.refund')) {
+      openSalesReturnBackoffice();
+    } else {
+      setPendingAction({ type: 'REFUND' });
+      setShowManagerAuthModal(true);
+    }
+  }, [currentUser.role, hasPermission, openSalesReturnBackoffice]);
 
   // Cash register state
   const [cashRegisterOpeningCash, setCashRegisterOpeningCash] = useState<number>(() => {
@@ -1449,7 +1456,7 @@ export default function MarketPOS({
     { label: t.category, color: 'bg-blue-50 text-blue-700 border-blue-400', onClick: () => setShowCategoryModal(true), icon: Package },
     { label: t.stockQuery, color: 'bg-blue-50 text-blue-700 border-blue-400', onClick: () => setShowStockQueryModal(true), icon: Package },
     { label: t.salesHistory, color: 'bg-blue-50 text-blue-700 border-blue-400', onClick: () => setShowSalesHistoryModal(true), icon: History },
-    { label: t.returnTransaction, color: 'bg-blue-50 text-blue-700 border-blue-400', onClick: () => setShowReturnModal(true), icon: RotateCcw },
+    { label: t.returnTransaction, color: 'bg-blue-50 text-blue-700 border-blue-400', onClick: handleReturnAction, icon: RotateCcw },
     { label: t.missingBarcodes, color: 'bg-red-50 text-red-700 border-red-400', onClick: () => setShowMissingBarcodesModal(true), icon: Barcode },
     { label: t.scale, color: 'bg-blue-50 text-blue-700 border-blue-400', onClick: () => { }, icon: Scale },
     { label: t.subtotalAction, color: 'bg-blue-50 text-blue-700 border-blue-400', onClick: () => showNotif(`${t.subtotalAction}: ${subtotal.toFixed(2)}`, 'info'), icon: Calculator },
@@ -1604,7 +1611,7 @@ export default function MarketPOS({
     { key: 'F1', description: 'payment', action: () => cart.length > 0 && handlePaymentClick(), category: 'pos' },
     { key: 'F2', description: 'productSearch', action: () => { setCatalogMode('add-to-cart'); setShowProductCatalogModal(true); }, category: 'pos' },
     { key: 'F3', description: 'campaign', action: () => setShowCampaignModal(true), category: 'pos' },
-    { key: 'F4', description: 'return', action: () => setShowReturnModal(true), category: 'pos' },
+    { key: 'F4', description: 'return', action: handleReturnAction, category: 'pos' },
     { key: 'F5', description: 'parkReceipt', action: () => cart.length > 0 && handleParkReceipt(), category: 'pos' },
     { key: 'F6', description: 'parkedReceipts', action: () => parkedReceipts.length > 0 && setShowParkedReceiptsModal(true), category: 'pos' },
     { key: 'F7', description: 'salesHistory', action: () => setShowSalesHistoryModal(true), category: 'pos' },
@@ -1624,7 +1631,7 @@ export default function MarketPOS({
     { key: 'Escape', description: 'focusBarcodeInput', action: () => barcodeInputRef.current?.focus(), category: 'navigation' },
     { key: 'Enter', description: 'confirmBarcode', action: () => barcodeInputRef.current?.focus(), category: 'navigation' },
     { key: '?', description: 'showShortcuts', action: () => setShowShortcutOverlay(!showShortcutOverlay), category: 'help' },
-  ], [cart, parkedReceipts, isCashRegisterOpen, showShortcutOverlay]);
+  ], [cart, parkedReceipts, isCashRegisterOpen, showShortcutOverlay, handleReturnAction]);
 
   // Register keyboard shortcuts
   useKeyboardShortcuts({
@@ -1667,7 +1674,7 @@ export default function MarketPOS({
       // F4 - İade
       else if (e.key === 'F4') {
         e.preventDefault();
-        setShowReturnModal(true);
+        handleReturnAction();
       }
       // F5 - Fiş Beklet
       else if (e.key === 'F5') {
@@ -1708,7 +1715,7 @@ export default function MarketPOS({
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [cart, parkedReceipts, barcodeInput]);
+  }, [cart, parkedReceipts, barcodeInput, handleReturnAction]);
 
   // Listen for last receipt event from header button
   useEffect(() => {
@@ -2185,15 +2192,8 @@ export default function MarketPOS({
                 <span>{t.productQuery}</span>
               </button>
               <button
-                onClick={() => {
-                  if (currentUser.role === 'admin' || hasPermission('pos.refund')) {
-                    setShowReturnModal(true);
-                  } else {
-                    setPendingAction({ type: 'REFUND' });
-                    setShowManagerAuthModal(true);
-                  }
-                }}
-                className={`${getButtonClass('red')} py-4 text-xs leading-tight flex flex-col items-center justify-center gap-1 transition-all ${!hasPermission('pos.refund') ? 'opacity-70' : ''}`}
+                onClick={handleReturnAction}
+                className={`${getButtonClass('red')} py-4 text-xs leading-tight flex flex-col items-center justify-center gap-1 transition-all ${!hasPermission('pos.refund') && currentUser.role !== 'admin' ? 'opacity-70' : ''}`}
               >
                 <RotateCcw className="w-5 h-5" />
                 <span>{t.returnTransaction}</span>
@@ -2393,7 +2393,7 @@ export default function MarketPOS({
 
             switch (pendingAction.type) {
               case 'REFUND':
-                setShowReturnModal(true);
+                openSalesReturnBackoffice();
                 break;
               case 'CANCEL_RECEIPT':
                 if (cart.length > 0) clearCart();
@@ -2453,62 +2453,6 @@ export default function MarketPOS({
               const companyName = selectedFirma?.title || selectedFirma?.name || 'RetailOS';
               printThermalReceipt(sale, companyName);
             });
-          }}
-        />
-      )}
-
-      {showReturnModal && (
-        <POSReturnModal
-          sales={sales}
-          products={products}
-          onClose={() => setShowReturnModal(false)}
-          onReturnComplete={async (returnData) => {
-            try {
-              const savedReturn = await salesAPI.createReturn({
-                returnNumber: returnData.returnNumber,
-                originalReceiptNumber: returnData.originalReceiptNumber,
-                date: returnData.date,
-                customerId: returnData.customerId,
-                customerName: returnData.customerName,
-                cashier: returnData.cashier || currentStaff,
-                firmNr: selectedFirm?.firm_nr,
-                periodNr: selectedPeriod?.nr?.toString().padStart(2, '0'),
-                storeId: currentUser.storeId,
-                paymentMethod: returnData.refundMethod === 'card' ? 'card' : 'cash',
-                returnReason: returnData.returnReason,
-                items: (returnData.items || []).map((row: {
-                  productId: string;
-                  productName: string;
-                  productCode?: string;
-                  barcode?: string;
-                  quantity: number;
-                  unit?: string;
-                  multiplier?: number;
-                  price: number;
-                  variant?: Sale['items'][0]['variant'];
-                }) => ({
-                  productId: row.productId,
-                  productName: row.productName,
-                  productCode: row.productCode,
-                  barcode: row.barcode,
-                  quantity: row.quantity,
-                  unit: row.unit,
-                  multiplier: row.multiplier,
-                  price: row.price,
-                  variant: row.variant,
-                })),
-              });
-              if (savedReturn) {
-                await addReturn(savedReturn);
-              }
-              showNotif(t.returnCompleted, 'success');
-              navigateToReturnInvoiceInBackoffice(returnData.returnNumber);
-            } catch (err: unknown) {
-              const msg = err instanceof Error ? err.message : String(err);
-              showNotif(`İade kaydedilemedi: ${msg}`, 'error');
-            } finally {
-              setShowReturnModal(false);
-            }
           }}
         />
       )}
