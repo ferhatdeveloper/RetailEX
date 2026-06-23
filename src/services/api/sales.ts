@@ -358,15 +358,26 @@ export const salesAPI = {
    */
   async getAll(limit: number = 100): Promise<Sale[]> {
     try {
-      // Satış faturası listesi (InvoiceListModule, Satis + tür Tümü) ile aynı kapsam: trcode 7,8,9,… — yalnızca 7 değil
-      const result = await invoicesAPI.getPaginated({
-        page: 1,
-        pageSize: limit,
-        invoiceCategory: 'Satis'
-      });
+      const [salesResult, returnsResult] = await Promise.all([
+        invoicesAPI.getPaginated({
+          page: 1,
+          pageSize: limit,
+          invoiceCategory: 'Satis',
+        }),
+        invoicesAPI.getPaginated({
+          page: 1,
+          pageSize: limit,
+          invoiceCategory: 'Iade',
+          invoiceType: 3,
+        }),
+      ]);
 
-      // Map Invoice[] to Sale[]
-      return result.data.map(mapInvoiceToSale);
+      const merged = [
+        ...salesResult.data.map(mapInvoiceToSale),
+        ...returnsResult.data.map(mapInvoiceToSale),
+      ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+      return merged.slice(0, limit);
     } catch (error) {
       console.error('[SalesAPI] getAll failed:', error);
       return [];
@@ -392,24 +403,39 @@ export const salesAPI = {
    */
   async getByDateRange(startDate: string, endDate: string): Promise<Sale[]> {
     try {
-      const pageSize = 5000;
-      const all: Sale[] = [];
-      let page = 1;
-      let totalPages = 1;
-      while (page <= totalPages) {
-        const result = await invoicesAPI.getPaginated({
-          page,
-          startDate,
-          endDate,
-          invoiceCategory: 'Satis',
-          pageSize,
-        });
-        all.push(...result.data.map(mapInvoiceToSale));
-        totalPages = Math.max(1, result.totalPages || 1);
-        if (!result.data.length) break;
-        page += 1;
-      }
-      return all;
+      const fetchCategory = async (
+        invoiceCategory: 'Satis' | 'Iade',
+        invoiceType?: number,
+      ): Promise<Sale[]> => {
+        const pageSize = 5000;
+        const all: Sale[] = [];
+        let page = 1;
+        let totalPages = 1;
+        while (page <= totalPages) {
+          const result = await invoicesAPI.getPaginated({
+            page,
+            startDate,
+            endDate,
+            invoiceCategory,
+            invoiceType,
+            pageSize,
+          });
+          all.push(...result.data.map(mapInvoiceToSale));
+          totalPages = Math.max(1, result.totalPages || 1);
+          if (!result.data.length) break;
+          page += 1;
+        }
+        return all;
+      };
+
+      const [sales, returns] = await Promise.all([
+        fetchCategory('Satis'),
+        fetchCategory('Iade', 3),
+      ]);
+
+      return [...sales, ...returns].sort(
+        (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
+      );
     } catch (error) {
       console.error('[SalesAPI] getByDateRange failed:', error);
       return [];
@@ -512,7 +538,22 @@ export const salesAPI = {
 
 // Helper to map Invoice to Sale
 import type { Invoice } from '../../core/types';
+
+function resolveInvoiceTrcode(invoice: Invoice): number {
+  return Number((invoice as Invoice & { trcode?: number }).trcode ?? invoice.invoice_type ?? 0);
+}
+
+/** Müşteri satış iadesi (trcode 3) — POS / Z raporu için negatif satış satırı */
+function isCustomerSalesReturnInvoice(invoice: Invoice): boolean {
+  return resolveInvoiceTrcode(invoice) === 3;
+}
+
 function mapInvoiceToSale(invoice: Invoice): Sale {
+  const isCustomerReturn = isCustomerSalesReturnInvoice(invoice);
+  const amount = Math.abs(Number(invoice.total_amount ?? invoice.total ?? 0));
+  const signedTotal = isCustomerReturn ? -amount : amount;
+  const signedSubtotal = isCustomerReturn ? -Math.abs(Number(invoice.subtotal) || amount) : invoice.subtotal;
+
   return {
     id: invoice.id || '',
     receiptNumber: invoice.invoice_no,
@@ -521,13 +562,13 @@ function mapInvoiceToSale(invoice: Invoice): Sale {
     customerName: invoice.customer_name,
     storeId: invoice.store_id || 'DEFAULT',
     cashier: invoice.cashier || 'Unknown',
-    subtotal: invoice.subtotal,
+    subtotal: signedSubtotal,
     discount: invoice.discount,
     tax: invoice.tax,
-    total: Number(invoice.total_amount ?? invoice.total ?? 0),
+    total: signedTotal,
     profit: invoice.gross_profit || 0,
     paymentMethod: invoice.payment_method || 'cash',
-    status: invoice.status,
+    status: isCustomerReturn ? 'return' : invoice.status,
     notes: invoice.notes,
     firmNr: invoice.firma_id,
     periodNr: invoice.donem_id,

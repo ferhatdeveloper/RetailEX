@@ -143,6 +143,7 @@ export default function MarketPOS({
   const { selectedFirma } = useFirmaDonem();
   // Get sales from store
   const sales = useSaleStore((state) => state.sales);
+  const loadSales = useSaleStore((state) => state.loadSales);
   const refreshProducts = useProductStore((state) => state.loadProducts);
   const openSalesReturnBackoffice = useCallback((invoiceSearch?: string) => {
     const detail = {
@@ -1733,6 +1734,12 @@ export default function MarketPOS({
     if (!showProductCatalogModal) return;
     void refreshProducts(true);
   }, [showProductCatalogModal, refreshProducts]);
+
+  useEffect(() => {
+    if (showCloseCashRegisterModal) {
+      void loadSales(500);
+    }
+  }, [showCloseCashRegisterModal, loadSales]);
 
   return (
     <div className={`h-full flex flex-col ${darkMode ? 'bg-gray-900' : 'bg-white'}`}>

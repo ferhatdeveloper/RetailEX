@@ -7,7 +7,7 @@ import { formatNumberInput, parseFormattedNumber } from '../../utils/numberForma
 import { POSNumpad } from './POSNumpad';
 import { POSCashHandoverModal } from './POSCashHandoverModal';
 import { useLanguage } from '../../contexts/LanguageContext';
-import { aggregatePosPayments, buildPosZReport, printPosZReport } from '../../utils/posZReport';
+import { aggregatePosPayments, aggregateReturnPayments, buildPosZReport, isReturnSale, printPosZReport } from '../../utils/posZReport';
 
 interface POSCloseCashRegisterModalProps {
   onClose: () => void;
@@ -59,22 +59,23 @@ export function POSCloseCashRegisterModal({
     return saleDate.toDateString() === today.toDateString();
   });
 
-  const positiveSales = todaySales.filter((s) => Number(s.total) > 0 && String(s.status ?? '').toLowerCase() !== 'cancelled');
-  const returnSales = todaySales.filter(s => Number(s.total) < 0 || String(s.status ?? '').toLowerCase() === 'return');
+  const positiveSales = todaySales.filter((s) => !isReturnSale(s) && !String(s.status ?? '').toLowerCase().includes('cancel'));
+  const returnSales = todaySales.filter(isReturnSale);
   const paymentBreakdown = aggregatePosPayments(positiveSales);
+  const returnPaymentBreakdown = aggregateReturnPayments(returnSales);
 
-  const totalSales = positiveSales.reduce((sum, sale) => sum + sale.total, 0);
+  const totalSales = positiveSales.reduce((sum, sale) => sum + Math.abs(Number(sale.total) || 0), 0);
   const cashTotal = paymentBreakdown.cash;
   const cardTotal = paymentBreakdown.card;
   const creditTotal = paymentBreakdown.credit;
   const otherTotal = paymentBreakdown.other;
-  const returnTotal = returnSales.reduce((sum, sale) => sum + Math.abs(sale.total), 0);
+  const returnTotal = returnSales.reduce((sum, sale) => sum + Math.abs(Number(sale.total) || 0), 0);
   const netSales = totalSales - returnTotal;
 
   const zReport = buildPosZReport(sales);
 
-  // Kart ödemeleri kasada değil; beklenen nakit = açılış + nakit tahsilat
-  const expectedCash = openingCash + cashTotal;
+  // Kart ödemeleri kasada değil; beklenen nakit = açılış + nakit tahsilat − nakit iade
+  const expectedCash = openingCash + cashTotal - returnPaymentBreakdown.cash;
   const actualCash = showDenominationCounter 
     ? denominations.reduce((sum, d) => sum + (d.value * d.count), 0)
     : parseFormattedNumber(countedCash);
@@ -225,6 +226,12 @@ export function POSCloseCashRegisterModal({
                     <span className="text-gray-600">{t.cashSales}:</span>
                     <span className="font-medium text-gray-900">{formatCurrency(cashTotal)}</span>
                   </div>
+                  {returnPaymentBreakdown.cash > 0 && (
+                    <div className="flex justify-between text-red-600">
+                      <span>Nakit iade (-):</span>
+                      <span className="font-medium">-{formatCurrency(returnPaymentBreakdown.cash)}</span>
+                    </div>
+                  )}
                   <div className="flex justify-between">
                     <span className="text-gray-600">{t.cardSales}</span>
                     <span className="font-medium text-gray-900">{formatCurrency(cardTotal)}</span>

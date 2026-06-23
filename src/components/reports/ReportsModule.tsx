@@ -25,6 +25,7 @@ import { beautyService } from '../../services/beautyService';
 import { expenseAPI } from '../../services/api/expenses';
 import type { BeautyAppointment, BeautySale } from '../../types/beauty';
 import { localCalendarDateKey, localTodayDateKey, formatIsoDateTr, toSqlDateInputString } from '../../utils/localCalendarDate';
+import { buildPosZReportForRange, isReturnSale } from '../../utils/posZReport';
 import { BeautyServiceReportCrmModal } from './BeautyServiceReportCrmModal';
 import { useBeautyStore } from '../beauty/store/useBeautyStore';
 import { CommissionReport } from '../beauty/components/CommissionReport';
@@ -1628,6 +1629,15 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
     [dailyUnifiedRows]
   );
 
+  const dailyReturnRows = useMemo(
+    () => dailySales.filter((s) => isReturnSale(s)),
+    [dailySales],
+  );
+  const dailyReturnTotal = useMemo(
+    () => dailyReturnRows.reduce((sum, s) => sum + Math.abs(Number(s.total) || 0), 0),
+    [dailyReturnRows],
+  );
+
   const closeDailyRowReceiptModal = useCallback(() => {
     setDailyRowReceiptModal(null);
     setDailyRowReceiptHtml('');
@@ -1797,48 +1807,46 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
     }
   }, [closeDailyRowReceiptModal, confirmReportAction, dailyRowReceiptModal, loadRestOrdersForSelectedDate, tm]);
 
-  // Z Report — restoranda tutarlar Perakende Satışlar (ERP) ile aynı; o gün ERP fişi yoksa kapalı adisyonlar
+  // Z Report — ERP satış + satış iade (trcode 3); restoranda adisyon yedek
   const generateZReport = () => {
     const inReportPeriod = (k: string) => k >= selectedDateFrom && k <= selectedDateTo;
     const dateLabel = formatReportsDateRangeTr(selectedDateFrom, selectedDateTo);
     const allDaySales = reportRangeSales.filter((s) => inReportPeriod(localCalendarDateKey(s.date)));
-    const removedDaySales = allDaySales.filter((s) => isRemovedSaleStatus(s.status));
-    const todaySales = reportRangeSales.filter(
-      (s) => inReportPeriod(localCalendarDateKey(s.date)) && !isRemovedSaleStatus(s.status)
-    );
-    const removedAmount = removedDaySales.reduce((sum, s) => sum + (Number(s.total) || 0), 0);
+    const canceledSalesRows = allDaySales.filter((s) => isRemovedSaleStatus(s.status) && !isReturnSale(s));
+
+    const buildFromErpSales = () => {
+      const base = buildPosZReportForRange(reportRangeSales, selectedDateFrom, selectedDateTo, dateLabel);
+      const netSales = base.totalAmount - base.refundAmount;
+      return {
+        dateFrom: selectedDateFrom,
+        dateTo: selectedDateTo,
+        dateLabel,
+        totalSales: base.totalSales,
+        returnCount: allDaySales.filter((s) => isReturnSale(s)).length,
+        amountBeforeDiscount: base.amountBeforeDiscount,
+        totalAmount: base.totalAmount,
+        netSales,
+        totalExpenses: totalExpensesForSelectedDate,
+        netAfterExpenses: netSales - totalExpensesForSelectedDate,
+        cashAmount: base.cashAmount,
+        cardAmount: base.cardAmount,
+        creditAmount: base.creditAmount,
+        otherAmount: base.otherAmount,
+        totalDiscount: base.totalDiscount,
+        refundAmount: base.refundAmount,
+        canceledSales: canceledSalesRows.length,
+        canceledAmount: canceledSalesRows.reduce((sum, s) => sum + Math.abs(Number(s.total) || 0), 0),
+        firstSale: base.firstSale,
+        lastSale: base.lastSale,
+        cashierStats: base.cashierStats,
+      };
+    };
 
     if (businessType === 'restaurant') {
-      if (todaySales.length > 0) {
-        const totalAmount = todaySales.reduce((sum, s) => sum + (Number(s.total) || 0), 0);
-        const cashAmount = todaySales
-          .filter(s => s.paymentMethod === 'cash')
-          .reduce((sum, s) => sum + (Number(s.total) || 0), 0);
-        const cardAmount = todaySales
-          .filter(s => s.paymentMethod === 'card' || s.paymentMethod === 'gateway')
-          .reduce((sum, s) => sum + (Number(s.total) || 0), 0);
-        const totalDiscount = todaySales.reduce((sum, s) => sum + (Number(s.discount) || 0), 0);
-        const amountBeforeDiscount = totalAmount + totalDiscount;
-        const sortedErp = [...todaySales].sort(
-          (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
-        );
-        return {
-          dateFrom: selectedDateFrom,
-          dateTo: selectedDateTo,
-          dateLabel,
-          totalSales: todaySales.length,
-          amountBeforeDiscount,
-          totalAmount,
-          totalExpenses: totalExpensesForSelectedDate,
-          netAfterExpenses: totalAmount - totalExpensesForSelectedDate,
-          cashAmount,
-          cardAmount,
-          totalDiscount,
-          firstSale: sortedErp.length > 0 ? sortedErp[0].receiptNumber : '-',
-          lastSale: sortedErp.length > 0 ? sortedErp[sortedErp.length - 1].receiptNumber : '-',
-          canceledSales: removedDaySales.length,
-          refundAmount: removedAmount,
-        };
+      const erpPositive = allDaySales.filter((s) => !isReturnSale(s) && !isRemovedSaleStatus(s.status));
+      const erpReturns = allDaySales.filter(isReturnSale);
+      if (erpPositive.length > 0 || erpReturns.length > 0) {
+        return buildFromErpSales();
       }
       const totalAmount = restOrdersClosedOnSelectedDate.reduce((sum, o) => sum + restOrderNetAmount(o), 0);
       const cashAmount = restOrdersClosedOnSelectedDate
@@ -1862,8 +1870,10 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
         dateTo: selectedDateTo,
         dateLabel,
         totalSales: ro.length,
+        returnCount: 0,
         amountBeforeDiscount,
         totalAmount,
+        netSales: totalAmount,
         totalExpenses: totalExpensesForSelectedDate,
         netAfterExpenses: totalAmount - totalExpensesForSelectedDate,
         cashAmount,
@@ -1871,41 +1881,14 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
         totalDiscount,
         firstSale: ro.length > 0 ? String(ro[0].order_no || ro[0].id || '-') : '-',
         lastSale: ro.length > 0 ? String(ro[ro.length - 1].order_no || ro[ro.length - 1].id || '-') : '-',
-        canceledSales: removedDaySales.length,
-        refundAmount: removedAmount,
+        canceledSales: canceledSalesRows.length,
+        refundAmount: 0,
+        canceledAmount: 0,
+        cashierStats: [],
       };
     }
 
-    const totalAmount = todaySales.reduce((sum, s) => sum + (Number(s.total) || 0), 0);
-    const cashAmount = todaySales
-      .filter(s => s.paymentMethod === 'cash')
-      .reduce((sum, s) => sum + (Number(s.total) || 0), 0);
-    const cardAmount = todaySales
-      .filter(s => s.paymentMethod === 'card' || s.paymentMethod === 'gateway')
-      .reduce((sum, s) => sum + (Number(s.total) || 0), 0);
-    const totalDiscount = todaySales.reduce((sum, s) => sum + (Number(s.discount) || 0), 0);
-    const amountBeforeDiscount = totalAmount + totalDiscount;
-
-    const sortedRetail = [...todaySales].sort(
-      (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
-    );
-    return {
-      dateFrom: selectedDateFrom,
-      dateTo: selectedDateTo,
-      dateLabel,
-      totalSales: todaySales.length,
-      amountBeforeDiscount,
-      totalAmount,
-      totalExpenses: totalExpensesForSelectedDate,
-      netAfterExpenses: totalAmount - totalExpensesForSelectedDate,
-      cashAmount,
-      cardAmount,
-      totalDiscount,
-      firstSale: sortedRetail.length > 0 ? sortedRetail[0].receiptNumber : '-',
-      lastSale: sortedRetail.length > 0 ? sortedRetail[sortedRetail.length - 1].receiptNumber : '-',
-      canceledSales: removedDaySales.length,
-      refundAmount: removedAmount,
-    };
+    return buildFromErpSales();
   };
 
   // Product sales analysis
@@ -3054,16 +3037,20 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
           <span>${formatNumber(zReport.totalDiscount, 2, false)}</span>
         </div>
         <div class="row">
-          <span class="label">${escHtml(tm('reportsDetStatusCancelled'))} / ${escHtml(tm('reportsDetStatusRefunded'))} (-):</span>
-          <span>${formatNumber(zReport.refundAmount, 2, false)}</span>
+          <span class="label">Satış iade (-):</span>
+          <span>${formatNumber(zReport.refundAmount, 2, false)} (${zReport.returnCount ?? 0} adet)</span>
+        </div>
+        <div class="row">
+          <span class="label">İptal adet:</span>
+          <span>${zReport.canceledSales}</span>
         </div>
         <div class="row">
           <span class="label">Toplam gider (-):</span>
           <span>${formatNumber(zReport.totalExpenses, 2, false)}</span>
         </div>
         <div class="row">
-          <span class="label">${escHtml(tm('reportsDetStatusCancelled'))} / ${escHtml(tm('reportsDetStatusRefunded'))} adet:</span>
-          <span>${zReport.canceledSales}</span>
+          <span class="label">Net ciro:</span>
+          <span>${formatNumber(zReport.netSales ?? (zReport.totalAmount - zReport.refundAmount), 2, false)}</span>
         </div>
         <div class="row">
           <span class="label">İlk Fiş No:</span>
@@ -3877,13 +3864,17 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
                 </div>
 
                 {/* Stats */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4">
                   <div className="bg-white rounded-lg p-4 border-2" style={{ borderColor: `${bizConfig.color}44` }}>
                     <div className="flex items-center justify-between">
                       <div>
                         <p className="text-sm text-gray-600">{tm('totalSales')}</p>
-                        <p className="text-3xl font-bold mt-1" style={{ color: bizConfig.color }}>{dailyActiveRows.length}</p>
+                        <p className="text-3xl font-bold mt-1" style={{ color: bizConfig.color }}>{dailyActiveRows.filter((r) => r.status !== 'return').length}</p>
                         <p className="text-xs text-slate-500 mt-1">
+                          Satış iade: {dailyReturnRows.length}
+                          {dailyReturnTotal > 0 ? ` · −${formatNumber(dailyReturnTotal, 2, false)}` : ''}
+                        </p>
+                        <p className="text-xs text-slate-500">
                           {tm('reportsDetStatusCancelled')} / {tm('reportsDetStatusRefunded')}: {dailyUnifiedRows.length - dailyActiveRows.length}
                         </p>
                       </div>
@@ -3928,6 +3919,17 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
                         <p className="text-2xl font-bold mt-1" style={{ color: bizConfig.color }}>{formatNumber(dailyCard, 2, false)}</p>
                       </div>
                       <CreditCard className="w-12 h-12 opacity-20" style={{ color: bizConfig.color }} />
+                    </div>
+                  </div>
+
+                  <div className="bg-white rounded-lg p-4 border-2 border-red-100">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm text-gray-600">Satış iade</p>
+                        <p className="text-2xl font-bold mt-1 text-red-600">{formatNumber(dailyReturnTotal, 2, false)}</p>
+                        <p className="text-xs text-slate-500 mt-1">{dailyReturnRows.length} işlem</p>
+                      </div>
+                      <TrendingDown className="w-12 h-12 text-red-400 opacity-40" />
                     </div>
                   </div>
                 </div>
@@ -4015,16 +4017,21 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
                                 const st = String(row.status ?? 'completed').toLowerCase();
                                 const isCancelled = st === 'cancelled' || st === 'canceled';
                                 const isRefunded = st === 'refunded';
-                                const label = isCancelled
-                                  ? tm('reportsDetStatusCancelled')
-                                  : isRefunded
-                                    ? tm('reportsDetStatusRefunded')
-                                    : tm('reportsDetStatusCompleted');
-                                const cls = isCancelled
+                                const isReturn = st === 'return';
+                                const label = isReturn
+                                  ? 'Satış İade'
+                                  : isCancelled
+                                    ? tm('reportsDetStatusCancelled')
+                                    : isRefunded
+                                      ? tm('reportsDetStatusRefunded')
+                                      : tm('reportsDetStatusCompleted');
+                                const cls = isReturn
                                   ? 'bg-red-100 text-red-700'
-                                  : isRefunded
-                                    ? 'bg-amber-100 text-amber-700'
-                                    : 'bg-emerald-100 text-emerald-700';
+                                  : isCancelled
+                                    ? 'bg-red-100 text-red-700'
+                                    : isRefunded
+                                      ? 'bg-amber-100 text-amber-700'
+                                      : 'bg-emerald-100 text-emerald-700';
                                 const reasonText = row.cancelReason?.trim();
                                 return (
                                   <div className="space-y-1">
@@ -4188,7 +4195,7 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
                       <p className="text-xs text-slate-500 mb-3">
                         {tm('reportsSalesSummaryFootnote')}
                       </p>
-                      <div className="grid grid-cols-2 lg:grid-cols-6 gap-4">
+                      <div className="grid grid-cols-2 lg:grid-cols-7 gap-4">
                         <div className="p-4 bg-gray-50 rounded-lg">
                           <p className="text-sm text-gray-600">{tm('reportsTotalTransactions')}</p>
                           <p className="text-3xl text-blue-600 mt-1">{zReport.totalSales}</p>
@@ -4201,9 +4208,14 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
                           <p className="text-sm text-gray-600">{tm('reportsTotalDiscount')}</p>
                           <p className="text-2xl font-bold text-orange-600 mt-1">{formatNumber(zReport.totalDiscount, 2, false)}</p>
                         </div>
+                        <div className="p-4 bg-red-50 rounded-lg border border-red-100">
+                          <p className="text-sm text-gray-600">Satış iade (-)</p>
+                          <p className="text-2xl font-bold text-red-700 mt-1">{formatNumber(zReport.refundAmount, 2, false)}</p>
+                          <p className="text-xs text-slate-500 mt-1">{zReport.returnCount ?? 0} işlem</p>
+                        </div>
                         <div className="p-4 bg-green-50 rounded-lg border border-green-100">
                           <p className="text-sm text-gray-600">{tm('reportsNetTurnover')}</p>
-                          <p className="text-2xl font-bold text-green-700 mt-1">{formatNumber(zReport.totalAmount, 2, false)}</p>
+                          <p className="text-2xl font-bold text-green-700 mt-1">{formatNumber(zReport.netSales ?? (zReport.totalAmount - zReport.refundAmount), 2, false)}</p>
                         </div>
                         <div className="p-4 bg-rose-50 rounded-lg border border-rose-100">
                           <p className="text-sm text-gray-600">Toplam gider</p>
@@ -4228,6 +4240,33 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
                           <span>{tm('reportsCardPayments')}</span>
                           <span className="text-lg">{formatNumber(zReport.cardAmount, 2, false)}</span>
                         </div>
+                        {(zReport.cashierStats?.length ?? 0) > 0 && (
+                          <div className="mt-4 overflow-x-auto">
+                            <h4 className="text-sm text-gray-600 mb-3">Kasiyer / personel cirosu</h4>
+                            <table className="w-full text-sm min-w-[640px]">
+                              <thead>
+                                <tr className="text-left text-xs text-gray-500 border-b">
+                                  <th className="py-2 pr-3">Kasiyer</th>
+                                  <th className="py-2 pr-3 text-right">Fiş</th>
+                                  <th className="py-2 pr-3 text-right">Brüt</th>
+                                  <th className="py-2 pr-3 text-right">İade</th>
+                                  <th className="py-2 text-right">Net</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {zReport.cashierStats.map((row) => (
+                                  <tr key={row.name} className="border-b border-gray-100 last:border-0">
+                                    <td className="py-2 pr-3 font-medium">{row.name}</td>
+                                    <td className="py-2 pr-3 text-right tabular-nums">{row.salesCount}</td>
+                                    <td className="py-2 pr-3 text-right tabular-nums">{formatNumber(row.grossRevenue, 2, false)}</td>
+                                    <td className="py-2 pr-3 text-right tabular-nums text-red-600">{formatNumber(row.returnTotal, 2, false)}</td>
+                                    <td className="py-2 text-right tabular-nums font-semibold">{formatNumber(row.netRevenue, 2, false)}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
                       </div>
                     </div>
 

@@ -52,12 +52,12 @@ function normalizePaymentMethod(raw: unknown): 'cash' | 'card' | 'credit' | 'oth
   return 'other';
 }
 
-function isReturnSale(sale: Sale): boolean {
+export function isReturnSale(sale: Sale): boolean {
   const status = String(sale.status ?? '').toLowerCase();
   return Number(sale.total) < 0 || status === 'refunded' || status === 'return';
 }
 
-function isCanceledSale(sale: Sale): boolean {
+export function isCanceledSale(sale: Sale): boolean {
   const status = String(sale.status ?? '').toLowerCase();
   return status === 'cancelled' || status === 'canceled';
 }
@@ -101,6 +101,45 @@ export function aggregatePosPayments(sales: Sale[]): PosPaymentBreakdown {
   return result;
 }
 
+/** Satış iade fişlerinden ödeme kırılımı (nakit iade kasadan düşülür) */
+export function aggregateReturnPayments(sales: Sale[]): PosPaymentBreakdown {
+  const result: PosPaymentBreakdown = {
+    cash: 0,
+    card: 0,
+    credit: 0,
+    other: 0,
+    cashCount: 0,
+    cardCount: 0,
+    creditCount: 0,
+    otherCount: 0,
+  };
+
+  for (const sale of sales) {
+    if (!isReturnSale(sale) || isCanceledSale(sale)) continue;
+    const total = Math.abs(Number(sale.total) || 0);
+    if (!(total > 0)) continue;
+
+    const rows = (sale as Sale & { payments?: Array<{ method?: string; amount?: number; currency?: string }> }).payments;
+    if (Array.isArray(rows) && rows.length > 0) {
+      const exchangeRates: Record<string, number> = { IQD: 1, USD: 1310, EUR: 1450 };
+      for (const row of rows) {
+        const amount = Math.abs(Number(row.amount) || 0) * (exchangeRates[String(row.currency || 'IQD').toUpperCase()] || 1);
+        if (!(amount > 0)) continue;
+        const bucket = normalizePaymentMethod(row.method);
+        result[bucket] += amount;
+        result[`${bucket}Count` as keyof PosPaymentBreakdown] = (result[`${bucket}Count` as keyof PosPaymentBreakdown] as number) + 1;
+      }
+      continue;
+    }
+
+    const bucket = normalizePaymentMethod(sale.paymentMethod);
+    result[bucket] += total;
+    result[`${bucket}Count` as keyof PosPaymentBreakdown] = (result[`${bucket}Count` as keyof PosPaymentBreakdown] as number) + 1;
+  }
+
+  return result;
+}
+
 function addPaymentToCashierStats(
   stats: CashierDayStats,
   sale: Sale,
@@ -118,8 +157,16 @@ function addPaymentToCashierStats(
 export function aggregateCashierPerformance(
   sales: Sale[],
   dateKey = localCalendarDateKey(new Date()),
+  opts?: { dateTo?: string; prefiltered?: boolean },
 ): CashierDayStats[] {
-  const daySales = sales.filter((s) => localCalendarDateKey(s.date) === dateKey);
+  const daySales = opts?.prefiltered
+    ? sales
+    : opts?.dateTo
+      ? sales.filter((s) => {
+        const k = localCalendarDateKey(s.date);
+        return k >= dateKey && k <= opts.dateTo!;
+      })
+      : sales.filter((s) => localCalendarDateKey(s.date) === dateKey);
   const map = new Map<string, CashierDayStats>();
 
   const ensure = (rawName: string): CashierDayStats => {
@@ -175,27 +222,37 @@ export function aggregateCashierPerformance(
   return Array.from(map.values()).sort((a, b) => b.netRevenue - a.netRevenue);
 }
 
-export function buildPosZReport(sales: Sale[], dateKey = localCalendarDateKey(new Date())): PosZReport {
-  const daySales = sales.filter((s) => localCalendarDateKey(s.date) === dateKey);
+function summarizePosZReportFromDaySales(
+  daySales: Sale[],
+  dateLabel: string,
+  dateKey: string,
+  dateTo?: string,
+): PosZReport {
   const activeSales = daySales.filter((s) => !isCanceledSale(s));
   const positiveSales = activeSales.filter((s) => !isReturnSale(s));
-  const returnSales = daySales.filter((s) => isReturnSale(s));
+  const returnSales = daySales.filter((s) => isReturnSale(s) && !isCanceledSale(s));
 
   const totalAmount = positiveSales.reduce((sum, s) => sum + Math.abs(Number(s.total) || 0), 0);
   const totalDiscount = positiveSales.reduce((sum, s) => sum + Math.abs(Number(s.discount) || 0), 0);
   const refundAmount = returnSales.reduce((sum, s) => sum + Math.abs(Number(s.total) || 0), 0);
   const payments = aggregatePosPayments(positiveSales);
-  const cashierStats = aggregateCashierPerformance(sales, dateKey);
+  const returnPayments = aggregateReturnPayments(returnSales);
+  const cashierStats = aggregateCashierPerformance(daySales, dateKey, {
+    prefiltered: true,
+    ...(dateTo && dateTo !== dateKey ? { dateTo } : {}),
+  });
 
   const sorted = [...positiveSales].sort(
     (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime(),
   );
 
-  const dateLabel = new Date(`${dateKey}T12:00:00`).toLocaleDateString('tr-TR', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-  });
+  const netPayments: PosPaymentBreakdown = {
+    ...payments,
+    cash: Math.max(0, payments.cash - returnPayments.cash),
+    card: Math.max(0, payments.card - returnPayments.card),
+    credit: Math.max(0, payments.credit - returnPayments.credit),
+    other: Math.max(0, payments.other - returnPayments.other),
+  };
 
   return {
     dateLabel,
@@ -205,16 +262,42 @@ export function buildPosZReport(sales: Sale[], dateKey = localCalendarDateKey(ne
     totalDiscount,
     refundAmount,
     totalAmount,
-    cashAmount: payments.cash,
-    cardAmount: payments.card,
-    creditAmount: payments.credit,
-    otherAmount: payments.other,
+    cashAmount: netPayments.cash,
+    cardAmount: netPayments.card,
+    creditAmount: netPayments.credit,
+    otherAmount: netPayments.other,
     canceledSales: daySales.filter((s) => isCanceledSale(s)).length,
     firstSale: sorted.length > 0 ? String(sorted[0].receiptNumber || '-') : '-',
     lastSale: sorted.length > 0 ? String(sorted[sorted.length - 1].receiptNumber || '-') : '-',
-    payments,
+    payments: netPayments,
     cashierStats,
   };
+}
+
+export function buildPosZReport(sales: Sale[], dateKey = localCalendarDateKey(new Date())): PosZReport {
+  const daySales = sales.filter((s) => localCalendarDateKey(s.date) === dateKey);
+  const dateLabel = new Date(`${dateKey}T12:00:00`).toLocaleDateString('tr-TR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  });
+  return summarizePosZReportFromDaySales(daySales, dateLabel, dateKey);
+}
+
+/** Günlük rapor / gün aralığı Z özeti */
+export function buildPosZReportForRange(
+  sales: Sale[],
+  dateFrom: string,
+  dateTo: string,
+  dateLabel: string,
+): PosZReport {
+  const inRange = (s: Sale) => {
+    const k = localCalendarDateKey(s.date);
+    return k >= dateFrom && k <= dateTo;
+  };
+  const daySales = sales.filter(inRange);
+  const dateKey = dateFrom === dateTo ? dateFrom : dateFrom;
+  return summarizePosZReportFromDaySales(daySales, dateLabel, dateKey, dateTo);
 }
 
 function escHtml(value: string): string {
