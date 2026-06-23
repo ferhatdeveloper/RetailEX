@@ -47,6 +47,8 @@ interface DevExDataGridProps<T> {
   enableSelection?: boolean;
   onSelectionChange?: (selectedRows: T[]) => void;
   selectedRowIds?: Record<string, boolean>;
+  /** compact: 10px (varsayılan), comfortable: 13px — fatura listesi vb. okunabilirlik */
+  density?: 'compact' | 'comfortable';
 }
 
 interface FilterMenuProps {
@@ -426,6 +428,7 @@ export function DevExDataGrid<T>({
   enableSelection,
   onSelectionChange,
   selectedRowIds,
+  density = 'compact',
 }: DevExDataGridProps<T>) {
   const [sorting, setSorting] = useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
@@ -440,7 +443,11 @@ export function DevExDataGrid<T>({
   const headerBg = darkMode ? 'bg-gray-700' : 'bg-[#E3F2FD]';
   const rowHover = darkMode ? 'hover:bg-gray-700' : 'hover:bg-[#BBDEFB]';
   const rowStripeEven = darkMode ? 'bg-gray-800' : 'bg-white';
-  const rowStripeOdd = darkMode ? 'bg-gray-800/60' : 'bg-gray-50/40';
+  const rowStripeOdd = darkMode ? 'bg-gray-700' : 'bg-slate-50';
+  const cellTextSize = density === 'comfortable' ? 'text-[13px] leading-snug' : 'text-[10px] leading-tight';
+  const cellWeight = density === 'comfortable' ? 'font-medium' : '';
+  const cellColor = darkMode ? 'text-gray-50' : 'text-gray-900';
+  const cellBorder = darkMode ? 'border-gray-600' : 'border-gray-200';
 
   const closeFilterMenu = useCallback(() => {
     setOpenFilterColumn(null);
@@ -731,13 +738,13 @@ export function DevExDataGrid<T>({
       {/* Table Container */}
       <div className={`flex-1 overflow-auto border ${darkMode ? 'border-gray-600 bg-gray-800' : 'border-gray-300 bg-white'}`}>
         <table className="w-full border-collapse">
-          <thead className="sticky top-0 z-30 bg-[#E3F2FD] shadow-[0_1px_0_0_rgba(0,0,0,0.08)]">
+          <thead className={`sticky top-0 z-30 shadow-[0_1px_0_0_rgba(0,0,0,0.08)] ${headerBg}`}>
             {table.getHeaderGroups().map((headerGroup) => (
-              <tr key={headerGroup.id} className="bg-[#E3F2FD] border-b border-gray-300">
+              <tr key={headerGroup.id} className={`border-b ${darkMode ? 'border-gray-600' : 'border-gray-300'} ${headerBg}`}>
                 {headerGroup.headers.map((header) => (
                   <th
                     key={header.id}
-                    className={`px-2 py-1 text-left text-[10px] border-r last:border-r-0 relative ${headerBg} ${darkMode ? 'text-gray-100 border-gray-600' : 'text-gray-700 border-gray-300'}`}
+                    className={`px-2 py-1 text-left border-r last:border-r-0 relative ${headerBg} ${darkMode ? 'text-gray-100 border-gray-600' : 'text-gray-800 border-gray-300'} ${density === 'comfortable' ? 'text-xs font-semibold py-1.5' : 'text-[10px] font-medium'}`}
                     style={{ width: header.getSize() }}
                   >
                     <div className="flex items-center justify-between gap-1">
@@ -793,12 +800,12 @@ export function DevExDataGrid<T>({
                 }}
                 onDoubleClick={() => onRowDoubleClick?.(row.original)}
                 onContextMenu={(e) => onRowContextMenu?.(e, row.original)}
-                className={`border-b transition-colors cursor-pointer ${darkMode ? 'border-gray-700' : 'border-gray-200'} ${rowHover} ${idx % 2 === 0 ? rowStripeEven : rowStripeOdd} ${enableSelection && row.getIsSelected() ? (darkMode ? 'bg-blue-900/40' : 'bg-blue-100/60') : ''}`}
+                className={`border-b transition-colors cursor-pointer ${darkMode ? 'border-gray-700' : 'border-gray-200'} ${rowHover} ${idx % 2 === 0 ? rowStripeEven : rowStripeOdd} ${enableSelection && row.getIsSelected() ? (darkMode ? 'bg-blue-900/50' : 'bg-blue-100') : ''}`}
               >
                 {row.getVisibleCells().map((cell) => (
                   <td
                     key={cell.id}
-                    className="px-2 py-0.5 text-[10px] text-gray-800 border-r border-gray-200 last:border-r-0"
+                    className={`px-2 py-1 border-r last:border-r-0 ${cellTextSize} ${cellWeight} ${cellColor} ${cellBorder}`}
                   >
                     {flexRender(cell.column.columnDef.cell, cell.getContext())}
                   </td>

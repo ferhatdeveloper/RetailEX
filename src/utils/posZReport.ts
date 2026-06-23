@@ -29,6 +29,19 @@ export interface PosZReport {
   firstSale: string;
   lastSale: string;
   payments: PosPaymentBreakdown;
+  cashierStats: CashierDayStats[];
+}
+
+export interface CashierDayStats {
+  name: string;
+  salesCount: number;
+  grossRevenue: number;
+  returnTotal: number;
+  netRevenue: number;
+  cashTotal: number;
+  cardTotal: number;
+  creditTotal: number;
+  otherTotal: number;
 }
 
 function normalizePaymentMethod(raw: unknown): 'cash' | 'card' | 'credit' | 'other' {
@@ -88,6 +101,80 @@ export function aggregatePosPayments(sales: Sale[]): PosPaymentBreakdown {
   return result;
 }
 
+function addPaymentToCashierStats(
+  stats: CashierDayStats,
+  sale: Sale,
+  amount: number,
+  method?: string,
+): void {
+  const bucket = normalizePaymentMethod(method ?? sale.paymentMethod);
+  if (bucket === 'cash') stats.cashTotal += amount;
+  else if (bucket === 'card') stats.cardTotal += amount;
+  else if (bucket === 'credit') stats.creditTotal += amount;
+  else stats.otherTotal += amount;
+}
+
+/** Gün sonu — kasiyer / personel bazlı ciro özeti */
+export function aggregateCashierPerformance(
+  sales: Sale[],
+  dateKey = localCalendarDateKey(new Date()),
+): CashierDayStats[] {
+  const daySales = sales.filter((s) => localCalendarDateKey(s.date) === dateKey);
+  const map = new Map<string, CashierDayStats>();
+
+  const ensure = (rawName: string): CashierDayStats => {
+    const name = rawName.trim() || 'Bilinmeyen Kasiyer';
+    const existing = map.get(name);
+    if (existing) return existing;
+    const created: CashierDayStats = {
+      name,
+      salesCount: 0,
+      grossRevenue: 0,
+      returnTotal: 0,
+      netRevenue: 0,
+      cashTotal: 0,
+      cardTotal: 0,
+      creditTotal: 0,
+      otherTotal: 0,
+    };
+    map.set(name, created);
+    return created;
+  };
+
+  for (const sale of daySales) {
+    if (isCanceledSale(sale)) continue;
+    const stats = ensure(String(sale.cashier || ''));
+
+    if (isReturnSale(sale)) {
+      const ret = Math.abs(Number(sale.total) || 0);
+      stats.returnTotal += ret;
+      stats.netRevenue = stats.grossRevenue - stats.returnTotal;
+      continue;
+    }
+
+    const total = Math.abs(Number(sale.total) || 0);
+    if (!(total > 0)) continue;
+
+    stats.salesCount += 1;
+    stats.grossRevenue += total;
+
+    const paymentRows = (sale as Sale & { payments?: Array<{ method?: string; amount?: number; currency?: string }> }).payments;
+    if (Array.isArray(paymentRows) && paymentRows.length > 0) {
+      const exchangeRates: Record<string, number> = { IQD: 1, USD: 1310, EUR: 1450 };
+      for (const row of paymentRows) {
+        const amt = Math.abs(Number(row.amount) || 0) * (exchangeRates[String(row.currency || 'IQD').toUpperCase()] || 1);
+        if (amt > 0) addPaymentToCashierStats(stats, sale, amt, row.method);
+      }
+    } else {
+      addPaymentToCashierStats(stats, sale, total);
+    }
+
+    stats.netRevenue = stats.grossRevenue - stats.returnTotal;
+  }
+
+  return Array.from(map.values()).sort((a, b) => b.netRevenue - a.netRevenue);
+}
+
 export function buildPosZReport(sales: Sale[], dateKey = localCalendarDateKey(new Date())): PosZReport {
   const daySales = sales.filter((s) => localCalendarDateKey(s.date) === dateKey);
   const activeSales = daySales.filter((s) => !isCanceledSale(s));
@@ -98,6 +185,7 @@ export function buildPosZReport(sales: Sale[], dateKey = localCalendarDateKey(ne
   const totalDiscount = positiveSales.reduce((sum, s) => sum + Math.abs(Number(s.discount) || 0), 0);
   const refundAmount = returnSales.reduce((sum, s) => sum + Math.abs(Number(s.total) || 0), 0);
   const payments = aggregatePosPayments(positiveSales);
+  const cashierStats = aggregateCashierPerformance(sales, dateKey);
 
   const sorted = [...positiveSales].sort(
     (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime(),
@@ -125,6 +213,7 @@ export function buildPosZReport(sales: Sale[], dateKey = localCalendarDateKey(ne
     firstSale: sorted.length > 0 ? String(sorted[0].receiptNumber || '-') : '-',
     lastSale: sorted.length > 0 ? String(sorted[sorted.length - 1].receiptNumber || '-') : '-',
     payments,
+    cashierStats,
   };
 }
 
@@ -142,7 +231,22 @@ export function printPosZReport(
 ): void {
   const company = escHtml(options?.companyName || 'RetailOS');
   const cashier = options?.cashier ? escHtml(options.cashier) : '';
-  const { payments } = report;
+  const { payments, cashierStats } = report;
+
+  const cashierRowsHtml = cashierStats.length > 0
+    ? `
+      <div class="divider"></div>
+      <div class="section-title">KASİYER / PERSONEL CİROSU</div>
+      ${cashierStats.map((c) => `
+        <div class="row"><span class="bold">${escHtml(c.name)}</span><span>${c.salesCount} fiş</span></div>
+        <div class="row"><span>Brüt ciro</span><span>${formatNumber(c.grossRevenue, 2, false)}</span></div>
+        <div class="row"><span>İade (-)</span><span>${formatNumber(c.returnTotal, 2, false)}</span></div>
+        <div class="row"><span>Net ciro</span><span>${formatNumber(c.netRevenue, 2, false)}</span></div>
+        <div class="row"><span>Nakit / Kart</span><span>${formatNumber(c.cashTotal, 2, false)} / ${formatNumber(c.cardTotal, 2, false)}</span></div>
+        <div class="divider"></div>
+      `).join('')}
+    `
+    : '';
 
   const reportHTML = `
     <!DOCTYPE html>
@@ -200,6 +304,7 @@ export function printPosZReport(
       <div class="row"><span>Veresiye/Cari (${payments.creditCount}):</span><span>${formatNumber(report.creditAmount, 2, false)}</span></div>
       <div class="row"><span>Diğer (${payments.otherCount}):</span><span>${formatNumber(report.otherAmount, 2, false)}</span></div>
       <div class="row final"><span>TOPLAM TAHSİLAT</span><span>${formatNumber(report.totalAmount, 2, false)}</span></div>
+      ${cashierRowsHtml}
       ${
         options?.openingCash != null
           ? `

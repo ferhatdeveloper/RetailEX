@@ -727,13 +727,13 @@ export function InvoiceListModule({
   const columns = [
     columnHelper.accessor('invoice_no', {
       header: tm('invoiceNo'),
-      cell: info => <span className="text-blue-600 font-medium">{info.getValue()}</span>
+      cell: info => <span className="text-blue-700 font-semibold">{info.getValue()}</span>
     }),
     columnHelper.accessor('customer_name', {
       header: tm('customerSupplier'),
       cell: info => {
         const value = info.getValue();
-        return <span>{value || tm('noCustomer')}</span>;
+        return <span className="text-gray-900 font-medium">{value || tm('noCustomer')}</span>;
       }
     }),
     columnHelper.accessor('invoice_date', {
@@ -750,7 +750,7 @@ export function InvoiceListModule({
             year: 'numeric'
           });
         } catch {
-          return <span className="text-gray-400">-</span>;
+          return <span className="text-gray-500">-</span>;
         }
       }
     }),
@@ -812,7 +812,7 @@ export function InvoiceListModule({
         const value = invoice.total_amount || invoice.total || 0;
         const cur = resolveListRowCurrency(invoice);
         return (
-          <span className="font-semibold">
+          <span className="font-bold text-gray-900 tabular-nums">
             {value > 0 ? `${formatNumber(value, 2, true)} ${cur}` : `0,00 ${cur}`}
           </span>
         );
@@ -837,7 +837,7 @@ export function InvoiceListModule({
       header: tm('cashier'),
       cell: info => {
         const value = info.getValue();
-        return <span className="text-sm">{value || '-'}</span>;
+        return <span className="text-sm font-medium text-gray-900">{value || '—'}</span>;
       }
     }),
     columnHelper.display({
@@ -882,7 +882,7 @@ export function InvoiceListModule({
   }
 
   return (
-    <div className="h-full flex flex-col bg-gray-50">
+    <div className="h-full flex flex-col bg-gray-50 theme-lock-light" data-theme-lock="light">
       {/* Header */}
       <div className="bg-gradient-to-r from-blue-600 to-blue-700 text-white px-4 py-2 flex-shrink-0">
         <div className="flex items-center justify-between">
@@ -1167,6 +1167,7 @@ export function InvoiceListModule({
               key={`invlist-${invoiceGridNonce}`}
               data={invoices}
               columns={columns}
+              density="comfortable"
               enableSorting={false}
               enableFiltering={true}
               enableColumnResizing

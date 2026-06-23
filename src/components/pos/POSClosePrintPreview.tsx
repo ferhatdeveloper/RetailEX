@@ -1,7 +1,7 @@
 import { X, Printer } from 'lucide-react';
 import type { Sale } from '../../core/types';
 import { formatNumber } from '../../utils/formatNumber';
-import { aggregatePosPayments } from '../../utils/posZReport';
+import { aggregatePosPayments, buildPosZReport } from '../../utils/posZReport';
 
 interface POSClosePrintPreviewProps {
   onClose: () => void;
@@ -47,6 +47,8 @@ export function POSClosePrintPreview({
   const otherTotal = paymentBreakdown.other;
   const returnTotal = returnSales.reduce((sum, sale) => sum + Math.abs(sale.total), 0);
   const netSales = totalSales - returnTotal;
+  const zReport = buildPosZReport(sales);
+  const cashierStats = zReport.cashierStats;
 
   return (
     <>
@@ -178,6 +180,31 @@ export function POSClosePrintPreview({
                       </div>
                     </div>
 
+                    {cashierStats.length > 0 && (
+                      <>
+                        <div className="border-t border-dashed border-gray-400 my-2"></div>
+                        <div className="font-bold mb-1">KASİYER / PERSONEL CİROSU</div>
+                        <div className="space-y-2 mb-3">
+                          {cashierStats.map((c) => (
+                            <div key={c.name} className="text-xs border-b border-gray-200 pb-1 last:border-0">
+                              <div className="flex justify-between font-semibold text-gray-900">
+                                <span>{c.name}</span>
+                                <span>{c.salesCount} fiş</span>
+                              </div>
+                              <div className="flex justify-between text-gray-800">
+                                <span>Net ciro</span>
+                                <span className="font-bold">{formatNumber(c.netRevenue, 2, false)}</span>
+                              </div>
+                              <div className="flex justify-between text-gray-600 text-[10px]">
+                                <span>Nakit / Kart</span>
+                                <span>{formatNumber(c.cashTotal, 2, false)} / {formatNumber(c.cardTotal, 2, false)}</span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </>
+                    )}
+
                     <div className="border-t border-dashed border-gray-400 my-2"></div>
 
                     <div className="font-bold mb-1">KASA DURUMU</div>
@@ -304,6 +331,34 @@ export function POSClosePrintPreview({
                         </div>
                       </div>
                     </div>
+
+                    {cashierStats.length > 0 && (
+                      <div className="bg-indigo-50 border border-indigo-200 p-4 mb-6">
+                        <h3 className="font-bold mb-3 text-indigo-900">KASİYER / PERSONEL CİROSU</h3>
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="text-left text-xs font-semibold text-indigo-800 border-b border-indigo-200">
+                              <th className="py-1 pr-2">Kasiyer</th>
+                              <th className="py-1 pr-2 text-right">Fiş</th>
+                              <th className="py-1 pr-2 text-right">Net Ciro</th>
+                              <th className="py-1 pr-2 text-right">Nakit</th>
+                              <th className="py-1 text-right">Kart</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {cashierStats.map((c) => (
+                              <tr key={c.name} className="border-b border-indigo-100 last:border-0 text-gray-900">
+                                <td className="py-1.5 pr-2 font-medium">{c.name}</td>
+                                <td className="py-1.5 pr-2 text-right tabular-nums">{c.salesCount}</td>
+                                <td className="py-1.5 pr-2 text-right tabular-nums font-bold">{formatNumber(c.netRevenue, 2, false)}</td>
+                                <td className="py-1.5 pr-2 text-right tabular-nums">{formatNumber(c.cashTotal, 2, false)}</td>
+                                <td className="py-1.5 text-right tabular-nums">{formatNumber(c.cardTotal, 2, false)}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
 
                     <div className="bg-orange-50 border border-orange-200 p-4 mb-6">
                       <h3 className="font-bold mb-3 text-orange-900">KASA DURUMU</h3>
@@ -444,6 +499,21 @@ export function POSClosePrintPreview({
                 <div className="flex justify-between font-bold"><span>Toplam:</span><span>{formatNumber(cashTotal + cardTotal + creditTotal + otherTotal, 2, false)}</span></div>
               </div>
 
+              {cashierStats.length > 0 && (
+                <>
+                  <div className="border-t border-dashed border-black my-2"></div>
+                  <div className="font-bold text-[10px] mb-1">KASİYER CİROSU</div>
+                  <div className="space-y-1 mb-2 text-[10px]">
+                    {cashierStats.map((c) => (
+                      <div key={c.name}>
+                        <div className="flex justify-between font-bold"><span>{c.name}</span><span>{c.salesCount} fiş</span></div>
+                        <div className="flex justify-between"><span>Net</span><span>{formatNumber(c.netRevenue, 2, false)}</span></div>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+
               <div className="border-t border-dashed border-black my-2"></div>
               <div className="font-bold text-[10px] mb-1">KASA DURUMU</div>
               <div className="space-y-0.5 mb-2 text-[10px]">
@@ -526,6 +596,32 @@ export function POSClosePrintPreview({
                   </div>
                 </div>
               </div>
+
+              {cashierStats.length > 0 && (
+                <div className="bg-indigo-50 border border-indigo-200 p-4 mb-6">
+                  <h3 className="font-bold mb-3 text-indigo-900">KASİYER / PERSONEL CİROSU</h3>
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="text-left text-xs font-semibold text-indigo-800 border-b border-indigo-200">
+                        <th className="py-1 pr-2">Kasiyer</th>
+                        <th className="py-1 pr-2 text-right">Fiş</th>
+                        <th className="py-1 pr-2 text-right">Net Ciro</th>
+                        <th className="py-1 text-right">Nakit / Kart</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {cashierStats.map((c) => (
+                        <tr key={c.name} className="border-b border-indigo-100 last:border-0">
+                          <td className="py-1.5 pr-2 font-medium">{c.name}</td>
+                          <td className="py-1.5 pr-2 text-right">{c.salesCount}</td>
+                          <td className="py-1.5 pr-2 text-right font-bold">{formatNumber(c.netRevenue, 2, false)}</td>
+                          <td className="py-1.5 text-right">{formatNumber(c.cashTotal, 2, false)} / {formatNumber(c.cardTotal, 2, false)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
 
               <div className="bg-orange-50 border border-orange-200 p-4 mb-6">
                 <h3 className="font-bold mb-3 text-orange-900">KASA DURUMU</h3>

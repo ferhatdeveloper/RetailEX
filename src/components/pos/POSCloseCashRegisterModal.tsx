@@ -375,6 +375,41 @@ export function POSCloseCashRegisterModal({
             )}
           </div>
 
+          {/* Kasiyer / personel ciro özeti */}
+          {zReport.cashierStats.length > 0 && (
+            <div className="mt-4 bg-indigo-50 border border-indigo-200 p-4">
+              <h4 className="text-sm font-semibold text-indigo-900 mb-3">Kasiyer / Personel Cirosu (Bugün)</h4>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-xs font-semibold text-indigo-800 border-b border-indigo-200">
+                      <th className="py-2 pr-3">Kasiyer</th>
+                      <th className="py-2 pr-3 text-right">Fiş</th>
+                      <th className="py-2 pr-3 text-right">Brüt Ciro</th>
+                      <th className="py-2 pr-3 text-right">İade</th>
+                      <th className="py-2 pr-3 text-right">Net Ciro</th>
+                      <th className="py-2 pr-3 text-right">Nakit</th>
+                      <th className="py-2 text-right">Kart</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {zReport.cashierStats.map((row) => (
+                      <tr key={row.name} className="border-b border-indigo-100 last:border-0">
+                        <td className="py-2 pr-3 font-medium text-gray-900">{row.name}</td>
+                        <td className="py-2 pr-3 text-right tabular-nums text-gray-900">{row.salesCount}</td>
+                        <td className="py-2 pr-3 text-right tabular-nums font-medium text-gray-900">{formatCurrency(row.grossRevenue)}</td>
+                        <td className="py-2 pr-3 text-right tabular-nums text-red-700">{row.returnTotal > 0 ? `-${formatCurrency(row.returnTotal)}` : '—'}</td>
+                        <td className="py-2 pr-3 text-right tabular-nums font-bold text-indigo-900">{formatCurrency(row.netRevenue)}</td>
+                        <td className="py-2 pr-3 text-right tabular-nums text-gray-800">{formatCurrency(row.cashTotal)}</td>
+                        <td className="py-2 text-right tabular-nums text-gray-800">{formatCurrency(row.cardTotal)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
           {/* Oturum Bilgisi */}
           <div className="mt-4 bg-blue-50 border border-blue-200 p-3">
             <div className="flex items-center justify-between text-sm">
