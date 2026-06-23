@@ -983,6 +983,15 @@ export const invoicesAPI = {
       const invoiceId = rows[0]?.id;
       if (!invoiceId) throw new Error("Invoice creation failed");
 
+      const cashierName = String((invoice as any).cashier || '').trim();
+      if (cashierName) {
+        await postgres.query(
+          `UPDATE sales SET cashier = $1::text WHERE id = $2::text::uuid`,
+          [cashierName, invoiceId],
+          queryOptions,
+        ).catch(() => { /* legacy şemada kolon yoksa yoksay */ });
+      }
+
       // 2. Insert invoice items (tek INSERT) + 3. stok güncellemeleri paralel
       if (invoice.items && invoice.items.length > 0) {
         const COLS = 20;
@@ -1276,7 +1285,7 @@ export const invoicesAPI = {
 
         if (search) {
           const s = String(search).replace(/,/g, '\\,');
-          const orValue = `(fiche_no.ilike.*${s}*,notes.ilike.*${s}*,document_no.ilike.*${s}*)`;
+          const orValue = `(fiche_no.ilike.*${s}*,notes.ilike.*${s}*,document_no.ilike.*${s}*,cashier.ilike.*${s}*,customer_name.ilike.*${s}*)`;
           const prevOr = typeof baseFilters.or === 'string' ? baseFilters.or : '';
           baseFilters.or = prevOr ? `${prevOr},${orValue.slice(1, -1)}` : orValue;
         }
@@ -1353,7 +1362,7 @@ export const invoicesAPI = {
       }
 
       if (search) {
-        sql += ` AND (fiche_no::text ILIKE $${paramIndex}::text OR notes::text ILIKE $${paramIndex}::text OR document_no::text ILIKE $${paramIndex}::text)`;
+        sql += ` AND (fiche_no::text ILIKE $${paramIndex}::text OR notes::text ILIKE $${paramIndex}::text OR document_no::text ILIKE $${paramIndex}::text OR cashier::text ILIKE $${paramIndex}::text OR customer_name::text ILIKE $${paramIndex}::text)`;
         params.push(`%${search}%`);
         paramIndex++;
       }
@@ -2532,6 +2541,8 @@ function mapDatabaseInvoiceToInvoice(dbInv: any): Invoice {
     currency: String(dbInv.currency ?? dbInv.currency_code ?? '').trim() || 'IQD',
     currency_rate: parseFloat(dbInv.currency_rate || 1),
     payment_method: dbInv.payment_method,
+    cashier: String(dbInv.cashier || '').trim() || undefined,
+    store_id: dbInv.store_id || undefined,
     is_cancelled: dbInv.is_cancelled === true || isInvoiceCancelledStatus(dbInv.status),
   } as Invoice;
 }

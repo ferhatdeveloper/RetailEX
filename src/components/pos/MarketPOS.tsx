@@ -1339,6 +1339,7 @@ export default function MarketPOS({
         amount: Number(p.amount) || 0,
         currency: p.currency,
       })),
+      userId: currentUser.id,
       campaignId: selectedCampaign?.id,
       campaignName: selectedCampaign?.name,
       campaignDiscount: campaignDiscount,

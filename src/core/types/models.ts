@@ -408,6 +408,7 @@ export interface Invoice {
   cashier_id?: string;
   cash_register_id?: string;
   payment_method?: string;
+  store_id?: string;
   status?: string;
   notes?: string;
   created_at?: string;
