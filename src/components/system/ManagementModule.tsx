@@ -205,7 +205,7 @@ type ExtendedScreen = ManagementScreen | 'dashboard' | 'finance' | 'stock' | 'pu
   'etransform' | 'return' | 'production' | 'assets' | 'budget' | 'contracts' | 'quality' | 'service' | 'projects' | 'excel' | 'scale' |
   'multistore' | 'regional' | 'storeconfig' | 'campaigns_mgmt' | 'roles_mgmt' | 'loyalty' | 'giftcard' | 'notifications' | 'multicurrency' | 'commission' | 'usermanagement' | 'whatsapp' | 'mesaj-bildirim' | 'restaurant' | 'appointment' | 'bi-dashboard' | 'ecommerce' | 'cargo' | 'marketplace' | 'payment' | 'accounting-integration' | 'proforma' | 'einvoice' | 'ewaybill' | 'eledger' |
   'salesquote' | 'purchaserequest' | 'stockmovements' | 'stock-dashboard' | 'warehousetransfer' | 'stockcount' | 'barcode' | 'seriallot' | 'warehouse-definitions' | 'service-cards' | 'virman' | 'firm-period-definitions' | 'payment-plans' | 'bank-payment-plans' |
-  'productionrecipe' | 'capacityplan' | 'cashbank' | 'banks' | 'checkpromissory' | 'collectionpayment' | 'currentaccounts' | 'revenueexpense' |
+  'productionrecipe' | 'capacityplan' | 'cashbank' | 'banks' | 'checkpromissory' | 'collectionpayment' | 'currentaccounts' | 'revenueexpense' | 'customer-call-plan' |
   'storetransfer' | 'mobile-inventory-count' | 'interstore-transfer' | 'store-controlled-count' |
   'pricelists' | 'discounts' | 'promotions' | 'shipping' | 'cargotrack' | 'waybillops' | 'routeplan' |
   'servicemaint' | 'warranty' | 'fieldservice' | 'fixedasset' | 'depreciation' | 'maintplan' |
@@ -1052,7 +1052,9 @@ export function ManagementModule({
 
         case 'suppliers_def':
         case 'suppliers':
-          return <SupplierModule />;
+          return <SupplierModule key="suppliers" />;
+        case 'customer-call-plan':
+          return <SupplierModule key="customer-call-plan" initialFilter="call" />;
 
         case 'barcode':
           return <BarcodeDefinitionsModule />;

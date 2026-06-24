@@ -138,7 +138,8 @@ export const supplierAPI = {
         WITH ${sqlCustomerAccountBalancesCte(custTable, '$1::text')},
         ${sqlSupplierAccountBalancesCte(suppTable)}
         SELECT 
-          c.id, c.code, c.name, c.phone, c.email, c.address, c.city, 
+          c.id, c.code, c.name, c.phone, c.email, c.address, c.city,
+          c.call_plan_enabled, c.call_plan_weekdays,
           ${sqlResolvedCustomerBalanceExpr('c')} as balance, 
           c.is_active, c.created_at, 'customer' as card_type 
         FROM ${custTable} c
@@ -148,7 +149,8 @@ export const supplierAPI = {
         UNION ALL
         
         SELECT 
-          s.id, s.code, s.name, s.phone, s.email, s.address, s.city, 
+          s.id, s.code, s.name, s.phone, s.email, s.address, s.city,
+          false AS call_plan_enabled, ARRAY[]::smallint[] AS call_plan_weekdays,
           ${sqlResolvedSupplierBalanceExpr('s')} as balance, 
           s.is_active, s.created_at, 'supplier' as card_type 
         FROM ${suppTable} s
@@ -279,6 +281,13 @@ export const supplierAPI = {
       // Her iki tablo da firm_nr NOT NULL gerektirir
       columns.push('firm_nr');
       values.push(ERP_SETTINGS.firmNr);
+      if (!isSupplier) {
+        columns.push('call_plan_enabled', 'call_plan_weekdays');
+        values.push(
+          account.call_plan_enabled === true,
+          account.call_plan_enabled === true ? account.call_plan_weekdays ?? [] : [],
+        );
+      }
 
       const placeholders = values.map((_, i) => `$${i + 1}`).join(', ');
 
@@ -427,6 +436,8 @@ export const supplierAPI = {
       tax_number: account.tax_number ?? existing.tax_nr,
       tax_office: account.tax_office ?? existing.tax_office,
       notes: account.notes ?? existing.notes,
+      call_plan_enabled: account.call_plan_enabled ?? existing.call_plan_enabled,
+      call_plan_weekdays: account.call_plan_weekdays ?? existing.call_plan_weekdays,
       payment_terms: account.payment_terms ?? existing.payment_terms,
       credit_limit: account.credit_limit ?? existing.credit_limit,
       cardType: toType,
@@ -717,6 +728,10 @@ function mapDatabaseSupplierToSupplier(dbSupplier: any): Supplier {
     tax_office: dbSupplier.tax_office,
     is_active: dbSupplier.is_active !== false,
     notes: dbSupplier.notes,
+    call_plan_enabled: dbSupplier.call_plan_enabled === true,
+    call_plan_weekdays: Array.isArray(dbSupplier.call_plan_weekdays)
+      ? dbSupplier.call_plan_weekdays.map(Number).filter((n: number) => Number.isFinite(n))
+      : [],
     firma_id: dbSupplier.firma_id,
     created_at: dbSupplier.created_at,
     updated_at: dbSupplier.updated_at,

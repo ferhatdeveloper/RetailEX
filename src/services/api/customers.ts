@@ -290,6 +290,8 @@ export const customerAPI = {
           gender: customer.gender || null,
           customer_tier: customer.customer_tier === 'vip' ? 'vip' : 'normal',
           heard_from: customer.heard_from || null,
+          call_plan_enabled: customer.call_plan_enabled === true,
+          call_plan_weekdays: customer.call_plan_enabled === true ? customer.call_plan_weekdays ?? [] : [],
           points: customer.points || 0,
           total_spent: customer.totalSpent || 0,
           is_active: true,
@@ -308,9 +310,9 @@ export const customerAPI = {
       const { rows } = await postgres.query(
         `INSERT INTO ${tableName} (
            code, name, phone, phone2, email, address, notes, age, occupation, file_id, gender, customer_tier, heard_from,
-           points, total_spent, is_active, firm_nr
+           call_plan_enabled, call_plan_weekdays, points, total_spent, is_active, firm_nr
          )
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17) RETURNING id`,
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15::smallint[], $16, $17, $18, $19) RETURNING id`,
         [
           customer.code || '',
           customer.name,
@@ -325,6 +327,8 @@ export const customerAPI = {
           customer.gender || null,
           customer.customer_tier === 'vip' ? 'vip' : 'normal',
           customer.heard_from || null,
+          customer.call_plan_enabled === true,
+          customer.call_plan_enabled === true ? customer.call_plan_weekdays ?? [] : [],
           customer.points || 0,
           customer.totalSpent || 0,
           true,
@@ -580,6 +584,10 @@ function mapDatabaseCustomerToCustomer(dbCustomer: any): Customer {
     email: dbCustomer.email,
     address: dbCustomer.address,
     notes: dbCustomer.notes || undefined,
+    call_plan_enabled: dbCustomer.call_plan_enabled === true,
+    call_plan_weekdays: Array.isArray(dbCustomer.call_plan_weekdays)
+      ? dbCustomer.call_plan_weekdays.map(Number).filter((n: number) => Number.isFinite(n))
+      : [],
     age: dbCustomer.age != null ? Number(dbCustomer.age) : undefined,
     file_id: dbCustomer.file_id != null && String(dbCustomer.file_id).trim() !== ''
       ? String(dbCustomer.file_id).trim()

@@ -25,6 +25,8 @@ const CUSTOMER_DB_COLUMNS = new Set([
   'file_id',
   'age',
   'occupation',
+  'call_plan_enabled',
+  'call_plan_weekdays',
   'firm_nr',
 ]);
 

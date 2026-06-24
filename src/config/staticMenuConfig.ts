@@ -6,7 +6,7 @@ import {
     FileText, FileCheck, FileMinus, Truck, Archive,
     ShoppingCart, FileSignature, Users, Target, ShoppingBag, ClipboardList,
     Package, Warehouse, TrendingDown, Boxes, QrCode, Tag, Scale,
-    Briefcase, GitBranch, Calendar, Award, Wallet, CreditCard, Database,
+    Briefcase, GitBranch, Calendar, CalendarClock, Award, Wallet, CreditCard, Database,
     Globe, Receipt, Building, Calculator, TrendingUpDown, Gift, Percent, Send,
     PackageSearch, Wrench, Shield, UserCog, UtensilsCrossed, Phone, Bell,
     Smartphone, Mail, BarChart3, TrendingUp, UserCheck, Layers, Clock, AlertCircle,
@@ -191,6 +191,7 @@ export const getStaticMenuSections = (t: Translations) => [
                 icon: FileText,
                 children: [
                     { label: t.menu.currentAccounts, screen: 'suppliers', icon: Building },
+                    { label: 'Müşteri Arama Planı', screen: 'customer-call-plan', icon: CalendarClock },
                     { label: t.menu.cashCards, screen: 'cashbank', icon: Wallet },
                     // { label: 'Banka Kartları', screen: 'banks', icon: Landmark },
                     // { label: t.menu.bankAccounts, screen: 'bank-accounts', icon: CreditCard }

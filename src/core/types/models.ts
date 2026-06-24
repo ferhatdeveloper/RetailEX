@@ -160,6 +160,8 @@ export interface Customer {
   tax_office?: string;
   taxOffice?: string;
   notes?: string;
+  call_plan_enabled?: boolean;
+  call_plan_weekdays?: number[] | null;
   is_active?: boolean;
   firma_id?: string;
   created_at?: string;
@@ -190,6 +192,8 @@ export interface Supplier {
   taxOffice?: string;
   is_active?: boolean;
   notes?: string;
+  call_plan_enabled?: boolean;
+  call_plan_weekdays?: number[] | null;
   firma_id?: string;
   created_at?: string;
   updated_at?: string;

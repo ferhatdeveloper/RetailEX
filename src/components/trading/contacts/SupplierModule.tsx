@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { formatNumber } from '../../../utils/formatNumber';
 import {
   Truck, Users, X, Search, Edit, Trash2, Mail, Phone, MapPin,
-  FileText, Loader2, Printer, RefreshCw, Download
+  FileText, Loader2, Printer, RefreshCw, Download, CalendarClock
 } from 'lucide-react';
 import { supplierAPI, type Supplier } from '../../../services/api/suppliers';
 import { toast } from 'sonner';
@@ -21,6 +21,11 @@ import {
 import { DEMO_CUSTOMER_CODES, DEMO_SUPPLIER_CODES } from '../../../utils/demoSeedCodes';
 import { mapUnifiedSupplierToCurrentAccountExcelRow, saveCurrentAccountsAsXlsx } from '../../../utils/currentAccountsExcelExport';
 import { FullscreenBodyPortal, MODAL_OVERLAY_Z } from '../../shared/FullscreenBodyPortal';
+import {
+  CUSTOMER_CALL_WEEKDAYS,
+  customerCallWeekdaysLabel,
+  normalizeCustomerCallWeekdays,
+} from '../../../utils/customerCallPlan';
 
 /** Sıfır ondalıkla gösterilen yaygın ana para kodları */
 function preferIntegerAmountDisplay(code: string): boolean {
@@ -62,7 +67,7 @@ function defaultEkstreDateRange(): { start: string; end: string } {
   return { start: `${year}-01-01`, end: `${year}-12-31` };
 }
 
-export function SupplierModule() {
+export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: 'all' | 'customer' | 'supplier' | 'call' }) {
   const { t, tm } = useLanguage();
   const { selectedFirm } = useFirmaDonem();
   const mainCurrency = useMemo(
@@ -84,7 +89,11 @@ export function SupplierModule() {
   const [showReportingPrimary, setShowReportingPrimary] = useState(false);
   const [exportingExcel, setExportingExcel] = useState(false);
   /** Liste filtresi: tümü / müşteri (alıcı) / satıcı (tedarikçi) */
-  const [accountTypeFilter, setAccountTypeFilter] = useState<'all' | 'customer' | 'supplier'>('all');
+  const [accountTypeFilter, setAccountTypeFilter] = useState<'all' | 'customer' | 'supplier' | 'call'>(initialFilter);
+
+  useEffect(() => {
+    setAccountTypeFilter(initialFilter);
+  }, [initialFilter]);
 
   useEffect(() => {
     const fetchRates = async () => {
@@ -112,6 +121,8 @@ export function SupplierModule() {
   const [formData, setFormData] = useState({
     code: '', name: '', phone: '', email: '', address: '', city: '',
     payment_terms: 30, credit_limit: 0, tax_number: '', tax_office: '', notes: '',
+    call_plan_enabled: false,
+    call_plan_weekdays: [] as number[],
     cardType: 'supplier' as 'customer' | 'supplier',
   });
 
@@ -136,6 +147,8 @@ export function SupplierModule() {
         tax_number: '',
         tax_office: '',
         notes: '',
+        call_plan_enabled: false,
+        call_plan_weekdays: [],
         cardType: 'customer',
       });
       setEditingSupplier(null);
@@ -221,6 +234,10 @@ export function SupplierModule() {
   };
 
   const filteredSuppliers = suppliers.filter(s => {
+    if (accountTypeFilter === 'call') {
+      if (s.cardType !== 'customer') return false;
+      if (s.call_plan_enabled !== true || normalizeCustomerCallWeekdays(s.call_plan_weekdays).length === 0) return false;
+    }
     if (accountTypeFilter === 'customer' && s.cardType !== 'customer') return false;
     if (accountTypeFilter === 'supplier' && s.cardType !== 'supplier') return false;
     const q = searchQuery.toLowerCase();
@@ -254,6 +271,8 @@ export function SupplierModule() {
       tax_number: '',
       tax_office: '',
       notes: '',
+      call_plan_enabled: false,
+      call_plan_weekdays: [],
       cardType,
     });
     setEditingSupplier(null);
@@ -270,7 +289,10 @@ export function SupplierModule() {
       email: supplier.email || '', address: supplier.address || '', city: supplier.city || '',
       payment_terms: supplier.payment_terms || 30, credit_limit: supplier.credit_limit || 0,
       tax_number: supplier.tax_number || '', tax_office: supplier.tax_office || '',
-      notes: supplier.notes || '', cardType: supplier.cardType || 'supplier',
+      notes: supplier.notes || '',
+      call_plan_enabled: supplier.call_plan_enabled === true,
+      call_plan_weekdays: normalizeCustomerCallWeekdays(supplier.call_plan_weekdays),
+      cardType: supplier.cardType || 'supplier',
     });
     setEditingSupplier(supplier);
     setShowAddModal(true);
@@ -278,24 +300,35 @@ export function SupplierModule() {
 
   const handleSave = async () => {
     if (!formData.name.trim()) { toast.error('Ad zorunludur'); return; }
+    const saveData = {
+      ...formData,
+      call_plan_enabled:
+        formData.cardType === 'customer' &&
+        formData.call_plan_enabled === true &&
+        normalizeCustomerCallWeekdays(formData.call_plan_weekdays).length > 0,
+      call_plan_weekdays:
+        formData.cardType === 'customer' && formData.call_plan_enabled
+          ? normalizeCustomerCallWeekdays(formData.call_plan_weekdays)
+          : [],
+    };
     try {
       if (editingSupplier) {
         const prevType = editingSupplier.cardType || 'supplier';
-        if (prevType !== formData.cardType) {
-          await supplierAPI.transferCardType(editingSupplier.id, prevType, formData.cardType, formData);
+        if (prevType !== saveData.cardType) {
+          await supplierAPI.transferCardType(editingSupplier.id, prevType, saveData.cardType, saveData);
           toast.success(tm('accountTypeChanged') || 'Cari tipi değiştirildi');
         } else {
-          await supplierAPI.update(editingSupplier.id, formData);
+          await supplierAPI.update(editingSupplier.id, saveData);
           toast.success('Güncellendi');
         }
         setShowAddModal(false);
         await loadSuppliers();
       } else {
-        const created = await supplierAPI.create(formData);
-        toast.success(formData.cardType === 'customer' ? 'Müşteri cari hesabı eklendi' : 'Satıcı cari hesabı eklendi');
+        const created = await supplierAPI.create(saveData);
+        toast.success(saveData.cardType === 'customer' ? 'Müşteri cari hesabı eklendi' : 'Satıcı cari hesabı eklendi');
         setShowAddModal(false);
         await loadSuppliers();
-        void selectAccount({ ...created, cardType: formData.cardType, balance: 0 });
+        void selectAccount({ ...created, cardType: saveData.cardType, balance: 0 });
       }
     } catch (e: any) { toast.error(e.message || 'Kayıt başarısız'); }
   };
@@ -415,6 +448,26 @@ export function SupplierModule() {
         );
       },
       size: 110
+    }),
+    columnHelper.display({
+      id: 'callPlan',
+      header: 'Arama Planı',
+      cell: ({ row }) => {
+        const account = row.original;
+        const days = customerCallWeekdaysLabel(account.call_plan_weekdays, true);
+        if (account.cardType !== 'customer' || account.call_plan_enabled !== true || !days) {
+          return <span className="text-xs text-gray-400">—</span>;
+        }
+        return (
+          <div className="flex flex-col gap-0.5">
+            <span className="inline-flex w-fit items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-black uppercase text-amber-800">
+              <CalendarClock className="w-3 h-3" />
+              {days}
+            </span>
+          </div>
+        );
+      },
+      size: 130,
     }),
     columnHelper.accessor('name', {
       header: tm('currentAccountTitle'),
@@ -633,6 +686,7 @@ export function SupplierModule() {
               [
                 { key: 'all' as const, label: tm('all') },
                 { key: 'customer' as const, label: tm('buyersLabel') || `${tm('customer')} (Alıcı)` },
+                { key: 'call' as const, label: 'Arama Listesi' },
                 { key: 'supplier' as const, label: tm('sellersLabel') || `${tm('supplierLabel')} (Satıcı)` },
               ] as const
             ).map((tab) => (
@@ -644,6 +698,8 @@ export function SupplierModule() {
                   accountTypeFilter === tab.key
                     ? tab.key === 'supplier'
                       ? 'bg-orange-600 text-white'
+                      : tab.key === 'call'
+                        ? 'bg-amber-600 text-white'
                       : 'bg-blue-600 text-white'
                     : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                 }`}
@@ -942,6 +998,56 @@ export function SupplierModule() {
                 <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
                   {tm('accountTypeChanged') || 'Kayıt yeni tipe taşınacak; fişler yeni cari kartına aktarılır.'}
                 </p>
+              )}
+              {formData.cardType === 'customer' && (
+                <div className="rounded-2xl border border-amber-200 bg-amber-50/70 p-4">
+                  <div className="mb-3 flex items-start gap-2">
+                    <CalendarClock className="mt-0.5 h-4 w-4 text-amber-700" />
+                    <div>
+                      <p className="text-xs font-black uppercase tracking-wide text-amber-900">Müşteri arama planı</p>
+                      <p className="text-[11px] font-medium text-amber-700">Bu müşteri haftanın hangi günü aranacak?</p>
+                    </div>
+                  </div>
+                  <div>
+                    <p className="mb-2 text-[11px] font-black uppercase tracking-wide text-amber-900">Aranacak günler</p>
+                    <div className="flex flex-wrap gap-2">
+                      {CUSTOMER_CALL_WEEKDAYS.map(day => {
+                        const selectedDays = normalizeCustomerCallWeekdays(formData.call_plan_weekdays);
+                        const selected = selectedDays.includes(day.value);
+                        return (
+                          <button
+                            key={day.value}
+                            type="button"
+                            onClick={() => {
+                              const nextDays = selected
+                                ? formData.call_plan_weekdays.filter(v => v !== day.value)
+                                : [...formData.call_plan_weekdays, day.value].sort((a, b) => a - b);
+                              setFormData({
+                                ...formData,
+                                call_plan_enabled: nextDays.length > 0,
+                                call_plan_weekdays: nextDays,
+                              });
+                            }}
+                            aria-pressed={selected}
+                            className={`rounded-full border px-3 py-1.5 text-xs font-black transition-all ${
+                              selected
+                                ? 'border-blue-600 bg-blue-600 text-white shadow-md ring-2 ring-blue-200'
+                                : 'border-amber-200 bg-white text-amber-700 hover:bg-amber-100'
+                            }`}
+                          >
+                            {selected ? `✓ ${day.tr}` : day.tr}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    {normalizeCustomerCallWeekdays(formData.call_plan_weekdays).length > 0 ? (
+                      <p className="mt-2 rounded-lg bg-blue-50 px-3 py-2 text-[11px] font-bold text-blue-700">
+                        Seçili günler: {customerCallWeekdaysLabel(formData.call_plan_weekdays)}
+                      </p>
+                    ) : null}
+                    <p className="mt-2 text-[11px] text-amber-700">Birden fazla gün seçebilirsiniz; seçili müşteriler Arama Listesi ekranında görünür.</p>
+                  </div>
+                </div>
               )}
               <div className="grid grid-cols-2 gap-4">
                 <Field label={tm('code')}><input type="text" value={formData.code} onChange={e => setFormData({ ...formData, code: e.target.value })} placeholder="Otomatik" /></Field>

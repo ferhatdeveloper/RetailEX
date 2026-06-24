@@ -1168,6 +1168,8 @@ BEGIN
       points       DECIMAL(15,2) DEFAULT 0,
       total_spent  DECIMAL(15,2) DEFAULT 0,
       notes        TEXT,
+      call_plan_enabled BOOLEAN DEFAULT false,
+      call_plan_weekdays SMALLINT[] DEFAULT '{}'::smallint[],
       is_active    BOOLEAN DEFAULT true,
       created_at   TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
     );
