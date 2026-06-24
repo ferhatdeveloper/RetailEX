@@ -2351,6 +2351,12 @@ export default function MarketPOS({
             <span className="text-white font-medium">{t.cashRegisterNumber}</span>
           </div>
           <div className={`flex items-center gap-1.5 ${rtlMode ? 'flex-row-reverse' : ''}`}>
+            <span className="text-gray-400">{t.cashierLabel}:</span>
+            <span className="text-emerald-400 font-semibold truncate max-w-[140px]" title={currentStaff || currentUser.username}>
+              {currentStaff || currentUser.username || '—'}
+            </span>
+          </div>
+          <div className={`flex items-center gap-1.5 ${rtlMode ? 'flex-row-reverse' : ''}`}>
             <span className="text-gray-400">{t.shift}:</span>
             <span className="text-white font-medium">{t.dayShift}</span>
           </div>
