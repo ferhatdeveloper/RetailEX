@@ -410,22 +410,22 @@ export function ExpenseManagement() {
   }, [filterDateFrom, filterDateTo, filterCategory, searchQuery, tm]);
 
   return (
-    <div className="h-full flex flex-col bg-white">
+    <div className="relative h-full flex flex-col bg-white">
       {/* Header */}
-      <div className="flex-shrink-0 border-b border-gray-200 p-6 bg-gradient-to-r from-red-50 to-orange-50">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-3">
+      <div className="sticky top-0 z-30 flex-shrink-0 border-b border-gray-200 p-6 bg-gradient-to-r from-red-50 to-orange-50 shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+          <div className="flex min-w-0 items-center gap-3">
             <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-red-500 to-orange-600 flex items-center justify-center">
               <Receipt className="w-6 h-6 text-white" />
             </div>
-            <div>
+            <div className="min-w-0">
               <h1 className="text-2xl font-bold text-gray-900">{tm('expenseManagement')}</h1>
               <p className="text-sm text-gray-600">{tm('expenseManagementSubtitle')}</p>
             </div>
           </div>
           <button
             onClick={handleAddExpense}
-            className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg flex items-center gap-2 transition-colors"
+            className="shrink-0 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg flex items-center gap-2 transition-colors shadow-sm"
           >
             <Plus className="w-5 h-5" />
             {tm('newExpense')}
@@ -603,7 +603,7 @@ export function ExpenseManagement() {
       </div>
 
       {showExpenseModal && typeof document !== 'undefined' && createPortal(
-        <div className="fixed inset-0 z-[100000] flex flex-col bg-white min-h-0 overflow-hidden animate-in fade-in duration-200">
+        <div className="fixed inset-0 z-[2147483646] flex flex-col bg-white min-h-0 overflow-hidden animate-in fade-in duration-200">
           <div className="bg-gradient-to-r from-red-600 to-orange-600 px-6 py-5 text-white shrink-0 sm:px-8">
             <div className="flex items-center justify-between gap-4">
               <div>

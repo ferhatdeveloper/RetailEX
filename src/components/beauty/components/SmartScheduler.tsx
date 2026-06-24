@@ -770,10 +770,20 @@ export function SmartScheduler() {
             await updateAppointmentStatus(apt.id, newStatus);
         }
         if (newStatus === AppointmentStatus.COMPLETED) {
-            const completedApt: BeautyAppointment = { ...apt, status: newStatus };
+            const completedApt: BeautyAppointment = { ...apt, status: newStatus, updated_at: new Date().toISOString() };
             setSelectedApt(completedApt);
         } else {
             setSelectedApt(null);
+        }
+        if (
+            view === 'svcboard' &&
+            (
+                newStatus === AppointmentStatus.COMPLETED ||
+                newStatus === AppointmentStatus.CANCELLED ||
+                newStatus === AppointmentStatus.NO_SHOW
+            )
+        ) {
+            await reloadFollowUpReminders();
         }
     };
 

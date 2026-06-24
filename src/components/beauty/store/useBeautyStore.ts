@@ -130,9 +130,10 @@ export const useBeautyStore = create<BeautyState>()((set, get) => ({
 
     updateAppointmentStatus: async (id, status) => {
         try {
+            const updatedAt = new Date().toISOString();
             await beautyService.updateAppointmentStatus(id, status);
             set((state) => ({
-                appointments: state.appointments.map(a => a.id === id ? { ...a, status } : a),
+                appointments: state.appointments.map(a => a.id === id ? { ...a, status, updated_at: updatedAt } : a),
             }));
         } catch (e: any) {
             logger.crudError('BeautyStore', 'updateAppointmentStatus', e, { id, status });

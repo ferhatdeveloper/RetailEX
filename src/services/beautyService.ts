@@ -570,7 +570,7 @@ async function getAppointmentsInRangePostgrestBranch(
             aptPath,
             {
                 select: '*',
-                and: `(appointment_date.gte.${startDate},appointment_date.lte.${endDate})`,
+                or: `(and(appointment_date.gte.${startDate},appointment_date.lte.${endDate}),and(status.eq.completed,updated_at.gte.${startDate}T00:00:00.000Z,updated_at.lte.${endDate}T23:59:59.999Z))`,
                 order: 'appointment_date.asc,appointment_time.asc',
                 limit: 4000,
             },
@@ -1960,7 +1960,15 @@ export const beautyService = {
             LEFT JOIN users u ON a.specialist_id = u.id AND lpad(trim(u.firm_nr::text), 3, '0') = $3
             LEFT JOIN ${postgres.getCardTableName('beauty_devices', 'beauty')} d ON a.device_id = d.id
             LEFT JOIN ${postgres.getCardTableName('customers')}                    c  ON a.client_id     = c.id
-            WHERE a.appointment_date >= $1 AND a.appointment_date <= $2
+            WHERE (
+                a.appointment_date >= $1 AND a.appointment_date <= $2
+                OR (
+                    LOWER(TRIM(COALESCE(a.status::text, ''))) = 'completed'
+                    AND a.updated_at IS NOT NULL
+                    AND a.updated_at::date >= $1
+                    AND a.updated_at::date <= $2
+                )
+            )
             ORDER BY a.appointment_date, a.appointment_time
         `;
         const fn = erpFirmNrForRow();
@@ -2083,15 +2091,29 @@ export const beautyService = {
         const params = [startDate, endDate, ...firmCandidates];
 
         const query = `
-            WITH last_done AS (
+            WITH appt_events AS (
+                SELECT
+                    a.*,
+                    CASE
+                        WHEN LOWER(TRIM(COALESCE(a.status::text, ''))) = 'completed'
+                          AND a.updated_at IS NOT NULL
+                          AND a.appointment_date IS NOT NULL
+                          AND a.updated_at::date < a.appointment_date::date
+                        THEN a.updated_at::date
+                        ELSE a.appointment_date::date
+                    END AS effective_appointment_date
+                FROM ${table} a
+            ),
+            last_done AS (
                 SELECT
                     a.client_id AS customer_id,
                     a.service_id,
-                    MAX(a.appointment_date::date) AS last_dt
-                FROM ${table} a
-                WHERE a.status = 'completed'
+                    MAX(a.effective_appointment_date) AS last_dt
+                FROM appt_events a
+                WHERE LOWER(TRIM(COALESCE(a.status::text, ''))) = 'completed'
                   AND a.client_id IS NOT NULL
                   AND a.service_id IS NOT NULL
+                  AND a.effective_appointment_date IS NOT NULL
                 GROUP BY a.client_id, a.service_id
             ),
             svc AS (
@@ -2121,33 +2143,26 @@ export const beautyService = {
                   AND (ld.last_dt + svc.days) <= $2::date
                   AND NOT EXISTS (
                     SELECT 1
-                    FROM ${table} b
+                    FROM appt_events b
                     WHERE b.client_id = ld.customer_id
                       AND b.service_id = ld.service_id
-                      AND b.appointment_date::date > ld.last_dt
-                      AND b.appointment_date::date < (ld.last_dt + svc.days)
+                      AND b.effective_appointment_date > ld.last_dt
+                      AND b.effective_appointment_date <= (ld.last_dt + svc.days)
                       AND b.status NOT IN ('cancelled', 'no_show')
-                  )
-                  AND NOT EXISTS (
-                    SELECT 1
-                    FROM ${table} b2
-                    WHERE b2.client_id = ld.customer_id
-                      AND b2.service_id = ld.service_id
-                      AND b2.appointment_date::date = (ld.last_dt + svc.days)
-                      AND b2.status NOT IN ('cancelled', 'no_show', 'completed')
                   )
             ),
             last_product AS (
                 SELECT DISTINCT ON (a.client_id, l.product_id)
                     a.client_id AS customer_id,
                     l.product_id,
-                    a.appointment_date::date AS last_dt,
+                    a.effective_appointment_date AS last_dt,
                     a.service_id AS anchor_service_id
                 FROM ${logT} l
-                INNER JOIN ${table} a ON a.id = l.appointment_id
-                WHERE a.status = 'completed'
+                INNER JOIN appt_events a ON a.id = l.appointment_id
+                WHERE LOWER(TRIM(COALESCE(a.status::text, ''))) = 'completed'
                   AND a.client_id IS NOT NULL
-                ORDER BY a.client_id, l.product_id, a.appointment_date DESC, a.appointment_time DESC
+                  AND a.effective_appointment_date IS NOT NULL
+                ORDER BY a.client_id, l.product_id, a.effective_appointment_date DESC, a.appointment_time DESC
             ),
             prd AS (
                 SELECT p.id AS product_id, trim(p.name) AS product_name, p.follow_up_reminder_days::int AS days
@@ -2177,20 +2192,12 @@ export const beautyService = {
                   AND (lp.last_dt + prd.days) <= $2::date
                   AND NOT EXISTS (
                     SELECT 1
-                    FROM ${table} b
+                    FROM appt_events b
                     INNER JOIN ${logT} lb ON lb.appointment_id = b.id AND lb.product_id = lp.product_id
                     WHERE b.client_id = lp.customer_id
-                      AND b.appointment_date::date > lp.last_dt
-                      AND b.appointment_date::date < (lp.last_dt + prd.days)
+                      AND b.effective_appointment_date > lp.last_dt
+                      AND b.effective_appointment_date <= (lp.last_dt + prd.days)
                       AND b.status NOT IN ('cancelled', 'no_show')
-                  )
-                  AND NOT EXISTS (
-                    SELECT 1
-                    FROM ${table} b2
-                    INNER JOIN ${logT} lb2 ON lb2.appointment_id = b2.id AND lb2.product_id = lp.product_id
-                    WHERE b2.client_id = lp.customer_id
-                      AND b2.appointment_date::date = (lp.last_dt + prd.days)
-                      AND b2.status NOT IN ('cancelled', 'no_show', 'completed')
                   )
             )
             SELECT * FROM (
