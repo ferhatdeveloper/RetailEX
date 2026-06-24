@@ -421,16 +421,14 @@ export function MainLayout({
 
   // POS state - müşteri ve personel seçimi
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
-  const [currentStaff, setCurrentStaff] = useState(
-    currentUser.fullName || (currentUser as { full_name?: string }).full_name || currentUser.username
-  );
+  const [currentStaff, setCurrentStaff] = useState(currentUser.username || '');
 
-  // Sync staff name when user changes (e.g. after switching user in POSStaffModal)
+  // Oturum kullanıcısı değişince kasiyer etiketi kullanıcı adı ile senkron
   useEffect(() => {
-    setCurrentStaff(
-      currentUser.fullName || (currentUser as { full_name?: string }).full_name || currentUser.username
-    );
-  }, [currentUser.fullName, (currentUser as { full_name?: string }).full_name, currentUser.username]);
+    if (currentUser.username) {
+      setCurrentStaff(currentUser.username);
+    }
+  }, [currentUser.username]);
   const [showCustomerModal, setShowCustomerModal] = useState(false);
   const [customerModalInitialQuery, setCustomerModalInitialQuery] = useState('');
   const [showStaffModal, setShowStaffModal] = useState(false);

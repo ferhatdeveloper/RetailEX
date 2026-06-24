@@ -152,7 +152,7 @@ export function POSOpenCashRegisterModal({
             <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
               <div className="flex justify-between">
                 <span className="text-gray-600">{String(t.cashierLabel)}</span>
-                <span className="text-gray-900">Sistem Yöneticisi</span>
+                <span className="text-gray-900">{currentStaff}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-gray-600">{String(t.cashRegisterLabel)}</span>
