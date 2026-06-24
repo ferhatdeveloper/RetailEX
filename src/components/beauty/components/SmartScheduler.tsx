@@ -27,6 +27,7 @@ import { safeInvoke, IS_BROWSER } from '../../../utils/env';
 import {
     addDaysToLocalYmd,
     beautyAppointmentDateKey,
+    beautyAppointmentEarlyCompletionDateKey,
     enumerateLocalYmdInclusive,
     formatLocalYmd,
     getWeekRangeLocal,
@@ -1046,16 +1047,26 @@ export function SmartScheduler() {
     const customerPhoneLine = (apt: BeautyAppointment) =>
         String(apt.customer_phone ?? '').trim();
 
+    const formatYmdShort = (ymd: string) => {
+        const [y, m, d] = ymd.split('-');
+        return y && m && d ? `${d}.${m}.${y}` : ymd;
+    };
+
     const renderAptCard = (apt: BeautyAppointment) => {
         const color = apt.service_color ?? '#7c3aed';
         const cfg   = STATUS_CFG[apt.status] ?? STATUS_CFG.scheduled;
         const done  = appointmentStatusMatches(apt.status, AppointmentStatus.COMPLETED);
+        const earlyDate = beautyAppointmentEarlyCompletionDateKey(apt);
+        const earlyDone = Boolean(earlyDate);
         const phone = customerPhoneLine(apt);
         const noteText = String(apt.notes ?? '').trim();
         const hasNote = noteText.length > 0;
-        const cardBg = done ? cfg.bg : hasNote ? '#fffbeb' : '#fff';
-        const cardBorder = done ? cfg.color + '55' : hasNote ? '#fde68a' : '#e8e4f0';
-        const cardBorderLeft = done ? cfg.color : hasNote ? '#d97706' : color;
+        const cardBg = earlyDone ? '#fef3c7' : done ? cfg.bg : hasNote ? '#fffbeb' : '#fff';
+        const cardBorder = earlyDone ? '#f59e0b88' : done ? cfg.color + '55' : hasNote ? '#fde68a' : '#e8e4f0';
+        const cardBorderLeft = earlyDone ? '#d97706' : done ? cfg.color : hasNote ? '#d97706' : color;
+        const statusBg = earlyDone ? '#fde68a' : cfg.bg;
+        const statusColor = earlyDone ? '#92400e' : cfg.color;
+        const statusLabel = earlyDone ? 'Erken geldi' : cfg.label;
         return (
             <div
                 key={apt.id}
@@ -1083,6 +1094,19 @@ export function SmartScheduler() {
                     </div>
                 ) : null}
                 <p style={{ fontSize: 11, fontWeight: 600, color: '#9ca3af', marginBottom: 6 }}>{resolveServiceName(apt)}</p>
+                {earlyDone ? (
+                    <p
+                        style={{
+                            margin: '0 0 6px',
+                            fontSize: 10,
+                            fontWeight: 800,
+                            color: '#92400e',
+                            lineHeight: 1.35,
+                        }}
+                    >
+                        {formatYmdShort(earlyDate)} tarihinde geldi
+                    </p>
+                ) : null}
                 {hasNote ? (
                     <p
                         style={{
@@ -1136,7 +1160,7 @@ export function SmartScheduler() {
                         </button>
                         ) : null}
                     </div>
-                    <span style={{ fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 3, background: cfg.bg, color: cfg.color, flexShrink: 0 }}>{cfg.label}</span>
+                    <span style={{ fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 3, background: statusBg, color: statusColor, flexShrink: 0 }}>{statusLabel}</span>
                 </div>
                 <div
                     style={{

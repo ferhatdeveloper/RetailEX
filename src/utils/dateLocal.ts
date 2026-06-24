@@ -15,19 +15,26 @@ export function formatLocalYmd(d: Date): string {
 export function beautyAppointmentDateKey(apt: {
     date?: string;
     appointment_date?: string;
-    status?: string;
-    updated_at?: string;
 } | null | undefined): string {
     const raw = String(apt?.date ?? apt?.appointment_date ?? '').trim();
     if (!raw) return '';
     const m = raw.match(/^(\d{4}-\d{2}-\d{2})/);
-    const scheduled = m ? m[1] : raw.slice(0, 10);
+    return m ? m[1] : raw.slice(0, 10);
+}
+
+export function beautyAppointmentEarlyCompletionDateKey(apt: {
+    date?: string;
+    appointment_date?: string;
+    status?: string;
+    updated_at?: string;
+} | null | undefined): string {
+    const status = String(apt?.status ?? '').trim().toLowerCase();
+    if (status !== 'completed') return '';
+    const scheduled = beautyAppointmentDateKey(apt);
     const updatedRaw = String(apt?.updated_at ?? '').trim();
     const updatedMatch = updatedRaw.match(/^(\d{4}-\d{2}-\d{2})/);
     const updated = updatedMatch ? updatedMatch[1] : updatedRaw.slice(0, 10);
-    const status = String(apt?.status ?? '').trim().toLowerCase();
-    if (status === 'completed' && updated && updated < scheduled) return updated;
-    return scheduled;
+    return updated && scheduled && updated < scheduled ? updated : '';
 }
 
 /** Monday–Sunday week containing `anchor` (local dates). */
