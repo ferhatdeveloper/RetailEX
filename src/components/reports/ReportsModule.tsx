@@ -724,11 +724,6 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
     return sales ?? [];
   }, [catalogSales, sales]);
 
-  useEffect(() => {
-    void loadReportRangeSales();
-    void loadCatalogSales();
-  }, [loadReportRangeSales, loadCatalogSales, selectedFirm?.firm_nr]);
-
   /** Restoran — Ürün Satış Adedi: kapalı adisyon, tarih aralığı (DB) */
   const [restProductQtyFrom, setRestProductQtyFrom] = useState(() => {
     const d = new Date();
@@ -944,6 +939,11 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
       setCatalogSales([]);
     }
   }, []);
+
+  useEffect(() => {
+    void loadReportRangeSales();
+    void loadCatalogSales();
+  }, [loadReportRangeSales, loadCatalogSales, selectedFirm?.firm_nr]);
 
   const refreshAllReportsData = useCallback(async () => {
     setRefreshingReports(true);
