@@ -752,6 +752,7 @@ export function SmartScheduler() {
     };
 
     const handleStatusChange = async (apt: BeautyAppointment, newStatus: AppointmentStatus) => {
+        const nowIso = new Date().toISOString();
         if (newStatus === AppointmentStatus.CANCELLED) {
             const dayYmd = beautyAppointmentDateKey(apt);
             const dayPool = dayYmd
@@ -766,11 +767,32 @@ export function SmartScheduler() {
                 if (!sib?.id) continue;
                 await updateAppointmentStatus(sib.id, AppointmentStatus.CANCELLED);
             }
+        } else if (newStatus === AppointmentStatus.COMPLETED) {
+            const customerId = String(apt.customer_id ?? apt.client_id ?? '').trim();
+            const dayYmd = beautyAppointmentDateKey({ ...apt, status: newStatus, updated_at: nowIso });
+            const dayPool = dayYmd
+                ? appointments.filter(a => beautyAppointmentDateKey(a) === dayYmd)
+                : appointments;
+            const targets = customerId
+                ? dayPool.filter(a => {
+                    const cid = String(a.customer_id ?? a.client_id ?? '').trim();
+                    if (cid !== customerId) return false;
+                    return !(
+                        appointmentStatusMatches(a.status, AppointmentStatus.CANCELLED) ||
+                        appointmentStatusMatches(a.status, AppointmentStatus.NO_SHOW)
+                    );
+                })
+                : [apt];
+            const uniqTargets = [...new Map((targets.length ? targets : [apt]).map(a => [a.id, a])).values()];
+            for (const target of uniqTargets) {
+                if (!target?.id) continue;
+                await updateAppointmentStatus(target.id, AppointmentStatus.COMPLETED);
+            }
         } else {
             await updateAppointmentStatus(apt.id, newStatus);
         }
         if (newStatus === AppointmentStatus.COMPLETED) {
-            const completedApt: BeautyAppointment = { ...apt, status: newStatus, updated_at: new Date().toISOString() };
+            const completedApt: BeautyAppointment = { ...apt, status: newStatus, updated_at: nowIso };
             setSelectedApt(completedApt);
         } else {
             setSelectedApt(null);

@@ -1938,6 +1938,7 @@ export const beautyService = {
                 a.treatment_shots,
                 a.clinical_data,
                 a.created_at,
+                a.updated_at,
                 COALESCE(
                     s.name,
                     rs.name,
@@ -2116,6 +2117,15 @@ export const beautyService = {
                   AND a.effective_appointment_date IS NOT NULL
                 GROUP BY a.client_id, a.service_id
             ),
+            customer_completed_visits AS (
+                SELECT DISTINCT
+                    a.client_id AS customer_id,
+                    a.effective_appointment_date AS visit_dt
+                FROM appt_events a
+                WHERE LOWER(TRIM(COALESCE(a.status::text, ''))) = 'completed'
+                  AND a.client_id IS NOT NULL
+                  AND a.effective_appointment_date IS NOT NULL
+            ),
             svc AS (
                 SELECT s.id AS service_id, s.name AS service_name, s.follow_up_reminder_days::int AS days
                 FROM ${svcBeauty} s
@@ -2149,6 +2159,13 @@ export const beautyService = {
                       AND b.effective_appointment_date > ld.last_dt
                       AND b.effective_appointment_date <= (ld.last_dt + svc.days)
                       AND b.status NOT IN ('cancelled', 'no_show')
+                  )
+                  AND NOT EXISTS (
+                    SELECT 1
+                    FROM customer_completed_visits v
+                    WHERE v.customer_id = ld.customer_id
+                      AND v.visit_dt > ld.last_dt
+                      AND v.visit_dt <= (ld.last_dt + svc.days)
                   )
             ),
             last_product AS (
@@ -2198,6 +2215,13 @@ export const beautyService = {
                       AND b.effective_appointment_date > lp.last_dt
                       AND b.effective_appointment_date <= (lp.last_dt + prd.days)
                       AND b.status NOT IN ('cancelled', 'no_show')
+                  )
+                  AND NOT EXISTS (
+                    SELECT 1
+                    FROM customer_completed_visits v
+                    WHERE v.customer_id = lp.customer_id
+                      AND v.visit_dt > lp.last_dt
+                      AND v.visit_dt <= (lp.last_dt + prd.days)
                   )
             )
             SELECT * FROM (
