@@ -411,6 +411,7 @@ export function ExpenseManagement() {
 
   return (
     <div className="relative h-full flex flex-col bg-white">
+      <div className={showExpenseModal ? 'hidden' : 'contents'} aria-hidden={showExpenseModal}>
       {/* Header */}
       <div className="sticky top-0 z-30 flex-shrink-0 border-b border-gray-200 p-6 bg-gradient-to-r from-red-50 to-orange-50 shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
@@ -601,9 +602,10 @@ export function ExpenseManagement() {
           </>
         )}
       </div>
+      </div>
 
       {showExpenseModal && typeof document !== 'undefined' && createPortal(
-        <div className="fixed inset-0 z-[2147483646] flex flex-col bg-white min-h-0 overflow-hidden animate-in fade-in duration-200">
+        <div className="fixed inset-0 z-[2147483647] flex flex-col bg-white min-h-0 overflow-hidden animate-in fade-in duration-200">
           <div className="bg-gradient-to-r from-red-600 to-orange-600 px-6 py-5 text-white shrink-0 sm:px-8">
             <div className="flex items-center justify-between gap-4">
               <div>
