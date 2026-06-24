@@ -228,7 +228,7 @@ export function InvoiceListModule({
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
-  const [dateFilter, setDateFilter] = useState<string>('all');
+  const [dateFilter, setDateFilter] = useState<string>('today');
   const [invoiceTypeFilter, setInvoiceTypeFilter] = useState<string>(defaultInvoiceTypeFilter || 'all');
   const [selectedInvoice, setSelectedInvoice] = useState<ListInvoice | null>(null);
   const [showDetailModal, setShowDetailModal] = useState(false);

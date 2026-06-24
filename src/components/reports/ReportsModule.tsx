@@ -75,6 +75,11 @@ import {
 
 const { Sider, Content } = Layout;
 
+/** Mobil çekmece: yönetim içerik alanı z-[10], üst çubuk z-[100] — menü bunların üstünde */
+const REPORTS_MOBILE_BACKDROP_Z = 105;
+const REPORTS_MOBILE_DRAWER_Z = 110;
+const REPORTS_SELECT_POPUP_Z = 200;
+
 /** Kapalı siparişte `total_amount` bazen güncellenmemiş kalabiliyor; grafik/istatistik için kalemlerden yedek toplam. */
 function sumRestOrderItemsSubtotal(o: { items?: unknown }): number {
   const items = o.items;
@@ -703,15 +708,15 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
     }
   }, [selectedDateFrom, selectedDateTo]);
 
-  /** ERP satışları: önce DB aralığı; yedek bellek (mobil/PC tutarlılığı için yenile ile DB tercih edilir) */
+  /** ERP satışları: DB aralığı esas; yükleme bitince boş dizi de geçerli (bellek yedeği yalnızca yükleme sırasında) */
   const erpSalesForReportPeriod = useMemo(() => {
-    if (reportRangeSales.length > 0) return reportRangeSales;
+    if (!loadingReportRangeSales) return reportRangeSales;
     if (!sales?.length) return [] as Sale[];
     return sales.filter((s) => {
       const k = localCalendarDateKey(s.date);
       return k >= selectedDateFrom && k <= selectedDateTo;
     });
-  }, [reportRangeSales, sales, selectedDateFrom, selectedDateTo]);
+  }, [reportRangeSales, sales, selectedDateFrom, selectedDateTo, loadingReportRangeSales]);
 
   /** Trend/hedef/müşteri — DB katalog; yedek bellek */
   const effectiveCatalogSales = useMemo(() => {
@@ -1598,9 +1603,9 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
     });
   }, [analysisRangeSales, sales, analysisDateFrom, analysisDateTo]);
 
-  // Daily sales — seçili aralık DB'den (reportRangeSales); bellekteki son 500 kayıt yeterli değil
+  // Daily sales — seçili aralık DB'den; yükleme bitince yalnızca o aralık (varsayılan bugün)
   const getDailySales = () => {
-    const source = reportRangeSales;
+    const source = erpSalesForReportPeriod;
     if (!source || !Array.isArray(source)) return [];
     return source.filter((s) => {
       const k = localCalendarDateKey(s.date);
@@ -3867,9 +3872,23 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
     ? ['grp-general', 'grp-design', 'grp-sales', 'grp-business-specific']
     : ['grp-general', 'grp-design', 'grp-sales'];
 
+  const mobileMenuOpen = isMobile && !collapsed;
+
   return (
-    <ConfigProvider theme={retailexAntdThemeWithPrimary(bizConfig.color, darkMode)}>
+    <ConfigProvider
+      theme={retailexAntdThemeWithPrimary(bizConfig.color, darkMode)}
+      select={{ styles: { popup: { root: { zIndex: REPORTS_SELECT_POPUP_Z } as React.CSSProperties } } }}
+    >
       <Layout className={`h-full min-w-0 overflow-hidden ${darkMode ? 'bg-slate-900' : 'bg-slate-50'}`}>
+        {mobileMenuOpen && (
+          <button
+            type="button"
+            className="fixed inset-0 border-0 p-0 md:hidden bg-black/45 cursor-default"
+            style={{ zIndex: REPORTS_MOBILE_BACKDROP_Z }}
+            aria-label={tm('close')}
+            onClick={() => setCollapsed(true)}
+          />
+        )}
         {/* Sol Sidebar */}
         <Sider
           collapsible
@@ -3880,8 +3899,12 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
           breakpoint="md"
           trigger={isMobile ? null : undefined}
           theme={darkMode ? 'dark' : 'light'}
-          className={`shadow-sm z-10 ${darkMode ? 'border-r border-slate-700' : 'border-r border-slate-200'}`}
-          style={{ overflow: 'auto', height: '100%', position: 'relative' }}
+          className={`shadow-sm ${mobileMenuOpen ? 'fixed left-0 top-0 bottom-0 h-full' : 'relative z-10'} ${darkMode ? 'border-r border-slate-700' : 'border-r border-slate-200'}`}
+          style={{
+            overflow: 'auto',
+            height: '100%',
+            zIndex: mobileMenuOpen ? REPORTS_MOBILE_DRAWER_Z : undefined,
+          }}
         >
           <div className="p-4 border-b border-slate-100 flex items-center gap-3 bg-white sticky top-0 z-20 h-[72px]">
             <div className="w-10 h-10 rounded-xl flex items-center justify-center shadow-lg shrink-0"
@@ -3908,9 +3931,9 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
           />
         </Sider>
 
-        <Layout className="h-full min-w-0 flex flex-col overflow-hidden bg-slate-50">
+        <Layout className="h-full min-w-0 flex flex-col overflow-hidden bg-slate-50 relative z-0">
           {/* Header */}
-          <div className="bg-white border-b border-slate-200 px-3 py-3 sm:px-6 sm:py-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between shadow-sm shrink-0 sm:h-[72px] min-h-0">
+          <div className="bg-white border-b border-slate-200 px-3 py-3 sm:px-6 sm:py-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between shadow-sm shrink-0 sm:h-[72px] min-h-0 relative z-[1]">
             <div className="flex items-start gap-2 min-w-0 w-full sm:w-auto">
               {isMobile && (
                 <Button
