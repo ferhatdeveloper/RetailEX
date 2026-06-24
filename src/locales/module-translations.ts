@@ -1107,6 +1107,10 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
   custTaxOfficeShort: { tr: 'Vergi Dairesi:', en: 'Tax office:', ar: 'مكتب الضريبة:', ku: 'نووسینگەی باج:' },
 
   /** Raporlar — grafik / toast (ReportsModule) */
+  reportsRefresh: { tr: 'Yenile', en: 'Refresh', ar: 'تحديث', ku: 'نوێکردنەوە' },
+  reportsDataRefreshed: { tr: 'Rapor verileri güncellendi', en: 'Report data refreshed', ar: 'تم تحديث بيانات التقارير', ku: 'داتای ڕاپۆرت نوێکرایەوە' },
+  reportsRefreshFailed: { tr: 'Rapor verileri yenilenemedi', en: 'Could not refresh report data', ar: 'تعذر تحديث بيانات التقارير', ku: 'نوێکردنەوەی داتای ڕاپۆرت سەرکەوتوو نەبوو' },
+  reportsLastRefreshed: { tr: 'Son yenileme: {time}', en: 'Last refresh: {time}', ar: 'آخر تحديث: {time}', ku: 'دوایین نوێکردنەوە: {time}' },
   reportChartPrevPeriod: { tr: 'Önceki dönem', en: 'Previous period', ar: 'الفترة السابقة', ku: 'ماوەی پێشوو' },
   reportChartCurrentPeriod: { tr: 'Bu dönem', en: 'Current period', ar: 'الفترة الحالية', ku: 'ئەم ماوەیە' },
   reportToastReceiptMissing: { tr: 'Fiş verisi bulunamadı.', en: 'Receipt data not found.', ar: 'لا بيانات للإيصال.', ku: 'زانیاری پسوڵە نییە.' },

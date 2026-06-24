@@ -69,7 +69,8 @@ import {
   MailOutlined,
   FilePdfOutlined,
   FileExcelOutlined,
-  CaretDownOutlined
+  CaretDownOutlined,
+  ReloadOutlined,
 } from '@ant-design/icons';
 
 const { Sider, Content } = Layout;
@@ -598,6 +599,13 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
   /** Günlük/Z raporu: seçili tarih aralığı — bellekteki son N satış değil, DB sorgusu */
   const [reportRangeSales, setReportRangeSales] = useState<Sale[]>([]);
   const [loadingReportRangeSales, setLoadingReportRangeSales] = useState(false);
+  /** Karşılaştırma / analiz sekmeleri — bellekteki son 500 satış yerine DB */
+  const [comparisonSales, setComparisonSales] = useState<Sale[]>([]);
+  const [analysisRangeSales, setAnalysisRangeSales] = useState<Sale[]>([]);
+  /** Trend/hedef/müşteri raporları — son 12 ay DB (bellekteki son 500 kayıt yeterli değil) */
+  const [catalogSales, setCatalogSales] = useState<Sale[]>([]);
+  const [refreshingReports, setRefreshingReports] = useState(false);
+  const [lastReportRefreshAt, setLastReportRefreshAt] = useState<Date | null>(null);
   const [dailyShowOnlyRemoved, setDailyShowOnlyRemoved] = useState(false);
   const [reportConfirmOpen, setReportConfirmOpen] = useState(false);
   const [reportConfirmMessage, setReportConfirmMessage] = useState('');
@@ -664,9 +672,57 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
     }
   }, [selectedDateFrom, selectedDateTo]);
 
+  const loadComparisonSales = useCallback(async () => {
+    try {
+      const { salesAPI } = await import('../../services/api/sales');
+      const todayKey = localTodayDateKey();
+      const w = buildComparisonWindows(comparisonPeriod, todayKey);
+      const rows = await salesAPI.getByDateRange(w.previousFrom, w.currentTo);
+      setComparisonSales(Array.isArray(rows) ? rows : []);
+    } catch (err) {
+      console.error('[ReportsModule] Karşılaştırma satışları yüklenemedi:', err);
+      setComparisonSales([]);
+    }
+  }, [comparisonPeriod]);
+
+  const loadCashExpenses = useCallback(async () => {
+    try {
+      const rows = await expenseAPI.getAll({ startDate: selectedDateFrom, endDate: selectedDateTo });
+      const allRows = Array.isArray(rows) ? rows : [];
+      const totalCash = allRows.reduce((sum, row) => {
+        const method = String((row as any)?.payment_method ?? '').trim().toLowerCase();
+        const isCash = method === 'cash' || method === 'nakit';
+        return isCash ? sum + (Number((row as any)?.amount) || 0) : sum;
+      }, 0);
+      const totalAll = allRows.reduce((sum, row) => sum + (Number((row as any)?.amount) || 0), 0);
+      setCashExpensesForSelectedDate(totalCash);
+      setTotalExpensesForSelectedDate(totalAll);
+    } catch {
+      setCashExpensesForSelectedDate(0);
+      setTotalExpensesForSelectedDate(0);
+    }
+  }, [selectedDateFrom, selectedDateTo]);
+
+  /** ERP satışları: önce DB aralığı; yedek bellek (mobil/PC tutarlılığı için yenile ile DB tercih edilir) */
+  const erpSalesForReportPeriod = useMemo(() => {
+    if (reportRangeSales.length > 0) return reportRangeSales;
+    if (!sales?.length) return [] as Sale[];
+    return sales.filter((s) => {
+      const k = localCalendarDateKey(s.date);
+      return k >= selectedDateFrom && k <= selectedDateTo;
+    });
+  }, [reportRangeSales, sales, selectedDateFrom, selectedDateTo]);
+
+  /** Trend/hedef/müşteri — DB katalog; yedek bellek */
+  const effectiveCatalogSales = useMemo(() => {
+    if (catalogSales.length > 0) return catalogSales;
+    return sales ?? [];
+  }, [catalogSales, sales]);
+
   useEffect(() => {
     void loadReportRangeSales();
-  }, [loadReportRangeSales, selectedFirm?.firm_nr]);
+    void loadCatalogSales();
+  }, [loadReportRangeSales, loadCatalogSales, selectedFirm?.firm_nr]);
 
   /** Restoran — Ürün Satış Adedi: kapalı adisyon, tarih aralığı (DB) */
   const [restProductQtyFrom, setRestProductQtyFrom] = useState(() => {
@@ -727,7 +783,7 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
     }
   }, [selectedTab]);
 
-  const reloadBeautyServiceReport = useCallback(() => {
+  const reloadBeautyServiceReport = useCallback((): Promise<void> => {
     if (
       businessType !== 'beauty' ||
       (selectedTab !== 'beauty-service-report' &&
@@ -735,9 +791,11 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
         selectedTab !== 'beauty-appointment-product-report' &&
         selectedTab !== 'beauty-commission-report') ||
       !selectedFirm
-    ) return;
+    ) {
+      return Promise.resolve();
+    }
     setLoadingBeautyServiceReport(true);
-    Promise.allSettled([
+    return Promise.allSettled([
       beautyService.getAppointmentsInRange(beautyServiceFrom, beautyServiceTo),
       beautyService.getSalesWithItemsForExportRange(beautyServiceFrom, beautyServiceTo),
     ])
@@ -751,7 +809,6 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
         if (salesResult.status === 'fulfilled') {
           setBeautyServiceSales(Array.isArray(salesResult.value) ? salesResult.value : []);
         } else {
-          // Ödeme raporu hata alsa da işlem/randevu raporu çalışmaya devam etsin.
           setBeautyServiceSales([]);
         }
       })
@@ -856,6 +913,92 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
       });
   }, [businessType, selectedDateFrom, selectedDateTo, selectedFirm]);
 
+  const loadAnalysisRangeSales = useCallback(async () => {
+    try {
+      const { salesAPI } = await import('../../services/api/sales');
+      const rows = await salesAPI.getByDateRange(analysisDateFrom, analysisDateTo);
+      setAnalysisRangeSales(Array.isArray(rows) ? rows : []);
+    } catch (err) {
+      console.error('[ReportsModule] Analiz dönemi satışları yüklenemedi:', err);
+      setAnalysisRangeSales([]);
+    }
+  }, [analysisDateFrom, analysisDateTo]);
+
+  const loadCatalogSales = useCallback(async () => {
+    try {
+      const { salesAPI } = await import('../../services/api/sales');
+      const todayKey = localTodayDateKey();
+      const d = new Date(`${todayKey}T12:00:00`);
+      d.setMonth(d.getMonth() - 12);
+      d.setDate(1);
+      const fromKey = localCalendarDateKey(d);
+      const rows = await salesAPI.getByDateRange(fromKey, todayKey);
+      setCatalogSales(Array.isArray(rows) ? rows : []);
+    } catch (err) {
+      console.error('[ReportsModule] Katalog satışları yüklenemedi:', err);
+      setCatalogSales([]);
+    }
+  }, []);
+
+  const refreshAllReportsData = useCallback(async () => {
+    setRefreshingReports(true);
+    try {
+      const { useSaleStore } = await import('../../store');
+      const tasks: Promise<unknown>[] = [
+        loadReportRangeSales(),
+        useSaleStore.getState().loadSales(500),
+        loadCatalogSales(),
+        loadCashExpenses(),
+        loadProducts(true),
+      ];
+      if (businessType === 'restaurant') {
+        tasks.push(loadRestOrdersForSelectedDate());
+      }
+      tasks.push(loadComparisonSales());
+      if (businessType !== 'restaurant') {
+        tasks.push(loadAnalysisRangeSales());
+      }
+      if (
+        businessType === 'beauty' &&
+        (selectedTab === 'beauty-service-report' ||
+          selectedTab === 'beauty-cancelled-report' ||
+          selectedTab === 'beauty-appointment-product-report' ||
+          selectedTab === 'beauty-commission-report')
+      ) {
+        tasks.push(reloadBeautyServiceReport());
+      }
+      if (selectedTab === 'expiring-products' && selectedFirm?.id) {
+        tasks.push(
+          fetchExpiringSoonLots(selectedFirm.id.toString(), expiringDays)
+            .then((data: any) => setExpiringProducts(Array.isArray(data) ? data : []))
+            .catch(() => setExpiringProducts([])),
+        );
+      }
+      await Promise.all(tasks);
+      setLastReportRefreshAt(new Date());
+      toast.success(tm('reportsDataRefreshed'));
+    } catch (e) {
+      console.error('[ReportsModule] refreshAllReportsData:', e);
+      toast.error(tm('reportsRefreshFailed'));
+    } finally {
+      setRefreshingReports(false);
+    }
+  }, [
+    businessType,
+    expiringDays,
+    loadAnalysisRangeSales,
+    loadCashExpenses,
+    loadCatalogSales,
+    loadComparisonSales,
+    loadProducts,
+    loadReportRangeSales,
+    loadRestOrdersForSelectedDate,
+    reloadBeautyServiceReport,
+    selectedFirm?.id,
+    selectedTab,
+    tm,
+  ]);
+
   // Fetch Restaurant Orders (günlük rapor + iptal sonrası tazeleme)
   useEffect(() => {
     void loadRestOrdersForSelectedDate();
@@ -863,32 +1006,20 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
 
   // Gün sonu / kasa durumu / Z raporu için: seçili gün gider toplamları
   useEffect(() => {
-    let cancelled = false;
-    const loadCashExpenses = async () => {
-      try {
-        const rows = await expenseAPI.getAll({ startDate: selectedDateFrom, endDate: selectedDateTo });
-        if (cancelled) return;
-        const allRows = Array.isArray(rows) ? rows : [];
-        const totalCash = allRows.reduce((sum, row) => {
-          const method = String((row as any)?.payment_method ?? '').trim().toLowerCase();
-          const isCash = method === 'cash' || method === 'nakit';
-          return isCash ? sum + (Number((row as any)?.amount) || 0) : sum;
-        }, 0);
-        const totalAll = allRows.reduce((sum, row) => sum + (Number((row as any)?.amount) || 0), 0);
-        setCashExpensesForSelectedDate(totalCash);
-        setTotalExpensesForSelectedDate(totalAll);
-      } catch {
-        if (!cancelled) {
-          setCashExpensesForSelectedDate(0);
-          setTotalExpensesForSelectedDate(0);
-        }
-      }
-    };
     void loadCashExpenses();
-    return () => {
-      cancelled = true;
-    };
-  }, [selectedDateFrom, selectedDateTo, selectedTab, selectedFirm?.firm_nr]);
+  }, [loadCashExpenses, selectedTab, selectedFirm?.firm_nr]);
+
+  useEffect(() => {
+    if (selectedTab === 'comparison') {
+      void loadComparisonSales();
+    }
+  }, [selectedTab, loadComparisonSales, comparisonPeriod]);
+
+  useEffect(() => {
+    if (selectedTab === 'analysis' && businessType !== 'restaurant') {
+      void loadAnalysisRangeSales();
+    }
+  }, [selectedTab, businessType, loadAnalysisRangeSales, analysisDateFrom, analysisDateTo]);
 
   // Restoran — Ürün Satış Adedi (ürün raporları sekmesi)
   useEffect(() => {
@@ -925,10 +1056,12 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
     }
     const todayKey = localTodayDateKey();
     const w = buildComparisonWindows(comparisonPeriod, todayKey);
-    const salesInUnion = (sales || []).filter((s) => {
-      const k = localCalendarDateKey(s.date);
-      return k >= w.previousFrom && k <= w.currentTo;
-    });
+    const salesInUnion = comparisonSales.length > 0
+      ? comparisonSales
+      : (sales || []).filter((s) => {
+          const k = localCalendarDateKey(s.date);
+          return k >= w.previousFrom && k <= w.currentTo;
+        });
     if (salesInUnion.length > 0) {
       setComparisonOrders([]);
       setLoadingComparisonOrders(false);
@@ -946,7 +1079,7 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
       .then((data: any) => setComparisonOrders(Array.isArray(data) ? data : []))
       .catch(() => setComparisonOrders([]))
       .finally(() => setLoadingComparisonOrders(false));
-  }, [selectedTab, businessType, selectedFirm, comparisonPeriod, sales]);
+  }, [selectedTab, businessType, selectedFirm, comparisonPeriod, comparisonSales, sales]);
 
   useEffect(() => {
     if (selectedTab !== 'analysis') {
@@ -1296,10 +1429,12 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
     };
     const { currentFrom, currentTo, previousFrom, previousTo, currentPeriodLabel, previousPeriodLabel } = windows;
 
-    const salesInUnion = (sales || []).filter((s) => {
-      const k = localCalendarDateKey(s.date);
-      return k >= previousFrom && k <= currentTo;
-    });
+    const salesInUnion = comparisonSales.length > 0
+      ? comparisonSales
+      : (sales || []).filter((s) => {
+          const k = localCalendarDateKey(s.date);
+          return k >= previousFrom && k <= currentTo;
+        });
     const useErp = businessType !== 'restaurant' || salesInUnion.length > 0;
 
     type Agg = {
@@ -1311,7 +1446,7 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
     };
 
     const aggregateErpRange = (from: string, to: string): Agg => {
-      const list = (sales || []).filter((s) => {
+      const list = salesInUnion.filter((s) => {
         const k = localCalendarDateKey(s.date);
         return k >= from && k <= to;
       });
@@ -1452,15 +1587,16 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
       chartMoneyData,
       productRows,
     };
-  }, [sales, comparisonPeriod, businessType, comparisonOrders, language]);
+  }, [comparisonSales, sales, comparisonPeriod, businessType, comparisonOrders, language]);
 
   const salesForAnalysis = useMemo(() => {
+    if (analysisRangeSales.length > 0) return analysisRangeSales;
     if (!sales?.length) return [] as Sale[];
     return sales.filter(s => {
       const k = localCalendarDateKey(s.date);
       return k >= analysisDateFrom && k <= analysisDateTo;
     });
-  }, [sales, analysisDateFrom, analysisDateTo]);
+  }, [analysisRangeSales, sales, analysisDateFrom, analysisDateTo]);
 
   // Daily sales — seçili aralık DB'den (reportRangeSales); bellekteki son 500 kayıt yeterli değil
   const getDailySales = () => {
@@ -1924,7 +2060,7 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
       return Array.from(productMap.values()).sort((a, b) => b.revenue - a.revenue);
     }
 
-    if (!sales || !Array.isArray(sales)) return [];
+    if (!erpSalesForReportPeriod || !Array.isArray(erpSalesForReportPeriod)) return [];
     const productMap = new Map<string, {
       product: Product;
       quantity: number;
@@ -1932,9 +2068,7 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
       discount: number;
     }>();
 
-    sales.forEach(sale => {
-      const sk = localCalendarDateKey(sale.date);
-      if (sk < selectedDateFrom || sk > selectedDateTo) return;
+    erpSalesForReportPeriod.forEach(sale => {
       sale.items.forEach(item => {
         const existing = productMap.get(item.productId);
         if (existing) {
@@ -2126,7 +2260,7 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
       return Array.from(categoryMap.values()).sort((a, b) => b.totalRevenue - a.totalRevenue);
     }
 
-    if (!sales || !Array.isArray(sales) || !products || !Array.isArray(products)) return [];
+    if (!erpSalesForReportPeriod || !Array.isArray(erpSalesForReportPeriod) || !products || !Array.isArray(products)) return [];
     const categoryMap = new Map<
       string,
       {
@@ -2139,9 +2273,7 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
       }
     >();
 
-    sales.forEach(sale => {
-      const sk = localCalendarDateKey(sale.date);
-      if (sk < selectedDateFrom || sk > selectedDateTo) return;
+    erpSalesForReportPeriod.forEach(sale => {
       sale.items.forEach(item => {
         const product = products.find(p => p.id === item.productId);
         if (product) {
@@ -2266,7 +2398,7 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
 
   // Discount Report
   const getDiscountReport = () => {
-    if (!sales || !Array.isArray(sales)) return [];
+    if (!erpSalesForReportPeriod || !Array.isArray(erpSalesForReportPeriod)) return [];
     const discountMap = new Map<string, {
       name: string;
       discountAmount: number;
@@ -2274,7 +2406,7 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
       avgDiscount: number;
     }>();
 
-    sales.forEach(sale => {
+    erpSalesForReportPeriod.forEach(sale => {
       if (sale.discount > 0) {
         const discountReason = (sale as any).discountReason || 'Genel İndirim';
         const existing = discountMap.get(discountReason);
@@ -2365,9 +2497,9 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
       });
       return Math.max(1, keys.size);
     }
-    if (!sales || sales.length === 0) return 1;
+    if (!erpSalesForReportPeriod || erpSalesForReportPeriod.length === 0) return 1;
     const keys = new Set<string>();
-    sales.forEach(s => {
+    erpSalesForReportPeriod.forEach(s => {
       const k = localCalendarDateKey(s.date);
       if (k) keys.add(k);
     });
@@ -2389,7 +2521,7 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
         eachRestOrderItem(o, (it: any) => upd(String(it.product_id ?? ''), t));
       });
     } else {
-      sales.forEach(s => {
+      effectiveCatalogSales.forEach(s => {
         const t = new Date(s.date).getTime();
         if (!Number.isFinite(t)) return;
         s.items.forEach(it => upd(String(it.productId), t));
@@ -3767,7 +3899,10 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
             mode="inline"
             selectedKeys={[selectedTab]}
             defaultOpenKeys={defaultOpenKeys}
-            onClick={({ key }) => setSelectedTab(key as ReportTab)}
+            onClick={({ key }) => {
+              setSelectedTab(key as ReportTab);
+              if (isMobile) setCollapsed(true);
+            }}
             items={menuItems}
             className="border-none py-2"
           />
@@ -3795,6 +3930,24 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-2 sm:gap-3 w-full sm:w-auto justify-end">
+              {lastReportRefreshAt && (
+                <span className="text-[10px] text-slate-400 w-full sm:w-auto text-right sm:text-left order-last sm:order-none">
+                  {tm('reportsLastRefreshed').replace(
+                    '{time}',
+                    lastReportRefreshAt.toLocaleTimeString(tm('localeCode'), { hour: '2-digit', minute: '2-digit' }),
+                  )}
+                </span>
+              )}
+              <Button
+                type="default"
+                icon={<ReloadOutlined spin={refreshingReports} />}
+                loading={refreshingReports}
+                onClick={() => void refreshAllReportsData()}
+                className="shrink-0"
+                aria-label={tm('reportsRefresh')}
+              >
+                {tm('reportsRefresh')}
+              </Button>
               <label className="flex flex-wrap items-center gap-2 text-xs text-slate-600 min-w-0 flex-1 sm:flex-initial">
                 <span className="font-semibold shrink-0">{tm('reportsBusinessLine')}</span>
                 <Select<BusinessType>
@@ -3814,15 +3967,21 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
           </div>
 
           <Content className="flex-1 overflow-y-auto p-3 sm:p-6 min-w-0" style={{ scrollbarWidth: 'thin' }}>
+            {(refreshingReports || loadingReportRangeSales) && (
+              <div className="mb-3 flex items-center gap-2 rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-sm text-blue-800">
+                <Spin size="small" />
+                <span>{tm('reportsRefresh')}</span>
+              </div>
+            )}
 
             {selectedTab === 'daily' && (
               <div className="space-y-4">
                 {/* Date Selector */}
                 <div className="bg-white rounded-lg border p-4">
-                  <div className="flex flex-wrap items-center justify-between gap-4">
-                    <div className="flex flex-wrap items-center gap-4">
-                      <Calendar className="w-5 h-5 text-gray-600 shrink-0" aria-hidden />
-                      <label className="flex items-center gap-2 text-sm text-slate-700">
+                  <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center sm:justify-between gap-4">
+                    <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-3 sm:gap-4 w-full sm:w-auto">
+                      <Calendar className="w-5 h-5 text-gray-600 shrink-0 hidden sm:block" aria-hidden />
+                      <label className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 text-sm text-slate-700 w-full sm:w-auto">
                         <span className="font-medium whitespace-nowrap">{tm('reportsPlStartDate')}</span>
                         <input
                           type="date"
@@ -3830,10 +3989,10 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
                           max={reportDateInputMax}
                           value={selectedDateFrom}
                           onChange={(e) => handleReportDateFromChange(e.target.value)}
-                          className="px-4 py-2 border rounded-lg focus:outline-none focus:border-blue-500"
+                          className="w-full sm:w-auto px-4 py-2 border rounded-lg focus:outline-none focus:border-blue-500"
                         />
                       </label>
-                      <label className="flex items-center gap-2 text-sm text-slate-700">
+                      <label className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 text-sm text-slate-700 w-full sm:w-auto">
                         <span className="font-medium whitespace-nowrap">{tm('reportsPlEndDate')}</span>
                         <input
                           type="date"
@@ -3841,25 +4000,35 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
                           max={reportDateInputMax}
                           value={selectedDateTo}
                           onChange={(e) => handleReportDateToChange(e.target.value)}
-                          className="px-4 py-2 border rounded-lg focus:outline-none focus:border-blue-500"
+                          className="w-full sm:w-auto px-4 py-2 border rounded-lg focus:outline-none focus:border-blue-500"
                         />
                       </label>
                     </div>
-                    <Dropdown
-                      menu={{
-                        items: [
-                          { key: 'a4', label: tm('reportsPrintA4') },
-                          { key: '80mm', label: tm('reportsPrint80mm') },
-                        ],
-                        onClick: ({ key }) =>
-                          printDailySalesReport(key as 'a4' | '80mm'),
-                      }}
-                      trigger={['click']}
-                    >
-                      <Button type="primary" icon={<PrinterOutlined />}>
-                        {t.print} <CaretDownOutlined />
+                    <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+                      <Button
+                        icon={<ReloadOutlined spin={refreshingReports || loadingReportRangeSales} />}
+                        loading={refreshingReports || loadingReportRangeSales}
+                        onClick={() => void refreshAllReportsData()}
+                        className="w-full sm:w-auto"
+                      >
+                        {tm('reportsRefresh')}
                       </Button>
-                    </Dropdown>
+                      <Dropdown
+                        menu={{
+                          items: [
+                            { key: 'a4', label: tm('reportsPrintA4') },
+                            { key: '80mm', label: tm('reportsPrint80mm') },
+                          ],
+                          onClick: ({ key }) =>
+                            printDailySalesReport(key as 'a4' | '80mm'),
+                        }}
+                        trigger={['click']}
+                      >
+                        <Button type="primary" icon={<PrinterOutlined />} className="w-full sm:w-auto">
+                          {t.print} <CaretDownOutlined />
+                        </Button>
+                      </Dropdown>
+                    </div>
                   </div>
                 </div>
 
@@ -5385,15 +5554,15 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
             {selectedTab === 'profit-loss' && <ProfitLossReport />}
 
             {selectedTab === 'customer-sales' && (
-              <CustomerSalesReport sales={sales} customers={[]} />
+              <CustomerSalesReport sales={effectiveCatalogSales} customers={[]} />
             )}
 
             {selectedTab === 'sales-trend' && (
-              <SalesTrendReport sales={sales} />
+              <SalesTrendReport sales={effectiveCatalogSales} />
             )}
 
             {selectedTab === 'sales-target' && (
-              <SalesTargetReport sales={sales} />
+              <SalesTargetReport sales={effectiveCatalogSales} />
             )}
 
             {selectedTab === 'stock-aging' && (() => {
@@ -6266,7 +6435,7 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
 
             {selectedTab === 'chat-ai' && (
               <ReportChatAI
-                sales={sales}
+                sales={effectiveCatalogSales}
                 products={products}
                 dailySales={dailySalesForAi}
                 dailyTotal={dailyTotal}
