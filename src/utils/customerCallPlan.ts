@@ -21,7 +21,7 @@ export function normalizeCustomerCallWeekdays(value: unknown): CustomerCallPlanW
   const rawItems = Array.isArray(value)
     ? value
     : typeof value === 'string'
-      ? value.split(',').map(v => v.trim()).filter(Boolean)
+      ? value.replace(/[{}[\]]/g, '').split(',').map(v => v.trim()).filter(Boolean)
       : value == null
         ? []
         : [value];

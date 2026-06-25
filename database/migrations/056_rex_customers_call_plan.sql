@@ -26,3 +26,5 @@ BEGIN
     EXECUTE format('ALTER TABLE %I DROP COLUMN IF EXISTS call_plan_note', r.tablename);
   END LOOP;
 END $$;
+
+NOTIFY pgrst, 'reload schema';

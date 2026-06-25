@@ -54,6 +54,7 @@ const MizanReportModule = lazyWithChunkRecovery(() => import('../accounting/repo
 const IncomeStatementReport = lazyWithChunkRecovery(() => import('../accounting/reports/IncomeStatementReport').then(m => ({ default: m.IncomeStatementReport })));
 const BalanceSheetReport = lazyWithChunkRecovery(() => import('../accounting/reports/BalanceSheetReport').then(m => ({ default: m.BalanceSheetReport })));
 const SupplierModule = lazyWithChunkRecovery(() => import('../trading/contacts/SupplierModule').then(m => ({ default: m.SupplierModule })));
+const CustomerCallPlanModule = lazyWithChunkRecovery(() => import('../trading/contacts/CustomerCallPlanModule').then(m => ({ default: m.CustomerCallPlanModule })));
 const PriceManagementModule = lazyWithChunkRecovery(() => import('../trading/invoices/PriceManagementModule').then(m => ({ default: m.PriceManagementModule })));
 const CRMModule = lazyWithChunkRecovery(() => import('../modules/CRMModule').then(m => ({ default: m.CRMModule })));
 const HRModule = lazyWithChunkRecovery(() => import('../modules/HRModule').then(m => ({ default: m.HRModule })));
@@ -1054,7 +1055,7 @@ export function ManagementModule({
         case 'suppliers':
           return <SupplierModule key="suppliers" />;
         case 'customer-call-plan':
-          return <SupplierModule key="customer-call-plan" initialFilter="call" />;
+          return <CustomerCallPlanModule />;
 
         case 'barcode':
           return <BarcodeDefinitionsModule />;

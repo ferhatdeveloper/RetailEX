@@ -23,8 +23,8 @@ import { mapUnifiedSupplierToCurrentAccountExcelRow, saveCurrentAccountsAsXlsx }
 import { FullscreenBodyPortal, MODAL_OVERLAY_Z } from '../../shared/FullscreenBodyPortal';
 import {
   CUSTOMER_CALL_WEEKDAYS,
-  customerCallWeekdaysLabel,
   normalizeCustomerCallWeekdays,
+  customerCallWeekdaysLabel,
 } from '../../../utils/customerCallPlan';
 
 /** Sıfır ondalıkla gösterilen yaygın ana para kodları */
@@ -67,7 +67,7 @@ function defaultEkstreDateRange(): { start: string; end: string } {
   return { start: `${year}-01-01`, end: `${year}-12-31` };
 }
 
-export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: 'all' | 'customer' | 'supplier' | 'call' }) {
+export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: 'all' | 'customer' | 'supplier' }) {
   const { t, tm } = useLanguage();
   const { selectedFirm } = useFirmaDonem();
   const mainCurrency = useMemo(
@@ -89,7 +89,7 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: 'all
   const [showReportingPrimary, setShowReportingPrimary] = useState(false);
   const [exportingExcel, setExportingExcel] = useState(false);
   /** Liste filtresi: tümü / müşteri (alıcı) / satıcı (tedarikçi) */
-  const [accountTypeFilter, setAccountTypeFilter] = useState<'all' | 'customer' | 'supplier' | 'call'>(initialFilter);
+  const [accountTypeFilter, setAccountTypeFilter] = useState<'all' | 'customer' | 'supplier'>(initialFilter);
 
   useEffect(() => {
     setAccountTypeFilter(initialFilter);
@@ -234,10 +234,6 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: 'all
   };
 
   const filteredSuppliers = suppliers.filter(s => {
-    if (accountTypeFilter === 'call') {
-      if (s.cardType !== 'customer') return false;
-      if (s.call_plan_enabled !== true || normalizeCustomerCallWeekdays(s.call_plan_weekdays).length === 0) return false;
-    }
     if (accountTypeFilter === 'customer' && s.cardType !== 'customer') return false;
     if (accountTypeFilter === 'supplier' && s.cardType !== 'supplier') return false;
     const q = searchQuery.toLowerCase();
@@ -448,26 +444,6 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: 'all
         );
       },
       size: 110
-    }),
-    columnHelper.display({
-      id: 'callPlan',
-      header: 'Arama Planı',
-      cell: ({ row }) => {
-        const account = row.original;
-        const days = customerCallWeekdaysLabel(account.call_plan_weekdays, true);
-        if (account.cardType !== 'customer' || account.call_plan_enabled !== true || !days) {
-          return <span className="text-xs text-gray-400">—</span>;
-        }
-        return (
-          <div className="flex flex-col gap-0.5">
-            <span className="inline-flex w-fit items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-black uppercase text-amber-800">
-              <CalendarClock className="w-3 h-3" />
-              {days}
-            </span>
-          </div>
-        );
-      },
-      size: 130,
     }),
     columnHelper.accessor('name', {
       header: tm('currentAccountTitle'),
@@ -686,7 +662,6 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: 'all
               [
                 { key: 'all' as const, label: tm('all') },
                 { key: 'customer' as const, label: tm('buyersLabel') || `${tm('customer')} (Alıcı)` },
-                { key: 'call' as const, label: 'Arama Listesi' },
                 { key: 'supplier' as const, label: tm('sellersLabel') || `${tm('supplierLabel')} (Satıcı)` },
               ] as const
             ).map((tab) => (
@@ -698,8 +673,6 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: 'all
                   accountTypeFilter === tab.key
                     ? tab.key === 'supplier'
                       ? 'bg-orange-600 text-white'
-                      : tab.key === 'call'
-                        ? 'bg-amber-600 text-white'
                       : 'bg-blue-600 text-white'
                     : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                 }`}
