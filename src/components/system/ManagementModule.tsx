@@ -55,6 +55,7 @@ const IncomeStatementReport = lazyWithChunkRecovery(() => import('../accounting/
 const BalanceSheetReport = lazyWithChunkRecovery(() => import('../accounting/reports/BalanceSheetReport').then(m => ({ default: m.BalanceSheetReport })));
 const SupplierModule = lazyWithChunkRecovery(() => import('../trading/contacts/SupplierModule').then(m => ({ default: m.SupplierModule })));
 const CustomerCallPlanModule = lazyWithChunkRecovery(() => import('../trading/contacts/CustomerCallPlanModule').then(m => ({ default: m.CustomerCallPlanModule })));
+const PurchaseExpiryReport = lazyWithChunkRecovery(() => import('../reports/PurchaseExpiryReport').then(m => ({ default: m.PurchaseExpiryReport })));
 const PriceManagementModule = lazyWithChunkRecovery(() => import('../trading/invoices/PriceManagementModule').then(m => ({ default: m.PriceManagementModule })));
 const CRMModule = lazyWithChunkRecovery(() => import('../modules/CRMModule').then(m => ({ default: m.CRMModule })));
 const HRModule = lazyWithChunkRecovery(() => import('../modules/HRModule').then(m => ({ default: m.HRModule })));
@@ -214,7 +215,7 @@ type ExtendedScreen = ManagementScreen | 'dashboard' | 'finance' | 'stock' | 'pu
   'malzemeler' | 'materials-intake' | 'smart-material-add' | 'hareketler' | 'material-list' | 'material-definitions' | 'material-classes' | 'unit-sets' | 'variants' | 'group-codes' | 'product-categories' | 'special-codes' | 'brand-definitions' |
   'suppliers_def' | 'warehousetransfer_def' | 'warehousetransfer_mv' | 'warehousetransfer_v' | 'storetransfer_mv' | 'storetransfer_v' | 'stockcount_store' | 'material-transfers' |
   'stockreports_bal' | 'stockreports_tr' | 'stockreports_list' | 'stockreports_sum' | 'stockreports_trans' |
-  'report-material-extract' | 'report-material-value' | 'inventory' | 'cost' | 'report-in-out-totals' | 'report-warehouse-status' | 'report-transaction-breakdown' | 'report-slip-list' | 'report-min-max' |
+  'report-material-extract' | 'report-material-value' | 'inventory' | 'purchase-expiry-report' | 'cost' | 'report-in-out-totals' | 'report-warehouse-status' | 'report-transaction-breakdown' | 'report-slip-list' | 'report-min-max' |
   'MMSR' | 'MLR' | 'Enr' | 'GCTR' | 'FLR' | 'MLADR' | 'MDR' | 'MER' | 'HDRR' |
   'personnel' | 'attendance' | 'payroll' | 'performance' | 'training' |
   'waybill-sales' | 'waybill-purchase' | 'waybill-transfer' | 'waybill-fire' |
@@ -1125,6 +1126,8 @@ export function ManagementModule({
           return <MaterialAdvancedReports viewType='report-material-value' />;
         case 'inventory':
           return <MaterialAdvancedReports viewType='inventory' />;
+        case 'purchase-expiry-report':
+          return <PurchaseExpiryReport />;
         case 'cost':
           return <MaterialAdvancedReports viewType='cost' />;
         case 'report-in-out-totals':

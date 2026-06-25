@@ -1396,6 +1396,7 @@ BEGIN
   PERFORM public.APPLY_SYNC_TRIGGERS(v_prefix || '_products');
   PERFORM public.APPLY_SYNC_TRIGGERS(v_prefix || '_customers');
   PERFORM public.APPLY_SYNC_TRIGGERS(v_prefix || '_suppliers');
+  PERFORM public.INIT_PRODUCTION_TABLES(p_firm_nr);
   PERFORM public.APPLY_SYNC_TRIGGERS(v_prefix || '_services');
   PERFORM public.APPLY_SYNC_TRIGGERS(v_prefix || '_cash_registers');
   PERFORM public.APPLY_SYNC_TRIGGERS(v_prefix || '_bank_registers');
@@ -1609,9 +1610,12 @@ BEGIN
       unit_multiplier DECIMAL(15,6) DEFAULT 1,
       base_quantity   DECIMAL(15,3),
       unit_price_fc   DECIMAL(15,4) DEFAULT 0,
-      currency        VARCHAR(10) DEFAULT ''IQD''
+      currency        VARCHAR(10) DEFAULT ''IQD'',
+      expiry_date     DATE,
+      batch_no        VARCHAR(120)
     );
   ', v_tbl_items, v_tbl_sales);
+  EXECUTE format('CREATE INDEX IF NOT EXISTS %I ON %I (expiry_date) WHERE expiry_date IS NOT NULL', v_tbl_items || '_expiry_date_idx', v_tbl_items);
 
   -- 3. Cash Transactions
   EXECUTE format('

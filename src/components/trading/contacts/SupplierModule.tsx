@@ -67,7 +67,7 @@ function defaultEkstreDateRange(): { start: string; end: string } {
   return { start: `${year}-01-01`, end: `${year}-12-31` };
 }
 
-export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: 'all' | 'customer' | 'supplier' }) {
+export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: 'all' | 'customer' | 'supplier' | 'duplicates' }) {
   const { t, tm } = useLanguage();
   const { selectedFirm } = useFirmaDonem();
   const mainCurrency = useMemo(
@@ -89,7 +89,7 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: 'all
   const [showReportingPrimary, setShowReportingPrimary] = useState(false);
   const [exportingExcel, setExportingExcel] = useState(false);
   /** Liste filtresi: tümü / müşteri (alıcı) / satıcı (tedarikçi) */
-  const [accountTypeFilter, setAccountTypeFilter] = useState<'all' | 'customer' | 'supplier'>(initialFilter);
+  const [accountTypeFilter, setAccountTypeFilter] = useState<'all' | 'customer' | 'supplier' | 'duplicates'>(initialFilter);
 
   useEffect(() => {
     setAccountTypeFilter(initialFilter);
@@ -235,7 +235,28 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: 'all
     loadEkstresi(fresh, ekstresiStart, ekstresiEnd);
   };
 
+  const duplicateAccountKeys = useMemo(() => {
+    const counts = new Map<string, number>();
+    const keysById = new Map<string, string[]>();
+    const normName = (v: unknown) => String(v ?? '').trim().toLocaleLowerCase('tr-TR').replace(/\s+/g, ' ');
+    const normPhone = (v: unknown) => String(v ?? '').replace(/\D/g, '').slice(-10);
+    for (const s of suppliers) {
+      const keys = [
+        normPhone(s.phone) ? `phone:${normPhone(s.phone)}` : '',
+        normName(s.name) ? `name:${normName(s.name)}` : '',
+      ].filter(Boolean);
+      keysById.set(s.id, keys);
+      keys.forEach(key => counts.set(key, (counts.get(key) || 0) + 1));
+    }
+    return new Set(
+      [...keysById.entries()]
+        .filter(([, keys]) => keys.some(key => (counts.get(key) || 0) > 1))
+        .map(([id]) => id)
+    );
+  }, [suppliers]);
+
   const filteredSuppliers = suppliers.filter(s => {
+    if (accountTypeFilter === 'duplicates' && !duplicateAccountKeys.has(s.id)) return false;
     if (accountTypeFilter === 'customer' && s.cardType !== 'customer') return false;
     if (accountTypeFilter === 'supplier' && s.cardType !== 'supplier') return false;
     const q = searchQuery.toLowerCase();
@@ -605,6 +626,19 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: 'all
     };
   };
 
+  const openInvoiceFromStatement = (row: any) => {
+    const ficheNo = String(row?.fiche_no || '').trim();
+    if (!ficheNo) return;
+    const type = String(row?.fiche_type || '').toLowerCase();
+    const purchase = type.includes('purchase');
+    window.dispatchEvent(new CustomEvent('navigateToScreen', {
+      detail: {
+        screen: purchase ? 'purchaseinvoice' : 'salesinvoice',
+        invoiceSearch: ficheNo,
+      },
+    }));
+  };
+
   const typeInfo = (row: any) => ficheTypeToInfo(row.fiche_type || '', Number(row.trcode), row.is_cancelled === true);
 
   const borcHdr = fmtEkstreAmount(totalBorc);
@@ -670,6 +704,7 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: 'all
               [
                 { key: 'all' as const, label: tm('all') },
                 { key: 'customer' as const, label: tm('buyersLabel') || `${tm('customer')} (Alıcı)` },
+                { key: 'duplicates' as const, label: 'Mükerrerler' },
                 { key: 'supplier' as const, label: tm('sellersLabel') || `${tm('supplierLabel')} (Satıcı)` },
               ] as const
             ).map((tab) => (
@@ -681,6 +716,8 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: 'all
                   accountTypeFilter === tab.key
                     ? tab.key === 'supplier'
                       ? 'bg-orange-600 text-white'
+                      : tab.key === 'duplicates'
+                        ? 'bg-red-600 text-white'
                       : 'bg-blue-600 text-white'
                     : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                 }`}
@@ -853,7 +890,20 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: 'all
                     return (
                       <tr key={idx} className={`border-b border-gray-100 hover:bg-blue-50/40 ${idx % 2 ? 'bg-gray-50/50' : ''}`}>
                         <td className="px-4 py-2 font-mono text-gray-600">{row.date ? String(row.date).split('T')[0] : '-'}</td>
-                        <td className="px-4 py-2 font-mono text-blue-600 font-bold">{row.fiche_no || '-'}</td>
+                        <td className="px-4 py-2">
+                          {row.fiche_no ? (
+                            <button
+                              type="button"
+                              onClick={() => openInvoiceFromStatement(row)}
+                              className="font-mono text-blue-600 font-bold underline underline-offset-2 hover:text-blue-800"
+                              title="Faturayı aç"
+                            >
+                              {row.fiche_no}
+                            </button>
+                          ) : (
+                            <span className="font-mono text-slate-400">-</span>
+                          )}
+                        </td>
                         <td className="px-4 py-2"><span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase ${color}`}>{label}</span></td>
                         <td className="px-4 py-2 text-gray-700 max-w-md break-words align-top">{row.notes || ''}</td>
                         <td className="px-4 py-2 text-right font-bold text-red-600 whitespace-nowrap">

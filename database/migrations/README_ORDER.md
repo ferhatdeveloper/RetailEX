@@ -48,6 +48,8 @@
 43. **053_rex_products_expiry_tracking.sql** – `rex_*_products`: `expiry_date`, `expiry_tracking`, `shelf_life_days` (SKT / raf ömrü).
 44. **056_rex_customers_call_plan.sql** – `rex_*_customers`: haftalık müşteri arama planı, çoklu gün seçimi (`call_plan_weekdays`).
 45. **057_rex_customers_call_plan_status.sql** – `rex_*_customers`: arama planı notu ve son durum (`call_plan_note`, `call_last_*`).
+46. **058_sale_items_expiry_batch.sql** – `rex_*_*_sale_items`: alış faturası satır SKT/parti bilgisi (`expiry_date`, `batch_no`) ve SKT raporu indeksi.
+47. **059_init_production_tables.sql** – mevcut firmalar için üretim reçete/emir tablolarını oluşturur (`INIT_PRODUCTION_TABLES`).
 
 **Mevcut veritabanı:** `config.db` (DeskApp ayarları) ile bekleyen migration’ları uygulamak için proje kökünde `npm run db:migrate` (ayrıntı: `.cursor/rules/database-migrate-config-db.mdc`).
 

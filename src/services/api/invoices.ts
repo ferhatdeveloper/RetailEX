@@ -22,6 +22,13 @@ function isNonEmptyScalar(v: string | number | undefined | null): boolean {
   return String(v).trim() !== '';
 }
 
+function invoiceLineDateOrNull(value: unknown): string | null {
+  const raw = String(value ?? '').trim();
+  if (!raw) return null;
+  const m = raw.match(/^(\d{4}-\d{2}-\d{2})/);
+  return m ? m[1] : null;
+}
+
 /** Stok hareketi miktarı — KG/GR alış 1,610 = tartı satış 1610 g */
 function invoiceLineStockQuantity(item: Record<string, unknown>): number {
   return resolveStockQuantityFromLine({
@@ -603,6 +610,8 @@ async function createInvoiceViaPostgrest(invoice: Invoice, opts: {
         base_quantity: baseQty,
         unit_price_fc: unitPriceFC,
         currency: itemCurrency,
+        expiry_date: invoiceLineDateOrNull((item as any).expiryDate),
+        batch_no: String((item as any).batchNo || '').trim() || null,
       };
     });
     const itemLegacyList = invoice.items.map((item) => ({
@@ -820,6 +829,8 @@ export function mapSaleItemRowToInvoiceLine(item: any, inv: Invoice) {
     baseQuantity: hydrated.baseQuantity,
     unitPriceFC: Number.isFinite(uFC) ? uFC : uLoc,
     currency: item.currency || inv.currency || 'IQD',
+    expiryDate: invoiceLineDateOrNull(item.expiry_date),
+    batchNo: item.batch_no || undefined,
   };
 }
 
@@ -996,7 +1007,7 @@ export const invoicesAPI = {
 
       // 2. Insert invoice items (tek INSERT) + 3. stok güncellemeleri paralel
       if (invoice.items && invoice.items.length > 0) {
-        const COLS = 20;
+        const COLS = 22;
         const rowTuples: string[] = [];
         const flatParams: unknown[] = [];
 
@@ -1032,6 +1043,8 @@ export const invoicesAPI = {
             `$${base + 18}::text::numeric`,
             `$${base + 19}::text::numeric`,
             `$${base + 20}::text`,
+            `$${base + 21}::date`,
+            `$${base + 22}::text`,
           ];
           rowTuples.push(`(${ph.join(', ')})`);
 
@@ -1055,7 +1068,9 @@ export const invoicesAPI = {
             unitMultiplier,
             baseQty,
             unitPriceFC,
-            itemCurrency
+            itemCurrency,
+            invoiceLineDateOrNull((item as any).expiryDate),
+            String((item as any).batchNo || '').trim() || null
           );
 
           if (productId) {
@@ -1123,7 +1138,8 @@ export const invoicesAPI = {
                 quantity, unit, unit_price, discount_rate, vat_rate,
                 total_amount, net_amount,
                 unit_cost, total_cost, gross_profit,
-                unit_multiplier, base_quantity, unit_price_fc, currency
+                unit_multiplier, base_quantity, unit_price_fc, currency,
+                expiry_date, batch_no
              ) VALUES ${rowTuples.join(', ')}`,
           flatParams,
           queryOptions
@@ -1798,6 +1814,8 @@ export const invoicesAPI = {
               base_quantity: baseQty,
               unit_price_fc: unitPriceFC,
               currency: itemCurrency,
+              expiry_date: invoiceLineDateOrNull((item as any).expiryDate),
+              batch_no: String((item as any).batchNo || '').trim() || null,
             };
             const itemLegacy: Record<string, unknown> = {
               id: self.crypto.randomUUID(),
@@ -1885,12 +1903,14 @@ export const invoicesAPI = {
                 quantity, unit, unit_price, discount_rate, vat_rate,
                 total_amount, net_amount,
                 unit_cost, total_cost, gross_profit,
-                unit_multiplier, base_quantity, unit_price_fc, currency
+                unit_multiplier, base_quantity, unit_price_fc, currency,
+                expiry_date, batch_no
              ) VALUES ($1::text::uuid, $2::text, $3::text, $4::text, $5::text,
                $6::text::numeric, $7::text, $8::text::numeric, $9::text::numeric, $10::text::numeric,
                $11::text::numeric, $12::text::numeric,
                $13::text::numeric, $14::text::numeric, $15::text::numeric,
-               $16::text::numeric, $17::text::numeric, $18::text::numeric, $19::text)`,
+               $16::text::numeric, $17::text::numeric, $18::text::numeric, $19::text,
+               $20::date, $21::text)`,
             [
               id,
               String(fn0),
@@ -1910,7 +1930,9 @@ export const invoicesAPI = {
               unitMultiplier,
               baseQty,
               unitPriceFC,
-              itemCurrency
+              itemCurrency,
+              invoiceLineDateOrNull((item as any).expiryDate),
+              String((item as any).batchNo || '').trim() || null
             ],
             sqlOpts
           );

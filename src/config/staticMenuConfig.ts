@@ -8,7 +8,7 @@ import {
     Package, Warehouse, TrendingDown, Boxes, QrCode, Tag, Scale,
     Briefcase, GitBranch, Calendar, CalendarClock, Award, Wallet, CreditCard, Database,
     Globe, Receipt, Building, Calculator, TrendingUpDown, Gift, Percent, Send,
-    PackageSearch, Wrench, Shield, UserCog, UtensilsCrossed, Phone, Bell,
+    PackageSearch, PackagePlus, Wrench, Shield, UserCog, UtensilsCrossed, Phone, Bell,
     Smartphone, Mail, BarChart3, TrendingUp, UserCheck, Layers, Clock, AlertCircle,
     Radio, ArrowRightLeft, MoreVertical, Menu, Sparkles, Banknote, Mic, Landmark, Layout, HardDrive, RefreshCw
 } from 'lucide-react';
@@ -89,6 +89,7 @@ export const getStaticMenuSections = (t: Translations) => [
                     { label: t.menu.materialExtract, screen: 'report-material-extract', icon: BarChart3 },
                     { label: t.menu.materialValue, screen: 'report-material-value', icon: BarChart3 },
                     { label: t.menu.inventory, screen: 'inventory', icon: BarChart3 },
+                    { label: 'Son Kullanma Tarihi Raporu', screen: 'purchase-expiry-report', icon: AlertCircle },
                     { label: t.menu.cost, screen: 'cost', icon: BarChart3 },
                     { label: t.menu.inOutTotals, screen: 'report-in-out-totals', icon: BarChart3 },
                     { label: t.menu.materialWarehouseStatus, screen: 'report-warehouse-status', icon: BarChart3 },
@@ -98,7 +99,8 @@ export const getStaticMenuSections = (t: Translations) => [
                 ]
             },
             { label: t.menu.excelOperations, screen: 'excel', icon: FileSpreadsheet },
-            { label: t.menu.smartMaterialAdd, screen: 'smart-material-add', icon: Sparkles }
+            { label: t.menu.smartMaterialAdd, screen: 'smart-material-add', icon: Sparkles },
+            { label: 'Üretim Reçeteleri', screen: 'production', icon: PackagePlus }
         ]
     },
     {
