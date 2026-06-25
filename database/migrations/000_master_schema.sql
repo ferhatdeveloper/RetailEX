@@ -1170,6 +1170,10 @@ BEGIN
       notes        TEXT,
       call_plan_enabled BOOLEAN DEFAULT false,
       call_plan_weekdays SMALLINT[] DEFAULT '{}'::smallint[],
+      call_plan_note TEXT,
+      call_last_status VARCHAR(30) DEFAULT 'planned',
+      call_last_note TEXT,
+      call_last_at TIMESTAMPTZ,
       is_active    BOOLEAN DEFAULT true,
       created_at   TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
     );

@@ -6,7 +6,10 @@ import { createColumnHelper } from '@tanstack/react-table';
 import { supplierAPI, type Supplier } from '../../../services/api/suppliers';
 import {
   CUSTOMER_CALL_WEEKDAYS,
+  CUSTOMER_CALL_STATUSES,
+  customerCallStatusMeta,
   customerCallWeekdaysLabel,
+  normalizeCustomerCallStatus,
   normalizeCustomerCallWeekdays,
 } from '../../../utils/customerCallPlan';
 
@@ -19,6 +22,9 @@ export function CustomerCallPlanModule() {
   const [dayFilter, setDayFilter] = useState<DayFilter>('all');
   const [editing, setEditing] = useState<Supplier | null>(null);
   const [selectedDays, setSelectedDays] = useState<number[]>([]);
+  const [planNote, setPlanNote] = useState('');
+  const [lastStatus, setLastStatus] = useState('planned');
+  const [lastNote, setLastNote] = useState('');
   const [saving, setSaving] = useState(false);
 
   const load = async () => {
@@ -58,6 +64,9 @@ export function CustomerCallPlanModule() {
   const openEdit = (customer: Supplier) => {
     setEditing(customer);
     setSelectedDays(normalizeCustomerCallWeekdays(customer.call_plan_weekdays));
+    setPlanNote(String(customer.call_plan_note ?? ''));
+    setLastStatus(normalizeCustomerCallStatus(customer.call_last_status));
+    setLastNote(String(customer.call_last_note ?? ''));
   };
 
   const toggleDay = (day: number) => {
@@ -78,6 +87,10 @@ export function CustomerCallPlanModule() {
         cardType: 'customer',
         call_plan_enabled: nextDays.length > 0,
         call_plan_weekdays: nextDays,
+        call_plan_note: planNote.trim() || null,
+        call_last_status: normalizeCustomerCallStatus(lastStatus),
+        call_last_note: lastNote.trim() || null,
+        call_last_at: new Date().toISOString(),
       });
       toast.success('Arama planı güncellendi');
       setEditing(null);
@@ -121,6 +134,43 @@ export function CustomerCallPlanModule() {
         </span>
       ),
       size: 180,
+    }),
+    columnHelper.display({
+      id: 'note',
+      header: 'Plan Notu',
+      cell: ({ row }) => (
+        row.original.call_plan_note ? (
+          <span className="block max-w-[220px] truncate text-xs font-semibold text-slate-600" title={row.original.call_plan_note}>
+            {row.original.call_plan_note}
+          </span>
+        ) : <span className="text-xs text-slate-400">—</span>
+      ),
+      size: 220,
+    }),
+    columnHelper.display({
+      id: 'lastStatus',
+      header: 'Son Durum',
+      cell: ({ row }) => {
+        const meta = customerCallStatusMeta(row.original.call_last_status);
+        return (
+          <div className="flex flex-col gap-1">
+            <span className={`w-fit rounded-full px-2 py-0.5 text-[10px] font-black uppercase ${meta.tone}`}>
+              {meta.label}
+            </span>
+            {row.original.call_last_at ? (
+              <span className="text-[10px] font-semibold text-slate-400">
+                {new Date(row.original.call_last_at).toLocaleString('tr-TR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+              </span>
+            ) : null}
+            {row.original.call_last_note ? (
+              <span className="max-w-[180px] truncate text-[10px] text-slate-500" title={row.original.call_last_note}>
+                {row.original.call_last_note}
+              </span>
+            ) : null}
+          </div>
+        );
+      },
+      size: 170,
     }),
     columnHelper.display({
       id: 'actions',
@@ -251,6 +301,39 @@ export function CustomerCallPlanModule() {
                   Gün seçmezseniz müşteri arama listesinden çıkar.
                 </p>
               )}
+              <div className="mt-4">
+                <label className="mb-1 block text-xs font-black uppercase tracking-wide text-slate-500">Plan notu</label>
+                <textarea
+                  value={planNote}
+                  onChange={e => setPlanNote(e.target.value)}
+                  rows={2}
+                  placeholder="Bu müşterinin neden/ne zaman aranacağını yazın"
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-amber-500"
+                />
+              </div>
+              <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
+                <div>
+                  <label className="mb-1 block text-xs font-black uppercase tracking-wide text-slate-500">Son durum</label>
+                  <select
+                    value={lastStatus}
+                    onChange={e => setLastStatus(normalizeCustomerCallStatus(e.target.value))}
+                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    {CUSTOMER_CALL_STATUSES.map(status => (
+                      <option key={status.value} value={status.value}>{status.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-black uppercase tracking-wide text-slate-500">Son durum notu</label>
+                  <input
+                    value={lastNote}
+                    onChange={e => setLastNote(e.target.value)}
+                    placeholder="Örn. Ulaşılamadı, cuma tekrar ara"
+                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
             </div>
             <div className="flex justify-end gap-2 border-t border-slate-100 bg-slate-50 px-5 py-4">
               <button type="button" onClick={() => setEditing(null)} className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-600 hover:bg-slate-100">

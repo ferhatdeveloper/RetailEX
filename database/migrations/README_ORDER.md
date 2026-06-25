@@ -47,6 +47,7 @@
 42. **052_pos_cart_audit.sql** – POS sepet satır iptali ve fiyat değişikliği audit kayıtları (`pos_cart_audit`).
 43. **053_rex_products_expiry_tracking.sql** – `rex_*_products`: `expiry_date`, `expiry_tracking`, `shelf_life_days` (SKT / raf ömrü).
 44. **056_rex_customers_call_plan.sql** – `rex_*_customers`: haftalık müşteri arama planı, çoklu gün seçimi (`call_plan_weekdays`).
+45. **057_rex_customers_call_plan_status.sql** – `rex_*_customers`: arama planı notu ve son durum (`call_plan_note`, `call_last_*`).
 
 **Mevcut veritabanı:** `config.db` (DeskApp ayarları) ile bekleyen migration’ları uygulamak için proje kökünde `npm run db:migrate` (ayrıntı: `.cursor/rules/database-migrate-config-db.mdc`).
 

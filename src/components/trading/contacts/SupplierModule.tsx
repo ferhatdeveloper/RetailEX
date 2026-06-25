@@ -123,6 +123,7 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: 'all
     payment_terms: 30, credit_limit: 0, tax_number: '', tax_office: '', notes: '',
     call_plan_enabled: false,
     call_plan_weekdays: [] as number[],
+    call_plan_note: '',
     cardType: 'supplier' as 'customer' | 'supplier',
   });
 
@@ -149,6 +150,7 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: 'all
         notes: '',
         call_plan_enabled: false,
         call_plan_weekdays: [],
+        call_plan_note: '',
         cardType: 'customer',
       });
       setEditingSupplier(null);
@@ -269,6 +271,7 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: 'all
       notes: '',
       call_plan_enabled: false,
       call_plan_weekdays: [],
+      call_plan_note: '',
       cardType,
     });
     setEditingSupplier(null);
@@ -288,6 +291,7 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: 'all
       notes: supplier.notes || '',
       call_plan_enabled: supplier.call_plan_enabled === true,
       call_plan_weekdays: normalizeCustomerCallWeekdays(supplier.call_plan_weekdays),
+      call_plan_note: supplier.call_plan_note || '',
       cardType: supplier.cardType || 'supplier',
     });
     setEditingSupplier(supplier);
@@ -306,6 +310,10 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: 'all
         formData.cardType === 'customer' && formData.call_plan_enabled
           ? normalizeCustomerCallWeekdays(formData.call_plan_weekdays)
           : [],
+      call_plan_note:
+        formData.cardType === 'customer' && formData.call_plan_enabled
+          ? formData.call_plan_note.trim() || null
+          : null,
     };
     try {
       if (editingSupplier) {
@@ -1018,6 +1026,16 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: 'all
                         Seçili günler: {customerCallWeekdaysLabel(formData.call_plan_weekdays)}
                       </p>
                     ) : null}
+                    <div className="mt-3">
+                      <label className="mb-1 block text-[11px] font-black uppercase tracking-wide text-amber-900">Plan notu</label>
+                      <textarea
+                        value={formData.call_plan_note}
+                        onChange={e => setFormData({ ...formData, call_plan_note: e.target.value })}
+                        rows={2}
+                        placeholder="Örn. Kampanya, rutin kontrol veya özel arama sebebi"
+                        className="w-full rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-amber-500"
+                      />
+                    </div>
                     <p className="mt-2 text-[11px] text-amber-700">Birden fazla gün seçebilirsiniz; seçili müşteriler Arama Listesi ekranında görünür.</p>
                   </div>
                 </div>

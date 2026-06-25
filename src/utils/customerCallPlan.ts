@@ -1,4 +1,5 @@
 export type CustomerCallPlanWeekday = 1 | 2 | 3 | 4 | 5 | 6 | 7;
+export type CustomerCallStatus = 'planned' | 'called' | 'no_answer' | 'callback' | 'not_interested' | 'done';
 
 export const CUSTOMER_CALL_WEEKDAYS: { value: CustomerCallPlanWeekday; tr: string; shortTr: string }[] = [
   { value: 1, tr: 'Pazartesi', shortTr: 'Pzt' },
@@ -46,4 +47,25 @@ export function customerCallWeekdaysLabel(value: unknown, short = false): string
     .map(day => customerCallWeekdayLabel(day, short))
     .filter(Boolean)
     .join(', ');
+}
+
+export const CUSTOMER_CALL_STATUSES: { value: CustomerCallStatus; label: string; tone: string }[] = [
+  { value: 'planned', label: 'Planlandı', tone: 'bg-slate-100 text-slate-700' },
+  { value: 'called', label: 'Arandı', tone: 'bg-blue-100 text-blue-700' },
+  { value: 'no_answer', label: 'Ulaşılamadı', tone: 'bg-red-100 text-red-700' },
+  { value: 'callback', label: 'Tekrar aranacak', tone: 'bg-amber-100 text-amber-800' },
+  { value: 'not_interested', label: 'İlgilenmiyor', tone: 'bg-gray-100 text-gray-700' },
+  { value: 'done', label: 'Tamamlandı', tone: 'bg-emerald-100 text-emerald-700' },
+];
+
+export function normalizeCustomerCallStatus(value: unknown): CustomerCallStatus {
+  const raw = String(value ?? '').trim();
+  return CUSTOMER_CALL_STATUSES.some(status => status.value === raw)
+    ? raw as CustomerCallStatus
+    : 'planned';
+}
+
+export function customerCallStatusMeta(value: unknown) {
+  const status = normalizeCustomerCallStatus(value);
+  return CUSTOMER_CALL_STATUSES.find(row => row.value === status) ?? CUSTOMER_CALL_STATUSES[0];
 }

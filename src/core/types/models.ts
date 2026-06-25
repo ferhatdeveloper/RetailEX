@@ -162,6 +162,10 @@ export interface Customer {
   notes?: string;
   call_plan_enabled?: boolean;
   call_plan_weekdays?: number[] | null;
+  call_plan_note?: string | null;
+  call_last_status?: string | null;
+  call_last_note?: string | null;
+  call_last_at?: string | null;
   is_active?: boolean;
   firma_id?: string;
   created_at?: string;
@@ -194,6 +198,10 @@ export interface Supplier {
   notes?: string;
   call_plan_enabled?: boolean;
   call_plan_weekdays?: number[] | null;
+  call_plan_note?: string | null;
+  call_last_status?: string | null;
+  call_last_note?: string | null;
+  call_last_at?: string | null;
   firma_id?: string;
   created_at?: string;
   updated_at?: string;

@@ -139,7 +139,8 @@ export const supplierAPI = {
         ${sqlSupplierAccountBalancesCte(suppTable)}
         SELECT 
           c.id, c.code, c.name, c.phone, c.email, c.address, c.city,
-          c.call_plan_enabled, c.call_plan_weekdays,
+          c.call_plan_enabled, c.call_plan_weekdays, c.call_plan_note,
+          c.call_last_status, c.call_last_note, c.call_last_at,
           ${sqlResolvedCustomerBalanceExpr('c')} as balance, 
           c.is_active, c.created_at, 'customer' as card_type 
         FROM ${custTable} c
@@ -150,7 +151,8 @@ export const supplierAPI = {
         
         SELECT 
           s.id, s.code, s.name, s.phone, s.email, s.address, s.city,
-          false AS call_plan_enabled, ARRAY[]::smallint[] AS call_plan_weekdays,
+          false AS call_plan_enabled, ARRAY[]::smallint[] AS call_plan_weekdays, NULL::text AS call_plan_note,
+          NULL::varchar AS call_last_status, NULL::text AS call_last_note, NULL::timestamptz AS call_last_at,
           ${sqlResolvedSupplierBalanceExpr('s')} as balance, 
           s.is_active, s.created_at, 'supplier' as card_type 
         FROM ${suppTable} s
@@ -282,10 +284,14 @@ export const supplierAPI = {
       columns.push('firm_nr');
       values.push(ERP_SETTINGS.firmNr);
       if (!isSupplier) {
-        columns.push('call_plan_enabled', 'call_plan_weekdays');
+        columns.push('call_plan_enabled', 'call_plan_weekdays', 'call_plan_note', 'call_last_status', 'call_last_note', 'call_last_at');
         values.push(
           account.call_plan_enabled === true,
           account.call_plan_enabled === true ? account.call_plan_weekdays ?? [] : [],
+          account.call_plan_note || null,
+          account.call_last_status || 'planned',
+          account.call_last_note || null,
+          account.call_last_at || null,
         );
       }
 
@@ -438,6 +444,10 @@ export const supplierAPI = {
       notes: account.notes ?? existing.notes,
       call_plan_enabled: account.call_plan_enabled ?? existing.call_plan_enabled,
       call_plan_weekdays: account.call_plan_weekdays ?? existing.call_plan_weekdays,
+      call_plan_note: account.call_plan_note ?? existing.call_plan_note,
+      call_last_status: account.call_last_status ?? existing.call_last_status,
+      call_last_note: account.call_last_note ?? existing.call_last_note,
+      call_last_at: account.call_last_at ?? existing.call_last_at,
       payment_terms: account.payment_terms ?? existing.payment_terms,
       credit_limit: account.credit_limit ?? existing.credit_limit,
       cardType: toType,
@@ -732,6 +742,10 @@ function mapDatabaseSupplierToSupplier(dbSupplier: any): Supplier {
     call_plan_weekdays: Array.isArray(dbSupplier.call_plan_weekdays)
       ? dbSupplier.call_plan_weekdays.map(Number).filter((n: number) => Number.isFinite(n))
       : [],
+    call_plan_note: dbSupplier.call_plan_note || undefined,
+    call_last_status: dbSupplier.call_last_status || undefined,
+    call_last_note: dbSupplier.call_last_note || undefined,
+    call_last_at: dbSupplier.call_last_at || undefined,
     firma_id: dbSupplier.firma_id,
     created_at: dbSupplier.created_at,
     updated_at: dbSupplier.updated_at,
