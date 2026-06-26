@@ -114,6 +114,11 @@ target/
 src-tauri/target/
 **/*.rs.bk
 
+# Yanlışlıkla commit edilen Windows mutlak yol dosyaları (CI checkout hatası)
+DeskApp/C:/
+**/migration_log.json
+**/schema_gaps.json
+
 # SumatraPDF portable (npm run sumatra:fetch — kurulum paketine dahil edilir)
 DeskApp/resources/sumatra/SumatraPDF.exe
 
