@@ -1,9 +1,10 @@
 ﻿import { useState } from 'react';
 import { 
-  X, Copy, Edit, Eye, FileText, Printer, Download, Share2, 
-  MessageSquare, Send, MoreVertical, Trash2, Archive, RefreshCw 
+  X, Copy, Edit, Eye, Printer, Download, 
+  MessageSquare, Send, Trash2
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { useLanguage } from '../../../contexts/LanguageContext';
 
 interface Invoice {
   id: string;
@@ -36,6 +37,7 @@ export function InvoiceActionsModal({
   onPrint,
   onView
 }: InvoiceActionsModalProps) {
+  const { tm } = useLanguage();
   const [loading, setLoading] = useState<string | null>(null);
 
   const formatMoney = (amount: number): string => {
@@ -57,8 +59,8 @@ export function InvoiceActionsModal({
         case 'copy':
           if (onCopy) {
             onCopy(invoice);
-            toast.success('✅ Fatura kopyalanıyor...', {
-              description: 'Yeni fatura oluşturuluyor',
+            toast.success(tm('invoiceCopying'), {
+              description: tm('newInvoiceCreating'),
               duration: 2000
             });
           }
@@ -81,20 +83,19 @@ export function InvoiceActionsModal({
           if (onPrint) {
             await onPrint(invoice);
           } else {
-            // Default print
             const printWindow = window.open('', '_blank');
             if (printWindow) {
               printWindow.document.write(`
                 <html>
-                  <head><title>Fatura ${invoice.invoice_no}</title></head>
+                  <head><title>${tm('invoiceNo')} ${invoice.invoice_no}</title></head>
                   <body style="font-family: Arial; padding: 20px;">
-                    <h2>Fatura Detayları</h2>
-                    <p><strong>Fatura No:</strong> ${invoice.invoice_no}</p>
-                    <p><strong>Tarih:</strong> ${formatDate(invoice.invoice_date)}</p>
-                    ${invoice.customer_name ? `<p><strong>Müşteri:</strong> ${invoice.customer_name}</p>` : ''}
-                    ${invoice.supplier_name ? `<p><strong>Tedarikçi:</strong> ${invoice.supplier_name}</p>` : ''}
-                    <p><strong>Tutar:</strong> ${formatMoney(invoice.total_amount)} IQD</p>
-                    <p><strong>Durum:</strong> ${invoice.status}</p>
+                    <h2>${tm('invoiceDetailsTitle')}</h2>
+                    <p><strong>${tm('invoiceNo')}:</strong> ${invoice.invoice_no}</p>
+                    <p><strong>${tm('date')}:</strong> ${formatDate(invoice.invoice_date)}</p>
+                    ${invoice.customer_name ? `<p><strong>${tm('customer')}:</strong> ${invoice.customer_name}</p>` : ''}
+                    ${invoice.supplier_name ? `<p><strong>${tm('supplier')}:</strong> ${invoice.supplier_name}</p>` : ''}
+                    <p><strong>${tm('amountLabel')}:</strong> ${formatMoney(invoice.total_amount)} IQD</p>
+                    <p><strong>${tm('status')}:</strong> ${invoice.status}</p>
                   </body>
                 </html>
               `);
@@ -102,35 +103,33 @@ export function InvoiceActionsModal({
               printWindow.print();
             }
           }
-          toast.success('🖨ï¸ Fatura yazdırılıyor...');
+          toast.success(tm('invoicePrinting'));
           break;
           
         case 'pdf':
-          // PDF oluşturma (ileride PDF.js veya jsPDF kullanılabilir)
-          toast.info('📄 PDF oluşturuluyor...', {
-            description: 'PDF indirme yakında eklenecek',
+          toast.info(tm('pdfCreating'), {
+            description: tm('pdfDownloadSoon'),
             duration: 3000
           });
           break;
           
-        case 'whatsapp':
-          // WhatsApp'tan gönder
-          const message = `Fatura No: ${invoice.invoice_no}\nTarih: ${formatDate(invoice.invoice_date)}\nTutar: ${formatMoney(invoice.total_amount)} IQD`;
+        case 'whatsapp': {
+          const message = `${tm('invoiceNo')}: ${invoice.invoice_no}\n${tm('date')}: ${formatDate(invoice.invoice_date)}\n${tm('amountLabel')}: ${formatMoney(invoice.total_amount)} IQD`;
           const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(message)}`;
           window.open(whatsappUrl, '_blank');
-          toast.success('💬 WhatsApp açılıyor...');
+          toast.success(tm('whatsappOpening'));
           break;
+        }
           
         case 'email':
-          // Email gönder (ileride)
-          toast.info('📧 Email gönderimi yakında eklenecek');
+          toast.info(tm('emailSendingSoon'));
           break;
           
         case 'delete':
-          if (confirm('Bu faturayı silmek istediğinizden emin misiniz?')) {
+          if (confirm(tm('confirmDeleteInvoiceShort'))) {
             if (onDelete) {
               onDelete(invoice);
-              toast.success('🗑ï¸ Fatura silindi');
+              toast.success(tm('invoiceDeletedShort'));
               onClose();
             }
           }
@@ -140,8 +139,8 @@ export function InvoiceActionsModal({
           break;
       }
     } catch (error: any) {
-      toast.error('❌ İşlem başarısız', {
-        description: error.message || 'Bir hata oluştu',
+      toast.error(tm('operationFailed'), {
+        description: error.message || tm('errorOccurred'),
         duration: 3000
       });
     } finally {
@@ -152,56 +151,56 @@ export function InvoiceActionsModal({
   const actionButtons = [
     {
       id: 'view',
-      label: 'İncele',
+      label: tm('review'),
       icon: Eye,
       color: 'text-blue-600 hover:bg-blue-50',
       onClick: () => handleAction('view')
     },
     {
       id: 'edit',
-      label: 'Düzenle',
+      label: tm('edit'),
       icon: Edit,
       color: 'text-green-600 hover:bg-green-50',
       onClick: () => handleAction('edit')
     },
     {
       id: 'copy',
-      label: 'Kopyala',
+      label: tm('copy'),
       icon: Copy,
       color: 'text-purple-600 hover:bg-purple-50',
       onClick: () => handleAction('copy')
     },
     {
       id: 'print',
-      label: 'Yazdır',
+      label: tm('print'),
       icon: Printer,
       color: 'text-gray-600 hover:bg-gray-50',
       onClick: () => handleAction('print')
     },
     {
       id: 'pdf',
-      label: 'PDF İndir',
+      label: tm('pdfDownload'),
       icon: Download,
       color: 'text-indigo-600 hover:bg-indigo-50',
       onClick: () => handleAction('pdf')
     },
     {
       id: 'whatsapp',
-      label: 'WhatsApp\'tan Gönder',
+      label: tm('sendViaWhatsapp'),
       icon: MessageSquare,
       color: 'text-green-600 hover:bg-green-50',
       onClick: () => handleAction('whatsapp')
     },
     {
       id: 'email',
-      label: 'E-posta Gönder',
+      label: tm('sendEmail'),
       icon: Send,
       color: 'text-blue-600 hover:bg-blue-50',
       onClick: () => handleAction('email')
     },
     {
       id: 'delete',
-      label: 'Sil',
+      label: tm('delete'),
       icon: Trash2,
       color: 'text-red-600 hover:bg-red-50',
       onClick: () => handleAction('delete'),
@@ -215,7 +214,7 @@ export function InvoiceActionsModal({
         {/* Header */}
         <div className="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-blue-600 to-blue-700 flex items-center justify-between">
           <div>
-            <h3 className="text-lg font-semibold text-white">Fatura İşlemleri</h3>
+            <h3 className="text-lg font-semibold text-white">{tm('invoiceActions')}</h3>
             <p className="text-sm text-blue-100 mt-1">
               {invoice.invoice_no} - {formatDate(invoice.invoice_date)}
             </p>
@@ -232,13 +231,13 @@ export function InvoiceActionsModal({
         <div className="px-6 py-4 bg-gray-50 border-b border-gray-200">
           <div className="grid grid-cols-2 gap-4 text-sm">
             <div>
-              <span className="text-gray-600">Tutar:</span>
+              <span className="text-gray-600">{tm('amountLabel')}:</span>
               <span className="ml-2 font-semibold text-gray-900">
                 {formatMoney(invoice.total_amount)} IQD
               </span>
             </div>
             <div>
-              <span className="text-gray-600">Durum:</span>
+              <span className="text-gray-600">{tm('status')}:</span>
               <span className={`ml-2 px-2 py-0.5 rounded text-xs ${
                 invoice.status === 'Onaylandı' ? 'bg-green-100 text-green-700' :
                 invoice.status === 'Beklemede' ? 'bg-yellow-100 text-yellow-700' :
@@ -249,13 +248,13 @@ export function InvoiceActionsModal({
             </div>
             {invoice.customer_name && (
               <div>
-                <span className="text-gray-600">Müşteri:</span>
+                <span className="text-gray-600">{tm('customer')}:</span>
                 <span className="ml-2 font-medium text-gray-900">{invoice.customer_name}</span>
               </div>
             )}
             {invoice.supplier_name && (
               <div>
-                <span className="text-gray-600">Tedarikçi:</span>
+                <span className="text-gray-600">{tm('supplier')}:</span>
                 <span className="ml-2 font-medium text-gray-900">{invoice.supplier_name}</span>
               </div>
             )}
@@ -296,14 +295,10 @@ export function InvoiceActionsModal({
             onClick={onClose}
             className="px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 transition-colors"
           >
-            Kapat
+            {tm('close')}
           </button>
         </div>
       </div>
     </div>
   );
 }
-
-
-
-
