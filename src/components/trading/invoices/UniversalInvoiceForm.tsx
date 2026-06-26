@@ -638,6 +638,8 @@ export function UniversalInvoiceForm({
           multiplier: item.multiplier || item.unit_multiplier || 1,
           baseQuantity: hydrated.baseQuantity,
           unitPriceFC: item.unitPriceFC ?? item.unit_price_fc,
+          expiryDate: item.expiryDate ?? (item.expiry_date ? String(item.expiry_date).slice(0, 10) : ''),
+          batchNo: item.batchNo ?? item.batch_no ?? '',
         };
       });
     }
@@ -2337,6 +2339,8 @@ export function UniversalInvoiceForm({
             multiplier: item.multiplier || item.unit_multiplier || 1,
             baseQuantity: item.baseQuantity || item.base_quantity || item.quantity,
             unitPriceFC: item.unitPriceFC ?? item.unit_price_fc,
+            expiryDate: item.expiryDate ?? (item.expiry_date ? String(item.expiry_date).slice(0, 10) : ''),
+            batchNo: item.batchNo ?? item.batch_no ?? '',
           };
         });
         console.log('[UniversalInvoiceForm] initializedItems:', initializedItems);
