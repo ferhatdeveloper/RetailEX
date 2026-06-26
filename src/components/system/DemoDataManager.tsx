@@ -82,8 +82,8 @@ export const DemoDataManager: React.FC = () => {
         try {
             // 1. Ensure firm tables exist
             setImportProgress(`Firma ${selectedFirm} tabloları kontrol ediliyor...`);
-            await postgres.query(`SELECT create_firm_tables($1)`, [selectedFirm]);
-            await postgres.query(`SELECT create_period_tables($1, $2)`, [selectedFirm, selectedPeriod]);
+            await postgres.query(`SELECT create_firm_tables($1::varchar)`, [selectedFirm]);
+            await postgres.query(`SELECT create_period_tables($1::varchar, $2::varchar)`, [selectedFirm, selectedPeriod]);
 
             const firmSuffix = `_${selectedFirm}`;
             const periodSuffix = `_${selectedFirm}_${selectedPeriod}`;

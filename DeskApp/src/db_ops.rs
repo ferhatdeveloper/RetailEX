@@ -569,7 +569,7 @@ pub async fn init_firm_schema(config: AppConfig, firm_nr: String, target: Option
         }
     });
 
-    client.execute("SELECT CREATE_FIRM_TABLES($1)", &[&firm_nr])
+    client.execute("SELECT CREATE_FIRM_TABLES($1::varchar)", &[&firm_nr])
         .await
         .map_err(|e| format!("Firma tabloları oluşturulamadı: {}", format_pg_error(e)))?;
 
@@ -609,7 +609,7 @@ pub async fn init_period_schema(config: AppConfig, firm_nr: String, period_nr: S
         }
     });
 
-    client.execute("SELECT CREATE_PERIOD_TABLES($1, $2)", &[&firm_nr, &period_nr])
+    client.execute("SELECT CREATE_PERIOD_TABLES($1::varchar, $2::varchar)", &[&firm_nr, &period_nr])
         .await
         .map_err(|e| format!("Dönem tabloları oluşturulamadı: {}", format_pg_error(e)))?;
 

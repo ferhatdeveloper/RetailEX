@@ -146,7 +146,7 @@ async function ensureFirmTables(firmNr: string): Promise<void> {
   if (DB_SETTINGS.connectionProvider === 'rest_api') {
     return;
   }
-  await postgres.query('SELECT public.CREATE_FIRM_TABLES($1)', [firmNr]);
+  await postgres.query('SELECT public.CREATE_FIRM_TABLES($1::varchar)', [firmNr]);
 }
 
 async function findCustomerByCode(code: string): Promise<{ id: string } | null> {
