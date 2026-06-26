@@ -1533,6 +1533,10 @@ BEGIN
 
   -- Varsayılan Kasa
   EXECUTE format('INSERT INTO %I (id, firm_nr, code, name, is_active) VALUES (''00000000-0000-0000-0000-000000000001'', %L, ''KASA.001'', ''MERKEZ KASA'', true) ON CONFLICT DO NOTHING;', v_prefix || '_cash_registers', p_firm_nr);
+
+  -- Varsayılan cari kartları (POS / fatura — yerel kurulumda boş liste olmasın)
+  EXECUTE format('INSERT INTO %I (firm_nr, code, name, is_active) VALUES (%L, ''PESIN'', ''Peşin Müşteri'', true) ON CONFLICT (code) DO NOTHING;', v_prefix || '_customers', p_firm_nr);
+  EXECUTE format('INSERT INTO %I (firm_nr, code, name, is_active) VALUES (%L, ''GENEL'', ''Genel Tedarikçi'', true) ON CONFLICT (code) DO NOTHING;', v_prefix || '_suppliers', p_firm_nr);
 END;
 $$ LANGUAGE plpgsql;
 

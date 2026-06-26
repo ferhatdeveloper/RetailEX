@@ -305,6 +305,204 @@ pub async fn get_logo_data_preview(
     })
 }
 
+struct LogoPgTarget {
+    db_path: String,
+    user: String,
+    pass: String,
+    label: String,
+}
+
+struct ClCardRow {
+    logicalref: i32,
+    code: String,
+    name: String,
+    tax_nr: String,
+    tax_office: String,
+    city: String,
+    cardtype: i32,
+    phone: String,
+    email: String,
+    address: String,
+}
+
+fn resolve_clcard_roles(cardtype: i32) -> (bool, bool) {
+    match cardtype {
+        1 => (true, false),
+        2 => (false, true),
+        3 => (true, true),
+        _ => (true, false),
+    }
+}
+
+fn local_mirror_pg_target(config: &AppConfig, primary_is_remote: bool) -> Option<LogoPgTarget> {
+    if !primary_is_remote {
+        return None;
+    }
+    let ldb = config.local_db.trim();
+    if ldb.is_empty() {
+        return None;
+    }
+    Some(LogoPgTarget {
+        db_path: ldb.to_string(),
+        user: config.pg_local_user.clone(),
+        pass: config.pg_local_pass.clone(),
+        label: "yerel".to_string(),
+    })
+}
+
+async fn connect_logo_pg(
+    target: &LogoPgTarget,
+) -> Result<
+    (
+        tokio_postgres::Client,
+        tokio_postgres::Connection<tokio_postgres::Socket, tokio_postgres::NoTls>,
+    ),
+    String,
+> {
+    let host_part = target.db_path.split(':').next().unwrap_or("localhost");
+    let host_port_str = target
+        .db_path
+        .split('/')
+        .next()
+        .unwrap_or("localhost:5432");
+    let port = if let Some(p) = host_port_str.split(':').nth(1) {
+        p.parse::<u16>().unwrap_or(5432)
+    } else {
+        5432
+    };
+    let db_name = target
+        .db_path
+        .split('/')
+        .last()
+        .unwrap_or("retailex_local");
+
+    let mut pg_config = tokio_postgres::Config::new();
+    pg_config
+        .host(host_part)
+        .port(port)
+        .user(target.user.as_str())
+        .password(target.pass.as_str())
+        .dbname(db_name)
+        .connect_timeout(std::time::Duration::from_secs(5));
+
+    pg_config
+        .connect(tokio_postgres::NoTls)
+        .await
+        .map_err(|e| {
+            format!(
+                "Postgres Connection Error [{} / {}]: {}",
+                target.label,
+                db_name,
+                crate::db_utils::format_pg_error(e)
+            )
+        })
+}
+
+async fn ensure_firm_pg_tables(
+    client: &tokio_postgres::Client,
+    firm_nr: &str,
+) -> Result<(), String> {
+    client
+        .execute("SELECT CREATE_FIRM_TABLES($1::varchar)", &[&firm_nr])
+        .await
+        .map_err(|e| format!("Tablo oluşturma hatası: {}", crate::db_utils::format_pg_error(e)))?;
+    Ok(())
+}
+
+async fn sync_clcard_batch_to_pg(
+    client: &tokio_postgres::Client,
+    firm_nr: &str,
+    rows: &[ClCardRow],
+    window: &tauri::Window,
+    target_label: &str,
+) -> (usize, usize) {
+    let firm_key = firm_nr.to_lowercase();
+    let customers_table = format!("rex_{}_customers", firm_key);
+    let suppliers_table = format!("rex_{}_suppliers", firm_key);
+    let mut processed = 0usize;
+    let mut errors = 0usize;
+
+    for row in rows {
+        let (is_customer, is_supplier) = resolve_clcard_roles(row.cardtype);
+
+        if is_customer {
+            let sql = format!(
+                "INSERT INTO {} (firm_nr, ref_id, code, name, tax_nr, tax_office, city, phone, email, address)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+                 ON CONFLICT (code) DO UPDATE SET ref_id=$2, name=$4, tax_nr=$5, tax_office=$6, city=$7, phone=COALESCE(EXCLUDED.phone, {}.phone), email=COALESCE(EXCLUDED.email, {}.email), address=COALESCE(EXCLUDED.address, {}.address)",
+                customers_table, customers_table, customers_table, customers_table
+            );
+            if client
+                .execute(
+                    &sql,
+                    &[
+                        &firm_nr,
+                        &row.logicalref,
+                        &row.code,
+                        &row.name,
+                        &row.tax_nr,
+                        &row.tax_office,
+                        &row.city,
+                        &row.phone,
+                        &row.email,
+                        &row.address,
+                    ],
+                )
+                .await
+                .is_err()
+            {
+                errors += 1;
+            }
+        }
+
+        if is_supplier {
+            let sql = format!(
+                "INSERT INTO {} (firm_nr, ref_id, code, name, tax_nr, tax_office, city, phone, email, address)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+                 ON CONFLICT (code) DO UPDATE SET ref_id=$2, name=$4, tax_nr=$5, tax_office=$6, city=$7, phone=COALESCE(EXCLUDED.phone, {}.phone), email=COALESCE(EXCLUDED.email, {}.email), address=COALESCE(EXCLUDED.address, {}.address)",
+                suppliers_table, suppliers_table, suppliers_table, suppliers_table
+            );
+            if client
+                .execute(
+                    &sql,
+                    &[
+                        &firm_nr,
+                        &row.logicalref,
+                        &row.code,
+                        &row.name,
+                        &row.tax_nr,
+                        &row.tax_office,
+                        &row.city,
+                        &row.phone,
+                        &row.email,
+                        &row.address,
+                    ],
+                )
+                .await
+                .is_err()
+            {
+                errors += 1;
+            }
+        }
+
+        processed += 1;
+        if processed % 50 == 0 {
+            let _ = window.emit(
+                "sync-event",
+                format!(
+                    "Cari Hesaplar ({}): {}/{} (Hata: {})",
+                    target_label,
+                    processed,
+                    rows.len(),
+                    errors
+                ),
+            );
+        }
+    }
+
+    (processed, errors)
+}
+
 #[tauri::command]
 pub async fn sync_logo_data(window: tauri::Window, config: AppConfig) -> Result<String, String> {
     log_to_file("sync_logo_data called");
@@ -405,10 +603,7 @@ pub async fn sync_logo_data(window: tauri::Window, config: AppConfig) -> Result<
     
     // Ensure Dynamic Tables Exist
     let _ = window.emit("sync-event", "Veritabanı tabloları hazırlanıyor...");
-    pg_client.execute(
-        "SELECT CREATE_FIRM_TABLES($1)", 
-        &[&current_firm_nr]
-    ).await.map_err(|e| format!("Tablo oluşturma hatası: {}", e))?;
+    ensure_firm_pg_tables(&pg_client, &current_firm_nr).await?;
 
     // 3. Sync Periods
     let _ = window.emit("sync-event", "Dönemler senkronize ediliyor...");
@@ -544,37 +739,87 @@ pub async fn sync_logo_data(window: tauri::Window, config: AppConfig) -> Result<
     
     let _ = window.emit("sync-event", format!("{} adet cari hesap bulundu. Aktarılıyor...", total_cl));
     
-    let cl_query = format!("SELECT LOGICALREF, CODE, DEFINITION_, TAXNR, TAXOFFICE, CITY FROM {} ORDER BY LOGICALREF", clcard_table);
+    let cl_query = format!(
+        "SELECT LOGICALREF, CODE, DEFINITION_, TAXNR, TAXOFFICE, CITY, CARDTYPE FROM {} ORDER BY LOGICALREF",
+        clcard_table
+    );
     let cl_rows = mssql_client.simple_query(cl_query).await.map_err(|e| e.to_string())?.into_first_result().await.map_err(|e| e.to_string())?;
-    
-    let target_customers_table = format!("rex_{}_customers", current_firm_nr);
-    
-    processed = 0;
-    let mut cl_errors = 0;
-    for row in cl_rows {
-        let logicalref = row.get::<i32, usize>(0).unwrap_or(0);
-        let code = row.get::<&str, usize>(1).unwrap_or("");
-        let name = row.get::<&str, usize>(2).unwrap_or("İsimsiz");
-        let tax_nr = row.get::<&str, usize>(3).unwrap_or("");
-        let tax_office = row.get::<&str, usize>(4).unwrap_or("");
-        let city = row.get::<&str, usize>(5).unwrap_or("");
-        
-        let insert_sql = format!(
-            "INSERT INTO {} (firm_nr, ref_id, code, name, tax_nr, tax_office, city) VALUES ($1, $2, $3, $4, $5, $6, $7)
-             ON CONFLICT (code) DO UPDATE SET ref_id=$2, name=$4, tax_nr=$5, city=$7", target_customers_table
+
+    let clcard_batch: Vec<ClCardRow> = cl_rows
+        .iter()
+        .map(|row| {
+            let cardtype = row
+                .get::<i16, usize>(6)
+                .map(|v| v as i32)
+                .or_else(|| row.get::<i32, usize>(6))
+                .unwrap_or(0);
+            ClCardRow {
+                logicalref: row.get::<i32, usize>(0).unwrap_or(0),
+                code: row.get::<&str, usize>(1).unwrap_or("").to_string(),
+                name: row
+                    .get::<&str, usize>(2)
+                    .unwrap_or("İsimsiz")
+                    .to_string(),
+                tax_nr: row.get::<&str, usize>(3).unwrap_or("").to_string(),
+                tax_office: row.get::<&str, usize>(4).unwrap_or("").to_string(),
+                city: row.get::<&str, usize>(5).unwrap_or("").to_string(),
+                cardtype,
+                phone: String::new(),
+                email: String::new(),
+                address: String::new(),
+            }
+        })
+        .collect();
+
+    let (cl_processed, cl_errors) =
+        sync_clcard_batch_to_pg(&pg_client, &current_firm_nr, &clcard_batch, &window, "birincil").await;
+    let _ = window.emit(
+        "sync-event",
+        format!(
+            "Cari hesaplar birincil hedefe aktarıldı: {}/{} (Hata: {})",
+            cl_processed, total_cl, cl_errors
+        ),
+    );
+
+    // Online mod: birincil hedef uzak PG iken cari kartları yerel PG'ye de yaz (hibrit şube / offline POS)
+    if let Some(local_target) = local_mirror_pg_target(&config, is_remote_pg) {
+        let _ = window.emit(
+            "sync-event",
+            "Cari hesaplar yerel PostgreSQL'e aktarılıyor...",
         );
-        
-        if let Err(e) = pg_client.execute(
-            &insert_sql,
-            &[&current_firm_nr, &logicalref, &code, &name, &tax_nr, &tax_office, &city]
-        ).await {
-            cl_errors += 1;
-            let _ = window.emit("sync-error", format!("Cari kayıt hatası ({}): {}", code, e));
-        }
-        
-        processed += 1;
-        if processed % 50 == 0 {
-             let _ = window.emit("sync-event", format!("Cari Hesaplar: {}/{} (Hata: {})", processed, total_cl, cl_errors));
+        match connect_logo_pg(&local_target).await {
+            Ok((local_client, local_conn)) => {
+                tokio::spawn(async move {
+                    if let Err(e) = local_conn.await {
+                        eprintln!("Postgres local mirror connection error: {}", e);
+                    }
+                });
+                if let Err(e) = ensure_firm_pg_tables(&local_client, &current_firm_nr).await {
+                    let _ = window.emit("sync-error", format!("Yerel tablo hazırlığı: {}", e));
+                } else {
+                    let (local_ok, local_err) = sync_clcard_batch_to_pg(
+                        &local_client,
+                        &current_firm_nr,
+                        &clcard_batch,
+                        &window,
+                        "yerel",
+                    )
+                    .await;
+                    let _ = window.emit(
+                        "sync-event",
+                        format!(
+                            "✅ Yerel PG cari: {} kayıt ({} hata)",
+                            local_ok, local_err
+                        ),
+                    );
+                }
+            }
+            Err(e) => {
+                let _ = window.emit(
+                    "sync-error",
+                    format!("Yerel PostgreSQL bağlantısı kurulamadı (cari atlandı): {}", e),
+                );
+            }
         }
     }
     

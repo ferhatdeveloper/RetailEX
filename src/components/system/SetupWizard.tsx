@@ -929,12 +929,19 @@ const SetupWizard: React.FC = () => {
                 // Logo/ERP Integration: Automatically initialize firm and period schemas
                 if (!config.skip_integration && config.erp_firm_nr && config.erp_period_nr) {
                     toast.info('ERP Entegrasyon tabloları hazırlanıyor...');
-                    // 1. Init Firm Schema (Cards)
-                    await safeInvoke('init_firm_schema', {
-                        config,
-                        firmNr: config.erp_firm_nr,
-                        target: target === 'remote' ? 'remote' : 'local'
-                    });
+                    const erpSchemaTargets: Array<'local' | 'remote'> = [
+                        target === 'remote' ? 'remote' : 'local',
+                    ];
+                    if (target === 'remote' && config.local_db?.trim()) {
+                        erpSchemaTargets.push('local');
+                    }
+                    for (const schemaTarget of [...new Set(erpSchemaTargets)]) {
+                        await safeInvoke('init_firm_schema', {
+                            config,
+                            firmNr: config.erp_firm_nr,
+                            target: schemaTarget,
+                        });
+                    }
 
                     // 2. Init Period Schema (Transactions)
                     await safeInvoke('init_period_schema', {
@@ -1259,8 +1266,22 @@ const SetupWizard: React.FC = () => {
                     const { emit } = await import('@tauri-apps/api/event');
                     await emit('sync-event', `🏢 Organizasyon yapıları hazırlanıyor...`);
                     await emit('sync-event', `📦 Firma ${currentFirmId}: Ana kart tabloları (Stok, Cari, Kasa) oluşturuluyor...`);
-                    await safeInvoke('init_firm_schema', { config: finalDbConfig, firmNr: currentFirmId, target });
-                    await emit('sync-event', `✅ Firma ${currentFirmId} kart tabloları hazır.`);
+                    const firmSchemaTargets: Array<'local' | 'remote'> = [target as 'local' | 'remote'];
+                    if (target === 'remote' && finalDbConfig.local_db?.trim()) {
+                        firmSchemaTargets.push('local');
+                    }
+                    for (const schemaTarget of [...new Set(firmSchemaTargets)]) {
+                        await emit(
+                            'sync-event',
+                            `📇 Cari/stok tabloları — ${schemaTarget === 'local' ? 'yerel' : 'uzak'} PostgreSQL...`
+                        );
+                        await safeInvoke('init_firm_schema', {
+                            config: finalDbConfig,
+                            firmNr: currentFirmId,
+                            target: schemaTarget,
+                        });
+                    }
+                    await emit('sync-event', `✅ Firma ${currentFirmId} kart tabloları hazır (cari hesaplar dahil).`);
 
                     // Restaurant firm tables (masa, reçete)
                     if (config.system_type === 'restaurant') {
