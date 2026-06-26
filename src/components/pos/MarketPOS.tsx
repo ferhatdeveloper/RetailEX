@@ -100,6 +100,7 @@ import { POSProductQuantityModal } from './POSProductQuantityModal';
 import { QuickProductSlotButton } from './QuickProductSlotButton';
 // import type { LayoutOrder } from './ScreenSettingsModal';
 export type LayoutOrder = 'cart-numpad-quick' | 'cart-fullscreen' | 'cart-wide-quick' | 'quick-dominant' | 'numpad-dominant' | 'cart-top-actions-bottom' | 'quick-top-cart-bottom' | 'quick-with-detail-sidebar' | 'quick-sidebar-numpad' | 'cart-quick-numpad-float' | string;
+const POS_MISSING_BARCODES_KEY = 'retailex_pos_missing_barcodes_v1';
 
 interface MarketPOSProps {
   products: Product[];
@@ -383,8 +384,24 @@ export default function MarketPOS({
   const [variantSelectionCartIndex, setVariantSelectionCartIndex] = useState<number | null>(null); // Sepet içi varyant değiştirme için
   const [productSearchQuery, setProductSearchQuery] = useState<string>(''); // Ürün kataloğu arama sorgusu
   const [showBalanceLoadModal, setShowBalanceLoadModal] = useState(false);
-  const [missingBarcodes, setMissingBarcodes] = useState<string[]>([]);
+  const [missingBarcodes, setMissingBarcodes] = useState<string[]>(() => {
+    try {
+      const raw = localStorage.getItem(POS_MISSING_BARCODES_KEY);
+      const parsed = raw ? JSON.parse(raw) : [];
+      return Array.isArray(parsed) ? parsed.map(String).filter(Boolean) : [];
+    } catch {
+      return [];
+    }
+  });
   const [showMissingBarcodesModal, setShowMissingBarcodesModal] = useState(false);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(POS_MISSING_BARCODES_KEY, JSON.stringify(missingBarcodes));
+    } catch {
+      /* localStorage dolu/kapalı olabilir */
+    }
+  }, [missingBarcodes]);
 
   // Pending action state for manager override
   type PendingAction =
@@ -769,10 +786,6 @@ export default function MarketPOS({
     // Direkt bu barkod ile arama yap
     const found = await searchByBarcode(barcodeToSearch);
 
-    if (!found) {
-      notifyScaleBarcodeFailure(normalizeScannedBarcode(barcodeToSearch));
-    }
-
     // Input'ları temizle
     setInputValue('');
     setBarcodeInput('');
@@ -791,6 +804,15 @@ export default function MarketPOS({
       return;
     }
     showNotif(t.barcodeNotFoundWarning.replace('{barcode}', trimmedBarcode), 'error');
+  };
+
+  const recordMissingBarcode = (barcode: string) => {
+    const normalized = normalizeScannedBarcode(barcode);
+    if (!normalized) return;
+    setMissingBarcodes(prev => {
+      const without = prev.filter(b => b !== normalized);
+      return [normalized, ...without].slice(0, 200);
+    });
   };
 
   const searchByBarcode = async (barcode: string, quantity: number = 1): Promise<boolean> => {
@@ -892,9 +914,7 @@ export default function MarketPOS({
 
       logger.log('❌ Barkod bulunamadı');
       notifyScaleBarcodeFailure(trimmedBarcode);
-      if (!missingBarcodes.includes(trimmedBarcode)) {
-        setMissingBarcodes(prev => [trimmedBarcode, ...prev]);
-      }
+      recordMissingBarcode(trimmedBarcode);
       return false;
     } catch (error) {
       console.error('[MarketPOS] Barcode lookup error:', error);
@@ -1060,7 +1080,6 @@ export default function MarketPOS({
       const found = await searchByBarcode(searchText, quantity);
 
       if (!found) {
-        notifyScaleBarcodeFailure(normalizeScannedBarcode(searchText));
         setBarcodeInput('');
         barcodeInputLatestRef.current = '';
         setSavedQuantity(null);
@@ -1080,6 +1099,42 @@ export default function MarketPOS({
 
   const handleBarcodeSearch = () => {
     void submitBarcodeSearch();
+  };
+
+  const handleCreateProductFromMissingBarcode = async (data: {
+    barcode: string;
+    name: string;
+    unit: string;
+    price: number;
+  }) => {
+    try {
+      const barcode = normalizeScannedBarcode(data.barcode);
+      if (!barcode || !data.name.trim()) {
+        showNotif('Ürün adı ve barkod zorunlu.', 'error');
+        return;
+      }
+      const created = await productAPI.create({
+        code: barcode,
+        barcode,
+        name: data.name.trim(),
+        price: Number(data.price) || 0,
+        cost: 0,
+        stock: 0,
+        unit: data.unit.trim() || 'Adet',
+        category: '',
+        taxRate: 0,
+        currency: posBaseCurrency,
+      } as any);
+      if (!created) {
+        showNotif('Ürün oluşturulamadı.', 'error');
+        return;
+      }
+      setMissingBarcodes(prev => prev.filter(b => b !== barcode));
+      await refreshProducts();
+      showNotif(`Ürün oluşturuldu: ${created.name}`, 'success');
+    } catch (error: any) {
+      showNotif(error?.message || 'Ürün oluşturulamadı.', 'error');
+    }
   };
 
   const scheduleBarcodeAutoSubmit = (value: string) => {
@@ -1794,6 +1849,7 @@ export default function MarketPOS({
           barcodes={missingBarcodes}
           onClose={() => setShowMissingBarcodesModal(false)}
           onClear={() => setMissingBarcodes([])}
+          onCreateProduct={handleCreateProductFromMissingBarcode}
         />
       )}
 
@@ -2257,6 +2313,14 @@ export default function MarketPOS({
                 <Package className="w-5 h-5" />
                 <span>{t.parkedReceiptsButton}</span>
                 {parkedReceipts.length > 0 && <span className={`text-[10px] px-1.5 py-0.5 -mt-0.5 ${buttonColorStyle === 'outline' ? 'bg-blue-100 text-blue-600' : 'bg-blue-500 text-white'}`}>{parkedReceipts.length}</span>}
+              </button>
+              <button
+                onClick={() => setShowMissingBarcodesModal(true)}
+                className={`${getButtonClass('red')} py-4 text-xs leading-tight flex flex-col items-center justify-center gap-1 transition-all relative`}
+              >
+                <Barcode className="w-5 h-5" />
+                <span>{t.missingBarcodes}</span>
+                {missingBarcodes.length > 0 && <span className="absolute top-1 right-1 w-5 h-5 bg-red-600 text-white text-[10px] rounded-full flex items-center justify-center font-bold">{missingBarcodes.length}</span>}
               </button>
 
               {/* Third Row - Cart & Customer */}

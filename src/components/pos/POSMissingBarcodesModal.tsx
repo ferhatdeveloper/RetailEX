@@ -1,5 +1,5 @@
-import React from 'react';
-import { X, Trash2, Copy, Barcode } from 'lucide-react';
+import React, { useMemo, useState } from 'react';
+import { X, Trash2, Copy, Barcode, Plus, Save } from 'lucide-react';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useTheme } from '../../contexts/ThemeContext';
 
@@ -7,20 +7,61 @@ interface POSMissingBarcodesModalProps {
     onClose: () => void;
     barcodes: string[];
     onClear: () => void;
+    onCreateProduct: (data: {
+        barcode: string;
+        name: string;
+        unit: string;
+        price: number;
+    }) => Promise<void>;
 }
 
-export function POSMissingBarcodesModal({ onClose, barcodes, onClear }: POSMissingBarcodesModalProps) {
+export function POSMissingBarcodesModal({ onClose, barcodes, onClear, onCreateProduct }: POSMissingBarcodesModalProps) {
     const { t } = useLanguage();
     const { darkMode } = useTheme();
+    const [selectedBarcode, setSelectedBarcode] = useState('');
+    const [productName, setProductName] = useState('');
+    const [unit, setUnit] = useState('Adet');
+    const [price, setPrice] = useState('');
+    const [saving, setSaving] = useState(false);
+
+    const activeBarcode = selectedBarcode || barcodes[0] || '';
+    const canSave = activeBarcode.trim() && productName.trim() && Number(price) >= 0;
+    const uniqueBarcodes = useMemo(() => Array.from(new Set(barcodes.map(b => String(b).trim()).filter(Boolean))), [barcodes]);
 
     const handleCopy = (barcode: string) => {
         navigator.clipboard.writeText(barcode);
         // You could add a small toast here if available
     };
 
+    const startCreate = (barcode: string) => {
+        setSelectedBarcode(barcode);
+        setProductName(prev => prev || '');
+        setUnit(prev => prev || 'Adet');
+        setPrice(prev => prev || '');
+    };
+
+    const handleSave = async () => {
+        if (!canSave || saving) return;
+        setSaving(true);
+        try {
+            await onCreateProduct({
+                barcode: activeBarcode.trim(),
+                name: productName.trim(),
+                unit: unit.trim() || 'Adet',
+                price: Number(price) || 0,
+            });
+            setSelectedBarcode('');
+            setProductName('');
+            setUnit('Adet');
+            setPrice('');
+        } finally {
+            setSaving(false);
+        }
+    };
+
     return (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-            <div className={`w-full max-w-lg rounded-xl shadow-2xl overflow-hidden flex flex-col ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
+        <div className="fixed inset-0 z-[2147483647] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+            <div className={`w-full max-w-4xl max-h-[92vh] rounded-xl shadow-2xl overflow-hidden flex flex-col ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
                 {/* Header */}
                 <div className={`p-4 border-b flex items-center justify-between ${darkMode ? 'border-gray-700 bg-gray-900/50' : 'border-gray-200 bg-gray-50'}`}>
                     <div className="flex items-center gap-3">
@@ -52,7 +93,7 @@ export function POSMissingBarcodesModal({ onClose, barcodes, onClear }: POSMissi
                         </div>
                     ) : (
                         <div className="space-y-2">
-                            {barcodes.map((barcode, index) => (
+                            {uniqueBarcodes.map((barcode, index) => (
                                 <div
                                     key={index}
                                     className={`flex items-center justify-between p-3 rounded-lg border transition-all hover:shadow-md ${darkMode
@@ -60,23 +101,90 @@ export function POSMissingBarcodesModal({ onClose, barcodes, onClear }: POSMissi
                                             : 'bg-white border-gray-200 hover:border-blue-300'
                                         }`}
                                 >
-                                    <span className={`font-mono text-lg ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>
-                                        {barcode}
-                                    </span>
                                     <button
-                                        onClick={() => handleCopy(barcode)}
-                                        className={`p-2 rounded-md transition-all flex items-center gap-2 ${darkMode ? 'hover:bg-gray-600 text-blue-400' : 'hover:bg-blue-50 text-blue-600'
-                                            }`}
-                                        title={t.copy || 'Copy'}
+                                        type="button"
+                                        onClick={() => startCreate(barcode)}
+                                        className={`font-mono text-lg text-left ${selectedBarcode === barcode ? 'text-blue-600 font-black' : darkMode ? 'text-gray-200' : 'text-gray-700'}`}
                                     >
-                                        <Copy className="w-4 h-4" />
-                                        <span className="text-sm font-medium">{t.copy || 'Kopyala'}</span>
+                                        {barcode}
                                     </button>
+                                    <div className="flex items-center gap-2">
+                                        <button
+                                            onClick={() => handleCopy(barcode)}
+                                            className={`p-2 rounded-md transition-all flex items-center gap-2 ${darkMode ? 'hover:bg-gray-600 text-blue-400' : 'hover:bg-blue-50 text-blue-600'
+                                                }`}
+                                            title={t.copy || 'Copy'}
+                                        >
+                                            <Copy className="w-4 h-4" />
+                                            <span className="text-sm font-medium">{t.copy || 'Kopyala'}</span>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => startCreate(barcode)}
+                                            className="flex items-center gap-2 rounded-lg bg-green-600 px-3 py-2 text-sm font-bold text-white hover:bg-green-700"
+                                        >
+                                            <Plus className="w-4 h-4" />
+                                            Ürün olarak ekle
+                                        </button>
+                                    </div>
                                 </div>
                             ))}
                         </div>
                     )}
                 </div>
+
+                {activeBarcode ? (
+                    <div className={`border-t p-4 ${darkMode ? 'border-gray-700 bg-gray-900/40' : 'border-gray-200 bg-green-50/60'}`}>
+                        <div className="mb-3 flex items-center justify-between gap-3">
+                            <div>
+                                <p className={`text-xs font-black uppercase tracking-wide ${darkMode ? 'text-green-300' : 'text-green-700'}`}>Ürün kartı oluştur</p>
+                                <p className={`font-mono text-sm ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>{activeBarcode}</p>
+                            </div>
+                        </div>
+                        <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
+                            <label className="md:col-span-2">
+                                <span className={`mb-1 block text-xs font-bold ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Ürün adı *</span>
+                                <input
+                                    value={productName}
+                                    onChange={e => setProductName(e.target.value)}
+                                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-green-500"
+                                    placeholder="Ürün adı"
+                                />
+                            </label>
+                            <label>
+                                <span className={`mb-1 block text-xs font-bold ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Birim</span>
+                                <input
+                                    value={unit}
+                                    onChange={e => setUnit(e.target.value)}
+                                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-green-500"
+                                    placeholder="Adet"
+                                />
+                            </label>
+                            <label>
+                                <span className={`mb-1 block text-xs font-bold ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Satış fiyatı</span>
+                                <input
+                                    type="number"
+                                    min={0}
+                                    value={price}
+                                    onChange={e => setPrice(e.target.value)}
+                                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-green-500"
+                                    placeholder="0"
+                                />
+                            </label>
+                        </div>
+                        <div className="mt-3 flex justify-end">
+                            <button
+                                type="button"
+                                onClick={() => void handleSave()}
+                                disabled={!canSave || saving}
+                                className="flex items-center gap-2 rounded-lg bg-green-600 px-4 py-2 text-sm font-bold text-white hover:bg-green-700 disabled:opacity-50"
+                            >
+                                <Save className="w-4 h-4" />
+                                {saving ? 'Kaydediliyor...' : 'Ürün oluştur'}
+                            </button>
+                        </div>
+                    </div>
+                ) : null}
 
                 {/* Footer */}
                 <div className={`p-4 border-t flex items-center justify-between ${darkMode ? 'border-gray-700 bg-gray-900/50' : 'border-gray-200 bg-gray-50'}`}>
