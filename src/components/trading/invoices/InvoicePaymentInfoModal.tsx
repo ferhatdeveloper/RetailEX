@@ -1,19 +1,12 @@
 ﻿import { X, CreditCard, Wallet, Banknote, Building2 } from 'lucide-react';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
+import { useLanguage } from '../../../contexts/LanguageContext';
 
 interface PaymentMethod {
   code: string;
-  name: string;
+  nameKey: string;
   icon: typeof CreditCard;
 }
-
-const paymentMethods: PaymentMethod[] = [
-  { code: 'NAKIT', name: 'Nakit', icon: Banknote },
-  { code: 'KREDIKARTI', name: 'Kredi Kartı', icon: CreditCard },
-  { code: 'HAVAL', name: 'Havale/EFT', icon: Building2 },
-  { code: 'CEK', name: 'Çek', icon: Wallet },
-  { code: 'SENET', name: 'Senet', icon: CreditCard },
-];
 
 interface InvoicePaymentInfoModalProps {
   currentPaymentMethod: string;
@@ -22,11 +15,22 @@ interface InvoicePaymentInfoModalProps {
 }
 
 export function InvoicePaymentInfoModal({ currentPaymentMethod, onSelect, onClose }: InvoicePaymentInfoModalProps) {
+  const { tm } = useLanguage();
   const [selectedMethod, setSelectedMethod] = useState(currentPaymentMethod || '');
   const [notes, setNotes] = useState('');
 
+  const paymentMethods: PaymentMethod[] = useMemo(
+    () => [
+      { code: 'NAKIT', nameKey: 'paymentCash', icon: Banknote },
+      { code: 'KREDIKARTI', nameKey: 'paymentCreditCard', icon: CreditCard },
+      { code: 'HAVAL', nameKey: 'paymentTransfer', icon: Building2 },
+      { code: 'CEK', nameKey: 'paymentCheck', icon: Wallet },
+      { code: 'SENET', nameKey: 'paymentPromissory', icon: CreditCard },
+    ],
+    [],
+  );
+
   const handleSave = () => {
-    // Eğer hiçbir şey seçili değilse, boş string gönder (açık hesap/cari olarak işlem görecek)
     onSelect(selectedMethod || '');
     onClose();
   };
@@ -34,29 +38,20 @@ export function InvoicePaymentInfoModal({ currentPaymentMethod, onSelect, onClos
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
       <div className="bg-white w-full max-w-md shadow-2xl rounded-lg">
-        {/* Header */}
         <div className="p-3 border-b border-gray-200 flex items-center justify-between bg-gradient-to-r from-blue-600 to-blue-700">
           <h3 className="text-base text-white flex items-center gap-2">
             <CreditCard className="w-5 h-5" />
-            Ödeme Bilgileri
+            {tm('paymentInfo')}
           </h3>
-          <button
-            onClick={onClose}
-            className="text-white hover:text-gray-200 p-1"
-          >
+          <button onClick={onClose} className="text-white hover:text-gray-200 p-1">
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Content */}
         <div className="p-4">
           <div className="mb-4">
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Ödeme Şekli
-            </label>
-            <div className="mb-2 text-xs text-gray-500">
-              Seçili değilse açık hesap (cari) olarak işlem görür
-            </div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">{tm('paymentMethodLabel')}</label>
+            <div className="mb-2 text-xs text-gray-500">{tm('paymentMethodOpenAccountHint')}</div>
             <div className="grid grid-cols-2 gap-2">
               {paymentMethods.map((method) => {
                 const Icon = method.icon;
@@ -71,7 +66,7 @@ export function InvoicePaymentInfoModal({ currentPaymentMethod, onSelect, onClos
                     }`}
                   >
                     <Icon className="w-5 h-5 text-gray-600" />
-                    <span className="font-medium text-gray-900">{method.name}</span>
+                    <span className="font-medium text-gray-900">{tm(method.nameKey)}</span>
                     {selectedMethod === method.code && (
                       <div className="ml-auto w-5 h-5 rounded-full border-2 border-blue-600 flex items-center justify-center">
                         <div className="w-2.5 h-2.5 rounded-full bg-blue-600" />
@@ -84,37 +79,32 @@ export function InvoicePaymentInfoModal({ currentPaymentMethod, onSelect, onClos
           </div>
 
           <div className="mb-4">
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Notlar
-            </label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">{tm('notes')}</label>
             <textarea
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              placeholder="Ödeme ile ilgili notlar..."
+              placeholder={tm('paymentNotesPlaceholder')}
               rows={3}
               className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:border-blue-600"
             />
           </div>
         </div>
 
-        {/* Footer */}
         <div className="p-4 border-t border-gray-200 bg-gray-50 flex gap-2">
           <button
             onClick={onClose}
             className="flex-1 px-4 py-2 text-sm bg-gray-200 text-gray-700 rounded hover:bg-gray-300 transition-colors"
           >
-            İptal
+            {tm('cancel')}
           </button>
           <button
             onClick={handleSave}
             className="flex-1 px-4 py-2 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
           >
-            Kaydet
+            {tm('save')}
           </button>
         </div>
       </div>
     </div>
   );
 }
-
-

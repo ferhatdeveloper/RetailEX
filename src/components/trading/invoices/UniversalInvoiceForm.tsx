@@ -3320,7 +3320,7 @@ export function UniversalInvoiceForm({
                           handleQuickBarcodeSubmit();
                         }
                       }}
-                      placeholder="Barkod okut / yaz"
+                      placeholder={tm('barcodeScanOrType')}
                       autoComplete="off"
                       inputMode="text"
                       className={`min-w-0 touch-manipulation border border-gray-300 rounded-lg px-3 py-2 text-sm min-h-[44px] ${isMobile ? 'w-full' : 'w-64'}`}
@@ -3485,7 +3485,7 @@ export function UniversalInvoiceForm({
                   {/* Döviz & Kur Seçici */}
                   <div className="flex items-end gap-2">
                     <div>
-                      <label className="block text-xs font-medium text-gray-500 mb-1">Döviz</label>
+                      <label className="block text-xs font-medium text-gray-500 mb-1">{tm('currencyLabel')}</label>
                       <select
                         value={currency}
                         onChange={(e) => {
@@ -3694,30 +3694,29 @@ export function UniversalInvoiceForm({
                         </label>
                       </div>
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">İşlem</label>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">{tm('transactionField')}</label>
                         <select
                           value={transactionType}
                           onChange={(e) => setTransactionType(e.target.value)}
                           className="w-full px-3 py-2 border border-gray-300 rounded text-sm"
                         >
-                          <option value="">Seçiniz...</option>
-                          <option value="NORMAL">Normal İşlem</option>
-                          <option value="CONSIGNMENT">Konsinye</option>
-                          <option value="RETURN">İade</option>
-                          <option value="EXCHANGE">Değişim</option>
-                          <option value="SAMPLE">Numune</option>
-                          <option value="PROMOTION">Promosyon</option>
-                          <option value="DAMAGED">Hasarlı</option>
+                          <option value="">{tm('select')}...</option>
+                          <option value="NORMAL">{tm('normalTransaction')}</option>
+                          <option value="CONSIGNMENT">{tm('consignment')}</option>
+                          <option value="RETURN">{tm('salesReturn')}</option>
+                          <option value="EXCHANGE">{tm('exchangeTransaction')}</option>
+                          <option value="SAMPLE">{tm('sampleTransaction')}</option>
+                          <option value="PROMOTION">{tm('promotionTransaction')}</option>
+                          <option value="DAMAGED">{tm('damagedTransaction')}</option>
                         </select>
                         {invoiceType.category === 'Alis' && transactionType === 'PROMOTION' && (
                           <p className="text-xs text-amber-700 mt-1.5 bg-amber-50 border border-amber-200 rounded px-2 py-1.5">
-                            Ücretsiz / hediye gelen ürünler için satırda <strong>birim fiyatı 0</strong> girin.
-                            Stok artışı miktar kadar işlenir; maliyet dağıtımı gerekiyorsa aynı faturada ücretli satırlarla birlikte kaydedin.
+                            {tm('purchasePromoHint')}
                           </p>
                         )}
                       </div>
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Toplam ({ledgerCurrency})</label>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">{tm('totalWithCurrency')} ({ledgerCurrency})</label>
                         <input
                           type="text"
                           readOnly
@@ -3729,7 +3728,7 @@ export function UniversalInvoiceForm({
                         )}
                       </div>
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Dağılacak Toplam</label>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">{tm('distributedTotal')}</label>
                         <input
                           type="number"
                           value={distributedTotal}
@@ -3739,7 +3738,7 @@ export function UniversalInvoiceForm({
                         />
                       </div>
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">TAX Oranı</label>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">{tm('taxRate')}</label>
                         <input
                           type="number"
                           value={taxRate}
@@ -3755,7 +3754,7 @@ export function UniversalInvoiceForm({
                       <h3 className="text-sm font-semibold text-gray-700 mb-3">Sevkiyat Hesabı</h3>
                       <div className="grid grid-cols-3 gap-4">
                         <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">Kodu</label>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">{tm('accountCodeLabel')}</label>
                           <div className="flex gap-1">
                             <input
                               type="text"
@@ -3772,7 +3771,7 @@ export function UniversalInvoiceForm({
                           </div>
                         </div>
                         <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">Ünvanı</label>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">{tm('accountTitleLabel')}</label>
                           <div className="flex gap-1">
                             <input
                               type="text"
