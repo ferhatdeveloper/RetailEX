@@ -590,6 +590,8 @@ export function UniversalInvoiceForm({
   const [workplace, setWorkplace] = useState('000, Merkez'); // İşyeri
   const [salespersonCode, setSalespersonCode] = useState(''); // Satış Elemanı Kodu
   const [authorizationCode, setAuthorizationCode] = useState(''); // Yetki Kodu
+  const [selectedCariBalance, setSelectedCariBalance] = useState<number | null>(null);
+  const [selectedCariPhone, setSelectedCariPhone] = useState<string | null>(null);
   const [currency, setCurrency] = useState(() => {
     const ed = (editData as any)?.currency;
     if (ed) return String(ed).trim().toUpperCase().slice(0, 10);
@@ -2452,6 +2454,81 @@ export function UniversalInvoiceForm({
     loadCustomers();
   }, [invoiceType.category, customersProp]);
 
+  /** Seçili cari bakiye + telefon (defter bakiyesi) */
+  useEffect(() => {
+    let cancelled = false;
+
+    const clearMeta = () => {
+      setSelectedCariBalance(null);
+      setSelectedCariPhone(null);
+    };
+
+    const applyMeta = (balance: number, phone: string | null) => {
+      setSelectedCariBalance(balance);
+      setSelectedCariPhone(phone);
+    };
+
+    if (invoiceType.category === 'Alis') {
+      if (!supplierId && !supplierTitle.trim()) {
+        clearMeta();
+        return;
+      }
+      const sup = suppliers.find((s) => String(s.id) === String(supplierId));
+      if (sup) {
+        applyMeta(Number((sup as any).balance ?? 0), String((sup as any).phone || '').trim() || null);
+        return;
+      }
+      if (!supplierId) return;
+      void (async () => {
+        try {
+          const data = await supplierAPI.getAll({ cardType: 'supplier' });
+          if (cancelled) return;
+          const row = data.find((s) => String(s.id) === String(supplierId));
+          if (row) {
+            applyMeta(Number((row as any).balance ?? 0), String((row as any).phone || '').trim() || null);
+          }
+        } catch (e) {
+          console.warn('[UniversalInvoiceForm] Tedarikçi bakiye/telefon:', e);
+        }
+      })();
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    if (!customerId && !customerTitle.trim()) {
+      clearMeta();
+      return;
+    }
+    const cust = customers.find((c) => String(c.id) === String(customerId));
+    if (cust) {
+      applyMeta(
+        Number(cust.balance ?? 0),
+        String((cust as any).phone || (cust as any).phone2 || '').trim() || null,
+      );
+      return;
+    }
+    if (!customerId) return;
+    void (async () => {
+      try {
+        const data = await customerAPI.getAll();
+        if (cancelled) return;
+        const row = data.find((c) => String(c.id) === String(customerId));
+        if (row) {
+          applyMeta(
+            Number(row.balance ?? 0),
+            String((row as any).phone || (row as any).phone2 || '').trim() || null,
+          );
+        }
+      } catch (e) {
+        console.warn('[UniversalInvoiceForm] Müşteri bakiye/telefon:', e);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [customerId, customerTitle, customers, supplierId, supplierTitle, suppliers, invoiceType.category]);
+
   /* Alış düzenleme: tedarikçi UUID/ünvanı customer_id üzerinde; suppliers async yüklenince kod/ünvanı doldur */
   useEffect(() => {
     if (!editData?.id || invoiceType.category !== 'Alis') return;
@@ -3317,6 +3394,9 @@ export function UniversalInvoiceForm({
 
                   cariBorderColor={cariBorderColor}
                   cariTextColor={cariTextColor}
+                  selectedCariBalance={selectedCariBalance}
+                  selectedCariPhone={selectedCariPhone}
+                  selectedCariCurrency={currency || 'IQD'}
                 />
 
                 {invoiceType.category === 'Alis' && createSaveOptions?.skipProductStockUpdate && (
@@ -4195,10 +4275,15 @@ export function UniversalInvoiceForm({
                   setCustomerId('');
                   setCustomerCode('');
                   setCustomerTitle('');
+                  setSelectedCariBalance(null);
+                  setSelectedCariPhone(null);
                 } else {
                   setCustomerId(item.id);
                   setCustomerCode(item.code || '');
                   setCustomerTitle(item.name);
+                  const found = customers.find((c) => String(c.id) === String(item.id));
+                  setSelectedCariBalance(found ? Number(found.balance ?? 0) : 0);
+                  setSelectedCariPhone(String(item.phone || (found as any)?.phone || (found as any)?.phone2 || '').trim() || null);
                 }
               }}
               onClose={() => setShowCustomerModal(false)}
@@ -4222,10 +4307,15 @@ export function UniversalInvoiceForm({
                   setSupplierId('');
                   setSupplierCode('');
                   setSupplierTitle('');
+                  setSelectedCariBalance(null);
+                  setSelectedCariPhone(null);
                 } else {
                   setSupplierId(item.id);
                   setSupplierCode(item.code || '');
                   setSupplierTitle(item.name);
+                  const found = suppliers.find((s) => String(s.id) === String(item.id));
+                  setSelectedCariBalance(found ? Number((found as any).balance ?? 0) : 0);
+                  setSelectedCariPhone(String(item.phone || (found as any)?.phone || '').trim() || null);
                 }
               }}
               onClose={() => setShowSupplierModal(false)}

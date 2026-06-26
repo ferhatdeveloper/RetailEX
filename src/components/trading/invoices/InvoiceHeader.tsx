@@ -73,6 +73,8 @@ interface InvoiceHeaderProps {
     cariBorderColor: string;
     cariTextColor: string;
     selectedCariBalance?: number | null;
+    selectedCariPhone?: string | null;
+    selectedCariCurrency?: string;
 }
 
 export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
@@ -129,10 +131,34 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
     cariBorderColor,
     cariTextColor,
     setSupplierCode,
-    selectedCariBalance
+    selectedCariBalance,
+    selectedCariPhone,
+    selectedCariCurrency = 'IQD',
 }) => {
     const { tm } = useLanguage();
     const cashierLabel = cashierFieldLabel || tm('cashier');
+    const cariTitle = invoiceType.category === 'Alis' ? supplierTitle : customerTitle;
+    const showCariMeta = Boolean(cariTitle?.trim());
+
+    const cariMetaBadges = showCariMeta ? (
+        <div className="flex flex-wrap items-center gap-2">
+            {selectedCariBalance != null && (
+                <div className="flex items-center gap-2 px-2 py-0.5 rounded-full bg-gray-50 border border-gray-200 w-fit">
+                    <span className="text-[10px] font-bold text-gray-500 uppercase tracking-tighter">{tm('balanceShort')}:</span>
+                    <span className={`text-xs font-black ${(selectedCariBalance || 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                        {new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2 }).format(selectedCariBalance ?? 0)}{' '}
+                        <span className="text-[10px] opacity-70">{selectedCariCurrency}</span>
+                    </span>
+                </div>
+            )}
+            {selectedCariPhone?.trim() ? (
+                <div className="flex items-center gap-2 px-2 py-0.5 rounded-full bg-gray-50 border border-gray-200 w-fit">
+                    <span className="text-[10px] font-bold text-gray-500 uppercase tracking-tighter">{tm('phoneShort')}:</span>
+                    <span className="text-xs font-semibold text-gray-800">{selectedCariPhone.trim()}</span>
+                </div>
+            ) : null}
+        </div>
+    ) : null;
 
     return (
         <div className="bg-white rounded border border-gray-200 p-3 mb-3">
@@ -378,6 +404,7 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
                                     </button>
                                 )}
                             </div>
+                            {cariMetaBadges}
                         </div>
                     </div>
 
@@ -522,14 +549,7 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
                                     <MoreVertical className="w-4 h-4 text-gray-600" />
                                 </button>
                             </div>
-                            {selectedCariBalance !== null && (
-                                <div className="flex items-center gap-2 px-2 py-0.5 rounded-full bg-gray-50 border border-gray-200 w-fit">
-                                    <span className="text-[10px] font-bold text-gray-500 uppercase tracking-tighter">{tm('balanceShort')}:</span>
-                                    <span className={`text-xs font-black ${(selectedCariBalance || 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                                        {new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2 }).format(selectedCariBalance ?? 0)} <span className="text-[10px] opacity-70">IQD</span>
-                                    </span>
-                                </div>
-                            )}
+                            {cariMetaBadges}
                         </div>
                     </div>
                 </div>
