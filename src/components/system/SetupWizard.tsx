@@ -10,116 +10,36 @@ import { toast } from 'sonner';
 import { NeonLogo } from '../ui/NeonLogo';
 import { AppFooter } from '../shared/AppFooter';
 import { postgres, initializeFromSQLite } from '../../services/postgres';
-import { nebimMigrationService } from '../../services/migration/NebimV3MigrationService';
 import { SupabaseMigrationService } from '../../services/api/supabaseMigrationService';
+import { APP_SEMVER } from '../../core/version';
 import { IS_TAURI, safeInvoke, removeRetailexWindowsServicesIfTauri, deleteCRetailexFolderIfTauri } from '../../utils/env';
 import { mergeRustIntoStoredWebConfig } from '../../utils/retailexWebConfigMerge';
+import { createInitialSetupConfig } from './setup/setupDefaults';
+import {
+  finalizeSetupConfig,
+  needsLocalDatabaseStep,
+  needsRemoteDatabaseStep,
+  normalizeSetupConfig,
+  resolveFirmSchemaTargets,
+  resolvePrimaryMigrationTarget,
+  shouldSkipRemotePgBootstrap,
+} from './setup/setupDbTargets';
+import { initErpFirmSchemas, initErpPeriodSchema, initOptionalModuleSchemas } from './setup/setupErpSchema';
+import { getSetupFinalStep, getSetupWizardSteps, getDbSettingsStep, getFirmPeriodStep, getSummaryStep, getDeviceStep } from './setup/setupSteps';
+import type {
+  AppConfig,
+  AppUser,
+  BackupConfig,
+  Company,
+  MigrationStatus,
+  Period,
+  Store,
+} from './setup/setupTypes';
 import {
     parseSaaSOrCustomPostgrestUrl,
     buildSaaSTenantPostgrestUrl,
     DEFAULT_SAAS_TENANT_POSTGREST_ORIGIN,
 } from '../../services/merkezTenantRegistry';
-
-interface AppConfig {
-    is_configured: boolean;
-    db_mode: string;
-    local_db: string;
-    remote_db: string;
-    // Remote tarafı: klasik PostgreSQL mi, yoksa PostgREST üzerinden mi kullanılacak?
-    connection_provider?: 'db' | 'rest_api';
-    // PostgREST base URL (örn: http://1.2.3.4:3002)
-    remote_rest_url?: string;
-    terminal_name: string;
-    store_id: string;
-    erp_firm_nr: string;
-    erp_period_nr: string;
-    erp_method: string;
-    erp_host: string;
-    erp_user: string;
-    erp_pass: string;
-    erp_db: string;
-    title: string;          // Nebim uses Title/Application info
-    pg_local_user: string;
-    pg_local_pass: string;
-    pg_remote_user: string;
-    pg_remote_pass: string;
-    skip_integration: boolean;
-    system_type: 'retail' | 'market' | 'wms' | 'restaurant' | 'beauty' | 'bayi';
-    role: 'center' | 'client'; // Simplified Role Field
-    selected_firms: string[];
-    device_id?: string; // Hardware fingerprint
-    central_api_url?: string;
-    central_ws_url?: string;
-    logo_objects_user?: string;
-    logo_objects_pass?: string;
-    logo_objects_path?: string;
-    logo_objects_active: boolean;
-    selected_cash_registers: string[];
-    backup_config?: BackupConfig;
-    is_nebim_migration?: boolean;
-    license_expiry?: string;
-    max_users?: number;
-    enabled_modules: string[];
-    bayi_seti: boolean;
-    /** Uygulama varsayılan para kodu (config.db / POS öncesi) */
-    default_currency: string;
-    /** IQ: Irak mevzuatı; TR: GİB e-belge ve TR entegrasyonları */
-    regulatory_region: 'TR' | 'IQ';
-}
-
-interface Company {
-    id: string;
-    name: string;
-    title?: string;
-    tax_nr?: string;
-    tax_office?: string;
-    city?: string;
-    periods: Period[];
-    stores: Store[];
-    users: AppUser[];
-    license_expiry?: string;
-    max_users?: number;
-}
-
-interface Period {
-    nr: number;
-    start_date: string;
-    end_date: string;
-}
-
-interface Store {
-    id?: string;
-    code: string;
-    name: string;
-    type: 'WH' | 'BR'; // Warehouse or Branch
-}
-
-interface AppUser {
-    id?: string;
-    username: string;
-    email?: string;
-    password?: string;
-    full_name: string;
-    role: string;
-}
-
-
-
-interface BackupConfig {
-    enabled: boolean;
-    daily_backup: boolean;
-    hourly_backup: boolean;
-    periodic_min: number;
-    backup_path: string;
-    last_run?: string;
-}
-
-interface MigrationStatus {
-    name: string;
-    status: 'Applied' | 'Already Applied' | 'Error' | 'Demo Skipped';
-    error?: string;
-}
-
 
 const SetupWizard: React.FC = () => {
     const [windowWidth, setWindowWidth] = useState(window.innerWidth);
@@ -156,55 +76,7 @@ const SetupWizard: React.FC = () => {
     const [downloadedSqlPath, setDownloadedSqlPath] = useState<string | null>(null);
     const [isDumpingSql, setIsDumpingSql] = useState(false);
     const [loadDemoData, setLoadDemoData] = useState(false); // Demo data loading option
-    const INITIAL_CONFIG: AppConfig = {
-        is_configured: false,
-        db_mode: 'local', // Default 'local'
-        local_db: 'localhost:5432/retailex_local',
-        remote_db: '',
-        connection_provider: 'db',
-        remote_rest_url: 'http://172.20.0.10:3002',
-        terminal_name: 'TERMINAL-01',
-        store_id: '',
-        erp_firm_nr: '',
-        erp_period_nr: '',
-        erp_method: 'sql',
-        erp_host: '26.154.3.237',
-        erp_user: 'sa',
-        erp_pass: 'r9hWP3oJoC7cTfr',
-        erp_db: 'LOGO',
-        title: 'RetailEx OS',
-        pg_local_user: 'postgres',
-        pg_local_pass: 'Yq7xwQpt6c',
-        pg_remote_user: '',
-        pg_remote_pass: '',
-        skip_integration: false,
-        system_type: 'retail', // Changed default to retail so it doesn't look like Bayi Seti
-        role: 'client',
-        central_api_url: '',
-        central_ws_url: '',
-        selected_firms: [],
-        device_id: '', // Hardware fingerprint
-        logo_objects_user: '',
-        logo_objects_pass: '',
-        logo_objects_path: 'C:\\LOGO\\LObjects.dll',
-        logo_objects_active: false,
-        backup_config: {
-            enabled: true,
-            daily_backup: true,
-            hourly_backup: false,
-            periodic_min: 0,
-            backup_path: 'C:\\RetailEx_Backups',
-            last_run: ''
-        },
-        selected_cash_registers: [],
-        is_nebim_migration: false,
-        enabled_modules: ['pos', 'wms'], // Only default retail modules
-        bayi_seti: false,
-        default_currency: 'IQD',
-        regulatory_region: 'IQ',
-    };
-
-    const [config, setConfig] = useState<AppConfig>(INITIAL_CONFIG);
+    const [config, setConfig] = useState<AppConfig>(createInitialSetupConfig());
 
     const [postgrestWizardEntryMode, setPostgrestWizardEntryMode] = useState<'retailex_cloud' | 'custom_url'>(
         'custom_url',
@@ -234,6 +106,15 @@ const SetupWizard: React.FC = () => {
     /** Bağımsız mod + terminal + merkez DB: yeni firma formu atlanır; doğrudan uzak PostgreSQL ayarları. */
     const skipStandaloneFirmStep =
         config.skip_integration && config.role === 'client' && config.db_mode === 'online';
+
+    const wizardSteps = getSetupWizardSteps(config.skip_integration);
+    const finalStep = getSetupFinalStep(config.skip_integration);
+    const firmPeriodStep = getFirmPeriodStep(config.skip_integration);
+    const dbSettingsStep = getDbSettingsStep(config.skip_integration);
+    const summaryStep = getSummaryStep(config.skip_integration);
+    const deviceStep = getDeviceStep(config.skip_integration);
+    const showRemoteDbSection = needsRemoteDatabaseStep(config);
+    const showLocalDbSection = needsLocalDatabaseStep(config, skipStandaloneFirmStep);
 
     const [availableCashRegisters, setAvailableCashRegisters] = useState<any[]>([]);
 
@@ -548,13 +429,13 @@ const SetupWizard: React.FC = () => {
             // Bu her zaman set olacağı için özel bir validation gerekmez
         }
 
-        // Step 3: Database Settings Validation
-        if (step === 3) {
+        // Veritabanı ayarları adımı doğrulaması
+        if (step === dbSettingsStep) {
             if (activeTab === 'supabase') {
                 // Allow proceeding if supabase flow was used
             }
 
-            if (config.role !== 'center' && (config.db_mode === 'hybrid' || config.db_mode === 'online')) {
+            if (showRemoteDbSection) {
                 const provider = config.connection_provider || 'db';
                 if (provider === 'rest_api') {
                     if (!config.remote_rest_url || !config.remote_rest_url.trim()) {
@@ -563,15 +444,15 @@ const SetupWizard: React.FC = () => {
                     }
                 } else {
                     if (!config.remote_db || config.remote_db.includes('127.0.0.1') || config.remote_db.includes('localhost')) {
-                        toast.error('Bu rol için geçerli bir uzak sunucu adresi girilmelidir.');
+                        toast.error('Geçerli bir uzak sunucu adresi girilmelidir.');
                         return;
                     }
                 }
             }
         }
 
-        // Step 4: Firm & Period Configuration Validation
-        if (step === 4) {
+        // Firma & dönem adımı doğrulaması
+        if (step === firmPeriodStep) {
             if (!config.skip_integration) {
                 // Logo Integration: Firma ve dönem seçimi zorunlu
                 if (!config.erp_firm_nr) {
@@ -657,7 +538,7 @@ const SetupWizard: React.FC = () => {
 
         // Entegrasyondan sonra firma adımı yerine doğrudan merkez veritabanı ayarları
         if (step === 2 && skipStandaloneFirmStep) {
-            setStep(4);
+            setStep(dbSettingsStep);
             return;
         }
 
@@ -666,7 +547,7 @@ const SetupWizard: React.FC = () => {
     const prevStep = () => {
         if (step === 5 && config.is_nebim_migration) {
             setStep(3);
-        } else if (step === 4 && skipStandaloneFirmStep) {
+        } else if (step === dbSettingsStep && skipStandaloneFirmStep) {
             setStep(2);
         } else {
             setStep(prev => prev - 1);
@@ -675,11 +556,11 @@ const SetupWizard: React.FC = () => {
 
     useEffect(() => {
         // Auto-trigger handleSave when reaching the final step
-        const isFinalStep = step === (config.skip_integration ? 7 : 9);
+        const isFinalStep = step === finalStep;
         if (isFinalStep && installationStep === 'PENDING') {
             handleSave();
         }
-    }, [step, config.skip_integration, installationStep]);
+    }, [step, finalStep, installationStep]);
 
     useEffect(() => {
         // Fetch Hardware ID and Existing Config on mount
@@ -889,11 +770,12 @@ const SetupWizard: React.FC = () => {
         setLoading(true);
         try {
             toast.info('Veritabanı tabloları oluşturuluyor...');
-            const target = config.db_mode === 'online' ? 'remote' : 'local';
+            const normalized = normalizeSetupConfig(config);
+            const primaryTarget = resolvePrimaryMigrationTarget(normalized.db_mode as 'online' | 'offline' | 'hybrid');
 
             if (isTauri) {
                 
-                const rawResult = await safeInvoke('run_migrations', { config, target, loadDemoData: false }) as string;
+                const rawResult = await safeInvoke('run_migrations', { config: normalized, target: primaryTarget, loadDemoData: false }) as string;
 
                 let report: MigrationStatus[] = [];
                 try {
@@ -927,48 +809,12 @@ const SetupWizard: React.FC = () => {
                 }
 
                 // Logo/ERP Integration: Automatically initialize firm and period schemas
-                if (!config.skip_integration && config.erp_firm_nr && config.erp_period_nr) {
+                if (!normalized.skip_integration && normalized.erp_firm_nr && normalized.erp_period_nr) {
                     toast.info('ERP Entegrasyon tabloları hazırlanıyor...');
-                    const erpSchemaTargets: Array<'local' | 'remote'> = [
-                        target === 'remote' ? 'remote' : 'local',
-                    ];
-                    if (target === 'remote' && config.local_db?.trim()) {
-                        erpSchemaTargets.push('local');
-                    }
-                    for (const schemaTarget of [...new Set(erpSchemaTargets)]) {
-                        await safeInvoke('init_firm_schema', {
-                            config,
-                            firmNr: config.erp_firm_nr,
-                            target: schemaTarget,
-                        });
-                    }
-
-                    // 2. Init Period Schema (Transactions)
-                    await safeInvoke('init_period_schema', {
-                        config,
-                        firmNr: config.erp_firm_nr,
-                        periodNr: config.erp_period_nr,
-                        target: target === 'remote' ? 'remote' : 'local'
-                    });
-
-                    // 3. Restaurant Module — firm + period tables (only when restaurant system)
-                    if (config.system_type === 'restaurant') {
-                        toast.info('Restoran modülü tabloları hazırlanıyor...');
-                        await postgres.query('SELECT INIT_RESTAURANT_FIRM_TABLES($1)', [config.erp_firm_nr]);
-                        await postgres.query(
-                            'SELECT INIT_RESTAURANT_PERIOD_TABLES($1, $2)',
-                            [config.erp_firm_nr, config.erp_period_nr]
-                        );
-                        toast.success('Restoran dönem tabloları hazır.');
-                    }
-
-                    // 4. Beauty Module — ALWAYS initialized (used alongside any system type)
-                    toast.info('Güzellik/klinik modül tabloları hazırlanıyor...');
-                    await postgres.query('SELECT INIT_BEAUTY_FIRM_TABLES($1)', [config.erp_firm_nr]);
-                    await postgres.query('SELECT INIT_BEAUTY_PERIOD_TABLES($1, $2)', [config.erp_firm_nr, config.erp_period_nr]);
-                    toast.success('Güzellik/klinik tabloları hazır.');
-
-                    toast.success(`Firma ${config.erp_firm_nr} ve Dönem ${config.erp_period_nr} yapılandırması tamamlandı.`);
+                    await initErpFirmSchemas(normalized, normalized.erp_firm_nr, { primaryTarget });
+                    await initErpPeriodSchema(normalized, normalized.erp_firm_nr, normalized.erp_period_nr);
+                    await initOptionalModuleSchemas(normalized, normalized.erp_firm_nr, normalized.erp_period_nr);
+                    toast.success(`Firma ${normalized.erp_firm_nr} ve Dönem ${normalized.erp_period_nr} yapılandırması tamamlandı.`);
                 }
             } else {
                 toast.success('Migrations simüle edildi.');
@@ -1100,12 +946,14 @@ const SetupWizard: React.FC = () => {
         setSyncLogs([]); // Clear previous logs
         let unlisten: (() => void) | undefined;
 
-        // Ensure defaults for standalone
-        let finalDbConfig = { ...config, is_configured: true };
+        // Normalize config before persisting (db_mode, hybrid, provider defaults)
+        let finalDbConfig = finalizeSetupConfig({ ...config });
         if (config.skip_integration) {
             finalDbConfig.erp_firm_nr = (config.erp_firm_nr || '001').padStart(3, '0');
             finalDbConfig.erp_period_nr = (config.erp_period_nr || '01').padStart(2, '0');
         }
+        const primaryTarget = resolvePrimaryMigrationTarget(finalDbConfig.db_mode as 'online' | 'offline' | 'hybrid');
+        const skipRemoteBootstrap = shouldSkipRemotePgBootstrap(finalDbConfig, primaryTarget);
 
         try {
             // Listen for Sync Events
@@ -1141,20 +989,17 @@ const SetupWizard: React.FC = () => {
                 if (!isUpdateMode) {
                     setInstallationStep('DATABASE');
                     await emit('sync-event', '🗄️ Veritabanı motoru kontrol ediliyor...');
-                    const target = config.db_mode === 'online' ? 'remote' : 'local';
-                    const provider = config.connection_provider || 'db';
-                    if (provider === 'rest_api' && target === 'remote') {
+                    if (skipRemoteBootstrap) {
                         await emit('sync-event', '⏭️ Rest API (PostgREST) seçildi: Uzak veritabanı oluşturma/migrations atlandı (zaten hazır varsayılır).');
                         setDbInitialized(true);
                     } else {
-                        await safeInvoke('create_database', { config, target });
-                        await emit('sync-event', `✅ ${target === 'remote' ? 'Uzak' : 'Yerel'} veritabanı hazır.`);
+                        await safeInvoke('create_database', { config: finalDbConfig, target: primaryTarget });
+                        await emit('sync-event', `✅ ${primaryTarget === 'remote' ? 'Uzak' : 'Yerel'} veritabanı hazır.`);
                     }
                 }
             }
 
             // 4. Connect and Initialize Database (Migrations) - ALWAYS RUN IN UPDATE
-            const target = config.db_mode === 'online' ? 'remote' : 'local';
             setInstallationStep('MIGRATIONS');
             try {
                 if (isTauri) {
@@ -1162,8 +1007,7 @@ const SetupWizard: React.FC = () => {
                     const { emit } = await import('@tauri-apps/api/event');
 
                     await emit('sync-event', '📑 Migration tabloları oluşturuluyor...');
-                    const provider = config.connection_provider || 'db';
-                    if (provider === 'rest_api' && target === 'remote') {
+                    if (skipRemoteBootstrap) {
                         await emit('sync-event', '⏭️ Rest API (PostgREST) seçildi: Uzak migrations atlandı.');
                         setDbInitialized(true);
                     } else {
@@ -1186,8 +1030,8 @@ const SetupWizard: React.FC = () => {
                             }
                         }
                         const migrationResult = await safeInvoke('run_migrations', {
-                            config,
-                            target,
+                            config: finalDbConfig,
+                            target: primaryTarget,
                             loadDemoData: migrationLoadDemo
                         });
                         await emit('sync-event', `✅ Tablo yapıları kuruldu: ${migrationResult}`);
@@ -1266,33 +1110,24 @@ const SetupWizard: React.FC = () => {
                     const { emit } = await import('@tauri-apps/api/event');
                     await emit('sync-event', `🏢 Organizasyon yapıları hazırlanıyor...`);
                     await emit('sync-event', `📦 Firma ${currentFirmId}: Ana kart tabloları (Stok, Cari, Kasa) oluşturuluyor...`);
-                    const firmSchemaTargets: Array<'local' | 'remote'> = [target as 'local' | 'remote'];
-                    if (target === 'remote' && finalDbConfig.local_db?.trim()) {
-                        firmSchemaTargets.push('local');
-                    }
-                    for (const schemaTarget of [...new Set(firmSchemaTargets)]) {
+                    const schemaTargets = resolveFirmSchemaTargets(finalDbConfig, primaryTarget);
+                    for (const schemaTarget of schemaTargets) {
                         await emit(
                             'sync-event',
                             `📇 Cari/stok tabloları — ${schemaTarget === 'local' ? 'yerel' : 'uzak'} PostgreSQL...`
                         );
-                        await safeInvoke('init_firm_schema', {
-                            config: finalDbConfig,
-                            firmNr: currentFirmId,
-                            target: schemaTarget,
-                        });
                     }
+                    await initErpFirmSchemas(finalDbConfig, currentFirmId, { primaryTarget });
                     await emit('sync-event', `✅ Firma ${currentFirmId} kart tabloları hazır (cari hesaplar dahil).`);
 
-                    // Restaurant firm tables (masa, reçete)
                     if (config.system_type === 'restaurant') {
                         await emit('sync-event', `🍽️ Firma ${currentFirmId}: Restoran kart tabloları oluşturuluyor...`);
-                        await postgres.query('SELECT INIT_RESTAURANT_FIRM_TABLES($1)', [currentFirmId]);
+                        await postgres.query('SELECT INIT_RESTAURANT_FIRM_TABLES($1::varchar)', [currentFirmId]);
                         await emit('sync-event', `✅ Restoran kart tabloları hazır.`);
                     }
 
-                    // Beauty firm tables — ALWAYS initialized alongside any system type
                     await emit('sync-event', `💅 Firma ${currentFirmId}: Güzellik/klinik kart tabloları oluşturuluyor...`);
-                    await postgres.query('SELECT INIT_BEAUTY_FIRM_TABLES($1)', [currentFirmId]);
+                    await postgres.query('SELECT INIT_BEAUTY_FIRM_TABLES($1::varchar)', [currentFirmId]);
                     await emit('sync-event', `✅ Güzellik kart tabloları hazır.`);
                 }
 
@@ -1310,19 +1145,19 @@ const SetupWizard: React.FC = () => {
                             const { emit } = await import('@tauri-apps/api/event');
                             
                             await emit('sync-event', `📅 Dönem ${pNr}: Hareket tabloları (Fatura, Hareketler) oluşturuluyor...`);
-                            await safeInvoke('init_period_schema', { config: finalDbConfig, firmNr: currentFirmId, periodNr: pNr, target });
+                            await initErpPeriodSchema(finalDbConfig, currentFirmId, pNr);
                             await emit('sync-event', `✅ Dönem ${pNr} hareket tabloları hazır.`);
 
                             // Restaurant period tables (sipariş, mutfak)
                             if (config.system_type === 'restaurant') {
                                 await emit('sync-event', `🍽️ Dönem ${pNr}: Restoran hareket tabloları oluşturuluyor...`);
-                                await postgres.query('SELECT INIT_RESTAURANT_PERIOD_TABLES($1, $2)', [currentFirmId, pNr]);
+                                await postgres.query('SELECT INIT_RESTAURANT_PERIOD_TABLES($1::varchar, $2::varchar)', [currentFirmId, pNr]);
                                 await emit('sync-event', `✅ Restoran dönem tabloları hazır.`);
                             }
 
                             // Beauty period tables — ALWAYS initialized alongside any system type
                             await emit('sync-event', `💅 Dönem ${pNr}: Güzellik/klinik hareket tabloları oluşturuluyor...`);
-                            await postgres.query('SELECT INIT_BEAUTY_PERIOD_TABLES($1, $2)', [currentFirmId, pNr]);
+                            await postgres.query('SELECT INIT_BEAUTY_PERIOD_TABLES($1::varchar, $2::varchar)', [currentFirmId, pNr]);
                             await emit('sync-event', `✅ Güzellik dönem tabloları hazır.`);
                         } catch (schemaErr) {
                             const schemaErrStr = String(schemaErr);
@@ -1578,6 +1413,10 @@ const SetupWizard: React.FC = () => {
             // Update localStorage cache ONLY after full successful install, so App.tsx fast-path
             // reads is_configured:true on redirect and skips the wizard.
             localStorage.setItem('retailex_web_config', JSON.stringify(finalDbConfig));
+            localStorage.setItem('exretail_firma_donem_configured', 'true');
+            if (finalDbConfig.erp_firm_nr) {
+                localStorage.setItem('exretail_selected_firma_id', finalDbConfig.erp_firm_nr.padStart(3, '0'));
+            }
 
             const shellOrder = ['pos', 'restaurant', 'wms', 'beauty'] as const;
             const preferredShell =
@@ -1656,25 +1495,7 @@ const SetupWizard: React.FC = () => {
                     </div>
 
                     <div className="space-y-3 flex-1 text-left">
-                        {(!config.skip_integration ? [
-                            { id: 1, label: 'Altyapı Seçimi', icon: Server },
-                            { id: 2, label: 'Entegrasyon Tercihi', icon: Layout },
-                            { id: 3, label: 'ERP Bağlantısı', icon: Settings2 },
-                            { id: 4, label: 'Firma & Dönem', icon: Globe },
-                            { id: 5, label: 'Kasa Seçimi', icon: Database },
-                            { id: 6, label: 'Sistem Veritabanı', icon: Database },
-                            { id: 7, label: 'Cihaz Kaydı', icon: Cpu },
-                            { id: 8, label: 'Özet ve Onay', icon: CheckCircle },
-                            { id: 9, label: 'Sistem Kurulumu', icon: Activity },
-                        ] : [
-                            { id: 1, label: 'Altyapı Seçimi', icon: Server },
-                            { id: 2, label: 'Entegrasyon Tercihi', icon: Layout },
-                            { id: 3, label: 'Firma & Dönem', icon: Globe },
-                            { id: 4, label: 'Sistem Veritabanı', icon: Database },
-                            { id: 5, label: 'Cihaz Kaydı', icon: Cpu },
-                            { id: 6, label: 'Özet ve Onay', icon: CheckCircle },
-                            { id: 7, label: 'Sistem Kurulumu', icon: Activity },
-                        ]).map((s) => (
+                        {wizardSteps.map((s) => (
                             <div
                                 key={s.id}
                                 className={`flex items-center gap-4 p-3.5 rounded-xl transition-all ${step === s.id ? 'bg-blue-600/10 text-white' : 'text-slate-400 hover:text-white hover:bg-white/5'
@@ -1739,7 +1560,7 @@ const SetupWizard: React.FC = () => {
                                                 <button
                                                     onClick={() => {
                                                         setIsUpdateMode(true);
-                                                        setStep(config.skip_integration ? 6 : 8); // Jump to Summary/Özet
+                                                        setStep(summaryStep); // Jump to Summary/Özet
                                                     }}
                                                     className="px-8 py-4 bg-blue-600 hover:bg-blue-500 text-white rounded-2xl text-xs font-black uppercase tracking-widest transition-all shadow-xl shadow-blue-600/20 flex items-center gap-3 active:scale-95 group"
                                                 >
@@ -1976,7 +1797,7 @@ const SetupWizard: React.FC = () => {
                                             </div>
                                             <div className="grid grid-cols-1 gap-3">
                                                 <button
-                                                    onClick={() => setConfig({ ...config, db_mode: 'hybrid' })}
+                                                    onClick={() => setConfig({ ...config, db_mode: 'hybrid', connection_provider: 'db' })}
                                                     className={`group relative p-4 rounded-2xl border transition-all duration-300 ${config.db_mode !== 'online'
                                                         ? 'bg-blue-600/10 border-blue-500 shadow-lg shadow-blue-500/5'
                                                         : 'bg-white/[0.03] border-white/5 hover:border-white/10 hover:bg-white/[0.08]'
@@ -2065,6 +1886,41 @@ const SetupWizard: React.FC = () => {
                                         ))}
                                     </div>
                                 </div>
+                                )}
+
+                                {/* Hibrit senkron tercihleri — yerel + uzak birlikte kullanıldığında */}
+                                {config.db_mode === 'hybrid' && (
+                                    <div className="space-y-4">
+                                        <div>
+                                            <h2 className="text-xl font-black mb-0.5 text-white tracking-tight">Hibrit Senkron</h2>
+                                            <p className="text-blue-400/60 font-medium uppercase tracking-[0.2em] text-[10px]">Okuma ve senkron yönü</p>
+                                        </div>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            <div className="space-y-2">
+                                                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest pl-1">Okuma tercihi</label>
+                                                <select
+                                                    value={config.hybrid_read_preference || 'local_first'}
+                                                    onChange={(e) => setConfig({ ...config, hybrid_read_preference: e.target.value as AppConfig['hybrid_read_preference'] })}
+                                                    className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-xs text-white focus:outline-none focus:border-blue-500"
+                                                >
+                                                    <option value="local_first">Önce yerel (local_first)</option>
+                                                    <option value="remote_first">Önce uzak (remote_first)</option>
+                                                </select>
+                                            </div>
+                                            <div className="space-y-2">
+                                                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest pl-1">Senkron yönü</label>
+                                                <select
+                                                    value={config.hybrid_sync_direction || 'local_to_remote'}
+                                                    onChange={(e) => setConfig({ ...config, hybrid_sync_direction: e.target.value as AppConfig['hybrid_sync_direction'] })}
+                                                    className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-xs text-white focus:outline-none focus:border-blue-500"
+                                                >
+                                                    <option value="local_to_remote">Yerel → Uzak</option>
+                                                    <option value="remote_to_local">Uzak → Yerel</option>
+                                                    <option value="bidirectional">Çift yönlü</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                    </div>
                                 )}
 
                                 {/* Section: Module Visibility (Removed from here, moved up) */}
@@ -2191,7 +2047,7 @@ const SetupWizard: React.FC = () => {
                             </div>
                         )}
 
-                        {((step === 4 && config.skip_integration) || (step === 6 && !config.skip_integration)) && (
+                        {step === dbSettingsStep && (
                             <div className="space-y-8 animate-in fade-in slide-in-from-right-4 duration-500">
                                 {skipStandaloneFirmStep && (
                                     <div className="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/25 flex gap-3 items-start">
@@ -2328,8 +2184,8 @@ const SetupWizard: React.FC = () => {
                                             </div>
                                         )}
 
-                                        {/* Local Server Section — terminal merkez DB modunda gizli (yalnız uzak PG) */}
-                                        {!skipStandaloneFirmStep && (
+                                        {/* Local Server Section — online terminal / merkez-only modda gizli */}
+                                        {showLocalDbSection && (
                                         <div className={`relative p-8 rounded-2xl transition-all duration-300 border ${dbStatus === 'RUNNING' ? 'bg-blue-600/5 border-blue-500/30' :
                                             dbStatus === 'AUTH_FAILED' ? 'bg-amber-600/5 border-amber-500/30' :
                                                 'bg-white/[0.03] border-white/5'
@@ -2456,8 +2312,8 @@ const SetupWizard: React.FC = () => {
                                         </div>
                                         )}
 
-                                        {/* Remote Server Section - HIDDEN for Center Role */}
-                                        {config.role !== 'center' && (
+                                        {/* Remote Server Section — hibrit/online modda gerekli (merkez dahil) */}
+                                        {showRemoteDbSection && (
                                             <div className="relative p-8 rounded-[32px] bg-white/[0.03] border border-white/5 overflow-hidden group hover:bg-white/[0.05] transition-all duration-500">
                                                 <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/10 blur-[60px] rounded-full" />
 
@@ -3040,78 +2896,6 @@ const SetupWizard: React.FC = () => {
                             </div>
                         )}
 
-                        {step === 2 && (
-                            <div className="mt-8 pt-8 border-t border-white/5 animate-in fade-in slide-in-from-bottom-4">
-                                <div className="flex items-center justify-between p-6 rounded-[24px] bg-indigo-900/10 border border-indigo-500/20 hover:bg-indigo-900/20 transition-all group">
-                                    <div className="flex items-center gap-4">
-                                        <div className="w-12 h-12 rounded-2xl bg-indigo-500/20 flex items-center justify-center group-hover:bg-indigo-500/30 transition-colors">
-                                            <Upload className="w-6 h-6 text-indigo-400" />
-                                        </div>
-                                        <div>
-                                            <h3 className="text-sm font-bold text-white mb-1">Eski Yedekten Kurulum (Migration)</h3>
-                                            <p className="text-xs text-indigo-200/60 font-medium">Var olan bir `public` şemalı yedeği yeni yapıya dönüştürür.</p>
-                                        </div>
-                                    </div>
-                                    <button
-                                        onClick={async () => {
-                                            if (isTauri) {
-                                                try {
-                                                    const { open } = await import('@tauri-apps/plugin-dialog');
-                                                    
-
-                                                    const selected = await open({
-                                                        multiple: false,
-                                                        filters: [{ name: 'SQL Backup', extensions: ['sql'] }]
-                                                    });
-
-                                                    if (selected && typeof selected === 'string') {
-                                                        setLoading(true);
-                                                        const target = config.db_mode === 'online' ? 'remote' : 'local';
-
-                                                        toast.info('Veritabanı hazırlanıyor...');
-                                                        await safeInvoke('create_database', { config, target });
-
-                                                        toast.info('Eski yedek yükleniyor...');
-                                                        await safeInvoke('pg_execute_file', {
-                                                            connStr: target === 'local'
-                                                                ? `postgres://${config.pg_local_user}:${config.pg_local_pass}@localhost:5432/${config.local_db.split('/')[1] || config.local_db}`
-                                                                : config.remote_db,
-                                                            filePath: selected
-                                                        });
-
-                                                        toast.info('Veriler yeni yapıya dönüştürülüyor...');
-                                                        const migrationScriptPath = 'd:/Exretailosv1/database/scripts/migrate_legacy_to_v3.sql';
-                                                        await safeInvoke('pg_execute_file', {
-                                                            connStr: target === 'local'
-                                                                ? `postgres://${config.pg_local_user}:${config.pg_local_pass}@localhost:5432/${config.local_db.split('/')[1] || config.local_db}`
-                                                                : config.remote_db,
-                                                            filePath: migrationScriptPath
-                                                        });
-
-                                                        toast.success('Migration başarıyla tamamlandı!');
-                                                        setDbInitialized(true);
-                                                    }
-                                                } catch (err) {
-                                                    console.error(err);
-                                                    toast.error('Migration hatası: ' + err);
-                                                } finally {
-                                                    setLoading(false);
-                                                }
-                                            } else {
-                                                toast.error('Geriye dönük migration sadece Desktop uygulamasında desteklenmektedir.');
-                                            }
-                                        }}
-                                        className="px-6 py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-black uppercase tracking-widest transition-all shadow-lg shadow-indigo-600/20 flex items-center gap-2"
-                                    >
-                                        <Upload className="w-4 h-4" />
-                                        Yedek Seç & Başlat
-                                    </button>
-                                </div>
-                            </div>
-                        )}
-
-
-
                         {step === 3 && !config.skip_integration && (
                             <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-500">
                                 <div className="flex items-center justify-between bg-white/[0.02] p-6 rounded-3xl border border-white/5">
@@ -3279,7 +3063,7 @@ const SetupWizard: React.FC = () => {
                             </div>
                         )}
 
-                        {((step === 4 && !config.skip_integration) || (step === 3 && config.skip_integration)) && (
+                        {step === firmPeriodStep && (
                             <div className="space-y-8 animate-in fade-in slide-in-from-right-4 duration-500">
                                 {!config.skip_integration ? (
                                     <div className="space-y-8">
@@ -3820,7 +3604,7 @@ const SetupWizard: React.FC = () => {
                             </div>
                         )}
 
-                        {((step === 7 && !config.skip_integration) || (step === 5 && config.skip_integration)) && (
+                        {step === deviceStep && (
                             <div className="space-y-12 py-6 animate-in fade-in slide-in-from-bottom-8 duration-700">
                                 <div className="text-center space-y-3">
                                     <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400 text-[10px] font-black tracking-widest uppercase mb-4">
@@ -3881,7 +3665,7 @@ const SetupWizard: React.FC = () => {
                             </div>
                         )}
 
-                        {((step === 8 && !config.skip_integration) || (step === 6 && config.skip_integration)) && (
+                        {step === summaryStep && (
                             <div className="space-y-8 animate-in fade-in slide-in-from-right-4 duration-500">
                                 <div>
                                     <h2 className="text-4xl font-black mb-2 text-white tracking-tight">
@@ -3952,7 +3736,7 @@ const SetupWizard: React.FC = () => {
                             </div>
                         )}
 
-                        {((step === 9 && !config.skip_integration) || (step === 7 && config.skip_integration)) && (
+                        {step === finalStep && (
                             <div className="fixed inset-0 z-[60] bg-[#020617] flex items-center justify-center p-8 lg:p-12 animate-in fade-in zoom-in-95 duration-700">
                                 <div className="absolute inset-0 overflow-hidden">
                                     <div className="absolute top-[-20%] right-[-10%] w-[60%] h-[60%] bg-blue-600/10 blur-[150px] rounded-full animate-pulse" />
@@ -3972,7 +3756,7 @@ const SetupWizard: React.FC = () => {
                                                     <h1 className="text-5xl font-black text-white tracking-tighter">
                                                         {installationStep === 'COMPLETED' ? 'Kurulum Tamamlandı' : 'Sistem Kuruluyor'}
                                                     </h1>
-                                                    <div className="text-blue-400 font-black uppercase tracking-[0.3em] text-[10px] opacity-60">System Core Initialization Protocol v0.1.9</div>
+                                                    <div className="text-blue-400 font-black uppercase tracking-[0.3em] text-[10px] opacity-60">System Core Initialization Protocol v{APP_SEMVER}</div>
                                                 </div>
                                             </div>
                                         </div>
@@ -4085,10 +3869,10 @@ const SetupWizard: React.FC = () => {
                             console.log("Navigating back from step:", step);
                             prevStep();
                         }}
-                        onNext={step < (config.skip_integration ? 7 : 9) ? nextStep : undefined}
-                        prevDisabled={step === 1 || loading || (step === (config.skip_integration ? 7 : 9) && installationStep !== 'COMPLETED')}
-                        nextDisabled={loading || step === (config.skip_integration ? 7 : 9)}
-                        nextLabel={step === (config.skip_integration ? 6 : 8) ? (isUpdateMode ? "GÜNCELLE" : "SİSTEMİ KUR") : "DEVAM ET"}
+                        onNext={step < finalStep ? nextStep : undefined}
+                        prevDisabled={step === 1 || loading || (step === finalStep && installationStep !== 'COMPLETED')}
+                        nextDisabled={loading || step === finalStep}
+                        nextLabel={step === summaryStep ? (isUpdateMode ? "GÜNCELLE" : "SİSTEMİ KUR") : "DEVAM ET"}
                         prevLabel="GERİ DÖN"
                     />
                 </div>
