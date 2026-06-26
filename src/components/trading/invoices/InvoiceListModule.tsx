@@ -228,7 +228,7 @@ export function InvoiceListModule({
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
-  const [dateFilter, setDateFilter] = useState<string>('today');
+  const [dateFilter, setDateFilter] = useState<string>(defaultCategory === 'Alis' ? 'all' : 'today');
   const [invoiceTypeFilter, setInvoiceTypeFilter] = useState<string>(defaultInvoiceTypeFilter || 'all');
   const [selectedInvoice, setSelectedInvoice] = useState<ListInvoice | null>(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
@@ -357,6 +357,7 @@ export function InvoiceListModule({
 
   useEffect(() => {
     setSelectedCategory(defaultCategory || 'all');
+    if (defaultCategory === 'Alis') setDateFilter('all');
   }, [defaultCategory]);
 
   /** Sayım → alış taslak: önce props (navigasyon), yoksa sessionStorage (yedek). */

@@ -271,6 +271,34 @@ function defaultFicheTypeByCategory(invoiceCategory?: string): string | null {
   }
 }
 
+function legacyFicheTypesByCategory(invoiceCategory?: string): string[] {
+  switch (invoiceCategory) {
+    case 'Alis':
+      return ['purchase_invoice', 'A'];
+    case 'Satis':
+      return ['sales_invoice', 'S'];
+    case 'Iade':
+      return ['return_invoice', 'I'];
+    default: {
+      const fallback = defaultFicheTypeByCategory(invoiceCategory);
+      return fallback ? [fallback] : [];
+    }
+  }
+}
+
+function legacyFicheTypesByInvoiceType(invoiceType?: number | null): string[] {
+  switch (Number(invoiceType || 0)) {
+    case 1:
+      return ['purchase_invoice', 'A'];
+    case 8:
+      return ['sales_invoice', 'S'];
+    case 3:
+      return ['return_invoice', 'I'];
+    default:
+      return [];
+  }
+}
+
 function deriveFicheTypeFromTrcode(trcode: number): string {
   if ([1, 4, 5, 6, 13, 26, 41, 42].includes(trcode)) return 'purchase_invoice';
   if ([7, 8, 9, 14, 29, 30, 31, 32].includes(trcode)) return 'sales_invoice';
@@ -768,7 +796,7 @@ async function applyInvoiceBalanceUpdatesRestApi(
 
 /** Modül kategorisi (Alis/Satis/…) ile satırın uyumu — önce DB invoice_category, yoksa Logo trcode grubu */
 export function invoiceMatchesModuleCategory(
-  inv: { invoice_category?: string; invoice_type?: number; trcode?: number },
+  inv: { invoice_category?: string; invoice_type?: number; trcode?: number; fiche_type?: string },
   moduleCategory: string
 ): boolean {
   if (!moduleCategory) return true;
@@ -777,7 +805,9 @@ export function invoiceMatchesModuleCategory(
   }
   const tc = Number(inv.invoice_type ?? inv.trcode ?? 0);
   const set = TRCODES_BY_INVOICE_CATEGORY[moduleCategory];
-  return set ? set.includes(tc) : true;
+  if (set?.includes(tc)) return true;
+  const ft = String(inv.fiche_type ?? '').trim();
+  return legacyFicheTypesByCategory(moduleCategory).includes(ft);
 }
 
 /** sale_items satırını UniversalInvoiceForm / grid satır modeline çevirir (SQL ve PostgREST ortak) */
@@ -1288,16 +1318,21 @@ export const invoicesAPI = {
         };
 
         if (invoiceType !== undefined && invoiceType !== null && invoiceType !== 0) {
-          baseFilters.trcode = `eq.${String(invoiceType)}`;
+          const legacyFicheTypes = legacyFicheTypesByInvoiceType(invoiceType);
+          if (legacyFicheTypes.length > 0) {
+            baseFilters.or = `(trcode.eq.${String(invoiceType)},fiche_type.in.(${legacyFicheTypes.join(',')}))`;
+          } else {
+            baseFilters.trcode = `eq.${String(invoiceType)}`;
+          }
         } else if (categoryKey) {
           const trcodes = [...(TRCODES_BY_INVOICE_CATEGORY[categoryKey] || [])];
-          const fallbackFicheType = defaultFicheTypeByCategory(categoryKey);
-          if (trcodes.length > 0 && fallbackFicheType) {
-            baseFilters.or = `(trcode.in.(${trcodes.join(',')}),fiche_type.eq.${fallbackFicheType})`;
+          const ficheTypes = legacyFicheTypesByCategory(categoryKey);
+          if (trcodes.length > 0 && ficheTypes.length > 0) {
+            baseFilters.or = `(trcode.in.(${trcodes.join(',')}),fiche_type.in.(${ficheTypes.join(',')}))`;
           } else if (trcodes.length > 0) {
             baseFilters.trcode = `in.(${trcodes.join(',')})`;
-          } else if (fallbackFicheType) {
-            baseFilters.fiche_type = `eq.${fallbackFicheType}`;
+          } else if (ficheTypes.length > 0) {
+            baseFilters.fiche_type = `in.(${ficheTypes.join(',')})`;
           }
         }
 
@@ -1352,29 +1387,35 @@ export const invoicesAPI = {
 
       // Filter by fiche_type or trcode based on category
       if (invoiceType !== undefined && invoiceType !== null && invoiceType !== 0) {
-        sql += ` AND trcode::text = $${paramIndex}::text`;
-        params.push(String(invoiceType));
-        paramIndex++;
+        const legacyFicheTypes = legacyFicheTypesByInvoiceType(invoiceType);
+        if (legacyFicheTypes.length > 0) {
+          sql += ` AND (trcode::text = $${paramIndex}::text OR fiche_type::text = ANY($${paramIndex + 1}::text[]))`;
+          params.push(String(invoiceType), legacyFicheTypes);
+          paramIndex += 2;
+        } else {
+          sql += ` AND trcode::text = $${paramIndex}::text`;
+          params.push(String(invoiceType));
+          paramIndex++;
+        }
       } else if (categoryKey) {
         const trcodes = [...(TRCODES_BY_INVOICE_CATEGORY[categoryKey] || [])];
-        const fallbackFicheType = defaultFicheTypeByCategory(categoryKey);
+        const ficheTypes = legacyFicheTypesByCategory(categoryKey);
 
         if (trcodes.length > 0) {
           // Legacy/taşınmış bazı kayıtlarda trcode boş/0 kalabiliyor.
           // Bu durumda doğru fiche_type ile yine listede görünmesini sağla.
           sql += ` AND (trcode::int IN (${trcodes.join(',')})`;
-          if (fallbackFicheType) {
-            sql += ` OR fiche_type::text = $${paramIndex}::text`;
-            params.push(fallbackFicheType);
+          if (ficheTypes.length > 0) {
+            sql += ` OR fiche_type::text = ANY($${paramIndex}::text[])`;
+            params.push(ficheTypes);
             paramIndex++;
           }
           sql += `)`;
         } else {
           // Fallback to fiche_type if unknown category
-          let ficheType = 'sales_invoice';
-          if (categoryKey === 'Alis') ficheType = 'purchase_invoice';
-          sql += ` AND fiche_type::text = $${paramIndex}::text`;
-          params.push(ficheType);
+          const ficheTypesFallback = legacyFicheTypesByCategory(categoryKey);
+          sql += ` AND fiche_type::text = ANY($${paramIndex}::text[])`;
+          params.push(ficheTypesFallback.length ? ficheTypesFallback : ['sales_invoice']);
           paramIndex++;
         }
       }
@@ -2505,9 +2546,9 @@ function normalizeSalesHeaderNetAmount(dbInv: any, category: Invoice['invoice_ca
 
 function inferInvoiceCategoryFromDbRow(dbInv: any): Invoice['invoice_category'] {
   const ft = String(dbInv?.fiche_type || '').toLowerCase();
-  if (ft === 'purchase_invoice') return 'Alis';
-  if (ft === 'sales_invoice') return 'Satis';
-  if (ft === 'return_invoice') return 'Iade';
+  if (ft === 'purchase_invoice' || ft === 'a') return 'Alis';
+  if (ft === 'sales_invoice' || ft === 's') return 'Satis';
+  if (ft === 'return_invoice' || ft === 'i') return 'Iade';
   if (ft === 'waybill') return 'Irsaliye';
   if (ft === 'order') return 'Siparis';
   if (ft === 'quote') return 'Teklif';
@@ -2525,6 +2566,16 @@ function inferInvoiceCategoryFromDbRow(dbInv: any): Invoice['invoice_category'] 
 
 function mapDatabaseInvoiceToInvoice(dbInv: any): Invoice {
   const category = inferInvoiceCategoryFromDbRow(dbInv);
+  const inferredType =
+    dbInv.trcode != null
+      ? Number(dbInv.trcode)
+      : category === 'Alis'
+        ? 1
+        : category === 'Satis'
+          ? 8
+          : category === 'Iade'
+            ? 3
+            : 0;
 
   const joinCust = dbInv.join_customer_name;
   const joinSup = dbInv.join_supplier_name;
@@ -2542,7 +2593,7 @@ function mapDatabaseInvoiceToInvoice(dbInv: any): Invoice {
     customer_name: category === 'Alis' ? partnerNameAlis : partnerNameSatis,
     supplier_id: dbInv.customer_id,
     supplier_name: category === 'Alis' ? partnerNameAlis : (joinSup || dbInv.supplier_name || ''),
-    trcode: dbInv.trcode != null ? Number(dbInv.trcode) : undefined,
+    trcode: inferredType || undefined,
     subtotal: parseFloat(dbInv.total_net || 0),
     tax: parseFloat(dbInv.total_vat || 0),
     discount: parseFloat(dbInv.total_discount || 0),
@@ -2554,7 +2605,7 @@ function mapDatabaseInvoiceToInvoice(dbInv: any): Invoice {
     created_at: dbInv.created_at || dbInv.date,
     items: [],
     source: 'invoice',
-    invoice_type: dbInv.trcode != null ? Number(dbInv.trcode) : 0,
+    invoice_type: inferredType,
     firma_id: dbInv.firm_nr,
     firma_name: '',
     donem_id: dbInv.period_nr,
