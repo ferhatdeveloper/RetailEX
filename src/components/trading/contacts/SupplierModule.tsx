@@ -969,28 +969,29 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: 'all
           y={contextMenu.y}
           onClose={() => setContextMenu(null)}
           items={[
-            {
-              id: 'collection',
-              label: 'Tahsilat al',
-              icon: Download,
-              onClick: () => {
-                if (contextMenu.supplier) {
-                  setCashAction({ type: 'CH_TAHSILAT', account: contextMenu.supplier });
+            contextMenu.supplier?.cardType === 'customer'
+              ? {
+                  id: 'collection',
+                  label: 'Tahsilat al',
+                  icon: Download,
+                  onClick: () => {
+                    if (contextMenu.supplier) {
+                      setCashAction({ type: 'CH_TAHSILAT', account: contextMenu.supplier });
+                    }
+                    setContextMenu(null);
+                  }
                 }
-                setContextMenu(null);
-              }
-            },
-            {
-              id: 'payment',
-              label: 'Ödeme yap',
-              icon: Wallet,
-              onClick: () => {
-                if (contextMenu.supplier) {
-                  setCashAction({ type: 'CH_ODEME', account: contextMenu.supplier });
-                }
-                setContextMenu(null);
-              }
-            },
+              : {
+                  id: 'payment',
+                  label: 'Ödeme yap',
+                  icon: Wallet,
+                  onClick: () => {
+                    if (contextMenu.supplier) {
+                      setCashAction({ type: 'CH_ODEME', account: contextMenu.supplier });
+                    }
+                    setContextMenu(null);
+                  }
+                },
             { id: 'edit', label: tm('edit'), icon: Edit, onClick: () => { if (contextMenu.supplier) handleEditClick(contextMenu.supplier); setContextMenu(null); } },
             { id: 'extract', label: tm('accountStatement'), icon: FileText, onClick: () => { if (contextMenu.supplier) selectAccount(contextMenu.supplier); setContextMenu(null); } },
             {
