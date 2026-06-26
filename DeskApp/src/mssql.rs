@@ -389,12 +389,10 @@ async fn connect_logo_pg(target: &LogoPgTarget) -> Result<tokio_postgres::Client
             )
         })?;
 
+    let label = target.label.clone();
     tokio::spawn(async move {
         if let Err(e) = conn.await {
-            eprintln!(
-                "Postgres {} connection error: {}",
-                target.label, e
-            );
+            eprintln!("Postgres {} connection error: {}", label, e);
         }
     });
 
