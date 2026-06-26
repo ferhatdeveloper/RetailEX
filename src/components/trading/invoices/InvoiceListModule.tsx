@@ -618,6 +618,7 @@ export function InvoiceListModule({
       /* Yeni referans: useEffect(items) tetiklensin; kalemler kopyalanmış olsun */
       const data = {
         ...raw,
+        source: invoice.source === 'pos' ? 'pos' : (raw as any).source,
         items: Array.isArray(raw.items) ? raw.items.map((it: any) => ({ ...it })) : []
       };
       const invoiceType = resolveInvoiceTypeForEdit(data as ListInvoice);

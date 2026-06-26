@@ -40,6 +40,8 @@ interface InvoiceHeaderProps {
     customerTitle: string;
 
     paymentMethod: string;
+    /** Gösterim etiketi (çevrilmiş); yoksa paymentMethod ham değeri kullanılır */
+    paymentMethodLabel?: string;
     warehouse: string;
     workplace: string;
     salespersonCode: string;
@@ -100,6 +102,7 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
     supplierTitle,
     customerTitle,
     paymentMethod,
+    paymentMethodLabel,
     warehouse,
     workplace,
     salespersonCode,
@@ -385,7 +388,7 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
                             <div className="flex gap-1">
                                 <input
                                     type="text"
-                                    value={paymentMethod || tm('openTerms')}
+                                    value={paymentMethodLabel ?? (paymentMethod || tm('openTerms'))}
                                     readOnly
                                     className="flex-1 px-2 py-1 border border-gray-300 rounded text-sm bg-white cursor-pointer"
                                     onClick={() => setShowPaymentInfoModal(true)}

@@ -1,6 +1,7 @@
 ﻿import { X, CreditCard, Wallet, Banknote, Building2 } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useLanguage } from '../../../contexts/LanguageContext';
+import { dbPaymentMethodToFormCode } from '../../../utils/paymentMethodUtils';
 
 interface PaymentMethod {
   code: string;
@@ -12,22 +13,37 @@ interface InvoicePaymentInfoModalProps {
   currentPaymentMethod: string;
   onSelect: (method: string) => void;
   onClose: () => void;
+  /** Perakende POS: yalnızca nakit / kart */
+  retailPosMode?: boolean;
 }
 
-export function InvoicePaymentInfoModal({ currentPaymentMethod, onSelect, onClose }: InvoicePaymentInfoModalProps) {
+export function InvoicePaymentInfoModal({
+  currentPaymentMethod,
+  onSelect,
+  onClose,
+  retailPosMode = false,
+}: InvoicePaymentInfoModalProps) {
   const { tm } = useLanguage();
-  const [selectedMethod, setSelectedMethod] = useState(currentPaymentMethod || '');
+  const initialCode = dbPaymentMethodToFormCode(currentPaymentMethod) || currentPaymentMethod || '';
+  const [selectedMethod, setSelectedMethod] = useState(initialCode);
   const [notes, setNotes] = useState('');
 
+  useEffect(() => {
+    setSelectedMethod(dbPaymentMethodToFormCode(currentPaymentMethod) || currentPaymentMethod || '');
+  }, [currentPaymentMethod]);
+
   const paymentMethods: PaymentMethod[] = useMemo(
-    () => [
-      { code: 'NAKIT', nameKey: 'paymentCash', icon: Banknote },
-      { code: 'KREDIKARTI', nameKey: 'paymentCreditCard', icon: CreditCard },
-      { code: 'HAVAL', nameKey: 'paymentTransfer', icon: Building2 },
-      { code: 'CEK', nameKey: 'paymentCheck', icon: Wallet },
-      { code: 'SENET', nameKey: 'paymentPromissory', icon: CreditCard },
-    ],
-    [],
+    () => {
+      const all: PaymentMethod[] = [
+        { code: 'NAKIT', nameKey: 'paymentCash', icon: Banknote },
+        { code: 'KREDIKARTI', nameKey: 'paymentCreditCard', icon: CreditCard },
+        { code: 'HAVAL', nameKey: 'paymentTransfer', icon: Building2 },
+        { code: 'CEK', nameKey: 'paymentCheck', icon: Wallet },
+        { code: 'SENET', nameKey: 'paymentPromissory', icon: CreditCard },
+      ];
+      return retailPosMode ? all.filter((m) => m.code === 'NAKIT' || m.code === 'KREDIKARTI') : all;
+    },
+    [retailPosMode],
   );
 
   const handleSave = () => {

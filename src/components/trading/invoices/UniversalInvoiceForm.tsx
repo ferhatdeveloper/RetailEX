@@ -63,6 +63,12 @@ import {
   parsePurchaseInvoiceExcelArrayBuffer,
   applyPurchaseExcelRowQuantityAsBaseStock,
 } from '../../../utils/purchaseInvoiceExcelImport';
+import {
+  dbPaymentMethodToFormCode,
+  formCodeToDbPaymentMethod,
+  isPosRetailPaymentContext,
+  paymentFormCodeTranslationKey,
+} from '../../../utils/paymentMethodUtils';
 
 // Electron API tip tanımı
 declare global {
@@ -534,9 +540,35 @@ export function UniversalInvoiceForm({
   const [validUntil, setValidUntil] = useState(''); // Teklif/Vade tarihi için
   const [orderDate, setOrderDate] = useState(''); // Sipariş için
   const [dueDate, setDueDate] = useState(''); // Satış faturası vade tarihi
-  const [paymentMethod, setPaymentMethod] = useState(''); // Ödeme şekli (boşsa açık hesap/cari olarak işlem görür)
+  const [paymentMethod, setPaymentMethod] = useState<string>(() => {
+    if (editData) {
+      return dbPaymentMethodToFormCode(
+        (editData as any).payment_method ?? (editData as any).paymentMethod,
+      );
+    }
+    return '';
+  }); // Form kodu: NAKIT, KREDIKARTI, … (boş = açık hesap)
   const [cashierName, setCashierName] = useState(() => editData?.cashier || ''); // Kasiyer / iade yapan
   const isSalesReturnForm = invoiceType.code === 3;
+  const isPosRetail = useMemo(
+    () =>
+      isPosRetailPaymentContext({
+        source: (editData as any)?.source,
+        paymentMethod: (editData as any)?.payment_method ?? paymentMethod,
+        invoiceTypeCode: invoiceType.code,
+        cashier: (editData as any)?.cashier ?? cashierName,
+      }),
+    [editData, invoiceType.code, cashierName, paymentMethod],
+  );
+  const paymentMethodLabel = useMemo(() => {
+    if (!paymentMethod) return tm('openTerms');
+    const key = paymentFormCodeTranslationKey(paymentMethod);
+    return key === 'openTerms' ? paymentMethod : tm(key);
+  }, [paymentMethod, tm]);
+  const resolvePaymentMethodForDb = useCallback(
+    () => formCodeToDbPaymentMethod(paymentMethod, { posRetail: isPosRetail }),
+    [paymentMethod, isPosRetail],
+  );
   const resolveAuthUserDisplayName = useCallback(() => {
     const name = String(user?.full_name || user?.username || '').trim();
     return name;
@@ -2283,6 +2315,13 @@ export function UniversalInvoiceForm({
         setCashierName(String((editData as any).cashier).trim());
       }
 
+      if ((editData as any).id) {
+        const loadedPayment = dbPaymentMethodToFormCode(
+          (editData as any).payment_method ?? (editData as any).paymentMethod,
+        );
+        setPaymentMethod(loadedPayment);
+      }
+
       // Farklı field isimlerini kontrol et: items, invoice_items, lines, sale_items
       const itemsData = editData.items || editData.invoice_items || editData.lines || editData.sale_items || [];
 
@@ -2679,7 +2718,7 @@ export function UniversalInvoiceForm({
       trcode: invoiceType.code,
       invoice_category: invoiceType.category as any,
       customer_name: customerTitle || supplierTitle || '',
-      payment_method: paymentMethod || 'Nakit',
+      payment_method: resolvePaymentMethodForDb(),
       cashier: cashierName,
       subtotal: totals.subtotalIQD,
       tax: totals.totalVat,
@@ -2916,7 +2955,7 @@ export function UniversalInvoiceForm({
         firma_name: selectedFirm?.name || '',
         donem_id: selectedPeriod?.logicalref?.toString() || '0',
         donem_name: selectedPeriod?.donem_adi || '',
-        payment_method: paymentMethod || 'Nakit',
+        payment_method: resolvePaymentMethodForDb(),
         cashier: effectiveCashierName,
         created_by_user_id: (editData as any)?.created_by_user_id || user?.id || undefined,
         store_id: (editData as any)?.store_id || undefined,
@@ -3061,7 +3100,7 @@ export function UniversalInvoiceForm({
           discount: totals.totalDiscountIQD,
           tax: totals.totalVat,
           total: totals.netIQD,
-          paymentMethod: paymentMethod || 'Nakit'
+          paymentMethod: resolvePaymentMethodForDb()
         };
 
         if (window.electronAPI?.printer) {
@@ -3249,6 +3288,7 @@ export function UniversalInvoiceForm({
                   customerTitle={customerTitle}
 
                   paymentMethod={paymentMethod}
+                  paymentMethodLabel={paymentMethodLabel}
                   warehouse={warehouse}
                   workplace={workplace}
                   salespersonCode={salespersonCode}
@@ -4224,7 +4264,14 @@ export function UniversalInvoiceForm({
           {showSpecialCodeModal && <InvoiceSpecialCodeModal currentCode={specialCode} onSelect={setSpecialCode} onClose={() => setShowSpecialCodeModal(false)} />}
           {showTradingGroupModal && <InvoiceTradingGroupModal currentGroup={tradingGroup} onSelect={setTradingGroup} onClose={() => setShowTradingGroupModal(false)} />}
           {showAuthorizationModal && <InvoiceAuthorizationModal currentAuth={authorizationCode} onSelect={setAuthorizationCode} onClose={() => setShowAuthorizationModal(false)} />}
-          {showPaymentInfoModal && <InvoicePaymentInfoModal currentPaymentMethod={paymentMethod} onSelect={setPaymentMethod} onClose={() => setShowPaymentInfoModal(false)} />}
+          {showPaymentInfoModal && (
+            <InvoicePaymentInfoModal
+              currentPaymentMethod={paymentMethod}
+              retailPosMode={isPosRetail}
+              onSelect={setPaymentMethod}
+              onClose={() => setShowPaymentInfoModal(false)}
+            />
+          )}
           {showWorkplaceModal && <InvoiceWorkplaceModal currentWorkplace={workplace} onSelect={setWorkplace} onClose={() => setShowWorkplaceModal(false)} />}
           {showWarehouseModal && <InvoiceWarehouseModal currentWarehouse={warehouse} onSelect={setWarehouse} onClose={() => setShowWarehouseModal(false)} />}
           {showSalespersonModal && <InvoiceSalespersonModal currentSalesperson={salespersonCode} onSelect={setSalespersonCode} onClose={() => setShowSalespersonModal(false)} />}
