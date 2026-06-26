@@ -350,15 +350,7 @@ fn local_mirror_pg_target(config: &AppConfig, primary_is_remote: bool) -> Option
     })
 }
 
-async fn connect_logo_pg(
-    target: &LogoPgTarget,
-) -> Result<
-    (
-        tokio_postgres::Client,
-        tokio_postgres::Connection<tokio_postgres::Socket, tokio_postgres::NoTls>,
-    ),
-    String,
-> {
+async fn connect_logo_pg(target: &LogoPgTarget) -> Result<tokio_postgres::Client, String> {
     let host_part = target.db_path.split(':').next().unwrap_or("localhost");
     let host_port_str = target
         .db_path
@@ -385,7 +377,7 @@ async fn connect_logo_pg(
         .dbname(db_name)
         .connect_timeout(std::time::Duration::from_secs(5));
 
-    pg_config
+    let (client, conn) = pg_config
         .connect(tokio_postgres::NoTls)
         .await
         .map_err(|e| {
@@ -395,7 +387,18 @@ async fn connect_logo_pg(
                 db_name,
                 crate::db_utils::format_pg_error(e)
             )
-        })
+        })?;
+
+    tokio::spawn(async move {
+        if let Err(e) = conn.await {
+            eprintln!(
+                "Postgres {} connection error: {}",
+                target.label, e
+            );
+        }
+    });
+
+    Ok(client)
 }
 
 async fn ensure_firm_pg_tables(
@@ -788,12 +791,7 @@ pub async fn sync_logo_data(window: tauri::Window, config: AppConfig) -> Result<
             "Cari hesaplar yerel PostgreSQL'e aktarılıyor...",
         );
         match connect_logo_pg(&local_target).await {
-            Ok((local_client, local_conn)) => {
-                tokio::spawn(async move {
-                    if let Err(e) = local_conn.await {
-                        eprintln!("Postgres local mirror connection error: {}", e);
-                    }
-                });
+            Ok(local_client) => {
                 if let Err(e) = ensure_firm_pg_tables(&local_client, &current_firm_nr).await {
                     let _ = window.emit("sync-error", format!("Yerel tablo hazırlığı: {}", e));
                 } else {
