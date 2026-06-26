@@ -57,6 +57,7 @@ export function sqlSupplierAccountBalancesCte(suppTable: string): string {
           CASE
             WHEN fiche_type = 'purchase_invoice' THEN net_amount
             WHEN fiche_type = 'return_invoice' THEN -net_amount
+            WHEN fiche_type = 'opening_balance' THEN net_amount
             ELSE 0
           END AS line_contrib
         FROM sales
@@ -68,6 +69,7 @@ export function sqlSupplierAccountBalancesCte(suppTable: string): string {
           CASE
             WHEN sl.fiche_type = 'purchase_invoice' THEN sl.net_amount
             WHEN sl.fiche_type = 'return_invoice' THEN -sl.net_amount
+            WHEN sl.fiche_type = 'opening_balance' THEN sl.net_amount
             ELSE 0
           END AS line_contrib
         FROM sales sl
@@ -164,10 +166,19 @@ function sumSupplierSalesLedger(
   let sum = 0;
   for (const s of sales) {
     const ft = String(s.fiche_type || '').toLowerCase();
-    if (ft !== 'purchase_invoice' && ft !== 'return_invoice') continue;
+    if (ft !== 'purchase_invoice' && ft !== 'return_invoice' && ft !== 'opening_balance') continue;
     if (s.is_cancelled === true) continue;
-    const amt = parseFloat(String(s.net_amount ?? 0)) || 0;
-    const contrib = ft === 'purchase_invoice' ? amt : -amt;
+    const rawAmt = parseFloat(String(s.net_amount ?? 0)) || 0;
+    if (!rawAmt) continue;
+    const amt = Math.abs(rawAmt);
+    let contrib = 0;
+    if (ft === 'opening_balance') {
+      contrib = rawAmt;
+    } else if (ft === 'purchase_invoice') {
+      contrib = amt;
+    } else {
+      contrib = -amt;
+    }
     const cid = s.customer_id ? String(s.customer_id) : '';
     const matchesId = cid && cid === idStr;
     const matchesName =

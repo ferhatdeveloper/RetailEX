@@ -205,6 +205,7 @@ export const getStaticMenuSections = (t: Translations) => [
                 icon: TrendingDown,
                 children: [
                     // { label: t.menu.currentAccountSlips, screen: 'currentaccounts', icon: Receipt },
+                    { label: 'Cari Devir Fişi', screen: 'cari-devir', icon: ArrowRightLeft },
                     { label: t.menu.cashOperations, screen: 'kasalar', icon: Wallet },
                     // { label: 'Banka İşlemleri', screen: 'banks', icon: Landmark },
                     { label: t.menu.cashSlips, screen: 'cash-slips', icon: Receipt },

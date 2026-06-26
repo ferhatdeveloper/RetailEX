@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { formatNumber } from '../../../utils/formatNumber';
 import {
   Truck, Users, X, Search, Edit, Trash2, Mail, Phone, MapPin, Wallet,
-  FileText, Loader2, Printer, RefreshCw, Download, CalendarClock
+  FileText, Loader2, Printer, RefreshCw, Download, CalendarClock, ArrowRightLeft
 } from 'lucide-react';
 import { supplierAPI, type Supplier } from '../../../services/api/suppliers';
 import { toast } from 'sonner';
@@ -599,6 +599,7 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: 'all
     // Kasa işlemleri — isReturn=true: ödeme/tahsilat her iki hesap tipi için bakiyeyi düşürür
     if (ficheType === 'CH_ODEME') return { label: 'Ödeme', color: 'bg-green-100 text-green-700', isReturn: true };
     if (ficheType === 'CH_TAHSILAT') return { label: 'Tahsilat', color: 'bg-teal-100 text-teal-700', isReturn: true };
+    if (ficheType === 'opening_balance') return { label: 'Devir', color: 'bg-indigo-100 text-indigo-800', isReturn: false, isOpening: true };
     // sales_invoice: trcode 9 = Hizmet
     if (trcode === 9) return { label: 'Hizmet', color: 'bg-indigo-100 text-indigo-700', isReturn: false };
     return { label: 'Satış', color: 'bg-blue-100 text-blue-700', isReturn: false };
@@ -608,19 +609,29 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: 'all
   const ekstresiRows = ekstresiData.map(row => {
     const amount = parseFloat(row.total_amount || 0);
     const cancelled = row.is_cancelled === true;
-    const { isReturn } = ficheTypeToInfo(row.fiche_type || '', Number(row.trcode), cancelled);
-    // Müşteri: satış borç artırır. Tedarikçi: alış borç artırır (ödenecek tutar).
-    const delta = cancelled
-      ? 0
-      : isSupplierAccount
-        ? (isReturn ? -amount : amount)
-        : (isReturn ? -amount : amount);
+    const typeInfo = ficheTypeToInfo(row.fiche_type || '', Number(row.trcode), cancelled);
+    const { isReturn, isOpening } = typeInfo as { isReturn: boolean; isOpening?: boolean };
+    let delta = 0;
+    if (!cancelled) {
+      if (isOpening) {
+        delta = amount;
+      } else if (isSupplierAccount) {
+        delta = isReturn ? -Math.abs(amount) : Math.abs(amount);
+      } else {
+        delta = isReturn ? -Math.abs(amount) : Math.abs(amount);
+      }
+    }
     runningBalance += delta;
-    const isBorcEntry = isSupplierAccount ? isReturn : !isReturn;
+    const absAmt = Math.abs(amount);
+    const isBorcEntry = isOpening
+      ? amount > 0
+      : isSupplierAccount
+        ? isReturn
+        : !isReturn;
     return {
       ...row,
-      borcAmount: cancelled ? 0 : (isBorcEntry ? amount : 0),
-      alacakAmount: cancelled ? 0 : (isBorcEntry ? 0 : amount),
+      borcAmount: cancelled ? 0 : (isBorcEntry ? absAmt : 0),
+      alacakAmount: cancelled ? 0 : (isBorcEntry ? 0 : absAmt),
       balance: runningBalance
     };
   });
@@ -705,6 +716,15 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: 'all
             <button onClick={loadSuppliers} className="flex items-center gap-1 px-2 py-1 bg-white/10 hover:bg-white/20 transition-colors text-[10px]">
               <RefreshCw className={`w-3 h-3 ${loading ? 'animate-spin' : ''}`} />
               <span>{tm('refreshData')}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => window.dispatchEvent(new CustomEvent('navigateToScreen', { detail: 'cari-devir' }))}
+              className="flex items-center gap-1 px-2 py-1 bg-indigo-100 text-indigo-900 hover:bg-indigo-50 transition-colors text-[10px] font-bold"
+              title="Eski programdan cari borç devri"
+            >
+              <ArrowRightLeft className="w-3 h-3" />
+              <span>Devir Fişi</span>
             </button>
             <button
               type="button"

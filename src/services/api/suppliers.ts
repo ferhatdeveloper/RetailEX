@@ -65,10 +65,10 @@ function isCariEkstreSaleRow(
 ): boolean {
   const ft = String(row.fiche_type || '').toLowerCase();
   if (cardType === 'supplier') {
-    return ft === 'purchase_invoice' || ft === 'return_invoice';
+    return ft === 'purchase_invoice' || ft === 'return_invoice' || ft === 'opening_balance';
   }
   if (cardType === 'customer') {
-    return ft === 'sales_invoice' || ft === 'return_invoice' || ft === 'service' || ft === 'hizmet';
+    return ft === 'sales_invoice' || ft === 'return_invoice' || ft === 'service' || ft === 'hizmet' || ft === 'opening_balance';
   }
   return true;
 }
@@ -667,9 +667,9 @@ export const supplierAPI = {
 
       const ledgerFicheFilter =
         cardType === 'supplier'
-          ? ` AND t.fiche_type IN ('purchase_invoice', 'return_invoice')`
+          ? ` AND t.fiche_type IN ('purchase_invoice', 'return_invoice', 'opening_balance')`
           : cardType === 'customer'
-            ? ` AND t.fiche_type IN ('sales_invoice', 'return_invoice', 'service', 'hizmet')`
+            ? ` AND t.fiche_type IN ('sales_invoice', 'return_invoice', 'service', 'hizmet', 'opening_balance')`
             : '';
 
       const sql = `

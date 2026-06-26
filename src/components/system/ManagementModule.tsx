@@ -54,6 +54,7 @@ const MizanReportModule = lazyWithChunkRecovery(() => import('../accounting/repo
 const IncomeStatementReport = lazyWithChunkRecovery(() => import('../accounting/reports/IncomeStatementReport').then(m => ({ default: m.IncomeStatementReport })));
 const BalanceSheetReport = lazyWithChunkRecovery(() => import('../accounting/reports/BalanceSheetReport').then(m => ({ default: m.BalanceSheetReport })));
 const SupplierModule = lazyWithChunkRecovery(() => import('../trading/contacts/SupplierModule').then(m => ({ default: m.SupplierModule })));
+const CariDevirFisiModule = lazyWithChunkRecovery(() => import('../trading/contacts/CariDevirFisiModule').then(m => ({ default: m.CariDevirFisiModule })));
 const CustomerCallPlanModule = lazyWithChunkRecovery(() => import('../trading/contacts/CustomerCallPlanModule').then(m => ({ default: m.CustomerCallPlanModule })));
 const PurchaseExpiryReport = lazyWithChunkRecovery(() => import('../reports/PurchaseExpiryReport').then(m => ({ default: m.PurchaseExpiryReport })));
 const PriceManagementModule = lazyWithChunkRecovery(() => import('../trading/invoices/PriceManagementModule').then(m => ({ default: m.PriceManagementModule })));
@@ -224,7 +225,7 @@ type ExtendedScreen = ManagementScreen | 'dashboard' | 'finance' | 'stock' | 'pu
   'modulemanagement' | 'menumanagement' | 'onlineorders' | 'productsync' | 'price-change-vouchers' | 'new-modules' | 'accounting-mgmt' | 'workflow-automation' | 'voice-assistant' | 'cashier-scale' | 'scale-management' | 'db-migrations' | 'hybrid-sync' | 'store-management' | 'security-modules' | 'demo-data' |
   'product-analytics' | 'profit-dashboard' | 'graphanalysis' | 'reconciliation' | 'wave-picking' | 'ai-stock-prediction' | 'material-extract' | 'cost-centers' |
   'universal-report-hub' | 'customer-extract' | 'store-performance' | 'inventory-aging' | 'nebim-migration' |
-  'cash-slips' | 'bank-slips' | 'pos-slips' | 'current-slips' | 'stockcounting' | 'stockcounting-mobile' |
+  'cash-slips' | 'bank-slips' | 'pos-slips' | 'current-slips' | 'cari-devir' | 'stockcounting' | 'stockcounting-mobile' |
   'salesreports' | 'stockreports' | 'customeranalysis' | 'mizan' | 'income-statement' | 'balance-sheet' | 'advanced-reports' | 'reports' | 'customreports' | 'category-group-profit-report' | 'materials' | 'MYFisleri' |
   'stockmovements-deficit' | 'stockmovements-surplus' | 'stock-price-change-slips' |
   'inventory-count-ops' |
@@ -1055,6 +1056,8 @@ export function ManagementModule({
         case 'suppliers_def':
         case 'suppliers':
           return <SupplierModule key="suppliers" />;
+        case 'cari-devir':
+          return <CariDevirFisiModule />;
         case 'customer-call-plan':
           return <CustomerCallPlanModule />;
 
