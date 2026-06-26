@@ -215,14 +215,21 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: 'all
     };
   }, [selectedAccount, showAddModal]);
 
-  const loadSuppliers = async () => {
+  const loadSuppliers = async (): Promise<Supplier[]> => {
     setLoading(true);
     try {
       const { repairCariLedgerConsistency } = await import('../../../services/api/accountLedgerRepair');
       await repairCariLedgerConsistency().catch(() => { /* sessiz */ });
-      setSuppliers(await supplierAPI.getAll());
+      const all = await supplierAPI.getAll();
+      setSuppliers(all);
+      setSelectedAccount((prev) => {
+        if (!prev) return prev;
+        return all.find((s) => s.id === prev.id) ?? prev;
+      });
+      return all;
     } catch (e: any) {
       toast.error(e.message || 'Cari hesaplar yüklenemedi');
+      return [];
     } finally {
       setLoading(false);
     }
@@ -664,10 +671,16 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: 'all
   const netHdr = fmtEkstreSignedNet();
 
   const currentBalanceHdr = selectedAccount
-    ? fmtEkstreAmount(Math.abs(selectedAccount.balance || 0))
+    ? fmtEkstreAmount(Math.abs(
+        ekstresiData.length > 0 ? netBalance : (selectedAccount.balance || 0)
+      ))
     : null;
   const currentBalanceDir = selectedAccount
-    ? getCariBalanceDirection(selectedAccount.cardType, selectedAccount.balance || 0, tm)
+    ? getCariBalanceDirection(
+        selectedAccount.cardType,
+        ekstresiData.length > 0 ? netBalance : (selectedAccount.balance || 0),
+        tm
+      )
     : { side: '' as const, sideLabel: '', hint: '' };
 
   return (
@@ -1179,8 +1192,11 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: 'all
           onClose={() => setCashAction(null)}
           onSuccess={() => {
             setCashAction(null);
-            void loadSuppliers();
-            if (selectedAccount) void loadEkstresi(selectedAccount, ekstresiStart, ekstresiEnd);
+            const acctId = selectedAccount?.id;
+            void loadSuppliers().then((all) => {
+              const fresh = acctId ? all.find((s) => s.id === acctId) : null;
+              if (fresh) void loadEkstresi(fresh, ekstresiStart, ekstresiEnd);
+            });
           }}
         />
       )}
