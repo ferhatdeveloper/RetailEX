@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { formatNumber } from '../../../utils/formatNumber';
 import {
-  Truck, Users, X, Search, Edit, Trash2, Mail, Phone, MapPin,
+  Truck, Users, X, Search, Edit, Trash2, Mail, Phone, MapPin, Wallet,
   FileText, Loader2, Printer, RefreshCw, Download, CalendarClock
 } from 'lucide-react';
 import { supplierAPI, type Supplier } from '../../../services/api/suppliers';
@@ -21,6 +21,8 @@ import {
 import { DEMO_CUSTOMER_CODES, DEMO_SUPPLIER_CODES } from '../../../utils/demoSeedCodes';
 import { mapUnifiedSupplierToCurrentAccountExcelRow, saveCurrentAccountsAsXlsx } from '../../../utils/currentAccountsExcelExport';
 import { FullscreenBodyPortal, MODAL_OVERLAY_Z } from '../../shared/FullscreenBodyPortal';
+import { KasaIslemModal } from '../../accounting/cash-ops/KasaIslemModal';
+import { fetchKasalar, type Kasa } from '../../../services/api/kasa';
 import {
   CUSTOMER_CALL_WEEKDAYS,
   normalizeCustomerCallWeekdays,
@@ -108,6 +110,11 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: 'all
 
   // Context menu
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; supplier: Supplier | null } | null>(null);
+  const [defaultKasa, setDefaultKasa] = useState<Kasa | null>(null);
+  const [cashAction, setCashAction] = useState<{
+    type: 'CH_TAHSILAT' | 'CH_ODEME';
+    account: Supplier;
+  } | null>(null);
 
   // Master-detail: selected account + ekstresi data
   const [selectedAccount, setSelectedAccount] = useState<Supplier | null>(null);
@@ -128,6 +135,17 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: 'all
   });
 
   useEffect(() => { loadSuppliers(); }, []);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const kasalar = await fetchKasalar({ aktif: true });
+        setDefaultKasa(kasalar[0] ?? null);
+      } catch {
+        setDefaultKasa(null);
+      }
+    })();
+  }, []);
 
   useEffect(() => {
     const openCallerForm = async (rawPhone: string, forceCreate?: boolean) => {
@@ -951,6 +969,28 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: 'all
           y={contextMenu.y}
           onClose={() => setContextMenu(null)}
           items={[
+            {
+              id: 'collection',
+              label: 'Tahsilat al',
+              icon: Download,
+              onClick: () => {
+                if (contextMenu.supplier) {
+                  setCashAction({ type: 'CH_TAHSILAT', account: contextMenu.supplier });
+                }
+                setContextMenu(null);
+              }
+            },
+            {
+              id: 'payment',
+              label: 'Ödeme yap',
+              icon: Wallet,
+              onClick: () => {
+                if (contextMenu.supplier) {
+                  setCashAction({ type: 'CH_ODEME', account: contextMenu.supplier });
+                }
+                setContextMenu(null);
+              }
+            },
             { id: 'edit', label: tm('edit'), icon: Edit, onClick: () => { if (contextMenu.supplier) handleEditClick(contextMenu.supplier); setContextMenu(null); } },
             { id: 'extract', label: tm('accountStatement'), icon: FileText, onClick: () => { if (contextMenu.supplier) selectAccount(contextMenu.supplier); setContextMenu(null); } },
             {
@@ -1123,6 +1163,25 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: 'all
             </div>
           </div>
         </FullscreenBodyPortal>
+      )}
+      {cashAction && defaultKasa && (
+        <KasaIslemModal
+          kasa={defaultKasa}
+          islemTipi={cashAction.type}
+          initialCari={{
+            id: cashAction.account.id,
+            kod: cashAction.account.code || '',
+            unvan: cashAction.account.name,
+            bakiye: cashAction.account.balance || 0,
+          }}
+          initialDescription={`${cashAction.type === 'CH_TAHSILAT' ? 'Tahsilat' : 'Ödeme'}: ${cashAction.account.code || ''} - ${cashAction.account.name}`}
+          onClose={() => setCashAction(null)}
+          onSuccess={() => {
+            setCashAction(null);
+            void loadSuppliers();
+            if (selectedAccount) void loadEkstresi(selectedAccount, ekstresiStart, ekstresiEnd);
+          }}
+        />
       )}
     </div>
   );

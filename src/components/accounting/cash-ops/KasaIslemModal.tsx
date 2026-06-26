@@ -21,6 +21,8 @@ interface KasaIslemModalProps {
   onSuccess: () => void;
   /** Düzenleme modu: dolu ise form mevcut işlem değerleriyle açılır ve kayıt updateKasaIslemi ile yapılır. */
   editingIslem?: KasaIslemi | null;
+  initialCari?: CariHesap | null;
+  initialDescription?: string;
 }
 
 interface CariHesap {
@@ -36,6 +38,8 @@ export function KasaIslemModal({
   onClose,
   onSuccess,
   editingIslem,
+  initialCari,
+  initialDescription,
 }: KasaIslemModalProps) {
   const { selectedFirma, selectedDonem } = useFirmaDonem();
   const { t, tm } = useLanguage();
@@ -72,6 +76,10 @@ export function KasaIslemModal({
       dovizli_tutar: 0,
       tax_rate: 0,
       withholding_tax_rate: 0,
+      cari_hesap_id: initialCari?.id,
+      cari_hesap_kodu: initialCari?.kod,
+      cari_hesap_unvani: initialCari?.unvan,
+      islem_aciklamasi: initialDescription || '',
     };
   });
 
@@ -113,8 +121,8 @@ export function KasaIslemModal({
   const [bankalar, setBankalar] = useState<Banka[]>([]);
   const [digerKasalar, setDigerKasalar] = useState<Kasa[]>([]);
   const [showCariDropdown, setShowCariDropdown] = useState(false);
-  const [cariSearch, setCariSearch] = useState('');
-  const [selectedCariBakiye, setSelectedCariBakiye] = useState<number | null>(null);
+  const [cariSearch, setCariSearch] = useState(initialCari?.unvan || initialCari?.kod || '');
+  const [selectedCariBakiye, setSelectedCariBakiye] = useState<number | null>(initialCari?.bakiye ?? null);
 
 
 
