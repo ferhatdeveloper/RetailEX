@@ -68,6 +68,7 @@ import {
   formCodeToDbPaymentMethod,
   isPosRetailPaymentContext,
   paymentFormCodeTranslationKey,
+  RETAIL_SALES_INVOICE_TRCODE,
 } from '../../../utils/paymentMethodUtils';
 
 // Electron API tip tanımı
@@ -552,6 +553,7 @@ export function UniversalInvoiceForm({
   const isSalesReturnForm = invoiceType.code === 3;
   const isPosRetail = useMemo(
     () =>
+      invoiceType.code === RETAIL_SALES_INVOICE_TRCODE ||
       isPosRetailPaymentContext({
         source: (editData as any)?.source,
         paymentMethod: (editData as any)?.payment_method ?? paymentMethod,

@@ -26,6 +26,7 @@ import { expenseAPI } from '../../services/api/expenses';
 import type { BeautyAppointment, BeautySale } from '../../types/beauty';
 import { localCalendarDateKey, localTodayDateKey, formatIsoDateTr, toSqlDateInputString } from '../../utils/localCalendarDate';
 import { buildPosZReportForRange, isReturnSale } from '../../utils/posZReport';
+import { normalizePaymentMethodBucket } from '../../utils/paymentMethodUtils';
 import { BeautyServiceReportCrmModal } from './BeautyServiceReportCrmModal';
 import { useBeautyStore } from '../beauty/store/useBeautyStore';
 import { CommissionReport } from '../beauty/components/CommissionReport';
@@ -1638,9 +1639,14 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
     /** Perakende Satışlar / fatura listesi ile aynı tutar: önce ERP `sales` (REST-* dahil); yoksa yalnız kapalı adisyon */
     if (dailySalesActive.length > 0) {
       dailyTotal = dailySalesActive.reduce((sum, s) => sum + (Number(s.total) || 0), 0);
-      dailyCash = dailySalesActive.filter(s => s.paymentMethod === 'cash').reduce((sum, s) => sum + (Number(s.total) || 0), 0);
+      dailyCash = dailySalesActive
+        .filter((s) => normalizePaymentMethodBucket(s.paymentMethod) === 'cash')
+        .reduce((sum, s) => sum + (Number(s.total) || 0), 0);
       dailyCard = dailySalesActive
-        .filter(s => s.paymentMethod === 'card' || s.paymentMethod === 'gateway')
+        .filter((s) => {
+          const b = normalizePaymentMethodBucket(s.paymentMethod);
+          return b === 'card';
+        })
         .reduce((sum, s) => sum + (Number(s.total) || 0), 0);
       dailyDiscount = dailySalesActive.reduce((sum, s) => sum + (Number(s.discount) || 0), 0);
     } else {
@@ -1662,9 +1668,11 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
     }
   } else {
     dailyTotal = dailySalesActive.reduce((sum, s) => sum + s.total, 0);
-    dailyCash = dailySalesActive.filter(s => s.paymentMethod === 'cash').reduce((sum, s) => sum + s.total, 0);
+    dailyCash = dailySalesActive
+      .filter((s) => normalizePaymentMethodBucket(s.paymentMethod) === 'cash')
+      .reduce((sum, s) => sum + s.total, 0);
     dailyCard = dailySalesActive
-      .filter(s => s.paymentMethod === 'card' || s.paymentMethod === 'gateway')
+      .filter((s) => normalizePaymentMethodBucket(s.paymentMethod) === 'card')
       .reduce((sum, s) => sum + s.total, 0);
     dailyDiscount = dailySalesActive.reduce((sum, s) => sum + s.discount, 0);
   }
@@ -1685,7 +1693,7 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
         beforeDiscount: erpSaleBeforeDiscount(s),
         total: Number(s.total) || 0,
         discount: Number(s.discount) || 0,
-        paymentMethod: s.paymentMethod,
+        paymentMethod: normalizePaymentMethodBucket(s.paymentMethod),
         status: String(s.status ?? 'completed'),
         cancelReason: extractCancelReason(s.notes),
         erpSale: s,
@@ -1706,7 +1714,7 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
           beforeDiscount: erpSaleBeforeDiscount(s),
           total: Number(s.total) || 0,
           discount: Number(s.discount) || 0,
-          paymentMethod: s.paymentMethod,
+          paymentMethod: normalizePaymentMethodBucket(s.paymentMethod),
           status: String(s.status ?? 'completed'),
           cancelReason: extractCancelReason(s.notes),
           erpSale: s,
@@ -4188,21 +4196,26 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
                             </td>
                             <td className="px-4 py-3 text-right text-sm font-medium tabular-nums">{formatNumber(row.total, 2, false)}</td>
                             <td className="px-4 py-3">
-                              <span
-                                className={`px-2 py-1 rounded text-xs ${
-                                  row.paymentMethod === 'cash'
+                              {(() => {
+                                const bucket = normalizePaymentMethodBucket(row.paymentMethod);
+                                const label =
+                                  bucket === 'cash'
+                                    ? tm('cashLabel')
+                                    : bucket === 'card'
+                                      ? tm('cardLabel')
+                                      : bucket === 'transfer'
+                                        ? tm('reportsPaymentPieTransfer')
+                                        : tm('reportsPaymentOther');
+                                const cls =
+                                  bucket === 'cash'
                                     ? 'bg-green-100 text-green-700'
-                                    : row.paymentMethod === 'card' || row.paymentMethod === 'gateway'
+                                    : bucket === 'card'
                                       ? 'bg-blue-100 text-blue-700'
-                                      : 'bg-slate-100 text-slate-700'
-                                }`}
-                              >
-                                {row.paymentMethod === 'cash'
-                                  ? tm('cashLabel')
-                                  : row.paymentMethod === 'card' || row.paymentMethod === 'gateway'
-                                    ? tm('cardLabel')
-                                    : tm('reportsPaymentOther')}
-                              </span>
+                                      : 'bg-slate-100 text-slate-700';
+                                return (
+                                  <span className={`px-2 py-1 rounded text-xs ${cls}`}>{label}</span>
+                                );
+                              })()}
                             </td>
                             <td className="px-4 py-3">
                               {(() => {

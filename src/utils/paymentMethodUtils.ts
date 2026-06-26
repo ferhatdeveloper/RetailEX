@@ -71,6 +71,47 @@ export function paymentFormCodeTranslationKey(code: string): string {
   }
 }
 
+/** POS / rapor listelerinde kullanılan ödeme grubu */
+export type PaymentMethodBucket = 'cash' | 'card' | 'credit' | 'transfer' | 'other';
+
+/** DB / form ham değerini rapor ve POS listelerinde kullanılan gruba çevirir */
+export function normalizePaymentMethodBucket(raw: unknown): PaymentMethodBucket {
+  const formCode = dbPaymentMethodToFormCode(raw);
+  if (formCode === 'NAKIT') return 'cash';
+  if (formCode === 'KREDIKARTI') return 'card';
+  if (formCode === 'HAVAL') return 'transfer';
+  if (formCode === 'CEK' || formCode === 'SENET') return 'other';
+
+  const pm = String(raw ?? '').toLowerCase().trim();
+  if (!pm) return 'cash';
+  if (pm === 'cash' || pm === 'nakit') return 'cash';
+  if (pm === 'card' || pm === 'kart' || pm === 'gateway' || pm.includes('kredi')) return 'card';
+  if (pm === 'veresiye' || pm === 'credit' || pm === 'cari' || pm.includes('borc') || pm.includes('borç')) {
+    return 'credit';
+  }
+  if (pm === 'havale' || pm === 'eft' || pm === 'transfer') return 'transfer';
+  return 'other';
+}
+
+/** tm() anahtarı — rapor tablosu rozetleri için */
+export function paymentMethodBucketTranslationKey(bucket: PaymentMethodBucket): string {
+  switch (bucket) {
+    case 'cash':
+      return 'cashLabel';
+    case 'card':
+      return 'cardLabel';
+    case 'credit':
+      return 'paymentCredit';
+    case 'transfer':
+      return 'reportsPaymentPieTransfer';
+    default:
+      return 'reportsPaymentOther';
+  }
+}
+
+/** Logo trcode 7 = perakende satış faturası (MarketPOS) */
+export const RETAIL_SALES_INVOICE_TRCODE = 7;
+
 /** POS perakende satışları DB'de cash/card kullanır */
 export function isPosRetailPaymentContext(ctx: {
   source?: unknown;
@@ -79,9 +120,12 @@ export function isPosRetailPaymentContext(ctx: {
   cashier?: unknown;
 }): boolean {
   if (String(ctx.source || '').toLowerCase() === 'pos') return true;
+  const trcode = Number(ctx.invoiceTypeCode ?? 0);
+  if (trcode === RETAIL_SALES_INVOICE_TRCODE) return true;
+  const formCode = dbPaymentMethodToFormCode(ctx.paymentMethod);
+  if (formCode === 'NAKIT' || formCode === 'KREDIKARTI') return true;
   const pm = String(ctx.paymentMethod || '').trim().toLowerCase();
   if (pm === 'cash' || pm === 'card') return true;
-  if (ctx.invoiceTypeCode === 1) return true;
   if (ctx.cashier != null && String(ctx.cashier).trim() !== '') return true;
   return false;
 }

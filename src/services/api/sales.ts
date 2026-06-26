@@ -11,6 +11,7 @@ import { invoicesAPI } from './invoices';
 import { batchCalculateFIFOCost } from '../../hooks/useFIFOCost';
 import { fetchKasalar, createKasaIslemi, type KasaIslemi } from './kasa';
 import { normalizeWeightProductQuantity, resolveStockQuantityFromLine } from '../../utils/scaleQuantity';
+import { normalizePaymentMethodBucket } from '../../utils/paymentMethodUtils';
 
 export const salesAPI = {
   /**
@@ -567,7 +568,7 @@ function mapInvoiceToSale(invoice: Invoice): Sale {
     tax: invoice.tax,
     total: signedTotal,
     profit: invoice.gross_profit || 0,
-    paymentMethod: invoice.payment_method || 'cash',
+    paymentMethod: normalizePaymentMethodBucket(invoice.payment_method || 'cash'),
     status: isCustomerReturn ? 'return' : invoice.status,
     notes: invoice.notes,
     firmNr: invoice.firma_id,
