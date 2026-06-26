@@ -238,7 +238,15 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: 'all
   const loadEkstresi = async (supplier: Supplier, start: string, end: string) => {
     setEkstresiLoading(true);
     try {
-      setEkstresiData(await supplierAPI.getAccountStatement(supplier.id, start, end, supplier.name));
+      setEkstresiData(
+        await supplierAPI.getAccountStatement(
+          supplier.id,
+          start,
+          end,
+          supplier.name,
+          supplier.cardType,
+        ),
+      );
     } catch (e: any) {
       setEkstresiData([]);
       toast.error(e?.message || 'Hesap ekstresi yüklenemedi');

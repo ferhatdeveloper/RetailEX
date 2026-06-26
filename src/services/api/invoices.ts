@@ -1410,6 +1410,14 @@ export const invoicesAPI = {
             params.push(ficheTypes);
             paramIndex++;
           }
+          // Tedarikçiye bağlı alış iade (return_invoice) — ekstre ile uyum
+          if (categoryKey === 'Alis') {
+            sql += ` OR (
+              fiche_type::text = 'return_invoice'
+              AND customer_id IS NOT NULL
+              AND EXISTS (SELECT 1 FROM suppliers sup WHERE sup.id = sales.customer_id)
+            )`;
+          }
           sql += `)`;
         } else {
           // Fallback to fiche_type if unknown category
@@ -2546,6 +2554,8 @@ function normalizeSalesHeaderNetAmount(dbInv: any, category: Invoice['invoice_ca
 
 function inferInvoiceCategoryFromDbRow(dbInv: any): Invoice['invoice_category'] {
   const ft = String(dbInv?.fiche_type || '').toLowerCase();
+  const tc = Number(dbInv?.trcode ?? dbInv?.invoice_type ?? 0);
+  if (ft === 'return_invoice' && tc === 6) return 'Alis';
   if (ft === 'purchase_invoice' || ft === 'a') return 'Alis';
   if (ft === 'sales_invoice' || ft === 's') return 'Satis';
   if (ft === 'return_invoice' || ft === 'i') return 'Iade';

@@ -58,6 +58,21 @@ function mapCashRowToEkstre(r: any) {
   };
 }
 
+/** Tedarikçi ekstresi: alış + alış iade; müşteri ekstresi: satış + satış iade */
+function isCariEkstreSaleRow(
+  row: { fiche_type?: string | null },
+  cardType?: 'customer' | 'supplier',
+): boolean {
+  const ft = String(row.fiche_type || '').toLowerCase();
+  if (cardType === 'supplier') {
+    return ft === 'purchase_invoice' || ft === 'return_invoice';
+  }
+  if (cardType === 'customer') {
+    return ft === 'sales_invoice' || ft === 'return_invoice' || ft === 'service' || ft === 'hizmet';
+  }
+  return true;
+}
+
 export const supplierAPI = {
   /**
    * Get all suppliers
@@ -535,7 +550,8 @@ export const supplierAPI = {
     accountId: string,
     startDate?: string,
     endDate?: string,
-    accountName?: string
+    accountName?: string,
+    cardType?: 'customer' | 'supplier',
   ): Promise<any[]> {
     try {
       if (DB_SETTINGS.connectionProvider === 'rest_api') {
@@ -611,9 +627,15 @@ export const supplierAPI = {
         const [saleRows, cashRows, nameSaleRows = []] = await Promise.all(fetches);
 
         const accountIdStr = String(accountId || '');
-        const byIdSales = (Array.isArray(saleRows) ? saleRows : []).map(mapSalesRowToEkstre);
+        const filterEkstreSale = (r: any) =>
+          isCariEkstreSaleRow(r, cardType) &&
+          String(r?.fiche_type || '').toLowerCase() !== 'cancelled';
+        const byIdSales = (Array.isArray(saleRows) ? saleRows : [])
+          .filter(filterEkstreSale)
+          .map(mapSalesRowToEkstre);
         const byNameSales = (Array.isArray(nameSaleRows) ? nameSaleRows : [])
           .filter((r) => {
+            if (!filterEkstreSale(r)) return false;
             if (!accountLedgerNameMatch(r.customer_name, nameTrim)) return false;
             const cid = r.customer_id ? String(r.customer_id) : '';
             return !cid || cid !== accountIdStr;
@@ -643,11 +665,18 @@ export const supplierAPI = {
         )
       )`;
 
+      const ledgerFicheFilter =
+        cardType === 'supplier'
+          ? ` AND t.fiche_type IN ('purchase_invoice', 'return_invoice')`
+          : cardType === 'customer'
+            ? ` AND t.fiche_type IN ('sales_invoice', 'return_invoice', 'service', 'hizmet')`
+            : '';
+
       const sql = `
         SELECT fiche_no, date, trcode, fiche_type, net_amount AS total_amount, currency, notes,
                COALESCE(is_cancelled, false) AS is_cancelled
         FROM sales t
-        WHERE ${accountMatchSales}${dateFilter}
+        WHERE ${accountMatchSales}${ledgerFicheFilter}${dateFilter}
         UNION ALL
         SELECT fiche_no, date, 0 AS trcode, transaction_type AS fiche_type,
                amount AS total_amount, currency_code AS currency, definition AS notes,
