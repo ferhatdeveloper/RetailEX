@@ -91,11 +91,11 @@ export function sqlResolvedSupplierBalanceExpr(_cardAlias = 's'): string {
   return `COALESCE(b.calculated_balance, 0)`;
 }
 
-/** Hareket varsa ledger; yoksa veresiye/manuel saklanan balance (müşteri) */
+/** Hareket varsa ledger; yoksa 0 (manuel bakiye yalnızca açılış fişi / fatura ile) */
 export function sqlResolvedCustomerBalanceExpr(cardAlias = 'c'): string {
   return `CASE
     WHEN b.txn_count > 0 THEN COALESCE(b.calculated_balance, 0)
-    ELSE COALESCE(${cardAlias}.balance, 0)
+    ELSE 0
   END`;
 }
 
@@ -186,7 +186,7 @@ export function computeCustomerBalanceFromLedger(
   accountName: string,
   sales: LedgerSaleRow[],
   cashLines: LedgerCashRow[],
-  storedBalance = 0,
+  _storedBalance = 0,
 ): number {
   const idStr = String(accountId || '');
   const { txnCount: salesTxn, sum: salesSum } = sumCustomerSalesLedger(accountId, accountName, sales);
@@ -204,7 +204,7 @@ export function computeCustomerBalanceFromLedger(
   }
   const txnCount = salesTxn + cashTxn;
   if (txnCount > 0) return salesSum + cashSum;
-  return Number(storedBalance) || 0;
+  return 0;
 }
 
 /** PostgREST: tedarikçi defter bakiyesi — alış/iade + kasa hareketleri */

@@ -111,7 +111,7 @@ export async function repairCariLedgerConsistency(): Promise<void> {
        THEN (
          SELECT COALESCE(b.calculated_balance, 0) FROM account_balances b WHERE b.id = c.id
        )
-       ELSE COALESCE(c.balance, 0)
+       ELSE 0
      END
      WHERE c.firm_nr = $1::text`,
     [firmNr],
