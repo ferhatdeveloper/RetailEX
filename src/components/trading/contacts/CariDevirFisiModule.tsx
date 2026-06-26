@@ -110,7 +110,7 @@ export function CariDevirFisiModule() {
       setAccounts(rows);
       setDrafts((prev) => buildDraftsFromAccounts(rows, devirMap, prev));
     } catch (e: any) {
-      toast.error(e?.message || 'Cari hesaplar yüklenemedi');
+      toast.error(e?.message || tm('accountsLoadError'));
     } finally {
       setLoading(false);
     }
@@ -122,7 +122,7 @@ export function CariDevirFisiModule() {
       const list = await listCariDevirRecords();
       setRecords(list);
     } catch (e: any) {
-      toast.error(e?.message || 'Devir kayıtları yüklenemedi');
+      toast.error(e?.message || tm('openingRecordsLoadError'));
     } finally {
       setRecordsLoading(false);
     }
@@ -185,7 +185,7 @@ export function CariDevirFisiModule() {
       }));
 
     if (lines.length === 0) {
-      toast.error('En az bir cari için devir tutarı girin ve satırı işaretleyin');
+      toast.error(tm('minOneCariRequired'));
       return;
     }
 
@@ -198,16 +198,16 @@ export function CariDevirFisiModule() {
         lines,
       });
       if (result.errors.length > 0) {
-        toast.error(`${result.errors.length} satır kaydedilemedi`, {
+        toast.error(`${result.errors.length} ${tm('rowsSaveFailed')}`, {
           description: result.errors[0]?.message,
         });
       }
       const parts: string[] = [];
-      if (result.created > 0) parts.push(`${result.created} yeni`);
-      if (result.updated > 0) parts.push(`${result.updated} güncellendi`);
-      if (result.replaced > 0) parts.push(`${result.replaced} eski iptal`);
+      if (result.created > 0) parts.push(`${result.created} ${tm('batchCreatedCount')}`);
+      if (result.updated > 0) parts.push(`${result.updated} ${tm('batchUpdatedCount')}`);
+      if (result.replaced > 0) parts.push(`${result.replaced} ${tm('batchReplacedCount')}`);
       if (parts.length > 0) {
-        toast.success(`Devir fişi: ${parts.join(', ')}`);
+        toast.success(`${tm('openingBatchResultPrefix')}: ${parts.join(', ')}`);
         await loadAccounts();
         setDrafts((prev) => {
           const next = { ...prev };
@@ -220,7 +220,7 @@ export function CariDevirFisiModule() {
         });
       }
     } catch (e: any) {
-      toast.error(e?.message || 'Devir fişleri kaydedilemedi');
+      toast.error(e?.message || tm('openingSaveError'));
     } finally {
       setSaving(false);
     }
@@ -241,7 +241,7 @@ export function CariDevirFisiModule() {
     if (!editForm) return;
     const amount = parseFloat(editForm.amount) || 0;
     if (amount <= 0) {
-      toast.error('Geçerli bir tutar girin');
+      toast.error(tm('validAmountRequired'));
       return;
     }
     setEditSaving(true);
@@ -252,24 +252,24 @@ export function CariDevirFisiModule() {
         date: editForm.date,
         notes: editForm.notes || undefined,
       });
-      toast.success('Devir fişi güncellendi');
+      toast.success(tm('openingUpdated'));
       setEditForm(null);
       await Promise.all([loadRecords(), loadAccounts()]);
     } catch (e: any) {
-      toast.error(e?.message || 'Güncelleme başarısız');
+      toast.error(e?.message || tm('updateFailed'));
     } finally {
       setEditSaving(false);
     }
   };
 
   const handleDelete = async (rec: CariDevirRecord) => {
-    if (!confirm(`${rec.customer_name} için devir fişini iptal etmek istiyor musunuz?`)) return;
+    if (!confirm(`${rec.customer_name} ${tm('cancelOpeningConfirmCari')}`)) return;
     try {
       await cancelCariDevirRecord(rec.id);
-      toast.success('Devir fişi iptal edildi');
+      toast.success(tm('openingCancelled'));
       await Promise.all([loadRecords(), loadAccounts()]);
     } catch (e: any) {
-      toast.error(e?.message || 'İptal edilemedi');
+      toast.error(e?.message || tm('cancelFailed'));
     }
   };
 
@@ -280,9 +280,9 @@ export function CariDevirFisiModule() {
           <div className="flex items-center gap-2">
             <ArrowRightLeft className="w-5 h-5" />
             <div>
-              <h1 className="text-base font-bold">Cari Devir Fişi</h1>
+              <h1 className="text-base font-bold">{tm('cariOpeningTitle')}</h1>
               <p className="text-[11px] text-blue-100">
-                Eski programdan geçiş — müşteri/tedarikçi açılış borç ve alacak bakiyeleri
+                {tm('cariOpeningSubtitle')}
               </p>
             </div>
           </div>
@@ -303,7 +303,7 @@ export function CariDevirFisiModule() {
                 className="flex items-center gap-1 px-4 py-1.5 bg-white text-indigo-800 hover:bg-blue-50 text-xs font-bold rounded-lg disabled:opacity-40"
               >
                 <Save className="w-3.5 h-3.5" />
-                Devir Kaydet ({selectedCount})
+                {tm('saveOpeningBalance')} ({selectedCount})
               </button>
             )}
           </div>
@@ -311,8 +311,8 @@ export function CariDevirFisiModule() {
         <div className="flex gap-1 mt-3">
           {(
             [
-              { key: 'entry' as const, label: 'Toplu Giriş / Düzenle' },
-              { key: 'records' as const, label: 'Kayıtlı Devirler' },
+              { key: 'entry' as const, label: tm('tabEntryEdit') },
+              { key: 'records' as const, label: tm('tabRegisteredRecords') },
             ] as const
           ).map((tab) => (
             <button
@@ -335,19 +335,19 @@ export function CariDevirFisiModule() {
             <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 flex gap-2 text-sm text-amber-900">
               <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
               <div>
-                <p className="font-semibold">Nasıl kullanılır?</p>
+                <p className="font-semibold">{tm('howToUse')}</p>
                 <ul className="mt-1 list-disc list-inside text-xs space-y-0.5 opacity-90">
-                  <li><strong>Borç:</strong> Müşteri size borçlu veya siz tedarikçiye borçlusunuz.</li>
-                  <li><strong>Alacak:</strong> Müşterinin avans/alacağı veya tedarikçinin size borcu.</li>
-                  <li>Kayıtlı devir tutarları otomatik doldurulur; değiştirip kaydederek güncelleyebilirsiniz.</li>
-                  <li>&quot;Önceki devri iptal et&quot; işaretliyse yeni fiş oluşturulur; değilse mevcut kayıt güncellenir.</li>
+                  <li>{tm('openingHelpDebtCari')}</li>
+                  <li>{tm('openingHelpCreditCari')}</li>
+                  <li>{tm('openingHelpPrefill')}</li>
+                  <li>{tm('openingHelpReplaceMode')}</li>
                 </ul>
               </div>
             </div>
 
             <div className="bg-white border border-gray-200 rounded-lg p-4 grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
-                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Devir Tarihi</label>
+                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">{tm('openingBalanceDate')}</label>
                 <input
                   type="date"
                   value={devirDate}
@@ -356,13 +356,13 @@ export function CariDevirFisiModule() {
                 />
               </div>
               <div className="md:col-span-2">
-                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Açıklama</label>
+                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">{tm('description')}</label>
                 <input
                   type="text"
                   value={batchNotes}
                   onChange={(e) => setBatchNotes(e.target.value)}
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-                  placeholder="Eski program devri"
+                  placeholder={tm('openingBatchNotesPlaceholder')}
                 />
               </div>
               <label className="flex items-center gap-2 text-sm text-gray-700 md:col-span-3">
@@ -372,7 +372,7 @@ export function CariDevirFisiModule() {
                   onChange={(e) => setReplaceExisting(e.target.checked)}
                   className="rounded"
                 />
-                Aynı cari için önceki devir fişlerini iptal et ve yeni tutarla değiştir
+                {tm('replaceExistingCari')}
               </label>
             </div>
 
@@ -421,12 +421,12 @@ export function CariDevirFisiModule() {
                     <thead className="bg-gray-50 border-b border-gray-200 text-[10px] uppercase text-gray-500">
                       <tr>
                         <th className="px-3 py-2 w-10" />
-                        <th className="px-3 py-2 text-left">Kod</th>
-                        <th className="px-3 py-2 text-left">Ünvan</th>
-                        <th className="px-3 py-2 text-left">Tip</th>
-                        <th className="px-3 py-2 text-right">Mevcut Bakiye</th>
-                        <th className="px-3 py-2 text-left">Yön</th>
-                        <th className="px-3 py-2 text-right">Devir Tutarı</th>
+                        <th className="px-3 py-2 text-left">{tm('code')}</th>
+                        <th className="px-3 py-2 text-left">{tm('accountTitleLabel')}</th>
+                        <th className="px-3 py-2 text-left">{tm('type')}</th>
+                        <th className="px-3 py-2 text-right">{tm('currentBalance')}</th>
+                        <th className="px-3 py-2 text-left">{tm('direction')}</th>
+                        <th className="px-3 py-2 text-right">{tm('openingAmount')}</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -453,7 +453,7 @@ export function CariDevirFisiModule() {
                               {acc.name}
                               {draft.existingDevirId && (
                                 <span className="ml-2 text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700">
-                                  Kayıtlı
+                                  {tm('registeredBadge')}
                                 </span>
                               )}
                             </td>
@@ -474,8 +474,8 @@ export function CariDevirFisiModule() {
                                 onChange={(e) => updateDraft(acc.id, { direction: e.target.value as CariDevirDirection, selected: true })}
                                 className="border border-gray-300 rounded px-2 py-1 text-xs"
                               >
-                                <option value="borc">Borç (devir)</option>
-                                <option value="alacak">Alacak</option>
+                                <option value="borc">{tm('directionDebt')}</option>
+                                <option value="alacak">{tm('directionCredit')}</option>
                               </select>
                             </td>
                             <td className="px-3 py-2">
@@ -513,7 +513,7 @@ export function CariDevirFisiModule() {
                   type="text"
                   value={recordsSearch}
                   onChange={(e) => setRecordsSearch(e.target.value)}
-                  placeholder="Cari veya fiş no ara..."
+                  placeholder={tm('searchCariOrSlip')}
                   className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg text-sm"
                 />
               </div>
@@ -530,12 +530,12 @@ export function CariDevirFisiModule() {
                   <table className="w-full text-sm">
                     <thead className="bg-gray-50 border-b border-gray-200 text-[10px] uppercase text-gray-500">
                       <tr>
-                        <th className="px-3 py-2 text-left">Fiş No</th>
-                        <th className="px-3 py-2 text-left">Tarih</th>
-                        <th className="px-3 py-2 text-left">Cari</th>
-                        <th className="px-3 py-2 text-left">Yön</th>
-                        <th className="px-3 py-2 text-right">Tutar</th>
-                        <th className="px-3 py-2 text-right w-24">İşlem</th>
+                        <th className="px-3 py-2 text-left">{tm('slipNo')}</th>
+                        <th className="px-3 py-2 text-left">{tm('date')}</th>
+                        <th className="px-3 py-2 text-left">{tm('currentAccountTitle')}</th>
+                        <th className="px-3 py-2 text-left">{tm('direction')}</th>
+                        <th className="px-3 py-2 text-right">{tm('amountLabel')}</th>
+                        <th className="px-3 py-2 text-right w-24">{tm('operation')}</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -551,7 +551,7 @@ export function CariDevirFisiModule() {
                               <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded ${
                                 dir === 'borc' ? 'bg-red-100 text-red-700' : 'bg-emerald-100 text-emerald-700'
                               }`}>
-                                {dir === 'borc' ? 'Borç' : 'Alacak'}
+                                {dir === 'borc' ? tm('directionDebtShort') : tm('directionCreditShort')}
                               </span>
                             </td>
                             <td className="px-3 py-2 text-right font-bold">
@@ -563,7 +563,7 @@ export function CariDevirFisiModule() {
                                   type="button"
                                   onClick={() => openEdit(rec)}
                                   className="p-1.5 rounded hover:bg-indigo-50 text-indigo-600"
-                                  title="Düzenle"
+                                  title={tm('edit')}
                                 >
                                   <Pencil className="w-4 h-4" />
                                 </button>
@@ -571,7 +571,7 @@ export function CariDevirFisiModule() {
                                   type="button"
                                   onClick={() => void handleDelete(rec)}
                                   className="p-1.5 rounded hover:bg-red-50 text-red-600"
-                                  title="İptal et"
+                                  title={tm('cancelAction')}
                                 >
                                   <Trash2 className="w-4 h-4" />
                                 </button>
@@ -585,7 +585,7 @@ export function CariDevirFisiModule() {
                   {filteredRecords.length === 0 && (
                     <div className="py-12 text-center text-gray-400 flex flex-col items-center gap-2">
                       <FileText className="w-8 h-8 opacity-40" />
-                      Kayıtlı devir fişi yok
+                      {tm('noRegisteredOpeningCari')}
                     </div>
                   )}
                 </div>
@@ -599,7 +599,7 @@ export function CariDevirFisiModule() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
             <div className="flex items-center justify-between px-4 py-3 border-b">
-              <h3 className="font-bold text-gray-900">Devir Fişi Düzenle</h3>
+              <h3 className="font-bold text-gray-900">{tm('editOpeningSlip')}</h3>
               <button type="button" onClick={() => setEditForm(null)} className="p-1 rounded hover:bg-gray-100">
                 <X className="w-5 h-5" />
               </button>
@@ -607,7 +607,7 @@ export function CariDevirFisiModule() {
             <div className="p-4 space-y-3">
               <p className="text-sm text-gray-600">{editForm.accountName}</p>
               <div>
-                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Tarih</label>
+                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">{tm('date')}</label>
                 <input
                   type="date"
                   value={editForm.date}
@@ -616,18 +616,18 @@ export function CariDevirFisiModule() {
                 />
               </div>
               <div>
-                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Yön</label>
+                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">{tm('direction')}</label>
                 <select
                   value={editForm.direction}
                   onChange={(e) => setEditForm({ ...editForm, direction: e.target.value as CariDevirDirection })}
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
                 >
-                  <option value="borc">Borç</option>
-                  <option value="alacak">Alacak</option>
+                  <option value="borc">{tm('directionDebtShort')}</option>
+                  <option value="alacak">{tm('directionCreditShort')}</option>
                 </select>
               </div>
               <div>
-                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Tutar</label>
+                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">{tm('amountLabel')}</label>
                 <input
                   type="number"
                   min={0}
@@ -638,7 +638,7 @@ export function CariDevirFisiModule() {
                 />
               </div>
               <div>
-                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Açıklama</label>
+                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">{tm('description')}</label>
                 <input
                   type="text"
                   value={editForm.notes}
@@ -653,7 +653,7 @@ export function CariDevirFisiModule() {
                 onClick={() => setEditForm(null)}
                 className="px-4 py-2 text-sm rounded-lg border border-gray-300 hover:bg-white"
               >
-                Vazgeç
+                {tm('giveUp')}
               </button>
               <button
                 type="button"
@@ -661,7 +661,7 @@ export function CariDevirFisiModule() {
                 onClick={() => void handleEditSave()}
                 className="px-4 py-2 text-sm rounded-lg bg-indigo-600 text-white font-bold hover:bg-indigo-700 disabled:opacity-50"
               >
-                {editSaving ? 'Kaydediliyor...' : 'Kaydet'}
+                {editSaving ? tm('saving') : tm('save')}
               </button>
             </div>
           </div>

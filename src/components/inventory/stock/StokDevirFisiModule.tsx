@@ -98,7 +98,7 @@ export function StokDevirFisiModule() {
       setProducts(active);
       setDrafts((prev) => buildDraftsFromProducts(active, devirMap, prev));
     } catch (e: any) {
-      toast.error(e?.message || 'Ürünler yüklenemedi');
+      toast.error(e?.message || tm('productsLoadError'));
     } finally {
       setLoading(false);
     }
@@ -110,7 +110,7 @@ export function StokDevirFisiModule() {
       const list = await listStockDevirRecords();
       setRecords(list);
     } catch (e: any) {
-      toast.error(e?.message || 'Stok devir kayıtları yüklenemedi');
+      toast.error(e?.message || tm('stockOpeningRecordsLoadError'));
     } finally {
       setRecordsLoading(false);
     }
@@ -175,7 +175,7 @@ export function StokDevirFisiModule() {
       }));
 
     if (lines.length === 0) {
-      toast.error('En az bir ürün için devir stok miktarı girin ve satırı işaretleyin');
+      toast.error(tm('minOneProductRequired'));
       return;
     }
 
@@ -188,16 +188,16 @@ export function StokDevirFisiModule() {
         lines,
       });
       if (result.errors.length > 0) {
-        toast.error(`${result.errors.length} satır kaydedilemedi`, {
+        toast.error(`${result.errors.length} ${tm('rowsSaveFailed')}`, {
           description: result.errors[0]?.message,
         });
       }
       const parts: string[] = [];
-      if (result.created > 0) parts.push(`${result.created} yeni`);
-      if (result.updated > 0) parts.push(`${result.updated} güncellendi`);
-      if (result.replaced > 0) parts.push(`${result.replaced} eski iptal`);
+      if (result.created > 0) parts.push(`${result.created} ${tm('batchCreatedCount')}`);
+      if (result.updated > 0) parts.push(`${result.updated} ${tm('batchUpdatedCount')}`);
+      if (result.replaced > 0) parts.push(`${result.replaced} ${tm('batchReplacedCount')}`);
       if (parts.length > 0) {
-        toast.success(`Stok devir: ${parts.join(', ')}`);
+        toast.success(`${tm('stockOpeningBatchResultPrefix')}: ${parts.join(', ')}`);
         await loadProducts();
         setDrafts((prev) => {
           const next = { ...prev };
@@ -210,7 +210,7 @@ export function StokDevirFisiModule() {
         });
       }
     } catch (e: any) {
-      toast.error(e?.message || 'Stok devir kaydedilemedi');
+      toast.error(e?.message || tm('stockOpeningSaveError'));
     } finally {
       setSaving(false);
     }
@@ -240,11 +240,11 @@ export function StokDevirFisiModule() {
         target,
         { date: editForm.date, notes: editForm.notes || undefined },
       );
-      toast.success('Stok devir güncellendi');
+      toast.success(tm('stockOpeningUpdated'));
       setEditForm(null);
       await Promise.all([loadRecords(), loadProducts()]);
     } catch (e: any) {
-      toast.error(e?.message || 'Güncelleme başarısız');
+      toast.error(e?.message || tm('updateFailed'));
     } finally {
       setEditSaving(false);
     }
@@ -252,13 +252,13 @@ export function StokDevirFisiModule() {
 
   const handleDelete = async (rec: StockDevirRecord) => {
     const label = rec.product_name || rec.product_code || rec.product_id;
-    if (!confirm(`${label} için stok devir fişini iptal etmek istiyor musunuz?`)) return;
+    if (!confirm(`${label} ${tm('cancelOpeningConfirmStock')}`)) return;
     try {
       await cancelStockDevirRecord(rec.movementId, rec.itemId);
-      toast.success('Stok devir iptal edildi');
+      toast.success(tm('stockOpeningCancelled'));
       await Promise.all([loadRecords(), loadProducts()]);
     } catch (e: any) {
-      toast.error(e?.message || 'İptal edilemedi');
+      toast.error(e?.message || tm('cancelFailed'));
     }
   };
 
@@ -269,9 +269,9 @@ export function StokDevirFisiModule() {
           <div className="flex items-center gap-2">
             <Package className="w-5 h-5" />
             <div>
-              <h1 className="text-base font-bold">Stok Devir Fişi</h1>
+              <h1 className="text-base font-bold">{tm('stockOpeningTitle')}</h1>
               <p className="text-[11px] text-emerald-100">
-                Eski programdan geçiş — ürün açılış stok miktarları
+                {tm('stockOpeningSubtitle')}
               </p>
             </div>
           </div>
@@ -292,7 +292,7 @@ export function StokDevirFisiModule() {
                 className="flex items-center gap-1 px-4 py-1.5 bg-white text-emerald-800 hover:bg-emerald-50 text-xs font-bold rounded-lg disabled:opacity-40"
               >
                 <Save className="w-3.5 h-3.5" />
-                Devir Kaydet ({selectedCount})
+                {tm('saveOpeningBalance')} ({selectedCount})
               </button>
             )}
           </div>
@@ -300,8 +300,8 @@ export function StokDevirFisiModule() {
         <div className="flex gap-1 mt-3">
           {(
             [
-              { key: 'entry' as const, label: 'Toplu Giriş / Düzenle' },
-              { key: 'records' as const, label: 'Kayıtlı Devirler' },
+              { key: 'entry' as const, label: tm('tabEntryEdit') },
+              { key: 'records' as const, label: tm('tabRegisteredRecords') },
             ] as const
           ).map((tab) => (
             <button
@@ -324,18 +324,18 @@ export function StokDevirFisiModule() {
             <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 flex gap-2 text-sm text-amber-900">
               <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
               <div>
-                <p className="font-semibold">Nasıl kullanılır?</p>
+                <p className="font-semibold">{tm('howToUse')}</p>
                 <ul className="mt-1 list-disc list-inside text-xs space-y-0.5 opacity-90">
-                  <li><strong>Devir Miktarı:</strong> Ürünün hedef açılış stok miktarıdır (mevcut stok değil).</li>
-                  <li>Kayıtlı devirler otomatik doldurulur; değiştirip kaydederek güncelleyebilirsiniz.</li>
-                  <li>&quot;Önceki devri iptal et&quot; işaretliyse yeni fiş oluşturulur; değilse mevcut kayıt güncellenir.</li>
+                  <li>{tm('openingHelpStockTarget')}</li>
+                  <li>{tm('openingHelpStockPrefill')}</li>
+                  <li>{tm('openingHelpReplaceMode')}</li>
                 </ul>
               </div>
             </div>
 
             <div className="bg-white border border-gray-200 rounded-lg p-4 grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
-                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Devir Tarihi</label>
+                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">{tm('openingBalanceDate')}</label>
                 <input
                   type="date"
                   value={devirDate}
@@ -344,13 +344,13 @@ export function StokDevirFisiModule() {
                 />
               </div>
               <div className="md:col-span-2">
-                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Açıklama</label>
+                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">{tm('description')}</label>
                 <input
                   type="text"
                   value={batchNotes}
                   onChange={(e) => setBatchNotes(e.target.value)}
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-                  placeholder="Eski program stok devri"
+                  placeholder={tm('openingBatchNotesPlaceholder')}
                 />
               </div>
               <label className="flex items-center gap-2 text-sm text-gray-700 md:col-span-3">
@@ -360,7 +360,7 @@ export function StokDevirFisiModule() {
                   onChange={(e) => setReplaceExisting(e.target.checked)}
                   className="rounded"
                 />
-                Aynı ürün için önceki devir fişlerini iptal et ve yeni miktarla değiştir
+                {tm('replaceExistingStock')}
               </label>
             </div>
 
@@ -371,7 +371,7 @@ export function StokDevirFisiModule() {
                   type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Kod, barkod veya ürün adı ara..."
+                  placeholder={tm('searchProductPlaceholder')}
                   className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg text-sm"
                 />
               </div>
@@ -389,10 +389,10 @@ export function StokDevirFisiModule() {
                     <thead className="bg-gray-50 border-b border-gray-200 text-[10px] uppercase text-gray-500">
                       <tr>
                         <th className="px-3 py-2 w-10" />
-                        <th className="px-3 py-2 text-left">Kod</th>
-                        <th className="px-3 py-2 text-left">Ürün</th>
-                        <th className="px-3 py-2 text-right">Mevcut Stok</th>
-                        <th className="px-3 py-2 text-right">Devir Miktarı (Hedef)</th>
+                        <th className="px-3 py-2 text-left">{tm('code')}</th>
+                        <th className="px-3 py-2 text-left">{tm('product')}</th>
+                        <th className="px-3 py-2 text-right">{tm('currentStockLabel')}</th>
+                        <th className="px-3 py-2 text-right">{tm('targetStockLabel')}</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -417,12 +417,12 @@ export function StokDevirFisiModule() {
                               {p.name}
                               {draft.existingItemId && (
                                 <span className="ml-2 text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700">
-                                  Kayıtlı
+                                  {tm('registeredBadge')}
                                 </span>
                               )}
                             </td>
                             <td className="px-3 py-2 text-right font-bold text-gray-700">
-                              {formatNumber(stock, 2, true)} {p.unit || 'Adet'}
+                              {formatNumber(stock, 2, true)} {p.unit || tm('unitPiece')}
                             </td>
                             <td className="px-3 py-2">
                               <input
@@ -459,7 +459,7 @@ export function StokDevirFisiModule() {
                   type="text"
                   value={recordsSearch}
                   onChange={(e) => setRecordsSearch(e.target.value)}
-                  placeholder="Ürün veya fiş no ara..."
+                  placeholder={tm('searchProductOrSlip')}
                   className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg text-sm"
                 />
               </div>
@@ -476,11 +476,11 @@ export function StokDevirFisiModule() {
                   <table className="w-full text-sm">
                     <thead className="bg-gray-50 border-b border-gray-200 text-[10px] uppercase text-gray-500">
                       <tr>
-                        <th className="px-3 py-2 text-left">Fiş No</th>
-                        <th className="px-3 py-2 text-left">Tarih</th>
-                        <th className="px-3 py-2 text-left">Ürün</th>
-                        <th className="px-3 py-2 text-right">Miktar</th>
-                        <th className="px-3 py-2 text-right w-24">İşlem</th>
+                        <th className="px-3 py-2 text-left">{tm('slipNo')}</th>
+                        <th className="px-3 py-2 text-left">{tm('date')}</th>
+                        <th className="px-3 py-2 text-left">{tm('product')}</th>
+                        <th className="px-3 py-2 text-right">{tm('quantity')}</th>
+                        <th className="px-3 py-2 text-right w-24">{tm('operation')}</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -499,7 +499,7 @@ export function StokDevirFisiModule() {
                                 type="button"
                                 onClick={() => openEdit(rec)}
                                 className="p-1.5 rounded hover:bg-emerald-50 text-emerald-600"
-                                title="Düzenle"
+                                title={tm('edit')}
                               >
                                 <Pencil className="w-4 h-4" />
                               </button>
@@ -507,7 +507,7 @@ export function StokDevirFisiModule() {
                                 type="button"
                                 onClick={() => void handleDelete(rec)}
                                 className="p-1.5 rounded hover:bg-red-50 text-red-600"
-                                title="İptal et"
+                                title={tm('cancelAction')}
                               >
                                 <Trash2 className="w-4 h-4" />
                               </button>
@@ -520,7 +520,7 @@ export function StokDevirFisiModule() {
                   {filteredRecords.length === 0 && (
                     <div className="py-12 text-center text-gray-400 flex flex-col items-center gap-2">
                       <ArrowRightLeft className="w-8 h-8 opacity-40" />
-                      Kayıtlı stok devir fişi yok
+                      {tm('noRegisteredOpeningStock')}
                     </div>
                   )}
                 </div>
@@ -534,7 +534,7 @@ export function StokDevirFisiModule() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
             <div className="flex items-center justify-between px-4 py-3 border-b">
-              <h3 className="font-bold text-gray-900">Stok Devir Düzenle</h3>
+              <h3 className="font-bold text-gray-900">{tm('editStockOpening')}</h3>
               <button type="button" onClick={() => setEditForm(null)} className="p-1 rounded hover:bg-gray-100">
                 <X className="w-5 h-5" />
               </button>
@@ -542,7 +542,7 @@ export function StokDevirFisiModule() {
             <div className="p-4 space-y-3">
               <p className="text-sm text-gray-600">{editForm.productName}</p>
               <div>
-                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Tarih</label>
+                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">{tm('date')}</label>
                 <input
                   type="date"
                   value={editForm.date}
@@ -551,7 +551,7 @@ export function StokDevirFisiModule() {
                 />
               </div>
               <div>
-                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Hedef Stok Miktarı</label>
+                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">{tm('targetStockLabel')}</label>
                 <input
                   type="number"
                   min={0}
@@ -562,7 +562,7 @@ export function StokDevirFisiModule() {
                 />
               </div>
               <div>
-                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Açıklama</label>
+                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">{tm('description')}</label>
                 <input
                   type="text"
                   value={editForm.notes}
@@ -577,7 +577,7 @@ export function StokDevirFisiModule() {
                 onClick={() => setEditForm(null)}
                 className="px-4 py-2 text-sm rounded-lg border border-gray-300 hover:bg-white"
               >
-                Vazgeç
+                {tm('giveUp')}
               </button>
               <button
                 type="button"
@@ -585,7 +585,7 @@ export function StokDevirFisiModule() {
                 onClick={() => void handleEditSave()}
                 className="px-4 py-2 text-sm rounded-lg bg-emerald-600 text-white font-bold hover:bg-emerald-700 disabled:opacity-50"
               >
-                {editSaving ? 'Kaydediliyor...' : 'Kaydet'}
+                {editSaving ? tm('saving') : tm('save')}
               </button>
             </div>
           </div>
