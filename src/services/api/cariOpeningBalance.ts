@@ -20,6 +20,8 @@ export type CariDevirLineInput = {
   amount: number;
   direction: CariDevirDirection;
   lineNotes?: string;
+  /** Var olan devir fişi — güncelleme modu */
+  existingDevirId?: string;
 };
 
 export type CariDevirBatchInput = {
@@ -31,10 +33,29 @@ export type CariDevirBatchInput = {
 
 export type CariDevirBatchResult = {
   created: number;
+  updated: number;
   replaced: number;
   skipped: number;
   errors: { accountId: string; message: string }[];
 };
+
+export type CariDevirRecord = {
+  id: string;
+  fiche_no: string;
+  date: string;
+  customer_id: string;
+  customer_name: string;
+  net_amount: number;
+  notes?: string;
+};
+
+export function devirDirectionFromNet(net: number): CariDevirDirection {
+  return net < 0 ? 'alacak' : 'borc';
+}
+
+export function devirAmountFromNet(net: number): number {
+  return Math.abs(Number(net) || 0);
+}
 
 function salesTablePath(firmNr: string, periodNr: string): string {
   const fn = normalizeFirmTableNr(firmNr);
@@ -138,7 +159,7 @@ async function insertOpeningRow(
   ficheNo: string,
   dateIso: string,
   batchNotes?: string,
-): Promise<void> {
+): Promise<string> {
   const net = signedNetAmount(line.amount, line.direction, line.cardType);
   const notes = [batchNotes, line.lineNotes, 'Cari devir fişi — eski program açılış bakiyesi']
     .filter(Boolean)
@@ -173,14 +194,15 @@ async function insertOpeningRow(
 
   if (DB_SETTINGS.connectionProvider === 'rest_api') {
     const { postgrest } = await import('./postgrestClient');
-    await postgrest.post(salesTablePath(firmNr, periodNr), payload, {
+    const rows = await postgrest.post<any[]>(salesTablePath(firmNr, periodNr), payload, {
       schema: 'public',
-      prefer: 'return=minimal',
+      prefer: 'return=representation',
     });
-    return;
+    const row = Array.isArray(rows) ? rows[0] : rows;
+    return String(row?.id || '');
   }
 
-  await postgres.query(
+  const { rows } = await postgres.query(
     `INSERT INTO sales (
       firm_nr, period_nr, fiche_no, document_no, date, fiche_type, trcode,
       customer_id, customer_name, total_net, total_vat, total_gross, total_discount,
@@ -191,7 +213,7 @@ async function insertOpeningRow(
       $8::uuid, $9, $10, 0, $10, 0,
       $11, 0, 0, 0, 'IQD', 1,
       'completed', 'devir', false, 0, $12
-    )`,
+    ) RETURNING id`,
     [
       String(firmNr),
       String(periodNr),
@@ -208,6 +230,135 @@ async function insertOpeningRow(
     ],
     { firmNr, periodNr },
   );
+  return String(rows[0]?.id || '');
+}
+
+/** Aktif cari devir fişlerini listele */
+export async function listCariDevirRecords(): Promise<CariDevirRecord[]> {
+  const firmNr = normalizeFirmTableNr(ERP_SETTINGS.firmNr);
+  const periodNr = String(ERP_SETTINGS.periodNr ?? '01').padStart(2, '0');
+
+  if (DB_SETTINGS.connectionProvider === 'rest_api') {
+    const { postgrest } = await import('./postgrestClient');
+    const rows = await postgrest.get<any[]>(
+      salesTablePath(firmNr, periodNr),
+      {
+        select: 'id,fiche_no,date,customer_id,customer_name,net_amount,notes',
+        fiche_type: `eq.${CARI_OPENING_FICHE_TYPE}`,
+        is_cancelled: 'eq.false',
+        order: 'date.desc',
+        limit: '5000',
+      },
+      { schema: 'public' },
+    );
+    return (Array.isArray(rows) ? rows : []).map(mapDevirRow);
+  }
+
+  const { rows } = await postgres.query(
+    `SELECT id, fiche_no, date, customer_id, customer_name, net_amount, notes
+     FROM sales
+     WHERE fiche_type = $1 AND COALESCE(is_cancelled, false) = false
+     ORDER BY date DESC`,
+    [CARI_OPENING_FICHE_TYPE],
+    { firmNr, periodNr },
+  );
+  return rows.map(mapDevirRow);
+}
+
+function mapDevirRow(r: any): CariDevirRecord {
+  return {
+    id: String(r.id),
+    fiche_no: String(r.fiche_no || ''),
+    date: String(r.date || ''),
+    customer_id: String(r.customer_id || ''),
+    customer_name: String(r.customer_name || ''),
+    net_amount: parseFloat(String(r.net_amount ?? 0)) || 0,
+    notes: r.notes ? String(r.notes) : undefined,
+  };
+}
+
+/** Cari başına en güncel devir kaydı */
+export async function getCariDevirMapByAccount(): Promise<Map<string, CariDevirRecord>> {
+  const list = await listCariDevirRecords();
+  const map = new Map<string, CariDevirRecord>();
+  for (const row of list) {
+    if (!row.customer_id) continue;
+    if (!map.has(row.customer_id)) {
+      map.set(row.customer_id, row);
+    }
+  }
+  return map;
+}
+
+/** Tek devir fişi güncelle */
+export async function updateCariDevirRecord(
+  id: string,
+  input: {
+    amount: number;
+    direction: CariDevirDirection;
+    date?: string;
+    notes?: string;
+  },
+): Promise<void> {
+  const firmNr = normalizeFirmTableNr(ERP_SETTINGS.firmNr);
+  const periodNr = String(ERP_SETTINGS.periodNr ?? '01').padStart(2, '0');
+  const net = signedNetAmount(input.amount, input.direction, 'customer');
+  const dateIso = input.date
+    ? (input.date.includes('T') ? input.date : `${input.date}T12:00:00.000Z`)
+    : undefined;
+  const patch: Record<string, unknown> = {
+    net_amount: net,
+    total_net: Math.abs(net),
+    total_gross: Math.abs(net),
+    updated_at: new Date().toISOString(),
+  };
+  if (dateIso) patch.date = dateIso;
+  if (input.notes !== undefined) patch.notes = input.notes;
+
+  if (DB_SETTINGS.connectionProvider === 'rest_api') {
+    const { postgrest } = await import('./postgrestClient');
+    await postgrest.patch(
+      `${salesTablePath(firmNr, periodNr)}?id=eq.${encodeURIComponent(id)}`,
+      patch,
+      { schema: 'public', prefer: 'return=minimal' },
+    );
+    return;
+  }
+
+  await postgres.query(
+    `UPDATE sales SET
+      net_amount = $1::numeric,
+      total_net = $2::numeric,
+      total_gross = $2::numeric,
+      date = COALESCE($3::timestamptz, date),
+      notes = COALESCE($4, notes),
+      updated_at = NOW()
+     WHERE id = $5::uuid`,
+    [net, Math.abs(net), dateIso || null, input.notes ?? null, id],
+    { firmNr, periodNr },
+  );
+}
+
+/** Devir fişini iptal et */
+export async function cancelCariDevirRecord(id: string): Promise<void> {
+  const firmNr = normalizeFirmTableNr(ERP_SETTINGS.firmNr);
+  const periodNr = String(ERP_SETTINGS.periodNr ?? '01').padStart(2, '0');
+
+  if (DB_SETTINGS.connectionProvider === 'rest_api') {
+    const { postgrest } = await import('./postgrestClient');
+    await postgrest.patch(
+      `${salesTablePath(firmNr, periodNr)}?id=eq.${encodeURIComponent(id)}`,
+      { is_cancelled: true, updated_at: new Date().toISOString() },
+      { schema: 'public', prefer: 'return=minimal' },
+    );
+    return;
+  }
+
+  await postgres.query(
+    `UPDATE sales SET is_cancelled = true, updated_at = NOW() WHERE id = $1::uuid`,
+    [id],
+    { firmNr, periodNr },
+  );
 }
 
 /** Toplu cari devir fişi oluştur */
@@ -219,6 +370,7 @@ export async function createCariDevirBatch(input: CariDevirBatchInput): Promise<
 
   const result: CariDevirBatchResult = {
     created: 0,
+    updated: 0,
     replaced: 0,
     skipped: 0,
     errors: [],
@@ -231,6 +383,16 @@ export async function createCariDevirBatch(input: CariDevirBatchInput): Promise<
       continue;
     }
     try {
+      if (line.existingDevirId && !replaceExisting) {
+        await updateCariDevirRecord(line.existingDevirId, {
+          amount,
+          direction: line.direction,
+          date: input.date,
+          notes: [input.batchNotes, line.lineNotes].filter(Boolean).join(' | ') || undefined,
+        });
+        result.updated += 1;
+        continue;
+      }
       if (replaceExisting) {
         result.replaced += await cancelExistingOpeningRows(firmNr, periodNr, line.accountId);
       }

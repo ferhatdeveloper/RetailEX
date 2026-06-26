@@ -68,6 +68,7 @@ export const getStaticMenuSections = (t: Translations) => [
                 children: [
 
                     { label: t.menu.materialManagementSlips, screen: 'stockmovements', icon: TrendingDown },
+                    { label: 'Stok Devir Fişi', screen: 'stok-devir', icon: ArrowRightLeft },
                     { label: t.menu.stockPriceChangeSlips, screen: 'stock-price-change-slips', icon: Percent }
                 ]
             },
