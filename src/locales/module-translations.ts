@@ -2816,6 +2816,23 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
   invoiceSaved: { tr: 'Fatura kaydedildi!', en: 'Invoice saved successfully!', ar: 'تم حفظ الفاتورة بنجاح!', ku: 'وەسڵەکە بە سەرکەوتوویی پاشەکەوت کرا!' },
   invoiceSaveError: { tr: 'Fatura kaydedilemedi!', en: 'Failed to save invoice!', ar: 'فشل في حفظ الفاتورة!', ku: 'وەسڵەکە پاشەکەوت نەکرا!' },
 
+  // Invoice header form
+  invoiceInfo: { tr: 'Fatura Bilgileri', en: 'Invoice Information', ar: 'معلومات الفاتورة', ku: 'زانیاری وەسڵ' },
+  invoiceCode: { tr: 'Fatura Kodu', en: 'Invoice Code', ar: 'رمز الفاتورة', ku: 'کۆدی وەسڵ' },
+  editDate: { tr: 'Düzenleme Tarihi', en: 'Edit Date', ar: 'تاريخ التعديل', ku: 'بەرواری دەستکاری' },
+  tradingGroup: { tr: 'Ticari Grubu', en: 'Trading Group', ar: 'المجموعة التجارية', ku: 'گروپی بازرگانی' },
+  authorization: { tr: 'Yetki', en: 'Authorization', ar: 'الصلاحية', ku: 'دەسەڵات' },
+  accountCodeLabel: { tr: 'Kodu', en: 'Code', ar: 'الرمز', ku: 'کۆد' },
+  accountTitleLabel: { tr: 'Unvanı', en: 'Title', ar: 'العنوان', ku: 'ناونیشان' },
+  warehouseField: { tr: 'Ambar', en: 'Warehouse', ar: 'المستودع', ku: 'ئەمبار' },
+  salespersonLabel: { tr: 'Satış Elemanı', en: 'Salesperson', ar: 'مندوب المبيعات', ku: 'فرۆشیار' },
+  scanBarcodePlaceholder: { tr: 'Barkod okutun...', en: 'Scan barcode...', ar: 'امسح الباركود...', ku: 'بارکۆد بخوێنەوە...' },
+  selectOrEnterPlaceholder: { tr: 'Seçin veya girin...', en: 'Select or enter...', ar: 'اختر أو أدخل...', ku: 'هەڵبژێرە یان بنووسە...' },
+  selectShortPlaceholder: { tr: 'Seçin...', en: 'Select...', ar: 'اختر...', ku: 'هەڵبژێرە...' },
+  supplierHistoryTitle: { tr: 'Tedarikçi Geçmişi', en: 'Supplier History', ar: 'سجل المورد', ku: 'مێژووی دابینکەر' },
+  balanceShort: { tr: 'Bakiye', en: 'Balance', ar: 'الرصيد', ku: 'باڵانس' },
+  cashierNamePlaceholder: { tr: 'Kasiyer adı...', en: 'Cashier name...', ar: 'اسم الصراف...', ku: 'ناوی سندوقدار...' },
+
   // Invoice specific
 
   customer: { tr: 'Müşteri', en: 'Customer', ar: 'العميل', ku: 'کڕیار' },
