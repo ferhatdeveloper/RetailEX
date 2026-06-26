@@ -30,63 +30,19 @@ export interface CurrentAccount {
   updated_at?: string;
 }
 
-export async function fetchCurrentAccounts(firmaId: string, tip?: string): Promise<CurrentAccount[]> {
+export async function fetchCurrentAccounts(_firmaId: string, tip?: string): Promise<CurrentAccount[]> {
   try {
-    const accounts: CurrentAccount[] = [];
+    /** supplierAPI.getAll zaten müşteri + tedarikçi birleşik listesini döner; customerAPI ile tekrar çekmek mükerrer satır üretir (kasa tahsilat listesi vb.). */
+    let cardType: 'all' | 'customer' | 'supplier' = 'all';
+    if (tip === 'MUSTERI') cardType = 'customer';
+    else if (tip === 'TEDARIKCI') cardType = 'supplier';
 
-    // Fetch Customers
-    if (!tip || tip === 'MUSTERI' || tip === 'HER_IKISI') {
-      const customers = await customerAPI.getAll();
-      customers.forEach(c => {
-        accounts.push({
-          id: c.id,
-          firma_id: c.firma_id || ERP_SETTINGS.firmNr,
-          kod: c.code || '',
-          unvan: c.name,
-          tip: 'MUSTERI',
-          vergi_no: c.tax_number || '', // Assuming tax_number maps to vergi_no
-          vergi_dairesi: c.tax_office || '',
-          adres: c.address,
-          telefon: c.phone,
-          email: c.email,
-          kredi_limiti: 0, // Not in Customer type? checked customers.ts, has points but not credit_limit explicitly typed in interface but maybe in DB
-          vade_suresi: 30,
-          borc_bakiye: (c.balance || 0) > 0 ? (c.balance || 0) : 0,
-          alacak_bakiye: (c.balance || 0) < 0 ? Math.abs(c.balance || 0) : 0,
-          bakiye: c.balance || 0,
-          aktif: c.is_active ?? true,
-          created_at: c.created_at || new Date().toISOString()
-        });
-      });
-    }
+    const rows = await supplierAPI.getAll({ cardType });
+    const accounts = rows.map((row) =>
+      row.cardType === 'customer' ? mapCustomerToCurrentAccount(row) : mapSupplierToCurrentAccount(row),
+    );
 
-    // Fetch Suppliers
-    if (!tip || tip === 'TEDARIKCI' || tip === 'HER_IKISI') {
-      const suppliers = await supplierAPI.getAll();
-      suppliers.forEach(s => {
-        accounts.push({
-          id: s.id,
-          firma_id: s.firma_id || ERP_SETTINGS.firmNr,
-          kod: s.code || '',
-          unvan: s.name,
-          tip: 'TEDARIKCI',
-          vergi_no: s.tax_number || '',
-          vergi_dairesi: s.tax_office || '',
-          adres: s.address,
-          telefon: s.phone,
-          email: s.email,
-          kredi_limiti: s.credit_limit || 0,
-          vade_suresi: s.payment_terms || 30,
-          borc_bakiye: 0,
-          alacak_bakiye: s.balance || 0,
-          bakiye: -(s.balance || 0), // Suppliers balance usually credit
-          aktif: s.is_active ?? true,
-          created_at: s.created_at || new Date().toISOString()
-        });
-      });
-    }
-
-    return accounts.sort((a, b) => a.unvan.localeCompare(b.unvan));
+    return accounts.sort((a, b) => a.unvan.localeCompare(b.unvan, 'tr'));
   } catch (error) {
     console.error('fetchCurrentAccounts failed:', error);
     return [];
