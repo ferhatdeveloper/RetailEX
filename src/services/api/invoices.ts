@@ -2562,7 +2562,6 @@ function inferInvoiceCategoryFromDbRow(dbInv: any): Invoice['invoice_category'] 
   if (ft === 'waybill') return 'Irsaliye';
   if (ft === 'order') return 'Siparis';
   if (ft === 'quote') return 'Teklif';
-  const tc = Number(dbInv?.trcode ?? dbInv?.invoice_type ?? 0);
   if (tc) {
     for (const [cat, codes] of Object.entries(TRCODES_BY_INVOICE_CATEGORY)) {
       if ((codes as readonly number[]).includes(tc)) {
