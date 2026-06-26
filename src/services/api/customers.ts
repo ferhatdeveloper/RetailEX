@@ -9,7 +9,7 @@ import {
   firmCustomersTable,
   sqlCustomerAccountBalancesCte,
   sqlResolvedCustomerBalanceExpr,
-  computeCustomerBalanceFromSales,
+  computeCustomerBalanceFromLedger,
   normalizeFirmTableNr,
 } from './accountBalance';
 
@@ -25,7 +25,8 @@ export const customerAPI = {
         const { postgrest } = await import('./postgrestClient');
         const pn = String(ERP_SETTINGS.periodNr ?? '01').padStart(2, '0');
         const salesPath = `/rex_${firmNr}_${pn}_sales`;
-        const [rows, salesRows] = await Promise.all([
+        const cashPath = `/rex_${firmNr}_${pn}_cash_lines`;
+        const [rows, salesRows, cashRows] = await Promise.all([
           postgrest.get<any[]>(
             `/${tableName}`,
             {
@@ -47,14 +48,28 @@ export const customerAPI = {
               { schema: 'public' }
             )
             .catch(() => [] as any[]),
+          postgrest
+            .get<any[]>(
+              cashPath,
+              {
+                select: 'customer_id,amount,transaction_type',
+                transaction_type: 'in.(CH_ODEME,CH_TAHSILAT)',
+                limit: '50000',
+              },
+              { schema: 'public' }
+            )
+            .catch(() => [] as any[]),
         ]);
+        const sales = Array.isArray(salesRows) ? salesRows : [];
+        const cash = Array.isArray(cashRows) ? cashRows : [];
         return (Array.isArray(rows) ? rows : []).map((r) =>
           mapDatabaseCustomerToCustomer({
             ...r,
-            balance: computeCustomerBalanceFromSales(
+            balance: computeCustomerBalanceFromLedger(
               String(r.id),
               String(r.name || ''),
-              Array.isArray(salesRows) ? salesRows : [],
+              sales,
+              cash,
               parseFloat(String(r.balance ?? 0)) || 0,
             ),
           }),

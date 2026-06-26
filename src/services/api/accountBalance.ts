@@ -104,6 +104,13 @@ export type LedgerSaleRow = {
   customer_name?: string | null;
   net_amount?: number | string | null;
   fiche_type?: string | null;
+  is_cancelled?: boolean | null;
+};
+
+export type LedgerCashRow = {
+  customer_id?: string | null;
+  amount?: number | string | null;
+  transaction_type?: string | null;
 };
 
 export function normalizeAccountName(name: string | null | undefined): string {
@@ -120,19 +127,17 @@ export function accountLedgerNameMatch(
   return a.length > 0 && b.length > 0 && a === b;
 }
 
-/** PostgREST: sales satırlarından müşteri bakiyesi (id + ünvan) */
-export function computeCustomerBalanceFromSales(
+function sumCustomerSalesLedger(
   accountId: string,
   accountName: string,
   sales: LedgerSaleRow[],
-  storedBalance = 0,
-): number {
+): { txnCount: number; sum: number } {
   const idStr = String(accountId || '');
   const nameKey = normalizeAccountName(accountName);
   let txnCount = 0;
   let sum = 0;
   for (const s of sales) {
-    if (s.fiche_type && String(s.fiche_type).toLowerCase() === 'cancelled') continue;
+    if (s.is_cancelled === true || String(s.fiche_type || '').toLowerCase() === 'cancelled') continue;
     const amt = parseFloat(String(s.net_amount ?? 0)) || 0;
     if (!amt) continue;
     const contrib = s.fiche_type === 'return_invoice' ? -amt : amt;
@@ -146,16 +151,13 @@ export function computeCustomerBalanceFromSales(
     txnCount += 1;
     sum += contrib;
   }
-  if (txnCount > 0) return sum;
-  return Number(storedBalance) || 0;
+  return { txnCount, sum };
 }
 
-/** PostgREST: tedarikçi bakiyesi — yalnızca alış / alış iade; manuel kart bakiyesi yok */
-export function computeSupplierBalanceFromSales(
+function sumSupplierSalesLedger(
   accountId: string,
   accountName: string,
   sales: LedgerSaleRow[],
-  _storedBalance = 0,
 ): number {
   const idStr = String(accountId || '');
   const nameKey = normalizeAccountName(accountName);
@@ -163,6 +165,7 @@ export function computeSupplierBalanceFromSales(
   for (const s of sales) {
     const ft = String(s.fiche_type || '').toLowerCase();
     if (ft !== 'purchase_invoice' && ft !== 'return_invoice') continue;
+    if (s.is_cancelled === true) continue;
     const amt = parseFloat(String(s.net_amount ?? 0)) || 0;
     const contrib = ft === 'purchase_invoice' ? amt : -amt;
     const cid = s.customer_id ? String(s.customer_id) : '';
@@ -175,4 +178,73 @@ export function computeSupplierBalanceFromSales(
     sum += contrib;
   }
   return sum;
+}
+
+/** PostgREST: sales + kasa (CH_TAHSILAT/CH_ODEME) defter bakiyesi */
+export function computeCustomerBalanceFromLedger(
+  accountId: string,
+  accountName: string,
+  sales: LedgerSaleRow[],
+  cashLines: LedgerCashRow[],
+  storedBalance = 0,
+): number {
+  const idStr = String(accountId || '');
+  const { txnCount: salesTxn, sum: salesSum } = sumCustomerSalesLedger(accountId, accountName, sales);
+  let cashTxn = 0;
+  let cashSum = 0;
+  for (const cl of cashLines) {
+    const tt = String(cl.transaction_type || '');
+    if (tt !== 'CH_ODEME' && tt !== 'CH_TAHSILAT') continue;
+    const cid = cl.customer_id ? String(cl.customer_id) : '';
+    if (!cid || cid !== idStr) continue;
+    const amt = parseFloat(String(cl.amount ?? 0)) || 0;
+    if (!amt) continue;
+    cashTxn += 1;
+    cashSum += -amt;
+  }
+  const txnCount = salesTxn + cashTxn;
+  if (txnCount > 0) return salesSum + cashSum;
+  return Number(storedBalance) || 0;
+}
+
+/** PostgREST: tedarikçi defter bakiyesi — alış/iade + kasa hareketleri */
+export function computeSupplierBalanceFromLedger(
+  accountId: string,
+  accountName: string,
+  sales: LedgerSaleRow[],
+  cashLines: LedgerCashRow[],
+  _storedBalance = 0,
+): number {
+  const idStr = String(accountId || '');
+  let sum = sumSupplierSalesLedger(accountId, accountName, sales);
+  for (const cl of cashLines) {
+    const tt = String(cl.transaction_type || '');
+    if (tt !== 'CH_ODEME' && tt !== 'CH_TAHSILAT') continue;
+    const cid = cl.customer_id ? String(cl.customer_id) : '';
+    if (!cid || cid !== idStr) continue;
+    const amt = parseFloat(String(cl.amount ?? 0)) || 0;
+    if (!amt) continue;
+    sum += amt;
+  }
+  return sum;
+}
+
+/** @deprecated PostgREST için computeCustomerBalanceFromLedger kullanın */
+export function computeCustomerBalanceFromSales(
+  accountId: string,
+  accountName: string,
+  sales: LedgerSaleRow[],
+  storedBalance = 0,
+): number {
+  return computeCustomerBalanceFromLedger(accountId, accountName, sales, [], storedBalance);
+}
+
+/** @deprecated PostgREST için computeSupplierBalanceFromLedger kullanın */
+export function computeSupplierBalanceFromSales(
+  accountId: string,
+  accountName: string,
+  sales: LedgerSaleRow[],
+  _storedBalance = 0,
+): number {
+  return computeSupplierBalanceFromLedger(accountId, accountName, sales, []);
 }

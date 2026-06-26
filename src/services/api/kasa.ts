@@ -522,6 +522,13 @@ async function createKasaIslemiViaPostgrest(
  */
 export async function createKasaIslemi(islem: KasaIslemi): Promise<KasaIslemi> {
   try {
+    if (
+      (islem.islem_tipi === 'CH_TAHSILAT' || islem.islem_tipi === 'CH_ODEME') &&
+      !islem.cari_hesap_id
+    ) {
+      throw new Error('Cari hesap seçilmeden tahsilat/ödeme kaydedilemez');
+    }
+
     const table = 'cash_lines';
     const kasaTable = 'cash_registers';
 

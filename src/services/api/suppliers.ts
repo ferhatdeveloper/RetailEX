@@ -12,8 +12,8 @@ import {
   sqlSupplierAccountBalancesCte,
   sqlResolvedCustomerBalanceExpr,
   sqlResolvedSupplierBalanceExpr,
-  computeCustomerBalanceFromSales,
-  computeSupplierBalanceFromSales,
+  computeCustomerBalanceFromLedger,
+  computeSupplierBalanceFromLedger,
   normalizeFirmTableNr,
   accountLedgerNameMatch,
 } from './accountBalance';
@@ -81,7 +81,8 @@ export const supplierAPI = {
         };
         const pn = String(ERP_SETTINGS.periodNr ?? '01').padStart(2, '0');
         const salesPath = `/rex_${firmNr}_${pn}_sales`;
-        const [customers, suppliers, salesRows] = await Promise.all([
+        const cashPath = `/rex_${firmNr}_${pn}_cash_lines`;
+        const [customers, suppliers, salesRows, cashRows] = await Promise.all([
           safeGet(
             `/${custTable}`,
             {
@@ -104,24 +105,33 @@ export const supplierAPI = {
             is_cancelled: 'eq.false',
             limit: '10000',
           }),
+          safeGet(cashPath, {
+            select: 'customer_id,amount,transaction_type',
+            transaction_type: 'in.(CH_ODEME,CH_TAHSILAT)',
+            limit: '50000',
+          }),
         ]);
+        const sales = Array.isArray(salesRows) ? salesRows : [];
+        const cash = Array.isArray(cashRows) ? cashRows : [];
         const customerRows = (Array.isArray(customers) ? customers : []).map((r) => ({
           ...r,
           card_type: 'customer',
-          balance: computeCustomerBalanceFromSales(
+          balance: computeCustomerBalanceFromLedger(
             String(r.id),
             String(r.name || ''),
-            salesRows,
+            sales,
+            cash,
             parseFloat(String(r.balance ?? 0)) || 0,
           ),
         }));
         const supplierRows = (Array.isArray(suppliers) ? suppliers : []).map((r) => ({
           ...r,
           card_type: 'supplier',
-          balance: computeSupplierBalanceFromSales(
+          balance: computeSupplierBalanceFromLedger(
             String(r.id),
             String(r.name || ''),
-            salesRows,
+            sales,
+            cash,
             parseFloat(String(r.balance ?? 0)) || 0,
           ),
         }));
@@ -624,7 +634,7 @@ export const supplierAPI = {
       if (startDate) { dateFilter += ` AND t.date::date >= $${i++}::date`; values.push(startDate); }
       if (endDate) { dateFilter += ` AND t.date::date <= $${i++}::date`; values.push(endDate); }
 
-      const accountMatch = `(
+      const accountMatchSales = `(
         t.customer_id::text = $1::text
         OR (
           $2::text IS NOT NULL AND TRIM($2::text) <> ''
@@ -637,13 +647,13 @@ export const supplierAPI = {
         SELECT fiche_no, date, trcode, fiche_type, net_amount AS total_amount, currency, notes,
                COALESCE(is_cancelled, false) AS is_cancelled
         FROM sales t
-        WHERE ${accountMatch}${dateFilter}
+        WHERE ${accountMatchSales}${dateFilter}
         UNION ALL
         SELECT fiche_no, date, 0 AS trcode, transaction_type AS fiche_type,
                amount AS total_amount, currency_code AS currency, definition AS notes,
                false AS is_cancelled
         FROM cash_lines t
-        WHERE ${accountMatch}${dateFilter}
+        WHERE t.customer_id::text = $1::text${dateFilter}
           AND t.transaction_type IN ('CH_ODEME', 'CH_TAHSILAT')
         ORDER BY date ASC`;
 

@@ -8,38 +8,65 @@ import {
   sqlCustomerAccountBalancesCte,
   sqlSupplierAccountBalancesCte,
   normalizeFirmTableNr,
-  computeSupplierBalanceFromSales,
+  computeCustomerBalanceFromLedger,
+  computeSupplierBalanceFromLedger,
 } from './accountBalance';
 
-async function repairSupplierBalancesRestApi(firmNr: string): Promise<void> {
+async function repairCariBalancesRestApi(firmNr: string): Promise<void> {
   const { postgrest } = await import('./postgrestClient');
   const pn = String(ERP_SETTINGS.periodNr ?? '01').padStart(2, '0');
+  const custTable = firmCustomersTable(firmNr);
   const suppTable = firmSuppliersTable(firmNr);
   const salesPath = `/rex_${firmNr}_${pn}_sales`;
+  const cashPath = `/rex_${firmNr}_${pn}_cash_lines`;
 
-  const [suppliers, salesRows] = await Promise.all([
-    postgrest.get<any[]>(
-      `/${suppTable}`,
-      { select: 'id,name,balance', is_active: 'eq.true', limit: '5000' },
-      { schema: 'public' },
-    ).catch(() => [] as any[]),
-    postgrest.get<any[]>(
-      salesPath,
-      {
-        select: 'customer_id,customer_name,net_amount,fiche_type,is_cancelled',
-        fiche_type: 'in.(purchase_invoice,return_invoice)',
-        is_cancelled: 'eq.false',
-        limit: '50000',
-      },
-      { schema: 'public' },
-    ).catch(() => [] as any[]),
+  const safeGet = async (path: string, query: Record<string, string>) => {
+    try {
+      const rows = await postgrest.get<any[]>(path, query, { schema: 'public' });
+      return Array.isArray(rows) ? rows : [];
+    } catch {
+      return [] as any[];
+    }
+  };
+
+  const [customers, suppliers, salesRows, cashRows] = await Promise.all([
+    safeGet(`/${custTable}`, { select: 'id,name,balance', firm_nr: `eq.${firmNr}`, is_active: 'eq.true', limit: '5000' }),
+    safeGet(`/${suppTable}`, { select: 'id,name,balance', is_active: 'eq.true', limit: '5000' }),
+    safeGet(salesPath, {
+      select: 'customer_id,customer_name,net_amount,fiche_type,is_cancelled',
+      is_cancelled: 'eq.false',
+      limit: '50000',
+    }),
+    safeGet(cashPath, {
+      select: 'customer_id,amount,transaction_type',
+      transaction_type: 'in.(CH_ODEME,CH_TAHSILAT)',
+      limit: '50000',
+    }),
   ]);
 
-  const sales = Array.isArray(salesRows) ? salesRows : [];
-  for (const row of Array.isArray(suppliers) ? suppliers : []) {
+  for (const row of customers) {
     const id = String(row.id || '');
     if (!id) continue;
-    const ledger = computeSupplierBalanceFromSales(id, String(row.name || ''), sales, 0);
+    const ledger = computeCustomerBalanceFromLedger(
+      id,
+      String(row.name || ''),
+      salesRows,
+      cashRows,
+      parseFloat(String(row.balance ?? 0)) || 0,
+    );
+    const stored = parseFloat(String(row.balance ?? 0)) || 0;
+    if (Math.abs(stored - ledger) < 0.0001) continue;
+    await postgrest.patch(
+      `/${custTable}?id=eq.${encodeURIComponent(id)}&firm_nr=eq.${encodeURIComponent(firmNr)}`,
+      { balance: ledger },
+      { schema: 'public', prefer: 'return=minimal' },
+    ).catch((err) => console.warn('[repairCariLedger] customer balance patch:', id, err));
+  }
+
+  for (const row of suppliers) {
+    const id = String(row.id || '');
+    if (!id) continue;
+    const ledger = computeSupplierBalanceFromLedger(id, String(row.name || ''), salesRows, cashRows, 0);
     const stored = parseFloat(String(row.balance ?? 0)) || 0;
     if (Math.abs(stored - ledger) < 0.0001) continue;
     await postgrest.patch(
@@ -54,8 +81,8 @@ export async function repairCariLedgerConsistency(): Promise<void> {
   const firmNr = normalizeFirmTableNr(ERP_SETTINGS.firmNr);
 
   if (DB_SETTINGS.connectionProvider === 'rest_api') {
-    await repairSupplierBalancesRestApi(firmNr).catch((err) => {
-      console.warn('[repairCariLedger] rest_api supplier repair:', err);
+    await repairCariBalancesRestApi(firmNr).catch((err) => {
+      console.warn('[repairCariLedger] rest_api cari repair:', err);
     });
     return;
   }
