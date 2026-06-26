@@ -1,5 +1,6 @@
 ﻿import { X, User, Search } from 'lucide-react';
 import { useState, useMemo } from 'react';
+import { useLanguage } from '../../../contexts/LanguageContext';
 
 interface Salesperson {
   code: string;
@@ -23,6 +24,7 @@ interface InvoiceSalespersonModalProps {
 }
 
 export function InvoiceSalespersonModal({ currentSalesperson, onSelect, onClose }: InvoiceSalespersonModalProps) {
+  const { tm } = useLanguage();
   const [searchTerm, setSearchTerm] = useState('');
 
   const filteredSalespersons = useMemo(() => {
@@ -51,7 +53,7 @@ export function InvoiceSalespersonModal({ currentSalesperson, onSelect, onClose 
         <div className="p-3 border-b border-gray-200 flex items-center justify-between bg-gradient-to-r from-blue-600 to-blue-700">
           <h3 className="text-base text-white flex items-center gap-2">
             <User className="w-5 h-5" />
-            Satış Elemanı Seç
+            {tm('selectSalesperson')}
           </h3>
           <button
             onClick={onClose}
@@ -67,7 +69,7 @@ export function InvoiceSalespersonModal({ currentSalesperson, onSelect, onClose 
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             <input
               type="text"
-              placeholder="Satış elemanı kodu, adı veya telefon ile ara..."
+              placeholder={tm('searchSalespersonPlaceholder')}
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded focus:outline-none focus:border-blue-600"
@@ -81,7 +83,7 @@ export function InvoiceSalespersonModal({ currentSalesperson, onSelect, onClose 
           {filteredSalespersons.length === 0 ? (
             <div className="text-center py-8 text-gray-500">
               <User className="w-12 h-12 mx-auto mb-2 opacity-50" />
-              <p>Satış elemanı bulunamadı</p>
+              <p>{tm('salespersonNotFound')}</p>
             </div>
           ) : (
             <div className="space-y-2">
@@ -93,7 +95,7 @@ export function InvoiceSalespersonModal({ currentSalesperson, onSelect, onClose 
                     : 'border-gray-300 hover:border-blue-500 hover:bg-blue-50'
                 }`}
               >
-                <p className="font-medium text-gray-900">Satış Elemanı Seçilmedi</p>
+                <p className="font-medium text-gray-900">{tm('salespersonNotSelected')}</p>
               </button>
               {filteredSalespersons.map((person) => (
                 <button
@@ -108,14 +110,14 @@ export function InvoiceSalespersonModal({ currentSalesperson, onSelect, onClose 
                   <div className="flex items-center justify-between">
                     <div className="flex-1">
                       <p className="font-medium text-gray-900">{person.name}</p>
-                      <p className="text-sm text-gray-600">Kod: {person.code}</p>
+                      <p className="text-sm text-gray-600">{tm('code')}: {person.code}</p>
                       {(person.phone || person.email) && (
                         <div className="flex flex-col gap-1 mt-1">
                           {person.phone && (
-                            <p className="text-xs text-gray-500">Tel: {person.phone}</p>
+                            <p className="text-xs text-gray-500">{tm('phoneShort')}: {person.phone}</p>
                           )}
                           {person.email && (
-                            <p className="text-xs text-gray-500">Email: {person.email}</p>
+                            <p className="text-xs text-gray-500">{tm('emailLabel')}: {person.email}</p>
                           )}
                         </div>
                       )}
@@ -138,7 +140,7 @@ export function InvoiceSalespersonModal({ currentSalesperson, onSelect, onClose 
             onClick={onClose}
             className="w-full px-4 py-2 text-sm bg-gray-200 text-gray-700 rounded hover:bg-gray-300 transition-colors"
           >
-            İptal
+            {tm('cancel')}
           </button>
         </div>
       </div>

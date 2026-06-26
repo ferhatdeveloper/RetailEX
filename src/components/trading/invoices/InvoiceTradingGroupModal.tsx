@@ -1,5 +1,6 @@
 ﻿import { X, Building2, Search } from 'lucide-react';
 import { useState, useMemo } from 'react';
+import { useLanguage } from '../../../contexts/LanguageContext';
 
 interface TradingGroup {
   code: string;
@@ -23,6 +24,7 @@ interface InvoiceTradingGroupModalProps {
 }
 
 export function InvoiceTradingGroupModal({ currentGroup, onSelect, onClose }: InvoiceTradingGroupModalProps) {
+  const { tm } = useLanguage();
   const [searchTerm, setSearchTerm] = useState('');
 
   const filteredGroups = useMemo(() => {
@@ -50,7 +52,7 @@ export function InvoiceTradingGroupModal({ currentGroup, onSelect, onClose }: In
         <div className="p-3 border-b border-gray-200 flex items-center justify-between bg-gradient-to-r from-blue-600 to-blue-700">
           <h3 className="text-base text-white flex items-center gap-2">
             <Building2 className="w-5 h-5" />
-            Ticari Grup Seç
+            {tm('selectTradingGroup')}
           </h3>
           <button
             onClick={onClose}
@@ -66,7 +68,7 @@ export function InvoiceTradingGroupModal({ currentGroup, onSelect, onClose }: In
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             <input
               type="text"
-              placeholder="Grup kodu veya adı ile ara..."
+              placeholder={tm('searchGroupPlaceholder')}
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded focus:outline-none focus:border-blue-600"
@@ -80,7 +82,7 @@ export function InvoiceTradingGroupModal({ currentGroup, onSelect, onClose }: In
           {filteredGroups.length === 0 ? (
             <div className="text-center py-8 text-gray-500">
               <Building2 className="w-12 h-12 mx-auto mb-2 opacity-50" />
-              <p>Grup bulunamadı</p>
+              <p>{tm('groupNotFound')}</p>
             </div>
           ) : (
             <div className="space-y-2">
@@ -92,7 +94,7 @@ export function InvoiceTradingGroupModal({ currentGroup, onSelect, onClose }: In
                     : 'border-gray-300 hover:border-blue-500 hover:bg-blue-50'
                 }`}
               >
-                <p className="font-medium text-gray-900">Grup Seçilmedi</p>
+                <p className="font-medium text-gray-900">{tm('groupNotSelected')}</p>
               </button>
               {filteredGroups.map((group) => (
                 <button
@@ -107,7 +109,7 @@ export function InvoiceTradingGroupModal({ currentGroup, onSelect, onClose }: In
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="font-medium text-gray-900">{group.name}</p>
-                      <p className="text-sm text-gray-600">Kod: {group.code}</p>
+                      <p className="text-sm text-gray-600">{tm('code')}: {group.code}</p>
                       {group.description && (
                         <p className="text-xs text-gray-500 mt-1">{group.description}</p>
                       )}
@@ -130,7 +132,7 @@ export function InvoiceTradingGroupModal({ currentGroup, onSelect, onClose }: In
             onClick={onClose}
             className="w-full px-4 py-2 text-sm bg-gray-200 text-gray-700 rounded hover:bg-gray-300 transition-colors"
           >
-            İptal
+            {tm('cancel')}
           </button>
         </div>
       </div>

@@ -1,5 +1,6 @@
 ﻿import { X, Hash, Search } from 'lucide-react';
 import { useState, useMemo } from 'react';
+import { useLanguage } from '../../../contexts/LanguageContext';
 
 interface SpecialCode {
   code: string;
@@ -23,6 +24,7 @@ interface InvoiceSpecialCodeModalProps {
 }
 
 export function InvoiceSpecialCodeModal({ currentCode, onSelect, onClose }: InvoiceSpecialCodeModalProps) {
+  const { tm } = useLanguage();
   const [searchTerm, setSearchTerm] = useState('');
   const [customCode, setCustomCode] = useState(currentCode);
 
@@ -58,7 +60,7 @@ export function InvoiceSpecialCodeModal({ currentCode, onSelect, onClose }: Invo
         <div className="p-3 border-b border-gray-200 flex items-center justify-between bg-gradient-to-r from-blue-600 to-blue-700">
           <h3 className="text-base text-white flex items-center gap-2">
             <Hash className="w-5 h-5" />
-            Özel Kod Seç
+            {tm('selectSpecialCode')}
           </h3>
           <button
             onClick={onClose}
@@ -74,7 +76,7 @@ export function InvoiceSpecialCodeModal({ currentCode, onSelect, onClose }: Invo
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             <input
               type="text"
-              placeholder="Kod veya açıklama ile ara..."
+              placeholder={tm('searchCodeOrDescPlaceholder')}
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded focus:outline-none focus:border-blue-600"
@@ -86,14 +88,14 @@ export function InvoiceSpecialCodeModal({ currentCode, onSelect, onClose }: Invo
         {/* Custom Code Input */}
         <div className="p-4 border-b border-gray-200 bg-gray-50">
           <label className="block text-sm font-medium text-gray-700 mb-2">
-            Özel Kod Gir
+            {tm('enterSpecialCode')}
           </label>
           <div className="flex gap-2">
             <input
               type="text"
               value={customCode}
               onChange={(e) => setCustomCode(e.target.value)}
-              placeholder="Kod girin..."
+              placeholder={tm('enterCodePlaceholder')}
               className="flex-1 px-3 py-2 border border-gray-300 rounded focus:outline-none focus:border-blue-600"
               onKeyDown={(e) => {
                 if (e.key === 'Enter') {
@@ -105,7 +107,7 @@ export function InvoiceSpecialCodeModal({ currentCode, onSelect, onClose }: Invo
               onClick={handleCustomSave}
               className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
             >
-              Kaydet
+              {tm('save')}
             </button>
           </div>
         </div>
@@ -115,7 +117,7 @@ export function InvoiceSpecialCodeModal({ currentCode, onSelect, onClose }: Invo
           {filteredCodes.length === 0 ? (
             <div className="text-center py-8 text-gray-500">
               <Hash className="w-12 h-12 mx-auto mb-2 opacity-50" />
-              <p>Kod bulunamadı</p>
+              <p>{tm('codeNotFound')}</p>
             </div>
           ) : (
             <div className="space-y-2">
@@ -132,7 +134,7 @@ export function InvoiceSpecialCodeModal({ currentCode, onSelect, onClose }: Invo
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="font-medium text-gray-900">{code.name}</p>
-                      <p className="text-sm text-gray-600">Kod: {code.code}</p>
+                      <p className="text-sm text-gray-600">{tm('code')}: {code.code}</p>
                       {code.description && (
                         <p className="text-xs text-gray-500 mt-1">{code.description}</p>
                       )}
@@ -155,7 +157,7 @@ export function InvoiceSpecialCodeModal({ currentCode, onSelect, onClose }: Invo
             onClick={onClose}
             className="w-full px-4 py-2 text-sm bg-gray-200 text-gray-700 rounded hover:bg-gray-300 transition-colors"
           >
-            İptal
+            {tm('cancel')}
           </button>
         </div>
       </div>
