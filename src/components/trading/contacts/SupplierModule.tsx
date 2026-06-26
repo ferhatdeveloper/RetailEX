@@ -972,7 +972,7 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: 'all
             contextMenu.supplier?.cardType === 'customer'
               ? {
                   id: 'collection',
-                  label: 'Tahsilat al',
+                  label: tm('cashActionCollect'),
                   icon: Download,
                   onClick: () => {
                     if (contextMenu.supplier) {
@@ -983,7 +983,7 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: 'all
                 }
               : {
                   id: 'payment',
-                  label: 'Ödeme yap',
+                  label: tm('cashActionPay'),
                   icon: Wallet,
                   onClick: () => {
                     if (contextMenu.supplier) {

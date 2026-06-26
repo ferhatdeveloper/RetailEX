@@ -3,8 +3,10 @@ import { AlertTriangle, FileMinus, RefreshCw, Search } from 'lucide-react';
 import { createColumnHelper } from '@tanstack/react-table';
 import { DevExDataGrid } from '../shared/DevExDataGrid';
 import { expiryReportsAPI, type ExpiringPurchaseItem } from '../../services/api/expiryReports';
+import { useLanguage } from '../../contexts/LanguageContext';
 
 export function PurchaseExpiryReport() {
+  const { tm } = useLanguage();
   const [rows, setRows] = useState<ExpiringPurchaseItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -50,7 +52,7 @@ export function PurchaseExpiryReport() {
       size: 150,
     }),
     columnHelper.accessor('itemName', {
-      header: 'Ürün',
+      header: tm('product'),
       cell: info => (
         <div className="flex flex-col">
           <span className="font-semibold text-slate-900">{info.getValue()}</span>
@@ -59,17 +61,17 @@ export function PurchaseExpiryReport() {
       ),
     }),
     columnHelper.accessor('quantity', {
-      header: 'Miktar',
+      header: tm('quantity'),
       cell: info => `${info.getValue()} ${info.row.original.unit}`,
       size: 110,
     }),
     columnHelper.accessor('supplierName', {
-      header: 'Tedarikçi/Cari',
+      header: tm('expirySupplierAccount'),
       cell: info => info.getValue() || '-',
       size: 180,
     }),
     columnHelper.accessor('invoiceNo', {
-      header: 'Alış Faturası',
+      header: tm('expiryPurchaseInvoice'),
       cell: info => (
         <div className="flex flex-col">
           <span className="font-mono text-xs font-bold text-blue-700">{info.getValue()}</span>
@@ -79,17 +81,17 @@ export function PurchaseExpiryReport() {
       size: 150,
     }),
     columnHelper.accessor('batchNo', {
-      header: 'Parti',
+      header: tm('expiryBatch'),
       cell: info => info.getValue() || '-',
       size: 100,
     }),
     columnHelper.display({
       id: 'returnHint',
-      header: 'Alış İadesi',
+      header: tm('purchaseReturn'),
       cell: ({ row }) => (
-        <span className="inline-flex items-center gap-1 rounded-lg bg-orange-50 px-2 py-1 text-xs font-bold text-orange-700" title="Alış iadesi oluştururken bu tedarikçi ve ürünü seçin">
+        <span className="inline-flex items-center gap-1 rounded-lg bg-orange-50 px-2 py-1 text-xs font-bold text-orange-700" title={tm('expiryReturnHint')}>
           <FileMinus className="h-3.5 w-3.5" />
-          İade adayı
+          {tm('expiryReturnCandidate')}
         </span>
       ),
       size: 110,
@@ -103,8 +105,8 @@ export function PurchaseExpiryReport() {
           <div className="flex items-center gap-3">
             <AlertTriangle className="h-6 w-6" />
             <div>
-              <h2 className="text-lg font-black uppercase tracking-tight">Son Kullanma Tarihi Raporu</h2>
-              <p className="text-xs font-semibold text-red-100">Bugünden itibaren seçilen gün aralığında SKT’si gelen alış ürünleri</p>
+              <h2 className="text-lg font-black uppercase tracking-tight">{tm('purchaseExpiryReportTitle')}</h2>
+              <p className="text-xs font-semibold text-red-100">{tm('purchaseExpiryReportSubtitle')}</p>
             </div>
           </div>
           <button type="button" onClick={() => void load()} className="inline-flex items-center gap-2 rounded-lg bg-white/15 px-3 py-2 text-xs font-bold hover:bg-white/25">
@@ -117,17 +119,17 @@ export function PurchaseExpiryReport() {
         <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
           <div className="flex flex-wrap items-center gap-3">
             <label className="flex items-center gap-2 text-xs font-bold text-slate-600">
-              Gün aralığı
+              {tm('expiryRange')}
               <select value={daysAhead} onChange={e => setDaysAhead(Number(e.target.value))} className="rounded-lg border border-slate-200 px-2 py-1.5 text-sm outline-none focus:ring-2 focus:ring-red-500">
-                <option value={0}>Bugün</option>
-                <option value={3}>Sonraki 3 gün</option>
-                <option value={7}>Sonraki 7 gün</option>
-                <option value={30}>Sonraki 30 gün</option>
+                <option value={0}>{tm('expiryToday')}</option>
+                <option value={3}>{tm('expiryNext3')}</option>
+                <option value={7}>{tm('expiryNext7')}</option>
+                <option value={30}>{tm('expiryNext30')}</option>
               </select>
             </label>
             <div className="relative min-w-[260px] flex-1">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-              <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Ürün, cari veya fatura ara..." className="w-full rounded-lg border border-slate-200 py-2 pl-10 pr-3 text-sm outline-none focus:ring-2 focus:ring-red-500" />
+              <input value={search} onChange={e => setSearch(e.target.value)} placeholder={tm('expirySearchPlaceholder')} className="w-full rounded-lg border border-slate-200 py-2 pl-10 pr-3 text-sm outline-none focus:ring-2 focus:ring-red-500" />
             </div>
           </div>
         </div>

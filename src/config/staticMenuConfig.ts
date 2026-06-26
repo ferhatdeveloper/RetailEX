@@ -89,7 +89,7 @@ export const getStaticMenuSections = (t: Translations) => [
                     { label: t.menu.materialExtract, screen: 'report-material-extract', icon: BarChart3 },
                     { label: t.menu.materialValue, screen: 'report-material-value', icon: BarChart3 },
                     { label: t.menu.inventory, screen: 'inventory', icon: BarChart3 },
-                    { label: 'Son Kullanma Tarihi Raporu', screen: 'purchase-expiry-report', icon: AlertCircle },
+                    { label: t.menu.purchaseExpiryReportTitle, screen: 'purchase-expiry-report', icon: AlertCircle },
                     { label: t.menu.cost, screen: 'cost', icon: BarChart3 },
                     { label: t.menu.inOutTotals, screen: 'report-in-out-totals', icon: BarChart3 },
                     { label: t.menu.materialWarehouseStatus, screen: 'report-warehouse-status', icon: BarChart3 },

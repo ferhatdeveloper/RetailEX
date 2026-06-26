@@ -96,6 +96,7 @@ export interface MenuTranslations {
   productCategories: string;
   profitabilityAnalyticsDashboard: string;
   purchaseInvoice: string;
+  purchaseExpiryReportTitle: string;
   purchaseOrders: string;
   purchaseReturn: string;
   purchaseWaybill: string;
@@ -1936,6 +1937,7 @@ export const translations: any = {
       productCategories: 'Ürün Kategorileri',
       profitabilityAnalyticsDashboard: '💰 Karlılık Analizi Dashboard',
       purchaseInvoice: 'Alış Faturası',
+      purchaseExpiryReportTitle: 'Son Kullanma Tarihi Raporu',
       purchaseOrders: 'Satınalma Siparişleri',
       purchaseReturn: 'Alış İade',
       purchaseWaybill: 'Alış İrsaliyesi',
@@ -3453,6 +3455,7 @@ export const translations: any = {
       productCategories: 'Product Categories',
       profitabilityAnalyticsDashboard: '💰 Profitability Analysis Dashboard',
       purchaseInvoice: 'Purchase Invoice',
+      purchaseExpiryReportTitle: 'Expiry Date Report',
       purchaseOrders: 'Purchase Orders',
       purchaseReturn: 'Purchase Return',
       purchaseWaybill: 'Purchase Waybill',
@@ -4805,6 +4808,7 @@ export const translations: any = {
       productCategories: 'فئات المنتجات',
       profitabilityAnalyticsDashboard: '💰 لوحة تحليل الربحية',
       purchaseInvoice: 'فاتورة مشتريات',
+      purchaseExpiryReportTitle: 'تقرير تواريخ الانتهاء',
       purchaseOrders: 'أوامر الشراء',
       purchaseReturn: 'مرتجع مشتريات',
       purchaseWaybill: 'سند شحن مشتريات',
@@ -6158,6 +6162,7 @@ export const translations: any = {
       productCategories: 'فئات المنتجات',
       profitabilityAnalyticsDashboard: '💰 لوحة تحليل الربحية',
       purchaseInvoice: 'فاتورة مشتريات',
+      purchaseExpiryReportTitle: 'ڕاپۆرتی بەرواری بەسەرچوون',
       purchaseOrders: 'أوامر الشراء',
       purchaseReturn: 'مرتجع مشتريات',
       purchaseWaybill: 'سند شحن مشتريات',

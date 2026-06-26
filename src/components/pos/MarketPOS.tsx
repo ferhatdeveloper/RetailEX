@@ -1110,7 +1110,7 @@ export default function MarketPOS({
     try {
       const barcode = normalizeScannedBarcode(data.barcode);
       if (!barcode || !data.name.trim()) {
-        showNotif('Ürün adı ve barkod zorunlu.', 'error');
+        showNotif(tm('missingBarcodeRequired'), 'error');
         return;
       }
       const created = await productAPI.create({
@@ -1126,14 +1126,14 @@ export default function MarketPOS({
         currency: posBaseCurrency,
       } as any);
       if (!created) {
-        showNotif('Ürün oluşturulamadı.', 'error');
+        showNotif(tm('missingBarcodeCreateFailed'), 'error');
         return;
       }
       setMissingBarcodes(prev => prev.filter(b => b !== barcode));
       await refreshProducts();
-      showNotif(`Ürün oluşturuldu: ${created.name}`, 'success');
+      showNotif(tm('missingBarcodeCreated').replace('{name}', created.name), 'success');
     } catch (error: any) {
-      showNotif(error?.message || 'Ürün oluşturulamadı.', 'error');
+      showNotif(error?.message || tm('missingBarcodeCreateFailed'), 'error');
     }
   };
 

@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import { DevExDataGrid } from '../../shared/DevExDataGrid';
 import { createColumnHelper } from '@tanstack/react-table';
 import { supplierAPI, type Supplier } from '../../../services/api/suppliers';
+import { useLanguage } from '../../../contexts/LanguageContext';
 import {
   CUSTOMER_CALL_WEEKDAYS,
   CUSTOMER_CALL_STATUSES,
@@ -16,6 +17,7 @@ import {
 type DayFilter = 'all' | number;
 
 export function CustomerCallPlanModule() {
+  const { tm } = useLanguage();
   const [customers, setCustomers] = useState<Supplier[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -36,7 +38,7 @@ export function CustomerCallPlanModule() {
         normalizeCustomerCallWeekdays(row.call_plan_weekdays).length > 0
       ));
     } catch (error: any) {
-      toast.error(error?.message || 'Müşteri arama listesi yüklenemedi');
+      toast.error(error?.message || tm('callPlanLoadFailed'));
     } finally {
       setLoading(false);
     }
@@ -92,11 +94,11 @@ export function CustomerCallPlanModule() {
         call_last_note: lastNote.trim() || null,
         call_last_at: new Date().toISOString(),
       });
-      toast.success('Arama planı güncellendi');
+      toast.success(tm('callPlanUpdated'));
       setEditing(null);
       await load();
     } catch (error: any) {
-      toast.error(error?.message || 'Arama planı kaydedilemedi');
+      toast.error(error?.message || tm('callPlanSaveFailed'));
     } finally {
       setSaving(false);
     }
@@ -105,17 +107,17 @@ export function CustomerCallPlanModule() {
   const columnHelper = createColumnHelper<Supplier>();
   const columns = [
     columnHelper.accessor('code', {
-      header: 'Kod',
+      header: tm('code'),
       cell: info => <span className="font-mono text-xs font-bold text-blue-700">{info.getValue() || '-'}</span>,
       size: 90,
     }),
     columnHelper.accessor('name', {
-      header: 'Müşteri',
+      header: tm('customer'),
       cell: info => <span className="font-semibold text-slate-900">{info.getValue()}</span>,
     }),
     columnHelper.display({
       id: 'contact',
-      header: 'İletişim',
+      header: tm('contact'),
       cell: ({ row }) => (
         <div className="flex flex-col gap-1 text-xs text-slate-600">
           {row.original.phone ? <span className="inline-flex items-center gap-1"><Phone className="h-3 w-3" />{row.original.phone}</span> : '-'}
@@ -126,7 +128,7 @@ export function CustomerCallPlanModule() {
     }),
     columnHelper.display({
       id: 'days',
-      header: 'Aranacak Günler',
+      header: tm('callPlanSelectDays'),
       cell: ({ row }) => (
         <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-1 text-xs font-black text-amber-800">
           <CalendarClock className="h-3.5 w-3.5" />
@@ -137,7 +139,7 @@ export function CustomerCallPlanModule() {
     }),
     columnHelper.display({
       id: 'note',
-      header: 'Plan Notu',
+      header: tm('callPlanNote'),
       cell: ({ row }) => (
         row.original.call_plan_note ? (
           <span className="block max-w-[220px] truncate text-xs font-semibold text-slate-600" title={row.original.call_plan_note}>
@@ -149,13 +151,13 @@ export function CustomerCallPlanModule() {
     }),
     columnHelper.display({
       id: 'lastStatus',
-      header: 'Son Durum',
+      header: tm('callPlanLastStatus'),
       cell: ({ row }) => {
         const meta = customerCallStatusMeta(row.original.call_last_status);
         return (
           <div className="flex flex-col gap-1">
             <span className={`w-fit rounded-full px-2 py-0.5 text-[10px] font-black uppercase ${meta.tone}`}>
-              {meta.label}
+              {tm(meta.label)}
             </span>
             {row.original.call_last_at ? (
               <span className="text-[10px] font-semibold text-slate-400">
@@ -174,7 +176,7 @@ export function CustomerCallPlanModule() {
     }),
     columnHelper.display({
       id: 'actions',
-      header: 'İşlem',
+      header: tm('actions'),
       cell: ({ row }) => (
         <button
           type="button"
@@ -185,7 +187,7 @@ export function CustomerCallPlanModule() {
           className="inline-flex items-center gap-1 rounded-lg bg-blue-50 px-2 py-1 text-xs font-bold text-blue-700 hover:bg-blue-100"
         >
           <Edit className="h-3.5 w-3.5" />
-          Düzenle
+          {tm('edit')}
         </button>
       ),
       size: 100,
@@ -199,8 +201,8 @@ export function CustomerCallPlanModule() {
           <div className="flex items-center gap-3">
             <CalendarClock className="h-6 w-6" />
             <div>
-              <h2 className="text-lg font-black uppercase tracking-tight">Müşteri Arama Listesi</h2>
-              <p className="text-xs font-semibold text-amber-100">Haftalık arama planına alınan müşteriler</p>
+              <h2 className="text-lg font-black uppercase tracking-tight">{tm('customerCallListTitle')}</h2>
+              <p className="text-xs font-semibold text-amber-100">{tm('customerCallListSubtitle')}</p>
             </div>
           </div>
           <button
@@ -209,7 +211,7 @@ export function CustomerCallPlanModule() {
             className="inline-flex items-center gap-2 rounded-lg bg-white/15 px-3 py-2 text-xs font-bold hover:bg-white/25"
           >
             <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-            Yenile
+            {tm('refreshData')}
           </button>
         </div>
       </div>
@@ -222,7 +224,7 @@ export function CustomerCallPlanModule() {
               onClick={() => setDayFilter('all')}
               className={`rounded-full px-3 py-1.5 text-xs font-black ${dayFilter === 'all' ? 'bg-amber-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
             >
-              Tümü
+              {tm('all')}
             </button>
             {CUSTOMER_CALL_WEEKDAYS.map(day => (
               <button
@@ -240,7 +242,7 @@ export function CustomerCallPlanModule() {
             <input
               value={search}
               onChange={e => setSearch(e.target.value)}
-              placeholder="Müşteri, kod, telefon veya e-posta ara..."
+              placeholder={tm('callPlanSearchPlaceholder')}
               className="w-full rounded-lg border border-slate-200 py-2 pl-10 pr-3 text-sm outline-none focus:ring-2 focus:ring-amber-500"
             />
           </div>
@@ -263,7 +265,7 @@ export function CustomerCallPlanModule() {
           <div className="w-full max-w-xl overflow-hidden rounded-2xl bg-white shadow-2xl">
             <div className="flex items-center justify-between border-b border-slate-100 bg-amber-50 px-5 py-4">
               <div>
-                <p className="text-xs font-black uppercase tracking-wide text-amber-700">Arama Planı Düzenle</p>
+                <p className="text-xs font-black uppercase tracking-wide text-amber-700">{tm('callPlanEditTitle')}</p>
                 <h3 className="text-lg font-black text-slate-900">{editing.name}</h3>
               </div>
               <button type="button" onClick={() => setEditing(null)} className="rounded-lg p-2 hover:bg-amber-100">
@@ -271,7 +273,7 @@ export function CustomerCallPlanModule() {
               </button>
             </div>
             <div className="p-5">
-              <p className="mb-3 text-sm font-semibold text-slate-600">Aranacak günleri seçin</p>
+              <p className="mb-3 text-sm font-semibold text-slate-600">{tm('callPlanSelectDays')}</p>
               <div className="flex flex-wrap gap-2">
                 {CUSTOMER_CALL_WEEKDAYS.map(day => {
                   const selected = selectedDays.includes(day.value);
@@ -294,42 +296,42 @@ export function CustomerCallPlanModule() {
               </div>
               {selectedDays.length > 0 ? (
                 <p className="mt-3 rounded-lg bg-blue-50 px-3 py-2 text-xs font-bold text-blue-700">
-                  Seçili günler: {customerCallWeekdaysLabel(selectedDays)}
+                  {tm('callPlanSelectedDays').replace('{days}', customerCallWeekdaysLabel(selectedDays))}
                 </p>
               ) : (
                 <p className="mt-3 rounded-lg bg-slate-50 px-3 py-2 text-xs font-bold text-slate-500">
-                  Gün seçmezseniz müşteri arama listesinden çıkar.
+                  {tm('callPlanNoDaysHint')}
                 </p>
               )}
               <div className="mt-4">
-                <label className="mb-1 block text-xs font-black uppercase tracking-wide text-slate-500">Plan notu</label>
+                <label className="mb-1 block text-xs font-black uppercase tracking-wide text-slate-500">{tm('callPlanNote')}</label>
                 <textarea
                   value={planNote}
                   onChange={e => setPlanNote(e.target.value)}
                   rows={2}
-                  placeholder="Bu müşterinin neden/ne zaman aranacağını yazın"
+                  placeholder={tm('callPlanNote')}
                   className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-amber-500"
                 />
               </div>
               <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
                 <div>
-                  <label className="mb-1 block text-xs font-black uppercase tracking-wide text-slate-500">Son durum</label>
+                  <label className="mb-1 block text-xs font-black uppercase tracking-wide text-slate-500">{tm('callPlanLastStatus')}</label>
                   <select
                     value={lastStatus}
                     onChange={e => setLastStatus(normalizeCustomerCallStatus(e.target.value))}
                     className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
                   >
                     {CUSTOMER_CALL_STATUSES.map(status => (
-                      <option key={status.value} value={status.value}>{status.label}</option>
+                      <option key={status.value} value={status.value}>{tm(status.label)}</option>
                     ))}
                   </select>
                 </div>
                 <div>
-                  <label className="mb-1 block text-xs font-black uppercase tracking-wide text-slate-500">Son durum notu</label>
+                  <label className="mb-1 block text-xs font-black uppercase tracking-wide text-slate-500">{tm('callPlanLastStatusNote')}</label>
                   <input
                     value={lastNote}
                     onChange={e => setLastNote(e.target.value)}
-                    placeholder="Örn. Ulaşılamadı, cuma tekrar ara"
+                    placeholder={tm('callPlanLastStatusNote')}
                     className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
@@ -337,10 +339,10 @@ export function CustomerCallPlanModule() {
             </div>
             <div className="flex justify-end gap-2 border-t border-slate-100 bg-slate-50 px-5 py-4">
               <button type="button" onClick={() => setEditing(null)} className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-600 hover:bg-slate-100">
-                İptal
+                {tm('cancel')}
               </button>
               <button type="button" onClick={() => void savePlan()} disabled={saving} className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-bold text-white hover:bg-blue-700 disabled:opacity-50">
-                {saving ? 'Kaydediliyor...' : 'Kaydet'}
+                {saving ? tm('saving') : tm('save')}
               </button>
             </div>
           </div>

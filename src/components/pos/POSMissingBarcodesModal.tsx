@@ -16,7 +16,7 @@ interface POSMissingBarcodesModalProps {
 }
 
 export function POSMissingBarcodesModal({ onClose, barcodes, onClear, onCreateProduct }: POSMissingBarcodesModalProps) {
-    const { t } = useLanguage();
+    const { t, tm } = useLanguage();
     const { darkMode } = useTheme();
     const [selectedBarcode, setSelectedBarcode] = useState('');
     const [productName, setProductName] = useState('');
@@ -124,7 +124,7 @@ export function POSMissingBarcodesModal({ onClose, barcodes, onClear, onCreatePr
                                             className="flex items-center gap-2 rounded-lg bg-green-600 px-3 py-2 text-sm font-bold text-white hover:bg-green-700"
                                         >
                                             <Plus className="w-4 h-4" />
-                                            Ürün olarak ekle
+                                            {tm('missingBarcodeAddAsProduct')}
                                         </button>
                                     </div>
                                 </div>
@@ -137,22 +137,22 @@ export function POSMissingBarcodesModal({ onClose, barcodes, onClear, onCreatePr
                     <div className={`border-t p-4 ${darkMode ? 'border-gray-700 bg-gray-900/40' : 'border-gray-200 bg-green-50/60'}`}>
                         <div className="mb-3 flex items-center justify-between gap-3">
                             <div>
-                                <p className={`text-xs font-black uppercase tracking-wide ${darkMode ? 'text-green-300' : 'text-green-700'}`}>Ürün kartı oluştur</p>
+                                <p className={`text-xs font-black uppercase tracking-wide ${darkMode ? 'text-green-300' : 'text-green-700'}`}>{tm('missingBarcodeCreateProduct')}</p>
                                 <p className={`font-mono text-sm ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>{activeBarcode}</p>
                             </div>
                         </div>
                         <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
                             <label className="md:col-span-2">
-                                <span className={`mb-1 block text-xs font-bold ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Ürün adı *</span>
+                                <span className={`mb-1 block text-xs font-bold ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>{tm('missingBarcodeProductName')} *</span>
                                 <input
                                     value={productName}
                                     onChange={e => setProductName(e.target.value)}
                                     className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-green-500"
-                                    placeholder="Ürün adı"
+                                    placeholder={tm('missingBarcodeProductName')}
                                 />
                             </label>
                             <label>
-                                <span className={`mb-1 block text-xs font-bold ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Birim</span>
+                                <span className={`mb-1 block text-xs font-bold ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>{tm('missingBarcodeUnit')}</span>
                                 <input
                                     value={unit}
                                     onChange={e => setUnit(e.target.value)}
@@ -161,7 +161,7 @@ export function POSMissingBarcodesModal({ onClose, barcodes, onClear, onCreatePr
                                 />
                             </label>
                             <label>
-                                <span className={`mb-1 block text-xs font-bold ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Satış fiyatı</span>
+                                <span className={`mb-1 block text-xs font-bold ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>{tm('missingBarcodeSalePrice')}</span>
                                 <input
                                     type="number"
                                     min={0}
@@ -180,7 +180,7 @@ export function POSMissingBarcodesModal({ onClose, barcodes, onClear, onCreatePr
                                 className="flex items-center gap-2 rounded-lg bg-green-600 px-4 py-2 text-sm font-bold text-white hover:bg-green-700 disabled:opacity-50"
                             >
                                 <Save className="w-4 h-4" />
-                                {saving ? 'Kaydediliyor...' : 'Ürün oluştur'}
+                                {saving ? tm('missingBarcodeSaving') : tm('missingBarcodeCreateButton')}
                             </button>
                         </div>
                     </div>
