@@ -42,9 +42,8 @@ interface ModernSidebarProps {
   showLanguageMenu: boolean;
   setShowLanguageMenu: (show: boolean) => void;
   languages: { code: Language; name: string; flag: string; }[];
-  APP_VERSION: any;
+  APP_VERSION: { full: string };
   t: Translations;
-  menuSource?: 'database' | 'static'; // Yeni prop
 }
 
 export function ModernSidebar({
@@ -64,7 +63,6 @@ export function ModernSidebar({
   languages,
   APP_VERSION,
   t,
-  menuSource = 'static' // Default value
 }: ModernSidebarProps) {
   const { darkMode, toggleDarkMode } = useTheme();
   const { isMobile } = useResponsive();
@@ -357,22 +355,9 @@ export function ModernSidebar({
         </button>
       </div>
 
-      {/* App Version */}
-      <div className="p-3 text-center text-xs text-gray-500">
-        <p>Version: {APP_VERSION.display}</p>
-        {/* Menu Source Indicator */}
-        <div className={`mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${menuSource === 'database'
-          ? darkMode
-            ? 'bg-green-900/30 text-green-400 border border-green-700/50'
-            : 'bg-green-100 text-green-700 border border-green-200'
-          : darkMode
-            ? 'bg-yellow-900/30 text-yellow-400 border border-yellow-700/50'
-            : 'bg-yellow-100 text-yellow-700 border border-yellow-200'
-          }`}>
-          <span className={`w-1.5 h-1.5 rounded-full ${menuSource === 'database' ? 'bg-green-500' : 'bg-yellow-500'
-            }`} />
-          {menuSource === 'database' ? t.sidebar.dbMenu : t.sidebar.staticMenu}
-        </div>
+      {/* Uygulama sürümü — tek kaynak: package.json → APP_VERSION.full */}
+      <div className={`p-3 text-center text-xs border-t ${darkMode ? 'border-gray-700 text-gray-400' : 'border-gray-200 text-gray-500'}`}>
+        <p className="font-mono font-semibold tracking-wide">v{APP_VERSION.full}</p>
       </div>
     </div>
   );

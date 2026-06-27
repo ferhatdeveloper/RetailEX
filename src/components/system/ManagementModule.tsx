@@ -1608,7 +1608,6 @@ export function ManagementModule({
               languages={languages}
               APP_VERSION={APP_VERSION}
               t={t}
-              menuSource={'static'}
             />
           </div>
         </div>
@@ -1631,7 +1630,6 @@ export function ManagementModule({
             languages={languages}
             APP_VERSION={APP_VERSION}
             t={t}
-            menuSource={'static'}
           />
         </div>
       ) : null}
