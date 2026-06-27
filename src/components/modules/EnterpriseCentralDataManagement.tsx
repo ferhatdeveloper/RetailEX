@@ -760,33 +760,6 @@ export function EnterpriseCentralDataManagement() {
             </Button>
 
             <Button
-              onClick={() => void handleDayEndPull()}
-              variant="outline"
-              size="sm"
-              disabled={isSyncBusy}
-            >
-              Günsonu Al
-            </Button>
-
-            <Button
-              onClick={() => void handlePullAll()}
-              variant="outline"
-              size="sm"
-              disabled={isSyncBusy}
-            >
-              Veri Al
-            </Button>
-
-            <Button
-              onClick={() => void handlePushAll()}
-              variant="outline"
-              size="sm"
-              disabled={isSyncBusy}
-            >
-              Veri Gönder
-            </Button>
-
-            <Button
               onClick={() => void handleManualBroadcast()}
               disabled={isSyncBusy || isBroadcasting}
               size="sm"
@@ -797,36 +770,10 @@ export function EnterpriseCentralDataManagement() {
               ) : (
                 <Send className="w-4 h-4" />
               )}
-              {isSyncBusy || isBroadcasting ? 'Senkron...' : 'Şimdi Gönder'}
+              {isSyncBusy || isBroadcasting ? 'Senkron...' : 'Kuyruğu İşle'}
             </Button>
           </div>
         </div>
-
-        {/* MPOS Kalem hızlı işlemler */}
-        <Card className={`p-4 ${theme === 'dark' ? 'bg-gray-800 border-gray-700' : 'bg-white'}`}>
-          <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
-            <Zap className="w-4 h-4 text-blue-600" />
-            M-POS Hızlı İşlemler (Kalem eğitim akışı)
-          </h3>
-          <div className="flex flex-wrap gap-2">
-            <Button size="sm" variant="outline" disabled={isSyncBusy} onClick={() => void handleMposQuickSend('product')}>
-              Malzeme Gönder
-            </Button>
-            <Button size="sm" variant="outline" disabled={isSyncBusy} onClick={() => void handleMposQuickSend('customer')}>
-              Cari Gönder
-            </Button>
-            <Button size="sm" variant="outline" disabled={isSyncBusy} onClick={() => void handleMposQuickSend('all')}>
-              Tüm Master Veri
-            </Button>
-            <Button size="sm" variant="outline" disabled={isSyncBusy} onClick={() => void handleDayEndPull()}>
-              Satış / Günsonu Al
-            </Button>
-          </div>
-          <p className="text-xs text-gray-500 mt-2">
-            Videodaki akış: merkez malzeme/cari gönderir → kasa satış yapar → günsonu merkeze alınır.
-            Servis aralığı: {messageCheckInterval} sn (Kasa Servis Ayarları).
-          </p>
-        </Card>
 
         {/* Stats Grid */}
         <div className="grid grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-4">
@@ -901,12 +848,20 @@ export function EnterpriseCentralDataManagement() {
           </Card>
         </div>
 
-        {/* Main Tabs */}
+        {/* Main Tabs — MPOS Kalem eğitim sırası: Gönder → Al → Günsonu → Kuyruk → Kasalar → Servis */}
         <Tabs defaultValue="send" className="w-full">
-          <TabsList className="grid w-full grid-cols-7 h-auto">
+          <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 h-auto">
             <TabsTrigger value="send" className="gap-2">
-              <Send className="w-4 h-4" />
-              Veri Gönder
+              <Upload className="w-4 h-4" />
+              Bilgi Gönder
+            </TabsTrigger>
+            <TabsTrigger value="receive" className="gap-2">
+              <Download className="w-4 h-4" />
+              Bilgi Al
+            </TabsTrigger>
+            <TabsTrigger value="dayend" className="gap-2">
+              <Calendar className="w-4 h-4" />
+              Günsonu ({dayEndStatus.filter((d) => !d.isOnline).length})
             </TabsTrigger>
             <TabsTrigger value="queue" className="gap-2">
               <Clock className="w-4 h-4" />
@@ -914,28 +869,48 @@ export function EnterpriseCentralDataManagement() {
             </TabsTrigger>
             <TabsTrigger value="devices" className="gap-2">
               <Monitor className="w-4 h-4" />
-              Cihazlar ({devices.length})
+              Kasalar ({devices.length})
+            </TabsTrigger>
+            <TabsTrigger value="service" className="gap-2">
+              <Settings className="w-4 h-4" />
+              Servis Ayarları
             </TabsTrigger>
             <TabsTrigger value="groups" className="gap-2">
               <Layers className="w-4 h-4" />
               Gruplar ({deviceGroups.length})
             </TabsTrigger>
-            <TabsTrigger value="templates" className="gap-2">
-              <FileText className="w-4 h-4" />
-              Şablonlar ({templates.length})
-            </TabsTrigger>
             <TabsTrigger value="history" className="gap-2">
               <BarChart3 className="w-4 h-4" />
               Geçmiş
             </TabsTrigger>
-            <TabsTrigger value="dayend" className="gap-2">
-              <Calendar className="w-4 h-4" />
-              Günsonu ({dayEndStatus.filter((d) => d.salesPending > 0).length})
-            </TabsTrigger>
           </TabsList>
 
-          {/* Send Tab */}
+          {/* Bilgi Gönder — merkez → kasa (malzeme, cari, master) */}
           <TabsContent value="send" className="space-y-4">
+            <Card className={`p-4 ${theme === 'dark' ? 'bg-gray-800 border-gray-700' : 'bg-white'}`}>
+              <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                <Zap className="w-4 h-4 text-blue-600" />
+                M-POS Bilgi Gönder (Merkez → Kasa)
+              </h3>
+              <div className="flex flex-wrap gap-2">
+                <Button size="sm" variant="outline" disabled={isSyncBusy} onClick={() => void handleMposQuickSend('product')}>
+                  Malzeme Gönder
+                </Button>
+                <Button size="sm" variant="outline" disabled={isSyncBusy} onClick={() => void handleMposQuickSend('customer')}>
+                  Cari Gönder
+                </Button>
+                <Button size="sm" variant="outline" disabled={isSyncBusy} onClick={() => void handleMposQuickSend('all')}>
+                  Tüm Master Veri
+                </Button>
+                <Button size="sm" disabled={isSyncBusy} onClick={() => void handlePushAll()} className="gap-2">
+                  <Upload className="w-4 h-4" />
+                  Kuyruğu Kasalara Gönder
+                </Button>
+              </div>
+              <p className="text-xs text-gray-500 mt-2">
+                KLRetail M-POS akışı: önce malzeme/cari merkezden kasaya gönderilir; kasa satış yaptıktan sonra «Bilgi Al» sekmesinden veri çekilir.
+              </p>
+            </Card>
             {/* MPOS toplu gönderim + filtre (KLR-2234) */}
             <Card className={`p-4 ${theme === 'dark' ? 'bg-gray-800 border-gray-700' : 'bg-white'}`}>
               <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
@@ -1063,25 +1038,6 @@ export function EnterpriseCentralDataManagement() {
                         <option value="mqtt">MQTT</option>
                         <option value="signalr">SignalR</option>
                       </select>
-                    </div>
-
-                    <div>
-                      <label className="block text-sm mb-2">Mesaj Kontrol Süresi (sn)</label>
-                      <Input
-                        type="number"
-                        min="1"
-                        max="300"
-                        value={messageCheckInterval}
-                        onChange={(e) => handleIntervalChange(parseInt(e.target.value) || 30)}
-                        className={`w-full p-2 rounded border ${theme === 'dark'
-                          ? 'bg-gray-700 border-gray-600'
-                          : 'bg-white border-gray-300'
-                          }`}
-                        placeholder="10"
-                      />
-                      <p className="text-xs text-gray-500 mt-1">
-                        Mesaj gönderim kontrol aralığı
-                      </p>
                     </div>
                   </div>
 
@@ -1332,6 +1288,154 @@ export function EnterpriseCentralDataManagement() {
 
             {/* Gönderilmiş Mesajlar Listesi */}
             <SentMessagesList theme={theme} />
+          </TabsContent>
+
+          {/* Bilgi Al — kasa → merkez (satış, günsonu) */}
+          <TabsContent value="receive" className="space-y-4">
+            <Card className={`p-4 ${theme === 'dark' ? 'bg-gray-800 border-gray-700' : 'bg-white'}`}>
+              <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                <Download className="w-4 h-4 text-sky-600" />
+                M-POS Bilgi Al (Kasa → Merkez)
+              </h3>
+              <p className="text-xs text-gray-500 mb-3">
+                Kasada satış tamamlandıktan sonra merkez satış ve günsonu verisini buradan alır. Günsonu işlem kontrolü «Günsonu» sekmesindedir.
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <Button size="sm" disabled={isSyncBusy} onClick={() => void handlePullAll()} className="gap-2 bg-sky-600 hover:bg-sky-700 text-white">
+                  <Download className="w-4 h-4" />
+                  Satış Verisi Al
+                </Button>
+                <Button size="sm" variant="outline" disabled={isSyncBusy} onClick={() => void handleDayEndPull()} className="gap-2">
+                  <Calendar className="w-4 h-4" />
+                  Günsonu Al
+                </Button>
+                <Button size="sm" variant="outline" disabled={isSyncBusy} onClick={() => void handleManualBroadcast()} className="gap-2">
+                  <RefreshCw className="w-4 h-4" />
+                  Gönder + Al (Kuyruk)
+                </Button>
+              </div>
+            </Card>
+
+            <div className="grid gap-3 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
+              {dayEndStatus.map((store) => (
+                <Card
+                  key={`recv-${store.storeId}`}
+                  className={`p-4 ${theme === 'dark' ? 'bg-gray-800 border-gray-700' : 'bg-white'} ${store.salesPending > 0 ? 'border-l-4 border-l-amber-500' : 'border-l-4 border-l-green-500'}`}
+                >
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="font-medium">{store.storeName}</span>
+                    <Badge variant={store.salesPending > 0 ? 'destructive' : 'default'}>
+                      {store.salesPending > 0 ? `${store.salesPending} bekleyen` : 'Güncel'}
+                    </Badge>
+                  </div>
+                  <div className="text-xs text-gray-600 dark:text-gray-400 space-y-1">
+                    <div>Kod: {store.storeCode}</div>
+                    <div>Bugün alınan: {store.salesSyncedToday}</div>
+                    {store.lastSyncAt && (
+                      <div>Son alma: {formatTimestamp(store.lastSyncAt)}</div>
+                    )}
+                  </div>
+                </Card>
+              ))}
+              {dayEndStatus.length === 0 && (
+                <Card className={`p-8 text-center col-span-full ${theme === 'dark' ? 'bg-gray-800 border-gray-700' : 'bg-white'}`}>
+                  <Download className="w-12 h-12 mx-auto mb-2 text-gray-400" />
+                  <p className="text-gray-500">Alınacak şube/kasa kaydı bulunamadı.</p>
+                </Card>
+              )}
+            </div>
+          </TabsContent>
+
+          {/* Kasa Servis Ayarları — MPOS mesaj kontrol süresi */}
+          <TabsContent value="service" className="space-y-4">
+            <Card className={`p-6 ${theme === 'dark' ? 'bg-gray-800 border-gray-700' : 'bg-white'}`}>
+              <h3 className="text-lg mb-4 flex items-center gap-2">
+                <Settings className="w-5 h-5" />
+                KLRetail M-POS Kasa Servis Ayarları
+              </h3>
+              <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+                Videodaki «Servis ayarları»: kasanın merkez mesajlarını kontrol etme aralığı. Otomatik kanalda kuyruk periyodik işlenir.
+              </p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-xl">
+                <div>
+                  <label className="block text-sm mb-2">Mesaj Kontrol Süresi (sn)</label>
+                  <Input
+                    type="number"
+                    min="5"
+                    max="300"
+                    value={messageCheckInterval}
+                    onChange={(e) => handleIntervalChange(parseInt(e.target.value) || 30)}
+                    className={`w-full p-2 rounded border ${theme === 'dark'
+                      ? 'bg-gray-700 border-gray-600'
+                      : 'bg-white border-gray-300'
+                      }`}
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Kasa servis ekranındaki «mesaj gönderim kontrol aralığı» ile aynı mantık.
+                  </p>
+                </div>
+                <div>
+                  <label className="block text-sm mb-2">Senkron Kanalı</label>
+                  <select
+                    value={broadcastChannel}
+                    onChange={(e) => setBroadcastChannel(e.target.value as any)}
+                    className={`w-full p-2 rounded border ${theme === 'dark'
+                      ? 'bg-gray-700 border-gray-600'
+                      : 'bg-white border-gray-300'
+                      }`}
+                  >
+                    <option value="auto">Otomatik (periyodik kuyruk)</option>
+                    <option value="websocket">WebSocket</option>
+                    <option value="api">REST API</option>
+                    <option value="mqtt">MQTT</option>
+                    <option value="signalr">SignalR</option>
+                  </select>
+                </div>
+              </div>
+              <div className="mt-4 flex flex-wrap gap-2">
+                <Button size="sm" variant="outline" disabled={isSyncBusy} onClick={() => void handleManualBroadcast()} className="gap-2">
+                  <RefreshCw className="w-4 h-4" />
+                  Şimdi Kuyruğu İşle
+                </Button>
+              </div>
+            </Card>
+
+            <Card className={`p-6 ${theme === 'dark' ? 'bg-gray-800 border-gray-700' : 'bg-white'}`}>
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg flex items-center gap-2">
+                  <FileText className="w-5 h-5" />
+                  Broadcast Şablonları ({templates.length})
+                </h3>
+                <Button onClick={() => setShowTemplateModal(true)} size="sm" variant="outline" className="gap-2">
+                  <Plus className="w-4 h-4" />
+                  Yeni Şablon
+                </Button>
+              </div>
+              <div className="grid gap-3 grid-cols-1 md:grid-cols-2">
+                {templates.slice(0, 6).map((template) => (
+                  <div
+                    key={template.id}
+                    className={`p-3 rounded-lg border ${theme === 'dark' ? 'border-gray-700' : 'border-gray-200'}`}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-medium text-sm truncate">{template.name}</span>
+                      <div className="flex gap-1 shrink-0">
+                        <Button onClick={() => handleUseTemplate(template.id)} size="sm" variant="outline" title="Kullan">
+                          <Copy className="w-4 h-4" />
+                        </Button>
+                        <Button onClick={() => centralBroadcast.deleteTemplate(template.id)} size="sm" variant="destructive" title="Sil">
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    </div>
+                    <div className="text-xs text-gray-500 mt-1">{template.type} · {template.action}</div>
+                  </div>
+                ))}
+                {templates.length === 0 && (
+                  <p className="text-sm text-gray-500 col-span-full">Henüz şablon yok.</p>
+                )}
+              </div>
+            </Card>
           </TabsContent>
 
           {/* Queue Tab */}
@@ -1613,7 +1717,7 @@ export function EnterpriseCentralDataManagement() {
               {devices.length === 0 && (
                 <Card className={`p-8 text-center col-span-full ${theme === 'dark' ? 'bg-gray-800 border-gray-700' : 'bg-white'}`}>
                   <Monitor className="w-12 h-12 mx-auto mb-2 text-gray-400" />
-                  <p className="text-gray-500">Henüz kayıtlı cihaz yok</p>
+                  <p className="text-gray-500">Henüz kayıtlı kasa/şube yok</p>
                 </Card>
               )}
             </div>
@@ -1683,85 +1787,11 @@ export function EnterpriseCentralDataManagement() {
             </div>
           </TabsContent>
 
-          {/* Templates Tab */}
-          <TabsContent value="templates" className="space-y-4">
-            <div className="grid gap-4 grid-cols-1 md:grid-cols-2">
-              {templates.map(template => (
-                <Card
-                  key={template.id}
-                  className={`p-4 ${theme === 'dark' ? 'bg-gray-800 border-gray-700' : 'bg-white'} hover:shadow-lg transition-shadow`}
-                >
-                  <div className="flex items-start justify-between mb-3">
-                    <div className="flex items-center gap-2">
-                      <FileText className="w-5 h-5 text-blue-600" />
-                      <div>
-                        <div>{template.name}</div>
-                        {template.description && (
-                          <div className="text-xs text-gray-500">{template.description}</div>
-                        )}
-                      </div>
-                    </div>
-                    <div className="flex gap-1">
-                      <Button
-                        onClick={() => handleUseTemplate(template.id)}
-                        size="sm"
-                        variant="outline"
-                        title="Şablonu Kullan"
-                      >
-                        <Copy className="w-4 h-4" />
-                      </Button>
-                      <Button
-                        onClick={() => centralBroadcast.deleteTemplate(template.id)}
-                        size="sm"
-                        variant="destructive"
-                        title="Şablonu Sil"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
-                    </div>
-                  </div>
-
-                  <div className="flex flex-wrap gap-2 mb-3">
-                    <Badge variant="outline">{template.type}</Badge>
-                    <Badge variant="secondary">{template.action}</Badge>
-                    <Badge variant="outline">{template.channel}</Badge>
-                    <div className={`px-2 py-0.5 rounded text-xs text-white ${getPriorityColor(template.priority)}`}>
-                      {template.priority}
-                    </div>
-                  </div>
-
-                  {template.tags && template.tags.length > 0 && (
-                    <div className="flex flex-wrap gap-1 mb-3">
-                      {template.tags.map(tag => (
-                        <Badge key={tag} variant="outline" className="gap-1 text-xs">
-                          <Tag className="w-3 h-3" />
-                          {tag}
-                        </Badge>
-                      ))}
-                    </div>
-                  )}
-
-                  <div className="text-xs text-gray-600 dark:text-gray-400 space-y-1">
-                    <div>Kullanım: {template.usageCount} kez</div>
-                    <div>Oluşturulma: {formatTimestamp(template.createdAt)}</div>
-                  </div>
-                </Card>
-              ))}
-
-              {templates.length === 0 && (
-                <Card className={`p-8 text-center col-span-full ${theme === 'dark' ? 'bg-gray-800 border-gray-700' : 'bg-white'}`}>
-                  <FileText className="w-12 h-12 mx-auto mb-2 text-gray-400" />
-                  <p className="text-gray-500">Henüz şablon oluşturulmamış</p>
-                </Card>
-              )}
-            </div>
-          </TabsContent>
-
-          {/* Günsonu Tab — MPOS günsonu işlem kontrolü */}
+          {/* Günsonu Tab — MPOS günsonu işlem kontrolü (KLR-2273) */}
           <TabsContent value="dayend" className="space-y-4">
             <div className="flex justify-between items-center">
               <p className="text-sm text-gray-600 dark:text-gray-400">
-                Kasalardan alınan satış/günsonu durumu (24 saat içinde veri almayan kasalar uyarılıdır).
+                Günsonu işlem kontrolü: bugün veri alınmayan kasalar «Veri alınmadı» olarak işaretlenir (KLR-2273). Yalnızca günlük durum kontrol edilir.
               </p>
               <Button size="sm" disabled={isSyncBusy} onClick={() => void handleDayEndPull()} className="gap-2">
                 <Download className="w-4 h-4" />
