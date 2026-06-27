@@ -64,6 +64,11 @@ import { BroadcastChangesTimeline } from './BroadcastChangesTimeline';
 import { SentMessagesList } from '../system/SentMessagesList';
 import { BroadcastDataSelector } from './BroadcastDataSelector';
 import { MposKalemTransferPanel } from './MposKalemTransferPanel';
+import { MposKalemTargetBar } from './MposKalemTargetBar';
+import {
+  getMposKasaReportSummary,
+  type MposKasaReportSummary,
+} from '../../services/mposKasaReportsService';
 
 export function EnterpriseCentralDataManagement() {
   const { darkMode } = useTheme();
@@ -154,6 +159,7 @@ export function EnterpriseCentralDataManagement() {
   const [mposFileType, setMposFileType] = useState<MposSendFileType>('products');
   const [mposReceiveFileType, setMposReceiveFileType] = useState<MposReceiveFileType>('sales');
   const [terminalDailyStatus, setTerminalDailyStatus] = useState<MposTerminalDailyStatus[]>([]);
+  const [kasaReport, setKasaReport] = useState<MposKasaReportSummary | null>(null);
   const [showAdvancedSend, setShowAdvancedSend] = useState(false);
 
   const resolveMposTargetStoreId = (): string | null => selectedBranchStoreId || null;
@@ -168,6 +174,24 @@ export function EnterpriseCentralDataManagement() {
     if (s && t) return `${s.name} (${s.code}) → ${t.terminalName}`;
     if (s) return `${s.name} (${s.code})`;
     return t?.terminalName ?? '—';
+  };
+
+  const handleBranchStoreChange = (storeId: string) => {
+    setSelectedBranchStoreId(storeId);
+    setSelectedTerminalDeviceId('');
+  };
+
+  const refreshKasaReport = async () => {
+    if (!selectedBranchStoreId) {
+      setKasaReport(null);
+      return;
+    }
+    const term = selectedTerminal();
+    const r = await getMposKasaReportSummary({
+      storeId: selectedBranchStoreId,
+      terminalName: term?.terminalName,
+    });
+    setKasaReport(r);
   };
 
   const validateMposKasaTarget = (): boolean => {
@@ -244,6 +268,7 @@ export function EnterpriseCentralDataManagement() {
         selectedBranchStoreId ? { storeId: selectedBranchStoreId } : undefined,
       );
       setTerminalDailyStatus(termDe);
+      await refreshKasaReport();
     } catch (e) {
       logger.warn('enterprise-sync', 'refresh failed', e);
     }
@@ -286,7 +311,8 @@ export function EnterpriseCentralDataManagement() {
     if (storeId) setTargetDevices([storeId]);
     else setTargetDevices(['all']);
     void getMposTerminalDailyStatus(storeId ? { storeId } : undefined).then(setTerminalDailyStatus);
-  }, [selectedBranchStoreId]);
+    void refreshKasaReport();
+  }, [selectedBranchStoreId, selectedTerminalDeviceId]);
 
   const handleMposKalemSend = async () => {
     if (!validateMposKasaTarget()) return;
@@ -1005,9 +1031,20 @@ export function EnterpriseCentralDataManagement() {
           </details>
         </Card>
 
+        <MposKalemTargetBar
+          branchStores={branchStores}
+          selectedBranchStoreId={selectedBranchStoreId}
+          onBranchChange={handleBranchStoreChange}
+          selectedTerminalDeviceId={selectedTerminalDeviceId}
+          onTerminalChange={setSelectedTerminalDeviceId}
+          filteredTerminals={filteredTerminalsForStore}
+          targetLabel={mposTargetLabel()}
+          theme={theme}
+        />
+
         {/* Main Tabs — MPOS Kalem eğitim sırası: Gönder → Al → Günsonu → Kuyruk → Kasalar → Servis */}
         <Tabs defaultValue="send" className="w-full">
-          <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 h-auto">
+          <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4 lg:grid-cols-9 h-auto">
             <TabsTrigger value="send" className="gap-2">
               <Upload className="w-4 h-4" />
               Bilgi Gönder
@@ -1019,6 +1056,10 @@ export function EnterpriseCentralDataManagement() {
             <TabsTrigger value="dayend" className="gap-2">
               <Calendar className="w-4 h-4" />
               Günsonu ({dayEndStatus.filter((d) => !d.isOnline).length})
+            </TabsTrigger>
+            <TabsTrigger value="reports" className="gap-2">
+              <FileText className="w-4 h-4" />
+              Kasa Raporları
             </TabsTrigger>
             <TabsTrigger value="queue" className="gap-2">
               <Clock className="w-4 h-4" />
@@ -1052,10 +1093,7 @@ export function EnterpriseCentralDataManagement() {
               onFileTypeChange={(v) => setMposFileType(v as MposSendFileType)}
               branchStores={branchStores}
               selectedBranchStoreId={selectedBranchStoreId}
-              onBranchChange={(id) => {
-                setSelectedBranchStoreId(id);
-                setSelectedTerminalDeviceId('');
-              }}
+              onBranchChange={handleBranchStoreChange}
               selectedTerminalDeviceId={selectedTerminalDeviceId}
               onTerminalChange={setSelectedTerminalDeviceId}
               filteredTerminals={filteredTerminalsForStore}
@@ -1065,9 +1103,6 @@ export function EnterpriseCentralDataManagement() {
               theme={theme}
               helpText="Eğitim 1: malzeme/cari/program gönder. Eğitim 2: puan ve promosyon tanımları. İşyeri ve kasa zorunlu."
             />
-            <p className="text-xs text-gray-500 max-w-[440px]">
-              Hedef: <strong>{mposTargetLabel()}</strong>
-            </p>
 
             <details className={`rounded-lg border max-w-[440px] ${theme === 'dark' ? 'border-gray-700 bg-gray-800/50' : 'border-gray-200 bg-white'}`}>
               <summary className="cursor-pointer p-4 text-sm font-medium flex items-center gap-2">
@@ -1391,10 +1426,7 @@ export function EnterpriseCentralDataManagement() {
               onFileTypeChange={(v) => setMposReceiveFileType(v as MposReceiveFileType)}
               branchStores={branchStores}
               selectedBranchStoreId={selectedBranchStoreId}
-              onBranchChange={(id) => {
-                setSelectedBranchStoreId(id);
-                setSelectedTerminalDeviceId('');
-              }}
+              onBranchChange={handleBranchStoreChange}
               selectedTerminalDeviceId={selectedTerminalDeviceId}
               onTerminalChange={setSelectedTerminalDeviceId}
               filteredTerminals={filteredTerminalsForStore}
@@ -1404,9 +1436,6 @@ export function EnterpriseCentralDataManagement() {
               theme={theme}
               helpText="Eğitim 1: satış ve günsonu al. Kasada işlem bittikten sonra Dosya Tipi seçip Al."
             />
-            <p className="text-xs text-gray-500 max-w-[440px]">
-              Hedef: <strong>{mposTargetLabel()}</strong>
-            </p>
 
             <details className={`rounded-lg border max-w-[440px] ${theme === 'dark' ? 'border-gray-700 bg-gray-800/50' : 'border-gray-200 bg-white'}`}>
               <summary className="cursor-pointer p-4 text-sm font-medium">Hızlı alım (toplu)</summary>
@@ -1966,6 +1995,66 @@ export function EnterpriseCentralDataManagement() {
                 </Card>
               )}
             </div>
+          </TabsContent>
+
+          {/* Pos Kasa Raporları — eğitim 1 (online satış / yemek çeki özeti) */}
+          <TabsContent value="reports" className="space-y-4">
+            <Card className={`p-6 max-w-lg ${theme === 'dark' ? 'bg-gray-800 border-gray-700' : 'bg-white'}`}>
+              <h3 className="text-lg font-semibold mb-1 flex items-center gap-2">
+                <FileText className="w-5 h-5" />
+                Pos Kasa Raporları
+              </h3>
+              <p className="text-xs text-gray-500 mb-4">
+                Hedef: <strong>{mposTargetLabel()}</strong> — bugünkü satış ve yemek çeki özeti (Kalem eğitim 1).
+              </p>
+              {!selectedBranchStoreId ? (
+                <p className="text-sm text-amber-600">Üstteki «Aktif Kasa Hedefi»nden işyeri ve kasa seçin.</p>
+              ) : kasaReport ? (
+                <div className="grid grid-cols-2 gap-3 text-sm">
+                  <div className={`p-3 rounded border ${theme === 'dark' ? 'border-gray-600' : 'border-gray-200'}`}>
+                    <p className="text-xs text-gray-500">Bugün fiş adedi</p>
+                    <p className="text-xl font-semibold">{kasaReport.salesCountToday}</p>
+                  </div>
+                  <div className={`p-3 rounded border ${theme === 'dark' ? 'border-gray-600' : 'border-gray-200'}`}>
+                    <p className="text-xs text-gray-500">Bugün satış tutarı</p>
+                    <p className="text-xl font-semibold">
+                      {kasaReport.salesTotalToday.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} ₺
+                    </p>
+                  </div>
+                  <div className={`p-3 rounded border ${theme === 'dark' ? 'border-gray-600' : 'border-gray-200'}`}>
+                    <p className="text-xs text-gray-500">Yemek çeki adedi</p>
+                    <p className="text-xl font-semibold">{kasaReport.mealVoucherCountToday}</p>
+                  </div>
+                  <div className={`p-3 rounded border ${theme === 'dark' ? 'border-gray-600' : 'border-gray-200'}`}>
+                    <p className="text-xs text-gray-500">Yemek çeki tutarı</p>
+                    <p className="text-xl font-semibold">
+                      {kasaReport.mealVoucherTotalToday.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} ₺
+                    </p>
+                  </div>
+                  <div className={`p-3 rounded border col-span-2 ${theme === 'dark' ? 'border-gray-600' : 'border-gray-200'}`}>
+                    <p className="text-xs text-gray-500">Merkeze bekleyen satış</p>
+                    <p className="text-lg font-semibold text-amber-600">{kasaReport.pendingSyncCount} kayıt</p>
+                    {kasaReport.lastSaleAt && (
+                      <p className="text-xs text-gray-500 mt-1">
+                        Son satış: {formatTimestamp(new Date(kasaReport.lastSaleAt).getTime())}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <p className="text-sm text-gray-500">Rapor yükleniyor…</p>
+              )}
+              <Button
+                size="sm"
+                variant="outline"
+                className="mt-4 gap-2"
+                disabled={!selectedBranchStoreId || isSyncBusy}
+                onClick={() => void refreshKasaReport()}
+              >
+                <RefreshCw className="w-4 h-4" />
+                Raporu Yenile
+              </Button>
+            </Card>
           </TabsContent>
 
           {/* History Tab */}
