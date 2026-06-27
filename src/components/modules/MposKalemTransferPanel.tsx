@@ -30,6 +30,9 @@ type Props = {
   onSubmit: () => void;
   theme: 'light' | 'dark';
   helpText?: string;
+  showProductImagesOption?: boolean;
+  includeProductImages?: boolean;
+  onIncludeProductImagesChange?: (value: boolean) => void;
 };
 
 const fieldClass = (theme: 'light' | 'dark') =>
@@ -56,6 +59,9 @@ export function MposKalemTransferPanel({
   onSubmit,
   theme,
   helpText,
+  showProductImagesOption,
+  includeProductImages,
+  onIncludeProductImagesChange,
 }: Props) {
   const isDark = theme === 'dark';
   const submitLabel = mode === 'send' ? 'Gönder' : 'Al';
@@ -133,12 +139,24 @@ export function MposKalemTransferPanel({
           </select>
         </div>
 
-        {selectedBranchStoreId && filteredTerminals.length === 0 && (
-          <p className="text-xs text-amber-700 dark:text-amber-400 mt-3 ml-[120px]">
-            Bu işyerinde onaylı kasa yok.
-          </p>
-        )}
-      </div>
+          {selectedBranchStoreId && filteredTerminals.length === 0 && (
+            <p className="text-xs text-amber-700 dark:text-amber-400 mt-3 ml-[120px]">
+              Bu işyerinde onaylı kasa yok.
+            </p>
+          )}
+
+          {showProductImagesOption && mode === 'send' && fileType === 'products' && (
+            <label className="flex items-center gap-2 mt-3 ml-[120px] text-xs cursor-pointer">
+              <input
+                type="checkbox"
+                checked={!!includeProductImages}
+                onChange={(e) => onIncludeProductImagesChange?.(e.target.checked)}
+                className="rounded border-gray-400"
+              />
+              Malzeme resimleri aktarılsın (KLR-1851)
+            </label>
+          )}
+        </div>
 
       {/* Alt çubuk — sol yardım ikonu, sağ Vazgeç + Gönder/Al */}
       <div

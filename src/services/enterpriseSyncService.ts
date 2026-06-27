@@ -40,6 +40,8 @@ export type EnterpriseSyncMessage = {
   data?: Record<string, unknown>;
   firmNr: string;
   targetDevices: string[];
+  terminalName?: string;
+  targetStoreId?: string;
 };
 
 export type EnterpriseSyncStats = {
@@ -221,6 +223,8 @@ export async function getEnterpriseSyncStats(): Promise<EnterpriseSyncStats> {
 export async function listEnterpriseSyncMessages(opts?: {
   limit?: number;
   status?: 'all' | 'pending' | 'completed' | 'error';
+  terminalName?: string;
+  targetStoreId?: string;
 }): Promise<EnterpriseSyncMessage[]> {
   const pg = resolveSyncPgEndpoint();
   const firm = firmNrPadded();
@@ -231,17 +235,29 @@ export async function listEnterpriseSyncMessages(opts?: {
   else if (opts?.status === 'completed') statusSql = ` AND status = 'completed'`;
   else if (opts?.status === 'error') statusSql = ` AND status = 'pending' AND retry_count >= 10`;
 
+  let terminalSql = '';
+  const params: unknown[] = [firm, limit];
+  if (opts?.terminalName?.trim()) {
+    params.push(opts.terminalName.trim());
+    terminalSql = ` AND terminal_name = $${params.length}`;
+  }
+  if (opts?.targetStoreId) {
+    params.push(opts.targetStoreId);
+    terminalSql += ` AND (target_store_id = $${params.length}::uuid OR source_store_id = $${params.length}::uuid)`;
+  }
+
   try {
     const rows = await queryPgRows(
       pg,
       `SELECT id::text, table_name, record_id::text, action, firm_nr, status,
-              data, error_message, created_at, synced_at, retry_count
+              data, error_message, created_at, synced_at, retry_count,
+              terminal_name, target_store_id::text
        FROM sync_queue
        WHERE (firm_nr = $1 OR lpad(ltrim(firm_nr, '0'), 3, '0') = $1)
-         ${statusSql}
+         ${statusSql}${terminalSql}
        ORDER BY created_at DESC
        LIMIT $2`,
-      [firm, limit],
+      params,
     );
 
     return rows.map((r: Record<string, unknown>) => {
@@ -266,6 +282,8 @@ export async function listEnterpriseSyncMessages(opts?: {
               : undefined,
         firmNr: String(r.firm_nr ?? firm),
         targetDevices: ['all'],
+        terminalName: r.terminal_name ? String(r.terminal_name) : undefined,
+        targetStoreId: r.target_store_id ? String(r.target_store_id) : undefined,
       };
     });
   } catch {

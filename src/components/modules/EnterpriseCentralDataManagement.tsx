@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect, useRef } from 'react';
 import {
   Send, Radio, CheckCircle, XCircle, Clock, RefreshCw, Trash2, Monitor, Store,
   Plus, Filter, Download, Upload, Calendar, Users, Settings, BarChart3,
@@ -46,8 +46,10 @@ import {
 import {
   MPOS_SEND_FILE_TYPES,
   sendMposInfoToKasaAndPush,
+  sendMposInfoToAllKasasInStore,
   type MposSendFileType,
 } from '../../services/mposSendService';
+import { checkMposSendGuard } from '../../services/mposSendGuardService';
 import {
   MPOS_RECEIVE_FILE_TYPES,
   receiveMposInfoFromKasa,
@@ -160,6 +162,15 @@ export function EnterpriseCentralDataManagement() {
   const [mposReceiveFileType, setMposReceiveFileType] = useState<MposReceiveFileType>('sales');
   const [terminalDailyStatus, setTerminalDailyStatus] = useState<MposTerminalDailyStatus[]>([]);
   const [kasaReport, setKasaReport] = useState<MposKasaReportSummary | null>(null);
+  const [includeProductImages, setIncludeProductImages] = useState(false);
+  const [filterQueueByKasa, setFilterQueueByKasa] = useState(true);
+  const [dayEndAutoEnabled, setDayEndAutoEnabled] = useState(
+    () => typeof localStorage !== 'undefined' && localStorage.getItem('retailex_mpos_dayend_auto') === '1',
+  );
+  const [dayEndAutoTime, setDayEndAutoTime] = useState(
+    () => (typeof localStorage !== 'undefined' && localStorage.getItem('retailex_mpos_dayend_time')) || '23:00',
+  );
+  const lastDayEndAutoRunRef = useRef('');
   const [showAdvancedSend, setShowAdvancedSend] = useState(false);
 
   const resolveMposTargetStoreId = (): string | null => selectedBranchStoreId || null;
@@ -218,7 +229,10 @@ export function EnterpriseCentralDataManagement() {
     action: (['create', 'update', 'delete', 'sync'].includes(m.action)
       ? m.action
       : 'sync') as BroadcastMessage['action'],
-    data: m.data ?? {},
+    data: {
+      ...(m.data ?? {}),
+      ...(m.terminalName ? { _syncTerminalName: m.terminalName } : {}),
+    },
     targetDevices: m.targetDevices,
     priority: 'normal',
     channel: 'auto',
@@ -258,8 +272,17 @@ export function EnterpriseCentralDataManagement() {
           failedMessages: 0,
         })),
       );
-      const pending = await listEnterpriseSyncMessages({ limit: 100, status: 'pending' });
-      const all = await listEnterpriseSyncMessages({ limit: 100 });
+      const queueFilter =
+        filterQueueByKasa && selectedTerminal()?.terminalName
+          ? {
+              terminalName: selectedTerminal()!.terminalName,
+              targetStoreId: selectedBranchStoreId || undefined,
+            }
+          : filterQueueByKasa && selectedBranchStoreId
+            ? { targetStoreId: selectedBranchStoreId }
+            : {};
+      const pending = await listEnterpriseSyncMessages({ limit: 100, status: 'pending', ...queueFilter });
+      const all = await listEnterpriseSyncMessages({ limit: 100, ...queueFilter });
       setQueue(pending.map(mapEnterpriseToBroadcast));
       setHistory(all.filter((m) => m.status === 'completed' || m.status === 'failed').map(mapEnterpriseToBroadcast));
       const de = await getDayEndSyncStatus();
@@ -317,6 +340,18 @@ export function EnterpriseCentralDataManagement() {
   const handleMposKalemSend = async () => {
     if (!validateMposKasaTarget()) return;
     const term = selectedTerminal();
+    const guard = await checkMposSendGuard({
+      fileType: mposFileType,
+      storeId: selectedBranchStoreId,
+      terminalName: term?.terminalName || '',
+    });
+    if (!guard.allowed) {
+      toast.error(guard.message);
+      return;
+    }
+    if (guard.requireConfirm && !window.confirm(guard.message)) return;
+    if (!guard.requireConfirm && guard.sentToday > 0) toast.info(guard.message);
+
     setIsSyncBusy(true);
     try {
       const r = await sendMposInfoToKasaAndPush({
@@ -324,6 +359,42 @@ export function EnterpriseCentralDataManagement() {
         storeId: selectedBranchStoreId,
         terminalName: term?.terminalName || '',
         terminalDeviceId: selectedTerminalDeviceId,
+        includeProductImages: mposFileType === 'products' && includeProductImages,
+      });
+      if (r.ok) toast.success(r.message);
+      else toast.error(r.message);
+      await refreshEnterpriseData();
+    } finally {
+      setIsSyncBusy(false);
+    }
+  };
+
+  const handleMposBulkAllKasas = async () => {
+    if (!selectedBranchStoreId) {
+      toast.error('Önce işyeri seçin.');
+      return;
+    }
+    if (!filteredTerminalsForStore.length) {
+      toast.error('Bu işyerinde onaylı kasa yok.');
+      return;
+    }
+    if (
+      !window.confirm(
+        `${filteredTerminalsForStore.length} kasaya «${MPOS_SEND_FILE_TYPES.find((f) => f.id === mposFileType)?.label}» gönderilsin mi?`,
+      )
+    ) {
+      return;
+    }
+    setIsSyncBusy(true);
+    try {
+      const r = await sendMposInfoToAllKasasInStore({
+        fileType: mposFileType,
+        storeId: selectedBranchStoreId,
+        terminals: filteredTerminalsForStore.map((t) => ({
+          terminalName: t.terminalName,
+          terminalDeviceId: t.deviceId,
+        })),
+        includeProductImages: mposFileType === 'products' && includeProductImages,
       });
       if (r.ok) toast.success(r.message);
       else toast.error(r.message);
@@ -370,6 +441,26 @@ export function EnterpriseCentralDataManagement() {
     }, sec * 1000);
     return () => window.clearInterval(id);
   }, [broadcastChannel, messageCheckInterval]);
+
+  useEffect(() => {
+    if (!dayEndAutoEnabled) return;
+    const tick = () => {
+      const now = new Date();
+      const today = now.toISOString().slice(0, 10);
+      const hhmm = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+      if (hhmm === dayEndAutoTime && lastDayEndAutoRunRef.current !== today) {
+        lastDayEndAutoRunRef.current = today;
+        void handleDayEndPull().then(() => toast.info(`Otomatik günsonu alımı (${dayEndAutoTime})`));
+      }
+    };
+    tick();
+    const id = window.setInterval(tick, 60_000);
+    return () => window.clearInterval(id);
+  }, [dayEndAutoEnabled, dayEndAutoTime]);
+
+  useEffect(() => {
+    void refreshEnterpriseData();
+  }, [filterQueueByKasa, selectedBranchStoreId, selectedTerminalDeviceId]);
 
   const handleSendBroadcast = async () => {
     try {
@@ -1040,6 +1131,8 @@ export function EnterpriseCentralDataManagement() {
           filteredTerminals={filteredTerminalsForStore}
           targetLabel={mposTargetLabel()}
           theme={theme}
+          onBulkSendAll={() => void handleMposBulkAllKasas()}
+          bulkSendDisabled={isSyncBusy || !selectedBranchStoreId || filteredTerminalsForStore.length === 0}
         />
 
         {/* Main Tabs — MPOS Kalem eğitim sırası: Gönder → Al → Günsonu → Kuyruk → Kasalar → Servis */}
@@ -1101,7 +1194,10 @@ export function EnterpriseCentralDataManagement() {
               onCancel={handleMposKalemReset}
               onSubmit={() => void handleMposKalemSend()}
               theme={theme}
-              helpText="Eğitim 1: malzeme/cari/program gönder. Eğitim 2: puan ve promosyon tanımları. İşyeri ve kasa zorunlu."
+              helpText="Eğitim 1: malzeme/cari/program gönder. Eğitim 2: puan ve promosyon tanımları. KLR-2273: günlük durum kontrolü."
+              showProductImagesOption
+              includeProductImages={includeProductImages}
+              onIncludeProductImagesChange={setIncludeProductImages}
             />
 
             <details className={`rounded-lg border max-w-[440px] ${theme === 'dark' ? 'border-gray-700 bg-gray-800/50' : 'border-gray-200 bg-white'}`}>
@@ -1534,6 +1630,37 @@ export function EnterpriseCentralDataManagement() {
                   Şimdi Kuyruğu İşle
                 </Button>
               </div>
+
+              <div className="mt-6 pt-4 border-t border-gray-200 dark:border-gray-700 max-w-xl">
+                <h4 className="text-sm font-medium mb-3">Otomatik Günsonu Alımı</h4>
+                <label className="flex items-center gap-2 text-sm cursor-pointer mb-3">
+                  <input
+                    type="checkbox"
+                    checked={dayEndAutoEnabled}
+                    onChange={(e) => {
+                      setDayEndAutoEnabled(e.target.checked);
+                      localStorage.setItem('retailex_mpos_dayend_auto', e.target.checked ? '1' : '0');
+                    }}
+                  />
+                  Her gün belirtilen saatte günsonu verisi al
+                </label>
+                <div className="flex items-center gap-2">
+                  <label className="text-sm">Saat</label>
+                  <Input
+                    type="time"
+                    value={dayEndAutoTime}
+                    onChange={(e) => {
+                      setDayEndAutoTime(e.target.value);
+                      localStorage.setItem('retailex_mpos_dayend_time', e.target.value);
+                    }}
+                    disabled={!dayEndAutoEnabled}
+                    className="w-36"
+                  />
+                </div>
+                <p className="text-xs text-gray-500 mt-2">
+                  Merkez açıkken çalışır; eğitim 1 günsonu adımını otomatikleştirir.
+                </p>
+              </div>
             </Card>
 
             <Card className={`p-6 ${theme === 'dark' ? 'bg-gray-800 border-gray-700' : 'bg-white'}`}>
@@ -1624,6 +1751,15 @@ export function EnterpriseCentralDataManagement() {
                     className="pl-10 w-64"
                   />
                 </div>
+
+                <label className="flex items-center gap-2 text-sm cursor-pointer whitespace-nowrap">
+                  <input
+                    type="checkbox"
+                    checked={filterQueueByKasa}
+                    onChange={(e) => setFilterQueueByKasa(e.target.checked)}
+                  />
+                  Seçili kasa/ işyeri
+                </label>
               </div>
 
               <div className="flex gap-2">
@@ -1680,6 +1816,11 @@ export function EnterpriseCentralDataManagement() {
                               <Badge variant="outline">
                                 {message.channel}
                               </Badge>
+                              {typeof message.data?._syncTerminalName === 'string' && (
+                                <Badge variant="outline" className="font-normal">
+                                  Kasa: {String(message.data._syncTerminalName)}
+                                </Badge>
+                              )}
                               {message.isRecurring && (
                                 <Badge variant="default" className="bg-purple-600">
                                   <RefreshCw className="w-3 h-3 mr-1" />

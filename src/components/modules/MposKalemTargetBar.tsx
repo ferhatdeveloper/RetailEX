@@ -3,6 +3,7 @@
  */
 
 import React from 'react';
+import { Button } from '../ui/button';
 import type { BranchStoreOption } from '../../services/hybridSyncService';
 import type { PosTerminalRegistration } from '../../services/deviceRegistrationService';
 
@@ -15,6 +16,8 @@ type Props = {
   filteredTerminals: PosTerminalRegistration[];
   targetLabel: string;
   theme: 'light' | 'dark';
+  onBulkSendAll?: () => void;
+  bulkSendDisabled?: boolean;
 };
 
 const fieldClass = (theme: 'light' | 'dark') =>
@@ -33,6 +36,8 @@ export function MposKalemTargetBar({
   filteredTerminals,
   targetLabel,
   theme,
+  onBulkSendAll,
+  bulkSendDisabled,
 }: Props) {
   const isDark = theme === 'dark';
 
@@ -86,6 +91,18 @@ export function MposKalemTargetBar({
         <p className={`text-xs mt-2 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
           Hedef: <strong>{targetLabel}</strong>
         </p>
+        {onBulkSendAll && (
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="mt-2 h-8 text-xs rounded-sm"
+            disabled={bulkSendDisabled}
+            onClick={onBulkSendAll}
+          >
+            Tüm kasalara gönder (işyeri)
+          </Button>
+        )}
       </div>
     </div>
   );

@@ -177,8 +177,9 @@ export async function sendMposInfoToKasa(opts: {
   storeId: string;
   terminalName: string;
   terminalDeviceId: string;
+  includeProductImages?: boolean;
 }): Promise<{ ok: boolean; message: string; count: number }> {
-  const { fileType, storeId, terminalName, terminalDeviceId } = opts;
+  const { fileType, storeId, terminalName, terminalDeviceId, includeProductImages } = opts;
   const firm = firmNrPadded();
   const pg = resolveSyncPgEndpoint();
 
@@ -192,6 +193,9 @@ export async function sendMposInfoToKasa(opts: {
       });
       if (r.ok && r.count > 0) {
         await tagPendingQueueTerminal(storeId, terminalName, `rex_${firm}_products`);
+        if (includeProductImages) {
+          await markProductImagesFlag(storeId, terminalName, `rex_${firm}_products`);
+        }
       }
       return r;
     }
@@ -363,6 +367,27 @@ export async function sendMposInfoToKasa(opts: {
   }
 }
 
+async function markProductImagesFlag(
+  storeId: string,
+  terminalName: string,
+  tableName: string,
+): Promise<void> {
+  if (!terminalName?.trim()) return;
+  const pg = resolveSyncPgEndpoint();
+  const firm = firmNrPadded();
+  try {
+    await queryPgRows(
+      pg,
+      `UPDATE sync_queue SET data = COALESCE(data, '{}'::jsonb) || '{"include_product_images":true}'::jsonb
+       WHERE status = 'pending' AND target_store_id = $1::uuid
+         AND table_name = $2 AND firm_nr = $3 AND terminal_name = $4`,
+      [storeId, tableName, firm, terminalName.trim()],
+    );
+  } catch {
+    /* optional */
+  }
+}
+
 /** Bulk enqueue sonrası bekleyen satırlara kasa adı yaz */
 async function tagPendingQueueTerminal(
   storeId: string,
@@ -392,6 +417,8 @@ export async function sendMposInfoToKasaAndPush(opts: {
   storeId: string;
   terminalName: string;
   terminalDeviceId: string;
+  includeProductImages?: boolean;
+  skipGuard?: boolean;
 }): Promise<{ ok: boolean; message: string }> {
   const enq = await sendMposInfoToKasa(opts);
   if (!enq.ok) return { ok: false, message: enq.message };
@@ -401,4 +428,42 @@ export async function sendMposInfoToKasaAndPush(opts: {
     ? `${enq.message} ${push.message}`
     : `${enq.message} (İletim uyarısı: ${push.message})`;
   return { ok: true, message: msg };
+}
+
+/** İşyerindeki tüm onaylı kasalara aynı dosya tipini gönder */
+export async function sendMposInfoToAllKasasInStore(opts: {
+  fileType: MposSendFileType;
+  storeId: string;
+  terminals: { terminalName: string; terminalDeviceId: string }[];
+  includeProductImages?: boolean;
+}): Promise<{ ok: boolean; message: string; success: number; failed: number }> {
+  let success = 0;
+  let failed = 0;
+  const errors: string[] = [];
+
+  for (const t of opts.terminals) {
+    const r = await sendMposInfoToKasa({
+      fileType: opts.fileType,
+      storeId: opts.storeId,
+      terminalName: t.terminalName,
+      terminalDeviceId: t.terminalDeviceId,
+      includeProductImages: opts.includeProductImages,
+    });
+    if (r.ok) success += 1;
+    else {
+      failed += 1;
+      if (errors.length < 3) errors.push(`${t.terminalName}: ${r.message}`);
+    }
+  }
+
+  if (success > 0) {
+    await pushMasterDataToBranches({ targetStoreId: opts.storeId });
+  }
+
+  const msg =
+    failed === 0
+      ? `${success} kasaya gönderildi ve kuyruk iletildi.`
+      : `${success} kasa başarılı, ${failed} hata.${errors.length ? ` ${errors.join('; ')}` : ''}`;
+
+  return { ok: success > 0, message: msg, success, failed };
 }
