@@ -41,6 +41,11 @@ import {
   type EnterpriseSyncMessage,
   type DayEndStoreStatus,
 } from '../../services/enterpriseSyncService';
+import {
+  MPOS_SEND_FILE_TYPES,
+  sendMposInfoToKasaAndPush,
+  type MposSendFileType,
+} from '../../services/mposSendService';
 import { DB_SETTINGS, ERP_SETTINGS, updateConfigs } from '../../services/postgres';
 import { listActiveStores, type BranchStoreOption } from '../../services/hybridSyncService';
 import {
@@ -134,49 +139,44 @@ export function EnterpriseCentralDataManagement() {
 
   const [isSyncBusy, setIsSyncBusy] = useState(false);
 
-  type MposTargetScope = 'all' | 'store' | 'terminal';
-  const [mposTargetScope, setMposTargetScope] = useState<MposTargetScope>('all');
   const [branchStores, setBranchStores] = useState<BranchStoreOption[]>([]);
   const [approvedTerminals, setApprovedTerminals] = useState<PosTerminalRegistration[]>([]);
   const [selectedBranchStoreId, setSelectedBranchStoreId] = useState('');
   const [selectedTerminalDeviceId, setSelectedTerminalDeviceId] = useState('');
+  const [mposFileType, setMposFileType] = useState<MposSendFileType>('products');
   const [showAdvancedSend, setShowAdvancedSend] = useState(false);
 
-  const resolveMposTargetStoreId = (): string | null => {
-    if (mposTargetScope === 'all') return null;
-    if (mposTargetScope === 'store') {
-      return selectedBranchStoreId || null;
-    }
-    const term = approvedTerminals.find((t) => t.deviceId === selectedTerminalDeviceId);
-    return term?.storeId || selectedBranchStoreId || null;
-  };
+  const resolveMposTargetStoreId = (): string | null => selectedBranchStoreId || null;
+
+  const selectedTerminal = (): PosTerminalRegistration | undefined =>
+    approvedTerminals.find((t) => t.deviceId === selectedTerminalDeviceId);
 
   const mposTargetLabel = (): string => {
-    if (mposTargetScope === 'all') return 'Tüm şubeler / kasalar';
-    if (mposTargetScope === 'store') {
-      const s = branchStores.find((b) => b.id === selectedBranchStoreId);
-      return s ? `${s.name} (${s.code})` : 'Şube seçilmedi';
-    }
-    const t = approvedTerminals.find((x) => x.deviceId === selectedTerminalDeviceId);
-    return t ? `${t.terminalName} — ${t.storeName || 'Kasa'}` : 'Kasa seçilmedi';
+    const s = branchStores.find((b) => b.id === selectedBranchStoreId);
+    const t = selectedTerminal();
+    if (!s && !t) return 'İşyeri ve kasa seçilmedi';
+    if (s && t) return `${s.name} (${s.code}) → ${t.terminalName}`;
+    if (s) return `${s.name} (${s.code})`;
+    return t?.terminalName ?? '—';
   };
 
-  const validateMposTarget = (): boolean => {
-    if (mposTargetScope === 'store' && !selectedBranchStoreId) {
-      toast.error('Lütfen hedef şube seçin.');
+  const validateMposKasaTarget = (): boolean => {
+    if (!selectedBranchStoreId) {
+      toast.error('Lütfen işyeri (şube) seçin.');
       return false;
     }
-    if (mposTargetScope === 'terminal' && !selectedTerminalDeviceId) {
-      toast.error('Lütfen hedef kasa seçin.');
+    if (!selectedTerminalDeviceId) {
+      toast.error('Lütfen kasa seçin.');
       return false;
     }
     return true;
   };
 
-  const filteredTerminalsForStore = approvedTerminals.filter((t) => {
-    if (!selectedBranchStoreId) return true;
-    return t.storeId === selectedBranchStoreId;
-  });
+  const validateMposTarget = (): boolean => validateMposKasaTarget();
+
+  const filteredTerminalsForStore = approvedTerminals.filter(
+    (t) => t.storeId === selectedBranchStoreId,
+  );
 
   const mapEnterpriseToBroadcast = (m: EnterpriseSyncMessage): BroadcastMessage => ({
     id: m.id,
@@ -268,13 +268,35 @@ export function EnterpriseCentralDataManagement() {
   }, []);
 
   useEffect(() => {
-    const storeId = resolveMposTargetStoreId();
-    if (mposTargetScope === 'all') {
-      setTargetDevices(['all']);
-    } else if (storeId) {
-      setTargetDevices([storeId]);
+    const storeId = selectedBranchStoreId;
+    if (storeId) setTargetDevices([storeId]);
+    else setTargetDevices(['all']);
+  }, [selectedBranchStoreId]);
+
+  const handleMposKalemSend = async () => {
+    if (!validateMposKasaTarget()) return;
+    const term = selectedTerminal();
+    setIsSyncBusy(true);
+    try {
+      const r = await sendMposInfoToKasaAndPush({
+        fileType: mposFileType,
+        storeId: selectedBranchStoreId,
+        terminalName: term?.terminalName || '',
+        terminalDeviceId: selectedTerminalDeviceId,
+      });
+      if (r.ok) toast.success(r.message);
+      else toast.error(r.message);
+      await refreshEnterpriseData();
+    } finally {
+      setIsSyncBusy(false);
     }
-  }, [mposTargetScope, selectedBranchStoreId, selectedTerminalDeviceId, approvedTerminals]);
+  };
+
+  const handleMposKalemReset = () => {
+    setSelectedBranchStoreId('');
+    setSelectedTerminalDeviceId('');
+    setMposFileType('products');
+  };
 
   // MPOS Kalem: otomatik mesaj kontrol aralığı
   useEffect(() => {
@@ -514,15 +536,16 @@ export function EnterpriseCentralDataManagement() {
 
   const handleMposQuickSend = async (type: 'product' | 'customer' | 'all') => {
     if (!validateMposTarget()) return;
+    const storeId = resolveMposTargetStoreId();
     setIsSyncBusy(true);
     try {
-      const enq = await enqueueAllMasterData(type, { targetStoreId: resolveMposTargetStoreId() });
+      const enq = await enqueueAllMasterData(type, { targetStoreId: storeId });
       if (!enq.ok) {
         toast.error(enq.message);
         return;
       }
       toast.success(enq.message);
-      const push = await pushMasterDataToBranches();
+      const push = await pushMasterDataToBranches({ targetStoreId: storeId });
       if (push.ok) toast.info(push.message);
       else toast.error(push.message);
       await refreshEnterpriseData();
@@ -532,6 +555,7 @@ export function EnterpriseCentralDataManagement() {
   };
 
   const handleDayEndPull = async () => {
+    if (!validateMposKasaTarget()) return;
     setIsSyncBusy(true);
     try {
       const r = await pullSalesAndDayEndFromBranches();
@@ -552,6 +576,7 @@ export function EnterpriseCentralDataManagement() {
   };
 
   const handlePullAll = async () => {
+    if (!validateMposKasaTarget()) return;
     setIsSyncBusy(true);
     try {
       const r = await pullBranchDataFromCenter();
@@ -964,102 +989,108 @@ export function EnterpriseCentralDataManagement() {
             </TabsTrigger>
           </TabsList>
 
-          {/* Bilgi Gönder — merkez → kasa (malzeme, cari, master) */}
+          {/* Bilgi Gönder — Kalem M-POS: Dosya Tipi + İşyeri + Kasa */}
           <TabsContent value="send" className="space-y-4">
-            {/* 1. Hedef şube / kasa (MPOS zorunlu seçim) */}
-            <Card className={`p-4 border-2 ${theme === 'dark' ? 'bg-gray-800 border-blue-800/50' : 'bg-white border-blue-200'}`}>
-              <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
-                <Store className="w-4 h-4 text-blue-600" />
-                Hedef Şube / Kasa Seçimi
+            <Card className={`p-6 max-w-2xl ${theme === 'dark' ? 'bg-gray-800 border-gray-700' : 'bg-white'}`}>
+              <h3 className="text-lg font-semibold mb-4 border-b pb-2 border-gray-200 dark:border-gray-700">
+                KLRetail M-POS Bilgilerinin Gönderilmesi
               </h3>
-              <div className="flex flex-wrap gap-4 mb-3">
-                <label className="flex items-center gap-2 text-sm cursor-pointer">
-                  <input
-                    type="radio"
-                    name="mposTargetScope"
-                    checked={mposTargetScope === 'all'}
-                    onChange={() => setMposTargetScope('all')}
-                  />
-                  Tüm şubeler
-                </label>
-                <label className="flex items-center gap-2 text-sm cursor-pointer">
-                  <input
-                    type="radio"
-                    name="mposTargetScope"
-                    checked={mposTargetScope === 'store'}
-                    onChange={() => setMposTargetScope('store')}
-                  />
-                  Şube
-                </label>
-                <label className="flex items-center gap-2 text-sm cursor-pointer">
-                  <input
-                    type="radio"
-                    name="mposTargetScope"
-                    checked={mposTargetScope === 'terminal'}
-                    onChange={() => setMposTargetScope('terminal')}
-                  />
-                  Kasa (M-POS)
-                </label>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm mb-1.5 font-medium">Dosya Tipi</label>
+                  <select
+                    value={mposFileType}
+                    onChange={(e) => setMposFileType(e.target.value as MposSendFileType)}
+                    className={`w-full p-2.5 rounded border text-sm ${theme === 'dark' ? 'bg-gray-700 border-gray-600' : 'bg-white border-gray-300'}`}
+                  >
+                    {MPOS_SEND_FILE_TYPES.map((ft) => (
+                      <option key={ft.id} value={ft.id}>
+                        {ft.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm mb-1.5 font-medium">İşyeri</label>
+                  <select
+                    value={selectedBranchStoreId}
+                    onChange={(e) => {
+                      setSelectedBranchStoreId(e.target.value);
+                      setSelectedTerminalDeviceId('');
+                    }}
+                    className={`w-full p-2.5 rounded border text-sm ${theme === 'dark' ? 'bg-gray-700 border-gray-600' : 'bg-white border-gray-300'}`}
+                  >
+                    <option value="">— İşyeri seçin —</option>
+                    {branchStores.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name} ({s.code})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm mb-1.5 font-medium">Kasa</label>
+                  <select
+                    value={selectedTerminalDeviceId}
+                    onChange={(e) => setSelectedTerminalDeviceId(e.target.value)}
+                    disabled={!selectedBranchStoreId}
+                    className={`w-full p-2.5 rounded border text-sm disabled:opacity-50 ${theme === 'dark' ? 'bg-gray-700 border-gray-600' : 'bg-white border-gray-300'}`}
+                  >
+                    <option value="">
+                      {selectedBranchStoreId ? '— Kasa seçin —' : 'Önce işyeri seçin'}
+                    </option>
+                    {filteredTerminalsForStore.map((t) => (
+                      <option key={t.deviceId} value={t.deviceId}>
+                        {t.terminalName}
+                        {t.computerName ? ` (${t.computerName})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                  {selectedBranchStoreId && filteredTerminalsForStore.length === 0 && (
+                    <p className="text-xs text-amber-600 mt-1">
+                      Bu işyerinde onaylı kasa yok. Dashboard → Bekleyen Cihazlar.
+                    </p>
+                  )}
+                </div>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {(mposTargetScope === 'store' || mposTargetScope === 'terminal') && (
-                  <div>
-                    <label className="block text-xs mb-1 font-medium">Şube *</label>
-                    <select
-                      value={selectedBranchStoreId}
-                      onChange={(e) => {
-                        setSelectedBranchStoreId(e.target.value);
-                        setSelectedTerminalDeviceId('');
-                      }}
-                      className={`w-full p-2 rounded border text-sm ${theme === 'dark' ? 'bg-gray-700 border-gray-600' : 'bg-white border-gray-300'}`}
-                    >
-                      <option value="">Şube seçin…</option>
-                      {branchStores.map((s) => (
-                        <option key={s.id} value={s.id}>
-                          {s.name} ({s.code})
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                )}
-                {mposTargetScope === 'terminal' && (
-                  <div>
-                    <label className="block text-xs mb-1 font-medium">Kasa *</label>
-                    <select
-                      value={selectedTerminalDeviceId}
-                      onChange={(e) => {
-                        const id = e.target.value;
-                        setSelectedTerminalDeviceId(id);
-                        const term = approvedTerminals.find((x) => x.deviceId === id);
-                        if (term?.storeId) setSelectedBranchStoreId(term.storeId);
-                      }}
-                      className={`w-full p-2 rounded border text-sm ${theme === 'dark' ? 'bg-gray-700 border-gray-600' : 'bg-white border-gray-300'}`}
-                    >
-                      <option value="">Onaylı kasa seçin…</option>
-                      {filteredTerminalsForStore.map((t) => (
-                        <option key={t.deviceId} value={t.deviceId}>
-                          {t.terminalName}
-                          {t.computerName ? ` — ${t.computerName}` : ''}
-                          {t.storeName ? ` (${t.storeName})` : ''}
-                        </option>
-                      ))}
-                    </select>
-                    {filteredTerminalsForStore.length === 0 && (
-                      <p className="text-xs text-amber-600 mt-1">
-                        Onaylı kasa yok. Dashboard → Bekleyen Cihazlar bölümünden onaylayın.
-                      </p>
-                    )}
-                  </div>
-                )}
+
+              <div className="flex justify-end gap-2 mt-6 pt-4 border-t border-gray-200 dark:border-gray-700">
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={isSyncBusy}
+                  onClick={handleMposKalemReset}
+                >
+                  Vazgeç
+                </Button>
+                <Button
+                  type="button"
+                  disabled={isSyncBusy}
+                  onClick={() => void handleMposKalemSend()}
+                  className="gap-2 min-w-[120px]"
+                >
+                  {isSyncBusy ? (
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Upload className="w-4 h-4" />
+                  )}
+                  Gönder
+                </Button>
               </div>
-              <p className="text-xs text-gray-500 mt-2">
-                Seçili hedef: <strong>{mposTargetLabel()}</strong>
-                {mposTargetScope === 'terminal' && selectedTerminalDeviceId && (
-                  <span className="ml-2 font-mono text-[10px]">{selectedTerminalDeviceId.slice(0, 20)}…</span>
-                )}
-              </p>
             </Card>
 
+            <details className={`rounded-lg border ${theme === 'dark' ? 'border-gray-700 bg-gray-800/50' : 'border-gray-200 bg-white'}`}>
+              <summary className="cursor-pointer p-4 text-sm font-medium flex items-center gap-2">
+                <ChevronRight className="w-4 h-4" />
+                Toplu gönderim ve detaylı kayıt (gelişmiş)
+              </summary>
+              <div className="p-4 pt-0 space-y-4 border-t border-gray-200 dark:border-gray-700">
+                <p className="text-xs text-gray-500">
+                  Hedef kasa: <strong>{mposTargetLabel()}</strong> — gelişmiş işlemler de aynı işyeri/kasayı kullanır.
+                </p>
             <Card className={`p-4 ${theme === 'dark' ? 'bg-gray-800 border-gray-700' : 'bg-white'}`}>
               <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
                 <Zap className="w-4 h-4 text-blue-600" />
@@ -1359,13 +1390,57 @@ export function EnterpriseCentralDataManagement() {
 
             {/* Gönderilmiş Mesajlar Listesi */}
             <SentMessagesList theme={theme} />
+              </div>
+            </details>
           </TabsContent>
 
           {/* Bilgi Al — kasa → merkez (satış, günsonu) */}
           <TabsContent value="receive" className="space-y-4">
-            <Card className={`p-4 ${theme === 'dark' ? 'bg-gray-800 border-gray-700' : 'bg-white'}`}>
+            <Card className={`p-6 max-w-2xl ${theme === 'dark' ? 'bg-gray-800 border-gray-700' : 'bg-white'}`}>
+              <h3 className="text-lg font-semibold mb-4 border-b pb-2 border-gray-200 dark:border-gray-700">
+                KLRetail M-POS Bilgilerinin Alınması
+              </h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+                <div>
+                  <label className="block text-sm mb-1.5 font-medium">İşyeri</label>
+                  <select
+                    value={selectedBranchStoreId}
+                    onChange={(e) => {
+                      setSelectedBranchStoreId(e.target.value);
+                      setSelectedTerminalDeviceId('');
+                    }}
+                    className={`w-full p-2.5 rounded border text-sm ${theme === 'dark' ? 'bg-gray-700 border-gray-600' : 'bg-white border-gray-300'}`}
+                  >
+                    <option value="">— İşyeri seçin —</option>
+                    {branchStores.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name} ({s.code})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm mb-1.5 font-medium">Kasa</label>
+                  <select
+                    value={selectedTerminalDeviceId}
+                    onChange={(e) => setSelectedTerminalDeviceId(e.target.value)}
+                    disabled={!selectedBranchStoreId}
+                    className={`w-full p-2.5 rounded border text-sm disabled:opacity-50 ${theme === 'dark' ? 'bg-gray-700 border-gray-600' : 'bg-white border-gray-300'}`}
+                  >
+                    <option value="">
+                      {selectedBranchStoreId ? '— Kasa seçin —' : 'Önce işyeri seçin'}
+                    </option>
+                    {filteredTerminalsForStore.map((t) => (
+                      <option key={t.deviceId} value={t.deviceId}>
+                        {t.terminalName}
+                        {t.computerName ? ` (${t.computerName})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
               <p className="text-xs text-gray-500 mb-3">
-                Hedef: <strong>{mposTargetLabel()}</strong> — «Bilgi Gönder» sekmesindeki şube/kasa seçimi burada da geçerlidir.
+                Hedef: <strong>{mposTargetLabel()}</strong>
               </p>
               <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
                 <Download className="w-4 h-4 text-sky-600" />
