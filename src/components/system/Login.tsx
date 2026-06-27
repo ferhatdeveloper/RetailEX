@@ -114,9 +114,6 @@ export function Login({ onLogin }: LoginProps) {
     ];
     if (dbConnectionMode === 'hybrid') {
       steps.push({ id: 'local_pg', label: 'Yerel' });
-      if (connectionProvider === 'db') {
-        steps.push({ id: 'remote_pg', label: 'Uzak' });
-      }
       steps.push({ id: 'postgrest', label: 'REST' });
       steps.push({ id: 'sync', label: 'Senkron' });
     } else if (connectionProvider === 'rest_api') {
@@ -270,7 +267,9 @@ export function Login({ onLogin }: LoginProps) {
     if (!showDbSettings) return;
     import('../../services/postgres').then(({ LOCAL_CONFIG, REMOTE_CONFIG, DB_SETTINGS }) => {
       setDbConnectionMode(DB_SETTINGS.activeMode);
-      setConnectionProvider(DB_SETTINGS.connectionProvider);
+      const provider =
+        DB_SETTINGS.activeMode === 'hybrid' ? 'rest_api' : DB_SETTINGS.connectionProvider;
+      setConnectionProvider(provider);
       const restLoaded = DB_SETTINGS.remoteRestUrl || '';
       setRemoteRestUrl(restLoaded || DEFAULT_REMOTE_REST_URL);
       applyRemoteRestUrlToTenantInputs(restLoaded);
@@ -837,7 +836,7 @@ export function Login({ onLogin }: LoginProps) {
         },
         settings: {
           activeMode: dbConnectionMode,
-          connectionProvider,
+          connectionProvider: dbConnectionMode === 'hybrid' ? 'rest_api' : connectionProvider,
           remoteRestUrl,
           hybridReadPreference,
           hybridSyncDirection,
@@ -2260,7 +2259,11 @@ export function Login({ onLogin }: LoginProps) {
                       </label>
                       <select
                         value={dbConnectionMode}
-                        onChange={(e) => setDbConnectionMode(e.target.value as ConnectionMode)}
+                        onChange={(e) => {
+                          const mode = e.target.value as ConnectionMode;
+                          setDbConnectionMode(mode);
+                          if (mode === 'hybrid') setConnectionProvider('rest_api');
+                        }}
                         className={`w-full rounded-sm border-2 px-4 py-3 text-xs font-bold transition-all focus:border-blue-600 focus:outline-none ${darkMode ? 'border-gray-700 bg-gray-800 text-blue-200' : 'border-gray-200 bg-white text-gray-900'}`}
                       >
                         <option value="online">Online — merkezi (uzak) sunucu</option>
@@ -2282,6 +2285,7 @@ export function Login({ onLogin }: LoginProps) {
                     </div>
                   )}
 
+                  {dbConnectionMode !== 'hybrid' && (
                   <div className="space-y-1">
                     <label className="px-1 text-[9px] font-black uppercase tracking-widest text-gray-500">Bağlantı Sağlayıcı</label>
                     <select
@@ -2293,6 +2297,12 @@ export function Login({ onLogin }: LoginProps) {
                       <option value="rest_api">Rest API (PostgREST)</option>
                     </select>
                   </div>
+                  )}
+                  {dbConnectionMode === 'hybrid' && (
+                    <p className={`px-1 text-[9px] font-bold leading-relaxed ${darkMode ? 'text-slate-500' : 'text-slate-600'}`}>
+                      <strong>Hibrit:</strong> Günlük işlemler yerel PostgreSQL&apos;de; merkeze senkron yalnızca <strong>REST API</strong> (PostgREST) ile gider. Uzak PostgreSQL bilgisi gerekmez.
+                    </p>
+                  )}
                     </>
                   )}
 

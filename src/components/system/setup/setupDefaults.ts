@@ -8,7 +8,7 @@ export function createInitialSetupConfig(): SetupAppConfig {
     db_mode: 'hybrid',
     local_db: 'localhost:5432/retailex_local',
     remote_db: '',
-    connection_provider: 'db',
+    connection_provider: 'rest_api',
     remote_rest_url: DEFAULT_SAAS_TENANT_POSTGREST_ORIGIN,
     hybrid_read_preference: 'local_first',
     hybrid_sync_direction: 'local_to_remote',

@@ -16,6 +16,7 @@ import {
   ERP_SETTINGS,
   LOCAL_CONFIG,
   REMOTE_CONFIG,
+  resolveHybridSyncConnectionProvider,
   type HybridSyncDirection,
 } from '../../services/postgres';
 import { runHybridSync, type HybridSyncFlow, type HybridSyncScopeMode } from '../../services/hybridSyncEngine';
@@ -148,7 +149,7 @@ export function HybridSyncPanel({ compact = false, darkMode = false, directionOv
         filter,
         local: LOCAL_CONFIG,
         remote: REMOTE_CONFIG,
-        connectionProvider: DB_SETTINGS.connectionProvider,
+        connectionProvider: resolveHybridSyncConnectionProvider(),
         remoteRestUrl: DB_SETTINGS.remoteRestUrl,
       });
 

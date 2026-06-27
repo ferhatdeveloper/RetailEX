@@ -83,12 +83,12 @@ export async function warmTableSchemaCache(
   cache: Map<string, PgSchemaName>,
 ): Promise<void> {
   if (cache.size > 0) return;
+  const schemaList = PG_SCHEMAS.map((s) => `'${s.replace(/'/g, "''")}'`).join(', ');
   const rows = await queryPgRows(
     local,
     `SELECT table_name, table_schema
      FROM information_schema.tables
-     WHERE table_schema = ANY($1::text[])`,
-    [PG_SCHEMAS as unknown as string[]],
+     WHERE table_schema IN (${schemaList})`,
   );
   for (const r of rows) {
     const name = String(r.table_name ?? '');

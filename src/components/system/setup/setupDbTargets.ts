@@ -36,7 +36,12 @@ export function resolveFirmSchemaTargets(
     targets.push('local');
   }
 
-  if (dbMode === 'hybrid' && primary === 'local' && isRemoteDbConfigured(config.remote_db)) {
+  if (
+    dbMode === 'hybrid' &&
+    primary === 'local' &&
+    config.connection_provider !== 'rest_api' &&
+    isRemoteDbConfigured(config.remote_db)
+  ) {
     targets.push('remote');
   }
 
@@ -51,13 +56,42 @@ export function shouldSkipRemotePgBootstrap(
   return config.connection_provider === 'rest_api' && primaryTarget === 'remote';
 }
 
-/** Merkez sunucu hibrit/online iken uzak bağlantı adımı gerekir */
-export function needsRemoteDatabaseStep(config: Pick<SetupAppConfig, 'role' | 'db_mode'>): boolean {
+/** Hibrit modda merkeze senkron yalnızca PostgREST/API ile gider (uzak PG zorunlu değil). */
+export function usesPostgrestForHybridSync(
+  config: Pick<SetupAppConfig, 'db_mode' | 'role'>,
+): boolean {
+  return normalizeDbMode(config.db_mode, config.role) === 'hybrid';
+}
+
+/** Doğrudan uzak PostgreSQL host/port/şifre adımı (online + db sağlayıcı). */
+export function needsRemotePgStep(
+  config: Pick<SetupAppConfig, 'role' | 'db_mode' | 'connection_provider'>,
+): boolean {
   const dbMode = normalizeDbMode(config.db_mode, config.role);
-  if (config.role !== 'center') {
-    return dbMode === 'hybrid' || dbMode === 'online';
+  if (dbMode === 'hybrid' || dbMode === 'offline') return false;
+  if (dbMode === 'online') {
+    return (config.connection_provider || 'rest_api') === 'db';
   }
-  return dbMode === 'hybrid' || dbMode === 'online';
+  return false;
+}
+
+/** PostgREST / kiracı API adresi adımı (hibrit veya online+rest_api). */
+export function needsPostgrestApiStep(
+  config: Pick<SetupAppConfig, 'role' | 'db_mode' | 'connection_provider'>,
+): boolean {
+  const dbMode = normalizeDbMode(config.db_mode, config.role);
+  if (dbMode === 'hybrid') return true;
+  if (dbMode === 'online') {
+    return (config.connection_provider || 'rest_api') !== 'db';
+  }
+  return false;
+}
+
+/** @deprecated needsRemotePgStep + needsPostgrestApiStep kullanın */
+export function needsRemoteDatabaseStep(
+  config: Pick<SetupAppConfig, 'role' | 'db_mode' | 'connection_provider'>,
+): boolean {
+  return needsRemotePgStep(config) || needsPostgrestApiStep(config);
 }
 
 /** Yerel PG kurulumu gerekir (offline, hybrid veya online+local mirror) */
@@ -79,8 +113,11 @@ export function normalizeSetupConfig(config: SetupAppConfig): SetupAppConfig {
     hybrid_sync_direction: config.hybrid_sync_direction || 'local_to_remote',
   };
 
-  if (db_mode === 'hybrid' || db_mode === 'offline') {
-    normalized.connection_provider = normalized.connection_provider === 'rest_api' ? 'rest_api' : 'db';
+  if (db_mode === 'hybrid') {
+    // Hibrit: yerel PG + merkeze yalnızca PostgREST/API; uzak PG bilgisi gerekmez.
+    normalized.connection_provider = 'rest_api';
+  } else if (db_mode === 'offline') {
+    normalized.connection_provider = 'db';
   } else if (db_mode === 'online' && !normalized.connection_provider) {
     normalized.connection_provider = 'rest_api';
   }

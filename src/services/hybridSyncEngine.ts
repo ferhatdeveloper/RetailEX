@@ -90,6 +90,8 @@ export async function queryPgRows(
   const connStr = buildConnStr(config);
   const normalizedParams = params.map((v) => {
     if (v === null || v === undefined) return null;
+    if (typeof v === 'boolean' || typeof v === 'number') return v;
+    if (Array.isArray(v)) return v;
     if (typeof v === 'object') return JSON.stringify(v);
     return String(v);
   });
@@ -229,12 +231,13 @@ export function buildSyncEndpoints(opts: HybridSyncRunOptions): {
   remote: SyncEndpoint;
 } {
   const local: SyncEndpoint = { kind: 'pg', config: opts.local };
-  if (opts.connectionProvider === 'rest_api') {
-    const baseUrl = normalizeRestBase(opts.remoteRestUrl || '');
-    if (!baseUrl) {
-      throw new Error('Hibrit PostgREST modu için remote_rest_url (kiracı API adresi) zorunludur.');
+  const restBase = normalizeRestBase(opts.remoteRestUrl || '');
+  const usePostgrest = opts.connectionProvider === 'rest_api' || !!restBase;
+  if (usePostgrest) {
+    if (!restBase) {
+      throw new Error('Hibrit senkron için merkez API adresi (PostgREST URL) zorunludur.');
     }
-    return { local, remote: { kind: 'postgrest', baseUrl } };
+    return { local, remote: { kind: 'postgrest', baseUrl: restBase } };
   }
   return { local, remote: { kind: 'pg', config: opts.remote } };
 }

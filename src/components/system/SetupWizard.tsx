@@ -18,7 +18,9 @@ import { createInitialSetupConfig } from './setup/setupDefaults';
 import {
   finalizeSetupConfig,
   needsLocalDatabaseStep,
-  needsRemoteDatabaseStep,
+  needsRemotePgStep,
+  needsPostgrestApiStep,
+  usesPostgrestForHybridSync,
   normalizeSetupConfig,
   resolveFirmSchemaTargets,
   resolvePrimaryMigrationTarget,
@@ -113,7 +115,9 @@ const SetupWizard: React.FC = () => {
     const dbSettingsStep = getDbSettingsStep(config.skip_integration);
     const summaryStep = getSummaryStep(config.skip_integration);
     const deviceStep = getDeviceStep(config.skip_integration);
-    const showRemoteDbSection = needsRemoteDatabaseStep(config);
+    const showRemotePgSection = needsRemotePgStep(config);
+    const showPostgrestApiSection = needsPostgrestApiStep(config);
+    const showRemoteDbSection = showRemotePgSection || showPostgrestApiSection;
     const showLocalDbSection = needsLocalDatabaseStep(config, skipStandaloneFirmStep);
 
     const [availableCashRegisters, setAvailableCashRegisters] = useState<any[]>([]);
@@ -436,13 +440,12 @@ const SetupWizard: React.FC = () => {
             }
 
             if (showRemoteDbSection) {
-                const provider = config.connection_provider || 'db';
-                if (provider === 'rest_api') {
+                if (usesPostgrestForHybridSync(config) || config.connection_provider === 'rest_api') {
                     if (!config.remote_rest_url || !config.remote_rest_url.trim()) {
-                        toast.error('PostgREST API URL girilmelidir.');
+                        toast.error('Merkez API (PostgREST) URL girilmelidir.');
                         return;
                     }
-                } else {
+                } else if (showRemotePgSection) {
                     if (!config.remote_db || config.remote_db.includes('127.0.0.1') || config.remote_db.includes('localhost')) {
                         toast.error('Geçerli bir uzak sunucu adresi girilmelidir.');
                         return;
@@ -1797,7 +1800,7 @@ const SetupWizard: React.FC = () => {
                                             </div>
                                             <div className="grid grid-cols-1 gap-3">
                                                 <button
-                                                    onClick={() => setConfig({ ...config, db_mode: 'hybrid', connection_provider: 'db' })}
+                                                    onClick={() => setConfig({ ...config, db_mode: 'hybrid', connection_provider: 'rest_api' })}
                                                     className={`group relative p-4 rounded-2xl border transition-all duration-300 ${config.db_mode !== 'online'
                                                         ? 'bg-blue-600/10 border-blue-500 shadow-lg shadow-blue-500/5'
                                                         : 'bg-white/[0.03] border-white/5 hover:border-white/10 hover:bg-white/[0.08]'
@@ -1866,7 +1869,13 @@ const SetupWizard: React.FC = () => {
                                         ].map((mode) => (
                                             <button
                                                 key={mode.id}
-                                                onClick={() => setConfig({ ...config, db_mode: mode.id as any })}
+                                                onClick={() =>
+                                                    setConfig({
+                                                        ...config,
+                                                        db_mode: mode.id as any,
+                                                        ...(mode.id === 'hybrid' ? { connection_provider: 'rest_api' as const } : {}),
+                                                    })
+                                                }
                                                 className={`group relative p-4 rounded-2xl border transition-all duration-300 ${config.db_mode === mode.id
                                                     ? 'bg-blue-600/10 border-blue-500 shadow-lg shadow-blue-500/5'
                                                     : 'bg-white/[0.03] border-white/5 hover:border-white/10 hover:bg-white/[0.08]'
@@ -2312,7 +2321,7 @@ const SetupWizard: React.FC = () => {
                                         </div>
                                         )}
 
-                                        {/* Remote Server Section — hibrit/online modda gerekli (merkez dahil) */}
+                                        {/* Merkez API (hibrit) veya uzak sunucu (online) */}
                                         {showRemoteDbSection && (
                                             <div className="relative p-8 rounded-[32px] bg-white/[0.03] border border-white/5 overflow-hidden group hover:bg-white/[0.05] transition-all duration-500">
                                                 <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/10 blur-[60px] rounded-full" />
@@ -2321,11 +2330,22 @@ const SetupWizard: React.FC = () => {
                                                     <div className="w-8 h-8 rounded-lg bg-indigo-500/20 flex items-center justify-center">
                                                         <Cloud className="w-4 h-4 text-indigo-400" />
                                                     </div>
-                                                    <span className="text-xs font-black uppercase tracking-[0.2em] text-indigo-300">Uzak Sunucu (Bulut/Merkez)</span>
+                                                    <span className="text-xs font-black uppercase tracking-[0.2em] text-indigo-300">
+                                                        {usesPostgrestForHybridSync(config)
+                                                            ? 'Merkez API (PostgREST)'
+                                                            : 'Uzak Sunucu (Bulut/Merkez)'}
+                                                    </span>
                                                 </div>
 
                                                 <div className="space-y-6 relative z-10">
-                                                    {/* Connection Provider */}
+                                                    {usesPostgrestForHybridSync(config) && (
+                                                        <p className="text-[9px] text-slate-400 leading-relaxed">
+                                                            Hibrit modda merkeze senkron yalnızca REST API üzerinden gider. Uzak PostgreSQL host/şifre girmeniz gerekmez.
+                                                        </p>
+                                                    )}
+
+                                                    {/* Connection Provider — yalnızca online + doğrudan PG */}
+                                                    {showRemotePgSection && !usesPostgrestForHybridSync(config) && (
                                                     <div className="space-y-2">
                                                         <label className="text-[10px] font-black text-blue-200 uppercase tracking-widest pl-1">
                                                             Bağlantı Sağlayıcı
@@ -2339,9 +2359,10 @@ const SetupWizard: React.FC = () => {
                                                             <option value="rest_api">Rest API (PostgREST)</option>
                                                         </select>
                                                     </div>
+                                                    )}
 
                                                     <div className="space-y-2">
-                                                        {config.connection_provider === 'rest_api' ? (
+                                                        {(showPostgrestApiSection && (usesPostgrestForHybridSync(config) || config.connection_provider === 'rest_api')) ? (
                                                             <>
                                                                 <label className="text-[10px] font-black text-blue-200 uppercase tracking-widest pl-1">
                                                                     PostgREST API URL
@@ -2461,7 +2482,7 @@ const SetupWizard: React.FC = () => {
                                                         )}
                                                     </div>
 
-                                                    {config.connection_provider !== 'rest_api' && (
+                                                    {showRemotePgSection && config.connection_provider !== 'rest_api' && !usesPostgrestForHybridSync(config) && (
                                                         <div className="space-y-2 pt-2 border-t border-white/5">
                                                             <label className="text-[10px] font-black text-blue-200 uppercase tracking-widest pl-1">Kimlik Doğrulama (PostgreSQL)</label>
                                                             <div className="grid grid-cols-2 gap-4">

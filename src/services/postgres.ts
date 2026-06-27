@@ -19,6 +19,14 @@ export type HybridReadPreference = 'local_first' | 'remote_first';
 /** Planlanan senkron yönü (`sync()` ve ilerideki çoğaltma için). */
 export type HybridSyncDirection = 'local_to_remote' | 'remote_to_local' | 'bidirectional';
 
+/** Hibrit senkron uzak uç: `remote_rest_url` doluysa doğrudan PG yerine PostgREST kullanılır. */
+export function resolveHybridSyncConnectionProvider(): ConnectionProvider {
+  if (DB_SETTINGS.activeMode === 'hybrid' && DB_SETTINGS.remoteRestUrl?.trim()) {
+    return 'rest_api';
+  }
+  return DB_SETTINGS.connectionProvider;
+}
+
 /** `sync()` — şube/kasiyer gönder-al ve kapsam seçenekleri */
 export type PostgresSyncOptions = {
   mode?: ConnectionMode;
@@ -465,6 +473,9 @@ export async function updateConfigs(updates: {
   if (updates.remote) REMOTE_CONFIG = { ...REMOTE_CONFIG, ...updates.remote };
   if (updates.settings) DB_SETTINGS = { ...DB_SETTINGS, ...updates.settings };
   if (updates.erp) ERP_SETTINGS = { ...ERP_SETTINGS, ...updates.erp };
+  if (DB_SETTINGS.activeMode === 'hybrid') {
+    DB_SETTINGS.connectionProvider = 'rest_api';
+  }
   alignRemoteConfigWithRestUrl();
 
   if (!IS_TAURI) {
@@ -1195,7 +1206,7 @@ export class PostgresConnection {
       filter: opts?.filter,
       local: LOCAL_CONFIG,
       remote: REMOTE_CONFIG,
-      connectionProvider: DB_SETTINGS.connectionProvider,
+      connectionProvider: resolveHybridSyncConnectionProvider(),
       remoteRestUrl: DB_SETTINGS.remoteRestUrl,
     });
 
