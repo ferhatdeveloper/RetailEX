@@ -1149,38 +1149,32 @@ export class PostgresConnection {
    */
   async registerDevice(name: string, storeId: string): Promise<{ success: boolean; message: string }> {
     try {
-      const { registerDesktopTerminal, resolveDesktopDeviceId } = await import('./deviceRegistrationService');
-      const deviceId = await resolveDesktopDeviceId();
-      console.log(`📡 Registering device ${name} (${deviceId}) to store ${storeId}`);
+      const {
+        registerDesktopTerminal,
+        collectDesktopDeviceMetadata,
+      } = await import('./deviceRegistrationService');
+      const deviceInfo = await collectDesktopDeviceMetadata();
 
-      let hostname: string | undefined;
-      let osUser: string | undefined;
-      let role = 'client';
-      if (typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__) {
-        try {
-          const { invoke } = await import('@tauri-apps/api/core');
-          const cfg: { role?: string } = await invoke('get_app_config');
-          role = cfg.role || 'client';
-          hostname = await invoke<string>('get_system_id');
-          osUser = await invoke<string>('get_os_username');
-        } catch {
-          /* optional */
-        }
-      }
+      console.log(`📡 Registering device ${name} (${deviceInfo.deviceId}) to store ${storeId}`);
 
       const result = await registerDesktopTerminal({
-        deviceId,
-        terminalName: name,
+        deviceId: deviceInfo.deviceId,
+        terminalName: name || deviceInfo.terminalName,
         storeId,
-        firmNr: ERP_SETTINGS.firmNr,
-        role,
-        hostname,
-        osUser,
+        firmNr: deviceInfo.firmNr,
+        role: deviceInfo.role,
+        deviceInfo,
       });
 
       localStorage.setItem(
         'retailex_registered_device',
-        JSON.stringify({ name, storeId, deviceId, status: result.status }),
+        JSON.stringify({
+          name,
+          storeId,
+          deviceId: deviceInfo.deviceId,
+          status: result.status,
+          deviceInfo,
+        }),
       );
 
       return {

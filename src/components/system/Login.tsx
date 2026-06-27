@@ -3,6 +3,8 @@ import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { Lock, User, CheckCircle, Store, MoreHorizontal, Grid3x3, Languages, AlertCircle, Building2, Settings as Gear, Loader2, ArrowRight, ArrowLeft, Maximize2, ShieldCheck, Shield, X as CloseIcon, Activity, ChevronRight, Terminal, Trash2, Download, Search, RotateCcw, Database, Save, RefreshCw, Moon, Sun } from 'lucide-react';
 import { HybridSyncPanel } from './HybridSyncPanel';
+import { DeviceRegistrationInfoCard } from './DeviceRegistrationInfoCard';
+import type { DesktopDeviceInfo } from '../../services/deviceRegistrationService';
 import { logger, LogEntry } from '../../services/loggingService';
 import type { User as UserType } from '../../core/types';
 import { APP_VERSION } from '../../core/version';
@@ -62,6 +64,8 @@ export function Login({ onLogin }: LoginProps) {
   const [setupSuccessData, setSetupSuccessData] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [pendingDeviceInfo, setPendingDeviceInfo] = useState<DesktopDeviceInfo | null>(null);
+  const [deviceGateStatus, setDeviceGateStatus] = useState<string | null>(null);
   const [loginStep, setLoginStep] = useState<'credentials' | 'organization'>('credentials');
   const [showLogs, setShowLogs] = useState(false);
   const [systemLogs, setSystemLogs] = useState<LogEntry[]>([]);
@@ -958,6 +962,8 @@ export function Login({ onLogin }: LoginProps) {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    setPendingDeviceInfo(null);
+    setDeviceGateStatus(null);
     const trimmedUsername = username.trim();
     const trimmedPassword = password.trim();
 
@@ -992,9 +998,13 @@ export function Login({ onLogin }: LoginProps) {
           const gate = await assertDesktopTerminalApproved();
           if (!gate.allowed) {
             setError(gate.message);
+            setPendingDeviceInfo(gate.deviceInfo ?? null);
+            setDeviceGateStatus(gate.status);
             setIsLoading(false);
             return;
           }
+          setPendingDeviceInfo(null);
+          setDeviceGateStatus(null);
         }
 
         // Update global ERP settings with selected firm before final login
@@ -1485,6 +1495,19 @@ export function Login({ onLogin }: LoginProps) {
               <div className="flex items-center gap-3 p-4 bg-red-600/5 border border-red-600/20 text-red-500 text-[10px] font-black uppercase tracking-widest rounded-sm animate-in shake-200">
                 <AlertCircle className="w-4 h-4 flex-shrink-0" />
                 <span>{error}</span>
+              </div>
+            )}
+
+            {isTauri && deviceGateStatus === 'pending' && pendingDeviceInfo && (
+              <div className="space-y-2 animate-in fade-in duration-300">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-amber-600">
+                  Merkeze iletilen cihaz profili
+                </p>
+                <DeviceRegistrationInfoCard
+                  device={pendingDeviceInfo}
+                  showStatus
+                  statusLabel="Onay bekliyor"
+                />
               </div>
             )}
 

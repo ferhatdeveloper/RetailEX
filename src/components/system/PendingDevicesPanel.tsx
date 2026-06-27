@@ -6,6 +6,7 @@ import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
 import { IS_TAURI } from '../../utils/env';
 import { useAuth } from '../../contexts/AuthContext';
+import { DeviceRegistrationInfoCard } from './DeviceRegistrationInfoCard';
 import {
   approvePosTerminal,
   listPosTerminalRegistrations,
@@ -111,60 +112,56 @@ export function PendingDevicesPanel({ darkMode = false }: Props) {
           Onay bekleyen cihaz yok.
         </p>
       ) : (
-        <div className="space-y-2">
+        <div className="space-y-3">
           {pending.map((d) => (
             <div
               key={d.id}
-              className={`flex flex-wrap items-center justify-between gap-3 p-3 rounded-lg border ${
+              className={`rounded-lg border ${
                 darkMode ? 'border-gray-700 bg-gray-900/40' : 'border-gray-200 bg-white'
-              }`}
+              } overflow-hidden`}
             >
-              <div className="flex items-start gap-3 min-w-0">
-                <Monitor className="w-5 h-5 text-blue-500 shrink-0 mt-0.5" />
-                <div className="min-w-0">
+              <div className="p-3 border-b border-gray-200/60 dark:border-gray-700/60">
+                <div className="flex flex-wrap items-center justify-between gap-3">
                   <div className="flex items-center gap-2 flex-wrap">
+                    <Monitor className="w-5 h-5 text-blue-500 shrink-0" />
                     <span className="font-medium">{d.terminalName}</span>
-                    <Badge variant="outline" className="text-xs">
-                      {d.role}
-                    </Badge>
+                    {d.storeName && (
+                      <span className="text-xs text-gray-500">
+                        {d.storeName}
+                        {d.storeCode ? ` (${d.storeCode})` : ''}
+                      </span>
+                    )}
                     <Badge className="text-xs bg-amber-500">Onay bekliyor</Badge>
                   </div>
-                  <div className="text-xs text-gray-500 mt-1 space-y-0.5">
-                    <div className="font-mono truncate" title={d.deviceId}>
-                      ID: {d.deviceId.slice(0, 24)}
-                      {d.deviceId.length > 24 ? '…' : ''}
-                    </div>
-                    {d.storeName && (
-                      <div>
-                        Mağaza: {d.storeName}
-                        {d.storeCode ? ` (${d.storeCode})` : ''}
-                      </div>
-                    )}
-                    {d.osUser && <div>Kullanıcı: {d.osUser}</div>}
-                    <div>Kayıt: {fmt(d.registeredAt)} · v{d.appVersion || '?'}</div>
+                  <div className="flex gap-2 shrink-0">
+                    <Button
+                      size="sm"
+                      disabled={busyId === d.id}
+                      onClick={() => void handleApprove(d.id)}
+                      className="gap-1 bg-green-600 hover:bg-green-700"
+                    >
+                      <CheckCircle className="w-3.5 h-3.5" />
+                      Onayla
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      disabled={busyId === d.id}
+                      onClick={() => void handleReject(d.id)}
+                      className="gap-1"
+                    >
+                      <XCircle className="w-3.5 h-3.5" />
+                      Reddet
+                    </Button>
                   </div>
                 </div>
+                <div className="text-xs text-gray-500 mt-2">
+                  Kayıt: {fmt(d.registeredAt)}
+                  {d.lastSeenAt ? ` · Son görülme: ${fmt(d.lastSeenAt)}` : ''}
+                </div>
               </div>
-              <div className="flex gap-2 shrink-0">
-                <Button
-                  size="sm"
-                  disabled={busyId === d.id}
-                  onClick={() => void handleApprove(d.id)}
-                  className="gap-1 bg-green-600 hover:bg-green-700"
-                >
-                  <CheckCircle className="w-3.5 h-3.5" />
-                  Onayla
-                </Button>
-                <Button
-                  size="sm"
-                  variant="destructive"
-                  disabled={busyId === d.id}
-                  onClick={() => void handleReject(d.id)}
-                  className="gap-1"
-                >
-                  <XCircle className="w-3.5 h-3.5" />
-                  Reddet
-                </Button>
+              <div className="p-3">
+                <DeviceRegistrationInfoCard registration={d} darkMode={darkMode} compact />
               </div>
             </div>
           ))}

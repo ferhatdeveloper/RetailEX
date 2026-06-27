@@ -11,6 +11,27 @@ import { DB_SETTINGS, ERP_SETTINGS, LOCAL_CONFIG, postgres } from './postgres';
 
 export type PosTerminalStatus = 'pending' | 'approved' | 'rejected' | 'blocked' | 'not_registered';
 
+/** Tauri get_device_info + config birleşimi (ilsasupport destek paneli benzeri) */
+export type DesktopDeviceInfo = {
+  deviceId: string;
+  terminalName: string;
+  firmNr: string;
+  role: string;
+  storeId?: string | null;
+  computerName?: string;
+  hostname?: string;
+  osUser?: string;
+  osPlatform?: string;
+  osArch?: string;
+  osVersion?: string;
+  appVersion?: string;
+  localIp?: string;
+  timezone?: string;
+  locale?: string;
+  cpuCores?: number;
+  collectedAt?: string;
+};
+
 export type PosTerminalRegistration = {
   id: string;
   deviceId: string;
@@ -24,6 +45,14 @@ export type PosTerminalRegistration = {
   hostname?: string;
   osUser?: string;
   appVersion?: string;
+  computerName?: string;
+  osPlatform?: string;
+  osArch?: string;
+  osVersion?: string;
+  localIp?: string;
+  timezone?: string;
+  locale?: string;
+  metadata?: Record<string, unknown>;
   registeredAt: number;
   lastSeenAt?: number;
   rejectedReason?: string;
@@ -56,31 +85,149 @@ async function rpcCall<T>(fn: string, body: Record<string, unknown>): Promise<T>
   return (result.rows[0] ?? {}) as T;
 }
 
-export async function resolveDesktopDeviceId(): Promise<string> {
+function deviceInfoToMetadata(info: DesktopDeviceInfo): Record<string, unknown> {
+  return {
+    device_id: info.deviceId,
+    terminal_name: info.terminalName,
+    firm_nr: info.firmNr,
+    role: info.role,
+    store_id: info.storeId ?? null,
+    computer_name: info.computerName ?? info.hostname ?? null,
+    hostname: info.hostname ?? info.computerName ?? null,
+    os_user: info.osUser ?? null,
+    os_platform: info.osPlatform ?? null,
+    os_arch: info.osArch ?? null,
+    os_version: info.osVersion ?? null,
+    app_version: info.appVersion ?? APP_SEMVER,
+    local_ip: info.localIp ?? null,
+    timezone: info.timezone ?? null,
+    locale: info.locale ?? null,
+    cpu_cores: info.cpuCores ?? null,
+    collected_at: info.collectedAt ?? new Date().toISOString(),
+  };
+}
+
+function mapRegistrationRow(row: Record<string, unknown>): PosTerminalRegistration {
+  const meta =
+    row.metadata && typeof row.metadata === 'object'
+      ? (row.metadata as Record<string, unknown>)
+      : undefined;
+
+  return {
+    id: String(row.id),
+    deviceId: String(row.device_id),
+    terminalName: String(row.terminal_name),
+    storeId: row.store_id ? String(row.store_id) : undefined,
+    storeName: row.store_name ? String(row.store_name) : undefined,
+    storeCode: row.store_code ? String(row.store_code) : undefined,
+    firmNr: String(row.firm_nr),
+    status: String(row.status) as PosTerminalStatus,
+    role: String(row.role || 'client'),
+    hostname: row.hostname ? String(row.hostname) : undefined,
+    osUser: row.os_user ? String(row.os_user) : undefined,
+    appVersion: row.app_version ? String(row.app_version) : undefined,
+    computerName: row.computer_name ? String(row.computer_name) : undefined,
+    osPlatform: row.os_platform ? String(row.os_platform) : undefined,
+    osArch: row.os_arch ? String(row.os_arch) : undefined,
+    osVersion: row.os_version ? String(row.os_version) : undefined,
+    localIp: row.local_ip ? String(row.local_ip) : undefined,
+    timezone: row.timezone ? String(row.timezone) : undefined,
+    locale: row.locale ? String(row.locale) : undefined,
+    metadata: meta,
+    registeredAt: row.registered_at ? new Date(String(row.registered_at)).getTime() : Date.now(),
+    lastSeenAt: row.last_seen_at ? new Date(String(row.last_seen_at)).getTime() : undefined,
+    rejectedReason: row.rejected_reason ? String(row.rejected_reason) : undefined,
+  };
+}
+
+/** Masaüstünde donanım/OS profilini topla (Tauri get_device_info) */
+export async function collectDesktopDeviceMetadata(): Promise<DesktopDeviceInfo> {
+  const firm = firmPadded();
+  let deviceId = await postgres.getDeviceId();
+  let terminalName = deviceId;
+  let storeId: string | null = null;
+  let role = 'client';
+
   if (IS_TAURI) {
     try {
       const { invoke } = await import('@tauri-apps/api/core');
-      const cfg: { device_id?: string; terminal_name?: string } = await invoke('get_app_config');
-      if (cfg.device_id?.trim()) return cfg.device_id.trim();
-      if (cfg.terminal_name?.trim()) return cfg.terminal_name.trim();
+      const cfg: {
+        device_id?: string;
+        terminal_name?: string;
+        store_id?: string;
+        role?: string;
+        firm_nr?: string;
+      } = await invoke('get_app_config');
+
+      if (cfg.device_id?.trim()) deviceId = cfg.device_id.trim();
+      terminalName = cfg.terminal_name?.trim() || deviceId;
+      storeId = cfg.store_id?.trim() || null;
+      role = String(cfg.role || 'client').toLowerCase();
+
+      try {
+        const hw = await invoke<{
+          device_id?: string;
+          computer_name?: string;
+          os_user?: string;
+          os_platform?: string;
+          os_arch?: string;
+          os_version?: string;
+          app_version?: string;
+          local_ip?: string | null;
+          timezone?: string;
+          locale?: string;
+          cpu_cores?: number | null;
+          collected_at?: string;
+        }>('get_device_info');
+
+        return {
+          deviceId: hw.device_id?.trim() || deviceId,
+          terminalName,
+          firmNr: String(cfg.firm_nr || firm)
+            .replace(/\D/g, '')
+            .padStart(3, '0'),
+          role,
+          storeId,
+          computerName: hw.computer_name,
+          hostname: hw.computer_name,
+          osUser: hw.os_user,
+          osPlatform: hw.os_platform,
+          osArch: hw.os_arch,
+          osVersion: hw.os_version,
+          appVersion: hw.app_version || APP_SEMVER,
+          localIp: hw.local_ip ?? undefined,
+          timezone: hw.timezone,
+          locale: hw.locale,
+          cpuCores: hw.cpu_cores ?? undefined,
+          collectedAt: hw.collected_at || new Date().toISOString(),
+        };
+      } catch {
+        /* get_device_info yok — config ile devam */
+      }
     } catch {
-      /* fallback */
+      /* config okunamadı */
     }
   }
-  return postgres.getDeviceId();
+
+  return {
+    deviceId,
+    terminalName,
+    firmNr: firm,
+    role,
+    storeId,
+    appVersion: APP_SEMVER,
+    collectedAt: new Date().toISOString(),
+  };
+}
+
+export async function resolveDesktopDeviceId(): Promise<string> {
+  const info = await collectDesktopDeviceMetadata();
+  return info.deviceId;
 }
 
 export async function resolveDesktopRole(): Promise<string> {
-  if (IS_TAURI) {
-    try {
-      const { invoke } = await import('@tauri-apps/api/core');
-      const cfg: { role?: string } = await invoke('get_app_config');
-      return String(cfg.role || 'client').toLowerCase();
-    } catch {
-      return 'client';
-    }
-  }
-  return 'client';
+  const info = await collectDesktopDeviceMetadata();
+  return info.role;
 }
 
 /** Kurulum / kayıt: merkez PG veya PostgREST üzerinden pending kayıt */
@@ -92,12 +239,28 @@ export async function registerDesktopTerminal(opts: {
   role?: string;
   hostname?: string;
   osUser?: string;
+  deviceInfo?: DesktopDeviceInfo;
 }): Promise<{ ok: boolean; status: PosTerminalStatus; message: string }> {
   const firm = String(opts.firmNr || firmPadded())
     .replace(/\D/g, '')
     .padStart(3, '0');
   const storeId =
     opts.storeId && opts.storeId !== 'all' && opts.storeId !== '001' ? opts.storeId : null;
+
+  const info: DesktopDeviceInfo = opts.deviceInfo ?? {
+    deviceId: opts.deviceId,
+    terminalName: opts.terminalName || opts.deviceId,
+    firmNr: firm,
+    role: opts.role || 'client',
+    storeId,
+    hostname: opts.hostname,
+    computerName: opts.hostname,
+    osUser: opts.osUser,
+    appVersion: APP_SEMVER,
+    collectedAt: new Date().toISOString(),
+  };
+
+  const metadata = deviceInfoToMetadata(info);
 
   try {
     const row = await rpcCall<{
@@ -109,10 +272,11 @@ export async function registerDesktopTerminal(opts: {
       p_terminal_name: opts.terminalName || opts.deviceId,
       p_store_id: storeId,
       p_firm_nr: firm,
-      p_role: opts.role || 'client',
-      p_hostname: opts.hostname || null,
-      p_os_user: opts.osUser || null,
-      p_app_version: APP_SEMVER,
+      p_role: opts.role || info.role || 'client',
+      p_hostname: opts.hostname || info.computerName || info.hostname || null,
+      p_os_user: opts.osUser || info.osUser || null,
+      p_app_version: info.appVersion || APP_SEMVER,
+      p_metadata: metadata,
     });
 
     const status = (row.out_status || 'pending') as PosTerminalStatus;
@@ -159,58 +323,50 @@ export async function assertDesktopTerminalApproved(): Promise<{
   allowed: boolean;
   status: PosTerminalStatus;
   message: string;
+  deviceInfo?: DesktopDeviceInfo;
 }> {
   if (!IS_TAURI) {
     return { allowed: true, status: 'approved', message: 'Web oturumu — cihaz onayı gerekmez.' };
   }
 
-  const role = await resolveDesktopRole();
+  const deviceInfo = await collectDesktopDeviceMetadata();
+  const role = deviceInfo.role;
+
   if (role === 'center' || role === 'server') {
-    return { allowed: true, status: 'approved', message: 'Merkez sunucu — cihaz onayı atlandı.' };
+    return {
+      allowed: true,
+      status: 'approved',
+      message: 'Merkez sunucu — cihaz onayı atlandı.',
+      deviceInfo,
+    };
   }
 
-  const deviceId = await resolveDesktopDeviceId();
+  const deviceId = deviceInfo.deviceId;
   let check = await getDesktopTerminalStatus(deviceId);
 
-  if (check.status === 'not_registered') {
-    let terminalName = deviceId;
-    let storeId: string | null = null;
-    let hostname: string | undefined;
-    let osUser: string | undefined;
-    let cfgRole = role;
-    try {
-      const { invoke } = await import('@tauri-apps/api/core');
-      const cfg: {
-        terminal_name?: string;
-        store_id?: string;
-        role?: string;
-      } = await invoke('get_app_config');
-      terminalName = cfg.terminal_name?.trim() || deviceId;
-      storeId = cfg.store_id?.trim() || null;
-      cfgRole = cfg.role || role;
-      try {
-        hostname = await invoke<string>('get_system_id');
-        osUser = await invoke<string>('get_os_username');
-      } catch {
-        /* optional */
-      }
-    } catch {
-      /* config okunamadı */
-    }
-
+  const registerOrRefresh = async () => {
     const reg = await registerDesktopTerminal({
       deviceId,
-      terminalName,
-      storeId,
-      role: cfgRole,
-      hostname,
-      osUser,
+      terminalName: deviceInfo.terminalName,
+      storeId: deviceInfo.storeId,
+      firmNr: deviceInfo.firmNr,
+      role: deviceInfo.role,
+      hostname: deviceInfo.computerName || deviceInfo.hostname,
+      osUser: deviceInfo.osUser,
+      deviceInfo,
     });
-    check = { status: reg.status, message: reg.message, terminalName };
+    return { status: reg.status, message: reg.message, terminalName: deviceInfo.terminalName };
+  };
+
+  if (check.status === 'not_registered') {
+    check = await registerOrRefresh();
+  } else if (check.status === 'pending') {
+    // Heartbeat: cihaz bilgilerini güncelle, last_seen yenile
+    check = await registerOrRefresh();
   }
 
   if (check.status === 'approved') {
-    return { allowed: true, status: 'approved', message: check.message };
+    return { allowed: true, status: 'approved', message: check.message, deviceInfo };
   }
 
   const messages: Record<string, string> = {
@@ -225,6 +381,7 @@ export async function assertDesktopTerminalApproved(): Promise<{
     allowed: false,
     status: check.status,
     message: messages[check.status] || check.message,
+    deviceInfo,
   };
 }
 
@@ -249,6 +406,8 @@ export async function listPosTerminalRegistrations(opts?: {
     SELECT r.id::text, r.device_id, r.terminal_name, r.store_id::text,
            s.name AS store_name, s.code AS store_code,
            r.firm_nr, r.status, r.role, r.hostname, r.os_user, r.app_version,
+           r.computer_name, r.os_platform, r.os_arch, r.os_version,
+           r.local_ip, r.timezone, r.locale, r.metadata,
            r.registered_at, r.last_seen_at, r.rejected_reason
     FROM pos_terminal_registrations r
     LEFT JOIN stores s ON s.id = r.store_id
@@ -261,50 +420,20 @@ export async function listPosTerminalRegistrations(opts?: {
 
   try {
     const result = await postgres.query(sql, params);
-    return result.rows.map((row: Record<string, unknown>) => ({
-      id: String(row.id),
-      deviceId: String(row.device_id),
-      terminalName: String(row.terminal_name),
-      storeId: row.store_id ? String(row.store_id) : undefined,
-      storeName: row.store_name ? String(row.store_name) : undefined,
-      storeCode: row.store_code ? String(row.store_code) : undefined,
-      firmNr: String(row.firm_nr),
-      status: String(row.status) as PosTerminalStatus,
-      role: String(row.role || 'client'),
-      hostname: row.hostname ? String(row.hostname) : undefined,
-      osUser: row.os_user ? String(row.os_user) : undefined,
-      appVersion: row.app_version ? String(row.app_version) : undefined,
-      registeredAt: row.registered_at ? new Date(String(row.registered_at)).getTime() : Date.now(),
-      lastSeenAt: row.last_seen_at ? new Date(String(row.last_seen_at)).getTime() : undefined,
-      rejectedReason: row.rejected_reason ? String(row.rejected_reason) : undefined,
-    }));
+    return result.rows.map((row: Record<string, unknown>) => mapRegistrationRow(row));
   } catch {
     if (useRemotePostgrest()) {
       try {
         const q: Record<string, string> = {
           select:
-            'id,device_id,terminal_name,store_id,firm_nr,status,role,hostname,os_user,app_version,registered_at,last_seen_at,rejected_reason',
+            'id,device_id,terminal_name,store_id,firm_nr,status,role,hostname,os_user,app_version,computer_name,os_platform,os_arch,os_version,local_ip,timezone,locale,metadata,registered_at,last_seen_at,rejected_reason',
           firm_nr: `eq.${firm}`,
           order: 'registered_at.desc',
           limit: String(limit),
         };
         if (opts?.status && opts.status !== 'all') q.status = `eq.${opts.status}`;
         const rows = await postgrest.get<Record<string, unknown>[]>('/pos_terminal_registrations', q);
-        return (rows || []).map((r) => ({
-          id: String(r.id),
-          deviceId: String(r.device_id),
-          terminalName: String(r.terminal_name),
-          storeId: r.store_id ? String(r.store_id) : undefined,
-          firmNr: String(r.firm_nr),
-          status: String(r.status) as PosTerminalStatus,
-          role: String(r.role || 'client'),
-          hostname: r.hostname ? String(r.hostname) : undefined,
-          osUser: r.os_user ? String(r.os_user) : undefined,
-          appVersion: r.app_version ? String(r.app_version) : undefined,
-          registeredAt: r.registered_at ? new Date(String(r.registered_at)).getTime() : Date.now(),
-          lastSeenAt: r.last_seen_at ? new Date(String(r.last_seen_at)).getTime() : undefined,
-          rejectedReason: r.rejected_reason ? String(r.rejected_reason) : undefined,
-        }));
+        return (rows || []).map((r) => mapRegistrationRow(r));
       } catch {
         return [];
       }

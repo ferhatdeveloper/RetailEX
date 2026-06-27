@@ -594,6 +594,68 @@ fn get_os_username() -> String {
 }
 
 #[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeviceInfoPayload {
+    pub device_id: String,
+    pub computer_name: String,
+    pub os_user: String,
+    pub os_platform: String,
+    pub os_arch: String,
+    pub os_version: String,
+    pub app_version: String,
+    pub local_ip: Option<String>,
+    pub timezone: String,
+    pub locale: String,
+    pub cpu_cores: Option<u32>,
+    pub collected_at: String,
+}
+
+fn detect_local_ip() -> Option<String> {
+    use std::net::UdpSocket;
+    let socket = UdpSocket::bind("0.0.0.0:0").ok()?;
+    socket.connect("8.8.8.8:80").ok()?;
+    socket.local_addr().ok().map(|a| a.ip().to_string())
+}
+
+fn detect_os_version() -> String {
+    #[cfg(target_os = "windows")]
+    {
+        std::env::var("OS").unwrap_or_else(|_| "Windows".to_string())
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        std::env::consts::OS.to_string()
+    }
+}
+
+#[tauri::command]
+fn get_device_info() -> DeviceInfoPayload {
+    let device_id = machine_uid::get().unwrap_or_else(|_| "UNKNOWN-HWID".to_string());
+    let computer_name = std::env::var("COMPUTERNAME")
+        .or_else(|_| std::env::var("HOSTNAME"))
+        .unwrap_or_else(|_| "UNKNOWN-PC".to_string());
+    let os_user = get_os_username();
+    let cpu_cores = std::thread::available_parallelism().ok().map(|n| n.get() as u32);
+
+    DeviceInfoPayload {
+        device_id,
+        computer_name: computer_name.clone(),
+        os_user,
+        os_platform: std::env::consts::OS.to_string(),
+        os_arch: std::env::consts::ARCH.to_string(),
+        os_version: detect_os_version(),
+        app_version: env!("CARGO_PKG_VERSION").to_string(),
+        local_ip: detect_local_ip(),
+        timezone: std::env::var("TZ").unwrap_or_else(|_| "local".to_string()),
+        locale: std::env::var("LANG")
+            .or_else(|_| std::env::var("LC_ALL"))
+            .unwrap_or_else(|_| "tr-TR".to_string()),
+        cpu_cores,
+        collected_at: chrono::Utc::now().to_rfc3339(),
+    }
+}
+
+#[derive(serde::Serialize)]
 struct TableSchema {
     table_ddl: String,
     type_ddls: Vec<String>,
@@ -1951,7 +2013,7 @@ fn main() {
         Ok(())
     })
     .invoke_handler(tauri::generate_handler![
-        check_pg16, install_pg16, get_system_id, get_os_username,
+        check_pg16, install_pg16, get_system_id, get_os_username, get_device_info,
         list_supabase_projects, get_supabase_tables, execute_supabase_sql, get_supabase_table_ddl, get_supabase_table_schema,
         get_supabase_functions, get_supabase_views, get_supabase_triggers, get_supabase_policies,
         dump_supabase_to_sql, pg_execute_file,
