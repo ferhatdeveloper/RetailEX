@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ArrowDownToLine, ArrowUpFromLine, Loader2 } from 'lucide-react';
+import { ArrowDownToLine, ArrowUpFromLine, CheckCircle2, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../../contexts/AuthContext';
 import {
@@ -14,6 +14,11 @@ import {
   pullInboundMasterNow,
   resolveKasaPullContext,
 } from '../../services/mposKasaAutoPullService';
+import {
+  getLastKasaDataArrival,
+  subscribeKasaDataArrival,
+  type KasaDataArrivalState,
+} from '../../services/kasaDataArrivalNotify';
 import { cn } from '../ui/utils';
 
 type Props = {
@@ -28,6 +33,11 @@ export function HybridSyncToolbarButtons({ compact = false }: Props) {
   const [pending, setPending] = useState(0);
   const [inboundPending, setInboundPending] = useState(0);
   const [isKasa, setIsKasa] = useState(false);
+  const [lastArrival, setLastArrival] = useState<KasaDataArrivalState | null>(() =>
+    getLastKasaDataArrival(),
+  );
+
+  useEffect(() => subscribeKasaDataArrival(setLastArrival), []);
 
   const refreshPending = useCallback(async () => {
     if (!isHybrid) return;
@@ -71,13 +81,11 @@ export function HybridSyncToolbarButtons({ compact = false }: Props) {
       const kasaCtx = await resolveKasaPullContext(user?.store_id || null);
 
       if (flow === 'receive' && kasaCtx) {
-        const result = await pullInboundMasterNow(kasaCtx);
+        const result = await pullInboundMasterNow(kasaCtx, { notifySource: 'manual' });
         if (result.failed > 0 && result.synced === 0) {
-          toast.error(result.message || 'Kasa alımı başarısız.');
-        } else if (result.synced > 0) {
-          toast.success(`${result.synced} kayıt kasaya alındı.`);
-        } else {
-          toast.info('Merkezden bekleyen kasa verisi yok.');
+          /* notify pullInboundMasterNow içinde */
+        } else if (result.synced === 0 && result.failed === 0) {
+          toast.info('Merkezden bekleyen kasa verisi yok.', { position: 'bottom-center' });
         }
         setInboundPending(result.pending_inbound);
         await refreshPending();
@@ -130,6 +138,18 @@ export function HybridSyncToolbarButtons({ compact = false }: Props) {
 
   return (
     <div className={cn('flex items-center shrink-0', compact ? 'gap-0.5' : 'gap-1')}>
+      {isKasa && lastArrival && lastArrival.synced > 0 && (
+        <span
+          className={cn(
+            'inline-flex items-center gap-1 rounded-full border border-emerald-400/40 bg-emerald-500/20 text-emerald-100 font-bold uppercase tracking-wide',
+            compact ? 'px-1.5 py-0.5 text-[8px]' : 'px-2 py-0.5 text-[9px]',
+          )}
+          title={`Son alım: ${new Date(lastArrival.at).toLocaleString('tr-TR')} · ${lastArrival.synced} kayıt`}
+        >
+          <CheckCircle2 className={compact ? 'h-3 w-3' : 'h-3.5 w-3.5'} />
+          <span className={compact ? 'hidden sm:inline' : ''}>Veri alındı</span>
+        </span>
+      )}
       <button
         type="button"
         title="Yerelden merkeze gönder"

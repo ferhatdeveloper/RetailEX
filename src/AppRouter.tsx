@@ -11,6 +11,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AntDesignThemeProvider } from './theme/AntDesignThemeProvider';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { ThemeSyncToaster } from './components/system/ThemeSyncToaster';
+import { KasaDataArrivalBridge } from './components/system/KasaDataArrivalBridge';
 import { ThemeAwarePageShell } from './components/system/ThemeAwarePageShell';
 import { LanguageProvider } from './contexts/LanguageContext';
 import { AuthProvider } from './contexts/AuthContext';
@@ -47,6 +48,7 @@ export function AppRouter() {
           */}
           <AuthProvider>
             <ThemeSyncToaster />
+            <KasaDataArrivalBridge />
             <Router>
               <AntDesignThemeProvider>
                 <Routes>

@@ -72,11 +72,12 @@ impl BackgroundSyncService {
 
         // 1. Data Sync Loop (Push to Center)
         let sync_token = token.clone();
+        let sync_app = app_handle.clone();
         tauri::async_runtime::spawn(async move {
             loop {
                 if sync_token.is_cancelled() { break; }
 
-                if let Err(e) = process_sync_queue_internal().await {
+                if let Err(e) = process_sync_queue_internal(sync_app.clone()).await {
                    eprintln!("Sync Queue Error: {}", e);
                 }
                 let interval_secs = crate::config::get_app_config_internal()
@@ -109,7 +110,28 @@ impl BackgroundSyncService {
 }
 
 async fn process_sync_queue(_app: &tauri::AppHandle) -> Result<(), String> {
-    process_sync_queue_internal().await
+    process_sync_queue_internal(Some(_app.clone())).await
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+struct KasaDataArrivedPayload {
+    synced: i32,
+    failed: i32,
+    at: String,
+}
+
+fn emit_kasa_data_arrived(app: &Option<tauri::AppHandle>, synced: i32, failed: i32) {
+    if synced <= 0 {
+        return;
+    }
+    if let Some(h) = app {
+        let payload = KasaDataArrivedPayload {
+            synced,
+            failed,
+            at: chrono::Utc::now().to_rfc3339(),
+        };
+        let _ = h.emit("kasa-data-arrived", payload);
+    }
 }
 
 fn parse_pg_endpoint(db_str: &str) -> (String, u16, String) {
@@ -734,10 +756,10 @@ async fn sync_postgrest_to_pg(
     Ok((total_synced, total_failed))
 }
 
-async fn process_sync_queue_rest_api(config: &crate::config::AppConfig) -> Result<(), String> {
+async fn process_sync_queue_rest_api(config: &crate::config::AppConfig) -> Result<i32, String> {
     let rest_base = config.remote_rest_url.trim();
     if rest_base.is_empty() {
-        return Ok(());
+        return Ok(0);
     }
 
     let (local_host, local_port, local_db) = parse_pg_endpoint(&config.local_db);
@@ -761,6 +783,7 @@ async fn process_sync_queue_rest_api(config: &crate::config::AppConfig) -> Resul
     let term = terminal_opt(config);
     let term_ref = term.as_deref();
     let mut total = 0i32;
+    let mut inbound_synced = 0i32;
 
     if direction == "local_to_remote" || direction == "bidirectional" {
         let outbound_store = if config.store_id.trim().is_empty() {
@@ -781,6 +804,7 @@ async fn process_sync_queue_rest_api(config: &crate::config::AppConfig) -> Resul
             term_ref,
         )
         .await?;
+        inbound_synced = s;
         total += s;
     }
 
@@ -794,10 +818,10 @@ async fn process_sync_queue_rest_api(config: &crate::config::AppConfig) -> Resul
         );
     }
 
-    Ok(())
+    Ok(inbound_synced)
 }
 
-pub async fn process_sync_queue_internal() -> Result<(), String> {
+pub async fn process_sync_queue_internal(app: Option<tauri::AppHandle>) -> Result<(), String> {
     let _sync_guard = match try_acquire_hybrid_sync().await {
         Some(g) => g,
         None => {
@@ -817,13 +841,19 @@ pub async fn process_sync_queue_internal() -> Result<(), String> {
         return Ok(());
     }
 
+    let mut inbound_synced = 0i32;
+
     if config.connection_provider == "rest_api" {
-        return process_sync_queue_rest_api(&config).await;
+        inbound_synced = process_sync_queue_rest_api(&config).await?;
+        emit_kasa_data_arrived(&app, inbound_synced, 0);
+        return Ok(());
     }
 
     // Hibrit masaüstü: merkez uç PostgREST (remote_rest_url); doğrudan remote_db PG genelde erişilemez.
     if !config.remote_rest_url.trim().is_empty() {
-        return process_sync_queue_rest_api(&config).await;
+        inbound_synced = process_sync_queue_rest_api(&config).await?;
+        emit_kasa_data_arrived(&app, inbound_synced, 0);
+        return Ok(());
     }
 
     let (local_host, local_port, local_db) = parse_pg_endpoint(&config.local_db);
@@ -879,6 +909,7 @@ pub async fn process_sync_queue_internal() -> Result<(), String> {
             term_ref,
         )
         .await?;
+        inbound_synced = s;
         total += s;
     }
 
@@ -891,6 +922,7 @@ pub async fn process_sync_queue_internal() -> Result<(), String> {
         );
     }
 
+    emit_kasa_data_arrived(&app, inbound_synced, 0);
     Ok(())
 }
 
@@ -1230,8 +1262,9 @@ async fn start_websocket_listener(
                                             },
                                             "SYNC_QUEUE_PULL" | "MPOS_SYNC_PULL" => {
                                                 println!("📥 Merkez anlık senkron tetikledi (WS)...");
-                                                tauri::async_runtime::spawn(async {
-                                                    if let Err(e) = process_sync_queue_internal().await {
+                                                let ws_app = app.clone();
+                                                tauri::async_runtime::spawn(async move {
+                                                    if let Err(e) = process_sync_queue_internal(ws_app).await {
                                                         eprintln!("WS sync queue error: {}", e);
                                                     }
                                                 });

@@ -26,6 +26,11 @@ import {
   TERMINAL_RUNTIME,
   type TerminalRuntime,
 } from './terminalRuntimeService';
+import {
+  notifyKasaDataArrivalFailed,
+  notifyKasaDataArrived,
+  type KasaDataArrivalSource,
+} from './kasaDataArrivalNotify';
 
 export type KasaPullContext = {
   storeId: string;
@@ -89,6 +94,7 @@ export async function countInboundMasterPending(ctx: KasaPullContext): Promise<n
 
 export async function pullInboundMasterNow(
   ctx?: KasaPullContext | null,
+  opts?: { notifySource?: KasaDataArrivalSource; silent?: boolean },
 ): Promise<MposPullResult> {
   const resolved = ctx ?? (await resolveKasaPullContext());
   if (!resolved) {
@@ -99,11 +105,23 @@ export async function pullInboundMasterNow(
     const r = await safeInvoke<{ synced: number; failed: number; pending_inbound: number }>(
       'mpos_pull_master_now',
     );
-    return {
+    const out: MposPullResult = {
       synced: Number(r?.synced ?? 0),
       failed: Number(r?.failed ?? 0),
       pending_inbound: Number(r?.pending_inbound ?? 0),
     };
+    if (!opts?.silent) {
+      if (out.synced > 0) {
+        notifyKasaDataArrived({
+          synced: out.synced,
+          failed: out.failed,
+          source: opts?.notifySource ?? 'manual',
+        });
+      } else if (out.failed > 0) {
+        notifyKasaDataArrivalFailed('Kasa veri alımı başarısız.');
+      }
+    }
+    return out;
   }
 
   const result: HybridSyncResult = await runHybridSync({
@@ -124,12 +142,26 @@ export async function pullInboundMasterNow(
     pending = -1;
   }
 
-  return {
+  const out: MposPullResult = {
     synced: result.totalSynced,
     failed: result.failed,
     pending_inbound: pending,
     message: result.message,
   };
+
+  if (!opts?.silent) {
+    if (out.synced > 0) {
+      notifyKasaDataArrived({
+        synced: out.synced,
+        failed: out.failed,
+        source: opts?.notifySource ?? 'manual',
+      });
+    } else if (out.failed > 0) {
+      notifyKasaDataArrivalFailed(out.message || 'Kasa veri alımı başarısız.');
+    }
+  }
+
+  return out;
 }
 
 export type KasaAutoPullState = {
@@ -190,7 +222,7 @@ export function startUnifiedHybridAutoSync(opts?: {
           connectionProvider: resolveHybridSyncConnectionProvider(),
           remoteRestUrl: DB_SETTINGS.remoteRestUrl,
         });
-        await pullInboundMasterNow(ctx);
+        await pullInboundMasterNow(ctx, { notifySource: 'auto' });
         lastPullAt = new Date().toISOString();
       } else if (!isKasaTerminalRuntime()) {
         const dir = DB_SETTINGS.hybridSyncDirection;
@@ -280,5 +312,5 @@ export async function triggerInstantKasaPull(fallbackStoreId?: string | null): P
     connectionProvider: resolveHybridSyncConnectionProvider(),
     remoteRestUrl: DB_SETTINGS.remoteRestUrl,
   });
-  return pullInboundMasterNow(ctx);
+  return pullInboundMasterNow(ctx, { notifySource: 'instant' });
 }
