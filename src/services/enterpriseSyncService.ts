@@ -1,0 +1,425 @@
+/**
+ * Merkezi veri yönetimi ↔ PostgreSQL sync_queue + hibrit senkron köprüsü.
+ * MPOS Kalem benzeri: merkezden şubelere gönder (master data), şubelerden merkeze al (satış/hareket).
+ */
+
+import {
+  DB_SETTINGS,
+  ERP_SETTINGS,
+  LOCAL_CONFIG,
+  REMOTE_CONFIG,
+  resolveHybridSyncConnectionProvider,
+} from './postgres';
+import {
+  prepareLocalSyncQueue,
+  queryPgRows,
+  runHybridSync,
+  type PgEndpointConfig,
+} from './hybridSyncEngine';
+
+export type EnterpriseSyncDevice = {
+  deviceId: string;
+  deviceName: string;
+  storeId?: string;
+  storeName?: string;
+  isOnline: boolean;
+  lastSeen: number;
+  pendingMessages: number;
+};
+
+export type EnterpriseSyncMessage = {
+  id: string;
+  type: string;
+  action: string;
+  status: 'pending' | 'completed' | 'failed' | 'processing';
+  tableName: string;
+  recordId: string;
+  createdAt: number;
+  syncedAt?: number;
+  errorMessage?: string;
+  data?: Record<string, unknown>;
+  firmNr: string;
+  targetDevices: string[];
+};
+
+export type EnterpriseSyncStats = {
+  totalDevices: number;
+  onlineDevices: number;
+  pendingBroadcasts: number;
+  deliveredBroadcasts: number;
+  failedBroadcasts: number;
+  successRate: number;
+  last24hBroadcasts: number;
+  last24hSuccess: number;
+  last24hFailed: number;
+  totalDataTransferred: number;
+  scheduledBroadcasts: number;
+};
+
+function firmNrPadded(): string {
+  return String(ERP_SETTINGS.firmNr || '001')
+    .replace(/\D/g, '')
+    .padStart(3, '0');
+}
+
+/** Senkron kuyruğunun yazılacağı PG uç noktası */
+export function resolveSyncPgEndpoint(): PgEndpointConfig {
+  if (DB_SETTINGS.activeMode === 'hybrid') return LOCAL_CONFIG;
+  if (DB_SETTINGS.activeMode === 'online') {
+    return REMOTE_CONFIG.isConfigured ? REMOTE_CONFIG : LOCAL_CONFIG;
+  }
+  return LOCAL_CONFIG;
+}
+
+function tableForBroadcastType(type: string): string | null {
+  const f = firmNrPadded();
+  switch (type) {
+    case 'product':
+    case 'price':
+    case 'inventory':
+      return `rex_${f}_products`;
+    case 'customer':
+      return `rex_${f}_customers`;
+    case 'campaign':
+      return `rex_${f}_campaigns`;
+    default:
+      return null;
+  }
+}
+
+function inferTypeFromTable(tableName: string): string {
+  if (tableName.includes('_products')) return 'product';
+  if (tableName.includes('_customers')) return 'customer';
+  if (tableName.includes('_suppliers')) return 'customer';
+  if (tableName.includes('_campaigns')) return 'campaign';
+  if (tableName.includes('_sales')) return 'sale';
+  return 'custom';
+}
+
+function mapSyncAction(action: string): string {
+  const a = action.toUpperCase();
+  if (a === 'INSERT' || a === 'CREATE') return 'create';
+  if (a === 'DELETE') return 'delete';
+  if (a === 'UPDATE') return 'update';
+  return 'sync';
+}
+
+export async function loadEnterpriseDevices(): Promise<EnterpriseSyncDevice[]> {
+  const pg = resolveSyncPgEndpoint();
+  const firm = firmNrPadded();
+
+  try {
+    const rows = await queryPgRows(
+      pg,
+      `SELECT s.id::text AS store_id, s.code, s.name,
+              COALESCE(p.cnt, 0)::text AS pending
+       FROM stores s
+       LEFT JOIN (
+         SELECT target_store_id::text AS sid, COUNT(*) AS cnt
+         FROM sync_queue
+         WHERE status = 'pending' AND target_store_id IS NOT NULL
+         GROUP BY target_store_id
+       ) p ON p.sid = s.id::text
+       WHERE s.firm_nr = $1 AND COALESCE(s.is_active, true) = true
+       ORDER BY s.name`,
+      [firm],
+    );
+
+    if (rows.length > 0) {
+      return rows.map((r: Record<string, unknown>) => ({
+        deviceId: String(r.store_id),
+        deviceName: `${r.name} (${r.code})`,
+        storeId: String(r.store_id),
+        storeName: String(r.name ?? ''),
+        isOnline: true,
+        lastSeen: Date.now(),
+        pendingMessages: Number(r.pending ?? 0),
+      }));
+    }
+  } catch {
+    /* stores yok */
+  }
+
+  return [
+    {
+      deviceId: 'all',
+      deviceName: 'Tüm şubeler',
+      isOnline: true,
+      lastSeen: Date.now(),
+      pendingMessages: 0,
+    },
+  ];
+}
+
+export async function getEnterpriseSyncStats(): Promise<EnterpriseSyncStats> {
+  const pg = resolveSyncPgEndpoint();
+  const firm = firmNrPadded();
+
+  let pending = 0;
+  let completed = 0;
+  let failed = 0;
+  let last24h = 0;
+  let last24hOk = 0;
+  let last24hFail = 0;
+
+  try {
+    const rows = await queryPgRows(
+      pg,
+      `SELECT
+         COUNT(*) FILTER (WHERE status = 'pending')::text AS pending,
+         COUNT(*) FILTER (WHERE status = 'completed')::text AS completed,
+         COUNT(*) FILTER (WHERE status = 'pending' AND retry_count >= 10)::text AS failed,
+         COUNT(*) FILTER (WHERE created_at >= NOW() - INTERVAL '24 hours')::text AS h24,
+         COUNT(*) FILTER (WHERE status = 'completed' AND created_at >= NOW() - INTERVAL '24 hours')::text AS h24ok,
+         COUNT(*) FILTER (WHERE status = 'pending' AND retry_count >= 10 AND created_at >= NOW() - INTERVAL '24 hours')::text AS h24fail
+       FROM sync_queue
+       WHERE firm_nr = $1 OR lpad(ltrim(firm_nr, '0'), 3, '0') = $1`,
+      [firm],
+    );
+    const r = rows[0] ?? {};
+    pending = Number(r.pending ?? 0);
+    completed = Number(r.completed ?? 0);
+    failed = Number(r.failed ?? 0);
+    last24h = Number(r.h24 ?? 0);
+    last24hOk = Number(r.h24ok ?? 0);
+    last24hFail = Number(r.h24fail ?? 0);
+  } catch {
+    /* sync_queue yok */
+  }
+
+  const devices = await loadEnterpriseDevices();
+  const totalDone = completed + failed;
+  const successRate = totalDone > 0 ? (completed / totalDone) * 100 : 100;
+
+  return {
+    totalDevices: devices.length,
+    onlineDevices: devices.filter((d) => d.isOnline).length,
+    pendingBroadcasts: pending,
+    deliveredBroadcasts: completed,
+    failedBroadcasts: failed,
+    successRate: Math.round(successRate * 10) / 10,
+    last24hBroadcasts: last24h,
+    last24hSuccess: last24hOk,
+    last24hFailed: last24hFail,
+    totalDataTransferred: 0,
+    scheduledBroadcasts: 0,
+  };
+}
+
+export async function listEnterpriseSyncMessages(opts?: {
+  limit?: number;
+  status?: 'all' | 'pending' | 'completed' | 'error';
+}): Promise<EnterpriseSyncMessage[]> {
+  const pg = resolveSyncPgEndpoint();
+  const firm = firmNrPadded();
+  const limit = opts?.limit ?? 50;
+
+  let statusSql = '';
+  if (opts?.status === 'pending') statusSql = ` AND status = 'pending'`;
+  else if (opts?.status === 'completed') statusSql = ` AND status = 'completed'`;
+  else if (opts?.status === 'error') statusSql = ` AND status = 'pending' AND retry_count >= 10`;
+
+  try {
+    const rows = await queryPgRows(
+      pg,
+      `SELECT id::text, table_name, record_id::text, action, firm_nr, status,
+              data, error_message, created_at, synced_at, retry_count
+       FROM sync_queue
+       WHERE (firm_nr = $1 OR lpad(ltrim(firm_nr, '0'), 3, '0') = $1)
+         ${statusSql}
+       ORDER BY created_at DESC
+       LIMIT $2`,
+      [firm, limit],
+    );
+
+    return rows.map((r: Record<string, unknown>) => {
+      const tableName = String(r.table_name ?? '');
+      const st = String(r.status ?? 'pending');
+      const retryFail = st === 'pending' && Number(r.retry_count ?? 0) >= 10;
+      return {
+        id: String(r.id),
+        type: inferTypeFromTable(tableName),
+        action: mapSyncAction(String(r.action ?? 'UPDATE')),
+        status: retryFail ? 'failed' : st === 'completed' ? 'completed' : st === 'processing' ? 'processing' : 'pending',
+        tableName,
+        recordId: String(r.record_id ?? ''),
+        createdAt: r.created_at ? new Date(String(r.created_at)).getTime() : Date.now(),
+        syncedAt: r.synced_at ? new Date(String(r.synced_at)).getTime() : undefined,
+        errorMessage: r.error_message ? String(r.error_message) : undefined,
+        data:
+          r.data && typeof r.data === 'object'
+            ? (r.data as Record<string, unknown>)
+            : r.data
+              ? JSON.parse(String(r.data))
+              : undefined,
+        firmNr: String(r.firm_nr ?? firm),
+        targetDevices: ['all'],
+      };
+    });
+  } catch {
+    return [];
+  }
+}
+
+/** Tek kaydı sync_queue'ya ekle (tam satır verisi PG'den). */
+export async function enqueueEnterpriseRecord(opts: {
+  type: string;
+  recordId: string;
+  action?: string;
+  targetStoreId?: string | null;
+}): Promise<{ ok: boolean; message: string }> {
+  const table = tableForBroadcastType(opts.type);
+  if (!table) {
+    return { ok: false, message: `Desteklenmeyen veri tipi: ${opts.type}` };
+  }
+
+  const pg = resolveSyncPgEndpoint();
+  const firm = firmNrPadded();
+  const recordId = opts.recordId;
+  const action = (opts.action ?? 'UPDATE').toUpperCase();
+
+  try {
+    const rows = await queryPgRows(
+      pg,
+      `SELECT to_jsonb(t) AS data FROM ${table} t WHERE id = $1::uuid LIMIT 1`,
+      [recordId],
+    );
+    if (!rows.length) {
+      return { ok: false, message: 'Kayıt veritabanında bulunamadı.' };
+    }
+
+    const data = rows[0].data;
+    const storeId = opts.targetStoreId && opts.targetStoreId !== 'all' ? opts.targetStoreId : null;
+
+    await queryPgRows(
+      pg,
+      `INSERT INTO sync_queue (table_name, record_id, action, firm_nr, data, target_store_id, status)
+       VALUES ($1, $2::uuid, $3, $4, $5::jsonb, $6::uuid, 'pending')`,
+      [table, recordId, action, firm, JSON.stringify(data), storeId],
+    );
+
+    return { ok: true, message: `${table} kuyruğa eklendi.` };
+  } catch (e: unknown) {
+    return { ok: false, message: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+/** MPOS: Merkez → şube master veri gönder */
+export async function pushMasterDataToBranches(opts?: {
+  type?: string;
+  recordId?: string;
+  targetStoreId?: string | null;
+}): Promise<{ ok: boolean; message: string; synced: number }> {
+  if (opts?.type && opts.recordId) {
+    const enq = await enqueueEnterpriseRecord({
+      type: opts.type,
+      recordId: opts.recordId,
+      targetStoreId: opts.targetStoreId,
+    });
+    if (!enq.ok) return { ok: false, message: enq.message, synced: 0 };
+  } else {
+    await prepareLocalSyncQueue(LOCAL_CONFIG, firmNrPadded());
+  }
+
+  if (DB_SETTINGS.activeMode !== 'hybrid') {
+    const pending = (await getEnterpriseSyncStats()).pendingBroadcasts;
+    return {
+      ok: true,
+      message: `Merkez kuyruğunda ${pending} kayıt bekliyor. Şubeler «Al» ile çekebilir.`,
+      synced: 0,
+    };
+  }
+
+  const result = await runHybridSync({
+    flow: 'send',
+    direction: 'local_to_remote',
+    scope: 'all',
+    local: LOCAL_CONFIG,
+    remote: REMOTE_CONFIG,
+    connectionProvider: resolveHybridSyncConnectionProvider(),
+    remoteRestUrl: DB_SETTINGS.remoteRestUrl,
+    filter: { firmNr: firmNrPadded() },
+  });
+
+  return {
+    ok: result.success,
+    message: result.message ?? (result.success ? 'Gönderim tamamlandı.' : 'Gönderim başarısız.'),
+    synced: result.totalSynced,
+  };
+}
+
+/** MPOS: Şube → merkez satış/hareket al */
+export async function pullBranchDataFromCenter(): Promise<{ ok: boolean; message: string; synced: number }> {
+  if (DB_SETTINGS.activeMode !== 'hybrid') {
+    const msgs = await listEnterpriseSyncMessages({ limit: 100, status: 'pending' });
+    return {
+      ok: true,
+      message: `Merkezde ${msgs.length} bekleyen kayıt (şubelerden gelen).`,
+      synced: msgs.length,
+    };
+  }
+
+  const result = await runHybridSync({
+    flow: 'receive',
+    direction: 'remote_to_local',
+    scope: 'all',
+    local: LOCAL_CONFIG,
+    remote: REMOTE_CONFIG,
+    connectionProvider: resolveHybridSyncConnectionProvider(),
+    remoteRestUrl: DB_SETTINGS.remoteRestUrl,
+    filter: { firmNr: firmNrPadded() },
+  });
+
+  return {
+    ok: result.success,
+    message: result.message ?? (result.success ? 'Alma tamamlandı.' : 'Alma başarısız.'),
+    synced: result.totalSynced,
+  };
+}
+
+/** Kuyruktaki bekleyenleri işle (hibrit modda gönder+al). */
+export async function processEnterpriseSyncQueue(): Promise<{ ok: boolean; message: string }> {
+  if (DB_SETTINGS.activeMode !== 'hybrid') {
+    const stats = await getEnterpriseSyncStats();
+    return {
+      ok: true,
+      message: `Kuyruk: ${stats.pendingBroadcasts} bekleyen, ${stats.deliveredBroadcasts} tamamlanan.`,
+    };
+  }
+
+  const result = await runHybridSync({
+    flow: 'both',
+    direction: 'bidirectional',
+    scope: 'all',
+    local: LOCAL_CONFIG,
+    remote: REMOTE_CONFIG,
+    connectionProvider: resolveHybridSyncConnectionProvider(),
+    remoteRestUrl: DB_SETTINGS.remoteRestUrl,
+    filter: { firmNr: firmNrPadded() },
+  });
+
+  return {
+    ok: result.success,
+    message: result.message ?? 'Senkron tamamlandı.',
+  };
+}
+
+export function resolveRecordIdFromForm(type: string, formData: Record<string, unknown>): string | null {
+  switch (type) {
+    case 'product':
+      return formData.productId ? String(formData.productId) : null;
+    case 'price':
+    case 'inventory':
+      return formData.priceProductId
+        ? String(formData.priceProductId)
+        : formData.inventoryProductId
+          ? String(formData.inventoryProductId)
+          : null;
+    case 'customer':
+      return formData.customerId ? String(formData.customerId) : null;
+    case 'campaign':
+      return formData.campaignId ? String(formData.campaignId) : null;
+    default:
+      return null;
+  }
+}

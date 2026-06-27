@@ -21,6 +21,18 @@ import {
   BroadcastCondition
 } from '../../utils/centralDataBroadcast';
 import { logger } from '../../utils/logger';
+import { toast } from 'sonner';
+import {
+  enqueueEnterpriseRecord,
+  getEnterpriseSyncStats,
+  listEnterpriseSyncMessages,
+  loadEnterpriseDevices,
+  processEnterpriseSyncQueue,
+  pullBranchDataFromCenter,
+  pushMasterDataToBranches,
+  resolveRecordIdFromForm,
+  type EnterpriseSyncMessage,
+} from '../../services/enterpriseSyncService';
 import { BroadcastFormFields } from './BroadcastFormFields';
 import { BroadcastChangesTimeline } from './BroadcastChangesTimeline';
 import { SentMessagesList } from '../system/SentMessagesList';
@@ -99,42 +111,90 @@ export function EnterpriseCentralDataManagement() {
   const [filterDateRange, setFilterDateRange] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState('');
 
+  const [isSyncBusy, setIsSyncBusy] = useState(false);
+
+  const mapEnterpriseToBroadcast = (m: EnterpriseSyncMessage): BroadcastMessage => ({
+    id: m.id,
+    type: (m.type === 'sale' ? 'custom' : m.type) as BroadcastMessage['type'],
+    action: (['create', 'update', 'delete', 'sync'].includes(m.action)
+      ? m.action
+      : 'sync') as BroadcastMessage['action'],
+    data: m.data ?? {},
+    targetDevices: m.targetDevices,
+    priority: 'normal',
+    channel: 'auto',
+    createdAt: m.createdAt,
+    status:
+      m.status === 'completed'
+        ? 'delivered'
+        : m.status === 'failed'
+          ? 'failed'
+          : m.status === 'processing'
+            ? 'sending'
+            : 'pending',
+    deliveredTo: m.status === 'completed' ? ['all'] : [],
+    failedTo: m.status === 'failed' ? ['all'] : [],
+    retryCount: 0,
+  });
+
+  const refreshEnterpriseData = async () => {
+    try {
+      const pgStats = await getEnterpriseSyncStats();
+      setStats({
+        ...pgStats,
+        offlineDevices: Math.max(0, pgStats.totalDevices - pgStats.onlineDevices),
+      });
+      const pgDevices = await loadEnterpriseDevices();
+      setDevices(
+        pgDevices.map((d) => ({
+          deviceId: d.deviceId,
+          deviceName: d.deviceName,
+          deviceType: 'pos' as const,
+          storeId: d.storeId,
+          storeName: d.storeName,
+          lastSeen: d.lastSeen,
+          isOnline: d.isOnline,
+          pendingMessages: d.pendingMessages,
+          deliveredMessages: 0,
+          failedMessages: 0,
+        })),
+      );
+      const pending = await listEnterpriseSyncMessages({ limit: 100, status: 'pending' });
+      const all = await listEnterpriseSyncMessages({ limit: 100 });
+      setQueue(pending.map(mapEnterpriseToBroadcast));
+      setHistory(all.filter((m) => m.status === 'completed' || m.status === 'failed').map(mapEnterpriseToBroadcast));
+    } catch (e) {
+      logger.warn('enterprise-sync', 'refresh failed', e);
+    }
+  };
+
   // Update data
   useEffect(() => {
-    const updateData = () => {
-      setQueue(centralBroadcast.getQueue());
-      setDevices(centralBroadcast.getDevices());
-      setDeviceGroups(centralBroadcast.getDeviceGroups());
-      setTemplates(centralBroadcast.getTemplates());
-      setStats(centralBroadcast.getAdvancedStats());
-      setHistory(centralBroadcast.getHistory({ limit: 100 }));
-    };
-
-    updateData();
-    const interval = setInterval(updateData, 3000);
+    void refreshEnterpriseData();
+    const interval = setInterval(() => void refreshEnterpriseData(), 3000);
 
     const unsubscribeBroadcast = centralBroadcast.onBroadcast((status, updatedQueue) => {
       setIsBroadcasting(status === 'started' || status === 'progress');
       setQueue(updatedQueue);
-      setStats(centralBroadcast.getAdvancedStats());
-    });
-
-    const unsubscribeDevices = centralBroadcast.onDeviceUpdate((updatedDevices) => {
-      setDevices(updatedDevices);
-      setStats(centralBroadcast.getAdvancedStats());
-    });
-
-    const unsubscribeStats = centralBroadcast.onStatsUpdate((updatedStats) => {
-      setStats(updatedStats);
     });
 
     return () => {
       clearInterval(interval);
       unsubscribeBroadcast();
-      unsubscribeDevices();
-      unsubscribeStats();
     };
   }, []);
+
+  // MPOS Kalem: otomatik mesaj kontrol aralığı
+  useEffect(() => {
+    if (broadcastChannel !== 'auto') return;
+    const sec = Math.min(300, Math.max(5, messageCheckInterval || 10));
+    const id = window.setInterval(() => {
+      void processEnterpriseSyncQueue().then((r) => {
+        if (r.ok) void refreshEnterpriseData();
+      });
+    }, sec * 1000);
+    return () => window.clearInterval(id);
+  }, [broadcastChannel, messageCheckInterval]);
 
   const handleSendBroadcast = async () => {
     try {
@@ -255,9 +315,39 @@ export function EnterpriseCentralDataManagement() {
         };
       }
 
-      await centralBroadcast.addBroadcast(broadcastType, broadcastAction, data, options);
+      const recordId = resolveRecordIdFromForm(broadcastType, formData);
+      if (!recordId) {
+        toast.error('Lütfen «Listeden Ürün Seç» ile bir kayıt seçin.');
+        return;
+      }
 
-      // Reset form
+      const targetStore = targetDevices[0] !== 'all' ? targetDevices[0] : null;
+      const syncAction =
+        broadcastAction === 'delete' ? 'DELETE' : broadcastAction === 'create' ? 'INSERT' : 'UPDATE';
+
+      const enq = await enqueueEnterpriseRecord({
+        type: broadcastType,
+        recordId,
+        action: syncAction,
+        targetStoreId: targetStore,
+      });
+
+      if (!enq.ok) {
+        toast.error(enq.message);
+        return;
+      }
+
+      toast.success(enq.message);
+
+      if (broadcastChannel === 'auto') {
+        setIsSyncBusy(true);
+        const push = await pushMasterDataToBranches();
+        setIsSyncBusy(false);
+        if (push.ok) toast.info(push.message);
+        else toast.error(push.message);
+      }
+
+      await refreshEnterpriseData();
       setFormData({});
       setTargetDevices(['all']);
       setTargetGroups([]);
@@ -276,8 +366,40 @@ export function EnterpriseCentralDataManagement() {
     }
   };
 
-  const handleManualBroadcast = () => {
-    centralBroadcast.startBroadcast();
+  const handleManualBroadcast = async () => {
+    setIsSyncBusy(true);
+    try {
+      const r = await processEnterpriseSyncQueue();
+      if (r.ok) toast.success(r.message);
+      else toast.error(r.message);
+      await refreshEnterpriseData();
+    } finally {
+      setIsSyncBusy(false);
+    }
+  };
+
+  const handlePushAll = async () => {
+    setIsSyncBusy(true);
+    try {
+      const r = await pushMasterDataToBranches();
+      if (r.ok) toast.success(r.message);
+      else toast.error(r.message);
+      await refreshEnterpriseData();
+    } finally {
+      setIsSyncBusy(false);
+    }
+  };
+
+  const handlePullAll = async () => {
+    setIsSyncBusy(true);
+    try {
+      const r = await pullBranchDataFromCenter();
+      if (r.ok) toast.success(r.message);
+      else toast.error(r.message);
+      await refreshEnterpriseData();
+    } finally {
+      setIsSyncBusy(false);
+    }
   };
 
   const handleCreateGroup = async () => {
@@ -543,43 +665,48 @@ export function EnterpriseCentralDataManagement() {
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap justify-end">
             <Button
-              onClick={handleExportConfiguration}
+              onClick={() => void refreshEnterpriseData()}
               variant="outline"
               size="sm"
+              disabled={isSyncBusy}
               className="gap-2"
             >
-              <Download className="w-4 h-4" />
-              Yedekle
+              <RefreshCw className="w-4 h-4" />
+              Yenile
             </Button>
 
-            <label className="cursor-pointer">
-              <Button asChild variant="outline" size="sm" className="gap-2">
-                <span>
-                  <Upload className="w-4 h-4" />
-                  İçe Aktar
-                </span>
-              </Button>
-              <input
-                type="file"
-                accept=".json"
-                onChange={handleImportConfiguration}
-                className="hidden"
-              />
-            </label>
+            <Button
+              onClick={() => void handlePullAll()}
+              variant="outline"
+              size="sm"
+              disabled={isSyncBusy}
+            >
+              Veri Al
+            </Button>
 
             <Button
-              onClick={handleManualBroadcast}
-              disabled={isBroadcasting || queue.length === 0}
+              onClick={() => void handlePushAll()}
+              variant="outline"
+              size="sm"
+              disabled={isSyncBusy}
+            >
+              Veri Gönder
+            </Button>
+
+            <Button
+              onClick={() => void handleManualBroadcast()}
+              disabled={isSyncBusy || isBroadcasting}
+              size="sm"
               className="gap-2 bg-gradient-to-r from-blue-600 to-blue-700"
             >
-              {isBroadcasting ? (
+              {isSyncBusy || isBroadcasting ? (
                 <RefreshCw className="w-4 h-4 animate-spin" />
               ) : (
                 <Send className="w-4 h-4" />
               )}
-              {isBroadcasting ? 'Gönderiliyor...' : 'Şimdi Gönder'}
+              {isSyncBusy || isBroadcasting ? 'Senkron...' : 'Şimdi Gönder'}
             </Button>
           </div>
         </div>
