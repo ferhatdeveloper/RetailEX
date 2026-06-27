@@ -31,6 +31,7 @@ import {
   cancelEnterpriseSyncMessage,
   getEnterpriseSyncStats,
   getDayEndSyncStatus,
+  getMposTerminalDailyStatus,
   listEnterpriseSyncMessages,
   loadEnterpriseDevices,
   processEnterpriseSyncQueue,
@@ -40,12 +41,18 @@ import {
   resolveRecordIdFromForm,
   type EnterpriseSyncMessage,
   type DayEndStoreStatus,
+  type MposTerminalDailyStatus,
 } from '../../services/enterpriseSyncService';
 import {
   MPOS_SEND_FILE_TYPES,
   sendMposInfoToKasaAndPush,
   type MposSendFileType,
 } from '../../services/mposSendService';
+import {
+  MPOS_RECEIVE_FILE_TYPES,
+  receiveMposInfoFromKasa,
+  type MposReceiveFileType,
+} from '../../services/mposReceiveService';
 import { DB_SETTINGS, ERP_SETTINGS, updateConfigs } from '../../services/postgres';
 import { listActiveStores, type BranchStoreOption } from '../../services/hybridSyncService';
 import {
@@ -144,6 +151,8 @@ export function EnterpriseCentralDataManagement() {
   const [selectedBranchStoreId, setSelectedBranchStoreId] = useState('');
   const [selectedTerminalDeviceId, setSelectedTerminalDeviceId] = useState('');
   const [mposFileType, setMposFileType] = useState<MposSendFileType>('products');
+  const [mposReceiveFileType, setMposReceiveFileType] = useState<MposReceiveFileType>('sales');
+  const [terminalDailyStatus, setTerminalDailyStatus] = useState<MposTerminalDailyStatus[]>([]);
   const [showAdvancedSend, setShowAdvancedSend] = useState(false);
 
   const resolveMposTargetStoreId = (): string | null => selectedBranchStoreId || null;
@@ -230,6 +239,10 @@ export function EnterpriseCentralDataManagement() {
       setHistory(all.filter((m) => m.status === 'completed' || m.status === 'failed').map(mapEnterpriseToBroadcast));
       const de = await getDayEndSyncStatus();
       setDayEndStatus(de);
+      const termDe = await getMposTerminalDailyStatus(
+        selectedBranchStoreId ? { storeId: selectedBranchStoreId } : undefined,
+      );
+      setTerminalDailyStatus(termDe);
     } catch (e) {
       logger.warn('enterprise-sync', 'refresh failed', e);
     }
@@ -271,6 +284,7 @@ export function EnterpriseCentralDataManagement() {
     const storeId = selectedBranchStoreId;
     if (storeId) setTargetDevices([storeId]);
     else setTargetDevices(['all']);
+    void getMposTerminalDailyStatus(storeId ? { storeId } : undefined).then(setTerminalDailyStatus);
   }, [selectedBranchStoreId]);
 
   const handleMposKalemSend = async () => {
@@ -296,6 +310,26 @@ export function EnterpriseCentralDataManagement() {
     setSelectedBranchStoreId('');
     setSelectedTerminalDeviceId('');
     setMposFileType('products');
+    setMposReceiveFileType('sales');
+  };
+
+  const handleMposKalemReceive = async () => {
+    if (!validateMposKasaTarget()) return;
+    const term = selectedTerminal();
+    setIsSyncBusy(true);
+    try {
+      const r = await receiveMposInfoFromKasa({
+        fileType: mposReceiveFileType,
+        storeId: selectedBranchStoreId,
+        terminalName: term?.terminalName || '',
+        terminalDeviceId: selectedTerminalDeviceId,
+      });
+      if (r.ok) toast.success(r.message);
+      else toast.error(r.message);
+      await refreshEnterpriseData();
+    } finally {
+      setIsSyncBusy(false);
+    }
   };
 
   // MPOS Kalem: otomatik mesaj kontrol aralığı
@@ -952,6 +986,25 @@ export function EnterpriseCentralDataManagement() {
           </Card>
         </div>
 
+        {/* Kalem eğitim akışı — OuFtuJRL5t0 + devam */}
+        <Card className={`p-4 ${theme === 'dark' ? 'bg-gray-800 border-gray-700' : 'bg-white border-blue-200'}`}>
+          <details>
+            <summary className="cursor-pointer text-sm font-medium flex items-center gap-2">
+              <ChevronRight className="w-4 h-4" />
+              KLRetail M-POS Kurulum Rehberi (eğitim videosu adımları)
+            </summary>
+            <ol className="mt-3 ml-6 text-xs text-gray-600 dark:text-gray-400 space-y-1.5 list-decimal">
+              <li>Market parametreleri + POS kasa kartı tanımı</li>
+              <li>KLRetail M-POS tanımları (kısayol, PLU, ödeme tuşları)</li>
+              <li>M-POS kasa DB + merkez DB / «Servis Ayarları» mesaj kontrol süresi</li>
+              <li><strong>Bilgi Gönder</strong> — malzeme, cari, program bilgileri → seçili kasa</li>
+              <li>Kasada satış + yemek çeki tahsilat örneği</li>
+              <li><strong>Bilgi Al</strong> — satış, günsonu, Z raporu → merkeze çek</li>
+              <li><strong>Günsonu</strong> işlem kontrolü — bugün veri almayan kasa «Veri alınmadı»</li>
+            </ol>
+          </details>
+        </Card>
+
         {/* Main Tabs — MPOS Kalem eğitim sırası: Gönder → Al → Günsonu → Kuyruk → Kasalar → Servis */}
         <Tabs defaultValue="send" className="w-full">
           <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 h-auto">
@@ -1394,13 +1447,29 @@ export function EnterpriseCentralDataManagement() {
             </details>
           </TabsContent>
 
-          {/* Bilgi Al — kasa → merkez (satış, günsonu) */}
+          {/* Bilgi Al — Kalem M-POS: Dosya Tipi + İşyeri + Kasa */}
           <TabsContent value="receive" className="space-y-4">
             <Card className={`p-6 max-w-2xl ${theme === 'dark' ? 'bg-gray-800 border-gray-700' : 'bg-white'}`}>
               <h3 className="text-lg font-semibold mb-4 border-b pb-2 border-gray-200 dark:border-gray-700">
                 KLRetail M-POS Bilgilerinin Alınması
               </h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm mb-1.5 font-medium">Dosya Tipi</label>
+                  <select
+                    value={mposReceiveFileType}
+                    onChange={(e) => setMposReceiveFileType(e.target.value as MposReceiveFileType)}
+                    className={`w-full p-2.5 rounded border text-sm ${theme === 'dark' ? 'bg-gray-700 border-gray-600' : 'bg-white border-gray-300'}`}
+                  >
+                    {MPOS_RECEIVE_FILE_TYPES.map((ft) => (
+                      <option key={ft.id} value={ft.id}>
+                        {ft.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
                 <div>
                   <label className="block text-sm mb-1.5 font-medium">İşyeri</label>
                   <select
@@ -1419,6 +1488,7 @@ export function EnterpriseCentralDataManagement() {
                     ))}
                   </select>
                 </div>
+
                 <div>
                   <label className="block text-sm mb-1.5 font-medium">Kasa</label>
                   <select
@@ -1439,31 +1509,50 @@ export function EnterpriseCentralDataManagement() {
                   </select>
                 </div>
               </div>
-              <p className="text-xs text-gray-500 mb-3">
-                Hedef: <strong>{mposTargetLabel()}</strong>
+
+              <p className="text-xs text-gray-500 mt-3">
+                Hedef: <strong>{mposTargetLabel()}</strong> — kasada satış/günsonu sonrası merkeze çekilir.
               </p>
-              <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
-                <Download className="w-4 h-4 text-sky-600" />
-                M-POS Bilgi Al (Kasa → Merkez)
-              </h3>
-              <p className="text-xs text-gray-500 mb-3">
-                Kasada satış tamamlandıktan sonra merkez satış ve günsonu verisini buradan alır. Günsonu işlem kontrolü «Günsonu» sekmesindedir.
-              </p>
-              <div className="flex flex-wrap gap-2">
-                <Button size="sm" disabled={isSyncBusy} onClick={() => void handlePullAll()} className="gap-2 bg-sky-600 hover:bg-sky-700 text-white">
-                  <Download className="w-4 h-4" />
-                  Satış Verisi Al
+
+              <div className="flex justify-end gap-2 mt-6 pt-4 border-t border-gray-200 dark:border-gray-700">
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={isSyncBusy}
+                  onClick={handleMposKalemReset}
+                >
+                  Vazgeç
                 </Button>
-                <Button size="sm" variant="outline" disabled={isSyncBusy} onClick={() => void handleDayEndPull()} className="gap-2">
-                  <Calendar className="w-4 h-4" />
-                  Günsonu Al
-                </Button>
-                <Button size="sm" variant="outline" disabled={isSyncBusy} onClick={() => void handleManualBroadcast()} className="gap-2">
-                  <RefreshCw className="w-4 h-4" />
-                  Gönder + Al (Kuyruk)
+                <Button
+                  type="button"
+                  disabled={isSyncBusy}
+                  onClick={() => void handleMposKalemReceive()}
+                  className="gap-2 min-w-[120px] bg-sky-600 hover:bg-sky-700 text-white"
+                >
+                  {isSyncBusy ? (
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Download className="w-4 h-4" />
+                  )}
+                  Al
                 </Button>
               </div>
             </Card>
+
+            <details className={`rounded-lg border max-w-2xl ${theme === 'dark' ? 'border-gray-700 bg-gray-800/50' : 'border-gray-200 bg-white'}`}>
+              <summary className="cursor-pointer p-4 text-sm font-medium">Hızlı alım (toplu)</summary>
+              <div className="p-4 pt-0 flex flex-wrap gap-2 border-t border-gray-200 dark:border-gray-700">
+                <Button size="sm" disabled={isSyncBusy} onClick={() => void handlePullAll()} className="gap-2">
+                  Tüm Satışları Al
+                </Button>
+                <Button size="sm" variant="outline" disabled={isSyncBusy} onClick={() => void handleDayEndPull()} className="gap-2">
+                  Tüm Günsonu Al
+                </Button>
+                <Button size="sm" variant="outline" disabled={isSyncBusy} onClick={() => void handleManualBroadcast()} className="gap-2">
+                  Kuyruğu İşle
+                </Button>
+              </div>
+            </details>
 
             <div className="grid gap-3 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
               {dayEndStatus.map((store) => (
@@ -1936,17 +2025,49 @@ export function EnterpriseCentralDataManagement() {
             </div>
           </TabsContent>
 
-          {/* Günsonu Tab — MPOS günsonu işlem kontrolü (KLR-2273) */}
+          {/* Günsonu Tab — MPOS günsonu işlem kontrolü (KLR-2273) kasa bazlı */}
           <TabsContent value="dayend" className="space-y-4">
-            <div className="flex justify-between items-center">
+            <div className="flex justify-between items-center flex-wrap gap-2">
               <p className="text-sm text-gray-600 dark:text-gray-400">
-                Günsonu işlem kontrolü: bugün veri alınmayan kasalar «Veri alınmadı» olarak işaretlenir (KLR-2273). Yalnızca günlük durum kontrol edilir.
+                Günsonu işlem kontrolü: bugün veri alınmayan kasalar «Veri alınmadı» (KLR-2273 — yalnızca günlük durum).
               </p>
               <Button size="sm" disabled={isSyncBusy} onClick={() => void handleDayEndPull()} className="gap-2">
                 <Download className="w-4 h-4" />
                 Günsonu Al
               </Button>
             </div>
+
+            {terminalDailyStatus.length > 0 && (
+              <>
+                <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300">Kasa bazlı durum</h4>
+                <div className="grid gap-3 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
+                  {terminalDailyStatus.map((term) => (
+                    <Card
+                      key={term.deviceId}
+                      className={`p-4 ${theme === 'dark' ? 'bg-gray-800 border-gray-700' : 'bg-white'} ${term.status === 'ok' ? 'border-l-4 border-l-green-500' : 'border-l-4 border-l-amber-500'}`}
+                    >
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="font-medium">{term.terminalName}</span>
+                        <Badge variant={term.status === 'ok' ? 'default' : 'destructive'}>
+                          {term.status === 'ok' ? 'Veri alındı' : 'Veri alınmadı'}
+                        </Badge>
+                      </div>
+                      <div className="text-xs text-gray-600 dark:text-gray-400 space-y-1">
+                        <div>{term.storeName} ({term.storeCode})</div>
+                        <div>Bugün gönderim: {term.sendCompletedToday}</div>
+                        <div>Bugün alım: {term.receiveCompletedToday}</div>
+                        <div>Bekleyen satış: {term.salesPending}</div>
+                        {term.lastReceiveAt && (
+                          <div>Son alım: {formatTimestamp(term.lastReceiveAt)}</div>
+                        )}
+                      </div>
+                    </Card>
+                  ))}
+                </div>
+              </>
+            )}
+
+            <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300">İşyeri özeti</h4>
             <div className="grid gap-3 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
               {dayEndStatus.map((store) => (
                 <Card

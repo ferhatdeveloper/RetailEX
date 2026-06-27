@@ -21,9 +21,12 @@ export type MposSendFileType =
   | 'shortcuts'
   | 'program_info'
   | 'receipt_design'
-  | 'version_update';
+  | 'version_update_center'
+  | 'version_update_local'
+  | 'customer_balance_risk'
+  | 'payment_keys';
 
-/** Kalem M-POS «Dosya Tipi» listesi (OuFtuJRL5t0 eğitim videosu) */
+/** Kalem M-POS «Dosya Tipi» listesi (OuFtuJRL5t0 + 3TueEaussGo eğitim) */
 export const MPOS_SEND_FILE_TYPES: { id: MposSendFileType; label: string }[] = [
   { id: 'products', label: 'Malzeme Kartları' },
   { id: 'customers', label: 'Cari Kartları' },
@@ -33,7 +36,10 @@ export const MPOS_SEND_FILE_TYPES: { id: MposSendFileType; label: string }[] = [
   { id: 'shortcuts', label: 'Kısayol Tuş Tanımları' },
   { id: 'program_info', label: 'Program Bilgileri' },
   { id: 'receipt_design', label: 'Fiş Dizaynları' },
-  { id: 'version_update', label: 'Versiyon Güncelleme' },
+  { id: 'version_update_center', label: 'Versiyon Güncelleme (Kalem Sunucu)' },
+  { id: 'version_update_local', label: 'Versiyon Güncelleme (Local Sunucu)' },
+  { id: 'customer_balance_risk', label: 'Cari Bakiye / Risk Bilgileri' },
+  { id: 'payment_keys', label: 'Ödeme Tuş Tanımları (Yemek Çeki vb.)' },
 ];
 
 function firmNrPadded(): string {
@@ -262,13 +268,53 @@ export async function sendMposInfoToKasa(opts: {
         terminalDeviceId,
         payload: { kind: 'receipt_design', store_id: storeId },
       });
-    case 'version_update':
+    case 'version_update_center':
       return enqueueMposConfigPayload({
         fileType,
         storeId,
         terminalName,
         terminalDeviceId,
-        payload: { kind: 'version_update', app_version: APP_SEMVER, server: 'retailex_center' },
+        payload: {
+          kind: 'version_update',
+          app_version: APP_SEMVER,
+          server: 'retailex_center',
+          update_source: 'kalem_server',
+        },
+      });
+    case 'version_update_local':
+      return enqueueMposConfigPayload({
+        fileType,
+        storeId,
+        terminalName,
+        terminalDeviceId,
+        payload: {
+          kind: 'version_update',
+          app_version: APP_SEMVER,
+          server: 'local',
+          update_source: 'local_server',
+        },
+      });
+    case 'customer_balance_risk':
+      return enqueueTableForKasa(
+        `rex_${firm}_customers`,
+        `SELECT id::text AS id, to_jsonb(t) AS data FROM rex_${firm}_customers t
+         WHERE COALESCE(t.is_active, true) = true
+         ORDER BY t.updated_at DESC NULLS LAST LIMIT 2000`,
+        [],
+        storeId,
+        terminalName,
+      );
+    case 'payment_keys':
+      return enqueueMposConfigPayload({
+        fileType,
+        storeId,
+        terminalName,
+        terminalDeviceId,
+        payload: {
+          kind: 'payment_keys',
+          includes_meal_voucher: true,
+          note: 'Ödeme tuş tanımları — yemek çeki ve diğer ödemeler',
+        },
       });
     default:
       return { ok: false, message: 'Desteklenmeyen dosya tipi.', count: 0 };

@@ -635,7 +635,135 @@ export type DayEndStoreStatus = {
   isOnline: boolean;
 };
 
+/** Kasa bazlı günlük M-POS durumu (KLR-2273 — yalnızca bugünün verisi) */
+export type MposTerminalDailyStatus = {
+  deviceId: string;
+  terminalName: string;
+  storeId: string;
+  storeName: string;
+  storeCode: string;
+  sendCompletedToday: number;
+  receiveCompletedToday: number;
+  salesPending: number;
+  dayEndReceivedToday: boolean;
+  lastReceiveAt?: number;
+  status: 'ok' | 'not_received' | 'offline';
+};
+
 /** MPOS: günsonu / satış alma durumu — kasa bazında (KLR-2273 benzeri) */
+export async function getMposTerminalDailyStatus(opts?: {
+  storeId?: string;
+}): Promise<MposTerminalDailyStatus[]> {
+  const pg = resolveSyncPgEndpoint();
+  const firm = firmNrPadded();
+  const salesTable = periodSalesTable();
+
+  try {
+    const params: unknown[] = [firm, salesTable];
+    let storeFilter = '';
+    if (opts?.storeId) {
+      storeFilter = ' AND r.store_id = $3::uuid';
+      params.push(opts.storeId);
+    }
+
+    const rows = await queryPgRows(
+      pg,
+      `SELECT
+         r.device_id::text AS device_id,
+         r.terminal_name,
+         r.store_id::text AS store_id,
+         s.code AS store_code,
+         s.name AS store_name,
+         COALESCE(send_cnt.cnt, 0)::text AS send_today,
+         COALESCE(recv_cnt.cnt, 0)::text AS recv_today,
+         COALESCE(pend.cnt, 0)::text AS sales_pending,
+         COALESCE(day_end.cnt, 0)::text AS day_end_today,
+         recv_last.last_at::text AS last_receive
+       FROM pos_terminal_registrations r
+       JOIN stores s ON s.id = r.store_id
+       LEFT JOIN (
+         SELECT terminal_name, target_store_id, COUNT(*) AS cnt
+         FROM sync_queue
+         WHERE status = 'completed'
+           AND target_store_id IS NOT NULL
+           AND synced_at >= CURRENT_DATE
+           AND terminal_name IS NOT NULL
+         GROUP BY terminal_name, target_store_id
+       ) send_cnt ON send_cnt.terminal_name = r.terminal_name
+         AND send_cnt.target_store_id = r.store_id
+       LEFT JOIN (
+         SELECT terminal_name, source_store_id, COUNT(*) AS cnt
+         FROM sync_queue
+         WHERE status = 'completed'
+           AND source_store_id IS NOT NULL
+           AND synced_at >= CURRENT_DATE
+           AND table_name LIKE 'mpos_receive_%'
+         GROUP BY terminal_name, source_store_id
+       ) recv_cnt ON recv_cnt.terminal_name = r.terminal_name
+         AND recv_cnt.source_store_id = r.store_id
+       LEFT JOIN (
+         SELECT source_store_id, COUNT(*) AS cnt
+         FROM sync_queue
+         WHERE status = 'pending' AND table_name = $2
+         GROUP BY source_store_id
+       ) pend ON pend.source_store_id = r.store_id
+       LEFT JOIN (
+         SELECT terminal_name, source_store_id, COUNT(*) AS cnt
+         FROM sync_queue
+         WHERE status = 'completed'
+           AND table_name = 'mpos_receive_day_end'
+           AND synced_at >= CURRENT_DATE
+         GROUP BY terminal_name, source_store_id
+       ) day_end ON day_end.terminal_name = r.terminal_name
+         AND day_end.source_store_id = r.store_id
+       LEFT JOIN (
+         SELECT terminal_name, source_store_id, MAX(synced_at) AS last_at
+         FROM sync_queue
+         WHERE status = 'completed'
+           AND source_store_id IS NOT NULL
+           AND table_name LIKE 'mpos_receive_%'
+         GROUP BY terminal_name, source_store_id
+       ) recv_last ON recv_last.terminal_name = r.terminal_name
+         AND recv_last.source_store_id = r.store_id
+       WHERE r.firm_nr = $1 AND r.status = 'approved'${storeFilter}
+       ORDER BY s.name, r.terminal_name`,
+      params,
+    );
+
+    const dayMs = 86400000;
+    return rows.map((r: Record<string, unknown>) => {
+      const lastReceiveAt = r.last_receive
+        ? new Date(String(r.last_receive)).getTime()
+        : undefined;
+      const dayEndToday = Number(r.day_end_today ?? 0) > 0;
+      const recvToday = Number(r.recv_today ?? 0) > 0;
+      const isRecent = lastReceiveAt ? Date.now() - lastReceiveAt < dayMs : false;
+
+      let status: MposTerminalDailyStatus['status'] = 'not_received';
+      if (dayEndToday || recvToday) status = 'ok';
+      else if (isRecent) status = 'ok';
+      else if (lastReceiveAt) status = 'offline';
+
+      return {
+        deviceId: String(r.device_id),
+        terminalName: String(r.terminal_name ?? ''),
+        storeId: String(r.store_id),
+        storeName: String(r.store_name ?? ''),
+        storeCode: String(r.store_code ?? ''),
+        sendCompletedToday: Number(r.send_today ?? 0),
+        receiveCompletedToday: Number(r.recv_today ?? 0),
+        salesPending: Number(r.sales_pending ?? 0),
+        dayEndReceivedToday: dayEndToday,
+        lastReceiveAt,
+        status,
+      };
+    });
+  } catch {
+    return [];
+  }
+}
+
+/** MPOS: günsonu / satış alma durumu — mağaza bazında */
 export async function getDayEndSyncStatus(): Promise<DayEndStoreStatus[]> {
   const pg = resolveSyncPgEndpoint();
   const firm = firmNrPadded();
