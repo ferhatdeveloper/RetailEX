@@ -381,16 +381,16 @@ export default function RestaurantModule({
     return (
         <div className="flex flex-col h-full bg-[#f1f3f5] overflow-hidden font-sans relative">
             {/* Unified Restaurant Header */}
-            <header className="min-h-14 h-auto py-2 sm:py-0 sm:h-14 flex flex-wrap items-center justify-between gap-y-2 px-3 sm:px-6 shadow-2xl shrink-0 z-50 min-w-0" style={{ backgroundColor: '#2563eb', borderBottom: '1px solid rgba(96,165,250,0.4)' }}>
+            <header className="h-14 flex flex-nowrap items-center justify-between gap-4 px-6 shadow-2xl shrink-0 z-50 min-w-0 max-md:flex-wrap max-md:h-auto max-md:py-2 max-md:px-3" style={{ backgroundColor: '#2563eb', borderBottom: '1px solid rgba(96,165,250,0.4)' }}>
                 <div className="flex items-center gap-2 select-none min-w-0 shrink-0">
-                    <h1 className="text-xl sm:text-2xl md:text-[32px] font-black tracking-tighter flex items-center" style={{ fontFamily: 'system-ui, -apple-system, sans-serif' }}>
+                    <h1 className="text-[32px] max-md:text-xl font-black tracking-tighter flex items-center" style={{ fontFamily: 'system-ui, -apple-system, sans-serif' }}>
                         <span className="text-white drop-shadow-md">Rest</span>
                         <span className="text-red-500 italic drop-shadow-md" style={{ marginLeft: '-1px' }}>Ex</span>
                     </h1>
                 </div>
 
-                <div className="flex items-center gap-2 sm:gap-4 md:gap-6 min-w-0 flex-1 sm:flex-initial justify-end">
-                    <div className="hidden md:flex items-center gap-6 shrink-0">
+                <div className="flex items-center gap-6 min-w-0 flex-1 justify-end max-md:gap-2">
+                    <div className="flex items-center gap-6 shrink-0 max-lg:hidden">
                         <div className="flex items-center gap-2 text-white/70 font-bold text-sm">
                             <Users className="w-4 h-4" />{' '}
                             <span>
@@ -402,9 +402,9 @@ export default function RestaurantModule({
                         </div>
                     </div>
 
-                    <div className="hidden sm:block h-6 w-px bg-white/10 shrink-0" />
+                    <div className="hidden lg:block h-6 w-px bg-white/10 shrink-0" />
 
-                    <div className="flex items-center gap-2 sm:gap-4 min-w-0 flex-wrap justify-end">
+                    <div className="flex items-center gap-4 min-w-0 flex-nowrap justify-end max-md:flex-wrap max-md:gap-2">
                         <div className="flex flex-col items-end">
                             <span className="text-[10px] font-black text-white/50 uppercase tracking-widest">{tm('resFiscalDayHeader')}</span>
                             <span className="text-sm font-bold text-white leading-none">{formatWorkDayLabel(workDayDate)}</span>
@@ -448,7 +448,7 @@ export default function RestaurantModule({
                             <div className="w-8 h-8 rounded-lg bg-blue-500/20 flex items-center justify-center border border-blue-400/30">
                                 <User className="w-4 h-4 text-blue-100" />
                             </div>
-                            <div className="hidden sm:flex flex-col">
+                            <div className="flex flex-col max-md:hidden">
                                 <span className="text-xs font-bold text-white leading-tight">{currentUser.fullName || currentUser.username}</span>
                                 <span className="text-[9px] font-medium text-blue-200 uppercase tracking-wider">{currentUser.role || tm('resRoleStaffDefault')}</span>
                             </div>
@@ -481,7 +481,7 @@ export default function RestaurantModule({
                 {activeTab === 'dashboard' ? (
                     <div className="flex flex-col h-full overflow-hidden">
                         {/* Status Cards */}
-                        <div className="grid grid-cols-1 min-[420px]:grid-cols-3 gap-0 shrink-0 shadow-sm relative z-10 border-b border-slate-200">
+                        <div className="grid grid-cols-3 gap-0 shrink-0 shadow-sm relative z-10 border-b border-slate-200 max-md:grid-cols-1">
                             <div className="res-stat-card cursor-pointer bg-red-500" onClick={() => setActiveTab('floor')}>
                                 <UtensilsCrossed className="w-6 h-6 text-white" />
                                 <div className="ml-5">
@@ -550,8 +550,8 @@ export default function RestaurantModule({
                         </div>
 
                         {/* Tiles Grid */}
-                        <div className="flex-1 overflow-y-auto p-3 sm:p-6 md:p-10 custom-scrollbar min-w-0">
-                            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-3 sm:gap-4 md:gap-6">
+                        <div className="flex-1 overflow-y-auto p-10 max-md:p-3 custom-scrollbar min-w-0">
+                            <div className="grid grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-6 max-xl:grid-cols-3 max-md:grid-cols-2 max-md:gap-3">
                                 {hasPermission('restaurant.pos', 'READ') && (
                                     <DashboardTile icon={<UtensilsCrossed />} label={tm('resTileService')} color="#ef4444" onClick={() => setActiveTab('floor')} disabled={!isDayActive} />
                                 )}

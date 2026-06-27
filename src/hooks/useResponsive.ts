@@ -13,20 +13,27 @@ const MOBILE_BREAKPOINT = 768;
 const TABLET_BREAKPOINT = 1024;
 const SMALL_MOBILE_BREAKPOINT = 480;
 
+function readEffectiveWidth(): number {
+  if (typeof window === 'undefined') return 1024;
+  const rawZoom = parseFloat(document.documentElement.style.zoom || '1');
+  const zoom = Number.isFinite(rawZoom) && rawZoom > 0 ? rawZoom : 1;
+  return window.innerWidth / zoom;
+}
+
 /**
  * Responsive hook - Tüm ekran boyutlarını takip eder
  * Bootstrap-like breakpoint sistemi
  */
 export function useResponsive(): Breakpoints {
   const [dimensions, setDimensions] = useState({
-    width: typeof window !== 'undefined' ? window.innerWidth : 1024,
+    width: typeof window !== 'undefined' ? readEffectiveWidth() : 1024,
     height: typeof window !== 'undefined' ? window.innerHeight : 768,
   });
 
   useEffect(() => {
     const handleResize = () => {
       setDimensions({
-        width: window.innerWidth,
+        width: readEffectiveWidth(),
         height: window.innerHeight,
       });
     };
@@ -37,12 +44,14 @@ export function useResponsive(): Breakpoints {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
+  const effectiveWidth = dimensions.width;
+
   return {
-    isMobile: dimensions.width < MOBILE_BREAKPOINT,
-    isTablet: dimensions.width >= MOBILE_BREAKPOINT && dimensions.width < TABLET_BREAKPOINT,
-    isDesktop: dimensions.width >= TABLET_BREAKPOINT,
-    isSmallMobile: dimensions.width < SMALL_MOBILE_BREAKPOINT,
-    width: dimensions.width,
+    isMobile: effectiveWidth < MOBILE_BREAKPOINT,
+    isTablet: effectiveWidth >= MOBILE_BREAKPOINT && effectiveWidth < TABLET_BREAKPOINT,
+    isDesktop: effectiveWidth >= TABLET_BREAKPOINT,
+    isSmallMobile: effectiveWidth < SMALL_MOBILE_BREAKPOINT,
+    width: effectiveWidth,
     height: dimensions.height,
   };
 }

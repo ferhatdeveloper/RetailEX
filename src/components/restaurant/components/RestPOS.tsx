@@ -42,6 +42,7 @@ import {
     CheckSquare,
     Square,
 } from 'lucide-react';
+import { useResponsive } from '../../../hooks/useResponsive';
 import { cn } from '../../ui/utils';
 import { POSPaymentModal, type POSPaymentModalDraftContext } from '../../pos/POSPaymentModal';
 import {
@@ -214,6 +215,7 @@ export const RestPOS: React.FC<RestPOSProps> = ({
     const { selectedFirm } = useFirmaDonem();
     const { language: uiLanguage } = useLanguage();
     const tmR = useRestaurantModuleTm();
+    const { isMobile } = useResponsive();
     const fmt = useCallback((n: number) => formatCurrency(n, 2, false), []);
 
     const isKitchenReceiptLang = (s: string): s is KitchenReceiptLocale =>
@@ -1613,8 +1615,7 @@ export const RestPOS: React.FC<RestPOSProps> = ({
     return (
         <div
             className="h-full flex flex-col bg-[#f0f0f0] font-sans overflow-hidden select-none text-gray-800"
-            onTouchStart={handleTouchStart}
-            onTouchEnd={handleTouchEnd}
+            {...(isMobile ? { onTouchStart: handleTouchStart, onTouchEnd: handleTouchEnd } : {})}
         >
 
             {/* ── UNIFIED HEADER ─────────────────────────────────────── */}
@@ -1648,7 +1649,7 @@ export const RestPOS: React.FC<RestPOSProps> = ({
                                 value={query}
                                 onChange={e => setQuery(e.target.value)}
                                 onFocus={() => {
-                                    if ((window as any).__TAURI_INTERNALS__) {
+                                    if (isMobile && (window as any).__TAURI_INTERNALS__) {
                                         import('@tauri-apps/api/core').then(({ invoke }) => invoke('show_touch_keyboard')).catch(() => {});
                                     }
                                 }}
@@ -1656,7 +1657,7 @@ export const RestPOS: React.FC<RestPOSProps> = ({
                         </div>
                     </div>
 
-                    <div className="flex flex-1 items-center gap-3 overflow-x-auto no-scrollbar px-2 mx-auto justify-end relative z-10">
+                    <div className="flex flex-1 items-center gap-3 px-2 mx-auto justify-end relative z-10 max-lg:overflow-x-auto max-lg:no-scrollbar">
                         <button
                             onClick={() => setShowStaffModal(true)}
                             className={cn(
@@ -1771,7 +1772,7 @@ export const RestPOS: React.FC<RestPOSProps> = ({
 
                 {/* SECONDARY ACTION BAR (Plate Chips & Actions) */}
                 <div
-                    className="flex items-center justify-between px-6 z-10 shrink-0 overflow-x-auto no-scrollbar border-b border-white/10"
+                    className="flex items-center justify-between px-6 z-10 shrink-0 border-b border-white/10 max-lg:overflow-x-auto max-lg:no-scrollbar"
                     style={{
                         background: 'linear-gradient(to bottom, #2563eb, #1d4ed8)',
                         boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.1), 0 4px 6px -1px rgba(0,0,0,0.1)'
@@ -1924,7 +1925,7 @@ export const RestPOS: React.FC<RestPOSProps> = ({
             <div className="flex-1 flex overflow-hidden min-h-0 min-w-0">
 
                 {/* ── LEFT SIDEBAR ────────────────────────────────────── */}
-                <aside className="w-[200px] bg-slate-50 border-r border-slate-200 overflow-y-auto shrink-0 flex flex-col shadow-inner z-10 pb-8 content-start touch-pan-y">
+                <aside className="w-[220px] bg-slate-50 border-r border-slate-200 overflow-y-auto shrink-0 flex flex-col shadow-inner z-10 pb-8 content-start max-md:hidden">
                     <div className="px-3 mt-6 mb-3 space-y-2">
                         {catMain !== null && (
                             <button
@@ -2054,8 +2055,8 @@ export const RestPOS: React.FC<RestPOSProps> = ({
                 </aside>
 
                 {/* ── PRODUCTS GRID ────────────────────────────────────── */}
-                <main className="flex-1 min-w-0 overflow-y-auto p-2 bg-[#f4f6fb]">
-                    <div className="grid grid-cols-4 xl:grid-cols-5 xxl:grid-cols-6 gap-2 content-start">
+                <main className="flex-1 min-w-0 overflow-y-auto p-4 bg-[#f4f6fb]">
+                    <div className="grid grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-3 content-start max-xl:grid-cols-3 max-lg:grid-cols-2 max-md:grid-cols-2 max-md:gap-2 max-md:p-2">
                         {filtered.map(product => {
                             const pm = parseMainSub(product);
                             const cat = pm.sub ? `${pm.main} › ${pm.sub}` : pm.main;
@@ -2177,8 +2178,7 @@ export const RestPOS: React.FC<RestPOSProps> = ({
 
                 {/* ── RIGHT ORDER PANEL ────────────────────────────────── */}
                 <aside
-                    className="bg-white border-l border-gray-200 flex flex-col overflow-hidden"
-                    style={{ width: '520px', minWidth: '520px', maxWidth: '520px', flexShrink: 0, flexGrow: 0 }}
+                    className="bg-white border-l border-gray-200 flex flex-col overflow-hidden shrink-0 w-[520px] min-w-[300px] max-w-[38vw]"
                 >
 
                     {/* ── CART ITEMS ── */}
@@ -2671,7 +2671,7 @@ export const RestPOS: React.FC<RestPOSProps> = ({
                         <button
                             onClick={handleOpenPayment}
                             disabled={cart.length === 0}
-                            className="flex-1 flex flex-col items-center justify-center gap-1.5 py-5 hover:bg-emerald-500 hover:text-white group transition-all active:scale-95 disabled:opacity-40 border-r border-slate-200"
+                            className="flex-1 flex flex-row items-center justify-center gap-2 py-3 max-md:flex-col max-md:gap-1.5 max-md:py-5 hover:bg-emerald-500 hover:text-white group transition-all active:scale-95 disabled:opacity-40 border-r border-slate-200"
                         >
                             <Banknote className="w-6 h-6 text-emerald-600 group-hover:text-white transition-colors" />
                             <span className="text-[11px] font-black tracking-widest">{tmR('resPosPayCash')}</span>
@@ -2679,7 +2679,7 @@ export const RestPOS: React.FC<RestPOSProps> = ({
                         <button
                             onClick={handleOpenPayment}
                             disabled={cart.length === 0}
-                            className="flex-1 flex flex-col items-center justify-center gap-1.5 py-5 hover:bg-blue-600 hover:text-white group transition-all active:scale-95 disabled:opacity-40 border-r border-slate-200"
+                            className="flex-1 flex flex-row items-center justify-center gap-2 py-3 max-md:flex-col max-md:gap-1.5 max-md:py-5 hover:bg-blue-600 hover:text-white group transition-all active:scale-95 disabled:opacity-40 border-r border-slate-200"
                         >
                             <CreditCard className="w-6 h-6 text-blue-600 group-hover:text-white transition-colors" />
                             <span className="text-[11px] font-black tracking-widest">{tmR('resPosPayCard')}</span>
@@ -2687,7 +2687,7 @@ export const RestPOS: React.FC<RestPOSProps> = ({
                         <button
                             onClick={handleOpenPayment}
                             disabled={cart.length === 0}
-                            className="flex-1 flex flex-col items-center justify-center gap-1.5 py-5 hover:bg-purple-600 hover:text-white group transition-all active:scale-95 disabled:opacity-40 border-r border-slate-200"
+                            className="flex-1 flex flex-row items-center justify-center gap-2 py-3 max-md:flex-col max-md:gap-1.5 max-md:py-5 hover:bg-purple-600 hover:text-white group transition-all active:scale-95 disabled:opacity-40 border-r border-slate-200"
                         >
                             <LayoutGrid className="w-6 h-6 text-purple-600 group-hover:text-white transition-colors" />
                             <span className="text-[11px] font-black uppercase tracking-widest">{tmR('resPosPartialPay')}</span>

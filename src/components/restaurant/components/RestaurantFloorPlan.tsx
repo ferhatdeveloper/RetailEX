@@ -121,7 +121,7 @@ export function RestaurantFloorPlan({ onSelectTable, onBack, moveTableSource, mo
         currentStaff,
         logout,
     } = useRestaurantStore();
-    const { width } = useResponsive();
+    const { width, isDesktop, isTablet, isMobile } = useResponsive();
     const { isAdmin, isManager, user } = usePermission();
     const canFloorAdminTable =
         isAdmin() ||
@@ -187,7 +187,14 @@ export function RestaurantFloorPlan({ onSelectTable, onBack, moveTableSource, mo
     const [bulkCount, setBulkCount] = useState(5);
     const searchInputRef = useRef<HTMLInputElement>(null);
 
-    const cols = width >= 1024 ? 10 : width >= 768 ? 8 : width >= 640 ? 6 : width >= 400 ? 3 : 2;
+    const cols = React.useMemo(() => {
+        if (isDesktop) {
+            return Math.min(10, Math.max(6, Math.floor(width / 132)));
+        }
+        if (isTablet) return 6;
+        if (width >= 640) return 4;
+        return width >= 400 ? 3 : 2;
+    }, [width, isDesktop, isTablet]);
 
     const activeFloorName = regions.find(r => r.id === activeFloor)?.name;
     const byFloor = activeFloor === RESTAURANT_FLOOR_ALL_ID
@@ -260,7 +267,7 @@ export function RestaurantFloorPlan({ onSelectTable, onBack, moveTableSource, mo
             </div>
 
             <div
-                className="border-b flex items-center px-3 sm:px-6 pr-3 sm:pr-4 z-10 shrink-0 overflow-x-auto no-scrollbar shadow-lg"
+                className="border-b flex items-center px-6 pr-4 z-10 shrink-0 shadow-lg max-md:overflow-x-auto max-md:no-scrollbar max-md:px-3"
                 style={{ backgroundColor: '#1d4ed8', borderColor: 'rgba(30,58,138,0.2)' }}
             >
                 <div className="flex items-center gap-1 flex-1 py-2">
@@ -1253,7 +1260,7 @@ function TableCard({
             }}
             style={{ backgroundColor: config.bg, touchAction: 'manipulation' }}
             className={cn(
-                "relative cursor-pointer flex flex-col justify-between p-2 sm:p-3 lg:p-4 group hover:brightness-110 active:scale-[0.98] transition-all border border-white/20 rounded-xl sm:rounded-2xl lg:rounded-[2rem] aspect-square shadow-xl select-none",
+                "relative cursor-pointer flex flex-col justify-between p-4 group hover:brightness-110 active:scale-[0.98] transition-all border border-white/20 rounded-[2rem] aspect-square shadow-xl select-none max-md:p-2 max-md:rounded-xl",
                 config.shadow,
                 table.isLarge ? "col-span-2 !aspect-[2/1]" : "col-span-1",
                 "text-white",
@@ -1289,8 +1296,8 @@ function TableCard({
 
             {/* Orta: masa numarası */}
             <div className="flex flex-col items-center justify-center flex-1 py-1 pointer-events-none relative z-10">
-                <span className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-black tracking-tighter leading-none drop-shadow-2xl">{table.number}</span>
-                <span className="text-[8px] sm:text-[9px] lg:text-[11px] font-black uppercase tracking-widest mt-1 opacity-80 italic">{table.location}</span>
+                <span className="text-5xl font-black tracking-tighter leading-none drop-shadow-2xl max-md:text-2xl">{table.number}</span>
+                <span className="text-[11px] font-black uppercase tracking-widest mt-1 opacity-80 italic max-md:text-[8px]">{table.location}</span>
                 {/* Durum etiketi — ikon + kısa metin (masaya gitti / temizlendi vb.) */}
                 {table.status !== 'empty' && (
                     <span

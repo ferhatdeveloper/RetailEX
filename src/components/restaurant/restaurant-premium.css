@@ -33,6 +33,7 @@
   justify-content: center;
   position: relative;
   overflow: hidden;
+  min-height: 8.75rem;
 }
 
 .res-dashboard-tile:hover {
@@ -80,6 +81,12 @@
   opacity: 0.9;
   text-transform: uppercase;
   letter-spacing: 0.05em;
+}
+
+@media (max-width: 767px) {
+  .res-dashboard-tile {
+    min-height: auto;
+  }
 }
 
 @media (max-width: 419px) {
