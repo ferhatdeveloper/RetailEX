@@ -22,7 +22,10 @@ export type WSEventType =
   | 'RECONNECTED'
   | 'EXCHANGE_RATE_UPDATED'
   /** Sunucu: { data: { scope: 'firms'|'periods'|... } } ile master veri yenileme */
-  | 'DATA_INVALIDATION';
+  | 'DATA_INVALIDATION'
+  /** Merkez → kasa: sync_queue anlık çekim tetikle */
+  | 'MPOS_SYNC_PULL'
+  | 'SYNC_QUEUE_PULL';
 
 export interface WSMessage {
   type: WSEventType;
@@ -105,6 +108,13 @@ export class WebSocketService {
               const mapped = mapWsEventTypeToScope(message.type);
               if (mapped) emitInvalidate(mapped, 'ws');
             });
+            if (message.type === 'MPOS_SYNC_PULL' || message.type === 'SYNC_QUEUE_PULL') {
+              void import('./mposKasaAutoPullService').then(({ triggerInstantKasaPull }) => {
+                void triggerInstantKasaPull(this.storeId).catch((err) => {
+                  logger.warn('[WS] Anlık kasa çekimi başarısız:', err);
+                });
+              });
+            }
           } catch (err) {
             logger.error('[WS] Message parse error:', err);
           }

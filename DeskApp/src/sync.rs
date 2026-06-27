@@ -6,6 +6,7 @@ use tokio_postgres::NoTls;
 use futures::{SinkExt, StreamExt};
 use tokio_tungstenite::{connect_async, tungstenite::protocol::Message};
 use url::Url;
+use std::sync::OnceLock;
 use tauri::{AppHandle, Manager, Emitter};
 
 use crate::remote_input::RemoteInputManager;
@@ -221,7 +222,8 @@ async fn fetch_pending_batch(
                     .await
             }
         }
-        (None, _) => {
+        (None, QueueSelectMode::InboundMaster) => Ok(vec![]),
+        (None, QueueSelectMode::BranchOutbound) => {
             source
                 .query(
                     "SELECT id, table_name, record_id, action, data
@@ -390,6 +392,55 @@ async fn postgrest_apply_item(
     Ok(())
 }
 
+async fn postgrest_mark_failed(
+    http: &reqwest::Client,
+    base: &str,
+    id: &uuid::Uuid,
+    error: &str,
+) -> Result<(), String> {
+    let base = normalize_rest_base(base);
+    let get_url = format!("{}/sync_queue?id=eq.{}&select=retry_count", base, id);
+    let mut retry = 0i32;
+    if let Ok(get_res) = http
+        .get(&get_url)
+        .header("Accept", "application/json")
+        .header("Accept-Profile", "public")
+        .send()
+        .await
+    {
+        if get_res.status().is_success() {
+            if let Ok(rows) = get_res.json::<Vec<serde_json::Value>>().await {
+                if let Some(n) = rows.first().and_then(|r| r.get("retry_count")).and_then(|v| v.as_i64()) {
+                    retry = n as i32 + 1;
+                }
+            }
+        }
+    }
+    let patch_url = format!("{}/sync_queue?id=eq.{}", base, id);
+    let msg = if error.len() > 2000 { &error[..2000] } else { error };
+    let body = serde_json::json!({
+        "retry_count": retry,
+        "error_message": msg
+    });
+    let res = http
+        .patch(&patch_url)
+        .header("Accept", "application/json")
+        .header("Content-Type", "application/json")
+        .header("Accept-Profile", "public")
+        .header("Content-Profile", "public")
+        .header("Prefer", "return=minimal")
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    if !res.status().is_success() {
+        let status = res.status();
+        let t = res.text().await.unwrap_or_default();
+        return Err(format!("PostgREST sync_queue PATCH failed: {} {}", status, t));
+    }
+    Ok(())
+}
+
 async fn postgrest_mark_completed(http: &reqwest::Client, base: &str, id: &uuid::Uuid) -> Result<(), String> {
     let base = normalize_rest_base(base);
     let url = format!("{}/sync_queue?id=eq.{}", base, id);
@@ -480,8 +531,46 @@ fn terminal_opt(config: &crate::config::AppConfig) -> Option<String> {
     }
 }
 
+fn hybrid_sync_mutex() -> &'static tokio::sync::Mutex<()> {
+    static M: OnceLock<tokio::sync::Mutex<()>> = OnceLock::new();
+    M.get_or_init(|| tokio::sync::Mutex::new(()))
+}
+
+async fn try_acquire_hybrid_sync() -> Option<tokio::sync::MutexGuard<'static, ()>> {
+    hybrid_sync_mutex().try_lock().ok()
+}
+
+fn is_pos_role(role: &str) -> bool {
+    matches!(
+        role.trim().to_lowercase().as_str(),
+        "pos" | "terminal" | "kasa" | "mpos" | "cashier"
+    )
+}
+
 fn is_kasa_terminal(config: &crate::config::AppConfig) -> bool {
+    if is_pos_role(&config.role) {
+        return true;
+    }
     terminal_opt(config).is_some()
+}
+
+fn store_id_for_inbound(config: &crate::config::AppConfig) -> Option<&str> {
+    let sid = config.store_id.trim();
+    if sid.is_empty() {
+        None
+    } else {
+        Some(sid)
+    }
+}
+
+fn should_run_inbound_master(config: &crate::config::AppConfig) -> bool {
+    let direction = config.hybrid_sync_direction.to_lowercase();
+    let kasa = is_kasa_terminal(config);
+    if kasa && config.store_id.trim().is_empty() {
+        eprintln!("⚠️ Kasa inbound atlandı: store_id yapılandırılmamış (terminal={})", config.terminal_name);
+        return false;
+    }
+    direction == "remote_to_local" || direction == "bidirectional" || kasa
 }
 
 fn pct_encode_component(s: &str) -> String {
@@ -541,7 +630,9 @@ async fn count_inbound_pending_postgrest(
         .await
         .map_err(|e| e.to_string())?;
     if !res.status().is_success() {
-        return Ok(0);
+        let status = res.status();
+        let t = res.text().await.unwrap_or_default();
+        return Err(format!("PostgREST sync_queue COUNT: {} {}", status, t));
     }
     let range = res.headers().get("content-range").and_then(|v| v.to_str().ok()).unwrap_or("");
     if let Some(total) = range.split('/').nth(1).and_then(|t| t.parse::<i64>().ok()) {
@@ -632,7 +723,9 @@ async fn sync_postgrest_to_pg(
                 }
                 Err(e) => {
                     total_failed += 1;
-                    eprintln!("postgrest→pg apply error: {}", format_pg_error(e));
+                    let error_msg = format_pg_error(e);
+                    eprintln!("postgrest→pg apply error: {}", error_msg);
+                    let _ = postgrest_mark_failed(http, rest_base, &id, &error_msg).await;
                 }
             }
         }
@@ -663,21 +756,22 @@ async fn process_sync_queue_rest_api(config: &crate::config::AppConfig) -> Resul
         .map_err(|e| e.to_string())?;
 
     let direction = config.hybrid_sync_direction.to_lowercase();
-    let store_filter = if config.store_id.trim().is_empty() {
-        None
-    } else {
-        Some(config.store_id.as_str())
-    };
+    let store_filter = store_id_for_inbound(config);
     let kasa = is_kasa_terminal(config);
     let term = terminal_opt(config);
     let term_ref = term.as_deref();
     let mut total = 0i32;
 
     if direction == "local_to_remote" || direction == "bidirectional" {
-        let (s, _) = sync_pg_to_postgrest(&local, &http, rest_base, store_filter).await?;
+        let outbound_store = if config.store_id.trim().is_empty() {
+            None
+        } else {
+            Some(config.store_id.as_str())
+        };
+        let (s, _) = sync_pg_to_postgrest(&local, &http, rest_base, outbound_store).await?;
         total += s;
     }
-    if direction == "remote_to_local" || direction == "bidirectional" || kasa {
+    if should_run_inbound_master(config) {
         let (s, _) = sync_postgrest_to_pg(
             &http,
             rest_base,
@@ -704,6 +798,14 @@ async fn process_sync_queue_rest_api(config: &crate::config::AppConfig) -> Resul
 }
 
 pub async fn process_sync_queue_internal() -> Result<(), String> {
+    let _sync_guard = match try_acquire_hybrid_sync().await {
+        Some(g) => g,
+        None => {
+            println!("⏭️ Hibrit senkron zaten çalışıyor, atlanıyor.");
+            return Ok(());
+        }
+    };
+
     let config = crate::config::get_app_config_internal().map_err(|e| e.to_string())?;
 
     if !config.is_configured {
@@ -746,11 +848,12 @@ pub async fn process_sync_queue_internal() -> Result<(), String> {
     .await?;
 
     let direction = config.hybrid_sync_direction.to_lowercase();
-    let store_filter = if config.store_id.trim().is_empty() {
+    let outbound_store = if config.store_id.trim().is_empty() {
         None
     } else {
         Some(config.store_id.as_str())
     };
+    let inbound_store = store_id_for_inbound(&config);
     let kasa = is_kasa_terminal(&config);
     let term = terminal_opt(&config);
     let term_ref = term.as_deref();
@@ -760,18 +863,18 @@ pub async fn process_sync_queue_internal() -> Result<(), String> {
         let (s, _) = sync_one_direction(
             &local,
             &remote,
-            store_filter,
+            outbound_store,
             QueueSelectMode::BranchOutbound,
             None,
         )
         .await?;
         total += s;
     }
-    if direction == "remote_to_local" || direction == "bidirectional" || kasa {
+    if should_run_inbound_master(&config) {
         let (s, _) = sync_one_direction(
             &remote,
             &local,
-            store_filter,
+            inbound_store,
             QueueSelectMode::InboundMaster,
             term_ref,
         )
@@ -849,6 +952,17 @@ async fn count_inbound_pending_pg(
 }
 
 pub async fn mpos_pull_master_internal() -> Result<MposPullResult, String> {
+    let _sync_guard = match try_acquire_hybrid_sync().await {
+        Some(g) => g,
+        None => {
+            return Ok(MposPullResult {
+                synced: 0,
+                failed: 0,
+                pending_inbound: 0,
+            });
+        }
+    };
+
     let config = crate::config::get_app_config_internal().map_err(|e| e.to_string())?;
 
     if !config.is_configured || config.db_mode.to_lowercase() != "hybrid" {
@@ -859,11 +973,11 @@ pub async fn mpos_pull_master_internal() -> Result<MposPullResult, String> {
         });
     }
 
-    let store_filter = if config.store_id.trim().is_empty() {
-        None
-    } else {
-        Some(config.store_id.as_str())
-    };
+    if is_kasa_terminal(&config) && config.store_id.trim().is_empty() {
+        return Err("Kasa inbound için store_id zorunlu. Kurulum sihirbazında şube seçin.".to_string());
+    }
+
+    let store_filter = store_id_for_inbound(&config);
     let term = terminal_opt(&config);
     let term_ref = term.as_deref();
 
@@ -905,7 +1019,12 @@ pub async fn mpos_pull_master_internal() -> Result<MposPullResult, String> {
         synced = s;
         failed = f;
         pending_inbound =
-            count_inbound_pending_postgrest(&http, rest_base, store_filter, term_ref).await?;
+            count_inbound_pending_postgrest(&http, rest_base, store_filter, term_ref)
+                .await
+                .unwrap_or_else(|e| {
+                    eprintln!("inbound pending count error: {}", e);
+                    0
+                });
     } else {
         let (remote_host, remote_port, remote_db) = parse_pg_endpoint(&config.remote_db);
         let remote = connect_pg(
@@ -1109,6 +1228,14 @@ async fn start_websocket_listener(
                                             "UPDATE_PEERS" => {
                                                 // Eski merkez mesajları: artık yerel mesh/VPN yok; yoksay.
                                             },
+                                            "SYNC_QUEUE_PULL" | "MPOS_SYNC_PULL" => {
+                                                println!("📥 Merkez anlık senkron tetikledi (WS)...");
+                                                tauri::async_runtime::spawn(async {
+                                                    if let Err(e) = process_sync_queue_internal().await {
+                                                        eprintln!("WS sync queue error: {}", e);
+                                                    }
+                                                });
+                                            },
                                             _ => {}
                                         }
                                     } else {
@@ -1161,7 +1288,7 @@ async fn start_websocket_listener(
                                 firm_nr: config.erp_firm_nr.clone(),
                                 virtual_ip: v_ip,
                                 timestamp: chrono::Utc::now().to_rfc3339(),
-                                version: "0.1.11".to_string(),
+                                version: env!("CARGO_PKG_VERSION").to_string(),
                             };
                              
                             if let Ok(json) = serde_json::to_string(&hb) {

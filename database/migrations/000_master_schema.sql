@@ -769,6 +769,14 @@ CREATE TABLE IF NOT EXISTS sync_queue (
   created_at     TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE INDEX IF NOT EXISTS idx_sync_queue_target_store_pending
+  ON public.sync_queue (target_store_id, status, created_at ASC)
+  WHERE status = 'pending';
+
+CREATE INDEX IF NOT EXISTS idx_sync_queue_target_terminal_pending
+  ON public.sync_queue (target_store_id, terminal_name, status, created_at ASC)
+  WHERE status = 'pending';
+
 CREATE TABLE IF NOT EXISTS audit_logs (
   id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id    UUID,

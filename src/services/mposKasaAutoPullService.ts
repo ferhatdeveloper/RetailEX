@@ -1,7 +1,7 @@
 /**
  * Kasa (MPOS) otomatik kuyruk çekimi — merkezden master veri (ürün, promosyon vb.)
  * Tauri: Rust BackgroundSyncService + mpos_pull_master_now
- * Web: düşük frekanslı runHybridSync(receive) döngüsü
+ * Web: birleşik hibrit otomatik senkron (startUnifiedHybridAutoSync)
  */
 
 import { IS_TAURI, safeInvoke } from '../utils/env';
@@ -11,13 +11,21 @@ import {
   runHybridSync,
   type HybridSyncResult,
 } from './hybridSyncEngine';
-import { buildKasaInboundFilter } from './hybridSyncService';
+import { buildKasaInboundFilter, buildSyncFilter } from './hybridSyncService';
 import {
   DB_SETTINGS,
   LOCAL_CONFIG,
   REMOTE_CONFIG,
   resolveHybridSyncConnectionProvider,
 } from './postgres';
+import {
+  applyTerminalRuntimeFromConfig,
+  isKasaTerminalRuntime,
+  isPosTerminalRole,
+  readTerminalRuntimeFromWebStorage,
+  TERMINAL_RUNTIME,
+  type TerminalRuntime,
+} from './terminalRuntimeService';
 
 export type KasaPullContext = {
   storeId: string;
@@ -34,32 +42,37 @@ export type MposPullResult = {
 export async function resolveKasaPullContext(
   fallbackStoreId?: string | null,
 ): Promise<KasaPullContext | null> {
+  let runtime: TerminalRuntime = TERMINAL_RUNTIME;
+
   if (IS_TAURI) {
     try {
       const cfg: Record<string, unknown> = await safeInvoke('get_app_config');
-      const terminalName = String(cfg?.terminal_name ?? '').trim();
-      const storeId = String(cfg?.store_id ?? fallbackStoreId ?? '').trim();
-      if (!terminalName || !storeId) return null;
-      return { storeId, terminalName };
+      applyTerminalRuntimeFromConfig(cfg);
+      runtime = TERMINAL_RUNTIME;
     } catch {
       return null;
     }
+  } else {
+    runtime = readTerminalRuntimeFromWebStorage();
+    if (!runtime.storeId && fallbackStoreId) {
+      runtime = { ...runtime, storeId: String(fallbackStoreId).trim() };
+    }
   }
 
-  let terminalName = '';
-  let storeId = String(fallbackStoreId ?? '').trim();
-  try {
-    const raw = localStorage.getItem('retailex_web_config');
-    if (raw) {
-      const cfg = JSON.parse(raw) as Record<string, unknown>;
-      terminalName = String(cfg?.terminal_name ?? '').trim();
-      if (!storeId) storeId = String(cfg?.store_id ?? '').trim();
-    }
-  } catch {
-    /* ignore */
+  const isKasa =
+    isPosTerminalRole(runtime.role) || runtime.terminalName.trim().length > 0;
+  if (!isKasa) return null;
+
+  const storeId = runtime.storeId.trim();
+  if (!storeId) {
+    console.warn('[KasaPull] store_id eksik — inbound atlandı (güvenlik)');
+    return null;
   }
-  if (!terminalName || !storeId) return null;
-  return { storeId, terminalName };
+
+  return {
+    storeId,
+    terminalName: runtime.terminalName.trim(),
+  };
 }
 
 export async function countInboundMasterPending(ctx: KasaPullContext): Promise<number> {
@@ -103,7 +116,14 @@ export async function pullInboundMasterNow(
     remoteRestUrl: DB_SETTINGS.remoteRestUrl,
   });
 
-  const pending = await countInboundMasterPending(resolved).catch(() => 0);
+  let pending = 0;
+  try {
+    pending = await countInboundMasterPending(resolved);
+  } catch (e) {
+    console.warn('[KasaPull] inbound pending sayımı başarısız:', e);
+    pending = -1;
+  }
+
   return {
     synced: result.totalSynced,
     failed: result.failed,
@@ -118,12 +138,18 @@ export type KasaAutoPullState = {
   isKasa: boolean;
 };
 
-/** Kasa terminalinde inbound bekleyen sayısı + otomatik çekim (web) */
-export function startKasaAutoPullLoop(opts?: {
+let unifiedTimer: ReturnType<typeof setInterval> | null = null;
+let unifiedInProgress = false;
+let unifiedStopFn: (() => void) | null = null;
+
+/** Web: tek orchestrator — kasa ise gönder+al, değilse klasik hibrit sync */
+export function startUnifiedHybridAutoSync(opts?: {
   storeId?: string | null;
   intervalSec?: number;
   onUpdate?: (state: KasaAutoPullState) => void;
 }): () => void {
+  stopUnifiedHybridAutoSync();
+
   let cancelled = false;
   let lastPullAt: string | null = null;
 
@@ -136,33 +162,120 @@ export function startKasaAutoPullLoop(opts?: {
     try {
       const pending = await countInboundMasterPending(ctx);
       opts.onUpdate({ pendingInbound: pending, lastPullAt, isKasa: true });
-    } catch {
-      opts.onUpdate({ pendingInbound: 0, lastPullAt, isKasa: true });
+    } catch (e) {
+      console.warn('[UnifiedHybridSync] pending sayım hatası:', e);
+      opts.onUpdate({ pendingInbound: -1, lastPullAt, isKasa: true });
     }
   };
 
   const tick = async () => {
-    if (cancelled || DB_SETTINGS.activeMode !== 'hybrid') return;
-    const ctx = await resolveKasaPullContext(opts?.storeId);
-    const isKasa = !!ctx;
+    if (cancelled || unifiedInProgress || DB_SETTINGS.activeMode !== 'hybrid') return;
+    unifiedInProgress = true;
+    try {
+      const ctx = await resolveKasaPullContext(opts?.storeId);
+      const isKasa = !!ctx;
 
-    if (!IS_TAURI && isKasa && ctx) {
-      try {
+      if (IS_TAURI) {
+        await emit(ctx, isKasa);
+        return;
+      }
+
+      if (isKasa && ctx) {
+        await runHybridSync({
+          flow: 'send',
+          scope: 'pending',
+          filter: buildSyncFilter({ storeId: ctx.storeId }),
+          local: LOCAL_CONFIG,
+          remote: REMOTE_CONFIG,
+          connectionProvider: resolveHybridSyncConnectionProvider(),
+          remoteRestUrl: DB_SETTINGS.remoteRestUrl,
+        });
         await pullInboundMasterNow(ctx);
         lastPullAt = new Date().toISOString();
-      } catch {
-        /* ağ / PG geçici hata */
+      } else if (!isKasaTerminalRuntime()) {
+        const dir = DB_SETTINGS.hybridSyncDirection;
+        const flow =
+          dir === 'remote_to_local' ? 'receive' : dir === 'bidirectional' ? 'both' : 'send';
+        await runHybridSync({
+          flow,
+          direction: dir,
+          scope: 'pending',
+          local: LOCAL_CONFIG,
+          remote: REMOTE_CONFIG,
+          connectionProvider: resolveHybridSyncConnectionProvider(),
+          remoteRestUrl: DB_SETTINGS.remoteRestUrl,
+          filter: buildSyncFilter({ storeId: opts?.storeId ?? null }),
+        });
+        lastPullAt = new Date().toISOString();
       }
-    }
 
-    await emit(ctx, isKasa);
+      await emit(ctx, isKasa);
+    } catch (e) {
+      console.warn('[UnifiedHybridSync] tick hatası:', e);
+    } finally {
+      unifiedInProgress = false;
+    }
   };
 
   void tick();
   const sec = opts?.intervalSec ?? DB_SETTINGS.hybridSyncIntervalSec ?? 30;
-  const id = window.setInterval(() => void tick(), Math.max(5, sec) * 1000);
-  return () => {
+  unifiedTimer = window.setInterval(() => void tick(), Math.max(5, sec) * 1000);
+
+  unifiedStopFn = () => {
     cancelled = true;
-    window.clearInterval(id);
+    if (unifiedTimer) {
+      window.clearInterval(unifiedTimer);
+      unifiedTimer = null;
+    }
   };
+
+  return unifiedStopFn;
+}
+
+export function stopUnifiedHybridAutoSync(): void {
+  unifiedStopFn?.();
+  unifiedStopFn = null;
+  unifiedTimer = null;
+}
+
+/** @deprecated startUnifiedHybridAutoSync kullanın */
+export function startKasaAutoPullLoop(opts?: {
+  storeId?: string | null;
+  intervalSec?: number;
+  onUpdate?: (state: KasaAutoPullState) => void;
+}): () => void {
+  return startUnifiedHybridAutoSync(opts);
+}
+
+/** Merkez gönderim sonrası kasalara anlık çekim isteği (WS sunucusu relay ederse) */
+export function requestMposSyncPullNotify(opts?: {
+  storeId?: string;
+  terminalName?: string;
+}): void {
+  void import('./websocket').then(({ wsService }) => {
+    if (!wsService.isConnected()) return;
+    wsService.send('MPOS_SYNC_PULL', {
+      storeId: opts?.storeId,
+      terminalName: opts?.terminalName,
+      at: new Date().toISOString(),
+    });
+  });
+}
+  const ctx = await resolveKasaPullContext(fallbackStoreId);
+  if (!ctx) {
+    return { synced: 0, failed: 0, pending_inbound: 0, message: 'Kasa bağlamı yok.' };
+  }
+  if (IS_TAURI) {
+    return pullInboundMasterNow(ctx);
+  }
+  await runHybridSync({
+    flow: 'send',
+    scope: 'pending',
+    filter: buildSyncFilter({ storeId: ctx.storeId }),
+    local: LOCAL_CONFIG,
+    remote: REMOTE_CONFIG,
+    connectionProvider: resolveHybridSyncConnectionProvider(),
+    remoteRestUrl: DB_SETTINGS.remoteRestUrl,
+  });
+  return pullInboundMasterNow(ctx);
 }

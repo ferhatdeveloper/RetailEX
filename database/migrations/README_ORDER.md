@@ -55,6 +55,7 @@
 50. **062_hybrid_sync_backfill.sql** – Hibrit: yerelde olup kuyruğa düşmemiş kayıtları `sync_queue`'ya ekleme (`enqueue_hybrid_backfill`) ve tükenmiş denemeleri sıfırlama.
 51. **063_pos_terminal_registrations.sql** – Masaüstü kasa cihaz kaydı (`pos_terminal_registrations`), merkez web onayı, `register_pos_terminal` / `approve_pos_terminal` RPC.
 52. **064_pos_terminal_device_info.sql** – Cihaz kaydı: bilgisayar adı, OS, IP, saat dilimi; `register_pos_terminal` metadata (JSONB) desteği.
+53. **065_sync_queue_target_store_index.sql** – `sync_queue` inbound (merkez→kasa) indeksleri: `target_store_id`, `terminal_name`.
 
 **Mevcut veritabanı:** `config.db` (DeskApp ayarları) ile bekleyen migration’ları uygulamak için proje kökünde `npm run db:migrate` (ayrıntı: `.cursor/rules/database-migrate-config-db.mdc`).
 

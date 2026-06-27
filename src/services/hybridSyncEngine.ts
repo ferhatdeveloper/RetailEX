@@ -139,7 +139,11 @@ function buildQueueWhere(filter?: HybridSyncFilter): { sql: string; params: unkn
     sql += ` AND (firm_nr = $${i} OR lpad(ltrim(firm_nr, '0'), 3, '0') = $${i})`;
   }
 
-  if (filter?.inboundMasterOnly && filter?.storeId) {
+  if (filter?.inboundMasterOnly) {
+    if (!filter?.storeId?.trim()) {
+      sql += ` AND false`;
+      return { sql, params };
+    }
     params.push(filter.storeId);
     const i = params.length;
     sql += ` AND target_store_id = $${i}::uuid`;

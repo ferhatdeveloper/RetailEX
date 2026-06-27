@@ -424,6 +424,8 @@ export async function sendMposInfoToKasaAndPush(opts: {
   if (!enq.ok) return { ok: false, message: enq.message };
 
   const push = await pushMasterDataToBranches({ targetStoreId: opts.storeId });
+  const { requestMposSyncPullNotify } = await import('./mposKasaAutoPullService');
+  requestMposSyncPullNotify({ storeId: opts.storeId, terminalName: opts.terminalName });
   const msg = push.ok
     ? `${enq.message} ${push.message}`
     : `${enq.message} (İletim uyarısı: ${push.message})`;

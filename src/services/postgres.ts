@@ -3,6 +3,11 @@ import { fetchRetailexAware } from '../utils/retailexDevProxy';
 import { logger } from './loggingService';
 import { setGlobalCurrency } from '../utils/currency';
 import { runHybridSync, type HybridSyncFilter, type HybridSyncFlow, type HybridSyncScopeMode } from './hybridSyncEngine';
+import { applyTerminalRuntimeFromConfig } from './terminalRuntimeService';
+import {
+  startUnifiedHybridAutoSync,
+  stopUnifiedHybridAutoSync,
+} from './mposKasaAutoPullService';
 import {
   REMOTE_PG_DEFAULTS,
   parsePgEndpointString,
@@ -366,6 +371,7 @@ function applyWebLocalStorageConfig(config: any): void {
   }
 
   applyDefaultCurrencyFromConfig(config);
+  applyTerminalRuntimeFromConfig(config);
 }
 
 /**
@@ -458,6 +464,7 @@ export async function initializeFromSQLite(preloadedConfig?: any) {
       LOCAL_CONFIG.isConfigured = config.is_configured === true;
 
       applyDefaultCurrencyFromConfig(config);
+      applyTerminalRuntimeFromConfig(config);
 
       console.log('✅ Configurations Loaded from SQLite:', {
         mode: DB_SETTINGS.activeMode,
@@ -809,20 +816,12 @@ export class PostgresConnection {
     if (typeof window === 'undefined') return;
     // Tauri: Rust BackgroundSyncService (sync.rs) zaten sync_queue işler; JS timer pg_query mutex'ini POS ödemesiyle çakıştırır.
     if (IS_TAURI) return;
-    if (this.hybridSyncTimer) {
-      clearInterval(this.hybridSyncTimer);
-      this.hybridSyncTimer = null;
-    }
+    stopUnifiedHybridAutoSync();
     if (DB_SETTINGS.activeMode !== 'hybrid') return;
-    this.hybridSyncTimer = setInterval(() => {
-      if (this.hybridSyncInProgress) return;
-      this.hybridSyncInProgress = true;
-      void this.sync()
-        .catch((e) => console.warn('[Postgres] Otomatik hibrit senkron:', e))
-        .finally(() => {
-          this.hybridSyncInProgress = false;
-        });
-    }, normalizeHybridSyncIntervalSec(DB_SETTINGS.hybridSyncIntervalSec) * 1000);
+    startUnifiedHybridAutoSync({
+      storeId: undefined,
+      intervalSec: normalizeHybridSyncIntervalSec(DB_SETTINGS.hybridSyncIntervalSec),
+    });
   }
 
   private constructor() { }

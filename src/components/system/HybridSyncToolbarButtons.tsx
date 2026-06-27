@@ -13,7 +13,6 @@ import { buildSyncFilter, buildKasaInboundFilter, getBranchSyncStats } from '../
 import {
   pullInboundMasterNow,
   resolveKasaPullContext,
-  startKasaAutoPullLoop,
 } from '../../services/mposKasaAutoPullService';
 import { cn } from '../ui/utils';
 
@@ -45,7 +44,7 @@ export function HybridSyncToolbarButtons({ compact = false }: Props) {
           });
       const stats = await getBranchSyncStats(filter);
       if (kasaCtx) {
-        setInboundPending(Math.max(0, stats.remotePending));
+        setInboundPending(stats.remotePending >= 0 ? stats.remotePending : -1);
         setPending(stats.localPending);
       } else {
         setInboundPending(0);
@@ -58,19 +57,9 @@ export function HybridSyncToolbarButtons({ compact = false }: Props) {
 
   useEffect(() => {
     void refreshPending();
-    const stop = startKasaAutoPullLoop({
-      storeId: user?.store_id || null,
-      onUpdate: (state) => {
-        setIsKasa(state.isKasa);
-        if (state.isKasa) setInboundPending(state.pendingInbound);
-      },
-    });
     const t = window.setInterval(() => void refreshPending(), 20_000);
-    return () => {
-      stop();
-      window.clearInterval(t);
-    };
-  }, [refreshPending, user?.store_id]);
+    return () => window.clearInterval(t);
+  }, [refreshPending]);
 
   const run = async (flow: 'send' | 'receive') => {
     if (!isHybrid) {
@@ -176,6 +165,11 @@ export function HybridSyncToolbarButtons({ compact = false }: Props) {
         {inboundPending > 0 && loading === null && (
           <span className="absolute -top-1 -right-1 min-w-[14px] h-[14px] px-0.5 rounded-full bg-emerald-400 text-[9px] font-black text-blue-950 leading-[14px] text-center">
             {inboundPending > 99 ? '99+' : inboundPending}
+          </span>
+        )}
+        {inboundPending < 0 && loading === null && (
+          <span className="absolute -top-1 -right-1 min-w-[14px] h-[14px] px-0.5 rounded-full bg-red-400 text-[9px] font-black text-white leading-[14px] text-center">
+            !
           </span>
         )}
       </button>
