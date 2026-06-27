@@ -450,9 +450,20 @@ async fn sync_clcard_batch_to_pg(
                     ],
                 )
                 .await
-                .is_err()
             {
-                errors += 1;
+                Ok(_) => {}
+                Err(e) => {
+                    errors += 1;
+                    if errors <= 5 {
+                        let _ = window.emit(
+                            "sync-error",
+                            format!(
+                                "Cari kayıt hatası ({}, {}): {}",
+                                target_label, row.code, crate::db_utils::format_pg_error(e)
+                            ),
+                        );
+                    }
+                }
             }
         }
 
@@ -463,7 +474,7 @@ async fn sync_clcard_batch_to_pg(
                  ON CONFLICT (code) DO UPDATE SET ref_id=$2, name=$4, tax_nr=$5, tax_office=$6, city=$7, phone=COALESCE(EXCLUDED.phone, {}.phone), email=COALESCE(EXCLUDED.email, {}.email), address=COALESCE(EXCLUDED.address, {}.address)",
                 suppliers_table, suppliers_table, suppliers_table, suppliers_table
             );
-            if client
+            match client
                 .execute(
                     &sql,
                     &[
@@ -480,9 +491,20 @@ async fn sync_clcard_batch_to_pg(
                     ],
                 )
                 .await
-                .is_err()
             {
-                errors += 1;
+                Ok(_) => {}
+                Err(e) => {
+                    errors += 1;
+                    if errors <= 5 {
+                        let _ = window.emit(
+                            "sync-error",
+                            format!(
+                                "Tedarikçi kayıt hatası ({}, {}): {}",
+                                target_label, row.code, crate::db_utils::format_pg_error(e)
+                            ),
+                        );
+                    }
+                }
             }
         }
 

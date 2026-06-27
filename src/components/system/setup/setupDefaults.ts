@@ -12,6 +12,7 @@ export function createInitialSetupConfig(): SetupAppConfig {
     remote_rest_url: DEFAULT_SAAS_TENANT_POSTGREST_ORIGIN,
     hybrid_read_preference: 'local_first',
     hybrid_sync_direction: 'local_to_remote',
+    hybrid_sync_interval_sec: 30,
     terminal_name: 'TERMINAL-01',
     store_id: '',
     erp_firm_nr: '',

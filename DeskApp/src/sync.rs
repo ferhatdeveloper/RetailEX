@@ -78,7 +78,10 @@ impl BackgroundSyncService {
                 if let Err(e) = process_sync_queue_internal().await {
                    eprintln!("Sync Queue Error: {}", e);
                 }
-                sleep(Duration::from_secs(5)).await; // Poll every 5s
+                let interval_secs = crate::config::get_app_config_internal()
+                    .map(|c| crate::config::clamp_hybrid_sync_interval_sec(c.hybrid_sync_interval_sec))
+                    .unwrap_or(30);
+                sleep(Duration::from_secs(interval_secs)).await;
             }
         });
 

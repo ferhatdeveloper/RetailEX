@@ -1928,6 +1928,26 @@ const SetupWizard: React.FC = () => {
                                                     <option value="bidirectional">Çift yönlü</option>
                                                 </select>
                                             </div>
+                                            <div className="space-y-2">
+                                                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest pl-1">Otomatik senkron aralığı (sn)</label>
+                                                <input
+                                                    type="number"
+                                                    min={5}
+                                                    max={3600}
+                                                    step={5}
+                                                    value={config.hybrid_sync_interval_sec ?? 30}
+                                                    onChange={(e) =>
+                                                        setConfig({
+                                                            ...config,
+                                                            hybrid_sync_interval_sec: Math.min(
+                                                                3600,
+                                                                Math.max(5, parseInt(e.target.value, 10) || 30),
+                                                            ),
+                                                        })
+                                                    }
+                                                    className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-xs text-white focus:outline-none focus:border-blue-500"
+                                                />
+                                            </div>
                                         </div>
                                     </div>
                                 )}

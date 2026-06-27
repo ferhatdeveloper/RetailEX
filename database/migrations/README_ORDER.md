@@ -51,6 +51,7 @@
 46. **058_sale_items_expiry_batch.sql** – `rex_*_*_sale_items`: alış faturası satır SKT/parti bilgisi (`expiry_date`, `batch_no`) ve SKT raporu indeksi.
 47. **059_init_production_tables.sql** – mevcut firmalar için üretim reçete/emir tablolarını oluşturur (`INIT_PRODUCTION_TABLES`).
 48. **060_ensure_create_firm_period_engine.sql** – `CREATE_FIRM_TABLES` / `CREATE_PERIOD_TABLES` fonksiyonlarını kurar (firma kurulum sihirbazı; 000 atlanmış eski DB'ler).
+49. **061_rex_customers_suppliers_ref_id.sql** – Logo CLCARD senkronu: `rex_*_customers` / `suppliers` tablolarına `ref_id` (LOGICALREF).
 
 **Mevcut veritabanı:** `config.db` (DeskApp ayarları) ile bekleyen migration’ları uygulamak için proje kökünde `npm run db:migrate` (ayrıntı: `.cursor/rules/database-migrate-config-db.mdc`).
 

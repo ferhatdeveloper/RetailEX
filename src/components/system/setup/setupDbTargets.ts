@@ -104,6 +104,12 @@ export function needsLocalDatabaseStep(
   return dbMode !== 'online' || config.role === 'center';
 }
 
+function normalizeSetupSyncInterval(raw: unknown): number {
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return 30;
+  return Math.min(3600, Math.max(5, Math.round(n)));
+}
+
 export function normalizeSetupConfig(config: SetupAppConfig): SetupAppConfig {
   const db_mode = normalizeDbMode(config.db_mode, config.role);
   const normalized: SetupAppConfig = {
@@ -111,6 +117,7 @@ export function normalizeSetupConfig(config: SetupAppConfig): SetupAppConfig {
     db_mode,
     hybrid_read_preference: config.hybrid_read_preference || 'local_first',
     hybrid_sync_direction: config.hybrid_sync_direction || 'local_to_remote',
+    hybrid_sync_interval_sec: normalizeSetupSyncInterval(config.hybrid_sync_interval_sec),
   };
 
   if (db_mode === 'hybrid') {

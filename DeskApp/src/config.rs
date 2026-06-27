@@ -20,6 +20,9 @@ pub struct AppConfig {
     /// Hibrit senkron yönü (local_to_remote | remote_to_local | bidirectional)
     #[serde(default = "default_hybrid_sync_direction")]
     pub hybrid_sync_direction: String,
+    /// Hibrit otomatik senkron aralığı (saniye, 5–3600)
+    #[serde(default = "default_hybrid_sync_interval_sec")]
+    pub hybrid_sync_interval_sec: i32,
     pub terminal_name: String,
     pub store_id: String,
     pub erp_firm_nr: String,
@@ -93,6 +96,14 @@ fn default_hybrid_read_preference() -> String {
 fn default_hybrid_sync_direction() -> String {
     "local_to_remote".to_string()
 }
+
+fn default_hybrid_sync_interval_sec() -> i32 {
+    30
+}
+
+pub fn clamp_hybrid_sync_interval_sec(raw: i32) -> u64 {
+    raw.clamp(5, 3600) as u64
+}
 fn default_regulatory_region() -> String {
     "IQ".to_string()
 }
@@ -156,6 +167,7 @@ impl Default for AppConfig {
             remote_rest_url: default_remote_rest_url(),
             hybrid_read_preference: default_hybrid_read_preference(),
             hybrid_sync_direction: default_hybrid_sync_direction(),
+            hybrid_sync_interval_sec: default_hybrid_sync_interval_sec(),
             terminal_name: "".to_string(),
             store_id: "001".to_string(),
             erp_firm_nr: "001".to_string(),

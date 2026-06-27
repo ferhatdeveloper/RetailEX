@@ -92,6 +92,7 @@ export function Login({ onLogin }: LoginProps) {
   const [dbConnectionMode, setDbConnectionMode] = useState<ConnectionMode>('hybrid');
   const [hybridReadPreference, setHybridReadPreference] = useState<HybridReadPreference>('local_first');
   const [hybridSyncDirection, setHybridSyncDirection] = useState<HybridSyncDirection>('local_to_remote');
+  const [hybridSyncIntervalSec, setHybridSyncIntervalSec] = useState(30);
   const [isDbTestLoading, setIsDbTestLoading] = useState(false);
   const [isHybridSyncLoading, setIsHybridSyncLoading] = useState(false);
   /** Veritabanı modalında test sonucu (toast’a ek; ekranda kalıcı) */
@@ -259,6 +260,7 @@ export function Login({ onLogin }: LoginProps) {
       setDbConnectionMode(DB_SETTINGS.activeMode);
       setHybridReadPreference(DB_SETTINGS.hybridReadPreference);
       setHybridSyncDirection(DB_SETTINGS.hybridSyncDirection);
+      setHybridSyncIntervalSec(DB_SETTINGS.hybridSyncIntervalSec ?? 30);
     });
   }, [isTauri]);
 
@@ -275,6 +277,7 @@ export function Login({ onLogin }: LoginProps) {
       applyRemoteRestUrlToTenantInputs(restLoaded);
       setHybridReadPreference(DB_SETTINGS.hybridReadPreference);
       setHybridSyncDirection(DB_SETTINGS.hybridSyncDirection);
+      setHybridSyncIntervalSec(DB_SETTINGS.hybridSyncIntervalSec ?? 30);
       setDbConfig({
         host: LOCAL_CONFIG.host,
         port: LOCAL_CONFIG.port,
@@ -840,6 +843,7 @@ export function Login({ onLogin }: LoginProps) {
           remoteRestUrl,
           hybridReadPreference,
           hybridSyncDirection,
+          hybridSyncIntervalSec,
         }
       });
       toast.success(connectionProvider === 'rest_api' ? 'PostgREST bağlantı ayarları güncellendi.' : 'Veritabanı bağlantı ayarları güncellendi.');
@@ -2521,6 +2525,27 @@ export function Login({ onLogin }: LoginProps) {
                           <option value="remote_to_local">Uzak → yerel</option>
                           <option value="bidirectional">Çift yönlü</option>
                         </select>
+                      </div>
+                      <div className="space-y-1">
+                        <label className={`px-1 text-[9px] font-black uppercase tracking-widest ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>
+                          Otomatik senkron aralığı (saniye)
+                        </label>
+                        <input
+                          type="number"
+                          min={5}
+                          max={3600}
+                          step={5}
+                          value={hybridSyncIntervalSec}
+                          onChange={(e) =>
+                            setHybridSyncIntervalSec(
+                              Math.min(3600, Math.max(5, parseInt(e.target.value, 10) || 30)),
+                            )
+                          }
+                          className={`w-full rounded-sm border-2 px-4 py-3 text-xs font-bold transition-all focus:border-blue-600 focus:outline-none ${darkMode ? 'border-gray-700 bg-gray-800 text-blue-200' : 'border-gray-200 bg-white text-gray-900'}`}
+                        />
+                        <p className={`px-1 text-[9px] font-bold leading-relaxed ${darkMode ? 'text-slate-500' : 'text-slate-600'}`}>
+                          Masaüstünde arka plan servisi bu aralıkla dener (5–3600 sn). Varsayılan: 30.
+                        </p>
                       </div>
                       <HybridSyncPanel compact darkMode={darkMode} />
                     </div>

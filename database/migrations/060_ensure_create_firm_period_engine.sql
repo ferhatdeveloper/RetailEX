@@ -116,6 +116,7 @@ BEGIN
     CREATE TABLE IF NOT EXISTS %I (
       id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       firm_nr      VARCHAR(10) NOT NULL,
+      ref_id       INTEGER UNIQUE,
       code         VARCHAR(50) UNIQUE,
       name         VARCHAR(255) NOT NULL,
       phone        VARCHAR(50),
@@ -154,6 +155,7 @@ BEGIN
     CREATE TABLE IF NOT EXISTS %I (
       id                   UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       firm_nr              VARCHAR(10) NOT NULL,
+      ref_id               INTEGER UNIQUE,
       code                 VARCHAR(50) UNIQUE,
       name                 VARCHAR(255) NOT NULL,
       phone                VARCHAR(50),

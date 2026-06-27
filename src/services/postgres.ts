@@ -47,6 +47,13 @@ export function normalizeHybridSyncDirection(raw: unknown): HybridSyncDirection 
   return 'local_to_remote';
 }
 
+/** Hibrit otomatik senkron aralığı (saniye): 5–3600, varsayılan 30 */
+export function normalizeHybridSyncIntervalSec(raw: unknown): number {
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return 30;
+  return Math.min(3600, Math.max(5, Math.round(n)));
+}
+
 function isLikelyConnectivityFailure(err: unknown): boolean {
   const msg = String((err as { message?: unknown })?.message ?? err ?? '').toLowerCase();
   const code = String((err as { code?: unknown })?.code ?? '').toUpperCase();
@@ -94,6 +101,7 @@ export let DB_SETTINGS = {
   lastSync: null as string | null,
   hybridReadPreference: 'local_first' as HybridReadPreference,
   hybridSyncDirection: 'local_to_remote' as HybridSyncDirection,
+  hybridSyncIntervalSec: 30,
 };
 
 type PgEndpointConfig = typeof LOCAL_CONFIG;
@@ -290,6 +298,9 @@ function applyWebLocalStorageConfig(config: any): void {
   DB_SETTINGS.hybridSyncDirection = normalizeHybridSyncDirection(
     config.hybrid_sync_direction ?? (config as { hybridSyncDirection?: unknown }).hybridSyncDirection
   );
+  DB_SETTINGS.hybridSyncIntervalSec = normalizeHybridSyncIntervalSec(
+    config.hybrid_sync_interval_sec ?? (config as { hybridSyncIntervalSec?: unknown }).hybridSyncIntervalSec
+  );
 
   if (config.local_host) {
     LOCAL_CONFIG.host = config.local_host;
@@ -401,6 +412,7 @@ export async function initializeFromSQLite(preloadedConfig?: any) {
       DB_SETTINGS.remoteRestUrl = typeof config.remote_rest_url === 'string' ? config.remote_rest_url : '';
       DB_SETTINGS.hybridReadPreference = normalizeHybridReadPreference(config.hybrid_read_preference);
       DB_SETTINGS.hybridSyncDirection = normalizeHybridSyncDirection(config.hybrid_sync_direction);
+      DB_SETTINGS.hybridSyncIntervalSec = normalizeHybridSyncIntervalSec(config.hybrid_sync_interval_sec);
 
       // Tauri hibrit: POS ve sync_queue yazımları yerel PG'de; PostgREST yalnızca senkron hedefi.
       if (IS_TAURI && DB_SETTINGS.activeMode === 'hybrid' && DB_SETTINGS.connectionProvider === 'rest_api') {
@@ -487,6 +499,7 @@ export async function updateConfigs(updates: {
       remote_rest_url: DB_SETTINGS.remoteRestUrl,
       hybrid_read_preference: DB_SETTINGS.hybridReadPreference,
       hybrid_sync_direction: DB_SETTINGS.hybridSyncDirection,
+      hybrid_sync_interval_sec: DB_SETTINGS.hybridSyncIntervalSec,
       erp_firm_nr: ERP_SETTINGS.firmNr,
       erp_period_nr: ERP_SETTINGS.periodNr,
       default_currency: getAppDefaultCurrency(),
@@ -531,6 +544,7 @@ export async function updateConfigs(updates: {
       remote_rest_url: DB_SETTINGS.remoteRestUrl,
       hybrid_read_preference: DB_SETTINGS.hybridReadPreference,
       hybrid_sync_direction: DB_SETTINGS.hybridSyncDirection,
+      hybrid_sync_interval_sec: DB_SETTINGS.hybridSyncIntervalSec,
       local_db: localDbStr,
       remote_db: remoteDbStr,
       pg_local_user: LOCAL_CONFIG.user,
@@ -808,7 +822,7 @@ export class PostgresConnection {
         .finally(() => {
           this.hybridSyncInProgress = false;
         });
-    }, 30_000);
+    }, normalizeHybridSyncIntervalSec(DB_SETTINGS.hybridSyncIntervalSec) * 1000);
   }
 
   private constructor() { }
