@@ -433,7 +433,7 @@ async fn sync_clcard_batch_to_pg(
                  ON CONFLICT (code) DO UPDATE SET ref_id=$2, name=$4, tax_nr=$5, tax_office=$6, city=$7, phone=COALESCE(EXCLUDED.phone, {}.phone), email=COALESCE(EXCLUDED.email, {}.email), address=COALESCE(EXCLUDED.address, {}.address)",
                 customers_table, customers_table, customers_table, customers_table
             );
-            if client
+            match client
                 .execute(
                     &sql,
                     &[
