@@ -157,19 +157,22 @@ async fn connect_pg(
     Ok(client)
 }
 
-async fn sync_one_direction(
-    source: &tokio_postgres::Client,
-    target: &tokio_postgres::Client,
-    store_id: Option<&str>,
-) -> Result<(i32, i32), String> {
-    let mut total_synced = 0i32;
-    let mut total_failed = 0i32;
-    let store_uuid = store_id
-        .filter(|s| !s.trim().is_empty())
-        .and_then(|s| uuid::Uuid::parse_str(s).ok());
+#[derive(Copy, Clone)]
+enum QueueSelectMode {
+    /// Şubeden merkeze satış/hareket (source_store_id)
+    BranchOutbound,
+    /// Merkezden kasaya master veri (target_store_id + isteğe terminal_name)
+    InboundMaster,
+}
 
-    for _round in 0..100 {
-        let rows = if let Some(sid) = store_uuid {
+async fn fetch_pending_batch(
+    source: &tokio_postgres::Client,
+    store_uuid: Option<uuid::Uuid>,
+    terminal_name: Option<&str>,
+    mode: QueueSelectMode,
+) -> Result<Vec<tokio_postgres::Row>, tokio_postgres::Error> {
+    match (store_uuid, mode) {
+        (Some(sid), QueueSelectMode::BranchOutbound) => {
             source
                 .query(
                     "SELECT id, table_name, record_id, action, data
@@ -185,7 +188,40 @@ async fn sync_one_direction(
                     &[&sid],
                 )
                 .await
-        } else {
+        }
+        (Some(sid), QueueSelectMode::InboundMaster) => {
+            if let Some(tn) = terminal_name.filter(|t| !t.trim().is_empty()) {
+                source
+                    .query(
+                        "SELECT id, table_name, record_id, action, data
+                         FROM sync_queue
+                         WHERE status = 'pending' AND retry_count < 10
+                           AND target_store_id = $1
+                           AND (
+                             terminal_name IS NULL
+                             OR btrim(terminal_name) = ''
+                             OR terminal_name = $2
+                           )
+                         ORDER BY created_at ASC
+                         LIMIT 50",
+                        &[&sid, &tn],
+                    )
+                    .await
+            } else {
+                source
+                    .query(
+                        "SELECT id, table_name, record_id, action, data
+                         FROM sync_queue
+                         WHERE status = 'pending' AND retry_count < 10
+                           AND target_store_id = $1
+                         ORDER BY created_at ASC
+                         LIMIT 50",
+                        &[&sid],
+                    )
+                    .await
+            }
+        }
+        (None, _) => {
             source
                 .query(
                     "SELECT id, table_name, record_id, action, data
@@ -197,7 +233,26 @@ async fn sync_one_direction(
                 )
                 .await
         }
-        .map_err(|e| format_pg_error(e))?;
+    }
+}
+
+async fn sync_one_direction(
+    source: &tokio_postgres::Client,
+    target: &tokio_postgres::Client,
+    store_id: Option<&str>,
+    select_mode: QueueSelectMode,
+    terminal_name: Option<&str>,
+) -> Result<(i32, i32), String> {
+    let mut total_synced = 0i32;
+    let mut total_failed = 0i32;
+    let store_uuid = store_id
+        .filter(|s| !s.trim().is_empty())
+        .and_then(|s| uuid::Uuid::parse_str(s).ok());
+
+    for _round in 0..100 {
+        let rows = fetch_pending_batch(source, store_uuid, terminal_name, select_mode)
+            .await
+            .map_err(|e| format_pg_error(e))?;
 
         if rows.is_empty() {
             break;
@@ -375,35 +430,9 @@ async fn sync_pg_to_postgrest(
         .and_then(|s| uuid::Uuid::parse_str(s).ok());
 
     for _round in 0..100 {
-        let rows = if let Some(sid) = store_uuid {
-            source
-                .query(
-                    "SELECT id, table_name, record_id, action, data
-                     FROM sync_queue
-                     WHERE status = 'pending' AND retry_count < 10
-                       AND (
-                         source_store_id = $1
-                         OR target_store_id = $1
-                         OR (data->>'store_id')::uuid = $1
-                       )
-                     ORDER BY created_at ASC
-                     LIMIT 50",
-                    &[&sid],
-                )
-                .await
-        } else {
-            source
-                .query(
-                    "SELECT id, table_name, record_id, action, data
-                     FROM sync_queue
-                     WHERE status = 'pending' AND retry_count < 10
-                     ORDER BY created_at ASC
-                     LIMIT 50",
-                    &[],
-                )
-                .await
-        }
-        .map_err(|e| format_pg_error(e))?;
+        let rows = fetch_pending_batch(source, store_uuid, None, QueueSelectMode::BranchOutbound)
+            .await
+            .map_err(|e| format_pg_error(e))?;
 
         if rows.is_empty() {
             break;
@@ -442,27 +471,120 @@ async fn sync_pg_to_postgrest(
     Ok((total_synced, total_failed))
 }
 
+fn terminal_opt(config: &crate::config::AppConfig) -> Option<String> {
+    let t = config.terminal_name.trim();
+    if t.is_empty() {
+        None
+    } else {
+        Some(t.to_string())
+    }
+}
+
+fn is_kasa_terminal(config: &crate::config::AppConfig) -> bool {
+    terminal_opt(config).is_some()
+}
+
+fn pct_encode_component(s: &str) -> String {
+    let mut out = String::new();
+    for b in s.bytes() {
+        match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                out.push(b as char)
+            }
+            _ => out.push_str(&format!("%{:02X}", b)),
+        }
+    }
+    out
+}
+
+fn build_inbound_postgrest_query(
+    base: &str,
+    store_id: Option<&str>,
+    terminal_name: Option<&str>,
+    limit: usize,
+) -> String {
+    let base = normalize_rest_base(base);
+    if let Some(sid) = store_id.filter(|s| !s.trim().is_empty()) {
+        if let Ok(u) = uuid::Uuid::parse_str(sid) {
+            if let Some(tn) = terminal_name.filter(|t| !t.trim().is_empty()) {
+                let enc = pct_encode_component(tn);
+                return format!(
+                    "{}/sync_queue?status=eq.pending&retry_count=lt.10&target_store_id=eq.{}&or=(terminal_name.is.null,terminal_name.eq.,terminal_name.eq.{})&order=created_at.asc&limit={}&select=id",
+                    base, u, enc, limit
+                );
+            }
+            return format!(
+                "{}/sync_queue?status=eq.pending&retry_count=lt.10&target_store_id=eq.{}&order=created_at.asc&limit={}&select=id",
+                base, u, limit
+            );
+        }
+    }
+    format!(
+        "{}/sync_queue?status=eq.pending&retry_count=lt.10&order=created_at.asc&limit={}&select=id",
+        base, limit
+    )
+}
+
+async fn count_inbound_pending_postgrest(
+    http: &reqwest::Client,
+    rest_base: &str,
+    store_id: Option<&str>,
+    terminal_name: Option<&str>,
+) -> Result<i64, String> {
+    let count_url = build_inbound_postgrest_query(rest_base, store_id, terminal_name, 1);
+    let res = http
+        .get(&count_url)
+        .header("Accept", "application/json")
+        .header("Accept-Profile", "public")
+        .header("Prefer", "count=exact")
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    if !res.status().is_success() {
+        return Ok(0);
+    }
+    let range = res.headers().get("content-range").and_then(|v| v.to_str().ok()).unwrap_or("");
+    if let Some(total) = range.split('/').nth(1).and_then(|t| t.parse::<i64>().ok()) {
+        return Ok(total);
+    }
+    let items: Vec<serde_json::Value> = res.json().await.unwrap_or_default();
+    Ok(items.len() as i64)
+}
+
 async fn sync_postgrest_to_pg(
     http: &reqwest::Client,
     rest_base: &str,
     target: &tokio_postgres::Client,
     store_id: Option<&str>,
+    inbound_master: bool,
+    terminal_name: Option<&str>,
 ) -> Result<(i32, i32), String> {
     let mut total_synced = 0i32;
     let mut total_failed = 0i32;
     let base = normalize_rest_base(rest_base);
-    let mut query = format!(
-        "{}/sync_queue?status=eq.pending&retry_count=lt.10&order=created_at.asc&limit=50&select=id,table_name,record_id,action,data",
-        base
-    );
-    if let Some(sid) = store_id.filter(|s| !s.trim().is_empty()) {
+    let query = if inbound_master {
+        build_inbound_postgrest_query(&base, store_id, terminal_name, 50).replace(
+            "select=id",
+            "select=id,table_name,record_id,action,data",
+        )
+    } else if let Some(sid) = store_id.filter(|s| !s.trim().is_empty()) {
         if let Ok(u) = uuid::Uuid::parse_str(sid) {
-            query = format!(
+            format!(
                 "{}/sync_queue?status=eq.pending&retry_count=lt.10&or=(source_store_id.eq.{},target_store_id.eq.{})&order=created_at.asc&limit=50&select=id,table_name,record_id,action,data",
                 base, u, u
-            );
+            )
+        } else {
+            format!(
+                "{}/sync_queue?status=eq.pending&retry_count=lt.10&order=created_at.asc&limit=50&select=id,table_name,record_id,action,data",
+                base
+            )
         }
-    }
+    } else {
+        format!(
+            "{}/sync_queue?status=eq.pending&retry_count=lt.10&order=created_at.asc&limit=50&select=id,table_name,record_id,action,data",
+            base
+        )
+    };
 
     for _round in 0..100 {
         let res = http
@@ -546,21 +668,35 @@ async fn process_sync_queue_rest_api(config: &crate::config::AppConfig) -> Resul
     } else {
         Some(config.store_id.as_str())
     };
+    let kasa = is_kasa_terminal(config);
+    let term = terminal_opt(config);
+    let term_ref = term.as_deref();
     let mut total = 0i32;
 
     if direction == "local_to_remote" || direction == "bidirectional" {
         let (s, _) = sync_pg_to_postgrest(&local, &http, rest_base, store_filter).await?;
         total += s;
     }
-    if direction == "remote_to_local" || direction == "bidirectional" {
-        let (s, _) = sync_postgrest_to_pg(&http, rest_base, &local, store_filter).await?;
+    if direction == "remote_to_local" || direction == "bidirectional" || kasa {
+        let (s, _) = sync_postgrest_to_pg(
+            &http,
+            rest_base,
+            &local,
+            store_filter,
+            true,
+            term_ref,
+        )
+        .await?;
         total += s;
     }
 
     if total > 0 {
         println!(
-            "✅ Hibrit PostgREST senkron: {} kayıt eşlendi ({}) → {}",
-            total, direction, rest_base
+            "✅ Hibrit PostgREST senkron: {} kayıt eşlendi ({}{}) → {}",
+            total,
+            direction,
+            if kasa { " + kasa inbound" } else { "" },
+            rest_base
         );
     }
 
@@ -615,22 +751,195 @@ pub async fn process_sync_queue_internal() -> Result<(), String> {
     } else {
         Some(config.store_id.as_str())
     };
+    let kasa = is_kasa_terminal(&config);
+    let term = terminal_opt(&config);
+    let term_ref = term.as_deref();
     let mut total = 0i32;
 
     if direction == "local_to_remote" || direction == "bidirectional" {
-        let (s, _) = sync_one_direction(&local, &remote, store_filter).await?;
+        let (s, _) = sync_one_direction(
+            &local,
+            &remote,
+            store_filter,
+            QueueSelectMode::BranchOutbound,
+            None,
+        )
+        .await?;
         total += s;
     }
-    if direction == "remote_to_local" || direction == "bidirectional" {
-        let (s, _) = sync_one_direction(&remote, &local, store_filter).await?;
+    if direction == "remote_to_local" || direction == "bidirectional" || kasa {
+        let (s, _) = sync_one_direction(
+            &remote,
+            &local,
+            store_filter,
+            QueueSelectMode::InboundMaster,
+            term_ref,
+        )
+        .await?;
         total += s;
     }
 
     if total > 0 {
-        println!("✅ Hibrit PG senkron: {} kayıt eşlendi ({})", total, direction);
+        println!(
+            "✅ Hibrit PG senkron: {} kayıt eşlendi ({}{})",
+            total,
+            direction,
+            if kasa { " + kasa inbound" } else { "" }
+        );
     }
 
     Ok(())
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct MposPullResult {
+    pub synced: i32,
+    pub failed: i32,
+    pub pending_inbound: i64,
+}
+
+async fn count_inbound_pending_pg(
+    source: &tokio_postgres::Client,
+    store_id: Option<&str>,
+    terminal_name: Option<&str>,
+) -> Result<i64, String> {
+    let store_uuid = store_id
+        .filter(|s| !s.trim().is_empty())
+        .and_then(|s| uuid::Uuid::parse_str(s).ok());
+
+    let rows = match (store_uuid, terminal_name.filter(|t| !t.trim().is_empty())) {
+        (Some(sid), Some(tn)) => {
+            source
+                .query(
+                    "SELECT COUNT(*)::bigint FROM sync_queue
+                     WHERE status = 'pending' AND retry_count < 10
+                       AND target_store_id = $1
+                       AND (
+                         terminal_name IS NULL
+                         OR btrim(terminal_name) = ''
+                         OR terminal_name = $2
+                       )",
+                    &[&sid, &tn],
+                )
+                .await
+        }
+        (Some(sid), None) => {
+            source
+                .query(
+                    "SELECT COUNT(*)::bigint FROM sync_queue
+                     WHERE status = 'pending' AND retry_count < 10
+                       AND target_store_id = $1",
+                    &[&sid],
+                )
+                .await
+        }
+        _ => {
+            source
+                .query(
+                    "SELECT COUNT(*)::bigint FROM sync_queue
+                     WHERE status = 'pending' AND retry_count < 10",
+                    &[],
+                )
+                .await
+        }
+    }
+    .map_err(|e| format_pg_error(e))?;
+
+    Ok(rows.first().map(|r| r.get::<usize, i64>(0)).unwrap_or(0))
+}
+
+pub async fn mpos_pull_master_internal() -> Result<MposPullResult, String> {
+    let config = crate::config::get_app_config_internal().map_err(|e| e.to_string())?;
+
+    if !config.is_configured || config.db_mode.to_lowercase() != "hybrid" {
+        return Ok(MposPullResult {
+            synced: 0,
+            failed: 0,
+            pending_inbound: 0,
+        });
+    }
+
+    let store_filter = if config.store_id.trim().is_empty() {
+        None
+    } else {
+        Some(config.store_id.as_str())
+    };
+    let term = terminal_opt(&config);
+    let term_ref = term.as_deref();
+
+    let (local_host, local_port, local_db) = parse_pg_endpoint(&config.local_db);
+    let local = connect_pg(
+        &local_host,
+        local_port,
+        &config.pg_local_user,
+        &config.pg_local_pass,
+        &local_db,
+    )
+    .await?;
+
+    let mut synced = 0i32;
+    let mut failed = 0i32;
+    let pending_inbound: i64;
+
+    let uses_postgrest =
+        !config.remote_rest_url.trim().is_empty() || config.connection_provider == "rest_api";
+
+    if uses_postgrest {
+        let rest_base = config.remote_rest_url.trim();
+        if rest_base.is_empty() {
+            return Err("Merkez PostgREST URL yapılandırılmamış.".to_string());
+        }
+        let http = reqwest::Client::builder()
+            .timeout(Duration::from_secs(15))
+            .build()
+            .map_err(|e| e.to_string())?;
+        let (s, f) = sync_postgrest_to_pg(
+            &http,
+            rest_base,
+            &local,
+            store_filter,
+            true,
+            term_ref,
+        )
+        .await?;
+        synced = s;
+        failed = f;
+        pending_inbound =
+            count_inbound_pending_postgrest(&http, rest_base, store_filter, term_ref).await?;
+    } else {
+        let (remote_host, remote_port, remote_db) = parse_pg_endpoint(&config.remote_db);
+        let remote = connect_pg(
+            &remote_host,
+            remote_port,
+            &config.pg_remote_user,
+            &config.pg_remote_pass,
+            &remote_db,
+        )
+        .await?;
+        let (s, f) = sync_one_direction(
+            &remote,
+            &local,
+            store_filter,
+            QueueSelectMode::InboundMaster,
+            term_ref,
+        )
+        .await?;
+        synced = s;
+        failed = f;
+        pending_inbound =
+            count_inbound_pending_pg(&remote, store_filter, term_ref).await?;
+    }
+
+    Ok(MposPullResult {
+        synced,
+        failed,
+        pending_inbound,
+    })
+}
+
+#[tauri::command]
+pub async fn mpos_pull_master_now() -> Result<MposPullResult, String> {
+    mpos_pull_master_internal().await
 }
 
 #[allow(dead_code)]

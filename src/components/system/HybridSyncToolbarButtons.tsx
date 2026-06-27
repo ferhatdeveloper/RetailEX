@@ -9,7 +9,12 @@ import {
   resolveHybridSyncConnectionProvider,
 } from '../../services/postgres';
 import { runHybridSync } from '../../services/hybridSyncEngine';
-import { buildSyncFilter, getBranchSyncStats } from '../../services/hybridSyncService';
+import { buildSyncFilter, buildKasaInboundFilter, getBranchSyncStats } from '../../services/hybridSyncService';
+import {
+  pullInboundMasterNow,
+  resolveKasaPullContext,
+  startKasaAutoPullLoop,
+} from '../../services/mposKasaAutoPullService';
 import { cn } from '../ui/utils';
 
 type Props = {
@@ -22,18 +27,30 @@ export function HybridSyncToolbarButtons({ compact = false }: Props) {
   const isHybrid = DB_SETTINGS.activeMode === 'hybrid';
   const [loading, setLoading] = useState<'send' | 'receive' | null>(null);
   const [pending, setPending] = useState(0);
+  const [inboundPending, setInboundPending] = useState(0);
+  const [isKasa, setIsKasa] = useState(false);
 
   const refreshPending = useCallback(async () => {
     if (!isHybrid) return;
     try {
-      const filter = buildSyncFilter({
-        storeId: user?.store_id || null,
-        userId: null,
-        cashierUsername: null,
-        scopeCashierOnly: false,
-      });
+      const kasaCtx = await resolveKasaPullContext(user?.store_id || null);
+      setIsKasa(!!kasaCtx);
+      const filter = kasaCtx
+        ? buildKasaInboundFilter(kasaCtx)
+        : buildSyncFilter({
+            storeId: user?.store_id || null,
+            userId: null,
+            cashierUsername: null,
+            scopeCashierOnly: false,
+          });
       const stats = await getBranchSyncStats(filter);
-      setPending(stats.localPending);
+      if (kasaCtx) {
+        setInboundPending(Math.max(0, stats.remotePending));
+        setPending(stats.localPending);
+      } else {
+        setInboundPending(0);
+        setPending(stats.localPending);
+      }
     } catch {
       /* PG hazır değil */
     }
@@ -41,9 +58,19 @@ export function HybridSyncToolbarButtons({ compact = false }: Props) {
 
   useEffect(() => {
     void refreshPending();
+    const stop = startKasaAutoPullLoop({
+      storeId: user?.store_id || null,
+      onUpdate: (state) => {
+        setIsKasa(state.isKasa);
+        if (state.isKasa) setInboundPending(state.pendingInbound);
+      },
+    });
     const t = window.setInterval(() => void refreshPending(), 20_000);
-    return () => window.clearInterval(t);
-  }, [refreshPending]);
+    return () => {
+      stop();
+      window.clearInterval(t);
+    };
+  }, [refreshPending, user?.store_id]);
 
   const run = async (flow: 'send' | 'receive') => {
     if (!isHybrid) {
@@ -52,6 +79,22 @@ export function HybridSyncToolbarButtons({ compact = false }: Props) {
     }
     setLoading(flow);
     try {
+      const kasaCtx = await resolveKasaPullContext(user?.store_id || null);
+
+      if (flow === 'receive' && kasaCtx) {
+        const result = await pullInboundMasterNow(kasaCtx);
+        if (result.failed > 0 && result.synced === 0) {
+          toast.error(result.message || 'Kasa alımı başarısız.');
+        } else if (result.synced > 0) {
+          toast.success(`${result.synced} kayıt kasaya alındı.`);
+        } else {
+          toast.info('Merkezden bekleyen kasa verisi yok.');
+        }
+        setInboundPending(result.pending_inbound);
+        await refreshPending();
+        return;
+      }
+
       const filter = buildSyncFilter({
         storeId: user?.store_id || null,
         userId: null,
@@ -119,7 +162,7 @@ export function HybridSyncToolbarButtons({ compact = false }: Props) {
       </button>
       <button
         type="button"
-        title="Merkezden yerel al"
+        title={isKasa ? 'Merkezden kasa verisi al (otomatik)' : 'Merkezden yerel al'}
         disabled={loading !== null}
         onClick={() => void run('receive')}
         className={btnClass}
@@ -130,6 +173,11 @@ export function HybridSyncToolbarButtons({ compact = false }: Props) {
           <ArrowDownToLine className={cn(compact ? 'h-3.5 w-3.5' : 'h-4 w-4')} />
         )}
         <span className={labelClass}>Al</span>
+        {inboundPending > 0 && loading === null && (
+          <span className="absolute -top-1 -right-1 min-w-[14px] h-[14px] px-0.5 rounded-full bg-emerald-400 text-[9px] font-black text-blue-950 leading-[14px] text-center">
+            {inboundPending > 99 ? '99+' : inboundPending}
+          </span>
+        )}
       </button>
     </div>
   );

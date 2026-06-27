@@ -81,7 +81,14 @@ export function buildPostgrestQueueQuery(filter?: HybridSyncFilter, limit = 50):
   if (filter?.firmNr) {
     parts.unshift(`firm_nr=eq.${encodeURIComponent(filter.firmNr)}`);
   }
-  if (filter?.storeId) {
+  if (filter?.inboundMasterOnly && filter?.storeId) {
+    const sid = encodeURIComponent(filter.storeId);
+    parts.unshift(`target_store_id=eq.${sid}`);
+    if (filter.terminalName?.trim()) {
+      const tn = encodeURIComponent(filter.terminalName.trim());
+      parts.unshift(`or=(terminal_name.is.null,terminal_name.eq.,terminal_name.eq.${tn})`);
+    }
+  } else if (filter?.storeId) {
     const sid = encodeURIComponent(filter.storeId);
     parts.unshift(`or=(source_store_id.eq.${sid},target_store_id.eq.${sid})`);
   }

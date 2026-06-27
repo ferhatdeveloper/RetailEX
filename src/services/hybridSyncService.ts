@@ -108,11 +108,27 @@ export function buildSyncFilter(opts: {
   userId?: string | null;
   cashierUsername?: string | null;
   scopeCashierOnly?: boolean;
+  terminalName?: string | null;
+  inboundMasterOnly?: boolean;
 }): HybridSyncFilter {
   return {
     firmNr: ERP_SETTINGS.firmNr,
     storeId: opts.storeId || null,
     userId: opts.scopeCashierOnly ? opts.userId || null : opts.userId || null,
     cashierUsername: opts.scopeCashierOnly ? opts.cashierUsername || null : null,
+    terminalName: opts.terminalName ?? null,
+    inboundMasterOnly: opts.inboundMasterOnly ?? false,
   };
+}
+
+/** Kasa terminali: merkezden gelen master kuyruk filtresi */
+export function buildKasaInboundFilter(opts: {
+  storeId?: string | null;
+  terminalName?: string | null;
+}): HybridSyncFilter {
+  return buildSyncFilter({
+    storeId: opts.storeId,
+    inboundMasterOnly: true,
+    terminalName: opts.terminalName,
+  });
 }

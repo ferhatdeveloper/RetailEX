@@ -38,6 +38,10 @@ export type HybridSyncFilter = {
   userId?: string | null;
   cashierUsername?: string | null;
   firmNr?: string | null;
+  /** Merkez→kasa master kuyruğu: hedef kasa adı (boş = tüm kasalar) */
+  terminalName?: string | null;
+  /** true: yalnızca target_store_id (+ terminal) — outbound hariç */
+  inboundMasterOnly?: boolean;
 };
 
 export type SyncQueueRow = {
@@ -135,7 +139,19 @@ function buildQueueWhere(filter?: HybridSyncFilter): { sql: string; params: unkn
     sql += ` AND (firm_nr = $${i} OR lpad(ltrim(firm_nr, '0'), 3, '0') = $${i})`;
   }
 
-  if (filter?.storeId) {
+  if (filter?.inboundMasterOnly && filter?.storeId) {
+    params.push(filter.storeId);
+    const i = params.length;
+    sql += ` AND target_store_id = $${i}::uuid`;
+    if (filter.terminalName?.trim()) {
+      params.push(filter.terminalName.trim());
+      sql += ` AND (
+        terminal_name IS NULL
+        OR btrim(terminal_name) = ''
+        OR terminal_name = $${params.length}
+      )`;
+    }
+  } else if (filter?.storeId) {
     params.push(filter.storeId);
     const i = params.length;
     sql += ` AND (
