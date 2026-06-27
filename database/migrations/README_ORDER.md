@@ -57,6 +57,11 @@
 52. **064_pos_terminal_device_info.sql** – Cihaz kaydı: bilgisayar adı, OS, IP, saat dilimi; `register_pos_terminal` metadata (JSONB) desteği.
 53. **065_sync_queue_target_store_index.sql** – `sync_queue` inbound (merkez→kasa) indeksleri: `target_store_id`, `terminal_name`.
 
+**Kiracılara toplu uygulama (VPS / uzak PG):**
+- `npm run db:migrate:tenants` — tüm kiracı DB'ler
+- `bash database/scripts/apply-065-all-retail-tenants.sh` — yalnızca 065 (tenant_registry listesi)
+- GitHub Actions: **Migrate tenant databases** (`migrate-tenants-db.yml`) — VPS SSH ile `berqenas-repo-pull-and-migrate.sh`
+
 **Mevcut veritabanı:** `config.db` (DeskApp ayarları) ile bekleyen migration’ları uygulamak için proje kökünde `npm run db:migrate` (ayrıntı: `.cursor/rules/database-migrate-config-db.mdc`).
 
 Restoran sohbetinde eklenen tek yeni tablo: **rest.return_log**. Diğer özellikler (masa durumu senkronu, taşı/birleştir, ürün etiketi, tek ürün taşıma, Z-raporu, mutfak süresi vb.) mevcut tabloları kullanıyor.
