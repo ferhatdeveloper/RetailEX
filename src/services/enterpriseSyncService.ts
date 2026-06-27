@@ -112,7 +112,8 @@ export async function loadEnterpriseDevices(): Promise<EnterpriseSyncDevice[]> {
     const rows = await queryPgRows(
       pg,
       `SELECT s.id::text AS store_id, s.code, s.name,
-              COALESCE(p.cnt, 0)::text AS pending
+              COALESCE(p.cnt, 0)::text AS pending,
+              ls.last_sync::text AS last_sync
        FROM stores s
        LEFT JOIN (
          SELECT target_store_id::text AS sid, COUNT(*) AS cnt
@@ -120,21 +121,32 @@ export async function loadEnterpriseDevices(): Promise<EnterpriseSyncDevice[]> {
          WHERE status = 'pending' AND target_store_id IS NOT NULL
          GROUP BY target_store_id
        ) p ON p.sid = s.id::text
+       LEFT JOIN (
+         SELECT COALESCE(target_store_id, source_store_id)::text AS sid,
+                MAX(COALESCE(synced_at, created_at)) AS last_sync
+         FROM sync_queue
+         WHERE status = 'completed'
+         GROUP BY COALESCE(target_store_id, source_store_id)
+       ) ls ON ls.sid = s.id::text
        WHERE s.firm_nr = $1 AND COALESCE(s.is_active, true) = true
        ORDER BY s.name`,
       [firm],
     );
 
     if (rows.length > 0) {
-      return rows.map((r: Record<string, unknown>) => ({
-        deviceId: String(r.store_id),
-        deviceName: `${r.name} (${r.code})`,
-        storeId: String(r.store_id),
-        storeName: String(r.name ?? ''),
-        isOnline: true,
-        lastSeen: Date.now(),
-        pendingMessages: Number(r.pending ?? 0),
-      }));
+      const dayMs = 86400000;
+      return rows.map((r: Record<string, unknown>) => {
+        const lastSeen = r.last_sync ? new Date(String(r.last_sync)).getTime() : Date.now();
+        return {
+          deviceId: String(r.store_id),
+          deviceName: `${r.name} (${r.code})`,
+          storeId: String(r.store_id),
+          storeName: String(r.name ?? ''),
+          isOnline: r.last_sync ? Date.now() - lastSeen < dayMs : false,
+          lastSeen,
+          pendingMessages: Number(r.pending ?? 0),
+        };
+      });
     }
   } catch {
     /* stores yok */
@@ -422,4 +434,256 @@ export function resolveRecordIdFromForm(type: string, formData: Record<string, u
     default:
       return null;
   }
+}
+
+/** MPOS Kalem: malzeme/cari toplu gönderim filtresi (KLR-2234) */
+export type EnterpriseBulkFilter = {
+  type: 'product' | 'customer';
+  search?: string;
+  categoryCode?: string;
+  changedSince?: string;
+  onlyActive?: boolean;
+  onlyChanged?: boolean;
+  limit?: number;
+  targetStoreId?: string | null;
+};
+
+function periodSalesTable(): string {
+  const f = firmNrPadded();
+  const p = String(ERP_SETTINGS.periodNr || '01')
+    .replace(/\D/g, '')
+    .padStart(2, '0');
+  return `rex_${f}_${p}_sales`;
+}
+
+/** MPOS: Malzeme veya cari kayıtlarını filtreye göre kuyruğa ekle */
+export async function enqueueEnterpriseBulk(
+  filter: EnterpriseBulkFilter,
+): Promise<{ ok: boolean; message: string; count: number }> {
+  const table = tableForBroadcastType(filter.type);
+  if (!table) {
+    return { ok: false, message: `Desteklenmeyen tip: ${filter.type}`, count: 0 };
+  }
+
+  const pg = resolveSyncPgEndpoint();
+  const firm = firmNrPadded();
+  const limit = Math.min(Math.max(filter.limit ?? 500, 1), 5000);
+  const search = filter.search?.trim() || null;
+  const categoryCode = filter.categoryCode?.trim() || null;
+  const onlyActive = filter.onlyActive !== false;
+  const changedSince =
+    filter.changedSince?.trim() ||
+    (filter.onlyChanged ? new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10) : null);
+  const storeId =
+    filter.targetStoreId && filter.targetStoreId !== 'all' ? filter.targetStoreId : null;
+
+  try {
+    const rows = await queryPgRows(
+      pg,
+      `SELECT t.id::text AS id, to_jsonb(t) AS data
+       FROM ${table} t
+       WHERE (t.firm_nr = $1 OR lpad(ltrim(COALESCE(t.firm_nr, ''), '0'), 3, '0') = $1)
+         AND ($2::text IS NULL OR t.name ILIKE '%' || $2 || '%'
+              OR COALESCE(t.barcode, '') ILIKE '%' || $2 || '%'
+              OR COALESCE(t.code, '') ILIKE '%' || $2 || '%')
+         AND ($3::text IS NULL OR COALESCE(t.category_code, t.categorycode, '') = $3)
+         AND ($4::boolean IS false OR COALESCE(t.is_active, true) = true)
+         AND ($5::date IS NULL OR t.updated_at >= $5::date)
+       ORDER BY t.updated_at DESC NULLS LAST
+       LIMIT $6`,
+      [firm, search, categoryCode, onlyActive, changedSince, limit],
+    );
+
+    if (!rows.length) {
+      return { ok: false, message: 'Filtreye uyan kayıt bulunamadı.', count: 0 };
+    }
+
+    let inserted = 0;
+    for (const row of rows) {
+      try {
+        await queryPgRows(
+          pg,
+          `INSERT INTO sync_queue (table_name, record_id, action, firm_nr, data, target_store_id, status)
+           SELECT $1, $2::uuid, 'UPDATE', $3, $4::jsonb, $5::uuid, 'pending'
+           WHERE NOT EXISTS (
+             SELECT 1 FROM sync_queue sq
+             WHERE sq.table_name = $1 AND sq.record_id = $2::uuid AND sq.status = 'pending'
+           )`,
+          [table, row.id, firm, JSON.stringify(row.data), storeId],
+        );
+        inserted += 1;
+      } catch {
+        /* tek kayıt atla */
+      }
+    }
+
+    return {
+      ok: true,
+      message: `${inserted} kayıt kuyruğa eklendi (${filter.type === 'product' ? 'malzeme' : 'cari'}).`,
+      count: inserted,
+    };
+  } catch (e: unknown) {
+    return { ok: false, message: e instanceof Error ? e.message : String(e), count: 0 };
+  }
+}
+
+/** MPOS: tüm master veriyi backfill ile kuyruğa al */
+export async function enqueueAllMasterData(
+  type: 'product' | 'customer' | 'all' = 'all',
+): Promise<{ ok: boolean; message: string; count: number }> {
+  const pg = resolveSyncPgEndpoint();
+  const firm = firmNrPadded();
+
+  if (type === 'all') {
+    const prep = await prepareLocalSyncQueue(pg, firm);
+    return {
+      ok: true,
+      message: `Backfill: ${prep.enqueued} kayıt kuyruğa eklendi, ${prep.reset} tükenmiş sıfırlandı.`,
+      count: prep.enqueued,
+    };
+  }
+
+  return enqueueEnterpriseBulk({
+    type,
+    onlyActive: true,
+    limit: 5000,
+  });
+}
+
+export async function clearEnterpriseSyncQueue(
+  mode: 'completed' | 'all',
+): Promise<{ ok: boolean; message: string; count: number }> {
+  const pg = resolveSyncPgEndpoint();
+  const firm = firmNrPadded();
+
+  try {
+    const sql =
+      mode === 'all'
+        ? `DELETE FROM sync_queue
+           WHERE firm_nr = $1 OR lpad(ltrim(firm_nr, '0'), 3, '0') = $1`
+        : `DELETE FROM sync_queue
+           WHERE status = 'completed'
+             AND (firm_nr = $1 OR lpad(ltrim(firm_nr, '0'), 3, '0') = $1)`;
+    const rows = await queryPgRows(pg, `${sql} RETURNING id::text AS id`, [firm]);
+    return {
+      ok: true,
+      message: `${rows.length} kayıt silindi.`,
+      count: rows.length,
+    };
+  } catch (e: unknown) {
+    return { ok: false, message: e instanceof Error ? e.message : String(e), count: 0 };
+  }
+}
+
+export async function retryEnterpriseSyncMessage(id: string): Promise<{ ok: boolean; message: string }> {
+  const pg = resolveSyncPgEndpoint();
+  try {
+    await queryPgRows(
+      pg,
+      `UPDATE sync_queue
+       SET status = 'pending', retry_count = 0, error_message = NULL, created_at = NOW()
+       WHERE id = $1::uuid`,
+      [id],
+    );
+    return { ok: true, message: 'Kayıt yeniden kuyruğa alındı.' };
+  } catch (e: unknown) {
+    return { ok: false, message: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+export async function cancelEnterpriseSyncMessage(id: string): Promise<{ ok: boolean; message: string }> {
+  const pg = resolveSyncPgEndpoint();
+  try {
+    await queryPgRows(pg, `DELETE FROM sync_queue WHERE id = $1::uuid AND status = 'pending'`, [id]);
+    return { ok: true, message: 'Bekleyen kayıt iptal edildi.' };
+  } catch (e: unknown) {
+    return { ok: false, message: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+export type DayEndStoreStatus = {
+  storeId: string;
+  storeName: string;
+  storeCode: string;
+  salesPending: number;
+  salesSyncedToday: number;
+  lastSyncAt?: number;
+  isOnline: boolean;
+};
+
+/** MPOS: günsonu / satış alma durumu — kasa bazında (KLR-2273 benzeri) */
+export async function getDayEndSyncStatus(): Promise<DayEndStoreStatus[]> {
+  const pg = resolveSyncPgEndpoint();
+  const firm = firmNrPadded();
+  const salesTable = periodSalesTable();
+
+  try {
+    const rows = await queryPgRows(
+      pg,
+      `SELECT s.id::text AS store_id, s.code, s.name,
+              COALESCE(p.cnt, 0)::text AS sales_pending,
+              COALESCE(d.cnt, 0)::text AS synced_today,
+              ls.last_sync::text AS last_sync
+       FROM stores s
+       LEFT JOIN (
+         SELECT source_store_id::text AS sid, COUNT(*) AS cnt
+         FROM sync_queue
+         WHERE status = 'pending' AND table_name = $2
+         GROUP BY source_store_id
+       ) p ON p.sid = s.id::text
+       LEFT JOIN (
+         SELECT source_store_id::text AS sid, COUNT(*) AS cnt
+         FROM sync_queue
+         WHERE status = 'completed' AND table_name = $2
+           AND synced_at >= CURRENT_DATE
+         GROUP BY source_store_id
+       ) d ON d.sid = s.id::text
+       LEFT JOIN (
+         SELECT COALESCE(source_store_id, target_store_id)::text AS sid,
+                MAX(synced_at) AS last_sync
+         FROM sync_queue
+         WHERE status = 'completed'
+         GROUP BY COALESCE(source_store_id, target_store_id)
+       ) ls ON ls.sid = s.id::text
+       WHERE s.firm_nr = $1 AND COALESCE(s.is_active, true) = true
+       ORDER BY s.name`,
+      [firm, salesTable],
+    );
+
+    const dayMs = 86400000;
+    return rows.map((r: Record<string, unknown>) => {
+      const lastSyncAt = r.last_sync ? new Date(String(r.last_sync)).getTime() : undefined;
+      return {
+        storeId: String(r.store_id),
+        storeName: String(r.name ?? ''),
+        storeCode: String(r.code ?? ''),
+        salesPending: Number(r.sales_pending ?? 0),
+        salesSyncedToday: Number(r.synced_today ?? 0),
+        lastSyncAt,
+        isOnline: lastSyncAt ? Date.now() - lastSyncAt < dayMs : false,
+      };
+    });
+  } catch {
+    return [];
+  }
+}
+
+/** MPOS: şubelerden satış/günsonu verisi al */
+export async function pullSalesAndDayEndFromBranches(): Promise<{
+  ok: boolean;
+  message: string;
+  synced: number;
+}> {
+  const result = await pullBranchDataFromCenter();
+  const status = await getDayEndSyncStatus();
+  const pendingTotal = status.reduce((s, x) => s + x.salesPending, 0);
+  const offline = status.filter((s) => !s.isOnline).length;
+
+  let msg = result.message;
+  if (result.ok) {
+    msg = `Satış/günsonu alındı: ${result.synced} kayıt. Bekleyen satış: ${pendingTotal}`;
+    if (offline > 0) msg += ` · ${offline} kasa 24 saatten uzun süredir veri almamış.`;
+  }
+
+  return { ok: result.ok, message: msg, synced: result.synced };
 }

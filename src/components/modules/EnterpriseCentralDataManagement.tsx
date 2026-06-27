@@ -24,15 +24,24 @@ import { logger } from '../../utils/logger';
 import { toast } from 'sonner';
 import {
   enqueueEnterpriseRecord,
+  enqueueEnterpriseBulk,
+  enqueueAllMasterData,
+  clearEnterpriseSyncQueue,
+  retryEnterpriseSyncMessage,
+  cancelEnterpriseSyncMessage,
   getEnterpriseSyncStats,
+  getDayEndSyncStatus,
   listEnterpriseSyncMessages,
   loadEnterpriseDevices,
   processEnterpriseSyncQueue,
   pullBranchDataFromCenter,
+  pullSalesAndDayEndFromBranches,
   pushMasterDataToBranches,
   resolveRecordIdFromForm,
   type EnterpriseSyncMessage,
+  type DayEndStoreStatus,
 } from '../../services/enterpriseSyncService';
+import { DB_SETTINGS, updateConfigs } from '../../services/postgres';
 import { BroadcastFormFields } from './BroadcastFormFields';
 import { BroadcastChangesTimeline } from './BroadcastChangesTimeline';
 import { SentMessagesList } from '../system/SentMessagesList';
@@ -85,8 +94,15 @@ export function EnterpriseCentralDataManagement() {
   const [formData, setFormData] = useState<Record<string, any>>({});
 
   // Yeni ayarlar
-  const [messageCheckInterval, setMessageCheckInterval] = useState(10); // saniye
+  const [messageCheckInterval, setMessageCheckInterval] = useState(
+    () => DB_SETTINGS.hybridSyncIntervalSec ?? 30,
+  );
   const [dateFilter, setDateFilter] = useState({ start: '', end: '' });
+  const [bulkSearch, setBulkSearch] = useState('');
+  const [bulkCategory, setBulkCategory] = useState('');
+  const [bulkOnlyChanged, setBulkOnlyChanged] = useState(false);
+  const [bulkType, setBulkType] = useState<'product' | 'customer'>('product');
+  const [dayEndStatus, setDayEndStatus] = useState<DayEndStoreStatus[]>([]);
 
   // Group management state
   const [showGroupModal, setShowGroupModal] = useState(false);
@@ -163,6 +179,8 @@ export function EnterpriseCentralDataManagement() {
       const all = await listEnterpriseSyncMessages({ limit: 100 });
       setQueue(pending.map(mapEnterpriseToBroadcast));
       setHistory(all.filter((m) => m.status === 'completed' || m.status === 'failed').map(mapEnterpriseToBroadcast));
+      const de = await getDayEndSyncStatus();
+      setDayEndStatus(de);
     } catch (e) {
       logger.warn('enterprise-sync', 'refresh failed', e);
     }
@@ -388,6 +406,70 @@ export function EnterpriseCentralDataManagement() {
     } finally {
       setIsSyncBusy(false);
     }
+  };
+
+  const handleIntervalChange = (sec: number) => {
+    const normalized = Math.min(300, Math.max(5, sec || 30));
+    setMessageCheckInterval(normalized);
+    void updateConfigs({ settings: { hybridSyncIntervalSec: normalized } });
+  };
+
+  const handleBulkEnqueue = async () => {
+    setIsSyncBusy(true);
+    try {
+      const r = await enqueueEnterpriseBulk({
+        type: bulkType,
+        search: bulkSearch || undefined,
+        categoryCode: bulkCategory || undefined,
+        onlyChanged: bulkOnlyChanged,
+        onlyActive: true,
+        targetStoreId: targetDevices[0] !== 'all' ? targetDevices[0] : null,
+        limit: 1000,
+      });
+      if (r.ok) toast.success(r.message);
+      else toast.error(r.message);
+      await refreshEnterpriseData();
+    } finally {
+      setIsSyncBusy(false);
+    }
+  };
+
+  const handleMposQuickSend = async (type: 'product' | 'customer' | 'all') => {
+    setIsSyncBusy(true);
+    try {
+      const enq = await enqueueAllMasterData(type);
+      if (!enq.ok) {
+        toast.error(enq.message);
+        return;
+      }
+      toast.success(enq.message);
+      const push = await pushMasterDataToBranches();
+      if (push.ok) toast.info(push.message);
+      else toast.error(push.message);
+      await refreshEnterpriseData();
+    } finally {
+      setIsSyncBusy(false);
+    }
+  };
+
+  const handleDayEndPull = async () => {
+    setIsSyncBusy(true);
+    try {
+      const r = await pullSalesAndDayEndFromBranches();
+      if (r.ok) toast.success(r.message);
+      else toast.error(r.message);
+      await refreshEnterpriseData();
+    } finally {
+      setIsSyncBusy(false);
+    }
+  };
+
+  const handleClearQueue = async (mode: 'completed' | 'all') => {
+    if (mode === 'all' && !window.confirm('Tüm kuyruk kayıtları silinecek. Emin misiniz?')) return;
+    const r = await clearEnterpriseSyncQueue(mode);
+    if (r.ok) toast.success(r.message);
+    else toast.error(r.message);
+    await refreshEnterpriseData();
   };
 
   const handlePullAll = async () => {
@@ -660,7 +742,7 @@ export function EnterpriseCentralDataManagement() {
             <div>
               <h1 className="text-3xl">Merkezi Veri Yönetim Sistemi</h1>
               <p className="text-sm text-gray-600 dark:text-gray-400">
-                Enterprise Senkronizasyon ve Broadcast Yönetimi v2.0
+                KLRetail M-POS benzeri merkez ↔ kasa senkron (malzeme, cari, satış, günsonu)
               </p>
             </div>
           </div>
@@ -675,6 +757,15 @@ export function EnterpriseCentralDataManagement() {
             >
               <RefreshCw className="w-4 h-4" />
               Yenile
+            </Button>
+
+            <Button
+              onClick={() => void handleDayEndPull()}
+              variant="outline"
+              size="sm"
+              disabled={isSyncBusy}
+            >
+              Günsonu Al
             </Button>
 
             <Button
@@ -710,6 +801,32 @@ export function EnterpriseCentralDataManagement() {
             </Button>
           </div>
         </div>
+
+        {/* MPOS Kalem hızlı işlemler */}
+        <Card className={`p-4 ${theme === 'dark' ? 'bg-gray-800 border-gray-700' : 'bg-white'}`}>
+          <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
+            <Zap className="w-4 h-4 text-blue-600" />
+            M-POS Hızlı İşlemler (Kalem eğitim akışı)
+          </h3>
+          <div className="flex flex-wrap gap-2">
+            <Button size="sm" variant="outline" disabled={isSyncBusy} onClick={() => void handleMposQuickSend('product')}>
+              Malzeme Gönder
+            </Button>
+            <Button size="sm" variant="outline" disabled={isSyncBusy} onClick={() => void handleMposQuickSend('customer')}>
+              Cari Gönder
+            </Button>
+            <Button size="sm" variant="outline" disabled={isSyncBusy} onClick={() => void handleMposQuickSend('all')}>
+              Tüm Master Veri
+            </Button>
+            <Button size="sm" variant="outline" disabled={isSyncBusy} onClick={() => void handleDayEndPull()}>
+              Satış / Günsonu Al
+            </Button>
+          </div>
+          <p className="text-xs text-gray-500 mt-2">
+            Videodaki akış: merkez malzeme/cari gönderir → kasa satış yapar → günsonu merkeze alınır.
+            Servis aralığı: {messageCheckInterval} sn (Kasa Servis Ayarları).
+          </p>
+        </Card>
 
         {/* Stats Grid */}
         <div className="grid grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-4">
@@ -786,7 +903,7 @@ export function EnterpriseCentralDataManagement() {
 
         {/* Main Tabs */}
         <Tabs defaultValue="send" className="w-full">
-          <TabsList className="grid w-full grid-cols-6 h-auto">
+          <TabsList className="grid w-full grid-cols-7 h-auto">
             <TabsTrigger value="send" className="gap-2">
               <Send className="w-4 h-4" />
               Veri Gönder
@@ -811,10 +928,51 @@ export function EnterpriseCentralDataManagement() {
               <BarChart3 className="w-4 h-4" />
               Geçmiş
             </TabsTrigger>
+            <TabsTrigger value="dayend" className="gap-2">
+              <Calendar className="w-4 h-4" />
+              Günsonu ({dayEndStatus.filter((d) => d.salesPending > 0).length})
+            </TabsTrigger>
           </TabsList>
 
           {/* Send Tab */}
           <TabsContent value="send" className="space-y-4">
+            {/* MPOS toplu gönderim + filtre (KLR-2234) */}
+            <Card className={`p-4 ${theme === 'dark' ? 'bg-gray-800 border-gray-700' : 'bg-white'}`}>
+              <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                <Filter className="w-4 h-4" />
+                Toplu Gönderim (Malzeme / Cari + Filtre)
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-5 gap-3 items-end">
+                <div>
+                  <label className="block text-xs mb-1">Veri tipi</label>
+                  <select
+                    value={bulkType}
+                    onChange={(e) => setBulkType(e.target.value as 'product' | 'customer')}
+                    className={`w-full p-2 rounded border text-sm ${theme === 'dark' ? 'bg-gray-700 border-gray-600' : 'bg-white border-gray-300'}`}
+                  >
+                    <option value="product">Malzeme (Ürün)</option>
+                    <option value="customer">Cari</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs mb-1">Arama (ad/barkod/kod)</label>
+                  <Input value={bulkSearch} onChange={(e) => setBulkSearch(e.target.value)} placeholder="Filtre..." />
+                </div>
+                <div>
+                  <label className="block text-xs mb-1">Kategori kodu</label>
+                  <Input value={bulkCategory} onChange={(e) => setBulkCategory(e.target.value)} placeholder="Opsiyonel" />
+                </div>
+                <label className="flex items-center gap-2 text-sm pb-2 cursor-pointer">
+                  <input type="checkbox" checked={bulkOnlyChanged} onChange={(e) => setBulkOnlyChanged(e.target.checked)} />
+                  Yalnız değişenler (7 gün)
+                </label>
+                <Button onClick={() => void handleBulkEnqueue()} disabled={isSyncBusy} className="gap-2">
+                  <Upload className="w-4 h-4" />
+                  Kuyruğa Ekle
+                </Button>
+              </div>
+            </Card>
+
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               {/* Left Column - Broadcast Form */}
               <Card className={`lg:col-span-2 p-6 ${theme === 'dark' ? 'bg-gray-800 border-gray-700' : 'bg-white'}`}>
@@ -914,7 +1072,7 @@ export function EnterpriseCentralDataManagement() {
                         min="1"
                         max="300"
                         value={messageCheckInterval}
-                        onChange={(e) => setMessageCheckInterval(parseInt(e.target.value) || 10)}
+                        onChange={(e) => handleIntervalChange(parseInt(e.target.value) || 30)}
                         className={`w-full p-2 rounded border ${theme === 'dark'
                           ? 'bg-gray-700 border-gray-600'
                           : 'bg-white border-gray-300'
@@ -1230,7 +1388,7 @@ export function EnterpriseCentralDataManagement() {
 
               <div className="flex gap-2">
                 <Button
-                  onClick={() => centralBroadcast.clearQueue('delivered')}
+                  onClick={() => void handleClearQueue('completed')}
                   variant="outline"
                   size="sm"
                   className="gap-2"
@@ -1239,7 +1397,7 @@ export function EnterpriseCentralDataManagement() {
                   Tamamlananları Temizle
                 </Button>
                 <Button
-                  onClick={() => centralBroadcast.clearQueue('all')}
+                  onClick={() => void handleClearQueue('all')}
                   variant="destructive"
                   size="sm"
                   className="gap-2"
@@ -1337,7 +1495,11 @@ export function EnterpriseCentralDataManagement() {
                           <StatusIcon className="w-5 h-5" />
                           {message.status === 'failed' && message.retryCount < 5 && (
                             <Button
-                              onClick={() => centralBroadcast.retryBroadcast(message.id)}
+                              onClick={() => void retryEnterpriseSyncMessage(message.id).then((r) => {
+                                if (r.ok) toast.success(r.message);
+                                else toast.error(r.message);
+                                void refreshEnterpriseData();
+                              })}
                               size="sm"
                               variant="outline"
                             >
@@ -1346,7 +1508,11 @@ export function EnterpriseCentralDataManagement() {
                           )}
                           {(message.status === 'pending' || message.status === 'scheduled') && (
                             <Button
-                              onClick={() => centralBroadcast.cancelBroadcast(message.id)}
+                              onClick={() => void cancelEnterpriseSyncMessage(message.id).then((r) => {
+                                if (r.ok) toast.success(r.message);
+                                else toast.error(r.message);
+                                void refreshEnterpriseData();
+                              })}
                               size="sm"
                               variant="destructive"
                             >
@@ -1586,6 +1752,48 @@ export function EnterpriseCentralDataManagement() {
                 <Card className={`p-8 text-center col-span-full ${theme === 'dark' ? 'bg-gray-800 border-gray-700' : 'bg-white'}`}>
                   <FileText className="w-12 h-12 mx-auto mb-2 text-gray-400" />
                   <p className="text-gray-500">Henüz şablon oluşturulmamış</p>
+                </Card>
+              )}
+            </div>
+          </TabsContent>
+
+          {/* Günsonu Tab — MPOS günsonu işlem kontrolü */}
+          <TabsContent value="dayend" className="space-y-4">
+            <div className="flex justify-between items-center">
+              <p className="text-sm text-gray-600 dark:text-gray-400">
+                Kasalardan alınan satış/günsonu durumu (24 saat içinde veri almayan kasalar uyarılıdır).
+              </p>
+              <Button size="sm" disabled={isSyncBusy} onClick={() => void handleDayEndPull()} className="gap-2">
+                <Download className="w-4 h-4" />
+                Günsonu Al
+              </Button>
+            </div>
+            <div className="grid gap-3 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
+              {dayEndStatus.map((store) => (
+                <Card
+                  key={store.storeId}
+                  className={`p-4 ${theme === 'dark' ? 'bg-gray-800 border-gray-700' : 'bg-white'} ${!store.isOnline ? 'border-l-4 border-l-amber-500' : 'border-l-4 border-l-green-500'}`}
+                >
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="font-medium">{store.storeName}</span>
+                    <Badge variant={store.isOnline ? 'default' : 'destructive'}>
+                      {store.isOnline ? 'Veri alındı' : 'Veri alınmadı'}
+                    </Badge>
+                  </div>
+                  <div className="text-xs text-gray-600 dark:text-gray-400 space-y-1">
+                    <div>Kod: {store.storeCode}</div>
+                    <div>Bekleyen satış: {store.salesPending}</div>
+                    <div>Bugün eşlenen: {store.salesSyncedToday}</div>
+                    {store.lastSyncAt && (
+                      <div>Son senkron: {formatTimestamp(store.lastSyncAt)}</div>
+                    )}
+                  </div>
+                </Card>
+              ))}
+              {dayEndStatus.length === 0 && (
+                <Card className={`p-8 text-center col-span-full ${theme === 'dark' ? 'bg-gray-800 border-gray-700' : 'bg-white'}`}>
+                  <Calendar className="w-12 h-12 mx-auto mb-2 text-gray-400" />
+                  <p className="text-gray-500">Mağaza/kasa kaydı bulunamadı veya henüz günsonu verisi yok.</p>
                 </Card>
               )}
             </div>
