@@ -35,6 +35,41 @@ async function restError(res: Response, label: string): Promise<never> {
   throw new Error(`${label}: ${res.status} ${res.statusText}${text ? ` — ${text.slice(0, 400)}` : ''}`);
 }
 
+/** PostgREST PGRST204: uzak şemada olmayan kolon adını çıkarır */
+function parseUnknownPostgrestColumn(body: string): string | null {
+  const m = body.match(/Could not find the '([^']+)' column/);
+  return m?.[1] ?? null;
+}
+
+/** Uzak şema eski ise bilinmeyen kolonları düşürerek UPSERT dener (PGRST204). */
+async function postgrestUpsertWithSchemaFallback(
+  url: string,
+  schema: PgSchemaName,
+  payload: Record<string, unknown>,
+  label: string,
+): Promise<void> {
+  const body: Record<string, unknown> = { ...payload };
+  for (let attempt = 0; attempt < 16; attempt++) {
+    const res = await fetchRetailexAware(url, {
+      method: 'POST',
+      headers: restHeaders(schema, 'resolution=merge-duplicates,return=minimal'),
+      body: JSON.stringify(body),
+    });
+    if (res.ok) return;
+
+    const text = await res.text().catch(() => '');
+    const unknownCol = parseUnknownPostgrestColumn(text);
+    if (res.status === 400 && unknownCol && Object.prototype.hasOwnProperty.call(body, unknownCol)) {
+      delete body[unknownCol];
+      continue;
+    }
+    throw new Error(
+      `${label}: ${res.status} ${res.statusText}${text ? ` — ${text.slice(0, 400)}` : ''}`,
+    );
+  }
+  throw new Error(`${label}: uzak şemada çok sayıda bilinmeyen kolon`);
+}
+
 export function buildPostgrestQueueQuery(filter?: HybridSyncFilter, limit = 50): string {
   const parts = [
     'status=eq.pending',
@@ -155,12 +190,7 @@ export async function applyItemPostgrest(
   if (!item.data || typeof item.data !== 'object') return;
 
   const url = restUrl(baseUrl, `/${table}`);
-  const res = await fetchRetailexAware(url, {
-    method: 'POST',
-    headers: restHeaders(schema, 'resolution=merge-duplicates,return=minimal'),
-    body: JSON.stringify(item.data),
-  });
-  if (!res.ok) await restError(res, `PostgREST UPSERT ${table}`);
+  await postgrestUpsertWithSchemaFallback(url, schema, item.data as Record<string, unknown>, `PostgREST UPSERT ${table}`);
 }
 
 export async function markCompletedPostgrest(baseUrl: string, id: string): Promise<void> {

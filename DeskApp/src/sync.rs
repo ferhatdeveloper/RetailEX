@@ -250,6 +250,58 @@ fn normalize_rest_base(url: &str) -> String {
     url.trim().trim_end_matches('/').to_string()
 }
 
+fn parse_unknown_postgrest_column(body: &str) -> Option<String> {
+    let needle = "Could not find the '";
+    let start = body.find(needle)? + needle.len();
+    let end = body[start..].find('\'')? + start;
+    Some(body[start..end].to_string())
+}
+
+async fn postgrest_upsert_json(
+    http: &reqwest::Client,
+    url: &str,
+    table: &str,
+    mut data: serde_json::Value,
+) -> Result<(), String> {
+    let Some(obj) = data.as_object_mut() else {
+        return Ok(());
+    };
+
+    for _ in 0..16 {
+        let res = http
+            .post(url)
+            .header("Accept", "application/json")
+            .header("Content-Type", "application/json")
+            .header("Accept-Profile", "public")
+            .header("Content-Profile", "public")
+            .header("Prefer", "resolution=merge-duplicates,return=minimal")
+            .json(&serde_json::Value::Object(obj.clone()))
+            .send()
+            .await
+            .map_err(|e| e.to_string())?;
+
+        if res.status().is_success() {
+            return Ok(());
+        }
+
+        let status = res.status();
+        let body = res.text().await.unwrap_or_default();
+        if status == reqwest::StatusCode::BAD_REQUEST {
+            if let Some(col) = parse_unknown_postgrest_column(&body) {
+                if obj.remove(&col).is_some() {
+                    continue;
+                }
+            }
+        }
+        return Err(format!("PostgREST UPSERT {}: {} {}", table, status, body));
+    }
+
+    Err(format!(
+        "PostgREST UPSERT {}: uzak şemada çok sayıda bilinmeyen kolon",
+        table
+    ))
+}
+
 async fn postgrest_apply_item(
     http: &reqwest::Client,
     base: &str,
@@ -278,22 +330,7 @@ async fn postgrest_apply_item(
     }
     if let Some(d) = data {
         let url = format!("{}/{}", base, table);
-        let res = http
-            .post(&url)
-            .header("Accept", "application/json")
-            .header("Content-Type", "application/json")
-            .header("Accept-Profile", "public")
-            .header("Content-Profile", "public")
-            .header("Prefer", "resolution=merge-duplicates,return=minimal")
-            .json(d)
-            .send()
-            .await
-            .map_err(|e| e.to_string())?;
-        if !res.status().is_success() {
-            let status = res.status();
-            let body = res.text().await.unwrap_or_default();
-            return Err(format!("PostgREST UPSERT {}: {} {}", table, status, body));
-        }
+        postgrest_upsert_json(http, &url, table, d.clone()).await?;
     }
     Ok(())
 }

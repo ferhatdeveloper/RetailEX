@@ -38,3 +38,6 @@ BEGIN
     );
   END LOOP;
 END $$;
+
+-- PostgREST şema önbelleğini yenile (db-channel açıksa)
+NOTIFY pgrst, 'reload schema';
