@@ -530,11 +530,13 @@ export async function enqueueEnterpriseBulk(
 /** MPOS: tüm master veriyi backfill ile kuyruğa al */
 export async function enqueueAllMasterData(
   type: 'product' | 'customer' | 'all' = 'all',
+  opts?: { targetStoreId?: string | null },
 ): Promise<{ ok: boolean; message: string; count: number }> {
   const pg = resolveSyncPgEndpoint();
   const firm = firmNrPadded();
+  const targetStoreId = opts?.targetStoreId ?? null;
 
-  if (type === 'all') {
+  if (type === 'all' && !targetStoreId) {
     const prep = await prepareLocalSyncQueue(pg, firm);
     return {
       ok: true,
@@ -543,10 +545,32 @@ export async function enqueueAllMasterData(
     };
   }
 
+  if (type === 'all') {
+    const prod = await enqueueEnterpriseBulk({
+      type: 'product',
+      onlyActive: true,
+      limit: 5000,
+      targetStoreId,
+    });
+    const cust = await enqueueEnterpriseBulk({
+      type: 'customer',
+      onlyActive: true,
+      limit: 5000,
+      targetStoreId,
+    });
+    const count = prod.count + cust.count;
+    return {
+      ok: prod.ok || cust.ok,
+      message: `Master veri: ${count} kayıt kuyruğa eklendi (malzeme ${prod.count}, cari ${cust.count}).`,
+      count,
+    };
+  }
+
   return enqueueEnterpriseBulk({
     type,
     onlyActive: true,
     limit: 5000,
+    targetStoreId,
   });
 }
 

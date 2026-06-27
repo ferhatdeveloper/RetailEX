@@ -1,6 +1,6 @@
 ﻿import React, { useState, useEffect } from 'react';
 import {
-  Send, Radio, CheckCircle, XCircle, Clock, RefreshCw, Trash2, Monitor,
+  Send, Radio, CheckCircle, XCircle, Clock, RefreshCw, Trash2, Monitor, Store,
   Plus, Filter, Download, Upload, Calendar, Users, Settings, BarChart3,
   Layers, MapPin, Box, AlertTriangle, TrendingUp, Server, Zap, Layout,
   FileText, Copy, Edit, Tag, Save, X, Search, ChevronDown, ChevronRight
@@ -41,7 +41,12 @@ import {
   type EnterpriseSyncMessage,
   type DayEndStoreStatus,
 } from '../../services/enterpriseSyncService';
-import { DB_SETTINGS, updateConfigs } from '../../services/postgres';
+import { DB_SETTINGS, ERP_SETTINGS, updateConfigs } from '../../services/postgres';
+import { listActiveStores, type BranchStoreOption } from '../../services/hybridSyncService';
+import {
+  listPosTerminalRegistrations,
+  type PosTerminalRegistration,
+} from '../../services/deviceRegistrationService';
 import { BroadcastFormFields } from './BroadcastFormFields';
 import { BroadcastChangesTimeline } from './BroadcastChangesTimeline';
 import { SentMessagesList } from '../system/SentMessagesList';
@@ -129,6 +134,50 @@ export function EnterpriseCentralDataManagement() {
 
   const [isSyncBusy, setIsSyncBusy] = useState(false);
 
+  type MposTargetScope = 'all' | 'store' | 'terminal';
+  const [mposTargetScope, setMposTargetScope] = useState<MposTargetScope>('all');
+  const [branchStores, setBranchStores] = useState<BranchStoreOption[]>([]);
+  const [approvedTerminals, setApprovedTerminals] = useState<PosTerminalRegistration[]>([]);
+  const [selectedBranchStoreId, setSelectedBranchStoreId] = useState('');
+  const [selectedTerminalDeviceId, setSelectedTerminalDeviceId] = useState('');
+  const [showAdvancedSend, setShowAdvancedSend] = useState(false);
+
+  const resolveMposTargetStoreId = (): string | null => {
+    if (mposTargetScope === 'all') return null;
+    if (mposTargetScope === 'store') {
+      return selectedBranchStoreId || null;
+    }
+    const term = approvedTerminals.find((t) => t.deviceId === selectedTerminalDeviceId);
+    return term?.storeId || selectedBranchStoreId || null;
+  };
+
+  const mposTargetLabel = (): string => {
+    if (mposTargetScope === 'all') return 'Tüm şubeler / kasalar';
+    if (mposTargetScope === 'store') {
+      const s = branchStores.find((b) => b.id === selectedBranchStoreId);
+      return s ? `${s.name} (${s.code})` : 'Şube seçilmedi';
+    }
+    const t = approvedTerminals.find((x) => x.deviceId === selectedTerminalDeviceId);
+    return t ? `${t.terminalName} — ${t.storeName || 'Kasa'}` : 'Kasa seçilmedi';
+  };
+
+  const validateMposTarget = (): boolean => {
+    if (mposTargetScope === 'store' && !selectedBranchStoreId) {
+      toast.error('Lütfen hedef şube seçin.');
+      return false;
+    }
+    if (mposTargetScope === 'terminal' && !selectedTerminalDeviceId) {
+      toast.error('Lütfen hedef kasa seçin.');
+      return false;
+    }
+    return true;
+  };
+
+  const filteredTerminalsForStore = approvedTerminals.filter((t) => {
+    if (!selectedBranchStoreId) return true;
+    return t.storeId === selectedBranchStoreId;
+  });
+
   const mapEnterpriseToBroadcast = (m: EnterpriseSyncMessage): BroadcastMessage => ({
     id: m.id,
     type: (m.type === 'sale' ? 'custom' : m.type) as BroadcastMessage['type'],
@@ -202,6 +251,31 @@ export function EnterpriseCentralDataManagement() {
     };
   }, []);
 
+  useEffect(() => {
+    void (async () => {
+      try {
+        const firm = String(ERP_SETTINGS.firmNr || '001').padStart(3, '0');
+        const [stores, terminals] = await Promise.all([
+          listActiveStores(firm),
+          listPosTerminalRegistrations({ status: 'approved', firmNr: firm, limit: 200 }),
+        ]);
+        setBranchStores(stores);
+        setApprovedTerminals(terminals);
+      } catch {
+        /* PG hazır değil */
+      }
+    })();
+  }, []);
+
+  useEffect(() => {
+    const storeId = resolveMposTargetStoreId();
+    if (mposTargetScope === 'all') {
+      setTargetDevices(['all']);
+    } else if (storeId) {
+      setTargetDevices([storeId]);
+    }
+  }, [mposTargetScope, selectedBranchStoreId, selectedTerminalDeviceId, approvedTerminals]);
+
   // MPOS Kalem: otomatik mesaj kontrol aralığı
   useEffect(() => {
     if (broadcastChannel !== 'auto') return;
@@ -216,6 +290,7 @@ export function EnterpriseCentralDataManagement() {
 
   const handleSendBroadcast = async () => {
     try {
+      if (!validateMposTarget()) return;
       // Form verilerinden JSON oluştur
       let data: any = {};
 
@@ -339,7 +414,9 @@ export function EnterpriseCentralDataManagement() {
         return;
       }
 
-      const targetStore = targetDevices[0] !== 'all' ? targetDevices[0] : null;
+      const targetStore = resolveMposTargetStoreId();
+      if (!validateMposTarget()) return;
+
       const syncAction =
         broadcastAction === 'delete' ? 'DELETE' : broadcastAction === 'create' ? 'INSERT' : 'UPDATE';
 
@@ -415,6 +492,7 @@ export function EnterpriseCentralDataManagement() {
   };
 
   const handleBulkEnqueue = async () => {
+    if (!validateMposTarget()) return;
     setIsSyncBusy(true);
     try {
       const r = await enqueueEnterpriseBulk({
@@ -423,7 +501,7 @@ export function EnterpriseCentralDataManagement() {
         categoryCode: bulkCategory || undefined,
         onlyChanged: bulkOnlyChanged,
         onlyActive: true,
-        targetStoreId: targetDevices[0] !== 'all' ? targetDevices[0] : null,
+        targetStoreId: resolveMposTargetStoreId(),
         limit: 1000,
       });
       if (r.ok) toast.success(r.message);
@@ -435,9 +513,10 @@ export function EnterpriseCentralDataManagement() {
   };
 
   const handleMposQuickSend = async (type: 'product' | 'customer' | 'all') => {
+    if (!validateMposTarget()) return;
     setIsSyncBusy(true);
     try {
-      const enq = await enqueueAllMasterData(type);
+      const enq = await enqueueAllMasterData(type, { targetStoreId: resolveMposTargetStoreId() });
       if (!enq.ok) {
         toast.error(enq.message);
         return;
@@ -887,6 +966,100 @@ export function EnterpriseCentralDataManagement() {
 
           {/* Bilgi Gönder — merkez → kasa (malzeme, cari, master) */}
           <TabsContent value="send" className="space-y-4">
+            {/* 1. Hedef şube / kasa (MPOS zorunlu seçim) */}
+            <Card className={`p-4 border-2 ${theme === 'dark' ? 'bg-gray-800 border-blue-800/50' : 'bg-white border-blue-200'}`}>
+              <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                <Store className="w-4 h-4 text-blue-600" />
+                Hedef Şube / Kasa Seçimi
+              </h3>
+              <div className="flex flex-wrap gap-4 mb-3">
+                <label className="flex items-center gap-2 text-sm cursor-pointer">
+                  <input
+                    type="radio"
+                    name="mposTargetScope"
+                    checked={mposTargetScope === 'all'}
+                    onChange={() => setMposTargetScope('all')}
+                  />
+                  Tüm şubeler
+                </label>
+                <label className="flex items-center gap-2 text-sm cursor-pointer">
+                  <input
+                    type="radio"
+                    name="mposTargetScope"
+                    checked={mposTargetScope === 'store'}
+                    onChange={() => setMposTargetScope('store')}
+                  />
+                  Şube
+                </label>
+                <label className="flex items-center gap-2 text-sm cursor-pointer">
+                  <input
+                    type="radio"
+                    name="mposTargetScope"
+                    checked={mposTargetScope === 'terminal'}
+                    onChange={() => setMposTargetScope('terminal')}
+                  />
+                  Kasa (M-POS)
+                </label>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {(mposTargetScope === 'store' || mposTargetScope === 'terminal') && (
+                  <div>
+                    <label className="block text-xs mb-1 font-medium">Şube *</label>
+                    <select
+                      value={selectedBranchStoreId}
+                      onChange={(e) => {
+                        setSelectedBranchStoreId(e.target.value);
+                        setSelectedTerminalDeviceId('');
+                      }}
+                      className={`w-full p-2 rounded border text-sm ${theme === 'dark' ? 'bg-gray-700 border-gray-600' : 'bg-white border-gray-300'}`}
+                    >
+                      <option value="">Şube seçin…</option>
+                      {branchStores.map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.name} ({s.code})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+                {mposTargetScope === 'terminal' && (
+                  <div>
+                    <label className="block text-xs mb-1 font-medium">Kasa *</label>
+                    <select
+                      value={selectedTerminalDeviceId}
+                      onChange={(e) => {
+                        const id = e.target.value;
+                        setSelectedTerminalDeviceId(id);
+                        const term = approvedTerminals.find((x) => x.deviceId === id);
+                        if (term?.storeId) setSelectedBranchStoreId(term.storeId);
+                      }}
+                      className={`w-full p-2 rounded border text-sm ${theme === 'dark' ? 'bg-gray-700 border-gray-600' : 'bg-white border-gray-300'}`}
+                    >
+                      <option value="">Onaylı kasa seçin…</option>
+                      {filteredTerminalsForStore.map((t) => (
+                        <option key={t.deviceId} value={t.deviceId}>
+                          {t.terminalName}
+                          {t.computerName ? ` — ${t.computerName}` : ''}
+                          {t.storeName ? ` (${t.storeName})` : ''}
+                        </option>
+                      ))}
+                    </select>
+                    {filteredTerminalsForStore.length === 0 && (
+                      <p className="text-xs text-amber-600 mt-1">
+                        Onaylı kasa yok. Dashboard → Bekleyen Cihazlar bölümünden onaylayın.
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+              <p className="text-xs text-gray-500 mt-2">
+                Seçili hedef: <strong>{mposTargetLabel()}</strong>
+                {mposTargetScope === 'terminal' && selectedTerminalDeviceId && (
+                  <span className="ml-2 font-mono text-[10px]">{selectedTerminalDeviceId.slice(0, 20)}…</span>
+                )}
+              </p>
+            </Card>
+
             <Card className={`p-4 ${theme === 'dark' ? 'bg-gray-800 border-gray-700' : 'bg-white'}`}>
               <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
                 <Zap className="w-4 h-4 text-blue-600" />
@@ -949,36 +1122,30 @@ export function EnterpriseCentralDataManagement() {
             </Card>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              {/* Left Column - Broadcast Form */}
+              {/* Sol — veri tipi + giriş + gönder */}
               <Card className={`lg:col-span-2 p-6 ${theme === 'dark' ? 'bg-gray-800 border-gray-700' : 'bg-white'}`}>
-                <h3 className="text-lg mb-4 flex items-center gap-2">
+                <h3 className="text-lg mb-1 flex items-center gap-2">
                   <Send className="w-5 h-5" />
-                  Yeni Broadcast Oluştur
+                  Bilgi Gönder
                 </h3>
+                <p className="text-xs text-gray-500 mb-4">
+                  Hedef: {mposTargetLabel()} — malzeme veya cari kaydını kuyruğa ekleyip kasaya iletin.
+                </p>
 
                 <div className="space-y-4">
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm mb-2">Veri Tipi</label>
                       <select
-                        value={broadcastType}
-                        onChange={(e) => setBroadcastType(e.target.value as any)}
+                        value={broadcastType === 'customer' ? 'customer' : 'product'}
+                        onChange={(e) => setBroadcastType(e.target.value as 'product' | 'customer')}
                         className={`w-full p-2 rounded border ${theme === 'dark'
                           ? 'bg-gray-700 border-gray-600'
                           : 'bg-white border-gray-300'
                           }`}
                       >
-                        <option value="product">Ürün</option>
-                        <option value="price">Fiyat</option>
-                        <option value="customer">Müşteri</option>
-                        <option value="campaign">Kampanya</option>
-                        <option value="config">Konfigürasyon</option>
-                        <option value="inventory">Envanter</option>
-                        <option value="user">Kullanıcı</option>
-                        <option value="report">Rapor</option>
-                        <option value="notification">Bildirim</option>
-                        <option value="bulk">Toplu İşlem</option>
-                        <option value="custom">Özel</option>
+                        <option value="product">Malzeme (Ürün)</option>
+                        <option value="customer">Cari (Müşteri)</option>
                       </select>
                     </div>
 
@@ -992,63 +1159,21 @@ export function EnterpriseCentralDataManagement() {
                           : 'bg-white border-gray-300'
                           }`}
                       >
-                        <option value="create">Yeni Kayıt</option>
-                        <option value="update">Güncelleme</option>
-                        <option value="delete">Silme</option>
                         <option value="sync">Senkronizasyon</option>
-                        <option value="bulk_sync">Toplu Senkronizasyon</option>
-                        <option value="partial_sync">Kısmi Senkronizasyon</option>
-                        <option value="force_sync">Zorunlu Senkronizasyon</option>
+                        <option value="update">Güncelleme</option>
+                        <option value="create">Yeni Kayıt</option>
+                        <option value="delete">Silme</option>
                       </select>
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm mb-2">Öncelik</label>
-                      <select
-                        value={broadcastPriority}
-                        onChange={(e) => setBroadcastPriority(e.target.value as any)}
-                        className={`w-full p-2 rounded border ${theme === 'dark'
-                          ? 'bg-gray-700 border-gray-600'
-                          : 'bg-white border-gray-300'
-                          }`}
-                      >
-                        <option value="low">Düşük</option>
-                        <option value="normal">Normal</option>
-                        <option value="high">Yüksek</option>
-                        <option value="urgent">Acil</option>
-                        <option value="critical">Kritik</option>
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="block text-sm mb-2">Kanal</label>
-                      <select
-                        value={broadcastChannel}
-                        onChange={(e) => setBroadcastChannel(e.target.value as any)}
-                        className={`w-full p-2 rounded border ${theme === 'dark'
-                          ? 'bg-gray-700 border-gray-600'
-                          : 'bg-white border-gray-300'
-                          }`}
-                      >
-                        <option value="auto">Otomatik</option>
-                        <option value="websocket">WebSocket</option>
-                        <option value="api">REST API</option>
-                        <option value="mqtt">MQTT</option>
-                        <option value="signalr">SignalR</option>
-                      </select>
-                    </div>
-                  </div>
-
-                  {/* Kullanıcı Dostu Form Alanları */}
                   <div className="border rounded-lg p-4 bg-gray-50 dark:bg-gray-800/50">
                     <h4 className="text-sm mb-3 flex items-center gap-2">
                       <Edit className="w-4 h-4" />
                       Veri Girişi
                     </h4>
                     <BroadcastFormFields
-                      type={broadcastType}
+                      type={broadcastType === 'customer' ? 'customer' : 'product'}
                       action={broadcastAction}
                       formData={formData}
                       setFormData={setFormData}
@@ -1057,154 +1182,110 @@ export function EnterpriseCentralDataManagement() {
                     />
                   </div>
 
-                  <div className="flex items-center gap-4">
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={isScheduled}
-                        onChange={(e) => setIsScheduled(e.target.checked)}
-                        className="w-4 h-4"
-                      />
-                      <span className="text-sm">Zamanla</span>
-                    </label>
-
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={isRecurring}
-                        onChange={(e) => setIsRecurring(e.target.checked)}
-                        className="w-4 h-4"
-                      />
-                      <span className="text-sm">Tekrarlayan</span>
-                    </label>
-                  </div>
-
-                  {isScheduled && (
-                    <div>
-                      <label className="block text-sm mb-2">Gönderim Zamanı</label>
-                      <input
-                        type="datetime-local"
-                        value={scheduledDate}
-                        onChange={(e) => setScheduledDate(e.target.value)}
-                        className={`w-full p-2 rounded border ${theme === 'dark'
-                          ? 'bg-gray-700 border-gray-600'
-                          : 'bg-white border-gray-300'
-                          }`}
-                      />
-                    </div>
-                  )}
-
                   <div className="flex gap-2">
                     <Button onClick={handleSendBroadcast} className="flex-1 gap-2">
                       <Send className="w-4 h-4" />
                       Kuyruğa Ekle
                     </Button>
-
                     <Button
                       onClick={() => setShowTemplateModal(true)}
                       variant="outline"
                       className="gap-2"
                     >
                       <Save className="w-4 h-4" />
-                      Şablon Olarak Kaydet
+                      Şablon Kaydet
                     </Button>
                   </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setShowAdvancedSend((v) => !v)}
+                    className="flex items-center gap-2 text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+                  >
+                    {showAdvancedSend ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                    Gelişmiş seçenekler (öncelik, kanal, zamanlama, koşullar)
+                  </button>
+
+                  {showAdvancedSend && (
+                    <div className="space-y-4 border-t pt-4 border-gray-200 dark:border-gray-700">
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-sm mb-2">Öncelik</label>
+                          <select
+                            value={broadcastPriority}
+                            onChange={(e) => setBroadcastPriority(e.target.value as any)}
+                            className={`w-full p-2 rounded border ${theme === 'dark'
+                              ? 'bg-gray-700 border-gray-600'
+                              : 'bg-white border-gray-300'
+                              }`}
+                          >
+                            <option value="low">Düşük</option>
+                            <option value="normal">Normal</option>
+                            <option value="high">Yüksek</option>
+                            <option value="urgent">Acil</option>
+                            <option value="critical">Kritik</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-sm mb-2">Kanal</label>
+                          <select
+                            value={broadcastChannel}
+                            onChange={(e) => setBroadcastChannel(e.target.value as any)}
+                            className={`w-full p-2 rounded border ${theme === 'dark'
+                              ? 'bg-gray-700 border-gray-600'
+                              : 'bg-white border-gray-300'
+                              }`}
+                          >
+                            <option value="auto">Otomatik</option>
+                            <option value="websocket">WebSocket</option>
+                            <option value="api">REST API</option>
+                            <option value="mqtt">MQTT</option>
+                            <option value="signalr">SignalR</option>
+                          </select>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-4">
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={isScheduled}
+                            onChange={(e) => setIsScheduled(e.target.checked)}
+                            className="w-4 h-4"
+                          />
+                          <span className="text-sm">Zamanla</span>
+                        </label>
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={isRecurring}
+                            onChange={(e) => setIsRecurring(e.target.checked)}
+                            className="w-4 h-4"
+                          />
+                          <span className="text-sm">Tekrarlayan</span>
+                        </label>
+                      </div>
+                      {isScheduled && (
+                        <div>
+                          <label className="block text-sm mb-2">Gönderim Zamanı</label>
+                          <input
+                            type="datetime-local"
+                            value={scheduledDate}
+                            onChange={(e) => setScheduledDate(e.target.value)}
+                            className={`w-full p-2 rounded border ${theme === 'dark'
+                              ? 'bg-gray-700 border-gray-600'
+                              : 'bg-white border-gray-300'
+                              }`}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               </Card>
 
-              {/* Right Column - Targeting & Conditions */}
+              {/* Sağ — koşullar + son değişiklikler */}
               <div className="space-y-6">
-                <Card className={`p-6 ${theme === 'dark' ? 'bg-gray-800 border-gray-700' : 'bg-white'}`}>
-                  <h3 className="text-lg mb-4 flex items-center gap-2">
-                    <Filter className="w-5 h-5" />
-                    Hedefleme Seçenekleri
-                  </h3>
-
-                  <div className="space-y-4">
-                    <div>
-                      <label className="block text-sm mb-2">Hedef Cihazlar</label>
-                      <select
-                        value={targetDevices[0]}
-                        onChange={(e) => setTargetDevices([e.target.value])}
-                        className={`w-full p-2 rounded border ${theme === 'dark'
-                          ? 'bg-gray-700 border-gray-600'
-                          : 'bg-white border-gray-300'
-                          }`}
-                      >
-                        <option value="all">Tüm Cihazlar</option>
-                        {devices.map(device => (
-                          <option key={device.deviceId} value={device.deviceId}>
-                            {device.deviceName} - {device.deviceType} ({device.isOnline ? 'Çevrimiçi' : 'Çevrimdışı'})
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    {deviceGroups.length > 0 && (
-                      <div>
-                        <label className="block text-sm mb-2">Cihaz Grupları</label>
-                        <select
-                          multiple
-                          value={targetGroups}
-                          onChange={(e) => setTargetGroups(Array.from(e.target.selectedOptions, option => option.value))}
-                          className={`w-full p-2 rounded border min-h-[100px] ${theme === 'dark'
-                            ? 'bg-gray-700 border-gray-600'
-                            : 'bg-white border-gray-300'
-                            }`}
-                        >
-                          {deviceGroups.map(group => (
-                            <option key={group.id} value={group.id}>
-                              {group.name} ({group.deviceIds.length} cihaz)
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    )}
-
-                    {uniqueStores.length > 0 && (
-                      <div>
-                        <label className="block text-sm mb-2">Mağazalar</label>
-                        <select
-                          multiple
-                          value={targetStores}
-                          onChange={(e) => setTargetStores(Array.from(e.target.selectedOptions, option => option.value))}
-                          className={`w-full p-2 rounded border min-h-[80px] ${theme === 'dark'
-                            ? 'bg-gray-700 border-gray-600'
-                            : 'bg-white border-gray-300'
-                            }`}
-                        >
-                          {uniqueStores.map(store => (
-                            <option key={store} value={store}>
-                              {store}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    )}
-
-                    {uniqueRegions.length > 0 && (
-                      <div>
-                        <label className="block text-sm mb-2">Bölgeler</label>
-                        <select
-                          multiple
-                          value={targetRegions}
-                          onChange={(e) => setTargetRegions(Array.from(e.target.selectedOptions, option => option.value))}
-                          className={`w-full p-2 rounded border min-h-[80px] ${theme === 'dark'
-                            ? 'bg-gray-700 border-gray-600'
-                            : 'bg-white border-gray-300'
-                            }`}
-                        >
-                          {uniqueRegions.map(region => (
-                            <option key={region} value={region}>
-                              {region}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    )}
-                  </div>
-                </Card>
-
+                {showAdvancedSend && (
                 <Card className={`p-6 ${theme === 'dark' ? 'bg-gray-800 border-gray-700' : 'bg-white'}`}>
                   <div className="flex items-center justify-between mb-4">
                     <h3 className="text-lg flex items-center gap-2">
@@ -1216,11 +1297,10 @@ export function EnterpriseCentralDataManagement() {
                       Ekle
                     </Button>
                   </div>
-
                   <div className="space-y-2">
                     {conditions.length === 0 ? (
                       <p className="text-sm text-gray-500 text-center py-4">
-                        Koşul eklenmemiş. Tüm hedef cihazlara gönderilecek.
+                        Koşul yok — seçili hedefe gönderilir.
                       </p>
                     ) : (
                       conditions.map((condition, index) => (
@@ -1239,7 +1319,6 @@ export function EnterpriseCentralDataManagement() {
                             <option value="version">Versiyon</option>
                             <option value="isOnline">Çevrimiçi</option>
                           </select>
-
                           <select
                             value={condition.operator}
                             onChange={(e) => handleUpdateCondition(index, { operator: e.target.value as any })}
@@ -1253,10 +1332,7 @@ export function EnterpriseCentralDataManagement() {
                             <option value="contains">İçerir</option>
                             <option value="greaterThan">Büyüktür</option>
                             <option value="lessThan">Küçüktür</option>
-                            <option value="in">İçinde</option>
-                            <option value="notIn">İçinde Değil</option>
                           </select>
-
                           <input
                             type="text"
                             value={condition.value}
@@ -1267,12 +1343,7 @@ export function EnterpriseCentralDataManagement() {
                               : 'bg-white border-gray-300'
                               }`}
                           />
-
-                          <Button
-                            onClick={() => handleRemoveCondition(index)}
-                            size="sm"
-                            variant="destructive"
-                          >
+                          <Button onClick={() => handleRemoveCondition(index)} size="sm" variant="destructive">
                             <X className="w-4 h-4" />
                           </Button>
                         </div>
@@ -1280,8 +1351,8 @@ export function EnterpriseCentralDataManagement() {
                     )}
                   </div>
                 </Card>
+                )}
 
-                {/* Son Değişiklikler Timeline */}
                 <BroadcastChangesTimeline theme={theme} />
               </div>
             </div>
@@ -1293,6 +1364,9 @@ export function EnterpriseCentralDataManagement() {
           {/* Bilgi Al — kasa → merkez (satış, günsonu) */}
           <TabsContent value="receive" className="space-y-4">
             <Card className={`p-4 ${theme === 'dark' ? 'bg-gray-800 border-gray-700' : 'bg-white'}`}>
+              <p className="text-xs text-gray-500 mb-3">
+                Hedef: <strong>{mposTargetLabel()}</strong> — «Bilgi Gönder» sekmesindeki şube/kasa seçimi burada da geçerlidir.
+              </p>
               <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
                 <Download className="w-4 h-4 text-sky-600" />
                 M-POS Bilgi Al (Kasa → Merkez)
