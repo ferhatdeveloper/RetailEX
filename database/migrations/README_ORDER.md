@@ -52,6 +52,7 @@
 47. **059_init_production_tables.sql** – mevcut firmalar için üretim reçete/emir tablolarını oluşturur (`INIT_PRODUCTION_TABLES`).
 48. **060_ensure_create_firm_period_engine.sql** – `CREATE_FIRM_TABLES` / `CREATE_PERIOD_TABLES` fonksiyonlarını kurar (firma kurulum sihirbazı; 000 atlanmış eski DB'ler).
 49. **061_rex_customers_suppliers_ref_id.sql** – Logo CLCARD senkronu: `rex_*_customers` / `suppliers` tablolarına `ref_id` (LOGICALREF).
+50. **062_hybrid_sync_backfill.sql** – Hibrit: yerelde olup kuyruğa düşmemiş kayıtları `sync_queue`'ya ekleme (`enqueue_hybrid_backfill`) ve tükenmiş denemeleri sıfırlama.
 
 **Mevcut veritabanı:** `config.db` (DeskApp ayarları) ile bekleyen migration’ları uygulamak için proje kökünde `npm run db:migrate` (ayrıntı: `.cursor/rules/database-migrate-config-db.mdc`).
 

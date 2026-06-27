@@ -41,6 +41,7 @@ const WarehouseManagement = lazyWithChunkRecovery(() => import('../wms')) as any
 const RestaurantMain = lazyWithChunkRecovery(() => import('../restaurant/index'));
 const BeautyMain = lazyWithChunkRecovery(() => import('../beauty/index'));
 import { FirmSelector } from './FirmSelector';
+import { HybridSyncToolbarButtons } from './HybridSyncToolbarButtons';
 import { cn } from '../ui/utils';
 import {
   getPrimaryShellModuleForCallerId,
@@ -1102,6 +1103,9 @@ export function MainLayout({
                   <FirmSelector compactMobile />
                 </div>
                 <div className="shrink-0">
+                  <HybridSyncToolbarButtons compact />
+                </div>
+                <div className="shrink-0">
                   <MainLayoutClockButton compact onOpenModal={() => setShowDateModal(true)} />
                 </div>
                 <button
@@ -1247,6 +1251,8 @@ export function MainLayout({
               {/* Right — firma, saat, sonra diğer ikonlar */}
               <div className="flex items-center justify-end gap-1.5 sm:gap-2 flex-wrap shrink-0">
                 <FirmSelector />
+
+                <HybridSyncToolbarButtons />
 
                 <MainLayoutClockButton onOpenModal={() => setShowDateModal(true)} />
 

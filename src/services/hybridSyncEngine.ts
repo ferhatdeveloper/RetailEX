@@ -129,8 +129,10 @@ function buildQueueWhere(filter?: HybridSyncFilter): { sql: string; params: unkn
   let sql = `status = 'pending' AND retry_count < $1`;
 
   if (filter?.firmNr) {
-    params.push(filter.firmNr);
-    sql += ` AND firm_nr = $${params.length}`;
+    const fn = String(filter.firmNr).replace(/\D/g, '').padStart(3, '0');
+    params.push(fn);
+    const i = params.length;
+    sql += ` AND (firm_nr = $${i} OR lpad(ltrim(firm_nr, '0'), 3, '0') = $${i})`;
   }
 
   if (filter?.storeId) {
@@ -379,10 +381,56 @@ export function getSyncLegs(
   ];
 }
 
+export type PrepareSyncQueueResult = {
+  enqueued: number;
+  reset: number;
+};
+
+/** Yerelde olup sync_queue'da olmayan kayıtları kuyruğa al; tükenmiş denemeleri sıfırla. */
+export async function prepareLocalSyncQueue(
+  local: PgEndpointConfig,
+  firmNr?: string,
+): Promise<PrepareSyncQueueResult> {
+  const fn = String(firmNr || '001')
+    .replace(/\D/g, '')
+    .padStart(3, '0');
+
+  let reset = 0;
+  let enqueued = 0;
+
+  try {
+    const resetRows = await queryPgRows(
+      local,
+      `SELECT public.reset_exhausted_sync_queue($1)::text AS cnt`,
+      [fn],
+    );
+    reset = Number(resetRows[0]?.cnt ?? 0);
+  } catch {
+    /* migration 062 yok */
+  }
+
+  try {
+    const rows = await queryPgRows(
+      local,
+      `SELECT public.enqueue_hybrid_backfill($1, $2)::text AS cnt`,
+      [fn, 5000],
+    );
+    enqueued = Number(rows[0]?.cnt ?? 0);
+  } catch {
+    /* migration 062 yok */
+  }
+
+  return { enqueued, reset };
+}
+
 export async function runHybridSync(opts: HybridSyncRunOptions): Promise<HybridSyncResult> {
   const flow = opts.flow ?? 'both';
   const direction = opts.direction ?? flowToDirection(flow);
   const scope = opts.scope ?? 'pending';
+
+  if (flow === 'send' || flow === 'both') {
+    await prepareLocalSyncQueue(opts.local, opts.filter?.firmNr ?? undefined);
+  }
 
   let endpoints: { local: SyncEndpoint; remote: SyncEndpoint };
   try {
