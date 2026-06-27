@@ -261,6 +261,9 @@ export function requestMposSyncPullNotify(opts?: {
     });
   });
 }
+
+/** Merkez WS / manuel tetik — tarayıcı kasa anlık çekim */
+export async function triggerInstantKasaPull(fallbackStoreId?: string | null): Promise<MposPullResult> {
   const ctx = await resolveKasaPullContext(fallbackStoreId);
   if (!ctx) {
     return { synced: 0, failed: 0, pending_inbound: 0, message: 'Kasa bağlamı yok.' };
