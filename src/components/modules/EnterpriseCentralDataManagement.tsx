@@ -63,6 +63,7 @@ import { BroadcastFormFields } from './BroadcastFormFields';
 import { BroadcastChangesTimeline } from './BroadcastChangesTimeline';
 import { SentMessagesList } from '../system/SentMessagesList';
 import { BroadcastDataSelector } from './BroadcastDataSelector';
+import { MposKalemTransferPanel } from './MposKalemTransferPanel';
 
 export function EnterpriseCentralDataManagement() {
   const { darkMode } = useTheme();
@@ -994,13 +995,12 @@ export function EnterpriseCentralDataManagement() {
               KLRetail M-POS Kurulum Rehberi (eğitim videosu adımları)
             </summary>
             <ol className="mt-3 ml-6 text-xs text-gray-600 dark:text-gray-400 space-y-1.5 list-decimal">
-              <li>Market parametreleri + POS kasa kartı tanımı</li>
-              <li>KLRetail M-POS tanımları (kısayol, PLU, ödeme tuşları)</li>
-              <li>M-POS kasa DB + merkez DB / «Servis Ayarları» mesaj kontrol süresi</li>
-              <li><strong>Bilgi Gönder</strong> — malzeme, cari, program bilgileri → seçili kasa</li>
-              <li>Kasada satış + yemek çeki tahsilat örneği</li>
-              <li><strong>Bilgi Al</strong> — satış, günsonu, Z raporu → merkeze çek</li>
-              <li><strong>Günsonu</strong> işlem kontrolü — bugün veri almayan kasa «Veri alınmadı»</li>
+              <li><strong>Eğitim 1:</strong> Market parametreleri, POS kasa kartı, M-POS tanımları, servis ayarları</li>
+              <li><strong>Eğitim 1:</strong> Bilgi Gönder (malzeme, cari, program) → kasada satış, yemek çeki</li>
+              <li><strong>Eğitim 1:</strong> Bilgi Al → günsonu → günsonu işlem kontrolü</li>
+              <li><strong>Eğitim 2:</strong> Puan DB + Puan Adaptör parametreleri → Puan Tanımları gönder</li>
+              <li><strong>Eğitim 2:</strong> Kasada puan kazanım / harcama / iade</li>
+              <li><strong>Eğitim 2:</strong> Promosyon tanımı gönder → promosyon uygulamaları</li>
             </ol>
           </details>
         </Card>
@@ -1042,100 +1042,34 @@ export function EnterpriseCentralDataManagement() {
             </TabsTrigger>
           </TabsList>
 
-          {/* Bilgi Gönder — Kalem M-POS: Dosya Tipi + İşyeri + Kasa */}
+          {/* Bilgi Gönder — Kalem dialog (ekran görüntüsü düzeni) */}
           <TabsContent value="send" className="space-y-4">
-            <Card className={`p-6 max-w-2xl ${theme === 'dark' ? 'bg-gray-800 border-gray-700' : 'bg-white'}`}>
-              <h3 className="text-lg font-semibold mb-4 border-b pb-2 border-gray-200 dark:border-gray-700">
-                KLRetail M-POS Bilgilerinin Gönderilmesi
-              </h3>
+            <MposKalemTransferPanel
+              mode="send"
+              title="KLRetail M-POS Bilgilerinin Gönderilmesi"
+              fileTypes={MPOS_SEND_FILE_TYPES}
+              fileType={mposFileType}
+              onFileTypeChange={(v) => setMposFileType(v as MposSendFileType)}
+              branchStores={branchStores}
+              selectedBranchStoreId={selectedBranchStoreId}
+              onBranchChange={(id) => {
+                setSelectedBranchStoreId(id);
+                setSelectedTerminalDeviceId('');
+              }}
+              selectedTerminalDeviceId={selectedTerminalDeviceId}
+              onTerminalChange={setSelectedTerminalDeviceId}
+              filteredTerminals={filteredTerminalsForStore}
+              isBusy={isSyncBusy}
+              onCancel={handleMposKalemReset}
+              onSubmit={() => void handleMposKalemSend()}
+              theme={theme}
+              helpText="Eğitim 1: malzeme/cari/program gönder. Eğitim 2: puan ve promosyon tanımları. İşyeri ve kasa zorunlu."
+            />
+            <p className="text-xs text-gray-500 max-w-[440px]">
+              Hedef: <strong>{mposTargetLabel()}</strong>
+            </p>
 
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm mb-1.5 font-medium">Dosya Tipi</label>
-                  <select
-                    value={mposFileType}
-                    onChange={(e) => setMposFileType(e.target.value as MposSendFileType)}
-                    className={`w-full p-2.5 rounded border text-sm ${theme === 'dark' ? 'bg-gray-700 border-gray-600' : 'bg-white border-gray-300'}`}
-                  >
-                    {MPOS_SEND_FILE_TYPES.map((ft) => (
-                      <option key={ft.id} value={ft.id}>
-                        {ft.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm mb-1.5 font-medium">İşyeri</label>
-                  <select
-                    value={selectedBranchStoreId}
-                    onChange={(e) => {
-                      setSelectedBranchStoreId(e.target.value);
-                      setSelectedTerminalDeviceId('');
-                    }}
-                    className={`w-full p-2.5 rounded border text-sm ${theme === 'dark' ? 'bg-gray-700 border-gray-600' : 'bg-white border-gray-300'}`}
-                  >
-                    <option value="">— İşyeri seçin —</option>
-                    {branchStores.map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.name} ({s.code})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm mb-1.5 font-medium">Kasa</label>
-                  <select
-                    value={selectedTerminalDeviceId}
-                    onChange={(e) => setSelectedTerminalDeviceId(e.target.value)}
-                    disabled={!selectedBranchStoreId}
-                    className={`w-full p-2.5 rounded border text-sm disabled:opacity-50 ${theme === 'dark' ? 'bg-gray-700 border-gray-600' : 'bg-white border-gray-300'}`}
-                  >
-                    <option value="">
-                      {selectedBranchStoreId ? '— Kasa seçin —' : 'Önce işyeri seçin'}
-                    </option>
-                    {filteredTerminalsForStore.map((t) => (
-                      <option key={t.deviceId} value={t.deviceId}>
-                        {t.terminalName}
-                        {t.computerName ? ` (${t.computerName})` : ''}
-                      </option>
-                    ))}
-                  </select>
-                  {selectedBranchStoreId && filteredTerminalsForStore.length === 0 && (
-                    <p className="text-xs text-amber-600 mt-1">
-                      Bu işyerinde onaylı kasa yok. Dashboard → Bekleyen Cihazlar.
-                    </p>
-                  )}
-                </div>
-              </div>
-
-              <div className="flex justify-end gap-2 mt-6 pt-4 border-t border-gray-200 dark:border-gray-700">
-                <Button
-                  type="button"
-                  variant="outline"
-                  disabled={isSyncBusy}
-                  onClick={handleMposKalemReset}
-                >
-                  Vazgeç
-                </Button>
-                <Button
-                  type="button"
-                  disabled={isSyncBusy}
-                  onClick={() => void handleMposKalemSend()}
-                  className="gap-2 min-w-[120px]"
-                >
-                  {isSyncBusy ? (
-                    <RefreshCw className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <Upload className="w-4 h-4" />
-                  )}
-                  Gönder
-                </Button>
-              </div>
-            </Card>
-
-            <details className={`rounded-lg border ${theme === 'dark' ? 'border-gray-700 bg-gray-800/50' : 'border-gray-200 bg-white'}`}>
+            <details className={`rounded-lg border max-w-[440px] ${theme === 'dark' ? 'border-gray-700 bg-gray-800/50' : 'border-gray-200 bg-white'}`}>
               <summary className="cursor-pointer p-4 text-sm font-medium flex items-center gap-2">
                 <ChevronRight className="w-4 h-4" />
                 Toplu gönderim ve detaylı kayıt (gelişmiş)
@@ -1447,99 +1381,34 @@ export function EnterpriseCentralDataManagement() {
             </details>
           </TabsContent>
 
-          {/* Bilgi Al — Kalem M-POS: Dosya Tipi + İşyeri + Kasa */}
+          {/* Bilgi Al — Kalem dialog (Gönder ile aynı düzen) */}
           <TabsContent value="receive" className="space-y-4">
-            <Card className={`p-6 max-w-2xl ${theme === 'dark' ? 'bg-gray-800 border-gray-700' : 'bg-white'}`}>
-              <h3 className="text-lg font-semibold mb-4 border-b pb-2 border-gray-200 dark:border-gray-700">
-                KLRetail M-POS Bilgilerinin Alınması
-              </h3>
+            <MposKalemTransferPanel
+              mode="receive"
+              title="KLRetail M-POS Bilgilerinin Alınması"
+              fileTypes={MPOS_RECEIVE_FILE_TYPES}
+              fileType={mposReceiveFileType}
+              onFileTypeChange={(v) => setMposReceiveFileType(v as MposReceiveFileType)}
+              branchStores={branchStores}
+              selectedBranchStoreId={selectedBranchStoreId}
+              onBranchChange={(id) => {
+                setSelectedBranchStoreId(id);
+                setSelectedTerminalDeviceId('');
+              }}
+              selectedTerminalDeviceId={selectedTerminalDeviceId}
+              onTerminalChange={setSelectedTerminalDeviceId}
+              filteredTerminals={filteredTerminalsForStore}
+              isBusy={isSyncBusy}
+              onCancel={handleMposKalemReset}
+              onSubmit={() => void handleMposKalemReceive()}
+              theme={theme}
+              helpText="Eğitim 1: satış ve günsonu al. Kasada işlem bittikten sonra Dosya Tipi seçip Al."
+            />
+            <p className="text-xs text-gray-500 max-w-[440px]">
+              Hedef: <strong>{mposTargetLabel()}</strong>
+            </p>
 
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm mb-1.5 font-medium">Dosya Tipi</label>
-                  <select
-                    value={mposReceiveFileType}
-                    onChange={(e) => setMposReceiveFileType(e.target.value as MposReceiveFileType)}
-                    className={`w-full p-2.5 rounded border text-sm ${theme === 'dark' ? 'bg-gray-700 border-gray-600' : 'bg-white border-gray-300'}`}
-                  >
-                    {MPOS_RECEIVE_FILE_TYPES.map((ft) => (
-                      <option key={ft.id} value={ft.id}>
-                        {ft.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm mb-1.5 font-medium">İşyeri</label>
-                  <select
-                    value={selectedBranchStoreId}
-                    onChange={(e) => {
-                      setSelectedBranchStoreId(e.target.value);
-                      setSelectedTerminalDeviceId('');
-                    }}
-                    className={`w-full p-2.5 rounded border text-sm ${theme === 'dark' ? 'bg-gray-700 border-gray-600' : 'bg-white border-gray-300'}`}
-                  >
-                    <option value="">— İşyeri seçin —</option>
-                    {branchStores.map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.name} ({s.code})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm mb-1.5 font-medium">Kasa</label>
-                  <select
-                    value={selectedTerminalDeviceId}
-                    onChange={(e) => setSelectedTerminalDeviceId(e.target.value)}
-                    disabled={!selectedBranchStoreId}
-                    className={`w-full p-2.5 rounded border text-sm disabled:opacity-50 ${theme === 'dark' ? 'bg-gray-700 border-gray-600' : 'bg-white border-gray-300'}`}
-                  >
-                    <option value="">
-                      {selectedBranchStoreId ? '— Kasa seçin —' : 'Önce işyeri seçin'}
-                    </option>
-                    {filteredTerminalsForStore.map((t) => (
-                      <option key={t.deviceId} value={t.deviceId}>
-                        {t.terminalName}
-                        {t.computerName ? ` (${t.computerName})` : ''}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              <p className="text-xs text-gray-500 mt-3">
-                Hedef: <strong>{mposTargetLabel()}</strong> — kasada satış/günsonu sonrası merkeze çekilir.
-              </p>
-
-              <div className="flex justify-end gap-2 mt-6 pt-4 border-t border-gray-200 dark:border-gray-700">
-                <Button
-                  type="button"
-                  variant="outline"
-                  disabled={isSyncBusy}
-                  onClick={handleMposKalemReset}
-                >
-                  Vazgeç
-                </Button>
-                <Button
-                  type="button"
-                  disabled={isSyncBusy}
-                  onClick={() => void handleMposKalemReceive()}
-                  className="gap-2 min-w-[120px] bg-sky-600 hover:bg-sky-700 text-white"
-                >
-                  {isSyncBusy ? (
-                    <RefreshCw className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <Download className="w-4 h-4" />
-                  )}
-                  Al
-                </Button>
-              </div>
-            </Card>
-
-            <details className={`rounded-lg border max-w-2xl ${theme === 'dark' ? 'border-gray-700 bg-gray-800/50' : 'border-gray-200 bg-white'}`}>
+            <details className={`rounded-lg border max-w-[440px] ${theme === 'dark' ? 'border-gray-700 bg-gray-800/50' : 'border-gray-200 bg-white'}`}>
               <summary className="cursor-pointer p-4 text-sm font-medium">Hızlı alım (toplu)</summary>
               <div className="p-4 pt-0 flex flex-wrap gap-2 border-t border-gray-200 dark:border-gray-700">
                 <Button size="sm" disabled={isSyncBusy} onClick={() => void handlePullAll()} className="gap-2">

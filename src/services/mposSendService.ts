@@ -16,30 +16,39 @@ export type MposSendFileType =
   | 'products'
   | 'customers'
   | 'campaign_points'
+  | 'promotions'
   | 'exchange_rates'
   | 'cashiers'
   | 'shortcuts'
-  | 'program_info'
-  | 'receipt_design'
   | 'version_update_center'
   | 'version_update_local'
+  | 'receipt_design'
+  | 'program_info'
   | 'customer_balance_risk'
+  | 'card_password'
+  | 'point_adapter'
   | 'payment_keys';
 
-/** Kalem M-POS «Dosya Tipi» listesi (OuFtuJRL5t0 + 3TueEaussGo eğitim) */
+/**
+ * Kalem «Dosya Tipi» sırası — ekran görüntüsü (OuFtuJRL5t0) + eğitim 2 (3TueEaussGo).
+ * Görüntüdeki sıra: Puan → Döviz → Kasiyer → Kısayol → Versiyon (Kalem/Local) → Fiş → Program
+ */
 export const MPOS_SEND_FILE_TYPES: { id: MposSendFileType; label: string }[] = [
   { id: 'products', label: 'Malzeme Kartları' },
   { id: 'customers', label: 'Cari Kartları' },
   { id: 'campaign_points', label: 'Puan Tanımları' },
+  { id: 'promotions', label: 'Promosyon Tanımları' },
   { id: 'exchange_rates', label: 'Döviz Kur Bilgileri' },
   { id: 'cashiers', label: 'Kasiyer / Satıcı Bilgileri' },
   { id: 'shortcuts', label: 'Kısayol Tuş Tanımları' },
-  { id: 'program_info', label: 'Program Bilgileri' },
-  { id: 'receipt_design', label: 'Fiş Dizaynları' },
   { id: 'version_update_center', label: 'Versiyon Güncelleme (Kalem Sunucu)' },
   { id: 'version_update_local', label: 'Versiyon Güncelleme (Local Sunucu)' },
+  { id: 'receipt_design', label: 'Fiş Dizaynları' },
+  { id: 'program_info', label: 'Program Bilgileri' },
   { id: 'customer_balance_risk', label: 'Cari Bakiye / Risk Bilgileri' },
-  { id: 'payment_keys', label: 'Ödeme Tuş Tanımları (Yemek Çeki vb.)' },
+  { id: 'card_password', label: 'Kart Şifre Bilgileri' },
+  { id: 'point_adapter', label: 'M-POS Puan Adaptör Parametreleri' },
+  { id: 'payment_keys', label: 'Ödeme Tuş Tanımları' },
 ];
 
 function firmNrPadded(): string {
@@ -207,6 +216,16 @@ export async function sendMposInfoToKasa(opts: {
         storeId,
         terminalName,
       );
+    case 'promotions':
+      return enqueueTableForKasa(
+        `rex_${firm}_campaigns`,
+        `SELECT id::text AS id, to_jsonb(t) AS data FROM rex_${firm}_campaigns t
+         WHERE COALESCE(t.is_active, true) = true
+         ORDER BY t.updated_at DESC NULLS LAST LIMIT 500`,
+        [],
+        storeId,
+        terminalName,
+      );
     case 'exchange_rates':
       return enqueueTableForKasa(
         'exchange_rates',
@@ -304,6 +323,29 @@ export async function sendMposInfoToKasa(opts: {
         storeId,
         terminalName,
       );
+    case 'card_password':
+      return enqueueMposConfigPayload({
+        fileType,
+        storeId,
+        terminalName,
+        terminalDeviceId,
+        payload: {
+          kind: 'card_password',
+          note: 'Müşteri kart şifreleri — Puan DB PUANTOT (KLR-2008)',
+        },
+      });
+    case 'point_adapter':
+      return enqueueMposConfigPayload({
+        fileType,
+        storeId,
+        terminalName,
+        terminalDeviceId,
+        payload: {
+          kind: 'point_adapter',
+          note: 'M-POS Puan Adaptör Parametreleri (eğitim 2 — 3TueEaussGo)',
+          puan_db: true,
+        },
+      });
     case 'payment_keys':
       return enqueueMposConfigPayload({
         fileType,
@@ -313,7 +355,7 @@ export async function sendMposInfoToKasa(opts: {
         payload: {
           kind: 'payment_keys',
           includes_meal_voucher: true,
-          note: 'Ödeme tuş tanımları — yemek çeki ve diğer ödemeler',
+          note: 'Ödeme tuş tanımları — yemek çeki vb.',
         },
       });
     default:

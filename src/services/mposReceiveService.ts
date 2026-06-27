@@ -16,15 +16,19 @@ export type MposReceiveFileType =
   | 'day_end'
   | 'z_report'
   | 'meal_voucher'
-  | 'cashier_movements';
+  | 'cashier_movements'
+  | 'point_movements'
+  | 'promotion_sales';
 
-/** Kalem M-POS «Bilgi Al» dosya tipleri (satış → günsonu → rapor akışı) */
+/** Kalem «Bilgi Al» — eğitim 1 (satış/günsonu) + eğitim 2 (puan/promosyon) */
 export const MPOS_RECEIVE_FILE_TYPES: { id: MposReceiveFileType; label: string }[] = [
   { id: 'sales', label: 'Satış Verileri' },
   { id: 'day_end', label: 'Günsonu Verisi' },
   { id: 'z_report', label: 'Z Raporu / Kasa Özet' },
   { id: 'meal_voucher', label: 'Yemek Çeki Tahsilatları' },
   { id: 'cashier_movements', label: 'Kasiyer / Satıcı Hareketleri' },
+  { id: 'point_movements', label: 'Puan Hareketleri (Kazanım / Harcama / İade)' },
+  { id: 'promotion_sales', label: 'Promosyon Uygulama Verisi' },
 ];
 
 function firmNrPadded(): string {
@@ -167,6 +171,28 @@ export async function receiveMposInfoFromKasa(opts: {
         ok: pull.ok,
         message: pull.ok
           ? `${kasaLabel}: Kasiyer/satıcı hareketleri alındı (${pull.synced} kayıt).`
+          : pull.message,
+        synced: pull.synced,
+      };
+      break;
+    }
+    case 'point_movements': {
+      const pull = await pullBranchDataFromCenter();
+      result = {
+        ok: pull.ok,
+        message: pull.ok
+          ? `${kasaLabel}: Puan hareketleri alındı — kazanım, harcama, iade (eğitim 2).`
+          : pull.message,
+        synced: pull.synced,
+      };
+      break;
+    }
+    case 'promotion_sales': {
+      const pull = await pullSalesAndDayEndFromBranches();
+      result = {
+        ok: pull.ok,
+        message: pull.ok
+          ? `${kasaLabel}: Promosyon uygulama verisi alındı (${pull.synced} kayıt).`
           : pull.message,
         synced: pull.synced,
       };
