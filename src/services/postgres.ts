@@ -1145,26 +1145,54 @@ export class PostgresConnection {
   }
 
   /**
-   * Register this device to a store
+   * Register this device to a store (masaüstü → merkez onay kuyruğu)
    */
   async registerDevice(name: string, storeId: string): Promise<{ success: boolean; message: string }> {
     try {
-      const deviceId = await this.getDeviceId();
+      const { registerDesktopTerminal, resolveDesktopDeviceId } = await import('./deviceRegistrationService');
+      const deviceId = await resolveDesktopDeviceId();
       console.log(`📡 Registering device ${name} (${deviceId}) to store ${storeId}`);
 
-      await this.query(
-        `INSERT INTO terminals (device_id, name, store_id, firm_nr) 
-         VALUES ($1, $2, $3, $4) 
-         ON CONFLICT (device_id) DO UPDATE SET name = $2, store_id = $3, firm_nr = $4`,
-        [deviceId, name, storeId, ERP_SETTINGS.firmNr]
+      let hostname: string | undefined;
+      let osUser: string | undefined;
+      let role = 'client';
+      if (typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__) {
+        try {
+          const { invoke } = await import('@tauri-apps/api/core');
+          const cfg: { role?: string } = await invoke('get_app_config');
+          role = cfg.role || 'client';
+          hostname = await invoke<string>('get_system_id');
+          osUser = await invoke<string>('get_os_username');
+        } catch {
+          /* optional */
+        }
+      }
+
+      const result = await registerDesktopTerminal({
+        deviceId,
+        terminalName: name,
+        storeId,
+        firmNr: ERP_SETTINGS.firmNr,
+        role,
+        hostname,
+        osUser,
+      });
+
+      localStorage.setItem(
+        'retailex_registered_device',
+        JSON.stringify({ name, storeId, deviceId, status: result.status }),
       );
 
-      localStorage.setItem('retailex_registered_device', JSON.stringify({ name, storeId }));
-
-      return { success: true, message: 'Cihaz başarıyla kaydedildi.' };
-    } catch (error: any) {
+      return {
+        success: result.ok,
+        message: result.message,
+      };
+    } catch (error: unknown) {
       console.error('Device registration error:', error);
-      return { success: false, message: `Hata: ${error.message}` };
+      return {
+        success: false,
+        message: `Hata: ${error instanceof Error ? error.message : String(error)}`,
+      };
     }
   }
 

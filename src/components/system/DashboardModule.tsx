@@ -17,6 +17,7 @@ import { isGibEdocumentUiEnabled } from '../../config/eInvoice.config';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useFirmaDonem } from '../../contexts/FirmaDonemContext';
 import { logger } from '../../services/loggingService';
+import { PendingDevicesPanel } from './PendingDevicesPanel';
 
 const DASHBOARD_SHORTCUTS_LS = 'retailos_dashboard_shortcut_ids';
 
@@ -425,6 +426,8 @@ export function DashboardModule({ products, customers, sales, setCurrentScreen, 
       </div>
 
       <div className="p-3 space-y-3">
+        <PendingDevicesPanel />
+
         {/* Quick Actions - Hızlı Kısayollar */}
         <div>
           <div className="flex items-center gap-1.5 mb-2">

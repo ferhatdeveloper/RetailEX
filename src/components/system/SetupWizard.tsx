@@ -1404,7 +1404,12 @@ const SetupWizard: React.FC = () => {
                 setInstallationStep('DEVICE');
                 toast.info('Cihaz kaydı yapılıyor...');
                 if (isTauri) {
-                    await postgres.registerDevice(config.terminal_name, config.store_id);
+                    const reg = await postgres.registerDevice(config.terminal_name, config.store_id);
+                    if (reg.success) {
+                        toast.success(reg.message || 'Cihaz kaydı merkeze iletildi. Web panelinden onay bekleniyor.');
+                    } else {
+                        toast.error(reg.message || 'Cihaz kaydı başarısız.');
+                    }
                 } else {
                     console.log('Web Modu: Cihaz kaydı simüle ediliyor...');
                     localStorage.setItem('retailex_device_registered', 'true');

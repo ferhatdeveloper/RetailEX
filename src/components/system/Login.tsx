@@ -987,6 +987,16 @@ export function Login({ onLogin }: LoginProps) {
     } else {
       setIsLoading(true);
       try {
+        if (isTauri) {
+          const { assertDesktopTerminalApproved } = await import('../../services/deviceRegistrationService');
+          const gate = await assertDesktopTerminalApproved();
+          if (!gate.allowed) {
+            setError(gate.message);
+            setIsLoading(false);
+            return;
+          }
+        }
+
         // Update global ERP settings with selected firm before final login
         const { updateConfigs, ERP_SETTINGS } = await import('../../services/postgres');
         await updateConfigs({

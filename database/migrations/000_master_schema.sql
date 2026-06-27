@@ -237,6 +237,29 @@ CREATE INDEX IF NOT EXISTS idx_sync_logs_last_sync
 CREATE INDEX IF NOT EXISTS idx_sync_logs_firm_store
   ON public.sync_logs (firm_nr, store_code, last_sync_date DESC);
 
+CREATE TABLE IF NOT EXISTS pos_terminal_registrations (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  device_id       TEXT NOT NULL UNIQUE,
+  terminal_name   VARCHAR(100) NOT NULL,
+  store_id        UUID REFERENCES public.stores(id),
+  firm_nr         VARCHAR(10) NOT NULL,
+  status          VARCHAR(20) NOT NULL DEFAULT 'pending'
+                    CHECK (status IN ('pending', 'approved', 'rejected', 'blocked')),
+  role            VARCHAR(50) DEFAULT 'client',
+  hostname        VARCHAR(255),
+  os_user         VARCHAR(100),
+  app_version     VARCHAR(50),
+  metadata        JSONB DEFAULT '{}'::jsonb,
+  registered_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  last_seen_at    TIMESTAMPTZ,
+  approved_at     TIMESTAMPTZ,
+  approved_by     UUID REFERENCES public.users(id),
+  rejected_reason TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_pos_terminal_reg_firm_status
+  ON public.pos_terminal_registrations (firm_nr, status, registered_at DESC);
+
 CREATE OR REPLACE FUNCTION public.upsert_service_health(
   p_service_name TEXT,
   p_status TEXT,
