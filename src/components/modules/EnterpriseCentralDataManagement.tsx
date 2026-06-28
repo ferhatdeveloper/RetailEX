@@ -55,6 +55,7 @@ import { checkMposSendGuard } from '../../services/mposSendGuardService';
 import {
   MPOS_RECEIVE_FILE_TYPES,
   receiveMposInfoFromKasa,
+  receiveDayEndFromKasas,
   type MposReceiveFileType,
 } from '../../services/mposReceiveService';
 import { DB_SETTINGS, ERP_SETTINGS, updateConfigs } from '../../services/postgres';
@@ -69,6 +70,8 @@ import { SentMessagesList } from '../system/SentMessagesList';
 import { BroadcastDataSelector } from './BroadcastDataSelector';
 import { MposKalemTransferPanel } from './MposKalemTransferPanel';
 import { MposKalemTargetBar } from './MposKalemTargetBar';
+import { MposDayEndDialog } from './MposDayEndDialog';
+import { MposSyncLogPanel } from './MposSyncLogPanel';
 import {
   getMposKasaReportSummary,
   type MposKasaReportSummary,
@@ -174,6 +177,10 @@ export function EnterpriseCentralDataManagement() {
   });
   const [mposDateTo, setMposDateTo] = useState(() => new Date().toISOString().slice(0, 10));
   const [sendProgress, setSendProgress] = useState<{ current: number; total: number; label: string } | null>(
+    null,
+  );
+  const [dayEndDialogOpen, setDayEndDialogOpen] = useState(false);
+  const [dayEndProgress, setDayEndProgress] = useState<{ current: number; total: number; label: string } | null>(
     null,
   );
   const [filterQueueByKasa, setFilterQueueByKasa] = useState(true);
@@ -510,7 +517,7 @@ export function EnterpriseCentralDataManagement() {
       const hhmm = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
       if (hhmm === dayEndAutoTime && lastDayEndAutoRunRef.current !== today) {
         lastDayEndAutoRunRef.current = today;
-        void handleDayEndPull().then(() => toast.info(`Otomatik günsonu alımı (${dayEndAutoTime})`));
+        void runBulkDayEndPull().then(() => toast.info(`Otomatik günsonu alımı (${dayEndAutoTime})`));
       }
     };
     tick();
@@ -766,8 +773,11 @@ export function EnterpriseCentralDataManagement() {
     }
   };
 
-  const handleDayEndPull = async () => {
-    if (!validateMposKasaTarget()) return;
+  const handleDayEndPull = () => {
+    setDayEndDialogOpen(true);
+  };
+
+  const runBulkDayEndPull = async () => {
     setIsSyncBusy(true);
     try {
       const r = await pullSalesAndDayEndFromBranches();
@@ -776,6 +786,42 @@ export function EnterpriseCentralDataManagement() {
       await refreshEnterpriseData();
     } finally {
       setIsSyncBusy(false);
+    }
+  };
+
+  const handleDayEndDialogSubmit = async (opts: {
+    storeId: string;
+    businessDate: string;
+    terminalDeviceIds: string[];
+  }) => {
+    const targets = approvedTerminals.filter(
+      (t) => t.storeId === opts.storeId && opts.terminalDeviceIds.includes(t.deviceId),
+    );
+    if (!targets.length) {
+      toast.error('Seçili kasa bulunamadı.');
+      return;
+    }
+    setIsSyncBusy(true);
+    setDayEndProgress({ current: 0, total: targets.length, label: 'Günsonu alınıyor…' });
+    try {
+      const r = await receiveDayEndFromKasas({
+        storeId: opts.storeId,
+        businessDate: opts.businessDate,
+        terminals: targets.map((t) => ({
+          terminalName: t.terminalName,
+          terminalDeviceId: t.deviceId,
+        })),
+        onProgress: (current, total, terminalName) => {
+          setDayEndProgress({ current, total, label: `${terminalName} — günsonu alınıyor…` });
+        },
+      });
+      if (r.ok) toast.success(r.message);
+      else toast.error(r.message);
+      setDayEndDialogOpen(false);
+      await refreshEnterpriseData();
+    } finally {
+      setIsSyncBusy(false);
+      setDayEndProgress(null);
     }
   };
 
@@ -1269,6 +1315,12 @@ export function EnterpriseCentralDataManagement() {
               sendProgress={sendProgress}
             />
 
+            <MposSyncLogPanel
+              storeId={selectedBranchStoreId || undefined}
+              terminalName={selectedTerminal()?.terminalName}
+              theme={theme}
+            />
+
             <details className={`rounded-lg border max-w-[440px] ${theme === 'dark' ? 'border-gray-700 bg-gray-800/50' : 'border-gray-200 bg-white'}`}>
               <summary className="cursor-pointer p-4 text-sm font-medium flex items-center gap-2">
                 <ChevronRight className="w-4 h-4" />
@@ -1608,7 +1660,7 @@ export function EnterpriseCentralDataManagement() {
                 <Button size="sm" disabled={isSyncBusy} onClick={() => void handlePullAll()} className="gap-2">
                   Tüm Satışları Al
                 </Button>
-                <Button size="sm" variant="outline" disabled={isSyncBusy} onClick={() => void handleDayEndPull()} className="gap-2">
+                <Button size="sm" variant="outline" disabled={isSyncBusy} onClick={() => void runBulkDayEndPull()} className="gap-2 min-h-[44px]">
                   Tüm Günsonu Al
                 </Button>
                 <Button size="sm" variant="outline" disabled={isSyncBusy} onClick={() => void handleManualBroadcast()} className="gap-2">
@@ -2139,11 +2191,33 @@ export function EnterpriseCentralDataManagement() {
               <p className="text-sm text-gray-600 dark:text-gray-400">
                 Günsonu işlem kontrolü: bugün veri alınmayan kasalar «Veri alınmadı» (KLR-2273 — yalnızca günlük durum).
               </p>
-              <Button size="sm" disabled={isSyncBusy} onClick={() => void handleDayEndPull()} className="gap-2">
+              <Button size="sm" disabled={isSyncBusy} onClick={() => setDayEndDialogOpen(true)} className="gap-2 min-h-[44px]">
                 <Download className="w-4 h-4" />
                 Günsonu Al
               </Button>
             </div>
+
+            {dayEndProgress && dayEndProgress.total > 0 ? (
+              <div className="text-xs text-gray-500 max-w-md">
+                <div className="flex justify-between mb-1">
+                  <span>{dayEndProgress.label}</span>
+                  <span>
+                    {dayEndProgress.current}/{dayEndProgress.total}
+                  </span>
+                </div>
+                <div className={`h-1.5 rounded-full overflow-hidden ${theme === 'dark' ? 'bg-gray-700' : 'bg-gray-200'}`}>
+                  <div
+                    className="h-full bg-sky-600 transition-all"
+                    style={{ width: `${Math.round((dayEndProgress.current / dayEndProgress.total) * 100)}%` }}
+                  />
+                </div>
+              </div>
+            ) : null}
+
+            <MposSyncLogPanel
+              storeId={selectedBranchStoreId || undefined}
+              theme={theme}
+            />
 
             {terminalDailyStatus.length > 0 && (
               <>
@@ -2516,6 +2590,18 @@ export function EnterpriseCentralDataManagement() {
         isOpen={selectorOpen}
         onClose={() => setSelectorOpen(false)}
         onSelect={handleDataSelected}
+        theme={theme}
+      />
+
+      <MposDayEndDialog
+        open={dayEndDialogOpen}
+        onClose={() => setDayEndDialogOpen(false)}
+        branchStores={branchStores}
+        filteredTerminals={approvedTerminals}
+        initialStoreId={selectedBranchStoreId}
+        initialTerminalIds={selectedTerminalDeviceIds}
+        isBusy={isSyncBusy}
+        onSubmit={(opts) => void handleDayEndDialogSubmit(opts)}
         theme={theme}
       />
     </div>

@@ -578,7 +578,7 @@ export function MobilePOS({ products, customers, campaigns, onSaleComplete, onBa
             </div>
             <button
               onClick={() => setShowCustomerModal(true)}
-              className="p-2 bg-white/20 rounded-lg hover:bg-white/30 transition-colors"
+              className="p-2 bg-white/20 rounded-lg hover:bg-white/30 transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
             >
               <User className="w-5 h-5" />
             </button>
@@ -596,7 +596,7 @@ export function MobilePOS({ products, customers, campaigns, onSaleComplete, onBa
           <div className="flex items-center gap-2">
             <button
               onClick={() => setShowBarcodeScanner(true)}
-              className="p-2 bg-white/20 rounded-lg hover:bg-white/30 transition-colors"
+              className="p-2 bg-white/20 rounded-lg hover:bg-white/30 transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
               title="Barkod Tara"
             >
               <Camera className="w-5 h-5" />
@@ -610,7 +610,7 @@ export function MobilePOS({ products, customers, campaigns, onSaleComplete, onBa
                   window.dispatchEvent(new CustomEvent('navigateBackFromMobilePOS'));
                 }
               }}
-              className="p-2 bg-white/20 rounded-lg hover:bg-white/30 transition-colors"
+              className="p-2 bg-white/20 rounded-lg hover:bg-white/30 transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
               title="Geri"
             >
               <ArrowLeft className="w-5 h-5" />
@@ -622,38 +622,38 @@ export function MobilePOS({ products, customers, campaigns, onSaleComplete, onBa
         {showQuickActions && (
           <div className="bg-white p-3 border-b">
             <div className="grid grid-cols-4 gap-2">
-              <button className="flex flex-col items-center gap-2 p-3 bg-white border-2 border-gray-200 rounded hover:border-blue-500 transition-all active:bg-blue-50">
+              <button className="flex flex-col items-center justify-center gap-2 p-3 min-h-[44px] bg-white border-2 border-gray-200 rounded hover:border-blue-500 transition-all active:bg-blue-50">
                 <Tag className="w-6 h-6 text-orange-600" />
                 <span className="text-xs text-center leading-tight">Kampanya</span>
               </button>
               <button
                 onClick={() => setShowProductsModal(true)}
-                className="flex flex-col items-center gap-2 p-3 bg-white border-2 border-gray-200 rounded hover:border-blue-500 transition-all active:bg-blue-50"
+                className="flex flex-col items-center justify-center gap-2 p-3 min-h-[44px] bg-white border-2 border-gray-200 rounded hover:border-blue-500 transition-all active:bg-blue-50"
               >
                 <Grid3x3 className="w-6 h-6 text-blue-600" />
                 <span className="text-xs text-center leading-tight">Kategori</span>
               </button>
-              <button className="flex flex-col items-center gap-2 p-3 bg-white border-2 border-gray-200 rounded hover:border-blue-500 transition-all active:bg-blue-50">
+              <button className="flex flex-col items-center justify-center gap-2 p-3 min-h-[44px] bg-white border-2 border-gray-200 rounded hover:border-blue-500 transition-all active:bg-blue-50">
                 <RefreshCw className="w-6 h-6 text-purple-600" />
                 <span className="text-xs text-center leading-tight">İade</span>
               </button>
-              <button className="flex flex-col items-center gap-2 p-3 bg-white border-2 border-gray-200 rounded hover:border-blue-500 transition-all active:bg-blue-50">
+              <button className="flex flex-col items-center justify-center gap-2 p-3 min-h-[44px] bg-white border-2 border-gray-200 rounded hover:border-blue-500 transition-all active:bg-blue-50">
                 <FileText className="w-6 h-6 text-red-600" />
                 <span className="text-xs text-center leading-tight">Fiş İptal</span>
               </button>
-              <button className="flex flex-col items-center gap-2 p-3 bg-white border-2 border-gray-200 rounded hover:border-blue-500 transition-all active:bg-blue-50">
+              <button className="flex flex-col items-center justify-center gap-2 p-3 min-h-[44px] bg-white border-2 border-gray-200 rounded hover:border-blue-500 transition-all active:bg-blue-50">
                 <FileCheck className="w-6 h-6 text-green-600" />
                 <span className="text-xs text-center leading-tight">Son Fiş</span>
               </button>
-              <button className="flex flex-col items-center gap-2 p-3 bg-white border-2 border-gray-200 rounded hover:border-blue-500 transition-all active:bg-blue-50">
+              <button className="flex flex-col items-center justify-center gap-2 p-3 min-h-[44px] bg-white border-2 border-gray-200 rounded hover:border-blue-500 transition-all active:bg-blue-50">
                 <Truck className="w-6 h-6 text-cyan-600" />
                 <span className="text-xs text-center leading-tight">Park Et</span>
               </button>
-              <button className="flex flex-col items-center gap-2 p-3 bg-white border-2 border-gray-200 rounded hover:border-blue-500 transition-all active:bg-blue-50">
+              <button className="flex flex-col items-center justify-center gap-2 p-3 min-h-[44px] bg-white border-2 border-gray-200 rounded hover:border-blue-500 transition-all active:bg-blue-50">
                 <Send className="w-6 h-6 text-pink-600" />
                 <span className="text-xs text-center leading-tight">Et</span>
               </button>
-              <button className="flex flex-col items-center gap-2 p-3 bg-white border-2 border-gray-200 rounded hover:border-blue-500 transition-all active:bg-blue-50">
+              <button className="flex flex-col items-center justify-center gap-2 p-3 min-h-[44px] bg-white border-2 border-gray-200 rounded hover:border-blue-500 transition-all active:bg-blue-50">
                 <Menu className="w-6 h-6 text-indigo-600" />
                 <span className="text-xs text-center leading-tight">Bekleyen</span>
               </button>
@@ -979,7 +979,7 @@ export function MobilePOS({ products, customers, campaigns, onSaleComplete, onBa
             <div className="p-6 space-y-3">
               <button
                 onClick={() => completeSale('Nakit')}
-                className="w-full flex items-center gap-3 px-4 py-4 bg-green-50 border-2 border-green-500 text-green-700 hover:bg-green-100 active:bg-green-200 transition-all rounded-lg"
+                className="w-full flex items-center gap-3 px-4 py-4 min-h-[44px] bg-green-50 border-2 border-green-500 text-green-700 hover:bg-green-100 active:bg-green-200 transition-all rounded-lg"
               >
                 <Banknote className="w-6 h-6" />
                 <div className="flex-1 text-left">
@@ -989,7 +989,7 @@ export function MobilePOS({ products, customers, campaigns, onSaleComplete, onBa
 
               <button
                 onClick={() => completeSale('Kredi Kartı')}
-                className="w-full flex items-center gap-3 px-4 py-4 bg-blue-50 border-2 border-blue-500 text-blue-700 hover:bg-blue-100 active:bg-blue-200 transition-all rounded-lg"
+                className="w-full flex items-center gap-3 px-4 py-4 min-h-[44px] bg-blue-50 border-2 border-blue-500 text-blue-700 hover:bg-blue-100 active:bg-blue-200 transition-all rounded-lg"
               >
                 <CreditCard className="w-6 h-6" />
                 <div className="flex-1 text-left">
@@ -999,7 +999,7 @@ export function MobilePOS({ products, customers, campaigns, onSaleComplete, onBa
 
               <button
                 onClick={() => completeSale('Banka Kartı')}
-                className="w-full flex items-center gap-3 px-4 py-4 bg-purple-50 border-2 border-purple-500 text-purple-700 hover:bg-purple-100 active:bg-purple-200 transition-all rounded-lg"
+                className="w-full flex items-center gap-3 px-4 py-4 min-h-[44px] bg-purple-50 border-2 border-purple-500 text-purple-700 hover:bg-purple-100 active:bg-purple-200 transition-all rounded-lg"
               >
                 <CreditCard className="w-6 h-6" />
                 <div className="flex-1 text-left">
@@ -1009,7 +1009,7 @@ export function MobilePOS({ products, customers, campaigns, onSaleComplete, onBa
 
               <button
                 onClick={() => completeSale('Mobil Ödeme')}
-                className="w-full flex items-center gap-3 px-4 py-4 bg-orange-50 border-2 border-orange-500 text-orange-700 hover:bg-orange-100 active:bg-orange-200 transition-all rounded-lg"
+                className="w-full flex items-center gap-3 px-4 py-4 min-h-[44px] bg-orange-50 border-2 border-orange-500 text-orange-700 hover:bg-orange-100 active:bg-orange-200 transition-all rounded-lg"
               >
                 <Smartphone className="w-6 h-6" />
                 <div className="flex-1 text-left">

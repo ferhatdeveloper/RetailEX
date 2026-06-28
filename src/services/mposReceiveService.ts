@@ -2,6 +2,7 @@
  * KLRetail M-POS «Bilgilerinin Alınması» — dosya tipi + işyeri + kasa (eğitim videosu devamı).
  */
 
+import { logTerminalSync } from './mposSyncLogService';
 import {
   pullBranchDataFromCenter,
   pullSalesAndDayEndFromBranches,
@@ -92,8 +93,9 @@ export async function receiveMposInfoFromKasa(opts: {
   storeId: string;
   terminalName: string;
   terminalDeviceId: string;
+  businessDate?: string;
 }): Promise<{ ok: boolean; message: string; synced: number }> {
-  const { fileType, storeId, terminalName, terminalDeviceId } = opts;
+  const { fileType, storeId, terminalName, terminalDeviceId, businessDate } = opts;
   const kasaLabel = terminalName ? `${terminalName}` : 'kasa';
 
   let result: { ok: boolean; message: string; synced: number };
@@ -203,6 +205,18 @@ export async function receiveMposInfoFromKasa(opts: {
   }
 
   if (result.ok) {
+    await logTerminalSync({
+      storeId,
+      terminalName,
+      terminalDeviceId,
+      direction: 'receive',
+      fileType,
+      status: 'ok',
+      recordCount: result.synced,
+      businessDate: businessDate || null,
+      message: result.message,
+      detail: businessDate ? { businessDate } : {},
+    });
     await logMposReceiveRequest({
       fileType,
       storeId,
@@ -214,4 +228,44 @@ export async function receiveMposInfoFromKasa(opts: {
   }
 
   return result;
+}
+
+/** JRetail günsonu: seçili kasalardan iş gününe göre al */
+export async function receiveDayEndFromKasas(opts: {
+  storeId: string;
+  businessDate: string;
+  terminals: { terminalName: string; terminalDeviceId: string }[];
+  onProgress?: (current: number, total: number, terminalName: string) => void;
+}): Promise<{ ok: boolean; message: string; success: number; failed: number; synced: number }> {
+  let success = 0;
+  let failed = 0;
+  let synced = 0;
+  const errors: string[] = [];
+  const total = opts.terminals.length;
+
+  for (let i = 0; i < opts.terminals.length; i += 1) {
+    const t = opts.terminals[i];
+    opts.onProgress?.(i + 1, total, t.terminalName);
+    const r = await receiveMposInfoFromKasa({
+      fileType: 'day_end',
+      storeId: opts.storeId,
+      terminalName: t.terminalName,
+      terminalDeviceId: t.terminalDeviceId,
+      businessDate: opts.businessDate,
+    });
+    if (r.ok) {
+      success += 1;
+      synced += r.synced;
+    } else {
+      failed += 1;
+      if (errors.length < 3) errors.push(`${t.terminalName}: ${r.message}`);
+    }
+  }
+
+  const msg =
+    failed === 0
+      ? `${success} kasadan günsonu alındı (${opts.businessDate}, ${synced} kayıt).`
+      : `${success} kasa başarılı, ${failed} hata.${errors.length ? ` ${errors.join('; ')}` : ''}`;
+
+  return { ok: success > 0, message: msg, success, failed, synced };
 }

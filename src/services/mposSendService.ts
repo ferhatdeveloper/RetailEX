@@ -4,6 +4,7 @@
 
 import { APP_SEMVER } from '../core/version';
 import { ERP_SETTINGS } from './postgres';
+import { logTerminalSync } from './mposSyncLogService';
 import {
   enqueueEnterpriseBulk,
   enqueueAllMasterData,
@@ -271,14 +272,25 @@ export async function sendMposInfoToKasa(opts: {
         storeId,
         terminalName,
       );
-    case 'shortcuts':
+    case 'shortcuts': {
+      const { buildPluShortcutsPayload } = await import('./mposPluSyncService');
+      const plu = await buildPluShortcutsPayload(storeId);
       return enqueueMposConfigPayload({
         fileType,
         storeId,
         terminalName,
         terminalDeviceId,
-        payload: { kind: 'pos_shortcuts', note: 'Kasa kısayol tuş tanımları — merkezden gönderim' },
+        payload: {
+          kind: 'pos_shortcuts',
+          slot_count: plu.slotCount,
+          slots: plu.slots,
+          pages: plu.pages,
+          note: plu.slotCount > 0
+            ? `${plu.slotCount} PLU/kısayol tuşu`
+            : 'Tanımlı PLU yok — aktif ürünlerden otomatik doldurulamadı',
+        },
       });
+    }
     case 'program_info': {
       let storeRow: Record<string, unknown> = {};
       try {
@@ -445,6 +457,22 @@ export async function sendMposInfoToKasaAndPush(opts: {
   skipGuard?: boolean;
 }): Promise<{ ok: boolean; message: string }> {
   const enq = await sendMposInfoToKasa(opts);
+  await logTerminalSync({
+    storeId: opts.storeId,
+    terminalName: opts.terminalName,
+    terminalDeviceId: opts.terminalDeviceId,
+    direction: 'send',
+    fileType: opts.fileType,
+    status: enq.ok ? 'ok' : 'failed',
+    recordCount: enq.count,
+    message: enq.message,
+    detail: {
+      syncMode: opts.syncMode,
+      dateFrom: opts.dateFrom,
+      dateTo: opts.dateTo,
+      includeProductImages: opts.includeProductImages,
+    },
+  });
   if (!enq.ok) return { ok: false, message: enq.message };
 
   const push = await pushMasterDataToBranches({ targetStoreId: opts.storeId });
@@ -484,6 +512,16 @@ export async function sendMposInfoToSelectedKasas(opts: {
       syncMode: opts.syncMode,
       dateFrom: opts.dateFrom,
       dateTo: opts.dateTo,
+    });
+    await logTerminalSync({
+      storeId: opts.storeId,
+      terminalName: t.terminalName,
+      terminalDeviceId: t.terminalDeviceId,
+      direction: 'send',
+      fileType: opts.fileType,
+      status: r.ok ? 'ok' : 'failed',
+      recordCount: r.count,
+      message: r.message,
     });
     if (r.ok) success += 1;
     else {
@@ -532,6 +570,16 @@ export async function sendMposInfoToAllKasasInStore(opts: {
       syncMode: opts.syncMode,
       dateFrom: opts.dateFrom,
       dateTo: opts.dateTo,
+    });
+    await logTerminalSync({
+      storeId: opts.storeId,
+      terminalName: t.terminalName,
+      terminalDeviceId: t.terminalDeviceId,
+      direction: 'send',
+      fileType: opts.fileType,
+      status: r.ok ? 'ok' : 'failed',
+      recordCount: r.count,
+      message: r.message,
     });
     if (r.ok) success += 1;
     else {

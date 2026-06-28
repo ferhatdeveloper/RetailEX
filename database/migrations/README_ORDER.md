@@ -56,6 +56,7 @@
 51. **063_pos_terminal_registrations.sql** – Masaüstü kasa cihaz kaydı (`pos_terminal_registrations`), merkez web onayı, `register_pos_terminal` / `approve_pos_terminal` RPC.
 52. **064_pos_terminal_device_info.sql** – Cihaz kaydı: bilgisayar adı, OS, IP, saat dilimi; `register_pos_terminal` metadata (JSONB) desteği.
 53. **065_sync_queue_target_store_index.sql** – `sync_queue` inbound (merkez→kasa) indeksleri: `target_store_id`, `terminal_name`.
+54. **066_terminal_sync_log_pos_quick_slots.sql** – MPOS `terminal_sync_log` (gönder/al geçmişi) ve `pos_quick_slots` (PLU/kısayol tuş).
 
 **Kiracılara toplu uygulama (VPS / uzak PG):**
 - `npm run db:migrate:tenants` — tüm kiracı DB'ler
