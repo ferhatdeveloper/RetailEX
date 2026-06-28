@@ -1210,24 +1210,6 @@ export function EnterpriseCentralDataManagement() {
           </Card>
         </div>
 
-        {/* Kalem eğitim akışı — OuFtuJRL5t0 + devam */}
-        <Card className={`p-4 ${theme === 'dark' ? 'bg-gray-800 border-gray-700' : 'bg-white border-blue-200'}`}>
-          <details>
-            <summary className="cursor-pointer text-sm font-medium flex items-center gap-2">
-              <ChevronRight className="w-4 h-4" />
-              Kurulum rehberi (eğitim videosu adımları)
-            </summary>
-            <ol className="mt-3 ml-6 text-xs text-gray-600 dark:text-gray-400 space-y-1.5 list-decimal">
-              <li><strong>Eğitim 1:</strong> Market parametreleri, POS kasa kartı, kasa tanımları, servis ayarları</li>
-              <li><strong>Eğitim 1:</strong> Bilgi Gönder (malzeme, cari, program) → kasada satış, yemek çeki</li>
-              <li><strong>Eğitim 1:</strong> Bilgi Al → günsonu → günsonu işlem kontrolü</li>
-              <li><strong>Eğitim 2:</strong> Puan DB + Puan Adaptör parametreleri → Puan Tanımları gönder</li>
-              <li><strong>Eğitim 2:</strong> Kasada puan kazanım / harcama / iade</li>
-              <li><strong>Eğitim 2:</strong> Promosyon tanımı gönder → promosyon uygulamaları</li>
-            </ol>
-          </details>
-        </Card>
-
         {/* MPOS sekmeleri — gruplu, kaydırmalı */}
         <Tabs defaultValue="send" className="w-full space-y-4">
           <Card className={`p-3 ${theme === 'dark' ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
