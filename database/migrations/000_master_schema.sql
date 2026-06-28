@@ -380,13 +380,13 @@ BEGIN
     END;
 
   RETURN QUERY
-  SELECT r.id, r.status,
+  SELECT r.id, r.status::text,
          CASE r.status
            WHEN 'approved' THEN 'Cihaz zaten onaylı.'
            WHEN 'blocked' THEN 'Cihaz engellenmiş.'
            WHEN 'pending' THEN 'Kayıt alındı, merkez onayı bekleniyor.'
            ELSE 'Kayıt güncellendi.'
-         END
+         END::text
   FROM public.pos_terminal_registrations r
   WHERE r.device_id = trim(p_device_id);
 END;

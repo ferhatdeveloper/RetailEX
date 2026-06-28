@@ -13,6 +13,7 @@ import {
   parsePgEndpointString,
   DEFAULT_REMOTE_REST_URL,
 } from '../core/remotePgDefaults';
+import { parseSaaSOrCustomPostgrestUrl } from './merkezTenantRegistry';
 
 const IS_PRODUCTION = isRetailExProductionWeb();
 
@@ -291,6 +292,23 @@ function syncRemoteConfigFromRestUrl(restUrl: unknown): void {
 export function alignRemoteConfigWithRestUrl(): void {
   if (DB_SETTINGS.connectionProvider !== 'rest_api') return;
   syncRemoteConfigFromRestUrl(DB_SETTINGS.remoteRestUrl);
+}
+
+/** PostgREST URL slug → kiracı PostgreSQL veritabanı adı (ör. /lovan → lovan). */
+export function resolveTenantDatabaseFromRestUrl(restUrl?: string): string | null {
+  const raw = String(restUrl ?? DB_SETTINGS.remoteRestUrl ?? '').trim();
+  if (!raw) return null;
+  const parsed = parseSaaSOrCustomPostgrestUrl(raw);
+  return parsed.kind === 'saas_single_slug' ? parsed.slug : null;
+}
+
+/** Merkez PG ucu — remote_db yanlış olsa bile PostgREST slug ile DB adını hizalar. */
+export function getCentralRemotePgConfig(): typeof REMOTE_CONFIG {
+  const slugDb = resolveTenantDatabaseFromRestUrl();
+  if (slugDb) {
+    return { ...REMOTE_CONFIG, database: slugDb };
+  }
+  return REMOTE_CONFIG;
 }
 
 /**

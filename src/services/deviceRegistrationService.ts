@@ -7,7 +7,8 @@ import { APP_SEMVER } from '../core/version';
 import { IS_TAURI, safeInvoke, getBridgeUrl } from '../utils/env';
 import { postgrest } from './api/postgrestClient';
 import { getPostgrestBaseUrl } from '../config/postgrest.config';
-import { DB_SETTINGS, ERP_SETTINGS, REMOTE_CONFIG, postgres } from './postgres';
+import { DB_SETTINGS, ERP_SETTINGS, REMOTE_CONFIG, getCentralRemotePgConfig, postgres } from './postgres';
+import { parseSaaSOrCustomPostgrestUrl } from './merkezTenantRegistry';
 
 export type PosTerminalStatus = 'pending' | 'approved' | 'rejected' | 'blocked' | 'not_registered';
 
@@ -84,20 +85,35 @@ export function isHybridDeviceRegistrationMode(): boolean {
 
 function useRemotePostgrest(): boolean {
   const remote = String(DB_SETTINGS.remoteRestUrl || '').trim();
-  return (
-    DB_SETTINGS.connectionProvider === 'rest_api' ||
-    (DB_SETTINGS.activeMode === 'hybrid' && remote.length > 0)
-  );
+  if (!remote) return false;
+  // Hibrit kasa: doğrudan PG kapalı olsa bile PostgREST üzerinden merkeze kayıt
+  if (DB_SETTINGS.activeMode === 'hybrid') return true;
+  return DB_SETTINGS.connectionProvider === 'rest_api';
 }
 
-/** Cihaz kaydı/onay — her zaman merkez uç (remote_db / PostgREST). */
-function resolveCentralPgConfig(): typeof REMOTE_CONFIG {
-  return REMOTE_CONFIG;
+/** Cihaz kaydı/onay — merkez uç; PostgREST slug (lovan) ile remote_db DB adını hizala. */
+function resolveCentralPgConfig() {
+  return getCentralRemotePgConfig();
 }
 
 function centralPgConfigured(): boolean {
+  const remoteUrl = String(DB_SETTINGS.remoteRestUrl || '').trim();
+  if (remoteUrl) return true;
   const cfg = resolveCentralPgConfig();
   return Boolean(cfg.host?.trim() && cfg.database?.trim() && cfg.user?.trim());
+}
+
+function describeCentralTarget(): string {
+  const rest = String(DB_SETTINGS.remoteRestUrl || '').trim();
+  if (rest) {
+    const parsed = parseSaaSOrCustomPostgrestUrl(rest);
+    if (parsed.kind === 'saas_single_slug') {
+      return `${rest} (kiracı DB: ${parsed.slug})`;
+    }
+    return rest;
+  }
+  const cfg = resolveCentralPgConfig();
+  return `${cfg.host}:${cfg.port}/${cfg.database}`;
 }
 
 async function queryCentralPgRows<T = Record<string, unknown>>(
@@ -149,16 +165,31 @@ async function queryCentralPgRows<T = Record<string, unknown>>(
 }
 
 async function rpcCall<T>(fn: string, body: Record<string, unknown>): Promise<T> {
-  if (useRemotePostgrest()) {
-    const res = await postgrest.post<T>(`/rpc/${fn}`, body, { schema: 'public' });
-    const row = Array.isArray(res) ? res[0] : res;
-    return row as T;
+  const rpcBody: Record<string, unknown> = { ...body };
+  if (fn === 'register_pos_terminal' && rpcBody.p_metadata === undefined) {
+    rpcBody.p_metadata = {};
   }
 
-  const keys = Object.keys(body);
+  if (useRemotePostgrest()) {
+    try {
+      const res = await postgrest.post<T>(`/rpc/${fn}`, rpcBody, { schema: 'public' });
+      const row = Array.isArray(res) ? res[0] : res;
+      return row as T;
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      if (msg.includes('PGRST203') || msg.includes('Could not choose the best candidate function')) {
+        throw new Error(
+          `${msg} — Merkez veritabanında migration 069 (register_pos_terminal tek overload) uygulanmalı.`,
+        );
+      }
+      throw e;
+    }
+  }
+
+  const keys = Object.keys(rpcBody);
   const placeholders = keys.map((_, i) => `$${i + 1}`).join(', ');
   const sql = `SELECT * FROM public.${fn}(${placeholders})`;
-  const params = keys.map((k) => body[k]);
+  const params = keys.map((k) => rpcBody[k]);
 
   const rows = await queryCentralPgRows<Record<string, unknown>>(sql, params);
   return (rows[0] ?? {}) as T;
@@ -570,8 +601,7 @@ export async function assertDesktopTerminalApproved(): Promise<{
       'Bu kasa henüz onaylanmadı. Merkez yöneticisi web panelinde Sistem Yönetimi → Bekleyen Kasa Cihazları bölümünden işyeri ve kasa tanımını yaparak onaylamalı.',
     rejected: check.message || 'Cihaz kaydı reddedildi. Merkez ile iletişime geçin.',
     blocked: 'Bu cihaz engellenmiş. Merkez ile iletişime geçin.',
-    not_registered:
-      'Cihaz kaydı merkeze iletilemedi. remote_db ve PostgREST bağlantısını kontrol edin.',
+    not_registered: `Cihaz kaydı merkeze iletilemedi (${describeCentralTarget()}). ${check.message || 'PostgREST URL ve remote_db aynı kiracıyı göstermeli (ör. /lovan → lovan DB).'}`,
   };
 
   return {
@@ -683,7 +713,5 @@ export async function rejectPosTerminal(
 }
 
 export function describeRegistrationTarget(): string {
-  if (useRemotePostgrest()) return getPostgrestBaseUrl();
-  const cfg = resolveCentralPgConfig();
-  return `${cfg.host}:${cfg.port}/${cfg.database}`;
+  return describeCentralTarget();
 }
