@@ -81,7 +81,7 @@ export function PendingDevicesPanel({ darkMode = false }: Props) {
 
   return (
     <Card
-      className={`p-4 mb-6 border-2 ${
+      className={`p-4 border-2 ${
         pending.length > 0
           ? darkMode
             ? 'border-amber-500/60 bg-amber-950/20'

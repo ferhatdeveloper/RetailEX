@@ -23,8 +23,6 @@ import {
     X,
     RefreshCw,
     CalendarDays,
-    ZoomIn,
-    ZoomOut,
     FileText
 } from 'lucide-react';
 
@@ -79,13 +77,9 @@ interface RestaurantModuleProps {
     setActiveModule?: (module: string) => void;
     rtlMode?: boolean;
     setRtlMode?: (value: boolean) => void;
-    zoomLevel?: number;
-    setZoomLevel?: (value: number) => void;
 }
 
 export default function RestaurantModule({
-    zoomLevel = 100,
-    setZoomLevel = () => { },
     rtlMode = false,
     setRtlMode = () => { },
     products = [],
@@ -109,25 +103,6 @@ export default function RestaurantModule({
         return new Date(`${wd}T12:00:00`).toLocaleDateString(dateLocale);
     };
 
-    const handleZoomIn = () => {
-        if (!setZoomLevel || zoomLevel === undefined) return;
-        const next = Math.min(zoomLevel + 10, 200);
-        setZoomLevel(next);
-        localStorage.setItem('retailos_zoom_level', next.toString());
-    };
-
-    const handleZoomOut = () => {
-        if (!setZoomLevel || zoomLevel === undefined) return;
-        const next = Math.max(zoomLevel - 10, 50);
-        setZoomLevel(next);
-        localStorage.setItem('retailos_zoom_level', next.toString());
-    };
-
-    const handleZoomReset = () => {
-        if (!setZoomLevel) return;
-        setZoomLevel(100);
-        localStorage.setItem('retailos_zoom_level', '100');
-    };
     const [activeTab, setActiveTab] = useState<'dashboard' | 'floor' | 'pos' | 'kds' | 'history' | 'voidReport' | 'productQtyReport' | 'recipes' | 'customers' | 'stock' | 'reports' | 'settings' | 'cash' | 'reservations' | 'management' | 'delivery' | 'takeaway'>('dashboard');
     const [selectedTable, setSelectedTable] = useState<Table | null>(null);
     const [moveTableSource, setMoveTableSource] = useState<Table | null>(null);
@@ -402,37 +377,9 @@ export default function RestaurantModule({
                         </div>
                     </div>
 
-                    <div className="hidden lg:block h-6 w-px bg-white/10 shrink-0" />
+                        <div className="hidden lg:block h-6 w-px bg-white/10 shrink-0" />
 
-                    <div className="flex items-center gap-4 min-w-0 flex-nowrap justify-end max-md:flex-wrap max-md:gap-2">
-                        <div className="flex flex-col items-end">
-                            <span className="text-[10px] font-black text-white/50 uppercase tracking-widest">{tm('resFiscalDayHeader')}</span>
-                            <span className="text-sm font-bold text-white leading-none">{formatWorkDayLabel(workDayDate)}</span>
-                        </div>
-
-                        <div className="flex items-center gap-1 bg-white/10 p-1 rounded-xl border border-white/5 shrink-0">
-                            <button
-                                onClick={handleZoomOut}
-                                className="w-9 h-9 flex items-center justify-center rounded-lg hover:bg-white/10 text-white/70 hover:text-white transition-all active:scale-95"
-                                title={tm('resZoomOutTitle')}
-                            >
-                                <ZoomOut className="w-4.5 h-4.5" />
-                            </button>
-                            <button
-                                onClick={handleZoomReset}
-                                className="px-2 h-9 flex items-center justify-center rounded-lg hover:bg-white/10 text-white font-bold text-[10px] transition-all active:scale-95 min-w-[45px]"
-                                title={tm('resZoomResetTitle')}
-                            >
-                                {zoomLevel}%
-                            </button>
-                            <button
-                                onClick={handleZoomIn}
-                                className="w-9 h-9 flex items-center justify-center rounded-lg hover:bg-white/10 text-white/70 hover:text-white transition-all active:scale-95"
-                                title={tm('resZoomInTitle')}
-                            >
-                                <ZoomIn className="w-4.5 h-4.5" />
-                            </button>
-                        </div>
+                        <div className="flex items-center gap-4 min-w-0 flex-nowrap justify-end max-md:flex-wrap max-md:gap-2">
 
                         <div className="h-6 w-[1px] bg-white/10"></div>
 

@@ -114,8 +114,6 @@ interface MarketPOSProps {
   gridColumns?: number;
   fontSize?: number;
   fontWeight?: number;
-  zoomLevel?: number;
-  onZoomClick?: () => void;
   cartViewMode?: 'table' | 'cards';
   buttonColorStyle?: 'filled' | 'outline';
   rtlMode?: boolean;
@@ -139,8 +137,6 @@ export default function MarketPOS({
   gridColumns = 4,
   fontSize = 100,
   fontWeight = 400,
-  zoomLevel,
-  onZoomClick,
   cartViewMode = 'cards',
   buttonColorStyle = 'filled',
   rtlMode = false,
@@ -2444,15 +2440,6 @@ export default function MarketPOS({
           >
             <Mic className="w-3 h-3 text-indigo-400" />
             <span className="text-indigo-400 hidden xs:inline">Sesli</span>
-          </button>
-
-          <button
-            onClick={onZoomClick}
-            className="flex items-center gap-1.5 hover:text-blue-300 transition-colors cursor-pointer"
-            title={t.screenSettings}
-          >
-            <Search className="w-3 h-3 text-blue-400" />
-            <span className="text-blue-400 hidden xs:inline">{t.screenSettings}: {zoomLevel || 100}%</span>
           </button>
 
           <button

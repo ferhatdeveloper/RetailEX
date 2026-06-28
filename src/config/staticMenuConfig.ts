@@ -10,7 +10,7 @@ import {
     Globe, Receipt, Building, Calculator, TrendingUpDown, Gift, Percent, Send,
     PackageSearch, PackagePlus, Wrench, Shield, UserCog, UtensilsCrossed, Phone, Bell,
     Smartphone, Mail, BarChart3, TrendingUp, UserCheck, Layers, Clock, AlertCircle,
-    Radio, ArrowRightLeft, MoreVertical, Menu, Sparkles, Banknote, Mic, Landmark, Layout, HardDrive, RefreshCw
+    Radio, ArrowRightLeft, MoreVertical, Menu, Sparkles, Banknote, Mic, Landmark, Layout, HardDrive, RefreshCw, Monitor
 } from 'lucide-react';
 import { Translations } from '../locales/translations';
 
@@ -301,6 +301,7 @@ export const getStaticMenuSections = (t: Translations) => [
             { label: t.menu.roleAndAuthorization, screen: 'roleauth', icon: Shield },
             { label: t.menu.menuManagement, screen: 'menumanagement', icon: Menu },
             { label: t.menu.virtualPbxCallerId, screen: 'virtual-pbx-caller-id', icon: Phone },
+            { label: 'Bekleyen Kasa Cihazları', screen: 'pendingposdevices', icon: Monitor },
             { label: t.menu.supabaseDataTransfer, screen: 'supabase-migration', icon: Database },
             { label: t.menu.postgresBackup, screen: 'backuprestore', icon: HardDrive },
             { label: t.menu.logAudit, screen: 'logaudit', icon: Clock }

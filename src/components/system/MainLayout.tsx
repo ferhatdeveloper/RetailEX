@@ -1593,8 +1593,6 @@ export function MainLayout({
               gridColumns={gridColumns}
               fontSize={fontSize}
               fontWeight={fontWeight}
-              zoomLevel={zoomLevel}
-              onZoomClick={() => setShowZoomModal(true)}
               cartViewMode={cartViewMode}
               buttonColorStyle={buttonColorStyle}
               rtlMode={rtlMode}
@@ -1640,8 +1638,6 @@ export function MainLayout({
               onSaleComplete={onSaleComplete}
               onLogout={onLogout}
               setActiveModule={(m: Module) => setCurrentModule(m)}
-              zoomLevel={zoomLevel}
-              setZoomLevel={setZoomLevel}
               rtlMode={rtlMode}
               setRtlMode={setRtlMode}
             />

@@ -5,8 +5,10 @@ import {
   Settings, Users, Shield, Database, Radio, HardDrive,
   Activity, Bell, Key, FileText, Cpu, Network, AlertCircle, Download, Loader2,
   Upload, CheckCircle, Clock, User, Lock, Trash2, Edit, Plus, Save, X, Receipt, Image, Printer,
-  Phone, Menu, PanelLeftClose,
+  Phone, Menu, PanelLeftClose, Monitor,
 } from 'lucide-react';
+import { useTheme } from '../../contexts/ThemeContext';
+import { PendingDevicesPanel } from './PendingDevicesPanel';
 import { useResponsive } from '../../hooks/useResponsive';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { IS_TAURI } from '../../utils/env';
@@ -25,6 +27,7 @@ type SystemView =
   | 'printerSettings'
   | 'callerIdVirtualPbx'
   | 'dataBroadcast'
+  | 'pendingPosDevices'
   | 'backupRestore'
   | 'logAudit'
   | 'systemHealth';
@@ -47,6 +50,7 @@ const ROUTE_HINT_TO_VIEW: Partial<Record<string, SystemView>> = {
   definitions: 'definitionsParameters',
   backuprestore: 'backupRestore',
   systemhealth: 'systemHealth',
+  pendingposdevices: 'pendingPosDevices',
   'invoice-label-designer': 'invoiceLabelDesigner',
   'report-designer': 'invoiceLabelDesigner',
   'label-designer': 'invoiceLabelDesigner',
@@ -57,6 +61,7 @@ const ROUTE_HINT_TO_VIEW: Partial<Record<string, SystemView>> = {
 export function SystemManagementModule({ routeHint }: SystemManagementModuleProps) {
   const [currentView, setCurrentView] = useState<SystemView>('userManagement');
   const { tm, t } = useLanguage();
+  const { darkMode } = useTheme();
   const { isMobile } = useResponsive();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [sidebarVisible, setSidebarVisible] = useState(readSidebarVisiblePreference);
@@ -91,6 +96,7 @@ export function SystemManagementModule({ routeHint }: SystemManagementModuleProp
     { id: 'printerSettings' as const, label: 'Yazıcı Ayarları', icon: Printer, color: 'slate' },
     { id: 'callerIdVirtualPbx' as const, label: 'Sanal santral (Caller ID)', icon: Phone, color: 'violet' },
     { id: 'dataBroadcast' as const, label: 'Bilgi Gönder/AI Merkezi', icon: Radio, color: 'orange' },
+    { id: 'pendingPosDevices' as const, label: 'Bekleyen Kasa Cihazları', icon: Monitor, color: 'amber' },
     { id: 'backupRestore' as const, label: 'Yedekleme/Geri Yükleme', icon: HardDrive, color: 'indigo' },
     { id: 'logAudit' as const, label: 'Log/Denetim', icon: FileText, color: 'red' },
     { id: 'systemHealth' as const, label: 'Sistem Sağlığı', icon: Activity, color: 'teal' },
@@ -218,6 +224,11 @@ export function SystemManagementModule({ routeHint }: SystemManagementModuleProp
           </div>
         )}
         {currentView === 'dataBroadcast' && <DataBroadcastView />}
+        {currentView === 'pendingPosDevices' && (
+          <div className="p-4 sm:p-6 max-w-4xl">
+            <PendingDevicesPanel darkMode={darkMode} />
+          </div>
+        )}
         {currentView === 'backupRestore' && <BackupRestoreView />}
         {currentView === 'logAudit' && <LogAuditView />}
         {currentView === 'systemHealth' && <SystemHealthView />}
