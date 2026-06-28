@@ -350,19 +350,11 @@ fn spawn_background_task<F>(future: F)
 where
     F: Future<Output = ()> + Send + 'static,
 {
-    if let Ok(handle) = tauri::async_runtime::handle().try_current() {
-        handle.spawn(future);
-        return;
-    }
     if let Some(handle) = HEADLESS_RUNTIME.get() {
         handle.spawn(future);
         return;
     }
-    std::thread::spawn(move || {
-        if let Ok(rt) = tokio::runtime::Runtime::new() {
-            rt.block_on(future);
-        }
-    });
+    tauri::async_runtime::spawn(future);
 }
 
 const UI_HEARTBEAT_STALE_SECS: u64 = 45;
