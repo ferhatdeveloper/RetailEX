@@ -257,6 +257,13 @@ function applyDefaultCurrencyFromConfig(config: any): void {
   setGlobalCurrency(getAppDefaultCurrency(), getAppDefaultCurrency());
 }
 
+/** Tauri hibrit: POS/satış SQL yazımı yerel PG; PostgREST yalnızca uzak senkron hedefi. */
+function applyTauriHybridDbOverride(): void {
+  if (IS_TAURI && DB_SETTINGS.activeMode === 'hybrid') {
+    DB_SETTINGS.connectionProvider = 'db';
+  }
+}
+
 /**
  * `host:port/dbname` biçimi (Tauri + Login web — `remote_db` tek alanda).
  */
@@ -421,8 +428,8 @@ export async function initializeFromSQLite(preloadedConfig?: any) {
       DB_SETTINGS.hybridSyncIntervalSec = normalizeHybridSyncIntervalSec(config.hybrid_sync_interval_sec);
 
       // Tauri hibrit: POS ve sync_queue yazımları yerel PG'de; PostgREST yalnızca senkron hedefi.
-      if (IS_TAURI && DB_SETTINGS.activeMode === 'hybrid' && DB_SETTINGS.connectionProvider === 'rest_api') {
-        DB_SETTINGS.connectionProvider = 'db';
+      applyTauriHybridDbOverride();
+      if (DB_SETTINGS.connectionProvider === 'db' && config.connection_provider === 'rest_api') {
         console.warn(
           '[Postgres] Tauri hibrit: connection_provider rest_api → db (yerel satış/fatura yazımı için).',
         );
@@ -493,8 +500,9 @@ export async function updateConfigs(updates: {
   if (updates.settings) DB_SETTINGS = { ...DB_SETTINGS, ...updates.settings };
   if (updates.erp) ERP_SETTINGS = { ...ERP_SETTINGS, ...updates.erp };
   if (DB_SETTINGS.activeMode === 'hybrid') {
-    DB_SETTINGS.connectionProvider = 'rest_api';
+    DB_SETTINGS.connectionProvider = IS_TAURI ? 'db' : 'rest_api';
   }
+  applyTauriHybridDbOverride();
   alignRemoteConfigWithRestUrl();
 
   if (!IS_TAURI) {
@@ -791,6 +799,16 @@ async function syncRuntimeSettingsFromPostgres(): Promise<void> {
   const cur = String(row.default_currency || 'IQD').trim().toUpperCase().slice(0, 10) || 'IQD';
   APP_DEFAULT_CURRENCY = cur;
   setGlobalCurrency(getAppDefaultCurrency(), getAppDefaultCurrency());
+
+  // Masaüstü: firma/dönem kurulum (config.db erp_firm_nr) esas; yerel system_settings şablonu (001) ezmesin.
+  if (IS_TAURI) {
+    console.log('[syncRuntimeSettingsFromPostgres] Tauri: para birimi güncellendi; firma/dönem config korundu:', {
+      default_currency: cur,
+      firmNr: ERP_SETTINGS.firmNr,
+      periodNr: ERP_SETTINGS.periodNr,
+    });
+    return;
+  }
 
   const fn = String(row.primary_firm_nr || ERP_SETTINGS.firmNr || '001').trim().padStart(3, '0').slice(0, 10);
   const pn = String(row.primary_period_nr || ERP_SETTINGS.periodNr || '01').trim().padStart(2, '0').slice(0, 10);

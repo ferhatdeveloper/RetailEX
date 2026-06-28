@@ -326,9 +326,38 @@ async fn pg_query(
     #[derive(Debug)]
     enum QueryParam {
         Text(String),
+        TextArray(Vec<String>),
         Num(rust_decimal::Decimal),
         Bool(bool),
         Null,
+    }
+
+    fn json_value_to_query_param(p: serde_json::Value) -> QueryParam {
+        match p {
+            serde_json::Value::Null => QueryParam::Null,
+            serde_json::Value::String(s) => QueryParam::Text(s),
+            serde_json::Value::Bool(b) => QueryParam::Bool(b),
+            serde_json::Value::Number(n) => QueryParam::Text(n.to_string()),
+            serde_json::Value::Array(arr) => {
+                let values: Vec<String> = arr
+                    .into_iter()
+                    .map(|v| match v {
+                        serde_json::Value::String(s) => s,
+                        serde_json::Value::Null => String::new(),
+                        other => other.to_string(),
+                    })
+                    .collect();
+                QueryParam::TextArray(values)
+            }
+            other => QueryParam::Text(other.to_string()),
+        }
+    }
+
+    fn is_text_array_type(ty: &tokio_postgres::types::Type) -> bool {
+        matches!(
+            *ty,
+            Type::TEXT_ARRAY | Type::VARCHAR_ARRAY | Type::BPCHAR_ARRAY | Type::NAME_ARRAY
+        ) || ty.name() == "_text"
     }
 
     impl ToSql for QueryParam {
@@ -343,6 +372,23 @@ async fn pg_query(
 
             match self {
                 QueryParam::Null => Ok(tokio_postgres::types::IsNull::Yes),
+
+                QueryParam::TextArray(values) => {
+                    if is_text_array_type(ty) {
+                        let refs: Vec<&str> = values.iter().map(|s| s.as_str()).collect();
+                        return refs.as_slice().to_sql(ty, out);
+                    }
+                    // PG cast ANY($1::text[]) — tip henüz bilinmiyorsa virgülle birleştirilmiş metin yerine dizi gönder
+                    if ty.name() == "unknown" {
+                        let refs: Vec<&str> = values.iter().map(|s| s.as_str()).collect();
+                        return refs.as_slice().to_sql(&Type::TEXT_ARRAY, out);
+                    }
+                    Err(format!(
+                        "text[] parametresi bekleniyordu, PG tipi: {}",
+                        ty.name()
+                    )
+                    .into())
+                }
 
                 // ── Text → target type conversion ──────────────────────
                 // The frontend normalises every value to a JSON string.
@@ -495,14 +541,7 @@ async fn pg_query(
 
     let mut query_params = Vec::new();
     for p in params {
-        match p {
-            serde_json::Value::Null => query_params.push(QueryParam::Null),
-            serde_json::Value::String(s) => query_params.push(QueryParam::Text(s)),
-            serde_json::Value::Bool(b) => query_params.push(QueryParam::Bool(b)),
-            // Always convert numbers to Text so that SQL-side ::text::int4 / ::text::uuid casts work
-            serde_json::Value::Number(n) => query_params.push(QueryParam::Text(n.to_string())),
-            _ => query_params.push(QueryParam::Text(p.to_string())),
-        }
+        query_params.push(json_value_to_query_param(p));
     }
 
     let params_to_sql: Vec<&(dyn ToSql + Sync)> = query_params
