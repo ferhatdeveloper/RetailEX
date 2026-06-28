@@ -1,13 +1,18 @@
 /**
- * Kalem KLRetail M-POS «Bilgilerinin Gönderilmesi / Alınması» — klasik ERP dialog düzeni.
- * Ekran görüntüsü: etiket solda, alan sağda; alt sol yardım, alt sağ Vazgeç + Gönder/Al.
+ * Kalem / JRetail Basic M-POS «Bilgilerinin Gönderilmesi / Alınması» — klasik ERP dialog düzeni.
+ * JRetail: çoklu kasa checkbox, Değişenler/Tümü, tarih aralığı, ürün resmi.
  */
 
 import React from 'react';
 import { HelpCircle, RefreshCw, Upload, Download } from 'lucide-react';
 import { Button } from '../ui/button';
+import { Checkbox } from '../ui/checkbox';
+import { Input } from '../ui/input';
+import { Label } from '../ui/label';
+import { RadioGroup, RadioGroupItem } from '../ui/radio-group';
 import type { BranchStoreOption } from '../../services/hybridSyncService';
 import type { PosTerminalRegistration } from '../../services/deviceRegistrationService';
+import type { MposSendSyncMode } from '../../services/mposSendService';
 
 export type MposKalemTransferMode = 'send' | 'receive';
 
@@ -25,6 +30,9 @@ type Props = {
   selectedTerminalDeviceId: string;
   onTerminalChange: (deviceId: string) => void;
   filteredTerminals: PosTerminalRegistration[];
+  /** JRetail: gönderimde birden fazla kasa seçimi */
+  selectedTerminalDeviceIds?: string[];
+  onTerminalSelectionChange?: (deviceIds: string[]) => void;
   isBusy: boolean;
   onCancel: () => void;
   onSubmit: () => void;
@@ -33,6 +41,14 @@ type Props = {
   showProductImagesOption?: boolean;
   includeProductImages?: boolean;
   onIncludeProductImagesChange?: (value: boolean) => void;
+  /** Malzeme/cari için Değişenler veya Tümü */
+  syncMode?: MposSendSyncMode;
+  onSyncModeChange?: (mode: MposSendSyncMode) => void;
+  dateFrom?: string;
+  dateTo?: string;
+  onDateFromChange?: (value: string) => void;
+  onDateToChange?: (value: string) => void;
+  sendProgress?: { current: number; total: number; label: string } | null;
 };
 
 const fieldClass = (theme: 'light' | 'dark') =>
@@ -41,6 +57,8 @@ const fieldClass = (theme: 'light' | 'dark') =>
       ? 'bg-gray-700 border-gray-500 text-gray-100'
       : 'bg-white border-gray-400 text-gray-900'
   }`;
+
+const SYNC_DATE_TYPES = new Set(['products', 'customers']);
 
 export function MposKalemTransferPanel({
   mode,
@@ -54,6 +72,8 @@ export function MposKalemTransferPanel({
   selectedTerminalDeviceId,
   onTerminalChange,
   filteredTerminals,
+  selectedTerminalDeviceIds = [],
+  onTerminalSelectionChange,
   isBusy,
   onCancel,
   onSubmit,
@@ -62,20 +82,50 @@ export function MposKalemTransferPanel({
   showProductImagesOption,
   includeProductImages,
   onIncludeProductImagesChange,
+  syncMode = 'full',
+  onSyncModeChange,
+  dateFrom = '',
+  dateTo = '',
+  onDateFromChange,
+  onDateToChange,
+  sendProgress,
 }: Props) {
   const isDark = theme === 'dark';
   const submitLabel = mode === 'send' ? 'Gönder' : 'Al';
   const SubmitIcon = mode === 'send' ? Upload : Download;
+  const multiSend = mode === 'send' && !!onTerminalSelectionChange;
+  const showSyncScope = mode === 'send' && SYNC_DATE_TYPES.has(fileType) && onSyncModeChange;
+
+  const toggleTerminal = (deviceId: string, checked: boolean) => {
+    if (!onTerminalSelectionChange) return;
+    const next = checked
+      ? [...new Set([...selectedTerminalDeviceIds, deviceId])]
+      : selectedTerminalDeviceIds.filter((id) => id !== deviceId);
+    onTerminalSelectionChange(next);
+    if (next.length === 1) onTerminalChange(next[0]);
+    else if (next.length === 0) onTerminalChange('');
+    else if (!next.includes(selectedTerminalDeviceId)) onTerminalChange(next[0]);
+  };
+
+  const selectAllTerminals = () => {
+    const ids = filteredTerminals.map((t) => t.deviceId);
+    onTerminalSelectionChange?.(ids);
+    if (ids[0]) onTerminalChange(ids[0]);
+  };
+
+  const clearAllTerminals = () => {
+    onTerminalSelectionChange?.([]);
+    onTerminalChange('');
+  };
 
   return (
     <div
-      className={`inline-block w-full max-w-[440px] border shadow-md ${
+      className={`inline-block w-full max-w-[480px] border shadow-md ${
         isDark ? 'border-gray-600 bg-gray-800' : 'border-gray-400 bg-[#ececec]'
       }`}
       role="dialog"
       aria-label={title}
     >
-      {/* Kalem tarzı başlık çubuğu */}
       <div
         className={`px-3 py-2 text-sm font-semibold select-none ${
           isDark
@@ -86,8 +136,7 @@ export function MposKalemTransferPanel({
         {title}
       </div>
 
-      {/* Form gövdesi — etiket sağa hizalı, alan solda (Kalem LOD) */}
-      <div className={`px-4 py-4 ${isDark ? 'bg-gray-800' : 'bg-[#f5f5f5]'}`}>
+      <div className={`px-4 py-4 space-y-3 ${isDark ? 'bg-gray-800' : 'bg-[#f5f5f5]'}`}>
         <div className="grid grid-cols-[108px_1fr] gap-x-3 gap-y-3 items-center">
           <label className={`text-sm text-right pr-1 ${isDark ? 'text-gray-300' : 'text-gray-800'}`}>
             Dosya Tipi
@@ -120,45 +169,162 @@ export function MposKalemTransferPanel({
             ))}
           </select>
 
-          <label className={`text-sm text-right pr-1 ${isDark ? 'text-gray-300' : 'text-gray-800'}`}>
-            Kasa
+          {!multiSend ? (
+            <>
+              <label className={`text-sm text-right pr-1 ${isDark ? 'text-gray-300' : 'text-gray-800'}`}>
+                Kasa
+              </label>
+              <select
+                value={selectedTerminalDeviceId}
+                onChange={(e) => onTerminalChange(e.target.value)}
+                disabled={!selectedBranchStoreId}
+                className={`${fieldClass(theme)} disabled:opacity-60`}
+              >
+                <option value="" />
+                {filteredTerminals.map((t) => (
+                  <option key={t.deviceId} value={t.deviceId}>
+                    {t.terminalName}
+                    {t.computerName ? ` (${t.computerName})` : ''}
+                  </option>
+                ))}
+              </select>
+            </>
+          ) : null}
+        </div>
+
+        {multiSend && selectedBranchStoreId ? (
+          <div className={`ml-[120px] space-y-2 rounded border p-2 ${isDark ? 'border-gray-600 bg-gray-900/40' : 'border-gray-300 bg-white'}`}>
+            <div className="flex items-center justify-between gap-2">
+              <span className={`text-xs font-medium ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                Kasalar (JRetail — çoklu seçim)
+              </span>
+              <div className="flex gap-1">
+                <button
+                  type="button"
+                  onClick={selectAllTerminals}
+                  className="text-[10px] px-1.5 py-0.5 rounded border border-blue-500/50 text-blue-600 dark:text-blue-400"
+                >
+                  Tümü
+                </button>
+                <button
+                  type="button"
+                  onClick={clearAllTerminals}
+                  className={`text-[10px] px-1.5 py-0.5 rounded border ${isDark ? 'border-gray-600 text-gray-400' : 'border-gray-300 text-gray-500'}`}
+                >
+                  Temizle
+                </button>
+              </div>
+            </div>
+            {filteredTerminals.length === 0 ? (
+              <p className="text-xs text-amber-700 dark:text-amber-400">Bu işyerinde onaylı kasa yok.</p>
+            ) : (
+              <div className="max-h-32 overflow-y-auto space-y-1">
+                {filteredTerminals.map((t) => (
+                  <label key={t.deviceId} className="flex items-center gap-2 cursor-pointer text-xs">
+                    <Checkbox
+                      checked={selectedTerminalDeviceIds.includes(t.deviceId)}
+                      onCheckedChange={(c) => toggleTerminal(t.deviceId, c === true)}
+                    />
+                    <span className={isDark ? 'text-gray-200' : 'text-gray-800'}>
+                      {t.terminalName}
+                      {t.computerName ? ` (${t.computerName})` : ''}
+                    </span>
+                  </label>
+                ))}
+              </div>
+            )}
+            {selectedTerminalDeviceIds.length > 0 && (
+              <p className={`text-[10px] ${isDark ? 'text-gray-500' : 'text-gray-500'}`}>
+                {selectedTerminalDeviceIds.length} kasa seçili
+              </p>
+            )}
+          </div>
+        ) : null}
+
+        {!multiSend && selectedBranchStoreId && filteredTerminals.length === 0 && (
+          <p className="text-xs text-amber-700 dark:text-amber-400 mt-1 ml-[120px]">
+            Bu işyerinde onaylı kasa yok.
+          </p>
+        )}
+
+        {showSyncScope ? (
+          <div className={`ml-[120px] space-y-2 rounded border p-2 ${isDark ? 'border-gray-600 bg-gray-900/40' : 'border-gray-300 bg-white'}`}>
+            <Label className={`text-xs font-medium ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+              Gönderim kapsamı
+            </Label>
+            <RadioGroup
+              value={syncMode}
+              onValueChange={(v) => onSyncModeChange(v as MposSendSyncMode)}
+              className="flex flex-wrap gap-4"
+            >
+              <div className="flex items-center gap-1.5">
+                <RadioGroupItem value="incremental" id="mpos-sync-changed" />
+                <Label htmlFor="mpos-sync-changed" className="text-xs cursor-pointer">
+                  Değişenler
+                </Label>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <RadioGroupItem value="full" id="mpos-sync-all" />
+                <Label htmlFor="mpos-sync-all" className="text-xs cursor-pointer">
+                  Tümü
+                </Label>
+              </div>
+            </RadioGroup>
+            {syncMode === 'incremental' && onDateFromChange && onDateToChange ? (
+              <div className="flex flex-wrap gap-2 items-end">
+                <div className="space-y-0.5">
+                  <Label className="text-[10px] text-gray-500">İlk tarih</Label>
+                  <Input
+                    type="date"
+                    value={dateFrom}
+                    onChange={(e) => onDateFromChange(e.target.value)}
+                    className="h-7 w-32 text-xs"
+                  />
+                </div>
+                <div className="space-y-0.5">
+                  <Label className="text-[10px] text-gray-500">Son tarih</Label>
+                  <Input
+                    type="date"
+                    value={dateTo}
+                    onChange={(e) => onDateToChange(e.target.value)}
+                    className="h-7 w-32 text-xs"
+                  />
+                </div>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+
+        {showProductImagesOption && mode === 'send' && fileType === 'products' && (
+          <label className="flex items-center gap-2 ml-[120px] text-xs cursor-pointer">
+            <input
+              type="checkbox"
+              checked={!!includeProductImages}
+              onChange={(e) => onIncludeProductImagesChange?.(e.target.checked)}
+              className="rounded border-gray-400"
+            />
+            Ürün resmi de aktarılsın
           </label>
-          <select
-            value={selectedTerminalDeviceId}
-            onChange={(e) => onTerminalChange(e.target.value)}
-            disabled={!selectedBranchStoreId}
-            className={`${fieldClass(theme)} disabled:opacity-60`}
-          >
-            <option value="" />
-            {filteredTerminals.map((t) => (
-              <option key={t.deviceId} value={t.deviceId}>
-                {t.terminalName}
-                {t.computerName ? ` (${t.computerName})` : ''}
-              </option>
-            ))}
-          </select>
-        </div>
+        )}
 
-          {selectedBranchStoreId && filteredTerminals.length === 0 && (
-            <p className="text-xs text-amber-700 dark:text-amber-400 mt-3 ml-[120px]">
-              Bu işyerinde onaylı kasa yok.
-            </p>
-          )}
-
-          {showProductImagesOption && mode === 'send' && fileType === 'products' && (
-            <label className="flex items-center gap-2 mt-3 ml-[120px] text-xs cursor-pointer">
-              <input
-                type="checkbox"
-                checked={!!includeProductImages}
-                onChange={(e) => onIncludeProductImagesChange?.(e.target.checked)}
-                className="rounded border-gray-400"
+        {sendProgress && sendProgress.total > 0 ? (
+          <div className={`ml-[120px] text-xs ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
+            <div className="flex justify-between mb-1">
+              <span>{sendProgress.label}</span>
+              <span>
+                {sendProgress.current}/{sendProgress.total}
+              </span>
+            </div>
+            <div className={`h-1.5 rounded-full overflow-hidden ${isDark ? 'bg-gray-700' : 'bg-gray-200'}`}>
+              <div
+                className="h-full bg-blue-600 transition-all duration-300"
+                style={{ width: `${Math.round((sendProgress.current / sendProgress.total) * 100)}%` }}
               />
-              Malzeme resimleri aktarılsın (KLR-1851)
-            </label>
-          )}
-        </div>
+            </div>
+          </div>
+        ) : null}
+      </div>
 
-      {/* Alt çubuk — sol yardım ikonu, sağ Vazgeç + Gönder/Al */}
       <div
         className={`flex items-center justify-between px-3 py-2 border-t ${
           isDark ? 'border-gray-600 bg-gray-900' : 'border-gray-400 bg-[#ececec]'

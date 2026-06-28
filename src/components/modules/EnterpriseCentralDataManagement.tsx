@@ -47,7 +47,9 @@ import {
   MPOS_SEND_FILE_TYPES,
   sendMposInfoToKasaAndPush,
   sendMposInfoToAllKasasInStore,
+  sendMposInfoToSelectedKasas,
   type MposSendFileType,
+  type MposSendSyncMode,
 } from '../../services/mposSendService';
 import { checkMposSendGuard } from '../../services/mposSendGuardService';
 import {
@@ -163,6 +165,17 @@ export function EnterpriseCentralDataManagement() {
   const [terminalDailyStatus, setTerminalDailyStatus] = useState<MposTerminalDailyStatus[]>([]);
   const [kasaReport, setKasaReport] = useState<MposKasaReportSummary | null>(null);
   const [includeProductImages, setIncludeProductImages] = useState(false);
+  const [selectedTerminalDeviceIds, setSelectedTerminalDeviceIds] = useState<string[]>([]);
+  const [mposSyncMode, setMposSyncMode] = useState<MposSendSyncMode>('full');
+  const [mposDateFrom, setMposDateFrom] = useState(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 7);
+    return d.toISOString().slice(0, 10);
+  });
+  const [mposDateTo, setMposDateTo] = useState(() => new Date().toISOString().slice(0, 10));
+  const [sendProgress, setSendProgress] = useState<{ current: number; total: number; label: string } | null>(
+    null,
+  );
   const [filterQueueByKasa, setFilterQueueByKasa] = useState(true);
   const [dayEndAutoEnabled, setDayEndAutoEnabled] = useState(
     () => typeof localStorage !== 'undefined' && localStorage.getItem('retailex_mpos_dayend_auto') === '1',
@@ -187,9 +200,15 @@ export function EnterpriseCentralDataManagement() {
     return t?.terminalName ?? '—';
   };
 
+  const handleTerminalChange = (deviceId: string) => {
+    setSelectedTerminalDeviceId(deviceId);
+    setSelectedTerminalDeviceIds(deviceId ? [deviceId] : []);
+  };
+
   const handleBranchStoreChange = (storeId: string) => {
     setSelectedBranchStoreId(storeId);
     setSelectedTerminalDeviceId('');
+    setSelectedTerminalDeviceIds([]);
   };
 
   const refreshKasaReport = async () => {
@@ -205,10 +224,17 @@ export function EnterpriseCentralDataManagement() {
     setKasaReport(r);
   };
 
-  const validateMposKasaTarget = (): boolean => {
+  const validateMposKasaTarget = (requireMulti = false): boolean => {
     if (!selectedBranchStoreId) {
       toast.error('Lütfen işyeri (şube) seçin.');
       return false;
+    }
+    if (requireMulti) {
+      if (!selectedTerminalDeviceIds.length) {
+        toast.error('Lütfen en az bir kasa seçin.');
+        return false;
+      }
+      return true;
     }
     if (!selectedTerminalDeviceId) {
       toast.error('Lütfen kasa seçin.');
@@ -338,12 +364,18 @@ export function EnterpriseCentralDataManagement() {
   }, [selectedBranchStoreId, selectedTerminalDeviceId]);
 
   const handleMposKalemSend = async () => {
-    if (!validateMposKasaTarget()) return;
-    const term = selectedTerminal();
+    if (!validateMposKasaTarget(true)) return;
+    const targets = filteredTerminalsForStore.filter((t) =>
+      selectedTerminalDeviceIds.includes(t.deviceId),
+    );
+    if (!targets.length) {
+      toast.error('Seçili kasa bulunamadı.');
+      return;
+    }
     const guard = await checkMposSendGuard({
       fileType: mposFileType,
       storeId: selectedBranchStoreId,
-      terminalName: term?.terminalName || '',
+      terminalName: targets[0]?.terminalName || '',
     });
     if (!guard.allowed) {
       toast.error(guard.message);
@@ -353,19 +385,41 @@ export function EnterpriseCentralDataManagement() {
     if (!guard.requireConfirm && guard.sentToday > 0) toast.info(guard.message);
 
     setIsSyncBusy(true);
+    setSendProgress({ current: 0, total: targets.length, label: 'Kasalara gönderiliyor…' });
     try {
-      const r = await sendMposInfoToKasaAndPush({
-        fileType: mposFileType,
-        storeId: selectedBranchStoreId,
-        terminalName: term?.terminalName || '',
-        terminalDeviceId: selectedTerminalDeviceId,
-        includeProductImages: mposFileType === 'products' && includeProductImages,
-      });
+      const r =
+        targets.length === 1
+          ? await sendMposInfoToKasaAndPush({
+              fileType: mposFileType,
+              storeId: selectedBranchStoreId,
+              terminalName: targets[0].terminalName,
+              terminalDeviceId: targets[0].deviceId,
+              includeProductImages: mposFileType === 'products' && includeProductImages,
+              syncMode: mposSyncMode,
+              dateFrom: mposSyncMode === 'incremental' ? mposDateFrom : undefined,
+              dateTo: mposSyncMode === 'incremental' ? mposDateTo : undefined,
+            }).then((x) => ({ ok: x.ok, message: x.message, success: x.ok ? 1 : 0, failed: x.ok ? 0 : 1 }))
+          : await sendMposInfoToSelectedKasas({
+              fileType: mposFileType,
+              storeId: selectedBranchStoreId,
+              terminals: targets.map((t) => ({
+                terminalName: t.terminalName,
+                terminalDeviceId: t.deviceId,
+              })),
+              includeProductImages: mposFileType === 'products' && includeProductImages,
+              syncMode: mposSyncMode,
+              dateFrom: mposSyncMode === 'incremental' ? mposDateFrom : undefined,
+              dateTo: mposSyncMode === 'incremental' ? mposDateTo : undefined,
+              onProgress: (current, total, terminalName) => {
+                setSendProgress({ current, total, label: `${terminalName} gönderiliyor…` });
+              },
+            });
       if (r.ok) toast.success(r.message);
       else toast.error(r.message);
       await refreshEnterpriseData();
     } finally {
       setIsSyncBusy(false);
+      setSendProgress(null);
     }
   };
 
@@ -395,6 +449,9 @@ export function EnterpriseCentralDataManagement() {
           terminalDeviceId: t.deviceId,
         })),
         includeProductImages: mposFileType === 'products' && includeProductImages,
+        syncMode: mposSyncMode,
+        dateFrom: mposSyncMode === 'incremental' ? mposDateFrom : undefined,
+        dateTo: mposSyncMode === 'incremental' ? mposDateTo : undefined,
       });
       if (r.ok) toast.success(r.message);
       else toast.error(r.message);
@@ -407,8 +464,11 @@ export function EnterpriseCentralDataManagement() {
   const handleMposKalemReset = () => {
     setSelectedBranchStoreId('');
     setSelectedTerminalDeviceId('');
+    setSelectedTerminalDeviceIds([]);
     setMposFileType('products');
     setMposReceiveFileType('sales');
+    setMposSyncMode('full');
+    setSendProgress(null);
   };
 
   const handleMposKalemReceive = async () => {
@@ -1127,7 +1187,7 @@ export function EnterpriseCentralDataManagement() {
           selectedBranchStoreId={selectedBranchStoreId}
           onBranchChange={handleBranchStoreChange}
           selectedTerminalDeviceId={selectedTerminalDeviceId}
-          onTerminalChange={setSelectedTerminalDeviceId}
+          onTerminalChange={handleTerminalChange}
           filteredTerminals={filteredTerminalsForStore}
           targetLabel={mposTargetLabel()}
           theme={theme}
@@ -1190,14 +1250,23 @@ export function EnterpriseCentralDataManagement() {
               selectedTerminalDeviceId={selectedTerminalDeviceId}
               onTerminalChange={setSelectedTerminalDeviceId}
               filteredTerminals={filteredTerminalsForStore}
+              selectedTerminalDeviceIds={selectedTerminalDeviceIds}
+              onTerminalSelectionChange={setSelectedTerminalDeviceIds}
               isBusy={isSyncBusy}
               onCancel={handleMposKalemReset}
               onSubmit={() => void handleMposKalemSend()}
               theme={theme}
-              helpText="Eğitim 1: malzeme/cari/program gönder. Eğitim 2: puan ve promosyon tanımları. KLR-2273: günlük durum kontrolü."
+              helpText="JRetail Basic: işyeri seç → kasaları işaretle → Değişenler/Tümü → Gönder. Eğitim 2: puan ve promosyon."
               showProductImagesOption
               includeProductImages={includeProductImages}
               onIncludeProductImagesChange={setIncludeProductImages}
+              syncMode={mposSyncMode}
+              onSyncModeChange={setMposSyncMode}
+              dateFrom={mposDateFrom}
+              dateTo={mposDateTo}
+              onDateFromChange={setMposDateFrom}
+              onDateToChange={setMposDateTo}
+              sendProgress={sendProgress}
             />
 
             <details className={`rounded-lg border max-w-[440px] ${theme === 'dark' ? 'border-gray-700 bg-gray-800/50' : 'border-gray-200 bg-white'}`}>
@@ -1524,7 +1593,7 @@ export function EnterpriseCentralDataManagement() {
               selectedBranchStoreId={selectedBranchStoreId}
               onBranchChange={handleBranchStoreChange}
               selectedTerminalDeviceId={selectedTerminalDeviceId}
-              onTerminalChange={setSelectedTerminalDeviceId}
+              onTerminalChange={handleTerminalChange}
               filteredTerminals={filteredTerminalsForStore}
               isBusy={isSyncBusy}
               onCancel={handleMposKalemReset}

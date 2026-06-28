@@ -460,6 +460,8 @@ export type EnterpriseBulkFilter = {
   search?: string;
   categoryCode?: string;
   changedSince?: string;
+  /** Değişenler modu — üst tarih sınırı (YYYY-MM-DD, gün sonu dahil) */
+  changedUntil?: string;
   onlyActive?: boolean;
   onlyChanged?: boolean;
   limit?: number;
@@ -492,6 +494,7 @@ export async function enqueueEnterpriseBulk(
   const changedSince =
     filter.changedSince?.trim() ||
     (filter.onlyChanged ? new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10) : null);
+  const changedUntil = filter.changedUntil?.trim() || null;
   const storeId =
     filter.targetStoreId && filter.targetStoreId !== 'all' ? filter.targetStoreId : null;
 
@@ -507,9 +510,10 @@ export async function enqueueEnterpriseBulk(
          AND ($3::text IS NULL OR COALESCE(t.category_code, t.categorycode, '') = $3)
          AND ($4::boolean IS false OR COALESCE(t.is_active, true) = true)
          AND ($5::date IS NULL OR t.updated_at >= $5::date)
+         AND ($7::date IS NULL OR t.updated_at < ($7::date + interval '1 day'))
        ORDER BY t.updated_at DESC NULLS LAST
        LIMIT $6`,
-      [firm, search, categoryCode, onlyActive, changedSince, limit],
+      [firm, search, categoryCode, onlyActive, changedSince, limit, changedUntil],
     );
 
     if (!rows.length) {
