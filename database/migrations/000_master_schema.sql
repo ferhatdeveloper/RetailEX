@@ -2595,6 +2595,37 @@ SELECT INIT_BEAUTY_FIRM_TABLES('001');
 SELECT INIT_RESTAURANT_PERIOD_TABLES('001', '01');
 SELECT INIT_BEAUTY_PERIOD_TABLES('001', '01');
 
+INSERT INTO firms (id, firm_nr, name, "default", ana_para_birimi, raporlama_para_birimi)
+VALUES ('00000000-0000-4000-a000-000000000002', '002', 'Firma 002', false, 'IQD', 'IQD')
+ON CONFLICT (firm_nr) DO NOTHING;
+
+INSERT INTO periods (firm_id, nr, beg_date, end_date, is_active, "default")
+SELECT f.id, 1, '2026-01-01'::date, '2026-12-31'::date, true, true
+FROM firms f WHERE f.firm_nr = '002'
+ON CONFLICT (firm_id, nr) DO NOTHING;
+
+INSERT INTO stores (id, code, name, firm_nr, type, region, city, is_main, is_active, "default")
+VALUES (
+  '00000000-0000-4000-b000-000000000002',
+  'BAGHDAD',
+  'Baghdad Store',
+  '002',
+  'BRANCH',
+  'Baghdad',
+  'Baghdad',
+  true,
+  true,
+  true
+)
+ON CONFLICT (code) DO NOTHING;
+
+SELECT CREATE_FIRM_TABLES('002');
+SELECT CREATE_PERIOD_TABLES('002', '01');
+SELECT INIT_RESTAURANT_FIRM_TABLES('002');
+SELECT INIT_BEAUTY_FIRM_TABLES('002');
+SELECT INIT_RESTAURANT_PERIOD_TABLES('002', '01');
+SELECT INIT_BEAUTY_PERIOD_TABLES('002', '01');
+
 -- ============================================================================
 -- POSTGREST: anon rolü ve izinler (sıfır kurulum uyumu)
 -- ============================================================================

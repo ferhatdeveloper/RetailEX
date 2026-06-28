@@ -1030,9 +1030,9 @@ export function Login({ onLogin }: LoginProps) {
             const { applyTerminalRuntimeFromAuth } = await import('../../services/terminalRuntimeService');
             applyTerminalRuntimeFromAuth({ store_id: selectedStoreId });
           }
-          if (DB_SETTINGS.activeMode === 'hybrid' || DB_SETTINGS.activeMode === 'online') {
-            const { ensureCentralFirmPeriodSchemas } = await import('../../services/ensureCentralFirmSchema');
-            void ensureCentralFirmPeriodSchemas(
+          if (DB_SETTINGS.activeMode === 'hybrid' || DB_SETTINGS.activeMode === 'online' || DB_SETTINGS.activeMode === 'offline') {
+            const { ensureFirmPeriodSchemasForMode } = await import('../../services/ensureCentralFirmSchema');
+            void ensureFirmPeriodSchemasForMode(
               selectedFirmNr || ERP_SETTINGS.firmNr,
               '01',
             ).catch(() => {});

@@ -13,6 +13,7 @@ import {
   type PgSchemaName,
 } from './hybridSyncPostgrest';
 import { normalizeSyncRow } from './hybridSyncNormalize';
+import { ensureFirmPeriodSchemasOnce } from './ensureCentralFirmSchema';
 
 export type PgEndpointConfig = {
   host: string;
@@ -316,6 +317,22 @@ async function fetchPendingQueue(endpoint: SyncEndpoint, filter?: HybridSyncFilt
   return fetchPendingQueuePostgrest(endpoint.baseUrl, filter);
 }
 
+function firmNrFromSyncTable(tableName: string): string | null {
+  const m = String(tableName).match(/^rex_(\d{3})_/i);
+  return m?.[1] ?? null;
+}
+
+function isMissingRelationSyncError(message: string): boolean {
+  const msg = message.toLowerCase();
+  return (
+    msg.includes('42p01') ||
+    msg.includes('does not exist') ||
+    msg.includes('relation') && msg.includes('not exist') ||
+    msg.includes('"not_found"') ||
+    msg.includes('not_found')
+  );
+}
+
 async function applyItem(
   target: SyncEndpoint,
   item: SyncQueueRow,
@@ -408,11 +425,26 @@ export async function syncOneDirection(
 
     for (const item of pending) {
       try {
-        const outcome = await applyItem(target, item, schemaCache);
+        let outcome = await applyItem(target, item, schemaCache);
         recordApplyOutcome(totals, outcome);
         await markCompleted(source, item.id);
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
+        if (isMissingRelationSyncError(msg)) {
+          const firm = firmNrFromSyncTable(item.table_name) || item.firm_nr;
+          if (firm) {
+            const schemaTarget = target.kind === 'pg' ? 'local' : 'central';
+            try {
+              await ensureFirmPeriodSchemasOnce(firm, '01', schemaTarget);
+              const retryOutcome = await applyItem(target, item, schemaCache);
+              recordApplyOutcome(totals, retryOutcome);
+              await markCompleted(source, item.id);
+              continue;
+            } catch {
+              /* şema oluşturma veya retry başarısız — aşağıdaki hata akışı */
+            }
+          }
+        }
         failed += 1;
         errors.push(`${label} ${item.table_name}/${item.record_id}: ${msg}`);
         try {

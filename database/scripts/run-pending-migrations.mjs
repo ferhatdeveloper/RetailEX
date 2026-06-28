@@ -279,7 +279,17 @@ async function main() {
       process.exit(1);
     }
     console.log('[db:migrate] config.db:', configPath);
-    pg = await loadPgFromConfigDb(configPath);
+    try {
+      pg = await loadPgFromConfigDb(configPath);
+    } catch (e) {
+      const msg = e?.message || String(e);
+      if (msg.includes('no such table') || msg.includes('config satırı yok')) {
+        console.warn('[db:migrate] config.db geçersiz/boş — PG* ortam değişkenlerine düşülüyor.');
+        pg = loadPgFromEnv();
+      } else {
+        throw e;
+      }
+    }
   }
 
   console.log(
