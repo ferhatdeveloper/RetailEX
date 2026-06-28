@@ -1279,7 +1279,8 @@ export function EnterpriseCentralDataManagement() {
 
           {/* Bilgi Gönder */}
           <TabsContent value="send" className="mt-0 space-y-4">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">
+            <div className="flex flex-col md:flex-row gap-4 items-stretch w-full">
+              <div className="w-full md:w-1/2 md:min-w-0 shrink-0">
               <MposKalemTargetBar
                 branchStores={branchStores}
                 selectedBranchStoreId={selectedBranchStoreId}
@@ -1292,9 +1293,11 @@ export function EnterpriseCentralDataManagement() {
                 onBulkSendAll={() => void handleMposBulkAllKasas()}
                 bulkSendDisabled={isSyncBusy || !selectedBranchStoreId || filteredTerminalsForStore.length === 0}
               />
+              </div>
+              <div className="w-full md:w-1/2 md:min-w-0 shrink-0">
               <MposKalemTransferPanel
                 mode="send"
-                title="Bilgilerin gönderilmesi"
+                title="Bilgilerin gönderilmesi (Merkez → Kasa)"
                 hideTargetFields
               fileTypes={MPOS_SEND_FILE_TYPES}
               fileType={mposFileType}
@@ -1646,7 +1649,8 @@ export function EnterpriseCentralDataManagement() {
 
           {/* Bilgi Al */}
           <TabsContent value="receive" className="mt-0 space-y-4">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">
+            <div className="flex flex-col md:flex-row gap-4 items-stretch w-full">
+              <div className="w-full md:w-1/2 md:min-w-0 shrink-0">
               <MposKalemTargetBar
                 branchStores={branchStores}
                 selectedBranchStoreId={selectedBranchStoreId}
@@ -1657,9 +1661,11 @@ export function EnterpriseCentralDataManagement() {
                 targetLabel={mposTargetLabel()}
                 theme={theme}
               />
+              </div>
+              <div className="w-full md:w-1/2 md:min-w-0 shrink-0">
               <MposKalemTransferPanel
                 mode="receive"
-                title="Bilgilerin alınması"
+                title="Bilgilerin alınması (Kasa → Merkez)"
                 hideTargetFields
               fileTypes={MPOS_RECEIVE_FILE_TYPES}
               fileType={mposReceiveFileType}
@@ -1676,6 +1682,7 @@ export function EnterpriseCentralDataManagement() {
               theme={theme}
               helpText="Satış ve günsonu al. Kasada işlem bittikten sonra dosya tipi seçip Al."
             />
+              </div>
             </div>
 
             <MposSyncLogPanel
