@@ -404,14 +404,14 @@ STABLE
 AS $$
 BEGIN
   RETURN QUERY
-  SELECT r.status, r.terminal_name, r.store_id,
+  SELECT r.status::text, r.terminal_name::text, r.store_id,
          CASE r.status
            WHEN 'approved' THEN 'Onaylı — giriş yapılabilir.'
            WHEN 'pending' THEN 'Merkez onayı bekleniyor.'
            WHEN 'rejected' THEN COALESCE(r.rejected_reason, 'Cihaz reddedildi.')
            WHEN 'blocked' THEN 'Cihaz engellendi.'
            ELSE 'Kayıt bulunamadı.'
-         END
+         END::text
   FROM public.pos_terminal_registrations r
   WHERE r.device_id = trim(p_device_id)
   LIMIT 1;
