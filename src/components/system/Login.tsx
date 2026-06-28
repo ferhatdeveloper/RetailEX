@@ -53,6 +53,7 @@ export function Login({ onLogin }: LoginProps) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [store, setStore] = useState('');
+  const [selectedStoreId, setSelectedStoreId] = useState('');
   const [rememberMe, setRememberMe] = useState(false);
   const [showUserSearch, setShowUserSearch] = useState(false);
   const [showStoreSearch, setShowStoreSearch] = useState(false);
@@ -878,7 +879,10 @@ export function Login({ onLogin }: LoginProps) {
         );
         const safeRows: any[] = Array.isArray(rows) ? rows : [];
         setStores(safeRows);
-        if (safeRows.length > 0) setStore(safeRows[0].name);
+        if (safeRows.length > 0) {
+          setStore(safeRows[0].name);
+          setSelectedStoreId(String(safeRows[0].id ?? ''));
+        }
         return;
       }
 
@@ -888,7 +892,10 @@ export function Login({ onLogin }: LoginProps) {
         [firmNr]
       );
       setStores(rows);
-      if (rows.length > 0) setStore(rows[0].name);
+      if (rows.length > 0) {
+        setStore(rows[0].name);
+        setSelectedStoreId(String(rows[0].id ?? ''));
+      }
     } catch (e) {
       console.error('Store loading error:', e);
     } finally {
@@ -1008,16 +1015,28 @@ export function Login({ onLogin }: LoginProps) {
         }
 
         // Update global ERP settings with selected firm before final login
-        const { updateConfigs, ERP_SETTINGS } = await import('../../services/postgres');
+        const { updateConfigs, ERP_SETTINGS, DB_SETTINGS } = await import('../../services/postgres');
         await updateConfigs({
           erp: {
             firmNr: selectedFirmNr || ERP_SETTINGS.firmNr,
-            periodNr: '01' // Default period
-          }
+            periodNr: '01',
+          },
+          storeId: selectedStoreId || undefined,
         });
 
         const success = await authLogin(trimmedUsername, trimmedPassword);
         if (success) {
+          if (selectedStoreId) {
+            const { applyTerminalRuntimeFromAuth } = await import('../../services/terminalRuntimeService');
+            applyTerminalRuntimeFromAuth({ store_id: selectedStoreId });
+          }
+          if (DB_SETTINGS.activeMode === 'hybrid' || DB_SETTINGS.activeMode === 'online') {
+            const { ensureCentralFirmPeriodSchemas } = await import('../../services/ensureCentralFirmSchema');
+            void ensureCentralFirmPeriodSchemas(
+              selectedFirmNr || ERP_SETTINGS.firmNr,
+              '01',
+            ).catch(() => {});
+          }
           if (rememberMe) {
             localStorage.setItem('retailos_user', JSON.stringify({ username: trimmedUsername }));
           }
@@ -1392,7 +1411,7 @@ export function Login({ onLogin }: LoginProps) {
                       {showStoreSearch && (
                         <div className="mt-1 max-h-40 overflow-y-auto border-2 shadow-2xl z-50 rounded-sm">
                           {stores.map(s => (
-                            <button key={s.id} type="button" onClick={() => { setStore(s.name); setShowStoreSearch(false); }} className={`w-full px-4 py-4 text-left border-b last:border-0 hover:bg-blue-600 hover:text-white transition-all ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-100'}`}>
+                            <button key={s.id} type="button" onClick={() => { setStore(s.name); setSelectedStoreId(String(s.id ?? '')); setShowStoreSearch(false); }} className={`w-full px-4 py-4 text-left border-b last:border-0 hover:bg-blue-600 hover:text-white transition-all ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-100'}`}>
                               <p className="text-[10px] font-black uppercase tracking-tight">{s.name}</p>
                               <p className={`text-[8px] font-bold opacity-60 ${darkMode ? 'text-blue-200' : ''}`}>REGION: {s.region}</p>
                             </button>

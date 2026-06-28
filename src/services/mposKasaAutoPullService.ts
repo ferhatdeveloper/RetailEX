@@ -57,6 +57,29 @@ export async function resolveKasaPullContext(
       const cfg: Record<string, unknown> = await safeInvoke('get_app_config');
       applyTerminalRuntimeFromConfig(cfg);
       runtime = TERMINAL_RUNTIME;
+
+      if (!runtime.storeId.trim()) {
+        try {
+          const { collectDesktopDeviceMetadata, getDesktopTerminalStatus } = await import(
+            './deviceRegistrationService'
+          );
+          const info = await collectDesktopDeviceMetadata();
+          const status = await getDesktopTerminalStatus(info.deviceId);
+          if (status.storeId?.trim()) {
+            runtime = {
+              ...runtime,
+              storeId: status.storeId.trim(),
+              terminalName: status.terminalName?.trim() || runtime.terminalName,
+            };
+            applyTerminalRuntimeFromConfig({
+              store_id: runtime.storeId,
+              terminal_name: runtime.terminalName,
+            });
+          }
+        } catch {
+          /* merkez store_id alınamadı */
+        }
+      }
     } catch {
       return null;
     }

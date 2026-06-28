@@ -511,7 +511,8 @@ export async function updateConfigs(updates: {
   local?: Partial<typeof LOCAL_CONFIG>,
   remote?: Partial<typeof REMOTE_CONFIG>,
   settings?: Partial<typeof DB_SETTINGS>,
-  erp?: Partial<typeof ERP_SETTINGS>
+  erp?: Partial<typeof ERP_SETTINGS>,
+  storeId?: string,
 }) {
   if (updates.local) LOCAL_CONFIG = { ...LOCAL_CONFIG, ...updates.local };
   if (updates.remote) REMOTE_CONFIG = { ...REMOTE_CONFIG, ...updates.remote };
@@ -522,6 +523,11 @@ export async function updateConfigs(updates: {
   }
   applyTauriHybridDbOverride();
   alignRemoteConfigWithRestUrl();
+
+  const storeIdPatch =
+    updates.storeId?.trim() && updates.storeId !== 'all' && updates.storeId !== '001'
+      ? updates.storeId.trim()
+      : undefined;
 
   if (!IS_TAURI) {
     // Web: Sync to localStorage
@@ -535,6 +541,7 @@ export async function updateConfigs(updates: {
       hybrid_sync_interval_sec: DB_SETTINGS.hybridSyncIntervalSec,
       erp_firm_nr: ERP_SETTINGS.firmNr,
       erp_period_nr: ERP_SETTINGS.periodNr,
+      ...(storeIdPatch ? { store_id: storeIdPatch } : {}),
       default_currency: getAppDefaultCurrency(),
       is_configured: LOCAL_CONFIG.isConfigured,
       local_host: LOCAL_CONFIG.host,
@@ -587,7 +594,8 @@ export async function updateConfigs(updates: {
       erp_firm_nr: ERP_SETTINGS.firmNr,
       erp_period_nr: ERP_SETTINGS.periodNr,
       selected_cash_registers: ERP_SETTINGS.selected_cash_registers,
-      is_configured: LOCAL_CONFIG.isConfigured
+      is_configured: LOCAL_CONFIG.isConfigured,
+      ...(storeIdPatch ? { store_id: storeIdPatch } : {}),
     };
     await safeInvoke('save_app_config', {
       config: {

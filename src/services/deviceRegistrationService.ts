@@ -590,6 +590,13 @@ export async function assertDesktopTerminalApproved(): Promise<{
 
   if (check.status === 'approved') {
     await syncApprovedPlacementToLocalConfig(check.terminalName, check.storeId);
+    if (check.storeId?.trim()) {
+      const { applyTerminalRuntimeFromConfig } = await import('./terminalRuntimeService');
+      applyTerminalRuntimeFromConfig({
+        store_id: check.storeId,
+        terminal_name: check.terminalName,
+      });
+    }
     return { allowed: true, status: 'approved', message: check.message, deviceInfo };
   }
 

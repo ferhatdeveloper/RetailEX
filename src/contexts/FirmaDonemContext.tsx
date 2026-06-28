@@ -24,6 +24,58 @@ function normalizeFirmNr(v: string | number | undefined | null): string {
   if (!d) return '';
   return d.length <= 3 ? d.padStart(3, '0') : d;
 }
+
+/** Giriş oturumu / kullanıcı meta, config erp_firm_nr'den önce gelir */
+function resolveSessionPreferredFirmNr(): string {
+  try {
+    const sessionStr = localStorage.getItem('exretail_session');
+    if (sessionStr) {
+      const session = JSON.parse(sessionStr);
+      const userFirm = session?.user?.firm_nr;
+      if (userFirm) return normalizeFirmNr(userFirm);
+    }
+  } catch {
+    /* ignore */
+  }
+  try {
+    const metaStr = localStorage.getItem('exretail_user_meta');
+    if (metaStr) {
+      const meta = JSON.parse(metaStr);
+      if (meta.firm_nr) return normalizeFirmNr(meta.firm_nr);
+    }
+  } catch {
+    /* ignore */
+  }
+  const stored = normalizeFirmNr(localStorage.getItem('exretail_selected_firma_id'));
+  return stored;
+}
+
+function resolveDefaultPeriodNr(): number {
+  try {
+    const metaStr = localStorage.getItem('exretail_user_meta');
+    if (metaStr) {
+      const meta = JSON.parse(metaStr);
+      const p = parseInt(String(meta.period_nr ?? ''), 10);
+      if (Number.isFinite(p) && p > 0) return p;
+    }
+  } catch {
+    /* ignore */
+  }
+  const fromSettings = parseInt(String(ERP_SETTINGS.periodNr || '01'), 10);
+  return Number.isFinite(fromSettings) && fromSettings > 0 ? fromSettings : 1;
+}
+
+function buildFallbackPeriod(firmId: number, periodNr: number): Period {
+  return {
+    logicalref: periodNr,
+    nr: periodNr,
+    firm_id: firmId,
+    donem_no: periodNr,
+    active: true,
+    beg_date: '',
+    end_date: '',
+  };
+}
 import { eTransformService } from '../services/eTransformService';
 import { subscribeInvalidate } from '../services/retailexDataSync';
 
@@ -151,7 +203,9 @@ export const FirmaDonemProvider: React.FC<{ children: ReactNode }> = ({ children
   // When Firm changes -> Load Periods & Branches
   useEffect(() => {
     if (selectedFirm) {
-      fetchPeriods(selectedFirm.id || selectedFirm.logicalref.toString());
+      setSelectedPeriod(null);
+      setPeriods([]);
+      fetchPeriods(selectedFirm.id || selectedFirm.firm_nr || selectedFirm.logicalref.toString());
       fetchBranches(selectedFirm.logicalref);
       setGlobalCurrency(
         selectedFirm.ana_para_birimi || getAppDefaultCurrency(),
@@ -194,8 +248,19 @@ export const FirmaDonemProvider: React.FC<{ children: ReactNode }> = ({ children
     }
 
     const fn = normalizeFirmNr(selectedFirm.firm_nr) || String(selectedFirm.firm_nr);
-    if (selectedPeriod?.nr != null && selectedPeriod.nr !== undefined) {
+    const effectivePeriodNr =
+      selectedPeriod?.nr != null
+        ? selectedPeriod.nr
+        : resolveDefaultPeriodNr();
+
+    if (selectedPeriod?.nr != null) {
       ERP_SETTINGS.periodNr = String(selectedPeriod.nr).padStart(2, '0');
+    } else if (!ERP_SETTINGS.periodNr) {
+      ERP_SETTINGS.periodNr = String(effectivePeriodNr).padStart(2, '0');
+    }
+
+    if (selectedPeriod?.nr == null && periods.length === 0) {
+      return;
     }
 
     const firmChanged = lastRefreshFirmNrRef.current !== fn;
@@ -209,14 +274,14 @@ export const FirmaDonemProvider: React.FC<{ children: ReactNode }> = ({ children
         console.log(
           '[FirmaDonemContext] Önbellek yenilendi:',
           firmChanged ? 'firma+dönem (tam)' : 'dönem (satış)',
-          { firm: fn, period: selectedPeriod?.nr }
+          { firm: fn, period: effectivePeriodNr }
         );
       }
     });
     return () => {
       cancelled = true;
     };
-  }, [selectedFirm?.firm_nr, selectedPeriod?.nr]);
+  }, [selectedFirm?.firm_nr, selectedPeriod?.nr, periods.length]);
 
   // When Branch changes -> Load Warehouses
   useEffect(() => {
@@ -298,15 +363,15 @@ export const FirmaDonemProvider: React.FC<{ children: ReactNode }> = ({ children
           }
         } catch (_) { /* ignore */ }
 
-        const storedNr = normalizeFirmNr(localStorage.getItem('exretail_selected_firma_id'));
+        const sessionPreferredNr = resolveSessionPreferredFirmNr();
         const matchNr = (nr: string) => nr && mappedFirms.find((f: any) => normalizeFirmNr(f.firm_nr) === nr);
 
         const isTemplateRetailEx = (f: any) => String(f.firm_nr) === '001' && f.name === 'RetailEx OS';
         const nonTemplate = mappedFirms.filter((f: any) => !isTemplateRetailEx(f));
 
         const defaultFirma =
+          (sessionPreferredNr && matchNr(sessionPreferredNr)) ||
           (cfgPreferredNr && matchNr(cfgPreferredNr)) ||
-          (storedNr && matchNr(storedNr)) ||
           (nonTemplate.length > 0 ? nonTemplate.find((f: any) => f.default) : mappedFirms.find((f: any) => f.default)) ||
           (nonTemplate.length > 0 ? nonTemplate[0] : mappedFirms[0]);
 
@@ -440,19 +505,27 @@ export const FirmaDonemProvider: React.FC<{ children: ReactNode }> = ({ children
       if (import.meta.env.DEV) console.log('[FirmaDonemContext] Total mapped periods:', mappedPeriods.length);
       if (import.meta.env.DEV) console.log('[FirmaDonemContext] ========== END DEBUG ==========');
 
+      if (mappedPeriods.length === 0) {
+        const fallbackNr = resolveDefaultPeriodNr();
+        const fallback = buildFallbackPeriod(selectedFirm?.logicalref ?? 0, fallbackNr);
+        mappedPeriods = [fallback];
+      }
+
       setPeriods(mappedPeriods);
 
-      if (mappedPeriods.length > 0) {
-        const storedId = localStorage.getItem('exretail_selected_donem_id');
-        const active = mappedPeriods.find((p: any) => p.nr.toString() === storedId) ||
-          mappedPeriods.find((p: any) => p.default) ||
-          mappedPeriods[0];
+      const storedId = localStorage.getItem('exretail_selected_donem_id');
+      const active =
+        mappedPeriods.find((p: any) => p.nr.toString() === storedId) ||
+        mappedPeriods.find((p: any) => p.nr === resolveDefaultPeriodNr()) ||
+        mappedPeriods.find((p: any) => p.default) ||
+        mappedPeriods[0];
 
-        if (active) {
-          if (import.meta.env.DEV) console.log('[FirmaDonemContext] Selected period:', active);
-          if (import.meta.env.DEV) console.log('[FirmaDonemContext] Period active status:', active.active);
-          setSelectedPeriod(active);
-        }
+      if (active) {
+        if (import.meta.env.DEV) console.log('[FirmaDonemContext] Selected period:', active);
+        if (import.meta.env.DEV) console.log('[FirmaDonemContext] Period active status:', active.active);
+        setSelectedPeriod(active);
+        ERP_SETTINGS.periodNr = String(active.nr).padStart(2, '0');
+        localStorage.setItem('exretail_selected_donem_id', String(active.nr));
       }
     } catch (err: any) {
       console.error('Error fetching periods:', err);

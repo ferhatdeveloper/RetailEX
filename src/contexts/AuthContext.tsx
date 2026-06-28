@@ -249,6 +249,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             setUser(userWithRoles);
             useAuthStore.getState().login(userWithRoles as any);
 
+            const { applyTerminalRuntimeFromAuth } = await import('../services/terminalRuntimeService');
+            applyTerminalRuntimeFromAuth(userWithRoles);
+
             if (landingRoute && ['restaurant', 'pos', 'management', 'wms', 'beauty'].includes(String(landingRoute))) {
               localStorage.setItem('retailex_active_module', landingRoute as string);
             }
