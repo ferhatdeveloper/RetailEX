@@ -185,10 +185,10 @@ fn run_service() -> windows_service::Result<()> {
     let _ = config::init_config_db();
     let _ = db::init_db_internal();
 
-    // 2. Start Background Sync (Async context)
+    // 2. Start Background Sync (headless — uygulama kapalıyken de kasa verisi çeker)
     let rt = tokio::runtime::Runtime::new().expect("Failed to create tokio runtime");
+    sync::register_headless_runtime(rt.handle().clone());
     
-    // Legacy Sync Service (WebSocket Heartbeat)
     let (sync_service, rx) = sync::BackgroundSyncService::new();
     sync_service.start(None, rx);
     
@@ -211,6 +211,8 @@ fn run_service() -> windows_service::Result<()> {
 
     log("Background Sync & Enterprise Sync Services started.".to_string());
 
+    let rt_handle = rt.handle().clone();
+
     // 3. Start Scanner Service
     let scanner_manager = Arc::new(scanner::ScannerManager::new());
     rt.spawn(async move {
@@ -222,7 +224,7 @@ fn run_service() -> windows_service::Result<()> {
     log("Scanner Service started on port 9999.".to_string());
 
     loop {
-        perform_tasks();
+        perform_tasks(&rt_handle);
 
         for _ in 0..60 {
             if shutdown_rx.try_recv().is_ok() {
@@ -249,7 +251,13 @@ fn log(msg: String) {
     }
 }
 
-fn perform_tasks() {
+fn perform_tasks(rt: &tokio::runtime::Handle) {
+    // Periyodik hibrit senkron (servis — UI kapalıyken kasa inbound)
+    match rt.block_on(sync::process_sync_queue_internal(None)) {
+        Ok(()) => {}
+        Err(e) => log(format!("Background sync: {}", e)),
+    }
+
     // 1. Load Config
     if let Ok(config) = config::get_app_config_internal() {
         // 2. Automated Backup Check

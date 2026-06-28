@@ -58,13 +58,17 @@ export function notifyKasaDataArrived(opts: {
   failed?: number;
   source?: KasaDataArrivalSource;
   silent?: boolean;
+  /** Uygulama kapalıyken biriken bildirim — debounce atlanır */
+  force?: boolean;
+  /** Veri, uygulama kapalıyken alındı (Windows servisi arka planda) */
+  backgroundWhileClosed?: boolean;
 }): void {
   const synced = Math.max(0, Number(opts.synced) || 0);
   const failed = Math.max(0, Number(opts.failed) || 0);
   if (opts.silent || synced <= 0) return;
 
   const now = Date.now();
-  if (now - lastToastAt < 3500) return;
+  if (!opts.force && now - lastToastAt < 3500) return;
   lastToastAt = now;
 
   const at = new Date().toISOString();
@@ -75,6 +79,9 @@ export function notifyKasaDataArrived(opts: {
   const timeLabel = formatTime(at);
   const recordLabel =
     synced === 1 ? '1 kayıt güncellendi' : `${synced} kayıt güncellendi`;
+  const detailLabel = opts.backgroundWhileClosed
+    ? `Uygulama kapalıyken · ${recordLabel}`
+    : recordLabel;
 
   toast.custom(
     () =>
@@ -98,7 +105,7 @@ export function notifyKasaDataArrived(opts: {
           createElement(
             'span',
             { className: 'text-xs text-emerald-100/95 truncate' },
-            `${recordLabel}${timeLabel ? ` · ${timeLabel}` : ''}`,
+            `${detailLabel}${timeLabel ? ` · ${timeLabel}` : ''}`,
           ),
         ),
         createElement(Download, { className: 'h-4 w-4 shrink-0 text-emerald-200/80 ml-auto' }),

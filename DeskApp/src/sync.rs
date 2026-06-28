@@ -7,6 +7,8 @@ use futures::{SinkExt, StreamExt};
 use tokio_tungstenite::{connect_async, tungstenite::protocol::Message};
 use url::Url;
 use std::sync::OnceLock;
+use std::path::PathBuf;
+use std::future::Future;
 use tauri::{AppHandle, Manager, Emitter};
 
 use crate::remote_input::RemoteInputManager;
@@ -73,7 +75,7 @@ impl BackgroundSyncService {
         // 1. Data Sync Loop (Push to Center)
         let sync_token = token.clone();
         let sync_app = app_handle.clone();
-        tauri::async_runtime::spawn(async move {
+        spawn_background_task(async move {
             loop {
                 if sync_token.is_cancelled() { break; }
 
@@ -94,7 +96,7 @@ impl BackgroundSyncService {
         let screen_cap = self.screen_capture.clone();
         let security_svc = self.security_service.clone();
         
-        tauri::async_runtime::spawn(async move {
+        spawn_background_task(async move {
             start_websocket_listener(ws_token, ws_handle, rx, input_mgr, screen_cap, security_svc).await;
         });
     }
@@ -120,10 +122,174 @@ struct KasaDataArrivedPayload {
     at: String,
 }
 
+#[derive(Clone, Serialize, Deserialize, Default)]
+struct KasaArrivalPendingFile {
+    synced: i32,
+    failed: i32,
+    last_at: String,
+    events: i32,
+    source: String,
+}
+
+static HEADLESS_RUNTIME: OnceLock<tokio::runtime::Handle> = OnceLock::new();
+
+/// Windows servisi (RetailEX_Service) — Tauri olmadan arka plan görevleri için.
+pub fn register_headless_runtime(handle: tokio::runtime::Handle) {
+    let _ = HEADLESS_RUNTIME.set(handle);
+}
+
+fn retail_ex_data_dir() -> PathBuf {
+    #[cfg(windows)]
+    {
+        PathBuf::from(r"C:\ProgramData\RetailEX")
+    }
+    #[cfg(not(windows))]
+    {
+        std::env::var("RETAILEX_DATA_DIR")
+            .map(PathBuf::from)
+            .unwrap_or_else(|_| PathBuf::from("/tmp/RetailEX"))
+    }
+}
+
+fn kasa_arrival_pending_path() -> PathBuf {
+    retail_ex_data_dir().join("kasa_data_arrival_pending.json")
+}
+
+fn persist_kasa_data_arrived(synced: i32, failed: i32, source: &str) {
+    if synced <= 0 {
+        return;
+    }
+    let dir = retail_ex_data_dir();
+    let _ = std::fs::create_dir_all(&dir);
+    let path = kasa_arrival_pending_path();
+    let now = chrono::Utc::now().to_rfc3339();
+
+    let mut pending = if path.exists() {
+        std::fs::read_to_string(&path)
+            .ok()
+            .and_then(|s| serde_json::from_str::<KasaArrivalPendingFile>(&s).ok())
+            .unwrap_or_default()
+    } else {
+        KasaArrivalPendingFile::default()
+    };
+
+    pending.synced = pending.synced.saturating_add(synced);
+    pending.failed = pending.failed.saturating_add(failed);
+    pending.last_at = now;
+    pending.events = pending.events.saturating_add(1);
+    if pending.source.is_empty() {
+        pending.source = source.to_string();
+    }
+
+    if let Ok(json) = serde_json::to_string(&pending) {
+        let _ = std::fs::write(&path, json);
+    }
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+pub struct PendingKasaArrival {
+    pub synced: i32,
+    pub failed: i32,
+    pub at: String,
+    pub events: i32,
+    pub source: String,
+}
+
+pub fn consume_pending_kasa_data_arrival_internal() -> Option<PendingKasaArrival> {
+    let path = kasa_arrival_pending_path();
+    if !path.exists() {
+        return None;
+    }
+    let raw = std::fs::read_to_string(&path).ok()?;
+    let pending: KasaArrivalPendingFile = serde_json::from_str(&raw).ok()?;
+    let _ = std::fs::remove_file(&path);
+    if pending.synced <= 0 {
+        return None;
+    }
+    Some(PendingKasaArrival {
+        synced: pending.synced,
+        failed: pending.failed,
+        at: pending.last_at,
+        events: pending.events,
+        source: pending.source,
+    })
+}
+
+#[tauri::command]
+pub fn consume_pending_kasa_data_arrival() -> Option<PendingKasaArrival> {
+    consume_pending_kasa_data_arrival_internal()
+}
+
+fn spawn_background_task<F>(future: F)
+where
+    F: Future<Output = ()> + Send + 'static,
+{
+    if let Ok(handle) = tauri::async_runtime::handle().try_current() {
+        handle.spawn(future);
+        return;
+    }
+    if let Some(handle) = HEADLESS_RUNTIME.get() {
+        handle.spawn(future);
+        return;
+    }
+    std::thread::spawn(move || {
+        if let Ok(rt) = tokio::runtime::Runtime::new() {
+            rt.block_on(future);
+        }
+    });
+}
+
+const UI_HEARTBEAT_STALE_SECS: u64 = 45;
+
+#[derive(Clone, Serialize, Deserialize, Default)]
+struct AppUiHeartbeat {
+    pid: u32,
+    at: String,
+}
+
+fn app_ui_heartbeat_path() -> PathBuf {
+    retail_ex_data_dir().join("app_ui_heartbeat.json")
+}
+
+/// Tauri UI açık — Windows servisi bunu görerek gereksiz birikim yapmaz.
+pub fn touch_app_ui_heartbeat() {
+    let dir = retail_ex_data_dir();
+    let _ = std::fs::create_dir_all(&dir);
+    let hb = AppUiHeartbeat {
+        pid: std::process::id(),
+        at: chrono::Utc::now().to_rfc3339(),
+    };
+    if let Ok(json) = serde_json::to_string(&hb) {
+        let _ = std::fs::write(app_ui_heartbeat_path(), json);
+    }
+}
+
+pub fn clear_app_ui_heartbeat() {
+    let _ = std::fs::remove_file(app_ui_heartbeat_path());
+}
+
+fn is_app_ui_running() -> bool {
+    let raw = match std::fs::read_to_string(app_ui_heartbeat_path()) {
+        Ok(s) => s,
+        Err(_) => return false,
+    };
+    let hb: AppUiHeartbeat = match serde_json::from_str(&raw) {
+        Ok(h) => h,
+        Err(_) => return false,
+    };
+    let at = match chrono::DateTime::parse_from_rfc3339(&hb.at) {
+        Ok(d) => d.with_timezone(&chrono::Utc),
+        Err(_) => return false,
+    };
+    let age = chrono::Utc::now().signed_duration_since(at);
+    age.num_seconds() >= 0 && age.num_seconds() <= UI_HEARTBEAT_STALE_SECS as i64
+}
+
 fn emit_kasa_data_arrived(app: &Option<tauri::AppHandle>, synced: i32, failed: i32) {
     if synced <= 0 {
         return;
     }
+
     if let Some(h) = app {
         let payload = KasaDataArrivedPayload {
             synced,
@@ -131,6 +297,12 @@ fn emit_kasa_data_arrived(app: &Option<tauri::AppHandle>, synced: i32, failed: i
             at: chrono::Utc::now().to_rfc3339(),
         };
         let _ = h.emit("kasa-data-arrived", payload);
+        return;
+    }
+
+    // Uygulama kapalıyken Windows servisi veri çeker — açılışta «Veri alındı» için biriktir
+    if !is_app_ui_running() {
+        persist_kasa_data_arrived(synced, failed, "app_closed");
     }
 }
 
@@ -1089,8 +1261,10 @@ pub async fn mpos_pull_master_internal() -> Result<MposPullResult, String> {
 }
 
 #[tauri::command]
-pub async fn mpos_pull_master_now() -> Result<MposPullResult, String> {
-    mpos_pull_master_internal().await
+pub async fn mpos_pull_master_now(app: AppHandle) -> Result<MposPullResult, String> {
+    let r = mpos_pull_master_internal().await?;
+    emit_kasa_data_arrived(&Some(app), r.synced, r.failed);
+    Ok(r)
 }
 
 #[allow(dead_code)]

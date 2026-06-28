@@ -1989,6 +1989,14 @@ fn main() {
         
         check_bootstrap_config(&handle);
 
+        sync::touch_app_ui_heartbeat();
+        tauri::async_runtime::spawn(async move {
+            loop {
+                tokio::time::sleep(std::time::Duration::from_secs(20)).await;
+                sync::touch_app_ui_heartbeat();
+            }
+        });
+
         let (sync_service, rx) = BackgroundSyncService::new();
         app.manage(sync::SyncSender(sync_service.get_sender()));
         sync_service.start(Some(handle.clone()), rx);
@@ -2021,6 +2029,7 @@ fn main() {
         db_ops::create_database, db_ops::run_migrations, db_ops::open_migration_log, db_ops::diagnose_schema_gaps_cmd, db_ops::init_firm_schema, db_ops::init_period_schema, db_ops::check_db_status, db_ops::get_db_version,
         db_ops::pg_execute_supabase_dump,
         sync::send_websocket_message, sync::announce_node, sync::get_last_sync_info, sync::mpos_pull_master_now,
+        sync::consume_pending_kasa_data_arrival,
         verify_license, check_update_status,
 
         maintenance::compact_database, security::verify_token,
@@ -2042,8 +2051,13 @@ fn main() {
         rongta_scale::rongta_scale_send_plu,
         rongta_scale::rongta_scale_fetch_sales
     ])
-    .run(tauri::generate_context!())
-    .expect("error while running tauri application");
+    .build(tauri::generate_context!())
+    .expect("error while building tauri application")
+    .run(|_app, event| {
+        if let tauri::RunEvent::Exit = event {
+            sync::clear_app_ui_heartbeat();
+        }
+    });
 }
 
 
