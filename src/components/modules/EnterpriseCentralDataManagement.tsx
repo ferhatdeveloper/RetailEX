@@ -1323,6 +1323,7 @@ export function EnterpriseCentralDataManagement() {
               onDateToChange={setMposDateTo}
               sendProgress={sendProgress}
               />
+              </div>
             </div>
 
             <MposSyncLogPanel

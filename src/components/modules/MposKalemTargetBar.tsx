@@ -57,7 +57,7 @@ export function MposKalemTargetBar({
       >
         <MapPin className={`w-4 h-4 shrink-0 ${isDark ? 'text-blue-400' : 'text-blue-600'}`} />
         <span className={`text-sm font-semibold ${isDark ? 'text-gray-100' : 'text-gray-900'}`}>
-          Aktif Kasa Hedefi
+          Hedef işyeri ve kasa
         </span>
         <span className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
           {targetLabel}
