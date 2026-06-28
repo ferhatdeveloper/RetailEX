@@ -63,6 +63,7 @@
 58. **070_get_pos_terminal_status_text_cast.sql** – PostgREST 42804: `get_pos_terminal_status` dönüş kolonları TEXT cast.
 59. **071_apply_sync_queue_item_normalize.sql** – Hibrit sync: NOT NULL varsayılan normalize (`expiry_tracking` vb.), müşteri/tedarikçi `code` çakışması birleştirme.
 60. **072_firm_002_bootstrap.sql** – Firma 002, dönem 01, BAGHDAD mağazası ve `rex_002_*` tabloları (idempotent).
+61. **073_apply_sync_queue_item_record_id.sql** – Sync JSON'da `id` yoksa `record_id` birleştirilir.
 
 **Kiracılara toplu uygulama (VPS / uzak PG):**
 - `npm run db:migrate:tenants` — tüm kiracı DB'ler

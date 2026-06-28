@@ -18,8 +18,13 @@ function isNullishJsonValue(value: unknown): boolean {
 export function normalizeSyncRow(
   tableName: string,
   data: Record<string, unknown>,
+  recordId?: string,
 ): Record<string, unknown> {
   const out: Record<string, unknown> = { ...data };
+
+  if (recordId && (!('id' in out) || out.id == null || out.id === 'null')) {
+    out.id = recordId;
+  }
 
   if (/_products$/i.test(tableName)) {
     for (const [key, defaultValue] of Object.entries(PRODUCT_BOOL_DEFAULTS)) {

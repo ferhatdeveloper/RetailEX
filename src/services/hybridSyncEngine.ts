@@ -215,7 +215,7 @@ async function fetchPendingQueuePg(
 async function applyItemPg(target: PgEndpointConfig, item: SyncQueueRow): Promise<string> {
   let rowData = item.data;
   if (rowData && typeof rowData === 'object') {
-    rowData = normalizeSyncRow(item.table_name, rowData as Record<string, unknown>);
+    rowData = normalizeSyncRow(item.table_name, rowData as Record<string, unknown>, item.record_id);
   }
   const dataJson = rowData ? JSON.stringify(rowData) : null;
   const rows = await queryPgRows(

@@ -1340,6 +1340,10 @@ BEGIN
 
   v_data := public.normalize_sync_queue_data(v_schema, p_table_name, p_data);
 
+  IF NOT (v_data ? 'id') OR v_data->>'id' IS NULL OR v_data->'id' = 'null'::jsonb THEN
+    v_data := v_data || jsonb_build_object('id', v_record_id);
+  END IF;
+
   IF p_table_name ~ '_(customers|suppliers)$' THEN
     v_code := NULLIF(trim(v_data->>'code'), '');
     IF v_code IS NOT NULL THEN

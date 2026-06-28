@@ -201,7 +201,7 @@ export async function applyItemPostgrest(
 
   if (!item.data || typeof item.data !== 'object') return;
 
-  let payload = normalizeSyncRow(table, item.data as Record<string, unknown>);
+  let payload = normalizeSyncRow(table, item.data as Record<string, unknown>, id);
 
   if (/_((customers|suppliers))$/i.test(table)) {
     const code = String(payload.code ?? '').trim();
