@@ -46,7 +46,7 @@ export function PendingDevicesPanel({ darkMode = false }: Props) {
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      const rows = await listPosTerminalRegistrations({ status: 'pending', limit: 20 });
+      const rows = await listPosTerminalRegistrations({ status: 'pending', limit: 20, allFirms: true });
       setItems(rows);
       setPlacements((prev) => {
         const next = { ...prev };

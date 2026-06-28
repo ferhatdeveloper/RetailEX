@@ -83,12 +83,9 @@ export function isHybridDeviceRegistrationMode(): boolean {
   return DB_SETTINGS.activeMode === 'hybrid';
 }
 
-function useRemotePostgrest(): boolean {
-  const remote = String(DB_SETTINGS.remoteRestUrl || '').trim();
-  if (!remote) return false;
-  // Hibrit kasa: doğrudan PG kapalı olsa bile PostgREST üzerinden merkeze kayıt
-  if (DB_SETTINGS.activeMode === 'hybrid') return true;
-  return DB_SETTINGS.connectionProvider === 'rest_api';
+/** Merkez cihaz kaydı/onay — remote_rest_url varken her zaman PostgREST (web yönetici paneli dahil). */
+function useCentralPostgrest(): boolean {
+  return String(DB_SETTINGS.remoteRestUrl || '').trim().length > 0;
 }
 
 /** Cihaz kaydı/onay — merkez uç; PostgREST slug (lovan) ile remote_db DB adını hizala. */
@@ -170,7 +167,7 @@ async function rpcCall<T>(fn: string, body: Record<string, unknown>): Promise<T>
     rpcBody.p_metadata = {};
   }
 
-  if (useRemotePostgrest()) {
+  if (useCentralPostgrest()) {
     try {
       const res = await postgrest.post<T>(`/rpc/${fn}`, rpcBody, { schema: 'public' });
       const row = Array.isArray(res) ? res[0] : res;
@@ -615,17 +612,29 @@ export async function assertDesktopTerminalApproved(): Promise<{
 export async function listPosTerminalRegistrations(opts?: {
   status?: PosTerminalStatus | 'all';
   firmNr?: string;
+  /** Merkez yönetici: tüm firmalardaki kayıtlar (firma filtresi yok) */
+  allFirms?: boolean;
   limit?: number;
 }): Promise<PosTerminalRegistration[]> {
-  const firm = firmPadded(opts?.firmNr);
+  const allFirms = opts?.allFirms === true;
+  const firm = allFirms ? null : firmPadded(opts?.firmNr);
   const limit = opts?.limit ?? 50;
 
   let statusFilter = '';
-  const params: unknown[] = [firm, limit];
+  const params: unknown[] = [];
+  if (firm) params.push(firm);
+  params.push(limit);
+
+  let paramIdx = firm ? 3 : 2;
   if (opts?.status && opts.status !== 'all') {
-    statusFilter = ` AND r.status = $3`;
+    statusFilter = ` AND r.status = $${paramIdx}`;
     params.push(opts.status);
   }
+
+  const firmWhere = firm
+    ? `(r.firm_nr = $1 OR lpad(ltrim(r.firm_nr, '0'), 3, '0') = $1)`
+    : 'TRUE';
+  const limitParam = firm ? '$2' : '$1';
 
   const sql = `
     SELECT r.id::text, r.device_id, r.terminal_name, r.store_id::text,
@@ -638,22 +647,22 @@ export async function listPosTerminalRegistrations(opts?: {
     FROM pos_terminal_registrations r
     LEFT JOIN stores s ON s.id = r.store_id
     LEFT JOIN firms f ON lpad(ltrim(f.firm_nr, '0'), 3, '0') = lpad(ltrim(r.firm_nr, '0'), 3, '0')
-    WHERE (r.firm_nr = $1 OR lpad(ltrim(r.firm_nr, '0'), 3, '0') = $1)
+    WHERE ${firmWhere}
       ${statusFilter}
     ORDER BY
       CASE r.status WHEN 'pending' THEN 0 ELSE 1 END,
       r.registered_at DESC
-    LIMIT $2`;
+    LIMIT ${limitParam}`;
 
   try {
-    if (useRemotePostgrest()) {
+    if (useCentralPostgrest()) {
       const q: Record<string, string> = {
         select:
           'id,device_id,terminal_name,store_id,firm_nr,status,role,hostname,os_user,app_version,computer_name,os_platform,os_arch,os_version,local_ip,timezone,locale,metadata,registered_at,last_seen_at,rejected_reason',
-        firm_nr: `eq.${firm}`,
         order: 'registered_at.desc',
         limit: String(limit),
       };
+      if (!allFirms && firm) q.firm_nr = `eq.${firm}`;
       if (opts?.status && opts.status !== 'all') q.status = `eq.${opts.status}`;
       const rows = await postgrest.get<Record<string, unknown>[]>('/pos_terminal_registrations', q);
       return (rows || []).map((r) => mapRegistrationRow(r));
@@ -661,7 +670,11 @@ export async function listPosTerminalRegistrations(opts?: {
 
     const rows = await queryCentralPgRows<Record<string, unknown>>(sql, params);
     return rows.map((row) => mapRegistrationRow(row));
-  } catch {
+  } catch (e) {
+    if (allFirms || useCentralPostgrest()) {
+      console.warn('[listPosTerminalRegistrations] merkez sorgusu başarısız:', e);
+      return [];
+    }
     try {
       const result = await postgres.query(sql, params);
       return result.rows.map((row: Record<string, unknown>) => mapRegistrationRow(row));
