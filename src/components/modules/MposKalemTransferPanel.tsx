@@ -51,6 +51,7 @@ type Props = {
   sendProgress?: { current: number; total: number; label: string } | null;
   /** Üst barda hedef seçiliyse işyeri/kasa alanlarını gizle */
   hideTargetFields?: boolean;
+  className?: string;
 };
 
 const fieldClass = (theme: 'light' | 'dark') =>
@@ -92,6 +93,7 @@ export function MposKalemTransferPanel({
   onDateToChange,
   sendProgress,
   hideTargetFields = false,
+  className = '',
 }: Props) {
   const isDark = theme === 'dark';
   const submitLabel = mode === 'send' ? 'Gönder' : 'Al';
@@ -123,7 +125,7 @@ export function MposKalemTransferPanel({
 
   return (
     <div
-      className={`w-full rounded-lg border shadow-sm overflow-hidden ${
+      className={`w-full rounded-lg border shadow-sm overflow-hidden flex flex-col h-full ${className} ${
         isDark ? 'border-gray-600 bg-gray-800' : 'border-gray-300 bg-white'
       }`}
       role="region"
@@ -139,7 +141,7 @@ export function MposKalemTransferPanel({
         {title}
       </div>
 
-      <div className={`px-4 py-4 space-y-4 ${isDark ? 'bg-gray-800' : 'bg-gray-50'}`}>
+      <div className={`px-4 py-4 space-y-4 flex-1 ${isDark ? 'bg-gray-800' : 'bg-gray-50'}`}>
         <div className={`grid gap-3 ${hideTargetFields ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1'}`}>
           <div className="space-y-1.5">
             <label className={`block text-xs font-semibold uppercase tracking-wide ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
@@ -207,7 +209,7 @@ export function MposKalemTransferPanel({
           <div className={`space-y-2 rounded-md border p-3 ${isDark ? 'border-gray-600 bg-gray-900/50' : 'border-gray-200 bg-white'}`}>
             <div className="flex items-center justify-between gap-2">
               <span className={`text-xs font-medium ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
-                Kasalar (JRetail — çoklu seçim)
+                Kasalar (çoklu seçim)
               </span>
               <div className="flex gap-1">
                 <button
@@ -346,7 +348,7 @@ export function MposKalemTransferPanel({
           variant="ghost"
           size="icon"
           className="h-8 w-8 shrink-0"
-          title={helpText ?? 'Kalem M-POS eğitim videosu akışı'}
+          title={helpText ?? 'Kasa veri gönder/al akışı'}
           onClick={() => {
             if (helpText) window.alert(helpText);
           }}

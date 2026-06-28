@@ -1104,7 +1104,7 @@ export function EnterpriseCentralDataManagement() {
             <div>
               <h1 className="text-3xl">Merkezi Veri Yönetim Sistemi</h1>
               <p className="text-sm text-gray-600 dark:text-gray-400">
-                KLRetail M-POS benzeri merkez ↔ kasa senkron (malzeme, cari, satış, günsonu)
+                Merkez ↔ kasa senkron (malzeme, cari, satış, günsonu)
               </p>
             </div>
           </div>
@@ -1215,10 +1215,10 @@ export function EnterpriseCentralDataManagement() {
           <details>
             <summary className="cursor-pointer text-sm font-medium flex items-center gap-2">
               <ChevronRight className="w-4 h-4" />
-              KLRetail M-POS Kurulum Rehberi (eğitim videosu adımları)
+              Kurulum rehberi (eğitim videosu adımları)
             </summary>
             <ol className="mt-3 ml-6 text-xs text-gray-600 dark:text-gray-400 space-y-1.5 list-decimal">
-              <li><strong>Eğitim 1:</strong> Market parametreleri, POS kasa kartı, M-POS tanımları, servis ayarları</li>
+              <li><strong>Eğitim 1:</strong> Market parametreleri, POS kasa kartı, kasa tanımları, servis ayarları</li>
               <li><strong>Eğitim 1:</strong> Bilgi Gönder (malzeme, cari, program) → kasada satış, yemek çeki</li>
               <li><strong>Eğitim 1:</strong> Bilgi Al → günsonu → günsonu işlem kontrolü</li>
               <li><strong>Eğitim 2:</strong> Puan DB + Puan Adaptör parametreleri → Puan Tanımları gönder</li>
@@ -1227,19 +1227,6 @@ export function EnterpriseCentralDataManagement() {
             </ol>
           </details>
         </Card>
-
-        <MposKalemTargetBar
-          branchStores={branchStores}
-          selectedBranchStoreId={selectedBranchStoreId}
-          onBranchChange={handleBranchStoreChange}
-          selectedTerminalDeviceId={selectedTerminalDeviceId}
-          onTerminalChange={handleTerminalChange}
-          filteredTerminals={filteredTerminalsForStore}
-          targetLabel={mposTargetLabel()}
-          theme={theme}
-          onBulkSendAll={() => void handleMposBulkAllKasas()}
-          bulkSendDisabled={isSyncBusy || !selectedBranchStoreId || filteredTerminalsForStore.length === 0}
-        />
 
         {/* MPOS sekmeleri — gruplu, kaydırmalı */}
         <Tabs defaultValue="send" className="w-full space-y-4">
@@ -1310,10 +1297,23 @@ export function EnterpriseCentralDataManagement() {
 
           {/* Bilgi Gönder */}
           <TabsContent value="send" className="mt-0 space-y-4">
-            <MposKalemTransferPanel
-              mode="send"
-              title="Bilgilerin gönderilmesi (Merkez → Kasa)"
-              hideTargetFields
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">
+              <MposKalemTargetBar
+                branchStores={branchStores}
+                selectedBranchStoreId={selectedBranchStoreId}
+                onBranchChange={handleBranchStoreChange}
+                selectedTerminalDeviceId={selectedTerminalDeviceId}
+                onTerminalChange={handleTerminalChange}
+                filteredTerminals={filteredTerminalsForStore}
+                targetLabel={mposTargetLabel()}
+                theme={theme}
+                onBulkSendAll={() => void handleMposBulkAllKasas()}
+                bulkSendDisabled={isSyncBusy || !selectedBranchStoreId || filteredTerminalsForStore.length === 0}
+              />
+              <MposKalemTransferPanel
+                mode="send"
+                title="Bilgilerin gönderilmesi"
+                hideTargetFields
               fileTypes={MPOS_SEND_FILE_TYPES}
               fileType={mposFileType}
               onFileTypeChange={(v) => setMposFileType(v as MposSendFileType)}
@@ -1329,7 +1329,7 @@ export function EnterpriseCentralDataManagement() {
               onCancel={handleMposKalemReset}
               onSubmit={() => void handleMposKalemSend()}
               theme={theme}
-              helpText="JRetail Basic: işyeri seç → kasaları işaretle → Değişenler/Tümü → Gönder. Eğitim 2: puan ve promosyon."
+              helpText="İşyeri ve kasa seç → Değişenler/Tümü → Gönder. Puan ve promosyon için ilgili dosya tipini seçin."
               showProductImagesOption
               includeProductImages={includeProductImages}
               onIncludeProductImagesChange={setIncludeProductImages}
@@ -1340,7 +1340,8 @@ export function EnterpriseCentralDataManagement() {
               onDateFromChange={setMposDateFrom}
               onDateToChange={setMposDateTo}
               sendProgress={sendProgress}
-            />
+              />
+            </div>
 
             <MposSyncLogPanel
               storeId={selectedBranchStoreId || undefined}
@@ -1360,7 +1361,7 @@ export function EnterpriseCentralDataManagement() {
             <Card className={`p-4 ${theme === 'dark' ? 'bg-gray-800 border-gray-700' : 'bg-white'}`}>
               <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
                 <Zap className="w-4 h-4 text-blue-600" />
-                M-POS Bilgi Gönder (Merkez → Kasa)
+                Bilgi Gönder (Merkez → Kasa)
               </h3>
               <div className="flex flex-wrap gap-2">
                 <Button size="sm" variant="outline" disabled={isSyncBusy} onClick={() => void handleMposQuickSend('product')}>
@@ -1378,7 +1379,7 @@ export function EnterpriseCentralDataManagement() {
                 </Button>
               </div>
               <p className="text-xs text-gray-500 mt-2">
-                KLRetail M-POS akışı: önce malzeme/cari merkezden kasaya gönderilir; kasa satış yaptıktan sonra «Bilgi Al» sekmesinden veri çekilir.
+                Önce malzeme/cari merkezden kasaya gönderilir; kasa satış yaptıktan sonra «Bilgi Al» sekmesinden veri çekilir.
               </p>
             </Card>
             {/* MPOS toplu gönderim + filtre (KLR-2234) */}
@@ -1662,10 +1663,21 @@ export function EnterpriseCentralDataManagement() {
 
           {/* Bilgi Al */}
           <TabsContent value="receive" className="mt-0 space-y-4">
-            <MposKalemTransferPanel
-              mode="receive"
-              title="Bilgilerin alınması (Kasa → Merkez)"
-              hideTargetFields
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">
+              <MposKalemTargetBar
+                branchStores={branchStores}
+                selectedBranchStoreId={selectedBranchStoreId}
+                onBranchChange={handleBranchStoreChange}
+                selectedTerminalDeviceId={selectedTerminalDeviceId}
+                onTerminalChange={handleTerminalChange}
+                filteredTerminals={filteredTerminalsForStore}
+                targetLabel={mposTargetLabel()}
+                theme={theme}
+              />
+              <MposKalemTransferPanel
+                mode="receive"
+                title="Bilgilerin alınması"
+                hideTargetFields
               fileTypes={MPOS_RECEIVE_FILE_TYPES}
               fileType={mposReceiveFileType}
               onFileTypeChange={(v) => setMposReceiveFileType(v as MposReceiveFileType)}
@@ -1679,8 +1691,9 @@ export function EnterpriseCentralDataManagement() {
               onCancel={handleMposKalemReset}
               onSubmit={() => void handleMposKalemReceive()}
               theme={theme}
-              helpText="Eğitim 1: satış ve günsonu al. Kasada işlem bittikten sonra Dosya Tipi seçip Al."
+              helpText="Satış ve günsonu al. Kasada işlem bittikten sonra dosya tipi seçip Al."
             />
+            </div>
 
             <MposSyncLogPanel
               storeId={selectedBranchStoreId || undefined}
@@ -1741,7 +1754,7 @@ export function EnterpriseCentralDataManagement() {
             <Card className={`p-6 ${theme === 'dark' ? 'bg-gray-800 border-gray-700' : 'bg-white'}`}>
               <h3 className="text-lg mb-4 flex items-center gap-2">
                 <Settings className="w-5 h-5" />
-                KLRetail M-POS Kasa Servis Ayarları
+                Kasa servis ayarları
               </h3>
               <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
                 Videodaki «Servis ayarları»: kasanın merkez mesajlarını kontrol etme aralığı. Otomatik kanalda kuyruk periyodik işlenir.
@@ -2224,6 +2237,17 @@ export function EnterpriseCentralDataManagement() {
 
           {/* Günsonu Tab — MPOS günsonu işlem kontrolü (KLR-2273) kasa bazlı */}
           <TabsContent value="dayend" className="space-y-4">
+            <MposKalemTargetBar
+              branchStores={branchStores}
+              selectedBranchStoreId={selectedBranchStoreId}
+              onBranchChange={handleBranchStoreChange}
+              selectedTerminalDeviceId={selectedTerminalDeviceId}
+              onTerminalChange={handleTerminalChange}
+              filteredTerminals={filteredTerminalsForStore}
+              targetLabel={mposTargetLabel()}
+              theme={theme}
+              className="max-w-xl"
+            />
             <div className="flex justify-between items-center flex-wrap gap-2">
               <p className="text-sm text-gray-600 dark:text-gray-400">
                 Günsonu işlem kontrolü: bugün veri alınmayan kasalar «Veri alınmadı» (KLR-2273 — yalnızca günlük durum).

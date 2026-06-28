@@ -19,6 +19,7 @@ type Props = {
   theme: 'light' | 'dark';
   onBulkSendAll?: () => void;
   bulkSendDisabled?: boolean;
+  className?: string;
 };
 
 const fieldClass = (theme: 'light' | 'dark') =>
@@ -39,12 +40,13 @@ export function MposKalemTargetBar({
   theme,
   onBulkSendAll,
   bulkSendDisabled,
+  className = '',
 }: Props) {
   const isDark = theme === 'dark';
 
   return (
     <div
-      className={`rounded-xl border shadow-sm ${
+      className={`rounded-xl border shadow-sm flex flex-col h-full ${className} ${
         isDark ? 'border-gray-700 bg-gray-800' : 'border-gray-200 bg-white'
       }`}
     >
@@ -55,14 +57,14 @@ export function MposKalemTargetBar({
       >
         <MapPin className={`w-4 h-4 shrink-0 ${isDark ? 'text-blue-400' : 'text-blue-600'}`} />
         <span className={`text-sm font-semibold ${isDark ? 'text-gray-100' : 'text-gray-900'}`}>
-          Hedef işyeri ve kasa
+          Aktif Kasa Hedefi
         </span>
-        <span className={`text-xs ml-auto ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
+        <span className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
           {targetLabel}
         </span>
       </div>
 
-      <div className="px-4 py-4">
+      <div className="px-4 py-4 flex-1 flex flex-col">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="space-y-1.5">
             <label

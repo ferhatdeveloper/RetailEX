@@ -80,7 +80,7 @@ export function MposDayEndDialog({
         >
           <span className="flex items-center gap-2">
             <Calendar className="w-4 h-4" />
-            KLRetail M-POS Günsonu Al
+            Günsonu Al
           </span>
           <button type="button" onClick={onClose} className="p-1 hover:bg-white/10 rounded" aria-label="Kapat">
             <X className="w-4 h-4" />
