@@ -49,6 +49,8 @@ type Props = {
   onDateFromChange?: (value: string) => void;
   onDateToChange?: (value: string) => void;
   sendProgress?: { current: number; total: number; label: string } | null;
+  /** Üst barda hedef seçiliyse işyeri/kasa alanlarını gizle */
+  hideTargetFields?: boolean;
 };
 
 const fieldClass = (theme: 'light' | 'dark') =>
@@ -89,6 +91,7 @@ export function MposKalemTransferPanel({
   onDateFromChange,
   onDateToChange,
   sendProgress,
+  hideTargetFields = false,
 }: Props) {
   const isDark = theme === 'dark';
   const submitLabel = mode === 'send' ? 'Gönder' : 'Al';
@@ -120,80 +123,88 @@ export function MposKalemTransferPanel({
 
   return (
     <div
-      className={`inline-block w-full max-w-[480px] border shadow-md ${
-        isDark ? 'border-gray-600 bg-gray-800' : 'border-gray-400 bg-[#ececec]'
+      className={`w-full rounded-lg border shadow-sm overflow-hidden ${
+        isDark ? 'border-gray-600 bg-gray-800' : 'border-gray-300 bg-white'
       }`}
-      role="dialog"
+      role="region"
       aria-label={title}
     >
       <div
-        className={`px-3 py-2 text-sm font-semibold select-none ${
+        className={`px-4 py-2.5 text-sm font-semibold ${
           isDark
-            ? 'bg-gradient-to-r from-slate-700 to-slate-600 text-white border-b border-gray-600'
-            : 'bg-gradient-to-r from-[#0054a6] to-[#0066cc] text-white'
+            ? 'bg-slate-700 text-white border-b border-gray-600'
+            : 'bg-[#0054a6] text-white border-b border-[#004080]'
         }`}
       >
         {title}
       </div>
 
-      <div className={`px-4 py-4 space-y-3 ${isDark ? 'bg-gray-800' : 'bg-[#f5f5f5]'}`}>
-        <div className="grid grid-cols-[108px_1fr] gap-x-3 gap-y-3 items-center">
-          <label className={`text-sm text-right pr-1 ${isDark ? 'text-gray-300' : 'text-gray-800'}`}>
-            Dosya Tipi
-          </label>
-          <select
-            value={fileType}
-            onChange={(e) => onFileTypeChange(e.target.value)}
-            className={fieldClass(theme)}
-          >
-            {fileTypes.map((ft) => (
-              <option key={ft.id} value={ft.id}>
-                {ft.label}
-              </option>
-            ))}
-          </select>
+      <div className={`px-4 py-4 space-y-4 ${isDark ? 'bg-gray-800' : 'bg-gray-50'}`}>
+        <div className={`grid gap-3 ${hideTargetFields ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1'}`}>
+          <div className="space-y-1.5">
+            <label className={`block text-xs font-semibold uppercase tracking-wide ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+              Dosya tipi
+            </label>
+            <select
+              value={fileType}
+              onChange={(e) => onFileTypeChange(e.target.value)}
+              className={fieldClass(theme)}
+            >
+              {fileTypes.map((ft) => (
+                <option key={ft.id} value={ft.id}>
+                  {ft.label}
+                </option>
+              ))}
+            </select>
+          </div>
 
-          <label className={`text-sm text-right pr-1 ${isDark ? 'text-gray-300' : 'text-gray-800'}`}>
-            İşyeri
-          </label>
-          <select
-            value={selectedBranchStoreId}
-            onChange={(e) => onBranchChange(e.target.value)}
-            className={fieldClass(theme)}
-          >
-            <option value="" />
-            {branchStores.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name} ({s.code})
-              </option>
-            ))}
-          </select>
-
-          {!multiSend ? (
+          {!hideTargetFields ? (
             <>
-              <label className={`text-sm text-right pr-1 ${isDark ? 'text-gray-300' : 'text-gray-800'}`}>
-                Kasa
-              </label>
-              <select
-                value={selectedTerminalDeviceId}
-                onChange={(e) => onTerminalChange(e.target.value)}
-                disabled={!selectedBranchStoreId}
-                className={`${fieldClass(theme)} disabled:opacity-60`}
-              >
-                <option value="" />
-                {filteredTerminals.map((t) => (
-                  <option key={t.deviceId} value={t.deviceId}>
-                    {t.terminalName}
-                    {t.computerName ? ` (${t.computerName})` : ''}
-                  </option>
-                ))}
-              </select>
+              <div className="space-y-1.5">
+                <label className={`block text-xs font-semibold uppercase tracking-wide ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                  İşyeri
+                </label>
+                <select
+                  value={selectedBranchStoreId}
+                  onChange={(e) => onBranchChange(e.target.value)}
+                  className={fieldClass(theme)}
+                >
+                  <option value="">Seçin…</option>
+                  {branchStores.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name} ({s.code})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {!multiSend ? (
+                <div className="space-y-1.5">
+                  <label className={`block text-xs font-semibold uppercase tracking-wide ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                    Kasa
+                  </label>
+                  <select
+                    value={selectedTerminalDeviceId}
+                    onChange={(e) => onTerminalChange(e.target.value)}
+                    disabled={!selectedBranchStoreId}
+                    className={`${fieldClass(theme)} disabled:opacity-60`}
+                  >
+                    <option value="">Seçin…</option>
+                    {filteredTerminals.map((t) => (
+                      <option key={t.deviceId} value={t.deviceId}>
+                        {t.terminalName}
+                        {t.computerName ? ` (${t.computerName})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ) : null}
             </>
           ) : null}
         </div>
 
         {multiSend && selectedBranchStoreId ? (
-          <div className={`ml-[120px] space-y-2 rounded border p-2 ${isDark ? 'border-gray-600 bg-gray-900/40' : 'border-gray-300 bg-white'}`}>
+          <div className={`space-y-2 rounded-md border p-3 ${isDark ? 'border-gray-600 bg-gray-900/50' : 'border-gray-200 bg-white'}`}>
             <div className="flex items-center justify-between gap-2">
               <span className={`text-xs font-medium ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
                 Kasalar (JRetail — çoklu seçim)
@@ -241,15 +252,15 @@ export function MposKalemTransferPanel({
           </div>
         ) : null}
 
-        {!multiSend && selectedBranchStoreId && filteredTerminals.length === 0 && (
-          <p className="text-xs text-amber-700 dark:text-amber-400 mt-1 ml-[120px]">
+        {!multiSend && !hideTargetFields && selectedBranchStoreId && filteredTerminals.length === 0 && (
+          <p className="text-xs text-amber-700 dark:text-amber-400">
             Bu işyerinde onaylı kasa yok.
           </p>
         )}
 
         {showSyncScope ? (
-          <div className={`ml-[120px] space-y-2 rounded border p-2 ${isDark ? 'border-gray-600 bg-gray-900/40' : 'border-gray-300 bg-white'}`}>
-            <Label className={`text-xs font-medium ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+          <div className={`space-y-2 rounded-md border p-3 ${isDark ? 'border-gray-600 bg-gray-900/50' : 'border-gray-200 bg-white'}`}>
+            <Label className={`text-xs font-semibold uppercase tracking-wide ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
               Gönderim kapsamı
             </Label>
             <RadioGroup
@@ -296,19 +307,19 @@ export function MposKalemTransferPanel({
         ) : null}
 
         {showProductImagesOption && mode === 'send' && fileType === 'products' && (
-          <label className="flex items-center gap-2 ml-[120px] text-xs cursor-pointer">
+          <label className="flex items-center gap-2 text-sm cursor-pointer">
             <input
               type="checkbox"
               checked={!!includeProductImages}
               onChange={(e) => onIncludeProductImagesChange?.(e.target.checked)}
               className="rounded border-gray-400"
             />
-            Ürün resmi de aktarılsın
+            <span className={isDark ? 'text-gray-200' : 'text-gray-800'}>Ürün resmi de aktarılsın</span>
           </label>
         )}
 
         {sendProgress && sendProgress.total > 0 ? (
-          <div className={`ml-[120px] text-xs ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
+          <div className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
             <div className="flex justify-between mb-1">
               <span>{sendProgress.label}</span>
               <span>
@@ -326,8 +337,8 @@ export function MposKalemTransferPanel({
       </div>
 
       <div
-        className={`flex items-center justify-between px-3 py-2 border-t ${
-          isDark ? 'border-gray-600 bg-gray-900' : 'border-gray-400 bg-[#ececec]'
+        className={`flex items-center justify-between px-4 py-3 border-t gap-3 ${
+          isDark ? 'border-gray-600 bg-gray-900/80' : 'border-gray-200 bg-white'
         }`}
       >
         <Button

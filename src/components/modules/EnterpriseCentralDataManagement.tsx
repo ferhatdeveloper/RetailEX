@@ -1241,52 +1241,79 @@ export function EnterpriseCentralDataManagement() {
           bulkSendDisabled={isSyncBusy || !selectedBranchStoreId || filteredTerminalsForStore.length === 0}
         />
 
-        {/* Main Tabs — MPOS Kalem eğitim sırası: Gönder → Al → Günsonu → Kuyruk → Kasalar → Servis */}
-        <Tabs defaultValue="send" className="w-full">
-          <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4 lg:grid-cols-9 h-auto">
-            <TabsTrigger value="send" className="gap-2">
-              <Upload className="w-4 h-4" />
-              Bilgi Gönder
-            </TabsTrigger>
-            <TabsTrigger value="receive" className="gap-2">
-              <Download className="w-4 h-4" />
-              Bilgi Al
-            </TabsTrigger>
-            <TabsTrigger value="dayend" className="gap-2">
-              <Calendar className="w-4 h-4" />
-              Günsonu ({dayEndStatus.filter((d) => !d.isOnline).length})
-            </TabsTrigger>
-            <TabsTrigger value="reports" className="gap-2">
-              <FileText className="w-4 h-4" />
-              Kasa Raporları
-            </TabsTrigger>
-            <TabsTrigger value="queue" className="gap-2">
-              <Clock className="w-4 h-4" />
-              Kuyruk ({queue.length})
-            </TabsTrigger>
-            <TabsTrigger value="devices" className="gap-2">
-              <Monitor className="w-4 h-4" />
-              Kasalar ({devices.length})
-            </TabsTrigger>
-            <TabsTrigger value="service" className="gap-2">
-              <Settings className="w-4 h-4" />
-              Servis Ayarları
-            </TabsTrigger>
-            <TabsTrigger value="groups" className="gap-2">
-              <Layers className="w-4 h-4" />
-              Gruplar ({deviceGroups.length})
-            </TabsTrigger>
-            <TabsTrigger value="history" className="gap-2">
-              <BarChart3 className="w-4 h-4" />
-              Geçmiş
-            </TabsTrigger>
-          </TabsList>
+        {/* MPOS sekmeleri — gruplu, kaydırmalı */}
+        <Tabs defaultValue="send" className="w-full space-y-4">
+          <Card className={`p-3 ${theme === 'dark' ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+            <p className={`text-xs font-semibold uppercase tracking-wider mb-2 ${theme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
+              Kasa veri akışı
+            </p>
+            <TabsList
+              className={`w-full h-auto flex flex-wrap gap-1 p-1 rounded-lg border ${
+                theme === 'dark' ? 'bg-gray-900/60 border-gray-700' : 'bg-gray-100 border-gray-200'
+              }`}
+            >
+              {(
+                [
+                  { value: 'send', icon: Upload, label: 'Bilgi Gönder' },
+                  { value: 'receive', icon: Download, label: 'Bilgi Al' },
+                  { value: 'dayend', icon: Calendar, label: `Günsonu (${dayEndStatus.filter((d) => !d.isOnline).length})` },
+                ] as const
+              ).map(({ value, icon: Icon, label }) => (
+                <TabsTrigger
+                  key={value}
+                  value={value}
+                  className={`gap-2 px-3 py-2 rounded-md text-sm font-medium flex-shrink-0 data-[state=active]:bg-blue-600 data-[state=active]:text-white data-[state=active]:shadow-sm ${
+                    theme === 'dark'
+                      ? 'text-gray-300 hover:text-white'
+                      : 'text-gray-700 hover:text-gray-900'
+                  }`}
+                >
+                  <Icon className="w-4 h-4" />
+                  {label}
+                </TabsTrigger>
+              ))}
+            </TabsList>
 
-          {/* Bilgi Gönder — Kalem dialog (ekran görüntüsü düzeni) */}
-          <TabsContent value="send" className="space-y-4">
+            <p className={`text-xs font-semibold uppercase tracking-wider mt-4 mb-2 ${theme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
+              Yönetim ve raporlar
+            </p>
+            <TabsList
+              className={`w-full h-auto flex flex-nowrap overflow-x-auto gap-1 p-1 rounded-lg border scrollbar-thin ${
+                theme === 'dark' ? 'bg-gray-900/60 border-gray-700' : 'bg-gray-100 border-gray-200'
+              }`}
+            >
+              {(
+                [
+                  { value: 'reports', icon: FileText, label: 'Kasa Raporları' },
+                  { value: 'queue', icon: Clock, label: `Kuyruk (${queue.length})` },
+                  { value: 'devices', icon: Monitor, label: `Kasalar (${devices.length})` },
+                  { value: 'service', icon: Settings, label: 'Servis Ayarları' },
+                  { value: 'groups', icon: Layers, label: `Gruplar (${deviceGroups.length})` },
+                  { value: 'history', icon: BarChart3, label: 'Geçmiş' },
+                ] as const
+              ).map(({ value, icon: Icon, label }) => (
+                <TabsTrigger
+                  key={value}
+                  value={value}
+                  className={`gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium whitespace-nowrap flex-shrink-0 data-[state=active]:bg-slate-700 data-[state=active]:text-white dark:data-[state=active]:bg-slate-600 ${
+                    theme === 'dark'
+                      ? 'text-gray-400 hover:text-gray-200'
+                      : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  <Icon className="w-3.5 h-3.5" />
+                  {label}
+                </TabsTrigger>
+              ))}
+            </TabsList>
+          </Card>
+
+          {/* Bilgi Gönder */}
+          <TabsContent value="send" className="mt-0 space-y-4">
             <MposKalemTransferPanel
               mode="send"
-              title="KLRetail M-POS Bilgilerinin Gönderilmesi"
+              title="Bilgilerin gönderilmesi (Merkez → Kasa)"
+              hideTargetFields
               fileTypes={MPOS_SEND_FILE_TYPES}
               fileType={mposFileType}
               onFileTypeChange={(v) => setMposFileType(v as MposSendFileType)}
@@ -1321,8 +1348,8 @@ export function EnterpriseCentralDataManagement() {
               theme={theme}
             />
 
-            <details className={`rounded-lg border max-w-[440px] ${theme === 'dark' ? 'border-gray-700 bg-gray-800/50' : 'border-gray-200 bg-white'}`}>
-              <summary className="cursor-pointer p-4 text-sm font-medium flex items-center gap-2">
+            <details className={`rounded-lg border ${theme === 'dark' ? 'border-gray-700 bg-gray-800/50' : 'border-gray-200 bg-white'}`}>
+              <summary className="cursor-pointer p-4 text-sm font-medium flex items-center gap-2 text-gray-800 dark:text-gray-200">
                 <ChevronRight className="w-4 h-4" />
                 Toplu gönderim ve detaylı kayıt (gelişmiş)
               </summary>
@@ -1633,11 +1660,12 @@ export function EnterpriseCentralDataManagement() {
             </details>
           </TabsContent>
 
-          {/* Bilgi Al — Kalem dialog (Gönder ile aynı düzen) */}
-          <TabsContent value="receive" className="space-y-4">
+          {/* Bilgi Al */}
+          <TabsContent value="receive" className="mt-0 space-y-4">
             <MposKalemTransferPanel
               mode="receive"
-              title="KLRetail M-POS Bilgilerinin Alınması"
+              title="Bilgilerin alınması (Kasa → Merkez)"
+              hideTargetFields
               fileTypes={MPOS_RECEIVE_FILE_TYPES}
               fileType={mposReceiveFileType}
               onFileTypeChange={(v) => setMposReceiveFileType(v as MposReceiveFileType)}
@@ -1654,8 +1682,17 @@ export function EnterpriseCentralDataManagement() {
               helpText="Eğitim 1: satış ve günsonu al. Kasada işlem bittikten sonra Dosya Tipi seçip Al."
             />
 
-            <details className={`rounded-lg border max-w-[440px] ${theme === 'dark' ? 'border-gray-700 bg-gray-800/50' : 'border-gray-200 bg-white'}`}>
-              <summary className="cursor-pointer p-4 text-sm font-medium">Hızlı alım (toplu)</summary>
+            <MposSyncLogPanel
+              storeId={selectedBranchStoreId || undefined}
+              terminalName={selectedTerminal()?.terminalName}
+              theme={theme}
+            />
+
+            <details className={`rounded-lg border ${theme === 'dark' ? 'border-gray-700 bg-gray-800/50' : 'border-gray-200 bg-white'}`}>
+              <summary className="cursor-pointer p-4 text-sm font-medium flex items-center gap-2">
+                <ChevronRight className="w-4 h-4" />
+                Hızlı alım (toplu)
+              </summary>
               <div className="p-4 pt-0 flex flex-wrap gap-2 border-t border-gray-200 dark:border-gray-700">
                 <Button size="sm" disabled={isSyncBusy} onClick={() => void handlePullAll()} className="gap-2">
                   Tüm Satışları Al
