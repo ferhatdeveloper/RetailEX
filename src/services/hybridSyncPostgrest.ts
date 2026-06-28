@@ -5,6 +5,7 @@
 import { fetchRetailexAware } from '../utils/retailexDevProxy';
 import type { HybridSyncFilter, PgEndpointConfig, SyncQueueRow } from './hybridSyncEngine';
 import { queryPgRows } from './hybridSyncEngine';
+import { normalizeSyncRow } from './hybridSyncNormalize';
 
 export const PG_SCHEMAS = ['public', 'wms', 'rest', 'beauty', 'auth', 'logic', 'pos'] as const;
 export type PgSchemaName = (typeof PG_SCHEMAS)[number];
@@ -200,8 +201,32 @@ export async function applyItemPostgrest(
 
   if (!item.data || typeof item.data !== 'object') return;
 
+  let payload = normalizeSyncRow(table, item.data as Record<string, unknown>);
+
+  if (/_((customers|suppliers))$/i.test(table)) {
+    const code = String(payload.code ?? '').trim();
+    if (code) {
+      const lookupUrl = restUrl(
+        baseUrl,
+        `/${table}`,
+        `code=eq.${encodeURIComponent(code)}&select=id&limit=1`,
+      );
+      const lookupRes = await fetchRetailexAware(lookupUrl, {
+        method: 'GET',
+        headers: restHeaders(schema),
+      });
+      if (lookupRes.ok) {
+        const rows = (await lookupRes.json()) as Array<{ id?: string }>;
+        const existingId = rows[0]?.id;
+        if (existingId && existingId !== id) {
+          payload = { ...payload, id: existingId };
+        }
+      }
+    }
+  }
+
   const url = restUrl(baseUrl, `/${table}`);
-  await postgrestUpsertWithSchemaFallback(url, schema, item.data as Record<string, unknown>, `PostgREST UPSERT ${table}`);
+  await postgrestUpsertWithSchemaFallback(url, schema, payload, `PostgREST UPSERT ${table}`);
 }
 
 export async function markCompletedPostgrest(baseUrl: string, id: string): Promise<void> {

@@ -503,17 +503,16 @@ export async function enqueueEnterpriseBulk(
       pg,
       `SELECT t.id::text AS id, to_jsonb(t) AS data
        FROM ${table} t
-       WHERE (t.firm_nr = $1 OR lpad(ltrim(COALESCE(t.firm_nr, ''), '0'), 3, '0') = $1)
-         AND ($2::text IS NULL OR t.name ILIKE '%' || $2 || '%'
-              OR COALESCE(t.barcode, '') ILIKE '%' || $2 || '%'
-              OR COALESCE(t.code, '') ILIKE '%' || $2 || '%')
-         AND ($3::text IS NULL OR COALESCE(t.category_code, t.categorycode, '') = $3)
-         AND ($4::boolean IS false OR COALESCE(t.is_active, true) = true)
-         AND ($5::date IS NULL OR t.updated_at >= $5::date)
-         AND ($7::date IS NULL OR t.updated_at < ($7::date + interval '1 day'))
+       WHERE ($1::text IS NULL OR t.name ILIKE '%' || $1 || '%'
+              OR COALESCE(t.barcode, '') ILIKE '%' || $1 || '%'
+              OR COALESCE(t.code, '') ILIKE '%' || $1 || '%')
+         AND ($2::text IS NULL OR COALESCE(t.category_code, t.categorycode, '') = $2)
+         AND ($3::boolean IS false OR COALESCE(t.is_active, true) = true)
+         AND ($4::date IS NULL OR t.updated_at >= $4::date)
+         AND ($6::date IS NULL OR t.updated_at < ($6::date + interval '1 day'))
        ORDER BY t.updated_at DESC NULLS LAST
-       LIMIT $6`,
-      [firm, search, categoryCode, onlyActive, changedSince, limit, changedUntil],
+       LIMIT $5`,
+      [search, categoryCode, onlyActive, changedSince, limit, changedUntil],
     );
 
     if (!rows.length) {

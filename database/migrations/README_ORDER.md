@@ -61,6 +61,7 @@
 56. **068_approve_pos_terminal_placement.sql** – Cihaz onayında işyeri (`store_id`) ve kasa (`terminal_name`) yerleştirmesi; `get_pos_terminal_status` store_id döndürür.
 57. **069_register_pos_terminal_single_overload.sql** – PostgREST PGRST203: eski 8 parametreli `register_pos_terminal` kaldırılır.
 58. **070_get_pos_terminal_status_text_cast.sql** – PostgREST 42804: `get_pos_terminal_status` dönüş kolonları TEXT cast.
+59. **071_apply_sync_queue_item_normalize.sql** – Hibrit sync: NOT NULL varsayılan normalize (`expiry_tracking` vb.), müşteri/tedarikçi `code` çakışması birleştirme.
 
 **Kiracılara toplu uygulama (VPS / uzak PG):**
 - `npm run db:migrate:tenants` — tüm kiracı DB'ler

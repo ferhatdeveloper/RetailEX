@@ -12,6 +12,7 @@ import {
   warmTableSchemaCache,
   type PgSchemaName,
 } from './hybridSyncPostgrest';
+import { normalizeSyncRow } from './hybridSyncNormalize';
 
 export type PgEndpointConfig = {
   host: string;
@@ -211,7 +212,11 @@ async function fetchPendingQueuePg(
 }
 
 async function applyItemPg(target: PgEndpointConfig, item: SyncQueueRow): Promise<string> {
-  const dataJson = item.data ? JSON.stringify(item.data) : null;
+  let rowData = item.data;
+  if (rowData && typeof rowData === 'object') {
+    rowData = normalizeSyncRow(item.table_name, rowData as Record<string, unknown>);
+  }
+  const dataJson = rowData ? JSON.stringify(rowData) : null;
   const rows = await queryPgRows(
     target,
     `SELECT public.apply_sync_queue_item($1, $2, $3::uuid, $4::jsonb) AS outcome`,
