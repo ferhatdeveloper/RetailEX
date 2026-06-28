@@ -115,10 +115,55 @@ async fn process_sync_queue(_app: &tauri::AppHandle) -> Result<(), String> {
     process_sync_queue_internal(Some(_app.clone())).await
 }
 
+#[derive(Clone, Copy, Default, Serialize, Deserialize)]
+pub struct SyncApplyTotals {
+    pub synced: i32,
+    pub failed: i32,
+    pub inserted: i32,
+    pub updated: i32,
+    pub skipped: i32,
+}
+
+impl SyncApplyTotals {
+    pub fn record_apply(&mut self, outcome: &str) {
+        match outcome {
+            "insert" => {
+                self.inserted += 1;
+                self.synced += 1;
+            }
+            "update" | "delete" => {
+                self.updated += 1;
+                self.synced += 1;
+            }
+            "skip" | "noop" => {
+                self.skipped += 1;
+            }
+            _ => {
+                self.synced += 1;
+            }
+        }
+    }
+
+    pub fn merge(&mut self, other: &SyncApplyTotals) {
+        self.synced += other.synced;
+        self.failed += other.failed;
+        self.inserted += other.inserted;
+        self.updated += other.updated;
+        self.skipped += other.skipped;
+    }
+
+    pub fn meaningful(&self) -> i32 {
+        self.inserted + self.updated
+    }
+}
+
 #[derive(Clone, Serialize, Deserialize)]
 struct KasaDataArrivedPayload {
     synced: i32,
     failed: i32,
+    inserted: i32,
+    updated: i32,
+    skipped: i32,
     at: String,
 }
 
@@ -126,9 +171,23 @@ struct KasaDataArrivedPayload {
 struct KasaArrivalPendingFile {
     synced: i32,
     failed: i32,
+    inserted: i32,
+    updated: i32,
+    skipped: i32,
     last_at: String,
     events: i32,
     source: String,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+pub struct ServiceSyncHistoryEntry {
+    pub at: String,
+    pub synced: i32,
+    pub failed: i32,
+    pub inserted: i32,
+    pub updated: i32,
+    pub skipped: i32,
+    pub source: String,
 }
 
 static HEADLESS_RUNTIME: OnceLock<tokio::runtime::Handle> = OnceLock::new();
@@ -155,8 +214,14 @@ fn kasa_arrival_pending_path() -> PathBuf {
     retail_ex_data_dir().join("kasa_data_arrival_pending.json")
 }
 
-fn persist_kasa_data_arrived(synced: i32, failed: i32, source: &str) {
-    if synced <= 0 {
+fn kasa_service_sync_history_path() -> PathBuf {
+    retail_ex_data_dir().join("kasa_service_sync_history.json")
+}
+
+const SERVICE_SYNC_HISTORY_MAX: usize = 200;
+
+fn persist_kasa_data_arrived(totals: &SyncApplyTotals, failed: i32, source: &str) {
+    if totals.meaningful() <= 0 {
         return;
     }
     let dir = retail_ex_data_dir();
@@ -173,9 +238,12 @@ fn persist_kasa_data_arrived(synced: i32, failed: i32, source: &str) {
         KasaArrivalPendingFile::default()
     };
 
-    pending.synced = pending.synced.saturating_add(synced);
+    pending.synced = pending.synced.saturating_add(totals.synced);
     pending.failed = pending.failed.saturating_add(failed);
-    pending.last_at = now;
+    pending.inserted = pending.inserted.saturating_add(totals.inserted);
+    pending.updated = pending.updated.saturating_add(totals.updated);
+    pending.skipped = pending.skipped.saturating_add(totals.skipped);
+    pending.last_at = now.clone();
     pending.events = pending.events.saturating_add(1);
     if pending.source.is_empty() {
         pending.source = source.to_string();
@@ -184,12 +252,67 @@ fn persist_kasa_data_arrived(synced: i32, failed: i32, source: &str) {
     if let Ok(json) = serde_json::to_string(&pending) {
         let _ = std::fs::write(&path, json);
     }
+
+    append_service_sync_history(totals, failed, source, &now);
+}
+
+fn append_service_sync_history(totals: &SyncApplyTotals, failed: i32, source: &str, at: &str) {
+    if totals.synced + totals.skipped + failed <= 0 {
+        return;
+    }
+    let path = kasa_service_sync_history_path();
+    let mut entries: Vec<ServiceSyncHistoryEntry> = if path.exists() {
+        std::fs::read_to_string(&path)
+            .ok()
+            .and_then(|s| serde_json::from_str(&s).ok())
+            .unwrap_or_default()
+    } else {
+        Vec::new()
+    };
+
+    entries.insert(
+        0,
+        ServiceSyncHistoryEntry {
+            at: at.to_string(),
+            synced: totals.synced,
+            failed,
+            inserted: totals.inserted,
+            updated: totals.updated,
+            skipped: totals.skipped,
+            source: source.to_string(),
+        },
+    );
+    entries.truncate(SERVICE_SYNC_HISTORY_MAX);
+
+    if let Ok(json) = serde_json::to_string(&entries) {
+        let _ = std::fs::write(&path, json);
+    }
+}
+
+pub fn list_kasa_service_sync_history_internal(limit: usize) -> Vec<ServiceSyncHistoryEntry> {
+    let path = kasa_service_sync_history_path();
+    if !path.exists() {
+        return Vec::new();
+    }
+    let entries: Vec<ServiceSyncHistoryEntry> = std::fs::read_to_string(&path)
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or_default();
+    entries.into_iter().take(limit).collect()
+}
+
+#[tauri::command]
+pub fn list_kasa_service_sync_history(limit: Option<usize>) -> Vec<ServiceSyncHistoryEntry> {
+    list_kasa_service_sync_history_internal(limit.unwrap_or(50).min(200))
 }
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct PendingKasaArrival {
     pub synced: i32,
     pub failed: i32,
+    pub inserted: i32,
+    pub updated: i32,
+    pub skipped: i32,
     pub at: String,
     pub events: i32,
     pub source: String,
@@ -203,12 +326,15 @@ pub fn consume_pending_kasa_data_arrival_internal() -> Option<PendingKasaArrival
     let raw = std::fs::read_to_string(&path).ok()?;
     let pending: KasaArrivalPendingFile = serde_json::from_str(&raw).ok()?;
     let _ = std::fs::remove_file(&path);
-    if pending.synced <= 0 {
+    if pending.inserted + pending.updated <= 0 && pending.synced <= 0 {
         return None;
     }
     Some(PendingKasaArrival {
         synced: pending.synced,
         failed: pending.failed,
+        inserted: pending.inserted,
+        updated: pending.updated,
+        skipped: pending.skipped,
         at: pending.last_at,
         events: pending.events,
         source: pending.source,
@@ -285,25 +411,102 @@ fn is_app_ui_running() -> bool {
     age.num_seconds() >= 0 && age.num_seconds() <= UI_HEARTBEAT_STALE_SECS as i64
 }
 
-fn emit_kasa_data_arrived(app: &Option<tauri::AppHandle>, synced: i32, failed: i32) {
-    if synced <= 0 {
+fn emit_kasa_data_arrived(app: &Option<tauri::AppHandle>, totals: &SyncApplyTotals, failed: i32) {
+    if totals.meaningful() <= 0 {
         return;
     }
 
+    let payload = KasaDataArrivedPayload {
+        synced: totals.synced,
+        failed,
+        inserted: totals.inserted,
+        updated: totals.updated,
+        skipped: totals.skipped,
+        at: chrono::Utc::now().to_rfc3339(),
+    };
+
     if let Some(h) = app {
-        let payload = KasaDataArrivedPayload {
-            synced,
-            failed,
-            at: chrono::Utc::now().to_rfc3339(),
-        };
         let _ = h.emit("kasa-data-arrived", payload);
         return;
     }
 
     // Uygulama kapalıyken Windows servisi veri çeker — açılışta «Veri alındı» için biriktir
     if !is_app_ui_running() {
-        persist_kasa_data_arrived(synced, failed, "app_closed");
+        persist_kasa_data_arrived(totals, failed, "app_closed");
     }
+}
+
+fn format_service_sync_message(totals: &SyncApplyTotals) -> String {
+    format!(
+        "Uygulama kapalıyken · Yeni: {} · Güncelleme: {} · Tekrar atlandı: {}",
+        totals.inserted, totals.updated, totals.skipped
+    )
+}
+
+async fn log_service_inbound_sync(
+    local: &tokio_postgres::Client,
+    config: &crate::config::AppConfig,
+    totals: &SyncApplyTotals,
+    failed: i32,
+) {
+    if totals.synced + totals.skipped + failed <= 0 {
+        return;
+    }
+
+    let firm_nr = config.erp_firm_nr.trim();
+    let firm = if firm_nr.is_empty() {
+        "001".to_string()
+    } else {
+        firm_nr.to_string()
+    };
+    let store_uuid = uuid::Uuid::parse_str(config.store_id.trim()).ok();
+    let terminal = if config.terminal_name.trim().is_empty() {
+        None
+    } else {
+        Some(config.terminal_name.as_str())
+    };
+    let device_id = if config.device_id.trim().is_empty() {
+        None
+    } else {
+        Some(config.device_id.as_str())
+    };
+    let message = format_service_sync_message(totals);
+    let detail = serde_json::json!({
+        "inserted": totals.inserted,
+        "updated": totals.updated,
+        "skipped": totals.skipped,
+        "synced": totals.synced,
+        "failed": failed,
+        "source": "app_closed"
+    });
+
+    let status = if failed > 0 && totals.meaningful() == 0 {
+        "failed"
+    } else if failed > 0 {
+        "partial"
+    } else {
+        "ok"
+    };
+
+    let _ = local
+        .execute(
+            "INSERT INTO terminal_sync_log (
+               firm_nr, store_id, terminal_name, terminal_device_id,
+               direction, file_type, status, record_count, message, detail
+             )
+             VALUES ($1, $2::uuid, $3, $4, 'receive', 'service_background', $5, $6, $7, $8::jsonb)",
+            &[
+                &firm,
+                &store_uuid,
+                &terminal,
+                &device_id,
+                &status,
+                &totals.meaningful(),
+                &message,
+                &detail,
+            ],
+        )
+        .await;
 }
 
 fn parse_pg_endpoint(db_str: &str) -> (String, u16, String) {
@@ -438,9 +641,8 @@ async fn sync_one_direction(
     store_id: Option<&str>,
     select_mode: QueueSelectMode,
     terminal_name: Option<&str>,
-) -> Result<(i32, i32), String> {
-    let mut total_synced = 0i32;
-    let mut total_failed = 0i32;
+) -> Result<SyncApplyTotals, String> {
+    let mut totals = SyncApplyTotals::default();
     let store_uuid = store_id
         .filter(|s| !s.trim().is_empty())
         .and_then(|s| uuid::Uuid::parse_str(s).ok());
@@ -462,21 +664,22 @@ async fn sync_one_direction(
             let data: Option<serde_json::Value> = row.get("data");
 
             let apply = target
-                .execute(
+                .query_one(
                     "SELECT public.apply_sync_queue_item($1, $2, $3, $4::jsonb)",
                     &[&table_name, &action, &record_id, &data],
                 )
                 .await;
 
             match apply {
-                Ok(_) => {
+                Ok(row) => {
+                    let outcome: String = row.get(0);
+                    totals.record_apply(&outcome);
                     let _ = source
                         .execute(
                             "UPDATE sync_queue SET status = 'completed', synced_at = NOW(), error_message = NULL WHERE id = $1",
                             &[&id],
                         )
                         .await;
-                    total_synced += 1;
                     crate::logger::log_sync_success(&record_id.to_string(), &action);
                 }
                 Err(e) => {
@@ -487,14 +690,14 @@ async fn sync_one_direction(
                             &[&id, &error_msg],
                         )
                         .await;
-                    total_failed += 1;
+                    totals.failed += 1;
                     crate::logger::log_sync_error(&record_id.to_string(), &action, &error_msg);
                 }
             }
         }
     }
 
-    Ok((total_synced, total_failed))
+    Ok(totals)
 }
 
 fn normalize_rest_base(url: &str) -> String {
@@ -843,9 +1046,8 @@ async fn sync_postgrest_to_pg(
     store_id: Option<&str>,
     inbound_master: bool,
     terminal_name: Option<&str>,
-) -> Result<(i32, i32), String> {
-    let mut total_synced = 0i32;
-    let mut total_failed = 0i32;
+) -> Result<SyncApplyTotals, String> {
+    let mut totals = SyncApplyTotals::default();
     let base = normalize_rest_base(rest_base);
     let query = if inbound_master {
         build_inbound_postgrest_query(&base, store_id, terminal_name, 50).replace(
@@ -904,19 +1106,20 @@ async fn sync_postgrest_to_pg(
             };
 
             let apply = target
-                .execute(
+                .query_one(
                     "SELECT public.apply_sync_queue_item($1, $2, $3, $4::jsonb)",
                     &[&table_name, &action, &record_id, &data],
                 )
                 .await;
 
             match apply {
-                Ok(_) => {
+                Ok(row) => {
+                    let outcome: String = row.get(0);
+                    totals.record_apply(&outcome);
                     let _ = postgrest_mark_completed(http, rest_base, &id).await;
-                    total_synced += 1;
                 }
                 Err(e) => {
-                    total_failed += 1;
+                    totals.failed += 1;
                     let error_msg = format_pg_error(e);
                     eprintln!("postgrest→pg apply error: {}", error_msg);
                     let _ = postgrest_mark_failed(http, rest_base, &id, &error_msg).await;
@@ -925,13 +1128,16 @@ async fn sync_postgrest_to_pg(
         }
     }
 
-    Ok((total_synced, total_failed))
+    Ok(totals)
 }
 
-async fn process_sync_queue_rest_api(config: &crate::config::AppConfig) -> Result<i32, String> {
+async fn process_sync_queue_rest_api(
+    config: &crate::config::AppConfig,
+    headless_log: bool,
+) -> Result<SyncApplyTotals, String> {
     let rest_base = config.remote_rest_url.trim();
     if rest_base.is_empty() {
-        return Ok(0);
+        return Ok(SyncApplyTotals::default());
     }
 
     let (local_host, local_port, local_db) = parse_pg_endpoint(&config.local_db);
@@ -955,7 +1161,8 @@ async fn process_sync_queue_rest_api(config: &crate::config::AppConfig) -> Resul
     let term = terminal_opt(config);
     let term_ref = term.as_deref();
     let mut total = 0i32;
-    let mut inbound_synced = 0i32;
+
+    let mut inbound_totals = SyncApplyTotals::default();
 
     if direction == "local_to_remote" || direction == "bidirectional" {
         let outbound_store = if config.store_id.trim().is_empty() {
@@ -967,7 +1174,7 @@ async fn process_sync_queue_rest_api(config: &crate::config::AppConfig) -> Resul
         total += s;
     }
     if should_run_inbound_master(config) {
-        let (s, _) = sync_postgrest_to_pg(
+        inbound_totals = sync_postgrest_to_pg(
             &http,
             rest_base,
             &local,
@@ -976,8 +1183,11 @@ async fn process_sync_queue_rest_api(config: &crate::config::AppConfig) -> Resul
             term_ref,
         )
         .await?;
-        inbound_synced = s;
-        total += s;
+        total += inbound_totals.synced;
+    }
+
+    if headless_log && !is_app_ui_running() {
+        log_service_inbound_sync(&local, config, &inbound_totals, inbound_totals.failed).await;
     }
 
     if total > 0 {
@@ -990,7 +1200,7 @@ async fn process_sync_queue_rest_api(config: &crate::config::AppConfig) -> Resul
         );
     }
 
-    Ok(inbound_synced)
+    Ok(inbound_totals)
 }
 
 pub async fn process_sync_queue_internal(app: Option<tauri::AppHandle>) -> Result<(), String> {
@@ -1013,18 +1223,19 @@ pub async fn process_sync_queue_internal(app: Option<tauri::AppHandle>) -> Resul
         return Ok(());
     }
 
-    let mut inbound_synced = 0i32;
+    let mut inbound_totals = SyncApplyTotals::default();
+    let headless_log = app.is_none();
 
     if config.connection_provider == "rest_api" {
-        inbound_synced = process_sync_queue_rest_api(&config).await?;
-        emit_kasa_data_arrived(&app, inbound_synced, 0);
+        inbound_totals = process_sync_queue_rest_api(&config, headless_log).await?;
+        emit_kasa_data_arrived(&app, &inbound_totals, inbound_totals.failed);
         return Ok(());
     }
 
     // Hibrit masaüstü: merkez uç PostgREST (remote_rest_url); doğrudan remote_db PG genelde erişilemez.
     if !config.remote_rest_url.trim().is_empty() {
-        inbound_synced = process_sync_queue_rest_api(&config).await?;
-        emit_kasa_data_arrived(&app, inbound_synced, 0);
+        inbound_totals = process_sync_queue_rest_api(&config, headless_log).await?;
+        emit_kasa_data_arrived(&app, &inbound_totals, inbound_totals.failed);
         return Ok(());
     }
 
@@ -1062,7 +1273,7 @@ pub async fn process_sync_queue_internal(app: Option<tauri::AppHandle>) -> Resul
     let mut total = 0i32;
 
     if direction == "local_to_remote" || direction == "bidirectional" {
-        let (s, _) = sync_one_direction(
+        let out = sync_one_direction(
             &local,
             &remote,
             outbound_store,
@@ -1070,10 +1281,10 @@ pub async fn process_sync_queue_internal(app: Option<tauri::AppHandle>) -> Resul
             None,
         )
         .await?;
-        total += s;
+        total += out.synced;
     }
     if should_run_inbound_master(&config) {
-        let (s, _) = sync_one_direction(
+        inbound_totals = sync_one_direction(
             &remote,
             &local,
             inbound_store,
@@ -1081,8 +1292,11 @@ pub async fn process_sync_queue_internal(app: Option<tauri::AppHandle>) -> Resul
             term_ref,
         )
         .await?;
-        inbound_synced = s;
-        total += s;
+        total += inbound_totals.synced;
+    }
+
+    if headless_log && !is_app_ui_running() {
+        log_service_inbound_sync(&local, &config, &inbound_totals, inbound_totals.failed).await;
     }
 
     if total > 0 {
@@ -1094,7 +1308,7 @@ pub async fn process_sync_queue_internal(app: Option<tauri::AppHandle>) -> Resul
         );
     }
 
-    emit_kasa_data_arrived(&app, inbound_synced, 0);
+    emit_kasa_data_arrived(&app, &inbound_totals, inbound_totals.failed);
     Ok(())
 }
 
@@ -1102,6 +1316,9 @@ pub async fn process_sync_queue_internal(app: Option<tauri::AppHandle>) -> Resul
 pub struct MposPullResult {
     pub synced: i32,
     pub failed: i32,
+    pub inserted: i32,
+    pub updated: i32,
+    pub skipped: i32,
     pub pending_inbound: i64,
 }
 
@@ -1162,6 +1379,9 @@ pub async fn mpos_pull_master_internal() -> Result<MposPullResult, String> {
             return Ok(MposPullResult {
                 synced: 0,
                 failed: 0,
+                inserted: 0,
+                updated: 0,
+                skipped: 0,
                 pending_inbound: 0,
             });
         }
@@ -1173,6 +1393,9 @@ pub async fn mpos_pull_master_internal() -> Result<MposPullResult, String> {
         return Ok(MposPullResult {
             synced: 0,
             failed: 0,
+            inserted: 0,
+            updated: 0,
+            skipped: 0,
             pending_inbound: 0,
         });
     }
@@ -1195,8 +1418,7 @@ pub async fn mpos_pull_master_internal() -> Result<MposPullResult, String> {
     )
     .await?;
 
-    let mut synced = 0i32;
-    let mut failed = 0i32;
+    let mut inbound = SyncApplyTotals::default();
     let pending_inbound: i64;
 
     let uses_postgrest =
@@ -1211,7 +1433,7 @@ pub async fn mpos_pull_master_internal() -> Result<MposPullResult, String> {
             .timeout(Duration::from_secs(15))
             .build()
             .map_err(|e| e.to_string())?;
-        let (s, f) = sync_postgrest_to_pg(
+        inbound = sync_postgrest_to_pg(
             &http,
             rest_base,
             &local,
@@ -1220,8 +1442,6 @@ pub async fn mpos_pull_master_internal() -> Result<MposPullResult, String> {
             term_ref,
         )
         .await?;
-        synced = s;
-        failed = f;
         pending_inbound =
             count_inbound_pending_postgrest(&http, rest_base, store_filter, term_ref)
                 .await
@@ -1239,7 +1459,7 @@ pub async fn mpos_pull_master_internal() -> Result<MposPullResult, String> {
             &remote_db,
         )
         .await?;
-        let (s, f) = sync_one_direction(
+        inbound = sync_one_direction(
             &remote,
             &local,
             store_filter,
@@ -1247,15 +1467,16 @@ pub async fn mpos_pull_master_internal() -> Result<MposPullResult, String> {
             term_ref,
         )
         .await?;
-        synced = s;
-        failed = f;
         pending_inbound =
             count_inbound_pending_pg(&remote, store_filter, term_ref).await?;
     }
 
     Ok(MposPullResult {
-        synced,
-        failed,
+        synced: inbound.synced,
+        failed: inbound.failed,
+        inserted: inbound.inserted,
+        updated: inbound.updated,
+        skipped: inbound.skipped,
         pending_inbound,
     })
 }
@@ -1263,7 +1484,14 @@ pub async fn mpos_pull_master_internal() -> Result<MposPullResult, String> {
 #[tauri::command]
 pub async fn mpos_pull_master_now(app: AppHandle) -> Result<MposPullResult, String> {
     let r = mpos_pull_master_internal().await?;
-    emit_kasa_data_arrived(&Some(app), r.synced, r.failed);
+    let totals = SyncApplyTotals {
+        synced: r.synced,
+        failed: r.failed,
+        inserted: r.inserted,
+        updated: r.updated,
+        skipped: r.skipped,
+    };
+    emit_kasa_data_arrived(&Some(app), &totals, r.failed);
     Ok(r)
 }
 

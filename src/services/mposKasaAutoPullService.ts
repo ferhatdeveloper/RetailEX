@@ -40,6 +40,9 @@ export type KasaPullContext = {
 export type MposPullResult = {
   synced: number;
   failed: number;
+  inserted?: number;
+  updated?: number;
+  skipped?: number;
   pending_inbound: number;
   message?: string;
 };
@@ -102,19 +105,30 @@ export async function pullInboundMasterNow(
   }
 
   if (IS_TAURI) {
-    const r = await safeInvoke<{ synced: number; failed: number; pending_inbound: number }>(
-      'mpos_pull_master_now',
-    );
+    const r = await safeInvoke<{
+      synced: number;
+      failed: number;
+      inserted?: number;
+      updated?: number;
+      skipped?: number;
+      pending_inbound: number;
+    }>('mpos_pull_master_now');
     const out: MposPullResult = {
       synced: Number(r?.synced ?? 0),
       failed: Number(r?.failed ?? 0),
+      inserted: Number(r?.inserted ?? 0),
+      updated: Number(r?.updated ?? 0),
+      skipped: Number(r?.skipped ?? 0),
       pending_inbound: Number(r?.pending_inbound ?? 0),
     };
     if (!opts?.silent) {
-      if (out.synced > 0) {
+      if (out.inserted + out.updated > 0 || out.synced > 0) {
         notifyKasaDataArrived({
           synced: out.synced,
           failed: out.failed,
+          inserted: out.inserted,
+          updated: out.updated,
+          skipped: out.skipped,
           source: opts?.notifySource ?? 'manual',
         });
       } else if (out.failed > 0) {
@@ -145,15 +159,21 @@ export async function pullInboundMasterNow(
   const out: MposPullResult = {
     synced: result.totalSynced,
     failed: result.failed,
+    inserted: result.inserted,
+    updated: result.updated,
+    skipped: result.skipped,
     pending_inbound: pending,
     message: result.message,
   };
 
   if (!opts?.silent) {
-    if (out.synced > 0) {
+    if (out.inserted + out.updated > 0 || out.synced > 0) {
       notifyKasaDataArrived({
         synced: out.synced,
         failed: out.failed,
+        inserted: out.inserted,
+        updated: out.updated,
+        skipped: out.skipped,
         source: opts?.notifySource ?? 'manual',
       });
     } else if (out.failed > 0) {

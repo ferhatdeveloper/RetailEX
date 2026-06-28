@@ -22,6 +22,7 @@ export type TerminalSyncLogRow = {
   recordCount: number;
   businessDate: string | null;
   message: string | null;
+  detail?: Record<string, unknown> | null;
   createdAt: number;
 };
 
@@ -104,7 +105,7 @@ export async function listTerminalSyncLogs(opts?: {
       `SELECT l.id::text AS id, l.firm_nr, l.store_id::text AS store_id,
               s.name AS store_name, l.terminal_name, l.terminal_device_id,
               l.direction, l.file_type, l.status, l.record_count,
-              l.business_date::text AS business_date, l.message,
+              l.business_date::text AS business_date, l.message, l.detail,
               EXTRACT(EPOCH FROM l.created_at) * 1000 AS created_at_ms
        FROM terminal_sync_log l
        LEFT JOIN stores s ON s.id = l.store_id
@@ -126,6 +127,12 @@ export async function listTerminalSyncLogs(opts?: {
       recordCount: Number(r.record_count ?? 0),
       businessDate: r.business_date ? String(r.business_date) : null,
       message: r.message ? String(r.message) : null,
+      detail:
+        r.detail && typeof r.detail === 'object'
+          ? (r.detail as Record<string, unknown>)
+          : r.detail
+            ? (JSON.parse(String(r.detail)) as Record<string, unknown>)
+            : null,
       createdAt: Number(r.created_at_ms ?? Date.now()),
     }));
   } catch {

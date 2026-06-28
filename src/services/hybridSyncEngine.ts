@@ -58,6 +58,9 @@ export type HybridSyncResult = {
   success: boolean;
   totalSynced: number;
   failed: number;
+  inserted: number;
+  updated: number;
+  skipped: number;
   direction?: HybridSyncDirection;
   flow?: HybridSyncFlow;
   message?: string;
@@ -207,13 +210,40 @@ async function fetchPendingQueuePg(
   }));
 }
 
-async function applyItemPg(target: PgEndpointConfig, item: SyncQueueRow): Promise<void> {
+async function applyItemPg(target: PgEndpointConfig, item: SyncQueueRow): Promise<string> {
   const dataJson = item.data ? JSON.stringify(item.data) : null;
-  await queryPgRows(
+  const rows = await queryPgRows(
     target,
-    `SELECT public.apply_sync_queue_item($1, $2, $3::uuid, $4::jsonb)`,
+    `SELECT public.apply_sync_queue_item($1, $2, $3::uuid, $4::jsonb) AS outcome`,
     [item.table_name, item.action, item.record_id, dataJson]
   );
+  return String(rows[0]?.outcome ?? 'insert');
+}
+
+function recordApplyOutcome(totals: {
+  synced: number;
+  inserted: number;
+  updated: number;
+  skipped: number;
+}, outcome: string): void {
+  switch (outcome) {
+    case 'insert':
+      totals.inserted += 1;
+      totals.synced += 1;
+      break;
+    case 'update':
+    case 'delete':
+      totals.updated += 1;
+      totals.synced += 1;
+      break;
+    case 'skip':
+    case 'noop':
+      totals.skipped += 1;
+      break;
+    default:
+      totals.synced += 1;
+      break;
+  }
 }
 
 async function markCompletedPg(source: PgEndpointConfig, id: string): Promise<void> {
@@ -285,13 +315,13 @@ async function applyItem(
   target: SyncEndpoint,
   item: SyncQueueRow,
   schemaCache: Map<string, PgSchemaName>,
-): Promise<void> {
+): Promise<string> {
   if (target.kind === 'pg') {
-    await applyItemPg(target.config, item);
-    return;
+    return applyItemPg(target.config, item);
   }
   const schema = resolveTableSchema(item.table_name, schemaCache);
   await applyItemPostgrest(target.baseUrl, item, schema);
+  return 'insert';
 }
 
 async function markCompleted(source: SyncEndpoint, id: string): Promise<void> {
@@ -341,7 +371,14 @@ export async function syncOneDirection(
     localPg?: PgEndpointConfig;
     schemaCache?: Map<string, PgSchemaName>;
   }
-): Promise<{ synced: number; failed: number; errors: string[] }> {
+): Promise<{
+  synced: number;
+  failed: number;
+  inserted: number;
+  updated: number;
+  skipped: number;
+  errors: string[];
+}> {
   const localPg = opts?.localPg;
   if (!localPg) throw new Error('syncOneDirection: localPg gerekli');
   const schemaCache = opts?.schemaCache ?? new Map<string, PgSchemaName>();
@@ -353,8 +390,12 @@ export async function syncOneDirection(
   const filter = opts?.filter;
   let synced = 0;
   let failed = 0;
+  let inserted = 0;
+  let updated = 0;
+  let skipped = 0;
   const errors: string[] = [];
   let rounds = 0;
+  const totals = { synced, inserted, updated, skipped };
 
   do {
     const pending = await fetchPendingQueue(source, filter);
@@ -362,9 +403,9 @@ export async function syncOneDirection(
 
     for (const item of pending) {
       try {
-        await applyItem(target, item, schemaCache);
+        const outcome = await applyItem(target, item, schemaCache);
+        recordApplyOutcome(totals, outcome);
         await markCompleted(source, item.id);
-        synced += 1;
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         failed += 1;
@@ -377,11 +418,16 @@ export async function syncOneDirection(
       }
     }
 
+    synced = totals.synced;
+    inserted = totals.inserted;
+    updated = totals.updated;
+    skipped = totals.skipped;
+
     rounds += 1;
     if (scope !== 'all') break;
   } while (rounds < MAX_ALL_ROUNDS);
 
-  return { synced, failed, errors };
+  return { synced, failed, inserted, updated, skipped, errors };
 }
 
 export function getSyncLegs(
@@ -460,6 +506,9 @@ export async function runHybridSync(opts: HybridSyncRunOptions): Promise<HybridS
       success: false,
       totalSynced: 0,
       failed: 0,
+      inserted: 0,
+      updated: 0,
+      skipped: 0,
       flow,
       message: err instanceof Error ? err.message : String(err),
     };
@@ -469,6 +518,9 @@ export async function runHybridSync(opts: HybridSyncRunOptions): Promise<HybridS
   const schemaCache = new Map<string, PgSchemaName>();
   let totalSynced = 0;
   let failed = 0;
+  let inserted = 0;
+  let updated = 0;
+  let skipped = 0;
   const allErrors: string[] = [];
 
   const remoteLabel = opts.connectionProvider === 'rest_api' ? 'PostgREST' : 'uzak PG';
@@ -482,6 +534,9 @@ export async function runHybridSync(opts: HybridSyncRunOptions): Promise<HybridS
     });
     totalSynced += r.synced;
     failed += r.failed;
+    inserted += r.inserted;
+    updated += r.updated;
+    skipped += r.skipped;
     allErrors.push(...r.errors);
   }
 
@@ -499,30 +554,43 @@ export async function runHybridSync(opts: HybridSyncRunOptions): Promise<HybridS
       success: true,
       totalSynced: 0,
       failed: 0,
+      inserted: 0,
+      updated: 0,
+      skipped: 0,
       direction,
       flow,
       message: `${flowLabel}: ${scopeLabel} — eşlenecek kayıt yok.`,
     };
   }
 
-  if (failed > 0 && totalSynced === 0) {
+  if (failed > 0 && totalSynced === 0 && inserted + updated === 0) {
     return {
       success: false,
       totalSynced: 0,
       failed,
+      inserted,
+      updated,
+      skipped,
       direction,
       flow,
       message: `${flowLabel} başarısız. ${allErrors[0] ?? 'Bilinmeyen hata'}`,
     };
   }
 
+  const breakdown =
+    inserted + updated + skipped > 0
+      ? ` (${inserted} yeni, ${updated} güncelleme, ${skipped} tekrar atlandı)`
+      : '';
   const partial = failed > 0 ? ` (${failed} hata)` : '';
   return {
     success: true,
     totalSynced,
     failed,
+    inserted,
+    updated,
+    skipped,
     direction,
     flow,
-    message: `${flowLabel}: ${totalSynced} kayıt eşlendi (${scopeLabel})${partial}.`,
+    message: `${flowLabel}: ${totalSynced} kayıt işlendi${breakdown}${partial}.`,
   };
 }

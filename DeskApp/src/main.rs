@@ -2030,6 +2030,7 @@ fn main() {
         db_ops::pg_execute_supabase_dump,
         sync::send_websocket_message, sync::announce_node, sync::get_last_sync_info, sync::mpos_pull_master_now,
         sync::consume_pending_kasa_data_arrival,
+        sync::list_kasa_service_sync_history,
         verify_license, check_update_status,
 
         maintenance::compact_database, security::verify_token,

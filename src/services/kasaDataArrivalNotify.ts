@@ -12,6 +12,9 @@ export type KasaDataArrivalSource = 'auto' | 'instant' | 'manual';
 export type KasaDataArrivalState = {
   synced: number;
   failed: number;
+  inserted: number;
+  updated: number;
+  skipped: number;
   at: string;
   source: KasaDataArrivalSource;
 };
@@ -22,6 +25,28 @@ const listeners = new Set<Listener>();
 
 let lastArrival: KasaDataArrivalState | null = null;
 let lastToastAt = 0;
+
+export function formatSyncBreakdown(opts: {
+  inserted?: number;
+  updated?: number;
+  skipped?: number;
+  synced?: number;
+}): string {
+  const inserted = Math.max(0, Number(opts.inserted) || 0);
+  const updated = Math.max(0, Number(opts.updated) || 0);
+  const skipped = Math.max(0, Number(opts.skipped) || 0);
+  const parts: string[] = [];
+  if (inserted > 0) parts.push(`${inserted} yeni`);
+  if (updated > 0) parts.push(`${updated} güncelleme`);
+  if (skipped > 0) parts.push(`${skipped} tekrar atlandı`);
+  if (parts.length === 0) {
+    const synced = Math.max(0, Number(opts.synced) || 0);
+    if (synced === 1) return '1 kayıt işlendi';
+    if (synced > 0) return `${synced} kayıt işlendi`;
+    return '';
+  }
+  return parts.join(' · ');
+}
 
 export function getLastKasaDataArrival(): KasaDataArrivalState | null {
   return lastArrival;
@@ -56,6 +81,9 @@ function formatTime(iso: string): string {
 export function notifyKasaDataArrived(opts: {
   synced: number;
   failed?: number;
+  inserted?: number;
+  updated?: number;
+  skipped?: number;
   source?: KasaDataArrivalSource;
   silent?: boolean;
   /** Uygulama kapalıyken biriken bildirim — debounce atlanır */
@@ -63,9 +91,13 @@ export function notifyKasaDataArrived(opts: {
   /** Veri, uygulama kapalıyken alındı (Windows servisi arka planda) */
   backgroundWhileClosed?: boolean;
 }): void {
+  const inserted = Math.max(0, Number(opts.inserted) || 0);
+  const updated = Math.max(0, Number(opts.updated) || 0);
+  const skipped = Math.max(0, Number(opts.skipped) || 0);
   const synced = Math.max(0, Number(opts.synced) || 0);
   const failed = Math.max(0, Number(opts.failed) || 0);
-  if (opts.silent || synced <= 0) return;
+  const meaningful = inserted + updated;
+  if (opts.silent || (meaningful <= 0 && synced <= 0)) return;
 
   const now = Date.now();
   if (!opts.force && now - lastToastAt < 3500) return;
@@ -73,15 +105,21 @@ export function notifyKasaDataArrived(opts: {
 
   const at = new Date().toISOString();
   const source = opts.source ?? 'auto';
-  const state: KasaDataArrivalState = { synced, failed, at, source };
+  const state: KasaDataArrivalState = {
+    synced,
+    failed,
+    inserted,
+    updated,
+    skipped,
+    at,
+    source,
+  };
   emitState(state);
 
   const timeLabel = formatTime(at);
-  const recordLabel =
-    synced === 1 ? '1 kayıt güncellendi' : `${synced} kayıt güncellendi`;
-  const detailLabel = opts.backgroundWhileClosed
-    ? `Uygulama kapalıyken · ${recordLabel}`
-    : recordLabel;
+  const recordLabel = formatSyncBreakdown({ inserted, updated, skipped, synced });
+  const prefix = opts.backgroundWhileClosed ? 'Uygulama kapalıyken · ' : '';
+  const detailLabel = `${prefix}${recordLabel}`;
 
   toast.custom(
     () =>
@@ -112,7 +150,7 @@ export function notifyKasaDataArrived(opts: {
       ),
     {
       id: 'kasa-data-arrived',
-      duration: 5000,
+      duration: 5500,
       position: 'bottom-center',
     },
   );

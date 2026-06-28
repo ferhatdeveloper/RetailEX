@@ -17,6 +17,7 @@ import {
 import {
   getLastKasaDataArrival,
   subscribeKasaDataArrival,
+  formatSyncBreakdown,
   type KasaDataArrivalState,
 } from '../../services/kasaDataArrivalNotify';
 import { cn } from '../ui/utils';
@@ -138,13 +139,13 @@ export function HybridSyncToolbarButtons({ compact = false }: Props) {
 
   return (
     <div className={cn('flex items-center shrink-0', compact ? 'gap-0.5' : 'gap-1')}>
-      {isKasa && lastArrival && lastArrival.synced > 0 && (
+      {isKasa && lastArrival && lastArrival.inserted + lastArrival.updated > 0 && (
         <span
           className={cn(
             'inline-flex items-center gap-1 rounded-full border border-emerald-400/40 bg-emerald-500/20 text-emerald-100 font-bold uppercase tracking-wide',
             compact ? 'px-1.5 py-0.5 text-[8px]' : 'px-2 py-0.5 text-[9px]',
           )}
-          title={`Son alım: ${new Date(lastArrival.at).toLocaleString('tr-TR')} · ${lastArrival.synced} kayıt`}
+          title={`Son alım: ${new Date(lastArrival.at).toLocaleString('tr-TR')} · ${formatSyncBreakdown(lastArrival)}`}
         >
           <CheckCircle2 className={compact ? 'h-3 w-3' : 'h-3.5 w-3.5'} />
           <span className={compact ? 'hidden sm:inline' : ''}>Veri alındı</span>
