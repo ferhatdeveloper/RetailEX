@@ -1,15 +1,21 @@
 /**
  * Masaüstü kasa cihaz kaydı ve merkez onay akışı.
- * Web (merkez): dashboard'dan onay/red. Desktop: kurulumda kayıt, onaylanmadan giriş yok.
+ * Yalnızca hibrit mod + terminal (client) rolünde: merkeze kayıt → web onayı → giriş.
  */
 
 import { APP_SEMVER } from '../core/version';
 import { IS_TAURI, safeInvoke, getBridgeUrl } from '../utils/env';
 import { postgrest } from './api/postgrestClient';
 import { getPostgrestBaseUrl } from '../config/postgrest.config';
-import { DB_SETTINGS, ERP_SETTINGS, LOCAL_CONFIG, REMOTE_CONFIG, postgres } from './postgres';
+import { DB_SETTINGS, ERP_SETTINGS, REMOTE_CONFIG, postgres } from './postgres';
 
 export type PosTerminalStatus = 'pending' | 'approved' | 'rejected' | 'blocked' | 'not_registered';
+
+export type DevicePlacementOption = {
+  id: string;
+  code: string;
+  name: string;
+};
 
 /** Tauri get_device_info + config birleşimi (ilsasupport destek paneli benzeri) */
 export type DesktopDeviceInfo = {
@@ -40,6 +46,7 @@ export type PosTerminalRegistration = {
   storeName?: string;
   storeCode?: string;
   firmNr: string;
+  firmName?: string;
   status: PosTerminalStatus;
   role: string;
   hostname?: string;
@@ -58,10 +65,21 @@ export type PosTerminalRegistration = {
   rejectedReason?: string;
 };
 
-function firmPadded(): string {
-  return String(ERP_SETTINGS.firmNr || '001')
+export type ApprovePosTerminalPlacement = {
+  storeId?: string | null;
+  terminalName?: string | null;
+  firmNr?: string | null;
+};
+
+function firmPadded(nr?: string): string {
+  return String(nr || ERP_SETTINGS.firmNr || '001')
     .replace(/\D/g, '')
     .padStart(3, '0');
+}
+
+/** Cihaz kaydı yalnızca hibrit modda geçerlidir. */
+export function isHybridDeviceRegistrationMode(): boolean {
+  return DB_SETTINGS.activeMode === 'hybrid';
 }
 
 function useRemotePostgrest(): boolean {
@@ -72,11 +90,8 @@ function useRemotePostgrest(): boolean {
   );
 }
 
-/** Cihaz kaydı/onay — hibrit kasada yerel PG değil, merkez uç (PostgREST veya remote_db). */
+/** Cihaz kaydı/onay — her zaman merkez uç (remote_db / PostgREST). */
 function resolveCentralPgConfig(): typeof REMOTE_CONFIG {
-  if (DB_SETTINGS.activeMode === 'offline') {
-    return LOCAL_CONFIG;
-  }
   return REMOTE_CONFIG;
 }
 
@@ -145,14 +160,8 @@ async function rpcCall<T>(fn: string, body: Record<string, unknown>): Promise<T>
   const sql = `SELECT * FROM public.${fn}(${placeholders})`;
   const params = keys.map((k) => body[k]);
 
-  // Hibrit kasa: register_pos_terminal yerel DB'ye düşmesin (web dashboard merkezi okur).
-  if (DB_SETTINGS.activeMode === 'hybrid' || DB_SETTINGS.activeMode === 'online') {
-    const rows = await queryCentralPgRows<Record<string, unknown>>(sql, params);
-    return (rows[0] ?? {}) as T;
-  }
-
-  const result = await postgres.query(sql, params);
-  return (result.rows[0] ?? {}) as T;
+  const rows = await queryCentralPgRows<Record<string, unknown>>(sql, params);
+  return (rows[0] ?? {}) as T;
 }
 
 function deviceInfoToMetadata(info: DesktopDeviceInfo): Record<string, unknown> {
@@ -191,6 +200,7 @@ function mapRegistrationRow(row: Record<string, unknown>): PosTerminalRegistrati
     storeName: row.store_name ? String(row.store_name) : undefined,
     storeCode: row.store_code ? String(row.store_code) : undefined,
     firmNr: String(row.firm_nr),
+    firmName: row.firm_name ? String(row.firm_name) : undefined,
     status: String(row.status) as PosTerminalStatus,
     role: String(row.role || 'client'),
     hostname: row.hostname ? String(row.hostname) : undefined,
@@ -300,7 +310,64 @@ export async function resolveDesktopRole(): Promise<string> {
   return info.role;
 }
 
-/** Kurulum / kayıt: merkez PG veya PostgREST üzerinden pending kayıt */
+/** Hibrit terminal: merkez onayı gerekir mi? */
+export async function requiresHybridDeviceApproval(): Promise<boolean> {
+  if (!IS_TAURI) return false;
+  if (!isHybridDeviceRegistrationMode()) return false;
+  const role = await resolveDesktopRole();
+  return role === 'client';
+}
+
+/** Merkez onay paneli: işyeri (şube) listesi */
+export async function listCentralStoresForPlacement(firmNr?: string): Promise<DevicePlacementOption[]> {
+  const firm = firmPadded(firmNr);
+  const sql = `
+    SELECT id::text, code, name
+    FROM stores
+    WHERE firm_nr = $1 AND COALESCE(is_active, true) = true
+    ORDER BY name`;
+  try {
+    const rows = await queryCentralPgRows<{ id: string; code: string; name: string }>(sql, [firm]);
+    return rows.map((r) => ({
+      id: String(r.id),
+      code: String(r.code ?? ''),
+      name: String(r.name ?? ''),
+    }));
+  } catch {
+    try {
+      const result = await postgres.query(sql, [firm]);
+      return (result.rows as { id: string; code: string; name: string }[]).map((r) => ({
+        id: String(r.id),
+        code: String(r.code ?? ''),
+        name: String(r.name ?? ''),
+      }));
+    } catch {
+      return [];
+    }
+  }
+}
+
+/** Onaylanmış yerleştirmeyi Tauri config'e yaz */
+async function syncApprovedPlacementToLocalConfig(
+  terminalName?: string,
+  storeId?: string | null,
+): Promise<void> {
+  if (!IS_TAURI) return;
+  try {
+    const { invoke } = await import('@tauri-apps/api/core');
+    const cfg = await invoke<Record<string, unknown>>('get_app_config');
+    const next = { ...cfg };
+    if (terminalName?.trim()) next.terminal_name = terminalName.trim();
+    if (storeId?.trim() && storeId !== '001' && storeId !== 'all') {
+      next.store_id = storeId.trim();
+    }
+    await invoke('save_app_config', { config: next });
+  } catch {
+    /* config güncellenemedi — giriş yine devam edebilir */
+  }
+}
+
+/** Kurulum / kayıt: merkez PG veya PostgREST üzerinden pending kayıt (yalnızca hibrit) */
 export async function registerDesktopTerminal(opts: {
   deviceId: string;
   terminalName: string;
@@ -311,9 +378,32 @@ export async function registerDesktopTerminal(opts: {
   osUser?: string;
   deviceInfo?: DesktopDeviceInfo;
 }): Promise<{ ok: boolean; status: PosTerminalStatus; message: string }> {
-  const firm = String(opts.firmNr || firmPadded())
-    .replace(/\D/g, '')
-    .padStart(3, '0');
+  const role = String(opts.role || opts.deviceInfo?.role || 'client').toLowerCase();
+  if (role !== 'client') {
+    return {
+      ok: true,
+      status: 'approved',
+      message: 'Merkez/sunucu rolü — cihaz kaydı gerekmez.',
+    };
+  }
+
+  if (!isHybridDeviceRegistrationMode()) {
+    return {
+      ok: true,
+      status: 'approved',
+      message: 'Hibrit mod dışında cihaz kaydı zorunlu değil.',
+    };
+  }
+
+  if (!centralPgConfigured()) {
+    return {
+      ok: false,
+      status: 'not_registered',
+      message: 'Merkez veritabanı yapılandırılmamış. remote_db ayarlarını kontrol edin.',
+    };
+  }
+
+  const firm = firmPadded(opts.firmNr);
   const storeId =
     opts.storeId && opts.storeId !== 'all' && opts.storeId !== '001' ? opts.storeId : null;
 
@@ -321,7 +411,7 @@ export async function registerDesktopTerminal(opts: {
     deviceId: opts.deviceId,
     terminalName: opts.terminalName || opts.deviceId,
     firmNr: firm,
-    role: opts.role || 'client',
+    role,
     storeId,
     hostname: opts.hostname,
     computerName: opts.hostname,
@@ -342,7 +432,7 @@ export async function registerDesktopTerminal(opts: {
       p_terminal_name: opts.terminalName || opts.deviceId,
       p_store_id: storeId,
       p_firm_nr: firm,
-      p_role: opts.role || info.role || 'client',
+      p_role: role,
       p_hostname: opts.hostname || info.computerName || info.hostname || null,
       p_os_user: opts.osUser || info.osUser || null,
       p_app_version: info.appVersion || APP_SEMVER,
@@ -353,7 +443,7 @@ export async function registerDesktopTerminal(opts: {
     return {
       ok: true,
       status,
-      message: row.out_message || 'Cihaz kaydı alındı.',
+      message: row.out_message || 'Cihaz kaydı merkeze iletildi.',
     };
   } catch (e: unknown) {
     return {
@@ -366,15 +456,25 @@ export async function registerDesktopTerminal(opts: {
 
 export async function getDesktopTerminalStatus(
   deviceId: string,
-): Promise<{ status: PosTerminalStatus; message: string; terminalName?: string }> {
+): Promise<{
+  status: PosTerminalStatus;
+  message: string;
+  terminalName?: string;
+  storeId?: string;
+}> {
   if (!deviceId?.trim()) {
     return { status: 'not_registered', message: 'Cihaz kimliği yok.' };
+  }
+
+  if (!isHybridDeviceRegistrationMode() || !centralPgConfigured()) {
+    return { status: 'approved', message: 'Hibrit cihaz kaydı devre dışı.' };
   }
 
   try {
     const row = await rpcCall<{
       out_status?: string;
       out_terminal_name?: string;
+      out_store_id?: string;
       out_message?: string;
     }>('get_pos_terminal_status', { p_device_id: deviceId.trim() });
 
@@ -382,13 +482,14 @@ export async function getDesktopTerminalStatus(
       status: (row.out_status || 'not_registered') as PosTerminalStatus,
       message: row.out_message || '',
       terminalName: row.out_terminal_name || undefined,
+      storeId: row.out_store_id ? String(row.out_store_id) : undefined,
     };
   } catch {
     return { status: 'not_registered', message: 'Durum sorgulanamadı.' };
   }
 }
 
-/** Masaüstü giriş öncesi — merkez rolü ve web hariç */
+/** Masaüstü giriş öncesi — hibrit terminal (client) için merkez onayı zorunlu */
 export async function assertDesktopTerminalApproved(): Promise<{
   allowed: boolean;
   status: PosTerminalStatus;
@@ -411,6 +512,25 @@ export async function assertDesktopTerminalApproved(): Promise<{
     };
   }
 
+  if (!isHybridDeviceRegistrationMode()) {
+    return {
+      allowed: true,
+      status: 'approved',
+      message: 'Hibrit mod dışında cihaz onayı gerekmez.',
+      deviceInfo,
+    };
+  }
+
+  if (!centralPgConfigured()) {
+    return {
+      allowed: false,
+      status: 'not_registered',
+      message:
+        'Hibrit kasa için merkez veritabanı (remote_db) yapılandırılmamış. Kurulum ayarlarını kontrol edin.',
+      deviceInfo,
+    };
+  }
+
   const deviceId = deviceInfo.deviceId;
   let check = await getDesktopTerminalStatus(deviceId);
 
@@ -425,26 +545,33 @@ export async function assertDesktopTerminalApproved(): Promise<{
       osUser: deviceInfo.osUser,
       deviceInfo,
     });
-    return { status: reg.status, message: reg.message, terminalName: deviceInfo.terminalName };
+    const refreshed = await getDesktopTerminalStatus(deviceId);
+    return {
+      status: refreshed.status !== 'not_registered' ? refreshed.status : reg.status,
+      message: reg.message || refreshed.message,
+      terminalName: refreshed.terminalName || deviceInfo.terminalName,
+      storeId: refreshed.storeId,
+    };
   };
 
   if (check.status === 'not_registered') {
     check = await registerOrRefresh();
   } else if (check.status === 'pending') {
-    // Heartbeat: cihaz bilgilerini güncelle, last_seen yenile
     check = await registerOrRefresh();
   }
 
   if (check.status === 'approved') {
+    await syncApprovedPlacementToLocalConfig(check.terminalName, check.storeId);
     return { allowed: true, status: 'approved', message: check.message, deviceInfo };
   }
 
   const messages: Record<string, string> = {
     pending:
-      'Bu kasa henüz onaylanmadı. Merkez yöneticisi web panelinde Dashboard → Bekleyen Cihazlar bölümünden onaylamalı.',
+      'Bu kasa henüz onaylanmadı. Merkez yöneticisi web panelinde Sistem Yönetimi → Bekleyen Kasa Cihazları bölümünden işyeri ve kasa tanımını yaparak onaylamalı.',
     rejected: check.message || 'Cihaz kaydı reddedildi. Merkez ile iletişime geçin.',
     blocked: 'Bu cihaz engellenmiş. Merkez ile iletişime geçin.',
-    not_registered: 'Cihaz kaydı oluşturulamadı. İnternet/PostgREST bağlantısını kontrol edin.',
+    not_registered:
+      'Cihaz kaydı merkeze iletilemedi. remote_db ve PostgREST bağlantısını kontrol edin.',
   };
 
   return {
@@ -460,9 +587,7 @@ export async function listPosTerminalRegistrations(opts?: {
   firmNr?: string;
   limit?: number;
 }): Promise<PosTerminalRegistration[]> {
-  const firm = String(opts?.firmNr || firmPadded())
-    .replace(/\D/g, '')
-    .padStart(3, '0');
+  const firm = firmPadded(opts?.firmNr);
   const limit = opts?.limit ?? 50;
 
   let statusFilter = '';
@@ -475,12 +600,14 @@ export async function listPosTerminalRegistrations(opts?: {
   const sql = `
     SELECT r.id::text, r.device_id, r.terminal_name, r.store_id::text,
            s.name AS store_name, s.code AS store_code,
+           f.name AS firm_name,
            r.firm_nr, r.status, r.role, r.hostname, r.os_user, r.app_version,
            r.computer_name, r.os_platform, r.os_arch, r.os_version,
            r.local_ip, r.timezone, r.locale, r.metadata,
            r.registered_at, r.last_seen_at, r.rejected_reason
     FROM pos_terminal_registrations r
     LEFT JOIN stores s ON s.id = r.store_id
+    LEFT JOIN firms f ON lpad(ltrim(f.firm_nr, '0'), 3, '0') = lpad(ltrim(r.firm_nr, '0'), 3, '0')
     WHERE (r.firm_nr = $1 OR lpad(ltrim(r.firm_nr, '0'), 3, '0') = $1)
       ${statusFilter}
     ORDER BY
@@ -502,26 +629,35 @@ export async function listPosTerminalRegistrations(opts?: {
       return (rows || []).map((r) => mapRegistrationRow(r));
     }
 
-    if (DB_SETTINGS.activeMode === 'hybrid' || DB_SETTINGS.activeMode === 'online') {
-      const rows = await queryCentralPgRows<Record<string, unknown>>(sql, params);
-      return rows.map((row) => mapRegistrationRow(row));
-    }
-
-    const result = await postgres.query(sql, params);
-    return result.rows.map((row: Record<string, unknown>) => mapRegistrationRow(row));
+    const rows = await queryCentralPgRows<Record<string, unknown>>(sql, params);
+    return rows.map((row) => mapRegistrationRow(row));
   } catch {
-    return [];
+    try {
+      const result = await postgres.query(sql, params);
+      return result.rows.map((row: Record<string, unknown>) => mapRegistrationRow(row));
+    } catch {
+      return [];
+    }
   }
 }
 
 export async function approvePosTerminal(
   id: string,
   userId?: string | null,
+  placement?: ApprovePosTerminalPlacement,
 ): Promise<{ ok: boolean; message: string }> {
   try {
+    const storeId =
+      placement?.storeId && placement.storeId !== 'all' && placement.storeId !== '001'
+        ? placement.storeId
+        : null;
+
     const row = await rpcCall<{ ok?: boolean; message?: string }>('approve_pos_terminal', {
       p_id: id,
       p_user_id: userId || null,
+      p_store_id: storeId,
+      p_terminal_name: placement?.terminalName?.trim() || null,
+      p_firm_nr: placement?.firmNr ? firmPadded(placement.firmNr) : null,
     });
     return { ok: !!row.ok, message: row.message || (row.ok ? 'Onaylandı.' : 'İşlem başarısız.') };
   } catch (e: unknown) {

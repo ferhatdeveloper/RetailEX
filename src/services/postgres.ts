@@ -1151,8 +1151,17 @@ export class PostgresConnection {
       const {
         registerDesktopTerminal,
         collectDesktopDeviceMetadata,
+        isHybridDeviceRegistrationMode,
       } = await import('./deviceRegistrationService');
       const deviceInfo = await collectDesktopDeviceMetadata();
+
+      if (deviceInfo.role !== 'client') {
+        return { success: true, message: 'Merkez/sunucu rolü — cihaz kaydı atlandı.' };
+      }
+
+      if (!isHybridDeviceRegistrationMode()) {
+        return { success: true, message: 'Hibrit mod dışında cihaz kaydı gerekmez.' };
+      }
 
       console.log(`📡 Registering device ${name} (${deviceInfo.deviceId}) to store ${storeId}`);
 

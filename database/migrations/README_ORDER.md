@@ -58,6 +58,7 @@
 53. **065_sync_queue_target_store_index.sql** – `sync_queue` inbound (merkez→kasa) indeksleri: `target_store_id`, `terminal_name`.
 54. **066_terminal_sync_log_pos_quick_slots.sql** – MPOS `terminal_sync_log` (gönder/al geçmişi) ve `pos_quick_slots` (PLU/kısayol tuş).
 55. **067_apply_sync_queue_item_result.sql** – `apply_sync_queue_item` insert/update/skip/delete sonucu döndürür (tekrarlı kayıt raporu).
+56. **068_approve_pos_terminal_placement.sql** – Cihaz onayında işyeri (`store_id`) ve kasa (`terminal_name`) yerleştirmesi; `get_pos_terminal_status` store_id döndürür.
 
 **Kiracılara toplu uygulama (VPS / uzak PG):**
 - `npm run db:migrate:tenants` — tüm kiracı DB'ler

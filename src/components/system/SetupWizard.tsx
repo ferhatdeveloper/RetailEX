@@ -1399,20 +1399,15 @@ const SetupWizard: React.FC = () => {
             localStorage.setItem('retailex_enabled_modules', JSON.stringify(config.enabled_modules));
             localStorage.setItem('retailex_bayi_seti', String(config.bayi_seti));
 
-            // 7. Register Terminal/Device (Only if not already registered)
-            if (!isUpdateMode) {
+            // 7. Register Terminal/Device — yalnızca hibrit kasa (client)
+            if (!isUpdateMode && isTauri && config.role === 'client' && config.db_mode === 'hybrid') {
                 setInstallationStep('DEVICE');
-                toast.info('Cihaz kaydı yapılıyor...');
-                if (isTauri) {
-                    const reg = await postgres.registerDevice(config.terminal_name, config.store_id);
-                    if (reg.success) {
-                        toast.success(reg.message || 'Cihaz kaydı merkeze iletildi. Web panelinden onay bekleniyor.');
-                    } else {
-                        toast.error(reg.message || 'Cihaz kaydı başarısız.');
-                    }
+                toast.info('Cihaz kaydı merkeze iletiliyor...');
+                const reg = await postgres.registerDevice(config.terminal_name, config.store_id);
+                if (reg.success) {
+                    toast.success(reg.message || 'Cihaz kaydı merkeze iletildi. Web panelinden onay bekleniyor.');
                 } else {
-                    console.log('Web Modu: Cihaz kaydı simüle ediliyor...');
-                    localStorage.setItem('retailex_device_registered', 'true');
+                    toast.error(reg.message || 'Cihaz kaydı başarısız.');
                 }
             }
 
