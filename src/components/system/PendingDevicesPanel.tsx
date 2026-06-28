@@ -11,6 +11,7 @@ import {
   approvePosTerminal,
   listPosTerminalRegistrations,
   rejectPosTerminal,
+  describeRegistrationTarget,
   type PosTerminalRegistration,
 } from '../../services/deviceRegistrationService';
 
@@ -98,6 +99,9 @@ export function PendingDevicesPanel({ darkMode = false }: Props) {
             <p className="text-xs text-gray-500">
               Masaüstü kurulumdan gelen kayıtlar — onaylanınca kasa giriş yapabilir
             </p>
+            <p className="text-[10px] text-gray-400 mt-0.5">
+              Merkez veritabanı: {describeRegistrationTarget()}
+            </p>
           </div>
         </div>
         <Button size="sm" variant="outline" disabled={loading} onClick={() => void refresh()} className="gap-1">
@@ -107,10 +111,17 @@ export function PendingDevicesPanel({ darkMode = false }: Props) {
       </div>
 
       {pending.length === 0 ? (
-        <p className="text-sm text-gray-500 flex items-center gap-2">
-          <CheckCircle className="w-4 h-4 text-green-500" />
-          Onay bekleyen cihaz yok.
-        </p>
+        <div className="text-sm text-gray-500 space-y-2">
+          <p className="flex items-center gap-2">
+            <CheckCircle className="w-4 h-4 text-green-500" />
+            Onay bekleyen cihaz yok.
+          </p>
+          <p className="text-[11px] text-gray-400 leading-relaxed">
+            Kasa kurulduğu halde burada görünmüyorsa: DeskApp kurulumunda <strong>Terminal/Kasa</strong>{' '}
+            rolü seçilmeli, <strong>remote_db</strong> ve PostgREST URL web ile aynı kiracıyı göstermeli.
+            Kayıt yanlışlıkla yerel PC veritabanına gitmiş olabilir — kasada girişi tekrar deneyin (0.1.127+).
+          </p>
+        </div>
       ) : (
         <div className="space-y-3">
           {pending.map((d) => (

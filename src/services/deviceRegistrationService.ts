@@ -4,10 +4,10 @@
  */
 
 import { APP_SEMVER } from '../core/version';
-import { IS_TAURI } from '../utils/env';
+import { IS_TAURI, safeInvoke, getBridgeUrl } from '../utils/env';
 import { postgrest } from './api/postgrestClient';
 import { getPostgrestBaseUrl } from '../config/postgrest.config';
-import { DB_SETTINGS, ERP_SETTINGS, LOCAL_CONFIG, postgres } from './postgres';
+import { DB_SETTINGS, ERP_SETTINGS, LOCAL_CONFIG, REMOTE_CONFIG, postgres } from './postgres';
 
 export type PosTerminalStatus = 'pending' | 'approved' | 'rejected' | 'blocked' | 'not_registered';
 
@@ -72,16 +72,86 @@ function useRemotePostgrest(): boolean {
   );
 }
 
+/** Cihaz kaydı/onay — hibrit kasada yerel PG değil, merkez uç (PostgREST veya remote_db). */
+function resolveCentralPgConfig(): typeof REMOTE_CONFIG {
+  if (DB_SETTINGS.activeMode === 'offline') {
+    return LOCAL_CONFIG;
+  }
+  return REMOTE_CONFIG;
+}
+
+function centralPgConfigured(): boolean {
+  const cfg = resolveCentralPgConfig();
+  return Boolean(cfg.host?.trim() && cfg.database?.trim() && cfg.user?.trim());
+}
+
+async function queryCentralPgRows<T = Record<string, unknown>>(
+  sql: string,
+  params: unknown[],
+): Promise<T[]> {
+  const config = resolveCentralPgConfig();
+  if (!centralPgConfigured()) {
+    throw new Error(
+      'Merkez veritabanı yapılandırılmamış. Kurulumda remote_db ve PostgREST URL (remote_rest_url) kontrol edin.',
+    );
+  }
+
+  const normalizedParams = params.map((p) => {
+    if (p === null || p === undefined) return null;
+    if (typeof p === 'object' && !(p instanceof Date)) {
+      try {
+        return JSON.stringify(p);
+      } catch {
+        return String(p);
+      }
+    }
+    return p;
+  });
+
+  const effectiveHost = config.host === 'localhost' ? '127.0.0.1' : config.host;
+  const connStr = `postgresql://${config.user}:${config.password}@${effectiveHost}:${config.port}/${config.database}`;
+
+  if (IS_TAURI) {
+    const resultJson: string = await safeInvoke('pg_query', {
+      connStr,
+      sql,
+      params: normalizedParams,
+    });
+    return JSON.parse(resultJson) as T[];
+  }
+
+  const response = await fetch(`${getBridgeUrl()}/api/pg_query`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ connStr, sql, params: normalizedParams }),
+  });
+  if (!response.ok) {
+    const errData = await response.json().catch(() => ({}));
+    throw new Error(String((errData as { error?: string }).error || 'Merkez PG sorgusu başarısız'));
+  }
+  const res = (await response.json()) as { rows?: T[] };
+  return res.rows ?? [];
+}
+
 async function rpcCall<T>(fn: string, body: Record<string, unknown>): Promise<T> {
   if (useRemotePostgrest()) {
     const res = await postgrest.post<T>(`/rpc/${fn}`, body, { schema: 'public' });
     const row = Array.isArray(res) ? res[0] : res;
     return row as T;
   }
+
   const keys = Object.keys(body);
   const placeholders = keys.map((_, i) => `$${i + 1}`).join(', ');
   const sql = `SELECT * FROM public.${fn}(${placeholders})`;
-  const result = await postgres.query(sql, keys.map((k) => body[k]));
+  const params = keys.map((k) => body[k]);
+
+  // Hibrit kasa: register_pos_terminal yerel DB'ye düşmesin (web dashboard merkezi okur).
+  if (DB_SETTINGS.activeMode === 'hybrid' || DB_SETTINGS.activeMode === 'online') {
+    const rows = await queryCentralPgRows<Record<string, unknown>>(sql, params);
+    return (rows[0] ?? {}) as T;
+  }
+
+  const result = await postgres.query(sql, params);
   return (result.rows[0] ?? {}) as T;
 }
 
@@ -419,25 +489,27 @@ export async function listPosTerminalRegistrations(opts?: {
     LIMIT $2`;
 
   try {
+    if (useRemotePostgrest()) {
+      const q: Record<string, string> = {
+        select:
+          'id,device_id,terminal_name,store_id,firm_nr,status,role,hostname,os_user,app_version,computer_name,os_platform,os_arch,os_version,local_ip,timezone,locale,metadata,registered_at,last_seen_at,rejected_reason',
+        firm_nr: `eq.${firm}`,
+        order: 'registered_at.desc',
+        limit: String(limit),
+      };
+      if (opts?.status && opts.status !== 'all') q.status = `eq.${opts.status}`;
+      const rows = await postgrest.get<Record<string, unknown>[]>('/pos_terminal_registrations', q);
+      return (rows || []).map((r) => mapRegistrationRow(r));
+    }
+
+    if (DB_SETTINGS.activeMode === 'hybrid' || DB_SETTINGS.activeMode === 'online') {
+      const rows = await queryCentralPgRows<Record<string, unknown>>(sql, params);
+      return rows.map((row) => mapRegistrationRow(row));
+    }
+
     const result = await postgres.query(sql, params);
     return result.rows.map((row: Record<string, unknown>) => mapRegistrationRow(row));
   } catch {
-    if (useRemotePostgrest()) {
-      try {
-        const q: Record<string, string> = {
-          select:
-            'id,device_id,terminal_name,store_id,firm_nr,status,role,hostname,os_user,app_version,computer_name,os_platform,os_arch,os_version,local_ip,timezone,locale,metadata,registered_at,last_seen_at,rejected_reason',
-          firm_nr: `eq.${firm}`,
-          order: 'registered_at.desc',
-          limit: String(limit),
-        };
-        if (opts?.status && opts.status !== 'all') q.status = `eq.${opts.status}`;
-        const rows = await postgrest.get<Record<string, unknown>[]>('/pos_terminal_registrations', q);
-        return (rows || []).map((r) => mapRegistrationRow(r));
-      } catch {
-        return [];
-      }
-    }
     return [];
   }
 }
@@ -476,5 +548,6 @@ export async function rejectPosTerminal(
 
 export function describeRegistrationTarget(): string {
   if (useRemotePostgrest()) return getPostgrestBaseUrl();
-  return `${LOCAL_CONFIG.host}:${LOCAL_CONFIG.port}/${LOCAL_CONFIG.database}`;
+  const cfg = resolveCentralPgConfig();
+  return `${cfg.host}:${cfg.port}/${cfg.database}`;
 }
