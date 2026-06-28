@@ -317,7 +317,7 @@ async fn pg_query(
     sql: String, 
     params: Vec<serde_json::Value>
 ) -> Result<String, String> {
-    use tokio_postgres::types::ToSql;
+    use tokio_postgres::types::{ToSql, Type};
     use uuid::Uuid;
     use chrono::{DateTime, NaiveTime, Utc};
     use rust_decimal::prelude::ToPrimitive;
