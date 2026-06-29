@@ -1,12 +1,62 @@
 /**
  * ExRetailOS WebSocket Service
- * Real-time synchronization for multi-user operations
- * Connects to Tauri-Rust backend (localhost:9999)
+ * Kiracı merkez: wss://api.retailex.app/{kiracı}/ws
+ * Yerel Windows servisi yedek: ws://127.0.0.1:9999/ws (RetailEX_Service)
  */
 
 const isTauri = typeof window !== 'undefined' && !!(window as any).__TAURI_INTERNALS__;
 import { APP_VERSION } from '../core/version';
 import { logger } from '../utils/logger';
+import { resolveTenantSyncUrls } from './merkezTenantRegistry';
+import { DB_SETTINGS } from './postgres';
+
+const LOCAL_WS_FALLBACK = 'ws://127.0.0.1:9999/ws';
+
+async function resolveWebSocketUrl(): Promise<string> {
+  if (DB_SETTINGS.centralWsUrl?.trim()) {
+    return DB_SETTINGS.centralWsUrl.trim();
+  }
+
+  if (isTauri) {
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      const cfg = (await invoke('get_app_config')) as {
+        central_ws_url?: string;
+        remote_rest_url?: string;
+        merkez_tenant_code?: string;
+      };
+      const urls = resolveTenantSyncUrls({
+        merkez_tenant_code: cfg?.merkez_tenant_code,
+        remote_rest_url: cfg?.remote_rest_url,
+        central_ws_url: cfg?.central_ws_url,
+      });
+      if (urls.central_ws_url) return urls.central_ws_url;
+    } catch (err) {
+      logger.warn('[WS] Tauri config okunamadı:', err);
+    }
+  } else if (typeof window !== 'undefined') {
+    try {
+      const raw = window.localStorage.getItem('retailex_web_config');
+      if (raw) {
+        const cfg = JSON.parse(raw) as {
+          central_ws_url?: string;
+          remote_rest_url?: string;
+          merkez_tenant_code?: string;
+        };
+        const urls = resolveTenantSyncUrls({
+          merkez_tenant_code: cfg.merkez_tenant_code,
+          remote_rest_url: cfg.remote_rest_url,
+          central_ws_url: cfg.central_ws_url,
+        });
+        if (urls.central_ws_url) return urls.central_ws_url;
+      }
+    } catch (err) {
+      logger.warn('[WS] Web config okunamadı:', err);
+    }
+  }
+
+  return LOCAL_WS_FALLBACK;
+}
 
 export type WSEventType =
   | 'PRODUCT_UPDATED'
@@ -46,7 +96,7 @@ export class WebSocketService {
   private userId: string | null = null;
   private storeId: string | null = null;
 
-  constructor(url: string = 'ws://127.0.0.1:9999/api/v1/ws') {
+  constructor(url: string = LOCAL_WS_FALLBACK) {
     this.url = url;
   }
 
@@ -68,12 +118,15 @@ export class WebSocketService {
     this.isConnecting = true;
 
     return new Promise((resolve, reject) => {
+      void (async () => {
       try {
-        // Try to start backend server first via Tauri (idempotent)
-        if (isTauri) {
+        this.url = await resolveWebSocketUrl();
+
+        // Yerel Windows servisi (9999) — Tauri'de isteğe bağlı başlatma
+        if (isTauri && this.url.startsWith('ws://127.0.0.1:9999')) {
           import('@tauri-apps/api/core').then(({ invoke }) => {
             invoke('start_ws_server', { port: 9999 }).catch(err => {
-              logger.warn('[WS] Backend server start info:', err);
+              logger.warn('[WS] Yerel WS servisi başlatılamadı (RetailEX_Service kullanın):', err);
             });
           });
         }
@@ -147,6 +200,7 @@ export class WebSocketService {
         this.handleReconnect();
         reject(error);
       }
+      })();
     });
   }
 

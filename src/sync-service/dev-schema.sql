@@ -1,5 +1,5 @@
 -- Sync Service geliştirme / sqlx prepare şeması (broadcast motoru)
--- Not: public.sync_queue (hibrit PG) ile karıştırmayın — servis kendi tablolarını kullanır.
+-- Not: public.sync_queue (hibrit PG) ile karıştırmayın — WS teslimat: broadcast_delivery_queue
 
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
@@ -32,7 +32,7 @@ CREATE TABLE IF NOT EXISTS broadcast_recipients (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE TABLE IF NOT EXISTS sync_queue (
+CREATE TABLE IF NOT EXISTS broadcast_delivery_queue (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   broadcast_id UUID NOT NULL,
   recipient_id UUID,

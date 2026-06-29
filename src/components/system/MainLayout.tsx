@@ -162,7 +162,7 @@ function MainLayoutClockButton({
   );
 }
 
-/** Gerçek zamanlı WebSocket (127.0.0.1:9999) — SQL bridge (3001) ile karıştırılmamalı */
+/** Gerçek zamanlı WebSocket — kiracı: wss://api.retailex.app/{kiracı}/ws; yerel yedek: ws://127.0.0.1:9999/ws */
 function WsConnectionStatusDot() {
   const [status, setStatus] = useState<'connected' | 'disconnected' | 'connecting'>(() => wsService.getStatus());
   useEffect(() => {
@@ -172,12 +172,12 @@ function WsConnectionStatusDot() {
 
   const title =
     status === 'connected'
-      ? 'Gerçek zamanlı sunucu (WebSocket) bağlı — ws://127.0.0.1:9999'
+      ? 'Merkez WebSocket bağlı (kiracı /ws veya yerel 9999)'
       : status === 'connecting'
         ? 'Gerçek zamanlı sunucuya bağlanılıyor…'
         : IS_TAURI
-          ? 'WebSocket yok — Masaüstü uygulamasında 9999 portu dinlenmiyor olabilir (pg_bridge/SQL ile ilgili değildir)'
-          : 'Tarayıcı modu: WebSocket sunucusu (9999) yok — beklenen; SQL için ayrıca npm run bridge (3001) kullanılır';
+          ? 'WebSocket yok — RetailEX_Service veya kiracı central_ws_url yapılandırmasını kontrol edin'
+          : 'WebSocket bağlı değil — kiracı bağlantısı sonrası api.retailex.app/{kiracı}/ws denenir';
 
   let boxClass =
     'w-4 h-4 sm:w-5 sm:h-5 rounded transition-colors flex-shrink-0 ';

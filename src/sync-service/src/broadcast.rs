@@ -77,7 +77,7 @@ impl BroadcastEngine {
                     // Update status to 'sent'
                     // Note: Will be marked as 'delivered' when store acknowledges
                     sqlx::query_unchecked!(
-                        "UPDATE sync_queue SET status = 'processing', updated_at = NOW() WHERE id = $1",
+                        "UPDATE broadcast_delivery_queue SET status = 'processing', updated_at = NOW() WHERE id = $1",
                         msg.id
                     )
                     .execute(&self.db.pool)

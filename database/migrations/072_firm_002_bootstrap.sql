@@ -42,4 +42,6 @@ SELECT public.INIT_BEAUTY_FIRM_TABLES('002');
 SELECT public.INIT_RESTAURANT_PERIOD_TABLES('002', '01');
 SELECT public.INIT_BEAUTY_PERIOD_TABLES('002', '01');
 
+-- WebSocket hub tabloları (075_tenant_websocket_hub.sql) uzak kiracı DB'lerde migrate zinciriyle uygulanır.
+
 NOTIFY pgrst, 'reload schema';

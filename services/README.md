@@ -50,16 +50,21 @@ Windows servis adı: `RetailEXLogoConnector`
 
 ## RetailEX-Sync-Service
 
-Mağaza POS cihazları için WebSocket sunucusu (varsayılan `:8080`).
+Kiracı başına WebSocket + REST senkron (Caddy: `https://api.retailex.app/{kiracı}/ws`, `.../{kiracı}/sync`).
 
 **Ortam değişkenleri:**
 
 | Değişken | Varsayılan |
 |----------|------------|
-| `DATABASE_URL` | `postgres://postgres:postgres@localhost/exretail` |
+| `DATABASE_URL` | Kiracı PostgreSQL (075 migration uygulanmış olmalı) |
 | `BIND_ADDRESS` | `0.0.0.0:8080` |
 
-**Çalıştırma:**
+**Windows (mağaza PC — yerel):**
+
+- **`RetailEX_Service.exe`** (Windows servisi): arka planda merkeze `wss://api.retailex.app/{kiracı}/ws` bağlanır; tarayıcı kapalıyken hibrit senkron devam eder.
+- Tarayıcı UI, kiracı bağlandıktan sonra aynı merkez WS adresine gider; yedek yerel dinleyici: `ws://127.0.0.1:9999/ws`.
+
+**Çalıştırma (merkez / kiracı sunucu):**
 
 ```powershell
 $env:DATABASE_URL = "postgres://..."

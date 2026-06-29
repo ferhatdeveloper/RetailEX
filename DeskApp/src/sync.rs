@@ -1551,11 +1551,7 @@ async fn start_websocket_listener(
         return; 
     }
 
-    let url_str = if config.central_ws_url.is_empty() || config.central_ws_url == "wss://api.retailex.app/ws" { 
-        "ws://localhost:8000/api/v1/ws".to_string() 
-    } else { 
-        config.central_ws_url.clone() 
-    };
+    let url_str = crate::config::resolve_central_ws_url(&config);
     
     let url = match Url::parse(&url_str) {
         Ok(u) => u,

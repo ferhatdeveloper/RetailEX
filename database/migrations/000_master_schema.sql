@@ -237,6 +237,71 @@ CREATE INDEX IF NOT EXISTS idx_sync_logs_last_sync
 CREATE INDEX IF NOT EXISTS idx_sync_logs_firm_store
   ON public.sync_logs (firm_nr, store_code, last_sync_date DESC);
 
+-- Kiracı WebSocket hub (075) — hibrit public.sync_queue ile karışmaz
+CREATE TABLE IF NOT EXISTS public.broadcast_messages (
+  id UUID PRIMARY KEY,
+  message_type TEXT NOT NULL,
+  action TEXT NOT NULL,
+  priority TEXT NOT NULL DEFAULT 'normal',
+  status TEXT NOT NULL DEFAULT 'pending',
+  target_stores UUID[],
+  payload JSONB NOT NULL DEFAULT '{}',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  total_targets INTEGER NOT NULL DEFAULT 0,
+  successful INTEGER NOT NULL DEFAULT 0,
+  failed INTEGER NOT NULL DEFAULT 0,
+  pending INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS public.broadcast_recipients (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  broadcast_id UUID NOT NULL REFERENCES public.broadcast_messages(id) ON DELETE CASCADE,
+  store_id UUID NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  queued_at TIMESTAMPTZ,
+  sent_at TIMESTAMPTZ,
+  delivered_at TIMESTAMPTZ,
+  attempts INTEGER NOT NULL DEFAULT 0,
+  error_message TEXT,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS public.broadcast_delivery_queue (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  broadcast_id UUID NOT NULL REFERENCES public.broadcast_messages(id) ON DELETE CASCADE,
+  recipient_id UUID REFERENCES public.broadcast_recipients(id) ON DELETE SET NULL,
+  store_id UUID NOT NULL,
+  priority INTEGER NOT NULL DEFAULT 3,
+  sequence_number BIGINT NOT NULL DEFAULT 1,
+  status TEXT NOT NULL DEFAULT 'pending',
+  payload JSONB NOT NULL DEFAULT '{}',
+  queued_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  scheduled_for TIMESTAMPTZ,
+  expires_at TIMESTAMPTZ,
+  retry_count INTEGER NOT NULL DEFAULT 0,
+  max_retries INTEGER NOT NULL DEFAULT 5,
+  error_message TEXT,
+  last_error_at TIMESTAMPTZ,
+  next_retry_at TIMESTAMPTZ,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS public.store_devices (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  store_id UUID NOT NULL,
+  device_id TEXT NOT NULL UNIQUE,
+  device_name TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'offline',
+  last_seen TIMESTAMPTZ,
+  last_sync_at TIMESTAMPTZ,
+  pending_messages INTEGER NOT NULL DEFAULT 0,
+  app_version TEXT NOT NULL DEFAULT '',
+  registered_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 CREATE TABLE IF NOT EXISTS public.terminal_sync_log (
   id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   firm_nr           VARCHAR(10) NOT NULL,
@@ -2629,7 +2694,7 @@ ON CONFLICT (name) DO NOTHING;
 -- Servis Sağlığı
 INSERT INTO public.service_health (service_name, status, version, metadata)
 VALUES
-('RetailEX-Sync-Service', 'OFFLINE', '2.0.0', '{"description": "Core sync engine"}'),
+('RetailEX-Sync-Service', 'OFFLINE', '2.0.0', '{"description": "Kiracı WebSocket hub", "ws_path": "/{tenant}/ws", "api_path": "/{tenant}/sync"}'),
 ('RetailEX-Logo-Connector', 'OFFLINE', '1.0.0', '{"description": "Logo ERP bridge"}')
 ON CONFLICT DO NOTHING;
 

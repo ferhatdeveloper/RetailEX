@@ -90,6 +90,11 @@ export function buildDirectPostgrestTenantPatch(input: {
   } catch {
     /* ignore */
   }
+  const syncUrls = resolveTenantSyncUrls({
+    merkez_tenant_code: codeFromSlug,
+    remote_rest_url: u,
+  });
+
   return {
     is_configured: true,
     db_mode: 'online',
@@ -105,6 +110,8 @@ export function buildDirectPostgrestTenantPatch(input: {
     merkez_tenant_code: codeFromSlug || undefined,
     merkez_tenant_id: idFromSlug || undefined,
     merkez_display_name: codeFromSlug || idFromSlug || u,
+    central_ws_url: syncUrls.central_ws_url || undefined,
+    central_api_url: syncUrls.central_api_url || undefined,
   };
 }
 
@@ -156,6 +163,65 @@ export function buildSaaSTenantPostgrestUrl(slug: string): string {
   const s = String(slug || '').trim().replace(/^\/+|\/+$/g, '');
   if (!s) return o;
   return `${o}/${s}`;
+}
+
+/** Kiracı kodundan merkez WebSocket URL — örn. lovan → wss://api.retailex.app/lovan/ws */
+export function buildTenantCentralWsUrl(tenantCode: string): string {
+  const code = String(tenantCode || '').trim().replace(/^\/+|\/+$/g, '');
+  if (!code || code === 'merkez') return '';
+  const origin = normalizeBaseUrl(DEFAULT_SAAS_TENANT_POSTGREST_ORIGIN);
+  const wsOrigin = origin.replace(/^http/i, 'ws');
+  return `${wsOrigin}/${code}/ws`;
+}
+
+/** Kiracı kodundan merkez senkron REST API — örn. lovan → https://api.retailex.app/lovan/sync */
+export function buildTenantCentralApiUrl(tenantCode: string): string {
+  const code = String(tenantCode || '').trim().replace(/^\/+|\/+$/g, '');
+  if (!code || code === 'merkez') return '';
+  return `${normalizeBaseUrl(DEFAULT_SAAS_TENANT_POSTGREST_ORIGIN)}/${code}/sync`;
+}
+
+export type TenantSyncUrlInput = {
+  merkez_tenant_code?: string | null;
+  remote_rest_url?: string | null;
+  central_ws_url?: string | null;
+  central_api_url?: string | null;
+};
+
+/** Kiracı kodu veya PostgREST slug ile merkez WS/REST adreslerini türetir. */
+export function resolveTenantSyncUrls(input: TenantSyncUrlInput): {
+  central_ws_url: string;
+  central_api_url: string;
+} {
+  const explicitWs = String(input.central_ws_url || '').trim();
+  const explicitApi = String(input.central_api_url || '').trim();
+  if (explicitWs && explicitApi) {
+    return { central_ws_url: explicitWs, central_api_url: explicitApi };
+  }
+
+  const code = String(input.merkez_tenant_code || '').trim();
+  if (code) {
+    return {
+      central_ws_url: explicitWs || buildTenantCentralWsUrl(code),
+      central_api_url: explicitApi || buildTenantCentralApiUrl(code),
+    };
+  }
+
+  const rest = String(input.remote_rest_url || '').trim();
+  if (rest) {
+    const parsed = parseSaaSOrCustomPostgrestUrl(rest);
+    if (parsed.kind === 'saas_single_slug') {
+      return {
+        central_ws_url: explicitWs || buildTenantCentralWsUrl(parsed.slug),
+        central_api_url: explicitApi || buildTenantCentralApiUrl(parsed.slug),
+      };
+    }
+  }
+
+  return {
+    central_ws_url: explicitWs,
+    central_api_url: explicitApi,
+  };
 }
 
 /**
@@ -404,6 +470,13 @@ export function tenantRowToAppConfigPatch(
   const user = (row.db_user || '').trim() || 'postgres';
   const pass =
     row.db_pass != null && String(row.db_pass) !== '' ? String(row.db_pass) : preserve;
+
+  const syncUrls = resolveTenantSyncUrls({
+    merkez_tenant_code: row.code,
+    remote_rest_url: row.rest_base_url || '',
+  });
+  if (syncUrls.central_ws_url) patch.central_ws_url = syncUrls.central_ws_url;
+  if (syncUrls.central_api_url) patch.central_api_url = syncUrls.central_api_url;
 
   if (provider === 'rest_api') {
     patch.remote_rest_url = normalizeBaseUrl(row.rest_base_url || '');

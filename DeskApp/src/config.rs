@@ -104,6 +104,87 @@ fn default_hybrid_sync_interval_sec() -> i32 {
 pub fn clamp_hybrid_sync_interval_sec(raw: i32) -> u64 {
     raw.clamp(5, 3600) as u64
 }
+
+const SAAS_API_HOST: &str = "api.retailex.app";
+
+/// PostgREST URL slug → kiracı kodu (https://api.retailex.app/lovan → lovan)
+pub fn tenant_slug_from_rest_url(url: &str) -> Option<String> {
+    let trimmed = url.trim().trim_end_matches('/');
+    if trimmed.is_empty() {
+        return None;
+    }
+    let without_scheme = trimmed
+        .strip_prefix("https://")
+        .or_else(|| trimmed.strip_prefix("http://"))
+        .or_else(|| trimmed.strip_prefix("wss://"))
+        .or_else(|| trimmed.strip_prefix("ws://"))
+        .unwrap_or(trimmed);
+    let mut parts = without_scheme.split('/');
+    let host = parts.next().unwrap_or("");
+    if host != SAAS_API_HOST {
+        return None;
+    }
+    let slug = parts.next()?.trim();
+    if slug.is_empty() || slug == "merkez" {
+        return None;
+    }
+    Some(slug.to_string())
+}
+
+/// Kiracı kodundan merkez WebSocket: wss://api.retailex.app/{code}/ws
+pub fn build_tenant_central_ws_url(code: &str) -> String {
+    let slug = code.trim().trim_matches('/');
+    if slug.is_empty() || slug == "merkez" {
+        return String::new();
+    }
+    format!("wss://{}/{}/ws", SAAS_API_HOST, slug)
+}
+
+/// Kiracı kodundan merkez REST senkron: https://api.retailex.app/{code}/sync
+pub fn build_tenant_central_api_url(code: &str) -> String {
+    let slug = code.trim().trim_matches('/');
+    if slug.is_empty() || slug == "merkez" {
+        return String::new();
+    }
+    format!("https://{}/{}/sync", SAAS_API_HOST, slug)
+}
+
+/// central_ws_url boş veya eski global path ise kiracı slug ile türet.
+pub fn resolve_central_ws_url(config: &AppConfig) -> String {
+    let explicit = config.central_ws_url.trim();
+    if !explicit.is_empty()
+        && explicit != "wss://api.retailex.app/ws"
+        && explicit != "wss://api.retailex.com/ws"
+    {
+        return explicit.to_string();
+    }
+    if let Some(slug) = tenant_slug_from_rest_url(&config.remote_rest_url) {
+        return build_tenant_central_ws_url(&slug);
+    }
+    if explicit.is_empty() {
+        "ws://127.0.0.1:9999/ws".to_string()
+    } else {
+        explicit.to_string()
+    }
+}
+
+pub fn resolve_central_api_url(config: &AppConfig) -> String {
+    let explicit = config.central_api_url.trim();
+    if !explicit.is_empty()
+        && !explicit.contains("api.retailex.com/sync")
+        && explicit != "http://localhost:8000/api/v1/sync"
+    {
+        return explicit.to_string();
+    }
+    if let Some(slug) = tenant_slug_from_rest_url(&config.remote_rest_url) {
+        return build_tenant_central_api_url(&slug);
+    }
+    if explicit.is_empty() {
+        String::new()
+    } else {
+        explicit.to_string()
+    }
+}
 fn default_regulatory_region() -> String {
     "IQ".to_string()
 }
@@ -184,8 +265,8 @@ impl Default for AppConfig {
             system_type: "retail".to_string(),
             skip_integration: false,
             selected_firms: vec!["001".to_string()],
-            central_api_url: "http://localhost:8000/api/v1/sync".to_string(),
-            central_ws_url: "ws://localhost:8000/api/v1/ws".to_string(),
+            central_api_url: String::new(),
+            central_ws_url: String::new(),
             amqp_url: "amqp://guest:guest@localhost:5672".to_string(),
             role: "terminal".to_string(),
             device_id: "".to_string(),

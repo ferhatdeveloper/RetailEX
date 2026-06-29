@@ -25,8 +25,29 @@ api.retailex.app {
 	}
 
 	# Örnek kiracı: aqua_beauty — https://api.retailex.app/aqua/firms?select=*&limit=1
+	handle /aqua/ws* {
+		uri strip_prefix /aqua
+		reverse_proxy saas_sync_hub:8080
+	}
+	handle /aqua/sync* {
+		uri strip_prefix /aqua/sync
+		reverse_proxy saas_sync_hub:8080
+	}
 	handle_path /aqua/* {
 		reverse_proxy saas_postgrest_aqua_beauty:3000
+	}
+
+	# Örnek: lovan — PostgREST + WS
+	handle /lovan/ws* {
+		uri strip_prefix /lovan
+		reverse_proxy saas_sync_hub:8080
+	}
+	handle /lovan/sync* {
+		uri strip_prefix /lovan/sync
+		reverse_proxy saas_sync_hub:8080
+	}
+	handle_path /lovan/* {
+		reverse_proxy saas_postgrest_lovan:3000
 	}
 
 	# Tanımsız yollar

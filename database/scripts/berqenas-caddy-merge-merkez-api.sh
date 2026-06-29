@@ -34,6 +34,7 @@ POSTGREST_UPSTREAM_METTU="${POSTGREST_UPSTREAM_METTU:-saas_postgrest_mettu:3000}
 POSTGREST_UPSTREAM_JIBER="${POSTGREST_UPSTREAM_JIBER:-saas_postgrest_jiber:3000}"
 POSTGREST_UPSTREAM_CANON="${POSTGREST_UPSTREAM_CANON:-saas_postgrest_canon:3000}"
 POSTGREST_UPSTREAM_LOVAN="${POSTGREST_UPSTREAM_LOVAN:-saas_postgrest_lovan:3000}"
+SAAS_SYNC_UPSTREAM="${SAAS_SYNC_UPSTREAM:-saas_sync_hub:8080}"
 MERKEZ_API_ALLOWED_ORIGINS="${MERKEZ_API_ALLOWED_ORIGINS:-https://retailex.app,https://ilsa.berqenas.cloud}"
 
 if [[ -z "${MERKEZ_API_PUBLIC_DOMAIN}" ]]; then
@@ -91,6 +92,20 @@ emit_postgrest_handle_path() {
   echo "    }"
 }
 
+# Kiracı WebSocket + REST senkron (RetailEX-Sync-Service) — PostgREST'ten önce (daha özel yol)
+emit_sync_handle_path() {
+  local _path="$1"
+  local _sync_up="${2:-saas_sync_hub:8080}"
+  echo "    handle /${_path}/ws* {"
+  echo "        uri strip_prefix /${_path}"
+  echo "        reverse_proxy ${_sync_up}"
+  echo "    }"
+  echo "    handle /${_path}/sync* {"
+  echo "        uri strip_prefix /${_path}/sync"
+  echo "        reverse_proxy ${_sync_up}"
+  echo "    }"
+}
+
 {
   echo ""
   echo "${MERKEZ_API_PUBLIC_DOMAIN} {"
@@ -124,21 +139,37 @@ emit_postgrest_handle_path() {
   echo '        respond "{\"ok\":true,\"service\":\"retailex-api\"}" 200'
   echo "    }"
   emit_postgrest_handle_path "merkez" "${POSTGREST_UPSTREAM_MERKEZ}"
+  emit_sync_handle_path "aqua" "${SAAS_SYNC_UPSTREAM}"
   emit_postgrest_handle_path "aqua" "${POSTGREST_UPSTREAM_AQUA}"
+  emit_sync_handle_path "dismarco_pdks" "${SAAS_SYNC_UPSTREAM}"
   emit_postgrest_handle_path "dismarco_pdks" "${POSTGREST_UPSTREAM_DISMARCO}"
+  emit_sync_handle_path "m10_pdks" "${SAAS_SYNC_UPSTREAM}"
   emit_postgrest_handle_path "m10_pdks" "${POSTGREST_UPSTREAM_M10}"
+  emit_sync_handle_path "bestcom" "${SAAS_SYNC_UPSTREAM}"
   emit_postgrest_handle_path "bestcom" "${POSTGREST_UPSTREAM_BESTCOM}"
+  emit_sync_handle_path "siti_pdks" "${SAAS_SYNC_UPSTREAM}"
   emit_postgrest_handle_path "siti_pdks" "${POSTGREST_UPSTREAM_SITI}"
+  emit_sync_handle_path "pdks_demo" "${SAAS_SYNC_UPSTREAM}"
   emit_postgrest_handle_path "pdks_demo" "${POSTGREST_UPSTREAM_PDKS_DEMO}"
+  emit_sync_handle_path "retailex_demo" "${SAAS_SYNC_UPSTREAM}"
   emit_postgrest_handle_path "retailex_demo" "${POSTGREST_UPSTREAM_RETAILEX_DEMO}"
+  emit_sync_handle_path "berzin_com" "${SAAS_SYNC_UPSTREAM}"
   emit_postgrest_handle_path "berzin_com" "${POSTGREST_UPSTREAM_BERZIN_COM}"
+  emit_sync_handle_path "sho_aksesuar" "${SAAS_SYNC_UPSTREAM}"
   emit_postgrest_handle_path "sho_aksesuar" "${POSTGREST_UPSTREAM_SHO_AKSESUAR}"
+  emit_sync_handle_path "kupeli" "${SAAS_SYNC_UPSTREAM}"
   emit_postgrest_handle_path "kupeli" "${POSTGREST_UPSTREAM_KUPELI}"
+  emit_sync_handle_path "kasap" "${SAAS_SYNC_UPSTREAM}"
   emit_postgrest_handle_path "kasap" "${POSTGREST_UPSTREAM_KASAP}"
+  emit_sync_handle_path "testere" "${SAAS_SYNC_UPSTREAM}"
   emit_postgrest_handle_path "testere" "${POSTGREST_UPSTREAM_TESTERE}"
+  emit_sync_handle_path "mettu" "${SAAS_SYNC_UPSTREAM}"
   emit_postgrest_handle_path "mettu" "${POSTGREST_UPSTREAM_METTU}"
+  emit_sync_handle_path "jiber" "${SAAS_SYNC_UPSTREAM}"
   emit_postgrest_handle_path "jiber" "${POSTGREST_UPSTREAM_JIBER}"
+  emit_sync_handle_path "canon" "${SAAS_SYNC_UPSTREAM}"
   emit_postgrest_handle_path "canon" "${POSTGREST_UPSTREAM_CANON}"
+  emit_sync_handle_path "lovan" "${SAAS_SYNC_UPSTREAM}"
   emit_postgrest_handle_path "lovan" "${POSTGREST_UPSTREAM_LOVAN}"
   echo "    handle {"
   echo "        header Content-Type \"application/json; charset=utf-8\""

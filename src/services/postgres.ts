@@ -13,7 +13,7 @@ import {
   parsePgEndpointString,
   DEFAULT_REMOTE_REST_URL,
 } from '../core/remotePgDefaults';
-import { parseSaaSOrCustomPostgrestUrl } from './merkezTenantRegistry';
+import { parseSaaSOrCustomPostgrestUrl, resolveTenantSyncUrls } from './merkezTenantRegistry';
 
 const IS_PRODUCTION = isRetailExProductionWeb();
 
@@ -108,6 +108,9 @@ export let DB_SETTINGS = {
   hybridReadPreference: 'local_first' as HybridReadPreference,
   hybridSyncDirection: 'local_to_remote' as HybridSyncDirection,
   hybridSyncIntervalSec: 30,
+  merkezTenantCode: '' as string,
+  centralWsUrl: '' as string,
+  centralApiUrl: '' as string,
 };
 
 type PgEndpointConfig = typeof LOCAL_CONFIG;
@@ -331,6 +334,17 @@ function applyWebLocalStorageConfig(config: any): void {
   DB_SETTINGS.hybridSyncIntervalSec = normalizeHybridSyncIntervalSec(
     config.hybrid_sync_interval_sec ?? (config as { hybridSyncIntervalSec?: unknown }).hybridSyncIntervalSec
   );
+  DB_SETTINGS.merkezTenantCode = String(
+    config.merkez_tenant_code ?? (config as { merkezTenantCode?: unknown }).merkezTenantCode ?? ''
+  ).trim();
+  const syncUrls = resolveTenantSyncUrls({
+    merkez_tenant_code: DB_SETTINGS.merkezTenantCode,
+    remote_rest_url: typeof config.remote_rest_url === 'string' ? config.remote_rest_url : DB_SETTINGS.remoteRestUrl,
+    central_ws_url: config.central_ws_url ?? (config as { centralWsUrl?: unknown }).centralWsUrl,
+    central_api_url: config.central_api_url ?? (config as { centralApiUrl?: unknown }).centralApiUrl,
+  });
+  DB_SETTINGS.centralWsUrl = syncUrls.central_ws_url;
+  DB_SETTINGS.centralApiUrl = syncUrls.central_api_url;
 
   if (config.local_host) {
     LOCAL_CONFIG.host = config.local_host;

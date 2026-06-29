@@ -1,6 +1,6 @@
 use anyhow::Result;
 use axum::{
-    extract::{ws::{WebSocket, WebSocketUpgrade}, State, Path},
+    extract::{ws::{WebSocket, WebSocketUpgrade}, State, Path, Query},
     response::IntoResponse,
     routing::{get, post},
     Json, Router,
@@ -124,6 +124,8 @@ async fn main() -> Result<()> {
         
         // WebSocket endpoint
         .route("/ws/:store_id", get(websocket_handler))
+        .route("/ws", get(websocket_hub_handler))
+        .route("/api/v1/ws", get(websocket_hub_handler))
         
         // REST API
         .route("/api/broadcasts", post(create_broadcast))
@@ -177,6 +179,25 @@ async fn websocket_handler(
 ) -> impl IntoResponse {
     info!("🔌 WebSocket connection request from store: {}", store_id);
     
+    ws.on_upgrade(move |socket| websocket::handle_connection(socket, store_id, state))
+}
+
+#[derive(Deserialize)]
+struct WebSocketHubQuery {
+    store_id: Option<String>,
+}
+
+/// Tauri / tek uç WS — store_id sorgu parametresi veya "hub"
+async fn websocket_hub_handler(
+    ws: WebSocketUpgrade,
+    Query(query): Query<WebSocketHubQuery>,
+    State(state): State<AppState>,
+) -> impl IntoResponse {
+    let store_id = query
+        .store_id
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or_else(|| "hub".to_string());
+    info!("🔌 WebSocket hub connection (store_id={})", store_id);
     ws.on_upgrade(move |socket| websocket::handle_connection(socket, store_id, state))
 }
 

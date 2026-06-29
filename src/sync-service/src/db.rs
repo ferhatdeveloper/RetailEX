@@ -127,7 +127,7 @@ impl Database {
         
         sqlx::query_unchecked!(
             r#"
-            INSERT INTO sync_queue (
+            INSERT INTO broadcast_delivery_queue (
                 id, broadcast_id, recipient_id, store_id,
                 priority, sequence_number, status, queued_at
             )
@@ -147,7 +147,7 @@ impl Database {
     
     async fn get_next_sequence(&self) -> Result<i64> {
         let record = sqlx::query_unchecked!(
-            "SELECT COALESCE(MAX(sequence_number), 0) + 1 as next_seq FROM sync_queue"
+            "SELECT COALESCE(MAX(sequence_number), 0) + 1 as next_seq FROM broadcast_delivery_queue"
         )
         .fetch_one(&self.pool)
         .await?;
@@ -207,7 +207,7 @@ impl Database {
                 sq.sequence_number,
                 sq.status,
                 bm.payload
-            FROM sync_queue sq
+            FROM broadcast_delivery_queue sq
             JOIN broadcast_messages bm ON bm.id = sq.broadcast_id
             WHERE sq.store_id = $1
               AND sq.status = 'pending'
@@ -244,7 +244,7 @@ impl Database {
         if success {
             // Update queue status
             sqlx::query_unchecked!(
-                "UPDATE sync_queue SET status = 'completed', updated_at = NOW() WHERE id = $1",
+                "UPDATE broadcast_delivery_queue SET status = 'completed', updated_at = NOW() WHERE id = $1",
                 queue_id
             )
             .execute(&self.pool)
@@ -252,7 +252,7 @@ impl Database {
             
             // Update recipient
             let recipient_id = sqlx::query_unchecked!(
-                "SELECT recipient_id FROM sync_queue WHERE id = $1",
+                "SELECT recipient_id FROM broadcast_delivery_queue WHERE id = $1",
                 queue_id
             )
             .fetch_one(&self.pool)
@@ -275,7 +275,7 @@ impl Database {
             // Increment retry count
             sqlx::query_unchecked!(
                 r#"
-                UPDATE sync_queue 
+                UPDATE broadcast_delivery_queue 
                 SET retry_count = retry_count + 1,
                     status = CASE 
                         WHEN retry_count + 1 >= max_retries THEN 'failed'
@@ -369,7 +369,7 @@ impl Database {
     
     pub async fn get_store_pending_count(&self, store_id: &Uuid) -> Result<i32> {
         let record = sqlx::query_unchecked!(
-            "SELECT COUNT(*) as count FROM sync_queue WHERE store_id = $1 AND status = 'pending'",
+            "SELECT COUNT(*) as count FROM broadcast_delivery_queue WHERE store_id = $1 AND status = 'pending'",
             store_id
         )
         .fetch_one(&self.pool)

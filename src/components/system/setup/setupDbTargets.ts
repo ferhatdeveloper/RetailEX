@@ -1,4 +1,5 @@
 import type { SetupAppConfig, SetupDbMode, SetupDbTarget } from './setupTypes';
+import { DEFAULT_SAAS_TENANT_POSTGREST_ORIGIN, resolveTenantSyncUrls } from '../../../services/merkezTenantRegistry';
 
 const VALID_DB_MODES: SetupDbMode[] = ['online', 'offline', 'hybrid'];
 
@@ -130,8 +131,17 @@ export function normalizeSetupConfig(config: SetupAppConfig): SetupAppConfig {
   }
 
   if (!normalized.remote_rest_url?.trim()) {
-    normalized.remote_rest_url = 'https://api.retailex.app';
+    normalized.remote_rest_url = DEFAULT_SAAS_TENANT_POSTGREST_ORIGIN;
   }
+
+  const syncUrls = resolveTenantSyncUrls({
+    merkez_tenant_code: (normalized as { merkez_tenant_code?: string }).merkez_tenant_code,
+    remote_rest_url: normalized.remote_rest_url,
+    central_ws_url: normalized.central_ws_url,
+    central_api_url: normalized.central_api_url,
+  });
+  if (syncUrls.central_ws_url) normalized.central_ws_url = syncUrls.central_ws_url;
+  if (syncUrls.central_api_url) normalized.central_api_url = syncUrls.central_api_url;
 
   if (normalized.role === 'client' && db_mode === 'online') {
     const central = String(normalized.central_api_url || '').trim();
