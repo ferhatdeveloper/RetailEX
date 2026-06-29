@@ -3,8 +3,9 @@ version: "3.9"
 # Dokploy / Docker Compose — RetailEX SaaS yığını
 #
 # WhatsApp QR köprüsü: retailex_whatsapp_bridge + retailex_frontend (nginx /__wa_bridge).
+# WebSocket senkron: sync_{kiracı} + Caddy /{kiracı}/ws ve /{kiracı}/sync (075 migration gerekli).
 # main'e push sonrası Dokploy'da Redeploy veya:
-#   POSTGRES_PASSWORD='...' bash database/scripts/dokploy-redeploy-whatsapp.sh
+#   POSTGRES_PASSWORD='...' bash database/scripts/dokploy-redeploy-sync.sh
 #
 # Veri güvenliği: Bu dosya volume adlarını veya postgres veri dizinini değiştirmez;
 # yalnızca ortam değişkenleri ve servis tanımlarıdır. Mevcut named volume’lar
@@ -46,6 +47,24 @@ x-postgrest-env: &postgrest-env
   PGRST_SERVER_PORT: "3000"
   PGRST_SERVER_CORS_ALLOWED_ORIGINS: "*"
 
+x-sync-env: &sync-env
+  BIND_ADDRESS: 0.0.0.0:8080
+  RUST_LOG: retailex_sync_service=info,tower_http=info
+
+x-sync-service: &sync-service
+  build:
+    context: .
+    dockerfile: Dockerfile.sync-service
+  image: retailex-sync-service:latest
+  restart: always
+  depends_on:
+    postgres:
+      condition: service_healthy
+  environment:
+    <<: *sync-env
+  networks:
+    - berqenas_net
+
 services:
   api_gateway:
     image: caddy:2.8-alpine
@@ -63,6 +82,7 @@ services:
       - postgrest_jiber
       - postgrest_canon
       - postgrest_lovan
+      - sync_lovan
     volumes:
       - ./database/docker/Caddyfile.api-gateway:/etc/caddy/Caddyfile:ro
     networks:
@@ -415,6 +435,118 @@ services:
       - "${POSTGREST_PORT_LOVAN:-3018}:3000"
     networks:
       - berqenas_net
+
+  sync_aqua:
+    <<: *sync-service
+    container_name: saas_sync_aqua
+    environment:
+      <<: *sync-env
+      DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/aqua_beauty
+
+  sync_berzin_com:
+    <<: *sync-service
+    container_name: saas_sync_berzin_com
+    environment:
+      <<: *sync-env
+      DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/berzin_com
+
+  sync_bestcom:
+    <<: *sync-service
+    container_name: saas_sync_bestcom
+    environment:
+      <<: *sync-env
+      DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/bestcom_db
+
+  sync_canon:
+    <<: *sync-service
+    container_name: saas_sync_canon
+    environment:
+      <<: *sync-env
+      DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/canon
+
+  sync_dismarco_pdks:
+    <<: *sync-service
+    container_name: saas_sync_dismarco_pdks
+    environment:
+      <<: *sync-env
+      DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/dismarco_pdks
+
+  sync_jiber:
+    <<: *sync-service
+    container_name: saas_sync_jiber
+    environment:
+      <<: *sync-env
+      DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/jiber
+
+  sync_kasap:
+    <<: *sync-service
+    container_name: saas_sync_kasap
+    environment:
+      <<: *sync-env
+      DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/kasap
+
+  sync_kupeli:
+    <<: *sync-service
+    container_name: saas_sync_kupeli
+    environment:
+      <<: *sync-env
+      DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/kupeli
+
+  sync_lovan:
+    <<: *sync-service
+    container_name: saas_sync_lovan
+    environment:
+      <<: *sync-env
+      DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/lovan
+
+  sync_m10_pdks:
+    <<: *sync-service
+    container_name: saas_sync_m10_pdks
+    environment:
+      <<: *sync-env
+      DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/m10_pdks
+
+  sync_mettu:
+    <<: *sync-service
+    container_name: saas_sync_mettu
+    environment:
+      <<: *sync-env
+      DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/mettu
+
+  sync_pdks_demo:
+    <<: *sync-service
+    container_name: saas_sync_pdks_demo
+    environment:
+      <<: *sync-env
+      DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/pdks_demo
+
+  sync_retailex_demo:
+    <<: *sync-service
+    container_name: saas_sync_retailex_demo
+    environment:
+      <<: *sync-env
+      DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/retailex_demo
+
+  sync_sho_aksesuar:
+    <<: *sync-service
+    container_name: saas_sync_sho_aksesuar
+    environment:
+      <<: *sync-env
+      DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/sho_aksesuar
+
+  sync_siti_pdks:
+    <<: *sync-service
+    container_name: saas_sync_siti_pdks
+    environment:
+      <<: *sync-env
+      DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/siti_pdks
+
+  sync_testere:
+    <<: *sync-service
+    container_name: saas_sync_testere
+    environment:
+      <<: *sync-env
+      DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/testere
 
 networks:
   berqenas_net:

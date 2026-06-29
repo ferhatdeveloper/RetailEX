@@ -1,0 +1,17 @@
+# RetailEX-Sync-Service — kiracı WebSocket + REST (/ws, /sync, /api/broadcasts)
+FROM rust:1.83-bookworm AS builder
+WORKDIR /build
+RUN apt-get update && apt-get install -y --no-install-recommends pkg-config libssl-dev && rm -rf /var/lib/apt/lists/*
+COPY src/sync-service/Cargo.toml src/sync-service/Cargo.lock ./
+COPY src/sync-service/.sqlx ./.sqlx
+COPY src/sync-service/src ./src
+ENV SQLX_OFFLINE=true
+RUN cargo build --release --bin RetailEX-Sync-Service
+
+FROM debian:bookworm-slim
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates libssl3 && rm -rf /var/lib/apt/lists/*
+WORKDIR /app
+COPY --from=builder /build/target/release/RetailEX-Sync-Service /app/RetailEX-Sync-Service
+ENV BIND_ADDRESS=0.0.0.0:8080
+EXPOSE 8080
+CMD ["/app/RetailEX-Sync-Service"]
