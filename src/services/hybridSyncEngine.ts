@@ -362,6 +362,32 @@ async function markFailed(source: SyncEndpoint, id: string, error: string): Prom
   await markFailedPostgrest(source.baseUrl, id, error);
 }
 
+export type SyncQueueBreakdownRow = { tableName: string; count: number };
+
+export async function getPendingQueueBreakdown(
+  endpoint: PgEndpointConfig,
+  filter?: HybridSyncFilter,
+): Promise<SyncQueueBreakdownRow[]> {
+  const where = buildQueueWhere(filter);
+  const rows = await queryPgRows(
+    endpoint,
+    `SELECT table_name, COUNT(*)::text AS cnt FROM sync_queue WHERE ${where.sql} GROUP BY table_name ORDER BY COUNT(*) DESC`,
+    where.params,
+  );
+  return rows.map((r: { table_name?: string; cnt?: string }) => ({
+    tableName: String(r.table_name ?? ''),
+    count: Number(r.cnt ?? 0),
+  }));
+}
+
+export async function getPendingQueueBreakdownEndpoint(
+  endpoint: SyncEndpoint,
+  filter?: HybridSyncFilter,
+): Promise<SyncQueueBreakdownRow[]> {
+  if (endpoint.kind === 'pg') return getPendingQueueBreakdown(endpoint.config, filter);
+  return [];
+}
+
 export async function countPendingQueueEndpoint(
   endpoint: SyncEndpoint,
   filter?: HybridSyncFilter,
