@@ -50,26 +50,28 @@ export function MposKalemTargetBar({
 
   return (
     <div
-      className={`rounded-xl border shadow-sm flex flex-col h-full ${className} ${
-        isDark ? 'border-gray-700 bg-gray-800' : 'border-gray-200 bg-white'
+      className={`w-full rounded-xl border shadow-sm overflow-hidden flex flex-col h-full min-h-[320px] ${className} ${
+        isDark ? 'border-gray-600 bg-gray-800' : 'border-gray-300 bg-white'
       }`}
+      role="region"
+      aria-label="Hedef firma ve cihaz"
     >
       <div
-        className={`flex flex-wrap items-center gap-2 px-4 py-2.5 border-b ${
-          isDark ? 'border-gray-700 bg-gray-800/80' : 'border-gray-100 bg-gray-50'
+        className={`px-4 py-2.5 text-sm font-semibold shrink-0 ${
+          isDark
+            ? 'bg-slate-700 text-white border-b border-gray-600'
+            : 'bg-[#0054a6] text-white border-b border-[#004080]'
         }`}
       >
-        <Building2 className={`w-4 h-4 shrink-0 ${isDark ? 'text-blue-400' : 'text-blue-600'}`} />
-        <span className={`text-sm font-semibold ${isDark ? 'text-gray-100' : 'text-gray-900'}`}>
-          Hedef firma ve cihaz
-        </span>
-        <span className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
-          {targetLabel}
-        </span>
+        Hedef firma ve cihaz
       </div>
 
-      <div className="px-4 py-4 flex-1 flex flex-col">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className={`px-4 py-4 flex-1 flex flex-col gap-4 ${isDark ? 'bg-gray-800' : 'bg-gray-50'}`}>
+        <p className={`text-xs leading-snug ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
+          {targetLabel}
+        </p>
+
+        <div className="grid grid-cols-1 gap-4">
           <div className="space-y-1.5">
             <label
               htmlFor="mpos-target-firm"
@@ -121,25 +123,34 @@ export function MposKalemTargetBar({
                 </option>
               ))}
             </select>
+            {selectedFirmNr && filteredTerminals.length === 0 ? (
+              <p className="text-xs text-amber-700 dark:text-amber-400">
+                Bu firmada onaylı cihaz yok.
+              </p>
+            ) : null}
           </div>
         </div>
-
-        {onBulkSendAll && (
-          <div className="mt-4 flex flex-wrap gap-2">
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              className="h-9 text-xs gap-1.5"
-              disabled={bulkSendDisabled}
-              onClick={onBulkSendAll}
-            >
-              <Send className="w-3.5 h-3.5" />
-              Tüm cihazlara gönder (firma)
-            </Button>
-          </div>
-        )}
       </div>
+
+      {onBulkSendAll ? (
+        <div
+          className={`flex items-center justify-end px-4 py-3 border-t gap-3 shrink-0 ${
+            isDark ? 'border-gray-600 bg-gray-900/80' : 'border-gray-200 bg-white'
+          }`}
+        >
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="h-8 text-xs gap-1.5"
+            disabled={bulkSendDisabled}
+            onClick={onBulkSendAll}
+          >
+            <Send className="w-3.5 h-3.5" />
+            Tüm cihazlara gönder (firma)
+          </Button>
+        </div>
+      ) : null}
     </div>
   );
 }

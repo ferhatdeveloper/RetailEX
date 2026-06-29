@@ -1334,8 +1334,7 @@ export function EnterpriseCentralDataManagement() {
 
           {/* Bilgi Gönder */}
           <TabsContent value="send" className="mt-0 space-y-4">
-            <div className="flex flex-col md:flex-row gap-4 items-stretch w-full">
-              <div className="w-full md:w-1/2 md:min-w-0 shrink-0">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch w-full">
               <MposKalemTargetBar
                 firms={mposFirmOptions}
                 selectedFirmNr={selectedFirmNr}
@@ -1348,40 +1347,37 @@ export function EnterpriseCentralDataManagement() {
                 onBulkSendAll={() => void handleMposBulkAllKasas()}
                 bulkSendDisabled={isSyncBusy || !selectedFirmNr || filteredTerminalsForFirm.length === 0}
               />
-              </div>
-              <div className="w-full md:w-1/2 md:min-w-0 shrink-0">
               <MposKalemTransferPanel
                 mode="send"
                 title="Bilgilerin gönderilmesi (Merkez → Kasa)"
                 hideTargetFields
-              fileTypes={MPOS_SEND_FILE_TYPES}
-              fileType={mposFileType}
-              onFileTypeChange={(v) => setMposFileType(v as MposSendFileType)}
-              branchStores={branchStores}
-              selectedBranchStoreId={selectedBranchStoreId}
-              onBranchChange={handleBranchStoreChange}
-              selectedTerminalDeviceId={selectedTerminalDeviceId}
-              onTerminalChange={setSelectedTerminalDeviceId}
-              filteredTerminals={filteredTerminalsForFirm}
-              selectedTerminalDeviceIds={selectedTerminalDeviceIds}
-              onTerminalSelectionChange={setSelectedTerminalDeviceIds}
-              isBusy={isSyncBusy}
-              onCancel={handleMposKalemReset}
-              onSubmit={() => void handleMposKalemSend()}
-              theme={theme}
-              helpText="Firma ve cihaz seç → Değişenler/Tümü → Gönder. Puan ve promosyon için ilgili dosya tipini seçin."
-              showProductImagesOption
-              includeProductImages={includeProductImages}
-              onIncludeProductImagesChange={setIncludeProductImages}
-              syncMode={mposSyncMode}
-              onSyncModeChange={setMposSyncMode}
-              dateFrom={mposDateFrom}
-              dateTo={mposDateTo}
-              onDateFromChange={setMposDateFrom}
-              onDateToChange={setMposDateTo}
-              sendProgress={sendProgress}
+                fileTypes={MPOS_SEND_FILE_TYPES}
+                fileType={mposFileType}
+                onFileTypeChange={(v) => setMposFileType(v as MposSendFileType)}
+                branchStores={branchStores}
+                selectedBranchStoreId={selectedBranchStoreId}
+                onBranchChange={handleBranchStoreChange}
+                selectedTerminalDeviceId={selectedTerminalDeviceId}
+                onTerminalChange={setSelectedTerminalDeviceId}
+                filteredTerminals={filteredTerminalsForFirm}
+                selectedTerminalDeviceIds={selectedTerminalDeviceIds}
+                onTerminalSelectionChange={setSelectedTerminalDeviceIds}
+                isBusy={isSyncBusy}
+                onCancel={handleMposKalemReset}
+                onSubmit={() => void handleMposKalemSend()}
+                theme={theme}
+                helpText="Firma ve cihaz seç → Değişenler/Tümü → Gönder. Puan ve promosyon için ilgili dosya tipini seçin."
+                showProductImagesOption
+                includeProductImages={includeProductImages}
+                onIncludeProductImagesChange={setIncludeProductImages}
+                syncMode={mposSyncMode}
+                onSyncModeChange={setMposSyncMode}
+                dateFrom={mposDateFrom}
+                dateTo={mposDateTo}
+                onDateFromChange={setMposDateFrom}
+                onDateToChange={setMposDateTo}
+                sendProgress={sendProgress}
               />
-              </div>
             </div>
 
             <MposSyncLogPanel
@@ -1704,8 +1700,7 @@ export function EnterpriseCentralDataManagement() {
 
           {/* Bilgi Al */}
           <TabsContent value="receive" className="mt-0 space-y-4">
-            <div className="flex flex-col md:flex-row gap-4 items-stretch w-full">
-              <div className="w-full md:w-1/2 md:min-w-0 shrink-0">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch w-full">
               <MposKalemTargetBar
                 firms={mposFirmOptions}
                 selectedFirmNr={selectedFirmNr}
@@ -1716,28 +1711,25 @@ export function EnterpriseCentralDataManagement() {
                 targetLabel={mposTargetLabel()}
                 theme={theme}
               />
-              </div>
-              <div className="w-full md:w-1/2 md:min-w-0 shrink-0">
               <MposKalemTransferPanel
                 mode="receive"
                 title="Bilgilerin alınması (Kasa → Merkez)"
                 hideTargetFields
-              fileTypes={MPOS_RECEIVE_FILE_TYPES}
-              fileType={mposReceiveFileType}
-              onFileTypeChange={(v) => setMposReceiveFileType(v as MposReceiveFileType)}
-              branchStores={branchStores}
-              selectedBranchStoreId={selectedBranchStoreId}
-              onBranchChange={handleBranchStoreChange}
-              selectedTerminalDeviceId={selectedTerminalDeviceId}
-              onTerminalChange={handleTerminalChange}
-              filteredTerminals={filteredTerminalsForFirm}
-              isBusy={isSyncBusy}
-              onCancel={handleMposKalemReset}
-              onSubmit={() => void handleMposKalemReceive()}
-              theme={theme}
-              helpText="Satış ve günsonu al. Cihazda işlem bittikten sonra dosya tipi seçip Al."
-            />
-              </div>
+                fileTypes={MPOS_RECEIVE_FILE_TYPES}
+                fileType={mposReceiveFileType}
+                onFileTypeChange={(v) => setMposReceiveFileType(v as MposReceiveFileType)}
+                branchStores={branchStores}
+                selectedBranchStoreId={selectedBranchStoreId}
+                onBranchChange={handleBranchStoreChange}
+                selectedTerminalDeviceId={selectedTerminalDeviceId}
+                onTerminalChange={handleTerminalChange}
+                filteredTerminals={filteredTerminalsForFirm}
+                isBusy={isSyncBusy}
+                onCancel={handleMposKalemReset}
+                onSubmit={() => void handleMposKalemReceive()}
+                theme={theme}
+                helpText="Satış ve günsonu al. Cihazda işlem bittikten sonra dosya tipi seçip Al."
+              />
             </div>
 
             <MposSyncLogPanel

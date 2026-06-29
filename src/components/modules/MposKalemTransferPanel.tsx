@@ -55,10 +55,10 @@ type Props = {
 };
 
 const fieldClass = (theme: 'light' | 'dark') =>
-  `h-8 w-full border px-2 text-sm rounded-sm ${
+  `h-9 w-full border px-3 text-sm rounded-md ${
     theme === 'dark'
-      ? 'bg-gray-700 border-gray-500 text-gray-100'
-      : 'bg-white border-gray-400 text-gray-900'
+      ? 'bg-gray-700 border-gray-600 text-gray-100'
+      : 'bg-white border-gray-300 text-gray-900'
   }`;
 
 const SYNC_DATE_TYPES = new Set(['products', 'customers']);
@@ -125,7 +125,7 @@ export function MposKalemTransferPanel({
 
   return (
     <div
-      className={`w-full rounded-lg border shadow-sm overflow-hidden flex flex-col h-full ${className} ${
+      className={`w-full rounded-xl border shadow-sm overflow-hidden flex flex-col h-full min-h-[320px] ${className} ${
         isDark ? 'border-gray-600 bg-gray-800' : 'border-gray-300 bg-white'
       }`}
       role="region"
@@ -142,7 +142,7 @@ export function MposKalemTransferPanel({
       </div>
 
       <div className={`px-4 py-4 space-y-4 flex-1 ${isDark ? 'bg-gray-800' : 'bg-gray-50'}`}>
-        <div className={`grid gap-3 ${hideTargetFields ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1'}`}>
+        <div className={`grid gap-3 ${hideTargetFields ? 'grid-cols-1' : 'grid-cols-1'}`}>
           <div className="space-y-1.5">
             <label className={`block text-xs font-semibold uppercase tracking-wide ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
               Dosya tipi
@@ -205,11 +205,11 @@ export function MposKalemTransferPanel({
           ) : null}
         </div>
 
-        {multiSend && selectedBranchStoreId ? (
+        {multiSend && (hideTargetFields ? filteredTerminals.length > 0 : selectedBranchStoreId) ? (
           <div className={`space-y-2 rounded-md border p-3 ${isDark ? 'border-gray-600 bg-gray-900/50' : 'border-gray-200 bg-white'}`}>
             <div className="flex items-center justify-between gap-2">
               <span className={`text-xs font-medium ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
-                Kasalar (çoklu seçim)
+                Cihazlar (çoklu seçim)
               </span>
               <div className="flex gap-1">
                 <button
@@ -229,7 +229,7 @@ export function MposKalemTransferPanel({
               </div>
             </div>
             {filteredTerminals.length === 0 ? (
-              <p className="text-xs text-amber-700 dark:text-amber-400">Bu işyerinde onaylı kasa yok.</p>
+              <p className="text-xs text-amber-700 dark:text-amber-400">Bu firmada onaylı cihaz yok.</p>
             ) : (
               <div className="max-h-32 overflow-y-auto space-y-1">
                 {filteredTerminals.map((t) => (
@@ -248,7 +248,7 @@ export function MposKalemTransferPanel({
             )}
             {selectedTerminalDeviceIds.length > 0 && (
               <p className={`text-[10px] ${isDark ? 'text-gray-500' : 'text-gray-500'}`}>
-                {selectedTerminalDeviceIds.length} kasa seçili
+                {selectedTerminalDeviceIds.length} cihaz seçili
               </p>
             )}
           </div>
