@@ -1107,6 +1107,20 @@ const SetupWizard: React.FC = () => {
                         city = EXCLUDED.city
                     `, [currentFirmId, currentFirmName, currentFirmTaxNr, currentFirmTaxOffice, currentFirmCity, firmData?.title || finalDbConfig.title || currentFirmName]);
 
+                try {
+                    const { provisionFirmEverywhere } = await import('../../services/firmProvisionService');
+                    const prov = await provisionFirmEverywhere({
+                        firmNr: currentFirmId,
+                        periodNr: finalDbConfig.erp_period_nr || '01',
+                        firmName: currentFirmName,
+                    });
+                    if (!prov.ok) {
+                        console.warn('[SetupWizard] Firma provision:', prov.messages.join(' | '));
+                    }
+                } catch (e) {
+                    console.warn('[SetupWizard] Firma provision atlandı:', e);
+                }
+
                 // 2. Firm-Level Dynamic Tables (Cards - Items, CLCard etc)
                 if (isTauri) {
                     

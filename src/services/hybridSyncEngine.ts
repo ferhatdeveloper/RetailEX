@@ -13,7 +13,7 @@ import {
   type PgSchemaName,
 } from './hybridSyncPostgrest';
 import { normalizeSyncRow } from './hybridSyncNormalize';
-import { ensureFirmPeriodSchemasOnce } from './ensureCentralFirmSchema';
+import { ensureFirmPeriodSchemasOnce } from './firmProvisionService';
 
 export type PgEndpointConfig = {
   host: string;

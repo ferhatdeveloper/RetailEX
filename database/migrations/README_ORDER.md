@@ -64,6 +64,7 @@
 59. **071_apply_sync_queue_item_normalize.sql** – Hibrit sync: NOT NULL varsayılan normalize (`expiry_tracking` vb.), müşteri/tedarikçi `code` çakışması birleştirme.
 60. **072_firm_002_bootstrap.sql** – Firma 002, dönem 01, BAGHDAD mağazası ve `rex_002_*` tabloları (idempotent).
 61. **073_apply_sync_queue_item_record_id.sql** – Sync JSON'da `id` yoksa `record_id` birleştirilir.
+62. **074_provision_firm_schema_rpc.sql** – PostgREST RPC: yerel/merkez firma metadata + `rex_*` tabloları otomatik.
 
 **Kiracılara toplu uygulama (VPS / uzak PG):**
 - `npm run db:migrate:tenants` — tüm kiracı DB'ler

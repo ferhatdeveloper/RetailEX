@@ -1031,11 +1031,11 @@ export function Login({ onLogin }: LoginProps) {
             applyTerminalRuntimeFromAuth({ store_id: selectedStoreId });
           }
           if (DB_SETTINGS.activeMode === 'hybrid' || DB_SETTINGS.activeMode === 'online' || DB_SETTINGS.activeMode === 'offline') {
-            const { ensureFirmPeriodSchemasForMode } = await import('../../services/ensureCentralFirmSchema');
-            void ensureFirmPeriodSchemasForMode(
-              selectedFirmNr || ERP_SETTINGS.firmNr,
-              '01',
-            ).catch(() => {});
+            const { provisionFirmEverywhere } = await import('../../services/firmProvisionService');
+            void provisionFirmEverywhere({
+              firmNr: selectedFirmNr || ERP_SETTINGS.firmNr,
+              periodNr: '01',
+            }).catch(() => {});
           }
           if (rememberMe) {
             localStorage.setItem('retailos_user', JSON.stringify({ username: trimmedUsername }));

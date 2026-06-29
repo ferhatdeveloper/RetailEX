@@ -323,6 +323,22 @@ export const organizationAPI = {
                     /* firms.supabase_firm_id sütunu yoksa (eski kurulum) ana kayıt yine başarılı */
                 }
             }
+            if (!isUpdate && saved?.firm_nr) {
+                try {
+                    const { provisionFirmEverywhere } = await import('../firmProvisionService');
+                    const result = await provisionFirmEverywhere({
+                        firmNr: String(saved.firm_nr),
+                        periodNr: '01',
+                        firmName: saved.name || saved.title,
+                        currency: saved.ana_para_birimi || 'IQD',
+                    });
+                    if (!result.ok) {
+                        console.warn('[OrganizationAPI] Firma provision:', result.messages.join(' | '));
+                    }
+                } catch (e) {
+                    console.warn('[OrganizationAPI] Firma provision atlandı:', e);
+                }
+            }
             return saved;
         } catch (error) {
             console.error('[OrganizationAPI] saveFirm failed:', error);
@@ -498,7 +514,19 @@ export const organizationAPI = {
                     },
                     { schema: 'public', prefer: 'return=representation' }
                 );
-                return Array.isArray(rows) ? rows[0] : (rows as Period);
+                const saved = Array.isArray(rows) ? rows[0] : (rows as Period);
+                if (saved && period.firma_id) {
+                    try {
+                        const { provisionFirmEverywhere, resolveFirmNrByFirmId } = await import('../firmProvisionService');
+                        const fn = await resolveFirmNrByFirmId(String(period.firma_id));
+                        if (fn) {
+                            await provisionFirmEverywhere({ firmNr: fn, periodNr: String(nr) });
+                        }
+                    } catch (e) {
+                        console.warn('[OrganizationAPI] Dönem provision:', e);
+                    }
+                }
+                return saved;
             }
 
             if (isUpdate) {
@@ -512,7 +540,19 @@ export const organizationAPI = {
                     `INSERT INTO periods (firm_id, nr, beg_date, end_date, is_active) VALUES ($1::text::uuid, $2::text::int4, $3::text::date, $4::text::date, $5) RETURNING *`,
                     [period.firma_id, nr.toString(), period.baslangic_tarihi, period.bitis_tarihi, isActive]
                 );
-                return rows[0];
+                const saved = rows[0];
+                if (saved && period.firma_id) {
+                    try {
+                        const { provisionFirmEverywhere, resolveFirmNrByFirmId } = await import('../firmProvisionService');
+                        const fn = await resolveFirmNrByFirmId(String(period.firma_id));
+                        if (fn) {
+                            await provisionFirmEverywhere({ firmNr: fn, periodNr: String(nr) });
+                        }
+                    } catch (e) {
+                        console.warn('[OrganizationAPI] Dönem provision:', e);
+                    }
+                }
+                return saved;
             }
         } catch (error) {
             console.error('[OrganizationAPI] savePeriod failed:', error);

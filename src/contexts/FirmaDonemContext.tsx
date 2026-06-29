@@ -646,7 +646,15 @@ export const FirmaDonemProvider: React.FC<{ children: ReactNode }> = ({ children
   const selectFirm = (id: string | number) => {
     if (import.meta.env.DEV) console.log('[FirmaDonemContext] selectFirm called with:', id);
     const idStr = id.toString();
-    const found = firms.find(f => f.firm_nr === idStr || f.nr.toString() === idStr || f.logicalref.toString() === idStr || f.id === idStr);
+    const idNorm = normalizeFirmNr(idStr);
+    const found = firms.find(
+      (f) =>
+        normalizeFirmNr(f.firm_nr) === idNorm ||
+        f.firm_nr === idStr ||
+        f.nr.toString() === idStr ||
+        f.logicalref.toString() === idStr ||
+        f.id === idStr,
+    );
     if (found) {
       if (import.meta.env.DEV) console.log('[FirmaDonemContext] Found firm:', found);
       setSelectedFirm(found);
