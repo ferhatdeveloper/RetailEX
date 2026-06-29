@@ -69,8 +69,8 @@ import { BroadcastFormFields } from './BroadcastFormFields';
 import { BroadcastChangesTimeline } from './BroadcastChangesTimeline';
 import { SentMessagesList } from '../system/SentMessagesList';
 import { BroadcastDataSelector } from './BroadcastDataSelector';
-import { MposKalemTransferPanel } from './MposKalemTransferPanel';
 import { MposKalemTargetBar } from './MposKalemTargetBar';
+import { MposDataTransferModal } from './MposDataTransferModal';
 import { MposDayEndDialog } from './MposDayEndDialog';
 import { MposSyncLogPanel } from './MposSyncLogPanel';
 import {
@@ -195,6 +195,7 @@ export function EnterpriseCentralDataManagement() {
   );
   const lastDayEndAutoRunRef = useRef('');
   const [showAdvancedSend, setShowAdvancedSend] = useState(false);
+  const [mposTransferModalOpen, setMposTransferModalOpen] = useState(false);
 
   const padFirmNr = (nr: string) => String(nr || '').replace(/\D/g, '').padStart(3, '0');
 
@@ -1334,50 +1335,31 @@ export function EnterpriseCentralDataManagement() {
 
           {/* Bilgi Gönder */}
           <TabsContent value="send" className="mt-0 space-y-4">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch w-full">
-              <MposKalemTargetBar
-                firms={mposFirmOptions}
-                selectedFirmNr={selectedFirmNr}
-                onFirmChange={handleFirmChange}
-                selectedTerminalDeviceId={selectedTerminalDeviceId}
-                onTerminalChange={handleTerminalChange}
-                filteredTerminals={filteredTerminalsForFirm}
-                targetLabel={mposTargetLabel()}
-                theme={theme}
-                onBulkSendAll={() => void handleMposBulkAllKasas()}
-                bulkSendDisabled={isSyncBusy || !selectedFirmNr || filteredTerminalsForFirm.length === 0}
-              />
-              <MposKalemTransferPanel
-                mode="send"
-                title="Bilgilerin gönderilmesi (Merkez → Kasa)"
-                hideTargetFields
-                fileTypes={MPOS_SEND_FILE_TYPES}
-                fileType={mposFileType}
-                onFileTypeChange={(v) => setMposFileType(v as MposSendFileType)}
-                branchStores={branchStores}
-                selectedBranchStoreId={selectedBranchStoreId}
-                onBranchChange={handleBranchStoreChange}
-                selectedTerminalDeviceId={selectedTerminalDeviceId}
-                onTerminalChange={setSelectedTerminalDeviceId}
-                filteredTerminals={filteredTerminalsForFirm}
-                selectedTerminalDeviceIds={selectedTerminalDeviceIds}
-                onTerminalSelectionChange={setSelectedTerminalDeviceIds}
-                isBusy={isSyncBusy}
-                onCancel={handleMposKalemReset}
-                onSubmit={() => void handleMposKalemSend()}
-                theme={theme}
-                helpText="Firma ve cihaz seç → Değişenler/Tümü → Gönder. Puan ve promosyon için ilgili dosya tipini seçin."
-                showProductImagesOption
-                includeProductImages={includeProductImages}
-                onIncludeProductImagesChange={setIncludeProductImages}
-                syncMode={mposSyncMode}
-                onSyncModeChange={setMposSyncMode}
-                dateFrom={mposDateFrom}
-                dateTo={mposDateTo}
-                onDateFromChange={setMposDateFrom}
-                onDateToChange={setMposDateTo}
-                sendProgress={sendProgress}
-              />
+            <MposKalemTargetBar
+              firms={mposFirmOptions}
+              selectedFirmNr={selectedFirmNr}
+              onFirmChange={handleFirmChange}
+              selectedTerminalDeviceId={selectedTerminalDeviceId}
+              onTerminalChange={handleTerminalChange}
+              filteredTerminals={filteredTerminalsForFirm}
+              targetLabel={mposTargetLabel()}
+              theme={theme}
+              onBulkSendAll={() => void handleMposBulkAllKasas()}
+              bulkSendDisabled={isSyncBusy || !selectedFirmNr || filteredTerminalsForFirm.length === 0}
+            />
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                className="gap-2"
+                disabled={isSyncBusy || !selectedFirmNr || !selectedTerminalDeviceId}
+                onClick={() => setMposTransferModalOpen(true)}
+              >
+                <Upload className="w-4 h-4" />
+                Veri Gönder / Al…
+              </Button>
+              <p className="text-xs text-gray-500 self-center">
+                Müşteri seçim penceresi gibi özet ve adım adım aktarım modalı açılır.
+              </p>
             </div>
 
             <MposSyncLogPanel
@@ -1700,37 +1682,25 @@ export function EnterpriseCentralDataManagement() {
 
           {/* Bilgi Al */}
           <TabsContent value="receive" className="mt-0 space-y-4">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch w-full">
-              <MposKalemTargetBar
-                firms={mposFirmOptions}
-                selectedFirmNr={selectedFirmNr}
-                onFirmChange={handleFirmChange}
-                selectedTerminalDeviceId={selectedTerminalDeviceId}
-                onTerminalChange={handleTerminalChange}
-                filteredTerminals={filteredTerminalsForFirm}
-                targetLabel={mposTargetLabel()}
-                theme={theme}
-              />
-              <MposKalemTransferPanel
-                mode="receive"
-                title="Bilgilerin alınması (Kasa → Merkez)"
-                hideTargetFields
-                fileTypes={MPOS_RECEIVE_FILE_TYPES}
-                fileType={mposReceiveFileType}
-                onFileTypeChange={(v) => setMposReceiveFileType(v as MposReceiveFileType)}
-                branchStores={branchStores}
-                selectedBranchStoreId={selectedBranchStoreId}
-                onBranchChange={handleBranchStoreChange}
-                selectedTerminalDeviceId={selectedTerminalDeviceId}
-                onTerminalChange={handleTerminalChange}
-                filteredTerminals={filteredTerminalsForFirm}
-                isBusy={isSyncBusy}
-                onCancel={handleMposKalemReset}
-                onSubmit={() => void handleMposKalemReceive()}
-                theme={theme}
-                helpText="Satış ve günsonu al. Cihazda işlem bittikten sonra dosya tipi seçip Al."
-              />
-            </div>
+            <MposKalemTargetBar
+              firms={mposFirmOptions}
+              selectedFirmNr={selectedFirmNr}
+              onFirmChange={handleFirmChange}
+              selectedTerminalDeviceId={selectedTerminalDeviceId}
+              onTerminalChange={handleTerminalChange}
+              filteredTerminals={filteredTerminalsForFirm}
+              targetLabel={mposTargetLabel()}
+              theme={theme}
+            />
+            <Button
+              type="button"
+              className="gap-2"
+              disabled={isSyncBusy || !selectedFirmNr || !selectedTerminalDeviceId}
+              onClick={() => setMposTransferModalOpen(true)}
+            >
+              <Download className="w-4 h-4" />
+              Veri Gönder / Al…
+            </Button>
 
             <MposSyncLogPanel
               storeId={selectedBranchStoreId || undefined}
@@ -2689,6 +2659,40 @@ export function EnterpriseCentralDataManagement() {
         onClose={() => setSelectorOpen(false)}
         onSelect={handleDataSelected}
         theme={theme}
+      />
+
+      <MposDataTransferModal
+        open={mposTransferModalOpen}
+        onClose={() => setMposTransferModalOpen(false)}
+        theme={theme}
+        targetLabel={mposTargetLabel()}
+        firmNr={selectedFirmNr}
+        storeId={selectedBranchStoreId}
+        terminalName={selectedTerminal()?.terminalName}
+        sendFileType={mposFileType}
+        onSendFileTypeChange={setMposFileType}
+        receiveFileType={mposReceiveFileType}
+        onReceiveFileTypeChange={setMposReceiveFileType}
+        syncMode={mposSyncMode}
+        onSyncModeChange={setMposSyncMode}
+        dateFrom={mposDateFrom}
+        dateTo={mposDateTo}
+        onDateFromChange={setMposDateFrom}
+        onDateToChange={setMposDateTo}
+        includeProductImages={includeProductImages}
+        onIncludeProductImagesChange={setIncludeProductImages}
+        isBusy={isSyncBusy}
+        sendProgress={sendProgress}
+        onSend={async () => {
+          await handleMposKalemSend();
+        }}
+        onReceive={async () => {
+          await handleMposKalemReceive();
+        }}
+        onSendAndReceive={async () => {
+          await handleMposKalemSend();
+          await handleMposKalemReceive();
+        }}
       />
 
       <MposDayEndDialog
