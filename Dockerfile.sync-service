@@ -1,7 +1,8 @@
 # RetailEX-Sync-Service — kiracı WebSocket + REST (/ws, /sync, /api/broadcasts)
-# getrandom 0.4+ edition2024 gerektirir — Rust ≥ 1.85 (bookworm = güncel stable)
-FROM rust:bookworm AS builder
+# Açık sürüm + sürüm doğrulama (Dokploy eski rust:bookworm cache kullanmasın)
+FROM rust:1.88.0-bookworm AS builder
 WORKDIR /build
+RUN rustc --version && cargo --version
 RUN apt-get update && apt-get install -y --no-install-recommends pkg-config libssl-dev && rm -rf /var/lib/apt/lists/*
 COPY src/sync-service/Cargo.toml src/sync-service/Cargo.lock ./
 COPY src/sync-service/.sqlx ./.sqlx

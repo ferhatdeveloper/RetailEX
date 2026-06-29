@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            SELECT \n                sq.id,\n                sq.broadcast_id,\n                sq.store_id,\n                sq.priority,\n                sq.sequence_number,\n                sq.status,\n                bm.payload\n            FROM sync_queue sq\n            JOIN broadcast_messages bm ON bm.id = sq.broadcast_id\n            WHERE sq.store_id = $1\n              AND sq.status = 'pending'\n              AND (sq.scheduled_for IS NULL OR sq.scheduled_for <= NOW())\n              AND (sq.expires_at IS NULL OR sq.expires_at > NOW())\n            ORDER BY sq.priority ASC, sq.sequence_number ASC\n            LIMIT $2\n            ",
+  "query": "\n            SELECT \n                sq.id,\n                sq.broadcast_id,\n                sq.store_id,\n                sq.priority,\n                sq.sequence_number,\n                sq.status,\n                bm.payload\n            FROM broadcast_delivery_queue sq\n            JOIN broadcast_messages bm ON bm.id = sq.broadcast_id\n            WHERE sq.store_id = $1\n              AND sq.status = 'pending'\n              AND (sq.scheduled_for IS NULL OR sq.scheduled_for <= NOW())\n              AND (sq.expires_at IS NULL OR sq.expires_at > NOW())\n            ORDER BY sq.priority ASC, sq.sequence_number ASC\n            LIMIT $2\n            ",
   "describe": {
     "columns": [
       {
@@ -55,5 +55,5 @@
       false
     ]
   },
-  "hash": "44b62d6130293e0cad6620a73018216b7b53506c4f959058e2b324afc913a763"
+  "hash": "a78666de9aba1d2bef0ca14e64ba8fd64d360949b47e76135f50912444591b2b"
 }

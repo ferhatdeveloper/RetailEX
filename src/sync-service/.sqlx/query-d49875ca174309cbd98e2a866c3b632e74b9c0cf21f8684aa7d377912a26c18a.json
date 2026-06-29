@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT recipient_id FROM sync_queue WHERE id = $1",
+  "query": "SELECT recipient_id FROM broadcast_delivery_queue WHERE id = $1",
   "describe": {
     "columns": [
       {
@@ -18,5 +18,5 @@
       true
     ]
   },
-  "hash": "c0cbdac36ed73f6820c3c296f5b0dec63ce467e67bc84a1d9045b9e3e81e7096"
+  "hash": "d49875ca174309cbd98e2a866c3b632e74b9c0cf21f8684aa7d377912a26c18a"
 }

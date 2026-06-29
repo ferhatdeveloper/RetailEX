@@ -30,8 +30,8 @@ sqlx = { version = "0.7", default-features = false, features = ["postgres", "run
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 
-# UUID
-uuid = { version = "1.6", features = ["v4", "serde"] }
+# UUID — 1.12+ getrandom 0.4 (edition2024) çeker; Docker Rust 1.83 ile uyum için 1.11
+uuid = { version = "=1.11.0", features = ["v4", "serde"] }
 
 # DateTime
 chrono = { version = "0.4", features = ["serde"] }
