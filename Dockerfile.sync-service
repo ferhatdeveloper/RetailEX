@@ -12,9 +12,9 @@ RUN rustc --version && cargo --version \
 RUN apt-get update && apt-get install -y --no-install-recommends pkg-config libssl-dev && rm -rf /var/lib/apt/lists/*
 COPY src/sync-service/Cargo.toml src/sync-service/Cargo.lock ./
 RUN grep -qF '=1.11.0' Cargo.toml \
-  || (echo "FATAL: uuid pin eksik — VM'de: git pull origin main" && exit 1) \
-  && ! grep -q 'version = "0.4' Cargo.lock \
-  || (echo "FATAL: Cargo.lock getrandom 0.4 içeriyor — git pull origin main" && exit 1)
+  || (echo "FATAL: uuid pin eksik — git pull origin main" && exit 1) \
+  && ! grep -E '^name = "getrandom"$' -A2 Cargo.lock | grep -qE 'version = "0\.4\.' \
+  || (echo "FATAL: Cargo.lock getrandom 0.4.x — git pull origin main" && exit 1)
 COPY src/sync-service/.sqlx ./.sqlx
 COPY src/sync-service/src ./src
 ENV SQLX_OFFLINE=true
