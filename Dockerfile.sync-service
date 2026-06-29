@@ -1,14 +1,24 @@
 # RetailEX-Sync-Service — kiracı WebSocket + REST (/ws, /sync, /api/broadcasts)
-# Açık sürüm + sürüm doğrulama (Dokploy eski rust:bookworm cache kullanmasın)
+#
+# Dokploy: git pull origin main sonrası cache’siz build:
+#   docker compose -f docker-compose.dokploy.yml build --no-cache --pull sync_lovan
+#
+# Eski hata (Cargo 1.83 + getrandom 0.4): repo güncel değil veya Docker layer cache.
 FROM rust:1.88.0-bookworm AS builder
 WORKDIR /build
-RUN rustc --version && cargo --version
+RUN rustc --version && cargo --version \
+  && rustc --version | grep -qE 'rustc 1\.(8[5-9]|9|[1-9][0-9]{2,})' \
+  || (echo "FATAL: Rust >= 1.85 gerekli (edition2024). Eski rust:bookworm cache mi?" && exit 1)
 RUN apt-get update && apt-get install -y --no-install-recommends pkg-config libssl-dev && rm -rf /var/lib/apt/lists/*
 COPY src/sync-service/Cargo.toml src/sync-service/Cargo.lock ./
+RUN grep -qF '=1.11.0' Cargo.toml \
+  || (echo "FATAL: uuid pin eksik — VM'de: git pull origin main" && exit 1) \
+  && ! grep -q 'version = "0.4' Cargo.lock \
+  || (echo "FATAL: Cargo.lock getrandom 0.4 içeriyor — git pull origin main" && exit 1)
 COPY src/sync-service/.sqlx ./.sqlx
 COPY src/sync-service/src ./src
 ENV SQLX_OFFLINE=true
-RUN cargo build --release --bin RetailEX-Sync-Service
+RUN cargo build --locked --release --bin RetailEX-Sync-Service
 
 FROM debian:bookworm-slim
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates libssl3 && rm -rf /var/lib/apt/lists/*

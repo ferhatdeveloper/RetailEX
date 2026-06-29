@@ -16,6 +16,15 @@ export POSTGRES_PASSWORD
 
 cd "${REPO_ROOT}"
 
+echo "=== Git: main güncelle (Sync Dockerfile + Cargo.lock) ==="
+git fetch origin main
+git checkout main
+git pull origin main
+if ! grep -qF '=1.11.0' src/sync-service/Cargo.toml 2>/dev/null; then
+  echo "FATAL: src/sync-service/Cargo.toml uuid pin yok — repo güncellenemedi."
+  exit 1
+fi
+
 SYNC_SERVICES=(
   sync_aqua
   sync_berzin_com
@@ -35,8 +44,8 @@ SYNC_SERVICES=(
   sync_testere
 )
 
-echo "=== Dokploy: Sync Service imajları (ilk seferde Rust derlemesi uzun sürebilir) ==="
-docker compose -f "${COMPOSE_FILE}" build "${SYNC_SERVICES[@]}"
+echo "=== Dokploy: Sync Service imajları (cache’siz — Rust 1.88 + locked Cargo.lock) ==="
+docker compose -f "${COMPOSE_FILE}" build --no-cache --pull "${SYNC_SERVICES[@]}"
 
 echo "=== Sync konteynerleri + api_gateway ==="
 docker compose -f "${COMPOSE_FILE}" up -d "${SYNC_SERVICES[@]}" api_gateway
