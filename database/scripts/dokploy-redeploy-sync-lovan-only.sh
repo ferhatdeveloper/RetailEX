@@ -16,8 +16,9 @@ grep -qF '=1.11.0' src/sync-service/Cargo.toml || { echo "FATAL: git pull başar
 echo "=== Build sync_lovan (cache’siz) ==="
 docker compose -f "${COMPOSE_FILE}" build --no-cache --pull sync_lovan
 
-echo "=== Up sync_lovan + api_gateway ==="
-docker compose -f "${COMPOSE_FILE}" up -d sync_lovan api_gateway
+echo "=== Up sync_lovan + api_gateway (Caddy route yenile) ==="
+docker compose -f "${COMPOSE_FILE}" up -d sync_lovan
+docker compose -f "${COMPOSE_FILE}" up -d --force-recreate api_gateway
 
 sleep 3
 echo "=== İç test ==="

@@ -47,8 +47,9 @@ SYNC_SERVICES=(
 echo "=== Dokploy: Sync Service imajları (cache’siz — Rust 1.88 + locked Cargo.lock) ==="
 docker compose -f "${COMPOSE_FILE}" build --no-cache --pull "${SYNC_SERVICES[@]}"
 
-echo "=== Sync konteynerleri + api_gateway ==="
-docker compose -f "${COMPOSE_FILE}" up -d "${SYNC_SERVICES[@]}" api_gateway
+echo "=== Sync konteynerleri + api_gateway (Caddy ws/sync route yenile) ==="
+docker compose -f "${COMPOSE_FILE}" up -d "${SYNC_SERVICES[@]}"
+docker compose -f "${COMPOSE_FILE}" up -d --force-recreate api_gateway
 
 echo "=== Sağlık kontrolü (gateway içinden lovan) ==="
 sleep 3
