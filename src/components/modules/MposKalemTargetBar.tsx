@@ -1,17 +1,21 @@
 /**
- * Tüm M-POS sekmelerinde paylaşılan İşyeri + Kasa seçimi (Kalem akışı).
+ * Tüm M-POS sekmelerinde paylaşılan Firma + Cihaz seçimi (Kalem akışı).
  */
 
 import React from 'react';
-import { MapPin, Monitor, Send } from 'lucide-react';
+import { Building2, Monitor, Send } from 'lucide-react';
 import { Button } from '../ui/button';
-import type { BranchStoreOption } from '../../services/hybridSyncService';
 import type { PosTerminalRegistration } from '../../services/deviceRegistrationService';
 
+export type MposFirmOption = {
+  firmNr: string;
+  name: string;
+};
+
 type Props = {
-  branchStores: BranchStoreOption[];
-  selectedBranchStoreId: string;
-  onBranchChange: (storeId: string) => void;
+  firms: MposFirmOption[];
+  selectedFirmNr: string;
+  onFirmChange: (firmNr: string) => void;
   selectedTerminalDeviceId: string;
   onTerminalChange: (deviceId: string) => void;
   filteredTerminals: PosTerminalRegistration[];
@@ -30,9 +34,9 @@ const fieldClass = (theme: 'light' | 'dark') =>
   }`;
 
 export function MposKalemTargetBar({
-  branchStores,
-  selectedBranchStoreId,
-  onBranchChange,
+  firms,
+  selectedFirmNr,
+  onFirmChange,
   selectedTerminalDeviceId,
   onTerminalChange,
   filteredTerminals,
@@ -55,9 +59,9 @@ export function MposKalemTargetBar({
           isDark ? 'border-gray-700 bg-gray-800/80' : 'border-gray-100 bg-gray-50'
         }`}
       >
-        <MapPin className={`w-4 h-4 shrink-0 ${isDark ? 'text-blue-400' : 'text-blue-600'}`} />
+        <Building2 className={`w-4 h-4 shrink-0 ${isDark ? 'text-blue-400' : 'text-blue-600'}`} />
         <span className={`text-sm font-semibold ${isDark ? 'text-gray-100' : 'text-gray-900'}`}>
-          Hedef işyeri ve kasa
+          Hedef firma ve cihaz
         </span>
         <span className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
           {targetLabel}
@@ -68,24 +72,24 @@ export function MposKalemTargetBar({
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="space-y-1.5">
             <label
-              htmlFor="mpos-target-store"
+              htmlFor="mpos-target-firm"
               className={`flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide ${
                 isDark ? 'text-gray-300' : 'text-gray-700'
               }`}
             >
-              <MapPin className="w-3.5 h-3.5" />
-              İşyeri
+              <Building2 className="w-3.5 h-3.5" />
+              Firma
             </label>
             <select
-              id="mpos-target-store"
-              value={selectedBranchStoreId}
-              onChange={(e) => onBranchChange(e.target.value)}
+              id="mpos-target-firm"
+              value={selectedFirmNr}
+              onChange={(e) => onFirmChange(e.target.value)}
               className={fieldClass(theme)}
             >
-              <option value="">İşyeri seçin…</option>
-              {branchStores.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name} ({s.code})
+              <option value="">Firma seçin…</option>
+              {firms.map((f) => (
+                <option key={f.firmNr} value={f.firmNr}>
+                  {f.name} ({f.firmNr})
                 </option>
               ))}
             </select>
@@ -99,19 +103,20 @@ export function MposKalemTargetBar({
               }`}
             >
               <Monitor className="w-3.5 h-3.5" />
-              Kasa
+              Cihazlar
             </label>
             <select
               id="mpos-target-terminal"
               value={selectedTerminalDeviceId}
               onChange={(e) => onTerminalChange(e.target.value)}
-              disabled={!selectedBranchStoreId}
+              disabled={!selectedFirmNr}
               className={`${fieldClass(theme)} disabled:opacity-50`}
             >
-              <option value="">Kasa seçin…</option>
+              <option value="">Cihaz seçin…</option>
               {filteredTerminals.map((t) => (
                 <option key={t.deviceId} value={t.deviceId}>
                   {t.terminalName}
+                  {t.storeName ? ` — ${t.storeName}` : ''}
                   {t.computerName ? ` (${t.computerName})` : ''}
                 </option>
               ))}
@@ -130,7 +135,7 @@ export function MposKalemTargetBar({
               onClick={onBulkSendAll}
             >
               <Send className="w-3.5 h-3.5" />
-              Tüm kasalara gönder (işyeri)
+              Tüm cihazlara gönder (firma)
             </Button>
           </div>
         )}

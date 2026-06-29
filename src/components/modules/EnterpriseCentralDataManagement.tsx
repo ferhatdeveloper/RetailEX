@@ -59,11 +59,12 @@ import {
   type MposReceiveFileType,
 } from '../../services/mposReceiveService';
 import { DB_SETTINGS, ERP_SETTINGS, updateConfigs } from '../../services/postgres';
-import { listActiveStores, type BranchStoreOption } from '../../services/hybridSyncService';
+import { type BranchStoreOption } from '../../services/hybridSyncService';
 import {
   listPosTerminalRegistrations,
   type PosTerminalRegistration,
 } from '../../services/deviceRegistrationService';
+import { organizationAPI, type Firm } from '../../services/api/organization';
 import { BroadcastFormFields } from './BroadcastFormFields';
 import { BroadcastChangesTimeline } from './BroadcastChangesTimeline';
 import { SentMessagesList } from '../system/SentMessagesList';
@@ -159,8 +160,10 @@ export function EnterpriseCentralDataManagement() {
 
   const [isSyncBusy, setIsSyncBusy] = useState(false);
 
+  const [firms, setFirms] = useState<Firm[]>([]);
   const [branchStores, setBranchStores] = useState<BranchStoreOption[]>([]);
   const [approvedTerminals, setApprovedTerminals] = useState<PosTerminalRegistration[]>([]);
+  const [selectedFirmNr, setSelectedFirmNr] = useState('');
   const [selectedBranchStoreId, setSelectedBranchStoreId] = useState('');
   const [selectedTerminalDeviceId, setSelectedTerminalDeviceId] = useState('');
   const [mposFileType, setMposFileType] = useState<MposSendFileType>('products');
@@ -193,23 +196,39 @@ export function EnterpriseCentralDataManagement() {
   const lastDayEndAutoRunRef = useRef('');
   const [showAdvancedSend, setShowAdvancedSend] = useState(false);
 
+  const padFirmNr = (nr: string) => String(nr || '').replace(/\D/g, '').padStart(3, '0');
+
   const resolveMposTargetStoreId = (): string | null => selectedBranchStoreId || null;
 
   const selectedTerminal = (): PosTerminalRegistration | undefined =>
     approvedTerminals.find((t) => t.deviceId === selectedTerminalDeviceId);
 
+  const mposFirmOptions = firms.map((f) => ({
+    firmNr: padFirmNr(f.firm_nr),
+    name: f.name,
+  }));
+
   const mposTargetLabel = (): string => {
-    const s = branchStores.find((b) => b.id === selectedBranchStoreId);
+    const f = firms.find((x) => padFirmNr(x.firm_nr) === padFirmNr(selectedFirmNr));
     const t = selectedTerminal();
-    if (!s && !t) return 'İşyeri ve kasa seçilmedi';
-    if (s && t) return `${s.name} (${s.code}) → ${t.terminalName}`;
-    if (s) return `${s.name} (${s.code})`;
+    if (!f && !t) return 'Firma ve cihaz seçilmedi';
+    if (f && t) return `${f.name} (${padFirmNr(f.firm_nr)}) → ${t.terminalName}`;
+    if (f) return `${f.name} (${padFirmNr(f.firm_nr)})`;
     return t?.terminalName ?? '—';
   };
 
   const handleTerminalChange = (deviceId: string) => {
     setSelectedTerminalDeviceId(deviceId);
     setSelectedTerminalDeviceIds(deviceId ? [deviceId] : []);
+    const term = approvedTerminals.find((t) => t.deviceId === deviceId);
+    setSelectedBranchStoreId(term?.storeId?.trim() || '');
+  };
+
+  const handleFirmChange = (firmNr: string) => {
+    setSelectedFirmNr(firmNr);
+    setSelectedBranchStoreId('');
+    setSelectedTerminalDeviceId('');
+    setSelectedTerminalDeviceIds([]);
   };
 
   const handleBranchStoreChange = (storeId: string) => {
@@ -232,19 +251,23 @@ export function EnterpriseCentralDataManagement() {
   };
 
   const validateMposKasaTarget = (requireMulti = false): boolean => {
-    if (!selectedBranchStoreId) {
-      toast.error('Lütfen işyeri (şube) seçin.');
+    if (!selectedFirmNr) {
+      toast.error('Lütfen firma seçin.');
       return false;
     }
     if (requireMulti) {
       if (!selectedTerminalDeviceIds.length) {
-        toast.error('Lütfen en az bir kasa seçin.');
+        toast.error('Lütfen en az bir cihaz seçin.');
         return false;
       }
       return true;
     }
     if (!selectedTerminalDeviceId) {
-      toast.error('Lütfen kasa seçin.');
+      toast.error('Lütfen cihaz seçin.');
+      return false;
+    }
+    if (!selectedBranchStoreId) {
+      toast.error('Seçili cihazın mağaza bağlantısı yok. Merkezde cihaz kaydını kontrol edin.');
       return false;
     }
     return true;
@@ -252,8 +275,8 @@ export function EnterpriseCentralDataManagement() {
 
   const validateMposTarget = (): boolean => validateMposKasaTarget();
 
-  const filteredTerminalsForStore = approvedTerminals.filter(
-    (t) => t.storeId === selectedBranchStoreId,
+  const filteredTerminalsForFirm = approvedTerminals.filter(
+    (t) => padFirmNr(t.firmNr) === padFirmNr(selectedFirmNr),
   );
 
   const mapEnterpriseToBroadcast = (m: EnterpriseSyncMessage): BroadcastMessage => ({
@@ -349,13 +372,29 @@ export function EnterpriseCentralDataManagement() {
   useEffect(() => {
     void (async () => {
       try {
-        const firm = String(ERP_SETTINGS.firmNr || '001').padStart(3, '0');
-        const [stores, terminals] = await Promise.all([
-          listActiveStores(firm),
-          listPosTerminalRegistrations({ status: 'approved', firmNr: firm, limit: 200 }),
+        const defaultFirm = padFirmNr(String(ERP_SETTINGS.firmNr || '001'));
+        const [firmList, terminals] = await Promise.all([
+          organizationAPI.getFirms(),
+          listPosTerminalRegistrations({ status: 'approved', allFirms: true, limit: 500 }),
         ]);
-        setBranchStores(stores);
+        const activeFirms = firmList.filter((f) => f.is_active !== false);
+        setFirms(activeFirms);
         setApprovedTerminals(terminals);
+        setBranchStores(
+          terminals
+            .filter((t) => t.storeId && t.storeName)
+            .reduce<BranchStoreOption[]>((acc, t) => {
+              if (!acc.some((s) => s.id === t.storeId)) {
+                acc.push({ id: t.storeId!, name: t.storeName!, code: t.storeCode || '' });
+              }
+              return acc;
+            }, []),
+        );
+        if (activeFirms.some((f) => padFirmNr(f.firm_nr) === defaultFirm)) {
+          setSelectedFirmNr(defaultFirm);
+        } else if (activeFirms.length === 1) {
+          setSelectedFirmNr(padFirmNr(activeFirms[0].firm_nr));
+        }
       } catch {
         /* PG hazır değil */
       }
@@ -372,16 +411,16 @@ export function EnterpriseCentralDataManagement() {
 
   const handleMposKalemSend = async () => {
     if (!validateMposKasaTarget(true)) return;
-    const targets = filteredTerminalsForStore.filter((t) =>
+    const targets = filteredTerminalsForFirm.filter((t) =>
       selectedTerminalDeviceIds.includes(t.deviceId),
     );
     if (!targets.length) {
-      toast.error('Seçili kasa bulunamadı.');
+      toast.error('Seçili cihaz bulunamadı.');
       return;
     }
     const guard = await checkMposSendGuard({
       fileType: mposFileType,
-      storeId: selectedBranchStoreId,
+      storeId: targets[0]?.storeId || selectedBranchStoreId,
       terminalName: targets[0]?.terminalName || '',
     });
     if (!guard.allowed) {
@@ -392,13 +431,14 @@ export function EnterpriseCentralDataManagement() {
     if (!guard.requireConfirm && guard.sentToday > 0) toast.info(guard.message);
 
     setIsSyncBusy(true);
-    setSendProgress({ current: 0, total: targets.length, label: 'Kasalara gönderiliyor…' });
+    setSendProgress({ current: 0, total: targets.length, label: 'Cihazlara gönderiliyor…' });
     try {
+      const primaryStoreId = targets[0]?.storeId || selectedBranchStoreId;
       const r =
         targets.length === 1
           ? await sendMposInfoToKasaAndPush({
               fileType: mposFileType,
-              storeId: selectedBranchStoreId,
+              storeId: primaryStoreId,
               terminalName: targets[0].terminalName,
               terminalDeviceId: targets[0].deviceId,
               includeProductImages: mposFileType === 'products' && includeProductImages,
@@ -408,7 +448,7 @@ export function EnterpriseCentralDataManagement() {
             }).then((x) => ({ ok: x.ok, message: x.message, success: x.ok ? 1 : 0, failed: x.ok ? 0 : 1 }))
           : await sendMposInfoToSelectedKasas({
               fileType: mposFileType,
-              storeId: selectedBranchStoreId,
+              storeId: primaryStoreId,
               terminals: targets.map((t) => ({
                 terminalName: t.terminalName,
                 terminalDeviceId: t.deviceId,
@@ -431,37 +471,52 @@ export function EnterpriseCentralDataManagement() {
   };
 
   const handleMposBulkAllKasas = async () => {
-    if (!selectedBranchStoreId) {
-      toast.error('Önce işyeri seçin.');
+    if (!selectedFirmNr) {
+      toast.error('Önce firma seçin.');
       return;
     }
-    if (!filteredTerminalsForStore.length) {
-      toast.error('Bu işyerinde onaylı kasa yok.');
+    if (!filteredTerminalsForFirm.length) {
+      toast.error('Bu firmada onaylı cihaz yok.');
       return;
     }
     if (
       !window.confirm(
-        `${filteredTerminalsForStore.length} kasaya «${MPOS_SEND_FILE_TYPES.find((f) => f.id === mposFileType)?.label}» gönderilsin mi?`,
+        `${filteredTerminalsForFirm.length} cihaza «${MPOS_SEND_FILE_TYPES.find((f) => f.id === mposFileType)?.label}» gönderilsin mi?`,
       )
     ) {
       return;
     }
     setIsSyncBusy(true);
     try {
-      const r = await sendMposInfoToAllKasasInStore({
-        fileType: mposFileType,
-        storeId: selectedBranchStoreId,
-        terminals: filteredTerminalsForStore.map((t) => ({
-          terminalName: t.terminalName,
-          terminalDeviceId: t.deviceId,
-        })),
-        includeProductImages: mposFileType === 'products' && includeProductImages,
-        syncMode: mposSyncMode,
-        dateFrom: mposSyncMode === 'incremental' ? mposDateFrom : undefined,
-        dateTo: mposSyncMode === 'incremental' ? mposDateTo : undefined,
-      });
-      if (r.ok) toast.success(r.message);
-      else toast.error(r.message);
+      const byStore = new Map<string, PosTerminalRegistration[]>();
+      for (const t of filteredTerminalsForFirm) {
+        const sid = t.storeId?.trim();
+        if (!sid) continue;
+        const list = byStore.get(sid) ?? [];
+        list.push(t);
+        byStore.set(sid, list);
+      }
+      let success = 0;
+      let failed = 0;
+      for (const [storeId, terms] of byStore) {
+        const r = await sendMposInfoToAllKasasInStore({
+          fileType: mposFileType,
+          storeId,
+          terminals: terms.map((t) => ({
+            terminalName: t.terminalName,
+            terminalDeviceId: t.deviceId,
+          })),
+          includeProductImages: mposFileType === 'products' && includeProductImages,
+          syncMode: mposSyncMode,
+          dateFrom: mposSyncMode === 'incremental' ? mposDateFrom : undefined,
+          dateTo: mposSyncMode === 'incremental' ? mposDateTo : undefined,
+        });
+        success += r.success;
+        failed += r.failed;
+      }
+      if (success > 0 && failed === 0) toast.success(`${success} cihaza gönderildi.`);
+      else if (success > 0) toast.warning(`${success} başarılı, ${failed} başarısız.`);
+      else toast.error('Gönderim başarısız.');
       await refreshEnterpriseData();
     } finally {
       setIsSyncBusy(false);
@@ -469,9 +524,9 @@ export function EnterpriseCentralDataManagement() {
   };
 
   const handleMposKalemReset = () => {
-    setSelectedBranchStoreId('');
     setSelectedTerminalDeviceId('');
     setSelectedTerminalDeviceIds([]);
+    setSelectedBranchStoreId('');
     setMposFileType('products');
     setMposReceiveFileType('sales');
     setMposSyncMode('full');
@@ -1282,16 +1337,16 @@ export function EnterpriseCentralDataManagement() {
             <div className="flex flex-col md:flex-row gap-4 items-stretch w-full">
               <div className="w-full md:w-1/2 md:min-w-0 shrink-0">
               <MposKalemTargetBar
-                branchStores={branchStores}
-                selectedBranchStoreId={selectedBranchStoreId}
-                onBranchChange={handleBranchStoreChange}
+                firms={mposFirmOptions}
+                selectedFirmNr={selectedFirmNr}
+                onFirmChange={handleFirmChange}
                 selectedTerminalDeviceId={selectedTerminalDeviceId}
                 onTerminalChange={handleTerminalChange}
-                filteredTerminals={filteredTerminalsForStore}
+                filteredTerminals={filteredTerminalsForFirm}
                 targetLabel={mposTargetLabel()}
                 theme={theme}
                 onBulkSendAll={() => void handleMposBulkAllKasas()}
-                bulkSendDisabled={isSyncBusy || !selectedBranchStoreId || filteredTerminalsForStore.length === 0}
+                bulkSendDisabled={isSyncBusy || !selectedFirmNr || filteredTerminalsForFirm.length === 0}
               />
               </div>
               <div className="w-full md:w-1/2 md:min-w-0 shrink-0">
@@ -1307,14 +1362,14 @@ export function EnterpriseCentralDataManagement() {
               onBranchChange={handleBranchStoreChange}
               selectedTerminalDeviceId={selectedTerminalDeviceId}
               onTerminalChange={setSelectedTerminalDeviceId}
-              filteredTerminals={filteredTerminalsForStore}
+              filteredTerminals={filteredTerminalsForFirm}
               selectedTerminalDeviceIds={selectedTerminalDeviceIds}
               onTerminalSelectionChange={setSelectedTerminalDeviceIds}
               isBusy={isSyncBusy}
               onCancel={handleMposKalemReset}
               onSubmit={() => void handleMposKalemSend()}
               theme={theme}
-              helpText="İşyeri ve kasa seç → Değişenler/Tümü → Gönder. Puan ve promosyon için ilgili dosya tipini seçin."
+              helpText="Firma ve cihaz seç → Değişenler/Tümü → Gönder. Puan ve promosyon için ilgili dosya tipini seçin."
               showProductImagesOption
               includeProductImages={includeProductImages}
               onIncludeProductImagesChange={setIncludeProductImages}
@@ -1342,7 +1397,7 @@ export function EnterpriseCentralDataManagement() {
               </summary>
               <div className="p-4 pt-0 space-y-4 border-t border-gray-200 dark:border-gray-700">
                 <p className="text-xs text-gray-500">
-                  Hedef kasa: <strong>{mposTargetLabel()}</strong> — gelişmiş işlemler de aynı işyeri/kasayı kullanır.
+                  Hedef cihaz: <strong>{mposTargetLabel()}</strong> — gelişmiş işlemler de aynı firma/cihazı kullanır.
                 </p>
             <Card className={`p-4 ${theme === 'dark' ? 'bg-gray-800 border-gray-700' : 'bg-white'}`}>
               <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
@@ -1652,12 +1707,12 @@ export function EnterpriseCentralDataManagement() {
             <div className="flex flex-col md:flex-row gap-4 items-stretch w-full">
               <div className="w-full md:w-1/2 md:min-w-0 shrink-0">
               <MposKalemTargetBar
-                branchStores={branchStores}
-                selectedBranchStoreId={selectedBranchStoreId}
-                onBranchChange={handleBranchStoreChange}
+                firms={mposFirmOptions}
+                selectedFirmNr={selectedFirmNr}
+                onFirmChange={handleFirmChange}
                 selectedTerminalDeviceId={selectedTerminalDeviceId}
                 onTerminalChange={handleTerminalChange}
-                filteredTerminals={filteredTerminalsForStore}
+                filteredTerminals={filteredTerminalsForFirm}
                 targetLabel={mposTargetLabel()}
                 theme={theme}
               />
@@ -1675,12 +1730,12 @@ export function EnterpriseCentralDataManagement() {
               onBranchChange={handleBranchStoreChange}
               selectedTerminalDeviceId={selectedTerminalDeviceId}
               onTerminalChange={handleTerminalChange}
-              filteredTerminals={filteredTerminalsForStore}
+              filteredTerminals={filteredTerminalsForFirm}
               isBusy={isSyncBusy}
               onCancel={handleMposKalemReset}
               onSubmit={() => void handleMposKalemReceive()}
               theme={theme}
-              helpText="Satış ve günsonu al. Kasada işlem bittikten sonra dosya tipi seçip Al."
+              helpText="Satış ve günsonu al. Cihazda işlem bittikten sonra dosya tipi seçip Al."
             />
               </div>
             </div>
@@ -2228,12 +2283,12 @@ export function EnterpriseCentralDataManagement() {
           {/* Günsonu Tab — MPOS günsonu işlem kontrolü (KLR-2273) kasa bazlı */}
           <TabsContent value="dayend" className="space-y-4">
             <MposKalemTargetBar
-              branchStores={branchStores}
-              selectedBranchStoreId={selectedBranchStoreId}
-              onBranchChange={handleBranchStoreChange}
+              firms={mposFirmOptions}
+              selectedFirmNr={selectedFirmNr}
+              onFirmChange={handleFirmChange}
               selectedTerminalDeviceId={selectedTerminalDeviceId}
               onTerminalChange={handleTerminalChange}
-              filteredTerminals={filteredTerminalsForStore}
+              filteredTerminals={filteredTerminalsForFirm}
               targetLabel={mposTargetLabel()}
               theme={theme}
               className="max-w-xl"
@@ -2343,7 +2398,7 @@ export function EnterpriseCentralDataManagement() {
                 Hedef: <strong>{mposTargetLabel()}</strong> — bugünkü satış ve yemek çeki özeti (Kalem eğitim 1).
               </p>
               {!selectedBranchStoreId ? (
-                <p className="text-sm text-amber-600">Üstteki «Aktif Kasa Hedefi»nden işyeri ve kasa seçin.</p>
+                <p className="text-sm text-amber-600">Üstteki hedef alanından firma ve cihaz seçin.</p>
               ) : kasaReport ? (
                 <div className="grid grid-cols-2 gap-3 text-sm">
                   <div className={`p-3 rounded border ${theme === 'dark' ? 'border-gray-600' : 'border-gray-200'}`}>
