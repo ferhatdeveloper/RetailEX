@@ -22,12 +22,11 @@ import { Label } from '../ui/label';
 import { RadioGroup, RadioGroupItem } from '../ui/radio-group';
 import { cn } from '../ui/utils';
 import {
-  MPOS_RECEIVE_FILE_TYPES,
   MPOS_SEND_FILE_TYPES,
   type MposSendFileType,
   type MposSendSyncMode,
 } from '../../services/mposSendService';
-import type { MposReceiveFileType } from '../../services/mposReceiveService';
+import { MPOS_RECEIVE_FILE_TYPES, type MposReceiveFileType } from '../../services/mposReceiveService';
 import {
   getMposTransferPreview,
   type MposTransferPreview,
