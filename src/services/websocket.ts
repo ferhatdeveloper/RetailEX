@@ -9,6 +9,7 @@ import { APP_VERSION } from '../core/version';
 import { logger } from '../utils/logger';
 import { resolveTenantSyncUrls } from './merkezTenantRegistry';
 import { DB_SETTINGS } from './postgres';
+import { logSyncTransportDiagnostics, syncTransportNeedsWebSocket } from './syncTransportDiagnostics';
 
 const LOCAL_WS_FALLBACK = 'ws://127.0.0.1:9999/ws';
 
@@ -107,6 +108,11 @@ export class WebSocketService {
     this.userId = userId;
     this.storeId = storeId;
 
+    if (!syncTransportNeedsWebSocket()) {
+      logger.info('[WS] WebSocket devre dışı — senkron modu: periyodik (hybrid_sync_transport=polling)');
+      return;
+    }
+
     if (this.ws?.readyState === WebSocket.OPEN) {
       return;
     }
@@ -121,6 +127,15 @@ export class WebSocketService {
       void (async () => {
       try {
         this.url = await resolveWebSocketUrl();
+        logSyncTransportDiagnostics('WebSocketConnect');
+
+        if (!this.url || (this.url.startsWith('ws://127.0.0.1:9999') && !isTauri)) {
+          const audit = logSyncTransportDiagnostics('WebSocketConnect');
+          const errHint = audit.issues.find((i) => i.code === 'WS_URL_MISSING' || i.code === 'REST_URL_NO_TENANT');
+          if (errHint) {
+            logger.error('[WS]', errHint.message, '→', errHint.solution);
+          }
+        }
 
         // Yerel Windows servisi (9999) — Tauri'de isteğe bağlı başlatma
         if (isTauri && this.url.startsWith('ws://127.0.0.1:9999')) {
@@ -188,6 +203,7 @@ export class WebSocketService {
           // Only log first error to avoid console spam
           if (this.reconnectAttempts === 0) {
             logger.error('[WS] Connection error (Backend might be offline):', error);
+            logSyncTransportDiagnostics('WebSocketError');
           }
           if (this.ws?.readyState !== WebSocket.OPEN) {
             reject(error);
@@ -225,6 +241,7 @@ export class WebSocketService {
       }, delay);
     } else {
       logger.error('? Maximum WebSocket reconnection attempts reached');
+      logSyncTransportDiagnostics('WebSocketMaxRetries');
     }
   }
 

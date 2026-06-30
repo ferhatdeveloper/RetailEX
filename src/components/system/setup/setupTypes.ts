@@ -1,4 +1,4 @@
-import type { HybridReadPreference, HybridSyncDirection } from '../../../services/postgres';
+import type { HybridReadPreference, HybridSyncDirection, HybridSyncTransport } from '../../../services/postgres';
 
 export type SetupDbMode = 'online' | 'offline' | 'hybrid';
 export type SetupDbTarget = 'local' | 'remote';
@@ -16,6 +16,7 @@ export interface SetupAppConfig {
   hybrid_read_preference?: HybridReadPreference;
   hybrid_sync_direction?: HybridSyncDirection;
   hybrid_sync_interval_sec?: number;
+  hybrid_sync_transport?: HybridSyncTransport;
   terminal_name: string;
   store_id: string;
   erp_firm_nr: string;

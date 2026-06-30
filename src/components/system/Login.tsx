@@ -21,6 +21,7 @@ import type {
   ConnectionMode,
   HybridReadPreference,
   HybridSyncDirection,
+  HybridSyncTransport,
 } from '../../services/postgres';
 
 interface LoginProps {
@@ -98,6 +99,7 @@ export function Login({ onLogin }: LoginProps) {
   const [hybridReadPreference, setHybridReadPreference] = useState<HybridReadPreference>('local_first');
   const [hybridSyncDirection, setHybridSyncDirection] = useState<HybridSyncDirection>('local_to_remote');
   const [hybridSyncIntervalSec, setHybridSyncIntervalSec] = useState(30);
+  const [hybridSyncTransport, setHybridSyncTransport] = useState<HybridSyncTransport>('both');
   const [isDbTestLoading, setIsDbTestLoading] = useState(false);
   const [isHybridSyncLoading, setIsHybridSyncLoading] = useState(false);
   /** Veritabanı modalında test sonucu (toast’a ek; ekranda kalıcı) */
@@ -266,6 +268,7 @@ export function Login({ onLogin }: LoginProps) {
       setHybridReadPreference(DB_SETTINGS.hybridReadPreference);
       setHybridSyncDirection(DB_SETTINGS.hybridSyncDirection);
       setHybridSyncIntervalSec(DB_SETTINGS.hybridSyncIntervalSec ?? 30);
+      setHybridSyncTransport(DB_SETTINGS.hybridSyncTransport ?? 'both');
     });
   }, [isTauri]);
 
@@ -283,6 +286,7 @@ export function Login({ onLogin }: LoginProps) {
       setHybridReadPreference(DB_SETTINGS.hybridReadPreference);
       setHybridSyncDirection(DB_SETTINGS.hybridSyncDirection);
       setHybridSyncIntervalSec(DB_SETTINGS.hybridSyncIntervalSec ?? 30);
+      setHybridSyncTransport(DB_SETTINGS.hybridSyncTransport ?? 'both');
       setDbConfig({
         host: LOCAL_CONFIG.host,
         port: LOCAL_CONFIG.port,
@@ -849,6 +853,7 @@ export function Login({ onLogin }: LoginProps) {
           hybridReadPreference,
           hybridSyncDirection,
           hybridSyncIntervalSec,
+          hybridSyncTransport,
         }
       });
       toast.success(connectionProvider === 'rest_api' ? 'PostgREST bağlantı ayarları güncellendi.' : 'Veritabanı bağlantı ayarları güncellendi.');
@@ -2577,6 +2582,23 @@ export function Login({ onLogin }: LoginProps) {
                           <option value="remote_to_local">Uzak → yerel</option>
                           <option value="bidirectional">Çift yönlü</option>
                         </select>
+                      </div>
+                      <div className="space-y-1">
+                        <label className={`px-1 text-[9px] font-black uppercase tracking-widest ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>
+                          Senkron taşıma modu
+                        </label>
+                        <select
+                          value={hybridSyncTransport}
+                          onChange={(e) => setHybridSyncTransport(e.target.value as HybridSyncTransport)}
+                          className={`w-full rounded-sm border-2 px-4 py-3 text-xs font-bold transition-all focus:border-blue-600 focus:outline-none ${darkMode ? 'border-gray-700 bg-gray-800 text-blue-200' : 'border-gray-200 bg-white text-gray-900'}`}
+                        >
+                          <option value="both">WebSocket + Periyodik (önerilen)</option>
+                          <option value="websocket">Yalnız WebSocket</option>
+                          <option value="polling">Yalnız Periyodik</option>
+                        </select>
+                        <p className={`px-1 text-[9px] font-bold leading-relaxed ${darkMode ? 'text-slate-500' : 'text-slate-600'}`}>
+                          Mavi çubuktan da değiştirilebilir. WebSocket için PostgREST URL kiracı kodu içermeli (ör. /lovan).
+                        </p>
                       </div>
                       <div className="space-y-1">
                         <label className={`px-1 text-[9px] font-black uppercase tracking-widest ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>

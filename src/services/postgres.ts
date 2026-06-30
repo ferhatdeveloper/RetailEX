@@ -24,6 +24,8 @@ export type ConnectionProvider = 'db' | 'rest_api';
 export type HybridReadPreference = 'local_first' | 'remote_first';
 /** Planlanan senkron yönü (`sync()` ve ilerideki çoğaltma için). */
 export type HybridSyncDirection = 'local_to_remote' | 'remote_to_local' | 'bidirectional';
+/** Hibrit senkron taşıma: periyodik (sync_queue), WebSocket anlık çekim, veya ikisi */
+export type HybridSyncTransport = 'polling' | 'websocket' | 'both';
 
 /** Hibrit senkron uzak uç: `remote_rest_url` doluysa doğrudan PG yerine PostgREST kullanılır. */
 export function resolveHybridSyncConnectionProvider(): ConnectionProvider {
@@ -58,6 +60,13 @@ export function normalizeHybridSyncIntervalSec(raw: unknown): number {
   const n = Number(raw);
   if (!Number.isFinite(n)) return 30;
   return Math.min(3600, Math.max(5, Math.round(n)));
+}
+
+export function normalizeHybridSyncTransport(raw: unknown): HybridSyncTransport {
+  const s = String(raw || '').trim().toLowerCase();
+  if (s === 'websocket' || s === 'ws') return 'websocket';
+  if (s === 'polling' || s === 'periodic' || s === 'interval') return 'polling';
+  return 'both';
 }
 
 function isLikelyConnectivityFailure(err: unknown): boolean {
@@ -108,6 +117,7 @@ export let DB_SETTINGS = {
   hybridReadPreference: 'local_first' as HybridReadPreference,
   hybridSyncDirection: 'local_to_remote' as HybridSyncDirection,
   hybridSyncIntervalSec: 30,
+  hybridSyncTransport: 'both' as HybridSyncTransport,
   merkezTenantCode: '' as string,
   centralWsUrl: '' as string,
   centralApiUrl: '' as string,
@@ -334,6 +344,9 @@ function applyWebLocalStorageConfig(config: any): void {
   DB_SETTINGS.hybridSyncIntervalSec = normalizeHybridSyncIntervalSec(
     config.hybrid_sync_interval_sec ?? (config as { hybridSyncIntervalSec?: unknown }).hybridSyncIntervalSec
   );
+  DB_SETTINGS.hybridSyncTransport = normalizeHybridSyncTransport(
+    config.hybrid_sync_transport ?? (config as { hybridSyncTransport?: unknown }).hybridSyncTransport
+  );
   DB_SETTINGS.merkezTenantCode = String(
     config.merkez_tenant_code ?? (config as { merkezTenantCode?: unknown }).merkezTenantCode ?? ''
   ).trim();
@@ -435,6 +448,7 @@ export async function initializeFromSQLite(preloadedConfig?: any) {
         DB_SETTINGS.remoteRestUrl = '';
         DB_SETTINGS.hybridReadPreference = 'local_first';
         DB_SETTINGS.hybridSyncDirection = 'local_to_remote';
+        DB_SETTINGS.hybridSyncTransport = 'both';
       }
       if (pgFlat || webFull) {
         console.log('🌐 Web Config Loaded (exretail_pg_config + retailex_web_config)');
@@ -458,6 +472,7 @@ export async function initializeFromSQLite(preloadedConfig?: any) {
       DB_SETTINGS.hybridReadPreference = normalizeHybridReadPreference(config.hybrid_read_preference);
       DB_SETTINGS.hybridSyncDirection = normalizeHybridSyncDirection(config.hybrid_sync_direction);
       DB_SETTINGS.hybridSyncIntervalSec = normalizeHybridSyncIntervalSec(config.hybrid_sync_interval_sec);
+      DB_SETTINGS.hybridSyncTransport = normalizeHybridSyncTransport(config.hybrid_sync_transport);
 
       // Tauri hibrit: POS ve sync_queue yazımları yerel PG'de; PostgREST yalnızca senkron hedefi.
       applyTauriHybridDbOverride();
@@ -553,6 +568,7 @@ export async function updateConfigs(updates: {
       hybrid_read_preference: DB_SETTINGS.hybridReadPreference,
       hybrid_sync_direction: DB_SETTINGS.hybridSyncDirection,
       hybrid_sync_interval_sec: DB_SETTINGS.hybridSyncIntervalSec,
+      hybrid_sync_transport: DB_SETTINGS.hybridSyncTransport,
       erp_firm_nr: ERP_SETTINGS.firmNr,
       erp_period_nr: ERP_SETTINGS.periodNr,
       ...(storeIdPatch ? { store_id: storeIdPatch } : {}),
@@ -599,6 +615,7 @@ export async function updateConfigs(updates: {
       hybrid_read_preference: DB_SETTINGS.hybridReadPreference,
       hybrid_sync_direction: DB_SETTINGS.hybridSyncDirection,
       hybrid_sync_interval_sec: DB_SETTINGS.hybridSyncIntervalSec,
+      hybrid_sync_transport: DB_SETTINGS.hybridSyncTransport,
       local_db: localDbStr,
       remote_db: remoteDbStr,
       pg_local_user: LOCAL_CONFIG.user,
@@ -876,6 +893,9 @@ export class PostgresConnection {
     if (IS_TAURI) return;
     stopUnifiedHybridAutoSync();
     if (DB_SETTINGS.activeMode !== 'hybrid') return;
+    void import('./syncTransportDiagnostics').then(({ logSyncTransportDiagnostics }) => {
+      logSyncTransportDiagnostics('HybridAutoSync');
+    });
     startUnifiedHybridAutoSync({
       storeId: undefined,
       intervalSec: normalizeHybridSyncIntervalSec(DB_SETTINGS.hybridSyncIntervalSec),

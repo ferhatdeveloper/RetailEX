@@ -23,6 +23,9 @@ pub struct AppConfig {
     /// Hibrit otomatik senkron aralığı (saniye, 5–3600)
     #[serde(default = "default_hybrid_sync_interval_sec")]
     pub hybrid_sync_interval_sec: i32,
+    /// Hibrit senkron taşıma: both | websocket | polling
+    #[serde(default = "default_hybrid_sync_transport")]
+    pub hybrid_sync_transport: String,
     pub terminal_name: String,
     pub store_id: String,
     pub erp_firm_nr: String,
@@ -99,6 +102,10 @@ fn default_hybrid_sync_direction() -> String {
 
 fn default_hybrid_sync_interval_sec() -> i32 {
     30
+}
+
+fn default_hybrid_sync_transport() -> String {
+    "both".to_string()
 }
 
 pub fn clamp_hybrid_sync_interval_sec(raw: i32) -> u64 {
@@ -249,6 +256,7 @@ impl Default for AppConfig {
             hybrid_read_preference: default_hybrid_read_preference(),
             hybrid_sync_direction: default_hybrid_sync_direction(),
             hybrid_sync_interval_sec: default_hybrid_sync_interval_sec(),
+            hybrid_sync_transport: default_hybrid_sync_transport(),
             terminal_name: "".to_string(),
             store_id: "001".to_string(),
             erp_firm_nr: "001".to_string(),

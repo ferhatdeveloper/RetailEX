@@ -225,6 +225,20 @@ export function startUnifiedHybridAutoSync(opts?: {
 }): () => void {
   stopUnifiedHybridAutoSync();
 
+  const transport = DB_SETTINGS.hybridSyncTransport;
+  const pollingEnabled =
+    DB_SETTINGS.activeMode === 'hybrid' &&
+    (transport === 'polling' || transport === 'both');
+
+  if (!pollingEnabled) {
+    void import('./syncTransportDiagnostics').then(({ logSyncTransportDiagnostics }) => {
+      logSyncTransportDiagnostics('UnifiedHybridSync');
+    });
+    return () => {
+      /* periyodik senkron kapalı — WebSocket veya manuel senkron */
+    };
+  }
+
   let cancelled = false;
   let lastPullAt: string | null = null;
 

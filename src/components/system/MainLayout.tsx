@@ -651,12 +651,17 @@ export function MainLayout({
 
   // WebSocket connection on mount
   useEffect(() => {
-    // Only connect if user is authenticated
-    if (currentUser.id) {
-      wsService.connect(currentUser.id, 'default_store').catch(() => {
-        // Backend ws server may not be running (e.g. Tauri without ws on 8000) — ignore
+    if (!currentUser.id) return;
+    const storeId =
+      (currentUser as { store_id?: string; storeId?: string }).store_id ||
+      (currentUser as { storeId?: string }).storeId ||
+      'default_store';
+    void import('../../services/syncTransportDiagnostics').then(({ syncTransportNeedsWebSocket }) => {
+      if (!syncTransportNeedsWebSocket()) return;
+      wsService.connect(currentUser.id, storeId).catch(() => {
+        /* tanılama websocket.ts içinde */
       });
-    }
+    });
   }, [currentUser.id]);
 
   // Global Caller ID: Tauri Windows'ta WebView Notification API güvenilir değil — yerel toast + uygulama içi yedek.

@@ -13,6 +13,7 @@ export function createInitialSetupConfig(): SetupAppConfig {
     hybrid_read_preference: 'local_first',
     hybrid_sync_direction: 'local_to_remote',
     hybrid_sync_interval_sec: 30,
+    hybrid_sync_transport: 'both',
     terminal_name: 'TERMINAL-01',
     store_id: '',
     erp_firm_nr: '',

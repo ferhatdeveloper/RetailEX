@@ -1943,6 +1943,26 @@ const SetupWizard: React.FC = () => {
                                                 </select>
                                             </div>
                                             <div className="space-y-2">
+                                                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest pl-1">Senkron taşıma</label>
+                                                <select
+                                                    value={config.hybrid_sync_transport || 'both'}
+                                                    onChange={(e) =>
+                                                        setConfig({
+                                                            ...config,
+                                                            hybrid_sync_transport: e.target.value as AppConfig['hybrid_sync_transport'],
+                                                        })
+                                                    }
+                                                    className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-xs text-white focus:outline-none focus:border-blue-500"
+                                                >
+                                                    <option value="both">WebSocket + Periyodik (önerilen)</option>
+                                                    <option value="websocket">Yalnız WebSocket (anlık)</option>
+                                                    <option value="polling">Yalnız Periyodik (timer)</option>
+                                                </select>
+                                                <p className="text-[9px] text-slate-500 pl-1 leading-relaxed">
+                                                    WebSocket: wss://api.retailex.app/&#123;kiracı&#125;/ws — PostgREST URL kiracı kodu içermeli.
+                                                </p>
+                                            </div>
+                                            <div className="space-y-2">
                                                 <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest pl-1">Otomatik senkron aralığı (sn)</label>
                                                 <input
                                                     type="number"
