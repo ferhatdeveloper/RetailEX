@@ -249,7 +249,10 @@ function isTenantResolvedForWeb(): boolean {
     const cfg = JSON.parse(raw);
     const code = String(cfg?.merkez_tenant_code ?? '').trim();
     const id = String(cfg?.merkez_tenant_id ?? '').trim();
-    return Boolean(code || id);
+    if (code || id) return true;
+    const rest = String(cfg?.remote_rest_url ?? '').trim();
+    if (rest && parseSaaSOrCustomPostgrestUrl(rest).kind === 'saas_single_slug') return true;
+    return false;
   } catch {
     return false;
   }

@@ -266,6 +266,7 @@ impl Default for AppConfig {
             remote_db: "72.60.182.107:5432/retailex_demo".to_string(), // sync: config/remote-pg.defaults.json
             connection_provider: default_connection_provider(),
             remote_rest_url: default_remote_rest_url(),
+            merkez_tenant_code: String::new(),
             hybrid_read_preference: default_hybrid_read_preference(),
             hybrid_sync_direction: default_hybrid_sync_direction(),
             hybrid_sync_interval_sec: default_hybrid_sync_interval_sec(),

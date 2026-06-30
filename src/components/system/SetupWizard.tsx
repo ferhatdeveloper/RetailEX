@@ -545,6 +545,14 @@ const SetupWizard: React.FC = () => {
             return;
         }
 
+        // Cihaz adımı: hibrit terminal için kasa adı zorunlu
+        if (step === deviceStep) {
+            if (isTauri && config.role === 'client' && !String(config.terminal_name || '').trim()) {
+                toast.error('Cihaz / kasa adı zorunludur.');
+                return;
+            }
+        }
+
         setStep(prev => prev + 1);
     };
     const prevStep = () => {
@@ -1415,9 +1423,15 @@ const SetupWizard: React.FC = () => {
 
             // 7. Register Terminal/Device — yalnızca hibrit kasa (client)
             if (!isUpdateMode && isTauri && config.role === 'client' && config.db_mode === 'hybrid') {
+                const terminalName = String(config.terminal_name || '').trim();
+                if (!terminalName) {
+                    toast.error('Cihaz / kasa adı zorunludur.');
+                    setInstallationStep('ERROR');
+                    return;
+                }
                 setInstallationStep('DEVICE');
                 toast.info('Cihaz kaydı merkeze iletiliyor...');
-                const reg = await postgres.registerDevice(config.terminal_name, config.store_id);
+                const reg = await postgres.registerDevice(terminalName, config.store_id);
                 if (reg.success) {
                     toast.success(reg.message || 'Cihaz kaydı merkeze iletildi. Web panelinden onay bekleniyor.');
                 } else {
@@ -3723,6 +3737,7 @@ const SetupWizard: React.FC = () => {
                                                     value={config.terminal_name || ''}
                                                     onChange={(e) => setConfig({ ...config, terminal_name: e.target.value })}
                                                     placeholder="Örn: KASA-01, MERKEZ-SRV..."
+                                                    required
                                                     className="w-full bg-black/40 border border-white/5 rounded-2xl px-5 py-3 text-white text-xs outline-none focus:border-purple-500/50"
                                                 />
                                             </div>

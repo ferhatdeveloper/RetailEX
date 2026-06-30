@@ -1,5 +1,5 @@
 import type { SetupAppConfig, SetupDbMode, SetupDbTarget } from './setupTypes';
-import { DEFAULT_SAAS_TENANT_POSTGREST_ORIGIN, resolveTenantSyncUrls } from '../../../services/merkezTenantRegistry';
+import { DEFAULT_SAAS_TENANT_POSTGREST_ORIGIN, resolveTenantSyncUrls, parseSaaSOrCustomPostgrestUrl } from '../../../services/merkezTenantRegistry';
 import { normalizeHybridSyncTransport } from '../../../services/postgres';
 
 const VALID_DB_MODES: SetupDbMode[] = ['online', 'offline', 'hybrid'];
@@ -144,6 +144,11 @@ export function normalizeSetupConfig(config: SetupAppConfig): SetupAppConfig {
   });
   if (syncUrls.central_ws_url) normalized.central_ws_url = syncUrls.central_ws_url;
   if (syncUrls.central_api_url) normalized.central_api_url = syncUrls.central_api_url;
+
+  const parsedRest = parseSaaSOrCustomPostgrestUrl(normalized.remote_rest_url || '');
+  if (parsedRest.kind === 'saas_single_slug' && !normalized.merkez_tenant_code?.trim()) {
+    normalized.merkez_tenant_code = parsedRest.slug;
+  }
 
   if (normalized.role === 'client' && db_mode === 'online') {
     const central = String(normalized.central_api_url || '').trim();

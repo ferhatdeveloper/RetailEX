@@ -3,8 +3,7 @@ import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { Lock, User, CheckCircle, Store, MoreHorizontal, Grid3x3, Languages, AlertCircle, Building2, Settings as Gear, Loader2, ArrowRight, ArrowLeft, Maximize2, ShieldCheck, Shield, X as CloseIcon, Activity, ChevronRight, Terminal, Trash2, Download, Search, RotateCcw, Database, Save, RefreshCw, Moon, Sun } from 'lucide-react';
 import { HybridSyncPanel } from './HybridSyncPanel';
-import { DeviceRegistrationInfoCard } from './DeviceRegistrationInfoCard';
-import type { DesktopDeviceInfo } from '../../services/deviceRegistrationService';
+import { DeviceRegistrationForm } from './DeviceRegistrationForm';
 import { logger, LogEntry } from '../../services/loggingService';
 import type { User as UserType } from '../../core/types';
 import { APP_VERSION } from '../../core/version';
@@ -40,7 +39,6 @@ import {
 
 const isTauri = typeof window !== 'undefined' && !!(window as any).__TAURI_INTERNALS__;
 const isProduction = import.meta.env.PROD;
-const DEFAULT_MERKEZ_REST_URL = 'https://api.retailex.app/merkez';
 
 /** firms.firm_nr ile aynı biçim (örn. 2 → 002) — tenant ön seçimi için */
 function normalizeTenantFirmNr(v: string | number | undefined | null): string {
@@ -66,7 +64,6 @@ export function Login({ onLogin }: LoginProps) {
   const [setupSuccessData, setSetupSuccessData] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [pendingDeviceInfo, setPendingDeviceInfo] = useState<DesktopDeviceInfo | null>(null);
   const [deviceGateStatus, setDeviceGateStatus] = useState<string | null>(null);
   const [loginStep, setLoginStep] = useState<'credentials' | 'organization'>('credentials');
   const [showLogs, setShowLogs] = useState(false);
@@ -137,19 +134,6 @@ export function Login({ onLogin }: LoginProps) {
   const { login: authLogin } = useAuth();
   const navigate = useNavigate();
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [showTenantFirmIdModal, setShowTenantFirmIdModal] = useState(false);
-  /** Kiracı kodu / UUID veya tek satırda tam PostgREST URL (örn. https://api.../aqua) */
-  const [tenantConnectionDraft, setTenantConnectionDraft] = useState('');
-  /** Kiracı modalı: merkez kodu mu, yoksa sabit bulut kökü + slug (doğrudan PostgREST) mi */
-  const [tenantModalConnectMode, setTenantModalConnectMode] = useState<'code' | 'cloud'>('code');
-  const [tenantModalCloudSlug, setTenantModalCloudSlug] = useState('');
-  /** Yalnızca kiracı kodu ile merkez tenant_registry sorgusu — merkez PostgREST tabanı geçersiz kılma */
-  const [merkezBaseUrlDraft, setMerkezBaseUrlDraft] = useState<string>(
-    () => (typeof window !== 'undefined'
-      ? (localStorage.getItem('merkez_postgrest_base_url') || DEFAULT_MERKEZ_REST_URL)
-      : DEFAULT_MERKEZ_REST_URL)
-  );
-  const [isMerkezTenantLoading, setIsMerkezTenantLoading] = useState(false);
   const [rtlMode, setRtlMode] = useState(false);
   const [activeOrgTab, setActiveOrgTab] = useState<'firm' | 'database'>('firm');
   const [showFactoryResetModal, setShowFactoryResetModal] = useState(false);
@@ -182,8 +166,16 @@ export function Login({ onLogin }: LoginProps) {
       if (localStorage.getItem('exretail_firma_donem_configured') === 'true') return true;
       const rawCfg = localStorage.getItem('retailex_web_config');
       if (!rawCfg) return false;
-      const cfg = JSON.parse(rawCfg) as { merkez_tenant_code?: string; merkez_tenant_id?: string };
-      return Boolean(String(cfg.merkez_tenant_code || '').trim() || String(cfg.merkez_tenant_id || '').trim());
+      const cfg = JSON.parse(rawCfg) as {
+        merkez_tenant_code?: string;
+        merkez_tenant_id?: string;
+        remote_rest_url?: string;
+      };
+      if (String(cfg.merkez_tenant_code || '').trim() || String(cfg.merkez_tenant_id || '').trim()) {
+        return true;
+      }
+      const rest = String(cfg.remote_rest_url || '').trim();
+      return rest.length > 0 && parseSaaSOrCustomPostgrestUrl(rest).kind === 'saas_single_slug';
     } catch {
       return false;
     }
@@ -827,9 +819,17 @@ export function Login({ onLogin }: LoginProps) {
     }
   };
 
+  const openDbSettingsAtPostgrest = () => {
+    setShowDbSettings(true);
+    const idx = dbSettingsWizardSteps.findIndex((s) => s.id === 'postgrest');
+    setDbSettingsStep(idx >= 0 ? idx : 0);
+    applyRemoteRestUrlToTenantInputs(remoteRestUrl);
+  };
+
   const handleSaveDbSettings = async () => {
     try {
-      const { updateConfigs } = await import('../../services/postgres');
+      const { updateConfigs, initializeFromSQLite } = await import('../../services/postgres');
+      const { persistTenantFieldsFromRestUrl } = await import('../../services/merkezTenantRegistry');
       await updateConfigs({
         local: {
           host: dbConfig.host,
@@ -854,12 +854,28 @@ export function Login({ onLogin }: LoginProps) {
           hybridSyncDirection,
           hybridSyncIntervalSec,
           hybridSyncTransport,
+          merkezTenantCode: tenantPostgrestSlug.trim() || undefined,
         }
       });
-      toast.success(connectionProvider === 'rest_api' ? 'PostgREST bağlantı ayarları güncellendi.' : 'Veritabanı bağlantı ayarları güncellendi.');
+
+      const tenantResult = await persistTenantFieldsFromRestUrl(remoteRestUrl, {
+        forTauri: isTauri,
+        preserveDbMode: dbConnectionMode,
+      });
+      await initializeFromSQLite();
+
+      if (tenantResult.applied && tenantResult.tag) {
+        toast.success(`Kiracı bağlantısı uygulandı: ${tenantResult.tag}`);
+      } else {
+        toast.success(
+          connectionProvider === 'rest_api'
+            ? 'PostgREST bağlantı ayarları güncellendi.'
+            : 'Veritabanı bağlantı ayarları güncellendi.',
+        );
+      }
       setShowDbSettings(false);
-      // Re-load firms to verify connection
-      loadFirms();
+      void loadFirms();
+      void loadUsers();
     } catch (err) {
       toast.error('Ayarlar kaydedilemedi: ' + err);
     }
@@ -974,7 +990,6 @@ export function Login({ onLogin }: LoginProps) {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    setPendingDeviceInfo(null);
     setDeviceGateStatus(null);
     const trimmedUsername = username.trim();
     const trimmedPassword = password.trim();
@@ -1010,12 +1025,10 @@ export function Login({ onLogin }: LoginProps) {
           const gate = await assertDesktopTerminalApproved();
           if (!gate.allowed) {
             setError(gate.message);
-            setPendingDeviceInfo(gate.deviceInfo ?? null);
             setDeviceGateStatus(gate.status);
             setIsLoading(false);
             return;
           }
-          setPendingDeviceInfo(null);
           setDeviceGateStatus(null);
         }
 
@@ -1193,44 +1206,8 @@ export function Login({ onLogin }: LoginProps) {
               </button>
               <button
                 type="button"
-                title="Tenant bağlantısı"
-                onClick={() => {
-                  let line = '';
-                  try {
-                    const rawCfg = localStorage.getItem('retailex_web_config');
-                    if (rawCfg) {
-                      const cfg = JSON.parse(rawCfg) as {
-                        remote_rest_url?: string;
-                        merkez_tenant_code?: string;
-                        merkez_tenant_id?: string;
-                        connection_provider?: string;
-                      };
-                      const url = String(cfg.remote_rest_url || '').trim();
-                      if (cfg.connection_provider === 'rest_api' && url) {
-                        line = url;
-                      } else {
-                        line =
-                          String(cfg.merkez_tenant_code || '').trim() ||
-                          String(cfg.merkez_tenant_id || '').trim();
-                      }
-                    }
-                  } catch {
-                    /* ignore */
-                  }
-                  if (!line) line = localStorage.getItem('exretail_selected_tenant') || '';
-                  const parsedLine = parseSaaSOrCustomPostgrestUrl(line);
-                  if (parsedLine.kind === 'saas_single_slug') {
-                    setTenantModalConnectMode('cloud');
-                    setTenantModalCloudSlug(parsedLine.slug);
-                    setTenantConnectionDraft('');
-                  } else {
-                    setTenantModalConnectMode('code');
-                    setTenantModalCloudSlug('');
-                    setTenantConnectionDraft(line);
-                  }
-                  setMerkezBaseUrlDraft(localStorage.getItem('merkez_postgrest_base_url') || DEFAULT_MERKEZ_REST_URL);
-                  setShowTenantFirmIdModal(true);
-                }}
+                title="Kiracı / PostgREST bağlantısı"
+                onClick={openDbSettingsAtPostgrest}
                 className="p-2.5 bg-white/10 hover:bg-white/20 rounded-sm border border-white/10 transition-all backdrop-blur-md group"
               >
                 <Building2 className="w-3.5 h-3.5 group-hover:scale-110 transition-transform" />
@@ -1522,17 +1499,19 @@ export function Login({ onLogin }: LoginProps) {
               </div>
             )}
 
-            {isTauri && deviceGateStatus === 'pending' && pendingDeviceInfo && (
-              <div className="space-y-2 animate-in fade-in duration-300">
-                <p className="text-[10px] font-bold uppercase tracking-widest text-amber-600">
-                  Merkeze iletilen cihaz profili
-                </p>
-                <DeviceRegistrationInfoCard
-                  device={pendingDeviceInfo}
-                  showStatus
-                  statusLabel="Onay bekliyor"
-                />
-              </div>
+            {isTauri && deviceGateStatus && deviceGateStatus !== 'approved' && (
+              <DeviceRegistrationForm
+                darkMode={darkMode}
+                onRegistered={(status) => {
+                  if (status === 'approved') {
+                    setDeviceGateStatus(null);
+                    setError(null);
+                    toast.success('Cihaz onaylandı. Giriş yapabilirsiniz.');
+                  } else {
+                    setDeviceGateStatus(status);
+                  }
+                }}
+              />
             )}
 
             <button
@@ -1572,354 +1551,6 @@ export function Login({ onLogin }: LoginProps) {
         />
       )}
 
-      {showTenantFirmIdModal && (
-        <div
-          className="fixed inset-0 z-50 overflow-y-auto overflow-x-hidden bg-black/50 backdrop-blur-sm animate-in fade-in duration-200"
-          onClick={() => setShowTenantFirmIdModal(false)}
-        >
-          <div className="flex min-h-[100dvh] min-h-screen w-full items-center justify-center p-4 py-6">
-            <div
-              className="bg-white rounded-[2rem] w-full max-w-md max-h-[min(90vh,100dvh)] min-h-0 overflow-hidden shadow-xl border border-slate-200/80 flex flex-col animate-in zoom-in-95 duration-200"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-8 py-6 text-white shrink-0">
-                <div className="flex items-center justify-between gap-4">
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center shrink-0">
-                      <Building2 className="w-5 h-5" />
-                    </div>
-                    <div className="min-w-0">
-                      <h2 className="text-lg font-black uppercase tracking-tight truncate">Kiracı / firma bağlantısı</h2>
-                      <p className="text-blue-100 text-xs font-semibold uppercase tracking-wider mt-0.5 opacity-90">Merkez tenant kaydı</p>
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setShowTenantFirmIdModal(false)}
-                    className="w-12 h-12 rounded-2xl bg-white/20 hover:bg-white/30 flex items-center justify-center transition-colors shrink-0"
-                    aria-label="Kapat"
-                  >
-                    <CloseIcon className="w-5 h-5" />
-                  </button>
-                </div>
-              </div>
-              <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-8">
-                <div className="mb-3 flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setTenantModalConnectMode('code');
-                      if (tenantModalCloudSlug.trim()) {
-                        setTenantConnectionDraft(tenantModalCloudSlug.trim());
-                      }
-                    }}
-                    className={`rounded-xl px-3 py-1.5 text-[10px] font-black uppercase tracking-wide transition-colors ${
-                      tenantModalConnectMode === 'code'
-                        ? 'bg-indigo-600 text-white shadow'
-                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                    }`}
-                  >
-                    Kiracı kodu / UUID
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setTenantModalConnectMode('cloud');
-                      const p = parseSaaSOrCustomPostgrestUrl(tenantConnectionDraft.trim());
-                      if (p.kind === 'saas_single_slug') {
-                        setTenantModalCloudSlug(p.slug);
-                        setTenantConnectionDraft('');
-                      }
-                    }}
-                    className={`rounded-xl px-3 py-1.5 text-[10px] font-black uppercase tracking-wide transition-colors ${
-                      tenantModalConnectMode === 'cloud'
-                        ? 'bg-indigo-600 text-white shadow'
-                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                    }`}
-                  >
-                    api.retailex.app / yol
-                  </button>
-                </div>
-
-                {tenantModalConnectMode === 'code' ? (
-                  <>
-                <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
-                  Kiracı kodu · UUID veya tam PostgREST URL
-                </label>
-                <input
-                  type="text"
-                  autoComplete="off"
-                  value={tenantConnectionDraft}
-                  onChange={(e) => setTenantConnectionDraft(e.target.value)}
-                  placeholder="Örn. retailex_demo — veya https://baska-host/postgrest-yolu"
-                  className="w-full px-4 py-3 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-blue-500 focus:border-blue-400 outline-none text-slate-800 font-mono text-sm"
-                />
-                  </>
-                ) : (
-                  <>
-                    <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
-                      Kiracı yolu (sabit: {DEFAULT_SAAS_TENANT_POSTGREST_ORIGIN}/)
-                    </label>
-                    <div className="flex w-full overflow-hidden rounded-2xl border border-slate-200 bg-white">
-                      <span className="flex shrink-0 items-center border-r border-slate-200 bg-slate-50 px-2 py-3 font-mono text-[10px] font-bold text-slate-500">
-                        {DEFAULT_SAAS_TENANT_POSTGREST_ORIGIN}/
-                      </span>
-                      <input
-                        type="text"
-                        autoComplete="off"
-                        value={tenantModalCloudSlug}
-                        onChange={(e) => {
-                          const raw = e.target.value.trim();
-                          const slug =
-                            raw
-                              .replace(/^https?:\/\/api\.retailex\.app\/?/i, '')
-                              .split('/')[0]
-                              ?.replace(/[/?#].*$/, '') ?? '';
-                          setTenantModalCloudSlug(slug);
-                        }}
-                        placeholder="retailex_demo"
-                        className="min-w-0 flex-1 border-0 bg-transparent px-3 py-3 font-mono text-sm text-slate-800 outline-none focus:ring-0"
-                      />
-                    </div>
-                    <p className="mt-1.5 text-[10px] text-slate-500">
-                      Bu seçenek <strong className="text-slate-600">tenant_registry</strong> kullanmaz; doğrudan bu PostgREST adresiyle bağlanır (Veritabanı ayarındaki «RetailEX bulutu» ile aynı adres).
-                    </p>
-                  </>
-                )}
-
-                <p className="mt-2 text-[11px] text-slate-500 leading-relaxed">
-                  <strong className="text-slate-600"> Kod / UUID:</strong> merkez <code className="text-[10px] bg-slate-100 px-1 rounded">tenant_registry</code> üzerinden çözülür; çoğu kurulumda yalnızca <code className="text-[10px] bg-slate-100 px-1 rounded">retailex_demo</code> yeterlidir (üstte «Kiracı kodu / UUID»).
-                  <strong className="text-slate-600"> Bulut yolu:</strong> yalnızca üstteki «api.retailex.app / yol» sekmesinde segment yazın.
-                </p>
-                <details className="mt-4 rounded-2xl border border-slate-200 bg-slate-50/80 px-4 py-3">
-                  <summary className="cursor-pointer text-[11px] font-bold uppercase tracking-wider text-slate-600 select-none">
-                    Gelişmiş — yalnız kiracı kodu: merkez PostgREST tabanı
-                  </summary>
-                  <p className="mt-2 text-[10px] text-slate-500 leading-relaxed">
-                    Varsayılan: ortam değişkeni veya son kayıt. Kod ile sorgu yaparken merkez adresini burada geçersiz kılın (örn.{' '}
-                    <code className="text-[10px]">https://api.retailex.app/merkez</code>).
-                  </p>
-                  <input
-                    type="text"
-                    autoComplete="off"
-                    value={merkezBaseUrlDraft}
-                    onChange={(e) => setMerkezBaseUrlDraft(e.target.value)}
-                    placeholder="https://api.retailex.app/merkez"
-                    className="mt-2 w-full px-4 py-3 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-blue-500 focus:border-blue-400 outline-none text-slate-800 font-mono text-xs bg-white"
-                  />
-                </details>
-                <p className="mt-3 text-[11px] text-slate-500 leading-relaxed">
-                  Kiracı uygulanmadan firma ve kullanıcı listeleri yüklenmez (üretim web).
-                </p>
-              </div>
-              <div className="p-6 border-t border-slate-100 bg-slate-50/50 flex flex-col gap-3 shrink-0">
-                <button
-                  type="button"
-                  disabled={isMerkezTenantLoading}
-                  onClick={async () => {
-                    let line = '';
-                    if (tenantModalConnectMode === 'cloud') {
-                      const slug = tenantModalCloudSlug.trim();
-                      if (!slug) {
-                        toast.error('api.retailex.app altında kiracı yolunu girin (örn. retailex_demo).');
-                        return;
-                      }
-                      line = buildSaaSTenantPostgrestUrl(slug);
-                    } else {
-                      line = tenantConnectionDraft.trim();
-                    }
-                    if (!line) {
-                      toast.error('Kiracı kodu, UUID veya PostgREST URL girin.');
-                      return;
-                    }
-
-                    const merkezMod = await import('../../services/merkezTenantRegistry');
-                    const {
-                      finalizeMerkezRestBaseUrl,
-                      parseTenantConnectionLine,
-                      buildDirectPostgrestTenantPatch,
-                      fetchTenantRegistryRow,
-                      resolveTenantRegistryForDirectPostgrest,
-                      tenantRowToAppConfigPatch,
-                      preferredShellModuleForTenantModule,
-                    } = merkezMod;
-
-                    let parsed;
-                    try {
-                      parsed = parseTenantConnectionLine(line);
-                    } catch (e: any) {
-                      toast.error(e?.message || String(e));
-                      return;
-                    }
-
-                    async function loadPrevAndPreserve(): Promise<{
-                      prev: Record<string, unknown>;
-                      preserve: string;
-                    }> {
-                      let preserve = '';
-                      let prev: Record<string, unknown> = {};
-                      if (isTauri) {
-                        const { invoke } = await import('@tauri-apps/api/core');
-                        prev = (await invoke('get_app_config')) as Record<string, unknown>;
-                        preserve = String(prev.pg_remote_pass ?? '');
-                      } else {
-                        const s = localStorage.getItem('retailex_web_config');
-                        if (s) {
-                          try {
-                            prev = JSON.parse(s) as Record<string, unknown>;
-                            preserve = String(prev.pg_remote_pass ?? '');
-                          } catch {
-                            prev = {};
-                          }
-                        }
-                      }
-                      return { prev, preserve };
-                    }
-
-                    if (parsed.kind === 'direct_postgrest') {
-                      setIsMerkezTenantLoading(true);
-                      try {
-                        const { prev, preserve } = await loadPrevAndPreserve();
-                        const registryRow = await resolveTenantRegistryForDirectPostgrest({
-                          url: parsed.url,
-                          pathSlug: parsed.pathSlug,
-                        });
-                        const patch = registryRow
-                          ? tenantRowToAppConfigPatch(registryRow, {
-                              preserveDbPassword: preserve,
-                              forTauri: isTauri,
-                            })
-                          : buildDirectPostgrestTenantPatch({
-                              url: parsed.url,
-                              pathSlug: parsed.pathSlug,
-                            });
-                        const merged: Record<string, unknown> = { ...prev, ...patch, is_configured: true, db_mode: 'online' };
-                        if (isTauri) {
-                          const { invoke } = await import('@tauri-apps/api/core');
-                          await invoke('save_app_config', { config: merged });
-                        } else {
-                          localStorage.setItem('retailex_web_config', JSON.stringify(merged));
-                          localStorage.setItem('exretail_firma_donem_configured', 'true');
-                        }
-                        const { applyScaleBridgeAfterTenantMerge } = await import('../../utils/scaleBridgeTenantSync');
-                        applyScaleBridgeAfterTenantMerge(prev, merged);
-                        const { applyLogoRestAfterTenantMerge } = await import('../../utils/logoRestTenantSync');
-                        applyLogoRestAfterTenantMerge(prev, merged);
-                        const emDir = merged.enabled_modules;
-                        if (Array.isArray(emDir) && emDir.length > 0) {
-                          localStorage.setItem('retailex_enabled_modules', JSON.stringify(emDir));
-                        }
-                        const { initializeFromSQLite } = await import('../../services/postgres');
-                        await initializeFromSQLite(isTauri ? merged : undefined);
-                        setConnectionProvider('rest_api');
-                        setRemoteRestUrl(String(merged.remote_rest_url || ''));
-                        applyRemoteRestUrlToTenantInputs(String(merged.remote_rest_url || ''));
-                        setDbConnectionMode('online');
-                        const tag =
-                          registryRow?.code ||
-                          parsed.pathSlug ||
-                          String(merged.remote_rest_url || '');
-                        localStorage.setItem('exretail_selected_tenant', tag);
-                        const preferredModule = registryRow
-                          ? preferredShellModuleForTenantModule(registryRow.module)
-                          : '';
-                        if (preferredModule) {
-                          localStorage.setItem('retailex_active_module', preferredModule);
-                        }
-                        setShowTenantFirmIdModal(false);
-                        toast.success(
-                          registryRow
-                            ? `Kiracı uygulandı: ${registryRow.display_name} (${registryRow.code})`
-                            : `PostgREST bağlandı: ${merged.remote_rest_url}`
-                        );
-                        void loadFirms();
-                        void loadUsers();
-                      } catch (e: any) {
-                        toast.error(e?.message || String(e));
-                      } finally {
-                        setIsMerkezTenantLoading(false);
-                      }
-                      return;
-                    }
-
-                    const merkezUrl = merkezBaseUrlDraft.trim();
-                    if (merkezUrl) {
-                      const clean = finalizeMerkezRestBaseUrl(merkezUrl);
-                      if (typeof window !== 'undefined' && window.location.protocol === 'https:' && /^http:\/\//i.test(clean)) {
-                        toast.error('HTTPS sayfada HTTP merkez adresi kullanılamaz. HTTPS URL girin.');
-                        return;
-                      }
-                      localStorage.setItem('merkez_postgrest_base_url', clean);
-                    }
-
-                    setIsMerkezTenantLoading(true);
-                    try {
-                      const row = await fetchTenantRegistryRow(parsed.code);
-                      const { prev, preserve } = await loadPrevAndPreserve();
-                      const patch = tenantRowToAppConfigPatch(row, {
-                        preserveDbPassword: preserve,
-                        forTauri: isTauri,
-                      });
-                      const merged: Record<string, unknown> = { ...prev, ...patch, is_configured: true, db_mode: 'online' };
-                      if (isTauri) {
-                        const { invoke } = await import('@tauri-apps/api/core');
-                        await invoke('save_app_config', { config: merged });
-                      } else {
-                        localStorage.setItem('retailex_web_config', JSON.stringify(merged));
-                        localStorage.setItem('exretail_firma_donem_configured', 'true');
-                      }
-                      const { applyScaleBridgeAfterTenantMerge } = await import('../../utils/scaleBridgeTenantSync');
-                      applyScaleBridgeAfterTenantMerge(prev, merged);
-                      const { applyLogoRestAfterTenantMerge } = await import('../../utils/logoRestTenantSync');
-                      applyLogoRestAfterTenantMerge(prev, merged);
-                      const emReg = merged.enabled_modules;
-                      if (Array.isArray(emReg) && emReg.length > 0) {
-                        localStorage.setItem('retailex_enabled_modules', JSON.stringify(emReg));
-                      }
-                      const { initializeFromSQLite } = await import('../../services/postgres');
-                      await initializeFromSQLite(isTauri ? merged : undefined);
-                      setConnectionProvider(
-                        (merged.connection_provider as ConnectionProvider) === 'rest_api'
-                          ? 'rest_api'
-                          : 'db'
-                      );
-                      setRemoteRestUrl(String(merged.remote_rest_url || ''));
-                      applyRemoteRestUrlToTenantInputs(String(merged.remote_rest_url || ''));
-                      setDbConnectionMode('online');
-                      localStorage.setItem('exretail_selected_tenant', row.code || row.id);
-                      const preferredModule = preferredShellModuleForTenantModule(row.module);
-                      if (preferredModule) {
-                        localStorage.setItem('retailex_active_module', preferredModule);
-                      }
-                      setShowTenantFirmIdModal(false);
-                      toast.success(`Kiracı uygulandı: ${row.display_name} (${row.code})`);
-                      void loadFirms();
-                      void loadUsers();
-                    } catch (e: any) {
-                      toast.error(e?.message || String(e));
-                    } finally {
-                      setIsMerkezTenantLoading(false);
-                    }
-                  }}
-                  className="w-full py-3.5 rounded-2xl bg-indigo-600 text-white font-bold uppercase text-sm tracking-wider shadow-lg shadow-indigo-200/40 hover:bg-indigo-700 active:scale-[0.98] disabled:opacity-60 disabled:pointer-events-none"
-                >
-                  {isMerkezTenantLoading ? 'Bağlanıyor…' : 'Bağlan'}
-                </button>
-                <div className="flex gap-4">
-                  <button
-                    type="button"
-                    disabled={isMerkezTenantLoading}
-                    onClick={() => setShowTenantFirmIdModal(false)}
-                    className="w-full py-3.5 rounded-2xl border-2 border-slate-200 text-slate-600 font-bold uppercase text-sm tracking-wider hover:bg-slate-100 active:scale-[0.98]"
-                  >
-                    İptal
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Setup Wizard Modal — flat modal standard */}
       {showSetupWizard && (
@@ -2536,9 +2167,7 @@ export function Login({ onLogin }: LoginProps) {
                       </div>
                       <p className={`text-[9px] font-bold leading-relaxed ${darkMode ? 'text-slate-400' : 'text-slate-600'}`}>
                         Kiracı / merkez REST adresi. Aynı ağda örnek: <strong>http://192.168.1.10:3002</strong> veya RetailEX bulutunda yalnızca kiracı adı.
-                        {dbConnectionMode !== 'hybrid' && (
-                          <> Kiracıyı üstteki bina ikonundan da tek satırda kaydedebilirsiniz.</>
-                        )}
+                        Kaydettiğinizde kiracı bağlantısı otomatik uygulanır; firma listesi yenilenir.
                       </p>
                       {renderTenantPostgrestUrlFields(dbConnectionMode === 'hybrid' ? 'hybrid' : 'rest_api')}
                     </div>

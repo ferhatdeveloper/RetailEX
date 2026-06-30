@@ -527,3 +527,97 @@ export function tenantRowToAppConfigPatch(
 
   return patch;
 }
+
+/** PostgREST URL slug'ından kiracı alanlarını türetir (db_mode korunur). */
+export function buildTenantFieldsFromRestUrl(
+  restUrl: string,
+  prev: Record<string, unknown> = {},
+): Record<string, unknown> | null {
+  const raw = normalizeBaseUrl(String(restUrl || '').trim());
+  if (!raw) return null;
+
+  let slug: string | null = null;
+  const saas = parseSaaSOrCustomPostgrestUrl(raw);
+  if (saas.kind === 'saas_single_slug') {
+    slug = saas.slug;
+  } else {
+    try {
+      const line = parseTenantConnectionLine(raw);
+      if (line.kind === 'direct_postgrest' && line.pathSlug) {
+        slug = line.pathSlug;
+      }
+    } catch {
+      return null;
+    }
+  }
+  if (!slug || slug === 'merkez') return null;
+
+  const effectiveUrl =
+    saas.kind === 'saas_single_slug' ? raw : buildSaaSTenantPostgrestUrl(slug);
+  const syncUrls = resolveTenantSyncUrls({
+    merkez_tenant_code: slug,
+    remote_rest_url: effectiveUrl,
+    central_ws_url: prev.central_ws_url,
+    central_api_url: prev.central_api_url,
+  });
+
+  const idFromSlug = UUID_RE.test(slug) ? slug : '';
+  const codeFromSlug = idFromSlug ? '' : slug;
+
+  return {
+    remote_rest_url: effectiveUrl,
+    merkez_tenant_code: codeFromSlug || undefined,
+    merkez_tenant_id: idFromSlug || undefined,
+    merkez_display_name: codeFromSlug || idFromSlug || effectiveUrl,
+    central_ws_url: syncUrls.central_ws_url || undefined,
+    central_api_url: syncUrls.central_api_url || undefined,
+    connection_provider: prev.connection_provider ?? 'rest_api',
+    db_mode: prev.db_mode,
+  };
+}
+
+/** DB ayarları kaydı sonrası kiracıyı uygular (web localStorage / Tauri config). */
+export async function persistTenantFieldsFromRestUrl(
+  restUrl: string,
+  opts?: { forTauri?: boolean; preserveDbMode?: string },
+): Promise<{ applied: boolean; tag?: string }> {
+  const IS_TAURI = typeof window !== 'undefined' && !!(window as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__;
+
+  let prev: Record<string, unknown> = {};
+  if (IS_TAURI || opts?.forTauri) {
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      prev = ((await invoke('get_app_config')) as Record<string, unknown>) || {};
+    } catch {
+      prev = {};
+    }
+  } else if (typeof window !== 'undefined') {
+    try {
+      const raw = window.localStorage.getItem('retailex_web_config');
+      prev = raw ? (JSON.parse(raw) as Record<string, unknown>) : {};
+    } catch {
+      prev = {};
+    }
+  }
+
+  const patch = buildTenantFieldsFromRestUrl(restUrl, {
+    ...prev,
+    db_mode: opts?.preserveDbMode ?? prev.db_mode,
+  });
+  if (!patch) return { applied: false };
+
+  const merged = { ...prev, ...patch, is_configured: true };
+
+  if (IS_TAURI || opts?.forTauri) {
+    const { invoke } = await import('@tauri-apps/api/core');
+    await invoke('save_app_config', { config: merged });
+  } else if (typeof window !== 'undefined') {
+    window.localStorage.setItem('retailex_web_config', JSON.stringify(merged));
+    window.localStorage.setItem('exretail_firma_donem_configured', 'true');
+    const tag = String(patch.merkez_tenant_code || patch.merkez_tenant_id || '');
+    if (tag) window.localStorage.setItem('exretail_selected_tenant', tag);
+  }
+
+  const tag = String(patch.merkez_tenant_code || patch.merkez_tenant_id || '');
+  return { applied: true, tag };
+}
