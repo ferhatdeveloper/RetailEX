@@ -1,0 +1,31 @@
+---
+description: GitHub masaüstü release — kurulum dosya adında semver zorunlu
+alwaysApply: true
+---
+
+# Masaüstü release dosya adı (RetailEX)
+
+## Kural
+
+GitHub’a yüklenen **RetailEX masaüstü (NSIS) kurulum dosyası** adında **semver** bulunmalı.
+
+- **Kalıp:** `RetailEX-Desktop-Setup-{version}.exe`
+- **Örnek:** `RetailEX-Desktop-Setup-0.1.151.exe`
+- **`{version}`:** yalnızca kök `package.json` → `"version"` (bkz. `app-version-single-source.mdc`)
+
+## Nerede uygulanır
+
+1. **`.github/workflows/desktop-release.yml`** — `Collect installer artifact` ve `Create GitHub Release` → `files:` aynı sürümlü adı kullanır.
+2. **`scripts/fetch-desktop-release-to-desktop.mjs`** — indirme deseni sürümlü dosyayı hedefler; eski `RetailEX-Desktop-Setup.exe` yalnızca geriye dönük fallback.
+3. **Workflow artifact** — `RetailEX-Desktop-Setup-{version}` (artifact adı) + dosya yolu sürümlü `.exe`.
+
+## Asla yapma
+
+- Release’e sürümsüz tek ad (`RetailEX-Desktop-Setup.exe`) yükleme — yeni sürümlerde yasak.
+- Dosya adında semver’i elle sabitleme; her zaman `PACKAGE_VERSION` / `package.json` kaynağı.
+
+## Yeni sürüm checklist
+
+- [ ] `package.json` `version` artırıldı
+- [ ] `app-v{version}` tag push
+- [ ] Release asset adı: `RetailEX-Desktop-Setup-{version}.exe`
