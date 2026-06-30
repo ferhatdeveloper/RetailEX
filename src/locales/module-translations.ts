@@ -2479,7 +2479,7 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
   hrManagement: { tr: 'İnsan Kaynakları Yönetimi', en: 'HR Management', ar: 'إدارة الموارد البشرية', ku: 'بەڕێوەبردنی سەرچاوەی مرۆیی' },
   crmCustomerRelations: { tr: 'CRM & Müşteri İlişkileri', en: 'CRM & Customer Relations', ar: 'إدارة علاقات العملاء', ku: 'CRM و پەیوەندی کڕیار' },
   crmModule: { tr: 'CRM Modülü', en: 'CRM Module', ar: 'وحدة إدارة علاقات العملاء', ku: 'مۆدیولی CRM' },
-  communicationNotifications: { tr: 'İletişim & Bildirimler', en: 'Communication & Notifications', ar: 'التواصل والإشعارات', ku: 'پەیوەندی و ئاگادارکردنەوە' },
+  communicationNotifications: { tr: 'İletişim & Bildirimler', en: 'Comms & Alerts', ar: 'التواصل والإشعارات', ku: 'پەیوەندی و ئاگادارکردنەوە' },
   notificationCenter: { tr: 'Bildirim Merkezi', en: 'Notification Center', ar: 'مركز الإشعارات', ku: 'سەنتەری ئاگادارکردنەوە' },
 
   // Reports & Analysis

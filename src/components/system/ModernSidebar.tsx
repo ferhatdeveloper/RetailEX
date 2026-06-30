@@ -305,14 +305,14 @@ export function ModernSidebar({
                 : 'text-gray-800 hover:bg-gray-100 hover:text-gray-900 active:bg-gray-200'
                 }`}
             >
-              <span className="flex items-center gap-3">
-                <Package className="w-5 h-5" />
-                <span>{section.title}</span>
+              <span className="flex items-center gap-3 min-w-0 flex-1 text-left">
+                <Package className="w-5 h-5 shrink-0" />
+                <span className="truncate">{section.title}</span>
               </span>
               {expandedSections.includes(section.title) ? (
-                <ChevronDown className="w-5 h-5" />
+                <ChevronDown className="w-5 h-5 shrink-0" />
               ) : (
-                <ChevronRight className="w-5 h-5" />
+                <ChevronRight className="w-5 h-5 shrink-0" />
               )}
             </button>
 

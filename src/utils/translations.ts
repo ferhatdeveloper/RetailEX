@@ -45,7 +45,7 @@ export const translations = {
   assetManagement: { tr: 'Varlık Yönetimi', en: 'Asset Management', ar: 'إدارة الأصول', ku: 'بەڕێوەبردنی سامان' },
   humanResources: { tr: 'İnsan Kaynakları', en: 'Human Resources', ar: 'الموارد البشرية', ku: 'سەرچاوە مرۆییەکان' },
   ecommerce: { tr: 'E-Ticaret', en: 'E-Commerce', ar: 'التجارة الإلكترونية', ku: 'بازرگانی ئەلیکترۆنی' },
-  communicationNotifications: { tr: 'İletişim & Bildirimler', en: 'Communication & Notifications', ar: 'الاتصالات والإشعارات', ku: 'پەیوەندی و ئاگادارکردنەوە' },
+  communicationNotifications: { tr: 'İletişim & Bildirimler', en: 'Comms & Alerts', ar: 'الاتصالات والإشعارات', ku: 'پەیوەندی و ئاگادارکردنەوە' },
   reportsAnalysis: { tr: 'Raporlar & Analiz', en: 'Reports & Analysis', ar: 'التقارير والتحليل', ku: 'ڕاپۆرتەکان و شیکاری' },
   systemManagement: { tr: 'Sistem Yönetimi', en: 'System Management', ar: 'إدارة النظام', ku: 'بەڕێوەبردنی سیستم' },
 
