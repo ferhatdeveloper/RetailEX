@@ -17,6 +17,7 @@ export interface SetupAppConfig {
   hybrid_sync_direction?: HybridSyncDirection;
   hybrid_sync_interval_sec?: number;
   hybrid_sync_transport?: HybridSyncTransport;
+  merkez_tenant_code?: string;
   terminal_name: string;
   store_id: string;
   erp_firm_nr: string;

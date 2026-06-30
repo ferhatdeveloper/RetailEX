@@ -474,6 +474,17 @@ export async function initializeFromSQLite(preloadedConfig?: any) {
       DB_SETTINGS.hybridSyncIntervalSec = normalizeHybridSyncIntervalSec(config.hybrid_sync_interval_sec);
       DB_SETTINGS.hybridSyncTransport = normalizeHybridSyncTransport(config.hybrid_sync_transport);
 
+      DB_SETTINGS.merkezTenantCode = String(config.merkez_tenant_code ?? '').trim();
+      const syncUrls = resolveTenantSyncUrls({
+        merkez_tenant_code: config.merkez_tenant_code,
+        remote_rest_url: config.remote_rest_url,
+        central_ws_url: config.central_ws_url,
+        central_api_url: config.central_api_url,
+      });
+      DB_SETTINGS.centralWsUrl = syncUrls.central_ws_url;
+      DB_SETTINGS.centralApiUrl = syncUrls.central_api_url;
+      alignRemoteConfigWithRestUrl();
+
       // Tauri hibrit: POS ve sync_queue yazımları yerel PG'de; PostgREST yalnızca senkron hedefi.
       applyTauriHybridDbOverride();
       if (DB_SETTINGS.connectionProvider === 'db' && config.connection_provider === 'rest_api') {
@@ -553,6 +564,15 @@ export async function updateConfigs(updates: {
   applyTauriHybridDbOverride();
   alignRemoteConfigWithRestUrl();
 
+  const syncUrls = resolveTenantSyncUrls({
+    merkez_tenant_code: DB_SETTINGS.merkezTenantCode,
+    remote_rest_url: DB_SETTINGS.remoteRestUrl,
+    central_ws_url: DB_SETTINGS.centralWsUrl,
+    central_api_url: DB_SETTINGS.centralApiUrl,
+  });
+  DB_SETTINGS.centralWsUrl = syncUrls.central_ws_url;
+  DB_SETTINGS.centralApiUrl = syncUrls.central_api_url;
+
   const storeIdPatch =
     updates.storeId?.trim() && updates.storeId !== 'all' && updates.storeId !== '001'
       ? updates.storeId.trim()
@@ -569,6 +589,9 @@ export async function updateConfigs(updates: {
       hybrid_sync_direction: DB_SETTINGS.hybridSyncDirection,
       hybrid_sync_interval_sec: DB_SETTINGS.hybridSyncIntervalSec,
       hybrid_sync_transport: DB_SETTINGS.hybridSyncTransport,
+      merkez_tenant_code: DB_SETTINGS.merkezTenantCode,
+      central_ws_url: DB_SETTINGS.centralWsUrl,
+      central_api_url: DB_SETTINGS.centralApiUrl,
       erp_firm_nr: ERP_SETTINGS.firmNr,
       erp_period_nr: ERP_SETTINGS.periodNr,
       ...(storeIdPatch ? { store_id: storeIdPatch } : {}),
@@ -616,6 +639,9 @@ export async function updateConfigs(updates: {
       hybrid_sync_direction: DB_SETTINGS.hybridSyncDirection,
       hybrid_sync_interval_sec: DB_SETTINGS.hybridSyncIntervalSec,
       hybrid_sync_transport: DB_SETTINGS.hybridSyncTransport,
+      merkez_tenant_code: DB_SETTINGS.merkezTenantCode,
+      central_ws_url: DB_SETTINGS.centralWsUrl,
+      central_api_url: DB_SETTINGS.centralApiUrl,
       local_db: localDbStr,
       remote_db: remoteDbStr,
       pg_local_user: LOCAL_CONFIG.user,

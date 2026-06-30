@@ -6,6 +6,7 @@
 
 import { DB_SETTINGS } from '../services/postgres';
 import { rewriteRetailexAppUrlForViteDev } from '../utils/retailexDevProxy';
+import { resolveEffectiveRemoteRestUrl } from '../services/merkezTenantRegistry';
 
 const defaultPort = 3002;
 
@@ -41,7 +42,9 @@ export function shouldUseTenantPostgrestApi(): boolean {
 export function getPostgrestBaseUrl(): string {
   // Kiracı PostgREST URL’si (remote_rest_url) varken çevrimdışı değilse doğrudan tenant API.
   // Böylece db + hybrid (pg_query köprüsü zayıf/502) senaryosunda da PostgREST okumaları çalışır.
-  const remote = normalizeBaseUrl(String(DB_SETTINGS.remoteRestUrl || '').trim());
+  const remote = normalizeBaseUrl(
+    resolveEffectiveRemoteRestUrl(DB_SETTINGS.remoteRestUrl, DB_SETTINGS.merkezTenantCode),
+  );
   const offline = DB_SETTINGS.activeMode === 'offline';
   if (remote && !offline) {
     return rewriteRetailexAppUrlForViteDev(remote);

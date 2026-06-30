@@ -165,6 +165,34 @@ export function buildSaaSTenantPostgrestUrl(slug: string): string {
   return `${o}/${s}`;
 }
 
+/**
+ * Kök `https://api.retailex.app` + kiracı kodu → `.../lovan` (PostgREST/Caddy uyumu).
+ */
+export function resolveEffectiveRemoteRestUrl(
+  remoteRestUrl?: string,
+  merkezTenantCode?: string,
+): string {
+  const remote = normalizeBaseUrl(String(remoteRestUrl ?? '').trim());
+  if (!remote) return remote;
+  const parsed = parseSaaSOrCustomPostgrestUrl(remote);
+  if (parsed.kind === 'saas_single_slug') return remote;
+
+  const tenant = String(merkezTenantCode ?? '').trim();
+  if (!tenant || tenant === 'merkez') return remote;
+
+  try {
+    const urlObj = new URL(/^https?:\/\//i.test(remote) ? remote : ensureUrlProtocol(remote));
+    if (urlObj.hostname !== 'api.retailex.app') return remote;
+    const segs = urlObj.pathname.replace(/\/+$/, '').split('/').filter(Boolean);
+    if (segs.length === 0) {
+      return buildSaaSTenantPostgrestUrl(tenant);
+    }
+  } catch {
+    /* geçersiz URL — olduğu gibi bırak */
+  }
+  return remote;
+}
+
 /** Kiracı kodundan merkez WebSocket URL — örn. lovan → wss://api.retailex.app/lovan/ws */
 export function buildTenantCentralWsUrl(tenantCode: string): string {
   const code = String(tenantCode || '').trim().replace(/^\/+|\/+$/g, '');

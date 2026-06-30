@@ -1,5 +1,6 @@
 import type { SetupAppConfig, SetupDbMode, SetupDbTarget } from './setupTypes';
 import { DEFAULT_SAAS_TENANT_POSTGREST_ORIGIN, resolveTenantSyncUrls } from '../../../services/merkezTenantRegistry';
+import { normalizeHybridSyncTransport } from '../../../services/postgres';
 
 const VALID_DB_MODES: SetupDbMode[] = ['online', 'offline', 'hybrid'];
 
@@ -119,7 +120,7 @@ export function normalizeSetupConfig(config: SetupAppConfig): SetupAppConfig {
     hybrid_read_preference: config.hybrid_read_preference || 'local_first',
     hybrid_sync_direction: config.hybrid_sync_direction || 'local_to_remote',
     hybrid_sync_interval_sec: normalizeSetupSyncInterval(config.hybrid_sync_interval_sec),
-    hybrid_sync_transport: config.hybrid_sync_transport || 'both',
+    hybrid_sync_transport: normalizeHybridSyncTransport(config.hybrid_sync_transport),
   };
 
   if (db_mode === 'hybrid') {

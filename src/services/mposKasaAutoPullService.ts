@@ -341,12 +341,15 @@ export function requestMposSyncPullNotify(opts?: {
   storeId?: string;
   terminalName?: string;
 }): void {
-  void import('./websocket').then(({ wsService }) => {
-    if (!wsService.isConnected()) return;
-    wsService.send('MPOS_SYNC_PULL', {
-      storeId: opts?.storeId,
-      terminalName: opts?.terminalName,
-      at: new Date().toISOString(),
+  void import('./syncTransportDiagnostics').then(({ syncTransportNeedsWebSocket }) => {
+    if (!syncTransportNeedsWebSocket()) return;
+    void import('./websocket').then(({ wsService }) => {
+      if (!wsService.isConnected()) return;
+      wsService.send('MPOS_SYNC_PULL', {
+        storeId: opts?.storeId,
+        terminalName: opts?.terminalName,
+        at: new Date().toISOString(),
+      });
     });
   });
 }

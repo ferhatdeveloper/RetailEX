@@ -14,6 +14,9 @@ pub struct AppConfig {
     pub connection_provider: String, // db | rest_api
     #[serde(default = "default_remote_rest_url")]
     pub remote_rest_url: String,
+    /// SaaS kiracı kodu (PostgREST slug); boşsa remote_rest_url path'inden türetilir
+    #[serde(default)]
+    pub merkez_tenant_code: String,
     /// Hibrit + DB: SQL için önce hangi PG (local_first | remote_first)
     #[serde(default = "default_hybrid_read_preference")]
     pub hybrid_read_preference: String,
@@ -110,6 +113,16 @@ fn default_hybrid_sync_transport() -> String {
 
 pub fn clamp_hybrid_sync_interval_sec(raw: i32) -> u64 {
     raw.clamp(5, 3600) as u64
+}
+
+pub fn should_use_websocket_sync(config: &AppConfig) -> bool {
+    let m = config.hybrid_sync_transport.trim().to_lowercase();
+    m == "both" || m == "websocket" || m == "ws"
+}
+
+pub fn should_use_polling_sync(config: &AppConfig) -> bool {
+    let m = config.hybrid_sync_transport.trim().to_lowercase();
+    m.is_empty() || m == "both" || m == "polling" || m == "interval"
 }
 
 const SAAS_API_HOST: &str = "api.retailex.app";

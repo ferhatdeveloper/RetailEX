@@ -8,7 +8,7 @@ import { IS_TAURI, safeInvoke, getBridgeUrl } from '../utils/env';
 import { postgrest } from './api/postgrestClient';
 import { getPostgrestBaseUrl } from '../config/postgrest.config';
 import { DB_SETTINGS, ERP_SETTINGS, REMOTE_CONFIG, getCentralRemotePgConfig, postgres } from './postgres';
-import { parseSaaSOrCustomPostgrestUrl } from './merkezTenantRegistry';
+import { parseSaaSOrCustomPostgrestUrl, resolveEffectiveRemoteRestUrl } from './merkezTenantRegistry';
 
 export type PosTerminalStatus = 'pending' | 'approved' | 'rejected' | 'blocked' | 'not_registered';
 
@@ -101,7 +101,10 @@ function centralPgConfigured(): boolean {
 }
 
 function describeCentralTarget(): string {
-  const rest = String(DB_SETTINGS.remoteRestUrl || '').trim();
+  const rest = resolveEffectiveRemoteRestUrl(
+    DB_SETTINGS.remoteRestUrl,
+    DB_SETTINGS.merkezTenantCode,
+  );
   if (rest) {
     const parsed = parseSaaSOrCustomPostgrestUrl(rest);
     if (parsed.kind === 'saas_single_slug') {

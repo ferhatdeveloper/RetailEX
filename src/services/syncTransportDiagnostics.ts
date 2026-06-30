@@ -9,6 +9,7 @@ import {
   buildSaaSTenantPostgrestUrl,
   DEFAULT_SAAS_TENANT_POSTGREST_ORIGIN,
   parseSaaSOrCustomPostgrestUrl,
+  resolveEffectiveRemoteRestUrl,
   resolveTenantSyncUrls,
 } from './merkezTenantRegistry';
 import {
@@ -78,7 +79,8 @@ export function resolveEffectiveCentralWsUrl(): string {
 export function auditSyncTransportConfig(): SyncTransportAudit {
   const transport = normalizeHybridSyncTransport(DB_SETTINGS.hybridSyncTransport);
   const hybridMode = DB_SETTINGS.activeMode === 'hybrid';
-  const restUrl = String(DB_SETTINGS.remoteRestUrl || '').trim();
+  const tenantCode = readMerkezTenantCode();
+  const restUrl = resolveEffectiveRemoteRestUrl(DB_SETTINGS.remoteRestUrl, tenantCode);
   const wsUrl = resolveEffectiveCentralWsUrl();
   const parsed = restUrl ? parseSaaSOrCustomPostgrestUrl(restUrl) : { kind: 'other' as const, url: '' };
   const tenantSlug = parsed.kind === 'saas_single_slug' ? parsed.slug : null;
@@ -105,18 +107,29 @@ export function auditSyncTransportConfig(): SyncTransportAudit {
   if (
     hybridMode &&
     restUrl &&
-    (restUrl === DEFAULT_SAAS_TENANT_POSTGREST_ORIGIN ||
-      restUrl === `${DEFAULT_SAAS_TENANT_POSTGREST_ORIGIN}/`)
+    (String(DB_SETTINGS.remoteRestUrl || '').trim() === DEFAULT_SAAS_TENANT_POSTGREST_ORIGIN ||
+      String(DB_SETTINGS.remoteRestUrl || '').trim() === `${DEFAULT_SAAS_TENANT_POSTGREST_ORIGIN}/`)
   ) {
-    const tenant = readMerkezTenantCode();
     issues.push({
       code: 'REST_URL_NO_TENANT',
       severity: 'error',
       message: 'PostgREST URL kiracı kodu içermiyor (api.retailex.app kökü).',
-      solution: tenant
-        ? `remote_rest_url → ${buildSaaSTenantPostgrestUrl(tenant)}`
+      solution: tenantCode
+        ? `remote_rest_url → ${buildSaaSTenantPostgrestUrl(tenantCode)}`
         : 'Kiracı kodunu ekleyin: https://api.retailex.app/lovan (örnek)',
     });
+  }
+
+  if (hybridMode && syncTransportNeedsWebSocket(transport) && wsUrl && tenantSlug) {
+    const apiUrl = String(DB_SETTINGS.centralApiUrl || '').trim();
+    if (!apiUrl) {
+      issues.push({
+        code: 'SYNC_API_URL_MISSING',
+        severity: 'warn',
+        message: 'Merkez REST senkron URL (central_api_url) tanımlı değil.',
+        solution: `https://api.retailex.app/${tenantSlug}/sync — migration 075 + sync-service konteyneri gerekir.`,
+      });
+    }
   }
 
   if (hybridMode && syncTransportNeedsWebSocket(transport)) {

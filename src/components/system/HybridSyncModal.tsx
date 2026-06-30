@@ -41,7 +41,10 @@ import {
   pullInboundMasterNow,
   resolveKasaPullContext,
 } from '../../services/mposKasaAutoPullService';
-import { formatSyncBreakdown } from '../../services/kasaDataArrivalNotify';
+import {
+  auditSyncTransportConfig,
+  formatSyncTransportLabel,
+} from '../../services/syncTransportDiagnostics';
 
 type StepStatus = 'pending' | 'running' | 'done' | 'error' | 'skipped';
 
@@ -312,6 +315,8 @@ export function HybridSyncModal({ open, onOpenChange, onComplete }: Props) {
     return Math.max(0, preview.localPending) + Math.max(0, preview.inboundPending);
   }, [preview]);
 
+  const transportAudit = useMemo(() => (open ? auditSyncTransportConfig() : null), [open]);
+
   const handleClose = () => {
     if (running) return;
     onOpenChange(false);
@@ -331,6 +336,24 @@ export function HybridSyncModal({ open, onOpenChange, onComplete }: Props) {
               : 'Şube: yerel ve merkez arasında çift yönlü veri aktarımı.'}
           </DialogDescription>
         </DialogHeader>
+
+        {transportAudit && transportAudit.issues.length > 0 && (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-950 space-y-1">
+            <p className="font-semibold">
+              Taşıma: {formatSyncTransportLabel(transportAudit.transport)}
+              {transportAudit.tenantSlug ? ` · kiracı: ${transportAudit.tenantSlug}` : ''}
+            </p>
+            {transportAudit.issues
+              .filter((i) => i.severity !== 'info')
+              .slice(0, 2)
+              .map((issue) => (
+                <p key={issue.code}>
+                  {issue.message}{' '}
+                  <span className="text-amber-800">→ {issue.solution}</span>
+                </p>
+              ))}
+          </div>
+        )}
 
         {loadingPreview ? (
           <div className="flex items-center justify-center gap-2 py-8 text-sm text-muted-foreground">

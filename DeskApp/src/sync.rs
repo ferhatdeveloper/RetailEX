@@ -72,16 +72,23 @@ impl BackgroundSyncService {
         // Start Security Service
         self.security_service.start();
 
-        // 1. Data Sync Loop (Push to Center)
+        // 1. Data Sync Loop (Push to Center) — polling / both modunda
         let sync_token = token.clone();
         let sync_app = app_handle.clone();
         spawn_background_task(async move {
             loop {
                 if sync_token.is_cancelled() { break; }
 
-                if let Err(e) = process_sync_queue_internal(sync_app.clone()).await {
-                   eprintln!("Sync Queue Error: {}", e);
+                let use_polling = crate::config::get_app_config_internal()
+                    .map(|c| crate::config::should_use_polling_sync(&c))
+                    .unwrap_or(true);
+
+                if use_polling {
+                    if let Err(e) = process_sync_queue_internal(sync_app.clone()).await {
+                       eprintln!("Sync Queue Error: {}", e);
+                    }
                 }
+
                 let interval_secs = crate::config::get_app_config_internal()
                     .map(|c| crate::config::clamp_hybrid_sync_interval_sec(c.hybrid_sync_interval_sec))
                     .unwrap_or(30);
@@ -1546,9 +1553,27 @@ async fn start_websocket_listener(
     // Skip if not configured or integration is skipped
     if !config.is_configured || config.skip_integration {
         println!("⏳ WebSocket waiting for configuration or skipped due to config...");
-        // Wait a bit longer before checking again if not configured
         sleep(Duration::from_secs(10)).await;
         return; 
+    }
+
+    if !crate::config::should_use_websocket_sync(&config) {
+        println!("ℹ️ WebSocket devre dışı (hybrid_sync_transport=polling); yalnız periyodik senkron aktif.");
+        loop {
+            if token.is_cancelled() { break; }
+            sleep(Duration::from_secs(60)).await;
+            if let Ok(c) = crate::config::get_app_config_internal() {
+                if crate::config::should_use_websocket_sync(&c) {
+                    break;
+                }
+            }
+        }
+        if token.is_cancelled() { return; }
+        if let Ok(c) = crate::config::get_app_config_internal() {
+            if !crate::config::should_use_websocket_sync(&c) {
+                return;
+            }
+        }
     }
 
     let url_str = crate::config::resolve_central_ws_url(&config);
