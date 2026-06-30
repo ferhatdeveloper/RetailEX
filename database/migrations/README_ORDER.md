@@ -68,6 +68,7 @@
 63. **075_tenant_websocket_hub.sql** – Kiracı WebSocket hub: `broadcast_messages`, `broadcast_delivery_queue`, `store_devices` (`api.retailex.app/{kiracı}/ws` + `/sync`).
 64. **076_invoice_sales_header_fields.sql** – Dönem `sales` tablolarına `header_fields` JSONB (fatura formu başlık alanları listesi için).
 66. **079_ensure_apply_sync_triggers.sql** – `enqueue_sync_event`, `apply_sync_triggers`, `try_apply_sync_triggers` (create_firm_tables 42883 düzeltmesi).
+67. **080_fix_create_period_tables_jsonb.sql** – `CREATE_PERIOD_TABLES` içinde `'{}'::jsonb` kaçış düzeltmesi (Tauri kurulum 42601).
 
 **Kiracılara toplu uygulama (VPS / uzak PG):**
 - `npm run db:migrate:tenants` — tüm kiracı DB'ler

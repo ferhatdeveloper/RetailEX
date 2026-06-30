@@ -733,7 +733,7 @@ const SetupWizard: React.FC = () => {
 
             if (isTauri) {
                 
-                fetchedPeriods = await safeInvoke<Period[]>('get_logo_periods', { config: targetConfig, firm_nr: firmNr });
+                fetchedPeriods = await safeInvoke<Period[]>('get_logo_periods', { config: targetConfig, firmNr });
             } else {
                 fetchedPeriods = [{ nr: 1, start_date: '2026-01-01', end_date: '2026-12-31' }];
             }
