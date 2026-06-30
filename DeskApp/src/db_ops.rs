@@ -112,6 +112,57 @@ pub fn resolve_migrations_dir(app: &tauri::AppHandle) -> Result<std::path::PathB
     ))
 }
 
+/// CREATE_FIRM_TABLES / CREATE_PERIOD_TABLES yoksa 060 migration dosyasını uygular.
+async fn ensure_firm_period_engine(
+    client: &tokio_postgres::Client,
+    app: &tauri::AppHandle,
+) -> Result<(), String> {
+    let rows = client
+        .query(
+            "SELECT 1 FROM pg_proc p
+             JOIN pg_namespace n ON p.pronamespace = n.oid
+             WHERE n.nspname = 'public' AND p.proname = 'create_firm_tables'
+             LIMIT 1",
+            &[],
+        )
+        .await
+        .map_err(|e| format!("Fonksiyon kontrolü başarısız: {}", format_pg_error(e)))?;
+
+    if !rows.is_empty() {
+        return Ok(());
+    }
+
+    let migration_dir = resolve_migrations_dir(app)?;
+    let path = migration_dir.join("060_ensure_create_firm_period_engine.sql");
+    if !path.exists() {
+        return Err(format!(
+            "create_firm_tables bulunamadı ve {} dosyası yok.",
+            path.display()
+        ));
+    }
+
+    let raw_sql = std::fs::read_to_string(&path)
+        .map_err(|e| format!("060 migration okunamadı: {}", e))?;
+    let sql = crate::sql_migration_split::strip_utf8_bom(&raw_sql);
+    let statements = crate::sql_migration_split::split_postgres_statements(sql);
+
+    for (idx, stmt) in statements.iter().enumerate() {
+        if stmt.trim().is_empty() {
+            continue;
+        }
+        if let Err(e) = client.batch_execute(stmt).await {
+            return Err(format!(
+                "060 migration ifade {}/{}: {}",
+                idx + 1,
+                statements.len(),
+                format_pg_error(e)
+            ));
+        }
+    }
+
+    Ok(())
+}
+
 pub async fn apply_migrations_internal(
     app: &tauri::AppHandle, 
     config: &AppConfig, 
@@ -537,7 +588,12 @@ pub async fn get_db_version(config: AppConfig, target: Option<String>) -> Result
 }
 
 #[command]
-pub async fn init_firm_schema(config: AppConfig, firm_nr: String, target: Option<String>) -> Result<String, String> {
+pub async fn init_firm_schema(
+    app: tauri::AppHandle,
+    config: AppConfig,
+    firm_nr: String,
+    target: Option<String>,
+) -> Result<String, String> {
     use tokio_postgres::NoTls;
 
     let is_remote = target.as_deref() == Some("remote");
@@ -569,7 +625,9 @@ pub async fn init_firm_schema(config: AppConfig, firm_nr: String, target: Option
         }
     });
 
-    client.execute("SELECT CREATE_FIRM_TABLES($1::varchar)", &[&firm_nr])
+    ensure_firm_period_engine(&client, &app).await?;
+    client
+        .execute("SELECT public.create_firm_tables($1::varchar)", &[&firm_nr])
         .await
         .map_err(|e| format!("Firma tabloları oluşturulamadı: {}", format_pg_error(e)))?;
 
@@ -577,7 +635,13 @@ pub async fn init_firm_schema(config: AppConfig, firm_nr: String, target: Option
 }
 
 #[command]
-pub async fn init_period_schema(config: AppConfig, firm_nr: String, period_nr: String, target: Option<String>) -> Result<String, String> {
+pub async fn init_period_schema(
+    app: tauri::AppHandle,
+    config: AppConfig,
+    firm_nr: String,
+    period_nr: String,
+    target: Option<String>,
+) -> Result<String, String> {
     use tokio_postgres::NoTls;
 
     let is_remote = target.as_deref() == Some("remote");
@@ -609,7 +673,12 @@ pub async fn init_period_schema(config: AppConfig, firm_nr: String, period_nr: S
         }
     });
 
-    client.execute("SELECT CREATE_PERIOD_TABLES($1::varchar, $2::varchar)", &[&firm_nr, &period_nr])
+    ensure_firm_period_engine(&client, &app).await?;
+    client
+        .execute(
+            "SELECT public.create_period_tables($1::varchar, $2::varchar)",
+            &[&firm_nr, &period_nr],
+        )
         .await
         .map_err(|e| format!("Dönem tabloları oluşturulamadı: {}", format_pg_error(e)))?;
 

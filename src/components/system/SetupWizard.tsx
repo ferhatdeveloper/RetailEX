@@ -1515,7 +1515,7 @@ const SetupWizard: React.FC = () => {
             <div className="absolute top-[-10%] right-[-10%] w-[40%] h-[40%] bg-blue-600/10 blur-[120px] rounded-full" />
             <div className="absolute bottom-[-10%] left-[-10%] w-[40%] h-[40%] bg-indigo-600/10 blur-[120px] rounded-full" />
 
-            <div className="w-full max-w-5xl bg-[#1e293b]/90 backdrop-blur-2xl border border-white/10 rounded-[40px] shadow-[0_32px_128px_-12px_rgba(0,0,0,0.8)] flex min-h-[700px] max-h-[90vh] relative z-10 transition-all duration-500">
+            <div className="w-full max-w-5xl bg-[#1e293b]/90 backdrop-blur-2xl border border-white/10 rounded-[40px] shadow-[0_32px_128px_-12px_rgba(0,0,0,0.8)] flex min-h-[700px] max-h-[90vh] relative z-10 transition-all duration-500 overflow-hidden">
                 {/* Sidebar Navigation - Pure transparency to match Login card feel */}
                 <div className="w-80 border-r border-white/15 p-8 flex flex-col relative z-20">
                     <div className="mb-12">
@@ -3826,132 +3826,6 @@ const SetupWizard: React.FC = () => {
                             </div>
                         )}
 
-                        {step === finalStep && (
-                            <div className="fixed inset-0 z-[60] bg-[#020617] flex items-center justify-center p-8 lg:p-12 animate-in fade-in zoom-in-95 duration-700">
-                                <div className="absolute inset-0 overflow-hidden">
-                                    <div className="absolute top-[-20%] right-[-10%] w-[60%] h-[60%] bg-blue-600/10 blur-[150px] rounded-full animate-pulse" />
-                                    <div className="absolute bottom-[-20%] left-[-10%] w-[60%] h-[60%] bg-indigo-600/10 blur-[150px] rounded-full animate-pulse" style={{ animationDelay: '2s' }} />
-                                    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full h-[1px] bg-gradient-to-r from-transparent via-white/5 to-transparent shadow-[0_0_100px_rgba(255,255,255,0.05)]" />
-                                </div>
-
-                                <div className="w-full max-w-6xl flex flex-col lg:flex-row items-center gap-16 relative z-10">
-                                    {/* Left Side: System Status & Meta */}
-                                    <div className="w-full lg:w-1/2 space-y-12">
-                                        <div className="space-y-4">
-                                            <div className="flex items-center gap-4">
-                                                <div className="w-16 h-16 rounded-[24px] bg-blue-600 flex items-center justify-center shadow-[0_0_40px_rgba(37,99,235,0.4)]">
-                                                    {installationStep === 'COMPLETED' ? <CheckCircle className="w-10 h-10 text-white" /> : <Activity className="w-10 h-10 text-white animate-pulse" />}
-                                                </div>
-                                                <div>
-                                                    <h1 className="text-5xl font-black text-white tracking-tighter">
-                                                        {installationStep === 'COMPLETED' ? 'Kurulum Tamamlandı' : 'Sistem Kuruluyor'}
-                                                    </h1>
-                                                    <div className="text-blue-400 font-black uppercase tracking-[0.3em] text-[10px] opacity-60">System Core Initialization Protocol v{APP_SEMVER}</div>
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        <div className="grid grid-cols-2 gap-6">
-                                            {[
-                                                { label: 'Infrastructure', key: 'DATABASE', status: installationStep === 'DATABASE' ? 'PROCESSING' : ['MIGRATIONS', 'ENTITIES', 'USERS', 'SYNC', 'DEVICE', 'COMPLETED'].includes(installationStep) ? 'COMPLETED' : 'PENDING', icon: Server },
-                                                { label: 'Migrations', key: 'MIGRATIONS', status: installationStep === 'MIGRATIONS' ? 'PROCESSING' : ['ENTITIES', 'USERS', 'SYNC', 'DEVICE', 'COMPLETED'].includes(installationStep) ? 'COMPLETED' : 'PENDING', icon: Database },
-                                                { label: 'Entities', key: 'ENTITIES', status: installationStep === 'ENTITIES' ? 'PROCESSING' : ['USERS', 'SYNC', 'DEVICE', 'COMPLETED'].includes(installationStep) ? 'COMPLETED' : 'PENDING', icon: Globe },
-                                                { label: 'ERP Sync', key: 'SYNC', status: installationStep === 'SYNC' ? 'PROCESSING' : ['DEVICE', 'COMPLETED'].includes(installationStep) ? 'COMPLETED' : 'PENDING', icon: RefreshCw },
-                                            ].map((task, i) => (
-                                                <div key={i} className={`p-6 rounded-[32px] border transition-all ${task.status === 'COMPLETED' ? 'bg-emerald-500/5 border-emerald-500/20' : task.status === 'PROCESSING' ? 'bg-blue-500/10 border-blue-500/30' : 'bg-white/[0.03] border-white/5 opacity-40'}`}>
-                                                    <div className="flex items-center justify-between mb-4">
-                                                        <task.icon className={`w-5 h-5 ${task.status === 'COMPLETED' ? 'text-emerald-400' : task.status === 'PROCESSING' ? 'text-blue-400' : 'text-slate-600'}`} />
-                                                        {task.status === 'COMPLETED' && <CheckCircle className="w-4 h-4 text-emerald-500" />}
-                                                    </div>
-                                                    <div className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">{task.label}</div>
-                                                    <div className={`text-sm font-bold ${task.status === 'COMPLETED' ? 'text-white' : task.status === 'PROCESSING' ? 'text-blue-400 animate-pulse' : 'text-slate-700'}`}>
-                                                        {task.status}
-                                                    </div>
-                                                </div>
-                                            ))}
-                                        </div>
-
-                                        <div className="flex items-center gap-6 pt-4">
-                                            {installationStep === 'COMPLETED' ? (
-                                                <div className="flex items-center gap-4">
-                                                    <button
-                                                        onClick={() => window.location.href = '/'}
-                                                        className="flex items-center gap-3 px-10 py-5 bg-blue-600 hover:bg-blue-500 text-white rounded-2xl font-black text-[11px] tracking-widest uppercase shadow-[0_20px_40px_-10px_rgba(37,99,235,0.5)] transition-all group active:scale-95"
-                                                    >
-                                                        <Layout className="w-4 h-4 group-hover:rotate-12 transition-transform" />
-                                                        PANELİ AÇ
-                                                    </button>
-
-                                                    <button
-                                                        onClick={async () => {
-                                                            if (isTauri) {
-                                                                
-                                                                safeInvoke('open_migration_log').catch(e => toast.error(e));
-                                                            }
-                                                        }}
-                                                        className="flex items-center gap-3 px-6 py-5 bg-white/5 hover:bg-white/10 text-slate-300 rounded-2xl font-black text-[11px] tracking-widest uppercase border border-white/10 transition-all hover:text-white"
-                                                    >
-                                                        <FileCode className="w-4 h-4 text-blue-400" />
-                                                        LOGLARI İNCELE
-                                                    </button>
-                                                </div>
-                                            ) : (
-                                                <div className="flex items-center gap-3 px-8 py-4 bg-white/5 text-white rounded-2xl font-black text-[11px] tracking-widest uppercase border border-white/10">
-                                                    <Loader2 className="w-4 h-4 text-blue-400 animate-spin" />
-                                                    {installationStep === 'ERROR' ? 'HATA OLUŞTU' : 'LÜTFEN BEKLEYİNİZ...'}
-                                                </div>
-                                            )}
-                                        </div>
-                                    </div>
-
-                                    {/* Right Side: Professional Terminal */}
-                                    <div className="w-full lg:w-1/2 flex flex-col h-[600px]">
-                                        <div className="flex-1 bg-black/60 border border-white/10 rounded-[40px] shadow-2xl flex flex-col overflow-hidden backdrop-blur-xl relative group/terminal">
-                                            <div className="p-6 border-b border-white/5 bg-white/[0.02] flex items-center justify-between">
-                                                <div className="flex items-center gap-4">
-                                                    <div className="flex gap-1.5">
-                                                        <div className="w-2.5 h-2.5 rounded-full bg-red-500/20 border border-red-500/20" />
-                                                        <div className="w-2.5 h-2.5 rounded-full bg-yellow-500/20 border border-yellow-500/20" />
-                                                        <div className="w-2.5 h-2.5 rounded-full bg-green-500/20 border border-green-500/20" />
-                                                    </div>
-                                                    <div className="h-4 w-px bg-white/10 mx-1" />
-                                                    <Terminal className="w-4 h-4 text-emerald-400" />
-                                                    <span className="text-[10px] font-black text-white uppercase tracking-[0.2em]">System Core Console</span>
-                                                </div>
-                                                {installationStep !== 'COMPLETED' && installationStep !== 'ERROR' && (
-                                                    <div className="flex items-center gap-2">
-                                                        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                                                        <span className="text-[9px] font-bold text-emerald-400 uppercase tracking-widest">Processing</span>
-                                                    </div>
-                                                )}
-                                            </div>
-
-                                            <div className="flex-1 overflow-y-auto p-8 font-mono text-[11px] leading-relaxed custom-scrollbar bg-black/40">
-                                                <div className="space-y-1.5">
-                                                    {syncLogs.map((log, i) => (
-                                                        <div key={i} className="flex gap-4 animate-in fade-in duration-200">
-                                                            <span className="text-white/20 shrink-0 tabular-nums">[{new Date().toLocaleTimeString()}]</span>
-                                                            <span className={`flex-1 break-all ${
-                                                                log.includes('error') || log.includes('Hata') || log.includes('Error') || log.includes('❌') || log.includes('💥')
-                                                                ? 'text-red-400' 
-                                                                : log.includes('success') || log.includes('Tamamlandı') || log.includes('✅') || log.includes('başarı') || log.includes('hazır')
-                                                                ? 'text-emerald-400' 
-                                                                : log.includes('⚠️') || log.includes('uyarı') || log.includes('Uyarı')
-                                                                ? 'text-yellow-400'
-                                                                : 'text-slate-300'
-                                                            }`}>
-                                                                {log}
-                                                            </span>
-                                                        </div>
-                                                    ))}
-                                                    <div ref={(el) => el?.scrollIntoView({ behavior: 'smooth' })} />
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
                     </div>
                     <AppFooter
                         showNavigation={true}
@@ -3966,6 +3840,130 @@ const SetupWizard: React.FC = () => {
                         prevLabel="GERİ DÖN"
                     />
                 </div>
+
+                {step === finalStep && (
+                    <div className="absolute inset-0 z-[500] bg-[#020617] flex items-center justify-center p-8 lg:p-12 animate-in fade-in zoom-in-95 duration-700 rounded-[40px]">
+                        <div className="absolute inset-0 overflow-hidden rounded-[40px] pointer-events-none">
+                            <div className="absolute top-[-20%] right-[-10%] w-[60%] h-[60%] bg-blue-600/10 blur-[150px] rounded-full animate-pulse" />
+                            <div className="absolute bottom-[-20%] left-[-10%] w-[60%] h-[60%] bg-indigo-600/10 blur-[150px] rounded-full animate-pulse" style={{ animationDelay: '2s' }} />
+                            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full h-[1px] bg-gradient-to-r from-transparent via-white/5 to-transparent shadow-[0_0_100px_rgba(255,255,255,0.05)]" />
+                        </div>
+
+                        <div className="w-full max-w-6xl flex flex-col lg:flex-row items-center gap-16 relative z-10">
+                            <div className="w-full lg:w-1/2 space-y-12">
+                                <div className="space-y-4">
+                                    <div className="flex items-center gap-4">
+                                        <div className="w-16 h-16 rounded-[24px] bg-blue-600 flex items-center justify-center shadow-[0_0_40px_rgba(37,99,235,0.4)]">
+                                            {installationStep === 'COMPLETED' ? <CheckCircle className="w-10 h-10 text-white" /> : <Activity className="w-10 h-10 text-white animate-pulse" />}
+                                        </div>
+                                        <div>
+                                            <h1 className="text-5xl font-black text-white tracking-tighter">
+                                                {installationStep === 'COMPLETED' ? 'Kurulum Tamamlandı' : 'Sistem Kuruluyor'}
+                                            </h1>
+                                            <div className="text-blue-400 font-black uppercase tracking-[0.3em] text-[10px] opacity-60">System Core Initialization Protocol v{APP_SEMVER}</div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-6">
+                                    {[
+                                        { label: 'Infrastructure', key: 'DATABASE', status: installationStep === 'DATABASE' ? 'PROCESSING' : ['MIGRATIONS', 'ENTITIES', 'USERS', 'SYNC', 'DEVICE', 'COMPLETED'].includes(installationStep) ? 'COMPLETED' : 'PENDING', icon: Server },
+                                        { label: 'Migrations', key: 'MIGRATIONS', status: installationStep === 'MIGRATIONS' ? 'PROCESSING' : ['ENTITIES', 'USERS', 'SYNC', 'DEVICE', 'COMPLETED'].includes(installationStep) ? 'COMPLETED' : 'PENDING', icon: Database },
+                                        { label: 'Entities', key: 'ENTITIES', status: installationStep === 'ENTITIES' ? 'PROCESSING' : ['USERS', 'SYNC', 'DEVICE', 'COMPLETED'].includes(installationStep) ? 'COMPLETED' : 'PENDING', icon: Globe },
+                                        { label: 'ERP Sync', key: 'SYNC', status: installationStep === 'SYNC' ? 'PROCESSING' : ['DEVICE', 'COMPLETED'].includes(installationStep) ? 'COMPLETED' : 'PENDING', icon: RefreshCw },
+                                    ].map((task, i) => (
+                                        <div key={i} className={`p-6 rounded-[32px] border transition-all ${task.status === 'COMPLETED' ? 'bg-emerald-500/5 border-emerald-500/20' : task.status === 'PROCESSING' ? 'bg-blue-500/10 border-blue-500/30' : 'bg-white/[0.03] border-white/5 opacity-40'}`}>
+                                            <div className="flex items-center justify-between mb-4">
+                                                <task.icon className={`w-5 h-5 ${task.status === 'COMPLETED' ? 'text-emerald-400' : task.status === 'PROCESSING' ? 'text-blue-400' : 'text-slate-600'}`} />
+                                                {task.status === 'COMPLETED' && <CheckCircle className="w-4 h-4 text-emerald-500" />}
+                                            </div>
+                                            <div className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">{task.label}</div>
+                                            <div className={`text-sm font-bold ${task.status === 'COMPLETED' ? 'text-white' : task.status === 'PROCESSING' ? 'text-blue-400 animate-pulse' : 'text-slate-700'}`}>
+                                                {task.status}
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+
+                                <div className="flex items-center gap-6 pt-4">
+                                    {installationStep === 'COMPLETED' ? (
+                                        <div className="flex items-center gap-4">
+                                            <button
+                                                onClick={() => window.location.href = '/'}
+                                                className="flex items-center gap-3 px-10 py-5 bg-blue-600 hover:bg-blue-500 text-white rounded-2xl font-black text-[11px] tracking-widest uppercase shadow-[0_20px_40px_-10px_rgba(37,99,235,0.5)] transition-all group active:scale-95"
+                                            >
+                                                <Layout className="w-4 h-4 group-hover:rotate-12 transition-transform" />
+                                                PANELİ AÇ
+                                            </button>
+
+                                            <button
+                                                onClick={async () => {
+                                                    if (isTauri) {
+                                                        safeInvoke('open_migration_log').catch(e => toast.error(e));
+                                                    }
+                                                }}
+                                                className="flex items-center gap-3 px-6 py-5 bg-white/5 hover:bg-white/10 text-slate-300 rounded-2xl font-black text-[11px] tracking-widest uppercase border border-white/10 transition-all hover:text-white"
+                                            >
+                                                <FileCode className="w-4 h-4 text-blue-400" />
+                                                LOGLARI İNCELE
+                                            </button>
+                                        </div>
+                                    ) : (
+                                        <div className="flex items-center gap-3 px-8 py-4 bg-white/5 text-white rounded-2xl font-black text-[11px] tracking-widest uppercase border border-white/10">
+                                            <Loader2 className="w-4 h-4 text-blue-400 animate-spin" />
+                                            {installationStep === 'ERROR' ? 'HATA OLUŞTU' : 'LÜTFEN BEKLEYİNİZ...'}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+                            <div className="w-full lg:w-1/2 flex flex-col h-[600px]">
+                                <div className="flex-1 bg-black/80 border border-white/10 rounded-[40px] shadow-2xl flex flex-col overflow-hidden relative isolate">
+                                    <div className="p-6 border-b border-white/5 bg-[#0c1117] flex items-center justify-between shrink-0">
+                                        <div className="flex items-center gap-4">
+                                            <div className="flex gap-1.5">
+                                                <div className="w-2.5 h-2.5 rounded-full bg-red-500/20 border border-red-500/20" />
+                                                <div className="w-2.5 h-2.5 rounded-full bg-yellow-500/20 border border-yellow-500/20" />
+                                                <div className="w-2.5 h-2.5 rounded-full bg-green-500/20 border border-green-500/20" />
+                                            </div>
+                                            <div className="h-4 w-px bg-white/10 mx-1" />
+                                            <Terminal className="w-4 h-4 text-emerald-400" />
+                                            <span className="text-[10px] font-black text-white uppercase tracking-[0.2em]">System Core Console</span>
+                                        </div>
+                                        {installationStep !== 'COMPLETED' && installationStep !== 'ERROR' && (
+                                            <div className="flex items-center gap-2">
+                                                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                                                <span className="text-[9px] font-bold text-emerald-400 uppercase tracking-widest">Processing</span>
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    <div className="flex-1 overflow-y-auto p-8 font-mono text-[11px] leading-relaxed custom-scrollbar bg-[#0a0f14]">
+                                        <div className="space-y-1.5">
+                                            {syncLogs.map((log, i) => (
+                                                <div key={i} className="flex gap-4 animate-in fade-in duration-200">
+                                                    <span className="text-white/20 shrink-0 tabular-nums">[{new Date().toLocaleTimeString()}]</span>
+                                                    <span className={`flex-1 break-all ${
+                                                        log.includes('error') || log.includes('Hata') || log.includes('Error') || log.includes('❌') || log.includes('💥')
+                                                        ? 'text-red-400'
+                                                        : log.includes('success') || log.includes('Tamamlandı') || log.includes('✅') || log.includes('başarı') || log.includes('hazır')
+                                                        ? 'text-emerald-400'
+                                                        : log.includes('⚠️') || log.includes('uyarı') || log.includes('Uyarı')
+                                                        ? 'text-yellow-400'
+                                                        : 'text-slate-300'
+                                                    }`}>
+                                                        {log}
+                                                    </span>
+                                                </div>
+                                            ))}
+                                            <div ref={(el) => el?.scrollIntoView({ behavior: 'smooth' })} />
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
             </div>
 
             {showReinstallModal && (
