@@ -49,6 +49,7 @@ type Props = {
   firmNr: string;
   storeId: string;
   terminalName?: string;
+  targetBlockReason?: string | null;
   sendFileType: MposSendFileType;
   onSendFileTypeChange: (v: MposSendFileType) => void;
   receiveFileType: MposReceiveFileType;
@@ -84,6 +85,7 @@ export function MposDataTransferModal({
   firmNr,
   storeId,
   terminalName,
+  targetBlockReason = null,
   sendFileType,
   onSendFileTypeChange,
   receiveFileType,
@@ -143,6 +145,9 @@ export function MposDataTransferModal({
   }, [open, loadPreview]);
 
   if (!open) return null;
+
+  const transferBlocked = Boolean(targetBlockReason?.trim());
+  const canTransfer = !transferBlocked && Boolean(storeId?.trim());
 
   const fieldClass = isDark
     ? 'bg-gray-800 border-gray-600 text-gray-100'
@@ -400,7 +405,9 @@ export function MposDataTransferModal({
                 )}
               </div>
             ) : (
-              <p className="text-xs text-amber-600">Özet yüklenemedi — firma ve cihaz seçili olmalı.</p>
+              <p className="text-xs text-amber-600">
+                {targetBlockReason?.trim() || 'Özet yüklenemedi — firma ve cihaz seçili olmalı.'}
+              </p>
             )}
           </div>
 
@@ -438,19 +445,19 @@ export function MposDataTransferModal({
               {phase === 'done' ? 'Kapat' : 'Vazgeç'}
             </Button>
             {phase !== 'done' && activeFlow === 'send' && (
-              <Button type="button" disabled={isBusy || !storeId} onClick={() => void runFlow('send')} className="gap-2">
+              <Button type="button" disabled={isBusy || !canTransfer} onClick={() => void runFlow('send')} className="gap-2">
                 {isBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
                 Gönder
               </Button>
             )}
             {phase !== 'done' && activeFlow === 'receive' && (
-              <Button type="button" disabled={isBusy || !storeId} onClick={() => void runFlow('receive')} className="gap-2 bg-sky-700 hover:bg-sky-800">
+              <Button type="button" disabled={isBusy || !canTransfer} onClick={() => void runFlow('receive')} className="gap-2 bg-sky-700 hover:bg-sky-800">
                 {isBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
                 Al
               </Button>
             )}
             {phase !== 'done' && activeFlow === 'both' && (
-              <Button type="button" disabled={isBusy || !storeId} onClick={() => void runFlow('both')} className="gap-2 bg-blue-600 hover:bg-blue-700">
+              <Button type="button" disabled={isBusy || !canTransfer} onClick={() => void runFlow('both')} className="gap-2 bg-blue-600 hover:bg-blue-700">
                 {isBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
                 Gönder ve al
               </Button>
