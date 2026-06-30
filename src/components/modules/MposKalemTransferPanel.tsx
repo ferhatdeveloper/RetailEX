@@ -217,7 +217,7 @@ export function MposKalemTransferPanel({
                   onClick={selectAllTerminals}
                   className="text-[10px] px-1.5 py-0.5 rounded border border-blue-500/50 text-blue-600 dark:text-blue-400"
                 >
-                  Tümü
+                  Tümünü seç
                 </button>
                 <button
                   type="button"

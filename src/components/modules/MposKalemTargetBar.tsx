@@ -83,6 +83,17 @@ export function MposKalemTargetBar({
     onTerminalChange('');
   };
 
+  const allTerminalsSelected =
+    filteredTerminals.length > 0 &&
+    filteredTerminals.every((t) => selectedTerminalDeviceIds.includes(t.deviceId));
+  const someTerminalsSelected =
+    selectedTerminalDeviceIds.length > 0 && !allTerminalsSelected;
+
+  const toggleSelectAllTerminals = () => {
+    if (allTerminalsSelected) clearAllTerminals();
+    else selectAllTerminals();
+  };
+
   return (
     <div
       className={`w-full rounded-xl border shadow-sm overflow-hidden flex flex-col h-full min-h-[320px] ${className} ${
@@ -159,7 +170,7 @@ export function MposKalemTargetBar({
                       disabled={!selectedFirmNr || filteredTerminals.length === 0}
                       className="text-[10px] px-1.5 py-0.5 rounded border border-blue-500/50 text-blue-600 dark:text-blue-400 disabled:opacity-50"
                     >
-                      Tümü
+                      Tümünü seç
                     </button>
                     <button
                       type="button"
@@ -183,7 +194,25 @@ export function MposKalemTargetBar({
                     Bu firmada onaylı cihaz yok.
                   </p>
                 ) : (
-                  <div className="max-h-40 overflow-y-auto space-y-1.5">
+                  <div className="space-y-1.5">
+                    <label
+                      className={`flex items-center gap-2 cursor-pointer text-xs font-medium rounded px-1 py-1 border-b ${
+                        isDark ? 'border-gray-700 text-gray-200' : 'border-gray-100 text-gray-800'
+                      }`}
+                    >
+                      <Checkbox
+                        checked={
+                          allTerminalsSelected
+                            ? true
+                            : someTerminalsSelected
+                              ? 'indeterminate'
+                              : false
+                        }
+                        onCheckedChange={() => toggleSelectAllTerminals()}
+                      />
+                      Tümünü seç
+                    </label>
+                    <div className="max-h-40 overflow-y-auto space-y-1.5">
                     {filteredTerminals.map((t) => {
                       const checked = selectedTerminalDeviceIds.includes(t.deviceId);
                       const missingStore = !t.storeId?.trim();
@@ -218,6 +247,7 @@ export function MposKalemTargetBar({
                         </label>
                       );
                     })}
+                    </div>
                   </div>
                 )}
 
