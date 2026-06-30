@@ -3390,7 +3390,7 @@ export const translations: any = {
       materials: 'Materials',
       materialsIntake: 'Materials (camera & approval)',
       smartMaterialAdd: 'Smart material entry',
-      inventoryCountOps: 'Inventory Counting Operations',
+      inventoryCountOps: 'Count Operations',
       mobileCount: 'Mobile Count / Create Slip',
       countDeficitSlips: 'Count Shortage Slips',
       countSurplusSlips: 'Count Surplus Slips',

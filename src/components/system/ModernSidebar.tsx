@@ -119,14 +119,14 @@ export function ModernSidebar({
                 : 'text-gray-600 hover:bg-gray-200 hover:text-gray-900 active:bg-gray-300'
               }`}
           >
-            <div className="flex items-center gap-3">
-              {Icon && <Icon className={iconSize} />}
-              <span>{item.label}</span>
+            <div className="flex items-center gap-3 min-w-0 flex-1">
+              {Icon && <Icon className={`${iconSize} shrink-0`} />}
+              <span className="truncate">{item.label}</span>
             </div>
             {isExpanded ? (
-              <ChevronDown className="w-4 h-4" />
+              <ChevronDown className="w-4 h-4 shrink-0" />
             ) : (
-              <ChevronRight className="w-4 h-4" />
+              <ChevronRight className="w-4 h-4 shrink-0" />
             )}
           </button>
           {isExpanded && item.children && (
@@ -158,8 +158,8 @@ export function ModernSidebar({
               : 'text-gray-600 hover:bg-gray-200 hover:text-gray-900 active:bg-gray-300'
           }`}
       >
-        {Icon && <Icon className={iconSize} />}
-        <span className="flex-1 text-left">{item.label}</span>
+        {Icon && <Icon className={`${iconSize} shrink-0`} />}
+        <span className="flex-1 text-left truncate">{item.label}</span>
       </button>
     );
   };
