@@ -64,7 +64,8 @@ export default defineConfig({
     cssMinify: true,
     chunkSizeWarningLimit: 1000,
     rollupOptions: {
-      ...(process.env.DOCKER_BUILD === '1' ? { maxParallelFileOps: 2 } : {}),
+      // Dokploy/VPS: rendering chunks bellek zirvesi — paralel dosya işlemini kıs
+      ...(process.env.DOCKER_BUILD === '1' ? { maxParallelFileOps: 1 } : {}),
       output: {
         manualChunks: {
           'react-vendor': ['react', 'react-dom', 'react-router-dom'],

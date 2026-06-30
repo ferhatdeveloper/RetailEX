@@ -2,6 +2,10 @@ version: "3.9"
 
 # Dokploy / Docker Compose — RetailEX SaaS yığını
 #
+# ⚠ Dokploy sarıda kalıyorsa: varsayılan `up -d --build` 16 sync + frontend paralel build eder.
+#    Compose Command → bash database/scripts/dokploy-deploy.sh
+#    Ayrıntı: database/DOKPLOY_SARIDA_KALMA.md
+#
 # WhatsApp QR köprüsü: retailex_whatsapp_bridge + retailex_frontend (nginx /__wa_bridge).
 # WebSocket senkron: sync_{kiracı} + Caddy /{kiracı}/ws ve /{kiracı}/sync (075 migration gerekli).
 #

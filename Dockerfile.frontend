@@ -13,8 +13,8 @@ RUN npm ci --legacy-peer-deps
 COPY . .
 ENV SKIP_POSTGRES_REMOTE_ENABLE=1
 ENV DOCKER_BUILD=1
-# Vite chunk render bellek tüketimi (Dokploy/VPS OOM önlemi)
-ENV NODE_OPTIONS=--max-old-space-size=3072
+# Vite chunk render bellek tüketimi (Dokploy/VPS OOM önlemi — 4GB VM için 2560)
+ENV NODE_OPTIONS=--max-old-space-size=2560
 ENV CI=1
 # VPS: merkez PostgREST HTTPS tabanı (örn. https://api.retailex.app/merkez) — bos ise build zamanı env yok
 ARG VITE_MERKEZ_REST_URL=
