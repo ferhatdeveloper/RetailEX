@@ -70,7 +70,7 @@ import { BroadcastChangesTimeline } from './BroadcastChangesTimeline';
 import { SentMessagesList } from '../system/SentMessagesList';
 import { BroadcastDataSelector } from './BroadcastDataSelector';
 import { MposKalemTargetBar } from './MposKalemTargetBar';
-import { MposDataTransferModal } from './MposDataTransferModal';
+import { MposDataTransferModal, type MposSendDeviceStatus } from './MposDataTransferModal';
 import { MposDayEndDialog } from './MposDayEndDialog';
 import { MposSyncLogPanel } from './MposSyncLogPanel';
 import {
@@ -182,6 +182,7 @@ export function EnterpriseCentralDataManagement() {
   const [sendProgress, setSendProgress] = useState<{ current: number; total: number; label: string } | null>(
     null,
   );
+  const [sendDeviceStatuses, setSendDeviceStatuses] = useState<MposSendDeviceStatus[]>([]);
   const [dayEndDialogOpen, setDayEndDialogOpen] = useState(false);
   const [dayEndProgress, setDayEndProgress] = useState<{ current: number; total: number; label: string } | null>(
     null,
@@ -207,17 +208,26 @@ export function EnterpriseCentralDataManagement() {
     return selectedTerminal()?.storeId?.trim() || '';
   };
 
+  const selectedTerminal = (): PosTerminalRegistration | undefined =>
+    approvedTerminals.find((t) => t.deviceId === selectedTerminalDeviceId);
+
+  const filteredTerminalsForFirm = approvedTerminals.filter(
+    (t) => padFirmNr(t.firmNr) === padFirmNr(selectedFirmNr),
+  );
+
   const mposTransferBlockReason = (): string | null => {
     if (!selectedFirmNr) return 'Firma seçin.';
-    if (!selectedTerminalDeviceId) return 'Cihaz seçin.';
-    if (!resolveMposEffectiveStoreId()) {
-      return 'Seçili cihazın mağaza (işyeri) bağlantısı yok. Sistem Yönetimi → Kasa Cihazları → Onaylı sekmesinden mağaza atayın.';
+    if (!selectedTerminalDeviceIds.length) return 'En az bir cihaz seçin.';
+    const selected = filteredTerminalsForFirm.filter((t) =>
+      selectedTerminalDeviceIds.includes(t.deviceId),
+    );
+    const missingStore = selected.filter((t) => !t.storeId?.trim());
+    if (missingStore.length) {
+      const names = missingStore.map((t) => t.terminalName).join(', ');
+      return `Mağaza bağlantısı olmayan cihazlar: ${names}. Sistem Yönetimi → Kasa Cihazları → Onaylı sekmesinden mağaza atayın.`;
     }
     return null;
   };
-
-  const selectedTerminal = (): PosTerminalRegistration | undefined =>
-    approvedTerminals.find((t) => t.deviceId === selectedTerminalDeviceId);
 
   const mposFirmOptions = firms.map((f) => ({
     firmNr: padFirmNr(f.firm_nr),
@@ -226,8 +236,14 @@ export function EnterpriseCentralDataManagement() {
 
   const mposTargetLabel = (): string => {
     const f = firms.find((x) => padFirmNr(x.firm_nr) === padFirmNr(selectedFirmNr));
-    const t = selectedTerminal();
-    if (!f && !t) return 'Firma ve cihaz seçilmedi';
+    const selected = filteredTerminalsForFirm.filter((t) =>
+      selectedTerminalDeviceIds.includes(t.deviceId),
+    );
+    if (!f && selected.length === 0) return 'Firma ve cihaz seçilmedi';
+    if (f && selected.length > 1) {
+      return `${f.name} (${padFirmNr(f.firm_nr)}) → ${selected.length} cihaz`;
+    }
+    const t = selected[0] ?? selectedTerminal();
     if (f && t) {
       const deviceLabel = t.storeName
         ? `${t.terminalName} — ${t.storeName}`
@@ -236,6 +252,30 @@ export function EnterpriseCentralDataManagement() {
     }
     if (f) return `${f.name} (${padFirmNr(f.firm_nr)})`;
     return t?.terminalName ?? '—';
+  };
+
+  const mposSelectedTerminals = () =>
+    filteredTerminalsForFirm
+      .filter((t) => selectedTerminalDeviceIds.includes(t.deviceId))
+      .map((t) => ({
+        deviceId: t.deviceId,
+        terminalName: t.terminalName,
+        storeName: t.storeName,
+        storeId: t.storeId?.trim() || '',
+      }));
+
+  const handleTerminalSelectionChange = (deviceIds: string[]) => {
+    setSelectedTerminalDeviceIds(deviceIds);
+    if (deviceIds.length === 1) {
+      handleTerminalChange(deviceIds[0]);
+    } else if (deviceIds.length === 0) {
+      setSelectedTerminalDeviceId('');
+      setSelectedBranchStoreId('');
+    } else if (!deviceIds.includes(selectedTerminalDeviceId)) {
+      const first = approvedTerminals.find((t) => t.deviceId === deviceIds[0]);
+      setSelectedTerminalDeviceId(deviceIds[0]);
+      setSelectedBranchStoreId(first?.storeId?.trim() || '');
+    }
   };
 
   const handleTerminalChange = (deviceId: string) => {
@@ -282,6 +322,16 @@ export function EnterpriseCentralDataManagement() {
         toast.error('Lütfen en az bir cihaz seçin.');
         return false;
       }
+      const selected = filteredTerminalsForFirm.filter((t) =>
+        selectedTerminalDeviceIds.includes(t.deviceId),
+      );
+      const missingStore = selected.filter((t) => !t.storeId?.trim());
+      if (missingStore.length) {
+        toast.error(
+          `Mağaza bağlantısı olmayan cihazlar: ${missingStore.map((t) => t.terminalName).join(', ')}`,
+        );
+        return false;
+      }
       return true;
     }
     if (!selectedTerminalDeviceId) {
@@ -296,10 +346,6 @@ export function EnterpriseCentralDataManagement() {
   };
 
   const validateMposTarget = (): boolean => validateMposKasaTarget();
-
-  const filteredTerminalsForFirm = approvedTerminals.filter(
-    (t) => padFirmNr(t.firmNr) === padFirmNr(selectedFirmNr),
-  );
 
   const mapEnterpriseToBroadcast = (m: EnterpriseSyncMessage): BroadcastMessage => ({
     id: m.id,
@@ -440,7 +486,7 @@ export function EnterpriseCentralDataManagement() {
     }
   }, [approvedTerminals, selectedTerminalDeviceId, selectedBranchStoreId]);
 
-  const handleMposKalemSend = async () => {
+  const handleMposKalemSend = async (): Promise<{ success: number; failed: number } | void> => {
     if (!validateMposKasaTarget(true)) return;
     const targets = filteredTerminalsForFirm.filter((t) =>
       selectedTerminalDeviceIds.includes(t.deviceId),
@@ -451,7 +497,7 @@ export function EnterpriseCentralDataManagement() {
     }
     const guard = await checkMposSendGuard({
       fileType: mposFileType,
-      storeId: targets[0]?.storeId || resolveMposEffectiveStoreId(),
+      storeId: targets[0]?.storeId?.trim() || resolveMposEffectiveStoreId(),
       terminalName: targets[0]?.terminalName || '',
     });
     if (!guard.allowed) {
@@ -461,40 +507,85 @@ export function EnterpriseCentralDataManagement() {
     if (guard.requireConfirm && !window.confirm(guard.message)) return;
     if (!guard.requireConfirm && guard.sentToday > 0) toast.info(guard.message);
 
+    const initialStatuses: MposSendDeviceStatus[] = targets.map((t) => ({
+      deviceId: t.deviceId,
+      terminalName: t.terminalName,
+      storeName: t.storeName,
+      status: 'pending',
+    }));
+    setSendDeviceStatuses(initialStatuses);
     setIsSyncBusy(true);
     setSendProgress({ current: 0, total: targets.length, label: 'Cihazlara gönderiliyor…' });
+
+    const patchDeviceStatus = (
+      deviceId: string,
+      patch: Partial<MposSendDeviceStatus>,
+    ) => {
+      setSendDeviceStatuses((prev) =>
+        prev.map((d) => (d.deviceId === deviceId ? { ...d, ...patch } : d)),
+      );
+    };
+
     try {
-      const primaryStoreId = resolveMposEffectiveStoreId() || targets[0]?.storeId || '';
-      const r =
-        targets.length === 1
-          ? await sendMposInfoToKasaAndPush({
-              fileType: mposFileType,
-              storeId: primaryStoreId,
-              terminalName: targets[0].terminalName,
-              terminalDeviceId: targets[0].deviceId,
-              includeProductImages: mposFileType === 'products' && includeProductImages,
-              syncMode: mposSyncMode,
-              dateFrom: mposSyncMode === 'incremental' ? mposDateFrom : undefined,
-              dateTo: mposSyncMode === 'incremental' ? mposDateTo : undefined,
-            }).then((x) => ({ ok: x.ok, message: x.message, success: x.ok ? 1 : 0, failed: x.ok ? 0 : 1 }))
-          : await sendMposInfoToSelectedKasas({
-              fileType: mposFileType,
-              storeId: primaryStoreId,
-              terminals: targets.map((t) => ({
-                terminalName: t.terminalName,
-                terminalDeviceId: t.deviceId,
-              })),
-              includeProductImages: mposFileType === 'products' && includeProductImages,
-              syncMode: mposSyncMode,
-              dateFrom: mposSyncMode === 'incremental' ? mposDateFrom : undefined,
-              dateTo: mposSyncMode === 'incremental' ? mposDateTo : undefined,
-              onProgress: (current, total, terminalName) => {
-                setSendProgress({ current, total, label: `${terminalName} gönderiliyor…` });
-              },
+      let success = 0;
+      let failed = 0;
+      if (targets.length === 1) {
+        const t = targets[0];
+        const storeId = t.storeId?.trim() || resolveMposEffectiveStoreId();
+        patchDeviceStatus(t.deviceId, { status: 'running', detail: 'Gönderiliyor…' });
+        setSendProgress({ current: 1, total: 1, label: `${t.terminalName} gönderiliyor…` });
+        const x = await sendMposInfoToKasaAndPush({
+          fileType: mposFileType,
+          storeId,
+          terminalName: t.terminalName,
+          terminalDeviceId: t.deviceId,
+          includeProductImages: mposFileType === 'products' && includeProductImages,
+          syncMode: mposSyncMode,
+          dateFrom: mposSyncMode === 'incremental' ? mposDateFrom : undefined,
+          dateTo: mposSyncMode === 'incremental' ? mposDateTo : undefined,
+        });
+        patchDeviceStatus(t.deviceId, {
+          status: x.ok ? 'done' : 'error',
+          detail: x.message,
+        });
+        success = x.ok ? 1 : 0;
+        failed = x.ok ? 0 : 1;
+        if (x.ok) toast.success(x.message);
+        else toast.error(x.message);
+      } else {
+        const r = await sendMposInfoToSelectedKasas({
+          fileType: mposFileType,
+          terminals: targets.map((t) => ({
+            terminalName: t.terminalName,
+            terminalDeviceId: t.deviceId,
+            storeId: t.storeId?.trim() || '',
+          })),
+          includeProductImages: mposFileType === 'products' && includeProductImages,
+          syncMode: mposSyncMode,
+          dateFrom: mposSyncMode === 'incremental' ? mposDateFrom : undefined,
+          dateTo: mposSyncMode === 'incremental' ? mposDateTo : undefined,
+          onProgress: (current, total, terminalName) => {
+            setSendProgress({ current, total, label: `${terminalName} gönderiliyor…` });
+            const running = targets.find((t) => t.terminalName === terminalName);
+            if (running) {
+              patchDeviceStatus(running.deviceId, { status: 'running', detail: 'Gönderiliyor…' });
+            }
+          },
+          onDeviceResult: (result) => {
+            patchDeviceStatus(result.terminalDeviceId, {
+              status: result.ok ? 'done' : 'error',
+              detail: result.message,
+              recordCount: result.count,
             });
-      if (r.ok) toast.success(r.message);
-      else toast.error(r.message);
+          },
+        });
+        success = r.success;
+        failed = r.failed;
+        if (r.ok) toast.success(r.message);
+        else toast.error(r.message);
+      }
       await refreshEnterpriseData();
+      return { success, failed };
     } finally {
       setIsSyncBusy(false);
       setSendProgress(null);
@@ -1371,6 +1462,8 @@ export function EnterpriseCentralDataManagement() {
               onFirmChange={handleFirmChange}
               selectedTerminalDeviceId={selectedTerminalDeviceId}
               onTerminalChange={handleTerminalChange}
+              selectedTerminalDeviceIds={selectedTerminalDeviceIds}
+              onTerminalSelectionChange={handleTerminalSelectionChange}
               filteredTerminals={filteredTerminalsForFirm}
               targetLabel={mposTargetLabel()}
               theme={theme}
@@ -1381,13 +1474,16 @@ export function EnterpriseCentralDataManagement() {
               <Button
                 type="button"
                 className="gap-2"
-                disabled={isSyncBusy || !selectedFirmNr || !selectedTerminalDeviceId}
-                onClick={() => setMposTransferModalOpen(true)}
+                disabled={isSyncBusy || !selectedFirmNr || selectedTerminalDeviceIds.length === 0}
+                onClick={() => {
+                  setSendDeviceStatuses([]);
+                  setMposTransferModalOpen(true);
+                }}
               >
                 <Upload className="w-4 h-4" />
                 Veri Gönder / Al…
               </Button>
-              {mposTransferBlockReason() && selectedTerminalDeviceId ? (
+              {mposTransferBlockReason() && selectedTerminalDeviceIds.length > 0 ? (
                 <p className="text-xs text-amber-600 self-center max-w-xl">{mposTransferBlockReason()}</p>
               ) : (
                 <p className="text-xs text-gray-500 self-center">
@@ -1722,6 +1818,8 @@ export function EnterpriseCentralDataManagement() {
               onFirmChange={handleFirmChange}
               selectedTerminalDeviceId={selectedTerminalDeviceId}
               onTerminalChange={handleTerminalChange}
+              selectedTerminalDeviceIds={selectedTerminalDeviceIds}
+              onTerminalSelectionChange={handleTerminalSelectionChange}
               filteredTerminals={filteredTerminalsForFirm}
               targetLabel={mposTargetLabel()}
               theme={theme}
@@ -1729,8 +1827,11 @@ export function EnterpriseCentralDataManagement() {
             <Button
               type="button"
               className="gap-2"
-              disabled={isSyncBusy || !selectedFirmNr || !selectedTerminalDeviceId}
-              onClick={() => setMposTransferModalOpen(true)}
+              disabled={isSyncBusy || !selectedFirmNr || selectedTerminalDeviceIds.length === 0}
+              onClick={() => {
+                setSendDeviceStatuses([]);
+                setMposTransferModalOpen(true);
+              }}
             >
               <Download className="w-4 h-4" />
               Veri Gönder / Al…
@@ -2284,6 +2385,8 @@ export function EnterpriseCentralDataManagement() {
               onFirmChange={handleFirmChange}
               selectedTerminalDeviceId={selectedTerminalDeviceId}
               onTerminalChange={handleTerminalChange}
+              selectedTerminalDeviceIds={selectedTerminalDeviceIds}
+              onTerminalSelectionChange={handleTerminalSelectionChange}
               filteredTerminals={filteredTerminalsForFirm}
               targetLabel={mposTargetLabel()}
               theme={theme}
@@ -2697,12 +2800,17 @@ export function EnterpriseCentralDataManagement() {
 
       <MposDataTransferModal
         open={mposTransferModalOpen}
-        onClose={() => setMposTransferModalOpen(false)}
+        onClose={() => {
+          if (isSyncBusy) return;
+          setMposTransferModalOpen(false);
+        }}
         theme={theme}
         targetLabel={mposTargetLabel()}
         firmNr={selectedFirmNr}
         storeId={resolveMposEffectiveStoreId()}
         terminalName={selectedTerminal()?.terminalName}
+        selectedTerminals={mposSelectedTerminals()}
+        sendDeviceStatuses={sendDeviceStatuses}
         targetBlockReason={mposTransferBlockReason()}
         sendFileType={mposFileType}
         onSendFileTypeChange={setMposFileType}
@@ -2718,9 +2826,7 @@ export function EnterpriseCentralDataManagement() {
         onIncludeProductImagesChange={setIncludeProductImages}
         isBusy={isSyncBusy}
         sendProgress={sendProgress}
-        onSend={async () => {
-          await handleMposKalemSend();
-        }}
+        onSend={handleMposKalemSend}
         onReceive={async () => {
           await handleMposKalemReceive();
         }}

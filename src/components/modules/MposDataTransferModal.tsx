@@ -41,6 +41,15 @@ type TransferStep = {
   status: StepStatus;
 };
 
+export type MposSendDeviceStatus = {
+  deviceId: string;
+  terminalName: string;
+  storeName?: string;
+  status: StepStatus;
+  detail?: string;
+  recordCount?: number;
+};
+
 type Props = {
   open: boolean;
   onClose: () => void;
@@ -49,6 +58,8 @@ type Props = {
   firmNr: string;
   storeId: string;
   terminalName?: string;
+  selectedTerminals?: { deviceId: string; terminalName: string; storeName?: string }[];
+  sendDeviceStatuses?: MposSendDeviceStatus[];
   targetBlockReason?: string | null;
   sendFileType: MposSendFileType;
   onSendFileTypeChange: (v: MposSendFileType) => void;
@@ -64,7 +75,7 @@ type Props = {
   onIncludeProductImagesChange: (v: boolean) => void;
   isBusy: boolean;
   sendProgress?: { current: number; total: number; label: string } | null;
-  onSend: () => Promise<void>;
+  onSend: () => Promise<{ success?: number; failed?: number } | void>;
   onReceive: () => Promise<void>;
   onSendAndReceive: () => Promise<void>;
 };
@@ -85,6 +96,8 @@ export function MposDataTransferModal({
   firmNr,
   storeId,
   terminalName,
+  selectedTerminals = [],
+  sendDeviceStatuses = [],
   targetBlockReason = null,
   sendFileType,
   onSendFileTypeChange,
@@ -147,7 +160,10 @@ export function MposDataTransferModal({
   if (!open) return null;
 
   const transferBlocked = Boolean(targetBlockReason?.trim());
-  const canTransfer = !transferBlocked && Boolean(storeId?.trim());
+  const canTransfer =
+    !transferBlocked &&
+    (selectedTerminals.length > 0 ? true : Boolean(storeId?.trim()));
+  const multiDevice = selectedTerminals.length > 1;
 
   const fieldClass = isDark
     ? 'bg-gray-800 border-gray-600 text-gray-100'
@@ -158,7 +174,14 @@ export function MposDataTransferModal({
     setPhase('running');
     const initial: TransferStep[] = [];
     if (flow === 'send' || flow === 'both') {
-      initial.push({ id: 'send', title: 'Merkezden kasaya gönder', status: 'pending' });
+      initial.push({
+        id: 'send',
+        title:
+          selectedTerminals.length > 1
+            ? `Merkezden ${selectedTerminals.length} cihaza gönder`
+            : 'Merkezden kasaya gönder',
+        status: 'pending',
+      });
     }
     if (flow === 'receive' || flow === 'both') {
       initial.push({ id: 'receive', title: 'Kasadan merkeze al', status: 'pending' });
@@ -171,9 +194,25 @@ export function MposDataTransferModal({
 
     try {
       if (flow === 'send' || flow === 'both') {
-        patch('send', { status: 'running', detail: 'Gönderiliyor…' });
-        await onSend();
-        patch('send', { status: 'done', detail: 'Gönderim tamamlandı.' });
+        patch('send', {
+          status: 'running',
+          detail:
+            selectedTerminals.length > 1
+              ? `${selectedTerminals.length} cihaza gönderiliyor…`
+              : 'Gönderiliyor…',
+        });
+        const sendResult = await onSend();
+        const successCount = sendResult?.success ?? sendDeviceStatuses.filter((d) => d.status === 'done').length;
+        const failedCount = sendResult?.failed ?? sendDeviceStatuses.filter((d) => d.status === 'error').length;
+        patch('send', {
+          status: failedCount > 0 && successCount === 0 ? 'error' : 'done',
+          detail:
+            selectedTerminals.length > 1
+              ? `${successCount} başarılı, ${failedCount} hata`
+              : failedCount > 0
+                ? 'Gönderim hatası'
+                : 'Gönderim tamamlandı.',
+        });
       }
       if (flow === 'receive' || flow === 'both') {
         patch('receive', { status: 'running', detail: 'Alınıyor…' });
@@ -226,6 +265,12 @@ export function MposDataTransferModal({
           <p className={isDark ? 'text-gray-300' : 'text-gray-700'}>
             Hedef: <strong>{targetLabel}</strong>
           </p>
+          {selectedTerminals.length > 0 && (
+            <p className={cn('text-xs mt-1', isDark ? 'text-gray-400' : 'text-gray-600')}>
+              Seçili cihazlar:{' '}
+              {selectedTerminals.map((t) => t.terminalName).join(', ')}
+            </p>
+          )}
           <p className={cn('text-xs mt-1', isDark ? 'text-gray-500' : 'text-gray-500')}>
             Fiyat değişiklikleri merkezde «Değişenler» ile gider; satış/fatura kasadan «Al» veya hibrit kuyruk ile
             merkeze gelir.
@@ -410,6 +455,50 @@ export function MposDataTransferModal({
               </p>
             )}
           </div>
+
+          {multiDevice && (activeFlow === 'receive' || activeFlow === 'both') && phase === 'preview' && (
+            <p className="text-xs text-amber-600 dark:text-amber-400">
+              Alım işlemi yalnızca birincil seçili cihaz ({terminalName || '—'}) için yapılır.
+              Çoklu cihazdan alım için her cihazı ayrı seçin veya günsonu alımını kullanın.
+            </p>
+          )}
+
+          {sendDeviceStatuses.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                Cihaz gönderim durumu ({sendDeviceStatuses.length})
+              </p>
+              <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                {sendDeviceStatuses.map((device) => (
+                  <div
+                    key={device.deviceId}
+                    className={cn(
+                      'flex gap-3 rounded-lg border px-3 py-2',
+                      isDark && 'border-gray-700',
+                    )}
+                  >
+                    <div className="mt-0.5 shrink-0">{stepIcon(device.status)}</div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium truncate">
+                        {device.terminalName}
+                        {device.storeName ? (
+                          <span className="font-normal text-gray-500"> — {device.storeName}</span>
+                        ) : null}
+                      </p>
+                      {device.detail && (
+                        <p className="text-xs text-gray-500 mt-0.5 break-words">{device.detail}</p>
+                      )}
+                      {device.recordCount != null && device.status === 'done' && (
+                        <p className="text-[10px] text-emerald-600 mt-0.5">
+                          {device.recordCount} kayıt kuyruğa eklendi
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {steps.length > 0 && (
             <div className="space-y-2">

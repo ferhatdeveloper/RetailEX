@@ -34,6 +34,15 @@ export type MposSendFileType =
  * Kalem «Dosya Tipi» sırası — ekran görüntüsü (OuFtuJRL5t0) + eğitim 2 (3TueEaussGo).
  * Görüntüdeki sıra: Puan → Döviz → Kasiyer → Kısayol → Versiyon (Kalem/Local) → Fiş → Program
  */
+export type MposSendDeviceResult = {
+  terminalDeviceId: string;
+  terminalName: string;
+  storeId: string;
+  ok: boolean;
+  message: string;
+  count: number;
+};
+
 export const MPOS_SEND_FILE_TYPES: { id: MposSendFileType; label: string }[] = [
   { id: 'products', label: 'Malzeme Kartları' },
   { id: 'customers', label: 'Cari Kartları' },
@@ -487,25 +496,51 @@ export async function sendMposInfoToKasaAndPush(opts: {
 /** Seçili kasalara aynı dosya tipini sırayla gönder (JRetail çoklu kasa) */
 export async function sendMposInfoToSelectedKasas(opts: {
   fileType: MposSendFileType;
-  storeId: string;
-  terminals: { terminalName: string; terminalDeviceId: string }[];
+  terminals: { terminalName: string; terminalDeviceId: string; storeId: string }[];
   includeProductImages?: boolean;
   syncMode?: MposSendSyncMode;
   dateFrom?: string;
   dateTo?: string;
   onProgress?: (current: number, total: number, terminalName: string) => void;
-}): Promise<{ ok: boolean; message: string; success: number; failed: number }> {
+  onDeviceResult?: (result: MposSendDeviceResult) => void;
+}): Promise<{
+  ok: boolean;
+  message: string;
+  success: number;
+  failed: number;
+  results: MposSendDeviceResult[];
+}> {
   let success = 0;
   let failed = 0;
   const errors: string[] = [];
+  const results: MposSendDeviceResult[] = [];
   const total = opts.terminals.length;
+  const pushedStores = new Set<string>();
 
   for (let i = 0; i < opts.terminals.length; i += 1) {
     const t = opts.terminals[i];
+    const storeId = t.storeId?.trim();
     opts.onProgress?.(i + 1, total, t.terminalName);
+
+    if (!storeId) {
+      const deviceResult: MposSendDeviceResult = {
+        terminalDeviceId: t.terminalDeviceId,
+        terminalName: t.terminalName,
+        storeId: '',
+        ok: false,
+        message: 'Mağaza (işyeri) bağlantısı yok.',
+        count: 0,
+      };
+      results.push(deviceResult);
+      opts.onDeviceResult?.(deviceResult);
+      failed += 1;
+      if (errors.length < 3) errors.push(`${t.terminalName}: mağaza bağlantısı yok`);
+      continue;
+    }
+
     const r = await sendMposInfoToKasa({
       fileType: opts.fileType,
-      storeId: opts.storeId,
+      storeId,
       terminalName: t.terminalName,
       terminalDeviceId: t.terminalDeviceId,
       includeProductImages: opts.includeProductImages,
@@ -514,7 +549,7 @@ export async function sendMposInfoToSelectedKasas(opts: {
       dateTo: opts.dateTo,
     });
     await logTerminalSync({
-      storeId: opts.storeId,
+      storeId,
       terminalName: t.terminalName,
       terminalDeviceId: t.terminalDeviceId,
       direction: 'send',
@@ -523,18 +558,29 @@ export async function sendMposInfoToSelectedKasas(opts: {
       recordCount: r.count,
       message: r.message,
     });
-    if (r.ok) success += 1;
-    else {
+
+    const deviceResult: MposSendDeviceResult = {
+      terminalDeviceId: t.terminalDeviceId,
+      terminalName: t.terminalName,
+      storeId,
+      ok: r.ok,
+      message: r.message,
+      count: r.count,
+    };
+    results.push(deviceResult);
+    opts.onDeviceResult?.(deviceResult);
+
+    if (r.ok) {
+      success += 1;
+      if (!pushedStores.has(storeId)) {
+        await pushMasterDataToBranches({ targetStoreId: storeId });
+        pushedStores.add(storeId);
+      }
+      const { requestMposSyncPullNotify } = await import('./mposKasaAutoPullService');
+      requestMposSyncPullNotify({ storeId, terminalName: t.terminalName });
+    } else {
       failed += 1;
       if (errors.length < 3) errors.push(`${t.terminalName}: ${r.message}`);
-    }
-  }
-
-  if (success > 0) {
-    await pushMasterDataToBranches({ targetStoreId: opts.storeId });
-    const { requestMposSyncPullNotify } = await import('./mposKasaAutoPullService');
-    for (const t of opts.terminals) {
-      requestMposSyncPullNotify({ storeId: opts.storeId, terminalName: t.terminalName });
     }
   }
 
@@ -543,7 +589,7 @@ export async function sendMposInfoToSelectedKasas(opts: {
       ? `${success} kasaya gönderildi ve kuyruk iletildi.`
       : `${success} kasa başarılı, ${failed} hata.${errors.length ? ` ${errors.join('; ')}` : ''}`;
 
-  return { ok: success > 0, message: msg, success, failed };
+  return { ok: success > 0, message: msg, success, failed, results };
 }
 
 /** İşyerindeki tüm onaylı kasalara aynı dosya tipini gönder */

@@ -5,6 +5,7 @@
 import React from 'react';
 import { Building2, Monitor, Send } from 'lucide-react';
 import { Button } from '../ui/button';
+import { Checkbox } from '../ui/checkbox';
 import type { PosTerminalRegistration } from '../../services/deviceRegistrationService';
 
 export type MposFirmOption = {
@@ -19,6 +20,9 @@ type Props = {
   selectedTerminalDeviceId: string;
   onTerminalChange: (deviceId: string) => void;
   filteredTerminals: PosTerminalRegistration[];
+  /** Çoklu cihaz seçimi */
+  selectedTerminalDeviceIds?: string[];
+  onTerminalSelectionChange?: (deviceIds: string[]) => void;
   targetLabel: string;
   theme: 'light' | 'dark';
   onBulkSendAll?: () => void;
@@ -40,6 +44,8 @@ export function MposKalemTargetBar({
   selectedTerminalDeviceId,
   onTerminalChange,
   filteredTerminals,
+  selectedTerminalDeviceIds = [],
+  onTerminalSelectionChange,
   targetLabel,
   theme,
   onBulkSendAll,
@@ -47,6 +53,29 @@ export function MposKalemTargetBar({
   className = '',
 }: Props) {
   const isDark = theme === 'dark';
+  const multiSelect = Boolean(onTerminalSelectionChange);
+
+  const toggleTerminal = (deviceId: string, checked: boolean) => {
+    if (!onTerminalSelectionChange) return;
+    const next = checked
+      ? [...new Set([...selectedTerminalDeviceIds, deviceId])]
+      : selectedTerminalDeviceIds.filter((id) => id !== deviceId);
+    onTerminalSelectionChange(next);
+    if (next.length === 1) onTerminalChange(next[0]);
+    else if (next.length === 0) onTerminalChange('');
+    else if (!next.includes(selectedTerminalDeviceId)) onTerminalChange(next[0]);
+  };
+
+  const selectAllTerminals = () => {
+    const ids = filteredTerminals.map((t) => t.deviceId);
+    onTerminalSelectionChange?.(ids);
+    if (ids[0]) onTerminalChange(ids[0]);
+  };
+
+  const clearAllTerminals = () => {
+    onTerminalSelectionChange?.([]);
+    onTerminalChange('');
+  };
 
   return (
     <div
@@ -99,7 +128,6 @@ export function MposKalemTargetBar({
 
           <div className="space-y-1.5">
             <label
-              htmlFor="mpos-target-terminal"
               className={`flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide ${
                 isDark ? 'text-gray-300' : 'text-gray-700'
               }`}
@@ -107,23 +135,112 @@ export function MposKalemTargetBar({
               <Monitor className="w-3.5 h-3.5" />
               Cihazlar
             </label>
-            <select
-              id="mpos-target-terminal"
-              value={selectedTerminalDeviceId}
-              onChange={(e) => onTerminalChange(e.target.value)}
-              disabled={!selectedFirmNr}
-              className={`${fieldClass(theme)} disabled:opacity-50`}
-            >
-              <option value="">Cihaz seçin…</option>
-              {filteredTerminals.map((t) => (
-                <option key={t.deviceId} value={t.deviceId}>
-                  {t.terminalName}
-                  {t.storeName ? ` — ${t.storeName}` : ''}
-                  {t.computerName ? ` (${t.computerName})` : ''}
-                </option>
-              ))}
-            </select>
-            {selectedFirmNr && filteredTerminals.length === 0 ? (
+
+            {multiSelect ? (
+              <div
+                className={`space-y-2 rounded-md border p-3 ${
+                  isDark ? 'border-gray-600 bg-gray-900/50' : 'border-gray-200 bg-white'
+                }`}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className={`text-xs font-medium ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                    Çoklu seçim
+                  </span>
+                  <div className="flex gap-1">
+                    <button
+                      type="button"
+                      onClick={selectAllTerminals}
+                      disabled={!selectedFirmNr || filteredTerminals.length === 0}
+                      className="text-[10px] px-1.5 py-0.5 rounded border border-blue-500/50 text-blue-600 dark:text-blue-400 disabled:opacity-50"
+                    >
+                      Tümü
+                    </button>
+                    <button
+                      type="button"
+                      onClick={clearAllTerminals}
+                      disabled={selectedTerminalDeviceIds.length === 0}
+                      className={`text-[10px] px-1.5 py-0.5 rounded border disabled:opacity-50 ${
+                        isDark ? 'border-gray-600 text-gray-400' : 'border-gray-300 text-gray-500'
+                      }`}
+                    >
+                      Temizle
+                    </button>
+                  </div>
+                </div>
+
+                {!selectedFirmNr ? (
+                  <p className={`text-xs ${isDark ? 'text-gray-500' : 'text-gray-500'}`}>
+                    Önce firma seçin.
+                  </p>
+                ) : filteredTerminals.length === 0 ? (
+                  <p className="text-xs text-amber-700 dark:text-amber-400">
+                    Bu firmada onaylı cihaz yok.
+                  </p>
+                ) : (
+                  <div className="max-h-40 overflow-y-auto space-y-1.5">
+                    {filteredTerminals.map((t) => {
+                      const checked = selectedTerminalDeviceIds.includes(t.deviceId);
+                      const missingStore = !t.storeId?.trim();
+                      return (
+                        <label
+                          key={t.deviceId}
+                          className={`flex items-start gap-2 cursor-pointer text-xs rounded px-1 py-0.5 ${
+                            checked
+                              ? isDark
+                                ? 'bg-blue-900/30'
+                                : 'bg-blue-50'
+                              : ''
+                          }`}
+                        >
+                          <Checkbox
+                            checked={checked}
+                            onCheckedChange={(c) => toggleTerminal(t.deviceId, c === true)}
+                            className="mt-0.5"
+                          />
+                          <span className="flex-1 min-w-0">
+                            <span className={isDark ? 'text-gray-200' : 'text-gray-800'}>
+                              {t.terminalName}
+                              {t.storeName ? ` — ${t.storeName}` : ''}
+                              {t.computerName ? ` (${t.computerName})` : ''}
+                            </span>
+                            {missingStore && (
+                              <span className="block text-[10px] text-amber-600 dark:text-amber-400 mt-0.5">
+                                Mağaza atanmamış
+                              </span>
+                            )}
+                          </span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {selectedTerminalDeviceIds.length > 0 && (
+                  <p className={`text-[10px] ${isDark ? 'text-gray-500' : 'text-gray-500'}`}>
+                    {selectedTerminalDeviceIds.length} cihaz seçili
+                  </p>
+                )}
+              </div>
+            ) : (
+              <select
+                id="mpos-target-terminal"
+                value={selectedTerminalDeviceId}
+                onChange={(e) => onTerminalChange(e.target.value)}
+                disabled={!selectedFirmNr}
+                className={`${fieldClass(theme)} disabled:opacity-50`}
+              >
+                <option value="">Cihaz seçin…</option>
+                {filteredTerminals.map((t) => (
+                  <option key={t.deviceId} value={t.deviceId}>
+                    {t.terminalName}
+                    {t.storeName ? ` — ${t.storeName}` : ''}
+                    {t.computerName ? ` (${t.computerName})` : ''}
+                  </option>
+                ))}
+              </select>
+            )}
+
+            {!multiSelect && selectedFirmNr && filteredTerminals.length === 0 ? (
               <p className="text-xs text-amber-700 dark:text-amber-400">
                 Bu firmada onaylı cihaz yok.
               </p>
