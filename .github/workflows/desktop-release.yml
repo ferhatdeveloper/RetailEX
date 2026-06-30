@@ -74,6 +74,13 @@ jobs:
           Copy-Item $setup.FullName "dist/RetailEX-Desktop-Setup.exe"
           (Get-Item "dist/RetailEX-Desktop-Setup.exe").Length | Out-Host
 
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: RetailEX-Desktop-Setup-${{ env.PACKAGE_VERSION }}
+          path: dist/RetailEX-Desktop-Setup.exe
+          retention-days: 30
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
