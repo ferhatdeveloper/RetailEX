@@ -56,6 +56,7 @@ import { POSCloseCashRegisterModal } from './POSCloseCashRegisterModal';
 import { Receipt80mm } from './Receipt80mm';
 import { POSOpenCashRegisterModal } from './POSOpenCashRegisterModal';
 import { POSMissingBarcodesModal } from './POSMissingBarcodesModal';
+import { POSExpenseScreen } from './POSExpenseScreen';
 import { POSCategoryModal } from './POSCategoryModal';
 import { POSStockQueryModal } from './POSStockQueryModal';
 import { POSPageSelectorModal } from './POSPageSelectorModal';
@@ -203,6 +204,7 @@ export default function MarketPOS({
         'green': 'bg-white hover:bg-green-50 text-green-600 border-2 border-green-600',
         'red-dark': 'bg-white hover:bg-red-50 text-red-700 border-2 border-red-700',
         'green-dark': 'bg-white hover:bg-green-50 text-green-700 border-2 border-green-700',
+        'orange': 'bg-white hover:bg-orange-50 text-orange-600 border-2 border-orange-600',
         'gray': 'bg-white hover:bg-gray-50 text-gray-700 border-2 border-gray-700',
       };
       return colorMap[baseColor] || colorMap['blue'];
@@ -217,6 +219,7 @@ export default function MarketPOS({
         'green': 'bg-green-600 hover:bg-green-700 text-white',
         'red-dark': 'bg-red-700 hover:bg-red-800 text-white',
         'green-dark': 'bg-green-700 hover:bg-green-800 text-white',
+        'orange': 'bg-orange-600 hover:bg-orange-700 text-white',
         'gray': 'bg-gray-700 hover:bg-gray-800 text-white',
       };
       return colorMap[baseColor] || colorMap['blue'];
@@ -390,6 +393,8 @@ export default function MarketPOS({
     }
   });
   const [showMissingBarcodesModal, setShowMissingBarcodesModal] = useState(false);
+  const [showExpenseScreen, setShowExpenseScreen] = useState(false);
+  const [lastMissingBarcode, setLastMissingBarcode] = useState<string | null>(null);
 
   useEffect(() => {
     try {
@@ -789,6 +794,11 @@ export default function MarketPOS({
   };
 
   // Barkod ile arama yap - ürün bulunursa true, bulunamazsa false döner
+  const notifyUnknownBarcode = (trimmedBarcode: string) => {
+    showNotif(t.posUnknownBarcodeAlert.replace('{barcode}', trimmedBarcode), 'warning');
+    setShowMissingBarcodesModal(true);
+  };
+
   const notifyScaleBarcodeFailure = (trimmedBarcode: string) => {
     const parsed = parseBarcode(trimmedBarcode);
     const plu = parsed.productCode?.trim();
@@ -799,17 +809,18 @@ export default function MarketPOS({
       );
       return;
     }
-    showNotif(t.barcodeNotFoundWarning.replace('{barcode}', trimmedBarcode), 'error');
+    notifyUnknownBarcode(trimmedBarcode);
   };
 
-  const recordMissingBarcode = (barcode: string) => {
+  const recordMissingBarcode = useCallback((barcode: string) => {
     const normalized = normalizeScannedBarcode(barcode);
     if (!normalized) return;
+    setLastMissingBarcode(normalized);
     setMissingBarcodes(prev => {
       const without = prev.filter(b => b !== normalized);
       return [normalized, ...without].slice(0, 200);
     });
-  };
+  }, []);
 
   const searchByBarcode = async (barcode: string, quantity: number = 1): Promise<boolean> => {
     const trimmedBarcode = normalizeScannedBarcode(barcode);
@@ -909,8 +920,8 @@ export default function MarketPOS({
       }
 
       logger.log('❌ Barkod bulunamadı');
-      notifyScaleBarcodeFailure(trimmedBarcode);
       recordMissingBarcode(trimmedBarcode);
+      notifyScaleBarcodeFailure(trimmedBarcode);
       return false;
     } catch (error) {
       console.error('[MarketPOS] Barcode lookup error:', error);
@@ -1544,6 +1555,7 @@ export default function MarketPOS({
     { label: t.salesHistory, color: 'bg-blue-50 text-blue-700 border-blue-400', onClick: () => setShowSalesHistoryModal(true), icon: History },
     { label: t.returnTransaction, color: 'bg-blue-50 text-blue-700 border-blue-400', onClick: handleReturnAction, icon: RotateCcw },
     { label: t.missingBarcodes, color: 'bg-red-50 text-red-700 border-red-400', onClick: () => setShowMissingBarcodesModal(true), icon: Barcode },
+    { label: t.expenseManagement, color: 'bg-orange-50 text-orange-700 border-orange-400', onClick: () => setShowExpenseScreen(true), icon: Receipt },
     { label: t.scale, color: 'bg-blue-50 text-blue-700 border-blue-400', onClick: () => { }, icon: Scale },
     { label: t.subtotalAction, color: 'bg-blue-50 text-blue-700 border-blue-400', onClick: () => showNotif(`${t.subtotalAction}: ${subtotal.toFixed(2)}`, 'info'), icon: Calculator },
     { label: t.receiptNote, color: 'bg-blue-50 text-blue-700 border-blue-400', onClick: () => { }, icon: FileText },
@@ -1843,10 +1855,18 @@ export default function MarketPOS({
       {showMissingBarcodesModal && (
         <POSMissingBarcodesModal
           barcodes={missingBarcodes}
+          highlightBarcode={lastMissingBarcode}
           onClose={() => setShowMissingBarcodesModal(false)}
-          onClear={() => setMissingBarcodes([])}
+          onClear={() => {
+            setMissingBarcodes([]);
+            setLastMissingBarcode(null);
+          }}
           onCreateProduct={handleCreateProductFromMissingBarcode}
         />
+      )}
+
+      {showExpenseScreen && (
+        <POSExpenseScreen onClose={() => setShowExpenseScreen(false)} />
       )}
 
       {/* Main Content */}
@@ -1891,6 +1911,34 @@ export default function MarketPOS({
                 {t.searchBtn}
               </button>
             </div>
+            {missingBarcodes.length > 0 && (
+              <div
+                className={`mt-2 flex flex-wrap items-center justify-between gap-2 rounded-lg border px-3 py-2 text-xs ${
+                  darkMode
+                    ? 'border-red-700 bg-red-950/40 text-red-200'
+                    : 'border-red-300 bg-red-50 text-red-800'
+                }`}
+                role="alert"
+              >
+                <div className="flex items-center gap-2 min-w-0">
+                  <Barcode className="w-4 h-4 shrink-0" />
+                  <span className="font-semibold">
+                    {t.posUnknownBarcodeBanner.replace('{count}', String(missingBarcodes.length))}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowMissingBarcodesModal(true)}
+                  className={`shrink-0 rounded-md px-3 py-1.5 font-bold uppercase tracking-wide transition-colors ${
+                    darkMode
+                      ? 'bg-red-700 hover:bg-red-600 text-white'
+                      : 'bg-red-600 hover:bg-red-700 text-white'
+                  }`}
+                >
+                  {t.posViewBarcodeList}
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Product Table */}
@@ -2317,6 +2365,13 @@ export default function MarketPOS({
                 <Barcode className="w-5 h-5" />
                 <span>{t.missingBarcodes}</span>
                 {missingBarcodes.length > 0 && <span className="absolute top-1 right-1 w-5 h-5 bg-red-600 text-white text-[10px] rounded-full flex items-center justify-center font-bold">{missingBarcodes.length}</span>}
+              </button>
+              <button
+                onClick={() => setShowExpenseScreen(true)}
+                className={`${getButtonClass('orange')} py-4 text-xs leading-tight flex flex-col items-center justify-center gap-1 transition-all`}
+              >
+                <Receipt className="w-5 h-5" />
+                <span>{t.expenseManagement}</span>
               </button>
 
               {/* Third Row - Cart & Customer */}

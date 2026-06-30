@@ -6,6 +6,7 @@ import { useTheme } from '../../contexts/ThemeContext';
 interface POSMissingBarcodesModalProps {
     onClose: () => void;
     barcodes: string[];
+    highlightBarcode?: string | null;
     onClear: () => void;
     onCreateProduct: (data: {
         barcode: string;
@@ -15,7 +16,7 @@ interface POSMissingBarcodesModalProps {
     }) => Promise<void>;
 }
 
-export function POSMissingBarcodesModal({ onClose, barcodes, onClear, onCreateProduct }: POSMissingBarcodesModalProps) {
+export function POSMissingBarcodesModal({ onClose, barcodes, highlightBarcode, onClear, onCreateProduct }: POSMissingBarcodesModalProps) {
     const { t, tm } = useLanguage();
     const { darkMode } = useTheme();
     const [selectedBarcode, setSelectedBarcode] = useState('');
@@ -24,9 +25,10 @@ export function POSMissingBarcodesModal({ onClose, barcodes, onClear, onCreatePr
     const [price, setPrice] = useState('');
     const [saving, setSaving] = useState(false);
 
-    const activeBarcode = selectedBarcode || barcodes[0] || '';
-    const canSave = activeBarcode.trim() && productName.trim() && Number(price) >= 0;
     const uniqueBarcodes = useMemo(() => Array.from(new Set(barcodes.map(b => String(b).trim()).filter(Boolean))), [barcodes]);
+    const activeBarcode = selectedBarcode || highlightBarcode || uniqueBarcodes[0] || '';
+
+    const canSave = activeBarcode.trim() && productName.trim() && Number(price) >= 0;
 
     const handleCopy = (barcode: string) => {
         navigator.clipboard.writeText(barcode);
@@ -82,6 +84,11 @@ export function POSMissingBarcodesModal({ onClose, barcodes, onClear, onCreatePr
 
                 {/* Content */}
                 <div className="flex-1 overflow-y-auto p-4 max-h-[60vh]">
+                    {highlightBarcode ? (
+                        <div className={`mb-3 rounded-lg border px-3 py-2 text-sm ${darkMode ? 'border-amber-600 bg-amber-950/30 text-amber-200' : 'border-amber-300 bg-amber-50 text-amber-900'}`}>
+                            {t.posUnknownBarcodeAlert.replace('{barcode}', highlightBarcode)}
+                        </div>
+                    ) : null}
                     {barcodes.length === 0 ? (
                         <div className="flex flex-col items-center justify-center py-12 text-center">
                             <div className={`p-4 rounded-full mb-4 ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
@@ -96,7 +103,11 @@ export function POSMissingBarcodesModal({ onClose, barcodes, onClear, onCreatePr
                             {uniqueBarcodes.map((barcode, index) => (
                                 <div
                                     key={index}
-                                    className={`flex items-center justify-between p-3 rounded-lg border transition-all hover:shadow-md ${darkMode
+                                    className={`flex items-center justify-between p-3 rounded-lg border transition-all hover:shadow-md ${highlightBarcode === barcode
+                                            ? darkMode
+                                                ? 'bg-red-900/40 border-red-500 ring-2 ring-red-500/40'
+                                                : 'bg-red-50 border-red-400 ring-2 ring-red-200'
+                                            : darkMode
                                             ? 'bg-gray-700/50 border-gray-600 hover:border-gray-500'
                                             : 'bg-white border-gray-200 hover:border-blue-300'
                                         }`}

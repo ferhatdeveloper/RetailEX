@@ -711,6 +711,9 @@ export interface Translations {
   minimumAmountNotMet: string;
   missingBarcodes: string;
   missingBarcodesTitle: string;
+  posUnknownBarcodeBanner: string;
+  posUnknownBarcodeAlert: string;
+  posViewBarcodeList: string;
   missingKasaId: string;
   mixedPayment: string;
   moduleInDevelopment: string;
@@ -2047,6 +2050,9 @@ export const translations: any = {
     minimumAmountNotMet: 'Minimum tutar karşılanmadı',
     missingBarcodes: 'Bulunamayan Barkodlar',
     missingBarcodesTitle: 'Bulunamayan Barkod Listesi',
+    posUnknownBarcodeBanner: 'Sistemde kayıtlı olmayan {count} barkod okutuldu',
+    posUnknownBarcodeAlert: 'Bu barkod sistemde yok: {barcode}. Listeyi kontrol edin.',
+    posViewBarcodeList: 'Barkod listesini gör',
     missingKasaId: 'Kasa ID eksik! Lütfen sayfayı yenileyip tekrar deneyin.',
     mixedPayment: 'Karışık',
     moduleInDevelopment: 'Bu modül şu anda geliştirme aşamasındadır ve yakında EX-ROSERP ekosistemine dahil edilecektir.',
@@ -3517,6 +3523,9 @@ export const translations: any = {
     minimumAmountNotMet: 'Minimum amount not met',
     missingBarcodes: 'Missing Barcodes',
     missingBarcodesTitle: 'Missing Barcode List',
+    posUnknownBarcodeBanner: '{count} scanned barcode(s) not in the system',
+    posUnknownBarcodeAlert: 'Barcode not in system: {barcode}. Check the list.',
+    posViewBarcodeList: 'View barcode list',
     missingKasaId: 'Safe ID missing! Please refresh and try again.',
     mixedPayment: 'Mixed',
     moduleInDevelopment: 'This module is currently under development and will soon be included in the EX-ROSERP ecosystem.',
@@ -4866,6 +4875,9 @@ export const translations: any = {
     minimumAmountNotMet: 'لم يتم استيفاء الحد الأدنى للمبلغ',
     missingBarcodes: 'الباركودات المفقودة',
     missingBarcodesTitle: 'قائمة الباركودات المفقودة',
+    posUnknownBarcodeBanner: 'تم مسح {count} باركود غير مسجل في النظام',
+    posUnknownBarcodeAlert: 'هذا الباركود غير موجود: {barcode}. راجع القائمة.',
+    posViewBarcodeList: 'عرض قائمة الباركود',
     missingKasaId: 'معرف الصندوق مفقود! يرجى التنشيط والمحاولة مرة أخرى.',
     mixedPayment: 'مختلط',
     moduleInDevelopment: 'هذه الوحدة قيد التطوير حالياً وستتم إضافتها قريباً إلى نظام EX-ROSERP.',
@@ -6220,6 +6232,9 @@ export const translations: any = {
     minimumAmountNotMet: 'لم يتم استيفاء الحد الأدنى للمبلغ',
     missingBarcodes: 'Bulunamayan Barkodlar',
     missingBarcodesTitle: 'Bulunamayan Barkod Listesi',
+    posUnknownBarcodeBanner: 'Sistemde kayıtlı olmayan {count} barkod okutuldu',
+    posUnknownBarcodeAlert: 'Bu barkod sistemde yok: {barcode}. Listeyi kontrol edin.',
+    posViewBarcodeList: 'Barkod listesini gör',
     missingKasaId: 'ناسنامەی کاش دەست نەکەوت! تکایە لاپەڕەکە نوێ بکەرەوە.',
     mixedPayment: 'Karışık',
     moduleInDevelopment: 'ئەم مۆدیوڵە ئێستا لە قۆناغی گەشەپێداندایە و و بەم زووانە دەخرێتە ناو سیستەمی EX-ROSERP.',
