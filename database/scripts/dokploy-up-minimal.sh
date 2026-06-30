@@ -2,6 +2,11 @@
 # Minimum çalışır web yığını: postgres + bridge + wa + frontend (+ api_gateway)
 # Sync/postgrest rebuild ETMEZ — deploy takılınca siteyi ayağa kaldırmak için.
 #
+# VERİ GÜVENLİĞİ:
+# - Mevcut saas_postgres_data volume'u KULLANILIR (yeni volume açılmaz).
+# - down -v / volume rm / DROP DATABASE YAPILMAZ.
+# - POSTGRES_PASSWORD Dokploy'daki mevcut değerle AYNI olmalı (değiştirmeyin).
+#
 #   POSTGRES_PASSWORD='...' bash database/scripts/dokploy-up-minimal.sh
 set -euo pipefail
 
@@ -13,7 +18,19 @@ export POSTGRES_PASSWORD
 export COMPOSE_PARALLEL_LIMIT=1
 cd "${REPO_ROOT}"
 
-echo "=== Postgres + köprüler (mevcut imaj) ==="
+if docker volume inspect saas_postgres_data >/dev/null 2>&1; then
+  echo "=== Veri volume mevcut: saas_postgres_data (korunuyor) ==="
+else
+  echo "UYARI: saas_postgres_data volume yok — ilk kurulum olabilir; mevcut veri bekliyorsanız DURUN."
+  echo "Devam: 10 sn içinde Ctrl+C"
+  sleep 10
+fi
+
+if docker ps -a --format '{{.Names}}' | grep -qx saas_postgres; then
+  echo "=== saas_postgres zaten var — yeniden oluşturulmaz, volume bağlanır ==="
+fi
+
+echo "=== Postgres + köprüler (mevcut imaj, veri volume aynı) ==="
 docker compose -f "${COMPOSE}" up -d postgres retailex_bridge retailex_whatsapp_bridge
 
 echo "=== Postgres healthy bekleniyor (max 120s) ==="

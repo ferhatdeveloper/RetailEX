@@ -17,6 +17,14 @@ df -h / /var/lib/docker 2>/dev/null | tail -5 || true
 section "Docker"
 docker info 2>/dev/null | grep -E 'Server Version|Operating System|Total Memory| CPUs' || docker version
 
+section "Veri volume'ları (silinmemeli)"
+docker volume ls | grep -E 'saas_postgres|pgadmin|wa_bridge|VOLUME' || true
+if docker volume inspect saas_postgres_data >/dev/null 2>&1; then
+  echo "OK: saas_postgres_data mevcut — tüm kiracı DB'leri bu volume içinde."
+else
+  echo "UYARI: saas_postgres_data YOK — veri başka yerde veya henüz kurulmamış."
+fi
+
 section "RetailEX konteynerleri"
 docker ps -a --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}' | grep -E 'retailex|saas_|postgrest|NAMES' || echo "(retailex/saas yok)"
 

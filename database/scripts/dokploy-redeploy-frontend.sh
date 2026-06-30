@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # Dokploy — yalnızca web arayüzü (React/Vite) hızlı redeploy
 #
+# VERİ GÜVENLİĞİ: PostgreSQL verisi named volume saas_postgres_data içindedir.
+# Bu script postgres'e DOKUNMAZ, volume silmez, migration çalıştırmaz.
+#
 # Tam stack (16 sync + postgrest + …) yerine UI güncellemesi için kullanın.
 # Dokploy terminal:
 #   cd /etc/dokploy/compose/app-retailex-*/code
