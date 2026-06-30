@@ -8,6 +8,7 @@ import { type Invoice } from '../../core/types';
 import { customerAPI } from './customers';
 import { productAPI } from './products';
 import { hydrateWeightLineFromDb, resolveStockQuantityFromLine } from '../../utils/scaleQuantity';
+import { readInvoiceHeaderFields } from '../../utils/invoiceHeaderFields';
 export type { Invoice };
 
 // Helper to validate UUID format
@@ -575,11 +576,12 @@ async function createInvoiceViaPostgrest(invoice: Invoice, opts: {
     currency_rate: Number(invoice.currency_rate || 1),
     status: 'approved',
     notes: String(invoice.notes || ''),
-    document_no: String(invoice.invoice_no || ''),
+    document_no: String((invoice as any).document_no || invoice.invoice_no || ''),
     payment_method: String((invoice as any).payment_method || 'Nakit'),
     cashier: String((invoice as any).cashier || ''),
     store_id: isValidUuid((invoice as any).store_id) ? (invoice as any).store_id : null,
     created_by_user_id: isValidUuid((invoice as any).created_by_user_id) ? (invoice as any).created_by_user_id : null,
+    header_fields: (invoice as any).header_fields ?? {},
   };
 
   const legacyPayload: Record<string, unknown> = {
@@ -963,7 +965,7 @@ export const invoicesAPI = {
             Number(invoice.currency_rate || 1),
             'approved',
             String(invoice.notes || ''),
-            String(invoice.invoice_no),
+            String((invoice as any).document_no || invoice.invoice_no || ''),
             String((invoice as any).payment_method || 'Nakit'),
             String((invoice as any).cashier || ''),
             isValidUuid((invoice as any).store_id) ? (invoice as any).store_id : null,
@@ -1808,6 +1810,15 @@ export const invoicesAPI = {
         if (invoice.currency !== undefined) patchBody.currency = invoice.currency;
         if (invoice.currency_rate !== undefined) patchBody.currency_rate = Number(invoice.currency_rate);
         if (invoice.payment_method !== undefined) patchBody.payment_method = String(invoice.payment_method);
+        if ((invoice as Record<string, unknown>).document_no !== undefined) {
+          patchBody.document_no = String((invoice as Record<string, unknown>).document_no || '');
+        }
+        if ((invoice as Record<string, unknown>).header_fields !== undefined) {
+          patchBody.header_fields = (invoice as Record<string, unknown>).header_fields;
+        }
+        if ((invoice as Record<string, unknown>).cashier !== undefined) {
+          patchBody.cashier = String((invoice as Record<string, unknown>).cashier || '');
+        }
         if ((invoice as Record<string, unknown>).is_cancelled === true) patchBody.is_cancelled = true;
 
         if (Object.keys(patchBody).length > 0) {
@@ -2597,6 +2608,8 @@ function mapDatabaseInvoiceToInvoice(dbInv: any): Invoice {
   return {
     id: dbInv.id || '',
     invoice_no: dbInv.fiche_no || dbInv.document_no,
+    document_no: String(dbInv.document_no || '').trim() || undefined,
+    header_fields: readInvoiceHeaderFields(dbInv.header_fields),
     invoice_date: dbInv.created_at || dbInv.date,
     customer_id: dbInv.customer_id,
     customer_name: category === 'Alis' ? partnerNameAlis : partnerNameSatis,

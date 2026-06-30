@@ -7,8 +7,16 @@ import { TemplateManager } from '../../modules/TemplateManager';
 import type { Sale, Invoice } from '../../../core/types';
 import { formatNumber } from '../../../utils/formatNumber';
 import { DevExDataGrid } from '../../shared/DevExDataGrid';
-import { createColumnHelper } from '@tanstack/react-table';
+import { ColumnVisibilityMenu } from '../../shared/ColumnVisibilityMenu';
 import { UniversalInvoiceForm } from './UniversalInvoiceForm';
+import {
+  buildInvoiceListColumns,
+  INVOICE_LIST_COLUMN_ORDER,
+  INVOICE_LIST_COLUMN_VISIBILITY_KEY,
+  invoiceListColumnVisibilityMenuItems,
+  loadInvoiceListColumnVisibility,
+  type ListInvoice,
+} from './invoiceListColumns';
 import { ContextMenu } from '../../shared/ContextMenu';
 import { toast } from 'sonner';
 import { useLanguage } from '../../../contexts/LanguageContext';
@@ -36,6 +44,8 @@ export type PosSalesReturnPrefill = {
   editData: Record<string, unknown>;
   openForm?: boolean;
 };
+
+export type { ListInvoice } from './invoiceListColumns';
 
 export interface InvoiceListModuleProps {
   onInvoiceSelect?: (invoice: Invoice) => void;
@@ -84,9 +94,6 @@ const LONG_PRESS_MOVE_PX = 14;
 /** Sunucu sayfalama (getPaginated) — satır başına kayıt seçenekleri */
 const INVOICE_LIST_PAGE_SIZES = [200, 300, 400, 500, 1000, 2000] as const;
 
-/** Liste satırı: SQL/PostgREST `trcode` ve tarih alias'ı `date` */
-type ListInvoice = Invoice & { trcode?: number; date?: string };
-
 export function InvoiceListModule({
   customers = [],
   products = [],
@@ -108,6 +115,18 @@ export function InvoiceListModule({
   const isSalesReturnList = defaultInvoiceTypeFilter === '3';
   const returnProcessorColumnLabel = isSalesReturnList ? tm('salesReturnProcessedBy') : tm('cashier');
   const showGibQueueAction = selectedFirm?.regulatory_region === 'TR';
+  const [columnVisibility, setColumnVisibility] = useState(loadInvoiceListColumnVisibility);
+
+  useEffect(() => {
+    try {
+      const payload = Object.fromEntries(
+        INVOICE_LIST_COLUMN_ORDER.map((id) => [id, columnVisibility[id] !== false]),
+      );
+      localStorage.setItem(INVOICE_LIST_COLUMN_VISIBILITY_KEY, JSON.stringify(payload));
+    } catch {
+      /* ignore */
+    }
+  }, [columnVisibility]);
 
   const INVOICE_TYPES: InvoiceType[] = [
     { code: 8, name: tm('wholesale'), category: 'Satis', color: 'bg-purple-100 text-purple-700 border-purple-300', icon: 'FileText', translationKey: 'wholesale' },
@@ -759,153 +778,58 @@ export function InvoiceListModule({
     return firm || 'IQD';
   };
 
-  // Table columns
-  const columnHelper = createColumnHelper<ListInvoice>();
-  const columns = [
-    columnHelper.accessor('invoice_no', {
-      header: tm('invoiceNo'),
-      cell: info => <span className="text-blue-700 font-semibold">{info.getValue()}</span>
-    }),
-    columnHelper.accessor('customer_name', {
-      header: tm('customerSupplier'),
-      cell: info => {
-        const value = info.getValue();
-        return <span className="text-gray-900 font-medium">{value || tm('noCustomer')}</span>;
-      }
-    }),
-    columnHelper.accessor('invoice_date', {
-      header: tm('date'),
-      cell: info => {
-        const dateValue = info.getValue();
-        if (!dateValue) return <span className="text-gray-400">-</span>;
-        try {
-          const date = new Date(dateValue);
-          if (isNaN(date.getTime())) return <span className="text-gray-400">{tm('invalidDate')}</span>;
-          return date.toLocaleDateString(tm('localeCode'), {
-            day: '2-digit',
-            month: '2-digit',
-            year: 'numeric'
-          });
-        } catch {
-          return <span className="text-gray-500">-</span>;
-        }
-      }
-    }),
-    columnHelper.display({
-      id: 'invoice_type',
-      header: () => <span className="font-semibold">{tm('invoiceType')}</span>,
-      cell: ({ row }) => {
-        const invoice = row.original;
-        // invoice_type kontrolü - hem invoice_type hem de invoice_category'den türü belirle
-        let invoiceTypeCode: number | undefined = invoice.invoice_type;
+  const columnVisibilityItems = useMemo(
+    () =>
+      invoiceListColumnVisibilityMenuItems({
+        columnVisibility,
+        tm,
+        cashierLabel: returnProcessorColumnLabel,
+      }),
+    [columnVisibility, tm, returnProcessorColumnLabel],
+  );
 
-        // Eğer invoice_type yoksa veya 0 ise, source'a göre varsayılan değer
-        if (invoiceTypeCode === undefined || invoiceTypeCode === null) {
-          if (invoice.source === 'pos' || invoice.cashier) {
-            invoiceTypeCode = 1; // POS satışları için Perakende Satış
-          } else {
-            invoiceTypeCode = 0; // Varsayılan Satış Faturası
-          }
-        }
+  const columns = useMemo(
+    () =>
+      buildInvoiceListColumns({
+        columnVisibility,
+        tm,
+        localeCode: tm('localeCode'),
+        invoiceTypes: INVOICE_TYPES,
+        getIcon,
+        returnProcessorColumnLabel,
+        resolveListRowCurrency,
+        onViewDetail: handleViewDetail,
+        onEdit: (inv) => void handleEditInvoice(inv),
+      }),
+    [
+      columnVisibility,
+      tm,
+      returnProcessorColumnLabel,
+      selectedFirm,
+      INVOICE_TYPES,
+      handleViewDetail,
+      handleEditInvoice,
+    ],
+  );
 
-        const invoiceType = INVOICE_TYPES.find(t => t.code === invoiceTypeCode);
-        if (invoiceType) {
-          const IconComponent = getIcon(invoiceType.icon);
-          return (
-            <div className="flex items-center gap-2 min-w-[120px]">
-              <IconComponent className="w-4 h-4 text-gray-600 flex-shrink-0" />
-              <span className="text-sm font-medium text-gray-900">{invoiceType.name}</span>
-            </div>
-          );
-        }
-        // Fallback: invoice_category'ye göre
-        if (invoice.invoice_category) {
-          const categoryType = INVOICE_TYPES.find(t => t.category === invoice.invoice_category);
-          if (categoryType) {
-            const IconComponent = getIcon(categoryType.icon);
-            return (
-              <div className="flex items-center gap-2 min-w-[120px]">
-                <IconComponent className="w-4 h-4 text-gray-600 flex-shrink-0" />
-                <span className="text-sm font-medium text-gray-900">{tm(categoryType.translationKey)}</span>
-              </div>
-            );
-          }
-        }
-        // Son fallback
-        return (
-          <div className="flex items-center gap-2 min-w-[120px]">
-            <FileText className="w-4 h-4 text-gray-400 flex-shrink-0" />
-            <span className="text-sm text-gray-600">{tm('salesInvoices')}</span>
-          </div>
-        );
-      },
-      enableSorting: false,
-    }),
-    columnHelper.accessor('total', {
-      header: tm('total'),
-      cell: info => {
-        const invoice = info.row.original;
-        // total_amount varsa onu kullan, yoksa total kullan
-        const value = invoice.total_amount || invoice.total || 0;
-        const cur = resolveListRowCurrency(invoice);
-        return (
-          <span className="font-bold text-gray-900 tabular-nums">
-            {value > 0 ? `${formatNumber(value, 2, true)} ${cur}` : `0,00 ${cur}`}
-          </span>
-        );
-      }
-    }),
-    columnHelper.accessor('status', {
-      header: tm('status'),
-      cell: info => {
-        const status = info.getValue() ?? '';
-        const colors: Record<string, string> = {
-          'completed': 'bg-green-100 text-green-700',
-          'pending': 'bg-yellow-100 text-yellow-700',
-          'refunded': 'bg-red-100 text-red-700',
-          'cancelled': 'bg-gray-100 text-gray-700',
-        };
-        const colorClass = (status ? colors[status] : undefined) || 'bg-gray-100 text-gray-700';
-        const localizedStatus = status ? tm(status) || status : '—';
-        return <span className={`px-2 py-1 rounded-full text-xs font-medium ${colorClass}`}>{localizedStatus}</span>;
-      }
-    }),
-    columnHelper.accessor('cashier', {
-      header: returnProcessorColumnLabel,
-      cell: info => {
-        const value = info.getValue();
-        return <span className="text-sm font-medium text-gray-900">{value || '—'}</span>;
-      }
-    }),
-    columnHelper.display({
-      id: 'actions',
-      header: tm('actions'),
-      cell: ({ row }) => (
-        <div className="flex gap-1">
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              handleViewDetail(row.original);
-            }}
-            className="p-1 text-blue-600 hover:bg-blue-50 rounded transition-colors"
-            title={tm('viewDetails')}
-          >
-            <Eye className="w-4 h-4" />
-          </button>
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              handleEditInvoice(row.original);
-            }}
-            className="p-1 text-green-600 hover:bg-green-50 rounded transition-colors"
-            title={tm('edit')}
-          >
-            <Edit className="w-4 h-4" />
-          </button>
-        </div>
-      )
-    }),
-  ];
+  const columnVisibilityControl = !isMobile ? (
+    <ColumnVisibilityMenu
+      variant="filterBar"
+      columns={columnVisibilityItems}
+      onToggle={(columnId) => {
+        setColumnVisibility((prev) => ({
+          ...prev,
+          [columnId]: !(prev[columnId] !== false),
+        }));
+      }}
+      onShowAll={() => {
+        setColumnVisibility(Object.fromEntries(INVOICE_LIST_COLUMN_ORDER.map((id) => [id, true])));
+      }}
+      onHideAll={() => {
+        setColumnVisibility(Object.fromEntries(INVOICE_LIST_COLUMN_ORDER.map((id) => [id, false])));
+      }}
+    />
+  ) : null;
 
   if (isLoading) {
     return (
@@ -1010,6 +934,8 @@ export function InvoiceListModule({
                 <option value="cancelled">{tm('cancelled')}</option>
               </select>
             </div>
+
+            {columnVisibilityControl}
 
             {/* Type Filter */}
             <div className="flex items-center gap-1.5 bg-gray-50 border border-gray-200 rounded px-2">

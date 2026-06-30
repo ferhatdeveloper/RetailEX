@@ -432,5 +432,9 @@ export interface Invoice {
   currency?: string;
   currency_rate?: number;
   source?: 'pos' | 'invoice';
+  /** Belge no (fiche_no'dan ayrı) */
+  document_no?: string;
+  /** Fatura formu başlık alanları (özel kod, depo, satış elemanı vb.) */
+  header_fields?: Record<string, unknown>;
 }
 

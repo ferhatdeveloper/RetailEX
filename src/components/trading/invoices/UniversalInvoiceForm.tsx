@@ -70,6 +70,7 @@ import {
   paymentFormCodeTranslationKey,
   RETAIL_SALES_INVOICE_TRCODE,
 } from '../../../utils/paymentMethodUtils';
+import { buildInvoiceHeaderFieldsFromForm, readInvoiceHeaderFields } from '../../../utils/invoiceHeaderFields';
 
 // Electron API tip tanımı
 declare global {
@@ -2324,6 +2325,21 @@ export function UniversalInvoiceForm({
           (editData as any).payment_method ?? (editData as any).paymentMethod,
         );
         setPaymentMethod(loadedPayment);
+
+        const hf = readInvoiceHeaderFields((editData as any).header_fields);
+        const docNo = hf.documentNo || String((editData as any).document_no || '').trim();
+        if (docNo) setDocumentNo(docNo);
+        if (hf.specialCode) setSpecialCode(hf.specialCode);
+        if (hf.tradingGroup) setTradingGroup(hf.tradingGroup);
+        if (hf.authorizationCode) setAuthorizationCode(hf.authorizationCode);
+        if (hf.warehouse) setWarehouse(hf.warehouse);
+        if (hf.workplace) setWorkplace(hf.workplace);
+        if (hf.salespersonCode) setSalespersonCode(hf.salespersonCode);
+        if (hf.editDate) setEditDate(hf.editDate);
+        if (hf.customerBarcode) setCustomerBarcode(hf.customerBarcode);
+        if (hf.deliveryCode) setDeliveryCode(hf.deliveryCode);
+        if (hf.campaignCode) setCampaignCode(hf.campaignCode);
+        if (hf.time) setTime(hf.time);
       }
 
       // Farklı field isimlerini kontrol et: items, invoice_items, lines, sale_items
@@ -3040,6 +3056,21 @@ export function UniversalInvoiceForm({
         store_id: (editData as any)?.store_id || undefined,
         status: (invoiceType.category === 'Alis' || invoiceType.category === 'Iade') ? 'completed' : 'unpaid',
         notes: description,
+        document_no: documentNo.trim() || invoiceNo,
+        header_fields: buildInvoiceHeaderFieldsFromForm({
+          documentNo,
+          specialCode,
+          tradingGroup,
+          authorizationCode,
+          warehouse,
+          workplace,
+          salespersonCode,
+          editDate,
+          customerBarcode,
+          deliveryCode,
+          campaignCode,
+          time,
+        }),
         currency: currency || ledgerCurrency,
         currency_rate: effectiveInvoiceCurrencyRate || 1,
         credit_amount: 0,

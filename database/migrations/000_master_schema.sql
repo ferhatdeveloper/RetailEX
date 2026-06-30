@@ -2179,6 +2179,7 @@ BEGIN
       is_cancelled   BOOLEAN DEFAULT false,
       credit_amount  DECIMAL(15,2) DEFAULT 0,
       notes          TEXT,
+      header_fields  JSONB NOT NULL DEFAULT '{}'::jsonb,
       created_at     TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
       updated_at     TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
     );

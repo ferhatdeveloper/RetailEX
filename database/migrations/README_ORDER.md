@@ -66,6 +66,7 @@
 61. **073_apply_sync_queue_item_record_id.sql** – Sync JSON'da `id` yoksa `record_id` birleştirilir.
 62. **074_provision_firm_schema_rpc.sql** – PostgREST RPC: yerel/merkez firma metadata + `rex_*` tabloları otomatik.
 63. **075_tenant_websocket_hub.sql** – Kiracı WebSocket hub: `broadcast_messages`, `broadcast_delivery_queue`, `store_devices` (`api.retailex.app/{kiracı}/ws` + `/sync`).
+64. **076_invoice_sales_header_fields.sql** – Dönem `sales` tablolarına `header_fields` JSONB (fatura formu başlık alanları listesi için).
 
 **Kiracılara toplu uygulama (VPS / uzak PG):**
 - `npm run db:migrate:tenants` — tüm kiracı DB'ler
