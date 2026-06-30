@@ -15,6 +15,7 @@ import { APP_SEMVER } from '../../core/version';
 import { IS_TAURI, safeInvoke, removeRetailexWindowsServicesIfTauri, deleteCRetailexFolderIfTauri } from '../../utils/env';
 import { mergeRustIntoStoredWebConfig } from '../../utils/retailexWebConfigMerge';
 import { createInitialSetupConfig } from './setup/setupDefaults';
+import { LOGO_ERP_DEFAULTS, mergeLogoErpDefaults } from './setup/logoErpDefaults';
 import {
   finalizeSetupConfig,
   needsLocalDatabaseStep,
@@ -96,6 +97,13 @@ const SetupWizard: React.FC = () => {
             setPostgrestWizardSlug('');
         }
     }, [config.connection_provider]);
+
+    useEffect(() => {
+        if (step !== 3 || config.skip_integration || config.is_nebim_migration) return;
+        setConfig((prev) => mergeLogoErpDefaults(prev));
+    }, [step, config.skip_integration, config.is_nebim_migration]);
+
+    const logoSqlFieldsLocked = !config.is_nebim_migration && String(config.erp_method || 'sql').toLowerCase() === 'sql';
 
     /** Logo Objects (MSSQL) ile gerçek veri: örnek seed çakışmasın. Sadece firma/period dolu olması Logo değildir. */
     const demoSeedConflictsWithLogoObjects =
@@ -3005,11 +3013,16 @@ const SetupWizard: React.FC = () => {
                                         {['SQL', 'API', 'REST', 'NEBIM', 'OBJECT'].map((tab) => (
                                             <button
                                                 key={tab}
-                                                onClick={() => setConfig({ ...config, erp_method: tab.toLowerCase() as any })}
+                                                type="button"
+                                                disabled={logoSqlFieldsLocked && tab !== 'SQL'}
+                                                onClick={() => {
+                                                    if (logoSqlFieldsLocked && tab !== 'SQL') return;
+                                                    setConfig({ ...config, erp_method: tab.toLowerCase() as any });
+                                                }}
                                                 className={`px-3 py-1.5 rounded-xl text-[9px] font-black tracking-widest transition-all ${config.erp_method === tab.toLowerCase() || (config.erp_method === 'object' && tab === 'OBJECT')
                                                     ? 'bg-blue-600 text-white shadow-lg'
                                                     : 'bg-white/[0.03] text-slate-500 hover:text-white border border-white/5'
-                                                    }`}
+                                                    } ${logoSqlFieldsLocked && tab !== 'SQL' ? 'opacity-40 cursor-not-allowed' : ''}`}
                                             >
                                                 {tab === 'OBJECT' ? 'OBJ DLL' : tab}
                                             </button>
@@ -3026,10 +3039,11 @@ const SetupWizard: React.FC = () => {
                                                     <Server className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-blue-500/40 group-focus-within:text-blue-500 transition-colors" />
                                                     <input
                                                         type="text"
-                                                        className="w-full bg-black/40 border border-white/10 rounded-xl pl-11 pr-4 py-3 text-xs text-white focus:outline-none focus:border-blue-500 transition-all font-bold placeholder:font-medium"
-                                                        value={config.erp_host}
+                                                        readOnly={logoSqlFieldsLocked}
+                                                        className={`w-full bg-black/40 border border-white/10 rounded-xl pl-11 pr-4 py-3 text-xs text-white focus:outline-none focus:border-blue-500 transition-all font-bold placeholder:font-medium ${logoSqlFieldsLocked ? 'opacity-90 cursor-default' : ''}`}
+                                                        value={config.erp_host || LOGO_ERP_DEFAULTS.erp_host}
                                                         onChange={(e) => setConfig({ ...config, erp_host: e.target.value })}
-                                                        placeholder="Örn: 192.168.1.10"
+                                                        placeholder={LOGO_ERP_DEFAULTS.erp_host}
                                                     />
                                                 </div>
                                             </div>
@@ -3039,10 +3053,11 @@ const SetupWizard: React.FC = () => {
                                                     <Database className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-blue-500/40 group-focus-within:text-blue-500 transition-colors" />
                                                     <input
                                                         type="text"
-                                                        className="w-full bg-black/40 border border-white/10 rounded-xl pl-11 pr-4 py-3 text-xs text-white focus:outline-none focus:border-blue-500 transition-all font-bold placeholder:font-medium"
-                                                        value={config.erp_db}
+                                                        readOnly={logoSqlFieldsLocked}
+                                                        className={`w-full bg-black/40 border border-white/10 rounded-xl pl-11 pr-4 py-3 text-xs text-white focus:outline-none focus:border-blue-500 transition-all font-bold placeholder:font-medium ${logoSqlFieldsLocked ? 'opacity-90 cursor-default' : ''}`}
+                                                        value={config.erp_db || LOGO_ERP_DEFAULTS.erp_db}
                                                         onChange={(e) => setConfig({ ...config, erp_db: e.target.value })}
-                                                        placeholder="Örn: TIGERDB"
+                                                        placeholder={LOGO_ERP_DEFAULTS.erp_db}
                                                     />
                                                 </div>
                                             </div>
@@ -3055,10 +3070,11 @@ const SetupWizard: React.FC = () => {
                                                     <User className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-blue-500/40 group-focus-within:text-blue-500 transition-colors" />
                                                     <input
                                                         type="text"
-                                                        className="w-full bg-black/40 border border-white/10 rounded-xl pl-11 pr-4 py-3 text-xs text-white focus:outline-none focus:border-blue-500 transition-all font-bold placeholder:font-medium"
-                                                        value={config.erp_user}
+                                                        readOnly={logoSqlFieldsLocked}
+                                                        className={`w-full bg-black/40 border border-white/10 rounded-xl pl-11 pr-4 py-3 text-xs text-white focus:outline-none focus:border-blue-500 transition-all font-bold placeholder:font-medium ${logoSqlFieldsLocked ? 'opacity-90 cursor-default' : ''}`}
+                                                        value={config.erp_user || LOGO_ERP_DEFAULTS.erp_user}
                                                         onChange={(e) => setConfig({ ...config, erp_user: e.target.value })}
-                                                        placeholder="sa"
+                                                        placeholder={LOGO_ERP_DEFAULTS.erp_user}
                                                     />
                                                 </div>
                                             </div>
@@ -3068,8 +3084,9 @@ const SetupWizard: React.FC = () => {
                                                     <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-blue-500/40 group-focus-within:text-blue-500 transition-colors" />
                                                     <input
                                                         type="password"
-                                                        className="w-full bg-black/40 border border-white/10 rounded-xl pl-11 pr-4 py-3 text-xs text-white focus:outline-none focus:border-blue-500 transition-all font-bold"
-                                                        value={config.erp_pass}
+                                                        readOnly={logoSqlFieldsLocked}
+                                                        className={`w-full bg-black/40 border border-white/10 rounded-xl pl-11 pr-4 py-3 text-xs text-white focus:outline-none focus:border-blue-500 transition-all font-bold ${logoSqlFieldsLocked ? 'opacity-90 cursor-default' : ''}`}
+                                                        value={config.erp_pass || LOGO_ERP_DEFAULTS.erp_pass}
                                                         onChange={(e) => setConfig({ ...config, erp_pass: e.target.value })}
                                                         placeholder="••••••••"
                                                     />

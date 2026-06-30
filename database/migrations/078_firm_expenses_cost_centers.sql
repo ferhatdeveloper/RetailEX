@@ -58,13 +58,8 @@ BEGIN
   EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON %I TO anon', v_prefix || '_cost_centers');
   EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON %I TO anon', v_prefix || '_expenses');
 
-  BEGIN
-    PERFORM public.APPLY_SYNC_TRIGGERS(v_prefix || '_cost_centers');
-    PERFORM public.APPLY_SYNC_TRIGGERS(v_prefix || '_expenses');
-  EXCEPTION
-    WHEN undefined_function THEN
-      NULL;
-  END;
+  PERFORM public.try_apply_sync_triggers(v_prefix || '_cost_centers');
+  PERFORM public.try_apply_sync_triggers(v_prefix || '_expenses');
 END;
 $$;
 

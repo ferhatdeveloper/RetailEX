@@ -67,6 +67,6 @@ BEGIN
         updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
         CONSTRAINT %I UNIQUE (firm_nr, code)
       )', v_tbl, v_tbl || '_firm_code_uq');
-    PERFORM public.APPLY_SYNC_TRIGGERS(v_tbl);
+    PERFORM public.try_apply_sync_triggers(v_tbl);
   END LOOP;
 END $$;

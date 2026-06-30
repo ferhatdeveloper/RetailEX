@@ -365,21 +365,21 @@ BEGIN
   EXECUTE format('CREATE TABLE IF NOT EXISTS %I (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), firm_nr VARCHAR(10) NOT NULL, code VARCHAR(50) UNIQUE, name VARCHAR(255) NOT NULL, phone VARCHAR(50), email VARCHAR(255), is_active BOOLEAN DEFAULT true, created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW());', v_prefix || '_sales_reps');
 
   -- Sync Triggers
-  PERFORM public.APPLY_SYNC_TRIGGERS(v_prefix || '_products');
-  PERFORM public.APPLY_SYNC_TRIGGERS(v_prefix || '_customers');
-  PERFORM public.APPLY_SYNC_TRIGGERS(v_prefix || '_suppliers');
+  PERFORM public.try_apply_sync_triggers(v_prefix || '_products');
+  PERFORM public.try_apply_sync_triggers(v_prefix || '_customers');
+  PERFORM public.try_apply_sync_triggers(v_prefix || '_suppliers');
   PERFORM public.INIT_PRODUCTION_TABLES(p_firm_nr);
-  PERFORM public.APPLY_SYNC_TRIGGERS(v_prefix || '_services');
-  PERFORM public.APPLY_SYNC_TRIGGERS(v_prefix || '_cash_registers');
-  PERFORM public.APPLY_SYNC_TRIGGERS(v_prefix || '_bank_registers');
-  PERFORM public.APPLY_SYNC_TRIGGERS(v_prefix || '_expense_cards');
-  PERFORM public.APPLY_SYNC_TRIGGERS(v_prefix || '_sales_reps');
-  PERFORM public.APPLY_SYNC_TRIGGERS(v_prefix || '_categories');
-  PERFORM public.APPLY_SYNC_TRIGGERS(v_prefix || '_brands');
-  PERFORM public.APPLY_SYNC_TRIGGERS(v_prefix || '_units');
-  PERFORM public.APPLY_SYNC_TRIGGERS(v_prefix || '_tax_rates');
-  PERFORM public.APPLY_SYNC_TRIGGERS(v_prefix || '_special_codes');
-  PERFORM public.APPLY_SYNC_TRIGGERS(v_prefix || '_campaigns');
+  PERFORM public.try_apply_sync_triggers(v_prefix || '_services');
+  PERFORM public.try_apply_sync_triggers(v_prefix || '_cash_registers');
+  PERFORM public.try_apply_sync_triggers(v_prefix || '_bank_registers');
+  PERFORM public.try_apply_sync_triggers(v_prefix || '_expense_cards');
+  PERFORM public.try_apply_sync_triggers(v_prefix || '_sales_reps');
+  PERFORM public.try_apply_sync_triggers(v_prefix || '_categories');
+  PERFORM public.try_apply_sync_triggers(v_prefix || '_brands');
+  PERFORM public.try_apply_sync_triggers(v_prefix || '_units');
+  PERFORM public.try_apply_sync_triggers(v_prefix || '_tax_rates');
+  PERFORM public.try_apply_sync_triggers(v_prefix || '_special_codes');
+  PERFORM public.try_apply_sync_triggers(v_prefix || '_campaigns');
 
   -- ═══════════════════════════════════════════════════════════════════
   -- STANDART BİRİM SETLERİ — tüm perakende/toptan senaryoları
@@ -740,11 +740,11 @@ BEGIN
     v_prefix || '_notification_queue'
   );
 
-  PERFORM public.APPLY_SYNC_TRIGGERS(v_tbl_sales);
-  PERFORM public.APPLY_SYNC_TRIGGERS(v_prefix || '_cash_lines');
-  PERFORM public.APPLY_SYNC_TRIGGERS(v_prefix || '_bank_lines');
-  PERFORM public.APPLY_SYNC_TRIGGERS(v_prefix || '_stock_movements');
-  PERFORM public.APPLY_SYNC_TRIGGERS(v_prefix || '_stock_movement_items');
+  PERFORM public.try_apply_sync_triggers(v_tbl_sales);
+  PERFORM public.try_apply_sync_triggers(v_prefix || '_cash_lines');
+  PERFORM public.try_apply_sync_triggers(v_prefix || '_bank_lines');
+  PERFORM public.try_apply_sync_triggers(v_prefix || '_stock_movements');
+  PERFORM public.try_apply_sync_triggers(v_prefix || '_stock_movement_items');
 END;
 $$ LANGUAGE plpgsql;
 

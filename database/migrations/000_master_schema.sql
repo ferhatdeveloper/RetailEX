@@ -1580,11 +1580,33 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- 10.3 Apply Sync Triggers Helper
-CREATE OR REPLACE FUNCTION public.APPLY_SYNC_TRIGGERS(p_table_name TEXT)
+CREATE OR REPLACE FUNCTION public.apply_sync_triggers(p_table_name TEXT)
 RETURNS void AS $$
 BEGIN
   EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I; CREATE TRIGGER %I AFTER INSERT OR UPDATE OR DELETE ON %I FOR EACH ROW EXECUTE PROCEDURE public.enqueue_sync_event();',
     'sync_trg_' || p_table_name, p_table_name, 'sync_trg_' || p_table_name, p_table_name);
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION public.APPLY_SYNC_TRIGGERS(p_table_name TEXT)
+RETURNS void AS $$
+BEGIN
+  PERFORM public.apply_sync_triggers(p_table_name);
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION public.try_apply_sync_triggers(p_table_name TEXT)
+RETURNS void AS $$
+BEGIN
+  BEGIN
+    PERFORM public.apply_sync_triggers(p_table_name);
+  EXCEPTION
+    WHEN undefined_function THEN NULL;
+    WHEN undefined_table THEN NULL;
+    WHEN OTHERS THEN
+      IF SQLSTATE = '42883' THEN RETURN; END IF;
+      RAISE;
+  END;
 END;
 $$ LANGUAGE plpgsql;
 
@@ -2028,23 +2050,23 @@ BEGIN
   EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON %I TO anon', v_prefix || '_expenses');
 
   -- Sync Triggers
-  PERFORM public.APPLY_SYNC_TRIGGERS(v_prefix || '_products');
-  PERFORM public.APPLY_SYNC_TRIGGERS(v_prefix || '_customers');
-  PERFORM public.APPLY_SYNC_TRIGGERS(v_prefix || '_suppliers');
+  PERFORM public.try_apply_sync_triggers(v_prefix || '_products');
+  PERFORM public.try_apply_sync_triggers(v_prefix || '_customers');
+  PERFORM public.try_apply_sync_triggers(v_prefix || '_suppliers');
   PERFORM public.INIT_PRODUCTION_TABLES(p_firm_nr);
-  PERFORM public.APPLY_SYNC_TRIGGERS(v_prefix || '_services');
-  PERFORM public.APPLY_SYNC_TRIGGERS(v_prefix || '_cash_registers');
-  PERFORM public.APPLY_SYNC_TRIGGERS(v_prefix || '_bank_registers');
-  PERFORM public.APPLY_SYNC_TRIGGERS(v_prefix || '_expense_cards');
-  PERFORM public.APPLY_SYNC_TRIGGERS(v_prefix || '_cost_centers');
-  PERFORM public.APPLY_SYNC_TRIGGERS(v_prefix || '_expenses');
-  PERFORM public.APPLY_SYNC_TRIGGERS(v_prefix || '_sales_reps');
-  PERFORM public.APPLY_SYNC_TRIGGERS(v_prefix || '_categories');
-  PERFORM public.APPLY_SYNC_TRIGGERS(v_prefix || '_brands');
-  PERFORM public.APPLY_SYNC_TRIGGERS(v_prefix || '_units');
-  PERFORM public.APPLY_SYNC_TRIGGERS(v_prefix || '_tax_rates');
-  PERFORM public.APPLY_SYNC_TRIGGERS(v_prefix || '_special_codes');
-  PERFORM public.APPLY_SYNC_TRIGGERS(v_prefix || '_campaigns');
+  PERFORM public.try_apply_sync_triggers(v_prefix || '_services');
+  PERFORM public.try_apply_sync_triggers(v_prefix || '_cash_registers');
+  PERFORM public.try_apply_sync_triggers(v_prefix || '_bank_registers');
+  PERFORM public.try_apply_sync_triggers(v_prefix || '_expense_cards');
+  PERFORM public.try_apply_sync_triggers(v_prefix || '_cost_centers');
+  PERFORM public.try_apply_sync_triggers(v_prefix || '_expenses');
+  PERFORM public.try_apply_sync_triggers(v_prefix || '_sales_reps');
+  PERFORM public.try_apply_sync_triggers(v_prefix || '_categories');
+  PERFORM public.try_apply_sync_triggers(v_prefix || '_brands');
+  PERFORM public.try_apply_sync_triggers(v_prefix || '_units');
+  PERFORM public.try_apply_sync_triggers(v_prefix || '_tax_rates');
+  PERFORM public.try_apply_sync_triggers(v_prefix || '_special_codes');
+  PERFORM public.try_apply_sync_triggers(v_prefix || '_campaigns');
 
   -- ═══════════════════════════════════════════════════════════════════
   -- STANDART BİRİM SETLERİ — tüm perakende/toptan senaryoları
@@ -2406,11 +2428,11 @@ BEGIN
     v_prefix || '_notification_queue'
   );
 
-  PERFORM public.APPLY_SYNC_TRIGGERS(v_tbl_sales);
-  PERFORM public.APPLY_SYNC_TRIGGERS(v_prefix || '_cash_lines');
-  PERFORM public.APPLY_SYNC_TRIGGERS(v_prefix || '_bank_lines');
-  PERFORM public.APPLY_SYNC_TRIGGERS(v_prefix || '_stock_movements');
-  PERFORM public.APPLY_SYNC_TRIGGERS(v_prefix || '_stock_movement_items');
+  PERFORM public.try_apply_sync_triggers(v_tbl_sales);
+  PERFORM public.try_apply_sync_triggers(v_prefix || '_cash_lines');
+  PERFORM public.try_apply_sync_triggers(v_prefix || '_bank_lines');
+  PERFORM public.try_apply_sync_triggers(v_prefix || '_stock_movements');
+  PERFORM public.try_apply_sync_triggers(v_prefix || '_stock_movement_items');
 END;
 $$ LANGUAGE plpgsql;
 
