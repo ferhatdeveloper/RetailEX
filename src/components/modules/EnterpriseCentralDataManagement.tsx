@@ -1469,28 +1469,17 @@ export function EnterpriseCentralDataManagement() {
               theme={theme}
               onBulkSendAll={() => void handleMposBulkAllKasas()}
               bulkSendDisabled={isSyncBusy || !selectedFirmNr || filteredTerminalsForFirm.length === 0}
+              onOpenTransfer={() => {
+                setSendDeviceStatuses([]);
+                setMposTransferModalOpen(true);
+              }}
+              transferDisabled={isSyncBusy || !selectedFirmNr || selectedTerminalDeviceIds.length === 0}
+              transferHint={
+                mposTransferBlockReason() && selectedTerminalDeviceIds.length > 0
+                  ? mposTransferBlockReason()!
+                  : 'Müşteri seçim penceresi gibi özet ve adım adım aktarım modalı açılır.'
+              }
             />
-            <div className="flex flex-wrap gap-2">
-              <Button
-                type="button"
-                className="gap-2"
-                disabled={isSyncBusy || !selectedFirmNr || selectedTerminalDeviceIds.length === 0}
-                onClick={() => {
-                  setSendDeviceStatuses([]);
-                  setMposTransferModalOpen(true);
-                }}
-              >
-                <Upload className="w-4 h-4" />
-                Veri Gönder / Al…
-              </Button>
-              {mposTransferBlockReason() && selectedTerminalDeviceIds.length > 0 ? (
-                <p className="text-xs text-amber-600 self-center max-w-xl">{mposTransferBlockReason()}</p>
-              ) : (
-                <p className="text-xs text-gray-500 self-center">
-                  Müşteri seçim penceresi gibi özet ve adım adım aktarım modalı açılır.
-                </p>
-              )}
-            </div>
 
             <MposSyncLogPanel
               storeId={selectedBranchStoreId || undefined}
@@ -1823,19 +1812,17 @@ export function EnterpriseCentralDataManagement() {
               filteredTerminals={filteredTerminalsForFirm}
               targetLabel={mposTargetLabel()}
               theme={theme}
-            />
-            <Button
-              type="button"
-              className="gap-2"
-              disabled={isSyncBusy || !selectedFirmNr || selectedTerminalDeviceIds.length === 0}
-              onClick={() => {
+              onOpenTransfer={() => {
                 setSendDeviceStatuses([]);
                 setMposTransferModalOpen(true);
               }}
-            >
-              <Download className="w-4 h-4" />
-              Veri Gönder / Al…
-            </Button>
+              transferDisabled={isSyncBusy || !selectedFirmNr || selectedTerminalDeviceIds.length === 0}
+              transferHint={
+                mposTransferBlockReason() && selectedTerminalDeviceIds.length > 0
+                  ? mposTransferBlockReason()!
+                  : 'Özet ve adım adım aktarım modalı açılır.'
+              }
+            />
 
             <MposSyncLogPanel
               storeId={selectedBranchStoreId || undefined}

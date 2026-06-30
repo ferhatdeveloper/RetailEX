@@ -3,7 +3,7 @@
  */
 
 import React from 'react';
-import { Building2, Monitor, Send } from 'lucide-react';
+import { Building2, Monitor, Send, Upload } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Checkbox } from '../ui/checkbox';
 import type { PosTerminalRegistration } from '../../services/deviceRegistrationService';
@@ -27,6 +27,9 @@ type Props = {
   theme: 'light' | 'dark';
   onBulkSendAll?: () => void;
   bulkSendDisabled?: boolean;
+  onOpenTransfer?: () => void;
+  transferDisabled?: boolean;
+  transferHint?: string;
   className?: string;
 };
 
@@ -50,6 +53,9 @@ export function MposKalemTargetBar({
   theme,
   onBulkSendAll,
   bulkSendDisabled,
+  onOpenTransfer,
+  transferDisabled,
+  transferHint,
   className = '',
 }: Props) {
   const isDark = theme === 'dark';
@@ -249,23 +255,52 @@ export function MposKalemTargetBar({
         </div>
       </div>
 
-      {onBulkSendAll ? (
+      {onBulkSendAll || onOpenTransfer ? (
         <div
-          className={`flex items-center justify-end px-4 py-3 border-t gap-3 shrink-0 ${
+          className={`px-4 py-3 border-t shrink-0 space-y-2 ${
             isDark ? 'border-gray-600 bg-gray-900/80' : 'border-gray-200 bg-white'
           }`}
         >
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            className="h-8 text-xs gap-1.5"
-            disabled={bulkSendDisabled}
-            onClick={onBulkSendAll}
-          >
-            <Send className="w-3.5 h-3.5" />
-            Tüm cihazlara gönder (firma)
-          </Button>
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            {onBulkSendAll ? (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="h-8 text-xs gap-1.5"
+                disabled={bulkSendDisabled}
+                onClick={onBulkSendAll}
+              >
+                <Send className="w-3.5 h-3.5" />
+                Tüm cihazlara gönder (firma)
+              </Button>
+            ) : null}
+            {onOpenTransfer ? (
+              <Button
+                type="button"
+                size="sm"
+                className="h-8 text-xs gap-1.5"
+                disabled={transferDisabled}
+                onClick={onOpenTransfer}
+              >
+                <Upload className="w-3.5 h-3.5" />
+                Veri Gönder / Al…
+              </Button>
+            ) : null}
+          </div>
+          {transferHint ? (
+            <p
+              className={`text-xs text-right leading-snug ${
+                transferHint.includes('Mağaza') || transferHint.includes('bağlantı')
+                  ? 'text-amber-600 dark:text-amber-400'
+                  : isDark
+                    ? 'text-gray-500'
+                    : 'text-gray-500'
+              }`}
+            >
+              {transferHint}
+            </p>
+          ) : null}
         </div>
       ) : null}
     </div>
