@@ -605,7 +605,7 @@ export async function assertDesktopTerminalApproved(): Promise<{
 
   const messages: Record<string, string> = {
     pending:
-      'Bu kasa henüz onaylanmadı. Merkez yöneticisi web panelinde Sistem Yönetimi → Bekleyen Kasa Cihazları bölümünden işyeri ve kasa tanımını yaparak onaylamalı.',
+      'Bu kasa henüz onaylanmadı. Merkez yöneticisi web panelinde Sistem Yönetimi → Kasa Cihazları bölümünden işyeri ve kasa tanımını yaparak onaylamalı.',
     rejected: check.message || 'Cihaz kaydı reddedildi. Merkez ile iletişime geçin.',
     blocked: 'Bu cihaz engellenmiş. Merkez ile iletişime geçin.',
     not_registered: `Cihaz kaydı merkeze iletilemedi (${describeCentralTarget()}). ${check.message || 'PostgREST URL ve remote_db aynı kiracıyı göstermeli (ör. /lovan → lovan DB).'}`,
@@ -713,6 +713,33 @@ export async function approvePosTerminal(
       p_firm_nr: placement?.firmNr ? firmPadded(placement.firmNr) : null,
     });
     return { ok: !!row.ok, message: row.message || (row.ok ? 'Onaylandı.' : 'İşlem başarısız.') };
+  } catch (e: unknown) {
+    return { ok: false, message: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+export async function updatePosTerminalPlacement(
+  id: string,
+  userId?: string | null,
+  placement?: ApprovePosTerminalPlacement,
+): Promise<{ ok: boolean; message: string }> {
+  try {
+    const storeId =
+      placement?.storeId && placement.storeId !== 'all' && placement.storeId !== '001'
+        ? placement.storeId
+        : null;
+
+    const row = await rpcCall<{ ok?: boolean; message?: string }>('update_pos_terminal_placement', {
+      p_id: id,
+      p_user_id: userId || null,
+      p_store_id: storeId,
+      p_terminal_name: placement?.terminalName?.trim() || null,
+      p_firm_nr: placement?.firmNr ? firmPadded(placement.firmNr) : null,
+    });
+    return {
+      ok: !!row.ok,
+      message: row.message || (row.ok ? 'Yerleştirme güncellendi.' : 'İşlem başarısız.'),
+    };
   } catch (e: unknown) {
     return { ok: false, message: e instanceof Error ? e.message : String(e) };
   }

@@ -211,7 +211,7 @@ export function EnterpriseCentralDataManagement() {
     if (!selectedFirmNr) return 'Firma seçin.';
     if (!selectedTerminalDeviceId) return 'Cihaz seçin.';
     if (!resolveMposEffectiveStoreId()) {
-      return 'Seçili cihazın mağaza (işyeri) bağlantısı yok. Sistem Yönetimi → Bekleyen Kasa Cihazları üzerinden mağaza atayın.';
+      return 'Seçili cihazın mağaza (işyeri) bağlantısı yok. Sistem Yönetimi → Kasa Cihazları → Onaylı sekmesinden mağaza atayın.';
     }
     return null;
   };

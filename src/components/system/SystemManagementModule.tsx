@@ -96,7 +96,7 @@ export function SystemManagementModule({ routeHint }: SystemManagementModuleProp
     { id: 'printerSettings' as const, label: 'Yazıcı Ayarları', icon: Printer, color: 'slate' },
     { id: 'callerIdVirtualPbx' as const, label: 'Sanal santral (Caller ID)', icon: Phone, color: 'violet' },
     { id: 'dataBroadcast' as const, label: 'Bilgi Gönder/AI Merkezi', icon: Radio, color: 'orange' },
-    { id: 'pendingPosDevices' as const, label: 'Bekleyen Kasa Cihazları', icon: Monitor, color: 'amber' },
+    { id: 'pendingPosDevices' as const, label: 'Kasa Cihazları', icon: Monitor, color: 'amber' },
     { id: 'backupRestore' as const, label: 'Yedekleme/Geri Yükleme', icon: HardDrive, color: 'indigo' },
     { id: 'logAudit' as const, label: 'Log/Denetim', icon: FileText, color: 'red' },
     { id: 'systemHealth' as const, label: 'Sistem Sağlığı', icon: Activity, color: 'teal' },
@@ -225,7 +225,7 @@ export function SystemManagementModule({ routeHint }: SystemManagementModuleProp
         )}
         {currentView === 'dataBroadcast' && <DataBroadcastView />}
         {currentView === 'pendingPosDevices' && (
-          <div className="p-4 sm:p-6 max-w-4xl">
+          <div className="p-4 sm:p-6 max-w-5xl">
             <PendingDevicesPanel darkMode={darkMode} />
           </div>
         )}

@@ -301,7 +301,7 @@ export const getStaticMenuSections = (t: Translations) => [
             { label: t.menu.roleAndAuthorization, screen: 'roleauth', icon: Shield },
             { label: t.menu.menuManagement, screen: 'menumanagement', icon: Menu },
             { label: t.menu.virtualPbxCallerId, screen: 'virtual-pbx-caller-id', icon: Phone },
-            { label: 'Bekleyen Kasa Cihazları', screen: 'pendingposdevices', icon: Monitor },
+            { label: 'Kasa Cihazları', screen: 'pendingposdevices', icon: Monitor },
             { label: t.menu.supabaseDataTransfer, screen: 'supabase-migration', icon: Database },
             { label: t.menu.postgresBackup, screen: 'backuprestore', icon: HardDrive },
             { label: t.menu.logAudit, screen: 'logaudit', icon: Clock }
