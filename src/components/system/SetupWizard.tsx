@@ -146,7 +146,7 @@ const SetupWizard: React.FC = () => {
         port: 5432,
         database: 'retailex_local',
         user: 'postgres',
-        password: 'password'
+        password: 'Yq7xwQpt6c'
     });
     const [selectedProject, setSelectedProject] = useState<any | null>(null);
     const [isImporting, setIsImporting] = useState(false);
@@ -3208,7 +3208,7 @@ const SetupWizard: React.FC = () => {
                                                             <input
                                                                 type="text"
                                                                 className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-xs text-white text-center focus:outline-none focus:border-blue-500 transition-all font-mono font-bold"
-                                                                value={config.erp_firm_nr}
+                                                                value={config.erp_firm_nr || '001'}
                                                                 onChange={(e) => setConfig({ ...config, erp_firm_nr: e.target.value.padStart(3, '0').slice(-3) })}
                                                                 placeholder="001"
                                                             />
@@ -3278,7 +3278,7 @@ const SetupWizard: React.FC = () => {
                                                                 </div>
                                                                 <input
                                                                     type="text"
-                                                                    value={config.erp_period_nr}
+                                                                    value={config.erp_period_nr || '01'}
                                                                     onChange={(e) => {
                                                                         const val = e.target.value.replace(/[^0-9]/g, '');
                                                                         setConfig({ ...config, erp_period_nr: val });
@@ -3511,7 +3511,7 @@ const SetupWizard: React.FC = () => {
                                                             <input
                                                                 type="text"
                                                                 className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-500 transition-all font-mono font-bold text-xs text-center"
-                                                                value={config.erp_firm_nr || ''}
+                                                                value={config.erp_firm_nr || '001'}
                                                                 onChange={(e) => {
                                                                     const val = e.target.value.replace(/[^0-9]/g, '');
                                                                     setConfig({ ...config, erp_firm_nr: val });
@@ -3526,7 +3526,7 @@ const SetupWizard: React.FC = () => {
                                                                 <input
                                                                     type="text"
                                                                     className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-500 transition-all font-mono font-bold text-xs text-center"
-                                                                    value={config.erp_period_nr || ''}
+                                                                    value={config.erp_period_nr || '01'}
                                                                     onChange={(e) => {
                                                                         const val = e.target.value.replace(/[^0-9]/g, '');
                                                                         setConfig({ ...config, erp_period_nr: val });
