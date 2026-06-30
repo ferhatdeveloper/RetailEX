@@ -9,11 +9,12 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-COMPOSE_FILE="${COMPOSE_FILE:-${REPO_ROOT}/docker-compose.dokploy.yml}"
+COMPOSE_FILE="${COMPOSE_FILE:-${REPO_ROOT}/docker-compose.dokploy.frontend.yml}"
+FULL_COMPOSE="${FULL_COMPOSE:-${REPO_ROOT}/docker-compose.dokploy.yml}"
 POSTGRES_PASSWORD="${POSTGRES_PASSWORD:?POSTGRES_PASSWORD gerekli (Dokploy secret ile aynı)}"
 
 export POSTGRES_PASSWORD
-export COMPOSE_PARALLEL_LIMIT="${COMPOSE_PARALLEL_LIMIT:-2}"
+export COMPOSE_PARALLEL_LIMIT="${COMPOSE_PARALLEL_LIMIT:-1}"
 
 cd "${REPO_ROOT}"
 
@@ -22,10 +23,15 @@ git fetch origin main 2>/dev/null || true
 git checkout main 2>/dev/null || true
 git pull origin main 2>/dev/null || true
 
-echo "=== Frontend imajı (cache ile; OOM olursa: COMPOSE_PARALLEL_LIMIT=1) ==="
-docker compose -f "${COMPOSE_FILE}" build retailex_frontend
+if [[ ! -f "${COMPOSE_FILE}" ]]; then
+  echo "HATA: ${COMPOSE_FILE} yok — git pull origin main"
+  exit 1
+fi
 
-echo "=== Frontend konteyneri yenile ==="
+echo "=== Yalnızca frontend imajı (docker-compose.dokploy.frontend.yml) ==="
+docker compose -f "${COMPOSE_FILE}" build --progress=plain retailex_frontend
+
+echo "=== Frontend konteyneri yenile (bridge/whatsapp dokunulmaz) ==="
 docker compose -f "${COMPOSE_FILE}" up -d --force-recreate retailex_frontend
 
 sleep 2

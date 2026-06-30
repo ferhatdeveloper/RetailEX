@@ -1,0 +1,31 @@
+# Dokploy — yalnızca web arayüzü (retailex_frontend)
+# Tam stack yerine UI güncellemesi: POSTGRES_PASSWORD='...' bash database/scripts/dokploy-redeploy-frontend.sh
+# Önkoşul: berqenas_net + retailex_bridge + retailex_whatsapp_bridge zaten çalışıyor olmalı.
+
+services:
+  retailex_frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+      args:
+        VITE_BRIDGE_URL: ""
+        VITE_MERKEZ_REST_URL: ${VITE_MERKEZ_REST_URL:-https://api.retailex.app/merkez}
+        VITE_PG_DUMP_INTERNAL: ${VITE_PG_DUMP_INTERNAL:-}
+    image: retailex-web:latest
+    container_name: retailex_frontend
+    restart: always
+    ports:
+      - "${RETAILEX_WEB_PORT:-8080}:80"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:80/ >/dev/null 2>&1 || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    networks:
+      - berqenas_net
+
+networks:
+  berqenas_net:
+    external: true
+    name: berqenas_net
