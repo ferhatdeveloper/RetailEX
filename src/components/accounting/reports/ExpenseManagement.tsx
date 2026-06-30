@@ -21,7 +21,7 @@ import { DevExDataGrid } from '../../shared/DevExDataGrid';
 import { createColumnHelper } from '@tanstack/react-table';
 import { formatCurrency } from '../../../utils/formatNumber';
 import { InlineLanguageSwitcher } from '../../shared/InlineLanguageSwitcher';
-import { expenseAPI, type Expense } from '../../../services/api/expenses';
+import { expenseAPI, ExpenseSaveError, type Expense } from '../../../services/api/expenses';
 import { fetchKasalar, type Kasa } from '../../../services/api/kasa';
 import { useLanguage } from '../../../contexts/LanguageContext';
 
@@ -106,6 +106,7 @@ export function ExpenseManagement() {
   });
 
   const [kasalar, setKasalar] = useState<Kasa[]>([]);
+  const [savingExpense, setSavingExpense] = useState(false);
 
   useEffect(() => {
     void loadKasalar();
@@ -196,7 +197,39 @@ export function ExpenseManagement() {
     }
   };
 
+  const reloadExpensesForDate = useCallback(async (expenseDate?: string) => {
+    let from = filterDateFrom;
+    let to = filterDateTo;
+    const day = String(expenseDate || '').slice(0, 10);
+    if (day) {
+      if (from && day < from) from = day;
+      if (to && day > to) to = day;
+    }
+    if (from !== filterDateFrom) setFilterDateFrom(from);
+    if (to !== filterDateTo) setFilterDateTo(to);
+
+    setLoading(true);
+    try {
+      const filters: { startDate?: string; endDate?: string } = {};
+      if (from) filters.startDate = from;
+      if (to) filters.endDate = to;
+      const data = await expenseAPI.getAll(filters);
+      setExpenses(
+        (data as ExpenseLocal[]).map(row => ({
+          ...row,
+          amount: parseExpenseAmount(row.amount),
+        })),
+      );
+    } catch (error) {
+      console.error('Error loading expenses:', error);
+      setExpenses([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [filterDateFrom, filterDateTo]);
+
   const handleSaveExpense = async () => {
+    if (savingExpense) return;
     try {
       if (!formData.category.trim()) {
         alert(tm('expenseCategoryRequired'));
@@ -218,24 +251,28 @@ export function ExpenseManagement() {
         cash_register_id: formData.cash_register_id || undefined,
       };
 
-      const payMethod = String(formData.payment_method || '').toLowerCase();
-      if ((payMethod === 'cash' || payMethod === 'nakit') && !formData.cash_register_id && kasalar.length === 0) {
-        alert(tm('noCashRegisterFound') || 'Aktif kasa bulunamadı. Önce kasa tanımlayın.');
-        return;
-      }
+      setSavingExpense(true);
 
       if (editingExpense) {
         await expenseAPI.update(editingExpense.id, data as any);
+        setShowExpenseModal(false);
+        await reloadExpensesForDate(data.expense_date);
       } else {
         await expenseAPI.create(data as any);
+        setShowExpenseModal(false);
+        await reloadExpensesForDate(data.expense_date);
       }
-      
-      setShowExpenseModal(false);
-      await loadExpenses();
     } catch (error) {
       console.error('Error saving expense:', error);
+      const partialSave = error instanceof ExpenseSaveError && error.expenseSaved;
+      if (partialSave) {
+        setShowExpenseModal(false);
+        await reloadExpensesForDate(formData.expense_date);
+      }
       const msg = (error as Error)?.message || tm('expenseSaveError');
       alert(msg);
+    } finally {
+      setSavingExpense(false);
     }
   };
 
@@ -785,9 +822,10 @@ export function ExpenseManagement() {
             <button
               type="button"
               onClick={handleSaveExpense}
-              className="flex-1 px-4 py-3 rounded-2xl bg-red-600 text-white font-bold uppercase text-sm tracking-wider shadow-lg shadow-red-200/50 hover:bg-red-700 active:scale-[0.98] transition-colors"
+              disabled={savingExpense}
+              className="flex-1 px-4 py-3 rounded-2xl bg-red-600 text-white font-bold uppercase text-sm tracking-wider shadow-lg shadow-red-200/50 hover:bg-red-700 active:scale-[0.98] transition-colors disabled:opacity-60 disabled:pointer-events-none"
             >
-              {editingExpense ? tm('update') : tm('save')}
+              {savingExpense ? tm('loading') : (editingExpense ? tm('update') : tm('save'))}
             </button>
           </div>
         </div>,

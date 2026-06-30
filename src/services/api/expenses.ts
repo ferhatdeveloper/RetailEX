@@ -60,6 +60,12 @@ function emptyUuidToNull(value: unknown): string | null {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(s) ? s : null;
 }
 
+function emptyTextToNull(value: unknown): string | null {
+  if (value === null || value === undefined) return null;
+  const s = String(value).trim();
+  return s ? s : null;
+}
+
 function buildExpenseInsertBody(
   expense: Omit<Expense, 'id' | 'firm_nr' | 'created_at'>,
   firmNr: string
@@ -69,16 +75,38 @@ function buildExpenseInsertBody(
     description: expense.description,
     amount: expense.amount,
     payment_method: expense.payment_method,
-    document_number: expense.document_number || '',
-    document_url: expense.document_url || '',
+    document_number: emptyTextToNull(expense.document_number),
+    document_url: emptyTextToNull(expense.document_url),
     store_id: emptyUuidToNull(expense.store_id),
     cost_center_id: emptyUuidToNull(expense.cost_center_id),
     expense_date: expense.expense_date,
-    notes: expense.notes || '',
+    notes: emptyTextToNull(expense.notes),
     created_by: emptyUuidToNull(expense.created_by),
     firm_nr: firmNr,
     cash_register_id: emptyUuidToNull(expense.cash_register_id),
   };
+}
+
+export class ExpenseSaveError extends Error {
+  constructor(
+    message: string,
+    readonly expenseSaved = false
+  ) {
+    super(message);
+    this.name = 'ExpenseSaveError';
+  }
+}
+
+function formatExpenseApiError(error: unknown): Error {
+  if (error instanceof ExpenseSaveError) return error;
+  const raw = (error as Error)?.message || String(error);
+  if (raw.includes('invalid input syntax for type uuid')) {
+    return new Error('Kayıt alanlarında geçersiz kimlik (UUID). Sayfayı Ctrl+F5 ile yenileyip tekrar deneyin.');
+  }
+  if (raw.includes('PGRST205') || raw.includes('Could not find the table')) {
+    return new Error('Gider tablosu henüz oluşturulmamış. Lütfen sistem yöneticinize başvurun (migration 078).');
+  }
+  return error instanceof Error ? error : new Error(raw);
 }
 
 export const expenseAPI = {
@@ -231,66 +259,78 @@ export const expenseAPI = {
         }
 
         if (isCashExpense) {
-          const preferredRegisterId = String(expense.cash_register_id || '').trim();
-          const kasaPath = `/rex_${fn}_cash_registers`;
-          const regList = await postgrest
-            .get<any[]>(
-              kasaPath,
-              {
-                select: 'id,code,currency_code',
-                is_active: 'eq.true',
-                limit: 50,
-                order: 'created_at.asc',
-              },
-              { schema: 'public' }
-            )
-            .catch(() => [] as any[]);
-          const regs = Array.isArray(regList) ? regList : [];
-          let kasa = preferredRegisterId
-            ? regs.find((r) => String(r.id) === preferredRegisterId)
-            : undefined;
-          if (!kasa && preferredRegisterId) {
-            const one = await postgrest
+          try {
+            const preferredRegisterId = String(expense.cash_register_id || '').trim();
+            const kasaPath = `/rex_${fn}_cash_registers`;
+            const regList = await postgrest
               .get<any[]>(
                 kasaPath,
                 {
                   select: 'id,code,currency_code',
-                  id: `eq.${preferredRegisterId}`,
                   is_active: 'eq.true',
-                  limit: 1,
+                  limit: 50,
+                  order: 'created_at.asc',
                 },
                 { schema: 'public' }
               )
               .catch(() => [] as any[]);
-            kasa = Array.isArray(one) ? one[0] : undefined;
-          }
-          if (!kasa) {
-            kasa =
-              regs.find((r) => String(r.code || '').toUpperCase().includes('ANA')) ||
-              regs[0];
-          }
-          if (!kasa?.id) {
-            throw new Error('Nakit gider için aktif kasa bulunamadı. Lütfen önce kasa tanımlayın.');
-          }
+            const regs = Array.isArray(regList) ? regList : [];
+            let kasa = preferredRegisterId
+              ? regs.find((r) => String(r.id) === preferredRegisterId)
+              : undefined;
+            if (!kasa && preferredRegisterId) {
+              const one = await postgrest
+                .get<any[]>(
+                  kasaPath,
+                  {
+                    select: 'id,code,currency_code',
+                    id: `eq.${preferredRegisterId}`,
+                    is_active: 'eq.true',
+                    limit: 1,
+                  },
+                  { schema: 'public' }
+                )
+                .catch(() => [] as any[]);
+              kasa = Array.isArray(one) ? one[0] : undefined;
+            }
+            if (!kasa) {
+              kasa =
+                regs.find((r) => String(r.code || '').toUpperCase().includes('ANA')) ||
+                regs[0];
+            }
+            if (!kasa?.id) {
+              throw new ExpenseSaveError(
+                'Gider kaydedildi; nakit kasa hareketi oluşturulamadı (aktif kasa yok).',
+                true
+              );
+            }
 
-          const kasaIslem = await createKasaIslemi({
-            firma_id: String(ERP_SETTINGS.firmNr),
-            kasa_id: kasa.id,
-            islem_tarihi: expense.expense_date,
-            tutar: expense.amount,
-            islem_aciklamasi: expense.description || 'Gider',
-            islem_tipi: 'GIDER_PUSULASI',
-            doviz_kodu: kasa.currency_code || 'IQD',
-            dovizli_tutar: expense.amount,
-            ozel_kod: expense.category || '',
-          });
+            const kasaIslem = await createKasaIslemi({
+              firma_id: String(ERP_SETTINGS.firmNr),
+              kasa_id: kasa.id,
+              islem_tarihi: expense.expense_date,
+              tutar: expense.amount,
+              islem_aciklamasi: expense.description || 'Gider',
+              islem_tipi: 'GIDER_PUSULASI',
+              doviz_kodu: kasa.currency_code || 'IQD',
+              dovizli_tutar: expense.amount,
+              ozel_kod: expense.category || '',
+            });
 
-          const linked = await postgrest.patch<any[]>(
-            `${path}?id=eq.${encodeURIComponent(String(inserted.id))}&firm_nr=eq.${encodeURIComponent(firmNr)}`,
-            { cash_line_id: kasaIslem.id, cash_register_id: kasa.id },
-            { schema: 'public', prefer: 'return=representation' }
-          );
-          inserted = (Array.isArray(linked) ? linked[0] : linked) as Expense;
+            const linked = await postgrest.patch<any[]>(
+              `${path}?id=eq.${encodeURIComponent(String(inserted.id))}&firm_nr=eq.${encodeURIComponent(firmNr)}`,
+              { cash_line_id: kasaIslem.id, cash_register_id: kasa.id },
+              { schema: 'public', prefer: 'return=representation' }
+            );
+            inserted = (Array.isArray(linked) ? linked[0] : linked) as Expense;
+          } catch (cashErr) {
+            if (cashErr instanceof ExpenseSaveError) throw cashErr;
+            console.warn('[ExpenseAPI] Nakit kasa bağlantısı başarısız; gider kaydı korunuyor:', cashErr);
+            throw new ExpenseSaveError(
+              `Gider kaydedildi; kasa hareketi tamamlanamadı: ${(cashErr as Error)?.message || String(cashErr)}`,
+              true
+            );
+          }
         }
         return inserted ?? null;
       }
@@ -326,70 +366,89 @@ export const expenseAPI = {
       }
 
       if (isCashExpense) {
-        const preferredRegisterId = String(expense.cash_register_id || '').trim();
-        const kasaQuery = preferredRegisterId
-          ? `SELECT id, code, currency_code
-             FROM cash_registers
-             WHERE is_active = true AND id = $1::text::uuid
-             LIMIT 1`
-          : `SELECT id, code, currency_code
-             FROM cash_registers
-             WHERE is_active = true
-             ORDER BY
-               CASE WHEN UPPER(COALESCE(code, '')) LIKE '%ANA%' THEN 0 ELSE 1 END,
-               created_at ASC
-             LIMIT 1`;
-        const kasaParams = preferredRegisterId ? [preferredRegisterId] : [];
-        const { rows: kasaRows } = await postgres.query(kasaQuery, kasaParams);
-        const kasa = kasaRows[0];
-        if (!kasa?.id) {
-          throw new Error('Nakit gider için aktif kasa bulunamadı. Lütfen önce kasa tanımlayın.');
+        try {
+          const preferredRegisterId = String(expense.cash_register_id || '').trim();
+          const kasaQuery = preferredRegisterId
+            ? `SELECT id, code, currency_code
+               FROM cash_registers
+               WHERE is_active = true AND id = $1::text::uuid
+               LIMIT 1`
+            : `SELECT id, code, currency_code
+               FROM cash_registers
+               WHERE is_active = true
+               ORDER BY
+                 CASE WHEN UPPER(COALESCE(code, '')) LIKE '%ANA%' THEN 0 ELSE 1 END,
+                 created_at ASC
+               LIMIT 1`;
+          const kasaParams = preferredRegisterId ? [preferredRegisterId] : [];
+          const { rows: kasaRows } = await postgres.query(kasaQuery, kasaParams);
+          const kasa = kasaRows[0];
+          if (!kasa?.id) {
+            await postgres.query('COMMIT');
+            throw new ExpenseSaveError(
+              'Gider kaydedildi; nakit kasa hareketi oluşturulamadı (aktif kasa yok).',
+              true
+            );
+          }
+
+          const ficheNo = `EXP-${ERP_SETTINGS.firmNr}-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
+          const { rows: lineRows } = await postgres.query(
+            `INSERT INTO cash_lines (
+               firm_nr, period_nr, register_id, fiche_no, date, amount, sign, definition, transaction_type,
+               currency_code, exchange_rate, f_amount, transfer_status, special_code, tax_rate, withholding_tax_rate
+             ) VALUES (
+               $1::text, $2::text, $3::text::uuid, $4::text, $5::text::date, $6::text::numeric, -1,
+               $7::text, 'GIDER_PUSULASI', $8::text, 1, $9::text::numeric, 0, $10::text, 0, 0
+             ) RETURNING id`,
+            [
+              firmNr,
+              padExpensePeriodNr(),
+              kasa.id,
+              ficheNo,
+              expense.expense_date,
+              expense.amount,
+              expense.description || 'Gider',
+              kasa.currency_code || 'IQD',
+              expense.amount,
+              expense.category || ''
+            ]
+          );
+          const cashLineId = lineRows[0]?.id;
+          if (!cashLineId) {
+            await postgres.query('COMMIT');
+            throw new ExpenseSaveError('Gider kaydedildi; kasa gider satırı oluşturulamadı.', true);
+          }
+
+          await postgres.query(
+            `UPDATE cash_registers
+             SET balance = balance - $1::text::numeric
+             WHERE id = $2::text::uuid`,
+            [expense.amount, kasa.id]
+          );
+
+          const { rows: linkedRows } = await postgres.query(
+            `UPDATE ${tableName}
+             SET cash_line_id = $1::text::uuid, cash_register_id = $2::text::uuid
+             WHERE id = $3::text::uuid
+             RETURNING *`,
+            [cashLineId, kasa.id, insertedExpense.id]
+          );
+
+          await postgres.query('COMMIT');
+          return linkedRows[0] || insertedExpense;
+        } catch (cashErr) {
+          if (cashErr instanceof ExpenseSaveError) throw cashErr;
+          try {
+            await postgres.query('COMMIT');
+          } catch {
+            /* expense may already be committed */
+          }
+          console.warn('[ExpenseAPI] Nakit kasa bağlantısı başarısız; gider kaydı korunuyor:', cashErr);
+          throw new ExpenseSaveError(
+            `Gider kaydedildi; kasa hareketi tamamlanamadı: ${(cashErr as Error)?.message || String(cashErr)}`,
+            true
+          );
         }
-
-        const ficheNo = `EXP-${ERP_SETTINGS.firmNr}-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
-        const { rows: lineRows } = await postgres.query(
-          `INSERT INTO cash_lines (
-             firm_nr, period_nr, register_id, fiche_no, date, amount, sign, definition, transaction_type,
-             currency_code, exchange_rate, f_amount, transfer_status, special_code, tax_rate, withholding_tax_rate
-           ) VALUES (
-             $1::text, $2::text, $3::text::uuid, $4::text, $5::text::date, $6::text::numeric, -1,
-             $7::text, 'GIDER_PUSULASI', $8::text, 1, $9::text::numeric, 0, $10::text, 0, 0
-           ) RETURNING id`,
-          [
-            firmNr,
-            padExpensePeriodNr(),
-            kasa.id,
-            ficheNo,
-            expense.expense_date,
-            expense.amount,
-            expense.description || 'Gider',
-            kasa.currency_code || 'IQD',
-            expense.amount,
-            expense.category || ''
-          ]
-        );
-        const cashLineId = lineRows[0]?.id;
-        if (!cashLineId) {
-          throw new Error('Kasa gider satırı oluşturulamadı');
-        }
-
-        await postgres.query(
-          `UPDATE cash_registers
-           SET balance = balance - $1::text::numeric
-           WHERE id = $2::text::uuid`,
-          [expense.amount, kasa.id]
-        );
-
-        const { rows: linkedRows } = await postgres.query(
-          `UPDATE ${tableName}
-           SET cash_line_id = $1::text::uuid, cash_register_id = $2::text::uuid
-           WHERE id = $3::text::uuid
-           RETURNING *`,
-          [cashLineId, kasa.id, insertedExpense.id]
-        );
-
-        await postgres.query('COMMIT');
-        return linkedRows[0] || insertedExpense;
       }
 
       await postgres.query('COMMIT');
@@ -401,7 +460,7 @@ export const expenseAPI = {
       } catch {
         // ignore rollback errors
       }
-      throw error;
+      throw formatExpenseApiError(error);
     }
   },
 
