@@ -217,14 +217,14 @@ export function EnterpriseCentralDataManagement() {
 
   const mposTransferBlockReason = (): string | null => {
     if (!selectedFirmNr) return 'Firma seçin.';
-    if (!selectedTerminalDeviceIds.length) return 'En az bir cihaz seçin.';
+    if (!selectedTerminalDeviceIds.length) return 'En az bir kasa seçin.';
     const selected = filteredTerminalsForFirm.filter((t) =>
       selectedTerminalDeviceIds.includes(t.deviceId),
     );
     const missingStore = selected.filter((t) => !t.storeId?.trim());
     if (missingStore.length) {
       const names = missingStore.map((t) => t.terminalName).join(', ');
-      return `Mağaza bağlantısı olmayan cihazlar: ${names}. Sistem Yönetimi → Kasa Cihazları → Onaylı sekmesinden mağaza atayın.`;
+      return `Mağaza bağlantısı olmayan kasalar: ${names}. Sistem Yönetimi → Kasa Cihazları → Onaylı sekmesinden mağaza atayın.`;
     }
     return null;
   };
@@ -239,9 +239,9 @@ export function EnterpriseCentralDataManagement() {
     const selected = filteredTerminalsForFirm.filter((t) =>
       selectedTerminalDeviceIds.includes(t.deviceId),
     );
-    if (!f && selected.length === 0) return 'Firma ve cihaz seçilmedi';
+    if (!f && selected.length === 0) return 'Firma ve kasa seçilmedi';
     if (f && selected.length > 1) {
-      return `${f.name} (${padFirmNr(f.firm_nr)}) → ${selected.length} cihaz`;
+      return `${f.name} (${padFirmNr(f.firm_nr)}) → ${selected.length} kasa`;
     }
     const t = selected[0] ?? selectedTerminal();
     if (f && t) {
@@ -319,7 +319,7 @@ export function EnterpriseCentralDataManagement() {
     }
     if (requireMulti) {
       if (!selectedTerminalDeviceIds.length) {
-        toast.error('Lütfen en az bir cihaz seçin.');
+        toast.error('Lütfen en az bir kasa seçin.');
         return false;
       }
       const selected = filteredTerminalsForFirm.filter((t) =>
@@ -328,18 +328,18 @@ export function EnterpriseCentralDataManagement() {
       const missingStore = selected.filter((t) => !t.storeId?.trim());
       if (missingStore.length) {
         toast.error(
-          `Mağaza bağlantısı olmayan cihazlar: ${missingStore.map((t) => t.terminalName).join(', ')}`,
+          `Mağaza bağlantısı olmayan kasalar: ${missingStore.map((t) => t.terminalName).join(', ')}`,
         );
         return false;
       }
       return true;
     }
     if (!selectedTerminalDeviceId) {
-      toast.error('Lütfen cihaz seçin.');
+      toast.error('Lütfen kasa seçin.');
       return false;
     }
     if (!resolveMposEffectiveStoreId()) {
-      toast.error('Seçili cihazın mağaza bağlantısı yok. Merkezde cihaz kaydını kontrol edin.');
+      toast.error('Seçili kasanın mağaza bağlantısı yok. Merkezde kasa kaydını kontrol edin.');
       return false;
     }
     return true;
@@ -389,11 +389,12 @@ export function EnterpriseCentralDataManagement() {
           deviceType: 'pos' as const,
           storeId: d.storeId,
           storeName: d.storeName,
+          version: d.appVersion,
           lastSeen: d.lastSeen,
           isOnline: d.isOnline,
           pendingMessages: d.pendingMessages,
-          deliveredMessages: 0,
-          failedMessages: 0,
+          deliveredMessages: d.deliveredMessages ?? 0,
+          failedMessages: d.failedMessages ?? 0,
         })),
       );
       const queueFilter =
@@ -492,7 +493,7 @@ export function EnterpriseCentralDataManagement() {
       selectedTerminalDeviceIds.includes(t.deviceId),
     );
     if (!targets.length) {
-      toast.error('Seçili cihaz bulunamadı.');
+      toast.error('Seçili kasa bulunamadı.');
       return;
     }
     const guard = await checkMposSendGuard({
@@ -515,7 +516,7 @@ export function EnterpriseCentralDataManagement() {
     }));
     setSendDeviceStatuses(initialStatuses);
     setIsSyncBusy(true);
-    setSendProgress({ current: 0, total: targets.length, label: 'Cihazlara gönderiliyor…' });
+    setSendProgress({ current: 0, total: targets.length, label: 'Kasalara gönderiliyor…' });
 
     const patchDeviceStatus = (
       deviceId: string,
@@ -598,12 +599,12 @@ export function EnterpriseCentralDataManagement() {
       return;
     }
     if (!filteredTerminalsForFirm.length) {
-      toast.error('Bu firmada onaylı cihaz yok.');
+      toast.error('Bu firmada onaylı kasa yok.');
       return;
     }
     if (
       !window.confirm(
-        `${filteredTerminalsForFirm.length} cihaza «${MPOS_SEND_FILE_TYPES.find((f) => f.id === mposFileType)?.label}» gönderilsin mi?`,
+        `${filteredTerminalsForFirm.length} kasaya «${MPOS_SEND_FILE_TYPES.find((f) => f.id === mposFileType)?.label}» gönderilsin mi?`,
       )
     ) {
       return;
@@ -636,7 +637,7 @@ export function EnterpriseCentralDataManagement() {
         success += r.success;
         failed += r.failed;
       }
-      if (success > 0 && failed === 0) toast.success(`${success} cihaza gönderildi.`);
+      if (success > 0 && failed === 0) toast.success(`${success} kasaya gönderildi.`);
       else if (success > 0) toast.warning(`${success} başarılı, ${failed} başarısız.`);
       else toast.error('Gönderim başarısız.');
       await refreshEnterpriseData();
@@ -1319,7 +1320,7 @@ export function EnterpriseCentralDataManagement() {
           <Card className={`p-4 ${theme === 'dark' ? 'bg-gray-800 border-gray-700' : 'bg-white'}`}>
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-xs text-gray-600 dark:text-gray-400">Toplam Cihaz</p>
+                <p className="text-xs text-gray-600 dark:text-gray-400">Toplam Kasa</p>
                 <p className="text-2xl mt-1">{stats.totalDevices}</p>
               </div>
               <Monitor className="w-8 h-8 text-blue-600" />
@@ -2209,8 +2210,11 @@ export function EnterpriseCentralDataManagement() {
             </div>
           </TabsContent>
 
-          {/* Devices Tab */}
+          {/* Kasalar — her onaylı POS terminali bir kasa */}
           <TabsContent value="devices" className="space-y-4">
+            <p className="text-xs text-gray-500 dark:text-gray-400">
+              Her kayıtlı cihaz bir kasadır. Onaylı terminaller burada listelenir; kuyruk sayıları kasa bazında gösterilir.
+            </p>
             <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
               {devices.map(device => {
                 const DeviceIcon = getDeviceTypeIcon(device.deviceType);
@@ -2226,23 +2230,20 @@ export function EnterpriseCentralDataManagement() {
 
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-1">
-                          <span className="truncate">{device.deviceName}</span>
-                          <div className={`w-2 h-2 rounded-full ${device.isOnline ? 'bg-green-500 animate-pulse' : 'bg-gray-400'}`} />
+                          <span className="truncate font-medium">{device.deviceName}</span>
+                          <div className={`w-2 h-2 rounded-full shrink-0 ${device.isOnline ? 'bg-green-500 animate-pulse' : 'bg-gray-400'}`} />
                         </div>
 
                         <div className="text-xs text-gray-600 dark:text-gray-400 space-y-1">
-                          <div className="font-mono truncate">{device.deviceId}</div>
-                          {device.deviceType && (
-                            <div className="capitalize">{device.deviceType}</div>
-                          )}
+                          <div className="text-gray-500">M-POS Kasa</div>
                           {device.storeName && (
                             <div className="flex items-center gap-1">
-                              <MapPin className="w-3 h-3" />
+                              <MapPin className="w-3 h-3 shrink-0" />
                               {device.storeName}
                             </div>
                           )}
-                          {device.region && (
-                            <div className="text-gray-500">{device.region}</div>
+                          {!device.storeName && (
+                            <div className="text-amber-600 dark:text-amber-400">Mağaza atanmamış</div>
                           )}
                           {device.version && (
                             <div className="text-gray-500">v{device.version}</div>
@@ -2294,7 +2295,10 @@ export function EnterpriseCentralDataManagement() {
               {devices.length === 0 && (
                 <Card className={`p-8 text-center col-span-full ${theme === 'dark' ? 'bg-gray-800 border-gray-700' : 'bg-white'}`}>
                   <Monitor className="w-12 h-12 mx-auto mb-2 text-gray-400" />
-                  <p className="text-gray-500">Henüz kayıtlı kasa/şube yok</p>
+                  <p className="text-gray-500">Henüz onaylı kasa yok</p>
+                  <p className="text-xs text-gray-400 mt-2">
+                    Masaüstü uygulama kayıt olduktan sonra Sistem Yönetimi → Kasa Cihazları → Onaylı sekmesinden onaylayın.
+                  </p>
                 </Card>
               )}
             </div>

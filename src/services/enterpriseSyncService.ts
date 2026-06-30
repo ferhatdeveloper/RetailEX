@@ -22,9 +22,13 @@ export type EnterpriseSyncDevice = {
   deviceName: string;
   storeId?: string;
   storeName?: string;
+  computerName?: string;
+  appVersion?: string;
   isOnline: boolean;
   lastSeen: number;
   pendingMessages: number;
+  deliveredMessages?: number;
+  failedMessages?: number;
 };
 
 export type EnterpriseSyncMessage = {
@@ -109,60 +113,65 @@ function mapSyncAction(action: string): string {
 export async function loadEnterpriseDevices(): Promise<EnterpriseSyncDevice[]> {
   const pg = resolveSyncPgEndpoint();
   const firm = firmNrPadded();
+  const dayMs = 86400000;
 
+  /** Her onaylı POS terminali = bir kasa */
   try {
     const rows = await queryPgRows(
       pg,
-      `SELECT s.id::text AS store_id, s.code, s.name,
-              COALESCE(p.cnt, 0)::text AS pending,
-              ls.last_sync::text AS last_sync
-       FROM stores s
+      `SELECT r.device_id, r.terminal_name, r.store_id::text AS store_id,
+              s.name AS store_name, s.code AS store_code,
+              r.computer_name, r.app_version, r.last_seen_at::text AS last_seen_at,
+              COALESCE(q.pending, 0)::text AS pending,
+              COALESCE(q.delivered, 0)::text AS delivered,
+              COALESCE(q.failed, 0)::text AS failed,
+              q.last_sync::text AS last_sync
+       FROM pos_terminal_registrations r
+       LEFT JOIN stores s ON s.id = r.store_id
        LEFT JOIN (
-         SELECT target_store_id::text AS sid, COUNT(*) AS cnt
+         SELECT COALESCE(terminal_name, '') AS tname,
+                target_store_id::text AS sid,
+                COUNT(*) FILTER (WHERE status = 'pending' AND COALESCE(retry_count, 0) < 10) AS pending,
+                COUNT(*) FILTER (WHERE status = 'completed') AS delivered,
+                COUNT(*) FILTER (WHERE status = 'pending' AND COALESCE(retry_count, 0) >= 10) AS failed,
+                MAX(COALESCE(synced_at, created_at)) FILTER (WHERE status = 'completed') AS last_sync
          FROM sync_queue
-         WHERE status = 'pending' AND target_store_id IS NOT NULL
-         GROUP BY target_store_id
-       ) p ON p.sid = s.id::text
-       LEFT JOIN (
-         SELECT COALESCE(target_store_id, source_store_id)::text AS sid,
-                MAX(COALESCE(synced_at, created_at)) AS last_sync
-         FROM sync_queue
-         WHERE status = 'completed'
-         GROUP BY COALESCE(target_store_id, source_store_id)
-       ) ls ON ls.sid = s.id::text
-       WHERE s.firm_nr = $1 AND COALESCE(s.is_active, true) = true
-       ORDER BY s.name`,
+         WHERE firm_nr = $1 OR lpad(ltrim(firm_nr, '0'), 3, '0') = $1
+         GROUP BY COALESCE(terminal_name, ''), target_store_id
+       ) q ON q.tname = COALESCE(r.terminal_name, '')
+          AND q.sid = r.store_id::text
+       WHERE r.status = 'approved'
+         AND (r.firm_nr = $1 OR lpad(ltrim(r.firm_nr, '0'), 3, '0') = $1)
+       ORDER BY r.terminal_name, r.device_id`,
       [firm],
     );
 
     if (rows.length > 0) {
-      const dayMs = 86400000;
       return rows.map((r: Record<string, unknown>) => {
-        const lastSeen = r.last_sync ? new Date(String(r.last_sync)).getTime() : Date.now();
+        const regSeen = r.last_seen_at ? new Date(String(r.last_seen_at)).getTime() : 0;
+        const syncSeen = r.last_sync ? new Date(String(r.last_sync)).getTime() : 0;
+        const lastSeen = Math.max(regSeen, syncSeen) || Date.now();
+        const isRecent = Date.now() - lastSeen < dayMs;
         return {
-          deviceId: String(r.store_id),
-          deviceName: `${r.name} (${r.code})`,
-          storeId: String(r.store_id),
-          storeName: String(r.name ?? ''),
-          isOnline: r.last_sync ? Date.now() - lastSeen < dayMs : false,
+          deviceId: String(r.device_id),
+          deviceName: String(r.terminal_name || r.device_id),
+          storeId: r.store_id ? String(r.store_id) : undefined,
+          storeName: r.store_name ? String(r.store_name) : undefined,
+          computerName: r.computer_name ? String(r.computer_name) : undefined,
+          appVersion: r.app_version ? String(r.app_version) : undefined,
+          isOnline: isRecent,
           lastSeen,
           pendingMessages: Number(r.pending ?? 0),
+          deliveredMessages: Number(r.delivered ?? 0),
+          failedMessages: Number(r.failed ?? 0),
         };
       });
     }
   } catch {
-    /* stores yok */
+    /* pos_terminal_registrations yok */
   }
 
-  return [
-    {
-      deviceId: 'all',
-      deviceName: 'Tüm şubeler',
-      isOnline: true,
-      lastSeen: Date.now(),
-      pendingMessages: 0,
-    },
-  ];
+  return [];
 }
 
 export async function getEnterpriseSyncStats(): Promise<EnterpriseSyncStats> {
