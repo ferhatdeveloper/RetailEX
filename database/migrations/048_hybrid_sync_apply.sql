@@ -45,6 +45,8 @@ RETURNS TEXT AS $$
   LIMIT 1;
 $$ LANGUAGE sql STABLE;
 
+DROP FUNCTION IF EXISTS public.apply_sync_queue_item(TEXT, TEXT, UUID, JSONB);
+
 CREATE OR REPLACE FUNCTION public.apply_sync_queue_item(
   p_table_name TEXT,
   p_action TEXT,

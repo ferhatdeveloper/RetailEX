@@ -27,6 +27,12 @@ CREATE INDEX IF NOT EXISTS idx_pos_terminal_reg_store
   ON public.pos_terminal_registrations (store_id)
   WHERE store_id IS NOT NULL;
 
+DROP FUNCTION IF EXISTS public.get_pos_terminal_status(TEXT);
+DROP FUNCTION IF EXISTS public.register_pos_terminal(TEXT, TEXT, UUID, TEXT, TEXT, TEXT, TEXT, TEXT);
+DROP FUNCTION IF EXISTS public.register_pos_terminal(TEXT, TEXT, UUID, TEXT, TEXT, TEXT, TEXT, TEXT, JSONB);
+DROP FUNCTION IF EXISTS public.approve_pos_terminal(UUID, UUID);
+DROP FUNCTION IF EXISTS public.approve_pos_terminal(UUID, UUID, UUID, TEXT, TEXT);
+
 CREATE OR REPLACE FUNCTION public.register_pos_terminal(
   p_device_id     TEXT,
   p_terminal_name TEXT,
