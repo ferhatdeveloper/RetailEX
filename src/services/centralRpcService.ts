@@ -12,13 +12,13 @@ export function isCentralRestAvailable(): boolean {
   return String(DB_SETTINGS.remoteRestUrl || '').trim().length > 0;
 }
 
-function centralPgConfigured(): boolean {
+export function isCentralPgConfigured(): boolean {
   if (isCentralRestAvailable()) return true;
   const cfg = getCentralRemotePgConfig();
   return Boolean(cfg.host?.trim() && cfg.database?.trim() && cfg.user?.trim());
 }
 
-async function queryCentralPgRows<T = Record<string, unknown>>(
+export async function queryCentralPgRows<T = Record<string, unknown>>(
   sql: string,
   params: unknown[],
 ): Promise<T[]> {
@@ -87,7 +87,7 @@ export async function centralRpcCall<T = Record<string, unknown>>(
     return row as T;
   }
 
-  if (!centralPgConfigured()) {
+  if (!isCentralPgConfigured()) {
     throw new Error('Merkez PostgREST URL veya remote_db yapılandırılmamış.');
   }
 

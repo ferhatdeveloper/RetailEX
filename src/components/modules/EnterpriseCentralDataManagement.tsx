@@ -376,12 +376,16 @@ export function EnterpriseCentralDataManagement() {
 
   const refreshEnterpriseData = async () => {
     try {
-      const pgStats = await getEnterpriseSyncStats();
+      const [pgStats, pgDevices, terminals] = await Promise.all([
+        getEnterpriseSyncStats(),
+        loadEnterpriseDevices(),
+        listPosTerminalRegistrations({ status: 'approved', allFirms: true, limit: 500 }),
+      ]);
+      setApprovedTerminals(terminals);
       setStats({
         ...pgStats,
         offlineDevices: Math.max(0, pgStats.totalDevices - pgStats.onlineDevices),
       });
-      const pgDevices = await loadEnterpriseDevices();
       setDevices(
         pgDevices.map((d) => ({
           deviceId: d.deviceId,
@@ -389,6 +393,7 @@ export function EnterpriseCentralDataManagement() {
           deviceType: 'pos' as const,
           storeId: d.storeId,
           storeName: d.storeName,
+          region: d.firmName,
           version: d.appVersion,
           lastSeen: d.lastSeen,
           isOnline: d.isOnline,
@@ -1433,7 +1438,7 @@ export function EnterpriseCentralDataManagement() {
                 [
                   { value: 'reports', icon: FileText, label: 'Kasa Raporları' },
                   { value: 'queue', icon: Clock, label: `Kuyruk (${queue.length})` },
-                  { value: 'devices', icon: Monitor, label: `Kasalar (${devices.length})` },
+                  { value: 'devices', icon: Monitor, label: `Kasalar (${approvedTerminals.length || devices.length})` },
                   { value: 'service', icon: Settings, label: 'Servis Ayarları' },
                   { value: 'groups', icon: Layers, label: `Gruplar (${deviceGroups.length})` },
                   { value: 'history', icon: BarChart3, label: 'Geçmiş' },
@@ -2236,6 +2241,9 @@ export function EnterpriseCentralDataManagement() {
 
                         <div className="text-xs text-gray-600 dark:text-gray-400 space-y-1">
                           <div className="text-gray-500">M-POS Kasa</div>
+                          {device.region && (
+                            <div className="text-gray-500">{device.region}</div>
+                          )}
                           {device.storeName && (
                             <div className="flex items-center gap-1">
                               <MapPin className="w-3 h-3 shrink-0" />

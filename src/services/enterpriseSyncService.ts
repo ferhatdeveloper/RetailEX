@@ -16,10 +16,14 @@ import {
   runHybridSync,
   type PgEndpointConfig,
 } from './hybridSyncEngine';
+import { listPosTerminalRegistrations } from './deviceRegistrationService';
+import { isCentralPgConfigured, queryCentralPgRows } from './centralRpcService';
 
 export type EnterpriseSyncDevice = {
   deviceId: string;
   deviceName: string;
+  firmNr?: string;
+  firmName?: string;
   storeId?: string;
   storeName?: string;
   computerName?: string;
@@ -110,68 +114,91 @@ function mapSyncAction(action: string): string {
   return 'sync';
 }
 
-export async function loadEnterpriseDevices(): Promise<EnterpriseSyncDevice[]> {
-  const pg = resolveSyncPgEndpoint();
-  const firm = firmNrPadded();
-  const dayMs = 86400000;
+type KasaQueueStats = {
+  pending: number;
+  delivered: number;
+  failed: number;
+  lastSyncMs: number;
+};
 
-  /** Her onaylı POS terminali = bir kasa */
+async function queryEnterprisePgRows(
+  sql: string,
+  params: unknown[],
+): Promise<Record<string, unknown>[]> {
+  if (isCentralPgConfigured()) {
+    try {
+      return await queryCentralPgRows<Record<string, unknown>>(sql, params);
+    } catch {
+      /* merkez sorgusu başarısız — yerel sync PG dene */
+    }
+  }
+  return queryPgRows(resolveSyncPgEndpoint(), sql, params);
+}
+
+async function fetchKasaQueueStatsMap(): Promise<Map<string, KasaQueueStats>> {
+  const map = new Map<string, KasaQueueStats>();
   try {
-    const rows = await queryPgRows(
-      pg,
-      `SELECT r.device_id, r.terminal_name, r.store_id::text AS store_id,
-              s.name AS store_name, s.code AS store_code,
-              r.computer_name, r.app_version, r.last_seen_at::text AS last_seen_at,
-              COALESCE(q.pending, 0)::text AS pending,
-              COALESCE(q.delivered, 0)::text AS delivered,
-              COALESCE(q.failed, 0)::text AS failed,
-              q.last_sync::text AS last_sync
-       FROM pos_terminal_registrations r
-       LEFT JOIN stores s ON s.id = r.store_id
-       LEFT JOIN (
-         SELECT COALESCE(terminal_name, '') AS tname,
-                target_store_id::text AS sid,
-                COUNT(*) FILTER (WHERE status = 'pending' AND COALESCE(retry_count, 0) < 10) AS pending,
-                COUNT(*) FILTER (WHERE status = 'completed') AS delivered,
-                COUNT(*) FILTER (WHERE status = 'pending' AND COALESCE(retry_count, 0) >= 10) AS failed,
-                MAX(COALESCE(synced_at, created_at)) FILTER (WHERE status = 'completed') AS last_sync
-         FROM sync_queue
-         WHERE firm_nr = $1 OR lpad(ltrim(firm_nr, '0'), 3, '0') = $1
-         GROUP BY COALESCE(terminal_name, ''), target_store_id
-       ) q ON q.tname = COALESCE(r.terminal_name, '')
-          AND q.sid = r.store_id::text
-       WHERE r.status = 'approved'
-         AND (r.firm_nr = $1 OR lpad(ltrim(r.firm_nr, '0'), 3, '0') = $1)
-       ORDER BY r.terminal_name, r.device_id`,
-      [firm],
+    const rows = await queryEnterprisePgRows(
+      `SELECT COALESCE(terminal_name, '') AS tname,
+              target_store_id::text AS sid,
+              COUNT(*) FILTER (WHERE status = 'pending' AND COALESCE(retry_count, 0) < 10)::text AS pending,
+              COUNT(*) FILTER (WHERE status = 'completed')::text AS delivered,
+              COUNT(*) FILTER (WHERE status = 'pending' AND COALESCE(retry_count, 0) >= 10)::text AS failed,
+              MAX(COALESCE(synced_at, created_at)) FILTER (WHERE status = 'completed')::text AS last_sync
+       FROM sync_queue
+       GROUP BY COALESCE(terminal_name, ''), target_store_id`,
+      [],
     );
-
-    if (rows.length > 0) {
-      return rows.map((r: Record<string, unknown>) => {
-        const regSeen = r.last_seen_at ? new Date(String(r.last_seen_at)).getTime() : 0;
-        const syncSeen = r.last_sync ? new Date(String(r.last_sync)).getTime() : 0;
-        const lastSeen = Math.max(regSeen, syncSeen) || Date.now();
-        const isRecent = Date.now() - lastSeen < dayMs;
-        return {
-          deviceId: String(r.device_id),
-          deviceName: String(r.terminal_name || r.device_id),
-          storeId: r.store_id ? String(r.store_id) : undefined,
-          storeName: r.store_name ? String(r.store_name) : undefined,
-          computerName: r.computer_name ? String(r.computer_name) : undefined,
-          appVersion: r.app_version ? String(r.app_version) : undefined,
-          isOnline: isRecent,
-          lastSeen,
-          pendingMessages: Number(r.pending ?? 0),
-          deliveredMessages: Number(r.delivered ?? 0),
-          failedMessages: Number(r.failed ?? 0),
-        };
+    for (const r of rows) {
+      const key = `${String(r.tname ?? '')}|${String(r.sid ?? '')}`;
+      map.set(key, {
+        pending: Number(r.pending ?? 0),
+        delivered: Number(r.delivered ?? 0),
+        failed: Number(r.failed ?? 0),
+        lastSyncMs: r.last_sync ? new Date(String(r.last_sync)).getTime() : 0,
       });
     }
   } catch {
-    /* pos_terminal_registrations yok */
+    /* sync_queue yok */
   }
+  return map;
+}
 
-  return [];
+export async function loadEnterpriseDevices(): Promise<EnterpriseSyncDevice[]> {
+  const dayMs = 86400000;
+
+  /** Hedef panel ile aynı kaynak: onaylı pos_terminal_registrations (merkez PG / PostgREST) */
+  const terminals = await listPosTerminalRegistrations({
+    status: 'approved',
+    allFirms: true,
+    limit: 500,
+  });
+  if (!terminals.length) return [];
+
+  const statsMap = await fetchKasaQueueStatsMap();
+
+  return terminals.map((t) => {
+    const key = `${t.terminalName || ''}|${t.storeId || ''}`;
+    const q = statsMap.get(key);
+    const regSeen = t.lastSeenAt ?? 0;
+    const syncSeen = q?.lastSyncMs ?? 0;
+    const lastSeen = Math.max(regSeen, syncSeen) || Date.now();
+    return {
+      deviceId: t.deviceId,
+      deviceName: t.terminalName,
+      firmNr: t.firmNr,
+      firmName: t.firmName,
+      storeId: t.storeId,
+      storeName: t.storeName,
+      computerName: t.computerName,
+      appVersion: t.appVersion,
+      isOnline: Date.now() - lastSeen < dayMs,
+      lastSeen,
+      pendingMessages: q?.pending ?? 0,
+      deliveredMessages: q?.delivered ?? 0,
+      failedMessages: q?.failed ?? 0,
+    };
+  });
 }
 
 export async function getEnterpriseSyncStats(): Promise<EnterpriseSyncStats> {
