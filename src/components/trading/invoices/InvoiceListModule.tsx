@@ -795,22 +795,10 @@ export function InvoiceListModule({
     ],
   );
 
-  // Fatura formu açıksa UniversalInvoiceForm'u göster
-  if (selectedInvoiceType) {
-    return (
-      <UniversalInvoiceForm
-        key={editInvoiceData?.id ?? `draft-${newFormCounter}`}
-        invoiceType={selectedInvoiceType}
-        customers={customers}
-        products={products}
-        onClose={handleCloseInvoiceForm}
-        editData={editInvoiceData}
-        createSaveOptions={purchaseCreateSaveOptions ?? undefined}
-      />
-    );
-  }
-
-  const totalAmount = invoices.reduce((sum, inv) => sum + (inv.total ?? inv.total_amount ?? 0), 0);
+  const totalAmount = useMemo(
+    () => invoices.reduce((sum, inv) => sum + (inv.total ?? inv.total_amount ?? 0), 0),
+    [invoices],
+  );
 
   const columnVisibilityControl = !isMobile ? (
     <ColumnVisibilityMenu
@@ -830,6 +818,20 @@ export function InvoiceListModule({
       }}
     />
   ) : null;
+
+  if (selectedInvoiceType) {
+    return (
+      <UniversalInvoiceForm
+        key={editInvoiceData?.id ?? `draft-${newFormCounter}`}
+        invoiceType={selectedInvoiceType}
+        customers={customers}
+        products={products}
+        onClose={handleCloseInvoiceForm}
+        editData={editInvoiceData}
+        createSaveOptions={purchaseCreateSaveOptions ?? undefined}
+      />
+    );
+  }
 
   if (isLoading) {
     return (
