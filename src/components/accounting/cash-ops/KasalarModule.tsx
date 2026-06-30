@@ -33,7 +33,7 @@ import {
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { useFirmaDonem } from '../../../contexts/FirmaDonemContext';
 import { toast } from 'sonner';
-import { formatCurrency } from '../../../utils/formatNumber';
+import { formatCurrency, formatMoneyWithCode, getGlobalCurrency } from '../../../utils/currency';
 import {
   fetchKasalar,
   fetchKasaIslemleri,
@@ -63,6 +63,14 @@ interface Props {
 export function KasalarModule({ initialKasaId, onBack }: Props) {
   const { t, tm } = useLanguage();
   const { selectedFirma, selectedDonem } = useFirmaDonem();
+
+  const ledgerCurrency = (
+    selectedFirma?.ana_para_birimi ||
+    getGlobalCurrency() ||
+    'IQD'
+  )
+    .trim()
+    .toUpperCase();
 
   // State
   const [kasalar, setKasalar] = useState<Kasa[]>([]);
@@ -404,7 +412,7 @@ export function KasalarModule({ initialKasaId, onBack }: Props) {
                   <div>
                     <span className="text-[10px] text-gray-400 uppercase tracking-wider font-bold">{tm('crmBalance')}</span>
                     <p className="text-lg font-black text-gray-900 leading-none mt-1">
-                      {formatCurrency(kasa.bakiye || 0)} <span className="text-xs font-normal text-gray-500">IQD</span>
+                      {formatMoneyWithCode(kasa.bakiye || 0, kasa.id_doviz_kodu || ledgerCurrency)}
                     </p>
                   </div>
                 </div>
@@ -438,7 +446,7 @@ export function KasalarModule({ initialKasaId, onBack }: Props) {
             <h1 className="text-xl font-bold text-gray-900 leading-tight">
               {selectedKasa.kasa_adi} - {tm('transactions')}
             </h1>
-            <p className="text-sm text-gray-500">{selectedKasa.kasa_kodu} • {formatCurrency(selectedKasa.bakiye || 0)} IQD</p>
+            <p className="text-sm text-gray-500">{selectedKasa.kasa_kodu} • {formatMoneyWithCode(selectedKasa.bakiye || 0, selectedKasa.id_doviz_kodu || ledgerCurrency)}</p>
           </div>
         </div>
 

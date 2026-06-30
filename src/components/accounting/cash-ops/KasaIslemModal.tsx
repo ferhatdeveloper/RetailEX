@@ -12,7 +12,8 @@ import { toast } from 'sonner';
 import { createKasaIslemi, updateKasaIslemi, fetchKasalar, type Kasa, type KasaIslemi } from '../../../services/api/kasa';
 import { fetchBankalar, type Banka } from '../../../services/api/banka';
 import { fetchCurrentAccounts } from '../../../services/api/currentAccounts';
-import { formatCurrency, formatNumber, parseNumber } from '../../../utils/formatNumber';
+import { formatNumber, parseNumber } from '../../../utils/formatNumber';
+import { formatCurrency, formatMoneyWithCode, getGlobalCurrency } from '../../../utils/currency';
 
 interface KasaIslemModalProps {
   kasa: Kasa;
@@ -44,6 +45,14 @@ export function KasaIslemModal({
   const { selectedFirma, selectedDonem } = useFirmaDonem();
   const { t, tm } = useLanguage();
 
+  const ledgerCurrency = (
+    selectedFirma?.ana_para_birimi ||
+    getGlobalCurrency() ||
+    'IQD'
+  )
+    .trim()
+    .toUpperCase();
+
   const isEdit = !!editingIslem?.id;
 
   // State
@@ -59,7 +68,7 @@ export function KasaIslemModal({
         kasa_id: editingIslem.kasa_id || kasa.id,
         islem_tipi: editingIslem.islem_tipi || islemTipi,
         islem_tarihi: (editingIslem.islem_tarihi || new Date().toISOString()).slice(0, 10),
-        doviz_kodu: editingIslem.doviz_kodu || kasa.id_doviz_kodu || 'IQD',
+        doviz_kodu: editingIslem.doviz_kodu || kasa.id_doviz_kodu || ledgerCurrency,
         tutar: Number(editingIslem.tutar || 0),
       };
     }
@@ -71,7 +80,7 @@ export function KasaIslemModal({
       islem_saati: new Date().toTimeString().slice(0, 5),
       duzenlenme_tarihi: new Date().toISOString().split('T')[0],
       islem_tipi: islemTipi,
-      doviz_kodu: kasa.id_doviz_kodu || 'USD',
+      doviz_kodu: kasa.id_doviz_kodu || ledgerCurrency,
       tutar: 0,
       dovizli_tutar: 0,
       tax_rate: 0,
@@ -332,7 +341,7 @@ export function KasaIslemModal({
                         <div className={`text-sm font-black ${(cari.bakiye || 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                           {formatCurrency(cari.bakiye || 0)}
                         </div>
-                        <div className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">Bakiye</div>
+                        <div className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">{tm('crmBalance')}</div>
                       </div>
                     </button>
                   ))}
@@ -346,7 +355,7 @@ export function KasaIslemModal({
                     <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">{t['currentBalance']}</span>
                   </div>
                   <div className={`text-lg font-black ${selectedCariBakiye >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                    {formatCurrency(selectedCariBakiye)} <span className="text-xs font-normal opacity-70">IQD</span>
+                    {formatCurrency(selectedCariBakiye)}
                   </div>
                 </div>
               )}
@@ -367,7 +376,7 @@ export function KasaIslemModal({
                 </option>
                 {digerKasalar.map(k => (
                   <option key={k.id} value={k.id}>
-                    {k.kasa_kodu} - {k.kasa_adi} ({formatCurrency(k.bakiye)} {k.id_doviz_kodu})
+                    {k.kasa_kodu} - {k.kasa_adi} ({formatMoneyWithCode(k.bakiye || 0, k.id_doviz_kodu || ledgerCurrency)})
                   </option>
                 ))}
               </select>
@@ -388,7 +397,7 @@ export function KasaIslemModal({
                 </option>
                 {bankalar.map(b => (
                   <option key={b.id} value={b.id}>
-                    {b.banka_kodu} - {b.banka_adi} / {b.sube_adi} ({b.hesap_no}) - {formatCurrency(b.bakiye)} {b.id_doviz_kodu}
+                    {b.banka_kodu} - {b.banka_adi} / {b.sube_adi} ({b.hesap_no}) - {formatMoneyWithCode(b.bakiye || 0, b.id_doviz_kodu || ledgerCurrency)}
                   </option>
                 ))}
               </select>
