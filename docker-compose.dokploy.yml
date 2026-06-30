@@ -4,6 +4,13 @@ version: "3.9"
 #
 # WhatsApp QR köprüsü: retailex_whatsapp_bridge + retailex_frontend (nginx /__wa_bridge).
 # WebSocket senkron: sync_{kiracı} + Caddy /{kiracı}/ws ve /{kiracı}/sync (075 migration gerekli).
+#
+# Dokploy Redeploy (tam stack): 16 sync + postgrest + frontend — 5–15 dk sürebilir;
+#   Vite "rendering chunks" aşamasında 2–4 GB RAM gerekir. Sarıda kalırsa:
+#   - Dokploy log sonunda OOM/killed var mı bakın
+#   - Yalnız UI: POSTGRES_PASSWORD='...' bash database/scripts/dokploy-redeploy-frontend.sh
+#   - Ortam: COMPOSE_PARALLEL_LIMIT=2 (paralel build sınırı)
+#
 # main'e push sonrası Dokploy'da Redeploy veya:
 #   POSTGRES_PASSWORD='...' bash database/scripts/dokploy-redeploy-sync.sh
 #
@@ -178,6 +185,12 @@ services:
     depends_on:
       - retailex_bridge
       - retailex_whatsapp_bridge
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:80/ >/dev/null 2>&1 || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
     networks:
       - berqenas_net
 

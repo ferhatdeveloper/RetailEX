@@ -64,6 +64,7 @@ export default defineConfig({
     cssMinify: true,
     chunkSizeWarningLimit: 1000,
     rollupOptions: {
+      ...(process.env.DOCKER_BUILD === '1' ? { maxParallelFileOps: 2 } : {}),
       output: {
         manualChunks: {
           'react-vendor': ['react', 'react-dom', 'react-router-dom'],
@@ -94,7 +95,7 @@ export default defineConfig({
       }
     },
     reportCompressedSize: false,
-    assetsInlineLimit: 4096
+    assetsInlineLimit: 4096,
   },
   server: {
     host: 'localhost',

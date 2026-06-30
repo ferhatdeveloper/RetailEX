@@ -127,6 +127,7 @@
             "start": "vite",
             "prebuild": "node scripts/sync-app-version.mjs && node scripts/sync-pg-expose.mjs && node scripts/build-postgres-remote-enable.mjs",
             "build": "vite build",
+            "build:docker": "node scripts/sync-app-version.mjs && vite build",
             "build:analyze": "vite build --mode analyze",
             "build:services:win": "node scripts/build-service-exes.mjs",
             "preview": "vite preview",
