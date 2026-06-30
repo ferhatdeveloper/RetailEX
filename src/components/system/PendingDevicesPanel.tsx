@@ -360,7 +360,6 @@ export function PendingDevicesPanel({ darkMode = false }: Props) {
                     key={d.id}
                     d={d}
                     draft={draft}
-                    stores={[]}
                     firmStores={storesForDevice(d)}
                     darkMode={darkMode}
                     busy={busyId === d.id}
@@ -417,7 +416,6 @@ export function PendingDevicesPanel({ darkMode = false }: Props) {
                     key={d.id}
                     d={d}
                     draft={draft}
-                    stores={[]}
                     firmStores={storesForDevice(d)}
                     darkMode={darkMode}
                     busy={busyId === d.id}
