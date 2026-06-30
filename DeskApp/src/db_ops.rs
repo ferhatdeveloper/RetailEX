@@ -112,6 +112,45 @@ pub fn resolve_migrations_dir(app: &tauri::AppHandle) -> Result<std::path::PathB
     ))
 }
 
+const EMBEDDED_060_ENSURE_FIRM_PERIOD_ENGINE: &str =
+    include_str!("../../database/migrations/060_ensure_create_firm_period_engine.sql");
+
+/// Tüm aday migration klasörlerinde 060 dosyasını arar.
+fn resolve_060_migration_sql(app: &tauri::AppHandle) -> Result<String, String> {
+    let file_name = "060_ensure_create_firm_period_engine.sql";
+    let mut search_paths = Vec::new();
+    search_paths.push(std::path::PathBuf::from("database/migrations"));
+    search_paths.push(std::path::PathBuf::from("../database/migrations"));
+    if let Ok(res) = app.path().resolve("database/migrations", BaseDirectory::Resource) {
+        search_paths.push(res);
+    }
+    if let Ok(res) = app.path().resolve("_up_/database/migrations", BaseDirectory::Resource) {
+        search_paths.push(res);
+    }
+    if let Ok(resource_dir) = app.path().resource_dir() {
+        search_paths.push(resource_dir.join("database").join("migrations"));
+        search_paths.push(resource_dir.join("migrations"));
+        search_paths.push(resource_dir.join("_up_").join("database").join("migrations"));
+    }
+
+    let mut attempted_paths = Vec::new();
+    for dir in search_paths {
+        let path = dir.join(file_name);
+        attempted_paths.push(path.to_string_lossy().to_string());
+        if path.exists() {
+            let raw_sql = std::fs::read_to_string(&path)
+                .map_err(|e| format!("060 migration okunamadı ({}): {}", path.display(), e))?;
+            return Ok(raw_sql);
+        }
+    }
+
+    println!(
+        "060 migration dosyası bulunamadı; gömülü SQL kullanılıyor. Denenen yollar:\n{}",
+        attempted_paths.join("\n")
+    );
+    Ok(EMBEDDED_060_ENSURE_FIRM_PERIOD_ENGINE.to_string())
+}
+
 /// CREATE_FIRM_TABLES / CREATE_PERIOD_TABLES yoksa 060 migration dosyasını uygular.
 async fn ensure_firm_period_engine(
     client: &tokio_postgres::Client,
@@ -132,17 +171,7 @@ async fn ensure_firm_period_engine(
         return Ok(());
     }
 
-    let migration_dir = resolve_migrations_dir(app)?;
-    let path = migration_dir.join("060_ensure_create_firm_period_engine.sql");
-    if !path.exists() {
-        return Err(format!(
-            "create_firm_tables bulunamadı ve {} dosyası yok.",
-            path.display()
-        ));
-    }
-
-    let raw_sql = std::fs::read_to_string(&path)
-        .map_err(|e| format!("060 migration okunamadı: {}", e))?;
+    let raw_sql = resolve_060_migration_sql(app)?;
     let sql = crate::sql_migration_split::strip_utf8_bom(&raw_sql);
     let statements = crate::sql_migration_split::split_postgres_statements(sql);
 

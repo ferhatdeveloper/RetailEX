@@ -859,6 +859,7 @@ Section Install
     File /a "/oname=_up_\database\init\04_demo.sql" "__REPO_ROOT__\database\init\04_demo.sql"
     File /a "/oname=_up_\database\migrations\000_master_schema.sql" "__REPO_ROOT__\database\migrations\000_master_schema.sql"
     File /a "/oname=_up_\database\migrations\001_demo_data.sql" "__REPO_ROOT__\database\migrations\001_demo_data.sql"
+    File /a "/oname=_up_\database\migrations\060_ensure_create_firm_period_engine.sql" "__REPO_ROOT__\database\migrations\060_ensure_create_firm_period_engine.sql"
     File /a "/oname=_up_\database\sys\.keep" "__REPO_ROOT__\database\sys\.keep"
 
   ; dependency installation logic moved here
@@ -1124,6 +1125,7 @@ Section Uninstall
     Delete "$INSTDIR\_up_\database\init\04_demo.sql"
     Delete "$INSTDIR\_up_\database\migrations\000_master_schema.sql"
     Delete "$INSTDIR\_up_\database\migrations\001_demo_data.sql"
+    Delete "$INSTDIR\_up_\database\migrations\060_ensure_create_firm_period_engine.sql"
     Delete "$INSTDIR\_up_\database\sys\.keep"
 
   ; Stop and Uninstall Services
