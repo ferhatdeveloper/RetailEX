@@ -746,6 +746,13 @@ export function InvoiceListModule({
     ? INVOICE_TYPES
     : INVOICE_TYPES.filter(t => t.category === selectedCategory);
 
+  const resolveListRowCurrency = (inv: ListInvoice): string => {
+    const c = String(inv.currency ?? '').trim().toUpperCase();
+    if (c) return c;
+    const firm = String(selectedFirm?.ana_para_birimi ?? selectedFirm?.raporlama_para_birimi ?? '').trim().toUpperCase();
+    return firm || 'IQD';
+  };
+
   const headerTotalsCurrency = useMemo(() => {
     const codes = invoices.map((i) => String(i.currency ?? '').trim().toUpperCase()).filter(Boolean);
     const uniq = new Set(codes);
@@ -753,30 +760,6 @@ export function InvoiceListModule({
     const firm = String(selectedFirm?.ana_para_birimi ?? selectedFirm?.raporlama_para_birimi ?? '').trim().toUpperCase();
     return firm || 'IQD';
   }, [invoices, selectedFirm]);
-
-  // Fatura formu açıksa UniversalInvoiceForm'u göster
-  if (selectedInvoiceType) {
-    return (
-      <UniversalInvoiceForm
-        key={editInvoiceData?.id ?? `draft-${newFormCounter}`}
-        invoiceType={selectedInvoiceType}
-        customers={customers}
-        products={products}
-        onClose={handleCloseInvoiceForm}
-        editData={editInvoiceData}
-        createSaveOptions={purchaseCreateSaveOptions ?? undefined}
-      />
-    );
-  }
-
-  const totalAmount = invoices.reduce((sum, inv) => sum + (inv.total ?? inv.total_amount ?? 0), 0);
-
-  const resolveListRowCurrency = (inv: ListInvoice): string => {
-    const c = String(inv.currency ?? '').trim().toUpperCase();
-    if (c) return c;
-    const firm = String(selectedFirm?.ana_para_birimi ?? selectedFirm?.raporlama_para_birimi ?? '').trim().toUpperCase();
-    return firm || 'IQD';
-  };
 
   const columnVisibilityItems = useMemo(
     () =>
@@ -811,6 +794,23 @@ export function InvoiceListModule({
       handleEditInvoice,
     ],
   );
+
+  // Fatura formu açıksa UniversalInvoiceForm'u göster
+  if (selectedInvoiceType) {
+    return (
+      <UniversalInvoiceForm
+        key={editInvoiceData?.id ?? `draft-${newFormCounter}`}
+        invoiceType={selectedInvoiceType}
+        customers={customers}
+        products={products}
+        onClose={handleCloseInvoiceForm}
+        editData={editInvoiceData}
+        createSaveOptions={purchaseCreateSaveOptions ?? undefined}
+      />
+    );
+  }
+
+  const totalAmount = invoices.reduce((sum, inv) => sum + (inv.total ?? inv.total_amount ?? 0), 0);
 
   const columnVisibilityControl = !isMobile ? (
     <ColumnVisibilityMenu
