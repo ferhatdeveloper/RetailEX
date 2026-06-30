@@ -1588,13 +1588,6 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE OR REPLACE FUNCTION public.APPLY_SYNC_TRIGGERS(p_table_name TEXT)
-RETURNS void AS $$
-BEGIN
-  PERFORM public.apply_sync_triggers(p_table_name);
-END;
-$$ LANGUAGE plpgsql;
-
 CREATE OR REPLACE FUNCTION public.try_apply_sync_triggers(p_table_name TEXT)
 RETURNS void AS $$
 BEGIN

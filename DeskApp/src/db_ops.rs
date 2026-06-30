@@ -154,66 +154,107 @@ fn resolve_060_migration_sql(app: &tauri::AppHandle) -> Result<String, String> {
 const EMBEDDED_079_ENSURE_APPLY_SYNC_TRIGGERS: &str =
     include_str!("../../database/migrations/079_ensure_apply_sync_triggers.sql");
 
-/// `try_apply_sync_triggers` yoksa 079 migration dosyasını uygular (create_firm_tables 42883).
+/// Sync kuyruğu ve trigger fonksiyonlarını hazırlar; 081 ile olası sonsuz dongu duzeltmesi her zaman uygulanir.
 async fn ensure_apply_sync_triggers(
     client: &tokio_postgres::Client,
     app: &tauri::AppHandle,
 ) -> Result<(), String> {
-    let rows = client
+    const EMBEDDED_081: &str =
+        include_str!("../../database/migrations/081_fix_apply_sync_triggers_recursion.sql");
+
+    let enqueue_exists = client
         .query(
             "SELECT 1 FROM pg_proc p
              JOIN pg_namespace n ON p.pronamespace = n.oid
-             WHERE n.nspname = 'public' AND p.proname = 'try_apply_sync_triggers'
+             WHERE n.nspname = 'public' AND p.proname = 'enqueue_sync_event'
              LIMIT 1",
             &[],
         )
         .await
         .map_err(|e| format!("Sync trigger fonksiyon kontrolü başarısız: {}", format_pg_error(e)))?;
 
-    if !rows.is_empty() {
-        return Ok(());
-    }
+    if enqueue_exists.is_empty() {
+        let file_name = "079_ensure_apply_sync_triggers.sql";
+        let mut search_paths = Vec::new();
+        search_paths.push(std::path::PathBuf::from("database/migrations"));
+        search_paths.push(std::path::PathBuf::from("../database/migrations"));
+        if let Ok(res) = app.path().resolve("database/migrations", BaseDirectory::Resource) {
+            search_paths.push(res);
+        }
+        if let Ok(res) = app.path().resolve("_up_/database/migrations", BaseDirectory::Resource) {
+            search_paths.push(res);
+        }
+        if let Ok(resource_dir) = app.path().resource_dir() {
+            search_paths.push(resource_dir.join("database").join("migrations"));
+            search_paths.push(resource_dir.join("migrations"));
+            search_paths.push(resource_dir.join("_up_").join("database").join("migrations"));
+        }
 
-    let file_name = "079_ensure_apply_sync_triggers.sql";
-    let mut search_paths = Vec::new();
-    search_paths.push(std::path::PathBuf::from("database/migrations"));
-    search_paths.push(std::path::PathBuf::from("../database/migrations"));
-    if let Ok(res) = app.path().resolve("database/migrations", BaseDirectory::Resource) {
-        search_paths.push(res);
-    }
-    if let Ok(res) = app.path().resolve("_up_/database/migrations", BaseDirectory::Resource) {
-        search_paths.push(res);
-    }
-    if let Ok(resource_dir) = app.path().resource_dir() {
-        search_paths.push(resource_dir.join("database").join("migrations"));
-        search_paths.push(resource_dir.join("migrations"));
-        search_paths.push(resource_dir.join("_up_").join("database").join("migrations"));
-    }
+        let raw_sql = {
+            let mut found: Option<String> = None;
+            for dir in &search_paths {
+                let path = dir.join(file_name);
+                if path.exists() {
+                    found = Some(std::fs::read_to_string(&path).map_err(|e| {
+                        format!("079 migration okunamadı ({}): {}", path.display(), e)
+                    })?);
+                    break;
+                }
+            }
+            found.unwrap_or_else(|| EMBEDDED_079_ENSURE_APPLY_SYNC_TRIGGERS.to_string())
+        };
 
-    let raw_sql = {
-        let mut found: Option<String> = None;
-        for dir in &search_paths {
-            let path = dir.join(file_name);
-            if path.exists() {
-                found = Some(std::fs::read_to_string(&path).map_err(|e| {
-                    format!("079 migration okunamadı ({}): {}", path.display(), e)
-                })?);
-                break;
+        let sql = crate::sql_migration_split::strip_utf8_bom(&raw_sql);
+        let statements = crate::sql_migration_split::split_postgres_statements(sql);
+
+        for (idx, stmt) in statements.iter().enumerate() {
+            if stmt.trim().is_empty() {
+                continue;
+            }
+            if let Err(e) = client.batch_execute(stmt).await {
+                return Err(format!(
+                    "079 migration ifade {}/{}: {}",
+                    idx + 1,
+                    statements.len(),
+                    format_pg_error(e)
+                ));
             }
         }
-        found.unwrap_or_else(|| EMBEDDED_079_ENSURE_APPLY_SYNC_TRIGGERS.to_string())
-    };
+    }
 
-    let sql = crate::sql_migration_split::strip_utf8_bom(&raw_sql);
+    // Her zaman: APPLY_SYNC_TRIGGERS wrapper'i apply_sync_triggers uzerine yazmis olabilir (54001).
+    let fix_paths = [
+        "database/migrations/081_fix_apply_sync_triggers_recursion.sql",
+        "../database/migrations/081_fix_apply_sync_triggers_recursion.sql",
+    ];
+    let mut fix_sql = EMBEDDED_081.to_string();
+    for rel in fix_paths {
+        let path = std::path::PathBuf::from(rel);
+        if path.exists() {
+            fix_sql = std::fs::read_to_string(&path)
+                .map_err(|e| format!("081 migration okunamadı ({}): {}", path.display(), e))?;
+            break;
+        }
+    }
+    if let Ok(res) = app.path().resolve(
+        "database/migrations/081_fix_apply_sync_triggers_recursion.sql",
+        BaseDirectory::Resource,
+    ) {
+        if res.exists() {
+            fix_sql = std::fs::read_to_string(&res)
+                .map_err(|e| format!("081 migration okunamadı ({}): {}", res.display(), e))?;
+        }
+    }
+
+    let sql = crate::sql_migration_split::strip_utf8_bom(&fix_sql);
     let statements = crate::sql_migration_split::split_postgres_statements(sql);
-
     for (idx, stmt) in statements.iter().enumerate() {
         if stmt.trim().is_empty() {
             continue;
         }
         if let Err(e) = client.batch_execute(stmt).await {
             return Err(format!(
-                "079 migration ifade {}/{}: {}",
+                "081 sync trigger fix ifade {}/{}: {}",
                 idx + 1,
                 statements.len(),
                 format_pg_error(e)
