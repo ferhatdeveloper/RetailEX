@@ -140,6 +140,7 @@
             "tauri:build": "npm run prebuild && npm run sumatra:fetch && npm run postgrest:fetch && node scripts/patch-installer-nsi-repo-root.mjs && node scripts/tauri-windows-signing-prep.mjs && cd DeskApp && tauri build && cd .. && node scripts/verify-windows-installer-signature.mjs",
             "desktop:ci:fetch": "node scripts/fetch-desktop-release-to-desktop.mjs",
             "desktop:ci:build": "node scripts/trigger-desktop-release.mjs",
+            "desktop:ci:cleanup": "node scripts/cleanup-github-desktop-releases.mjs",
             "tauri:windows-signing:example": "node -e \"const fs=require('fs');const p='DeskApp/tauri.windows.conf.json';if(fs.existsSync(p))throw new Error(p+' zaten var');fs.copyFileSync('DeskApp/tauri.windows.conf.json.example',p);console.log(p+' olusturuldu; certificateThumbprint doldurun.');\"",
             "electron:dev": "electron ./src/electron/main.js --dev",
             "bridge": "npx tsx src/services/pg_bridge.ts",

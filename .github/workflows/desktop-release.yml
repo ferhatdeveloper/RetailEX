@@ -39,6 +39,12 @@ jobs:
             echo "RELEASE_TAG=app-v$v" >> $env:GITHUB_ENV
           }
 
+      - name: Delete old desktop releases (before build)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: node scripts/cleanup-github-desktop-releases.mjs --keep ${{ env.RELEASE_TAG }}
+
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
