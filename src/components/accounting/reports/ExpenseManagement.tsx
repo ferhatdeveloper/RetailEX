@@ -188,11 +188,11 @@ export function ExpenseManagement() {
     if (!confirm(tm('expenseDeleteConfirm'))) return;
 
     try {
-      // TODO: API call
-      // await supabase.from('expenses').delete().eq('id', expenseId);
+      await expenseAPI.delete(expenseId);
       await loadExpenses();
     } catch (error) {
       console.error('Error deleting expense:', error);
+      alert(tm('expenseSaveError'));
     }
   };
 
@@ -213,8 +213,16 @@ export function ExpenseManagement() {
       const data = {
         ...formData,
         amount: parseFloat(formData.amount),
-        created_by: '00000000-0000-0000-0000-000000000000' // Placeholder
+        store_id: formData.store_id || undefined,
+        cost_center_id: formData.cost_center_id || undefined,
+        cash_register_id: formData.cash_register_id || undefined,
       };
+
+      const payMethod = String(formData.payment_method || '').toLowerCase();
+      if ((payMethod === 'cash' || payMethod === 'nakit') && !formData.cash_register_id && kasalar.length === 0) {
+        alert(tm('noCashRegisterFound') || 'Aktif kasa bulunamadı. Önce kasa tanımlayın.');
+        return;
+      }
 
       if (editingExpense) {
         await expenseAPI.update(editingExpense.id, data as any);
@@ -226,7 +234,8 @@ export function ExpenseManagement() {
       await loadExpenses();
     } catch (error) {
       console.error('Error saving expense:', error);
-      alert(tm('expenseSaveError'));
+      const msg = (error as Error)?.message || tm('expenseSaveError');
+      alert(msg);
     }
   };
 

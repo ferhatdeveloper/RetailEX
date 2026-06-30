@@ -2022,6 +2022,10 @@ BEGIN
   EXECUTE format('CREATE TABLE IF NOT EXISTS %I (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), firm_nr VARCHAR(10) NOT NULL, code VARCHAR(50) UNIQUE, name VARCHAR(255) NOT NULL, bank_name VARCHAR(255), iban VARCHAR(50), currency_code VARCHAR(10) DEFAULT ''IQD'', balance DECIMAL(15,2) DEFAULT 0, is_active BOOLEAN DEFAULT true, created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW());', v_prefix || '_bank_registers');
   EXECUTE format('CREATE TABLE IF NOT EXISTS %I (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), firm_nr VARCHAR(10) NOT NULL, code VARCHAR(50) UNIQUE, name VARCHAR(255) NOT NULL, description TEXT, is_active BOOLEAN DEFAULT true, created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW());', v_prefix || '_expense_cards');
   EXECUTE format('CREATE TABLE IF NOT EXISTS %I (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), firm_nr VARCHAR(10) NOT NULL, code VARCHAR(50) UNIQUE, name VARCHAR(255) NOT NULL, phone VARCHAR(50), email VARCHAR(255), is_active BOOLEAN DEFAULT true, created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW());', v_prefix || '_sales_reps');
+  EXECUTE format('CREATE TABLE IF NOT EXISTS %I (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), code VARCHAR(50) NOT NULL, name VARCHAR(100) NOT NULL, description TEXT, is_active BOOLEAN DEFAULT true, firm_nr VARCHAR(10) NOT NULL, created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP, UNIQUE(code, firm_nr));', v_prefix || '_cost_centers');
+  EXECUTE format('CREATE TABLE IF NOT EXISTS %I (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), category VARCHAR(50) NOT NULL, description TEXT NOT NULL, amount DECIMAL(18,2) NOT NULL, payment_method VARCHAR(50) NOT NULL, document_number VARCHAR(100), document_url TEXT, store_id UUID, cost_center_id UUID, expense_date DATE NOT NULL, notes TEXT, created_by UUID, firm_nr VARCHAR(10) NOT NULL, cash_line_id UUID, cash_register_id UUID, created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP);', v_prefix || '_expenses');
+  EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON %I TO anon', v_prefix || '_cost_centers');
+  EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON %I TO anon', v_prefix || '_expenses');
 
   -- Sync Triggers
   PERFORM public.APPLY_SYNC_TRIGGERS(v_prefix || '_products');
@@ -2032,6 +2036,8 @@ BEGIN
   PERFORM public.APPLY_SYNC_TRIGGERS(v_prefix || '_cash_registers');
   PERFORM public.APPLY_SYNC_TRIGGERS(v_prefix || '_bank_registers');
   PERFORM public.APPLY_SYNC_TRIGGERS(v_prefix || '_expense_cards');
+  PERFORM public.APPLY_SYNC_TRIGGERS(v_prefix || '_cost_centers');
+  PERFORM public.APPLY_SYNC_TRIGGERS(v_prefix || '_expenses');
   PERFORM public.APPLY_SYNC_TRIGGERS(v_prefix || '_sales_reps');
   PERFORM public.APPLY_SYNC_TRIGGERS(v_prefix || '_categories');
   PERFORM public.APPLY_SYNC_TRIGGERS(v_prefix || '_brands');

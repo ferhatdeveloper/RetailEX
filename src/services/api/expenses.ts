@@ -53,13 +53,58 @@ export interface Expense {
   created_at?: string;
 }
 
+function emptyUuidToNull(value: unknown): string | null {
+  if (value === null || value === undefined) return null;
+  const s = String(value).trim();
+  if (!s) return null;
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(s) ? s : null;
+}
+
+function buildExpenseInsertBody(
+  expense: Omit<Expense, 'id' | 'firm_nr' | 'created_at'>,
+  firmNr: string
+): Record<string, unknown> {
+  return {
+    category: expense.category,
+    description: expense.description,
+    amount: expense.amount,
+    payment_method: expense.payment_method,
+    document_number: expense.document_number || '',
+    document_url: expense.document_url || '',
+    store_id: emptyUuidToNull(expense.store_id),
+    cost_center_id: emptyUuidToNull(expense.cost_center_id),
+    expense_date: expense.expense_date,
+    notes: expense.notes || '',
+    created_by: emptyUuidToNull(expense.created_by),
+    firm_nr: firmNr,
+    cash_register_id: emptyUuidToNull(expense.cash_register_id),
+  };
+}
+
 export const expenseAPI = {
   /**
    * Ensure table exists
    */
   async ensureTableExists(): Promise<void> {
+    const firmNr = padExpenseFirmNr();
     if (DB_SETTINGS.connectionProvider === 'rest_api') {
+      try {
+        const { postgrest } = await import('./postgrestClient');
+        await postgrest.post(
+          '/rpc/ensure_firm_expense_tables',
+          { p_firm_nr: firmNr },
+          { schema: 'public', prefer: 'return=minimal' }
+        );
+      } catch (err) {
+        console.warn('[ExpenseAPI] ensure_firm_expense_tables RPC:', err);
+      }
       return;
+    }
+    try {
+      await postgres.query('SELECT public.ensure_firm_expense_tables($1)', [firmNr]);
+      return;
+    } catch {
+      /* migration 078 öncesi — legacy CREATE */
     }
     const tableName = expenseTableName();
     await postgres.query(`
@@ -175,21 +220,7 @@ export const expenseAPI = {
         const fn = padExpenseFirmNr();
         const { postgrest } = await import('./postgrestClient');
         const path = expenseTablePath();
-        const body: Record<string, unknown> = {
-          category: expense.category,
-          description: expense.description,
-          amount: expense.amount,
-          payment_method: expense.payment_method,
-          document_number: expense.document_number || '',
-          document_url: expense.document_url || '',
-          store_id: expense.store_id || null,
-          cost_center_id: expense.cost_center_id || null,
-          expense_date: expense.expense_date,
-          notes: expense.notes || '',
-          created_by: expense.created_by || null,
-          firm_nr: firmNr,
-          cash_register_id: expense.cash_register_id || null,
-        };
+        const body = buildExpenseInsertBody(expense, firmNr);
         const rows = await postgrest.post<any[]>(path, body, {
           schema: 'public',
           prefer: 'return=representation',
