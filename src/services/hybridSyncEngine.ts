@@ -1,5 +1,6 @@
 import { IS_TAURI, safeInvoke, getBridgeUrl } from '../utils/env';
 import type { HybridSyncDirection } from './postgres';
+import { DB_SETTINGS } from './postgres';
 import {
   applyItemPostgrest,
   countPendingQueuePostgrest,
@@ -14,6 +15,7 @@ import {
 } from './hybridSyncPostgrest';
 import { normalizeSyncRow } from './hybridSyncNormalize';
 import { ensureFirmPeriodSchemasOnce } from './firmProvisionService';
+import { resolveEffectiveRemoteRestUrl } from './merkezTenantRegistry';
 
 export type PgEndpointConfig = {
   host: string;
@@ -289,7 +291,9 @@ export function buildSyncEndpoints(opts: HybridSyncRunOptions): {
   remote: SyncEndpoint;
 } {
   const local: SyncEndpoint = { kind: 'pg', config: opts.local };
-  const restBase = normalizeRestBase(opts.remoteRestUrl || '');
+  const restBase = normalizeRestBase(
+    resolveEffectiveRemoteRestUrl(opts.remoteRestUrl || '', DB_SETTINGS.merkezTenantCode),
+  );
   const usePostgrest = opts.connectionProvider === 'rest_api' || !!restBase;
   if (usePostgrest) {
     if (!restBase) {
@@ -300,16 +304,23 @@ export function buildSyncEndpoints(opts: HybridSyncRunOptions): {
   return { local, remote: { kind: 'pg', config: opts.remote } };
 }
 
-async function ensureSyncFunctions(endpoint: SyncEndpoint, localPg: PgEndpointConfig): Promise<void> {
+async function ensureSyncFunctions(
+  endpoint: SyncEndpoint,
+  localPg: PgEndpointConfig,
+  role: 'source' | 'target',
+): Promise<void> {
   if (endpoint.kind === 'pg') {
     await ensureSyncFunctionsPg(endpoint.config);
     return;
   }
-  await ensureSyncFunctionsPg(localPg);
-  const probe = await testPostgrestSyncEndpoint(endpoint.baseUrl);
-  if (!probe.ok) {
-    throw new Error(probe.message);
+  if (role === 'source') {
+    await ensureSyncFunctionsPg(localPg);
+    const probe = await testPostgrestSyncEndpoint(endpoint.baseUrl, 'queue');
+    if (!probe.ok) throw new Error(probe.message);
+    return;
   }
+  const probe = await testPostgrestSyncEndpoint(endpoint.baseUrl, 'write');
+  if (!probe.ok) throw new Error(probe.message);
 }
 
 async function fetchPendingQueue(endpoint: SyncEndpoint, filter?: HybridSyncFilter): Promise<SyncQueueRow[]> {
@@ -431,8 +442,8 @@ export async function syncOneDirection(
   if (!localPg) throw new Error('syncOneDirection: localPg gerekli');
   const schemaCache = opts?.schemaCache ?? new Map<string, PgSchemaName>();
   await warmTableSchemaCache(localPg, schemaCache);
-  await ensureSyncFunctions(source, localPg);
-  await ensureSyncFunctions(target, localPg);
+  await ensureSyncFunctions(source, localPg, 'source');
+  await ensureSyncFunctions(target, localPg, 'target');
 
   const scope = opts?.scope ?? 'pending';
   const filter = opts?.filter;

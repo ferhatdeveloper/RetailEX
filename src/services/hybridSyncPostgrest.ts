@@ -264,18 +264,40 @@ export async function markFailedPostgrest(baseUrl: string, id: string, error: st
   if (!res.ok) await restError(res, 'PostgREST sync_queue PATCH failed');
 }
 
-export async function testPostgrestSyncEndpoint(baseUrl: string): Promise<{ ok: boolean; message: string }> {
+/** PostgREST uç doğrulama: kuyruk okuma (receive) veya veri yazma (send hedefi). */
+export type PostgrestSyncProbeMode = 'queue' | 'write';
+
+export async function testPostgrestSyncEndpoint(
+  baseUrl: string,
+  mode: PostgrestSyncProbeMode = 'queue',
+): Promise<{ ok: boolean; message: string }> {
   const base = normalizeRestBase(baseUrl);
   if (!base) return { ok: false, message: 'PostgREST URL boş' };
   try {
+    if (mode === 'write') {
+      const url = restUrl(base, '/firms', 'select=id&limit=1');
+      const res = await fetchRetailexAware(url, { method: 'GET', headers: restHeaders('public') });
+      if (res.ok) return { ok: true, message: `${base} — PostgREST veri tabloları erişilebilir` };
+      const text = await res.text().catch(() => '');
+      return {
+        ok: false,
+        message: `${base}: ${res.status}${text ? ` — ${text.slice(0, 200)}` : ''}`,
+      };
+    }
+
     const url = restUrl(base, '/sync_queue', 'select=id&limit=1');
     const res = await fetchRetailexAware(url, { method: 'GET', headers: restHeaders('public') });
     if (res.ok) return { ok: true, message: `${base} — sync_queue erişilebilir` };
-    if (res.status === 404) {
-      return { ok: false, message: `${base} — sync_queue tablosu PostgREST'te yok (migration 048+049)` };
+    if (res.status === 404 || res.status === 400) {
+      return {
+        ok: false,
+        message:
+          `${base} — sync_queue PostgREST'te yok veya erişilemiyor (migration 048+049). ` +
+          'Merkezden alım (receive) için merkez DB\'de sync_queue gerekir.',
+      };
     }
     const text = await res.text().catch(() => '');
-    return { ok: false, message: `${base}: ${res.status} ${text.slice(0, 200)}` };
+    return { ok: false, message: `${base}: ${res.status}${text ? ` — ${text.slice(0, 200)}` : ''}` };
   } catch (e: unknown) {
     return { ok: false, message: e instanceof Error ? e.message : String(e) };
   }

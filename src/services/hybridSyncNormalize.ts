@@ -14,6 +14,12 @@ function isNullishJsonValue(value: unknown): boolean {
   return value === null || value === undefined || value === 'null';
 }
 
+/** rex_002_products → 002 */
+export function firmNrFromSyncTableName(tableName: string): string | null {
+  const m = String(tableName).match(/^rex_(\d{3})_/i);
+  return m?.[1] ?? null;
+}
+
 /** PostgREST / doğrudan UPSERT öncesi satır normalize */
 export function normalizeSyncRow(
   tableName: string,
@@ -24,6 +30,11 @@ export function normalizeSyncRow(
 
   if (recordId && (!('id' in out) || out.id == null || out.id === 'null')) {
     out.id = recordId;
+  }
+
+  const firmFromTable = firmNrFromSyncTableName(tableName);
+  if (firmFromTable && (!('firm_nr' in out) || isNullishJsonValue(out.firm_nr))) {
+    out.firm_nr = firmFromTable;
   }
 
   if (/_products$/i.test(tableName)) {
