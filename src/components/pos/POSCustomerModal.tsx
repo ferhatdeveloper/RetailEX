@@ -4,7 +4,12 @@ import type { Customer } from '../../core/types';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import { supplierAPI } from '../../services/api/suppliers';
-import { POS_MODAL_OVERLAY, POS_MODAL_SHELL, POS_MODAL_HEADER } from './posUiConstants';
+import { FullscreenBodyPortal, MODAL_OVERLAY_Z } from '../shared/FullscreenBodyPortal';
+import {
+  POS_CUSTOMER_MODAL_PORTAL_CLASS,
+  POS_CUSTOMER_MODAL_SHELL,
+  POS_MODAL_HEADER,
+} from './posUiConstants';
 
 interface POSCustomerModalProps {
   customers: Customer[];
@@ -121,6 +126,14 @@ export function POSCustomerModal({
     onSelect,
   ]);
 
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, []);
+
   const handleOpenCurrentAccountCreateModal = () => {
     const phone = searchTerm.trim();
     localStorage.setItem('callerid_customer_phone', phone);
@@ -136,8 +149,23 @@ export function POSCustomerModal({
   };
 
   return (
-    <div className={POS_MODAL_OVERLAY} role="dialog" aria-modal="true">
-      <div className={POS_MODAL_SHELL(darkMode)}>
+    <FullscreenBodyPortal
+      zIndex={MODAL_OVERLAY_Z}
+      className={POS_CUSTOMER_MODAL_PORTAL_CLASS}
+      role="dialog"
+      aria-modal
+      aria-label={t.selectCustomerTitle}
+      onClick={onClose}
+    >
+      <div
+        className={POS_CUSTOMER_MODAL_SHELL(darkMode)}
+        style={{
+          width: 'min(92vw, 56rem)',
+          height: 'min(85vh, calc(100dvh - 2rem))',
+          maxHeight: 'calc(100dvh - 2rem)',
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className={POS_MODAL_HEADER}>
           <h3 className="text-base text-white flex items-center gap-2">
             <Users className="w-5 h-5" />
@@ -195,7 +223,7 @@ export function POSCustomerModal({
         </div>
 
         {/* Müşteri listesi — kaydırılabilir */}
-        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 py-3">
+        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 py-3 [scrollbar-gutter:stable]">
           <div className="grid gap-3">
             {filteredCustomers.length === 0 ? (
               <div className={`text-center py-8 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
@@ -335,6 +363,6 @@ export function POSCustomerModal({
           </div>
         </div>
       </div>
-    </div>
+    </FullscreenBodyPortal>
   );
 }
