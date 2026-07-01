@@ -42,6 +42,7 @@ const RestaurantMain = lazyWithChunkRecovery(() => import('../restaurant/index')
 const BeautyMain = lazyWithChunkRecovery(() => import('../beauty/index'));
 import { FirmSelector } from './FirmSelector';
 import { HybridSyncToolbarButtons } from './HybridSyncToolbarButtons';
+import { MarketRatesToolbarButton } from './MarketRatesToolbarButton';
 import { POS_MASTER_OVERRIDE_PASSWORD, POS_MODAL_Z } from '../pos/posUiConstants';
 import { cn } from '../ui/utils';
 import {
@@ -1113,6 +1114,9 @@ export function MainLayout({
                   <HybridSyncToolbarButtons compact />
                 </div>
                 <div className="shrink-0">
+                  <MarketRatesToolbarButton compact />
+                </div>
+                <div className="shrink-0">
                   <MainLayoutClockButton compact onOpenModal={() => setShowDateModal(true)} />
                 </div>
                 <button
@@ -1256,6 +1260,8 @@ export function MainLayout({
                 <FirmSelector />
 
                 <HybridSyncToolbarButtons />
+
+                <MarketRatesToolbarButton />
 
                 <MainLayoutClockButton onOpenModal={() => setShowDateModal(true)} />
 

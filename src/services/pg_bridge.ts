@@ -208,7 +208,51 @@ app.get('/api/status', (c) => {
         service: 'PostgreSQL Bridge',
         logoProxy: true,
         logoProxyPaths: [...LOGO_PROXY_ROUTE_PATHS],
+        marketRatesProxy: true,
     });
+});
+
+/** Dış kur/altın kaynakları — tarayıcı CORS bypass */
+app.get('/api/market-rates/proxy', async (c) => {
+    const rawUrl = c.req.query('url')?.trim();
+    if (!rawUrl) return c.json({ error: 'url parametresi gerekli' }, 400);
+    let parsed: URL;
+    try {
+        parsed = new URL(rawUrl);
+    } catch {
+        return c.json({ error: 'Geçersiz URL' }, 400);
+    }
+    if (!['http:', 'https:'].includes(parsed.protocol)) {
+        return c.json({ error: 'Yalnızca http/https' }, 400);
+    }
+    const host = parsed.hostname.toLowerCase();
+    const allowedHosts = new Set([
+        'hatwanexchange.com',
+        'www.hatwanexchange.com',
+        'salargolds.com',
+        'www.salargolds.com',
+        'docs.google.com',
+        'doc-0s-b4-sheets.googleusercontent.com',
+        'api.gold-api.com',
+    ]);
+    const allowed = [...allowedHosts].some((h) => host === h || host.endsWith(`.${h}`));
+    if (!allowed) {
+        return c.json({ error: `Host izinli değil: ${host}` }, 403);
+    }
+    try {
+        const res = await fetch(parsed.toString(), {
+            method: 'GET',
+            headers: {
+                'User-Agent': 'RetailEX-MarketRates/1.0',
+                Accept: 'text/html,application/json,text/csv,*/*',
+            },
+        });
+        const text = await res.text();
+        return c.json({ ok: res.ok, status: res.status, text });
+    } catch (error: unknown) {
+        const err = error as { message?: string };
+        return c.json({ error: err?.message || 'Proxy fetch başarısız' }, 502);
+    }
 });
 
 type LogoProxyBody = {
