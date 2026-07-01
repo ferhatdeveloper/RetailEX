@@ -172,10 +172,10 @@ export async function countPendingQueuePostgrest(
     method: 'GET',
     headers: { ...restHeaders('public'), Prefer: 'count=exact' },
   });
+  if (res.status === 400 || res.status === 404) return -1;
   if (!res.ok) await restError(res, 'PostgREST sync_queue COUNT');
-  const range = res.headers.get('Content-Range') || '';
-  const total = range.includes('/') ? Number(range.split('/').pop()) : NaN;
-  if (Number.isFinite(total)) return total;
+  const total = parsePostgrestContentRangeTotal(res.headers.get('Content-Range'));
+  if (total !== null) return total;
   const data = (await res.json()) as unknown[];
   return Array.isArray(data) ? data.length : 0;
 }
@@ -266,6 +266,39 @@ export async function markFailedPostgrest(baseUrl: string, id: string, error: st
 
 /** PostgREST uç doğrulama: kuyruk okuma (receive) veya veri yazma (send hedefi). */
 export type PostgrestSyncProbeMode = 'queue' | 'write';
+
+/** PostgREST Content-Range: 0-0/1018 → 1018 */
+export function parsePostgrestContentRangeTotal(rangeHeader: string | null): number | null {
+  const range = String(rangeHeader ?? '').trim();
+  const m = range.match(/\/(\d+)\s*$/);
+  if (!m) return null;
+  const n = Number(m[1]);
+  return Number.isFinite(n) ? n : null;
+}
+
+/** Merkez tablo satır sayısı (PostgREST Prefer: count=exact). Erişilemezse null. */
+export async function countPostgrestTableRows(
+  baseUrl: string,
+  tableName: string,
+  schema: PgSchemaName = 'public',
+): Promise<number | null> {
+  const tbl = String(tableName || '').trim();
+  if (!tbl || !/^[a-z][a-z0-9_]*$/i.test(tbl)) return null;
+  const url = restUrl(baseUrl, `/${tbl}`, 'select=id&limit=1');
+  const res = await fetchRetailexAware(url, {
+    method: 'GET',
+    headers: { ...restHeaders(schema), Prefer: 'count=exact' },
+  });
+  if (!res.ok) return null;
+  const total = parsePostgrestContentRangeTotal(res.headers.get('Content-Range'));
+  if (total !== null) return total;
+  try {
+    const data = (await res.json()) as unknown[];
+    return Array.isArray(data) ? data.length : 0;
+  } catch {
+    return null;
+  }
+}
 
 export async function testPostgrestSyncEndpoint(
   baseUrl: string,

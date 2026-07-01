@@ -1,17 +1,28 @@
-import { ERP_SETTINGS, LOCAL_CONFIG, REMOTE_CONFIG, DB_SETTINGS } from './postgres';
+import { ERP_SETTINGS, LOCAL_CONFIG, REMOTE_CONFIG, DB_SETTINGS, resolveHybridSyncConnectionProvider } from './postgres';
 import {
   buildSyncEndpoints,
   countPendingQueue,
   countPendingQueueEndpoint,
+  countRemoteMasterTables,
+  masterTableNamesForFirm,
   queryPgRows,
   type HybridSyncFilter,
   type PgEndpointConfig,
+  type RemoteTableCountRow,
 } from './hybridSyncEngine';
 
 export type BranchSyncStats = {
   localPending: number;
+  /** Merkez sync_queue bekleyen; -1 = kuyruk erişilemiyor (PostgREST sync_queue yok) */
   remotePending: number;
   lastSyncedAt: string | null;
+};
+
+export type RemoteMasterSnapshot = {
+  /** sync_queue sayılabildi mi */
+  queueAvailable: boolean;
+  queuePending: number;
+  tables: RemoteTableCountRow[];
 };
 
 export type BranchStoreOption = {
@@ -74,7 +85,7 @@ export async function getBranchSyncStats(filter?: HybridSyncFilter): Promise<Bra
     const { remote } = buildSyncEndpoints({
       local: LOCAL_CONFIG,
       remote: REMOTE_CONFIG,
-      connectionProvider: DB_SETTINGS.connectionProvider,
+      connectionProvider: resolveHybridSyncConnectionProvider(),
       remoteRestUrl: DB_SETTINGS.remoteRestUrl,
     });
     remotePending = await countPendingQueueEndpoint(remote, baseFilter);
@@ -101,6 +112,34 @@ export async function getBranchSyncStats(filter?: HybridSyncFilter): Promise<Bra
   }
 
   return { localPending, remotePending, lastSyncedAt };
+}
+
+/** Merkez master tablolarındaki gerçek kayıt sayıları (PostgREST count=exact veya PG). */
+export async function getRemoteMasterSnapshot(firmNr?: string): Promise<RemoteMasterSnapshot> {
+  const fn = String(firmNr || ERP_SETTINGS.firmNr || '001')
+    .replace(/\D/g, '')
+    .padStart(3, '0');
+  let queuePending = -1;
+  let tables: RemoteTableCountRow[] = [];
+
+  try {
+    const { remote } = buildSyncEndpoints({
+      local: LOCAL_CONFIG,
+      remote: REMOTE_CONFIG,
+      connectionProvider: resolveHybridSyncConnectionProvider(),
+      remoteRestUrl: DB_SETTINGS.remoteRestUrl,
+    });
+    queuePending = await countPendingQueueEndpoint(remote, { firmNr: fn });
+    tables = await countRemoteMasterTables(remote, masterTableNamesForFirm(fn));
+  } catch {
+    queuePending = -1;
+  }
+
+  return {
+    queueAvailable: queuePending >= 0,
+    queuePending: Math.max(0, queuePending),
+    tables,
+  };
 }
 
 export function buildSyncFilter(opts: {

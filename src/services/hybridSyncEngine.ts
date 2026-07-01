@@ -8,6 +8,7 @@ import {
   markCompletedPostgrest,
   markFailedPostgrest,
   normalizeRestBase,
+  countPostgrestTableRows,
   resolveTableSchema,
   testPostgrestSyncEndpoint,
   warmTableSchemaCache,
@@ -374,6 +375,64 @@ async function markFailed(source: SyncEndpoint, id: string, error: string): Prom
 }
 
 export type SyncQueueBreakdownRow = { tableName: string; count: number };
+
+export type RemoteTableCountRow = { tableName: string; count: number | null };
+
+/** Gönderim sonrası veya önizleme: merkez tablolarındaki gerçek satır sayıları */
+export async function countRemoteMasterTables(
+  endpoint: SyncEndpoint,
+  tableNames: string[],
+  schemaCache?: Map<string, PgSchemaName>,
+): Promise<RemoteTableCountRow[]> {
+  const cache = schemaCache ?? new Map<string, PgSchemaName>();
+  const unique = [...new Set(tableNames.map((t) => t.trim()).filter(Boolean))];
+  const results: RemoteTableCountRow[] = [];
+
+  for (const tableName of unique) {
+    if (endpoint.kind === 'pg') {
+      if (!/^rex_\d{3}_[a-z0-9_]+$/i.test(tableName)) {
+        results.push({ tableName, count: null });
+        continue;
+      }
+      try {
+        const rows = await queryPgRows(
+          endpoint.config,
+          `SELECT COUNT(*)::int AS cnt FROM ${tableName}`,
+          [],
+        );
+        results.push({ tableName, count: Number((rows[0] as { cnt?: number })?.cnt ?? 0) });
+      } catch {
+        results.push({ tableName, count: null });
+      }
+      continue;
+    }
+
+    const schema = resolveTableSchema(tableName, cache);
+    const count = await countPostgrestTableRows(endpoint.baseUrl, tableName, schema);
+    results.push({ tableName, count });
+  }
+
+  return results;
+}
+
+export function formatRemoteMasterVerifyMessage(rows: RemoteTableCountRow[]): string {
+  if (!rows.length) return '';
+  const lines = rows.map(({ tableName, count }) => {
+    const short = tableName.replace(/^rex_\d{3}_/i, '').replace(/_/g, ' ');
+    const label = short || tableName;
+    if (count === null) return `? ${label}: kontrol edilemedi`;
+    if (count <= 0) return `⚠ ${label}: merkezde 0`;
+    return `✓ ${label}: ${count}`;
+  });
+  return `Merkez kontrol — ${lines.join(' · ')}`;
+}
+
+export function masterTableNamesForFirm(firmNr: string): string[] {
+  const fn = String(firmNr || '001')
+    .replace(/\D/g, '')
+    .padStart(3, '0');
+  return [`rex_${fn}_products`, `rex_${fn}_customers`, `rex_${fn}_suppliers`];
+}
 
 export async function getPendingQueueBreakdown(
   endpoint: PgEndpointConfig,

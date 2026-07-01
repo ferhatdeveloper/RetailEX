@@ -14,20 +14,26 @@ import {
   DB_SETTINGS,
   LOCAL_CONFIG,
   REMOTE_CONFIG,
+  ERP_SETTINGS,
   resolveHybridSyncConnectionProvider,
 } from '../../services/postgres';
 import {
   buildSyncEndpoints,
+  countRemoteMasterTables,
+  formatRemoteMasterVerifyMessage,
   getPendingQueueBreakdown,
   getPendingQueueBreakdownEndpoint,
-  queryPgRows,
+  masterTableNamesForFirm,
   runHybridSync,
   type SyncQueueBreakdownRow,
+  type RemoteTableCountRow,
 } from '../../services/hybridSyncEngine';
 import {
   buildKasaInboundFilter,
   buildSyncFilter,
   getBranchSyncStats,
+  getRemoteMasterSnapshot,
+  type RemoteMasterSnapshot,
 } from '../../services/hybridSyncService';
 import {
   pullInboundMasterNow,
@@ -54,6 +60,8 @@ type PreviewData = {
   isKasa: boolean;
   localPending: number;
   inboundPending: number;
+  inboundQueueAvailable: boolean;
+  remoteMaster: RemoteMasterSnapshot;
   outboundBreakdown: SyncQueueBreakdownRow[];
   inboundBreakdown: SyncQueueBreakdownRow[];
   terminalName?: string;
@@ -117,9 +125,39 @@ function formatHybridSyncMessage(result: { totalSynced?: number; failed?: number
   return '';
 }
 
-async function verifyRemoteTablesOnRemote(breakdown: SyncQueueBreakdownRow[]): Promise<string> {
-  const rows = breakdown.filter((r) => r.count > 0);
-  if (!rows.length) return '';
+function formatMasterCounts(rows: RemoteTableCountRow[]): string {
+  const parts = rows
+    .filter((r) => r.count !== null && r.count > 0)
+    .map((r) => {
+      const short = r.tableName.replace(/^rex_\d+_/i, '').replace(/_/g, ' ');
+      return `${tableLabel(short)} (${r.count})`;
+    });
+  return parts.length ? parts.join(' · ') : 'Merkez tablolarında kayıt görünmüyor';
+}
+
+function formatInboundPreview(preview: PreviewData): string {
+  if (preview.isKasa) {
+    return formatBreakdown(preview.inboundBreakdown, Math.max(0, preview.inboundPending));
+  }
+  if (preview.inboundQueueAvailable) {
+    return `${preview.inboundPending} kuyruk kaydı`;
+  }
+  const master = formatMasterCounts(preview.remoteMaster.tables);
+  return `Kuyruk erişilemiyor · Merkezde: ${master}`;
+}
+
+async function verifySentDataOnRemote(
+  outboundBreakdown: SyncQueueBreakdownRow[],
+): Promise<string> {
+  const tablesFromQueue = outboundBreakdown
+    .filter((r) => r.count > 0)
+    .map((r) => r.tableName.trim())
+    .filter((t) => /^rex_\d{3}_[a-z0-9_]+$/i.test(t));
+
+  const tables =
+    tablesFromQueue.length > 0
+      ? tablesFromQueue
+      : masterTableNamesForFirm(ERP_SETTINGS.firmNr);
 
   const { remote } = buildSyncEndpoints({
     local: LOCAL_CONFIG,
@@ -127,23 +165,9 @@ async function verifyRemoteTablesOnRemote(breakdown: SyncQueueBreakdownRow[]): P
     connectionProvider: resolveHybridSyncConnectionProvider(),
     remoteRestUrl: DB_SETTINGS.remoteRestUrl,
   });
-  if (remote.kind !== 'pg') {
-    return 'Merkez doğrulama: doğrudan PG bağlantısı gerekir.';
-  }
 
-  const lines: string[] = [];
-  for (const row of rows.slice(0, 8)) {
-    const tbl = row.tableName.trim();
-    if (!/^rex_\d{3}_[a-z0-9_]+$/i.test(tbl)) continue;
-    try {
-      const res = await queryPgRows(remote.config, `SELECT COUNT(*)::int AS cnt FROM ${tbl}`, []);
-      const cnt = Number((res[0] as { cnt?: number })?.cnt ?? 0);
-      lines.push(cnt > 0 ? `✓ ${tableLabel(tbl)}: ${cnt}` : `⚠ ${tableLabel(tbl)}: merkezde 0`);
-    } catch {
-      lines.push(`? ${tableLabel(tbl)}: kontrol edilemedi`);
-    }
-  }
-  return lines.length ? `Merkez kontrol — ${lines.join(' · ')}` : '';
+  const counts = await countRemoteMasterTables(remote, tables.slice(0, 8));
+  return formatRemoteMasterVerifyMessage(counts);
 }
 
 export function HybridSyncModal({ open, onOpenChange, onComplete }: Props) {
@@ -169,16 +193,20 @@ export function HybridSyncModal({ open, onOpenChange, onComplete }: Props) {
 
       const outboundStats = await getBranchSyncStats(outboundFilter);
       const inboundStats = isKasa ? await getBranchSyncStats(inboundFilter) : outboundStats;
+      const remoteMaster = await getRemoteMasterSnapshot(ERP_SETTINGS.firmNr);
       const outboundBreakdown = await getPendingQueueBreakdown(LOCAL_CONFIG, outboundFilter);
 
       let inboundBreakdown: SyncQueueBreakdownRow[] = [];
+      const inboundQueueAvailable = isKasa
+        ? inboundStats.remotePending >= 0
+        : outboundStats.remotePending >= 0;
       const inboundPending = isKasa
         ? inboundStats.remotePending >= 0
           ? inboundStats.remotePending
           : -1
         : outboundStats.remotePending >= 0
           ? outboundStats.remotePending
-          : 0;
+          : -1;
 
       if (isKasa && kasaCtx) {
         try {
@@ -198,6 +226,8 @@ export function HybridSyncModal({ open, onOpenChange, onComplete }: Props) {
         isKasa,
         localPending: outboundStats.localPending,
         inboundPending,
+        inboundQueueAvailable,
+        remoteMaster,
         outboundBreakdown,
         inboundBreakdown,
         terminalName: kasaCtx?.terminalName,
@@ -213,9 +243,16 @@ export function HybridSyncModal({ open, onOpenChange, onComplete }: Props) {
         {
           id: 'receive',
           title: isKasa ? 'Merkezden kasa verisi al' : 'Merkezden yerel al',
-          description: isKasa
-            ? formatBreakdown(inboundBreakdown, Math.max(0, inboundPending))
-            : `${Math.max(0, inboundPending)} kayıt`,
+          description: formatInboundPreview({
+            isKasa,
+            localPending: outboundStats.localPending,
+            inboundPending,
+            inboundQueueAvailable,
+            remoteMaster,
+            outboundBreakdown,
+            inboundBreakdown,
+            terminalName: kasaCtx?.terminalName,
+          }),
           status: 'pending',
         },
       ]);
@@ -270,7 +307,7 @@ export function HybridSyncModal({ open, onOpenChange, onComplete }: Props) {
       } else if (sendResult.totalSynced === 0 && sendResult.failed === 0) {
         updateStep('send', { status: 'skipped', detail: 'Gönderilecek kayıt yok.' });
       } else {
-        const verifyMsg = await verifyRemoteTablesOnRemote(preview.outboundBreakdown);
+        const verifyMsg = await verifySentDataOnRemote(preview.outboundBreakdown);
         updateStep('send', {
           status: 'done',
           detail:
@@ -318,7 +355,13 @@ export function HybridSyncModal({ open, onOpenChange, onComplete }: Props) {
             detail: recvResult.message || 'Alım başarısız.',
           });
         } else if (recvResult.totalSynced === 0 && recvResult.failed === 0) {
-          updateStep('receive', { status: 'skipped', detail: 'Alınacak kayıt yok.' });
+          const masterHint = !preview.inboundQueueAvailable
+            ? ` · Merkez tablolarında veri var (${formatMasterCounts(preview.remoteMaster.tables)}) ancak sync_queue erişilemiyor`
+            : '';
+          updateStep('receive', {
+            status: 'skipped',
+            detail: `Alınacak kuyruk kaydı yok${masterHint}.`,
+          });
         } else {
           updateStep('receive', {
             status: 'done',
@@ -425,18 +468,28 @@ export function HybridSyncModal({ open, onOpenChange, onComplete }: Props) {
               <div className="rounded-lg border border-emerald-200 p-3 space-y-1 bg-emerald-50/80">
                 <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-emerald-800">
                   <ArrowDownToLine className="h-3.5 w-3.5" />
-                  Alınacak
+                  {preview.inboundQueueAvailable ? 'Alınacak (kuyruk)' : 'Merkezde kayıtlı'}
                 </div>
                 <p className="text-lg font-bold text-gray-900 tabular-nums">
-                  {preview.inboundPending >= 0 ? preview.inboundPending : '—'}
+                  {preview.inboundQueueAvailable
+                    ? preview.inboundPending
+                    : preview.remoteMaster.tables.reduce(
+                        (s, r) => s + (r.count ?? 0),
+                        0,
+                      ) || '—'}
                 </p>
                 <p className="text-xs text-gray-700 leading-snug">
                   {preview.isKasa
                     ? formatBreakdown(preview.inboundBreakdown, Math.max(0, preview.inboundPending))
-                    : preview.inboundPending >= 0
-                      ? `${preview.inboundPending} merkez kaydı`
-                      : 'Merkez bağlantısı kontrol edilemedi'}
+                    : preview.inboundQueueAvailable
+                      ? `${preview.inboundPending} merkez kuyruk kaydı`
+                      : formatMasterCounts(preview.remoteMaster.tables)}
                 </p>
+                {!preview.inboundQueueAvailable ? (
+                  <p className="text-[10px] text-amber-800 leading-snug">
+                    Merkez sync_queue PostgREST&apos;te yok; tablo sayıları API ile okunur.
+                  </p>
+                ) : null}
               </div>
             </div>
 
