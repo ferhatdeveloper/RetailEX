@@ -1,0 +1,42 @@
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+
+vi.mock('../../services/centralRpcService', () => ({
+  isCentralPgConfigured: vi.fn(() => true),
+  queryCentralPgRows: vi.fn(),
+}));
+
+import { DB_SETTINGS, REMOTE_CONFIG, getCentralRemotePgConfig } from '../../services/postgres';
+import { resolveSyncPgEndpoint } from '../../services/enterpriseSyncService';
+
+describe('resolveSyncPgEndpoint', () => {
+  const prevMode = DB_SETTINGS.activeMode;
+  const prevRest = DB_SETTINGS.remoteRestUrl;
+  const prevDb = REMOTE_CONFIG.database;
+
+  beforeEach(() => {
+    DB_SETTINGS.activeMode = 'online';
+    DB_SETTINGS.remoteRestUrl = 'https://api.retailex.app/lovan';
+    REMOTE_CONFIG.database = 'retailex_demo';
+    REMOTE_CONFIG.isConfigured = true;
+  });
+
+  afterEach(() => {
+    DB_SETTINGS.activeMode = prevMode;
+    DB_SETTINGS.remoteRestUrl = prevRest;
+    REMOTE_CONFIG.database = prevDb;
+  });
+
+  it('online modda PostgREST slug ile tenant DB kullanır (retailex_demo değil)', () => {
+    const central = getCentralRemotePgConfig();
+    expect(central.database).toBe('lovan');
+
+    const endpoint = resolveSyncPgEndpoint();
+    expect(endpoint.database).toBe('lovan');
+  });
+
+  it('hybrid modda yerel PG döner', () => {
+    DB_SETTINGS.activeMode = 'hybrid';
+    const endpoint = resolveSyncPgEndpoint();
+    expect(endpoint.database).not.toBe('lovan');
+  });
+});

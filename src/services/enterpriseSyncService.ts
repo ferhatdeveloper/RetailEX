@@ -8,6 +8,7 @@ import {
   ERP_SETTINGS,
   LOCAL_CONFIG,
   REMOTE_CONFIG,
+  getCentralRemotePgConfig,
   resolveHybridSyncConnectionProvider,
 } from './postgres';
 import {
@@ -83,7 +84,10 @@ function firmNrPadded(): string {
 export function resolveSyncPgEndpoint(): PgEndpointConfig {
   if (DB_SETTINGS.activeMode === 'hybrid') return LOCAL_CONFIG;
   if (DB_SETTINGS.activeMode === 'online') {
-    return REMOTE_CONFIG.isConfigured ? REMOTE_CONFIG : LOCAL_CONFIG;
+    if (REMOTE_CONFIG.isConfigured || isCentralPgConfigured()) {
+      return getCentralRemotePgConfig();
+    }
+    return LOCAL_CONFIG;
   }
   return LOCAL_CONFIG;
 }

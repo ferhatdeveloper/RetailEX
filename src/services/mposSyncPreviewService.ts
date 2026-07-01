@@ -58,34 +58,33 @@ function labelForTable(name: string): string {
 }
 
 async function countQueueByDirection(opts: {
+  firmNr: string;
   storeId: string;
   terminalName?: string;
   direction: 'outbound' | 'inbound';
 }): Promise<MposPreviewLine[]> {
   const pg = resolveSyncPgEndpoint();
+  const firm = firmNrPadded(opts.firmNr);
   const term = opts.terminalName?.trim() || null;
 
-  const where =
-    opts.direction === 'outbound'
-      ? `status = 'pending' AND target_store_id = $1::uuid`
-      : `status = 'pending' AND source_store_id = $1::uuid`;
-
-  const params: unknown[] = [opts.storeId];
+  const params: unknown[] = [opts.storeId, firm];
   let termFilter = '';
   if (term) {
     params.push(term);
-    termFilter =
-      opts.direction === 'outbound'
-        ? ` AND (terminal_name IS NULL OR btrim(terminal_name) = '' OR terminal_name = $2)`
-        : ` AND (terminal_name IS NULL OR btrim(terminal_name) = '' OR terminal_name = $2)`;
+    termFilter = ` AND (terminal_name IS NULL OR btrim(terminal_name) = '' OR terminal_name = $3)`;
   }
+
+  const storeMatch =
+    opts.direction === 'outbound'
+      ? `(target_store_id = $1::uuid OR (target_store_id IS NULL AND (firm_nr = $2 OR lpad(ltrim(firm_nr, '0'), 3, '0') = $2)))`
+      : `(source_store_id = $1::uuid OR (source_store_id IS NULL AND (firm_nr = $2 OR lpad(ltrim(firm_nr, '0'), 3, '0') = $2)))`;
 
   try {
     const rows = await queryPgRows(
       pg,
       `SELECT table_name, COUNT(*)::text AS cnt
        FROM sync_queue
-       WHERE ${where}${termFilter}
+       WHERE status = 'pending' AND ${storeMatch}${termFilter}
        GROUP BY table_name
        ORDER BY COUNT(*) DESC
        LIMIT 12`,
@@ -95,7 +94,10 @@ async function countQueueByDirection(opts: {
       key: String(r.table_name ?? ''),
       label: labelForTable(String(r.table_name ?? '')),
       count: Number(r.cnt ?? 0),
-      hint: 'Kuyrukta bekliyor',
+      hint:
+        opts.direction === 'outbound'
+          ? 'Merkez → kasa kuyruğu'
+          : 'Kasa → merkez kuyruğu',
     }));
   } catch {
     return [];
@@ -174,11 +176,13 @@ export async function getMposTransferPreview(opts: {
 
   const [outboundQueue, inboundQueue, masterCount, todaySales] = await Promise.all([
     countQueueByDirection({
+      firmNr: opts.firmNr,
       storeId,
       terminalName: opts.terminalName,
       direction: 'outbound',
     }),
     countQueueByDirection({
+      firmNr: opts.firmNr,
       storeId,
       terminalName: opts.terminalName,
       direction: 'inbound',
@@ -198,6 +202,7 @@ export async function getMposTransferPreview(opts: {
   ]);
 
   const sendLines: MposPreviewLine[] = [...outboundQueue];
+  const queueTotal = outboundQueue.reduce((s, l) => s + l.count, 0);
 
   if (opts.sendFileType === 'products' || opts.sendFileType === 'customers') {
     const label =
@@ -214,38 +219,49 @@ export async function getMposTransferPreview(opts: {
       count: masterCount,
       hint:
         opts.syncMode === 'incremental'
-          ? 'updated_at ile filtrelenir'
+          ? 'updated_at ile filtrelenir (merkez PG)'
           : 'Merkezden kasaya gönderilecek',
     });
   } else {
     sendLines.unshift({
       key: opts.sendFileType,
       label: 'Seçili dosya tipi paketi',
-      count: outboundQueue.reduce((s, l) => s + l.count, 0),
+      count: queueTotal,
       hint: 'Merkez → kasa',
     });
   }
 
   const receiveLines: MposPreviewLine[] = [...inboundQueue];
+  const inboundQueueSales = inboundQueue
+    .filter((l) => /invoice|sales|fatura/i.test(l.key))
+    .reduce((s, l) => s + l.count, 0);
 
   if (opts.receiveFileType === 'sales' || opts.receiveFileType === 'day_end') {
     receiveLines.unshift({
       key: 'today_sales',
-      label: 'Bugünkü satış / fiş',
+      label: 'Bugünkü satış / fiş (merkez PG)',
       count: todaySales,
-      hint: 'Kasa → merkez (Bilgi Al)',
+      hint:
+        todaySales > 0
+          ? 'Kasa → merkez kayıtlı'
+          : 'Kasada satış varsa «Al» ile merkeze iletilir',
     });
   }
 
   receiveLines.push({
     key: 'invoices_note',
-    label: 'Fatura / fiş değişiklikleri',
-    count: inboundQueue.filter((l) => /invoice|sales|fatura/i.test(l.key)).reduce((s, l) => s + l.count, 0),
-    hint: 'Kuyrukta veya «Bilgi Al» ile çekilir',
+    label: 'Fatura / fiş kuyruğu',
+    count: inboundQueueSales,
+    hint: 'Kuyrukta bekleyen satış/fatura',
   });
 
-  const sendTotal = sendLines.reduce((s, l) => s + l.count, 0);
-  const receiveTotal = receiveLines.reduce((s, l) => s + l.count, 0);
+  const masterPrimary =
+    (opts.sendFileType === 'products' || opts.sendFileType === 'customers') &&
+    opts.syncMode === 'incremental';
+  const sendTotal = masterPrimary
+    ? Math.max(masterCount, queueTotal)
+    : sendLines.reduce((s, l) => s + l.count, 0);
+  const receiveTotal = Math.max(todaySales, inboundQueueSales, inboundQueue.reduce((s, l) => s + l.count, 0));
 
   return { sendLines, receiveLines, sendTotal, receiveTotal };
 }
