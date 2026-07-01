@@ -45,7 +45,7 @@ import {
   getHybridDeviceId,
   listDeviceSyncTransferLogs,
 } from '../../services/hybridDeviceSyncLogService';
-import { DevicePriceDeliveryPanel } from './DevicePriceDeliveryPanel';
+import { CenterDeviceSyncMonitor } from './CenterDeviceSyncMonitor';
 import { FullscreenBodyPortal, MODAL_OVERLAY_Z } from '../shared/FullscreenBodyPortal';
 
 type StepStatus = 'pending' | 'running' | 'done' | 'error' | 'skipped';
@@ -523,7 +523,7 @@ export function HybridSyncModal({ open, onOpenChange, onComplete }: Props) {
               </p>
             ) : null}
 
-            <DevicePriceDeliveryPanel compact hours={168} limit={12} />
+            <CenterDeviceSyncMonitor compact hours={168} />
 
             <div className="space-y-2">
               <p className="text-xs font-semibold uppercase tracking-wide text-gray-600">

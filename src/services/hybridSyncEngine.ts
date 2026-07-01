@@ -831,7 +831,7 @@ export async function runHybridSync(opts: HybridSyncRunOptions): Promise<HybridS
     const status =
       r.failed > 0 && r.synced === 0 ? 'failed' : r.failed > 0 ? 'partial' : 'ok';
 
-    await logDeviceSyncTransfer({
+    const localLogId = await logDeviceSyncTransfer({
       deviceId,
       direction: legDirection,
       syncMode: incremental ? 'incremental' : 'full',
@@ -844,7 +844,7 @@ export async function runHybridSync(opts: HybridSyncRunOptions): Promise<HybridS
       updatedCount: r.updated,
       skippedCount: r.skipped,
       failedCount: r.failed,
-      priceChangeCount: r.priceSnapshots.length,
+      priceChangeCount: r.priceSnapshots.filter((p) => (p.priceDiff?.length ?? 0) > 0).length,
       watermarkFrom: legDirection === 'local_to_remote' ? watermarkFrom : null,
       watermarkTo,
       tableBreakdown: r.tableBreakdown,
@@ -857,6 +857,45 @@ export async function runHybridSync(opts: HybridSyncRunOptions): Promise<HybridS
         priceAckCount: r.priceAckCount,
       },
     });
+
+    try {
+      const ackSvc = await import('./deviceSyncAckService');
+      let pendingPriceCount = 0;
+      if (legDirection === 'remote_to_local') {
+        const pendingMap = await ackSvc.countPendingPriceChangesByDevice(
+          opts.filter?.firmNr ?? undefined,
+          168,
+        );
+        pendingPriceCount = pendingMap.get(deviceId) ?? 0;
+      }
+      await ackSvc.pushDeviceSyncAckToCenter({
+        deviceId,
+        firmNr: opts.filter?.firmNr ?? undefined,
+        storeId: opts.storeId ?? opts.filter?.storeId ?? null,
+        terminalName: opts.terminalName ?? null,
+        direction: legDirection,
+        syncMode: incremental ? 'incremental' : 'full',
+        status,
+        recordCount: r.synced,
+        insertedCount: r.inserted,
+        updatedCount: r.updated,
+        skippedCount: r.skipped,
+        failedCount: r.failed,
+        priceChangeCount: r.priceSnapshots.filter((p) => (p.priceDiff?.length ?? 0) > 0).length,
+        priceAckCount: r.priceAckCount,
+        pendingPriceCount,
+        productsWithPrice: ackSvc.countProductsWithPrice(r.priceSnapshots),
+        tableBreakdown: r.tableBreakdown,
+        priceChanges: r.priceSnapshots,
+        watermarkFrom: legDirection === 'local_to_remote' ? watermarkFrom : null,
+        watermarkTo,
+        message: r.errors[0] ?? null,
+        detail: { flow, scope, label: leg.label, priceAckCount: r.priceAckCount },
+        localLogId,
+      });
+    } catch {
+      /* merkez ack gönderilemedi — yerel log yeterli */
+    }
 
     if (legDirection === 'local_to_remote' && r.synced > 0) {
       await upsertDeviceSyncCursor({
