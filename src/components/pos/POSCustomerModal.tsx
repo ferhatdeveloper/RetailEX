@@ -1,4 +1,4 @@
-import { Users, Search, UserCheck, Phone, Mail, MapPin, Plus, CreditCard, Wallet } from 'lucide-react';
+import { Users, Search, Phone, Mail, MapPin, Plus, CreditCard, Wallet } from 'lucide-react';
 import { useState, useEffect, useMemo } from 'react';
 import type { Customer } from '../../core/types';
 import { useLanguage } from '../../contexts/LanguageContext';
@@ -146,7 +146,7 @@ export function POSCustomerModal({
         </div>
 
         {/* Search */}
-        <div className={`p-4 border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+        <div className={`p-4 border-b shrink-0 ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
           <div className="relative">
             <Search className={`w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`} />
             <input
@@ -164,37 +164,39 @@ export function POSCustomerModal({
           </div>
         </div>
 
-        {/* Content */}
-        <div className="flex-1 overflow-auto p-4">
-          <div className="grid gap-3">
-            {/* No Customer Option */}
-            <button
-              onClick={() => {
-                onSelect(null);
-                onClose();
-              }}
-              className={`p-4 rounded border-2 transition-all text-left ${
-                highlightNoCustomerRow
-                  ? darkMode ? 'border-blue-500 bg-blue-900/30' : 'border-blue-400 bg-blue-50'
-                  : darkMode ? 'border-gray-700 bg-gray-800 hover:border-gray-600' : 'border-gray-200 bg-white hover:border-gray-300'
-              }`}
-            >
-              <div className="flex items-center justify-between">
-                <div>
-                  <h4 className={`mb-1 ${darkMode ? 'text-white' : 'text-gray-900'}`}>{t.noCustomerSale}</h4>
-                  <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>{t.noCustomerSaleDescription}</p>
-                </div>
-                {highlightNoCustomerRow && (
-                  <div className="text-blue-600">
-                    <div className="w-5 h-5 rounded-full border-2 border-blue-600 flex items-center justify-center">
-                      <div className="w-2.5 h-2.5 rounded-full bg-blue-600" />
-                    </div>
-                  </div>
-                )}
+        {/* Müşterisiz satış — sabit */}
+        <div className={`px-4 pt-4 shrink-0 ${darkMode ? '' : ''}`}>
+          <button
+            type="button"
+            onClick={() => {
+              onSelect(null);
+              onClose();
+            }}
+            className={`w-full p-4 rounded border-2 transition-all text-left ${
+              highlightNoCustomerRow
+                ? darkMode ? 'border-blue-500 bg-blue-900/30' : 'border-blue-400 bg-blue-50'
+                : darkMode ? 'border-gray-700 bg-gray-800 hover:border-gray-600' : 'border-gray-200 bg-white hover:border-gray-300'
+            }`}
+          >
+            <div className="flex items-center justify-between">
+              <div>
+                <h4 className={`mb-1 ${darkMode ? 'text-white' : 'text-gray-900'}`}>{t.noCustomerSale}</h4>
+                <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>{t.noCustomerSaleDescription}</p>
               </div>
-            </button>
+              {highlightNoCustomerRow && (
+                <div className="text-blue-600">
+                  <div className="w-5 h-5 rounded-full border-2 border-blue-600 flex items-center justify-center">
+                    <div className="w-2.5 h-2.5 rounded-full bg-blue-600" />
+                  </div>
+                </div>
+              )}
+            </div>
+          </button>
+        </div>
 
-            {/* Customer List */}
+        {/* Müşteri listesi — kaydırılabilir */}
+        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 py-3">
+          <div className="grid gap-3">
             {filteredCustomers.length === 0 ? (
               <div className={`text-center py-8 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
                 <Users className="w-12 h-12 mx-auto mb-2 opacity-50" />
@@ -204,6 +206,7 @@ export function POSCustomerModal({
               filteredCustomers.map((customer) => (
                 <button
                   key={customer.id}
+                  type="button"
                   onClick={() => {
                     onSelect(customer, allowPaymentTypeSelection ? selectedPaymentType : undefined);
                     onClose();
@@ -273,7 +276,7 @@ export function POSCustomerModal({
         </div>
 
         {/* Footer */}
-        <div className={`px-4 py-3 border-t ${darkMode ? 'border-gray-700' : 'border-gray-200'} space-y-3`}>
+        <div className={`px-4 py-3 border-t shrink-0 ${darkMode ? 'border-gray-700 bg-gray-900' : 'border-gray-200 bg-gray-50'} space-y-3`}>
           {/* Payment Type Selection */}
           {allowPaymentTypeSelection && selectedCustomer && (
             <div className="bg-blue-50 border border-blue-200 p-3 rounded-lg">

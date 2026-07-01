@@ -2,10 +2,10 @@
 export const POS_MODAL_Z = 'z-[2147483646]';
 
 export const POS_MODAL_OVERLAY =
-  `fixed inset-0 ${POS_MODAL_Z} overflow-y-auto overflow-x-hidden bg-black/60 backdrop-blur-sm flex items-center justify-center p-4`;
+  `fixed inset-0 ${POS_MODAL_Z} overflow-hidden bg-black/60 backdrop-blur-sm flex items-center justify-center p-4`;
 
 export const POS_MODAL_SHELL = (darkMode: boolean) =>
-  `w-full max-w-4xl max-h-[min(90vh,100dvh)] flex flex-col shadow-2xl min-h-0 overflow-hidden ${
+  `w-full max-w-4xl h-[min(85vh,100dvh)] flex flex-col shadow-2xl min-h-0 overflow-hidden rounded-xl ${
     darkMode ? 'bg-gray-900' : 'bg-white'
   }`;
 
