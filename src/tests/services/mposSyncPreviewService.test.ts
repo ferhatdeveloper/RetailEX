@@ -30,8 +30,8 @@ describe('getMposTransferPreview', () => {
   it('returns zero totals when storeId is missing', async () => {
     const r = await getMposTransferPreview({
       firmNr: '002',
-      sendFileType: 'products',
-      receiveFileType: 'sales',
+      sendFileTypes: ['products'],
+      receiveFileTypes: ['sales'],
       syncMode: 'incremental',
       dateFrom: '2026-06-24',
       dateTo: '2026-07-01',
@@ -62,8 +62,8 @@ describe('getMposTransferPreview', () => {
       firmNr: '002',
       storeId: '99ee937c-bafa-4adb-996c-06b1d8da1381',
       terminalName: '7e87aae1-16ff-4e14-a607-312440cab7c7',
-      sendFileType: 'products',
-      receiveFileType: 'sales',
+      sendFileTypes: ['products'],
+      receiveFileTypes: ['sales'],
       syncMode: 'incremental',
       dateFrom: '2026-06-24',
       dateTo: '2026-07-01',
@@ -94,8 +94,8 @@ describe('getMposTransferPreview', () => {
     const r = await getMposTransferPreview({
       firmNr: '002',
       storeId: '99ee937c-bafa-4adb-996c-06b1d8da1381',
-      sendFileType: 'products',
-      receiveFileType: 'day_end',
+      sendFileTypes: ['products'],
+      receiveFileTypes: ['day_end'],
       syncMode: 'incremental',
       dateFrom: '2026-06-24',
       dateTo: '2026-07-01',
@@ -120,13 +120,39 @@ describe('getMposTransferPreview', () => {
     const r = await getMposTransferPreview({
       firmNr: '002',
       storeId: '99ee937c-bafa-4adb-996c-06b1d8da1381',
-      sendFileType: 'products',
-      receiveFileType: 'sales',
+      sendFileTypes: ['products'],
+      receiveFileTypes: ['sales'],
       syncMode: 'incremental',
       dateFrom: '2026-06-24',
       dateTo: '2026-07-01',
     });
 
     expect(r.sendTotal).toBe(1018);
+  });
+
+  it('aggregates preview for multiple send and receive types', async () => {
+    queryPgRows.mockImplementation(async (_pg, sql: string) => {
+      if (sql.includes('FROM sync_queue') && sql.includes('target_store_id')) {
+        return [{ table_name: 'rex_002_products', cnt: '100' }];
+      }
+      if (sql.includes('FROM rex_002_products')) return [{ cnt: '50' }];
+      if (sql.includes('FROM rex_002_customers')) return [{ cnt: '20' }];
+      return [{ cnt: '0' }];
+    });
+
+    const r = await getMposTransferPreview({
+      firmNr: '002',
+      storeId: '99ee937c-bafa-4adb-996c-06b1d8da1381',
+      sendFileTypes: ['products', 'customers', 'promotions'],
+      receiveFileTypes: ['sales', 'day_end', 'z_report'],
+      syncMode: 'incremental',
+      dateFrom: '2026-06-24',
+      dateTo: '2026-07-01',
+    });
+
+    expect(r.sendLines.some((l) => l.key === 'products' && l.count === 50)).toBe(true);
+    expect(r.sendLines.some((l) => l.key === 'customers' && l.count === 20)).toBe(true);
+    expect(r.sendLines.some((l) => l.key === 'promotions')).toBe(true);
+    expect(r.receiveLines.some((l) => l.key === 'receive_z_report')).toBe(true);
   });
 });

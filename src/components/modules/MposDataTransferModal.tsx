@@ -31,6 +31,7 @@ import {
   getMposTransferPreview,
   type MposTransferPreview,
 } from '../../services/mposSyncPreviewService';
+import { MposMultiSelectDropdown } from './MposMultiSelectDropdown';
 
 type StepStatus = 'pending' | 'running' | 'done' | 'error' | 'skipped';
 
@@ -61,10 +62,10 @@ type Props = {
   selectedTerminals?: { deviceId: string; terminalName: string; storeName?: string }[];
   sendDeviceStatuses?: MposSendDeviceStatus[];
   targetBlockReason?: string | null;
-  sendFileType: MposSendFileType;
-  onSendFileTypeChange: (v: MposSendFileType) => void;
-  receiveFileType: MposReceiveFileType;
-  onReceiveFileTypeChange: (v: MposReceiveFileType) => void;
+  sendFileTypes: MposSendFileType[];
+  onSendFileTypesChange: (v: MposSendFileType[]) => void;
+  receiveFileTypes: MposReceiveFileType[];
+  onReceiveFileTypesChange: (v: MposReceiveFileType[]) => void;
   syncMode: MposSendSyncMode;
   onSyncModeChange: (v: MposSendSyncMode) => void;
   dateFrom: string;
@@ -99,10 +100,10 @@ export function MposDataTransferModal({
   selectedTerminals = [],
   sendDeviceStatuses = [],
   targetBlockReason = null,
-  sendFileType,
-  onSendFileTypeChange,
-  receiveFileType,
-  onReceiveFileTypeChange,
+  sendFileTypes,
+  onSendFileTypesChange,
+  receiveFileTypes,
+  onReceiveFileTypesChange,
   syncMode,
   onSyncModeChange,
   dateFrom,
@@ -135,8 +136,8 @@ export function MposDataTransferModal({
         firmNr,
         storeId,
         terminalName,
-        sendFileType,
-        receiveFileType,
+        sendFileTypes,
+        receiveFileTypes,
         syncMode,
         dateFrom,
         dateTo,
@@ -147,7 +148,7 @@ export function MposDataTransferModal({
     } finally {
       setLoadingPreview(false);
     }
-  }, [open, firmNr, storeId, terminalName, sendFileType, receiveFileType, syncMode, dateFrom, dateTo]);
+  }, [open, firmNr, storeId, terminalName, sendFileTypes, receiveFileTypes, syncMode, dateFrom, dateTo]);
 
   useEffect(() => {
     if (open) {
@@ -172,6 +173,9 @@ export function MposDataTransferModal({
     !transferBlocked &&
     (selectedTerminals.length > 0 ? true : Boolean(storeId?.trim()));
   const multiDevice = selectedTerminals.length > 1;
+
+  const sendHasMasterTypes = sendFileTypes.some((t) => t === 'products' || t === 'customers');
+  const sendHasProducts = sendFileTypes.includes('products');
 
   const fieldClass = isDark
     ? 'bg-gray-800 border-gray-600 text-gray-100'
@@ -344,21 +348,17 @@ export function MposDataTransferModal({
                   Merkezden kasaya
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="text-xs">Dosya tipi</Label>
-                  <select
-                    value={sendFileType}
-                    onChange={(e) => onSendFileTypeChange(e.target.value as MposSendFileType)}
+                  <Label className="text-xs">Dosya tipi (çoklu seçim)</Label>
+                  <MposMultiSelectDropdown
+                    options={MPOS_SEND_FILE_TYPES}
+                    value={sendFileTypes}
+                    onChange={onSendFileTypesChange}
                     disabled={isBusy}
-                    className={cn('h-9 w-full border px-2 text-sm rounded-md', fieldClass)}
-                  >
-                    {MPOS_SEND_FILE_TYPES.map((ft) => (
-                      <option key={ft.id} value={ft.id}>
-                        {ft.label}
-                      </option>
-                    ))}
-                  </select>
+                    placeholder="Gönderilecek tipleri seçin"
+                    className={fieldClass}
+                  />
                 </div>
-                {(sendFileType === 'products' || sendFileType === 'customers') && (
+                {sendHasMasterTypes && (
                   <>
                     <RadioGroup value={syncMode} onValueChange={(v) => onSyncModeChange(v as MposSendSyncMode)} className="flex flex-wrap gap-3">
                       <div className="flex items-center gap-1.5">
@@ -382,7 +382,7 @@ export function MposDataTransferModal({
                     )}
                   </>
                 )}
-                {sendFileType === 'products' && (
+                {sendHasProducts && (
                   <label className="flex items-center gap-2 text-xs cursor-pointer">
                     <Checkbox checked={includeProductImages} onCheckedChange={(c) => onIncludeProductImagesChange(c === true)} />
                     Ürün resmi de aktarılsın
@@ -398,19 +398,15 @@ export function MposDataTransferModal({
                   Kasadan merkeze
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="text-xs">Alınacak veri</Label>
-                  <select
-                    value={receiveFileType}
-                    onChange={(e) => onReceiveFileTypeChange(e.target.value as MposReceiveFileType)}
+                  <Label className="text-xs">Alınacak veri (çoklu seçim)</Label>
+                  <MposMultiSelectDropdown
+                    options={MPOS_RECEIVE_FILE_TYPES}
+                    value={receiveFileTypes}
+                    onChange={onReceiveFileTypesChange}
                     disabled={isBusy}
-                    className={cn('h-9 w-full border px-2 text-sm rounded-md', fieldClass)}
-                  >
-                    {MPOS_RECEIVE_FILE_TYPES.map((ft) => (
-                      <option key={ft.id} value={ft.id}>
-                        {ft.label}
-                      </option>
-                    ))}
-                  </select>
+                    placeholder="Alınacak verileri seçin"
+                    className={fieldClass}
+                  />
                 </div>
                 <p className={cn('text-xs leading-relaxed', isDark ? 'text-gray-400' : 'text-gray-600')}>
                   Satış fişleri ve günsonu kasada oluşur; «Al» veya üst çubuk «Senkron» ile merkeze iletilir.

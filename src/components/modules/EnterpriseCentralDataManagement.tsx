@@ -166,8 +166,8 @@ export function EnterpriseCentralDataManagement() {
   const [selectedFirmNr, setSelectedFirmNr] = useState('');
   const [selectedBranchStoreId, setSelectedBranchStoreId] = useState('');
   const [selectedTerminalDeviceId, setSelectedTerminalDeviceId] = useState('');
-  const [mposFileType, setMposFileType] = useState<MposSendFileType>('products');
-  const [mposReceiveFileType, setMposReceiveFileType] = useState<MposReceiveFileType>('sales');
+  const [mposFileTypes, setMposFileTypes] = useState<MposSendFileType[]>(['products']);
+  const [mposReceiveFileTypes, setMposReceiveFileTypes] = useState<MposReceiveFileType[]>(['sales']);
   const [terminalDailyStatus, setTerminalDailyStatus] = useState<MposTerminalDailyStatus[]>([]);
   const [kasaReport, setKasaReport] = useState<MposKasaReportSummary | null>(null);
   const [includeProductImages, setIncludeProductImages] = useState(false);
@@ -502,7 +502,7 @@ export function EnterpriseCentralDataManagement() {
       return;
     }
     const guard = await checkMposSendGuard({
-      fileType: mposFileType,
+      fileType: mposFileTypes[0] ?? 'products',
       storeId: targets[0]?.storeId?.trim() || resolveMposEffectiveStoreId(),
       terminalName: targets[0]?.terminalName || '',
     });
@@ -535,60 +535,72 @@ export function EnterpriseCentralDataManagement() {
     try {
       let success = 0;
       let failed = 0;
+      const fileTypes = mposFileTypes.length ? mposFileTypes : (['products'] as MposSendFileType[]);
       if (targets.length === 1) {
         const t = targets[0];
         const storeId = t.storeId?.trim() || resolveMposEffectiveStoreId();
-        patchDeviceStatus(t.deviceId, { status: 'running', detail: 'Gönderiliyor…' });
-        setSendProgress({ current: 1, total: 1, label: `${t.terminalName} gönderiliyor…` });
-        const x = await sendMposInfoToKasaAndPush({
-          fileType: mposFileType,
-          storeId,
-          terminalName: t.terminalName,
-          terminalDeviceId: t.deviceId,
-          includeProductImages: mposFileType === 'products' && includeProductImages,
-          syncMode: mposSyncMode,
-          dateFrom: mposSyncMode === 'incremental' ? mposDateFrom : undefined,
-          dateTo: mposSyncMode === 'incremental' ? mposDateTo : undefined,
-        });
-        patchDeviceStatus(t.deviceId, {
-          status: x.ok ? 'done' : 'error',
-          detail: x.message,
-        });
-        success = x.ok ? 1 : 0;
-        failed = x.ok ? 0 : 1;
-        if (x.ok) toast.success(x.message);
-        else toast.error(x.message);
-      } else {
-        const r = await sendMposInfoToSelectedKasas({
-          fileType: mposFileType,
-          terminals: targets.map((t) => ({
+        for (const fileType of fileTypes) {
+          patchDeviceStatus(t.deviceId, {
+            status: 'running',
+            detail: `${MPOS_SEND_FILE_TYPES.find((f) => f.id === fileType)?.label ?? fileType} gönderiliyor…`,
+          });
+          setSendProgress({ current: 1, total: 1, label: `${t.terminalName} — ${fileType}` });
+          const x = await sendMposInfoToKasaAndPush({
+            fileType,
+            storeId,
             terminalName: t.terminalName,
             terminalDeviceId: t.deviceId,
-            storeId: t.storeId?.trim() || '',
-          })),
-          includeProductImages: mposFileType === 'products' && includeProductImages,
-          syncMode: mposSyncMode,
-          dateFrom: mposSyncMode === 'incremental' ? mposDateFrom : undefined,
-          dateTo: mposSyncMode === 'incremental' ? mposDateTo : undefined,
-          onProgress: (current, total, terminalName) => {
-            setSendProgress({ current, total, label: `${terminalName} gönderiliyor…` });
-            const running = targets.find((t) => t.terminalName === terminalName);
-            if (running) {
-              patchDeviceStatus(running.deviceId, { status: 'running', detail: 'Gönderiliyor…' });
-            }
-          },
-          onDeviceResult: (result) => {
-            patchDeviceStatus(result.terminalDeviceId, {
-              status: result.ok ? 'done' : 'error',
-              detail: result.message,
-              recordCount: result.count,
-            });
-          },
-        });
-        success = r.success;
-        failed = r.failed;
-        if (r.ok) toast.success(r.message);
-        else toast.error(r.message);
+            includeProductImages: fileType === 'products' && includeProductImages,
+            syncMode: mposSyncMode,
+            dateFrom: mposSyncMode === 'incremental' ? mposDateFrom : undefined,
+            dateTo: mposSyncMode === 'incremental' ? mposDateTo : undefined,
+          });
+          patchDeviceStatus(t.deviceId, {
+            status: x.ok ? 'done' : 'error',
+            detail: x.message,
+            recordCount: x.count,
+          });
+          if (x.ok) success += 1;
+          else failed += 1;
+          if (x.ok) toast.success(x.message);
+          else toast.error(x.message);
+        }
+      } else {
+        for (const fileType of fileTypes) {
+          const r = await sendMposInfoToSelectedKasas({
+            fileType,
+            terminals: targets.map((t) => ({
+              terminalName: t.terminalName,
+              terminalDeviceId: t.deviceId,
+              storeId: t.storeId?.trim() || '',
+            })),
+            includeProductImages: fileType === 'products' && includeProductImages,
+            syncMode: mposSyncMode,
+            dateFrom: mposSyncMode === 'incremental' ? mposDateFrom : undefined,
+            dateTo: mposSyncMode === 'incremental' ? mposDateTo : undefined,
+            onProgress: (current, total, terminalName) => {
+              setSendProgress({ current, total, label: `${terminalName} — ${fileType}` });
+              const running = targets.find((t) => t.terminalName === terminalName);
+              if (running) {
+                patchDeviceStatus(running.deviceId, {
+                  status: 'running',
+                  detail: `${MPOS_SEND_FILE_TYPES.find((f) => f.id === fileType)?.label ?? fileType} gönderiliyor…`,
+                });
+              }
+            },
+            onDeviceResult: (result) => {
+              patchDeviceStatus(result.terminalDeviceId, {
+                status: result.ok ? 'done' : 'error',
+                detail: result.message,
+                recordCount: result.count,
+              });
+            },
+          });
+          success += r.success;
+          failed += r.failed;
+          if (r.ok) toast.success(r.message);
+          else toast.error(r.message);
+        }
       }
       await refreshEnterpriseData();
       return { success, failed };
@@ -609,7 +621,7 @@ export function EnterpriseCentralDataManagement() {
     }
     if (
       !window.confirm(
-        `${filteredTerminalsForFirm.length} kasaya «${MPOS_SEND_FILE_TYPES.find((f) => f.id === mposFileType)?.label}» gönderilsin mi?`,
+        `${filteredTerminalsForFirm.length} kasaya ${mposFileTypes.length} dosya tipi gönderilsin mi?`,
       )
     ) {
       return;
@@ -627,20 +639,22 @@ export function EnterpriseCentralDataManagement() {
       let success = 0;
       let failed = 0;
       for (const [storeId, terms] of byStore) {
-        const r = await sendMposInfoToAllKasasInStore({
-          fileType: mposFileType,
-          storeId,
-          terminals: terms.map((t) => ({
-            terminalName: t.terminalName,
-            terminalDeviceId: t.deviceId,
-          })),
-          includeProductImages: mposFileType === 'products' && includeProductImages,
-          syncMode: mposSyncMode,
-          dateFrom: mposSyncMode === 'incremental' ? mposDateFrom : undefined,
-          dateTo: mposSyncMode === 'incremental' ? mposDateTo : undefined,
-        });
-        success += r.success;
-        failed += r.failed;
+        for (const fileType of mposFileTypes.length ? mposFileTypes : (['products'] as MposSendFileType[])) {
+          const r = await sendMposInfoToAllKasasInStore({
+            fileType,
+            storeId,
+            terminals: terms.map((t) => ({
+              terminalName: t.terminalName,
+              terminalDeviceId: t.deviceId,
+            })),
+            includeProductImages: fileType === 'products' && includeProductImages,
+            syncMode: mposSyncMode,
+            dateFrom: mposSyncMode === 'incremental' ? mposDateFrom : undefined,
+            dateTo: mposSyncMode === 'incremental' ? mposDateTo : undefined,
+          });
+          success += r.success;
+          failed += r.failed;
+        }
       }
       if (success > 0 && failed === 0) toast.success(`${success} kasaya gönderildi.`);
       else if (success > 0) toast.warning(`${success} başarılı, ${failed} başarısız.`);
@@ -655,8 +669,8 @@ export function EnterpriseCentralDataManagement() {
     setSelectedTerminalDeviceId('');
     setSelectedTerminalDeviceIds([]);
     setSelectedBranchStoreId('');
-    setMposFileType('products');
-    setMposReceiveFileType('sales');
+    setMposFileTypes(['products']);
+    setMposReceiveFileTypes(['sales']);
     setMposSyncMode('full');
     setSendProgress(null);
   };
@@ -666,14 +680,29 @@ export function EnterpriseCentralDataManagement() {
     const term = selectedTerminal();
     setIsSyncBusy(true);
     try {
-      const r = await receiveMposInfoFromKasa({
-        fileType: mposReceiveFileType,
-        storeId: resolveMposEffectiveStoreId(),
-        terminalName: term?.terminalName || '',
-        terminalDeviceId: selectedTerminalDeviceId,
-      });
-      if (r.ok) toast.success(r.message);
-      else toast.error(r.message);
+      const receiveTypes = mposReceiveFileTypes.length
+        ? mposReceiveFileTypes
+        : (['sales'] as MposReceiveFileType[]);
+      let okCount = 0;
+      let failCount = 0;
+      for (const fileType of receiveTypes) {
+        const r = await receiveMposInfoFromKasa({
+          fileType,
+          storeId: resolveMposEffectiveStoreId(),
+          terminalName: term?.terminalName || '',
+          terminalDeviceId: selectedTerminalDeviceId,
+        });
+        if (r.ok) {
+          okCount += 1;
+          toast.success(r.message);
+        } else {
+          failCount += 1;
+          toast.error(r.message);
+        }
+      }
+      if (receiveTypes.length > 1) {
+        toast.info(`${okCount} tip alındı${failCount > 0 ? `, ${failCount} hata` : ''}.`);
+      }
       await refreshEnterpriseData();
     } finally {
       setIsSyncBusy(false);
@@ -2820,10 +2849,10 @@ export function EnterpriseCentralDataManagement() {
         selectedTerminals={mposSelectedTerminals()}
         sendDeviceStatuses={sendDeviceStatuses}
         targetBlockReason={mposTransferBlockReason()}
-        sendFileType={mposFileType}
-        onSendFileTypeChange={setMposFileType}
-        receiveFileType={mposReceiveFileType}
-        onReceiveFileTypeChange={setMposReceiveFileType}
+        sendFileTypes={mposFileTypes}
+        onSendFileTypesChange={setMposFileTypes}
+        receiveFileTypes={mposReceiveFileTypes}
+        onReceiveFileTypesChange={setMposReceiveFileTypes}
         syncMode={mposSyncMode}
         onSyncModeChange={setMposSyncMode}
         dateFrom={mposDateFrom}

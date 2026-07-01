@@ -5,9 +5,10 @@
 import { ERP_SETTINGS } from './postgres';
 import { queryPgRows } from './hybridSyncEngine';
 import { resolveSyncPgEndpoint } from './enterpriseSyncService';
-import type { MposSendFileType } from './mposSendService';
+import type { MposSendFileType, MposSendSyncMode } from './mposSendService';
+import { MPOS_SEND_FILE_TYPES } from './mposSendService';
 import type { MposReceiveFileType } from './mposReceiveService';
-import type { MposSendSyncMode } from './mposSendService';
+import { MPOS_RECEIVE_FILE_TYPES } from './mposReceiveService';
 
 export type MposPreviewLine = {
   key: string;
@@ -159,22 +160,52 @@ async function countBranchSales(opts: {
   }
 }
 
+function sendTypeLabel(fileType: MposSendFileType, syncMode: MposSendSyncMode): string {
+  if (fileType === 'products') {
+    return syncMode === 'incremental'
+      ? 'Fiyat / malzeme değişikliği (tarih aralığı)'
+      : 'Tüm malzeme kartları';
+  }
+  if (fileType === 'customers') {
+    return syncMode === 'incremental'
+      ? 'Cari değişiklikleri (tarih aralığı)'
+      : 'Tüm cari kartları';
+  }
+  return MPOS_SEND_FILE_TYPES.find((f) => f.id === fileType)?.label ?? fileType;
+}
+
+function mergePreviewLines(lines: MposPreviewLine[]): MposPreviewLine[] {
+  const map = new Map<string, MposPreviewLine>();
+  for (const line of lines) {
+    const prev = map.get(line.key);
+    if (prev) {
+      map.set(line.key, { ...prev, count: prev.count + line.count });
+    } else {
+      map.set(line.key, { ...line });
+    }
+  }
+  return Array.from(map.values());
+}
+
 export async function getMposTransferPreview(opts: {
   firmNr: string;
   storeId?: string;
   terminalName?: string;
-  sendFileType: MposSendFileType;
-  receiveFileType: MposReceiveFileType;
+  sendFileTypes: MposSendFileType[];
+  receiveFileTypes: MposReceiveFileType[];
   syncMode: MposSendSyncMode;
   dateFrom?: string;
   dateTo?: string;
 }): Promise<MposTransferPreview> {
   const storeId = opts.storeId?.trim();
+  const sendTypes = opts.sendFileTypes.length ? opts.sendFileTypes : (['products'] as MposSendFileType[]);
+  const receiveTypes = opts.receiveFileTypes.length ? opts.receiveFileTypes : (['sales'] as MposReceiveFileType[]);
+
   if (!storeId) {
     return { sendLines: [], receiveLines: [], sendTotal: 0, receiveTotal: 0 };
   }
 
-  const [outboundQueue, inboundQueue, masterCount, todaySales] = await Promise.all([
+  const [outboundQueue, inboundQueue, todaySales, ...masterCounts] = await Promise.all([
     countQueueByDirection({
       firmNr: opts.firmNr,
       storeId,
@@ -187,56 +218,71 @@ export async function getMposTransferPreview(opts: {
       terminalName: opts.terminalName,
       direction: 'inbound',
     }),
-    countMasterChanges({
-      firmNr: opts.firmNr,
-      fileType: opts.sendFileType,
-      syncMode: opts.syncMode,
-      dateFrom: opts.dateFrom,
-      dateTo: opts.dateTo,
-    }),
     countBranchSales({
       firmNr: opts.firmNr,
       storeId,
       terminalName: opts.terminalName,
     }),
+    ...sendTypes
+      .filter((t) => t === 'products' || t === 'customers')
+      .map((fileType) =>
+        countMasterChanges({
+          firmNr: opts.firmNr,
+          fileType,
+          syncMode: opts.syncMode,
+          dateFrom: opts.dateFrom,
+          dateTo: opts.dateTo,
+        }),
+      ),
   ]);
 
-  const sendLines: MposPreviewLine[] = [...outboundQueue];
-  const queueTotal = outboundQueue.reduce((s, l) => s + l.count, 0);
-
-  if (opts.sendFileType === 'products' || opts.sendFileType === 'customers') {
-    const label =
-      opts.sendFileType === 'products'
-        ? opts.syncMode === 'incremental'
-          ? 'Fiyat / malzeme değişikliği (tarih aralığı)'
-          : 'Tüm malzeme kartları'
-        : opts.syncMode === 'incremental'
-          ? 'Cari değişiklikleri (tarih aralığı)'
-          : 'Tüm cari kartları';
-    sendLines.unshift({
-      key: opts.sendFileType,
-      label,
-      count: masterCount,
-      hint:
-        opts.syncMode === 'incremental'
-          ? 'updated_at ile filtrelenir (merkez PG)'
-          : 'Merkezden kasaya gönderilecek',
-    });
-  } else {
-    sendLines.unshift({
-      key: opts.sendFileType,
-      label: 'Seçili dosya tipi paketi',
-      count: queueTotal,
-      hint: 'Merkez → kasa',
-    });
+  const masterByType = new Map<MposSendFileType, number>();
+  let mi = 0;
+  for (const fileType of sendTypes) {
+    if (fileType === 'products' || fileType === 'customers') {
+      masterByType.set(fileType, Number(masterCounts[mi++] ?? 0));
+    }
   }
+
+  const queueTotal = outboundQueue.reduce((s, l) => s + l.count, 0);
+  const sendLines: MposPreviewLine[] = [...outboundQueue];
+
+  for (const fileType of sendTypes) {
+    if (fileType === 'products' || fileType === 'customers') {
+      sendLines.unshift({
+        key: fileType,
+        label: sendTypeLabel(fileType, opts.syncMode),
+        count: masterByType.get(fileType) ?? 0,
+        hint:
+          opts.syncMode === 'incremental'
+            ? 'updated_at ile filtrelenir (merkez PG)'
+            : 'Merkezden kasaya gönderilecek',
+      });
+    } else {
+      sendLines.unshift({
+        key: fileType,
+        label: sendTypeLabel(fileType, opts.syncMode),
+        count: 0,
+        hint: 'Merkez → kasa paketi',
+      });
+    }
+  }
+
+  const mergedSendLines = mergePreviewLines(sendLines);
+  const masterSum = [...masterByType.values()].reduce((s, n) => s + n, 0);
+  const hasIncrementalMaster =
+    opts.syncMode === 'incremental' &&
+    sendTypes.some((t) => t === 'products' || t === 'customers');
+  const sendTotal = hasIncrementalMaster
+    ? Math.max(masterSum, queueTotal)
+    : mergedSendLines.reduce((s, l) => s + l.count, 0);
 
   const receiveLines: MposPreviewLine[] = [...inboundQueue];
   const inboundQueueSales = inboundQueue
     .filter((l) => /invoice|sales|fatura/i.test(l.key))
     .reduce((s, l) => s + l.count, 0);
 
-  if (opts.receiveFileType === 'sales' || opts.receiveFileType === 'day_end') {
+  if (receiveTypes.some((t) => t === 'sales' || t === 'day_end')) {
     receiveLines.unshift({
       key: 'today_sales',
       label: 'Bugünkü satış / fiş (merkez PG)',
@@ -248,6 +294,17 @@ export async function getMposTransferPreview(opts: {
     });
   }
 
+  for (const fileType of receiveTypes) {
+    const label = MPOS_RECEIVE_FILE_TYPES.find((f) => f.id === fileType)?.label ?? fileType;
+    if (fileType === 'sales' || fileType === 'day_end') continue;
+    receiveLines.unshift({
+      key: `receive_${fileType}`,
+      label,
+      count: 0,
+      hint: 'Kasa → merkez «Al» ile çekilir',
+    });
+  }
+
   receiveLines.push({
     key: 'invoices_note',
     label: 'Fatura / fiş kuyruğu',
@@ -255,13 +312,17 @@ export async function getMposTransferPreview(opts: {
     hint: 'Kuyrukta bekleyen satış/fatura',
   });
 
-  const masterPrimary =
-    (opts.sendFileType === 'products' || opts.sendFileType === 'customers') &&
-    opts.syncMode === 'incremental';
-  const sendTotal = masterPrimary
-    ? Math.max(masterCount, queueTotal)
-    : sendLines.reduce((s, l) => s + l.count, 0);
-  const receiveTotal = Math.max(todaySales, inboundQueueSales, inboundQueue.reduce((s, l) => s + l.count, 0));
+  const mergedReceiveLines = mergePreviewLines(receiveLines);
+  const receiveTotal = Math.max(
+    todaySales,
+    inboundQueueSales,
+    inboundQueue.reduce((s, l) => s + l.count, 0),
+  );
 
-  return { sendLines, receiveLines, sendTotal, receiveTotal };
+  return {
+    sendLines: mergedSendLines,
+    receiveLines: mergedReceiveLines,
+    sendTotal,
+    receiveTotal,
+  };
 }
