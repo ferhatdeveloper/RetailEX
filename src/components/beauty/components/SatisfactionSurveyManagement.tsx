@@ -21,6 +21,7 @@ import {
     DeleteOutlined,
     SaveOutlined,
     HolderOutlined,
+    BarChartOutlined,
 } from '@ant-design/icons';
 import { ClipboardList } from 'lucide-react';
 import dayjs, { type Dayjs } from 'dayjs';
@@ -55,7 +56,11 @@ function normalizeAptId(id: string): string {
     return String(id).trim().toLowerCase();
 }
 
-export function SatisfactionSurveyManagement() {
+export function SatisfactionSurveyManagement({
+    onOpenSurveyReport,
+}: {
+    onOpenSurveyReport?: () => void;
+} = {}) {
     const { tm, t } = useLanguage();
     const { hasPermission } = usePermission();
     const isSurveyOperatorOnly =
@@ -368,6 +373,15 @@ export function SatisfactionSurveyManagement() {
                         </Space>
                         <Space size={12} wrap>
                             <InlineLanguageSwitcher />
+                            {(onOpenSurveyReport || hasPermission('beauty', 'READ')) && (
+                                <Button
+                                    shape="round"
+                                    icon={<BarChartOutlined />}
+                                    onClick={() => onOpenSurveyReport?.()}
+                                >
+                                    {tm('bShellNavSurveyReport')}
+                                </Button>
+                            )}
                             {canManageSurveys ? (
                                 <Button type="primary" shape="round" icon={<PlusOutlined />} onClick={handleCreateSurvey}>
                                     {tm('bSurveyNew')}

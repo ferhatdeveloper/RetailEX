@@ -498,6 +498,8 @@ interface ReportsModuleProps {
   products: Product[];
   /** Gömülü modül için iş kolu (varsayılan: perakende ERP satışları). Restoran modülü `restaurant` geçmeli. */
   initialBusinessType?: BusinessType;
+  /** Güzellik gömülü modda açılış sekmesi (örn. anket sonuç raporu) */
+  initialReportTab?: ReportTab;
 }
 
 type ReportTab =
@@ -560,6 +562,26 @@ const BEAUTY_ONLY_REPORT_KEYS = new Set<string>([
   'beauty-survey-report',
 ]);
 
+function beautyReportMenuItems(tm: (key: string) => string) {
+  return [
+    { key: 'beauty-service-report', label: tm('beautyServiceBreakdownReport'), icon: <DeploymentUnitOutlined /> },
+    { key: 'beauty-cancelled-report', label: tm('beautyCancelledOnlyReport'), icon: <AlertTriangle /> },
+    { key: 'beauty-appointment-product-report', label: tm('beautyAppointmentProductSalesReport'), icon: <ShoppingCart className="w-4 h-4" /> },
+    { key: 'beauty-commission-report', label: tm('bShellNavCommissionReport'), icon: <SafetyCertificateOutlined /> },
+    { key: 'beauty-survey-report', label: tm('bShellNavSurveyReport'), icon: <ClipboardList className="w-4 h-4" /> },
+  ];
+}
+
+function resolveInitialReportTab(
+  initialBusinessType: BusinessType,
+  initialReportTab?: ReportTab,
+): ReportTab {
+  if (initialReportTab) return initialReportTab;
+  if (initialBusinessType === 'beauty') return 'beauty-service-report';
+  if (initialBusinessType === 'restaurant') return 'product-reports';
+  return 'daily';
+}
+
 function filterReportMenuGroups(groups: { type?: string; children?: { key?: string }[]; [k: string]: unknown }[]): any[] {
   return groups.map((group) => {
     if (group?.type === 'group' && Array.isArray(group.children)) {
@@ -574,7 +596,12 @@ function filterReportMenuGroups(groups: { type?: string; children?: { key?: stri
   });
 }
 
-export function ReportsModule({ sales, products, initialBusinessType = 'retail' }: ReportsModuleProps) {
+export function ReportsModule({
+  sales,
+  products,
+  initialBusinessType = 'retail',
+  initialReportTab,
+}: ReportsModuleProps) {
   const { language, t, tm: globalTm } = useLanguage();
   const { darkMode } = useTheme();
   const { isMobile } = useResponsive();
@@ -587,7 +614,9 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
     (selectedFirm?.raporlama_para_birimi && String(selectedFirm.raporlama_para_birimi).trim()) ||
     (selectedFirm?.ana_para_birimi && String(selectedFirm.ana_para_birimi).trim()) ||
     getReportingCurrency();
-  const [selectedTab, setSelectedTab] = useState<ReportTab>('daily');
+  const [selectedTab, setSelectedTab] = useState<ReportTab>(() =>
+    resolveInitialReportTab(initialBusinessType, initialReportTab),
+  );
   const [selectedDateFrom, setSelectedDateFrom] = useState(localTodayDateKey);
   const [selectedDateTo, setSelectedDateTo] = useState(localTodayDateKey);
   const reportDateInputMin = '1990-01-01';
@@ -640,10 +669,19 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
   );
 
   useEffect(() => {
+    if (initialReportTab) {
+      setSelectedTab(initialReportTab);
+    }
+  }, [initialReportTab]);
+
+  useEffect(() => {
     if (initialBusinessType !== 'retail') {
       setBusinessType(initialBusinessType);
+      if (!initialReportTab) {
+        setSelectedTab(resolveInitialReportTab(initialBusinessType));
+      }
     }
-  }, [initialBusinessType]);
+  }, [initialBusinessType, initialReportTab]);
 
   useEffect(() => {
     try {
@@ -3843,6 +3881,16 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
     ];
 
     return filterReportMenuGroups([
+      ...(businessType === 'beauty'
+        ? [
+            {
+              key: 'grp-beauty-reports',
+              label: tm('bBeautyReportsMenu'),
+              type: 'group',
+              children: beautyReportMenuItems(tm),
+            },
+          ]
+        : []),
       ...commonGroups,
       {
         key: 'grp-business-specific',
@@ -3861,15 +3909,7 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
           { key: 'courier-reports', label: tm('kuryeRaporlari'), icon: <Package className="w-4 h-4" /> },
           { key: 'cash-register-reports', label: tm('yazarkasaRaporlari'), icon: <PrinterOutlined /> },
           { key: 'turnover-reports', label: tm('ciroRaporlari'), icon: <Banknote className="w-4 h-4" /> },
-        ] : businessType === 'beauty'
-          ? [
-            { key: 'beauty-service-report', label: tm('beautyServiceBreakdownReport'), icon: <DeploymentUnitOutlined /> },
-            { key: 'beauty-cancelled-report', label: tm('beautyCancelledOnlyReport'), icon: <AlertTriangle /> },
-            { key: 'beauty-appointment-product-report', label: tm('beautyAppointmentProductSalesReport'), icon: <ShoppingCart className="w-4 h-4" /> },
-            { key: 'beauty-commission-report', label: tm('bShellNavCommissionReport'), icon: <SafetyCertificateOutlined /> },
-            { key: 'beauty-survey-report', label: tm('bSurveyReportTitle'), icon: <ClipboardList className="w-4 h-4" /> },
-          ]
-          : []
+        ] : []
       }
     ]);
   };
@@ -3881,7 +3921,7 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
   const isBeautyCommissionReportTab = selectedTab === 'beauty-commission-report';
   const isBeautySurveyReportTab = selectedTab === 'beauty-survey-report';
   const defaultOpenKeys = businessType === 'beauty'
-    ? ['grp-general', 'grp-design', 'grp-sales', 'grp-business-specific']
+    ? ['grp-beauty-reports', 'grp-general', 'grp-sales']
     : ['grp-general', 'grp-design', 'grp-sales'];
 
   const mobileMenuOpen = isMobile && !collapsed;

@@ -6065,6 +6065,8 @@ export const excelModuleTranslations = {
   bShellNavLeads: { tr: 'Leads & CRM', en: 'Leads & CRM', ar: 'Leads & CRM', ku: 'Leads & CRM' },
   bShellNavExpenses: { tr: 'Giderler', en: 'Expenses', ar: 'المصروفات', ku: 'خەرجییەکان' },
   bShellNavCommissionReport: { tr: 'Prim raporu', en: 'Commission report', ar: 'تقرير العمولة', ku: 'ڕاپۆرتی پرایم' },
+  bShellNavSurveyReport: { tr: 'Anket sonuç raporu', en: 'Survey results report', ar: 'تقرير نتائج الاستبيان', ku: 'ڕاپۆرتی ئەنجامی پرسیارنامە' },
+  bBeautyReportsMenu: { tr: 'Güzellik raporları', en: 'Beauty reports', ar: 'تقارير التجميل', ku: 'ڕاپۆرتەکانی جوانی' },
   bShellNavReports: { tr: 'Raporlar', en: 'Reports', ar: 'التقارير', ku: 'ڕاپۆرتەکان' },
   bShellNavClinicOps: { tr: 'Klinik operasyon', en: 'Clinic operations', ar: 'عمليات العيادة', ku: 'کارەکانی کلینیک' },
   bShellMenuClinicalTools: { tr: 'Klinik araçları', en: 'Clinical tools', ar: 'أدوات سريرية', ku: 'ئامرازەکانی کلینیک' },

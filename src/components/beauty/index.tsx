@@ -107,6 +107,7 @@ function BeautyModuleShell({ sales = [], products = [], onRequestManagementAcces
     const [rtlMode, setRtlMode] = useState(() => localStorage.getItem('retailos_rtl_mode') === 'true');
     const { specialists, devices, loadSpecialists, loadServices, loadAppointments, loadDevices } = useBeautyStore();
     const [surveyOverlayOpen, setSurveyOverlayOpen] = useState(false);
+    const [reportInitialTab, setReportInitialTab] = useState<'beauty-survey-report' | undefined>(undefined);
     const [showNewAptWizard, setShowNewAptWizard] = useState(false);
     const [wizardDate, setWizardDate] = useState(() => formatLocalYmd(new Date()));
     const [wizardTime, setWizardTime] = useState('09:00');
@@ -332,6 +333,12 @@ function BeautyModuleShell({ sales = [], products = [], onRequestManagementAcces
     useEffect(() => {
         if (!isMobile) setMobileNavOpen(false);
     }, [isMobile]);
+
+    useEffect(() => {
+        if (activeTab !== 'reports') {
+            setReportInitialTab(undefined);
+        }
+    }, [activeTab]);
 
     useEffect(() => {
         const onSurveyOpen = () => setSurveyOverlayOpen(true);
@@ -680,12 +687,24 @@ function BeautyModuleShell({ sales = [], products = [], onRequestManagementAcces
                     {activeTab === 'service_recipes' && <ServiceRecipeManagement />}
                     {activeTab === 'staff' && <StaffManagement />}
                     {activeTab === 'devices' && <DeviceManagement />}
-                    {activeTab === 'surveys' && <SatisfactionSurveyManagement />}
+                    {activeTab === 'surveys' && (
+                        <SatisfactionSurveyManagement
+                            onOpenSurveyReport={() => {
+                                setReportInitialTab('beauty-survey-report');
+                                setActiveTab('reports');
+                            }}
+                        />
+                    )}
                     {activeTab === 'leads' && <LeadManagement />}
                     {activeTab === 'expenses' && <ExpenseManagement />}
                     {activeTab === 'reports' && (
                         <div className="h-full min-h-[min(100dvh,1200px)] min-w-0">
-                            <ReportsModule sales={sales} products={products} initialBusinessType="beauty" />
+                            <ReportsModule
+                                sales={sales}
+                                products={products}
+                                initialBusinessType="beauty"
+                                initialReportTab={reportInitialTab}
+                            />
                         </div>
                     )}
                     {activeTab === 'clinic_ops' && <ClinicOperationsHub />}
