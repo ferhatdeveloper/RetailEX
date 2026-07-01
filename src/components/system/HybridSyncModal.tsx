@@ -41,9 +41,10 @@ import {
 } from '../../services/mposKasaAutoPullService';
 import { formatSyncBreakdown as formatKasaSyncBreakdown } from '../../services/kasaDataArrivalNotify';
 import {
-  auditSyncTransportConfig,
-  formatSyncTransportLabel,
-} from '../../services/syncTransportDiagnostics';
+  formatDeviceSyncLogSummary,
+  getHybridDeviceId,
+  listDeviceSyncTransferLogs,
+} from '../../services/hybridDeviceSyncLogService';
 import { FullscreenBodyPortal, MODAL_OVERLAY_Z } from '../shared/FullscreenBodyPortal';
 
 type StepStatus = 'pending' | 'running' | 'done' | 'error' | 'skipped';
@@ -285,6 +286,7 @@ export function HybridSyncModal({ open, onOpenChange, onComplete }: Props) {
       cashierUsername: null,
       scopeCashierOnly: false,
     });
+    const deviceId = await getHybridDeviceId();
 
     try {
       updateStep('send', { status: 'running', detail: 'Gönderiliyor…' });
@@ -297,6 +299,9 @@ export function HybridSyncModal({ open, onOpenChange, onComplete }: Props) {
         remote: REMOTE_CONFIG,
         connectionProvider: resolveHybridSyncConnectionProvider(),
         remoteRestUrl: DB_SETTINGS.remoteRestUrl,
+        incremental: true,
+        deviceId,
+        storeId: user?.store_id || null,
       });
 
       if (!sendResult.success && sendResult.failed > 0 && sendResult.totalSynced === 0) {
@@ -347,6 +352,9 @@ export function HybridSyncModal({ open, onOpenChange, onComplete }: Props) {
           remote: REMOTE_CONFIG,
           connectionProvider: resolveHybridSyncConnectionProvider(),
           remoteRestUrl: DB_SETTINGS.remoteRestUrl,
+          incremental: true,
+          deviceId,
+          storeId: user?.store_id || null,
         });
 
         if (!recvResult.success && recvResult.failed > 0 && recvResult.totalSynced === 0) {
@@ -374,6 +382,21 @@ export function HybridSyncModal({ open, onOpenChange, onComplete }: Props) {
       }
 
       setFinished(true);
+      const recentLogs = await listDeviceSyncTransferLogs({ deviceId, limit: 2 });
+      if (recentLogs.length) {
+        setSteps((prev) =>
+          prev.map((s) => {
+            const log = recentLogs.find(
+              (l) =>
+                (l.direction === 'local_to_remote' && s.id === 'send') ||
+                (l.direction === 'remote_to_local' && s.id === 'receive'),
+            );
+            if (!log || (s.status !== 'done' && s.status !== 'skipped')) return s;
+            const logLine = `Log: ${formatDeviceSyncLogSummary(log)}`;
+            return { ...s, detail: s.detail ? `${s.detail} · ${logLine}` : logLine };
+          }),
+        );
+      }
       onComplete?.();
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);

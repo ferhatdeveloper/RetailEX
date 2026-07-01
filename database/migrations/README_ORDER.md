@@ -70,6 +70,7 @@
 66. **079_ensure_apply_sync_triggers.sql** – `enqueue_sync_event`, `apply_sync_triggers`, `try_apply_sync_triggers` (create_firm_tables 42883 düzeltmesi).
 67. **081_fix_apply_sync_triggers_recursion.sql** – `APPLY_SYNC_TRIGGERS`/`apply_sync_triggers` isim cakismasi (54001 sonsuz dongu) duzeltmesi.
 68. **082_wms_transfers_firm_nr_columns.sql** – `wms.transfers`: `firm_nr`, `source_store_id`/`target_store_id` (eski `from_store_id`/`to_store_id` yeniden adlandırma).
+69. **083_hybrid_device_sync_log.sql** – Cihaz bazlı `device_sync_transfer_log`, `device_sync_cursor`; artımlı `enqueue_hybrid_backfill(..., p_changed_since)`.
 
 **Kiracılara toplu uygulama (VPS / uzak PG):**
 - `npm run db:migrate:tenants` — tüm kiracı DB'ler

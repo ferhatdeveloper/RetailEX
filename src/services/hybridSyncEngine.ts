@@ -17,6 +17,17 @@ import {
 import { normalizeSyncRow } from './hybridSyncNormalize';
 import { ensureFirmPeriodSchemasOnce } from './firmProvisionService';
 import { resolveEffectiveRemoteRestUrl } from './merkezTenantRegistry';
+import {
+  buildTableBreakdown,
+  collectPriceSnapshotsFromQueueItems,
+  getDeviceSyncCursor,
+  getHybridDeviceId,
+  logDeviceSyncTransfer,
+  upsertDeviceSyncCursor,
+  type DeviceSyncDirection,
+  type PriceChangeSnapshot,
+  type TableBreakdownRow,
+} from './hybridDeviceSyncLogService';
 
 export type PgEndpointConfig = {
   host: string;
@@ -80,6 +91,11 @@ export type HybridSyncRunOptions = {
   remote: PgEndpointConfig;
   remoteRestUrl?: string;
   connectionProvider?: 'db' | 'rest_api';
+  /** true: yalnızca cursor/watermark sonrası değişenler kuyruğa alınır */
+  incremental?: boolean;
+  deviceId?: string;
+  storeId?: string | null;
+  terminalName?: string | null;
 };
 
 const BATCH_LIMIT = 50;
@@ -496,6 +512,8 @@ export async function syncOneDirection(
   updated: number;
   skipped: number;
   errors: string[];
+  tableBreakdown: TableBreakdownRow[];
+  priceSnapshots: PriceChangeSnapshot[];
 }> {
   const localPg = opts?.localPg;
   if (!localPg) throw new Error('syncOneDirection: localPg gerekli');
@@ -514,6 +532,11 @@ export async function syncOneDirection(
   const errors: string[] = [];
   let rounds = 0;
   const totals = { synced, inserted, updated, skipped };
+  const processedItems: Array<{
+    table_name: string;
+    record_id: string;
+    data: Record<string, unknown> | null;
+  }> = [];
 
   do {
     const pending = await fetchPendingQueue(source, filter);
@@ -523,6 +546,11 @@ export async function syncOneDirection(
       try {
         let outcome = await applyItem(target, item, schemaCache);
         recordApplyOutcome(totals, outcome);
+        processedItems.push({
+          table_name: item.table_name,
+          record_id: item.record_id,
+          data: item.data,
+        });
         await markCompleted(source, item.id);
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
@@ -534,6 +562,11 @@ export async function syncOneDirection(
               await ensureFirmPeriodSchemasOnce(firm, '01', schemaTarget);
               const retryOutcome = await applyItem(target, item, schemaCache);
               recordApplyOutcome(totals, retryOutcome);
+              processedItems.push({
+                table_name: item.table_name,
+                record_id: item.record_id,
+                data: item.data,
+              });
               await markCompleted(source, item.id);
               continue;
             } catch {
@@ -560,7 +593,16 @@ export async function syncOneDirection(
     if (scope !== 'all') break;
   } while (rounds < MAX_ALL_ROUNDS);
 
-  return { synced, failed, inserted, updated, skipped, errors };
+  return {
+    synced,
+    failed,
+    inserted,
+    updated,
+    skipped,
+    errors,
+    tableBreakdown: buildTableBreakdown(processedItems),
+    priceSnapshots: collectPriceSnapshotsFromQueueItems(processedItems),
+  };
 }
 
 export function getSyncLegs(
@@ -589,13 +631,20 @@ export type PrepareSyncQueueResult = {
 export async function prepareLocalSyncQueue(
   local: PgEndpointConfig,
   firmNr?: string,
-): Promise<PrepareSyncQueueResult> {
+  opts?: { incremental?: boolean; deviceId?: string; changedSince?: string | null },
+): Promise<PrepareSyncQueueResult & { changedSince?: string | null }> {
   const fn = String(firmNr || '001')
     .replace(/\D/g, '')
     .padStart(3, '0');
 
   let reset = 0;
   let enqueued = 0;
+  let changedSince = opts?.changedSince ?? null;
+
+  if (opts?.incremental !== false && !changedSince && opts?.deviceId) {
+    const cursor = await getDeviceSyncCursor(opts.deviceId, 'hybrid_outbound', fn);
+    changedSince = cursor.watermark ?? cursor.lastSuccess;
+  }
 
   try {
     const resetRows = await queryPgRows(
@@ -611,24 +660,40 @@ export async function prepareLocalSyncQueue(
   try {
     const rows = await queryPgRows(
       local,
-      `SELECT public.enqueue_hybrid_backfill($1, $2)::text AS cnt`,
-      [fn, 5000],
+      `SELECT public.enqueue_hybrid_backfill($1, $2, $3::timestamptz)::text AS cnt`,
+      [fn, 5000, changedSince],
     );
     enqueued = Number(rows[0]?.cnt ?? 0);
   } catch {
-    /* migration 062 yok */
+    try {
+      const rows = await queryPgRows(
+        local,
+        `SELECT public.enqueue_hybrid_backfill($1, $2)::text AS cnt`,
+        [fn, 5000],
+      );
+      enqueued = Number(rows[0]?.cnt ?? 0);
+    } catch {
+      /* migration 062 yok */
+    }
   }
 
-  return { enqueued, reset };
+  return { enqueued, reset, changedSince };
 }
 
 export async function runHybridSync(opts: HybridSyncRunOptions): Promise<HybridSyncResult> {
   const flow = opts.flow ?? 'both';
   const direction = opts.direction ?? flowToDirection(flow);
   const scope = opts.scope ?? 'pending';
+  const incremental = opts.incremental !== false;
+  const deviceId = opts.deviceId ?? (await getHybridDeviceId());
+  let watermarkFrom: string | null = null;
 
   if (flow === 'send' || flow === 'both') {
-    await prepareLocalSyncQueue(opts.local, opts.filter?.firmNr ?? undefined);
+    const prep = await prepareLocalSyncQueue(opts.local, opts.filter?.firmNr ?? undefined, {
+      incremental,
+      deviceId,
+    });
+    watermarkFrom = prep.changedSince ?? null;
   }
 
   let endpoints: { local: SyncEndpoint; remote: SyncEndpoint };
@@ -671,6 +736,53 @@ export async function runHybridSync(opts: HybridSyncRunOptions): Promise<HybridS
     updated += r.updated;
     skipped += r.skipped;
     allErrors.push(...r.errors);
+
+    const legDirection: DeviceSyncDirection =
+      leg.label === 'yerel→uzak' ? 'local_to_remote' : 'remote_to_local';
+    const watermarkTo = new Date().toISOString();
+    const status =
+      r.failed > 0 && r.synced === 0 ? 'failed' : r.failed > 0 ? 'partial' : 'ok';
+
+    await logDeviceSyncTransfer({
+      deviceId,
+      direction: legDirection,
+      syncMode: incremental ? 'incremental' : 'full',
+      firmNr: opts.filter?.firmNr ?? undefined,
+      storeId: opts.storeId ?? opts.filter?.storeId ?? null,
+      terminalName: opts.terminalName ?? null,
+      status,
+      recordCount: r.synced,
+      insertedCount: r.inserted,
+      updatedCount: r.updated,
+      skippedCount: r.skipped,
+      failedCount: r.failed,
+      priceChangeCount: r.priceSnapshots.length,
+      watermarkFrom: legDirection === 'local_to_remote' ? watermarkFrom : null,
+      watermarkTo,
+      tableBreakdown: r.tableBreakdown,
+      priceChanges: r.priceSnapshots,
+      message: r.errors[0] ?? undefined,
+      detail: { flow, scope, label: leg.label },
+    });
+
+    if (legDirection === 'local_to_remote' && r.synced > 0) {
+      await upsertDeviceSyncCursor({
+        deviceId,
+        scope: 'hybrid_outbound',
+        firmNr: opts.filter?.firmNr ?? undefined,
+        syncMode: incremental ? 'incremental' : 'full',
+        watermarkTo,
+      });
+    }
+    if (legDirection === 'remote_to_local' && r.synced > 0) {
+      await upsertDeviceSyncCursor({
+        deviceId,
+        scope: 'hybrid_inbound',
+        firmNr: opts.filter?.firmNr ?? undefined,
+        syncMode: incremental ? 'incremental' : 'full',
+        watermarkTo,
+      });
+    }
   }
 
   const flowLabel =
