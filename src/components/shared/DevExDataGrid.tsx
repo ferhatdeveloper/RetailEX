@@ -12,6 +12,7 @@ import {
   ColumnDef,
   SortingState,
   ColumnFiltersState,
+  PaginationState,
   Column,
   FilterFn,
 } from '@tanstack/react-table';
@@ -432,6 +433,10 @@ export function DevExDataGrid<T>({
 }: DevExDataGridProps<T>) {
   const [sorting, setSorting] = useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
+  const [pagination, setPagination] = useState<PaginationState>(() => ({
+    pageIndex: 0,
+    pageSize,
+  }));
   const [rowSelection, setRowSelection] = useState<Record<string, boolean>>(selectedRowIds || {});
   const [internalColumnVisibility, setInternalColumnVisibility] = useState<Record<string, boolean>>(columnVisibility || {});
   const [openFilterColumn, setOpenFilterColumn] = useState<string | null>(null);
@@ -471,6 +476,23 @@ export function DevExDataGrid<T>({
     }
   }, [columnVisibility]);
 
+  useEffect(() => {
+    setPagination((prev) => (prev.pageSize === pageSize ? prev : { ...prev, pageSize, pageIndex: 0 }));
+  }, [pageSize]);
+
+  useEffect(() => {
+    setPagination((prev) => (prev.pageIndex === 0 ? prev : { ...prev, pageIndex: 0 }));
+  }, [data.length]);
+
+  const resolvedPageSizeOptions = useMemo(() => {
+    const total = data.length;
+    const merged = [...pageSizeOptions];
+    if (total > 0 && total > Math.max(...merged, 0) && !merged.includes(total)) {
+      merged.push(total);
+    }
+    return [...new Set(merged.filter((n) => Number.isFinite(n) && n > 0))].sort((a, b) => a - b);
+  }, [pageSizeOptions, data.length]);
+
   const resolvedColumnVisibility = columnVisibility ?? internalColumnVisibility;
 
   const handleColumnVisibilityChange = (updater: any) => {
@@ -490,14 +512,6 @@ export function DevExDataGrid<T>({
       setRowSelection(selectedRowIds);
     }
   }, [selectedRowIds]);
-
-  // Notify parent of selection changes
-  useEffect(() => {
-    if (onSelectionChange) {
-      const selectedRows = table.getSelectedRowModel().rows.map(row => row.original);
-      onSelectionChange(selectedRows);
-    }
-  }, [rowSelection]);
 
   const finalColumns = useMemo(() => {
     if (!enableSelection) return columns;
@@ -552,17 +566,20 @@ export function DevExDataGrid<T>({
       columnFilters,
       rowSelection,
       columnVisibility: resolvedColumnVisibility,
+      pagination,
     },
     onSortingChange: setSorting,
     onColumnFiltersChange: setColumnFilters,
     onRowSelectionChange: setRowSelection,
     onColumnVisibilityChange: handleColumnVisibilityChange,
+    onPaginationChange: setPagination,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
     getFacetedRowModel: getFacetedRowModel(),
     getFacetedUniqueValues: getFacetedUniqueValues(),
     ...(enablePagination ? { getPaginationRowModel: getPaginationRowModel() } : {}),
+    autoResetPageIndex: false,
     enableRowSelection: true,
     filterFns: {
       gridColumnFilter: gridColumnFilterFn,
@@ -571,12 +588,17 @@ export function DevExDataGrid<T>({
       filterFn: 'gridColumnFilter',
       enableColumnFilter: enableFiltering,
     },
-    initialState: {
-      pagination: {
-        pageSize,
-      },
-    },
   });
+
+  // Notify parent of selection changes
+  useEffect(() => {
+    if (onSelectionChange) {
+      const selectedRows = table.getSelectedRowModel().rows.map((row) => row.original);
+      onSelectionChange(selectedRows);
+    }
+  }, [rowSelection]);
+
+  const maxPageSizeOption = resolvedPageSizeOptions[resolvedPageSizeOptions.length - 1] ?? pagination.pageSize;
 
   // Mobile Card View
   if (isMobile) {
@@ -850,7 +872,11 @@ export function DevExDataGrid<T>({
             </span>
             <span className="text-gray-400">|</span>
             <span>
-              {table.getFilteredRowModel().rows.length} {tm('records')}
+              {table.getRowModel().rows.length} / {table.getFilteredRowModel().rows.length} {tm('records')}
+            </span>
+            <span className="text-gray-400">|</span>
+            <span>
+              {tm('show')} {pagination.pageSize}
             </span>
           </div>
 
@@ -885,13 +911,19 @@ export function DevExDataGrid<T>({
             </button>
 
             <select
-              value={table.getState().pagination.pageSize}
-              onChange={(e) => table.setPageSize(Number(e.target.value))}
+              value={pagination.pageSize}
+              onChange={(e) => {
+                const nextSize = Number(e.target.value);
+                if (!Number.isFinite(nextSize) || nextSize <= 0) return;
+                setPagination({ pageIndex: 0, pageSize: nextSize });
+              }}
               className="px-3 py-1.5 border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
             >
-              {pageSizeOptions.map((size) => (
+              {resolvedPageSizeOptions.map((size) => (
                 <option key={size} value={size}>
-                  {tm('show')} {size}
+                  {size === data.length && size === maxPageSizeOption && size > 100
+                    ? `${tm('showAllColumns')} (${size})`
+                    : `${tm('show')} ${size}`}
                 </option>
               ))}
             </select>
