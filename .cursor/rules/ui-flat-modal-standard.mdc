@@ -1,51 +1,43 @@
 ---
-description: RetailEX standart modal stili — yeni veya güncellenecek tüm modallar bu “flat” tipi baz almalı
+description: RetailEX standart modal stili — görsel flat tip + PercentBodyModal portal (zorunlu)
 globs: "**/*Modal*.tsx,**/*Modal*.tsx,**/components/**/*.tsx"
 alwaysApply: false
 ---
 
 # RetailEX Flat Modal Standardı
 
-Yeni oluşturulacak veya mevcut bir modal üzerinde işlem yapılacaksa **bu modal tipi baz alınmalı**. Referans bileşenler: `RestaurantStaffPinModal`, `POSPaymentModal`, `UserManagementModule` (Kullanıcı Düzenle modalı).
+Yeni oluşturulacak veya mevcut bir modal üzerinde işlem yapılacaksa **bu modal tipi baz alınmalı**. Portal ve z-index için **`.cursor/rules/percent-body-modal-portal.mdc`** zorunludur — kabuk **`PercentBodyModal`** ile sarılır.
+
+Referans bileşenler: `PercentBodyModal`, `POSCustomerModal`, `InvoiceCariSelectModal`, `RestaurantStaffPinModal`, `POSPaymentModal`.
 
 ## Genel yapı
 
-- **Overlay:** Tam ekran, arka plan karartma + blur.
-- **Kutu:** Beyaz, yuvarlatılmış köşeler, ince border, hafif gölge. İçerik scroll edilebilir.
-- **Header:** Gradient arka plan (mavi–indigo), beyaz metin, sağ üstte kapatma (X) butonu.
-- **Body:** Form/içerik alanı, padding’li, overflow-y-auto.
-- **Footer:** Alt çizgi + hafif arka plan, İptal + birincil aksiyon butonları.
+- **Portal (zorunlu):** `PercentBodyModal` — `document.body`, `MODAL_OVERLAY_Z`. Ayrıntı: `percent-body-modal-portal.mdc`.
+- **Overlay:** Bulanık koyu arka plan, ortalanmış kutu, `overflow-hidden` (dış scroll yok).
+- **Kutu:** Beyaz, `rounded-xl`, sabit `vh` boyut (`size`: list / wide / compact). İç liste **gövdede** scroll.
+- **Header:** Gradient arka plan (mavi–indigo), beyaz metin, sağ üstte kapatma (X) butonu — `shrink-0`.
+- **Body:** `PercentBodyModalScrollBody` veya `flex-1 min-h-0 overflow-y-auto`.
+- **Footer:** Alt çizgi + hafif arka plan, İptal + birincil aksiyon — `shrink-0`.
 
 ## Zorunlu sınıflar ve yapı
 
 ```tsx
-{/* Overlay — taşmada dış scroll; kutu max-h ile sınırlı */}
-<div className="fixed inset-0 z-[2147483646] overflow-y-auto overflow-x-hidden bg-black/60 backdrop-blur-md animate-in fade-in duration-200">
-  <div className="flex min-h-[100dvh] min-h-screen w-full items-center justify-center p-4 py-6">
-    <div className="bg-white rounded-[2rem] w-full max-w-{...} max-h-[min(90vh,100dvh)] min-h-0 overflow-hidden shadow-xl border border-slate-200/80 flex flex-col animate-in zoom-in-95 duration-200">
-      {/* Header — gradient */}
-      <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-8 py-6 text-white shrink-0">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-xl font-black uppercase tracking-tight">Başlık</h2>
-            <p className="text-blue-100 text-xs font-semibold uppercase tracking-wider mt-0.5 opacity-90">Alt başlık</p>
-          </div>
-          <button type="button" onClick={onClose} className="w-12 h-12 rounded-2xl bg-white/20 hover:bg-white/30 flex items-center justify-center transition-colors">
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-      </div>
-      {/* Body — yalnız burada scroll */}
-      <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-8">...</div>
-      {/* Footer */}
-      <div className="p-6 border-t border-slate-100 bg-slate-50/50 flex gap-4 shrink-0">
-        <button type="button" className="flex-1 ... rounded-2xl border-2 border-slate-200 ...">İptal</button>
-        <button type="button" className="flex-1 ... rounded-2xl bg-blue-600 text-white ...">Ana aksiyon</button>
-      </div>
-    </div>
+import { PercentBodyModal, PercentBodyModalScrollBody } from '../shared/PercentBodyModal';
+
+<PercentBodyModal onClose={onClose} size="list" ariaLabel="Başlık">
+  <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-8 py-6 text-white shrink-0">
+    {/* header + X */}
   </div>
-</div>
+  <PercentBodyModalScrollBody className="p-8">
+    {/* form / liste — yalnızca burada scroll */}
+  </PercentBodyModalScrollBody>
+  <div className="p-6 border-t border-slate-100 bg-slate-50/50 flex gap-4 shrink-0">
+    {/* footer butonları */}
+  </div>
+</PercentBodyModal>
 ```
+
+Eski `fixed inset-0 z-[…]` şablonu **yeni modallarda kullanılmaz**; yalnızca tam ekran akışlar için `FullscreenBodyPortal` + `MODAL_OVERLAY_Z` (ör. ürün kataloğu).
 
 ## Form alanları
 
@@ -81,8 +73,8 @@ Yeni veya güncellenen her modal bu viewport kuralına uygun olmalı; `max-h-[90
 
 ## Kurallar
 
-1. Yeni modal eklendiğinde veya eski modal düzenlendiğinde bu yapı ve sınıflar uygulanmalı.
-2. Modal overlay z-index: `z-[9999]` veya ihtiyaca göre yüksek bir değer; çakışma olmamalı.
-3. Kapatma: Header’da X butonu; gerekirse backdrop’a tıklanınca kapatma (isteğe bağlı, `mandatory` gibi durumlarda kapatma kapatılabilir).
-4. Animasyon: `animate-in fade-in` (overlay), `animate-in zoom-in-95` (kutu); süre `duration-200` veya `duration-300`.
-5. **Viewport:** Yukarıdaki “Viewport — modal her zaman ekrana sığmalı” bölümüne uyulmalı.
+1. Yeni modal eklendiğinde veya eski modal düzenlendiğinde **`PercentBodyModal`** + bu görsel yapı uygulanmalı.
+2. Z-index: **`MODAL_OVERLAY_Z`** (`PercentBodyModal` / `FullscreenBodyPortal` inline style); `z-50` veya yalnızca Tailwind `z-[…]` **yeterli değil**.
+3. Kapatma: Header’da X; overlay tıklanınca `onClose` (isteğe bağlı devre dışı bırakılabilir).
+4. Animasyon: İsteğe bağlı `animate-in` — portal davranışını bozmayacak şekilde.
+5. **Viewport:** Sabit `size` + gövdede scroll — `percent-body-modal-portal.mdc` kontrol listesi.

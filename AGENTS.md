@@ -70,3 +70,7 @@ See `package.json` scripts. Key commands:
 - `npx vite build` — Frontend production build (bypasses Tauri prebuild)
 - `npm run dev` — Vite dev server on `:6173`
 - `npm run bridge` — pg_bridge on `:3001`
+
+### Modal (zorunlu)
+
+Ortalanmış liste/form modalları **`PercentBodyModal`** (`src/components/shared/PercentBodyModal.tsx`) ile `document.body` portalına render edilir. `fixed inset-0 z-50` kullanma. Kural: `.cursor/rules/percent-body-modal-portal.mdc`

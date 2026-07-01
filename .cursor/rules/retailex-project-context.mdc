@@ -28,6 +28,7 @@ alwaysApply: true
 POS (MarketPOS, MobilePOS), Yönetim (dashboard, ürünler, faturalar, raporlar, kasa, banka, kampanyalar), WMS (alım/sevkiyat/sayım), Restoran, Güzellik (randevu, uzman, CRM), Muhasebe/Finans.
 
 ## Kritik kurallar
+- **Modal (ortalanmış diyalog):** `PercentBodyModal` — portal + sabit % boyut + liste scroll. Ayrıntı: `.cursor/rules/percent-body-modal-portal.mdc`.
 - **Sürüm (semver):** tek kaynak kök `package.json` → `version`; UI `src/core/version.ts`; Tauri dosyaları `scripts/sync-app-version.mjs` ile — ayrıntı `.cursor/rules/app-version-single-source.mdc`.
 - Tauri hata: `err?.message || String(err)`.
 - Yeni WMS servisi: `PostgresConnection.getInstance()` + `ERP_SETTINGS`.
