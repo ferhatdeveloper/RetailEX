@@ -562,6 +562,8 @@ export type BeautySurveyQuestionStat = {
     no_count: number | null;
     yes_pct: number | null;
     text_samples: string[];
+    /** Puan tipi sorularda: [1★ sayısı, 2★, … scale_max★] */
+    rating_breakdown?: number[];
 };
 
 export type BeautySurveyResponseRow = {

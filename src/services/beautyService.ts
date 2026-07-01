@@ -6487,6 +6487,7 @@ export const beautyService = {
             count: number;
             ratingSum: number;
             ratingCount: number;
+            ratingBuckets: number[];
             yes: number;
             no: number;
             texts: string[];
@@ -6505,6 +6506,7 @@ export const beautyService = {
                     count: 0,
                     ratingSum: 0,
                     ratingCount: 0,
+                    ratingBuckets: Array.from({ length: meta?.scale_max ?? 5 }, () => 0),
                     yes: 0,
                     no: 0,
                     texts: [],
@@ -6523,6 +6525,13 @@ export const beautyService = {
                 if (typeof ans.rating === 'number' && !Number.isNaN(ans.rating)) {
                     acc.ratingSum += ans.rating;
                     acc.ratingCount += 1;
+                    const star = Math.min(
+                        acc.scale_max,
+                        Math.max(1, Math.round(ans.rating)),
+                    );
+                    if (acc.ratingBuckets[star - 1] != null) {
+                        acc.ratingBuckets[star - 1] += 1;
+                    }
                 }
                 if (typeof ans.yes_no === 'boolean') {
                     if (ans.yes_no) acc.yes += 1;
@@ -6551,6 +6560,8 @@ export const beautyService = {
                         ? Math.round((acc.yes / (acc.yes + acc.no)) * 100)
                         : null,
                 text_samples: acc.texts,
+                rating_breakdown:
+                    acc.ratingCount > 0 ? [...acc.ratingBuckets] : undefined,
             }))
             .sort((a, b) => {
                 const ao = accMap.get(a.question_id)?.sort_order ?? 999;
