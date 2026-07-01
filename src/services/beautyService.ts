@@ -40,6 +40,14 @@ import {
     BeautySurveyResultsReport,
     BeautySurveyQuestionStat,
     BeautySurveyResponseRow,
+    BeautySurveyTrendReport,
+    BeautySurveyTrendPoint,
+    BeautySurveyBreakdownRow,
+    BeautySurveyStaffReport,
+    BeautySurveyServiceReport,
+    BeautySurveyNpsReport,
+    BeautySurveyCommentsReport,
+    BeautySurveyCommentRow,
     SatisfactionLangCode,
     BeautyPortalSettings,
     BeautyBranch,
@@ -6596,6 +6604,504 @@ export const beautyService = {
             },
             question_stats,
             responses,
+        };
+    },
+
+    async getSurveyTrendReport(
+        startYmd: string,
+        endYmd: string,
+        opts?: { surveyId?: string | null },
+    ): Promise<BeautySurveyTrendReport> {
+        const empty: BeautySurveyTrendReport = {
+            start_ymd: startYmd,
+            end_ymd: endYmd,
+            survey_options: [],
+            selected_survey_id: opts?.surveyId ?? null,
+            points: [],
+            summary: { response_count: 0, avg_overall_rating: 0, would_recommend_pct: 0 },
+        };
+        const start = String(startYmd || '').trim();
+        const end = String(endYmd || '').trim();
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(start) || !/^\d{4}-\d{2}-\d{2}$/.test(end)) return empty;
+
+        const surveyFilter = opts?.surveyId?.trim() || null;
+        const fbTable = postgres.getMovementTableName('beauty_customer_feedback', 'beauty');
+        const aptTable = postgres.getMovementTableName('beauty_appointments', 'beauty');
+        const surveyOptions = await beautyService.getSatisfactionSurveys();
+
+        const fbParams: unknown[] = [start, end];
+        let surveySql = '';
+        if (surveyFilter) {
+            fbParams.push(surveyFilter);
+            surveySql = ` AND f.survey_id = $${fbParams.length}::uuid`;
+        }
+
+        const [fbRes, aptRes] = await Promise.all([
+            postgres.query(
+                `SELECT
+                   DATE(f.created_at)::text AS day_key,
+                   COUNT(*)::int AS response_count,
+                   ROUND(AVG(f.overall_rating)::numeric, 2)::float AS avg_overall_rating,
+                   SUM(CASE WHEN f.would_recommend THEN 1 ELSE 0 END)::int AS would_recommend_count
+                 FROM ${fbTable} f
+                 WHERE f.created_at >= $1::date
+                   AND f.created_at < ($2::date + INTERVAL '1 day')
+                   ${surveySql}
+                 GROUP BY DATE(f.created_at)
+                 ORDER BY day_key`,
+                fbParams,
+            ),
+            postgres.query(
+                `SELECT a.appointment_date::text AS day_key, COUNT(*)::int AS cnt
+                 FROM ${aptTable} a
+                 WHERE LOWER(TRIM(COALESCE(a.status::text, ''))) = 'completed'
+                   AND a.appointment_date >= $1::date
+                   AND a.appointment_date <= $2::date
+                 GROUP BY a.appointment_date
+                 ORDER BY day_key`,
+                [start, end],
+            ),
+        ]);
+
+        const completedByDay = new Map<string, number>();
+        for (const row of aptRes.rows as Array<{ day_key?: string; cnt?: number }>) {
+            const key = String(row.day_key ?? '').slice(0, 10);
+            if (key) completedByDay.set(key, Number(row.cnt ?? 0));
+        }
+
+        const points: BeautySurveyTrendPoint[] = (fbRes.rows as Array<{
+            day_key?: string;
+            response_count?: number;
+            avg_overall_rating?: number;
+            would_recommend_count?: number;
+        }>).map((r) => {
+            const dayKey = String(r.day_key ?? '').slice(0, 10);
+            const responseCount = Number(r.response_count ?? 0);
+            const recommendCount = Number(r.would_recommend_count ?? 0);
+            const completed = completedByDay.get(dayKey) ?? 0;
+            return {
+                day_key: dayKey,
+                response_count: responseCount,
+                avg_overall_rating: Number(r.avg_overall_rating ?? 0),
+                would_recommend_pct:
+                    responseCount > 0 ? Math.round((recommendCount / responseCount) * 100) : 0,
+                completed_appointments: completed,
+                response_rate_pct:
+                    completed > 0
+                        ? Math.round((responseCount / completed) * 100)
+                        : responseCount > 0
+                          ? 100
+                          : 0,
+            };
+        });
+
+        const totalResponses = points.reduce((s, p) => s + p.response_count, 0);
+        const avgOverall =
+            totalResponses > 0
+                ? points.reduce((s, p) => s + p.avg_overall_rating * p.response_count, 0) / totalResponses
+                : 0;
+        const totalRecommend = (fbRes.rows as Array<{ would_recommend_count?: number }>).reduce(
+            (s, r) => s + Number(r.would_recommend_count ?? 0),
+            0,
+        );
+
+        return {
+            start_ymd: start,
+            end_ymd: end,
+            survey_options: surveyOptions,
+            selected_survey_id: surveyFilter,
+            points,
+            summary: {
+                response_count: totalResponses,
+                avg_overall_rating: Math.round(avgOverall * 10) / 10,
+                would_recommend_pct:
+                    totalResponses > 0 ? Math.round((totalRecommend / totalResponses) * 100) : 0,
+            },
+        };
+    },
+
+    async getSurveyStaffReport(
+        startYmd: string,
+        endYmd: string,
+        opts?: { surveyId?: string | null },
+    ): Promise<BeautySurveyStaffReport> {
+        const empty: BeautySurveyStaffReport = {
+            start_ymd: startYmd,
+            end_ymd: endYmd,
+            survey_options: [],
+            selected_survey_id: opts?.surveyId ?? null,
+            rows: [],
+        };
+        const start = String(startYmd || '').trim();
+        const end = String(endYmd || '').trim();
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(start) || !/^\d{4}-\d{2}-\d{2}$/.test(end)) return empty;
+
+        const surveyFilter = opts?.surveyId?.trim() || null;
+        const fn = erpFirmNrForRow();
+        const fbTable = postgres.getMovementTableName('beauty_customer_feedback', 'beauty');
+        const aptTable = postgres.getMovementTableName('beauty_appointments', 'beauty');
+        const spTable = postgres.getCardTableName('beauty_specialists', 'beauty');
+        const surveyOptions = await beautyService.getSatisfactionSurveys();
+
+        const params: unknown[] = [start, end, fn];
+        let surveySql = '';
+        if (surveyFilter) {
+            params.push(surveyFilter);
+            surveySql = ` AND f.survey_id = $${params.length}::uuid`;
+        }
+
+        const { rows } = await postgres.query(
+            `SELECT
+               COALESCE(a.specialist_id::text, '') AS specialist_id,
+               COALESCE(sp.name, u.full_name, u.username, '—') AS specialist_name,
+               COUNT(f.id)::int AS response_count,
+               ROUND(AVG(f.overall_rating)::numeric, 1)::float AS avg_overall_rating,
+               ROUND(AVG(f.staff_rating)::numeric, 1)::float AS avg_staff_rating,
+               SUM(CASE WHEN f.would_recommend THEN 1 ELSE 0 END)::int AS would_recommend_count,
+               SUM(CASE WHEN f.overall_rating <= 2 THEN 1 ELSE 0 END)::int AS low_score_count
+             FROM ${fbTable} f
+             INNER JOIN ${aptTable} a ON f.appointment_id = a.id
+             LEFT JOIN ${spTable} sp ON a.specialist_id = sp.id
+             LEFT JOIN users u ON a.specialist_id = u.id AND lpad(trim(u.firm_nr::text), 3, '0') = $3
+             WHERE f.created_at >= $1::date
+               AND f.created_at < ($2::date + INTERVAL '1 day')
+               ${surveySql}
+             GROUP BY a.specialist_id, specialist_name
+             HAVING COUNT(f.id) > 0
+             ORDER BY avg_overall_rating DESC NULLS LAST, response_count DESC`,
+            params,
+        );
+
+        const breakdownRows: BeautySurveyBreakdownRow[] = (rows as Array<{
+            specialist_id?: string;
+            specialist_name?: string;
+            response_count?: number;
+            avg_overall_rating?: number;
+            avg_staff_rating?: number | null;
+            would_recommend_count?: number;
+            low_score_count?: number;
+        }>).map((r) => {
+            const cnt = Number(r.response_count ?? 0);
+            const rec = Number(r.would_recommend_count ?? 0);
+            return {
+                id: String(r.specialist_id ?? '').trim() || 'unknown',
+                name: String(r.specialist_name ?? '').trim() || '—',
+                response_count: cnt,
+                avg_overall_rating: Number(r.avg_overall_rating ?? 0),
+                avg_staff_rating:
+                    r.avg_staff_rating != null && !Number.isNaN(Number(r.avg_staff_rating))
+                        ? Number(r.avg_staff_rating)
+                        : null,
+                would_recommend_pct: cnt > 0 ? Math.round((rec / cnt) * 100) : 0,
+                low_score_count: Number(r.low_score_count ?? 0),
+            };
+        });
+
+        return {
+            start_ymd: start,
+            end_ymd: end,
+            survey_options: surveyOptions,
+            selected_survey_id: surveyFilter,
+            rows: breakdownRows,
+        };
+    },
+
+    async getSurveyServiceReport(
+        startYmd: string,
+        endYmd: string,
+        opts?: { surveyId?: string | null },
+    ): Promise<BeautySurveyServiceReport> {
+        const empty: BeautySurveyServiceReport = {
+            start_ymd: startYmd,
+            end_ymd: endYmd,
+            survey_options: [],
+            selected_survey_id: opts?.surveyId ?? null,
+            rows: [],
+        };
+        const start = String(startYmd || '').trim();
+        const end = String(endYmd || '').trim();
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(start) || !/^\d{4}-\d{2}-\d{2}$/.test(end)) return empty;
+
+        const surveyFilter = opts?.surveyId?.trim() || null;
+        const fn = erpFirmNrForRow();
+        const fbTable = postgres.getMovementTableName('beauty_customer_feedback', 'beauty');
+        const aptTable = postgres.getMovementTableName('beauty_appointments', 'beauty');
+        const bsTable = postgres.getCardTableName('beauty_services', 'beauty');
+        const rsTable = postgres.getCardTableName('services');
+        const prodTbl = postgres.getCardTableName('products');
+        const surveyOptions = await beautyService.getSatisfactionSurveys();
+
+        const params: unknown[] = [start, end, fn];
+        let surveySql = '';
+        if (surveyFilter) {
+            params.push(surveyFilter);
+            surveySql = ` AND f.survey_id = $${params.length}::uuid`;
+        }
+
+        const { rows } = await postgres.query(
+            `SELECT
+               COALESCE(a.service_id::text, '') AS service_id,
+               COALESCE(bs.name, rs.name, pr.name, '—') AS service_name,
+               COUNT(f.id)::int AS response_count,
+               ROUND(AVG(f.overall_rating)::numeric, 1)::float AS avg_overall_rating,
+               ROUND(AVG(f.service_rating)::numeric, 1)::float AS avg_service_rating,
+               SUM(CASE WHEN f.would_recommend THEN 1 ELSE 0 END)::int AS would_recommend_count,
+               SUM(CASE WHEN f.overall_rating <= 2 THEN 1 ELSE 0 END)::int AS low_score_count
+             FROM ${fbTable} f
+             INNER JOIN ${aptTable} a ON f.appointment_id = a.id
+             LEFT JOIN ${bsTable} bs ON a.service_id = bs.id
+             LEFT JOIN ${rsTable} rs ON a.service_id = rs.id AND rs.firm_nr = $3
+             LEFT JOIN ${prodTbl} pr ON pr.id = a.service_id AND pr.firm_nr = $3
+               AND (
+                 LOWER(TRIM(COALESCE(pr.material_type, ''))) = 'service'
+                 OR LOWER(TRIM(COALESCE(pr.materialtype, ''))) = 'service'
+               )
+             WHERE f.created_at >= $1::date
+               AND f.created_at < ($2::date + INTERVAL '1 day')
+               ${surveySql}
+             GROUP BY a.service_id, service_name
+             HAVING COUNT(f.id) > 0
+             ORDER BY avg_overall_rating DESC NULLS LAST, response_count DESC`,
+            params,
+        );
+
+        const breakdownRows: BeautySurveyBreakdownRow[] = (rows as Array<{
+            service_id?: string;
+            service_name?: string;
+            response_count?: number;
+            avg_overall_rating?: number;
+            avg_service_rating?: number | null;
+            would_recommend_count?: number;
+            low_score_count?: number;
+        }>).map((r) => {
+            const cnt = Number(r.response_count ?? 0);
+            const rec = Number(r.would_recommend_count ?? 0);
+            return {
+                id: String(r.service_id ?? '').trim() || 'unknown',
+                name: String(r.service_name ?? '').trim() || '—',
+                response_count: cnt,
+                avg_overall_rating: Number(r.avg_overall_rating ?? 0),
+                avg_staff_rating:
+                    r.avg_service_rating != null && !Number.isNaN(Number(r.avg_service_rating))
+                        ? Number(r.avg_service_rating)
+                        : null,
+                would_recommend_pct: cnt > 0 ? Math.round((rec / cnt) * 100) : 0,
+                low_score_count: Number(r.low_score_count ?? 0),
+            };
+        });
+
+        return {
+            start_ymd: start,
+            end_ymd: end,
+            survey_options: surveyOptions,
+            selected_survey_id: surveyFilter,
+            rows: breakdownRows,
+        };
+    },
+
+    async getSurveyNpsReport(
+        startYmd: string,
+        endYmd: string,
+        opts?: { surveyId?: string | null },
+    ): Promise<BeautySurveyNpsReport> {
+        const empty: BeautySurveyNpsReport = {
+            start_ymd: startYmd,
+            end_ymd: endYmd,
+            survey_options: [],
+            selected_survey_id: opts?.surveyId ?? null,
+            summary: {
+                response_count: 0,
+                nps_score: 0,
+                promoter_count: 0,
+                passive_count: 0,
+                detractor_count: 0,
+                promoter_pct: 0,
+                passive_pct: 0,
+                detractor_pct: 0,
+                would_recommend_pct: 0,
+                avg_overall_rating: 0,
+            },
+        };
+        const start = String(startYmd || '').trim();
+        const end = String(endYmd || '').trim();
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(start) || !/^\d{4}-\d{2}-\d{2}$/.test(end)) return empty;
+
+        const surveyFilter = opts?.surveyId?.trim() || null;
+        const fbTable = postgres.getMovementTableName('beauty_customer_feedback', 'beauty');
+        const surveyOptions = await beautyService.getSatisfactionSurveys();
+
+        const params: unknown[] = [start, end];
+        let surveySql = '';
+        if (surveyFilter) {
+            params.push(surveyFilter);
+            surveySql = ` AND f.survey_id = $${params.length}::uuid`;
+        }
+
+        const { rows } = await postgres.query(
+            `SELECT f.overall_rating, f.would_recommend
+             FROM ${fbTable} f
+             WHERE f.created_at >= $1::date
+               AND f.created_at < ($2::date + INTERVAL '1 day')
+               ${surveySql}`,
+            params,
+        );
+
+        let promoters = 0;
+        let passives = 0;
+        let detractors = 0;
+        let recommendCount = 0;
+        let ratingSum = 0;
+
+        for (const raw of rows as Array<{ overall_rating?: number; would_recommend?: boolean }>) {
+            const rating = Math.min(5, Math.max(1, Math.round(Number(raw.overall_rating ?? 0))));
+            ratingSum += rating;
+            if (raw.would_recommend) recommendCount += 1;
+            if (rating >= 5) promoters += 1;
+            else if (rating >= 4) passives += 1;
+            else detractors += 1;
+        }
+
+        const total = rows.length;
+        const npsScore =
+            total > 0 ? Math.round(((promoters - detractors) / total) * 100) : 0;
+
+        return {
+            start_ymd: start,
+            end_ymd: end,
+            survey_options: surveyOptions,
+            selected_survey_id: surveyFilter,
+            summary: {
+                response_count: total,
+                nps_score: npsScore,
+                promoter_count: promoters,
+                passive_count: passives,
+                detractor_count: detractors,
+                promoter_pct: total > 0 ? Math.round((promoters / total) * 100) : 0,
+                passive_pct: total > 0 ? Math.round((passives / total) * 100) : 0,
+                detractor_pct: total > 0 ? Math.round((detractors / total) * 100) : 0,
+                would_recommend_pct: total > 0 ? Math.round((recommendCount / total) * 100) : 0,
+                avg_overall_rating: total > 0 ? Math.round((ratingSum / total) * 10) / 10 : 0,
+            },
+        };
+    },
+
+    async getSurveyCommentsReport(
+        startYmd: string,
+        endYmd: string,
+        opts?: { surveyId?: string | null; maxRating?: number },
+    ): Promise<BeautySurveyCommentsReport> {
+        const empty: BeautySurveyCommentsReport = {
+            start_ymd: startYmd,
+            end_ymd: endYmd,
+            survey_options: [],
+            selected_survey_id: opts?.surveyId ?? null,
+            summary: { total_with_comment: 0, low_score_count: 0, avg_rating_comments: null },
+            rows: [],
+        };
+        const start = String(startYmd || '').trim();
+        const end = String(endYmd || '').trim();
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(start) || !/^\d{4}-\d{2}-\d{2}$/.test(end)) return empty;
+
+        const surveyFilter = opts?.surveyId?.trim() || null;
+        const maxRating = Math.min(5, Math.max(1, Number(opts?.maxRating ?? 3)));
+        const fn = erpFirmNrForRow();
+        const fbTable = postgres.getMovementTableName('beauty_customer_feedback', 'beauty');
+        const aptTable = postgres.getMovementTableName('beauty_appointments', 'beauty');
+        const custTable = postgres.getCardTableName('customers');
+        const surveyTable = postgres.getCardTableName('beauty_satisfaction_surveys', 'beauty');
+        const spTable = postgres.getCardTableName('beauty_specialists', 'beauty');
+        const bsTable = postgres.getCardTableName('beauty_services', 'beauty');
+        const rsTable = postgres.getCardTableName('services');
+        const prodTbl = postgres.getCardTableName('products');
+        const surveyOptions = await beautyService.getSatisfactionSurveys();
+
+        const params: unknown[] = [start, end, fn, maxRating];
+        let surveySql = '';
+        if (surveyFilter) {
+            params.push(surveyFilter);
+            surveySql = ` AND f.survey_id = $${params.length}::uuid`;
+        }
+
+        const { rows } = await postgres.query(
+            `SELECT
+               f.id,
+               f.created_at,
+               f.overall_rating,
+               f.would_recommend,
+               f.comment,
+               c.name AS customer_name,
+               a.appointment_date::text AS appointment_date,
+               sv.name AS survey_name,
+               COALESCE(sp.name, u.full_name, u.username) AS specialist_name,
+               COALESCE(bs.name, rs.name, pr.name) AS service_name
+             FROM ${fbTable} f
+             LEFT JOIN ${custTable} c ON f.customer_id = c.id
+             LEFT JOIN ${aptTable} a ON f.appointment_id = a.id
+             LEFT JOIN ${surveyTable} sv ON f.survey_id = sv.id
+             LEFT JOIN ${spTable} sp ON a.specialist_id = sp.id
+             LEFT JOIN users u ON a.specialist_id = u.id AND lpad(trim(u.firm_nr::text), 3, '0') = $3
+             LEFT JOIN ${bsTable} bs ON a.service_id = bs.id
+             LEFT JOIN ${rsTable} rs ON a.service_id = rs.id AND rs.firm_nr = $3
+             LEFT JOIN ${prodTbl} pr ON pr.id = a.service_id AND pr.firm_nr = $3
+               AND (
+                 LOWER(TRIM(COALESCE(pr.material_type, ''))) = 'service'
+                 OR LOWER(TRIM(COALESCE(pr.materialtype, ''))) = 'service'
+               )
+             WHERE f.created_at >= $1::date
+               AND f.created_at < ($2::date + INTERVAL '1 day')
+               AND (
+                 NULLIF(TRIM(COALESCE(f.comment, '')), '') IS NOT NULL
+                 OR f.overall_rating <= $4
+               )
+               ${surveySql}
+             ORDER BY f.overall_rating ASC, f.created_at DESC`,
+            params,
+        );
+
+        const commentRows: BeautySurveyCommentRow[] = (rows as Array<{
+            id?: string;
+            created_at?: string;
+            overall_rating?: number;
+            would_recommend?: boolean;
+            comment?: string | null;
+            customer_name?: string;
+            appointment_date?: string | null;
+            survey_name?: string | null;
+            specialist_name?: string | null;
+            service_name?: string | null;
+        }>).map((r) => ({
+            id: String(r.id ?? ''),
+            created_at: String(r.created_at ?? ''),
+            customer_name: String(r.customer_name ?? '').trim() || '—',
+            appointment_date: r.appointment_date?.slice(0, 10) ?? null,
+            overall_rating: Number(r.overall_rating ?? 0),
+            would_recommend: Boolean(r.would_recommend),
+            comment: String(r.comment ?? '').trim(),
+            specialist_name: r.specialist_name?.trim() || null,
+            service_name: r.service_name?.trim() || null,
+            survey_name: r.survey_name?.trim() || null,
+        }));
+
+        const withComment = commentRows.filter((r) => r.comment.length > 0);
+        const lowScore = commentRows.filter((r) => r.overall_rating <= maxRating);
+        const avgCommentRating =
+            withComment.length > 0
+                ? Math.round(
+                      (withComment.reduce((s, r) => s + r.overall_rating, 0) / withComment.length) * 10,
+                  ) / 10
+                : null;
+
+        return {
+            start_ymd: start,
+            end_ymd: end,
+            survey_options: surveyOptions,
+            selected_survey_id: surveyFilter,
+            summary: {
+                total_with_comment: withComment.length,
+                low_score_count: lowScore.length,
+                avg_rating_comments: avgCommentRating,
+            },
+            rows: commentRows,
         };
     },
 };

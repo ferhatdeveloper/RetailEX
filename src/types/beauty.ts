@@ -599,6 +599,102 @@ export type BeautySurveyResultsReport = {
     responses: BeautySurveyResponseRow[];
 };
 
+/** Günlük anket trendi */
+export type BeautySurveyTrendPoint = {
+    day_key: string;
+    response_count: number;
+    avg_overall_rating: number;
+    would_recommend_pct: number;
+    completed_appointments: number;
+    response_rate_pct: number;
+};
+
+export type BeautySurveyTrendReport = {
+    start_ymd: string;
+    end_ymd: string;
+    survey_options: BeautySatisfactionSurvey[];
+    selected_survey_id: string | null;
+    points: BeautySurveyTrendPoint[];
+    summary: {
+        response_count: number;
+        avg_overall_rating: number;
+        would_recommend_pct: number;
+    };
+};
+
+/** Personel / hizmet kırılımı — ortak satır */
+export type BeautySurveyBreakdownRow = {
+    id: string;
+    name: string;
+    response_count: number;
+    avg_overall_rating: number;
+    avg_staff_rating: number | null;
+    would_recommend_pct: number;
+    low_score_count: number;
+};
+
+export type BeautySurveyStaffReport = {
+    start_ymd: string;
+    end_ymd: string;
+    survey_options: BeautySatisfactionSurvey[];
+    selected_survey_id: string | null;
+    rows: BeautySurveyBreakdownRow[];
+};
+
+export type BeautySurveyServiceReport = {
+    start_ymd: string;
+    end_ymd: string;
+    survey_options: BeautySatisfactionSurvey[];
+    selected_survey_id: string | null;
+    rows: BeautySurveyBreakdownRow[];
+};
+
+/** 5 yıldız NPS: 5=promoter, 4=passive, 1–3=detractor */
+export type BeautySurveyNpsReport = {
+    start_ymd: string;
+    end_ymd: string;
+    survey_options: BeautySatisfactionSurvey[];
+    selected_survey_id: string | null;
+    summary: {
+        response_count: number;
+        nps_score: number;
+        promoter_count: number;
+        passive_count: number;
+        detractor_count: number;
+        promoter_pct: number;
+        passive_pct: number;
+        detractor_pct: number;
+        would_recommend_pct: number;
+        avg_overall_rating: number;
+    };
+};
+
+export type BeautySurveyCommentRow = {
+    id: string;
+    created_at: string;
+    customer_name: string;
+    appointment_date: string | null;
+    overall_rating: number;
+    would_recommend: boolean;
+    comment: string;
+    specialist_name: string | null;
+    service_name: string | null;
+    survey_name: string | null;
+};
+
+export type BeautySurveyCommentsReport = {
+    start_ymd: string;
+    end_ymd: string;
+    survey_options: BeautySatisfactionSurvey[];
+    selected_survey_id: string | null;
+    summary: {
+        total_with_comment: number;
+        low_score_count: number;
+        avg_rating_comments: number | null;
+    };
+    rows: BeautySurveyCommentRow[];
+};
+
 export interface BeautySale {
     id: string;
     invoice_number?: string;

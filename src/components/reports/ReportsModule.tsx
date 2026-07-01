@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { BarChart3, TrendingUp, Banknote, ShoppingCart, Calendar, Download, FileText, Clock, User, Package, TrendingDown, Award, PieChart as PieChartIcon, CreditCard, AlertCircle, Percent, AlertTriangle, ClipboardList } from 'lucide-react';
+import { BarChart3, TrendingUp, Banknote, ShoppingCart, Calendar, Download, FileText, Clock, User, Package, TrendingDown, Award, PieChart as PieChartIcon, CreditCard, AlertCircle, Percent, AlertTriangle, ClipboardList, MessageSquare, LineChart, Users, Scissors, ThumbsUp } from 'lucide-react';
 import type { Sale, Product } from '../../App';
 import { MaterialMovementReport } from './MaterialMovementReport';
 import { ProfitLossReport } from './ProfitLossReport';
@@ -31,6 +31,13 @@ import { BeautyServiceReportCrmModal } from './BeautyServiceReportCrmModal';
 import { useBeautyStore } from '../beauty/store/useBeautyStore';
 import { CommissionReport } from '../beauty/components/CommissionReport';
 import { SurveyResultsReport } from '../beauty/components/SurveyResultsReport';
+import {
+  SurveyTrendReport,
+  SurveyStaffReport,
+  SurveyServiceReport,
+  SurveyNpsReport,
+  SurveyCommentsReport,
+} from '../beauty/components/SurveyExtraReports';
 import { Layout, Menu, ConfigProvider, theme, Input, Button, Dropdown, Modal, Table, Spin, Select } from 'antd';
 import { toast } from 'sonner';
 import { usePermission } from '../../shared/hooks/usePermission';
@@ -516,7 +523,7 @@ type ReportTab =
   // Ödeme & İşlem
   'payment-distribution' | 'discount-report' | 'cash-status' | 'commission' |
   // Güzellik özel
-  'beauty-service-report' | 'beauty-cancelled-report' | 'beauty-appointment-product-report' | 'beauty-commission-report' | 'beauty-survey-report';
+  'beauty-service-report' | 'beauty-cancelled-report' | 'beauty-appointment-product-report' | 'beauty-commission-report' | 'beauty-survey-report' | 'beauty-survey-trend-report' | 'beauty-survey-staff-report' | 'beauty-survey-service-report' | 'beauty-survey-nps-report' | 'beauty-survey-comments-report';
 
 /** Sol menüde gösterilmez: ekranı yok veya yalnızca “yakında” placeholder idi. */
 const REPORT_TABS_HIDDEN_FROM_MENU = new Set<string>([
@@ -560,6 +567,11 @@ const BEAUTY_ONLY_REPORT_KEYS = new Set<string>([
   'beauty-appointment-product-report',
   'beauty-commission-report',
   'beauty-survey-report',
+  'beauty-survey-trend-report',
+  'beauty-survey-staff-report',
+  'beauty-survey-service-report',
+  'beauty-survey-nps-report',
+  'beauty-survey-comments-report',
 ]);
 
 function beautyReportMenuItems(tm: (key: string) => string) {
@@ -569,6 +581,11 @@ function beautyReportMenuItems(tm: (key: string) => string) {
     { key: 'beauty-appointment-product-report', label: tm('beautyAppointmentProductSalesReport'), icon: <ShoppingCart className="w-4 h-4" /> },
     { key: 'beauty-commission-report', label: tm('bShellNavCommissionReport'), icon: <SafetyCertificateOutlined /> },
     { key: 'beauty-survey-report', label: tm('bShellNavSurveyReport'), icon: <ClipboardList className="w-4 h-4" /> },
+    { key: 'beauty-survey-trend-report', label: tm('bSurveyTrendReportMenu'), icon: <LineChart className="w-4 h-4" /> },
+    { key: 'beauty-survey-staff-report', label: tm('bSurveyStaffReportMenu'), icon: <Users className="w-4 h-4" /> },
+    { key: 'beauty-survey-service-report', label: tm('bSurveyServiceReportMenu'), icon: <Scissors className="w-4 h-4" /> },
+    { key: 'beauty-survey-nps-report', label: tm('bSurveyNpsReportMenu'), icon: <ThumbsUp className="w-4 h-4" /> },
+    { key: 'beauty-survey-comments-report', label: tm('bSurveyCommentsReportMenu'), icon: <MessageSquare className="w-4 h-4" /> },
   ];
 }
 
@@ -3920,6 +3937,11 @@ export function ReportsModule({
   const isBeautyAppointmentProductReportTab = selectedTab === 'beauty-appointment-product-report';
   const isBeautyCommissionReportTab = selectedTab === 'beauty-commission-report';
   const isBeautySurveyReportTab = selectedTab === 'beauty-survey-report';
+  const isBeautySurveyTrendReportTab = selectedTab === 'beauty-survey-trend-report';
+  const isBeautySurveyStaffReportTab = selectedTab === 'beauty-survey-staff-report';
+  const isBeautySurveyServiceReportTab = selectedTab === 'beauty-survey-service-report';
+  const isBeautySurveyNpsReportTab = selectedTab === 'beauty-survey-nps-report';
+  const isBeautySurveyCommentsReportTab = selectedTab === 'beauty-survey-comments-report';
   const defaultOpenKeys = businessType === 'beauty'
     ? ['grp-beauty-reports', 'grp-general', 'grp-sales']
     : ['grp-general', 'grp-design', 'grp-sales'];
@@ -6515,6 +6537,26 @@ export function ReportsModule({
 
             {isBeautySurveyReportTab && (
               <SurveyResultsReport />
+            )}
+
+            {isBeautySurveyTrendReportTab && (
+              <SurveyTrendReport />
+            )}
+
+            {isBeautySurveyStaffReportTab && (
+              <SurveyStaffReport />
+            )}
+
+            {isBeautySurveyServiceReportTab && (
+              <SurveyServiceReport />
+            )}
+
+            {isBeautySurveyNpsReportTab && (
+              <SurveyNpsReport />
+            )}
+
+            {isBeautySurveyCommentsReportTab && (
+              <SurveyCommentsReport />
             )}
 
             {selectedTab === 'chat-ai' && (
