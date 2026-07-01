@@ -96,6 +96,9 @@ export class WebSocketService {
   private url: string;
   private userId: string | null = null;
   private storeId: string | null = null;
+  private deviceId: string | null = null;
+  private presenceHeartbeatTimer: ReturnType<typeof setInterval> | null = null;
+  private static readonly PRESENCE_HEARTBEAT_MS = 60_000;
 
   constructor(url: string = LOCAL_WS_FALLBACK) {
     this.url = url;
@@ -155,6 +158,8 @@ export class WebSocketService {
           this.reconnectAttempts = 0;
           logger.info(`? WebSocket connected - ${APP_VERSION.display}`);
 
+          void this.registerCenterPresence();
+
           // Notify listeners
           this.broadcast('USER_CONNECTED', {
             userId,
@@ -190,6 +195,8 @@ export class WebSocketService {
 
         this.ws.onclose = (event) => {
           this.isConnecting = false;
+          this.stopPresenceHeartbeat();
+          void this.markCenterPresenceOffline();
           logger.warn(`?? WebSocket closed: ${event.code} ${event.reason}`);
 
           // Only reconnect if it wasn't a manual logout/disconnect
@@ -249,10 +256,71 @@ export class WebSocketService {
    * Disconnect from WebSocket
    */
   disconnect(): void {
+    this.stopPresenceHeartbeat();
+    void this.markCenterPresenceOffline();
     if (this.ws) {
       this.ws.close();
       this.ws = null;
       logger.info('?? WebSocket manually disconnected');
+    }
+  }
+
+  private async ensureDeviceId(): Promise<string | null> {
+    if (this.deviceId) return this.deviceId;
+    try {
+      const { getHybridDeviceId } = await import('./hybridDeviceSyncLogService');
+      this.deviceId = await getHybridDeviceId();
+      return this.deviceId;
+    } catch {
+      return null;
+    }
+  }
+
+  private async registerCenterPresence(): Promise<void> {
+    const storeId = this.storeId;
+    if (!storeId) return;
+    try {
+      const { isValidStoreUuid, pushDevicePresenceOnline } = await import(
+        './deviceOnlineStatusService'
+      );
+      if (!isValidStoreUuid(storeId)) return;
+      const deviceId = await this.ensureDeviceId();
+      if (!deviceId) return;
+      await pushDevicePresenceOnline({
+        deviceId,
+        storeId,
+        appVersion: APP_VERSION.full,
+      });
+      this.startPresenceHeartbeat();
+    } catch (err) {
+      logger.warn('[WS] Merkez presence kaydı başarısız:', err);
+    }
+  }
+
+  private async markCenterPresenceOffline(): Promise<void> {
+    try {
+      const deviceId = await this.ensureDeviceId();
+      if (!deviceId) return;
+      const { pushDevicePresenceOffline } = await import('./deviceOnlineStatusService');
+      await pushDevicePresenceOffline(deviceId);
+    } catch {
+      /* ignore */
+    }
+  }
+
+  private startPresenceHeartbeat(): void {
+    this.stopPresenceHeartbeat();
+    this.presenceHeartbeatTimer = setInterval(() => {
+      if (this.ws?.readyState === WebSocket.OPEN) {
+        void this.registerCenterPresence();
+      }
+    }, WebSocketService.PRESENCE_HEARTBEAT_MS);
+  }
+
+  private stopPresenceHeartbeat(): void {
+    if (this.presenceHeartbeatTimer) {
+      clearInterval(this.presenceHeartbeatTimer);
+      this.presenceHeartbeatTimer = null;
     }
   }
 

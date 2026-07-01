@@ -18,6 +18,10 @@ import {
 } from './hybridSyncEngine';
 import { listPosTerminalRegistrations } from './deviceRegistrationService';
 import { isCentralPgConfigured, queryCentralPgRows } from './centralRpcService';
+import {
+  fetchStoreDevicesPresence,
+  resolveDeviceOnlineStatus,
+} from './deviceOnlineStatusService';
 
 export type EnterpriseSyncDevice = {
   deviceId: string;
@@ -29,6 +33,9 @@ export type EnterpriseSyncDevice = {
   computerName?: string;
   appVersion?: string;
   isOnline: boolean;
+  /** WS canlı mı, yoksa 24s yedek mi */
+  onlineSource?: 'websocket' | 'fallback' | 'none';
+  onlineLabel?: string;
   lastSeen: number;
   pendingMessages: number;
   deliveredMessages?: number;
@@ -165,9 +172,6 @@ async function fetchKasaQueueStatsMap(): Promise<Map<string, KasaQueueStats>> {
 }
 
 export async function loadEnterpriseDevices(): Promise<EnterpriseSyncDevice[]> {
-  const dayMs = 86400000;
-
-  /** Hedef panel ile aynı kaynak: onaylı pos_terminal_registrations (merkez PG / PostgREST) */
   const terminals = await listPosTerminalRegistrations({
     status: 'approved',
     allFirms: true,
@@ -175,14 +179,22 @@ export async function loadEnterpriseDevices(): Promise<EnterpriseSyncDevice[]> {
   });
   if (!terminals.length) return [];
 
-  const statsMap = await fetchKasaQueueStatsMap();
+  const [statsMap, wsPresenceList] = await Promise.all([
+    fetchKasaQueueStatsMap(),
+    fetchStoreDevicesPresence(),
+  ]);
+  const wsMap = new Map(wsPresenceList.map((p) => [p.deviceId, p]));
 
   return terminals.map((t) => {
     const key = `${t.terminalName || ''}|${t.storeId || ''}`;
     const q = statsMap.get(key);
     const regSeen = t.lastSeenAt ?? 0;
     const syncSeen = q?.lastSyncMs ?? 0;
-    const lastSeen = Math.max(regSeen, syncSeen) || Date.now();
+    const fallbackMs = Math.max(regSeen, syncSeen);
+    const online = resolveDeviceOnlineStatus({
+      wsPresence: wsMap.get(t.deviceId) ?? null,
+      fallbackLastSeenMs: fallbackMs > 0 ? fallbackMs : null,
+    });
     return {
       deviceId: t.deviceId,
       deviceName: t.terminalName,
@@ -192,8 +204,10 @@ export async function loadEnterpriseDevices(): Promise<EnterpriseSyncDevice[]> {
       storeName: t.storeName,
       computerName: t.computerName,
       appVersion: t.appVersion,
-      isOnline: Date.now() - lastSeen < dayMs,
-      lastSeen,
+      isOnline: online.state === 'online',
+      onlineSource: online.source,
+      onlineLabel: online.label,
+      lastSeen: online.lastSeenAt ? Date.parse(online.lastSeenAt) : fallbackMs || Date.now(),
       pendingMessages: q?.pending ?? 0,
       deliveredMessages: q?.delivered ?? 0,
       failedMessages: q?.failed ?? 0,

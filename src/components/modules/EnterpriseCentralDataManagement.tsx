@@ -2236,7 +2236,16 @@ export function EnterpriseCentralDataManagement() {
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-1">
                           <span className="truncate font-medium">{device.deviceName}</span>
-                          <div className={`w-2 h-2 rounded-full shrink-0 ${device.isOnline ? 'bg-green-500 animate-pulse' : 'bg-gray-400'}`} />
+                          <div className={`w-2 h-2 rounded-full shrink-0 ${
+                            device.onlineSource === 'websocket' && device.isOnline
+                              ? 'bg-green-500 animate-pulse'
+                              : device.isOnline
+                                ? 'bg-amber-500'
+                                : 'bg-gray-400'
+                          }`} />
+                          {device.onlineLabel ? (
+                            <span className="text-[10px] text-gray-500 shrink-0">{device.onlineLabel}</span>
+                          ) : null}
                         </div>
 
                         <div className="text-xs text-gray-600 dark:text-gray-400 space-y-1">

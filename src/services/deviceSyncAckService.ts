@@ -9,6 +9,12 @@ import { ERP_SETTINGS } from './postgres';
 import type { DeviceSyncDirection } from './hybridDeviceSyncLogService';
 import type { PriceChangeSnapshot, TableBreakdownRow } from './hybridDeviceSyncLogService';
 import { formatPriceDiffShort, type PriceFieldDiff } from './priceChangeSyncService';
+import {
+  fetchStoreDevicesPresence,
+  resolveDeviceOnlineStatus,
+  type ResolvedDeviceOnline,
+  type StoreDevicePresenceRow,
+} from './deviceOnlineStatusService';
 
 export type DeviceSyncAckPayload = {
   deviceId: string;
@@ -83,6 +89,8 @@ export type CenterDeviceOverviewRow = {
   pendingPriceChanges: number;
   recentPriceAckCount: number;
   riskLevel: 'ok' | 'warning' | 'critical';
+  online: ResolvedDeviceOnline;
+  wsPresence: StoreDevicePresenceRow | null;
 };
 
 function firmNrPadded(raw?: string): string {
@@ -336,12 +344,16 @@ export async function getCenterDeviceSyncOverview(opts?: {
   const hours = opts?.hours ?? 168;
   const staleHours = opts?.staleHours ?? 24;
 
-  const [devices, inboundSessions, outboundSessions, pendingMap] = await Promise.all([
-    listRegisteredTerminals(firm),
-    fetchAckSessions({ firmNr: firm, direction: 'remote_to_local', hours, limit: 200 }),
-    fetchAckSessions({ firmNr: firm, direction: 'local_to_remote', hours, limit: 100 }),
-    countPendingPriceChangesByDevice(firm, hours),
-  ]);
+  const [devices, inboundSessions, outboundSessions, pendingMap, wsPresenceList] =
+    await Promise.all([
+      listRegisteredTerminals(firm),
+      fetchAckSessions({ firmNr: firm, direction: 'remote_to_local', hours, limit: 200 }),
+      fetchAckSessions({ firmNr: firm, direction: 'local_to_remote', hours, limit: 100 }),
+      countPendingPriceChangesByDevice(firm, hours),
+      fetchStoreDevicesPresence(),
+    ]);
+
+  const wsMap = new Map(wsPresenceList.map((p) => [p.deviceId, p]));
 
   const lastInbound = latestAckByDevice(inboundSessions, 'remote_to_local');
   const lastOutbound = latestAckByDevice(outboundSessions, 'local_to_remote');
@@ -355,6 +367,15 @@ export async function getCenterDeviceSyncOverview(opts?: {
     const inbound = lastInbound.get(device.deviceId) ?? null;
     const outbound = lastOutbound.get(device.deviceId) ?? null;
     const pending = pendingMap.get(device.deviceId) ?? 0;
+    const wsPresence = wsMap.get(device.deviceId) ?? null;
+    const fallbackMs = Math.max(
+      device.lastSeenAt ? Date.parse(device.lastSeenAt) : 0,
+      inbound?.ackAt ? Date.parse(inbound.ackAt) : 0,
+    );
+    const online = resolveDeviceOnlineStatus({
+      wsPresence,
+      fallbackLastSeenMs: Number.isFinite(fallbackMs) && fallbackMs > 0 ? fallbackMs : null,
+    });
     return {
       device,
       lastInbound: inbound,
@@ -362,6 +383,8 @@ export async function getCenterDeviceSyncOverview(opts?: {
       pendingPriceChanges: pending,
       recentPriceAckCount: priceAckCounts.get(device.deviceId) ?? 0,
       riskLevel: computeRiskLevel(pending, inbound, staleHours),
+      online,
+      wsPresence,
     };
   });
 }

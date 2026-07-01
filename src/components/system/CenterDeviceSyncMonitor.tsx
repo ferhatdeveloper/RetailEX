@@ -4,7 +4,6 @@ import {
   CheckCircle2,
   ChevronDown,
   ChevronRight,
-  Clock,
   Loader2,
   Monitor,
   RefreshCw,
@@ -22,6 +21,7 @@ import {
   type CenterDeviceOverviewRow,
   type DeviceSyncAckRow,
 } from '../../services/deviceSyncAckService';
+import { onlineStateBadgeClass } from '../../services/deviceOnlineStatusService';
 import {
   deviceLabel,
   formatPriceDiffShort,
@@ -38,6 +38,33 @@ type Props = {
   compact?: boolean;
 };
 
+function OnlineBadge({ row }: { row: CenterDeviceOverviewRow }) {
+  const { online } = row;
+  const pulse = online.state === 'online' && online.source === 'websocket';
+  return (
+    <span
+      title={
+        online.source === 'websocket'
+          ? `WebSocket — son sinyal: ${formatAckRelativeTime(online.lastSeenAt)}`
+          : online.source === 'fallback'
+            ? `WS yok; son aktivite (24s yedek): ${formatAckRelativeTime(online.lastSeenAt)}`
+            : 'Cihaz kapalı veya sinyal yok'
+      }
+      className={cn(
+        'inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold',
+        onlineStateBadgeClass(online.state, online.source),
+      )}
+    >
+      <span
+        className={cn(
+          'h-2 w-2 rounded-full shrink-0',
+          pulse ? 'bg-emerald-500 animate-pulse' : online.state === 'online' ? 'bg-amber-500' : 'bg-gray-400',
+        )}
+      />
+      {online.label}
+    </span>
+  );
+}
 function RiskBadge({ level }: { level: CenterDeviceOverviewRow['riskLevel'] }) {
   if (level === 'critical') {
     return (
@@ -177,6 +204,7 @@ function DeviceOverviewCard({
           <div className="flex flex-wrap items-center gap-2">
             <Smartphone className="h-3.5 w-3.5 text-violet-600 shrink-0" />
             <span className="text-sm font-semibold text-gray-900">{title}</span>
+            <OnlineBadge row={row} />
             <RiskBadge level={riskLevel} />
           </div>
           {subtitle ? <p className="text-[11px] text-gray-600 mt-0.5 truncate">{subtitle}</p> : null}
@@ -309,10 +337,24 @@ export function CenterDeviceSyncMonitor({ firmNr, hours = 168, compact = false }
   const stats = useMemo(() => {
     const total = devices.length;
     const atRisk = devices.filter((d) => d.riskLevel !== 'ok').length;
-    const critical = devices.filter((d) => d.riskLevel === 'critical').length;
+    const wsOnline = devices.filter(
+      (d) => d.online.state === 'online' && d.online.source === 'websocket',
+    ).length;
+    const fallbackOnline = devices.filter(
+      (d) => d.online.state === 'online' && d.online.source === 'fallback',
+    ).length;
+    const offline = devices.filter((d) => d.online.state === 'offline').length;
     const pendingPrices = devices.reduce((s, d) => s + d.pendingPriceChanges, 0);
     const missingProducts = priceRows.filter((r) => r.missingDeviceIds.length > 0).length;
-    return { total, atRisk, critical, pendingPrices, missingProducts };
+    return {
+      total,
+      atRisk,
+      wsOnline,
+      fallbackOnline,
+      offline,
+      pendingPrices,
+      missingProducts,
+    };
   }, [devices, priceRows]);
 
   const tabs: { id: TabId; label: string; count?: number }[] = [
@@ -335,7 +377,7 @@ export function CenterDeviceSyncMonitor({ firmNr, hours = 168, compact = false }
             Merkez cihaz senkron izleme
           </p>
           <p className="text-[10px] text-violet-800 mt-0.5 leading-snug">
-            Cihaz listesi · son alım · fiyatlı ürün · A aldı B almadı · otomatik ack
+            WS canlı · 24s yedek aktivite · fiyat teslimat · otomatik ack
           </p>
         </div>
         <button
@@ -349,25 +391,26 @@ export function CenterDeviceSyncMonitor({ firmNr, hours = 168, compact = false }
         </button>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
         <div className="rounded-md border border-gray-200 bg-white px-2 py-1.5">
           <p className="text-[10px] text-gray-500">Kayıtlı cihaz</p>
           <p className="text-lg font-bold text-gray-900 tabular-nums">{stats.total}</p>
         </div>
+        <div className="rounded-md border border-emerald-200 bg-emerald-50/50 px-2 py-1.5">
+          <p className="text-[10px] text-emerald-800">Canlı (WS)</p>
+          <p className="text-lg font-bold text-emerald-900 tabular-nums">{stats.wsOnline}</p>
+        </div>
         <div className="rounded-md border border-amber-200 bg-amber-50/50 px-2 py-1.5">
-          <p className="text-[10px] text-amber-800">Riskli cihaz</p>
-          <p className="text-lg font-bold text-amber-950 tabular-nums">{stats.atRisk}</p>
+          <p className="text-[10px] text-amber-800">Yedek (24s)</p>
+          <p className="text-lg font-bold text-amber-950 tabular-nums">{stats.fallbackOnline}</p>
+        </div>
+        <div className="rounded-md border border-gray-300 bg-gray-50 px-2 py-1.5">
+          <p className="text-[10px] text-gray-600">Kapalı</p>
+          <p className="text-lg font-bold text-gray-800 tabular-nums">{stats.offline}</p>
         </div>
         <div className="rounded-md border border-red-200 bg-red-50/50 px-2 py-1.5">
           <p className="text-[10px] text-red-800">Bekleyen fiyat</p>
           <p className="text-lg font-bold text-red-900 tabular-nums">{stats.pendingPrices}</p>
-        </div>
-        <div className="rounded-md border border-violet-200 bg-violet-50/50 px-2 py-1.5">
-          <p className="text-[10px] text-violet-800 flex items-center gap-1">
-            <Clock className="h-3 w-3" />
-            Pencere
-          </p>
-          <p className="text-sm font-bold text-violet-950">{Math.round(hours / 24)} gün</p>
         </div>
       </div>
 

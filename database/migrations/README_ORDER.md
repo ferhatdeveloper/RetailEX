@@ -73,6 +73,7 @@
 69. **083_hybrid_device_sync_log.sql** – Cihaz bazlı `device_sync_transfer_log`, `device_sync_cursor`; artımlı `enqueue_hybrid_backfill(..., p_changed_since)`.
 70. **084_price_change_device_ack.sql** – `price_change_log` (eski/yeni fiyat diff), `device_price_ack` (A aldı / B almadı), `rex_*_products` trigger.
 71. **085_device_sync_ack.sql** – Merkez `device_sync_ack`: cihaz alım/gönderim oturumu, fiyatlı ürün sayısı, bekleyen fiyat; alım sonrası otomatik bildirim.
+72. **086_store_devices_ws_presence.sql** – `store_devices` PostgREST erişimi; WS heartbeat ile merkezde canlı cihaz (yedek: 24s aktivite).
 
 **Kiracılara toplu uygulama (VPS / uzak PG):**
 - `npm run db:migrate:tenants` — tüm kiracı DB'ler
