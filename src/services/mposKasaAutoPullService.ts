@@ -12,6 +12,7 @@ import {
   type HybridSyncResult,
 } from './hybridSyncEngine';
 import { buildKasaInboundFilter, buildSyncFilter } from './hybridSyncService';
+import { getHybridDeviceId } from './hybridDeviceSyncLogService';
 import {
   DB_SETTINGS,
   LOCAL_CONFIG,
@@ -161,6 +162,7 @@ export async function pullInboundMasterNow(
     return out;
   }
 
+  const deviceId = await getHybridDeviceId();
   const result: HybridSyncResult = await runHybridSync({
     flow: 'receive',
     scope: 'all',
@@ -169,6 +171,10 @@ export async function pullInboundMasterNow(
     remote: REMOTE_CONFIG,
     connectionProvider: resolveHybridSyncConnectionProvider(),
     remoteRestUrl: DB_SETTINGS.remoteRestUrl,
+    incremental: true,
+    deviceId,
+    storeId: resolved.storeId ?? null,
+    terminalName: resolved.terminalName ?? null,
   });
 
   let pending = 0;

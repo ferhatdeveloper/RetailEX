@@ -495,6 +495,13 @@ export async function countPendingQueue(
   return Number(rows[0]?.cnt ?? 0);
 }
 
+export type ReceivePriceAckContext = {
+  deviceId: string;
+  firmNr?: string;
+  storeId?: string | null;
+  terminalName?: string | null;
+};
+
 export async function syncOneDirection(
   source: SyncEndpoint,
   target: SyncEndpoint,
@@ -504,6 +511,7 @@ export async function syncOneDirection(
     scope?: HybridSyncScopeMode;
     localPg?: PgEndpointConfig;
     schemaCache?: Map<string, PgSchemaName>;
+    receiveAck?: ReceivePriceAckContext;
   }
 ): Promise<{
   synced: number;
@@ -514,6 +522,7 @@ export async function syncOneDirection(
   errors: string[];
   tableBreakdown: TableBreakdownRow[];
   priceSnapshots: PriceChangeSnapshot[];
+  priceAckCount: number;
 }> {
   const localPg = opts?.localPg;
   if (!localPg) throw new Error('syncOneDirection: localPg gerekli');
@@ -537,12 +546,25 @@ export async function syncOneDirection(
     record_id: string;
     data: Record<string, unknown> | null;
   }> = [];
+  const priceSnapshots: PriceChangeSnapshot[] = [];
+  const isReceiveLeg = label === 'uzak→yerel' && !!opts?.receiveAck;
+  let priceAckCount = 0;
 
   do {
     const pending = await fetchPendingQueue(source, filter);
     if (pending.length === 0) break;
 
     for (const item of pending) {
+      let localBefore: Record<string, unknown> | null = null;
+      if (isReceiveLeg && /_products$/i.test(item.table_name)) {
+        const priceSync = await import('./priceChangeSyncService');
+        localBefore = await priceSync.fetchLocalProductPriceFields(
+          localPg,
+          item.table_name,
+          item.record_id,
+        );
+      }
+
       try {
         let outcome = await applyItem(target, item, schemaCache);
         recordApplyOutcome(totals, outcome);
@@ -551,6 +573,57 @@ export async function syncOneDirection(
           record_id: item.record_id,
           data: item.data,
         });
+
+        if (
+          isReceiveLeg &&
+          opts?.receiveAck &&
+          /_products$/i.test(item.table_name) &&
+          item.data &&
+          typeof item.data === 'object' &&
+          outcome !== 'skip' &&
+          outcome !== 'noop'
+        ) {
+          const priceSync = await import('./priceChangeSyncService');
+          const oldPrices = priceSync.extractPriceFields(localBefore);
+          const newPrices = priceSync.extractPriceFields(item.data);
+          const priceDiff = priceSync.comparePriceFields(localBefore, item.data);
+          if (priceDiff.length > 0) {
+            const firmNr =
+              String(item.firm_nr || opts.receiveAck.firmNr || '001')
+                .replace(/\D/g, '')
+                .padStart(3, '0') || '001';
+            const logRow = await priceSync.fetchLatestPriceChangeLogForRecord(item.record_id);
+            priceSnapshots.push({
+              tableName: item.table_name,
+              recordId: item.record_id,
+              code: item.data.code != null ? String(item.data.code) : undefined,
+              name: item.data.name != null ? String(item.data.name) : undefined,
+              prices: newPrices,
+              oldPrices,
+              newPrices,
+              priceDiff,
+              updatedAt:
+                item.data.updated_at != null ? String(item.data.updated_at) : undefined,
+            });
+            const ackOk = await priceSync.pushDevicePriceAcksToCenter([
+              {
+                priceChangeLogId: logRow?.id ?? null,
+                deviceId: opts.receiveAck.deviceId,
+                storeId: opts.receiveAck.storeId,
+                terminalName: opts.receiveAck.terminalName,
+                firmNr,
+                tableName: item.table_name,
+                recordId: item.record_id,
+                productCode: item.data.code != null ? String(item.data.code) : undefined,
+                oldPrices,
+                newPrices,
+                priceDiff,
+              },
+            ]);
+            priceAckCount += ackOk;
+          }
+        }
+
         await markCompleted(source, item.id);
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
@@ -593,6 +666,11 @@ export async function syncOneDirection(
     if (scope !== 'all') break;
   } while (rounds < MAX_ALL_ROUNDS);
 
+  const fallbackSnapshots =
+    priceSnapshots.length > 0
+      ? priceSnapshots
+      : collectPriceSnapshotsFromQueueItems(processedItems);
+
   return {
     synced,
     failed,
@@ -601,7 +679,8 @@ export async function syncOneDirection(
     skipped,
     errors,
     tableBreakdown: buildTableBreakdown(processedItems),
-    priceSnapshots: collectPriceSnapshotsFromQueueItems(processedItems),
+    priceSnapshots: fallbackSnapshots,
+    priceAckCount,
   };
 }
 
@@ -729,6 +808,15 @@ export async function runHybridSync(opts: HybridSyncRunOptions): Promise<HybridS
       scope,
       localPg: opts.local,
       schemaCache,
+      receiveAck:
+        leg.label === 'uzak→yerel'
+          ? {
+              deviceId,
+              firmNr: opts.filter?.firmNr ?? undefined,
+              storeId: opts.storeId ?? opts.filter?.storeId ?? null,
+              terminalName: opts.terminalName ?? null,
+            }
+          : undefined,
     });
     totalSynced += r.synced;
     failed += r.failed;
@@ -762,7 +850,12 @@ export async function runHybridSync(opts: HybridSyncRunOptions): Promise<HybridS
       tableBreakdown: r.tableBreakdown,
       priceChanges: r.priceSnapshots,
       message: r.errors[0] ?? undefined,
-      detail: { flow, scope, label: leg.label },
+      detail: {
+        flow,
+        scope,
+        label: leg.label,
+        priceAckCount: r.priceAckCount,
+      },
     });
 
     if (legDirection === 'local_to_remote' && r.synced > 0) {

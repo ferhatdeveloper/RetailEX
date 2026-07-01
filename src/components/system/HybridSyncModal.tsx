@@ -45,6 +45,7 @@ import {
   getHybridDeviceId,
   listDeviceSyncTransferLogs,
 } from '../../services/hybridDeviceSyncLogService';
+import { DevicePriceDeliveryPanel } from './DevicePriceDeliveryPanel';
 import { FullscreenBodyPortal, MODAL_OVERLAY_Z } from '../shared/FullscreenBodyPortal';
 
 type StepStatus = 'pending' | 'running' | 'done' | 'error' | 'skipped';
@@ -521,6 +522,8 @@ export function HybridSyncModal({ open, onOpenChange, onComplete }: Props) {
                 Hedef kasa: <strong className="text-gray-900">{preview.terminalName}</strong>
               </p>
             ) : null}
+
+            <DevicePriceDeliveryPanel compact hours={168} limit={12} />
 
             <div className="space-y-2">
               <p className="text-xs font-semibold uppercase tracking-wide text-gray-600">

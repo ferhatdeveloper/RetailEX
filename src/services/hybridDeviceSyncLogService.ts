@@ -40,12 +40,22 @@ export type DeviceSyncDirection = 'local_to_remote' | 'remote_to_local';
 
 export type TableBreakdownRow = { tableName: string; count: number };
 
+export type PriceFieldDiff = {
+  field: string;
+  old: unknown;
+  new: unknown;
+};
+
 export type PriceChangeSnapshot = {
   tableName: string;
   recordId: string;
   code?: string;
   name?: string;
+  /** Uygulama sonrası fiyat alanları (geriye dönük uyumluluk) */
   prices: Record<string, unknown>;
+  oldPrices?: Record<string, unknown>;
+  newPrices?: Record<string, unknown>;
+  priceDiff?: PriceFieldDiff[];
   updatedAt?: string;
 };
 
