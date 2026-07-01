@@ -157,6 +157,14 @@ export function MposDataTransferModal({
     }
   }, [open, loadPreview]);
 
+  const selectFlow = (flow: 'send' | 'receive' | 'both') => {
+    setActiveFlow(flow);
+    if (phase === 'done') {
+      setPhase('preview');
+      setSteps([]);
+    }
+  };
+
   if (!open) return null;
 
   const transferBlocked = Boolean(targetBlockReason?.trim());
@@ -277,7 +285,7 @@ export function MposDataTransferModal({
           </p>
         </div>
 
-        <div className="flex-1 overflow-auto p-4 space-y-4">
+        <div className="flex-1 min-h-0 overflow-auto p-4 space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             {(
               [
@@ -293,7 +301,7 @@ export function MposDataTransferModal({
                   key={opt.id}
                   type="button"
                   disabled={isBusy || phase === 'running'}
-                  onClick={() => setActiveFlow(opt.id)}
+                  onClick={() => selectFlow(opt.id)}
                   className={cn(
                     'p-4 rounded border-2 transition-all text-left',
                     selected
@@ -533,22 +541,55 @@ export function MposDataTransferModal({
             <Button type="button" variant="outline" disabled={isBusy} onClick={handleClose}>
               {phase === 'done' ? 'Kapat' : 'Vazgeç'}
             </Button>
-            {phase !== 'done' && activeFlow === 'send' && (
-              <Button type="button" disabled={isBusy || !canTransfer} onClick={() => void runFlow('send')} className="gap-2">
-                {isBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
-                Gönder
-              </Button>
-            )}
-            {phase !== 'done' && activeFlow === 'receive' && (
-              <Button type="button" disabled={isBusy || !canTransfer} onClick={() => void runFlow('receive')} className="gap-2 bg-sky-700 hover:bg-sky-800">
+            {activeFlow === 'receive' && (
+              <Button
+                type="button"
+                disabled={isBusy || !canTransfer}
+                onClick={() => {
+                  if (phase === 'done') {
+                    setPhase('preview');
+                    setSteps([]);
+                  }
+                  void runFlow('receive');
+                }}
+                className="gap-2 bg-sky-700 hover:bg-sky-800 text-white"
+              >
                 {isBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
-                Al
+                {phase === 'done' ? 'Tekrar al' : 'Al'}
               </Button>
             )}
-            {phase !== 'done' && activeFlow === 'both' && (
-              <Button type="button" disabled={isBusy || !canTransfer} onClick={() => void runFlow('both')} className="gap-2 bg-blue-600 hover:bg-blue-700">
+            {activeFlow === 'send' && (
+              <Button
+                type="button"
+                disabled={isBusy || !canTransfer}
+                onClick={() => {
+                  if (phase === 'done') {
+                    setPhase('preview');
+                    setSteps([]);
+                  }
+                  void runFlow('send');
+                }}
+                className="gap-2"
+              >
+                {isBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+                {phase === 'done' ? 'Tekrar gönder' : 'Gönder'}
+              </Button>
+            )}
+            {activeFlow === 'both' && (
+              <Button
+                type="button"
+                disabled={isBusy || !canTransfer}
+                onClick={() => {
+                  if (phase === 'done') {
+                    setPhase('preview');
+                    setSteps([]);
+                  }
+                  void runFlow('both');
+                }}
+                className="gap-2 bg-blue-600 hover:bg-blue-700 text-white"
+              >
                 {isBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-                Gönder ve al
+                {phase === 'done' ? 'Tekrar gönder ve al' : 'Gönder ve al'}
               </Button>
             )}
           </div>

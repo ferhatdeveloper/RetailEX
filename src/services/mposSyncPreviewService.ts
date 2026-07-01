@@ -77,7 +77,7 @@ async function countQueueByDirection(opts: {
   const storeMatch =
     opts.direction === 'outbound'
       ? `(target_store_id = $1::uuid OR (target_store_id IS NULL AND (firm_nr = $2 OR lpad(ltrim(firm_nr, '0'), 3, '0') = $2)))`
-      : `(source_store_id = $1::uuid OR (source_store_id IS NULL AND (firm_nr = $2 OR lpad(ltrim(firm_nr, '0'), 3, '0') = $2)))`;
+      : `source_store_id = $1::uuid`;
 
   try {
     const rows = await queryPgRows(

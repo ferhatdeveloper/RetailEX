@@ -77,6 +77,35 @@ describe('getMposTransferPreview', () => {
     expect(r.receiveTotal).toBe(0);
   });
 
+  it('inbound queue yalnızca source_store_id dolu kayıtları sayar', async () => {
+    queryPgRows.mockImplementation(async (_pg, sql: string) => {
+      if (sql.includes('FROM sync_queue') && sql.includes('target_store_id')) {
+        return [{ table_name: 'rex_002_products', cnt: '1290' }];
+      }
+      if (sql.includes('FROM sync_queue') && sql.includes('source_store_id = $1')) {
+        return [];
+      }
+      if (sql.includes('FROM rex_002_products')) {
+        return [{ cnt: '1018' }];
+      }
+      return [{ cnt: '0' }];
+    });
+
+    const r = await getMposTransferPreview({
+      firmNr: '002',
+      storeId: '99ee937c-bafa-4adb-996c-06b1d8da1381',
+      sendFileType: 'products',
+      receiveFileType: 'day_end',
+      syncMode: 'incremental',
+      dateFrom: '2026-06-24',
+      dateTo: '2026-07-01',
+    });
+
+    expect(r.sendTotal).toBe(1290);
+    expect(r.receiveTotal).toBe(0);
+    expect(r.receiveLines.find((l) => l.key === 'invoices_note')?.count).toBe(0);
+  });
+
   it('uses max(masterCount, queueTotal) for incremental products to avoid double count in line sum', async () => {
     queryPgRows.mockImplementation(async (_pg, sql: string) => {
       if (sql.includes('FROM sync_queue') && sql.includes('target_store_id')) {
