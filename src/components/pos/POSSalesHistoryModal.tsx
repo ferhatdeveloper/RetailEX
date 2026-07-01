@@ -1,11 +1,26 @@
-﻿import React, { useState } from 'react';
-import { X, FileText, Calendar, User, CreditCard, Search, Printer, Eye, ArrowLeft, Download, Filter } from 'lucide-react';
+﻿import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
+import { X, FileText, Calendar, Search, Printer, Eye, ArrowLeft, Download, Filter } from 'lucide-react';
 import type { Sale } from '../../core/types';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useTheme } from '../../contexts/ThemeContext';
-import { POS_MODAL_Z } from './posUiConstants';
+import { MODAL_OVERLAY_Z } from '../shared/FullscreenBodyPortal';
+import { addDaysToLocalYmd, formatLocalYmd } from '../../utils/dateLocal';
 import { ThermalReceiptPreview } from './ThermalReceiptPreview';
 import { PaymentReceiptPreview } from './PaymentReceiptPreview';
+
+function saleLocalDateKey(sale: Sale): string {
+  const raw = String(sale.date || sale.created_at || '').trim();
+  const m = raw.match(/^(\d{4}-\d{2}-\d{2})/);
+  if (m) return m[1];
+  const d = new Date(raw);
+  return Number.isNaN(d.getTime()) ? '' : formatLocalYmd(d);
+}
+
+function ymdInRange(ymd: string, startYmd: string, endYmd: string): boolean {
+  if (!ymd || !startYmd || !endYmd) return false;
+  return ymd >= startYmd && ymd <= endYmd;
+}
 
 interface POSSalesHistoryModalProps {
   sales: Sale[];
@@ -13,6 +28,7 @@ interface POSSalesHistoryModalProps {
   onPrintReceipt?: (sale: Sale) => void;
   onViewDetails?: (sale: Sale) => void;
   autoSelectLast?: boolean; // Otomatik son fişi göster
+  isLoading?: boolean;
 }
 
 export function POSSalesHistoryModal({
@@ -20,7 +36,8 @@ export function POSSalesHistoryModal({
   onClose,
   onPrintReceipt,
   onViewDetails,
-  autoSelectLast = false
+  autoSelectLast = false,
+  isLoading = false,
 }: POSSalesHistoryModalProps) {
   const { t } = useLanguage();
   const { darkMode } = useTheme();
@@ -33,7 +50,17 @@ export function POSSalesHistoryModal({
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
 
-  // Filter sales
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, []);
+
+  const todayYmd = formatLocalYmd(new Date());
+
+  // Filter sales (yerel takvim günü — UTC kayması yok)
   const filteredSales = sales.filter(sale => {
     const matchesSearch =
       sale.receiptNumber?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -41,27 +68,18 @@ export function POSSalesHistoryModal({
 
     let matchesDate = true;
     if (filterDate !== 'all') {
-      const saleDate = new Date(sale.date);
-      saleDate.setHours(0, 0, 0, 0);
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
+      const saleYmd = saleLocalDateKey(sale);
 
       if (filterDate === 'today') {
-        matchesDate = saleDate >= today;
+        matchesDate = saleYmd === todayYmd;
       } else if (filterDate === 'week') {
-        const weekAgo = new Date(today);
-        weekAgo.setDate(weekAgo.getDate() - 7);
-        matchesDate = saleDate >= weekAgo;
+        const weekStart = addDaysToLocalYmd(todayYmd, -6);
+        matchesDate = ymdInRange(saleYmd, weekStart, todayYmd);
       } else if (filterDate === 'month') {
-        const monthAgo = new Date(today);
-        monthAgo.setMonth(monthAgo.getMonth() - 1);
-        matchesDate = saleDate >= monthAgo;
+        const monthStart = addDaysToLocalYmd(todayYmd, -29);
+        matchesDate = ymdInRange(saleYmd, monthStart, todayYmd);
       } else if (filterDate === 'custom' && startDate && endDate) {
-        const start = new Date(startDate);
-        start.setHours(0, 0, 0, 0);
-        const end = new Date(endDate);
-        end.setHours(23, 59, 59, 999);
-        matchesDate = saleDate >= start && saleDate <= end;
+        matchesDate = ymdInRange(saleYmd, startDate, endDate);
       }
     }
 
@@ -159,9 +177,17 @@ export function POSSalesHistoryModal({
     );
   };
 
-  return (
-    <div className={`fixed inset-0 bg-black/60 backdrop-blur-sm ${POS_MODAL_Z}`}>
-      <div className={`w-full h-full flex flex-col ${darkMode ? 'bg-gray-900' : 'bg-white'}`}>
+  if (typeof document === 'undefined') return null;
+
+  return createPortal(
+    <div
+      className={`fixed inset-0 flex flex-col min-h-0 ${darkMode ? 'bg-gray-900' : 'bg-white'}`}
+      style={{ zIndex: MODAL_OVERLAY_Z }}
+      role="dialog"
+      aria-modal="true"
+      aria-label={t.salesHistory}
+    >
+      <div className={`w-full h-full flex flex-col min-h-0 ${darkMode ? 'bg-gray-900' : 'bg-white'}`}>
         {/* Header */}
         <div className="p-3 border-b flex items-center justify-between bg-gradient-to-r from-blue-600 to-blue-700">
           <div className="flex items-center gap-2">
@@ -317,7 +343,12 @@ export function POSSalesHistoryModal({
 
             {/* Content - Minimal */}
             <div className="flex-1 overflow-auto">
-              {filteredSales.length === 0 ? (
+              {isLoading ? (
+                <div className="flex flex-col items-center justify-center h-full text-gray-400 p-8">
+                  <div className="w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full animate-spin mb-3" />
+                  <p className="text-sm">{t.loading ?? 'Yükleniyor...'}</p>
+                </div>
+              ) : filteredSales.length === 0 ? (
                 <div className="flex flex-col items-center justify-center h-full text-gray-400 p-8">
                   <FileText className="w-12 h-12 mb-2 opacity-50" />
                   <p className="text-sm">{t.noSalesRecordFound}</p>
@@ -402,6 +433,7 @@ export function POSSalesHistoryModal({
           </>
         )}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

@@ -151,6 +151,7 @@ export default function MarketPOS({
   const { selectedFirma } = useFirmaDonem();
   // Get sales from store
   const sales = useSaleStore((state) => state.sales);
+  const salesLoading = useSaleStore((state) => state.isLoading);
   const loadSales = useSaleStore((state) => state.loadSales);
   const refreshProducts = useProductStore((state) => state.loadProducts);
   const openSalesReturnBackoffice = useCallback((invoiceSearch?: string) => {
@@ -1850,6 +1851,12 @@ export default function MarketPOS({
     }
   }, [showCloseCashRegisterModal, loadSales]);
 
+  useEffect(() => {
+    if (showSalesHistoryModal || showLastReceiptModal) {
+      void loadSales(500);
+    }
+  }, [showSalesHistoryModal, showLastReceiptModal, loadSales]);
+
   return (
     <div className={`h-full flex flex-col relative ${darkMode ? 'bg-gray-900' : 'bg-white'}`}>
       {pullPx > 8 && (
@@ -2606,6 +2613,7 @@ export default function MarketPOS({
       {showSalesHistoryModal && (
         <POSSalesHistoryModal
           sales={sales}
+          isLoading={salesLoading}
           onClose={() => setShowSalesHistoryModal(false)}
           onPrintReceipt={(sale) => {
             // Dinamik import ile thermalPrinter modülünü yükle
@@ -2620,6 +2628,7 @@ export default function MarketPOS({
       {showLastReceiptModal && (
         <POSSalesHistoryModal
           sales={sales}
+          isLoading={salesLoading}
           onClose={() => setShowLastReceiptModal(false)}
           autoSelectLast={true}
           onPrintReceipt={(sale) => {
