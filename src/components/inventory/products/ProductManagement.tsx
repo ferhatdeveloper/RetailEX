@@ -432,20 +432,12 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
       const matchesDuplicate = duplicateDetectBy === 'none' || duplicateKeys.has(duplicateKey);
       return matchesSearch && matchesCategory && matchesService && matchesToday && matchesDuplicate;
     });
-    if (showTodayOnly) {
-      return [...list].sort((a, b) => {
-        const ta = new Date(a.created_at || 0).getTime();
-        const tb = new Date(b.created_at || 0).getTime();
-        return (Number.isFinite(tb) ? tb : 0) - (Number.isFinite(ta) ? ta : 0);
-      });
-    }
-    /** Stok ≤ 0 olanlar listenin sonunda (pozitif stokta isim sırası) */
+    /** Ekleme tarihine göre yeniden eskiye (created_at DESC) */
     return [...list].sort((a, b) => {
-      const stockA = Number(a.stock ?? 0);
-      const stockB = Number(b.stock ?? 0);
-      const lastA = stockA <= 0 ? 1 : 0;
-      const lastB = stockB <= 0 ? 1 : 0;
-      if (lastA !== lastB) return lastA - lastB;
+      const ta = new Date(a.created_at || 0).getTime();
+      const tb = new Date(b.created_at || 0).getTime();
+      const diff = (Number.isFinite(tb) ? tb : 0) - (Number.isFinite(ta) ? ta : 0);
+      if (diff !== 0) return diff;
       return String(a.name ?? '').localeCompare(String(b.name ?? ''), 'tr', { sensitivity: 'base' });
     });
   }, [displayProducts, searchQuery, categoryFilter, showServicesOnly, showTodayOnly, duplicateDetectBy, duplicateKeys]);
@@ -1081,6 +1073,7 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
               onSelectionChange={setSelectedProducts}
               height="calc(100vh - 120px)"
               pageSize={50}
+              pageSizeOptions={[10, 25, 50, 100, 200, 500, 1000]}
             />
           )}
         </div>
