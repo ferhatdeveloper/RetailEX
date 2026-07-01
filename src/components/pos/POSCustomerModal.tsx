@@ -6,6 +6,7 @@ import { useLanguage } from '../../contexts/LanguageContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import { supplierAPI } from '../../services/api/suppliers';
 import { MODAL_OVERLAY_Z } from '../shared/FullscreenBodyPortal';
+import { POS_MODAL_HEADER, POS_MODAL_SHELL } from './posUiConstants';
 
 interface POSCustomerModalProps {
   customers: Customer[];
@@ -122,14 +123,6 @@ export function POSCustomerModal({
     onSelect,
   ]);
 
-  useEffect(() => {
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => {
-      document.body.style.overflow = prev;
-    };
-  }, []);
-
   const handleOpenCurrentAccountCreateModal = () => {
     const phone = searchTerm.trim();
     localStorage.setItem('callerid_customer_phone', phone);
@@ -148,14 +141,18 @@ export function POSCustomerModal({
 
   return createPortal(
     <div
-      className={`fixed inset-0 flex flex-col min-h-0 ${darkMode ? 'bg-gray-900' : 'bg-white'}`}
+      className="fixed inset-0 overflow-y-auto overflow-x-hidden bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
       style={{ zIndex: MODAL_OVERLAY_Z }}
       role="dialog"
       aria-modal="true"
       aria-label={t.selectCustomerTitle}
+      onClick={onClose}
     >
-      <div className="flex h-full min-h-0 w-full flex-col">
-        <div className="p-3 border-b flex items-center shrink-0 border-gray-200 bg-gradient-to-r from-blue-600 to-blue-700">
+      <div
+        className={`${POS_MODAL_SHELL(darkMode)} rounded-xl`}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className={POS_MODAL_HEADER}>
           <h3 className="text-base text-white flex items-center gap-2">
             <Users className="w-5 h-5" />
             {t.selectCustomerTitle}
