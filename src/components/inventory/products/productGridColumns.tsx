@@ -218,6 +218,7 @@ export function buildProductGridColumns(options: {
       id,
       header,
       size: meta.size,
+      meta: meta.format === 'date' ? { filterKind: 'date', format: 'date' } : undefined,
       cell: (info) => {
         const raw = info.getValue();
         if (id === 'stock') {

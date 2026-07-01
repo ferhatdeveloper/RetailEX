@@ -65,6 +65,8 @@ type GridFilterPayload =
       value?: string;
       from?: string;
       to?: string;
+      /** Tarih aralığında saat sınırı kullan */
+      includeTime?: boolean;
       values?: string[];
     };
 
@@ -115,6 +117,55 @@ function parseCellDate(value: unknown): number | null {
   return Number.isFinite(d.getTime()) ? d.getTime() : null;
 }
 
+const DATE_FILTER_COLUMN_IDS = new Set(['created_at', 'updated_at', 'expiry_date']);
+
+function isDateFilterColumn(columnId: string, column: Column<any, unknown>): boolean {
+  if (DATE_FILTER_COLUMN_IDS.has(columnId)) return true;
+  const meta = column.columnDef.meta as { filterKind?: string; format?: string } | undefined;
+  return meta?.filterKind === 'date' || meta?.format === 'date';
+}
+
+function splitDateTimeInput(raw?: string): { date: string; time: string } {
+  if (!raw || !String(raw).trim()) return { date: '', time: '' };
+  const s = String(raw).trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return { date: s, time: '' };
+  const d = new Date(s.includes('T') ? s : `${s}T12:00:00`);
+  if (!Number.isFinite(d.getTime())) return { date: '', time: '' };
+  const date = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const time = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  return { date, time };
+}
+
+function combineDateTimeInput(
+  date: string,
+  time: string,
+  includeTime: boolean,
+  bound: 'start' | 'end'
+): string | undefined {
+  const d = date.trim();
+  if (!d) return undefined;
+  if (!includeTime) return d;
+  const t = time.trim() || (bound === 'start' ? '00:00' : '23:59');
+  return `${d}T${t}`;
+}
+
+function parseRangeBoundMs(value: string, bound: 'start' | 'end', includeTime: boolean): number | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  if (!includeTime && /^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+    const [y, m, day] = trimmed.split('-').map(Number);
+    const dt = new Date(y, m - 1, day);
+    if (bound === 'end') dt.setHours(23, 59, 59, 999);
+    else dt.setHours(0, 0, 0, 0);
+    return dt.getTime();
+  }
+  const dt = new Date(trimmed.includes('T') ? trimmed : `${trimmed}T${bound === 'start' ? '00:00' : '23:59'}`);
+  if (!Number.isFinite(dt.getTime())) return null;
+  if (!includeTime && bound === 'end') dt.setHours(23, 59, 59, 999);
+  if (!includeTime && bound === 'start') dt.setHours(0, 0, 0, 0);
+  return dt.getTime();
+}
+
 /** Kolon huni filtresi — FilterMenu `{ mode, value }` ile uyumlu */
 export const gridColumnFilterFn: FilterFn<any> = (row, columnId, filterValue) => {
   const payload = filterValue as GridFilterPayload | undefined;
@@ -129,17 +180,14 @@ export const gridColumnFilterFn: FilterFn<any> = (row, columnId, filterValue) =>
   const cellRaw = row.getValue(columnId);
 
   if (mode === 'range') {
-    const fromMs = payload.from ? parseCellDate(payload.from) : null;
-    const toMs = payload.to ? parseCellDate(payload.to) : null;
+    const includeTime = !!payload.includeTime;
+    const fromMs = payload.from ? parseRangeBoundMs(payload.from, 'start', includeTime) : null;
+    const toMs = payload.to ? parseRangeBoundMs(payload.to, 'end', includeTime) : null;
     if (fromMs == null && toMs == null) return true;
     const cellMs = parseCellDate(cellRaw);
     if (cellMs == null) return false;
     if (fromMs != null && cellMs < fromMs) return false;
-    if (toMs != null) {
-      const end = new Date(payload.to!);
-      end.setHours(23, 59, 59, 999);
-      if (cellMs > end.getTime()) return false;
-    }
+    if (toMs != null && cellMs > toMs) return false;
     return true;
   }
 
@@ -169,7 +217,117 @@ export const gridColumnFilterFn: FilterFn<any> = (row, columnId, filterValue) =>
   }
 };
 
-function FilterMenu({ column, onClose }: FilterMenuProps) {
+function DateRangeFilterMenu({ column, onClose }: FilterMenuProps) {
+  const { tm } = useLanguage();
+  const existing = column.getFilterValue() as GridFilterPayload | undefined;
+  const existingRange =
+    existing && typeof existing === 'object' && existing.mode === 'range' ? existing : undefined;
+
+  const initFrom = splitDateTimeInput(existingRange?.from);
+  const initTo = splitDateTimeInput(existingRange?.to);
+
+  const [includeTime, setIncludeTime] = useState(!!existingRange?.includeTime);
+  const [fromDate, setFromDate] = useState(initFrom.date);
+  const [fromTime, setFromTime] = useState(initFrom.time || '00:00');
+  const [toDate, setToDate] = useState(initTo.date);
+  const [toTime, setToTime] = useState(initTo.time || '23:59');
+
+  const handleApply = () => {
+    const from = combineDateTimeInput(fromDate, fromTime, includeTime, 'start');
+    const to = combineDateTimeInput(toDate, toTime, includeTime, 'end');
+    if (!from && !to) {
+      column.setFilterValue(undefined);
+    } else {
+      column.setFilterValue({ mode: 'range', from, to, includeTime });
+    }
+    onClose();
+  };
+
+  const handleClear = () => {
+    column.setFilterValue(undefined);
+    onClose();
+  };
+
+  return (
+    <div
+      className="bg-white border border-gray-300 rounded shadow-xl w-[300px] flex flex-col overflow-hidden"
+      onClick={(e) => e.stopPropagation()}
+    >
+      <div className="shrink-0 px-2 py-1.5 border-b border-gray-200 bg-[#E3F2FD]">
+        <span className="text-[10px] font-semibold text-gray-700">{tm('gridFilterDateRange')}</span>
+      </div>
+
+      <div className="p-3 space-y-3">
+        <label className="flex items-center gap-2 text-[11px] text-gray-700 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={includeTime}
+            onChange={(e) => setIncludeTime(e.target.checked)}
+            className="w-3.5 h-3.5 shrink-0"
+          />
+          <span>{tm('gridFilterIncludeTime')}</span>
+        </label>
+
+        <div className="space-y-1.5">
+          <span className="text-[10px] font-semibold text-gray-600 uppercase">{tm('dateFrom')}</span>
+          <input
+            type="date"
+            value={fromDate}
+            onChange={(e) => setFromDate(e.target.value)}
+            className="w-full px-2 py-1.5 text-[11px] border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+          />
+          {includeTime && (
+            <input
+              type="time"
+              value={fromTime}
+              onChange={(e) => setFromTime(e.target.value)}
+              className="w-full px-2 py-1.5 text-[11px] border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+            />
+          )}
+        </div>
+
+        <div className="space-y-1.5">
+          <span className="text-[10px] font-semibold text-gray-600 uppercase">{tm('dateTo')}</span>
+          <input
+            type="date"
+            value={toDate}
+            onChange={(e) => setToDate(e.target.value)}
+            className="w-full px-2 py-1.5 text-[11px] border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+          />
+          {includeTime && (
+            <input
+              type="time"
+              value={toTime}
+              onChange={(e) => setToTime(e.target.value)}
+              className="w-full px-2 py-1.5 text-[11px] border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+            />
+          )}
+        </div>
+
+        <p className="text-[10px] text-gray-500 leading-snug">{tm('gridFilterDateRangeHint')}</p>
+      </div>
+
+      <div className="shrink-0 p-2 flex gap-1 border-t border-gray-200 bg-gray-50/80">
+        <button
+          type="button"
+          onClick={handleApply}
+          className="flex-1 px-2 py-1.5 text-[11px] bg-blue-600 text-white rounded hover:bg-blue-700 font-medium"
+        >
+          {tm('apply')}
+        </button>
+        <button
+          type="button"
+          onClick={handleClear}
+          className="flex-1 px-2 py-1.5 text-[11px] bg-gray-200 text-gray-700 rounded hover:bg-gray-300"
+        >
+          {tm('clear')}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function ValueListFilterMenu({ column, onClose }: FilterMenuProps) {
   const { tm } = useLanguage();
   const localeCode = tm('localeCode');
   const sortLocale = localeCode.split('-')[0] || 'tr';
@@ -407,6 +565,13 @@ function FilterMenu({ column, onClose }: FilterMenuProps) {
       </div>
     </div>
   );
+}
+
+function FilterMenu({ column, onClose }: FilterMenuProps) {
+  if (isDateFilterColumn(column.id, column)) {
+    return <DateRangeFilterMenu column={column} onClose={onClose} />;
+  }
+  return <ValueListFilterMenu column={column} onClose={onClose} />;
 }
 
 export function DevExDataGrid<T>({

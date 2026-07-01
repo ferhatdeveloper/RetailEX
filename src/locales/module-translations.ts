@@ -3043,6 +3043,14 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
   },
   gridFilterValueList: { tr: 'Değer listesi', en: 'Value list', ar: 'قائمة القيم', ku: 'لیستی نرخەکان' },
   gridFilterTextFilter: { tr: 'Metin filtresi', en: 'Text filter', ar: 'تصفية نصية', ku: 'پاڵاوتنی دەق' },
+  gridFilterDateRange: { tr: 'Tarih aralığı', en: 'Date range', ar: 'نطاق التاريخ', ku: 'مەودای بەروار' },
+  gridFilterIncludeTime: { tr: 'Saat dahil', en: 'Include time', ar: 'تضمين الوقت', ku: 'کات لەگەڵ بێت' },
+  gridFilterDateRangeHint: {
+    tr: 'Başlangıç ve/veya bitiş tarihi seçin. Yalnızca tarih seçilirse günün tamamı kapsanır.',
+    en: 'Pick start and/or end date. Date-only uses the full day unless time is enabled.',
+    ar: 'اختر تاريخ البداية و/أو النهاية. التاريخ فقط يشمل اليوم كاملاً ما لم يُفعّل الوقت.',
+    ku: 'بەرواری دەستپێک و/یان کۆتایی هەڵبژێرە. بەبێ کات هەموو ڕۆژەکە دەگرێتەوە.',
+  },
   productDuplicateFilterOff: {
     tr: 'Tekrar Filtresi: Kapalı',
     en: 'Duplicate filter: Off',
