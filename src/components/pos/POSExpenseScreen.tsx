@@ -1,8 +1,9 @@
-import { Suspense, lazy } from 'react';
+import { Suspense, lazy, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { Receipt, ArrowLeft } from 'lucide-react';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useTheme } from '../../contexts/ThemeContext';
-import { POS_MODAL_Z } from './posUiConstants';
+import { MODAL_OVERLAY_Z } from '../shared/FullscreenBodyPortal';
 
 const ExpenseManagement = lazy(() =>
   import('../accounting/reports/ExpenseManagement').then((m) => ({
@@ -15,12 +16,23 @@ interface POSExpenseScreenProps {
 }
 
 export function POSExpenseScreen({ onClose }: POSExpenseScreenProps) {
-  const { t, tm } = useLanguage();
+  const { tm } = useLanguage();
   const { darkMode } = useTheme();
 
-  return (
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, []);
+
+  if (typeof document === 'undefined') return null;
+
+  return createPortal(
     <div
-      className={`fixed inset-0 ${POS_MODAL_Z} flex flex-col min-h-0 ${darkMode ? 'bg-gray-900' : 'bg-white'}`}
+      className={`fixed inset-0 flex flex-col min-h-0 ${darkMode ? 'bg-gray-900' : 'bg-white'}`}
+      style={{ zIndex: MODAL_OVERLAY_Z }}
       role="dialog"
       aria-modal="true"
       aria-label="Gider İşlemleri"
@@ -39,7 +51,7 @@ export function POSExpenseScreen({ onClose }: POSExpenseScreenProps) {
               Gider İşlemleri
             </h2>
             <p className="text-[10px] font-semibold uppercase tracking-wider text-blue-100">
-              POS — tam ekran
+              POS
             </p>
           </div>
         </div>
@@ -64,9 +76,10 @@ export function POSExpenseScreen({ onClose }: POSExpenseScreenProps) {
             </div>
           }
         >
-          <ExpenseManagement />
+          <ExpenseManagement embeddedInPos />
         </Suspense>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

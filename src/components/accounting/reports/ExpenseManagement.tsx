@@ -75,7 +75,7 @@ const getCurrentMonthDateRange = () => {
   return { from, to };
 };
 
-export function ExpenseManagement() {
+export function ExpenseManagement({ embeddedInPos = false }: { embeddedInPos?: boolean }) {
   const { tm } = useLanguage();
   const defaultDateRange = getCurrentMonthDateRange();
   const [expenses, setExpenses] = useState<Expense[]>([]);
@@ -459,25 +459,31 @@ export function ExpenseManagement() {
     <div className="relative h-full flex flex-col bg-white">
       <div className={showExpenseModal ? 'hidden' : 'contents'} aria-hidden={showExpenseModal}>
       {/* Header */}
-      <div className="sticky top-0 z-30 flex-shrink-0 border-b border-gray-200 p-6 bg-gradient-to-r from-red-50 to-orange-50 shadow-sm">
-        <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-          <div className="flex min-w-0 items-center gap-3">
-            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-red-500 to-orange-600 flex items-center justify-center">
-              <Receipt className="w-6 h-6 text-white" />
+      <div
+        className={`sticky top-0 z-30 flex-shrink-0 border-b border-gray-200 shadow-sm ${
+          embeddedInPos ? 'p-3 bg-white' : 'p-6 bg-gradient-to-r from-red-50 to-orange-50'
+        }`}
+      >
+        {!embeddedInPos ? (
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+            <div className="flex min-w-0 items-center gap-3">
+              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-red-500 to-orange-600 flex items-center justify-center">
+                <Receipt className="w-6 h-6 text-white" />
+              </div>
+              <div className="min-w-0">
+                <h1 className="text-2xl font-bold text-gray-900">{tm('expenseManagement')}</h1>
+                <p className="text-sm text-gray-600">{tm('expenseManagementSubtitle')}</p>
+              </div>
             </div>
-            <div className="min-w-0">
-              <h1 className="text-2xl font-bold text-gray-900">{tm('expenseManagement')}</h1>
-              <p className="text-sm text-gray-600">{tm('expenseManagementSubtitle')}</p>
-            </div>
+            <button
+              onClick={handleAddExpense}
+              className="shrink-0 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg flex items-center gap-2 transition-colors shadow-sm"
+            >
+              <Plus className="w-5 h-5" />
+              {tm('newExpense')}
+            </button>
           </div>
-          <button
-            onClick={handleAddExpense}
-            className="shrink-0 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg flex items-center gap-2 transition-colors shadow-sm"
-          >
-            <Plus className="w-5 h-5" />
-            {tm('newExpense')}
-          </button>
-        </div>
+        ) : null}
 
         {/* Search and Filters */}
         <div className="flex gap-3">
@@ -499,6 +505,15 @@ export function ExpenseManagement() {
             <Filter className="w-5 h-5" />
             {tm('filter')}
           </button>
+          {embeddedInPos ? (
+            <button
+              onClick={handleAddExpense}
+              className="shrink-0 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg flex items-center gap-2 transition-colors shadow-sm"
+            >
+              <Plus className="w-5 h-5" />
+              {tm('newExpense')}
+            </button>
+          ) : null}
         </div>
 
         {/* Filter Panel */}
