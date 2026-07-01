@@ -1,6 +1,7 @@
 ﻿import { X, Calendar } from 'lucide-react';
 import { useState } from 'react';
 import { useLanguage } from '../../../contexts/LanguageContext';
+import { PercentBodyModal } from '../../shared/PercentBodyModal';
 
 interface InvoiceEditDateModalProps {
   currentDate: string;
@@ -32,9 +33,8 @@ export function InvoiceEditDateModal({ currentDate, onSelect, onClose }: Invoice
   };
 
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-white w-full max-w-md shadow-2xl rounded-lg">
-        <div className="p-3 border-b border-gray-200 flex items-center justify-between bg-gradient-to-r from-blue-600 to-blue-700">
+    <PercentBodyModal onClose={onClose} size="compact" ariaLabel={tm('selectEditDate')}>
+        <div className="p-3 border-b border-gray-200 flex items-center justify-between shrink-0 bg-gradient-to-r from-blue-600 to-blue-700">
           <h3 className="text-base text-white flex items-center gap-2">
             <Calendar className="w-5 h-5" />
             {tm('selectEditDate')}
@@ -60,7 +60,7 @@ export function InvoiceEditDateModal({ currentDate, onSelect, onClose }: Invoice
           </div>
         </div>
 
-        <div className="p-4 border-t border-gray-200 bg-gray-50 flex gap-2">
+        <div className="p-4 border-t border-gray-200 bg-gray-50 flex gap-2 shrink-0">
           <button
             onClick={onClose}
             className="flex-1 px-4 py-2 text-sm bg-gray-200 text-gray-700 rounded hover:bg-gray-300 transition-colors"
@@ -74,7 +74,6 @@ export function InvoiceEditDateModal({ currentDate, onSelect, onClose }: Invoice
             {tm('selectButton')}
           </button>
         </div>
-      </div>
-    </div>
+    </PercentBodyModal>
   );
 }

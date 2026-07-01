@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useLanguage } from '../../../contexts/LanguageContext';
+import { PercentBodyModal, PercentBodyModalScrollBody } from '../../shared/PercentBodyModal';
 
 interface Invoice {
   id: string;
@@ -209,10 +210,8 @@ export function InvoiceActionsModal({
   ];
 
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col">
-        {/* Header */}
-        <div className="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-blue-600 to-blue-700 flex items-center justify-between">
+    <PercentBodyModal onClose={onClose} size="wide" ariaLabel={tm('invoiceActions')}>
+        <div className="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-blue-600 to-blue-700 flex items-center justify-between shrink-0">
           <div>
             <h3 className="text-lg font-semibold text-white">{tm('invoiceActions')}</h3>
             <p className="text-sm text-blue-100 mt-1">
@@ -228,7 +227,7 @@ export function InvoiceActionsModal({
         </div>
 
         {/* Invoice Info */}
-        <div className="px-6 py-4 bg-gray-50 border-b border-gray-200">
+        <div className="px-6 py-4 bg-gray-50 border-b border-gray-200 shrink-0">
           <div className="grid grid-cols-2 gap-4 text-sm">
             <div>
               <span className="text-gray-600">{tm('amountLabel')}:</span>
@@ -262,7 +261,7 @@ export function InvoiceActionsModal({
         </div>
 
         {/* Actions */}
-        <div className="flex-1 overflow-auto p-6">
+        <PercentBodyModalScrollBody className="p-6">
           <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
             {actionButtons.map((action) => {
               const Icon = action.icon;
@@ -287,10 +286,9 @@ export function InvoiceActionsModal({
               );
             })}
           </div>
-        </div>
+        </PercentBodyModalScrollBody>
 
-        {/* Footer */}
-        <div className="px-6 py-4 border-t border-gray-200 bg-gray-50 flex justify-end">
+        <div className="px-6 py-4 border-t border-gray-200 bg-gray-50 flex justify-end shrink-0">
           <button
             onClick={onClose}
             className="px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 transition-colors"
@@ -298,7 +296,6 @@ export function InvoiceActionsModal({
             {tm('close')}
           </button>
         </div>
-      </div>
-    </div>
+    </PercentBodyModal>
   );
 }

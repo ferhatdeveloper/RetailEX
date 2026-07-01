@@ -5,6 +5,7 @@ import { SalesInvoiceModule } from '../sales/SalesInvoiceModule';
 import { PurchaseInvoiceModule } from '../purchase/PurchaseInvoiceModule';
 import { UniversalInvoiceForm } from './UniversalInvoiceForm';
 import { InvoiceActionsModal } from './InvoiceActionsModal';
+import { PercentBodyModal, PercentBodyModalScrollBody } from '../../shared/PercentBodyModal';
 import type { Customer, Product } from '../../../App';
 
 interface UnifiedInvoiceModuleProps {
@@ -257,10 +258,8 @@ export function UnifiedInvoiceModule({ customers = [], products = [], defaultCat
 
       {/* Fatura Türü Seçim Modalı - Ödeme Al Modalı Tarzı (İki Panelli) */}
       {showInvoiceTypeModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="w-full max-w-6xl max-h-[95vh] flex flex-col shadow-2xl bg-white">
-            {/* Header - Ödeme Al gibi */}
-            <div className="p-3 border-b border-gray-200 bg-gradient-to-r from-blue-600 to-blue-700 flex items-center justify-between">
+        <PercentBodyModal onClose={() => setShowInvoiceTypeModal(false)} size="wide" ariaLabel={tm('selectInvoiceType')}>
+            <div className="p-3 border-b border-gray-200 bg-gradient-to-r from-blue-600 to-blue-700 flex items-center justify-between shrink-0">
               <h3 className="text-base text-white flex items-center gap-2">
                 <FileText className="w-5 h-5" />
                 {tm('selectInvoiceType')}
@@ -274,7 +273,7 @@ export function UnifiedInvoiceModule({ customers = [], products = [], defaultCat
             </div>
 
             {/* Modal Content - İki Panelli (Ödeme Al gibi) */}
-            <div className="flex-1 overflow-auto p-4">
+            <PercentBodyModalScrollBody className="p-4">
               <div className="grid grid-cols-2 gap-4">
                 {/* Sol Panel - Fatura Türleri (Kategorilere göre) */}
                 <div className="space-y-3">
@@ -490,10 +489,9 @@ export function UnifiedInvoiceModule({ customers = [], products = [], defaultCat
                   )}
                 </div>
               </div>
-            </div>
+            </PercentBodyModalScrollBody>
 
-            {/* Footer - Ödeme Al gibi */}
-            <div className="p-4 border-t border-gray-200 bg-gray-50 flex justify-end gap-3">
+            <div className="p-4 border-t border-gray-200 bg-gray-50 flex justify-end gap-3 shrink-0">
               <button
                 onClick={() => setShowInvoiceTypeModal(false)}
                 className="px-6 py-2.5 bg-gray-600 hover:bg-gray-700 text-white rounded text-sm font-medium transition-colors"
@@ -509,8 +507,7 @@ export function UnifiedInvoiceModule({ customers = [], products = [], defaultCat
                 </button>
               )}
             </div>
-          </div>
-        </div>
+        </PercentBodyModal>
       )}
     </div>
   );

@@ -12,6 +12,7 @@ import { printPriceChangeVoucher } from '../../../utils/priceChangeVoucherPrint'
 import { toast } from 'sonner';
 import type { Product } from '../../../core/types';
 import { DevExDataGrid } from '../../shared/DevExDataGrid';
+import { PercentBodyModal, PercentBodyModalScrollBody } from '../../shared/PercentBodyModal';
 import { createColumnHelper } from '@tanstack/react-table';
 import { formatNumber } from '../../../utils/formatNumber';
 
@@ -478,9 +479,13 @@ export function PriceChangeVouchersModule({ products = [] }: PriceChangeVouchers
 
       {/* View Modal */}
       {selectedVoucher && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col`}>
-            <div className={`${darkMode ? 'bg-gray-700' : 'bg-gray-50'} px-6 py-4 border-b ${darkMode ? 'border-gray-600' : 'border-gray-200'} flex items-center justify-between`}>
+        <PercentBodyModal
+          onClose={() => setSelectedVoucher(null)}
+          size="wide"
+          ariaLabel="Fiyat Değişim Fişi Detayı"
+          shellClassName={darkMode ? 'bg-gray-800 text-white' : ''}
+        >
+            <div className={`${darkMode ? 'bg-gray-700' : 'bg-gray-50'} px-6 py-4 border-b ${darkMode ? 'border-gray-600' : 'border-gray-200'} flex items-center justify-between shrink-0`}>
               <h3 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
                 Fiyat Değişim Fişi Detayı
               </h3>
@@ -491,7 +496,7 @@ export function PriceChangeVouchersModule({ products = [] }: PriceChangeVouchers
                 <XCircle className="w-5 h-5" />
               </button>
             </div>
-            <div className="flex-1 overflow-auto p-6">
+            <PercentBodyModalScrollBody className="p-6">
               <div className="space-y-4 mb-6">
                 <div className="grid grid-cols-2 gap-4">
                   <div>
@@ -591,8 +596,8 @@ export function PriceChangeVouchersModule({ products = [] }: PriceChangeVouchers
                   </table>
                 </div>
               </div>
-            </div>
-            <div className={`${darkMode ? 'bg-gray-700' : 'bg-gray-50'} px-6 py-4 border-t ${darkMode ? 'border-gray-600' : 'border-gray-200'} flex justify-end gap-2`}>
+            </PercentBodyModalScrollBody>
+            <div className={`${darkMode ? 'bg-gray-700' : 'bg-gray-50'} px-6 py-4 border-t ${darkMode ? 'border-gray-600' : 'border-gray-200'} flex justify-end gap-2 shrink-0`}>
               <button
                 onClick={() => setSelectedVoucher(null)}
                 className={`px-4 py-2 rounded-lg ${darkMode ? 'bg-gray-600 hover:bg-gray-500 text-white' : 'bg-gray-200 hover:bg-gray-300 text-gray-700'}`}
@@ -610,15 +615,22 @@ export function PriceChangeVouchersModule({ products = [] }: PriceChangeVouchers
                 Yazdır
               </button>
             </div>
-          </div>
-        </div>
+        </PercentBodyModal>
       )}
 
       {/* Create Modal */}
       {showCreateModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col`}>
-            <div className={`${darkMode ? 'bg-gray-700' : 'bg-gray-50'} px-6 py-4 border-b ${darkMode ? 'border-gray-600' : 'border-gray-200'} flex items-center justify-between`}>
+        <PercentBodyModal
+          onClose={() => {
+            setShowCreateModal(false);
+            setCreateItems([{ product: null, oldPrice: 0, newPrice: 0 }]);
+            setProductSearch(['']);
+          }}
+          size="wide"
+          ariaLabel="Yeni Fiyat Değişim Fişi"
+          shellClassName={darkMode ? 'bg-gray-800 text-white' : ''}
+        >
+            <div className={`${darkMode ? 'bg-gray-700' : 'bg-gray-50'} px-6 py-4 border-b ${darkMode ? 'border-gray-600' : 'border-gray-200'} flex items-center justify-between shrink-0`}>
               <h3 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
                 Yeni Fiyat Değişim Fişi Oluştur
               </h3>
@@ -633,7 +645,7 @@ export function PriceChangeVouchersModule({ products = [] }: PriceChangeVouchers
                 <XCircle className="w-5 h-5" />
               </button>
             </div>
-            <div className="flex-1 overflow-auto p-6">
+            <PercentBodyModalScrollBody className="p-6">
               <div className="space-y-4">
                 {createItems.map((item, index) => (
                   <CreateProductItem
@@ -681,8 +693,8 @@ export function PriceChangeVouchersModule({ products = [] }: PriceChangeVouchers
                   Ürün Ekle
                 </button>
               </div>
-            </div>
-            <div className={`${darkMode ? 'bg-gray-700' : 'bg-gray-50'} px-6 py-4 border-t ${darkMode ? 'border-gray-600' : 'border-gray-200'} flex justify-end gap-2`}>
+            </PercentBodyModalScrollBody>
+            <div className={`${darkMode ? 'bg-gray-700' : 'bg-gray-50'} px-6 py-4 border-t ${darkMode ? 'border-gray-600' : 'border-gray-200'} flex justify-end gap-2 shrink-0`}>
               <button
                 onClick={() => {
                   setShowCreateModal(false);
@@ -753,8 +765,7 @@ export function PriceChangeVouchersModule({ products = [] }: PriceChangeVouchers
                 Fiş Oluştur
               </button>
             </div>
-          </div>
-        </div>
+        </PercentBodyModal>
       )}
     </div>
   );

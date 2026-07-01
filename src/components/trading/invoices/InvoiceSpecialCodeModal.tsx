@@ -1,6 +1,7 @@
 ﻿import { X, Hash, Search } from 'lucide-react';
 import { useState, useMemo } from 'react';
 import { useLanguage } from '../../../contexts/LanguageContext';
+import { PercentBodyModal, PercentBodyModalScrollBody } from '../../shared/PercentBodyModal';
 
 interface SpecialCode {
   code: string;
@@ -54,10 +55,8 @@ export function InvoiceSpecialCodeModal({ currentCode, onSelect, onClose }: Invo
   };
 
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-white w-full max-w-lg shadow-2xl rounded-lg flex flex-col max-h-[80vh]">
-        {/* Header */}
-        <div className="p-3 border-b border-gray-200 flex items-center justify-between bg-gradient-to-r from-blue-600 to-blue-700">
+    <PercentBodyModal onClose={onClose} size="list" ariaLabel={tm('selectSpecialCode')}>
+        <div className="p-3 border-b border-gray-200 flex items-center justify-between shrink-0 bg-gradient-to-r from-blue-600 to-blue-700">
           <h3 className="text-base text-white flex items-center gap-2">
             <Hash className="w-5 h-5" />
             {tm('selectSpecialCode')}
@@ -71,7 +70,7 @@ export function InvoiceSpecialCodeModal({ currentCode, onSelect, onClose }: Invo
         </div>
 
         {/* Search */}
-        <div className="p-4 border-b border-gray-200">
+        <div className="p-4 border-b border-gray-200 shrink-0">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             <input
@@ -86,7 +85,7 @@ export function InvoiceSpecialCodeModal({ currentCode, onSelect, onClose }: Invo
         </div>
 
         {/* Custom Code Input */}
-        <div className="p-4 border-b border-gray-200 bg-gray-50">
+        <div className="p-4 border-b border-gray-200 bg-gray-50 shrink-0">
           <label className="block text-sm font-medium text-gray-700 mb-2">
             {tm('enterSpecialCode')}
           </label>
@@ -113,7 +112,7 @@ export function InvoiceSpecialCodeModal({ currentCode, onSelect, onClose }: Invo
         </div>
 
         {/* Code List */}
-        <div className="flex-1 overflow-auto p-4">
+        <PercentBodyModalScrollBody className="p-4">
           {filteredCodes.length === 0 ? (
             <div className="text-center py-8 text-gray-500">
               <Hash className="w-12 h-12 mx-auto mb-2 opacity-50" />
@@ -149,10 +148,9 @@ export function InvoiceSpecialCodeModal({ currentCode, onSelect, onClose }: Invo
               ))}
             </div>
           )}
-        </div>
+        </PercentBodyModalScrollBody>
 
-        {/* Footer */}
-        <div className="p-4 border-t border-gray-200 bg-gray-50">
+        <div className="p-4 border-t border-gray-200 bg-gray-50 shrink-0">
           <button
             onClick={onClose}
             className="w-full px-4 py-2 text-sm bg-gray-200 text-gray-700 rounded hover:bg-gray-300 transition-colors"
@@ -160,8 +158,7 @@ export function InvoiceSpecialCodeModal({ currentCode, onSelect, onClose }: Invo
             {tm('cancel')}
           </button>
         </div>
-      </div>
-    </div>
+    </PercentBodyModal>
   );
 }
 

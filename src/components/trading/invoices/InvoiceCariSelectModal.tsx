@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { X, User, Search, Truck, Plus, Loader2 } from 'lucide-react';
 import { useLanguage } from '../../../contexts/LanguageContext';
+import { PercentBodyModal, PercentBodyModalScrollBody } from '../../shared/PercentBodyModal';
 
 export type InvoiceCariItem = {
   id: string;
@@ -67,9 +68,12 @@ export function InvoiceCariSelectModal({
   };
 
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[60] p-4">
-      <div className="bg-white w-full max-w-lg shadow-2xl rounded-lg flex flex-col max-h-[85vh] text-gray-900">
-        <div className={`p-3 border-b border-gray-200 flex items-center justify-between bg-gradient-to-r ${headerGradient}`}>
+    <PercentBodyModal
+      onClose={onClose}
+      size="list"
+      ariaLabel={isCustomer ? tm('selectMusteri') : tm('selectTedarikci')}
+    >
+      <div className={`p-3 border-b border-gray-200 flex items-center justify-between shrink-0 bg-gradient-to-r ${headerGradient}`}>
           <h3 className="text-base text-white flex items-center gap-2 font-semibold">
             {isCustomer ? <User className="w-5 h-5" /> : <Truck className="w-5 h-5" />}
             {isCustomer ? tm('selectMusteri') : tm('selectTedarikci')}
@@ -79,7 +83,7 @@ export function InvoiceCariSelectModal({
           </button>
         </div>
 
-        <div className="p-4 border-b border-gray-200">
+        <div className="p-4 border-b border-gray-200 shrink-0">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             <input
@@ -93,7 +97,7 @@ export function InvoiceCariSelectModal({
           </div>
         </div>
 
-        <div className="flex-1 min-h-0 overflow-auto p-4">
+        <PercentBodyModalScrollBody className="p-4">
           {filtered.length === 0 && !showQuickAdd ? (
             <div className="text-center py-10 text-gray-500">
               {isCustomer ? <User className="w-12 h-12 mx-auto mb-2 opacity-40" /> : <Truck className="w-12 h-12 mx-auto mb-2 opacity-40" />}
@@ -177,10 +181,10 @@ export function InvoiceCariSelectModal({
               })}
             </div>
           )}
-        </div>
+        </PercentBodyModalScrollBody>
 
         {onCreate && (
-          <div className="px-4 pb-3 border-t border-gray-100 pt-3 bg-gray-50/80">
+          <div className="px-4 pb-3 border-t border-gray-100 pt-3 bg-gray-50/80 shrink-0">
             {showQuickAdd ? (
               <div className="space-y-2">
                 <input
@@ -233,7 +237,7 @@ export function InvoiceCariSelectModal({
           </div>
         )}
 
-        <div className="p-4 border-t border-gray-200 bg-gray-50">
+        <div className="p-4 border-t border-gray-200 bg-gray-50 shrink-0">
           <button
             type="button"
             onClick={onClose}
@@ -242,7 +246,6 @@ export function InvoiceCariSelectModal({
             {tm('cancel')}
           </button>
         </div>
-      </div>
-    </div>
+    </PercentBodyModal>
   );
 }

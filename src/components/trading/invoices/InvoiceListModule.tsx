@@ -33,7 +33,8 @@ import {
   buildPurchaseEditDataFromSayimInvoices,
   isSayimFazlasiAlisInvoice,
 } from '../../../utils/countInvoicePurchaseDraft';
-import { FullscreenBodyPortal } from '../../shared/FullscreenBodyPortal';
+import { FullscreenBodyPortal, MODAL_OVERLAY_Z } from '../../shared/FullscreenBodyPortal';
+import { PercentBodyModal, PercentBodyModalScrollBody } from '../../shared/PercentBodyModal';
 
 export type CountPurchaseDraftPrefill = {
   editData: Record<string, unknown>;
@@ -1205,7 +1206,8 @@ export function InvoiceListModule({
       {/* Mobil: uzun basma işlem sayfası — body portal (üst çubuk altında kalmaması için) */}
       {mobileActionInvoice && (
         <FullscreenBodyPortal
-          className="flex items-end justify-center bg-black/50 sm:items-center sm:p-4"
+          zIndex={MODAL_OVERLAY_Z}
+          className="flex items-end justify-center bg-black/50 sm:items-center sm:p-4 overflow-hidden"
           role="dialog"
           aria-modal
           onClick={() => setMobileActionInvoice(null)}
@@ -1407,9 +1409,7 @@ export function InvoiceListModule({
       )}
 
       {specialPrintState && (
-        <div className="fixed inset-0 z-[2147483646] overflow-y-auto overflow-x-hidden bg-black/60 backdrop-blur-md animate-in fade-in duration-200">
-          <div className="flex min-h-[100dvh] min-h-screen w-full items-center justify-center p-4 py-6">
-            <div className="bg-white rounded-[2rem] w-full max-w-2xl max-h-[min(90vh,100dvh)] min-h-0 overflow-hidden shadow-xl border border-slate-200/80 flex flex-col animate-in zoom-in-95 duration-200">
+        <PercentBodyModal onClose={() => setSpecialPrintState(null)} size="list" ariaLabel="Özel Yazdır">
               <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-8 py-6 text-white shrink-0">
                 <div className="flex items-center justify-between">
                   <div>
@@ -1427,7 +1427,7 @@ export function InvoiceListModule({
                   </button>
                 </div>
               </div>
-              <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-8 space-y-5">
+              <PercentBodyModalScrollBody className="p-8 space-y-5">
                 <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
                   <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Belge Türü</div>
                   <div className="text-base font-semibold text-slate-900">
@@ -1482,7 +1482,7 @@ export function InvoiceListModule({
                     Bu belge türü için varsayılan tasarım olarak kaydet
                   </span>
                 </label>
-              </div>
+              </PercentBodyModalScrollBody>
               <div className="p-6 border-t border-slate-100 bg-slate-50/50 flex gap-4 shrink-0">
                 <button
                   type="button"
@@ -1500,17 +1500,13 @@ export function InvoiceListModule({
                   {specialPrintLoading ? 'Hazırlanıyor...' : 'Özel Yazdır'}
                 </button>
               </div>
-            </div>
-          </div>
-        </div>
+        </PercentBodyModal>
       )}
 
       {/* Detail Modal */}
       {showDetailModal && selectedInvoice && (
-        <FullscreenBodyPortal className="bg-black/60 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl w-full max-w-6xl max-h-[95vh] overflow-hidden flex flex-col">
-            {/* Modal Header */}
-            <div className="bg-gradient-to-r from-blue-600 to-blue-700 text-white px-6 py-4 flex items-center justify-between">
+        <PercentBodyModal onClose={() => setShowDetailModal(false)} size="wide" ariaLabel={tm('invoiceDetails')}>
+            <div className="bg-gradient-to-r from-blue-600 to-blue-700 text-white px-6 py-4 flex items-center justify-between shrink-0">
               <div>
                 <h3 className="text-xl font-semibold">{tm('invoiceDetails')}</h3>
                 <p className="text-blue-100 text-sm">{selectedInvoice.invoice_no}</p>
@@ -1532,8 +1528,7 @@ export function InvoiceListModule({
               </div>
             </div>
 
-            {/* Modal Content - A4 Format Preview */}
-            <div className="flex-1 overflow-auto p-6 bg-gray-50">
+            <PercentBodyModalScrollBody className="p-6 bg-gray-50">
               <div className="max-w-4xl mx-auto">
                 {/* A4 Container */}
                 <div
@@ -1692,10 +1687,9 @@ export function InvoiceListModule({
                   </div>
                 </div>
               </div>
-            </div>
+            </PercentBodyModalScrollBody>
 
-            {/* Modal Footer */}
-            <div className="border-t px-6 py-4 flex justify-end gap-3 bg-white">
+            <div className="border-t px-6 py-4 flex justify-end gap-3 bg-white shrink-0">
               <button
                 onClick={() => setShowDetailModal(false)}
                 className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
@@ -1703,16 +1697,13 @@ export function InvoiceListModule({
                 {tm('close')}
               </button>
             </div>
-          </div>
-        </FullscreenBodyPortal>
+        </PercentBodyModal>
       )}
 
       {/* Fatura Türü Seçim Modalı */}
       {showInvoiceTypeModal && (
-        <FullscreenBodyPortal className="bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="w-full max-w-6xl max-h-[95vh] flex flex-col shadow-2xl bg-white rounded-xl overflow-hidden">
-            {/* Header */}
-            <div className="p-4 border-b border-gray-200 bg-gradient-to-r from-blue-600 to-blue-700 flex items-center justify-between">
+        <PercentBodyModal onClose={() => setShowInvoiceTypeModal(false)} size="wide" ariaLabel={tm('selectInvoiceType')}>
+            <div className="p-4 border-b border-gray-200 bg-gradient-to-r from-blue-600 to-blue-700 flex items-center justify-between shrink-0">
               <div className="flex items-center gap-3">
                 <FileText className="w-6 h-6 text-white" />
                 <h3 className="text-xl font-semibold text-white">{tm('selectInvoiceType')}</h3>
@@ -1725,8 +1716,7 @@ export function InvoiceListModule({
               </button>
             </div>
 
-            {/* Modal Content - İki Panelli */}
-            <div className="flex-1 overflow-auto p-4">
+            <PercentBodyModalScrollBody className="p-4">
               <div className="grid grid-cols-2 gap-4">
                 {/* Sol Panel - Fatura Türleri */}
                 <div className="space-y-3">
@@ -1848,9 +1838,8 @@ export function InvoiceListModule({
                   )}
                 </div>
               </div>
-            </div>
-          </div>
-        </FullscreenBodyPortal>
+            </PercentBodyModalScrollBody>
+        </PercentBodyModal>
       )}
 
       {/* Custom Report Designer Overlay */}
