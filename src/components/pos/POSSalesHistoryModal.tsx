@@ -3,6 +3,7 @@ import { X, FileText, Calendar, User, CreditCard, Search, Printer, Eye, ArrowLef
 import type { Sale } from '../../core/types';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useTheme } from '../../contexts/ThemeContext';
+import { POS_MODAL_Z } from './posUiConstants';
 import { ThermalReceiptPreview } from './ThermalReceiptPreview';
 import { PaymentReceiptPreview } from './PaymentReceiptPreview';
 
@@ -24,7 +25,7 @@ export function POSSalesHistoryModal({
   const { t } = useLanguage();
   const { darkMode } = useTheme();
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterDate, setFilterDate] = useState('all'); // all, today, week, month, custom
+  const [filterDate, setFilterDate] = useState('today'); // varsayılan: bugün
   const [selectedSale, setSelectedSale] = useState<Sale | null>(
     autoSelectLast && sales.length > 0 ? sales[0] : null
   );
@@ -159,7 +160,7 @@ export function POSSalesHistoryModal({
   };
 
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50">
+    <div className={`fixed inset-0 bg-black/60 backdrop-blur-sm ${POS_MODAL_Z}`}>
       <div className={`w-full h-full flex flex-col ${darkMode ? 'bg-gray-900' : 'bg-white'}`}>
         {/* Header */}
         <div className="p-3 border-b flex items-center justify-between bg-gradient-to-r from-blue-600 to-blue-700">
@@ -178,9 +179,9 @@ export function POSSalesHistoryModal({
           </div>
           <button
             onClick={onClose}
-            className="text-white hover:text-gray-200 p-1"
+            className="px-3 py-1.5 text-sm bg-white/20 hover:bg-white/30 text-white rounded transition-colors"
           >
-            <X className="w-5 h-5" />
+            {t.close}
           </button>
         </div>
 

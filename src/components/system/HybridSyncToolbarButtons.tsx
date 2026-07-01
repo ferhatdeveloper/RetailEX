@@ -29,7 +29,7 @@ const TRANSPORT_OPTIONS: { value: HybridSyncTransport; label: string; hint: stri
   {
     value: 'both',
     label: 'WS + Periyodik',
-    hint: 'WebSocket anlık çekim + arka plan periyodik senkron (önerilen)',
+    hint: 'WebSocket anlık + arka plan periyodik (önerilen)',
   },
   {
     value: 'websocket',
@@ -156,7 +156,7 @@ export function HybridSyncToolbarButtons({ compact = false }: Props) {
       toast.warning('WebSocket bağlı değil', {
         description:
           audit.issues[0]?.solution ||
-          'Kiracı PostgREST URL (ör. /lovan) ve api_gateway WS yolunu kontrol edin.',
+          'Kiracı PostgREST URL ve api_gateway WS yolunu kontrol edin.',
         duration: 12000,
       });
     }
@@ -166,11 +166,9 @@ export function HybridSyncToolbarButtons({ compact = false }: Props) {
   const hasError = inboundPending < 0;
   const audit = isHybrid ? auditSyncTransportConfig() : null;
   const configIssue = audit?.issues.some((i) => i.severity === 'error') ?? false;
+  const wsActive = transport === 'websocket' || transport === 'both';
 
-  const shellClass = cn(
-    'flex items-center shrink-0',
-    compact ? 'gap-0.5' : 'gap-1',
-  );
+  const shellClass = cn('flex items-center shrink-0', compact ? 'gap-0.5' : 'gap-1');
 
   const btnClass = cn(
     'relative flex items-center justify-center rounded-xl border transition-colors touch-manipulation active:scale-95',
@@ -184,24 +182,19 @@ export function HybridSyncToolbarButtons({ compact = false }: Props) {
     ? 'hidden sm:inline text-[9px] font-black uppercase tracking-wide'
     : 'hidden md:inline text-[10px] font-black uppercase tracking-wide';
 
-  const wsDotClass =
+  const statusDotClass =
     wsStatus === 'connected'
-      ? 'bg-green-400 shadow-[0_0_6px_rgba(74,222,128,0.7)]'
+      ? 'bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.8)]'
       : wsStatus === 'connecting'
         ? 'bg-amber-400 animate-pulse'
         : configIssue
-          ? 'bg-red-400 shadow-[0_0_6px_rgba(248,113,113,0.6)]'
+          ? 'bg-red-400'
           : 'bg-slate-400/90';
 
   if (!isHybrid) {
     return (
-      <div className={shellClass} title="Senkron yalnızca hibrit modda — Kurulumda db_mode=hybrid seçin">
-        <button
-          type="button"
-          disabled
-          className={btnClass}
-          title="Hibrit mod gerekli — Kurulum → Veritabanı → Hibrit"
-        >
+      <div className={shellClass} title="Senkron yalnızca hibrit modda">
+        <button type="button" disabled className={btnClass}>
           <RefreshCw className={cn(compact ? 'h-3.5 w-3.5' : 'h-4 w-4', 'opacity-60')} />
           <span className={labelClass}>Senkron</span>
         </button>
@@ -212,57 +205,85 @@ export function HybridSyncToolbarButtons({ compact = false }: Props) {
   return (
     <>
       <div className={shellClass}>
-        {isKasa && lastArrival && lastArrival.inserted + lastArrival.updated > 0 && (
-          <span
-            className={cn(
-              'inline-flex items-center gap-1 rounded-full border border-emerald-400/40 bg-emerald-500/20 text-emerald-100 font-bold uppercase tracking-wide',
-              compact ? 'px-1.5 py-0.5 text-[8px]' : 'px-2 py-0.5 text-[9px]',
-            )}
-            title={`Son alım: ${new Date(lastArrival.at).toLocaleString('tr-TR')} · ${formatSyncBreakdown(lastArrival)}`}
-          >
-            <CheckCircle2 className={compact ? 'h-3 w-3' : 'h-3.5 w-3.5'} />
-            <span className={compact ? 'hidden sm:inline' : ''}>Veri alındı</span>
-          </span>
-        )}
-
-        {/* Taşıma modu seçici */}
+        {/* Taşıma modu + durum — tek dropdown */}
         <div className="relative" ref={menuRef}>
           <button
             type="button"
-            title="Senkron taşıma modu (WebSocket / Periyodik)"
+            title="Senkron taşıma modu ve bağlantı durumu"
             onClick={() => setTransportMenuOpen((o) => !o)}
-            className={cn(btnClass, 'gap-0.5')}
+            className={cn(btnClass, 'gap-1 pr-1.5')}
           >
+            <span className={cn('h-2 w-2 rounded-full shrink-0', wsActive ? statusDotClass : 'bg-blue-300/80')} />
             {transport === 'polling' ? (
               <RefreshCw className={cn(compact ? 'h-3 w-3' : 'h-3.5 w-3.5')} />
             ) : (
               <Radio className={cn(compact ? 'h-3 w-3' : 'h-3.5 w-3.5')} />
             )}
-            <span className={cn(labelClass, 'max-w-[4.5rem] truncate')}>
+            <span className={cn(labelClass, 'max-w-[5.5rem] truncate')}>
               {formatSyncTransportLabel(transport)}
             </span>
             <ChevronDown className={cn(compact ? 'h-2.5 w-2.5' : 'h-3 w-3', 'opacity-70')} />
           </button>
+
           {transportMenuOpen && (
             <div
-              className="absolute right-0 top-[calc(100%+4px)] z-[20060] w-56 overflow-hidden rounded-xl border border-white/20 bg-blue-800 py-1 text-xs shadow-2xl"
+              className="absolute right-0 top-[calc(100%+6px)] z-[20060] w-[min(18rem,calc(100vw-1rem))] overflow-hidden rounded-xl border border-slate-600 bg-slate-900 text-white shadow-2xl ring-1 ring-black/40"
               role="menu"
             >
-              {TRANSPORT_OPTIONS.map((opt) => (
-                <button
-                  key={opt.value}
-                  type="button"
-                  role="menuitem"
-                  className={cn(
-                    'flex w-full flex-col gap-0.5 px-3 py-2 text-left hover:bg-white/10',
-                    transport === opt.value && 'bg-white/15',
-                  )}
-                  onClick={() => void handleTransportChange(opt.value)}
-                >
-                  <span className="font-bold text-white">{opt.label}</span>
-                  <span className="text-[10px] leading-snug text-blue-100/90">{opt.hint}</span>
-                </button>
-              ))}
+              <div className="border-b border-slate-700 bg-slate-800/90 px-3 py-2.5 space-y-1.5">
+                <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">Senkron durumu</p>
+                {wsActive && (
+                  <button
+                    type="button"
+                    onClick={showWsDiagnostics}
+                    className="flex w-full items-center gap-2 rounded-lg bg-slate-800 px-2 py-1.5 text-left hover:bg-slate-700"
+                  >
+                    <span className={cn('h-2.5 w-2.5 rounded-full shrink-0', statusDotClass)} />
+                    {wsStatus === 'connected' ? (
+                      <Wifi className="h-3.5 w-3.5 text-emerald-400" />
+                    ) : (
+                      <WifiOff className="h-3.5 w-3.5 text-slate-400" />
+                    )}
+                    <span className="text-xs font-semibold">
+                      WebSocket: {wsStatus === 'connected' ? 'Bağlı' : wsStatus === 'connecting' ? 'Bağlanıyor…' : 'Kapalı'}
+                    </span>
+                  </button>
+                )}
+                <p className="text-[11px] text-slate-300">
+                  Gönderilecek: <strong className="text-white">{pending}</strong>
+                  {isKasa ? (
+                    <>
+                      {' '}
+                      · Alınacak:{' '}
+                      <strong className="text-white">{inboundPending >= 0 ? inboundPending : '—'}</strong>
+                    </>
+                  ) : null}
+                </p>
+                {isKasa && lastArrival && lastArrival.inserted + lastArrival.updated > 0 ? (
+                  <p className="flex items-center gap-1 text-[10px] text-emerald-300">
+                    <CheckCircle2 className="h-3 w-3 shrink-0" />
+                    Son alım: {new Date(lastArrival.at).toLocaleString('tr-TR')}
+                  </p>
+                ) : null}
+              </div>
+
+              <div className="py-1">
+                {TRANSPORT_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    role="menuitem"
+                    className={cn(
+                      'flex w-full flex-col gap-0.5 px-3 py-2.5 text-left hover:bg-slate-800',
+                      transport === opt.value && 'bg-slate-800/80',
+                    )}
+                    onClick={() => void handleTransportChange(opt.value)}
+                  >
+                    <span className="text-xs font-bold text-white">{opt.label}</span>
+                    <span className="text-[10px] leading-snug text-slate-400">{opt.hint}</span>
+                  </button>
+                ))}
+              </div>
             </div>
           )}
         </div>
@@ -270,7 +291,7 @@ export function HybridSyncToolbarButtons({ compact = false }: Props) {
         {/* Manuel senkron */}
         <button
           type="button"
-          title="Veri senkronu — özet ve adım adım aktarım"
+          title="Veri senkronu"
           onClick={() => setModalOpen(true)}
           className={btnClass}
         >
@@ -287,31 +308,6 @@ export function HybridSyncToolbarButtons({ compact = false }: Props) {
             </span>
           )}
         </button>
-
-        {/* WebSocket durumu — tıklayınca tanılama */}
-        {(transport === 'websocket' || transport === 'both') && (
-          <button
-            type="button"
-            onClick={showWsDiagnostics}
-            title={
-              wsStatus === 'connected'
-                ? 'WebSocket bağlı — tanılama için tıklayın'
-                : 'WebSocket yok — tanılama ve çözüm için tıklayın (F12 konsol)'
-            }
-            className={cn(
-              btnClass,
-              'min-w-0 px-1.5',
-              wsStatus !== 'connected' && configIssue && 'border-red-300/40',
-            )}
-          >
-            <span className={cn('h-2.5 w-2.5 rounded-full shrink-0', wsDotClass)} />
-            {wsStatus === 'connected' ? (
-              <Wifi className={cn(compact ? 'h-3 w-3' : 'h-3.5 w-3.5', 'opacity-90')} />
-            ) : (
-              <WifiOff className={cn(compact ? 'h-3 w-3' : 'h-3.5 w-3.5', 'opacity-80')} />
-            )}
-          </button>
-        )}
       </div>
 
       <HybridSyncModal

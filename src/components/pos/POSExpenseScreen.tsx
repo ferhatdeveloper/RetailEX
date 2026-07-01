@@ -1,7 +1,8 @@
 import { Suspense, lazy } from 'react';
-import { X, Receipt } from 'lucide-react';
+import { Receipt, ArrowLeft } from 'lucide-react';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useTheme } from '../../contexts/ThemeContext';
+import { POS_MODAL_Z } from './posUiConstants';
 
 const ExpenseManagement = lazy(() =>
   import('../accounting/reports/ExpenseManagement').then((m) => ({
@@ -19,38 +20,36 @@ export function POSExpenseScreen({ onClose }: POSExpenseScreenProps) {
 
   return (
     <div
-      className={`fixed inset-0 z-[2147483646] flex flex-col min-h-0 ${darkMode ? 'bg-gray-900' : 'bg-white'}`}
+      className={`fixed inset-0 ${POS_MODAL_Z} flex flex-col min-h-0 ${darkMode ? 'bg-gray-900' : 'bg-white'}`}
       role="dialog"
       aria-modal="true"
-      aria-label={t.expenseManagement}
+      aria-label="Gider İşlemleri"
     >
       <div
         className={`flex items-center justify-between gap-3 px-4 py-3 border-b shrink-0 ${
-          darkMode ? 'border-gray-700 bg-gray-800' : 'border-gray-200 bg-gradient-to-r from-red-50 to-orange-50'
+          darkMode ? 'border-gray-700 bg-gray-800' : 'border-gray-200 bg-gradient-to-r from-blue-600 to-blue-700'
         }`}
       >
         <div className="flex items-center gap-2 min-w-0">
-          <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-red-500 to-orange-600 flex items-center justify-center shrink-0">
+          <div className="w-9 h-9 rounded-lg bg-white/20 flex items-center justify-center shrink-0">
             <Receipt className="w-5 h-5 text-white" />
           </div>
           <div className="min-w-0">
-            <h2 className={`text-sm font-black uppercase tracking-wide truncate ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-              {t.expenseManagement}
+            <h2 className="text-sm font-black uppercase tracking-wide truncate text-white">
+              Gider İşlemleri
             </h2>
-            <p className={`text-[10px] font-semibold uppercase tracking-wider ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-              POS
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-blue-100">
+              POS — tam ekran
             </p>
           </div>
         </div>
         <button
           type="button"
           onClick={onClose}
-          className={`p-2 rounded-xl transition-colors shrink-0 ${
-            darkMode ? 'hover:bg-gray-700 text-gray-300' : 'hover:bg-white/80 text-gray-600'
-          }`}
-          aria-label={t.close}
+          className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white/20 hover:bg-white/30 text-white text-sm font-bold transition-colors shrink-0"
         >
-          <X className="w-5 h-5" />
+          <ArrowLeft className="w-4 h-4" />
+          Geri
         </button>
       </div>
 

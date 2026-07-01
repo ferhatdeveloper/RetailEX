@@ -1,9 +1,10 @@
-import { X, Users, Search, UserCheck, Phone, Mail, MapPin, Plus, CreditCard, Wallet } from 'lucide-react';
+import { Users, Search, UserCheck, Phone, Mail, MapPin, Plus, CreditCard, Wallet } from 'lucide-react';
 import { useState, useEffect, useMemo } from 'react';
 import type { Customer } from '../../core/types';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import { supplierAPI } from '../../services/api/suppliers';
+import { POS_MODAL_OVERLAY, POS_MODAL_SHELL, POS_MODAL_HEADER } from './posUiConstants';
 
 interface POSCustomerModalProps {
   customers: Customer[];
@@ -135,20 +136,13 @@ export function POSCustomerModal({
   };
 
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className={`w-full max-w-4xl max-h-[90vh] flex flex-col shadow-2xl ${darkMode ? 'bg-gray-900' : 'bg-white'}`}>
-        {/* Header */}
-        <div className={`p-3 border-b flex items-center justify-between ${darkMode ? 'border-gray-700 bg-gradient-to-r from-gray-700 to-gray-600' : 'border-gray-200 bg-gradient-to-r from-blue-600 to-blue-700'}`}>
+    <div className={POS_MODAL_OVERLAY} role="dialog" aria-modal="true">
+      <div className={POS_MODAL_SHELL(darkMode)}>
+        <div className={POS_MODAL_HEADER}>
           <h3 className="text-base text-white flex items-center gap-2">
             <Users className="w-5 h-5" />
             {t.selectCustomerTitle}
           </h3>
-          <button
-            onClick={onClose}
-            className="text-white hover:text-gray-200 p-1"
-          >
-            <X className="w-5 h-5" />
-          </button>
         </div>
 
         {/* Search */}

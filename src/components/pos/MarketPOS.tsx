@@ -9,6 +9,8 @@ import {
 } from '../../utils/barcodeScannerInput';
 import { isProductExpired } from '../../utils/productExpiry';
 import { isScaleProductFlag } from '../../utils/scaleProductFilter';
+import { playBarcodeNotFoundBeep } from '../../utils/posFeedbackSounds';
+import { usePosPullToRefresh } from '../../hooks/usePosPullToRefresh';
 import {
   ShoppingCart,
   CreditCard,
@@ -395,6 +397,14 @@ export default function MarketPOS({
   const [showMissingBarcodesModal, setShowMissingBarcodesModal] = useState(false);
   const [showExpenseScreen, setShowExpenseScreen] = useState(false);
   const [lastMissingBarcode, setLastMissingBarcode] = useState<string | null>(null);
+
+  const { pullPx, armed: pullRefreshArmed } = usePosPullToRefresh({
+    onRefresh: async () => {
+      await refreshProducts(true);
+      await loadSales(500);
+      window.location.reload();
+    },
+  });
 
   useEffect(() => {
     try {
@@ -795,6 +805,8 @@ export default function MarketPOS({
 
   // Barkod ile arama yap - ürün bulunursa true, bulunamazsa false döner
   const notifyUnknownBarcode = (trimmedBarcode: string) => {
+    playBarcodeNotFoundBeep();
+    setLastMissingBarcode(trimmedBarcode);
     showNotif(t.posUnknownBarcodeAlert.replace('{barcode}', trimmedBarcode), 'warning');
     setShowMissingBarcodesModal(true);
   };
@@ -1555,7 +1567,7 @@ export default function MarketPOS({
     { label: t.salesHistory, color: 'bg-blue-50 text-blue-700 border-blue-400', onClick: () => setShowSalesHistoryModal(true), icon: History },
     { label: t.returnTransaction, color: 'bg-blue-50 text-blue-700 border-blue-400', onClick: handleReturnAction, icon: RotateCcw },
     { label: t.missingBarcodes, color: 'bg-red-50 text-red-700 border-red-400', onClick: () => setShowMissingBarcodesModal(true), icon: Barcode },
-    { label: t.expenseManagement, color: 'bg-orange-50 text-orange-700 border-orange-400', onClick: () => setShowExpenseScreen(true), icon: Receipt },
+    { label: 'Gider İşlemleri', color: 'bg-orange-50 text-orange-700 border-orange-400', onClick: () => setShowExpenseScreen(true), icon: Receipt },
     { label: t.scale, color: 'bg-blue-50 text-blue-700 border-blue-400', onClick: () => { }, icon: Scale },
     { label: t.subtotalAction, color: 'bg-blue-50 text-blue-700 border-blue-400', onClick: () => showNotif(`${t.subtotalAction}: ${subtotal.toFixed(2)}`, 'info'), icon: Calculator },
     { label: t.receiptNote, color: 'bg-blue-50 text-blue-700 border-blue-400', onClick: () => { }, icon: FileText },
@@ -1839,7 +1851,17 @@ export default function MarketPOS({
   }, [showCloseCashRegisterModal, loadSales]);
 
   return (
-    <div className={`h-full flex flex-col ${darkMode ? 'bg-gray-900' : 'bg-white'}`}>
+    <div className={`h-full flex flex-col relative ${darkMode ? 'bg-gray-900' : 'bg-white'}`}>
+      {pullPx > 8 && (
+        <div
+          className="pointer-events-none absolute left-0 right-0 top-0 z-[90] flex justify-center"
+          style={{ transform: `translateY(${Math.min(pullPx, 80)}px)` }}
+        >
+          <span className="rounded-full bg-blue-600/95 px-3 py-1 text-[10px] font-bold uppercase tracking-wide text-white shadow-lg">
+            {pullRefreshArmed ? 'Bırakın — yenileme sorulacak' : 'Yenilemek için çekin…'}
+          </span>
+        </div>
+      )}
       {/* Notification */}
       {showNotification && (
         <div className={`fixed top-4 right-4 z-50 px-4 py-3 rounded border ${notificationType === 'success' ? 'bg-green-50 border-green-400 text-green-700' :
@@ -2371,7 +2393,7 @@ export default function MarketPOS({
                 className={`${getButtonClass('orange')} py-4 text-xs leading-tight flex flex-col items-center justify-center gap-1 transition-all`}
               >
                 <Receipt className="w-5 h-5" />
-                <span>{t.expenseManagement}</span>
+                <span>Gider İşlemleri</span>
               </button>
 
               {/* Third Row - Cart & Customer */}

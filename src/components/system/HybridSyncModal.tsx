@@ -8,15 +8,6 @@ import {
   RefreshCw,
   XCircle,
 } from 'lucide-react';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '../ui/dialog';
-import { Button } from '../ui/button';
 import { cn } from '../ui/utils';
 import { useAuth } from '../../contexts/AuthContext';
 import {
@@ -29,6 +20,7 @@ import {
   buildSyncEndpoints,
   getPendingQueueBreakdown,
   getPendingQueueBreakdownEndpoint,
+  queryPgRows,
   runHybridSync,
   type SyncQueueBreakdownRow,
 } from '../../services/hybridSyncEngine';
@@ -41,10 +33,12 @@ import {
   pullInboundMasterNow,
   resolveKasaPullContext,
 } from '../../services/mposKasaAutoPullService';
+import { formatSyncBreakdown as formatKasaSyncBreakdown } from '../../services/kasaDataArrivalNotify';
 import {
   auditSyncTransportConfig,
   formatSyncTransportLabel,
 } from '../../services/syncTransportDiagnostics';
+import { POS_MODAL_OVERLAY } from '../pos/posUiConstants';
 
 type StepStatus = 'pending' | 'running' | 'done' | 'error' | 'skipped';
 
@@ -112,6 +106,40 @@ function stepIcon(status: StepStatus) {
   if (status === 'error') return <XCircle className="h-4 w-4 text-red-600" />;
   if (status === 'skipped') return <Circle className="h-4 w-4 text-gray-300" />;
   return <Circle className="h-4 w-4 text-gray-400" />;
+}
+
+function formatHybridSyncMessage(result: { totalSynced?: number; failed?: number; message?: string }): string {
+  if (result.message) return result.message;
+  return '';
+}
+
+async function verifyRemoteTablesOnRemote(breakdown: SyncQueueBreakdownRow[]): Promise<string> {
+  const rows = breakdown.filter((r) => r.count > 0);
+  if (!rows.length) return '';
+
+  const { remote } = buildSyncEndpoints({
+    local: LOCAL_CONFIG,
+    remote: REMOTE_CONFIG,
+    connectionProvider: resolveHybridSyncConnectionProvider(),
+    remoteRestUrl: DB_SETTINGS.remoteRestUrl,
+  });
+  if (remote.kind !== 'pg') {
+    return 'Merkez doğrulama: doğrudan PG bağlantısı gerekir.';
+  }
+
+  const lines: string[] = [];
+  for (const row of rows.slice(0, 8)) {
+    const tbl = row.tableName.trim();
+    if (!/^rex_\d{3}_[a-z0-9_]+$/i.test(tbl)) continue;
+    try {
+      const res = await queryPgRows(remote.config, `SELECT COUNT(*)::int AS cnt FROM ${tbl}`, []);
+      const cnt = Number((res[0] as { cnt?: number })?.cnt ?? 0);
+      lines.push(cnt > 0 ? `✓ ${tableLabel(tbl)}: ${cnt}` : `⚠ ${tableLabel(tbl)}: merkezde 0`);
+    } catch {
+      lines.push(`? ${tableLabel(tbl)}: kontrol edilemedi`);
+    }
+  }
+  return lines.length ? `Merkez kontrol — ${lines.join(' · ')}` : '';
 }
 
 export function HybridSyncModal({ open, onOpenChange, onComplete }: Props) {
@@ -238,12 +266,14 @@ export function HybridSyncModal({ open, onOpenChange, onComplete }: Props) {
       } else if (sendResult.totalSynced === 0 && sendResult.failed === 0) {
         updateStep('send', { status: 'skipped', detail: 'Gönderilecek kayıt yok.' });
       } else {
+        const verifyMsg = await verifyRemoteTablesOnRemote(preview.outboundBreakdown);
         updateStep('send', {
           status: 'done',
           detail:
-            formatSyncBreakdown(sendResult) ||
-            `${sendResult.totalSynced} kayıt gönderildi` +
-              (sendResult.failed > 0 ? ` · ${sendResult.failed} hata` : ''),
+            (formatHybridSyncMessage(sendResult) ||
+              `${sendResult.totalSynced} kayıt gönderildi` +
+                (sendResult.failed > 0 ? ` · ${sendResult.failed} hata` : '')) +
+            (verifyMsg ? ` · ${verifyMsg}` : ''),
         });
       }
 
@@ -262,7 +292,7 @@ export function HybridSyncModal({ open, onOpenChange, onComplete }: Props) {
           updateStep('receive', {
             status: 'done',
             detail:
-              formatSyncBreakdown(pull) ||
+              formatKasaSyncBreakdown(pull) ||
               `${pull.synced} kayıt alındı` + (pull.failed > 0 ? ` · ${pull.failed} hata` : ''),
           });
         }
@@ -289,7 +319,7 @@ export function HybridSyncModal({ open, onOpenChange, onComplete }: Props) {
           updateStep('receive', {
             status: 'done',
             detail:
-              formatSyncBreakdown(recvResult) ||
+              formatHybridSyncMessage(recvResult) ||
               `${recvResult.totalSynced} kayıt alındı` +
                 (recvResult.failed > 0 ? ` · ${recvResult.failed} hata` : ''),
           });
@@ -322,21 +352,26 @@ export function HybridSyncModal({ open, onOpenChange, onComplete }: Props) {
     onOpenChange(false);
   };
 
-  return (
-    <Dialog open={open} onOpenChange={(next) => !running && onOpenChange(next)}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <RefreshCw className="h-5 w-5 text-blue-600" />
-            Veri senkronu
-          </DialogTitle>
-          <DialogDescription>
-            {preview?.isKasa
-              ? 'Kasa: önce yerel veriler merkeze gider, ardından merkezden master veri alınır.'
-              : 'Şube: yerel ve merkez arasında çift yönlü veri aktarımı.'}
-          </DialogDescription>
-        </DialogHeader>
+  if (!open) return null;
 
+  return (
+    <div className={POS_MODAL_OVERLAY} role="dialog" aria-modal="true" aria-labelledby="hybrid-sync-title">
+      <div className="w-full max-w-lg max-h-[min(90vh,100dvh)] flex flex-col bg-white shadow-2xl min-h-0 overflow-hidden rounded-lg">
+        <div className="p-3 border-b flex items-center shrink-0 border-gray-200 bg-gradient-to-r from-blue-600 to-blue-700">
+          <div className="flex items-center gap-2 text-white">
+            <RefreshCw className="h-5 w-5" />
+            <div>
+              <h3 id="hybrid-sync-title" className="text-base font-bold">Veri senkronu</h3>
+              <p className="text-xs text-blue-100 mt-0.5">
+                {preview?.isKasa
+                  ? 'Yerel → merkez, ardından merkezden master veri'
+                  : 'Şube: çift yönlü veri aktarımı'}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 space-y-4">
         {transportAudit && transportAudit.issues.length > 0 && (
           <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-950 space-y-1">
             <p className="font-semibold">
@@ -441,19 +476,25 @@ export function HybridSyncModal({ open, onOpenChange, onComplete }: Props) {
             ) : null}
           </div>
         ) : (
-          <p className="text-sm text-muted-foreground py-4">Özet yüklenemedi. Hibrit mod ve bağlantıyı kontrol edin.</p>
+          <p className="text-sm text-gray-500 py-4">Özet yüklenemedi. Hibrit mod ve bağlantıyı kontrol edin.</p>
         )}
+        </div>
 
-        <DialogFooter className="gap-2 sm:gap-2">
-          <Button type="button" variant="outline" disabled={running} onClick={handleClose}>
+        <div className="p-4 border-t border-gray-200 bg-gray-50 flex gap-2 shrink-0">
+          <button
+            type="button"
+            disabled={running}
+            onClick={handleClose}
+            className="flex-1 px-4 py-2 text-sm bg-gray-200 text-gray-700 rounded hover:bg-gray-300 transition-colors disabled:opacity-50"
+          >
             {finished ? 'Kapat' : 'Vazgeç'}
-          </Button>
+          </button>
           {!finished ? (
-            <Button
+            <button
               type="button"
               disabled={running || loadingPreview || !preview}
               onClick={() => void runSync()}
-              className="gap-2"
+              className="flex-1 px-4 py-2 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
             >
               {running ? (
                 <>
@@ -466,15 +507,19 @@ export function HybridSyncModal({ open, onOpenChange, onComplete }: Props) {
                   Senkronu başlat
                 </>
               )}
-            </Button>
+            </button>
           ) : (
-            <Button type="button" variant="outline" onClick={() => void loadPreview()} className="gap-2">
+            <button
+              type="button"
+              onClick={() => void loadPreview()}
+              className="flex-1 px-4 py-2 text-sm border border-gray-300 rounded hover:bg-white flex items-center justify-center gap-2"
+            >
               <RefreshCw className="h-4 w-4" />
               Yenile
-            </Button>
+            </button>
           )}
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </div>
+      </div>
+    </div>
   );
 }
