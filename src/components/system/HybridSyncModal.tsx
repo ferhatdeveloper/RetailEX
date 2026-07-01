@@ -38,7 +38,7 @@ import {
   auditSyncTransportConfig,
   formatSyncTransportLabel,
 } from '../../services/syncTransportDiagnostics';
-import { POS_MODAL_OVERLAY } from '../pos/posUiConstants';
+import { FullscreenBodyPortal, MODAL_OVERLAY_Z } from '../shared/FullscreenBodyPortal';
 
 type StepStatus = 'pending' | 'running' | 'done' | 'error' | 'skipped';
 
@@ -94,7 +94,11 @@ function tableLabel(name: string): string {
 function formatBreakdown(rows: SyncQueueBreakdownRow[], total: number): string {
   if (total <= 0) return 'Bekleyen kayıt yok';
   if (!rows.length) return `${total} kayıt`;
-  const top = rows.slice(0, 4).map((r) => `${tableLabel(r.tableName)} (${r.count})`);
+  const top = rows.slice(0, 4).map((r) => {
+    const raw = r.tableName.trim();
+    const short = raw.replace(/^rex_\d+_/i, '').replace(/_/g, ' ');
+    return `${tableLabel(short)} (${r.count})`;
+  });
   const rest = total - rows.slice(0, 4).reduce((s, r) => s + r.count, 0);
   if (rest > 0) top.push(`diğer (${rest})`);
   return top.join(' · ');
@@ -355,8 +359,18 @@ export function HybridSyncModal({ open, onOpenChange, onComplete }: Props) {
   if (!open) return null;
 
   return (
-    <div className={POS_MODAL_OVERLAY} role="dialog" aria-modal="true" aria-labelledby="hybrid-sync-title">
-      <div className="w-full max-w-lg max-h-[min(90vh,100dvh)] flex flex-col bg-white shadow-2xl min-h-0 overflow-hidden rounded-lg">
+    <FullscreenBodyPortal
+      zIndex={MODAL_OVERLAY_Z}
+      className="overflow-hidden bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="hybrid-sync-title"
+      onClick={handleClose}
+    >
+      <div
+        className="w-full max-w-lg max-h-[min(90vh,100dvh)] flex flex-col bg-white text-gray-900 shadow-2xl min-h-0 overflow-hidden rounded-lg"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="p-3 border-b flex items-center shrink-0 border-gray-200 bg-gradient-to-r from-blue-600 to-blue-700">
           <div className="flex items-center gap-2 text-white">
             <RefreshCw className="h-5 w-5" />
@@ -391,32 +405,32 @@ export function HybridSyncModal({ open, onOpenChange, onComplete }: Props) {
         )}
 
         {loadingPreview ? (
-          <div className="flex items-center justify-center gap-2 py-8 text-sm text-muted-foreground">
+          <div className="flex items-center justify-center gap-2 py-8 text-sm text-gray-600">
             <Loader2 className="h-4 w-4 animate-spin" />
             Özet hazırlanıyor…
           </div>
         ) : preview ? (
           <div className="space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div className="rounded-lg border p-3 space-y-1 bg-blue-50/50 dark:bg-blue-950/20">
-                <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-blue-700 dark:text-blue-300">
+              <div className="rounded-lg border border-blue-200 p-3 space-y-1 bg-blue-50/80">
+                <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-blue-800">
                   <ArrowUpFromLine className="h-3.5 w-3.5" />
                   Gönderilecek
                 </div>
-                <p className="text-lg font-bold">{preview.localPending}</p>
-                <p className="text-xs text-muted-foreground leading-snug">
+                <p className="text-lg font-bold text-gray-900 tabular-nums">{preview.localPending}</p>
+                <p className="text-xs text-gray-700 leading-snug">
                   {formatBreakdown(preview.outboundBreakdown, preview.localPending)}
                 </p>
               </div>
-              <div className="rounded-lg border p-3 space-y-1 bg-emerald-50/50 dark:bg-emerald-950/20">
-                <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-300">
+              <div className="rounded-lg border border-emerald-200 p-3 space-y-1 bg-emerald-50/80">
+                <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-emerald-800">
                   <ArrowDownToLine className="h-3.5 w-3.5" />
                   Alınacak
                 </div>
-                <p className="text-lg font-bold">
+                <p className="text-lg font-bold text-gray-900 tabular-nums">
                   {preview.inboundPending >= 0 ? preview.inboundPending : '—'}
                 </p>
-                <p className="text-xs text-muted-foreground leading-snug">
+                <p className="text-xs text-gray-700 leading-snug">
                   {preview.isKasa
                     ? formatBreakdown(preview.inboundBreakdown, Math.max(0, preview.inboundPending))
                     : preview.inboundPending >= 0
@@ -427,13 +441,13 @@ export function HybridSyncModal({ open, onOpenChange, onComplete }: Props) {
             </div>
 
             {preview.isKasa && preview.terminalName ? (
-              <p className="text-xs text-muted-foreground">
-                Hedef kasa: <strong>{preview.terminalName}</strong>
+              <p className="text-xs text-gray-600">
+                Hedef kasa: <strong className="text-gray-900">{preview.terminalName}</strong>
               </p>
             ) : null}
 
             <div className="space-y-2">
-              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              <p className="text-xs font-semibold uppercase tracking-wide text-gray-600">
                 Aktarım adımları
               </p>
               <ol className="space-y-2">
@@ -441,23 +455,24 @@ export function HybridSyncModal({ open, onOpenChange, onComplete }: Props) {
                   <li
                     key={step.id}
                     className={cn(
-                      'flex gap-3 rounded-lg border px-3 py-2.5 transition-colors',
-                      step.status === 'running' && 'border-blue-300 bg-blue-50/60 dark:bg-blue-950/30',
-                      step.status === 'done' && 'border-emerald-200 bg-emerald-50/40 dark:bg-emerald-950/20',
-                      step.status === 'error' && 'border-red-200 bg-red-50/40 dark:bg-red-950/20',
+                      'flex gap-3 rounded-lg border px-3 py-2.5 transition-colors bg-white',
+                      step.status === 'running' && 'border-blue-300 bg-blue-50',
+                      step.status === 'done' && 'border-emerald-200 bg-emerald-50/80',
+                      step.status === 'error' && 'border-red-200 bg-red-50/80',
+                      step.status === 'pending' && 'border-gray-200',
                     )}
                   >
                     <div className="mt-0.5 shrink-0">{stepIcon(step.status)}</div>
                     <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium">
+                      <p className="text-sm font-semibold text-gray-900">
                         {idx + 1}. {step.title}
                       </p>
-                      <p className="text-xs text-muted-foreground mt-0.5">{step.description}</p>
+                      <p className="text-xs text-gray-700 mt-0.5 leading-snug">{step.description}</p>
                       {step.detail ? (
                         <p
                           className={cn(
-                            'text-xs mt-1',
-                            step.status === 'error' ? 'text-red-600' : 'text-foreground/80',
+                            'text-xs mt-1 leading-snug',
+                            step.status === 'error' ? 'text-red-700 font-medium' : 'text-gray-800',
                           )}
                         >
                           {step.detail}
@@ -470,13 +485,13 @@ export function HybridSyncModal({ open, onOpenChange, onComplete }: Props) {
             </div>
 
             {totalPending === 0 && !running && !finished ? (
-              <p className="text-xs text-amber-700 dark:text-amber-400">
+              <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded px-2 py-1.5">
                 Bekleyen kayıt görünmüyor; yine de senkron çalıştırılabilir.
               </p>
             ) : null}
           </div>
         ) : (
-          <p className="text-sm text-gray-500 py-4">Özet yüklenemedi. Hibrit mod ve bağlantıyı kontrol edin.</p>
+          <p className="text-sm text-gray-600 py-4">Özet yüklenemedi. Hibrit mod ve bağlantıyı kontrol edin.</p>
         )}
         </div>
 
@@ -520,6 +535,6 @@ export function HybridSyncModal({ open, onOpenChange, onComplete }: Props) {
           )}
         </div>
       </div>
-    </div>
+    </FullscreenBodyPortal>
   );
 }
