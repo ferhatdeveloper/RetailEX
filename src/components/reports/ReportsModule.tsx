@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { BarChart3, TrendingUp, Banknote, ShoppingCart, Calendar, Download, FileText, Clock, User, Package, TrendingDown, Award, PieChart as PieChartIcon, CreditCard, AlertCircle, Percent, AlertTriangle } from 'lucide-react';
+import { BarChart3, TrendingUp, Banknote, ShoppingCart, Calendar, Download, FileText, Clock, User, Package, TrendingDown, Award, PieChart as PieChartIcon, CreditCard, AlertCircle, Percent, AlertTriangle, ClipboardList } from 'lucide-react';
 import type { Sale, Product } from '../../App';
 import { MaterialMovementReport } from './MaterialMovementReport';
 import { ProfitLossReport } from './ProfitLossReport';
@@ -30,6 +30,7 @@ import { normalizePaymentMethodBucket } from '../../utils/paymentMethodUtils';
 import { BeautyServiceReportCrmModal } from './BeautyServiceReportCrmModal';
 import { useBeautyStore } from '../beauty/store/useBeautyStore';
 import { CommissionReport } from '../beauty/components/CommissionReport';
+import { SurveyResultsReport } from '../beauty/components/SurveyResultsReport';
 import { Layout, Menu, ConfigProvider, theme, Input, Button, Dropdown, Modal, Table, Spin, Select } from 'antd';
 import { toast } from 'sonner';
 import { usePermission } from '../../shared/hooks/usePermission';
@@ -513,7 +514,7 @@ type ReportTab =
   // Ödeme & İşlem
   'payment-distribution' | 'discount-report' | 'cash-status' | 'commission' |
   // Güzellik özel
-  'beauty-service-report' | 'beauty-cancelled-report' | 'beauty-appointment-product-report' | 'beauty-commission-report';
+  'beauty-service-report' | 'beauty-cancelled-report' | 'beauty-appointment-product-report' | 'beauty-commission-report' | 'beauty-survey-report';
 
 /** Sol menüde gösterilmez: ekranı yok veya yalnızca “yakında” placeholder idi. */
 const REPORT_TABS_HIDDEN_FROM_MENU = new Set<string>([
@@ -556,6 +557,7 @@ const BEAUTY_ONLY_REPORT_KEYS = new Set<string>([
   'beauty-cancelled-report',
   'beauty-appointment-product-report',
   'beauty-commission-report',
+  'beauty-survey-report',
 ]);
 
 function filterReportMenuGroups(groups: { type?: string; children?: { key?: string }[]; [k: string]: unknown }[]): any[] {
@@ -3865,6 +3867,7 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
             { key: 'beauty-cancelled-report', label: tm('beautyCancelledOnlyReport'), icon: <AlertTriangle /> },
             { key: 'beauty-appointment-product-report', label: tm('beautyAppointmentProductSalesReport'), icon: <ShoppingCart className="w-4 h-4" /> },
             { key: 'beauty-commission-report', label: tm('bShellNavCommissionReport'), icon: <SafetyCertificateOutlined /> },
+            { key: 'beauty-survey-report', label: tm('bSurveyReportTitle'), icon: <ClipboardList className="w-4 h-4" /> },
           ]
           : []
       }
@@ -3876,6 +3879,7 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
   const isBeautyCancelledReportTab = selectedTab === 'beauty-cancelled-report';
   const isBeautyAppointmentProductReportTab = selectedTab === 'beauty-appointment-product-report';
   const isBeautyCommissionReportTab = selectedTab === 'beauty-commission-report';
+  const isBeautySurveyReportTab = selectedTab === 'beauty-survey-report';
   const defaultOpenKeys = businessType === 'beauty'
     ? ['grp-general', 'grp-design', 'grp-sales', 'grp-business-specific']
     : ['grp-general', 'grp-design', 'grp-sales'];
@@ -6467,6 +6471,10 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
 
             {isBeautyCommissionReportTab && (
               <CommissionReport />
+            )}
+
+            {isBeautySurveyReportTab && (
+              <SurveyResultsReport />
             )}
 
             {selectedTab === 'chat-ai' && (

@@ -37,6 +37,10 @@ import {
     BeautySatisfactionSurvey,
     BeautySatisfactionQuestion,
     BeautySatisfactionLabels,
+    BeautySurveyResultsReport,
+    BeautySurveyQuestionStat,
+    BeautySurveyResponseRow,
+    SatisfactionLangCode,
     BeautyPortalSettings,
     BeautyBranch,
     BeautyRoom,
@@ -6318,5 +6322,269 @@ export const beautyService = {
         await beautyService.appendAuditLog('beauty_appointments', 'consumable_deduct', appointmentId, null, {
             service_id: apt.service_id,
         });
+    },
+
+    async getSurveyResultsReport(
+        startYmd: string,
+        endYmd: string,
+        opts?: { surveyId?: string | null; lang?: SatisfactionLangCode },
+    ): Promise<BeautySurveyResultsReport> {
+        const empty: BeautySurveyResultsReport = {
+            start_ymd: startYmd,
+            end_ymd: endYmd,
+            survey_options: [],
+            selected_survey_id: opts?.surveyId ?? null,
+            summary: {
+                response_count: 0,
+                avg_overall_rating: 0,
+                would_recommend_count: 0,
+                would_recommend_pct: 0,
+                completed_appointments: 0,
+                response_rate_pct: 0,
+                legacy_avg_service: null,
+                legacy_avg_staff: null,
+                legacy_avg_cleanliness: null,
+            },
+            question_stats: [],
+            responses: [],
+        };
+        const start = String(startYmd || '').trim();
+        const end = String(endYmd || '').trim();
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(start) || !/^\d{4}-\d{2}-\d{2}$/.test(end)) {
+            return empty;
+        }
+        const lang = opts?.lang ?? 'tr';
+        const surveyFilter = opts?.surveyId?.trim() || null;
+
+        const fbTable = postgres.getMovementTableName('beauty_customer_feedback', 'beauty');
+        const aptTable = postgres.getMovementTableName('beauty_appointments', 'beauty');
+        const custTable = postgres.getCardTableName('customers');
+        const surveyTable = postgres.getCardTableName('beauty_satisfaction_surveys', 'beauty');
+
+        const surveyOptions = await beautyService.getSatisfactionSurveys();
+
+        const fbParams: unknown[] = [start, end];
+        let surveySql = '';
+        if (surveyFilter) {
+            fbParams.push(surveyFilter);
+            surveySql = ` AND f.survey_id = $${fbParams.length}::uuid`;
+        }
+
+        const [fbRes, completedRes] = await Promise.all([
+            postgres.query(
+                `SELECT
+                   f.*,
+                   c.name AS customer_name,
+                   a.appointment_date::text AS appointment_date,
+                   sv.name AS survey_name
+                 FROM ${fbTable} f
+                 LEFT JOIN ${custTable} c ON f.customer_id = c.id
+                 LEFT JOIN ${aptTable} a ON f.appointment_id = a.id
+                 LEFT JOIN ${surveyTable} sv ON f.survey_id = sv.id
+                 WHERE f.created_at >= $1::date
+                   AND f.created_at < ($2::date + INTERVAL '1 day')
+                   ${surveySql}
+                 ORDER BY f.created_at DESC`,
+                fbParams,
+            ),
+            postgres.query(
+                `SELECT COUNT(*)::int AS cnt
+                 FROM ${aptTable} a
+                 WHERE LOWER(TRIM(COALESCE(a.status::text, ''))) = 'completed'
+                   AND a.appointment_date >= $1::date
+                   AND a.appointment_date <= $2::date`,
+                [start, end],
+            ),
+        ]);
+
+        const rawRows = fbRes.rows as Array<
+            BeautyCustomerFeedback & {
+                customer_name?: string;
+                appointment_date?: string | null;
+                survey_name?: string | null;
+                survey_answers?: unknown;
+            }
+        >;
+        const parsedRows = rawRows.map((r) => beautyService.parseFeedbackRow(r));
+        const completedAppointments = Number(
+            (completedRes.rows[0] as { cnt?: number } | undefined)?.cnt ?? 0,
+        );
+
+        const responses: BeautySurveyResponseRow[] = rawRows.map((raw, i) => {
+            const r = parsedRows[i];
+            return {
+                id: String(r.id),
+                created_at: String(r.created_at ?? ''),
+                customer_name: String(raw.customer_name ?? '').trim() || '—',
+                appointment_date: raw.appointment_date?.slice(0, 10) ?? null,
+                overall_rating: Number(r.overall_rating ?? 0),
+                would_recommend: Boolean(r.would_recommend),
+                comment: r.comment?.trim() || null,
+                survey_id: r.survey_id ?? null,
+                survey_name: raw.survey_name?.trim() || null,
+                survey_answers: Array.isArray(r.survey_answers) ? r.survey_answers : [],
+            };
+        });
+
+        const responseCount = responses.length;
+        const avgOverall =
+            responseCount > 0
+                ? responses.reduce((s, r) => s + r.overall_rating, 0) / responseCount
+                : 0;
+        const recommendCount = responses.filter((r) => r.would_recommend).length;
+        const recommendPct = responseCount > 0 ? Math.round((recommendCount / responseCount) * 100) : 0;
+        const responseRatePct =
+            completedAppointments > 0
+                ? Math.round((responseCount / completedAppointments) * 100)
+                : responseCount > 0
+                  ? 100
+                  : 0;
+
+        let legacyServiceSum = 0;
+        let legacyStaffSum = 0;
+        let legacyCleanSum = 0;
+        let legacyLegacyCount = 0;
+        for (const r of parsedRows) {
+            if (r.survey_answers?.length) continue;
+            legacyLegacyCount += 1;
+            legacyServiceSum += Number(r.service_rating ?? 0);
+            legacyStaffSum += Number(r.staff_rating ?? 0);
+            legacyCleanSum += Number(r.cleanliness_rating ?? 0);
+        }
+
+        const surveyIds = [
+            ...new Set(
+                responses.map((r) => r.survey_id).filter((id): id is string => Boolean(id?.trim())),
+            ),
+        ];
+        const questionMeta = new Map<
+            string,
+            { label: string; question_type: string; scale_max: number; sort_order: number }
+        >();
+        for (const sid of surveyIds) {
+            const questions = await beautyService.getSatisfactionQuestions(sid);
+            for (const q of questions) {
+                const label =
+                    q.labels_json[lang] ||
+                    q.labels_json.tr ||
+                    q.labels_json.en ||
+                    Object.values(q.labels_json)[0] ||
+                    q.id.slice(0, 8);
+                questionMeta.set(q.id, {
+                    label,
+                    question_type: String(q.question_type ?? 'rating'),
+                    scale_max: Number(q.scale_max ?? 5),
+                    sort_order: Number(q.sort_order ?? 0),
+                });
+            }
+        }
+
+        type Acc = {
+            label: string;
+            question_type: string;
+            scale_max: number;
+            sort_order: number;
+            count: number;
+            ratingSum: number;
+            ratingCount: number;
+            yes: number;
+            no: number;
+            texts: string[];
+        };
+        const accMap = new Map<string, Acc>();
+
+        const ensureAcc = (qid: string, fallbackLabel?: string) => {
+            let acc = accMap.get(qid);
+            if (!acc) {
+                const meta = questionMeta.get(qid);
+                acc = {
+                    label: meta?.label ?? fallbackLabel ?? qid.slice(0, 8),
+                    question_type: meta?.question_type ?? 'rating',
+                    scale_max: meta?.scale_max ?? 5,
+                    sort_order: meta?.sort_order ?? 999,
+                    count: 0,
+                    ratingSum: 0,
+                    ratingCount: 0,
+                    yes: 0,
+                    no: 0,
+                    texts: [],
+                };
+                accMap.set(qid, acc);
+            }
+            return acc;
+        };
+
+        for (const row of responses) {
+            for (const ans of row.survey_answers) {
+                const qid = String(ans.question_id ?? '').trim();
+                if (!qid) continue;
+                const acc = ensureAcc(qid, ans.label_snapshot);
+                acc.count += 1;
+                if (typeof ans.rating === 'number' && !Number.isNaN(ans.rating)) {
+                    acc.ratingSum += ans.rating;
+                    acc.ratingCount += 1;
+                }
+                if (typeof ans.yes_no === 'boolean') {
+                    if (ans.yes_no) acc.yes += 1;
+                    else acc.no += 1;
+                }
+                const txt = ans.text?.trim();
+                if (txt && acc.texts.length < 5) acc.texts.push(txt);
+            }
+        }
+
+        const question_stats: BeautySurveyQuestionStat[] = [...accMap.entries()]
+            .map(([question_id, acc]) => ({
+                question_id,
+                label: acc.label,
+                question_type: acc.question_type,
+                scale_max: acc.scale_max,
+                response_count: acc.count,
+                avg_rating:
+                    acc.ratingCount > 0
+                        ? Math.round((acc.ratingSum / acc.ratingCount) * 10) / 10
+                        : null,
+                yes_count: acc.yes + acc.no > 0 ? acc.yes : null,
+                no_count: acc.yes + acc.no > 0 ? acc.no : null,
+                yes_pct:
+                    acc.yes + acc.no > 0
+                        ? Math.round((acc.yes / (acc.yes + acc.no)) * 100)
+                        : null,
+                text_samples: acc.texts,
+            }))
+            .sort((a, b) => {
+                const ao = accMap.get(a.question_id)?.sort_order ?? 999;
+                const bo = accMap.get(b.question_id)?.sort_order ?? 999;
+                return ao - bo;
+            });
+
+        return {
+            start_ymd: start,
+            end_ymd: end,
+            survey_options: surveyOptions,
+            selected_survey_id: surveyFilter,
+            summary: {
+                response_count: responseCount,
+                avg_overall_rating: Math.round(avgOverall * 10) / 10,
+                would_recommend_count: recommendCount,
+                would_recommend_pct: recommendPct,
+                completed_appointments: completedAppointments,
+                response_rate_pct: responseRatePct,
+                legacy_avg_service:
+                    legacyLegacyCount > 0
+                        ? Math.round((legacyServiceSum / legacyLegacyCount) * 10) / 10
+                        : null,
+                legacy_avg_staff:
+                    legacyLegacyCount > 0
+                        ? Math.round((legacyStaffSum / legacyLegacyCount) * 10) / 10
+                        : null,
+                legacy_avg_cleanliness:
+                    legacyLegacyCount > 0
+                        ? Math.round((legacyCleanSum / legacyLegacyCount) * 10) / 10
+                        : null,
+            },
+            question_stats,
+            responses,
+        };
     },
 };

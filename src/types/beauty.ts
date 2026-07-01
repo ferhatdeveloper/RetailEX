@@ -550,6 +550,53 @@ export interface BeautyCustomerFeedback {
     survey_answers?: BeautySurveyAnswer[] | null;
 }
 
+/** Güzellik anket sonuç raporu — tarih aralığı özeti */
+export type BeautySurveyQuestionStat = {
+    question_id: string;
+    label: string;
+    question_type: string;
+    scale_max: number;
+    response_count: number;
+    avg_rating: number | null;
+    yes_count: number | null;
+    no_count: number | null;
+    yes_pct: number | null;
+    text_samples: string[];
+};
+
+export type BeautySurveyResponseRow = {
+    id: string;
+    created_at: string;
+    customer_name: string;
+    appointment_date: string | null;
+    overall_rating: number;
+    would_recommend: boolean;
+    comment: string | null;
+    survey_id: string | null;
+    survey_name: string | null;
+    survey_answers: BeautySurveyAnswer[];
+};
+
+export type BeautySurveyResultsReport = {
+    start_ymd: string;
+    end_ymd: string;
+    survey_options: BeautySatisfactionSurvey[];
+    selected_survey_id: string | null;
+    summary: {
+        response_count: number;
+        avg_overall_rating: number;
+        would_recommend_count: number;
+        would_recommend_pct: number;
+        completed_appointments: number;
+        response_rate_pct: number;
+        legacy_avg_service: number | null;
+        legacy_avg_staff: number | null;
+        legacy_avg_cleanliness: number | null;
+    };
+    question_stats: BeautySurveyQuestionStat[];
+    responses: BeautySurveyResponseRow[];
+};
+
 export interface BeautySale {
     id: string;
     invoice_number?: string;
