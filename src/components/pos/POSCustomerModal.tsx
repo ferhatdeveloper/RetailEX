@@ -1,10 +1,11 @@
-import { Users, Search, UserCheck, Phone, Mail, MapPin, Plus, CreditCard, Wallet } from 'lucide-react';
+import { Users, Search, Phone, Mail, MapPin, Plus, CreditCard, Wallet } from 'lucide-react';
 import { useState, useEffect, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import type { Customer } from '../../core/types';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import { supplierAPI } from '../../services/api/suppliers';
-import { POS_MODAL_OVERLAY, POS_MODAL_SHELL, POS_MODAL_HEADER } from './posUiConstants';
+import { MODAL_OVERLAY_Z } from '../shared/FullscreenBodyPortal';
 
 interface POSCustomerModalProps {
   customers: Customer[];
@@ -121,6 +122,14 @@ export function POSCustomerModal({
     onSelect,
   ]);
 
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, []);
+
   const handleOpenCurrentAccountCreateModal = () => {
     const phone = searchTerm.trim();
     localStorage.setItem('callerid_customer_phone', phone);
@@ -135,10 +144,18 @@ export function POSCustomerModal({
     onClose();
   };
 
-  return (
-    <div className={POS_MODAL_OVERLAY} role="dialog" aria-modal="true">
-      <div className={POS_MODAL_SHELL(darkMode)}>
-        <div className={POS_MODAL_HEADER}>
+  if (typeof document === 'undefined') return null;
+
+  return createPortal(
+    <div
+      className={`fixed inset-0 flex flex-col min-h-0 ${darkMode ? 'bg-gray-900' : 'bg-white'}`}
+      style={{ zIndex: MODAL_OVERLAY_Z }}
+      role="dialog"
+      aria-modal="true"
+      aria-label={t.selectCustomerTitle}
+    >
+      <div className="flex h-full min-h-0 w-full flex-col">
+        <div className="p-3 border-b flex items-center shrink-0 border-gray-200 bg-gradient-to-r from-blue-600 to-blue-700">
           <h3 className="text-base text-white flex items-center gap-2">
             <Users className="w-5 h-5" />
             {t.selectCustomerTitle}
@@ -165,7 +182,7 @@ export function POSCustomerModal({
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-auto p-4">
+        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-4">
           <div className="grid gap-3">
             {/* No Customer Option */}
             <button
@@ -273,7 +290,7 @@ export function POSCustomerModal({
         </div>
 
         {/* Footer */}
-        <div className={`px-4 py-3 border-t ${darkMode ? 'border-gray-700' : 'border-gray-200'} space-y-3`}>
+        <div className={`px-4 py-3 border-t shrink-0 ${darkMode ? 'border-gray-700 bg-gray-900' : 'border-gray-200 bg-gray-50'} space-y-3`}>
           {/* Payment Type Selection */}
           {allowPaymentTypeSelection && selectedCustomer && (
             <div className="bg-blue-50 border border-blue-200 p-3 rounded-lg">
@@ -332,6 +349,7 @@ export function POSCustomerModal({
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
