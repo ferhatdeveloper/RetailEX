@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { CheckCircle2, ChevronDown, Radio, RefreshCw, Wifi, WifiOff } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../../contexts/AuthContext';
@@ -18,6 +19,7 @@ import {
 } from '../../services/syncTransportDiagnostics';
 import { wsService } from '../../services/websocket';
 import { cn } from '../ui/utils';
+import { FULLSCREEN_BODY_PORTAL_Z } from '../shared/FullscreenBodyPortal';
 import { HybridSyncModal } from './HybridSyncModal';
 
 type Props = {
@@ -43,6 +45,57 @@ const TRANSPORT_OPTIONS: { value: HybridSyncTransport; label: string; hint: stri
   },
 ];
 
+type WsConnectionStatus = 'connected' | 'disconnected' | 'connecting';
+
+function WsLiveIndicator({ status, compact }: { status: WsConnectionStatus; compact: boolean }) {
+  const title =
+    status === 'connected'
+      ? 'Merkez WebSocket bağlı'
+      : status === 'connecting'
+        ? 'WebSocket bağlanıyor…'
+        : 'WebSocket bağlı değil';
+
+  return (
+    <span
+      className="relative flex shrink-0 items-center justify-center"
+      title={title}
+      role="status"
+      aria-label={title}
+    >
+      {status === 'connected' ? (
+        <>
+          <span
+            className={cn(
+              'absolute rounded-full bg-emerald-400/40 animate-ping',
+              compact ? 'h-3 w-3' : 'h-3.5 w-3.5',
+            )}
+          />
+          <span
+            className={cn(
+              'relative rounded-full bg-emerald-400 ring-2 ring-emerald-200/90 shadow-[0_0_8px_rgba(52,211,153,0.95)]',
+              compact ? 'h-2.5 w-2.5' : 'h-3 w-3',
+            )}
+          />
+        </>
+      ) : status === 'connecting' ? (
+        <span
+          className={cn(
+            'rounded-full bg-amber-400 animate-pulse ring-2 ring-amber-200/80',
+            compact ? 'h-2.5 w-2.5' : 'h-3 w-3',
+          )}
+        />
+      ) : (
+        <span
+          className={cn(
+            'rounded-full bg-slate-300 ring-1 ring-white/40',
+            compact ? 'h-2.5 w-2.5' : 'h-3 w-3',
+          )}
+        />
+      )}
+    </span>
+  );
+}
+
 export function HybridSyncToolbarButtons({ compact = false }: Props) {
   const { user } = useAuth();
   const isHybrid = DB_SETTINGS.activeMode === 'hybrid';
@@ -55,7 +108,9 @@ export function HybridSyncToolbarButtons({ compact = false }: Props) {
     wsService.getStatus(),
   );
   const [transport, setTransport] = useState<HybridSyncTransport>(DB_SETTINGS.hybridSyncTransport);
-  const menuRef = useRef<HTMLDivElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const [menuPos, setMenuPos] = useState<{ top: number; right: number } | null>(null);
   const [lastArrival, setLastArrival] = useState<KasaDataArrivalState | null>(() =>
     getLastKasaDataArrival(),
   );
@@ -74,13 +129,36 @@ export function HybridSyncToolbarButtons({ compact = false }: Props) {
   useEffect(() => {
     if (!transportMenuOpen) return;
     const close = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setTransportMenuOpen(false);
-      }
+      const target = e.target as Node;
+      if (dropdownRef.current?.contains(target) || triggerRef.current?.contains(target)) return;
+      setTransportMenuOpen(false);
     };
     document.addEventListener('pointerdown', close, true);
     return () => document.removeEventListener('pointerdown', close, true);
   }, [transportMenuOpen]);
+
+  const updateMenuPosition = useCallback(() => {
+    const rect = triggerRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    setMenuPos({
+      top: rect.bottom + 6,
+      right: Math.max(8, window.innerWidth - rect.right),
+    });
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!transportMenuOpen) {
+      setMenuPos(null);
+      return;
+    }
+    updateMenuPosition();
+    window.addEventListener('resize', updateMenuPosition);
+    window.addEventListener('scroll', updateMenuPosition, true);
+    return () => {
+      window.removeEventListener('resize', updateMenuPosition);
+      window.removeEventListener('scroll', updateMenuPosition, true);
+    };
+  }, [transportMenuOpen, updateMenuPosition]);
 
   const refreshPending = useCallback(async () => {
     if (!isHybrid) return;
@@ -182,14 +260,15 @@ export function HybridSyncToolbarButtons({ compact = false }: Props) {
     ? 'hidden sm:inline text-[9px] font-black uppercase tracking-wide'
     : 'hidden md:inline text-[10px] font-black uppercase tracking-wide';
 
-  const statusDotClass =
+  const wsStatusLabel =
+    wsStatus === 'connected' ? 'Bağlı' : wsStatus === 'connecting' ? 'Bağlanıyor…' : 'Kapalı';
+
+  const wsStatusBadgeClass =
     wsStatus === 'connected'
-      ? 'bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.8)]'
+      ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
       : wsStatus === 'connecting'
-        ? 'bg-amber-400 animate-pulse'
-        : configIssue
-          ? 'bg-red-400'
-          : 'bg-slate-400/90';
+        ? 'bg-amber-50 text-amber-900 border-amber-200'
+        : 'bg-gray-100 text-gray-700 border-gray-200';
 
   if (!isHybrid) {
     return (
@@ -206,18 +285,19 @@ export function HybridSyncToolbarButtons({ compact = false }: Props) {
     <>
       <div className={shellClass}>
         {/* Taşıma modu + durum — tek dropdown */}
-        <div className="relative" ref={menuRef}>
+        <div className="relative">
           <button
+            ref={triggerRef}
             type="button"
             title="Senkron taşıma modu ve bağlantı durumu"
             onClick={() => setTransportMenuOpen((o) => !o)}
             className={cn(btnClass, 'gap-1 pr-1.5')}
           >
-            <span className={cn('h-2 w-2 rounded-full shrink-0', wsActive ? statusDotClass : 'bg-blue-300/80')} />
+            {wsActive ? <WsLiveIndicator status={wsStatus} compact={compact} /> : null}
             {transport === 'polling' ? (
-              <RefreshCw className={cn(compact ? 'h-3 w-3' : 'h-3.5 w-3.5')} />
+              <RefreshCw className={cn(compact ? 'h-3 w-3' : 'h-3.5 w-3.5', 'opacity-90')} />
             ) : (
-              <Radio className={cn(compact ? 'h-3 w-3' : 'h-3.5 w-3.5')} />
+              <Radio className={cn(compact ? 'h-3 w-3' : 'h-3.5 w-3.5', 'opacity-90')} />
             )}
             <span className={cn(labelClass, 'max-w-[5.5rem] truncate')}>
               {formatSyncTransportLabel(transport)}
@@ -225,67 +305,95 @@ export function HybridSyncToolbarButtons({ compact = false }: Props) {
             <ChevronDown className={cn(compact ? 'h-2.5 w-2.5' : 'h-3 w-3', 'opacity-70')} />
           </button>
 
-          {transportMenuOpen && (
-            <div
-              className="absolute right-0 top-[calc(100%+6px)] z-[20060] w-[min(18rem,calc(100vw-1rem))] overflow-hidden rounded-xl border border-slate-600 bg-slate-900 text-white shadow-2xl ring-1 ring-black/40"
-              role="menu"
-            >
-              <div className="border-b border-slate-700 bg-slate-800/90 px-3 py-2.5 space-y-1.5">
-                <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">Senkron durumu</p>
-                {wsActive && (
-                  <button
-                    type="button"
-                    onClick={showWsDiagnostics}
-                    className="flex w-full items-center gap-2 rounded-lg bg-slate-800 px-2 py-1.5 text-left hover:bg-slate-700"
-                  >
-                    <span className={cn('h-2.5 w-2.5 rounded-full shrink-0', statusDotClass)} />
-                    {wsStatus === 'connected' ? (
-                      <Wifi className="h-3.5 w-3.5 text-emerald-400" />
-                    ) : (
-                      <WifiOff className="h-3.5 w-3.5 text-slate-400" />
-                    )}
-                    <span className="text-xs font-semibold">
-                      WebSocket: {wsStatus === 'connected' ? 'Bağlı' : wsStatus === 'connecting' ? 'Bağlanıyor…' : 'Kapalı'}
-                    </span>
-                  </button>
-                )}
-                <p className="text-[11px] text-slate-300">
-                  Gönderilecek: <strong className="text-white">{pending}</strong>
-                  {isKasa ? (
-                    <>
-                      {' '}
-                      · Alınacak:{' '}
-                      <strong className="text-white">{inboundPending >= 0 ? inboundPending : '—'}</strong>
-                    </>
-                  ) : null}
-                </p>
-                {isKasa && lastArrival && lastArrival.inserted + lastArrival.updated > 0 ? (
-                  <p className="flex items-center gap-1 text-[10px] text-emerald-300">
-                    <CheckCircle2 className="h-3 w-3 shrink-0" />
-                    Son alım: {new Date(lastArrival.at).toLocaleString('tr-TR')}
+          {transportMenuOpen &&
+            menuPos &&
+            typeof document !== 'undefined' &&
+            createPortal(
+              <div
+                ref={dropdownRef}
+                className="w-[min(18rem,calc(100vw-1rem))] overflow-hidden rounded-xl border border-gray-200 bg-white text-gray-900 shadow-2xl"
+                style={{
+                  position: 'fixed',
+                  top: menuPos.top,
+                  right: menuPos.right,
+                  zIndex: FULLSCREEN_BODY_PORTAL_Z,
+                }}
+                role="menu"
+              >
+                <div className="border-b border-gray-200 bg-gray-50 px-3 py-2.5 space-y-2">
+                  <p className="text-[10px] font-black uppercase tracking-wider text-gray-500">
+                    Senkron durumu
                   </p>
-                ) : null}
-              </div>
+                  {wsActive && (
+                    <button
+                      type="button"
+                      onClick={showWsDiagnostics}
+                      className="flex w-full items-center gap-2 rounded-lg border border-gray-200 bg-white px-2.5 py-2 text-left hover:bg-gray-50"
+                    >
+                      <WsLiveIndicator status={wsStatus} compact={false} />
+                      {wsStatus === 'connected' ? (
+                        <Wifi className="h-4 w-4 text-emerald-600 shrink-0" />
+                      ) : (
+                        <WifiOff className="h-4 w-4 text-gray-400 shrink-0" />
+                      )}
+                      <span className="text-xs font-semibold text-gray-900">
+                        WebSocket: {wsStatusLabel}
+                      </span>
+                      <span
+                        className={cn(
+                          'ml-auto rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide',
+                          wsStatusBadgeClass,
+                        )}
+                      >
+                        {wsStatus === 'connected' ? 'Canlı' : wsStatus === 'connecting' ? '…' : 'Kapalı'}
+                      </span>
+                    </button>
+                  )}
+                  {configIssue ? (
+                    <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded px-2 py-1">
+                      Yapılandırma uyarısı — F12 konsolunda ayrıntı.
+                    </p>
+                  ) : null}
+                  <p className="text-[11px] text-gray-700">
+                    Gönderilecek: <strong className="text-gray-900">{pending}</strong>
+                    {isKasa ? (
+                      <>
+                        {' '}
+                        · Alınacak:{' '}
+                        <strong className="text-gray-900">
+                          {inboundPending >= 0 ? inboundPending : '—'}
+                        </strong>
+                      </>
+                    ) : null}
+                  </p>
+                  {isKasa && lastArrival && lastArrival.inserted + lastArrival.updated > 0 ? (
+                    <p className="flex items-center gap-1 text-[10px] text-emerald-700">
+                      <CheckCircle2 className="h-3 w-3 shrink-0" />
+                      Son alım: {new Date(lastArrival.at).toLocaleString('tr-TR')}
+                    </p>
+                  ) : null}
+                </div>
 
-              <div className="py-1">
-                {TRANSPORT_OPTIONS.map((opt) => (
-                  <button
-                    key={opt.value}
-                    type="button"
-                    role="menuitem"
-                    className={cn(
-                      'flex w-full flex-col gap-0.5 px-3 py-2.5 text-left hover:bg-slate-800',
-                      transport === opt.value && 'bg-slate-800/80',
-                    )}
-                    onClick={() => void handleTransportChange(opt.value)}
-                  >
-                    <span className="text-xs font-bold text-white">{opt.label}</span>
-                    <span className="text-[10px] leading-snug text-slate-400">{opt.hint}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
+                <div className="py-1 bg-white">
+                  {TRANSPORT_OPTIONS.map((opt) => (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      role="menuitem"
+                      className={cn(
+                        'flex w-full flex-col gap-0.5 px-3 py-2.5 text-left hover:bg-blue-50',
+                        transport === opt.value && 'bg-blue-50/80',
+                      )}
+                      onClick={() => void handleTransportChange(opt.value)}
+                    >
+                      <span className="text-xs font-bold text-gray-900">{opt.label}</span>
+                      <span className="text-[10px] leading-snug text-gray-600">{opt.hint}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>,
+              document.body,
+            )}
         </div>
 
         {/* Manuel senkron */}
