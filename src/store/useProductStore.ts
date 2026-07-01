@@ -221,11 +221,3 @@ export const useProductStore = create<ProductState>()(
   )
 );
 
-// Auto-load products on first mount
-if (typeof window !== 'undefined') {
-  const store = useProductStore.getState();
-  if (store.products.length === 0) {
-    store.loadProducts();
-  }
-}
-

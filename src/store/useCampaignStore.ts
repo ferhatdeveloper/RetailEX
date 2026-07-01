@@ -157,11 +157,3 @@ export const useCampaignStore = create<CampaignState>()(
   )
 );
 
-// Auto-load campaigns on first mount
-if (typeof window !== 'undefined') {
-  const store = useCampaignStore.getState();
-  if (store.campaigns.length === 0) {
-    store.loadCampaigns();
-  }
-}
-

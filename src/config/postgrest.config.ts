@@ -5,6 +5,7 @@
  */
 
 import { DB_SETTINGS } from '../services/postgres';
+import { IS_TAURI } from '../utils/env';
 import { rewriteRetailexAppUrlForViteDev } from '../utils/retailexDevProxy';
 import { resolveEffectiveRemoteRestUrl } from '../services/merkezTenantRegistry';
 
@@ -32,8 +33,10 @@ export const postgrestConfig = {
 
 /** Kiracı PostgREST ile okuma (rest_api veya hibritte remote_rest_url) */
 export function shouldUseTenantPostgrestApi(): boolean {
-  if (DB_SETTINGS.connectionProvider === 'rest_api') return true;
   if (DB_SETTINGS.activeMode === 'offline') return false;
+  // Tauri hibrit: config yüklenmeden önce bile yerel PG (pg_query); uzak PostgREST 404 üretmesin.
+  if (IS_TAURI && DB_SETTINGS.activeMode === 'hybrid') return false;
+  if (DB_SETTINGS.connectionProvider === 'rest_api') return true;
   // Hibrit + yerel PG (Tauri/masaüstü): okuma/yazım pg_query; PostgREST yalnızca senkron motoru.
   if (DB_SETTINGS.activeMode === 'hybrid' && DB_SETTINGS.connectionProvider === 'db') return false;
   return String(DB_SETTINGS.remoteRestUrl || '').trim().length > 0;

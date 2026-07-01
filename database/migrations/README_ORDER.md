@@ -69,6 +69,7 @@
 64. **076_invoice_sales_header_fields.sql** – Dönem `sales` tablolarına `header_fields` JSONB (fatura formu başlık alanları listesi için).
 66. **079_ensure_apply_sync_triggers.sql** – `enqueue_sync_event`, `apply_sync_triggers`, `try_apply_sync_triggers` (create_firm_tables 42883 düzeltmesi).
 67. **081_fix_apply_sync_triggers_recursion.sql** – `APPLY_SYNC_TRIGGERS`/`apply_sync_triggers` isim cakismasi (54001 sonsuz dongu) duzeltmesi.
+68. **082_wms_transfers_firm_nr_columns.sql** – `wms.transfers`: `firm_nr`, `source_store_id`/`target_store_id` (eski `from_store_id`/`to_store_id` yeniden adlandırma).
 
 **Kiracılara toplu uygulama (VPS / uzak PG):**
 - `npm run db:migrate:tenants` — tüm kiracı DB'ler

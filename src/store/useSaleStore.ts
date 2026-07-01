@@ -150,11 +150,3 @@ export const useSaleStore = create<SaleState>()(
   )
 );
 
-// Auto-load sales on first mount
-if (typeof window !== 'undefined') {
-  const store = useSaleStore.getState();
-  if (store.sales.length === 0) {
-    store.loadSales(100);
-  }
-}
-

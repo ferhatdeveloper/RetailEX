@@ -897,27 +897,40 @@ export async function getTransfers(status?: string): Promise<WMSTransfer[]> {
             (Array.isArray(items) ? items : []).forEach((it: any) => {
                 countBy.set(it.transfer_id, (countBy.get(it.transfer_id) || 0) + 1);
             });
-            const storeIds = [...new Set(list.flatMap((t: any) => [t.from_store_id, t.to_store_id]).filter(Boolean))];
+            const storeIds = [
+                ...new Set(
+                    list.flatMap((t: any) => [
+                        t.source_store_id ?? t.from_store_id,
+                        t.target_store_id ?? t.to_store_id,
+                    ]).filter(Boolean),
+                ),
+            ];
             const storeMap = new Map<string, string>();
             if (storeIds.length) {
                 const sil = storeIds.map(id => encodeURIComponent(id)).join(',');
                 const srows = await postgrest.get<any[]>('/stores', { select: 'id,name', id: `in.(${sil})` }, { schema: 'public' });
                 (Array.isArray(srows) ? srows : []).forEach((s: any) => storeMap.set(s.id, s.name));
             }
-            return list.map((t: any) => ({
-                ...t,
-                from_store_name: t.from_store_id ? storeMap.get(t.from_store_id) : undefined,
-                to_store_name: t.to_store_id ? storeMap.get(t.to_store_id) : undefined,
-                item_count: countBy.get(t.id) || 0,
-            })) as WMSTransfer[];
+            return list.map((t: any) => {
+                const fromId = t.source_store_id ?? t.from_store_id;
+                const toId = t.target_store_id ?? t.to_store_id;
+                return {
+                    ...t,
+                    from_store_id: fromId,
+                    to_store_id: toId,
+                    from_store_name: fromId ? storeMap.get(fromId) : undefined,
+                    to_store_name: toId ? storeMap.get(toId) : undefined,
+                    item_count: countBy.get(t.id) || 0,
+                };
+            }) as WMSTransfer[];
         }
         let sql = `SELECT t.*,
                     sf.name AS from_store_name,
                     st2.name AS to_store_name,
                     COUNT(ti.id)::int AS item_count
                    FROM wms.transfers t
-                   LEFT JOIN public.stores sf ON t.from_store_id = sf.id
-                   LEFT JOIN public.stores st2 ON t.to_store_id = st2.id
+                   LEFT JOIN public.stores sf ON t.source_store_id = sf.id
+                   LEFT JOIN public.stores st2 ON t.target_store_id = st2.id
                    LEFT JOIN wms.transfer_items ti ON t.id = ti.transfer_id
                    WHERE t.firm_nr = $1`;
         const params: any[] = [firmNr];

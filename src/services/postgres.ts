@@ -123,6 +123,11 @@ export let DB_SETTINGS = {
   centralApiUrl: '' as string,
 };
 
+// Tauri hibrit varsayılanı: modül import anında PostgREST yerine yerel PG (store auto-load 404 önleme).
+if (IS_TAURI && DB_SETTINGS.activeMode === 'hybrid') {
+  DB_SETTINGS.connectionProvider = 'db';
+}
+
 type PgEndpointConfig = typeof LOCAL_CONFIG;
 
 /** Hibrit modda yazım (INSERT/UPDATE/…) yalnızca yerel PG — uzak uca düşme. */

@@ -179,11 +179,3 @@ export const useCustomerStore = create<CustomerState>()(
   )
 );
 
-// Auto-load customers on first mount
-if (typeof window !== 'undefined') {
-  const store = useCustomerStore.getState();
-  if (store.customers.length === 0) {
-    store.loadCustomers();
-  }
-}
-

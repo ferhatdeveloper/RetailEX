@@ -323,6 +323,64 @@ async fn ensure_create_period_tables_fixed(
     Ok(())
 }
 
+const EMBEDDED_082_WMS_TRANSFERS: &str =
+    include_str!("../../database/migrations/082_wms_transfers_firm_nr_columns.sql");
+
+/// wms.transfers firm_nr / source_store_id kolonlarini eski kurulumlarda tamamlar.
+async fn ensure_wms_transfers_columns(
+    client: &tokio_postgres::Client,
+    app: &tauri::AppHandle,
+) -> Result<(), String> {
+    let file_name = "082_wms_transfers_firm_nr_columns.sql";
+    let mut search_paths = Vec::new();
+    search_paths.push(std::path::PathBuf::from("database/migrations"));
+    search_paths.push(std::path::PathBuf::from("../database/migrations"));
+    if let Ok(res) = app.path().resolve("database/migrations", BaseDirectory::Resource) {
+        search_paths.push(res);
+    }
+    if let Ok(res) = app.path().resolve("_up_/database/migrations", BaseDirectory::Resource) {
+        search_paths.push(res);
+    }
+    if let Ok(resource_dir) = app.path().resource_dir() {
+        search_paths.push(resource_dir.join("database").join("migrations"));
+        search_paths.push(resource_dir.join("migrations"));
+        search_paths.push(resource_dir.join("_up_").join("database").join("migrations"));
+    }
+
+    let raw_sql = {
+        let mut found: Option<String> = None;
+        for dir in &search_paths {
+            let path = dir.join(file_name);
+            if path.exists() {
+                found = Some(std::fs::read_to_string(&path).map_err(|e| {
+                    format!("082 migration okunamadı ({}): {}", path.display(), e)
+                })?);
+                break;
+            }
+        }
+        found.unwrap_or_else(|| EMBEDDED_082_WMS_TRANSFERS.to_string())
+    };
+
+    let sql = crate::sql_migration_split::strip_utf8_bom(&raw_sql);
+    let statements = crate::sql_migration_split::split_postgres_statements(sql);
+
+    for (idx, stmt) in statements.iter().enumerate() {
+        if stmt.trim().is_empty() {
+            continue;
+        }
+        if let Err(e) = client.batch_execute(stmt).await {
+            return Err(format!(
+                "082 wms.transfers ifade {}/{}: {}",
+                idx + 1,
+                statements.len(),
+                format_pg_error(e)
+            ));
+        }
+    }
+
+    Ok(())
+}
+
 /// CREATE_FIRM_TABLES / CREATE_PERIOD_TABLES yoksa 060 migration dosyasını uygular.
 async fn ensure_firm_period_engine(
     client: &tokio_postgres::Client,
@@ -828,6 +886,7 @@ pub async fn init_firm_schema(
 
     ensure_firm_period_engine(&client, &app).await?;
     ensure_apply_sync_triggers(&client, &app).await?;
+    ensure_wms_transfers_columns(&client, &app).await?;
     client
         .execute("SELECT public.create_firm_tables($1::varchar)", &[&firm_nr])
         .await
@@ -878,6 +937,7 @@ pub async fn init_period_schema(
     ensure_firm_period_engine(&client, &app).await?;
     ensure_apply_sync_triggers(&client, &app).await?;
     ensure_create_period_tables_fixed(&client, &app).await?;
+    ensure_wms_transfers_columns(&client, &app).await?;
     client
         .execute(
             "SELECT public.create_period_tables($1::varchar, $2::varchar)",
