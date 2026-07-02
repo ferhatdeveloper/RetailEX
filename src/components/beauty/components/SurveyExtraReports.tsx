@@ -127,6 +127,7 @@ export function SurveyTrendReport() {
                 subtitleKey="bSurveyTrendReportSubtitle"
                 icon={<TrendingUp size={22} />}
                 iconClassName="bg-blue-100 text-blue-700"
+                buttonClassName="bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300"
                 startYmd={startYmd}
                 endYmd={endYmd}
                 onStartChange={setStartYmd}

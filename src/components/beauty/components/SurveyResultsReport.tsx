@@ -1,9 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { CalendarDays, ChevronDown, ChevronRight, ClipboardList, RefreshCw, Star, ThumbsUp, Users } from 'lucide-react';
+import { ChevronDown, ChevronRight, ClipboardList, Star, ThumbsUp, Users } from 'lucide-react';
 import { beautyService } from '../../../services/beautyService';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { formatLocalYmd } from '../../../utils/dateLocal';
 import type { BeautySurveyResponseRow, BeautySurveyResultsReport } from '../../../types/beauty';
+import { SurveyReportToolbar } from './SurveyReportToolbar';
 import { cn } from '../../ui/utils';
 
 type RatingFilter = 'all' | '1' | '2' | '3' | '4' | '5';
@@ -179,69 +180,20 @@ export function SurveyResultsReport() {
 
     return (
         <div className="p-6 space-y-6 bg-gray-50 min-h-full">
-            <div className="bg-white rounded-3xl border border-gray-100 p-6 shadow-sm">
-                <div className="flex flex-wrap items-center justify-between gap-4">
-                    <div className="flex items-center gap-3">
-                        <div className="w-11 h-11 rounded-2xl bg-violet-100 text-violet-700 flex items-center justify-center">
-                            <ClipboardList size={22} />
-                        </div>
-                        <div>
-                            <h2 className="text-xl font-black text-gray-900">{tm('bSurveyReportTitle')}</h2>
-                            <p className="text-xs font-semibold text-gray-500">{tm('bSurveyReportSubtitle')}</p>
-                        </div>
-                    </div>
-                    <div className="flex items-end gap-2 flex-wrap">
-                        <label className="flex flex-col gap-1">
-                            <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">{tm('date')}</span>
-                            <div className="flex items-center gap-2 border border-gray-200 rounded-xl px-3 py-2 bg-white">
-                                <CalendarDays size={14} className="text-violet-600" />
-                                <input
-                                    type="date"
-                                    value={startYmd}
-                                    onChange={(e) => setStartYmd(e.target.value)}
-                                    className="text-xs font-bold text-gray-700 outline-none bg-transparent"
-                                />
-                            </div>
-                        </label>
-                        <label className="flex flex-col gap-1">
-                            <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">{tm('bToDate')}</span>
-                            <div className="flex items-center gap-2 border border-gray-200 rounded-xl px-3 py-2 bg-white">
-                                <CalendarDays size={14} className="text-violet-600" />
-                                <input
-                                    type="date"
-                                    value={endYmd}
-                                    onChange={(e) => setEndYmd(e.target.value)}
-                                    className="text-xs font-bold text-gray-700 outline-none bg-transparent"
-                                />
-                            </div>
-                        </label>
-                        <label className="flex flex-col gap-1 min-w-[180px]">
-                            <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">{tm('bSurveyReportFilter')}</span>
-                            <select
-                                value={surveyId}
-                                onChange={(e) => setSurveyId(e.target.value)}
-                                className="h-10 border border-gray-200 rounded-xl px-3 text-xs font-bold text-gray-700 bg-white"
-                            >
-                                <option value="all">{tm('bSurveyReportAllSurveys')}</option>
-                                {(data?.survey_options ?? []).map((s) => (
-                                    <option key={s.id} value={s.id}>
-                                        {s.name}
-                                    </option>
-                                ))}
-                            </select>
-                        </label>
-                        <button
-                            type="button"
-                            onClick={() => void load()}
-                            disabled={loading}
-                            className="h-10 px-4 rounded-xl bg-violet-600 hover:bg-violet-700 disabled:bg-violet-300 text-white text-xs font-extrabold flex items-center gap-2"
-                        >
-                            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-                            {loading ? tm('bLoading') : tm('bRunReport')}
-                        </button>
-                    </div>
-                </div>
-            </div>
+            <SurveyReportToolbar
+                titleKey="bSurveyReportTitle"
+                subtitleKey="bSurveyReportSubtitle"
+                icon={<ClipboardList size={22} />}
+                startYmd={startYmd}
+                endYmd={endYmd}
+                onStartChange={setStartYmd}
+                onEndChange={setEndYmd}
+                surveyId={surveyId}
+                onSurveyChange={setSurveyId}
+                surveyOptions={data?.survey_options ?? []}
+                loading={loading}
+                onRun={() => void load()}
+            />
 
             {error && (
                 <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { BarChart3, TrendingUp, Banknote, ShoppingCart, Calendar, Download, FileText, Clock, User, Package, TrendingDown, Award, PieChart as PieChartIcon, CreditCard, AlertCircle, Percent, AlertTriangle, ClipboardList, MessageSquare, LineChart, Users, Scissors, ThumbsUp } from 'lucide-react';
+import { BarChart3, TrendingUp, Banknote, ShoppingCart, Calendar, Download, FileText, Clock, User, Package, TrendingDown, Award, PieChart as PieChartIcon, CreditCard, AlertCircle, Percent, AlertTriangle, ClipboardList, MessageSquare, LineChart as LineChartLucide, Users, Scissors, ThumbsUp } from 'lucide-react';
 import type { Sale, Product } from '../../App';
 import { MaterialMovementReport } from './MaterialMovementReport';
 import { ProfitLossReport } from './ProfitLossReport';
@@ -581,7 +581,7 @@ function beautyReportMenuItems(tm: (key: string) => string) {
     { key: 'beauty-appointment-product-report', label: tm('beautyAppointmentProductSalesReport'), icon: <ShoppingCart className="w-4 h-4" /> },
     { key: 'beauty-commission-report', label: tm('bShellNavCommissionReport'), icon: <SafetyCertificateOutlined /> },
     { key: 'beauty-survey-report', label: tm('bShellNavSurveyReport'), icon: <ClipboardList className="w-4 h-4" /> },
-    { key: 'beauty-survey-trend-report', label: tm('bSurveyTrendReportMenu'), icon: <LineChart className="w-4 h-4" /> },
+    { key: 'beauty-survey-trend-report', label: tm('bSurveyTrendReportMenu'), icon: <LineChartLucide className="w-4 h-4" /> },
     { key: 'beauty-survey-staff-report', label: tm('bSurveyStaffReportMenu'), icon: <Users className="w-4 h-4" /> },
     { key: 'beauty-survey-service-report', label: tm('bSurveyServiceReportMenu'), icon: <Scissors className="w-4 h-4" /> },
     { key: 'beauty-survey-nps-report', label: tm('bSurveyNpsReportMenu'), icon: <ThumbsUp className="w-4 h-4" /> },
