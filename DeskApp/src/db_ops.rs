@@ -4,6 +4,45 @@ use tauri::path::BaseDirectory;
 use tokio_postgres::NoTls;
 
 pub use crate::db_utils::format_pg_error;
+
+/// Windows/OS güncellemesi sonrası template1 collation uyumsuzluğunda CREATE DATABASE başarısız olur.
+async fn refresh_template_collation_versions(client: &tokio_postgres::Client) {
+    for db in ["postgres", "template1"] {
+        if let Err(e) = client
+            .batch_execute(&format!("ALTER DATABASE {} REFRESH COLLATION VERSION", db))
+            .await
+        {
+            eprintln!(
+                "Collation refresh uyarısı ({}): {}",
+                db,
+                format_pg_error(e)
+            );
+        }
+    }
+}
+
+fn is_collation_version_mismatch(e: &tokio_postgres::Error) -> bool {
+    if let Some(db_err) = e.as_db_error() {
+        let msg = format!("{}", db_err);
+        if msg.contains("collation version mismatch") {
+            return true;
+        }
+        if db_err
+            .detail()
+            .is_some_and(|d| d.contains("collation version mismatch"))
+        {
+            return true;
+        }
+        if db_err
+            .hint()
+            .is_some_and(|h| h.contains("REFRESH COLLATION VERSION"))
+        {
+            return true;
+        }
+    }
+    e.to_string().contains("collation version mismatch")
+}
+
 #[command]
 pub async fn create_database(config: AppConfig, target: Option<String>) -> Result<(), String> {
     use tokio_postgres::NoTls;
@@ -61,15 +100,39 @@ pub async fn create_database(config: AppConfig, target: Option<String>) -> Resul
         .map_err(|e| format!("Veritabanı kontrolü başarısız: {}", format_pg_error(e)))?;
 
     if rows.is_empty() {
-        // 4. Create database
-        let safe_db_name = db_name.replace("\"", ""); 
-        
-        client
-            .execute(&format!("CREATE DATABASE \"{}\"", safe_db_name), &[])
-            .await
-            .map_err(|e| format!("Veritabanı oluşturulamadı: {}", format_pg_error(e)))?;
-            
-        println!("Database {} created successfully.", safe_db_name);
+        // 4. Create database (collation uyumsuzluğunda template1 yenile ve bir kez daha dene)
+        let safe_db_name = db_name.replace("\"", "");
+
+        refresh_template_collation_versions(&client).await;
+
+        let create_sql = format!("CREATE DATABASE \"{}\"", safe_db_name);
+        let create_result = client.execute(&create_sql, &[]).await;
+
+        match create_result {
+            Ok(_) => {
+                println!("Database {} created successfully.", safe_db_name);
+            }
+            Err(e) if is_collation_version_mismatch(&e) => {
+                eprintln!(
+                    "Collation uyumsuzluğu algılandı; template veritabanları yenileniyor..."
+                );
+                refresh_template_collation_versions(&client).await;
+                client
+                    .execute(&create_sql, &[])
+                    .await
+                    .map_err(|e| format!("Veritabanı oluşturulamadı: {}", format_pg_error(e)))?;
+                println!(
+                    "Database {} created successfully (collation refresh sonrası).",
+                    safe_db_name
+                );
+            }
+            Err(e) => {
+                return Err(format!(
+                    "Veritabanı oluşturulamadı: {}",
+                    format_pg_error(e)
+                ));
+            }
+        }
     } else {
         println!("Database {} already exists.", db_name);
     }

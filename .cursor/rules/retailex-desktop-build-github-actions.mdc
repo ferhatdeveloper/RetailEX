@@ -1,0 +1,52 @@
+---
+description: RetailEX masaüstü derlemesi yalnızca GitHub Actions ile yapılır
+alwaysApply: true
+---
+
+# Masaüstü derleme — yalnızca GitHub Actions
+
+RetailEX **Windows NSIS kurulumu** (`RetailEX-Desktop-Setup-{version}.exe`) **yerelde `npm run tauri:build` ile yayınlanmaz**. Tüm masaüstü release derlemeleri **GitHub Actions** üzerinden yapılır.
+
+## Zorunlu akış
+
+1. **Sürüm:** yalnızca kök `package.json` → `version` artır (`app-version-single-source.mdc`).
+2. **Commit + push:** `main` dalına push.
+3. **Tag:** `app-v{version}` oluştur ve push et → `.github/workflows/desktop-release.yml` tetiklenir.
+4. **İndirme:** Release asset — `RetailEX-Desktop-Setup-{version}.exe` (`retailex-desktop-release-filename.mdc`).
+
+```bash
+# Örnek (0.1.192)
+git add package.json package-lock.json DeskApp/tauri.conf.json DeskApp/Cargo.toml
+git commit -m "chore: surum 0.1.192"
+git push origin main
+git tag -a app-v0.1.192 -m "RetailEX Desktop 0.1.192"
+git push origin app-v0.1.192
+```
+
+Alternatif tetikleme: GitHub → Actions → **Desktop App Release** → Run workflow (tag yoksa `app-v{package.json version}` kullanılır).
+
+## Yerel komutlar (geliştirme / indirme)
+
+| Komut | Amaç |
+|-------|------|
+| `npm run desktop:ci:build` | Actions tetikle, bitene kadar bekle, Masaüstü'ne indir (`gh` gerekir) |
+| `npm run desktop:ci:fetch -- --tag app-vX.Y.Z` | Yayınlanmış kurulumu indir |
+| `npx vite build` | Yalnızca frontend doğrulama (Tauri installer **değil**) |
+
+## Asla yapma
+
+- Müşteriye / release'e gidecek `.exe` için yerelde `npm run tauri:build` çalıştırıp dosyayı dağıtma.
+- `DeskApp/target/release/bundle/nsis/*setup.exe` çıktısını GitHub release yerine manuel yayınlama.
+- Sürümsüz `RetailEX-Desktop-Setup.exe` adıyla asset yükleme.
+
+## CI notları
+
+- Workflow: `.github/workflows/desktop-release.yml` — `windows-latest`, `npm ci --legacy-peer-deps`, `WINDOWS_CODESIGN_DISABLE=1` (imzasız CI build).
+- Kod imzalı kurulum gerekiyorsa: ayrı süreç (`.env.signing`, `retailex-tauri-windows-codesign.mdc`); yine de **release artifact kaynağı GitHub Actions** olmalı veya Actions çıktısı imzalanmalı — yerel ad-hoc build değil.
+
+## Ajan checklist
+
+- [ ] `package.json` version artırıldı mı?
+- [ ] `node scripts/sync-app-version.mjs` (veya `prebuild`) Tauri dosyaları hizalı mı?
+- [ ] `app-v{version}` tag push edildi mi?
+- [ ] Release URL ve doğrudan indirme linki kullanıcıya verildi mi?
