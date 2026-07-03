@@ -13,6 +13,7 @@ import {
   applyMarketRatesToDatabase,
   fetchAllMarketRates,
   loadMarketRatesSnapshot,
+  usdPer1ToPer100,
   type ExternalCurrencyRate,
   type MarketRatesSnapshot,
 } from '../../services/marketRatesService';
@@ -164,7 +165,14 @@ export function MarketRatesToolbarModal({ open, onClose }: MarketRatesToolbarMod
                   <tbody>
                     {editableFx.map((row, idx) => (
                       <tr key={`${row.code}-${idx}`} className="border-t border-gray-100">
-                        <td className="px-2 py-1.5 font-mono font-semibold">{row.code}</td>
+                        <td className="px-2 py-1.5 font-mono font-semibold">
+                          {row.code}
+                          {row.code === 'USD' && (
+                            <p className="text-[9px] font-normal text-gray-400 mt-0.5">
+                              {tm('marketRatesFxUsdPer100Note')}: {formatNum(usdPer1ToPer100(row.sell), 0)} / {formatNum(usdPer1ToPer100(row.buy), 0)}
+                            </p>
+                          )}
+                        </td>
                         <td className="px-2 py-1.5">{row.name}</td>
                         <td className="px-2 py-1.5">
                           <input
@@ -203,6 +211,8 @@ export function MarketRatesToolbarModal({ open, onClose }: MarketRatesToolbarMod
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                   {[
                     [tm('marketRatesOunceUsd'), `$${formatNum(snapshot.gold.ounceUsd, 2)}`],
+                    [tm('marketRatesUsdSell1'), formatNum(snapshot.gold.usdSellPer1, 2)],
+                    [tm('marketRatesUsdBuy1'), formatNum(snapshot.gold.usdBuyPer1, 2)],
                     [tm('marketRatesUsdSell100'), formatNum(snapshot.gold.usdSellPer100, 0)],
                     [tm('marketRatesUsdBuy100'), formatNum(snapshot.gold.usdBuyPer100, 0)],
                   ].map(([label, val]) => (
@@ -342,7 +352,7 @@ export function MarketRatesToolbarButton({ compact = false }: { compact?: boolea
     const snap = loadMarketRatesSnapshot();
     const usd = snap?.currencies.find((c) => c.code === 'USD');
     if (!usd) return null;
-    return `${usd.sell.toLocaleString('tr-TR')}`;
+    return `${usd.sell.toLocaleString('tr-TR')} (1$)`;
   }, [open]);
 
   return (

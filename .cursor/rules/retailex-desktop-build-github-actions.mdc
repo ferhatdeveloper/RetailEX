@@ -12,7 +12,8 @@ RetailEX **Windows NSIS kurulumu** (`RetailEX-Desktop-Setup-{version}.exe`) **ye
 1. **Sürüm:** yalnızca kök `package.json` → `version` artır (`app-version-single-source.mdc`).
 2. **Commit + push:** `main` dalına push.
 3. **Tag:** `app-v{version}` oluştur ve push et → `.github/workflows/desktop-release.yml` tetiklenir.
-4. **İndirme:** Release asset — `RetailEX-Desktop-Setup-{version}.exe` (`retailex-desktop-release-filename.mdc`).
+4. **İlerleme:** run sayfasını otomatik aç ve göster (`retailex-desktop-build-show-progress.mdc`).
+5. **İndirme:** Release asset — `RetailEX-Desktop-Setup-{version}.exe` (`retailex-desktop-release-filename.mdc`).
 
 ```bash
 # Örnek (0.1.192)
@@ -49,4 +50,5 @@ Alternatif tetikleme: GitHub → Actions → **Desktop App Release** → Run wor
 - [ ] `package.json` version artırıldı mı?
 - [ ] `node scripts/sync-app-version.mjs` (veya `prebuild`) Tauri dosyaları hizalı mı?
 - [ ] `app-v{version}` tag push edildi mi?
+- [ ] Actions ilerleme sayfası açıldı ve link verildi mi?
 - [ ] Release URL ve doğrudan indirme linki kullanıcıya verildi mi?

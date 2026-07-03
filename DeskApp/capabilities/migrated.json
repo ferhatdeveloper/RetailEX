@@ -26,7 +26,14 @@
         { "url": "http://localhost:*/*" },
         { "url": "http://127.0.0.1:*/*" },
         { "url": "https://api.retailex.app/*" },
-        { "url": "https://*.retailex.app/*" }
+        { "url": "https://*.retailex.app/*" },
+        { "url": "https://hatwanexchange.com/*" },
+        { "url": "https://www.hatwanexchange.com/*" },
+        { "url": "https://salargolds.com/*" },
+        { "url": "https://www.salargolds.com/*" },
+        { "url": "https://docs.google.com/*" },
+        { "url": "https://*.googleusercontent.com/*" },
+        { "url": "https://api.gold-api.com/*" }
       ]
     },
     "updater:default",

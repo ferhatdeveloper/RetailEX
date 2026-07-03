@@ -10,6 +10,43 @@ import { MARKET_RATES_SNAPSHOT_KEY } from './marketRatesConfig';
 const MITHQAL_GRAMS = 5;
 const GRAM_PER_OUNCE = 31.1035;
 
+function isValidPrice(v: unknown): v is number {
+  const n = Number(v);
+  return Number.isFinite(n) && n > 0;
+}
+
+/** Hatwan / sheet: 100 USD notu kuru (ör. 150000) ile 1 USD kuru (ör. 1500) ayrımı */
+export const USD_PER100_THRESHOLD = 10_000;
+
+export function normalizeUsdToPer1(value: number): number {
+  if (!isValidPrice(value)) return 0;
+  return value >= USD_PER100_THRESHOLD ? value / 100 : value;
+}
+
+export function usdPer1ToPer100(value: number): number {
+  if (!isValidPrice(value)) return 0;
+  return value * 100;
+}
+
+export function resolveUsdRatePair(rawSell: number, rawBuy: number): {
+  sellPer1: number;
+  buyPer1: number;
+  sellPer100: number;
+  buyPer100: number;
+} {
+  const sellPer1 = normalizeUsdToPer1(rawSell);
+  const buyPer1 = normalizeUsdToPer1(rawBuy);
+  const sellPer100 =
+    isValidPrice(rawSell) && rawSell >= USD_PER100_THRESHOLD
+      ? rawSell
+      : usdPer1ToPer100(sellPer1);
+  const buyPer100 =
+    isValidPrice(rawBuy) && rawBuy >= USD_PER100_THRESHOLD
+      ? rawBuy
+      : usdPer1ToPer100(buyPer1);
+  return { sellPer1, buyPer1, sellPer100, buyPer100 };
+}
+
 export interface ExternalCurrencyRate {
   code: string;
   name: string;
@@ -35,6 +72,10 @@ export interface MarketRatesSnapshot {
   currencies: ExternalCurrencyRate[];
   gold: {
     ounceUsd: number;
+    /** 1 USD = ? IQD (sistem / altın hesabı) */
+    usdSellPer1: number;
+    usdBuyPer1: number;
+    /** 100 USD notu piyasası (gösterim) */
     usdSellPer100: number;
     usdBuyPer100: number;
     mithqal: GoldMithqalPrices;
@@ -42,33 +83,35 @@ export interface MarketRatesSnapshot {
   };
 }
 
-function isValidPrice(v: unknown): v is number {
-  const n = Number(v);
-  return Number.isFinite(n) && n > 0;
-}
-
 async function fetchExternalText(url: string): Promise<string> {
   const target = (url || '').trim();
   if (!target) throw new Error('URL boş');
 
+  const tryBridgeProxy = async (): Promise<string | null> => {
+    try {
+      const bridge = getBridgeUrl();
+      const proxy = `${bridge}/api/market-rates/proxy?url=${encodeURIComponent(target)}`;
+      const res = await fetch(proxy, { method: 'GET' });
+      if (!res.ok) return null;
+      const data = (await res.json()) as { text?: string; ok?: boolean };
+      return typeof data.text === 'string' ? data.text : null;
+    } catch {
+      return null;
+    }
+  };
+
   if (IS_TAURI) {
+    const viaBridge = await tryBridgeProxy();
+    if (viaBridge !== null) return viaBridge;
+
     const { fetch: tauriFetch } = await import('@tauri-apps/plugin-http');
     const res = await tauriFetch(target, { method: 'GET', connectTimeout: 30_000 });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return await res.text();
   }
 
-  try {
-    const bridge = getBridgeUrl();
-    const proxy = `${bridge}/api/market-rates/proxy?url=${encodeURIComponent(target)}`;
-    const res = await fetch(proxy, { method: 'GET' });
-    if (res.ok) {
-      const data = (await res.json()) as { text?: string; ok?: boolean };
-      if (typeof data.text === 'string') return data.text;
-    }
-  } catch {
-    /* bridge yok — doğrudan dene */
-  }
+  const viaBridge = await tryBridgeProxy();
+  if (viaBridge !== null) return viaBridge;
 
   const res = await fetch(target, { method: 'GET' });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -125,14 +168,14 @@ function parseCurrencyCsv(text: string, source: 'salargold'): ExternalCurrencyRa
 
 function calculateMithqalPrices(input: {
   goldSpotUsd: number;
-  usdSellPer100: number;
+  usdSellPer1: number;
   fee21: number;
   deduction21: number;
   buyAdjust22: number;
   buyAdjust18: number;
 }): GoldMithqalPrices {
   const gramUsd = isValidPrice(input.goldSpotUsd) ? input.goldSpotUsd / GRAM_PER_OUNCE : 0;
-  const iqdPerUsd = isValidPrice(input.usdSellPer100) ? input.usdSellPer100 / 100 : 0;
+  const iqdPerUsd = isValidPrice(input.usdSellPer1) ? input.usdSellPer1 : 0;
   const base21 = gramUsd * (21 / 24) * iqdPerUsd * MITHQAL_GRAMS;
   const s21 = base21 + (input.fee21 || 0);
   const b21 = Math.max(0, s21 + (input.deduction21 || 0));
@@ -157,14 +200,23 @@ export async function fetchHatwanCurrencies(config: MarketRatesConfig): Promise<
   const list = page.props?.currencies ?? [];
   return list
     .filter((c) => c.currency_code && isValidPrice(c.buy) && isValidPrice(c.sale))
-    .map((c) => ({
-      code: String(c.currency_code).trim().toUpperCase(),
-      name: String(c.name ?? c.currency_code),
-      buy: Number(c.buy),
-      sell: Number(c.sale),
-      source: 'hatwan' as const,
-      updatedAt: c.updated_at,
-    }));
+    .map((c) => {
+      const code = String(c.currency_code).trim().toUpperCase();
+      let buy = Number(c.buy);
+      let sell = Number(c.sale);
+      if (code === 'USD') {
+        buy = normalizeUsdToPer1(buy);
+        sell = normalizeUsdToPer1(sell);
+      }
+      return {
+        code,
+        name: String(c.name ?? c.currency_code),
+        buy,
+        sell,
+        source: 'hatwan' as const,
+        updatedAt: c.updated_at,
+      };
+    });
 }
 
 export async function fetchSalargoldsData(config: MarketRatesConfig): Promise<MarketRatesSnapshot['gold']> {
@@ -193,12 +245,11 @@ export async function fetchSalargoldsData(config: MarketRatesConfig): Promise<Ma
     /* opsiyonel */
   }
 
-  const usdSellPer100 = usdSell ?? 0;
-  const usdBuyPer100 = usdBuy ?? 0;
+  const usdRates = resolveUsdRatePair(usdSell ?? 0, usdBuy ?? 0);
 
   const mithqal = calculateMithqalPrices({
     goldSpotUsd: ounceUsd,
-    usdSellPer100,
+    usdSellPer1: usdRates.sellPer1,
     fee21: fee21 ?? 0,
     deduction21: deduction21 ?? 0,
     buyAdjust22: buyAdjust22 ?? 0,
@@ -215,8 +266,10 @@ export async function fetchSalargoldsData(config: MarketRatesConfig): Promise<Ma
 
   return {
     ounceUsd,
-    usdSellPer100,
-    usdBuyPer100,
+    usdSellPer1: usdRates.sellPer1,
+    usdBuyPer1: usdRates.buyPer1,
+    usdSellPer100: usdRates.sellPer100,
+    usdBuyPer100: usdRates.buyPer100,
     mithqal,
     sheetCurrencies,
   };
@@ -249,7 +302,25 @@ export function loadMarketRatesSnapshot(): MarketRatesSnapshot | null {
   try {
     const raw = localStorage.getItem(MARKET_RATES_SNAPSHOT_KEY);
     if (!raw) return null;
-    return JSON.parse(raw) as MarketRatesSnapshot;
+    const snap = JSON.parse(raw) as MarketRatesSnapshot;
+    if (!snap?.gold) return snap;
+    const g = snap.gold as MarketRatesSnapshot['gold'] & {
+      usdSellPer1?: number;
+      usdBuyPer1?: number;
+    };
+    if (!isValidPrice(g.usdSellPer1) && isValidPrice(g.usdSellPer100)) {
+      g.usdSellPer1 = normalizeUsdToPer1(g.usdSellPer100);
+    }
+    if (!isValidPrice(g.usdBuyPer1) && isValidPrice(g.usdBuyPer100)) {
+      g.usdBuyPer1 = normalizeUsdToPer1(g.usdBuyPer100);
+    }
+    if (!isValidPrice(g.usdSellPer100) && isValidPrice(g.usdSellPer1)) {
+      g.usdSellPer100 = usdPer1ToPer100(g.usdSellPer1);
+    }
+    if (!isValidPrice(g.usdBuyPer100) && isValidPrice(g.usdBuyPer1)) {
+      g.usdBuyPer100 = usdPer1ToPer100(g.usdBuyPer1);
+    }
+    return { ...snap, gold: g };
   } catch {
     return null;
   }

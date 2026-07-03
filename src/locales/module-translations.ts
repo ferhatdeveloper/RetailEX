@@ -3078,6 +3078,9 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
   marketRatesOunceUsd: { tr: 'Ons (USD)', en: 'Ounce (USD)', ar: 'أونصة USD', ku: 'ئونس USD' },
   marketRatesUsdSell100: { tr: 'USD satış /100', en: 'USD sell /100', ar: 'بيع USD/100', ku: 'فرۆشتن USD/100' },
   marketRatesUsdBuy100: { tr: 'USD alış /100', en: 'USD buy /100', ar: 'شراء USD/100', ku: 'کڕین USD/100' },
+  marketRatesUsdSell1: { tr: 'USD satış (1$)', en: 'USD sell (1$)', ar: 'بيع USD (1$)', ku: 'فرۆشتن USD (1$)' },
+  marketRatesUsdBuy1: { tr: 'USD alış (1$)', en: 'USD buy (1$)', ar: 'شراء USD (1$)', ku: 'کڕین USD (1$)' },
+  marketRatesFxUsdPer100Note: { tr: '100$ notu', en: 'per 100$', ar: 'لكل 100$', ku: 'بۆ 100$' },
   marketRatesMithqal: { tr: 'Mıskal (IQD)', en: 'Mithqal (IQD)', ar: 'مثقال', ku: 'مثقال' },
   marketRatesSheetFx: { tr: 'Sheet döviz listesi', en: 'Sheet FX list', ar: 'عملات الجدول', ku: 'دراوی خشتە' },
   productDuplicateFilterOff: {

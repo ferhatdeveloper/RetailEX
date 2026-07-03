@@ -45,6 +45,10 @@ import {
   getHybridDeviceId,
   listDeviceSyncTransferLogs,
 } from '../../services/hybridDeviceSyncLogService';
+import {
+  auditSyncTransportConfig,
+  formatSyncTransportLabel,
+} from '../../services/syncTransportDiagnostics';
 import { CenterDeviceSyncMonitor } from './CenterDeviceSyncMonitor';
 import { FullscreenBodyPortal, MODAL_OVERLAY_Z } from '../shared/FullscreenBodyPortal';
 
