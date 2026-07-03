@@ -9,6 +9,7 @@ import {
   buildSyncEndpoints,
   countPendingQueueEndpoint,
   runHybridSync,
+  type HybridSyncProgressEvent,
   type HybridSyncResult,
 } from './hybridSyncEngine';
 import { buildKasaInboundFilter, buildSyncFilter } from './hybridSyncService';
@@ -17,6 +18,7 @@ import {
   DB_SETTINGS,
   LOCAL_CONFIG,
   REMOTE_CONFIG,
+  getCentralRemotePgConfig,
   resolveHybridSyncConnectionProvider,
 } from './postgres';
 import {
@@ -112,7 +114,7 @@ export async function countInboundMasterPending(ctx: KasaPullContext): Promise<n
   const filter = buildKasaInboundFilter(ctx);
   const { remote } = buildSyncEndpoints({
     local: LOCAL_CONFIG,
-    remote: REMOTE_CONFIG,
+    remote: getCentralRemotePgConfig(),
     connectionProvider: resolveHybridSyncConnectionProvider(),
     remoteRestUrl: DB_SETTINGS.remoteRestUrl,
   });
@@ -121,7 +123,11 @@ export async function countInboundMasterPending(ctx: KasaPullContext): Promise<n
 
 export async function pullInboundMasterNow(
   ctx?: KasaPullContext | null,
-  opts?: { notifySource?: KasaDataArrivalSource; silent?: boolean },
+  opts?: {
+    notifySource?: KasaDataArrivalSource;
+    silent?: boolean;
+    onProgress?: (event: HybridSyncProgressEvent) => void;
+  },
 ): Promise<MposPullResult> {
   const resolved = ctx ?? (await resolveKasaPullContext());
   if (!resolved) {
@@ -168,13 +174,14 @@ export async function pullInboundMasterNow(
     scope: 'all',
     filter: buildKasaInboundFilter(resolved),
     local: LOCAL_CONFIG,
-    remote: REMOTE_CONFIG,
+    remote: getCentralRemotePgConfig(),
     connectionProvider: resolveHybridSyncConnectionProvider(),
     remoteRestUrl: DB_SETTINGS.remoteRestUrl,
     incremental: true,
     deviceId,
     storeId: resolved.storeId ?? null,
     terminalName: resolved.terminalName ?? null,
+    onProgress: opts?.onProgress,
   });
 
   let pending = 0;
@@ -281,7 +288,7 @@ export function startUnifiedHybridAutoSync(opts?: {
           scope: 'pending',
           filter: buildSyncFilter({ storeId: ctx.storeId }),
           local: LOCAL_CONFIG,
-          remote: REMOTE_CONFIG,
+          remote: getCentralRemotePgConfig(),
           connectionProvider: resolveHybridSyncConnectionProvider(),
           remoteRestUrl: DB_SETTINGS.remoteRestUrl,
         });
@@ -296,7 +303,7 @@ export function startUnifiedHybridAutoSync(opts?: {
           direction: dir,
           scope: 'pending',
           local: LOCAL_CONFIG,
-          remote: REMOTE_CONFIG,
+          remote: getCentralRemotePgConfig(),
           connectionProvider: resolveHybridSyncConnectionProvider(),
           remoteRestUrl: DB_SETTINGS.remoteRestUrl,
           filter: buildSyncFilter({ storeId: opts?.storeId ?? null }),
@@ -374,7 +381,7 @@ export async function triggerInstantKasaPull(fallbackStoreId?: string | null): P
     scope: 'pending',
     filter: buildSyncFilter({ storeId: ctx.storeId }),
     local: LOCAL_CONFIG,
-    remote: REMOTE_CONFIG,
+    remote: getCentralRemotePgConfig(),
     connectionProvider: resolveHybridSyncConnectionProvider(),
     remoteRestUrl: DB_SETTINGS.remoteRestUrl,
   });

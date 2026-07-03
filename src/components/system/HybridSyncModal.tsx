@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowDownToLine,
   ArrowUpFromLine,
@@ -14,6 +14,7 @@ import {
   DB_SETTINGS,
   LOCAL_CONFIG,
   REMOTE_CONFIG,
+  getCentralRemotePgConfig,
   ERP_SETTINGS,
   resolveHybridSyncConnectionProvider,
 } from '../../services/postgres';
@@ -27,6 +28,7 @@ import {
   runHybridSync,
   type SyncQueueBreakdownRow,
   type RemoteTableCountRow,
+  type HybridSyncProgressEvent,
 } from '../../services/hybridSyncEngine';
 import {
   buildKasaInboundFilter,
@@ -38,6 +40,7 @@ import {
 import {
   pullInboundMasterNow,
   resolveKasaPullContext,
+  countInboundMasterPending,
 } from '../../services/mposKasaAutoPullService';
 import { formatSyncBreakdown as formatKasaSyncBreakdown } from '../../services/kasaDataArrivalNotify';
 import {
@@ -50,7 +53,7 @@ import {
   formatSyncTransportLabel,
 } from '../../services/syncTransportDiagnostics';
 import { CenterDeviceSyncMonitor } from './CenterDeviceSyncMonitor';
-import { FullscreenBodyPortal, MODAL_OVERLAY_Z } from '../shared/FullscreenBodyPortal';
+import { PercentBodyModal, PercentBodyModalScrollBody } from '../shared/PercentBodyModal';
 
 type StepStatus = 'pending' | 'running' | 'done' | 'error' | 'skipped';
 
@@ -152,6 +155,26 @@ function formatInboundPreview(preview: PreviewData): string {
   return `Kuyruk erişilemiyor · Merkezde: ${master}`;
 }
 
+function formatLiveStepDetail(opts: {
+  verb: string;
+  totalAtStart: number;
+  remaining: number;
+  engineSynced: number;
+  engineFailed: number;
+  lastTable?: string;
+}): string {
+  const doneFromQueue = Math.max(0, opts.totalAtStart - opts.remaining);
+  const done = Math.max(doneFromQueue, opts.engineSynced);
+  const parts: string[] = [`${opts.verb}… ${done} / ${opts.totalAtStart} tamamlandı`];
+  if (opts.remaining > 0) parts.push(`${opts.remaining} kalan`);
+  if (opts.engineFailed > 0) parts.push(`${opts.engineFailed} hata`);
+  if (opts.lastTable) {
+    const short = opts.lastTable.replace(/^rex_\d+_/i, '').replace(/_/g, ' ');
+    parts.push(`son: ${tableLabel(short)}`);
+  }
+  return parts.join(' · ');
+}
+
 async function verifySentDataOnRemote(
   outboundBreakdown: SyncQueueBreakdownRow[],
 ): Promise<string> {
@@ -167,7 +190,7 @@ async function verifySentDataOnRemote(
 
   const { remote } = buildSyncEndpoints({
     local: LOCAL_CONFIG,
-    remote: REMOTE_CONFIG,
+    remote: getCentralRemotePgConfig(),
     connectionProvider: resolveHybridSyncConnectionProvider(),
     remoteRestUrl: DB_SETTINGS.remoteRestUrl,
   });
@@ -183,6 +206,21 @@ export function HybridSyncModal({ open, onOpenChange, onComplete }: Props) {
   const [preview, setPreview] = useState<PreviewData | null>(null);
   const [steps, setSteps] = useState<SyncStep[]>([]);
   const [finished, setFinished] = useState(false);
+  const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const engineProgressRef = useRef<{ synced: number; failed: number; lastTable?: string }>({
+    synced: 0,
+    failed: 0,
+  });
+  const totalsAtStartRef = useRef<{ send: number; receive: number }>({ send: 0, receive: 0 });
+
+  const stopLivePoll = useCallback(() => {
+    if (pollTimerRef.current) {
+      clearInterval(pollTimerRef.current);
+      pollTimerRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => () => stopLivePoll(), [stopLivePoll]);
 
   const loadPreview = useCallback(async () => {
     setLoadingPreview(true);
@@ -218,7 +256,7 @@ export function HybridSyncModal({ open, onOpenChange, onComplete }: Props) {
         try {
           const { remote } = buildSyncEndpoints({
             local: LOCAL_CONFIG,
-            remote: REMOTE_CONFIG,
+            remote: getCentralRemotePgConfig(),
             connectionProvider: resolveHybridSyncConnectionProvider(),
             remoteRestUrl: DB_SETTINGS.remoteRestUrl,
           });
@@ -283,6 +321,7 @@ export function HybridSyncModal({ open, onOpenChange, onComplete }: Props) {
     if (!preview) return;
     setRunning(true);
     setFinished(false);
+    stopLivePoll();
 
     const kasaCtx = preview.isKasa ? await resolveKasaPullContext(user?.store_id || null) : null;
     const filter = buildSyncFilter({
@@ -291,23 +330,144 @@ export function HybridSyncModal({ open, onOpenChange, onComplete }: Props) {
       cashierUsername: null,
       scopeCashierOnly: false,
     });
+    const inboundFilter = kasaCtx ? buildKasaInboundFilter(kasaCtx) : filter;
     const deviceId = await getHybridDeviceId();
 
+    totalsAtStartRef.current = {
+      send: Math.max(0, preview.localPending),
+      receive: Math.max(0, preview.inboundPending),
+    };
+
+    const refreshLiveCounts = async (stepId: 'send' | 'receive') => {
+      try {
+        if (stepId === 'send') {
+          const breakdown = await getPendingQueueBreakdown(LOCAL_CONFIG, filter);
+          const remaining = breakdown.reduce((s, r) => s + r.count, 0);
+          const totalAtStart = totalsAtStartRef.current.send;
+          const eng = engineProgressRef.current;
+          setPreview((p) =>
+            p ? { ...p, localPending: remaining, outboundBreakdown: breakdown } : p,
+          );
+          updateStep('send', {
+            description: formatBreakdown(breakdown, remaining),
+            detail: formatLiveStepDetail({
+              verb: 'Gönderiliyor',
+              totalAtStart,
+              remaining,
+              engineSynced: eng.synced,
+              engineFailed: eng.failed,
+              lastTable: eng.lastTable,
+            }),
+          });
+        } else {
+          let remaining = -1;
+          let breakdown: SyncQueueBreakdownRow[] = [];
+          if (kasaCtx) {
+            remaining = await countInboundMasterPending(kasaCtx);
+            try {
+              const { remote } = buildSyncEndpoints({
+                local: LOCAL_CONFIG,
+                remote: getCentralRemotePgConfig(),
+                connectionProvider: resolveHybridSyncConnectionProvider(),
+                remoteRestUrl: DB_SETTINGS.remoteRestUrl,
+              });
+              breakdown = await getPendingQueueBreakdownEndpoint(remote, inboundFilter);
+            } catch {
+              /* kırılım alınamadı */
+            }
+          } else {
+            const stats = await getBranchSyncStats(filter);
+            remaining = stats.remotePending >= 0 ? stats.remotePending : 0;
+          }
+          const totalAtStart = totalsAtStartRef.current.receive;
+          const eng = engineProgressRef.current;
+          const safeRemaining = Math.max(0, remaining);
+          setPreview((p) =>
+            p
+              ? {
+                  ...p,
+                  inboundPending: safeRemaining,
+                  inboundBreakdown: breakdown.length ? breakdown : p.inboundBreakdown,
+                }
+              : p,
+          );
+          updateStep('receive', {
+            description: kasaCtx
+              ? formatBreakdown(breakdown, safeRemaining)
+              : `${safeRemaining} kuyruk kaydı`,
+            detail: formatLiveStepDetail({
+              verb: 'Alınıyor',
+              totalAtStart,
+              remaining: safeRemaining,
+              engineSynced: eng.synced,
+              engineFailed: eng.failed,
+              lastTable: eng.lastTable,
+            }),
+          });
+        }
+      } catch {
+        /* canlı sayım atlandı */
+      }
+    };
+
+    const startLivePoll = (stepId: 'send' | 'receive') => {
+      stopLivePoll();
+      engineProgressRef.current = { synced: 0, failed: 0 };
+      void refreshLiveCounts(stepId);
+      pollTimerRef.current = setInterval(() => {
+        void refreshLiveCounts(stepId);
+      }, 700);
+    };
+
+    const makeOnProgress =
+      (stepId: 'send' | 'receive') => (ev: HybridSyncProgressEvent) => {
+        engineProgressRef.current = {
+          synced: ev.synced,
+          failed: ev.failed,
+          lastTable: ev.lastTable,
+        };
+        setSteps((prev) =>
+          prev.map((s) => {
+            if (s.id !== stepId || s.status !== 'running') return s;
+            const totalAtStart =
+              stepId === 'send'
+                ? totalsAtStartRef.current.send
+                : totalsAtStartRef.current.receive;
+            const remaining = Math.max(0, totalAtStart - ev.synced);
+            return {
+              ...s,
+              detail: formatLiveStepDetail({
+                verb: stepId === 'send' ? 'Gönderiliyor' : 'Alınıyor',
+                totalAtStart,
+                remaining,
+                engineSynced: ev.synced,
+                engineFailed: ev.failed,
+                lastTable: ev.lastTable,
+              }),
+            };
+          }),
+        );
+      };
+
     try {
-      updateStep('send', { status: 'running', detail: 'Gönderiliyor…' });
+      startLivePoll('send');
+      updateStep('send', { status: 'running', detail: 'Gönderiliyor… 0 / …' });
       const sendResult = await runHybridSync({
         flow: 'send',
         direction: 'local_to_remote',
         scope: 'all',
         filter,
         local: LOCAL_CONFIG,
-        remote: REMOTE_CONFIG,
+        remote: getCentralRemotePgConfig(),
         connectionProvider: resolveHybridSyncConnectionProvider(),
         remoteRestUrl: DB_SETTINGS.remoteRestUrl,
         incremental: true,
         deviceId,
         storeId: user?.store_id || null,
+        onProgress: makeOnProgress('send'),
       });
+      stopLivePoll();
+      await refreshLiveCounts('send');
 
       if (!sendResult.success && sendResult.failed > 0 && sendResult.totalSynced === 0) {
         updateStep('send', {
@@ -315,11 +475,12 @@ export function HybridSyncModal({ open, onOpenChange, onComplete }: Props) {
           detail: sendResult.message || 'Gönderim başarısız.',
         });
       } else if (sendResult.totalSynced === 0 && sendResult.failed === 0) {
-        updateStep('send', { status: 'skipped', detail: 'Gönderilecek kayıt yok.' });
+        updateStep('send', { status: 'skipped', detail: 'Gönderilecek kayıt yok.', description: 'Bekleyen kayıt yok' });
       } else {
         const verifyMsg = await verifySentDataOnRemote(preview.outboundBreakdown);
         updateStep('send', {
           status: 'done',
+          description: 'Bekleyen kayıt yok',
           detail:
             (formatHybridSyncMessage(sendResult) ||
               `${sendResult.totalSynced} kayıt gönderildi` +
@@ -328,10 +489,17 @@ export function HybridSyncModal({ open, onOpenChange, onComplete }: Props) {
         });
       }
 
-      updateStep('receive', { status: 'running', detail: 'Alınıyor…' });
+      startLivePoll('receive');
+      updateStep('receive', { status: 'running', detail: 'Alınıyor… 0 / …' });
 
       if (kasaCtx) {
-        const pull = await pullInboundMasterNow(kasaCtx, { notifySource: 'manual', silent: true });
+        const pull = await pullInboundMasterNow(kasaCtx, {
+          notifySource: 'manual',
+          silent: true,
+          onProgress: makeOnProgress('receive'),
+        });
+        stopLivePoll();
+        await refreshLiveCounts('receive');
         if (pull.failed > 0 && pull.synced === 0) {
           updateStep('receive', {
             status: 'error',
@@ -354,13 +522,16 @@ export function HybridSyncModal({ open, onOpenChange, onComplete }: Props) {
           scope: 'all',
           filter,
           local: LOCAL_CONFIG,
-          remote: REMOTE_CONFIG,
+          remote: getCentralRemotePgConfig(),
           connectionProvider: resolveHybridSyncConnectionProvider(),
           remoteRestUrl: DB_SETTINGS.remoteRestUrl,
           incremental: true,
           deviceId,
           storeId: user?.store_id || null,
+          onProgress: makeOnProgress('receive'),
         });
+        stopLivePoll();
+        await refreshLiveCounts('receive');
 
         if (!recvResult.success && recvResult.failed > 0 && recvResult.totalSynced === 0) {
           updateStep('receive', {
@@ -411,6 +582,7 @@ export function HybridSyncModal({ open, onOpenChange, onComplete }: Props) {
         ),
       );
     } finally {
+      stopLivePoll();
       setRunning(false);
     }
   };
@@ -430,18 +602,7 @@ export function HybridSyncModal({ open, onOpenChange, onComplete }: Props) {
   if (!open) return null;
 
   return (
-    <FullscreenBodyPortal
-      zIndex={MODAL_OVERLAY_Z}
-      className="overflow-hidden bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="hybrid-sync-title"
-      onClick={handleClose}
-    >
-      <div
-        className="w-full max-w-lg max-h-[min(90vh,100dvh)] flex flex-col bg-white text-gray-900 shadow-2xl min-h-0 overflow-hidden rounded-lg"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <PercentBodyModal onClose={handleClose} size="wide" ariaLabel="Veri senkronu">
         <div className="p-3 border-b flex items-center shrink-0 border-gray-200 bg-gradient-to-r from-blue-600 to-blue-700">
           <div className="flex items-center gap-2 text-white">
             <RefreshCw className="h-5 w-5" />
@@ -456,7 +617,7 @@ export function HybridSyncModal({ open, onOpenChange, onComplete }: Props) {
           </div>
         </div>
 
-        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 space-y-4">
+        <PercentBodyModalScrollBody className="p-4 space-y-4">
         {transportAudit && transportAudit.issues.length > 0 && (
           <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-950 space-y-1">
             <p className="font-semibold">
@@ -488,7 +649,14 @@ export function HybridSyncModal({ open, onOpenChange, onComplete }: Props) {
                   <ArrowUpFromLine className="h-3.5 w-3.5" />
                   Gönderilecek
                 </div>
-                <p className="text-lg font-bold text-gray-900 tabular-nums">{preview.localPending}</p>
+                <p
+                  className={cn(
+                    'text-lg font-bold text-gray-900 tabular-nums transition-all',
+                    running && 'text-blue-700',
+                  )}
+                >
+                  {preview.localPending}
+                </p>
                 <p className="text-xs text-gray-700 leading-snug">
                   {formatBreakdown(preview.outboundBreakdown, preview.localPending)}
                 </p>
@@ -515,7 +683,9 @@ export function HybridSyncModal({ open, onOpenChange, onComplete }: Props) {
                 </p>
                 {!preview.inboundQueueAvailable ? (
                   <p className="text-[10px] text-amber-800 leading-snug">
-                    Merkez sync_queue PostgREST&apos;te yok; tablo sayıları API ile okunur.
+                    Merkez <code className="font-mono">sync_queue</code> PostgREST üzerinden okunamıyor
+                    (048–049–088 migration ve şema yenileme gerekebilir). Tablo sayıları doğrudan API ile
+                    gösteriliyor; gönderim çalışır, merkezden kuyruk ile alım sınırlı olabilir.
                   </p>
                 ) : null}
               </div>
@@ -554,8 +724,9 @@ export function HybridSyncModal({ open, onOpenChange, onComplete }: Props) {
                       {step.detail ? (
                         <p
                           className={cn(
-                            'text-xs mt-1 leading-snug',
+                            'text-xs mt-1 leading-snug tabular-nums',
                             step.status === 'error' ? 'text-red-700 font-medium' : 'text-gray-800',
+                            step.status === 'running' && 'font-medium text-blue-800',
                           )}
                         >
                           {step.detail}
@@ -576,7 +747,7 @@ export function HybridSyncModal({ open, onOpenChange, onComplete }: Props) {
         ) : (
           <p className="text-sm text-gray-600 py-4">Özet yüklenemedi. Hibrit mod ve bağlantıyı kontrol edin.</p>
         )}
-        </div>
+        </PercentBodyModalScrollBody>
 
         <div className="p-4 border-t border-gray-200 bg-gray-50 flex gap-2 shrink-0">
           <button
@@ -617,7 +788,6 @@ export function HybridSyncModal({ open, onOpenChange, onComplete }: Props) {
             </button>
           )}
         </div>
-      </div>
-    </FullscreenBodyPortal>
+    </PercentBodyModal>
   );
 }

@@ -1,4 +1,4 @@
-import { ERP_SETTINGS, LOCAL_CONFIG, REMOTE_CONFIG, DB_SETTINGS, resolveHybridSyncConnectionProvider } from './postgres';
+import { ERP_SETTINGS, LOCAL_CONFIG, DB_SETTINGS, resolveHybridSyncConnectionProvider, getCentralRemotePgConfig } from './postgres';
 import {
   buildSyncEndpoints,
   countPendingQueue,
@@ -84,7 +84,7 @@ export async function getBranchSyncStats(filter?: HybridSyncFilter): Promise<Bra
   try {
     const { remote } = buildSyncEndpoints({
       local: LOCAL_CONFIG,
-      remote: REMOTE_CONFIG,
+      remote: getCentralRemotePgConfig(),
       connectionProvider: resolveHybridSyncConnectionProvider(),
       remoteRestUrl: DB_SETTINGS.remoteRestUrl,
     });
@@ -125,7 +125,7 @@ export async function getRemoteMasterSnapshot(firmNr?: string): Promise<RemoteMa
   try {
     const { remote } = buildSyncEndpoints({
       local: LOCAL_CONFIG,
-      remote: REMOTE_CONFIG,
+      remote: getCentralRemotePgConfig(),
       connectionProvider: resolveHybridSyncConnectionProvider(),
       remoteRestUrl: DB_SETTINGS.remoteRestUrl,
     });

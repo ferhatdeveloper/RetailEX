@@ -145,15 +145,16 @@ function isSqlWriteStatement(sql: string): boolean {
 
 /** Online/Offline tek uç; hibritte okuma önceliğine göre iki uç (bağlantı hatasında yedek). */
 export function getDbSqlTargetChain(opts?: { write?: boolean }): PgEndpointConfig[] {
+  const remoteCfg = getCentralRemotePgConfig();
   if (DB_SETTINGS.activeMode === 'hybrid' && opts?.write) {
     return [LOCAL_CONFIG];
   }
-  if (DB_SETTINGS.activeMode === 'online') return [REMOTE_CONFIG];
+  if (DB_SETTINGS.activeMode === 'online') return [remoteCfg];
   if (DB_SETTINGS.activeMode === 'offline') return [LOCAL_CONFIG];
   if (DB_SETTINGS.hybridReadPreference === 'remote_first') {
-    return [REMOTE_CONFIG, LOCAL_CONFIG];
+    return [remoteCfg, LOCAL_CONFIG];
   }
-  return [LOCAL_CONFIG, REMOTE_CONFIG];
+  return [LOCAL_CONFIG, remoteCfg];
 }
 
 /** Birincil SQL ucu — pg_bridge `pg_dump` ve benzeri için bağlantı dizesi (özel karakterler URI-encode). */
@@ -323,11 +324,34 @@ export function resolveTenantDatabaseFromRestUrl(restUrl?: string): string | nul
   return parsed.kind === 'saas_single_slug' ? parsed.slug : null;
 }
 
-/** Merkez PG ucu — remote_db yanlış olsa bile PostgREST slug ile DB adını hizalar. */
+/** Kiracı kodu veya PostgREST slug → merkez PostgreSQL veritabanı adı. */
+export function resolveEffectiveTenantDatabaseName(restUrl?: string): string | null {
+  const slugDb = resolveTenantDatabaseFromRestUrl(restUrl);
+  if (slugDb) return slugDb;
+  const code = String(DB_SETTINGS.merkezTenantCode ?? '').trim().toLowerCase();
+  if (code && /^[a-z0-9_-]+$/.test(code)) return code;
+  return null;
+}
+
+/**
+ * `remote_db` eski demo adı (`retailex_demo`) kalsa bile merkez PG ucu kiracı DB'sine hizalanır.
+ * PostgREST slug ve `merkez_tenant_code` önceliklidir.
+ */
+export function alignRemoteConfigDatabaseWithTenant(restUrl?: string): void {
+  const tenantDb = resolveEffectiveTenantDatabaseName(restUrl);
+  if (!tenantDb || REMOTE_CONFIG.database === tenantDb) return;
+  const prev = REMOTE_CONFIG.database;
+  REMOTE_CONFIG.database = tenantDb;
+  console.log(
+    `[Postgres] Uzak veritabanı kiracıya hizalandı: ${prev} → ${tenantDb}`,
+  );
+}
+
+/** Merkez PG ucu — remote_db yanlış olsa bile PostgREST slug / kiracı kodu ile DB adını hizalar. */
 export function getCentralRemotePgConfig(): typeof REMOTE_CONFIG {
-  const slugDb = resolveTenantDatabaseFromRestUrl();
-  if (slugDb) {
-    return { ...REMOTE_CONFIG, database: slugDb };
+  const tenantDb = resolveEffectiveTenantDatabaseName();
+  if (tenantDb) {
+    return { ...REMOTE_CONFIG, database: tenantDb };
   }
   return REMOTE_CONFIG;
 }
@@ -403,6 +427,9 @@ function applyWebLocalStorageConfig(config: any): void {
   if (DB_SETTINGS.connectionProvider === 'rest_api') {
     syncRemoteConfigFromRestUrl(DB_SETTINGS.remoteRestUrl);
   }
+  alignRemoteConfigDatabaseWithTenant(
+    typeof config.remote_rest_url === 'string' ? config.remote_rest_url : DB_SETTINGS.remoteRestUrl,
+  );
 
   // Production web'de bridge, container içinden DB'ye bağlanır.
   // 127.0.0.1/localhost bridge konteynerinin kendisini işaret ettiği için ECONNREFUSED üretir.
@@ -534,6 +561,24 @@ export async function initializeFromSQLite(preloadedConfig?: any) {
       if (config.pg_remote_user) REMOTE_CONFIG.user = config.pg_remote_user;
       if (config.pg_remote_pass) REMOTE_CONFIG.password = config.pg_remote_pass;
 
+      const remoteDbBeforeAlign = String(config.remote_db ?? '');
+      alignRemoteConfigDatabaseWithTenant(config.remote_rest_url);
+      const remoteDbAfterAlign = `${REMOTE_CONFIG.host}:${REMOTE_CONFIG.port}/${REMOTE_CONFIG.database}`;
+      if (
+        config.is_configured === true &&
+        remoteDbBeforeAlign.trim() &&
+        remoteDbBeforeAlign !== remoteDbAfterAlign
+      ) {
+        try {
+          await safeInvoke('save_app_config', {
+            config: { ...config, remote_db: remoteDbAfterAlign },
+          });
+          console.log(`[Postgres] config.db remote_db güncellendi: ${remoteDbAfterAlign}`);
+        } catch (persistErr) {
+          console.warn('[Postgres] remote_db kiracı hizalaması config.db\'ye yazılamadı:', persistErr);
+        }
+      }
+
       LOCAL_CONFIG.isConfigured = config.is_configured === true;
 
       applyDefaultCurrencyFromConfig(config);
@@ -571,6 +616,7 @@ export async function updateConfigs(updates: {
   }
   applyTauriHybridDbOverride();
   alignRemoteConfigWithRestUrl();
+  alignRemoteConfigDatabaseWithTenant();
 
   const syncUrls = resolveTenantSyncUrls({
     merkez_tenant_code: DB_SETTINGS.merkezTenantCode,
@@ -1361,7 +1407,7 @@ export class PostgresConnection {
       scope: opts?.scope ?? 'all',
       filter: opts?.filter,
       local: LOCAL_CONFIG,
-      remote: REMOTE_CONFIG,
+      remote: getCentralRemotePgConfig(),
       connectionProvider: resolveHybridSyncConnectionProvider(),
       remoteRestUrl: DB_SETTINGS.remoteRestUrl,
     });

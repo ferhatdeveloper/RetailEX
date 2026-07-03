@@ -5,7 +5,7 @@ vi.mock('../../services/centralRpcService', () => ({
   queryCentralPgRows: vi.fn(),
 }));
 
-import { DB_SETTINGS, REMOTE_CONFIG, getCentralRemotePgConfig } from '../../services/postgres';
+import { DB_SETTINGS, REMOTE_CONFIG, getCentralRemotePgConfig, alignRemoteConfigDatabaseWithTenant } from '../../services/postgres';
 import { resolveSyncPgEndpoint } from '../../services/enterpriseSyncService';
 
 describe('resolveSyncPgEndpoint', () => {
@@ -38,5 +38,13 @@ describe('resolveSyncPgEndpoint', () => {
     DB_SETTINGS.activeMode = 'hybrid';
     const endpoint = resolveSyncPgEndpoint();
     expect(endpoint.database).not.toBe('lovan');
+  });
+
+  it('config yüklemede retailex_demo kiracı slug ile hizalanır', () => {
+    DB_SETTINGS.merkezTenantCode = 'lovan';
+    REMOTE_CONFIG.database = 'retailex_demo';
+    alignRemoteConfigDatabaseWithTenant('https://api.retailex.app/lovan');
+    expect(REMOTE_CONFIG.database).toBe('lovan');
+    expect(getCentralRemotePgConfig().database).toBe('lovan');
   });
 });

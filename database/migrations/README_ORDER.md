@@ -75,6 +75,7 @@
 71. **085_device_sync_ack.sql** – Merkez `device_sync_ack`: cihaz alım/gönderim oturumu, fiyatlı ürün sayısı, bekleyen fiyat; alım sonrası otomatik bildirim.
 72. **086_store_devices_ws_presence.sql** – `store_devices` PostgREST erişimi; WS heartbeat ile merkezde canlı cihaz (yedek: 24s aktivite).
 73. **087_disassembly_carcass_breakdown.sql** – Kasap karkas parçalama: `disassembly_templates`, `disassembly_orders`, fire maliyet dağıtımı (`INIT_DISASSEMBLY_TABLES`).
+74. **088_sync_queue_postgrest_anon.sql** – Merkez PostgREST: `sync_queue` anon SELECT/INSERT/UPDATE + `NOTIFY pgrst` (hibrit kuyruk önizlemesi).
 
 **Kiracılara toplu uygulama (VPS / uzak PG):**
 - `npm run db:migrate:tenants` — tüm kiracı DB'ler

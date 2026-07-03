@@ -16,6 +16,7 @@ import {
   ERP_SETTINGS,
   LOCAL_CONFIG,
   REMOTE_CONFIG,
+  getCentralRemotePgConfig,
   resolveHybridSyncConnectionProvider,
   type HybridSyncDirection,
 } from '../../services/postgres';
@@ -148,7 +149,7 @@ export function HybridSyncPanel({ compact = false, darkMode = false, directionOv
         scope: scopeMode,
         filter,
         local: LOCAL_CONFIG,
-        remote: REMOTE_CONFIG,
+        remote: getCentralRemotePgConfig(),
         connectionProvider: resolveHybridSyncConnectionProvider(),
         remoteRestUrl: DB_SETTINGS.remoteRestUrl,
       });

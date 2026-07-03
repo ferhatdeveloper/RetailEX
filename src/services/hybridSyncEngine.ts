@@ -96,6 +96,19 @@ export type HybridSyncRunOptions = {
   deviceId?: string;
   storeId?: string | null;
   terminalName?: string | null;
+  /** Her kayıt işlendiğinde (throttle ~300ms) UI güncellemesi için */
+  onProgress?: (event: HybridSyncProgressEvent) => void;
+};
+
+export type HybridSyncProgressEvent = {
+  flow: HybridSyncFlow;
+  leg: 'yerel→uzak' | 'uzak→yerel';
+  synced: number;
+  failed: number;
+  inserted: number;
+  updated: number;
+  skipped: number;
+  lastTable?: string;
 };
 
 const BATCH_LIMIT = 50;
@@ -512,6 +525,7 @@ export async function syncOneDirection(
     localPg?: PgEndpointConfig;
     schemaCache?: Map<string, PgSchemaName>;
     receiveAck?: ReceivePriceAckContext;
+    onProgress?: (event: Omit<HybridSyncProgressEvent, 'flow' | 'leg'> & { leg: string }) => void;
   }
 ): Promise<{
   synced: number;
@@ -549,6 +563,23 @@ export async function syncOneDirection(
   const priceSnapshots: PriceChangeSnapshot[] = [];
   const isReceiveLeg = label === 'uzak→yerel' && !!opts?.receiveAck;
   let priceAckCount = 0;
+  let lastProgressAt = 0;
+
+  const emitProgress = (lastTable?: string, force = false) => {
+    if (!opts?.onProgress) return;
+    const now = Date.now();
+    if (!force && now - lastProgressAt < 280) return;
+    lastProgressAt = now;
+    opts.onProgress({
+      leg: label,
+      synced: totals.synced,
+      failed,
+      inserted: totals.inserted,
+      updated: totals.updated,
+      skipped: totals.skipped,
+      lastTable,
+    });
+  };
 
   do {
     const pending = await fetchPendingQueue(source, filter);
@@ -625,6 +656,7 @@ export async function syncOneDirection(
         }
 
         await markCompleted(source, item.id);
+        emitProgress(item.table_name);
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         if (isMissingRelationSyncError(msg)) {
@@ -641,6 +673,7 @@ export async function syncOneDirection(
                 data: item.data,
               });
               await markCompleted(source, item.id);
+              emitProgress(item.table_name);
               continue;
             } catch {
               /* şema oluşturma veya retry başarısız — aşağıdaki hata akışı */
@@ -649,6 +682,7 @@ export async function syncOneDirection(
         }
         failed += 1;
         errors.push(`${label} ${item.table_name}/${item.record_id}: ${msg}`);
+        emitProgress(item.table_name);
         try {
           await markFailed(source, item.id, msg);
         } catch {
@@ -665,6 +699,8 @@ export async function syncOneDirection(
     rounds += 1;
     if (scope !== 'all') break;
   } while (rounds < MAX_ALL_ROUNDS);
+
+  emitProgress(undefined, true);
 
   const fallbackSnapshots =
     priceSnapshots.length > 0
@@ -817,6 +853,19 @@ export async function runHybridSync(opts: HybridSyncRunOptions): Promise<HybridS
               terminalName: opts.terminalName ?? null,
             }
           : undefined,
+      onProgress: opts.onProgress
+        ? (ev) =>
+            opts.onProgress!({
+              flow,
+              leg: leg.label as HybridSyncProgressEvent['leg'],
+              synced: ev.synced,
+              failed: ev.failed,
+              inserted: ev.inserted,
+              updated: ev.updated,
+              skipped: ev.skipped,
+              lastTable: ev.lastTable,
+            })
+        : undefined,
     });
     totalSynced += r.synced;
     failed += r.failed;
