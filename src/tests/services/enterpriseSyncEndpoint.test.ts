@@ -5,7 +5,7 @@ vi.mock('../../services/centralRpcService', () => ({
   queryCentralPgRows: vi.fn(),
 }));
 
-import { DB_SETTINGS, REMOTE_CONFIG, getCentralRemotePgConfig, alignRemoteConfigDatabaseWithTenant } from '../../services/postgres';
+import { DB_SETTINGS, REMOTE_CONFIG, LOCAL_CONFIG, getCentralRemotePgConfig, alignRemoteConfigDatabaseWithTenant } from '../../services/postgres';
 import { resolveSyncPgEndpoint } from '../../services/enterpriseSyncService';
 
 describe('resolveSyncPgEndpoint', () => {
@@ -26,12 +26,13 @@ describe('resolveSyncPgEndpoint', () => {
     REMOTE_CONFIG.database = prevDb;
   });
 
-  it('online modda PostgREST slug ile tenant DB kullanır (retailex_demo değil)', () => {
+  it('online modda API varken doğrudan uzak PG kullanılmaz', () => {
     const central = getCentralRemotePgConfig();
     expect(central.database).toBe('lovan');
 
     const endpoint = resolveSyncPgEndpoint();
-    expect(endpoint.database).toBe('lovan');
+    expect(endpoint.database).not.toBe('lovan');
+    expect(endpoint.database).toBe(LOCAL_CONFIG.database);
   });
 
   it('hybrid modda yerel PG döner', () => {

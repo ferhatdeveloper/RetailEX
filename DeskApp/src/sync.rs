@@ -1231,83 +1231,16 @@ pub async fn process_sync_queue_internal(app: Option<tauri::AppHandle>) -> Resul
         return Ok(());
     }
 
-    // Hibrit masaüstü: merkez uç PostgREST (remote_rest_url); doğrudan remote_db PG genelde erişilemez.
+    // Hibrit masaüstü: merkez uç yalnızca PostgREST (remote_rest_url).
     if !config.remote_rest_url.trim().is_empty() {
         inbound_totals = process_sync_queue_rest_api(&config, headless_log).await?;
         emit_kasa_data_arrived(&app, &inbound_totals, inbound_totals.failed);
         return Ok(());
     }
 
-    let (local_host, local_port, local_db) = parse_pg_endpoint(&config.local_db);
-    let (remote_host, remote_port, remote_db) = parse_pg_endpoint(&config.remote_db);
-
-    let local = connect_pg(
-        &local_host,
-        local_port,
-        &config.pg_local_user,
-        &config.pg_local_pass,
-        &local_db,
-    )
-    .await?;
-
-    let remote = connect_pg(
-        &remote_host,
-        remote_port,
-        &config.pg_remote_user,
-        &config.pg_remote_pass,
-        &remote_db,
-    )
-    .await?;
-
-    let direction = config.hybrid_sync_direction.to_lowercase();
-    let outbound_store = if config.store_id.trim().is_empty() {
-        None
-    } else {
-        Some(config.store_id.as_str())
-    };
-    let inbound_store = store_id_for_inbound(&config);
-    let kasa = is_kasa_terminal(&config);
-    let term = terminal_opt(&config);
-    let term_ref = term.as_deref();
-    let mut total = 0i32;
-
-    if direction == "local_to_remote" || direction == "bidirectional" {
-        let out = sync_one_direction(
-            &local,
-            &remote,
-            outbound_store,
-            QueueSelectMode::BranchOutbound,
-            None,
-        )
-        .await?;
-        total += out.synced;
-    }
-    if should_run_inbound_master(&config) {
-        inbound_totals = sync_one_direction(
-            &remote,
-            &local,
-            inbound_store,
-            QueueSelectMode::InboundMaster,
-            term_ref,
-        )
-        .await?;
-        total += inbound_totals.synced;
-    }
-
-    if headless_log && !is_app_ui_running() {
-        log_service_inbound_sync(&local, &config, &inbound_totals, inbound_totals.failed).await;
-    }
-
-    if total > 0 {
-        println!(
-            "✅ Hibrit PG senkron: {} kayıt eşlendi ({}{})",
-            total,
-            direction,
-            if kasa { " + kasa inbound" } else { "" }
-        );
-    }
-
-    emit_kasa_data_arrived(&app, &inbound_totals, inbound_totals.failed);
+    eprintln!(
+        "⚠️ Hibrit senkron atlandı: remote_rest_url boş — merkez API adresi zorunlu (doğrudan PG devre dışı)."
+    );
     Ok(())
 }
 
@@ -1449,25 +1382,9 @@ pub async fn mpos_pull_master_internal() -> Result<MposPullResult, String> {
                     0
                 });
     } else {
-        let (remote_host, remote_port, remote_db) = parse_pg_endpoint(&config.remote_db);
-        let remote = connect_pg(
-            &remote_host,
-            remote_port,
-            &config.pg_remote_user,
-            &config.pg_remote_pass,
-            &remote_db,
-        )
-        .await?;
-        inbound = sync_one_direction(
-            &remote,
-            &local,
-            store_filter,
-            QueueSelectMode::InboundMaster,
-            term_ref,
-        )
-        .await?;
-        pending_inbound =
-            count_inbound_pending_pg(&remote, store_filter, term_ref).await?;
+        return Err(
+            "Merkez API (remote_rest_url) zorunlu — doğrudan uzak PostgreSQL devre dışı.".to_string(),
+        );
     }
 
     Ok(MposPullResult {

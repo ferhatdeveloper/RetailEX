@@ -143,17 +143,21 @@ function isSqlWriteStatement(sql: string): boolean {
   );
 }
 
-/** Online/Offline tek uç; hibritte okuma önceliğine göre iki uç (bağlantı hatasında yedek). */
+/** Online/Offline tek uç; hibritte yalnızca yerel PG (merkez = API). */
 export function getDbSqlTargetChain(opts?: { write?: boolean }): PgEndpointConfig[] {
-  const remoteCfg = getCentralRemotePgConfig();
-  if (DB_SETTINGS.activeMode === 'hybrid' && opts?.write) {
+  if (DB_SETTINGS.activeMode === 'hybrid') {
     return [LOCAL_CONFIG];
   }
+  if (shouldUseCentralApi()) {
+    // Online + API: runtime SQL zinciri uzak PG içermez (veri PostgREST üzerinden).
+    if (DB_SETTINGS.activeMode === 'online') {
+      return [LOCAL_CONFIG.isConfigured ? LOCAL_CONFIG : getCentralRemotePgConfig()];
+    }
+    return [LOCAL_CONFIG];
+  }
+  const remoteCfg = getCentralRemotePgConfig();
   if (DB_SETTINGS.activeMode === 'online') return [remoteCfg];
   if (DB_SETTINGS.activeMode === 'offline') return [LOCAL_CONFIG];
-  if (DB_SETTINGS.hybridReadPreference === 'remote_first') {
-    return [remoteCfg, LOCAL_CONFIG];
-  }
   return [LOCAL_CONFIG, remoteCfg];
 }
 
@@ -280,10 +284,16 @@ function applyDefaultCurrencyFromConfig(config: any): void {
   setGlobalCurrency(getAppDefaultCurrency(), getAppDefaultCurrency());
 }
 
-/** Tauri hibrit: POS/satış SQL yazımı yerel PG; PostgREST yalnızca uzak senkron hedefi. */
+/** Merkez (uzak) işlemler yalnızca PostgREST/API ile yapılır; şube/kasa doğrudan uzak PG'ye bağlanmaz. */
+export function shouldUseCentralApi(): boolean {
+  if (DB_SETTINGS.activeMode === 'offline') return false;
+  return Boolean(String(DB_SETTINGS.remoteRestUrl ?? '').trim());
+}
+
+/** Tauri hibrit: yerel satış/fatura SQL yerel PG; merkez uç API (remote_rest_url). */
 function applyTauriHybridDbOverride(): void {
-  if (IS_TAURI && DB_SETTINGS.activeMode === 'hybrid') {
-    DB_SETTINGS.connectionProvider = 'db';
+  if (IS_TAURI && DB_SETTINGS.activeMode === 'hybrid' && shouldUseCentralApi()) {
+    DB_SETTINGS.connectionProvider = 'rest_api';
   }
 }
 
@@ -522,9 +532,13 @@ export async function initializeFromSQLite(preloadedConfig?: any) {
 
       // Tauri hibrit: POS ve sync_queue yazımları yerel PG'de; PostgREST yalnızca senkron hedefi.
       applyTauriHybridDbOverride();
-      if (DB_SETTINGS.connectionProvider === 'db' && config.connection_provider === 'rest_api') {
+      if (
+        DB_SETTINGS.connectionProvider === 'db' &&
+        config.connection_provider === 'rest_api' &&
+        !shouldUseCentralApi()
+      ) {
         console.warn(
-          '[Postgres] Tauri hibrit: connection_provider rest_api → db (yerel satış/fatura yazımı için).',
+          '[Postgres] Tauri hibrit: connection_provider rest_api → db (yalnızca remote_rest_url yokken).',
         );
       }
 
@@ -565,6 +579,7 @@ export async function initializeFromSQLite(preloadedConfig?: any) {
       alignRemoteConfigDatabaseWithTenant(config.remote_rest_url);
       const remoteDbAfterAlign = `${REMOTE_CONFIG.host}:${REMOTE_CONFIG.port}/${REMOTE_CONFIG.database}`;
       if (
+        !shouldUseCentralApi() &&
         config.is_configured === true &&
         remoteDbBeforeAlign.trim() &&
         remoteDbBeforeAlign !== remoteDbAfterAlign
@@ -611,7 +626,9 @@ export async function updateConfigs(updates: {
   if (updates.remote) REMOTE_CONFIG = { ...REMOTE_CONFIG, ...updates.remote };
   if (updates.settings) DB_SETTINGS = { ...DB_SETTINGS, ...updates.settings };
   if (updates.erp) ERP_SETTINGS = { ...ERP_SETTINGS, ...updates.erp };
-  if (DB_SETTINGS.activeMode === 'hybrid') {
+  if (DB_SETTINGS.activeMode === 'hybrid' && shouldUseCentralApi()) {
+    DB_SETTINGS.connectionProvider = 'rest_api';
+  } else if (DB_SETTINGS.activeMode === 'hybrid') {
     DB_SETTINGS.connectionProvider = IS_TAURI ? 'db' : 'rest_api';
   }
   applyTauriHybridDbOverride();
@@ -995,9 +1012,8 @@ export class PostgresConnection {
     // Ensure we have latest config before connecting
     await initializeFromSQLite();
 
-    // Rest API modunda (PostgREST) DB üzerinden SQL bağlantısı kurmaya çalışma.
-    // Şimdilik bu mod, PostgREST endpoint'inin erişilebilirliğini doğrular.
-    if (DB_SETTINGS.connectionProvider === 'rest_api' && DB_SETTINGS.activeMode !== 'offline') {
+    // Rest API modunda veya hibrit+remote_rest_url: merkez API, yerel PG ayrı test edilir.
+    if (shouldUseCentralApi() && DB_SETTINGS.activeMode !== 'offline') {
       const pr = await testPostgrestUrl(DB_SETTINGS.remoteRestUrl);
       let localOk = true;
       if (DB_SETTINGS.activeMode === 'hybrid') {
@@ -1019,7 +1035,7 @@ export class PostgresConnection {
       return this.status;
     }
 
-    if (DB_SETTINGS.activeMode === 'hybrid' && DB_SETTINGS.connectionProvider === 'db') {
+    if (DB_SETTINGS.activeMode === 'hybrid' && !shouldUseCentralApi()) {
       const chain = getDbSqlTargetChain();
       let lastSt: PostgresStatus | undefined;
       for (const cfg of chain) {

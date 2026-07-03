@@ -2,7 +2,7 @@
  * Firma/dönem şema provision — yerel oluşturma → merkez DB otomatik (PostgREST RPC).
  */
 
-import { DB_SETTINGS, LOCAL_CONFIG, postgres, getCentralRemotePgConfig } from './postgres';
+import { DB_SETTINGS, LOCAL_CONFIG, postgres, getCentralRemotePgConfig, shouldUseCentralApi } from './postgres';
 import { queryPgRows, type PgEndpointConfig } from './hybridSyncEngine';
 import { centralRpcCall, isCentralRestAvailable } from './centralRpcService';
 
@@ -84,6 +84,9 @@ async function provisionCentralViaRpc(opts: ProvisionFirmOptions): Promise<{ ok:
     return { ok: true, message: row.out_message || `Merkez: firma ${firm} dönem ${period} hazır.` };
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
+    if (shouldUseCentralApi()) {
+      return { ok: false, message: `Merkez RPC: ${msg}` };
+    }
     if (msg.includes('42883') || msg.includes('does not exist') || msg.includes('provision_firm_schema')) {
       return ensureOnEndpoint(getCentralRemotePgConfig(), firm, period, 'Merkez DB');
     }
@@ -109,6 +112,9 @@ export async function ensureCentralFirmPeriodSchemas(
 
   if (isCentralRestAvailable()) {
     return provisionCentralViaRpc({ firmNr, periodNr, ...opts });
+  }
+  if (shouldUseCentralApi()) {
+    return { ok: false, message: 'Merkez API (remote_rest_url) yapılandırılmamış.' };
   }
 
   return ensureOnEndpoint(getCentralRemotePgConfig(), firmNr, padPeriodNr(periodNr), 'Merkez DB');

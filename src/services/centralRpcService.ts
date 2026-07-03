@@ -3,7 +3,7 @@
  */
 
 import { getPostgrestBaseUrl } from '../config/postgrest.config';
-import { DB_SETTINGS, getCentralRemotePgConfig } from './postgres';
+import { DB_SETTINGS, getCentralRemotePgConfig, shouldUseCentralApi } from './postgres';
 import { IS_TAURI, safeInvoke, getBridgeUrl } from '../utils/env';
 import { fetchRetailexAware } from '../utils/retailexDevProxy';
 
@@ -14,6 +14,7 @@ export function isCentralRestAvailable(): boolean {
 
 export function isCentralPgConfigured(): boolean {
   if (isCentralRestAvailable()) return true;
+  if (shouldUseCentralApi()) return false;
   const cfg = getCentralRemotePgConfig();
   return Boolean(cfg.host?.trim() && cfg.database?.trim() && cfg.user?.trim());
 }
@@ -22,6 +23,11 @@ export async function queryCentralPgRows<T = Record<string, unknown>>(
   sql: string,
   params: unknown[],
 ): Promise<T[]> {
+  if (shouldUseCentralApi()) {
+    throw new Error(
+      'Merkez doğrudan PostgreSQL devre dışı. İşlemler PostgREST/API (remote_rest_url) üzerinden yapılmalı.',
+    );
+  }
   const config = getCentralRemotePgConfig();
   const normalizedParams = params.map((p) => {
     if (p === null || p === undefined) return null;
@@ -65,6 +71,12 @@ export async function centralRpcCall<T = Record<string, unknown>>(
   fn: string,
   body: Record<string, unknown>,
 ): Promise<T> {
+  if (!isCentralRestAvailable()) {
+    if (shouldUseCentralApi()) {
+      throw new Error(`Merkez RPC ${fn}: PostgREST URL yapılandırılmamış.`);
+    }
+  }
+
   if (isCentralRestAvailable()) {
     const base = getPostgrestBaseUrl().replace(/\/+$/, '');
     const url = `${base}/rpc/${fn}`;

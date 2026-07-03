@@ -10,6 +10,7 @@ import {
   REMOTE_CONFIG,
   getCentralRemotePgConfig,
   resolveHybridSyncConnectionProvider,
+  shouldUseCentralApi,
 } from './postgres';
 import {
   prepareLocalSyncQueue,
@@ -19,6 +20,7 @@ import {
 } from './hybridSyncEngine';
 import { listPosTerminalRegistrations } from './deviceRegistrationService';
 import { isCentralPgConfigured, queryCentralPgRows } from './centralRpcService';
+import { postgrest } from './api/postgrestClient';
 import {
   fetchStoreDevicesPresence,
   resolveDeviceOnlineStatus,
@@ -84,6 +86,7 @@ function firmNrPadded(): string {
 export function resolveSyncPgEndpoint(): PgEndpointConfig {
   if (DB_SETTINGS.activeMode === 'hybrid') return LOCAL_CONFIG;
   if (DB_SETTINGS.activeMode === 'online') {
+    if (shouldUseCentralApi()) return LOCAL_CONFIG;
     if (REMOTE_CONFIG.isConfigured || isCentralPgConfigured()) {
       return getCentralRemotePgConfig();
     }
@@ -136,6 +139,9 @@ async function queryEnterprisePgRows(
   sql: string,
   params: unknown[],
 ): Promise<Record<string, unknown>[]> {
+  if (shouldUseCentralApi()) {
+    throw new Error('Merkez SQL devre dışı; PostgREST/API kullanın.');
+  }
   if (isCentralPgConfigured()) {
     try {
       return await queryCentralPgRows<Record<string, unknown>>(sql, params);
@@ -149,6 +155,36 @@ async function queryEnterprisePgRows(
 async function fetchKasaQueueStatsMap(): Promise<Map<string, KasaQueueStats>> {
   const map = new Map<string, KasaQueueStats>();
   try {
+    if (shouldUseCentralApi()) {
+      const rows = await postgrest.get<Record<string, unknown>[]>(
+        '/sync_queue',
+        {
+          select: 'terminal_name,target_store_id,status,retry_count,synced_at,created_at',
+          limit: '5000',
+        },
+        { schema: 'public' },
+      );
+      for (const r of rows || []) {
+        const tname = String(r.terminal_name ?? '');
+        const sid = r.target_store_id != null ? String(r.target_store_id) : '';
+        const key = `${tname}|${sid}`;
+        const stats = map.get(key) ?? { pending: 0, delivered: 0, failed: 0, lastSyncMs: 0 };
+        const status = String(r.status ?? '');
+        const retry = Number(r.retry_count ?? 0);
+        if (status === 'pending' && retry < 10) stats.pending += 1;
+        else if (status === 'completed') {
+          stats.delivered += 1;
+          const ts = r.synced_at ?? r.created_at;
+          if (ts) {
+            const ms = new Date(String(ts)).getTime();
+            if (Number.isFinite(ms) && ms > stats.lastSyncMs) stats.lastSyncMs = ms;
+          }
+        } else if (status === 'pending' && retry >= 10) stats.failed += 1;
+        map.set(key, stats);
+      }
+      return map;
+    }
+
     const rows = await queryEnterprisePgRows(
       `SELECT COALESCE(terminal_name, '') AS tname,
               target_store_id::text AS sid,

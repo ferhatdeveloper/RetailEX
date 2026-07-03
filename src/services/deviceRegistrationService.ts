@@ -7,7 +7,7 @@ import { APP_SEMVER } from '../core/version';
 import { IS_TAURI, safeInvoke, getBridgeUrl } from '../utils/env';
 import { postgrest } from './api/postgrestClient';
 import { getPostgrestBaseUrl } from '../config/postgrest.config';
-import { DB_SETTINGS, ERP_SETTINGS, REMOTE_CONFIG, getCentralRemotePgConfig, postgres } from './postgres';
+import { DB_SETTINGS, ERP_SETTINGS, REMOTE_CONFIG, getCentralRemotePgConfig, postgres, shouldUseCentralApi } from './postgres';
 import { parseSaaSOrCustomPostgrestUrl, resolveEffectiveRemoteRestUrl } from './merkezTenantRegistry';
 
 export type PosTerminalStatus = 'pending' | 'approved' | 'rejected' | 'blocked' | 'not_registered';
@@ -120,6 +120,11 @@ async function queryCentralPgRows<T = Record<string, unknown>>(
   sql: string,
   params: unknown[],
 ): Promise<T[]> {
+  if (shouldUseCentralApi()) {
+    throw new Error(
+      'Merkez doğrudan PostgreSQL devre dışı. remote_rest_url (PostgREST) kullanın.',
+    );
+  }
   const config = resolveCentralPgConfig();
   if (!centralPgConfigured()) {
     throw new Error(
@@ -184,6 +189,10 @@ async function rpcCall<T>(fn: string, body: Record<string, unknown>): Promise<T>
       }
       throw e;
     }
+  }
+
+  if (shouldUseCentralApi()) {
+    throw new Error(`Merkez RPC ${fn}: PostgREST URL (remote_rest_url) zorunlu.`);
   }
 
   const keys = Object.keys(rpcBody);
@@ -358,6 +367,23 @@ export async function listCentralStoresForPlacement(firmNr?: string): Promise<De
     WHERE firm_nr = $1 AND COALESCE(is_active, true) = true
     ORDER BY name`;
   try {
+    if (useCentralPostgrest()) {
+      const rows = await postgrest.get<{ id: string; code: string; name: string }[]>(
+        '/stores',
+        {
+          select: 'id,code,name',
+          firm_nr: `eq.${firm}`,
+          is_active: 'eq.true',
+          order: 'name.asc',
+        },
+        { schema: 'public' },
+      );
+      return (rows || []).map((r) => ({
+        id: String(r.id),
+        code: String(r.code ?? ''),
+        name: String(r.name ?? ''),
+      }));
+    }
     const rows = await queryCentralPgRows<{ id: string; code: string; name: string }>(sql, [firm]);
     return rows.map((r) => ({
       id: String(r.id),
