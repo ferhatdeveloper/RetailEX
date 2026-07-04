@@ -130,6 +130,24 @@ if (IS_TAURI && DB_SETTINGS.activeMode === 'hybrid') {
 
 type PgEndpointConfig = typeof LOCAL_CONFIG;
 
+/**
+ * SaaS web: köprü konteyneri tarayıcıdaki 127.0.0.1'e erişemez.
+ * Production'da localhost hedefini Docker iç ağındaki `saas_postgres` ile değiştir.
+ */
+function normalizeBridgePgEndpoint(cfg: PgEndpointConfig): PgEndpointConfig {
+  if (IS_TAURI || !IS_PRODUCTION) return cfg;
+  const host = cfg.host === 'localhost' ? '127.0.0.1' : cfg.host;
+  if (host !== '127.0.0.1') return cfg;
+  const tenantDb = resolveEffectiveTenantDatabaseName();
+  return {
+    ...cfg,
+    host: 'saas_postgres',
+    database:
+      tenantDb ||
+      (cfg.database && cfg.database !== 'retailex_local' ? cfg.database : 'retailex_demo'),
+  };
+}
+
 /** Hibrit modda yazım (INSERT/UPDATE/…) yalnızca yerel PG — uzak uca düşme. */
 function isSqlWriteStatement(sql: string): boolean {
   const head = sql
@@ -149,21 +167,28 @@ export function getDbSqlTargetChain(opts?: { write?: boolean }): PgEndpointConfi
     return [LOCAL_CONFIG];
   }
   if (shouldUseCentralApi()) {
-    // Online + API: runtime SQL zinciri uzak PG içermez (veri PostgREST üzerinden).
+    // Online + API: veri çoğunlukla PostgREST; legacy SQL (raporlar vb.) için uzak PG.
+    // SaaS web'de LOCAL_CONFIG (127.0.0.1) köprüden erişilemez — kiracı uzak ucunu kullan.
     if (DB_SETTINGS.activeMode === 'online') {
-      return [LOCAL_CONFIG.isConfigured ? LOCAL_CONFIG : getCentralRemotePgConfig()];
+      const cfg =
+        !IS_TAURI && IS_PRODUCTION
+          ? getCentralRemotePgConfig()
+          : LOCAL_CONFIG.isConfigured
+            ? LOCAL_CONFIG
+            : getCentralRemotePgConfig();
+      return [normalizeBridgePgEndpoint(cfg)];
     }
-    return [LOCAL_CONFIG];
+    return [normalizeBridgePgEndpoint(LOCAL_CONFIG)];
   }
-  const remoteCfg = getCentralRemotePgConfig();
+  const remoteCfg = normalizeBridgePgEndpoint(getCentralRemotePgConfig());
   if (DB_SETTINGS.activeMode === 'online') return [remoteCfg];
-  if (DB_SETTINGS.activeMode === 'offline') return [LOCAL_CONFIG];
-  return [LOCAL_CONFIG, remoteCfg];
+  if (DB_SETTINGS.activeMode === 'offline') return [normalizeBridgePgEndpoint(LOCAL_CONFIG)];
+  return [normalizeBridgePgEndpoint(LOCAL_CONFIG), remoteCfg];
 }
 
 /** Birincil SQL ucu — pg_bridge `pg_dump` ve benzeri için bağlantı dizesi (özel karakterler URI-encode). */
 export function getPrimarySqlConnectionString(): string {
-  const config = getDbSqlTargetChain()[0];
+  const config = normalizeBridgePgEndpoint(getDbSqlTargetChain()[0]);
   const effectiveHost = config.host === 'localhost' ? '127.0.0.1' : config.host;
   const u = encodeURIComponent(config.user);
   const p = encodeURIComponent(config.password);
@@ -199,8 +224,9 @@ async function executePgQueryRows(
   normalizedParams: any[],
   config: PgEndpointConfig
 ): Promise<any[]> {
-  const effectiveHost = config.host === 'localhost' ? '127.0.0.1' : config.host;
-  const connStr = `postgresql://${config.user}:${config.password}@${effectiveHost}:${config.port}/${config.database}`;
+  const bridgeCfg = normalizeBridgePgEndpoint(config);
+  const effectiveHost = bridgeCfg.host === 'localhost' ? '127.0.0.1' : bridgeCfg.host;
+  const connStr = `postgresql://${bridgeCfg.user}:${bridgeCfg.password}@${effectiveHost}:${bridgeCfg.port}/${bridgeCfg.database}`;
   if (IS_TAURI) {
     const resultJson: string = await safeInvoke('pg_query', { connStr, sql: resolvedSql, params: normalizedParams });
     return JSON.parse(resultJson);
