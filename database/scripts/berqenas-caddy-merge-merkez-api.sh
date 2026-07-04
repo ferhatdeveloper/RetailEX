@@ -100,7 +100,7 @@ emit_sync_handle_path() {
   echo "        uri strip_prefix /${_path}"
   echo "        reverse_proxy ${_sync_up}"
   echo "    }"
-  echo "    handle /${_path}/sync* {"
+  echo "    handle /${_path}/sync/* {"
   echo "        uri strip_prefix /${_path}/sync"
   echo "        reverse_proxy ${_sync_up}"
   echo "    }"

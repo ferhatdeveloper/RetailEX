@@ -16,6 +16,7 @@ import { IS_TAURI, safeInvoke, removeRetailexWindowsServicesIfTauri, deleteCReta
 import { mergeRustIntoStoredWebConfig } from '../../utils/retailexWebConfigMerge';
 import { createInitialSetupConfig } from './setup/setupDefaults';
 import { LOGO_ERP_DEFAULTS, mergeLogoErpDefaults } from './setup/logoErpDefaults';
+import { LogoMssqlDatabaseSelect } from '../integrations/LogoMssqlDatabaseSelect';
 import {
   finalizeSetupConfig,
   needsLocalDatabaseStep,
@@ -3032,7 +3033,7 @@ const SetupWizard: React.FC = () => {
 
                                 <div className="grid grid-cols-1 gap-6 max-w-2xl mx-auto">
                                     <div className={`space-y-4 bg-white/[0.02] p-8 rounded-[32px] border transition-all duration-500 ${config.is_nebim_migration ? 'border-indigo-500/20 shadow-[0_20px_40px_-10px_rgba(99,102,241,0.1)]' : 'border-blue-500/20 shadow-[0_20px_40px_-10px_rgba(59,130,246,0.1)]'}`}>
-                                        <div className="grid grid-cols-2 gap-4">
+                                        <div className="grid grid-cols-1 gap-4">
                                             <div className="space-y-1.5">
                                                 <label className="text-[9px] font-black text-blue-200/40 uppercase tracking-widest pl-1">{config.is_nebim_migration ? 'Nebim Server / IP' : 'Server Host / IP'}</label>
                                                 <div className="relative group">
@@ -3047,20 +3048,20 @@ const SetupWizard: React.FC = () => {
                                                     />
                                                 </div>
                                             </div>
-                                            <div className="space-y-1.5">
-                                                <label className="text-[9px] font-black text-blue-200/40 uppercase tracking-widest pl-1">Database Name</label>
-                                                <div className="relative group">
-                                                    <Database className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-blue-500/40 group-focus-within:text-blue-500 transition-colors" />
-                                                    <input
-                                                        type="text"
-                                                        readOnly={logoSqlFieldsLocked}
-                                                        className={`w-full bg-black/40 border border-white/10 rounded-xl pl-11 pr-4 py-3 text-xs text-white focus:outline-none focus:border-blue-500 transition-all font-bold placeholder:font-medium ${logoSqlFieldsLocked ? 'opacity-90 cursor-default' : ''}`}
-                                                        value={config.erp_db || LOGO_ERP_DEFAULTS.erp_db}
-                                                        onChange={(e) => setConfig({ ...config, erp_db: e.target.value })}
-                                                        placeholder={LOGO_ERP_DEFAULTS.erp_db}
-                                                    />
-                                                </div>
-                                            </div>
+                                            <LogoMssqlDatabaseSelect
+                                                variant="dark"
+                                                allowManual
+                                                persist={false}
+                                                disabled={logoSqlFieldsLocked}
+                                                label="Database Name"
+                                                value={config.erp_db || LOGO_ERP_DEFAULTS.erp_db}
+                                                connectionConfig={{
+                                                    erp_host: config.erp_host || LOGO_ERP_DEFAULTS.erp_host,
+                                                    erp_user: config.erp_user || LOGO_ERP_DEFAULTS.erp_user,
+                                                    erp_pass: config.erp_pass ?? LOGO_ERP_DEFAULTS.erp_pass,
+                                                }}
+                                                onChange={(db) => setConfig({ ...config, erp_db: db })}
+                                            />
                                         </div>
 
                                         <div className="grid grid-cols-2 gap-4">

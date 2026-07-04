@@ -1411,6 +1411,7 @@ DECLARE
   v_firm_nr  VARCHAR;
   v_record_id UUID;
   v_data     JSONB;
+  v_sig TEXT;
 BEGIN
   IF COALESCE(current_setting('retailex.sync_apply', true), '') = '1' THEN
     IF TG_OP = 'DELETE' THEN
@@ -1430,6 +1431,23 @@ BEGIN
     IF (TG_OP = 'DELETE') THEN v_record_id := OLD.id; v_data := row_to_json(OLD)::JSONB;
     ELSE v_record_id := NEW.id; v_data := row_to_json(NEW)::JSONB; END IF;
   END;
+
+  IF TG_OP <> 'DELETE' THEN
+    v_sig := COALESCE(v_data->>'updated_at', md5(v_data::text));
+    IF EXISTS (
+      SELECT 1
+      FROM sync_queue sq
+      WHERE sq.table_name = TG_TABLE_NAME
+        AND sq.record_id = v_record_id
+        AND sq.status = 'completed'
+        AND COALESCE(sq.data->>'updated_at', md5(sq.data::text)) IS NOT DISTINCT FROM v_sig
+      ORDER BY sq.synced_at DESC NULLS LAST
+      LIMIT 1
+    ) THEN
+      RETURN NEW;
+    END IF;
+  END IF;
+
   UPDATE sync_queue SET data = v_data, action = TG_OP, created_at = NOW()
   WHERE table_name = TG_TABLE_NAME AND record_id = v_record_id AND status = 'pending';
   IF NOT FOUND THEN
@@ -1457,6 +1475,33 @@ BEGIN
     AND (
       p_firm_nr IS NULL OR p_firm_nr = ''
       OR lpad(ltrim(firm_nr, '0'), 3, '0') = v_norm
+    );
+  GET DIAGNOSTICS v_count = ROW_COUNT;
+  RETURN v_count;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION public.prune_redundant_sync_queue(p_firm_nr VARCHAR DEFAULT NULL)
+RETURNS INTEGER AS $$
+DECLARE
+  v_count INTEGER;
+  v_norm TEXT;
+BEGIN
+  v_norm := lpad(ltrim(COALESCE(p_firm_nr, ''), '0'), 3, '0');
+  DELETE FROM sync_queue p
+  WHERE p.status = 'pending'
+    AND (
+      p_firm_nr IS NULL OR p_firm_nr = ''
+      OR lpad(ltrim(p.firm_nr, '0'), 3, '0') = v_norm
+    )
+    AND EXISTS (
+      SELECT 1
+      FROM sync_queue c
+      WHERE c.table_name = p.table_name
+        AND c.record_id = p.record_id
+        AND c.status = 'completed'
+        AND COALESCE(c.data->>'updated_at', md5(c.data::text))
+            IS NOT DISTINCT FROM COALESCE(p.data->>'updated_at', md5(p.data::text))
     );
   GET DIAGNOSTICS v_count = ROW_COUNT;
   RETURN v_count;

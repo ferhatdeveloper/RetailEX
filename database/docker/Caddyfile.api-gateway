@@ -29,7 +29,7 @@
         header Access-Control-Allow-Origin "https://retailex.app"
         reverse_proxy sync_aqua:8080
     }
-    handle /aqua/sync* {
+    handle /aqua/sync/* {
         uri strip_prefix /aqua/sync
         header Access-Control-Allow-Origin "https://retailex.app"
         reverse_proxy sync_aqua:8080
@@ -47,7 +47,7 @@
         header Access-Control-Allow-Origin "https://retailex.app"
         reverse_proxy sync_dismarco_pdks:8080
     }
-    handle /dismarco_pdks/sync* {
+    handle /dismarco_pdks/sync/* {
         uri strip_prefix /dismarco_pdks/sync
         header Access-Control-Allow-Origin "https://retailex.app"
         reverse_proxy sync_dismarco_pdks:8080
@@ -65,7 +65,7 @@
         header Access-Control-Allow-Origin "https://retailex.app"
         reverse_proxy sync_m10_pdks:8080
     }
-    handle /m10_pdks/sync* {
+    handle /m10_pdks/sync/* {
         uri strip_prefix /m10_pdks/sync
         header Access-Control-Allow-Origin "https://retailex.app"
         reverse_proxy sync_m10_pdks:8080
@@ -83,7 +83,7 @@
         header Access-Control-Allow-Origin "https://retailex.app"
         reverse_proxy sync_bestcom:8080
     }
-    handle /bestcom/sync* {
+    handle /bestcom/sync/* {
         uri strip_prefix /bestcom/sync
         header Access-Control-Allow-Origin "https://retailex.app"
         reverse_proxy sync_bestcom:8080
@@ -101,7 +101,7 @@
         header Access-Control-Allow-Origin "https://retailex.app"
         reverse_proxy sync_siti_pdks:8080
     }
-    handle /siti_pdks/sync* {
+    handle /siti_pdks/sync/* {
         uri strip_prefix /siti_pdks/sync
         header Access-Control-Allow-Origin "https://retailex.app"
         reverse_proxy sync_siti_pdks:8080
@@ -119,7 +119,7 @@
         header Access-Control-Allow-Origin "https://retailex.app"
         reverse_proxy sync_pdks_demo:8080
     }
-    handle /pdks_demo/sync* {
+    handle /pdks_demo/sync/* {
         uri strip_prefix /pdks_demo/sync
         header Access-Control-Allow-Origin "https://retailex.app"
         reverse_proxy sync_pdks_demo:8080
@@ -137,7 +137,7 @@
         header Access-Control-Allow-Origin "https://retailex.app"
         reverse_proxy sync_retailex_demo:8080
     }
-    handle /retailex_demo/sync* {
+    handle /retailex_demo/sync/* {
         uri strip_prefix /retailex_demo/sync
         header Access-Control-Allow-Origin "https://retailex.app"
         reverse_proxy sync_retailex_demo:8080
@@ -155,7 +155,7 @@
         header Access-Control-Allow-Origin "https://retailex.app"
         reverse_proxy sync_berzin_com:8080
     }
-    handle /berzin_com/sync* {
+    handle /berzin_com/sync/* {
         uri strip_prefix /berzin_com/sync
         header Access-Control-Allow-Origin "https://retailex.app"
         reverse_proxy sync_berzin_com:8080
@@ -173,7 +173,7 @@
         header Access-Control-Allow-Origin "https://retailex.app"
         reverse_proxy sync_sho_aksesuar:8080
     }
-    handle /sho_aksesuar/sync* {
+    handle /sho_aksesuar/sync/* {
         uri strip_prefix /sho_aksesuar/sync
         header Access-Control-Allow-Origin "https://retailex.app"
         reverse_proxy sync_sho_aksesuar:8080
@@ -191,7 +191,7 @@
         header Access-Control-Allow-Origin "https://retailex.app"
         reverse_proxy sync_kupeli:8080
     }
-    handle /kupeli/sync* {
+    handle /kupeli/sync/* {
         uri strip_prefix /kupeli/sync
         header Access-Control-Allow-Origin "https://retailex.app"
         reverse_proxy sync_kupeli:8080
@@ -209,7 +209,7 @@
         header Access-Control-Allow-Origin "https://retailex.app"
         reverse_proxy sync_kasap:8080
     }
-    handle /kasap/sync* {
+    handle /kasap/sync/* {
         uri strip_prefix /kasap/sync
         header Access-Control-Allow-Origin "https://retailex.app"
         reverse_proxy sync_kasap:8080
@@ -227,7 +227,7 @@
         header Access-Control-Allow-Origin "https://retailex.app"
         reverse_proxy sync_testere:8080
     }
-    handle /testere/sync* {
+    handle /testere/sync/* {
         uri strip_prefix /testere/sync
         header Access-Control-Allow-Origin "https://retailex.app"
         reverse_proxy sync_testere:8080
@@ -245,7 +245,7 @@
         header Access-Control-Allow-Origin "https://retailex.app"
         reverse_proxy sync_mettu:8080
     }
-    handle /mettu/sync* {
+    handle /mettu/sync/* {
         uri strip_prefix /mettu/sync
         header Access-Control-Allow-Origin "https://retailex.app"
         reverse_proxy sync_mettu:8080
@@ -263,7 +263,7 @@
         header Access-Control-Allow-Origin "https://retailex.app"
         reverse_proxy sync_jiber:8080
     }
-    handle /jiber/sync* {
+    handle /jiber/sync/* {
         uri strip_prefix /jiber/sync
         header Access-Control-Allow-Origin "https://retailex.app"
         reverse_proxy sync_jiber:8080
@@ -281,7 +281,7 @@
         header Access-Control-Allow-Origin "https://retailex.app"
         reverse_proxy sync_canon:8080
     }
-    handle /canon/sync* {
+    handle /canon/sync/* {
         uri strip_prefix /canon/sync
         header Access-Control-Allow-Origin "https://retailex.app"
         reverse_proxy sync_canon:8080
@@ -299,7 +299,7 @@
         header Access-Control-Allow-Origin "https://retailex.app"
         reverse_proxy sync_lovan:8080
     }
-    handle /lovan/sync* {
+    handle /lovan/sync/* {
         uri strip_prefix /lovan/sync
         header Access-Control-Allow-Origin "https://retailex.app"
         reverse_proxy sync_lovan:8080

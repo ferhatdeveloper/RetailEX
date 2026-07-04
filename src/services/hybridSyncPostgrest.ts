@@ -187,6 +187,9 @@ export function buildPostgrestQueueQuery(filter?: HybridSyncFilter, limit = 50):
   if (filter?.userId) {
     parts.unshift(`source_user_id=eq.${encodeURIComponent(filter.userId)}`);
   }
+  if (filter?.changedSince?.trim()) {
+    parts.unshift(`created_at=gte.${encodeURIComponent(filter.changedSince.trim())}`);
+  }
   return parts.join('&');
 }
 
@@ -412,11 +415,20 @@ export async function testPostgrestSyncEndpoint(
     const res = await fetchRetailexAware(url, { method: 'GET', headers: restHeaders('public') });
     if (res.ok) return { ok: true, message: `${base} — sync_queue erişilebilir` };
     if (res.status === 404 || res.status === 400) {
+      const firmsProbe = await fetchRetailexAware(restUrl(base, '/firms', 'select=id&limit=1'), {
+        method: 'GET',
+        headers: restHeaders('public'),
+      });
+      const routingHint =
+        firmsProbe.ok
+          ? ' API gateway yönlendirmesi hatalı olabilir: /{kiracı}/sync* kuralı sync_queue yolunu sync servisine gönderir. Caddy\'de /sync/* kullanın (database/docker/Caddyfile.api-gateway).'
+          : '';
       return {
         ok: false,
         message:
-          `${base} — sync_queue PostgREST'te yok veya erişilemiyor (migration 048+049). ` +
-          'Merkezden alım (receive) için merkez DB\'de sync_queue gerekir.',
+          `${base} — sync_queue PostgREST'te yok veya erişilemiyor (migration 048+049+088).` +
+          ' Merkezden alım (receive) için merkez DB\'de sync_queue gerekir.' +
+          routingHint,
       };
     }
     const text = await res.text().catch(() => '');

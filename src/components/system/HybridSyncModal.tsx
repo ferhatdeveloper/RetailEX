@@ -23,12 +23,14 @@ import {
 } from '../../services/postgres';
 import {
   buildSyncEndpoints,
+  countPendingQueueEndpoint,
   countRemoteMasterTables,
   formatRemoteMasterVerifyMessage,
   getPendingQueueBreakdown,
   getPendingQueueBreakdownEndpoint,
   getSyncQueueRecentErrors,
   masterTableNamesForFirm,
+  pruneRedundantSyncQueue,
   runHybridSync,
   type SyncQueueBreakdownRow,
   type SyncQueueErrorRow,
@@ -37,6 +39,7 @@ import {
 } from '../../services/hybridSyncEngine';
 import {
   buildSyncFilter,
+  buildKasaInboundFilter,
   getBranchSyncStats,
   getRemoteMasterSnapshot,
   type RemoteMasterSnapshot,
@@ -317,21 +320,27 @@ export function HybridSyncModal({ open, onOpenChange, onComplete }: Props) {
     try {
       const kasaCtx = await resolveKasaPullContext(user?.store_id || null);
       const receiveEnabled = DB_SETTINGS.hybridSyncDirection !== 'local_to_remote';
-      const branchFilter = buildSyncFilter({
+      const outboundFilter = buildSyncFilter({
         storeId: user?.store_id || null,
         userId: null,
         cashierUsername: null,
         scopeCashierOnly: false,
       });
+      const inboundFilter = buildKasaInboundFilter({
+        storeId: kasaCtx?.storeId ?? user?.store_id ?? null,
+        terminalName: kasaCtx?.terminalName ?? null,
+      });
 
-      const branchStats = await getBranchSyncStats(branchFilter);
+      await pruneRedundantSyncQueue(LOCAL_CONFIG, ERP_SETTINGS.firmNr);
+
+      const branchStats = await getBranchSyncStats(outboundFilter);
       const remoteMaster = await getRemoteMasterSnapshot(ERP_SETTINGS.firmNr);
-      const outboundBreakdown = await getPendingQueueBreakdown(LOCAL_CONFIG, branchFilter);
-      const recentQueueErrors = await getSyncQueueRecentErrors(LOCAL_CONFIG, branchFilter, 40);
+      const outboundBreakdown = await getPendingQueueBreakdown(LOCAL_CONFIG, outboundFilter);
+      const recentQueueErrors = await getSyncQueueRecentErrors(LOCAL_CONFIG, outboundFilter, 40);
 
       let inboundBreakdown: SyncQueueBreakdownRow[] = [];
       const inboundQueueAvailable = branchStats.remotePending >= 0;
-      const inboundPending = branchStats.remotePending >= 0 ? branchStats.remotePending : -1;
+      let inboundPending = branchStats.remotePending >= 0 ? branchStats.remotePending : -1;
 
       if (receiveEnabled) {
         try {
@@ -341,7 +350,8 @@ export function HybridSyncModal({ open, onOpenChange, onComplete }: Props) {
             connectionProvider: resolveHybridSyncConnectionProvider(),
             remoteRestUrl: DB_SETTINGS.remoteRestUrl,
           });
-          inboundBreakdown = await getPendingQueueBreakdownEndpoint(remote, branchFilter);
+          inboundBreakdown = await getPendingQueueBreakdownEndpoint(remote, inboundFilter);
+          inboundPending = await countPendingQueueEndpoint(remote, inboundFilter);
         } catch {
           /* merkez kırılım alınamadı */
         }
@@ -407,11 +417,16 @@ export function HybridSyncModal({ open, onOpenChange, onComplete }: Props) {
     setSessionErrors([]);
     stopLivePoll();
 
-    const filter = buildSyncFilter({
+    const kasaCtx = await resolveKasaPullContext(user?.store_id || null);
+    const outboundFilter = buildSyncFilter({
       storeId: user?.store_id || null,
       userId: null,
       cashierUsername: null,
       scopeCashierOnly: false,
+    });
+    const inboundFilter = buildKasaInboundFilter({
+      storeId: kasaCtx?.storeId ?? user?.store_id ?? null,
+      terminalName: kasaCtx?.terminalName ?? preview.registeredTerminal ?? null,
     });
     const receiveEnabled = preview.receiveEnabled;
     const deviceId = await getHybridDeviceId();
@@ -424,7 +439,7 @@ export function HybridSyncModal({ open, onOpenChange, onComplete }: Props) {
     const refreshLiveCounts = async (stepId: 'send' | 'receive') => {
       try {
         if (stepId === 'send') {
-          const breakdown = await getPendingQueueBreakdown(LOCAL_CONFIG, filter);
+          const breakdown = await getPendingQueueBreakdown(LOCAL_CONFIG, outboundFilter);
           const remaining = breakdown.reduce((s, r) => s + r.count, 0);
           const totalAtStart = totalsAtStartRef.current.send;
           const eng = engineProgressRef.current;
@@ -443,8 +458,7 @@ export function HybridSyncModal({ open, onOpenChange, onComplete }: Props) {
             }),
           });
         } else {
-          const stats = await getBranchSyncStats(filter);
-          const remaining = stats.remotePending >= 0 ? stats.remotePending : 0;
+          let remaining = 0;
           let breakdown: SyncQueueBreakdownRow[] = [];
           try {
             const { remote } = buildSyncEndpoints({
@@ -453,7 +467,8 @@ export function HybridSyncModal({ open, onOpenChange, onComplete }: Props) {
               connectionProvider: resolveHybridSyncConnectionProvider(),
               remoteRestUrl: DB_SETTINGS.remoteRestUrl,
             });
-            breakdown = await getPendingQueueBreakdownEndpoint(remote, filter);
+            breakdown = await getPendingQueueBreakdownEndpoint(remote, inboundFilter);
+            remaining = await countPendingQueueEndpoint(remote, inboundFilter);
           } catch {
             /* kırılım alınamadı */
           }
@@ -545,7 +560,7 @@ export function HybridSyncModal({ open, onOpenChange, onComplete }: Props) {
         flow: 'send',
         direction: 'local_to_remote',
         scope: 'all',
-        filter,
+        filter: outboundFilter,
         local: LOCAL_CONFIG,
         remote: getCentralRemotePgConfig(),
         connectionProvider: resolveHybridSyncConnectionProvider(),
@@ -553,6 +568,7 @@ export function HybridSyncModal({ open, onOpenChange, onComplete }: Props) {
         incremental: true,
         deviceId,
         storeId: user?.store_id || null,
+        terminalName: kasaCtx?.terminalName ?? null,
         onProgress: makeOnProgress('send'),
       });
       stopLivePoll();
@@ -580,7 +596,7 @@ export function HybridSyncModal({ open, onOpenChange, onComplete }: Props) {
         });
       }
 
-      const queueErrorsAfterSend = await getSyncQueueRecentErrors(LOCAL_CONFIG, filter, 40);
+      const queueErrorsAfterSend = await getSyncQueueRecentErrors(LOCAL_CONFIG, outboundFilter, 40);
       setQueueErrors(queueErrorsAfterSend);
 
       if (receiveEnabled) {
@@ -591,14 +607,15 @@ export function HybridSyncModal({ open, onOpenChange, onComplete }: Props) {
           flow: 'receive',
           direction: 'remote_to_local',
           scope: 'all',
-          filter,
+          filter: inboundFilter,
           local: LOCAL_CONFIG,
           remote: getCentralRemotePgConfig(),
           connectionProvider: resolveHybridSyncConnectionProvider(),
           remoteRestUrl: DB_SETTINGS.remoteRestUrl,
           incremental: true,
           deviceId,
-          storeId: user?.store_id || null,
+          storeId: kasaCtx?.storeId ?? user?.store_id ?? null,
+          terminalName: kasaCtx?.terminalName ?? preview.registeredTerminal ?? null,
           onProgress: makeOnProgress('receive'),
         });
         stopLivePoll();

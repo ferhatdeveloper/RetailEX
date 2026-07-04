@@ -29,7 +29,7 @@ api.retailex.app {
 		uri strip_prefix /aqua
 		reverse_proxy saas_sync_hub:8080
 	}
-	handle /aqua/sync* {
+	handle /aqua/sync/* {
 		uri strip_prefix /aqua/sync
 		reverse_proxy saas_sync_hub:8080
 	}
@@ -42,7 +42,7 @@ api.retailex.app {
 		uri strip_prefix /lovan
 		reverse_proxy saas_sync_hub:8080
 	}
-	handle /lovan/sync* {
+	handle /lovan/sync/* {
 		uri strip_prefix /lovan/sync
 		reverse_proxy saas_sync_hub:8080
 	}

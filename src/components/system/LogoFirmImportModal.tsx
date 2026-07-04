@@ -7,6 +7,7 @@ import {
   fetchLogoPeriodsFromMssql,
   importLogoFirmData,
 } from '../../services/logoMssqlSyncService';
+import { LogoMssqlDatabaseSelect } from '../integrations/LogoMssqlDatabaseSelect';
 import { provisionFirmEverywhere } from '../../services/firmProvisionService';
 import { organizationAPI } from '../../services/api';
 import { emitInvalidate } from '../../services/retailexDataSync';
@@ -24,25 +25,31 @@ export function LogoFirmImportModal({ open, onClose, onImported }: Props) {
   const [periods, setPeriods] = useState<Array<{ nr: number; start_date: string; end_date: string }>>([]);
   const [firmId, setFirmId] = useState('');
   const [periodNr, setPeriodNr] = useState('');
+  const [erpDb, setErpDb] = useState('');
 
-  useEffect(() => {
-    if (!open || !IS_TAURI) return;
+  const loadFirms = (db: string) => {
+    if (!db || !IS_TAURI) return;
     setLoading(true);
-    void fetchLogoFirmsFromMssql()
+    void fetchLogoFirmsFromMssql(db)
       .then((list) => {
         setFirms(list);
-        if (list.length === 1) setFirmId(list[0].id);
+        setFirmId(list.length === 1 ? list[0].id : '');
       })
       .catch((e) => toast.error(String(e)))
       .finally(() => setLoading(false));
-  }, [open]);
+  };
 
   useEffect(() => {
-    if (!firmId || !IS_TAURI) {
+    if (!open || !IS_TAURI || !erpDb) return;
+    loadFirms(erpDb);
+  }, [open, erpDb]);
+
+  useEffect(() => {
+    if (!firmId || !IS_TAURI || !erpDb) {
       setPeriods([]);
       return;
     }
-    void fetchLogoPeriodsFromMssql(firmId)
+    void fetchLogoPeriodsFromMssql(firmId, erpDb)
       .then((list) => {
         setPeriods(list);
         if (list.length > 0) {
@@ -51,7 +58,7 @@ export function LogoFirmImportModal({ open, onClose, onImported }: Props) {
         }
       })
       .catch((e) => toast.error(String(e)));
-  }, [firmId]);
+  }, [firmId, erpDb]);
 
   const selectedFirm = firms.find((f) => f.id === firmId);
 
@@ -77,7 +84,7 @@ export function LogoFirmImportModal({ open, onClose, onImported }: Props) {
       await provisionFirmEverywhere(firmNr, per);
       emitInvalidate('firms');
 
-      const sync = await importLogoFirmData(firmNr, per);
+      const sync = await importLogoFirmData(firmNr, per, erpDb);
       if (!sync.ok) {
         toast.warning(`Firma kaydedildi; Logo veri aktarımı kısmen başarısız: ${sync.message}`);
       } else {
@@ -121,9 +128,19 @@ export function LogoFirmImportModal({ open, onClose, onImported }: Props) {
         </div>
         <div className="p-4 space-y-4">
           <p className="text-sm text-gray-600">
-            Kurulumdaki MSSQL bağlantısı ile Logo firmaları listelenir. Seçilen firma RetailEX&apos;e kaydedilir
-            ve stok, cari, fatura, kasa verileri yerel PostgreSQL&apos;e aktarılır.
+            MSSQL sunucusundaki Logo veritabanını seçin; ardından firma ve dönem seçerek RetailEX&apos;e aktarın.
           </p>
+          <LogoMssqlDatabaseSelect
+            value={erpDb || null}
+            allowManual
+            onChange={(db) => {
+              setErpDb(db);
+              setFirmId('');
+              setPeriodNr('');
+              setFirms([]);
+              setPeriods([]);
+            }}
+          />
           {loading ? (
             <div className="flex items-center gap-2 text-sm text-gray-600 py-6 justify-center">
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -171,7 +188,7 @@ export function LogoFirmImportModal({ open, onClose, onImported }: Props) {
           </button>
           <button
             type="button"
-            disabled={importing || !firmId || !periodNr}
+            disabled={importing || !firmId || !periodNr || !erpDb}
             onClick={() => void handleImport()}
             className="flex-1 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center justify-center gap-2"
           >

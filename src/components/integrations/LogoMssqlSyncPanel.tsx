@@ -9,6 +9,7 @@ import {
   subscribeLogoMssqlSyncLogs,
   type LogoMssqlSyncSettings,
 } from '../../services/logoMssqlSyncService';
+import { LogoMssqlDatabaseSelect } from './LogoMssqlDatabaseSelect';
 
 export function LogoMssqlSyncPanel() {
   const [settings, setSettings] = useState<LogoMssqlSyncSettings>(() => loadLogoMssqlSyncSettings());
@@ -84,6 +85,12 @@ export function LogoMssqlSyncPanel() {
       </div>
 
       <div className="p-4 space-y-4">
+        <LogoMssqlDatabaseSelect
+          value={settings.erpDb}
+          allowManual
+          onChange={(db) => patch({ erpDb: db })}
+        />
+
         <label className="flex items-center gap-2 text-sm">
           <input
             type="checkbox"
@@ -158,8 +165,8 @@ export function LogoMssqlSyncPanel() {
         </div>
 
         <p className="text-[10px] text-gray-500 leading-snug">
-          Bağlantı: Kurulum / Ayarlar → ERP (MSSQL host, veritabanı, kullanıcı). Çoklu firma için Entegrasyonlardaki
-          Logo Tiger REST <code>firmMappings</code> veya kurulumda firma seçimi kullanılır.
+          Bağlantı: Kurulum → ERP (MSSQL host, kullanıcı). Veritabanı yukarıdan seçilir; çoklu Logo DB için doğru
+          veritabanını işaretleyin.
         </p>
       </div>
     </div>

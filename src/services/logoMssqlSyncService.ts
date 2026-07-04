@@ -20,6 +20,8 @@ export type LogoMssqlSyncModules = {
 export type LogoMssqlSyncSettings = {
   enabled: boolean;
   intervalMinutes: number;
+  /** Logo MSSQL veritabanı (boşsa config.db erp_db) */
+  erpDb: string | null;
   modules: LogoMssqlSyncModules;
   lastSyncAt: string | null;
   lastStatus: 'idle' | 'running' | 'ok' | 'error';
@@ -37,11 +39,82 @@ const DEFAULT_MODULES: LogoMssqlSyncModules = {
 const DEFAULT_SETTINGS: LogoMssqlSyncSettings = {
   enabled: false,
   intervalMinutes: 30,
+  erpDb: null,
   modules: DEFAULT_MODULES,
   lastSyncAt: null,
   lastStatus: 'idle',
   lastMessage: null,
 };
+
+export type LogoMssqlConnectionOverride = {
+  erp_host?: string;
+  erp_user?: string;
+  erp_pass?: string;
+  erp_db?: string;
+};
+
+async function mergeLogoMssqlConfig(overrides?: {
+  erpDb?: string | null;
+  firmNr?: string;
+  periodNr?: string;
+  connection?: LogoMssqlConnectionOverride;
+}): Promise<Record<string, unknown>> {
+  const cfg = (await safeInvoke('get_app_config')) as Record<string, unknown>;
+  const settings = loadLogoMssqlSyncSettings();
+  const erpDb =
+    overrides?.erpDb !== undefined
+      ? overrides.erpDb
+      : settings.erpDb ?? (typeof cfg.erp_db === 'string' ? cfg.erp_db : null);
+  const erp_db = (erpDb && String(erpDb).trim()) || String(cfg.erp_db || 'LOGO').trim();
+  const merged = {
+    ...cfg,
+    erp_db,
+    erp_firm_nr: overrides?.firmNr ?? cfg.erp_firm_nr ?? ERP_SETTINGS.firmNr ?? '001',
+    erp_period_nr: overrides?.periodNr ?? cfg.erp_period_nr ?? ERP_SETTINGS.periodNr ?? '01',
+    logo_sync_modules: settings.modules,
+  };
+  if (overrides?.connection) {
+    const c = overrides.connection;
+    if (c.erp_host?.trim()) merged.erp_host = c.erp_host.trim();
+    if (c.erp_user?.trim()) merged.erp_user = c.erp_user.trim();
+    if (c.erp_pass !== undefined) merged.erp_pass = c.erp_pass;
+    if (c.erp_db?.trim()) merged.erp_db = c.erp_db.trim();
+  }
+  return merged;
+}
+
+export async function getActiveLogoMssqlDatabase(): Promise<string> {
+  const settings = loadLogoMssqlSyncSettings();
+  if (settings.erpDb?.trim()) return settings.erpDb.trim();
+  const cfg = (await safeInvoke('get_app_config')) as Record<string, unknown>;
+  return String(cfg.erp_db || 'LOGO').trim();
+}
+
+export async function listLogoMssqlDatabases(
+  connection?: LogoMssqlConnectionOverride,
+): Promise<string[]> {
+  if (!IS_TAURI) return [];
+  const cfg = await mergeLogoMssqlConfig({ connection });
+  const list = await safeInvoke<string[]>('list_mssql_databases', { config: cfg });
+  return Array.isArray(list) ? list : [];
+}
+
+export function canListLogoMssqlDatabases(connection?: LogoMssqlConnectionOverride): boolean {
+  if (!IS_TAURI) return false;
+  const host = connection?.erp_host?.trim();
+  const user = connection?.erp_user?.trim();
+  return Boolean(host && user);
+}
+
+/** Seçilen Logo veritabanını kaydeder (localStorage + config.db). */
+export async function setLogoMssqlDatabase(db: string): Promise<void> {
+  const trimmed = db.trim();
+  if (!trimmed) return;
+  saveLogoMssqlSyncSettings({ erpDb: trimmed });
+  if (!IS_TAURI) return;
+  const cfg = (await safeInvoke('get_app_config')) as Record<string, unknown>;
+  await safeInvoke('save_app_config', { config: { ...cfg, erp_db: trimmed } });
+}
 
 export function loadLogoMssqlSyncSettings(): LogoMssqlSyncSettings {
   if (typeof window === 'undefined') return { ...DEFAULT_SETTINGS };
@@ -87,6 +160,7 @@ function emitLog(line: string): void {
 export async function runLogoMssqlSyncNow(opts?: {
   firmNr?: string;
   periodNr?: string;
+  erpDb?: string;
 }): Promise<{ ok: boolean; message: string }> {
   if (!IS_TAURI) {
     return { ok: false, message: 'Logo MSSQL senkron yalnızca masaüstü uygulamasında çalışır.' };
@@ -102,16 +176,14 @@ export async function runLogoMssqlSyncNow(opts?: {
   emitLog(`[${new Date().toLocaleTimeString('tr-TR')}] Logo MSSQL senkron başladı`);
 
   try {
-    const cfg: Record<string, unknown> = await safeInvoke('get_app_config');
-    if (cfg.skip_integration) {
+    const merged = await mergeLogoMssqlConfig({
+      erpDb: opts?.erpDb,
+      firmNr: opts?.firmNr,
+      periodNr: opts?.periodNr,
+    });
+    if (merged.skip_integration) {
       throw new Error('Bağımsız mod: Logo entegrasyonu kapalı (skip_integration).');
     }
-    const merged = {
-      ...cfg,
-      erp_firm_nr: opts?.firmNr ?? cfg.erp_firm_nr ?? ERP_SETTINGS.firmNr ?? '001',
-      erp_period_nr: opts?.periodNr ?? cfg.erp_period_nr ?? ERP_SETTINGS.periodNr ?? '01',
-      logo_sync_modules: loadLogoMssqlSyncSettings().modules,
-    };
     const msg = await safeInvoke<string>('sync_logo_data', { config: merged });
     const message = String(msg || 'Senkron tamamlandı.');
     saveLogoMssqlSyncSettings({
@@ -175,20 +247,25 @@ export function stopLogoMssqlAutoSync(): void {
   }
 }
 
-export async function fetchLogoFirmsFromMssql(): Promise<Array<{ id: string; name: string }>> {
+export async function fetchLogoFirmsFromMssql(erpDb?: string): Promise<Array<{ id: string; name: string }>> {
   if (!IS_TAURI) return [];
-  const cfg = await safeInvoke<Record<string, unknown>>('get_app_config');
+  const cfg = await mergeLogoMssqlConfig({ erpDb });
   return safeInvoke<Array<{ id: string; name: string }>>('get_logo_firms', { config: cfg });
 }
 
 export async function fetchLogoPeriodsFromMssql(
   firmNr: string,
+  erpDb?: string,
 ): Promise<Array<{ nr: number; start_date: string; end_date: string }>> {
   if (!IS_TAURI) return [];
-  const cfg = await safeInvoke<Record<string, unknown>>('get_app_config');
+  const cfg = await mergeLogoMssqlConfig({ erpDb });
   return safeInvoke('get_logo_periods', { config: cfg, firmNr });
 }
 
-export async function importLogoFirmData(firmNr: string, periodNr: string): Promise<{ ok: boolean; message: string }> {
-  return runLogoMssqlSyncNow({ firmNr, periodNr });
+export async function importLogoFirmData(
+  firmNr: string,
+  periodNr: string,
+  erpDb?: string,
+): Promise<{ ok: boolean; message: string }> {
+  return runLogoMssqlSyncNow({ firmNr, periodNr, erpDb });
 }

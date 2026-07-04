@@ -77,6 +77,7 @@
 73. **087_disassembly_carcass_breakdown.sql** – Kasap karkas parçalama: `disassembly_templates`, `disassembly_orders`, fire maliyet dağıtımı (`INIT_DISASSEMBLY_TABLES`).
 74. **088_sync_queue_postgrest_anon.sql** – Merkez PostgREST: `sync_queue` anon SELECT/INSERT/UPDATE + `NOTIFY pgrst` (hibrit kuyruk önizlemesi).
 75. **090_logo_mssql_sync_columns.sql** – Logo MSSQL: dönem `sales`/`sale_items`/`cash_lines` `ref_id`, `account_movements` (CLFLINE), güncel `CREATE_PERIOD_TABLES`.
+76. **091_sync_incremental_dedup.sql** – Artımlı senkron: `prune_redundant_sync_queue`, tetikleyici tekrar kuyruk engeli, `apply_sync_queue_item` değişmeyen satırda `skip`.
 
 **Kiracılara toplu uygulama (VPS / uzak PG):**
 - `npm run db:migrate:tenants` — tüm kiracı DB'ler

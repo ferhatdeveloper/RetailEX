@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Dokploy — WebSocket Sync Service + API gateway (Caddy /{kiracı}/ws, /{kiracı}/sync)
+# Dokploy — WebSocket Sync Service + API gateway (Caddy /{kiracı}/ws, /{kiracı}/sync/*)
+# Not: /sync* değil /sync/* — aksi halde /sync_queue PostgREST yerine sync servisine gider.
 #
 # Dokploy arayüzü: Compose docker-compose.dokploy.yml → Redeploy
 # veya terminal:

@@ -31,10 +31,27 @@ pub struct TestConnectionResponse {
     pub detected_erp: String, // "logo", "nebim", "unknown"
 }
 
-async fn get_client(config: &AppConfig) -> Result<Client<tokio_util::compat::Compat<TcpStream>>, String> {
+fn resolve_erp_database(config: &AppConfig, override_db: Option<&str>) -> String {
+    if let Some(db) = override_db {
+        let trimmed = db.trim();
+        if !trimmed.is_empty() {
+            return trimmed.to_string();
+        }
+    }
+    config.erp_db.trim().to_string()
+}
+
+async fn get_client_with_db(
+    config: &AppConfig,
+    database: &str,
+) -> Result<Client<tokio_util::compat::Compat<TcpStream>>, String> {
+    let db = database.trim();
+    if db.is_empty() {
+        return Err("MSSQL veritabanı adı boş.".to_string());
+    }
+
     let mut config_builder = Config::new();
 
-    // Parse host and port
     let host_parts: Vec<&str> = config.erp_host.split(':').collect();
     let host = host_parts[0];
     let port = if host_parts.len() > 1 {
@@ -46,15 +63,23 @@ async fn get_client(config: &AppConfig) -> Result<Client<tokio_util::compat::Com
     config_builder.host(host);
     config_builder.port(port);
     config_builder.authentication(AuthMethod::sql_server(config.erp_user.as_str(), config.erp_pass.as_str()));
-    config_builder.database(config.erp_db.as_str());
-    config_builder.trust_cert(); // Essential for self-signed certs common in Logo setups
+    config_builder.database(db);
+    config_builder.trust_cert();
 
     let tcp = TcpStream::connect(format!("{}:{}", host, port)).await.map_err(|e| e.to_string())?;
     tcp.set_nodelay(true).map_err(|e| e.to_string())?;
 
     let client = Client::connect(config_builder, tcp.compat_write()).await.map_err(|e| e.to_string())?;
-    
+
     Ok(client)
+}
+
+async fn get_client(config: &AppConfig) -> Result<Client<tokio_util::compat::Compat<TcpStream>>, String> {
+    let db = resolve_erp_database(config, None);
+    if db.is_empty() {
+        return Err("Logo MSSQL veritabanı seçilmedi. Kurulum veya Entegrasyonlar'dan veritabanı seçin.".to_string());
+    }
+    get_client_with_db(config, &db).await
 }
 
 #[tauri::command]
@@ -97,6 +122,29 @@ pub async fn test_mssql_connection(config: AppConfig) -> Result<TestConnectionRe
         status: "success".to_string(),
         detected_erp,
     })
+}
+
+/// SQL Server üzerindeki kullanıcı veritabanlarını listeler (Logo/Tiger seçimi için).
+#[tauri::command]
+pub async fn list_mssql_databases(config: AppConfig) -> Result<Vec<String>, String> {
+    let mut client = get_client_with_db(&config, "master").await?;
+    let stream = client
+        .simple_query(
+            "SELECT name FROM sys.databases WHERE database_id > 4 AND state_desc = 'ONLINE' ORDER BY name",
+        )
+        .await
+        .map_err(|e| e.to_string())?;
+    let rows = stream.into_first_result().await.map_err(|e| e.to_string())?;
+
+    let mut names = Vec::new();
+    for row in rows {
+        let name: &str = row.get(0).ok_or("Veritabanı adı okunamadı")?;
+        let trimmed = name.trim();
+        if !trimmed.is_empty() {
+            names.push(trimmed.to_string());
+        }
+    }
+    Ok(names)
 }
 
 #[tauri::command]

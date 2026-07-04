@@ -2077,7 +2077,7 @@ fn main() {
         config::get_app_config, config::save_app_config,
         config::get_dashboard_shortcuts, config::save_dashboard_shortcuts, config::reset_dashboard_shortcuts,
         backup_service::perform_manual_backup, backup_service::export_full_postgres_dump, list_system_printers, write_bytes, print_html_silent, print_escpos_tcp,
-        mssql::test_mssql_connection, mssql::get_logo_firms, mssql::get_logo_periods, mssql::get_logo_data_preview, mssql::sync_logo_data, mssql::sync_logo_delta,
+        mssql::test_mssql_connection, mssql::list_mssql_databases, mssql::get_logo_firms, mssql::get_logo_periods, mssql::get_logo_data_preview, mssql::sync_logo_data, mssql::sync_logo_delta,
         sync::enable_remote_support,
         bank_ops::get_bank_registers, bank_ops::save_bank_register, bank_ops::get_bank_transactions, bank_ops::save_bank_transaction,
         request_elevation,

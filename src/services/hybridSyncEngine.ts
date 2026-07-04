@@ -58,6 +58,8 @@ export type HybridSyncFilter = {
   terminalName?: string | null;
   /** true: yalnızca target_store_id (+ terminal) — outbound hariç */
   inboundMasterOnly?: boolean;
+  /** Artımlı senkron: bu zamandan sonraki kuyruk kayıtları */
+  changedSince?: string | null;
 };
 
 export type SyncQueueRow = {
@@ -228,6 +230,11 @@ function buildQueueWhere(filter?: HybridSyncFilter): { sql: string; params: unkn
       data->>'cashier' = $${params.length}
       OR data->>'username' = $${params.length}
     )`;
+  }
+
+  if (filter?.changedSince?.trim()) {
+    params.push(filter.changedSince.trim());
+    sql += ` AND created_at >= $${params.length}::timestamptz`;
   }
 
   return { sql, params };
@@ -794,7 +801,40 @@ export function getSyncLegs(
 export type PrepareSyncQueueResult = {
   enqueued: number;
   reset: number;
+  pruned?: number;
 };
+
+async function resolveSyncWatermark(
+  local: PgEndpointConfig,
+  scope: 'hybrid_outbound' | 'hybrid_inbound',
+  firmNr: string,
+  deviceId?: string,
+): Promise<string | null> {
+  if (deviceId) {
+    const cursor = await getDeviceSyncCursor(deviceId, scope, firmNr);
+    const fromCursor = cursor.watermark ?? cursor.lastSuccess;
+    if (fromCursor) return fromCursor;
+  }
+  const fn = String(firmNr || '001')
+    .replace(/\D/g, '')
+    .padStart(3, '0');
+  try {
+    const rows = await queryPgRows(
+      local,
+      `SELECT GREATEST(
+         (SELECT MAX(synced_at) FROM sync_queue
+          WHERE status = 'completed'
+            AND (lpad(ltrim(firm_nr, '0'), 3, '0') = $1 OR $1 IS NULL)),
+         (SELECT MAX(last_watermark_at) FROM device_sync_cursor
+          WHERE firm_nr = $1 AND scope = $2)
+       )::text AS ts`,
+      [fn, scope],
+    );
+    return rows[0]?.ts ? String(rows[0].ts) : null;
+  } catch {
+    return null;
+  }
+}
 
 /** Yerelde olup sync_queue'da olmayan kayıtları kuyruğa al; tükenmiş denemeleri sıfırla. */
 export async function prepareLocalSyncQueue(
@@ -808,14 +848,23 @@ export async function prepareLocalSyncQueue(
 
   let reset = 0;
   let enqueued = 0;
+  let pruned = 0;
   let changedSince = opts?.changedSince ?? null;
 
-  if (opts?.incremental !== false && !changedSince && opts?.deviceId) {
-    const cursor = await getDeviceSyncCursor(opts.deviceId, 'hybrid_outbound', fn);
-    changedSince = cursor.watermark ?? cursor.lastSuccess;
+  if (opts?.incremental !== false && !changedSince) {
+    changedSince = await resolveSyncWatermark(local, 'hybrid_outbound', fn, opts?.deviceId);
   }
 
   try {
+    const pruneRows = await queryPgRows(
+      local,
+      `SELECT public.prune_redundant_sync_queue($1)::text AS cnt`,
+      [fn],
+    );
+    pruned = Number(pruneRows[0]?.cnt ?? 0);
+  } catch {
+    /* migration 091 yok */
+  }
     const resetRows = await queryPgRows(
       local,
       `SELECT public.reset_exhausted_sync_queue($1)::text AS cnt`,
@@ -846,7 +895,48 @@ export async function prepareLocalSyncQueue(
     }
   }
 
-  return { enqueued, reset, changedSince };
+  return { enqueued, reset, pruned, changedSince };
+}
+
+/** Tamamlanmış ile aynı içerikteki gereksiz pending kayıtları temizler. */
+export async function pruneRedundantSyncQueue(
+  local: PgEndpointConfig,
+  firmNr?: string,
+): Promise<number> {
+  const fn = String(firmNr || '001')
+    .replace(/\D/g, '')
+    .padStart(3, '0');
+  try {
+    const rows = await queryPgRows(
+      local,
+      `SELECT public.prune_redundant_sync_queue($1)::text AS cnt`,
+      [fn],
+    );
+    return Number(rows[0]?.cnt ?? 0);
+  } catch {
+    return 0;
+  }
+}
+
+export async function buildIncrementalSyncFilter(
+  base: HybridSyncFilter | undefined,
+  opts: {
+    direction: 'local_to_remote' | 'remote_to_local';
+    incremental?: boolean;
+    deviceId?: string;
+    local: PgEndpointConfig;
+  },
+): Promise<HybridSyncFilter | undefined> {
+  if (!base) return base;
+  if (opts.incremental === false) return base;
+  /** Gönderim: watermark prepareLocalSyncQueue'da; kuyruk created_at ile süzülmez. */
+  if (opts.direction === 'local_to_remote') return base;
+  const firm = String(base.firmNr || '001')
+    .replace(/\D/g, '')
+    .padStart(3, '0');
+  const since = await resolveSyncWatermark(opts.local, 'hybrid_inbound', firm, opts.deviceId);
+  if (!since) return base;
+  return { ...base, changedSince: since };
 }
 
 export async function runHybridSync(opts: HybridSyncRunOptions): Promise<HybridSyncResult> {
@@ -893,8 +983,17 @@ export async function runHybridSync(opts: HybridSyncRunOptions): Promise<HybridS
   const remoteLabel = opts.connectionProvider === 'rest_api' ? 'PostgREST' : 'uzak PG';
 
   for (const leg of legs) {
+    const legDirection: DeviceSyncDirection =
+      leg.label === 'yerel→uzak' ? 'local_to_remote' : 'remote_to_local';
+    const legFilter = await buildIncrementalSyncFilter(opts.filter, {
+      direction: legDirection,
+      incremental,
+      deviceId,
+      local: opts.local,
+    });
+
     const r = await syncOneDirection(leg.source, leg.target, leg.label, {
-      filter: opts.filter,
+      filter: legFilter,
       scope,
       localPg: opts.local,
       schemaCache,
@@ -904,7 +1003,7 @@ export async function runHybridSync(opts: HybridSyncRunOptions): Promise<HybridS
               deviceId,
               firmNr: opts.filter?.firmNr ?? undefined,
               storeId: opts.storeId ?? opts.filter?.storeId ?? null,
-              terminalName: opts.terminalName ?? null,
+              terminalName: opts.terminalName ?? opts.filter?.terminalName ?? null,
             }
           : undefined,
       onProgress: opts.onProgress
@@ -929,11 +1028,9 @@ export async function runHybridSync(opts: HybridSyncRunOptions): Promise<HybridS
     skipped += r.skipped;
     allErrors.push(...r.errors);
 
-    const legDirection: DeviceSyncDirection =
-      leg.label === 'yerel→uzak' ? 'local_to_remote' : 'remote_to_local';
     const watermarkTo = new Date().toISOString();
     const status =
-      r.failed > 0 && r.synced === 0 ? 'failed' : r.failed > 0 ? 'partial' : 'ok';
+      r.failed > 0 && r.synced === 0 && r.skipped === 0 ? 'failed' : r.failed > 0 ? 'partial' : 'ok';
 
     const localLogId = await logDeviceSyncTransfer({
       deviceId,
@@ -1004,7 +1101,7 @@ export async function runHybridSync(opts: HybridSyncRunOptions): Promise<HybridS
       /* merkez ack gönderilemedi — yerel log yeterli */
     }
 
-    if (legDirection === 'local_to_remote' && r.synced > 0) {
+    if (legDirection === 'local_to_remote' && (r.synced > 0 || r.skipped > 0) && status !== 'failed') {
       await upsertDeviceSyncCursor({
         deviceId,
         scope: 'hybrid_outbound',
@@ -1013,7 +1110,7 @@ export async function runHybridSync(opts: HybridSyncRunOptions): Promise<HybridS
         watermarkTo,
       });
     }
-    if (legDirection === 'remote_to_local' && r.synced > 0) {
+    if (legDirection === 'remote_to_local' && (r.synced > 0 || r.skipped > 0) && status !== 'failed') {
       await upsertDeviceSyncCursor({
         deviceId,
         scope: 'hybrid_inbound',
