@@ -1,7 +1,7 @@
 ﻿import { useState, useEffect } from 'react';
 import { Database, Check, AlertCircle, Loader2, Download, Upload, RefreshCw, Server, Package, Users, ShoppingCart, CheckCircle, XCircle, Play, FileText, Send, Wifi, WifiOff, CloudUpload } from 'lucide-react';
 import type { Product, Customer } from '../../App';
-import { LogoIntegration } from '../integrations/LogoIntegration';
+import { LogoErpConnectorSection } from '../integrations/LogoErpConnectorSection';
 import * as XLSX from 'xlsx';
 
 interface IntegrationsModuleProps {
@@ -409,21 +409,21 @@ export function IntegrationsModule({ products, setProducts, customers, setCustom
       addLog('📊 Veri analizi yapılıyor...');
 
       const steps = [
-        { progress: 5, message: '�¢ Firma bilgileri okunuyor...' },
+        { progress: 5, message: '��¢ Firma bilgileri okunuyor...' },
         { progress: 10, message: '✅ Firma bilgileri aktarıldı.' },
         { progress: 15, message: '📦 Kategoriler yükleniyor...' },
         { progress: 25, message: '✅ 18 kategori aktarıldı.' },
-        { progress: 30, message: '�·ï¸ Ürünler yükleniyor...' },
+        { progress: 30, message: '��·ï¸ Ürünler yükleniyor...' },
         { progress: 50, message: '✅ 1,247 ürün aktarıldı.' },
-        { progress: 55, message: '�¨ Varyantlar (beden/renk) yükleniyor...' },
+        { progress: 55, message: '��¨ Varyantlar (beden/renk) yükleniyor...' },
         { progress: 65, message: '✅ 3,421 varyant aktarıldı.' },
         { progress: 70, message: '👥 Müşteriler yükleniyor...' },
         { progress: 78, message: '✅ 523 müşteri aktarıldı.' },
-        { progress: 82, message: '�ª Depo/şube bilgileri yükleniyor...' },
+        { progress: 82, message: '��ª Depo/şube bilgileri yükleniyor...' },
         { progress: 86, message: '✅ 3 depo aktarıldı.' },
         { progress: 88, message: '👤 Kullanıcılar yükleniyor...' },
         { progress: 92, message: '✅ 15 kullanıcı aktarıldı.' },
-        { progress: 95, message: '�” Roller ve yetkiler aktarılıyor...' },
+        { progress: 95, message: '��” Roller ve yetkiler aktarılıyor...' },
         { progress: 98, message: '✅ 5 rol ve yetki seti aktarıldı.' },
         { progress: 100, message: '✨ İçe aktarma tamamlandı!' }
       ];
@@ -447,7 +447,7 @@ export function IntegrationsModule({ products, setProducts, customers, setCustom
       addLog('✅ Kullanıcılar: 15 kayıt');
       addLog('✅ Roller: 5 kayıt');
       addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-      addLog('�‰ TOPLAM: 5,232 kayıt başarıyla aktarıldı!');
+      addLog('��‰ TOPLAM: 5,232 kayıt başarıyla aktarıldı!');
       addLog('');
       addLog('✨ ExRetailOS sistemini kullanmaya hazırsınız!');
     }
@@ -1122,7 +1122,7 @@ export function IntegrationsModule({ products, setProducts, customers, setCustom
 
                       {/* Firma & Sistem Ayarları - NEW */}
                       <div>
-                        <h4 className="text-sm text-gray-900 mb-2">�¢ Firma & Sistem Ayarları</h4>
+                        <h4 className="text-sm text-gray-900 mb-2">��¢ Firma & Sistem Ayarları</h4>
                         <div className="grid grid-cols-2 gap-3">
                           <label className="flex items-center gap-2 cursor-pointer">
                             <input
@@ -1242,13 +1242,8 @@ export function IntegrationsModule({ products, setProducts, customers, setCustom
             </div>
           )}
 
-          {/* Logo Tiger / SQL & Go Integration */}
-          <LogoIntegration
-            products={products}
-            setProducts={setProducts}
-            customers={customers}
-            setCustomers={setCustomers}
-          />
+          {/* Logo ERP — REST Servis veya MSSQL */}
+          <LogoErpConnectorSection />
 
           {/* Info Box - Only show if Nebim integration is unlocked */}
           {showNebimIntegration && (
@@ -1256,7 +1251,7 @@ export function IntegrationsModule({ products, setProducts, customers, setCustom
               <div className="flex items-start gap-3">
                 <CheckCircle className="w-6 h-6 text-green-600 flex-shrink-0 mt-0.5" />
                 <div className="flex-1">
-                  <h4 className="text-green-900 mb-3">�¯ Tam Kapsamlı Nebim V3 Geçiş Sistemi</h4>
+                  <h4 className="text-green-900 mb-3">��¯ Tam Kapsamlı Nebim V3 Geçiş Sistemi</h4>
 
                   <div className="grid grid-cols-2 gap-4 mb-4">
                     <div className="bg-white rounded-lg p-3 border border-green-200">
@@ -1281,7 +1276,7 @@ export function IntegrationsModule({ products, setProducts, customers, setCustom
                     </div>
 
                     <div className="bg-white rounded-lg p-3 border border-purple-200">
-                      <h5 className="text-sm text-purple-900 mb-2">�¢ Firma & Sistem</h5>
+                      <h5 className="text-sm text-purple-900 mb-2">��¢ Firma & Sistem</h5>
                       <ul className="text-xs text-purple-800 space-y-1">
                         <li>✓ Firma bilgileri (vergi no, adres)</li>
                         <li>✓ Depo/şube tanımları</li>
@@ -1290,7 +1285,7 @@ export function IntegrationsModule({ products, setProducts, customers, setCustom
                     </div>
 
                     <div className="bg-white rounded-lg p-3 border border-orange-200">
-                      <h5 className="text-sm text-orange-900 mb-2">�” Kullanıcı & Yetkiler</h5>
+                      <h5 className="text-sm text-orange-900 mb-2">��” Kullanıcı & Yetkiler</h5>
                       <ul className="text-xs text-orange-800 space-y-1">
                         <li>✓ Tüm kullanıcı hesapları</li>
                         <li>✓ Rol tanımları (5 farklı rol)</li>

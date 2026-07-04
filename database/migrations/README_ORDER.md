@@ -76,6 +76,7 @@
 72. **086_store_devices_ws_presence.sql** – `store_devices` PostgREST erişimi; WS heartbeat ile merkezde canlı cihaz (yedek: 24s aktivite).
 73. **087_disassembly_carcass_breakdown.sql** – Kasap karkas parçalama: `disassembly_templates`, `disassembly_orders`, fire maliyet dağıtımı (`INIT_DISASSEMBLY_TABLES`).
 74. **088_sync_queue_postgrest_anon.sql** – Merkez PostgREST: `sync_queue` anon SELECT/INSERT/UPDATE + `NOTIFY pgrst` (hibrit kuyruk önizlemesi).
+75. **090_logo_mssql_sync_columns.sql** – Logo MSSQL: dönem `sales`/`sale_items`/`cash_lines` `ref_id`, `account_movements` (CLFLINE), güncel `CREATE_PERIOD_TABLES`.
 
 **Kiracılara toplu uygulama (VPS / uzak PG):**
 - `npm run db:migrate:tenants` — tüm kiracı DB'ler

@@ -1651,6 +1651,7 @@ DECLARE
   v_affected INT;
   v_data JSONB;
   v_code TEXT;
+  v_ref_id INTEGER;
   v_existing_id UUID;
   v_record_id UUID := p_record_id;
 BEGIN
@@ -1687,6 +1688,19 @@ BEGIN
       EXECUTE format('SELECT id FROM %I.%I WHERE code = $1 LIMIT 1', v_schema, p_table_name)
         INTO v_existing_id
         USING v_code;
+      IF v_existing_id IS NOT NULL AND v_existing_id <> v_record_id THEN
+        v_record_id := v_existing_id;
+        v_data := v_data || jsonb_build_object('id', v_existing_id);
+      END IF;
+    END IF;
+  END IF;
+
+  IF p_table_name ~ '_products$' THEN
+    v_ref_id := NULLIF(regexp_replace(COALESCE(v_data->>'ref_id', ''), '\D', '', 'g'), '')::INTEGER;
+    IF v_ref_id IS NOT NULL AND v_ref_id > 0 THEN
+      EXECUTE format('SELECT id FROM %I.%I WHERE ref_id = $1 LIMIT 1', v_schema, p_table_name)
+        INTO v_existing_id
+        USING v_ref_id;
       IF v_existing_id IS NOT NULL AND v_existing_id <> v_record_id THEN
         v_record_id := v_existing_id;
         v_data := v_data || jsonb_build_object('id', v_existing_id);
@@ -1750,6 +1764,30 @@ EXCEPTION
         RETURN 'update';
       END IF;
       RETURN 'skip';
+    END IF;
+    IF p_table_name ~ '_products$' AND (v_data->>'ref_id') IS NOT NULL THEN
+      v_ref_id := NULLIF(regexp_replace(v_data->>'ref_id', '\D', '', 'g'), '')::INTEGER;
+      IF v_ref_id IS NOT NULL AND v_ref_id > 0 THEN
+        EXECUTE format(
+          'UPDATE %I.%I t SET %s FROM jsonb_populate_record(null::%I.%I, $1) AS src WHERE t.ref_id = $2',
+          v_schema,
+          p_table_name,
+          (
+            SELECT string_agg(format('%I = src.%I', column_name, column_name), ', ')
+            FROM information_schema.columns
+            WHERE table_schema = v_schema
+              AND table_name = p_table_name
+              AND column_name NOT IN ('id', 'ref_id')
+          ),
+          v_schema,
+          p_table_name
+        ) USING v_data, v_ref_id;
+        GET DIAGNOSTICS v_affected = ROW_COUNT;
+        IF v_affected > 0 THEN
+          RETURN 'update';
+        END IF;
+        RETURN 'skip';
+      END IF;
     END IF;
     RAISE;
 END;
@@ -2445,6 +2483,9 @@ BEGIN
       id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       firm_nr        VARCHAR(10) NOT NULL,
       period_nr      VARCHAR(10) NOT NULL,
+      ref_id         INTEGER,
+      logo_client_ref INTEGER,
+      logo_salesman_ref INTEGER,
       fiche_no       VARCHAR(100) UNIQUE,
       document_no    VARCHAR(100),
       trcode         INTEGER,
@@ -2483,6 +2524,8 @@ BEGIN
   EXECUTE format('
     CREATE TABLE IF NOT EXISTS %I (
       id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      ref_id          INTEGER,
+      logo_product_ref INTEGER,
       invoice_id      UUID REFERENCES %I(id) ON DELETE CASCADE,
       firm_nr         VARCHAR(10),
       period_nr       VARCHAR(10),
@@ -2516,6 +2559,9 @@ BEGIN
       id                   UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       firm_nr              VARCHAR(10) NOT NULL,
       period_nr            VARCHAR(10),
+      ref_id               INTEGER,
+      logo_cash_ref        INTEGER,
+      logo_client_ref      INTEGER,
       register_id          UUID,
       fiche_no             VARCHAR(100) UNIQUE,
       date                 TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
@@ -2539,6 +2585,27 @@ BEGIN
       created_at           TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
     );
   ', v_prefix || '_cash_lines');
+
+  -- 3b. Cari hesap hareketleri (Logo CLFLINE)
+  EXECUTE format('
+    CREATE TABLE IF NOT EXISTS %I (
+      id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      firm_nr      VARCHAR(10) NOT NULL,
+      period_nr    VARCHAR(10) NOT NULL,
+      ref_id       INTEGER,
+      client_ref   INTEGER,
+      customer_id  UUID,
+      supplier_id  UUID,
+      fiche_no     VARCHAR(100),
+      date         TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+      amount       DECIMAL(15,2) DEFAULT 0,
+      sign         INTEGER DEFAULT 0,
+      trcode       INTEGER,
+      module_nr    INTEGER,
+      definition   TEXT,
+      created_at   TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+    );
+  ', v_prefix || '_account_movements');
 
   -- 4. Bank Transactions
   EXECUTE format('
@@ -2662,6 +2729,7 @@ BEGIN
   PERFORM public.try_apply_sync_triggers(v_prefix || '_bank_lines');
   PERFORM public.try_apply_sync_triggers(v_prefix || '_stock_movements');
   PERFORM public.try_apply_sync_triggers(v_prefix || '_stock_movement_items');
+  PERFORM public.try_apply_sync_triggers(v_prefix || '_account_movements');
 END;
 $$ LANGUAGE plpgsql;
 

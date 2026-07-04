@@ -334,6 +334,163 @@ fn resolve_clcard_roles(cardtype: i32) -> (bool, bool) {
     }
 }
 
+fn logo_fiche_type_from_trcode(trcode: i32) -> &'static str {
+    match trcode {
+        1 | 4 | 5 | 6 | 13 | 26 | 41 | 42 => "purchase_invoice",
+        2 | 3 => "return_invoice",
+        _ => "sales_invoice",
+    }
+}
+
+fn logo_cash_transaction_type(trcode: i32) -> Option<&'static str> {
+    match trcode {
+        1 | 11 | 12 | 21 | 31 | 41 | 51 | 61 | 71 => Some("CH_TAHSILAT"),
+        2 | 22 | 32 | 42 | 52 | 62 | 72 => Some("CH_ODEME"),
+        _ => None,
+    }
+}
+
+fn logo_stock_movement_type(io_code: i32) -> &'static str {
+    if [1, 2, 5, 10, 11, 12, 13].contains(&io_code) {
+        "in"
+    } else {
+        "out"
+    }
+}
+
+async fn ensure_period_pg_tables(
+    client: &tokio_postgres::Client,
+    firm_nr: &str,
+    period_nr: &str,
+) -> Result<(), String> {
+    client
+        .execute(
+            "SELECT CREATE_PERIOD_TABLES($1::varchar, $2::varchar)",
+            &[&firm_nr, &period_nr],
+        )
+        .await
+        .map_err(|e| {
+            format!(
+                "Dönem tabloları oluşturma hatası: {}",
+                crate::db_utils::format_pg_error(e)
+            )
+        })?;
+    Ok(())
+}
+
+async fn lookup_customer_uuid_by_logo_ref(
+    client: &tokio_postgres::Client,
+    firm_nr: &str,
+    client_ref: i32,
+) -> Option<uuid::Uuid> {
+    if client_ref <= 0 {
+        return None;
+    }
+    let table = format!("rex_{}_customers", firm_nr.to_lowercase());
+    let sql = format!("SELECT id FROM {} WHERE ref_id = $1 LIMIT 1", table);
+    client
+        .query_opt(&sql, &[&client_ref])
+        .await
+        .ok()
+        .flatten()
+        .map(|r| r.get(0))
+}
+
+async fn lookup_supplier_uuid_by_logo_ref(
+    client: &tokio_postgres::Client,
+    firm_nr: &str,
+    client_ref: i32,
+) -> Option<uuid::Uuid> {
+    if client_ref <= 0 {
+        return None;
+    }
+    let table = format!("rex_{}_suppliers", firm_nr.to_lowercase());
+    let sql = format!("SELECT id FROM {} WHERE ref_id = $1 LIMIT 1", table);
+    client
+        .query_opt(&sql, &[&client_ref])
+        .await
+        .ok()
+        .flatten()
+        .map(|r| r.get(0))
+}
+
+async fn lookup_cash_register_uuid_by_logo_ref(
+    client: &tokio_postgres::Client,
+    firm_nr: &str,
+    cash_ref: i32,
+) -> Option<uuid::Uuid> {
+    if cash_ref <= 0 {
+        return None;
+    }
+    let table = format!("rex_{}_cash_registers", firm_nr.to_lowercase());
+    let sql = format!("SELECT id FROM {} WHERE ref_id = $1 LIMIT 1", table);
+    client
+        .query_opt(&sql, &[&cash_ref])
+        .await
+        .ok()
+        .flatten()
+        .map(|r| r.get(0))
+}
+
+async fn lookup_product_uuid_by_logo_ref(
+    client: &tokio_postgres::Client,
+    firm_nr: &str,
+    product_ref: i32,
+) -> Option<uuid::Uuid> {
+    if product_ref <= 0 {
+        return None;
+    }
+    let table = format!("rex_{}_products", firm_nr.to_lowercase());
+    let sql = format!("SELECT id FROM {} WHERE ref_id = $1 LIMIT 1", table);
+    client
+        .query_opt(&sql, &[&product_ref])
+        .await
+        .ok()
+        .flatten()
+        .map(|r| r.get(0))
+}
+
+async fn update_account_balances_from_clfline(
+    client: &tokio_postgres::Client,
+    firm_nr: &str,
+    period_nr: &str,
+) -> Result<(), String> {
+    let firm_key = firm_nr.to_lowercase();
+    let am_table = format!("rex_{}_{}_account_movements", firm_key, period_nr);
+    let cust_table = format!("rex_{}_customers", firm_key);
+    let supp_table = format!("rex_{}_suppliers", firm_key);
+
+    let cust_sql = format!(
+        "UPDATE {} c SET balance = sub.bal
+         FROM (
+           SELECT customer_id AS id,
+             SUM(CASE WHEN sign = 0 THEN amount ELSE -amount END) AS bal
+           FROM {}
+           WHERE customer_id IS NOT NULL
+           GROUP BY customer_id
+         ) sub
+         WHERE c.id = sub.id",
+        cust_table, am_table
+    );
+    client.execute(&cust_sql, &[]).await.ok();
+
+    let supp_sql = format!(
+        "UPDATE {} s SET balance = sub.bal
+         FROM (
+           SELECT supplier_id AS id,
+             SUM(CASE WHEN sign = 0 THEN amount ELSE -amount END) AS bal
+           FROM {}
+           WHERE supplier_id IS NOT NULL
+           GROUP BY supplier_id
+         ) sub
+         WHERE s.id = sub.id",
+        supp_table, am_table
+    );
+    client.execute(&supp_sql, &[]).await.ok();
+
+    Ok(())
+}
+
 fn local_mirror_pg_target(config: &AppConfig, primary_is_remote: bool) -> Option<LogoPgTarget> {
     if !primary_is_remote {
         return None;
@@ -628,6 +785,10 @@ pub async fn sync_logo_data(window: tauri::Window, config: AppConfig) -> Result<
     let _ = window.emit("sync-event", "Veritabanı tabloları hazırlanıyor...");
     ensure_firm_pg_tables(&pg_client, &current_firm_nr).await?;
 
+    let period_nr_int = config.erp_period_nr.parse::<i32>().unwrap_or(1);
+    let period_nr_str = format!("{:02}", period_nr_int);
+    ensure_period_pg_tables(&pg_client, &current_firm_nr, &period_nr_str).await?;
+
     // 3. Sync Periods
     let _ = window.emit("sync-event", "Dönemler senkronize ediliyor...");
     let periods_table = format!("LG_{:03}_PERIODS", firm_nr_int);
@@ -840,6 +1001,99 @@ pub async fn sync_logo_data(window: tauri::Window, config: AppConfig) -> Result<
             }
         }
     }
+
+    // 6b. Sync CLFLINE (Cari hesap hareketleri + bakiye)
+    let _ = window.emit("sync-event", "Cari hesap hareketleri (CLFLINE) senkronize ediliyor...");
+    let clfline_table = format!("LG_{:03}_{:02}_CLFLINE", firm_nr_int, period_nr_int);
+    let target_am_table = format!(
+        "rex_{}_{}_account_movements",
+        current_firm_nr.to_lowercase(),
+        period_nr_str
+    );
+    let clf_query = format!(
+        "SELECT LOGICALREF, CLIENTREF, TRCODE, DATE_, AMOUNT, SIGN, LINEEXP, DOCODE, MODULENR \
+         FROM {} WHERE (CANCELLED IS NULL OR CANCELLED = 0) ORDER BY LOGICALREF",
+        clfline_table
+    );
+    if let Ok(clf_stream) = mssql_client.simple_query(&clf_query).await {
+        if let Ok(clf_rows) = clf_stream.into_first_result().await {
+            let total_clf = clf_rows.len();
+            let _ = window.emit(
+                "sync-event",
+                format!("{} adet cari hareket bulundu. Aktarılıyor...", total_clf),
+            );
+            for (idx, row) in clf_rows.iter().enumerate() {
+                let logicalref = row.get::<i32, usize>(0).unwrap_or(0);
+                let client_ref = row.get::<i32, usize>(1).unwrap_or(0);
+                let trcode = row.get::<i16, usize>(2).unwrap_or(0) as i32;
+                let date = row
+                    .get::<chrono::NaiveDateTime, usize>(3)
+                    .unwrap_or_else(|| {
+                        chrono::NaiveDate::from_ymd_opt(2000, 1, 1)
+                            .unwrap()
+                            .and_hms_opt(0, 0, 0)
+                            .unwrap()
+                    });
+                let amount = row.get::<f64, usize>(4).unwrap_or(0.0);
+                let sign = row.get::<i16, usize>(5).unwrap_or(0) as i32;
+                let definition = row.get::<&str, usize>(6).unwrap_or("");
+                let fiche_no = row.get::<&str, usize>(7).unwrap_or("");
+                let module_nr = row.get::<i16, usize>(8).unwrap_or(0) as i32;
+
+                let customer_id =
+                    lookup_customer_uuid_by_logo_ref(&pg_client, &current_firm_nr, client_ref).await;
+                let supplier_id =
+                    lookup_supplier_uuid_by_logo_ref(&pg_client, &current_firm_nr, client_ref).await;
+
+                let amount_dec =
+                    rust_decimal::Decimal::from_f64_retain(amount).unwrap_or_default();
+                let insert_sql = format!(
+                    "INSERT INTO {} (firm_nr, period_nr, ref_id, client_ref, customer_id, supplier_id, fiche_no, date, amount, sign, trcode, module_nr, definition)
+                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+                     ON CONFLICT (ref_id) DO UPDATE SET
+                       amount = EXCLUDED.amount, sign = EXCLUDED.sign, date = EXCLUDED.date,
+                       definition = EXCLUDED.definition, customer_id = EXCLUDED.customer_id,
+                       supplier_id = EXCLUDED.supplier_id",
+                    target_am_table
+                );
+                pg_client
+                    .execute(
+                        &insert_sql,
+                        &[
+                            &current_firm_nr,
+                            &period_nr_str,
+                            &logicalref,
+                            &client_ref,
+                            &customer_id,
+                            &supplier_id,
+                            &fiche_no,
+                            &date,
+                            &amount_dec,
+                            &sign,
+                            &trcode,
+                            &module_nr,
+                            &definition,
+                        ],
+                    )
+                    .await
+                    .ok();
+
+                if idx % 200 == 0 && idx > 0 {
+                    let _ = window.emit(
+                        "sync-event",
+                        format!("Cari hareketler: {}/{}", idx, total_clf),
+                    );
+                }
+            }
+            let _ = update_account_balances_from_clfline(
+                &pg_client,
+                &current_firm_nr,
+                &period_nr_str,
+            )
+            .await;
+            let _ = window.emit("sync-event", "Cari bakiyeler güncellendi (CLFLINE).");
+        }
+    }
     
     // 7. Sync SLMAN (Sales Representatives) - [FIELD SALES SUPPORT]
     let _ = window.emit("sync-event", "Satış Elemanları (SLMAN) senkronize ediliyor...");
@@ -956,7 +1210,6 @@ pub async fn sync_logo_data(window: tauri::Window, config: AppConfig) -> Result<
 
     // 9. Sync Stock Levels (STINVTOT View)
     let _ = window.emit("sync-event", "Stok Seviyeleri (Envanter) güncelleniyor...");
-    let period_nr_int = config.erp_period_nr.parse::<i32>().unwrap_or(1);
     let stock_table = format!("LV_{:03}_{:02}_STINVTOT", firm_nr_int, period_nr_int);
     
     // Sum onhand from all inventory locations (INVENNO) for each item
@@ -1025,9 +1278,12 @@ pub async fn sync_logo_data(window: tauri::Window, config: AppConfig) -> Result<
 
     // 11. Sync Cash Transactions (KSLINES)
     let _ = window.emit("sync-event", "Kasa Hareketleri (KSLINES) güncelleniyor...");
-    let period_nr_int = config.erp_period_nr.parse::<i32>().unwrap_or(1);
     let kslines_table = format!("LG_{:03}_{:02}_KSLINES", firm_nr_int, period_nr_int);
-    let target_cash_lines_table = format!("rex_{}_{:02}_cash_lines", current_firm_nr, period_nr_int);
+    let target_cash_lines_table = format!(
+        "rex_{}_{}_cash_lines",
+        current_firm_nr.to_lowercase(),
+        period_nr_str
+    );
     
     let ksl_query = format!(
         "SELECT LOGICALREF, KASAREF, FICHENO, TRCODE, DATE_, AMOUNT, SIGN, CLIENTREF, LINEEXP 
@@ -1049,17 +1305,44 @@ pub async fn sync_logo_data(window: tauri::Window, config: AppConfig) -> Result<
                 let client_ref = row.get::<i32, usize>(7).unwrap_or(0);
                 let definition = row.get::<&str, usize>(8).unwrap_or("");
 
+                let register_id =
+                    lookup_cash_register_uuid_by_logo_ref(&pg_client, &current_firm_nr, cash_ref)
+                        .await;
+                let customer_id =
+                    lookup_customer_uuid_by_logo_ref(&pg_client, &current_firm_nr, client_ref)
+                        .await;
+                let transaction_type = logo_cash_transaction_type(trcode).map(|s| s.to_string());
+
                 let insert_sql = format!(
-                    "INSERT INTO {} (ref_id, cash_ref, fiche_no, trcode, date, amount, sign, customer_ref, definition) 
-                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-                     ON CONFLICT (ref_id) DO NOTHING", target_cash_lines_table
+                    "INSERT INTO {} (firm_nr, period_nr, ref_id, logo_cash_ref, logo_client_ref, register_id, fiche_no, trcode, date, amount, sign, customer_id, definition, transaction_type) 
+                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+                     ON CONFLICT (ref_id) DO UPDATE SET
+                       amount = EXCLUDED.amount, sign = EXCLUDED.sign, date = EXCLUDED.date,
+                       definition = EXCLUDED.definition, customer_id = EXCLUDED.customer_id,
+                       register_id = EXCLUDED.register_id, transaction_type = EXCLUDED.transaction_type",
+                    target_cash_lines_table
                 );
                 
                 let amount_dec = rust_decimal::Decimal::from_f64_retain(amount).unwrap_or_default();
 
                 pg_client.execute(
                     &insert_sql, 
-                    &[&logicalref, &cash_ref, &fiche_no, &trcode, &date, &amount_dec, &sign, &client_ref, &definition]
+                    &[
+                        &current_firm_nr,
+                        &period_nr_str,
+                        &logicalref,
+                        &cash_ref,
+                        &client_ref,
+                        &register_id,
+                        &fiche_no,
+                        &trcode,
+                        &date,
+                        &amount_dec,
+                        &sign,
+                        &customer_id,
+                        &definition,
+                        &transaction_type,
+                    ]
                 ).await.ok();
 
                 ksl_processed += 1;
@@ -1072,14 +1355,20 @@ pub async fn sync_logo_data(window: tauri::Window, config: AppConfig) -> Result<
 
     // 11.5. Sync Stock Movements (STLINE)
     let _ = window.emit("sync-event", "Stok Hareketleri (STLINE) senkronize ediliyor...");
-    let period_nr_int = config.erp_period_nr.parse::<i32>().unwrap_or(1);
     let stline_table = format!("LG_{:03}_{:02}_STLINE", firm_nr_int, period_nr_int);
-    let target_stock_moves_table = format!("rex_{}_{:02}_stock_moves", current_firm_nr, period_nr_int);
+    let target_stock_moves_table = format!(
+        "rex_{}_{}_stock_movements",
+        current_firm_nr.to_lowercase(),
+        period_nr_str
+    );
+    let target_stock_items_table = format!(
+        "rex_{}_{}_stock_movement_items",
+        current_firm_nr.to_lowercase(),
+        period_nr_str
+    );
     
-    // Query STLINE for ALL stock movements (not just sales)
-    // IOCODE: 1,2,3... (Different types, we map to 1:In, 2:Out)
     let stmove_query = format!(
-        "SELECT STOCKREF, SOURCEINDEX, AMOUNT, IOCODE, DATE_ 
+        "SELECT LOGICALREF, STOCKREF, SOURCEINDEX, AMOUNT, IOCODE, DATE_, LINEEXP 
          FROM {} WHERE STOCKREF > 0 ORDER BY LOGICALREF", stline_table
     );
 
@@ -1089,58 +1378,96 @@ pub async fn sync_logo_data(window: tauri::Window, config: AppConfig) -> Result<
             let _ = window.emit("sync-event", format!("{} adet stok hareketi bulundu. Aktarılıyor...", total_stm));
             
             for (idx, row) in stm_rows.iter().enumerate() {
-                let stock_ref = row.get::<i32, usize>(0).unwrap_or(0);
-                let source_index = row.get::<i16, usize>(1).unwrap_or(0) as i32;
-                let amount = row.get::<f64, usize>(2).unwrap_or(0.0);
-                let io_code = row.get::<i16, usize>(3).unwrap_or(0) as i32;
-                let date = row.get::<chrono::NaiveDateTime, usize>(4).unwrap_or_else(|| chrono::NaiveDate::from_ymd_opt(2000, 1, 1).unwrap().and_hms_opt(0, 0, 0).unwrap());
+                let line_ref = row.get::<i32, usize>(0).unwrap_or(0);
+                let stock_ref = row.get::<i32, usize>(1).unwrap_or(0);
+                let source_index = row.get::<i16, usize>(2).unwrap_or(0) as i32;
+                let amount = row.get::<f64, usize>(3).unwrap_or(0.0);
+                let io_code = row.get::<i16, usize>(4).unwrap_or(0) as i32;
+                let date = row.get::<chrono::NaiveDateTime, usize>(5).unwrap_or_else(|| chrono::NaiveDate::from_ymd_opt(2000, 1, 1).unwrap().and_hms_opt(0, 0, 0).unwrap());
+                let line_exp = row.get::<&str, usize>(6).unwrap_or("");
 
-                // io_type: 1: In, 2: Out. Logo IOCODE: 1,2,3... 
-                // Typically: 1,2,3 are In, 4,5,6 are Out? Actually Logo is more complex.
-                // Simple mapping: Odd is In, Even is Out? No.
-                // Standard Logo: 1: Purchase (In), 2: Sales Return (In), 3: Sales (Out), 4: Purchase Return (Out)
-                let io_type: i16 = if [1, 2, 5, 10, 11, 12, 13].contains(&io_code) { 1 } else { 2 };
+                let movement_type = logo_stock_movement_type(io_code);
+                let document_no = format!("LG-{}", line_ref);
+                let amount_dec = rust_decimal::Decimal::from_f64_retain(amount).unwrap_or_default();
+                let store_code = source_index.to_string();
 
-                let insert_sql = format!(
-                    "INSERT INTO {} (product_ref, store_id, amount, io_type, date)
-                     SELECT $1, s.id, $2, $3, $4
+                let header_sql = format!(
+                    "INSERT INTO {} (firm_nr, period_nr, document_no, trcode, movement_type, movement_date, description, warehouse_id)
+                     SELECT $1, $2, $3, $4, $5, $6, $7, s.id
                      FROM stores s
-                     WHERE s.code = $5 AND s.firm_nr = $6
-                     ON CONFLICT DO NOTHING", target_stock_moves_table // Note: stock_moves has no unique constraint in migration, but we can avoid duplicates if we add serial/ref_id later
+                     WHERE s.code = $8 AND s.firm_nr = $9
+                     ON CONFLICT (document_no) DO UPDATE SET movement_date = EXCLUDED.movement_date
+                     RETURNING id",
+                    target_stock_moves_table
                 );
 
-                pg_client.execute(&insert_sql, &[
-                    &stock_ref,
-                    &rust_decimal::Decimal::from_f64_retain(amount).unwrap_or_default(),
-                    &io_type,
-                    &date,
-                    &source_index.to_string(),
-                    &current_firm_nr
-                ]).await.ok();
+                if let Ok(mv_row) = pg_client
+                    .query_opt(
+                        &header_sql,
+                        &[
+                            &current_firm_nr,
+                            &period_nr_str,
+                            &document_no,
+                            &io_code,
+                            &movement_type,
+                            &date,
+                            &line_exp,
+                            &store_code,
+                            &current_firm_nr,
+                        ],
+                    )
+                    .await
+                {
+                    if let Some(mv) = mv_row {
+                        let movement_id: uuid::Uuid = mv.get(0);
+                        let product_id =
+                            lookup_product_uuid_by_logo_ref(&pg_client, &current_firm_nr, stock_ref)
+                                .await;
+                        let item_sql = format!(
+                            "INSERT INTO {} (movement_id, product_id, quantity, notes)
+                             VALUES ($1, $2, $3, $4)",
+                            target_stock_items_table
+                        );
+                        pg_client
+                            .execute(&item_sql, &[&movement_id, &product_id, &amount_dec, &line_exp])
+                            .await
+                            .ok();
+                    }
+                }
 
-                if idx % 500 == 0 {
+                if idx % 500 == 0 && idx > 0 {
                     let _ = window.emit("sync-event", format!("Stok Hareketleri: {}/{}", idx, total_stm));
                 }
             }
         }
     }
 
-    // 12. Sync Sales Invoices (INVOICE & STLINE) - [Full History]
-    let _ = window.emit("sync-event", "Satış Faturaları (INVOICE) senkronize ediliyor...");
+    // 12. Sync Invoices (INVOICE & STLINE) — alış, satış, iade
+    let _ = window.emit("sync-event", "Faturalar (INVOICE) senkronize ediliyor...");
     let invoice_table = format!("LG_{:03}_{:02}_INVOICE", firm_nr_int, period_nr_int);
-    let target_sales_table = format!("rex_{}_{:02}_sales", current_firm_nr, period_nr_int);
-    let target_sale_items_table = format!("rex_{}_{:02}_sale_items", current_firm_nr, period_nr_int);
+    let target_sales_table = format!(
+        "rex_{}_{}_sales",
+        current_firm_nr.to_lowercase(),
+        period_nr_str
+    );
+    let target_sale_items_table = format!(
+        "rex_{}_{}_sale_items",
+        current_firm_nr.to_lowercase(),
+        period_nr_str
+    );
 
-    // Sync Headers
     let inv_query = format!(
-        "SELECT LOGICALREF, FICHENO, CLIENTREF, SALESMANREF, NETTOTAL, VATAMOUNT, GROSSTOTAL, DATE_, TRCODE 
-         FROM {} WHERE GRPCODE=2 AND TRCODE IN (7,8) ORDER BY LOGICALREF", invoice_table
+        "SELECT LOGICALREF, FICHENO, CLIENTREF, SALESMANREF, NETTOTAL, VATAMOUNT, GROSSTOTAL, DATE_, TRCODE, GRPCODE 
+         FROM {} WHERE (CANCELLED IS NULL OR CANCELLED = 0)
+           AND TRCODE IN (1,2,3,4,5,6,7,8,9,14,26,29,30,31,32,41,42)
+         ORDER BY LOGICALREF",
+        invoice_table
     );
 
     if let Ok(inv_stream) = mssql_client.simple_query(&inv_query).await {
         if let Ok(inv_rows) = inv_stream.into_first_result().await {
             let total_inv = inv_rows.len();
-            let _ = window.emit("sync-event", format!("{} adet satış faturası bulundu. İşleniyor...", total_inv));
+            let _ = window.emit("sync-event", format!("{} adet fatura bulundu. İşleniyor...", total_inv));
             
             for (idx, row) in inv_rows.iter().enumerate() {
                 let logicalref = row.get::<i32, usize>(0).unwrap_or(0);
@@ -1152,23 +1479,46 @@ pub async fn sync_logo_data(window: tauri::Window, config: AppConfig) -> Result<
                 let gross = row.get::<f64, usize>(6).unwrap_or(0.0);
                 let date = row.get::<chrono::NaiveDateTime, usize>(7).unwrap_or_else(|| chrono::NaiveDate::from_ymd_opt(2000, 1, 1).unwrap().and_hms_opt(0, 0, 0).unwrap());
                 let trcode = row.get::<i16, usize>(8).unwrap_or(0) as i32;
+                let fiche_type = logo_fiche_type_from_trcode(trcode);
+
+                let customer_id =
+                    lookup_customer_uuid_by_logo_ref(&pg_client, &current_firm_nr, client_ref).await;
+                let supplier_id =
+                    lookup_supplier_uuid_by_logo_ref(&pg_client, &current_firm_nr, client_ref).await;
+                let account_id = customer_id.or(supplier_id);
+
+                let net_dec = rust_decimal::Decimal::from_f64_retain(net).unwrap_or_default();
+                let vat_dec = rust_decimal::Decimal::from_f64_retain(vat).unwrap_or_default();
+                let gross_dec = rust_decimal::Decimal::from_f64_retain(gross).unwrap_or_default();
 
                 let insert_sql = format!(
-                    "INSERT INTO {} (ref_id, fiche_no, customer_ref, salesman_ref, total_net, total_vat, total_gross, date, trcode) 
-                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-                     ON CONFLICT (fiche_no) DO NOTHING", target_sales_table
+                    "INSERT INTO {} (firm_nr, period_nr, ref_id, logo_client_ref, logo_salesman_ref, fiche_no, customer_id, trcode, fiche_type, total_net, total_vat, total_gross, net_amount, date) 
+                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+                     ON CONFLICT (ref_id) DO UPDATE SET
+                       total_net = EXCLUDED.total_net, total_vat = EXCLUDED.total_vat,
+                       total_gross = EXCLUDED.total_gross, net_amount = EXCLUDED.net_amount,
+                       date = EXCLUDED.date, fiche_type = EXCLUDED.fiche_type, customer_id = EXCLUDED.customer_id",
+                    target_sales_table
                 );
 
                 pg_client.execute(&insert_sql, &[
-                    &logicalref, &fiche_no, &client_ref, &slman_ref, 
-                    &rust_decimal::Decimal::from_f64_retain(net).unwrap_or_default(),
-                    &rust_decimal::Decimal::from_f64_retain(vat).unwrap_or_default(),
-                    &rust_decimal::Decimal::from_f64_retain(gross).unwrap_or_default(),
+                    &current_firm_nr,
+                    &period_nr_str,
+                    &logicalref,
+                    &client_ref,
+                    &slman_ref,
+                    &fiche_no,
+                    &account_id,
+                    &trcode,
+                    &fiche_type,
+                    &net_dec,
+                    &vat_dec,
+                    &gross_dec,
+                    &net_dec,
                     &date,
-                    &trcode
                 ]).await.ok();
 
-                if idx % 50 == 0 {
+                if idx % 50 == 0 && idx > 0 {
                     let _ = window.emit("sync-event", format!("Faturalar: {}/{}", idx, total_inv));
                 }
             }
@@ -1181,7 +1531,9 @@ pub async fn sync_logo_data(window: tauri::Window, config: AppConfig) -> Result<
         "SELECT L.LOGICALREF, L.INVOICEREF, L.STOCKREF, L.AMOUNT, L.PRICE, L.VAT, L.LINENET, L.VATAMNT, L.TOTAL \
          FROM {} L WITH(NOLOCK) \
          INNER JOIN {} I ON L.INVOICEREF = I.LOGICALREF \
-         WHERE I.GRPCODE=2 AND I.TRCODE IN (7,8) ORDER BY L.LOGICALREF", stline_table, invoice_table
+         WHERE (I.CANCELLED IS NULL OR I.CANCELLED = 0)
+           AND I.TRCODE IN (1,2,3,4,5,6,7,8,9,14,26,29,30,31,32,41,42)
+         ORDER BY L.LOGICALREF", stline_table, invoice_table
     );
 
     if let Ok(stl_stream) = mssql_client.simple_query(&stl_query).await {
@@ -1197,35 +1549,43 @@ pub async fn sync_logo_data(window: tauri::Window, config: AppConfig) -> Result<
                 let price = row.get::<f64, usize>(4).unwrap_or(0.0);
                 let vat_rate = row.get::<f64, usize>(5).unwrap_or(20.0);
                 let net = row.get::<f64, usize>(6).unwrap_or(0.0);
-                let vat_amnt = row.get::<f64, usize>(7).unwrap_or(0.0);
+                let _vat_amnt = row.get::<f64, usize>(7).unwrap_or(0.0);
                 let total = row.get::<f64, usize>(8).unwrap_or(0.0);
 
-                // Find local sale_id from parent ref_id
                 let sale_id_row = pg_client.query_opt(
                     &format!("SELECT id FROM {} WHERE ref_id = $1", target_sales_table),
                     &[&inv_ref]
                 ).await.ok().flatten();
 
                 if let Some(r) = sale_id_row {
-                    let sale_id: uuid::Uuid = r.get(0);
+                    let invoice_id: uuid::Uuid = r.get(0);
+                    let product_id =
+                        lookup_product_uuid_by_logo_ref(&pg_client, &current_firm_nr, stock_ref).await;
                     let insert_sql = format!(
-                        "INSERT INTO {} (ref_id, sale_ref, product_ref, amount, price, vat_rate, total_net, total_vat, total_gross) 
-                         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-                         ON CONFLICT (ref_id) DO NOTHING", target_sale_items_table
+                        "INSERT INTO {} (ref_id, logo_product_ref, invoice_id, firm_nr, period_nr, product_id, quantity, unit_price, vat_rate, net_amount, total_amount) 
+                         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+                         ON CONFLICT (ref_id) DO UPDATE SET
+                           quantity = EXCLUDED.quantity, unit_price = EXCLUDED.unit_price,
+                           net_amount = EXCLUDED.net_amount, total_amount = EXCLUDED.total_amount",
+                        target_sale_items_table
                     );
 
                     pg_client.execute(&insert_sql, &[
-                        &logicalref, &sale_id, &stock_ref,
+                        &logicalref,
+                        &stock_ref,
+                        &invoice_id,
+                        &current_firm_nr,
+                        &period_nr_str,
+                        &product_id,
                         &rust_decimal::Decimal::from_f64_retain(amount).unwrap_or_default(),
                         &rust_decimal::Decimal::from_f64_retain(price).unwrap_or_default(),
                         &rust_decimal::Decimal::from_f64_retain(vat_rate).unwrap_or_default(),
                         &rust_decimal::Decimal::from_f64_retain(net).unwrap_or_default(),
-                        &rust_decimal::Decimal::from_f64_retain(vat_amnt).unwrap_or_default(),
-                        &rust_decimal::Decimal::from_f64_retain(total).unwrap_or_default()
+                        &rust_decimal::Decimal::from_f64_retain(total).unwrap_or_default(),
                     ]).await.ok();
                 }
 
-                if idx % 100 == 0 {
+                if idx % 100 == 0 && idx > 0 {
                     let _ = window.emit("sync-event", format!("Fatura Satırları: {}/{}", idx, total_stl));
                 }
             }
@@ -1236,6 +1596,16 @@ pub async fn sync_logo_data(window: tauri::Window, config: AppConfig) -> Result<
 }
 
     let _ = window.emit("sync-event", "✅ Tüm veri aktarımı başarıyla tamamlandı.");
-    Ok("Firma, Dönem, Stok, Cari, Barkod, Fiyat ve Kasa verileri başarıyla senkronize edildi.".to_string())
+    Ok("Firma, dönem, stok, cari, cari hareket/bakiye, fatura (alış/satış/iade), kasa ve stok hareketleri senkronize edildi.".to_string())
+}
+
+#[tauri::command]
+pub async fn sync_logo_delta(
+    window: tauri::Window,
+    config: AppConfig,
+    start_date: Option<String>,
+) -> Result<String, String> {
+    let _ = start_date;
+    sync_logo_data(window, config).await
 }
 

@@ -80,6 +80,19 @@ export type HybridSyncResult = {
   direction?: HybridSyncDirection;
   flow?: HybridSyncFlow;
   message?: string;
+  /** Son oturumda biriken hata satırları (tablo/kayıt/mesaj) */
+  errors?: string[];
+};
+
+export type SyncQueueErrorRow = {
+  id: string;
+  tableName: string;
+  recordId: string;
+  action: string;
+  firmNr: string;
+  errorMessage: string;
+  retryCount: number;
+  createdAt: string | null;
 };
 
 export type HybridSyncRunOptions = {
@@ -109,6 +122,8 @@ export type HybridSyncProgressEvent = {
   updated: number;
   skipped: number;
   lastTable?: string;
+  /** En son başarısız kayıt mesajı */
+  lastError?: string;
 };
 
 const BATCH_LIMIT = 50;
@@ -463,6 +478,44 @@ export function masterTableNamesForFirm(firmNr: string): string[] {
   return [`rex_${fn}_products`, `rex_${fn}_customers`, `rex_${fn}_suppliers`];
 }
 
+/** Yerel kuyrukta hata mesajı olan bekleyen kayıtlar (son N) */
+export async function getSyncQueueRecentErrors(
+  endpoint: PgEndpointConfig,
+  filter?: HybridSyncFilter,
+  limit = 30,
+): Promise<SyncQueueErrorRow[]> {
+  const where = buildQueueWhere(filter);
+  const params = [...where.params];
+  const limitIdx = params.length + 1;
+  params.push(Math.min(Math.max(limit, 1), 100));
+  try {
+    const rows = await queryPgRows(
+      endpoint,
+      `SELECT id::text, table_name, record_id::text, action, firm_nr,
+              error_message, retry_count::text, created_at::text
+       FROM sync_queue
+       WHERE ${where.sql}
+         AND error_message IS NOT NULL
+         AND btrim(error_message) <> ''
+       ORDER BY created_at DESC
+       LIMIT $${limitIdx}`,
+      params,
+    );
+    return rows.map((r: Record<string, unknown>) => ({
+      id: String(r.id ?? ''),
+      tableName: String(r.table_name ?? ''),
+      recordId: String(r.record_id ?? ''),
+      action: String(r.action ?? ''),
+      firmNr: String(r.firm_nr ?? ''),
+      errorMessage: String(r.error_message ?? ''),
+      retryCount: Number(r.retry_count ?? 0),
+      createdAt: r.created_at ? String(r.created_at) : null,
+    }));
+  } catch {
+    return [];
+  }
+}
+
 export async function getPendingQueueBreakdown(
   endpoint: PgEndpointConfig,
   filter?: HybridSyncFilter,
@@ -578,6 +631,7 @@ export async function syncOneDirection(
       updated: totals.updated,
       skipped: totals.skipped,
       lastTable,
+      lastError: errors.length > 0 ? errors[errors.length - 1] : undefined,
     });
   };
 
@@ -682,7 +736,7 @@ export async function syncOneDirection(
         }
         failed += 1;
         errors.push(`${label} ${item.table_name}/${item.record_id}: ${msg}`);
-        emitProgress(item.table_name);
+        emitProgress(item.table_name, true);
         try {
           await markFailed(source, item.id, msg);
         } catch {
@@ -864,6 +918,7 @@ export async function runHybridSync(opts: HybridSyncRunOptions): Promise<HybridS
               updated: ev.updated,
               skipped: ev.skipped,
               lastTable: ev.lastTable,
+              lastError: ev.lastError,
             })
         : undefined,
     });
@@ -919,7 +974,10 @@ export async function runHybridSync(opts: HybridSyncRunOptions): Promise<HybridS
       }
       await ackSvc.pushDeviceSyncAckToCenter({
         deviceId,
-        firmNr: opts.filter?.firmNr ?? undefined,
+        firmNr:
+          String(opts.filter?.firmNr ?? '001')
+            .replace(/\D/g, '')
+            .padStart(3, '0') || '001',
         storeId: opts.storeId ?? opts.filter?.storeId ?? null,
         terminalName: opts.terminalName ?? null,
         direction: legDirection,
@@ -985,6 +1043,7 @@ export async function runHybridSync(opts: HybridSyncRunOptions): Promise<HybridS
       skipped: 0,
       direction,
       flow,
+      errors: allErrors.length ? allErrors : undefined,
       message: `${flowLabel}: ${scopeLabel} — eşlenecek kayıt yok.`,
     };
   }
@@ -999,6 +1058,7 @@ export async function runHybridSync(opts: HybridSyncRunOptions): Promise<HybridS
       skipped,
       direction,
       flow,
+      errors: allErrors,
       message: `${flowLabel} başarısız. ${allErrors[0] ?? 'Bilinmeyen hata'}`,
     };
   }
@@ -1017,6 +1077,7 @@ export async function runHybridSync(opts: HybridSyncRunOptions): Promise<HybridS
     skipped,
     direction,
     flow,
+    errors: allErrors.length ? allErrors : undefined,
     message: `${flowLabel}: ${totalSynced} kayıt işlendi${breakdown}${partial}.`,
   };
 }

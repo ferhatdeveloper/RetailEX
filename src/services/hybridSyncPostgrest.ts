@@ -42,12 +42,82 @@ function parseUnknownPostgrestColumn(body: string): string | null {
   return m?.[1] ?? null;
 }
 
+/** 409 / 23505: ref_id unique ihlali */
+function parseRefIdFromConflict(body: string): number | null {
+  const m = body.match(/\(ref_id\)=\((\d+)\)/i);
+  if (m) return Number(m[1]);
+  const j = body.match(/"ref_id"[^\d]*(\d+)/i);
+  return j ? Number(j[1]) : null;
+}
+
+async function lookupPostgrestRowId(
+  baseUrl: string,
+  table: string,
+  schema: PgSchemaName,
+  column: string,
+  value: string | number,
+): Promise<string | null> {
+  const q = `${column}=eq.${encodeURIComponent(String(value))}&select=id&limit=1`;
+  const lookupUrl = restUrl(baseUrl, `/${table}`, q);
+  const lookupRes = await fetchRetailexAware(lookupUrl, {
+    method: 'GET',
+    headers: restHeaders(schema),
+  });
+  if (!lookupRes.ok) return null;
+  const rows = (await lookupRes.json()) as Array<{ id?: string }>;
+  const existingId = rows[0]?.id;
+  return existingId ? String(existingId) : null;
+}
+
+/** Logo ref_id ile merkezdeki mevcut ürün UUID'sine hizala */
+async function remapPayloadByRefId(
+  baseUrl: string,
+  table: string,
+  schema: PgSchemaName,
+  payload: Record<string, unknown>,
+  incomingId: string,
+): Promise<Record<string, unknown>> {
+  const rawRef = payload.ref_id;
+  const refId =
+    typeof rawRef === 'number'
+      ? rawRef
+      : rawRef != null && String(rawRef).trim() !== ''
+        ? Number(String(rawRef).replace(/\D/g, ''))
+        : NaN;
+  if (!Number.isFinite(refId) || refId <= 0) return payload;
+
+  const existingId = await lookupPostgrestRowId(baseUrl, table, schema, 'ref_id', refId);
+  if (!existingId || existingId === incomingId) return payload;
+  return { ...payload, id: existingId };
+}
+
+/** Müşteri/tedarikçi: code ile mevcut UUID */
+async function remapPayloadByCode(
+  baseUrl: string,
+  table: string,
+  schema: PgSchemaName,
+  payload: Record<string, unknown>,
+  incomingId: string,
+): Promise<Record<string, unknown>> {
+  const code = String(payload.code ?? '').trim();
+  if (!code) return payload;
+  const existingId = await lookupPostgrestRowId(baseUrl, table, schema, 'code', code);
+  if (!existingId || existingId === incomingId) return payload;
+  return { ...payload, id: existingId };
+}
+
 /** Uzak şema eski ise bilinmeyen kolonları düşürerek UPSERT dener (PGRST204). */
 async function postgrestUpsertWithSchemaFallback(
   url: string,
   schema: PgSchemaName,
   payload: Record<string, unknown>,
   label: string,
+  opts?: {
+    onRefIdConflict?: (
+      conflictBody: string,
+      currentPayload: Record<string, unknown>,
+    ) => Promise<Record<string, unknown> | null>;
+  },
 ): Promise<void> {
   const body: Record<string, unknown> = { ...payload };
   for (let attempt = 0; attempt < 16; attempt++) {
@@ -64,6 +134,20 @@ async function postgrestUpsertWithSchemaFallback(
       delete body[unknownCol];
       continue;
     }
+
+    const isRefConflict =
+      res.status === 409 ||
+      (res.status === 400 && /23505/.test(text) && /ref_id/i.test(text));
+    if (isRefConflict && opts?.onRefIdConflict) {
+      const remapped = await opts.onRefIdConflict(text, body);
+      if (remapped) {
+        Object.keys(body).forEach((k) => delete body[k]);
+        Object.assign(body, remapped);
+        opts = undefined;
+        continue;
+      }
+    }
+
     throw new Error(
       `${label}: ${res.status} ${res.statusText}${text ? ` — ${text.slice(0, 400)}` : ''}`,
     );
@@ -90,7 +174,10 @@ export function buildPostgrestQueueQuery(filter?: HybridSyncFilter, limit = 50):
       parts.unshift(`target_store_id=eq.${sid}`);
       if (filter.terminalName?.trim()) {
         const tn = encodeURIComponent(filter.terminalName.trim());
-        parts.unshift(`or=(terminal_name.is.null,terminal_name.eq.,terminal_name.eq.${tn})`);
+        // Boş terminal_name=eq. PostgREST'te 400 üretir; yalnızca null veya eşleşen ad.
+        parts.unshift(`or=(terminal_name.is.null,terminal_name.eq.${tn})`);
+      } else {
+        parts.unshift('terminal_name=is.null');
       }
     }
   } else if (filter?.storeId) {
@@ -203,30 +290,33 @@ export async function applyItemPostgrest(
 
   let payload = normalizeSyncRow(table, item.data as Record<string, unknown>, id);
 
-  if (/_((customers|suppliers))$/i.test(table)) {
-    const code = String(payload.code ?? '').trim();
-    if (code) {
-      const lookupUrl = restUrl(
-        baseUrl,
-        `/${table}`,
-        `code=eq.${encodeURIComponent(code)}&select=id&limit=1`,
-      );
-      const lookupRes = await fetchRetailexAware(lookupUrl, {
-        method: 'GET',
-        headers: restHeaders(schema),
-      });
-      if (lookupRes.ok) {
-        const rows = (await lookupRes.json()) as Array<{ id?: string }>;
-        const existingId = rows[0]?.id;
-        if (existingId && existingId !== id) {
-          payload = { ...payload, id: existingId };
-        }
-      }
-    }
+  if (/_products$/i.test(table)) {
+    payload = await remapPayloadByRefId(baseUrl, table, schema, payload, id);
+  } else if (/_((customers|suppliers))$/i.test(table)) {
+    payload = await remapPayloadByCode(baseUrl, table, schema, payload, id);
   }
 
   const url = restUrl(baseUrl, `/${table}`);
-  await postgrestUpsertWithSchemaFallback(url, schema, payload, `PostgREST UPSERT ${table}`);
+  const upsertLabel = `PostgREST UPSERT ${table}`;
+  await postgrestUpsertWithSchemaFallback(url, schema, payload, upsertLabel, {
+    onRefIdConflict: /_products$/i.test(table)
+      ? async (conflictBody, currentPayload) => {
+          const parsedRef = parseRefIdFromConflict(conflictBody);
+          const rawRef = currentPayload.ref_id;
+          const refId =
+            parsedRef ??
+            (typeof rawRef === 'number'
+              ? rawRef
+              : rawRef != null && String(rawRef).trim() !== ''
+                ? Number(String(rawRef).replace(/\D/g, ''))
+                : NaN);
+          if (!Number.isFinite(refId) || refId <= 0) return null;
+          const existingId = await lookupPostgrestRowId(baseUrl, table, schema, 'ref_id', refId);
+          if (!existingId) return null;
+          return { ...currentPayload, id: existingId };
+        }
+      : undefined,
+  });
 }
 
 export async function markCompletedPostgrest(baseUrl: string, id: string): Promise<void> {

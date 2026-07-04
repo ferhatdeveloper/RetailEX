@@ -26,6 +26,9 @@ import { getReceiptSettings, saveReceiptSettings, type ReceiptSettings } from '.
 import { eTransformService } from '../../services/eTransformService';
 import { emitInvalidate } from '../../services/retailexDataSync';
 import { nilveraDefaultBaseUrl } from '../../config/gibIntegratorProfiles';
+import { IS_TAURI } from '../../utils/env';
+import { LogoFirmImportModal } from './LogoFirmImportModal';
+import { Database } from 'lucide-react';
 
 // ===== TYPES =====
 interface Company {
@@ -199,6 +202,7 @@ export function CompanySetup() {
 
   /** GİB: UBL / URN — çoğu kurulumda gerekmez */
   const [gibAdvancedOpen, setGibAdvancedOpen] = useState(false);
+  const [showLogoImportModal, setShowLogoImportModal] = useState(false);
 
   /** Nilvera: taban URL her zaman test/canlı kutusuna göre otomatik (kullanıcı yazmaz) */
   useEffect(() => {
@@ -584,6 +588,21 @@ export function CompanySetup() {
       if (selectedNode.type === 'company' || (selectedNode.label === 'Yeni Firma')) {
         return (
           <>
+            {mode === 'create' && IS_TAURI && (
+              <div className="col-span-2 mb-2">
+                <button
+                  type="button"
+                  onClick={() => setShowLogoImportModal(true)}
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-slate-300 bg-slate-50 text-slate-800 text-sm font-medium hover:bg-slate-100"
+                >
+                  <Database className="h-4 w-4" />
+                  Logo&apos;dan firma çek (MSSQL)
+                </button>
+                <p className="text-xs text-gray-500 mt-1">
+                  Kurulumdaki Logo MSSQL bağlantısı ile firma, dönem ve kart/hareket verilerini içe aktarır.
+                </p>
+              </div>
+            )}
             <div className="col-span-2"><h3 className="text-sm font-bold text-gray-500 border-b pb-1 mb-2">Temel Bilgiler</h3></div>
             <div><label className="block text-sm mb-1">Firma Adı</label><input className="w-full border p-2 rounded" value={formData.firma_adi || ''} onChange={e => setFormData({ ...formData, firma_adi: e.target.value })} disabled={mode === 'view'} /></div>
             <div><label className="block text-sm mb-1">Firma Kodu</label><input className="w-full border p-2 rounded" value={formData.firma_kodu || ''} onChange={e => setFormData({ ...formData, firma_kodu: e.target.value })} disabled={mode === 'view'} /></div>
@@ -1005,6 +1024,19 @@ export function CompanySetup() {
       <div className="flex-1 overflow-auto bg-white">
         {renderContent()}
       </div>
+      <LogoFirmImportModal
+        open={showLogoImportModal}
+        onClose={() => setShowLogoImportModal(false)}
+        onImported={(firm) => {
+          setFormData((prev: Record<string, unknown>) => ({
+            ...prev,
+            firma_adi: firm.firma_adi,
+            firma_kodu: firm.firma_kodu,
+          }));
+          setMode('view');
+          void loadAllData();
+        }}
+      />
     </div>
   );
 }

@@ -2,8 +2,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowDownToLine,
   ArrowUpFromLine,
+  AlertTriangle,
   CheckCircle2,
   Circle,
+  ChevronDown,
+  ChevronRight,
   Loader2,
   RefreshCw,
   XCircle,
@@ -24,25 +27,21 @@ import {
   formatRemoteMasterVerifyMessage,
   getPendingQueueBreakdown,
   getPendingQueueBreakdownEndpoint,
+  getSyncQueueRecentErrors,
   masterTableNamesForFirm,
   runHybridSync,
   type SyncQueueBreakdownRow,
+  type SyncQueueErrorRow,
   type RemoteTableCountRow,
   type HybridSyncProgressEvent,
 } from '../../services/hybridSyncEngine';
 import {
-  buildKasaInboundFilter,
   buildSyncFilter,
   getBranchSyncStats,
   getRemoteMasterSnapshot,
   type RemoteMasterSnapshot,
 } from '../../services/hybridSyncService';
-import {
-  pullInboundMasterNow,
-  resolveKasaPullContext,
-  countInboundMasterPending,
-} from '../../services/mposKasaAutoPullService';
-import { formatSyncBreakdown as formatKasaSyncBreakdown } from '../../services/kasaDataArrivalNotify';
+import { resolveKasaPullContext } from '../../services/mposKasaAutoPullService';
 import {
   formatDeviceSyncLogSummary,
   getHybridDeviceId,
@@ -66,14 +65,15 @@ type SyncStep = {
 };
 
 type PreviewData = {
-  isKasa: boolean;
   localPending: number;
   inboundPending: number;
   inboundQueueAvailable: boolean;
   remoteMaster: RemoteMasterSnapshot;
   outboundBreakdown: SyncQueueBreakdownRow[];
   inboundBreakdown: SyncQueueBreakdownRow[];
-  terminalName?: string;
+  /** Kayıtlı terminal adı (bilgi); şube senkronunu kasa moduna çevirmez */
+  registeredTerminal?: string;
+  receiveEnabled: boolean;
 };
 
 type Props = {
@@ -145,11 +145,12 @@ function formatMasterCounts(rows: RemoteTableCountRow[]): string {
 }
 
 function formatInboundPreview(preview: PreviewData): string {
-  if (preview.isKasa) {
-    return formatBreakdown(preview.inboundBreakdown, Math.max(0, preview.inboundPending));
+  if (!preview.receiveEnabled) {
+    return 'Senkron yönü yalnızca gönderim (yerel → merkez)';
   }
   if (preview.inboundQueueAvailable) {
-    return `${preview.inboundPending} kuyruk kaydı`;
+    const breakdown = formatBreakdown(preview.inboundBreakdown, Math.max(0, preview.inboundPending));
+    return preview.inboundPending > 0 ? breakdown : `${preview.inboundPending} merkez kuyruk kaydı`;
   }
   const master = formatMasterCounts(preview.remoteMaster.tables);
   return `Kuyruk erişilemiyor · Merkezde: ${master}`;
@@ -173,6 +174,92 @@ function formatLiveStepDetail(opts: {
     parts.push(`son: ${tableLabel(short)}`);
   }
   return parts.join(' · ');
+}
+
+function parseEngineErrorLine(line: string): { table?: string; message: string } {
+  const m = line.match(/^(?:yerel→uzak|uzak→yerel)\s+(\S+)\/([^:]+):\s*(.+)$/i);
+  if (m) {
+    const short = m[1].replace(/^rex_\d+_/i, '').replace(/_/g, ' ');
+    return { table: tableLabel(short), message: m[3].trim() };
+  }
+  return { message: line };
+}
+
+function SyncErrorLogPanel({
+  queueErrors,
+  sessionErrors,
+  expanded,
+  onToggle,
+}: {
+  queueErrors: SyncQueueErrorRow[];
+  sessionErrors: string[];
+  expanded: boolean;
+  onToggle: () => void;
+}) {
+  const total = queueErrors.length + sessionErrors.length;
+  if (total === 0) return null;
+
+  const merged = [
+    ...sessionErrors.map((line, i) => ({
+      key: `sess-${i}`,
+      table: parseEngineErrorLine(line).table,
+      message: parseEngineErrorLine(line).message,
+      retry: null as number | null,
+    })),
+    ...queueErrors.map((row) => ({
+      key: row.id,
+      table: tableLabel(row.tableName.replace(/^rex_\d+_/i, '').replace(/_/g, ' ')),
+      message: row.errorMessage,
+      retry: row.retryCount,
+    })),
+  ];
+
+  return (
+    <div className="rounded-lg border border-red-200 bg-red-50/60 overflow-hidden">
+      <button
+        type="button"
+        onClick={onToggle}
+        className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-red-100/50"
+      >
+        {expanded ? (
+          <ChevronDown className="h-4 w-4 shrink-0 text-red-700" />
+        ) : (
+          <ChevronRight className="h-4 w-4 shrink-0 text-red-700" />
+        )}
+        <AlertTriangle className="h-4 w-4 shrink-0 text-red-600" />
+        <span className="text-sm font-semibold text-red-900">
+          Hata günlüğü ({total})
+        </span>
+        {!expanded && merged[0] ? (
+          <span className="text-xs text-red-800 truncate ml-1 min-w-0">
+            — {merged[0].table ? `${merged[0].table}: ` : ''}
+            {merged[0].message}
+          </span>
+        ) : null}
+      </button>
+      {expanded ? (
+        <ul className="max-h-48 overflow-y-auto border-t border-red-200/80 divide-y divide-red-100/80 text-xs">
+          {merged.slice(0, 50).map((item) => (
+            <li key={item.key} className="px-3 py-2 leading-snug">
+              {item.table ? (
+                <span className="font-semibold text-red-900">{item.table}</span>
+              ) : null}
+              {item.table ? <span className="text-red-800"> — </span> : null}
+              <span className="text-red-800">{item.message}</span>
+              {item.retry != null && item.retry > 0 ? (
+                <span className="text-red-600 ml-1">(deneme {item.retry})</span>
+              ) : null}
+            </li>
+          ))}
+          {merged.length > 50 ? (
+            <li className="px-3 py-2 text-red-700 italic">
+              … ve {merged.length - 50} hata daha (kuyruk tablosunda error_message alanına bakın)
+            </li>
+          ) : null}
+        </ul>
+      ) : null}
+    </div>
+  );
 }
 
 async function verifySentDataOnRemote(
@@ -206,6 +293,9 @@ export function HybridSyncModal({ open, onOpenChange, onComplete }: Props) {
   const [preview, setPreview] = useState<PreviewData | null>(null);
   const [steps, setSteps] = useState<SyncStep[]>([]);
   const [finished, setFinished] = useState(false);
+  const [queueErrors, setQueueErrors] = useState<SyncQueueErrorRow[]>([]);
+  const [sessionErrors, setSessionErrors] = useState<string[]>([]);
+  const [errorsExpanded, setErrorsExpanded] = useState(true);
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const engineProgressRef = useRef<{ synced: number; failed: number; lastTable?: string }>({
     synced: 0,
@@ -226,33 +316,24 @@ export function HybridSyncModal({ open, onOpenChange, onComplete }: Props) {
     setLoadingPreview(true);
     try {
       const kasaCtx = await resolveKasaPullContext(user?.store_id || null);
-      const isKasa = !!kasaCtx;
-      const outboundFilter = buildSyncFilter({
+      const receiveEnabled = DB_SETTINGS.hybridSyncDirection !== 'local_to_remote';
+      const branchFilter = buildSyncFilter({
         storeId: user?.store_id || null,
         userId: null,
         cashierUsername: null,
         scopeCashierOnly: false,
       });
-      const inboundFilter = kasaCtx ? buildKasaInboundFilter(kasaCtx) : outboundFilter;
 
-      const outboundStats = await getBranchSyncStats(outboundFilter);
-      const inboundStats = isKasa ? await getBranchSyncStats(inboundFilter) : outboundStats;
+      const branchStats = await getBranchSyncStats(branchFilter);
       const remoteMaster = await getRemoteMasterSnapshot(ERP_SETTINGS.firmNr);
-      const outboundBreakdown = await getPendingQueueBreakdown(LOCAL_CONFIG, outboundFilter);
+      const outboundBreakdown = await getPendingQueueBreakdown(LOCAL_CONFIG, branchFilter);
+      const recentQueueErrors = await getSyncQueueRecentErrors(LOCAL_CONFIG, branchFilter, 40);
 
       let inboundBreakdown: SyncQueueBreakdownRow[] = [];
-      const inboundQueueAvailable = isKasa
-        ? inboundStats.remotePending >= 0
-        : outboundStats.remotePending >= 0;
-      const inboundPending = isKasa
-        ? inboundStats.remotePending >= 0
-          ? inboundStats.remotePending
-          : -1
-        : outboundStats.remotePending >= 0
-          ? outboundStats.remotePending
-          : -1;
+      const inboundQueueAvailable = branchStats.remotePending >= 0;
+      const inboundPending = branchStats.remotePending >= 0 ? branchStats.remotePending : -1;
 
-      if (isKasa && kasaCtx) {
+      if (receiveEnabled) {
         try {
           const { remote } = buildSyncEndpoints({
             local: LOCAL_CONFIG,
@@ -260,44 +341,46 @@ export function HybridSyncModal({ open, onOpenChange, onComplete }: Props) {
             connectionProvider: resolveHybridSyncConnectionProvider(),
             remoteRestUrl: DB_SETTINGS.remoteRestUrl,
           });
-          inboundBreakdown = await getPendingQueueBreakdownEndpoint(remote, inboundFilter);
+          inboundBreakdown = await getPendingQueueBreakdownEndpoint(remote, branchFilter);
         } catch {
           /* merkez kırılım alınamadı */
         }
       }
 
       setPreview({
-        isKasa,
-        localPending: outboundStats.localPending,
+        localPending: branchStats.localPending,
         inboundPending,
         inboundQueueAvailable,
         remoteMaster,
         outboundBreakdown,
         inboundBreakdown,
-        terminalName: kasaCtx?.terminalName,
+        registeredTerminal: kasaCtx?.terminalName,
+        receiveEnabled,
       });
+      setQueueErrors(recentQueueErrors);
+      setSessionErrors([]);
+      setErrorsExpanded(recentQueueErrors.length > 0);
 
       setSteps([
         {
           id: 'send',
           title: 'Yerelden merkeze gönder',
-          description: formatBreakdown(outboundBreakdown, outboundStats.localPending),
+          description: formatBreakdown(outboundBreakdown, branchStats.localPending),
           status: 'pending',
         },
         {
           id: 'receive',
-          title: isKasa ? 'Merkezden kasa verisi al' : 'Merkezden yerel al',
+          title: 'Merkezden yerel al',
           description: formatInboundPreview({
-            isKasa,
-            localPending: outboundStats.localPending,
+            localPending: branchStats.localPending,
             inboundPending,
             inboundQueueAvailable,
             remoteMaster,
             outboundBreakdown,
             inboundBreakdown,
-            terminalName: kasaCtx?.terminalName,
+            receiveEnabled,
           }),
-          status: 'pending',
+          status: receiveEnabled ? 'pending' : 'skipped',
         },
       ]);
       setFinished(false);
@@ -321,16 +404,16 @@ export function HybridSyncModal({ open, onOpenChange, onComplete }: Props) {
     if (!preview) return;
     setRunning(true);
     setFinished(false);
+    setSessionErrors([]);
     stopLivePoll();
 
-    const kasaCtx = preview.isKasa ? await resolveKasaPullContext(user?.store_id || null) : null;
     const filter = buildSyncFilter({
       storeId: user?.store_id || null,
       userId: null,
       cashierUsername: null,
       scopeCashierOnly: false,
     });
-    const inboundFilter = kasaCtx ? buildKasaInboundFilter(kasaCtx) : filter;
+    const receiveEnabled = preview.receiveEnabled;
     const deviceId = await getHybridDeviceId();
 
     totalsAtStartRef.current = {
@@ -360,24 +443,19 @@ export function HybridSyncModal({ open, onOpenChange, onComplete }: Props) {
             }),
           });
         } else {
-          let remaining = -1;
+          const stats = await getBranchSyncStats(filter);
+          const remaining = stats.remotePending >= 0 ? stats.remotePending : 0;
           let breakdown: SyncQueueBreakdownRow[] = [];
-          if (kasaCtx) {
-            remaining = await countInboundMasterPending(kasaCtx);
-            try {
-              const { remote } = buildSyncEndpoints({
-                local: LOCAL_CONFIG,
-                remote: getCentralRemotePgConfig(),
-                connectionProvider: resolveHybridSyncConnectionProvider(),
-                remoteRestUrl: DB_SETTINGS.remoteRestUrl,
-              });
-              breakdown = await getPendingQueueBreakdownEndpoint(remote, inboundFilter);
-            } catch {
-              /* kırılım alınamadı */
-            }
-          } else {
-            const stats = await getBranchSyncStats(filter);
-            remaining = stats.remotePending >= 0 ? stats.remotePending : 0;
+          try {
+            const { remote } = buildSyncEndpoints({
+              local: LOCAL_CONFIG,
+              remote: getCentralRemotePgConfig(),
+              connectionProvider: resolveHybridSyncConnectionProvider(),
+              remoteRestUrl: DB_SETTINGS.remoteRestUrl,
+            });
+            breakdown = await getPendingQueueBreakdownEndpoint(remote, filter);
+          } catch {
+            /* kırılım alınamadı */
           }
           const totalAtStart = totalsAtStartRef.current.receive;
           const eng = engineProgressRef.current;
@@ -392,9 +470,7 @@ export function HybridSyncModal({ open, onOpenChange, onComplete }: Props) {
               : p,
           );
           updateStep('receive', {
-            description: kasaCtx
-              ? formatBreakdown(breakdown, safeRemaining)
-              : `${safeRemaining} kuyruk kaydı`,
+            description: formatBreakdown(breakdown, safeRemaining) || `${safeRemaining} kuyruk kaydı`,
             detail: formatLiveStepDetail({
               verb: 'Alınıyor',
               totalAtStart,
@@ -419,8 +495,21 @@ export function HybridSyncModal({ open, onOpenChange, onComplete }: Props) {
       }, 700);
     };
 
+    const appendSessionErrors = (lines?: string[]) => {
+      if (!lines?.length) return;
+      setSessionErrors((prev) => {
+        const next = [...prev];
+        for (const line of lines) {
+          if (!next.includes(line)) next.push(line);
+        }
+        return next.slice(-80);
+      });
+      setErrorsExpanded(true);
+    };
+
     const makeOnProgress =
       (stepId: 'send' | 'receive') => (ev: HybridSyncProgressEvent) => {
+        if (ev.lastError) appendSessionErrors([ev.lastError]);
         engineProgressRef.current = {
           synced: ev.synced,
           failed: ev.failed,
@@ -468,6 +557,7 @@ export function HybridSyncModal({ open, onOpenChange, onComplete }: Props) {
       });
       stopLivePoll();
       await refreshLiveCounts('send');
+      appendSessionErrors(sendResult.errors);
 
       if (!sendResult.success && sendResult.failed > 0 && sendResult.totalSynced === 0) {
         updateStep('send', {
@@ -485,37 +575,18 @@ export function HybridSyncModal({ open, onOpenChange, onComplete }: Props) {
             (formatHybridSyncMessage(sendResult) ||
               `${sendResult.totalSynced} kayıt gönderildi` +
                 (sendResult.failed > 0 ? ` · ${sendResult.failed} hata` : '')) +
-            (verifyMsg ? ` · ${verifyMsg}` : ''),
+            (verifyMsg ? ` · ${verifyMsg}` : '') +
+            (sendResult.errors?.[0] ? ` · Son hata: ${sendResult.errors[0].split(': ').slice(1).join(': ') || sendResult.errors[0]}` : ''),
         });
       }
 
-      startLivePoll('receive');
-      updateStep('receive', { status: 'running', detail: 'Alınıyor… 0 / …' });
+      const queueErrorsAfterSend = await getSyncQueueRecentErrors(LOCAL_CONFIG, filter, 40);
+      setQueueErrors(queueErrorsAfterSend);
 
-      if (kasaCtx) {
-        const pull = await pullInboundMasterNow(kasaCtx, {
-          notifySource: 'manual',
-          silent: true,
-          onProgress: makeOnProgress('receive'),
-        });
-        stopLivePoll();
-        await refreshLiveCounts('receive');
-        if (pull.failed > 0 && pull.synced === 0) {
-          updateStep('receive', {
-            status: 'error',
-            detail: pull.message || 'Veri alımı başarısız.',
-          });
-        } else if (pull.synced === 0 && pull.failed === 0) {
-          updateStep('receive', { status: 'skipped', detail: 'Alınacak kayıt yok.' });
-        } else {
-          updateStep('receive', {
-            status: 'done',
-            detail:
-              formatKasaSyncBreakdown(pull) ||
-              `${pull.synced} kayıt alındı` + (pull.failed > 0 ? ` · ${pull.failed} hata` : ''),
-          });
-        }
-      } else {
+      if (receiveEnabled) {
+        startLivePoll('receive');
+        updateStep('receive', { status: 'running', detail: 'Alınıyor… 0 / …' });
+
         const recvResult = await runHybridSync({
           flow: 'receive',
           direction: 'remote_to_local',
@@ -532,7 +603,7 @@ export function HybridSyncModal({ open, onOpenChange, onComplete }: Props) {
         });
         stopLivePoll();
         await refreshLiveCounts('receive');
-
+        appendSessionErrors(recvResult.errors);
         if (!recvResult.success && recvResult.failed > 0 && recvResult.totalSynced === 0) {
           updateStep('receive', {
             status: 'error',
@@ -555,6 +626,11 @@ export function HybridSyncModal({ open, onOpenChange, onComplete }: Props) {
                 (recvResult.failed > 0 ? ` · ${recvResult.failed} hata` : ''),
           });
         }
+      } else {
+        updateStep('receive', {
+          status: 'skipped',
+          detail: 'Hibrit senkron yönü yalnızca gönderim — alım atlandı.',
+        });
       }
 
       setFinished(true);
@@ -609,9 +685,9 @@ export function HybridSyncModal({ open, onOpenChange, onComplete }: Props) {
             <div>
               <h3 id="hybrid-sync-title" className="text-base font-bold">Veri senkronu</h3>
               <p className="text-xs text-blue-100 mt-0.5">
-                {preview?.isKasa
-                  ? 'Yerel → merkez, ardından merkezden master veri'
-                  : 'Şube: çift yönlü veri aktarımı'}
+                {preview?.receiveEnabled === false
+                  ? 'Yerel → merkez (alıma kapalı)'
+                  : 'Şube: yerel ↔ merkez çift yönlü aktarım'}
               </p>
             </div>
           </div>
@@ -675,10 +751,11 @@ export function HybridSyncModal({ open, onOpenChange, onComplete }: Props) {
                       ) || '—'}
                 </p>
                 <p className="text-xs text-gray-700 leading-snug">
-                  {preview.isKasa
-                    ? formatBreakdown(preview.inboundBreakdown, Math.max(0, preview.inboundPending))
+                  {!preview.receiveEnabled
+                    ? 'Senkron yönü yalnızca gönderim'
                     : preview.inboundQueueAvailable
-                      ? `${preview.inboundPending} merkez kuyruk kaydı`
+                      ? formatBreakdown(preview.inboundBreakdown, Math.max(0, preview.inboundPending)) ||
+                        `${preview.inboundPending} merkez kuyruk kaydı`
                       : formatMasterCounts(preview.remoteMaster.tables)}
                 </p>
                 {!preview.inboundQueueAvailable ? (
@@ -691,13 +768,30 @@ export function HybridSyncModal({ open, onOpenChange, onComplete }: Props) {
               </div>
             </div>
 
-            {preview.isKasa && preview.terminalName ? (
+            {preview.registeredTerminal ? (
               <p className="text-xs text-gray-600">
-                Hedef kasa: <strong className="text-gray-900">{preview.terminalName}</strong>
+                Kayıtlı terminal: <strong className="text-gray-900">{preview.registeredTerminal}</strong>
+                <span className="text-gray-500">
+                  {' '}
+                  — bu ekranda şube senkronu çalışır; kasa master çekimi POS otomatik servisindedir.
+                </span>
               </p>
             ) : null}
 
-            <CenterDeviceSyncMonitor compact hours={168} />
+            <SyncErrorLogPanel
+              queueErrors={queueErrors}
+              sessionErrors={sessionErrors}
+              expanded={errorsExpanded}
+              onToggle={() => setErrorsExpanded((v) => !v)}
+            />
+
+            <CenterDeviceSyncMonitor
+              compact
+              hours={168}
+              defaultTab="sessions"
+              collapsible
+              defaultCollapsed
+            />
 
             <div className="space-y-2">
               <p className="text-xs font-semibold uppercase tracking-wide text-gray-600">

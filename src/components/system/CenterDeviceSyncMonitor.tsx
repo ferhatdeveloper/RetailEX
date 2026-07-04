@@ -36,6 +36,11 @@ type Props = {
   firmNr?: string;
   hours?: number;
   compact?: boolean;
+  /** Varsayılan sekme — hibrit senkron ekranında cihazlar değil oturumlar öncelikli */
+  defaultTab?: TabId;
+  /** true: yalnızca başlık; kullanıcı genişletince içerik yüklenir */
+  collapsible?: boolean;
+  defaultCollapsed?: boolean;
 };
 
 function OnlineBadge({ row }: { row: CenterDeviceOverviewRow }) {
@@ -298,8 +303,16 @@ function SessionRow({ session }: { session: DeviceSyncAckRow }) {
   );
 }
 
-export function CenterDeviceSyncMonitor({ firmNr, hours = 168, compact = false }: Props) {
-  const [tab, setTab] = useState<TabId>('devices');
+export function CenterDeviceSyncMonitor({
+  firmNr,
+  hours = 168,
+  compact = false,
+  defaultTab = compact ? 'sessions' : 'devices',
+  collapsible = false,
+  defaultCollapsed = false,
+}: Props) {
+  const [tab, setTab] = useState<TabId>(defaultTab);
+  const [collapsed, setCollapsed] = useState(defaultCollapsed);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [devices, setDevices] = useState<CenterDeviceOverviewRow[]>([]);
@@ -331,8 +344,9 @@ export function CenterDeviceSyncMonitor({ firmNr, hours = 168, compact = false }
   }, [firmNr, hours]);
 
   useEffect(() => {
+    if (collapsible && collapsed) return;
     void load();
-  }, [load]);
+  }, [load, collapsible, collapsed]);
 
   const stats = useMemo(() => {
     const total = devices.length;
@@ -371,123 +385,151 @@ export function CenterDeviceSyncMonitor({ firmNr, hours = 168, compact = false }
       )}
     >
       <div className="flex items-start justify-between gap-2">
-        <div>
+        <div className="min-w-0 flex-1">
           <p className="text-xs font-semibold uppercase tracking-wide text-violet-900 flex items-center gap-1.5">
-            <Monitor className="h-3.5 w-3.5" />
-            Merkez cihaz senkron izleme
+            {collapsible ? (
+              <button
+                type="button"
+                onClick={() => setCollapsed((c) => !c)}
+                className="inline-flex items-center gap-1 hover:text-violet-700"
+              >
+                {collapsed ? (
+                  <ChevronRight className="h-3.5 w-3.5" />
+                ) : (
+                  <ChevronDown className="h-3.5 w-3.5" />
+                )}
+                <Monitor className="h-3.5 w-3.5" />
+                Merkez cihaz senkron izleme
+              </button>
+            ) : (
+              <>
+                <Monitor className="h-3.5 w-3.5" />
+                Merkez cihaz senkron izleme
+              </>
+            )}
           </p>
           <p className="text-[10px] text-violet-800 mt-0.5 leading-snug">
             WS canlı · 24s yedek aktivite · fiyat teslimat · otomatik ack
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => void load()}
-          disabled={loading}
-          className="shrink-0 rounded p-1 text-violet-700 hover:bg-violet-100 disabled:opacity-50"
-          title="Yenile"
-        >
-          {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-        </button>
-      </div>
-
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
-        <div className="rounded-md border border-gray-200 bg-white px-2 py-1.5">
-          <p className="text-[10px] text-gray-500">Kayıtlı cihaz</p>
-          <p className="text-lg font-bold text-gray-900 tabular-nums">{stats.total}</p>
-        </div>
-        <div className="rounded-md border border-emerald-200 bg-emerald-50/50 px-2 py-1.5">
-          <p className="text-[10px] text-emerald-800">Canlı (WS)</p>
-          <p className="text-lg font-bold text-emerald-900 tabular-nums">{stats.wsOnline}</p>
-        </div>
-        <div className="rounded-md border border-amber-200 bg-amber-50/50 px-2 py-1.5">
-          <p className="text-[10px] text-amber-800">Yedek (24s)</p>
-          <p className="text-lg font-bold text-amber-950 tabular-nums">{stats.fallbackOnline}</p>
-        </div>
-        <div className="rounded-md border border-gray-300 bg-gray-50 px-2 py-1.5">
-          <p className="text-[10px] text-gray-600">Kapalı</p>
-          <p className="text-lg font-bold text-gray-800 tabular-nums">{stats.offline}</p>
-        </div>
-        <div className="rounded-md border border-red-200 bg-red-50/50 px-2 py-1.5">
-          <p className="text-[10px] text-red-800">Bekleyen fiyat</p>
-          <p className="text-lg font-bold text-red-900 tabular-nums">{stats.pendingPrices}</p>
-        </div>
-      </div>
-
-      <div className="flex flex-wrap gap-1 border-b border-violet-100 pb-1">
-        {tabs.map((t) => (
+        {!collapsed ? (
           <button
-            key={t.id}
             type="button"
-            onClick={() => setTab(t.id)}
-            className={cn(
-              'rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors',
-              tab === t.id
-                ? 'bg-violet-600 text-white'
-                : 'text-violet-800 hover:bg-violet-100',
-            )}
+            onClick={() => void load()}
+            disabled={loading}
+            className="shrink-0 rounded p-1 text-violet-700 hover:bg-violet-100 disabled:opacity-50"
+            title="Yenile"
           >
-            {t.label}
-            {t.count != null && t.count > 0 ? ` (${t.count})` : ''}
+            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
           </button>
-        ))}
+        ) : null}
       </div>
 
-      {error ? (
-        <p className="text-xs text-red-700">{error}</p>
-      ) : loading && devices.length === 0 && priceRows.length === 0 ? (
-        <div className="flex items-center gap-2 text-xs text-gray-600 py-3">
-          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-          Merkez verileri yükleniyor…
-        </div>
+      {collapsed ? (
+        <p className="text-[10px] text-violet-700">
+          Cihaz ve fiyat izleme için genişletin (varsayılan sekme: alım oturumları).
+        </p>
       ) : (
-        <div className={cn('overflow-y-auto space-y-2', compact ? 'max-h-56' : 'max-h-72')}>
-          {tab === 'devices' && (
-            <>
-              {devices.length === 0 ? (
-                <p className="text-xs text-gray-600">
-                  Onaylı kasa cihazı bulunamadı (085 migration + terminal kaydı gerekli).
-                </p>
-              ) : (
-                devices.map((row) => (
-                  <DeviceOverviewCard
-                    key={row.device.deviceId}
-                    row={row}
-                    expanded={expandedDevice === row.device.deviceId}
-                    onToggle={() =>
-                      setExpandedDevice((prev) =>
-                        prev === row.device.deviceId ? null : row.device.deviceId,
-                      )
-                    }
-                  />
-                ))
-              )}
-            </>
-          )}
+        <>
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+            <div className="rounded-md border border-gray-200 bg-white px-2 py-1.5">
+              <p className="text-[10px] text-gray-500">Kayıtlı cihaz</p>
+              <p className="text-lg font-bold text-gray-900 tabular-nums">{stats.total}</p>
+            </div>
+            <div className="rounded-md border border-emerald-200 bg-emerald-50/50 px-2 py-1.5">
+              <p className="text-[10px] text-emerald-800">Canlı (WS)</p>
+              <p className="text-lg font-bold text-emerald-900 tabular-nums">{stats.wsOnline}</p>
+            </div>
+            <div className="rounded-md border border-amber-200 bg-amber-50/50 px-2 py-1.5">
+              <p className="text-[10px] text-amber-800">Yedek (24s)</p>
+              <p className="text-lg font-bold text-amber-950 tabular-nums">{stats.fallbackOnline}</p>
+            </div>
+            <div className="rounded-md border border-gray-300 bg-gray-50 px-2 py-1.5">
+              <p className="text-[10px] text-gray-600">Kapalı</p>
+              <p className="text-lg font-bold text-gray-800 tabular-nums">{stats.offline}</p>
+            </div>
+            <div className="rounded-md border border-red-200 bg-red-50/50 px-2 py-1.5">
+              <p className="text-[10px] text-red-800">Bekleyen fiyat</p>
+              <p className="text-lg font-bold text-red-900 tabular-nums">{stats.pendingPrices}</p>
+            </div>
+          </div>
 
-          {tab === 'prices' && (
-            <>
-              {priceRows.length === 0 ? (
-                <p className="text-xs text-gray-600">Son {hours} saatte fiyat değişimi yok.</p>
-              ) : (
-                priceRows.map((row) => <PriceChangeRow key={row.priceChange.id} row={row} />)
-              )}
-            </>
-          )}
+          <div className="flex flex-wrap gap-1 border-b border-violet-100 pb-1">
+            {tabs.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => setTab(t.id)}
+                className={cn(
+                  'rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors',
+                  tab === t.id
+                    ? 'bg-violet-600 text-white'
+                    : 'text-violet-800 hover:bg-violet-100',
+                )}
+              >
+                {t.label}
+                {t.count != null && t.count > 0 ? ` (${t.count})` : ''}
+              </button>
+            ))}
+          </div>
 
-          {tab === 'sessions' && (
-            <>
-              {sessions.length === 0 ? (
-                <p className="text-xs text-gray-600">
-                  Henüz merkeze alım oturumu bildirimi gelmedi. Cihaz senkron aldığında otomatik
-                  kaydedilir.
-                </p>
-              ) : (
-                sessions.map((s) => <SessionRow key={s.id} session={s} />)
+          {error ? (
+            <p className="text-xs text-red-700">{error}</p>
+          ) : loading && devices.length === 0 && priceRows.length === 0 ? (
+            <div className="flex items-center gap-2 text-xs text-gray-600 py-3">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              Merkez verileri yükleniyor…
+            </div>
+          ) : (
+            <div className={cn('overflow-y-auto space-y-2', compact ? 'max-h-56' : 'max-h-72')}>
+              {tab === 'devices' && (
+                <>
+                  {devices.length === 0 ? (
+                    <p className="text-xs text-gray-600">
+                      Onaylı kasa cihazı bulunamadı (085 migration + terminal kaydı gerekli).
+                    </p>
+                  ) : (
+                    devices.map((row) => (
+                      <DeviceOverviewCard
+                        key={row.device.deviceId}
+                        row={row}
+                        expanded={expandedDevice === row.device.deviceId}
+                        onToggle={() =>
+                          setExpandedDevice((prev) =>
+                            prev === row.device.deviceId ? null : row.device.deviceId,
+                          )
+                        }
+                      />
+                    ))
+                  )}
+                </>
               )}
-            </>
+
+              {tab === 'prices' && (
+                <>
+                  {priceRows.length === 0 ? (
+                    <p className="text-xs text-gray-600">Son {hours} saatte fiyat değişimi yok.</p>
+                  ) : (
+                    priceRows.map((row) => <PriceChangeRow key={row.priceChange.id} row={row} />)
+                  )}
+                </>
+              )}
+
+              {tab === 'sessions' && (
+                <>
+                  {sessions.length === 0 ? (
+                    <p className="text-xs text-gray-600">
+                      Henüz merkeze alım oturumu bildirimi gelmedi. Cihaz senkron aldığında otomatik
+                      kaydedilir.
+                    </p>
+                  ) : (
+                    sessions.map((s) => <SessionRow key={s.id} session={s} />)
+                  )}
+                </>
+              )}
+            </div>
           )}
-        </div>
+        </>
       )}
     </div>
   );

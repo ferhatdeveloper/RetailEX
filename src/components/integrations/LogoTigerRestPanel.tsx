@@ -13,6 +13,7 @@ import {
   Database,
   Plus,
   Search,
+  Clock,
 } from 'lucide-react';
 import {
   LOGO_API_URL_EXAMPLE,
@@ -54,6 +55,16 @@ import {
   type LogoSyncResult,
 } from '../../services/logoRestSync';
 import {
+  loadLogoRestSyncSettings,
+  saveLogoRestSyncSettings,
+  runLogoRestSyncNow,
+  startLogoRestAutoSync,
+  stopLogoRestAutoSync,
+  subscribeLogoRestSyncLogs,
+  type LogoRestSyncSettings,
+} from '../../services/logoRestSyncService';
+import { loadLogoErpMode } from '../../services/logoErpMode';
+import {
   getLogoInvoicePushIntervalSec,
   isLogoInvoiceAutoPushEnabled,
   pushPendingSalesToLogo,
@@ -94,7 +105,21 @@ export function LogoTigerRestPanel() {
   const [activeContext, setActiveContext] = useState(() => resolveLogoContext(loadLogoRestConfig()));
   const [urlSource, setUrlSource] = useState<'tenant' | 'manual' | 'none'>(() => resolveLogoRestUrlSource());
 
-  const [syncOptions, setSyncOptions] = useState({ products: true, customers: true, suppliers: true });
+  const [syncOptions, setSyncOptions] = useState(() => {
+    const m = loadLogoRestSyncSettings().modules;
+    return {
+      products: m.masterData,
+      customers: m.customers,
+      suppliers: m.suppliers,
+      salesInvoices: m.salesInvoices,
+      purchaseInvoices: m.purchaseInvoices,
+      itemSlips: m.itemSlips,
+      banks: m.banks,
+      salesOrders: m.salesOrders,
+      purchaseOrders: m.purchaseOrders,
+    };
+  });
+  const [restAutoSync, setRestAutoSync] = useState<LogoRestSyncSettings>(() => loadLogoRestSyncSettings());
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncProgress, setSyncProgress] = useState<LogoSyncProgress | null>(null);
   const [syncResult, setSyncResult] = useState<LogoSyncResult | null>(null);
@@ -161,6 +186,26 @@ export function LogoTigerRestPanel() {
     startLogoInvoiceAutoPush(config, appendSyncLog);
     return () => stopLogoInvoiceAutoPush();
   }, [connectionStatus, autoInvoicePush, config, appendSyncLog, invoicePushInterval]);
+
+  useEffect(() => {
+    if (connectionStatus !== 'connected' || loadLogoErpMode() !== 'rest') {
+      stopLogoRestAutoSync();
+      return;
+    }
+    const stop = startLogoRestAutoSync();
+    const unsub = subscribeLogoRestSyncLogs((line) => appendSyncLog({
+      at: new Date().toISOString(),
+      entity: 'system',
+      action: 'read',
+      code: 'auto',
+      detail: line,
+      ok: true,
+    }));
+    return () => {
+      stop();
+      unsub();
+    };
+  }, [connectionStatus, restAutoSync.enabled, restAutoSync.intervalMinutes, appendSyncLog]);
 
   const updateConfig = (patch: Partial<LogoRestConfig>) => {
     setConfig((prev) => {
@@ -406,6 +451,12 @@ export function LogoTigerRestPanel() {
           products: syncOptions.products,
           customers: syncOptions.customers,
           suppliers: syncOptions.suppliers,
+          salesInvoices: syncOptions.salesInvoices,
+          purchaseInvoices: syncOptions.purchaseInvoices,
+          itemSlips: syncOptions.itemSlips,
+          banks: syncOptions.banks,
+          salesOrders: syncOptions.salesOrders,
+          purchaseOrders: syncOptions.purchaseOrders,
           onLog: appendSyncLog,
         },
         (p) => {
@@ -787,42 +838,91 @@ export function LogoTigerRestPanel() {
           </div>
           <div className="pl-10 space-y-4">
             <p className="text-sm text-gray-600">
-              Bağlantı kurulduktan sonra Logo&apos;daki stok kartları, cari ve tedarikçi hesapları seçili
-              RetailEX firmasına (<code>rex_{erpFirmPeriod.firmLabel}_*</code>) yazılır. Mevcut kayıtlar{' '}
-              <strong>kod</strong> alanına göre güncellenir.
+              Logo REST&apos;ten ürün, cari, fatura, stok fişi ve kasa/banka verileri seçili RetailEX
+              firmasına (<code>rex_{erpFirmPeriod.firmLabel}_*</code>) yazılır. Mevcut kayıtlar{' '}
+              <strong>kod</strong> veya <strong>fiş no</strong> ile güncellenir.
             </p>
 
-            <div className="flex flex-wrap gap-4 text-sm">
-              <label className="flex items-center gap-2 cursor-pointer">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-sm">
+              {(
+                [
+                  ['products', 'Ürünler (items)'],
+                  ['customers', 'Cari hesaplar'],
+                  ['suppliers', 'Tedarikçiler'],
+                  ['salesInvoices', 'Satış faturaları'],
+                  ['purchaseInvoices', 'Alış faturaları'],
+                  ['itemSlips', 'Stok fişleri'],
+                  ['banks', 'Kasa / banka'],
+                  ['salesOrders', 'Satış siparişleri'],
+                  ['purchaseOrders', 'Alış siparişleri'],
+                ] as const
+              ).map(([key, label]) => (
+                <label key={key} className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={syncOptions[key]}
+                    onChange={(e) => {
+                      const next = { ...syncOptions, [key]: e.target.checked };
+                      setSyncOptions(next);
+                      const mapKey =
+                        key === 'products' ? 'masterData' : key;
+                      saveLogoRestSyncSettings({
+                        modules: { ...restAutoSync.modules, [mapKey]: e.target.checked },
+                      });
+                      setRestAutoSync(loadLogoRestSyncSettings());
+                    }}
+                    className="rounded border-gray-300 text-green-600"
+                  />
+                  {label}
+                </label>
+              ))}
+            </div>
+
+            <div className="flex flex-wrap items-center gap-3 p-3 bg-slate-50 border border-slate-200 rounded-lg text-sm">
+              <label className="flex items-center gap-2">
                 <input
                   type="checkbox"
-                  checked={syncOptions.products}
-                  onChange={(e) => setSyncOptions((o) => ({ ...o, products: e.target.checked }))}
-                  className="rounded border-gray-300 text-green-600"
+                  checked={restAutoSync.enabled}
+                  onChange={(e) => {
+                    const next = saveLogoRestSyncSettings({ enabled: e.target.checked });
+                    setRestAutoSync(next);
+                  }}
                 />
-                <Package className="w-4 h-4 text-orange-600" />
-                Ürünler (items)
+                <Clock className="w-4 h-4 text-slate-600" />
+                Periyodik otomatik çekim
               </label>
-              <label className="flex items-center gap-2 cursor-pointer">
+              <label className="flex items-center gap-1 text-gray-700">
+                Aralık (dk)
                 <input
-                  type="checkbox"
-                  checked={syncOptions.customers}
-                  onChange={(e) => setSyncOptions((o) => ({ ...o, customers: e.target.checked }))}
-                  className="rounded border-gray-300 text-green-600"
+                  type="number"
+                  min={5}
+                  max={1440}
+                  value={restAutoSync.intervalMinutes}
+                  onChange={(e) => {
+                    const next = saveLogoRestSyncSettings({
+                      intervalMinutes: Math.min(1440, Math.max(5, parseInt(e.target.value, 10) || 30)),
+                    });
+                    setRestAutoSync(next);
+                  }}
+                  className="w-20 px-2 py-1 border border-gray-300 rounded"
                 />
-                <Users className="w-4 h-4 text-blue-600" />
-                Cari hesaplar (Arps)
               </label>
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={syncOptions.suppliers}
-                  onChange={(e) => setSyncOptions((o) => ({ ...o, suppliers: e.target.checked }))}
-                  className="rounded border-gray-300 text-green-600"
-                />
-                <Users className="w-4 h-4 text-purple-600" />
-                Tedarikçiler (Arps)
-              </label>
+              <button
+                type="button"
+                disabled={isSyncing}
+                onClick={() => void runLogoRestSyncNow().then((r) => {
+                  setRestAutoSync(loadLogoRestSyncSettings());
+                  if (!r.ok) setConnectionError(r.message);
+                })}
+                className="px-3 py-1.5 text-sm border border-green-600 text-green-700 rounded-lg hover:bg-green-50 disabled:opacity-50"
+              >
+                Şimdi çek (otomatik ayarlarla)
+              </button>
+              {restAutoSync.lastSyncAt && (
+                <span className="text-xs text-gray-500">
+                  Son: {new Date(restAutoSync.lastSyncAt).toLocaleString('tr-TR')}
+                </span>
+              )}
             </div>
 
             <button
@@ -830,7 +930,7 @@ export function LogoTigerRestPanel() {
               onClick={handleSyncFromLogo}
               disabled={
                 isSyncing ||
-                (!syncOptions.products && !syncOptions.customers && !syncOptions.suppliers)
+                !Object.values(syncOptions).some(Boolean)
               }
               className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 flex items-center gap-2"
             >

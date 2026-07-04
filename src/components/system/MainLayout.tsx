@@ -25,6 +25,9 @@ import { useCallerIdRestaurantOrders } from '../../hooks/useCallerIdRestaurantOr
 import { useCallerIdBeautyAppointments } from '../../hooks/useCallerIdBeautyAppointments';
 import { findCustomerByCallerPhone } from '../../services/restaurantCallerIdService';
 import { getBridgeUrl, IS_TAURI } from '../../utils/env';
+import { startLogoMssqlAutoSync, stopLogoMssqlAutoSync } from '../../services/logoMssqlSyncService';
+import { startLogoRestAutoSync, stopLogoRestAutoSync } from '../../services/logoRestSyncService';
+import { loadLogoErpMode, type LogoErpMode } from '../../services/logoErpMode';
 import { showCallerIdDesktopNotification } from '../../utils/callerIdDesktopNotify';
 import { toast } from 'sonner';
 import { useCustomerStore } from '../../store/useCustomerStore';
@@ -348,6 +351,28 @@ export function MainLayout({
       return () => clearTimeout(timer);
     }
   }, [currentModule, firms, selectedFirm, firmaLoading]);
+
+  // Logo periyodik senkron (Entegrasyonlar modu: MSSQL veya REST)
+  useEffect(() => {
+    const mode = loadLogoErpMode();
+    const onMode = (ev: Event) => {
+      const next = (ev as CustomEvent<LogoErpMode>).detail;
+      stopLogoMssqlAutoSync();
+      stopLogoRestAutoSync();
+      if (next === 'mssql' && IS_TAURI) startLogoMssqlAutoSync();
+      if (next === 'rest') startLogoRestAutoSync();
+    };
+    let stopMssql = () => undefined;
+    let stopRest = () => undefined;
+    if (mode === 'mssql' && IS_TAURI) stopMssql = startLogoMssqlAutoSync();
+    if (mode === 'rest') stopRest = startLogoRestAutoSync();
+    window.addEventListener('retailex:logo-erp-mode', onMode);
+    return () => {
+      stopMssql();
+      stopRest();
+      window.removeEventListener('retailex:logo-erp-mode', onMode);
+    };
+  }, []);
 
   const [showDateModal, setShowDateModal] = useState(false);
   const [customDate, setCustomDate] = useState('');
