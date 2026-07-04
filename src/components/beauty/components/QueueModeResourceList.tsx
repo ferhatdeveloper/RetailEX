@@ -3,7 +3,7 @@
  */
 import React from 'react';
 import { Plus } from 'lucide-react';
-import type { BeautyAppointment } from '../../../types/beauty';
+import type { BeautyAppointment, BeautyCustomerLastTreatment } from '../../../types/beauty';
 import { AppointmentStatus, appointmentStatusMatches } from '../../../types/beauty';
 import {
     groupBeautyQueueByCustomer,
@@ -14,6 +14,8 @@ import {
     beautySchedulerResourceDragOverAllowDrop,
     beautySchedulerResourceDragStartHandler,
 } from '../../../utils/beautySchedulerDragDrop';
+import { resolveAppointmentProductLabels } from '../../../utils/beautyAppointmentProducts';
+import { useLanguage } from '../../../contexts/LanguageContext';
 
 export interface QueueModeResourceListProps {
     appointments: BeautyAppointment[];
@@ -26,6 +28,42 @@ export interface QueueModeResourceListProps {
     resourceDragKind?: 'device' | 'staff';
     /** Sürükle-bırak ipucu (ör. çeviri metni) */
     dragResourceTitle?: string;
+    productLabelsByAppointmentId?: Map<string, string[]>;
+    lastTreatmentByCustomerId?: Map<string, BeautyCustomerLastTreatment>;
+}
+
+function AptCardMetaLines({
+    apt,
+    productLabelsByAppointmentId,
+    lastTreatmentByCustomerId,
+}: {
+    apt: BeautyAppointment;
+    productLabelsByAppointmentId?: Map<string, string[]>;
+    lastTreatmentByCustomerId?: Map<string, BeautyCustomerLastTreatment>;
+}) {
+    const { tm } = useLanguage();
+    const productLabels = resolveAppointmentProductLabels(apt.id, apt.notes, productLabelsByAppointmentId);
+    const custId = String(apt.customer_id ?? apt.client_id ?? '').trim();
+    const lastTreat = custId ? lastTreatmentByCustomerId?.get(custId) : undefined;
+    const lastShots = String(lastTreat?.treatment_shots ?? '').trim();
+    const lastDegree = String(lastTreat?.treatment_degree ?? '').trim();
+
+    return (
+        <>
+            {productLabels.length > 0 ? (
+                <div style={{ fontSize: 10, color: '#0d9488', fontWeight: 600, marginTop: 4, lineHeight: 1.35 }}>
+                    {tm('bAptCardProducts')}: {productLabels.join(', ')}
+                </div>
+            ) : null}
+            {(lastShots || lastDegree) ? (
+                <div style={{ fontSize: 10, color: '#7c3aed', fontWeight: 600, marginTop: 4, lineHeight: 1.35 }}>
+                    {tm('bAptCardLastTreatment')}
+                    {lastShots ? ` · ${tm('bReceiptTreatmentShots')}: ${lastShots}` : ''}
+                    {lastDegree ? ` · ${tm('bReceiptTreatmentDegree')}: ${lastDegree}` : ''}
+                </div>
+            ) : null}
+        </>
+    );
 }
 
 export function QueueModeResourceList({
@@ -36,6 +74,8 @@ export function QueueModeResourceList({
     useStatusTint = false,
     resourceDragKind,
     dragResourceTitle,
+    productLabelsByAppointmentId,
+    lastTreatmentByCustomerId,
 }: QueueModeResourceListProps) {
     const visible = appointments.filter(beautyAptVisibleOnSchedule);
     const groups = groupBeautyQueueByCustomer(visible);
@@ -77,6 +117,13 @@ export function QueueModeResourceList({
                         activateCard();
                     }
                 };
+                const meta = (
+                    <AptCardMetaLines
+                        apt={primary}
+                        productLabelsByAppointmentId={productLabelsByAppointmentId}
+                        lastTreatmentByCustomerId={lastTreatmentByCustomerId}
+                    />
+                );
                 return resourceDragKind ? (
                     <div
                         key={primary.id}
@@ -116,6 +163,7 @@ export function QueueModeResourceList({
                         </div>
                         <div style={{ fontWeight: 700, fontSize: 12, color: '#111827' }}>{display.customer_name ?? '—'}</div>
                         <div style={{ fontSize: 11, color: '#6b7280', marginTop: 2, lineHeight: 1.35 }}>{display.service_name ?? '—'}</div>
+                        {meta}
                     </div>
                 ) : (
                     <button
@@ -150,6 +198,7 @@ export function QueueModeResourceList({
                         </div>
                         <div style={{ fontWeight: 700, fontSize: 12, color: '#111827' }}>{display.customer_name ?? '—'}</div>
                         <div style={{ fontSize: 11, color: '#6b7280', marginTop: 2, lineHeight: 1.35 }}>{display.service_name ?? '—'}</div>
+                        {meta}
                     </button>
                 );
             })}

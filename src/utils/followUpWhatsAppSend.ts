@@ -3,8 +3,18 @@ import { messagingService } from '../services/messaging/messagingService';
 import {
   buildMetaAppointmentQueuePayload,
   previewMetaTemplateBody,
-  resolveMetaAppointmentTemplate,
+  resolveMetaAppointmentTemplateForLang,
 } from '../services/messaging/metaWhatsAppTemplates';
+import {
+  buildFollowUpFreeText,
+  FOLLOW_UP_REMINDER_TIME_LABEL,
+  type WhatsAppMessageLang,
+} from '../services/messaging/whatsappMessageLang';
+import {
+  DEFAULT_WHATSAPP_BULK_INTERVAL_MS,
+  type WhatsAppBulkPreviewItem,
+  runWhatsAppBulkCampaign,
+} from './whatsappBulkSend';
 
 function serviceLabel(r: BeautyFollowUpReminder): string {
   if (r.reminder_kind === 'product' && r.product_name?.trim()) {
@@ -31,32 +41,35 @@ export type FollowUpWhatsAppBuild = {
 
 export async function buildFollowUpWhatsAppPayload(
   reminder: BeautyFollowUpReminder,
+  options?: { lang?: WhatsAppMessageLang },
 ): Promise<FollowUpWhatsAppBuild | null> {
   const phone = normalizePhone(reminder.customer_phone);
   if (!phone || phone.length < 10) return null;
 
+  const lang = options?.lang ?? 'tr';
   const settings = await messagingService.getSettings();
   const provider = (settings?.whatsapp_provider || 'NONE').toString().toUpperCase();
   const dueDate = reminder.due_date;
   const service = serviceLabel(reminder);
   const name = reminder.customer_name?.trim() || 'Müşteri';
 
-  let messageText = `Merhaba ${name}, ${dueDate} tarihinde ${service} için takip hatırlatmanız bulunmaktadır. RetailEX`;
+  let messageText = buildFollowUpFreeText(lang, name, dueDate, service);
   let payload_json: Record<string, unknown> | null = null;
 
   if (provider === 'META' && settings) {
-    const payload = buildMetaAppointmentQueuePayload(settings, {
-      name,
-      date: dueDate,
-      time: 'Hatırlatma',
-      service,
-    });
-    const tpl = resolveMetaAppointmentTemplate(
-      settings.meta_appointment_template_name,
-      settings.meta_appointment_template_language,
+    const payload = buildMetaAppointmentQueuePayload(
+      settings,
+      {
+        name,
+        date: dueDate,
+        time: FOLLOW_UP_REMINDER_TIME_LABEL[lang],
+        service,
+      },
+      lang,
     );
+    const tpl = resolveMetaAppointmentTemplateForLang(lang);
     messageText = previewMetaTemplateBody(tpl, payload.meta_body_parameters);
-    payload_json = payload;
+    payload_json = { ...payload };
   }
 
   return {
@@ -150,38 +163,42 @@ export function filterFollowUpRemindersForBulk(
 }
 
 /**
- * Tarih aralığındaki hatırlatmalar için toplu WhatsApp (kuyruk + işleme).
+ * Toplu gönderim önizleme listesi (gönderimden önce gösterilir).
+ */
+export async function buildFollowUpBulkPreviewList(
+  reminders: BeautyFollowUpReminder[],
+  options?: { includeShadow?: boolean; lang?: WhatsAppMessageLang },
+): Promise<WhatsAppBulkPreviewItem[]> {
+  const rows = filterFollowUpRemindersForBulk(reminders, options);
+  const out: WhatsAppBulkPreviewItem[] = [];
+  for (const r of rows) {
+    const built = await buildFollowUpWhatsAppPayload(r, { lang: options?.lang });
+    if (!built) continue;
+    const service = serviceLabel(r);
+    out.push({
+      id: reminderKey(r),
+      name: built.name,
+      phone: built.phone,
+      messageText: built.messageText,
+      contextLine: `${service} · ${r.due_date}`,
+      reference_type: 'follow_up_reminder',
+      reference_id: built.reference_id,
+      payload_json: built.payload_json,
+      event_type: 'follow_up_reminder',
+    });
+  }
+  return out;
+}
+
+/**
+ * Tarih aralığındaki hatırlatmalar için toplu WhatsApp (kuyruk + aralıklı işleme).
  */
 export async function sendFollowUpRemindersBulkWhatsApp(
   reminders: BeautyFollowUpReminder[],
-  options?: { includeShadow?: boolean; processLimit?: number },
+  options?: { includeShadow?: boolean; processLimit?: number; intervalMs?: number },
 ): Promise<{ queued: number; sent: number; skipped: number; errors: string[] }> {
-  const ready = await ensureWhatsAppReady();
-  if (!ready.ok) {
-    return { queued: 0, sent: 0, skipped: reminders.length, errors: [ready.error] };
-  }
-
-  const rows = filterFollowUpRemindersForBulk(reminders, options);
-  const errors: string[] = [];
-  let queued = 0;
-  let skipped = reminders.length - rows.length;
-
-  for (const r of rows) {
-    const enq = await enqueueFollowUpReminderWhatsApp(r);
-    if (enq.ok) {
-      queued++;
-    } else {
-      skipped++;
-      errors.push(`${r.customer_name ?? '—'}: ${enq.error ?? 'Hata'}`);
-    }
-  }
-
-  let sent = 0;
-  if (queued > 0) {
-    const proc = await messagingService.processPendingQueue(options?.processLimit ?? Math.min(queued, 80));
-    sent = proc.processed;
-    errors.push(...proc.errors);
-  }
-
-  return { queued, sent, skipped, errors };
+  const items = await buildFollowUpBulkPreviewList(reminders, options);
+  return runWhatsAppBulkCampaign(items, {
+    intervalMs: options?.intervalMs ?? DEFAULT_WHATSAPP_BULK_INTERVAL_MS,
+  });
 }

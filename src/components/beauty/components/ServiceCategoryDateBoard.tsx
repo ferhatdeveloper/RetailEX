@@ -68,7 +68,7 @@ export interface ServiceCategoryDateBoardProps {
     /** Gün başlığı için `toLocaleDateString` locale (örn. tr-TR). */
     dayHeaderLocale: string;
     renderAppointment: (apt: BeautyAppointment) => React.ReactNode;
-    onAddClick: (dateYmd: string, serviceId: string) => void;
+    onAddClick: (dateYmd: string, serviceId: string, opts?: { customerId?: string }) => void;
     followUpBadgeLabel: string;
     followUpBookCtaLabel: string;
     formatFollowUpLine: (r: BeautyFollowUpReminder) => string;
@@ -117,7 +117,7 @@ function ServiceBoardServiceCell({
     dayApts: BeautyAppointment[];
     followUpReminders: BeautyFollowUpReminder[];
     renderAppointment: (apt: BeautyAppointment) => React.ReactNode;
-    onAddClick: (dateYmd: string, serviceId: string) => void;
+    onAddClick: (dateYmd: string, serviceId: string, opts?: { customerId?: string }) => void;
     followUpBadgeLabel: string;
     followUpBookCtaLabel: string;
     formatFollowUpLine: (r: BeautyFollowUpReminder) => string;
@@ -289,7 +289,7 @@ function ServiceBoardServiceCell({
                                 ) : null}
                                 <button
                                     type="button"
-                                    onClick={() => onAddClick(dayStr, String(svc.id))}
+                                    onClick={() => onAddClick(dayStr, String(svc.id), { customerId: fu.customer_id })}
                                     style={{
                                         flex: 1,
                                         height: 30,

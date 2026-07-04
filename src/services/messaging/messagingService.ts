@@ -489,6 +489,130 @@ export const messagingService = {
   },
 
   /**
+   * Toplu WhatsApp — mesajlar arasında bekleme (ban riskini azaltır).
+   */
+  async processPendingQueueThrottled(options?: {
+    limit?: number;
+    intervalMs?: number;
+    onProgress?: (p: { sent: number; total: number; currentName?: string; error?: string }) => void;
+    shouldAbort?: () => boolean;
+  }): Promise<{ processed: number; errors: string[] }> {
+    const intervalMs = Math.max(3000, Number(options?.intervalMs) || 12000);
+    const limit = Math.max(1, Number(options?.limit) || 100);
+    const settings = await messagingService.getSettings();
+    const portal = settingsToPortalConfig(settings);
+    const fn = firmNrRow();
+    const pn = periodNrRow();
+    const errors: string[] = [];
+    let processed = 0;
+
+    const markRow = async (id: string, patch: { status: string; error_text?: string | null; sent_at?: string }) => {
+      if (isRestApi()) {
+        const { postgrest } = await import('../api/postgrestClient');
+        await postgrest.patch(
+          `/rex_${fn}_${pn}_notification_queue?id=eq.${encodeURIComponent(id)}`,
+          patch,
+          { schema: 'public', prefer: 'return=minimal' }
+        );
+        return;
+      }
+      const t = queueTable();
+      await postgres.query(
+        `UPDATE ${t} SET status = $2, error_text = $3, sent_at = $4 WHERE id = $1`,
+        [id, patch.status, patch.error_text ?? null, patch.sent_at ?? null],
+        { firmNr: fn, periodNr: pn }
+      );
+    };
+
+    let pending: NotificationQueueRow[] = [];
+    if (isRestApi()) {
+      const { postgrest } = await import('../api/postgrestClient');
+      pending = await postgrest.get<NotificationQueueRow[]>(
+        `/rex_${fn}_${pn}_notification_queue`,
+        { select: '*', status: 'eq.pending', order: 'created_at.asc', limit: String(limit) },
+        { schema: 'public' }
+      );
+    } else {
+      const t = queueTable();
+      const { rows } = await postgres.query(
+        `SELECT * FROM ${t} WHERE status = 'pending' ORDER BY created_at ASC LIMIT $1`,
+        [limit],
+        { firmNr: fn, periodNr: pn }
+      );
+      pending = rows;
+    }
+
+    const provider = (settings?.whatsapp_provider || 'NONE').toString().toUpperCase();
+    const total = pending.length;
+
+    for (let i = 0; i < pending.length; i++) {
+      if (options?.shouldAbort?.()) break;
+
+      const row = pending[i];
+      const qid = String(row.id || '');
+      const phone = String(row.recipient_phone || '').trim();
+      const text = String(row.message_text || '').trim();
+      const channel = String(row.channel || 'whatsapp').toLowerCase();
+      const metaPayload = parseMetaTemplateQueuePayload(
+        row.payload_json as Record<string, unknown> | null | undefined
+      );
+      const hasMetaTemplate = provider === 'META' && !!metaPayload;
+
+      options?.onProgress?.({
+        sent: processed,
+        total,
+        currentName: String(row.recipient_name ?? phone),
+      });
+
+      if (!qid || !phone || (!text && !hasMetaTemplate)) {
+        await markRow(qid, { status: 'failed', error_text: 'Telefon veya mesaj eksik' });
+        errors.push(`${qid}: eksik alan`);
+        continue;
+      }
+
+      try {
+        const result =
+          channel === 'sms'
+            ? await sendAtakSms(portal, phone, text)
+            : await sendWhatsAppNotification(portal, phone, {
+                text,
+                metaTemplate: hasMetaTemplate
+                  ? {
+                      name: metaPayload!.meta_template_name,
+                      language: metaPayload!.meta_template_language,
+                      bodyParameters: metaPayload!.meta_body_parameters,
+                    }
+                  : undefined,
+              });
+        if (!result.success) throw new Error(result.error || 'Gönderilemedi');
+        await markRow(qid, { status: 'sent', error_text: null, sent_at: new Date().toISOString() });
+        processed++;
+        options?.onProgress?.({
+          sent: processed,
+          total,
+          currentName: String(row.recipient_name ?? phone),
+        });
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : String(e);
+        await markRow(qid, { status: 'failed', error_text: msg });
+        errors.push(`${row.recipient_name ?? phone}: ${msg}`);
+        options?.onProgress?.({
+          sent: processed,
+          total,
+          currentName: String(row.recipient_name ?? phone),
+          error: msg,
+        });
+      }
+
+      if (i < pending.length - 1 && !options?.shouldAbort?.()) {
+        await new Promise((r) => setTimeout(r, intervalMs));
+      }
+    }
+
+    return { processed, errors };
+  },
+
+  /**
    * Satış/hizmet faturası kaydı sonrası WhatsApp kuyruğuna ekler (ayar açıksa).
    */
   async maybeEnqueueInvoiceNotification(

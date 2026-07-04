@@ -23,7 +23,8 @@ import {
 import { RestaurantService } from '../../services/restaurant';
 import { beautyService } from '../../services/beautyService';
 import { expenseAPI } from '../../services/api/expenses';
-import type { BeautyAppointment, BeautySale } from '../../types/beauty';
+import type { BeautyAppointment, BeautySale, BeautyStaffTreatmentReport } from '../../types/beauty';
+import { beautyServiceMainKey, beautyServiceSubKey } from '../beauty/beautyServiceCategoryUtils';
 import { localCalendarDateKey, localTodayDateKey, formatIsoDateTr, toSqlDateInputString } from '../../utils/localCalendarDate';
 import { buildPosZReportForRange, isReturnSale } from '../../utils/posZReport';
 import { normalizePaymentMethodBucket } from '../../utils/paymentMethodUtils';
@@ -523,7 +524,7 @@ type ReportTab =
   // Ödeme & İşlem
   'payment-distribution' | 'discount-report' | 'cash-status' | 'commission' |
   // Güzellik özel
-  'beauty-service-report' | 'beauty-cancelled-report' | 'beauty-appointment-product-report' | 'beauty-commission-report' | 'beauty-survey-report' | 'beauty-survey-trend-report' | 'beauty-survey-staff-report' | 'beauty-survey-service-report' | 'beauty-survey-nps-report' | 'beauty-survey-comments-report';
+  'beauty-service-report' | 'beauty-cancelled-report' | 'beauty-appointment-product-report' | 'beauty-commission-report' | 'beauty-staff-treatment-report' | 'beauty-survey-report' | 'beauty-survey-trend-report' | 'beauty-survey-staff-report' | 'beauty-survey-service-report' | 'beauty-survey-nps-report' | 'beauty-survey-comments-report';
 
 /** Sol menüde gösterilmez: ekranı yok veya yalnızca “yakında” placeholder idi. */
 const REPORT_TABS_HIDDEN_FROM_MENU = new Set<string>([
@@ -566,6 +567,7 @@ const BEAUTY_ONLY_REPORT_KEYS = new Set<string>([
   'beauty-cancelled-report',
   'beauty-appointment-product-report',
   'beauty-commission-report',
+  'beauty-staff-treatment-report',
   'beauty-survey-report',
   'beauty-survey-trend-report',
   'beauty-survey-staff-report',
@@ -580,6 +582,7 @@ function beautyReportMenuItems(tm: (key: string) => string) {
     { key: 'beauty-cancelled-report', label: tm('beautyCancelledOnlyReport'), icon: <AlertTriangle /> },
     { key: 'beauty-appointment-product-report', label: tm('beautyAppointmentProductSalesReport'), icon: <ShoppingCart className="w-4 h-4" /> },
     { key: 'beauty-commission-report', label: tm('bShellNavCommissionReport'), icon: <SafetyCertificateOutlined /> },
+    { key: 'beauty-staff-treatment-report', label: tm('beautyStaffTreatmentReport'), icon: <Users className="w-4 h-4" /> },
     { key: 'beauty-survey-report', label: tm('bShellNavSurveyReport'), icon: <ClipboardList className="w-4 h-4" /> },
     { key: 'beauty-survey-trend-report', label: tm('bSurveyTrendReportMenu'), icon: <LineChartLucide className="w-4 h-4" /> },
     { key: 'beauty-survey-staff-report', label: tm('bSurveyStaffReportMenu'), icon: <Users className="w-4 h-4" /> },
@@ -824,8 +827,13 @@ export function ReportsModule({
   const [beautyServiceSales, setBeautyServiceSales] = useState<BeautySale[]>([]);
   const [loadingBeautyServiceReport, setLoadingBeautyServiceReport] = useState(false);
   const [beautyCrmModalAppointment, setBeautyCrmModalAppointment] = useState<BeautyAppointment | null>(null);
-  /** Boş = tüm hizmetler; aksi halde beauty_services.id */
-  const [beautyServiceFilterId, setBeautyServiceFilterId] = useState('');
+  /** Boş = tüm ana kategoriler; aksi halde parent_category / category anahtarı */
+  const [beautyMainCategoryFilter, setBeautyMainCategoryFilter] = useState('');
+  const [beautySubCategoryFilter, setBeautySubCategoryFilter] = useState('');
+  const [beautyStaffTreatmentFrom, setBeautyStaffTreatmentFrom] = useState(() => localTodayDateKey());
+  const [beautyStaffTreatmentTo, setBeautyStaffTreatmentTo] = useState(() => localTodayDateKey());
+  const [staffTreatmentReport, setStaffTreatmentReport] = useState<BeautyStaffTreatmentReport | null>(null);
+  const [loadingStaffTreatmentReport, setLoadingStaffTreatmentReport] = useState(false);
   /** Boş = tüm ürünler; aksi halde product id */
   const [beautyProductFilterId, setBeautyProductFilterId] = useState('');
   const [beautyProductSearchQuery, setBeautyProductSearchQuery] = useState('');
@@ -834,6 +842,61 @@ export function ReportsModule({
   const beautyServicesCatalog = useBeautyStore((s) => s.services);
   const storeProducts = useProductStore((s) => s.products);
   const catalogProducts = storeProducts.length > 0 ? storeProducts : products;
+  const beautyMainCategoryOptions = useMemo(() => {
+    const keys = new Set<string>();
+    for (const s of beautyServicesCatalog) {
+      if (s.is_active === false) continue;
+      keys.add(beautyServiceMainKey(s));
+    }
+    return [...keys]
+      .sort((a, b) => a.localeCompare(b, 'tr'))
+      .map((k) => ({ value: k, label: k }));
+  }, [beautyServicesCatalog]);
+
+  const beautySubCategoryOptions = useMemo(() => {
+    if (!beautyMainCategoryFilter) return [];
+    const keys = new Set<string>();
+    for (const s of beautyServicesCatalog) {
+      if (s.is_active === false) continue;
+      if (beautyServiceMainKey(s) !== beautyMainCategoryFilter) continue;
+      keys.add(beautyServiceSubKey(s));
+    }
+    return [...keys]
+      .sort((a, b) => a.localeCompare(b, 'tr'))
+      .map((k) => ({ value: k, label: k }));
+  }, [beautyServicesCatalog, beautyMainCategoryFilter]);
+
+  useEffect(() => {
+    setBeautySubCategoryFilter('');
+  }, [beautyMainCategoryFilter]);
+
+  const appointmentMatchesMainCategory = useCallback(
+    (apt: BeautyAppointment) => {
+      if (!beautyMainCategoryFilter && !beautySubCategoryFilter) return true;
+      const svc = beautyServicesCatalog.find((s) => String(s.id) === String(apt.service_id ?? ''));
+      if (!svc) return false;
+      if (beautyMainCategoryFilter && beautyServiceMainKey(svc) !== beautyMainCategoryFilter) return false;
+      if (beautySubCategoryFilter && beautyServiceSubKey(svc) !== beautySubCategoryFilter) return false;
+      return true;
+    },
+    [beautyMainCategoryFilter, beautySubCategoryFilter, beautyServicesCatalog],
+  );
+
+  const reloadStaffTreatmentReport = useCallback((): Promise<void> => {
+    if (businessType !== 'beauty' || selectedTab !== 'beauty-staff-treatment-report' || !selectedFirm) {
+      return Promise.resolve();
+    }
+    setLoadingStaffTreatmentReport(true);
+    return beautyService
+      .getStaffTreatmentReport(beautyStaffTreatmentFrom, beautyStaffTreatmentTo)
+      .then((r) => setStaffTreatmentReport(r))
+      .catch((err: unknown) => {
+        console.error('[ReportsModule] Personel shot/derece raporu:', err);
+        setStaffTreatmentReport(null);
+      })
+      .finally(() => setLoadingStaffTreatmentReport(false));
+  }, [businessType, selectedTab, selectedFirm, beautyStaffTreatmentFrom, beautyStaffTreatmentTo]);
+
   const loadBeautyServicesCatalog = useBeautyStore((s) => s.loadServices);
 
   useEffect(() => {
@@ -1182,6 +1245,10 @@ export function ReportsModule({
   }, [reloadBeautyServiceReport]);
 
   useEffect(() => {
+    void reloadStaffTreatmentReport();
+  }, [reloadStaffTreatmentReport]);
+
+  useEffect(() => {
     if (
       businessType !== 'beauty' ||
       (selectedTab !== 'beauty-service-report' &&
@@ -1196,7 +1263,7 @@ export function ReportsModule({
     const rows = beautyServiceAppointments.filter((a) => {
       const st = String(a.status ?? '').toLowerCase();
       if (st === 'cancelled' || st === 'no_show') return false;
-      if (beautyServiceFilterId && String(a.service_id ?? '') !== String(beautyServiceFilterId)) return false;
+      if (beautyMainCategoryFilter && !appointmentMatchesMainCategory(a)) return false;
       return true;
     });
     const map = new Map<string, BeautyAppointment[]>();
@@ -1220,14 +1287,14 @@ export function ReportsModule({
         items,
         sum: items.reduce((s, it) => s + Number(it.total_price ?? 0), 0),
       }));
-  }, [beautyServiceAppointments, beautyServiceFilterId]);
+  }, [beautyServiceAppointments, beautyMainCategoryFilter, beautySubCategoryFilter, appointmentMatchesMainCategory]);
 
   /** Randevu iptalleri (ciro raporundan ayrı; ödeme alınmış olsa bile iptal statüsü) */
   const beautyCancelledGrouped = useMemo(() => {
     const rows = beautyServiceAppointments.filter((a) => {
       const st = String(a.status ?? '').toLowerCase();
       if (st !== 'cancelled') return false;
-      if (beautyServiceFilterId && String(a.service_id ?? '') !== String(beautyServiceFilterId)) return false;
+      if (beautyMainCategoryFilter && !appointmentMatchesMainCategory(a)) return false;
       return true;
     });
     const map = new Map<string, BeautyAppointment[]>();
@@ -1251,7 +1318,7 @@ export function ReportsModule({
         items,
         sum: items.reduce((s, it) => s + Number(it.total_price ?? 0), 0),
       }));
-  }, [beautyServiceAppointments, beautyServiceFilterId]);
+  }, [beautyServiceAppointments, beautyMainCategoryFilter, beautySubCategoryFilter, appointmentMatchesMainCategory]);
 
   /** İptal edilen ödemeler (beauty_sales.payment_status = cancelled/refunded) */
   const beautyCancelledPayments = useMemo(() => {
@@ -1263,18 +1330,22 @@ export function ReportsModule({
     return (beautyServiceSales || [])
       .filter((s) => {
         if (!isCancelledPayment((s as any).payment_status)) return false;
-        if (beautyServiceFilterId) {
+        if (beautyMainCategoryFilter || beautySubCategoryFilter) {
           const items = Array.isArray(s.items) ? s.items : [];
-          const hasService = items.some((it) =>
-            String(it.item_type ?? '').toLowerCase() === 'service' &&
-            String(it.item_id ?? '') === String(beautyServiceFilterId)
-          );
+          const hasService = items.some((it) => {
+            if (String(it.item_type ?? '').toLowerCase() !== 'service') return false;
+            const svc = beautyServicesCatalog.find((x) => String(x.id) === String(it.item_id ?? ''));
+            if (!svc) return false;
+            if (beautyMainCategoryFilter && beautyServiceMainKey(svc) !== beautyMainCategoryFilter) return false;
+            if (beautySubCategoryFilter && beautyServiceSubKey(svc) !== beautySubCategoryFilter) return false;
+            return true;
+          });
           if (!hasService) return false;
         }
         return true;
       })
       .sort((a, b) => String(b.created_at ?? '').localeCompare(String(a.created_at ?? '')));
-  }, [beautyServiceSales, beautyServiceFilterId]);
+  }, [beautyServiceSales, beautyMainCategoryFilter, beautySubCategoryFilter, beautyServicesCatalog]);
 
   const beautyProductCatalogById = useMemo(
     () => beautyProductCatalogLookup(catalogProducts),
@@ -3937,6 +4008,7 @@ export function ReportsModule({
   const isBeautyCancelledReportTab = selectedTab === 'beauty-cancelled-report';
   const isBeautyAppointmentProductReportTab = selectedTab === 'beauty-appointment-product-report';
   const isBeautyCommissionReportTab = selectedTab === 'beauty-commission-report';
+  const isBeautyStaffTreatmentReportTab = selectedTab === 'beauty-staff-treatment-report';
   const isBeautySurveyReportTab = selectedTab === 'beauty-survey-report';
   const isBeautySurveyTrendReportTab = selectedTab === 'beauty-survey-trend-report';
   const isBeautySurveyStaffReportTab = selectedTab === 'beauty-survey-staff-report';
@@ -5999,23 +6071,31 @@ export function ReportsModule({
                   </div>
                   {(isBeautyServiceReportTab || isBeautyCancelledReportTab) && (
                     <div className="flex flex-col gap-1 min-w-[220px]">
-                      <span className="text-xs font-semibold text-slate-500">{tm('beautyServiceFilterLabel')}</span>
+                      <span className="text-xs font-semibold text-slate-500">{tm('beautyMainCategoryFilterLabel')}</span>
                       <Select
                         allowClear
                         showSearch
                         optionFilterProp="label"
-                        placeholder={tm('beautyServiceFilterPlaceholder')}
-                        value={beautyServiceFilterId || undefined}
-                        onChange={(v) => setBeautyServiceFilterId(v != null && String(v).length > 0 ? String(v) : '')}
+                        placeholder={tm('beautyMainCategoryFilterPlaceholder')}
+                        value={beautyMainCategoryFilter || undefined}
+                        onChange={(v) => setBeautyMainCategoryFilter(v != null && String(v).length > 0 ? String(v) : '')}
                         className="min-w-[220px]"
-                        options={beautyServicesCatalog
-                          .filter((s) => s.is_active !== false)
-                          .slice()
-                          .sort((a, b) => String(a.name ?? '').localeCompare(String(b.name ?? ''), 'tr'))
-                          .map((s) => ({
-                            value: s.id,
-                            label: s.name ?? s.id,
-                          }))}
+                        options={beautyMainCategoryOptions}
+                      />
+                    </div>
+                  )}
+                  {(isBeautyServiceReportTab || isBeautyCancelledReportTab) && beautyMainCategoryFilter && beautySubCategoryOptions.length > 0 && (
+                    <div className="flex flex-col gap-1 min-w-[220px]">
+                      <span className="text-xs font-semibold text-slate-500">{tm('beautySubCategoryFilterLabel')}</span>
+                      <Select
+                        allowClear
+                        showSearch
+                        optionFilterProp="label"
+                        placeholder={tm('beautySubCategoryFilterPlaceholder')}
+                        value={beautySubCategoryFilter || undefined}
+                        onChange={(v) => setBeautySubCategoryFilter(v != null && String(v).length > 0 ? String(v) : '')}
+                        className="min-w-[220px]"
+                        options={beautySubCategoryOptions}
                       />
                     </div>
                   )}
@@ -6553,6 +6633,65 @@ export function ReportsModule({
                   accentColor={bizConfig.color}
                   onSaved={reloadBeautyServiceReport}
                 />
+              </div>
+            )}
+
+            {isBeautyStaffTreatmentReportTab && (
+              <div className="space-y-4">
+                <div className="bg-white rounded-xl border border-slate-200 p-4 flex flex-wrap items-end gap-4 shadow-sm">
+                  <div className="flex flex-col gap-1">
+                    <span className="text-xs font-semibold text-slate-500">{tm('dateFrom')}</span>
+                    <input
+                      type="date"
+                      value={beautyStaffTreatmentFrom}
+                      onChange={(e) => setBeautyStaffTreatmentFrom(e.target.value)}
+                      className="px-3 py-2 border border-slate-200 rounded-lg text-sm"
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <span className="text-xs font-semibold text-slate-500">{tm('dateTo')}</span>
+                    <input
+                      type="date"
+                      value={beautyStaffTreatmentTo}
+                      onChange={(e) => setBeautyStaffTreatmentTo(e.target.value)}
+                      className="px-3 py-2 border border-slate-200 rounded-lg text-sm"
+                    />
+                  </div>
+                  <Button type="primary" loading={loadingStaffTreatmentReport} onClick={() => void reloadStaffTreatmentReport()}>
+                    {tm('refresh')}
+                  </Button>
+                  <p className="text-xs text-slate-500 flex-1 min-w-[200px]">{tm('beautyStaffTreatmentReportHint')}</p>
+                </div>
+                <Spin spinning={loadingStaffTreatmentReport}>
+                  <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
+                    <Table
+                      size="middle"
+                      bordered
+                      rowKey={(r) => `${r.staff_id}-${r.day_ymd}`}
+                      pagination={{ pageSize: 20, showSizeChanger: true }}
+                      locale={{ emptyText: tm('noDataFound') }}
+                      dataSource={staffTreatmentReport?.rows ?? []}
+                      columns={[
+                        { title: tm('date'), dataIndex: 'day_ymd', width: 120 },
+                        { title: tm('bStaffView'), dataIndex: 'staff_name' },
+                        { title: tm('beautyStaffTreatmentApptCount'), dataIndex: 'appointment_count', align: 'right' as const, width: 110 },
+                        { title: tm('bReceiptTreatmentShots'), dataIndex: 'shots_count', align: 'right' as const, width: 100 },
+                        { title: tm('bReceiptTreatmentDegree'), dataIndex: 'degree_count', align: 'right' as const, width: 100 },
+                        {
+                          title: tm('beautyStaffTreatmentSamples'),
+                          key: 'samples',
+                          render: (_, r) => {
+                            const parts = [
+                              ...(r.shots_samples ?? []).map((s) => `${tm('bReceiptTreatmentShots')}: ${s}`),
+                              ...(r.degree_samples ?? []).map((d) => `${tm('bReceiptTreatmentDegree')}: ${d}`),
+                            ];
+                            return parts.length ? parts.join(' · ') : '—';
+                          },
+                        },
+                      ]}
+                    />
+                  </div>
+                </Spin>
               </div>
             )}
 

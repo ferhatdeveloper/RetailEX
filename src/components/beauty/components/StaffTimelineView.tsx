@@ -30,6 +30,8 @@ interface StaffTimelineViewProps {
     resourceDragKind?: 'staff';
     dragResourceTitle?: string;
     onResourceColumnDrop?: (appointmentIds: string[], targetColumnId: string) => void;
+    productLabelsByAppointmentId?: Map<string, string[]>;
+    lastTreatmentByCustomerId?: Map<string, import('../../../types/beauty').BeautyCustomerLastTreatment>;
 }
 
 const UNASSIGNED_ID = '__unassigned__';
@@ -118,6 +120,8 @@ export function StaffTimelineView({
     resourceDragKind,
     dragResourceTitle,
     onResourceColumnDrop,
+    productLabelsByAppointmentId,
+    lastTreatmentByCustomerId,
 }: StaffTimelineViewProps) {
     const { tm } = useLanguage();
     const { appointments: storeApts, specialists } = useBeautyStore();
@@ -130,7 +134,12 @@ export function StaffTimelineView({
 
     const slots = (timeSlots && timeSlots.length > 0)
         ? timeSlots
-        : Array.from({ length: 13 }, (_, i) => `${(i + 9).toString().padStart(2, '0')}:00`);
+        : Array.from({ length: 16 }, (_, i) => {
+            const totalMin = 9 * 60 + i * 60;
+            const hh = Math.floor(totalMin / 60).toString().padStart(2, '0');
+            const mm = (totalMin % 60).toString().padStart(2, '0');
+            return `${hh}:${mm}`;
+        });
 
     const slotBucket = (raw: string, interval: number): string => {
         const s = String(raw ?? '').trim();
@@ -296,6 +305,8 @@ export function StaffTimelineView({
                                     accent={accent}
                                     resourceDragKind={resourceDragKind === 'staff' ? 'staff' : undefined}
                                     dragResourceTitle={dragResourceTitle}
+                                    productLabelsByAppointmentId={productLabelsByAppointmentId}
+                                    lastTreatmentByCustomerId={lastTreatmentByCustomerId}
                                     onAppointmentClick={onAppointmentClick}
                                     onAddClick={() => {
                                         const res = isUnassigned

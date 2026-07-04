@@ -5,6 +5,7 @@ import { AppRouter } from "./AppRouter";
 import { ErrorBoundary } from "./components/shared/ErrorBoundary";
 import "./index.css";
 import "./styles/dark-mode-global.css";
+import { pwaRefreshConfirmMessage } from "./utils/pwaRefreshConfirm";
 
 /** Capacitor Android WebView’da safe-area-inset-top çoğu zaman 0; CSS ile üst boşluk tetiklenir */
 function CapacitorAndroidHtmlClass() {
@@ -82,8 +83,7 @@ function PwaPullToRefreshReload() {
       startY = clientY;
       maxDeltaY = 0;
       const scrollTopAtStart = getScrollableTop(target);
-      const startedNearTopEdge = clientY <= 120;
-      tracking = scrollTopAtStart <= 2 || startedNearTopEdge;
+      tracking = scrollTopAtStart <= 2;
     };
 
     const updateTracking = (clientY: number, preventDefault?: () => void) => {
@@ -100,7 +100,9 @@ function PwaPullToRefreshReload() {
 
     const finishTracking = () => {
       if (tracking && maxDeltaY >= THRESHOLD_PX) {
-        window.location.reload();
+        if (window.confirm(pwaRefreshConfirmMessage())) {
+          window.location.reload();
+        }
       }
       tracking = false;
       maxDeltaY = 0;

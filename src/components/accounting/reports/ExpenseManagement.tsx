@@ -456,70 +456,77 @@ export function ExpenseManagement({ embeddedInPos = false }: { embeddedInPos?: b
   }, [filterDateFrom, filterDateTo, filterCategory, searchQuery, tm]);
 
   return (
-    <div className="relative h-full flex flex-col bg-white">
+    <div className="relative flex h-full min-h-0 flex-col bg-white overscroll-y-contain touch-pan-y">
       <div className={showExpenseModal ? 'hidden' : 'contents'} aria-hidden={showExpenseModal}>
       {/* Header */}
       <div
         className={`sticky top-0 z-30 flex-shrink-0 border-b border-gray-200 shadow-sm ${
-          embeddedInPos ? 'p-3 bg-white' : 'p-6 bg-gradient-to-r from-red-50 to-orange-50'
+          embeddedInPos
+            ? 'bg-white p-2 sm:p-3'
+            : 'bg-gradient-to-r from-red-50 to-orange-50 p-3 sm:p-5'
         }`}
       >
         {!embeddedInPos ? (
-          <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-            <div className="flex min-w-0 items-center gap-3">
-              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-red-500 to-orange-600 flex items-center justify-center">
-                <Receipt className="w-6 h-6 text-white" />
+          <div className="mb-2 flex items-center justify-between gap-2 sm:mb-4 sm:gap-3">
+            <div className="flex min-w-0 items-center gap-2 sm:gap-3">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-red-500 to-orange-600 sm:h-12 sm:w-12">
+                <Receipt className="h-5 w-5 text-white sm:h-6 sm:w-6" />
               </div>
               <div className="min-w-0">
-                <h1 className="text-2xl font-bold text-gray-900">{tm('expenseManagement')}</h1>
-                <p className="text-sm text-gray-600">{tm('expenseManagementSubtitle')}</p>
+                <h1 className="truncate text-base font-bold text-gray-900 sm:text-2xl">{tm('expenseManagement')}</h1>
+                <p className="hidden text-sm text-gray-600 sm:block">{tm('expenseManagementSubtitle')}</p>
               </div>
             </div>
             <button
               onClick={handleAddExpense}
-              className="shrink-0 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg flex items-center gap-2 transition-colors shadow-sm"
+              className="flex shrink-0 items-center gap-1.5 rounded-lg bg-red-600 px-3 py-2 text-sm text-white shadow-sm transition-colors hover:bg-red-700 sm:gap-2 sm:px-4"
             >
-              <Plus className="w-5 h-5" />
-              {tm('newExpense')}
+              <Plus className="h-4 w-4 sm:h-5 sm:w-5" />
+              <span className="hidden sm:inline">{tm('newExpense')}</span>
+              <span className="sm:hidden">+</span>
             </button>
           </div>
         ) : null}
 
         {/* Search and Filters */}
-        <div className="flex gap-3">
-          <div className="flex-1 relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+        <div className="flex flex-col gap-2 sm:flex-row sm:gap-3">
+          <div className="relative min-w-0 flex-1">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400 sm:h-5 sm:w-5" />
             <input
               type="text"
               placeholder={tm('expenseSearchPlaceholder')}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent"
+              className="w-full rounded-lg border border-gray-300 py-2.5 pl-9 pr-3 text-sm focus:border-transparent focus:ring-2 focus:ring-red-500 sm:py-2 sm:pl-10 sm:pr-4"
             />
           </div>
-          <button
-            onClick={() => setShowFilters(!showFilters)}
-            className={`px-4 py-2 border rounded-lg flex items-center gap-2 transition-colors ${showFilters ? 'bg-red-50 border-red-300 text-red-700' : 'bg-white border-gray-300 hover:bg-gray-50'
-              }`}
-          >
-            <Filter className="w-5 h-5" />
-            {tm('filter')}
-          </button>
-          {embeddedInPos ? (
+          <div className="flex shrink-0 gap-2">
             <button
-              onClick={handleAddExpense}
-              className="shrink-0 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg flex items-center gap-2 transition-colors shadow-sm"
+              onClick={() => setShowFilters(!showFilters)}
+              className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg border px-3 py-2.5 text-sm transition-colors sm:flex-none sm:px-4 sm:py-2 ${
+                showFilters ? 'border-red-300 bg-red-50 text-red-700' : 'border-gray-300 bg-white hover:bg-gray-50'
+              }`}
+              aria-expanded={showFilters}
             >
-              <Plus className="w-5 h-5" />
-              {tm('newExpense')}
+              <Filter className="h-4 w-4 sm:h-5 sm:w-5" />
+              <span>{tm('filter')}</span>
             </button>
-          ) : null}
+            {embeddedInPos ? (
+              <button
+                onClick={handleAddExpense}
+                className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-red-600 px-3 py-2.5 text-sm text-white shadow-sm transition-colors hover:bg-red-700 sm:flex-none sm:px-4 sm:py-2"
+              >
+                <Plus className="h-4 w-4 sm:h-5 sm:w-5" />
+                <span className="truncate">{tm('newExpense')}</span>
+              </button>
+            ) : null}
+          </div>
         </div>
 
         {/* Filter Panel */}
         {showFilters && (
-          <div className="mt-4 p-4 bg-white rounded-lg border border-gray-200">
-            <div className="grid grid-cols-4 gap-4">
+          <div className="mt-3 rounded-lg border border-gray-200 bg-white p-3 sm:mt-4 sm:p-4">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4 lg:gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">{tm('category')}</label>
                 <select
@@ -570,26 +577,26 @@ export function ExpenseManagement({ embeddedInPos = false }: { embeddedInPos?: b
         )}
       </div>
 
-      {/* Filtrelenmiş toplam — her zaman görünür */}
-      <div className="flex-shrink-0 px-6 py-4 bg-gradient-to-r from-red-600 to-orange-600 text-white border-b border-red-700">
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div className="min-w-0">
-            <p className="text-xs font-semibold uppercase tracking-wider text-red-100">
+      {/* Filtrelenmiş toplam — kompakt mobil */}
+      <div className="flex-shrink-0 border-b border-red-700 bg-gradient-to-r from-red-600 to-orange-600 px-3 py-3 text-white sm:px-6 sm:py-4">
+        <div className="flex flex-wrap items-center justify-between gap-2 sm:gap-4">
+          <div className="min-w-0 flex-1">
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-red-100 sm:text-xs">
               {hasActiveFilters ? tm('expenseFilteredTotal') : tm('totalExpense')}
             </p>
-            <p className="text-sm text-red-50 mt-0.5 truncate">{filterSummaryText}</p>
+            <p className="mt-0.5 truncate text-xs text-red-50 sm:text-sm">{filterSummaryText}</p>
           </div>
-          <div className="text-right shrink-0">
-            <p className="text-3xl font-black tracking-tight">{formatCurrency(totalExpenses)}</p>
-            <p className="text-xs text-red-100 mt-0.5">
+          <div className="shrink-0 text-right">
+            <p className="text-2xl font-black tracking-tight sm:text-3xl">{formatCurrency(totalExpenses)}</p>
+            <p className="mt-0.5 text-[10px] text-red-100 sm:text-xs">
               {filteredExpenses.length} {tm('expenseCount').toLowerCase()}
             </p>
           </div>
         </div>
       </div>
 
-      {/* Statistics */}
-      <div className="flex-shrink-0 p-6 grid grid-cols-4 gap-4 border-b border-gray-200">
+      {/* Statistics — masaüstü; mobilde üst banner yeterli */}
+      <div className="hidden flex-shrink-0 grid-cols-2 gap-3 border-b border-gray-200 p-4 md:grid md:grid-cols-4 md:gap-4 md:p-6">
         <div className="bg-red-50 rounded-lg p-4">
           <div className="flex items-center justify-between">
             <div>
@@ -631,7 +638,7 @@ export function ExpenseManagement({ embeddedInPos = false }: { embeddedInPos?: b
       </div>
 
       {/* Data Grid */}
-      <div className="flex-1 overflow-hidden p-6">
+      <div className="min-h-0 flex-1 overflow-hidden p-3 sm:p-6">
         {loading ? (
           <div className="flex items-center justify-center h-full">
             <div className="text-center">

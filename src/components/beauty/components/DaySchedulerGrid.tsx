@@ -100,7 +100,7 @@ export function DaySchedulerGrid({
     currentDate,
     appointments,
     dayStartHour = 9,
-    dayEndHour = 21,
+    dayEndHour = 23,
     renderAppointment,
     onEmptySlotClick,
     queueMode = false,
@@ -162,7 +162,7 @@ export function DaySchedulerGrid({
         const abs = dayStartHour * 60 + snapped;
         const hh = Math.floor(abs / 60);
         const mm = abs % 60;
-        if (hh > dayEndHour || (hh === dayEndHour && mm > 0)) return;
+        if (hh > dayEndHour || (hh === dayEndHour && mm > 59)) return;
         const timeHHmm = `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
         onEmptySlotClick(timeHHmm, dayStr);
     };

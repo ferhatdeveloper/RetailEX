@@ -129,7 +129,7 @@ type UnifiedHistoryRow =
       };
 
 export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerDetailPageProps) {
-    const { customers, packages, isLoading, loadCustomers, loadPackages, updateCustomer } = useBeautyStore();
+    const { customers, packages, specialists, isLoading, loadCustomers, loadPackages, loadSpecialists, updateCustomer } = useBeautyStore();
     const { tm } = useLanguage();
     const dateLocale = tm('localeCode');
     const [erpAccountsLoaded, setErpAccountsLoaded] = useState(false);
@@ -161,6 +161,7 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
     useEffect(() => {
         loadCustomers();
         loadPackages();
+        loadSpecialists();
     }, []);
 
     useEffect(() => {
@@ -831,6 +832,37 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
                 render: (v: string) => paymentMethodLabel(String(v ?? '')),
             },
             {
+                title: tm('bStaffView'),
+                key: 'staff',
+                width: 140,
+                ellipsis: true,
+                render: (_, r) => {
+                    const fromItems = (r.items ?? [])
+                        .map((it) => {
+                            const sid = String(it.staff_id ?? '').trim();
+                            if (!sid) return '';
+                            const sp = specialists.find((s) => String(s.id) === sid);
+                            return sp?.name ?? '';
+                        })
+                        .filter(Boolean);
+                    const uniq = [...new Set(fromItems)];
+                    if (uniq.length) return uniq.join(', ');
+                    return r.linked_staff_name ?? '—';
+                },
+            },
+            {
+                title: tm('bReceiptTreatmentShots'),
+                key: 'shots',
+                width: 100,
+                render: (_, r) => r.linked_treatment_shots?.trim() || '—',
+            },
+            {
+                title: tm('bReceiptTreatmentDegree'),
+                key: 'degree',
+                width: 100,
+                render: (_, r) => r.linked_treatment_degree?.trim() || '—',
+            },
+            {
                 title: tm('bDate'),
                 key: 'c',
                 width: 120,
@@ -850,7 +882,7 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
                 ellipsis: true,
             },
         ],
-        [tm, formatDate, formatCurrency, paymentMethodLabel, paymentStatusLabel],
+        [tm, formatDate, formatCurrency, paymentMethodLabel, paymentStatusLabel, specialists],
     );
 
     const pkgColumns: ColumnsType<BeautyPackagePurchase> = useMemo(

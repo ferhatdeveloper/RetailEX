@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { pwaRefreshConfirmMessage } from '../utils/pwaRefreshConfirm';
 
 type Options = {
   enabled?: boolean;
@@ -45,7 +46,7 @@ export function usePosPullToRefresh({ enabled = true, onRefresh, thresholdPx = 7
       const shouldRefresh = armed;
       reset();
       if (!shouldRefresh) return;
-      const ok = window.confirm('Sayfayı yenilemek ister misiniz?');
+      const ok = window.confirm(pwaRefreshConfirmMessage());
       if (ok) await onRefresh();
     };
 

@@ -164,6 +164,32 @@ export const META_APPOINTMENT_TEMPLATES: MetaWhatsAppTemplateDef[] = [
     parameterLabels: ['Name', 'Date', 'Time', 'Service'],
     sampleValues: ['Jane Doe', '2026-06-10', '14:30', 'Facial care'],
   },
+  {
+    id: 'retailex_appointment_ar',
+    metaName: 'retailex_appointment_ar',
+    language: 'ar',
+    category: 'UTILITY',
+    eventTypes: ['appointment_reminder'],
+    label: 'تذكير موعد (عربي)',
+    headerForMetaConsole: 'تذكير الموعد',
+    bodyForMetaConsole:
+      'مرحباً {{1}}، لديك موعد {{4}} بتاريخ {{2}} الساعة {{3}}. RetailEX',
+    parameterLabels: ['اسم العميل', 'التاريخ', 'الوقت', 'الخدمة'],
+    sampleValues: ['أحمد', '10.06.2026', '14:30', 'العناية بالبشرة'],
+  },
+  {
+    id: 'retailex_appointment_ku',
+    metaName: 'retailex_appointment_ku',
+    language: 'ku',
+    category: 'UTILITY',
+    eventTypes: ['appointment_reminder'],
+    label: 'بیرەوەرگرتنی کات (کوردی)',
+    headerForMetaConsole: 'بیرەوەرگرتنی کات',
+    bodyForMetaConsole:
+      'سڵاو {{1}}، لە {{2}} کاتژمێر {{3}} بۆ {{4}} خزمەتگوزارییەکەت هەیە. RetailEX',
+    parameterLabels: ['ناوی کڕیار', 'بەروار', 'کات', 'خزمەتگوزاری'],
+    sampleValues: ['سارا', '10.06.2026', '14:30', 'چاودێری پێست'],
+  },
 ];
 
 /** Ödeme / vade hatırlatma */
@@ -224,6 +250,16 @@ export function resolveMetaAppointmentTemplate(
   );
 }
 
+export function resolveMetaAppointmentTemplateForLang(
+  lang: string | null | undefined
+): MetaWhatsAppTemplateDef {
+  const key = String(lang || 'tr').trim().toLowerCase();
+  return (
+    findMetaTemplate(`retailex_appointment_${key}`, key) ||
+    resolveMetaAppointmentTemplate(null, key)
+  );
+}
+
 /** Meta Business Manager kurulum notları */
 export function metaTemplateSetupSteps(template: MetaWhatsAppTemplateDef): string[] {
   const steps = [
@@ -267,12 +303,15 @@ export function buildMetaAppointmentQueuePayload(
     meta_appointment_template_name?: string | null;
     meta_appointment_template_language?: string | null;
   },
-  ctx: { name: string; date: string; time: string; service: string }
+  ctx: { name: string; date: string; time: string; service: string },
+  langOverride?: string | null
 ): MetaTemplatePayload {
-  const tpl = resolveMetaAppointmentTemplate(
-    settings.meta_appointment_template_name,
-    settings.meta_appointment_template_language
-  );
+  const tpl = langOverride
+    ? resolveMetaAppointmentTemplateForLang(langOverride)
+    : resolveMetaAppointmentTemplate(
+        settings.meta_appointment_template_name,
+        settings.meta_appointment_template_language
+      );
   return {
     meta_template_name: tpl.metaName,
     meta_template_language: tpl.language,

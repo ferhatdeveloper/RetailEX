@@ -33,6 +33,8 @@ import {
     BeautyCustomerFeedback,
     BeautySale,
     BeautySaleItem,
+    BeautyCustomerLastTreatment,
+    BeautyStaffTreatmentReport,
     BeautyCustomer,
     BeautySatisfactionSurvey,
     BeautySatisfactionQuestion,
@@ -320,10 +322,6 @@ async function fetchBeautyAppointmentsForIds(
             LEFT JOIN ${postgres.getCardTableName('beauty_services', 'beauty')} s ON a.service_id = s.id
             LEFT JOIN ${postgres.getCardTableName('services')} rs ON a.service_id = rs.id AND rs.firm_nr = ${firmPh}
             LEFT JOIN ${prodTbl} pr ON pr.id = a.service_id AND pr.firm_nr = ${firmPh}
-                AND (
-                    LOWER(TRIM(COALESCE(pr.material_type, ''))) = 'service'
-                    OR LOWER(TRIM(COALESCE(pr.materialtype, ''))) = 'service'
-                )
             LEFT JOIN ${postgres.getCardTableName('beauty_specialists', 'beauty')} sp ON a.specialist_id = sp.id
             LEFT JOIN users u ON a.specialist_id = u.id AND lpad(trim(u.firm_nr::text), 3, '0') = ${firmPh}
             WHERE (
@@ -587,7 +585,6 @@ async function resolveServiceNamesPostgrest(svcIds: string[]): Promise<Map<strin
             'public',
         );
         for (const r of prod) {
-            if (!productRowIsService(r)) continue;
             const nm = String(r.name ?? '').trim();
             if (nm) out.set(String(r.id), nm);
         }
@@ -638,7 +635,9 @@ async function resolveSpecialistNamesPostgrest(spIds: string[]): Promise<Map<str
 
 type SurveyFeedbackEnrichedRow = BeautyCustomerFeedback & {
     customer_name?: string;
+    customer_phone?: string | null;
     appointment_date?: string | null;
+    appointment_time?: string | null;
     survey_name?: string | null;
     specialist_id?: string;
     specialist_name?: string;
@@ -697,8 +696,15 @@ async function enrichSurveyFeedbackPostgrest(
         if (a.specialist_id) spIds.push(String(a.specialist_id));
         if (a.service_id) svcIds.push(String(a.service_id));
     }
-    const custMap = new Map<string, string>();
-    for (const c of custs) custMap.set(String(c.id), String(c.name ?? ''));
+    const custMap = new Map<string, { name: string; phone: string }>();
+    for (const c of custs) {
+        const phone =
+            String(c.phone ?? '').trim() || String(c.phone2 ?? '').trim();
+        custMap.set(String(c.id), {
+            name: String(c.name ?? ''),
+            phone,
+        });
+    }
     const surveyMap = new Map<string, string>();
     for (const s of surveys) surveyMap.set(String(s.id), String(s.name ?? ''));
 
@@ -712,10 +718,15 @@ async function enrichSurveyFeedbackPostgrest(
         const spId = apt?.specialist_id ? String(apt.specialist_id) : '';
         const svcId = apt?.service_id ? String(apt.service_id) : '';
         const aptDateRaw = apt?.appointment_date;
+        const aptTimeRaw = apt?.appointment_time;
+        const cust = f.customer_id ? custMap.get(String(f.customer_id)) : undefined;
         return {
             ...f,
-            customer_name: f.customer_id ? (custMap.get(String(f.customer_id)) ?? '') : '',
+            customer_name: cust?.name ?? '',
+            customer_phone: cust?.phone || null,
             appointment_date: aptDateRaw != null ? String(aptDateRaw).slice(0, 10) : null,
+            appointment_time:
+                aptTimeRaw != null ? String(aptTimeRaw).slice(0, 5) : null,
             survey_name: f.survey_id ? (surveyMap.get(String(f.survey_id)) ?? '') : null,
             specialist_id: spId,
             specialist_name: spId ? (spNames.get(spId) ?? '—') : undefined,
@@ -946,8 +957,8 @@ async function getAppointmentsInRangePostgrestBranch(
         );
         const mapProdSvc = new Map<string, string>();
         for (const r of prodList) {
-            if (!productRowIsService(r)) continue;
-            mapProdSvc.set(String(r.id), String(r.name ?? ''));
+            const nm = String(r.name ?? '').trim();
+            if (nm) mapProdSvc.set(String(r.id), nm);
         }
 
         const spCards = await postgrestGetByIds<Record<string, unknown>>(
@@ -1409,10 +1420,6 @@ export const beautyService = {
                  LEFT JOIN ${svc} sb ON sb.id = la.service_id
                  LEFT JOIN ${svcFirm} sf ON sf.id = la.service_id AND sf.firm_nr = $1
                  LEFT JOIN ${prodTbl} pr ON pr.id = la.service_id AND pr.firm_nr = $1
-                   AND (
-                     LOWER(TRIM(COALESCE(pr.material_type, ''))) = 'service'
-                     OR LOWER(TRIM(COALESCE(pr.materialtype, ''))) = 'service'
-                   )
                  WHERE la.client_id = c.id
                  ORDER BY la.appointment_date DESC NULLS LAST, la.appointment_time DESC NULLS LAST
                  LIMIT 1)              AS last_service_name
@@ -2185,10 +2192,6 @@ export const beautyService = {
             LEFT JOIN ${svcBeauty} s ON a.service_id = s.id
             LEFT JOIN ${svcFirm} rs ON a.service_id = rs.id AND rs.firm_nr = $2
             LEFT JOIN ${prodTbl} pr ON pr.id = a.service_id AND pr.firm_nr = $2
-                AND (
-                    LOWER(TRIM(COALESCE(pr.material_type, ''))) = 'service'
-                    OR LOWER(TRIM(COALESCE(pr.materialtype, ''))) = 'service'
-                )
             LEFT JOIN ${postgres.getCardTableName('beauty_specialists', 'beauty')} sp ON a.specialist_id = sp.id
             LEFT JOIN users u ON a.specialist_id = u.id AND lpad(trim(u.firm_nr::text), 3, '0') = $2
             LEFT JOIN ${postgres.getCardTableName('beauty_devices', 'beauty')} d ON a.device_id = d.id
@@ -2266,10 +2269,6 @@ export const beautyService = {
             LEFT JOIN ${svcBeauty} s ON a.service_id = s.id
             LEFT JOIN ${svcFirm} rs ON a.service_id = rs.id AND rs.firm_nr = $3
             LEFT JOIN ${prodTbl} pr ON pr.id = a.service_id AND pr.firm_nr = $3
-                AND (
-                    LOWER(TRIM(COALESCE(pr.material_type, ''))) = 'service'
-                    OR LOWER(TRIM(COALESCE(pr.materialtype, ''))) = 'service'
-                )
             LEFT JOIN ${postgres.getCardTableName('beauty_specialists', 'beauty')} sp ON a.specialist_id = sp.id
             LEFT JOIN users u ON a.specialist_id = u.id AND lpad(trim(u.firm_nr::text), 3, '0') = $3
             LEFT JOIN ${postgres.getCardTableName('beauty_devices', 'beauty')} d ON a.device_id = d.id
@@ -3027,10 +3026,6 @@ export const beautyService = {
             LEFT JOIN ${postgres.getCardTableName('beauty_services', 'beauty')} s ON a.service_id = s.id
             LEFT JOIN ${postgres.getCardTableName('services')} rs ON a.service_id = rs.id AND rs.firm_nr = $2
             LEFT JOIN ${prodTbl} pr ON pr.id = a.service_id AND pr.firm_nr = $2
-                AND (
-                    LOWER(TRIM(COALESCE(pr.material_type, ''))) = 'service'
-                    OR LOWER(TRIM(COALESCE(pr.materialtype, ''))) = 'service'
-                )
             LEFT JOIN ${postgres.getCardTableName('beauty_specialists', 'beauty')} sp ON a.specialist_id = sp.id
             LEFT JOIN users u ON a.specialist_id = u.id AND lpad(trim(u.firm_nr::text), 3, '0') = $2
             LEFT JOIN ${postgres.getCardTableName('customers')} c ON a.client_id = c.id
@@ -4565,7 +4560,112 @@ export const beautyService = {
                 out = await loadSales(merged);
             }
         }
-        return out;
+        return beautyService.enrichSalesWithLinkedAppointments(out);
+    },
+
+    async enrichSalesWithLinkedAppointments(sales: BeautySale[]): Promise<BeautySale[]> {
+        if (!sales.length) return sales;
+        const aptIds = [
+            ...new Set(
+                sales
+                    .map((s) => beautyService.parseRexAppointmentIdFromNotes(s.notes))
+                    .filter((id): id is string => Boolean(id)),
+            ),
+        ];
+        if (!aptIds.length) return sales;
+
+        type AptLinkRow = {
+            id: string;
+            specialist_id: string | null;
+            treatment_shots: string | null;
+            treatment_degree: string | null;
+        };
+        const aptMap = new Map<string, AptLinkRow>();
+        const spNames = new Map<string, string>();
+
+        if (shouldUseTenantPostgrestApi()) {
+            try {
+                const { postgrest } = await import('./api/postgrestClient');
+                const fn = erpFirmNrForRow();
+                const pn = periodPaddedForBeauty();
+                const aptPath = `/rex_${fn}_${pn}_beauty_appointments`;
+                const spPath = `/rex_${fn}_beauty_specialists`;
+                const aptRows: AptLinkRow[] = [];
+                for (let i = 0; i < aptIds.length; i += BEAUTY_PGREST_CHUNK) {
+                    const chunk = aptIds.slice(i, i + BEAUTY_PGREST_CHUNK);
+                    const inList = chunk.join(',');
+                    try {
+                        const part = await postgrest.get<AptLinkRow[]>(
+                            aptPath,
+                            {
+                                select: 'id,specialist_id,treatment_shots,treatment_degree',
+                                id: `in.(${inList})`,
+                                limit: chunk.length,
+                            },
+                            { schema: 'beauty' },
+                        );
+                        if (Array.isArray(part)) aptRows.push(...part);
+                    } catch {
+                        /* */
+                    }
+                }
+                for (const r of aptRows) aptMap.set(String(r.id), r);
+                const spIds = [...new Set(aptRows.map((r) => String(r.specialist_id ?? '').trim()).filter(Boolean))];
+                for (let i = 0; i < spIds.length; i += BEAUTY_PGREST_CHUNK) {
+                    const chunk = spIds.slice(i, i + BEAUTY_PGREST_CHUNK);
+                    const inList = chunk.join(',');
+                    try {
+                        const part = await postgrest.get<{ id: string; name: string }[]>(
+                            spPath,
+                            { select: 'id,name', id: `in.(${inList})`, limit: chunk.length },
+                            { schema: 'beauty' },
+                        );
+                        for (const r of Array.isArray(part) ? part : []) {
+                            spNames.set(String(r.id), String(r.name ?? '').trim() || '—');
+                        }
+                    } catch {
+                        /* */
+                    }
+                }
+            } catch (e) {
+                console.warn('[beautyService] enrichSalesWithLinkedAppointments PostgREST:', e);
+            }
+        } else {
+        const aptTable = postgres.getMovementTableName('beauty_appointments', 'beauty');
+        const spTable = postgres.getCardTableName('beauty_specialists', 'beauty');
+        const inList = aptIds.map((_, i) => `$${i + 1}`).join(', ');
+        const { rows: aptRows } = await postgres.query<AptLinkRow>(
+            `SELECT a.id::text AS id, a.specialist_id::text AS specialist_id,
+                    a.treatment_shots, a.treatment_degree
+             FROM ${aptTable} a WHERE a.id IN (${inList})`,
+            aptIds,
+        );
+        for (const r of aptRows) aptMap.set(String(r.id), r);
+        const spIds = [...new Set(aptRows.map((r) => String(r.specialist_id ?? '').trim()).filter(Boolean))];
+        if (spIds.length) {
+            const spIn = spIds.map((_, i) => `$${i + 1}`).join(', ');
+            const { rows: spRows } = await postgres.query<{ id: string; name: string }>(
+                `SELECT id::text AS id, name FROM ${spTable} WHERE id IN (${spIn})`,
+                spIds,
+            );
+            for (const r of spRows) spNames.set(String(r.id), String(r.name ?? '').trim() || '—');
+        }
+        }
+
+        return sales.map((s) => {
+            const aid = beautyService.parseRexAppointmentIdFromNotes(s.notes);
+            if (!aid) return s;
+            const apt = aptMap.get(aid);
+            if (!apt) return { ...s, linked_appointment_id: aid };
+            const spId = String(apt.specialist_id ?? '').trim();
+            return {
+                ...s,
+                linked_appointment_id: aid,
+                linked_staff_name: spId ? (spNames.get(spId) ?? '—') : undefined,
+                linked_treatment_shots: apt.treatment_shots,
+                linked_treatment_degree: apt.treatment_degree,
+            };
+        });
     },
 
     /**
@@ -4745,6 +4845,286 @@ export const beautyService = {
         }
 
         return id;
+    },
+
+    /** Satış notundaki `rex_appt:<uuid>` bağlantısı */
+    parseRexAppointmentIdFromNotes(notes?: string | null): string | null {
+        const m = String(notes ?? '').match(/rex_appt:([0-9a-f-]{36})/i);
+        return m ? m[1] : null;
+    },
+
+    /** Randevuya bağlı ürün adları (beauty_sales + sale_items) */
+    async getProductLabelsByAppointmentIds(appointmentIds: string[]): Promise<Map<string, string[]>> {
+        const out = new Map<string, string[]>();
+        const ids = [...new Set(appointmentIds.map((id) => String(id ?? '').trim()).filter(Boolean))];
+        if (!ids.length) return out;
+
+        if (shouldUseTenantPostgrestApi()) {
+            try {
+                const { postgrest } = await import('./api/postgrestClient');
+                const fn = erpFirmNrForRow();
+                const pn = periodPaddedForBeauty();
+                const salesPath = `/rex_${fn}_${pn}_beauty_sales`;
+                const itemsPath = `/rex_${fn}_${pn}_beauty_sale_items`;
+                const saleRows: { id: string; notes: string | null }[] = [];
+                for (const aptId of ids) {
+                    try {
+                        const part = await postgrest.get<{ id: string; notes: string | null }[]>(
+                            salesPath,
+                            {
+                                select: 'id,notes',
+                                notes: `like.*rex_appt:${aptId}*`,
+                                limit: 20,
+                            },
+                            { schema: 'beauty' },
+                        );
+                        if (Array.isArray(part)) saleRows.push(...part);
+                    } catch {
+                        /* */
+                    }
+                }
+                if (!saleRows.length) return out;
+                const saleIds = [...new Set(saleRows.map((s) => String(s.id)))];
+                const itemsBySale = new Map<string, string[]>();
+                for (let i = 0; i < saleIds.length; i += BEAUTY_PGREST_CHUNK) {
+                    const chunk = saleIds.slice(i, i + BEAUTY_PGREST_CHUNK);
+                    const inList = chunk.join(',');
+                    try {
+                        const items = await postgrest.get<{ sale_id: string; name: string; item_type: string }[]>(
+                            itemsPath,
+                            {
+                                select: 'sale_id,name,item_type',
+                                sale_id: `in.(${inList})`,
+                                item_type: 'eq.product',
+                                limit: 500,
+                            },
+                            { schema: 'beauty' },
+                        );
+                        for (const row of Array.isArray(items) ? items : []) {
+                            const nm = String(row.name ?? '').trim();
+                            if (!nm) continue;
+                            const arr = itemsBySale.get(row.sale_id) ?? [];
+                            arr.push(nm);
+                            itemsBySale.set(row.sale_id, arr);
+                        }
+                    } catch {
+                        /* */
+                    }
+                }
+                for (const sale of saleRows) {
+                    const aptId = beautyService.parseRexAppointmentIdFromNotes(sale.notes);
+                    if (!aptId) continue;
+                    const labels = itemsBySale.get(sale.id) ?? [];
+                    if (!labels.length) continue;
+                    const prev = out.get(aptId) ?? [];
+                    out.set(aptId, [...prev, ...labels]);
+                }
+            } catch (e) {
+                console.warn('[beautyService] getProductLabelsByAppointmentIds PostgREST:', e);
+            }
+            return out;
+        }
+
+        const st = postgres.getMovementTableName('beauty_sales', 'beauty');
+        const it = postgres.getMovementTableName('beauty_sale_items', 'beauty');
+        const likeParts = ids.map((_, i) => `notes ILIKE $${i + 1}`);
+        const likeParams = ids.map((id) => `%rex_appt:${id}%`);
+        const { rows: sales } = await postgres.query<{ id: string; notes: string | null }>(
+            `SELECT id, notes FROM ${st} WHERE ${likeParts.join(' OR ')}`,
+            likeParams,
+        );
+        if (!sales.length) return out;
+        const saleIds = sales.map((s) => s.id);
+        const saleIn = saleIds.map((_, i) => `$${i + 1}`).join(', ');
+        const { rows: items } = await postgres.query<{ sale_id: string; name: string; item_type: string }>(
+            `SELECT sale_id, name, item_type FROM ${it}
+             WHERE sale_id IN (${saleIn}) AND LOWER(TRIM(COALESCE(item_type::text, ''))) = 'product'`,
+            saleIds,
+        );
+        const itemsBySale = new Map<string, string[]>();
+        for (const row of items) {
+            const nm = String(row.name ?? '').trim();
+            if (!nm) continue;
+            const arr = itemsBySale.get(row.sale_id) ?? [];
+            arr.push(nm);
+            itemsBySale.set(row.sale_id, arr);
+        }
+        for (const sale of sales) {
+            const aptId = beautyService.parseRexAppointmentIdFromNotes(sale.notes);
+            if (!aptId) continue;
+            const labels = itemsBySale.get(sale.id) ?? [];
+            if (!labels.length) continue;
+            const prev = out.get(aptId) ?? [];
+            out.set(aptId, [...prev, ...labels]);
+        }
+        return out;
+    },
+
+    /** Müşterinin son tamamlanan randevusundaki shot / derece */
+    async getLastCustomerTreatments(customerIds: string[]): Promise<Map<string, BeautyCustomerLastTreatment>> {
+        const out = new Map<string, BeautyCustomerLastTreatment>();
+        const ids = [...new Set(customerIds.map((id) => String(id ?? '').trim()).filter(Boolean))];
+        if (!ids.length) return out;
+
+        if (shouldUseTenantPostgrestApi()) {
+            try {
+                const { postgrest } = await import('./api/postgrestClient');
+                const fn = erpFirmNrForRow();
+                const pn = periodPaddedForBeauty();
+                const aptPath = `/rex_${fn}_${pn}_beauty_appointments`;
+                type AptRow = {
+                    client_id: string;
+                    treatment_shots: string | null;
+                    treatment_degree: string | null;
+                    appointment_date: string | null;
+                    status: string | null;
+                    updated_at?: string | null;
+                };
+                const rows: AptRow[] = [];
+                for (let i = 0; i < ids.length; i += BEAUTY_PGREST_CHUNK) {
+                    const chunk = ids.slice(i, i + BEAUTY_PGREST_CHUNK);
+                    const inList = chunk.join(',');
+                    try {
+                        const part = await postgrest.get<AptRow[]>(
+                            aptPath,
+                            {
+                                select: 'client_id,treatment_shots,treatment_degree,appointment_date,status,updated_at',
+                                client_id: `in.(${inList})`,
+                                status: 'eq.completed',
+                                order: 'appointment_date.desc,updated_at.desc',
+                                limit: 2000,
+                            },
+                            { schema: 'beauty' },
+                        );
+                        if (Array.isArray(part)) rows.push(...part);
+                    } catch {
+                        /* */
+                    }
+                }
+                for (const r of rows) {
+                    const cid = String(r.client_id ?? '').trim();
+                    if (!cid || out.has(cid)) continue;
+                    const shots = String(r.treatment_shots ?? '').trim();
+                    const degree = String(r.treatment_degree ?? '').trim();
+                    if (!shots && !degree) continue;
+                    out.set(cid, {
+                        customer_id: cid,
+                        treatment_shots: r.treatment_shots,
+                        treatment_degree: r.treatment_degree,
+                        appointment_date: String(r.appointment_date ?? '').slice(0, 10) || null,
+                    });
+                }
+            } catch (e) {
+                console.warn('[beautyService] getLastCustomerTreatments PostgREST:', e);
+            }
+            return out;
+        }
+
+        const aptTable = postgres.getMovementTableName('beauty_appointments', 'beauty');
+        const inList = ids.map((_, i) => `$${i + 1}`).join(', ');
+        const { rows } = await postgres.query<{
+            client_id: string;
+            treatment_shots: string | null;
+            treatment_degree: string | null;
+            appointment_date: string | null;
+        }>(
+            `SELECT DISTINCT ON (client_id)
+                client_id::text AS client_id,
+                treatment_shots,
+                treatment_degree,
+                appointment_date::text AS appointment_date
+             FROM ${aptTable}
+             WHERE client_id IN (${inList})
+               AND LOWER(TRIM(COALESCE(status::text, ''))) = 'completed'
+               AND (NULLIF(TRIM(COALESCE(treatment_shots::text, '')), '') IS NOT NULL
+                    OR NULLIF(TRIM(COALESCE(treatment_degree::text, '')), '') IS NOT NULL)
+             ORDER BY client_id, appointment_date DESC NULLS LAST, updated_at DESC NULLS LAST`,
+            ids,
+        );
+        for (const r of rows) {
+            const cid = String(r.client_id ?? '').trim();
+            if (!cid) continue;
+            out.set(cid, {
+                customer_id: cid,
+                treatment_shots: r.treatment_shots,
+                treatment_degree: r.treatment_degree,
+                appointment_date: r.appointment_date,
+            });
+        }
+        return out;
+    },
+
+    /** Personel bazında günlük shot / derece raporu */
+    async getStaffTreatmentReport(startYmd: string, endYmd: string): Promise<BeautyStaffTreatmentReport> {
+        const start = String(startYmd || '').trim();
+        const end = String(endYmd || '').trim();
+        const empty: BeautyStaffTreatmentReport = { start_ymd: start, end_ymd: end, rows: [] };
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(start) || !/^\d{4}-\d{2}-\d{2}$/.test(end)) return empty;
+
+        const apts = await beautyService.getAppointmentsInRange(start, end);
+        const spTable = postgres.getCardTableName('beauty_specialists', 'beauty');
+        const { rows: spRows } = await postgres.query<{ id: string; name: string }>(
+            `SELECT id::text AS id, name FROM ${spTable}`,
+        );
+        const spNames = new Map(spRows.map((r) => [String(r.id), String(r.name ?? '').trim() || '—']));
+
+        const parseShots = (raw: string | null | undefined): number => {
+            const s = String(raw ?? '').trim();
+            if (!s) return 0;
+            const m = s.match(/(\d+)/);
+            return m ? Math.max(0, parseInt(m[1], 10)) : 0;
+        };
+
+        type Acc = {
+            staff_id: string;
+            staff_name: string;
+            day_ymd: string;
+            appointment_count: number;
+            shots_count: number;
+            degree_count: number;
+            shots_samples: string[];
+            degree_samples: string[];
+        };
+        const map = new Map<string, Acc>();
+
+        for (const a of apts) {
+            const day = String(a.appointment_date ?? a.date ?? '').slice(0, 10);
+            if (!day || day < start || day > end) continue;
+            const sid = String(a.staff_id ?? a.specialist_id ?? '').trim() || '__unassigned__';
+            const shotsRaw = String(a.treatment_shots ?? '').trim();
+            const degreeRaw = String(a.treatment_degree ?? '').trim();
+            if (!shotsRaw && !degreeRaw) continue;
+            const key = `${sid}|${day}`;
+            let acc = map.get(key);
+            if (!acc) {
+                acc = {
+                    staff_id: sid,
+                    staff_name: sid === '__unassigned__' ? '—' : (spNames.get(sid) ?? a.specialist_name ?? a.staff_name ?? '—'),
+                    day_ymd: day,
+                    appointment_count: 0,
+                    shots_count: 0,
+                    degree_count: 0,
+                    shots_samples: [],
+                    degree_samples: [],
+                };
+                map.set(key, acc);
+            }
+            acc.appointment_count += 1;
+            if (shotsRaw) {
+                acc.shots_count += parseShots(shotsRaw);
+                if (!acc.shots_samples.includes(shotsRaw)) acc.shots_samples.push(shotsRaw);
+            }
+            if (degreeRaw) {
+                acc.degree_count += 1;
+                if (!acc.degree_samples.includes(degreeRaw)) acc.degree_samples.push(degreeRaw);
+            }
+        }
+
+        const rows = [...map.values()].sort((a, b) => {
+            if (a.day_ymd !== b.day_ymd) return a.day_ymd.localeCompare(b.day_ymd);
+            return a.staff_name.localeCompare(b.staff_name, 'tr');
+        });
+        return { start_ymd: start, end_ymd: end, rows };
     },
 
     /**
@@ -6710,7 +7090,11 @@ export const beautyService = {
         let rawRows: Array<
             BeautyCustomerFeedback & {
                 customer_name?: string;
+                customer_phone?: string | null;
                 appointment_date?: string | null;
+                appointment_time?: string | null;
+                specialist_name?: string | null;
+                service_name?: string | null;
                 survey_name?: string | null;
                 survey_answers?: unknown;
             }
@@ -6728,8 +7112,13 @@ export const beautyService = {
             const aptTable = postgres.getMovementTableName('beauty_appointments', 'beauty');
             const custTable = postgres.getCardTableName('customers');
             const surveyTable = postgres.getCardTableName('beauty_satisfaction_surveys', 'beauty');
+            const spTable = postgres.getCardTableName('beauty_specialists', 'beauty');
+            const bsTable = postgres.getCardTableName('beauty_services', 'beauty');
+            const rsTable = postgres.getCardTableName('services');
+            const prodTbl = postgres.getCardTableName('products');
+            const fn = erpFirmNrForRow();
 
-            const fbParams: unknown[] = [start, end];
+            const fbParams: unknown[] = [start, end, fn];
             let surveySql = '';
             if (surveyFilter) {
                 fbParams.push(surveyFilter);
@@ -6741,12 +7130,21 @@ export const beautyService = {
                     `SELECT
                        f.*,
                        c.name AS customer_name,
+                       COALESCE(NULLIF(TRIM(c.phone::text), ''), NULLIF(TRIM(c.phone2::text), '')) AS customer_phone,
                        a.appointment_date::text AS appointment_date,
-                       sv.name AS survey_name
+                       to_char(a.appointment_time, 'HH24:MI') AS appointment_time,
+                       sv.name AS survey_name,
+                       COALESCE(sp.name, u.full_name, u.username) AS specialist_name,
+                       COALESCE(bs.name, rs.name, pr.name) AS service_name
                      FROM ${fbTable} f
                      LEFT JOIN ${custTable} c ON f.customer_id = c.id
                      LEFT JOIN ${aptTable} a ON f.appointment_id = a.id
                      LEFT JOIN ${surveyTable} sv ON f.survey_id = sv.id
+                     LEFT JOIN ${spTable} sp ON a.specialist_id = sp.id
+                     LEFT JOIN users u ON a.specialist_id = u.id AND lpad(trim(u.firm_nr::text), 3, '0') = $3
+                     LEFT JOIN ${bsTable} bs ON a.service_id = bs.id
+                     LEFT JOIN ${rsTable} rs ON a.service_id = rs.id AND rs.firm_nr = $3
+                     LEFT JOIN ${prodTbl} pr ON pr.id = a.service_id AND pr.firm_nr = $3
                      WHERE f.created_at >= $1::date
                        AND f.created_at < ($2::date + INTERVAL '1 day')
                        ${surveySql}
@@ -6776,8 +7174,14 @@ export const beautyService = {
             return {
                 id: String(r.id),
                 created_at: String(r.created_at ?? ''),
+                customer_id: r.customer_id ?? null,
                 customer_name: String(raw.customer_name ?? '').trim() || '—',
+                customer_phone: raw.customer_phone?.trim() || null,
+                appointment_id: r.appointment_id ?? null,
                 appointment_date: raw.appointment_date?.slice(0, 10) ?? null,
+                appointment_time: raw.appointment_time?.trim() || null,
+                specialist_name: raw.specialist_name?.trim() || null,
+                service_name: raw.service_name?.trim() || null,
                 overall_rating: Number(r.overall_rating ?? 0),
                 would_recommend: Boolean(r.would_recommend),
                 comment: r.comment?.trim() || null,
@@ -7427,10 +7831,6 @@ export const beautyService = {
              LEFT JOIN ${bsTable} bs ON a.service_id = bs.id
              LEFT JOIN ${rsTable} rs ON a.service_id = rs.id AND rs.firm_nr = $3
              LEFT JOIN ${prodTbl} pr ON pr.id = a.service_id AND pr.firm_nr = $3
-               AND (
-                 LOWER(TRIM(COALESCE(pr.material_type, ''))) = 'service'
-                 OR LOWER(TRIM(COALESCE(pr.materialtype, ''))) = 'service'
-               )
              WHERE f.created_at >= $1::date
                AND f.created_at < ($2::date + INTERVAL '1 day')
                ${surveySql}
@@ -7720,10 +8120,6 @@ export const beautyService = {
              LEFT JOIN ${bsTable} bs ON a.service_id = bs.id
              LEFT JOIN ${rsTable} rs ON a.service_id = rs.id AND rs.firm_nr = $3
              LEFT JOIN ${prodTbl} pr ON pr.id = a.service_id AND pr.firm_nr = $3
-               AND (
-                 LOWER(TRIM(COALESCE(pr.material_type, ''))) = 'service'
-                 OR LOWER(TRIM(COALESCE(pr.materialtype, ''))) = 'service'
-               )
              WHERE f.created_at >= $1::date
                AND f.created_at < ($2::date + INTERVAL '1 day')
                AND (

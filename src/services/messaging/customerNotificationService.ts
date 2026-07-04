@@ -13,6 +13,10 @@ import {
 } from './metaWhatsAppTemplates';
 import { messagingService } from './messagingService';
 import type { MessagingSettings } from './messagingTypes';
+import {
+  DEFAULT_WHATSAPP_BULK_INTERVAL_MS,
+  type WhatsAppBulkPreviewItem,
+} from '../../utils/whatsappBulkSend';
 
 export type CustomerNotifyAudience =
   | 'single'
@@ -197,6 +201,56 @@ export const customerNotificationService = {
     }
   },
 
+  async buildBulkPreviewItems(params: {
+    recipients: NotifyCustomerRow[];
+    messageTemplate: string;
+    metaTemplateId?: string;
+    metaManualParameters?: string[];
+    eventType?: string;
+  }): Promise<WhatsAppBulkPreviewItem[]> {
+    const settings = await messagingService.getSettings();
+    const provider = (settings?.whatsapp_provider || 'NONE').toString().toUpperCase();
+    const metaTpl =
+      provider === 'META' && params.metaTemplateId
+        ? findMetaTemplate(params.metaTemplateId)
+        : undefined;
+    const eventType = params.eventType ?? 'customer_broadcast';
+    const out: WhatsAppBulkPreviewItem[] = [];
+
+    for (const customer of params.recipients) {
+      if (!customer.phone) continue;
+      let messageText = replaceMessagePlaceholders(params.messageTemplate, customer);
+      let payload_json: Record<string, unknown> | null = null;
+
+      if (metaTpl && settings) {
+        const bodyParams = buildMetaParametersForCustomer(
+          metaTpl,
+          customer,
+          params.metaManualParameters ?? [],
+        );
+        payload_json = {
+          meta_template_name: metaTpl.metaName,
+          meta_template_language: metaTpl.language,
+          meta_body_parameters: bodyParams,
+        };
+        messageText = previewMetaTemplateBody(metaTpl, bodyParams);
+      }
+
+      out.push({
+        id: customer.id,
+        name: customer.name,
+        phone: customer.phone,
+        messageText,
+        contextLine: [customer.city, customer.customer_tier].filter(Boolean).join(' · ') || undefined,
+        reference_type: 'customer',
+        reference_id: customer.id,
+        payload_json,
+        event_type: eventType,
+      });
+    }
+    return out;
+  },
+
   async enqueueBulkNotifications(params: {
     recipients: NotifyCustomerRow[];
     messageTemplate: string;
@@ -204,6 +258,7 @@ export const customerNotificationService = {
     metaManualParameters?: string[];
     eventType?: string;
     autoProcess?: boolean;
+    intervalMs?: number;
   }): Promise<{ queued: number; skipped: number; sent: number; errors: string[] }> {
     const settings = await messagingService.getSettings();
     const provider = (settings?.whatsapp_provider || 'NONE').toString().toUpperCase();
@@ -284,7 +339,10 @@ export const customerNotificationService = {
 
     let sent = 0;
     if (params.autoProcess !== false && queued > 0) {
-      const proc = await messagingService.processPendingQueue(Math.min(queued, 50));
+      const proc = await messagingService.processPendingQueueThrottled({
+        limit: queued,
+        intervalMs: params.intervalMs ?? DEFAULT_WHATSAPP_BULK_INTERVAL_MS,
+      });
       sent = proc.processed;
       errors.push(...proc.errors);
     }

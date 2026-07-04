@@ -10,11 +10,15 @@ import { localCalendarDateKey, localTodayDateKey, formatIsoDateTr, toSqlDateInpu
 import { useFirmaDonem } from '../../contexts/FirmaDonemContext';
 import { useLanguage } from '../../contexts/LanguageContext';
 
-export type PeriodSummaryMode = 'monthly-days' | 'yearly-months';
+import {
+  loadPeriodSummaryPartnerSplitPrefs,
+  normalizePartnerSplitPrefs,
+  partnerShareAmounts,
+  savePeriodSummaryPartnerSplitPrefs,
+  type PeriodSummaryPartnerSplitPrefs,
+} from '../../utils/periodSummaryPartnerSplit';
 
-/** İki ortak arasında net kalan paylaşım oranları */
-const PARTNER_SHARE_MAJOR = 0.75;
-const PARTNER_SHARE_MINOR = 0.25;
+export type PeriodSummaryMode = 'monthly-days' | 'yearly-months';
 
 interface PeriodSummaryRow {
   key: string;
@@ -27,8 +31,8 @@ interface PeriodSummaryRow {
   discount: number;
   expenses: number;
   netRemaining: number;
-  partnerShare75: number;
-  partnerShare25: number;
+  partnerShareMajor: number;
+  partnerShareMinor: number;
 }
 
 function hasPeriodActivity(row: Pick<PeriodSummaryRow, 'saleCount' | 'revenue' | 'expenses'>): boolean {
@@ -128,6 +132,28 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
   const [loading, setLoading] = useState(false);
   const [sales, setSales] = useState<Sale[]>([]);
   const [expenses, setExpenses] = useState<Awaited<ReturnType<typeof expenseAPI.getAll>>>([]);
+  const [partnerSplit, setPartnerSplit] = useState<PeriodSummaryPartnerSplitPrefs>(() =>
+    loadPeriodSummaryPartnerSplitPrefs(),
+  );
+
+  const updatePartnerSplit = useCallback((patch: Partial<PeriodSummaryPartnerSplitPrefs>) => {
+    setPartnerSplit((prev) => {
+      let majorPct = patch.majorPct ?? prev.majorPct;
+      let minorPct = patch.minorPct ?? prev.minorPct;
+      if (patch.majorPct != null && patch.minorPct == null) {
+        minorPct = 100 - majorPct;
+      } else if (patch.minorPct != null && patch.majorPct == null) {
+        majorPct = 100 - minorPct;
+      }
+      const next = normalizePartnerSplitPrefs({
+        enabled: patch.enabled ?? prev.enabled,
+        majorPct,
+        minorPct,
+      });
+      savePeriodSummaryPartnerSplitPrefs(next);
+      return next;
+    });
+  }, []);
 
   const periodRange = useMemo(() => {
     if (mode === 'monthly-days') return monthRangeFromPicker(selectedMonth);
@@ -190,6 +216,7 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
           : new Date(`${periodKey}-01T12:00:00`).toLocaleDateString(locale, { month: 'long', year: 'numeric' });
 
       const netRemaining = sale.revenue - exp;
+      const shares = partnerShareAmounts(netRemaining, partnerSplit.majorPct, partnerSplit.minorPct);
       return {
         key: periodKey,
         periodKey,
@@ -201,11 +228,11 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
         discount: sale.discount,
         expenses: exp,
         netRemaining,
-        partnerShare75: netRemaining * PARTNER_SHARE_MAJOR,
-        partnerShare25: netRemaining * PARTNER_SHARE_MINOR,
+        partnerShareMajor: shares.major,
+        partnerShareMinor: shares.minor,
       };
     });
-  }, [mode, periodRange, sales, expenses, selectedMonth, selectedYear, tm]);
+  }, [mode, periodRange, sales, expenses, selectedMonth, selectedYear, tm, partnerSplit.majorPct, partnerSplit.minorPct]);
 
   const totals = useMemo(() => {
     const base = rows.reduce(
@@ -220,101 +247,121 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
       }),
       { saleCount: 0, revenue: 0, cash: 0, card: 0, discount: 0, expenses: 0, netRemaining: 0 }
     );
+    const shares = partnerShareAmounts(base.netRemaining, partnerSplit.majorPct, partnerSplit.minorPct);
     return {
       ...base,
-      partnerShare75: base.netRemaining * PARTNER_SHARE_MAJOR,
-      partnerShare25: base.netRemaining * PARTNER_SHARE_MINOR,
+      partnerShareMajor: shares.major,
+      partnerShareMinor: shares.minor,
     };
-  }, [rows]);
+  }, [rows, partnerSplit.majorPct, partnerSplit.minorPct]);
 
   const money = (v: number) => `${formatNumber(v, 0, false)} ${currency}`;
 
-  const columns: ColumnsType<PeriodSummaryRow> = [
-    {
-      title: mode === 'monthly-days' ? tm('rptPeriodColDay') : tm('rptPeriodColMonth'),
-      dataIndex: 'periodLabel',
-      key: 'periodLabel',
-      fixed: 'left',
-      width: 160,
-    },
-    {
-      title: tm('rptPeriodColSaleCount'),
-      dataIndex: 'saleCount',
-      key: 'saleCount',
-      align: 'right',
-      width: 90,
-      render: (v: number) => (v > 0 ? v : '—'),
-    },
-    {
-      title: `${tm('rptPeriodColRevenue')} (${currency})`,
-      dataIndex: 'revenue',
-      key: 'revenue',
-      align: 'right',
-      render: (v: number) => (v > 0 ? money(v) : '—'),
-    },
-    {
-      title: `${tm('rptPeriodColCash')} (${currency})`,
-      dataIndex: 'cash',
-      key: 'cash',
-      align: 'right',
-      render: (v: number) => (v > 0 ? money(v) : '—'),
-    },
-    {
-      title: `${tm('rptPeriodColCard')} (${currency})`,
-      dataIndex: 'card',
-      key: 'card',
-      align: 'right',
-      render: (v: number) => (v > 0 ? money(v) : '—'),
-    },
-    {
-      title: `${tm('rptPeriodColDiscount')} (${currency})`,
-      dataIndex: 'discount',
-      key: 'discount',
-      align: 'right',
-      render: (v: number) => (v > 0 ? money(v) : '—'),
-    },
-    {
-      title: `${tm('rptPeriodColExpenses')} (${currency})`,
-      dataIndex: 'expenses',
-      key: 'expenses',
-      align: 'right',
-      render: (v: number, row) => {
-        if (!hasPeriodActivity(row)) return '—';
-        return <span className="text-red-600">{money(v)}</span>;
+  const partnerMajorLabel = tm('rptPeriodColPartnerShare').replace('{pct}', String(partnerSplit.majorPct));
+  const partnerMinorLabel = tm('rptPeriodColPartnerShare').replace('{pct}', String(partnerSplit.minorPct));
+
+  const columns: ColumnsType<PeriodSummaryRow> = useMemo(() => {
+    const base: ColumnsType<PeriodSummaryRow> = [
+      {
+        title: mode === 'monthly-days' ? tm('rptPeriodColDay') : tm('rptPeriodColMonth'),
+        dataIndex: 'periodLabel',
+        key: 'periodLabel',
+        fixed: 'left',
+        width: 160,
       },
-    },
-    {
-      title: `${tm('rptPeriodColNet')} (${currency})`,
-      dataIndex: 'netRemaining',
-      key: 'netRemaining',
-      align: 'right',
-      render: (v: number, row) => {
-        if (!hasPeriodActivity(row)) return '—';
-        const cls = v >= 0 ? 'text-emerald-700 font-semibold' : 'text-red-600 font-semibold';
-        return <span className={cls}>{money(v)}</span>;
+      {
+        title: tm('rptPeriodColSaleCount'),
+        dataIndex: 'saleCount',
+        key: 'saleCount',
+        align: 'right',
+        width: 90,
+        render: (v: number) => (v > 0 ? v : '—'),
       },
-    },
-    {
-      title: `${tm('rptPeriodColPartner75')} (${currency})`,
-      dataIndex: 'partnerShare75',
-      key: 'partnerShare75',
-      align: 'right',
-      render: (v: number, row) => {
-        if (!hasPeriodActivity(row)) return '—';
-        return <span className="text-blue-700 font-medium">{money(v)}</span>;
+      {
+        title: `${tm('rptPeriodColRevenue')} (${currency})`,
+        dataIndex: 'revenue',
+        key: 'revenue',
+        align: 'right',
+        render: (v: number) => (v > 0 ? money(v) : '—'),
       },
-    },
-    {
-      title: `${tm('rptPeriodColPartner25')} (${currency})`,
-      dataIndex: 'partnerShare25',
-      key: 'partnerShare25',
-      align: 'right',
-      render: (v: number, row) => {
-        if (!hasPeriodActivity(row)) return '—';
-        return <span className="text-indigo-700 font-medium">{money(v)}</span>;
+      {
+        title: `${tm('rptPeriodColCash')} (${currency})`,
+        dataIndex: 'cash',
+        key: 'cash',
+        align: 'right',
+        render: (v: number) => (v > 0 ? money(v) : '—'),
       },
-    },
-  ];
+      {
+        title: `${tm('rptPeriodColCard')} (${currency})`,
+        dataIndex: 'card',
+        key: 'card',
+        align: 'right',
+        render: (v: number) => (v > 0 ? money(v) : '—'),
+      },
+      {
+        title: `${tm('rptPeriodColDiscount')} (${currency})`,
+        dataIndex: 'discount',
+        key: 'discount',
+        align: 'right',
+        render: (v: number) => (v > 0 ? money(v) : '—'),
+      },
+      {
+        title: `${tm('rptPeriodColExpenses')} (${currency})`,
+        dataIndex: 'expenses',
+        key: 'expenses',
+        align: 'right',
+        render: (v: number, row) => {
+          if (!hasPeriodActivity(row)) return '—';
+          return <span className="text-red-600">{money(v)}</span>;
+        },
+      },
+      {
+        title: `${tm('rptPeriodColNet')} (${currency})`,
+        dataIndex: 'netRemaining',
+        key: 'netRemaining',
+        align: 'right',
+        render: (v: number, row) => {
+          if (!hasPeriodActivity(row)) return '—';
+          const cls = v >= 0 ? 'text-emerald-700 font-semibold' : 'text-red-600 font-semibold';
+          return <span className={cls}>{money(v)}</span>;
+        },
+      },
+    ];
+
+    if (!partnerSplit.enabled) return base;
+
+    return [
+      ...base,
+      {
+        title: `${partnerMajorLabel} (${currency})`,
+        dataIndex: 'partnerShareMajor',
+        key: 'partnerShareMajor',
+        align: 'right',
+        render: (v: number, row) => {
+          if (!hasPeriodActivity(row)) return '—';
+          return <span className="text-blue-700 font-medium">{money(v)}</span>;
+        },
+      },
+      {
+        title: `${partnerMinorLabel} (${currency})`,
+        dataIndex: 'partnerShareMinor',
+        key: 'partnerShareMinor',
+        align: 'right',
+        render: (v: number, row) => {
+          if (!hasPeriodActivity(row)) return '—';
+          return <span className="text-indigo-700 font-medium">{money(v)}</span>;
+        },
+      },
+    ];
+  }, [
+    mode,
+    currency,
+    tm,
+    money,
+    partnerSplit.enabled,
+    partnerMajorLabel,
+    partnerMinorLabel,
+  ]);
 
   const title = mode === 'monthly-days' ? tm('aylikGunOzeti') : tm('yillikAyOzeti');
   const subtitle = mode === 'monthly-days' ? tm('aylikGunOzetiDesc') : tm('yillikAyOzetiDesc');
@@ -363,11 +410,58 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
         </div>
       </div>
 
-      <p className="text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
-        {tm('rptPeriodPartnerSplitNote')}
+      <p className="text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 flex flex-wrap items-center gap-x-4 gap-y-2">
+        <label className="inline-flex items-center gap-2 cursor-pointer select-none font-medium text-slate-700">
+          <input
+            type="checkbox"
+            checked={partnerSplit.enabled}
+            onChange={(e) => updatePartnerSplit({ enabled: e.target.checked })}
+            className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+          />
+          {tm('rptPeriodPartnerSplitEnable')}
+        </label>
+        {partnerSplit.enabled ? (
+          <>
+            <span className="inline-flex items-center gap-1.5">
+              <span className="text-slate-600">{tm('rptPeriodPartnerShareMajorPct')}</span>
+              <input
+                type="number"
+                min={0}
+                max={100}
+                value={partnerSplit.majorPct}
+                onChange={(e) => updatePartnerSplit({ majorPct: Number(e.target.value) })}
+                className="w-16 px-2 py-1 border rounded text-sm text-center"
+              />
+              <span>%</span>
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <span className="text-slate-600">{tm('rptPeriodPartnerShareMinorPct')}</span>
+              <input
+                type="number"
+                min={0}
+                max={100}
+                value={partnerSplit.minorPct}
+                onChange={(e) => updatePartnerSplit({ minorPct: Number(e.target.value) })}
+                className="w-16 px-2 py-1 border rounded text-sm text-center"
+              />
+              <span>%</span>
+            </span>
+            <span className="text-slate-500">
+              {tm('rptPeriodPartnerSplitNoteDynamic')
+                .replace('{major}', String(partnerSplit.majorPct))
+                .replace('{minor}', String(partnerSplit.minorPct))}
+            </span>
+          </>
+        ) : (
+          <span>{tm('rptPeriodPartnerSplitDisabledHint')}</span>
+        )}
       </p>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+      <div
+        className={`grid grid-cols-1 sm:grid-cols-2 gap-4 ${
+          partnerSplit.enabled ? 'lg:grid-cols-3 xl:grid-cols-6' : 'lg:grid-cols-2 xl:grid-cols-4'
+        }`}
+      >
         <div className="bg-white rounded-lg border p-4">
           <div className="flex items-center gap-2 text-slate-500 text-sm mb-1">
             <TrendingUp className="w-4 h-4 text-green-600" />
@@ -394,14 +488,18 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
             {money(totals.netRemaining)}
           </p>
         </div>
-        <div className="bg-white rounded-lg border p-4 border-blue-100 bg-blue-50/40">
-          <p className="text-slate-500 text-sm mb-1">{tm('rptPeriodColPartner75')}</p>
-          <p className="text-2xl font-bold text-blue-700">{money(totals.partnerShare75)}</p>
-        </div>
-        <div className="bg-white rounded-lg border p-4 border-indigo-100 bg-indigo-50/40">
-          <p className="text-slate-500 text-sm mb-1">{tm('rptPeriodColPartner25')}</p>
-          <p className="text-2xl font-bold text-indigo-700">{money(totals.partnerShare25)}</p>
-        </div>
+        {partnerSplit.enabled ? (
+          <>
+            <div className="bg-white rounded-lg border p-4 border-blue-100 bg-blue-50/40">
+              <p className="text-slate-500 text-sm mb-1">{partnerMajorLabel}</p>
+              <p className="text-2xl font-bold text-blue-700">{money(totals.partnerShareMajor)}</p>
+            </div>
+            <div className="bg-white rounded-lg border p-4 border-indigo-100 bg-indigo-50/40">
+              <p className="text-slate-500 text-sm mb-1">{partnerMinorLabel}</p>
+              <p className="text-2xl font-bold text-indigo-700">{money(totals.partnerShareMinor)}</p>
+            </div>
+          </>
+        ) : null}
         <div className="bg-white rounded-lg border p-4">
           <p className="text-slate-500 text-sm mb-1">{tm('rptPeriodPaymentSplit')}</p>
           <p className="text-sm text-slate-700">
@@ -425,35 +523,29 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
               <Table.Summary fixed>
                 <Table.Summary.Row className="bg-slate-50 font-semibold">
                   <Table.Summary.Cell index={0}>{tm('rptPeriodTotalRow')}</Table.Summary.Cell>
-                  <Table.Summary.Cell index={1} align="right">
-                    {totals.saleCount}
-                  </Table.Summary.Cell>
-                  <Table.Summary.Cell index={2} align="right">
-                    {money(totals.revenue)}
-                  </Table.Summary.Cell>
-                  <Table.Summary.Cell index={3} align="right">
-                    {money(totals.cash)}
-                  </Table.Summary.Cell>
-                  <Table.Summary.Cell index={4} align="right">
-                    {money(totals.card)}
-                  </Table.Summary.Cell>
-                  <Table.Summary.Cell index={5} align="right">
-                    {money(totals.discount)}
-                  </Table.Summary.Cell>
-                  <Table.Summary.Cell index={6} align="right">
+                  <Table.Summary.Cell align="right">{totals.saleCount}</Table.Summary.Cell>
+                  <Table.Summary.Cell align="right">{money(totals.revenue)}</Table.Summary.Cell>
+                  <Table.Summary.Cell align="right">{money(totals.cash)}</Table.Summary.Cell>
+                  <Table.Summary.Cell align="right">{money(totals.card)}</Table.Summary.Cell>
+                  <Table.Summary.Cell align="right">{money(totals.discount)}</Table.Summary.Cell>
+                  <Table.Summary.Cell align="right">
                     <span className="text-red-600">{money(totals.expenses)}</span>
                   </Table.Summary.Cell>
-                  <Table.Summary.Cell index={7} align="right">
+                  <Table.Summary.Cell align="right">
                     <span className={totals.netRemaining >= 0 ? 'text-emerald-700' : 'text-red-600'}>
                       {money(totals.netRemaining)}
                     </span>
                   </Table.Summary.Cell>
-                  <Table.Summary.Cell index={8} align="right">
-                    <span className="text-blue-700">{money(totals.partnerShare75)}</span>
-                  </Table.Summary.Cell>
-                  <Table.Summary.Cell index={9} align="right">
-                    <span className="text-indigo-700">{money(totals.partnerShare25)}</span>
-                  </Table.Summary.Cell>
+                  {partnerSplit.enabled ? (
+                    <>
+                      <Table.Summary.Cell align="right">
+                        <span className="text-blue-700">{money(totals.partnerShareMajor)}</span>
+                      </Table.Summary.Cell>
+                      <Table.Summary.Cell align="right">
+                        <span className="text-indigo-700">{money(totals.partnerShareMinor)}</span>
+                      </Table.Summary.Cell>
+                    </>
+                  ) : null}
                 </Table.Summary.Row>
               </Table.Summary>
             )}

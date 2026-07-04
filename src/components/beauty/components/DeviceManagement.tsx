@@ -9,6 +9,8 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/components/ui/utils';
 import type { BeautyDevice } from '../../../types/beauty';
+import { beautyService } from '../../../services/beautyService';
+import { formatLocalYmd } from '../../../utils/dateLocal';
 import '../ClinicStyles.css';
 
 const DEVICE_TYPES = [
@@ -34,11 +36,37 @@ export function DeviceManagement() {
     const [isEdit, setIsEdit] = useState(false);
     const [saving, setSaving] = useState(false);
     const [showRegions, setShowRegions] = useState(false);
+    const [deviceLastTreatment, setDeviceLastTreatment] = useState<
+        Map<string, { shots?: string; degree?: string; date?: string }>
+    >(new Map());
 
     useEffect(() => {
         loadDevices();
         loadBodyRegions();
     }, []);
+
+    useEffect(() => {
+        const end = formatLocalYmd(new Date());
+        const d = new Date();
+        d.setDate(d.getDate() - 60);
+        const start = formatLocalYmd(d);
+        void beautyService.getAppointmentsInRange(start, end).then((apts) => {
+            const map = new Map<string, { shots?: string; degree?: string; date?: string }>();
+            for (const a of apts) {
+                const did = String(a.device_id ?? '').trim();
+                if (!did) continue;
+                const shots = String(a.treatment_shots ?? '').trim();
+                const degree = String(a.treatment_degree ?? '').trim();
+                if (!shots && !degree) continue;
+                const day = String(a.appointment_date ?? a.date ?? '').slice(0, 10);
+                const prev = map.get(did);
+                if (!prev || day > (prev.date ?? '')) {
+                    map.set(did, { shots: shots || undefined, degree: degree || undefined, date: day });
+                }
+            }
+            setDeviceLastTreatment(map);
+        });
+    }, [devices.length]);
 
     const openCreate = () => { setEditing(EMPTY_FORM); setIsEdit(false); setShowModal(true); };
     const openEdit = (d: BeautyDevice) => { setEditing({ ...d }); setIsEdit(true); setShowModal(true); };
@@ -120,6 +148,7 @@ export function DeviceManagement() {
                         const badge = statusBadge(device);
                         const daysLeft = maintenanceDaysLeft(device);
                         const typLabel = DEVICE_TYPES.find(t => t.value === device.device_type)?.label ?? device.device_type;
+                        const lastTreat = deviceLastTreatment.get(String(device.id));
                         return (
                             <div
                                 key={device.id}
@@ -175,6 +204,20 @@ export function DeviceManagement() {
                                             </span>
                                         </div>
                                     )}
+
+                                    {lastTreat && (lastTreat.shots || lastTreat.degree) ? (
+                                        <div className="p-3 bg-violet-50 rounded-2xl border border-violet-100">
+                                            <p className="text-[10px] font-black text-violet-500 uppercase tracking-widest mb-1">
+                                                {tm('bDeviceLastTreatment')}
+                                            </p>
+                                            <p className="text-xs font-semibold text-violet-900">
+                                                {lastTreat.date ? `${lastTreat.date} · ` : ''}
+                                                {lastTreat.shots ? `${tm('bReceiptTreatmentShots')}: ${lastTreat.shots}` : ''}
+                                                {lastTreat.shots && lastTreat.degree ? ' · ' : ''}
+                                                {lastTreat.degree ? `${tm('bReceiptTreatmentDegree')}: ${lastTreat.degree}` : ''}
+                                            </p>
+                                        </div>
+                                    ) : null}
 
                                     {/* Shot counter progress */}
                                     {(device.max_shots ?? 0) > 0 && (

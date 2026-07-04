@@ -6,6 +6,11 @@ import { formatLocalYmd } from '../../../utils/dateLocal';
 import type { BeautySurveyResponseRow, BeautySurveyResultsReport } from '../../../types/beauty';
 import { SurveyReportToolbar } from './SurveyReportToolbar';
 import type { BeautySurveyReportEmbedProps } from './SurveyExtraReports';
+import {
+    SurveyRatingRespondentsModal,
+    filterSurveyResponsesForDrillDown,
+    type SurveyRatingDrillDown,
+} from './SurveyRatingRespondentsModal';
 import { cn } from '../../ui/utils';
 
 type RatingFilter = 'all' | '1' | '2' | '3' | '4' | '5';
@@ -45,6 +50,7 @@ export function SurveyResultsReport(embed?: BeautySurveyReportEmbedProps) {
     const [surveyId, setSurveyId] = useState<string>('all');
     const [ratingFilter, setRatingFilter] = useState<RatingFilter>('all');
     const [expandedId, setExpandedId] = useState<string | null>(null);
+    const [starDrillDown, setStarDrillDown] = useState<SurveyRatingDrillDown | null>(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [data, setData] = useState<BeautySurveyResultsReport | null>(null);
@@ -60,6 +66,7 @@ export function SurveyResultsReport(embed?: BeautySurveyReportEmbedProps) {
             setData(res);
             setRatingFilter('all');
             setExpandedId(null);
+            setStarDrillDown(null);
         } catch (e: unknown) {
             setError(e instanceof Error ? e.message : String(e));
         } finally {
@@ -101,6 +108,18 @@ export function SurveyResultsReport(embed?: BeautySurveyReportEmbedProps) {
         const star = Number(ratingFilter);
         return responses.filter((r) => ratingStar(r.overall_rating) === star);
     }, [responses, ratingFilter]);
+
+    const drillDownRows = useMemo(() => {
+        if (!starDrillDown) return [];
+        return filterSurveyResponsesForDrillDown(responses, starDrillDown).sort(
+            (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+        );
+    }, [responses, starDrillDown]);
+
+    const openStarDrillDown = useCallback((drill: SurveyRatingDrillDown) => {
+        setStarDrillDown(drill);
+        setRatingFilter(String(drill.star) as RatingFilter);
+    }, []);
 
     const groupedByRating = useMemo(() => {
         const stars = ratingFilter === 'all' ? ([5, 4, 3, 2, 1] as const) : ([Number(ratingFilter)] as const);
@@ -149,7 +168,12 @@ export function SurveyResultsReport(embed?: BeautySurveyReportEmbedProps) {
                     </td>
                     <td className="py-2.5 px-3 whitespace-nowrap">{formatDateTime(r.created_at)}</td>
                     <td className="py-2.5 px-3 font-medium text-gray-800">{r.customer_name}</td>
-                    <td className="py-2.5 px-3">{r.appointment_date ?? '—'}</td>
+                    <td className="py-2.5 px-3 text-gray-600 whitespace-nowrap">{r.customer_phone ?? '—'}</td>
+                    <td className="py-2.5 px-3 text-gray-600">{r.service_name ?? '—'}</td>
+                    <td className="py-2.5 px-3 text-gray-600">{r.specialist_name ?? '—'}</td>
+                    <td className="py-2.5 px-3 whitespace-nowrap">
+                        {[r.appointment_date, r.appointment_time].filter(Boolean).join(' ') || '—'}
+                    </td>
                     <td className="py-2.5 px-3 text-gray-600">{r.survey_name ?? '—'}</td>
                     <td className="py-2.5 px-3 text-right font-bold text-amber-700 tabular-nums">
                         {r.overall_rating.toFixed(1)}
@@ -161,7 +185,7 @@ export function SurveyResultsReport(embed?: BeautySurveyReportEmbedProps) {
                 </tr>
                 {expanded && r.survey_answers.length > 0 && (
                     <tr className="bg-gray-50/80">
-                        <td colSpan={8} className="px-4 py-3">
+                        <td colSpan={11} className="px-4 py-3">
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
                                 {r.survey_answers.map((ans, idx) => (
                                     <div
@@ -243,7 +267,10 @@ export function SurveyResultsReport(embed?: BeautySurveyReportEmbedProps) {
 
             <div className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm">
                 <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-                    <h3 className="text-sm font-black text-gray-800">{tm('bSurveyReportRatingDist')}</h3>
+                    <div>
+                        <h3 className="text-sm font-black text-gray-800">{tm('bSurveyReportRatingDist')}</h3>
+                        <p className="text-[11px] text-gray-400 mt-0.5">{tm('bSurveyReportClickStarHint')}</p>
+                    </div>
                     <div className="flex flex-wrap gap-1.5">
                         {(['all', '5', '4', '3', '2', '1'] as RatingFilter[]).map((key) => {
                             const active = ratingFilter === key;
@@ -255,7 +282,14 @@ export function SurveyResultsReport(embed?: BeautySurveyReportEmbedProps) {
                                 <button
                                     key={key}
                                     type="button"
-                                    onClick={() => setRatingFilter(key)}
+                                    onClick={() => {
+                                        if (key === 'all') {
+                                            setRatingFilter('all');
+                                            setStarDrillDown(null);
+                                        } else {
+                                            openStarDrillDown({ star: Number(key) });
+                                        }
+                                    }}
                                     className={cn(
                                         'px-3 py-1.5 rounded-full text-xs font-bold border transition-colors',
                                         active
@@ -280,10 +314,15 @@ export function SurveyResultsReport(embed?: BeautySurveyReportEmbedProps) {
                             <button
                                 key={star}
                                 type="button"
-                                onClick={() => setRatingFilter(active ? 'all' : (String(star) as RatingFilter))}
+                                disabled={count === 0}
+                                onClick={() => {
+                                    if (count === 0) return;
+                                    openStarDrillDown({ star });
+                                }}
                                 className={cn(
                                     'w-full flex items-center gap-2 text-xs rounded-lg px-2 py-1 transition-colors text-left',
                                     active ? 'bg-violet-50 ring-1 ring-violet-200' : 'hover:bg-gray-50',
+                                    count === 0 ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer',
                                 )}
                             >
                                 <span className="w-8 font-bold text-gray-600">{star}★</span>
@@ -347,7 +386,25 @@ export function SurveyResultsReport(embed?: BeautySurveyReportEmbedProps) {
                                                         ? Math.round((cnt / q.response_count) * 100)
                                                         : 0;
                                                 return (
-                                                    <div key={star} className="flex items-center gap-2 text-[11px]">
+                                                    <button
+                                                        key={star}
+                                                        type="button"
+                                                        disabled={cnt === 0}
+                                                        onClick={() => {
+                                                            if (cnt === 0) return;
+                                                            openStarDrillDown({
+                                                                star,
+                                                                questionId: q.question_id,
+                                                                questionLabel: q.label,
+                                                            });
+                                                        }}
+                                                        className={cn(
+                                                            'w-full flex items-center gap-2 text-[11px] rounded-md px-1 py-0.5 text-left transition-colors',
+                                                            cnt > 0
+                                                                ? 'hover:bg-violet-50 cursor-pointer'
+                                                                : 'opacity-40 cursor-not-allowed',
+                                                        )}
+                                                    >
                                                         <span className="w-6 font-bold text-gray-500">{star}★</span>
                                                         <div className="flex-1 h-1.5 rounded-full bg-gray-100 overflow-hidden">
                                                             <div
@@ -355,8 +412,10 @@ export function SurveyResultsReport(embed?: BeautySurveyReportEmbedProps) {
                                                                 style={{ width: `${pct}%` }}
                                                             />
                                                         </div>
-                                                        <span className="w-12 text-right tabular-nums text-gray-500">{cnt}</span>
-                                                    </div>
+                                                        <span className="w-12 text-right tabular-nums text-gray-500 font-semibold">
+                                                            {cnt}
+                                                        </span>
+                                                    </button>
                                                 );
                                             })}
                                         </div>
@@ -407,6 +466,9 @@ export function SurveyResultsReport(embed?: BeautySurveyReportEmbedProps) {
                                                 <th className="py-2 px-3 font-bold">{tm('bSurveyReportScore')}</th>
                                                 <th className="py-2 px-3 font-bold">{tm('date')}</th>
                                                 <th className="py-2 px-3 font-bold">{tm('customer')}</th>
+                                                <th className="py-2 px-3 font-bold">{tm('bSurveyReportCustomerPhone')}</th>
+                                                <th className="py-2 px-3 font-bold">{tm('bSurveyReportLastService')}</th>
+                                                <th className="py-2 px-3 font-bold">{tm('bSurveyReportLegacyStaff')}</th>
                                                 <th className="py-2 px-3 font-bold">{tm('bSurveyReportApptDate')}</th>
                                                 <th className="py-2 px-3 font-bold">{tm('bSurveyName')}</th>
                                                 <th className="py-2 px-3 font-bold text-right">{tm('bSurveyReportAvgRating')}</th>
@@ -421,6 +483,12 @@ export function SurveyResultsReport(embed?: BeautySurveyReportEmbedProps) {
                     </div>
                 )}
             </div>
+
+            <SurveyRatingRespondentsModal
+                drill={starDrillDown}
+                rows={drillDownRows}
+                onClose={() => setStarDrillDown(null)}
+            />
         </div>
     );
 }

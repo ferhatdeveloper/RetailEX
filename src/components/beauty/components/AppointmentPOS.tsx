@@ -7,7 +7,7 @@
  *
  * Akışlar:
  *   [Randevu Oluştur] → yalnızca sepette en az bir hizmet varken randevu kaydı
- *   [Ödeme Tamamla]   → hizmet varsa randevu + satış; sadece ürün/paket ise yalnızca beauty satışı (+ ürün stok düşümü)
+ *   [Ödeme Tamamla]   → hizmet/ürün varsa randevu + satış; yalnızca paket ise beauty satışı (+ ürün stok düşümü)
  */
 import React, { useCallback, useEffect, useState, useMemo, useRef } from 'react';
 import { createPortal, flushSync } from 'react-dom';
@@ -52,6 +52,7 @@ import { safeInvoke } from '../../../utils/env';
 import { splitProportionalLineDiscount } from '../../../utils/beautySaleLineDiscount';
 import { usePermission } from '../../../shared/hooks/usePermission';
 import { useClinicErpSpecialtyOptional } from '../context/ClinicErpSpecialtyContext';
+import { buildAppointmentProductNotesTag } from '../../../utils/beautyAppointmentProducts';
 import { DentalChartScreen } from '../specialty/DentalChartScreen';
 import '../ClinicStyles.css';
 
@@ -305,6 +306,8 @@ interface Props {
     prefillDeviceId?: string;
     /** CRM / sihirbaz: bu hizmet satırı sepete bir kez eklenir */
     prefillServiceId?: string;
+    /** Hizmet+tarih panosundan müşteri ön seçimi */
+    prefillCustomerId?: string;
     existingAppointment?: BeautyAppointment | null;
     onBack?: () => void;      // undefined = standalone POS mode
 }
@@ -317,6 +320,7 @@ export function AppointmentPOS({
     prefillStaffId,
     prefillDeviceId,
     prefillServiceId,
+    prefillCustomerId,
     existingAppointment,
     onBack,
 }: Props) {
@@ -810,6 +814,17 @@ export function AppointmentPOS({
         return Array.from(map.values()).sort((a, b) => (a.name ?? '').localeCompare(b.name ?? '', 'tr'));
     }, [customers, currentAccountCustomers]);
 
+    /** Hizmet+tarih / hatırlatma panosundan müşteri ön seçimi */
+    useEffect(() => {
+        if (existingAppointment?.id) return;
+        const cid = prefillCustomerId?.trim();
+        if (!cid) return;
+        const found =
+            mergedCustomers.find((c) => String(c.id) === cid) ??
+            customers.find((c) => String(c.id) === cid);
+        if (found) setCustomer(found);
+    }, [prefillCustomerId, existingAppointment?.id, mergedCustomers, customers]);
+
     const filteredCusts = useMemo(() => {
         const q = custModalQ.toLowerCase();
         if (!q) return mergedCustomers;
@@ -870,13 +885,15 @@ export function AppointmentPOS({
                         staff_id: sid,
                     });
                 } else if (svcId || (apt.service_name ?? '').trim()) {
+                    const mappedProd = svcId ? products.find((p) => String(p.id) === svcId) : undefined;
                     lines.push({
                         uid: uid(),
-                        type: 'service',
-                        item_id: svcId || `apt-${apt.id}`,
-                        name: String(apt.service_name ?? '—'),
-                        unit_price: Number(apt.total_price ?? 0),
+                        type: mappedProd ? 'product' : 'service',
+                        item_id: svcId || mappedProd?.id || `apt-${apt.id}`,
+                        name: mappedProd?.name ?? String(apt.service_name ?? '—'),
+                        unit_price: Number(apt.total_price ?? mappedProd?.price ?? 0),
                         qty: 1,
+                        color: mappedProd ? '#0d9488' : undefined,
                         duration_min: Math.max(1, Math.round(Number(apt.duration ?? 30))),
                         staff_id: sid,
                     });
@@ -902,6 +919,7 @@ export function AppointmentPOS({
                 const serviceId = String(primary.service_id ?? '').trim();
                 const mappedService = serviceId ? services.find(s => String(s.id) === serviceId) : undefined;
                 const staffId = String(primary.staff_id ?? primary.specialist_id ?? '').trim() || undefined;
+                const mappedProduct = serviceId ? products.find((p) => String(p.id) === serviceId) : undefined;
                 if (mappedService) {
                     setCart([{
                         uid: uid(),
@@ -912,6 +930,18 @@ export function AppointmentPOS({
                         qty: 1,
                         color: mappedService.color,
                         duration_min: Number(primary.duration ?? mappedService.duration_min ?? 30),
+                        staff_id: staffId,
+                    }]);
+                } else if (mappedProduct || serviceId || (primary.service_name ?? '').trim()) {
+                    setCart([{
+                        uid: uid(),
+                        type: mappedProduct ? 'product' : 'service',
+                        item_id: serviceId || mappedProduct?.id || `apt-${primary.id}`,
+                        name: mappedProduct?.name ?? String(primary.service_name ?? '—'),
+                        unit_price: Number(primary.total_price ?? mappedProduct?.price ?? 0),
+                        qty: 1,
+                        color: mappedProduct ? '#0d9488' : undefined,
+                        duration_min: Number(primary.duration ?? 30),
                         staff_id: staffId,
                     }]);
                 }
@@ -938,7 +968,7 @@ export function AppointmentPOS({
         return () => {
             cancelled = true;
         };
-    }, [existingAppointment, hydratedAppointmentId, mergedCustomers, services, prefillDate, prefillTime, tm]);
+    }, [existingAppointment, hydratedAppointmentId, mergedCustomers, services, products, prefillDate, prefillTime, tm]);
 
     useEffect(() => {
         setExistingEditBaselineFlush(0);
@@ -1071,7 +1101,7 @@ export function AppointmentPOS({
 
         setStaff(line.uid, nextStaffId);
 
-        if (!existingAppointment?.id || line.type !== 'service') return;
+        if (!existingAppointment?.id || (line.type !== 'service' && line.type !== 'product')) return;
 
         try {
             const dayYmd =
@@ -1264,22 +1294,28 @@ export function AppointmentPOS({
         );
     }, [existingAppointment?.id, existingAppointment?.status, aptStatus]);
     const serviceLines = useMemo(() => cart.filter(l => l.type === 'service'), [cart]);
-    /** Randevu: en az bir hizmet + her hizmet satırında personel (ürün/paket tek başına randevu oluşturmaz). */
-    const allServicesStaffed = serviceLines.length === 0 || serviceLines.every(l => !!l.staff_id?.trim());
-    const canBookApt = serviceLines.length > 0 && allServicesStaffed;
+    const productLines = useMemo(() => cart.filter(l => l.type === 'product'), [cart]);
+    /** Hizmet veya ürün sekmesinden seçilen satırlar randevu oluşturabilir (paket hariç). */
+    const appointmentBookLines = useMemo(
+        () => cart.filter((l) => l.type === 'service' || l.type === 'product'),
+        [cart],
+    );
+    const allBookLinesStaffed =
+        appointmentBookLines.length === 0 || appointmentBookLines.every((l) => !!l.staff_id?.trim());
+    const canBookApt = appointmentBookLines.length > 0 && allBookLinesStaffed;
 
     /** Kayıt / slot için satır başı dakika; tek satırda doğrudan gerçek süre, çoklu satırda plana orantılı bölünür. */
     const lineBookingDurations = useMemo(() => {
-        if (serviceLines.length === 0) return [];
-        if (serviceLines.length === 1) {
+        if (appointmentBookLines.length === 0) return [];
+        if (appointmentBookLines.length === 1) {
             return [Math.max(1, Math.round(aptActualDurationMin))];
         }
-        const weights = serviceLines.map((l) =>
+        const weights = appointmentBookLines.map((l) =>
             Math.max(1, Number(l.duration_min ?? 30) * Math.max(1, Number(l.qty ?? 1))),
         );
         const sumW = weights.reduce((s, w) => s + w, 0);
         const targetRaw = Math.round(aptActualDurationMin);
-        const target = Math.max(serviceLines.length, Math.max(1, targetRaw));
+        const target = Math.max(appointmentBookLines.length, Math.max(1, targetRaw));
         const base = weights.map((w) => Math.max(1, Math.floor((target * w) / sumW)));
         let sum = base.reduce((s, d) => s + d, 0);
         let diff = target - sum;
@@ -1301,7 +1337,7 @@ export function AppointmentPOS({
             diff++;
         }
         return out;
-    }, [serviceLines, aptActualDurationMin]);
+    }, [appointmentBookLines, aptActualDurationMin]);
 
     useEffect(() => {
         if (!existingAppointment?.id || hydratedAppointmentId !== existingAppointment.id || suppressEditBaselineForCompletedVisit) {
@@ -1379,9 +1415,10 @@ export function AppointmentPOS({
                 ok: !deviceTrim || devices.some(d => String(d.id) === String(deviceTrim) && d.is_active),
             },
         ];
-        for (const l of serviceLines) {
+        for (const l of appointmentBookLines) {
+            const lineLabel = l.type === 'product' ? tm('bPOSTabProducts') : tm('bDiagService');
             rows.push({
-                label: `${tm('bDiagService')}: ${l.name}`,
+                label: `${lineLabel}: ${l.name}`,
                 ok: true,
             });
             const sid = l.staff_id?.trim();
@@ -1392,7 +1429,7 @@ export function AppointmentPOS({
             });
         }
         return rows;
-    }, [aptDevice, customer, devices, serviceLines, specialists, tm]);
+    }, [aptDevice, customer, devices, appointmentBookLines, specialists, tm]);
 
     const openBookingBlockModal = useCallback(
         (kind: 'customer' | 'service' | 'staff' | 'no_specialists' | 'api_error', apiTechnical?: string) => {
@@ -1422,7 +1459,7 @@ export function AppointmentPOS({
                     steps = [
                         tm('bBookingModalStepStaff1'),
                         tm('bBookingModalStepStaff2'),
-                        ...serviceLines
+                        ...appointmentBookLines
                             .filter(l => !l.staff_id?.trim())
                             .map(l => `→ ${l.name}: ${tm('bBookingModalStepStaffPerLine')}`),
                     ];
@@ -1446,7 +1483,7 @@ export function AppointmentPOS({
                 diagnostics: diag,
             });
         },
-        [buildDiagnostics, serviceLines, tm]
+        [buildDiagnostics, appointmentBookLines, tm]
     );
 
     /** Hata objesi farklı formatta gelse bile teknik detayı üret */
@@ -1478,14 +1515,14 @@ export function AppointmentPOS({
     };
 
     const buildAptPayload = () => {
-        const firstSvc = cart.find(l => l.type === 'service');
-        const rawStaff = firstSvc?.staff_id;
+        const firstBook = cart.find((l) => l.type === 'service' || l.type === 'product');
+        const rawStaff = firstBook?.staff_id;
         const staffTrim = typeof rawStaff === 'string' ? rawStaff.trim() : '';
         const aptTimeSafe = safeTimeHHmm(aptTime);
         const aptDateSafe = safeDateYmd(aptDate);
         return {
             customer_id: customer!.id,
-            service_id: firstSvc?.item_id,
+            service_id: firstBook?.item_id,
             staff_id: staffTrim || undefined,
             device_id: aptDevice || undefined,
             date: aptDateSafe,
@@ -1527,9 +1564,18 @@ export function AppointmentPOS({
         const baseStart = hhmmToMin(safeTimeHHmm(aptTime)) ?? 9 * 60;
         const perStaffOffset = new Map<string, number>();
         const planned: ReturnType<typeof buildAptPayload>[] = [];
+        const ancillaryProductNames =
+            appointmentBookLines.length > 0 ? productLines.map((l) => l.name) : [];
+        const productTag = buildAppointmentProductNotesTag(ancillaryProductNames);
+        const mergeNotes = (base: string | undefined, withProduct: boolean) => {
+            const parts = [typeof base === 'string' ? base.trim() : '', withProduct ? productTag : ''].filter(
+                (p) => p.length > 0,
+            );
+            return parts.length ? parts.join(' | ') : undefined;
+        };
 
-        for (let idx = 0; idx < serviceLines.length; idx++) {
-            const line = serviceLines[idx];
+        for (let idx = 0; idx < appointmentBookLines.length; idx++) {
+            const line = appointmentBookLines[idx];
             const sid = String(line.staff_id ?? '').trim();
             const d =
                 lineBookingDurations[idx] ??
@@ -1550,7 +1596,7 @@ export function AppointmentPOS({
                 duration: d,
                 total_price: Number(line.unit_price ?? 0) * Math.max(1, Number(line.qty ?? 1)),
                 status: statusForCreate ?? aptStatus,
-                notes: aptNotes,
+                notes: mergeNotes(aptNotes, idx === 0),
                 type: 'regular',
                 is_package_session: false,
                 treatment_degree: receiptTreatmentDegree.trim() || null,
@@ -1603,14 +1649,14 @@ export function AppointmentPOS({
             staffId = String(hint.staffId ?? '').trim();
             devId = String(hint.deviceId ?? '').trim();
             dur = Math.max(1, Math.round(hint.durationMin));
-        } else if (serviceLines.length === 1) {
-            const line = serviceLines[0];
+        } else if (appointmentBookLines.length === 1) {
+            const line = appointmentBookLines[0];
             staffId = String(line.staff_id ?? '').trim();
             if (!staffId) return empty;
             dur = Math.max(1, Math.round(lineBookingDurations[0] ?? aptActualDurationMin));
             devId = String(aptDevice ?? '').trim();
-        } else if (serviceLines.length > 1) {
-            const line = serviceLines[0];
+        } else if (appointmentBookLines.length > 1) {
+            const line = appointmentBookLines[0];
             staffId = String(line.staff_id ?? '').trim();
             if (!staffId) return empty;
             dur = Math.max(
@@ -1628,7 +1674,7 @@ export function AppointmentPOS({
         const WORK_START = 8 * 60;
         const WORK_END = 20 * 60;
         const STEP = 15;
-        const multi = serviceLines.length > 1;
+        const multi = appointmentBookLines.length > 1;
         const anchor = hint?.anchorStartMin != null && !Number.isNaN(hint.anchorStartMin) ? hint.anchorStartMin : null;
         const scanFrom = multi && anchor != null ? Math.max(WORK_START, anchor - 90) : WORK_START;
         const scanTo = multi && anchor != null ? Math.min(WORK_END, anchor + 120 + dur) : WORK_END;
@@ -1767,11 +1813,11 @@ export function AppointmentPOS({
     };
 
     const browseFreeSlots = async () => {
-        if (serviceLines.length === 0 || !allServicesStaffed) {
+        if (appointmentBookLines.length === 0 || !allBookLinesStaffed) {
             toast.info(tm('bSlotBrowseNeedStaff'));
             return;
         }
-        if (!String(serviceLines[0].staff_id ?? '').trim()) {
+        if (!String(appointmentBookLines[0].staff_id ?? '').trim()) {
             toast.info(tm('bSlotBrowseNeedStaff'));
             return;
         }
@@ -1788,10 +1834,10 @@ export function AppointmentPOS({
             const day = safeDateYmd(aptDate);
             const existingRaw = await beautyService.getAppointmentsInRange(day, day);
             const existing = existingRaw.filter(beautyAptBlocksCalendarSlot);
-            const firstLine = serviceLines[0];
+            const firstLine = appointmentBookLines[0];
             const baseMin = hhmmToMin(safeTimeHHmm(aptTime));
             const hint: SlotSegHint | undefined =
-                serviceLines.length === 1
+                appointmentBookLines.length === 1
                     ? undefined
                     : {
                           staffId: String(firstLine.staff_id ?? '').trim(),
@@ -1835,11 +1881,11 @@ export function AppointmentPOS({
         if (wantsTerminal && dbCompleted && customer) {
             const prevSt = String(existingAppointment.status ?? '');
             if (prevSt !== String(aptStatus)) {
-                if (serviceLines.length > 0 && !allServicesStaffed) {
+                if (appointmentBookLines.length > 0 && !allBookLinesStaffed) {
                     openBookingBlockModal('staff');
                     return;
                 }
-                if (serviceLines.length > 0 && activeSpecialists.length === 0) {
+                if (appointmentBookLines.length > 0 && activeSpecialists.length === 0) {
                     openBookingBlockModal('no_specialists');
                     return;
                 }
@@ -1866,28 +1912,28 @@ export function AppointmentPOS({
 
         if (isExistingPaidComplete || !existingEditDirty) return;
         if (!canSave) return;
-        if (serviceLines.length > 0 && !allServicesStaffed) {
+        if (appointmentBookLines.length > 0 && !allBookLinesStaffed) {
             openBookingBlockModal('staff');
             return;
         }
-        if (serviceLines.length > 0 && activeSpecialists.length === 0) {
+        if (appointmentBookLines.length > 0 && activeSpecialists.length === 0) {
             openBookingBlockModal('no_specialists');
             return;
         }
         setUpdateExistingBusy(true);
         try {
             if (
-                serviceLines.length > 0 &&
+                appointmentBookLines.length > 0 &&
                 aptStatus !== AppointmentStatus.CANCELLED &&
                 aptStatus !== AppointmentStatus.NO_SHOW
             ) {
                 const planned = buildServiceAppointmentPayloads(aptStatus);
                 await ensureAppointmentSlotOk(planned);
             }
-            const firstSvc = serviceLines[0];
-            const firstSvcTotal =
-                firstSvc
-                    ? Number(firstSvc.unit_price ?? 0) * Math.max(1, Number(firstSvc.qty ?? 1))
+            const firstBook = appointmentBookLines[0];
+            const firstBookTotal =
+                firstBook
+                    ? Number(firstBook.unit_price ?? 0) * Math.max(1, Number(firstBook.qty ?? 1))
                     : total;
             await updateAppointment(existingAppointment.id, {
                 appointment_date: safeDateYmd(aptDate),
@@ -1897,10 +1943,10 @@ export function AppointmentPOS({
                 device_id: aptDevice || undefined,
                 notes: aptNotes || undefined,
                 status: aptStatus,
-                total_price: firstSvcTotal,
+                total_price: firstBookTotal,
                 duration: Math.max(1, Math.round(aptActualDurationMin || totalDur || Number(existingAppointment.duration) || 30)),
-                staff_id: firstSvc?.staff_id?.trim() || undefined,
-                service_id: serviceLines.length === 1 ? serviceLines[0]?.item_id : undefined,
+                staff_id: firstBook?.staff_id?.trim() || undefined,
+                service_id: appointmentBookLines.length === 1 ? appointmentBookLines[0]?.item_id : undefined,
                 treatment_degree: receiptTreatmentDegree.trim() || null,
                 treatment_shots: receiptTreatmentShots.trim() || null,
             });
@@ -1984,8 +2030,40 @@ export function AppointmentPOS({
         try {
             const planned = buildServiceAppointmentPayloads(aptStatus);
             await ensureAppointmentSlotOk(planned);
+            const createdIds: string[] = [];
             for (const p of planned) {
-                await createAppointment(p);
+                createdIds.push(await createAppointment(p));
+            }
+            const productLines = cart.filter((l) => l.type === 'product');
+            if (productLines.length > 0 && createdIds[0]) {
+                const prodGross = productLines.reduce((s, l) => s + l.unit_price * l.qty, 0);
+                await beautyService.createSale(
+                    {
+                        customer_id: customer!.id,
+                        customer_name: customer?.name,
+                        subtotal: prodGross,
+                        discount: 0,
+                        tax: 0,
+                        total: prodGross,
+                        payment_method: 'pending',
+                        payment_status: 'pending',
+                        paid_amount: 0,
+                        remaining_amount: prodGross,
+                        notes: buildBeautySaleNotesWithAppointmentLink(aptNotes?.trim() || undefined, createdIds[0]),
+                    },
+                    productLines.map((line) => ({
+                        item_type: 'product' as const,
+                        item_id: line.item_id,
+                        name: line.name,
+                        quantity: line.qty,
+                        unit_price: line.unit_price,
+                        discount: 0,
+                        total: line.unit_price * line.qty,
+                        staff_id: line.staff_id ?? null,
+                        commission_amount: 0,
+                    })),
+                    { skipErpAndLoyalty: true },
+                );
             }
             const receiptSettings = await getReceiptSettings(receiptFirmNr).catch((): ReceiptSettings => ({}));
             const payLang: KitchenReceiptLocale = isKitchenReceiptLocale(uiLanguage) ? uiLanguage : 'tr';
@@ -2047,7 +2125,7 @@ export function AppointmentPOS({
             openBookingBlockModal('customer');
             return;
         }
-        if (serviceLines.length === 0) {
+        if (appointmentBookLines.length === 0) {
             openBookingBlockModal('service');
             return;
         }
@@ -2055,7 +2133,7 @@ export function AppointmentPOS({
             openBookingBlockModal('no_specialists');
             return;
         }
-        if (!allServicesStaffed) {
+        if (!allBookLinesStaffed) {
             openBookingBlockModal('staff');
             return;
         }
@@ -2073,11 +2151,11 @@ export function AppointmentPOS({
             return;
         }
         if (!cart.length) return;
-        if (serviceLines.length > 0 && activeSpecialists.length === 0) {
+        if (appointmentBookLines.length > 0 && activeSpecialists.length === 0) {
             openBookingBlockModal('no_specialists');
             return;
         }
-        if (serviceLines.length > 0 && !allServicesStaffed) {
+        if (appointmentBookLines.length > 0 && !allBookLinesStaffed) {
             openBookingBlockModal('staff');
             return;
         }
@@ -2098,11 +2176,11 @@ export function AppointmentPOS({
             return;
         }
         if (!cart.length && !terminalFromCompleted) return;
-        if (serviceLines.length > 0 && activeSpecialists.length === 0) {
+        if (appointmentBookLines.length > 0 && activeSpecialists.length === 0) {
             openBookingBlockModal('no_specialists');
             return;
         }
-        if (serviceLines.length > 0 && !allServicesStaffed) {
+        if (appointmentBookLines.length > 0 && !allBookLinesStaffed) {
             openBookingBlockModal('staff');
             return;
         }
@@ -2198,12 +2276,12 @@ export function AppointmentPOS({
         checkoutSubmitRef.current = true;
         try {
             if (!canSave) return;
-            if (serviceLines.length > 0 && !allServicesStaffed) {
+            if (appointmentBookLines.length > 0 && !allBookLinesStaffed) {
                 setShowPay(false);
                 openBookingBlockModal('staff');
                 return;
             }
-            if (serviceLines.length > 0 && activeSpecialists.length === 0) {
+            if (appointmentBookLines.length > 0 && activeSpecialists.length === 0) {
                 setShowPay(false);
                 openBookingBlockModal('no_specialists');
                 return;
@@ -2216,12 +2294,12 @@ export function AppointmentPOS({
             const createdAppointmentIds: string[] = [];
 
             if (!isStandaloneProductSales && existingAppointment?.id) {
-                const firstSvc = serviceLines[0];
-                const firstSvcTotal =
-                    firstSvc
-                        ? Number(firstSvc.unit_price ?? 0) * Math.max(1, Number(firstSvc.qty ?? 1))
+                const firstBook = appointmentBookLines[0];
+                const firstBookTotal =
+                    firstBook
+                        ? Number(firstBook.unit_price ?? 0) * Math.max(1, Number(firstBook.qty ?? 1))
                         : finalTotalSale;
-                if (serviceLines.length > 0) {
+                if (appointmentBookLines.length > 0) {
                     const plannedPay = buildServiceAppointmentPayloads(AppointmentStatus.COMPLETED);
                     await ensureAppointmentSlotOk(plannedPay);
                 }
@@ -2233,7 +2311,7 @@ export function AppointmentPOS({
                     device_id: aptDevice || undefined,
                     notes: aptNotes || undefined,
                     status: AppointmentStatus.COMPLETED,
-                    total_price: firstSvcTotal,
+                    total_price: firstBookTotal,
                     duration: Math.max(1, Math.round(aptActualDurationMin || totalDur || Number(existingAppointment.duration) || 30)),
                     treatment_degree: receiptTreatmentDegree.trim() || null,
                     treatment_shots: receiptTreatmentShots.trim() || null,
@@ -2584,7 +2662,7 @@ export function AppointmentPOS({
                             <button
                                 type="button"
                                 onClick={() => void browseFreeSlots()}
-                                disabled={slotBrowseLoading || serviceLines.length === 0 || !allServicesStaffed}
+                                disabled={slotBrowseLoading || appointmentBookLines.length === 0 || !allBookLinesStaffed}
                                 title={tm('bSlotBrowseTitle')}
                                 style={{
                                     display: 'inline-flex',
@@ -2593,11 +2671,11 @@ export function AppointmentPOS({
                                     padding: '6px 10px',
                                     borderRadius: 5,
                                     border: '1px solid #c4b5fd',
-                                    background: serviceLines.length > 0 && allServicesStaffed ? '#fff' : '#f3f4f6',
-                                    color: serviceLines.length > 0 && allServicesStaffed ? '#5b21b6' : '#9ca3af',
+                                    background: appointmentBookLines.length > 0 && allBookLinesStaffed ? '#fff' : '#f3f4f6',
+                                    color: appointmentBookLines.length > 0 && allBookLinesStaffed ? '#5b21b6' : '#9ca3af',
                                     fontSize: 11,
                                     fontWeight: 800,
-                                    cursor: serviceLines.length > 0 && allServicesStaffed && !slotBrowseLoading ? 'pointer' : 'not-allowed',
+                                    cursor: appointmentBookLines.length > 0 && allBookLinesStaffed && !slotBrowseLoading ? 'pointer' : 'not-allowed',
                                     whiteSpace: 'nowrap',
                                 }}
                             >
@@ -3946,7 +4024,7 @@ export function AppointmentPOS({
                                     <p style={{ fontSize: 10, fontWeight: 600, color: '#6b7280', margin: 0, lineHeight: 1.45 }}>
                                         {tm('bPosSlotEditHint')}
                                     </p>
-                                    {serviceLines.length > 0 && (
+                                    {appointmentBookLines.length > 0 && (
                                         <Field label={tm('bPosActualDurationLabel')}>
                                             <input
                                                 type="number"
@@ -4118,31 +4196,31 @@ export function AppointmentPOS({
                                             bookingBusy ||
                                             !canSave ||
                                             !existingEditDirty ||
-                                            (serviceLines.length > 0 && !allServicesStaffed) ||
-                                            (serviceLines.length > 0 && activeSpecialists.length === 0)
+                                            (appointmentBookLines.length > 0 && !allBookLinesStaffed) ||
+                                            (appointmentBookLines.length > 0 && activeSpecialists.length === 0)
                                         }
                                         onClick={tryUpdateExistingAppointment}
                                         title={tm('bAppointmentUpdateHint')}
                                         style={{
                                             height: 38, borderRadius: 5, border:
                                                 existingEditDirty && canSave && !updateExistingBusy && !bookingBusy &&
-                                                !(serviceLines.length > 0 && (!allServicesStaffed || activeSpecialists.length === 0))
+                                                !(appointmentBookLines.length > 0 && (!allBookLinesStaffed || activeSpecialists.length === 0))
                                                     ? '2px solid #7c3aed'
                                                     : '1px solid #e5e7eb',
                                             background:
                                                 existingEditDirty && canSave && !updateExistingBusy && !bookingBusy &&
-                                                !(serviceLines.length > 0 && (!allServicesStaffed || activeSpecialists.length === 0))
+                                                !(appointmentBookLines.length > 0 && (!allBookLinesStaffed || activeSpecialists.length === 0))
                                                     ? '#fff'
                                                     : '#f9fafb',
                                             color:
                                                 existingEditDirty && canSave && !updateExistingBusy && !bookingBusy &&
-                                                !(serviceLines.length > 0 && (!allServicesStaffed || activeSpecialists.length === 0))
+                                                !(appointmentBookLines.length > 0 && (!allBookLinesStaffed || activeSpecialists.length === 0))
                                                     ? '#7c3aed'
                                                     : '#9ca3af',
                                             fontSize: 11, fontWeight: 800,
                                             cursor:
                                                 updateExistingBusy || bookingBusy || !existingEditDirty || !canSave ||
-                                                (serviceLines.length > 0 && (!allServicesStaffed || activeSpecialists.length === 0))
+                                                (appointmentBookLines.length > 0 && (!allBookLinesStaffed || activeSpecialists.length === 0))
                                                     ? 'not-allowed'
                                                     : 'pointer',
                                             display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,

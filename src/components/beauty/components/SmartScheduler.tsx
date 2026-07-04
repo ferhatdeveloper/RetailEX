@@ -14,6 +14,7 @@ import {
     type BeautyFollowUpReminder,
 } from '../../../types/beauty';
 import { beautyService } from '../../../services/beautyService';
+import { resolveAppointmentProductLabels } from '../../../utils/beautyAppointmentProducts';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { logger } from '../../../services/loggingService';
 import { WeekView, MonthView, AgendaView } from './WeekMonthViews';
@@ -60,9 +61,10 @@ import { FollowUpReminderActionModal } from './FollowUpReminderActionModal';
 import { FollowUpMesajBildirimModal } from './FollowUpMesajBildirimModal';
 import {
     filterFollowUpRemindersForBulk,
-    sendFollowUpReminderWhatsApp,
-    sendFollowUpRemindersBulkWhatsApp,
+    buildFollowUpBulkPreviewList,
 } from '../../../utils/followUpWhatsAppSend';
+import { WhatsAppBulkSendPreviewModal } from '../../shared/WhatsAppBulkSendPreviewModal';
+import type { WhatsAppBulkPreviewItem } from '../../../utils/whatsappBulkSend';
 import { toast } from 'sonner';
 import { useClinicErpSpecialtyOptional } from '../context/ClinicErpSpecialtyContext';
 import { useResponsive } from '../../../hooks/useResponsive';
@@ -293,7 +295,12 @@ export function SmartScheduler() {
     const [prefillDeviceId, setPrefillDeviceId] = useState<string | undefined>(undefined);
     /** CRM / sihirbaz: randevudaki hizmeti sepete bir kez eklemek için */
     const [prefillServiceId, setPrefillServiceId] = useState<string | undefined>(undefined);
+    const [prefillCustomerId, setPrefillCustomerId] = useState<string | undefined>(undefined);
     const [editingApt,      setEditingApt]      = useState<BeautyAppointment | null>(null);
+    const [aptProductLabels, setAptProductLabels] = useState<Map<string, string[]>>(new Map());
+    const [lastCustomerTreatments, setLastCustomerTreatments] = useState<
+        Map<string, { treatment_shots?: string | null; treatment_degree?: string | null }>
+    >(new Map());
 
     /** Sağ panelden “Anket yap” ile açılan memnuniyet anketi */
     const [feedbackApt, setFeedbackApt] = useState<BeautyAppointment | null>(null);
@@ -488,24 +495,35 @@ export function SmartScheduler() {
 
     const [followUpReminders, setFollowUpReminders] = useState<BeautyFollowUpReminder[]>([]);
     const [followUpActionTarget, setFollowUpActionTarget] = useState<BeautyFollowUpReminder | null>(null);
-    const [followUpWhatsAppSendingKey, setFollowUpWhatsAppSendingKey] = useState<string | null>(null);
     const [showMesajBildirim, setShowMesajBildirim] = useState(false);
     const [followUpBulkSending, setFollowUpBulkSending] = useState(false);
+    const [followUpBulkPreviewOpen, setFollowUpBulkPreviewOpen] = useState(false);
+    const [followUpBulkPreviewItems, setFollowUpBulkPreviewItems] = useState<WhatsAppBulkPreviewItem[]>([]);
+    const [followUpSinglePreviewTitle, setFollowUpSinglePreviewTitle] = useState('');
+    const [followUpPreviewReminder, setFollowUpPreviewReminder] = useState<BeautyFollowUpReminder | null>(null);
 
-    const handleFollowUpWhatsApp = useCallback(async (reminder: BeautyFollowUpReminder) => {
-        const key = `${reminder.customer_id}-${reminder.service_id}-${reminder.due_date}`;
-        setFollowUpWhatsAppSendingKey(key);
+    const openFollowUpWhatsAppPreview = useCallback(async (reminder: BeautyFollowUpReminder) => {
         try {
-            const r = await sendFollowUpReminderWhatsApp(reminder);
-            if (r.success) {
-                toast.success(tm('bFollowUpWhatsAppSent'));
-            } else {
-                toast.error(r.error || tm('bFollowUpWhatsAppFailed'));
+            const items = await buildFollowUpBulkPreviewList([reminder]);
+            if (!items.length) {
+                toast.warning(tm('msgNotifyNoRecipients'));
+                return;
             }
-        } finally {
-            setFollowUpWhatsAppSendingKey(null);
+            setFollowUpSinglePreviewTitle(
+                `${reminder.customer_name ?? '—'} · ${tm('msgNotifyModeSingle')}`,
+            );
+            setFollowUpPreviewReminder(reminder);
+            setFollowUpBulkPreviewItems(items);
+            setFollowUpBulkPreviewOpen(true);
+        } catch (e: unknown) {
+            toast.error(e instanceof Error ? e.message : String(e));
         }
     }, [tm]);
+
+    const handleFollowUpWhatsApp = useCallback(
+        (reminder: BeautyFollowUpReminder) => void openFollowUpWhatsAppPreview(reminder),
+        [openFollowUpWhatsAppPreview],
+    );
 
     const followUpBulkCount = useMemo(
         () => filterFollowUpRemindersForBulk(followUpReminders).length,
@@ -519,20 +537,17 @@ export function SmartScheduler() {
         }
         setFollowUpBulkSending(true);
         try {
-            const result = await sendFollowUpRemindersBulkWhatsApp(followUpReminders);
-            if (result.queued > 0) {
-                toast.success(
-                    tm('msgNotifySentSummary')
-                        .replace('{queued}', String(result.queued))
-                        .replace('{sent}', String(result.sent)),
-                );
-            }
-            if (result.errors.length > 0) {
-                toast.error(result.errors.slice(0, 3).join('\n'));
-            }
-            if (result.queued === 0 && result.errors.length === 0) {
+            const items = await buildFollowUpBulkPreviewList(followUpReminders);
+            if (!items.length) {
                 toast.warning(tm('msgNotifyNoRecipients'));
+                return;
             }
+            setFollowUpBulkPreviewItems(items);
+            setFollowUpPreviewReminder(null);
+            setFollowUpSinglePreviewTitle('');
+            setFollowUpBulkPreviewOpen(true);
+        } catch (e: unknown) {
+            toast.error(e instanceof Error ? e.message : String(e));
         } finally {
             setFollowUpBulkSending(false);
         }
@@ -611,7 +626,7 @@ export function SmartScheduler() {
     );
 
     /** Personel ve cihaz aynı anda (sihirbaz) veya tek sütun (takvim) ile doldurulabilir */
-    type NewAptPrefill = { staffId?: string; deviceId?: string; serviceId?: string };
+    type NewAptPrefill = { staffId?: string; deviceId?: string; serviceId?: string; customerId?: string };
 
     const openNewApt = useCallback((time?: string, dateYmd?: string, prefill?: NewAptPrefill) => {
         if (dateYmd && /^\d{4}-\d{2}-\d{2}$/.test(dateYmd)) {
@@ -626,6 +641,8 @@ export function SmartScheduler() {
         setPrefillDeviceId(prefill?.deviceId);
         const svc = prefill?.serviceId?.trim();
         setPrefillServiceId(svc || undefined);
+        const cid = prefill?.customerId?.trim();
+        setPrefillCustomerId(cid || undefined);
         setShowNewPage(true);
     }, []);
 
@@ -640,6 +657,7 @@ export function SmartScheduler() {
                 staffId?: string;
                 deviceId?: string;
                 serviceId?: string;
+                customerId?: string;
             }>;
             const d = ce.detail;
             if (!d?.dateYmd) return;
@@ -647,6 +665,7 @@ export function SmartScheduler() {
                 staffId: d.staffId?.trim() || undefined,
                 deviceId: d.deviceId?.trim() || undefined,
                 serviceId: d.serviceId?.trim() || undefined,
+                customerId: d.customerId?.trim() || undefined,
             });
         };
         window.addEventListener('beauty-open-new-appointment', onShellOpen);
@@ -942,7 +961,7 @@ export function SmartScheduler() {
 
     const timeSlots = useMemo(() => {
         const startMin = 9 * 60;
-        const endMin = 21 * 60;
+        const endMin = 23 * 60 + 59;
         const slots: string[] = [];
         for (let m = startMin; m <= endMin; m += schedulerSlotMin) {
             const hh = Math.floor(m / 60).toString().padStart(2, '0');
@@ -951,6 +970,36 @@ export function SmartScheduler() {
         }
         return slots;
     }, [schedulerSlotMin]);
+
+    useEffect(() => {
+        const apts = visibleAppointments;
+        const aptIds = apts.map((a) => String(a.id ?? '').trim()).filter(Boolean);
+        const custIds = [
+            ...new Set(
+                apts
+                    .map((a) => String(a.customer_id ?? a.client_id ?? '').trim())
+                    .filter(Boolean),
+            ),
+        ];
+        let cancelled = false;
+        void (async () => {
+            try {
+                const [products, treatments] = await Promise.all([
+                    aptIds.length ? beautyService.getProductLabelsByAppointmentIds(aptIds) : Promise.resolve(new Map()),
+                    custIds.length ? beautyService.getLastCustomerTreatments(custIds) : Promise.resolve(new Map()),
+                ]);
+                if (!cancelled) {
+                    setAptProductLabels(products);
+                    setLastCustomerTreatments(treatments);
+                }
+            } catch (e) {
+                logger.crudError('SmartScheduler', 'loadAptEnrichment', e);
+            }
+        })();
+        return () => {
+            cancelled = true;
+        };
+    }, [visibleAppointments]);
 
     const slotBucket = useCallback((raw: string, interval: number): string => {
         const s = String(raw ?? '').trim();
@@ -1061,6 +1110,11 @@ export function SmartScheduler() {
         const phone = customerPhoneLine(apt);
         const noteText = String(apt.notes ?? '').trim();
         const hasNote = noteText.length > 0;
+        const productLabels = resolveAppointmentProductLabels(apt.id, apt.notes, aptProductLabels);
+        const custId = String(apt.customer_id ?? apt.client_id ?? '').trim();
+        const lastTreat = custId ? lastCustomerTreatments.get(custId) : undefined;
+        const lastShots = String(lastTreat?.treatment_shots ?? '').trim();
+        const lastDegree = String(lastTreat?.treatment_degree ?? '').trim();
         const cardBg = earlyDone ? '#fef3c7' : done ? cfg.bg : hasNote ? '#fffbeb' : '#fff';
         const cardBorder = earlyDone ? '#f59e0b88' : done ? cfg.color + '55' : hasNote ? '#fde68a' : '#e8e4f0';
         const cardBorderLeft = earlyDone ? '#d97706' : done ? cfg.color : hasNote ? '#d97706' : color;
@@ -1094,6 +1148,18 @@ export function SmartScheduler() {
                     </div>
                 ) : null}
                 <p style={{ fontSize: 11, fontWeight: 600, color: '#9ca3af', marginBottom: 6 }}>{resolveServiceName(apt)}</p>
+                {productLabels.length > 0 ? (
+                    <p style={{ fontSize: 10, fontWeight: 600, color: '#0d9488', marginBottom: 6, lineHeight: 1.35 }}>
+                        {tm('bAptCardProducts')}: {productLabels.join(', ')}
+                    </p>
+                ) : null}
+                {(lastShots || lastDegree) ? (
+                    <p style={{ fontSize: 10, fontWeight: 600, color: '#7c3aed', marginBottom: 6, lineHeight: 1.35 }}>
+                        {tm('bAptCardLastTreatment')}
+                        {lastShots ? ` · ${tm('bReceiptTreatmentShots')}: ${lastShots}` : ''}
+                        {lastDegree ? ` · ${tm('bReceiptTreatmentDegree')}: ${lastDegree}` : ''}
+                    </p>
+                ) : null}
                 {earlyDone ? (
                     <p
                         style={{
@@ -1244,6 +1310,7 @@ export function SmartScheduler() {
                         prefillStaffId={prefillStaffId}
                         prefillDeviceId={prefillDeviceId}
                         prefillServiceId={prefillServiceId}
+                        prefillCustomerId={prefillCustomerId}
                         existingAppointment={editingApt}
                         onBack={() => {
                             setShowNewPage(false);
@@ -1251,6 +1318,7 @@ export function SmartScheduler() {
                             setPrefillStaffId(undefined);
                             setPrefillDeviceId(undefined);
                             setPrefillServiceId(undefined);
+                            setPrefillCustomerId(undefined);
                             setEditingApt(null);
                             const r = useBeautyStore.getState().lastAppointmentRange;
                             if (r) void loadAppointmentsInRange(r.start, r.end);
@@ -1940,6 +2008,8 @@ export function SmartScheduler() {
                                     }
                                     openNewApt(t, d);
                                 }}
+                                productLabelsByAppointmentId={aptProductLabels}
+                                lastTreatmentByCustomerId={lastCustomerTreatments}
                             />
                         )}
 
@@ -1996,6 +2066,8 @@ export function SmartScheduler() {
                                                         useStatusTint
                                                         resourceDragKind="device"
                                                         dragResourceTitle={tm('bBeautyDragToResourceColumnTitle')}
+                                                        productLabelsByAppointmentId={aptProductLabels}
+                                                        lastTreatmentByCustomerId={lastCustomerTreatments}
                                                         onAppointmentClick={handleAppointmentPrimaryClick}
                                                         onAddClick={() => {
                                                             const dayYmd = formatLocalYmd(currentDate);
@@ -2206,12 +2278,15 @@ export function SmartScheduler() {
                                 categoryLabels={serviceCategoryLabels}
                                 dayHeaderLocale={scheduleDayHeaderLocale}
                                 renderAppointment={renderAptCard}
-                                onAddClick={(dateYmd, serviceId) => {
+                                onAddClick={(dateYmd, serviceId, opts) => {
                                     const [y, mo, da] = dateYmd.split('-').map(Number);
                                     if (Number.isFinite(y) && Number.isFinite(mo) && Number.isFinite(da)) {
                                         setCurrentDate(new Date(y, mo - 1, da));
                                     }
-                                    openNewApt(undefined, dateYmd, { serviceId });
+                                    openNewApt(undefined, dateYmd, {
+                                        serviceId,
+                                        customerId: opts?.customerId,
+                                    });
                                 }}
                                 followUpBadgeLabel={tm('bFollowUpBadge')}
                                 followUpBookCtaLabel={tm('bFollowUpBookCta')}
@@ -2228,7 +2303,6 @@ export function SmartScheduler() {
                                 followUpManageLabel={tm('bFollowUpManage')}
                                 onFollowUpWhatsApp={(r) => void handleFollowUpWhatsApp(r)}
                                 followUpWhatsAppLabel={tm('bFollowUpWhatsApp')}
-                                followUpWhatsAppSendingId={followUpWhatsAppSendingKey}
                                 followUpStatusLabels={followUpStatusLabels}
                                 formatFollowUpPostponedLine={date =>
                                     tm('bFollowUpPostponedLine').replace('{date}', date)}
@@ -2306,6 +2380,30 @@ export function SmartScheduler() {
                                                             <p style={{ fontSize: 10, color: '#6b7280', fontWeight: 600, margin: '2px 0 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{customerPhoneLine(apt)}</p>
                                                         ) : null}
                                                         <p style={{ fontSize: 11, color: '#9ca3af', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{resolveServiceName(apt)}</p>
+                                                        {(() => {
+                                                            const productLabels = resolveAppointmentProductLabels(apt.id, apt.notes, aptProductLabels);
+                                                            const custId = String(apt.customer_id ?? apt.client_id ?? '').trim();
+                                                            const lastTreat = custId ? lastCustomerTreatments.get(custId) : undefined;
+                                                            const lastShots = String(lastTreat?.treatment_shots ?? '').trim();
+                                                            const lastDegree = String(lastTreat?.treatment_degree ?? '').trim();
+                                                            if (!productLabels.length && !lastShots && !lastDegree) return null;
+                                                            return (
+                                                                <div style={{ marginTop: 4, lineHeight: 1.35 }}>
+                                                                    {productLabels.length > 0 ? (
+                                                                        <p style={{ fontSize: 10, color: '#0d9488', fontWeight: 600, margin: 0 }}>
+                                                                            {tm('bAptCardProducts')}: {productLabels.join(', ')}
+                                                                        </p>
+                                                                    ) : null}
+                                                                    {(lastShots || lastDegree) ? (
+                                                                        <p style={{ fontSize: 10, color: '#7c3aed', fontWeight: 600, margin: productLabels.length ? '2px 0 0' : 0 }}>
+                                                                            {tm('bAptCardLastTreatment')}
+                                                                            {lastShots ? ` · ${tm('bReceiptTreatmentShots')}: ${lastShots}` : ''}
+                                                                            {lastDegree ? ` · ${tm('bReceiptTreatmentDegree')}: ${lastDegree}` : ''}
+                                                                        </p>
+                                                                    ) : null}
+                                                                </div>
+                                                            );
+                                                        })()}
                                                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 4 }}>
                                                             <button
                                                                 type="button"
@@ -2866,11 +2964,6 @@ export function SmartScheduler() {
                         ? () => void handleFollowUpWhatsApp(followUpActionTarget)
                         : undefined
                 }
-                whatsAppSending={
-                    followUpActionTarget != null &&
-                    followUpWhatsAppSendingKey ===
-                        `${followUpActionTarget.customer_id}-${followUpActionTarget.service_id}-${followUpActionTarget.due_date}`
-                }
                 labels={{
                     title: tm('bFollowUpModalTitle'),
                     status: tm('bFollowUpStatusLabel'),
@@ -2899,6 +2992,26 @@ export function SmartScheduler() {
                 dateStart={serviceBoardRange.start}
                 dateEnd={serviceBoardRange.end}
                 title={tm('bFollowUpMesajBildirim')}
+            />
+
+            <WhatsAppBulkSendPreviewModal
+                open={followUpBulkPreviewOpen}
+                items={followUpBulkPreviewItems}
+                title={
+                    followUpSinglePreviewTitle ||
+                    tm('bFollowUpBulkWhatsApp').replace('{n}', String(followUpBulkPreviewItems.length))
+                }
+                onClose={() => {
+                    setFollowUpBulkPreviewOpen(false);
+                    setFollowUpSinglePreviewTitle('');
+                    setFollowUpPreviewReminder(null);
+                }}
+                onRebuildItems={async (lang) => {
+                    if (followUpPreviewReminder) {
+                        return buildFollowUpBulkPreviewList([followUpPreviewReminder], { lang });
+                    }
+                    return buildFollowUpBulkPreviewList(followUpReminders, { lang });
+                }}
             />
         </div>
     );

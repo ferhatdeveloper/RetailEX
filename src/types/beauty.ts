@@ -569,8 +569,14 @@ export type BeautySurveyQuestionStat = {
 export type BeautySurveyResponseRow = {
     id: string;
     created_at: string;
+    customer_id?: string | null;
     customer_name: string;
+    customer_phone?: string | null;
+    appointment_id?: string | null;
     appointment_date: string | null;
+    appointment_time?: string | null;
+    specialist_name?: string | null;
+    service_name?: string | null;
     overall_rating: number;
     would_recommend: boolean;
     comment: string | null;
@@ -711,7 +717,37 @@ export interface BeautySale {
     notes?: string;
     created_at: string;
     items?: BeautySaleItem[];
+    /** `rex_appt:` bağlantısından zenginleştirme */
+    linked_appointment_id?: string;
+    linked_staff_name?: string;
+    linked_treatment_shots?: string | null;
+    linked_treatment_degree?: string | null;
 }
+
+/** Personel bazında günlük shot / derece özeti */
+export interface BeautyStaffTreatmentReportRow {
+    staff_id: string;
+    staff_name: string;
+    day_ymd: string;
+    appointment_count: number;
+    shots_count: number;
+    degree_count: number;
+    shots_samples: string[];
+    degree_samples: string[];
+}
+
+export interface BeautyStaffTreatmentReport {
+    start_ymd: string;
+    end_ymd: string;
+    rows: BeautyStaffTreatmentReportRow[];
+}
+
+export type BeautyCustomerLastTreatment = {
+    customer_id: string;
+    treatment_shots?: string | null;
+    treatment_degree?: string | null;
+    appointment_date?: string | null;
+};
 
 export interface BeautySaleItem {
     id: string;

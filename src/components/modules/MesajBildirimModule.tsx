@@ -35,8 +35,23 @@ import {
 import type { BeautyFollowUpReminder } from '../../types/beauty';
 import {
   filterFollowUpRemindersForBulk,
-  sendFollowUpRemindersBulkWhatsApp,
+  buildFollowUpBulkPreviewList,
 } from '../../utils/followUpWhatsAppSend';
+import { WhatsAppBulkSendPreviewModal } from '../shared/WhatsAppBulkSendPreviewModal';
+import type { WhatsAppBulkPreviewItem } from '../../utils/whatsappBulkSend';
+import {
+  CUSTOMER_BROADCAST_TEMPLATES,
+  FOLLOW_UP_REMINDER_TIME_LABEL,
+  WHATSAPP_FREE_TEXT_PRESET_OPTIONS,
+  WHATSAPP_MESSAGE_LANG_OPTIONS,
+  buildFollowUpFreeText,
+  getFreeTextPresetTemplate,
+  metaPresetFamilyForFreeTextPreset,
+  metaTemplateIdForPresetAndLang,
+  normalizeWhatsAppMessageLang,
+  type WhatsAppFreeTextPresetId,
+  type WhatsAppMessageLang,
+} from '../../services/messaging/whatsappMessageLang';
 
 export interface MesajBildirimModuleProps {
   embedded?: boolean;
@@ -60,9 +75,6 @@ const BASE_AUDIENCE_MODES: Array<{
   { id: 'group_exclude', icon: FilterX, labelKey: 'msgNotifyModeGroupExclude' },
 ];
 
-const DEFAULT_FREE_TEXT =
-  'Merhaba {customer_name}, sizinle iletişime geçmek istedik. RetailEX';
-
 export function MesajBildirimModule({
   embedded = false,
   onClose,
@@ -71,7 +83,7 @@ export function MesajBildirimModule({
   dateEnd,
 }: MesajBildirimModuleProps = {}) {
   const { darkMode } = useTheme();
-  const { tm } = useLanguage();
+  const { tm, language } = useLanguage();
 
   const hasFollowUpContext = followUpReminders.length > 0;
 
@@ -93,10 +105,19 @@ export function MesajBildirimModule({
   const [mode, setMode] = useState<NotifyMode>(hasFollowUpContext ? 'follow_up_range' : 'single');
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [groupFilter, setGroupFilter] = useState<CustomerGroupFilter>({});
-  const [messageText, setMessageText] = useState(DEFAULT_FREE_TEXT);
+  const [messageText, setMessageText] = useState(() =>
+    getFreeTextPresetTemplate('customer_greeting', normalizeWhatsAppMessageLang(language)),
+  );
+  const [messageLang, setMessageLang] = useState<WhatsAppMessageLang>(
+    () => normalizeWhatsAppMessageLang(language),
+  );
+  const [freeTextPreset, setFreeTextPreset] = useState<WhatsAppFreeTextPresetId>('customer_greeting');
   const [metaTemplateId, setMetaTemplateId] = useState('retailex_appointment_tr');
   const [metaParams, setMetaParams] = useState<string[]>(['', '', '', '']);
   const [customerSearch, setCustomerSearch] = useState('');
+  const [bulkPreviewOpen, setBulkPreviewOpen] = useState(false);
+  const [bulkPreviewItems, setBulkPreviewItems] = useState<WhatsAppBulkPreviewItem[]>([]);
+  const [bulkPreviewTitle, setBulkPreviewTitle] = useState('');
 
   const panel = darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200';
   const inputCls = darkMode
@@ -142,6 +163,31 @@ export function MesajBildirimModule({
     setMetaParams(selectedMetaTpl.parameterLabels.map(() => ''));
   }, [selectedMetaTpl?.id]);
 
+  const applyLangAndPreset = useCallback(
+    (lang: WhatsAppMessageLang, preset: WhatsAppFreeTextPresetId) => {
+      if (mode === 'follow_up_range') return;
+      if (isMeta) {
+        const family = metaPresetFamilyForFreeTextPreset(preset);
+        setMetaTemplateId(metaTemplateIdForPresetAndLang(family, lang));
+        return;
+      }
+      if (preset !== 'custom') {
+        setMessageText(getFreeTextPresetTemplate(preset, lang));
+      }
+    },
+    [isMeta, mode],
+  );
+
+  const handleMessageLangChange = (lang: WhatsAppMessageLang) => {
+    setMessageLang(lang);
+    applyLangAndPreset(lang, freeTextPreset);
+  };
+
+  const handlePresetChange = (preset: WhatsAppFreeTextPresetId) => {
+    setFreeTextPreset(preset);
+    applyLangAndPreset(messageLang, preset);
+  };
+
   const filteredCustomers = useMemo(() => {
     const q = customerSearch.trim().toLowerCase();
     if (!q) return customers;
@@ -184,16 +230,18 @@ export function MesajBildirimModule({
         r.reminder_kind === 'product' && r.product_name?.trim()
           ? r.product_name.trim()
           : r.service_name?.trim() || 'Hizmet';
-      if (isMeta && selectedMetaTpl) {
+      if (isMeta) {
         const params = [
           name,
           r.due_date,
-          'Hatırlatma',
+          FOLLOW_UP_REMINDER_TIME_LABEL[messageLang],
           service,
         ];
-        return previewMetaTemplateBody(selectedMetaTpl, params);
+        const tplId = metaTemplateIdForPresetAndLang('appointment', messageLang);
+        const tpl = metaTemplates.find((t) => t.id === tplId) ?? selectedMetaTpl;
+        if (tpl) return previewMetaTemplateBody(tpl, params);
       }
-      return `Merhaba ${name}, ${r.due_date} tarihinde ${service} için takip hatırlatmanız bulunmaktadır. RetailEX`;
+      return buildFollowUpFreeText(messageLang, name, r.due_date, service);
     }
     const sample = customers[0];
     if (!sample) return messageText;
@@ -207,12 +255,24 @@ export function MesajBildirimModule({
       });
       return previewMetaTemplateBody(selectedMetaTpl, params);
     }
+    const today = new Date().toISOString().slice(0, 10);
     return messageText
       .replace(/\{customer_name\}/g, sample.name)
       .replace(/\{name\}/g, sample.name)
       .replace(/\{city\}/g, sample.city ?? '')
-      .replace(/\{date\}/g, new Date().toISOString().slice(0, 10));
-  }, [customers, messageText, isMeta, selectedMetaTpl, metaParams, mode, followUpBulkRows]);
+      .replace(/\{date\}/g, today)
+      .replace(/\{time\}/g, '14:00');
+  }, [
+    customers,
+    messageText,
+    isMeta,
+    selectedMetaTpl,
+    metaParams,
+    mode,
+    followUpBulkRows,
+    messageLang,
+    metaTemplates,
+  ]);
 
   const toggleCustomer = (id: string) => {
     if (mode === 'single' || mode === 'follow_up_range') {
@@ -224,69 +284,90 @@ export function MesajBildirimModule({
     );
   };
 
-  const handleSend = async () => {
+  const handlePrepareSend = async () => {
     if (provider === 'NONE') {
       toast.error(tm('msgNotifyProviderOff'));
       return;
     }
     setSending(true);
     try {
+      let items: WhatsAppBulkPreviewItem[] = [];
       if (mode === 'follow_up_range') {
         if (followUpBulkRows.length === 0) {
           toast.warning(tm('msgNotifyNoRecipients'));
           return;
         }
-        const result = await sendFollowUpRemindersBulkWhatsApp(followUpReminders);
-        const statsNow = await messagingService.getQueueStats();
-        setStats(statsNow);
-        if (result.queued > 0) {
-          toast.success(
-            tm('msgNotifySentSummary')
-              .replace('{queued}', String(result.queued))
-              .replace('{sent}', String(result.sent)),
-          );
+        items = await buildFollowUpBulkPreviewList(followUpReminders, { lang: messageLang });
+        setBulkPreviewTitle(tm('msgNotifyModeFollowUpRange'));
+      } else {
+        const recipients = await customerNotificationService.resolveRecipients({
+          mode: mode as CustomerNotifyAudience,
+          customerIds: selectedIds,
+          groupFilter,
+        });
+        if (recipients.length === 0) {
+          toast.warning(tm('msgNotifyNoRecipients'));
+          return;
         }
-        if (result.errors.length > 0) {
-          toast.error(result.errors.slice(0, 3).join('\n'));
-        }
-        return;
+        items = await customerNotificationService.buildBulkPreviewItems({
+          recipients,
+          messageTemplate: messageText,
+          metaTemplateId: isMeta ? metaTemplateId : undefined,
+          metaManualParameters: isMeta ? metaParams : undefined,
+          eventType: 'customer_broadcast',
+        });
+        setBulkPreviewTitle(tm('msgNotifyBulkPreviewSubtitle'));
       }
-
-      const recipients = await customerNotificationService.resolveRecipients({
-        mode: mode as CustomerNotifyAudience,
-        customerIds: selectedIds,
-        groupFilter,
-      });
-      if (recipients.length === 0) {
+      if (!items.length) {
         toast.warning(tm('msgNotifyNoRecipients'));
         return;
       }
-      const result = await customerNotificationService.enqueueBulkNotifications({
-        recipients,
-        messageTemplate: messageText,
-        metaTemplateId: isMeta ? metaTemplateId : undefined,
-        metaManualParameters: isMeta ? metaParams : undefined,
-        eventType: 'customer_broadcast',
-        autoProcess: true,
-      });
-      const statsNow = await messagingService.getQueueStats();
-      setStats(statsNow);
-      if (result.queued > 0) {
-        toast.success(
-          tm('msgNotifySentSummary')
-            .replace('{queued}', String(result.queued))
-            .replace('{sent}', String(result.sent)),
-        );
-      }
-      if (result.errors.length > 0) {
-        toast.error(result.errors.slice(0, 3).join('\n'));
-      }
+      setBulkPreviewItems(items);
+      setBulkPreviewOpen(true);
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : String(e));
     } finally {
       setSending(false);
     }
   };
+
+  const handleBulkComplete = async () => {
+    const statsNow = await messagingService.getQueueStats();
+    setStats(statsNow);
+  };
+
+  const rebuildBulkPreviewItems = useCallback(
+    async (lang: WhatsAppMessageLang): Promise<WhatsAppBulkPreviewItem[]> => {
+      if (mode === 'follow_up_range') {
+        return buildFollowUpBulkPreviewList(followUpReminders, { lang });
+      }
+      const recipients = await customerNotificationService.resolveRecipients({
+        mode: mode as CustomerNotifyAudience,
+        customerIds: selectedIds,
+        groupFilter,
+      });
+      if (isMeta) {
+        const family = metaPresetFamilyForFreeTextPreset(freeTextPreset);
+        return customerNotificationService.buildBulkPreviewItems({
+          recipients,
+          messageTemplate: '',
+          metaTemplateId: metaTemplateIdForPresetAndLang(family, lang),
+          metaManualParameters: metaParams,
+          eventType: 'customer_broadcast',
+        });
+      }
+      const template =
+        freeTextPreset === 'custom'
+          ? messageText
+          : getFreeTextPresetTemplate(freeTextPreset, lang);
+      return customerNotificationService.buildBulkPreviewItems({
+        recipients,
+        messageTemplate: template,
+        eventType: 'customer_broadcast',
+      });
+    },
+    [mode, followUpReminders, selectedIds, groupFilter, isMeta, metaParams, freeTextPreset, messageText],
+  );
 
   const handleProcessQueue = async () => {
     setProcessing(true);
@@ -546,6 +627,45 @@ export function MesajBildirimModule({
             {tm('msgNotifyMessageTitle')}
           </h2>
 
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className={labelCls}>{tm('msgNotifyBulkLang')}</label>
+              <select
+                value={messageLang}
+                onChange={(e) => handleMessageLangChange(e.target.value as WhatsAppMessageLang)}
+                className={inputCls}
+              >
+                {WHATSAPP_MESSAGE_LANG_OPTIONS.map((opt) => (
+                  <option key={opt.id} value={opt.id}>
+                    {tm(opt.labelKey)}
+                  </option>
+                ))}
+              </select>
+            </div>
+            {mode !== 'follow_up_range' ? (
+              <div>
+                <label className={labelCls}>{tm('msgNotifyTplPreset')}</label>
+                <select
+                  value={freeTextPreset}
+                  onChange={(e) => handlePresetChange(e.target.value as WhatsAppFreeTextPresetId)}
+                  className={inputCls}
+                >
+                  {WHATSAPP_FREE_TEXT_PRESET_OPTIONS.map((opt) => (
+                    <option key={opt.id} value={opt.id}>
+                      {tm(opt.labelKey)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ) : (
+              <div className="flex items-end">
+                <p className={`text-xs pb-2.5 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                  {tm('msgNotifyFollowUpTplHint')}
+                </p>
+              </div>
+            )}
+          </div>
+
           {mode !== 'follow_up_range' && (
             isMeta ? (
               <>
@@ -553,7 +673,10 @@ export function MesajBildirimModule({
                   <label className={labelCls}>{tm('msgNotifyMetaTemplate')}</label>
                   <select
                     value={metaTemplateId}
-                    onChange={(e) => setMetaTemplateId(e.target.value)}
+                    onChange={(e) => {
+                      setFreeTextPreset('custom');
+                      setMetaTemplateId(e.target.value);
+                    }}
                     className={inputCls}
                   >
                     {metaTemplates.map((t) => (
@@ -586,7 +709,10 @@ export function MesajBildirimModule({
                 <label className={labelCls}>{tm('msgNotifyFreeText')}</label>
                 <textarea
                   value={messageText}
-                  onChange={(e) => setMessageText(e.target.value)}
+                  onChange={(e) => {
+                    setFreeTextPreset('custom');
+                    setMessageText(e.target.value);
+                  }}
                   rows={5}
                   className={inputCls}
                 />
@@ -603,11 +729,11 @@ export function MesajBildirimModule({
           <button
             type="button"
             disabled={sending || provider === 'NONE' || resolvedCount === 0}
-            onClick={() => void handleSend()}
+            onClick={() => void handlePrepareSend()}
             className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 disabled:opacity-50"
           >
             {sending ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />}
-            {tm('msgNotifySendButton').replace('{n}', String(resolvedCount))}
+            {tm('msgNotifyReviewListButton').replace('{n}', String(resolvedCount))}
           </button>
         </div>
       </div>
@@ -618,6 +744,16 @@ export function MesajBildirimModule({
           {tm('msgNotifyFooterHint')}
         </p>
       </div>
+
+      <WhatsAppBulkSendPreviewModal
+        open={bulkPreviewOpen}
+        items={bulkPreviewItems}
+        title={bulkPreviewTitle}
+        onClose={() => setBulkPreviewOpen(false)}
+        onComplete={() => void handleBulkComplete()}
+        onRebuildItems={rebuildBulkPreviewItems}
+        initialMessageLang={messageLang}
+      />
     </div>
   );
 }
