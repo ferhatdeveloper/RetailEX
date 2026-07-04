@@ -865,6 +865,8 @@ export async function prepareLocalSyncQueue(
   } catch {
     /* migration 091 yok */
   }
+
+  try {
     const resetRows = await queryPgRows(
       local,
       `SELECT public.reset_exhausted_sync_queue($1)::text AS cnt`,
