@@ -31,15 +31,20 @@ export const postgrestConfig = {
   schemas: ['public', 'logic', 'wms', 'rest', 'beauty', 'pos'] as const,
 };
 
-/** Kiracı PostgREST ile okuma (rest_api veya hibritte remote_rest_url) */
+/** Kiracı PostgREST ile okuma/yazım (Tauri hibrit hariç — yerel PG) */
 export function shouldUseTenantPostgrestApi(): boolean {
   if (DB_SETTINGS.activeMode === 'offline') return false;
-  // Tauri hibrit: config yüklenmeden önce bile yerel PG (pg_query); uzak PostgREST 404 üretmesin.
+  // Tauri hibrit: ürün/cari/fatura CRUD yerel PG; PostgREST yalnızca senkron motoru.
   if (IS_TAURI && DB_SETTINGS.activeMode === 'hybrid') return false;
   if (DB_SETTINGS.connectionProvider === 'rest_api') return true;
-  // Hibrit + yerel PG (Tauri/masaüstü): okuma/yazım pg_query; PostgREST yalnızca senkron motoru.
   if (DB_SETTINGS.activeMode === 'hybrid' && DB_SETTINGS.connectionProvider === 'db') return false;
   return String(DB_SETTINGS.remoteRestUrl || '').trim().length > 0;
+}
+
+/** INSERT/UPDATE/DELETE: Tauri hibritte asla PostgREST (merkez); yerel PG kullan. */
+export function shouldUsePostgrestForCrud(): boolean {
+  if (IS_TAURI && DB_SETTINGS.activeMode === 'hybrid') return false;
+  return DB_SETTINGS.connectionProvider === 'rest_api';
 }
 
 export function getPostgrestBaseUrl(): string {

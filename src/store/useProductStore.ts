@@ -47,6 +47,13 @@ export const useProductStore = create<ProductState>()(
       },
 
       addProduct: async (product) => {
+        const existingId = String(product.id || '').trim();
+        if (UUID_RE.test(existingId)) {
+          // onSave geri çağrısı veya eski sürüm çift INSERT — zaten kayıtlı ürünü tekrar oluşturma
+          await get().loadProducts(true);
+          return product;
+        }
+
         set({ isLoading: true, error: null });
         try {
           console.log('[ProductStore] Adding product:', product);

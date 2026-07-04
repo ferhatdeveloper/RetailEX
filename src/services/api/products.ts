@@ -3,7 +3,7 @@
  * Note: Uses rex_{firm}_products table
  */
 
-import { shouldUseTenantPostgrestApi } from '../../config/postgrest.config';
+import { shouldUsePostgrestForCrud, shouldUseTenantPostgrestApi } from '../../config/postgrest.config';
 import { postgres, ERP_SETTINGS, DB_SETTINGS } from '../postgres';
 import type { Product } from '../../core/types';
 import { expandBarcodeLookupKeys } from '../../utils/barcodeParser';
@@ -364,7 +364,7 @@ export const productAPI = {
   async verifyManagementPassword(password: string): Promise<boolean> {
     const pwd = String(password || '').trim();
     if (!pwd) return false;
-    if (DB_SETTINGS.connectionProvider === 'rest_api') {
+    if (shouldUsePostgrestForCrud()) {
       console.warn(
         '[ProductAPI] Yönetici şifresi doğrulaması PostgREST üzerinden yapılmıyor; zorunlu silme için pg_bridge veya RPC eklenmelidir.'
       );
@@ -665,7 +665,7 @@ export const productAPI = {
     try {
         const tableName = `rex_${firmNrPadded()}_products`;
         const firmEq = firmNrPadded();
-        if (DB_SETTINGS.connectionProvider === 'rest_api') {
+        if (shouldUsePostgrestForCrud()) {
           const { postgrest } = await import('./postgrestClient');
           const rows = await postgrest.get<any[]>(
             `/${tableName}`,
@@ -699,7 +699,7 @@ export const productAPI = {
     try {
         const tableName = `rex_${firmNrPadded()}_products`;
         const firmEq = firmNrPadded();
-        if (DB_SETTINGS.connectionProvider === 'rest_api') {
+        if (shouldUsePostgrestForCrud()) {
           const { postgrest } = await import('./postgrestClient');
           const rows = await postgrest.get<any[]>(
             `/${tableName}`,
@@ -734,7 +734,7 @@ export const productAPI = {
     try {
       const tableName = `rex_${firmNrPadded()}_products`;
       const { eq: firmEq, raw: firmRaw } = firmNrMatchValues();
-      if (DB_SETTINGS.connectionProvider === 'rest_api') {
+      if (shouldUsePostgrestForCrud()) {
         const { postgrest } = await import('./postgrestClient');
         for (const variant of [c, c.replace(/^0+/, '') || '0', c.padStart(4, '0'), c.padStart(5, '0')]) {
           const rows = await postgrest.get<any[]>(
@@ -774,7 +774,7 @@ export const productAPI = {
     try {
       const tableName = `rex_${firmNrPadded()}_products`;
       const { eq: firmEq, raw: firmRaw } = firmNrMatchValues();
-      if (DB_SETTINGS.connectionProvider === 'rest_api') {
+      if (shouldUsePostgrestForCrud()) {
         const { postgrest } = await import('./postgrestClient');
         for (const code of uniq) {
           for (const field of ['code', 'barcode', 'special_code_1'] as const) {
@@ -833,7 +833,7 @@ export const productAPI = {
     try {
         const tableName = `rex_${firmNrPadded()}_products`;
         const { eq: firmEq, raw: firmRaw } = firmNrMatchValues();
-        if (DB_SETTINGS.connectionProvider === 'rest_api') {
+        if (shouldUsePostgrestForCrud()) {
           const { postgrest } = await import('./postgrestClient');
           const rows = await postgrest.get<any[]>(
             `/${tableName}`,
@@ -934,7 +934,7 @@ export const productAPI = {
 
   async lookupUnitBarcode(barcode: string): Promise<{ product: Product, unitInfo?: any } | null> {
     try {
-      if (DB_SETTINGS.connectionProvider === 'rest_api') {
+      if (shouldUsePostgrestForCrud()) {
         const { postgrest } = await import('./postgrestClient');
         const pbPath = `/rex_${firmNrPadded()}_product_barcodes`;
         const pbRows = await postgrest.get<any[]>(
@@ -1070,7 +1070,7 @@ export const productAPI = {
    */
   async generateNextBarcode(): Promise<string> {
     try {
-      if (DB_SETTINGS.connectionProvider === 'rest_api') {
+      if (shouldUsePostgrestForCrud()) {
         const { postgrest } = await import('./postgrestClient');
         const rows = await postgrest.get<any[]>(
           '/barcode_templates',
@@ -1127,7 +1127,7 @@ export const productAPI = {
     is_active: boolean;
   } | null> {
     try {
-      if (DB_SETTINGS.connectionProvider === 'rest_api') {
+      if (shouldUsePostgrestForCrud()) {
         const { postgrest } = await import('./postgrestClient');
         const rows = await postgrest.get<any[]>(
           '/barcode_templates',
@@ -1168,7 +1168,7 @@ export const productAPI = {
       const currentValue = (startBig > 0n ? startBig - 1n : 0n).toString();
       const isActive = input.is_active !== false;
 
-      if (DB_SETTINGS.connectionProvider === 'rest_api') {
+      if (shouldUsePostgrestForCrud()) {
         const { postgrest } = await import('./postgrestClient');
         if (isActive) {
           // Diğer aktif şablonları pasif et
@@ -1242,7 +1242,7 @@ export const productAPI = {
    */
   async peekNextBarcode(): Promise<string> {
     try {
-      if (DB_SETTINGS.connectionProvider === 'rest_api') {
+      if (shouldUsePostgrestForCrud()) {
         const { postgrest } = await import('./postgrestClient');
         const rows = await postgrest.get<any[]>(
           '/barcode_templates',
@@ -1353,7 +1353,7 @@ export const productAPI = {
       };
 
       // PostgREST: yalnızca GET değil; INSERT de aynı uç üzerinden (pg_bridge / SQL yok)
-      if (DB_SETTINGS.connectionProvider === 'rest_api') {
+      if (shouldUsePostgrestForCrud()) {
         if (!productData.barcode || String(productData.barcode).trim() === '') {
           productData.barcode = `B${Date.now()}`.slice(0, 100);
         }
@@ -1388,7 +1388,7 @@ export const productAPI = {
    */
   async addProduct(product: Product): Promise<Product | null> {
     try {
-      if (DB_SETTINGS.connectionProvider === 'rest_api') {
+      if (shouldUsePostgrestForCrud()) {
         const copy = { ...product } as Product & { id?: string };
         if (!copy.id || copy.id === '') delete (copy as any).id;
         return this.create(copy as Omit<Product, 'id'>);
@@ -1572,7 +1572,7 @@ export const productAPI = {
           if (oldRate !== newRate) {
             const currentUser = useAuthStore.getState().user;
             const who = currentUser?.fullName || 'Sistem';
-            if (DB_SETTINGS.connectionProvider === 'rest_api') {
+            if (shouldUsePostgrestForCrud()) {
               const { postgrest } = await import('./postgrestClient');
               await postgrest.post(
                 '/product_exchange_rate_history',
@@ -1597,7 +1597,7 @@ export const productAPI = {
         }
       }
 
-      if (DB_SETTINGS.connectionProvider === 'rest_api') {
+      if (shouldUsePostgrestForCrud()) {
         const patchBody: Record<string, unknown> = Object.fromEntries(fieldValues);
         const patched = await postgrestPatchProductRow(tableName, id, patchBody);
         const row = Array.isArray(patched) ? patched[0] : patched;
@@ -1640,7 +1640,7 @@ export const productAPI = {
         }
       }
       const tableName = `rex_${firmNrPadded()}_products`;
-      if (DB_SETTINGS.connectionProvider === 'rest_api') {
+      if (shouldUsePostgrestForCrud()) {
         const { postgrest } = await import('./postgrestClient');
         const patched = await postgrest.patch<any[]>(
           `/${tableName}?id=eq.${encodeURIComponent(id)}&firm_nr=eq.${encodeURIComponent(String(ERP_SETTINGS.firmNr))}`,
@@ -1666,7 +1666,7 @@ export const productAPI = {
   async search(query: string): Promise<Product[]> {
     try {
       const tableName = `rex_${firmNrPadded()}_products`;
-      if (DB_SETTINGS.connectionProvider === 'rest_api') {
+      if (shouldUsePostgrestForCrud()) {
         const token = sanitizePostgrestIlike(query);
         if (!token) return [];
         const { postgrest } = await import('./postgrestClient');
@@ -1707,7 +1707,7 @@ export const productAPI = {
       const firmEq = firmNrPadded();
       const firmRaw = String(ERP_SETTINGS.firmNr ?? '').trim();
       const normalizedQuantity = Number.isFinite(quantity) ? Math.max(0, quantity) : 0;
-      if (DB_SETTINGS.connectionProvider === 'rest_api') {
+      if (shouldUsePostgrestForCrud()) {
         const { postgrest } = await import('./postgrestClient');
         const firmFilters = [...new Set([firmEq, firmRaw].filter(Boolean))];
         for (const firmFilter of firmFilters) {
@@ -1759,7 +1759,7 @@ export const productAPI = {
     const firmEq = firmNrPadded();
     const firmRaw = String(ERP_SETTINGS.firmNr ?? '').trim();
     try {
-      if (DB_SETTINGS.connectionProvider === 'rest_api') {
+      if (shouldUsePostgrestForCrud()) {
         const { postgrest } = await import('./postgrestClient');
         const inList = normalized.join(',');
         const rows = await postgrest.get<any[]>(
@@ -1837,7 +1837,7 @@ export const productAPI = {
       if (Object.keys(patchBody).length === 0) return 0;
       if (!ids.length) return 0;
 
-      if (DB_SETTINGS.connectionProvider === 'rest_api') {
+      if (shouldUsePostgrestForCrud()) {
         const { postgrest } = await import('./postgrestClient');
         const inList = ids.map((x) => String(x).trim()).filter(Boolean).join(',');
         if (!inList) return 0;
@@ -1868,7 +1868,7 @@ export const productAPI = {
    */
   async getExchangeRateHistory(productId: string): Promise<any[]> {
     try {
-      if (DB_SETTINGS.connectionProvider === 'rest_api') {
+      if (shouldUsePostgrestForCrud()) {
         const { postgrest } = await import('./postgrestClient');
         const rows = await postgrest.get<any[]>(
           '/product_exchange_rate_history',

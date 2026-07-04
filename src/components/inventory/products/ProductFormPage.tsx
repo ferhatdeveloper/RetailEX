@@ -1813,7 +1813,11 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
 
       if (closeAfter) {
         if (onSave && savedProduct) {
-          onSave(savedProduct);
+          try {
+            onSave(savedProduct);
+          } catch (callbackErr) {
+            console.warn('[ProductFormPage] onSave callback error (ürün zaten kaydedildi):', callbackErr);
+          }
         }
         if (onClose) {
           onClose();

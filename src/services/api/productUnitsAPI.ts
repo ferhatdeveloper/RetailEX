@@ -1,4 +1,5 @@
-import { postgres, DB_SETTINGS, ERP_SETTINGS } from '../postgres';
+import { shouldUsePostgrestForCrud } from '../../config/postgrest.config';
+import { postgres, ERP_SETTINGS } from '../postgres';
 
 function rexFirmPadded(): string {
   return String(ERP_SETTINGS.firmNr ?? '001').trim().padStart(3, '0');
@@ -28,7 +29,7 @@ export const productUnitsAPI = {
 
   async getBarcodesByProductId(productId: string): Promise<ProductBarcode[]> {
     try {
-      if (DB_SETTINGS.connectionProvider === 'rest_api') {
+      if (shouldUsePostgrestForCrud()) {
         const { postgrest } = await import('./postgrestClient');
         const path = `/rex_${rexFirmPadded()}_product_barcodes`;
         const rows = await postgrest.get<ProductBarcode[]>(
@@ -58,7 +59,7 @@ export const productUnitsAPI = {
     barcodes: Array<{ barcode_code: string; unit: string; sale_price: number; is_primary: boolean }>
   ): Promise<void> {
     try {
-      if (DB_SETTINGS.connectionProvider === 'rest_api') {
+      if (shouldUsePostgrestForCrud()) {
         const { postgrest } = await import('./postgrestClient');
         const path = `/rex_${rexFirmPadded()}_product_barcodes`;
         await postgrest.delete(
@@ -95,7 +96,7 @@ export const productUnitsAPI = {
 
   async getUnitConversionsByProductId(productId: string): Promise<ProductUnitConversion[]> {
     try {
-      if (DB_SETTINGS.connectionProvider === 'rest_api') {
+      if (shouldUsePostgrestForCrud()) {
         const { postgrest } = await import('./postgrestClient');
         const path = `/rex_${rexFirmPadded()}_product_unit_conversions`;
         const rows = await postgrest.get<ProductUnitConversion[]>(
@@ -125,7 +126,7 @@ export const productUnitsAPI = {
     conversions: Array<{ from_unit: string; to_unit: string; factor: number }>
   ): Promise<void> {
     try {
-      if (DB_SETTINGS.connectionProvider === 'rest_api') {
+      if (shouldUsePostgrestForCrud()) {
         const { postgrest } = await import('./postgrestClient');
         const path = `/rex_${rexFirmPadded()}_product_unit_conversions`;
         await postgrest.delete(

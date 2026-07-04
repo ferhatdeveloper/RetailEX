@@ -631,6 +631,7 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
   const handleProductFormSubmit = (_product: Product) => {
     // ProductFormPage kaydı zaten yaptı; çift INSERT/UPDATE ve kod çakışması önlenir
     closeProductForm();
+    void loadProducts(true);
   };
 
   const columnLabelOverrides = useMemo(() => getProductGridColumnLabels(tm), [tm]);

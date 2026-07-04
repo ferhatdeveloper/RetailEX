@@ -290,10 +290,10 @@ export function shouldUseCentralApi(): boolean {
   return Boolean(String(DB_SETTINGS.remoteRestUrl ?? '').trim());
 }
 
-/** Tauri hibrit: yerel satış/fatura SQL yerel PG; merkez uç API (remote_rest_url). */
+/** Tauri hibrit: günlük CRUD yerel PG; merkez yalnızca senkron/RPC (shouldUseCentralApi). */
 function applyTauriHybridDbOverride(): void {
-  if (IS_TAURI && DB_SETTINGS.activeMode === 'hybrid' && shouldUseCentralApi()) {
-    DB_SETTINGS.connectionProvider = 'rest_api';
+  if (IS_TAURI && DB_SETTINGS.activeMode === 'hybrid') {
+    DB_SETTINGS.connectionProvider = 'db';
   }
 }
 
@@ -626,9 +626,7 @@ export async function updateConfigs(updates: {
   if (updates.remote) REMOTE_CONFIG = { ...REMOTE_CONFIG, ...updates.remote };
   if (updates.settings) DB_SETTINGS = { ...DB_SETTINGS, ...updates.settings };
   if (updates.erp) ERP_SETTINGS = { ...ERP_SETTINGS, ...updates.erp };
-  if (DB_SETTINGS.activeMode === 'hybrid' && shouldUseCentralApi()) {
-    DB_SETTINGS.connectionProvider = 'rest_api';
-  } else if (DB_SETTINGS.activeMode === 'hybrid') {
+  if (DB_SETTINGS.activeMode === 'hybrid') {
     DB_SETTINGS.connectionProvider = IS_TAURI ? 'db' : 'rest_api';
   }
   applyTauriHybridDbOverride();
