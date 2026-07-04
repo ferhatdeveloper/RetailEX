@@ -360,18 +360,27 @@ export function resolveTenantDatabaseFromRestUrl(restUrl?: string): string | nul
   return parsed.kind === 'saas_single_slug' ? parsed.slug : null;
 }
 
-/** Kiracı kodu veya PostgREST slug → merkez PostgreSQL veritabanı adı. */
+/** Kiracı PostgreSQL veritabanı adı (köprü SQL / pg_dump). */
 export function resolveEffectiveTenantDatabaseName(restUrl?: string): string | null {
-  const slugDb = resolveTenantDatabaseFromRestUrl(restUrl);
-  if (slugDb) return slugDb;
+  // tenant_registry / remote_db (örn. aqua_beauty) — URL slug'ından (örn. aqua) önce gelir.
+  const configuredDb = String(REMOTE_CONFIG.database || '').trim();
+  if (
+    configuredDb &&
+    configuredDb !== 'retailex_local' &&
+    configuredDb !== 'retailex_demo'
+  ) {
+    return configuredDb;
+  }
+
   const code = String(DB_SETTINGS.merkezTenantCode ?? '').trim().toLowerCase();
   if (code && /^[a-z0-9_-]+$/.test(code)) return code;
-  return null;
+
+  return resolveTenantDatabaseFromRestUrl(restUrl);
 }
 
 /**
  * `remote_db` eski demo adı (`retailex_demo`) kalsa bile merkez PG ucu kiracı DB'sine hizalanır.
- * PostgREST slug ve `merkez_tenant_code` önceliklidir.
+ * Öncelik: kayıtlı remote_db → merkez_tenant_code → PostgREST slug (slug ≠ DB adı olabilir).
  */
 export function alignRemoteConfigDatabaseWithTenant(restUrl?: string): void {
   const tenantDb = resolveEffectiveTenantDatabaseName(restUrl);
