@@ -1,6 +1,18 @@
 import type { Product, ProductVariant } from '../../../core/types';
 import type { LabelPrintVariant } from './ProductLabelPrint';
 
+/** Etiket barkodu — boşsa kod / SKU ile CODE128 yedek (toplu yazdırmada görünürlük). */
+export function resolveLabelBarcodeValue(
+  primary?: string | null,
+  ...fallbacks: (string | undefined | null)[]
+): string {
+  for (const raw of [primary, ...fallbacks]) {
+    const s = String(raw ?? '').trim();
+    if (s) return s;
+  }
+  return '';
+}
+
 export interface BulkLabelQueueItem {
   queueKey: string;
   productName: string;
@@ -19,7 +31,7 @@ export function productToLabelPrintVariants(p: Product): LabelPrintVariant[] {
     return p.variants.map((v: ProductVariant) => ({
       id: v.id,
       variantCode: (v.code || v.barcode || p.code || p.id || '').toString().trim(),
-      barcode: (v.barcode || p.barcode || '').trim(),
+      barcode: resolveLabelBarcodeValue(v.barcode, p.barcode, v.code, p.code, p.sku),
       attributes: {
         ...(v.size ? { Boyut: v.size } : {}),
         ...(v.color ? { Renk: v.color } : {}),
@@ -35,7 +47,7 @@ export function productToLabelPrintVariants(p: Product): LabelPrintVariant[] {
     {
       id: `${p.id}-base`,
       variantCode: String(p.code || p.sku || p.barcode || p.id || '').trim(),
-      barcode: (p.barcode || '').trim(),
+      barcode: resolveLabelBarcodeValue(p.barcode, p.code, p.sku),
       attributes: {},
       salePrice: p.price,
       enabled: true,

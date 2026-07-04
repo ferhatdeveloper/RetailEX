@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { X, Printer, Tag, Plus, Minus, Search, RotateCw, LayoutGrid, ListChecks, Download, ArrowLeftRight } from 'lucide-react';
 import JsBarcode from 'jsbarcode';
@@ -50,6 +50,7 @@ import {
   readLabelCustomWidthMm,
 } from './labelPrintDimensions';
 import { DEFAULT_A4, exportLabelGridToPdfPages, exportToPDF, printLabelElementsInBrowser } from '../../reports/designerUtils';
+import { FullscreenBodyPortal, MODAL_OVERLAY_Z } from '../../shared/FullscreenBodyPortal';
 
 export interface BulkProductLabelPrintProps {
   onClose: () => void;
@@ -198,46 +199,65 @@ export function BulkProductLabelPrint({
   const pageHeightMm = isSideways ? activePrintSize.width : activePrintSize.height;
 
   useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, []);
+
+  useLayoutEffect(() => {
     if (selectedCustomTemplate) return;
-    const timer = setTimeout(() => {
-      const cells = queue.flatMap((row, rowIdx) =>
-        Array.from({ length: row.quantity }, (_, qIdx) => ({
-          barcodeId: `bulk-barcode-${rowIdx}-${qIdx}`,
-          qrId: `bulk-qrcode-${rowIdx}-${qIdx}`,
-          barcode: row.variant.barcode,
-          variantCode: row.variant.variantCode,
-        }))
-      );
-      cells.forEach((cell) => {
-        if (selectedDesign.id !== 'qr') {
-          const canvas = document.getElementById(cell.barcodeId) as HTMLCanvasElement | null;
-          if (canvas && cell.barcode) {
-            try {
-              const opts = buildJsBarcodeOptions(cell.barcode, cell.variantCode, fieldSettings.barcodeCaptionMode, {
-                width: activePrintSize.width,
-                height: activePrintSize.height,
-              });
-              JsBarcode(canvas, cell.barcode, opts as Parameters<typeof JsBarcode>[2]);
-            } catch (err) {
-              console.error('Barkod oluşturma hatası:', err);
-            }
-          }
-        }
-        if (selectedDesign.id === 'qr') {
-          const qrCanvas = document.getElementById(cell.qrId) as HTMLCanvasElement | null;
-          if (qrCanvas && cell.barcode) {
-            const qrSize = Math.min(activePrintSize.width * 3, activePrintSize.height * 3);
-            QRCode.toCanvas(qrCanvas, cell.barcode, {
-              width: qrSize,
-              margin: 1,
-              errorCorrectionLevel: 'M',
-            }).catch((err: unknown) => console.error('QR kod hatası:', err));
-          }
+    if (queue.length === 0) return;
+
+    let cancelled = false;
+    const paint = () => {
+      if (cancelled) return;
+      const root = printRef.current;
+      if (!root) return;
+
+      root.querySelectorAll('canvas[data-barcode-value]').forEach((node) => {
+        const canvas = node as HTMLCanvasElement;
+        const barcode = (canvas.dataset.barcodeValue || '').trim();
+        if (!barcode || selectedDesign.id === 'qr') return;
+        try {
+          const variantCode = canvas.dataset.variantCode || '';
+          const opts = buildJsBarcodeOptions(barcode, variantCode, fieldSettings.barcodeCaptionMode, {
+            width: activePrintSize.width,
+            height: activePrintSize.height,
+          });
+          JsBarcode(canvas, barcode, opts as Parameters<typeof JsBarcode>[2]);
+        } catch (err) {
+          console.error('Barkod oluşturma hatası:', err);
         }
       });
-    }, 120);
-    return () => clearTimeout(timer);
-  }, [queue, activePrintSize, selectedDesign, fieldSettings, selectedCustomTemplate]);
+
+      if (selectedDesign.id === 'qr') {
+        root.querySelectorAll('canvas[data-qr-value]').forEach((node) => {
+          const qrCanvas = node as HTMLCanvasElement;
+          const qrValue = (qrCanvas.dataset.qrValue || '').trim();
+          if (!qrValue) return;
+          const qrSize = Math.min(activePrintSize.width * 3, activePrintSize.height * 3);
+          QRCode.toCanvas(qrCanvas, qrValue, {
+            width: qrSize,
+            margin: 1,
+            errorCorrectionLevel: 'M',
+          }).catch((err: unknown) => console.error('QR kod hatası:', err));
+        });
+      }
+    };
+
+    const raf = requestAnimationFrame(() => {
+      requestAnimationFrame(paint);
+    });
+    const timer = setTimeout(paint, 150);
+
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(raf);
+      clearTimeout(timer);
+    };
+  }, [queue, activePrintSize, selectedDesign.id, fieldSettings, selectedCustomTemplate]);
 
   const filteredSizes =
     sizeFilter === 'all' ? LABEL_SIZES : LABEL_SIZES.filter((s) => s.category === sizeFilter);
@@ -370,8 +390,14 @@ export function BulkProductLabelPrint({
   const gridSelection = gridSelectedProducts?.filter((p) => !p.isService) ?? [];
 
   return (
-    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[10050] p-4">
-      <div className="bg-white rounded-lg shadow-2xl w-full max-w-7xl max-h-[90vh] overflow-hidden flex flex-col">
+    <FullscreenBodyPortal
+      zIndex={MODAL_OVERLAY_Z}
+      className="bg-black/60 flex items-center justify-center p-4"
+      role="dialog"
+      aria-modal
+      aria-label={tm('bulkBarcodeLabelPrint')}
+    >
+      <div className="bg-white rounded-lg shadow-2xl w-full max-w-7xl max-h-[90vh] overflow-hidden flex flex-col isolate">
         <div className="bg-gradient-to-r from-purple-600 via-blue-600 to-purple-600 px-4 sm:px-6 py-3 sm:py-4 flex flex-wrap items-center justify-between gap-2 text-white shrink-0">
           <div className="flex items-center gap-3 min-w-0">
             <Tag className="w-6 h-6 shrink-0" />
@@ -984,6 +1010,6 @@ export function BulkProductLabelPrint({
         pageHeightMm,
         thermalOneLabelPerPage: selectedCustomTemplate ? true : selectedSize.category === 'termal',
       })}</style>
-    </div>
+    </FullscreenBodyPortal>
   );
 }
