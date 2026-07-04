@@ -19,6 +19,21 @@ if (!fs.existsSync(nsiPath)) {
 
 let content = fs.readFileSync(nsiPath, "utf8");
 
+/** Yerel makinede patch sonrasi commit edilmemis mutlak yol kalirsa CI'de NSIS kirilir. */
+const KNOWN_DEV_ROOTS = [
+  "D:\\Developer\\App\\RetailEX-main",
+  "D:\\RetailEX",
+  "C:\\RetailEX",
+];
+
+if (!content.includes(MARKER)) {
+  for (const devRoot of KNOWN_DEV_ROOTS) {
+    if (content.includes(devRoot)) {
+      content = content.replaceAll(devRoot, MARKER);
+    }
+  }
+}
+
 if (!content.includes(MARKER)) {
   const escaped = winRoot.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   content = content.replace(new RegExp(escaped, "g"), MARKER);
