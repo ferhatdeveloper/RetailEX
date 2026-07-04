@@ -1,5 +1,4 @@
 import { useEffect, useMemo } from 'react';
-import JsBarcode from 'jsbarcode';
 import QRCode from 'qrcode';
 import type { Template, TemplateElement, TemplateUsageScope } from '../core/types/templates';
 
@@ -14,7 +13,7 @@ export interface TemplateLabelSize {
   category: 'termal' | 'a4' | 'raf';
 }
 import {
-  buildJsBarcodeOptions,
+  paintJsBarcode,
   type BarcodeCaptionMode,
   type LabelPrintFieldSettings,
 } from './labelPrintFieldSettingsService';
@@ -184,15 +183,10 @@ export function TemplateLabelView({
       for (const t of barcodeTargets) {
         const svg = document.getElementById(`tpl-barcode-${instanceKey}-${t.elementId}`);
         if (!svg || !t.value) continue;
-        try {
-          const opts = buildJsBarcodeOptions(t.value, fields.variantCode, captionMode, {
-            width: template.width,
-            height: t.heightMm,
-          });
-          JsBarcode(svg, t.value, opts as Parameters<typeof JsBarcode>[2]);
-        } catch (err) {
-          console.error('Şablon barkod hatası:', err);
-        }
+        paintJsBarcode(svg, t.value, fields.variantCode, captionMode, {
+          width: template.width,
+          height: t.heightMm,
+        });
       }
       for (const t of qrTargets) {
         const canvas = document.getElementById(`tpl-qr-${instanceKey}-${t.elementId}`) as HTMLCanvasElement | null;

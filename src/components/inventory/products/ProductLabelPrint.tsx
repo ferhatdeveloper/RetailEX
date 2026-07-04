@@ -2,13 +2,12 @@
 import { toast } from 'sonner';
 import { X, Printer, Tag, Plus, Minus, Download, Sparkles, RotateCw, LayoutGrid, ListChecks, ArrowLeftRight } from 'lucide-react';
 import { useLanguage } from '../../../contexts/LanguageContext';
-import JsBarcode from 'jsbarcode';
 import QRCode from 'qrcode';
 import {
-  buildJsBarcodeOptions,
   DEFAULT_LABEL_PRINT_FIELD_SETTINGS,
   getLabelPrintFieldSettings,
   normalizeLabelPrintFieldSettings,
+  paintJsBarcode,
   saveLabelPrintFieldSettings,
   type BarcodeCaptionMode,
   type LabelPrintFieldSettings,
@@ -475,15 +474,10 @@ export function ProductLabelPrint({
         if (selectedDesign.id !== 'qr') {
           const canvas = document.getElementById(cell.barcodeId) as HTMLCanvasElement;
           if (canvas && cell.barcode) {
-            try {
-              const opts = buildJsBarcodeOptions(cell.barcode, cell.variantCode, fieldSettings.barcodeCaptionMode, {
-                width: activePrintSize.width,
-                height: activePrintSize.height,
-              });
-              JsBarcode(canvas, cell.barcode, opts as Parameters<typeof JsBarcode>[2]);
-            } catch (err) {
-              console.error('Barkod oluşturma hatası:', err);
-            }
+            paintJsBarcode(canvas, cell.barcode, cell.variantCode, fieldSettings.barcodeCaptionMode, {
+              width: activePrintSize.width,
+              height: activePrintSize.height,
+            });
           }
         }
 

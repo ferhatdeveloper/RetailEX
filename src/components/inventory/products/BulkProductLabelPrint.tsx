@@ -1,16 +1,15 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { X, Printer, Tag, Plus, Minus, Search, RotateCw, LayoutGrid, ListChecks, Download, ArrowLeftRight } from 'lucide-react';
-import JsBarcode from 'jsbarcode';
 import QRCode from 'qrcode';
 import type { Product } from '../../../core/types';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { useFirmaDonem } from '../../../contexts/FirmaDonemContext';
 import { useProductStore } from '../../../store/useProductStore';
 import {
-  buildJsBarcodeOptions,
   DEFAULT_LABEL_PRINT_FIELD_SETTINGS,
   getLabelPrintFieldSettings,
+  paintJsBarcode,
   saveLabelPrintFieldSettings,
   type BarcodeCaptionMode,
   type LabelPrintFieldSettings,
@@ -207,7 +206,7 @@ export function BulkProductLabelPrint({
   }, []);
 
   useLayoutEffect(() => {
-    if (selectedCustomTemplate) return;
+    if (selectedCustomTemplate || fieldSettingsLoading) return;
     if (queue.length === 0) return;
 
     let cancelled = false;
@@ -220,16 +219,10 @@ export function BulkProductLabelPrint({
         const canvas = node as HTMLCanvasElement;
         const barcode = (canvas.dataset.barcodeValue || '').trim();
         if (!barcode || selectedDesign.id === 'qr') return;
-        try {
-          const variantCode = canvas.dataset.variantCode || '';
-          const opts = buildJsBarcodeOptions(barcode, variantCode, fieldSettings.barcodeCaptionMode, {
-            width: activePrintSize.width,
-            height: activePrintSize.height,
-          });
-          JsBarcode(canvas, barcode, opts as Parameters<typeof JsBarcode>[2]);
-        } catch (err) {
-          console.error('Barkod oluşturma hatası:', err);
-        }
+        paintJsBarcode(canvas, barcode, canvas.dataset.variantCode || '', fieldSettings.barcodeCaptionMode, {
+          width: activePrintSize.width,
+          height: activePrintSize.height,
+        });
       });
 
       if (selectedDesign.id === 'qr') {
@@ -251,13 +244,15 @@ export function BulkProductLabelPrint({
       requestAnimationFrame(paint);
     });
     const timer = setTimeout(paint, 150);
+    const timer2 = setTimeout(paint, 450);
 
     return () => {
       cancelled = true;
       cancelAnimationFrame(raf);
       clearTimeout(timer);
+      clearTimeout(timer2);
     };
-  }, [queue, activePrintSize, selectedDesign.id, fieldSettings, selectedCustomTemplate]);
+  }, [queue, activePrintSize, selectedDesign.id, fieldSettings, fieldSettingsLoading, selectedCustomTemplate]);
 
   const filteredSizes =
     sizeFilter === 'all' ? LABEL_SIZES : LABEL_SIZES.filter((s) => s.category === sizeFilter);

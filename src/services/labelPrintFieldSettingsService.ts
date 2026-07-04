@@ -1,6 +1,7 @@
 /**
  * Profesyonel / toplu etiket yazdırmada hangi alanların görüneceği — `app_settings` (firma bazlı).
  */
+import JsBarcode from 'jsbarcode';
 import { postgres, ERP_SETTINGS } from './postgres';
 
 const KEY_LABEL_PRINT_FIELDS = 'label_print_field_settings';
@@ -93,6 +94,22 @@ export async function saveLabelPrintFieldSettings(
   }
 }
 
+/** EAN-13 kontrol basamağı geçerli mi (13 hane sayısal tek başına yetmez). */
+export function isValidEan13(barcode: string): boolean {
+  if (barcode.length !== 13 || !/^\d{13}$/.test(barcode)) return false;
+  const digits = barcode.split('').map((c) => Number(c));
+  let sum = 0;
+  for (let i = 0; i < 12; i++) {
+    sum += digits[i] * (i % 2 === 0 ? 1 : 3);
+  }
+  const check = (10 - (sum % 10)) % 10;
+  return check === digits[12];
+}
+
+export function resolveBarcodeFormat(barcode: string): 'EAN13' | 'CODE128' {
+  return isValidEan13(barcode) ? 'EAN13' : 'CODE128';
+}
+
 /** JsBarcode seçenekleri — `variantCode` barkod altı metni için (EAN-13’te sadece displayValue). */
 export function buildJsBarcodeOptions(
   barcode: string,
@@ -100,8 +117,7 @@ export function buildJsBarcodeOptions(
   captionMode: BarcodeCaptionMode,
   size: { width: number; height: number }
 ): Record<string, unknown> {
-  const isEan13 = barcode.length === 13 && /^\d{13}$/.test(barcode);
-  const fmt = isEan13 ? 'EAN13' : 'CODE128';
+  const fmt = resolveBarcodeFormat(barcode);
   const narrow = size.width < 50;
   const low = size.height < 30;
   const mid = size.height < 50;
@@ -130,4 +146,30 @@ export function buildJsBarcodeOptions(
     return { ...base, displayValue: true, text: line.slice(0, 80) };
   }
   return { ...base, displayValue: true, text: barcode };
+}
+
+/** Canvas veya SVG üzerine barkod çizer; geçersiz EAN-13 için CODE128 yedek. */
+export function paintJsBarcode(
+  target: HTMLCanvasElement | SVGSVGElement,
+  barcode: string,
+  variantCode: string,
+  captionMode: BarcodeCaptionMode,
+  size: { width: number; height: number },
+): void {
+  const value = barcode.trim();
+  if (!value) return;
+  const opts = buildJsBarcodeOptions(value, variantCode, captionMode, size);
+  try {
+    JsBarcode(target, value, opts as Parameters<typeof JsBarcode>[2]);
+  } catch (firstErr) {
+    if (opts.format === 'EAN13') {
+      try {
+        JsBarcode(target, value, { ...opts, format: 'CODE128' } as Parameters<typeof JsBarcode>[2]);
+        return;
+      } catch {
+        /* fall through */
+      }
+    }
+    console.error('Barkod oluşturma hatası:', firstErr);
+  }
 }
