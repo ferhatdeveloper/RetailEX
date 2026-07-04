@@ -19,7 +19,9 @@ import {
   REMOTE_CONFIG,
   getCentralRemotePgConfig,
   ERP_SETTINGS,
+  normalizeHybridSyncIntervalSec,
   resolveHybridSyncConnectionProvider,
+  type HybridSyncTransport,
 } from '../../services/postgres';
 import {
   buildSyncEndpoints,
@@ -44,7 +46,12 @@ import {
   getRemoteMasterSnapshot,
   type RemoteMasterSnapshot,
 } from '../../services/hybridSyncService';
-import { resolveKasaPullContext } from '../../services/mposKasaAutoPullService';
+import {
+  applyHybridAutoSyncSettings,
+  isHybridPeriodicAutoSyncEnabled,
+  readHybridTransportPreference,
+  resolveKasaPullContext,
+} from '../../services/mposKasaAutoPullService';
 import {
   formatDeviceSyncLogSummary,
   getHybridDeviceId,
@@ -54,6 +61,8 @@ import {
   auditSyncTransportConfig,
   formatSyncTransportLabel,
 } from '../../services/syncTransportDiagnostics';
+import { wsService } from '../../services/websocket';
+import { toast } from 'sonner';
 import { CenterDeviceSyncMonitor } from './CenterDeviceSyncMonitor';
 import { PercentBodyModal, PercentBodyModalScrollBody } from '../shared/PercentBodyModal';
 
@@ -84,6 +93,14 @@ type Props = {
   onOpenChange: (open: boolean) => void;
   onComplete?: () => void;
 };
+
+const AUTO_SYNC_INTERVAL_PRESETS = [15, 30, 60, 120, 300] as const;
+
+const TRANSPORT_OPTIONS: { value: HybridSyncTransport; label: string }[] = [
+  { value: 'both', label: 'WebSocket + Periyodik' },
+  { value: 'polling', label: 'Yalnız periyodik' },
+  { value: 'websocket', label: 'Yalnız WebSocket (periyodik kapalı)' },
+];
 
 const TABLE_LABELS: Record<string, string> = {
   products: 'Ürünler',
@@ -299,6 +316,17 @@ export function HybridSyncModal({ open, onOpenChange, onComplete }: Props) {
   const [queueErrors, setQueueErrors] = useState<SyncQueueErrorRow[]>([]);
   const [sessionErrors, setSessionErrors] = useState<string[]>([]);
   const [errorsExpanded, setErrorsExpanded] = useState(true);
+  const [autoSyncEnabled, setAutoSyncEnabled] = useState(() => isHybridPeriodicAutoSyncEnabled());
+  const [autoSyncIntervalSec, setAutoSyncIntervalSec] = useState(
+    () => DB_SETTINGS.hybridSyncIntervalSec ?? 30,
+  );
+  const [autoSyncTransport, setAutoSyncTransport] = useState<HybridSyncTransport>(
+    () => DB_SETTINGS.hybridSyncTransport ?? 'both',
+  );
+  const [autoSyncSaving, setAutoSyncSaving] = useState(false);
+  const [wsStatus, setWsStatus] = useState<'connected' | 'disconnected' | 'connecting'>(() =>
+    wsService.getStatus(),
+  );
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const engineProgressRef = useRef<{ synced: number; failed: number; lastTable?: string }>({
     synced: 0,
@@ -314,6 +342,86 @@ export function HybridSyncModal({ open, onOpenChange, onComplete }: Props) {
   }, []);
 
   useEffect(() => () => stopLivePoll(), [stopLivePoll]);
+
+  useEffect(() => {
+    if (!open) return;
+    setAutoSyncEnabled(isHybridPeriodicAutoSyncEnabled());
+    setAutoSyncIntervalSec(DB_SETTINGS.hybridSyncIntervalSec ?? 30);
+    setAutoSyncTransport(DB_SETTINGS.hybridSyncTransport ?? 'both');
+    setWsStatus(wsService.getStatus());
+    const wsPoll = window.setInterval(() => setWsStatus(wsService.getStatus()), 2000);
+    return () => window.clearInterval(wsPoll);
+  }, [open]);
+
+  const persistAutoSyncSettings = useCallback(
+    async (patch: { transport?: HybridSyncTransport; intervalSec?: number }) => {
+      setAutoSyncSaving(true);
+      try {
+        await applyHybridAutoSyncSettings({
+          transport: patch.transport,
+          intervalSec: patch.intervalSec,
+          userId: user?.id ?? null,
+          storeId: user?.store_id ?? null,
+        });
+        if (patch.transport !== undefined) {
+          setAutoSyncTransport(patch.transport);
+          setAutoSyncEnabled(patch.transport === 'polling' || patch.transport === 'both');
+        }
+        if (patch.intervalSec !== undefined) {
+          setAutoSyncIntervalSec(normalizeHybridSyncIntervalSec(patch.intervalSec));
+        }
+        setWsStatus(wsService.getStatus());
+      } catch (e) {
+        console.warn('[HybridSyncModal] auto sync ayarı:', e);
+        toast.error('Otomatik senkron ayarı kaydedilemedi');
+      } finally {
+        setAutoSyncSaving(false);
+      }
+    },
+    [user?.id, user?.store_id],
+  );
+
+  const handleAutoSyncToggle = useCallback(
+    async (enabled: boolean) => {
+      if (autoSyncSaving) return;
+      if (enabled) {
+        const pref = readHybridTransportPreference();
+        const nextTransport: HybridSyncTransport =
+          autoSyncTransport === 'websocket' ? pref : autoSyncTransport;
+        await persistAutoSyncSettings({
+          transport: nextTransport === 'websocket' ? 'both' : nextTransport,
+          intervalSec: autoSyncIntervalSec,
+        });
+        toast.success(`Otomatik senkron açıldı (${autoSyncIntervalSec} sn)`);
+      } else {
+        await persistAutoSyncSettings({ transport: 'websocket' });
+        toast.info('Periyodik otomatik senkron kapatıldı');
+      }
+    },
+    [autoSyncSaving, autoSyncIntervalSec, autoSyncTransport, persistAutoSyncSettings],
+  );
+
+  const handleAutoSyncIntervalChange = useCallback(
+    async (sec: number) => {
+      const normalized = normalizeHybridSyncIntervalSec(sec);
+      setAutoSyncIntervalSec(normalized);
+      if (!autoSyncEnabled) return;
+      await persistAutoSyncSettings({ intervalSec: normalized });
+      toast.success(`Senkron aralığı: ${normalized} sn`);
+    },
+    [autoSyncEnabled, persistAutoSyncSettings],
+  );
+
+  const handleAutoSyncTransportChange = useCallback(
+    async (next: HybridSyncTransport) => {
+      setAutoSyncTransport(next);
+      await persistAutoSyncSettings({ transport: next });
+      const periodicOn = next === 'polling' || next === 'both';
+      setAutoSyncEnabled(periodicOn);
+      toast.success(`Taşıma modu: ${formatSyncTransportLabel(next)}`);
+    },
+    [persistAutoSyncSettings],
+  );
 
   const loadPreview = useCallback(async () => {
     setLoadingPreview(true);
@@ -801,6 +909,147 @@ export function HybridSyncModal({ open, onOpenChange, onComplete }: Props) {
               expanded={errorsExpanded}
               onToggle={() => setErrorsExpanded((v) => !v)}
             />
+
+            <div className="rounded-lg border border-blue-200 bg-blue-50/60 p-3 space-y-3">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-blue-900">
+                    Otomatik senkron
+                  </p>
+                  <p className="text-[11px] text-blue-800/90 mt-0.5 leading-snug">
+                    Arka planda periyodik sync_queue işleme. Manuel «Senkronu başlat» her zaman
+                    kullanılabilir.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={autoSyncEnabled}
+                  disabled={autoSyncSaving || running}
+                  onClick={() => void handleAutoSyncToggle(!autoSyncEnabled)}
+                  className={cn(
+                    'relative h-7 w-12 shrink-0 rounded-full transition-colors disabled:opacity-50',
+                    autoSyncEnabled ? 'bg-emerald-500' : 'bg-gray-300',
+                  )}
+                  title={autoSyncEnabled ? 'Otomatik senkron açık' : 'Otomatik senkron kapalı'}
+                >
+                  <span
+                    className={cn(
+                      'absolute top-0.5 h-6 w-6 rounded-full bg-white shadow transition-all',
+                      autoSyncEnabled ? 'left-[1.35rem]' : 'left-0.5',
+                    )}
+                  />
+                </button>
+              </div>
+
+              <div className="grid gap-2 sm:grid-cols-2">
+                <label className="block space-y-1">
+                  <span className="text-[10px] font-bold uppercase tracking-wide text-gray-600">
+                    Aralık (saniye)
+                  </span>
+                  <div className="flex gap-1.5">
+                    <select
+                      value={autoSyncIntervalSec}
+                      disabled={!autoSyncEnabled || autoSyncSaving || running}
+                      onChange={(e) => void handleAutoSyncIntervalChange(Number(e.target.value))}
+                      className="flex-1 rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 disabled:opacity-50"
+                    >
+                      {AUTO_SYNC_INTERVAL_PRESETS.map((sec) => (
+                        <option key={sec} value={sec}>
+                          {sec} sn
+                        </option>
+                      ))}
+                      {!AUTO_SYNC_INTERVAL_PRESETS.includes(
+                        autoSyncIntervalSec as (typeof AUTO_SYNC_INTERVAL_PRESETS)[number],
+                      ) ? (
+                        <option value={autoSyncIntervalSec}>{autoSyncIntervalSec} sn</option>
+                      ) : null}
+                    </select>
+                    <input
+                      type="number"
+                      min={5}
+                      max={3600}
+                      step={5}
+                      value={autoSyncIntervalSec}
+                      disabled={!autoSyncEnabled || autoSyncSaving || running}
+                      onChange={(e) =>
+                        setAutoSyncIntervalSec(
+                          normalizeHybridSyncIntervalSec(Number(e.target.value) || 30),
+                        )
+                      }
+                      onBlur={() => {
+                        if (autoSyncEnabled) {
+                          void handleAutoSyncIntervalChange(autoSyncIntervalSec);
+                        }
+                      }}
+                      className="w-20 rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 disabled:opacity-50"
+                      title="5–3600 saniye"
+                    />
+                  </div>
+                </label>
+
+                <label className="block space-y-1">
+                  <span className="text-[10px] font-bold uppercase tracking-wide text-gray-600">
+                    Taşıma modu
+                  </span>
+                  <select
+                    value={autoSyncTransport}
+                    disabled={autoSyncSaving || running}
+                    onChange={(e) =>
+                      void handleAutoSyncTransportChange(e.target.value as HybridSyncTransport)
+                    }
+                    className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 disabled:opacity-50"
+                  >
+                    {TRANSPORT_OPTIONS.map((opt) => (
+                      <option key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+
+              <p className="text-[11px] text-gray-700 leading-snug">
+                {autoSyncEnabled ? (
+                  <>
+                    Periyodik: <strong>her {autoSyncIntervalSec} sn</strong>
+                    {autoSyncTransport === 'both' || autoSyncTransport === 'websocket' ? (
+                      <>
+                        {' '}
+                        · WebSocket:{' '}
+                        <strong>
+                          {wsStatus === 'connected'
+                            ? 'bağlı'
+                            : wsStatus === 'connecting'
+                              ? 'bağlanıyor…'
+                              : 'kapalı'}
+                        </strong>
+                      </>
+                    ) : null}
+                  </>
+                ) : (
+                  <>
+                    Periyodik timer kapalı.
+                    {autoSyncTransport === 'websocket' ? (
+                      <>
+                        {' '}
+                        WebSocket:{' '}
+                        <strong>
+                          {wsStatus === 'connected'
+                            ? 'bağlı (anlık bildirim)'
+                            : wsStatus === 'connecting'
+                              ? 'bağlanıyor…'
+                              : 'kapalı'}
+                        </strong>
+                      </>
+                    ) : null}
+                  </>
+                )}
+                {autoSyncSaving ? (
+                  <span className="ml-1 text-blue-700">Kaydediliyor…</span>
+                ) : null}
+              </p>
+            </div>
 
             <CenterDeviceSyncMonitor
               compact

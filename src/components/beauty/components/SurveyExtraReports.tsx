@@ -26,6 +26,27 @@ function useSurveyDateRange() {
     return { startYmd, setStartYmd, endYmd, setEndYmd };
 }
 
+export type BeautySurveyReportEmbedProps = {
+    startYmd?: string;
+    endYmd?: string;
+    /** Raporlar modülünde üst tarih çubuğu ile gömülü */
+    embedded?: boolean;
+    /** Üst çubuk «Yenile» ile zorla yeniden yükleme */
+    reloadKey?: number;
+};
+
+function useSurveyReportDates(embed?: BeautySurveyReportEmbedProps) {
+    const internal = useSurveyDateRange();
+    return {
+        startYmd: embed?.startYmd ?? internal.startYmd,
+        endYmd: embed?.endYmd ?? internal.endYmd,
+        setStartYmd: embed?.embedded ? () => {} : internal.setStartYmd,
+        setEndYmd: embed?.embedded ? () => {} : internal.setEndYmd,
+        hideDateRange: Boolean(embed?.embedded),
+        reloadKey: embed?.reloadKey ?? 0,
+    };
+}
+
 function starBadgeClass(star: number): string {
     if (star >= 5) return 'bg-emerald-100 text-emerald-800 border-emerald-200';
     if (star >= 4) return 'bg-amber-100 text-amber-800 border-amber-200';
@@ -88,9 +109,9 @@ function BreakdownTable({
     );
 }
 
-export function SurveyTrendReport() {
+export function SurveyTrendReport(embed?: BeautySurveyReportEmbedProps) {
     const { tm } = useLanguage();
-    const { startYmd, setStartYmd, endYmd, setEndYmd } = useSurveyDateRange();
+    const { startYmd, endYmd, setStartYmd, setEndYmd, hideDateRange, reloadKey } = useSurveyReportDates(embed);
     const [surveyId, setSurveyId] = useState('all');
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -108,7 +129,7 @@ export function SurveyTrendReport() {
         } finally {
             setLoading(false);
         }
-    }, [startYmd, endYmd, surveyId]);
+    }, [startYmd, endYmd, surveyId, reloadKey]);
 
     useEffect(() => {
         void load();
@@ -136,6 +157,7 @@ export function SurveyTrendReport() {
                 surveyOptions={data?.survey_options ?? []}
                 loading={loading}
                 onRun={() => void load()}
+                hideDateRange={hideDateRange}
             />
             {error && (
                 <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
@@ -189,9 +211,9 @@ export function SurveyTrendReport() {
     );
 }
 
-export function SurveyStaffReport() {
+export function SurveyStaffReport(embed?: BeautySurveyReportEmbedProps) {
     const { tm } = useLanguage();
-    const { startYmd, setStartYmd, endYmd, setEndYmd } = useSurveyDateRange();
+    const { startYmd, endYmd, setStartYmd, setEndYmd, hideDateRange, reloadKey } = useSurveyReportDates(embed);
     const [surveyId, setSurveyId] = useState('all');
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -209,7 +231,7 @@ export function SurveyStaffReport() {
         } finally {
             setLoading(false);
         }
-    }, [startYmd, endYmd, surveyId]);
+    }, [startYmd, endYmd, surveyId, reloadKey]);
 
     useEffect(() => {
         void load();
@@ -231,6 +253,7 @@ export function SurveyStaffReport() {
                 surveyOptions={data?.survey_options ?? []}
                 loading={loading}
                 onRun={() => void load()}
+                hideDateRange={hideDateRange}
             />
             {error && (
                 <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
@@ -247,9 +270,9 @@ export function SurveyStaffReport() {
     );
 }
 
-export function SurveyServiceReport() {
+export function SurveyServiceReport(embed?: BeautySurveyReportEmbedProps) {
     const { tm } = useLanguage();
-    const { startYmd, setStartYmd, endYmd, setEndYmd } = useSurveyDateRange();
+    const { startYmd, endYmd, setStartYmd, setEndYmd, hideDateRange, reloadKey } = useSurveyReportDates(embed);
     const [surveyId, setSurveyId] = useState('all');
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -267,7 +290,7 @@ export function SurveyServiceReport() {
         } finally {
             setLoading(false);
         }
-    }, [startYmd, endYmd, surveyId]);
+    }, [startYmd, endYmd, surveyId, reloadKey]);
 
     useEffect(() => {
         void load();
@@ -289,6 +312,7 @@ export function SurveyServiceReport() {
                 surveyOptions={data?.survey_options ?? []}
                 loading={loading}
                 onRun={() => void load()}
+                hideDateRange={hideDateRange}
             />
             {error && (
                 <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
@@ -305,9 +329,9 @@ export function SurveyServiceReport() {
     );
 }
 
-export function SurveyNpsReport() {
+export function SurveyNpsReport(embed?: BeautySurveyReportEmbedProps) {
     const { tm } = useLanguage();
-    const { startYmd, setStartYmd, endYmd, setEndYmd } = useSurveyDateRange();
+    const { startYmd, endYmd, setStartYmd, setEndYmd, hideDateRange, reloadKey } = useSurveyReportDates(embed);
     const [surveyId, setSurveyId] = useState('all');
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -325,7 +349,7 @@ export function SurveyNpsReport() {
         } finally {
             setLoading(false);
         }
-    }, [startYmd, endYmd, surveyId]);
+    }, [startYmd, endYmd, surveyId, reloadKey]);
 
     useEffect(() => {
         void load();
@@ -349,6 +373,7 @@ export function SurveyNpsReport() {
                 surveyOptions={data?.survey_options ?? []}
                 loading={loading}
                 onRun={() => void load()}
+                hideDateRange={hideDateRange}
             />
             {error && (
                 <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
@@ -401,9 +426,9 @@ export function SurveyNpsReport() {
     );
 }
 
-export function SurveyCommentsReport() {
+export function SurveyCommentsReport(embed?: BeautySurveyReportEmbedProps) {
     const { tm } = useLanguage();
-    const { startYmd, setStartYmd, endYmd, setEndYmd } = useSurveyDateRange();
+    const { startYmd, endYmd, setStartYmd, setEndYmd, hideDateRange, reloadKey } = useSurveyReportDates(embed);
     const [surveyId, setSurveyId] = useState('all');
     const [maxRating, setMaxRating] = useState('3');
     const [loading, setLoading] = useState(false);
@@ -423,7 +448,7 @@ export function SurveyCommentsReport() {
         } finally {
             setLoading(false);
         }
-    }, [startYmd, endYmd, surveyId, maxRating]);
+    }, [startYmd, endYmd, surveyId, maxRating, reloadKey]);
 
     useEffect(() => {
         void load();
@@ -453,6 +478,7 @@ export function SurveyCommentsReport() {
                 surveyOptions={data?.survey_options ?? []}
                 loading={loading}
                 onRun={() => void load()}
+                hideDateRange={hideDateRange}
                 extraFilters={(
                     <label className="flex flex-col gap-1 min-w-[120px]">
                         <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">{tm('bSurveyCommentsMaxRating')}</span>

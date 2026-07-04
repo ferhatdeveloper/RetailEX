@@ -3,9 +3,12 @@ import { createPortal } from 'react-dom';
 import { CheckCircle2, ChevronDown, Radio, RefreshCw, Wifi, WifiOff } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../../contexts/AuthContext';
-import { DB_SETTINGS, updateConfigs, type HybridSyncTransport } from '../../services/postgres';
+import { DB_SETTINGS, type HybridSyncTransport } from '../../services/postgres';
 import { buildSyncFilter, buildKasaInboundFilter, getBranchSyncStats } from '../../services/hybridSyncService';
-import { resolveKasaPullContext } from '../../services/mposKasaAutoPullService';
+import {
+  applyHybridAutoSyncSettings,
+  resolveKasaPullContext,
+} from '../../services/mposKasaAutoPullService';
 import {
   getLastKasaDataArrival,
   subscribeKasaDataArrival,
@@ -201,24 +204,13 @@ export function HybridSyncToolbarButtons({ compact = false }: Props) {
   const handleTransportChange = async (next: HybridSyncTransport) => {
     setTransportMenuOpen(false);
     setTransport(next);
-    await updateConfigs({ settings: { hybridSyncTransport: next } });
+    await applyHybridAutoSyncSettings({
+      transport: next,
+      userId: user?.id ?? null,
+      storeId: user?.store_id ?? null,
+    });
     logSyncTransportDiagnostics('TransportChange');
     toast.success(`Senkron modu: ${formatSyncTransportLabel(next)}`);
-
-    const { stopUnifiedHybridAutoSync, startUnifiedHybridAutoSync } = await import(
-      '../../services/mposKasaAutoPullService'
-    );
-    stopUnifiedHybridAutoSync();
-    if (next === 'polling' || next === 'both') {
-      startUnifiedHybridAutoSync({ intervalSec: DB_SETTINGS.hybridSyncIntervalSec });
-    }
-
-    wsService.disconnect();
-    if ((next === 'websocket' || next === 'both') && user?.id) {
-      void wsService.connect(user.id, user.store_id || 'default_store').catch(() => {
-        logSyncTransportDiagnostics('TransportChangeWsFail');
-      });
-    }
   };
 
   const showWsDiagnostics = () => {

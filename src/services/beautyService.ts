@@ -477,6 +477,307 @@ async function postgrestGetByIds<T extends Record<string, unknown>>(
     return out;
 }
 
+function addOneDayYmd(ymd: string): string {
+    const [y, m, d] = ymd.split('-').map(Number);
+    const dt = new Date(y, m - 1, d + 1);
+    return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+}
+
+function surveyFeedbackDayKey(createdAt: string | undefined | null): string {
+    const raw = String(createdAt ?? '').trim();
+    const m = raw.match(/^(\d{4}-\d{2}-\d{2})/);
+    return m ? m[1] : raw.slice(0, 10);
+}
+
+/** Anket geri bildirimleri — tarih aralığı (PostgREST) */
+async function fetchSurveyFeedbackInRangePostgrest(
+    start: string,
+    end: string,
+    surveyId?: string | null,
+): Promise<BeautyCustomerFeedback[]> {
+    if (!shouldUseTenantPostgrestApi()) return [];
+    const fn = erpFirmNrForRow();
+    const pn = periodPaddedForBeauty();
+    const { postgrest } = await import('./api/postgrestClient');
+    const endExclusive = addOneDayYmd(end);
+    const sid = surveyId?.trim();
+    const path = `/rex_${fn}_${pn}_beauty_customer_feedback`;
+    const parseRows = (rows: Record<string, unknown>[]) =>
+        (Array.isArray(rows) ? rows : []).map((r) =>
+            beautyService.parseFeedbackRow(r as BeautyCustomerFeedback & { survey_answers?: unknown }),
+        );
+
+    try {
+        const andParts = [
+            `created_at.gte.${start}T00:00:00.000Z`,
+            `created_at.lt.${endExclusive}T00:00:00.000Z`,
+        ];
+        if (sid) andParts.push(`survey_id.eq.${sid}`);
+        const rows = await postgrest.get<Record<string, unknown>[]>(
+            path,
+            {
+                select: '*',
+                and: `(${andParts.join(',')})`,
+                order: 'created_at.desc',
+                limit: 10000,
+            },
+            { schema: 'beauty' },
+        );
+        return parseRows(rows);
+    } catch (e) {
+        console.warn('[beautyService] fetchSurveyFeedbackInRangePostgREST (and):', e);
+    }
+
+    const fallbackParams: Record<string, string | number> = {
+        select: '*',
+        order: 'created_at.desc',
+        limit: 10000,
+    };
+    if (sid) fallbackParams.survey_id = `eq.${sid}`;
+    const rows = await postgrest.get<Record<string, unknown>[]>(path, fallbackParams, { schema: 'beauty' });
+    return parseRows(rows).filter((r) => {
+        const day = surveyFeedbackDayKey(r.created_at);
+        return day >= start && day <= end;
+    });
+}
+
+async function resolveServiceNamesPostgrest(svcIds: string[]): Promise<Map<string, string>> {
+    const out = new Map<string, string>();
+    const uniq = [...new Set(filterUuidIds(svcIds))];
+    if (!uniq.length) return out;
+    const fn = erpFirmNrForRow();
+    const { postgrest } = await import('./api/postgrestClient');
+    const beautySvc = await postgrestGetByIds<Record<string, unknown>>(
+        `/rex_${fn}_beauty_services`,
+        uniq,
+        'beauty',
+    );
+    for (const r of beautySvc) {
+        const nm = String(r.name ?? '').trim();
+        if (nm) out.set(String(r.id), nm);
+    }
+    const remaining = uniq.filter((id) => !out.has(id));
+    for (let i = 0; i < remaining.length; i += BEAUTY_PGREST_CHUNK) {
+        const chunk = remaining.slice(i, i + BEAUTY_PGREST_CHUNK);
+        const inList = chunk.join(',');
+        try {
+            const part = await postgrest.get<Record<string, unknown>[]>(
+                `/rex_${fn}_services`,
+                {
+                    select: 'id,name',
+                    id: `in.(${inList})`,
+                    firm_nr: `eq.${fn}`,
+                    limit: chunk.length,
+                },
+                { schema: 'public' },
+            );
+            for (const r of Array.isArray(part) ? part : []) {
+                const nm = String(r.name ?? '').trim();
+                if (nm) out.set(String(r.id), nm);
+            }
+        } catch {
+            /* */
+        }
+    }
+    const stillMissing = uniq.filter((id) => !out.has(id));
+    if (stillMissing.length) {
+        const prod = await postgrestGetByIds<Record<string, unknown>>(
+            `/rex_${fn}_products`,
+            stillMissing,
+            'public',
+        );
+        for (const r of prod) {
+            if (!productRowIsService(r)) continue;
+            const nm = String(r.name ?? '').trim();
+            if (nm) out.set(String(r.id), nm);
+        }
+    }
+    return out;
+}
+
+async function resolveSpecialistNamesPostgrest(spIds: string[]): Promise<Map<string, string>> {
+    const out = new Map<string, string>();
+    const uniq = [...new Set(filterUuidIds(spIds))];
+    if (!uniq.length) return out;
+    const fn = erpFirmNrForRow();
+    const { postgrest } = await import('./api/postgrestClient');
+    const spCards = await postgrestGetByIds<Record<string, unknown>>(
+        `/rex_${fn}_beauty_specialists`,
+        uniq,
+        'beauty',
+    );
+    for (const r of spCards) {
+        const nm = String(r.name ?? '').trim();
+        if (nm) out.set(String(r.id), nm);
+    }
+    const remaining = uniq.filter((id) => !out.has(id));
+    for (let i = 0; i < remaining.length; i += BEAUTY_PGREST_CHUNK) {
+        const chunk = remaining.slice(i, i + BEAUTY_PGREST_CHUNK);
+        const inList = chunk.join(',');
+        try {
+            const part = await postgrest.get<Record<string, unknown>[]>(
+                '/users',
+                {
+                    select: 'id,full_name,username',
+                    id: `in.(${inList})`,
+                    firm_nr: `eq.${fn}`,
+                    limit: chunk.length,
+                },
+                { schema: 'public' },
+            );
+            for (const u of Array.isArray(part) ? part : []) {
+                const nm = String(u.full_name ?? '').trim() || String(u.username ?? '').trim();
+                if (nm) out.set(String(u.id), nm);
+            }
+        } catch {
+            /* */
+        }
+    }
+    return out;
+}
+
+type SurveyFeedbackEnrichedRow = BeautyCustomerFeedback & {
+    customer_name?: string;
+    appointment_date?: string | null;
+    survey_name?: string | null;
+    specialist_id?: string;
+    specialist_name?: string;
+    service_id?: string;
+    service_name?: string;
+};
+
+async function enrichSurveyFeedbackPostgrest(
+    feedback: BeautyCustomerFeedback[],
+): Promise<SurveyFeedbackEnrichedRow[]> {
+    if (!feedback.length) return [];
+    const fn = erpFirmNrForRow();
+    const pn = periodPaddedForBeauty();
+    const aptIds = [
+        ...new Set(
+            feedback
+                .map((f) => f.appointment_id)
+                .filter((id): id is string => Boolean(id?.trim())),
+        ),
+    ];
+    const custIds = [
+        ...new Set(
+            feedback
+                .map((f) => f.customer_id)
+                .filter((id): id is string => Boolean(id?.trim())),
+        ),
+    ];
+    const surveyIds = [
+        ...new Set(
+            feedback
+                .map((f) => f.survey_id)
+                .filter((id): id is string => Boolean(id?.trim())),
+        ),
+    ];
+
+    const [apts, custs, surveys] = await Promise.all([
+        postgrestGetByIds<Record<string, unknown>>(
+            `/rex_${fn}_${pn}_beauty_appointments`,
+            aptIds,
+            'beauty',
+        ),
+        postgrestGetByIds<Record<string, unknown>>(`/rex_${fn}_customers`, custIds, 'public'),
+        postgrestGetByIds<Record<string, unknown>>(
+            `/rex_${fn}_beauty_satisfaction_surveys`,
+            surveyIds,
+            'beauty',
+        ),
+    ]);
+
+    const aptMap = new Map<string, Record<string, unknown>>();
+    const spIds: string[] = [];
+    const svcIds: string[] = [];
+    for (const a of apts) {
+        const id = String(a.id);
+        aptMap.set(id, a);
+        if (a.specialist_id) spIds.push(String(a.specialist_id));
+        if (a.service_id) svcIds.push(String(a.service_id));
+    }
+    const custMap = new Map<string, string>();
+    for (const c of custs) custMap.set(String(c.id), String(c.name ?? ''));
+    const surveyMap = new Map<string, string>();
+    for (const s of surveys) surveyMap.set(String(s.id), String(s.name ?? ''));
+
+    const [spNames, svcNames] = await Promise.all([
+        resolveSpecialistNamesPostgrest(spIds),
+        resolveServiceNamesPostgrest(svcIds),
+    ]);
+
+    return feedback.map((f) => {
+        const apt = f.appointment_id ? aptMap.get(String(f.appointment_id)) : undefined;
+        const spId = apt?.specialist_id ? String(apt.specialist_id) : '';
+        const svcId = apt?.service_id ? String(apt.service_id) : '';
+        const aptDateRaw = apt?.appointment_date;
+        return {
+            ...f,
+            customer_name: f.customer_id ? (custMap.get(String(f.customer_id)) ?? '') : '',
+            appointment_date: aptDateRaw != null ? String(aptDateRaw).slice(0, 10) : null,
+            survey_name: f.survey_id ? (surveyMap.get(String(f.survey_id)) ?? '') : null,
+            specialist_id: spId,
+            specialist_name: spId ? (spNames.get(spId) ?? '—') : undefined,
+            service_id: svcId,
+            service_name: svcId ? (svcNames.get(svcId) ?? '—') : undefined,
+        };
+    });
+}
+
+async function completedAppointmentStatsPostgrest(
+    start: string,
+    end: string,
+): Promise<{ total: number; byDay: Map<string, number> }> {
+    const byDay = new Map<string, number>();
+    let total = 0;
+    const apts = await getAppointmentsInRangePostgrestBranch(start, end);
+    if (!apts) return { total, byDay };
+    for (const a of apts) {
+        if (String(a.status ?? '').trim().toLowerCase() !== 'completed') continue;
+        const key = String(a.appointment_date ?? a.date ?? '').slice(0, 10);
+        if (!key || key < start || key > end) continue;
+        total += 1;
+        byDay.set(key, (byDay.get(key) ?? 0) + 1);
+    }
+    return { total, byDay };
+}
+
+/** Anket raporları — geri bildirim + tamamlanan randevu (PostgREST) */
+async function buildSurveyFeedbackContextPostgrest(
+    start: string,
+    end: string,
+    surveyId?: string | null,
+): Promise<{
+    feedback: BeautyCustomerFeedback[];
+    enriched: SurveyFeedbackEnrichedRow[];
+    completedTotal: number;
+    completedByDay: Map<string, number>;
+} | null> {
+    if (!shouldUseTenantPostgrestApi()) return null;
+    try {
+        const [feedback, completed] = await Promise.all([
+            fetchSurveyFeedbackInRangePostgrest(start, end, surveyId),
+            completedAppointmentStatsPostgrest(start, end),
+        ]);
+        const enriched = await enrichSurveyFeedbackPostgrest(feedback);
+        return {
+            feedback,
+            enriched,
+            completedTotal: completed.total,
+            completedByDay: completed.byDay,
+        };
+    } catch (e) {
+        console.warn('[beautyService] buildSurveyFeedbackContextPostgREST:', e);
+        return null;
+    }
+}
+
+/** PostgREST modunda köprü SQL yedeği kullanılmaz (slug ≠ DB adı, örn. aqua / aqua_beauty). */
+function surveyReportBlocksSqlFallback(): boolean {
+    return shouldUseTenantPostgrestApi();
+}
+
 /** Web hibrit: güzellik hizmet listesi PostgREST (köprü SQL yok) */
 async function getServicesPostgrestBranch(): Promise<BeautyService[] | null> {
     if (!shouldUseTenantPostgrestApi()) return null;
@@ -3589,6 +3890,20 @@ export const beautyService = {
     },
 
     async getSatisfactionSurveys(): Promise<BeautySatisfactionSurvey[]> {
+        if (shouldUseTenantPostgrestApi()) {
+            try {
+                const { postgrest } = await import('./api/postgrestClient');
+                const fn = erpFirmNrForRow();
+                const rows = await postgrest.get<BeautySatisfactionSurvey[]>(
+                    `/rex_${fn}_beauty_satisfaction_surveys`,
+                    { select: '*', order: 'sort_order.asc,created_at.asc', limit: 500 },
+                    { schema: 'beauty' },
+                );
+                if (Array.isArray(rows)) return rows;
+            } catch (e) {
+                console.warn('[beautyService] getSatisfactionSurveys PostgREST:', e);
+            }
+        }
         const t = postgres.getCardTableName('beauty_satisfaction_surveys', 'beauty');
         const { rows } = await postgres.query(
             `SELECT * FROM ${t} ORDER BY sort_order ASC, created_at ASC`
@@ -3597,6 +3912,32 @@ export const beautyService = {
     },
 
     async getSatisfactionQuestions(surveyId: string): Promise<BeautySatisfactionQuestion[]> {
+        if (shouldUseTenantPostgrestApi()) {
+            try {
+                const { postgrest } = await import('./api/postgrestClient');
+                const fn = erpFirmNrForRow();
+                const rows = await postgrest.get<
+                    (BeautySatisfactionQuestion & { labels_json?: unknown })[]
+                >(
+                    `/rex_${fn}_beauty_satisfaction_questions`,
+                    {
+                        select: '*',
+                        survey_id: `eq.${surveyId}`,
+                        order: 'sort_order.asc,created_at.asc',
+                        limit: 500,
+                    },
+                    { schema: 'beauty' },
+                );
+                return (Array.isArray(rows) ? rows : []).map(
+                    (r: BeautySatisfactionQuestion & { labels_json: unknown }) => ({
+                        ...r,
+                        labels_json: beautyService.parseSatisfactionLabels(r.labels_json),
+                    }),
+                );
+            } catch (e) {
+                console.warn('[beautyService] getSatisfactionQuestions PostgREST:', e);
+            }
+        }
         const t = postgres.getCardTableName('beauty_satisfaction_questions', 'beauty');
         const { rows } = await postgres.query(
             `SELECT * FROM ${t} WHERE survey_id = $1 ORDER BY sort_order ASC, created_at ASC`,
@@ -6364,48 +6705,9 @@ export const beautyService = {
         const lang = opts?.lang ?? 'tr';
         const surveyFilter = opts?.surveyId?.trim() || null;
 
-        const fbTable = postgres.getMovementTableName('beauty_customer_feedback', 'beauty');
-        const aptTable = postgres.getMovementTableName('beauty_appointments', 'beauty');
-        const custTable = postgres.getCardTableName('customers');
-        const surveyTable = postgres.getCardTableName('beauty_satisfaction_surveys', 'beauty');
-
         const surveyOptions = await beautyService.getSatisfactionSurveys();
 
-        const fbParams: unknown[] = [start, end];
-        let surveySql = '';
-        if (surveyFilter) {
-            fbParams.push(surveyFilter);
-            surveySql = ` AND f.survey_id = $${fbParams.length}::uuid`;
-        }
-
-        const [fbRes, completedRes] = await Promise.all([
-            postgres.query(
-                `SELECT
-                   f.*,
-                   c.name AS customer_name,
-                   a.appointment_date::text AS appointment_date,
-                   sv.name AS survey_name
-                 FROM ${fbTable} f
-                 LEFT JOIN ${custTable} c ON f.customer_id = c.id
-                 LEFT JOIN ${aptTable} a ON f.appointment_id = a.id
-                 LEFT JOIN ${surveyTable} sv ON f.survey_id = sv.id
-                 WHERE f.created_at >= $1::date
-                   AND f.created_at < ($2::date + INTERVAL '1 day')
-                   ${surveySql}
-                 ORDER BY f.created_at DESC`,
-                fbParams,
-            ),
-            postgres.query(
-                `SELECT COUNT(*)::int AS cnt
-                 FROM ${aptTable} a
-                 WHERE LOWER(TRIM(COALESCE(a.status::text, ''))) = 'completed'
-                   AND a.appointment_date >= $1::date
-                   AND a.appointment_date <= $2::date`,
-                [start, end],
-            ),
-        ]);
-
-        const rawRows = fbRes.rows as Array<
+        let rawRows: Array<
             BeautyCustomerFeedback & {
                 customer_name?: string;
                 appointment_date?: string | null;
@@ -6413,10 +6715,61 @@ export const beautyService = {
                 survey_answers?: unknown;
             }
         >;
+        let completedAppointments: number;
+
+        const pgCtx = await buildSurveyFeedbackContextPostgrest(start, end, surveyFilter);
+        if (pgCtx) {
+            rawRows = pgCtx.enriched;
+            completedAppointments = pgCtx.completedTotal;
+        } else if (surveyReportBlocksSqlFallback()) {
+            return empty;
+        } else {
+            const fbTable = postgres.getMovementTableName('beauty_customer_feedback', 'beauty');
+            const aptTable = postgres.getMovementTableName('beauty_appointments', 'beauty');
+            const custTable = postgres.getCardTableName('customers');
+            const surveyTable = postgres.getCardTableName('beauty_satisfaction_surveys', 'beauty');
+
+            const fbParams: unknown[] = [start, end];
+            let surveySql = '';
+            if (surveyFilter) {
+                fbParams.push(surveyFilter);
+                surveySql = ` AND f.survey_id = $${fbParams.length}::uuid`;
+            }
+
+            const [fbRes, completedRes] = await Promise.all([
+                postgres.query(
+                    `SELECT
+                       f.*,
+                       c.name AS customer_name,
+                       a.appointment_date::text AS appointment_date,
+                       sv.name AS survey_name
+                     FROM ${fbTable} f
+                     LEFT JOIN ${custTable} c ON f.customer_id = c.id
+                     LEFT JOIN ${aptTable} a ON f.appointment_id = a.id
+                     LEFT JOIN ${surveyTable} sv ON f.survey_id = sv.id
+                     WHERE f.created_at >= $1::date
+                       AND f.created_at < ($2::date + INTERVAL '1 day')
+                       ${surveySql}
+                     ORDER BY f.created_at DESC`,
+                    fbParams,
+                ),
+                postgres.query(
+                    `SELECT COUNT(*)::int AS cnt
+                     FROM ${aptTable} a
+                     WHERE LOWER(TRIM(COALESCE(a.status::text, ''))) = 'completed'
+                       AND a.appointment_date >= $1::date
+                       AND a.appointment_date <= $2::date`,
+                    [start, end],
+                ),
+            ]);
+
+            rawRows = fbRes.rows as typeof rawRows;
+            completedAppointments = Number(
+                (completedRes.rows[0] as { cnt?: number } | undefined)?.cnt ?? 0,
+            );
+        }
+
         const parsedRows = rawRows.map((r) => beautyService.parseFeedbackRow(r));
-        const completedAppointments = Number(
-            (completedRes.rows[0] as { cnt?: number } | undefined)?.cnt ?? 0,
-        );
 
         const responses: BeautySurveyResponseRow[] = rawRows.map((raw, i) => {
             const r = parsedRows[i];
@@ -6625,9 +6978,81 @@ export const beautyService = {
         if (!/^\d{4}-\d{2}-\d{2}$/.test(start) || !/^\d{4}-\d{2}-\d{2}$/.test(end)) return empty;
 
         const surveyFilter = opts?.surveyId?.trim() || null;
+        const surveyOptions = await beautyService.getSatisfactionSurveys();
+
+        const pgCtx = await buildSurveyFeedbackContextPostgrest(start, end, surveyFilter);
+        if (pgCtx) {
+            const fbByDay = new Map<
+                string,
+                { count: number; ratingSum: number; recommend: number }
+            >();
+            for (const f of pgCtx.feedback) {
+                const dayKey = surveyFeedbackDayKey(f.created_at);
+                if (!dayKey) continue;
+                const acc = fbByDay.get(dayKey) ?? { count: 0, ratingSum: 0, recommend: 0 };
+                acc.count += 1;
+                acc.ratingSum += Number(f.overall_rating ?? 0);
+                if (f.would_recommend) acc.recommend += 1;
+                fbByDay.set(dayKey, acc);
+            }
+
+            const points: BeautySurveyTrendPoint[] = [...fbByDay.entries()]
+                .sort(([a], [b]) => a.localeCompare(b))
+                .map(([dayKey, acc]) => {
+                    const responseCount = acc.count;
+                    const completed = pgCtx.completedByDay.get(dayKey) ?? 0;
+                    return {
+                        day_key: dayKey,
+                        response_count: responseCount,
+                        avg_overall_rating:
+                            responseCount > 0
+                                ? Math.round((acc.ratingSum / responseCount) * 100) / 100
+                                : 0,
+                        would_recommend_pct:
+                            responseCount > 0
+                                ? Math.round((acc.recommend / responseCount) * 100)
+                                : 0,
+                        completed_appointments: completed,
+                        response_rate_pct:
+                            completed > 0
+                                ? Math.round((responseCount / completed) * 100)
+                                : responseCount > 0
+                                  ? 100
+                                  : 0,
+                    };
+                });
+
+            const totalResponses = points.reduce((s, p) => s + p.response_count, 0);
+            const avgOverall =
+                totalResponses > 0
+                    ? points.reduce((s, p) => s + p.avg_overall_rating * p.response_count, 0) /
+                      totalResponses
+                    : 0;
+            const totalRecommend = pgCtx.feedback.filter((f) => f.would_recommend).length;
+
+            return {
+                start_ymd: start,
+                end_ymd: end,
+                survey_options: surveyOptions,
+                selected_survey_id: surveyFilter,
+                points,
+                summary: {
+                    response_count: totalResponses,
+                    avg_overall_rating: Math.round(avgOverall * 10) / 10,
+                    would_recommend_pct:
+                        totalResponses > 0
+                            ? Math.round((totalRecommend / totalResponses) * 100)
+                            : 0,
+                },
+            };
+        }
+
+        if (surveyReportBlocksSqlFallback()) {
+            return empty;
+        }
+
         const fbTable = postgres.getMovementTableName('beauty_customer_feedback', 'beauty');
         const aptTable = postgres.getMovementTableName('beauty_appointments', 'beauty');
-        const surveyOptions = await beautyService.getSatisfactionSurveys();
 
         const fbParams: unknown[] = [start, end];
         let surveySql = '';
@@ -6737,11 +7162,87 @@ export const beautyService = {
         if (!/^\d{4}-\d{2}-\d{2}$/.test(start) || !/^\d{4}-\d{2}-\d{2}$/.test(end)) return empty;
 
         const surveyFilter = opts?.surveyId?.trim() || null;
+        const surveyOptions = await beautyService.getSatisfactionSurveys();
+
+        const pgCtx = await buildSurveyFeedbackContextPostgrest(start, end, surveyFilter);
+        if (pgCtx) {
+            type StaffAcc = {
+                id: string;
+                name: string;
+                count: number;
+                overallSum: number;
+                staffSum: number;
+                staffCnt: number;
+                recommend: number;
+                low: number;
+            };
+            const accMap = new Map<string, StaffAcc>();
+            for (const r of pgCtx.enriched) {
+                if (!r.appointment_id) continue;
+                const id = r.specialist_id?.trim() || 'unknown';
+                const name = r.specialist_name?.trim() || '—';
+                let acc = accMap.get(id);
+                if (!acc) {
+                    acc = {
+                        id,
+                        name,
+                        count: 0,
+                        overallSum: 0,
+                        staffSum: 0,
+                        staffCnt: 0,
+                        recommend: 0,
+                        low: 0,
+                    };
+                    accMap.set(id, acc);
+                }
+                acc.count += 1;
+                acc.overallSum += Number(r.overall_rating ?? 0);
+                const sr = r.staff_rating;
+                if (sr != null && !Number.isNaN(Number(sr))) {
+                    acc.staffSum += Number(sr);
+                    acc.staffCnt += 1;
+                }
+                if (r.would_recommend) acc.recommend += 1;
+                if (Number(r.overall_rating ?? 0) <= 2) acc.low += 1;
+            }
+
+            const breakdownRows: BeautySurveyBreakdownRow[] = [...accMap.values()]
+                .map((acc) => ({
+                    id: acc.id,
+                    name: acc.name,
+                    response_count: acc.count,
+                    avg_overall_rating: Math.round((acc.overallSum / acc.count) * 10) / 10,
+                    avg_staff_rating:
+                        acc.staffCnt > 0
+                            ? Math.round((acc.staffSum / acc.staffCnt) * 10) / 10
+                            : null,
+                    would_recommend_pct:
+                        acc.count > 0 ? Math.round((acc.recommend / acc.count) * 100) : 0,
+                    low_score_count: acc.low,
+                }))
+                .sort(
+                    (a, b) =>
+                        b.avg_overall_rating - a.avg_overall_rating ||
+                        b.response_count - a.response_count,
+                );
+
+            return {
+                start_ymd: start,
+                end_ymd: end,
+                survey_options: surveyOptions,
+                selected_survey_id: surveyFilter,
+                rows: breakdownRows,
+            };
+        }
+
+        if (surveyReportBlocksSqlFallback()) {
+            return empty;
+        }
+
         const fn = erpFirmNrForRow();
         const fbTable = postgres.getMovementTableName('beauty_customer_feedback', 'beauty');
         const aptTable = postgres.getMovementTableName('beauty_appointments', 'beauty');
         const spTable = postgres.getCardTableName('beauty_specialists', 'beauty');
-        const surveyOptions = await beautyService.getSatisfactionSurveys();
 
         const params: unknown[] = [start, end, fn];
         let surveySql = '';
@@ -6823,13 +7324,87 @@ export const beautyService = {
         if (!/^\d{4}-\d{2}-\d{2}$/.test(start) || !/^\d{4}-\d{2}-\d{2}$/.test(end)) return empty;
 
         const surveyFilter = opts?.surveyId?.trim() || null;
+        const surveyOptions = await beautyService.getSatisfactionSurveys();
+
+        const pgCtx = await buildSurveyFeedbackContextPostgrest(start, end, surveyFilter);
+        if (pgCtx) {
+            type SvcAcc = {
+                id: string;
+                name: string;
+                count: number;
+                overallSum: number;
+                svcSum: number;
+                svcCnt: number;
+                recommend: number;
+                low: number;
+            };
+            const accMap = new Map<string, SvcAcc>();
+            for (const r of pgCtx.enriched) {
+                if (!r.appointment_id) continue;
+                const id = r.service_id?.trim() || 'unknown';
+                const name = r.service_name?.trim() || '—';
+                let acc = accMap.get(id);
+                if (!acc) {
+                    acc = {
+                        id,
+                        name,
+                        count: 0,
+                        overallSum: 0,
+                        svcSum: 0,
+                        svcCnt: 0,
+                        recommend: 0,
+                        low: 0,
+                    };
+                    accMap.set(id, acc);
+                }
+                acc.count += 1;
+                acc.overallSum += Number(r.overall_rating ?? 0);
+                const svr = r.service_rating;
+                if (svr != null && !Number.isNaN(Number(svr))) {
+                    acc.svcSum += Number(svr);
+                    acc.svcCnt += 1;
+                }
+                if (r.would_recommend) acc.recommend += 1;
+                if (Number(r.overall_rating ?? 0) <= 2) acc.low += 1;
+            }
+
+            const breakdownRows: BeautySurveyBreakdownRow[] = [...accMap.values()]
+                .map((acc) => ({
+                    id: acc.id,
+                    name: acc.name,
+                    response_count: acc.count,
+                    avg_overall_rating: Math.round((acc.overallSum / acc.count) * 10) / 10,
+                    avg_staff_rating:
+                        acc.svcCnt > 0 ? Math.round((acc.svcSum / acc.svcCnt) * 10) / 10 : null,
+                    would_recommend_pct:
+                        acc.count > 0 ? Math.round((acc.recommend / acc.count) * 100) : 0,
+                    low_score_count: acc.low,
+                }))
+                .sort(
+                    (a, b) =>
+                        b.avg_overall_rating - a.avg_overall_rating ||
+                        b.response_count - a.response_count,
+                );
+
+            return {
+                start_ymd: start,
+                end_ymd: end,
+                survey_options: surveyOptions,
+                selected_survey_id: surveyFilter,
+                rows: breakdownRows,
+            };
+        }
+
+        if (surveyReportBlocksSqlFallback()) {
+            return empty;
+        }
+
         const fn = erpFirmNrForRow();
         const fbTable = postgres.getMovementTableName('beauty_customer_feedback', 'beauty');
         const aptTable = postgres.getMovementTableName('beauty_appointments', 'beauty');
         const bsTable = postgres.getCardTableName('beauty_services', 'beauty');
         const rsTable = postgres.getCardTableName('services');
         const prodTbl = postgres.getCardTableName('products');
-        const surveyOptions = await beautyService.getSatisfactionSurveys();
 
         const params: unknown[] = [start, end, fn];
         let surveySql = '';
@@ -6927,8 +7502,55 @@ export const beautyService = {
         if (!/^\d{4}-\d{2}-\d{2}$/.test(start) || !/^\d{4}-\d{2}-\d{2}$/.test(end)) return empty;
 
         const surveyFilter = opts?.surveyId?.trim() || null;
-        const fbTable = postgres.getMovementTableName('beauty_customer_feedback', 'beauty');
         const surveyOptions = await beautyService.getSatisfactionSurveys();
+
+        const pgCtx = await buildSurveyFeedbackContextPostgrest(start, end, surveyFilter);
+        if (pgCtx) {
+            let promoters = 0;
+            let passives = 0;
+            let detractors = 0;
+            let recommendCount = 0;
+            let ratingSum = 0;
+
+            for (const raw of pgCtx.feedback) {
+                const rating = Math.min(5, Math.max(1, Math.round(Number(raw.overall_rating ?? 0))));
+                ratingSum += rating;
+                if (raw.would_recommend) recommendCount += 1;
+                if (rating >= 5) promoters += 1;
+                else if (rating >= 4) passives += 1;
+                else detractors += 1;
+            }
+
+            const total = pgCtx.feedback.length;
+            const npsScore = total > 0 ? Math.round(((promoters - detractors) / total) * 100) : 0;
+
+            return {
+                start_ymd: start,
+                end_ymd: end,
+                survey_options: surveyOptions,
+                selected_survey_id: surveyFilter,
+                summary: {
+                    response_count: total,
+                    nps_score: npsScore,
+                    promoter_count: promoters,
+                    passive_count: passives,
+                    detractor_count: detractors,
+                    promoter_pct: total > 0 ? Math.round((promoters / total) * 100) : 0,
+                    passive_pct: total > 0 ? Math.round((passives / total) * 100) : 0,
+                    detractor_pct: total > 0 ? Math.round((detractors / total) * 100) : 0,
+                    would_recommend_pct:
+                        total > 0 ? Math.round((recommendCount / total) * 100) : 0,
+                    avg_overall_rating:
+                        total > 0 ? Math.round((ratingSum / total) * 10) / 10 : 0,
+                },
+            };
+        }
+
+        if (surveyReportBlocksSqlFallback()) {
+            return empty;
+        }
+
+        const fbTable = postgres.getMovementTableName('beauty_customer_feedback', 'beauty');
 
         const params: unknown[] = [start, end];
         let surveySql = '';
@@ -7004,6 +7626,62 @@ export const beautyService = {
 
         const surveyFilter = opts?.surveyId?.trim() || null;
         const maxRating = Math.min(5, Math.max(1, Number(opts?.maxRating ?? 3)));
+        const surveyOptions = await beautyService.getSatisfactionSurveys();
+
+        const pgCtx = await buildSurveyFeedbackContextPostgrest(start, end, surveyFilter);
+        if (pgCtx) {
+            const filtered = pgCtx.enriched.filter((r) => {
+                const comment = String(r.comment ?? '').trim();
+                return comment.length > 0 || Number(r.overall_rating ?? 0) <= maxRating;
+            });
+
+            const commentRows: BeautySurveyCommentRow[] = filtered
+                .sort(
+                    (a, b) =>
+                        Number(a.overall_rating ?? 0) - Number(b.overall_rating ?? 0) ||
+                        String(b.created_at ?? '').localeCompare(String(a.created_at ?? '')),
+                )
+                .map((r) => ({
+                    id: String(r.id ?? ''),
+                    created_at: String(r.created_at ?? ''),
+                    customer_name: String(r.customer_name ?? '').trim() || '—',
+                    appointment_date: r.appointment_date?.slice(0, 10) ?? null,
+                    overall_rating: Number(r.overall_rating ?? 0),
+                    would_recommend: Boolean(r.would_recommend),
+                    comment: String(r.comment ?? '').trim(),
+                    specialist_name: r.specialist_name?.trim() || null,
+                    service_name: r.service_name?.trim() || null,
+                    survey_name: r.survey_name?.trim() || null,
+                }));
+
+            const withComment = commentRows.filter((r) => r.comment.length > 0);
+            const lowScore = commentRows.filter((r) => r.overall_rating <= maxRating);
+            const avgCommentRating =
+                withComment.length > 0
+                    ? Math.round(
+                          (withComment.reduce((s, r) => s + r.overall_rating, 0) / withComment.length) *
+                              10,
+                      ) / 10
+                    : null;
+
+            return {
+                start_ymd: start,
+                end_ymd: end,
+                survey_options: surveyOptions,
+                selected_survey_id: surveyFilter,
+                summary: {
+                    total_with_comment: withComment.length,
+                    low_score_count: lowScore.length,
+                    avg_rating_comments: avgCommentRating,
+                },
+                rows: commentRows,
+            };
+        }
+
+        if (surveyReportBlocksSqlFallback()) {
+            return empty;
+        }
+
         const fn = erpFirmNrForRow();
         const fbTable = postgres.getMovementTableName('beauty_customer_feedback', 'beauty');
         const aptTable = postgres.getMovementTableName('beauty_appointments', 'beauty');
@@ -7013,7 +7691,6 @@ export const beautyService = {
         const bsTable = postgres.getCardTableName('beauty_services', 'beauty');
         const rsTable = postgres.getCardTableName('services');
         const prodTbl = postgres.getCardTableName('products');
-        const surveyOptions = await beautyService.getSatisfactionSurveys();
 
         const params: unknown[] = [start, end, fn, maxRating];
         let surveySql = '';

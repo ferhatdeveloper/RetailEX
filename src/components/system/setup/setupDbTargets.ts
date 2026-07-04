@@ -1,7 +1,6 @@
 import type { SetupAppConfig, SetupDbMode, SetupDbTarget } from './setupTypes';
 import { DEFAULT_SAAS_TENANT_POSTGREST_ORIGIN, resolveTenantSyncUrls, parseSaaSOrCustomPostgrestUrl } from '../../../services/merkezTenantRegistry';
 import { normalizeHybridSyncTransport } from '../../../services/postgres';
-import { REMOTE_PG_DEFAULTS } from '../../../core/remotePgDefaults';
 
 const VALID_DB_MODES: SetupDbMode[] = ['online', 'offline', 'hybrid'];
 
@@ -151,21 +150,7 @@ export function normalizeSetupConfig(config: SetupAppConfig): SetupAppConfig {
     normalized.merkez_tenant_code = parsedRest.slug;
   }
 
-  // Kiracı slug → uzak PG veritabanı adı (retailex_demo yerine lovan vb.)
-  if (parsedRest.kind === 'saas_single_slug') {
-    const tenantDb = parsedRest.slug;
-    const remoteRaw = String(normalized.remote_db || '').trim();
-    const needsTenantDb =
-      !remoteRaw ||
-      remoteRaw.endsWith('/retailex_demo') ||
-      remoteRaw === 'retailex_demo' ||
-      (remoteRaw.includes('/') && !remoteRaw.endsWith(`/${tenantDb}`));
-    if (needsTenantDb) {
-      const host = REMOTE_PG_DEFAULTS.host;
-      const port = REMOTE_PG_DEFAULTS.port;
-      normalized.remote_db = `${host}:${port}/${tenantDb}`;
-    }
-  }
+  // SaaS slug (örn. aqua) ≠ PostgreSQL database_name (örn. aqua_beauty) — remote_db slug'dan türetilmez.
 
   if (normalized.role === 'client' && db_mode === 'online') {
     const central = String(normalized.central_api_url || '').trim();

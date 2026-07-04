@@ -504,6 +504,8 @@ export function Login({ onLogin }: LoginProps) {
       // 5. Re-initialize Postgres Service with new config
       const { initializeFromSQLite } = await import('../../services/postgres');
       await initializeFromSQLite();
+      const { ensureTenantDatabaseFromRegistry } = await import('../../services/postgres');
+      await ensureTenantDatabaseFromRegistry();
 
       toast.success('Firma yapılandırması başarıyla tamamlandı!');
       setSetupSuccessData(updatedConfig);
@@ -863,6 +865,8 @@ export function Login({ onLogin }: LoginProps) {
         preserveDbMode: dbConnectionMode,
       });
       await initializeFromSQLite();
+      const { ensureTenantDatabaseFromRegistry } = await import('../../services/postgres');
+      await ensureTenantDatabaseFromRegistry();
 
       if (tenantResult.applied && tenantResult.tag) {
         toast.success(`Kiracı bağlantısı uygulandı: ${tenantResult.tag}`);

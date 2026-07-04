@@ -19,7 +19,10 @@ import {
   LOCAL_CONFIG,
   REMOTE_CONFIG,
   getCentralRemotePgConfig,
+  normalizeHybridSyncIntervalSec,
   resolveHybridSyncConnectionProvider,
+  updateConfigs,
+  type HybridSyncTransport,
 } from './postgres';
 import {
   applyTerminalRuntimeFromConfig,
@@ -338,6 +341,81 @@ export function stopUnifiedHybridAutoSync(): void {
   unifiedStopFn?.();
   unifiedStopFn = null;
   unifiedTimer = null;
+}
+
+/** Periyodik arka plan senkronu açık mı (polling veya WS+periyodik) */
+export function isHybridPeriodicAutoSyncEnabled(): boolean {
+  const t = DB_SETTINGS.hybridSyncTransport;
+  return t === 'polling' || t === 'both';
+}
+
+const HYBRID_TRANSPORT_PREF_KEY = 'hybrid_sync_transport_pref';
+
+export function readHybridTransportPreference(): HybridSyncTransport {
+  if (typeof window === 'undefined') return 'both';
+  try {
+    const raw = localStorage.getItem(HYBRID_TRANSPORT_PREF_KEY);
+    if (raw === 'polling' || raw === 'both') return raw;
+  } catch {
+    /* */
+  }
+  return 'both';
+}
+
+export function writeHybridTransportPreference(transport: HybridSyncTransport): void {
+  if (transport === 'websocket') return;
+  try {
+    localStorage.setItem(HYBRID_TRANSPORT_PREF_KEY, transport);
+  } catch {
+    /* */
+  }
+}
+
+/** Otomatik senkron ayarlarını kaydet ve web'de timer/WS'yi yeniden başlat */
+export async function applyHybridAutoSyncSettings(opts?: {
+  transport?: HybridSyncTransport;
+  intervalSec?: number;
+  userId?: string | null;
+  storeId?: string | null;
+}): Promise<void> {
+  const settings: Partial<typeof DB_SETTINGS> = {};
+  if (opts?.transport !== undefined) {
+    settings.hybridSyncTransport = opts.transport;
+    if (opts.transport !== 'websocket') {
+      writeHybridTransportPreference(opts.transport);
+    }
+  }
+  if (opts?.intervalSec !== undefined) {
+    settings.hybridSyncIntervalSec = normalizeHybridSyncIntervalSec(opts.intervalSec);
+  }
+  if (Object.keys(settings).length > 0) {
+    await updateConfigs({ settings });
+  }
+
+  const { logSyncTransportDiagnostics } = await import('./syncTransportDiagnostics');
+  logSyncTransportDiagnostics('ApplyHybridAutoSync');
+
+  if (IS_TAURI || typeof window === 'undefined') {
+    return;
+  }
+
+  stopUnifiedHybridAutoSync();
+  const transport = DB_SETTINGS.hybridSyncTransport;
+  if (transport === 'polling' || transport === 'both') {
+    startUnifiedHybridAutoSync({
+      storeId: opts?.storeId ?? undefined,
+      intervalSec: DB_SETTINGS.hybridSyncIntervalSec,
+    });
+  }
+
+  if (!opts?.userId) return;
+  const { wsService } = await import('./websocket');
+  wsService.disconnect();
+  if (transport === 'websocket' || transport === 'both') {
+    void wsService.connect(opts.userId, opts.storeId || 'default_store').catch(() => {
+      logSyncTransportDiagnostics('ApplyHybridAutoSyncWsFail');
+    });
+  }
 }
 
 /** @deprecated startUnifiedHybridAutoSync kullanın */

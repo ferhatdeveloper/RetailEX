@@ -360,28 +360,85 @@ export function resolveTenantDatabaseFromRestUrl(restUrl?: string): string | nul
   return parsed.kind === 'saas_single_slug' ? parsed.slug : null;
 }
 
-/** Kiracı PostgreSQL veritabanı adı (köprü SQL / pg_dump). */
+/** tenant_registry'den çözülen gerçek PostgreSQL DB adı (örn. aqua_beauty). */
+let registryResolvedTenantDatabase: string | null = null;
+
+export function setRegistryResolvedTenantDatabaseName(name: string | null): void {
+  registryResolvedTenantDatabase = String(name ?? '').trim() || null;
+  if (registryResolvedTenantDatabase) {
+    REMOTE_CONFIG.database = registryResolvedTenantDatabase;
+  }
+}
+
+/**
+ * PostgREST URL slug'ı (örn. /aqua) ile PostgreSQL database_name (örn. aqua_beauty) farklı olabilir.
+ * Köprü SQL yalnızca kayıtlı remote_db veya tenant_registry çözümünü kullanır — slug asla DB adı sayılmaz.
+ */
 export function resolveEffectiveTenantDatabaseName(restUrl?: string): string | null {
-  // tenant_registry / remote_db (örn. aqua_beauty) — URL slug'ından (örn. aqua) önce gelir.
+  if (registryResolvedTenantDatabase) {
+    return registryResolvedTenantDatabase;
+  }
   const configuredDb = String(REMOTE_CONFIG.database || '').trim();
+  const slug = resolveTenantDatabaseFromRestUrl(restUrl ?? DB_SETTINGS.remoteRestUrl);
   if (
     configuredDb &&
     configuredDb !== 'retailex_local' &&
     configuredDb !== 'retailex_demo'
   ) {
+    // Kayıtlı remote_db URL slug ile aynıysa (aqua) gerçek DB adı olmayabilir — registry beklenir.
+    if (slug && configuredDb === slug) {
+      return null;
+    }
     return configuredDb;
   }
-
-  const code = String(DB_SETTINGS.merkezTenantCode ?? '').trim().toLowerCase();
-  if (code && /^[a-z0-9_-]+$/.test(code)) return code;
-
-  return resolveTenantDatabaseFromRestUrl(restUrl);
+  return null;
 }
 
-/**
- * `remote_db` eski demo adı (`retailex_demo`) kalsa bile merkez PG ucu kiracı DB'sine hizalanır.
- * Öncelik: kayıtlı remote_db → merkez_tenant_code → PostgREST slug (slug ≠ DB adı olabilir).
- */
+/** Web girişinde tenant_registry → gerçek database_name (aqua → aqua_beauty). */
+export async function ensureTenantDatabaseFromRegistry(): Promise<void> {
+  const restUrl = String(DB_SETTINGS.remoteRestUrl ?? '').trim();
+  if (!restUrl) return;
+  try {
+    const { resolveTenantRegistryForDirectPostgrest, parseSaaSOrCustomPostgrestUrl } = await import(
+      './merkezTenantRegistry'
+    );
+    const parsed = parseSaaSOrCustomPostgrestUrl(restUrl);
+    const slug =
+      parsed.kind === 'saas_single_slug'
+        ? parsed.slug
+        : String(DB_SETTINGS.merkezTenantCode ?? '').trim() || null;
+    const row = await resolveTenantRegistryForDirectPostgrest({ url: restUrl, pathSlug: slug });
+    if (!row?.database_name?.trim()) return;
+
+    const dbName = row.database_name.trim();
+    setRegistryResolvedTenantDatabaseName(dbName);
+    if (row.code?.trim()) {
+      DB_SETTINGS.merkezTenantCode = row.code.trim();
+    }
+
+    if (typeof window === 'undefined') return;
+    for (const key of ['exretail_pg_config', 'retailex_web_config'] as const) {
+      try {
+        const raw = window.localStorage.getItem(key);
+        if (!raw) continue;
+        const obj = JSON.parse(raw) as Record<string, unknown>;
+        const prevDb = String(obj.remote_db ?? '').trim();
+        const prevCode = String(obj.merkez_tenant_code ?? '').trim();
+        if (prevDb === dbName && prevCode === row.code) continue;
+        obj.remote_db = dbName;
+        if (row.code) obj.merkez_tenant_code = row.code;
+        window.localStorage.setItem(key, JSON.stringify(obj));
+      } catch {
+        /* tek cache */
+      }
+    }
+    console.log(`[Postgres] Kiracı DB adı tenant_registry: ${dbName}`);
+  } catch (e) {
+    console.warn('[Postgres] tenant_registry database_name çözülemedi:', e);
+  }
+}
+
+/** Kayıtlı remote_db veya tenant_registry çözümü ile merkez PG DB adını hizalar. */
 export function alignRemoteConfigDatabaseWithTenant(restUrl?: string): void {
   const tenantDb = resolveEffectiveTenantDatabaseName(restUrl);
   if (!tenantDb || REMOTE_CONFIG.database === tenantDb) return;
@@ -522,6 +579,7 @@ export async function initializeFromSQLite(preloadedConfig?: any) {
         const fullObj = webFull ? JSON.parse(webFull) : {};
         const merged = { ...flatObj, ...fullObj };
         applyWebLocalStorageConfig(merged);
+        await ensureTenantDatabaseFromRegistry();
       } else {
         DB_SETTINGS.activeMode = 'online';
         DB_SETTINGS.connectionProvider = 'db';

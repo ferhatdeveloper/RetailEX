@@ -606,7 +606,29 @@ export async function persistTenantFieldsFromRestUrl(
   });
   if (!patch) return { applied: false };
 
-  const merged = { ...prev, ...patch, is_configured: true };
+  let merged: Record<string, unknown> = { ...prev, ...patch, is_configured: true };
+
+  try {
+    const effectiveUrl = String(patch.remote_rest_url ?? restUrl).trim();
+    const slug = String(patch.merkez_tenant_code ?? '').trim() || null;
+    const row = await resolveTenantRegistryForDirectPostgrest({
+      url: effectiveUrl,
+      pathSlug: slug,
+    });
+    if (row) {
+      const regPatch = tenantRowToAppConfigPatch(row, {
+        forTauri: IS_TAURI || opts?.forTauri === true,
+        preserveDbPassword: String(prev.pg_remote_pass ?? ''),
+      });
+      merged = {
+        ...merged,
+        ...regPatch,
+        remote_rest_url: effectiveUrl,
+      };
+    }
+  } catch (e) {
+    console.warn('[merkezTenantRegistry] persistTenantFieldsFromRestUrl registry:', e);
+  }
 
   if (IS_TAURI || opts?.forTauri) {
     const { invoke } = await import('@tauri-apps/api/core');
@@ -614,10 +636,14 @@ export async function persistTenantFieldsFromRestUrl(
   } else if (typeof window !== 'undefined') {
     window.localStorage.setItem('retailex_web_config', JSON.stringify(merged));
     window.localStorage.setItem('exretail_firma_donem_configured', 'true');
-    const tag = String(patch.merkez_tenant_code || patch.merkez_tenant_id || '');
+    const tag = String(
+      merged.merkez_tenant_code || merged.merkez_tenant_id || patch.merkez_tenant_code || patch.merkez_tenant_id || '',
+    );
     if (tag) window.localStorage.setItem('exretail_selected_tenant', tag);
   }
 
-  const tag = String(patch.merkez_tenant_code || patch.merkez_tenant_id || '');
+  const tag = String(
+    merged.merkez_tenant_code || merged.merkez_tenant_id || patch.merkez_tenant_code || patch.merkez_tenant_id || '',
+  );
   return { applied: true, tag };
 }

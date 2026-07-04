@@ -819,6 +819,7 @@ export function ReportsModule({
     return localCalendarDateKey(d);
   });
   const [beautyServiceTo, setBeautyServiceTo] = useState(() => localTodayDateKey());
+  const [beautySurveyReloadKey, setBeautySurveyReloadKey] = useState(0);
   const [beautyServiceAppointments, setBeautyServiceAppointments] = useState<BeautyAppointment[]>([]);
   const [beautyServiceSales, setBeautyServiceSales] = useState<BeautySale[]>([]);
   const [loadingBeautyServiceReport, setLoadingBeautyServiceReport] = useState(false);
@@ -3942,6 +3943,22 @@ export function ReportsModule({
   const isBeautySurveyServiceReportTab = selectedTab === 'beauty-survey-service-report';
   const isBeautySurveyNpsReportTab = selectedTab === 'beauty-survey-nps-report';
   const isBeautySurveyCommentsReportTab = selectedTab === 'beauty-survey-comments-report';
+  const isAnyBeautySurveyReportTab =
+    isBeautySurveyReportTab ||
+    isBeautySurveyTrendReportTab ||
+    isBeautySurveyStaffReportTab ||
+    isBeautySurveyServiceReportTab ||
+    isBeautySurveyNpsReportTab ||
+    isBeautySurveyCommentsReportTab;
+  const beautySurveyEmbed = useMemo(
+    () => ({
+      startYmd: beautyServiceFrom,
+      endYmd: beautyServiceTo,
+      embedded: true as const,
+      reloadKey: beautySurveyReloadKey,
+    }),
+    [beautyServiceFrom, beautyServiceTo, beautySurveyReloadKey],
+  );
   const defaultOpenKeys = businessType === 'beauty'
     ? ['grp-beauty-reports', 'grp-general', 'grp-sales']
     : ['grp-general', 'grp-design', 'grp-sales'];
@@ -5959,7 +5976,7 @@ export function ReportsModule({
               );
             })()}
 
-            {(isBeautyServiceReportTab || isBeautyCancelledReportTab || isBeautyAppointmentProductReportTab) && (
+            {(isBeautyServiceReportTab || isBeautyCancelledReportTab || isBeautyAppointmentProductReportTab || isAnyBeautySurveyReportTab) && (
               <div className="space-y-4">
                 <div className="bg-white rounded-xl border border-slate-200 p-4 flex flex-wrap items-end gap-4 shadow-sm">
                   <div className="flex flex-col gap-1">
@@ -6071,13 +6088,21 @@ export function ReportsModule({
                   )}
                   <Button
                     type="primary"
-                    loading={loadingBeautyServiceReport}
-                    onClick={() => reloadBeautyServiceReport()}
+                    loading={isAnyBeautySurveyReportTab ? false : loadingBeautyServiceReport}
+                    onClick={() => {
+                      if (isAnyBeautySurveyReportTab) {
+                        setBeautySurveyReloadKey((k) => k + 1);
+                        return;
+                      }
+                      reloadBeautyServiceReport();
+                    }}
                   >
                     {tm('refresh')}
                   </Button>
                   <p className="text-xs text-slate-500 flex-1 min-w-[200px]">
-                    {isBeautyCancelledReportTab
+                    {isAnyBeautySurveyReportTab
+                      ? tm('bSurveyReportDateHint')
+                      : isBeautyCancelledReportTab
                       ? `${tm('beautyCancelledAppointmentsHint')} ${tm('beautyCancelledPaymentsHint')}`
                       : isBeautyAppointmentProductReportTab
                         ? tm('beautyAppointmentProductSalesHint')
@@ -6536,27 +6561,27 @@ export function ReportsModule({
             )}
 
             {isBeautySurveyReportTab && (
-              <SurveyResultsReport />
+              <SurveyResultsReport {...beautySurveyEmbed} />
             )}
 
             {isBeautySurveyTrendReportTab && (
-              <SurveyTrendReport />
+              <SurveyTrendReport {...beautySurveyEmbed} />
             )}
 
             {isBeautySurveyStaffReportTab && (
-              <SurveyStaffReport />
+              <SurveyStaffReport {...beautySurveyEmbed} />
             )}
 
             {isBeautySurveyServiceReportTab && (
-              <SurveyServiceReport />
+              <SurveyServiceReport {...beautySurveyEmbed} />
             )}
 
             {isBeautySurveyNpsReportTab && (
-              <SurveyNpsReport />
+              <SurveyNpsReport {...beautySurveyEmbed} />
             )}
 
             {isBeautySurveyCommentsReportTab && (
-              <SurveyCommentsReport />
+              <SurveyCommentsReport {...beautySurveyEmbed} />
             )}
 
             {selectedTab === 'chat-ai' && (

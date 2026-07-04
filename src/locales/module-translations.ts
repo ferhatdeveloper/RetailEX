@@ -4273,6 +4273,12 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
   },
   bPanelSurveyNeedCustomer: { tr: 'Anket için müşteri kaydı gerekli', en: 'Customer link required for survey', ar: 'يُلزم ربط عميل للاستبيان', ku: 'پەیوەندی کڕیار پێویستە' },
   bSurveyReportTitle: { tr: 'Anket Sonuç Raporu', en: 'Survey Results Report', ar: 'تقرير نتائج الاستبيان', ku: 'ڕاپۆرتی ئەنجامی ڕاپرسی' },
+  bSurveyReportDateHint: {
+    tr: 'Anket yanıt tarihine göre listelenir; tarih değişince rapor otomatik yenilenir.',
+    en: 'Listed by survey response date; the report refreshes automatically when dates change.',
+    ar: 'يُعرض حسب تاريخ رد الاستبيان؛ يُحدَّث التقرير تلقائياً عند تغيير التاريخ.',
+    ku: 'بەپێی بەرواری وەڵامی ڕاپرسی پیشان دەدرێت؛ بە گۆڕینی بەروار ڕاپۆرت خۆکار نوێ دەبێتەوە.',
+  },
   bSurveyReportSubtitle: { tr: 'Seçili tarih aralığındaki memnuniyet anketlerinin özeti ve soru bazlı dağılım.', en: 'Summary and per-question breakdown of satisfaction surveys in the selected date range.', ar: 'ملخص وتوزيع حسب السؤال للاستبيانات في الفترة المحددة.', ku: 'کورتەی ڕاپرسییەکانی ماوەی هەڵبژێردراو.' },
   bSurveyReportFilter: { tr: 'Anket', en: 'Survey', ar: 'الاستبيان', ku: 'ڕاپرسی' },
   bSurveyReportAllSurveys: { tr: 'Tüm anketler', en: 'All surveys', ar: 'كل الاستبيانات', ku: 'هەموو ڕاپرسییەکان' },

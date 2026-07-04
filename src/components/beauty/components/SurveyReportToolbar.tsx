@@ -20,6 +20,8 @@ type SurveyReportToolbarProps = {
     loading: boolean;
     onRun: () => void;
     extraFilters?: React.ReactNode;
+    /** Raporlar modülü üst tarih çubuğu kullanılıyorsa yerel tarih alanlarını gizle */
+    hideDateRange?: boolean;
 };
 
 export function SurveyReportToolbar({
@@ -38,6 +40,7 @@ export function SurveyReportToolbar({
     loading,
     onRun,
     extraFilters,
+    hideDateRange = false,
 }: SurveyReportToolbarProps) {
     const { tm } = useLanguage();
 
@@ -53,30 +56,34 @@ export function SurveyReportToolbar({
                 </div>
             </div>
             <div className="flex flex-wrap items-end gap-2 w-full pt-1 border-t border-gray-50">
-                <label className="flex flex-col gap-1 shrink-0">
-                    <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">{tm('date')}</span>
-                    <div className="flex items-center gap-2 border border-gray-200 rounded-xl px-3 py-2 bg-white">
-                        <CalendarDays size={14} className="text-violet-600 shrink-0" />
-                        <input
-                            type="date"
-                            value={startYmd}
-                            onChange={(e) => onStartChange(e.target.value)}
-                            className="text-xs font-bold text-gray-700 outline-none bg-transparent min-w-0"
-                        />
-                    </div>
-                </label>
-                <label className="flex flex-col gap-1 shrink-0">
-                    <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">{tm('bToDate')}</span>
-                    <div className="flex items-center gap-2 border border-gray-200 rounded-xl px-3 py-2 bg-white">
-                        <CalendarDays size={14} className="text-violet-600 shrink-0" />
-                        <input
-                            type="date"
-                            value={endYmd}
-                            onChange={(e) => onEndChange(e.target.value)}
-                            className="text-xs font-bold text-gray-700 outline-none bg-transparent min-w-0"
-                        />
-                    </div>
-                </label>
+                {!hideDateRange ? (
+                    <>
+                        <label className="flex flex-col gap-1 shrink-0">
+                            <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">{tm('date')}</span>
+                            <div className="flex items-center gap-2 border border-gray-200 rounded-xl px-3 py-2 bg-white">
+                                <CalendarDays size={14} className="text-violet-600 shrink-0" />
+                                <input
+                                    type="date"
+                                    value={startYmd}
+                                    onChange={(e) => onStartChange(e.target.value)}
+                                    className="text-xs font-bold text-gray-700 outline-none bg-transparent min-w-0"
+                                />
+                            </div>
+                        </label>
+                        <label className="flex flex-col gap-1 shrink-0">
+                            <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">{tm('bToDate')}</span>
+                            <div className="flex items-center gap-2 border border-gray-200 rounded-xl px-3 py-2 bg-white">
+                                <CalendarDays size={14} className="text-violet-600 shrink-0" />
+                                <input
+                                    type="date"
+                                    value={endYmd}
+                                    onChange={(e) => onEndChange(e.target.value)}
+                                    className="text-xs font-bold text-gray-700 outline-none bg-transparent min-w-0"
+                                />
+                            </div>
+                        </label>
+                    </>
+                ) : null}
                 <label className="flex flex-col gap-1 min-w-[160px] shrink-0">
                     <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">{tm('bSurveyReportFilter')}</span>
                     <select

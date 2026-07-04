@@ -5,6 +5,7 @@ import { useLanguage } from '../../../contexts/LanguageContext';
 import { formatLocalYmd } from '../../../utils/dateLocal';
 import type { BeautySurveyResponseRow, BeautySurveyResultsReport } from '../../../types/beauty';
 import { SurveyReportToolbar } from './SurveyReportToolbar';
+import type { BeautySurveyReportEmbedProps } from './SurveyExtraReports';
 import { cn } from '../../ui/utils';
 
 type RatingFilter = 'all' | '1' | '2' | '3' | '4' | '5';
@@ -27,14 +28,20 @@ function formatAnswerRating(ans: { rating?: number; text?: string; yes_no?: bool
     return '—';
 }
 
-export function SurveyResultsReport() {
+export function SurveyResultsReport(embed?: BeautySurveyReportEmbedProps) {
     const { tm, language } = useLanguage();
-    const [startYmd, setStartYmd] = useState(() => {
+    const [internalStart, setInternalStart] = useState(() => {
         const d = new Date();
         d.setDate(1);
         return formatLocalYmd(d);
     });
-    const [endYmd, setEndYmd] = useState(() => formatLocalYmd(new Date()));
+    const [internalEnd, setInternalEnd] = useState(() => formatLocalYmd(new Date()));
+    const startYmd = embed?.startYmd ?? internalStart;
+    const endYmd = embed?.endYmd ?? internalEnd;
+    const setStartYmd = embed?.embedded ? () => {} : setInternalStart;
+    const setEndYmd = embed?.embedded ? () => {} : setInternalEnd;
+    const hideDateRange = Boolean(embed?.embedded);
+    const reloadKey = embed?.reloadKey ?? 0;
     const [surveyId, setSurveyId] = useState<string>('all');
     const [ratingFilter, setRatingFilter] = useState<RatingFilter>('all');
     const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -58,7 +65,7 @@ export function SurveyResultsReport() {
         } finally {
             setLoading(false);
         }
-    }, [startYmd, endYmd, surveyId, language]);
+    }, [startYmd, endYmd, surveyId, language, reloadKey]);
 
     useEffect(() => {
         void load();
@@ -192,6 +199,7 @@ export function SurveyResultsReport() {
                 surveyOptions={data?.survey_options ?? []}
                 loading={loading}
                 onRun={() => void load()}
+                hideDateRange={hideDateRange}
             />
 
             {error && (
