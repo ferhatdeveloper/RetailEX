@@ -248,7 +248,6 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
   const { canViewPurchasePricing } = usePermission();
   const showPurchasePricing = canViewPurchasePricing();
   const { isMobile } = useResponsive();
-  const addProduct = useProductStore((state) => state.addProduct);
   const updateProduct = useProductStore((state) => state.updateProduct);
   const deleteProduct = useProductStore((state) => state.deleteProduct);
   const loadProducts = useProductStore((state) => state.loadProducts);
@@ -629,12 +628,8 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
     setShowProductForm(false);
   };
 
-  const handleProductFormSubmit = (product: Product) => {
-    if (editingProductId) {
-      updateProduct(editingProductId, product);
-    } else {
-      addProduct(product);
-    }
+  const handleProductFormSubmit = (_product: Product) => {
+    // ProductFormPage kaydı zaten yaptı; çift INSERT/UPDATE ve kod çakışması önlenir
     closeProductForm();
   };
 

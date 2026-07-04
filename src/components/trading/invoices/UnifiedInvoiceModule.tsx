@@ -134,11 +134,19 @@ export function UnifiedInvoiceModule({ customers = [], products = [], defaultCat
     setSelectedInvoiceType(null);
   };
 
-  // Kategorilere göre filtreleme
+  // Kategorilere göre filtreleme (alış iadesi TRCODE 6 → Iade; alış sekmesinde de görünsün)
+  const invoiceTypeMatchesPickerCategory = (type: InvoiceType, category: string): boolean => {
+    if (category === 'all') return true;
+    if (type.category === category) return true;
+    if (category === 'Alis' && type.code === 6) return true;
+    if (category === 'Satis' && type.code === 3) return true;
+    return false;
+  };
+
   const categories = [
     { id: 'all', label: tm('all'), count: INVOICE_TYPES.length },
-    { id: 'Satis', label: tm('sales'), count: INVOICE_TYPES.filter(t => t.category === 'Satis').length },
-    { id: 'Alis', label: tm('purchase'), count: INVOICE_TYPES.filter(t => t.category === 'Alis').length },
+    { id: 'Satis', label: tm('sales'), count: INVOICE_TYPES.filter(t => invoiceTypeMatchesPickerCategory(t, 'Satis')).length },
+    { id: 'Alis', label: tm('purchase'), count: INVOICE_TYPES.filter(t => invoiceTypeMatchesPickerCategory(t, 'Alis')).length },
     { id: 'Hizmet', label: tm('service'), count: INVOICE_TYPES.filter(t => t.category === 'Hizmet').length },
     { id: 'Irsaliye', label: tm('waybill'), count: INVOICE_TYPES.filter(t => t.category === 'Irsaliye').length },
     { id: 'Siparis', label: tm('order'), count: INVOICE_TYPES.filter(t => t.category === 'Siparis').length },
@@ -146,9 +154,7 @@ export function UnifiedInvoiceModule({ customers = [], products = [], defaultCat
     { id: 'Iade', label: tm('return'), count: INVOICE_TYPES.filter(t => t.category === 'Iade').length },
   ];
 
-  const filteredTypes = selectedCategory === 'all'
-    ? INVOICE_TYPES
-    : INVOICE_TYPES.filter(t => t.category === selectedCategory);
+  const filteredTypes = INVOICE_TYPES.filter((t) => invoiceTypeMatchesPickerCategory(t, selectedCategory));
 
   // Fatura formu açıksa UniversalInvoiceForm'u göster
   if (selectedInvoiceType) {

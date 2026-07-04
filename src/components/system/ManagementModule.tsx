@@ -1306,6 +1306,7 @@ export function ManagementModule({
             <InvoiceListModule
               products={products}
               defaultCategory="Alis"
+              includeCategories={['Iade']}
               title={t.purchaseInvoicesTitle}
               description={t.purchaseInvoicesDesc}
               countPurchaseDraftPrefill={countPurchaseDraftPrefill}
@@ -1317,6 +1318,7 @@ export function ManagementModule({
             <InvoiceListModule
               products={products}
               defaultCategory="Alis"
+              includeCategories={['Iade']}
               defaultInvoiceTypeFilter="1"
               title={t.purchaseInvoicesTitle}
               description={t.purchaseInvoicesDesc}

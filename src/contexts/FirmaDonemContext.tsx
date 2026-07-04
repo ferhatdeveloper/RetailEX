@@ -25,8 +25,8 @@ function normalizeFirmNr(v: string | number | undefined | null): string {
   return d.length <= 3 ? d.padStart(3, '0') : d;
 }
 
-/** Giriş oturumu / kullanıcı meta, config erp_firm_nr'den önce gelir */
-function resolveSessionPreferredFirmNr(): string {
+/** Giriş oturumu / kullanıcı meta (localStorage seçimi hariç) */
+function resolveLoginPreferredFirmNr(): string {
   try {
     const sessionStr = localStorage.getItem('exretail_session');
     if (sessionStr) {
@@ -46,8 +46,12 @@ function resolveSessionPreferredFirmNr(): string {
   } catch {
     /* ignore */
   }
-  const stored = normalizeFirmNr(localStorage.getItem('exretail_selected_firma_id'));
-  return stored;
+  return '';
+}
+
+/** Kullanıcının UI'da seçtiği firma (üst çubuk / firma seçici) */
+function resolveStoredFirmNr(): string {
+  return normalizeFirmNr(localStorage.getItem('exretail_selected_firma_id'));
 }
 
 function resolveDefaultPeriodNr(): number {
@@ -192,6 +196,11 @@ export const FirmaDonemProvider: React.FC<{ children: ReactNode }> = ({ children
     fetchPeriods: async (_firmIdOrNr: string) => {},
     selectedFirm: null as Firm | null,
   });
+  const selectedFirmRef = useRef<Firm | null>(null);
+
+  useEffect(() => {
+    selectedFirmRef.current = selectedFirm;
+  }, [selectedFirm]);
 
   // --- Initial Load ---
   useEffect(() => {
@@ -363,23 +372,34 @@ export const FirmaDonemProvider: React.FC<{ children: ReactNode }> = ({ children
           }
         } catch (_) { /* ignore */ }
 
-        const sessionPreferredNr = resolveSessionPreferredFirmNr();
+        const storedPreferredNr = resolveStoredFirmNr();
+        const loginPreferredNr = resolveLoginPreferredFirmNr();
+        const currentSelectedNr = selectedFirmRef.current
+          ? normalizeFirmNr(selectedFirmRef.current.firm_nr)
+          : '';
         const matchNr = (nr: string) => nr && mappedFirms.find((f: any) => normalizeFirmNr(f.firm_nr) === nr);
 
         const isTemplateRetailEx = (f: any) => String(f.firm_nr) === '001' && f.name === 'RetailEx OS';
         const nonTemplate = mappedFirms.filter((f: any) => !isTemplateRetailEx(f));
 
-        const defaultFirma =
-          (sessionPreferredNr && matchNr(sessionPreferredNr)) ||
+        const targetFirma =
+          (storedPreferredNr && matchNr(storedPreferredNr)) ||
+          (currentSelectedNr && matchNr(currentSelectedNr)) ||
           (cfgPreferredNr && matchNr(cfgPreferredNr)) ||
+          (loginPreferredNr && matchNr(loginPreferredNr)) ||
           (nonTemplate.length > 0 ? nonTemplate.find((f: any) => f.default) : mappedFirms.find((f: any) => f.default)) ||
           (nonTemplate.length > 0 ? nonTemplate[0] : mappedFirms[0]);
 
-        if (defaultFirma) {
-          const nr = normalizeFirmNr(defaultFirma.firm_nr) || String(defaultFirma.firm_nr);
-          ERP_SETTINGS.firmNr = nr || ERP_SETTINGS.firmNr;
-          localStorage.setItem('exretail_selected_firma_id', nr);
-          setSelectedFirm(defaultFirma);
+        if (targetFirma) {
+          const nr = normalizeFirmNr(targetFirma.firm_nr) || String(targetFirma.firm_nr);
+          const prevNr = selectedFirmRef.current
+            ? normalizeFirmNr(selectedFirmRef.current.firm_nr)
+            : '';
+          if (!prevNr || prevNr !== nr) {
+            ERP_SETTINGS.firmNr = nr || ERP_SETTINGS.firmNr;
+            localStorage.setItem('exretail_selected_firma_id', nr);
+            setSelectedFirm(targetFirma);
+          }
         }
       }
     } catch (err: any) {
