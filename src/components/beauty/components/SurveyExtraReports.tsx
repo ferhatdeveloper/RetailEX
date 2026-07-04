@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
     LineChart, MessageSquare, Star, ThumbsUp, TrendingUp, Users, Scissors, AlertTriangle,
 } from 'lucide-react';
@@ -96,7 +96,7 @@ export function SurveyTrendReport() {
     const [error, setError] = useState<string | null>(null);
     const [data, setData] = useState<BeautySurveyTrendReport | null>(null);
 
-    const load = async () => {
+    const load = useCallback(async () => {
         setLoading(true);
         setError(null);
         try {
@@ -108,12 +108,11 @@ export function SurveyTrendReport() {
         } finally {
             setLoading(false);
         }
-    };
+    }, [startYmd, endYmd, surveyId]);
 
     useEffect(() => {
         void load();
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
+    }, [load]);
 
     const maxResponses = useMemo(
         () => Math.max(1, ...(data?.points ?? []).map((p) => p.response_count)),
@@ -198,7 +197,7 @@ export function SurveyStaffReport() {
     const [error, setError] = useState<string | null>(null);
     const [data, setData] = useState<BeautySurveyStaffReport | null>(null);
 
-    const load = async () => {
+    const load = useCallback(async () => {
         setLoading(true);
         setError(null);
         try {
@@ -210,12 +209,11 @@ export function SurveyStaffReport() {
         } finally {
             setLoading(false);
         }
-    };
+    }, [startYmd, endYmd, surveyId]);
 
     useEffect(() => {
         void load();
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
+    }, [load]);
 
     return (
         <div className="p-6 space-y-6 bg-gray-50 min-h-full">
@@ -257,7 +255,7 @@ export function SurveyServiceReport() {
     const [error, setError] = useState<string | null>(null);
     const [data, setData] = useState<BeautySurveyServiceReport | null>(null);
 
-    const load = async () => {
+    const load = useCallback(async () => {
         setLoading(true);
         setError(null);
         try {
@@ -269,12 +267,11 @@ export function SurveyServiceReport() {
         } finally {
             setLoading(false);
         }
-    };
+    }, [startYmd, endYmd, surveyId]);
 
     useEffect(() => {
         void load();
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
+    }, [load]);
 
     return (
         <div className="p-6 space-y-6 bg-gray-50 min-h-full">
@@ -316,7 +313,7 @@ export function SurveyNpsReport() {
     const [error, setError] = useState<string | null>(null);
     const [data, setData] = useState<BeautySurveyNpsReport | null>(null);
 
-    const load = async () => {
+    const load = useCallback(async () => {
         setLoading(true);
         setError(null);
         try {
@@ -328,12 +325,11 @@ export function SurveyNpsReport() {
         } finally {
             setLoading(false);
         }
-    };
+    }, [startYmd, endYmd, surveyId]);
 
     useEffect(() => {
         void load();
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
+    }, [load]);
 
     const s = data?.summary;
 
@@ -414,7 +410,7 @@ export function SurveyCommentsReport() {
     const [error, setError] = useState<string | null>(null);
     const [data, setData] = useState<BeautySurveyCommentsReport | null>(null);
 
-    const load = async () => {
+    const load = useCallback(async () => {
         setLoading(true);
         setError(null);
         try {
@@ -427,12 +423,11 @@ export function SurveyCommentsReport() {
         } finally {
             setLoading(false);
         }
-    };
+    }, [startYmd, endYmd, surveyId, maxRating]);
 
     useEffect(() => {
         void load();
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
+    }, [load]);
 
     const formatDateTime = (iso: string) => {
         const d = new Date(iso);

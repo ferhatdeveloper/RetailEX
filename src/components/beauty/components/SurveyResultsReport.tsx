@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ChevronDown, ChevronRight, ClipboardList, Star, ThumbsUp, Users } from 'lucide-react';
 import { beautyService } from '../../../services/beautyService';
 import { useLanguage } from '../../../contexts/LanguageContext';
@@ -42,7 +42,7 @@ export function SurveyResultsReport() {
     const [error, setError] = useState<string | null>(null);
     const [data, setData] = useState<BeautySurveyResultsReport | null>(null);
 
-    const load = async () => {
+    const load = useCallback(async () => {
         setLoading(true);
         setError(null);
         try {
@@ -58,12 +58,11 @@ export function SurveyResultsReport() {
         } finally {
             setLoading(false);
         }
-    };
+    }, [startYmd, endYmd, surveyId, language]);
 
     useEffect(() => {
         void load();
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
+    }, [load]);
 
     const summary = data?.summary;
     const questionStats = data?.question_stats ?? [];
