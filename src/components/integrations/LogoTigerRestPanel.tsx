@@ -1,19 +1,16 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, type ReactNode } from 'react';
 import {
   AlertCircle,
   Loader2,
   Download,
   RefreshCw,
   Server,
-  Package,
-  Users,
   FileText,
   CheckCircle,
   XCircle,
   Database,
   Plus,
   Search,
-  Clock,
 } from 'lucide-react';
 import {
   LOGO_API_URL_EXAMPLE,
@@ -29,12 +26,9 @@ import {
   logoRevokeSession,
   logoListFirmCatalog,
   logoSwitchContext,
-  logoCheckDatabase,
   resolveLogoContext,
-  resolveLogoRestUrlSource,
   syncLogoRestUrlFromWebConfig,
   setLogoRestBaseUrl,
-  clearLogoRestUrlManualOverride,
   getErpFirmPeriodLabel,
   getErpFirmKey,
   getLogoMappingForErp,
@@ -77,9 +71,40 @@ import { useProductStore } from '../../store/useProductStore';
 import { useCustomerStore } from '../../store/useCustomerStore';
 import { useFirmaDonem } from '../../contexts/FirmaDonemContext';
 
+import type { LogoErpPanelTab } from './logoErpPanelTypes';
+
 type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error';
 
-export function LogoTigerRestPanel() {
+function Field({
+  label,
+  required,
+  children,
+  className = '',
+}: {
+  label: string;
+  required?: boolean;
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <div className={className}>
+      <label className="block text-[11px] font-medium text-gray-600 mb-1">
+        {label}
+        {required ? <span className="text-red-500 ml-0.5">*</span> : null}
+      </label>
+      {children}
+    </div>
+  );
+}
+
+const inputCls =
+  'w-full h-9 px-2.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500/40 focus:border-orange-400';
+
+type LogoTigerRestPanelProps = {
+  activeTab?: LogoErpPanelTab;
+};
+
+export function LogoTigerRestPanel({ activeTab = 'general' }: LogoTigerRestPanelProps) {
   const [config, setConfig] = useState<LogoRestConfig>(() => loadLogoRestConfig());
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('disconnected');
   const [connectionError, setConnectionError] = useState('');
@@ -101,9 +126,7 @@ export function LogoTigerRestPanel() {
   const [firms, setFirms] = useState<LogoFirmOption[]>(() => loadLogoRestConfig().firmCatalog ?? []);
   const [periods, setPeriods] = useState<LogoPeriodOption[]>([]);
   const [isLoadingFirms, setIsLoadingFirms] = useState(false);
-  const [newDbName, setNewDbName] = useState('');
   const [activeContext, setActiveContext] = useState(() => resolveLogoContext(loadLogoRestConfig()));
-  const [urlSource, setUrlSource] = useState<'tenant' | 'manual' | 'none'>(() => resolveLogoRestUrlSource());
 
   const [syncOptions, setSyncOptions] = useState(() => {
     const m = loadLogoRestSyncSettings().modules;
@@ -151,7 +174,6 @@ export function LogoTigerRestPanel() {
     const loaded = loadLogoRestConfig();
     setConfig(loaded);
     setFirms(loaded.firmCatalog ?? []);
-    setUrlSource(resolveLogoRestUrlSource());
     refreshErpContext();
     const mapping = getLogoMappingForErp(loaded);
     if (mapping) {
@@ -162,7 +184,6 @@ export function LogoTigerRestPanel() {
       const cfg = loadLogoRestConfig();
       setConfig(cfg);
       setFirms(cfg.firmCatalog ?? []);
-      setUrlSource(resolveLogoRestUrlSource());
       refreshErpContext();
     };
     window.addEventListener('storage', onStorage);
@@ -222,15 +243,7 @@ export function LogoTigerRestPanel() {
   const handleBaseUrlChange = (url: string) => {
     setLogoRestBaseUrl(url, { manual: true });
     setConfig(loadLogoRestConfig());
-    setUrlSource(resolveLogoRestUrlSource());
     setActiveContext(resolveLogoContext(loadLogoRestConfig()));
-  };
-
-  const handleResetUrlFromTenant = () => {
-    clearLogoRestUrlManualOverride();
-    syncLogoRestUrlFromWebConfig(true);
-    setConfig(loadLogoRestConfig());
-    setUrlSource(resolveLogoRestUrlSource());
   };
 
   const persistMappingForCurrentErp = (
@@ -283,24 +296,6 @@ export function LogoTigerRestPanel() {
       setConnectionError(e instanceof Error ? e.message : String(e));
     } finally {
       setIsLoadingFirms(false);
-    }
-  };
-
-  const handleAddLogoDb = async () => {
-    const name = newDbName.trim();
-    if (!name) return;
-    try {
-      const ok = await logoCheckDatabase(config, name);
-      if (!ok) {
-        setConnectionError(`Logo DB bulunamadı veya erişilemiyor: ${name}`);
-        return;
-      }
-      const dbs = Array.from(new Set([...(config.logoDbs || []), name]));
-      updateConfig({ logoDbs: dbs, logoDb: name });
-      setNewDbName('');
-      setConnectionError('');
-    } catch (e: unknown) {
-      setConnectionError(e instanceof Error ? e.message : String(e));
     }
   };
 
@@ -522,430 +517,385 @@ export function LogoTigerRestPanel() {
   const mappedFirmNr = savedMapping?.logoFirmNr ?? activeContext.firmNr;
   const mappedPeriodNr = savedMapping?.logoPeriodNr ?? activeContext.periodNr;
 
-  return (
-    <div className="space-y-6">
-      {/* Çoklu DB / firma / dönem */}
-      <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg space-y-4">
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2 text-blue-800">
-            <Database className="w-4 h-4" />
-            <span className="text-sm font-medium">Logo DB · Firma · Dönem eşlemesi</span>
-          </div>
-        </div>
+  const statusBadge =
+    connectionStatus === 'connected' ? (
+      <span className="inline-flex items-center gap-1 text-xs text-green-700 bg-green-50 border border-green-200 rounded-full px-2 py-0.5">
+        <CheckCircle className="w-3 h-3" /> Bağlı
+      </span>
+    ) : connectionStatus === 'error' ? (
+      <span className="inline-flex items-center gap-1 text-xs text-red-700 bg-red-50 border border-red-200 rounded-full px-2 py-0.5">
+        <XCircle className="w-3 h-3" /> Hata
+      </span>
+    ) : null;
 
-        <div className="text-sm bg-white border border-blue-100 rounded-lg px-3 py-2">
-          <span className="text-gray-600">RetailEX oturumu:</span>{' '}
-          <code className="font-mono">firma {erpFirmPeriod.firmLabel}</code>
-          {' · '}
-          <code className="font-mono">dönem {erpFirmPeriod.periodLabel}</code>
-          {savedMapping ? (
-            <span className="block mt-1 text-blue-800">
-              Kayıtlı Logo eşlemesi: <strong>{savedMapping.logoFirmNr}</strong>
-              {savedMapping.logoFirmTitle || savedMapping.logoFirmName
-                ? ` — ${savedMapping.logoFirmTitle || savedMapping.logoFirmName}`
-                : ''}
-              {' / dönem '}
+  if (activeTab === 'general') {
+    return (
+      <div className="space-y-4">
+        <div className="text-xs bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 flex flex-wrap items-center gap-2">
+          <span className="text-gray-600">
+            RetailEX: <code className="font-mono">firma {erpFirmPeriod.firmLabel}</code>
+            {' · '}
+            <code className="font-mono">dönem {erpFirmPeriod.periodLabel}</code>
+          </span>
+          {statusBadge}
+          {savedMapping && (
+            <span className="text-blue-800">
+              Logo eşlemesi: <strong>{savedMapping.logoFirmNr}</strong> / dönem{' '}
               <strong>{savedMapping.logoPeriodNr}</strong>
-              {savedMapping.logoDb ? ` · DB ${savedMapping.logoDb}` : ''}
-            </span>
-          ) : (
-            <span className="block mt-1 text-amber-700">
-              Bu RetailEX firması için Logo eşlemesi yok — aşağıdan Logo firmasını seçin (ör. 001 → Logo 2).
             </span>
           )}
         </div>
 
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="block text-xs text-gray-600 mb-1">
-              Logo firma (RetailEX {erpFirmPeriod.firmLabel} için)
-            </label>
-            <select
-              value={mappedFirmNr || ''}
-              onChange={(e) => handleFirmChange(Number(e.target.value))}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
-            >
-              <option value="">Seçin…</option>
-              {firms.map((f) => (
-                <option key={f.firmNr} value={f.firmNr}>
-                  {f.firmNr} — {f.title || f.name}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs text-gray-600 mb-1">Logo dönem</label>
-            <select
-              value={mappedPeriodNr || ''}
-              onChange={(e) => handlePeriodChange(Number(e.target.value))}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
-              disabled={!periods.length}
-            >
-              <option value="">Seçin…</option>
-              {periods.map((p) => (
-                <option key={p.number} value={p.number}>
-                  {p.number}
-                  {p.active ? ' (aktif)' : ''}
-                  {p.beginDate ? ` — ${p.beginDate.slice(0, 10)}` : ''}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="block text-xs text-gray-600 mb-1">Logo veritabanı (logodb)</label>
-            <select
-              value={config.logoDb || ''}
-              onChange={(e) => handleDbChange(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono"
-            >
-              <option value="">Varsayılan (sunucu)</option>
-              {logoDbOptions.map((db) => (
-                <option key={db} value={db}>{db}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs text-gray-600 mb-1">Yeni DB ekle</label>
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={newDbName}
-                onChange={(e) => setNewDbName(e.target.value)}
-                placeholder="TIGERDB_2"
-                className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono"
-              />
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {/* Sol — firma / dönem / DB */}
+          <div className="rounded-lg border border-slate-200 bg-slate-50/50 p-4 space-y-3">
+            <h4 className="text-xs font-semibold text-slate-700 uppercase tracking-wide flex items-center gap-1.5">
+              <Database className="w-3.5 h-3.5" />
+              Logo bağlamı
+            </h4>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Logo firma" required>
+                <select
+                  value={mappedFirmNr || ''}
+                  onChange={(e) => handleFirmChange(Number(e.target.value))}
+                  className={inputCls}
+                >
+                  <option value="">Seçin…</option>
+                  {firms.map((f) => (
+                    <option key={f.firmNr} value={f.firmNr}>
+                      {f.firmNr} — {f.title || f.name}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <Field label="Logo dönem" required>
+                <select
+                  value={mappedPeriodNr || ''}
+                  onChange={(e) => handlePeriodChange(Number(e.target.value))}
+                  className={inputCls}
+                  disabled={!periods.length}
+                >
+                  <option value="">Seçin…</option>
+                  {periods.map((p) => (
+                    <option key={p.number} value={p.number}>
+                      {p.number}
+                      {p.active ? ' (aktif)' : ''}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <Field label="Veritabanı (logodb)" className="col-span-2">
+                <select
+                  value={config.logoDb || ''}
+                  onChange={(e) => handleDbChange(e.target.value)}
+                  className={`${inputCls} font-mono`}
+                >
+                  <option value="">Varsayılan</option>
+                  {logoDbOptions.map((db) => (
+                    <option key={db} value={db}>{db}</option>
+                  ))}
+                </select>
+              </Field>
+            </div>
+            <div className="flex flex-wrap gap-2">
               <button
                 type="button"
-                onClick={handleAddLogoDb}
-                className="px-3 py-2 border border-gray-300 rounded-lg text-sm hover:bg-white"
+                onClick={handleLoadFirms}
+                disabled={isLoadingFirms || !config.username || !config.password}
+                className="px-2.5 py-1.5 text-xs border border-slate-300 rounded-lg hover:bg-white disabled:opacity-50 inline-flex items-center gap-1"
               >
-                Ekle
+                {isLoadingFirms ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
+                Firmaları yükle
               </button>
+              {connectionStatus === 'connected' && (
+                <button
+                  type="button"
+                  onClick={handleApplyContext}
+                  className="px-2.5 py-1.5 text-xs bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                >
+                  Bağlamı uygula
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Sağ — REST servis */}
+          <div className="rounded-lg border border-orange-200 bg-orange-50/30 p-4 space-y-3">
+            <h4 className="text-xs font-semibold text-orange-800 uppercase tracking-wide flex items-center gap-1.5">
+              <Server className="w-3.5 h-3.5" />
+              REST Service
+            </h4>
+            <Field label="Rest Entegrasyon API" required>
+              <input
+                type="text"
+                value={config.baseUrl}
+                onChange={(e) => handleBaseUrlChange(e.target.value)}
+                placeholder={LOGO_API_URL_EXAMPLE}
+                className={`${inputCls} font-mono`}
+              />
+            </Field>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Logo kullanıcı adı" required>
+                <input
+                  type="text"
+                  value={config.username}
+                  onChange={(e) => updateConfig({ username: e.target.value })}
+                  className={inputCls}
+                />
+              </Field>
+              <Field label="Logo şifre" required>
+                <input
+                  type="password"
+                  value={config.password}
+                  onChange={(e) => updateConfig({ password: e.target.value })}
+                  className={inputCls}
+                />
+              </Field>
+              <Field label="Rest Client Id">
+                <input
+                  type="text"
+                  value={config.clientId}
+                  onChange={(e) => updateConfig({ clientId: e.target.value })}
+                  placeholder={LOGO_DEFAULT_CLIENT_ID}
+                  className={`${inputCls} font-mono`}
+                />
+              </Field>
+              <Field label="Rest Client Secret">
+                <input
+                  type="password"
+                  value={config.clientSecret}
+                  onChange={(e) => updateConfig({ clientSecret: e.target.value })}
+                  className={inputCls}
+                />
+              </Field>
+              <Field label="Firma No">
+                <input
+                  type="text"
+                  readOnly
+                  value={String(mappedFirmNr || '')}
+                  className={`${inputCls} bg-gray-50`}
+                />
+              </Field>
+            </div>
+            {getLogoCloudWebPrivateUrlHint(config.baseUrl) && (
+              <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded px-2 py-1.5">
+                {getLogoCloudWebPrivateUrlHint(config.baseUrl)}
+              </p>
+            )}
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={handleTestConnection}
+                disabled={!config.baseUrl?.trim() || !config.username || !config.password || connectionStatus === 'connecting'}
+                className="px-3 py-1.5 text-xs bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:opacity-50 inline-flex items-center gap-1"
+              >
+                {connectionStatus === 'connecting' ? (
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                ) : (
+                  <RefreshCw className="w-3 h-3" />
+                )}
+                Bağlan
+              </button>
+              {connectionStatus === 'connected' && (
+                <button
+                  type="button"
+                  onClick={handleDisconnect}
+                  className="px-3 py-1.5 text-xs border border-gray-300 rounded-lg hover:bg-white"
+                >
+                  Oturumu kapat
+                </button>
+              )}
             </div>
           </div>
         </div>
 
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={handleLoadFirms}
-            disabled={isLoadingFirms || !config.username || !config.password}
-            className="px-3 py-1.5 text-sm bg-white border border-blue-300 text-blue-800 rounded-lg hover:bg-blue-100 disabled:opacity-50 flex items-center gap-2"
-          >
-            {isLoadingFirms ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
-            Firmaları / dönemleri yükle
-          </button>
-          {connectionStatus === 'connected' && (
-            <button
-              type="button"
-              onClick={handleApplyContext}
-              className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-            >
-              Firma/dönem/DB uygula
-            </button>
-          )}
-        </div>
-
-        <p className="text-xs text-blue-700">
-          Her RetailEX firması için Logo firma/dönem eşlemesi ayrı kaydedilir (
-          <code>firmMappings</code>). Token <code>logodb</code> + <code>firmno</code> ile alınır; ardından{' '}
-          <code>CompanyLogin/{'{'}firma{'}'}/{'{'}dönem{'}'}</code> çalışır.
-          {activeContext.logoDb ? ` Aktif DB: ${activeContext.logoDb}.` : ''}
-          {firms.length > 0 ? ` ${firms.length} Logo firması yüklendi.` : ' Bağlanınca firmalar otomatik yüklenir.'}
-        </p>
-      </div>
-
-      {/* Bağlantı ayarları */}
-      <div>
-        <div className="flex items-center gap-2 mb-4">
-          <div className="w-8 h-8 bg-orange-600 rounded-full flex items-center justify-center text-white">1</div>
-          <h3 className="text-lg text-gray-900">Logo REST API Bağlantısı</h3>
-        </div>
-
-        <div className="grid grid-cols-2 gap-4 pl-10">
-          <div className="col-span-2">
-            <label className="block text-sm text-gray-700 mb-1.5">
-              <Server className="w-4 h-4 inline mr-1" />
-              API Base URL
-            </label>
-            <input
-              type="text"
-              value={config.baseUrl}
-              onChange={(e) => handleBaseUrlChange(e.target.value)}
-              placeholder={LOGO_API_URL_EXAMPLE}
-              required
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 font-mono text-sm"
-            />
-            <p className="text-xs text-gray-500 mt-1">
-              Kiracı başına farklı sunucu olabilir. Örnek (internet):{' '}
-              <code className="text-orange-800">{LOGO_API_URL_EXAMPLE}</code>
-              {' · '}Merkez: <code>tenant_registry.logo_rest_api_url</code>
-              {urlSource === 'tenant' && ' · kiracı kaydından yüklendi'}
-              {urlSource === 'manual' && ' · manuel girildi'}
-            </p>
-            {getLogoCloudWebPrivateUrlHint(config.baseUrl) && (
-              <div className="mt-2 flex items-start gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg">
-                <AlertCircle className="w-4 h-4 text-amber-700 flex-shrink-0 mt-0.5" />
-                <p className="text-xs text-amber-900">{getLogoCloudWebPrivateUrlHint(config.baseUrl)}</p>
-              </div>
-            )}
-            {urlSource === 'manual' && (
-              <button
-                type="button"
-                onClick={handleResetUrlFromTenant}
-                className="mt-1 text-xs text-blue-700 hover:underline"
-              >
-                Kiracı URL'sine sıfırla
-              </button>
-            )}
-          </div>
-
-          <div>
-            <label className="block text-sm text-gray-700 mb-1.5">Logo kullanıcı adı</label>
-            <input
-              type="text"
-              value={config.username}
-              onChange={(e) => updateConfig({ username: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
-            />
-          </div>
-          <div>
-            <label className="block text-sm text-gray-700 mb-1.5">Logo şifre</label>
-            <input
-              type="password"
-              value={config.password}
-              onChange={(e) => updateConfig({ password: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm text-gray-700 mb-1.5">Client ID</label>
-            <input
-              type="text"
-              value={config.clientId}
-              onChange={(e) => updateConfig({ clientId: e.target.value })}
-              placeholder={LOGO_DEFAULT_CLIENT_ID}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 font-mono text-sm"
-            />
-          </div>
-          <div>
-            <label className="block text-sm text-gray-700 mb-1.5">Client Secret</label>
-            <input
-              type="password"
-              value={config.clientSecret}
-              onChange={(e) => updateConfig({ clientSecret: e.target.value })}
-              placeholder="Logo REST client secret (gömülü)"
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
-            />
-          </div>
-
-        </div>
-
         {connectionError && (
-          <div className="mt-4 ml-10 flex items-start gap-2 p-3 bg-red-50 border border-red-200 rounded-lg">
-            <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
-            <p className="text-sm text-red-800">{connectionError}</p>
+          <div className="flex items-start gap-2 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-800">
+            <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+            {connectionError}
           </div>
         )}
+      </div>
+    );
+  }
 
-        <div className="mt-4 ml-10 flex flex-wrap gap-2">
-          <button
-            onClick={handleTestConnection}
-            disabled={!config.baseUrl?.trim() || !config.username || !config.password || !config.clientId || connectionStatus === 'connecting'}
-            className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors disabled:opacity-50 flex items-center gap-2"
-          >
-            {connectionStatus === 'connecting' ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin" />
-                Bağlanıyor…
-              </>
-            ) : (
-              <>
-                <RefreshCw className="w-4 h-4" />
-                Bağlan ({activeContext.firmNr}/{activeContext.periodNr}
-                {activeContext.logoDb ? ` · ${activeContext.logoDb}` : ''})
-              </>
-            )}
-          </button>
-          {connectionStatus === 'connected' && (
-            <button
-              onClick={handleDisconnect}
-              className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+  if (activeTab === 'params') {
+    return (
+      <div className="space-y-4">
+        <div className="rounded-lg border border-slate-200 p-4 space-y-4">
+          <h4 className="text-xs font-semibold text-slate-700 uppercase tracking-wide">Otomatik aktarım</h4>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-3 text-sm">
+            {(
+              [
+                ['products', 'Ürün kartları otomatik gönderilsin'],
+                ['customers', 'Cari hesap kartları otomatik gönderilsin'],
+                ['suppliers', 'Tedarikçi kartları otomatik gönderilsin'],
+                ['salesInvoices', 'Satış faturaları'],
+                ['purchaseInvoices', 'Alış faturaları'],
+                ['itemSlips', 'Stok fişleri'],
+                ['banks', 'Kasa / banka'],
+                ['salesOrders', 'Satış siparişleri'],
+                ['purchaseOrders', 'Alış siparişleri'],
+              ] as const
+            ).map(([key, label]) => (
+              <label key={key} className="flex items-center justify-between gap-2 cursor-pointer border-b border-dashed border-gray-100 pb-2">
+                <span className="text-gray-700 text-xs">{label}</span>
+                <select
+                  value={syncOptions[key] ? 'yes' : 'no'}
+                  onChange={(e) => {
+                    const checked = e.target.value === 'yes';
+                    const next = { ...syncOptions, [key]: checked };
+                    setSyncOptions(next);
+                    const mapKey = key === 'products' ? 'masterData' : key;
+                    saveLogoRestSyncSettings({
+                      modules: { ...restAutoSync.modules, [mapKey]: checked },
+                    });
+                    setRestAutoSync(loadLogoRestSyncSettings());
+                  }}
+                  className="h-8 text-xs border border-gray-200 rounded-lg px-2 bg-white"
+                >
+                  <option value="no">Hayır</option>
+                  <option value="yes">Evet</option>
+                </select>
+              </label>
+            ))}
+          </div>
+        </div>
+
+        <div className="rounded-lg border border-slate-200 p-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <label className="flex items-center justify-between gap-2 text-sm">
+            <span className="text-gray-700">Periyodik otomatik çekim</span>
+            <select
+              value={restAutoSync.enabled ? 'yes' : 'no'}
+              onChange={(e) => {
+                const next = saveLogoRestSyncSettings({ enabled: e.target.value === 'yes' });
+                setRestAutoSync(next);
+              }}
+              className="h-8 text-xs border border-gray-200 rounded-lg px-2"
             >
-              Oturumu kapat
-            </button>
-          )}
+              <option value="no">Hayır</option>
+              <option value="yes">Evet</option>
+            </select>
+          </label>
+          <Field label="Çekim aralığı (dk)">
+            <input
+              type="number"
+              min={5}
+              max={1440}
+              value={restAutoSync.intervalMinutes}
+              onChange={(e) => {
+                const next = saveLogoRestSyncSettings({
+                  intervalMinutes: Math.min(1440, Math.max(5, parseInt(e.target.value, 10) || 30)),
+                });
+                setRestAutoSync(next);
+              }}
+              className={inputCls}
+            />
+          </Field>
+          <label className="flex items-center justify-between gap-2 text-sm">
+            <span className="text-gray-700">Faturaları Logo&apos;ya otomatik gönder</span>
+            <select
+              value={autoInvoicePush ? 'yes' : 'no'}
+              onChange={(e) => handleToggleAutoInvoicePush(e.target.value === 'yes')}
+              className="h-8 text-xs border border-gray-200 rounded-lg px-2"
+            >
+              <option value="no">Hayır</option>
+              <option value="yes">Evet</option>
+            </select>
+          </label>
+          <Field label="Fatura gönderim aralığı (sn)">
+            <input
+              type="number"
+              min={30}
+              max={3600}
+              value={invoicePushInterval}
+              onChange={(e) => handleInvoiceIntervalChange(Number(e.target.value))}
+              className={inputCls}
+            />
+          </Field>
         </div>
       </div>
+    );
+  }
 
-      {/* Önizleme */}
+  /* activeTab === 'sync' */
+  return (
+    <div className="space-y-4">
+      {connectionStatus !== 'connected' && (
+        <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+          Senkron işlemleri için önce <strong>Genel</strong> sekmesinden Logo REST bağlantısını kurun.
+        </p>
+      )}
+
+      {/* LEGACY_SYNC_BODY */}
       {connectionStatus === 'connected' && (
-        <div>
-          <div className="flex items-center gap-2 mb-4">
-            <div className="w-8 h-8 bg-orange-600 rounded-full flex items-center justify-center text-white">2</div>
-            <h3 className="text-lg text-gray-900">Logo veri özeti</h3>
-          </div>
-          <div className="pl-10">
-            {!previewData ? (
+        <div className="rounded-lg border border-slate-200 p-4">
+          <div className="flex items-center justify-between gap-2 mb-3">
+            <h4 className="text-xs font-semibold text-slate-700 uppercase tracking-wide">Logo veri özeti</h4>
+            {!previewData && (
               <button
+                type="button"
                 onClick={handleLoadPreview}
                 disabled={isLoadingPreview}
-                className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:opacity-50 flex items-center gap-2"
+                className="px-2.5 py-1 text-xs bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:opacity-50 inline-flex items-center gap-1"
               >
-                {isLoadingPreview ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    Yükleniyor…
-                  </>
-                ) : (
-                  <>
-                    <Download className="w-4 h-4" />
-                    Kayıt sayılarını getir
-                  </>
-                )}
+                {isLoadingPreview ? <Loader2 className="w-3 h-3 animate-spin" /> : <Download className="w-3 h-3" />}
+                Sayıları getir
               </button>
-            ) : (
-              <div className="grid grid-cols-3 gap-4">
-                {Object.entries(previewData.resources).map(([key, count]) => (
-                  <div key={key} className="p-4 bg-orange-50 border border-orange-200 rounded-lg">
-                    <div className="flex items-center gap-2 text-orange-600 mb-2 text-sm">
-                      {key === 'items' ? <Package className="w-4 h-4" /> :
-                       key === 'Arps' ? <Users className="w-4 h-4" /> :
-                       <FileText className="w-4 h-4" />}
-                      {resourceLabel[key] || key}
-                    </div>
-                    <div className="text-2xl text-orange-900">
-                      {count != null ? count.toLocaleString('tr-TR') : '—'}
-                    </div>
-                  </div>
-                ))}
-              </div>
             )}
           </div>
+          {previewData && (
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+              {Object.entries(previewData.resources).map(([key, count]) => (
+                <div key={key} className="p-2.5 bg-orange-50 border border-orange-100 rounded-lg">
+                  <div className="text-[10px] text-orange-700">{resourceLabel[key] || key}</div>
+                  <div className="text-lg font-semibold text-orange-900">
+                    {count != null ? count.toLocaleString('tr-TR') : '—'}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
       {/* Logo → RetailEX senkronizasyonu */}
       {connectionStatus === 'connected' && (
-        <div>
-          <div className="flex items-center gap-2 mb-4">
-            <div className="w-8 h-8 bg-green-600 rounded-full flex items-center justify-center text-white">2b</div>
-            <h3 className="text-lg text-gray-900">Logo&apos;dan RetailEX&apos;e aktar</h3>
-          </div>
-          <div className="pl-10 space-y-4">
-            <p className="text-sm text-gray-600">
-              Logo REST&apos;ten ürün, cari, fatura, stok fişi ve kasa/banka verileri seçili RetailEX
-              firmasına (<code>rex_{erpFirmPeriod.firmLabel}_*</code>) yazılır. Mevcut kayıtlar{' '}
-              <strong>kod</strong> veya <strong>fiş no</strong> ile güncellenir.
-            </p>
-
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-sm">
-              {(
-                [
-                  ['products', 'Ürünler (items)'],
-                  ['customers', 'Cari hesaplar'],
-                  ['suppliers', 'Tedarikçiler'],
-                  ['salesInvoices', 'Satış faturaları'],
-                  ['purchaseInvoices', 'Alış faturaları'],
-                  ['itemSlips', 'Stok fişleri'],
-                  ['banks', 'Kasa / banka'],
-                  ['salesOrders', 'Satış siparişleri'],
-                  ['purchaseOrders', 'Alış siparişleri'],
-                ] as const
-              ).map(([key, label]) => (
-                <label key={key} className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={syncOptions[key]}
-                    onChange={(e) => {
-                      const next = { ...syncOptions, [key]: e.target.checked };
-                      setSyncOptions(next);
-                      const mapKey =
-                        key === 'products' ? 'masterData' : key;
-                      saveLogoRestSyncSettings({
-                        modules: { ...restAutoSync.modules, [mapKey]: e.target.checked },
-                      });
-                      setRestAutoSync(loadLogoRestSyncSettings());
-                    }}
-                    className="rounded border-gray-300 text-green-600"
-                  />
-                  {label}
-                </label>
-              ))}
-            </div>
-
-            <div className="flex flex-wrap items-center gap-3 p-3 bg-slate-50 border border-slate-200 rounded-lg text-sm">
-              <label className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={restAutoSync.enabled}
-                  onChange={(e) => {
-                    const next = saveLogoRestSyncSettings({ enabled: e.target.checked });
-                    setRestAutoSync(next);
-                  }}
-                />
-                <Clock className="w-4 h-4 text-slate-600" />
-                Periyodik otomatik çekim
-              </label>
-              <label className="flex items-center gap-1 text-gray-700">
-                Aralık (dk)
-                <input
-                  type="number"
-                  min={5}
-                  max={1440}
-                  value={restAutoSync.intervalMinutes}
-                  onChange={(e) => {
-                    const next = saveLogoRestSyncSettings({
-                      intervalMinutes: Math.min(1440, Math.max(5, parseInt(e.target.value, 10) || 30)),
-                    });
-                    setRestAutoSync(next);
-                  }}
-                  className="w-20 px-2 py-1 border border-gray-300 rounded"
-                />
-              </label>
-              <button
-                type="button"
-                disabled={isSyncing}
-                onClick={() => void runLogoRestSyncNow().then((r) => {
-                  setRestAutoSync(loadLogoRestSyncSettings());
-                  if (!r.ok) setConnectionError(r.message);
-                })}
-                className="px-3 py-1.5 text-sm border border-green-600 text-green-700 rounded-lg hover:bg-green-50 disabled:opacity-50"
-              >
-                Şimdi çek (otomatik ayarlarla)
-              </button>
-              {restAutoSync.lastSyncAt && (
-                <span className="text-xs text-gray-500">
-                  Son: {new Date(restAutoSync.lastSyncAt).toLocaleString('tr-TR')}
-                </span>
-              )}
-            </div>
-
+        <div className="rounded-lg border border-slate-200 p-4 space-y-3">
+          <h4 className="text-xs font-semibold text-slate-700 uppercase tracking-wide">
+            Logo&apos;dan RetailEX&apos;e aktar
+          </h4>
+          <p className="text-xs text-gray-600">
+            Modül seçimleri <strong>Parametreler</strong> sekmesindedir. Hedef:{' '}
+            <code>rex_{erpFirmPeriod.firmLabel}_*</code>
+          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              disabled={isSyncing}
+              onClick={() => void runLogoRestSyncNow().then((r) => {
+                setRestAutoSync(loadLogoRestSyncSettings());
+                if (!r.ok) setConnectionError(r.message);
+              })}
+              className="px-3 py-1.5 text-xs border border-green-600 text-green-700 rounded-lg hover:bg-green-50 disabled:opacity-50"
+            >
+              Şimdi çek (otomatik ayarlarla)
+            </button>
             <button
               type="button"
               onClick={handleSyncFromLogo}
-              disabled={
-                isSyncing ||
-                !Object.values(syncOptions).some(Boolean)
-              }
-              className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 flex items-center gap-2"
+              disabled={isSyncing || !Object.values(syncOptions).some(Boolean)}
+              className="px-3 py-1.5 text-xs bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 inline-flex items-center gap-1"
             >
-              {isSyncing ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  Senkronize ediliyor…
-                </>
-              ) : (
-                <>
-                  <Download className="w-4 h-4" />
-                  Logo verilerini içe aktar
-                </>
-              )}
+              {isSyncing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Download className="w-3 h-3" />}
+              Seçili modülleri içe aktar
             </button>
+            {restAutoSync.lastSyncAt && (
+              <span className="text-xs text-gray-500">
+                Son: {new Date(restAutoSync.lastSyncAt).toLocaleString('tr-TR')}
+              </span>
+            )}
+          </div>
 
             {syncProgress && (
               <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-sm text-green-900">
@@ -999,80 +949,35 @@ export function LogoTigerRestPanel() {
                 </ul>
               </div>
             )}
-          </div>
         </div>
       )}
 
-      {/* RetailEX → Logo fatura aktarımı */}
       {connectionStatus === 'connected' && (
-        <div>
-          <div className="flex items-center gap-2 mb-4">
-            <div className="w-8 h-8 bg-indigo-600 rounded-full flex items-center justify-center text-white">2c</div>
-            <h3 className="text-lg text-gray-900">RetailEX faturalarını Logo&apos;ya gönder</h3>
-          </div>
-          <div className="pl-10 space-y-4">
-            <p className="text-sm text-gray-600">
-              <code>rex_{erpFirmPeriod.firmLabel}_{erpFirmPeriod.periodLabel}_sales</code> tablosunda{' '}
-              <code>logo_sync_status=pending</code> olan satış faturaları Logo <code>salesInvoices</code> kaynağına
-              yazılır.
-            </p>
-            <div className="flex flex-wrap items-center gap-4 text-sm">
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={autoInvoicePush}
-                  onChange={(e) => handleToggleAutoInvoicePush(e.target.checked)}
-                  className="rounded border-gray-300 text-indigo-600"
-                />
-                Otomatik gönder (periyodik)
-              </label>
-              <label className="flex items-center gap-2">
-                <span className="text-gray-600">Aralık (sn)</span>
-                <input
-                  type="number"
-                  min={30}
-                  max={3600}
-                  value={invoicePushInterval}
-                  onChange={(e) => handleInvoiceIntervalChange(Number(e.target.value))}
-                  className="w-24 px-2 py-1 border border-gray-300 rounded"
-                />
-              </label>
-              <button
-                type="button"
-                onClick={handlePushInvoicesNow}
-                disabled={isPushingInvoices}
-                className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 flex items-center gap-2"
-              >
-                {isPushingInvoices ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    Gönderiliyor…
-                  </>
-                ) : (
-                  <>
-                    <FileText className="w-4 h-4" />
-                    Bekleyen faturaları şimdi gönder
-                  </>
-                )}
-              </button>
-            </div>
-            {invoicePushMsg && (
-              <p className="text-sm text-indigo-800 bg-indigo-50 border border-indigo-200 rounded-lg p-3">
-                {invoicePushMsg}
-              </p>
-            )}
-          </div>
+        <div className="rounded-lg border border-indigo-200 bg-indigo-50/40 p-4 space-y-2">
+          <h4 className="text-xs font-semibold text-indigo-900 uppercase tracking-wide">
+            RetailEX → Logo fatura gönderimi
+          </h4>
+          <button
+            type="button"
+            onClick={handlePushInvoicesNow}
+            disabled={isPushingInvoices}
+            className="px-3 py-1.5 text-xs bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 inline-flex items-center gap-1"
+          >
+            {isPushingInvoices ? <Loader2 className="w-3 h-3 animate-spin" /> : <FileText className="w-3 h-3" />}
+            Bekleyen faturaları gönder
+          </button>
+          {invoicePushMsg && (
+            <p className="text-xs text-indigo-900">{invoicePushMsg}</p>
+          )}
         </div>
       )}
 
-      {/* Okuma / yazma */}
       {connectionStatus === 'connected' && (
-        <div>
-          <div className="flex items-center gap-2 mb-4">
-            <div className="w-8 h-8 bg-orange-600 rounded-full flex items-center justify-center text-white">3</div>
-            <h3 className="text-lg text-gray-900">Veri okuma ve Logo'ya ekleme</h3>
-          </div>
-          <div className="pl-10 space-y-4">
+        <details className="rounded-lg border border-gray-200 p-3">
+          <summary className="text-xs font-medium text-gray-700 cursor-pointer">
+            Gelişmiş — Logo REST kaynak okuma / yazma
+          </summary>
+          <div className="mt-3 space-y-3 pt-3 border-t border-gray-100">
             <div className="flex flex-wrap gap-2 items-end">
               <div className="flex-1 min-w-[200px]">
                 <label className="block text-sm text-gray-700 mb-1">Kaynak (resource)</label>
@@ -1163,22 +1068,21 @@ export function LogoTigerRestPanel() {
               </p>
             </div>
           </div>
-        </div>
+        </details>
       )}
 
       {connectionStatus === 'connected' && (
-        <div className="ml-10 flex items-center gap-2 text-sm text-green-700">
-          <CheckCircle className="w-4 h-4" />
-          Logo REST — firma {activeContext.firmNr}, dönem {activeContext.periodNr}
-          {activeContext.logoDb ? `, DB ${activeContext.logoDb}` : ''}
-          ({activeContext.source === 'erp' ? 'RetailEX eşlemesi' : 'manuel seçim'})
-        </div>
+        <p className="text-xs text-green-700 flex items-center gap-1">
+          <CheckCircle className="w-3.5 h-3.5" />
+          Bağlı — Logo {activeContext.firmNr}/{activeContext.periodNr}
+          {activeContext.logoDb ? ` · ${activeContext.logoDb}` : ''}
+        </p>
       )}
       {connectionStatus === 'error' && (
-        <div className="ml-10 flex items-center gap-2 text-sm text-red-600">
-          <XCircle className="w-4 h-4" />
+        <p className="text-xs text-red-600 flex items-center gap-1">
+          <XCircle className="w-3.5 h-3.5" />
           Bağlantı kurulamadı
-        </div>
+        </p>
       )}
     </div>
   );
