@@ -109,6 +109,8 @@ jobs:
         shell: pwsh
         env:
           CI: 'true'
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           WINDOWS_CODESIGN_DISABLE: ${{ env.WINDOWS_CODESIGN_DISABLE }}
           WINDOWS_CODESIGN_THUMBPRINT: ${{ env.WINDOWS_CODESIGN_THUMBPRINT }}
           SM_API_KEY: ${{ env.SM_API_KEY }}
@@ -145,6 +147,28 @@ jobs:
           Copy-Item $setup.FullName "dist/$outName"
           (Get-Item "dist/$outName").Length | Out-Host
 
+      - name: Collect updater artifacts
+        shell: pwsh
+        run: |
+          $nsis = "DeskApp/target/release/bundle/nsis"
+          if (-not (Test-Path $nsis)) { throw "NSIS klasoru yok: $nsis" }
+          $zip = Get-ChildItem $nsis -Filter "*.nsis.zip" | Where-Object { $_.Name -notlike "*.sig" } | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          if (-not $zip) {
+            Write-Host "Updater zip yok (TAURI_SIGNING_PRIVATE_KEY secret eksik olabilir); yalnizca NSIS setup yayinlanacak."
+            echo "UPDATER_ENABLED=0" >> $env:GITHUB_ENV
+            exit 0
+          }
+          Copy-Item $zip.FullName "dist/$($zip.Name)"
+          $sig = "$($zip.FullName).sig"
+          if (Test-Path $sig) { Copy-Item $sig "dist/$($zip.Name).sig" }
+          echo "UPDATER_ZIP=$($zip.Name)" >> $env:GITHUB_ENV
+          echo "UPDATER_ENABLED=1" >> $env:GITHUB_ENV
+
+      - name: Generate latest.json (Tauri updater)
+        if: env.UPDATER_ENABLED == '1'
+        run: |
+          node scripts/publish-desktop-updater-manifest.mjs --version ${{ env.PACKAGE_VERSION }} --tag ${{ env.RELEASE_TAG }} --out dist/latest.json
+
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v4
         with:
@@ -174,7 +198,8 @@ jobs:
 
             ### Dosyalar
             - **RetailEX-Desktop-Setup-${{ env.PACKAGE_VERSION }}.exe** — NSIS kurulumu
-          files: dist/${{ env.INSTALLER_FILENAME }}
+            - **latest.json** + imzalı `.nsis.zip` — masaüstü otomatik güncelleme (TAURI_SIGNING_PRIVATE_KEY secret gerekir)
+          files: dist/**
           draft: false
           prerelease: false
           make_latest: true

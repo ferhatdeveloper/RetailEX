@@ -1365,6 +1365,22 @@ const SetupWizard: React.FC = () => {
                 });
             }
 
+            // Şablon firma 001 / seed 002 — kullanıcının oluşturmadığı kayıtları temizle
+            if (!skipRemoteBootstrap && firmsToInit.length > 0) {
+                try {
+                    const { cleanupMasterSeedFirms } = await import('../../services/firmSeedCleanup');
+                    const cleaned = await cleanupMasterSeedFirms(postgres, firmsToInit);
+                    if (cleaned.length > 0 && isTauri) {
+                        const { emit } = await import('@tauri-apps/api/event');
+                        for (const msg of cleaned) {
+                            await emit('sync-event', `ℹ️ ${msg}`);
+                        }
+                    }
+                } catch (cleanErr) {
+                    console.warn('[SetupWizard] Şablon firma temizliği:', cleanErr);
+                }
+            }
+
             // 4.6. Initialize Default Currencies (Logo Standard)
             if (!isUpdateMode) {
                 toast.info('Para birimleri tanımlanıyor...');

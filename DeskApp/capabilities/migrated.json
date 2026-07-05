@@ -33,7 +33,9 @@
         { "url": "https://www.salargolds.com/*" },
         { "url": "https://docs.google.com/*" },
         { "url": "https://*.googleusercontent.com/*" },
-        { "url": "https://api.gold-api.com/*" }
+        { "url": "https://api.gold-api.com/*" },
+        { "url": "https://github.com/ferhatdeveloper/RetailEX/releases/download/*" },
+        { "url": "https://github.com/ferhatdeveloper/RetailEX/releases/latest/download/*" }
       ]
     },
     "updater:default",

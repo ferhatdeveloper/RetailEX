@@ -135,3 +135,6 @@ add_all_files.ps1
 tools/*/
 !tools/postgresql-remote-enable/
 !tools/.gitkeep
+
+# Tauri updater private key
+DeskApp/updater.key

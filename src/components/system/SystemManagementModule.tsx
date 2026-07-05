@@ -13,6 +13,13 @@ import { useResponsive } from '../../hooks/useResponsive';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { IS_TAURI } from '../../utils/env';
 import { checkPgBridgeReachable, runPostgresFullBackup } from '../../services/postgresFullBackup';
+import {
+  checkDesktopUpdate,
+  getDesktopUpdateEndpoint,
+  runDesktopUpdateWithBackup,
+  type DesktopUpdateProgress,
+} from '../../services/desktopUpdater';
+import { APP_VERSION } from '../../core/version';
 import { PrinterSettings } from './PrinterSettings';
 import { TemplateManager } from '../modules/TemplateManager';
 import { RestaurantCallerIdSettings } from '../restaurant/components/RestaurantCallerIdSettings';
@@ -767,6 +774,9 @@ function DataBroadcastView() {
 // Backup Restore View
 function BackupRestoreView() {
   const [busy, setBusy] = useState(false);
+  const [updateBusy, setUpdateBusy] = useState(false);
+  const [updateInfo, setUpdateInfo] = useState<string | null>(null);
+  const [pendingVersion, setPendingVersion] = useState<string | null>(null);
   const [toast, setToast] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
   const [bridgeOk, setBridgeOk] = useState<boolean | null>(null);
   const [logLines, setLogLines] = useState<string[]>([]);
@@ -793,6 +803,51 @@ function BackupRestoreView() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!IS_TAURI) return;
+    let cancelled = false;
+    checkDesktopUpdate()
+      .then((u) => {
+        if (cancelled) return;
+        if (u) {
+          setPendingVersion(u.version);
+          setUpdateInfo(`Yeni sürüm mevcut: v${u.version} (kurulu: v${APP_VERSION.full})`);
+        } else {
+          setUpdateInfo(`Güncel sürüm: v${APP_VERSION.full}`);
+        }
+      })
+      .catch((e) => {
+        if (!cancelled) setUpdateInfo(`Güncelleme kontrolü: ${String((e as Error)?.message || e)}`);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const handleDesktopUpdate = async () => {
+    if (!pendingVersion) return;
+    const ok = window.confirm(
+      `v${pendingVersion} kurulacak. Önce PostgreSQL tam yedeği alınır; yedek başarısız olursa güncelleme iptal edilir. Devam?`,
+    );
+    if (!ok) return;
+    setToast(null);
+    setUpdateBusy(true);
+    appendLog('=== Masaüstü güncelleme (GitHub) ===');
+    try {
+      const res = await runDesktopUpdateWithBackup((p: DesktopUpdateProgress) => {
+        appendLog(p.message);
+      });
+      if (res.ok) {
+        setToast({ kind: 'ok', text: res.message });
+      } else {
+        setToast({ kind: 'err', text: res.message });
+      }
+    } finally {
+      appendLog('=== Güncelleme işlemi sonu ===');
+      setUpdateBusy(false);
+    }
+  };
+
   const handleFullPgBackup = async () => {
     setToast(null);
     appendLog('=== PostgreSQL tam yedek ===');
@@ -816,6 +871,37 @@ function BackupRestoreView() {
 
   return (
     <div className="p-6 space-y-6">
+      {IS_TAURI && (
+        <div className="bg-white rounded-lg shadow-sm border">
+          <div className="p-4 border-b">
+            <h3 className="font-semibold text-gray-900 flex items-center gap-2">
+              <Download className="h-5 w-5 text-blue-600" />
+              Masaüstü güncelleme (GitHub)
+            </h3>
+            <p className="text-sm text-gray-600 mt-2 max-w-3xl">
+              Güncelleme paketi GitHub Release üzerinden indirilir. Kurulumdan önce{' '}
+              <code className="text-xs bg-gray-100 px-1 rounded">pg_dump</code> ile tam SQL yedeği alınır;
+              uygulama yeniden açıldığında bekleyen migration dosyaları otomatik uygulanır.
+            </p>
+            <p className="text-xs text-slate-500 mt-1 break-all">{getDesktopUpdateEndpoint()}</p>
+          </div>
+          <div className="p-6 space-y-4">
+            {updateInfo && (
+              <p className={`text-sm ${pendingVersion ? 'text-blue-800' : 'text-gray-600'}`}>{updateInfo}</p>
+            )}
+            <button
+              type="button"
+              onClick={handleDesktopUpdate}
+              disabled={updateBusy || !pendingVersion}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {updateBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+              {pendingVersion ? `Güncelle (v${pendingVersion})` : 'Güncelleme yok'}
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="bg-white rounded-lg shadow-sm border">
         <div className="p-4 border-b">
           <h3 className="font-semibold text-gray-900 flex items-center gap-2">

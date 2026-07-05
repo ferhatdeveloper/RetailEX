@@ -2311,5 +2311,5 @@ fn ensure_bridge_service(_handle: &tauri::AppHandle) {
 
 #[tauri::command]
 async fn check_update_status() -> Result<String, String> {
-    Ok("Update check not configured".to_string())
+    Ok("GitHub updater: releases/latest/download/latest.json".to_string())
 }
