@@ -21,6 +21,7 @@ import { InfrastructureSettingsPage } from './components/system/InfrastructureSe
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
 import App from './App';
 import PublicBeautyBooking from './components/beauty/components/PublicBeautyBooking';
+import { EticaretAdminModule } from '../eticaret/admin/EticaretAdminModule';
 import { RoleManagement } from './components/system/RoleManagement';
 import { RoleForm } from './components/system/RoleForm';
 
@@ -56,6 +57,16 @@ export function AppRouter() {
                   <Route path="/login" element={<FirmaDonemProvider><Login onLogin={() => { }} /></FirmaDonemProvider>} />
                   <Route path="/infra-settings" element={<InfrastructureSettingsPage />} />
                   <Route path="/book/:firmNr" element={<PublicBeautyBooking />} />
+                  <Route
+                    path="/mgz/*"
+                    element={
+                      <ProtectedRoute>
+                        <FirmaDonemProvider>
+                          <EticaretAdminModule />
+                        </FirmaDonemProvider>
+                      </ProtectedRoute>
+                    }
+                  />
 
                   {/* /magaza ve /shop → eticaret/storefront/bootstrap.tsx (ERP CSS yok) */}
                   {/* Protected routes */}

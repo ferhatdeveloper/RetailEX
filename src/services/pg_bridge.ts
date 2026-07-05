@@ -16,6 +16,8 @@ import os from 'node:os';
 import { spawn, execSync } from 'node:child_process';
 import { Readable } from 'node:stream';
 import { normalizeFoodDeliveryChannel } from '../config/foodDeliveryChannels';
+import { initProviderPayment } from '../../eticaret/core/payments/registry';
+import type { PaymentInitRequest, PaymentProviderConfig } from '../../eticaret/core/payments/types';
 
 const app = new Hono();
 
@@ -674,6 +676,154 @@ app.post('/api/pg_dump', async (c) => {
         const err = error as { message?: string };
         console.error('[PG Bridge pg_dump]', error);
         return c.json({ error: err?.message || 'pg_dump başarısız' }, 500);
+    }
+});
+
+function resolveEticaretConnStr(body: Record<string, unknown>): string | null {
+    const explicit = typeof body.connStr === 'string' ? body.connStr.trim() : '';
+    if (explicit) return explicit;
+    const base = process.env.PG_DUMP_INTERNAL_URI?.trim();
+    if (!base) return null;
+    const db =
+        (typeof body.database === 'string' && body.database.trim()) ||
+        (typeof body.tenant_code === 'string' && body.tenant_code.trim()) ||
+        '';
+    if (!db || !/^[a-zA-Z_][a-zA-Z0-9_]{0,62}$/.test(db)) return null;
+    try {
+        const conn = base.replace(/\/+$/, '');
+        const u = new URL(conn.includes('://') ? conn : `postgres://${conn}`);
+        u.pathname = `/${db}`;
+        return u.href;
+    } catch {
+        return null;
+    }
+}
+
+app.post('/api/eticaret/submit-order', async (c) => {
+    try {
+        const body = (await c.req.json()) as Record<string, unknown>;
+        const connStr = resolveEticaretConnStr(body);
+        if (!connStr) {
+            return c.json({ error: 'Veritabanı bağlantısı çözülemedi (connStr veya PG_DUMP_INTERNAL_URI + tenant)' }, 400);
+        }
+        const payload = {
+            tenant_code: body.tenant_code,
+            demo_mode: body.demo_mode,
+            customer_name: body.customer_name,
+            customer_email: body.customer_email,
+            customer_phone: body.customer_phone,
+            shipping_address: body.shipping_address,
+            payment_provider: body.payment_provider,
+            payment_status: body.payment_status,
+            currency: body.currency,
+            subtotal: body.subtotal,
+            total: body.total,
+            items: body.items,
+            notes: body.notes,
+        };
+        const pool = getPool(connStr);
+        const result = await pool.query(`SELECT public.eticaret_submit_web_order($1::jsonb) AS data`, [
+            JSON.stringify(payload),
+        ]);
+        const data = result.rows[0]?.data ?? { ok: false };
+        return c.json(data);
+    } catch (error: unknown) {
+        const err = error as { message?: string };
+        console.error('[eticaret/submit-order]', error);
+        return c.json({ ok: false, error: err?.message || 'submit-order failed' }, 500);
+    }
+});
+
+app.post('/api/eticaret/payment/init', async (c) => {
+    try {
+        const body = (await c.req.json()) as Record<string, unknown>;
+        const provider = String(body.provider || '');
+        const connStr = resolveEticaretConnStr(body);
+        let providerCfg: PaymentProviderConfig = {
+            id: 'other',
+            enabled: true,
+            label: provider,
+            mode: 'test',
+        };
+        if (connStr) {
+            const pool = getPool(connStr);
+            const row = await pool.query(
+                `SELECT eticaret_settings FROM public.system_settings WHERE id = 1 LIMIT 1`
+            );
+            const settings = row.rows[0]?.eticaret_settings || {};
+            const list = Array.isArray(settings.paymentProviders) ? settings.paymentProviders : [];
+            const found = (list as PaymentProviderConfig[]).find((p) => String(p.id) === provider);
+            if (found) providerCfg = { ...providerCfg, ...found };
+        }
+        const orderNo = String(body.orderNo || '');
+        const orderId = String(body.orderId || '');
+        const amount = Number(body.amount || 0);
+        const currency = String(body.currency || 'TRY');
+        const req: PaymentInitRequest = {
+            tenantCode: String(body.tenantCode || body.tenant_code || ''),
+            orderId,
+            orderNo,
+            amount,
+            currency,
+            provider: provider as PaymentInitRequest['provider'],
+            customerEmail: body.customerEmail ? String(body.customerEmail) : undefined,
+            customerName: body.customerName ? String(body.customerName) : undefined,
+            returnUrl: String(body.returnUrl || ''),
+            cancelUrl: body.cancelUrl ? String(body.cancelUrl) : undefined,
+        };
+        const result = await initProviderPayment(req, providerCfg);
+        if (!result.ok) {
+            return c.json({ ...result, error: result.message || 'Ödeme sağlayıcı yapılandırması eksik' }, 400);
+        }
+        return c.json({ ...result, amount, currency, orderNo, orderId });
+    } catch (error: unknown) {
+        const err = error as { message?: string };
+        return c.json({ ok: false, error: err?.message || 'payment init failed' }, 500);
+    }
+});
+
+app.get('/api/eticaret/storefront-config', async (c) => {
+    try {
+        const tenant = c.req.query('tenant')?.trim() || '';
+        const connStr = resolveEticaretConnStr({ tenant_code: tenant, database: c.req.query('database') });
+        if (!connStr) {
+            return c.json({ enabled: false, demoMode: true, providers: [], storeTitle: '', announcementText: '' });
+        }
+        const pool = getPool(connStr);
+        const row = await pool.query(`SELECT eticaret_settings FROM public.system_settings WHERE id = 1 LIMIT 1`);
+        const settings = row.rows[0]?.eticaret_settings || {};
+        const list = Array.isArray(settings.paymentProviders) ? settings.paymentProviders : [];
+        const providers = (list as Array<{ id?: string; enabled?: boolean; label?: string }>)
+            .filter((p) => p.enabled)
+            .map((p) => ({ id: p.id, label: p.label || p.id }));
+        return c.json({
+            enabled: settings.enabled !== false,
+            demoMode: Boolean(settings.demoMode),
+            storeTitle: String(settings.storeTitle || ''),
+            announcementText: String(settings.announcementText || ''),
+            defaultPaymentProvider: settings.defaultPaymentProvider || null,
+            providers,
+        });
+    } catch {
+        return c.json({ enabled: false, demoMode: true, providers: [], storeTitle: '', announcementText: '' });
+    }
+});
+
+app.get('/api/eticaret/payment-methods', async (c) => {
+    try {
+        const tenant = c.req.query('tenant')?.trim() || '';
+        const connStr = resolveEticaretConnStr({ tenant_code: tenant, database: c.req.query('database') });
+        if (!connStr) return c.json({ providers: [] });
+        const pool = getPool(connStr);
+        const row = await pool.query(`SELECT eticaret_settings FROM public.system_settings WHERE id = 1 LIMIT 1`);
+        const settings = row.rows[0]?.eticaret_settings || {};
+        const list = Array.isArray(settings.paymentProviders) ? settings.paymentProviders : [];
+        const providers = (list as Array<{ id?: string; enabled?: boolean; label?: string }>)
+            .filter((p) => p.enabled)
+            .map((p) => ({ id: p.id, label: p.label || p.id }));
+        return c.json({ providers, demoMode: Boolean(settings.demoMode) });
+    } catch {
+        return c.json({ providers: [] });
     }
 });
 

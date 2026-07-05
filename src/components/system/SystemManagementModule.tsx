@@ -17,7 +17,6 @@ import { PrinterSettings } from './PrinterSettings';
 import { TemplateManager } from '../modules/TemplateManager';
 import { RestaurantCallerIdSettings } from '../restaurant/components/RestaurantCallerIdSettings';
 import { RECEIPT_PRODUCT_NAME_FIELD_OPTIONS } from '../../utils/receiptProductName';
-import { EticaretThemeSettings } from '../../../eticaret/admin/EticaretThemeSettings';
 
 type SystemView =
   | 'userManagement'
@@ -31,8 +30,7 @@ type SystemView =
   | 'pendingPosDevices'
   | 'backupRestore'
   | 'logAudit'
-  | 'systemHealth'
-  | 'eticaretTheme';
+  | 'systemHealth';
 
 type SystemManagementModuleProps = {
   /** Yönetim modülünden gelen ekran kimliği — sol menüde doğru sekme açılır */
@@ -58,7 +56,6 @@ const ROUTE_HINT_TO_VIEW: Partial<Record<string, SystemView>> = {
   'label-designer': 'invoiceLabelDesigner',
   smsmanage: 'definitionsParameters',
   emailcamp: 'definitionsParameters',
-  eticaret: 'eticaretTheme',
 };
 
 export function SystemManagementModule({ routeHint }: SystemManagementModuleProps) {
@@ -101,7 +98,6 @@ export function SystemManagementModule({ routeHint }: SystemManagementModuleProp
     { id: 'dataBroadcast' as const, label: 'Bilgi Gönder/AI Merkezi', icon: Radio, color: 'orange' },
     { id: 'pendingPosDevices' as const, label: 'Kasa Cihazları', icon: Monitor, color: 'amber' },
     { id: 'backupRestore' as const, label: 'Yedekleme/Geri Yükleme', icon: HardDrive, color: 'indigo' },
-    { id: 'eticaretTheme' as const, label: 'Online Satış / Tema', icon: Monitor, color: 'cyan' },
     { id: 'logAudit' as const, label: 'Log/Denetim', icon: FileText, color: 'red' },
     { id: 'systemHealth' as const, label: 'Sistem Sağlığı', icon: Activity, color: 'teal' },
   ];
@@ -235,7 +231,6 @@ export function SystemManagementModule({ routeHint }: SystemManagementModuleProp
         )}
         {currentView === 'backupRestore' && <BackupRestoreView />}
         {currentView === 'logAudit' && <LogAuditView />}
-        {currentView === 'eticaretTheme' && <EticaretThemeSettings />}
         {currentView === 'systemHealth' && <SystemHealthView />}
         </div>
       </div>

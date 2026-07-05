@@ -82,6 +82,7 @@ export function buildVitrinIframeSrc(pathname: string): string {
   qs.set('rex_variant', variantId);
   qs.set('rex_page', parsed.page);
   if (parsed.productCode) qs.set('rex_product', parsed.productCode);
+  if (parsed.staticSlug) qs.set('rex_static', parsed.staticSlug);
   if (settings.demoMode) qs.set('rex_demo', '1');
   if (settings.demoTenantCode) qs.set('rex_demo_tenant', settings.demoTenantCode);
   if (settings.storeTitle) qs.set('rex_title', settings.storeTitle);

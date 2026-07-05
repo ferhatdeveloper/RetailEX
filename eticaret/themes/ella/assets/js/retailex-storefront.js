@@ -34,6 +34,148 @@
     return url;
   }
 
+  function bridgeApiUrl(path) {
+    var p = path.charAt(0) === '/' ? path : '/' + path;
+    return window.location.origin + p;
+  }
+
+  function cartStorageKey(tenant) {
+    return 'retailex_cart_' + tenant;
+  }
+
+  function readCart(tenant) {
+    try {
+      var raw = localStorage.getItem(cartStorageKey(tenant));
+      return raw ? JSON.parse(raw) : [];
+    } catch (e) {
+      return [];
+    }
+  }
+
+  function writeCart(tenant, items) {
+    localStorage.setItem(cartStorageKey(tenant), JSON.stringify(items));
+    updateCartBadge(tenant);
+  }
+
+  function addToCart(tenant, product, qty) {
+    var cart = readCart(tenant);
+    var amount = qty || 1;
+    var existing = cart.find(function (i) {
+      return i.code === product.code;
+    });
+    if (existing) {
+      existing.quantity += amount;
+      existing.line_total = existing.quantity * existing.price;
+    } else {
+      cart.push({
+        code: product.code,
+        name: product.name,
+        price: product.price,
+        currency: product.currency || 'TRY',
+        quantity: amount,
+        line_total: amount * product.price,
+        product_id: product.id || '',
+      });
+    }
+    writeCart(tenant, cart);
+  }
+
+  function cartTotal(cart) {
+    return cart.reduce(function (s, i) {
+      return s + Number(i.quantity || 0) * Number(i.price || 0);
+    }, 0);
+  }
+
+  function updateCartBadge(tenant) {
+    var count = readCart(tenant).reduce(function (s, i) {
+      return s + Number(i.quantity || 0);
+    }, 0);
+    document.querySelectorAll('.rex-cart-count').forEach(function (el) {
+      el.textContent = String(count);
+      el.style.display = count > 0 ? 'inline' : 'none';
+    });
+  }
+
+  function pageKind() {
+    var staticSlug = qs('rex_static');
+    if (staticSlug === 'sepet') return 'cart';
+    if (staticSlug === 'odeme') return 'checkout';
+    var path = window.location.pathname || '';
+    if (path.indexOf('page-cart') >= 0) return 'cart';
+    if (path.indexOf('checkout') >= 0) return 'checkout';
+    return qs('rex_page') || 'home';
+  }
+
+  async function loadStorefrontConfig(catalogTenant) {
+    try {
+      var res = await fetch(
+        bridgeApiUrl('/api/eticaret/storefront-config?tenant=' + encodeURIComponent(catalogTenant)),
+        { headers: { Accept: 'application/json' } }
+      );
+      if (!res.ok) return null;
+      return await res.json();
+    } catch (e) {
+      return null;
+    }
+  }
+
+  async function submitWebOrder(catalogTenant, demoMode, customer, items, paymentProvider) {
+    var res = await fetch(bridgeApiUrl('/api/eticaret/submit-order'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify({
+        tenant_code: catalogTenant,
+        demo_mode: demoMode,
+        customer_name: customer.name,
+        customer_email: customer.email,
+        customer_phone: customer.phone,
+        shipping_address: customer.address,
+        payment_provider: paymentProvider,
+        payment_status: 'pending',
+        currency: items[0] && items[0].currency ? items[0].currency : 'TRY',
+        items: items.map(function (i) {
+          return {
+            code: i.code,
+            name: i.name,
+            quantity: i.quantity,
+            price: i.price,
+            line_total: i.line_total || i.quantity * i.price,
+            product_id: i.product_id || '',
+          };
+        }),
+      }),
+    });
+    var data = await res.json();
+    if (!res.ok || data.ok === false) {
+      throw new Error(data.error || data.message || 'Sipariş gönderilemedi');
+    }
+    return data;
+  }
+
+  async function initPaymentSession(catalogTenant, order, provider, amount, currency, customer) {
+    var res = await fetch(bridgeApiUrl('/api/eticaret/payment/init'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify({
+        tenant_code: catalogTenant,
+        provider: provider,
+        orderId: order.order_id,
+        orderNo: order.order_no,
+        amount: amount,
+        currency: currency,
+        customerEmail: customer.email,
+        customerName: customer.name,
+        returnUrl: tenantBase(qs('rex_tenant')) + '/odeme?success=1',
+        cancelUrl: tenantBase(qs('rex_tenant')) + '/odeme?cancel=1',
+      }),
+    });
+    var data = await res.json();
+    if (!res.ok || data.ok === false) {
+      throw new Error(data.error || data.message || 'Ödeme başlatılamadı');
+    }
+    return data;
+  }
+
   function formatPrice(amount, currency) {
     try {
       return Number(amount).toLocaleString('tr-TR', { style: 'currency', currency: currency || 'TRY' });
@@ -160,6 +302,17 @@
       '<div class="card-price"><span class="price">' +
       price +
       '</span></div>' +
+      '<button type="button" class="btn btn-primary btn-sm rex-add-cart mt-2" data-code="' +
+      p.code +
+      '" data-name="' +
+      p.name.replace(/"/g, '&quot;') +
+      '" data-price="' +
+      p.price +
+      '" data-currency="' +
+      (p.currency || 'TRY') +
+      '" data-id="' +
+      (p.id || '') +
+      '">Sepete Ekle</button>' +
       '</div></div></div></div>'
     );
   }
@@ -170,6 +323,24 @@
         e.preventDefault();
         var path = a.getAttribute('data-href');
         if (path) parentNav(path);
+      });
+    });
+    document.querySelectorAll('.rex-add-cart').forEach(function (btn) {
+      btn.addEventListener('click', function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        var tenant = qs('rex_tenant').trim().toLowerCase();
+        addToCart(tenant, {
+          code: btn.getAttribute('data-code'),
+          name: btn.getAttribute('data-name'),
+          price: Number(btn.getAttribute('data-price') || 0),
+          currency: btn.getAttribute('data-currency') || 'TRY',
+          id: btn.getAttribute('data-id') || '',
+        }, 1);
+        btn.textContent = 'Eklendi ✓';
+        setTimeout(function () {
+          btn.textContent = 'Sepete Ekle';
+        }, 1200);
       });
     });
   }
@@ -199,6 +370,161 @@
       return productCardHtml(p, tenant);
     }).join('');
     bindProductLinks();
+  }
+
+  function ensureRexPanel(id, title) {
+    var existing = document.getElementById(id);
+    if (existing) return existing;
+    var main = document.querySelector('main') || document.querySelector('.page-wrapper') || document.body;
+    var panel = document.createElement('section');
+    panel.id = id;
+    panel.className = 'container container-1170 py-4';
+    panel.innerHTML =
+      '<div class="card border rounded p-4" style="max-width:720px;margin:0 auto;">' +
+      '<h2 class="h4 mb-3">' +
+      title +
+      '</h2><div class="rex-panel-body"></div></div>';
+    main.prepend(panel);
+    return panel;
+  }
+
+  function renderCartPage(routeTenant, catalogTenant) {
+    var panel = ensureRexPanel('retailex-cart-panel', 'Sepetim');
+    var body = panel.querySelector('.rex-panel-body');
+    var cart = readCart(routeTenant);
+    if (!cart.length) {
+      body.innerHTML =
+        '<p class="text-muted">Sepetiniz boş.</p>' +
+        '<a href="#" class="btn btn-outline-primary rex-back-shop">Alışverişe dön</a>';
+      panel.querySelector('.rex-back-shop').addEventListener('click', function (e) {
+        e.preventDefault();
+        parentNav(tenantBase(routeTenant));
+      });
+      return;
+    }
+    var currency = cart[0].currency || 'TRY';
+    var rows = cart
+      .map(function (i) {
+        return (
+          '<tr><td>' +
+          i.name +
+          '</td><td>' +
+          i.quantity +
+          '</td><td>' +
+          formatPrice(i.price, currency) +
+          '</td><td>' +
+          formatPrice(i.quantity * i.price, currency) +
+          '</td></tr>'
+        );
+      })
+      .join('');
+    body.innerHTML =
+      '<table class="table table-sm"><thead><tr><th>Ürün</th><th>Adet</th><th>Birim</th><th>Toplam</th></tr></thead><tbody>' +
+      rows +
+      '</tbody></table>' +
+      '<p class="fw-bold">Genel toplam: ' +
+      formatPrice(cartTotal(cart), currency) +
+      '</p>' +
+      '<div class="d-flex gap-2 flex-wrap">' +
+      '<a href="#" class="btn btn-outline-secondary rex-back-shop">Alışverişe dön</a>' +
+      '<a href="#" class="btn btn-primary rex-go-checkout">Ödemeye geç</a>' +
+      '<button type="button" class="btn btn-link text-danger rex-clear-cart">Sepeti temizle</button>' +
+      '</div>';
+    panel.querySelector('.rex-back-shop').addEventListener('click', function (e) {
+      e.preventDefault();
+      parentNav(tenantBase(routeTenant));
+    });
+    panel.querySelector('.rex-go-checkout').addEventListener('click', function (e) {
+      e.preventDefault();
+      parentNav(tenantBase(routeTenant) + '/odeme');
+    });
+    panel.querySelector('.rex-clear-cart').addEventListener('click', function () {
+      writeCart(routeTenant, []);
+      renderCartPage(routeTenant, catalogTenant);
+    });
+  }
+
+  function renderCheckoutPage(routeTenant, catalogTenant, storeConfig) {
+    var panel = ensureRexPanel('retailex-checkout-panel', 'Ödeme');
+    var body = panel.querySelector('.rex-panel-body');
+    var cart = readCart(routeTenant);
+    if (!cart.length) {
+      body.innerHTML = '<p class="text-muted">Sepet boş — önce ürün ekleyin.</p>';
+      return;
+    }
+    var currency = cart[0].currency || 'TRY';
+    var demoMode = Boolean(storeConfig && storeConfig.demoMode);
+    var providers = (storeConfig && storeConfig.providers) || [];
+    var defaultProvider = (storeConfig && storeConfig.defaultPaymentProvider) || (providers[0] && providers[0].id) || 'swift';
+    var providerOptions = providers.length
+      ? providers
+          .map(function (p) {
+            return '<option value="' + p.id + '"' + (p.id === defaultProvider ? ' selected' : '') + '>' + (p.label || p.id) + '</option>';
+          })
+          .join('')
+      : '<option value="swift">SWIFT / Havale</option><option value="iyzico">iyzico</option><option value="stripe">Stripe</option>';
+
+    body.innerHTML =
+      (demoMode ? '<div class="alert alert-warning">Demo modu açık — sipariş fişi oluşturulmaz.</div>' : '') +
+      '<p>Toplam: <strong>' +
+      formatPrice(cartTotal(cart), currency) +
+      '</strong></p>' +
+      '<form id="rex-checkout-form" class="row g-3">' +
+      '<div class="col-12"><label class="form-label">Ad Soyad</label><input class="form-control" name="name" required></div>' +
+      '<div class="col-md-6"><label class="form-label">E-posta</label><input type="email" class="form-control" name="email"></div>' +
+      '<div class="col-md-6"><label class="form-label">Telefon</label><input class="form-control" name="phone"></div>' +
+      '<div class="col-12"><label class="form-label">Teslimat adresi</label><textarea class="form-control" name="address" rows="2"></textarea></div>' +
+      '<div class="col-12"><label class="form-label">Ödeme yöntemi</label><select class="form-select" name="payment">' +
+      providerOptions +
+      '</select></div>' +
+      '<div class="col-12"><button type="submit" class="btn btn-primary">Siparişi tamamla</button></div>' +
+      '</form><div id="rex-checkout-result" class="mt-3"></div>';
+
+    var form = document.getElementById('rex-checkout-form');
+    form.addEventListener('submit', function (e) {
+      e.preventDefault();
+      var fd = new FormData(form);
+      var customer = {
+        name: String(fd.get('name') || ''),
+        email: String(fd.get('email') || ''),
+        phone: String(fd.get('phone') || ''),
+        address: String(fd.get('address') || ''),
+      };
+      var paymentProvider = String(fd.get('payment') || defaultProvider);
+      var resultEl = document.getElementById('rex-checkout-result');
+      resultEl.innerHTML = '<span class="text-muted">İşleniyor…</span>';
+      submitWebOrder(catalogTenant, demoMode, customer, cart, paymentProvider)
+        .then(function (order) {
+          if (demoMode) {
+            writeCart(routeTenant, []);
+            resultEl.innerHTML =
+              '<div class="alert alert-success">Demo sipariş alındı: <strong>' +
+              order.order_no +
+              '</strong></div>';
+            return null;
+          }
+          return initPaymentSession(catalogTenant, order, paymentProvider, cartTotal(cart), currency, customer).then(
+            function (pay) {
+              writeCart(routeTenant, []);
+              if (pay.mode === 'redirect' && pay.redirectUrl) {
+                resultEl.innerHTML = '<div class="alert alert-info">Ödeme sayfasına yönlendiriliyorsunuz…</div>';
+                window.top.location.href = pay.redirectUrl;
+                return;
+              }
+              resultEl.innerHTML =
+                '<div class="alert alert-success">Sipariş oluşturuldu: <strong>' +
+                order.order_no +
+                '</strong><br>' +
+                (pay.message || 'Ödeme talimatı hazır.') +
+                (order.sales_fiche_no ? '<br>Sipariş fişi: ' + order.sales_fiche_no : '') +
+                '</div>';
+            }
+          );
+        })
+        .catch(function (err) {
+          resultEl.innerHTML = '<div class="alert alert-danger">' + (err.message || String(err)) + '</div>';
+        });
+    });
   }
 
   function mapRow(row, currency) {
@@ -282,17 +608,30 @@
 
     var variantId = qs('rex_variant') || 'ella-classic';
     var catalogTenant = resolveCatalogTenant(routeTenant);
-    var title = qs('rex_title') || readSettings().storeTitle || 'Online Mağaza';
-    var announce = qs('rex_announce') || readSettings().announcementText || '';
+    var storeConfig = await loadStorefrontConfig(catalogTenant);
+    var title = (storeConfig && storeConfig.storeTitle) || qs('rex_title') || readSettings().storeTitle || 'Online Mağaza';
+    var announce =
+      (storeConfig && storeConfig.announcementText) || qs('rex_announce') || readSettings().announcementText || '';
 
     injectVariantCss(variantId);
     patchAnnouncement(announce);
     patchHeaderTitle(title, routeTenant);
+    updateCartBadge(routeTenant);
 
     document.documentElement.classList.add('rex-eticaret-vitrin');
     document.body.style.background = '#fff';
 
-    if (qs('rex_page') === 'home' || qs('rex_page') === 'category' || !qs('rex_page')) {
+    var kind = pageKind();
+    if (kind === 'cart') {
+      renderCartPage(routeTenant, catalogTenant);
+      return;
+    }
+    if (kind === 'checkout') {
+      renderCheckoutPage(routeTenant, catalogTenant, storeConfig);
+      return;
+    }
+
+    if (kind === 'home' || kind === 'category' || !kind) {
       var products = await fetchCatalog(catalogTenant);
       renderProducts(products, routeTenant);
     }

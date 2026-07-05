@@ -14,6 +14,29 @@ export type EticaretSettings = {
   storeTitle: string;
   announcementText: string;
   enabled: boolean;
+  paymentProviders?: import('./payments/types').PaymentProviderConfig[];
+  defaultPaymentProvider?: import('./payments/types').PaymentProviderId;
+  storefrontPath?: string;
+};
+
+export type EticaretWebOrder = {
+  id: string;
+  tenant_code: string;
+  order_no: string;
+  status: string;
+  demo_mode: boolean;
+  customer_name?: string;
+  customer_email?: string;
+  customer_phone?: string;
+  payment_provider?: string;
+  payment_status: string;
+  currency: string;
+  subtotal: number;
+  total: number;
+  items: unknown[];
+  sales_fiche_id?: string;
+  sales_fiche_no?: string;
+  created_at: string;
 };
 
 export type EticaretThemeVariant = {
