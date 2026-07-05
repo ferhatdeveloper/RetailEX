@@ -18,6 +18,9 @@ import {
 } from '../../../utils/callPlanWhatsAppSend';
 import type { WhatsAppBulkPreviewItem } from '../../../utils/whatsappBulkSend';
 import { CariAccountStatementPanel } from './CariAccountStatementPanel';
+import { UniversalInvoiceForm } from '../invoices/UniversalInvoiceForm';
+import { KasaIslemModal } from '../../accounting/cash-ops/KasaIslemModal';
+import { fetchKasalar, type Kasa } from '../../../services/api/kasa';
 import {
   CUSTOMER_CALL_WEEKDAYS,
   CUSTOMER_CALL_STATUSES,
@@ -54,8 +57,23 @@ export function CustomerCallPlanModule() {
   const [waBulkPreparing, setWaBulkPreparing] = useState(false);
   const [ekstreAccount, setEkstreAccount] = useState<Supplier | null>(null);
   const [ekstreLoading, setEkstreLoading] = useState(false);
+  const [saleInvoiceCustomer, setSaleInvoiceCustomer] = useState<Supplier | null>(null);
+  const [saleInvoiceFormKey, setSaleInvoiceFormKey] = useState(0);
+  const [defaultKasa, setDefaultKasa] = useState<Kasa | null>(null);
+  const [cashAction, setCashAction] = useState<{ type: 'CH_TAHSILAT'; account: Supplier } | null>(null);
 
   const messageLang = useMemo(() => normalizeCallPlanMessageLang(language), [language]);
+
+  const wholesaleInvoiceType = useMemo(
+    () => ({
+      code: 8,
+      name: tm('wholesale'),
+      category: 'Satis' as const,
+      color: 'bg-purple-100 text-purple-700 border-purple-300',
+      icon: 'FileText' as const,
+    }),
+    [tm],
+  );
 
   const load = async () => {
     setLoading(true);
@@ -74,6 +92,17 @@ export function CustomerCallPlanModule() {
 
   useEffect(() => {
     void load();
+  }, []);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const kasalar = await fetchKasalar({ aktif: true });
+        setDefaultKasa(kasalar[0] ?? null);
+      } catch {
+        setDefaultKasa(null);
+      }
+    })();
   }, []);
 
   const filtered = useMemo(() => {
@@ -174,14 +203,10 @@ export function CustomerCallPlanModule() {
     }
   };
 
-  const navigateNewSaleInvoice = (customer: Supplier) => {
+  const openNewSaleInvoice = (customer: Supplier) => {
     setContextMenu(null);
-    window.dispatchEvent(new CustomEvent('navigateToScreen', {
-      detail: {
-        screen: 'sales-invoice-wholesale',
-        invoiceSearch: String(customer.code || customer.name || '').trim(),
-      },
-    }));
+    setSaleInvoiceCustomer(customer);
+    setSaleInvoiceFormKey(k => k + 1);
   };
 
   const openAccountStatement = async (customer: Supplier) => {
@@ -198,14 +223,23 @@ export function CustomerCallPlanModule() {
     }
   };
 
-  const navigateCollection = (customer: Supplier) => {
+  const openCollection = async (customer: Supplier) => {
     setContextMenu(null);
-    window.dispatchEvent(new CustomEvent('navigateToScreen', {
-      detail: {
-        screen: 'suppliers',
-        invoiceSearch: String(customer.code || customer.name || '').trim(),
-      },
-    }));
+    let kasa = defaultKasa;
+    if (!kasa) {
+      try {
+        const kasalar = await fetchKasalar({ aktif: true });
+        kasa = kasalar[0] ?? null;
+        setDefaultKasa(kasa);
+      } catch {
+        kasa = null;
+      }
+    }
+    if (!kasa) {
+      toast.error(tm('noCashRegisterFound'));
+      return;
+    }
+    setCashAction({ type: 'CH_TAHSILAT', account: customer });
   };
 
   const openWhatsAppSettings = () => {
@@ -483,13 +517,13 @@ export function CustomerCallPlanModule() {
                   id: 'new-sale-invoice',
                   label: tm('callPlanCtxNewSaleInvoice'),
                   icon: FileText,
-                  onClick: () => navigateNewSaleInvoice(contextMenu.customer),
+                  onClick: () => openNewSaleInvoice(contextMenu.customer),
                 },
                 {
                   id: 'new-collection',
                   label: tm('callPlanCtxNewCollection'),
                   icon: Wallet,
-                  onClick: () => navigateCollection(contextMenu.customer),
+                  onClick: () => void openCollection(contextMenu.customer),
                 },
               ],
               divider: true,
@@ -763,6 +797,35 @@ export function CustomerCallPlanModule() {
         <CariAccountStatementPanel
           account={ekstreAccount}
           onClose={() => setEkstreAccount(null)}
+        />
+      ) : null}
+
+      {saleInvoiceCustomer ? (
+        <UniversalInvoiceForm
+          key={`call-plan-sale-${saleInvoiceCustomer.id}-${saleInvoiceFormKey}`}
+          invoiceType={wholesaleInvoiceType}
+          onClose={() => setSaleInvoiceCustomer(null)}
+          editData={{
+            customer_id: saleInvoiceCustomer.id,
+            customer_name: saleInvoiceCustomer.name,
+            customer_code: saleInvoiceCustomer.code || '',
+          }}
+        />
+      ) : null}
+
+      {cashAction && defaultKasa ? (
+        <KasaIslemModal
+          kasa={defaultKasa}
+          islemTipi={cashAction.type}
+          initialCari={{
+            id: cashAction.account.id,
+            kod: cashAction.account.code || '',
+            unvan: cashAction.account.name,
+            bakiye: cashAction.account.balance || 0,
+          }}
+          initialDescription={`Tahsilat: ${cashAction.account.code || ''} - ${cashAction.account.name}`}
+          onClose={() => setCashAction(null)}
+          onSuccess={() => setCashAction(null)}
         />
       ) : null}
     </div>
