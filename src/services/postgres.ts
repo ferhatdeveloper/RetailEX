@@ -139,12 +139,13 @@ function normalizeBridgePgEndpoint(cfg: PgEndpointConfig): PgEndpointConfig {
   const host = cfg.host === 'localhost' ? '127.0.0.1' : cfg.host;
   if (host !== '127.0.0.1') return cfg;
   const tenantDb = resolveEffectiveTenantDatabaseName();
+  const fallbackDb =
+    tenantDb ||
+    (cfg.database && cfg.database !== 'retailex_local' ? cfg.database : LOCAL_CONFIG.database);
   return {
     ...cfg,
     host: 'saas_postgres',
-    database:
-      tenantDb ||
-      (cfg.database && cfg.database !== 'retailex_local' ? cfg.database : 'retailex_demo'),
+    database: fallbackDb,
   };
 }
 
@@ -313,6 +314,7 @@ function applyDefaultCurrencyFromConfig(config: any): void {
 /** Merkez (uzak) işlemler yalnızca PostgREST/API ile yapılır; şube/kasa doğrudan uzak PG'ye bağlanmaz. */
 export function shouldUseCentralApi(): boolean {
   if (DB_SETTINGS.activeMode === 'offline') return false;
+  if (DB_SETTINGS.connectionProvider !== 'rest_api') return false;
   return Boolean(String(DB_SETTINGS.remoteRestUrl ?? '').trim());
 }
 
@@ -391,6 +393,8 @@ export function resolveEffectiveTenantDatabaseName(restUrl?: string): string | n
     }
     return configuredDb;
   }
+  // Varsayılan retailex_demo veya boş yapılandırmada PostgREST slug'ından kiracı DB adını çöz.
+  if (slug) return slug;
   return null;
 }
 
@@ -540,8 +544,11 @@ function applyWebLocalStorageConfig(config: any): void {
     (REMOTE_CONFIG.host === '127.0.0.1' || REMOTE_CONFIG.host === 'localhost')
   ) {
     REMOTE_CONFIG.host = 'saas_postgres';
-    if (!REMOTE_CONFIG.database || REMOTE_CONFIG.database === 'retailex_local') {
-      REMOTE_CONFIG.database = 'retailex_demo';
+    const tenantDb = resolveEffectiveTenantDatabaseName();
+    if (tenantDb) {
+      REMOTE_CONFIG.database = tenantDb;
+    } else if (!REMOTE_CONFIG.database || REMOTE_CONFIG.database === 'retailex_local') {
+      REMOTE_CONFIG.database = LOCAL_CONFIG.database;
     }
   }
 
@@ -581,17 +588,19 @@ export async function initializeFromSQLite(preloadedConfig?: any) {
         applyWebLocalStorageConfig(merged);
         await ensureTenantDatabaseFromRegistry();
       } else {
-        DB_SETTINGS.activeMode = 'online';
+        // Web'de yapılandırma yoksa uzak demo PG'ye düşme — yerel retailex_local kullan.
+        DB_SETTINGS.activeMode = 'offline';
         DB_SETTINGS.connectionProvider = 'db';
         DB_SETTINGS.remoteRestUrl = '';
         DB_SETTINGS.hybridReadPreference = 'local_first';
         DB_SETTINGS.hybridSyncDirection = 'local_to_remote';
         DB_SETTINGS.hybridSyncTransport = 'both';
+        LOCAL_CONFIG.isConfigured = true;
       }
       if (pgFlat || webFull) {
         console.log('🌐 Web Config Loaded (exretail_pg_config + retailex_web_config)');
       } else {
-        console.log('🌐 Web Mode: Defaulting to Online (127.0.0.1)');
+        console.log(`🌐 Web Mode: Yerel PG varsayılanı (${LOCAL_CONFIG.database} @ ${LOCAL_CONFIG.host})`);
       }
     } catch (e) {
       console.warn('Failed to parse web localStorage config', e);

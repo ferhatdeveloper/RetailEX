@@ -1,4 +1,4 @@
-﻿import { useState, useRef, useEffect } from 'react';
+﻿import { useState, useRef, useEffect, useCallback } from 'react';
 import { Edit, Trash2, History, LucideIcon, ChevronRight } from 'lucide-react';
 import { useLanguage } from '../../contexts/LanguageContext';
 
@@ -28,6 +28,10 @@ interface ContextMenuProps {
 export function ContextMenu({ x, y, onClose, items, onEdit, onDelete, onHistory }: ContextMenuProps) {
     const menuRef = useRef<HTMLDivElement>(null);
     const { t } = useLanguage();
+    /** Açık alt menü yolu — aynı anda yalnızca bir dal (üst üste binme önlenir) */
+    const [openPath, setOpenPath] = useState<string[]>([]);
+
+    const closeSubmenus = useCallback(() => setOpenPath([]), []);
 
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
@@ -38,11 +42,14 @@ export function ContextMenu({ x, y, onClose, items, onEdit, onDelete, onHistory 
 
         const handleEscape = (event: KeyboardEvent) => {
             if (event.key === 'Escape') {
-                onClose();
+                if (openPath.length > 0) {
+                    closeSubmenus();
+                } else {
+                    onClose();
+                }
             }
         };
 
-        // Adjust position if menu goes off screen
         if (menuRef.current) {
             const menu = menuRef.current;
             const rect = menu.getBoundingClientRect();
@@ -64,9 +71,8 @@ export function ContextMenu({ x, y, onClose, items, onEdit, onDelete, onHistory 
             document.removeEventListener('mousedown', handleClickOutside);
             document.removeEventListener('keydown', handleEscape);
         };
-    }, [x, y, onClose]);
+    }, [x, y, onClose, openPath.length, closeSubmenus]);
 
-    // Build final menu items list
     let finalItems: (ContextMenuItem & { color?: string })[] = [];
 
     if (items) {
@@ -75,83 +81,121 @@ export function ContextMenu({ x, y, onClose, items, onEdit, onDelete, onHistory 
             color: item.variant === 'danger' ? 'text-red-600' : 'text-blue-600'
         }));
     } else {
-        // Fallback to legacy props
         if (onEdit) finalItems.push({ id: 'edit', label: t.edit, icon: Edit, onClick: onEdit, color: 'text-blue-600' });
         if (onHistory) finalItems.push({ id: 'history', label: t.historyMovements, icon: History, onClick: onHistory, color: 'text-purple-600' });
         if (onDelete) finalItems.push({ id: 'delete', label: t.deleteAction, icon: Trash2, onClick: onDelete, color: 'text-red-600' });
     }
 
-    // Recursive component for menu items
-    const MenuList = ({ items, parentId }: { items: ContextMenuItem[], parentId: string }) => {
-        const [activeSubMenu, setActiveSubMenu] = useState<string | null>(null);
+    const isPathOpen = (path: string[]) =>
+        path.length === openPath.length && path.every((seg, i) => openPath[i] === seg);
 
-        return (
-            <>
-                {items.map((item, index) => (
-                    <div
-                        key={item.id + index}
-                        className="relative group"
-                        onMouseEnter={() => !item.header && setActiveSubMenu(item.id)}
-                        onMouseLeave={() => !item.header && setActiveSubMenu(null)}
-                    >
+    const MenuList = ({
+        menuItems,
+        pathPrefix,
+        depth,
+    }: {
+        menuItems: ContextMenuItem[];
+        pathPrefix: string[];
+        depth: number;
+    }) => (
+        <>
+            {menuItems.map((item, index) => {
+                const itemPath = [...pathPrefix, item.id];
+                const hasSubmenu = Boolean(item.items && item.items.length > 0);
+                const submenuOpen = hasSubmenu && isPathOpen(itemPath);
+
+                return (
+                    <div key={item.id + index}>
                         {item.header ? (
                             <div className="px-4 py-2 text-xs font-black uppercase tracking-wide text-slate-500 select-none">
                                 {item.label}
                             </div>
                         ) : (
-                        <button
-                            onMouseDown={(e) => {
-                                if (e.button !== 0) return; // Sadece sol tıklama
-                                e.stopPropagation();
-                                e.preventDefault(); // Focus kaybını önle
-                                if (item.items && item.items.length > 0) {
-                                    // Mobile/Touch: Toggle submenu
-                                    setActiveSubMenu(activeSubMenu === item.id ? null : item.id);
-                                } else {
-                                    item.onClick?.();
-                                    onClose();
-                                }
-                            }}
-                            className={`w-full px-4 py-2 text-left hover:bg-gray-100 flex items-center justify-between gap-3 transition-colors ${item.variant === 'danger' ? 'hover:text-red-700' : ''
-                                }`}
-                        >
-                            <div className="flex items-center gap-3">
-                                {item.icon ? (
-                                    <item.icon className={`w-4 h-4 shrink-0 ${item.variant === 'danger' ? 'text-red-600' : 'text-blue-600'}`} />
-                                ) : null}
-                                <span className={`text-sm ${item.variant === 'danger' ? 'text-red-600' : 'text-gray-700'}`}>
-                                    {item.label}
-                                </span>
-                            </div>
-                            {item.items && item.items.length > 0 && (
-                                <ChevronRight className="w-4 h-4 text-gray-400" />
-                            )}
-                        </button>
-                        )}
-                        {item.divider && <div className="border-t border-gray-100 my-1" />}
-
-                        {/* Submenu */}
-                        {item.items && item.items.length > 0 && activeSubMenu === item.id && (
                             <div
-                                className="absolute left-full top-0 ml-1 bg-white rounded-lg shadow-xl border border-gray-200 py-1 min-w-[200px] z-[10000]"
+                                className="relative"
+                                onMouseEnter={() => {
+                                    if (hasSubmenu) {
+                                        setOpenPath(itemPath);
+                                    } else {
+                                        setOpenPath(pathPrefix);
+                                    }
+                                }}
                             >
-                                <MenuList items={item.items} parentId={item.id} />
+                                <button
+                                    type="button"
+                                    onMouseDown={(e) => {
+                                        if (e.button !== 0) return;
+                                        e.stopPropagation();
+                                        e.preventDefault();
+                                        if (hasSubmenu) {
+                                            setOpenPath(submenuOpen ? pathPrefix : itemPath);
+                                        } else {
+                                            item.onClick?.();
+                                            onClose();
+                                        }
+                                    }}
+                                    className={`w-full px-4 py-2 text-left hover:bg-gray-100 flex items-center justify-between gap-3 transition-colors ${
+                                        submenuOpen ? 'bg-gray-50' : ''
+                                    } ${item.variant === 'danger' ? 'hover:text-red-700' : ''}`}
+                                >
+                                    <div className="flex items-center gap-3 min-w-0">
+                                        {item.icon ? (
+                                            <item.icon
+                                                className={`w-4 h-4 shrink-0 ${
+                                                    item.variant === 'danger' ? 'text-red-600' : 'text-blue-600'
+                                                }`}
+                                            />
+                                        ) : null}
+                                        <span
+                                            className={`text-sm truncate ${
+                                                item.variant === 'danger' ? 'text-red-600' : 'text-gray-700'
+                                            }`}
+                                        >
+                                            {item.label}
+                                        </span>
+                                    </div>
+                                    {hasSubmenu ? <ChevronRight className="w-4 h-4 shrink-0 text-gray-400" /> : null}
+                                </button>
+
+                                {hasSubmenu && submenuOpen ? (
+                                    <div
+                                        className="absolute left-full top-0 flex"
+                                        style={{ zIndex: 10000 + depth + 1 }}
+                                        onMouseEnter={() => setOpenPath(itemPath)}
+                                    >
+                                        {/* Fare geçiş köprüsü — ml boşluğunda menü kapanmasın */}
+                                        <div className="w-1.5 shrink-0 self-stretch" aria-hidden />
+                                        <div className="min-w-[200px] rounded-lg border border-gray-200 bg-white py-1 shadow-xl">
+                                            <MenuList
+                                                menuItems={item.items!}
+                                                pathPrefix={itemPath}
+                                                depth={depth + 1}
+                                            />
+                                        </div>
+                                    </div>
+                                ) : null}
                             </div>
                         )}
+                        {item.divider ? <div className="my-1 border-t border-gray-100" /> : null}
                     </div>
-                ))}
-            </>
-        );
-    };
+                );
+            })}
+        </>
+    );
 
     return (
         <div
             ref={menuRef}
-            className="fixed z-[9999] bg-white rounded-lg shadow-xl border border-gray-200 py-1 min-w-[220px]"
+            className="fixed z-[9999] min-w-[220px] rounded-lg border border-gray-200 bg-white py-1 shadow-xl"
             style={{ left: x, top: y }}
+            onMouseLeave={(e) => {
+                const related = e.relatedTarget as Node | null;
+                if (!related || !menuRef.current?.contains(related)) {
+                    closeSubmenus();
+                }
+            }}
         >
-            <MenuList items={finalItems} parentId="root" />
+            <MenuList menuItems={finalItems} pathPrefix={[]} depth={0} />
         </div>
     );
 }
-
