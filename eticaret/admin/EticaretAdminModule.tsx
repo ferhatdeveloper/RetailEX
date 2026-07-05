@@ -20,11 +20,13 @@ import type { MenuProps } from 'antd';
 import {
   AppstoreOutlined,
   CheckOutlined,
-  CloudUploadOutlined,
   CreditCardOutlined,
   DashboardOutlined,
   EyeOutlined,
+  FileTextOutlined,
   GlobalOutlined,
+  LinkOutlined,
+  MenuOutlined,
   PictureOutlined,
   SaveOutlined,
   SettingOutlined,
@@ -35,33 +37,40 @@ import {
 } from '@ant-design/icons';
 import {
   DEFAULT_ETICARET_SETTINGS,
-  loadEticaretSettingsFromDb,
-  saveEticaretSettingsToDb,
 } from '../core/settings';
 import {
   listRetailTenantsForEticaret,
-  loadTenantEticaretSettingsFromRegistry,
-  saveTenantEticaretSettings,
 } from '../core/tenantRegistryApi';
+import {
+  loadTenantEticaretSettingsFull,
+  saveTenantEticaretSettingsFull,
+  listWebOrdersForTenant,
+} from '../core/eticaretApi';
 import { fetchTenantCatalog } from '../core/catalogApi';
 import { listAllThemeVariants } from '../themes/registry';
 import { buildStorefrontUrl } from '../core/tenantResolver';
-import { listWebOrders } from '../core/orderApi';
 import { PAYMENT_PROVIDER_CATALOG } from '../core/payments/types';
 import type { EticaretSettings, EticaretWebOrder } from '../core/types';
 import type { PaymentProviderConfig } from '../core/payments/types';
-import { getPrimarySqlConnectionString } from '../../src/services/postgres';
 import { DashboardSection } from './sections/DashboardSection';
 import { BannersSection } from './sections/BannersSection';
 import { SlidersSection } from './sections/SlidersSection';
 import { CampaignsSection } from './sections/CampaignsSection';
 import { FeaturedSection } from './sections/FeaturedSection';
+import { NavigationSection } from './sections/NavigationSection';
+import { FooterSection } from './sections/FooterSection';
+import { PagesSection } from './sections/PagesSection';
+import { StorefrontMetaSection } from './sections/StorefrontMetaSection';
 
 const { Header, Sider, Content } = Layout;
 const { Title, Text, Paragraph } = Typography;
 
 type AdminSection =
   | 'dashboard'
+  | 'storefront'
+  | 'navigation'
+  | 'footer'
+  | 'pages'
   | 'banners'
   | 'sliders'
   | 'campaigns'
@@ -91,6 +100,10 @@ const MENU_ITEMS: MenuProps['items'] = [
   { key: 'dashboard', icon: <DashboardOutlined />, label: 'Özet' },
   { type: 'divider' },
   { key: 'content', label: 'Vitrin İçeriği', type: 'group' },
+  { key: 'storefront', icon: <GlobalOutlined />, label: 'Mağaza kimliği' },
+  { key: 'navigation', icon: <MenuOutlined />, label: 'Menü' },
+  { key: 'footer', icon: <LinkOutlined />, label: 'Footer' },
+  { key: 'pages', icon: <FileTextOutlined />, label: 'Sayfalar' },
   { key: 'banners', icon: <PictureOutlined />, label: 'Bannerlar' },
   { key: 'sliders', icon: <SlidersOutlined />, label: 'Slider' },
   { key: 'campaigns', icon: <ThunderboltOutlined />, label: 'Kampanyalar' },
@@ -116,6 +129,9 @@ export function EticaretAdminModule() {
     sliders: [],
     campaigns: [],
     featuredProducts: [],
+    menuItems: DEFAULT_ETICARET_SETTINGS.menuItems,
+    footerLinks: DEFAULT_ETICARET_SETTINGS.footerLinks,
+    staticPages: DEFAULT_ETICARET_SETTINGS.staticPages,
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -126,24 +142,41 @@ export function EticaretAdminModule() {
   const [productOptions, setProductOptions] = useState<Array<{ value: string; label: string }>>([]);
   const [productSearchLoading, setProductSearchLoading] = useState(false);
 
-  useEffect(() => {
-    void Promise.all([loadEticaretSettingsFromDb(), listRetailTenantsForEticaret()]).then(
-      ([s, list]) => {
-        setForm({
-          ...s,
-          paymentProviders: mergeProviders(s.paymentProviders),
-          banners: s.banners || [],
-          sliders: s.sliders || [],
-          campaigns: s.campaigns || [],
-          featuredProducts: s.featuredProducts || [],
-        });
-        setTenants(list);
-        if (s.demoTenantCode.trim()) setSelectedTenant(s.demoTenantCode.trim().toLowerCase());
-        else if (list[0]?.code) setSelectedTenant(list[0].code);
-        setLoading(false);
-      },
-    );
+  const loadTenantSettings = useCallback(async (tenantCode: string) => {
+    if (!tenantCode.trim()) return;
+    setLoading(true);
+    try {
+      const merged = await loadTenantEticaretSettingsFull(tenantCode);
+      setForm({
+        ...merged,
+        paymentProviders: mergeProviders(merged.paymentProviders),
+        banners: merged.banners || [],
+        sliders: merged.sliders || [],
+        campaigns: merged.campaigns || [],
+        featuredProducts: merged.featuredProducts || [],
+        menuItems: merged.menuItems || DEFAULT_ETICARET_SETTINGS.menuItems,
+        footerLinks: merged.footerLinks || DEFAULT_ETICARET_SETTINGS.footerLinks,
+        staticPages: merged.staticPages || DEFAULT_ETICARET_SETTINGS.staticPages,
+      });
+    } catch (e: unknown) {
+      message.error(e instanceof Error ? e.message : String(e));
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    void listRetailTenantsForEticaret().then((list) => {
+      setTenants(list);
+      const initial = list[0]?.code || '';
+      if (initial) {
+        setSelectedTenant(initial);
+        void loadTenantSettings(initial);
+      } else {
+        setLoading(false);
+      }
+    });
+  }, [loadTenantSettings]);
 
   const variants = listAllThemeVariants();
   const previewTenant =
@@ -164,7 +197,11 @@ export function EticaretAdminModule() {
       if (!tenant) return;
       setProductSearchLoading(true);
       try {
-        const { products } = await fetchTenantCatalog(tenant, { limit: 50, search: term });
+        const { products } = await fetchTenantCatalog(tenant, {
+          limit: 50,
+          search: term,
+          demoMode: form.demoMode,
+        });
         setProductOptions(
           products.map((p) => ({
             value: p.code,
@@ -177,7 +214,7 @@ export function EticaretAdminModule() {
         setProductSearchLoading(false);
       }
     },
-    [previewTenant],
+    [previewTenant, form.demoMode],
   );
 
   useEffect(() => {
@@ -187,40 +224,14 @@ export function EticaretAdminModule() {
   }, [section, searchProducts]);
 
   const handleSave = async () => {
-    setSaving(true);
-    try {
-      await saveEticaretSettingsToDb(form);
-      message.success('Tüm ayarlar kaydedildi');
-    } catch (e: unknown) {
-      message.error(e instanceof Error ? e.message : String(e));
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleApplyToTenant = async () => {
     if (!selectedTenant.trim()) {
       message.warning('Kiracı seçin');
       return;
     }
     setSaving(true);
     try {
-      await saveTenantEticaretSettings(selectedTenant, {
-        activeThemeId: form.activeThemeId,
-        activeVariantId: form.activeVariantId,
-        enabled: form.enabled,
-        storeTitle: form.storeTitle,
-        announcementText: form.announcementText,
-        demoMode: form.demoMode,
-        demoTenantCode: form.demoTenantCode,
-        paymentProviders: form.paymentProviders,
-        defaultPaymentProvider: form.defaultPaymentProvider,
-        banners: form.banners,
-        sliders: form.sliders,
-        campaigns: form.campaigns,
-        featuredProducts: form.featuredProducts,
-      });
-      message.success(`${selectedTenant} kiracısına uygulandı`);
+      await saveTenantEticaretSettingsFull(selectedTenant, form);
+      message.success('Ayarlar kiracı veritabanına ve merkeze kaydedildi');
     } catch (e: unknown) {
       message.error(e instanceof Error ? e.message : String(e));
     } finally {
@@ -229,11 +240,10 @@ export function EticaretAdminModule() {
   };
 
   const loadOrders = async () => {
+    if (!selectedTenant.trim()) return;
     setOrdersLoading(true);
     try {
-      const connStr = getPrimarySqlConnectionString();
-      if (!connStr) throw new Error('Veritabanı bağlantısı yok');
-      const rows = await listWebOrders(connStr, selectedTenant || undefined);
+      const rows = await listWebOrdersForTenant(selectedTenant);
       setOrders(rows);
     } catch (e: unknown) {
       message.error(e instanceof Error ? e.message : String(e));
@@ -287,6 +297,29 @@ export function EticaretAdminModule() {
     switch (section) {
       case 'dashboard':
         return <DashboardSection form={form} orders={orders} previewTenant={previewTenant} />;
+      case 'storefront':
+        return <StorefrontMetaSection form={form} onChange={patch} />;
+      case 'navigation':
+        return (
+          <NavigationSection
+            items={form.menuItems || []}
+            onChange={(menuItems) => patch({ menuItems })}
+          />
+        );
+      case 'footer':
+        return (
+          <FooterSection
+            items={form.footerLinks || []}
+            onChange={(footerLinks) => patch({ footerLinks })}
+          />
+        );
+      case 'pages':
+        return (
+          <PagesSection
+            pages={form.staticPages || []}
+            onChange={(staticPages) => patch({ staticPages })}
+          />
+        );
       case 'banners':
         return (
           <BannersSection items={form.banners || []} onChange={(banners) => patch({ banners })} />
@@ -557,35 +590,20 @@ export function EticaretAdminModule() {
               style={{ minWidth: 200 }}
               placeholder="Kiracı"
               value={selectedTenant || undefined}
-              onChange={(v) =>
-                void loadTenantEticaretSettingsFromRegistry(v).then((r) => {
-                  setSelectedTenant(v);
-                  if (r && Object.keys(r).length) {
-                    setForm((prev) => ({
-                      ...prev,
-                      ...r,
-                      paymentProviders: mergeProviders(r.paymentProviders ?? prev.paymentProviders),
-                      banners: r.banners ?? prev.banners,
-                      sliders: r.sliders ?? prev.sliders,
-                      campaigns: r.campaigns ?? prev.campaigns,
-                      featuredProducts: r.featuredProducts ?? prev.featuredProducts,
-                    }));
-                  }
-                })
-              }
+              onChange={(v) => {
+                setSelectedTenant(v);
+                void loadTenantSettings(v);
+              }}
               options={tenants.map((t) => ({
                 value: t.code,
                 label: `${t.display_name} (${t.code})`,
               }))}
             />
-            <Button icon={<CloudUploadOutlined />} loading={saving} onClick={() => void handleApplyToTenant()}>
-              Kiracıya uygula
-            </Button>
             <Button icon={<EyeOutlined />} href={buildStorefrontUrl(previewTenant)} target="_blank">
               Vitrin
             </Button>
             <Button type="primary" icon={<SaveOutlined />} loading={saving} onClick={() => void handleSave()}>
-              Kaydet
+              Kaydet (DB)
             </Button>
           </Space>
         </Header>

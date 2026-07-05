@@ -1,0 +1,55 @@
+import type { EticaretSettings } from './types';
+import type { PaymentProviderConfig } from './payments/types';
+import { DEFAULT_ETICARET_SETTINGS } from './settings';
+
+/** Registry + kiracı DB + yerel önbellek birleştirme */
+export function mergeEticaretSettings(
+  ...layers: Array<Partial<EticaretSettings> | null | undefined>
+): EticaretSettings {
+  let merged: EticaretSettings = { ...DEFAULT_ETICARET_SETTINGS };
+  for (const layer of layers) {
+    if (!layer || typeof layer !== 'object') continue;
+    merged = {
+      ...merged,
+      ...layer,
+      paymentProviders: layer.paymentProviders ?? merged.paymentProviders,
+      banners: layer.banners ?? merged.banners,
+      sliders: layer.sliders ?? merged.sliders,
+      campaigns: layer.campaigns ?? merged.campaigns,
+      featuredProducts: layer.featuredProducts ?? merged.featuredProducts,
+      menuItems: layer.menuItems ?? merged.menuItems,
+      footerLinks: layer.footerLinks ?? merged.footerLinks,
+      staticPages: layer.staticPages ?? merged.staticPages,
+    };
+  }
+  return merged;
+}
+
+export function storefrontConfigToSettings(
+  raw: Record<string, unknown>,
+): EticaretSettings {
+  const providers = Array.isArray(raw.providers) ? raw.providers : [];
+  const paymentProviders = (raw.paymentProviders as PaymentProviderConfig[] | undefined) ?? undefined;
+  return mergeEticaretSettings({
+    activeThemeId: String(raw.activeThemeId || 'ella'),
+    activeVariantId: String(raw.activeVariantId || 'ella-classic'),
+    demoMode: Boolean(raw.demoMode),
+    demoTenantCode: String(raw.demoTenantCode || ''),
+    storeTitle: String(raw.storeTitle || ''),
+    announcementText: String(raw.announcementText || ''),
+    enabled: raw.enabled !== false,
+    defaultPaymentProvider: raw.defaultPaymentProvider as EticaretSettings['defaultPaymentProvider'],
+    paymentProviders,
+    banners: raw.banners as EticaretSettings['banners'],
+    sliders: raw.sliders as EticaretSettings['sliders'],
+    campaigns: raw.campaigns as EticaretSettings['campaigns'],
+    featuredProducts: raw.featuredProducts as EticaretSettings['featuredProducts'],
+    menuItems: raw.menuItems as EticaretSettings['menuItems'],
+    footerLinks: raw.footerLinks as EticaretSettings['footerLinks'],
+    staticPages: raw.staticPages as EticaretSettings['staticPages'],
+    logoUrl: raw.logoUrl ? String(raw.logoUrl) : undefined,
+    seoTitle: raw.seoTitle ? String(raw.seoTitle) : undefined,
+    productSectionTitle: raw.productSectionTitle ? String(raw.productSectionTitle) : undefined,
+    footerCopyright: raw.footerCopyright ? String(raw.footerCopyright) : undefined,
+  });
+}

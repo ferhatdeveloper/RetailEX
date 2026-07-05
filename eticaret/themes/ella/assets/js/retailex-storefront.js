@@ -196,15 +196,184 @@
     return '/magaza/' + encodeURIComponent(tenant);
   }
 
-  function resolveCatalogTenant(routeTenant) {
-    var settings = readSettings();
+  function resolveCatalogTenant(routeTenant, storeConfig) {
+    if (storeConfig && storeConfig.catalogTenantCode) {
+      return String(storeConfig.catalogTenantCode).trim().toLowerCase();
+    }
+    if (storeConfig && storeConfig.demoMode && storeConfig.demoTenantCode) {
+      return String(storeConfig.demoTenantCode).trim().toLowerCase();
+    }
     if (qs('rex_demo') === '1' && qs('rex_demo_tenant')) {
       return qs('rex_demo_tenant').trim().toLowerCase();
     }
-    if (settings.demoMode && settings.demoTenantCode) {
-      return String(settings.demoTenantCode).trim().toLowerCase();
-    }
     return routeTenant;
+  }
+
+  function resolveFooterHref(link, routeTenant) {
+    var url = String(link.url || '#').trim();
+    if (!url || url === '#') return '#';
+    if (url.indexOf('http://') === 0 || url.indexOf('https://') === 0) return url;
+    if (url.indexOf('/sayfa/') === 0) {
+      return tenantBase(routeTenant) + url;
+    }
+    if (url.charAt(0) === '/') return tenantBase(routeTenant) + url;
+    return tenantBase(routeTenant) + '/' + url.replace(/^\/+/, '');
+  }
+
+  function applyFooter(config, routeTenant) {
+    if (!config) return;
+    var links = sortEnabledContent(config.footerLinks || []);
+    if (links.length) {
+      var groups = { shop: [], info: [], legal: [] };
+      links.forEach(function (l) {
+        var col = l.column || 'info';
+        if (groups[col]) groups[col].push(l);
+      });
+      var columnOrder = ['shop', 'info', 'legal'];
+      var cols = document.querySelectorAll('.footer-col-left .col-footer');
+      cols.forEach(function (colEl, idx) {
+        var key = columnOrder[idx];
+        if (!key || !groups[key].length) return;
+        var ul = colEl.querySelector('ul');
+        if (!ul) return;
+        ul.innerHTML = groups[key]
+          .map(function (link) {
+            var href = resolveFooterHref(link, routeTenant);
+            return (
+              '<li><a href="#" class="link link-underline footer-link rex-footer-link" data-href="' +
+              href +
+              '"><span class="text">' +
+              link.label +
+              '</span></a></li>'
+            );
+          })
+          .join('');
+      });
+      document.querySelectorAll('.rex-footer-link').forEach(function (a) {
+        a.addEventListener('click', function (e) {
+          e.preventDefault();
+          var path = a.getAttribute('data-href');
+          if (path) parentNav(path);
+        });
+      });
+    }
+    if (config.footerCopyright) {
+      var cr =
+        document.querySelector('.footer-copyright .content') ||
+        document.querySelector('.footer-copyright p');
+      if (cr) cr.innerHTML = config.footerCopyright;
+    }
+  }
+
+  function menuItemHref(item, routeTenant) {
+    if (item.type === 'external') return item.url || '#';
+    if (item.type === 'page') return tenantBase(routeTenant) + '/sayfa/' + encodeURIComponent(item.pageSlug || '');
+    var path = item.path || '';
+    return tenantBase(routeTenant) + (path ? '/' + path.replace(/^\/+/, '') : '');
+  }
+
+  function applyNavigation(config, routeTenant) {
+    if (!config || !config.menuItems || !config.menuItems.length) return;
+    var items = sortEnabledContent(config.menuItems);
+    if (!items.length) return;
+    var nav =
+      document.querySelector('.header__inline-menu .list-menu') ||
+      document.querySelector('.header-bottom--wrapper .list-menu');
+    if (!nav) return;
+    nav.innerHTML = items
+      .map(function (item) {
+        var href = menuItemHref(item, routeTenant);
+        return (
+          '<li class="menu-lv-item"><a href="#" class="menu-lv-1__action rex-nav-link" data-href="' +
+          href +
+          '"><span class="text">' +
+          item.label +
+          '</span></a></li>'
+        );
+      })
+      .join('');
+    nav.querySelectorAll('.rex-nav-link').forEach(function (a) {
+      a.addEventListener('click', function (e) {
+        e.preventDefault();
+        var path = a.getAttribute('data-href');
+        if (path) parentNav(path);
+      });
+    });
+  }
+
+  function applyLogo(config) {
+    if (!config || !config.logoUrl) return;
+    document.querySelectorAll('.header__heading-link img').forEach(function (img) {
+      img.src = config.logoUrl;
+    });
+  }
+
+  function renderStaticPage(config, routeTenant) {
+    var slug = qs('rex_static') || '';
+    var pages = (config && config.staticPages) || [];
+    var page = pages.find(function (p) {
+      return p.enabled !== false && p.slug === slug;
+    });
+    var panel = ensureRexPanel('retailex-cms-page', (page && page.title) || 'Sayfa');
+    var body = panel.querySelector('.rex-panel-body');
+    if (!page) {
+      body.innerHTML = '<p class="text-muted">Sayfa bulunamadı.</p>';
+      return;
+    }
+    body.innerHTML = page.bodyHtml || '<p>İçerik yok.</p>';
+  }
+
+  async function renderProductPage(routeTenant, catalogTenant, storeConfig) {
+    var code = qs('rex_product') || '';
+    var panel = ensureRexPanel('retailex-product-page', 'Ürün');
+    var body = panel.querySelector('.rex-panel-body');
+    if (!code) {
+      body.innerHTML = '<p>Ürün kodu yok.</p>';
+      return;
+    }
+    body.innerHTML = '<p class="text-muted">Yükleniyor…</p>';
+    try {
+      var res = await fetch(
+        bridgeApiUrl(
+          '/api/eticaret/product?tenant=' + encodeURIComponent(catalogTenant) + '&code=' + encodeURIComponent(code),
+        ),
+        { headers: { Accept: 'application/json' } },
+      );
+      var data = await res.json();
+      var p = data.product;
+      if (!p) {
+        body.innerHTML = '<p>Ürün bulunamadı.</p>';
+        return;
+      }
+      var price = formatPrice(p.price, p.currency || 'TRY');
+      body.innerHTML =
+        '<div class="row"><div class="col-md-6"><img src="' +
+        (p.imageUrl || PLACEHOLDER_IMG) +
+        '" alt="' +
+        p.name +
+        '" style="width:100%;border-radius:8px;"></div><div class="col-md-6">' +
+        '<h1>' +
+        p.name +
+        '</h1><p class="h4">' +
+        price +
+        '</p><p>' +
+        (p.vendor || '') +
+        '</p>' +
+        '<button type="button" class="btn btn-primary rex-add-cart" data-code="' +
+        p.code +
+        '" data-name="' +
+        p.name +
+        '" data-price="' +
+        p.price +
+        '" data-currency="' +
+        (p.currency || 'TRY') +
+        '" data-id="' +
+        (p.id || '') +
+        '">Sepete Ekle</button></div></div>';
+      bindProductLinks();
+    } catch (e) {
+      body.innerHTML = '<p>Ürün yüklenemedi.</p>';
+    }
   }
 
   function injectVariantCss(variantId) {
@@ -345,7 +514,7 @@
     });
   }
 
-  function renderProducts(products, tenant) {
+  function renderProducts(products, tenant, sectionTitle) {
     var grid =
       document.querySelector('#retailex-products-grid .row') ||
       document.querySelector('.halo-product-block .halo-block-content .row') ||
@@ -357,18 +526,31 @@
       section.id = 'retailex-products-grid';
       section.innerHTML =
         '<div class="container container-1170">' +
-        '<div class="halo-block-header text-center"><h3 class="title uppercase"><span class="text">Ürünler</span></h3></div>' +
+        '<div class="halo-block-header text-center"><h3 class="title uppercase"><span class="text">' +
+        (sectionTitle || 'Ürünler') +
+        '</span></h3></div>' +
         '<div class="halo-block-content"><div class="row"></div></div></div>';
       var main = document.querySelector('main') || document.querySelector('.page-wrapper');
       if (main) main.prepend(section);
       grid = section.querySelector('.row');
+    } else {
+      var titleEl = document.querySelector('.halo-product-block .halo-block-header .text');
+      if (titleEl && sectionTitle) titleEl.textContent = sectionTitle;
     }
 
     if (!grid) return;
 
-    grid.innerHTML = products.map(function (p) {
-      return productCardHtml(p, tenant);
-    }).join('');
+    if (!products.length) {
+      grid.innerHTML =
+        '<div class="col-12 text-center py-5"><p>Henüz ürün bulunmuyor.</p></div>';
+      return;
+    }
+
+    grid.innerHTML = products
+      .map(function (p) {
+        return productCardHtml(p, tenant);
+      })
+      .join('');
     bindProductLinks();
   }
 
@@ -718,6 +900,7 @@
     var featured = sortEnabledContent(config.featuredProducts || []);
     var campaigns = sortEnabledContent(config.campaigns || []);
     var badgeMap = {};
+    var discountMap = {};
     var now = new Date();
 
     campaigns.forEach(function (c) {
@@ -725,15 +908,17 @@
       var endOk = !c.endDate || new Date(c.endDate) >= now;
       if (!startOk || !endOk) return;
       var badge = c.badge || (c.discountPercent ? '%' + c.discountPercent : '');
-      if (!badge) return;
+      var pct = Number(c.discountPercent || 0);
+      var applyDiscount = function (code) {
+        if (badge) badgeMap[code] = badge;
+        if (pct > 0) discountMap[code] = Math.max(discountMap[code] || 0, pct);
+      };
       if (!c.productCodes || !c.productCodes.length) {
         products.forEach(function (p) {
-          badgeMap[p.code] = badge;
+          applyDiscount(p.code);
         });
       } else {
-        c.productCodes.forEach(function (code) {
-          badgeMap[code] = badge;
-        });
+        c.productCodes.forEach(applyDiscount);
       }
     });
 
@@ -742,8 +927,14 @@
     });
 
     products = products.map(function (p) {
-      if (badgeMap[p.code]) p.badge = badgeMap[p.code];
-      return p;
+      var copy = Object.assign({}, p);
+      if (discountMap[p.code]) {
+        var orig = Number(p.price || 0);
+        copy.compareAtPrice = orig;
+        copy.price = Math.round(orig * (100 - discountMap[p.code]) / 100 * 100) / 100;
+      }
+      if (badgeMap[p.code]) copy.badge = badgeMap[p.code];
+      return copy;
     });
 
     var featuredCodes = featured.map(function (f) {
@@ -769,38 +960,34 @@
     applyBanners(config.banners || [], routeTenant);
   }
 
-  async function fetchCatalog(catalogTenant) {
-    var restBase = API_ORIGIN + '/' + encodeURIComponent(catalogTenant);
-    var currency = 'TRY';
-    var firmCandidates = ['001', '1', '01'];
-
+  async function fetchCatalog(catalogTenant, demoMode) {
     try {
-      var sysRows = await fetchJson(restBase + '/system_settings?id=eq.1&select=primary_firm_nr,default_currency&limit=1');
-      if (sysRows && sysRows[0]) {
-        if (sysRows[0].primary_firm_nr) {
-          var f = String(sysRows[0].primary_firm_nr).trim();
-          firmCandidates = [f.padStart(3, '0'), f, '001', '1'];
+      var res = await fetch(
+        bridgeApiUrl('/api/eticaret/catalog?tenant=' + encodeURIComponent(catalogTenant) + '&limit=24'),
+        { headers: { Accept: 'application/json' } },
+      );
+      if (res.ok) {
+        var data = await res.json();
+        if (data.products && data.products.length) {
+          return data.products.map(function (p) {
+            return {
+              id: p.id,
+              code: p.code,
+              name: p.name,
+              price: p.price,
+              currency: p.currency || data.currency || 'TRY',
+              imageUrl: p.imageUrl || PLACEHOLDER_IMG,
+              hoverImageUrl: PLACEHOLDER_HOVER,
+              vendor: p.vendor || '',
+              badge: p.badge || null,
+            };
+          });
         }
-        if (sysRows[0].default_currency) currency = String(sysRows[0].default_currency);
+        if (!demoMode && !data.demo) return [];
       }
     } catch (e) {}
 
-    for (var i = 0; i < firmCandidates.length; i++) {
-      var firm = firmCandidates[i].padStart(3, '0').slice(0, 10);
-      var table = 'rex_' + firm + '_products';
-      var url =
-        restBase +
-        '/' +
-        table +
-        '?is_active=eq.true&select=id,code,name,price,image_url,image_url_cdn,stock,brand,currency&order=code.asc&limit=24';
-      var rows = await fetchJson(url);
-      if (rows && rows.length) {
-        var products = rows.map(function (r) {
-          return mapRow(r, currency);
-        }).filter(Boolean);
-        if (products.length) return products;
-      }
-    }
+    if (!demoMode) return [];
 
     var label = catalogTenant.toUpperCase();
     return Array.from({ length: 8 }, function (_, idx) {
@@ -822,16 +1009,25 @@
     var routeTenant = qs('rex_tenant').trim().toLowerCase();
     if (!routeTenant) return;
 
-    var variantId = qs('rex_variant') || 'ella-classic';
-    var catalogTenant = resolveCatalogTenant(routeTenant);
-    var storeConfig = await loadStorefrontConfig(catalogTenant);
-    var title = (storeConfig && storeConfig.storeTitle) || qs('rex_title') || readSettings().storeTitle || 'Online Mağaza';
-    var announce =
-      (storeConfig && storeConfig.announcementText) || qs('rex_announce') || readSettings().announcementText || '';
+    var storeConfig = await loadStorefrontConfig(routeTenant);
+    var catalogTenant = resolveCatalogTenant(routeTenant, storeConfig);
+    var demoMode = Boolean(storeConfig && storeConfig.demoMode);
+    var variantId =
+      (storeConfig && storeConfig.activeVariantId) || qs('rex_variant') || 'ella-classic';
+    var title =
+      (storeConfig && storeConfig.storeTitle) || qs('rex_title') || 'Online Mağaza';
+    var announce = (storeConfig && storeConfig.announcementText) || qs('rex_announce') || '';
+
+    if (storeConfig && storeConfig.seoTitle) {
+      document.title = storeConfig.seoTitle;
+    }
 
     injectVariantCss(variantId);
     patchAnnouncement(announce);
     patchHeaderTitle(title, routeTenant);
+    applyLogo(storeConfig);
+    applyNavigation(storeConfig, routeTenant);
+    applyFooter(storeConfig, routeTenant);
     updateCartBadge(routeTenant);
 
     document.documentElement.classList.add('rex-eticaret-vitrin');
@@ -846,12 +1042,20 @@
       renderCheckoutPage(routeTenant, catalogTenant, storeConfig);
       return;
     }
+    if (qs('rex_static') && qs('rex_static') !== 'sepet' && qs('rex_static') !== 'odeme') {
+      renderStaticPage(storeConfig, routeTenant);
+      return;
+    }
+    if (kind === 'product' || qs('rex_product')) {
+      await renderProductPage(routeTenant, catalogTenant, storeConfig);
+      return;
+    }
 
     if (kind === 'home' || kind === 'category' || !kind) {
       applyStorefrontContent(storeConfig, routeTenant);
-      var products = await fetchCatalog(catalogTenant);
+      var products = await fetchCatalog(catalogTenant, demoMode);
       products = mergeFeaturedAndCampaigns(products, storeConfig);
-      renderProducts(products, routeTenant);
+      renderProducts(products, routeTenant, (storeConfig && storeConfig.productSectionTitle) || 'Ürünler');
     }
   }
 

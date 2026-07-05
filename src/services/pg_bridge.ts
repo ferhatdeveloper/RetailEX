@@ -18,6 +18,16 @@ import { Readable } from 'node:stream';
 import { normalizeFoodDeliveryChannel } from '../config/foodDeliveryChannels';
 import { initProviderPayment } from '../../eticaret/core/payments/registry';
 import type { PaymentInitRequest, PaymentProviderConfig } from '../../eticaret/core/payments/types';
+import {
+  resolveEticaretConnStr,
+  resolveEticaretConnStrAsync,
+  resolveTenantDatabaseName,
+  loadEticaretSettingsFromPg,
+  saveEticaretSettingsToPg,
+  fetchFirmNrFromPg,
+  firmNrCandidates,
+  getEticaretPool,
+} from '../../eticaret/core/server/tenantDbResolve';
 
 const app = new Hono();
 
@@ -679,30 +689,218 @@ app.post('/api/pg_dump', async (c) => {
     }
 });
 
-function resolveEticaretConnStr(body: Record<string, unknown>): string | null {
-    const explicit = typeof body.connStr === 'string' ? body.connStr.trim() : '';
-    if (explicit) return explicit;
-    const base = process.env.PG_DUMP_INTERNAL_URI?.trim();
-    if (!base) return null;
-    const db =
-        (typeof body.database === 'string' && body.database.trim()) ||
-        (typeof body.tenant_code === 'string' && body.tenant_code.trim()) ||
-        '';
-    if (!db || !/^[a-zA-Z_][a-zA-Z0-9_]{0,62}$/.test(db)) return null;
-    try {
-        const conn = base.replace(/\/+$/, '');
-        const u = new URL(conn.includes('://') ? conn : `postgres://${conn}`);
-        u.pathname = `/${db}`;
-        return u.href;
-    } catch {
-        return null;
-    }
+async function loadRegistryEticaretSettings(tenantCode: string): Promise<Record<string, unknown>> {
+  const { merkezPgUri } = await import('../../eticaret/core/server/tenantDbResolve');
+  const merkez = merkezPgUri();
+  if (!merkez || !tenantCode.trim()) return {};
+  try {
+    const pool = getEticaretPool(merkez);
+    const row = await pool.query(
+      `SELECT eticaret_settings FROM public.tenant_registry WHERE code = $1 LIMIT 1`,
+      [tenantCode.trim().toLowerCase()],
+    );
+    const s = row.rows[0]?.eticaret_settings;
+    return s && typeof s === 'object' ? (s as Record<string, unknown>) : {};
+  } catch {
+    return {};
+  }
 }
+
+function mergeSettingsLayers(
+  ...layers: Array<Record<string, unknown>>
+): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const layer of layers) {
+    Object.assign(out, layer);
+  }
+  return out;
+}
+
+function buildStorefrontPayload(settings: Record<string, unknown>, tenant: string) {
+  const list = Array.isArray(settings.paymentProviders) ? settings.paymentProviders : [];
+  const providers = (list as Array<{ id?: string; enabled?: boolean; label?: string }>)
+    .filter((p) => p.enabled)
+    .map((p) => ({ id: String(p.id), label: String(p.label || p.id) }));
+  const demoMode = Boolean(settings.demoMode);
+  const catalogTenantCode =
+    demoMode && settings.demoTenantCode
+      ? String(settings.demoTenantCode).trim().toLowerCase()
+      : tenant;
+  return {
+    ...settings,
+    enabled: settings.enabled !== false,
+    demoMode,
+    storeTitle: String(settings.storeTitle || ''),
+    announcementText: String(settings.announcementText || ''),
+    activeThemeId: String(settings.activeThemeId || 'ella'),
+    activeVariantId: String(settings.activeVariantId || 'ella-classic'),
+    defaultPaymentProvider: settings.defaultPaymentProvider || null,
+    providers,
+    catalogTenantCode,
+    banners: Array.isArray(settings.banners) ? settings.banners : [],
+    sliders: Array.isArray(settings.sliders) ? settings.sliders : [],
+    campaigns: Array.isArray(settings.campaigns) ? settings.campaigns : [],
+    featuredProducts: Array.isArray(settings.featuredProducts) ? settings.featuredProducts : [],
+    menuItems: Array.isArray(settings.menuItems) ? settings.menuItems : [],
+    footerLinks: Array.isArray(settings.footerLinks) ? settings.footerLinks : [],
+    staticPages: Array.isArray(settings.staticPages) ? settings.staticPages : [],
+    logoUrl: settings.logoUrl ? String(settings.logoUrl) : '',
+    seoTitle: settings.seoTitle ? String(settings.seoTitle) : '',
+    productSectionTitle: settings.productSectionTitle ? String(settings.productSectionTitle) : 'Ürünler',
+    footerCopyright: settings.footerCopyright ? String(settings.footerCopyright) : '',
+  };
+}
+
+function mapProductRow(row: Record<string, unknown>, currency: string) {
+  const id = String(row.id ?? row.code ?? '').trim();
+  const name = String(row.name ?? '').trim();
+  if (!id || !name) return null;
+  if (row.is_active === false) return null;
+  const price = Number(row.price || 0) || 0;
+  return {
+    id,
+    code: String(row.code || row.barcode || id),
+    name,
+    price,
+    currency: String(row.currency || currency || 'TRY'),
+    imageUrl: String(row.image_url_cdn || row.image_url || '').trim() || null,
+    vendor: String(row.brand || 'RetailEX').trim(),
+    inStock: Number(row.stock ?? 0) > 0,
+  };
+}
+
+async function queryTenantProducts(
+  connStr: string,
+  options: { limit?: number; search?: string; code?: string },
+): Promise<{ products: Record<string, unknown>[]; currency: string }> {
+  const pool = getEticaretPool(connStr);
+  const firm = await fetchFirmNrFromPg(connStr);
+  const currencyRow = await pool.query(
+    `SELECT default_currency FROM public.system_settings WHERE id = 1 LIMIT 1`,
+  );
+  const currency = String(currencyRow.rows[0]?.default_currency || 'TRY');
+  const limit = Math.min(100, Math.max(1, options.limit ?? 24));
+  const firms = firmNrCandidates(firm);
+
+  for (const f of firms) {
+    const table = `rex_${f}_products`;
+    const params: unknown[] = [];
+    let sql = `SELECT id, code, barcode, name, price, image_url, image_url_cdn, brand, currency, stock, is_active
+               FROM public.${table.replace(/[^a-z0-9_]/gi, '')}
+               WHERE is_active = true`;
+    if (options.code) {
+      params.push(options.code);
+      sql += ` AND (code = $${params.length} OR barcode = $${params.length})`;
+    } else if (options.search?.trim()) {
+      const term = `%${options.search.trim()}%`;
+      params.push(term, term, term);
+      sql += ` AND (name ILIKE $${params.length - 2} OR code ILIKE $${params.length - 1} OR barcode ILIKE $${params.length})`;
+    }
+    params.push(limit);
+    sql += ` ORDER BY code ASC LIMIT $${params.length}`;
+    try {
+      const result = await pool.query(sql, params);
+      const products = result.rows
+        .map((r) => mapProductRow(r as Record<string, unknown>, currency))
+        .filter(Boolean) as Record<string, unknown>[];
+      if (products.length || options.code) return { products, currency };
+    } catch {
+      /* tablo yoksa sonraki firmayı dene */
+    }
+  }
+  return { products: [], currency };
+}
+
+app.put('/api/eticaret/settings', async (c) => {
+  try {
+    const body = (await c.req.json()) as { tenant_code?: string; settings?: Record<string, unknown> };
+    const tenant = String(body.tenant_code || '').trim().toLowerCase();
+    const settings = body.settings;
+    if (!tenant || !settings || typeof settings !== 'object') {
+      return c.json({ error: 'tenant_code ve settings gerekli' }, 400);
+    }
+    const connStr = await resolveEticaretConnStrAsync(tenant);
+    if (!connStr) return c.json({ error: 'Kiracı veritabanı çözülemedi' }, 400);
+    await saveEticaretSettingsToPg(connStr, settings);
+    return c.json({ ok: true });
+  } catch (error: unknown) {
+    const err = error as { message?: string };
+    return c.json({ ok: false, error: err?.message || 'settings save failed' }, 500);
+  }
+});
+
+app.get('/api/eticaret/catalog', async (c) => {
+  try {
+    const tenant = c.req.query('tenant')?.trim().toLowerCase() || '';
+    const limit = Number(c.req.query('limit') || 24);
+    const search = c.req.query('search') || '';
+    const connStr = await resolveEticaretConnStrAsync(tenant, c.req.query('database') || undefined);
+    if (!connStr) return c.json({ products: [], currency: 'TRY', demo: true });
+
+    const settings = await loadEticaretSettingsFromPg(connStr);
+    const registry = await loadRegistryEticaretSettings(tenant);
+    const merged = mergeSettingsLayers(registry, settings);
+    const demoMode = Boolean(merged.demoMode);
+    const catalogTenant = tenant;
+
+    const { products, currency } = await queryTenantProducts(connStr, { limit, search });
+    if (!products.length && demoMode) {
+      const label = catalogTenant.toUpperCase();
+      const demoProducts = Array.from({ length: 8 }, (_, i) => ({
+        id: `demo-${i}`,
+        code: `${label}-${String(i + 1).padStart(3, '0')}`,
+        name: `${label} Ürün ${i + 1}`,
+        price: 199 + i * 50,
+        currency,
+        inStock: true,
+      }));
+      return c.json({ products: demoProducts, currency, demo: true });
+    }
+    return c.json({ products, currency, demo: demoMode });
+  } catch (error: unknown) {
+    const err = error as { message?: string };
+    return c.json({ products: [], currency: 'TRY', demo: false, error: err?.message }, 500);
+  }
+});
+
+app.get('/api/eticaret/product', async (c) => {
+  try {
+    const tenant = c.req.query('tenant')?.trim().toLowerCase() || '';
+    const code = c.req.query('code')?.trim() || '';
+    if (!tenant || !code) return c.json({ product: null });
+    const connStr = await resolveEticaretConnStrAsync(tenant);
+    if (!connStr) return c.json({ product: null });
+    const { products, currency } = await queryTenantProducts(connStr, { limit: 1, code });
+    const product = products[0] ? { ...products[0], currency } : null;
+    return c.json({ product });
+  } catch {
+    return c.json({ product: null });
+  }
+});
+
+app.get('/api/eticaret/orders', async (c) => {
+  try {
+    const tenant = c.req.query('tenant')?.trim().toLowerCase() || '';
+    const connStr = await resolveEticaretConnStrAsync(tenant);
+    if (!connStr) return c.json({ orders: [] });
+    const pool = getEticaretPool(connStr);
+    const sql = tenant
+      ? `SELECT * FROM public.eticaret_web_orders WHERE tenant_code = $1 ORDER BY created_at DESC LIMIT 200`
+      : `SELECT * FROM public.eticaret_web_orders ORDER BY created_at DESC LIMIT 200`;
+    const result = await pool.query(sql, tenant ? [tenant] : []);
+    return c.json({ orders: result.rows });
+  } catch {
+    return c.json({ orders: [] });
+  }
+});
 
 app.post('/api/eticaret/submit-order', async (c) => {
     try {
         const body = (await c.req.json()) as Record<string, unknown>;
-        const connStr = resolveEticaretConnStr(body);
+        const tenant = String(body.tenant_code || '').trim().toLowerCase();
+        const connStr =
+            resolveEticaretConnStr(body) ||
+            (tenant ? await resolveEticaretConnStrAsync(tenant) : null);
         if (!connStr) {
             return c.json({ error: 'Veritabanı bağlantısı çözülemedi (connStr veya PG_DUMP_INTERNAL_URI + tenant)' }, 400);
         }
@@ -721,7 +919,7 @@ app.post('/api/eticaret/submit-order', async (c) => {
             items: body.items,
             notes: body.notes,
         };
-        const pool = getPool(connStr);
+        const pool = getEticaretPool(connStr);
         const result = await pool.query(`SELECT public.eticaret_submit_web_order($1::jsonb) AS data`, [
             JSON.stringify(payload),
         ]);
@@ -738,7 +936,10 @@ app.post('/api/eticaret/payment/init', async (c) => {
     try {
         const body = (await c.req.json()) as Record<string, unknown>;
         const provider = String(body.provider || '');
-        const connStr = resolveEticaretConnStr(body);
+        const tenant = String(body.tenantCode || body.tenant_code || '').trim().toLowerCase();
+        const connStr =
+            resolveEticaretConnStr(body) ||
+            (tenant ? await resolveEticaretConnStrAsync(tenant) : null);
         let providerCfg: PaymentProviderConfig = {
             id: 'other',
             enabled: true,
@@ -746,7 +947,7 @@ app.post('/api/eticaret/payment/init', async (c) => {
             mode: 'test',
         };
         if (connStr) {
-            const pool = getPool(connStr);
+            const pool = getEticaretPool(connStr);
             const row = await pool.query(
                 `SELECT eticaret_settings FROM public.system_settings WHERE id = 1 LIMIT 1`
             );
@@ -784,58 +985,33 @@ app.post('/api/eticaret/payment/init', async (c) => {
 
 app.get('/api/eticaret/storefront-config', async (c) => {
     try {
-        const tenant = c.req.query('tenant')?.trim() || '';
-        const connStr = resolveEticaretConnStr({ tenant_code: tenant, database: c.req.query('database') });
+        const tenant = c.req.query('tenant')?.trim().toLowerCase() || '';
+        const connStr = await resolveEticaretConnStrAsync(tenant, c.req.query('database') || undefined);
+        const registry = tenant ? await loadRegistryEticaretSettings(tenant) : {};
         if (!connStr) {
-            return c.json({ enabled: false, demoMode: true, providers: [], storeTitle: '', announcementText: '' });
+            return c.json(buildStorefrontPayload(registry, tenant));
         }
-        const pool = getPool(connStr);
-        const row = await pool.query(`SELECT eticaret_settings FROM public.system_settings WHERE id = 1 LIMIT 1`);
-        const settings = row.rows[0]?.eticaret_settings || {};
-        const list = Array.isArray(settings.paymentProviders) ? settings.paymentProviders : [];
-        const providers = (list as Array<{ id?: string; enabled?: boolean; label?: string }>)
-            .filter((p) => p.enabled)
-            .map((p) => ({ id: p.id, label: p.label || p.id }));
-        return c.json({
-            enabled: settings.enabled !== false,
-            demoMode: Boolean(settings.demoMode),
-            storeTitle: String(settings.storeTitle || ''),
-            announcementText: String(settings.announcementText || ''),
-            defaultPaymentProvider: settings.defaultPaymentProvider || null,
-            providers,
-            banners: Array.isArray(settings.banners) ? settings.banners : [],
-            sliders: Array.isArray(settings.sliders) ? settings.sliders : [],
-            campaigns: Array.isArray(settings.campaigns) ? settings.campaigns : [],
-            featuredProducts: Array.isArray(settings.featuredProducts) ? settings.featuredProducts : [],
-        });
+        const dbSettings = await loadEticaretSettingsFromPg(connStr);
+        const merged = mergeSettingsLayers(registry, dbSettings);
+        return c.json(buildStorefrontPayload(merged, tenant));
     } catch {
-        return c.json({
-            enabled: false,
-            demoMode: true,
-            providers: [],
-            storeTitle: '',
-            announcementText: '',
-            banners: [],
-            sliders: [],
-            campaigns: [],
-            featuredProducts: [],
-        });
+        return c.json(buildStorefrontPayload({}, ''));
     }
 });
 
 app.get('/api/eticaret/payment-methods', async (c) => {
     try {
-        const tenant = c.req.query('tenant')?.trim() || '';
-        const connStr = resolveEticaretConnStr({ tenant_code: tenant, database: c.req.query('database') });
+        const tenant = c.req.query('tenant')?.trim().toLowerCase() || '';
+        const connStr = await resolveEticaretConnStrAsync(tenant, c.req.query('database') || undefined);
         if (!connStr) return c.json({ providers: [] });
-        const pool = getPool(connStr);
-        const row = await pool.query(`SELECT eticaret_settings FROM public.system_settings WHERE id = 1 LIMIT 1`);
-        const settings = row.rows[0]?.eticaret_settings || {};
-        const list = Array.isArray(settings.paymentProviders) ? settings.paymentProviders : [];
+        const settings = await loadEticaretSettingsFromPg(connStr);
+        const registry = await loadRegistryEticaretSettings(tenant);
+        const merged = mergeSettingsLayers(registry, settings);
+        const list = Array.isArray(merged.paymentProviders) ? merged.paymentProviders : [];
         const providers = (list as Array<{ id?: string; enabled?: boolean; label?: string }>)
             .filter((p) => p.enabled)
             .map((p) => ({ id: p.id, label: p.label || p.id }));
-        return c.json({ providers, demoMode: Boolean(settings.demoMode) });
+        return c.json({ providers, demoMode: Boolean(merged.demoMode) });
     } catch {
         return c.json({ providers: [] });
     }

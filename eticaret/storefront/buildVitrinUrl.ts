@@ -23,13 +23,17 @@ const STATIC_PAGE_MAP: Record<string, string> = {
   kayit: 'register.html',
 };
 
-function readLocalEticaretSettings(): {
+export type VitrinBuildConfig = {
   activeVariantId?: string;
   demoMode?: boolean;
   demoTenantCode?: string;
-  announcementText?: string;
+  catalogTenantCode?: string;
   storeTitle?: string;
-} {
+  announcementText?: string;
+  enabled?: boolean;
+};
+
+function readLocalEticaretSettings(): VitrinBuildConfig {
   if (typeof window === 'undefined') return {};
   try {
     const raw = window.localStorage.getItem('retailex_eticaret_settings');
@@ -63,8 +67,8 @@ function parseStorefrontPath(pathname: string): {
   return { base, tenant, page: 'home' };
 }
 
-export function buildVitrinIframeSrc(pathname: string): string {
-  const settings = readLocalEticaretSettings();
+export function buildVitrinIframeSrc(pathname: string, apiConfig?: VitrinBuildConfig | null): string {
+  const settings = apiConfig ?? readLocalEticaretSettings();
   const parsed = parseStorefrontPath(pathname);
   const variantId = settings.activeVariantId || 'ella-classic';
 

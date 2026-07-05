@@ -70,10 +70,40 @@ async function resolveContext(
  */
 export async function fetchTenantCatalog(
   tenantCode: string,
-  options?: { limit?: number; search?: string; context?: StorefrontContext },
+  options?: { limit?: number; search?: string; context?: StorefrontContext; demoMode?: boolean },
 ): Promise<{ products: StorefrontProduct[]; currency: string; source: string }> {
   const limit = Math.min(100, Math.max(1, options?.limit ?? 24));
   const ctx = await resolveContext(tenantCode, options?.context);
+  const demoMode = options?.demoMode ?? ctx.settings.demoMode;
+
+  try {
+    const origin = typeof window !== 'undefined' ? window.location.origin : '';
+    const q = new URLSearchParams({ tenant: ctx.catalogTenantCode, limit: String(limit) });
+    if (options?.search?.trim()) q.set('search', options.search.trim());
+    const res = await fetch(`${origin}/api/eticaret/catalog?${q.toString()}`, {
+      headers: { Accept: 'application/json' },
+    });
+    if (res.ok) {
+      const data = (await res.json()) as {
+        products?: StorefrontProduct[];
+        currency?: string;
+        demo?: boolean;
+      };
+      if (Array.isArray(data.products) && data.products.length) {
+        return {
+          products: data.products,
+          currency: data.currency || ctx.currency,
+          source: `bridge/catalog (${ctx.catalogTenantCode})`,
+        };
+      }
+      if (!demoMode) {
+        return { products: [], currency: data.currency || ctx.currency, source: 'bridge-empty' };
+      }
+    }
+  } catch {
+    /* PostgREST fallback */
+  }
+
   const { restBase, firmNr, currency, catalogTenantCode } = ctx;
 
   const firms = firmNrCandidates(firmNr);
@@ -106,9 +136,9 @@ export async function fetchTenantCatalog(
   }
 
   return {
-    products: buildDemoProducts(catalogTenantCode),
+    products: demoMode ? buildDemoProducts(catalogTenantCode) : [],
     currency,
-    source: 'demo-fallback',
+    source: demoMode ? 'demo-fallback' : 'empty',
   };
 }
 

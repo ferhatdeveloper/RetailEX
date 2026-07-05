@@ -21,6 +21,13 @@ export type EticaretSettings = {
   sliders?: import('./contentTypes').EticaretSliderSlide[];
   campaigns?: import('./contentTypes').EticaretCampaign[];
   featuredProducts?: import('./contentTypes').EticaretFeaturedProduct[];
+  menuItems?: import('./contentTypes').EticaretMenuItem[];
+  footerLinks?: import('./contentTypes').EticaretFooterLink[];
+  staticPages?: import('./contentTypes').EticaretStaticPage[];
+  logoUrl?: string;
+  seoTitle?: string;
+  productSectionTitle?: string;
+  footerCopyright?: string;
 };
 
 export type EticaretWebOrder = {

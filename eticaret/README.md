@@ -24,6 +24,14 @@ Online mağaza **ERP arayüzünden tamamen bağımsızdır**:
 - Ürünler `assets/js/retailex-storefront.js` ile Ella DOM'una enjekte edilir
 - `index.html` koyu ERP arka planı mağaza yolunda devre dışıdır
 
+## Yönetim paneli (`/mgz`)
+
+E-ticaret admin paneli de ERP'den izoledir:
+
+- `/mgz/*` → `eticaret/admin/bootstrap.tsx` (Tailwind / ERP `index.css` **yüklenmez**)
+- Stiller: `eticaret/admin/eticaret-admin.css` (`html.rex-eticaret-admin`)
+- Yalnızca Ant Design + panel bileşenleri; `AuthProvider` ile giriş zorunlu
+
 
 | Yöntem | Örnek |
 |--------|--------|
