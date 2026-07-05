@@ -19,6 +19,7 @@ import {
   runLogoMssqlSyncNow,
 } from '../../services/logoMssqlSyncService';
 import { pushPendingSalesToLogo } from '../../services/logoRestInvoicePush';
+import { LogoImportPreviewTabs } from './LogoImportPreviewTabs';
 
 const { Text } = Typography;
 
@@ -136,7 +137,9 @@ export function LogoErpSyncCollapse({ serviceType }: Props) {
   const ctx = resolveLogoContext(cfg);
 
   return (
-    <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+    <Space direction="vertical" size="large" style={{ width: '100%' }}>
+      <LogoImportPreviewTabs connected={restConnected} />
+
       {!restConnected ? (
         <Alert
           type="warning"

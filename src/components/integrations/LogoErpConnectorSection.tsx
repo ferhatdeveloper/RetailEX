@@ -25,7 +25,15 @@ import {
   getLogoMappingForErp,
   resolveLogoContext,
   setLogoRestBaseUrl,
+  logoListFirmCatalog,
+  logoListDatabases,
+  saveLogoDatabaseList,
+  saveLogoFirmMappingForErp,
+  saveLogoFirmCatalog,
+  periodsForFirm,
   type LogoRestConfig,
+  type LogoFirmOption,
+  type LogoPeriodOption,
 } from '../../services/logoRestApi';
 import {
   resolveLogoErpModeFromConfig,
@@ -113,7 +121,12 @@ export function LogoErpConnectorSection() {
   const [saving, setSaving] = useState(false);
   const [dbLoading, setDbLoading] = useState(false);
   const [dbOptions, setDbOptions] = useState<string[]>([]);
-  const [activePanels, setActivePanels] = useState<string[]>(['genel', 'parametreler']);
+  const [restDbLoading, setRestDbLoading] = useState(false);
+  const [restDbOptions, setRestDbOptions] = useState<string[]>([]);
+  const [restFirms, setRestFirms] = useState<LogoFirmOption[]>([]);
+  const [restPeriods, setRestPeriods] = useState<LogoPeriodOption[]>([]);
+  const [restFirmsLoading, setRestFirmsLoading] = useState(false);
+  const [activePanels, setActivePanels] = useState<string[]>(['genel', 'parametreler', 'senkron']);
 
   const serviceType = Form.useWatch('serviceType', form) ?? 'rest';
 
@@ -164,6 +177,13 @@ export function LogoErpConnectorSection() {
     });
 
     applyModeSideEffects(mode);
+    setRestFirms(restCfg.firmCatalog ?? []);
+    setRestDbOptions(
+      Array.from(new Set([...(restCfg.logoDbs || []), restCfg.logoDb].filter(Boolean))) as string[]
+    );
+    if (mapping) {
+      setRestPeriods(periodsForFirm(restCfg.firmCatalog ?? [], mapping.logoFirmNr));
+    }
     setReady(true);
   }, [applyModeSideEffects, form]);
 
@@ -195,6 +215,79 @@ export function LogoErpConnectorSection() {
   useEffect(() => {
     if (ready && serviceType === 'lobject') void refreshDatabases();
   }, [ready, serviceType, refreshDatabases]);
+
+  const refreshRestDatabases = useCallback(async () => {
+    setRestDbLoading(true);
+    try {
+      const cfg = loadLogoRestConfig();
+      const list = await logoListDatabases(cfg);
+      const next = saveLogoDatabaseList(cfg, list);
+      setRestDbOptions(
+        Array.from(new Set([...(next.logoDbs || []), next.logoDb].filter(Boolean))) as string[]
+      );
+    } catch {
+      /* opsiyonel */
+    } finally {
+      setRestDbLoading(false);
+    }
+  }, []);
+
+  const refreshRestFirms = useCallback(async () => {
+    setRestFirmsLoading(true);
+    try {
+      const cfg = loadLogoRestConfig();
+      const list = await logoListFirmCatalog(cfg);
+      const next = saveLogoFirmCatalog(cfg, list);
+      setRestFirms(list);
+      const mapping = getLogoMappingForErp(next);
+      if (mapping) {
+        setRestPeriods(periodsForFirm(list, mapping.logoFirmNr));
+      }
+    } catch {
+      /* bağlantı testinden sonra tekrar denenecek */
+    } finally {
+      setRestFirmsLoading(false);
+    }
+  }, []);
+
+  const handleRestFirmSelect = (firmNr: number) => {
+    const cfg = loadLogoRestConfig();
+    const firm = restFirms.find((f) => f.firmNr === firmNr);
+    const pList = periodsForFirm(restFirms, firmNr);
+    setRestPeriods(pList);
+    const periodNr = firm?.defaultPeriod ?? pList.find((p) => p.active)?.number ?? pList[0]?.number ?? 1;
+    saveLogoFirmMappingForErp(cfg, {
+      logoFirmNr: firmNr,
+      logoPeriodNr: periodNr,
+      logoDb: cfg.logoDb,
+      logoFirmName: firm?.name,
+      logoFirmTitle: firm?.title || firm?.name,
+    });
+    form.setFieldsValue({ rest: { ...form.getFieldValue('rest'), firmNr: String(firmNr) } });
+  };
+
+  const handleRestPeriodSelect = (periodNr: number) => {
+    const cfg = loadLogoRestConfig();
+    const mapping = getLogoMappingForErp(cfg);
+    const firmNr = mapping?.logoFirmNr ?? resolveLogoContext(cfg).firmNr;
+    saveLogoFirmMappingForErp(cfg, {
+      logoFirmNr: firmNr,
+      logoPeriodNr: periodNr,
+      logoDb: cfg.logoDb,
+      logoFirmName: mapping?.logoFirmName,
+      logoFirmTitle: mapping?.logoFirmTitle,
+    });
+  };
+
+  const handleRestDbSelect = (logoDb: string) => {
+    const cfg = loadLogoRestConfig();
+    const mapping = getLogoMappingForErp(cfg);
+    if (mapping) {
+      saveLogoFirmMappingForErp(cfg, { ...mapping, logoDb });
+    } else {
+      saveLogoRestConfig({ ...cfg, logoDb });
+    }
+  };
 
   const handleServiceTypeChange = useCallback(
     (next: ServiceType) => {
@@ -294,6 +387,13 @@ export function LogoErpConnectorSection() {
       if (result.ok) {
         toast.success('Logo REST bağlantısı başarılı');
         window.dispatchEvent(new CustomEvent('retailex:logo-rest-connected'));
+        if (result.databases?.length) {
+          saveLogoDatabaseList(cfg, result.databases);
+          setRestDbOptions(result.databases);
+        }
+        await refreshRestFirms();
+        await refreshRestDatabases();
+        return;
       } else {
         toast.error(result.error || 'Bağlantı hatası');
       }
@@ -473,8 +573,65 @@ export function LogoErpConnectorSection() {
                         name={['rest', 'baseUrl']}
                         label="Rest Entegrasyon Api"
                         rules={[{ required: true, message: 'Zorunlu' }]}
+                        extra={
+                          <Text type="secondary" style={{ fontSize: 11 }}>
+                            Yalnızca <code>http://sunucu:port</code> yazmanız yeterli (ör. {LOGO_API_URL_EXAMPLE})
+                          </Text>
+                        }
                       >
                         <Input placeholder={LOGO_API_URL_EXAMPLE} />
+                      </Form.Item>
+                    </Col>
+                    <Col span={8}>
+                      <Form.Item label="Logo firma">
+                        <Select
+                          showSearch
+                          loading={restFirmsLoading}
+                          placeholder="Firma seçin"
+                          value={getLogoMappingForErp(loadLogoRestConfig())?.logoFirmNr}
+                          onChange={handleRestFirmSelect}
+                          options={restFirms.map((f) => ({
+                            value: f.firmNr,
+                            label: `${f.firmNr} — ${f.title || f.name}`,
+                          }))}
+                          notFoundContent={restFirmsLoading ? <Spin size="small" /> : 'Bağlantı testi yapın'}
+                        />
+                      </Form.Item>
+                    </Col>
+                    <Col span={8}>
+                      <Form.Item label="Logo dönem">
+                        <Select
+                          placeholder="Dönem"
+                          value={getLogoMappingForErp(loadLogoRestConfig())?.logoPeriodNr}
+                          onChange={handleRestPeriodSelect}
+                          options={restPeriods.map((p) => ({
+                            value: p.number,
+                            label: `${p.number}${p.active ? ' (aktif)' : ''}`,
+                          }))}
+                          disabled={!restPeriods.length}
+                        />
+                      </Form.Item>
+                    </Col>
+                    <Col span={8}>
+                      <Form.Item label="Veritabanı (DB)">
+                        <Select
+                          showSearch
+                          loading={restDbLoading}
+                          placeholder="DB seçin"
+                          value={loadLogoRestConfig().logoDb || undefined}
+                          onChange={handleRestDbSelect}
+                          options={restDbOptions.map((db) => ({ value: db, label: db }))}
+                          dropdownRender={(menu) => (
+                            <>
+                              {menu}
+                              <div style={{ padding: 8, borderTop: '1px solid #f0f0f0' }}>
+                                <Button size="small" block onClick={() => void refreshRestDatabases()}>
+                                  Veritabanlarını yenile
+                                </Button>
+                              </div>
+                            </>
+                          )}
+                        />
                       </Form.Item>
                     </Col>
                   </Row>
@@ -568,7 +725,7 @@ export function LogoErpConnectorSection() {
         children: <LogoErpSyncCollapse serviceType={serviceType} />,
       },
     ],
-    [dbLoading, dbOptions, handleConnectionTest, handleServiceTypeChange, refreshDatabases, serviceType, testing],
+    [dbLoading, dbOptions, handleConnectionTest, handleServiceTypeChange, refreshDatabases, refreshRestDatabases, restDbLoading, restDbOptions, restFirms, restFirmsLoading, restPeriods, serviceType, testing],
   );
 
   if (!ready) {

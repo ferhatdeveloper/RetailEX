@@ -169,7 +169,7 @@ function trunc(s: unknown, max: number): string {
   return String(s ?? '').trim().slice(0, max);
 }
 
-function numVal(v: unknown, fallback = 0): number {
+export function numVal(v: unknown, fallback = 0): number {
   if (v == null || v === '') return fallback;
   const n = Number(v);
   return Number.isFinite(n) ? n : fallback;
@@ -184,7 +184,7 @@ function nowLog(
   return full;
 }
 
-function unwrapLogoRecord(raw: unknown): Record<string, unknown> {
+export function unwrapLogoRecord(raw: unknown): Record<string, unknown> {
   if (!raw || typeof raw !== 'object') return {};
   const o = raw as Record<string, unknown>;
   const inner = o.restRecord ?? o.RestRecord ?? o.record ?? o.Item ?? o.item;
@@ -194,7 +194,7 @@ function unwrapLogoRecord(raw: unknown): Record<string, unknown> {
   return o;
 }
 
-function logoField(rec: Record<string, unknown>, ...keys: string[]): unknown {
+export function logoField(rec: Record<string, unknown>, ...keys: string[]): unknown {
   for (const k of keys) {
     const v = rec[k];
     if (v !== undefined && v !== null && v !== '') return v;

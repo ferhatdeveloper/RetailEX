@@ -2,7 +2,7 @@
 import { Typography } from 'antd';
 import { Database, Check, AlertCircle, Loader2, Download, Upload, RefreshCw, Server, Package, Users, ShoppingCart, CheckCircle, XCircle, Play, FileText, Send, Wifi, WifiOff, CloudUpload } from 'lucide-react';
 import type { Product, Customer } from '../../App';
-import { LogoErpIntegrationTabs } from '../integrations/LogoErpIntegrationTabs';
+import { LogoErpConnectorSection } from '../integrations/LogoErpConnectorSection';
 import { IntegrationsAccessGate } from '../integrations/IntegrationsAccessGate';
 import { isIntegrationsAccessGranted } from '../../utils/integrationsAccess';
 import * as XLSX from 'xlsx';
@@ -536,7 +536,7 @@ export function IntegrationsModule({ products, setProducts, customers, setCustom
       {/* Content */}
       <div className="flex-1 overflow-auto" style={{ padding: 24 }}>
         <div className="mx-auto space-y-6" style={{ maxWidth: 1100 }}>
-          <LogoErpIntegrationTabs />
+          <LogoErpConnectorSection />
 
           <SystemHealthDashboard />
 
