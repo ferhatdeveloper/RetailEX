@@ -2737,6 +2737,7 @@ BEGIN
       id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       firm_nr          VARCHAR(10) NOT NULL,
       period_nr        VARCHAR(10) NOT NULL,
+      ref_id           INTEGER,
       document_no      VARCHAR(50) UNIQUE,
       trcode           INTEGER,
       movement_type    VARCHAR(20), -- ''in'' | ''out'' | ''transfer'' | ''adjustment''
@@ -2751,11 +2752,17 @@ BEGIN
       updated_at       TIMESTAMPTZ DEFAULT NOW()
     );
   ', v_prefix || '_stock_movements');
+  EXECUTE format(
+    'CREATE UNIQUE INDEX IF NOT EXISTS %I ON %I (ref_id) WHERE ref_id IS NOT NULL',
+    v_prefix || '_stock_movements_logo_ref_id_uidx',
+    v_prefix || '_stock_movements'
+  );
 
   -- 7. Stock Movement Items (Lines)
   EXECUTE format('
     CREATE TABLE IF NOT EXISTS %I (
       id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      ref_id           INTEGER,
       movement_id      UUID REFERENCES %I(id) ON DELETE CASCADE,
       product_id       UUID,
       quantity         DECIMAL(15,4) DEFAULT 0,
@@ -2768,6 +2775,11 @@ BEGIN
       created_at       TIMESTAMPTZ DEFAULT NOW()
     );
   ', v_prefix || '_stock_movement_items', v_prefix || '_stock_movements');
+  EXECUTE format(
+    'CREATE UNIQUE INDEX IF NOT EXISTS %I ON %I (ref_id) WHERE ref_id IS NOT NULL',
+    v_prefix || '_stock_movement_items_logo_ref_id_uidx',
+    v_prefix || '_stock_movement_items'
+  );
 
   -- Bildirim kuyruğu (WhatsApp / SMS — fatura, randevu vb.)
   EXECUTE format($f$

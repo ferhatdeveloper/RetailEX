@@ -970,6 +970,195 @@ async function lookupIdByCode(
   return rows[0]?.id ?? null;
 }
 
+function dedupeRowsByCode(rows: Record<string, unknown>[]): Record<string, unknown>[] {
+  const byCode = new Map<string, Record<string, unknown>>();
+  for (const row of rows) {
+    const code = String(row.code || '').trim();
+    if (!code) continue;
+    const prev = byCode.get(code);
+    byCode.set(code, prev ? { ...prev, ...row } : row);
+  }
+  return [...byCode.values()];
+}
+
+function formatEntitySummary(label: string, entity: LogoSyncEntityResult): string {
+  const parts = [`${entity.upserted}/${entity.fetched}`];
+  if (entity.errors > 0) parts.push(`${entity.errors} hata`);
+  if (entity.skipped > 0) parts.push(`${entity.skipped} tekrar atlandı`);
+  return `${label}: ${parts.join(', ')}`;
+}
+
+async function lookupStockMovementId(
+  table: string,
+  firmNr: string,
+  periodNr: string,
+  refId: number | null,
+  documentNo: string,
+): Promise<string | null> {
+  if (refId) {
+    if (isRestApiMode()) {
+      const { postgrest } = await import('./api/postgrestClient');
+      const rows = await postgrest.get<{ id: string }[]>(
+        `/${table}`,
+        {
+          select: 'id',
+          ref_id: `eq.${refId}`,
+          firm_nr: `eq.${firmNr}`,
+          period_nr: `eq.${periodNr}`,
+          limit: 1,
+        },
+        { schema: 'public' },
+      );
+      if (Array.isArray(rows) && rows[0]?.id) return rows[0].id;
+    } else {
+      const { rows } = await postgres.query<{ id: string }>(
+        `SELECT id FROM ${table} WHERE ref_id = $1 AND firm_nr = $2 AND period_nr = $3 LIMIT 1`,
+        [refId, firmNr, periodNr],
+      );
+      if (rows[0]?.id) return rows[0].id;
+    }
+  }
+  if (!documentNo) return null;
+  if (isRestApiMode()) {
+    const { postgrest } = await import('./api/postgrestClient');
+    const rows = await postgrest.get<{ id: string }[]>(
+      `/${table}`,
+      { select: 'id', document_no: `eq.${documentNo}`, limit: 1 },
+      { schema: 'public' },
+    );
+    return Array.isArray(rows) && rows[0]?.id ? rows[0].id : null;
+  }
+  const { rows } = await postgres.query<{ id: string }>(
+    `SELECT id FROM ${table} WHERE document_no = $1 LIMIT 1`,
+    [documentNo],
+  );
+  return rows[0]?.id ?? null;
+}
+
+async function upsertStockMovementHeader(
+  table: string,
+  firmNr: string,
+  periodNr: string,
+  refId: number | null,
+  documentNo: string,
+  body: Record<string, unknown>,
+): Promise<string | null> {
+  const existingId = await lookupStockMovementId(table, firmNr, periodNr, refId, documentNo);
+  if (existingId) {
+    if (isRestApiMode()) {
+      const { postgrest } = await import('./api/postgrestClient');
+      await postgrest.patch(
+        postgrest.pathOne(table, 'id', existingId),
+        { ...body, ref_id: refId ?? body.ref_id ?? null },
+        { schema: 'public', prefer: 'return=minimal' },
+      );
+    } else {
+      await postgres.query(
+        `UPDATE ${table}
+         SET ref_id = COALESCE($1, ref_id), document_no = $2, trcode = $3, movement_type = $4,
+             movement_date = $5, description = $6, updated_at = NOW()
+         WHERE id = $7`,
+        [
+          refId,
+          documentNo,
+          body.trcode,
+          body.movement_type,
+          body.movement_date,
+          body.description,
+          existingId,
+        ],
+      );
+    }
+    return existingId;
+  }
+
+  if (isRestApiMode()) {
+    const { postgrest } = await import('./api/postgrestClient');
+    const payload = {
+      ...body,
+      firm_nr: firmNr,
+      period_nr: periodNr,
+      ref_id: refId,
+      document_no: documentNo,
+    };
+    const saved = refId
+      ? await postgrest.upsert(`/${table}`, [payload], 'ref_id', {
+          schema: 'public',
+          prefer: 'return=representation',
+        })
+      : await postgrest.upsert(`/${table}`, [payload], 'document_no', {
+          schema: 'public',
+          prefer: 'return=representation',
+        });
+    return Array.isArray(saved) && saved[0]?.id ? String(saved[0].id) : null;
+  }
+
+  const { rows } = await postgres.query<{ id: string }>(
+    `INSERT INTO ${table}
+       (firm_nr, period_nr, ref_id, document_no, trcode, movement_type, movement_date, description)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+     RETURNING id`,
+    [
+      firmNr,
+      periodNr,
+      refId,
+      documentNo,
+      body.trcode,
+      body.movement_type,
+      body.movement_date,
+      body.description,
+    ],
+  );
+  return rows[0]?.id ?? null;
+}
+
+async function replaceStockMovementLines(
+  itemsTable: string,
+  movementId: string,
+  lines: Record<string, unknown>[],
+): Promise<void> {
+  if (isRestApiMode()) {
+    const { postgrest } = await import('./api/postgrestClient');
+    await postgrest.delete(`/${itemsTable}?movement_id=eq.${encodeURIComponent(movementId)}`, {
+      schema: 'public',
+    });
+    if (lines.length > 0) {
+      const withRef = lines.filter((r) => logoRowRefId(r) != null);
+      const withoutRef = lines.filter((r) => logoRowRefId(r) == null);
+      if (withRef.length > 0) {
+        await postgrest.upsert(`/${itemsTable}`, withRef, 'ref_id', { schema: 'public' });
+      }
+      if (withoutRef.length > 0) {
+        await postgrest.post(`/${itemsTable}`, withoutRef, { schema: 'public', prefer: 'return=minimal' });
+      }
+    }
+    return;
+  }
+
+  await postgres.query(`DELETE FROM ${itemsTable} WHERE movement_id = $1`, [movementId]);
+  for (const line of lines) {
+    const lineRef = logoRowRefId(line);
+    if (lineRef) {
+      await postgres.query(
+        `INSERT INTO ${itemsTable}
+           (ref_id, movement_id, product_id, quantity, notes)
+         VALUES ($1,$2,$3,$4,$5)
+         ON CONFLICT (ref_id) DO UPDATE SET
+           movement_id = EXCLUDED.movement_id,
+           product_id = EXCLUDED.product_id,
+           quantity = EXCLUDED.quantity,
+           notes = EXCLUDED.notes`,
+        [lineRef, movementId, line.product_id, line.quantity, line.notes],
+      );
+    } else {
+      await postgres.query(
+        `INSERT INTO ${itemsTable} (movement_id, product_id, quantity, notes) VALUES ($1,$2,$3,$4)`,
+        [movementId, line.product_id, line.quantity, line.notes],
+      );
+    }
+  }
+}
+
 function extractInvoiceLines(rec: Record<string, unknown>): Record<string, unknown>[] {
   const tx = logoField(rec, 'TRANSACTIONS', 'transactions');
   if (!tx || typeof tx !== 'object') return [];
@@ -1192,77 +1381,83 @@ export async function syncLogoItemSlipsFromRest(
   const raw = await logoFetchAllPaginated<unknown>(cfg, 'itemSlips', { maxPages: 500, pageSize: 15 });
   let upserted = 0;
   let errors = 0;
+  let skipped = 0;
+
+  const seenRefs = new Set<number>();
+  const seenDocs = new Set<string>();
 
   for (const item of raw) {
     const rec = unwrapLogoRecord(item);
     const refId = logoRefId(rec);
     const docNo =
-      trunc(logoField(rec, 'NUMBER', 'FICHENO', 'number'), 50) || `LG-${refId ?? upserted}`;
+      trunc(logoField(rec, 'NUMBER', 'FICHENO', 'number'), 50) || (refId ? `LG-${refId}` : '');
+    if (!docNo && !refId) {
+      skipped++;
+      continue;
+    }
+    if (refId && seenRefs.has(refId)) {
+      skipped++;
+      continue;
+    }
+    if (docNo && seenDocs.has(docNo)) {
+      skipped++;
+      continue;
+    }
+    if (refId) seenRefs.add(refId);
+    if (docNo) seenDocs.add(docNo);
+
     const ioType = Math.round(numVal(logoField(rec, 'TYPE', 'IOCODE', 'type'), 0));
     const movementType = [1, 2, 5, 10, 11, 12, 13].includes(ioType) ? 'in' : 'out';
     const date = logoDateVal(rec);
+    const headerBody = {
+      firm_nr: firmNr,
+      period_nr: periodNr,
+      trcode: ioType,
+      movement_type: movementType,
+      movement_date: date,
+      description: trunc(logoField(rec, 'NOTES1', 'LINEEXP', 'notes'), 500),
+    };
 
     try {
-      let movementId: string | null = null;
-      if (isRestApiMode()) {
-        const { postgrest } = await import('./api/postgrestClient');
-        const saved = await postgrest.upsert(
-          `/${stMv}`,
-          [{
-            firm_nr: firmNr,
-            period_nr: periodNr,
-            document_no: docNo,
-            trcode: ioType,
-            movement_type: movementType,
-            movement_date: date,
-            description: trunc(logoField(rec, 'NOTES1', 'LINEEXP', 'notes'), 500),
-          }],
-          'document_no',
-          { schema: 'public', prefer: 'return=representation' },
-        );
-        movementId = Array.isArray(saved) && saved[0]?.id ? String(saved[0].id) : null;
-      } else {
-        const { rows } = await postgres.query<{ id: string }>(
-          `INSERT INTO ${stMv} (firm_nr, period_nr, document_no, trcode, movement_type, movement_date, description)
-           VALUES ($1,$2,$3,$4,$5,$6,$7)
-           ON CONFLICT (document_no) DO UPDATE SET movement_date = EXCLUDED.movement_date
-           RETURNING id`,
-          [firmNr, periodNr, docNo, ioType, movementType, date, trunc(logoField(rec, 'NOTES1', 'LINEEXP'), 500)],
-        );
-        movementId = rows[0]?.id ?? null;
-      }
+      const movementId = await upsertStockMovementHeader(
+        stMv,
+        firmNr,
+        periodNr,
+        refId,
+        docNo,
+        headerBody,
+      );
+      if (!movementId) continue;
 
-      const lines = extractInvoiceLines(rec);
-      for (const ln of lines) {
+      const slipLines = extractInvoiceLines(rec);
+      const lineRows: Record<string, unknown>[] = [];
+      for (let i = 0; i < slipLines.length; i++) {
+        const ln = slipLines[i];
         const itemCode = trunc(logoField(ln, 'MASTER_CODE', 'CODE'), 100);
         const qty = numVal(logoField(ln, 'QUANTITY', 'quantity', 'AMOUNT'), 0);
         const productId = itemCode
           ? await lookupIdByCode(`rex_${firmNr}_products`, itemCode, firmNr)
           : null;
-        if (!movementId) continue;
-        const lineRow = {
+        const lineRef =
+          Math.round(numVal(logoField(ln, 'INTERNAL_REFERENCE', 'LINE_INTERNAL_REFERENCE'), 0)) ||
+          (refId ? refId * 10000 + i + 1 : null);
+        lineRows.push({
+          ref_id: lineRef,
           movement_id: movementId,
           product_id: productId,
           quantity: qty,
           notes: itemCode,
-        };
-        if (isRestApiMode()) {
-          const { postgrest } = await import('./api/postgrestClient');
-          await postgrest.post(`/${stMi}`, [lineRow], { schema: 'public', prefer: 'return=minimal' });
-        } else {
-          await postgres.query(
-            `INSERT INTO ${stMi} (movement_id, product_id, quantity, notes) VALUES ($1,$2,$3,$4)`,
-            [movementId, productId, qty, itemCode],
-          );
-        }
+        });
       }
+
+      await replaceStockMovementLines(stMi, movementId, lineRows);
       upserted += 1;
     } catch (e: unknown) {
       errors += 1;
       nowLog(options.onLog, {
         entity: 'stock',
         action: 'error',
-        code: docNo,
+        code: docNo || String(refId || '?'),
         detail: e instanceof Error ? e.message : String(e),
         ok: false,
       });
@@ -1270,7 +1465,7 @@ export async function syncLogoItemSlipsFromRest(
   }
 
   onProgress?.({ phase: 'stock', message: `Stok fişleri: ${upserted}/${raw.length}` });
-  return { fetched: raw.length, upserted, errors, skipped: 0 };
+  return { fetched: raw.length, upserted, errors, skipped };
 }
 
 export async function syncLogoBanksFromRest(
@@ -1305,15 +1500,18 @@ export async function syncLogoBanksFromRest(
     });
   }
 
-  if (rows.length === 0) {
-    return emptyEntity();
+  const deduped = dedupeRowsByCode(rows);
+  const skipped = rows.length - deduped.length;
+
+  if (deduped.length === 0) {
+    return { ...emptyEntity(), skipped };
   }
 
   try {
     if (isRestApiMode()) {
-      await bulkUpsertTableRest(table, rows, 'code');
+      await bulkUpsertTableRest(table, deduped, 'code');
     } else {
-      for (const row of rows) {
+      for (const row of deduped) {
         await postgres.query(
           `INSERT INTO ${table} (firm_nr, code, name, is_active)
            VALUES ($1,$2,$3,true)
@@ -1322,8 +1520,8 @@ export async function syncLogoBanksFromRest(
         );
       }
     }
-    onProgress?.({ phase: 'banks', message: `Kasa/banka: ${rows.length} kayıt` });
-    return { fetched: raw.length, upserted: rows.length, errors: 0, skipped: 0 };
+    onProgress?.({ phase: 'banks', message: `Kasa/banka: ${deduped.length} kayıt` });
+    return { fetched: raw.length, upserted: deduped.length, errors: 0, skipped };
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
     nowLog(options.onLog, { entity: 'bank', action: 'error', code: '*', detail: msg, ok: false });
@@ -1384,9 +1582,7 @@ export async function syncLogoAllFromRest(
 
     if (syncProducts) {
       result.products = await syncLogoProductsFromRest(cfg, options, onProgress);
-      messages.push(
-        `Ürünler: ${result.products.upserted}/${result.products.fetched} (${result.products.errors} hata)`,
-      );
+      messages.push(formatEntitySummary('Ürünler', result.products));
     }
 
     if (syncCustomers || syncSuppliers) {
@@ -1398,14 +1594,10 @@ export async function syncLogoAllFromRest(
       result.customers = arp.customers;
       result.suppliers = arp.suppliers;
       if (syncCustomers) {
-        messages.push(
-          `Cariler: ${result.customers.upserted}/${result.customers.fetched} (${result.customers.errors} hata)`,
-        );
+        messages.push(formatEntitySummary('Cariler', result.customers));
       }
       if (syncSuppliers) {
-        messages.push(
-          `Tedarikçiler: ${result.suppliers.upserted}/${result.suppliers.fetched} (${result.suppliers.errors} hata)`,
-        );
+        messages.push(formatEntitySummary('Tedarikçiler', result.suppliers));
       }
     }
 
@@ -1435,11 +1627,11 @@ export async function syncLogoAllFromRest(
     }
     if (syncSlips) {
       result.itemSlips = await syncLogoItemSlipsFromRest(cfg, options, onProgress);
-      messages.push(`Stok fişleri: ${result.itemSlips.upserted}/${result.itemSlips.fetched}`);
+      messages.push(formatEntitySummary('Stok fişleri', result.itemSlips));
     }
     if (syncBanks) {
       result.banks = await syncLogoBanksFromRest(cfg, options, onProgress);
-      messages.push(`Kasa/banka: ${result.banks.upserted}/${result.banks.fetched}`);
+      messages.push(formatEntitySummary('Kasa/banka', result.banks));
     }
 
     const failedProducts = syncProducts && result.products.fetched > 0 && result.products.upserted === 0;

@@ -82,6 +82,7 @@
 78. **093_eticaret_settings.sql** – `system_settings.eticaret_settings` (online satış tema / demo kiracı JSONB).
 79. **094_eticaret_web_orders.sql** – `eticaret_web_orders` tablosu; `eticaret_submit_web_order` RPC (demo kapalıyken trcode 20 sipariş fişi).
 80. **095_eticaret_catalog_firm.sql** – Online vitrin firma seçimi: `eticaret_settings.catalogFirmNr` ve `payload.firm_nr` ile katalog/sipariş fişi firması.
+81. **096_stock_movements_ref_id.sql** – Stok hareketleri (`stock_movements` / `stock_movement_items`) Logo `ref_id` kolonu ve tekrarsız içe aktarım indeksleri.
 
 **Kiracılara toplu uygulama (VPS / uzak PG):**
 - `npm run db:migrate:tenants` — tüm RetailEX kiracı DB'ler (`ilsasupport`, `pagetin_kurye`, `siti_pdks` **hariç** — bkz. `.cursor/rules/database-non-retailex-exclude.mdc`)
