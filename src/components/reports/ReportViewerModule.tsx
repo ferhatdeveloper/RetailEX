@@ -1,6 +1,7 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import JsBarcode from 'jsbarcode';
+import { normalizeBarcodeForPrint } from '../../services/labelPrintFieldSettingsService';
 import { DEFAULT_A4, ReportTemplate, getBoundValue, exportToPDF } from './designerUtils';
 import { Download, Printer, X, RotateCw } from 'lucide-react';
 import { formatNumber } from '../../utils/formatNumber';
@@ -9,15 +10,9 @@ import { interpolateTemplateText } from '../../services/templateRenderService';
 
 type EtiketPrintRotation = 0 | 90 | 180 | 270;
 
-function reportBarcodeFormat(value: string): 'EAN13' | 'CODE128' {
-    if (/^\d{13}$/.test(value)) return 'EAN13';
-    return 'CODE128';
-}
-
 /** Kutunun genişliğine göre çubuk modülü (px) — yazdırma kutusuna sığacak şekilde. */
-function estimateBarcodeModuleWidthPx(value: string, widthPx: number): number {
-    const fmt = reportBarcodeFormat(value);
-    if (fmt === 'EAN13' && /^\d{13}$/.test(value)) {
+function estimateBarcodeModuleWidthPx(value: string, format: 'EAN13' | 'CODE128', widthPx: number): number {
+    if (format === 'EAN13') {
         return Math.max(0.9, Math.min(4, widthPx / 95));
     }
     const len = Math.max(value.length, 3);
@@ -70,11 +65,14 @@ function ReportBarcodeSvg({
         if (!el || !value || widthPx < 2 || heightPx < 2) return;
         while (el.firstChild) el.removeChild(el.firstChild);
 
+        const { value: encodeValue, format: fmt } = normalizeBarcodeForPrint(value);
+        if (!encodeValue) return;
+
         const showText = true;
         const textReserve = Math.min(Math.max(8, heightPx * 0.26), heightPx * 0.42);
         const barH = Math.max(6, Math.floor(heightPx - textReserve - 1));
-        const modW = estimateBarcodeModuleWidthPx(value, widthPx);
-        const fmt = reportBarcodeFormat(value);
+        const modW = estimateBarcodeModuleWidthPx(encodeValue, fmt, widthPx);
+        const quietZone = fmt === 'EAN13' ? 10 : 8;
         const opts = {
             format: fmt,
             width: modW,
@@ -82,13 +80,13 @@ function ReportBarcodeSvg({
             displayValue: showText,
             fontSize: Math.max(5, Math.min(14, Math.floor(heightPx * 0.17))),
             textMargin: 0,
-            margin: 0,
+            margin: quietZone,
             background: '#ffffff',
         } as const;
 
         const draw = (format: 'EAN13' | 'CODE128') => {
             while (el.firstChild) el.removeChild(el.firstChild);
-            JsBarcode(el, value, { ...opts, format });
+            JsBarcode(el, encodeValue, { ...opts, format });
             fitBarcodeSvgToContainer(el);
         };
 

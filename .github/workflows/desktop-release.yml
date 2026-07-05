@@ -62,12 +62,75 @@ jobs:
       - name: Install dependencies
         run: npm ci --legacy-peer-deps
 
+      - name: Configure Windows code signing
+        shell: pwsh
+        env:
+          SIGN_THUMB: ${{ secrets.WINDOWS_CODESIGN_THUMBPRINT }}
+          SIGN_PFX_B64: ${{ secrets.WINDOWS_CODESIGN_PFX_BASE64 }}
+          SIGN_PFX_PASS: ${{ secrets.WINDOWS_CODESIGN_PFX_PASSWORD }}
+          SM_API_KEY: ${{ secrets.SM_API_KEY }}
+          SM_CERT_FINGERPRINT: ${{ secrets.SM_CERT_FINGERPRINT }}
+          SM_CLIENT_CERT_FILE_B64: ${{ secrets.SM_CLIENT_CERT_FILE_B64 }}
+          SM_CLIENT_CERT_PASSWORD: ${{ secrets.SM_CLIENT_CERT_PASSWORD }}
+        run: |
+          $hasSign = $false
+          if ($env:SIGN_PFX_B64) {
+            $pfxPath = Join-Path $env:RUNNER_TEMP "codesign.pfx"
+            [IO.File]::WriteAllBytes($pfxPath, [Convert]::FromBase64String($env:SIGN_PFX_B64))
+            $pass = ConvertTo-SecureString $env:SIGN_PFX_PASS -AsPlainText -Force
+            Import-PfxCertificate -FilePath $pfxPath -CertStoreLocation Cert:\CurrentUser\My -Password $pass | Out-Null
+            Write-Host "Kod imza PFX mağazaya aktarıldı."
+            $hasSign = $true
+          }
+          if ($env:SM_CLIENT_CERT_FILE_B64) {
+            $p12Path = Join-Path $env:RUNNER_TEMP "digicert_client.p12"
+            [IO.File]::WriteAllBytes($p12Path, [Convert]::FromBase64String($env:SM_CLIENT_CERT_FILE_B64))
+            $env:SM_CLIENT_CERT_FILE = $p12Path
+            echo "SM_CLIENT_CERT_FILE=$p12Path" >> $env:GITHUB_ENV
+            $hasSign = $true
+          }
+          if ($env:SM_API_KEY) { echo "SM_API_KEY=$env:SM_API_KEY" >> $env:GITHUB_ENV; $hasSign = $true }
+          if ($env:SM_CERT_FINGERPRINT) { echo "SM_CERT_FINGERPRINT=$env:SM_CERT_FINGERPRINT" >> $env:GITHUB_ENV; $hasSign = $true }
+          if ($env:SM_CLIENT_CERT_PASSWORD) { echo "SM_CLIENT_CERT_PASSWORD=$env:SM_CLIENT_CERT_PASSWORD" >> $env:GITHUB_ENV }
+          if ($env:SIGN_THUMB) {
+            echo "WINDOWS_CODESIGN_THUMBPRINT=$env:SIGN_THUMB" >> $env:GITHUB_ENV
+            $hasSign = $true
+          }
+          if ($hasSign) {
+            echo "CODESIGN_ENABLED=1" >> $env:GITHUB_ENV
+            Write-Host "Kod imzalama etkin (GitHub secrets)."
+          } else {
+            echo "WINDOWS_CODESIGN_DISABLE=1" >> $env:GITHUB_ENV
+            echo "CODESIGN_ENABLED=0" >> $env:GITHUB_ENV
+            Write-Host "Imza secret yok; imzasiz build (WINDOWS_CODESIGN_DISABLE=1)."
+          }
+
       - name: Build Tauri (Windows)
         shell: pwsh
         env:
           CI: 'true'
-          WINDOWS_CODESIGN_DISABLE: '1'
+          WINDOWS_CODESIGN_DISABLE: ${{ env.WINDOWS_CODESIGN_DISABLE }}
+          WINDOWS_CODESIGN_THUMBPRINT: ${{ env.WINDOWS_CODESIGN_THUMBPRINT }}
+          SM_API_KEY: ${{ env.SM_API_KEY }}
+          SM_CERT_FINGERPRINT: ${{ env.SM_CERT_FINGERPRINT }}
+          SM_CLIENT_CERT_FILE: ${{ env.SM_CLIENT_CERT_FILE }}
+          SM_CLIENT_CERT_PASSWORD: ${{ env.SM_CLIENT_CERT_PASSWORD }}
         run: npm run tauri:build
+
+      - name: Verify installer signature
+        if: env.CODESIGN_ENABLED == '1'
+        shell: pwsh
+        run: |
+          $setup = Get-ChildItem "dist" -Filter "RetailEX-Desktop-Setup-*.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $setup) {
+            $nsis = "DeskApp/target/release/bundle/nsis"
+            $setup = Get-ChildItem $nsis -Filter "*setup.exe" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          }
+          if (-not $setup) { throw "Kurulum dosyasi bulunamadi" }
+          $sig = Get-AuthenticodeSignature $setup.FullName
+          Write-Host "Imza durumu: $($sig.Status)"
+          if ($sig.SignerCertificate) { Write-Host "Imzalayan: $($sig.SignerCertificate.Subject)" }
+          if ($sig.Status -ne "Valid") { throw "Kurulum dosyasi gecerli imzali degil: $($sig.Status)" }
 
       - name: Collect installer artifact
         shell: pwsh
@@ -105,7 +168,7 @@ jobs:
             3. Giriş: demo `admin` / `admin` (yerel PostgreSQL yapılandırmasına bağlı)
 
             ### Notlar
-            - CI derlemesi: kod imzasız (`WINDOWS_CODESIGN_DISABLE`); SmartScreen uyarısı görülebilir
+            - Kod imzasi: GitHub repo secrets (`WINDOWS_CODESIGN_PFX_BASE64` + sifre) ile imzali; secret yoksa imzasiz CI build
             - Terazi köprüsü ayrı release: **RetailEX Terazi Köprüsü 0.1.91**
             - Sürüm: `${{ env.PACKAGE_VERSION }}` (kök `package.json`)
 

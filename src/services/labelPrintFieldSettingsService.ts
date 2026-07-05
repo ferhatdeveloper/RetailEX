@@ -94,39 +94,79 @@ export async function saveLabelPrintFieldSettings(
   }
 }
 
-/** EAN-13 kontrol basamağı geçerli mi (13 hane sayısal tek başına yetmez). */
-export function isValidEan13(barcode: string): boolean {
-  if (barcode.length !== 13 || !/^\d{13}$/.test(barcode)) return false;
-  const digits = barcode.split('').map((c) => Number(c));
+/** EAN-13 kontrol basamağını hesaplar (ilk 12 hane). */
+export function computeEan13CheckDigit(twelveDigits: string): number {
+  const digits = twelveDigits.split('').map((c) => Number(c));
   let sum = 0;
   for (let i = 0; i < 12; i++) {
     sum += digits[i] * (i % 2 === 0 ? 1 : 3);
   }
-  const check = (10 - (sum % 10)) % 10;
-  return check === digits[12];
+  return (10 - (sum % 10)) % 10;
+}
+
+/** EAN-13 kontrol basamağı geçerli mi (13 hane sayısal tek başına yetmez). */
+export function isValidEan13(barcode: string): boolean {
+  if (barcode.length !== 13 || !/^\d{13}$/.test(barcode)) return false;
+  const check = computeEan13CheckDigit(barcode.slice(0, 12));
+  return check === Number(barcode[12]);
+}
+
+/** 13 haneli EAN için kontrol basamağını düzeltir. */
+export function fixEan13Checksum(thirteenDigits: string): string {
+  const body = thirteenDigits.slice(0, 12);
+  return body + String(computeEan13CheckDigit(body));
+}
+
+export interface NormalizedBarcode {
+  /** JsBarcode’a verilecek değer */
+  value: string;
+  format: 'EAN13' | 'CODE128';
+}
+
+/**
+ * Yazdırma / okuyucu uyumu: 12–13 haneli sayısal barkodlar her zaman EAN-13 (checksum otomatik düzeltilir).
+ * Yalnızca gerçekten alfanumerik veya farklı uzunluktaki değerler CODE128 olur.
+ */
+export function normalizeBarcodeForPrint(raw: string): NormalizedBarcode {
+  const trimmed = String(raw ?? '').trim();
+  if (!trimmed) {
+    return { value: '', format: 'CODE128' };
+  }
+  if (/^\d{12}$/.test(trimmed)) {
+    return {
+      value: trimmed + String(computeEan13CheckDigit(trimmed)),
+      format: 'EAN13',
+    };
+  }
+  if (/^\d{13}$/.test(trimmed)) {
+    return { value: fixEan13Checksum(trimmed), format: 'EAN13' };
+  }
+  return { value: trimmed.slice(0, 80), format: 'CODE128' };
 }
 
 export function resolveBarcodeFormat(barcode: string): 'EAN13' | 'CODE128' {
-  return isValidEan13(barcode) ? 'EAN13' : 'CODE128';
+  return normalizeBarcodeForPrint(barcode).format;
 }
 
 /** JsBarcode seçenekleri — `variantCode` barkod altı metni için (EAN-13’te sadece displayValue). */
 export function buildJsBarcodeOptions(
-  barcode: string,
+  encodeValue: string,
   variantCode: string,
   captionMode: BarcodeCaptionMode,
-  size: { width: number; height: number }
+  size: { width: number; height: number },
+  format: 'EAN13' | 'CODE128',
 ): Record<string, unknown> {
-  const fmt = resolveBarcodeFormat(barcode);
   const narrow = size.width < 50;
   const low = size.height < 30;
   const mid = size.height < 50;
+  /** Fiziksel okuyucular için quiet zone (margin 0 okumayı bozuyordu). */
+  const quietZone = format === 'EAN13' ? (narrow ? 6 : 10) : narrow ? 4 : 8;
   /** Yazdırmada çubuk ve rakamların okunması için modül yüksekliği / font biraz büyük tutulur. */
   const base: Record<string, unknown> = {
-    format: fmt,
+    format,
     width: narrow ? 2 : 2.5,
     height: low ? 24 : mid ? 34 : 46,
-    margin: 0,
+    margin: quietZone,
     fontSize: narrow ? 11 : 13,
     font: 'monospace',
     fontOptions: 'bold',
@@ -135,20 +175,20 @@ export function buildJsBarcodeOptions(
   if (captionMode === 'none') {
     return { ...base, displayValue: false };
   }
-  if (fmt === 'EAN13') {
+  if (format === 'EAN13') {
     return { ...base, displayValue: true };
   }
   if (captionMode === 'variantCode') {
-    return { ...base, displayValue: true, text: (variantCode || barcode).slice(0, 80) };
+    return { ...base, displayValue: true, text: (variantCode || encodeValue).slice(0, 80) };
   }
   if (captionMode === 'both') {
-    const line = [barcode, variantCode].filter(Boolean).join(' · ');
+    const line = [encodeValue, variantCode].filter(Boolean).join(' · ');
     return { ...base, displayValue: true, text: line.slice(0, 80) };
   }
-  return { ...base, displayValue: true, text: barcode };
+  return { ...base, displayValue: true, text: encodeValue };
 }
 
-/** Canvas veya SVG üzerine barkod çizer; geçersiz EAN-13 için CODE128 yedek. */
+/** Canvas veya SVG üzerine barkod çizer. */
 export function paintJsBarcode(
   target: HTMLCanvasElement | SVGSVGElement,
   barcode: string,
@@ -156,15 +196,21 @@ export function paintJsBarcode(
   captionMode: BarcodeCaptionMode,
   size: { width: number; height: number },
 ): void {
-  const value = barcode.trim();
-  if (!value) return;
-  const opts = buildJsBarcodeOptions(value, variantCode, captionMode, size);
+  const raw = barcode.trim();
+  if (!raw) return;
+  const { value: encodeValue, format } = normalizeBarcodeForPrint(raw);
+  if (!encodeValue) return;
+  const opts = buildJsBarcodeOptions(encodeValue, variantCode, captionMode, size, format);
   try {
-    JsBarcode(target, value, opts as Parameters<typeof JsBarcode>[2]);
+    JsBarcode(target, encodeValue, opts as Parameters<typeof JsBarcode>[2]);
   } catch (firstErr) {
-    if (opts.format === 'EAN13') {
+    if (format === 'EAN13') {
       try {
-        JsBarcode(target, value, { ...opts, format: 'CODE128' } as Parameters<typeof JsBarcode>[2]);
+        JsBarcode(target, encodeValue, {
+          ...opts,
+          format: 'CODE128',
+          margin: narrowQuietZone(size),
+        } as Parameters<typeof JsBarcode>[2]);
         return;
       } catch {
         /* fall through */
@@ -172,4 +218,8 @@ export function paintJsBarcode(
     }
     console.error('Barkod oluşturma hatası:', firstErr);
   }
+}
+
+function narrowQuietZone(size: { width: number; height: number }): number {
+  return size.width < 50 ? 4 : 8;
 }
