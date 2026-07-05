@@ -361,13 +361,13 @@ export function CustomerCallPlanModule() {
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-slate-50" onClick={() => setContextMenu(null)}>
-      <div className="border-b border-amber-200 bg-gradient-to-r from-amber-500 to-orange-500 px-5 py-4 text-white">
+      <div className="flex-shrink-0 border-b border-slate-200 bg-white px-5 py-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
-            <CalendarClock className="h-6 w-6" />
+            <CalendarClock className="h-6 w-6 text-amber-600" />
             <div>
-              <h2 className="text-lg font-black uppercase tracking-tight">{tm('customerCallListTitle')}</h2>
-              <p className="text-xs font-semibold text-amber-100">{tm('customerCallListSubtitle')}</p>
+              <h2 className="text-lg font-black uppercase tracking-tight text-slate-900">{tm('customerCallListTitle')}</h2>
+              <p className="text-xs font-semibold text-slate-500">{tm('customerCallListSubtitle')}</p>
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -383,7 +383,7 @@ export function CustomerCallPlanModule() {
             <button
               type="button"
               onClick={() => void load()}
-              className="inline-flex items-center gap-2 rounded-lg bg-white/15 px-3 py-2 text-xs font-bold hover:bg-white/25"
+              className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50"
             >
               <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
               {tm('refreshData')}
