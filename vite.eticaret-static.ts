@@ -30,6 +30,28 @@ function sendStatic(res: import('http').ServerResponse, filePath: string) {
   fs.createReadStream(filePath).pipe(res);
 }
 
+const REX_STOREFRONT_SCRIPT =
+  '<script src="./assets/js/retailex-storefront.js" defer></script>';
+
+function injectStorefrontScript(html: string): string {
+  if (html.includes('retailex-storefront.js')) return html;
+  if (html.includes('</body>')) {
+    return html.replace('</body>', `    ${REX_STOREFRONT_SCRIPT}\n</body>`);
+  }
+  return html + REX_STOREFRONT_SCRIPT;
+}
+
+function walkHtmlFiles(dir: string, out: string[] = []): string[] {
+  if (!fs.existsSync(dir)) return out;
+  for (const name of fs.readdirSync(dir)) {
+    const full = path.join(dir, name);
+    const st = fs.statSync(full);
+    if (st.isDirectory()) walkHtmlFiles(full, out);
+    else if (name.endsWith('.html')) out.push(full);
+  }
+  return out;
+}
+
 /** Ella HTML tema dosyalarını `/eticaret-static/ella` altında sunar. */
 export function eticaretStaticPlugin(): Plugin {
   const mount = '/eticaret-static/ella';
@@ -52,6 +74,14 @@ export function eticaretStaticPlugin(): Plugin {
       return;
     }
 
+    if (filePath.endsWith('.html')) {
+      const html = injectStorefrontScript(fs.readFileSync(filePath, 'utf8'));
+      res.statusCode = 200;
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      res.end(html);
+      return;
+    }
+
     sendStatic(res, filePath);
   };
 
@@ -67,6 +97,11 @@ export function eticaretStaticPlugin(): Plugin {
       const out = path.resolve(__dirname, 'build/eticaret-static/ella');
       if (!fs.existsSync(ELLA_ROOT)) return;
       fs.cpSync(ELLA_ROOT, out, { recursive: true });
+      for (const file of walkHtmlFiles(out)) {
+        const html = fs.readFileSync(file, 'utf8');
+        const next = injectStorefrontScript(html);
+        if (next !== html) fs.writeFileSync(file, next, 'utf8');
+      }
     },
   };
 }

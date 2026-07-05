@@ -12,6 +12,14 @@
   <link rel="manifest" href="/manifest.json" />
   <meta name="theme-color" content="#2563eb" />
   <meta name="color-scheme" content="light dark" />
+  <script>
+    (function () {
+      if (/^\/(magaza|shop)(\/|$)/.test(location.pathname)) {
+        document.documentElement.classList.add('rex-eticaret-route');
+        document.write('<style>html.rex-eticaret-route,html.rex-eticaret-route body{background:#fff!important;margin:0;padding:0;min-height:100vh}</style>');
+      }
+    })();
+  </script>
   <!-- iOS Safari: standalone PWA modu, status-bar görünümü ve home-screen başlığı -->
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="mobile-web-app-capable" content="yes" />

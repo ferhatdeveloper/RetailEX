@@ -15,7 +15,15 @@ eticaret/
 └── README.md
 ```
 
-## Kiracı adresleme
+## Vitrin mimarisi (CSS izolasyonu)
+
+Online mağaza **ERP arayüzünden tamamen bağımsızdır**:
+
+- `/magaza/*` ve `/shop/*` → `eticaret/storefront/bootstrap.tsx` (Tailwind / Ant Design **yüklenmez**)
+- Vitrin, tam Ella HTML sayfasını **iframe** içinde gösterir (`buildVitrinUrl.ts`)
+- Ürünler `assets/js/retailex-storefront.js` ile Ella DOM'una enjekte edilir
+- `index.html` koyu ERP arka planı mağaza yolunda devre dışıdır
+
 
 | Yöntem | Örnek |
 |--------|--------|
