@@ -164,6 +164,16 @@ export function BannersSection({ items, onChange }: Props) {
                   <Input value={editing.buttonText} onChange={(e) => setEditing({ ...editing, buttonText: e.target.value })} />
                 </Form.Item>
               </Col>
+              <Col xs={24} md={8}>
+                <Form.Item label="Metin rengi (şerit)">
+                  <Input
+                    type="color"
+                    value={editing.textColor || '#ffffff'}
+                    onChange={(e) => setEditing({ ...editing, textColor: e.target.value })}
+                    style={{ width: '100%', height: 36 }}
+                  />
+                </Form.Item>
+              </Col>
               <Col xs={12} md={4}>
                 <Form.Item label="Sıra">
                   <InputNumber

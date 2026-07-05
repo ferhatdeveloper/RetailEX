@@ -16,10 +16,70 @@ import {
   Typography,
 } from 'antd';
 import { DeleteOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons';
-import type { EticaretMenuItem, EticaretMenuLink } from '../../core/contentTypes';
+import type { EticaretMenuItem, EticaretMenuLink, EticaretMegaMenuColumn } from '../../core/contentTypes';
 import { createContentId, sortByOrder } from '../../core/contentTypes';
 
 const { Text } = Typography;
+
+function parseLinkLines(text: string): EticaretMenuLink[] {
+  return text
+    .split('\n')
+    .map((line, idx) => {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('[') || trimmed === '---') return null;
+      const [label, target = ''] = trimmed.split('|').map((s) => s.trim());
+      if (!label) return null;
+      const isPage = target.startsWith('sayfa:');
+      const isExternal = target.startsWith('http://') || target.startsWith('https://');
+      return {
+        id: `sub_${idx}`,
+        label,
+        type: isPage ? 'page' : isExternal ? 'external' : 'internal',
+        pageSlug: isPage ? target.replace(/^sayfa:/, '') : undefined,
+        path: !isPage && !isExternal ? target : undefined,
+        url: isExternal ? target : undefined,
+        enabled: true,
+        sortOrder: idx,
+      } as EticaretMenuLink;
+    })
+    .filter((x): x is EticaretMenuLink => x != null);
+}
+
+function parseMegaColumnsText(text: string, fallbackTitle: string): EticaretMegaMenuColumn[] {
+  const chunks = text.split(/\n---\n|\n---$/);
+  return chunks
+    .map((chunk, colIdx) => {
+      const lines = chunk.split('\n').map((l) => l.trim()).filter(Boolean);
+      let title = fallbackTitle || 'Menü';
+      const linkLines: string[] = [];
+      lines.forEach((line) => {
+        const m = line.match(/^\[(.+)\]$/);
+        if (m) title = m[1] || title;
+        else linkLines.push(line);
+      });
+      const links = parseLinkLines(linkLines.join('\n'));
+      if (!links.length && !title) return null;
+      return {
+        id: `col_${colIdx}`,
+        title,
+        links,
+        sortOrder: colIdx,
+      } as EticaretMegaMenuColumn;
+    })
+    .filter((x): x is EticaretMegaMenuColumn => x != null && (x.links.length > 0 || x.title));
+}
+
+function megaColumnsToText(cols: EticaretMegaMenuColumn[]): string {
+  return sortByOrder(cols)
+    .map((col) => {
+      const header = `[${col.title || 'Menü'}]`;
+      const links = (col.links || [])
+        .map((l) => `${l.label}|${l.type === 'page' ? `sayfa:${l.pageSlug}` : l.type === 'external' ? l.url : l.path || ''}`)
+        .join('\n');
+      return `${header}\n${links}`;
+    })
+    .join('\n---\n');
+}
 
 type Props = {
   items: EticaretMenuItem[];
@@ -139,6 +199,33 @@ export function NavigationSection({ items, onChange }: Props) {
                 </Form.Item>
               </Col>
               <Col xs={24} md={8}>
+                <Form.Item label="Rozet stili">
+                  <Select
+                    value={editing.badgeStyle || 'new'}
+                    onChange={(v) => setEditing({ ...editing, badgeStyle: v })}
+                    options={[
+                      { value: 'new', label: 'Yeni' },
+                      { value: 'hot', label: 'Popüler' },
+                      { value: 'sale', label: 'İndirim' },
+                    ]}
+                  />
+                </Form.Item>
+              </Col>
+              {editing.menuStyle === 'mega' ? (
+                <Col xs={24} md={8}>
+                  <Form.Item label="Mega menü düzeni">
+                    <Select
+                      value={editing.megaLayout || 'style_2'}
+                      onChange={(v) => setEditing({ ...editing, megaLayout: v })}
+                      options={[
+                        { value: 'style_2', label: 'Stil 2 (sütunlar)' },
+                        { value: 'style_3', label: 'Stil 3 (görselli)' },
+                      ]}
+                    />
+                  </Form.Item>
+                </Col>
+              ) : null}
+              <Col xs={24} md={8}>
                 <Form.Item label="Tür">
                   <Select
                     value={editing.type}
@@ -176,57 +263,39 @@ export function NavigationSection({ items, onChange }: Props) {
                   <Form.Item
                     label={
                       editing.menuStyle === 'mega'
-                        ? 'Mega menü bağlantıları (satır: etiket|yol veya sayfa:slug)'
+                        ? 'Mega menü — sütunlar (--- ile ayırın, [Sütun başlığı] ile başlayın)'
                         : 'Alt menü bağlantıları (satır: etiket|yol)'
                     }
                   >
                     <Input.TextArea
-                      rows={4}
-                      value={(editing.menuStyle === 'mega'
-                        ? (editing.megaColumns?.[0]?.links || editing.children || [])
-                        : editing.children || []
-                      )
-                        .map((l) => `${l.label}|${l.type === 'page' ? `sayfa:${l.pageSlug}` : l.path || l.url || ''}`)
-                        .join('\n')}
+                      rows={6}
+                      value={
+                        editing.menuStyle === 'mega'
+                          ? megaColumnsToText(editing.megaColumns || [])
+                          : (editing.children || [])
+                              .map((l) => `${l.label}|${l.type === 'page' ? `sayfa:${l.pageSlug}` : l.path || l.url || ''}`)
+                              .join('\n')
+                      }
                       onChange={(e) => {
-                        const links: EticaretMenuLink[] = e.target.value
-                          .split('\n')
-                          .map((line, idx) => {
-                            const [label, target = ''] = line.split('|').map((s) => s.trim());
-                            if (!label) return null;
-                            const isPage = target.startsWith('sayfa:');
-                            return {
-                              id: `sub_${idx}`,
-                              label,
-                              type: isPage ? 'page' : 'internal',
-                              pageSlug: isPage ? target.replace(/^sayfa:/, '') : undefined,
-                              path: !isPage ? target : undefined,
-                              enabled: true,
-                              sortOrder: idx,
-                            } as EticaretMenuLink;
-                          })
-                          .filter((x): x is EticaretMenuLink => x != null);
                         if (editing.menuStyle === 'mega') {
-                          setEditing({
-                            ...editing,
-                            megaColumns: [
-                              {
-                                id: editing.megaColumns?.[0]?.id || 'col_1',
-                                title: editing.label || 'Menü',
-                                links,
-                                sortOrder: 0,
-                              },
-                            ],
-                          });
+                          setEditing({ ...editing, megaColumns: parseMegaColumnsText(e.target.value, editing.label) });
                         } else {
-                          setEditing({ ...editing, children: links });
+                          setEditing({ ...editing, children: parseLinkLines(e.target.value) });
                         }
                       }}
-                      placeholder={'Ürünler|kategori\nHakkımızda|sayfa:hakkimizda'}
+                      placeholder={'[Ürünler]\nElbise|kategori\n---\n[Kurumsal]\nHakkımızda|sayfa:hakkimizda'}
                     />
                   </Form.Item>
                 </Col>
               )}
+              <Col xs={12} md={4}>
+                <Form.Item label="Yeni sekmede aç">
+                  <Switch
+                    checked={Boolean(editing.openInNewTab)}
+                    onChange={(v) => setEditing({ ...editing, openInNewTab: v })}
+                  />
+                </Form.Item>
+              </Col>
               <Col xs={12} md={4}>
                 <Form.Item label="Sıra">
                   <InputNumber

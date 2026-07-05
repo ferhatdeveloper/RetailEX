@@ -175,7 +175,9 @@
         '</span>' +
         badge +
         '</a>' +
-        '<div class="menu-dropdown custom-scrollbar megamenu_style_2"><div class="container container-1170">' +
+        '<div class="menu-dropdown custom-scrollbar megamenu_' +
+        (item.megaLayout || 'style_2') +
+        '"><div class="container container-1170">' +
         '<div class="menu-dropdown__wrapper"><div class="row">' +
         cols +
         '</div></div></div></div></li>'
@@ -547,8 +549,222 @@
   }
 
   function pruneEllaDemoBlocks() {
+    var demoSelectors = [
+      '.halo-block-spotlight',
+      '.halo-block-brands',
+      '.halo-block-instagram',
+      '.halo-block-custom-image-banner:not(.halo-block-fullwidth-banner):not(.halo-block-sub-banner)',
+    ];
+    demoSelectors.forEach(function (sel) {
+      document.querySelectorAll(sel).forEach(function (el) {
+        el.style.display = 'none';
+      });
+    });
     document.querySelectorAll('.halo-product-block').forEach(function (el, idx) {
+      if (el.id === 'retailex-products-grid') return;
       if (idx > 0 && !el.id) el.style.display = 'none';
+    });
+  }
+
+  function gridColClass(cols) {
+    if (cols === 2) return 'col-6 col-md-6 col-lg-6';
+    if (cols === 3) return 'col-6 col-md-4 col-lg-4';
+    return 'col-6 col-md-4 col-lg-3';
+  }
+
+  function applyThemeBranding(config) {
+    if (!config || !config.themeBranding) return;
+    var b = config.themeBranding;
+    var style = document.getElementById('rex-theme-branding');
+    if (!style) {
+      style = document.createElement('style');
+      style.id = 'rex-theme-branding';
+      document.head.appendChild(style);
+    }
+    var css = ':root{';
+    if (b.primaryColor) css += '--rex-primary:' + b.primaryColor + ';';
+    if (b.accentColor) css += '--rex-accent:' + b.accentColor + ';';
+    css += '}';
+    if (b.primaryColor) {
+      css += '.btn-primary,.button-1{background-color:' + b.primaryColor + '!important;border-color:' + b.primaryColor + '!important;}';
+    }
+    if (b.accentColor) {
+      css += '.badge-sale,.sale-label{background-color:' + b.accentColor + '!important;}';
+    }
+    if (b.customCss) css += b.customCss;
+    style.textContent = css;
+  }
+
+  function applySeoMeta(config) {
+    if (!config) return;
+    if (config.seoDescription) {
+      var meta = document.querySelector('meta[name="description"]');
+      if (!meta) {
+        meta = document.createElement('meta');
+        meta.setAttribute('name', 'description');
+        document.head.appendChild(meta);
+      }
+      meta.setAttribute('content', config.seoDescription);
+    }
+    if (config.faviconUrl) {
+      var link = document.querySelector('link[rel="icon"]') || document.createElement('link');
+      link.setAttribute('rel', 'icon');
+      link.setAttribute('href', config.faviconUrl);
+      if (!link.parentNode) document.head.appendChild(link);
+    }
+  }
+
+  function applyContactAndSocial(config, routeTenant) {
+    if (!config) return;
+    var contact = config.contactInfo || {};
+    if (contact.phone || contact.email || contact.address) {
+      document.querySelectorAll('.list-social-2 .list-social__info .text').forEach(function (el, idx) {
+        var vals = [contact.phone, contact.email, contact.address, contact.hours];
+        if (vals[idx]) el.textContent = vals[idx];
+      });
+      var svc = document.querySelector('.customer-service-text');
+      if (svc && contact.phone) {
+        svc.innerHTML = (contact.phone || '') + (contact.email ? ' · ' + contact.email : '');
+      }
+    }
+    var links = sortEnabledContent(config.socialLinks || []);
+    if (links.length) {
+      document.querySelectorAll('.list-social.clearfix, .footer-block__list-social ul').forEach(function (ul) {
+        ul.innerHTML = links
+          .map(function (l) {
+            return (
+              '<li class="list-social__item"><a href="' +
+              l.url +
+              '" class="link link--text list-social__link" target="_blank" rel="noopener"><span class="text">' +
+              (l.label || l.platform) +
+              '</span></a></li>'
+            );
+          })
+          .join('');
+      });
+    }
+    var nl = config.newsletter || {};
+    if (nl.footerTitle) {
+      var ft = document.querySelector('.footer-block__newsletter .footer-block__heading, .footer-newsletter-title');
+      if (ft) ft.textContent = nl.footerTitle;
+    }
+    if (nl.footerSubtitle) {
+      var fs = document.querySelector('.footer-block__newsletter .footer-block__text, .footer-newsletter-desc');
+      if (fs) fs.textContent = nl.footerSubtitle;
+    }
+  }
+
+  function applyPopupContent(config) {
+    if (!config) return;
+    var nl = config.newsletter || {};
+    var popup = document.querySelector('.halo-newsletter-popup');
+    if (popup && nl.title) {
+      var h = popup.querySelector('.newsletter-popup-title, .popup-title');
+      if (h) h.textContent = nl.title;
+      var sub = popup.querySelector('.newsletter-popup-desc, .popup-desc');
+      if (sub && nl.subtitle) sub.textContent = nl.subtitle;
+      var img = popup.querySelector('.newsletter-popup-image img, .img-newsletter img');
+      if (img && nl.imageUrl) img.src = nl.imageUrl;
+      if (nl.delayMs) popup.setAttribute('data-delay', String(nl.delayMs));
+      var btn = popup.querySelector('[type="submit"], .newsletter-button');
+      if (btn && nl.buttonText) btn.textContent = nl.buttonText;
+    }
+    var byl = config.beforeYouLeave || {};
+    var leave = document.querySelector('.halo-before-you-leave');
+    if (leave) {
+      if (byl.title) {
+        var lt = leave.querySelector('.before-you-leave__title, h2');
+        if (lt) lt.textContent = byl.title;
+      }
+      if (byl.body) {
+        var lb = leave.querySelector('.before-you-leave__text, .desc');
+        if (lb) lb.textContent = byl.body;
+      }
+      if (byl.couponCode) {
+        var lc = leave.querySelector('.coupon-code, .before-you-leave__coupon');
+        if (lc) lc.textContent = byl.couponCode;
+      }
+      if (byl.imageUrl) {
+        var li = leave.querySelector('img');
+        if (li) li.src = byl.imageUrl;
+      }
+    }
+  }
+
+  function applyHomepageSectionVisibility(config) {
+    var sections = config && config.homepageSections ? config.homepageSections : [];
+    if (!sections.length) return;
+    var enabled = {};
+    sections.forEach(function (s) {
+      if (s.enabled !== false) enabled[s.type] = true;
+    });
+    var map = {
+      slider: '.slideshow, #retailex-slider, .halo-block-slideshow',
+      hero_banner: '.halo-block-fullwidth-banner',
+      strip_banners: '.halo-block-sub-banner',
+      campaign_promo: '#retailex-campaign-promo',
+      products: '.halo-product-block, #retailex-products-grid',
+      lookbook_teaser: '#retailex-lookbook-teaser',
+      custom_html: '#retailex-custom-html',
+    };
+    Object.keys(map).forEach(function (type) {
+      if (enabled[type]) return;
+      document.querySelectorAll(map[type]).forEach(function (el) {
+        el.style.display = 'none';
+      });
+    });
+    var custom = sections.find(function (s) {
+      return s.type === 'custom_html' && s.enabled !== false && s.customHtml;
+    });
+    if (custom) {
+      var block = document.getElementById('retailex-custom-html');
+      if (!block) {
+        block = document.createElement('section');
+        block.id = 'retailex-custom-html';
+        block.className = 'container container-1170 py-4';
+        var main = document.querySelector('main') || document.querySelector('.page-wrapper');
+        if (main) main.appendChild(block);
+      }
+      block.innerHTML = custom.customHtml || '';
+    }
+  }
+
+  function applyCampaignPromos(campaigns, routeTenant) {
+    var active = sortEnabledContent(campaigns || []).filter(function (c) {
+      return c.bannerImageUrl;
+    });
+    if (!active.length) return;
+    var c = active[0];
+    var section = document.getElementById('retailex-campaign-promo');
+    if (!section) {
+      section = document.createElement('section');
+      section.id = 'retailex-campaign-promo';
+      section.className = 'halo-block container container-1170 py-3';
+      var anchor = document.querySelector('#retailex-products-grid, .halo-product-block');
+      if (anchor && anchor.parentNode) anchor.parentNode.insertBefore(section, anchor);
+      else {
+        var main = document.querySelector('main') || document.querySelector('.page-wrapper');
+        if (main) main.appendChild(section);
+      }
+    }
+    var link = c.linkUrl || tenantBase(routeTenant);
+    section.innerHTML =
+      '<div class="text-center">' +
+      '<a href="#" class="rex-banner-link d-block" data-href="' +
+      link +
+      '"><img src="' +
+      c.bannerImageUrl +
+      '" alt="' +
+      (c.name || '') +
+      '" style="width:100%;max-height:320px;object-fit:cover;border-radius:8px;"></a>' +
+      (c.description ? '<p class="mt-2">' + c.description + '</p>' : '') +
+      '</div>';
+    section.querySelectorAll('.rex-banner-link').forEach(function (a) {
+      a.addEventListener('click', function (e) {
+        e.preventDefault();
+        var path = a.getAttribute('data-href');
+        if (path) parentNav(path);
+      });
     });
   }
 
@@ -725,10 +941,13 @@
         if (img) img.src = PLACEHOLDER_IMG;
         if (nameEl) nameEl.textContent = item.name || order.customer_name || 'Ürün';
         if (timeEl) {
-          var ago = order.created_at ? new Date(order.created_at).toLocaleString('tr-TR') : '';
-          timeEl.textContent = (order.customer_name ? order.customer_name + ' · ' : '') + ago;
+          var tpl = (config.recentSales && config.recentSales.messageTemplate) || '{customer} az önce satın aldı';
+          timeEl.textContent = tpl
+            .replace('{customer}', order.customer_name || 'Bir müşteri')
+            .replace('{city}', '')
+            .replace('{product}', item.name || 'ürün');
         }
-        var delay = Number(popup.getAttribute('data-time') || 5000);
+        var delay = Number((config.recentSales && config.recentSales.delayMs) || popup.getAttribute('data-time') || 5000);
         setTimeout(function () {
           document.body.classList.add('notification-show');
         }, delay);
@@ -1195,6 +1414,15 @@
   function productCardHtml(p, tenant, config) {
     var href = tenantBase(tenant) + '/urun/' + encodeURIComponent(p.code);
     var price = formatPrice(p.price, p.currency);
+    var priceHtml =
+      p.compareAtPrice && Number(p.compareAtPrice) > Number(p.price)
+        ? '<span class="price price--sale">' +
+          price +
+          '</span><span class="price price--compare" style="text-decoration:line-through;margin-left:8px;opacity:.65;font-size:.9em;">' +
+          formatPrice(p.compareAtPrice, p.currency) +
+          '</span>'
+        : '<span class="price">' + price + '</span>';
+    var colClass = gridColClass((config && config.layout && config.layout.productGridColumns) || 4);
     var features = getFeatures(config);
     var badge = p.badge
       ? '<span class="badge badge-sale" style="position:absolute;top:8px;left:8px;z-index:2;">' + p.badge + '</span>'
@@ -1220,7 +1448,9 @@
         '" title="Hızlı önizleme" style="position:absolute;top:8px;right:8px;z-index:3;background:#fff;border-radius:50%;padding:6px;">👁</a>'
       : '';
     return (
-      '<div class="halo-row-item product-item col-6 col-md-4 col-lg-3">' +
+      '<div class="halo-row-item product-item ' +
+      colClass +
+      '">' +
       '<div class="product-card">' +
       '<div class="product-card-top">' +
       '<div class="product-card-media">' +
@@ -1249,9 +1479,9 @@
       '"><span class="text">' +
       p.name +
       '</span></a>' +
-      '<div class="card-price"><span class="price">' +
-      price +
-      '</span></div>' +
+      '<div class="card-price">' +
+      priceHtml +
+      '</div>' +
       '<button type="button" class="btn btn-primary btn-sm rex-add-cart mt-2" data-code="' +
       p.code +
       '" data-name="' +
@@ -1739,14 +1969,17 @@
 
   function applyStorefrontContent(config, routeTenant) {
     if (!config) return;
+    applyHomepageSectionVisibility(config);
     applySlider(config.sliders || [], routeTenant);
     applyBanners(config.banners || [], routeTenant);
+    applyCampaignPromos(config.campaigns || [], routeTenant);
   }
 
-  async function fetchCatalog(catalogTenant, demoMode) {
+  async function fetchCatalog(catalogTenant, demoMode, config) {
+    var limit = (config && config.layout && config.layout.catalogLimit) || 24;
     try {
       var res = await fetch(
-        bridgeApiUrl('/api/eticaret/catalog?tenant=' + encodeURIComponent(catalogTenant) + '&limit=24'),
+        bridgeApiUrl('/api/eticaret/catalog?tenant=' + encodeURIComponent(catalogTenant) + '&limit=' + limit),
         { headers: { Accept: 'application/json' } },
       );
       if (res.ok) {
@@ -1806,6 +2039,8 @@
     if (storeConfig && storeConfig.seoTitle) {
       document.title = storeConfig.seoTitle;
     }
+    applySeoMeta(storeConfig);
+    applyThemeBranding(storeConfig);
 
     injectVariantCss(variantId);
     patchAnnouncement(announce);
@@ -1814,6 +2049,8 @@
     applyFeatureToggles(storeConfig);
     applyNavigation(storeConfig, routeTenant);
     applyFooter(storeConfig, routeTenant);
+    applyContactAndSocial(storeConfig, routeTenant);
+    applyPopupContent(storeConfig);
     wireSideCartOpen(routeTenant, routeTenant, storeConfig);
     wireQuickShop(routeTenant, catalogTenant, storeConfig);
     wireQuickView(routeTenant, catalogTenant, storeConfig);
@@ -1850,7 +2087,7 @@
 
     if (kind === 'home' || kind === 'category' || !kind) {
       applyStorefrontContent(storeConfig, routeTenant);
-      var products = await fetchCatalog(catalogTenant, demoMode);
+      var products = await fetchCatalog(catalogTenant, demoMode, storeConfig);
       products = mergeFeaturedAndCampaigns(products, storeConfig);
       renderProducts(products, routeTenant, (storeConfig && storeConfig.productSectionTitle) || 'Ürünler', storeConfig);
       pruneEllaDemoBlocks();

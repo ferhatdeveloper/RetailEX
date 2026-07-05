@@ -761,6 +761,18 @@ function buildStorefrontPayload(settings: Record<string, unknown>, tenant: strin
     askExpertEmail: settings.askExpertEmail ? String(settings.askExpertEmail) : '',
     gdprCookieText: settings.gdprCookieText ? String(settings.gdprCookieText) : '',
     catalogFirmNr: settings.catalogFirmNr ? String(settings.catalogFirmNr).trim() : '',
+    seoDescription: settings.seoDescription ? String(settings.seoDescription) : '',
+    faviconUrl: settings.faviconUrl ? String(settings.faviconUrl) : '',
+    socialLinks: Array.isArray(settings.socialLinks) ? settings.socialLinks : [],
+    contactInfo: settings.contactInfo && typeof settings.contactInfo === 'object' ? settings.contactInfo : {},
+    newsletter: settings.newsletter && typeof settings.newsletter === 'object' ? settings.newsletter : {},
+    beforeYouLeave:
+      settings.beforeYouLeave && typeof settings.beforeYouLeave === 'object' ? settings.beforeYouLeave : {},
+    recentSales: settings.recentSales && typeof settings.recentSales === 'object' ? settings.recentSales : {},
+    themeBranding:
+      settings.themeBranding && typeof settings.themeBranding === 'object' ? settings.themeBranding : {},
+    layout: settings.layout && typeof settings.layout === 'object' ? settings.layout : {},
+    homepageSections: Array.isArray(settings.homepageSections) ? settings.homepageSections : [],
   };
 }
 

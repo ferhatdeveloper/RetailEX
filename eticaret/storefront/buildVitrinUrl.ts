@@ -13,17 +13,6 @@ const VARIANT_HOME: Record<string, string> = {
   'ella-electronic': 'index-10.html',
 };
 
-const STATIC_PAGE_MAP: Record<string, string> = {
-  sepet: 'page-cart.html',
-  odeme: 'checkout.html',
-  iletisim: 'contact-us.html',
-  hakkimizda: 'about-us.html',
-  blog: 'blog-default.html',
-  lookbook: 'lookbook.html',
-  favoriler: 'wishlists.html',
-  kayit: 'register.html',
-};
-
 export type VitrinBuildConfig = {
   activeVariantId?: string;
   demoMode?: boolean;
@@ -32,6 +21,11 @@ export type VitrinBuildConfig = {
   storeTitle?: string;
   announcementText?: string;
   enabled?: boolean;
+  layout?: {
+    categoryLayoutId?: string;
+    productLayoutId?: string;
+  };
+  staticPages?: Array<{ slug: string; enabled?: boolean }>;
 };
 
 function readLocalEticaretSettings(): VitrinBuildConfig {
@@ -76,11 +70,22 @@ export function buildVitrinIframeSrc(pathname: string, apiConfig?: VitrinBuildCo
 
   let htmlFile = VARIANT_HOME[variantId] || 'index.html';
   if (parsed.page === 'static' && parsed.staticSlug) {
-    htmlFile = STATIC_PAGE_MAP[parsed.staticSlug] || 'about-us.html';
+    if (parsed.staticSlug === 'lookbook') {
+      htmlFile = 'lookbook.html';
+    } else if (parsed.staticSlug === 'sepet') {
+      htmlFile = 'page-cart.html';
+    } else if (parsed.staticSlug === 'odeme') {
+      htmlFile = 'checkout.html';
+    } else {
+      // CMS sayfaları — içerik vitrin JS ile; demo iletişim/hakkımızda şablonu kullanılmaz
+      htmlFile = 'about-us.html';
+    }
   } else if (parsed.page === 'product') {
-    htmlFile = 'product-layout-default.html';
+    htmlFile = settings.layout?.productLayoutId || 'product-layout-default.html';
+    if (!htmlFile.endsWith('.html')) htmlFile += '.html';
   } else if (parsed.page === 'category') {
-    htmlFile = 'category-right-sidebar.html';
+    htmlFile = settings.layout?.categoryLayoutId || 'category-right-sidebar.html';
+    if (!htmlFile.endsWith('.html')) htmlFile += '.html';
   }
 
   const qs = new URLSearchParams();

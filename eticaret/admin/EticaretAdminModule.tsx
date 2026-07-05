@@ -64,6 +64,10 @@ import { FooterSection } from './sections/FooterSection';
 import { PagesSection } from './sections/PagesSection';
 import { StorefrontMetaSection } from './sections/StorefrontMetaSection';
 import { StorefrontFeaturesSection } from './sections/StorefrontFeaturesSection';
+import { ContactSocialSection } from './sections/ContactSocialSection';
+import { PopupsSection } from './sections/PopupsSection';
+import { HomepageSection } from './sections/HomepageSection';
+import { LayoutBrandingSection } from './sections/LayoutBrandingSection';
 import { LookbookSection } from './sections/LookbookSection';
 
 const { Header, Sider, Content } = Layout;
@@ -75,6 +79,10 @@ type AdminSection =
   | 'navigation'
   | 'footer'
   | 'pages'
+  | 'contact'
+  | 'popups'
+  | 'homepage'
+  | 'layout'
   | 'lookbook'
   | 'banners'
   | 'sliders'
@@ -110,6 +118,10 @@ const MENU_ITEMS: MenuProps['items'] = [
   { key: 'navigation', icon: <MenuOutlined />, label: 'Menü' },
   { key: 'footer', icon: <LinkOutlined />, label: 'Footer' },
   { key: 'pages', icon: <FileTextOutlined />, label: 'Sayfalar' },
+  { key: 'contact', icon: <GlobalOutlined />, label: 'İletişim & sosyal' },
+  { key: 'popups', icon: <ThunderboltOutlined />, label: 'Popup\'lar' },
+  { key: 'homepage', icon: <AppstoreOutlined />, label: 'Ana sayfa düzeni' },
+  { key: 'layout', icon: <ToolOutlined />, label: 'Layout & marka' },
   { key: 'lookbook', icon: <ReadOutlined />, label: 'Lookbook' },
   { key: 'banners', icon: <PictureOutlined />, label: 'Bannerlar' },
   { key: 'sliders', icon: <SlidersOutlined />, label: 'Slider' },
@@ -141,6 +153,14 @@ export function EticaretAdminModule() {
     footerLinks: DEFAULT_ETICARET_SETTINGS.footerLinks,
     staticPages: DEFAULT_ETICARET_SETTINGS.staticPages,
     lookbookScenes: DEFAULT_ETICARET_SETTINGS.lookbookScenes || [],
+    socialLinks: DEFAULT_ETICARET_SETTINGS.socialLinks || [],
+    contactInfo: DEFAULT_ETICARET_SETTINGS.contactInfo || {},
+    newsletter: DEFAULT_ETICARET_SETTINGS.newsletter || {},
+    beforeYouLeave: DEFAULT_ETICARET_SETTINGS.beforeYouLeave || {},
+    recentSales: DEFAULT_ETICARET_SETTINGS.recentSales,
+    themeBranding: DEFAULT_ETICARET_SETTINGS.themeBranding || {},
+    layout: DEFAULT_ETICARET_SETTINGS.layout,
+    homepageSections: DEFAULT_ETICARET_SETTINGS.homepageSections,
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -167,6 +187,14 @@ export function EticaretAdminModule() {
         footerLinks: merged.footerLinks || DEFAULT_ETICARET_SETTINGS.footerLinks,
         staticPages: merged.staticPages || DEFAULT_ETICARET_SETTINGS.staticPages,
         lookbookScenes: merged.lookbookScenes || [],
+        socialLinks: merged.socialLinks || [],
+        contactInfo: merged.contactInfo || {},
+        newsletter: merged.newsletter || {},
+        beforeYouLeave: merged.beforeYouLeave || {},
+        recentSales: merged.recentSales,
+        themeBranding: merged.themeBranding || {},
+        layout: merged.layout,
+        homepageSections: merged.homepageSections,
       });
     } catch (e: unknown) {
       message.error(e instanceof Error ? e.message : String(e));
@@ -340,6 +368,14 @@ export function EticaretAdminModule() {
             onChange={(staticPages) => patch({ staticPages })}
           />
         );
+      case 'contact':
+        return <ContactSocialSection form={form} onChange={patch} />;
+      case 'popups':
+        return <PopupsSection form={form} onChange={patch} />;
+      case 'homepage':
+        return <HomepageSection form={form} onChange={patch} />;
+      case 'layout':
+        return <LayoutBrandingSection form={form} onChange={patch} />;
       case 'lookbook':
         return (
           <LookbookSection

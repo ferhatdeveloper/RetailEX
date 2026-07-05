@@ -31,6 +31,16 @@ export function mergeEticaretSettings(
       askExpertEmail: layer.askExpertEmail ?? merged.askExpertEmail,
       gdprCookieText: layer.gdprCookieText ?? merged.gdprCookieText,
       catalogFirmNr: layer.catalogFirmNr ?? merged.catalogFirmNr,
+      socialLinks: layer.socialLinks ?? merged.socialLinks,
+      contactInfo: { ...merged.contactInfo, ...(layer.contactInfo || {}) },
+      newsletter: { ...merged.newsletter, ...(layer.newsletter || {}) },
+      beforeYouLeave: { ...merged.beforeYouLeave, ...(layer.beforeYouLeave || {}) },
+      recentSales: { ...merged.recentSales, ...(layer.recentSales || {}) },
+      themeBranding: { ...merged.themeBranding, ...(layer.themeBranding || {}) },
+      layout: { ...merged.layout, ...(layer.layout || {}) },
+      homepageSections: layer.homepageSections ?? merged.homepageSections,
+      seoDescription: layer.seoDescription ?? merged.seoDescription,
+      faviconUrl: layer.faviconUrl ?? merged.faviconUrl,
     };
   }
   if (!merged.storefrontFeatures) {
@@ -72,5 +82,15 @@ export function storefrontConfigToSettings(
     askExpertEmail: raw.askExpertEmail ? String(raw.askExpertEmail) : undefined,
     gdprCookieText: raw.gdprCookieText ? String(raw.gdprCookieText) : undefined,
     catalogFirmNr: raw.catalogFirmNr ? String(raw.catalogFirmNr).trim() : undefined,
+    socialLinks: raw.socialLinks as EticaretSettings['socialLinks'],
+    contactInfo: raw.contactInfo as EticaretSettings['contactInfo'],
+    newsletter: raw.newsletter as EticaretSettings['newsletter'],
+    beforeYouLeave: raw.beforeYouLeave as EticaretSettings['beforeYouLeave'],
+    recentSales: raw.recentSales as EticaretSettings['recentSales'],
+    themeBranding: raw.themeBranding as EticaretSettings['themeBranding'],
+    layout: raw.layout as EticaretSettings['layout'],
+    homepageSections: raw.homepageSections as EticaretSettings['homepageSections'],
+    seoDescription: raw.seoDescription ? String(raw.seoDescription) : undefined,
+    faviconUrl: raw.faviconUrl ? String(raw.faviconUrl) : undefined,
   });
 }

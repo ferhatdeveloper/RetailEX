@@ -78,6 +78,25 @@ export function StorefrontMetaSection({ tenantCode, form, onChange }: Props) {
           />
         </Col>
         <Col xs={24} md={12}>
+          <Text strong>SEO açıklama</Text>
+          <Input.TextArea
+            value={form.seoDescription || ''}
+            onChange={(e) => onChange({ seoDescription: e.target.value })}
+            style={{ marginTop: 8 }}
+            rows={2}
+            placeholder="Meta description"
+          />
+        </Col>
+        <Col xs={24} md={12}>
+          <Text strong>Favicon URL</Text>
+          <Input
+            value={form.faviconUrl || ''}
+            onChange={(e) => onChange({ faviconUrl: e.target.value })}
+            style={{ marginTop: 8 }}
+            placeholder="https://.../favicon.ico"
+          />
+        </Col>
+        <Col xs={24} md={12}>
           <Text strong>Logo URL</Text>
           <Input
             value={form.logoUrl || ''}

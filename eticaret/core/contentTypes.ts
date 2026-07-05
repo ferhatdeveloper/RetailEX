@@ -167,6 +167,87 @@ export type EticaretStaticPage = {
   showInMenu: boolean;
 };
 
+export type EticaretSocialPlatform =
+  | 'facebook'
+  | 'instagram'
+  | 'twitter'
+  | 'youtube'
+  | 'tiktok'
+  | 'whatsapp'
+  | 'linkedin'
+  | 'other';
+
+export type EticaretSocialLink = {
+  id: string;
+  platform: EticaretSocialPlatform;
+  label?: string;
+  url: string;
+  enabled: boolean;
+  sortOrder: number;
+};
+
+export type EticaretContactInfo = {
+  phone?: string;
+  email?: string;
+  address?: string;
+  hours?: string;
+  whatsapp?: string;
+};
+
+export type EticaretNewsletterConfig = {
+  title?: string;
+  subtitle?: string;
+  imageUrl?: string;
+  delayMs?: number;
+  buttonText?: string;
+  footerTitle?: string;
+  footerSubtitle?: string;
+};
+
+export type EticaretBeforeYouLeaveConfig = {
+  title?: string;
+  body?: string;
+  couponCode?: string;
+  buttonText?: string;
+  imageUrl?: string;
+};
+
+export type EticaretRecentSalesConfig = {
+  delayMs?: number;
+  messageTemplate?: string;
+};
+
+export type EticaretThemeBranding = {
+  primaryColor?: string;
+  accentColor?: string;
+  customCss?: string;
+};
+
+export type EticaretLayoutSettings = {
+  catalogLimit?: number;
+  productGridColumns?: 2 | 3 | 4;
+  categoryLayoutId?: string;
+  productLayoutId?: string;
+};
+
+export type EticaretHomepageSectionType =
+  | 'slider'
+  | 'hero_banner'
+  | 'strip_banners'
+  | 'campaign_promo'
+  | 'products'
+  | 'lookbook_teaser'
+  | 'custom_html';
+
+export type EticaretHomepageSection = {
+  id: string;
+  type: EticaretHomepageSectionType;
+  enabled: boolean;
+  sortOrder: number;
+  title?: string;
+  customHtml?: string;
+};
+
 export type EticaretContentSettings = {
   banners: EticaretBanner[];
   sliders: EticaretSliderSlide[];
@@ -176,6 +257,14 @@ export type EticaretContentSettings = {
   footerLinks: EticaretFooterLink[];
   staticPages: EticaretStaticPage[];
   lookbookScenes: EticaretLookbookScene[];
+  socialLinks?: EticaretSocialLink[];
+  contactInfo?: EticaretContactInfo;
+  newsletter?: EticaretNewsletterConfig;
+  beforeYouLeave?: EticaretBeforeYouLeaveConfig;
+  recentSales?: EticaretRecentSalesConfig;
+  themeBranding?: EticaretThemeBranding;
+  layout?: EticaretLayoutSettings;
+  homepageSections?: EticaretHomepageSection[];
 };
 
 export const DEFAULT_STOREFRONT_MENU: EticaretMenuItem[] = [
@@ -213,6 +302,15 @@ export const DEFAULT_STATIC_PAGES: EticaretStaticPage[] = [
   },
 ];
 
+export const DEFAULT_HOMEPAGE_SECTIONS: EticaretHomepageSection[] = [
+  { id: 'hp_slider', type: 'slider', enabled: true, sortOrder: 0 },
+  { id: 'hp_hero', type: 'hero_banner', enabled: true, sortOrder: 1 },
+  { id: 'hp_strips', type: 'strip_banners', enabled: true, sortOrder: 2 },
+  { id: 'hp_campaigns', type: 'campaign_promo', enabled: true, sortOrder: 3 },
+  { id: 'hp_products', type: 'products', enabled: true, sortOrder: 4 },
+  { id: 'hp_custom', type: 'custom_html', enabled: false, sortOrder: 5, title: 'Özel HTML', customHtml: '' },
+];
+
 export const DEFAULT_ETICARET_CONTENT: EticaretContentSettings = {
   banners: [],
   sliders: [],
@@ -222,6 +320,14 @@ export const DEFAULT_ETICARET_CONTENT: EticaretContentSettings = {
   footerLinks: DEFAULT_FOOTER_LINKS,
   staticPages: DEFAULT_STATIC_PAGES,
   lookbookScenes: [],
+  socialLinks: [],
+  contactInfo: {},
+  newsletter: {},
+  beforeYouLeave: {},
+  recentSales: { delayMs: 8000, messageTemplate: '{customer} az önce satın aldı' },
+  themeBranding: {},
+  layout: { catalogLimit: 24, productGridColumns: 4, categoryLayoutId: 'category-right-sidebar', productLayoutId: 'product-layout-default' },
+  homepageSections: DEFAULT_HOMEPAGE_SECTIONS,
 };
 
 export function createContentId(prefix: string): string {

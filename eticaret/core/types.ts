@@ -37,6 +37,16 @@ export type EticaretSettings = {
   gdprCookieText?: string;
   /** Online vitrinde ürün/sipariş için kullanılacak firma no (boşsa system_settings.primary_firm_nr) */
   catalogFirmNr?: string;
+  socialLinks?: import('./contentTypes').EticaretSocialLink[];
+  contactInfo?: import('./contentTypes').EticaretContactInfo;
+  newsletter?: import('./contentTypes').EticaretNewsletterConfig;
+  beforeYouLeave?: import('./contentTypes').EticaretBeforeYouLeaveConfig;
+  recentSales?: import('./contentTypes').EticaretRecentSalesConfig;
+  themeBranding?: import('./contentTypes').EticaretThemeBranding;
+  layout?: import('./contentTypes').EticaretLayoutSettings;
+  homepageSections?: import('./contentTypes').EticaretHomepageSection[];
+  seoDescription?: string;
+  faviconUrl?: string;
 };
 
 export type EticaretWebOrder = {
