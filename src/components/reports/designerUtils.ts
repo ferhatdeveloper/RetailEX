@@ -462,6 +462,20 @@ export async function printLabelElementsInBrowser(
             img.style.maxHeight = '100%';
             dstCanvas.replaceWith(img);
         }
+
+        const sourceSvgs = Array.from(source.querySelectorAll('svg'));
+        const cloneSvgs = Array.from(clone.querySelectorAll('svg'));
+        const svgN = Math.min(sourceSvgs.length, cloneSvgs.length);
+        for (let i = 0; i < svgN; i++) {
+            const srcSvg = sourceSvgs[i];
+            const dstSvg = cloneSvgs[i];
+            if (srcSvg.childNodes.length === 0) continue;
+            dstSvg.innerHTML = srcSvg.innerHTML;
+            for (const attr of ['viewBox', 'preserveAspectRatio', 'class', 'style', 'id']) {
+                const v = srcSvg.getAttribute(attr);
+                if (v != null) dstSvg.setAttribute(attr, v);
+            }
+        }
         return clone;
     };
 
@@ -479,6 +493,10 @@ export async function printLabelElementsInBrowser(
         page.appendChild(slot);
         root.appendChild(page);
     }
+
+    await new Promise<void>((resolve) => {
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+    });
 
     const waitForImages = async () => {
         const images = Array.from(printWindow.document.images);
@@ -502,7 +520,7 @@ export async function printLabelElementsInBrowser(
     };
 
     await waitForImages();
-    await new Promise<void>((resolve) => setTimeout(resolve, 80));
+    await new Promise<void>((resolve) => setTimeout(resolve, 200));
     printWindow.onafterprint = () => {
         try {
             printWindow.close();

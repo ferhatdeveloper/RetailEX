@@ -47,7 +47,7 @@ import {
   readLabelCustomMmEnabled,
   readLabelCustomWidthMm,
 } from './labelPrintDimensions';
-import { DEFAULT_A4, exportLabelGridToPdfPages, exportToPDF } from '../../reports/designerUtils';
+import { DEFAULT_A4, exportLabelGridToPdfPages, exportToPDF, printLabelElementsInBrowser } from '../../reports/designerUtils';
 import { FullscreenBodyPortal, MODAL_OVERLAY_Z } from '../../shared/FullscreenBodyPortal';
 
 export interface BulkProductLabelPrintProps {
@@ -108,6 +108,7 @@ export function BulkProductLabelPrint({
   const [fieldSettingsLoading, setFieldSettingsLoading] = useState(true);
   const [fieldSettingsSaving, setFieldSettingsSaving] = useState(false);
   const [pdfExporting, setPdfExporting] = useState(false);
+  const [printing, setPrinting] = useState(false);
   const printRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -248,9 +249,54 @@ export function BulkProductLabelPrint({
     ? labelTemplateDesignId(selectedCustomTemplate.id)
     : selectedDesign.id;
 
-  const handlePrint = () => {
+  const waitForLabelPrintReady = async (root: HTMLElement): Promise<void> => {
+    const deadline = Date.now() + 2500;
+    while (Date.now() < deadline) {
+      const wrappers = root.querySelectorAll('.rotated-label-wrapper');
+      if (!wrappers.length) return;
+      const svgs = Array.from(root.querySelectorAll('svg'));
+      const canvases = Array.from(root.querySelectorAll('canvas'));
+      const svgsReady =
+        svgs.length === 0 || svgs.every((s) => s.childNodes.length > 0);
+      const canvasesReady =
+        canvases.length === 0 ||
+        canvases.every((c) => c.width > 0 && c.height > 0);
+      if (svgsReady && canvasesReady) {
+        await new Promise<void>((r) => requestAnimationFrame(() => r()));
+        await new Promise((r) => setTimeout(r, 80));
+        return;
+      }
+      await new Promise<void>((r) => requestAnimationFrame(() => r()));
+    }
+  };
+
+  const handlePrint = async () => {
     if (queue.length === 0) return;
-    window.print();
+    const printCategory = selectedCustomTemplate ? 'termal' : selectedSize.category;
+    if (printCategory !== 'termal') {
+      window.print();
+      return;
+    }
+    const root = printRef.current;
+    if (!root) {
+      window.print();
+      return;
+    }
+    const cells = Array.from(root.querySelectorAll('.rotated-label-wrapper')) as HTMLElement[];
+    if (cells.length === 0) {
+      window.print();
+      return;
+    }
+    setPrinting(true);
+    try {
+      await waitForLabelPrintReady(root);
+      await printLabelElementsInBrowser(cells, { width: pageWidthMm, height: pageHeightMm });
+    } catch (e) {
+      toast.error((e as Error)?.message || 'Yazdırma başlatılamadı');
+      window.print();
+    } finally {
+      setPrinting(false);
+    }
   };
 
   const handlePdfExport = async () => {
@@ -343,11 +389,11 @@ export function BulkProductLabelPrint({
             <button
               type="button"
               onClick={handlePrint}
-              disabled={queue.length === 0}
+              disabled={queue.length === 0 || printing}
               className="px-3 sm:px-4 py-2 rounded-lg bg-white/20 hover:bg-white/30 disabled:opacity-45 disabled:cursor-not-allowed flex items-center gap-2 text-xs sm:text-sm font-bold border border-white/30 whitespace-nowrap"
             >
               <Printer className="w-4 h-4 shrink-0" />
-              <span>{tm('print')}</span>
+              <span>{printing ? '…' : tm('print')}</span>
               {queue.length > 0 && (
                 <span className="text-[10px] font-mono opacity-90">({totalLabels})</span>
               )}
@@ -782,11 +828,11 @@ export function BulkProductLabelPrint({
                 <button
                   type="button"
                   onClick={handlePrint}
-                  disabled={queue.length === 0}
+                  disabled={queue.length === 0 || printing}
                   className="px-4 py-2 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-lg hover:from-purple-700 hover:to-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 shadow-lg text-sm"
                 >
                   <Printer className="w-4 h-4" />
-                  {tm('print')} ({totalLabels})
+                  {printing ? '…' : tm('print')} ({totalLabels})
                 </button>
               </div>
             </div>
