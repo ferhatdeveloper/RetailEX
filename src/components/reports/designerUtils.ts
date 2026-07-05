@@ -2,7 +2,7 @@ import { jsPDF } from 'jspdf';
 import html2canvas from 'html2canvas';
 import JsBarcode from 'jsbarcode';
 import QRCode from 'qrcode';
-import { paintJsBarcode, type BarcodeCaptionMode } from '../../services/labelPrintFieldSettingsService';
+import { paintJsBarcode, normalizeBarcodePrintFormat, type BarcodeCaptionMode } from '../../services/labelPrintFieldSettingsService';
 
 const H2C_TEMP_ID_PREFIX = 'retailex-h2c-';
 const PX_PER_MM = 3.7795275591;
@@ -256,8 +256,9 @@ function buildBarcodeSvgFromCanvas(canvas: HTMLCanvasElement): SVGSVGElement | n
         const sizeMm = resolveLabelSizeMmFromCanvas(canvas);
         const variantCode = canvas.dataset.variantCode || '';
         const captionMode = normalizeCaptionMode(canvas.dataset.barcodeCaptionMode);
+        const barcodeFormat = normalizeBarcodePrintFormat(canvas.dataset.barcodeFormat);
         const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-        paintJsBarcode(svg, barcodeValue, variantCode, captionMode, sizeMm);
+        paintJsBarcode(svg, barcodeValue, variantCode, captionMode, sizeMm, barcodeFormat);
         return svg;
     } catch {
         return null;

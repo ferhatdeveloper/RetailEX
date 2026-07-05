@@ -10,6 +10,7 @@ import {
   paintJsBarcode,
   saveLabelPrintFieldSettings,
   type BarcodeCaptionMode,
+  type BarcodePrintFormat,
   type LabelPrintFieldSettings,
 } from '../../../services/labelPrintFieldSettingsService';
 import {
@@ -477,7 +478,7 @@ export function ProductLabelPrint({
             paintJsBarcode(canvas, cell.barcode, cell.variantCode, fieldSettings.barcodeCaptionMode, {
               width: activePrintSize.width,
               height: activePrintSize.height,
-            });
+            }, fieldSettings.barcodeFormat);
           }
         }
 
@@ -964,6 +965,26 @@ export function ProductLabelPrint({
                     </label>
                   ))}
                   <div className="pt-2 border-t border-gray-100">
+                    <label className="text-xs font-semibold text-gray-700 block mb-1.5">{tm('labelPrintBarcodeFormatLabel')}</label>
+                    <select
+                      value={fieldSettings.barcodeFormat}
+                      onChange={(e) =>
+                        setFieldSettings((prev) => ({
+                          ...prev,
+                          barcodeFormat: e.target.value as BarcodePrintFormat,
+                        }))
+                      }
+                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
+                    >
+                      <option value="auto">{tm('labelPrintBarcodeFormatAuto')}</option>
+                      <option value="EAN13">{tm('labelPrintBarcodeFormatEan13')}</option>
+                      <option value="EAN8">{tm('labelPrintBarcodeFormatEan8')}</option>
+                      <option value="CODE128">{tm('labelPrintBarcodeFormatCode128')}</option>
+                      <option value="CODE39">{tm('labelPrintBarcodeFormatCode39')}</option>
+                    </select>
+                    <p className="text-[10px] text-gray-500 mt-1.5 leading-snug">{tm('labelPrintBarcodeFormatHint')}</p>
+                  </div>
+                  <div className="pt-2 border-t border-gray-100">
                     <label className="text-xs font-semibold text-gray-700 block mb-1.5">{tm('labelPrintBarcodeCaptionLabel')}</label>
                     <select
                       value={fieldSettings.barcodeCaptionMode}
@@ -1446,6 +1467,7 @@ export function LabelContent({
     'data-barcode-value': variant.barcode || '',
     'data-variant-code': variant.variantCode || '',
     'data-barcode-caption-mode': f.barcodeCaptionMode,
+    'data-barcode-format': f.barcodeFormat,
     'data-label-width-mm': String(size.width),
     'data-label-height-mm': String(size.height),
   };

@@ -148,6 +148,7 @@ export function TemplateLabelView({
   fieldSettings,
 }: TemplateLabelViewProps) {
   const captionMode: BarcodeCaptionMode = fieldSettings?.barcodeCaptionMode ?? 'barcode';
+  const barcodeFormat = fieldSettings?.barcodeFormat ?? 'auto';
 
   const barcodeTargets = useMemo(() => {
     const targets: { elementId: string; value: string; heightMm: number }[] = [];
@@ -186,7 +187,7 @@ export function TemplateLabelView({
         paintJsBarcode(svg, t.value, fields.variantCode, captionMode, {
           width: template.width,
           height: t.heightMm,
-        });
+        }, barcodeFormat);
       }
       for (const t of qrTargets) {
         const canvas = document.getElementById(`tpl-qr-${instanceKey}-${t.elementId}`) as HTMLCanvasElement | null;
@@ -199,7 +200,7 @@ export function TemplateLabelView({
       }
     }, 80);
     return () => clearTimeout(timer);
-  }, [barcodeTargets, qrTargets, instanceKey, captionMode, fields.variantCode, template.width]);
+  }, [barcodeTargets, qrTargets, instanceKey, captionMode, barcodeFormat, fields.variantCode, template.width]);
 
   const wPx = mmToLabelPx(template.width);
   const hPx = mmToLabelPx(template.height);
