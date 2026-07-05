@@ -2,9 +2,10 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react-swc';
 import path from 'path';
+import { eticaretStaticPlugin } from './vite.eticaret-static';
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), eticaretStaticPlugin()],
   publicDir: 'src/public',
   resolve: {
     /** Aksi halde bazı paketler ikinci bir React kopyası çeker; useContext(Auth) undefined kalır. */

@@ -1,0 +1,45 @@
+body {
+    &.notify-me-show {
+        overflow: hidden;
+        .halo-notify-popup {
+            opacity: 1;
+            visibility: visible;
+            pointer-events: auto;
+            transform: translate(-50%, -50%);
+            z-index: 999;
+        }
+        .background-overlay-popup {
+            z-index: 999;
+            opacity: 1;
+            visibility: visible;
+        }
+    }
+}
+
+.halo-notify-popup {
+    max-width: 470px;
+    .form-field {
+        .form-label {
+            text-align: center;
+            margin-bottom: 23px;
+            letter-spacing: .02em;
+            font-weight: 500;
+        }
+        input {
+            text-align: center;
+        }
+    }
+    .button {
+        width: 100%;
+        margin-left: 0;
+        margin-top: 10px
+    }
+}
+
+@media(min-width:1025px){
+    body {
+        &.notify-me-show {
+            padding-right: 10px;
+        }
+    }
+}

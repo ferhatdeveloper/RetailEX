@@ -1,0 +1,68 @@
+.halo-toolbar-bottom-mobile{
+    background: #ffffff;
+    padding: 10px 10px 5px;
+    position: fixed;
+    display: block;
+    bottom: 0px;
+    z-index: 9;
+    transition: transform .6s;
+    width: 100%;
+    box-shadow: 0 0 9px rgba(0,0,0,.12);
+    .halo-toolbar-wrapper{
+        display: flex;
+        justify-content: space-between;
+        .halo-toolbar-item{
+            position: relative;
+            .link{
+                text-align: center;
+                position: relative;
+                svg{
+                    width: 30px;
+                    height: 30px;
+                    fill: #232323;
+                    stroke: transparent;
+                    padding: 2px;
+                }
+                &.mobileSearch-toggle{
+                    svg{
+                        padding: 0;
+                    }
+                }
+            }
+            [data-open-auth-sidebar]{
+                svg{
+                    padding: 0;
+                }
+            }
+
+            .label{
+                display: block;
+                font-size: 12px;
+                letter-spacing: .02em;
+                font-weight: 500;
+                line-height: 22px;
+                padding-top: 2px;
+            }
+            .icon--cart{
+                .cart-count-bubble{
+                    position: absolute;
+                    right: -8px;
+                    top: -4px;
+                    margin: 0;
+                    background-color: #ffe5e8;
+                    min-width: 23px;
+                    min-height: 23px;
+                    text-align: center;
+                    border-radius: 50%;
+                    font-size: 12px;
+                } 
+            }
+        }
+        
+    }
+}
+@media(min-width: 1025px){
+    .halo-toolbar-bottom-mobile{
+        display: none;
+    }   
+}

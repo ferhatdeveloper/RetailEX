@@ -1,0 +1,70 @@
+.halo-accept-cookie-popup {
+    position: fixed;
+    bottom: 50px;
+    left: 50px;
+    width: 100%;
+    max-width: 440px;
+    background: #000000;
+    padding: 20px 23px 24px;
+    border-radius: 3px;
+    z-index: 9;
+    &.is-hidden {
+        opacity: 0;
+        bottom: 45px;
+        transition: all ease .7s;
+        z-index: -1;
+        visibility: hidden;
+    }
+    .desc {
+        color: #ffffff;
+        line-height: 26px;
+        letter-spacing: .02em;
+    }
+    .group-action-links {
+        text-align: right;
+        padding-top: 22px;
+        .accept-cookie {
+            color: #aaaaaa;
+            font-size: 15px;
+            line-height: 22px;
+            font-weight: 400;
+            text-transform: uppercase;
+            font-weight: 500;
+            letter-spacing: .02em;
+            &:hover {
+                color: #ffffff;
+            }
+        }
+        .accept {
+            margin-left: 30px;
+            font-size: 15px;
+            color: #ffffff;
+            font-weight: 500;
+            letter-spacing: .02em;
+        }
+    } 
+} 
+@media (max-width: 1024px) {
+    .halo-accept-cookie-popup { 
+        bottom:83px;
+        left: 15px;
+    }
+}
+
+@media (max-width: 551px) {
+    .halo-accept-cookie-popup { 
+        max-width: 100%;
+        bottom: 67px;
+        left: 0;
+        text-align:center;
+        .desc {
+            display: -webkit-box;
+            -webkit-line-clamp: 3;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+        .group-action-links {
+            text-align:center;
+        }
+    }
+}

@@ -1,0 +1,306 @@
+.halo-block-fullwidth-banner{
+    .content-box{
+        max-width: 450px;
+        padding: 0px 15px;
+        .banner-title{
+            font-weight: 900;
+            font-size: 40px;
+            margin-bottom: 24px;
+        }
+        .desc{
+            margin-bottom: 42px;
+        }
+        .button{
+            width: 100%;
+            max-width: 196px;            
+        }
+    }
+    
+}// END: Full Width Banner
+
+.announcement-bar{
+    &.style-2{
+        background: #ffffff;
+        .message{
+            color: #000000;
+            font-weight: 600;
+            font-size: 16px;
+            letter-spacing: .02em;
+            padding: 24px 0px 24px;
+        }
+    }
+}// END: Announcement bar
+
+.halo-block-sub-banner{
+    margin-bottom: 50px;
+    .row{
+        margin-left: -5px;
+        margin-right: -5px;
+        .halo-row-item{
+            padding: 0px 5px;
+        }
+    } 
+    .content-box {
+        .banner-title{
+            margin: 0 15px;
+            a{
+                font-size: 30px;
+                font-weight: 900;
+                letter-spacing: .02em;
+                color:#ffffff;
+            }
+        }
+    }
+}//END: Sub Banner
+
+.halo-block-custom-text{
+    padding: 40px 15px 35px;
+    .halo-block-content{
+        max-width: 870px;
+        margin: 0 auto;
+        color: #3c3c3c;
+        font-size: 18px;
+    }
+    margin: 0 auto;
+}//END: Block Cusstom Text
+
+.halo-product-block{
+    margin:45px 0 30px;
+    .halo-block-header{
+        margin-bottom: 38px!important;
+        .title{
+            font-size: 24px;
+            font-weight: 900;
+        }
+    }
+}//END: Block Product
+
+.halo-block-spotlight{
+    padding: 25px 0px 25px;
+    .spotlight-item{
+       .content-box{
+        padding: 30px 15px 30px;
+        .title{
+            font-size: 24px;
+            line-height: 36px;
+            letter-spacing: .02em;
+            font-weight: 900;
+            color: #232323;
+            margin-bottom: 17px;
+        }
+        .desc{
+            margin-bottom: 12px;
+        }
+        .button{
+            width: 100%;
+            max-width: 196px;
+            margin-top: 30px;
+        }
+       } 
+    }
+
+}//END: Block Block Spotlight
+
+.halo-block-icon-with-text{
+    padding-bottom: 73px;
+    .halo-row-item{
+        padding-top: 10px;
+        .icon{
+            width: 85px;
+            margin: 0 auto 30px;
+        }
+        .content-box{
+            padding: 18px 35px 20px;
+            .title{
+                font-family: 'Jost', sans-serif;
+                font-size: 18px;
+                font-weight: 700;
+                margin-bottom: 17px;
+            }
+        }
+    }
+}//END: Block Block Icon Width Text
+
+.halo-block-product-tab{
+    padding: 0 0 30px;
+    .nav-tabs{
+        justify-content: center;
+        border:none;
+        margin-bottom: 60px;
+        .nav-link{
+            font-size: 20px;
+            font-weight: 900;
+            letter-spacing: 0.02em;
+            color:#969696;
+            position: relative;
+            text-transform: capitalize;
+            padding:8px 0;
+            margin: 0 15px;
+            border:none;
+            &:before{
+                content: "";
+                position: absolute;
+                bottom: -2px;
+                left: 0;
+                width: 0;
+                height: 3px;
+                transition: all 0.5s ease;
+                background: #232323;
+            }
+            &.active{
+                color:#232323;
+                border:none;
+                &:before{
+                    width: 100%;
+                }
+            }
+            &:hover{
+                border:none;
+                right:0;
+                left:auto;
+                color:#232323;
+                &:before{
+                    width: 100%;
+                }
+            }
+        }
+    }
+    .product-tab-content{
+        margin-top: 27px;
+        & > .tab-pane{
+            display: block;
+            height: 0;
+            overflow: hidden;
+            &.active{
+                height: auto;
+                overflow: visible;  
+            }
+        }
+        .slick-dots{
+            bottom: -30px;
+        }
+    }
+}// END: Block Product Tab
+
+
+.halo-block-instagram{
+    background: #ecf5f5;
+    padding: 53px 0px 54px;
+    .halo-block-header {
+        margin-bottom: 34px;
+        .title{
+            font-size: 24px;
+            font-weight: 900;
+            color: #232323;
+            margin-bottom: 15px;
+            svg{
+                width: 22px;
+                height: 22px;
+                margin-right: 8px;
+                position: relative;
+                top: -2px;
+            }
+        }
+    }
+    .row{
+        margin-left: -5px;
+        margin-right: -5px;
+        .halo-row-item {
+            padding: 0px 5px;
+        }
+    }
+    .instagram-button{
+        margin: 36px 0px 36px;
+       .button{
+            width: 100%;
+            max-width: 230px;
+            background: #1a2531;
+       } 
+    }
+    .slick-dots{
+        position: absolute;
+        bottom: 7px;
+        left: 4px;
+        background: #ffffffbf;
+        width: auto;
+        padding: 8px 5px 7px;
+        margin: 0;
+    }
+}//END: Block Block Instagram
+
+@media(max-width: 1024px){
+    .halo-block-sub-banner{
+        .container{
+            padding: 0 15px;
+        }
+    }
+}
+
+@media(max-width:767px){
+    .halo-block-fullwidth-banner{
+        .content-box{
+            .banner-title,
+            .banner-text{
+                color: #ffffff;
+            }
+        }
+    }
+}
+
+@media(max-width: 551px){
+    .halo-block-product-tab{
+        .nav-tabs{
+            justify-content: flex-start;
+            flex-wrap: nowrap;
+            overflow-x: auto;
+            overflow-y: hidden;
+            white-space: nowrap;
+        }
+    }
+}
+
+@media(min-width:768px){
+    .halo-product-block{
+        margin:45px 0 75px;
+    }
+    .halo-block-product-tab{
+        padding: 0 0 75px;
+    }
+    .halo-block-custom-text{
+        padding: 74px 15px 65px;
+    }
+    .halo-block-product-tab{
+        .nav-tabs{
+            .nav-link{
+                font-size: 24px;
+                margin: 0 25px;    
+            }
+        }
+    } 
+}
+
+@media(min-width:1200px){
+    .halo-block-spotlight{
+        padding: 73px 0px 48px;
+    }
+}
+
+@media(min-width:1600px){
+    .halo-block-fullwidth-banner{
+        .content-box{
+            left: calc((100% - 1170px)/2);
+            &.content-box--right{
+                left: auto;
+                right: calc((100% - 1170px)/2);
+            }
+        }
+    }
+
+    .halo-block-spotlight{
+        .spotlight-item{
+           .content-box{
+            padding: 30px;
+           }
+        }
+    }
+}

@@ -1,0 +1,21 @@
+@charset "UTF-8";
+
+/* ===  Main Style === */
+@import 'config/fonts';
+@import 'config/variables';
+
+/* ===  General Styles === */
+@import 'base/base';
+
+/* ===  Header Styles === */
+@import 'base/header/header';
+@import 'base/header/header-mobile';
+
+/* ===  Product Card Styles === */
+@import 'base/card/component-card';
+
+/* ===  Footer Styles === */
+@import 'base/footer/footer';
+@import 'base/footer/toolbar-bottom-mobile';
+
+

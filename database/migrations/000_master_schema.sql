@@ -75,6 +75,7 @@ CREATE TABLE IF NOT EXISTS public.system_settings (
   default_currency VARCHAR(10) NOT NULL DEFAULT 'IQD',
   primary_firm_nr VARCHAR(10),
   primary_period_nr VARCHAR(10),
+  eticaret_settings JSONB DEFAULT '{}'::jsonb,
   updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 INSERT INTO public.system_settings (id, default_currency, primary_firm_nr, primary_period_nr)

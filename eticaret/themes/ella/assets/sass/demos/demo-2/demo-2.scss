@@ -1,0 +1,855 @@
+.halo-policies-block {
+    margin-top:15px;
+    margin-bottom:10px;
+    .halo-row-policies {
+        background-color: #f9ede1;
+    }
+    .halo-row--swipe-policies {
+        overflow-x: auto;
+        overflow-y: hidden;
+        flex-wrap: nowrap;
+        padding: 0;
+        margin: 0;
+        
+    }
+    .wrapper-policies-content {
+        padding: 23px 0 16px 0;
+        &.before-border {
+            &::before {
+                content: '';
+                width: 1px;
+                height: 45px;
+                display: block;
+                position: absolute;
+                top: 50%;
+                right: 0;
+                transform: translateY(-50%);
+                background-color: #000000;      
+            }
+        }
+        .policies-content {
+            .title {
+                font-size:24px;
+                line-height:28px;
+                font-weight:600;
+                letter-spacing:0;
+                color:#000000;
+                margin-bottom:5px;
+            }
+        }
+    }
+    &.halo-policies-block-2 {
+        margin-top:10px;
+        margin-bottom:0;
+        .row {
+            background-color: #f2f2f2;
+            .wrapper-policies-content {
+                padding: 19px 0 13px 0;
+                &.before-border {
+                    &::before {
+                        content: '';
+                        width: 1px;
+                        height: 25px;
+                        display: block;
+                        position: absolute;
+                        top: 50%;
+                        right: 0;
+                        transform: translateY(-50%);
+                        background-color: #000000;      
+                    }
+                }
+            }
+            .policies-content {
+                display: flex;
+                justify-content:center;
+                &:hover {
+                    .title {
+                        text-decoration: underline;
+                        text-underline-offset: 0.3rem;
+                    }
+                }
+                svg {
+                    width:26px;
+                    height:23px;
+                    fill: #232323;
+                    stroke: #232323;
+                    margin-right: 12px;
+                    position: relative;
+                    top: -3px;
+                }
+                .title {
+                    font-size: 18px;
+                    color: #000000;
+                    font-weight: 700;
+                    letter-spacing:0;
+                    line-height:28px;
+                }
+            }
+        }
+    }
+}//END: Policies Block.
+
+.halo-block-slideshow {
+    line-height: 1;
+    font-size: 0;
+    .bannerCarousel-slide {
+        line-height: 1;
+        .sub-title {
+            font-size:18px; 
+            line-height:28px;
+            font-weight:400;
+            color: #ffffff;
+            letter-spacing: -0.02em;
+        }
+        .title {
+            font-size:60px;
+            font-weight:700;
+            line-height:28px;
+            letter-spacing:0;
+            color: #ffffff;
+            padding-top: 11px;
+            margin-bottom: 40px;
+        }
+        .desc {
+            color: #ffffff;
+            width:100%;
+            max-width:360px;
+            margin: 0 auto;
+            padding-bottom: 46px;
+        }
+        .wrapper-button {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+        }
+        .button-1 {
+            width:100%;
+            max-width:210px;
+        }
+    }
+    &:not(.slick-slider){
+        overflow: hidden;
+        .bannerCarousel-slide{
+            display: none;
+            &:first-child{
+                display: block;
+            }
+        }
+    }
+   
+    .slick-dots {
+        background-color: rgba(0, 0, 0, 0.2);
+        width: fit-content;
+        padding: 4px 1px;
+        border-radius:6px;
+        position: absolute;
+        bottom:25px;
+        margin: 0;
+        left: 50%;
+        transform: translateX(-50%);
+        li {
+            margin: 0 5px;
+            width:12px;
+            height: 12px;
+            &:not(.slick-active) {
+                button {
+                    background-color: transparent;
+                }
+            }
+            button {
+                border: 1px solid #ffffff;
+                background-color: #ffffff;
+            }
+        }
+    }
+    .slick-arrow {
+        border: none;
+        background-color: transparent;
+        padding: 0 !important;
+        &.slick-prev {
+            left: 41px;
+        }
+        &.slick-next {
+            right: 41px;
+        }
+    }
+}//END: Halo Block Slideshow.
+
+.halo-banner {
+    margin-top:30px;
+    .halo-block-header {
+        margin-top:30px ;
+        .title {
+            margin-bottom:22px;
+        }
+    }
+}//END: Halo Banner.
+
+.halo-custom-text {
+    margin-top: 60px;
+    .content {
+        &:hover {
+            .desc {
+                text-decoration: underline;
+                text-underline-offset: 0.3rem;
+            }   
+        }
+        .title {
+            font-size:40px;
+            font-weight:700;
+            color: #000000;
+            letter-spacing:0;
+            line-height:28px;
+            margin-bottom: 8px;
+            .text {
+                position: relative;
+                &::before {
+                    content: "";
+                    display: block;
+                    position: absolute;
+                    bottom:5px;
+                    height:24px;
+                    left:0;
+                    right: 0;
+                    width:calc(100% + 16px);
+                    margin-left:-8px;
+                    background-color: #f9e0ec;
+                    z-index:-1;
+                }
+                &.desc-2 {
+                    &::before {
+                        background-color: #f9ede1;
+                    }
+                }
+                &.desc-3 {
+                    &::before {
+                        background-color: #fbded6;
+                    }
+                }
+            }
+        }
+        .desc {
+            line-height:30px;
+            letter-spacing:0;
+            color: #000000;
+        }
+    }
+    .button {
+        height:54px;
+        margin: 0 auto;
+        position: relative;
+        top: 1px;
+    }
+}//END: Halo Custom text.
+
+.halo-tab-category {
+    margin:65px 0 53px;
+    .row {
+        margin: 0 -5px;
+        &.column-5 {
+            .halo-row-item {
+                padding-left: 5px;
+                padding-right: 5px;
+                margin-top:10px;
+               
+            }
+        }
+    }
+    .content {
+        background-color: #f7f7f7;
+        width:100%;
+        display:flex;
+        align-items: center;
+        &:hover {
+            box-shadow: 5px 9px 20px #00000026;
+            transition:all 0.3s ease;
+        }
+        .img-box {
+            width: 100%;
+        }
+        .link {
+            width: 100%;
+            font-size: 18px;
+            font-weight: 500;
+            letter-spacing: 0;
+            color: #202020;
+            padding: 15px;
+            text-align: center;
+            line-height:22px;
+        }
+    }
+}//END: Halo Tab Category.
+
+.halo-spotlights {
+    margin-top: 24px;
+    .halo-block-header {
+        .title {
+            margin-top:0;
+        }
+    }
+    .row {
+        margin: 0 -15px;
+    }
+    .halo-block-header {
+        margin-bottom: 23px;
+    }
+}//END: Halo Spotlights.
+
+.halo-block-instagram {
+    line-height: 1;
+    font-size: 0;
+    .halo-block-header {
+        margin-bottom:28px;
+        .title {
+            margin-top: 44px;
+        }
+    } 
+    .halo-block-content {
+        .row {
+            margin:0 -5px;
+            &.column-5 {
+                .halo-row-item {
+                    width: 20%;
+                    padding-left: 5px;
+                    padding-right: 5px;
+                }
+            }
+        }
+    }
+    .halo-block-navigation {
+        width: 100%;
+        padding-top: 45px;
+        padding-bottom: 50px;
+        display: flex;
+        place-items: center;
+        .nav {
+            list-style-type: none;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 0;
+            margin: 0 auto;
+            flex-wrap: wrap;
+            .nav-item {
+                position: relative;
+                padding: 14px 23px 15px;
+                background: #f9ede1;
+                margin: 0px 5px 10px;
+                border-radius: 30px;
+                font-weight:400;
+                font-size:16px;
+                letter-spacing:0;
+                color: #232323;
+
+            }
+        }
+    }
+}//END: Halo Instagram.
+
+.halo-product {
+    .halo-block-header {
+        margin-top: 30px;
+        margin-bottom:29px;
+    }
+    .row {
+        margin:0 -5px;
+        &.column-5 {
+            .halo-row-item {
+                width: 20%;
+                padding-left: 5px;
+                padding-right: 5px;
+            }
+        }
+    }
+    .halo-row-item {
+        padding: 0px 5px;
+    }
+}//END: Halo product.
+
+.halo-block-product-tab {
+    .tab-content {
+        &>.tab-pane {
+            display: block;
+            height: 0;
+            overflow: hidden;
+        }
+        &>.active {
+            height: auto;
+            overflow: visible;
+        }
+    }
+    .row {
+        margin:0 -5px;
+        &.column-5 {
+            .halo-row-item {
+                width: 20%;
+                padding-left: 5px;
+                padding-right: 5px;
+            }
+        }
+    }
+    .halo-row-item {
+        padding: 0px 5px;
+    }
+    .nav-tabs {
+        display: flex;
+        justify-content: center;
+        gap:10px;
+        margin-bottom:35px;
+        margin-top:60px;
+        border:none;
+        .nav-link {
+            width:100%;
+            max-width:226px;
+            height:55px;
+            border-radius: 40px;
+            font-size:16px;
+            font-weight:600;
+            line-height:28px;
+            letter-spacing:0;
+            padding: 12px 0;
+            color:#232323;
+            border: 1px solid #e6e6e6;
+            &.active,
+            &:hover {
+                color: #ffffff;
+                background-color: #000000;
+                border-color: #000000;
+            }
+        }
+    }
+}//END: Halo product tab.
+
+@media (max-width:1600px) and (min-width:993px) {
+    .halo-custom-text {
+        .content {
+            .title {
+                font-size: 30px;
+                .text {
+                    &::before {
+                        bottom: 0px;
+                        height: 20px;
+                    }
+                }
+            }
+        }
+    }
+    .slick-arrow {
+        &.slick-prev {
+            left: 5px !important;
+        }
+        &.slick-next {
+            right: 5px !important;
+        }
+    }
+}
+
+@media (max-width:1200px) {
+    .halo-tab-category {
+        .row {
+            &.column-5{
+                .halo-row-item{
+                    width: 33.33%;
+                }
+            }
+        }
+    }
+    
+}
+
+@media (max-width: 1024px) {
+    .halo-tab-category {
+        .row {
+            margin: 0 -10px;
+        }
+    }
+    .halo-block-slideshow {
+        .img-box {
+            .image {
+                height: 100%;
+                min-height:550px;
+            }
+        }
+        .container {
+            padding: 0 10px;
+        }
+        .slide-item {
+            .desc {
+                max-width: 330px;
+            }
+            .wrapper-button {
+                flex-direction: column;
+                align-items:center;
+                .button {
+                    max-width:330px;
+                }
+            }
+        }
+    }//END: Halo Banner.
+
+    .halo-banner {
+        .container {
+            padding: 0 10px;
+        }
+    }
+
+    .halo-spotlights {
+        .row {
+            margin: 0px -15 px;
+        }
+    }
+    .halo-block-product-tab {
+        .container {
+            padding:0 10px;
+        }
+        .nav-tabs {
+            white-space: nowrap;
+            overflow-x: auto;
+            overflow-y: hidden;
+            display: inline-block;
+            padding-bottom: 3px;
+            width:100%;
+            .nav-link {
+                display: inline-block;
+            }
+        }
+    }//END: Halo Product Tab
+    .halo-product {
+        .row {
+            margin: 0 -10px;
+        }
+    }
+    .halo-block-instagram {
+        .halo-block-content{
+            .row {
+                margin: 0 -10px;
+            }
+        }
+        .halo-block-navigation {
+            margin: 0 -5px;
+        } 
+    }
+
+    .halo-custom-text {
+        .col-left,
+        .col-right{
+            flex: 0 0 auto;
+            width: 100%;
+        }
+        .slick-dots{
+            margin: 15px 0px 20px;
+        }
+    }
+}
+
+@media (max-width: 1024px) and (min-width: 768px) {
+    .halo-policies-block{
+        &.style-2 {
+            .row {
+                .policies-content {
+                    .title {
+                        font-size: 14px;
+                        color: #000000;
+                        font-weight: 700;
+                        letter-spacing: 0;
+                        line-height: 28px;
+                    }
+                }
+            }
+        }
+    }//END: Policies Block.
+}
+
+@media (max-width: 992px) and (min-width: 768px) {
+    .halo-block-slideshow {
+        .row {
+            margin: 0 -5px;
+        }
+        .slide-item {
+            .title {
+                font-size: 45px;
+                padding-top: 0px;
+                margin-bottom: 27px;
+            }
+            .desc {
+                max-width: 360px;
+            }   
+            .wrapper-button {
+                flex-direction: row;
+                .button {
+                    max-width: 170px;
+                }
+            }
+        }
+        &.style-1 {
+            .slick-dots {
+                top: 0px;
+            }
+        }
+    }//END: Halo Banner.
+}
+
+@media (max-width: 991px) {
+    .halo-policies-block {
+        .row {
+            margin: 0 -5px;
+        }
+        &.style-2 {
+            .halo-row--swipe-policies {
+                white-space: nowrap;
+                overflow-x: auto;
+                overflow-y: hidden;
+                padding: 0 15px;
+                margin-left: -5px;
+                margin-right: -5px;
+                flex-wrap: nowrap;
+            }
+        }
+    }//END: Policies Block.
+
+    .halo-tab-category {
+        .row {
+            margin: 0 -10px;
+            &.column-5{
+                .halo-row-item{
+                    width: 50%;
+
+                }
+            }
+        }
+        .content {
+            width: 100%;
+            max-width: 100%;
+        }
+        
+    }//END: Tab Category.
+
+    .halo-spotlights {
+        .row {
+            white-space: nowrap;
+            overflow-x: auto;
+            overflow-y: hidden;
+            flex-wrap: nowrap;
+        }
+    }//END: Halo Spotlights.
+
+    .halo-block-product-tab {
+        .nav-tabs {
+            .nav-link {
+                max-width: 160px;
+                padding: 6px 0;
+                margin-right: 5px;
+            }
+        }
+    } 
+    .halo-block-slideshow {
+        &.halo-block-slideshow-2 {
+            .slick-dots {
+                margin-top: 15px;
+            }
+        }
+    }
+    .halo-block-product-tab {
+        .slick-dots {
+            margin-top: -10px;
+        }
+    }
+    
+    .halo-block-instagram {
+        .slick-dots {
+            margin-top: 20px;
+        }
+    }
+}
+
+@media (max-width: 767px) {
+    .halo-policies-block {
+        .halo-row--swipe-policies {
+            padding: 0;
+            margin-left: -5px;
+            margin-right: -5px;
+        }
+        .wrapper-policies-content {
+            text-align:left !important;
+            padding: 15px;
+            margin: 0 auto;
+            .policies-content {
+                .title {
+                    font-size: 16px;
+                    margin-bottom: 0;
+                }
+                .desc{
+                    font-size: 13px;
+                }
+            }
+        }
+        &.style-2 {
+            .halo-row--swipe-policies {
+                margin-left: -5px;
+                margin-right: -5px;
+            }
+        }
+        &.halo-policies-block-2{
+            .row {
+                .policies-content {
+                    .title{
+                        font-size: 16px;
+                    }
+                }
+            }
+        }
+    }//END: Policies Block.
+
+    .halo-block-slideshow {
+        .slide-item {
+            .title {
+                font-size: 50px;
+                padding-top: 4px;
+                margin-bottom: 28px;
+            }
+            .desc {
+                display: -webkit-box;
+                -webkit-line-clamp: 3;
+                -webkit-box-orient: vertical;
+                overflow: hidden;
+                padding-bottom: 0;
+            }
+            .wrapper-button {
+                margin-top: 20px;
+            }
+        }
+    }//END: Halo Banner.
+
+    .halo-custom-text {
+        margin-top: 30px;
+    }//END: Halo Custom text.
+
+    .halo-tab-category {
+        margin-top: 30px;
+        margin-bottom: 20px;
+        .content {
+            flex-direction: column;
+            min-height:200px;
+            .icon {
+                width:100%;
+                margin: 0 auto;
+                display: flex;
+                justify-content: center;
+            }
+        }
+        .row {
+            margin: 0 -10px;
+        }
+    }//END: Halo Tab Category.
+
+    .halo-block-instagram {
+        margin-top: 30px;
+        margin-bottom: 20px;
+        .halo-block-header {
+            .title {
+                margin-top: 18px;
+            }   
+        }
+        .halo-block-content {
+            .row {
+                margin: 0 -10px;
+            }
+        }
+        .halo-block-navigation {
+            padding-top: 15px;
+            padding-bottom: 20px;
+        }
+        .slick-dots {
+            margin-top:25px;
+        }
+    }//END: Halo instagram.
+
+    .halo-product {
+        .row {
+            margin: 0px -10px;
+        }
+    }//END: Halo Product.
+
+    .halo-block-product-tab .nav-tabs {
+        margin-bottom: 22px;
+        margin-top: 45px;
+    }//END: Halo Product Tab.
+
+    .halo-spotlights {
+        .row {
+            margin: 0 -10px;
+        }
+    }//END: Halo Spotlights.
+
+    .quickSearchProduct {
+        .search-block-title {
+            padding-left: 0 !important;
+        }
+    }
+
+    .halo-sidebar_menu {
+        .nav-currency-language {
+            .wrapper-currencies {
+                font-size:12px;
+            }
+        }
+    }
+}
+
+@media (max-width: 340px) {
+    .halo-custom-text {
+        .content {
+            .title {
+                font-size: 35px;
+            }
+        }
+    }//END: Halo Custom text.
+    .halo-policies-block {
+        &.style-2 {
+            .row {
+                .policies-content {
+                    .title {
+                        font-size: 15px;
+                    }
+                }
+            }
+        }
+    }
+}
+
+@media (min-width: 768px) {
+    .halo-tab-category {
+        .content {
+            &:hover {
+                box-shadow: 5px 9px 20px #00000026;
+                transition:all 0.3s ease;
+            }
+            .img-box {
+                width: 120px;
+            }
+            .link {
+                width: calc(100% - 120px);
+            }
+        }
+    }//END: Halo Tab Category.
+    
+    .halo-banner {
+        .halo-block-header{
+            margin-top: 56px;
+        }
+    }
+    .halo-product {
+        .halo-block-header{
+            margin-top: 56px;
+        }
+    }
+}
+
+@media (min-width: 1025px){
+    .halo-block-slideshow {
+        .slick-dots{
+            bottom:48px;
+        }
+    }//END: Halo Banner.
+}
+

@@ -1,0 +1,257 @@
+masonry-items{
+    display: block;
+}
+.portfolio-page{
+    .page-header{
+        background-image: url(../../images/Pages/portfolio/Banner-Portfolio-1.jpg);
+        background-size: cover;
+        background-repeat: repeat-x;
+        background-position: center top;
+        height: 270px;
+        background-attachment: fixed;
+    }
+}
+.page-content{
+    padding-bottom: 70px;
+}
+.shuffle-tabs{  
+    .tabs{
+        list-style-type: none;
+        display: flex;
+        justify-content: flex-start;
+        align-items: center;
+        flex-wrap: nowrap;
+        white-space: nowrap;
+        overflow-x: auto;
+        overflow-y: hidden;
+        width: 100%;
+        padding-top: 12px;
+        padding-bottom: 12px;
+        padding-right: 10px;
+        background-color: #fafafa;
+        .tab{
+            position: relative;
+            padding: 0px 25px;
+            .tab-title{
+                color: #232323;
+                font-weight: 500;
+                transition: color .35s ease-in-out;
+            }
+            &.is-active{
+                .tab-title{
+                    span{
+                        text-decoration: underline;
+                        text-underline-offset: 0.2rem;
+                    }
+                } 
+            }
+        }
+    }
+    .haloPortfolioContent{
+        .desc{
+            max-width:470px;
+            width: 100%;
+            margin: 0 auto;
+            padding: 32px 15px 38px;
+        }
+    }
+}
+
+.tabs-contents{
+    .masonry-row{
+        margin-left: -5px;
+        margin-right: -5px;
+        font-size: 0;
+        letter-spacing: 0;
+    }
+    .masonry-item{
+        padding: 5px;
+        display: inline-block;
+        vertical-align: top;
+        width: 100%;
+        &.sizer-element{
+            padding: 0!important;
+        }
+        .item{
+            position: relative;
+            .icon{
+                width: 60px;
+                height: 60px;
+                background-color: #232323;
+                stroke: transparent;
+                border-radius: 50%;
+                position: absolute;
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%,calc(-50% + 10px));
+                padding: 18px;
+                transition: all ease .7s;
+                z-index: -1;
+                opacity: 0;
+                visibility: hidden;
+                svg{
+                    width: 100%;
+                    height: 100%;
+                    fill: #ffffff;
+                }
+            }
+            .content-box{
+                position: absolute;
+                left: 0;
+                bottom: 0;
+                height: 146px;
+                width: 100%;
+                padding: 7px;
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                z-index: 10;
+                flex-direction: column;
+                gap: 7px;
+                .title{
+                    display: block;
+                    font-size: 18px;
+                    font-weight: 600;
+                    line-height: 22px;
+                    letter-spacing: .02em;
+                    color: #ffffff;
+                    margin: 0;
+                }
+                .desc{
+                   color: #ffffff;
+                }
+                &::after{
+                    content: "";
+                    position: absolute;
+                    top: 0;
+                    left: 0;
+                    right: 0;
+                    bottom: 0;
+                    background-color: transparent;
+                    opacity: .9;
+                    z-index: -1;
+                    transition: background-color .5s ease-in-out;
+                }
+            }
+            &:hover{
+                .icon{
+                    z-index: 5;
+                    opacity: 1;
+                    visibility: visible;
+                    transform: translate(-50%,-50%);
+                }
+                .content-box{
+                    &::after{
+                        background: #232323;
+                    }
+                }
+            }
+            
+        }
+    }
+    .portfolio-showmore-btn{
+        padding: 45px 15px 45px;
+        text-align: center;
+        .button{
+            width: 100%;
+            max-width: 290px;
+        }
+    }
+}
+
+.portfolio-with-sidebar{
+    .tabs-contents{
+        .portfolio-showmore-btn{
+            padding: 30px 15px;
+        }
+    }
+}
+
+
+@media(min-width:768px){
+
+    .shuffle-tabs{  
+        .tabs{
+            justify-content:center;   
+        }
+    }
+    .tabs-contents{
+        .masonry-row{
+            margin-left: -10px;
+            margin-right: -10px;
+            &.column-3{
+                .masonry-item{
+                    width: 50%;
+                    padding: 10px;
+                }
+            }
+            &.column-2{
+                .masonry-item{
+                    width: 50%;
+                    padding: 15px;
+                }
+            }
+            
+        }
+    }
+}
+
+/* START: Portfolio With Sidebar */
+.portfolio-with-sidebar{
+    .shuffle-tabs{
+        .tabs{
+            display: block;
+            background:transparent;
+            margin-top: 5px;
+            .tab{
+                padding: 11px 0px;
+                width: 100%;
+                color: #232323;
+                border-top: 1px solid #787878;
+                &:last-child{
+                    border-bottom: 1px solid #787878; 
+                }
+            }
+        }
+    } 
+}
+
+/* END: Portfolio With Sidebar */
+@media(max-width:767px){
+    .shuffle-tabs .haloPortfolioContent .desc{
+        padding: 15px 15px 25px;
+    }
+}
+@media(min-width:1025px){
+    .portfolio-page{
+        padding-bottom: 57px;
+    }
+    
+    .tabs-contents{
+        .masonry-row{
+            margin-left: -15px;
+            margin-right: -15px;
+            &.column-3{
+                .masonry-item{
+                    width: 33.33333333%;
+                    padding: 15px;
+                }
+            }
+            &.column-2{
+                .masonry-item{
+                    width: 50%;
+                    padding: 15px;
+                }
+            }
+            
+        }
+    }
+    .portfolio{
+        .page-sidebar {
+            &+ .page-content{
+                padding-left: 20px;
+            }
+        }
+    }
+    
+}

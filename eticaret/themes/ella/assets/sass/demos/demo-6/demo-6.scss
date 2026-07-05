@@ -1,0 +1,204 @@
+.halo-block-slideshow{
+    margin-bottom:20px;
+    line-height: 1;
+    font-size: 0;
+    .halo-row-carousel{
+        line-height: 1;
+        .bannerCarousel-slide{
+            display:none;
+            &:first-child{
+                display: block;
+            }
+        }
+        .slick-dots{
+            position:absolute;
+            bottom:14px;
+            width: 100%;
+            li{
+                button{
+                    background:#84add0;
+                    border-color:#84add0;
+                }
+                &.slick-active{
+                    button{
+                        border-color: #ffffff;
+                        background:transparent;
+                    }
+                } 
+            }
+        }
+        &.slick-initialized {
+            .bannerCarousel-slide{
+                display:block;
+            }
+        }
+    }
+}// End Block Slide Show
+
+.halo-block-four-banner{
+    padding-bottom: 7px;
+    .halo-row-item{
+        margin-bottom:10px;
+        &.halo-row-2item{
+            padding:0;
+        }
+    }
+}// End Block Four Banner
+
+.halo-block-two-banner{
+    padding-bottom: 8px;
+}// End Block Two Banner
+
+.halo-block-custom{
+    background:#f5f5f5;
+    padding:30px 0px;
+    margin: 25px 0;
+    .halo-row-item{
+        .wrapper-item{
+            box-shadow: 0px 2px 20px 0px rgba(0, 0, 0, 0.05);
+        }
+        .content-box{
+            background:#ffffff;
+            padding: 23px 0px 25px;
+            .title{
+                font-size: 20px;
+                letter-spacing:0;
+                font-weight: 900;
+                color:#00163a;
+                font-style: italic;
+                margin: 0;
+                padding-bottom: 10px;
+            }
+            .link{
+                color:#00163a;
+                font-size: 14px;
+                font-weight: 700;
+            }
+        }
+    }
+    .slick-dots{
+        margin-top: 35px;
+    }
+    
+}// End Block Custom
+
+.halo-block-instagram{
+    .halo-block-header{
+        margin-bottom: 30px;
+        padding-top:3px;
+    }
+    .row{
+        margin-left: -5px;
+        margin-right: -5px;
+        .halo-row-item{
+            padding-left: 5px;
+            padding-right:5px;
+            width: 20%;
+        }
+        .slick-dots{
+            margin-top: 15px;
+            position: absolute;
+        }
+    }
+    
+    .halo-block-navigation{
+        width: 100%;
+        padding-top: 48px;
+        padding-bottom: 55px;
+        display: flex;
+        place-items: center;
+        .nav{
+            list-style-type: none;
+            display: flex;
+            justify-content: flex-start;
+            align-items: center;
+            padding: 0;
+            margin: 0 auto;
+            flex-wrap: nowrap;
+            white-space: nowrap;
+            overflow-x: auto;
+            overflow-y: hidden;
+            .nav-item{
+                position: relative;
+                padding: 10px 25px 11px;
+                background:#f5f5f5;
+                margin: 0px 5px;
+                border-radius: 30px;
+                a{
+                    color: #202020;
+                    font-weight: 500;
+                    transition: color .35s ease-in-out;
+                }
+            }
+        }
+    }
+}// End Block instagram
+
+.halo-block-icon-with-text{
+    background: #f5f5f5;
+    padding: 34px 0px 31px;
+    .wrapper-item{
+        display:flex;
+        justify-content: center;
+        align-items: center;
+        flex-wrap: nowrap;
+        .icon{
+            margin-right: 9px;
+        }
+        .title{
+            font-weight: 900;
+            line-height:24px;
+            font-size: 14px;
+            color: #00163a;
+            font-style: italic;
+            margin: 0;
+        }
+    }
+}// End Block Icon Width Text
+
+@media(max-width:767px){
+    .halo-block-custom{
+        .row{
+            .halo-row-item{
+                padding-left: 0;
+                padding-right: 0;
+            }
+        }
+    }
+}
+@media(min-width:768px){
+    .halo-block-four-banner{
+        .halo-row-item{
+            margin-bottom:0;
+            .halo-row-2item{
+                margin-bottom: 20px;
+                padding: 0;
+            }
+        }
+    }// End Bloc Four Banner
+
+    .halo-block-custom{
+        padding:42px 0px;
+        margin: 40px 0;
+        .halo-row-item{
+            .content-box{
+                .title{
+                    font-size: 24px;
+                }
+            }
+        }
+    }
+}
+
+@media(min-width:1025px){
+    .halo-block-slideshow{
+        margin-bottom:30px;
+    }// End Block Slide Show
+    .halo-block-four-banner{
+        .halo-row-item{
+            .halo-row-2item{
+                margin-bottom: 30px;
+            }
+        }
+    }// End Bloc Four Banner
+}

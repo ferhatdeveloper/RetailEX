@@ -1,0 +1,370 @@
+.halo-block-banner{
+    margin-bottom: 30px;
+    .content-box{
+        max-width: 340px;
+        .banner-title{
+            font-size: 50px;
+            font-weight: 700;
+            color:#000000;
+            margin-bottom: 8px;
+            letter-spacing: 0;;
+        }
+        .banner-sub-title{
+            font-size: 18px;
+            font-weight: 700;
+            color: #000000;
+            letter-spacing: 0;
+            margin-bottom: 30px;
+        }
+        .banner-button{
+            margin-top: 48px;
+            width:100%;
+            max-width: 178px;
+        }
+    }
+}//END: Block Banner.
+
+.halo-block-icon-with-text{
+    background: #f6f6f6;
+    padding: 50px 0px 80px;
+    margin-bottom: 30px;
+    .row{
+        &:not(.slick-slider){
+            flex-wrap: nowrap;
+            overflow: hidden;
+        }
+    }
+    .wrapper-item{
+        .icon{
+            margin: 0px auto 25px;
+            width: 50px;
+        }
+        .content-box{
+            margin-left: 28px;
+            text-align: center;
+            .title{
+                font-size: 20px;
+                font-weight: 700;
+                margin-bottom: 15px;
+            }
+            .desc{
+                margin-bottom: 2px;
+            }
+        }
+    }
+    &.style-2{
+        background: transparent;
+        padding: 24px 0px 30px;
+        .row{
+            justify-content: center;
+        }
+        .wrapper-item{
+            flex-wrap: wrap;
+            .icon{
+                width: 100%;
+                margin-bottom: 35px;
+                img{
+                    margin: 0 auto;
+                }
+            }
+            .content-box{
+                width: 100%;
+                margin: 0;
+                .title{
+                    font-size: 18px;
+                    margin-bottom: 13px;
+                }
+                .desc{
+                    line-height: 26px;
+                }
+                .button{
+                    width: 100%;
+                    max-width: 178px;
+                    margin: 23px auto 0;
+                }
+            }
+        }
+    }
+}//END: Block Icon Width Text
+
+.halo-block-where-ride{
+    margin: 115px 0px 75px;
+    .halo-wrapper{
+        background: #72d1c6;
+        padding: 0px 0px 70px;
+    }
+    .halo-block-header{
+        top: -19px;
+        margin-bottom: 22px!important;
+        padding-left: 15px;
+        padding-right: 15px;
+        .title{
+            .text{
+                font-size: 50px;
+                font-weight: 700;
+                color: #000000;
+                margin-bottom: 25px;
+            }
+            .desc{
+                font-size: 28px;
+                line-height: 28px;
+                color: #000000;
+            }
+        }
+    }
+    .wrapper-content{
+        max-width: 1170px;
+        padding-left: 20px;
+        padding-right: 20px;
+        margin: 0 auto;
+        .content-box{
+            background: #ffffff;
+            padding: 27px 15px 26px;
+            .title{
+                margin: 0;
+                a{
+                    font-size: 24px;
+                    font-weight: 700;
+                    margin-bottom: 17px;
+                    color: #000000;
+                    display: block;
+                }
+                .desc{
+                    color: #000000;
+                }
+            }
+        }
+        .button-booking{
+            width: 100%;
+            max-width: 370px;
+            margin: 70px auto 10px;
+        }
+        .slick-arrow{
+            display: none!important;
+            width: 70px;
+            height: 70px;
+            background: transparent;
+            border: none;
+            padding: 0!important;
+            &.slick-next{
+                right: -105px;
+            }
+            &.slick-prev{
+                left: -105px;
+            }
+            &:hover{
+                background: transparent;
+            }
+        }
+    }
+}//END: Block Where Ride
+
+.halo-block-customer-review{
+    margin-bottom: 56px;
+    padding-bottom: 110px;
+    border-bottom: 5px solid #f6f6f6;
+    .halo-block-header{
+        .title{
+            margin-bottom: 13px;
+        }
+    }
+    .slick-dots{
+        bottom: -70px!important;
+    }
+    .img-box{
+        margin-bottom: 44px;
+        img{
+            margin: 0 auto;
+        }
+    }
+    .content-box{
+        max-width: 430px;
+        margin: 0 auto;
+        padding: 0px 15px;
+        .review-rating{
+            margin-bottom: 12px;
+            .spr-icon{
+                &.spr-icon-star{
+                    &::before{
+                        color: #f8c646;
+                    }
+                }
+                &::before,
+                ::after{
+                    font-size: 32px;
+                }
+            }  
+        }
+        .desc{
+            color:#000000;
+            line-height: 26px;
+        }
+        .name{
+            margin-top: 16px;
+            font-size: 15px;
+            font-weight: 600;
+            color: #787878;
+        }
+    }
+
+}//END: Block Cutom Review
+
+.halo-product-block{
+    .halo-block-header{
+        margin-bottom: 40px !important;
+        .title{
+            color: #282f36;
+        }
+    }
+    .slick-arrow{
+        top: 35%;
+    }
+    .slick-dots{
+        bottom: -37px!important;
+    }
+    .product-infinite-scroll{
+        margin: 23px 0px 80px;
+        .button{
+            max-width: 248px;
+        }
+    }
+}//END: Block Product
+
+.halo-block-brands{
+    background: #000000;
+    padding: 30px 0px 27px;
+    margin-top: 93px;
+    .halo-block-content{
+        .img-box{
+            img{
+                margin: 0 auto;
+            }
+        }
+        .slick-arrow{
+            background: transparent;
+            top: 45%;
+            svg{
+                fill:#ffffff;
+            }
+        }
+        .slick-dots{
+            bottom: -20px;
+            li{
+                button{
+                    background: transparent;
+                    border-color: #ffffff;
+                }
+                &.slick-active{
+                    button{
+                        background: #ffffff;
+                    }  
+                }
+            }
+        }
+    }
+}//END: Block Brands
+
+
+
+@media(max-width:991px){
+    .halo-block-banner{
+        .content-box{
+            .banner-title{
+                font-size: 30px;
+                margin-bottom: 8px;
+            }
+            .banner-sub-title{
+                margin-bottom: 20px;
+            }
+            .banner-button{
+                margin-top: 25px;
+            }
+            &.content-box--right{
+                padding-right: 15px;
+                max-width: 350px;
+            }
+        }
+    }
+    .halo-block-brands{
+        .halo-block-content{
+            .slick-arrow{
+               &.slick-next{
+                right: 0;
+               }
+               &.slick-prev{
+                left: 0;
+               }
+            }
+        }
+    }
+    
+}
+
+@media(max-width:767px){
+    .halo-block-banner{
+        .content-box{
+            padding: 0px 15px;
+            left: 15px;
+            .banner-title{
+                color: #ffffff;
+            }
+            .banner-sub-title,
+            .desc{
+                color: #ffffff;
+            }
+            .banner-button{
+                background: #ffffff;
+                color: #000000;
+            }
+        }
+    }
+
+    .halo-block-where-ride{
+        .halo-block-header{
+            .title{
+                .text{
+                    font-size: 40px;
+                }
+            } 
+        } 
+    } 
+}
+
+@media(min-width:992px){
+    .halo-block-icon-with-text{
+        padding: 80px 0px 73px;
+        .wrapper-item{
+            display: flex;
+            justify-content: center;
+            .icon{
+                position: relative;
+                 top: 3px;
+                 margin: 0;
+            }
+            .content-box{
+                text-align: left;
+            }
+        }
+    }
+    .halo-block-banner{
+        .content-box{
+            &.content-box--right{
+                right: 8%;
+            }
+        }
+    }
+}
+
+@media(min-width:1600px){
+    .halo-block-where-ride{
+        .wrapper-content{
+            padding-left: 0;
+            padding-right: 0;
+        }
+        .halo-wrapper{
+            .slick-arrow{
+                display: inline-block!important;
+            }
+        }
+    }
+}

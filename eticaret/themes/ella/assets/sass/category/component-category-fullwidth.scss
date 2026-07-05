@@ -1,0 +1,333 @@
+.template-full-width{
+    padding-bottom: 50px;
+    .page-header{
+        position: relative;
+        position: relative;
+        background-image: url(../..//images/collection/banner-header.jpg);
+        background-size: cover;
+        background-repeat: repeat-x;
+        background-position: center top;
+        height: 270px;
+        background-attachment: fixed;
+        .content-box{
+            top: 0px;
+            transform: translate(-50%, 0);
+            padding: 0 15px;
+            left: 50%;
+            max-width: 550px;
+            .breadcrumb{
+                justify-content: center;
+                color:#ffffff;
+                padding: 20px 0px 0px;
+                margin: 0;
+                .separate {
+                    svg{
+                        color: #ffffff;
+                        fill: #ffffff;      
+                    }
+                }
+                a{
+                    color: #ffffff;
+                }
+            }
+            .page-heading{
+                .page-title{
+                    display: block;
+                    font-size: 24px;
+                    font-weight: 700;
+                    line-height: 22px;
+                    letter-spacing: .05em;
+                    color: #ffffff;
+                    position: relative;
+                    padding: 52px 0 17px;
+                    margin: 0;
+                }
+                .desc{
+                    margin-top: 5px;
+                    max-width: 540px;
+                    margin-left: auto;
+                    margin-right: auto;
+                    color: #ffffff;
+                }
+            }
+
+        }
+        
+    }
+    .collection-navigation{
+        width: 100%;
+        padding-top: 10px;
+        padding-bottom: 8px;
+        padding-right: 10px;
+        background-color: #fafafa;
+        border: 1px solid;
+        border-color: #fafafa;
+        display: flex;
+        place-items: center;
+        .nav{
+            list-style-type: none;
+            display: flex;
+            justify-content: flex-start;
+            align-items: center;
+            padding: 0;
+            margin: 0 auto;
+            flex-wrap: nowrap;
+            white-space: nowrap;
+            overflow-x: auto;
+            overflow-y: hidden;
+            .nav-item{
+                position: relative;
+                padding: 0px 25px;
+                a{
+                    color: #232323;
+                    font-weight: 500;
+                    transition: color .35s ease-in-out;
+                    letter-spacing: .02em;
+                }
+            }
+        }
+    }
+    .toolbar{
+        .results-count{
+            span{
+                font-size: 12px;
+                letter-spacing: .02em;
+                color: #707070;
+            }
+        }
+        .results-count,
+        .toolbar-colRight{
+            width: 40%;
+        }
+        .toolbar-colRight{
+            justify-content: flex-end;
+        }
+        .toolbar-toolbar-colLeft{
+            width: 20%;
+        }
+    }
+    .collection-description{
+        color:#3c3c3c;
+        max-width: 900px;
+        margin: 40px auto 40px;
+    }
+}
+.page-sidebar{
+    &.page-sidebar--horizontal{
+        .filter-title{
+            display: none
+        }
+    }
+}
+
+.collection-custom-banner{
+    margin: 20px 0px 0px;
+    .content-box {
+        position: absolute;
+        bottom: 70px;
+        left: 50%;
+        transform: translate(-50%,0);
+        z-index: 9;
+        .sub-banner-title {
+            font-size: 12px;
+            line-height: 22px;
+            letter-spacing: .02em;
+            color: #ffffff;
+            font-weight: 400;
+            margin: 0;
+        }
+        .banner-title {
+            font-size: 40px;
+            letter-spacing: .05em;
+            margin: 0;
+            color: #ffffff;
+            padding: 13px 0px 24px;
+            a{
+                color: #ffffff;
+            }
+            .text{
+                text-decoration-thickness: 1px !important;
+            }
+        }
+        .banner-button{
+            border-color: #ffffff;
+            width: 100%;
+            max-width: 167px;
+            text-align: center;
+            color: #232323;
+            background: #ffffff;
+            &:hover{
+                background: transparent;
+                color: #ffffff;
+            }
+        }
+    }
+}// End Collection Custom banner
+
+.halo-icon-with-text{
+    padding: 0px 0px 55px;
+    .halo-row-item{
+        text-align: center;
+        .icon{
+            width: 40px;
+            height: 40px;
+            margin: 0 auto;
+            svg{
+                fill: #232323;
+                width: 100%;
+                height: 100%;
+            }
+        }
+        .title{
+            font-size: 16px;
+            letter-spacing: .02em;
+            line-height: 30px;
+            color: #232323;
+            font-weight: 500;
+            padding: 15px 0px 3px;
+        }
+        .desc{
+            color: #232323;
+        }
+    }
+}// End Icon Width Text
+
+
+
+@media(max-width: 992px){
+    .collection-custom-banner{
+        margin: 20px 0px 25px;
+    }
+    .halo-icon-with-text{
+        padding: 4px 0px 35px;
+        .halo-row-item{
+            border: 1px solid #727272;
+            padding: 30px 15px;
+        }
+    }
+}
+
+@media(max-width: 767px){
+    .template-full-width{
+        .halo-custom-banner{
+            &.style-2{
+               .content-box{
+                position: relative;
+                padding: 35px 0px 40px;
+                top: 0;
+                transform: translateY(0);
+               }
+            }
+        }
+    }
+}
+
+@media(min-width:1025px){
+    .page-sidebar{
+        &.page-sidebar--horizontal{
+            width: 100%;
+            max-width: 100%;
+            position: relative;
+            top: unset!important;
+            margin-top: 45px;
+            display: flex;
+            flex-wrap: wrap;
+            & + .page-content{
+                padding-left: 0;
+                padding-right: 0;
+                width: 100%;
+            }
+            .sidebar-refined-widgets{
+                padding: 6px 15px 25px 0;
+            }
+            .halo-sidebar-wrapper{
+                display: flex;
+                flex-wrap: wrap;
+                justify-content: flex-start;
+                width: 100%;
+                overflow: inherit;
+                order: -1;
+                .filter-title{
+                    display: block;
+                    span{
+                        font-size: 12px;
+                        letter-spacing: .02em;
+                        font-weight: 500;
+                        color: #3c3c3c;
+                        text-transform: uppercase;
+                        padding: 0 17px 0 5px;
+                    }
+                    svg{
+                        width: 22px;
+                        height: 100%;
+                        fill: #3c3c3c;
+                    }
+                }
+            }
+            .sidebarBlock{
+                max-width: 170px;
+                width: 100%;
+                margin: 0;
+                padding: 0px 5px;
+                position: relative;
+                margin-bottom: 10px;
+                .sidebarBlock-heading{
+                    border: 1px solid #e6e6e6;
+                    font-size: 12px;
+                    letter-spacing: .02em;
+                    color: #3c3c3c;
+                    font-weight: 400;
+                    text-transform: capitalize;
+                    padding: 11px 15px 10px;
+                    margin: 0;
+                    .icon{
+                        right: 15px;
+                    }
+                }
+                .sidebarBlock-content{
+                    position: absolute;
+                    top: calc(100% + 5px);
+                    left: 6px;
+                    background: #ffffff;
+                    z-index: 999;
+                    box-shadow: 0 1px 4px rgba(0, 0, 0,0.15);
+                    width: calc(100% + 30px);
+                    padding: 0px 15px;
+                }
+                &.filter-prices{
+                    .sidebarBlock-content{
+                        padding-bottom: 15px;
+                    }
+                }
+            }
+        }
+    }
+    .template-full-width{
+        .toolbar{
+            padding: 34px 0 36px;
+        }
+        .collection-description{
+            margin: 72px auto 75px;
+        }
+        .halo-custom-banner{
+            &.style-2{
+                padding-top: 12px;
+            }
+        }
+    }
+   
+}
+
+@media(min-width:1400px){
+    .page-sidebar{
+        &.page-sidebar--horizontal{
+            .sidebar-refined-widgets{
+                padding: 6px 15px 25px 110px;
+            }
+            .sidebarBlock{
+                max-width: 210px;
+            }
+        }
+        
+    } 
+}

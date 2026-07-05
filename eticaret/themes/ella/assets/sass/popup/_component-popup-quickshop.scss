@@ -1,0 +1,119 @@
+body {
+    &.quickshop-popup-show {
+        overflow: hidden;
+        .halo-quickshop-popup {
+            opacity: 1;
+            visibility: visible;
+            pointer-events: auto;
+            transform: translate(-50%, -50%);
+            z-index: 999;
+        }
+        .background-overlay-popup {
+            z-index: 999;
+            opacity: 1;
+            visibility: visible;
+        }
+    }
+}
+
+.halo-quickshop-popup {
+    max-width: calc(100% - 30px);
+    .halo-popup-header {
+        margin: 0;
+    }
+    .halo-popup-content {
+        display: flex;
+        margin: 0;
+    }
+    .halo-productView-left {
+        width: 45%;
+        padding-right: 30px;
+        display: none;
+    }
+    .halo-productView-right {
+        width: 100%;
+        margin-bottom: 0;
+        .product-title {
+            font-size: 16px;
+            font-weight: 500;
+            padding-bottom: 15px;
+            display: block;
+        }
+        .card-price {
+            justify-content: flex-start;
+            padding-bottom: 10px;
+            .price-item {
+                .money {
+                    font-size: 16px;
+                    font-weight: 500;
+                }
+            }
+        }
+        .productView-variants {
+            .form__label {
+                font-size: 14px;
+            }
+            [data-header-option] {
+                font-size: 12px;
+            }
+            .product-form__label{
+                margin-bottom: 11px;
+            }
+            .product-form__swatch {
+                .product-form__label{
+                    margin-bottom: 0;
+                }
+            }
+            
+        }
+        .wrapper-action {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 15px 0px 15px;
+            .previewCartItem-qty {
+                margin-top: 0;
+            }
+            .btn-card-action {
+                width: calc(100% - 110px);
+                .button {
+                    width: 100%;
+                }
+            }
+        }
+        .productView-notifyMe{
+            padding: 5px 0 30px;
+        }
+        .productView-see-details {
+            padding-bottom: 15px;
+            .button {
+                width: 100%;
+            }
+        }
+    }
+}
+
+@media(min-width:551px) {
+    .halo-quickshop-popup {
+        .halo-productView-left {
+            display: block;
+        }
+        .halo-productView-right {
+            width: 55%;
+        }
+    }
+}
+
+@media(min-width:768px) {
+    .halo-quickshop-popup {
+        max-width: 680px;
+    }
+}
+
+@media (min-width:1025px){
+    body {
+        &.quickshop-popup-show {
+            padding-right: 10px;
+        }
+    }
+}

@@ -46,6 +46,7 @@ export interface SystemSettingsRow {
     default_currency: string;
     primary_firm_nr: string | null;
     primary_period_nr: string | null;
+    eticaret_settings?: Record<string, unknown> | null;
 }
 
 export const organizationAPI = {
@@ -566,7 +567,7 @@ export const organizationAPI = {
                 const { postgrest } = await import('./postgrestClient');
                 const rows = await postgrest.get<SystemSettingsRow[]>(
                     '/system_settings',
-                    { select: 'id,default_currency,primary_firm_nr,primary_period_nr', id: 'eq.1', limit: 1 },
+                    { select: 'id,default_currency,primary_firm_nr,primary_period_nr,eticaret_settings', id: 'eq.1', limit: 1 },
                     { schema: 'public' }
                 );
                 const r = Array.isArray(rows) ? rows[0] : undefined;
@@ -576,10 +577,11 @@ export const organizationAPI = {
                     default_currency: String(r.default_currency || 'IQD').trim().toUpperCase().slice(0, 10) || 'IQD',
                     primary_firm_nr: r.primary_firm_nr != null ? String(r.primary_firm_nr) : null,
                     primary_period_nr: r.primary_period_nr != null ? String(r.primary_period_nr) : null,
+                    eticaret_settings: (r as { eticaret_settings?: Record<string, unknown> }).eticaret_settings ?? null,
                 };
             }
             const { rows } = await postgres.query(
-                `SELECT id, default_currency, primary_firm_nr, primary_period_nr FROM public.system_settings WHERE id = 1`,
+                `SELECT id, default_currency, primary_firm_nr, primary_period_nr, eticaret_settings FROM public.system_settings WHERE id = 1`,
                 []
             );
             const r = rows[0] as {
@@ -587,6 +589,7 @@ export const organizationAPI = {
                 default_currency?: string;
                 primary_firm_nr?: string | null;
                 primary_period_nr?: string | null;
+                eticaret_settings?: Record<string, unknown> | null;
             } | undefined;
             if (!r) return null;
             return {
@@ -594,6 +597,7 @@ export const organizationAPI = {
                 default_currency: String(r.default_currency || 'IQD').trim().toUpperCase().slice(0, 10) || 'IQD',
                 primary_firm_nr: r.primary_firm_nr != null ? String(r.primary_firm_nr) : null,
                 primary_period_nr: r.primary_period_nr != null ? String(r.primary_period_nr) : null,
+                eticaret_settings: r.eticaret_settings ?? null,
             };
         } catch (error) {
             console.warn('[OrganizationAPI] getSystemSettings:', error);
@@ -605,10 +609,12 @@ export const organizationAPI = {
         default_currency: string;
         primary_firm_nr: string | null;
         primary_period_nr: string | null;
+        eticaret_settings?: Record<string, unknown> | null;
     }): Promise<void> {
         const dc = String(data.default_currency || 'IQD').trim().toUpperCase().slice(0, 10) || 'IQD';
         const fn = data.primary_firm_nr?.trim() || null;
         const pn = data.primary_period_nr?.trim() || null;
+        const eticaret = data.eticaret_settings ?? undefined;
         if (isRestApi()) {
             const { postgrest } = await import('./postgrestClient');
             const existing = await postgrest.get<{ id?: number }[]>(
@@ -616,11 +622,12 @@ export const organizationAPI = {
                 { select: 'id', id: 'eq.1', limit: 1 },
                 { schema: 'public' }
             );
-            const body = {
+            const body: Record<string, unknown> = {
                 default_currency: dc,
                 primary_firm_nr: fn,
                 primary_period_nr: pn,
             };
+            if (eticaret !== undefined) body.eticaret_settings = eticaret;
             if (Array.isArray(existing) && existing[0]) {
                 await postgrest.patch(
                     '/system_settings?id=eq.1',
@@ -637,14 +644,15 @@ export const organizationAPI = {
             return;
         }
         await postgres.query(
-            `INSERT INTO public.system_settings (id, default_currency, primary_firm_nr, primary_period_nr)
-             VALUES (1, $1, $2, $3)
+            `INSERT INTO public.system_settings (id, default_currency, primary_firm_nr, primary_period_nr, eticaret_settings)
+             VALUES (1, $1, $2, $3, $4::jsonb)
              ON CONFLICT (id) DO UPDATE SET
                default_currency = EXCLUDED.default_currency,
                primary_firm_nr = EXCLUDED.primary_firm_nr,
                primary_period_nr = EXCLUDED.primary_period_nr,
+               eticaret_settings = COALESCE(EXCLUDED.eticaret_settings, public.system_settings.eticaret_settings),
                updated_at = CURRENT_TIMESTAMP`,
-            [dc, fn, pn]
+            [dc, fn, pn, eticaret != null ? JSON.stringify(eticaret) : null]
         );
     }
 };

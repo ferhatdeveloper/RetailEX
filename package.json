@@ -131,6 +131,7 @@
             "build:analyze": "vite build --mode analyze",
             "build:services:win": "node scripts/build-service-exes.mjs",
             "preview": "vite preview",
+            "eticaret:sync-ella": "node scripts/sync-ella-theme.mjs",
             "deploy": "vercel --prod",
             "deploy:preview": "vercel",
             "vercel:build": "npm run build",

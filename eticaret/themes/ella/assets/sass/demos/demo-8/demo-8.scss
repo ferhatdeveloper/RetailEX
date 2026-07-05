@@ -1,0 +1,537 @@
+.announcement-bar{
+    background: #ffffff;
+    color: #051c42;
+    .message{
+        padding: 13px 15px;
+        font-size: 18px;
+        color: #051c42;
+        text-transform: initial;
+        letter-spacing: 0;
+        font-weight: 400;
+        a{
+            color: #051c42; 
+        }
+        .text{
+            position: relative;
+            top: 2px;
+        }
+        b{
+            text-decoration: underline;
+            text-underline-offset: 0.2rem;
+            text-decoration-color: #b4bac6;
+        }
+        .button{
+            font-size: 18px;
+            font-weight: 700;
+            width: 100%;
+            max-width: 130px;
+            min-width: 126px;
+            padding: 8px 15px 10px;
+            display: none;
+            text-transform: none;
+        }
+    }
+}//END: Block Announcement bar
+
+.halo-block-slideshow{
+    line-height: 1;
+    font-size: 0;
+    .halo-row-carousel{
+        line-height: 1;
+        .bannerCarousel-slide{
+            display:none;
+            &:first-child{
+                display: block;
+            }
+        }
+        .slick-dots{
+            position:absolute;
+            bottom:4px;
+            width: 100%;
+            li{
+                button{
+                    background:transparent;
+                    border-color:#ffffff;
+                }
+                &.slick-active{
+                    button{
+                        border-color: #ffffff;
+                        background:#ffffff;
+                    }
+                } 
+            }
+        }
+        &.slick-initialized {
+            .bannerCarousel-slide{
+                display:block;
+            }
+        }
+    }
+}// End Block Slide Show
+
+.halo-block-custom-image{
+    padding: 20px 0 20px;
+    .halo-row-item{
+        .img-box{
+            position: relative;
+            overflow: hidden;
+            border-radius: 50%;
+            img{
+                margin: 0 auto;
+            }
+        }
+        
+        .content-box{
+            padding: 15px;
+            .title,
+            .link_title{
+                font-size: 18px;
+                font-weight: 600;
+                color: #051c42;
+                letter-spacing: 0;
+                margin: 0;
+            }
+        }
+        &:hover{
+            .content-box{
+                .title,
+                .link_title{
+                    color: #234bbb;
+                }
+            }  
+        }
+    }
+    .slick-arrow{
+        top: calc(50% - 20px);
+    }
+}//END: Block Custom Image
+
+.halo-block-banner-tab{
+    padding: 0 0 14px;
+    .nav-tabs{
+        justify-content: center;
+        border:none;
+        margin-bottom: 25px;
+        .nav-link{
+            font-size: 18px;
+            font-weight: 600;
+            letter-spacing: 0;
+            color:#051c42;
+            position: relative;
+            text-transform: capitalize;
+            padding: 13px 15px;
+            line-height: 1.5;
+            margin: 0 15px;
+            border:none;
+            border: 1px solid #051c42;
+            min-width: 198px;
+            border-radius: 30px;
+            margin-bottom: 20px;
+            &.active{
+                border-color:#e1732c;
+                background: #e1732c;
+                color: #ffffff;
+            }
+            &:hover{
+                border-color:#e1732c;
+                background: #e1732c;
+                color: #ffffff;
+            }
+        }
+    }
+    .banner-tab-content{
+        & > .tab-pane{
+            display: block;
+            height: 0;
+            overflow: hidden;
+            &.active{
+                height: auto;
+                overflow: visible;  
+            }
+        }
+        .img-box{
+            img{
+                margin: 0 auto;
+            }
+        }
+        .content-box{
+            padding: 17px 15px 14px;
+            max-width: 240px;
+            margin: 0 auto;
+            .title,
+            .link_title{
+                font-size: 16px;
+                letter-spacing: 0;
+                color: #051c42;
+                font-weight: 600;
+            }
+        }
+    }
+}//END: Block Banner tab
+
+.halo-block-three-banner{
+    padding: 0px 0px 24px;
+    .halo-row-item{
+        .content-box{
+            padding: 15px 15px 26px;
+            .title,
+            a{
+                font-size: 18px;
+                color: #051c42;
+                font-weight: 600;
+                line-height: 1.5em;
+                margin: 0;
+            }
+        }
+    }
+}//END: Block Three Banner
+
+.halo-block-icon-with-text{
+    .halo-block-header{
+        margin-bottom: 22px
+    }
+    .content-box{
+        width: 100%;
+        max-width: 1200px;
+    }
+    .row{
+        justify-content: center;
+    }
+    .wrapper-item{
+        text-align: center;
+        .icon{
+            margin: 0 auto 15px;
+            width: 100%;
+            max-width: 80px;
+            img{
+                margin: 0 auto;
+            }
+        }
+        .content-box{
+            width: 100%;
+            margin: 0;
+            padding-left: 15px;
+            padding-right: 15px;
+            .title{
+                font-size: 20px;
+                margin-bottom: 13px;
+                font-weight: 700;
+                color: #051c42;
+                letter-spacing: 0;
+            }
+            .desc{
+                line-height: 26px;
+                font-size: 16px;
+                letter-spacing: .02em;
+                color: #051c42;
+            }
+            .link{
+                width: 100%;
+                font-size: 16px;
+                max-width: 178px;
+                margin: 12px auto 0;
+                font-weight: 700;
+                color: #051c42;
+            }
+        }
+    }
+    .banner-action{
+        margin: 17px 0px 15px;
+        .link{
+            font-size: 16px;
+            color: #051c42;
+        }
+    }
+}//END: Block Icon Width Text
+
+.halo-block-brands{
+    padding: 38px 0 35px;
+    .halo-row-item{
+        margin-bottom: 10px;
+        .wrapper-content{
+            box-shadow: 0px 0px 6px 1px rgba(0,0,0,.1);
+            padding-top: 15px;
+            padding-bottom: 8px;
+            border-radius: 6px;
+        }
+        .img-box{
+            margin: 10px 15px 30px;
+            img{
+                margin: 0 auto;
+            }
+        }
+        .box-content{
+            .link{
+                color: #051c42;
+                font-size: 16px;
+                font-weight: 400;
+            }
+        }
+        &:hover{
+            .box-content{
+                .link{
+                    color: #234bbb;
+                    span{
+                        text-decoration: underline;
+                        text-underline-offset: 0.3rem;
+                    }
+                }
+            }
+        }
+    }
+}//END: Block Brands
+
+.halo-block-four-banner{
+    padding: 23px 0px 40px;
+    .halo-row-item{
+        margin-bottom:10px;
+        &.halo-row-2item{
+            padding:0;
+        }
+    }
+}// End Block Four Banner
+
+.halo-block-custom-text{
+    padding: 0 0 34px;
+    .halo-block-content{
+        font-size: 16px;
+        line-height: 28px;
+        color: #051c42;
+        text-align: center;
+        b{
+            text-decoration: underline;
+            text-underline-offset: 0.3rem;
+        }
+        .footer-action{
+            padding: 14px 0px;
+            .link{
+                font-size: 16px;
+                line-height: 28px;
+                color: #051c42;
+                font-weight: 700;
+            }
+        }
+    }
+}//END: Block Custom text
+
+.halo-block-custom-service{
+    position: relative;
+    background-image: url(../../../images/banners/home/home-8/banner-23.jpg);
+    background-size: cover;
+    background-repeat: no-repeat;
+    background-position: center top;
+    padding-top: 50px;
+    padding-bottom: 70px;
+    .halo-block-header{
+        .title{
+            padding-bottom: 10px;
+        }
+    }
+    .content-box{
+        .img-box{
+            border-radius: 50%;
+            overflow: hidden;
+            position: relative;
+            margin-bottom: 26px;
+            .view-abs{
+               a{
+                    border-radius: 50%;
+                    border-color: #e1732c;
+                    &::before,
+                    &::after{
+                        background-color: #e1732c;
+                    }
+               }
+            }
+        }
+        .title{
+            font-size: 24px;
+            line-height: 24px;
+            font-weight: 700;
+            margin-bottom: 15px;
+        }
+        .desc{
+            line-height: 28px;
+            margin-bottom: 17px;
+        }
+        .link{
+            font-size: 16px;
+            font-weight: 700;
+            line-height: 24px;
+            color: #051c42;
+            letter-spacing: 0;
+        }
+    }
+}//END: Block Custom Service
+
+.halo-block-instagram{
+    margin: 53px 0px 40px;
+    .halo-block-header{
+        .title{
+            margin-bottom: 13px;
+        }
+    }
+    .view-abs{
+        -moz-transform: translate(-50%,-50%) rotateX(90deg);
+        -o-transform: translate(-50%,-50%) rotateX(90deg);
+        -ms-transform: translate(-50%,-50%) rotateX(90deg);
+        -webkit-transform: translate(-50%,-50%) rotateX(90deg);
+        transform: translate(-50%,-50%) rotateX(90deg);
+        -webkit-transition: transform .3s linear .1s;
+        a{
+            border-color: #051c42;
+            &::before,
+            &::after{
+                background-color: #051c42;
+            }
+       }
+    }
+    .instagram-button{
+        margin: 33px 0px 33px;
+        .link{
+            font-size: 18px;
+            color: #051c42;
+            font-weight: 700;
+            letter-spacing: 0;
+        }
+    }
+}//END: Block Instagram
+
+.halo-product-block{
+    margin: 0;
+    .halo-block-header{
+        margin-bottom: 35px!important;
+    }
+    .product-item{
+        margin-top: 0!important;
+    }
+}
+
+@media(max-width: 767px){
+    .halo-block-banner-tab{
+        .nav-tabs{
+            justify-content: flex-start;
+            flex-wrap: nowrap;
+            overflow-x: auto;
+            overflow-y: hidden;
+            white-space: nowrap;
+            .nav-link{
+                min-width: 150px;
+                padding: 10px 15px;
+                margin: 0px 5px;
+            }
+        }
+    }
+}
+
+@media(min-width:768px){
+    .announcement-bar{
+        .message{
+            padding: 5px 15px;
+            .button{
+                display: inline-block;
+            }
+        }
+    }
+    .halo-block-icon-with-text{
+        padding: 3px 0 32px;
+        .image {
+            min-height: 300px;
+        }
+    }
+    .halo-block-brands{
+        .row{
+            margin-left: -7.5px!important;
+            margin-right: -7.5px!important;
+            .halo-row-item{
+                margin-bottom: 15px;
+                padding-left:  7.5px!important;
+                padding-right: 7.5px!important;
+            }
+        }
+    }
+    .halo-block-four-banner{
+        .halo-row-item{
+            margin-bottom:0;
+            .halo-row-2item{
+                margin-bottom: 20px;
+                padding: 0;
+            }
+        }
+    }// End Bloc Four Banner
+}
+
+@media(min-width: 1250px){
+    .halo-block-icon-with-text{
+        .halo-block-content{
+            .content-box--absolute{
+                top: calc(50% - 40px);
+            } 
+        }
+        .wrapper-item{
+            display: flex;
+            justify-content: center;
+            text-align: left;
+            .icon{
+                 margin: 0;
+            }
+            .content-box{
+                text-align: left;
+                margin-left: 5px;
+            }
+        }
+    }
+    .halo-block-four-banner{
+        .halo-row-item{
+            .halo-row-2item{
+                margin-bottom: 30px;
+            }
+        }
+    }// End Bloc Four Banner
+
+    .halo-block-custom-text{
+        padding: 34px 0px 60px;
+        .halo-block-content{
+            text-align: left;
+        }
+    }
+}
+
+@media(min-width:1025px){
+    .halo-block-custom-image{
+        .halo-row-item{
+            .view-abs{
+                .view{
+                    border: 1px solid #e1732c;
+                    border-radius: 50%;
+                    &::before,
+                    &::after{
+                        background-color: #e1732c;
+                    }
+                }
+            } 
+        }
+    }
+    .halo-block-banner-tab{
+        .halo-row-item{
+            &:hover{
+                .view-abs{
+                    .view{
+                        border: 1px solid #e1732c;
+                        border-radius: 3px;
+                        &::before,
+                        &::after{
+                            background-color: #e1732c;
+                        }
+                    }
+                }
+                .content-box{
+                    .title,
+                    .link_title{
+                        color: #234bbb;
+                    }
+                }
+            }
+        }
+    }
+}

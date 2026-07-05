@@ -21,6 +21,7 @@ import { InfrastructureSettingsPage } from './components/system/InfrastructureSe
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
 import App from './App';
 import PublicBeautyBooking from './components/beauty/components/PublicBeautyBooking';
+import { EticaretStorefrontApp } from '../eticaret/storefront/EticaretStorefrontApp';
 import { RoleManagement } from './components/system/RoleManagement';
 import { RoleForm } from './components/system/RoleForm';
 
@@ -56,6 +57,8 @@ export function AppRouter() {
                   <Route path="/login" element={<FirmaDonemProvider><Login onLogin={() => { }} /></FirmaDonemProvider>} />
                   <Route path="/infra-settings" element={<InfrastructureSettingsPage />} />
                   <Route path="/book/:firmNr" element={<PublicBeautyBooking />} />
+                  <Route path="/magaza/*" element={<EticaretStorefrontApp />} />
+                  <Route path="/shop/*" element={<EticaretStorefrontApp />} />
 
                   {/* Protected routes */}
                   <Route

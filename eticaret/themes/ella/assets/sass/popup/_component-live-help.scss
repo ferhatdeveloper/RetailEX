@@ -1,0 +1,76 @@
+.live_help_group {
+    position: absolute;
+    top: 17px;
+    width: 100%;
+    max-width: 370px;
+    right:-20px;
+    opacity: 0;
+    transition: all .6s ease;
+    z-index: -3;
+    visibility:hidden;
+    background-color: #ffffff;
+    padding: 30px;
+    box-shadow: 0px 3px 5px 0px rgba(0, 0, 0, 0.1);
+    &.open {
+        display: block;
+        top: 32px;
+        opacity: 1;
+        z-index: 99;
+        overflow: visible;
+        visibility:visible;
+    }
+    .title {
+        font-size:14px;
+        font-weight: bold;
+        line-height:26px;
+        color: #202020;
+        margin-bottom: 5px;
+    }
+    .desc {
+        font-size:13px;
+        line-height:24px; 
+        font-weight: 400;
+        color: #202020;
+    }
+    .button-1 {
+        font-size:14px;
+        font-weight: 400;
+        color: #ffffff;
+        line-height:26px;
+        text-transform:capitalize;
+        padding:8px 0;
+        width: 100%;
+        max-width:190px;
+        text-align: left;
+        padding-left: 28px;
+        margin-top: 42px;
+        svg {
+            margin-right: 10px !important;
+            
+        }
+        &:hover {
+            svg {
+                fill:#ffffff !important;
+                stroke: #ffffff !important;
+            }
+            
+        } 
+    }
+    .text {
+        font-size:13px;
+        line-height:24px; 
+        font-weight: 400;
+        color: #202020;
+        margin: 14px 0 24px 0;
+        .underline {
+            text-decoration: underline;
+            text-underline-offset: 0.2rem;
+        }  
+    }
+    .live-ask-an-expert {
+        border-bottom: 1px solid #ececec;
+    }
+    .live-contact-us {
+        margin-top: 22px;
+    }
+}

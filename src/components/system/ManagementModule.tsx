@@ -222,7 +222,7 @@ type ExtendedScreen = ManagementScreen | 'dashboard' | 'finance' | 'stock' | 'pu
   'personnel' | 'attendance' | 'payroll' | 'performance' | 'training' |
   'waybill-sales' | 'waybill-purchase' | 'waybill-transfer' | 'waybill-fire' |
   'roleauth' | 'roles' | 'role_management' | 'authorization' |
-  'financereports' | 'generalsettings' | 'definitions' | 'backuprestore' | 'systemhealth' | 'pendingposdevices' | 'smsmanage' | 'emailcamp' | 'logaudit' | 'databroadcast' |
+  'financereports' | 'generalsettings' | 'definitions' | 'backuprestore' | 'systemhealth' | 'pendingposdevices' | 'smsmanage' | 'emailcamp' | 'logaudit' | 'eticaret' | 'databroadcast' |
   'modulemanagement' | 'menumanagement' | 'onlineorders' | 'productsync' | 'price-change-vouchers' | 'new-modules' | 'accounting-mgmt' | 'workflow-automation' | 'voice-assistant' | 'cashier-scale' | 'scale-management' | 'db-migrations' | 'hybrid-sync' | 'store-management' | 'security-modules' | 'demo-data' |
   'product-analytics' | 'profit-dashboard' | 'graphanalysis' | 'reconciliation' | 'wave-picking' | 'ai-stock-prediction' | 'material-extract' | 'cost-centers' |
   'universal-report-hub' | 'customer-extract' | 'store-performance' | 'inventory-aging' | 'nebim-migration' |
@@ -1403,6 +1403,7 @@ export function ManagementModule({
         case 'smsmanage':
         case 'emailcamp':
         case 'invoice-label-designer':
+        case 'eticaret':
           return <SystemManagementModule routeHint={currentScreen} />;
         case 'excel':
           return <ExcelModule />;
