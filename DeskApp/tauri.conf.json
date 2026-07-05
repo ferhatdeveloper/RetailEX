@@ -54,6 +54,8 @@
       "../config/postgrest.conf",
       "resources/install-postgrest.ps1",
       "resources/pg-windows-expose-remote.ps1",
+      "resources/postgrest-windows-expose-lan.ps1",
+      "resources/start-postgrest-lan.ps1",
       "resources/bridge.cjs",
       "resources/package.json",
       "resources/install-bridge.ps1",
@@ -70,7 +72,7 @@
   },
   "productName": "retailex",
   "mainBinaryName": "retailex",
-  "version": "0.1.203",
+  "version": "0.1.204",
   "identifier": "com.retailex.app",
   "plugins": {
     "updater": {

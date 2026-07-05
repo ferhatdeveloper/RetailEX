@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  RetailEX LAN merkez: PostgREST http://192.168.x.x:3002 (yerel WiFi, HTTPS yok).
+  Üretim SaaS (https://api.retailex.app) etkilenmez; yalnızca cleartext izni açılır.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

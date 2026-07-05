@@ -2,7 +2,7 @@
       "name": "retailex",
       "description": "RetailEX Next-Gen ERP OS",
       "type": "module",
-      "version": "0.1.203",
+      "version": "0.1.204",
       "private": true,
       "dependencies": {
             "@ant-design/icons": "^6.1.0",
@@ -151,6 +151,8 @@
             "dev:with-bridge": "npx --yes concurrently -k -n bridge,vite -c blue,green \"npm run bridge\" \"npm run dev\"",
             "dev:with-wa": "npx --yes concurrently -k -n wa,vite -c magenta,green \"npm run whatsapp:bridge\" \"npm run dev\"",
             "postgrest": "postgrest config/postgrest.conf",
+            "postgrest:lan:firewall": "powershell -NoProfile -ExecutionPolicy Bypass -File DeskApp/resources/postgrest-windows-expose-lan.ps1",
+            "postgrest:lan:start": "powershell -NoProfile -ExecutionPolicy Bypass -File DeskApp/resources/start-postgrest-lan.ps1",
             "db:migrate": "node database/scripts/run-pending-migrations.mjs",
             "db:migrate:dry": "node database/scripts/run-pending-migrations.mjs --dry-run",
             "db:migrate:env": "node database/scripts/run-pending-migrations.mjs --env-only",

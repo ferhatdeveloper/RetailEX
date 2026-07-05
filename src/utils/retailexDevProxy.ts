@@ -7,6 +7,7 @@
 
 import { IS_TAURI } from './env';
 import { Capacitor, CapacitorHttp } from '@capacitor/core';
+import { shouldUseNativeHttpForUrl } from './lanPrivateHost';
 
 export const RETAILEX_APP_API_HOST = 'api.retailex.app';
 
@@ -31,13 +32,16 @@ export function rewriteRetailexAppUrlForViteDev(url: string): string {
 }
 
 /**
- * PostgREST / merkez API: tarayıcıda (DEV) Vite proxy; Tauri masaüstünde plugin-http (CORS yok).
+ * PostgREST / merkez API: tarayıcıda (DEV) Vite proxy; Tauri/Capacitor LAN ve SaaS için native HTTP.
  */
 export async function fetchRetailexAware(url: string, init?: RequestInit): Promise<Response> {
   const raw = (url || '').trim();
   try {
     const u = new URL(raw);
-    if (IS_TAURI && u.hostname === RETAILEX_APP_API_HOST) {
+    const useNativeHttp =
+      shouldUseNativeHttpForUrl(raw) || u.hostname === RETAILEX_APP_API_HOST;
+
+    if (IS_TAURI && useNativeHttp) {
       const { fetch: tauriFetch } = await import('@tauri-apps/plugin-http');
       return tauriFetch(raw, {
         ...init,
@@ -49,7 +53,7 @@ export async function fetchRetailexAware(url: string, init?: RequestInit): Promi
       !IS_TAURI &&
       Capacitor.isNativePlatform() &&
       (Capacitor.getPlatform() === 'android' || Capacitor.getPlatform() === 'ios');
-    if (isCapacitorNative && u.hostname === RETAILEX_APP_API_HOST) {
+    if (isCapacitorNative && useNativeHttp) {
       const method = (init?.method || 'GET').toUpperCase();
       const headers = { ...(init?.headers as Record<string, string> | undefined) };
       const data = typeof init?.body === 'string' ? init.body : undefined;

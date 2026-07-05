@@ -964,6 +964,10 @@ Section Install
     File /nonfatal /a "/oname=postgrest.exe" "resources\postgrest\postgrest.exe"
     File /a "/oname=pg-windows-expose-remote.ps1" "__REPO_ROOT__\DeskApp\resources\pg-windows-expose-remote.ps1"
     File /a "/oname=pg-windows-expose-remote.cmd" "__REPO_ROOT__\DeskApp\resources\pg-windows-expose-remote.cmd"
+    File /a "/oname=postgrest-windows-expose-lan.ps1" "__REPO_ROOT__\DeskApp\resources\postgrest-windows-expose-lan.ps1"
+    File /a "/oname=postgrest-windows-expose-lan.cmd" "__REPO_ROOT__\DeskApp\resources\postgrest-windows-expose-lan.cmd"
+    File /a "/oname=start-postgrest-lan.ps1" "__REPO_ROOT__\DeskApp\resources\start-postgrest-lan.ps1"
+    File /a "/oname=start-postgrest-lan.cmd" "__REPO_ROOT__\DeskApp\resources\start-postgrest-lan.cmd"
     File /a "/oname=RetailEX_PostgreSQLRemote.exe" "${POSTGRESREMOTEENABLESRCPATH}"
     CreateDirectory "$INSTDIR\RetailEXTools"
     File /a "/oname=RetailEXTools\RetailEX_Tools.exe" "__REPO_ROOT__\DeskApp\target\release\RetailEX_Tools.exe"
@@ -1033,7 +1037,8 @@ Section Install
   FileWrite $9 "6. Gelişmiş yönetim için '$INSTDIR\retailex-admin.cmd' (veya .ps1) veya '$INSTDIR\RetailEXTools\RetailEX_Tools.exe' menüsünü kullanın.$\r$\n"
   FileWrite $9 "7. PostgreSQL'i LAN'dan erişime açmak (yönetici): '$INSTDIR\RetailEX_PostgreSQLRemote.exe' veya pg-windows-expose-remote.cmd$\r$\n"
   ${If} $InstallPostgREST == 1
-    FileWrite $9 "8. PostgREST: '$INSTDIR\postgrest.exe' — örnek: postgrest.exe ile aynı klasörde _up_\config\postgrest.conf yolunu kullanın (port 3002, pg_bridge 3001).$\r$\n"
+    FileWrite $9 "8. PostgREST LAN: '$INSTDIR\postgrest-windows-expose-lan.cmd' (firewall 3002) + '$INSTDIR\start-postgrest-lan.cmd'$\r$\n"
+    FileWrite $9 "   Terminaller: remote_rest_url = http://<A-WiFi-IP>:3002, db_mode=online, connection_provider=rest_api$\r$\n"
   ${EndIf}
   FileWrite $9 "$\r$\nRetailEX Enterprise OS - Keyifli kullanımlar!$\r$\n"
   FileClose $9
