@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { CalendarClock, ChevronDown, Edit, FileText, MessageSquare, MessageSquarePlus, Phone, Plus, RefreshCw, Search, Send, Settings, StickyNote, User, Wallet, X } from 'lucide-react';
+import { CalendarClock, ChevronDown, Edit, FileText, MessageSquare, MessageSquarePlus, Phone, Plus, RefreshCw, Search, Send, Settings, StickyNote, User, Wallet, X, BarChart3, List } from 'lucide-react';
 import { toast } from 'sonner';
 import { DevExDataGrid } from '../../shared/DevExDataGrid';
 import { ContextMenu } from '../../shared/ContextMenu';
@@ -22,6 +22,11 @@ import { UniversalInvoiceForm } from '../invoices/UniversalInvoiceForm';
 import { KasaIslemModal } from '../../accounting/cash-ops/KasaIslemModal';
 import { fetchKasalar, type Kasa } from '../../../services/api/kasa';
 import {
+  customerCallPlanWeeklyAPI,
+  type CustomerCallPlanWeeklyRow,
+} from '../../../services/api/customerCallPlanWeekly';
+import { formatCallPlanWeekRange } from '../../../utils/customerCallPlanWeek';
+import {
   CUSTOMER_CALL_WEEKDAYS,
   CUSTOMER_CALL_STATUSES,
   customerCallStatusMeta,
@@ -32,6 +37,7 @@ import {
 } from '../../../utils/customerCallPlan';
 
 type DayFilter = 'all' | number;
+type CallPlanTab = 'list' | 'report';
 
 export function CustomerCallPlanModule() {
   const { tm, language } = useLanguage();
@@ -61,6 +67,12 @@ export function CustomerCallPlanModule() {
   const [saleInvoiceFormKey, setSaleInvoiceFormKey] = useState(0);
   const [defaultKasa, setDefaultKasa] = useState<Kasa | null>(null);
   const [cashAction, setCashAction] = useState<{ type: 'CH_TAHSILAT'; account: Supplier } | null>(null);
+  const [activeTab, setActiveTab] = useState<CallPlanTab>('list');
+  const [currentWeekStart, setCurrentWeekStart] = useState(() => customerCallPlanWeeklyAPI.getCurrentWeekStart());
+  const [reportWeekStart, setReportWeekStart] = useState(() => customerCallPlanWeeklyAPI.getCurrentWeekStart());
+  const [archivedWeeks, setArchivedWeeks] = useState<string[]>([]);
+  const [reportRows, setReportRows] = useState<CustomerCallPlanWeeklyRow[]>([]);
+  const [reportLoading, setReportLoading] = useState(false);
 
   const messageLang = useMemo(() => normalizeCallPlanMessageLang(language), [language]);
 
@@ -78,6 +90,20 @@ export function CustomerCallPlanModule() {
   const load = async () => {
     setLoading(true);
     try {
+      const rollover = await customerCallPlanWeeklyAPI.ensureWeekRollover();
+      setCurrentWeekStart(rollover.currentWeekStart);
+      setReportWeekStart(prev => {
+        const oldCurrent = currentWeekStart;
+        if (!prev || prev === oldCurrent) return rollover.currentWeekStart;
+        return prev;
+      });
+      if (rollover.archivedWeeks > 0) {
+        toast.success(
+          tm('callPlanWeekRolled').replace('{weeks}', String(rollover.archivedWeeks)),
+        );
+      }
+      const weeks = await customerCallPlanWeeklyAPI.listArchivedWeeks();
+      setArchivedWeeks(weeks);
       const rows = await supplierAPI.getAll({ cardType: 'customer' });
       setCustomers(rows.filter(row =>
         row.call_plan_enabled === true &&
@@ -90,9 +116,31 @@ export function CustomerCallPlanModule() {
     }
   };
 
+  const loadReport = useCallback(async (weekStart: string, sourceCustomers: Supplier[]) => {
+    setReportLoading(true);
+    try {
+      const isCurrent = weekStart === customerCallPlanWeeklyAPI.getCurrentWeekStart();
+      if (isCurrent) {
+        setReportRows(customerCallPlanWeeklyAPI.customersToCurrentWeekRows(sourceCustomers, weekStart));
+      } else {
+        setReportRows(await customerCallPlanWeeklyAPI.getWeeklyReport(weekStart));
+      }
+    } catch (error: any) {
+      setReportRows([]);
+      toast.error(error?.message || tm('callPlanReportLoadFailed'));
+    } finally {
+      setReportLoading(false);
+    }
+  }, [tm]);
+
   useEffect(() => {
     void load();
   }, []);
+
+  useEffect(() => {
+    if (activeTab !== 'report') return;
+    void loadReport(reportWeekStart, customers);
+  }, [activeTab, reportWeekStart, customers, loadReport]);
 
   useEffect(() => {
     void (async () => {
@@ -320,6 +368,34 @@ export function CustomerCallPlanModule() {
     return buildCallPlanBulkPreviewList(withPhone, { preset: 'call_reminder', lang });
   }, [filtered, messageLang]);
 
+  const reportWeekOptions = useMemo(() => {
+    const current = customerCallPlanWeeklyAPI.getCurrentWeekStart();
+    const merged = Array.from(new Set([current, ...archivedWeeks])).sort((a, b) => b.localeCompare(a));
+    return merged;
+  }, [archivedWeeks, currentWeekStart]);
+
+  const reportSummary = useMemo(() => {
+    const counts: Record<string, number> = { total: reportRows.length };
+    for (const row of reportRows) {
+      const key = normalizeCustomerCallStatus(row.call_last_status);
+      counts[key] = (counts[key] || 0) + 1;
+    }
+    return counts;
+  }, [reportRows]);
+
+  const filteredReportRows = useMemo(() => {
+    const q = search.trim().toLocaleLowerCase('tr-TR');
+    return reportRows.filter(row => {
+      if (!q) return true;
+      return (
+        String(row.customer_name || '').toLocaleLowerCase('tr-TR').includes(q) ||
+        String(row.customer_code || '').toLocaleLowerCase('tr-TR').includes(q) ||
+        String(row.call_last_note || '').toLocaleLowerCase('tr-TR').includes(q) ||
+        String(row.call_plan_note || '').toLocaleLowerCase('tr-TR').includes(q)
+      );
+    });
+  }, [reportRows, search]);
+
   const columnHelper = createColumnHelper<Supplier>();
   const columns = [
     columnHelper.accessor('code', {
@@ -410,6 +486,69 @@ export function CustomerCallPlanModule() {
     }),
   ];
 
+  const reportColumnHelper = createColumnHelper<CustomerCallPlanWeeklyRow>();
+  const reportColumns = [
+    reportColumnHelper.accessor('customer_code', {
+      header: tm('code'),
+      cell: info => <span className="font-mono text-xs font-bold text-blue-700">{info.getValue() || '-'}</span>,
+      size: 90,
+    }),
+    reportColumnHelper.accessor('customer_name', {
+      header: tm('customer'),
+      cell: info => <span className="font-semibold text-slate-900">{info.getValue()}</span>,
+    }),
+    reportColumnHelper.display({
+      id: 'days',
+      header: tm('callPlanSelectDays'),
+      cell: ({ row }) => (
+        <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-1 text-xs font-black text-amber-800">
+          <CalendarClock className="h-3.5 w-3.5" />
+          {customerCallWeekdaysLabel(row.original.call_plan_weekdays, true)}
+        </span>
+      ),
+      size: 160,
+    }),
+    reportColumnHelper.display({
+      id: 'note',
+      header: tm('callPlanNote'),
+      cell: ({ row }) => (
+        row.original.call_plan_note ? (
+          <span className="block max-w-[200px] truncate text-xs font-semibold text-slate-600" title={row.original.call_plan_note}>
+            {row.original.call_plan_note}
+          </span>
+        ) : <span className="text-xs text-slate-400">—</span>
+      ),
+      size: 180,
+    }),
+    reportColumnHelper.display({
+      id: 'lastStatus',
+      header: tm('callPlanLastStatus'),
+      cell: ({ row }) => {
+        const meta = customerCallStatusMeta(row.original.call_last_status);
+        return (
+          <div className="flex flex-col gap-1">
+            <span className={`w-fit rounded-full px-2 py-0.5 text-[10px] font-black uppercase ${meta.tone}`}>
+              {tm(meta.label)}
+            </span>
+            {row.original.call_last_at ? (
+              <span className="text-[10px] font-semibold text-slate-400">
+                {new Date(row.original.call_last_at).toLocaleString('tr-TR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+              </span>
+            ) : null}
+            {row.original.call_last_note ? (
+              <span className="max-w-[180px] truncate text-[10px] text-slate-500" title={row.original.call_last_note}>
+                {row.original.call_last_note}
+              </span>
+            ) : null}
+          </div>
+        );
+      },
+      size: 200,
+    }),
+  ];
+
+  const isReportCurrentWeek = reportWeekStart === customerCallPlanWeeklyAPI.getCurrentWeekStart();
+
   return (
     <div className="flex h-full min-h-0 flex-col bg-slate-50" onClick={() => setContextMenu(null)}>
       <div className="flex-shrink-0 border-b border-slate-200 bg-white px-5 py-4">
@@ -417,20 +556,46 @@ export function CustomerCallPlanModule() {
           <div className="flex items-center gap-3">
             <CalendarClock className="h-6 w-6 text-amber-600" />
             <div>
-              <h2 className="text-lg font-black uppercase tracking-tight text-slate-900">{tm('customerCallListTitle')}</h2>
-              <p className="text-xs font-semibold text-slate-500">{tm('customerCallListSubtitle')}</p>
+              <h2 className="text-lg font-black uppercase tracking-tight text-slate-900">
+                {activeTab === 'list' ? tm('customerCallListTitle') : tm('callPlanReportTitle')}
+              </h2>
+              <p className="text-xs font-semibold text-slate-500">
+                {activeTab === 'list'
+                  ? tm('customerCallListSubtitle')
+                  : tm('callPlanReportSubtitle').replace('{week}', formatCallPlanWeekRange(reportWeekStart))}
+              </p>
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={() => void prepareBulkWhatsApp()}
-              disabled={waBulkPreparing || filtered.length === 0}
-              className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white hover:bg-emerald-700 disabled:opacity-50"
-            >
-              <Send className={`h-4 w-4 ${waBulkPreparing ? 'animate-pulse' : ''}`} />
-              {waBulkPreparing ? tm('saving') : tm('callPlanWaBulk')}
-            </button>
+            <div className="inline-flex rounded-lg border border-slate-200 bg-slate-100 p-0.5">
+              <button
+                type="button"
+                onClick={() => setActiveTab('list')}
+                className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-black uppercase tracking-wide ${activeTab === 'list' ? 'bg-white text-amber-700 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
+              >
+                <List className="h-3.5 w-3.5" />
+                {tm('callPlanTabList')}
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab('report')}
+                className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-black uppercase tracking-wide ${activeTab === 'report' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
+              >
+                <BarChart3 className="h-3.5 w-3.5" />
+                {tm('callPlanTabReport')}
+              </button>
+            </div>
+            {activeTab === 'list' ? (
+              <button
+                type="button"
+                onClick={() => void prepareBulkWhatsApp()}
+                disabled={waBulkPreparing || filtered.length === 0}
+                className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white hover:bg-emerald-700 disabled:opacity-50"
+              >
+                <Send className={`h-4 w-4 ${waBulkPreparing ? 'animate-pulse' : ''}`} />
+                {waBulkPreparing ? tm('saving') : tm('callPlanWaBulk')}
+              </button>
+            ) : null}
             <button
               type="button"
               onClick={() => void load()}
@@ -444,6 +609,78 @@ export function CustomerCallPlanModule() {
       </div>
 
       <div className="flex flex-1 min-h-0 flex-col gap-3 p-4">
+        {activeTab === 'report' ? (
+          <>
+            <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+              <div className="mb-3 flex flex-wrap items-end gap-3">
+                <div className="min-w-[220px] flex-1">
+                  <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-slate-500">{tm('callPlanWeekSelect')}</label>
+                  <select
+                    value={reportWeekStart}
+                    onChange={e => setReportWeekStart(e.target.value)}
+                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500"
+                  >
+                    {reportWeekOptions.map(week => (
+                      <option key={week} value={week}>
+                        {week === customerCallPlanWeeklyAPI.getCurrentWeekStart()
+                          ? `${tm('callPlanCurrentWeek')} (${formatCallPlanWeekRange(week)})`
+                          : formatCallPlanWeekRange(week)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                {isReportCurrentWeek ? (
+                  <span className="rounded-full bg-indigo-50 px-3 py-1 text-[10px] font-black uppercase tracking-wide text-indigo-700">
+                    {tm('callPlanLiveWeekBadge')}
+                  </span>
+                ) : null}
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-700">
+                  {tm('callPlanReportTotal')}: {reportSummary.total ?? 0}
+                </span>
+                {CUSTOMER_CALL_STATUSES.map(status => (
+                  <span key={status.value} className={`rounded-full px-3 py-1 text-xs font-bold ${status.tone}`}>
+                    {tm(status.label)}: {reportSummary[status.value] ?? 0}
+                  </span>
+                ))}
+              </div>
+            </div>
+            <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <input
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                  placeholder={tm('callPlanSearchPlaceholder')}
+                  className="w-full rounded-lg border border-slate-200 py-2 pl-10 pr-3 text-sm outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+            </div>
+            <div className="min-h-0 flex-1 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+              {reportLoading ? (
+                <div className="flex h-full min-h-[240px] items-center justify-center text-sm font-semibold text-slate-500">
+                  {tm('loading')}
+                </div>
+              ) : filteredReportRows.length === 0 ? (
+                <div className="flex h-full min-h-[240px] flex-col items-center justify-center gap-2 px-6 text-center text-slate-500">
+                  <BarChart3 className="h-10 w-10 text-slate-300" />
+                  <p className="text-sm font-semibold">{tm('callPlanReportEmpty')}</p>
+                </div>
+              ) : (
+                <DevExDataGrid
+                  data={filteredReportRows}
+                  columns={reportColumns}
+                  enableSorting
+                  enableFiltering={false}
+                  enableColumnResizing
+                  pageSize={50}
+                />
+              )}
+            </div>
+          </>
+        ) : (
+          <>
         <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
           <div className="mb-3 flex flex-wrap gap-2">
             <button
@@ -487,6 +724,8 @@ export function CustomerCallPlanModule() {
             onRowDoubleClick={openEdit}
           />
         </div>
+          </>
+        )}
       </div>
 
       {contextMenu ? (

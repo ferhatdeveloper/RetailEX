@@ -78,6 +78,7 @@
 74. **088_sync_queue_postgrest_anon.sql** – Merkez PostgREST: `sync_queue` anon SELECT/INSERT/UPDATE + `NOTIFY pgrst` (hibrit kuyruk önizlemesi).
 75. **090_logo_mssql_sync_columns.sql** – Logo MSSQL: dönem `sales`/`sale_items`/`cash_lines` `ref_id`, `account_movements` (CLFLINE), güncel `CREATE_PERIOD_TABLES`.
 76. **091_sync_incremental_dedup.sql** – Artımlı senkron: `prune_redundant_sync_queue`, tetikleyici tekrar kuyruk engeli, `apply_sync_queue_item` değişmeyen satırda `skip`.
+77. **092_customer_call_plan_weekly.sql** – Müşteri arama planı haftalık arşivi (`customer_call_plan_weekly`) ve hafta başı sıfırlama (`customer_call_plan_rollover`).
 
 **Kiracılara toplu uygulama (VPS / uzak PG):**
 - `npm run db:migrate:tenants` — tüm kiracı DB'ler

@@ -237,6 +237,32 @@ CREATE INDEX IF NOT EXISTS idx_sync_logs_last_sync
 CREATE INDEX IF NOT EXISTS idx_sync_logs_firm_store
   ON public.sync_logs (firm_nr, store_code, last_sync_date DESC);
 
+CREATE TABLE IF NOT EXISTS public.customer_call_plan_weekly (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  firm_nr VARCHAR(10) NOT NULL,
+  week_start DATE NOT NULL,
+  week_end DATE NOT NULL,
+  customer_id UUID NOT NULL,
+  customer_code VARCHAR(50),
+  customer_name TEXT NOT NULL,
+  call_plan_weekdays SMALLINT[] DEFAULT ''{}''::smallint[],
+  call_plan_note TEXT,
+  call_last_status VARCHAR(30) NOT NULL DEFAULT ''planned'',
+  call_last_note TEXT,
+  call_last_at TIMESTAMPTZ,
+  archived_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (firm_nr, week_start, customer_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_customer_call_plan_weekly_firm_week
+  ON public.customer_call_plan_weekly (firm_nr, week_start DESC);
+
+CREATE TABLE IF NOT EXISTS public.customer_call_plan_rollover (
+  firm_nr VARCHAR(10) PRIMARY KEY,
+  current_week_start DATE NOT NULL,
+  rolled_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 -- Kiracı WebSocket hub (075) — hibrit public.sync_queue ile karışmaz
 CREATE TABLE IF NOT EXISTS public.broadcast_messages (
   id UUID PRIMARY KEY,
