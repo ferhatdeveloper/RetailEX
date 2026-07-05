@@ -1,11 +1,17 @@
 import { useEffect, useState } from 'react';
 import { Alert, Button, Card, Col, Input, Row, Select, Space, Switch, Typography, message } from 'antd';
-import { CheckOutlined, EyeOutlined, SaveOutlined } from '@ant-design/icons';
+import { CheckOutlined, CloudUploadOutlined, EyeOutlined, SaveOutlined } from '@ant-design/icons';
 import {
   DEFAULT_ETICARET_SETTINGS,
   loadEticaretSettingsFromDb,
   saveEticaretSettingsToDb,
 } from '../core/settings';
+import {
+  listRetailTenantsForEticaret,
+  loadTenantEticaretSettingsFromRegistry,
+  saveTenantEticaretSettings,
+  type TenantRegistryListItem,
+} from '../core/tenantRegistryApi';
 import { listAllThemeVariants } from '../themes/registry';
 import { buildStorefrontUrl } from '../core/tenantResolver';
 import type { EticaretSettings } from '../core/types';
@@ -16,18 +22,29 @@ export function EticaretThemeSettings() {
   const [form, setForm] = useState<EticaretSettings>({ ...DEFAULT_ETICARET_SETTINGS });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [tenants, setTenants] = useState<TenantRegistryListItem[]>([]);
+  const [selectedTenant, setSelectedTenant] = useState<string>('');
+  const [tenantSaving, setTenantSaving] = useState(false);
 
   useEffect(() => {
-    void loadEticaretSettingsFromDb().then((s) => {
-      setForm(s);
-      setLoading(false);
-    });
+    void Promise.all([loadEticaretSettingsFromDb(), listRetailTenantsForEticaret()]).then(
+      ([s, list]) => {
+        setForm(s);
+        setTenants(list);
+        if (s.demoTenantCode.trim()) {
+          setSelectedTenant(s.demoTenantCode.trim().toLowerCase());
+        } else if (list[0]?.code) {
+          setSelectedTenant(list[0].code);
+        }
+        setLoading(false);
+      },
+    );
   }, []);
 
   const variants = listAllThemeVariants();
   const previewTenant = form.demoMode && form.demoTenantCode.trim()
     ? form.demoTenantCode.trim()
-    : 'demo';
+    : selectedTenant || 'demo';
 
   const handleSave = async () => {
     setSaving(true);
@@ -38,6 +55,37 @@ export function EticaretThemeSettings() {
       message.error(e instanceof Error ? e.message : String(e));
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleTenantSelect = async (code: string) => {
+    setSelectedTenant(code);
+    const fromRegistry = await loadTenantEticaretSettingsFromRegistry(code);
+    if (fromRegistry && Object.keys(fromRegistry).length > 0) {
+      setForm((prev) => ({ ...prev, ...fromRegistry }));
+    }
+  };
+
+  const handleApplyToTenant = async () => {
+    if (!selectedTenant.trim()) {
+      message.warning('Önce bir kiracı seçin');
+      return;
+    }
+    setTenantSaving(true);
+    try {
+      const payload: Partial<EticaretSettings> = {
+        activeThemeId: form.activeThemeId,
+        activeVariantId: form.activeVariantId,
+        enabled: form.enabled,
+        storeTitle: form.storeTitle,
+        announcementText: form.announcementText,
+      };
+      await saveTenantEticaretSettings(selectedTenant, payload);
+      message.success(`${selectedTenant} kiracısına tema ayarları uygulandı`);
+    } catch (e: unknown) {
+      message.error(e instanceof Error ? e.message : String(e));
+    } finally {
+      setTenantSaving(false);
     }
   };
 
@@ -56,6 +104,51 @@ export function EticaretThemeSettings() {
             Ella HTML teması tabanlı vitrin. Kiracı kodu site adresinden veya demo modunda sistem ayarından alınır.
           </Paragraph>
         </div>
+
+        <Card bordered title="Kiracı vitrin ayarları">
+          <Row gutter={[16, 16]} align="middle">
+            <Col xs={24} md={12}>
+              <Text strong>Perakende kiracı</Text>
+              <Select
+                showSearch
+                optionFilterProp="label"
+                style={{ width: '100%', marginTop: 8 }}
+                placeholder="Kiracı seçin"
+                value={selectedTenant || undefined}
+                onChange={(v) => void handleTenantSelect(v)}
+                options={tenants.map((t) => ({
+                  value: t.code,
+                  label: `${t.display_name} (${t.code})`,
+                }))}
+              />
+            </Col>
+            <Col xs={24} md={12}>
+              <Space wrap style={{ marginTop: 28 }}>
+                <Button
+                  type="default"
+                  icon={<CloudUploadOutlined />}
+                  loading={tenantSaving}
+                  onClick={() => void handleApplyToTenant()}
+                >
+                  Seçili kiracıya uygula
+                </Button>
+                <Button
+                  icon={<EyeOutlined />}
+                  href={buildStorefrontUrl(selectedTenant || previewTenant)}
+                  target="_blank"
+                  rel="noreferrer"
+                  disabled={!selectedTenant}
+                >
+                  Kiracı vitrinini aç
+                </Button>
+              </Space>
+            </Col>
+          </Row>
+          <Paragraph type="secondary" style={{ marginTop: 12, marginBottom: 0 }}>
+            Tema ve mağaza metinleri merkez <code>tenant_registry.eticaret_settings</code> alanına yazılır.
+            Ürünler kiracının PostgREST API&apos;si üzerinden <code>rex_*_products</code> tablosundan gelir.
+          </Paragraph>
+        </Card>
 
         <Card bordered>
           <Row gutter={[16, 16]}>
@@ -90,7 +183,7 @@ export function EticaretThemeSettings() {
             <Col xs={24} md={8}>
               <Text strong>Demo kiracı kodu</Text>
               <Input
-                placeholder="örn. zetem, ferhat, lovan"
+                placeholder="örn. lovan, kasap, jiber"
                 value={form.demoTenantCode}
                 disabled={!form.demoMode}
                 onChange={(e) => patch({ demoTenantCode: e.target.value.trim().toLowerCase() })}
@@ -151,7 +244,7 @@ export function EticaretThemeSettings() {
 
         <Space wrap>
           <Button type="primary" icon={<SaveOutlined />} loading={saving} onClick={() => void handleSave()}>
-            Kaydet
+            Sistem ayarlarını kaydet
           </Button>
           <Button
             icon={<EyeOutlined />}

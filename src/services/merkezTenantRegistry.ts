@@ -24,6 +24,7 @@ export type TenantRegistryRow = {
   logo_rest_api_url?: string | null;
   notes?: string | null;
   is_active?: boolean;
+  eticaret_settings?: Record<string, unknown> | null;
 };
 
 const UUID_RE =

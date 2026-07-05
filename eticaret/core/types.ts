@@ -49,3 +49,6 @@ export type StorefrontProduct = {
   badge?: string;
   inStock: boolean;
 };
+
+/** merkez_db.tenant_registry.eticaret_settings ile uyumlu */
+export type TenantEticaretRegistrySettings = Partial<EticaretSettings>;

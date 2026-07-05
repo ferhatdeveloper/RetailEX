@@ -1,35 +1,53 @@
-import { fetchTenantRegistryRow } from '../../src/services/merkezTenantRegistry';
+import { fetchRetailexAware } from '../../src/utils/retailexDevProxy';
+import {
+  buildStorefrontContext,
+  firmNrCandidates,
+  productTableForFirm,
+  type StorefrontContext,
+} from './tenantContext';
 import type { StorefrontProduct } from './types';
 
 const PLACEHOLDER_IMG = '/eticaret-static/ella/assets/images/card-product/img-14.jpg';
 const PLACEHOLDER_HOVER = '/eticaret-static/ella/assets/images/card-product/img-13.jpg';
 
+const PRODUCT_SELECT =
+  'id,code,barcode,name,price,cost,image_url,image_url_cdn,stock,brand,currency,is_active';
+
 function mapRowToProduct(row: Record<string, unknown>, currency: string): StorefrontProduct | null {
   const id = String(row.id ?? row.code ?? '').trim();
   const name = String(row.name ?? row.title ?? row.description ?? '').trim();
   if (!id || !name) return null;
+  if (row.is_active === false) return null;
+
   const price = Number(row.price ?? row.sale_price ?? row.list_price ?? 0) || 0;
-  const compare = Number(row.compare_at_price ?? row.list_price ?? 0) || undefined;
+  const cost = Number(row.cost ?? 0) || 0;
+  const compare = cost > price ? cost : Number(row.compare_at_price ?? 0) || undefined;
+
+  const imageUrl =
+    String(row.image_url_cdn ?? row.image_url ?? row.image ?? row.thumbnail ?? '').trim() ||
+    PLACEHOLDER_IMG;
+
+  const stock = Number(row.stock ?? row.quantity ?? 0);
+  const rowCurrency = String(row.currency ?? currency).trim() || currency;
+
   return {
     id,
     code: String(row.code ?? row.barcode ?? id),
     name,
     price,
     compareAtPrice: compare && compare > price ? compare : undefined,
-    currency,
-    imageUrl: String(row.image_url ?? row.image ?? row.thumbnail ?? '').trim() || PLACEHOLDER_IMG,
+    currency: rowCurrency,
+    imageUrl,
     hoverImageUrl: PLACEHOLDER_HOVER,
     vendor: String(row.brand ?? row.vendor ?? 'RetailEX').trim() || 'RetailEX',
-    badge: row.is_new ? 'Yeni' : row.on_sale ? 'İndirim' : undefined,
-    inStock: Number(row.stock ?? row.quantity ?? 1) > 0,
+    badge: row.is_new ? 'Yeni' : compare && compare > price ? 'İndirim' : undefined,
+    inStock: stock > 0,
   };
 }
 
 async function fetchJson(url: string): Promise<unknown[] | null> {
   try {
-    const res = await fetch(url, {
-      headers: { Accept: 'application/json' },
-    });
+    const res = await fetchRetailexAware(url, { headers: { Accept: 'application/json' } });
     if (!res.ok) return null;
     const data = await res.json();
     return Array.isArray(data) ? data : null;
@@ -38,44 +56,60 @@ async function fetchJson(url: string): Promise<unknown[] | null> {
   }
 }
 
+async function resolveContext(
+  tenantCode: string,
+  context?: StorefrontContext,
+): Promise<StorefrontContext> {
+  if (context) return context;
+  const ctx = await buildStorefrontContext(tenantCode);
+  return ctx;
+}
+
 /**
- * Kiracı PostgREST üzerinden ürün listesi.
- * Tablo adları kuruluma göre değişebilir; sırayla dener.
+ * Kiracı PostgREST üzerinden `rex_{firm}_products` listesi.
  */
 export async function fetchTenantCatalog(
   tenantCode: string,
-  options?: { limit?: number; search?: string },
+  options?: { limit?: number; search?: string; context?: StorefrontContext },
 ): Promise<{ products: StorefrontProduct[]; currency: string; source: string }> {
   const limit = Math.min(100, Math.max(1, options?.limit ?? 24));
-  let restBase = `https://api.retailex.app/${encodeURIComponent(tenantCode)}`;
+  const ctx = await resolveContext(tenantCode, options?.context);
+  const { restBase, firmNr, currency, catalogTenantCode } = ctx;
 
-  try {
-    const row = await fetchTenantRegistryRow(tenantCode);
-    if (row?.rest_base_url) {
-      restBase = String(row.rest_base_url).replace(/\/+$/, '');
-    }
-  } catch {
-    /* registry yoksa varsayılan API yolu */
-  }
-
-  const tables = ['items', 'products', 'materials', 'rex_items'];
-  for (const table of tables) {
-    const q = new URLSearchParams({ limit: String(limit), select: '*' });
+  const firms = firmNrCandidates(firmNr);
+  for (const firm of firms) {
+    const table = productTableForFirm(firm);
+    const q = new URLSearchParams({
+      limit: String(limit),
+      select: PRODUCT_SELECT,
+      is_active: 'eq.true',
+      order: 'code.asc',
+    });
     if (options?.search?.trim()) {
-      q.set('or', `(name.ilike.*${options.search.trim()}*,code.ilike.*${options.search.trim()}*)`);
+      const term = options.search.trim();
+      q.set('or', `(name.ilike.*${term}*,code.ilike.*${term}*,barcode.ilike.*${term}*)`);
     }
+
     const rows = await fetchJson(`${restBase}/${table}?${q.toString()}`);
     if (rows?.length) {
       const products = rows
-        .map((r) => mapRowToProduct(r as Record<string, unknown>, 'TRY'))
+        .map((r) => mapRowToProduct(r as Record<string, unknown>, currency))
         .filter((p): p is StorefrontProduct => p != null);
       if (products.length) {
-        return { products, currency: 'TRY', source: `${restBase}/${table}` };
+        return {
+          products,
+          currency,
+          source: `${restBase}/${table} (${catalogTenantCode})`,
+        };
       }
     }
   }
 
-  return { products: buildDemoProducts(tenantCode), currency: 'TRY', source: 'demo-fallback' };
+  return {
+    products: buildDemoProducts(catalogTenantCode),
+    currency,
+    source: 'demo-fallback',
+  };
 }
 
 export function buildDemoProducts(tenantCode: string): StorefrontProduct[] {
@@ -98,7 +132,28 @@ export function buildDemoProducts(tenantCode: string): StorefrontProduct[] {
 export async function fetchTenantProductByCode(
   tenantCode: string,
   productCode: string,
+  context?: StorefrontContext,
 ): Promise<StorefrontProduct | null> {
-  const { products } = await fetchTenantCatalog(tenantCode, { limit: 100 });
-  return products.find((p) => p.code === productCode || p.id === productCode) ?? null;
+  const ctx = await resolveContext(tenantCode, context);
+  const code = decodeURIComponent(productCode).trim();
+
+  const q = new URLSearchParams({
+    select: PRODUCT_SELECT,
+    is_active: 'eq.true',
+    limit: '1',
+    or: `(code.eq.${code},barcode.eq.${code},id.eq.${code})`,
+  });
+
+  for (const firm of firmNrCandidates(ctx.firmNr)) {
+    const table = productTableForFirm(firm);
+    const rows = await fetchJson(`${ctx.restBase}/${table}?${q.toString()}`);
+    const row = rows?.[0] as Record<string, unknown> | undefined;
+    if (row) {
+      const mapped = mapRowToProduct(row, ctx.currency);
+      if (mapped) return mapped;
+    }
+  }
+
+  const { products } = await fetchTenantCatalog(tenantCode, { limit: 100, context: ctx });
+  return products.find((p) => p.code === code || p.id === code) ?? null;
 }

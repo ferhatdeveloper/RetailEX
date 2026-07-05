@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { getThemeVariant } from '../../themes/registry';
 import { loadEticaretSettings } from '../../core/settings';
+import type { EticaretSettings } from '../../core/types';
 
 const STATIC = '/eticaret-static/ella';
 
@@ -18,12 +19,14 @@ const BASE_STYLES = [
 
 type Props = {
   variantId?: string;
+  settings?: EticaretSettings;
 };
 
-export function EllaThemeAssets({ variantId }: Props) {
+export function EllaThemeAssets({ variantId, settings: settingsProp }: Props) {
+  const activeVariantId = variantId ?? settingsProp?.activeVariantId ?? loadEticaretSettings().activeVariantId;
+
   useEffect(() => {
-    const settings = loadEticaretSettings();
-    const resolved = getThemeVariant(variantId ?? settings.activeVariantId);
+    const resolved = getThemeVariant(activeVariantId);
     const hrefs = [...BASE_STYLES, ...(resolved?.variant.demoCss ?? [])];
 
     const links: HTMLLinkElement[] = [];
@@ -49,7 +52,7 @@ export function EllaThemeAssets({ variantId }: Props) {
         document.body.classList.remove(resolved.variant.skinClass);
       }
     };
-  }, [variantId]);
+  }, [activeVariantId]);
 
   return null;
 }

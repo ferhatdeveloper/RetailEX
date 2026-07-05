@@ -1,14 +1,18 @@
 import { Link } from 'react-router-dom';
 import { loadEticaretSettings } from '../../core/settings';
 import { buildStorefrontBasePath } from '../../core/tenantResolver';
+import type { EticaretSettings } from '../../core/types';
 
 type Props = {
   tenantCode: string;
+  displayName?: string;
+  settings?: EticaretSettings;
 };
 
-export function EllaHeader({ tenantCode }: Props) {
-  const settings = loadEticaretSettings();
+export function EllaHeader({ tenantCode, displayName, settings: settingsProp }: Props) {
+  const settings = settingsProp ?? loadEticaretSettings();
   const base = buildStorefrontBasePath(tenantCode);
+  const label = displayName?.trim() || tenantCode;
 
   return (
     <>
@@ -37,7 +41,7 @@ export function EllaHeader({ tenantCode }: Props) {
               <div className="header-top--right header__icons text-right clearfix">
                 <div className="header-top-right-group">
                   <div className="customer-service-text">
-                    {settings.storeTitle} · <span>{tenantCode}</span>
+                    {settings.storeTitle} · <span>{label}</span>
                   </div>
                 </div>
               </div>

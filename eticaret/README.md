@@ -55,4 +55,15 @@ cp -r "/tmp/b2b-ella/Ella HTML Template/Ella-HTML" eticaret/themes/ella
 
 ## Veritabanı
 
-Migration `093_eticaret_settings.sql` → `public.system_settings.eticaret_settings` (JSONB).
+| Katman | Alan | Açıklama |
+|--------|------|----------|
+| Kiracı DB | `system_settings.eticaret_settings` | Migration `093` — yerel demo / ERP ayarları |
+| Merkez DB | `tenant_registry.eticaret_settings` | Script `merkez_tenant_registry_add_eticaret_settings.sql` |
+
+Kiracı ürünleri: `{rest_base_url}/rex_{firm}_products` (PostgREST).
+
+Merkez script:
+
+```bash
+psql -h <host> -U postgres -d merkez_db -f database/scripts/merkez_tenant_registry_add_eticaret_settings.sql
+```
