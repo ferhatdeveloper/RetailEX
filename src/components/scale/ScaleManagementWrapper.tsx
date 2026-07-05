@@ -26,6 +26,7 @@ import {
   setScaleBridgeStoreId,
   getScaleBridgeStoreId,
   syncScaleBridgeFromWebConfig,
+  SCALE_BRIDGE_RELEASE_URL,
   type StoreScaleBridgeRow,
 } from '../../services/scaleBridgeApi';
 
@@ -231,6 +232,25 @@ export function ScaleManagementWrapper({ products }: ScaleManagementWrapperProps
 
   return (
     <>
+      {!bridgeMode && (
+        <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+          <p className="font-medium">Terazi Köprüsü (ScaleBridge) ayrı kurulum paketidir</p>
+          <p className="mt-1 text-amber-900">
+            Ana RetailEX kurulumuna dahil değildir. Terazi kullanacaksanız mağaza PC&apos;sine{' '}
+            <code className="text-xs">RetailEX-ScaleBridge-Setup.exe</code> kurun; ardından köprü
+            URL&apos;sini buradan veya mağaza kaydından tanımlayın.
+          </p>
+          <a
+            href={SCALE_BRIDGE_RELEASE_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-2 inline-block text-blue-700 hover:underline"
+          >
+            GitHub Releases — ScaleBridge indir
+          </a>
+        </div>
+      )}
+
       {showBridgeSettings && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[200] p-4">
           <div className="bg-white rounded-lg shadow-xl max-w-lg w-full p-6">
@@ -281,6 +301,16 @@ export function ScaleManagementWrapper({ products }: ScaleManagementWrapperProps
             />
             <p className="text-xs text-gray-500 mb-4">
               Yerel config: <code>C:\ProgramData\RetailEX\scale-bridge.json</code>
+              <br />
+              Kurulum paketi (ayrı):{' '}
+              <a
+                href={SCALE_BRIDGE_RELEASE_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-blue-600 hover:underline"
+              >
+                RetailEX-ScaleBridge-Setup.exe
+              </a>
               <br />
               Mağaza PC yönetim arayüzü:{' '}
               <a

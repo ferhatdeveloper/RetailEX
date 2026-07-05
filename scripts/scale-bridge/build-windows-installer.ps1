@@ -32,7 +32,7 @@ if (-not (Get-Command cargo -ErrorAction SilentlyContinue)) {
 Write-Host '1) Rust release derleme (statik CRT - VCRUNTIME140.dll gerekmez)...'
 $env:RUSTFLAGS = '-C target-feature=+crt-static'
 Push-Location $DeskApp
-cargo build --release --bin RetailEX_Scale_Bridge --bin RetailEX_ScaleBridge_Manager
+cargo build --release --features scale-bridge-bin --bin RetailEX_Scale_Bridge --bin RetailEX_ScaleBridge_Manager
 Pop-Location
 Remove-Item Env:RUSTFLAGS -ErrorAction SilentlyContinue
 

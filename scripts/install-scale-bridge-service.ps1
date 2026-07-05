@@ -16,7 +16,7 @@ New-Item -ItemType Directory -Force -Path $InstallDir, $ConfigDir | Out-Null
 Write-Host 'Derleniyor: RetailEX_Scale_Bridge + Manager (statik CRT)...'
 $env:RUSTFLAGS = '-C target-feature=+crt-static'
 Push-Location $DeskApp
-cargo build --release --bin RetailEX_Scale_Bridge --bin RetailEX_ScaleBridge_Manager
+cargo build --release --features scale-bridge-bin --bin RetailEX_Scale_Bridge --bin RetailEX_ScaleBridge_Manager
 Pop-Location
 Remove-Item Env:RUSTFLAGS -ErrorAction SilentlyContinue
 

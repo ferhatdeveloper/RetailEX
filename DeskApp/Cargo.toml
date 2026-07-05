@@ -1,6 +1,6 @@
 [package]
 name = "retailex"
-version = "0.1.201"
+version = "0.1.202"
 description = "A Tauri App"
 authors = ["you"]
 license = ""
@@ -63,6 +63,11 @@ futures-lite = "2.1"
 serialport = "4.6"
 regex = "1.10"
 
+[features]
+default = []
+legacy-logo-bin = []
+scale-bridge-bin = []
+
 
 [[bin]]
 name = "retailex"
@@ -79,6 +84,7 @@ path = "src/setup_main.rs"
 [[bin]]
 name = "RetailEX_Logo"
 path = "src/logo_main.rs"
+required-features = ["legacy-logo-bin"]
 
 [[bin]]
 name = "RetailEX_SQL_Bridge"
@@ -87,10 +93,12 @@ path = "src/sql_bridge_main.rs"
 [[bin]]
 name = "RetailEX_Scale_Bridge"
 path = "src/scale_bridge_main.rs"
+required-features = ["scale-bridge-bin"]
 
 [[bin]]
 name = "RetailEX_ScaleBridge_Manager"
 path = "src/scale_bridge_manager_main.rs"
+required-features = ["scale-bridge-bin"]
 
 [[bin]]
 name = "RetailEX_Tools"

@@ -57,7 +57,9 @@ Var LogoObjPath
 Var UseLogoObj
 Var UseFixedVpnIp
 Var InstallPostgREST
+Var InstallOfflineMessaging
 Var PostgREST_Obj
+Var OfflineMessaging_Obj
 Var WSUrl_Obj
 Var AMQPUrl_Obj
 Var RoleTerminal_Obj
@@ -171,6 +173,7 @@ Page custom PageReinstall PageLeaveReinstall
 
 ; Custom Pages
 Page custom PageRoleSelection PageLeaveRoleSelection
+Page custom PageOfflineMessaging PageLeaveOfflineMessaging
 Page custom PagePostgREST PageLeavePostgREST
 Page custom PageSettings PageLeaveSettings
 ; Logo Objects kurulum sayfası kaldırıldı — LObject/REST ayarları uygulama içi Entegrasyonlar ekranından yapılır.
@@ -471,7 +474,7 @@ Function PageRoleSelection
   Pop $RoleServer_Obj
   SendMessage $RoleServer_Obj ${WM_SETFONT} $1 1
   
-  ${NSD_CreateLabel} 18u 56u 100% 12u "RabbitMQ, Redis ve Erlang bu makineye kurulacaktır."
+  ${NSD_CreateLabel} 18u 56u 100% 24u "Bulut/hibrit merkez (api.retailex.app) kullanıyorsanız Terminal seçin.$\r$\nTerazi (ScaleBridge) ve Redis/RabbitMQ bu kuruluma dahil değildir — ayrı paketlerdir."
   Pop $0
   SendMessage $0 ${WM_SETFONT} $2 1
   
@@ -494,6 +497,38 @@ Function PageLeaveRoleSelection
     StrCpy $AMQPUrl "amqp://guest:guest@localhost:5672"
   ${Else}
     StrCpy $InstallRole 0
+    StrCpy $InstallOfflineMessaging 0
+  ${EndIf}
+FunctionEnd
+
+Function PageOfflineMessaging
+  Call SkipIfPassive
+  ${If} $InstallRole != 1
+    Abort
+  ${EndIf}
+
+  !insertmacro MUI_HEADER_TEXT "Çevrimdışı Mesaj Altyapısı" "Redis + RabbitMQ + Erlang (yalnızca tam offline merkez sunucu)."
+  nsDialogs::Create 1018
+  Pop $0
+
+  ${NSD_CreateLabel} 0 0 100% 72u "Bulut veya hibrit merkez (api.retailex.app) kullanıyorsanız bu adımı atlayın — kutuyu işaretlemeyin.$\r$\n$\r$\nİşaretlerseniz kurulum klasörünüzde ($EXEDIR) şu dosyalar aranır: redis-setup.msi, erlang-setup.exe, rabbitmq-setup.exe (yüzlerce MB).$\r$\n$\r$\nÇoğu mağaza ve SaaS kurulumunda gerekmez."
+  Pop $0
+
+  ${NSD_CreateCheckBox} 0 78u 100% 14u "Bu bilgisayara Redis, Erlang ve RabbitMQ kur (offline merkez sunucu)"
+  Pop $OfflineMessaging_Obj
+  ${If} $InstallOfflineMessaging == 1
+    SendMessage $OfflineMessaging_Obj ${BM_SETCHECK} ${BST_CHECKED} 0
+  ${EndIf}
+
+  nsDialogs::Show
+FunctionEnd
+
+Function PageLeaveOfflineMessaging
+  ${NSD_GetState} $OfflineMessaging_Obj $0
+  ${If} $0 == ${BST_CHECKED}
+    StrCpy $InstallOfflineMessaging 1
+  ${Else}
+    StrCpy $InstallOfflineMessaging 0
   ${EndIf}
 FunctionEnd
 
@@ -665,6 +700,7 @@ Function .onInit
   StrCpy $UseLogoObj 0
   StrCpy $UseFixedVpnIp 1
   StrCpy $InstallPostgREST 0
+  StrCpy $InstallOfflineMessaging 0
 
   ${GetOptions} $CMDLINE "/P" $PassiveMode
   IfErrors +2 0
@@ -862,8 +898,9 @@ Section Install
     File /a "/oname=_up_\database\migrations\060_ensure_create_firm_period_engine.sql" "__REPO_ROOT__\database\migrations\060_ensure_create_firm_period_engine.sql"
     File /a "/oname=_up_\database\sys\.keep" "__REPO_ROOT__\database\sys\.keep"
 
-  ; dependency installation logic moved here
+  ; dependency installation logic moved here (yalnizca offline merkez + kullanici onayi)
   ${If} $InstallRole == 1
+  ${AndIf} $InstallOfflineMessaging == 1
     ; 1. Redis Installation (offline)
     DetailPrint "Checking Redis..."
     ExecWait 'powershell -Command "Get-Service -Name redis -ErrorAction SilentlyContinue"' $0
@@ -976,8 +1013,12 @@ Section Install
   FileWrite $9 "- RetailEX Sync Service: KURULDU & ÇALIŞIYOR$\r$\n"
   FileWrite $9 "- RetailEX SQL Bridge (Port 3001): KURULDU (Native Windows Service EXE)$\r$\n"
   ${If} $InstallRole == 1
-    FileWrite $9 "- Redis (Memory Cache): KURULDU$\r$\n"
-    FileWrite $9 "- RabbitMQ (Messaging): KURULDU$\r$\n"
+    ${If} $InstallOfflineMessaging == 1
+      FileWrite $9 "- Redis (Memory Cache): KURULDU (veya zaten vardı)$\r$\n"
+      FileWrite $9 "- RabbitMQ (Messaging): KURULDU (veya zaten vardı)$\r$\n"
+    ${Else}
+      FileWrite $9 "- Redis / RabbitMQ: ATLANDI (bulut/hibrit veya seçilmedi)$\r$\n"
+    ${EndIf}
     FileWrite $9 "- Logo Connector: KULLANILMIYOR (REST/LOBJECT uygulama içinden)$\r$\n"
   ${EndIf}
   FileWrite $9 "$\r$\nBağlantı Bilgileri:$\r$\n"
@@ -985,13 +1026,14 @@ Section Install
   FileWrite $9 "- Messaging: $AMQPUrl$\r$\n"
   FileWrite $9 "$\r$\nÖnemli Notlar:$\r$\n"
   FileWrite $9 "1. Logo entegrasyonu: Uygulama → Entegrasyonlar → Logo ERP (REST veya LOBJECT).$\r$\n"
-  FileWrite $9 "2. Güvenlik duvarından (Firewall) 8000, 5432 ve 6379 portlarına izin verildiğinden emin olun.$\r$\n"
-  FileWrite $9 "3. WebSocket adresi ($WSUrl) uygulama ve merkez senkron için kullanılır; ağ/firewall ayarlarını buna göre doğrulayın.$\r$\n"
-  FileWrite $9 "4. Servisler kurulmadıysa '$INSTDIR\install-services-manual.cmd' (veya .ps1) dosyasını Yönetici olarak çalıştırın.$\r$\n"
-  FileWrite $9 "5. Gelişmiş yönetim için '$INSTDIR\retailex-admin.cmd' (veya .ps1) veya '$INSTDIR\RetailEXTools\RetailEX_Tools.exe' menüsünü kullanın.$\r$\n"
-  FileWrite $9 "6. PostgreSQL'i LAN'dan erişime açmak (yönetici): '$INSTDIR\RetailEX_PostgreSQLRemote.exe' veya pg-windows-expose-remote.cmd$\r$\n"
+  FileWrite $9 "2. Terazi (ScaleBridge): Ana kuruluma dahil değil. Ayrı paket: RetailEX-ScaleBridge-Setup.exe (GitHub Releases).$\r$\n"
+  FileWrite $9 "3. Güvenlik duvarından (Firewall) 8000, 5432 portlarına izin verildiğinden emin olun.$\r$\n"
+  FileWrite $9 "4. WebSocket adresi ($WSUrl) uygulama ve merkez senkron için kullanılır; ağ/firewall ayarlarını buna göre doğrulayın.$\r$\n"
+  FileWrite $9 "5. Servisler kurulmadıysa '$INSTDIR\install-services-manual.cmd' (veya .ps1) dosyasını Yönetici olarak çalıştırın.$\r$\n"
+  FileWrite $9 "6. Gelişmiş yönetim için '$INSTDIR\retailex-admin.cmd' (veya .ps1) veya '$INSTDIR\RetailEXTools\RetailEX_Tools.exe' menüsünü kullanın.$\r$\n"
+  FileWrite $9 "7. PostgreSQL'i LAN'dan erişime açmak (yönetici): '$INSTDIR\RetailEX_PostgreSQLRemote.exe' veya pg-windows-expose-remote.cmd$\r$\n"
   ${If} $InstallPostgREST == 1
-    FileWrite $9 "7. PostgREST: '$INSTDIR\postgrest.exe' — örnek: postgrest.exe ile aynı klasörde _up_\config\postgrest.conf yolunu kullanın (port 3002, pg_bridge 3001).$\r$\n"
+    FileWrite $9 "8. PostgREST: '$INSTDIR\postgrest.exe' — örnek: postgrest.exe ile aynı klasörde _up_\config\postgrest.conf yolunu kullanın (port 3002, pg_bridge 3001).$\r$\n"
   ${EndIf}
   FileWrite $9 "$\r$\nRetailEX Enterprise OS - Keyifli kullanımlar!$\r$\n"
   FileClose $9
@@ -1032,6 +1074,7 @@ Section Install
   WriteRegDWORD SHCTX "${MANUPRODUCTKEY}" "UseFixedVpnIp" $UseFixedVpnIp
   WriteRegDWORD SHCTX "${MANUPRODUCTKEY}" "UseLogoObj" $UseLogoObj
   WriteRegDWORD SHCTX "${MANUPRODUCTKEY}" "InstallPostgREST" $InstallPostgREST
+  WriteRegDWORD SHCTX "${MANUPRODUCTKEY}" "InstallOfflineMessaging" $InstallOfflineMessaging
 
   ; Create start menu shortcut (GUI)
   !insertmacro MUI_STARTMENU_WRITE_BEGIN Application
@@ -1245,6 +1288,11 @@ Function RestorePreviousInstallLocation
   ReadRegDWORD $R6 SHCTX "${MANUPRODUCTKEY}" "InstallPostgREST"
   ${If} $R6 != ""
     StrCpy $InstallPostgREST $R6
+  ${EndIf}
+
+  ReadRegDWORD $R7 SHCTX "${MANUPRODUCTKEY}" "InstallOfflineMessaging"
+  ${If} $R7 != ""
+    StrCpy $InstallOfflineMessaging $R7
   ${EndIf}
 FunctionEnd
 

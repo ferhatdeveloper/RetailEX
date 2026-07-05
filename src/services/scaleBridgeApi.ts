@@ -24,6 +24,10 @@ const STORAGE_TOKEN = 'retailex_scale_bridge_token';
 const STORAGE_MANUAL = 'retailex_scale_bridge_manual';
 const STORAGE_STORE_ID = 'retailex_scale_bridge_store_id';
 
+/** Ayrı kurulum paketi — ana RetailEX Desktop kurulumuna dahil değildir. */
+export const SCALE_BRIDGE_RELEASE_URL =
+  'https://github.com/ferhatdeveloper/RetailEX/releases?q=ScaleBridge';
+
 export type ScaleBridgeSource = 'manual' | 'store' | 'tenant' | 'none';
 
 export type StoreScaleBridgeRow = {
