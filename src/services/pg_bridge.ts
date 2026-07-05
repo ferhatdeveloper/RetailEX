@@ -25,6 +25,8 @@ import {
   loadEticaretSettingsFromPg,
   saveEticaretSettingsToPg,
   fetchFirmNrFromPg,
+  fetchTenantFirmsFromPg,
+  resolveCatalogFirmNr,
   firmNrCandidates,
   getEticaretPool,
 } from '../../eticaret/core/server/tenantDbResolve';
@@ -757,6 +759,7 @@ function buildStorefrontPayload(settings: Record<string, unknown>, tenant: strin
     lookbookScenes: Array.isArray(settings.lookbookScenes) ? settings.lookbookScenes : [],
     askExpertEmail: settings.askExpertEmail ? String(settings.askExpertEmail) : '',
     gdprCookieText: settings.gdprCookieText ? String(settings.gdprCookieText) : '',
+    catalogFirmNr: settings.catalogFirmNr ? String(settings.catalogFirmNr).trim() : '',
   };
 }
 
@@ -780,16 +783,18 @@ function mapProductRow(row: Record<string, unknown>, currency: string) {
 
 async function queryTenantProducts(
   connStr: string,
-  options: { limit?: number; search?: string; code?: string },
-): Promise<{ products: Record<string, unknown>[]; currency: string }> {
+  options: { limit?: number; search?: string; code?: string; catalogFirmNr?: string },
+): Promise<{ products: Record<string, unknown>[]; currency: string; firmNr: string }> {
   const pool = getEticaretPool(connStr);
-  const firm = await fetchFirmNrFromPg(connStr);
+  const firm = options.catalogFirmNr?.trim()
+    ? options.catalogFirmNr.trim().padStart(3, '0').slice(0, 10)
+    : await resolveCatalogFirmNr(connStr);
   const currencyRow = await pool.query(
     `SELECT default_currency FROM public.system_settings WHERE id = 1 LIMIT 1`,
   );
   const currency = String(currencyRow.rows[0]?.default_currency || 'TRY');
   const limit = Math.min(100, Math.max(1, options.limit ?? 24));
-  const firms = firmNrCandidates(firm);
+  const firms = options.catalogFirmNr?.trim() ? [firm] : firmNrCandidates(firm);
 
   for (const f of firms) {
     const table = `rex_${f}_products`;
@@ -812,12 +817,12 @@ async function queryTenantProducts(
       const products = result.rows
         .map((r) => mapProductRow(r as Record<string, unknown>, currency))
         .filter(Boolean) as Record<string, unknown>[];
-      if (products.length || options.code) return { products, currency };
+      if (products.length || options.code) return { products, currency, firmNr: firm };
     } catch {
       /* tablo yoksa sonraki firmayı dene */
     }
   }
-  return { products: [], currency };
+  return { products: [], currency, firmNr: firm };
 }
 
 app.put('/api/eticaret/settings', async (c) => {
@@ -838,6 +843,23 @@ app.put('/api/eticaret/settings', async (c) => {
   }
 });
 
+app.get('/api/eticaret/firms', async (c) => {
+  try {
+    const tenant = c.req.query('tenant')?.trim().toLowerCase() || '';
+    if (!tenant) return c.json({ firms: [], primaryFirmNr: '001' });
+    const connStr = await resolveEticaretConnStrAsync(tenant, c.req.query('database') || undefined);
+    if (!connStr) return c.json({ firms: [], primaryFirmNr: '001' });
+    const [firms, primaryFirmNr] = await Promise.all([
+      fetchTenantFirmsFromPg(connStr),
+      fetchFirmNrFromPg(connStr),
+    ]);
+    return c.json({ firms, primaryFirmNr });
+  } catch (error: unknown) {
+    const err = error as { message?: string };
+    return c.json({ firms: [], primaryFirmNr: '001', error: err?.message }, 500);
+  }
+});
+
 app.get('/api/eticaret/catalog', async (c) => {
   try {
     const tenant = c.req.query('tenant')?.trim().toLowerCase() || '';
@@ -851,8 +873,11 @@ app.get('/api/eticaret/catalog', async (c) => {
     const merged = mergeSettingsLayers(registry, settings);
     const demoMode = Boolean(merged.demoMode);
     const catalogTenant = tenant;
+    const catalogFirmNr =
+      c.req.query('catalog_firm_nr')?.trim() ||
+      (merged.catalogFirmNr ? String(merged.catalogFirmNr).trim() : undefined);
 
-    const { products, currency } = await queryTenantProducts(connStr, { limit, search });
+    const { products, currency } = await queryTenantProducts(connStr, { limit, search, catalogFirmNr });
     if (!products.length && demoMode) {
       const label = catalogTenant.toUpperCase();
       const demoProducts = Array.from({ length: 8 }, (_, i) => ({
@@ -879,7 +904,11 @@ app.get('/api/eticaret/product', async (c) => {
     if (!tenant || !code) return c.json({ product: null });
     const connStr = await resolveEticaretConnStrAsync(tenant);
     if (!connStr) return c.json({ product: null });
-    const { products, currency } = await queryTenantProducts(connStr, { limit: 1, code });
+    const settings = await loadEticaretSettingsFromPg(connStr);
+    const registry = await loadRegistryEticaretSettings(tenant);
+    const merged = mergeSettingsLayers(registry, settings);
+    const catalogFirmNr = merged.catalogFirmNr ? String(merged.catalogFirmNr).trim() : undefined;
+    const { products, currency } = await queryTenantProducts(connStr, { limit: 1, code, catalogFirmNr });
     const product = products[0] ? { ...products[0], currency } : null;
     return c.json({ product });
   } catch {
@@ -944,9 +973,20 @@ app.post('/api/eticaret/submit-order', async (c) => {
         if (!connStr) {
             return c.json({ error: 'Veritabanı bağlantısı çözülemedi (connStr veya PG_DUMP_INTERNAL_URI + tenant)' }, 400);
         }
+        const dbSettings = await loadEticaretSettingsFromPg(connStr);
+        const registry = tenant ? await loadRegistryEticaretSettings(tenant) : {};
+        const merged = mergeSettingsLayers(registry, dbSettings);
+        const catalogFirmNr = await resolveCatalogFirmNr(connStr, {
+          catalogFirmNr: merged.catalogFirmNr
+            ? String(merged.catalogFirmNr)
+            : body.firm_nr
+              ? String(body.firm_nr)
+              : undefined,
+        });
         const payload = {
             tenant_code: body.tenant_code,
             demo_mode: body.demo_mode,
+            firm_nr: catalogFirmNr,
             customer_name: body.customer_name,
             customer_email: body.customer_email,
             customer_phone: body.customer_phone,

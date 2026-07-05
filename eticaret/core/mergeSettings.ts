@@ -30,6 +30,7 @@ export function mergeEticaretSettings(
       freeShippingThreshold: layer.freeShippingThreshold ?? merged.freeShippingThreshold,
       askExpertEmail: layer.askExpertEmail ?? merged.askExpertEmail,
       gdprCookieText: layer.gdprCookieText ?? merged.gdprCookieText,
+      catalogFirmNr: layer.catalogFirmNr ?? merged.catalogFirmNr,
     };
   }
   if (!merged.storefrontFeatures) {
@@ -70,5 +71,6 @@ export function storefrontConfigToSettings(
     lookbookScenes: raw.lookbookScenes as EticaretSettings['lookbookScenes'],
     askExpertEmail: raw.askExpertEmail ? String(raw.askExpertEmail) : undefined,
     gdprCookieText: raw.gdprCookieText ? String(raw.gdprCookieText) : undefined,
+    catalogFirmNr: raw.catalogFirmNr ? String(raw.catalogFirmNr).trim() : undefined,
   });
 }

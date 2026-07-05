@@ -132,6 +132,10 @@ export async function buildStorefrontContext(pathTenantCode?: string | null): Pr
     tenantDbSettings ?? null,
   );
 
+  if (settings.catalogFirmNr?.trim()) {
+    firmNr = settings.catalogFirmNr.trim().padStart(3, '0').slice(0, 10);
+  }
+
   const displayName = registry?.display_name?.trim();
   const enrichedTenant: ResolvedEticaretTenant = {
     ...tenant,

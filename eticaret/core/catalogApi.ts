@@ -70,16 +70,24 @@ async function resolveContext(
  */
 export async function fetchTenantCatalog(
   tenantCode: string,
-  options?: { limit?: number; search?: string; context?: StorefrontContext; demoMode?: boolean },
+  options?: {
+    limit?: number;
+    search?: string;
+    context?: StorefrontContext;
+    demoMode?: boolean;
+    catalogFirmNr?: string;
+  },
 ): Promise<{ products: StorefrontProduct[]; currency: string; source: string }> {
   const limit = Math.min(100, Math.max(1, options?.limit ?? 24));
   const ctx = await resolveContext(tenantCode, options?.context);
   const demoMode = options?.demoMode ?? ctx.settings.demoMode;
+  const catalogFirmNr = options?.catalogFirmNr?.trim() || ctx.settings.catalogFirmNr?.trim();
 
   try {
     const origin = typeof window !== 'undefined' ? window.location.origin : '';
     const q = new URLSearchParams({ tenant: ctx.catalogTenantCode, limit: String(limit) });
     if (options?.search?.trim()) q.set('search', options.search.trim());
+    if (catalogFirmNr) q.set('catalog_firm_nr', catalogFirmNr);
     const res = await fetch(`${origin}/api/eticaret/catalog?${q.toString()}`, {
       headers: { Accept: 'application/json' },
     });
@@ -104,9 +112,9 @@ export async function fetchTenantCatalog(
     /* PostgREST fallback */
   }
 
-  const { restBase, firmNr, currency, catalogTenantCode } = ctx;
+  const { restBase, firmNr, currency, catalogTenantCode, settings } = ctx;
 
-  const firms = firmNrCandidates(firmNr);
+  const firms = settings.catalogFirmNr?.trim() ? [firmNr] : firmNrCandidates(firmNr);
   for (const firm of firms) {
     const table = productTableForFirm(firm);
     const q = new URLSearchParams({
@@ -174,7 +182,7 @@ export async function fetchTenantProductByCode(
     or: `(code.eq.${code},barcode.eq.${code},id.eq.${code})`,
   });
 
-  for (const firm of firmNrCandidates(ctx.firmNr)) {
+  for (const firm of ctx.settings.catalogFirmNr?.trim() ? [ctx.firmNr] : firmNrCandidates(ctx.firmNr)) {
     const table = productTableForFirm(firm);
     const rows = await fetchJson(`${ctx.restBase}/${table}?${q.toString()}`);
     const row = rows?.[0] as Record<string, unknown> | undefined;

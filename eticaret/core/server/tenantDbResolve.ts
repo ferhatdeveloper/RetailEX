@@ -107,6 +107,63 @@ export async function fetchFirmNrFromPg(connStr: string): Promise<string> {
   return firm.padStart(3, '0').slice(0, 10);
 }
 
+export type TenantFirmRow = {
+  firm_nr: string;
+  name: string;
+  is_active: boolean;
+};
+
+/** Kiracı veritabanındaki firmalar (online mağaza seçici) */
+export async function fetchTenantFirmsFromPg(connStr: string): Promise<TenantFirmRow[]> {
+  const pool = getEticaretPool(connStr);
+  try {
+    const result = await pool.query<{ firm_nr: string; name: string; is_active: boolean | null }>(
+      `SELECT firm_nr, name, COALESCE(is_active, true) AS is_active
+       FROM public.firms
+       ORDER BY firm_nr ASC`,
+    );
+    return result.rows.map((r) => ({
+      firm_nr: String(r.firm_nr || '').trim().padStart(3, '0').slice(0, 10),
+      name: String(r.name || '').trim() || String(r.firm_nr),
+      is_active: r.is_active !== false,
+    }));
+  } catch {
+    return [];
+  }
+}
+
+function normalizeFirmNr(raw: string | null | undefined): string {
+  const firm = String(raw || '001').trim() || '001';
+  return firm.padStart(3, '0').slice(0, 10);
+}
+
+/**
+ * Vitrin kataloğu / sipariş için firma no:
+ * eticaret_settings.catalogFirmNr → primary_firm_nr
+ */
+export async function resolveCatalogFirmNr(
+  connStr: string,
+  settingsHint?: { catalogFirmNr?: string | null } | null,
+): Promise<string> {
+  const hint = settingsHint?.catalogFirmNr?.trim();
+  if (hint) return normalizeFirmNr(hint);
+
+  const pool = getEticaretPool(connStr);
+  const row = await pool.query<{
+    primary_firm_nr: string | null;
+    eticaret_settings: Record<string, unknown> | null;
+  }>(
+    `SELECT primary_firm_nr, eticaret_settings FROM public.system_settings WHERE id = 1 LIMIT 1`,
+  );
+  const dbSettings = row.rows[0]?.eticaret_settings;
+  const fromDb =
+    dbSettings && typeof dbSettings === 'object'
+      ? String((dbSettings as { catalogFirmNr?: string }).catalogFirmNr || '').trim()
+      : '';
+  if (fromDb) return normalizeFirmNr(fromDb);
+  return normalizeFirmNr(row.rows[0]?.primary_firm_nr);
+}
+
 export function firmNrCandidates(primary: string): string[] {
   const raw = String(primary || '001').trim();
   const padded = raw.padStart(3, '0').slice(0, 10);

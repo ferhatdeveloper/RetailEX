@@ -3408,6 +3408,7 @@ DECLARE
   v_tenant        TEXT := COALESCE(NULLIF(TRIM(payload->>'tenant_code'), ''), 'default');
   v_firm          TEXT;
   v_period        TEXT;
+  v_eticaret      JSONB;
   v_currency      TEXT := COALESCE(NULLIF(TRIM(payload->>'currency'), ''), 'TRY');
   v_order_no      TEXT;
   v_order_id      UUID := gen_random_uuid();
@@ -3427,10 +3428,17 @@ DECLARE
   v_year          TEXT := to_char(now(), 'YYYY');
   v_seq           INT;
 BEGIN
-  SELECT primary_firm_nr, primary_period_nr
-  INTO v_firm, v_period
+  SELECT primary_firm_nr, primary_period_nr, eticaret_settings
+  INTO v_firm, v_period, v_eticaret
   FROM public.system_settings
   WHERE id = 1;
+
+  IF NULLIF(TRIM(payload->>'firm_nr'), '') IS NOT NULL THEN
+    v_firm := NULLIF(TRIM(payload->>'firm_nr'), '');
+  ELSIF v_eticaret IS NOT NULL
+    AND NULLIF(TRIM(v_eticaret->>'catalogFirmNr'), '') IS NOT NULL THEN
+    v_firm := NULLIF(TRIM(v_eticaret->>'catalogFirmNr'), '');
+  END IF;
 
   v_firm := COALESCE(NULLIF(TRIM(v_firm), ''), '001');
   v_period := COALESCE(NULLIF(TRIM(v_period), ''), '01');
@@ -3537,7 +3545,8 @@ BEGIN
     'sales_fiche_id', v_sales_id,
     'sales_fiche_no', v_order_no,
     'fiche_type', 'order',
-    'trcode', 20
+    'trcode', 20,
+    'firm_nr', v_firm
   );
 EXCEPTION WHEN OTHERS THEN
   RETURN jsonb_build_object('ok', false, 'error', SQLERRM);

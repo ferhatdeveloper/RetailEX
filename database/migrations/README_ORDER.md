@@ -81,6 +81,7 @@
 77. **092_customer_call_plan_weekly.sql** – Müşteri arama planı haftalık arşivi (`customer_call_plan_weekly`) ve hafta başı sıfırlama (`customer_call_plan_rollover`).
 78. **093_eticaret_settings.sql** – `system_settings.eticaret_settings` (online satış tema / demo kiracı JSONB).
 79. **094_eticaret_web_orders.sql** – `eticaret_web_orders` tablosu; `eticaret_submit_web_order` RPC (demo kapalıyken trcode 20 sipariş fişi).
+80. **095_eticaret_catalog_firm.sql** – Online vitrin firma seçimi: `eticaret_settings.catalogFirmNr` ve `payload.firm_nr` ile katalog/sipariş fişi firması.
 
 **Kiracılara toplu uygulama (VPS / uzak PG):**
 - `npm run db:migrate:tenants` — tüm RetailEX kiracı DB'ler (`ilsasupport`, `pagetin_kurye`, `siti_pdks` **hariç** — bkz. `.cursor/rules/database-non-retailex-exclude.mdc`)

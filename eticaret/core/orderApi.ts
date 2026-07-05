@@ -27,9 +27,10 @@ export async function submitWebOrder(payload: {
   paymentStatus?: string;
   currency?: string;
   connStr?: string;
+  firmNr?: string;
 }): Promise<Record<string, unknown>> {
   const subtotal = payload.items.reduce((s, i) => s + i.quantity * i.price, 0);
-  const body = {
+  const body: Record<string, unknown> = {
     connStr: payload.connStr,
     tenant_code: payload.tenantCode,
     demo_mode: payload.demoMode,
@@ -44,6 +45,9 @@ export async function submitWebOrder(payload: {
     total: subtotal,
     items: payload.items,
   };
+  if (payload.firmNr?.trim()) {
+    body.firm_nr = payload.firmNr.trim();
+  }
 
   return bridgePost('/api/eticaret/submit-order', body);
 }

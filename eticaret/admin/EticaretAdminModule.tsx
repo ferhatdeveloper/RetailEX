@@ -211,6 +211,7 @@ export function EticaretAdminModule() {
           limit: 50,
           search: term,
           demoMode: form.demoMode,
+          catalogFirmNr: form.catalogFirmNr,
         });
         setProductOptions(
           products.map((p) => ({
@@ -224,7 +225,7 @@ export function EticaretAdminModule() {
         setProductSearchLoading(false);
       }
     },
-    [previewTenant, form.demoMode],
+    [previewTenant, form.demoMode, form.catalogFirmNr],
   );
 
   useEffect(() => {
@@ -308,7 +309,7 @@ export function EticaretAdminModule() {
       case 'dashboard':
         return <DashboardSection form={form} orders={orders} previewTenant={previewTenant} />;
       case 'storefront':
-        return <StorefrontMetaSection form={form} onChange={patch} />;
+        return <StorefrontMetaSection tenantCode={selectedTenant} form={form} onChange={patch} />;
       case 'navigation':
         return (
           <NavigationSection

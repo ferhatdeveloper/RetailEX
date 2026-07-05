@@ -35,6 +35,8 @@ export type EticaretSettings = {
   lookbookScenes?: import('./contentTypes').EticaretLookbookScene[];
   askExpertEmail?: string;
   gdprCookieText?: string;
+  /** Online vitrinde ürün/sipariş için kullanılacak firma no (boşsa system_settings.primary_firm_nr) */
+  catalogFirmNr?: string;
 };
 
 export type EticaretWebOrder = {

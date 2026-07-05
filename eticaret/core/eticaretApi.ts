@@ -7,6 +7,13 @@ import { loadTenantEticaretSettingsFromRegistry } from './tenantRegistryApi';
 export type StorefrontConfigResponse = EticaretSettings & {
   providers: Array<{ id: string; label: string }>;
   catalogTenantCode?: string;
+  catalogFirmNr?: string;
+};
+
+export type EticaretFirmOption = {
+  firm_nr: string;
+  name: string;
+  is_active: boolean;
 };
 
 function bridgeUrl(path: string): string {
@@ -61,6 +68,13 @@ export async function saveTenantEticaretSettingsFull(
   await saveTenantEticaretSettings(code, settings);
 }
 
+export async function fetchFirmsForTenant(
+  tenantCode: string,
+): Promise<{ firms: EticaretFirmOption[]; primaryFirmNr: string }> {
+  const q = new URLSearchParams({ tenant: tenantCode });
+  return bridgeGet(`/api/eticaret/firms?${q.toString()}`);
+}
+
 export async function fetchStorefrontConfig(tenantCode: string): Promise<StorefrontConfigResponse> {
   return bridgeGet<StorefrontConfigResponse>(
     `/api/eticaret/storefront-config?tenant=${encodeURIComponent(tenantCode)}`,
@@ -69,11 +83,12 @@ export async function fetchStorefrontConfig(tenantCode: string): Promise<Storefr
 
 export async function fetchCatalogFromBridge(
   tenantCode: string,
-  options?: { limit?: number; search?: string },
+  options?: { limit?: number; search?: string; catalogFirmNr?: string },
 ): Promise<{ products: StorefrontProduct[]; currency: string; demo: boolean }> {
   const q = new URLSearchParams({ tenant: tenantCode });
   if (options?.limit) q.set('limit', String(options.limit));
   if (options?.search) q.set('search', options.search);
+  if (options?.catalogFirmNr?.trim()) q.set('catalog_firm_nr', options.catalogFirmNr.trim());
   return bridgeGet(`/api/eticaret/catalog?${q.toString()}`);
 }
 

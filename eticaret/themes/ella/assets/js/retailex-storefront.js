@@ -879,11 +879,8 @@
     }
   }
 
-  async function submitWebOrder(catalogTenant, demoMode, customer, items, paymentProvider) {
-    var res = await fetch(bridgeApiUrl('/api/eticaret/submit-order'), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-      body: JSON.stringify({
+  async function submitWebOrder(catalogTenant, demoMode, customer, items, paymentProvider, catalogFirmNr) {
+    var payload = {
         tenant_code: catalogTenant,
         demo_mode: demoMode,
         customer_name: customer.name,
@@ -903,7 +900,12 @@
             product_id: i.product_id || '',
           };
         }),
-      }),
+      };
+    if (catalogFirmNr) payload.firm_nr = catalogFirmNr;
+    var res = await fetch(bridgeApiUrl('/api/eticaret/submit-order'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify(payload),
     });
     var data = await res.json();
     if (!res.ok || data.ok === false) {
@@ -1416,6 +1418,7 @@
     }
     var currency = cart[0].currency || 'TRY';
     var demoMode = Boolean(storeConfig && storeConfig.demoMode);
+    var catalogFirmNr = (storeConfig && storeConfig.catalogFirmNr) || '';
     var providers = (storeConfig && storeConfig.providers) || [];
     var defaultProvider = (storeConfig && storeConfig.defaultPaymentProvider) || (providers[0] && providers[0].id) || 'swift';
     var providerOptions = providers.length
@@ -1455,7 +1458,7 @@
       var paymentProvider = String(fd.get('payment') || defaultProvider);
       var resultEl = document.getElementById('rex-checkout-result');
       resultEl.innerHTML = '<span class="text-muted">İşleniyor…</span>';
-      submitWebOrder(catalogTenant, demoMode, customer, cart, paymentProvider)
+      submitWebOrder(catalogTenant, demoMode, customer, cart, paymentProvider, catalogFirmNr)
         .then(function (order) {
           if (demoMode) {
             writeCart(routeTenant, []);
