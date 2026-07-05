@@ -553,6 +553,222 @@
     return Array.isArray(data) ? data : null;
   }
 
+  function sortEnabledContent(items) {
+    return (items || [])
+      .filter(function (i) {
+        return i.enabled !== false;
+      })
+      .sort(function (a, b) {
+        return (a.sortOrder || 0) - (b.sortOrder || 0);
+      });
+  }
+
+  function applyHeroBanner(hero, routeTenant) {
+    if (!hero || !hero.imageUrl) return;
+    var section = document.querySelector('.halo-block-fullwidth-banner');
+    if (!section) return;
+    var link = hero.linkUrl || tenantBase(routeTenant);
+    var mobile = hero.mobileImageUrl || hero.imageUrl;
+    var btn = hero.buttonText || 'İncele';
+    section.innerHTML =
+      '<div class="container container-full"><div class="halo-block-content"><div class="banner-item">' +
+      '<div class="img-box img-box--mobile">' +
+      '<a href="#" class="image image-adapt rex-banner-link" data-href="' +
+      link +
+      '" style="padding-top:38%;display:block;position:relative;overflow:hidden;">' +
+      '<img src="' +
+      hero.imageUrl +
+      '" alt="' +
+      (hero.title || '') +
+      '" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;">' +
+      '</a>' +
+      '<a href="#" class="image image-mobile image-adapt rex-banner-link" data-href="' +
+      link +
+      '" style="padding-top:136%;display:block;position:relative;overflow:hidden;">' +
+      '<img src="' +
+      mobile +
+      '" alt="' +
+      (hero.title || '') +
+      '" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;">' +
+      '</a></div>' +
+      '<div class="content-box content-box--left content-box--absolute text-center">' +
+      (hero.title
+        ? '<h3 class="banner-title uppercase"><span class="line"></span><span>' + hero.title + '</span></h3>'
+        : '') +
+      (hero.subtitle ? '<p class="banner-text desc">' + hero.subtitle + '</p>' : '') +
+      '<a href="#" class="banner-button button button-1 rex-banner-link" data-href="' +
+      link +
+      '"><span class="text text-uppercase">' +
+      btn +
+      '</span></a></div></div></div></div>';
+    section.querySelectorAll('.rex-banner-link').forEach(function (a) {
+      a.addEventListener('click', function (e) {
+        e.preventDefault();
+        var path = a.getAttribute('data-href');
+        if (path) parentNav(path);
+      });
+    });
+  }
+
+  function applyStripBanners(strips, routeTenant) {
+    if (!strips || !strips.length) return;
+    var row = document.querySelector('.halo-block-sub-banner .row');
+    if (!row) return;
+    row.innerHTML = strips
+      .slice(0, 3)
+      .map(function (b) {
+        var link = b.linkUrl || tenantBase(routeTenant);
+        return (
+          '<div class="halo-row-item col-12 col-sm-4"><div class="sub-banner banner-item animate-scale">' +
+          '<div class="img-box"><a href="#" class="image image-adapt rex-banner-link" data-href="' +
+          link +
+          '" style="padding-top:54%;display:block;position:relative;overflow:hidden;">' +
+          '<img src="' +
+          b.imageUrl +
+          '" alt="' +
+          (b.title || '') +
+          '" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;">' +
+          '</a></div>' +
+          (b.title
+            ? '<div class="content-box content-box--absolute text-center"><h3 class="banner-title" style="color:' +
+              (b.textColor || '#fff') +
+              '"><a href="#" class="link_title rex-banner-link" data-href="' +
+              link +
+              '"><span class="text">' +
+              b.title +
+              '</span></a></h3></div>'
+            : '') +
+          '</div></div>'
+        );
+      })
+      .join('');
+    row.querySelectorAll('.rex-banner-link').forEach(function (a) {
+      a.addEventListener('click', function (e) {
+        e.preventDefault();
+        var path = a.getAttribute('data-href');
+        if (path) parentNav(path);
+      });
+    });
+  }
+
+  function applySlider(slides, routeTenant) {
+    var enabled = sortEnabledContent(slides);
+    if (!enabled.length) return;
+    var main = document.querySelector('main');
+    if (!main) return;
+    var existing = document.getElementById('retailex-slider');
+    if (existing) existing.remove();
+    var html =
+      '<section id="retailex-slider" class="halo-block" style="margin-bottom:0"><div class="retailex-slick">';
+    enabled.forEach(function (s) {
+      var link = s.linkUrl || tenantBase(routeTenant);
+      html +=
+        '<div class="rex-slide" style="position:relative;min-height:320px;background:#111;">' +
+        '<img src="' +
+        s.imageUrl +
+        '" alt="' +
+        (s.title || '') +
+        '" style="width:100%;max-height:480px;object-fit:cover;display:block;">' +
+        '<div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:rgba(0,0,0,.25);color:#fff;text-align:center;padding:24px;">' +
+        (s.title ? '<h2 style="color:#fff;margin:0 0 8px">' + s.title + '</h2>' : '') +
+        (s.subtitle ? '<p style="max-width:520px">' + s.subtitle + '</p>' : '') +
+        (s.buttonText
+          ? '<a href="#" class="button button-1 rex-banner-link" data-href="' +
+            link +
+            '" style="margin-top:12px"><span class="text">' +
+            s.buttonText +
+            '</span></a>'
+          : '') +
+        '</div></div>';
+    });
+    html += '</div></section>';
+    main.insertAdjacentHTML('afterbegin', html);
+    document.querySelectorAll('#retailex-slider .rex-banner-link').forEach(function (a) {
+      a.addEventListener('click', function (e) {
+        e.preventDefault();
+        var path = a.getAttribute('data-href');
+        if (path) parentNav(path);
+      });
+    });
+    if (window.jQuery && window.jQuery.fn.slick && enabled.length > 1) {
+      window.jQuery('#retailex-slider .retailex-slick').slick({
+        dots: true,
+        arrows: true,
+        autoplay: true,
+        autoplaySpeed: 5000,
+        fade: true,
+      });
+    }
+  }
+
+  function applyBanners(banners, routeTenant) {
+    var enabled = sortEnabledContent(banners);
+    var hero = enabled.filter(function (b) {
+      return b.placement === 'hero';
+    })[0];
+    var strips = enabled.filter(function (b) {
+      return b.placement === 'strip';
+    });
+    applyHeroBanner(hero, routeTenant);
+    applyStripBanners(strips, routeTenant);
+  }
+
+  function mergeFeaturedAndCampaigns(products, config) {
+    if (!config) return products;
+    var featured = sortEnabledContent(config.featuredProducts || []);
+    var campaigns = sortEnabledContent(config.campaigns || []);
+    var badgeMap = {};
+    var now = new Date();
+
+    campaigns.forEach(function (c) {
+      var startOk = !c.startDate || new Date(c.startDate) <= now;
+      var endOk = !c.endDate || new Date(c.endDate) >= now;
+      if (!startOk || !endOk) return;
+      var badge = c.badge || (c.discountPercent ? '%' + c.discountPercent : '');
+      if (!badge) return;
+      if (!c.productCodes || !c.productCodes.length) {
+        products.forEach(function (p) {
+          badgeMap[p.code] = badge;
+        });
+      } else {
+        c.productCodes.forEach(function (code) {
+          badgeMap[code] = badge;
+        });
+      }
+    });
+
+    featured.forEach(function (f) {
+      if (f.badge) badgeMap[f.productCode] = f.badge;
+    });
+
+    products = products.map(function (p) {
+      if (badgeMap[p.code]) p.badge = badgeMap[p.code];
+      return p;
+    });
+
+    var featuredCodes = featured.map(function (f) {
+      return f.productCode;
+    });
+    if (!featuredCodes.length) return products;
+
+    var featuredList = [];
+    var rest = [];
+    products.forEach(function (p) {
+      if (featuredCodes.indexOf(p.code) >= 0) featuredList.push(p);
+      else rest.push(p);
+    });
+    featuredList.sort(function (a, b) {
+      return featuredCodes.indexOf(a.code) - featuredCodes.indexOf(b.code);
+    });
+    return featuredList.concat(rest);
+  }
+
+  function applyStorefrontContent(config, routeTenant) {
+    if (!config) return;
+    applySlider(config.sliders || [], routeTenant);
+    applyBanners(config.banners || [], routeTenant);
+  }
+
   async function fetchCatalog(catalogTenant) {
     var restBase = API_ORIGIN + '/' + encodeURIComponent(catalogTenant);
     var currency = 'TRY';
@@ -632,7 +848,9 @@
     }
 
     if (kind === 'home' || kind === 'category' || !kind) {
+      applyStorefrontContent(storeConfig, routeTenant);
       var products = await fetchCatalog(catalogTenant);
+      products = mergeFeaturedAndCampaigns(products, storeConfig);
       renderProducts(products, routeTenant);
     }
   }

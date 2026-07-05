@@ -803,9 +803,23 @@ app.get('/api/eticaret/storefront-config', async (c) => {
             announcementText: String(settings.announcementText || ''),
             defaultPaymentProvider: settings.defaultPaymentProvider || null,
             providers,
+            banners: Array.isArray(settings.banners) ? settings.banners : [],
+            sliders: Array.isArray(settings.sliders) ? settings.sliders : [],
+            campaigns: Array.isArray(settings.campaigns) ? settings.campaigns : [],
+            featuredProducts: Array.isArray(settings.featuredProducts) ? settings.featuredProducts : [],
         });
     } catch {
-        return c.json({ enabled: false, demoMode: true, providers: [], storeTitle: '', announcementText: '' });
+        return c.json({
+            enabled: false,
+            demoMode: true,
+            providers: [],
+            storeTitle: '',
+            announcementText: '',
+            banners: [],
+            sliders: [],
+            campaigns: [],
+            featuredProducts: [],
+        });
     }
 });
 

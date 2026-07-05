@@ -1,4 +1,5 @@
 import type { EticaretSettings } from './types';
+import { DEFAULT_ETICARET_CONTENT } from './contentTypes';
 
 const STORAGE_KEY = 'retailex_eticaret_settings';
 
@@ -10,6 +11,7 @@ export const DEFAULT_ETICARET_SETTINGS: EticaretSettings = {
   storeTitle: 'Online Mağaza',
   announcementText: 'Online satış mağazamıza hoş geldiniz.',
   enabled: true,
+  ...DEFAULT_ETICARET_CONTENT,
 };
 
 export function loadEticaretSettings(): EticaretSettings {

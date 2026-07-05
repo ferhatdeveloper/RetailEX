@@ -17,6 +17,10 @@ export type EticaretSettings = {
   paymentProviders?: import('./payments/types').PaymentProviderConfig[];
   defaultPaymentProvider?: import('./payments/types').PaymentProviderId;
   storefrontPath?: string;
+  banners?: import('./contentTypes').EticaretBanner[];
+  sliders?: import('./contentTypes').EticaretSliderSlide[];
+  campaigns?: import('./contentTypes').EticaretCampaign[];
+  featuredProducts?: import('./contentTypes').EticaretFeaturedProduct[];
 };
 
 export type EticaretWebOrder = {
