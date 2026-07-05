@@ -1,12 +1,22 @@
-import { useEffect, useMemo, useState } from 'react';
-import { CalendarClock, Edit, FileText, MessageSquarePlus, Phone, Plus, RefreshCw, Search, StickyNote, User, Wallet, X } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { CalendarClock, Edit, FileText, MessageSquare, MessageSquarePlus, Phone, Plus, RefreshCw, Search, Send, Settings, StickyNote, User, Wallet, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { DevExDataGrid } from '../../shared/DevExDataGrid';
 import { ContextMenu } from '../../shared/ContextMenu';
 import { PercentBodyModal, PercentBodyModalScrollBody } from '../../shared/PercentBodyModal';
+import { WhatsAppBulkSendPreviewModal } from '../../shared/WhatsAppBulkSendPreviewModal';
 import { createColumnHelper } from '@tanstack/react-table';
 import { supplierAPI, type Supplier } from '../../../services/api/suppliers';
 import { useLanguage } from '../../../contexts/LanguageContext';
+import {
+  buildCallPlanBulkPreviewList,
+  buildCallPlanMessageText,
+  normalizeCallPlanMessageLang,
+  sendCallPlanCustomerWhatsApp,
+  supplierHasWhatsAppPhone,
+  type CallPlanWhatsAppPreset,
+} from '../../../utils/callPlanWhatsAppSend';
+import type { WhatsAppBulkPreviewItem } from '../../../utils/whatsappBulkSend';
 import {
   CUSTOMER_CALL_WEEKDAYS,
   CUSTOMER_CALL_STATUSES,
@@ -20,7 +30,7 @@ import {
 type DayFilter = 'all' | number;
 
 export function CustomerCallPlanModule() {
-  const { tm } = useLanguage();
+  const { tm, language } = useLanguage();
   const [customers, setCustomers] = useState<Supplier[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -35,6 +45,14 @@ export function CustomerCallPlanModule() {
   const [customNoteCustomer, setCustomNoteCustomer] = useState<Supplier | null>(null);
   const [customNoteText, setCustomNoteText] = useState('');
   const [customNoteSaving, setCustomNoteSaving] = useState(false);
+  const [waCustomCustomer, setWaCustomCustomer] = useState<Supplier | null>(null);
+  const [waCustomText, setWaCustomText] = useState('');
+  const [waCustomSending, setWaCustomSending] = useState(false);
+  const [waBulkOpen, setWaBulkOpen] = useState(false);
+  const [waBulkItems, setWaBulkItems] = useState<WhatsAppBulkPreviewItem[]>([]);
+  const [waBulkPreparing, setWaBulkPreparing] = useState(false);
+
+  const messageLang = useMemo(() => normalizeCallPlanMessageLang(language), [language]);
 
   const load = async () => {
     setLoading(true);
@@ -173,6 +191,84 @@ export function CustomerCallPlanModule() {
     }));
   };
 
+  const openWhatsAppSettings = () => {
+    setContextMenu(null);
+    window.dispatchEvent(new CustomEvent('navigateToScreen', { detail: 'whatsapp' }));
+  };
+
+  const handleWhatsAppSend = useCallback(async (
+    customer: Supplier,
+    preset: CallPlanWhatsAppPreset,
+    customText?: string,
+  ) => {
+    if (!supplierHasWhatsAppPhone(customer)) {
+      toast.error(tm('callPlanWaNoPhone'));
+      return;
+    }
+    setContextMenu(null);
+    const result = await sendCallPlanCustomerWhatsApp(customer, {
+      preset,
+      lang: messageLang,
+      customText,
+      allowWebFallback: true,
+    });
+    if (result.success) {
+      toast.success(result.usedWeb ? tm('callPlanWaSentWeb') : tm('callPlanWaSent'));
+    } else {
+      toast.error(result.error || tm('callPlanWaFailed'));
+    }
+  }, [messageLang, tm]);
+
+  const openWaCustomMessage = (customer: Supplier) => {
+    setWaCustomCustomer(customer);
+    setWaCustomText(buildCallPlanMessageText(customer, 'greeting', { lang: messageLang }));
+    setContextMenu(null);
+  };
+
+  const sendWaCustomMessage = async () => {
+    if (!waCustomCustomer) return;
+    const text = waCustomText.trim();
+    if (!text) return;
+    setWaCustomSending(true);
+    try {
+      await handleWhatsAppSend(waCustomCustomer, 'custom', text);
+      setWaCustomCustomer(null);
+      setWaCustomText('');
+    } finally {
+      setWaCustomSending(false);
+    }
+  };
+
+  const prepareBulkWhatsApp = async () => {
+    const withPhone = filtered.filter(supplierHasWhatsAppPhone);
+    if (withPhone.length === 0) {
+      toast.error(tm('callPlanWaNoPhone'));
+      return;
+    }
+    setWaBulkPreparing(true);
+    try {
+      const items = await buildCallPlanBulkPreviewList(withPhone, {
+        preset: 'call_reminder',
+        lang: messageLang,
+      });
+      if (!items.length) {
+        toast.error(tm('callPlanWaNoPhone'));
+        return;
+      }
+      setWaBulkItems(items);
+      setWaBulkOpen(true);
+    } catch (error: any) {
+      toast.error(error?.message || tm('callPlanWaFailed'));
+    } finally {
+      setWaBulkPreparing(false);
+    }
+  };
+
+  const rebuildWaBulkItems = useCallback(async (lang: typeof messageLang) => {
+    const withPhone = filtered.filter(supplierHasWhatsAppPhone);
+    return buildCallPlanBulkPreviewList(withPhone, { preset: 'call_reminder', lang });
+  }, [filtered, messageLang]);
+
   const columnHelper = createColumnHelper<Supplier>();
   const columns = [
     columnHelper.accessor('code', {
@@ -274,14 +370,25 @@ export function CustomerCallPlanModule() {
               <p className="text-xs font-semibold text-amber-100">{tm('customerCallListSubtitle')}</p>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={() => void load()}
-            className="inline-flex items-center gap-2 rounded-lg bg-white/15 px-3 py-2 text-xs font-bold hover:bg-white/25"
-          >
-            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-            {tm('refreshData')}
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => void prepareBulkWhatsApp()}
+              disabled={waBulkPreparing || filtered.length === 0}
+              className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white hover:bg-emerald-700 disabled:opacity-50"
+            >
+              <Send className={`h-4 w-4 ${waBulkPreparing ? 'animate-pulse' : ''}`} />
+              {waBulkPreparing ? tm('saving') : tm('callPlanWaBulk')}
+            </button>
+            <button
+              type="button"
+              onClick={() => void load()}
+              className="inline-flex items-center gap-2 rounded-lg bg-white/15 px-3 py-2 text-xs font-bold hover:bg-white/25"
+            >
+              <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+              {tm('refreshData')}
+            </button>
+          </div>
         </div>
       </div>
 
@@ -386,9 +493,93 @@ export function CustomerCallPlanModule() {
                   onClick: () => openCustomNote(contextMenu.customer),
                 },
               ],
+              divider: true,
+            },
+            {
+              id: 'whatsapp',
+              label: tm('callPlanCtxWhatsApp'),
+              icon: MessageSquare,
+              items: [
+                {
+                  id: 'wa-greeting',
+                  label: tm('callPlanCtxWaGreeting'),
+                  onClick: () => void handleWhatsAppSend(contextMenu.customer, 'greeting'),
+                },
+                {
+                  id: 'wa-call-reminder',
+                  label: tm('callPlanCtxWaCallReminder'),
+                  onClick: () => void handleWhatsAppSend(contextMenu.customer, 'call_reminder'),
+                },
+                {
+                  id: 'wa-custom',
+                  label: tm('callPlanCtxWaCustomMessage'),
+                  onClick: () => openWaCustomMessage(contextMenu.customer),
+                  divider: true,
+                },
+                {
+                  id: 'wa-settings',
+                  label: tm('callPlanCtxWaSettings'),
+                  icon: Settings,
+                  onClick: openWhatsAppSettings,
+                },
+              ],
             },
           ]}
         />
+      ) : null}
+
+      <WhatsAppBulkSendPreviewModal
+        open={waBulkOpen}
+        items={waBulkItems}
+        title={tm('callPlanWaBulkTitle')}
+        initialMessageLang={messageLang}
+        onRebuildItems={rebuildWaBulkItems}
+        onClose={() => setWaBulkOpen(false)}
+        onComplete={() => void load()}
+      />
+
+      {waCustomCustomer ? (
+        <PercentBodyModal onClose={() => setWaCustomCustomer(null)} size="compact" ariaLabel={tm('callPlanWaCustomTitle')}>
+          <div className="bg-gradient-to-r from-emerald-600 to-green-600 px-6 py-4 text-white shrink-0">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <MessageSquare className="h-5 w-5" />
+                <div>
+                  <p className="text-xs font-black uppercase tracking-wide text-emerald-100">{tm('callPlanWaCustomTitle')}</p>
+                  <h3 className="text-base font-black">{waCustomCustomer.name}</h3>
+                </div>
+              </div>
+              <button type="button" onClick={() => setWaCustomCustomer(null)} className="rounded-lg p-2 hover:bg-white/15">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+          </div>
+          <PercentBodyModalScrollBody className="p-6">
+            <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-slate-500">{tm('callPlanWaCustomTitle')}</label>
+            <textarea
+              value={waCustomText}
+              onChange={e => setWaCustomText(e.target.value)}
+              rows={5}
+              autoFocus
+              placeholder={tm('callPlanWaCustomPlaceholder')}
+              className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-emerald-500"
+            />
+            <p className="mt-2 text-xs text-slate-500">{waCustomCustomer.phone || '—'}</p>
+          </PercentBodyModalScrollBody>
+          <div className="flex justify-end gap-2 border-t border-slate-100 bg-slate-50/50 p-4 shrink-0">
+            <button type="button" onClick={() => setWaCustomCustomer(null)} className="rounded-2xl border-2 border-slate-200 px-4 py-2 text-sm font-bold text-slate-600 hover:bg-slate-100">
+              {tm('cancel')}
+            </button>
+            <button
+              type="button"
+              onClick={() => void sendWaCustomMessage()}
+              disabled={waCustomSending || !waCustomText.trim()}
+              className="rounded-2xl bg-emerald-600 px-4 py-2 text-sm font-bold text-white hover:bg-emerald-700 disabled:opacity-50"
+            >
+              {waCustomSending ? tm('saving') : tm('sendViaWhatsapp')}
+            </button>
+          </div>
+        </PercentBodyModal>
       ) : null}
 
       {customNoteCustomer ? (
