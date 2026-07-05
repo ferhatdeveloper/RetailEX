@@ -164,6 +164,42 @@ export async function resolveCatalogFirmNr(
   return normalizeFirmNr(row.rows[0]?.primary_firm_nr);
 }
 
+export type MerkezTenantListRow = {
+  code: string;
+  display_name: string;
+  module: string;
+  eticaret_settings: Record<string, unknown> | null;
+};
+
+/** merkez_db.tenant_registry — PostgREST olmadan kiracı listesi */
+export async function fetchRetailTenantsFromMerkezPg(): Promise<MerkezTenantListRow[]> {
+  const merkez = merkezPgUri();
+  if (!merkez) return [];
+  try {
+    const pool = getEticaretPool(merkez);
+    const result = await pool.query<{
+      code: string;
+      display_name: string | null;
+      module: string | null;
+      eticaret_settings: Record<string, unknown> | null;
+    }>(
+      `SELECT code, display_name, module, eticaret_settings
+       FROM public.tenant_registry
+       WHERE is_active = true
+       ORDER BY display_name ASC NULLS LAST, code ASC`,
+    );
+    return result.rows.map((r) => ({
+      code: String(r.code || '').trim().toLowerCase(),
+      display_name: String(r.display_name || r.code || '').trim(),
+      module: String(r.module || 'retail').trim(),
+      eticaret_settings:
+        r.eticaret_settings && typeof r.eticaret_settings === 'object' ? r.eticaret_settings : null,
+    })).filter((r) => r.code);
+  } catch {
+    return [];
+  }
+}
+
 export function firmNrCandidates(primary: string): string[] {
   const raw = String(primary || '001').trim();
   const padded = raw.padStart(3, '0').slice(0, 10);

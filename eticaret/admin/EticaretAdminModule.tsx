@@ -178,7 +178,16 @@ export function EticaretAdminModule() {
   useEffect(() => {
     void listRetailTenantsForEticaret().then((list) => {
       setTenants(list);
-      const initial = list[0]?.code || '';
+      let initial = list[0]?.code || '';
+      if (!initial && typeof window !== 'undefined') {
+        try {
+          const raw = window.localStorage.getItem('retailex_eticaret_settings');
+          const demo = raw ? String(JSON.parse(raw).demoTenantCode || '').trim().toLowerCase() : '';
+          if (demo) initial = demo;
+        } catch {
+          /* ignore */
+        }
+      }
       if (initial) {
         setSelectedTenant(initial);
         void loadTenantSettings(initial);
@@ -519,11 +528,18 @@ export function EticaretAdminModule() {
                 <Select
                   style={{ width: '100%', marginTop: 8 }}
                   allowClear
+                  placeholder={
+                    (form.paymentProviders || []).some((p) => p.enabled)
+                      ? 'Ödeme yöntemi seçin'
+                      : 'Önce Ödeme sekmesinden sağlayıcıyı aktifleştirin'
+                  }
                   value={form.defaultPaymentProvider}
                   onChange={(v) => patch({ defaultPaymentProvider: v })}
-                  options={(form.paymentProviders || [])
-                    .filter((p) => p.enabled)
-                    .map((p) => ({ value: p.id, label: p.label }))}
+                  options={(form.paymentProviders || []).map((p) => ({
+                    value: p.id,
+                    label: p.enabled ? p.label : `${p.label} (kapalı)`,
+                    disabled: !p.enabled,
+                  }))}
                 />
               </Col>
             </Row>
@@ -606,18 +622,34 @@ export function EticaretAdminModule() {
           </div>
           <Space wrap>
             <Select
+              mode="tags"
+              maxCount={1}
               showSearch
-              style={{ minWidth: 200 }}
-              placeholder="Kiracı"
-              value={selectedTenant || undefined}
-              onChange={(v) => {
-                setSelectedTenant(v);
-                void loadTenantSettings(v);
+              allowClear
+              style={{ minWidth: 240 }}
+              placeholder="Kiracı kodu — yazın veya listeden seçin"
+              value={selectedTenant ? [selectedTenant] : []}
+              onChange={(vals) => {
+                const code = String(vals[vals.length - 1] || '')
+                  .trim()
+                  .toLowerCase();
+                setSelectedTenant(code);
+                if (code) void loadTenantSettings(code);
               }}
+              tokenSeparators={[',', ' ']}
               options={tenants.map((t) => ({
                 value: t.code,
-                label: `${t.display_name} (${t.code})`,
+                label: t.display_name && t.display_name !== t.code
+                  ? `${t.display_name} (${t.code})`
+                  : t.code,
               }))}
+              notFoundContent={
+                <div style={{ padding: '8px 12px' }}>
+                  <Text type="secondary" style={{ fontSize: 12 }}>
+                    Kodu yazıp Enter — örn. <Text code>lovan</Text>
+                  </Text>
+                </div>
+              }
             />
             <Button icon={<EyeOutlined />} href={buildStorefrontUrl(previewTenant)} target="_blank">
               Vitrin

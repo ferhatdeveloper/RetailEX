@@ -27,6 +27,7 @@ import {
   fetchFirmNrFromPg,
   fetchTenantFirmsFromPg,
   resolveCatalogFirmNr,
+  fetchRetailTenantsFromMerkezPg,
   firmNrCandidates,
   getEticaretPool,
 } from '../../eticaret/core/server/tenantDbResolve';
@@ -857,6 +858,16 @@ app.get('/api/eticaret/firms', async (c) => {
   } catch (error: unknown) {
     const err = error as { message?: string };
     return c.json({ firms: [], primaryFirmNr: '001', error: err?.message }, 500);
+  }
+});
+
+app.get('/api/eticaret/tenants', async (c) => {
+  try {
+    const rows = await fetchRetailTenantsFromMerkezPg();
+    return c.json({ tenants: rows });
+  } catch (error: unknown) {
+    const err = error as { message?: string };
+    return c.json({ tenants: [], error: err?.message }, 500);
   }
 });
 
