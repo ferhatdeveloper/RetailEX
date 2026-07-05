@@ -1,4 +1,5 @@
 ﻿import { useState, useEffect } from 'react';
+import { Typography } from 'antd';
 import { Database, Check, AlertCircle, Loader2, Download, Upload, RefreshCw, Server, Package, Users, ShoppingCart, CheckCircle, XCircle, Play, FileText, Send, Wifi, WifiOff, CloudUpload } from 'lucide-react';
 import type { Product, Customer } from '../../App';
 import { LogoErpConnectorSection } from '../integrations/LogoErpConnectorSection';
@@ -16,6 +17,8 @@ type ImportStatus = 'idle' | 'importing' | 'success' | 'error';
 
 import SystemHealthDashboard from './SystemHealthDashboard';
 import ReconciliationDashboard from './ReconciliationDashboard';
+
+const { Title, Text } = Typography;
 
 export function IntegrationsModule({ products, setProducts, customers, setCustomers }: IntegrationsModuleProps) {
   // Secret code state for Nebim integration
@@ -454,15 +457,14 @@ export function IntegrationsModule({ products, setProducts, customers, setCustom
   };
 
   return (
-    <div className="h-full flex flex-col bg-gray-50">
-      {/* Header */}
-      <div className="bg-white border-b border-gray-200 px-6 py-4">
+    <div className="h-full flex flex-col" style={{ background: '#f5f5f5' }}>
+      <div style={{ background: '#fff', borderBottom: '1px solid #f0f0f0', padding: '16px 24px' }}>
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl text-gray-900">Entegrasyonlar</h1>
-            <p className="text-sm text-gray-600 mt-1">
-              Logo Tiger ve diğer sistemlerden veri aktarımı
-            </p>
+            <Title level={3} style={{ margin: 0 }}>
+              Entegrasyonlar
+            </Title>
+            <Text type="secondary">Logo Tiger ve diğer sistemlerden veri aktarımı</Text>
           </div>
           {/* Secret unlock button */}
           <button
@@ -511,12 +513,12 @@ export function IntegrationsModule({ products, setProducts, customers, setCustom
       )}
 
       {/* Content */}
-      <div className="flex-1 overflow-auto p-6">
-        <div className="max-w-5xl mx-auto space-y-6">
-          {/* System Health Dashboard */}
+      <div className="flex-1 overflow-auto" style={{ padding: 24 }}>
+        <div className="mx-auto space-y-6" style={{ maxWidth: 1100 }}>
+          <LogoErpConnectorSection />
+
           <SystemHealthDashboard />
 
-          {/* Muhasebe Mutabakat Paneli */}
           <ReconciliationDashboard />
 
           {/* Nebim V3 Integration Card - Only show if secret code entered */}
@@ -1241,9 +1243,6 @@ export function IntegrationsModule({ products, setProducts, customers, setCustom
               </div>
             </div>
           )}
-
-          {/* Logo ERP — REST Servis veya MSSQL */}
-          <LogoErpConnectorSection />
 
           {/* Info Box - Only show if Nebim integration is unlocked */}
           {showNebimIntegration && (

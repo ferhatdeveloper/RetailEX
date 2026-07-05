@@ -1,29 +1,124 @@
-import { useCallback, useEffect, useState } from 'react';
-import { Cloud, Database, Loader2, Plug, RefreshCw, Save } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react';
+import {
+  Button,
+  Card,
+  Col,
+  Collapse,
+  Form,
+  Input,
+  InputNumber,
+  Row,
+  Select,
+  Space,
+  Spin,
+  Typography,
+} from 'antd';
+import { SaveOutlined, ApiOutlined } from '@ant-design/icons';
 import { toast } from 'sonner';
 import { IS_TAURI } from '../../utils/env';
 import {
-  loadLogoErpMode,
+  LOGO_API_URL_EXAMPLE,
+  LOGO_DEFAULT_CLIENT_ID,
+  loadLogoRestConfig,
+  saveLogoRestConfig,
+  logoTestConnection,
+  getLogoMappingForErp,
+  resolveLogoContext,
+  setLogoRestBaseUrl,
+  type LogoRestConfig,
+} from '../../services/logoRestApi';
+import {
   resolveLogoErpModeFromConfig,
   saveLogoErpMode,
   type LogoErpMode,
 } from '../../services/logoErpMode';
-import { loadLogoRestConfig, logoTestConnection } from '../../services/logoRestApi';
-import { startLogoMssqlAutoSync, stopLogoMssqlAutoSync } from '../../services/logoMssqlSyncService';
-import { startLogoRestAutoSync, stopLogoRestAutoSync } from '../../services/logoRestSyncService';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
-import { LogoTigerRestPanel } from './LogoTigerRestPanel';
-import { LogoMssqlSyncPanel } from './LogoMssqlSyncPanel';
-import type { LogoErpPanelTab } from './logoErpPanelTypes';
+import {
+  loadLogoRestSyncSettings,
+  saveLogoRestSyncSettings,
+  startLogoRestAutoSync,
+  stopLogoRestAutoSync,
+} from '../../services/logoRestSyncService';
+import {
+  loadLogoMssqlSyncSettings,
+  saveLogoMssqlSyncSettings,
+  startLogoMssqlAutoSync,
+  stopLogoMssqlAutoSync,
+  listLogoMssqlDatabases,
+  setLogoMssqlDatabase,
+} from '../../services/logoMssqlSyncService';
+import {
+  loadLogoErpIntegrationParams,
+  saveLogoErpIntegrationParams,
+  type LogoErpIntegrationParams,
+} from '../../services/logoErpIntegrationParams';
+import {
+  loadLogoLobjectConfig,
+  saveLogoLobjectConfig,
+  type LogoLobjectConfig,
+} from '../../services/logoErpLobjectConfig';
+import { LogoErpSyncCollapse } from './LogoErpSyncCollapse';
+
+const { Title, Text } = Typography;
+
+type ServiceType = 'rest' | 'lobject';
+
+type FormValues = {
+  erpType: string;
+  serviceType: ServiceType;
+  lobject: LogoLobjectConfig;
+  rest: Pick<LogoRestConfig, 'baseUrl' | 'username' | 'password' | 'clientId' | 'clientSecret'> & {
+    firmNr: string;
+  };
+  params: LogoErpIntegrationParams;
+  restAutoEnabled: boolean;
+  restAutoInterval: number;
+  mssqlAutoEnabled: boolean;
+  mssqlAutoInterval: number;
+};
+
+const yesNoOptions = [
+  { value: false, label: 'Hayır' },
+  { value: true, label: 'Evet' },
+];
+
+const serviceBoxStyle: CSSProperties = {
+  border: '1px solid #d9d9d9',
+  borderRadius: 6,
+  padding: 16,
+  background: '#fafafa',
+  height: '100%',
+};
+
+const sectionLabelStyle: CSSProperties = {
+  fontSize: 12,
+  fontWeight: 600,
+  color: '#595959',
+  marginBottom: 12,
+  textTransform: 'uppercase',
+  letterSpacing: '0.04em',
+};
+
+function modeToServiceType(mode: LogoErpMode): ServiceType {
+  return mode === 'mssql' ? 'lobject' : 'rest';
+}
+
+function serviceTypeToMode(type: ServiceType): LogoErpMode {
+  return type === 'lobject' ? 'mssql' : 'rest';
+}
 
 export function LogoErpConnectorSection() {
-  const [mode, setMode] = useState<LogoErpMode>(() => loadLogoErpMode());
+  const [form] = Form.useForm<FormValues>();
   const [ready, setReady] = useState(false);
-  const [activeTab, setActiveTab] = useState<LogoErpPanelTab>('general');
   const [testing, setTesting] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [dbLoading, setDbLoading] = useState(false);
+  const [dbOptions, setDbOptions] = useState<string[]>([]);
+  const [activePanels, setActivePanels] = useState<string[]>(['genel', 'parametreler']);
 
-  const applyModeSideEffects = useCallback((next: LogoErpMode) => {
-    if (next === 'mssql') {
+  const serviceType = Form.useWatch('serviceType', form) ?? 'rest';
+
+  const applyModeSideEffects = useCallback((mode: LogoErpMode) => {
+    if (mode === 'mssql') {
       stopLogoRestAutoSync();
       if (IS_TAURI) startLogoMssqlAutoSync();
     } else {
@@ -32,36 +127,170 @@ export function LogoErpConnectorSection() {
     }
   }, []);
 
-  useEffect(() => {
-    void resolveLogoErpModeFromConfig().then((resolved) => {
-      setMode(resolved);
-      applyModeSideEffects(resolved);
-      setReady(true);
+  const loadAll = useCallback(async () => {
+    const mode = await resolveLogoErpModeFromConfig();
+    const restCfg = loadLogoRestConfig();
+    const lobject = await loadLogoLobjectConfig();
+    const params = loadLogoErpIntegrationParams();
+    const restSync = loadLogoRestSyncSettings();
+    const mssqlSync = loadLogoMssqlSyncSettings();
+    const mapping = getLogoMappingForErp(restCfg);
+    const ctx = resolveLogoContext(restCfg);
+
+    form.setFieldsValue({
+      erpType: 'LOGO',
+      serviceType: modeToServiceType(mode),
+      lobject,
+      rest: {
+        baseUrl: restCfg.baseUrl,
+        username: restCfg.username,
+        password: restCfg.password,
+        clientId: restCfg.clientId,
+        clientSecret: restCfg.clientSecret,
+        firmNr: String(mapping?.logoFirmNr ?? ctx.firmNr ?? ''),
+      },
+      params: {
+        autoSendProducts: restSync.modules.masterData,
+        autoSendServices: params.autoSendServices,
+        autoSendCari: restSync.modules.customers,
+        documentTransferDays: params.documentTransferDays,
+        fillAccountingCodes: params.fillAccountingCodes,
+        bankAccountCodeSpaces: params.bankAccountCodeSpaces,
+      },
+      restAutoEnabled: restSync.enabled,
+      restAutoInterval: restSync.intervalMinutes,
+      mssqlAutoEnabled: mssqlSync.enabled,
+      mssqlAutoInterval: mssqlSync.intervalMinutes,
     });
-  }, [applyModeSideEffects]);
 
-  const handleSelectMode = (next: LogoErpMode) => {
-    if (next === mode) return;
-    setMode(next);
-    void saveLogoErpMode(next);
-    applyModeSideEffects(next);
-  };
+    applyModeSideEffects(mode);
+    setReady(true);
+  }, [applyModeSideEffects, form]);
 
-  const handleSave = () => {
-    toast.success('Entegrasyon ayarları kaydedildi');
-    window.dispatchEvent(new CustomEvent('retailex:logo-settings-saved'));
-  };
+  useEffect(() => {
+    void loadAll();
+  }, [loadAll]);
 
-  const handleConnectionTest = async () => {
-    if (mode === 'mssql') {
-      toast.info('MSSQL bağlantısı kurulum → ERP ayarları ve masaüstü senkron ile doğrulanır.');
-      setActiveTab('sync');
+  const refreshDatabases = useCallback(async () => {
+    const lobject = form.getFieldValue('lobject') as LogoLobjectConfig | undefined;
+    if (!IS_TAURI || !lobject?.erp_host?.trim() || !lobject?.erp_user?.trim()) {
+      setDbOptions([]);
       return;
     }
+    setDbLoading(true);
+    try {
+      const list = await listLogoMssqlDatabases({
+        erp_host: lobject.erp_host,
+        erp_user: lobject.erp_user,
+        erp_pass: lobject.erp_pass,
+      });
+      setDbOptions(list);
+    } catch {
+      setDbOptions([]);
+    } finally {
+      setDbLoading(false);
+    }
+  }, [form]);
+
+  useEffect(() => {
+    if (ready && serviceType === 'lobject') void refreshDatabases();
+  }, [ready, serviceType, refreshDatabases]);
+
+  const handleServiceTypeChange = useCallback(
+    (next: ServiceType) => {
+      const mode = serviceTypeToMode(next);
+      void saveLogoErpMode(mode);
+      applyModeSideEffects(mode);
+    },
+    [applyModeSideEffects],
+  );
+
+  const persistForm = useCallback(async (values: FormValues) => {
+    const prevRest = loadLogoRestConfig();
+    const nextRest: LogoRestConfig = {
+      ...prevRest,
+      baseUrl: values.rest.baseUrl.trim(),
+      username: values.rest.username,
+      password: values.rest.password,
+      clientId: values.rest.clientId || LOGO_DEFAULT_CLIENT_ID,
+      clientSecret: values.rest.clientSecret,
+    };
+    setLogoRestBaseUrl(nextRest.baseUrl, { manual: true });
+    saveLogoRestConfig(nextRest);
+
+    await saveLogoLobjectConfig(values.lobject);
+    if (values.lobject.erp_db?.trim()) {
+      await setLogoMssqlDatabase(values.lobject.erp_db.trim());
+    }
+
+    saveLogoErpIntegrationParams({
+      autoSendServices: values.params.autoSendServices,
+      documentTransferDays: values.params.documentTransferDays,
+      fillAccountingCodes: values.params.fillAccountingCodes,
+      bankAccountCodeSpaces: values.params.bankAccountCodeSpaces,
+    });
+
+    saveLogoRestSyncSettings({
+      enabled: values.restAutoEnabled,
+      intervalMinutes: values.restAutoInterval,
+      modules: {
+        ...loadLogoRestSyncSettings().modules,
+        masterData: values.params.autoSendProducts,
+        customers: values.params.autoSendCari,
+      },
+    });
+
+    saveLogoMssqlSyncSettings({
+      enabled: values.mssqlAutoEnabled,
+      intervalMinutes: values.mssqlAutoInterval,
+    });
+
+    void saveLogoErpMode(serviceTypeToMode(values.serviceType));
+    applyModeSideEffects(serviceTypeToMode(values.serviceType));
+  }, [applyModeSideEffects]);
+
+  const handleConnectionTest = useCallback(async () => {
     setTesting(true);
     try {
-      const config = loadLogoRestConfig();
-      const result = await logoTestConnection(config);
+      const type = form.getFieldValue('serviceType') ?? 'rest';
+      if (type === 'lobject') {
+        await form.validateFields([
+          ['lobject', 'erp_user'],
+          ['lobject', 'erp_pass'],
+          ['lobject', 'erp_host'],
+          ['lobject', 'erp_db'],
+        ]);
+      } else {
+        await form.validateFields([
+          ['rest', 'baseUrl'],
+          ['rest', 'username'],
+          ['rest', 'password'],
+        ]);
+      }
+      const values = form.getFieldsValue(true) as FormValues;
+      await persistForm(values);
+
+      if (type === 'lobject') {
+        if (!IS_TAURI) {
+          toast.info('LOBJECT bağlantısı yalnızca masaüstü uygulamasında test edilir.');
+          return;
+        }
+        const list = await listLogoMssqlDatabases({
+          erp_host: values.lobject?.erp_host,
+          erp_user: values.lobject?.erp_user,
+          erp_pass: values.lobject?.erp_pass,
+        });
+        if (list.length > 0) {
+          setDbOptions(list);
+          toast.success(`MSSQL bağlantısı başarılı (${list.length} veritabanı)`);
+        } else {
+          toast.warning('Bağlantı kuruldu ancak veritabanı listesi boş.');
+        }
+        return;
+      }
+
+      const cfg = loadLogoRestConfig();
+      const result = await logoTestConnection(cfg);
       if (result.ok) {
         toast.success('Logo REST bağlantısı başarılı');
         window.dispatchEvent(new CustomEvent('retailex:logo-rest-connected'));
@@ -69,130 +298,318 @@ export function LogoErpConnectorSection() {
         toast.error(result.error || 'Bağlantı hatası');
       }
     } catch (e: unknown) {
+      if (e && typeof e === 'object' && 'errorFields' in e) return;
       toast.error(e instanceof Error ? e.message : String(e));
     } finally {
       setTesting(false);
     }
+  }, [form, persistForm]);
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const values = await form.validateFields();
+      await persistForm(values);
+      toast.success('Entegrasyon ayarları kaydedildi');
+      window.dispatchEvent(new CustomEvent('retailex:logo-settings-saved'));
+    } catch (e: unknown) {
+      if (e && typeof e === 'object' && 'errorFields' in e) return;
+      toast.error(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSaving(false);
+    }
   };
 
+  const collapseItems = useMemo(
+    () => [
+      {
+        key: 'genel',
+        label: <Text strong>Genel</Text>,
+        children: (
+          <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+            <Row gutter={[16, 16]} align="bottom">
+              <Col xs={24} md={8}>
+                <Form.Item name="erpType" label="ERP Türü" style={{ marginBottom: 0 }}>
+                  <Select disabled options={[{ value: 'LOGO', label: 'LOGO' }]} />
+                </Form.Item>
+              </Col>
+              <Col xs={24} md={8}>
+                <Form.Item name="serviceType" label="ERP Servis Tipi" style={{ marginBottom: 0 }}>
+                  <Select
+                    options={[
+                      { value: 'rest', label: 'REST' },
+                      {
+                        value: 'lobject',
+                        label: 'LOBJECT',
+                        disabled: !IS_TAURI,
+                      },
+                    ]}
+                    onChange={handleServiceTypeChange}
+                  />
+                </Form.Item>
+              </Col>
+              <Col xs={24} md={8}>
+                <Form.Item label=" " colon={false} style={{ marginBottom: 0 }}>
+                  <Button block onClick={() => void handleConnectionTest()} loading={testing}>
+                    Bağlantı Test
+                  </Button>
+                </Form.Item>
+              </Col>
+            </Row>
+
+            <Row gutter={16}>
+              <Col xs={24} lg={12}>
+                <div style={serviceBoxStyle}>
+                  <div style={sectionLabelStyle}>LOBJECT Service</div>
+                  <Row gutter={[12, 0]}>
+                    <Col span={12}>
+                      <Form.Item
+                        name={['lobject', 'erp_user']}
+                        label="Kullanıcı Adı"
+                        rules={[{ required: IS_TAURI, message: 'Zorunlu' }]}
+                      >
+                        <Input disabled={!IS_TAURI} />
+                      </Form.Item>
+                    </Col>
+                    <Col span={12}>
+                      <Form.Item
+                        name={['lobject', 'erp_pass']}
+                        label="Şifre"
+                        rules={[{ required: IS_TAURI, message: 'Zorunlu' }]}
+                      >
+                        <Input.Password disabled={!IS_TAURI} />
+                      </Form.Item>
+                    </Col>
+                    <Col span={12}>
+                      <Form.Item name={['lobject', 'erp_port']} label="Port No">
+                        <Input disabled={!IS_TAURI} />
+                      </Form.Item>
+                    </Col>
+                    <Col span={12}>
+                      <Form.Item
+                        name={['lobject', 'erp_host']}
+                        label="Sunucu Adı"
+                        rules={[{ required: IS_TAURI, message: 'Zorunlu' }]}
+                      >
+                        <Input disabled={!IS_TAURI} />
+                      </Form.Item>
+                    </Col>
+                    <Col span={24}>
+                      <Form.Item
+                        name={['lobject', 'erp_db']}
+                        label="Veritabanı Adı"
+                        rules={[{ required: IS_TAURI, message: 'Zorunlu' }]}
+                      >
+                        {IS_TAURI ? (
+                          <Select
+                            showSearch
+                            loading={dbLoading}
+                            options={dbOptions.map((db) => ({ value: db, label: db }))}
+                            notFoundContent={dbLoading ? <Spin size="small" /> : 'Önce bağlantı testi yapın'}
+                            dropdownRender={(menu) => (
+                              <>
+                                {menu}
+                                <div style={{ padding: 8, borderTop: '1px solid #f0f0f0' }}>
+                                  <Button size="small" block onClick={() => void refreshDatabases()}>
+                                    Veritabanlarını yenile
+                                  </Button>
+                                </div>
+                              </>
+                            )}
+                          />
+                        ) : (
+                          <Input disabled placeholder="Masaüstü uygulamasında kullanılabilir" />
+                        )}
+                      </Form.Item>
+                    </Col>
+                    <Col span={24}>
+                      <Form.Item name={['lobject', 'erp_integrator_api']} label="ERP Entegrator Api Servisi">
+                        <Input disabled={!IS_TAURI} />
+                      </Form.Item>
+                    </Col>
+                  </Row>
+                </div>
+              </Col>
+
+              <Col xs={24} lg={12}>
+                <div style={serviceBoxStyle}>
+                  <div style={sectionLabelStyle}>REST Service</div>
+                  <Row gutter={[12, 0]}>
+                    <Col span={12}>
+                      <Form.Item
+                        name={['rest', 'username']}
+                        label="Logo Kullanıcı Adı"
+                        rules={[{ required: true, message: 'Zorunlu' }]}
+                      >
+                        <Input />
+                      </Form.Item>
+                    </Col>
+                    <Col span={12}>
+                      <Form.Item
+                        name={['rest', 'password']}
+                        label="Logo Şifre"
+                        rules={[{ required: true, message: 'Zorunlu' }]}
+                      >
+                        <Input.Password />
+                      </Form.Item>
+                    </Col>
+                    <Col span={12}>
+                      <Form.Item name={['rest', 'clientId']} label="Rest Client Id">
+                        <Input />
+                      </Form.Item>
+                    </Col>
+                    <Col span={12}>
+                      <Form.Item name={['rest', 'clientSecret']} label="Rest Client Secret">
+                        <Input.Password />
+                      </Form.Item>
+                    </Col>
+                    <Col span={12}>
+                      <Form.Item name={['rest', 'firmNr']} label="Firma No">
+                        <Input readOnly />
+                      </Form.Item>
+                    </Col>
+                    <Col span={24}>
+                      <Form.Item
+                        name={['rest', 'baseUrl']}
+                        label="Rest Entegrasyon Api"
+                        rules={[{ required: true, message: 'Zorunlu' }]}
+                      >
+                        <Input placeholder={LOGO_API_URL_EXAMPLE} />
+                      </Form.Item>
+                    </Col>
+                  </Row>
+                </div>
+              </Col>
+            </Row>
+          </Space>
+        ),
+      },
+      {
+        key: 'parametreler',
+        label: <Text strong>Parametreler</Text>,
+        children: (
+          <Row gutter={[24, 8]}>
+            <Col xs={24} md={12} lg={8}>
+              <Form.Item
+                name={['params', 'autoSendProducts']}
+                label="Ürün kartları otomatik gönderilsin"
+              >
+                <Select options={yesNoOptions} />
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={12} lg={8}>
+              <Form.Item
+                name={['params', 'autoSendServices']}
+                label="Hizmet kartları otomatik gönderilsin"
+              >
+                <Select options={yesNoOptions} />
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={12} lg={8}>
+              <Form.Item
+                name={['params', 'autoSendCari']}
+                label="Cari hesap kartları otomatik gönderilsin"
+              >
+                <Select options={yesNoOptions} />
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={12} lg={8}>
+              <Form.Item name={['params', 'documentTransferDays']} label="Belge Aktarım Gün Sayısı">
+                <InputNumber min={0} style={{ width: '100%' }} />
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={12} lg={8}>
+              <Form.Item name={['params', 'fillAccountingCodes']} label="Muhasebe Kodları Doldurulsun">
+                <Select options={yesNoOptions} />
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={12} lg={8}>
+              <Form.Item
+                name={['params', 'bankAccountCodeSpaces']}
+                label="Banka - Hesap Kodu Boşluk Sayısı"
+              >
+                <InputNumber min={0} style={{ width: '100%' }} />
+              </Form.Item>
+            </Col>
+
+            {serviceType === 'rest' ? (
+              <>
+                <Col xs={24} md={12} lg={8}>
+                  <Form.Item name="restAutoEnabled" label="Periyodik otomatik çekim">
+                    <Select options={yesNoOptions} />
+                  </Form.Item>
+                </Col>
+                <Col xs={24} md={12} lg={8}>
+                  <Form.Item name="restAutoInterval" label="Çekim aralığı (dk)">
+                    <InputNumber min={5} max={1440} style={{ width: '100%' }} />
+                  </Form.Item>
+                </Col>
+              </>
+            ) : (
+              <>
+                <Col xs={24} md={12} lg={8}>
+                  <Form.Item name="mssqlAutoEnabled" label="Periyodik otomatik senkron">
+                    <Select options={yesNoOptions} />
+                  </Form.Item>
+                </Col>
+                <Col xs={24} md={12} lg={8}>
+                  <Form.Item name="mssqlAutoInterval" label="Senkron aralığı (dk)">
+                    <InputNumber min={5} max={1440} style={{ width: '100%' }} />
+                  </Form.Item>
+                </Col>
+              </>
+            )}
+          </Row>
+        ),
+      },
+      {
+        key: 'senkron',
+        label: <Text strong>Senkron</Text>,
+        children: <LogoErpSyncCollapse serviceType={serviceType} />,
+      },
+    ],
+    [dbLoading, dbOptions, handleConnectionTest, handleServiceTypeChange, refreshDatabases, serviceType, testing],
+  );
+
+  if (!ready) {
+    return (
+      <Card bordered style={{ borderColor: '#d9d9d9' }}>
+        <div style={{ textAlign: 'center', padding: 48 }}>
+          <Spin />
+          <div style={{ marginTop: 12 }}>
+            <Text type="secondary">Entegrasyon ayarları yükleniyor…</Text>
+          </div>
+        </div>
+      </Card>
+    );
+  }
+
   return (
-    <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-      {/* Başlık + aksiyonlar */}
-      <div className="px-4 py-3 border-b bg-gradient-to-r from-sky-700 to-blue-800 text-white flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2 min-w-0">
-          <Plug className="h-5 w-5 shrink-0" />
-          <div>
-            <h3 className="font-semibold text-sm">ERP Entegrasyon Ayarları</h3>
-            <p className="text-xs text-blue-100 truncate">Logo Tiger — REST veya MSSQL veri kaynağı</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2 shrink-0">
-          <button
-            type="button"
-            onClick={() => void handleConnectionTest()}
-            disabled={testing || !ready}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/15 hover:bg-white/25 text-white text-xs font-medium disabled:opacity-50"
-          >
-            {testing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
-            Bağlantı Test
-          </button>
-          <button
-            type="button"
-            onClick={handleSave}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white text-blue-800 text-xs font-semibold hover:bg-blue-50"
-          >
-            <Save className="h-3.5 w-3.5" />
-            Güncelle
-          </button>
-        </div>
+    <Card
+      bordered
+      style={{ borderColor: '#d9d9d9', background: '#fff' }}
+      styles={{ body: { padding: 20 } }}
+    >
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+        <Button type="primary" icon={<SaveOutlined />} loading={saving} onClick={() => void handleSave()}>
+          Güncelle
+        </Button>
       </div>
 
-      {/* Genel üst satır — ERP türü + servis tipi */}
-      <div className="px-4 py-3 border-b bg-slate-50 grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
-        <div>
-          <label className="block text-[11px] font-medium text-gray-500 mb-1">ERP Türü</label>
-          <select
-            disabled
-            className="w-full h-9 px-2 text-sm border border-gray-200 rounded-lg bg-white text-gray-800"
-            value="LOGO"
-          >
-            <option value="LOGO">LOGO</option>
-          </select>
-        </div>
-        <div>
-          <label className="block text-[11px] font-medium text-gray-500 mb-1">ERP Servis Tipi</label>
-          <div className="inline-flex w-full rounded-lg border border-gray-200 bg-white p-0.5">
-            <button
-              type="button"
-              onClick={() => handleSelectMode('rest')}
-              className={`flex-1 inline-flex items-center justify-center gap-1.5 h-8 rounded-md text-xs font-medium transition-colors ${
-                mode === 'rest' ? 'bg-orange-600 text-white shadow-sm' : 'text-gray-600 hover:bg-orange-50'
-              }`}
-            >
-              <Cloud className="h-3.5 w-3.5" />
-              REST
-            </button>
-            <button
-              type="button"
-              onClick={() => handleSelectMode('mssql')}
-              disabled={!IS_TAURI}
-              title={!IS_TAURI ? 'MSSQL yalnızca masaüstünde' : undefined}
-              className={`flex-1 inline-flex items-center justify-center gap-1.5 h-8 rounded-md text-xs font-medium transition-colors disabled:opacity-40 ${
-                mode === 'mssql' ? 'bg-slate-800 text-white shadow-sm' : 'text-gray-600 hover:bg-slate-50'
-              }`}
-            >
-              <Database className="h-3.5 w-3.5" />
-              LOBJECT / MSSQL
-            </button>
-          </div>
-        </div>
-        <p className="text-[11px] text-gray-500 leading-snug pb-0.5">
-          {mode === 'rest'
-            ? 'Logo Tiger REST API — web ve masaüstünde HTTP üzerinden senkron.'
-            : IS_TAURI
-              ? 'SQL Server üzerinden doğrudan Logo veritabanı okuma.'
-              : 'Web modunda REST Servis kullanın.'}
-        </p>
-      </div>
+      <Title level={4} style={{ margin: '0 0 16px', color: '#1677ff', fontWeight: 600 }}>
+        <ApiOutlined style={{ marginRight: 8 }} />
+        ERP Entegrasyon Ayarları
+      </Title>
 
-      {/* Sekmeler */}
-      <div className="p-4">
-        {!ready ? (
-          <p className="text-sm text-gray-500 py-8 text-center">Entegrasyon modu yükleniyor…</p>
-        ) : (
-          <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as LogoErpPanelTab)}>
-            <TabsList className="grid w-full max-w-lg grid-cols-3 mb-4">
-              <TabsTrigger value="general">Genel</TabsTrigger>
-              <TabsTrigger value="params">Parametreler</TabsTrigger>
-              <TabsTrigger value="sync">Senkron</TabsTrigger>
-            </TabsList>
-
-            <TabsContent value="general" className="mt-0">
-              {mode === 'rest' ? (
-                <LogoTigerRestPanel activeTab="general" />
-              ) : (
-                <LogoMssqlSyncPanel activeTab="general" />
-              )}
-            </TabsContent>
-
-            <TabsContent value="params" className="mt-0">
-              {mode === 'rest' ? (
-                <LogoTigerRestPanel activeTab="params" />
-              ) : (
-                <LogoMssqlSyncPanel activeTab="params" />
-              )}
-            </TabsContent>
-
-            <TabsContent value="sync" className="mt-0">
-              {mode === 'rest' ? (
-                <LogoTigerRestPanel activeTab="sync" />
-              ) : (
-                <LogoMssqlSyncPanel activeTab="sync" />
-              )}
-            </TabsContent>
-          </Tabs>
-        )}
-      </div>
-    </div>
+      <Form form={form} layout="vertical" requiredMark="optional">
+        <Collapse
+          bordered
+          activeKey={activePanels}
+          onChange={(keys) => setActivePanels(Array.isArray(keys) ? keys : [keys])}
+          items={collapseItems}
+          style={{ background: '#fff', borderColor: '#d9d9d9' }}
+        />
+      </Form>
+    </Card>
   );
 }
