@@ -1,8 +1,11 @@
 /**
- * RetailEX-Logo-Connector + RetailEX-Sync-Service Windows exe derlemesi.
+ * RetailEX-Sync-Service (+ isteğe bağlı Logo Connector) Windows exe derlemesi.
  *
  * Windows (önerilen):
  *   npm run build:services:win
+ *
+ * Logo Connector (legacy — yeni kurulumlarda gerekmez):
+ *   BUILD_LOGO_CONNECTOR=1 npm run build:services:win
  *
  * Linux/macOS cross-compile (mingw gerekir):
  *   npm run build:services:win -- --target x86_64-pc-windows-gnu
@@ -17,6 +20,10 @@ import { fileURLToPath } from "node:url";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.join(__dirname, "..");
 const outDir = path.join(root, "services", "windows-x64");
+
+const buildLogoConnector =
+  process.env.BUILD_LOGO_CONNECTOR === "1" ||
+  process.argv.includes("--logo-connector");
 
 const isWin = process.platform === "win32";
 const args = process.argv.slice(2);
@@ -81,12 +88,23 @@ if (!isWin && winTarget) {
 const logoCrate = path.join(root, "services", "logo-connector");
 const syncCrate = path.join(root, "src", "sync-service");
 
-if (!fs.existsSync(path.join(logoCrate, "Cargo.toml"))) {
-  console.error("services/logo-connector eksik");
-  process.exit(1);
-}
+const manifestEntries = [];
 
-runCargo(logoCrate, "RetailEX-Logo-Connector");
+if (buildLogoConnector) {
+  if (!fs.existsSync(path.join(logoCrate, "Cargo.toml"))) {
+    console.error("services/logo-connector eksik");
+    process.exit(1);
+  }
+  runCargo(logoCrate, "RetailEX-Logo-Connector");
+  copyExe(binPath(logoCrate, "RetailEX-Logo-Connector"), "RetailEX-Logo-Connector.exe");
+  manifestEntries.push({
+    name: "RetailEX-Logo-Connector.exe",
+    version: "1.0.0",
+    role: "Logo MSSQL ↔ PostgreSQL (legacy)",
+  });
+} else {
+  console.log("\n[atlandı] RetailEX-Logo-Connector (BUILD_LOGO_CONNECTOR=1 ile derlenir)");
+}
 
 const syncEnv = { ...process.env, SQLX_OFFLINE: "true" };
 console.log(`\n[cargo] ${syncCrate} → build --release (SQLX_OFFLINE=true) ...`);
@@ -99,15 +117,13 @@ console.log(`\n[cargo] ${syncCrate} → build --release (SQLX_OFFLINE=true) ...`
   }
 }
 
-const logoExe = binPath(logoCrate, "RetailEX-Logo-Connector");
-const syncExe = binPath(syncCrate, "RetailEX-Sync-Service");
+copyExe(binPath(syncCrate, "RetailEX-Sync-Service"), "RetailEX-Sync-Service.exe");
+manifestEntries.push({
+  name: "RetailEX-Sync-Service.exe",
+  version: "2.0.0",
+  role: "Mağaza WebSocket senkron",
+});
 
-copyExe(logoExe, "RetailEX-Logo-Connector.exe");
-copyExe(syncExe, "RetailEX-Sync-Service.exe");
-
-writeManifest([
-  { name: "RetailEX-Logo-Connector.exe", version: "1.0.0", role: "Logo MSSQL ↔ PostgreSQL" },
-  { name: "RetailEX-Sync-Service.exe", version: "2.0.0", role: "Mağaza WebSocket senkron" },
-]);
+writeManifest(manifestEntries);
 
 console.log("\nTamam → services/windows-x64/");

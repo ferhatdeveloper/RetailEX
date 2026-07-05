@@ -173,7 +173,7 @@ Page custom PageReinstall PageLeaveReinstall
 Page custom PageRoleSelection PageLeaveRoleSelection
 Page custom PagePostgREST PageLeavePostgREST
 Page custom PageSettings PageLeaveSettings
-Page custom PageLogoObjects PageLeaveLogoObjects
+; Logo Objects kurulum sayfası kaldırıldı — LObject/REST ayarları uygulama içi Entegrasyonlar ekranından yapılır.
 Function PageReinstall
   ; ... (Wix check remains same) ...
   StrCpy $0 0
@@ -909,7 +909,6 @@ Section Install
 
   ; Copy external binaries
     File /a "/oname=RetailEX_Service.exe" "__REPO_ROOT__\DeskApp\target\release\RetailEX_Service.exe"
-    File /a "/oname=RetailEX_Logo.exe" "__REPO_ROOT__\DeskApp\target\release\RetailEX_Logo.exe"
     File /a "/oname=RetailEX_SQL_Bridge.exe" "__REPO_ROOT__\DeskApp\target\release\RetailEX_SQL_Bridge.exe"
     File /a "/oname=RetailEX_Config.exe" "__REPO_ROOT__\DeskApp\target\release\RetailEX_Config.exe"
     File /a "/oname=bridge.cjs" "__REPO_ROOT__\DeskApp\resources\bridge.cjs"
@@ -979,17 +978,13 @@ Section Install
   ${If} $InstallRole == 1
     FileWrite $9 "- Redis (Memory Cache): KURULDU$\r$\n"
     FileWrite $9 "- RabbitMQ (Messaging): KURULDU$\r$\n"
-    ${If} $UseLogoObj == 1
-      FileWrite $9 "- RetailEX Logo Connector: KURULDU & ÇALIŞIYOR$\r$\n"
-    ${Else}
-      FileWrite $9 "- RetailEX Logo Connector: ATLANDI (Seçilmedi)$\r$\n"
-    ${EndIf}
+    FileWrite $9 "- Logo Connector: KULLANILMIYOR (REST/LOBJECT uygulama içinden)$\r$\n"
   ${EndIf}
   FileWrite $9 "$\r$\nBağlantı Bilgileri:$\r$\n"
   FileWrite $9 "- WebSocket: $WSUrl$\r$\n"
   FileWrite $9 "- Messaging: $AMQPUrl$\r$\n"
   FileWrite $9 "$\r$\nÖnemli Notlar:$\r$\n"
-  FileWrite $9 "1. Eğer Logo bağlantısı aktifse, LObjects.dll yolunun doğruluğunu kontrol edin.$\r$\n"
+  FileWrite $9 "1. Logo entegrasyonu: Uygulama → Entegrasyonlar → Logo ERP (REST veya LOBJECT).$\r$\n"
   FileWrite $9 "2. Güvenlik duvarından (Firewall) 8000, 5432 ve 6379 portlarına izin verildiğinden emin olun.$\r$\n"
   FileWrite $9 "3. WebSocket adresi ($WSUrl) uygulama ve merkez senkron için kullanılır; ağ/firewall ayarlarını buna göre doğrulayın.$\r$\n"
   FileWrite $9 "4. Servisler kurulmadıysa '$INSTDIR\install-services-manual.cmd' (veya .ps1) dosyasını Yönetici olarak çalıştırın.$\r$\n"
@@ -1132,8 +1127,11 @@ Section Uninstall
   ExecWait 'net stop RetailEX_Service'
   ExecWait 'net stop RetailEX_SQL_Bridge'
   ExecWait 'net stop RetailEXLogoConnector'
+  ExecWait 'net stop RetailEX_Logo'
   ExecWait '"$INSTDIR\RetailEX_Service.exe" --uninstall'
   ExecWait '"$INSTDIR\RetailEX_SQL_Bridge.exe" --uninstall'
+  IfFileExists "$INSTDIR\RetailEX_Logo.exe" 0 +2
+    ExecWait '"$INSTDIR\RetailEX_Logo.exe" --uninstall'
   IfFileExists "$INSTDIR\RetailEX_Logo_Connector.exe" 0 +2
     ExecWait '"$INSTDIR\RetailEX_Logo_Connector.exe" --uninstall'
 
@@ -1141,6 +1139,7 @@ Section Uninstall
     Delete "$INSTDIR\RetailEX_Service.exe"
     Delete "$INSTDIR\RetailEX_SQL_Bridge.exe"
     Delete "$INSTDIR\RetailEX_Config.exe"
+    Delete "$INSTDIR\RetailEX_Logo.exe"
     Delete "$INSTDIR\RetailEX_Logo_Connector.exe"
     ExecWait 'sc.exe stop RetailEX_SQL_Bridge'
     ExecWait 'sc.exe delete RetailEX_SQL_Bridge'

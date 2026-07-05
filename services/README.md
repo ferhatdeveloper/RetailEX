@@ -5,7 +5,7 @@ Bu klasörde Windows yürütülebilir dosyaları bulunur.
 | Dosya | Sürüm | Görev |
 |-------|-------|--------|
 | `windows-x64/RetailEX-Sync-Service.exe` | 2.0.0 | Çok mağazalı **WebSocket** senkron motoru |
-| `windows-x64/RetailEX-Logo-Connector.exe` | 1.0.0 | **(Eski / isteğe bağlı)** Logo MSSQL poll servisi |
+| `windows-x64/RetailEX-Logo-Connector.exe` | 1.0.0 | **(Legacy — varsayılan derlemede yok)** Eski Logo MSSQL poll servisi |
 
 ## Önemli — Logo entegrasyonu
 
@@ -25,6 +25,8 @@ Güncel **Entegrasyonlar** ekranı connector servisini başlatmaz veya yapıland
 ```powershell
 npm run build:services:win
 ```
+
+Logo Connector yalnızca eski kurulumlar için: `BUILD_LOGO_CONNECTOR=1 npm run build:services:win`
 
 **Linux cross-compile (MinGW):**
 
