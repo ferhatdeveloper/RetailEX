@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Alert, Button, Space, Typography } from 'antd';
-import { CloudDownloadOutlined, PlayCircleOutlined, SendOutlined } from '@ant-design/icons';
+import { CloudDownloadOutlined, SwapOutlined } from '@ant-design/icons';
 import { toast } from 'sonner';
 import { IS_TAURI } from '../../utils/env';
 import {
@@ -13,14 +13,15 @@ import {
 import { loadLogoErpMode } from '../../services/logoErpMode';
 import {
   loadLogoRestSyncSettings,
-  runLogoRestSyncNow,
 } from '../../services/logoRestSyncService';
+import { loadLogoMssqlSyncSettings } from '../../services/logoMssqlSyncService';
 import {
-  loadLogoMssqlSyncSettings,
-  runLogoMssqlSyncNow,
-} from '../../services/logoMssqlSyncService';
-import { pushPendingSalesToLogo } from '../../services/logoRestInvoicePush';
+  labelDataTopology,
+  labelSyncDirection,
+  loadLogoErpSyncFlowSettings,
+} from '../../services/logoErpSyncFlow';
 import { LogoImportPreviewTabs } from './LogoImportPreviewTabs';
+import { LogoSyncActionModal } from './LogoSyncActionModal';
 
 const { Text } = Typography;
 
@@ -30,10 +31,8 @@ type Props = {
 
 export function LogoErpSyncCollapse({ serviceType }: Props) {
   const [restConnected, setRestConnected] = useState(false);
-  const [running, setRunning] = useState(false);
-  const [mssqlRunning, setMssqlRunning] = useState(false);
-  const [pushing, setPushing] = useState(false);
-  const [message, setMessage] = useState('');
+  const [modalOpen, setModalOpen] = useState(false);
+  const [flowVersion, setFlowVersion] = useState(0);
 
   const checkRest = useCallback(async () => {
     if (serviceType !== 'rest') return;
@@ -50,56 +49,19 @@ export function LogoErpSyncCollapse({ serviceType }: Props) {
   useEffect(() => {
     void checkRest();
     const onSaved = () => void checkRest();
+    const onFlow = () => setFlowVersion((v) => v + 1);
     window.addEventListener('retailex:logo-settings-saved', onSaved);
     window.addEventListener('retailex:logo-rest-connected', onSaved);
+    window.addEventListener('retailex:logo-sync-flow-saved', onFlow);
     return () => {
       window.removeEventListener('retailex:logo-settings-saved', onSaved);
       window.removeEventListener('retailex:logo-rest-connected', onSaved);
+      window.removeEventListener('retailex:logo-sync-flow-saved', onFlow);
     };
   }, [checkRest]);
 
-  const handleRestSync = async () => {
-    setRunning(true);
-    setMessage('');
-    try {
-      const r = await runLogoRestSyncNow();
-      setMessage(r.message);
-      if (r.ok) toast.success('Logo REST senkron tamamlandı');
-      else toast.error(r.message);
-    } finally {
-      setRunning(false);
-    }
-  };
-
-  const handleMssqlSync = async () => {
-    setMssqlRunning(true);
-    setMessage('');
-    try {
-      const r = await runLogoMssqlSyncNow();
-      setMessage(r.message);
-      if (r.ok) toast.success('Logo MSSQL senkron tamamlandı');
-      else toast.error(r.message);
-    } finally {
-      setMssqlRunning(false);
-    }
-  };
-
-  const handlePushInvoices = async () => {
-    setPushing(true);
-    setMessage('');
-    try {
-      const cfg = loadLogoRestConfig();
-      const r = await pushPendingSalesToLogo(cfg, { limit: 25 });
-      setMessage(r.messages.join(' · '));
-      toast.success('Fatura gönderimi tamamlandı');
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : String(e);
-      setMessage(msg);
-      toast.error(msg);
-    } finally {
-      setPushing(false);
-    }
-  };
+  const flow = loadLogoErpSyncFlowSettings();
+  void flowVersion;
 
   if (serviceType === 'lobject') {
     if (!IS_TAURI) {
@@ -114,17 +76,30 @@ export function LogoErpSyncCollapse({ serviceType }: Props) {
     const mssql = loadLogoMssqlSyncSettings();
     return (
       <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+        <Alert
+          type="info"
+          showIcon
+          message={
+            <>
+              REST yerine doğrudan Logo SQL Server kullanılır. Ayrı{' '}
+              <Text strong>RetailEX-Logo-Connector</Text> Windows servisi artık gerekli değil —
+              senkron Tauri içinde çalışır.
+            </>
+          }
+        />
         <Text type="secondary">
-          Periyodik senkron: {mssql.enabled ? `Açık (${mssql.intervalMinutes} dk)` : 'Kapalı'} — ayarlar
-          Parametreler bölümünden yönetilir.
+          Yön: {labelSyncDirection(flow.syncDirection)} · Akış: {labelDataTopology(flow.dataTopology)}
+        </Text>
+        <Text type="secondary">
+          Periyodik senkron: {mssql.enabled ? `Açık (${mssql.intervalMinutes} dk)` : 'Kapalı'}
         </Text>
         <Button
           type="primary"
-          icon={<PlayCircleOutlined />}
-          loading={mssqlRunning}
-          onClick={() => void handleMssqlSync()}
+          size="large"
+          icon={<SwapOutlined />}
+          onClick={() => setModalOpen(true)}
         >
-          Şimdi çek (MSSQL)
+          Veri al / gönder…
         </Button>
         {mssql.lastSyncAt ? (
           <Text type="secondary">
@@ -132,7 +107,12 @@ export function LogoErpSyncCollapse({ serviceType }: Props) {
             {mssql.lastMessage ? ` — ${mssql.lastMessage}` : ''}
           </Text>
         ) : null}
-        {message ? <Alert type="info" message={message} /> : null}
+        <LogoSyncActionModal
+          open={modalOpen}
+          onClose={() => setModalOpen(false)}
+          serviceType="lobject"
+          connected
+        />
       </Space>
     );
   }
@@ -159,34 +139,44 @@ export function LogoErpSyncCollapse({ serviceType }: Props) {
           {ctx.logoDb ? ` · ${ctx.logoDb}` : ''}
         </Text>
       )}
+
+      <Alert
+        type="info"
+        showIcon
+        message="Web senkronu Logo REST + pg_bridge üzerinden çalışır; ayrı connector kurulumu gerekmez."
+      />
+
       <Text type="secondary">
+        Yön: {labelSyncDirection(flow.syncDirection)} · Akış: {labelDataTopology(flow.dataTopology)}
+        {' · '}
         Otomatik çekim: {rest.enabled ? `Açık (${rest.intervalMinutes} dk)` : 'Kapalı'}
       </Text>
+
       <Space wrap>
         <Button
+          type="primary"
+          size="large"
           icon={<CloudDownloadOutlined />}
-          loading={running}
           disabled={!restConnected}
-          onClick={() => void handleRestSync()}
+          onClick={() => setModalOpen(true)}
         >
-          Şimdi çek (REST)
-        </Button>
-        <Button
-          icon={<SendOutlined />}
-          loading={pushing}
-          disabled={!restConnected || loadLogoErpMode() !== 'rest'}
-          onClick={() => void handlePushInvoices()}
-        >
-          Bekleyen faturaları gönder
+          Veri al / gönder…
         </Button>
       </Space>
+
       {rest.lastSyncAt ? (
         <Text type="secondary">
           Son senkron: {new Date(rest.lastSyncAt).toLocaleString('tr-TR')}
           {rest.lastMessage ? ` — ${rest.lastMessage}` : ''}
         </Text>
       ) : null}
-      {message ? <Alert type="info" message={message} /> : null}
+
+      <LogoSyncActionModal
+        open={modalOpen}
+        onClose={() => setModalOpen(false)}
+        serviceType="rest"
+        connected={restConnected}
+      />
     </Space>
   );
 }

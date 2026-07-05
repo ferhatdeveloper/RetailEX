@@ -67,6 +67,14 @@ import {
   saveLogoLobjectConfig,
   type LogoLobjectConfig,
 } from '../../services/logoErpLobjectConfig';
+import {
+  loadLogoErpSyncFlowSettings,
+  saveLogoErpSyncFlowSettings,
+  SYNC_DIRECTION_OPTIONS,
+  DATA_TOPOLOGY_OPTIONS,
+  type LogoDataTopology,
+  type LogoSyncDirection,
+} from '../../services/logoErpSyncFlow';
 import { LogoErpSyncCollapse } from './LogoErpSyncCollapse';
 
 const { Title, Text } = Typography;
@@ -83,6 +91,9 @@ type FormValues = {
   restAutoInterval: number;
   mssqlAutoEnabled: boolean;
   mssqlAutoInterval: number;
+  syncDirection: LogoSyncDirection;
+  dataTopology: LogoDataTopology;
+  autoHybridAfterPull: boolean;
 };
 
 const yesNoOptions = [
@@ -166,6 +177,7 @@ export function LogoErpConnectorSection() {
     const params = loadLogoErpIntegrationParams();
     const restSync = loadLogoRestSyncSettings();
     const mssqlSync = loadLogoMssqlSyncSettings();
+    const syncFlow = loadLogoErpSyncFlowSettings();
     const mapping = getLogoMappingForErp(restCfg);
     const ctx = resolveLogoContext(restCfg);
 
@@ -192,6 +204,9 @@ export function LogoErpConnectorSection() {
       restAutoInterval: restSync.intervalMinutes,
       mssqlAutoEnabled: mssqlSync.enabled,
       mssqlAutoInterval: mssqlSync.intervalMinutes,
+      syncDirection: syncFlow.syncDirection,
+      dataTopology: syncFlow.dataTopology,
+      autoHybridAfterPull: syncFlow.autoHybridAfterPull,
     });
 
     applyModeSideEffects(mode);
@@ -377,6 +392,12 @@ export function LogoErpConnectorSection() {
     saveLogoMssqlSyncSettings({
       enabled: values.mssqlAutoEnabled,
       intervalMinutes: values.mssqlAutoInterval,
+    });
+
+    saveLogoErpSyncFlowSettings({
+      syncDirection: values.syncDirection,
+      dataTopology: values.dataTopology,
+      autoHybridAfterPull: values.autoHybridAfterPull,
     });
 
     void saveLogoErpMode(serviceTypeToMode(values.serviceType));
@@ -739,10 +760,37 @@ export function LogoErpConnectorSection() {
         label: <Text strong>Parametreler</Text>,
         children: (
           <Row gutter={[24, 8]}>
+            <Col xs={24}>
+              <Text type="secondary" style={{ display: 'block', marginBottom: 12 }}>
+                Logo REST veya MSSQL ile veri alışverişi. Ayrı RetailEX-Logo-Connector Windows servisi
+                gerekmez — web&apos;de pg_bridge, masaüstünde Tauri içi senkron kullanılır.
+              </Text>
+            </Col>
+            <Col xs={24} md={12} lg={8}>
+              <Form.Item name="syncDirection" label="Senkron yönü">
+                <Select options={SYNC_DIRECTION_OPTIONS} />
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={12} lg={8}>
+              <Form.Item name="dataTopology" label="Veri akışı">
+                <Select
+                  options={DATA_TOPOLOGY_OPTIONS.filter(
+                    (o) => IS_TAURI || o.value === 'logo_merkez',
+                  )}
+                />
+              </Form.Item>
+            </Col>
+            {IS_TAURI ? (
+              <Col xs={24} md={12} lg={8}>
+                <Form.Item name="autoHybridAfterPull" label="Çekimden sonra hibrit aktarım">
+                  <Select options={yesNoOptions} />
+                </Form.Item>
+              </Col>
+            ) : null}
             <Col xs={24} md={12} lg={8}>
               <Form.Item
                 name={['params', 'autoSendProducts']}
-                label="Ürün kartları otomatik gönderilsin"
+                label="Ürün kartları Logo'dan otomatik çekilsin"
               >
                 <Select options={yesNoOptions} />
               </Form.Item>
@@ -750,7 +798,7 @@ export function LogoErpConnectorSection() {
             <Col xs={24} md={12} lg={8}>
               <Form.Item
                 name={['params', 'autoSendServices']}
-                label="Hizmet kartları otomatik gönderilsin"
+                label="Hizmet kartları Logo'dan otomatik çekilsin"
               >
                 <Select options={yesNoOptions} />
               </Form.Item>
@@ -758,7 +806,7 @@ export function LogoErpConnectorSection() {
             <Col xs={24} md={12} lg={8}>
               <Form.Item
                 name={['params', 'autoSendCari']}
-                label="Cari hesap kartları otomatik gönderilsin"
+                label="Cari hesaplar Logo'dan otomatik çekilsin"
               >
                 <Select options={yesNoOptions} />
               </Form.Item>

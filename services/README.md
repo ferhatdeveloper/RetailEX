@@ -1,11 +1,22 @@
 # RetailEX Arka Plan Servisleri
 
-Bu klasörde iki bağımsız Windows yürütülebilir dosyası bulunur. Entegrasyonlar → **Sistem Gözlemlenebilirliği** panelindeki servis adlarıyla eşleşir.
+Bu klasörde Windows yürütülebilir dosyaları bulunur.
 
 | Dosya | Sürüm | Görev |
 |-------|-------|--------|
-| `windows-x64/RetailEX-Logo-Connector.exe` | 1.0.0 | Logo Tiger **SQL Server (MSSQL)** ↔ PostgreSQL köprüsü |
 | `windows-x64/RetailEX-Sync-Service.exe` | 2.0.0 | Çok mağazalı **WebSocket** senkron motoru |
+| `windows-x64/RetailEX-Logo-Connector.exe` | 1.0.0 | **(Eski / isteğe bağlı)** Logo MSSQL poll servisi |
+
+## Önemli — Logo entegrasyonu
+
+| Senaryo | Gerekli bileşen |
+|---------|-----------------|
+| **Web / SaaS Logo REST** | `pg_bridge` + uygulama içi `logoRestSync` — **connector gerekmez** |
+| **Masaüstü Logo REST** | Tauri + `logoRestSync` — **connector gerekmez** |
+| **Masaüstü Logo MSSQL (LOBJECT)** | Tauri `sync_logo_data` — **connector gerekmez** |
+| **Eski arka plan poll** | `RetailEX-Logo-Connector.exe` — yalnızca legacy kurulumlar |
+
+Güncel **Entegrasyonlar** ekranı connector servisini başlatmaz veya yapılandırmaz. Yeni kurulumlarda Logo Connector kurmayın; REST veya Tauri içi MSSQL senkronunu kullanın.
 
 ## Derleme
 
@@ -24,9 +35,11 @@ npm run build:services:win
 
 Çıktı: `services/windows-x64/*.exe` + `manifest.json`
 
-## RetailEX-Logo-Connector
+## RetailEX-Logo-Connector (legacy — yeni kurulumlarda kullanmayın)
 
-Logo veritabanına doğrudan bağlanır; REST API kullanmaz.
+> **Kaldırıldı / yerine geçen:** Entegrasyonlar → REST Servis veya LOBJECT (Tauri `sync_logo_data`). Web’de `pg_bridge` Logo proxy.
+
+Eski Windows servisi: Logo MSSQL’e 30 sn poll, kısmi kuyruk tabanlı aktarım. REST modunda ve güncel masaüstü MSSQL senkronunda **gerekli değildir**.
 
 **Ortam değişkenleri:**
 
