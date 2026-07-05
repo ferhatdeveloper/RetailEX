@@ -3,6 +3,8 @@ import { Typography } from 'antd';
 import { Database, Check, AlertCircle, Loader2, Download, Upload, RefreshCw, Server, Package, Users, ShoppingCart, CheckCircle, XCircle, Play, FileText, Send, Wifi, WifiOff, CloudUpload } from 'lucide-react';
 import type { Product, Customer } from '../../App';
 import { LogoErpConnectorSection } from '../integrations/LogoErpConnectorSection';
+import { IntegrationsAccessGate } from '../integrations/IntegrationsAccessGate';
+import { isIntegrationsAccessGranted } from '../../utils/integrationsAccess';
 import * as XLSX from 'xlsx';
 
 interface IntegrationsModuleProps {
@@ -21,6 +23,19 @@ import ReconciliationDashboard from './ReconciliationDashboard';
 const { Title, Text } = Typography;
 
 export function IntegrationsModule({ products, setProducts, customers, setCustomers }: IntegrationsModuleProps) {
+  const [accessGranted, setAccessGranted] = useState(() => isIntegrationsAccessGranted());
+
+  useEffect(() => {
+    const onGranted = () => setAccessGranted(true);
+    const onRevoked = () => setAccessGranted(false);
+    window.addEventListener('retailex:integrations-access-granted', onGranted);
+    window.addEventListener('retailex:integrations-access-revoked', onRevoked);
+    return () => {
+      window.removeEventListener('retailex:integrations-access-granted', onGranted);
+      window.removeEventListener('retailex:integrations-access-revoked', onRevoked);
+    };
+  }, []);
+
   // Secret code state for Nebim integration
   const [showNebimIntegration, setShowNebimIntegration] = useState(false);
   const [secretInput, setSecretInput] = useState('');
@@ -466,16 +481,22 @@ export function IntegrationsModule({ products, setProducts, customers, setCustom
             </Title>
             <Text type="secondary">Logo Tiger ve diğer sistemlerden veri aktarımı</Text>
           </div>
-          {/* Secret unlock button */}
-          <button
-            onClick={() => setShowSecretModal(true)}
-            className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-gray-600 opacity-30 hover:opacity-100 transition-opacity"
-            title="Özel entegrasyonlar"
-          >
-            <Database className="w-5 h-5" />
-          </button>
+          {accessGranted ? (
+            <button
+              onClick={() => setShowSecretModal(true)}
+              className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-gray-600 opacity-30 hover:opacity-100 transition-opacity"
+              title="Özel entegrasyonlar"
+            >
+              <Database className="w-5 h-5" />
+            </button>
+          ) : null}
         </div>
       </div>
+
+      {!accessGranted ? (
+        <IntegrationsAccessGate onGranted={() => setAccessGranted(true)} />
+      ) : (
+        <>
 
       {/* Secret Code Modal */}
       {showSecretModal && (
@@ -1317,6 +1338,8 @@ export function IntegrationsModule({ products, setProducts, customers, setCustom
           )}
         </div>
       </div>
+        </>
+      )}
     </div>
   );
 }

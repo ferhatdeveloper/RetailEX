@@ -239,6 +239,7 @@ type ExtendedScreen = ManagementScreen | 'dashboard' | 'finance' | 'stock' | 'pu
 import { useAuth } from '../../contexts/AuthContext';
 import { useFirmaDonem } from '../../contexts/FirmaDonemContext';
 import { GIB_EDOCUMENT_SCREEN_IDS, isGibEdocumentUiEnabled } from '../../config/eInvoice.config';
+import { isIntegrationsAccessGranted } from '../../utils/integrationsAccess';
 
 export function ManagementModule({
   products,
@@ -778,16 +779,20 @@ export function ManagementModule({
             return false;
           }
 
-          // 1. Check hidden_modules from config
-          if (hiddenModules.includes(item.id)) return false;
+          const isIntegrationsItem = item.id === 'integrations';
+
+          // 1. Check hidden_modules from config (DeskApp: Entegrasyonlar menüde kalsın)
+          if (hiddenModules.includes(item.id)) {
+            if (!(isIntegrationsItem && isTauri)) return false;
+          }
 
           // 2. Check RBAC permissions
-          // If the item ID contains a dot (e.g. 'stock.reports'), check it specifically
-          // Otherwise check the ID as a module
           if (!isAdmin()) {
+            if (isIntegrationsItem && (isTauri || isIntegrationsAccessGranted())) {
+              return true;
+            }
             const hasModuleAccess = hasPermission(item.id, 'READ');
             if (!hasModuleAccess) {
-              // Check if any children are accessible? No, standard RBAC is module-based for now
               return false;
             }
           }
@@ -806,7 +811,7 @@ export function ManagementModule({
     };
 
     return filterHidden(baseSections);
-  }, [dynamicMenuSections, staticMenuSections, hiddenModules, hasPermission, isAdmin, gibEdocumentMenuEnabled]);
+  }, [dynamicMenuSections, staticMenuSections, hiddenModules, hasPermission, isAdmin, gibEdocumentMenuEnabled, isTauri]);
 
   // Menü güncellemelerini dinle - useCallback ile sarmalanmış
   const handleMenuUpdate = useCallback((e?: CustomEvent) => {
