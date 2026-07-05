@@ -28,6 +28,10 @@ export type EticaretSettings = {
   seoTitle?: string;
   productSectionTitle?: string;
   footerCopyright?: string;
+  storefrontFeatures?: import('./contentTypes').EticaretStorefrontFeatures;
+  /** Ücretsiz kargo eşiği (para birimi tutarı) */
+  freeShippingThreshold?: number;
+  searchSuggestions?: string[];
 };
 
 export type EticaretWebOrder = {

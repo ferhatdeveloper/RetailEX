@@ -19,6 +19,7 @@ const STATIC_PAGE_MAP: Record<string, string> = {
   iletisim: 'contact-us.html',
   hakkimizda: 'about-us.html',
   blog: 'blog-default.html',
+  lookbook: 'lookbook.html',
   favoriler: 'wishlists.html',
   kayit: 'register.html',
 };

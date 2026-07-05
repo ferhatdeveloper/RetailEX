@@ -34,6 +34,7 @@ import {
   SlidersOutlined,
   StarOutlined,
   ThunderboltOutlined,
+  ToolOutlined,
 } from '@ant-design/icons';
 import {
   DEFAULT_ETICARET_SETTINGS,
@@ -61,6 +62,7 @@ import { NavigationSection } from './sections/NavigationSection';
 import { FooterSection } from './sections/FooterSection';
 import { PagesSection } from './sections/PagesSection';
 import { StorefrontMetaSection } from './sections/StorefrontMetaSection';
+import { StorefrontFeaturesSection } from './sections/StorefrontFeaturesSection';
 
 const { Header, Sider, Content } = Layout;
 const { Title, Text, Paragraph } = Typography;
@@ -75,6 +77,7 @@ type AdminSection =
   | 'sliders'
   | 'campaigns'
   | 'featured'
+  | 'features'
   | 'theme'
   | 'payments'
   | 'orders'
@@ -110,6 +113,7 @@ const MENU_ITEMS: MenuProps['items'] = [
   { key: 'featured', icon: <StarOutlined />, label: 'Öne Çıkanlar' },
   { type: 'divider' },
   { key: 'shop', label: 'Mağaza', type: 'group' },
+  { key: 'features', icon: <ToolOutlined />, label: 'Tema özellikleri' },
   { key: 'theme', icon: <AppstoreOutlined />, label: 'Tema' },
   { key: 'payments', icon: <CreditCardOutlined />, label: 'Ödeme' },
   { key: 'orders', icon: <ShoppingOutlined />, label: 'Siparişler' },
@@ -346,6 +350,8 @@ export function EticaretAdminModule() {
             searchLoading={productSearchLoading}
           />
         );
+      case 'features':
+        return <StorefrontFeaturesSection form={form} onChange={patch} />;
       case 'theme':
         return (
           <Row gutter={[16, 16]}>

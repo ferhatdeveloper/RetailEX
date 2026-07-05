@@ -50,6 +50,26 @@ export type EticaretFeaturedProduct = {
   enabled: boolean;
 };
 
+/** Alt menü / mega menü bağlantısı */
+export type EticaretMenuLink = {
+  id: string;
+  label: string;
+  type: 'internal' | 'external' | 'page';
+  path?: string;
+  pageSlug?: string;
+  url?: string;
+  enabled: boolean;
+  sortOrder: number;
+};
+
+/** Mega menü sütunu (Ella megamenu_style_2) */
+export type EticaretMegaMenuColumn = {
+  id: string;
+  title: string;
+  links: EticaretMenuLink[];
+  sortOrder: number;
+};
+
 /** Vitrin üst menü satırı */
 export type EticaretMenuItem = {
   id: string;
@@ -62,6 +82,48 @@ export type EticaretMenuItem = {
   enabled: boolean;
   sortOrder: number;
   openInNewTab?: boolean;
+  /** simple: tek link; dropdown: alt menü; mega: çok sütunlu mega menü */
+  menuStyle?: 'simple' | 'dropdown' | 'mega';
+  badge?: string;
+  badgeStyle?: 'new' | 'hot' | 'sale';
+  children?: EticaretMenuLink[];
+  megaColumns?: EticaretMegaMenuColumn[];
+  megaLayout?: 'style_2' | 'style_3';
+};
+
+/** Ella tema özellikleri — vitrinde aç/kapa */
+export type EticaretStorefrontFeatures = {
+  megaMenu: boolean;
+  quickShop: boolean;
+  instantSearch: boolean;
+  sideCart: boolean;
+  mobileToolbar: boolean;
+  gdprCookie: boolean;
+  askExpert: boolean;
+  recentSalesPopup: boolean;
+  newsletterPopup: boolean;
+  beforeYouLeave: boolean;
+  lookbook: boolean;
+  shippingThreshold: boolean;
+  quickView: boolean;
+  stickyHeader: boolean;
+};
+
+export const DEFAULT_STOREFRONT_FEATURES: EticaretStorefrontFeatures = {
+  megaMenu: true,
+  quickShop: true,
+  instantSearch: true,
+  sideCart: true,
+  mobileToolbar: true,
+  gdprCookie: true,
+  askExpert: false,
+  recentSalesPopup: false,
+  newsletterPopup: false,
+  beforeYouLeave: false,
+  lookbook: true,
+  shippingThreshold: true,
+  quickView: true,
+  stickyHeader: true,
 };
 
 export type EticaretFooterLink = {

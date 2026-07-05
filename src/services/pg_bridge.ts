@@ -748,6 +748,12 @@ function buildStorefrontPayload(settings: Record<string, unknown>, tenant: strin
     seoTitle: settings.seoTitle ? String(settings.seoTitle) : '',
     productSectionTitle: settings.productSectionTitle ? String(settings.productSectionTitle) : 'Ürünler',
     footerCopyright: settings.footerCopyright ? String(settings.footerCopyright) : '',
+    storefrontFeatures:
+      settings.storefrontFeatures && typeof settings.storefrontFeatures === 'object'
+        ? settings.storefrontFeatures
+        : {},
+    freeShippingThreshold: Number(settings.freeShippingThreshold) || 500,
+    searchSuggestions: Array.isArray(settings.searchSuggestions) ? settings.searchSuggestions : [],
   };
 }
 

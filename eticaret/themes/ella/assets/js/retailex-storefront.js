@@ -55,6 +55,9 @@
   function writeCart(tenant, items) {
     localStorage.setItem(cartStorageKey(tenant), JSON.stringify(items));
     updateCartBadge(tenant);
+    if (window.__rexRouteTenant && window.__rexStoreConfig) {
+      renderSideCart(tenant, window.__rexRouteTenant, window.__rexStoreConfig);
+    }
   }
 
   function addToCart(tenant, product, qty) {
@@ -90,9 +93,462 @@
     var count = readCart(tenant).reduce(function (s, i) {
       return s + Number(i.quantity || 0);
     }, 0);
-    document.querySelectorAll('.rex-cart-count').forEach(function (el) {
+    document.querySelectorAll('.rex-cart-count, [data-cart-count]').forEach(function (el) {
       el.textContent = String(count);
       el.style.display = count > 0 ? 'inline' : 'none';
+    });
+  }
+
+  var DEFAULT_FEATURES = {
+    megaMenu: true,
+    quickShop: true,
+    instantSearch: true,
+    sideCart: true,
+    mobileToolbar: true,
+    gdprCookie: true,
+    askExpert: false,
+    recentSalesPopup: false,
+    newsletterPopup: false,
+    beforeYouLeave: false,
+    lookbook: true,
+    shippingThreshold: true,
+    quickView: true,
+    stickyHeader: true,
+  };
+
+  function getFeatures(config) {
+    return Object.assign({}, DEFAULT_FEATURES, (config && config.storefrontFeatures) || {});
+  }
+
+  function linkHref(link, routeTenant) {
+    if (link.type === 'external') return link.url || '#';
+    if (link.type === 'page') return tenantBase(routeTenant) + '/sayfa/' + encodeURIComponent(link.pageSlug || '');
+    var path = link.path || '';
+    return tenantBase(routeTenant) + (path ? '/' + path.replace(/^\/+/, '') : '');
+  }
+
+  function badgeHtml(item) {
+    if (!item.badge) return '';
+    var cls = item.badgeStyle === 'hot' ? 'hot-label' : item.badgeStyle === 'sale' ? 'sale-label' : 'new-label';
+    return '<span class="label ' + cls + '">' + item.badge + '</span>';
+  }
+
+  function renderMenuLinkList(links, routeTenant, linkClass) {
+    return sortEnabledContent(links || [])
+      .map(function (link) {
+        var href = linkHref(link, routeTenant);
+        return (
+          '<li><a href="#" class="' +
+          (linkClass || 'site-nav-link link link-underline rex-nav-link') +
+          '" data-href="' +
+          href +
+          '"><span class="text">' +
+          link.label +
+          '</span></a></li>'
+        );
+      })
+      .join('');
+  }
+
+  function renderMenuItemHtml(item, routeTenant) {
+    var style = item.menuStyle || (item.megaColumns && item.megaColumns.length ? 'mega' : item.children && item.children.length ? 'dropdown' : 'simple');
+    var badge = badgeHtml(item);
+    if (style === 'mega' && item.megaColumns && item.megaColumns.length) {
+      var cols = sortEnabledContent(item.megaColumns)
+        .map(function (col) {
+          return (
+            '<div class="halo-row-item site-nav dropdown col-12 col-lg-3"><div class="site-nav-list">' +
+            '<span class="site-nav-title uppercase"><span class="text">' +
+            col.title +
+            '</span></span>' +
+            '<ul class="list-unstyled">' +
+            renderMenuLinkList(col.links, routeTenant) +
+            '</ul></div></div>'
+          );
+        })
+        .join('');
+      return (
+        '<li class="menu-lv-item menu-lv-1 text-left has-megamenu dropdown block_layout--custom_width">' +
+        '<a href="#" class="menu-lv-1__action header__menu-item list-menu__item link focus-inset menu_mobile_link rex-nav-parent">' +
+        '<span class="text">' +
+        item.label +
+        '</span>' +
+        badge +
+        '</a>' +
+        '<div class="menu-dropdown custom-scrollbar megamenu_style_2"><div class="container container-1170">' +
+        '<div class="menu-dropdown__wrapper"><div class="row">' +
+        cols +
+        '</div></div></div></div></li>'
+      );
+    }
+    if (style === 'dropdown' && item.children && item.children.length) {
+      return (
+        '<li class="menu-lv-item menu-lv-1 text-left no-megamenu dropdown">' +
+        '<a href="#" class="menu-lv-1__action header__menu-item list-menu__item link link-underline rex-nav-parent">' +
+        '<span class="text">' +
+        item.label +
+        '</span>' +
+        badge +
+        '</a>' +
+        '<ul class="menu-dropdown list-menu list-menu--disclosure">' +
+        renderMenuLinkList(item.children, routeTenant, 'menu-lv-2__action header__menu-item list-menu__item link link-underline rex-nav-link') +
+        '</ul></li>'
+      );
+    }
+    var href = menuItemHref(item, routeTenant);
+    return (
+      '<li class="menu-lv-item menu-lv-1 text-left">' +
+      '<a href="#" class="menu-lv-1__action rex-nav-link" data-href="' +
+      href +
+      '"><span class="text">' +
+      item.label +
+      '</span>' +
+      badge +
+      '</a></li>'
+    );
+  }
+
+  function bindNavLinks(root) {
+    (root || document).querySelectorAll('.rex-nav-link').forEach(function (a) {
+      a.addEventListener('click', function (e) {
+        e.preventDefault();
+        var path = a.getAttribute('data-href');
+        if (path) parentNav(path);
+      });
+    });
+  }
+
+  function renderSideCart(tenant, routeTenant, config) {
+    var features = getFeatures(config);
+    if (!features.sideCart) return;
+    var list = document.querySelector('#halo-cart-sidebar .previewCartList');
+    if (!list) return;
+    var cart = readCart(tenant);
+    if (!cart.length) {
+      list.innerHTML = '<li class="previewCartItem clearfix"><p class="text-muted px-3">Sepetiniz boş.</p></li>';
+      updateShippingThreshold(tenant, config);
+      return;
+    }
+    var currency = cart[0].currency || 'TRY';
+    list.innerHTML = cart
+      .map(function (i, idx) {
+        return (
+          '<li class="previewCartItem clearfix" data-rex-line="' +
+          idx +
+          '">' +
+          '<div class="previewCartItem-content" style="width:100%">' +
+          '<a href="#" class="previewCartItem-name link-underline rex-product-link" data-href="' +
+          tenantBase(routeTenant) +
+          '/urun/' +
+          encodeURIComponent(i.code) +
+          '"><span class="text">' +
+          i.name +
+          '</span></a>' +
+          '<div class="previewCartItem-change">' +
+          '<div class="previewCartItem-price"><span class="price"><span class="money">' +
+          formatPrice(i.price, currency) +
+          '</span></span></div>' +
+          '<div class="previewCartItem-qty">' +
+          '<a href="#" class="minus btn-quantity rex-cart-minus" data-idx="' +
+          idx +
+          '"></a>' +
+          '<input class="form-input quantity" value="' +
+          i.quantity +
+          '" readonly>' +
+          '<a href="#" class="plus btn-quantity rex-cart-plus" data-idx="' +
+          idx +
+          '"></a>' +
+          '</div></div></div>' +
+          '<a href="#" class="previewCartItem-remove rex-cart-remove" data-idx="' +
+          idx +
+          '">×</a></li>'
+        );
+      })
+      .join('');
+    bindProductLinks();
+    wireSideCartControls(tenant, routeTenant, config);
+    updateShippingThreshold(tenant, config);
+  }
+
+  function updateShippingThreshold(tenant, config) {
+    var features = getFeatures(config);
+    var block = document.querySelector('#halo-cart-sidebar .haloCalculatorShipping');
+    if (!block) return;
+    if (!features.shippingThreshold) {
+      block.style.display = 'none';
+      return;
+    }
+    block.style.display = '';
+    var threshold = Number((config && config.freeShippingThreshold) || 500);
+    var total = cartTotal(readCart(tenant));
+    var pct = threshold > 0 ? Math.min(100, Math.round((total / threshold) * 100)) : 100;
+    var remaining = Math.max(0, threshold - total);
+    var meter = block.querySelector('.progress-meter');
+    if (meter) {
+      meter.style.width = pct + '%';
+      meter.textContent = pct + '%';
+    }
+    var msg = block.querySelector('[data-shipping-message]');
+    if (msg) {
+      if (remaining <= 0) {
+        msg.innerHTML = '<span class="text">Ücretsiz kargo kazandınız!</span>';
+      } else {
+        msg.innerHTML =
+          '<span>Ücretsiz kargo için </span><span class="money">' +
+          formatPrice(remaining, 'TRY') +
+          '</span><span> kaldı</span>';
+      }
+    }
+  }
+
+  function wireSideCartControls(tenant, routeTenant, config) {
+    document.querySelectorAll('.rex-cart-minus').forEach(function (btn) {
+      btn.onclick = function (e) {
+        e.preventDefault();
+        var idx = Number(btn.getAttribute('data-idx'));
+        var cart = readCart(tenant);
+        if (cart[idx]) {
+          cart[idx].quantity = Math.max(1, cart[idx].quantity - 1);
+          cart[idx].line_total = cart[idx].quantity * cart[idx].price;
+          writeCart(tenant, cart);
+          renderSideCart(tenant, routeTenant, config);
+        }
+      };
+    });
+    document.querySelectorAll('.rex-cart-plus').forEach(function (btn) {
+      btn.onclick = function (e) {
+        e.preventDefault();
+        var idx = Number(btn.getAttribute('data-idx'));
+        var cart = readCart(tenant);
+        if (cart[idx]) {
+          cart[idx].quantity += 1;
+          cart[idx].line_total = cart[idx].quantity * cart[idx].price;
+          writeCart(tenant, cart);
+          renderSideCart(tenant, routeTenant, config);
+        }
+      };
+    });
+    document.querySelectorAll('.rex-cart-remove').forEach(function (btn) {
+      btn.onclick = function (e) {
+        e.preventDefault();
+        var idx = Number(btn.getAttribute('data-idx'));
+        var cart = readCart(tenant).filter(function (_, i) {
+          return i !== idx;
+        });
+        writeCart(tenant, cart);
+        renderSideCart(tenant, routeTenant, config);
+      };
+    });
+  }
+
+  function wireSideCartOpen(tenant, routeTenant, config) {
+    var features = getFeatures(config);
+    if (!features.sideCart) return;
+    document.querySelectorAll('[data-open-cart-sidebar]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        setTimeout(function () {
+          renderSideCart(tenant, routeTenant, config);
+        }, 50);
+      });
+    });
+    renderSideCart(tenant, routeTenant, config);
+  }
+
+  function openQuickShop(product, tenant) {
+    var popup = document.getElementById('data-quickshop-popup');
+    if (!popup) return;
+    var img = popup.querySelector('.halo-productView-left img');
+    if (img) img.src = product.imageUrl || PLACEHOLDER_IMG;
+    var title = popup.querySelector('.product-title .text');
+    if (title) title.textContent = product.name;
+    var priceEl = popup.querySelector('.card-price .money, .price-item--regular .money');
+    if (priceEl) priceEl.textContent = formatPrice(product.price, product.currency || 'TRY');
+    var variants = popup.querySelector('.productView-variants');
+    if (variants) variants.style.display = 'none';
+    var btn = popup.querySelector('[data-btn-quickShop-addtocart]');
+    if (btn) {
+      btn.onclick = function (e) {
+        e.preventDefault();
+        addToCart(tenant, product, 1);
+        document.body.classList.remove('quickshop-popup-show');
+        if (document.body.classList.contains('cart-sidebar-show')) {
+          renderSideCart(tenant, qs('rex_tenant'), window.__rexStoreConfig);
+        }
+      };
+    }
+    document.body.classList.add('quickshop-popup-show');
+  }
+
+  function wireQuickShop(tenant, catalogTenant, config) {
+    var features = getFeatures(config);
+    if (!features.quickShop) return;
+    document.addEventListener(
+      'click',
+      function (e) {
+        var btn = e.target.closest('.rex-quickshop');
+        if (!btn) return;
+        e.preventDefault();
+        e.stopPropagation();
+        openQuickShop(
+          {
+            code: btn.getAttribute('data-code'),
+            name: btn.getAttribute('data-name'),
+            price: Number(btn.getAttribute('data-price') || 0),
+            currency: btn.getAttribute('data-currency') || 'TRY',
+            id: btn.getAttribute('data-id') || '',
+            imageUrl: btn.getAttribute('data-image') || PLACEHOLDER_IMG,
+          },
+          tenant,
+        );
+      },
+      true,
+    );
+  }
+
+  var searchTimer = null;
+  function wireInstantSearch(catalogTenant, routeTenant, config) {
+    var features = getFeatures(config);
+    if (!features.instantSearch) return;
+    var suggestions = (config && config.searchSuggestions) || [];
+    document.querySelectorAll('.search-block.header-search__trending .list-item').forEach(function (ul) {
+      if (!suggestions.length) return;
+      ul.innerHTML = suggestions
+        .map(function (term) {
+          return (
+            '<li class="item"><a href="#" class="link rex-search-term" data-term="' +
+            term +
+            '"><span class="text">' +
+            term +
+            '</span></a></li>'
+          );
+        })
+        .join('');
+    });
+    document.querySelectorAll('.rex-search-term').forEach(function (a) {
+      a.addEventListener('click', function (e) {
+        e.preventDefault();
+        var term = a.getAttribute('data-term');
+        var input = document.querySelector('.header-search__input');
+        if (input && term) {
+          input.value = term;
+          input.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+      });
+    });
+
+    function renderSearchProducts(products, container) {
+      if (!container) return;
+      var row = container.querySelector('.row') || container;
+      if (!products.length) {
+        row.innerHTML = '<div class="col-12"><p class="text-muted">Sonuç bulunamadı.</p></div>';
+        return;
+      }
+      row.innerHTML = products
+        .slice(0, 6)
+        .map(function (p) {
+          return (
+            '<div class="halo-row-item product-item col-6 col-sm-4"><div class="product-card">' +
+            '<a href="#" class="rex-product-link" data-href="' +
+            tenantBase(routeTenant) +
+            '/urun/' +
+            encodeURIComponent(p.code) +
+            '"><img src="' +
+            (p.imageUrl || PLACEHOLDER_IMG) +
+            '" alt="' +
+            p.name +
+            '" style="width:100%;border-radius:4px;"></a>' +
+            '<p class="mt-2 mb-0"><a href="#" class="rex-product-link" data-href="' +
+            tenantBase(routeTenant) +
+            '/urun/' +
+            encodeURIComponent(p.code) +
+            '">' +
+            p.name +
+            '</a></p>' +
+            '<span>' +
+            formatPrice(p.price, p.currency || 'TRY') +
+            '</span></div></div>'
+          );
+        })
+        .join('');
+      bindProductLinks();
+    }
+
+    async function runSearch(term, resultWrap) {
+      if (!term || term.length < 2) return;
+      try {
+        var res = await fetch(
+          bridgeApiUrl('/api/eticaret/catalog?tenant=' + encodeURIComponent(catalogTenant) + '&search=' + encodeURIComponent(term) + '&limit=8'),
+          { headers: { Accept: 'application/json' } },
+        );
+        if (!res.ok) return;
+        var data = await res.json();
+        renderSearchProducts(data.products || [], resultWrap);
+      } catch (e) {}
+    }
+
+    document.querySelectorAll('.header-search__input').forEach(function (input) {
+      input.addEventListener('input', function () {
+        var term = input.value.trim();
+        var wrap = input.closest('.header-search') && input.closest('.header-search').querySelector('.quickSearchProduct');
+        clearTimeout(searchTimer);
+        searchTimer = setTimeout(function () {
+          runSearch(term, wrap);
+        }, 300);
+      });
+    });
+  }
+
+  function applyFeatureToggles(config) {
+    var f = getFeatures(config);
+    function hide(sel) {
+      document.querySelectorAll(sel).forEach(function (el) {
+        el.style.display = 'none';
+      });
+    }
+    if (!f.gdprCookie) hide('.halo-accept-cookie-popup');
+    if (!f.recentSalesPopup) hide('.halo-notification-popup');
+    if (!f.askExpert) hide('[data-open-ask-an-expert], .halo-ask-an-expert-popup');
+    if (!f.newsletterPopup) hide('.halo-newsletter-popup');
+    if (!f.beforeYouLeave) hide('[data-open-before-you-leave], .halo-before-you-leave');
+    if (!f.mobileToolbar) hide('#halo-toolbar-bottom-mobile, .halo-toolbar-bottom-mobile');
+    if (!f.quickView) hide('[data-open-quick-view-popup], .halo-quick-view-popup');
+    if (!f.lookbook) {
+      document.querySelectorAll('a[href*="lookbook"]').forEach(function (a) {
+        a.style.display = 'none';
+      });
+    }
+    if (!f.stickyHeader) {
+      document.querySelectorAll('[data-header-sticky]').forEach(function (el) {
+        el.removeAttribute('data-header-sticky');
+      });
+    }
+    if (!f.sideCart) {
+      hide('#halo-cart-sidebar, [data-open-cart-sidebar]');
+    }
+  }
+
+  function applyMobileNavigation(config, routeTenant) {
+    if (!config || !config.menuItems || !config.menuItems.length) return;
+    var items = sortEnabledContent(config.menuItems);
+    var mobileRoot = document.querySelector('#menu-mobile .site-nav-mobile, .site-nav-mobile');
+    if (!mobileRoot) return;
+    mobileRoot.innerHTML = items
+      .map(function (item) {
+        return (
+          '<li class="menu-lv-item menu-lv-1"><a href="#" class="menu-lv-1__action menu_mobile_link rex-nav-link" data-href="' +
+          menuItemHref(item, routeTenant) +
+          '"><span class="text">' +
+          item.label +
+          '</span></a></li>'
+        );
+      })
+      .join('');
+    bindNavLinks(mobileRoot);
+  }
+
+  function pruneEllaDemoBlocks() {
+    document.querySelectorAll('.halo-product-block').forEach(function (el, idx) {
+      if (idx > 0 && !el.id) el.style.display = 'none';
     });
   }
 
@@ -276,12 +732,14 @@
     if (!config || !config.menuItems || !config.menuItems.length) return;
     var items = sortEnabledContent(config.menuItems);
     if (!items.length) return;
+    var features = getFeatures(config);
     var nav =
       document.querySelector('.header__inline-menu .list-menu') ||
       document.querySelector('.header-bottom--wrapper .list-menu');
     if (!nav) return;
     nav.innerHTML = items
       .map(function (item) {
+        if (features.megaMenu) return renderMenuItemHtml(item, routeTenant);
         var href = menuItemHref(item, routeTenant);
         return (
           '<li class="menu-lv-item"><a href="#" class="menu-lv-1__action rex-nav-link" data-href="' +
@@ -292,13 +750,8 @@
         );
       })
       .join('');
-    nav.querySelectorAll('.rex-nav-link').forEach(function (a) {
-      a.addEventListener('click', function (e) {
-        e.preventDefault();
-        var path = a.getAttribute('data-href');
-        if (path) parentNav(path);
-      });
-    });
+    bindNavLinks(nav);
+    applyMobileNavigation(config, routeTenant);
   }
 
   function applyLogo(config) {
@@ -433,11 +886,27 @@
     if (svc && title) svc.innerHTML = title + ' · <span>' + tenant + '</span>';
   }
 
-  function productCardHtml(p, tenant) {
+  function productCardHtml(p, tenant, config) {
     var href = tenantBase(tenant) + '/urun/' + encodeURIComponent(p.code);
     var price = formatPrice(p.price, p.currency);
+    var features = getFeatures(config);
     var badge = p.badge
       ? '<span class="badge badge-sale" style="position:absolute;top:8px;left:8px;z-index:2;">' + p.badge + '</span>'
+      : '';
+    var quickShopBtn = features.quickShop
+      ? '<button type="button" class="btn btn-outline-primary btn-sm rex-quickshop mt-1" data-code="' +
+        p.code +
+        '" data-name="' +
+        p.name.replace(/"/g, '&quot;') +
+        '" data-price="' +
+        p.price +
+        '" data-currency="' +
+        (p.currency || 'TRY') +
+        '" data-id="' +
+        (p.id || '') +
+        '" data-image="' +
+        (p.imageUrl || PLACEHOLDER_IMG) +
+        '">Hızlı Al</button>'
       : '';
     return (
       '<div class="halo-row-item product-item col-6 col-md-4 col-lg-3">' +
@@ -482,6 +951,7 @@
       '" data-id="' +
       (p.id || '') +
       '">Sepete Ekle</button>' +
+      quickShopBtn +
       '</div></div></div></div>'
     );
   }
@@ -514,7 +984,7 @@
     });
   }
 
-  function renderProducts(products, tenant, sectionTitle) {
+  function renderProducts(products, tenant, sectionTitle, config) {
     var grid =
       document.querySelector('#retailex-products-grid .row') ||
       document.querySelector('.halo-product-block .halo-block-content .row') ||
@@ -548,7 +1018,7 @@
 
     grid.innerHTML = products
       .map(function (p) {
-        return productCardHtml(p, tenant);
+        return productCardHtml(p, tenant, config);
       })
       .join('');
     bindProductLinks();
@@ -1010,6 +1480,8 @@
     if (!routeTenant) return;
 
     var storeConfig = await loadStorefrontConfig(routeTenant);
+    window.__rexStoreConfig = storeConfig;
+    window.__rexRouteTenant = routeTenant;
     var catalogTenant = resolveCatalogTenant(routeTenant, storeConfig);
     var demoMode = Boolean(storeConfig && storeConfig.demoMode);
     var variantId =
@@ -1026,8 +1498,12 @@
     patchAnnouncement(announce);
     patchHeaderTitle(title, routeTenant);
     applyLogo(storeConfig);
+    applyFeatureToggles(storeConfig);
     applyNavigation(storeConfig, routeTenant);
     applyFooter(storeConfig, routeTenant);
+    wireSideCartOpen(routeTenant, routeTenant, storeConfig);
+    wireQuickShop(routeTenant, catalogTenant, storeConfig);
+    wireInstantSearch(catalogTenant, routeTenant, storeConfig);
     updateCartBadge(routeTenant);
 
     document.documentElement.classList.add('rex-eticaret-vitrin');
@@ -1055,7 +1531,8 @@
       applyStorefrontContent(storeConfig, routeTenant);
       var products = await fetchCatalog(catalogTenant, demoMode);
       products = mergeFeaturedAndCampaigns(products, storeConfig);
-      renderProducts(products, routeTenant, (storeConfig && storeConfig.productSectionTitle) || 'Ürünler');
+      renderProducts(products, routeTenant, (storeConfig && storeConfig.productSectionTitle) || 'Ürünler', storeConfig);
+      pruneEllaDemoBlocks();
     }
   }
 

@@ -1,5 +1,6 @@
 import type { EticaretSettings } from './types';
 import type { PaymentProviderConfig } from './payments/types';
+import { DEFAULT_STOREFRONT_FEATURES } from './contentTypes';
 import { DEFAULT_ETICARET_SETTINGS } from './settings';
 
 /** Registry + kiracı DB + yerel önbellek birleştirme */
@@ -20,7 +21,16 @@ export function mergeEticaretSettings(
       menuItems: layer.menuItems ?? merged.menuItems,
       footerLinks: layer.footerLinks ?? merged.footerLinks,
       staticPages: layer.staticPages ?? merged.staticPages,
+      storefrontFeatures: {
+        ...merged.storefrontFeatures,
+        ...(layer.storefrontFeatures || {}),
+      },
+      searchSuggestions: layer.searchSuggestions ?? merged.searchSuggestions,
+      freeShippingThreshold: layer.freeShippingThreshold ?? merged.freeShippingThreshold,
     };
+  }
+  if (!merged.storefrontFeatures) {
+    merged.storefrontFeatures = { ...DEFAULT_STOREFRONT_FEATURES };
   }
   return merged;
 }
@@ -51,5 +61,8 @@ export function storefrontConfigToSettings(
     seoTitle: raw.seoTitle ? String(raw.seoTitle) : undefined,
     productSectionTitle: raw.productSectionTitle ? String(raw.productSectionTitle) : undefined,
     footerCopyright: raw.footerCopyright ? String(raw.footerCopyright) : undefined,
+    storefrontFeatures: raw.storefrontFeatures as EticaretSettings['storefrontFeatures'],
+    freeShippingThreshold: raw.freeShippingThreshold != null ? Number(raw.freeShippingThreshold) : undefined,
+    searchSuggestions: raw.searchSuggestions as string[] | undefined,
   });
 }
