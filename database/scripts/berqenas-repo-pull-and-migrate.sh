@@ -39,6 +39,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/berqenas-cloud-dbs.inc.sh"
 
 berqenas_pick_tenant_dbs || exit 1
+berqenas_filter_retailex_migration_dbs || exit 1
 
 WEB_NET=$(docker inspect "$CONTAINER" --format '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' 2>/dev/null | awk '{print $1}')
 if [[ -z "${WEB_NET:-}" ]]; then

@@ -81,7 +81,7 @@
 77. **092_customer_call_plan_weekly.sql** – Müşteri arama planı haftalık arşivi (`customer_call_plan_weekly`) ve hafta başı sıfırlama (`customer_call_plan_rollover`).
 
 **Kiracılara toplu uygulama (VPS / uzak PG):**
-- `npm run db:migrate:tenants` — tüm kiracı DB'ler
+- `npm run db:migrate:tenants` — tüm RetailEX kiracı DB'ler (`ilsasupport`, `pagetin_kurye`, `siti_pdks` **hariç** — bkz. `.cursor/rules/database-non-retailex-exclude.mdc`)
 - `bash database/scripts/apply-065-all-retail-tenants.sh` — yalnızca 065 (tenant_registry listesi)
 - GitHub Actions: **Migrate tenant databases** (`migrate-tenants-db.yml`) — VPS SSH ile `berqenas-repo-pull-and-migrate.sh`
 

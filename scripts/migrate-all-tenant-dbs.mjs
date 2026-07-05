@@ -3,7 +3,7 @@
  * Uzak sunucudaki tüm kiracı PostgreSQL veritabanlarına bekleyen migration'ları uygular.
  *
  * Kaynak liste (varsayılan):
- *   1) pg_database (postgres/template* hariç, merkez_db hariç)
+ *   1) pg_database (postgres/template* hariç, merkez_db hariç, non-retailex hariç)
  *   2) TENANT_DBS=db1,db2 ile sınırla
  *   3) --from-registry: yalnızca merkez_db.tenant_registry (aktif, merkez_db hariç)
  *
@@ -20,6 +20,11 @@ import { fileURLToPath } from 'url';
 import pg from 'pg';
 import { loadRemotePgDefaults } from '../database/scripts/pg-endpoint-parse.mjs';
 import { notifyPostgrestReloadSchemaConn } from '../database/scripts/postgrest-reload-schema.mjs';
+import {
+  filterRetailExDatabases,
+  isNonRetailExDatabase,
+  nonRetailExSkipReason,
+} from '../database/scripts/non-retailex-databases.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const defaults = loadRemotePgDefaults();
@@ -63,7 +68,9 @@ async function listFromPgDatabase() {
         AND datallowconn
       ORDER BY datname
     `);
-    return rows.map((r) => r.datname).filter((n) => !SKIP_DBS.has(n));
+    return filterRetailExDatabases(
+      rows.map((r) => r.datname).filter((n) => !SKIP_DBS.has(n)),
+    );
   } finally {
     await c.end().catch(() => {});
   }
@@ -81,9 +88,11 @@ async function listFromRegistry() {
         AND btrim(database_name) <> ''
       ORDER BY database_name
     `);
-    return rows
-      .map((r) => r.database_name)
-      .filter((n) => !SKIP_DBS.has(n));
+    return filterRetailExDatabases(
+      rows
+        .map((r) => r.database_name)
+        .filter((n) => !SKIP_DBS.has(n)),
+    );
   } finally {
     await c.end().catch(() => {});
   }
@@ -180,6 +189,11 @@ async function main() {
   const skipped = [];
   for (const db of dbs) {
     console.log(`\n[db:migrate:tenants] === ${db} ===`);
+    if (isNonRetailExDatabase(db)) {
+      console.log(`[db:migrate:tenants] ATLANDI: ${db} (${nonRetailExSkipReason(db)})`);
+      skipped.push(db);
+      continue;
+    }
     const retail = await isRetailExTenantDb(db);
     if (!retail) {
       console.log(`[db:migrate:tenants] ATLANDI: ${db} (RetailEX şeması / schema_migrations yok)`);

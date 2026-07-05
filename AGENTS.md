@@ -38,6 +38,8 @@ Or use the combined dev command after exporting the PG env vars.
 
 The database `retailex_local` uses schemas: `public`, `auth`, `logic`, `wms`, `rest`, `beauty`, `pos`.
 
+**RetailEX dışı PG veritabanları** (`ilsasupport`, `pagetin_kurye`, `siti_pdks`) toplu migration hedefi değildir — `.cursor/rules/database-non-retailex-exclude.mdc`.
+
 Master schema and demo data:
 ```bash
 sudo -u postgres psql -f database/migrations/000_master_schema.sql retailex_local

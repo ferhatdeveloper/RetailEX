@@ -4,6 +4,45 @@
 #
 # Şema farkı: merkez_db (tenant_registry) ile retail/pdks DB'leri aynı migration dosyalarını
 # her zaman kaldırmaz; numaralı migration'ları tümüne basmadan önce dosyanın hedefini kontrol edin.
+#
+# RetailEX migration hariç DB'ler (database/scripts/non-retailex-databases.mjs ile senkron):
+#   ilsasupport, pagetin_kurye, siti_pdks
+
+berqenas_non_retailex_dbs_array() {
+  BERQENAS_NON_RETAIL_DBS=(
+    ilsasupport
+    pagetin_kurye
+    siti_pdks
+  )
+}
+
+berqenas_is_non_retailex_db() {
+  local db="$1"
+  local x
+  berqenas_non_retailex_dbs_array
+  for x in "${BERQENAS_NON_RETAIL_DBS[@]}"; do
+    [[ "$db" == "$x" ]] && return 0
+  done
+  return 1
+}
+
+# RetailEX migration zincirine uygulanacak DB listesinden hariç tut
+berqenas_filter_retailex_migration_dbs() {
+  local filtered=()
+  local db
+  for db in ${TENANT_DBS}; do
+    if berqenas_is_non_retailex_db "$db"; then
+      echo "  atlandı (RetailEX DB değil): ${db}"
+      continue
+    fi
+    filtered+=("$db")
+  done
+  if [[ ${#filtered[@]} -eq 0 ]]; then
+    echo "Hata: TENANT_DBS filtrelendikten sonra hedef kalmadı." >&2
+    return 1
+  fi
+  TENANT_DBS="${filtered[*]}"
+}
 
 berqenas_default_dbs_array() {
   BERQENAS_DEFAULT_DBS=(
