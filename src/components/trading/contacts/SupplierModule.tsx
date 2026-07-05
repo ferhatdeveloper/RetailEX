@@ -28,6 +28,7 @@ import {
   normalizeCustomerCallWeekdays,
   customerCallWeekdaysLabel,
 } from '../../../utils/customerCallPlan';
+import { consumeOpenSupplierEkstreRequest } from '../../../utils/openSupplierEkstre';
 
 /** Sıfır ondalıkla gösterilen yaygın ana para kodları */
 function preferIntegerAmountDisplay(code: string): boolean {
@@ -135,6 +136,13 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: 'all
   });
 
   useEffect(() => { loadSuppliers(); }, []);
+
+  useEffect(() => {
+    const pending = consumeOpenSupplierEkstreRequest();
+    if (!pending || suppliers.length === 0) return;
+    const account = suppliers.find(s => s.id === pending.id);
+    if (account) void selectAccount(account);
+  }, [suppliers]);
 
   useEffect(() => {
     void (async () => {

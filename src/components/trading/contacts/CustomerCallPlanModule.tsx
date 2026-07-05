@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { CalendarClock, Edit, FileText, MessageSquare, MessageSquarePlus, Phone, Plus, RefreshCw, Search, Send, Settings, StickyNote, User, Wallet, X } from 'lucide-react';
+import { CalendarClock, ChevronDown, Edit, FileText, MessageSquare, MessageSquarePlus, Phone, Plus, RefreshCw, Search, Send, Settings, StickyNote, User, Wallet, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { DevExDataGrid } from '../../shared/DevExDataGrid';
 import { ContextMenu } from '../../shared/ContextMenu';
@@ -17,6 +17,7 @@ import {
   type CallPlanWhatsAppPreset,
 } from '../../../utils/callPlanWhatsAppSend';
 import type { WhatsAppBulkPreviewItem } from '../../../utils/whatsappBulkSend';
+import { requestOpenSupplierEkstre } from '../../../utils/openSupplierEkstre';
 import {
   CUSTOMER_CALL_WEEKDAYS,
   CUSTOMER_CALL_STATUSES,
@@ -179,6 +180,11 @@ export function CustomerCallPlanModule() {
         invoiceSearch: String(customer.code || customer.name || '').trim(),
       },
     }));
+  };
+
+  const openAccountStatement = (customer: Supplier) => {
+    setContextMenu(null);
+    requestOpenSupplierEkstre({ id: customer.id, code: customer.code });
   };
 
   const navigateCollection = (customer: Supplier) => {
@@ -449,6 +455,12 @@ export function CustomerCallPlanModule() {
               label: tm('callPlanCtxCustomerDetails'),
               icon: User,
               onClick: () => openEdit(contextMenu.customer),
+            },
+            {
+              id: 'account-statement',
+              label: tm('accountStatement'),
+              icon: FileText,
+              onClick: () => openAccountStatement(contextMenu.customer),
               divider: true,
             },
             {
@@ -626,92 +638,106 @@ export function CustomerCallPlanModule() {
       ) : null}
 
       {editing ? (
-        <div className="fixed inset-0 z-[2147483647] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-xl overflow-hidden rounded-2xl bg-white shadow-2xl">
-            <div className="flex items-center justify-between border-b border-slate-100 bg-amber-50 px-5 py-4">
-              <div>
-                <p className="text-xs font-black uppercase tracking-wide text-amber-700">{tm('callPlanEditTitle')}</p>
-                <h3 className="text-lg font-black text-slate-900">{editing.name}</h3>
-              </div>
-              <button type="button" onClick={() => setEditing(null)} className="rounded-lg p-2 hover:bg-amber-100">
-                <X className="h-5 w-5 text-slate-500" />
-              </button>
+        <PercentBodyModal onClose={() => setEditing(null)} size="list" ariaLabel={tm('callPlanEditTitle')}>
+          <div className="flex shrink-0 items-center justify-between bg-gradient-to-r from-blue-600 to-indigo-600 px-6 py-5 text-white sm:px-8 sm:py-6">
+            <div className="min-w-0">
+              <p className="text-xs font-black uppercase tracking-wide text-blue-100">{tm('callPlanEditTitle')}</p>
+              <h3 className="truncate text-lg font-black sm:text-xl">{editing.name}</h3>
             </div>
-            <div className="p-5">
-              <p className="mb-3 text-sm font-semibold text-slate-600">{tm('callPlanSelectDays')}</p>
-              <div className="flex flex-wrap gap-2">
-                {CUSTOMER_CALL_WEEKDAYS.map(day => {
-                  const selected = selectedDays.includes(day.value);
-                  return (
-                    <button
-                      key={day.value}
-                      type="button"
-                      aria-pressed={selected}
-                      onClick={() => toggleDay(day.value)}
-                      className={`rounded-full border px-3 py-1.5 text-xs font-black transition-all ${
-                        selected
-                          ? 'border-blue-600 bg-blue-600 text-white shadow-md ring-2 ring-blue-200'
-                          : 'border-amber-200 bg-white text-amber-700 hover:bg-amber-100'
-                      }`}
-                    >
-                      {selected ? `✓ ${day.tr}` : day.tr}
-                    </button>
-                  );
-                })}
-              </div>
-              {selectedDays.length > 0 ? (
-                <p className="mt-3 rounded-lg bg-blue-50 px-3 py-2 text-xs font-bold text-blue-700">
-                  {tm('callPlanSelectedDays').replace('{days}', customerCallWeekdaysLabel(selectedDays))}
-                </p>
-              ) : (
-                <p className="mt-3 rounded-lg bg-slate-50 px-3 py-2 text-xs font-bold text-slate-500">
-                  {tm('callPlanNoDaysHint')}
-                </p>
-              )}
-              <div className="mt-4">
-                <label className="mb-1 block text-xs font-black uppercase tracking-wide text-slate-500">{tm('callPlanNote')}</label>
-                <textarea
-                  value={planNote}
-                  onChange={e => setPlanNote(e.target.value)}
-                  rows={2}
-                  placeholder={tm('callPlanNote')}
-                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-amber-500"
-                />
-              </div>
-              <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
-                <div>
-                  <label className="mb-1 block text-xs font-black uppercase tracking-wide text-slate-500">{tm('callPlanLastStatus')}</label>
+            <button type="button" onClick={() => setEditing(null)} className="rounded-xl p-2 hover:bg-white/15" aria-label={tm('cancel')}>
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+
+          <PercentBodyModalScrollBody className="p-6 sm:p-8">
+            <p className="mb-3 text-[11px] font-bold uppercase tracking-wider text-slate-500">{tm('callPlanSelectDays')}</p>
+            <div className="flex flex-wrap gap-2">
+              {CUSTOMER_CALL_WEEKDAYS.map(day => {
+                const selected = selectedDays.includes(day.value);
+                return (
+                  <button
+                    key={day.value}
+                    type="button"
+                    aria-pressed={selected}
+                    onClick={() => toggleDay(day.value)}
+                    className={`rounded-full border px-3 py-1.5 text-xs font-black transition-all ${
+                      selected
+                        ? 'border-blue-600 bg-blue-600 text-white shadow-md ring-2 ring-blue-200'
+                        : 'border-amber-200 bg-white text-amber-700 hover:bg-amber-100'
+                    }`}
+                  >
+                    {selected ? `✓ ${day.tr}` : day.tr}
+                  </button>
+                );
+              })}
+            </div>
+            {selectedDays.length > 0 ? (
+              <p className="mt-3 rounded-2xl bg-blue-50 px-4 py-2.5 text-xs font-bold text-blue-700">
+                {tm('callPlanSelectedDays').replace('{days}', customerCallWeekdaysLabel(selectedDays))}
+              </p>
+            ) : (
+              <p className="mt-3 rounded-2xl bg-slate-50 px-4 py-2.5 text-xs font-bold text-slate-500">
+                {tm('callPlanNoDaysHint')}
+              </p>
+            )}
+
+            <div className="mt-6">
+              <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-slate-500">{tm('callPlanNote')}</label>
+              <textarea
+                value={planNote}
+                onChange={e => setPlanNote(e.target.value)}
+                rows={3}
+                placeholder={tm('callPlanNote')}
+                className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm font-medium text-slate-800 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+
+            <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div>
+                <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-slate-500">{tm('callPlanLastStatus')}</label>
+                <div className="relative">
                   <select
                     value={lastStatus}
                     onChange={e => setLastStatus(normalizeCustomerCallStatus(e.target.value))}
-                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full appearance-none rounded-2xl border border-slate-200 bg-white px-4 py-3 pr-11 text-sm font-medium text-slate-800 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-500"
                   >
                     {CUSTOMER_CALL_STATUSES.map(status => (
                       <option key={status.value} value={status.value}>{tm(status.label)}</option>
                     ))}
                   </select>
-                </div>
-                <div>
-                  <label className="mb-1 block text-xs font-black uppercase tracking-wide text-slate-500">{tm('callPlanLastStatusNote')}</label>
-                  <input
-                    value={lastNote}
-                    onChange={e => setLastNote(e.target.value)}
-                    placeholder={tm('callPlanLastStatusNote')}
-                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
-                  />
+                  <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" aria-hidden />
                 </div>
               </div>
+              <div>
+                <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-slate-500">{tm('callPlanLastStatusNote')}</label>
+                <input
+                  value={lastNote}
+                  onChange={e => setLastNote(e.target.value)}
+                  placeholder={tm('callPlanLastStatusNote')}
+                  className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm font-medium text-slate-800 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
             </div>
-            <div className="flex justify-end gap-2 border-t border-slate-100 bg-slate-50 px-5 py-4">
-              <button type="button" onClick={() => setEditing(null)} className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-600 hover:bg-slate-100">
-                {tm('cancel')}
-              </button>
-              <button type="button" onClick={() => void savePlan()} disabled={saving} className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-bold text-white hover:bg-blue-700 disabled:opacity-50">
-                {saving ? tm('saving') : tm('save')}
-              </button>
-            </div>
+          </PercentBodyModalScrollBody>
+
+          <div className="flex shrink-0 justify-end gap-3 border-t border-slate-100 bg-slate-50/50 p-4 sm:p-6">
+            <button
+              type="button"
+              onClick={() => setEditing(null)}
+              className="rounded-2xl border-2 border-slate-200 px-5 py-2.5 text-sm font-bold uppercase tracking-wider text-slate-600 hover:bg-slate-100 active:scale-[0.98]"
+            >
+              {tm('cancel')}
+            </button>
+            <button
+              type="button"
+              onClick={() => void savePlan()}
+              disabled={saving}
+              className="rounded-2xl bg-blue-600 px-5 py-2.5 text-sm font-bold uppercase tracking-wider text-white shadow-lg shadow-blue-200/50 hover:bg-blue-700 disabled:opacity-50 active:scale-[0.98]"
+            >
+              {saving ? tm('saving') : tm('save')}
+            </button>
           </div>
-        </div>
+        </PercentBodyModal>
       ) : null}
     </div>
   );
