@@ -17,7 +17,7 @@ import {
   type CallPlanWhatsAppPreset,
 } from '../../../utils/callPlanWhatsAppSend';
 import type { WhatsAppBulkPreviewItem } from '../../../utils/whatsappBulkSend';
-import { requestOpenSupplierEkstre } from '../../../utils/openSupplierEkstre';
+import { CariAccountStatementPanel } from './CariAccountStatementPanel';
 import {
   CUSTOMER_CALL_WEEKDAYS,
   CUSTOMER_CALL_STATUSES,
@@ -52,6 +52,8 @@ export function CustomerCallPlanModule() {
   const [waBulkOpen, setWaBulkOpen] = useState(false);
   const [waBulkItems, setWaBulkItems] = useState<WhatsAppBulkPreviewItem[]>([]);
   const [waBulkPreparing, setWaBulkPreparing] = useState(false);
+  const [ekstreAccount, setEkstreAccount] = useState<Supplier | null>(null);
+  const [ekstreLoading, setEkstreLoading] = useState(false);
 
   const messageLang = useMemo(() => normalizeCallPlanMessageLang(language), [language]);
 
@@ -182,9 +184,18 @@ export function CustomerCallPlanModule() {
     }));
   };
 
-  const openAccountStatement = (customer: Supplier) => {
+  const openAccountStatement = async (customer: Supplier) => {
     setContextMenu(null);
-    requestOpenSupplierEkstre({ id: customer.id, code: customer.code });
+    setEkstreLoading(true);
+    try {
+      const fresh = await supplierAPI.getById(customer.id);
+      setEkstreAccount(fresh ?? customer);
+    } catch (error: any) {
+      toast.error(error?.message || tm('errorLoadingOperations'));
+      setEkstreAccount(customer);
+    } finally {
+      setEkstreLoading(false);
+    }
   };
 
   const navigateCollection = (customer: Supplier) => {
@@ -738,6 +749,21 @@ export function CustomerCallPlanModule() {
             </button>
           </div>
         </PercentBodyModal>
+      ) : null}
+
+      {ekstreLoading ? (
+        <div className="fixed inset-0 z-[2147483645] flex items-center justify-center bg-black/40">
+          <div className="rounded-2xl bg-white px-6 py-4 text-sm font-bold text-slate-700 shadow-xl">
+            {tm('loading')}
+          </div>
+        </div>
+      ) : null}
+
+      {ekstreAccount ? (
+        <CariAccountStatementPanel
+          account={ekstreAccount}
+          onClose={() => setEkstreAccount(null)}
+        />
       ) : null}
     </div>
   );
