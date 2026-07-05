@@ -94,8 +94,10 @@ services:
       - postgrest_canon
       - postgrest_lovan
       - postgrest_zetem
+      - postgrest_ferhat
       - sync_lovan
       - sync_zetem
+      - sync_ferhat
     volumes:
       - ./database/docker/Caddyfile.api-gateway:/etc/caddy/Caddyfile:ro
     networks:
@@ -470,6 +472,21 @@ services:
     networks:
       - berqenas_net
 
+  postgrest_ferhat:
+    image: postgrest/postgrest:v12.2.0
+    container_name: saas_postgrest_ferhat
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      <<: *postgrest-env
+      PGRST_DB_URI: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/ferhat
+    ports:
+      - "${POSTGREST_PORT_FERHAT:-3020}:3000"
+    networks:
+      - berqenas_net
+
   sync_aqua:
     <<: *sync-service
     container_name: saas_sync_aqua
@@ -539,6 +556,13 @@ services:
     environment:
       <<: *sync-env
       DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/zetem
+
+  sync_ferhat:
+    <<: *sync-service
+    container_name: saas_sync_ferhat
+    environment:
+      <<: *sync-env
+      DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/ferhat
 
   sync_m10_pdks:
     <<: *sync-service

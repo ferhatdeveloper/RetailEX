@@ -64,6 +64,7 @@ berqenas_default_dbs_array() {
     canon
     lovan
     zetem
+    ferhat
   )
 }
 

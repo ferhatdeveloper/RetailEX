@@ -45,6 +45,7 @@ DBS=(
   canon
   lovan
   zetem
+  ferhat
 )
 
 POSTGREST_SERVICES=(
@@ -66,6 +67,7 @@ POSTGREST_SERVICES=(
   postgrest_canon
   postgrest_lovan
   postgrest_zetem
+  postgrest_ferhat
 )
 
 ALL_SERVICES=(

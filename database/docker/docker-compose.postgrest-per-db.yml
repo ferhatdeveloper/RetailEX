@@ -267,3 +267,17 @@ services:
       - "0.0.0.0:3019:3000"
     networks:
       berqenas_net: {}
+
+  postgrest_ferhat:
+    image: postgrest/postgrest:v12.2.0
+    container_name: saas_postgrest_ferhat
+    restart: always
+    depends_on:
+      - postgres
+    environment:
+      <<: *postgrest-env
+      PGRST_DB_URI: postgres://postgres:${POSTGRES_PASSWORD:-root_password_2026}@postgres:5432/ferhat
+    ports:
+      - "0.0.0.0:3020:3000"
+    networks:
+      berqenas_net: {}

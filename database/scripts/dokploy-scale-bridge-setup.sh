@@ -39,6 +39,7 @@ DEFAULT_TENANT_DBS=(
   canon
   lovan
   zetem
+  ferhat
 )
 
 if [[ -n "${TENANT_DBS:-}" ]]; then
@@ -63,6 +64,7 @@ POSTGREST_CONTAINERS=(
   canon:saas_postgrest_canon
   lovan:saas_postgrest_lovan
   zetem:saas_postgrest_zetem
+  ferhat:saas_postgrest_ferhat
 )
 
 psql_db() {
