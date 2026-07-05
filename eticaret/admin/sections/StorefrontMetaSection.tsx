@@ -64,6 +64,25 @@ export function StorefrontMetaSection({ form, onChange }: Props) {
             placeholder="© 2026 Mağaza Adı"
           />
         </Col>
+        <Col xs={24} md={12}>
+          <Text strong>Uzmana sor e-posta</Text>
+          <Input
+            value={form.askExpertEmail || ''}
+            onChange={(e) => onChange({ askExpertEmail: e.target.value })}
+            style={{ marginTop: 8 }}
+            placeholder="destek@magaza.com"
+          />
+        </Col>
+        <Col xs={24} md={12}>
+          <Text strong>GDPR / çerez metni</Text>
+          <Input.TextArea
+            value={form.gdprCookieText || ''}
+            onChange={(e) => onChange({ gdprCookieText: e.target.value })}
+            style={{ marginTop: 8 }}
+            rows={3}
+            placeholder="Çerez politikası metni…"
+          />
+        </Col>
       </Row>
     </Card>
   );

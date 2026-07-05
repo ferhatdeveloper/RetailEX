@@ -62,6 +62,7 @@ function parseStorefrontPath(pathname: string): {
   }
   if (parts[2] === 'sepet') return { base, tenant, page: 'static', staticSlug: 'sepet' };
   if (parts[2] === 'odeme') return { base, tenant, page: 'static', staticSlug: 'odeme' };
+  if (parts[2] === 'lookbook') return { base, tenant, page: 'static', staticSlug: 'lookbook' };
   if (parts[2] === 'sayfa' && parts[3]) {
     return { base, tenant, page: 'static', staticSlug: parts[3] };
   }

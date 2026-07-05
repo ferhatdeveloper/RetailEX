@@ -135,6 +135,27 @@ export type EticaretFooterLink = {
   sortOrder: number;
 };
 
+/** Lookbook sahne — görsel üzerinde ürün hotspot */
+export type EticaretLookbookHotspot = {
+  id: string;
+  productCode: string;
+  topPercent: number;
+  leftPercent: number;
+  popupTopPercent?: number;
+  popupLeftPercent?: number;
+  enabled: boolean;
+};
+
+export type EticaretLookbookScene = {
+  id: string;
+  title?: string;
+  imageUrl: string;
+  mobileImageUrl?: string;
+  hotspots: EticaretLookbookHotspot[];
+  enabled: boolean;
+  sortOrder: number;
+};
+
 /** CMS sayfa — slug ile vitrinde gösterilir */
 export type EticaretStaticPage = {
   id: string;
@@ -154,6 +175,7 @@ export type EticaretContentSettings = {
   menuItems: EticaretMenuItem[];
   footerLinks: EticaretFooterLink[];
   staticPages: EticaretStaticPage[];
+  lookbookScenes: EticaretLookbookScene[];
 };
 
 export const DEFAULT_STOREFRONT_MENU: EticaretMenuItem[] = [
@@ -199,6 +221,7 @@ export const DEFAULT_ETICARET_CONTENT: EticaretContentSettings = {
   menuItems: DEFAULT_STOREFRONT_MENU,
   footerLinks: DEFAULT_FOOTER_LINKS,
   staticPages: DEFAULT_STATIC_PAGES,
+  lookbookScenes: [],
 };
 
 export function createContentId(prefix: string): string {

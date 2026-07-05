@@ -754,6 +754,9 @@ function buildStorefrontPayload(settings: Record<string, unknown>, tenant: strin
         : {},
     freeShippingThreshold: Number(settings.freeShippingThreshold) || 500,
     searchSuggestions: Array.isArray(settings.searchSuggestions) ? settings.searchSuggestions : [],
+    lookbookScenes: Array.isArray(settings.lookbookScenes) ? settings.lookbookScenes : [],
+    askExpertEmail: settings.askExpertEmail ? String(settings.askExpertEmail) : '',
+    gdprCookieText: settings.gdprCookieText ? String(settings.gdprCookieText) : '',
   };
 }
 
@@ -897,6 +900,37 @@ app.get('/api/eticaret/orders', async (c) => {
     return c.json({ orders: result.rows });
   } catch {
     return c.json({ orders: [] });
+  }
+});
+
+app.post('/api/eticaret/inquiry', async (c) => {
+  try {
+    const body = (await c.req.json()) as Record<string, unknown>;
+    const tenant = String(body.tenant_code || '').trim().toLowerCase();
+    if (!tenant) return c.json({ error: 'tenant_code gerekli' }, 400);
+    const connStr = await resolveEticaretConnStrAsync(tenant);
+    if (!connStr) return c.json({ error: 'Kiracı veritabanı çözülemedi' }, 400);
+    const pool = getEticaretPool(connStr);
+    const orderNo = `INQ-${Date.now().toString(36).toUpperCase()}`;
+    const message = String(body.message || body.question || '').trim();
+    await pool.query(
+      `INSERT INTO public.eticaret_web_orders (
+        tenant_code, order_no, status, demo_mode, customer_name, customer_email, customer_phone,
+        payment_provider, payment_status, currency, subtotal, total, items, notes
+      ) VALUES ($1, $2, 'inquiry', false, $3, $4, $5, 'inquiry', 'pending', 'TRY', 0, 0, '[]'::jsonb, $6)`,
+      [
+        tenant,
+        orderNo,
+        String(body.name || body.customer_name || ''),
+        String(body.email || body.customer_email || ''),
+        String(body.phone || body.customer_phone || ''),
+        message,
+      ],
+    );
+    return c.json({ ok: true, order_no: orderNo });
+  } catch (error: unknown) {
+    const err = error as { message?: string };
+    return c.json({ ok: false, error: err?.message || 'inquiry failed' }, 500);
   }
 });
 

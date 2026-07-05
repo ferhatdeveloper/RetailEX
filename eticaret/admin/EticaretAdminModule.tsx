@@ -28,6 +28,7 @@ import {
   LinkOutlined,
   MenuOutlined,
   PictureOutlined,
+  ReadOutlined,
   SaveOutlined,
   SettingOutlined,
   ShoppingOutlined,
@@ -63,6 +64,7 @@ import { FooterSection } from './sections/FooterSection';
 import { PagesSection } from './sections/PagesSection';
 import { StorefrontMetaSection } from './sections/StorefrontMetaSection';
 import { StorefrontFeaturesSection } from './sections/StorefrontFeaturesSection';
+import { LookbookSection } from './sections/LookbookSection';
 
 const { Header, Sider, Content } = Layout;
 const { Title, Text, Paragraph } = Typography;
@@ -73,6 +75,7 @@ type AdminSection =
   | 'navigation'
   | 'footer'
   | 'pages'
+  | 'lookbook'
   | 'banners'
   | 'sliders'
   | 'campaigns'
@@ -107,6 +110,7 @@ const MENU_ITEMS: MenuProps['items'] = [
   { key: 'navigation', icon: <MenuOutlined />, label: 'Menü' },
   { key: 'footer', icon: <LinkOutlined />, label: 'Footer' },
   { key: 'pages', icon: <FileTextOutlined />, label: 'Sayfalar' },
+  { key: 'lookbook', icon: <ReadOutlined />, label: 'Lookbook' },
   { key: 'banners', icon: <PictureOutlined />, label: 'Bannerlar' },
   { key: 'sliders', icon: <SlidersOutlined />, label: 'Slider' },
   { key: 'campaigns', icon: <ThunderboltOutlined />, label: 'Kampanyalar' },
@@ -136,6 +140,7 @@ export function EticaretAdminModule() {
     menuItems: DEFAULT_ETICARET_SETTINGS.menuItems,
     footerLinks: DEFAULT_ETICARET_SETTINGS.footerLinks,
     staticPages: DEFAULT_ETICARET_SETTINGS.staticPages,
+    lookbookScenes: DEFAULT_ETICARET_SETTINGS.lookbookScenes || [],
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -161,6 +166,7 @@ export function EticaretAdminModule() {
         menuItems: merged.menuItems || DEFAULT_ETICARET_SETTINGS.menuItems,
         footerLinks: merged.footerLinks || DEFAULT_ETICARET_SETTINGS.footerLinks,
         staticPages: merged.staticPages || DEFAULT_ETICARET_SETTINGS.staticPages,
+        lookbookScenes: merged.lookbookScenes || [],
       });
     } catch (e: unknown) {
       message.error(e instanceof Error ? e.message : String(e));
@@ -322,6 +328,13 @@ export function EticaretAdminModule() {
           <PagesSection
             pages={form.staticPages || []}
             onChange={(staticPages) => patch({ staticPages })}
+          />
+        );
+      case 'lookbook':
+        return (
+          <LookbookSection
+            items={form.lookbookScenes || []}
+            onChange={(lookbookScenes) => patch({ lookbookScenes })}
           />
         );
       case 'banners':

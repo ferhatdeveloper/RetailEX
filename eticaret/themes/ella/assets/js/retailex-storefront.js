@@ -552,6 +552,310 @@
     });
   }
 
+  async function fetchProductByCode(catalogTenant, code) {
+    try {
+      var res = await fetch(
+        bridgeApiUrl(
+          '/api/eticaret/product?tenant=' + encodeURIComponent(catalogTenant) + '&code=' + encodeURIComponent(code),
+        ),
+        { headers: { Accept: 'application/json' } },
+      );
+      if (!res.ok) return null;
+      var data = await res.json();
+      return data.product || null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function fillQuickViewPopup(product, tenant) {
+    var popup = document.getElementById('halo-quick-view-popup');
+    if (!popup || !product) return;
+    var imgWrap = popup.querySelector('.productView-nav');
+    if (imgWrap) {
+      imgWrap.innerHTML =
+        '<div class="productView-image"><div class="media image-zoom">' +
+        '<img src="' +
+        (product.imageUrl || PLACEHOLDER_IMG) +
+        '" alt="' +
+        product.name +
+        '" style="width:100%;max-height:420px;object-fit:contain;"></div></div>';
+    }
+    var thumbWrap = popup.querySelector('.productView-for');
+    if (thumbWrap) thumbWrap.innerHTML = '';
+    var title = popup.querySelector('.productView-title a, .productView-title');
+    if (title) {
+      title.textContent = product.name;
+      if (title.tagName === 'A') {
+        title.setAttribute('href', '#');
+        title.classList.add('rex-product-link');
+        title.setAttribute('data-href', tenantBase(tenant) + '/urun/' + encodeURIComponent(product.code));
+      }
+    }
+    var sku = popup.querySelector('[data-sku] .productView-info-value');
+    if (sku) sku.textContent = product.code;
+    var brand = popup.querySelector('.productView-info-item .productView-info-value a');
+    if (brand && product.vendor) brand.textContent = product.vendor;
+    var priceEl = popup.querySelector('.productView-price .money, .price-item--regular .money');
+    if (priceEl) priceEl.textContent = formatPrice(product.price, product.currency || 'TRY');
+    var variants = popup.querySelector('.productView-variants, .halo-productOptions');
+    if (variants) variants.style.display = 'none';
+    var sold = popup.querySelector('.productView-soldProduct');
+    if (sold) sold.style.display = 'none';
+    var countdown = popup.querySelector('.productView-countDown');
+    if (countdown) countdown.style.display = 'none';
+    var btn = popup.querySelector('[data-btn-addtocart]');
+    if (btn) {
+      btn.textContent = 'Sepete Ekle';
+      btn.onclick = function (e) {
+        e.preventDefault();
+        addToCart(tenant, product, 1);
+        document.body.classList.remove('quick-view-show');
+      };
+    }
+    document.body.classList.add('quick-view-show');
+    bindProductLinks();
+  }
+
+  async function openQuickViewByCode(code, tenant, catalogTenant) {
+    var product = await fetchProductByCode(catalogTenant, code);
+    if (!product) return;
+    fillQuickViewPopup(
+      {
+        id: product.id,
+        code: product.code,
+        name: product.name,
+        price: product.price,
+        currency: product.currency || 'TRY',
+        imageUrl: product.imageUrl || PLACEHOLDER_IMG,
+        vendor: product.vendor || '',
+      },
+      tenant,
+    );
+  }
+
+  function wireQuickView(tenant, catalogTenant, config) {
+    var features = getFeatures(config);
+    if (!features.quickView) return;
+    document.addEventListener(
+      'click',
+      function (e) {
+        var btn = e.target.closest('.rex-quickview');
+        if (!btn) return;
+        e.preventDefault();
+        e.stopPropagation();
+        var code = btn.getAttribute('data-code');
+        if (code) void openQuickViewByCode(code, tenant, catalogTenant);
+      },
+      true,
+    );
+    document.querySelectorAll('[data-close-quickView-popup], .halo-quick-view-popup .halo-popup-close').forEach(function (el) {
+      el.addEventListener('click', function () {
+        document.body.classList.remove('quick-view-show');
+      });
+    });
+  }
+
+  function applyGdprText(config) {
+    if (!config || !config.gdprCookieText) return;
+    var desc = document.querySelector('.halo-accept-cookie-popup .desc');
+    if (desc) desc.textContent = config.gdprCookieText;
+  }
+
+  function wireAskExpert(routeTenant, catalogTenant, config) {
+    var features = getFeatures(config);
+    if (!features.askExpert) return;
+    var form = document.querySelector('.halo-ask-an-expert-form');
+    var btn = document.getElementById('halo-ask-an-expert-button');
+    if (!form || !btn) return;
+    btn.addEventListener('click', function (e) {
+      e.preventDefault();
+      var fd = new FormData(form);
+      var payload = {
+        tenant_code: catalogTenant,
+        name: String(fd.get('contact[name]') || fd.get('name') || ''),
+        email: String(fd.get('contact[email]') || fd.get('email') || ''),
+        phone: String(fd.get('contact[phone]') || fd.get('phone') || ''),
+        message: String(fd.get('contact[body]') || fd.get('message') || ''),
+      };
+      fetch(bridgeApiUrl('/api/eticaret/inquiry'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify(payload),
+      })
+        .then(function (res) {
+          return res.json();
+        })
+        .then(function (data) {
+          if (data.ok) {
+            document.body.classList.remove('ask-an-expert-show');
+            alert('Mesajınız alındı: ' + (data.order_no || ''));
+          } else {
+            alert(data.error || 'Gönderilemedi');
+          }
+        })
+        .catch(function () {
+          alert('Bağlantı hatası');
+        });
+    });
+  }
+
+  function wireRecentSales(catalogTenant, config) {
+    var features = getFeatures(config);
+    if (!features.recentSalesPopup) return;
+    var popup = document.querySelector('.halo-notification-popup');
+    if (!popup) return;
+    fetch(bridgeApiUrl('/api/eticaret/orders?tenant=' + encodeURIComponent(catalogTenant)), {
+      headers: { Accept: 'application/json' },
+    })
+      .then(function (res) {
+        return res.ok ? res.json() : { orders: [] };
+      })
+      .then(function (data) {
+        var orders = (data.orders || []).filter(function (o) {
+          return o.status !== 'inquiry' && o.demo_mode !== true;
+        });
+        if (!orders.length) return;
+        var order = orders[0];
+        var items = Array.isArray(order.items) ? order.items : [];
+        var item = items[0] || {};
+        var img = popup.querySelector('.product-image img');
+        var nameEl = popup.querySelector('.product-name');
+        var timeEl = popup.querySelector('.time-text');
+        if (img) img.src = PLACEHOLDER_IMG;
+        if (nameEl) nameEl.textContent = item.name || order.customer_name || 'Ürün';
+        if (timeEl) {
+          var ago = order.created_at ? new Date(order.created_at).toLocaleString('tr-TR') : '';
+          timeEl.textContent = (order.customer_name ? order.customer_name + ' · ' : '') + ago;
+        }
+        var delay = Number(popup.getAttribute('data-time') || 5000);
+        setTimeout(function () {
+          document.body.classList.add('notification-show');
+        }, delay);
+      })
+      .catch(function () {});
+  }
+
+  async function renderLookbookPage(config, routeTenant, catalogTenant) {
+    var features = getFeatures(config);
+    if (!features.lookbook) return;
+    var scenes = sortEnabledContent((config && config.lookbookScenes) || []);
+    var row = document.querySelector('.lookbook-page .halo-row-carousel, .lookbook-page .row');
+    if (!row) return;
+    if (!scenes.length) return;
+
+    row.innerHTML = '';
+    for (var si = 0; si < scenes.length; si++) {
+      var scene = scenes[si];
+      var item = document.createElement('div');
+      item.className = 'item-lookbook';
+      var mobile = scene.mobileImageUrl || scene.imageUrl;
+      item.innerHTML =
+        '<div class="img-box img-box--mobile">' +
+        '<div class="image image-desktop image-adapt" style="padding-top:67%;position:relative;">' +
+        '<img src="' +
+        scene.imageUrl +
+        '" alt="' +
+        (scene.title || '') +
+        '" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;">' +
+        '</div>' +
+        '<div class="image image-mobile image-adapt" style="padding-top:136%;position:relative;">' +
+        '<img src="' +
+        mobile +
+        '" alt="' +
+        (scene.title || '') +
+        '" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;">' +
+        '</div></div>';
+      row.appendChild(item);
+
+      var hotspots = (scene.hotspots || []).filter(function (h) {
+        return h.enabled !== false;
+      });
+      for (var hi = 0; hi < hotspots.length; hi++) {
+        var hs = hotspots[hi];
+        var product = await fetchProductByCode(catalogTenant, hs.productCode);
+        var point = document.createElement('a');
+        point.href = 'javascript:void(0)';
+        point.className = 'point-icon';
+        point.style.top = (hs.topPercent || 50) + '%';
+        point.style.left = (hs.leftPercent || 50) + '%';
+        point.setAttribute('data-open-lookbook-popup', '');
+        point.innerHTML = '<span class="glyphicon"></span>';
+        item.appendChild(point);
+
+        var popTop = hs.popupTopPercent != null ? hs.popupTopPercent : Math.max(5, (hs.topPercent || 50) - 15);
+        var popLeft = hs.popupLeftPercent != null ? hs.popupLeftPercent : (hs.leftPercent || 50) + 2;
+        var popup = document.createElement('div');
+        popup.className = 'popup-lookbook';
+        popup.setAttribute('data-lookbook-popup', '');
+        popup.style.top = popTop + '%';
+        popup.style.left = popLeft + '%';
+        var pName = product ? product.name : hs.productCode;
+        var pPrice = product ? formatPrice(product.price, product.currency || 'TRY') : '';
+        var pImg = product && product.imageUrl ? product.imageUrl : PLACEHOLDER_IMG;
+        var pHref = tenantBase(routeTenant) + '/urun/' + encodeURIComponent(hs.productCode);
+        popup.innerHTML =
+          '<div class="popup-header"><a href="javascript:void(0)" class="icon-close-popup" data-close-popup>×</a></div>' +
+          '<div class="pupop-top"><img src="' +
+          pImg +
+          '" alt="" style="width:100%;border-radius:4px;"></div>' +
+          '<div class="popup-button"><div class="wrapper-popup-content"><div class="content-popup">' +
+          '<a href="#" class="card-title link-underline rex-product-link" data-href="' +
+          pHref +
+          '"><span class="text">' +
+          pName +
+          '</span></a>' +
+          (pPrice ? '<div class="card-price"><span class="money">' + pPrice + '</span></div>' : '') +
+          '<a href="#" class="button button-2 rex-product-link" data-href="' +
+          pHref +
+          '">Detay</a>' +
+          '<button type="button" class="button button-1 rex-add-cart mt-2" data-code="' +
+          hs.productCode +
+          '" data-name="' +
+          pName.replace(/"/g, '&quot;') +
+          '" data-price="' +
+          (product ? product.price : 0) +
+          '" data-currency="' +
+          (product ? product.currency || 'TRY' : 'TRY') +
+          '" data-id="' +
+          (product ? product.id || '' : '') +
+          '">Sepete Ekle</button>' +
+          '</div></div></div>';
+        item.appendChild(popup);
+      }
+    }
+    bindProductLinks();
+    document.querySelectorAll('[data-close-popup]').forEach(function (btn) {
+      btn.addEventListener('click', function (e) {
+        e.preventDefault();
+        document.querySelectorAll('[data-open-lookbook-popup]').forEach(function (p) {
+          p.classList.remove('active');
+        });
+        document.querySelectorAll('[data-lookbook-popup]').forEach(function (p) {
+          p.classList.remove('open');
+        });
+      });
+    });
+    document.querySelectorAll('[data-open-lookbook-popup]').forEach(function (point) {
+      point.addEventListener('click', function (e) {
+        e.preventDefault();
+        var popup = point.nextElementSibling;
+        if (popup && popup.getAttribute('data-lookbook-popup') !== null) {
+          document.querySelectorAll('[data-lookbook-popup]').forEach(function (p) {
+            p.classList.remove('open');
+          });
+          document.querySelectorAll('[data-open-lookbook-popup]').forEach(function (p) {
+            p.classList.remove('active');
+          });
+          point.classList.add('active');
+          popup.classList.add('open');
+        }
+      });
+    });
+    var titleEl = document.querySelector('.lookbook-page .page-title');
+    if (titleEl && config.storeTitle) titleEl.textContent = config.storeTitle + ' Lookbook';
+  }
+
   function pageKind() {
     var staticSlug = qs('rex_static');
     if (staticSlug === 'sepet') return 'cart';
@@ -908,6 +1212,11 @@
         (p.imageUrl || PLACEHOLDER_IMG) +
         '">Hızlı Al</button>'
       : '';
+    var quickViewIcon = features.quickView
+      ? '<a class="card-icon quickview-icon rex-quickview" href="javascript:void(0)" data-code="' +
+        p.code +
+        '" title="Hızlı önizleme" style="position:absolute;top:8px;right:8px;z-index:3;background:#fff;border-radius:50%;padding:6px;">👁</a>'
+      : '';
     return (
       '<div class="halo-row-item product-item col-6 col-md-4 col-lg-3">' +
       '<div class="product-card">' +
@@ -917,6 +1226,7 @@
       href +
       '" style="padding-bottom:133.33%;display:block;position:relative;overflow:hidden;">' +
       badge +
+      quickViewIcon +
       '<img src="' +
       (p.imageUrl || PLACEHOLDER_IMG) +
       '" alt="' +
@@ -1503,7 +1813,11 @@
     applyFooter(storeConfig, routeTenant);
     wireSideCartOpen(routeTenant, routeTenant, storeConfig);
     wireQuickShop(routeTenant, catalogTenant, storeConfig);
+    wireQuickView(routeTenant, catalogTenant, storeConfig);
     wireInstantSearch(catalogTenant, routeTenant, storeConfig);
+    applyGdprText(storeConfig);
+    wireAskExpert(routeTenant, catalogTenant, storeConfig);
+    wireRecentSales(catalogTenant, storeConfig);
     updateCartBadge(routeTenant);
 
     document.documentElement.classList.add('rex-eticaret-vitrin');
@@ -1516,6 +1830,10 @@
     }
     if (kind === 'checkout') {
       renderCheckoutPage(routeTenant, catalogTenant, storeConfig);
+      return;
+    }
+    if (qs('rex_static') === 'lookbook') {
+      await renderLookbookPage(storeConfig, routeTenant, catalogTenant);
       return;
     }
     if (qs('rex_static') && qs('rex_static') !== 'sepet' && qs('rex_static') !== 'odeme') {

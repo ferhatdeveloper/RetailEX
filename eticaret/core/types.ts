@@ -32,6 +32,9 @@ export type EticaretSettings = {
   /** Ücretsiz kargo eşiği (para birimi tutarı) */
   freeShippingThreshold?: number;
   searchSuggestions?: string[];
+  lookbookScenes?: import('./contentTypes').EticaretLookbookScene[];
+  askExpertEmail?: string;
+  gdprCookieText?: string;
 };
 
 export type EticaretWebOrder = {

@@ -26,7 +26,10 @@ export function mergeEticaretSettings(
         ...(layer.storefrontFeatures || {}),
       },
       searchSuggestions: layer.searchSuggestions ?? merged.searchSuggestions,
+      lookbookScenes: layer.lookbookScenes ?? merged.lookbookScenes,
       freeShippingThreshold: layer.freeShippingThreshold ?? merged.freeShippingThreshold,
+      askExpertEmail: layer.askExpertEmail ?? merged.askExpertEmail,
+      gdprCookieText: layer.gdprCookieText ?? merged.gdprCookieText,
     };
   }
   if (!merged.storefrontFeatures) {
@@ -64,5 +67,8 @@ export function storefrontConfigToSettings(
     storefrontFeatures: raw.storefrontFeatures as EticaretSettings['storefrontFeatures'],
     freeShippingThreshold: raw.freeShippingThreshold != null ? Number(raw.freeShippingThreshold) : undefined,
     searchSuggestions: raw.searchSuggestions as string[] | undefined,
+    lookbookScenes: raw.lookbookScenes as EticaretSettings['lookbookScenes'],
+    askExpertEmail: raw.askExpertEmail ? String(raw.askExpertEmail) : undefined,
+    gdprCookieText: raw.gdprCookieText ? String(raw.gdprCookieText) : undefined,
   });
 }
