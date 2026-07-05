@@ -8,7 +8,6 @@
 
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
-import { Pool } from 'pg';
 import { serve } from '@hono/node-server';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -189,29 +188,18 @@ app.use('*', cors({
     allowMethods: ['GET', 'POST', 'OPTIONS'],
 }));
 
-// DB Pool Cache: connectionString -> Pool
-const pools = new Map<string, Pool>();
+import { getSharedPgPool, normalizePgPoolKey } from '../utils/pgPoolShared';
 
 function getPool(connStr: string): Pool {
-    if (!pools.has(connStr)) {
-        console.log(`[PG Bridge] Creating new pool for: ${connStr.replace(/:[^:@]+@/, ':***@')}`);
-        const pool = new Pool({
-            connectionString: connStr,
-            max: 20,
-            idleTimeoutMillis: 30000,
-            // Uzak PG / uyku modu / yavaş ağ: köprü ile DB arasında zaman aşımını azaltmak için
-            connectionTimeoutMillis: 30000,
-            keepAlive: true,
-        });
-        
-        pool.on('error', (err) => {
-            console.error('[PG Bridge] Unexpected error on idle client', err);
-        });
-
-        pools.set(connStr, pool);
+    const key = normalizePgPoolKey(connStr);
+    if (!poolsLogged.has(key)) {
+        poolsLogged.add(key);
+        console.log(`[PG Bridge] Pool: ${key.replace(/:[^:@]+@/, ':***@')}`);
     }
-    return pools.get(connStr)!;
+    return getSharedPgPool(connStr);
 }
+
+const poolsLogged = new Set<string>();
 
 /** Logo REST proxy yolları — /api/logo/* bazı reklam engelleyicilerde bloklanır */
 export const LOGO_PROXY_ROUTE_PATHS = ['/api/erp-logo-proxy', '/api/logo/proxy'] as const;

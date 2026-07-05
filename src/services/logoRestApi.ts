@@ -16,7 +16,7 @@ const STORAGE_CONFIG = 'retailex_logo_rest_config';
 const STORAGE_SESSION = 'retailex_logo_rest_session';
 const STORAGE_MANUAL_URL = 'retailex_logo_rest_manual_url';
 
-export const LOGO_API_URL_EXAMPLE = 'http://185.206.80.132:32001/api/v1';
+export const LOGO_API_URL_EXAMPLE = 'http://185.206.175.241:32001';
 
 /** Bu kurulumdaki internet üzerinden erişilebilir Logo REST (kiracı kaydı boşsa önerilen) */
 export const LOGO_DEFAULT_PUBLIC_BASE_URL = LOGO_API_URL_EXAMPLE;
@@ -1126,6 +1126,69 @@ export async function logoCheckDatabase(cfg: LogoRestConfig, dbName: string): Pr
   return res.ok && res.data === true;
 }
 
+function parseLogoDbList(data: unknown): string[] {
+  if (!data) return [];
+  if (Array.isArray(data)) {
+    return data
+      .map((item) => {
+        if (typeof item === 'string') return item.trim();
+        if (!item || typeof item !== 'object') return '';
+        const o = item as Record<string, unknown>;
+        return String(o.Name ?? o.name ?? o.DBName ?? o.dbName ?? o.Database ?? o.database ?? '').trim();
+      })
+      .filter(Boolean);
+  }
+  if (typeof data !== 'object') return [];
+  const root = data as Record<string, unknown>;
+  const candidates = [root.Item, root.item, root.items, root.Items, root.List, root.list, root.databases, root.Databases];
+  for (const c of candidates) {
+    const parsed = parseLogoDbList(c);
+    if (parsed.length > 0) return parsed;
+  }
+  const single = String(root.Name ?? root.name ?? root.DBName ?? '').trim();
+  return single ? [single] : [];
+}
+
+/** Logo REST üzerinden bilinen veritabanı adlarını toplar (çoklu DB). */
+export async function logoListDatabases(cfg: LogoRestConfig): Promise<string[]> {
+  const baseUrl = requireBaseUrl(cfg);
+  assertLogoReachableInWebContext(baseUrl);
+  const tokenFirm = getLogoMappingForErp(cfg)?.logoFirmNr ?? logoFirmNrFromErp();
+  const session = await logoObtainToken(cfg, tokenFirm > 0 ? tokenFirm : 1);
+  const auth = { Authorization: `Bearer ${session.accessToken}` };
+  const discovered = new Set<string>();
+  if (session.logoDb?.trim()) discovered.add(session.logoDb.trim());
+  if (cfg.logoDb?.trim()) discovered.add(cfg.logoDb.trim());
+  (cfg.logoDbs || []).forEach((d) => d?.trim() && discovered.add(d.trim()));
+
+  const paths = ['/methods/CAPI/Databases', '/methods/GetLogoDBs', '/methods/CAPI/LogoDBs'];
+  for (const path of paths) {
+    try {
+      const res = await logoHttp(baseUrl, 'GET', path, { headers: auth });
+      if (!res.ok) continue;
+      parseLogoDbList(res.data).forEach((n) => discovered.add(n));
+      if (discovered.size > 0) break;
+    } catch {
+      /* sonraki uç */
+    }
+  }
+
+  return [...discovered].filter(Boolean).sort((a, b) => a.localeCompare(b, 'tr'));
+}
+
+export function saveLogoDatabaseList(cfg: LogoRestConfig, dbs: string[]): LogoRestConfig {
+  const merged = Array.from(
+    new Set([...(cfg.logoDbs || []), ...(dbs || []), cfg.logoDb].filter((x) => x && String(x).trim()))
+  ) as string[];
+  const next: LogoRestConfig = {
+    ...cfg,
+    logoDbs: merged,
+    logoDb: cfg.logoDb || merged[0] || '',
+  };
+  saveLogoRestConfig(next);
+  return next;
+}
+
 export async function logoRevokeSession(cfg: LogoRestConfig): Promise<void> {
   const session = loadLogoRestSession();
   if (session?.accessToken) {
@@ -1143,6 +1206,7 @@ export async function logoTestConnection(cfg: LogoRestConfig): Promise<{
   currentFirm?: number;
   currentPeriod?: number;
   context?: LogoContextSelection;
+  databases?: string[];
   error?: string;
 }> {
   try {
@@ -1154,10 +1218,21 @@ export async function logoTestConnection(cfg: LogoRestConfig): Promise<{
     const firmRes = await logoHttp(baseUrl, 'GET', '/methods/CurrentFirm', { headers: auth });
     const periodRes = await logoHttp(baseUrl, 'GET', '/methods/CurrentPeriod', { headers: auth });
 
+    let databases: string[] = [];
+    try {
+      databases = await logoListDatabases(cfg);
+      if (databases.length > 0) {
+        saveLogoDatabaseList(cfg, databases);
+      }
+    } catch {
+      /* DB listesi opsiyonel */
+    }
+
     return {
       ok: true,
       session,
       context: ctx,
+      databases,
       currentFirm: typeof firmRes.data === 'number' ? firmRes.data : undefined,
       currentPeriod: typeof periodRes.data === 'number' ? periodRes.data : undefined,
     };

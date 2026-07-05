@@ -1,20 +1,8 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { Pool } from 'pg';
+import { getSharedPgPool } from '../src/utils/pgPoolShared';
 
-// Pool cache per connection string
-const pools = new Map<string, Pool>();
-
-function getPool(connStr: string): Pool {
-  if (!pools.has(connStr)) {
-    pools.set(connStr, new Pool({
-      connectionString: connStr,
-      max: 5,
-      idleTimeoutMillis: 30000,
-      connectionTimeoutMillis: 5000,
-      ssl: process.env.PG_SSL === 'true' ? { rejectUnauthorized: false } : false,
-    }));
-  }
-  return pools.get(connStr)!;
+function getPool(connStr: string) {
+  return getSharedPgPool(connStr);
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {

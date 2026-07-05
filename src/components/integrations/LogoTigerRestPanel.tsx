@@ -26,6 +26,8 @@ import {
   logoRevokeSession,
   logoListFirmCatalog,
   logoSwitchContext,
+  logoListDatabases,
+  saveLogoDatabaseList,
   resolveLogoContext,
   syncLogoRestUrlFromWebConfig,
   setLogoRestBaseUrl,
@@ -151,6 +153,11 @@ export function LogoTigerRestPanel({ activeTab = 'general' }: LogoTigerRestPanel
   const [invoicePushInterval, setInvoicePushInterval] = useState(() => getLogoInvoicePushIntervalSec());
   const [isPushingInvoices, setIsPushingInvoices] = useState(false);
   const [invoicePushMsg, setInvoicePushMsg] = useState('');
+  const [manualDbInput, setManualDbInput] = useState('');
+  const [isLoadingDbs, setIsLoadingDbs] = useState(false);
+  const [resourceTab, setResourceTab] = useState('items');
+  const [resourceTables, setResourceTables] = useState<Record<string, unknown[]>>({});
+  const [isLoadingResourceTables, setIsLoadingResourceTables] = useState(false);
 
   const appendSyncLog = useCallback((entry: LogoSyncLogEntry) => {
     setSyncLog((prev) => [...prev.slice(-199), entry]);
@@ -324,6 +331,75 @@ export function LogoTigerRestPanel({ activeTab = 'general' }: LogoTigerRestPanel
     }
   };
 
+  const handleLoadDatabases = async () => {
+    setIsLoadingDbs(true);
+    setConnectionError('');
+    try {
+      const list = await logoListDatabases(config);
+      if (list.length === 0) {
+        setConnectionError('Veritabanı listesi boş. Manuel ekleyebilir veya bağlantı testi yapabilirsiniz.');
+        return;
+      }
+      const next = saveLogoDatabaseList(config, list);
+      setConfig(next);
+      if (!next.logoDb && list[0]) {
+        handleDbChange(list[0]);
+      }
+    } catch (e: unknown) {
+      setConnectionError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setIsLoadingDbs(false);
+    }
+  };
+
+  const handleAddManualDb = () => {
+    const name = manualDbInput.trim();
+    if (!name) return;
+    const next = saveLogoDatabaseList(config, [name]);
+    setConfig(next);
+    handleDbChange(name);
+    setManualDbInput('');
+  };
+
+  const handleLoadAllResourceTables = async () => {
+    if (connectionStatus !== 'connected') return;
+    setIsLoadingResourceTables(true);
+    setConnectionError('');
+    const keys = ['items', 'Arps', 'salesInvoices', 'purchaseInvoices'] as const;
+    const next: Record<string, unknown[]> = {};
+    try {
+      for (const key of keys) {
+        try {
+          const r = await logoListResource(config, key, { limit: 25, withCount: true });
+          next[key] = r.items;
+        } catch {
+          next[key] = [];
+        }
+      }
+      setResourceTables(next);
+      setResourceTab(keys[0]);
+    } catch (e: unknown) {
+      setConnectionError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setIsLoadingResourceTables(false);
+    }
+  };
+
+  const tableColumnsForResource = (resource: string) => {
+    const rows = resourceTables[resource] || [];
+    if (!rows.length) return { cols: [] as string[], data: [] as Record<string, unknown>[] };
+    const sample = rows[0];
+    if (!sample || typeof sample !== 'object') {
+      return { cols: ['value'], data: rows.map((r, i) => ({ value: JSON.stringify(r), _key: i })) };
+    }
+    const cols = Object.keys(sample as object).slice(0, 8);
+    const data = rows.map((row, i) => {
+      const o = row && typeof row === 'object' ? (row as Record<string, unknown>) : { value: row };
+      return { ...o, _key: i };
+    });
+    return { cols, data };
+  };
+
   const handleTestConnection = async () => {
     setConnectionStatus('connecting');
     setConnectionError('');
@@ -333,7 +409,14 @@ export function LogoTigerRestPanel({ activeTab = 'general' }: LogoTigerRestPanel
     if (result.ok) {
       setConnectionStatus('connected');
       if (result.context) setActiveContext(result.context);
-      void handleLoadFirms();
+      const reloaded = loadLogoRestConfig();
+      setConfig(reloaded);
+      if (result.databases?.length) {
+        saveLogoDatabaseList(reloaded, result.databases);
+        setConfig(loadLogoRestConfig());
+      }
+      await handleLoadFirms();
+      void handleLoadPreview();
     } else {
       setConnectionStatus('error');
       setConnectionError(result.error || 'Bağlantı hatası');
@@ -596,6 +679,25 @@ export function LogoTigerRestPanel({ activeTab = 'general' }: LogoTigerRestPanel
                   ))}
                 </select>
               </Field>
+              <Field label="Manuel DB ekle" className="col-span-2">
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={manualDbInput}
+                    onChange={(e) => setManualDbInput(e.target.value)}
+                    placeholder="LOGO_GO3_DB"
+                    className={`${inputCls} font-mono flex-1`}
+                    onKeyDown={(e) => e.key === 'Enter' && handleAddManualDb()}
+                  />
+                  <button
+                    type="button"
+                    onClick={handleAddManualDb}
+                    className="px-2.5 py-1.5 text-xs border border-slate-300 rounded-lg hover:bg-white"
+                  >
+                    Ekle
+                  </button>
+                </div>
+              </Field>
             </div>
             <div className="flex flex-wrap gap-2">
               <button
@@ -606,6 +708,15 @@ export function LogoTigerRestPanel({ activeTab = 'general' }: LogoTigerRestPanel
               >
                 {isLoadingFirms ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
                 Firmaları yükle
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleLoadDatabases()}
+                disabled={isLoadingDbs || !config.baseUrl?.trim()}
+                className="px-2.5 py-1.5 text-xs border border-slate-300 rounded-lg hover:bg-white disabled:opacity-50 inline-flex items-center gap-1"
+              >
+                {isLoadingDbs ? <Loader2 className="w-3 h-3 animate-spin" /> : <Database className="w-3 h-3" />}
+                Veritabanlarını yükle
               </button>
               {connectionStatus === 'connected' && (
                 <button
@@ -628,11 +739,14 @@ export function LogoTigerRestPanel({ activeTab = 'general' }: LogoTigerRestPanel
             <Field label="Rest Entegrasyon API" required>
               <input
                 type="text"
-                value={config.baseUrl}
+                value={config.baseUrl.replace(/\/api\/v1\/?$/i, '')}
                 onChange={(e) => handleBaseUrlChange(e.target.value)}
                 placeholder={LOGO_API_URL_EXAMPLE}
                 className={`${inputCls} font-mono`}
               />
+              <p className="text-[10px] text-gray-500 mt-1">
+                Yalnızca <code className="font-mono">http://sunucu:port</code> yazmanız yeterli; <code>/api/v1</code> otomatik eklenir.
+              </p>
             </Field>
             <div className="grid grid-cols-2 gap-3">
               <Field label="Logo kullanıcı adı" required>
@@ -854,6 +968,86 @@ export function LogoTigerRestPanel({ activeTab = 'general' }: LogoTigerRestPanel
                   </div>
                 </div>
               ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {connectionStatus === 'connected' && (
+        <div className="rounded-lg border border-slate-200 p-4 space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h4 className="text-xs font-semibold text-slate-700 uppercase tracking-wide">
+              Logo API kayıt listeleri
+            </h4>
+            <button
+              type="button"
+              onClick={() => void handleLoadAllResourceTables()}
+              disabled={isLoadingResourceTables}
+              className="px-2.5 py-1 text-xs bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 inline-flex items-center gap-1"
+            >
+              {isLoadingResourceTables ? <Loader2 className="w-3 h-3 animate-spin" /> : <Search className="w-3 h-3" />}
+              API verisini listele
+            </button>
+          </div>
+          <p className="text-xs text-gray-600">
+            Firma <strong>{activeContext.firmNr}</strong> · dönem <strong>{activeContext.periodNr}</strong>
+            {activeContext.logoDb ? (
+              <>
+                {' '}
+                · DB <code className="font-mono">{activeContext.logoDb}</code>
+              </>
+            ) : null}
+          </p>
+          {Object.keys(resourceTables).length > 0 && (
+            <div className="space-y-2">
+              <div className="flex flex-wrap gap-1">
+                {Object.keys(resourceTables).map((key) => (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => setResourceTab(key)}
+                    className={`px-2.5 py-1 text-xs rounded-lg border ${
+                      resourceTab === key
+                        ? 'bg-slate-900 text-white border-slate-900'
+                        : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                    }`}
+                  >
+                    {resourceLabel[key] || key} ({resourceTables[key]?.length ?? 0})
+                  </button>
+                ))}
+              </div>
+              {(() => {
+                const { cols, data } = tableColumnsForResource(resourceTab);
+                if (!data.length) {
+                  return <p className="text-xs text-gray-500 italic">Bu tabloda kayıt yok veya erişilemedi.</p>;
+                }
+                return (
+                  <div className="border border-gray-200 rounded-lg overflow-auto max-h-72">
+                    <table className="w-full text-left text-xs">
+                      <thead className="bg-gray-50 border-b border-gray-200 sticky top-0">
+                        <tr>
+                          {cols.map((c) => (
+                            <th key={c} className="px-2 py-1.5 font-medium text-gray-600 whitespace-nowrap">
+                              {c}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {data.map((row) => (
+                          <tr key={String(row._key)} className="hover:bg-gray-50">
+                            {cols.map((c) => (
+                              <td key={c} className="px-2 py-1.5 text-gray-800 max-w-[200px] truncate">
+                                {row[c] != null ? String(row[c]) : '—'}
+                              </td>
+                            ))}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                );
+              })()}
             </div>
           )}
         </div>

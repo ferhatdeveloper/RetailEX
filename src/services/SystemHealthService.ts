@@ -10,12 +10,16 @@ export interface ServiceHealth {
 }
 
 class SystemHealthService {
+    private lastCleanupAt = 0;
+
     async getServiceHealth(): Promise<ServiceHealth[]> {
         try {
-            // First, trigger cleanup of stale services
-            await postgres.query('SELECT public.cleanup_stale_services()');
+            const now = Date.now();
+            if (now - this.lastCleanupAt > 5 * 60_000) {
+                this.lastCleanupAt = now;
+                await postgres.query('SELECT public.cleanup_stale_services()').catch(() => {});
+            }
 
-            // Then fetch all
             const result = await postgres.query<ServiceHealth>(
                 'SELECT * FROM public.service_health ORDER BY service_name ASC'
             );

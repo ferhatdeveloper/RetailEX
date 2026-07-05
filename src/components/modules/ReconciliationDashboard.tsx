@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
     FileText,
     CheckCircle,
@@ -20,7 +20,7 @@ const ReconciliationDashboard: React.FC = () => {
     const [filter, setFilter] = useState<string | undefined>(undefined);
     const [searchTerm, setSearchTerm] = useState('');
 
-    const fetchData = async () => {
+    const fetchData = useCallback(async () => {
         setIsLoading(true);
         try {
             const [s, t] = await Promise.all([
@@ -34,11 +34,19 @@ const ReconciliationDashboard: React.FC = () => {
         } finally {
             setIsLoading(false);
         }
-    };
+    }, [filter]);
+
+    const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     useEffect(() => {
-        fetchData();
-    }, [filter, ERP_SETTINGS.firmNr, ERP_SETTINGS.periodNr]);
+        if (debounceRef.current) clearTimeout(debounceRef.current);
+        debounceRef.current = setTimeout(() => {
+            void fetchData();
+        }, 400);
+        return () => {
+            if (debounceRef.current) clearTimeout(debounceRef.current);
+        };
+    }, [fetchData, ERP_SETTINGS.firmNr, ERP_SETTINGS.periodNr]);
 
     const handleRetry = async (id: string, firmNr: string, periodNr: string) => {
         const success = await accountingService.retrySync(id, firmNr, periodNr);

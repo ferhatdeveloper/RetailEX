@@ -72,7 +72,8 @@ export function normalizeHybridSyncTransport(raw: unknown): HybridSyncTransport 
 function isLikelyConnectivityFailure(err: unknown): boolean {
   const msg = String((err as { message?: unknown })?.message ?? err ?? '').toLowerCase();
   const code = String((err as { code?: unknown })?.code ?? '').toUpperCase();
-  if (/^(08|57P01)/.test(code)) return true;
+  if (/^(08|57P01|53300)/.test(code)) return true;
+  if (/too many clients/i.test(msg)) return true;
   return /connect|connection refused|econnrefused|etimedout|enetunreach|enotfound|timeout|connection terminated|could not|broken pipe|closed unexpectedly|no route|network|unreachable|refused|fetch failed/i.test(
     msg
   );
@@ -83,8 +84,31 @@ function sleepMs(ms: number): Promise<void> {
 }
 
 /** Tarayıcı → köprü: ağ / PG soğuk başlangıç / havuz yenilemesi için sınırlı yeniden deneme */
-const PG_WEB_QUERY_MAX_ATTEMPTS = 3;
-const PG_WEB_QUERY_RETRY_BASE_MS = 500;
+const PG_WEB_QUERY_MAX_ATTEMPTS = 4;
+const PG_WEB_QUERY_RETRY_BASE_MS = 600;
+const PG_WEB_QUERY_MAX_CONCURRENT = 8;
+
+let pgQueryInFlight = 0;
+const pgQueryWaitQueue: Array<() => void> = [];
+
+function acquirePgQuerySlot(): Promise<void> {
+  if (pgQueryInFlight < PG_WEB_QUERY_MAX_CONCURRENT) {
+    pgQueryInFlight++;
+    return Promise.resolve();
+  }
+  return new Promise((resolve) => {
+    pgQueryWaitQueue.push(() => {
+      pgQueryInFlight++;
+      resolve();
+    });
+  });
+}
+
+function releasePgQuerySlot(): void {
+  pgQueryInFlight = Math.max(0, pgQueryInFlight - 1);
+  const next = pgQueryWaitQueue.shift();
+  if (next) next();
+}
 
 // Remote PostgreSQL (Global/Main Server) — varsayılanlar: config/remote-pg.defaults.json
 export let REMOTE_CONFIG = {
@@ -225,6 +249,8 @@ async function executePgQueryRows(
   normalizedParams: any[],
   config: PgEndpointConfig
 ): Promise<any[]> {
+  await acquirePgQuerySlot();
+  try {
   const bridgeCfg = normalizeBridgePgEndpoint(config);
   const effectiveHost = bridgeCfg.host === 'localhost' ? '127.0.0.1' : bridgeCfg.host;
   const connStr = `postgresql://${bridgeCfg.user}:${bridgeCfg.password}@${effectiveHost}:${bridgeCfg.port}/${bridgeCfg.database}`;
@@ -255,7 +281,9 @@ async function executePgQueryRows(
           `PostgreSQL köprüsüne ulaşılamadı (${getBridgeUrl()}/api/pg_query). retailex_bridge çalışıyor mu?`
         );
       }
-      const canRetry = attempt < PG_WEB_QUERY_MAX_ATTEMPTS && isLikelyConnectivityFailure(err);
+      const canRetry =
+        attempt < PG_WEB_QUERY_MAX_ATTEMPTS &&
+        (isLikelyConnectivityFailure(err) || /too many clients/i.test(msg));
       if (canRetry) {
         const wait = PG_WEB_QUERY_RETRY_BASE_MS * attempt;
         console.warn(
@@ -268,6 +296,9 @@ async function executePgQueryRows(
     }
   }
   throw lastError instanceof Error ? lastError : new Error(String(lastError ?? 'Database query failed'));
+  } finally {
+    releasePgQuerySlot();
+  }
 }
 
 // ERP Settings (Logo integration)
