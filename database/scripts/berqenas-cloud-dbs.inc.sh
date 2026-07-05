@@ -63,6 +63,7 @@ berqenas_default_dbs_array() {
     jiber
     canon
     lovan
+    zetem
   )
 }
 

@@ -44,6 +44,7 @@ DBS=(
   jiber
   canon
   lovan
+  zetem
 )
 
 POSTGREST_SERVICES=(
@@ -64,6 +65,7 @@ POSTGREST_SERVICES=(
   postgrest_jiber
   postgrest_canon
   postgrest_lovan
+  postgrest_zetem
 )
 
 ALL_SERVICES=(

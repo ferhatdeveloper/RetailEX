@@ -93,7 +93,9 @@ services:
       - postgrest_jiber
       - postgrest_canon
       - postgrest_lovan
+      - postgrest_zetem
       - sync_lovan
+      - sync_zetem
     volumes:
       - ./database/docker/Caddyfile.api-gateway:/etc/caddy/Caddyfile:ro
     networks:
@@ -453,6 +455,21 @@ services:
     networks:
       - berqenas_net
 
+  postgrest_zetem:
+    image: postgrest/postgrest:v12.2.0
+    container_name: saas_postgrest_zetem
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      <<: *postgrest-env
+      PGRST_DB_URI: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/zetem
+    ports:
+      - "${POSTGREST_PORT_ZETEM:-3019}:3000"
+    networks:
+      - berqenas_net
+
   sync_aqua:
     <<: *sync-service
     container_name: saas_sync_aqua
@@ -515,6 +532,13 @@ services:
     environment:
       <<: *sync-env
       DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/lovan
+
+  sync_zetem:
+    <<: *sync-service
+    container_name: saas_sync_zetem
+    environment:
+      <<: *sync-env
+      DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/zetem
 
   sync_m10_pdks:
     <<: *sync-service

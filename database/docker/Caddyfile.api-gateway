@@ -312,6 +312,24 @@
         }
     }
 
+    handle /zetem/ws* {
+        uri strip_prefix /zetem
+        header Access-Control-Allow-Origin "https://retailex.app"
+        reverse_proxy sync_zetem:8080
+    }
+    handle /zetem/sync/* {
+        uri strip_prefix /zetem/sync
+        header Access-Control-Allow-Origin "https://retailex.app"
+        reverse_proxy sync_zetem:8080
+    }
+    handle_path /zetem/* {
+        header Access-Control-Allow-Origin "https://retailex.app"
+        reverse_proxy postgrest_zetem:3000 {
+            header_down -Access-Control-Allow-Origin
+            header_down Access-Control-Allow-Origin "https://retailex.app"
+        }
+    }
+
     handle {
         header Content-Type "application/json; charset=utf-8"
         respond "{\"ok\":false,\"error\":\"not_found\"}" 404

@@ -38,6 +38,7 @@ DEFAULT_TENANT_DBS=(
   jiber
   canon
   lovan
+  zetem
 )
 
 if [[ -n "${TENANT_DBS:-}" ]]; then
@@ -61,6 +62,7 @@ POSTGREST_CONTAINERS=(
   jiber:saas_postgrest_jiber
   canon:saas_postgrest_canon
   lovan:saas_postgrest_lovan
+  zetem:saas_postgrest_zetem
 )
 
 psql_db() {

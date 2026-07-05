@@ -194,8 +194,8 @@ async function provisionSchema(dbName, displayName, tenantPassword, dryRun) {
     await client.query(
       `INSERT INTO public.users (id, firm_nr, username, password_hash, full_name, email, role, role_id, is_active)
       VALUES
-        ($3, '001', 'mudur', crypt($2, gen_salt('bf')), 'Mağaza Müdürü', NULL, 'manager', '00000000-0000-0000-0000-000000000002', true),
-        ($4, '001', 'kasiyer', crypt($2, gen_salt('bf')), 'Kasiyer', NULL, 'cashier', '00000000-0000-0000-0000-000000000003', true)
+        ($1, '001', 'mudur', crypt($2, gen_salt('bf')), 'Mağaza Müdürü', NULL, 'manager', '00000000-0000-0000-0000-000000000002', true),
+        ($3, '001', 'kasiyer', crypt($2, gen_salt('bf')), 'Kasiyer', NULL, 'cashier', '00000000-0000-0000-0000-000000000003', true)
       ON CONFLICT (username) DO UPDATE SET
         password_hash = EXCLUDED.password_hash, is_active = true, updated_at = now()`,
       [
