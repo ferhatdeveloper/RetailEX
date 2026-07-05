@@ -12,9 +12,6 @@ import {
   resolveLogoContext,
   type LogoRestConfig,
 } from './logoRestApi';
-import { productAPI } from './api/products';
-import { customerAPI } from './api/customers';
-import { supplierAPI } from './api/suppliers';
 import { DB_SETTINGS, ERP_SETTINGS, postgres } from './postgres';
 
 export type LogoSyncLogEntry = {
@@ -146,6 +143,128 @@ function logoRefId(rec: Record<string, unknown>): number | null {
   return n > 0 ? n : null;
 }
 
+function logoRowRefId(row: Record<string, unknown>): number | null {
+  const n = Math.round(numVal(row.ref_id, 0));
+  return n > 0 ? n : null;
+}
+
+/** Logo LOGICALREF / kod ile aynı partide tekrarları birleştir */
+function dedupeLogoMasterRows(rows: Record<string, unknown>[]): Record<string, unknown>[] {
+  const byRef = new Map<number, Record<string, unknown>>();
+  const byCode = new Map<string, Record<string, unknown>>();
+  const codesFromRef = new Set<string>();
+
+  for (const row of rows) {
+    const code = String(row.code || '').trim();
+    const refId = logoRowRefId(row);
+    if (!refId && !code) continue;
+
+    if (refId) {
+      const prev = byRef.get(refId);
+      const merged = prev ? { ...prev, ...row, code: code || String(prev.code || '') } : { ...row, code };
+      byRef.set(refId, merged);
+      const mergedCode = String(merged.code || '').trim();
+      if (mergedCode) codesFromRef.add(mergedCode);
+    }
+  }
+
+  for (const row of rows) {
+    const code = String(row.code || '').trim();
+    if (!code || logoRowRefId(row) || codesFromRef.has(code)) continue;
+    const prev = byCode.get(code);
+    byCode.set(code, prev ? { ...prev, ...row } : row);
+  }
+
+  return [...byRef.values(), ...byCode.values()];
+}
+
+async function lookupIdByRefId(
+  table: string,
+  refId: number,
+  firmNr: string,
+): Promise<string | null> {
+  if (isRestApiMode()) {
+    const { postgrest } = await import('./api/postgrestClient');
+    const rows = await postgrest.get<{ id: string }[]>(
+      `/${table}`,
+      { select: 'id', ref_id: `eq.${refId}`, firm_nr: `eq.${firmNr}`, limit: 1 },
+      { schema: 'public' },
+    );
+    return Array.isArray(rows) && rows[0]?.id ? rows[0].id : null;
+  }
+  const { rows } = await postgres.query<{ id: string }>(
+    `SELECT id FROM ${table} WHERE ref_id = $1 AND firm_nr = $2 LIMIT 1`,
+    [refId, firmNr],
+  );
+  return rows[0]?.id ?? null;
+}
+
+async function lookupIdByRefOrCode(
+  table: string,
+  firmNr: string,
+  refId: number | null,
+  code: string,
+): Promise<string | null> {
+  if (refId) {
+    const byRef = await lookupIdByRefId(table, refId, firmNr);
+    if (byRef) return byRef;
+  }
+  if (code) return lookupIdByCode(table, code, firmNr);
+  return null;
+}
+
+/** Kod ile kayıtlı satıra Logo LOGICALREF bağla — çift kayıt önlenir */
+async function linkRefIdByCode(
+  table: string,
+  firmNr: string,
+  rows: Record<string, unknown>[],
+): Promise<void> {
+  for (const row of rows) {
+    const refId = logoRowRefId(row);
+    const code = String(row.code || '').trim();
+    if (!refId || !code) continue;
+
+    const byRef = await lookupIdByRefId(table, refId, firmNr);
+    const byCode = await lookupIdByCode(table, code, firmNr);
+    if (byCode && byRef && byCode !== byRef) continue;
+    if (byCode && !byRef) {
+      if (isRestApiMode()) {
+        const { postgrest } = await import('./api/postgrestClient');
+        await postgrest.patch(
+          postgrest.pathOne(table, 'id', byCode),
+          { ref_id: refId },
+          { schema: 'public', prefer: 'return=minimal' },
+        );
+      } else {
+        await postgres.query(
+          `UPDATE ${table} SET ref_id = $1, updated_at = NOW()
+           WHERE id = $2 AND firm_nr = $3 AND (ref_id IS NULL OR ref_id = $1)`,
+          [refId, byCode, firmNr],
+        );
+      }
+    }
+  }
+}
+
+async function bulkUpsertLogoMasterRest(
+  table: string,
+  firmEq: string,
+  payloads: Record<string, unknown>[],
+): Promise<void> {
+  const deduped = dedupeLogoMasterRows(payloads);
+  await linkRefIdByCode(table, firmEq, deduped);
+
+  const withRef = deduped.filter((r) => logoRowRefId(r) != null);
+  const withoutRef = deduped.filter((r) => logoRowRefId(r) == null && String(r.code || '').trim());
+
+  if (withRef.length > 0) {
+    await bulkUpsertTableRest(table, withRef, 'ref_id');
+  }
+  if (withoutRef.length > 0) {
+    await bulkUpsertTableRest(table, withoutRef, 'code');
+  }
+}
+
 function logoDateVal(rec: Record<string, unknown>): string {
   const raw = logoField(rec, 'DATE', 'date', 'DOC_DATE', 'docDate');
   if (!raw) return new Date().toISOString();
@@ -239,25 +358,6 @@ async function ensurePeriodTables(firmNr: string, periodNr: string): Promise<voi
   }
   await postgres.query('SELECT public.CREATE_PERIOD_TABLES($1::varchar, $2::varchar)', [firmNr, periodNr]);
 }
-
-async function findCustomerByCode(code: string): Promise<{ id: string } | null> {
-  const table = `rex_${ERP_SETTINGS.firmNr}_customers`;
-  if (DB_SETTINGS.connectionProvider === 'rest_api') {
-    const { postgrest } = await import('./api/postgrestClient');
-    const rows = await postgrest.get<{ id: string }[]>(
-      `/${table}`,
-      { select: 'id', code: `eq.${code}`, firm_nr: `eq.${ERP_SETTINGS.firmNr}`, limit: 1 },
-      { schema: 'public' }
-    );
-    return Array.isArray(rows) && rows[0]?.id ? rows[0] : null;
-  }
-  const { rows } = await postgres.query<{ id: string }>(
-    `SELECT id FROM ${table} WHERE code = $1 AND firm_nr = $2 LIMIT 1`,
-    [code, ERP_SETTINGS.firmNr]
-  );
-  return rows[0] ?? null;
-}
-
 function mapLogoItem(rec: Record<string, unknown>, firmNr: string): Record<string, unknown> | null {
   const code = trunc(logoField(rec, 'CODE', 'code'), 100);
   if (!code) return null;
@@ -320,12 +420,14 @@ async function upsertProductsWithApi(
   onLog?: LogoSyncOptions['onLog'],
   onProgress?: (p: LogoSyncProgress) => void
 ): Promise<LogoSyncEntityResult> {
-  const total = rows.length;
+  const deduped = dedupeLogoMasterRows(rows);
+  const total = deduped.length;
+  const skipped = rows.length - total;
+  const firmEq = firmNrPadded();
+  const table = `rex_${firmEq}_products`;
 
   if (isRestApiMode() && total > 0) {
-    const table = `rex_${firmNrPadded()}_products`;
-    const firmEq = firmNrPadded();
-    const payloads = rows.map((row) => ({
+    const payloads = deduped.map((row) => ({
       firm_nr: firmEq,
       ref_id: row.ref_id ?? null,
       code: String(row.code || ''),
@@ -342,16 +444,16 @@ async function upsertProductsWithApi(
     try {
       onProgress?.({
         phase: 'products',
-        message: `${total} ürün toplu yazılıyor…`,
+        message: `${total} ürün toplu yazılıyor (ref_id/kod eşleşmesi)…`,
         current: 0,
         total,
       });
-      await bulkUpsertTableRest(table, payloads, 'firm_nr,code');
+      await bulkUpsertLogoMasterRest(table, firmEq, payloads);
       nowLog(onLog, {
         entity: 'product',
         action: 'update',
         code: '*',
-        detail: `${total} ürün toplu upsert`,
+        detail: `${total} ürün upsert${skipped ? `, ${skipped} tekrar atlandı` : ''}`,
         ok: true,
       });
       onProgress?.({
@@ -360,7 +462,7 @@ async function upsertProductsWithApi(
         current: total,
         total,
       });
-      return { fetched: total, upserted: total, errors: 0, skipped: 0 };
+      return { fetched: rows.length, upserted: total, errors: 0, skipped };
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
       nowLog(onLog, { entity: 'product', action: 'error', code: '*', detail: msg, ok: false });
@@ -370,26 +472,35 @@ async function upsertProductsWithApi(
 
   let upserted = 0;
   let errors = 0;
-  let skipped = 0;
   let firstError = '';
 
-  for (let i = 0; i < rows.length; i++) {
-    const row = rows[i];
+  for (let i = 0; i < deduped.length; i++) {
+    const row = deduped[i];
     const code = String(row.code || '');
     const name = String(row.name || '');
+    const refId = logoRowRefId(row);
 
     try {
-      const existing = await productAPI.getByCode(code);
-      if (existing?.id) {
-        await productAPI.update(existing.id, {
-          name,
-          barcode: String(row.barcode || ''),
-          taxRate: numVal(row.vat_rate, 18),
-          price: numVal(row.price, 0),
-          unit: String(row.unit || 'Adet'),
-          stock: numVal(row.stock, 0),
-          isActive: row.is_active !== false,
-        } as never);
+      const existingId = await lookupIdByRefOrCode(table, firmEq, refId, code);
+      if (existingId) {
+        await postgres.query(
+          `UPDATE ${table}
+           SET ref_id = COALESCE($1, ref_id), code = $2, name = $3, barcode = $4,
+               vat_rate = $5, price = $6, stock = $7, unit = $8, is_active = $9, updated_at = NOW()
+           WHERE id = $10`,
+          [
+            refId,
+            code,
+            name,
+            String(row.barcode || ''),
+            numVal(row.vat_rate, 18),
+            numVal(row.price, 0),
+            numVal(row.stock, 0),
+            String(row.unit || 'Adet'),
+            row.is_active !== false,
+            existingId,
+          ],
+        );
         upserted += 1;
         if (i % LOG_EVERY === 0 || i === total - 1) {
           const lastLog = nowLog(onLog, {
@@ -397,6 +508,7 @@ async function upsertProductsWithApi(
             action: 'update',
             code,
             name,
+            detail: refId ? `ref_id ${refId}` : undefined,
             ok: true,
           });
           onProgress?.({
@@ -408,18 +520,23 @@ async function upsertProductsWithApi(
           });
         }
       } else {
-        await productAPI.create({
-          code,
-          name,
-          barcode: String(row.barcode || `L${code}`).slice(0, 100),
-          taxRate: numVal(row.vat_rate, 18),
-          price: numVal(row.price, 0),
-          unit: String(row.unit || 'Adet'),
-          stock: numVal(row.stock, 0),
-          cost: 0,
-          firm_nr: ERP_SETTINGS.firmNr,
-          isActive: row.is_active !== false,
-        } as never);
+        await postgres.query(
+          `INSERT INTO ${table}
+             (firm_nr, ref_id, code, name, barcode, vat_rate, price, stock, unit, is_active)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+          [
+            firmEq,
+            refId,
+            code,
+            name,
+            String(row.barcode || `L${code}`).slice(0, 100),
+            numVal(row.vat_rate, 18),
+            numVal(row.price, 0),
+            numVal(row.stock, 0),
+            String(row.unit || 'Adet'),
+            row.is_active !== false,
+          ],
+        );
         upserted += 1;
         if (i % LOG_EVERY === 0 || i === total - 1) {
           const lastLog = nowLog(onLog, {
@@ -427,6 +544,7 @@ async function upsertProductsWithApi(
             action: 'create',
             code,
             name,
+            detail: refId ? `ref_id ${refId}` : undefined,
             ok: true,
           });
           onProgress?.({
@@ -457,7 +575,7 @@ async function upsertProductsWithApi(
     throw new Error(`Ürün yazımı tamamen başarısız. İlk hata: ${firstError}`);
   }
 
-  return { fetched: total, upserted, errors, skipped };
+  return { fetched: rows.length, upserted, errors, skipped };
 }
 
 async function upsertCustomersWithApi(
@@ -465,12 +583,14 @@ async function upsertCustomersWithApi(
   onLog?: LogoSyncOptions['onLog'],
   onProgress?: (p: LogoSyncProgress) => void
 ): Promise<LogoSyncEntityResult> {
-  const total = rows.length;
+  const deduped = dedupeLogoMasterRows(rows);
+  const total = deduped.length;
+  const skipped = rows.length - total;
+  const firmEq = firmNrPadded();
+  const table = `rex_${firmEq}_customers`;
 
   if (isRestApiMode() && total > 0) {
-    const table = `rex_${firmNrPadded()}_customers`;
-    const firmEq = firmNrPadded();
-    const payloads = rows.map((row) => ({
+    const payloads = deduped.map((row) => ({
       firm_nr: firmEq,
       ref_id: row.ref_id ?? null,
       code: String(row.code || ''),
@@ -488,12 +608,12 @@ async function upsertCustomersWithApi(
     try {
       onProgress?.({
         phase: 'customers',
-        message: `${total} cari toplu yazılıyor…`,
+        message: `${total} cari toplu yazılıyor (ref_id/kod eşleşmesi)…`,
         current: 0,
         total,
       });
-      await bulkUpsertTableRest(table, payloads, 'code');
-      return { fetched: total, upserted: total, errors: 0, skipped: 0 };
+      await bulkUpsertLogoMasterRest(table, firmEq, payloads);
+      return { fetched: rows.length, upserted: total, errors: 0, skipped };
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
       nowLog(onLog, { entity: 'customer', action: 'error', code: '*', detail: msg, ok: false });
@@ -504,26 +624,44 @@ async function upsertCustomersWithApi(
   let upserted = 0;
   let errors = 0;
 
-  for (let i = 0; i < rows.length; i++) {
-    const row = rows[i];
+  for (let i = 0; i < deduped.length; i++) {
+    const row = deduped[i];
     const code = String(row.code || '');
     const name = String(row.name || '');
+    const refId = logoRowRefId(row);
+
     try {
-      const existing = await findCustomerByCode(code);
-      if (existing?.id) {
-        await customerAPI.update(existing.id, {
-          name,
-          phone: String(row.phone || ''),
-          email: String(row.email || ''),
-          address: String(row.address || ''),
-          city: String(row.city || ''),
-          taxNumber: String(row.tax_nr || ''),
-          taxOffice: String(row.tax_office || ''),
-          balance: numVal(row.balance, 0),
-        } as never);
+      const existingId = await lookupIdByRefOrCode(table, firmEq, refId, code);
+      if (existingId) {
+        await postgres.query(
+          `UPDATE ${table}
+           SET ref_id = COALESCE($1, ref_id), code = $2, name = $3, phone = $4, email = $5,
+               address = $6, city = $7, tax_nr = $8, tax_office = $9, balance = $10
+           WHERE id = $11`,
+          [
+            refId,
+            code,
+            name,
+            String(row.phone || ''),
+            String(row.email || ''),
+            String(row.address || ''),
+            String(row.city || ''),
+            String(row.tax_nr || ''),
+            String(row.tax_office || ''),
+            numVal(row.balance, 0),
+            existingId,
+          ],
+        );
         upserted += 1;
         if (i % LOG_EVERY === 0 || i === total - 1) {
-          const lastLog = nowLog(onLog, { entity: 'customer', action: 'update', code, name, ok: true });
+          const lastLog = nowLog(onLog, {
+            entity: 'customer',
+            action: 'update',
+            code,
+            name,
+            detail: refId ? `ref_id ${refId}` : undefined,
+            ok: true,
+          });
           onProgress?.({
             phase: 'customers',
             message: `Cariler: ${upserted}/${total}`,
@@ -533,18 +671,24 @@ async function upsertCustomersWithApi(
           });
         }
       } else {
-        await customerAPI.create({
-          code,
-          name,
-          phone: String(row.phone || ''),
-          email: String(row.email || ''),
-          address: String(row.address || ''),
-          city: String(row.city || ''),
-          taxNumber: String(row.tax_nr || ''),
-          taxOffice: String(row.tax_office || ''),
-          balance: numVal(row.balance, 0),
-          firm_nr: ERP_SETTINGS.firmNr,
-        } as never);
+        await postgres.query(
+          `INSERT INTO ${table}
+             (firm_nr, ref_id, code, name, phone, email, address, city, tax_nr, tax_office, balance, is_active)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,true)`,
+          [
+            firmEq,
+            refId,
+            code,
+            name,
+            String(row.phone || ''),
+            String(row.email || ''),
+            String(row.address || ''),
+            String(row.city || ''),
+            String(row.tax_nr || ''),
+            String(row.tax_office || ''),
+            numVal(row.balance, 0),
+          ],
+        );
         upserted += 1;
         if (i % LOG_EVERY === 0 || i === total - 1) {
           const lastLog = nowLog(onLog, { entity: 'customer', action: 'create', code, name, ok: true });
@@ -564,7 +708,7 @@ async function upsertCustomersWithApi(
     }
   }
 
-  return { fetched: total, upserted, errors, skipped: 0 };
+  return { fetched: rows.length, upserted, errors, skipped };
 }
 
 async function upsertSuppliersWithApi(
@@ -572,12 +716,14 @@ async function upsertSuppliersWithApi(
   onLog?: LogoSyncOptions['onLog'],
   onProgress?: (p: LogoSyncProgress) => void
 ): Promise<LogoSyncEntityResult> {
-  const total = rows.length;
+  const deduped = dedupeLogoMasterRows(rows);
+  const total = deduped.length;
+  const skipped = rows.length - total;
+  const firmEq = firmNrPadded();
+  const table = `rex_${firmEq}_suppliers`;
 
   if (isRestApiMode() && total > 0) {
-    const table = `rex_${firmNrPadded()}_suppliers`;
-    const firmEq = firmNrPadded();
-    const payloads = rows.map((row) => ({
+    const payloads = deduped.map((row) => ({
       firm_nr: firmEq,
       ref_id: row.ref_id ?? null,
       code: String(row.code || ''),
@@ -595,12 +741,12 @@ async function upsertSuppliersWithApi(
     try {
       onProgress?.({
         phase: 'suppliers',
-        message: `${total} tedarikçi toplu yazılıyor…`,
+        message: `${total} tedarikçi toplu yazılıyor (ref_id/kod eşleşmesi)…`,
         current: 0,
         total,
       });
-      await bulkUpsertTableRest(table, payloads, 'code');
-      return { fetched: total, upserted: total, errors: 0, skipped: 0 };
+      await bulkUpsertLogoMasterRest(table, firmEq, payloads);
+      return { fetched: rows.length, upserted: total, errors: 0, skipped };
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
       nowLog(onLog, { entity: 'supplier', action: 'error', code: '*', detail: msg, ok: false });
@@ -611,48 +757,82 @@ async function upsertSuppliersWithApi(
   let upserted = 0;
   let errors = 0;
 
-  for (let i = 0; i < rows.length; i++) {
-    const row = rows[i];
+  for (let i = 0; i < deduped.length; i++) {
+    const row = deduped[i];
     const code = String(row.code || '');
     const name = String(row.name || '');
+    const refId = logoRowRefId(row);
+
     try {
-      const existing = await supplierAPI.getByCode(code);
-      if (existing?.id) {
-        await supplierAPI.update(existing.id, {
-          name,
-          phone: String(row.phone || ''),
-          email: String(row.email || ''),
-          address: String(row.address || ''),
-          city: String(row.city || ''),
-          tax_number: String(row.tax_nr || ''),
-          tax_office: String(row.tax_office || ''),
-          balance: numVal(row.balance, 0),
-        } as never);
+      const existingId = await lookupIdByRefOrCode(table, firmEq, refId, code);
+      if (existingId) {
+        await postgres.query(
+          `UPDATE ${table}
+           SET ref_id = COALESCE($1, ref_id), code = $2, name = $3, phone = $4, email = $5,
+               address = $6, city = $7, tax_nr = $8, tax_office = $9, balance = $10
+           WHERE id = $11`,
+          [
+            refId,
+            code,
+            name,
+            String(row.phone || ''),
+            String(row.email || ''),
+            String(row.address || ''),
+            String(row.city || ''),
+            String(row.tax_nr || ''),
+            String(row.tax_office || ''),
+            numVal(row.balance, 0),
+            existingId,
+          ],
+        );
+        upserted += 1;
+        if (i % LOG_EVERY === 0 || i === total - 1) {
+          const lastLog = nowLog(onLog, {
+            entity: 'supplier',
+            action: 'update',
+            code,
+            name,
+            detail: refId ? `ref_id ${refId}` : undefined,
+            ok: true,
+          });
+          onProgress?.({
+            phase: 'suppliers',
+            message: `Tedarikçiler: ${upserted}/${total}`,
+            current: upserted,
+            total,
+            lastLog,
+          });
+        }
       } else {
-        await supplierAPI.create({
-          code,
-          name,
-          phone: String(row.phone || ''),
-          email: String(row.email || ''),
-          address: String(row.address || ''),
-          city: String(row.city || ''),
-          tax_number: String(row.tax_nr || ''),
-          tax_office: String(row.tax_office || ''),
-          balance: numVal(row.balance, 0),
-          cardType: 'supplier',
-          firm_nr: ERP_SETTINGS.firmNr,
-        } as never);
-      }
-      upserted += 1;
-      if (i % LOG_EVERY === 0 || i === total - 1) {
-        const lastLog = nowLog(onLog, { entity: 'supplier', action: 'update', code, name, ok: true });
-        onProgress?.({
-          phase: 'suppliers',
-          message: `Tedarikçiler: ${upserted}/${total}`,
-          current: upserted,
-          total,
-          lastLog,
-        });
+        await postgres.query(
+          `INSERT INTO ${table}
+             (firm_nr, ref_id, code, name, phone, email, address, city, tax_nr, tax_office, balance, is_active)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,true)`,
+          [
+            firmEq,
+            refId,
+            code,
+            name,
+            String(row.phone || ''),
+            String(row.email || ''),
+            String(row.address || ''),
+            String(row.city || ''),
+            String(row.tax_nr || ''),
+            String(row.tax_office || ''),
+            numVal(row.balance, 0),
+          ],
+        );
+        upserted += 1;
+        if (i % LOG_EVERY === 0 || i === total - 1) {
+          const lastLog = nowLog(onLog, { entity: 'supplier', action: 'create', code, name, ok: true });
+          onProgress?.({
+            phase: 'suppliers',
+            message: `Tedarikçiler: ${upserted}/${total}`,
+            current: upserted,
+            total,
+            lastLog,
+          });
+        }
       }
     } catch (e: unknown) {
       errors += 1;
@@ -661,7 +841,7 @@ async function upsertSuppliersWithApi(
     }
   }
 
-  return { fetched: total, upserted, errors, skipped: 0 };
+  return { fetched: rows.length, upserted, errors, skipped };
 }
 
 export async function syncLogoProductsFromRest(
