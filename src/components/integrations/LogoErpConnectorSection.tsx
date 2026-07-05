@@ -4,6 +4,7 @@ import {
   Card,
   Col,
   Collapse,
+  Divider,
   Form,
   Input,
   InputNumber,
@@ -11,15 +12,17 @@ import {
   Select,
   Space,
   Spin,
+  Tag,
   Typography,
 } from 'antd';
-import { SaveOutlined, ApiOutlined } from '@ant-design/icons';
+import { SaveOutlined, ApiOutlined, LinkOutlined } from '@ant-design/icons';
 import { toast } from 'sonner';
 import { IS_TAURI } from '../../utils/env';
 import {
   LOGO_API_URL_EXAMPLE,
   LOGO_DEFAULT_CLIENT_ID,
   loadLogoRestConfig,
+  loadLogoRestSession,
   saveLogoRestConfig,
   logoTestConnection,
   getLogoMappingForErp,
@@ -74,9 +77,7 @@ type FormValues = {
   erpType: string;
   serviceType: ServiceType;
   lobject: LogoLobjectConfig;
-  rest: Pick<LogoRestConfig, 'baseUrl' | 'username' | 'password' | 'clientId' | 'clientSecret'> & {
-    firmNr: string;
-  };
+  rest: Pick<LogoRestConfig, 'baseUrl' | 'username' | 'password' | 'clientId' | 'clientSecret'>;
   params: LogoErpIntegrationParams;
   restAutoEnabled: boolean;
   restAutoInterval: number;
@@ -90,20 +91,34 @@ const yesNoOptions = [
 ];
 
 const serviceBoxStyle: CSSProperties = {
-  border: '1px solid #d9d9d9',
-  borderRadius: 6,
-  padding: 16,
+  border: '1px solid #e8e8e8',
+  borderRadius: 8,
+  padding: '20px 20px 8px',
   background: '#fafafa',
-  height: '100%',
 };
 
-const sectionLabelStyle: CSSProperties = {
+const sectionHeaderStyle: CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  gap: 12,
+  marginBottom: 16,
+};
+
+const sectionTitleStyle: CSSProperties = {
+  fontSize: 13,
+  fontWeight: 600,
+  color: '#262626',
+  letterSpacing: '0.02em',
+};
+
+const subsectionTitleStyle: CSSProperties = {
   fontSize: 12,
   fontWeight: 600,
-  color: '#595959',
+  color: '#8c8c8c',
   marginBottom: 12,
   textTransform: 'uppercase',
-  letterSpacing: '0.04em',
+  letterSpacing: '0.05em',
 };
 
 function modeToServiceType(mode: LogoErpMode): ServiceType {
@@ -126,6 +141,10 @@ export function LogoErpConnectorSection() {
   const [restFirms, setRestFirms] = useState<LogoFirmOption[]>([]);
   const [restPeriods, setRestPeriods] = useState<LogoPeriodOption[]>([]);
   const [restFirmsLoading, setRestFirmsLoading] = useState(false);
+  const [restConnected, setRestConnected] = useState(false);
+  const [restLogoFirmNr, setRestLogoFirmNr] = useState<number | undefined>();
+  const [restLogoPeriodNr, setRestLogoPeriodNr] = useState<number | undefined>();
+  const [restLogoDb, setRestLogoDb] = useState<string | undefined>();
   const [activePanels, setActivePanels] = useState<string[]>(['genel', 'parametreler', 'senkron']);
 
   const serviceType = Form.useWatch('serviceType', form) ?? 'rest';
@@ -160,7 +179,6 @@ export function LogoErpConnectorSection() {
         password: restCfg.password,
         clientId: restCfg.clientId,
         clientSecret: restCfg.clientSecret,
-        firmNr: String(mapping?.logoFirmNr ?? ctx.firmNr ?? ''),
       },
       params: {
         autoSendProducts: restSync.modules.masterData,
@@ -181,6 +199,11 @@ export function LogoErpConnectorSection() {
     setRestDbOptions(
       Array.from(new Set([...(restCfg.logoDbs || []), restCfg.logoDb].filter(Boolean))) as string[]
     );
+    setRestLogoFirmNr(mapping?.logoFirmNr ?? ctx.firmNr);
+    setRestLogoPeriodNr(mapping?.logoPeriodNr ?? ctx.periodNr);
+    setRestLogoDb(restCfg.logoDb || undefined);
+    const session = loadLogoRestSession();
+    setRestConnected(Boolean(session && Date.now() < session.expiresAt));
     if (mapping) {
       setRestPeriods(periodsForFirm(restCfg.firmCatalog ?? [], mapping.logoFirmNr));
     }
@@ -242,6 +265,9 @@ export function LogoErpConnectorSection() {
       const mapping = getLogoMappingForErp(next);
       if (mapping) {
         setRestPeriods(periodsForFirm(list, mapping.logoFirmNr));
+        setRestLogoFirmNr(mapping.logoFirmNr);
+        setRestLogoPeriodNr(mapping.logoPeriodNr);
+        setRestLogoDb(mapping.logoDb || next.logoDb || undefined);
       }
     } catch {
       /* bağlantı testinden sonra tekrar denenecek */
@@ -250,7 +276,13 @@ export function LogoErpConnectorSection() {
     }
   }, []);
 
-  const handleRestFirmSelect = (firmNr: number) => {
+  const handleRestFirmSelect = (firmNr: number | undefined) => {
+    if (firmNr == null) {
+      setRestLogoFirmNr(undefined);
+      setRestLogoPeriodNr(undefined);
+      setRestPeriods([]);
+      return;
+    }
     const cfg = loadLogoRestConfig();
     const firm = restFirms.find((f) => f.firmNr === firmNr);
     const pList = periodsForFirm(restFirms, firmNr);
@@ -263,7 +295,8 @@ export function LogoErpConnectorSection() {
       logoFirmName: firm?.name,
       logoFirmTitle: firm?.title || firm?.name,
     });
-    form.setFieldsValue({ rest: { ...form.getFieldValue('rest'), firmNr: String(firmNr) } });
+    setRestLogoFirmNr(firmNr);
+    setRestLogoPeriodNr(periodNr);
   };
 
   const handleRestPeriodSelect = (periodNr: number) => {
@@ -277,9 +310,14 @@ export function LogoErpConnectorSection() {
       logoFirmName: mapping?.logoFirmName,
       logoFirmTitle: mapping?.logoFirmTitle,
     });
+    setRestLogoPeriodNr(periodNr);
   };
 
-  const handleRestDbSelect = (logoDb: string) => {
+  const handleRestDbSelect = (logoDb: string | undefined) => {
+    if (!logoDb) {
+      setRestLogoDb(undefined);
+      return;
+    }
     const cfg = loadLogoRestConfig();
     const mapping = getLogoMappingForErp(cfg);
     if (mapping) {
@@ -287,7 +325,10 @@ export function LogoErpConnectorSection() {
     } else {
       saveLogoRestConfig({ ...cfg, logoDb });
     }
+    setRestLogoDb(logoDb);
   };
+
+  const restContextReady = restFirms.length > 0 || restDbOptions.length > 0;
 
   const handleServiceTypeChange = useCallback(
     (next: ServiceType) => {
@@ -386,6 +427,7 @@ export function LogoErpConnectorSection() {
       const result = await logoTestConnection(cfg);
       if (result.ok) {
         toast.success('Logo REST bağlantısı başarılı');
+        setRestConnected(true);
         window.dispatchEvent(new CustomEvent('retailex:logo-rest-connected'));
         if (result.databases?.length) {
           saveLogoDatabaseList(cfg, result.databases);
@@ -437,10 +479,10 @@ export function LogoErpConnectorSection() {
                 <Form.Item name="serviceType" label="ERP Servis Tipi" style={{ marginBottom: 0 }}>
                   <Select
                     options={[
-                      { value: 'rest', label: 'REST' },
+                      { value: 'rest', label: 'REST API' },
                       {
                         value: 'lobject',
-                        label: 'LOBJECT',
+                        label: 'LOBJECT (MSSQL)',
                         disabled: !IS_TAURI,
                       },
                     ]}
@@ -450,194 +492,245 @@ export function LogoErpConnectorSection() {
               </Col>
               <Col xs={24} md={8}>
                 <Form.Item label=" " colon={false} style={{ marginBottom: 0 }}>
-                  <Button block onClick={() => void handleConnectionTest()} loading={testing}>
-                    Bağlantı Test
+                  <Button
+                    block
+                    type="default"
+                    icon={<LinkOutlined />}
+                    onClick={() => void handleConnectionTest()}
+                    loading={testing}
+                  >
+                    Bağlantı testi
                   </Button>
                 </Form.Item>
               </Col>
             </Row>
 
-            <Row gutter={16}>
-              <Col xs={24} lg={12}>
-                <div style={serviceBoxStyle}>
-                  <div style={sectionLabelStyle}>LOBJECT Service</div>
-                  <Row gutter={[12, 0]}>
-                    <Col span={12}>
-                      <Form.Item
-                        name={['lobject', 'erp_user']}
-                        label="Kullanıcı Adı"
-                        rules={[{ required: IS_TAURI, message: 'Zorunlu' }]}
-                      >
-                        <Input disabled={!IS_TAURI} />
-                      </Form.Item>
-                    </Col>
-                    <Col span={12}>
-                      <Form.Item
-                        name={['lobject', 'erp_pass']}
-                        label="Şifre"
-                        rules={[{ required: IS_TAURI, message: 'Zorunlu' }]}
-                      >
-                        <Input.Password disabled={!IS_TAURI} />
-                      </Form.Item>
-                    </Col>
-                    <Col span={12}>
-                      <Form.Item name={['lobject', 'erp_port']} label="Port No">
-                        <Input disabled={!IS_TAURI} />
-                      </Form.Item>
-                    </Col>
-                    <Col span={12}>
-                      <Form.Item
-                        name={['lobject', 'erp_host']}
-                        label="Sunucu Adı"
-                        rules={[{ required: IS_TAURI, message: 'Zorunlu' }]}
-                      >
-                        <Input disabled={!IS_TAURI} />
-                      </Form.Item>
-                    </Col>
-                    <Col span={24}>
-                      <Form.Item
-                        name={['lobject', 'erp_db']}
-                        label="Veritabanı Adı"
-                        rules={[{ required: IS_TAURI, message: 'Zorunlu' }]}
-                      >
-                        {IS_TAURI ? (
-                          <Select
-                            showSearch
-                            loading={dbLoading}
-                            options={dbOptions.map((db) => ({ value: db, label: db }))}
-                            notFoundContent={dbLoading ? <Spin size="small" /> : 'Önce bağlantı testi yapın'}
-                            dropdownRender={(menu) => (
-                              <>
-                                {menu}
-                                <div style={{ padding: 8, borderTop: '1px solid #f0f0f0' }}>
-                                  <Button size="small" block onClick={() => void refreshDatabases()}>
-                                    Veritabanlarını yenile
-                                  </Button>
-                                </div>
-                              </>
-                            )}
-                          />
-                        ) : (
-                          <Input disabled placeholder="Masaüstü uygulamasında kullanılabilir" />
-                        )}
-                      </Form.Item>
-                    </Col>
-                    <Col span={24}>
-                      <Form.Item name={['lobject', 'erp_integrator_api']} label="ERP Entegrator Api Servisi">
-                        <Input disabled={!IS_TAURI} />
-                      </Form.Item>
-                    </Col>
-                  </Row>
+            {serviceType === 'lobject' ? (
+              <div style={serviceBoxStyle}>
+                <div style={sectionHeaderStyle}>
+                  <span style={sectionTitleStyle}>LOBJECT — SQL Server bağlantısı</span>
+                  {!IS_TAURI ? <Tag>Masaüstü gerekli</Tag> : null}
                 </div>
-              </Col>
-
-              <Col xs={24} lg={12}>
-                <div style={serviceBoxStyle}>
-                  <div style={sectionLabelStyle}>REST Service</div>
-                  <Row gutter={[12, 0]}>
-                    <Col span={12}>
-                      <Form.Item
-                        name={['rest', 'username']}
-                        label="Logo Kullanıcı Adı"
-                        rules={[{ required: true, message: 'Zorunlu' }]}
-                      >
-                        <Input />
-                      </Form.Item>
-                    </Col>
-                    <Col span={12}>
-                      <Form.Item
-                        name={['rest', 'password']}
-                        label="Logo Şifre"
-                        rules={[{ required: true, message: 'Zorunlu' }]}
-                      >
-                        <Input.Password />
-                      </Form.Item>
-                    </Col>
-                    <Col span={12}>
-                      <Form.Item name={['rest', 'clientId']} label="Rest Client Id">
-                        <Input />
-                      </Form.Item>
-                    </Col>
-                    <Col span={12}>
-                      <Form.Item name={['rest', 'clientSecret']} label="Rest Client Secret">
-                        <Input.Password />
-                      </Form.Item>
-                    </Col>
-                    <Col span={12}>
-                      <Form.Item name={['rest', 'firmNr']} label="Firma No">
-                        <Input readOnly />
-                      </Form.Item>
-                    </Col>
-                    <Col span={24}>
-                      <Form.Item
-                        name={['rest', 'baseUrl']}
-                        label="Rest Entegrasyon Api"
-                        rules={[{ required: true, message: 'Zorunlu' }]}
-                        extra={
-                          <Text type="secondary" style={{ fontSize: 11 }}>
-                            Yalnızca <code>http://sunucu:port</code> yazmanız yeterli (ör. {LOGO_API_URL_EXAMPLE})
-                          </Text>
-                        }
-                      >
-                        <Input placeholder={LOGO_API_URL_EXAMPLE} />
-                      </Form.Item>
-                    </Col>
-                    <Col span={8}>
-                      <Form.Item label="Logo firma">
+                <Row gutter={[16, 0]}>
+                  <Col xs={24} md={12}>
+                    <Form.Item
+                      name={['lobject', 'erp_host']}
+                      label="Sunucu adı"
+                      rules={[{ required: IS_TAURI, message: 'Zorunlu' }]}
+                    >
+                      <Input disabled={!IS_TAURI} placeholder="192.168.1.10" />
+                    </Form.Item>
+                  </Col>
+                  <Col xs={24} md={6}>
+                    <Form.Item name={['lobject', 'erp_port']} label="Port">
+                      <Input disabled={!IS_TAURI} placeholder="1433" />
+                    </Form.Item>
+                  </Col>
+                  <Col xs={24} md={6}>
+                    <Form.Item
+                      name={['lobject', 'erp_db']}
+                      label="Veritabanı"
+                      rules={[{ required: IS_TAURI, message: 'Zorunlu' }]}
+                    >
+                      {IS_TAURI ? (
                         <Select
                           showSearch
-                          loading={restFirmsLoading}
-                          placeholder="Firma seçin"
-                          value={getLogoMappingForErp(loadLogoRestConfig())?.logoFirmNr}
-                          onChange={handleRestFirmSelect}
-                          options={restFirms.map((f) => ({
-                            value: f.firmNr,
-                            label: `${f.firmNr} — ${f.title || f.name}`,
-                          }))}
-                          notFoundContent={restFirmsLoading ? <Spin size="small" /> : 'Bağlantı testi yapın'}
-                        />
-                      </Form.Item>
-                    </Col>
-                    <Col span={8}>
-                      <Form.Item label="Logo dönem">
-                        <Select
-                          placeholder="Dönem"
-                          value={getLogoMappingForErp(loadLogoRestConfig())?.logoPeriodNr}
-                          onChange={handleRestPeriodSelect}
-                          options={restPeriods.map((p) => ({
-                            value: p.number,
-                            label: `${p.number}${p.active ? ' (aktif)' : ''}`,
-                          }))}
-                          disabled={!restPeriods.length}
-                        />
-                      </Form.Item>
-                    </Col>
-                    <Col span={8}>
-                      <Form.Item label="Veritabanı (DB)">
-                        <Select
-                          showSearch
-                          loading={restDbLoading}
-                          placeholder="DB seçin"
-                          value={loadLogoRestConfig().logoDb || undefined}
-                          onChange={handleRestDbSelect}
-                          options={restDbOptions.map((db) => ({ value: db, label: db }))}
+                          loading={dbLoading}
+                          options={dbOptions.map((db) => ({ value: db, label: db }))}
+                          notFoundContent={dbLoading ? <Spin size="small" /> : 'Önce bağlantı testi yapın'}
                           dropdownRender={(menu) => (
                             <>
                               {menu}
                               <div style={{ padding: 8, borderTop: '1px solid #f0f0f0' }}>
-                                <Button size="small" block onClick={() => void refreshRestDatabases()}>
+                                <Button size="small" block onClick={() => void refreshDatabases()}>
                                   Veritabanlarını yenile
                                 </Button>
                               </div>
                             </>
                           )}
                         />
-                      </Form.Item>
-                    </Col>
-                  </Row>
+                      ) : (
+                        <Input disabled placeholder="Masaüstü uygulamasında kullanılabilir" />
+                      )}
+                    </Form.Item>
+                  </Col>
+                  <Col xs={24} md={8}>
+                    <Form.Item
+                      name={['lobject', 'erp_user']}
+                      label="Kullanıcı adı"
+                      rules={[{ required: IS_TAURI, message: 'Zorunlu' }]}
+                    >
+                      <Input disabled={!IS_TAURI} />
+                    </Form.Item>
+                  </Col>
+                  <Col xs={24} md={8}>
+                    <Form.Item
+                      name={['lobject', 'erp_pass']}
+                      label="Şifre"
+                      rules={[{ required: IS_TAURI, message: 'Zorunlu' }]}
+                    >
+                      <Input.Password disabled={!IS_TAURI} />
+                    </Form.Item>
+                  </Col>
+                  <Col xs={24} md={8}>
+                    <Form.Item name={['lobject', 'erp_integrator_api']} label="Entegratör API (isteğe bağlı)">
+                      <Input disabled={!IS_TAURI} />
+                    </Form.Item>
+                  </Col>
+                </Row>
+              </div>
+            ) : (
+              <div style={serviceBoxStyle}>
+                <div style={sectionHeaderStyle}>
+                  <span style={sectionTitleStyle}>REST API bağlantısı</span>
+                  {restConnected ? (
+                    <Tag color="success">Oturum açık</Tag>
+                  ) : (
+                    <Tag color="warning">Bağlantı testi gerekli</Tag>
+                  )}
                 </div>
-              </Col>
-            </Row>
+
+                <div style={subsectionTitleStyle}>Sunucu</div>
+                <Form.Item
+                  name={['rest', 'baseUrl']}
+                  label="Logo REST adresi"
+                  rules={[{ required: true, message: 'Sunucu adresi zorunlu' }]}
+                  extra={
+                    <Text type="secondary" style={{ fontSize: 12 }}>
+                      Yalnızca sunucu ve port yeterli — örnek: {LOGO_API_URL_EXAMPLE}
+                    </Text>
+                  }
+                  style={{ marginBottom: 20 }}
+                >
+                  <Input placeholder={LOGO_API_URL_EXAMPLE} />
+                </Form.Item>
+
+                <div style={subsectionTitleStyle}>Kimlik bilgileri</div>
+                <Row gutter={16}>
+                  <Col xs={24} md={12}>
+                    <Form.Item
+                      name={['rest', 'username']}
+                      label="Logo kullanıcı adı"
+                      rules={[{ required: true, message: 'Zorunlu' }]}
+                    >
+                      <Input />
+                    </Form.Item>
+                  </Col>
+                  <Col xs={24} md={12}>
+                    <Form.Item
+                      name={['rest', 'password']}
+                      label="Logo şifre"
+                      rules={[{ required: true, message: 'Zorunlu' }]}
+                    >
+                      <Input.Password />
+                    </Form.Item>
+                  </Col>
+                </Row>
+
+                <Collapse
+                  ghost
+                  size="small"
+                  style={{ marginBottom: 8 }}
+                  items={[
+                    {
+                      key: 'oauth',
+                      label: <Text type="secondary">OAuth istemci bilgileri (isteğe bağlı)</Text>,
+                      children: (
+                        <Row gutter={16}>
+                          <Col xs={24} md={12}>
+                            <Form.Item name={['rest', 'clientId']} label="Client ID">
+                              <Input placeholder={LOGO_DEFAULT_CLIENT_ID} />
+                            </Form.Item>
+                          </Col>
+                          <Col xs={24} md={12}>
+                            <Form.Item name={['rest', 'clientSecret']} label="Client Secret">
+                              <Input.Password />
+                            </Form.Item>
+                          </Col>
+                        </Row>
+                      ),
+                    },
+                  ]}
+                />
+
+                <Divider style={{ margin: '12px 0 16px' }} />
+
+                <div style={sectionHeaderStyle}>
+                  <span style={subsectionTitleStyle}>Logo firma, dönem ve veritabanı</span>
+                  {!restContextReady ? (
+                    <Text type="secondary" style={{ fontSize: 12 }}>
+                      Listeler bağlantı testinden sonra dolar
+                    </Text>
+                  ) : null}
+                </div>
+
+                <Row gutter={16}>
+                  <Col xs={24} md={8}>
+                    <Form.Item label="Firma" required>
+                      <Select
+                        showSearch
+                        allowClear
+                        loading={restFirmsLoading}
+                        placeholder={restFirms.length ? 'Firma seçin' : 'Önce bağlantı testi'}
+                        value={restLogoFirmNr}
+                        onChange={handleRestFirmSelect}
+                        disabled={!restFirms.length && !restFirmsLoading}
+                        options={restFirms.map((f) => ({
+                          value: f.firmNr,
+                          label: `${f.firmNr} — ${f.title || f.name}`,
+                        }))}
+                        notFoundContent={restFirmsLoading ? <Spin size="small" /> : 'Firma bulunamadı'}
+                      />
+                    </Form.Item>
+                  </Col>
+                  <Col xs={24} md={8}>
+                    <Form.Item label="Dönem" required>
+                      <Select
+                        placeholder="Dönem seçin"
+                        value={restLogoPeriodNr}
+                        onChange={handleRestPeriodSelect}
+                        disabled={!restPeriods.length}
+                        options={restPeriods.map((p) => ({
+                          value: p.number,
+                          label: `${p.number}${p.active ? ' (aktif)' : ''}`,
+                        }))}
+                      />
+                    </Form.Item>
+                  </Col>
+                  <Col xs={24} md={8}>
+                    <Form.Item label="Veritabanı">
+                      <Select
+                        showSearch
+                        allowClear
+                        loading={restDbLoading}
+                        placeholder={restDbOptions.length ? 'DB seçin' : 'Önce bağlantı testi'}
+                        value={restLogoDb}
+                        onChange={handleRestDbSelect}
+                        disabled={!restDbOptions.length && !restDbLoading}
+                        options={restDbOptions.map((db) => ({ value: db, label: db }))}
+                        dropdownRender={(menu) => (
+                          <>
+                            {menu}
+                            <div style={{ padding: 8, borderTop: '1px solid #f0f0f0' }}>
+                              <Button size="small" block onClick={() => void refreshRestDatabases()}>
+                                Veritabanlarını yenile
+                              </Button>
+                            </div>
+                          </>
+                        )}
+                      />
+                    </Form.Item>
+                  </Col>
+                </Row>
+
+                {restLogoFirmNr != null && restLogoPeriodNr != null ? (
+                  <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 8 }}>
+                    Seçili bağlam: firma {restLogoFirmNr} · dönem {restLogoPeriodNr}
+                    {restLogoDb ? ` · ${restLogoDb}` : ''}
+                  </Text>
+                ) : null}
+              </div>
+            )}
           </Space>
         ),
       },
@@ -725,7 +818,7 @@ export function LogoErpConnectorSection() {
         children: <LogoErpSyncCollapse serviceType={serviceType} />,
       },
     ],
-    [dbLoading, dbOptions, handleConnectionTest, handleServiceTypeChange, refreshDatabases, refreshRestDatabases, restDbLoading, restDbOptions, restFirms, restFirmsLoading, restPeriods, serviceType, testing],
+    [dbLoading, dbOptions, handleConnectionTest, handleServiceTypeChange, refreshDatabases, refreshRestDatabases, restConnected, restContextReady, restDbLoading, restDbOptions, restFirms, restFirmsLoading, restLogoDb, restLogoFirmNr, restLogoPeriodNr, restPeriods, serviceType, testing],
   );
 
   if (!ready) {
