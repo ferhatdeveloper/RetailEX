@@ -1500,6 +1500,149 @@ export async function logoFetchAllPaginated<T = unknown>(
   return all;
 }
 
+export type LogoArpBalanceRow = {
+  balance: number;
+  debit: number;
+  credit: number;
+};
+
+function logoNumVal(v: unknown, fallback = 0): number {
+  if (v == null || v === '') return fallback;
+  const n = typeof v === 'number' ? v : parseFloat(String(v).replace(',', '.'));
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function logoSqlLit(value: string): string {
+  return `'${value.replace(/'/g, "''")}'`;
+}
+
+function logoSqlFirmPeriod(firmNr: number, periodNr: number): { firm: string; period: string } {
+  return {
+    firm: String(firmNr).replace(/\D/g, '').padStart(3, '0') || '001',
+    period: String(periodNr).replace(/\D/g, '').padStart(2, '0') || '01',
+  };
+}
+
+function parseLogoTsqlRows(data: unknown): Record<string, unknown>[] {
+  if (!data) return [];
+  if (Array.isArray(data)) {
+    return data.filter((r) => r && typeof r === 'object') as Record<string, unknown>[];
+  }
+  if (typeof data !== 'object') return [];
+  const o = data as Record<string, unknown>;
+  for (const key of ['rows', 'Rows', 'items', 'Items', 'data', 'Data', 'result', 'Result']) {
+    const parsed = parseLogoTsqlRows(o[key]);
+    if (parsed.length > 0) return parsed;
+  }
+  return [];
+}
+
+/** Logo REST TSQL sorgusu — stok (STINVTOT) ve cari bakiye (CLFLINE) için */
+export async function logoRunTsql(
+  cfg: LogoRestConfig,
+  tsql: string
+): Promise<Record<string, unknown>[]> {
+  const session = await logoEnsureSession(cfg);
+  const baseUrl = requireBaseUrl(cfg);
+  const paths = ['/queries', '/methods/queries'];
+  let lastErr = '';
+
+  for (const path of paths) {
+    const res = await logoHttp(baseUrl, 'GET', path, {
+      headers: { Authorization: `Bearer ${session.accessToken}` },
+      query: { tsql },
+    });
+    if (res.ok) return parseLogoTsqlRows(res.data);
+    const err = res.data as { message?: string; Message?: string };
+    lastErr = err?.message || err?.Message || `HTTP ${res.status}`;
+    if (res.status !== 404) break;
+  }
+
+  throw new Error(lastErr || 'Logo TSQL sorgusu başarısız');
+}
+
+/** Malzeme eldeki miktar — Logo items REST kartında ONHAND yok; STINVTOT görünümünden okunur */
+export async function logoFetchItemStockMap(
+  cfg: LogoRestConfig,
+  codes?: string[]
+): Promise<Map<string, number>> {
+  const ctx = resolveLogoContext(cfg);
+  const { firm, period } = logoSqlFirmPeriod(ctx.firmNr, ctx.periodNr);
+  const itemsTable = `LG_${firm}_ITEMS`;
+  const stockTables = [`LV_${firm}_${period}_STINVTOT`, `LG_${firm}_${period}_STINVTOT`];
+
+  let codeFilter = '';
+  if (codes?.length) {
+    const safe = codes.map((c) => logoSqlLit(c.trim())).join(',');
+    codeFilter = ` AND I.CODE IN (${safe})`;
+  }
+
+  for (const stockTable of stockTables) {
+    const tsql = `SELECT I.CODE AS CODE, SUM(ISNULL(S.ONHAND,0)) AS ONHAND
+      FROM ${stockTable} S
+      INNER JOIN ${itemsTable} I ON S.STOCKREF = I.LOGICALREF
+      WHERE 1=1${codeFilter}
+      GROUP BY I.CODE`;
+    try {
+      const rows = await logoRunTsql(cfg, tsql);
+      const map = new Map<string, number>();
+      for (const row of rows) {
+        const code = String(row.CODE ?? row.code ?? '').trim();
+        if (!code) continue;
+        map.set(code, logoNumVal(row.ONHAND ?? row.onhand ?? row.STOCK ?? row.stock, 0));
+      }
+      if (map.size > 0 || !codes?.length) return map;
+    } catch {
+      /* sonraki tablo adı */
+    }
+  }
+
+  return new Map();
+}
+
+/** Cari bakiye — Logo Arps REST kartında bakiye yok; CLFLINE hareketlerinden hesaplanır */
+export async function logoFetchArpBalanceMap(
+  cfg: LogoRestConfig,
+  codes?: string[]
+): Promise<Map<string, LogoArpBalanceRow>> {
+  const ctx = resolveLogoContext(cfg);
+  const { firm, period } = logoSqlFirmPeriod(ctx.firmNr, ctx.periodNr);
+  const clcard = `LG_${firm}_CLCARD`;
+  const clfline = `LG_${firm}_${period}_CLFLINE`;
+
+  let codeFilter = '';
+  if (codes?.length) {
+    const safe = codes.map((c) => logoSqlLit(c.trim())).join(',');
+    codeFilter = ` AND C.CODE IN (${safe})`;
+  }
+
+  const tsql = `SELECT C.CODE AS CODE,
+      SUM(CASE WHEN L.SIGN = 0 THEN L.AMOUNT ELSE 0 END) AS DEBIT,
+      SUM(CASE WHEN L.SIGN = 1 THEN L.AMOUNT ELSE 0 END) AS CREDIT,
+      SUM(CASE WHEN L.SIGN = 0 THEN L.AMOUNT ELSE -L.AMOUNT END) AS BALANCE
+    FROM ${clcard} C
+    INNER JOIN ${clfline} L ON L.CLIENTREF = C.LOGICALREF
+    WHERE ISNULL(L.CANCELLED,0) = 0${codeFilter}
+    GROUP BY C.CODE`;
+
+  try {
+    const rows = await logoRunTsql(cfg, tsql);
+    const map = new Map<string, LogoArpBalanceRow>();
+    for (const row of rows) {
+      const code = String(row.CODE ?? row.code ?? '').trim();
+      if (!code) continue;
+      map.set(code, {
+        debit: logoNumVal(row.DEBIT ?? row.debit, 0),
+        credit: logoNumVal(row.CREDIT ?? row.credit, 0),
+        balance: logoNumVal(row.BALANCE ?? row.balance, 0),
+      });
+    }
+    return map;
+  } catch {
+    return new Map();
+  }
+}
+
 export async function logoGetDataPreview(cfg: LogoRestConfig): Promise<LogoDataPreview> {
   const ctx = resolveLogoContext(cfg);
   const resources: Record<string, number | null> = {};

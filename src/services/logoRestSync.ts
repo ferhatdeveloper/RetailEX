@@ -6,6 +6,8 @@ import {
   ensureLogoBridgeReachable,
   logoEnsureSession,
   logoFetchAllPaginated,
+  logoFetchArpBalanceMap,
+  logoFetchItemStockMap,
   logoListResource,
   resolveLogoContext,
   type LogoRestConfig,
@@ -269,7 +271,10 @@ function mapLogoItem(rec: Record<string, unknown>, firmNr: string): Record<strin
   const activeFlag = numVal(logoField(rec, 'ACTIVE', 'active'), 0);
   const isActive = cancelled !== 1 && activeFlag !== 1;
   const refId = logoRefId(rec);
-  const stock = numVal(logoField(rec, 'ONHAND', 'onHand', 'STOCK', 'stock'), 0);
+  const stock = numVal(
+    logoField(rec, 'ONHAND', 'onHand', 'STOCK', 'stock', 'TOTAL_ONHAND', 'REALAMOUNT'),
+    0
+  );
 
   return {
     firm_nr: firmNr,
@@ -292,7 +297,7 @@ function mapLogoArp(rec: Record<string, unknown>, firmNr: string): Record<string
   const name =
     trunc(logoField(rec, 'TITLE', 'DEFINITION_', 'NAME', 'title', 'definition', 'name'), 255) || 'İsimsiz';
   const refId = logoRefId(rec);
-  const balance = numVal(logoField(rec, 'BALANCE', 'balance', 'DEBIT', 'debit'), 0);
+  const balance = numVal(logoField(rec, 'BALANCE', 'balance', 'ACC_RISK_TOTAL'), 0);
 
   return {
     firm_nr: firmNr,
@@ -382,6 +387,7 @@ async function upsertProductsWithApi(
           taxRate: numVal(row.vat_rate, 18),
           price: numVal(row.price, 0),
           unit: String(row.unit || 'Adet'),
+          stock: numVal(row.stock, 0),
           isActive: row.is_active !== false,
         } as never);
         upserted += 1;
@@ -409,7 +415,7 @@ async function upsertProductsWithApi(
           taxRate: numVal(row.vat_rate, 18),
           price: numVal(row.price, 0),
           unit: String(row.unit || 'Adet'),
-          stock: 0,
+          stock: numVal(row.stock, 0),
           cost: 0,
           firm_nr: ERP_SETTINGS.firmNr,
           isActive: row.is_active !== false,
@@ -513,6 +519,7 @@ async function upsertCustomersWithApi(
           city: String(row.city || ''),
           taxNumber: String(row.tax_nr || ''),
           taxOffice: String(row.tax_office || ''),
+          balance: numVal(row.balance, 0),
         } as never);
         upserted += 1;
         if (i % LOG_EVERY === 0 || i === total - 1) {
@@ -535,6 +542,7 @@ async function upsertCustomersWithApi(
           city: String(row.city || ''),
           taxNumber: String(row.tax_nr || ''),
           taxOffice: String(row.tax_office || ''),
+          balance: numVal(row.balance, 0),
           firm_nr: ERP_SETTINGS.firmNr,
         } as never);
         upserted += 1;
@@ -618,6 +626,7 @@ async function upsertSuppliersWithApi(
           city: String(row.city || ''),
           tax_number: String(row.tax_nr || ''),
           tax_office: String(row.tax_office || ''),
+          balance: numVal(row.balance, 0),
         } as never);
       } else {
         await supplierAPI.create({
@@ -629,6 +638,7 @@ async function upsertSuppliersWithApi(
           city: String(row.city || ''),
           tax_number: String(row.tax_nr || ''),
           tax_office: String(row.tax_office || ''),
+          balance: numVal(row.balance, 0),
           cardType: 'supplier',
           firm_nr: ERP_SETTINGS.firmNr,
         } as never);
@@ -671,6 +681,14 @@ export async function syncLogoProductsFromRest(
   for (const raw of rawItems) {
     const mapped = mapLogoItem(unwrapLogoRecord(raw), firmNr);
     if (mapped) rows.push(mapped);
+  }
+
+  onProgress?.({ phase: 'products', message: 'Logo stok miktarları (STINVTOT) okunuyor…' });
+  const stockMap = await logoFetchItemStockMap(cfg);
+  for (const row of rows) {
+    const code = String(row.code || '');
+    const stock = stockMap.get(code);
+    if (stock != null) row.stock = stock;
   }
 
   onProgress?.({
@@ -717,6 +735,15 @@ export async function syncLogoArpsFromRest(
     if (!mapped) continue;
     if (opts.customers && roles.customer) customerRows.push(mapped);
     if (opts.suppliers && roles.supplier) supplierRows.push({ ...mapped });
+  }
+
+  if (customerRows.length > 0 || supplierRows.length > 0) {
+    onProgress?.({ phase: 'customers', message: 'Logo cari bakiyeleri (CLFLINE) okunuyor…' });
+    const balanceMap = await logoFetchArpBalanceMap(cfg);
+    for (const row of [...customerRows, ...supplierRows]) {
+      const bal = balanceMap.get(String(row.code || ''));
+      if (bal) row.balance = bal.balance;
+    }
   }
 
   let customerResult = empty;

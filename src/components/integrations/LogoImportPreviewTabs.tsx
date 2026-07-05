@@ -5,8 +5,11 @@ import type { ColumnsType } from 'antd/es/table';
 import {
   loadLogoRestConfig,
   logoEnsureSession,
+  logoFetchArpBalanceMap,
+  logoFetchItemStockMap,
   logoListResource,
   resolveLogoContext,
+  type LogoArpBalanceRow,
   type LogoResourceName,
 } from '../../services/logoRestApi';
 import { logoField, numVal, unwrapLogoRecord } from '../../services/logoRestSync';
@@ -321,13 +324,32 @@ const UNIQUE_RESOURCES = [...new Set(PREVIEW_TABS.map((t) => t.resource))];
 function mapResourceToTabs(
   resource: LogoResourceName,
   items: unknown[],
-  count: number | null
+  count: number | null,
+  enrich?: {
+    stockByCode?: Map<string, number>;
+    balanceByCode?: Map<string, LogoArpBalanceRow>;
+  }
 ): { rowsByTab: Record<string, PreviewRow[]>; countsByTab: Record<string, number | null> } {
   const rowsByTab: Record<string, PreviewRow[]> = {};
   const countsByTab: Record<string, number | null> = {};
   for (const def of PREVIEW_TABS.filter((t) => t.resource === resource)) {
     rowsByTab[def.key] = items
-      .map((item, index) => def.mapRow(item, index))
+      .map((item, index) => {
+        const row = def.mapRow(item, index);
+        if (row == null) return null;
+        const rec = unwrapLogoRecord(item);
+        const code = str(rec, 'CODE', 'code');
+        if (code && enrich?.stockByCode?.has(code) && 'onhand' in row) {
+          row.onhand = enrich.stockByCode.get(code) ?? row.onhand;
+        }
+        if (code && enrich?.balanceByCode?.has(code)) {
+          const bal = enrich.balanceByCode.get(code)!;
+          if ('balance' in row) row.balance = bal.balance;
+          if ('debit' in row) row.debit = bal.debit;
+          if ('credit' in row) row.credit = bal.credit;
+        }
+        return row;
+      })
       .filter((r): r is PreviewRow => r != null);
     countsByTab[def.key] = count;
   }
@@ -399,8 +421,24 @@ export function LogoImportPreviewTabs({ connected }: Props) {
   );
 
   const applyResource = useCallback(
-    (resource: LogoResourceName, entry: ResourceCacheEntry) => {
-      const mapped = mapResourceToTabs(resource, entry.items, entry.count);
+    async (resource: LogoResourceName, entry: ResourceCacheEntry) => {
+      const cfg = loadLogoRestConfig();
+      const codes = entry.items
+        .map((item) => str(unwrapLogoRecord(item), 'CODE', 'code'))
+        .filter(Boolean);
+
+      let enrich: {
+        stockByCode?: Map<string, number>;
+        balanceByCode?: Map<string, LogoArpBalanceRow>;
+      } | undefined;
+
+      if (resource === 'items' && codes.length > 0) {
+        enrich = { stockByCode: await logoFetchItemStockMap(cfg, codes) };
+      } else if (resource === 'Arps' && codes.length > 0) {
+        enrich = { balanceByCode: await logoFetchArpBalanceMap(cfg, codes) };
+      }
+
+      const mapped = mapResourceToTabs(resource, entry.items, entry.count, enrich);
       mergeTabData(mapped.rowsByTab, mapped.countsByTab);
     },
     [mergeTabData]
@@ -421,7 +459,7 @@ export function LogoImportPreviewTabs({ connected }: Props) {
           withCount: true,
           force,
         });
-        applyResource(def.resource, entry);
+        await applyResource(def.resource, entry);
       } catch (e: unknown) {
         setError(e instanceof Error ? e.message : String(e));
         setRowsByTab((prev) => ({ ...prev, [tabKey]: [] }));
@@ -448,7 +486,7 @@ export function LogoImportPreviewTabs({ connected }: Props) {
             withCount: true,
             force: true,
           });
-          applyResource(resource, entry);
+            await applyResource(resource, entry);
         } catch (e: unknown) {
           setError((prev) => prev || (e instanceof Error ? e.message : String(e)));
         } finally {
