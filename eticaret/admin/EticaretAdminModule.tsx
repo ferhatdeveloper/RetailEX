@@ -489,13 +489,14 @@ export function EticaretAdminModule() {
 
   if (loading) {
     return (
-      <div style={{ padding: 48, textAlign: 'center' }}>
+      <div className="rex-eticaret-admin-root rex-eticaret-admin-loading">
         <Text>Yükleniyor…</Text>
       </div>
     );
   }
 
   return (
+    <div className="rex-eticaret-admin-root">
     <Layout style={{ minHeight: '100vh', background: '#f0f2f5' }}>
       <Sider
         collapsible
@@ -594,5 +595,6 @@ export function EticaretAdminModule() {
         </Content>
       </Layout>
     </Layout>
+    </div>
   );
 }

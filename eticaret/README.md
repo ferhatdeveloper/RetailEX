@@ -11,7 +11,7 @@ eticaret/
 │   ├── registry.ts       # Tema varyantları + önizleme görselleri
 │   └── ella/             # Ella HTML (49 sayfa, assets, lib)
 ├── storefront/           # React vitrin (ürün listesi + Ella CSS)
-├── admin/                # Sistem ayarları — resimli tema seçici
+├── admin/                # /mgz yönetim paneli (izole bootstrap + CSS)
 └── README.md
 ```
 

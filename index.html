@@ -17,6 +17,9 @@
       if (/^\/(magaza|shop)(\/|$)/.test(location.pathname)) {
         document.documentElement.classList.add('rex-eticaret-route');
         document.write('<style>html.rex-eticaret-route,html.rex-eticaret-route body{background:#fff!important;margin:0;padding:0;min-height:100vh}</style>');
+      } else if (/^\/mgz(\/|$)/.test(location.pathname)) {
+        document.documentElement.classList.add('rex-eticaret-admin-route');
+        document.write('<style>html.rex-eticaret-admin-route,html.rex-eticaret-admin-route body{background:#f0f2f5!important;margin:0;padding:0;min-height:100vh}</style>');
       }
     })();
   </script>
