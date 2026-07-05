@@ -21,9 +21,6 @@ out/
 scripts/whatsapp-bridge/.wa-auth/
 scripts/whatsapp-bridge/node_modules/
 
-# Rongta resmi terazi PDF'leri (npm run scale-bridge:fetch-docs ile indirilir)
-scripts/scale-bridge/sdk/docs/*.pdf
-
 .DS_Store
 *.tsbuildinfo
 *.pem

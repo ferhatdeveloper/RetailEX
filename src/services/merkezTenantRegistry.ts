@@ -485,11 +485,6 @@ export function tenantRowToAppConfigPatch(
     merkez_display_name: row.display_name,
   };
 
-  const bridgeUrl = (row.scale_bridge_url || '').trim();
-  const bridgeToken = row.scale_bridge_token != null ? String(row.scale_bridge_token) : '';
-  if (bridgeUrl) patch.scale_bridge_url = normalizeBaseUrl(bridgeUrl);
-  if (bridgeToken.trim()) patch.scale_bridge_token = bridgeToken.trim();
-
   const logoRestUrl = (row.logo_rest_api_url || '').trim();
   if (logoRestUrl) patch.logo_rest_api_url = normalizeLogoRestBaseUrl(logoRestUrl);
 

@@ -15,11 +15,6 @@ import type { Product } from '../App';
 import { RONGTA_DEFAULT_PORT } from './rongtaRlsProtocol';
 import { rongtaTestConnectionDetailed, rongtaSendPluRecords } from '../services/rongtaScaleTransport';
 import { productsToRongtaPluRecords } from './rongtaRlsProtocol';
-import {
-  scaleBridgeTestDeviceDetailed,
-  scaleBridgeSendProducts,
-  isScaleBridgeMode,
-} from '../services/scaleBridgeApi';
 
 export interface ScaleDevice {
   id: string;
@@ -67,10 +62,6 @@ export interface ScaleTestResult {
  */
 export async function testScaleConnectionDetailed(device: ScaleDevice): Promise<ScaleTestResult> {
   try {
-    if (isScaleBridgeMode() && device.id) {
-      return scaleBridgeTestDeviceDetailed(device);
-    }
-
     if (device.brand === 'rongta' && device.connectionType === 'tcp' && device.ipAddress) {
       return rongtaTestConnectionDetailed({
         ipAddress: device.ipAddress,
@@ -144,10 +135,6 @@ export async function sendProductsToScale(
         expiryDays: 0,
       };
     });
-
-    if (isScaleBridgeMode() && device.id) {
-      return scaleBridgeSendProducts(device, products, pluStartIndex);
-    }
 
     if (device.brand === 'rongta' && device.connectionType === 'tcp' && device.ipAddress) {
       const records = productsToRongtaPluRecords(
@@ -280,20 +267,6 @@ export async function sendSingleProductToScale(
  */
 export async function readProductsFromScale(device: ScaleDevice): Promise<ScaleProduct[]> {
   try {
-    if (isScaleBridgeMode() && device.id && device.brand === 'rongta') {
-      const { scaleBridgeFetchSales } = await import('../services/scaleBridgeApi');
-      const result = await scaleBridgeFetchSales(device);
-      if (result.records?.length) {
-        return result.records.map((r) => ({
-          pluCode: r.freshCode,
-          name: r.freshCode,
-          price: r.unitPrice,
-          unit: 'KG',
-        }));
-      }
-      return [];
-    }
-
     if (device.brand === 'rongta' && device.connectionType === 'tcp' && device.ipAddress) {
       const { rongtaFetchSalesRecords } = await import('../services/rongtaScaleTransport');
       const result = await rongtaFetchSalesRecords({

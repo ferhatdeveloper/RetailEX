@@ -474,7 +474,7 @@ Function PageRoleSelection
   Pop $RoleServer_Obj
   SendMessage $RoleServer_Obj ${WM_SETFONT} $1 1
   
-  ${NSD_CreateLabel} 18u 56u 100% 24u "Bulut/hibrit merkez (api.retailex.app) kullanıyorsanız Terminal seçin.$\r$\nTerazi (ScaleBridge) ve Redis/RabbitMQ bu kuruluma dahil değildir — ayrı paketlerdir."
+  ${NSD_CreateLabel} 18u 56u 100% 24u "Bulut/hibrit merkez (api.retailex.app) kullanıyorsanız Terminal seçin.$\r$\nRedis/RabbitMQ isteğe bağlıdır (sonraki adım); terazi entegrasyonu uygulama içinden veya ayrı yerel yazılımınızdan yapılır."
   Pop $0
   SendMessage $0 ${WM_SETFONT} $2 1
   
@@ -1026,7 +1026,7 @@ Section Install
   FileWrite $9 "- Messaging: $AMQPUrl$\r$\n"
   FileWrite $9 "$\r$\nÖnemli Notlar:$\r$\n"
   FileWrite $9 "1. Logo entegrasyonu: Uygulama → Entegrasyonlar → Logo ERP (REST veya LOBJECT).$\r$\n"
-  FileWrite $9 "2. Terazi (ScaleBridge): Ana kuruluma dahil değil. Ayrı paket: RetailEX-ScaleBridge-Setup.exe (GitHub Releases).$\r$\n"
+  FileWrite $9 "2. Terazi: Doğrudan TCP (Rongta) veya ayrı yerel terazi uygulamanız; RetailEX içinde Terazi Yönetimi.$\r$\n"
   FileWrite $9 "3. Güvenlik duvarından (Firewall) 8000, 5432 portlarına izin verildiğinden emin olun.$\r$\n"
   FileWrite $9 "4. WebSocket adresi ($WSUrl) uygulama ve merkez senkron için kullanılır; ağ/firewall ayarlarını buna göre doğrulayın.$\r$\n"
   FileWrite $9 "5. Servisler kurulmadıysa '$INSTDIR\install-services-manual.cmd' (veya .ps1) dosyasını Yönetici olarak çalıştırın.$\r$\n"

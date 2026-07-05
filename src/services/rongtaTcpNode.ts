@@ -1,6 +1,6 @@
 /**
  * Rongta RLS TCP istemcisi (Node.js) — pg_bridge tarafında kullanılır.
- * Protokol: src/utils/rongtaRlsProtocol.ts (scale-bridge SDK ile uyumlu)
+ * Protokol: src/utils/rongtaRlsProtocol.ts
  */
 
 import net from 'node:net';

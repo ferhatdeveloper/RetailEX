@@ -44,10 +44,10 @@ export function ScaleScannerModal({ onDevicesFound, onClose }: ScaleScannerModal
         if (cancelled) return;
         setStartIP(defaults.startIP);
         setEndIP(defaults.endIP);
-        setRangeHint('Köprü servisinden algılanan yerel ağ aralığı yüklendi.');
+        setRangeHint(defaults.hint || 'Varsayılan IP aralığı yüklendi.');
       } catch {
         if (!cancelled) {
-          setRangeHint('Köprüye bağlanılamadı — IP aralığını elle girin veya mağaza PC\'de köprüyü başlatın.');
+          setRangeHint('Otomatik tarama kullanılamıyor — IP aralığını elle girin veya teraziyi manuel ekleyin.');
         }
       }
     })();

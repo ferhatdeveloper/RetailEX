@@ -2,20 +2,12 @@
 import { Plus, Wifi, WifiOff, Settings, Trash2, RefreshCw, Send, Search, Download, Upload } from 'lucide-react';
 import { toast } from 'sonner';
 import type { ScaleDevice } from '../../utils/scaleProtocol';
-import { testScaleConnectionDetailed, getScaleInfo } from '../../utils/scaleProtocol';
+import { testScaleConnectionDetailed, testScaleConnection, getScaleInfo } from '../../utils/scaleProtocol';
 import { formatScalePortLabel } from '../../utils/scalePort';
 
 interface ScaleManagementProps {
   devices: ScaleDevice[];
   onDevicesChange: (devices: ScaleDevice[]) => void;
-  bridgeMode?: boolean;
-  bridgeOnline?: boolean;
-  bridgeAuthOk?: boolean;
-  bridgeStatusMessage?: string;
-  bridgeSourceLabel?: string;
-  onRefreshBridge?: () => void;
-  onOpenBridgeSettings?: () => void;
-  onOpenLocalBridgeAdmin?: () => void;
   onDeleteDevice?: (id: string) => void;
   onScanNetwork: () => void;
   onAddDevice: () => void;
@@ -26,14 +18,6 @@ interface ScaleManagementProps {
 export function ScaleManagement({
   devices,
   onDevicesChange,
-  bridgeMode,
-  bridgeOnline,
-  bridgeAuthOk = true,
-  bridgeStatusMessage,
-  bridgeSourceLabel,
-  onRefreshBridge,
-  onOpenBridgeSettings,
-  onOpenLocalBridgeAdmin,
   onDeleteDevice,
   onScanNetwork,
   onAddDevice,
@@ -198,64 +182,10 @@ export function ScaleManagement({
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-gray-900">Terazi Yönetimi</h1>
-            <p className="text-sm text-gray-600 mt-1">
-              Terazileri yönetin, ürün gönderimi yapın
-              {bridgeMode && (
-                <span
-                  className={`ml-2 inline-flex items-center gap-1 ${
-                    bridgeOnline && bridgeAuthOk
-                      ? 'text-green-600'
-                      : bridgeOnline
-                        ? 'text-orange-600'
-                        : 'text-amber-600'
-                  }`}
-                  title={bridgeStatusMessage}
-                >
-                  · Köprü{' '}
-                  {bridgeOnline && bridgeAuthOk
-                    ? 'çevrimiçi'
-                    : bridgeOnline
-                      ? 'yetki hatası (token)'
-                      : 'bağlantı yok'}
-                  {bridgeSourceLabel ? ` (${bridgeSourceLabel})` : ''}
-                </span>
-              )}
-              {bridgeMode && bridgeStatusMessage && (!bridgeOnline || !bridgeAuthOk) && (
-                <span className="block text-xs text-amber-700 mt-1 max-w-xl">{bridgeStatusMessage}</span>
-              )}
-            </p>
+            <p className="text-sm text-gray-600 mt-1">Terazileri yönetin, doğrudan TCP ile ürün gönderimi yapın</p>
           </div>
           
           <div className="flex items-center gap-3">
-            {onOpenLocalBridgeAdmin && (
-              <button
-                type="button"
-                onClick={onOpenLocalBridgeAdmin}
-                className="flex items-center gap-2 px-4 py-2 bg-slate-800 text-white rounded hover:bg-slate-900 transition-colors text-sm"
-                title="Mağaza PC'de kurulu Windows terazi köprüsü yönetim paneli"
-              >
-                <Settings className="w-4 h-4" />
-                <span>Köprü Arayüzü (3012)</span>
-              </button>
-            )}
-            {onOpenBridgeSettings && (
-              <button
-                onClick={onOpenBridgeSettings}
-                className="flex items-center gap-2 px-4 py-2 bg-amber-100 text-amber-900 rounded hover:bg-amber-200 transition-colors text-sm"
-              >
-                <Settings className="w-4 h-4" />
-                <span>Köprü Ayarları</span>
-              </button>
-            )}
-            <button
-              type="button"
-              onClick={() => onRefreshBridge?.()}
-              className="flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded hover:bg-gray-200 transition-colors"
-              title="Köprü bağlantısını yeniden dene"
-            >
-              <RefreshCw className="w-4 h-4" />
-              <span>Köprüyü Yenile</span>
-            </button>
             <button
               onClick={handleTestAllConnections}
               className="flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded hover:bg-gray-200 transition-colors"

@@ -1,7 +1,6 @@
 /**
  * Rongta RLS1000 / RLS1100 etiket terazisi TCP protokolü.
  * Kaynak: RLS1000 Software User Manual §2.2–2.5 (resmi terazi SDK yok; TCP spesifikasyonu esas alınır).
- * Node SDK eşleniği: scripts/scale-bridge/sdk/rongta/
  */
 
 import { getScaleBarcodeType } from './scaleBarcodeConfig';

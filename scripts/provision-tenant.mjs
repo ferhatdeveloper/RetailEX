@@ -220,7 +220,6 @@ async function upsertTenantRegistry({ code, display, module, dbName, apiBase, dr
   await withClient(merkezDb, async (client) => {
     const alterPaths = [
       'database/scripts/merkez_tenant_registry_add_connection_fields.sql',
-      'database/scripts/merkez_tenant_registry_add_scale_bridge_fields.sql',
       'database/scripts/merkez_tenant_registry_add_logo_rest_fields.sql',
     ];
     for (const p of alterPaths) {
