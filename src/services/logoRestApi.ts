@@ -627,9 +627,33 @@ function saveLogoRestSession(session: LogoRestSession | null): void {
   if (typeof window === 'undefined') return;
   if (!session) {
     sessionStorage.removeItem(STORAGE_SESSION);
+    logoContextValidatedAt = 0;
+    logoLastValidatedContextKey = '';
     return;
   }
   sessionStorage.setItem(STORAGE_SESSION, JSON.stringify(session));
+}
+
+/** Paralel logoListResource çağrılarında tek oturum doğrulaması */
+let logoEnsureSessionInflight: Promise<LogoRestSession> | null = null;
+let logoContextValidatedAt = 0;
+let logoLastValidatedContextKey = '';
+const LOGO_CONTEXT_VALIDATE_TTL_MS = 90_000;
+
+function logoContextValidationKey(ctx: LogoContextSelection, cfg: LogoRestConfig): string {
+  return `${normalizeBaseUrl(cfg.baseUrl)}|${ctx.logoDb}|${ctx.firmNr}|${ctx.periodNr}`;
+}
+
+function markLogoContextValidated(ctx: LogoContextSelection, cfg: LogoRestConfig): void {
+  logoContextValidatedAt = Date.now();
+  logoLastValidatedContextKey = logoContextValidationKey(ctx, cfg);
+}
+
+function isLogoContextRecentlyValidated(ctx: LogoContextSelection, cfg: LogoRestConfig): boolean {
+  return (
+    logoLastValidatedContextKey === logoContextValidationKey(ctx, cfg) &&
+    Date.now() - logoContextValidatedAt < LOGO_CONTEXT_VALIDATE_TTL_MS
+  );
 }
 
 /** Senkron öncesi taze Logo oturumu (bayat token / firma-dönem kayması önlenir) */
@@ -982,6 +1006,7 @@ export async function logoCompanyLogin(
   if (current.firm === firmNr && current.period === periodNr) {
     const next: LogoRestSession = { ...session, firmNr, periodNr };
     saveLogoRestSession(next);
+    markLogoContextValidated(resolveLogoContext(cfg), cfg);
     return next;
   }
 
@@ -1001,6 +1026,7 @@ export async function logoCompanyLogin(
     if (after.firm === firmNr && after.period === periodNr) {
       const next: LogoRestSession = { ...session, firmNr, periodNr };
       saveLogoRestSession(next);
+      markLogoContextValidated(resolveLogoContext(cfg), cfg);
       return next;
     }
     await logoCompanyLogout(cfg, session);
@@ -1015,6 +1041,7 @@ export async function logoCompanyLogin(
 
   const next: LogoRestSession = { ...session, firmNr, periodNr };
   saveLogoRestSession(next);
+  markLogoContextValidated(resolveLogoContext(cfg), cfg);
   return next;
 }
 
@@ -1031,16 +1058,20 @@ export async function logoAuthenticate(
   return logoCompanyLogin(cfg, session, fNr, pNr);
 }
 
-export async function logoEnsureSession(cfg: LogoRestConfig): Promise<LogoRestSession> {
+async function logoEnsureSessionInner(cfg: LogoRestConfig): Promise<LogoRestSession> {
   const baseUrl = requireBaseUrl(cfg);
   assertLogoReachableInWebContext(baseUrl);
   const ctx = resolveLogoContext(cfg);
   const existing = loadLogoRestSession();
   if (existing && Date.now() < existing.expiresAt && sessionMatchesContext(existing, ctx, cfg)) {
+    if (isLogoContextRecentlyValidated(ctx, cfg)) {
+      return existing;
+    }
     // Firma kataloğu (CAPI/Firms) CompanyLogout sonrası token geçerli kalır; Logo tarafında firma oturumu kapanmış olabilir.
     try {
       const current = await logoGetCurrentFirmPeriod(cfg, existing);
       if (current.firm === ctx.firmNr && current.period === ctx.periodNr) {
+        markLogoContextValidated(ctx, cfg);
         return existing;
       }
     } catch {
@@ -1049,6 +1080,23 @@ export async function logoEnsureSession(cfg: LogoRestConfig): Promise<LogoRestSe
     return logoCompanyLogin(cfg, existing, ctx.firmNr, ctx.periodNr);
   }
   return logoAuthenticate(cfg, ctx.firmNr, ctx.periodNr);
+}
+
+/** Logo REST oturumunu hazırlar; paralel isteklerde tek doğrulama paylaşılır. */
+export async function logoEnsureSession(cfg: LogoRestConfig): Promise<LogoRestSession> {
+  if (logoEnsureSessionInflight) {
+    const session = await logoEnsureSessionInflight;
+    const ctx = resolveLogoContext(cfg);
+    if (sessionMatchesContext(session, ctx, cfg)) return session;
+  }
+
+  const task = logoEnsureSessionInner(cfg);
+  logoEnsureSessionInflight = task;
+  try {
+    return await task;
+  } finally {
+    if (logoEnsureSessionInflight === task) logoEnsureSessionInflight = null;
+  }
 }
 
 export async function logoSwitchContext(

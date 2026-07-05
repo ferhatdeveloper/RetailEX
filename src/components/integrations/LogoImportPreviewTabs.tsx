@@ -1,9 +1,10 @@
-import { useCallback, useMemo, useState } from 'react';
-import { Alert, Button, Space, Spin, Table, Tabs, Typography } from 'antd';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Alert, Button, Progress, Space, Spin, Table, Tabs, Typography } from 'antd';
 import { CloudDownloadOutlined, ReloadOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import {
   loadLogoRestConfig,
+  logoEnsureSession,
   logoListResource,
   resolveLogoContext,
   type LogoResourceName,
@@ -11,6 +12,26 @@ import {
 import { logoField, numVal, unwrapLogoRecord } from '../../services/logoRestSync';
 
 const { Text } = Typography;
+
+const LIST_LIMIT = 25;
+const FETCH_CONCURRENCY = 4;
+
+async function runPool<T>(
+  items: T[],
+  concurrency: number,
+  fn: (item: T, index: number) => Promise<void>
+): Promise<void> {
+  if (items.length === 0) return;
+  let nextIndex = 0;
+  const workers = Array.from({ length: Math.min(concurrency, items.length) }, async () => {
+    while (nextIndex < items.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      await fn(items[index], index);
+    }
+  });
+  await Promise.all(workers);
+}
 
 type PreviewRow = Record<string, string | number | null>;
 
@@ -20,6 +41,12 @@ type PreviewTabDef = {
   resource: LogoResourceName;
   mapRow: (raw: unknown, index: number) => PreviewRow | null;
   columns: ColumnsType<PreviewRow>;
+};
+
+type ResourceCacheEntry = {
+  items: unknown[];
+  count: number | null;
+  fetchedAt: number;
 };
 
 function str(rec: Record<string, unknown>, ...keys: string[]): string {
@@ -41,7 +68,7 @@ function fmtDate(rec: Record<string, unknown>): string {
 const PREVIEW_TABS: PreviewTabDef[] = [
   {
     key: 'items',
-    label: 'Malzemeler',
+    label: 'Malzeme bilgileri',
     resource: 'items',
     mapRow: (raw, i) => {
       const rec = unwrapLogoRecord(raw);
@@ -289,6 +316,24 @@ const PREVIEW_TABS: PreviewTabDef[] = [
   },
 ];
 
+const UNIQUE_RESOURCES = [...new Set(PREVIEW_TABS.map((t) => t.resource))];
+
+function mapResourceToTabs(
+  resource: LogoResourceName,
+  items: unknown[],
+  count: number | null
+): { rowsByTab: Record<string, PreviewRow[]>; countsByTab: Record<string, number | null> } {
+  const rowsByTab: Record<string, PreviewRow[]> = {};
+  const countsByTab: Record<string, number | null> = {};
+  for (const def of PREVIEW_TABS.filter((t) => t.resource === resource)) {
+    rowsByTab[def.key] = items
+      .map((item, index) => def.mapRow(item, index))
+      .filter((r): r is PreviewRow => r != null);
+    countsByTab[def.key] = count;
+  }
+  return { rowsByTab, countsByTab };
+}
+
 type Props = {
   connected: boolean;
 };
@@ -297,46 +342,133 @@ export function LogoImportPreviewTabs({ connected }: Props) {
   const [activeKey, setActiveKey] = useState(PREVIEW_TABS[0].key);
   const [loadingKey, setLoadingKey] = useState<string | null>(null);
   const [loadingAll, setLoadingAll] = useState(false);
+  const [loadProgress, setLoadProgress] = useState<{ done: number; total: number } | null>(null);
   const [error, setError] = useState('');
   const [rowsByTab, setRowsByTab] = useState<Record<string, PreviewRow[]>>({});
   const [countsByTab, setCountsByTab] = useState<Record<string, number | null>>({});
 
+  const resourceCacheRef = useRef<Map<LogoResourceName, ResourceCacheEntry>>(new Map());
+  const inflightRef = useRef<Map<LogoResourceName, Promise<ResourceCacheEntry>>>(new Map());
+
   const ctx = useMemo(() => resolveLogoContext(loadLogoRestConfig()), []);
 
-  const loadTab = useCallback(async (tabKey: string) => {
-    const def = PREVIEW_TABS.find((t) => t.key === tabKey);
-    if (!def) return;
-    setLoadingKey(tabKey);
-    setError('');
-    try {
-      const cfg = loadLogoRestConfig();
-      const result = await logoListResource(cfg, def.resource, { limit: 50, withCount: true });
-      const rows = result.items
-        .map((item, index) => def.mapRow(item, index))
-        .filter((r): r is PreviewRow => r != null);
-      setRowsByTab((prev) => ({ ...prev, [tabKey]: rows }));
-      setCountsByTab((prev) => ({ ...prev, [tabKey]: result.count }));
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : String(e));
-      setRowsByTab((prev) => ({ ...prev, [tabKey]: [] }));
-    } finally {
-      setLoadingKey(null);
-    }
-  }, []);
+  const mergeTabData = useCallback(
+    (partialRows: Record<string, PreviewRow[]>, partialCounts: Record<string, number | null>) => {
+      setRowsByTab((prev) => ({ ...prev, ...partialRows }));
+      setCountsByTab((prev) => ({ ...prev, ...partialCounts }));
+    },
+    []
+  );
+
+  const fetchResource = useCallback(
+    async (
+      resource: LogoResourceName,
+      opts: { limit: number; withCount: boolean; force?: boolean }
+    ): Promise<ResourceCacheEntry> => {
+      const cached = resourceCacheRef.current.get(resource);
+      if (!opts.force && cached && cached.items.length > 0 && opts.limit <= cached.items.length) {
+        return cached;
+      }
+
+      const inflight = inflightRef.current.get(resource);
+      if (inflight && !opts.force) return inflight;
+
+      const task = (async () => {
+        const cfg = loadLogoRestConfig();
+        const result = await logoListResource(cfg, resource, {
+          limit: opts.limit,
+          withCount: opts.withCount,
+        });
+        const entry: ResourceCacheEntry = {
+          items: result.items,
+          count: result.count,
+          fetchedAt: Date.now(),
+        };
+        resourceCacheRef.current.set(resource, entry);
+        return entry;
+      })();
+
+      inflightRef.current.set(resource, task);
+      try {
+        return await task;
+      } finally {
+        inflightRef.current.delete(resource);
+      }
+    },
+    []
+  );
+
+  const applyResource = useCallback(
+    (resource: LogoResourceName, entry: ResourceCacheEntry) => {
+      const mapped = mapResourceToTabs(resource, entry.items, entry.count);
+      mergeTabData(mapped.rowsByTab, mapped.countsByTab);
+    },
+    [mergeTabData]
+  );
+
+  const loadTab = useCallback(
+    async (tabKey: string, force = false) => {
+      const def = PREVIEW_TABS.find((t) => t.key === tabKey);
+      if (!def) return;
+
+      if (!force && rowsByTab[tabKey]?.length) return;
+
+      setLoadingKey(tabKey);
+      setError('');
+      try {
+        const entry = await fetchResource(def.resource, {
+          limit: LIST_LIMIT,
+          withCount: true,
+          force,
+        });
+        applyResource(def.resource, entry);
+      } catch (e: unknown) {
+        setError(e instanceof Error ? e.message : String(e));
+        setRowsByTab((prev) => ({ ...prev, [tabKey]: [] }));
+      } finally {
+        setLoadingKey(null);
+      }
+    },
+    [applyResource, fetchResource, rowsByTab]
+  );
 
   const loadAllTabs = useCallback(async () => {
     setLoadingAll(true);
     setError('');
+    setLoadProgress({ done: 0, total: UNIQUE_RESOURCES.length });
+    let done = 0;
+
     try {
-      for (const def of PREVIEW_TABS) {
-        await loadTab(def.key);
-      }
+      await logoEnsureSession(loadLogoRestConfig());
+
+      await runPool(UNIQUE_RESOURCES, FETCH_CONCURRENCY, async (resource) => {
+        try {
+          const entry = await fetchResource(resource, {
+            limit: LIST_LIMIT,
+            withCount: true,
+            force: true,
+          });
+          applyResource(resource, entry);
+        } catch (e: unknown) {
+          setError((prev) => prev || (e instanceof Error ? e.message : String(e)));
+        } finally {
+          done += 1;
+          setLoadProgress({ done, total: UNIQUE_RESOURCES.length });
+        }
+      });
     } finally {
       setLoadingAll(false);
+      setLoadProgress(null);
     }
-  }, [loadTab]);
+  }, [applyResource, fetchResource]);
 
-  const activeDef = PREVIEW_TABS.find((t) => t.key === activeKey) ?? PREVIEW_TABS[0];
+  useEffect(() => {
+    if (!connected) return;
+    const def = PREVIEW_TABS.find((t) => t.key === activeKey);
+    if (!def || rowsByTab[activeKey]?.length || loadingAll) return;
+    void loadTab(activeKey);
+  }, [connected, activeKey, loadTab, loadingAll, rowsByTab]);
+
   const activeRows = rowsByTab[activeKey] ?? [];
   const activeCount = countsByTab[activeKey];
   const isLoading = loadingKey === activeKey || loadingAll;
@@ -366,8 +498,9 @@ export function LogoImportPreviewTabs({ connected }: Props) {
         <Space wrap>
           <Button
             icon={<ReloadOutlined />}
-            loading={isLoading}
-            onClick={() => void loadTab(activeKey)}
+            loading={loadingKey === activeKey}
+            disabled={loadingAll}
+            onClick={() => void loadTab(activeKey, true)}
           >
             Bu sekmeyi yenile
           </Button>
@@ -382,13 +515,22 @@ export function LogoImportPreviewTabs({ connected }: Props) {
         </Space>
       </div>
 
+      {loadProgress ? (
+        <Progress
+          percent={Math.round((loadProgress.done / loadProgress.total) * 100)}
+          size="small"
+          status="active"
+          format={() => `${loadProgress.done}/${loadProgress.total} kaynak`}
+        />
+      ) : null}
+
       {error ? <Alert type="error" showIcon message={error} /> : null}
 
       <Tabs
         activeKey={activeKey}
         onChange={(key) => {
           setActiveKey(key);
-          if (!rowsByTab[key]?.length) void loadTab(key);
+          void loadTab(key);
         }}
         type="card"
         size="small"
@@ -399,7 +541,7 @@ export function LogoImportPreviewTabs({ connected }: Props) {
               {def.label}
               {countsByTab[def.key] != null ? (
                 <Text type="secondary" style={{ marginLeft: 4, fontSize: 11 }}>
-                  ({countsByTab[def.key]})
+                  ({countsByTab[def.key]?.toLocaleString('tr-TR')})
                 </Text>
               ) : null}
             </span>
@@ -410,15 +552,19 @@ export function LogoImportPreviewTabs({ connected }: Props) {
                 size="small"
                 rowKey="key"
                 columns={def.columns}
-                dataSource={activeKey === def.key ? activeRows : rowsByTab[def.key] ?? []}
+                dataSource={rowsByTab[def.key] ?? []}
                 pagination={{ pageSize: 15, showSizeChanger: false, showTotal: (t) => `${t} kayıt` }}
-                locale={{ emptyText: 'Veri yok — "Bu sekmeyi yenile" veya "Tüm verileri listele" kullanın' }}
+                locale={{
+                  emptyText: loadingAll
+                    ? 'Yükleniyor…'
+                    : 'Veri yok — "Bu sekmeyi yenile" veya "Tüm verileri listele" kullanın',
+                }}
                 scroll={{ x: 640 }}
               />
               {activeKey === def.key && activeCount != null && activeRows.length < activeCount ? (
                 <Text type="secondary" style={{ fontSize: 11, display: 'block', marginTop: 8 }}>
-                  Logo REST en fazla 50 kayıt gösterir; toplam {activeCount.toLocaleString('tr-TR')} kayıt.
-                  İçe aktarımda tümü çekilir.
+                  Önizleme: ilk {LIST_LIMIT} kayıt · toplam {activeCount.toLocaleString('tr-TR')}. İçe
+                  aktarımda tümü çekilir.
                 </Text>
               ) : null}
             </Spin>

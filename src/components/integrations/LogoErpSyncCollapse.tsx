@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import { IS_TAURI } from '../../utils/env';
 import {
   loadLogoRestConfig,
+  loadLogoRestSession,
   logoTestConnection,
   getLogoMappingForErp,
   resolveLogoContext,
@@ -36,6 +37,11 @@ export function LogoErpSyncCollapse({ serviceType }: Props) {
 
   const checkRest = useCallback(async () => {
     if (serviceType !== 'rest') return;
+    const session = loadLogoRestSession();
+    if (session && Date.now() < session.expiresAt) {
+      setRestConnected(true);
+      return;
+    }
     const cfg = loadLogoRestConfig();
     const r = await logoTestConnection(cfg);
     setRestConnected(r.ok);
