@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
-import { CalendarClock, Edit, Phone, RefreshCw, Search, X } from 'lucide-react';
+import { CalendarClock, Edit, FileText, MessageSquarePlus, Phone, Plus, RefreshCw, Search, StickyNote, User, Wallet, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { DevExDataGrid } from '../../shared/DevExDataGrid';
+import { ContextMenu } from '../../shared/ContextMenu';
+import { PercentBodyModal, PercentBodyModalScrollBody } from '../../shared/PercentBodyModal';
 import { createColumnHelper } from '@tanstack/react-table';
 import { supplierAPI, type Supplier } from '../../../services/api/suppliers';
 import { useLanguage } from '../../../contexts/LanguageContext';
@@ -12,6 +14,7 @@ import {
   customerCallWeekdaysLabel,
   normalizeCustomerCallStatus,
   normalizeCustomerCallWeekdays,
+  type CustomerCallStatus,
 } from '../../../utils/customerCallPlan';
 
 type DayFilter = 'all' | number;
@@ -28,6 +31,10 @@ export function CustomerCallPlanModule() {
   const [lastStatus, setLastStatus] = useState('planned');
   const [lastNote, setLastNote] = useState('');
   const [saving, setSaving] = useState(false);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; customer: Supplier } | null>(null);
+  const [customNoteCustomer, setCustomNoteCustomer] = useState<Supplier | null>(null);
+  const [customNoteText, setCustomNoteText] = useState('');
+  const [customNoteSaving, setCustomNoteSaving] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -102,6 +109,68 @@ export function CustomerCallPlanModule() {
     } finally {
       setSaving(false);
     }
+  };
+
+  const saveQuickNote = async (customer: Supplier, note: string, status: CustomerCallStatus) => {
+    try {
+      await supplierAPI.update(customer.id, {
+        ...customer,
+        cardType: 'customer',
+        call_last_status: status,
+        call_last_note: note.trim() || null,
+        call_last_at: new Date().toISOString(),
+      });
+      toast.success(tm('callPlanCtxNoteSaved'));
+      setContextMenu(null);
+      await load();
+    } catch (error: any) {
+      toast.error(error?.message || tm('callPlanSaveFailed'));
+    }
+  };
+
+  const handleRowContextMenu = (e: React.MouseEvent, customer: Supplier) => {
+    e.preventDefault();
+    setContextMenu({ x: e.clientX, y: e.clientY, customer });
+  };
+
+  const openCustomNote = (customer: Supplier) => {
+    setCustomNoteCustomer(customer);
+    setCustomNoteText(String(customer.call_last_note ?? ''));
+    setContextMenu(null);
+  };
+
+  const saveCustomNote = async () => {
+    if (!customNoteCustomer) return;
+    const text = customNoteText.trim();
+    if (!text) return;
+    setCustomNoteSaving(true);
+    try {
+      await saveQuickNote(customNoteCustomer, text, 'called');
+      setCustomNoteCustomer(null);
+      setCustomNoteText('');
+    } finally {
+      setCustomNoteSaving(false);
+    }
+  };
+
+  const navigateNewSaleInvoice = (customer: Supplier) => {
+    setContextMenu(null);
+    window.dispatchEvent(new CustomEvent('navigateToScreen', {
+      detail: {
+        screen: 'sales-invoice-wholesale',
+        invoiceSearch: String(customer.code || customer.name || '').trim(),
+      },
+    }));
+  };
+
+  const navigateCollection = (customer: Supplier) => {
+    setContextMenu(null);
+    window.dispatchEvent(new CustomEvent('navigateToScreen', {
+      detail: {
+        screen: 'suppliers',
+        invoiceSearch: String(customer.code || customer.name || '').trim(),
+      },
+    }));
   };
 
   const columnHelper = createColumnHelper<Supplier>();
@@ -195,7 +264,7 @@ export function CustomerCallPlanModule() {
   ];
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-slate-50">
+    <div className="flex h-full min-h-0 flex-col bg-slate-50" onClick={() => setContextMenu(null)}>
       <div className="border-b border-amber-200 bg-gradient-to-r from-amber-500 to-orange-500 px-5 py-4 text-white">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
@@ -256,9 +325,114 @@ export function CustomerCallPlanModule() {
             enableFiltering={false}
             enableColumnResizing
             pageSize={50}
+            onRowContextMenu={handleRowContextMenu}
+            onRowDoubleClick={openEdit}
           />
         </div>
       </div>
+
+      {contextMenu ? (
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          onClose={() => setContextMenu(null)}
+          items={[
+            {
+              id: 'customer-details',
+              label: tm('callPlanCtxCustomerDetails'),
+              icon: User,
+              onClick: () => openEdit(contextMenu.customer),
+              divider: true,
+            },
+            {
+              id: 'new',
+              label: tm('callPlanCtxNew'),
+              icon: Plus,
+              items: [
+                {
+                  id: 'new-sale-invoice',
+                  label: tm('callPlanCtxNewSaleInvoice'),
+                  icon: FileText,
+                  onClick: () => navigateNewSaleInvoice(contextMenu.customer),
+                },
+                {
+                  id: 'new-collection',
+                  label: tm('callPlanCtxNewCollection'),
+                  icon: Wallet,
+                  onClick: () => navigateCollection(contextMenu.customer),
+                },
+              ],
+              divider: true,
+            },
+            {
+              id: 'add-notes',
+              label: tm('callPlanCtxAddNotes'),
+              icon: StickyNote,
+              items: [
+                {
+                  id: 'note-no-order',
+                  label: tm('callPlanCtxNoOrderToday'),
+                  onClick: () => void saveQuickNote(contextMenu.customer, tm('callPlanCtxNoOrderToday'), 'called'),
+                },
+                {
+                  id: 'note-busy',
+                  label: tm('callPlanCtxBusyCallLater'),
+                  onClick: () => void saveQuickNote(contextMenu.customer, tm('callPlanCtxBusyCallLater'), 'callback'),
+                  divider: true,
+                },
+                {
+                  id: 'note-custom',
+                  label: tm('callPlanCtxCustomNote'),
+                  onClick: () => openCustomNote(contextMenu.customer),
+                },
+              ],
+            },
+          ]}
+        />
+      ) : null}
+
+      {customNoteCustomer ? (
+        <PercentBodyModal onClose={() => setCustomNoteCustomer(null)} size="compact" ariaLabel={tm('callPlanCtxCustomNoteTitle')}>
+          <div className="bg-gradient-to-r from-amber-500 to-orange-500 px-6 py-4 text-white shrink-0">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <MessageSquarePlus className="h-5 w-5" />
+                <div>
+                  <p className="text-xs font-black uppercase tracking-wide text-amber-100">{tm('callPlanCtxCustomNoteTitle')}</p>
+                  <h3 className="text-base font-black">{customNoteCustomer.name}</h3>
+                </div>
+              </div>
+              <button type="button" onClick={() => setCustomNoteCustomer(null)} className="rounded-lg p-2 hover:bg-white/15">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+          </div>
+          <PercentBodyModalScrollBody className="p-6">
+            <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-slate-500">{tm('callPlanLastStatusNote')}</label>
+            <textarea
+              value={customNoteText}
+              onChange={e => setCustomNoteText(e.target.value)}
+              rows={4}
+              autoFocus
+              placeholder={tm('callPlanCtxCustomNote')}
+              className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-amber-500"
+            />
+          </PercentBodyModalScrollBody>
+          <div className="flex justify-end gap-2 border-t border-slate-100 bg-slate-50/50 p-4 shrink-0">
+            <button type="button" onClick={() => setCustomNoteCustomer(null)} className="rounded-2xl border-2 border-slate-200 px-4 py-2 text-sm font-bold text-slate-600 hover:bg-slate-100">
+              {tm('cancel')}
+            </button>
+            <button
+              type="button"
+              onClick={() => void saveCustomNote()}
+              disabled={customNoteSaving || !customNoteText.trim()}
+              className="rounded-2xl bg-amber-600 px-4 py-2 text-sm font-bold text-white hover:bg-amber-700 disabled:opacity-50"
+            >
+              {customNoteSaving ? tm('saving') : tm('save')}
+            </button>
+          </div>
+        </PercentBodyModal>
+      ) : null}
 
       {editing ? (
         <div className="fixed inset-0 z-[2147483647] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">

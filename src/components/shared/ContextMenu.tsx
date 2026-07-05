@@ -5,11 +5,13 @@ import { useLanguage } from '../../contexts/LanguageContext';
 export interface ContextMenuItem {
     id: string;
     label: string;
-    icon: LucideIcon;
+    icon?: LucideIcon;
     onClick?: () => void;
     variant?: 'default' | 'danger';
     divider?: boolean;
     items?: ContextMenuItem[];
+    /** Üst başlık satırı — tıklanamaz */
+    header?: boolean;
 }
 
 interface ContextMenuProps {
@@ -89,9 +91,14 @@ export function ContextMenu({ x, y, onClose, items, onEdit, onDelete, onHistory 
                     <div
                         key={item.id + index}
                         className="relative group"
-                        onMouseEnter={() => setActiveSubMenu(item.id)}
-                        onMouseLeave={() => setActiveSubMenu(null)}
+                        onMouseEnter={() => !item.header && setActiveSubMenu(item.id)}
+                        onMouseLeave={() => !item.header && setActiveSubMenu(null)}
                     >
+                        {item.header ? (
+                            <div className="px-4 py-2 text-xs font-black uppercase tracking-wide text-slate-500 select-none">
+                                {item.label}
+                            </div>
+                        ) : (
                         <button
                             onMouseDown={(e) => {
                                 if (e.button !== 0) return; // Sadece sol tıklama
@@ -109,7 +116,9 @@ export function ContextMenu({ x, y, onClose, items, onEdit, onDelete, onHistory 
                                 }`}
                         >
                             <div className="flex items-center gap-3">
-                                <item.icon className={`w-4 h-4 ${item.variant === 'danger' ? 'text-red-600' : 'text-blue-600'}`} />
+                                {item.icon ? (
+                                    <item.icon className={`w-4 h-4 shrink-0 ${item.variant === 'danger' ? 'text-red-600' : 'text-blue-600'}`} />
+                                ) : null}
                                 <span className={`text-sm ${item.variant === 'danger' ? 'text-red-600' : 'text-gray-700'}`}>
                                     {item.label}
                                 </span>
@@ -118,6 +127,7 @@ export function ContextMenu({ x, y, onClose, items, onEdit, onDelete, onHistory 
                                 <ChevronRight className="w-4 h-4 text-gray-400" />
                             )}
                         </button>
+                        )}
                         {item.divider && <div className="border-t border-gray-100 my-1" />}
 
                         {/* Submenu */}
