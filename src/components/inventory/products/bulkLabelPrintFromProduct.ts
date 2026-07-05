@@ -1,17 +1,7 @@
 import type { Product, ProductVariant } from '../../../core/types';
 import type { LabelPrintVariant } from './ProductLabelPrint';
-
-/** Etiket barkodu — boşsa kod / SKU ile CODE128 yedek (toplu yazdırmada görünürlük). */
-export function resolveLabelBarcodeValue(
-  primary?: string | null,
-  ...fallbacks: (string | undefined | null)[]
-): string {
-  for (const raw of [primary, ...fallbacks]) {
-    const s = String(raw ?? '').trim();
-    if (s) return s;
-  }
-  return '';
-}
+import type { QuickRetailLabelInput } from './quickRetailProductLabelTemplate';
+import { resolveLabelBarcodeValue } from './labelBarcodeValue';
 
 export interface BulkLabelQueueItem {
   queueKey: string;
@@ -56,6 +46,20 @@ export function productToLabelPrintVariants(p: Product): LabelPrintVariant[] {
       unit: (p.unit || 'Adet').toString().trim() || 'Adet',
     },
   ];
+}
+
+export function bulkQueueItemToQuickRetailLabelInput(row: BulkLabelQueueItem): QuickRetailLabelInput {
+  return {
+    name: row.productName,
+    code: row.variant.variantCode,
+    barcode: resolveLabelBarcodeValue(row.variant.barcode, row.variant.variantCode),
+    price: row.variant.salePrice,
+    stock: row.variant.stock,
+    brand: row.brand,
+    category: row.category,
+    unit: row.unit,
+    specialCode2: row.specialCode2,
+  };
 }
 
 export function addProductToBulkQueue(prev: BulkLabelQueueItem[], p: Product): BulkLabelQueueItem[] {
