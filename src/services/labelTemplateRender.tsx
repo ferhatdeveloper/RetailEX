@@ -1,4 +1,5 @@
 import { useEffect, useMemo } from 'react';
+import JsBarcode from 'jsbarcode';
 import QRCode from 'qrcode';
 import type { Template, TemplateElement, TemplateUsageScope } from '../core/types/templates';
 
@@ -13,7 +14,7 @@ export interface TemplateLabelSize {
   category: 'termal' | 'a4' | 'raf';
 }
 import {
-  paintJsBarcode,
+  buildJsBarcodeOptions,
   type BarcodeCaptionMode,
   type LabelPrintFieldSettings,
 } from './labelPrintFieldSettingsService';
@@ -148,7 +149,6 @@ export function TemplateLabelView({
   fieldSettings,
 }: TemplateLabelViewProps) {
   const captionMode: BarcodeCaptionMode = fieldSettings?.barcodeCaptionMode ?? 'barcode';
-  const barcodeFormat = fieldSettings?.barcodeFormat ?? 'auto';
 
   const barcodeTargets = useMemo(() => {
     const targets: { elementId: string; value: string; heightMm: number }[] = [];
@@ -184,10 +184,15 @@ export function TemplateLabelView({
       for (const t of barcodeTargets) {
         const svg = document.getElementById(`tpl-barcode-${instanceKey}-${t.elementId}`);
         if (!svg || !t.value) continue;
-        paintJsBarcode(svg, t.value, fields.variantCode, captionMode, {
-          width: template.width,
-          height: t.heightMm,
-        }, barcodeFormat);
+        try {
+          const opts = buildJsBarcodeOptions(t.value, fields.variantCode, captionMode, {
+            width: template.width,
+            height: t.heightMm,
+          });
+          JsBarcode(svg, t.value, opts as Parameters<typeof JsBarcode>[2]);
+        } catch (err) {
+          console.error('Şablon barkod hatası:', err);
+        }
       }
       for (const t of qrTargets) {
         const canvas = document.getElementById(`tpl-qr-${instanceKey}-${t.elementId}`) as HTMLCanvasElement | null;
@@ -200,7 +205,7 @@ export function TemplateLabelView({
       }
     }, 80);
     return () => clearTimeout(timer);
-  }, [barcodeTargets, qrTargets, instanceKey, captionMode, barcodeFormat, fields.variantCode, template.width]);
+  }, [barcodeTargets, qrTargets, instanceKey, captionMode, fields.variantCode, template.width]);
 
   const wPx = mmToLabelPx(template.width);
   const hPx = mmToLabelPx(template.height);

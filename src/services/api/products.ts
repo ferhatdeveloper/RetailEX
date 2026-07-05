@@ -137,6 +137,92 @@ const PRODUCT_DB_FIELD_MAPPING: Record<string, string> = {
   name: 'name',
 };
 
+/** UPDATE/PATCH'e yazılabilir kolonlar (frontend-only alanları eler) */
+const PRODUCT_PATCHABLE_COLUMNS = new Set(
+  PRODUCT_LIST_SELECT.split(',')
+    .map((c) => c.trim())
+    .filter((c) => c && c !== 'id' && c !== 'firm_nr' && c !== 'created_at'),
+);
+
+function resolveProductDbColumn(key: string): string | null {
+  if (key === 'id' || key === 'firm_nr') return null;
+  const mapped = PRODUCT_DB_FIELD_MAPPING[key];
+  if (mapped) return mapped;
+  if (PRODUCT_PATCHABLE_COLUMNS.has(key)) return key;
+  return null;
+}
+
+function productFirmFilterCandidates(): string[] {
+  const { eq, raw } = firmNrMatchValues();
+  const digits = eq.replace(/\D/g, '');
+  const stripped = digits.replace(/^0+/, '') || digits;
+  return [...new Set([eq, raw, stripped].filter(Boolean))];
+}
+
+function firmNrEquivalent(a: string | null | undefined, b: string | null | undefined): boolean {
+  const na = String(a ?? '').replace(/\D/g, '');
+  const nb = String(b ?? '').replace(/\D/g, '');
+  if (!na || !nb) return false;
+  const pa = na.padStart(3, '0');
+  const pb = nb.padStart(3, '0');
+  return pa === pb || na.replace(/^0+/, '') === nb.replace(/^0+/, '');
+}
+
+function activeProductFirmLabel(): string {
+  return firmNrPadded();
+}
+
+async function getProductRowFirmNr(tableName: string, id: string): Promise<string | null> {
+  if (shouldUsePostgrestForCrud()) {
+    const { postgrest } = await import('./postgrestClient');
+    for (const firmFilter of productFirmFilterCandidates()) {
+      const rows = await postgrest.get<{ firm_nr?: string }[]>(
+        `/${tableName}`,
+        {
+          select: 'firm_nr',
+          id: `eq.${id}`,
+          firm_nr: `eq.${firmFilter}`,
+          limit: 1,
+        },
+        { schema: 'public' },
+      );
+      const row = Array.isArray(rows) ? rows[0] : null;
+      if (row?.firm_nr != null) return String(row.firm_nr);
+    }
+    const rows = await postgrest.get<{ firm_nr?: string }[]>(
+      `/${tableName}`,
+      { select: 'firm_nr', id: `eq.${id}`, limit: 1 },
+      { schema: 'public' },
+    );
+    const row = Array.isArray(rows) ? rows[0] : null;
+    if (!row) return null;
+    const fn = row.firm_nr != null ? String(row.firm_nr).trim() : '';
+    return fn || activeProductFirmLabel();
+  }
+  const { rows } = await postgres.query<{ firm_nr?: string }>(
+    `SELECT firm_nr FROM ${tableName} WHERE id = $1 LIMIT 1`,
+    [id],
+  );
+  if (!rows[0]) return null;
+  const fn = rows[0].firm_nr != null ? String(rows[0].firm_nr).trim() : '';
+  return fn || activeProductFirmLabel();
+}
+
+async function assertProductInActiveFirm(tableName: string, id: string): Promise<void> {
+  const activeFirm = activeProductFirmLabel();
+  const rowFirm = await getProductRowFirmNr(tableName, id);
+  if (!rowFirm) {
+    throw new Error(
+      `Ürün firma ${activeFirm} tablosunda bulunamadı. Üst çubuktan doğru firmayı seçip ürün listesini yenileyin.`,
+    );
+  }
+  if (!firmNrEquivalent(rowFirm, activeFirm)) {
+    throw new Error(
+      `Bu ürün firma ${rowFirm} kaydına ait; şu an firma ${activeFirm} seçili. Firma değiştirin veya doğru firmada açın.`,
+    );
+  }
+}
+
 /** PostgREST `or=(col.ilike.*x*)` içinde güvenli alt string */
 function sanitizePostgrestIlike(q: string): string {
   return String(q || '')
@@ -204,20 +290,34 @@ async function postgrestPatchProductRow(
   patchBody: Record<string, unknown>
 ): Promise<unknown> {
   const { postgrest } = await import('./postgrestClient');
-  const path = `/${tableName}?id=eq.${encodeURIComponent(id)}&firm_nr=eq.${encodeURIComponent(String(ERP_SETTINGS.firmNr))}`;
-  try {
-    return await postgrest.patch<unknown[]>(path, patchBody, {
-      schema: 'public',
-      prefer: 'return=representation',
-    });
-  } catch (error) {
-    for (const col of OPTIONAL_PRODUCT_DB_COLUMNS) {
-      if (col in patchBody && isPostgrestMissingColumnError(error, col)) {
-        return postgrestPatchProductRow(tableName, id, stripOptionalProductColumns(patchBody, col));
+
+  const patchOnce = async (path: string, body: Record<string, unknown>): Promise<unknown> => {
+    try {
+      return await postgrest.patch<unknown[]>(path, body, {
+        schema: 'public',
+        prefer: 'return=representation',
+      });
+    } catch (error) {
+      for (const col of OPTIONAL_PRODUCT_DB_COLUMNS) {
+        if (col in body && isPostgrestMissingColumnError(error, col)) {
+          return postgrestPatchProductRow(tableName, id, stripOptionalProductColumns(body, col));
+        }
       }
+      throw error;
     }
-    throw error;
+  };
+
+  const hasRows = (patched: unknown): boolean =>
+    Array.isArray(patched) ? patched.length > 0 : Boolean(patched);
+
+  for (const firmFilter of productFirmFilterCandidates()) {
+    const path = `/${tableName}?id=eq.${encodeURIComponent(id)}&firm_nr=eq.${encodeURIComponent(firmFilter)}`;
+    const patched = await patchOnce(path, patchBody);
+    if (hasRows(patched)) return patched;
   }
+
+  const pathIdOnly = `/${tableName}?id=eq.${encodeURIComponent(id)}`;
+  return patchOnce(pathIdOnly, patchBody);
 }
 
 async function postgrestPatchProductRowsBulk(
@@ -226,20 +326,34 @@ async function postgrestPatchProductRowsBulk(
   patchBody: Record<string, unknown>
 ): Promise<unknown> {
   const { postgrest } = await import('./postgrestClient');
-  const path = `/${tableName}?id=in.(${idInList})&firm_nr=eq.${encodeURIComponent(String(ERP_SETTINGS.firmNr))}`;
-  try {
-    return await postgrest.patch<unknown[]>(path, patchBody, {
-      schema: 'public',
-      prefer: 'return=representation',
-    });
-  } catch (error) {
-    for (const col of OPTIONAL_PRODUCT_DB_COLUMNS) {
-      if (col in patchBody && isPostgrestMissingColumnError(error, col)) {
-        return postgrestPatchProductRowsBulk(tableName, idInList, stripOptionalProductColumns(patchBody, col));
+
+  const patchOnce = async (path: string, body: Record<string, unknown>): Promise<unknown> => {
+    try {
+      return await postgrest.patch<unknown[]>(path, body, {
+        schema: 'public',
+        prefer: 'return=representation',
+      });
+    } catch (error) {
+      for (const col of OPTIONAL_PRODUCT_DB_COLUMNS) {
+        if (col in body && isPostgrestMissingColumnError(error, col)) {
+          return postgrestPatchProductRowsBulk(tableName, idInList, stripOptionalProductColumns(body, col));
+        }
       }
+      throw error;
     }
-    throw error;
+  };
+
+  const hasRows = (patched: unknown): boolean =>
+    Array.isArray(patched) ? patched.length > 0 : Boolean(patched);
+
+  for (const firmFilter of productFirmFilterCandidates()) {
+    const path = `/${tableName}?id=in.(${idInList})&firm_nr=eq.${encodeURIComponent(firmFilter)}`;
+    const patched = await patchOnce(path, patchBody);
+    if (hasRows(patched)) return patched;
   }
+
+  const pathIdOnly = `/${tableName}?id=in.(${idInList})`;
+  return patchOnce(pathIdOnly, patchBody);
 }
 
 async function insertProductRowSql(
@@ -664,25 +778,43 @@ export const productAPI = {
   async getById(id: string): Promise<Product | null> {
     try {
         const tableName = `rex_${firmNrPadded()}_products`;
-        const firmEq = firmNrPadded();
+        const activeFirm = firmNrPadded();
         if (shouldUsePostgrestForCrud()) {
           const { postgrest } = await import('./postgrestClient');
+          for (const firmFilter of productFirmFilterCandidates()) {
+            const rows = await postgrest.get<any[]>(
+              `/${tableName}`,
+              {
+                select: '*',
+                id: `eq.${id}`,
+                firm_nr: `eq.${firmFilter}`,
+                limit: 1,
+              },
+              { schema: 'public' },
+            );
+            const row = Array.isArray(rows) ? rows[0] : null;
+            if (row) return mapDatabaseProductToProduct(row);
+          }
           const rows = await postgrest.get<any[]>(
             `/${tableName}`,
-            {
-              select: '*',
-              id: `eq.${id}`,
-              firm_nr: `eq.${firmEq}`,
-              limit: 1,
-            },
-          { schema: 'public' }
-        );
-        const row = Array.isArray(rows) ? rows[0] : null;
-        return row ? mapDatabaseProductToProduct(row) : null;
+            { select: '*', id: `eq.${id}`, limit: 1 },
+            { schema: 'public' },
+          );
+          const row = Array.isArray(rows) ? rows[0] : null;
+          if (row && firmNrEquivalent(row.firm_nr, activeFirm)) {
+            return mapDatabaseProductToProduct(row);
+          }
+          return null;
       }
+      const { eq: firmEq, raw: firmRaw } = firmNrMatchValues();
       const { rows } = await postgres.query(
-        `SELECT * FROM ${tableName} WHERE id = $1 AND firm_nr = $2`,
-        [id, ERP_SETTINGS.firmNr]
+        `SELECT * FROM ${tableName} WHERE id = $1
+           AND (
+             LPAD(TRIM(COALESCE(firm_nr, '')), 3, '0') = $2
+             OR TRIM(COALESCE(firm_nr, '')) = $3
+             OR TRIM(COALESCE(firm_nr, '')) = ''
+           )`,
+        [id, firmEq, firmRaw || firmEq],
       );
       return rows[0] ? mapDatabaseProductToProduct(rows[0]) : null;
     } catch (error) {
@@ -698,21 +830,23 @@ export const productAPI = {
     if (!code?.trim()) return null;
     try {
         const tableName = `rex_${firmNrPadded()}_products`;
-        const firmEq = firmNrPadded();
         if (shouldUsePostgrestForCrud()) {
           const { postgrest } = await import('./postgrestClient');
-          const rows = await postgrest.get<any[]>(
-            `/${tableName}`,
-            {
-              select: '*',
-              code: `eq.${code.trim()}`,
-              firm_nr: `eq.${firmEq}`,
-              limit: 1,
-            },
-          { schema: 'public' }
-        );
-        const row = Array.isArray(rows) ? rows[0] : null;
-        return row ? mapDatabaseProductToProduct(row) : null;
+          for (const firmFilter of productFirmFilterCandidates()) {
+            const rows = await postgrest.get<any[]>(
+              `/${tableName}`,
+              {
+                select: '*',
+                code: `eq.${code.trim()}`,
+                firm_nr: `eq.${firmFilter}`,
+                limit: 1,
+              },
+              { schema: 'public' },
+            );
+            const row = Array.isArray(rows) ? rows[0] : null;
+            if (row) return mapDatabaseProductToProduct(row);
+          }
+          return null;
       }
       const { rows } = await postgres.query(
         `SELECT * FROM ${tableName} WHERE code = $1 AND is_active = true
@@ -1307,7 +1441,7 @@ export const productAPI = {
         unit: product.unit || 'Adet',
         unitset_id: (product as any).unitsetId || (product as any).unitset_id || null,
         is_active: true,
-        firm_nr: ERP_SETTINGS.firmNr,
+        firm_nr: firmNrPadded(),
         image_url: product.image_url || '',
         image_url_cdn: (product as any).image_url_cdn || '',
         description: product.description || '',
@@ -1394,7 +1528,7 @@ export const productAPI = {
         return this.create(copy as Omit<Product, 'id'>);
       }
       const tableName = `rex_${firmNrPadded()}_products`;
-      const productData = { ...product, firm_nr: ERP_SETTINGS.firmNr };
+      const productData = { ...product, firm_nr: firmNrPadded() };
 
       // Ensure id is not an empty string (let database generate it if new)
       if (!productData.id || productData.id === '') {
@@ -1479,50 +1613,10 @@ export const productAPI = {
   async update(id: string, updates: Partial<Product>): Promise<Product | null> {
     try {
       const tableName = `rex_${firmNrPadded()}_products`;
+      await assertProductInActiveFirm(tableName, id);
       const fields: string[] = [];
       const values: any[] = [];
       let i = 1;
-
-      // Mapping for camelCase to snake_case
-      const fieldMapping: Record<string, string> = {
-        minStock: 'min_stock',
-        maxStock: 'max_stock',
-        criticalStock: 'critical_stock',
-        category: 'category_code',
-        categoryCode: 'category_code',
-        groupCode: 'group_code',
-        subGroupCode: 'sub_group_code',
-        specialCode1: 'special_code_1',
-        specialCode2: 'special_code_2',
-        specialCode3: 'special_code_3',
-        specialCode4: 'special_code_4',
-        specialCode5: 'special_code_5',
-        specialCode6: 'special_code_6',
-        priceList1: 'price_list_1',
-        priceList2: 'price_list_2',
-        priceList3: 'price_list_3',
-        priceList4: 'price_list_4',
-        priceList5: 'price_list_5',
-        priceList6: 'price_list_6',
-        taxRate: 'vat_rate',
-        vatRate: 'vat_rate',
-        materialType: 'material_type',
-        isActive: 'is_active',
-        hasVariants: 'has_variants',
-        unitsetId: 'unitset_id',
-        image_url_cdn: 'image_url_cdn',
-        customExchangeRate: 'custom_exchange_rate',
-        autoCalculateUSD: 'auto_calculate_usd',
-        salePriceUSD: 'sale_price_usd',
-        purchasePriceUSD: 'purchase_price_usd',
-        salePriceEUR: 'sale_price_eur',
-        purchasePriceEUR: 'purchase_price_eur',
-        followUpReminderDays: 'follow_up_reminder_days',
-        isScaleProduct: 'is_scale_product',
-        expiryTracking: 'expiry_tracking',
-        expiryDate: 'expiry_date',
-        shelfLifeDays: 'shelf_life_days',
-      };
 
       const fieldValues = new Map<string, any>();
 
@@ -1538,26 +1632,26 @@ export const productAPI = {
       }
 
       Object.entries(updates).forEach(([key, value]) => {
-        if (key !== 'id' && value !== undefined) {
-          const dbKey = fieldMapping[key] || key;
-          if (dbKey === 'is_scale_product' || dbKey === 'expiry_tracking') {
-            fieldValues.set(dbKey, Boolean(value));
-            return;
-          }
-          if (dbKey === 'follow_up_reminder_days') {
-            fieldValues.set(dbKey, normalizeProductFollowUpReminderDays(value));
-            return;
-          }
-          if (dbKey === 'shelf_life_days') {
-            fieldValues.set(dbKey, normalizeProductShelfLifeDays(value));
-            return;
-          }
-          if (dbKey === 'expiry_date') {
-            fieldValues.set(dbKey, value == null || String(value).trim() === '' ? null : String(value).slice(0, 10));
-            return;
-          }
-          fieldValues.set(dbKey, value);
+        if (value === undefined) return;
+        const dbKey = resolveProductDbColumn(key);
+        if (!dbKey) return;
+        if (dbKey === 'is_scale_product' || dbKey === 'expiry_tracking') {
+          fieldValues.set(dbKey, Boolean(value));
+          return;
         }
+        if (dbKey === 'follow_up_reminder_days') {
+          fieldValues.set(dbKey, normalizeProductFollowUpReminderDays(value));
+          return;
+        }
+        if (dbKey === 'shelf_life_days') {
+          fieldValues.set(dbKey, normalizeProductShelfLifeDays(value));
+          return;
+        }
+        if (dbKey === 'expiry_date') {
+          fieldValues.set(dbKey, value == null || String(value).trim() === '' ? null : String(value).slice(0, 10));
+          return;
+        }
+        fieldValues.set(dbKey, value);
       });
 
       if (fieldValues.size === 0) return productAPI.getById(id);
@@ -1601,7 +1695,9 @@ export const productAPI = {
         const patchBody: Record<string, unknown> = Object.fromEntries(fieldValues);
         const patched = await postgrestPatchProductRow(tableName, id, patchBody);
         const row = Array.isArray(patched) ? patched[0] : patched;
-        return row ? mapDatabaseProductToProduct(row) : null;
+        if (row) return mapDatabaseProductToProduct(row);
+        console.warn('[ProductAPI] update: PostgREST patch eşleşmedi', { id, firmNr: ERP_SETTINGS.firmNr });
+        return productAPI.getById(id);
       }
 
       fieldValues.forEach((value, dbKey) => {
@@ -1609,10 +1705,22 @@ export const productAPI = {
         values.push(value);
       });
 
+      const firmEq = firmNrPadded();
+      const firmRaw = String(ERP_SETTINGS.firmNr ?? '').trim();
       values.push(id);
-      values.push(ERP_SETTINGS.firmNr);
-      const query = `UPDATE ${tableName} SET ${fields.join(', ')} WHERE id = $${i} AND firm_nr = $${i + 1} RETURNING *`;
-      const { rows } = await postgres.query(query, values);
+      values.push(firmEq);
+      values.push(firmRaw || firmEq);
+      let query = `UPDATE ${tableName} SET ${fields.join(', ')} WHERE id = $${i} AND (
+        LPAD(TRIM(COALESCE(firm_nr, '')), 3, '0') = $${i + 1}
+        OR TRIM(COALESCE(firm_nr, '')) = $${i + 2}
+      ) RETURNING *`;
+      let { rows } = await postgres.query(query, values);
+
+      if (!rows[0]) {
+        const valuesIdOnly = [...values.slice(0, -3), id];
+        query = `UPDATE ${tableName} SET ${fields.join(', ')} WHERE id = $${i} RETURNING *`;
+        ({ rows } = await postgres.query(query, valuesIdOnly));
+      }
 
       return rows[0] ? mapDatabaseProductToProduct(rows[0]) : null;
     } catch (error) {
@@ -1640,19 +1748,42 @@ export const productAPI = {
         }
       }
       const tableName = `rex_${firmNrPadded()}_products`;
+      await assertProductInActiveFirm(tableName, id);
       if (shouldUsePostgrestForCrud()) {
         const { postgrest } = await import('./postgrestClient');
+        for (const firmFilter of productFirmFilterCandidates()) {
+          const patched = await postgrest.patch<any[]>(
+            `/${tableName}?id=eq.${encodeURIComponent(id)}&firm_nr=eq.${encodeURIComponent(firmFilter)}`,
+            { is_active: false },
+            { schema: 'public', prefer: 'return=representation' },
+          );
+          if (Array.isArray(patched) ? patched.length > 0 : Boolean(patched)) {
+            return true;
+          }
+        }
         const patched = await postgrest.patch<any[]>(
-          `/${tableName}?id=eq.${encodeURIComponent(id)}&firm_nr=eq.${encodeURIComponent(String(ERP_SETTINGS.firmNr))}`,
+          `/${tableName}?id=eq.${encodeURIComponent(id)}`,
           { is_active: false },
-          { schema: 'public', prefer: 'return=representation' }
+          { schema: 'public', prefer: 'return=representation' },
         );
         return Array.isArray(patched) ? patched.length > 0 : Boolean(patched);
       }
-      const { rowCount } = await postgres.query(
-        `UPDATE ${tableName} SET is_active = false WHERE id = $1 AND firm_nr = $2`,
-        [id, ERP_SETTINGS.firmNr]
+      const firmEq = firmNrPadded();
+      const firmRaw = String(ERP_SETTINGS.firmNr ?? '').trim();
+      let { rowCount } = await postgres.query(
+        `UPDATE ${tableName} SET is_active = false WHERE id = $1
+           AND (
+             LPAD(TRIM(COALESCE(firm_nr, '')), 3, '0') = $2
+             OR TRIM(COALESCE(firm_nr, '')) = $3
+           )`,
+        [id, firmEq, firmRaw || firmEq],
       );
+      if (!rowCount) {
+        ({ rowCount } = await postgres.query(
+          `UPDATE ${tableName} SET is_active = false WHERE id = $1`,
+          [id],
+        ));
+      }
       return rowCount > 0;
     } catch (error) {
       console.error('[ProductAPI] delete failed:', error);
@@ -1853,8 +1984,16 @@ export const productAPI = {
         values.push(value);
       });
 
+      const firmEq = firmNrPadded();
+      const firmRaw = String(ERP_SETTINGS.firmNr ?? '').trim();
       values.push(ids);
-      const query = `UPDATE ${tableName} SET ${fields.join(', ')} WHERE id = ANY($${i}) AND firm_nr = ${ERP_SETTINGS.firmNr}`;
+      values.push(firmEq);
+      values.push(firmRaw || firmEq);
+      const query = `UPDATE ${tableName} SET ${fields.join(', ')} WHERE id = ANY($${i})
+        AND (
+          LPAD(TRIM(COALESCE(firm_nr, '')), 3, '0') = $${i + 1}
+          OR TRIM(COALESCE(firm_nr, '')) = $${i + 2}
+        )`;
       const { rowCount } = await postgres.query(query, values);
 
       return rowCount || 0;

@@ -4164,10 +4164,10 @@ export function ReportsModule({
               <div className="space-y-4">
                 {/* Date Selector */}
                 <div className="bg-white rounded-lg border p-4">
-                  <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center sm:justify-between gap-4">
-                    <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-3 sm:gap-4 w-full sm:w-auto">
+                  <div className="flex flex-row flex-wrap items-center justify-between gap-3">
+                    <div className="flex flex-row flex-wrap items-center gap-3 sm:gap-4 min-w-0 flex-1">
                       <Calendar className="w-5 h-5 text-gray-600 shrink-0 hidden sm:block" aria-hidden />
-                      <label className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 text-sm text-slate-700 w-full sm:w-auto">
+                      <label className="flex flex-row items-center gap-2 text-sm text-slate-700">
                         <span className="font-medium whitespace-nowrap">{tm('reportsPlStartDate')}</span>
                         <input
                           type="date"
@@ -4175,10 +4175,10 @@ export function ReportsModule({
                           max={reportDateInputMax}
                           value={selectedDateFrom}
                           onChange={(e) => handleReportDateFromChange(e.target.value)}
-                          className="w-full sm:w-auto px-4 py-2 border rounded-lg focus:outline-none focus:border-blue-500"
+                          className="w-auto min-w-[9.5rem] px-4 py-2 border rounded-lg focus:outline-none focus:border-blue-500"
                         />
                       </label>
-                      <label className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 text-sm text-slate-700 w-full sm:w-auto">
+                      <label className="flex flex-row items-center gap-2 text-sm text-slate-700">
                         <span className="font-medium whitespace-nowrap">{tm('reportsPlEndDate')}</span>
                         <input
                           type="date"
@@ -4186,16 +4186,16 @@ export function ReportsModule({
                           max={reportDateInputMax}
                           value={selectedDateTo}
                           onChange={(e) => handleReportDateToChange(e.target.value)}
-                          className="w-full sm:w-auto px-4 py-2 border rounded-lg focus:outline-none focus:border-blue-500"
+                          className="w-auto min-w-[9.5rem] px-4 py-2 border rounded-lg focus:outline-none focus:border-blue-500"
                         />
                       </label>
                     </div>
-                    <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+                    <div className="flex flex-row flex-nowrap items-center gap-2 shrink-0">
                       <Button
                         icon={<ReloadOutlined spin={refreshingReports || loadingReportRangeSales} />}
                         loading={refreshingReports || loadingReportRangeSales}
                         onClick={() => void refreshAllReportsData()}
-                        className="w-full sm:w-auto"
+                        className="shrink-0"
                       >
                         {tm('reportsRefresh')}
                       </Button>
@@ -4210,7 +4210,7 @@ export function ReportsModule({
                         }}
                         trigger={['click']}
                       >
-                        <Button type="primary" icon={<PrinterOutlined />} className="w-full sm:w-auto">
+                        <Button type="primary" icon={<PrinterOutlined />} className="shrink-0">
                           {t.print} <CaretDownOutlined />
                         </Button>
                       </Dropdown>

@@ -86,13 +86,13 @@ export const useProductStore = create<ProductState>()(
               lastSync: Date.now()
             }));
             return updatedProduct;
-          } else {
-            throw new Error('Failed to update product');
           }
+          throw new Error('Ürün güncellenemedi — kayıt bulunamadı veya firma eşleşmesi hatalı.');
         } catch (error) {
           console.error('[ProductStore] Error updating product:', error);
-          set({ isLoading: false, error: 'Failed to update product' });
-          throw error;
+          const message = error instanceof Error ? error.message : 'Ürün güncellenemedi.';
+          set({ isLoading: false, error: message });
+          throw error instanceof Error ? error : new Error(message);
         }
       },
 

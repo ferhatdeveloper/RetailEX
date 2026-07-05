@@ -1,18 +1,18 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { X, Printer, Tag, Plus, Minus, Search, RotateCw, LayoutGrid, ListChecks, Download, ArrowLeftRight } from 'lucide-react';
+import JsBarcode from 'jsbarcode';
 import QRCode from 'qrcode';
 import type { Product } from '../../../core/types';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { useFirmaDonem } from '../../../contexts/FirmaDonemContext';
 import { useProductStore } from '../../../store/useProductStore';
 import {
+  buildJsBarcodeOptions,
   DEFAULT_LABEL_PRINT_FIELD_SETTINGS,
   getLabelPrintFieldSettings,
-  paintJsBarcode,
   saveLabelPrintFieldSettings,
   type BarcodeCaptionMode,
-  type BarcodePrintFormat,
   type LabelPrintFieldSettings,
 } from '../../../services/labelPrintFieldSettingsService';
 import type { Template } from '../../../core/types/templates';
@@ -49,7 +49,7 @@ import {
   readLabelCustomMmEnabled,
   readLabelCustomWidthMm,
 } from './labelPrintDimensions';
-import { DEFAULT_A4, exportLabelGridToPdfPages, exportToPDF } from '../../reports/designerUtils';
+import { DEFAULT_A4, exportLabelGridToPdfPages, exportToPDF, printLabelElementsInBrowser } from '../../reports/designerUtils';
 import { FullscreenBodyPortal, MODAL_OVERLAY_Z } from '../../shared/FullscreenBodyPortal';
 
 export interface BulkProductLabelPrintProps {
@@ -110,6 +110,7 @@ export function BulkProductLabelPrint({
   const [fieldSettingsLoading, setFieldSettingsLoading] = useState(true);
   const [fieldSettingsSaving, setFieldSettingsSaving] = useState(false);
   const [pdfExporting, setPdfExporting] = useState(false);
+  const [printing, setPrinting] = useState(false);
   const printRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -205,45 +206,58 @@ export function BulkProductLabelPrint({
     };
   }, []);
 
-  // Barkodları ve QR kodları otomatik oluştur (tekli yazdırma ile aynı akış)
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (selectedCustomTemplate) return;
-    const timer = setTimeout(() => {
-      const cells = queue.flatMap((row, rowIdx) =>
-        Array.from({ length: row.quantity }, (_, qIdx) => ({
-          barcodeId: `barcode-${rowIdx}-${qIdx}`,
-          qrId: `qrcode-${rowIdx}-${qIdx}`,
-          barcode: row.variant.barcode,
-          variantCode: row.variant.variantCode,
-        })),
-      );
-      cells.forEach((cell) => {
-        if (selectedDesign.id !== 'qr') {
-          const canvas = document.getElementById(cell.barcodeId) as HTMLCanvasElement;
-          if (canvas && cell.barcode) {
-            paintJsBarcode(canvas, cell.barcode, cell.variantCode, fieldSettings.barcodeCaptionMode, {
-              width: activePrintSize.width,
-              height: activePrintSize.height,
-            }, fieldSettings.barcodeFormat);
-          }
-        }
+    if (queue.length === 0) return;
 
-        if (selectedDesign.id === 'qr') {
-          const qrCanvas = document.getElementById(cell.qrId) as HTMLCanvasElement;
-          if (qrCanvas && cell.barcode) {
-            const qrSize = Math.min(activePrintSize.width * 3, activePrintSize.height * 3);
-            QRCode.toCanvas(qrCanvas, cell.barcode, {
-              width: qrSize,
-              margin: 1,
-              errorCorrectionLevel: 'M',
-            }).catch((err: unknown) => console.error('QR kod hatası:', err));
-          }
+    let cancelled = false;
+    const paint = () => {
+      if (cancelled) return;
+      const root = printRef.current;
+      if (!root) return;
+
+      root.querySelectorAll('canvas[data-barcode-value]').forEach((node) => {
+        const canvas = node as HTMLCanvasElement;
+        const barcode = (canvas.dataset.barcodeValue || '').trim();
+        if (!barcode || selectedDesign.id === 'qr') return;
+        try {
+          const variantCode = canvas.dataset.variantCode || '';
+          const opts = buildJsBarcodeOptions(barcode, variantCode, fieldSettings.barcodeCaptionMode, {
+            width: activePrintSize.width,
+            height: activePrintSize.height,
+          });
+          JsBarcode(canvas, barcode, opts as Parameters<typeof JsBarcode>[2]);
+        } catch (err) {
+          console.error('Barkod oluşturma hatası:', err);
         }
       });
-    }, 100);
 
-    return () => clearTimeout(timer);
-  }, [queue, activePrintSize, selectedDesign, fieldSettings, selectedCustomTemplate]);
+      if (selectedDesign.id === 'qr') {
+        root.querySelectorAll('canvas[data-qr-value]').forEach((node) => {
+          const qrCanvas = node as HTMLCanvasElement;
+          const qrValue = (qrCanvas.dataset.qrValue || '').trim();
+          if (!qrValue) return;
+          const qrSize = Math.min(activePrintSize.width * 3, activePrintSize.height * 3);
+          QRCode.toCanvas(qrCanvas, qrValue, {
+            width: qrSize,
+            margin: 1,
+            errorCorrectionLevel: 'M',
+          }).catch((err: unknown) => console.error('QR kod hatası:', err));
+        });
+      }
+    };
+
+    const raf = requestAnimationFrame(() => {
+      requestAnimationFrame(paint);
+    });
+    const timer = setTimeout(paint, 150);
+
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(raf);
+      clearTimeout(timer);
+    };
+  }, [queue, activePrintSize, selectedDesign.id, fieldSettings, selectedCustomTemplate]);
 
   const filteredSizes =
     sizeFilter === 'all' ? LABEL_SIZES : LABEL_SIZES.filter((s) => s.category === sizeFilter);
@@ -290,9 +304,32 @@ export function BulkProductLabelPrint({
     ? labelTemplateDesignId(selectedCustomTemplate.id)
     : selectedDesign.id;
 
-  const handlePrint = () => {
+  const handlePrint = async () => {
     if (queue.length === 0) return;
-    window.print();
+    const printCategory = selectedCustomTemplate ? 'termal' : selectedSize.category;
+    if (printCategory !== 'termal') {
+      window.print();
+      return;
+    }
+    const root = printRef.current;
+    if (!root) {
+      window.print();
+      return;
+    }
+    const cells = Array.from(root.querySelectorAll('.rotated-label-wrapper')) as HTMLElement[];
+    if (cells.length === 0) {
+      window.print();
+      return;
+    }
+    setPrinting(true);
+    try {
+      await printLabelElementsInBrowser(cells, { width: pageWidthMm, height: pageHeightMm });
+    } catch (e) {
+      toast.error((e as Error)?.message || 'Yazdırma başlatılamadı');
+      window.print();
+    } finally {
+      setPrinting(false);
+    }
   };
 
   const handlePdfExport = async () => {
@@ -385,11 +422,11 @@ export function BulkProductLabelPrint({
             <button
               type="button"
               onClick={handlePrint}
-              disabled={queue.length === 0}
+              disabled={queue.length === 0 || printing}
               className="px-3 sm:px-4 py-2 rounded-lg bg-white/20 hover:bg-white/30 disabled:opacity-45 disabled:cursor-not-allowed flex items-center gap-2 text-xs sm:text-sm font-bold border border-white/30 whitespace-nowrap"
             >
               <Printer className="w-4 h-4 shrink-0" />
-              <span>{tm('print')}</span>
+              <span>{printing ? '…' : tm('print')}</span>
               {queue.length > 0 && (
                 <span className="text-[10px] font-mono opacity-90">({totalLabels})</span>
               )}
@@ -709,26 +746,6 @@ export function BulkProductLabelPrint({
                     </label>
                   ))}
                   <div className="pt-2 border-t border-gray-100">
-                    <label className="text-xs font-semibold text-gray-700 block mb-1.5">{tm('labelPrintBarcodeFormatLabel')}</label>
-                    <select
-                      value={fieldSettings.barcodeFormat}
-                      onChange={(e) =>
-                        setFieldSettings((prev) => ({
-                          ...prev,
-                          barcodeFormat: e.target.value as BarcodePrintFormat,
-                        }))
-                      }
-                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
-                    >
-                      <option value="auto">{tm('labelPrintBarcodeFormatAuto')}</option>
-                      <option value="EAN13">{tm('labelPrintBarcodeFormatEan13')}</option>
-                      <option value="EAN8">{tm('labelPrintBarcodeFormatEan8')}</option>
-                      <option value="CODE128">{tm('labelPrintBarcodeFormatCode128')}</option>
-                      <option value="CODE39">{tm('labelPrintBarcodeFormatCode39')}</option>
-                    </select>
-                    <p className="text-[10px] text-gray-500 mt-1.5 leading-snug">{tm('labelPrintBarcodeFormatHint')}</p>
-                  </div>
-                  <div className="pt-2 border-t border-gray-100">
                     <label className="text-xs font-semibold text-gray-700 block mb-1.5">{tm('labelPrintBarcodeCaptionLabel')}</label>
                     <select
                       value={fieldSettings.barcodeCaptionMode}
@@ -844,11 +861,11 @@ export function BulkProductLabelPrint({
                 <button
                   type="button"
                   onClick={handlePrint}
-                  disabled={queue.length === 0}
+                  disabled={queue.length === 0 || printing}
                   className="px-4 py-2 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-lg hover:from-purple-700 hover:to-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 shadow-lg text-sm"
                 >
                   <Printer className="w-4 h-4" />
-                  {tm('print')} ({totalLabels})
+                  {printing ? '…' : tm('print')} ({totalLabels})
                 </button>
               </div>
             </div>
@@ -964,8 +981,8 @@ export function BulkProductLabelPrint({
                                   productBrand={row.brand}
                                   productUnit={row.unit}
                                   productSpecialCode2={row.specialCode2}
-                                  barcodeId={`barcode-${rowIdx}-${qIdx}`}
-                                  qrId={`qrcode-${rowIdx}-${qIdx}`}
+                                  barcodeId={`bulk-barcode-${rowIdx}-${qIdx}`}
+                                  qrId={`bulk-qrcode-${rowIdx}-${qIdx}`}
                                   size={activePrintSize}
                                   design={selectedDesign}
                                   showDiscount={showDiscount}
