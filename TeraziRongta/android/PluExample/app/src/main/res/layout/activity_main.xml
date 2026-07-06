@@ -1,0 +1,172 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical">
+
+    <TextView
+        android:id="@+id/tv_ver"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="@color/gray_bg"
+        android:gravity="center"
+        android:padding="10dp"
+        android:text="PLU Example Ver: v0.0.1" />
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="match_parent">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:background="@color/white"
+            android:orientation="vertical"
+            android:paddingBottom="20dp">
+
+            <TableRow
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:orientation="horizontal"
+                android:padding="10dp">
+
+
+                <EditText
+                    android:id="@+id/et_dst_ip"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:digits="0123456789."
+                    android:hint="IP[192.168.xx.xx]"
+                    android:inputType="numberDecimal"
+                    android:text="192.168.2.87"/>
+
+                <EditText
+                    android:id="@+id/et_dst_port"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="2"
+                    android:digits="0123456789"
+                    android:focusable="false"
+                    android:focusableInTouchMode="false"
+                    android:hint="PORT"
+                    android:inputType="numberDecimal"
+                    android:maxLength="5"
+                    android:text="5001" />
+            </TableRow>
+
+            <RadioGroup
+                android:id="@+id/radioGroup"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:orientation="horizontal"
+                android:layout_centerInParent="true"
+                >
+                <RadioButton
+                    android:id="@+id/rtProt1"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/RTProtocol1"
+                    android:layout_marginStart="30dp"
+                    />
+
+                <RadioButton
+                    android:id="@+id/rtProt2"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/RTProtocol2"
+                    android:checked="true"
+                    />
+            </RadioGroup>
+
+            <TableRow
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:orientation="horizontal"
+                android:padding="10dp">
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/characterset"
+                    android:layout_marginStart="30dp"
+                    />
+
+            <Spinner
+                android:id="@+id/spinner_Charsetlist"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+
+                />
+            </TableRow>
+            <Button
+                android:id="@+id/btn_check_connection"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="30dp"
+                android:layout_marginStart="30dp"
+                android:layout_marginTop="10dp"
+                android:onClick="onClick"
+                android:text="Check Connection" />
+
+            <Button
+                android:id="@+id/btn_read_pluinfo"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="30dp"
+                android:layout_marginStart="30dp"
+                android:layout_marginTop="10dp"
+                android:onClick="onClick"
+                android:text="Get Plu Infos" />
+
+            <Button
+                android:id="@+id/btn_read_saledetails"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="30dp"
+                android:layout_marginStart="30dp"
+                android:layout_marginTop="10dp"
+                android:onClick="onClick"
+                android:text="Get Sale Details" />
+
+            <Button
+                android:id="@+id/btn_write_plu"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="30dp"
+                android:layout_marginStart="30dp"
+                android:layout_marginTop="10dp"
+                android:onClick="onClick"
+                android:text="Write plu to Device" />
+            <Button
+                android:id="@+id/btn_get_hotKey"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="30dp"
+                android:layout_marginStart="30dp"
+                android:layout_marginTop="10dp"
+                android:onClick="onClick"
+                android:text="Get plu Hotkey" />
+            <Button
+                android:id="@+id/btn_clearplu"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="30dp"
+                android:layout_marginStart="30dp"
+                android:layout_marginTop="10dp"
+                android:onClick="onClick"
+                android:text="Clear Plu Data" />
+            <Button
+                android:id="@+id/btn_clearSaleDate"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="30dp"
+                android:layout_marginStart="30dp"
+                android:layout_marginTop="10dp"
+                android:onClick="onClick"
+                android:text="Clear Sale Data" />
+
+        </LinearLayout>
+    </ScrollView>
+
+
+</LinearLayout>

@@ -1,0 +1,39 @@
+﻿# MSBuild / Visual Studio
+**/bin/
+**/obj/
+.vs/
+*.user
+*.suo
+UpgradeLog.htm
+
+# Ship Release binaries via releases/ only
+!releases/
+!releases/**
+
+# Secrets (use terazi-sync.example.json)
+terazi-sync.json
+**/.env
+**/.env.*
+!terazi-sync.example.json
+
+# Android build artifacts (keep source)
+android/.gradle/
+**/.gradle/
+android/local.properties
+android/**/build/
+android/**/captures/
+*.apk
+*.aab
+
+# Node
+node_modules/
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+
+# Large/vendor archives
+NETJson.rar
+
+# Local agent probe scratch (not application source)
+/agent-tools-*
