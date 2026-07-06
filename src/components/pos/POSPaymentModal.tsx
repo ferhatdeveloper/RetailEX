@@ -15,7 +15,8 @@ import { useTheme } from '../../contexts/ThemeContext';
 import { paymentGateway, type PaymentProvider } from '../../services/paymentGateway';
 import { formatCurrency, formatNumber, formatMoneyWithCode, getGlobalCurrency } from '../../utils/currency';
 import { formatNumber as formatNumberTR } from '../../utils/formatNumber';
-import { posPaymentAdditionalDiscount, roundPosMoneyAmount, posMoneyEpsilon } from '../../utils/discountRounding';
+import { posPaymentAdditionalDiscount, roundPosMoneyAmount, posMoneyEpsilon, getPosQuickDiscountAmountPresets } from '../../utils/discountRounding';
+import { getCurrencyDecimalPlaces } from '../../utils/currency';
 import { POSCancelReasonModal } from './POSCancelReasonModal';
 
 // Helper function to format number with Turkish formatting (nokta binlik, virgül ondalık)
@@ -199,6 +200,12 @@ export function POSPaymentModal({
   const [isLoading, setIsLoading] = useState(false);
   const [draftPrintLoading, setDraftPrintLoading] = useState(false);
 
+  const discountAmountDecimals = getCurrencyDecimalPlaces(baseCurrency);
+  const quickDiscountAmounts = useMemo(
+    () => getPosQuickDiscountAmountPresets(baseCurrency),
+    [baseCurrency],
+  );
+  const formatSummaryMoney = (value: number) => formatMoneyWithCode(value, baseCurrency);
   const { darkMode } = useTheme();
 
   // Load active payment providers
@@ -499,6 +506,8 @@ export function POSPaymentModal({
                   value={discountValue}
                   onChange={(e) => setDiscountValue(e.target.value)}
                   placeholder={discountType === 'percentage' ? t.discountPercentage || 'İndirim %' : t.discountAmount || 'İndirim Tutarı'}
+                  step={discountType === 'percentage' ? '1' : (discountAmountDecimals > 0 ? '0.01' : '1')}
+                  min="0"
                   className={`w-full px-3 py-2.5 text-sm border focus:outline-none focus:border-blue-600 mb-3 ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'
                     }`}
                 />
@@ -519,8 +528,8 @@ export function POSPaymentModal({
                     ))}
                   </div>
                 ) : (
-                  <div className="grid grid-cols-3 gap-2">
-                    {[1000, 5000, 10000].map((amount) => (
+                  <div className={`grid gap-2 ${quickDiscountAmounts.length > 3 ? 'grid-cols-3 sm:grid-cols-6' : 'grid-cols-3'}`}>
+                    {quickDiscountAmounts.map((amount) => (
                       <button
                         key={amount}
                         onClick={() => setDiscountValue(amount.toString())}
@@ -529,7 +538,7 @@ export function POSPaymentModal({
                           : 'bg-white border-blue-300 text-blue-700 hover:bg-blue-100'
                           }`}
                       >
-                        {formatNumberTR(amount, 2, true)}
+                        {formatMoneyWithCode(amount, baseCurrency)}
                       </button>
                     ))}
                   </div>
@@ -544,27 +553,27 @@ export function POSPaymentModal({
                 <div className="space-y-2.5 text-sm">
                   <div className={`flex justify-between ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
                     <span>{t.subtotalLabel || 'ARA TOPLAM'}:</span>
-                    <span className="font-medium font-mono">{formatNumber(subtotal)}</span>
+                    <span className="font-medium font-mono">{formatSummaryMoney(subtotal)}</span>
                   </div>
 
                   {selectedCampaign && campaignDiscount > 0 && (
                     <div className="flex justify-between text-orange-600">
                       <span>{selectedCampaign.name} {t.discount || 'İndirimi'}:</span>
-                      <span className="font-medium font-mono">-{formatNumber(campaignDiscount)}</span>
+                      <span className="font-medium font-mono">-{formatSummaryMoney(campaignDiscount)}</span>
                     </div>
                   )}
 
                   {itemDiscount > 0 && (
                     <div className="flex justify-between text-red-600">
                       <span>{t.itemDiscount || 'Ürün İndirimi'}:</span>
-                      <span className="font-medium font-mono">-{formatNumber(itemDiscount)}</span>
+                      <span className="font-medium font-mono">-{formatSummaryMoney(itemDiscount)}</span>
                     </div>
                   )}
 
                   {calculatedDiscount > 0 && (
                     <div className="flex justify-between text-red-600">
                       <span>{t.additionalDiscount || 'İlave İndirim'}:</span>
-                      <span className="font-medium font-mono">-{formatNumber(calculatedDiscount)}</span>
+                      <span className="font-medium font-mono">-{formatSummaryMoney(calculatedDiscount)}</span>
                     </div>
                   )}
 

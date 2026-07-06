@@ -1289,8 +1289,9 @@ export const RestPOS: React.FC<RestPOSProps> = ({
 
     const subtotal = useMemo(() => cart.reduce((s, i) => s + (i.subtotal ?? 0), 0), [cart]);
     const discountAmount = useMemo(() => {
-        return posPaymentAdditionalDiscount(subtotal, orderDiscount, 'percentage', 'IQD');
-    }, [subtotal, orderDiscount]);
+        const baseCurrency = selectedFirm?.ana_para_birimi?.trim().toUpperCase() || 'IQD';
+        return posPaymentAdditionalDiscount(subtotal, orderDiscount, 'percentage', baseCurrency);
+    }, [subtotal, orderDiscount, selectedFirm?.ana_para_birimi]);
     const grandTotal = useMemo(() => subtotal - discountAmount, [subtotal, discountAmount]);
     /** Aktif tabağa göre filtrelenmiş cart — orijinal idx korunur */
     const displayCart = useMemo(() =>

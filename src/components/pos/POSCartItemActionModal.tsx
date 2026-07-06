@@ -10,6 +10,8 @@ import { productUsesDecimalQuantity } from '../../utils/productUnits';
 import { normalizeWeightProductQuantity } from '../../utils/scaleQuantity';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useLanguage } from '../../contexts/LanguageContext';
+import { useFirmaDonem } from '../../contexts/FirmaDonemContext';
+import { getGlobalCurrency } from '../../utils/currency';
 import { confirm as confirmDialog } from '../shared/ConfirmDialog';
 
 interface POSCartItemActionModalProps {
@@ -43,6 +45,8 @@ export function POSCartItemActionModal({
 }: POSCartItemActionModalProps) {
   const { darkMode } = useTheme();
   const { tm } = useLanguage();
+  const { selectedFirm } = useFirmaDonem();
+  const baseCurrency = selectedFirm?.ana_para_birimi?.trim().toUpperCase() || getGlobalCurrency();
   const decimalQty = productUsesDecimalQuantity(item.product);
 
   const formatQtyDisplay = (n: number) =>
@@ -63,8 +67,8 @@ export function POSCartItemActionModal({
   const currentPrice = parseFloat(price || '0');
   const itemTotal = qtyForTotal * currentPrice;
   const discountPercent = parseFloat(discount || '0');
-  const discountAmount = lineDiscountMoneyFromPercent(itemTotal, discountPercent);
-  const newTotal = lineNetAfterPercentDiscount(itemTotal, discountPercent);
+  const discountAmount = lineDiscountMoneyFromPercent(itemTotal, discountPercent, baseCurrency);
+  const newTotal = lineNetAfterPercentDiscount(itemTotal, discountPercent, baseCurrency);
 
   useEffect(() => {
     setQuantity(formatQtyDisplay(item.quantity));

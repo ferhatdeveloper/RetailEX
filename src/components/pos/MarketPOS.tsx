@@ -593,19 +593,21 @@ export default function MarketPOS({
   }, [cart, selectedFirm?.ana_para_birimi]);
 
   const totalDiscount = useMemo(() => {
+    const baseCurrency = selectedFirm?.ana_para_birimi?.trim().toUpperCase() || getGlobalCurrency();
     return cart.reduce((sum, item) => {
       const price = item.price || item.variant?.price || item.product.price;
       const itemTotal = item.quantity * price;
-      return sum + lineDiscountMoneyFromPercent(itemTotal, item.discount);
+      return sum + lineDiscountMoneyFromPercent(itemTotal, item.discount, baseCurrency);
     }, 0);
-  }, [cart]);
+  }, [cart, selectedFirm?.ana_para_birimi]);
 
   const campaignResult = useMemo<CampaignResult>(() => {
     if (!selectedCampaign) {
       return { totalDiscount: 0, itemDiscounts: [], appliedCampaignId: null };
     }
-    return applyCampaign(cart, selectedCampaign);
-  }, [selectedCampaign, cart]);
+    const baseCurrency = selectedFirm?.ana_para_birimi?.trim().toUpperCase() || getGlobalCurrency();
+    return applyCampaign(cart, selectedCampaign, baseCurrency);
+  }, [selectedCampaign, cart, selectedFirm?.ana_para_birimi]);
 
   const campaignDiscount = useMemo(() => {
     return campaignResult.totalDiscount;
@@ -618,18 +620,18 @@ export default function MarketPOS({
 
   // Brüt Kar Hesaplama (Instant Profit)
   const instantProfit = useMemo(() => {
+    const baseCurrency = selectedFirm?.ana_para_birimi?.trim().toUpperCase() || getGlobalCurrency();
     let profit = 0;
     cart.forEach(item => {
       const salePrice = item.price || item.variant?.price || item.product.price;
       const purchasePrice = item.variant?.cost || item.product.cost || 0;
       const itemSubtotal = item.quantity * salePrice;
-      const itemDiscount = lineDiscountMoneyFromPercent(itemSubtotal, item.discount);
+      const itemDiscount = lineDiscountMoneyFromPercent(itemSubtotal, item.discount, baseCurrency);
       const itemNetProfit = (itemSubtotal - itemDiscount) - (item.quantity * purchasePrice);
       profit += itemNetProfit;
     });
-    // Sepet bazlı genel kampanya indirimini de kardan düşüyoruz
     return profit - campaignDiscount;
-  }, [cart, campaignDiscount]);
+  }, [cart, campaignDiscount, selectedFirm?.ana_para_birimi]);
 
   // Auto-apply campaign based on cart subtotal
   useEffect(() => {

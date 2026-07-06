@@ -3,7 +3,9 @@ import {
   roundPosMoneyAmount,
   roundPosDiscountAmountUp,
   lineNetAfterPercentDiscount,
+  lineDiscountMoneyFromPercent,
   posPaymentAdditionalDiscount,
+  getPosQuickDiscountAmountPresets,
   POS_DISCOUNT_MONETARY_STEP,
 } from '../../utils/discountRounding';
 
@@ -48,5 +50,18 @@ describe('discountRounding — IQD POS kademesi', () => {
 
   it('posPaymentAdditionalDiscount: tutar modu IQD 250 yukarı', () => {
     expect(posPaymentAdditionalDiscount(10000, 251, 'amount', 'IQD')).toBe(500);
+  });
+
+  it('lineDiscountMoneyFromPercent: USD yüzde gerçek oran', () => {
+    expect(lineDiscountMoneyFromPercent(1518, 20, 'USD')).toBe(303.6);
+  });
+
+  it('lineDiscountMoneyFromPercent: IQD yüzde 250 yukarı', () => {
+    expect(lineDiscountMoneyFromPercent(1518, 20, 'IQD')).toBe(500);
+  });
+
+  it('getPosQuickDiscountAmountPresets', () => {
+    expect(getPosQuickDiscountAmountPresets('USD')).toEqual([1, 5, 10, 20, 50, 100]);
+    expect(getPosQuickDiscountAmountPresets('IQD')).toEqual([1000, 5000, 10000]);
   });
 });

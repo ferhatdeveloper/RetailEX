@@ -1,5 +1,6 @@
 import { Campaign, CartItem } from '../core/types';
-import { roundPosDiscountAmountUp } from './discountRounding';
+import { roundPosCampaignDiscount } from './discountRounding';
+import { roundMoneyAmount } from './currency';
 
 function cartItemUnitPrice(item: CartItem): number {
   return item.variant?.price ?? item.product.price;
@@ -15,7 +16,11 @@ export interface CampaignResult {
  * Advanced Campaign Engine for RetailEX POS
  * Handles product-specific rules, Buy X Get Y, and complex conditions.
  */
-export function applyCampaign(cart: CartItem[], campaign: Campaign): CampaignResult {
+export function applyCampaign(
+  cart: CartItem[],
+  campaign: Campaign,
+  currency: string = 'IQD',
+): CampaignResult {
   const result: CampaignResult = {
     totalDiscount: 0,
     itemDiscounts: [],
@@ -62,7 +67,10 @@ export function applyCampaign(cart: CartItem[], campaign: Campaign): CampaignRes
   const discountType = campaign.discountType || (campaign.type as any); // Fallback to legacy 'type'
 
   if (discountType === 'percentage') {
-    result.totalDiscount = eligibleSubtotal * (campaign.discountValue / 100);
+    result.totalDiscount = roundMoneyAmount(
+      eligibleSubtotal * (campaign.discountValue / 100),
+      currency,
+    );
   } 
   else if (discountType === 'fixed') {
     result.totalDiscount = Math.min(campaign.discountValue, eligibleSubtotal);
@@ -103,7 +111,7 @@ export function applyCampaign(cart: CartItem[], campaign: Campaign): CampaignRes
         const numFree = X - Y;
         const freeItems = group.slice(-numFree);
         freeItems.forEach(item => {
-          const inc = roundPosDiscountAmountUp(item.price);
+          const inc = roundPosCampaignDiscount(item.price, currency);
           discount += inc;
           // Track item-level discount for visualization
           const existing = result.itemDiscounts.find(d => d.index === item.index);
@@ -126,7 +134,10 @@ export function applyCampaign(cart: CartItem[], campaign: Campaign): CampaignRes
       const campaignPrice = campaign.discountValue; // discountValue stores the override price
       
       if (effectivePrice > campaignPrice) {
-        const itemDiscount = roundPosDiscountAmountUp((effectivePrice - campaignPrice) * item.quantity);
+        const itemDiscount = roundPosCampaignDiscount(
+          (effectivePrice - campaignPrice) * item.quantity,
+          currency,
+        );
         discount += itemDiscount;
         result.itemDiscounts.push({ index, discountAmount: itemDiscount });
       }
@@ -136,11 +147,11 @@ export function applyCampaign(cart: CartItem[], campaign: Campaign): CampaignRes
 
   // 4. İndirim tutarını 250’lik kademeye yukarı yuvarla; satır kırılımlı kampanyalarda satırları sonra topla
   if (result.itemDiscounts.length === 0 && result.totalDiscount > 0) {
-    result.totalDiscount = roundPosDiscountAmountUp(result.totalDiscount);
+    result.totalDiscount = roundPosCampaignDiscount(result.totalDiscount, currency);
   } else if (result.itemDiscounts.length > 0) {
     result.itemDiscounts = result.itemDiscounts.map((d) => ({
       index: d.index,
-      discountAmount: roundPosDiscountAmountUp(d.discountAmount),
+      discountAmount: roundPosCampaignDiscount(d.discountAmount, currency),
     }));
     result.totalDiscount = result.itemDiscounts.reduce((s, d) => s + d.discountAmount, 0);
   }

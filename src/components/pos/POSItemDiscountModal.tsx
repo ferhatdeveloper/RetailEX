@@ -3,6 +3,8 @@ import { X, Percent, Calculator } from 'lucide-react';
 import type { CartItem } from './types';
 import { POSNumpad } from './POSNumpad';
 import { formatNumber } from '../../utils/formatNumber';
+import { useFirmaDonem } from '../../contexts/FirmaDonemContext';
+import { getGlobalCurrency } from '../../utils/currency';
 import { lineDiscountMoneyFromPercent, lineNetAfterPercentDiscount } from '../../utils/discountRounding';
 
 interface POSItemDiscountModalProps {
@@ -12,12 +14,14 @@ interface POSItemDiscountModalProps {
 }
 
 export function POSItemDiscountModal({ item, onClose, onApplyDiscount }: POSItemDiscountModalProps) {
+  const { selectedFirm } = useFirmaDonem();
+  const baseCurrency = selectedFirm?.ana_para_birimi?.trim().toUpperCase() || getGlobalCurrency();
   const [discountValue, setDiscountValue] = useState(item.discount.toString());
   const [showNumpad, setShowNumpad] = useState(false);
   const currentPrice = item.variant?.price || item.product.price;
   const itemTotal = item.quantity * currentPrice;
-  const discountAmount = lineDiscountMoneyFromPercent(itemTotal, parseFloat(discountValue || '0'));
-  const newTotal = lineNetAfterPercentDiscount(itemTotal, parseFloat(discountValue || '0'));
+  const discountAmount = lineDiscountMoneyFromPercent(itemTotal, parseFloat(discountValue || '0'), baseCurrency);
+  const newTotal = lineNetAfterPercentDiscount(itemTotal, parseFloat(discountValue || '0'), baseCurrency);
 
   const handleApply = () => {
     const discount = parseFloat(discountValue) || 0;

@@ -6,6 +6,27 @@ import { roundMoneyAmount } from './currency';
 
 export const POS_DISCOUNT_MONETARY_STEP = 250;
 
+export function isIqdPosCurrency(currency?: string | null): boolean {
+  return String(currency ?? 'IQD').trim().toUpperCase() === 'IQD';
+}
+
+/** Ödeme ekranı — tutar modu hızlı seçim (IQD binlik / USD-EUR ondalıklı). */
+export function getPosQuickDiscountAmountPresets(currency?: string | null): number[] {
+  const code = String(currency ?? 'IQD').trim().toUpperCase();
+  if (code === 'USD' || code === 'EUR' || code === 'GBP') {
+    return [1, 5, 10, 20, 50, 100];
+  }
+  return [1000, 5000, 10000];
+}
+
+/** Kampanya / satır indirimi tutarını para birimine göre yuvarlar. */
+export function roundPosCampaignDiscount(raw: number, currency: string = 'IQD'): number {
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n <= 0) return 0;
+  if (isIqdPosCurrency(currency)) return roundPosDiscountAmountUp(n);
+  return roundMoneyAmount(n, currency);
+}
+
 export function roundPosMoneyAmount(value: number, currency: string = 'IQD'): number {
   const n = Number(value);
   if (!Number.isFinite(n)) return 0;
@@ -34,10 +55,18 @@ export function roundPosDiscountAmountUp(raw: number): number {
 }
 
 /** Yüzde indirimden düşülecek tutar (tavana kadar, brütü aşmaz). */
-export function lineDiscountMoneyFromPercent(gross: number, discountPercent: number): number {
+export function lineDiscountMoneyFromPercent(
+  gross: number,
+  discountPercent: number,
+  currency: string = 'IQD',
+): number {
   if (gross <= 0 || !discountPercent) return 0;
   const raw = (gross * discountPercent) / 100;
-  return Math.min(roundPosDiscountAmountUp(raw), gross);
+  const code = String(currency ?? 'IQD').trim().toUpperCase();
+  const discount = isIqdPosCurrency(code)
+    ? roundPosDiscountAmountUp(raw)
+    : roundMoneyAmount(raw, code);
+  return Math.min(discount, gross);
 }
 
 /**
@@ -76,6 +105,6 @@ export function lineNetAfterPercentDiscount(
   currency: string = 'IQD',
 ): number {
   const roundedGross = roundPosMoneyAmount(gross, currency);
-  const net = roundedGross - lineDiscountMoneyFromPercent(roundedGross, discountPercent);
+  const net = roundedGross - lineDiscountMoneyFromPercent(roundedGross, discountPercent, currency);
   return Math.max(0, roundPosMoneyAmount(net, currency));
 }
