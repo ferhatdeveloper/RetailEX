@@ -3054,7 +3054,18 @@ export function UniversalInvoiceForm({
         cashier: effectiveCashierName,
         created_by_user_id: (editData as any)?.created_by_user_id || user?.id || undefined,
         store_id: (editData as any)?.store_id || undefined,
-        status: (invoiceType.category === 'Alis' || invoiceType.category === 'Iade') ? 'completed' : 'unpaid',
+        status: (() => {
+          if (invoiceType.category === 'Alis' || invoiceType.category === 'Iade') return 'completed';
+          const pm = String(resolvePaymentMethodForDb() || '').toLowerCase();
+          const paidNow =
+            pm === 'cash' ||
+            pm === 'nakit' ||
+            pm === 'card' ||
+            pm === 'credit_card' ||
+            pm === 'pos' ||
+            pm === 'paid';
+          return paidNow ? 'completed' : 'unpaid';
+        })(),
         notes: description,
         document_no: documentNo.trim() || invoiceNo,
         header_fields: buildInvoiceHeaderFieldsFromForm({

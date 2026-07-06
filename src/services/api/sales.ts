@@ -13,6 +13,41 @@ import { fetchKasalar, createKasaIslemi, type KasaIslemi } from './kasa';
 import { normalizeWeightProductQuantity, resolveStockQuantityFromLine } from '../../utils/scaleQuantity';
 import { normalizePaymentMethodBucket } from '../../utils/paymentMethodUtils';
 
+async function enrichSalesWithLineItems(sales: Sale[]): Promise<Sale[]> {
+  if (!sales.length) return sales;
+  const ids = sales.map((s) => s.id).filter(Boolean);
+  if (!ids.length) return sales;
+
+  try {
+    const { rows } = await postgres.query(
+      `SELECT * FROM sale_items WHERE invoice_id = ANY($1::uuid[])`,
+      [ids],
+    );
+    const byInvoice = new Map<string, any[]>();
+    for (const row of rows) {
+      const key = String(row.invoice_id);
+      if (!byInvoice.has(key)) byInvoice.set(key, []);
+      byInvoice.get(key)!.push(row);
+    }
+    return sales.map((sale) => {
+      const rawItems = byInvoice.get(sale.id) || [];
+      const items: SaleItem[] = rawItems.map((item: any) => ({
+        productId: item.product_id != null ? String(item.product_id) : String(item.item_code || ''),
+        productName: item.item_name || '',
+        quantity: Number(item.quantity || 0),
+        price: Number(item.unit_price || 0),
+        discount: Number(item.discount_rate || 0),
+        total: Number(item.total_amount || item.net_amount || 0),
+        unit: item.unit || 'Adet',
+      }));
+      return { ...sale, items };
+    });
+  } catch (e) {
+    console.warn('[SalesAPI] enrichSalesWithLineItems failed:', e);
+    return sales;
+  }
+}
+
 export const salesAPI = {
   /**
    * Create new sale
@@ -434,9 +469,10 @@ export const salesAPI = {
         fetchCategory('Iade', 3),
       ]);
 
-      return [...sales, ...returns].sort(
+      const merged = [...sales, ...returns].sort(
         (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
       );
+      return enrichSalesWithLineItems(merged);
     } catch (error) {
       console.error('[SalesAPI] getByDateRange failed:', error);
       return [];

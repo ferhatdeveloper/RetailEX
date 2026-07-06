@@ -11,7 +11,7 @@ import {
 import { DevExDataGrid } from '../../shared/DevExDataGrid';
 import { createColumnHelper } from '@tanstack/react-table';
 import { formatCurrency } from '../../../utils/formatNumber';
-import { fetchKasalar, fetchKasaIslemleri, deleteKasaIslemi, type Kasa, type KasaIslemi } from '../../../services/api/kasa';
+import { fetchKasalar, fetchKasaIslemleri, deleteKasaIslemi, cloneKasa, type Kasa, type KasaIslemi } from '../../../services/api/kasa';
 import { KasaDefinitionModal } from './KasaDefinitionModal';
 import { KasaIslemleriModal } from './KasaIslemleriModal';
 import { toast } from 'sonner';
@@ -111,6 +111,17 @@ export function CashRegisterManagement({ onEnterKasa, initialTab = 'sessions' }:
       toast.error(msg || tm('error') || 'Silinemedi');
     } finally {
       setDeletingTxId(null);
+    }
+  };
+
+  const handleCloneKasa = async (kasa: Kasa) => {
+    setContextMenu(null);
+    try {
+      await cloneKasa(kasa);
+      toast.success(tm('success') || 'Kasa kopyalandı');
+      await loadData();
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : String(e));
     }
   };
 
@@ -386,6 +397,12 @@ export function CashRegisterManagement({ onEnterKasa, initialTab = 'sessions' }:
             className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
           >
             İncele
+          </button>
+          <button
+            onClick={() => void handleCloneKasa(contextMenu.kasa)}
+            className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center gap-2 border-t"
+          >
+            Klonla
           </button>
           <button
             onClick={() => onEnterKasa?.(contextMenu.kasa.id)}

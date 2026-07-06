@@ -690,23 +690,40 @@ export function ManagementModule({
     return;
   }, []);
 
-  // Fetch hidden_modules from config
-  useEffect(() => {
-    const fetchConfig = async () => {
-      try {
-        if (isTauri) {
-          const { invoke } = await import('@tauri-apps/api/core');
-          const config: any = await invoke('get_app_config');
-          if (config && Array.isArray(config.hidden_modules)) {
-            setHiddenModules(config.hidden_modules);
-          }
+  // Fetch hidden_modules from config (Tauri config.db veya web localStorage)
+  const fetchHiddenModules = useCallback(async () => {
+    try {
+      if (isTauri) {
+        const { invoke } = await import('@tauri-apps/api/core');
+        const config: any = await invoke('get_app_config');
+        if (config && Array.isArray(config.hidden_modules)) {
+          setHiddenModules(config.hidden_modules);
         }
-      } catch (err) {
-        console.error('Failed to fetch hidden_modules:', err);
+        return;
       }
-    };
-    fetchConfig();
-  }, []);
+      const standalone = localStorage.getItem('retailex_hidden_modules');
+      if (standalone) {
+        const parsed = JSON.parse(standalone);
+        if (Array.isArray(parsed)) {
+          setHiddenModules(parsed);
+          return;
+        }
+      }
+      const webRaw = localStorage.getItem('retailex_web_config');
+      if (webRaw) {
+        const web = JSON.parse(webRaw);
+        if (Array.isArray(web.hidden_modules)) {
+          setHiddenModules(web.hidden_modules);
+        }
+      }
+    } catch (err) {
+      console.error('Failed to fetch hidden_modules:', err);
+    }
+  }, [isTauri]);
+
+  useEffect(() => {
+    void fetchHiddenModules();
+  }, [fetchHiddenModules]);
 
   const languages = [
     { code: 'tr' as const, name: 'Türkçe', flag: '🇹🇷' },
@@ -816,12 +833,12 @@ export function ManagementModule({
   // Menü güncellemelerini dinle - useCallback ile sarmalanmış
   const handleMenuUpdate = useCallback((e?: CustomEvent) => {
     console.log('🔄 Menü güncelleme eventi alındı', e?.detail);
-    // Cache'i temizle ve yeniden yükle
     clearMenuCache();
-    const forceReload = e?.detail?.forceReload !== false; // Default true
+    const forceReload = e?.detail?.forceReload !== false;
     console.log('🔄 Menü yeniden yükleniyor, forceReload:', forceReload);
+    void fetchHiddenModules();
     loadMenuStructure(forceReload);
-  }, [clearMenuCache, loadMenuStructure]);
+  }, [clearMenuCache, loadMenuStructure, fetchHiddenModules]);
 
   // Statik menü yapısı isteklerini dinle - useCallback ile sarmalanmış
   const handleStaticMenuRequest = useCallback(() => {

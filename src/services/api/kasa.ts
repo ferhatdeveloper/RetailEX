@@ -206,6 +206,34 @@ export async function createKasa(kasa: Omit<Kasa, 'id'>): Promise<string> {
   }
 }
 
+export async function cloneKasa(source: Kasa): Promise<string> {
+  const suffix = '-K';
+  let code = `${source.kasa_kodu || 'KASA'}${suffix}`;
+  let name = `${source.kasa_adi || 'Kasa'} (Kopya)`;
+  let n = 2;
+  while (n < 50) {
+    try {
+      return await createKasa({
+        firma_id: source.firma_id,
+        kasa_kodu: code,
+        kasa_adi: name,
+        aciklama: source.aciklama,
+        bakiye: 0,
+        id_bakiye: 0,
+        id_doviz_kodu: source.id_doviz_kodu || 'IQD',
+        aktif: true,
+        olusturma_tarihi: new Date().toISOString(),
+        guncelleme_tarihi: new Date().toISOString(),
+      });
+    } catch {
+      code = `${source.kasa_kodu || 'KASA'}${suffix}${n}`;
+      name = `${source.kasa_adi || 'Kasa'} (Kopya ${n})`;
+      n += 1;
+    }
+  }
+  throw new Error('Kasa klonlanamadı — benzersiz kod üretilemedi.');
+}
+
 /**
  * Kasa güncelle
  */

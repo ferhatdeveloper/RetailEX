@@ -16,11 +16,12 @@ import {
   Column,
   FilterFn,
 } from '@tanstack/react-table';
-import { ChevronDown, ChevronUp, Filter } from 'lucide-react';
+import { ChevronDown, ChevronUp, Filter, Download } from 'lucide-react';
 import { useResponsive } from '../../hooks/useResponsive';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import { ColumnVisibilityMenu } from './ColumnVisibilityMenu';
+import { exportDataGridToExcel } from '../../utils/gridExcelExport';
 
 const DEFAULT_PAGE_SIZE_OPTIONS = [10, 15, 20, 25, 50, 100];
 const FILTER_MENU_Z_INDEX = 12000;
@@ -50,6 +51,9 @@ interface DevExDataGridProps<T> {
   selectedRowIds?: Record<string, boolean>;
   /** compact: 10px (varsayılan), comfortable: 13px — fatura listesi vb. okunabilirlik */
   density?: 'compact' | 'comfortable';
+  /** true ise filtrelenmiş satırları Excel olarak indirir */
+  enableExcelExport?: boolean;
+  excelFileName?: string;
 }
 
 interface FilterMenuProps {
@@ -595,6 +599,8 @@ export function DevExDataGrid<T>({
   onSelectionChange,
   selectedRowIds,
   density = 'compact',
+  enableExcelExport = true,
+  excelFileName = 'retailex_export',
 }: DevExDataGridProps<T>) {
   const [sorting, setSorting] = useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
@@ -878,7 +884,7 @@ export function DevExDataGrid<T>({
           : undefined
       }
     >
-      {enableColumnVisibility && showColumnVisibilityToolbar && (
+      {((enableColumnVisibility && showColumnVisibilityToolbar) || enableExcelExport) && (
         <div className="flex items-center justify-end gap-2 px-3 py-1.5 bg-gray-50 border border-gray-300 border-b-0 shrink-0">
           {enableFiltering && columnFilters.length > 0 && (
             <button
@@ -892,6 +898,7 @@ export function DevExDataGrid<T>({
               {tm('clear')} ({columnFilters.length})
             </button>
           )}
+          {enableColumnVisibility && (
           <ColumnVisibilityMenu
             columns={leafColumnsForVisibility.map((col) => {
               const header = col.columnDef.header;
@@ -919,6 +926,24 @@ export function DevExDataGrid<T>({
               );
             }}
           />
+          )}
+          {enableExcelExport && (
+            <button
+              type="button"
+              onClick={() =>
+                exportDataGridToExcel(
+                  table.getFilteredRowModel().rows.map((r) => r.original),
+                  columns,
+                  excelFileName,
+                )
+              }
+              className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-medium text-emerald-800 bg-emerald-50 border border-emerald-200 rounded hover:bg-emerald-100"
+              title={tm('exportExcel') || 'Excel'}
+            >
+              <Download className="w-3 h-3" />
+              Excel
+            </button>
+          )}
         </div>
       )}
 

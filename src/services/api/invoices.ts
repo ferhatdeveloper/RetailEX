@@ -796,18 +796,29 @@ async function applyInvoiceBalanceUpdatesRestApi(
   }
 }
 
-/** Modül kategorisi (Alis/Satis/…) ile satırın uyumu — önce DB invoice_category, yoksa Logo trcode grubu */
+/** Modül kategorisi (Alis/Satis/…) ile satırın uyumu — önce Logo trcode grubu, sonra invoice_category */
 export function invoiceMatchesModuleCategory(
   inv: { invoice_category?: string; invoice_type?: number; trcode?: number; fiche_type?: string },
   moduleCategory: string
 ): boolean {
   if (!moduleCategory) return true;
-  if (inv.invoice_category) {
-    return inv.invoice_category === moduleCategory;
-  }
   const tc = Number(inv.invoice_type ?? inv.trcode ?? 0);
-  const set = TRCODES_BY_INVOICE_CATEGORY[moduleCategory];
-  if (set?.includes(tc)) return true;
+  const moduleCodes = TRCODES_BY_INVOICE_CATEGORY[moduleCategory];
+  if (tc > 0 && moduleCodes?.includes(tc)) return true;
+
+  if (inv.invoice_category) {
+    if (inv.invoice_category === moduleCategory) return true;
+    // Hizmet / İade ekranları: trcode öncelikli (4,9 → Hizmet; 6 → İade) — yanlış infer edilmiş kategori
+    if (moduleCategory === 'Hizmet' && inv.invoice_category !== 'Hizmet') {
+      return [4, 9, 21, 24].includes(tc);
+    }
+    if (moduleCategory === 'Iade' && inv.invoice_category !== 'Iade') {
+      return [2, 3, 6].includes(tc);
+    }
+    return false;
+  }
+
+  if (moduleCodes?.includes(tc)) return true;
   const ft = String(inv.fiche_type ?? '').trim();
   return legacyFicheTypesByCategory(moduleCategory).includes(ft);
 }
@@ -2566,7 +2577,7 @@ function normalizeSalesHeaderNetAmount(dbInv: any, category: Invoice['invoice_ca
 function inferInvoiceCategoryFromDbRow(dbInv: any): Invoice['invoice_category'] {
   const ft = String(dbInv?.fiche_type || '').toLowerCase();
   const tc = Number(dbInv?.trcode ?? dbInv?.invoice_type ?? 0);
-  if (ft === 'return_invoice' && tc === 6) return 'Alis';
+  if (tc === 6) return 'Iade';
   if (ft === 'purchase_invoice' || ft === 'a') return 'Alis';
   if (ft === 'sales_invoice' || ft === 's') return 'Satis';
   if (ft === 'return_invoice' || ft === 'i') return 'Iade';

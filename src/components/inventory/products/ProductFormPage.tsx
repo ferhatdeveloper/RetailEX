@@ -488,6 +488,8 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
     currentValue: string | string[];
     isMulti?: boolean;
     useTree?: boolean;
+    definitionTableName?: string;
+    parentId?: string | null;
   }>({
     show: false,
     title: '',
@@ -632,6 +634,18 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
       currentValue,
       isMulti: type === 'supplier',
       useTree: type === 'category' || type === 'productGroup' || type === 'subGroup',
+      definitionTableName:
+        type === 'brand'
+          ? 'brands'
+          : type === 'category'
+            ? 'categories'
+            : type === 'productGroup' || type === 'subGroup'
+              ? 'product_groups'
+              : undefined,
+      parentId:
+        type === 'subGroup'
+          ? productGroups.find((g) => g.code === formData.groupCode)?.id ?? null
+          : null,
     });
   };
 
@@ -4197,6 +4211,19 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
               items={selectionModal.items}
               currentValue={selectionModal.currentValue}
               isMulti={selectionModal.isMulti}
+              definitionTableName={selectionModal.definitionTableName}
+              parentId={selectionModal.parentId}
+              onItemsChanged={async () => {
+                const { categoryAPI, brandAPI, productGroupAPI } = await import('../../../services/api/masterData');
+                const [c, b, g] = await Promise.all([
+                  categoryAPI.getAll(),
+                  brandAPI.getAll(),
+                  productGroupAPI.getAll(),
+                ]);
+                setCategories(c);
+                setBrands(b);
+                setProductGroups(g);
+              }}
               onSelect={handleSelectionSelect}
               onClose={() => setSelectionModal((prev: any) => ({ ...prev, show: false }))}
             />

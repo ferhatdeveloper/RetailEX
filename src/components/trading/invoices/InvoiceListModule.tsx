@@ -34,7 +34,11 @@ import {
   isSayimFazlasiAlisInvoice,
 } from '../../../utils/countInvoicePurchaseDraft';
 import { FullscreenBodyPortal, MODAL_OVERLAY_Z } from '../../shared/FullscreenBodyPortal';
-import { PercentBodyModal, PercentBodyModalScrollBody } from '../../shared/PercentBodyModal';
+import {
+  invoiceListPrefsKey,
+  loadInvoiceListPrefs,
+  saveInvoiceListPrefs,
+} from '../../../utils/invoiceListPrefs';
 
 export type CountPurchaseDraftPrefill = {
   editData: Record<string, unknown>;
@@ -245,11 +249,18 @@ export function InvoiceListModule({
       invoice
     });
   };
+  const prefsKey = invoiceListPrefsKey(defaultCategory, defaultInvoiceTypeFilter);
+  const initialPrefs = useMemo(() => loadInvoiceListPrefs(prefsKey), [prefsKey]);
+
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<string>('all');
-  const [dateFilter, setDateFilter] = useState<string>(defaultCategory === 'Alis' ? 'all' : 'today');
-  const [invoiceTypeFilter, setInvoiceTypeFilter] = useState<string>(defaultInvoiceTypeFilter || 'all');
+  const [statusFilter, setStatusFilter] = useState<string>(initialPrefs?.statusFilter ?? 'all');
+  const [dateFilter, setDateFilter] = useState<string>(
+    initialPrefs?.dateFilter ?? (defaultCategory === 'Alis' ? 'all' : 'today'),
+  );
+  const [invoiceTypeFilter, setInvoiceTypeFilter] = useState<string>(
+    initialPrefs?.invoiceTypeFilter ?? (defaultInvoiceTypeFilter || 'all'),
+  );
   const [selectedInvoice, setSelectedInvoice] = useState<ListInvoice | null>(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [showInvoiceTypeModal, setShowInvoiceTypeModal] = useState(false);
@@ -370,15 +381,29 @@ export function InvoiceListModule({
     };
   }, [searchQuery]);
 
-  // Sync state with props when they change
+  // Sync state with props when they change — kayıtlı tercih varsa üzerine yazma
   useEffect(() => {
-    setInvoiceTypeFilter(defaultInvoiceTypeFilter || 'all');
-  }, [defaultInvoiceTypeFilter]);
+    if (!initialPrefs?.invoiceTypeFilter) {
+      setInvoiceTypeFilter(defaultInvoiceTypeFilter || 'all');
+    }
+  }, [defaultInvoiceTypeFilter, initialPrefs?.invoiceTypeFilter]);
 
   useEffect(() => {
     setSelectedCategory(defaultCategory || 'all');
-    if (defaultCategory === 'Alis') setDateFilter('all');
-  }, [defaultCategory]);
+    if (defaultCategory === 'Alis' && !initialPrefs?.dateFilter) {
+      setDateFilter('all');
+    }
+  }, [defaultCategory, initialPrefs?.dateFilter]);
+
+  useEffect(() => {
+    saveInvoiceListPrefs(prefsKey, {
+      dateFilter,
+      invoiceTypeFilter,
+      statusFilter,
+      detailInvoiceId: selectedInvoice?.id ?? null,
+      showDetail: showDetailModal,
+    });
+  }, [prefsKey, dateFilter, invoiceTypeFilter, statusFilter, selectedInvoice?.id, showDetailModal]);
 
   /** Sayım → alış taslak: önce props (navigasyon), yoksa sessionStorage (yedek). */
   useEffect(() => {
@@ -938,6 +963,7 @@ export function InvoiceListModule({
               >
                 <option value="all">{tm('allStatuses')}</option>
                 <option value="completed">{tm('completed')}</option>
+                <option value="unpaid">{tm('unpaid') || 'Ödenmedi'}</option>
                 <option value="pending">{tm('pending')}</option>
                 <option value="refunded">{tm('refunded')}</option>
                 <option value="cancelled">{tm('cancelled')}</option>

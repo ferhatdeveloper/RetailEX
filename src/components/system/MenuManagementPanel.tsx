@@ -659,12 +659,26 @@ export default staticMenuSections;
         try {
           // @ts-ignore
           const { invoke } = await import('@tauri-apps/api/core');
-          const config: any = await invoke('get_app_config');
-          config.hidden_modules = newHiddenModules;
-          await invoke('save_app_config', { config });
+          const { IS_TAURI } = await import('../../utils/env');
+
+          if (IS_TAURI) {
+            const config: any = await invoke('get_app_config');
+            config.hidden_modules = newHiddenModules;
+            await invoke('save_app_config', { config });
+          } else {
+            localStorage.setItem('retailex_hidden_modules', JSON.stringify(newHiddenModules));
+            try {
+              const webRaw = localStorage.getItem('retailex_web_config');
+              const web = webRaw ? JSON.parse(webRaw) : {};
+              web.hidden_modules = newHiddenModules;
+              localStorage.setItem('retailex_web_config', JSON.stringify(web));
+            } catch {
+              /* ignore */
+            }
+          }
 
           setHiddenModules(newHiddenModules);
-          alert('Statik menü görünürlük ayarları yerel veritabanına kaydedildi!');
+          alert('Statik menü görünürlük ayarları kaydedildi!');
         } catch (e) {
           logger.crudError('MenuManagement', 'saveStaticConfig', e);
           alert('Yerel konfigürasyon kaydedilemedi.');

@@ -21,6 +21,7 @@ export interface StockMovement {
     movement_date: string;
     exchange_rate?: number;
     description?: string;
+    customer_name?: string;
     status: string;
     created_by?: string;
     created_at: string;
@@ -128,11 +129,19 @@ class StockMovementAPI {
                         NULL::uuid AS target_warehouse_id,
                         COALESCE(s.currency_rate, 1.0) AS exchange_rate,
                         COALESCE(s.notes, '') AS description,
+                        COALESCE(
+                            NULLIF(TRIM(s.customer_name), ''),
+                            c.name,
+                            sup.name,
+                            ''
+                        ) AS customer_name,
                         s.created_at,
                         s.updated_at,
                         st.name AS warehouse_name
                     FROM sales s
                     LEFT JOIN stores st ON s.store_id = st.id
+                    LEFT JOIN customers c ON c.id::text = s.customer_id::text
+                    LEFT JOIN suppliers sup ON sup.id::text = s.customer_id::text
                     WHERE s.fiche_type IN ('purchase_invoice', 'sales_invoice', 'return_invoice')
                     ORDER BY s.date DESC NULLS LAST, s.created_at DESC NULLS LAST
                     LIMIT 500`

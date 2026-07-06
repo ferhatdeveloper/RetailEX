@@ -12,6 +12,7 @@ interface TxRow {
     movement_date: string;
     document_type: string;
     movement_type: string;
+    customer_name: string;
     description: string;
 }
 
@@ -41,6 +42,7 @@ export function TransactionBreakdownReport() {
                             ? (m.movement_type === 'in' ? tm('purchaseInvoice') || 'Alış Faturası' : tm('salesInvoice') || 'Satış Faturası')
                             : (tm('warehouseSlip') || 'Ambar Fişi'),
                         movement_type: m.movement_type || '',
+                        customer_name: m.customer_name || '',
                         description: m.description || '',
                     }));
                 if (!cancelled) setRows(mapped);
@@ -69,6 +71,10 @@ export function TransactionBreakdownReport() {
         }),
         columnHelper.accessor('document_no', { header: tm('documentNo') || 'Belge No' }),
         columnHelper.accessor('document_type', { header: tm('documentType') || 'Belge Tipi' }),
+        columnHelper.accessor('customer_name', {
+            header: tm('customerSupplier') || 'Müşteri / Cari',
+            cell: info => <span className="text-gray-900 font-medium">{info.getValue() || '—'}</span>,
+        }),
         columnHelper.accessor('movement_type', {
             header: tm('direction') || 'Yön',
             cell: info => {

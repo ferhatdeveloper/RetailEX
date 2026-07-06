@@ -1,5 +1,7 @@
-﻿import { X, Search, Database, Check } from 'lucide-react';
+﻿import { X, Search, Database, Check, Plus } from 'lucide-react';
 import { useState, useMemo } from 'react';
+import { definitionAPI } from '../../services/definitionAPI';
+import { toast } from 'sonner';
 
 export interface MasterDataItem {
     id: string;
@@ -15,6 +17,11 @@ interface MasterDataSelectionModalProps {
     onSelect: (item: MasterDataItem | MasterDataItem[]) => void;
     onClose: () => void;
     isMulti?: boolean;
+    /** Tanım tablosu adı — verilirse hızlı ekleme gösterilir (categories, brands, product_groups) */
+    definitionTableName?: string;
+    /** Alt grup için üst grup id */
+    parentId?: string | null;
+    onItemsChanged?: () => void;
 }
 
 export function MasterDataSelectionModal({
@@ -23,9 +30,17 @@ export function MasterDataSelectionModal({
     currentValue,
     onSelect,
     onClose,
-    isMulti = false
+    isMulti = false,
+    definitionTableName,
+    parentId = null,
+    onItemsChanged,
 }: MasterDataSelectionModalProps) {
     const [searchTerm, setSearchTerm] = useState('');
+    const [showQuickAdd, setShowQuickAdd] = useState(false);
+    const [quickCode, setQuickCode] = useState('');
+    const [quickName, setQuickName] = useState('');
+    const [quickSaving, setQuickSaving] = useState(false);
+    const [localItems, setLocalItems] = useState(items);
     const [selectedItems, setSelectedItems] = useState<MasterDataItem[]>(() => {
         if (isMulti && Array.isArray(currentValue)) {
             return items.filter(item =>
@@ -37,15 +52,53 @@ export function MasterDataSelectionModal({
     });
 
     const filteredItems = useMemo(() => {
-        if (!searchTerm.trim()) return items;
+        const source = localItems.length ? localItems : items;
+        if (!searchTerm.trim()) return source;
         const term = searchTerm.toLowerCase();
-        return items.filter(
+        return source.filter(
             (item: MasterDataItem) =>
                 item.code.toLowerCase().includes(term) ||
                 item.name.toLowerCase().includes(term) ||
                 item.description?.toLowerCase().includes(term)
         );
-    }, [searchTerm, items]);
+    }, [searchTerm, items, localItems]);
+
+    const handleQuickAdd = async () => {
+        if (!definitionTableName || !quickCode.trim() || !quickName.trim()) {
+            toast.error('Kod ve ad zorunludur.');
+            return;
+        }
+        setQuickSaving(true);
+        try {
+            const payload: Record<string, unknown> = {
+                code: quickCode.trim(),
+                name: quickName.trim(),
+                is_active: true,
+            };
+            if (definitionTableName === 'categories' || definitionTableName === 'product_groups') {
+                if (parentId) payload.parent_id = parentId;
+            }
+            const created = await definitionAPI.create(definitionTableName, payload as any);
+            if (!created) throw new Error('Kayıt oluşturulamadı');
+            const mapped: MasterDataItem = {
+                id: created.id,
+                code: created.code,
+                name: created.name,
+                description: created.description,
+            };
+            setLocalItems((prev) => [...prev, mapped]);
+            onItemsChanged?.();
+            setQuickCode('');
+            setQuickName('');
+            setShowQuickAdd(false);
+            if (!isMulti) onSelect(mapped);
+            toast.success('Kayıt eklendi');
+        } catch (e: unknown) {
+            toast.error(e instanceof Error ? e.message : String(e));
+        } finally {
+            setQuickSaving(false);
+        }
+    };
 
     const handleItemClick = (item: MasterDataItem) => {
         if (isMulti) {
@@ -107,6 +160,51 @@ export function MasterDataSelectionModal({
                         />
                     </div>
                 </div>
+
+                {definitionTableName && (
+                    <div className="px-4 pb-2 border-b border-gray-100">
+                        {!showQuickAdd ? (
+                            <button
+                                type="button"
+                                onClick={() => setShowQuickAdd(true)}
+                                className="inline-flex items-center gap-1 text-xs font-medium text-blue-700 hover:text-blue-900"
+                            >
+                                <Plus className="w-3 h-3" />
+                                Yeni ekle
+                            </button>
+                        ) : (
+                            <div className="flex flex-wrap items-end gap-2">
+                                <input
+                                    value={quickCode}
+                                    onChange={(e) => setQuickCode(e.target.value)}
+                                    placeholder="Kod"
+                                    className="flex-1 min-w-[80px] px-2 py-1.5 border rounded text-xs"
+                                />
+                                <input
+                                    value={quickName}
+                                    onChange={(e) => setQuickName(e.target.value)}
+                                    placeholder="Ad"
+                                    className="flex-[2] min-w-[120px] px-2 py-1.5 border rounded text-xs"
+                                />
+                                <button
+                                    type="button"
+                                    disabled={quickSaving}
+                                    onClick={() => void handleQuickAdd()}
+                                    className="px-3 py-1.5 bg-blue-600 text-white text-xs rounded disabled:opacity-50"
+                                >
+                                    Kaydet
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setShowQuickAdd(false)}
+                                    className="px-2 py-1.5 text-xs text-gray-600"
+                                >
+                                    İptal
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                )}
 
                 {/* List */}
                 <div className="flex-1 overflow-auto p-2">
