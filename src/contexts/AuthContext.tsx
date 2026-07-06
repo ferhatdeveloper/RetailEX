@@ -5,7 +5,11 @@ import rbacService, { Role } from '../services/rbacService';
 import { postgres, ERP_SETTINGS, DB_SETTINGS } from '../services/postgres';
 import { logger } from '../services/loggingService';
 import { useAuthStore } from '../store';
-import { postgrest } from '../services/api/postgrestClient';
+import {
+  verifyLoginUser,
+  normalizeLoginFirmNr,
+  type LoginVerifyRow,
+} from '../services/loginVerify';
 
 // ===== TYPES =====
 
@@ -47,7 +51,6 @@ interface SignupData {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-/** Güzellik hizmet hatırlatmaları (tamamlanan işlem + X gün); DB yoksa sessizce atlanır. */
 async function notifyBeautyFollowUpRemindersAfterSession(opts?: { playChime?: boolean }): Promise<void> {
     try {
         if (DB_SETTINGS.connectionProvider === 'rest_api') return;
@@ -73,6 +76,94 @@ async function notifyBeautyFollowUpRemindersAfterSession(opts?: { playChime?: bo
     } catch {
         /* PostgreSQL kapalı veya şema uyumsuz */
     }
+}
+
+function buildUserFromLoginRow(row: LoginVerifyRow, periodNr: string): User {
+  let rawPerms: unknown = row.role_permissions;
+  if (typeof rawPerms === 'string') {
+    try { rawPerms = JSON.parse(rawPerms); } catch { rawPerms = []; }
+  }
+  const permList = Array.isArray(rawPerms) ? rawPerms : [];
+  const dynamicPermissions = rbacService.resolveDynamicPermissions(permList);
+
+  const roleName = (row.role_name || '').toLowerCase();
+  const isGarson = roleName === 'garson' || roleName === 'waiter';
+  const landingRouteRaw = row.role_landing_route && String(row.role_landing_route).trim()
+    ? String(row.role_landing_route).trim()
+    : null;
+  const landingRoute = landingRouteRaw || (isGarson ? 'restaurant' : null);
+
+  const resolvedRole: Role = {
+    id: row.role_id || 'dynamic',
+    name: row.role_name || 'User',
+    description: '',
+    permissions: dynamicPermissions,
+    isSystemRole: false,
+    isActive: true,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+    landingRoute: landingRoute || undefined,
+  };
+
+  const allowedFirmNrs = row.allowed_firm_nrs != null
+    ? (typeof row.allowed_firm_nrs === 'string' ? JSON.parse(row.allowed_firm_nrs || '[]') : row.allowed_firm_nrs)
+    : [];
+  const allowedPeriods = row.allowed_periods != null
+    ? (typeof row.allowed_periods === 'string' ? JSON.parse(row.allowed_periods || '[]') : row.allowed_periods)
+    : [];
+
+  return {
+    id: row.id,
+    username: row.username,
+    email: row.email || `${row.username}@retailex.local`,
+    full_name: row.full_name || row.username,
+    role_ids: [row.role_id || row.role_name || 'user'],
+    roles: [resolvedRole],
+    firm_nr: normalizeLoginFirmNr(row.firm_nr) || row.firm_nr || undefined,
+    period_nr: periodNr,
+    store_id: row.store_id || undefined,
+    created_at: row.created_at || new Date().toISOString(),
+    allowed_firm_nrs: allowedFirmNrs,
+    allowed_periods: allowedPeriods,
+  };
+}
+
+async function finalizeLoginSession(
+  setUserFn: (u: User) => void,
+  userWithRoles: User,
+): Promise<void> {
+  setUserFn(userWithRoles);
+  useAuthStore.getState().login(userWithRoles as any);
+
+  const { applyTerminalRuntimeFromAuth } = await import('../services/terminalRuntimeService');
+  applyTerminalRuntimeFromAuth(userWithRoles);
+
+  const landingRoute = userWithRoles.roles[0]?.landingRoute ?? null;
+  if (landingRoute && ['restaurant', 'pos', 'management', 'wms', 'beauty'].includes(landingRoute)) {
+    localStorage.setItem('retailex_active_module', landingRoute);
+  }
+
+  const userMeta = {
+    firmNr: userWithRoles.firm_nr || ERP_SETTINGS.firmNr,
+    periodNr: userWithRoles.period_nr || ERP_SETTINGS.periodNr,
+  };
+  localStorage.setItem('exretail_user_meta', JSON.stringify({
+    firm_nr: userMeta.firmNr,
+    period_nr: userMeta.periodNr,
+  }));
+
+  const { updateConfigs } = await import('../services/postgres');
+  await updateConfigs({ erp: userMeta });
+
+  localStorage.setItem('exretail_session', JSON.stringify({
+    token: 'local-session-auth',
+    user: userWithRoles,
+  }));
+
+  toast.success(`Hoş geldiniz, ${userWithRoles.full_name}!`);
+  window.setTimeout(() => {
+    void notifyBeautyFollowUpRemindersAfterSession({ playChime: true });
+  }, 900);
 }
 
 export function useAuth() {
@@ -176,276 +267,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = async (username: string, password: string): Promise<boolean> => {
     try {
       setLoading(true);
-      logger.info('Auth', `Login attempt: ${username} (Firm: ${ERP_SETTINGS.firmNr})`);
-
       const { ERP_SETTINGS: latestSettings } = await import('../services/postgres');
+      const selectedFirm = normalizeLoginFirmNr(latestSettings.firmNr);
+      logger.info('Auth', `Login attempt: ${username} (Firm: ${selectedFirm || latestSettings.firmNr})`);
 
-      // Rest API (PostgREST) ile güvenli login: password_hash tablosunu frontend'e göstermeden RPC çağrısı yapar.
-      if (DB_SETTINGS.connectionProvider === 'rest_api') {
-        const trimmedUsername = username.trim();
-        const trimmedPassword = password.trim();
-
-        try {
-          const rpcRes: any = await postgrest.post('/rpc/verify_login', {
-            username: trimmedUsername,
-            password: trimmedPassword,
-            // Login öncesi firma seçimi olmayabilir; fonksiyon firm_nr '' iken kısıtlamayı gevşetir.
-            firm_nr: ''
-          }, {
-            schema: 'logic'
-          });
-
-          const row = Array.isArray(rpcRes) ? rpcRes[0] : (rpcRes?.[0] ?? rpcRes);
-          if (row) {
-            // Parse and resolve permissions robustly
-            let rawPerms = row.role_permissions;
-            if (typeof rawPerms === 'string') {
-              try { rawPerms = JSON.parse(rawPerms); } catch (e) { rawPerms = []; }
-            }
-            if (!Array.isArray(rawPerms)) rawPerms = [];
-            const dynamicPermissions = rbacService.resolveDynamicPermissions(rawPerms);
-
-            const roleName = (row.role_name || '').toLowerCase();
-            const isGarson = roleName === 'garson' || roleName === 'waiter';
-            const landingRouteRaw = row.role_landing_route && String(row.role_landing_route).trim()
-              ? String(row.role_landing_route).trim()
-              : null;
-            const landingRoute = landingRouteRaw || (isGarson ? 'restaurant' : null);
-
-            const resolvedRole: Role = {
-              id: row.role_id || 'dynamic',
-              name: row.role_name || row.role_name || 'User',
-              description: '',
-              permissions: dynamicPermissions,
-              isSystemRole: false,
-              isActive: true,
-              created_at: new Date().toISOString(),
-              updated_at: new Date().toISOString(),
-              landingRoute: landingRoute || undefined
-            };
-
-            const allowedFirmNrs = row.allowed_firm_nrs != null
-              ? (typeof row.allowed_firm_nrs === 'string' ? JSON.parse(row.allowed_firm_nrs || '[]') : row.allowed_firm_nrs)
-              : [];
-            const allowedPeriods = row.allowed_periods != null
-              ? (typeof row.allowed_periods === 'string' ? JSON.parse(row.allowed_periods || '[]') : row.allowed_periods)
-              : [];
-
-            const userWithRoles: User = {
-              id: row.id,
-              username: row.username,
-              email: row.email || `${row.username}@retailex.local`,
-              full_name: row.full_name,
-              role_ids: [row.role_id || row.role_name],
-              roles: [resolvedRole],
-              firm_nr: row.firm_nr,
-              period_nr: latestSettings.periodNr,
-              store_id: row.store_id,
-              created_at: row.created_at,
-              allowed_firm_nrs: allowedFirmNrs,
-              allowed_periods: allowedPeriods
-            };
-
-            setUser(userWithRoles);
-            useAuthStore.getState().login(userWithRoles as any);
-
-            const { applyTerminalRuntimeFromAuth } = await import('../services/terminalRuntimeService');
-            applyTerminalRuntimeFromAuth(userWithRoles);
-
-            if (landingRoute && ['restaurant', 'pos', 'management', 'wms', 'beauty'].includes(String(landingRoute))) {
-              localStorage.setItem('retailex_active_module', landingRoute as string);
-            }
-
-            // Save User Meta
-            const userMeta = {
-              firmNr: userWithRoles.firm_nr,
-              periodNr: latestSettings.periodNr
-            };
-            localStorage.setItem('exretail_user_meta', JSON.stringify({
-              firm_nr: userMeta.firmNr,
-              period_nr: userMeta.periodNr
-            }));
-
-            // Sync ERP settings with global state
-            const { updateConfigs } = await import('../services/postgres');
-            await updateConfigs({ erp: userMeta });
-
-            // Save session
-            const sessionData = {
-              token: 'local-session-auth',
-              user: userWithRoles
-            };
-            localStorage.setItem('exretail_session', JSON.stringify(sessionData));
-
-            toast.success(`Hoş geldiniz, ${userWithRoles.full_name}!`);
-            window.setTimeout(() => {
-                void notifyBeautyFollowUpRemindersAfterSession({ playChime: true });
-            }, 900);
-            return true;
-          }
-          logger.warn('Auth', 'PostgREST verify_login empty response, SQL fallback deneniyor');
-        } catch (rpcErr: any) {
-          logger.warn('Auth', 'PostgREST verify_login başarısız, SQL fallback deneniyor', { error: rpcErr?.message || String(rpcErr) });
-        }
-        // RPC fallback sırasında SQL hedefi eski tenant'ta kalmasın.
-        const { alignRemoteConfigWithRestUrl } = await import('../services/postgres');
-        alignRemoteConfigWithRestUrl();
-      }
-
-      // 1. Query user from auth.users joined with roles
-      const sql = `
-        SELECT 
-            u.id, 
-            u.email, 
-            u.raw_user_meta_data->>'username' as username,
-            u.raw_user_meta_data->>'full_name' as full_name,
-            u.raw_user_meta_data->>'firm_nr' as firm_nr,
-            r.id as role_id,
-            r.name as role_name, 
-            r.permissions as role_permissions, 
-            r.color as role_color,
-            r.landing_route as role_landing_route
-        FROM auth.users u
-        LEFT JOIN roles r ON (u.raw_user_meta_data->>'role') = r.name
-        WHERE LOWER(u.raw_user_meta_data->>'username') = LOWER($1)
-        AND (u.raw_user_meta_data->>'firm_nr') = $2
-        AND u.encrypted_password = crypt($3, u.encrypted_password)
-      `;
-
-      let result;
-      try {
-        result = await postgres.query(sql, [username, latestSettings.firmNr, password]);
-      } catch (e: any) {
-        // Mevcut schema'da Supabase-style auth.users yoksa (sadece public.users kullanılıyorsa),
-        // burada düşüp public.users fallback'una geçiyoruz.
-        logger.warn('Auth', `auth.users sorgusu başarısız (fallback aktif).`, { error: e?.message || String(e) });
-        result = { rows: [], rowCount: 0 };
-      }
-
-      // public.users fallback (Kullanıcı Yönetimi'nde eklenen garson vb.)
-      if (!result.rowCount || result.rowCount === 0) {
-        const publicSql = `
-          SELECT u.id, u.email, u.username, u.full_name, u.firm_nr, u.store_id, u.created_at, u.role,
-                 u.allowed_firm_nrs, u.allowed_periods,
-                 r.id as role_id, r.name as role_name, r.permissions as role_permissions, r.color as role_color,
-                 r.landing_route as role_landing_route
-          FROM public.users u
-          LEFT JOIN public.roles r ON r.id = u.role_id
-          WHERE LOWER(u.username) = LOWER($1) AND u.is_active = true
-          AND u.password_hash IS NOT NULL AND u.password_hash = crypt($3, u.password_hash)
-          AND (
-            u.firm_nr = $2::text
-            OR (
-              COALESCE(jsonb_array_length(u.allowed_firm_nrs), 0) > 0
-              AND u.allowed_firm_nrs @> jsonb_build_array($2::text)
-            )
-            OR (
-              COALESCE(jsonb_array_length(COALESCE(u.allowed_firm_nrs, '[]'::jsonb)), 0) = 0
-              AND u.firm_nr = $2::text
-            )
-          )
-          LIMIT 1
-        `;
-        result = await postgres.query(publicSql, [username, latestSettings.firmNr, password]);
-      }
-
-      if (result.rowCount > 0) {
-        const dbUser = result.rows[0];
-
-        logger.info('Auth', `Login successful for user: ${dbUser.username} (ID: ${dbUser.id})`);
-
-        // Parse and resolve permissions robustly
-        let rawPerms = dbUser.role_permissions;
-        if (typeof rawPerms === 'string') {
-          try { rawPerms = JSON.parse(rawPerms); } catch (e) { rawPerms = []; }
-        }
-        if (!Array.isArray(rawPerms)) rawPerms = [];
-
-        const dynamicPermissions = rbacService.resolveDynamicPermissions(rawPerms);
-
-        const roleName = (dbUser.role_name || dbUser.role || '').toLowerCase();
-        const isGarson = roleName === 'garson' || roleName === 'waiter';
-        const landingRouteRaw = dbUser.role_landing_route && String(dbUser.role_landing_route).trim() ? String(dbUser.role_landing_route).trim() : null;
-        const landingRoute = landingRouteRaw || (isGarson ? 'restaurant' : null);
-        const resolvedRole: Role = {
-          id: dbUser.role_id || 'dynamic',
-          name: dbUser.role_name || dbUser.role || 'User',
-          description: '',
-          permissions: dynamicPermissions,
-          isSystemRole: false,
-          isActive: true,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-          landingRoute: landingRoute || undefined
-        };
-
-        const allowedFirmNrs = dbUser.allowed_firm_nrs != null ? (typeof dbUser.allowed_firm_nrs === 'string' ? JSON.parse(dbUser.allowed_firm_nrs || '[]') : dbUser.allowed_firm_nrs) : [];
-        const allowedPeriods = dbUser.allowed_periods != null ? (typeof dbUser.allowed_periods === 'string' ? JSON.parse(dbUser.allowed_periods || '[]') : dbUser.allowed_periods) : [];
-        const userWithRoles: User = {
-          id: dbUser.id,
-          username: dbUser.username,
-          email: dbUser.email || `${dbUser.username}@retailex.local`,
-          full_name: dbUser.full_name,
-          role_ids: [dbUser.role_id || dbUser.role],
-          roles: [resolvedRole],
-          firm_nr: dbUser.firm_nr,
-          period_nr: latestSettings.periodNr,
-          store_id: dbUser.store_id,
-          created_at: dbUser.created_at,
-          allowed_firm_nrs: allowedFirmNrs,
-          allowed_periods: allowedPeriods
-        };
-
-        setUser(userWithRoles);
-        useAuthStore.getState().login(userWithRoles as any);
-
-        const { applyTerminalRuntimeFromAuth } = await import('../services/terminalRuntimeService');
-        applyTerminalRuntimeFromAuth(userWithRoles);
-
-        if (landingRoute && ['restaurant', 'pos', 'management', 'wms', 'beauty'].includes(landingRoute)) {
-          localStorage.setItem('retailex_active_module', landingRoute);
-        }
-
-        // Save User Meta
-        const userMeta = {
-          firmNr: dbUser.firm_nr,
-          periodNr: latestSettings.periodNr
-        };
-        localStorage.setItem('exretail_user_meta', JSON.stringify({
-          firm_nr: userMeta.firmNr,
-          period_nr: userMeta.periodNr
-        }));
-
-        // Sync ERP settings with global state
-        const { updateConfigs } = await import('../services/postgres');
-        await updateConfigs({
-          erp: userMeta
-        });
-
-        // Save session
-        const sessionData = {
-          token: 'local-session-auth',
-          user: userWithRoles
-        };
-        localStorage.setItem('exretail_session', JSON.stringify(sessionData));
-
-        toast.success(`Hoş geldiniz, ${userWithRoles.full_name}!`);
-        window.setTimeout(() => {
-            void notifyBeautyFollowUpRemindersAfterSession({ playChime: true });
-        }, 900);
-        return true;
-      } else {
-        // Double check for development/fallback if users table is empty or password mismatch
-        logger.warn('Auth', `Login failed for user: ${username}. Check username, password, or firm registration.`);
+      const row = await verifyLoginUser(username, password, selectedFirm);
+      if (!row) {
+        logger.warn('Auth', `Login failed for user: ${username}. Check username, password, or firm.`);
         toast.error('Kullanıcı adı veya şifre hatalı');
         return false;
       }
+
+      const userWithRoles = buildUserFromLoginRow(row, latestSettings.periodNr);
+      const effectiveFirm = normalizeLoginFirmNr(userWithRoles.firm_nr) || selectedFirm;
+      if (effectiveFirm) {
+        userWithRoles.firm_nr = effectiveFirm;
+      }
+
+      logger.info('Auth', `Login successful for user: ${userWithRoles.username} (ID: ${userWithRoles.id})`);
+      await finalizeLoginSession(setUser, userWithRoles);
+      return true;
     } catch (error: any) {
       logger.error('Auth', `Authentication system error during login for ${username}`, { error: error.message });
       toast.error('Giriş sistemi şu an kullanılamıyor (DB Bağlantı Hatası)');
       return false;
-    }
-    finally {
+    } finally {
       setLoading(false);
     }
   };

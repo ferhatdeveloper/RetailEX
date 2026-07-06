@@ -934,57 +934,26 @@ export function Login({ onLogin }: LoginProps) {
     if (trimmedPassword === INFRA_PASS || trimmedPassword === IT_PASS) return true;
 
     try {
-      const { DB_SETTINGS } = await import('../../services/postgres');
-      if (DB_SETTINGS.connectionProvider === 'rest_api') {
-        try {
-          const { postgrest } = await import('../../services/api/postgrestClient');
-          const rpcRes: any = await postgrest.post(
-            '/rpc/verify_login',
-            {
-              username: trimmedUsername,
-              password: trimmedPassword,
-              // Credentials aşamasında firmayı henüz bilmiyoruz: tüm firmalarda kabul et.
-              firm_nr: ''
-            },
-            { schema: 'logic' }
-          );
-          const row = Array.isArray(rpcRes) ? rpcRes[0] : (rpcRes?.[0] ?? rpcRes);
-          if (row) return true;
-          // RPC boş döndüyse legacy SQL doğrulamasına düş.
-          console.warn('Login verify: PostgREST verify_login returned no row, trying SQL fallback');
-        } catch (rpcErr) {
-          // verify_login RPC migration'ı uygulanmamış veya izin eksik olabilir.
-          console.warn('Login verify: PostgREST verify_login failed, trying SQL fallback', rpcErr);
-        }
-        // SQL fallback'e düşmeden önce hedef DB'yi güncel PostgREST URL ile hizala.
-        const { alignRemoteConfigWithRestUrl } = await import('../../services/postgres');
-        alignRemoteConfigWithRestUrl();
+      const { checkLoginPassword, verifyLoginUser, resolveAccessibleFirmNrs, normalizeLoginFirmNr } =
+        await import('../../services/loginVerify');
+      const ok = await checkLoginPassword(trimmedUsername, trimmedPassword);
+      if (!ok) {
+        console.warn('Login: No matching user or wrong password for', trimmedUsername);
+        return false;
       }
 
-      const { postgres } = await import('../../services/postgres');
-      const sqlAuth = `
-        SELECT id, raw_user_meta_data->>'username' as username
-        FROM auth.users
-        WHERE LOWER(raw_user_meta_data->>'username') = LOWER($1)
-        AND encrypted_password = crypt($2, encrypted_password)
-      `;
-      console.log('Login: Verifying credentials for', trimmedUsername);
-      const result = await postgres.query(sqlAuth, [trimmedUsername, trimmedPassword]);
-      if (result.rowCount > 0) return true;
-
-      // Kullanıcı Yönetimi (public.users) — liste buradan geliyor, şifre password_hash
-      const sqlPublic = `
-        SELECT 1 FROM public.users u
-        WHERE LOWER(u.username) = LOWER($1) AND u.is_active = true
-        AND u.password_hash IS NOT NULL
-        AND u.password_hash = crypt($2, u.password_hash)
-        LIMIT 1
-      `;
-      const pub = await postgres.query(sqlPublic, [trimmedUsername, trimmedPassword]);
-      if (pub.rowCount > 0) return true;
-
-      console.warn('Login: No matching user or wrong password for', trimmedUsername);
-      return false;
+      // Kullanıcının erişebildiği firmaları otomatik seç / filtrele (eski 002 seçimi vb.)
+      const row = await verifyLoginUser(trimmedUsername, trimmedPassword, '');
+      if (row) {
+        const accessible = resolveAccessibleFirmNrs(row);
+        const preferred =
+          accessible[0] || normalizeLoginFirmNr(row.firm_nr);
+        if (preferred) {
+          setSelectedFirmNr(preferred);
+          localStorage.setItem('exretail_selected_firma_id', preferred);
+        }
+      }
+      return true;
     } catch (e) {
       console.error('Verify error:', e);
       return false;
@@ -1038,9 +1007,11 @@ export function Login({ onLogin }: LoginProps) {
 
         // Update global ERP settings with selected firm before final login
         const { updateConfigs, ERP_SETTINGS, DB_SETTINGS } = await import('../../services/postgres');
+        const { normalizeLoginFirmNr } = await import('../../services/loginVerify');
+        const firmForLogin = normalizeLoginFirmNr(selectedFirmNr || ERP_SETTINGS.firmNr) || '001';
         await updateConfigs({
           erp: {
-            firmNr: selectedFirmNr || ERP_SETTINGS.firmNr,
+            firmNr: firmForLogin,
             periodNr: '01',
           },
           storeId: selectedStoreId || undefined,

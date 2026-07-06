@@ -1,10 +1,8 @@
 -- ============================================================================
--- RetailEX — POSTGREST RPC: verify_login
+-- RetailEX — verify_login parametre gölgeleme düzeltmesi
 -- ============================================================================
--- Bu migration PostgREST ile güvenli şekilde login doğrulamak için:
---   POST/GET /rpc/verify_login?username=...&password=...&firm_nr=...
---
--- Not: Bu fonksiyon password_hash döndürmez, sadece yetkili kullanıcı bilgisini döndürür.
+-- Eski sürümde WHERE içindeki firm_nr / username / password çıktı kolonlarıyla
+-- çakışıyordu; firma filtresi devre dışı kalıyor veya yanlış eşleşiyordu.
 -- ============================================================================
 
 CREATE OR REPLACE FUNCTION logic.verify_login(
@@ -63,4 +61,3 @@ AS $$
 $$ LANGUAGE sql STABLE;
 
 GRANT EXECUTE ON FUNCTION logic.verify_login(text, text, text) TO anon;
-
