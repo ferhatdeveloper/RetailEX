@@ -1,8 +1,8 @@
-; RetailEX TeraziManager — Windows kurulum paketi (Inno Setup 6)
+﻿; RetailEX TeraziManager â€” Windows kurulum paketi (Inno Setup 6)
 ; Derleme: ISCC.exe setup\TeraziManager.iss /DAppVersion=1.0.0
 
 #ifndef AppVersion
-  #define AppVersion "1.0.0"
+  #define AppVersion "1.0.1"
 #endif
 
 #ifndef StagingDir
@@ -15,6 +15,7 @@
 #define ServiceExeName "RetailEX_Terazi_Sync.exe"
 #define ServiceName "RetailEX_Terazi_Sync"
 #define ConfigDir "{commonappdata}\RetailEX"
+#define RongtaConfigDir "{commonappdata}\RetailEX\Rongta"
 
 [Setup]
 AppId={{A7B3C9D1-4E2F-5A6B-8C9D-0E1F2A3B4C5D}
@@ -64,10 +65,11 @@ Source: "{#StagingDir}\service\*"; DestDir: "{app}\Service"; Flags: ignoreversio
 ; Servis kurulum scripti
 Source: "{#StagingDir}\install-service.ps1"; DestDir: "{app}"; Flags: ignoreversion; Components: service
 ; Ornek yapilandirma (ProgramData)
-Source: "{#StagingDir}\config\terazi-sync.example.json"; DestDir: "{#ConfigDir}"; DestName: "terazi-sync.example.json"; Flags: ignoreversion onlyifdoesntexist uninsneverunlink
+Source: "{#StagingDir}\config\terazi-sync.example.json"; DestDir: "{#ConfigDir}"; DestName: "terazi-sync.example.json"; Flags: ignoreversion onlyifdoesntexist uninsneveruninstall
 
 [Dirs]
 Name: "{#ConfigDir}"; Permissions: users-modify
+Name: "{#RongtaConfigDir}"; Permissions: users-modify
 
 [Icons]
 Name: "{group}\{#AppName}"; Filename: "{app}\{#AppExeName}"; Components: app
@@ -84,10 +86,12 @@ Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -Fil
 Filename: "{app}\{#AppExeName}"; Description: "{cm:LaunchProgram,{#AppName}}"; Flags: nowait postinstall skipifsilent; Tasks: launchapp; Components: app
 
 [UninstallRun]
-Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -Command ""$s=Get-Service -Name '{#ServiceName}' -ErrorAction SilentlyContinue; if($s){Stop-Service '{#ServiceName}' -Force -ErrorAction SilentlyContinue; sc.exe delete '{#ServiceName}' | Out-Null}"""; Flags: runhidden waituntilterminated; Components: service
+Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -Command ""$s=Get-Service -Name '{#ServiceName}' -ErrorAction SilentlyContinue; if($s){{Stop-Service '{#ServiceName}' -Force -ErrorAction SilentlyContinue; sc.exe delete '{#ServiceName}' | Out-Null}}"""; Flags: runhidden waituntilterminated; Components: service
 
 [Code]
 procedure CurStepChanged(CurStep: TSetupStep);
+var
+  SrcFile, DestFile: String;
 begin
   if CurStep = ssPostInstall then
   begin
@@ -97,9 +101,25 @@ begin
         FileCopy(ExpandConstant('{#ConfigDir}\terazi-sync.example.json'),
                  ExpandConstant('{#ConfigDir}\terazi-sync.json'), False);
     end;
+
+    DestFile := ExpandConstant('{#RongtaConfigDir}\SYSTEM.CFG');
+    if not FileExists(DestFile) then
+    begin
+      SrcFile := ExpandConstant('{app}\SYSTEM.CFG');
+      if FileExists(SrcFile) then
+        FileCopy(SrcFile, DestFile, False);
+    end;
+
+    DestFile := ExpandConstant('{#RongtaConfigDir}\testRT.RLS');
+    if not FileExists(DestFile) then
+    begin
+      SrcFile := ExpandConstant('{app}\testRT.RLS');
+      if FileExists(SrcFile) then
+        FileCopy(SrcFile, DestFile, False);
+    end;
   end;
 end;
 
 [Messages]
 turkish.WelcomeLabel2=Bu sihirbaz [name/ver] uygulamasini bilgisayariniza kuracaktir.%n%nRetailEX Terazi Yoneticisi, Rongta terazileri ile RetailEX API arasinda urun senkronizasyonu saglar.%n%nDevam etmeden once diger uygulamalari kapatmaniz onerilir.
-turkish.FinishedLabel=Kurulum tamamlandi.%n%nYapilandirma: C:\ProgramData\RetailEX\terazi-sync.json%n%nAPI token ve kiraci kodunu bu dosyada duzenleyin.
+turkish.FinishedLabel=Kurulum tamamlandi.%n%nYapilandirma: C:\ProgramData\RetailEX\terazi-sync.json%nRongta dosyalari: C:\ProgramData\RetailEX\Rongta\%n%nAPI token ve kiraci kodunu config dosyasinda duzenleyin.

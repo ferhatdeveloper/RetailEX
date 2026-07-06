@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.Text;
 using TeraziRongta.Core.Config;
-using TeraziRongta.Core.Services;
 
 namespace TeraziRongta.Core.Helpers
 {
@@ -31,33 +30,30 @@ namespace TeraziRongta.Core.Helpers
 
         public static string ApplyToRlsHome(AppConfig config)
         {
-            var rlsHome = RlsResourceResolver.ResolveRlsHome(config?.RlsHomePath);
-            var primary = Path.Combine(rlsHome, "SYSTEM.CFG");
-            ApplyFile(primary, config);
-
-            var bundled = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "SYSTEM.CFG");
-            if (File.Exists(bundled) && !string.Equals(bundled, primary, StringComparison.OrdinalIgnoreCase))
-            {
-                ApplyFile(bundled, config);
-            }
-
-            var projectBundled = Path.Combine(
-                AppDomain.CurrentDomain.BaseDirectory,
-                "..", "..", "..", "Resources", "Rongta", "SYSTEM.CFG");
-            projectBundled = Path.GetFullPath(projectBundled);
-            if (File.Exists(projectBundled) && !string.Equals(projectBundled, primary, StringComparison.OrdinalIgnoreCase))
-            {
-                ApplyFile(projectBundled, config);
-            }
-
-            return primary;
+            var cfgPath = RongtaPaths.GetWritableSystemCfgPath(config);
+            ApplyFile(cfgPath, config);
+            return cfgPath;
         }
 
         public static void ApplyFile(string cfgPath, AppConfig config)
         {
-            if (config == null || string.IsNullOrWhiteSpace(cfgPath) || !File.Exists(cfgPath))
+            if (config == null || string.IsNullOrWhiteSpace(cfgPath))
             {
                 return;
+            }
+
+            if (RongtaPaths.IsRestrictedPath(cfgPath))
+            {
+                throw new IOException(RongtaPaths.FormatAccessDeniedMessage(cfgPath));
+            }
+
+            if (!File.Exists(cfgPath))
+            {
+                RongtaPaths.EnsureWritableAssets(config);
+                if (!File.Exists(cfgPath))
+                {
+                    return;
+                }
             }
 
             var lines = new List<string>(File.ReadAllLines(cfgPath, Encoding.UTF8));
@@ -77,7 +73,19 @@ namespace TeraziRongta.Core.Helpers
             }
 
             EnsureSettingSection(lines);
-            File.WriteAllLines(cfgPath, lines, Encoding.UTF8);
+
+            try
+            {
+                File.WriteAllLines(cfgPath, lines, Encoding.UTF8);
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                throw new IOException(RongtaPaths.FormatAccessDeniedMessage(cfgPath, ex), ex);
+            }
+            catch (DirectoryNotFoundException ex)
+            {
+                throw new IOException(RongtaPaths.FormatAccessDeniedMessage(cfgPath, ex), ex);
+            }
         }
 
         private static void EnsureSettingSection(IList<string> lines)

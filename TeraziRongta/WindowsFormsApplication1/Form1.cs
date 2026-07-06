@@ -884,7 +884,19 @@ namespace WindowsFormsApplication1
             BindMasterSelections();
             LoadScalesToGrid();
             RefreshScaleDataCombo();
-            ScaleService.ApplyBarcodeSettings(_config);
+            TryApplyBarcodeSettings();
+        }
+
+        private void TryApplyBarcodeSettings()
+        {
+            try
+            {
+                ScaleService.ApplyBarcodeSettings(_config);
+            }
+            catch (IOException ex)
+            {
+                AppendLog("UYARI: " + ex.Message);
+            }
         }
 
         private void BindMasterSelections()
@@ -1410,6 +1422,11 @@ namespace WindowsFormsApplication1
             _config.AutoSyncEnabled = chkAutoSync.Checked;
             _config.SyncOnStartup = chkSyncOnStartup.Checked;
             _config.RlsHomePath = txtRlsHome.Text.Trim();
+            if (RongtaPaths.ShouldUseWritableHome(_config.RlsHomePath))
+            {
+                _config.RlsHomePath = RongtaPaths.WritableRongtaDir;
+                txtRlsHome.Text = _config.RlsHomePath;
+            }
             _config.DefaultLabelScr = txtLabelScr.Text.Trim();
             _config.LabelSlot = (cmbLabelSlot.SelectedItem ?? "D0").ToString();
             _config.SendLabelOnSync = chkSendLabelOnSync.Checked;
@@ -1422,7 +1439,7 @@ namespace WindowsFormsApplication1
             _scaleService.RlsHomePath = _config.RlsHomePath;
             _scaleService.SyncConfig = _config;
 
-            ScaleService.ApplyBarcodeSettings(_config);
+            TryApplyBarcodeSettings();
 
             _config.Save();
             _syncEngine.ReloadConfig();

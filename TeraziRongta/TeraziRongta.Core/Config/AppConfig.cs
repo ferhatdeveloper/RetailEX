@@ -27,7 +27,7 @@ namespace TeraziRongta.Core.Config
         public string ScaleId { get; set; } = "terazi-1";
         public bool AutoSyncEnabled { get; set; } = true;
         public bool SyncOnStartup { get; set; } = true;
-        public string RlsHomePath { get; set; } = @"C:\RLS1000";
+        public string RlsHomePath { get; set; } = RongtaPaths.WritableRongtaDir;
         public string DefaultLabelScr { get; set; } = "des.scr";
         public string LabelSlot { get; set; } = "D0";
         public bool SendLabelOnSync { get; set; }
@@ -222,6 +222,11 @@ namespace TeraziRongta.Core.Config
             PeriodNr = NormalizePeriodNr(PeriodNr);
             ResolveAgentDeviceId();
 
+            if (MigrateRlsHomePath())
+            {
+                migrated = true;
+            }
+
             var labelScr = (DefaultLabelScr ?? "").Trim();
             if (string.IsNullOrEmpty(labelScr)
                 || labelScr.Equals("rtlabel_en.scr", StringComparison.OrdinalIgnoreCase))
@@ -230,6 +235,18 @@ namespace TeraziRongta.Core.Config
             }
 
             return migrated;
+        }
+
+        private bool MigrateRlsHomePath()
+        {
+            var path = (RlsHomePath ?? "").Trim();
+            if (!RongtaPaths.ShouldUseWritableHome(path))
+            {
+                return false;
+            }
+
+            RlsHomePath = RongtaPaths.WritableRongtaDir;
+            return true;
         }
 
         private static bool NeedsProductsPathMigration(string path)

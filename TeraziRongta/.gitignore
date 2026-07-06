@@ -46,7 +46,6 @@ setup/output/
 
 # Sensitive runtime config (example is tracked)
 !terazi-sync.example.json
-
 # Inno Setup installer (commit scripts; not payload scratch)
 installer/payload/*
 !installer/payload/.gitkeep

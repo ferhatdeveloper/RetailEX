@@ -4,11 +4,10 @@ Rongta etiketli terazileri RetailEX API ile senkronize eden Windows uygulamasi.
 
 ## Hizli kurulum (onerilen)
 
-1. [GitHub Releases](https://github.com/ferhatdeveloper/RetailEX/releases) sayfasini acin
-2. En son **RetailEX Terazi Yoneticisi** surumunu bulun (`terazi-v*` etiketi)
-3. `RetailEX.TeraziManager-Setup.exe` dosyasini indirin
-4. Kurulumu **yonetici olarak** calistirin
-5. `C:\ProgramData\RetailEX\terazi-sync.json` dosyasini duzenleyin:
+1. [GitHub Releases — terazi-v1.0.0](https://github.com/ferhatdeveloper/RetailEX/releases/tag/terazi-v1.0.0) sayfasini acin
+2. `RetailEX.TeraziManager-Setup-1.0.0.exe` dosyasini indirin
+3. Kurulumu **yonetici olarak** calistirin
+4. `C:\ProgramData\RetailEX\terazi-sync.json` dosyasini duzenleyin:
    - `ApiToken` — RetailEX API anahtariniz
    - `TenantCode` — kiraci kodu
    - `ScaleIp` / `Scales` — terazi IP adresi

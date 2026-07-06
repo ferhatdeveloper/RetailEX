@@ -4,7 +4,7 @@ Windows masaustu uygulamasi ve opsiyonel senkron servisi ile RetailEX urunlerini
 
 ## Hizli kurulum (onerilen)
 
-1. **[RetailEX.TeraziManager-Setup-1.0.0.exe indir](https://github.com/ferhatdeveloper/RetailEX/raw/main/TeraziRongta/releases/RetailEX.TeraziManager-Setup-1.0.0.exe)** (~3.7 MB)
+1. **[RetailEX.TeraziManager-Setup-1.0.1.exe indir](https://github.com/ferhatdeveloper/RetailEX/raw/main/TeraziRongta/releases/RetailEX.TeraziManager-Setup-1.0.1.exe)** (~3.7 MB)
 2. Kurulum sihirbazini **Yonetici** olarak calistirin.
 3. Kurulum sonrasi `C:\ProgramData\RetailEX\terazi-sync.json` dosyasinda **TenantCode** ve **ApiToken** alanlarini doldurun (ornek: `terazi-sync.example.json`).
 4. Baslat menusunden **RetailEX TeraziManager** uygulamasini acin.
@@ -38,7 +38,7 @@ msbuild WindowsFormsApplication1.sln /t:Rebuild /p:Configuration=Release /p:Plat
 .\installer\build-installer.ps1
 ```
 
-Cikti: `installer\output\RetailEX.TeraziManager-Setup-1.0.0.exe` (ayni dosya `releases\` altina da kopyalanir).
+Cikti: `installer\output\RetailEX.TeraziManager-Setup-1.0.1.exe` (ayni dosya `releases\` altina da kopyalanir).
 
 ## Manuel / gelistirici kurulum
 
@@ -48,17 +48,4 @@ Cikti: `installer\output\RetailEX.TeraziManager-Setup-1.0.0.exe` (ayni dosya `re
 
 - Gercek API tokenlarini repoya veya kurulum paketine koymayin.
 - Canli ayarlar: `C:\ProgramData\RetailEX\terazi-sync.json` (gitignore).
-
-## Otomatik derleme (GitHub Actions)
-
-Depo kokunde `.github/workflows/terazi-build-release.yml` workflow'u Windows uzerinde Release|x86 derlemesi yapar, Inno Setup ile kurulum paketini uretir ve istege bagli GitHub Release olusturur. Kimlik dogrulama icin `GITHUB_TOKEN` kullanilir (`permissions: contents: write`); `gh auth login` gerekmez.
-
-| Tetikleyici | Sonuc |
-|-------------|--------|
-| `main` branch'e `TeraziRongta/**` degisikligi push | Derleme + workflow artifact |
-| `workflow_dispatch` (Actions -> **Terazi Build and Release**) | Derleme + Release (varsayilan tag: `terazi-v<run_number>`) |
-| `terazi-v*` tag push (ornek: `terazi-v1.0.1`) | Derleme + Release (tag adi kullanilir) |
-
-**Ilk release icin:** GitHub -> **Actions** -> **Terazi Build and Release** -> **Run workflow** -> `create_release: true` birakin -> **Run workflow**. Bittikten sonra **Releases** sayfasindan Setup.exe indirilebilir.
-
 

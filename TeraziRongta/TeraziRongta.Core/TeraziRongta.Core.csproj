@@ -33,6 +33,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Config\AppConfig.cs" />
+    <Compile Include="Config\RongtaPaths.cs" />
     <Compile Include="Helpers\RlsFunctionSetHelper.cs" />
     <Compile Include="Helpers\SystemCfgPatcher.cs" />
     <Compile Include="Helpers\LabelSlotHelper.cs" />

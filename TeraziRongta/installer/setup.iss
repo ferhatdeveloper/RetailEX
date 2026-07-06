@@ -1,6 +1,6 @@
 ﻿; RetailEX TeraziManager - Windows Kurulum
 #define MyAppName "RetailEX TeraziManager"
-#define MyAppVersion "1.0.0"
+#define MyAppVersion "1.0.1"
 #define MyAppPublisher "RetailEX"
 #define MyAppURL "https://github.com/ferhatdeveloper/RetailEX"
 #define MyAppExeName "RetailEX.TeraziManager.exe"
@@ -27,7 +27,7 @@ ArchitecturesAllowed=x86 x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 PrivilegesRequired=admin
 UninstallDisplayIcon={app}\{#MyAppExeName}
-VersionInfoVersion=1.0.0.0
+VersionInfoVersion=1.0.1.0
 VersionInfoCompany=RetailEX
 VersionInfoDescription=RetailEX Terazi Yonetim ve Senkron Kurulumu
 VersionInfoProductName={#MyAppName}
@@ -40,6 +40,10 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 [Tasks]
 Name: "desktopicon"; Description: "Masaustu kisayolu olustur"; GroupDescription: "Ek secenekler:"; Flags: unchecked
 Name: "installservice"; Description: "Windows senkron servisini kur (RetailEX_Terazi_Sync)"; GroupDescription: "Ek secenekler:"; Flags: unchecked
+
+[Dirs]
+Name: "{commonappdata}\RetailEX"; Permissions: users-modify
+Name: "{commonappdata}\RetailEX\Rongta"; Permissions: users-modify
 
 [Files]
 Source: "payload\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
@@ -70,18 +74,40 @@ Type: filesandordirs; Name: "{app}"
 [Code]
 procedure CurStepChanged(CurStep: TSetupStep);
 var
-  CfgDir, ExampleCfg, TargetCfg: String;
+  CfgDir, RongtaDir, ExampleCfg, TargetCfg: String;
+  AppDir: String;
+  SrcFile, DestFile: String;
 begin
   if CurStep = ssPostInstall then
   begin
     CfgDir := ExpandConstant('{commonappdata}\RetailEX');
+    RongtaDir := CfgDir + '\Rongta';
     ExampleCfg := CfgDir + '\terazi-sync.example.json';
     TargetCfg := CfgDir + '\terazi-sync.json';
+    AppDir := ExpandConstant('{app}');
     if not DirExists(CfgDir) then
       CreateDir(CfgDir);
+    if not DirExists(RongtaDir) then
+      CreateDir(RongtaDir);
     if not FileExists(ExampleCfg) then
       FileCopy(ExpandConstant('{src}\payload\terazi-sync.example.json'), ExampleCfg, False);
     if not FileExists(TargetCfg) then
       FileCopy(ExampleCfg, TargetCfg, False);
+
+    DestFile := RongtaDir + '\SYSTEM.CFG';
+    if not FileExists(DestFile) then
+    begin
+      SrcFile := AppDir + '\SYSTEM.CFG';
+      if FileExists(SrcFile) then
+        FileCopy(SrcFile, DestFile, False);
+    end;
+
+    DestFile := RongtaDir + '\testRT.RLS';
+    if not FileExists(DestFile) then
+    begin
+      SrcFile := AppDir + '\testRT.RLS';
+      if FileExists(SrcFile) then
+        FileCopy(SrcFile, DestFile, False);
+    end;
   end;
 end;

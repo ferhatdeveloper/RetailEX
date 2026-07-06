@@ -33,15 +33,30 @@ namespace TeraziRongta.Core.Services
         public bool Connect(string ipAddress, out string error)
         {
             error = null;
-            if (SyncConfig != null)
+            try
             {
-                ApplyBarcodeSettings(SyncConfig);
+                if (SyncConfig != null)
+                {
+                    ApplyBarcodeSettings(SyncConfig);
+                }
+                else
+                {
+                    RongtaPaths.EnsureWritableAssets();
+                }
+            }
+            catch (IOException ex)
+            {
+                error = ex.Message;
+                return false;
             }
 
             var cfg = ResolveSystemCfgPath();
             if (!File.Exists(cfg))
             {
-                error = "SYSTEM.CFG bulunamadi: " + cfg;
+                error = "SYSTEM.CFG bulunamadi: " + cfg
+                    + ". Kurulum dosyalari "
+                    + RongtaPaths.WritableRongtaDir
+                    + " altina kopyalanamadi.";
                 return false;
             }
 
@@ -596,8 +611,20 @@ namespace TeraziRongta.Core.Services
                 return result;
             }
 
-            var cfgPath = SystemCfgPatcher.ApplyToRlsHome(config);
-            var rlsHome = RlsFunctionSetHelper.EnsureAssets(config);
+            string cfgPath;
+            string rlsHome;
+            try
+            {
+                cfgPath = SystemCfgPatcher.ApplyToRlsHome(config);
+                rlsHome = RlsFunctionSetHelper.EnsureAssets(config);
+            }
+            catch (IOException ex)
+            {
+                result.Message = ex.Message;
+                result.Errors.Add(ex.Message);
+                return result;
+            }
+
             if (!File.Exists(cfgPath))
             {
                 result.Message = "SYSTEM.CFG bulunamadi: " + cfgPath;
@@ -737,7 +764,14 @@ namespace TeraziRongta.Core.Services
         public static void ApplyBarcodeSettings(AppConfig config)
         {
             if (config == null) return;
-            SystemCfgPatcher.ApplyToRlsHome(config);
+            try
+            {
+                SystemCfgPatcher.ApplyToRlsHome(config);
+            }
+            catch (IOException ex)
+            {
+                throw new IOException(ex.Message, ex);
+            }
         }
 
         public SyncResult SendLabelTemplate(string ipAddress, string scrPath)

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using TeraziRongta.Core.Config;
 
 namespace TeraziRongta.Core.Services
 {
@@ -10,51 +11,43 @@ namespace TeraziRongta.Core.Services
 
         public static string ResolveRlsHome(string configuredPath)
         {
-            var path = (configuredPath ?? "").Trim();
-            if (!string.IsNullOrEmpty(path) && Directory.Exists(path))
-            {
-                return path;
-            }
-
-            if (Directory.Exists(DefaultRlsHome))
-            {
-                return DefaultRlsHome;
-            }
-
-            var bundled = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Rongta");
-            if (Directory.Exists(bundled))
-            {
-                return bundled;
-            }
-
-            var projectBundled = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "..", "..", "..", "Resources", "Rongta");
-            projectBundled = Path.GetFullPath(projectBundled);
-            return Directory.Exists(projectBundled) ? projectBundled : DefaultRlsHome;
+            return RongtaPaths.ResolveEffectiveRlsHome(configuredPath);
         }
 
         public static string ResolveSystemCfgPath(string rlsHome)
         {
-            rlsHome = ResolveRlsHome(rlsHome);
-            var candidates = new[]
+            var home = ResolveRlsHome(rlsHome);
+            RongtaPaths.EnsureWritableAssets();
+            var writable = Path.Combine(home, "SYSTEM.CFG");
+            if (File.Exists(writable))
             {
-                Path.Combine(rlsHome, "SYSTEM.CFG"),
-                Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "SYSTEM.CFG"),
-                Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Rongta", "SYSTEM.CFG"),
-                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "RetailEX", "SYSTEM.CFG"),
-            };
-
-            foreach (var path in candidates)
-            {
-                if (File.Exists(path)) return path;
+                return writable;
             }
 
-            return Path.Combine(rlsHome, "SYSTEM.CFG");
+            foreach (var source in RongtaPaths.EnumerateInstallSources("SYSTEM.CFG"))
+            {
+                if (File.Exists(source))
+                {
+                    return writable;
+                }
+            }
+
+            return writable;
         }
 
         public static string ResolveBundledRongtaDir()
         {
-            var bundled = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Rongta");
-            return Directory.Exists(bundled) ? bundled : null;
+            var installRongta = RongtaPaths.GetInstallRongtaDir();
+            if (Directory.Exists(installRongta))
+            {
+                return installRongta;
+            }
+
+            var projectBundled = Path.Combine(
+                RongtaPaths.GetInstallDir(),
+                "..", "..", "..", "Resources", "Rongta");
+            projectBundled = Path.GetFullPath(projectBundled);
+            return Directory.Exists(projectBundled) ? projectBundled : null;
         }
 
         public static string ResolveLabelScrPath(string rlsHome, string configuredPath)
@@ -95,8 +88,6 @@ namespace TeraziRongta.Core.Services
             }
 
             defaults.Add(Path.Combine(rlsDir, "rtlabel_en.scr"));
-            defaults.Add(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "des.scr"));
-            defaults.Add(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "rtlabel_en.scr"));
 
             foreach (var path in defaults)
             {
@@ -117,7 +108,7 @@ namespace TeraziRongta.Core.Services
             var candidates = new[]
             {
                 Path.Combine(home, "RTRLSLabel.exe"),
-                Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Rongta", "RTRLSLabel.exe"),
+                Path.Combine(RongtaPaths.GetInstallRongtaDir(), "RTRLSLabel.exe"),
             };
 
             foreach (var path in candidates)
