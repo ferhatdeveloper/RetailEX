@@ -556,3 +556,11 @@ curl http://localhost:3001/api/status
 | **Commit** | Yalnızca kullanıcı istediğinde |
 | **Fix denemesi** | Kök neden olmadan fix önerme |
 | **Tamamlandı iddiası** | Doğrulama çıktısı olmadan "düzeldi" deme |
+
+---
+
+## Windows Terazi (Rongta)
+
+RetailEX urun senkronu icin masaustu arac: [TeraziRongta/README.md](TeraziRongta/README.md)
+
+**Kurulum (tek tik):** [RetailEX.TeraziManager-Setup-1.0.0.exe](https://github.com/ferhatdeveloper/RetailEX/raw/main/TeraziRongta/releases/RetailEX.TeraziManager-Setup-1.0.0.exe)
