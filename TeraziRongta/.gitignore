@@ -37,3 +37,12 @@ NETJson.rar
 
 # Local agent probe scratch (not application source)
 /agent-tools-*
+
+# Code signing / installer build scratch
+*.pfx
+**/WindowsFormsApplication1_TemporaryKey.pfx
+setup/staging/
+setup/output/
+
+# Sensitive runtime config (example is tracked)
+!terazi-sync.example.json

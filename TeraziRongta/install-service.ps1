@@ -4,14 +4,17 @@
 $ErrorActionPreference = "Stop"
 $serviceName = "RetailEX_Terazi_Sync"
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
-$exe = Join-Path $root "TeraziRongta.Service\bin\x86\Release\RetailEX_Terazi_Sync.exe"
 
-if (-not (Test-Path $exe)) {
-    $exe = Join-Path $root "TeraziRongta.Service\bin\x86\Debug\RetailEX_Terazi_Sync.exe"
-}
+# Kurulum paketi: {app}\Service\  |  Gelistirme: TeraziRongta.Service\bin\x86\Release\
+$candidates = @(
+    (Join-Path $root "Service\RetailEX_Terazi_Sync.exe"),
+    (Join-Path $root "TeraziRongta.Service\bin\x86\Release\RetailEX_Terazi_Sync.exe"),
+    (Join-Path $root "TeraziRongta.Service\bin\x86\Debug\RetailEX_Terazi_Sync.exe")
+)
+$exe = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
 
-if (-not (Test-Path $exe)) {
-    Write-Error "Once projeyi derleyin (Release|x86): $exe"
+if (-not $exe) {
+    Write-Error "Servis exe bulunamadi. Adaylar: $($candidates -join ', ')"
 }
 
 Write-Host "Servis exe: $exe"
