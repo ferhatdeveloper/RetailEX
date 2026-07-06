@@ -86,7 +86,7 @@ import { useProductStore } from '../../../store/useProductStore';
 import { usePermission } from '../../../shared/hooks/usePermission';
 import { formatCurrency } from '../../../utils/currency';
 import { resolveProductNameForReceipt } from '../../../utils/receiptProductName';
-import { lineNetAfterPercentDiscount, roundPosDiscountAmountUp } from '../../../utils/discountRounding';
+import { lineNetAfterPercentDiscount, posPaymentAdditionalDiscount } from '../../../utils/discountRounding';
 import { parsePosQuantityForProduct } from '../../../utils/numberFormatter';
 import { formatPosQuantityDisplay } from '../../../utils/productUnits';
 import { MainCategoryIcon, SubCategoryIcon } from '../utils/restaurantCategoryIcons';
@@ -1289,8 +1289,7 @@ export const RestPOS: React.FC<RestPOSProps> = ({
 
     const subtotal = useMemo(() => cart.reduce((s, i) => s + (i.subtotal ?? 0), 0), [cart]);
     const discountAmount = useMemo(() => {
-        const raw = subtotal * (orderDiscount / 100);
-        return Math.min(roundPosDiscountAmountUp(raw), subtotal);
+        return posPaymentAdditionalDiscount(subtotal, orderDiscount, 'percentage', 'IQD');
     }, [subtotal, orderDiscount]);
     const grandTotal = useMemo(() => subtotal - discountAmount, [subtotal, discountAmount]);
     /** Aktif tabağa göre filtrelenmiş cart — orijinal idx korunur */

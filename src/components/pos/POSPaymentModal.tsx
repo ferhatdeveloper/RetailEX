@@ -15,7 +15,7 @@ import { useTheme } from '../../contexts/ThemeContext';
 import { paymentGateway, type PaymentProvider } from '../../services/paymentGateway';
 import { formatCurrency, formatNumber, formatMoneyWithCode, getGlobalCurrency } from '../../utils/currency';
 import { formatNumber as formatNumberTR } from '../../utils/formatNumber';
-import { roundPosDiscountAmountUp, roundPosMoneyAmount, posMoneyEpsilon } from '../../utils/discountRounding';
+import { posPaymentAdditionalDiscount, roundPosMoneyAmount, posMoneyEpsilon } from '../../utils/discountRounding';
 import { POSCancelReasonModal } from './POSCancelReasonModal';
 
 // Helper function to format number with Turkish formatting (nokta binlik, virgül ondalık)
@@ -217,18 +217,12 @@ export function POSPaymentModal({
     EUR: 1450,
   };
 
-  // Calculate additional discount (tutar 250’lik kademeye yukarı; toplamı aşmaz)
-  let calculatedDiscount = 0;
-  if (discountValue) {
-    if (discountType === 'percentage') {
-      calculatedDiscount = (total * parseFloat(discountValue)) / 100;
-    } else {
-      calculatedDiscount = parseFloat(discountValue);
-    }
-    if (calculatedDiscount > 0) {
-      calculatedDiscount = Math.min(roundPosDiscountAmountUp(calculatedDiscount), Math.max(0, total));
-    }
-  }
+  // İlave indirim — yüzde gerçek oran; IQD 250 kademesi yalnızca tutar modunda
+  const parsedDiscountValue = parseFloat(discountValue);
+  const calculatedDiscount =
+    discountValue && Number.isFinite(parsedDiscountValue) && parsedDiscountValue > 0
+      ? posPaymentAdditionalDiscount(total, parsedDiscountValue, discountType, baseCurrency)
+      : 0;
 
   const finalTotal = roundPosMoneyAmount(total - calculatedDiscount, baseCurrency);
 

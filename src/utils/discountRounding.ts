@@ -40,6 +40,35 @@ export function lineDiscountMoneyFromPercent(gross: number, discountPercent: num
   return Math.min(roundPosDiscountAmountUp(raw), gross);
 }
 
+/**
+ * Ödeme ekranı ilave indirim.
+ * - Yüzde: gerçek oran (USD/EUR ondalık; IQD tam sayı) — 250 yukarı yuvarlama uygulanmaz.
+ * - Tutar (IQD): 250’lik kademeye yukarı; diğer para birimleri standart yuvarlama.
+ */
+export function posPaymentAdditionalDiscount(
+  gross: number,
+  discountValue: number,
+  mode: 'percentage' | 'amount',
+  currency: string = 'IQD',
+): number {
+  if (!Number.isFinite(gross) || gross <= 0) return 0;
+  if (!Number.isFinite(discountValue) || discountValue <= 0) return 0;
+
+  const code = String(currency ?? 'IQD').trim().toUpperCase();
+  let discount = 0;
+
+  if (mode === 'percentage') {
+    const raw = (gross * discountValue) / 100;
+    discount = roundMoneyAmount(raw, code);
+  } else if (code === 'IQD') {
+    discount = roundPosDiscountAmountUp(discountValue);
+  } else {
+    discount = roundMoneyAmount(discountValue, code);
+  }
+
+  return Math.min(Math.max(0, discount), gross);
+}
+
 /** Satır net tutarı = yuvarlanmış brüt − (yuvarlanmış indirim). */
 export function lineNetAfterPercentDiscount(
   gross: number,
