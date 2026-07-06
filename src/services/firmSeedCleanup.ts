@@ -1,9 +1,8 @@
 import type { PostgresConnection } from './postgres';
 
 /**
- * Master şema ile gelen şablon firmaları kaldırır (kullanıcının oluşturmadığı kayıtlar).
- * - 001 "RetailEx OS" — kullanıcı firması 001 değilse
- * - 002 "Firma 002" — kullanıcı firması 002 değilse
+ * Master şema ile gelen şablon firma 001 "RetailEx OS" — kurulum sihirbazında kullanıcı firması 001 değilse kaldırılır.
+ * Firma 002 mevcut DB'lerde korunur; yalnızca yeni kurulumda master şema artık 002 seed etmez.
  */
 export async function cleanupMasterSeedFirms(
   postgres: PostgresConnection,
@@ -14,9 +13,8 @@ export async function cleanupMasterSeedFirms(
     activeFirmNrs.map((n) => String(n || '').padStart(3, '0')).filter(Boolean),
   );
 
-  const seeds: { firmNr: string; name: string; storeCode?: string }[] = [
+  const seeds: { firmNr: string; name: string }[] = [
     { firmNr: '001', name: 'RetailEx OS' },
-    { firmNr: '002', name: 'Firma 002', storeCode: 'BAGHDAD' },
   ];
 
   for (const seed of seeds) {
@@ -27,14 +25,7 @@ export async function cleanupMasterSeedFirms(
         `DELETE FROM periods WHERE firm_id IN (SELECT id FROM firms WHERE firm_nr = $1 AND name = $2)`,
         [seed.firmNr, seed.name],
       );
-      if (seed.storeCode) {
-        await postgres.query(`DELETE FROM stores WHERE firm_nr = $1 AND code = $2`, [
-          seed.firmNr,
-          seed.storeCode,
-        ]);
-      } else {
-        await postgres.query(`DELETE FROM stores WHERE firm_nr = $1`, [seed.firmNr]);
-      }
+      await postgres.query(`DELETE FROM stores WHERE firm_nr = $1`, [seed.firmNr]);
       const del = await postgres.query<{ id: string }>(
         `DELETE FROM firms WHERE firm_nr = $1 AND name = $2 RETURNING id`,
         [seed.firmNr, seed.name],

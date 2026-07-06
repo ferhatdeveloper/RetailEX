@@ -3226,7 +3226,7 @@ ON CONFLICT DO NOTHING;
 -- 18. BOOTSTRAP — Şablon firma (001) ve tablo motoru
 -- "RetailEx OS" yalnızca CREATE_FIRM_TABLES vb. fonksiyonların çalışması için şablondur.
 -- Kurulum sihirbazı gerçek firma adını yazar; gereksizse 015 / SetupWizard ile kaldırılır.
--- İkinci demo firma (002) artık seed edilmez — tek firma kurulumu için 097 migration.
+-- İkinci demo firma (002) artık sıfır kurulumda seed edilmez (yalnızca yeni kurulum).
 -- ============================================================================
 
 INSERT INTO firms (id, firm_nr, name, "default", ana_para_birimi, raporlama_para_birimi)
