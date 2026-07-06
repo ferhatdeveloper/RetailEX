@@ -13,7 +13,11 @@ const CHUNK_ERR_MARKERS = [
   'Importing a module script failed',
   'error loading dynamically imported module',
   'ChunkLoadError',
+  'Loading chunk',
+  'Loading CSS chunk',
 ];
+
+const CHUNK_AUTO_RECOVERY_KEY = 'retailex_chunk_auto_recovery';
 
 export function isChunkLoadFailure(err: unknown): boolean {
   const msg = err instanceof Error ? err.message : String(err ?? '');
@@ -46,7 +50,60 @@ async function unregisterServiceWorkers(): Promise<void> {
 export async function hardReloadClearingAppCaches(): Promise<void> {
   await unregisterServiceWorkers();
   await clearAppCaches();
-  window.location.reload();
+  const base = window.location.pathname + window.location.search;
+  const sep = base.includes('?') ? '&' : '?';
+  window.location.replace(`${base}${sep}_rex_recover=${Date.now()}`);
+}
+
+export function hasAttemptedChunkAutoRecovery(): boolean {
+  try {
+    return sessionStorage.getItem(CHUNK_AUTO_RECOVERY_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function markChunkAutoRecoveryAttempted(): void {
+  try {
+    sessionStorage.setItem(CHUNK_AUTO_RECOVERY_KEY, '1');
+  } catch {
+    /* yoksay */
+  }
+}
+
+/** Bir oturumda en fazla bir kez SW + önbellek temizleyip yeniden yükler. */
+export async function tryAutoRecoverFromChunkFailure(): Promise<boolean> {
+  if (typeof window === 'undefined' || hasAttemptedChunkAutoRecovery()) return false;
+  markChunkAutoRecoveryAttempted();
+  await hardReloadClearingAppCaches();
+  return true;
+}
+
+/** bootstrap / lazy chunk hatalarında otomatik kurtarma (main.tsx'te erken kurulur). */
+export function installChunkLoadGlobalRecovery(): void {
+  if (typeof window === 'undefined') return;
+  const w = window as Window & { __retailexChunkRecoveryInstalled?: boolean };
+  if (w.__retailexChunkRecoveryInstalled) return;
+  w.__retailexChunkRecoveryInstalled = true;
+
+  const handleChunkFailure = (err: unknown) => {
+    if (!isChunkLoadFailure(err)) return;
+    void tryAutoRecoverFromChunkFailure();
+  };
+
+  window.addEventListener('unhandledrejection', (e) => {
+    handleChunkFailure(e.reason);
+  });
+
+  window.addEventListener('error', (e) => {
+    if (e.message) handleChunkFailure(new Error(e.message));
+  });
+
+  window.addEventListener('vite:preloadError', ((e: Event) => {
+    const ev = e as CustomEvent;
+    handleChunkFailure(ev.detail);
+    if (typeof ev.preventDefault === 'function') ev.preventDefault();
+  }) as EventListener);
 }
 
 function sleep(ms: number): Promise<void> {
@@ -63,6 +120,9 @@ export async function importWithChunkRetry<T>(importer: () => Promise<T>, retrie
       if (!isChunkLoadFailure(e) || i === retries) break;
       await sleep(400 * (i + 1));
     }
+  }
+  if (isChunkLoadFailure(last)) {
+    await tryAutoRecoverFromChunkFailure();
   }
   throw last;
 }

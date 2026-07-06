@@ -43,11 +43,12 @@ import { DeliveryManagement } from './components/DeliveryManagement';
 import { TakeawayManagement } from './components/TakeawayManagement';
 import { RestaurantStaffPinModal } from './components/RestaurantStaffPinModal';
 // Lazy loaded components
-const CustomerManagementModule = React.lazy(() => import('../trading/contacts/CustomerManagementModule').then(m => ({ default: m.CustomerManagementModule })));
-const StockModule = React.lazy(() => import('../inventory/stock/StockModule').then(m => ({ default: m.StockModule })));
-const ReportsModule = React.lazy(() => import('../reports/ReportsModule').then(m => ({ default: m.ReportsModule })));
-const KasalarModule = React.lazy(() => import('../accounting/cash-ops/KasalarModule').then(m => ({ default: m.KasalarModule })));
-const RoleManagement = React.lazy(() => import('../system/RoleManagement').then(m => ({ default: m.RoleManagement })));
+import { lazyWithChunkRecovery } from '../../utils/chunkLoadRecovery';
+const CustomerManagementModule = lazyWithChunkRecovery(() => import('../trading/contacts/CustomerManagementModule').then(m => ({ default: m.CustomerManagementModule })));
+const StockModule = lazyWithChunkRecovery(() => import('../inventory/stock/StockModule').then(m => ({ default: m.StockModule })));
+const ReportsModule = lazyWithChunkRecovery(() => import('../reports/ReportsModule').then(m => ({ default: m.ReportsModule })));
+const KasalarModule = lazyWithChunkRecovery(() => import('../accounting/cash-ops/KasalarModule').then(m => ({ default: m.KasalarModule })));
+const RoleManagement = lazyWithChunkRecovery(() => import('../system/RoleManagement').then(m => ({ default: m.RoleManagement })));
 
 import { Table, Staff, type RestaurantCallerIdPickRequest } from './types';
 import { useRestaurantStore } from './store/useRestaurantStore';

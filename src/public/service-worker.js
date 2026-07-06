@@ -1,17 +1,10 @@
-﻿// RetailEX PWA — v2: HTML ve Vite chunk'ları için network-first (dağıtım sonrası eski chunk 404 önlenir)
-const CACHE_NAME = 'retailex-sw-v2';
-const RUNTIME_CACHE = 'retailex-runtime-v2';
-const IMAGE_CACHE = 'retailex-images-v2';
+﻿// RetailEX PWA — v3: HTML kabuğu önbelleğe alınmaz; chunk uyumsuzluğu azaltılır
+const CACHE_NAME = 'retailex-sw-v3';
+const RUNTIME_CACHE = 'retailex-runtime-v3';
+const IMAGE_CACHE = 'retailex-images-v3';
 
-// Önbelleğe alınacak statik dosyalar
-const STATIC_ASSETS = [
-  '/',
-  '/App.tsx',
-  '/styles/globals.css',
-  '/icons/icon-192x192.png',
-  '/icons/icon-512x512.png',
-  '/manifest.json'
-];
+// Kurulumda precache yok — eski index ↔ yeni chunk uyumsuzluğu riski
+const STATIC_ASSETS: string[] = [];
 
 // Cache-First stratejisi için dosya türleri
 const CACHE_FIRST_PATTERNS = [
@@ -27,14 +20,12 @@ const NETWORK_FIRST_PATTERNS = [
 
 // Service Worker kurulum aşaması
 self.addEventListener('install', (event) => {
-  console.log('[SW] Installing Service Worker...');
+  console.log('[SW] Installing Service Worker v3...');
   event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then((cache) => {
-        console.log('[SW] Caching static assets');
-        return cache.addAll(STATIC_ASSETS);
-      })
-      .then(() => self.skipWaiting())
+    (STATIC_ASSETS.length
+      ? caches.open(CACHE_NAME).then((cache) => cache.addAll(STATIC_ASSETS))
+      : Promise.resolve()
+    ).then(() => self.skipWaiting())
   );
 });
 
