@@ -10,7 +10,7 @@ export function invoiceListPrefsKey(
   defaultCategory?: string,
   defaultInvoiceTypeFilter?: string,
 ): string {
-  return `retailex_invoice_list_prefs_v1_${defaultCategory || 'all'}_${defaultInvoiceTypeFilter || 'all'}`;
+  return `retailex_invoice_list_prefs_v2_${defaultCategory || 'all'}_${defaultInvoiceTypeFilter || 'all'}`;
 }
 
 export function loadInvoiceListPrefs(key: string): InvoiceListPrefs | null {

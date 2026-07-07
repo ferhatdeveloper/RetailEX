@@ -255,9 +255,7 @@ export function InvoiceListModule({
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>(initialPrefs?.statusFilter ?? 'all');
-  const [dateFilter, setDateFilter] = useState<string>(
-    initialPrefs?.dateFilter ?? (defaultCategory === 'Alis' ? 'all' : 'today'),
-  );
+  const [dateFilter, setDateFilter] = useState<string>(initialPrefs?.dateFilter ?? 'all');
   const [invoiceTypeFilter, setInvoiceTypeFilter] = useState<string>(
     initialPrefs?.invoiceTypeFilter ?? (defaultInvoiceTypeFilter || 'all'),
   );
@@ -498,7 +496,8 @@ export function InvoiceListModule({
         status: statusFilter !== 'all' ? statusFilter : undefined,
         startDate: dateRange.start ? String(dateRange.start) : undefined,
         endDate: dateRange.end ? String(dateRange.end) : undefined,
-        invoiceCategory: includeCategories?.length ? undefined : (defaultCategory || undefined),
+        invoiceCategories: categoryFilterList.length > 0 ? categoryFilterList : undefined,
+        invoiceCategory: categoryFilterList.length === 1 ? categoryFilterList[0] : undefined,
         invoiceType: invoiceTypeFilter && invoiceTypeFilter !== 'all' ? parseInt(invoiceTypeFilter) : 0
       });
 

@@ -300,6 +300,25 @@ function legacyFicheTypesByInvoiceType(invoiceType?: number | null): string[] {
   }
 }
 
+/** Birden fazla modül kategorisi için trcode / fiche_type birleşimi (liste API filtresi). */
+function trcodeAndFicheTypesForCategories(categories: string[]): {
+  trcodes: number[];
+  ficheTypes: string[];
+  includesAlis: boolean;
+} {
+  const trcodeSet = new Set<number>();
+  const ficheSet = new Set<string>();
+  let includesAlis = false;
+  for (const raw of categories) {
+    const key = normalizeInvoiceCategoryKey(raw);
+    if (!key) continue;
+    if (key === 'Alis') includesAlis = true;
+    for (const tc of TRCODES_BY_INVOICE_CATEGORY[key] || []) trcodeSet.add(tc);
+    for (const ft of legacyFicheTypesByCategory(key)) ficheSet.add(ft);
+  }
+  return { trcodes: [...trcodeSet], ficheTypes: [...ficheSet], includesAlis };
+}
+
 function deriveFicheTypeFromTrcode(trcode: number): string {
   if ([1, 4, 5, 6, 13, 26, 41, 42].includes(trcode)) return 'purchase_invoice';
   if ([7, 8, 9, 14, 29, 30, 31, 32].includes(trcode)) return 'sales_invoice';
@@ -1294,6 +1313,8 @@ export const invoicesAPI = {
     endDate?: string;
     customerId?: string;
     invoiceCategory?: string;
+    /** Birden fazla kategori (ör. Satış + İade) — invoiceType yokken birleşik SQL filtresi */
+    invoiceCategories?: string[];
     invoiceType?: number;
     firmNr?: string | number;
     periodNr?: string | number;
@@ -1311,6 +1332,7 @@ export const invoicesAPI = {
       endDate,
       customerId,
       invoiceCategory,
+      invoiceCategories,
       invoiceType,
       includeCancelled = false,
       cancelledOnly = false,
@@ -1320,6 +1342,12 @@ export const invoicesAPI = {
       const firmNr = options.firmNr ?? ERP_SETTINGS.firmNr;
       const periodNr = options.periodNr ?? ERP_SETTINGS.periodNr;
       const categoryKey = normalizeInvoiceCategoryKey(invoiceCategory);
+      const categoryKeys =
+        invoiceCategories?.length
+          ? invoiceCategories.map((c) => normalizeInvoiceCategoryKey(c)).filter((c): c is string => !!c)
+          : categoryKey
+            ? [categoryKey]
+            : [];
 
       if (DB_SETTINGS.connectionProvider === 'rest_api') {
         const { postgrest } = await import('./postgrestClient');
@@ -1337,9 +1365,8 @@ export const invoicesAPI = {
           } else {
             baseFilters.trcode = `eq.${String(invoiceType)}`;
           }
-        } else if (categoryKey) {
-          const trcodes = [...(TRCODES_BY_INVOICE_CATEGORY[categoryKey] || [])];
-          const ficheTypes = legacyFicheTypesByCategory(categoryKey);
+        } else if (categoryKeys.length > 0) {
+          const { trcodes, ficheTypes } = trcodeAndFicheTypesForCategories(categoryKeys);
           if (trcodes.length > 0 && ficheTypes.length > 0) {
             baseFilters.or = `(trcode.in.(${trcodes.join(',')}),fiche_type.in.(${ficheTypes.join(',')}))`;
           } else if (trcodes.length > 0) {
@@ -1410,21 +1437,17 @@ export const invoicesAPI = {
           params.push(String(invoiceType));
           paramIndex++;
         }
-      } else if (categoryKey) {
-        const trcodes = [...(TRCODES_BY_INVOICE_CATEGORY[categoryKey] || [])];
-        const ficheTypes = legacyFicheTypesByCategory(categoryKey);
+      } else if (categoryKeys.length > 0) {
+        const { trcodes, ficheTypes, includesAlis } = trcodeAndFicheTypesForCategories(categoryKeys);
 
         if (trcodes.length > 0) {
-          // Legacy/taşınmış bazı kayıtlarda trcode boş/0 kalabiliyor.
-          // Bu durumda doğru fiche_type ile yine listede görünmesini sağla.
           sql += ` AND (trcode::int IN (${trcodes.join(',')})`;
           if (ficheTypes.length > 0) {
             sql += ` OR fiche_type::text = ANY($${paramIndex}::text[])`;
             params.push(ficheTypes);
             paramIndex++;
           }
-          // Tedarikçiye bağlı alış iade (return_invoice) — ekstre ile uyum
-          if (categoryKey === 'Alis') {
+          if (includesAlis) {
             sql += ` OR (
               fiche_type::text = 'return_invoice'
               AND customer_id IS NOT NULL
@@ -1433,10 +1456,9 @@ export const invoicesAPI = {
           }
           sql += `)`;
         } else {
-          // Fallback to fiche_type if unknown category
-          const ficheTypesFallback = legacyFicheTypesByCategory(categoryKey);
+          const ficheTypesFallback = ficheTypes.length ? ficheTypes : ['sales_invoice'];
           sql += ` AND fiche_type::text = ANY($${paramIndex}::text[])`;
-          params.push(ficheTypesFallback.length ? ficheTypesFallback : ['sales_invoice']);
+          params.push(ficheTypesFallback);
           paramIndex++;
         }
       }
