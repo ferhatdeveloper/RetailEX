@@ -4202,6 +4202,19 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
               title={selectionModal.title}
               items={selectionModal.items as TreeDataItem[]}
               currentValue={selectionModal.currentValue as string}
+              definitionTableName={selectionModal.definitionTableName}
+              parentId={selectionModal.parentId}
+              onItemsChanged={async () => {
+                const { categoryAPI, brandAPI, productGroupAPI } = await import('../../../services/api/masterData');
+                const [c, b, g] = await Promise.all([
+                  categoryAPI.getAll(),
+                  brandAPI.getAll(),
+                  productGroupAPI.getAll(),
+                ]);
+                setCategories(c);
+                setBrands(b);
+                setProductGroups(g);
+              }}
               onSelect={handleTreeSelect}
               onClose={() => setSelectionModal((prev: any) => ({ ...prev, show: false }))}
             />

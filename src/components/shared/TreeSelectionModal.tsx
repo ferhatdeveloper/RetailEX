@@ -1,5 +1,7 @@
-﻿import React, { useState, useMemo } from 'react';
-import { X, Search, Database, ChevronRight, ChevronDown, Folder, FolderOpen, Check, Package } from 'lucide-react';
+﻿import React, { useState, useMemo, useEffect } from 'react';
+import { X, Search, Database, ChevronRight, ChevronDown, Folder, FolderOpen, Check, Package, Plus } from 'lucide-react';
+import { definitionAPI } from '../../services/definitionAPI';
+import { toast } from 'sonner';
 
 export interface TreeDataItem {
     id: string;
@@ -15,6 +17,11 @@ interface TreeSelectionModalProps {
     currentValue: string;
     onSelect: (item: TreeDataItem) => void;
     onClose: () => void;
+    /** Tanım tablosu adı — verilirse hızlı ekleme gösterilir (categories, product_groups) */
+    definitionTableName?: string;
+    /** Alt grup için üst grup id */
+    parentId?: string | null;
+    onItemsChanged?: () => void;
 }
 
 interface InternalTreeNode extends TreeDataItem {
@@ -26,23 +33,35 @@ export function TreeSelectionModal({
     items,
     currentValue,
     onSelect,
-    onClose
+    onClose,
+    definitionTableName,
+    parentId = null,
+    onItemsChanged,
 }: TreeSelectionModalProps) {
     const [searchTerm, setSearchTerm] = useState('');
     const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
+    const [localItems, setLocalItems] = useState<TreeDataItem[]>(items);
+    const [showQuickAdd, setShowQuickAdd] = useState(false);
+    const [quickCode, setQuickCode] = useState('');
+    const [quickName, setQuickName] = useState('');
+    const [quickSaving, setQuickSaving] = useState(false);
+
+    useEffect(() => {
+        setLocalItems(items);
+    }, [items]);
+
+    const sourceItems = localItems.length ? localItems : items;
 
     // Transform flat list to tree structure
     const treeData = useMemo(() => {
         const itemMap: Record<string, InternalTreeNode> = {};
         const roots: InternalTreeNode[] = [];
 
-        // Create map of all items
-        items.forEach(item => {
+        sourceItems.forEach(item => {
             itemMap[item.id] = { ...item, children: [] };
         });
 
-        // Build tree
-        items.forEach(item => {
+        sourceItems.forEach(item => {
             const node = itemMap[item.id];
             if (item.parent_id && itemMap[item.parent_id]) {
                 itemMap[item.parent_id].children.push(node);
@@ -52,13 +71,15 @@ export function TreeSelectionModal({
         });
 
         return roots;
-    }, [items]);
+    }, [sourceItems]);
 
     // Handle search and filtering
     const filteredTree = useMemo(() => {
         if (!searchTerm.trim()) return treeData;
 
         const term = searchTerm.toLowerCase();
+        const expandIds = new Set<string>();
+
         const filterNode = (node: InternalTreeNode): InternalTreeNode | null => {
             const matches =
                 node.name.toLowerCase().includes(term) ||
@@ -70,19 +91,84 @@ export function TreeSelectionModal({
                 .filter((child): child is InternalTreeNode => child !== null);
 
             if (matches || filteredChildren.length > 0) {
-                // Auto-expand if search matches
-                setExpandedNodes(prev => {
-                    const next = new Set(prev);
-                    next.add(node.id);
-                    return next;
-                });
+                expandIds.add(node.id);
                 return { ...node, children: filteredChildren };
             }
             return null;
         };
 
-        return treeData.map(node => filterNode(node)).filter((node): node is InternalTreeNode => node !== null);
+        const result = treeData.map(node => filterNode(node)).filter((node): node is InternalTreeNode => node !== null);
+        if (expandIds.size > 0) {
+            setExpandedNodes(prev => {
+                const next = new Set(prev);
+                expandIds.forEach(id => next.add(id));
+                return next;
+            });
+        }
+        return result;
     }, [searchTerm, treeData]);
+
+    const suggestCodeFromName = (name: string) => {
+        const base = name
+            .trim()
+            .toUpperCase()
+            .replace(/[^A-Z0-9ÇĞİÖŞÜ]/gi, '')
+            .slice(0, 12);
+        if (base) return base;
+        return `YENI${Date.now().toString().slice(-6)}`;
+    };
+
+    const openQuickAdd = (prefillName = '') => {
+        const name = prefillName.trim();
+        setQuickName(name);
+        setQuickCode(name ? suggestCodeFromName(name) : '');
+        setShowQuickAdd(true);
+    };
+
+    const handleQuickAdd = async () => {
+        if (!definitionTableName || !quickCode.trim() || !quickName.trim()) {
+            toast.error('Kod ve ad zorunludur.');
+            return;
+        }
+        setQuickSaving(true);
+        try {
+            const payload: Record<string, unknown> = {
+                code: quickCode.trim(),
+                name: quickName.trim(),
+                is_active: true,
+            };
+            if (definitionTableName === 'categories' || definitionTableName === 'product_groups') {
+                if (parentId) payload.parent_id = parentId;
+            }
+            const created = await definitionAPI.create(definitionTableName, payload as any);
+            if (!created) throw new Error('Kayıt oluşturulamadı');
+            const mapped: TreeDataItem = {
+                id: created.id,
+                code: created.code,
+                name: created.name,
+                parent_id: created.parent_id ?? parentId ?? null,
+                description: created.description,
+            };
+            setLocalItems((prev) => [...prev, mapped]);
+            if (mapped.parent_id) {
+                setExpandedNodes((prev) => {
+                    const next = new Set(prev);
+                    next.add(mapped.parent_id!);
+                    return next;
+                });
+            }
+            onItemsChanged?.();
+            setQuickCode('');
+            setQuickName('');
+            setShowQuickAdd(false);
+            onSelect(mapped);
+            toast.success('Kayıt eklendi');
+        } catch (e: unknown) {
+            toast.error(e instanceof Error ? e.message : String(e));
+        } finally {
+            setQuickSaving(false);
+        }
+    };
 
     const toggleNode = (id: string, e: React.MouseEvent) => {
         e.stopPropagation();
@@ -186,12 +272,67 @@ export function TreeSelectionModal({
                     </div>
                 </div>
 
+                {definitionTableName && (
+                    <div className="px-4 py-2 border-b border-gray-100 bg-white">
+                        {!showQuickAdd ? (
+                            <button
+                                type="button"
+                                onClick={() => openQuickAdd(searchTerm)}
+                                className="inline-flex items-center gap-1 text-xs font-medium text-blue-700 hover:text-blue-900"
+                            >
+                                <Plus className="w-3 h-3" />
+                                Yeni ekle
+                            </button>
+                        ) : (
+                            <div className="flex flex-wrap items-end gap-2">
+                                <input
+                                    value={quickCode}
+                                    onChange={(e) => setQuickCode(e.target.value)}
+                                    placeholder="Kod"
+                                    className="flex-1 min-w-[80px] px-2 py-1.5 border rounded text-xs"
+                                />
+                                <input
+                                    value={quickName}
+                                    onChange={(e) => setQuickName(e.target.value)}
+                                    placeholder="Ad"
+                                    className="flex-[2] min-w-[120px] px-2 py-1.5 border rounded text-xs"
+                                />
+                                <button
+                                    type="button"
+                                    disabled={quickSaving}
+                                    onClick={() => void handleQuickAdd()}
+                                    className="px-3 py-1.5 bg-blue-600 text-white text-xs rounded disabled:opacity-50"
+                                >
+                                    Kaydet
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setShowQuickAdd(false)}
+                                    className="px-2 py-1.5 text-xs text-gray-600"
+                                >
+                                    İptal
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                )}
+
                 {/* Tree View */}
                 <div className="flex-1 overflow-auto p-2 bg-white">
                     {filteredTree.length === 0 ? (
                         <div className="text-center py-12">
                             <Database className="w-12 h-12 mx-auto mb-3 text-gray-200" />
                             <p className="text-sm text-gray-500 italic">Aradığınız kriterde sonuç bulunamadı</p>
+                            {definitionTableName && searchTerm.trim() && !showQuickAdd && (
+                                <button
+                                    type="button"
+                                    onClick={() => openQuickAdd(searchTerm)}
+                                    className="mt-4 inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-blue-700 border border-blue-200 rounded-md hover:bg-blue-50"
+                                >
+                                    <Plus className="w-3 h-3" />
+                                    &quot;{searchTerm.trim()}&quot; olarak ekle
+                                </button>
+                            )}
                         </div>
                     ) : (
                         <div className="space-y-0.5">
@@ -213,4 +354,3 @@ export function TreeSelectionModal({
         </div>
     );
 }
-

@@ -136,6 +136,8 @@ export const ServiceFormPage = React.memo(({ serviceId, onClose, onSave }: Servi
     currentValue: string | string[];
     isMulti?: boolean;
     useTree?: boolean;
+    definitionTableName?: string;
+    parentId?: string | null;
   }>({
     show: false,
     title: '',
@@ -471,6 +473,15 @@ export const ServiceFormPage = React.memo(({ serviceId, onClose, onSave }: Servi
       currentValue,
       isMulti: type === 'supplier',
       useTree: type === 'category' || type === 'productGroup',
+      definitionTableName:
+        type === 'category'
+          ? 'categories'
+          : type === 'brand'
+            ? 'brands'
+          : type === 'productGroup'
+            ? 'product_groups'
+            : undefined,
+      parentId: null,
     });
   };
 
@@ -1343,6 +1354,14 @@ export const ServiceFormPage = React.memo(({ serviceId, onClose, onSave }: Servi
             items={selectionModal.items as any}
             title={selectionModal.title}
             currentValue={selectionModal.currentValue as string}
+            definitionTableName={selectionModal.definitionTableName}
+            parentId={selectionModal.parentId}
+            onItemsChanged={async () => {
+              const { categoryAPI, productGroupAPI } = await import('../../../services/api/masterData');
+              const [c, g] = await Promise.all([categoryAPI.getAll(), productGroupAPI.getAll()]);
+              setCategories(c);
+              setProductGroups(g);
+            }}
           />
         ) : (
           <MasterDataSelectionModal
@@ -1352,6 +1371,19 @@ export const ServiceFormPage = React.memo(({ serviceId, onClose, onSave }: Servi
             title={selectionModal.title}
             currentValue={selectionModal.currentValue}
             isMulti={selectionModal.isMulti}
+            definitionTableName={selectionModal.definitionTableName}
+            parentId={selectionModal.parentId}
+            onItemsChanged={async () => {
+              const { categoryAPI, brandAPI, productGroupAPI } = await import('../../../services/api/masterData');
+              const [c, b, g] = await Promise.all([
+                categoryAPI.getAll(),
+                brandAPI.getAll(),
+                productGroupAPI.getAll(),
+              ]);
+              setCategories(c);
+              setBrands(b);
+              setProductGroups(g);
+            }}
           />
         )
       )}
