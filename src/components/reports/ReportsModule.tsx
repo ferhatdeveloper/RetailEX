@@ -29,6 +29,10 @@ import { localCalendarDateKey, localTodayDateKey, formatIsoDateTr } from '../../
 import { type ReportDatePreset, type ReportDateRangeValue } from '../../utils/reportDatePresets';
 import { ReportDateRangePresets } from '../shared/ReportDateRangePresets';
 import { buildErpServiceBreakdownGroups, type ErpServiceBreakdownLine } from '../../utils/serviceBreakdownReport';
+import {
+  summarizePurchasePromotionReport,
+  type PurchasePromotionReportLine,
+} from '../../utils/purchasePromotionReport';
 import { buildPosZReportForRange, isReturnSale } from '../../utils/posZReport';
 import { normalizePaymentMethodBucket } from '../../utils/paymentMethodUtils';
 import { BeautyServiceReportCrmModal } from './BeautyServiceReportCrmModal';
@@ -523,7 +527,7 @@ type ReportTab =
   // Finansal Raporlar
   'profit-loss' | 'cash-flow' | 'debt-aging' | 'check-tracking' | 'current-account' |
   // Stok Raporları
-  'stock-status' | 'stock-aging' | 'stock-turnover' | 'stock-abc' | 'materials' | 'expiring-products' |
+  'stock-status' | 'stock-aging' | 'stock-turnover' | 'stock-abc' | 'materials' | 'purchase-promotion-report' | 'expiring-products' |
   // Ödeme & İşlem
   'payment-distribution' | 'discount-report' | 'cash-status' | 'commission' |
   // Güzellik özel
@@ -887,6 +891,31 @@ export function ReportsModule({
   const [erpHizmetSaleIds, setErpHizmetSaleIds] = useState<Set<string>>(() => new Set());
   const [erpServiceCards, setErpServiceCards] = useState<Array<{ id: string; code: string; name: string }>>([]);
   const [loadingBeautyServiceReport, setLoadingBeautyServiceReport] = useState(false);
+  const [purchasePromoFrom, setPurchasePromoFrom] = useState(() => {
+    const d = new Date();
+    d.setDate(1);
+    return localCalendarDateKey(d);
+  });
+  const [purchasePromoTo, setPurchasePromoTo] = useState(() => localTodayDateKey());
+  const [purchasePromoPreset, setPurchasePromoPreset] = useState<ReportDatePreset>('month');
+  const [purchasePromoMonthOffset, setPurchasePromoMonthOffset] = useState(0);
+  const purchasePromoDateRange = useMemo<ReportDateRangeValue>(
+    () => ({
+      preset: purchasePromoPreset,
+      monthOffset: purchasePromoMonthOffset,
+      from: purchasePromoFrom,
+      to: purchasePromoTo,
+    }),
+    [purchasePromoPreset, purchasePromoMonthOffset, purchasePromoFrom, purchasePromoTo],
+  );
+  const setPurchasePromoDateRange = useCallback((next: ReportDateRangeValue) => {
+    setPurchasePromoPreset(next.preset);
+    setPurchasePromoMonthOffset(next.monthOffset);
+    setPurchasePromoFrom(next.from);
+    setPurchasePromoTo(next.to);
+  }, []);
+  const [purchasePromoLines, setPurchasePromoLines] = useState<PurchasePromotionReportLine[]>([]);
+  const [loadingPurchasePromoReport, setLoadingPurchasePromoReport] = useState(false);
   const [beautyCrmModalAppointment, setBeautyCrmModalAppointment] = useState<BeautyAppointment | null>(null);
   /** Boş = tüm ana kategoriler; aksi halde parent_category / category anahtarı */
   const [beautyMainCategoryFilter, setBeautyMainCategoryFilter] = useState('');
@@ -1055,6 +1084,32 @@ export function ReportsModule({
       .finally(() => setLoadingBeautyServiceReport(false));
   }, [businessType, selectedTab, selectedFirm, beautyServiceFrom, beautyServiceTo]);
 
+  const reloadPurchasePromoReport = useCallback((): Promise<void> => {
+    if (selectedTab !== 'purchase-promotion-report' || !selectedFirm) {
+      return Promise.resolve();
+    }
+    setLoadingPurchasePromoReport(true);
+    return (async () => {
+      try {
+        const { invoicesAPI } = await import('../../services/api/invoices');
+        const rows = await invoicesAPI.getPurchasePromotionReport(purchasePromoFrom, purchasePromoTo, {
+          firmNr: selectedFirm.logicalref,
+        });
+        setPurchasePromoLines(Array.isArray(rows) ? rows : []);
+      } catch (err) {
+        console.error('[ReportsModule] Alış promosyon raporu:', err);
+        setPurchasePromoLines([]);
+      } finally {
+        setLoadingPurchasePromoReport(false);
+      }
+    })();
+  }, [selectedTab, selectedFirm, purchasePromoFrom, purchasePromoTo]);
+
+  const purchasePromoSummary = useMemo(
+    () => summarizePurchasePromotionReport(purchasePromoLines),
+    [purchasePromoLines],
+  );
+
   const getBusinessConfig = () => {
     switch (businessType) {
       case 'market':
@@ -1212,6 +1267,9 @@ export function ReportsModule({
       ) {
         tasks.push(reloadBeautyServiceReport());
       }
+      if (selectedTab === 'purchase-promotion-report') {
+        tasks.push(reloadPurchasePromoReport());
+      }
       if (selectedTab === 'expiring-products' && selectedFirm?.id) {
         tasks.push(
           fetchExpiringSoonLots(selectedFirm.id.toString(), expiringDays)
@@ -1239,6 +1297,7 @@ export function ReportsModule({
     loadReportRangeSales,
     loadRestOrdersForSelectedDate,
     reloadBeautyServiceReport,
+    reloadPurchasePromoReport,
     selectedFirm?.id,
     selectedTab,
     tm,
@@ -1361,6 +1420,10 @@ export function ReportsModule({
   useEffect(() => {
     reloadBeautyServiceReport();
   }, [reloadBeautyServiceReport]);
+
+  useEffect(() => {
+    void reloadPurchasePromoReport();
+  }, [reloadPurchasePromoReport]);
 
   useEffect(() => {
     void reloadStaffTreatmentReport();
@@ -4095,6 +4158,7 @@ export function ReportsModule({
           { key: 'stock-turnover', label: tm('stokDonusHizi'), icon: <RetweetOutlined /> },
           { key: 'stock-abc', label: tm('stokAbcAnalizi'), icon: <ApartmentOutlined /> },
           { key: 'materials', label: tm('malHareketRaporu'), icon: <DeploymentUnitOutlined /> },
+          { key: 'purchase-promotion-report', label: tm('purchasePromotionReport'), icon: <TagsOutlined /> },
           { key: 'expiring-products', label: tm('sktYaklasanlar'), icon: <ExclamationCircleOutlined /> },
         ],
       },
@@ -5625,6 +5689,96 @@ export function ReportsModule({
             })()}
 
             {selectedTab === 'materials' && <MaterialMovementReport />}
+
+            {selectedTab === 'purchase-promotion-report' && (
+              <div className="space-y-4">
+                <div className="bg-white rounded-xl border border-slate-200 p-4 flex flex-wrap items-end gap-4 shadow-sm">
+                  <ReportDateRangePresets
+                    value={purchasePromoDateRange}
+                    onChange={setPurchasePromoDateRange}
+                    tm={tm}
+                  />
+                  <Button type="primary" loading={loadingPurchasePromoReport} onClick={() => void reloadPurchasePromoReport()}>
+                    {tm('refresh')}
+                  </Button>
+                  <p className="text-xs text-slate-500 flex-1 min-w-[200px]">{tm('purchasePromotionReportHint')}</p>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                  <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
+                    <p className="text-xs text-slate-500">{tm('purchasePromotionReport')}</p>
+                    <p className="text-2xl font-bold text-slate-800">{purchasePromoSummary.lineCount}</p>
+                  </div>
+                  <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
+                    <p className="text-xs text-slate-500">{tm('purchasePromotionInvoiceCount')}</p>
+                    <p className="text-2xl font-bold text-slate-800">{purchasePromoSummary.invoiceCount}</p>
+                  </div>
+                  <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
+                    <p className="text-xs text-slate-500">{tm('quantity')}</p>
+                    <p className="text-2xl font-bold text-slate-800">{formatNumber(purchasePromoSummary.totalQuantity, 2, false)}</p>
+                  </div>
+                  <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
+                    <p className="text-xs text-slate-500">{tm('purchasePromotionAllocatedCost')}</p>
+                    <p className="text-2xl font-bold text-slate-800">
+                      {formatNumber(purchasePromoSummary.totalAllocatedCost, 2, false)} {reportCurrency}
+                    </p>
+                  </div>
+                </div>
+
+                <Spin spinning={loadingPurchasePromoReport}>
+                  <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
+                    <div className="overflow-x-auto">
+                      <table className="min-w-full text-sm">
+                        <thead className="bg-slate-50 text-slate-600">
+                          <tr>
+                            <th className="px-3 py-2 text-left">{tm('date')}</th>
+                            <th className="px-3 py-2 text-left">{tm('invoiceNo')}</th>
+                            <th className="px-3 py-2 text-left">{tm('supplier')}</th>
+                            <th className="px-3 py-2 text-left">{tm('productGridColCode')}</th>
+                            <th className="px-3 py-2 text-left">{tm('productName')}</th>
+                            <th className="px-3 py-2 text-right">{tm('quantity')}</th>
+                            <th className="px-3 py-2 text-right">{tm('unitCost')}</th>
+                            <th className="px-3 py-2 text-right">{tm('purchasePromotionAllocatedCost')}</th>
+                            <th className="px-3 py-2 text-right">{tm('purchasePromotionInvoicePaid')}</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {purchasePromoLines.length === 0 ? (
+                            <tr>
+                              <td colSpan={9} className="px-3 py-10 text-center text-slate-500">
+                                {tm('noDataFound')}
+                              </td>
+                            </tr>
+                          ) : (
+                            purchasePromoLines.map((row) => (
+                              <tr key={row.id} className="border-t border-slate-100 hover:bg-slate-50/80">
+                                <td className="px-3 py-2 whitespace-nowrap">{row.invoiceDate}</td>
+                                <td className="px-3 py-2 whitespace-nowrap font-medium">{row.invoiceNo}</td>
+                                <td className="px-3 py-2">{row.supplierName}</td>
+                                <td className="px-3 py-2 font-mono text-xs">{row.productCode}</td>
+                                <td className="px-3 py-2">{row.productName}</td>
+                                <td className="px-3 py-2 text-right tabular-nums">
+                                  {formatNumber(row.quantity, 2, false)} {row.unit}
+                                </td>
+                                <td className="px-3 py-2 text-right tabular-nums">
+                                  {formatNumber(row.allocatedUnitCost, 2, false)} {reportCurrency}
+                                </td>
+                                <td className="px-3 py-2 text-right tabular-nums">
+                                  {formatNumber(row.allocatedTotalCost, 2, false)} {reportCurrency}
+                                </td>
+                                <td className="px-3 py-2 text-right tabular-nums">
+                                  {formatNumber(row.invoicePaidTotal, 2, false)} {reportCurrency}
+                                </td>
+                              </tr>
+                            ))
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </Spin>
+              </div>
+            )}
 
             {selectedTab === 'expiring-products' && (() => {
               const getDaysUntilExpiry = (expiryDate: string) => {

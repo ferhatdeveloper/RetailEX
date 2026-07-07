@@ -8,8 +8,15 @@ import { type Invoice } from '../../core/types';
 import { customerAPI } from './customers';
 import { productAPI } from './products';
 import { hydrateWeightLineFromDb, resolveStockQuantityFromLine } from '../../utils/scaleQuantity';
-import { canonicalInvoiceLineType, invoiceLineTypeToDb, isInvoiceStockLineType } from '../../utils/invoiceLineType';
+import {
+  canonicalInvoiceLineType,
+  invoiceLineTypeToDb,
+  isInvoiceStockLineType,
+  isInvoiceSupplierPayableLineType,
+  invoiceLinePayableNetAmount,
+} from '../../utils/invoiceLineType';
 import { readInvoiceHeaderFields } from '../../utils/invoiceHeaderFields';
+import type { PurchasePromotionReportLine } from '../../utils/purchasePromotionReport';
 export type { Invoice };
 
 // Helper to validate UUID format
@@ -346,6 +353,19 @@ function resolveTrcodeFromInvoice(inv: Invoice): number {
   }
 }
 
+/** Alış faturasında tedarikçi borcuna yazılacak tutar — promosyon/indirim satırları hariç */
+export function computeInvoiceSupplierPayableAmount(inv: Invoice): number {
+  if (inv.invoice_category !== 'Alis') return Number(inv.total_amount || 0);
+  if (inv.items?.length) {
+    return inv.items.reduce((sum, item) => sum + invoiceLinePayableNetAmount(item as any), 0);
+  }
+  return Number(inv.total_amount || 0);
+}
+
+function invoiceItemAffectsStock(item: Record<string, unknown>, category: string | undefined): boolean {
+  return isInvoiceStockLineType(String(item.type ?? ''), category);
+}
+
 /** Ürün UUID → stok değişimi (oluşturma ile aynı kurallar) */
 async function collectInvoiceStockDeltasByProduct(inv: Invoice, trcode: number): Promise<Map<string, number>> {
   const category = inv.invoice_category;
@@ -353,6 +373,7 @@ async function collectInvoiceStockDeltasByProduct(inv: Invoice, trcode: number):
   if (!inv.items?.length || !category) return deltas;
 
   for (const item of inv.items) {
+    if (!invoiceItemAffectsStock(item as Record<string, unknown>, category)) continue;
     const productId = item.code || item.productId;
     if (!productId) continue;
     const baseQty = invoiceLineStockQuantity(item as Record<string, unknown>);
@@ -411,7 +432,8 @@ async function applyInvoiceBalanceSideEffectsSql(
   const accountId = inv.customer_id || inv.supplier_id;
   const salePm = (inv as any).payment_method as string | undefined;
   if (!accountId || !isValidUuid(String(accountId))) return;
-  const baseAmt = Number(inv.total_amount || 0);
+  const baseAmt =
+    inv.invoice_category === 'Alis' ? computeInvoiceSupplierPayableAmount(inv) : Number(inv.total_amount || 0);
   if (!baseAmt || Number.isNaN(baseAmt)) return;
   const amount = baseAmt * mult;
   const trcode = resolveTrcodeFromInvoice(inv);
@@ -457,7 +479,8 @@ async function applyInvoiceBalanceSideEffectsSql(
 async function revertInvoiceBalanceUpdatesRestApi(inv: Invoice, firmNr: string): Promise<void> {
   const accountId = inv.customer_id || inv.supplier_id;
   if (!accountId || !isValidUuid(String(accountId))) return;
-  const amt = Number(inv.total_amount || 0);
+  const amt =
+    inv.invoice_category === 'Alis' ? computeInvoiceSupplierPayableAmount(inv) : Number(inv.total_amount || 0);
   if (!amt || Number.isNaN(amt)) return;
   const trcode = resolveTrcodeFromInvoice(inv);
   const ficheType = deriveFicheTypeFromTrcode(trcode);
@@ -729,6 +752,7 @@ async function applyInvoiceStockUpdatesRestApi(
   const deltas = new Map<string, number>();
 
   for (const item of invoice.items) {
+    if (!invoiceItemAffectsStock(item as Record<string, unknown>, category)) continue;
     const productId = item.code || item.productId;
     if (!productId) continue;
     const baseQty = invoiceLineStockQuantity(item as Record<string, unknown>);
@@ -796,7 +820,10 @@ async function applyInvoiceBalanceUpdatesRestApi(
   const accountId = invoice.customer_id || invoice.supplier_id;
   const salePm = (invoice as any).payment_method as string | undefined;
   if (!accountId || !isValidUuid(accountId)) return;
-  const amount = Number(invoice.total_amount || 0);
+  const amount =
+    invoice.invoice_category === 'Alis'
+      ? computeInvoiceSupplierPayableAmount(invoice)
+      : Number(invoice.total_amount || 0);
 
   if (
     (invoice.invoice_category === 'Satis' || invoice.invoice_category === 'Hizmet')
@@ -1140,7 +1167,7 @@ export const invoicesAPI = {
             invoiceLineTypeToDb((item as any).type)
           );
 
-          const isStockLine = isInvoiceStockLineType((item as any).type);
+          const isStockLine = isInvoiceStockLineType((item as any).type, invoice.invoice_category);
           if (productId && isStockLine) {
             let stockModifier = 0;
             if (invoice.invoice_category === 'Alis') stockModifier = baseQty;
@@ -1222,7 +1249,10 @@ export const invoicesAPI = {
       const accountId = invoice.customer_id || invoice.supplier_id;
       const salePm = (invoice as any).payment_method as string | undefined;
       if (accountId && isValidUuid(accountId)) {
-        const amount = Number(invoice.total_amount || 0);
+        const amount =
+          invoice.invoice_category === 'Alis'
+            ? computeInvoiceSupplierPayableAmount(invoice)
+            : Number(invoice.total_amount || 0);
 
         if (
           (invoice.invoice_category === 'Satis' || invoice.invoice_category === 'Hizmet')
@@ -2211,6 +2241,124 @@ export const invoicesAPI = {
       }));
     } catch (error) {
       console.error('[InvoicesAPI] getProductHistory failed:', error);
+      return [];
+    }
+  },
+
+  /**
+   * Alış faturalarındaki promosyon (hediye) satırları — stok girişi, dağıtılmış maliyet, borçsuz kayıt özeti.
+   */
+  async getPurchasePromotionReport(
+    startDate: string,
+    endDate: string,
+    options?: { firmNr?: string | number; periodNr?: string | number },
+  ): Promise<PurchasePromotionReportLine[]> {
+    const firmNr = String(options?.firmNr ?? ERP_SETTINGS.firmNr ?? '').trim();
+    const periodNr = String(options?.periodNr ?? ERP_SETTINGS.periodNr ?? '01').trim();
+    const from = String(startDate || '').slice(0, 10);
+    const to = String(endDate || '').slice(0, 10);
+    if (!from || !to) return [];
+
+    try {
+      if (DB_SETTINGS.connectionProvider === 'rest_api') {
+        const page = await this.getPaginated({
+          page: 1,
+          pageSize: 500,
+          invoiceCategory: 'Alis',
+          startDate: from,
+          endDate: to,
+          firmNr,
+          periodNr,
+        });
+        const lines: PurchasePromotionReportLine[] = [];
+        for (const inv of page.data) {
+          const full = inv.items?.length ? inv : await this.getById(inv.id);
+          if (!full?.items?.length) continue;
+          const paidTotal = computeInvoiceSupplierPayableAmount(full);
+          const dateKey = String(full.invoice_date || full.created_at || '').slice(0, 10);
+          full.items.forEach((item, idx) => {
+            if (canonicalInvoiceLineType((item as any).type) !== 'Promosyon') return;
+            lines.push({
+              id: String((item as any).id || `${full.id}-${idx}`),
+              invoiceId: full.id,
+              invoiceNo: String(full.invoice_no || ''),
+              invoiceDate: dateKey,
+              supplierName: String(full.supplier_name || full.customer_name || '—'),
+              productCode: String(item.code || ''),
+              productName: String(item.description || item.productName || '—'),
+              quantity: Number(item.quantity || 0),
+              unit: String((item as any).unit || 'Adet'),
+              allocatedUnitCost: Number(item.unitCost || 0),
+              allocatedTotalCost: Number(item.totalCost || 0),
+              invoicePaidTotal: paidTotal,
+            });
+          });
+        }
+        return lines.sort((a, b) => b.invoiceDate.localeCompare(a.invoiceDate));
+      }
+
+      const queryOpts = { firmNr, periodNr };
+      const res = await postgres.query<{
+        id: string;
+        invoice_id: string;
+        item_code: string;
+        item_name: string;
+        quantity: string;
+        unit: string;
+        unit_cost: string;
+        total_cost: string;
+        fiche_no: string;
+        invoice_date: string;
+        supplier_name: string;
+        invoice_paid_total: string;
+      }>(
+        `SELECT
+            si.id,
+            si.invoice_id,
+            si.item_code,
+            si.item_name,
+            si.quantity,
+            si.unit,
+            si.unit_cost,
+            si.total_cost,
+            s.fiche_no,
+            COALESCE(s.date, s.created_at)::date::text AS invoice_date,
+            COALESCE(s.customer_name, '') AS supplier_name,
+            (
+              SELECT COALESCE(SUM(si2.net_amount::numeric), 0)
+              FROM sale_items si2
+              WHERE si2.invoice_id = si.invoice_id
+                AND COALESCE(si2.item_type, 'Malzeme') NOT IN ('Promosyon', 'İndirim')
+            ) AS invoice_paid_total
+         FROM sale_items si
+         INNER JOIN sales s ON s.id = si.invoice_id
+         WHERE (s.trcode = 1 OR s.fiche_type = 'purchase_invoice')
+           AND COALESCE(si.item_type, '') = 'Promosyon'
+           AND COALESCE(s.is_cancelled, false) = false
+           AND LOWER(COALESCE(s.status, '')) NOT IN ('silindi', 'cancelled', 'canceled', 'iptal', 'deleted')
+           AND COALESCE(s.date, s.created_at)::date >= $1::date
+           AND COALESCE(s.date, s.created_at)::date <= $2::date
+         ORDER BY s.date DESC, s.fiche_no DESC`,
+        [from, to],
+        queryOpts,
+      );
+
+      return (res.rows || []).map((row) => ({
+        id: row.id,
+        invoiceId: row.invoice_id,
+        invoiceNo: row.fiche_no || '',
+        invoiceDate: row.invoice_date || '',
+        supplierName: row.supplier_name || '—',
+        productCode: row.item_code || '',
+        productName: row.item_name || '—',
+        quantity: parseFloat(row.quantity || '0'),
+        unit: row.unit || 'Adet',
+        allocatedUnitCost: parseFloat(row.unit_cost || '0'),
+        allocatedTotalCost: parseFloat(row.total_cost || '0'),
+        invoicePaidTotal: parseFloat(row.invoice_paid_total || '0'),
+      }));
+    } catch (error) {
+      console.error('[InvoicesAPI] getPurchasePromotionReport failed:', error);
       return [];
     }
   },

@@ -15,7 +15,8 @@ import { toast } from 'sonner';
 import { formatNumber } from '../../../utils/formatNumber';
 import { parseDecimalStringForInput, formatDecimalForTrInput, parseInvoiceWeightQuantity } from '../../../utils/numberFormatter';
 import { normalizeWeightProductQuantity, syncWeightLineQuantities, hydrateWeightLineFromDb } from '../../../utils/scaleQuantity';
-import { canonicalInvoiceLineType, isInvoiceServiceLineType, isInvoiceMaterialLineType } from '../../../utils/invoiceLineType';
+import { canonicalInvoiceLineType, isInvoiceServiceLineType, isInvoiceMaterialLineType, isInvoiceSupplierPayableLineType } from '../../../utils/invoiceLineType';
+import { allocatePurchaseInvoiceLineCosts } from '../../../utils/purchasePromoCost';
 import { DocumentManager } from '../../shared/DocumentManager';
 import { printInvoice } from '../../../utils/printUtils';
 import type { Invoice } from '../../../core/types';
@@ -287,9 +288,11 @@ function isInvoiceDiscountLineType(type: string | undefined): boolean {
   return canonicalInvoiceLineType(type) === 'İndirim';
 }
 
-/** Barkod/kod ile doldurulabilir satır */
-function isInvoiceProductBarcodeLineType(type: string | undefined): boolean {
-  return isInvoiceMaterialLineType(type);
+/** Barkod/kod ile doldurulabilir satır — alışta promosyon da stok alır */
+function isInvoiceProductBarcodeLineType(type: string | undefined, category?: string): boolean {
+  const canonical = canonicalInvoiceLineType(type);
+  if (category === 'Alis') return canonical === 'Malzeme' || canonical === 'Promosyon';
+  return canonical === 'Malzeme';
 }
 
 function barcodeLookupAttempts(raw: string): string[] {
@@ -1502,7 +1505,7 @@ export function UniversalInvoiceForm({
       setItems(prev => {
         if (rowIndex < 0 || rowIndex >= prev.length) return prev;
         const row = prev[rowIndex];
-        if (!isInvoiceProductBarcodeLineType(row.type)) return prev;
+        if (!isInvoiceProductBarcodeLineType(row.type, invoiceType.category)) return prev;
         const next = [...prev];
         next[rowIndex] = applyLookupResultToInvoiceItem(row, resolved.product, resolved.unitInfo);
         const withEmpty = withTrailingEmptyLine(next);
@@ -2203,7 +2206,7 @@ export function UniversalInvoiceForm({
     e.stopPropagation();
 
     const row = items[rowIndex];
-    if (!row || !isInvoiceProductBarcodeLineType(row.type)) return;
+    if (!row || !isInvoiceProductBarcodeLineType(row.type, invoiceType.category)) return;
 
     if (dropdownForThisRow && selectedProductIndex >= 0 && filtered[selectedProductIndex]) {
       const selected = filtered[selectedProductIndex];
@@ -2649,6 +2652,7 @@ export function UniversalInvoiceForm({
     let totalNet = 0;
 
     items.forEach(item => {
+      if (invoiceType.category === 'Alis' && !isInvoiceSupplierPayableLineType(item.type)) return;
       const itemGross = (item.quantity || 0) * (item.unitPrice || 0);
       const itemTotalDiscount = (item.discountAmount || 0);
       const itemNet = itemGross - itemTotalDiscount;
@@ -2671,7 +2675,7 @@ export function UniversalInvoiceForm({
       totalDiscountIQD: totalDiscount * rate,
       netIQD: totalNet * rate,    // Yerel para karşılığı → DB
     };
-  }, [items, currency, ledgerCurrency, effectiveInvoiceCurrencyRate]);
+  }, [items, invoiceType.category, currency, ledgerCurrency, effectiveInvoiceCurrencyRate]);
 
   // Kar hesaplama (satış faturaları için)
   useEffect(() => {
@@ -2910,14 +2914,33 @@ export function UniversalInvoiceForm({
       const rateToIQD = currency !== ledgerCurrency ? effectiveInvoiceCurrencyRate : 1;
 
       if (invoiceType.category === 'Alis') {
-        itemsWithCost = validItems.map(item => {
-          const unitPriceFC = item.unitPrice;                    // Fatura dövizindeki fiyat
-          const unitPriceIQD = unitPriceFC * rateToIQD;          // IQD karşılığı
-          const baseQty = item.baseQuantity ?? (item.quantity * (item.multiplier || 1));
-          const totalItemCost = baseQty * unitPriceIQD;
-          totalCost += totalItemCost;
+        const costInputs = validItems.map((item, idx) => ({
+          id: item.id || item.code || `line-${idx}`,
+          code: item.code,
+          type: item.type,
+          quantity: item.quantity,
+          baseQuantity: item.baseQuantity ?? (item.quantity * (item.multiplier || 1)),
+          multiplier: item.multiplier,
+          unitPrice: item.unitPrice,
+          netAmount: item.netAmount,
+          discountAmount: item.discountAmount,
+        }));
+        const costMap = allocatePurchaseInvoiceLineCosts(costInputs, rateToIQD);
 
-          if (item.lastPurchasePrice && item.lastPurchasePrice > 0 && unitPriceIQD !== item.lastPurchasePrice) {
+        itemsWithCost = validItems.map((item, idx) => {
+          const key = item.id || item.code || `line-${idx}`;
+          const costInfo = costMap.get(key) || { unitCost: 0, totalCost: 0 };
+          const unitPriceFC = item.unitPrice;
+          const unitPriceIQD = unitPriceFC * rateToIQD;
+          const baseQty = item.baseQuantity ?? (item.quantity * (item.multiplier || 1));
+          totalCost += costInfo.totalCost;
+
+          if (
+            isInvoiceSupplierPayableLineType(item.type)
+            && item.lastPurchasePrice
+            && item.lastPurchasePrice > 0
+            && unitPriceIQD !== item.lastPurchasePrice
+          ) {
             priceChangeItems.push({
               code: item.code,
               name: item.description,
@@ -2933,8 +2956,8 @@ export function UniversalInvoiceForm({
             unitPriceFC,
             unitPrice: unitPriceIQD,
             baseQuantity: baseQty,
-            unitCost: unitPriceIQD,
-            totalCost: totalItemCost,
+            unitCost: costInfo.unitCost,
+            totalCost: costInfo.totalCost,
             grossProfit: 0,
             profitMargin: 0
           };
