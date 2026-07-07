@@ -1,4 +1,4 @@
-import React, { useState, useEffect, Suspense, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useLayoutEffect, Suspense, useMemo, useCallback } from 'react';
 import {
   PieChart, Store as StoreIcon, Map as MapIcon, Settings, Zap, FileSpreadsheet,
   FileText, FileCheck, RefreshCw, FileMinus, Send, Truck, Archive,
@@ -240,6 +240,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useFirmaDonem } from '../../contexts/FirmaDonemContext';
 import { GIB_EDOCUMENT_SCREEN_IDS, isGibEdocumentUiEnabled } from '../../config/eInvoice.config';
 import { isIntegrationsAccessGranted } from '../../utils/integrationsAccess';
+import { shouldAutoHideManagementSidebar } from '../../utils/managementSidebarAutoHide';
 
 export function ManagementModule({
   products,
@@ -460,14 +461,27 @@ export function ManagementModule({
     }
   }, [currentScreen, user]);
 
-  // Mobilde sidebar'ı otomatik kapat/aç
+  // Mobilde sidebar kapalı; rapor / genel rapor ekranlarında masaüstünde de gizle
   useEffect(() => {
     if (isMobile) {
       effectiveSetSidebarOpen(false);
-    } else {
-      effectiveSetSidebarOpen(true);
     }
-  }, [isMobile]);
+  }, [isMobile, effectiveSetSidebarOpen]);
+
+  useLayoutEffect(() => {
+    if (shouldAutoHideManagementSidebar(currentScreen)) {
+      _setSidebarOpenRaw(false);
+      return;
+    }
+    if (!isMobile && sidebarOpen === undefined) {
+      try {
+        const saved = localStorage.getItem(SIDEBAR_PREF_KEY);
+        _setSidebarOpenRaw(saved !== '0');
+      } catch {
+        _setSidebarOpenRaw(true);
+      }
+    }
+  }, [currentScreen, isMobile, sidebarOpen]);
 
   // Listen for WMS navigation event
   useEffect(() => {
@@ -749,7 +763,9 @@ export function ManagementModule({
     }
     const rawId = String(item.id).trim();
     setCurrentScreen(rawId === 'Dashboard' ? 'dashboard' : item.id);
-    if (isMobile) effectiveSetSidebarOpen(false);
+    if (isMobile || shouldAutoHideManagementSidebar(rawId === 'Dashboard' ? 'dashboard' : item.id)) {
+      _setSidebarOpenRaw(false);
+    }
     setMenuSearchQuery('');
     setSearchResults([]);
   }, [isMobile, effectiveSetSidebarOpen, selectedFirm]);
@@ -768,7 +784,9 @@ export function ManagementModule({
       // Eski menü / dışa aktarım: "Dashboard" ile "dashboard" aynı ekran
       const normalized = id === 'Dashboard' ? 'dashboard' : s;
       setCurrentScreen(normalized);
-      if (isMobile) effectiveSetSidebarOpen(false);
+      if (isMobile || shouldAutoHideManagementSidebar(String(normalized))) {
+        _setSidebarOpenRaw(false);
+      }
     },
     [isMobile, effectiveSetSidebarOpen, selectedFirm]
   );
