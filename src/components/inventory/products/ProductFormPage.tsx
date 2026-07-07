@@ -15,6 +15,7 @@ import { currencyAPI, categoryAPI, brandAPI, productGroupAPI, unitAPI, taxRateAP
 import { definitionAPI } from '../../../services/definitionAPI';
 import { resolveProductFormQuickAdd } from '../../../utils/masterDataQuickAdd';
 import { TreeSelectionModal, type TreeDataItem } from '../../shared/TreeSelectionModal';
+import { MasterDataSelectionModal } from '../../shared/MasterDataSelectionModal';
 import { ImageSearchModal } from '../../shared/ImageSearchModal';
 import { CdnGalleryModal } from '../../shared/CdnGalleryModal';
 import { translate, type Language } from '../../../shared/i18n/translations';
