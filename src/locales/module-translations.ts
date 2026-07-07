@@ -6798,6 +6798,7 @@ export const excelModuleTranslations = {
   bCallBoardTomorrow: { tr: 'Yarın', en: 'Tomorrow', ar: 'غداً', ku: 'سبەینێ' },
   bCallBoardWeek: { tr: 'Bu hafta', en: 'This week', ar: 'هذا الأسبوع', ku: 'ئەم هەفتەیە' },
   bCallBoardMonth: { tr: 'Bu ay', en: 'This month', ar: 'هذا الشهر', ku: 'ئەم مانگە' },
+  reportDatePresetLastMonth: { tr: 'Geçen ay', en: 'Last month', ar: 'الشهر الماضي', ku: 'مانگی پێشوو' },
   bCallBoardPrevMonth: { tr: 'Önceki ay', en: 'Previous month', ar: 'الشهر السابق', ku: 'مانگی پێشوو' },
   bCallBoardNextMonth: { tr: 'Gelecek ay', en: 'Next month', ar: 'الشهر القادم', ku: 'مانگی داهاتوو' },
   bCallBoardDateRange: { tr: 'Tarih aralığı', en: 'Date range', ar: 'نطاق التاريخ', ku: 'مەودای بەروار' },

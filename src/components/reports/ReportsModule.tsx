@@ -26,6 +26,8 @@ import { expenseAPI } from '../../services/api/expenses';
 import type { BeautyAppointment, BeautySale, BeautyStaffTreatmentReport } from '../../types/beauty';
 import { beautyServiceMainKey, beautyServiceSubKey } from '../beauty/beautyServiceCategoryUtils';
 import { localCalendarDateKey, localTodayDateKey, formatIsoDateTr, toSqlDateInputString } from '../../utils/localCalendarDate';
+import { type ReportDatePreset, type ReportDateRangeValue } from '../../utils/reportDatePresets';
+import { ReportDateRangePresets } from '../shared/ReportDateRangePresets';
 import { buildPosZReportForRange, isReturnSale } from '../../utils/posZReport';
 import { normalizePaymentMethodBucket } from '../../utils/paymentMethodUtils';
 import { BeautyServiceReportCrmModal } from './BeautyServiceReportCrmModal';
@@ -639,20 +641,25 @@ export function ReportsModule({
   );
   const [selectedDateFrom, setSelectedDateFrom] = useState(localTodayDateKey);
   const [selectedDateTo, setSelectedDateTo] = useState(localTodayDateKey);
+  const [dailyReportDatePreset, setDailyReportDatePreset] = useState<ReportDatePreset>('today');
+  const [dailyReportMonthOffset, setDailyReportMonthOffset] = useState(0);
+  const dailyReportDateRange = useMemo<ReportDateRangeValue>(
+    () => ({
+      preset: dailyReportDatePreset,
+      monthOffset: dailyReportMonthOffset,
+      from: selectedDateFrom,
+      to: selectedDateTo,
+    }),
+    [dailyReportDatePreset, dailyReportMonthOffset, selectedDateFrom, selectedDateTo],
+  );
+  const setDailyReportDateRange = useCallback((next: ReportDateRangeValue) => {
+    setDailyReportDatePreset(next.preset);
+    setDailyReportMonthOffset(next.monthOffset);
+    setSelectedDateFrom(next.from);
+    setSelectedDateTo(next.to);
+  }, []);
   const reportDateInputMin = '1990-01-01';
   const reportDateInputMax = '2100-12-31';
-  const handleReportDateFromChange = (raw: string) => {
-    const v = toSqlDateInputString(raw);
-    if (!v) return;
-    setSelectedDateFrom(v);
-    setSelectedDateTo((prev) => (v > prev ? v : prev));
-  };
-  const handleReportDateToChange = (raw: string) => {
-    const v = toSqlDateInputString(raw);
-    if (!v) return;
-    setSelectedDateTo(v);
-    setSelectedDateFrom((prev) => (v < prev ? v : prev));
-  };
   /** Günlük/Z raporu: seçili tarih aralığı — bellekteki son N satış değil, DB sorgusu */
   const [reportRangeSales, setReportRangeSales] = useState<Sale[]>([]);
   const [loadingReportRangeSales, setLoadingReportRangeSales] = useState(false);
@@ -791,6 +798,23 @@ export function ReportsModule({
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
   });
   const [restProductQtyTo, setRestProductQtyTo] = useState(() => localTodayDateKey());
+  const [restProductQtyPreset, setRestProductQtyPreset] = useState<ReportDatePreset>('month');
+  const [restProductQtyMonthOffset, setRestProductQtyMonthOffset] = useState(0);
+  const restProductQtyDateRange = useMemo<ReportDateRangeValue>(
+    () => ({
+      preset: restProductQtyPreset,
+      monthOffset: restProductQtyMonthOffset,
+      from: restProductQtyFrom,
+      to: restProductQtyTo,
+    }),
+    [restProductQtyPreset, restProductQtyMonthOffset, restProductQtyFrom, restProductQtyTo],
+  );
+  const setRestProductQtyDateRange = useCallback((next: ReportDateRangeValue) => {
+    setRestProductQtyPreset(next.preset);
+    setRestProductQtyMonthOffset(next.monthOffset);
+    setRestProductQtyFrom(next.from);
+    setRestProductQtyTo(next.to);
+  }, []);
   const [restProductQtyRows, setRestProductQtyRows] = useState<
     Array<{ productId: string | null; productName: string; quantity: number; revenue: number }>
   >([]);
@@ -811,6 +835,23 @@ export function ReportsModule({
     return localCalendarDateKey(d);
   });
   const [analysisDateTo, setAnalysisDateTo] = useState(() => localTodayDateKey());
+  const [analysisDatePreset, setAnalysisDatePreset] = useState<ReportDatePreset>('custom');
+  const [analysisMonthOffset, setAnalysisMonthOffset] = useState(0);
+  const analysisDateRange = useMemo<ReportDateRangeValue>(
+    () => ({
+      preset: analysisDatePreset,
+      monthOffset: analysisMonthOffset,
+      from: analysisDateFrom,
+      to: analysisDateTo,
+    }),
+    [analysisDatePreset, analysisMonthOffset, analysisDateFrom, analysisDateTo],
+  );
+  const setAnalysisDateRange = useCallback((next: ReportDateRangeValue) => {
+    setAnalysisDatePreset(next.preset);
+    setAnalysisMonthOffset(next.monthOffset);
+    setAnalysisDateFrom(next.from);
+    setAnalysisDateTo(next.to);
+  }, []);
   const [analysisOrders, setAnalysisOrders] = useState<any[]>([]);
   const [loadingAnalysisOrders, setLoadingAnalysisOrders] = useState(false);
   const [floorNameById, setFloorNameById] = useState<Record<string, string>>({});
@@ -822,6 +863,23 @@ export function ReportsModule({
     return localCalendarDateKey(d);
   });
   const [beautyServiceTo, setBeautyServiceTo] = useState(() => localTodayDateKey());
+  const [beautyServicePreset, setBeautyServicePreset] = useState<ReportDatePreset>('month');
+  const [beautyServiceMonthOffset, setBeautyServiceMonthOffset] = useState(0);
+  const beautyServiceDateRange = useMemo<ReportDateRangeValue>(
+    () => ({
+      preset: beautyServicePreset,
+      monthOffset: beautyServiceMonthOffset,
+      from: beautyServiceFrom,
+      to: beautyServiceTo,
+    }),
+    [beautyServicePreset, beautyServiceMonthOffset, beautyServiceFrom, beautyServiceTo],
+  );
+  const setBeautyServiceDateRange = useCallback((next: ReportDateRangeValue) => {
+    setBeautyServicePreset(next.preset);
+    setBeautyServiceMonthOffset(next.monthOffset);
+    setBeautyServiceFrom(next.from);
+    setBeautyServiceTo(next.to);
+  }, []);
   const [beautySurveyReloadKey, setBeautySurveyReloadKey] = useState(0);
   const [beautyServiceAppointments, setBeautyServiceAppointments] = useState<BeautyAppointment[]>([]);
   const [beautyServiceSales, setBeautyServiceSales] = useState<BeautySale[]>([]);
@@ -830,8 +888,29 @@ export function ReportsModule({
   /** Boş = tüm ana kategoriler; aksi halde parent_category / category anahtarı */
   const [beautyMainCategoryFilter, setBeautyMainCategoryFilter] = useState('');
   const [beautySubCategoryFilter, setBeautySubCategoryFilter] = useState('');
-  const [beautyStaffTreatmentFrom, setBeautyStaffTreatmentFrom] = useState(() => localTodayDateKey());
+  const [beautyStaffTreatmentFrom, setBeautyStaffTreatmentFrom] = useState(() => {
+    const d = new Date();
+    d.setDate(1);
+    return localCalendarDateKey(d);
+  });
   const [beautyStaffTreatmentTo, setBeautyStaffTreatmentTo] = useState(() => localTodayDateKey());
+  const [beautyStaffTreatmentPreset, setBeautyStaffTreatmentPreset] = useState<ReportDatePreset>('month');
+  const [beautyStaffTreatmentMonthOffset, setBeautyStaffTreatmentMonthOffset] = useState(0);
+  const beautyStaffTreatmentDateRange = useMemo<ReportDateRangeValue>(
+    () => ({
+      preset: beautyStaffTreatmentPreset,
+      monthOffset: beautyStaffTreatmentMonthOffset,
+      from: beautyStaffTreatmentFrom,
+      to: beautyStaffTreatmentTo,
+    }),
+    [beautyStaffTreatmentPreset, beautyStaffTreatmentMonthOffset, beautyStaffTreatmentFrom, beautyStaffTreatmentTo],
+  );
+  const setBeautyStaffTreatmentDateRange = useCallback((next: ReportDateRangeValue) => {
+    setBeautyStaffTreatmentPreset(next.preset);
+    setBeautyStaffTreatmentMonthOffset(next.monthOffset);
+    setBeautyStaffTreatmentFrom(next.from);
+    setBeautyStaffTreatmentTo(next.to);
+  }, []);
   const [staffTreatmentReport, setStaffTreatmentReport] = useState<BeautyStaffTreatmentReport | null>(null);
   const [loadingStaffTreatmentReport, setLoadingStaffTreatmentReport] = useState(false);
   /** Boş = tüm ürünler; aksi halde product id */
@@ -4167,28 +4246,14 @@ export function ReportsModule({
                   <div className="flex flex-row flex-wrap items-center justify-between gap-3">
                     <div className="flex flex-row flex-wrap items-center gap-3 sm:gap-4 min-w-0 flex-1">
                       <Calendar className="w-5 h-5 text-gray-600 shrink-0 hidden sm:block" aria-hidden />
-                      <label className="flex flex-row items-center gap-2 text-sm text-slate-700">
-                        <span className="font-medium whitespace-nowrap">{tm('reportsPlStartDate')}</span>
-                        <input
-                          type="date"
-                          min={reportDateInputMin}
-                          max={reportDateInputMax}
-                          value={selectedDateFrom}
-                          onChange={(e) => handleReportDateFromChange(e.target.value)}
-                          className="w-auto min-w-[9.5rem] px-4 py-2 border rounded-lg focus:outline-none focus:border-blue-500"
-                        />
-                      </label>
-                      <label className="flex flex-row items-center gap-2 text-sm text-slate-700">
-                        <span className="font-medium whitespace-nowrap">{tm('reportsPlEndDate')}</span>
-                        <input
-                          type="date"
-                          min={reportDateInputMin}
-                          max={reportDateInputMax}
-                          value={selectedDateTo}
-                          onChange={(e) => handleReportDateToChange(e.target.value)}
-                          className="w-auto min-w-[9.5rem] px-4 py-2 border rounded-lg focus:outline-none focus:border-blue-500"
-                        />
-                      </label>
+                      <ReportDateRangePresets
+                        value={dailyReportDateRange}
+                        onChange={setDailyReportDateRange}
+                        tm={tm}
+                        min={reportDateInputMin}
+                        max={reportDateInputMax}
+                        className="min-w-0 flex-1"
+                      />
                     </div>
                     <div className="flex flex-row flex-nowrap items-center gap-2 shrink-0">
                       <Button
@@ -6051,24 +6116,11 @@ export function ReportsModule({
             {(isBeautyServiceReportTab || isBeautyCancelledReportTab || isBeautyAppointmentProductReportTab || isAnyBeautySurveyReportTab) && (
               <div className="space-y-4">
                 <div className="bg-white rounded-xl border border-slate-200 p-4 flex flex-wrap items-end gap-4 shadow-sm">
-                  <div className="flex flex-col gap-1">
-                    <span className="text-xs font-semibold text-slate-500">{tm('dateFrom')}</span>
-                    <input
-                      type="date"
-                      value={beautyServiceFrom}
-                      onChange={(e) => setBeautyServiceFrom(e.target.value)}
-                      className="px-3 py-2 border border-slate-200 rounded-lg text-sm"
-                    />
-                  </div>
-                  <div className="flex flex-col gap-1">
-                    <span className="text-xs font-semibold text-slate-500">{tm('dateTo')}</span>
-                    <input
-                      type="date"
-                      value={beautyServiceTo}
-                      onChange={(e) => setBeautyServiceTo(e.target.value)}
-                      className="px-3 py-2 border border-slate-200 rounded-lg text-sm"
-                    />
-                  </div>
+                  <ReportDateRangePresets
+                    value={beautyServiceDateRange}
+                    onChange={setBeautyServiceDateRange}
+                    tm={tm}
+                  />
                   {(isBeautyServiceReportTab || isBeautyCancelledReportTab) && (
                     <div className="flex flex-col gap-1 min-w-[220px]">
                       <span className="text-xs font-semibold text-slate-500">{tm('beautyMainCategoryFilterLabel')}</span>
@@ -6639,24 +6691,11 @@ export function ReportsModule({
             {isBeautyStaffTreatmentReportTab && (
               <div className="space-y-4">
                 <div className="bg-white rounded-xl border border-slate-200 p-4 flex flex-wrap items-end gap-4 shadow-sm">
-                  <div className="flex flex-col gap-1">
-                    <span className="text-xs font-semibold text-slate-500">{tm('dateFrom')}</span>
-                    <input
-                      type="date"
-                      value={beautyStaffTreatmentFrom}
-                      onChange={(e) => setBeautyStaffTreatmentFrom(e.target.value)}
-                      className="px-3 py-2 border border-slate-200 rounded-lg text-sm"
-                    />
-                  </div>
-                  <div className="flex flex-col gap-1">
-                    <span className="text-xs font-semibold text-slate-500">{tm('dateTo')}</span>
-                    <input
-                      type="date"
-                      value={beautyStaffTreatmentTo}
-                      onChange={(e) => setBeautyStaffTreatmentTo(e.target.value)}
-                      className="px-3 py-2 border border-slate-200 rounded-lg text-sm"
-                    />
-                  </div>
+                  <ReportDateRangePresets
+                    value={beautyStaffTreatmentDateRange}
+                    onChange={setBeautyStaffTreatmentDateRange}
+                    tm={tm}
+                  />
                   <Button type="primary" loading={loadingStaffTreatmentReport} onClick={() => void reloadStaffTreatmentReport()}>
                     {tm('refresh')}
                   </Button>
@@ -7286,24 +7325,11 @@ export function ReportsModule({
                 return (
                   <div className="space-y-6">
                     <div className="bg-white rounded-xl border border-slate-200 p-4 flex flex-wrap items-end gap-4 shadow-sm">
-                      <label className="flex flex-col gap-1 text-xs font-bold text-slate-600">
-                        {tm('dateFrom')}
-                        <input
-                          type="date"
-                          value={restProductQtyFrom}
-                          onChange={(e) => setRestProductQtyFrom(e.target.value)}
-                          className="px-3 py-2 border border-slate-200 rounded-lg text-sm min-w-[168px]"
-                        />
-                      </label>
-                      <label className="flex flex-col gap-1 text-xs font-bold text-slate-600">
-                        {tm('dateTo')}
-                        <input
-                          type="date"
-                          value={restProductQtyTo}
-                          onChange={(e) => setRestProductQtyTo(e.target.value)}
-                          className="px-3 py-2 border border-slate-200 rounded-lg text-sm min-w-[168px]"
-                        />
-                      </label>
+                      <ReportDateRangePresets
+                        value={restProductQtyDateRange}
+                        onChange={setRestProductQtyDateRange}
+                        tm={tm}
+                      />
                       <p className="text-xs text-slate-500 pb-1 max-w-xl leading-relaxed">{tm('resProductQtyReportSubtitle')}</p>
                     </div>
                     {restProductQtyError && (
@@ -7581,28 +7607,13 @@ export function ReportsModule({
                 <div className="space-y-4">
                   <div className="flex items-center justify-between bg-white p-3 rounded-xl border border-slate-200 shadow-sm">
                     <div className="flex items-center gap-4 flex-1 flex-wrap">
-                      <label className="flex items-center gap-2 text-xs text-slate-600">
-                        <span className="font-semibold shrink-0">{tm('reportsPlStartDate')}</span>
-                        <input
-                          type="date"
-                          min={reportDateInputMin}
-                          max={reportDateInputMax}
-                          value={selectedDateFrom}
-                          onChange={(e) => handleReportDateFromChange(e.target.value)}
-                          className="px-2 py-1.5 border border-slate-200 rounded-md text-sm"
-                        />
-                      </label>
-                      <label className="flex items-center gap-2 text-xs text-slate-600">
-                        <span className="font-semibold shrink-0">{tm('reportsPlEndDate')}</span>
-                        <input
-                          type="date"
-                          min={reportDateInputMin}
-                          max={reportDateInputMax}
-                          value={selectedDateTo}
-                          onChange={(e) => handleReportDateToChange(e.target.value)}
-                          className="px-2 py-1.5 border border-slate-200 rounded-md text-sm"
-                        />
-                      </label>
+                      <ReportDateRangePresets
+                        value={dailyReportDateRange}
+                        onChange={setDailyReportDateRange}
+                        tm={tm}
+                        min={reportDateInputMin}
+                        max={reportDateInputMax}
+                      />
                       <Input
                         placeholder={tm('reportsSearchKeywordPlaceholder')}
                         prefix={<SearchOutlined className="text-slate-400" />}
@@ -7743,24 +7754,11 @@ export function ReportsModule({
               return (
                 <div className="space-y-4">
                   <div className="bg-white rounded-xl border border-slate-200 p-4 flex flex-wrap items-end gap-4">
-                    <label className="flex flex-col gap-1 text-xs font-bold text-slate-600">
-                      {tm('dateFrom')}
-                      <input
-                        type="date"
-                        value={analysisDateFrom}
-                        onChange={e => setAnalysisDateFrom(e.target.value)}
-                        className="px-3 py-2 border border-slate-200 rounded-lg text-sm"
-                      />
-                    </label>
-                    <label className="flex flex-col gap-1 text-xs font-bold text-slate-600">
-                      {tm('dateTo')}
-                      <input
-                        type="date"
-                        value={analysisDateTo}
-                        onChange={e => setAnalysisDateTo(e.target.value)}
-                        className="px-3 py-2 border border-slate-200 rounded-lg text-sm"
-                      />
-                    </label>
+                    <ReportDateRangePresets
+                      value={analysisDateRange}
+                      onChange={setAnalysisDateRange}
+                      tm={tm}
+                    />
                     {businessType === 'restaurant' && loadingAnalysisOrders && (
                       <span className="text-xs text-slate-500 flex items-center gap-2 pb-2">
                         <Spin size="small" /> {tm('reportsAnalysisDataLoading')}
