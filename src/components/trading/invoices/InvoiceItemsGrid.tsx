@@ -318,6 +318,7 @@ export const InvoiceItemsGrid = React.memo(({
                                     >
                                         <option value="Malzeme">{tm('itemTypeMaterial')}</option>
                                         <option value="Hizmet">{tm('itemTypeService')}</option>
+                                        <option value="Promosyon">{tm('itemTypePromotion')}</option>
                                         <option value="İndirim">{tm('itemTypeDiscount')}</option>
                                     </select>
                                 )}
@@ -570,6 +571,7 @@ export const InvoiceItemsGrid = React.memo(({
                                         >
                                             <option value="Malzeme">{tm('itemTypeMaterial')}</option>
                                             <option value="Hizmet">{tm('itemTypeService')}</option>
+                                            <option value="Promosyon">{tm('itemTypePromotion')}</option>
                                             <option value="İndirim">{tm('itemTypeDiscount')}</option>
                                         </select>
                                     </td>

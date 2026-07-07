@@ -4087,6 +4087,7 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
   // Invoice Grid Item Types
   itemTypeMaterial: { tr: 'Malzeme', en: 'Material', ar: 'مادة', ku: 'ماددە' },
   itemTypeService: { tr: 'Hizmet', en: 'Service', ar: 'خدمة', ku: 'خزمەتگوزاری' },
+  itemTypePromotion: { tr: 'Promosyon', en: 'Promotion', ar: 'ترويج', ku: 'پڕۆمۆشن' },
   itemTypeDiscount: { tr: 'İndirim', en: 'Discount', ar: 'خصم', ku: 'داشکاندن' },
 
   // Invoice Grid Units

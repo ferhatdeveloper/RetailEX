@@ -1,4 +1,4 @@
-/** Fatura satırı Tür alanı — Malzeme / Hizmet / İndirim (UI + sale_items.item_type) */
+/** Fatura satırı Tür alanı — Malzeme / Hizmet / Promosyon / İndirim (UI + sale_items.item_type) */
 
 export function canonicalInvoiceLineType(raw: string | undefined): string {
   const t = (raw || '').trim();
@@ -7,6 +7,16 @@ export function canonicalInvoiceLineType(raw: string | undefined): string {
   }
   if (t === 'Hizmet' || t === 'Service' || t === 'service' || t === 'خدمة' || t === 'خزمەتگوزاری') {
     return 'Hizmet';
+  }
+  if (
+    t === 'Promosyon' ||
+    t === 'Promotion' ||
+    t === 'promotion' ||
+    t === 'promotional' ||
+    t === 'ترويج' ||
+    t === 'پڕۆمۆشن'
+  ) {
+    return 'Promosyon';
   }
   if (t === 'İndirim' || t === 'Discount' || t === 'discount' || t === 'خصم' || t === 'داشکاندن') {
     return 'İndirim';
@@ -19,6 +29,15 @@ export function isInvoiceServiceLineType(type: string | undefined): boolean {
 }
 
 export function isInvoiceMaterialLineType(type: string | undefined): boolean {
+  return canonicalInvoiceLineType(type) === 'Malzeme';
+}
+
+export function isInvoicePromotionLineType(type: string | undefined): boolean {
+  return canonicalInvoiceLineType(type) === 'Promosyon';
+}
+
+/** Stok düşümü yalnızca malzeme satırlarında */
+export function isInvoiceStockLineType(type: string | undefined): boolean {
   return canonicalInvoiceLineType(type) === 'Malzeme';
 }
 

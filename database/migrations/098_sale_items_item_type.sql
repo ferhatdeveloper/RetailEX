@@ -1,4 +1,4 @@
--- 098: rex_*_*_sale_items — satır türü (Malzeme / Hizmet / İndirim)
+-- 098: rex_*_*_sale_items — satır türü (Malzeme / Hizmet / Promosyon / İndirim)
 DO $$
 DECLARE
   r RECORD;

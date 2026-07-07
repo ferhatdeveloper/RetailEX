@@ -8,7 +8,7 @@ import { type Invoice } from '../../core/types';
 import { customerAPI } from './customers';
 import { productAPI } from './products';
 import { hydrateWeightLineFromDb, resolveStockQuantityFromLine } from '../../utils/scaleQuantity';
-import { canonicalInvoiceLineType, invoiceLineTypeToDb, isInvoiceServiceLineType } from '../../utils/invoiceLineType';
+import { canonicalInvoiceLineType, invoiceLineTypeToDb, isInvoiceStockLineType } from '../../utils/invoiceLineType';
 import { readInvoiceHeaderFields } from '../../utils/invoiceHeaderFields';
 export type { Invoice };
 
@@ -1140,8 +1140,8 @@ export const invoicesAPI = {
             invoiceLineTypeToDb((item as any).type)
           );
 
-          const isServiceLine = isInvoiceServiceLineType((item as any).type);
-          if (productId && !isServiceLine) {
+          const isStockLine = isInvoiceStockLineType((item as any).type);
+          if (productId && isStockLine) {
             let stockModifier = 0;
             if (invoice.invoice_category === 'Alis') stockModifier = baseQty;
             else if (invoice.invoice_category === 'Satis') stockModifier = -baseQty;
