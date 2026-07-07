@@ -25,7 +25,7 @@ import { beautyService } from '../../services/beautyService';
 import { expenseAPI } from '../../services/api/expenses';
 import type { BeautyAppointment, BeautySale, BeautyStaffTreatmentReport } from '../../types/beauty';
 import { beautyServiceMainKey, beautyServiceSubKey } from '../beauty/beautyServiceCategoryUtils';
-import { localCalendarDateKey, localTodayDateKey, formatIsoDateTr, toSqlDateInputString } from '../../utils/localCalendarDate';
+import { localCalendarDateKey, localTodayDateKey, formatIsoDateTr } from '../../utils/localCalendarDate';
 import { type ReportDatePreset, type ReportDateRangeValue } from '../../utils/reportDatePresets';
 import { ReportDateRangePresets } from '../shared/ReportDateRangePresets';
 import { buildPosZReportForRange, isReturnSale } from '../../utils/posZReport';
