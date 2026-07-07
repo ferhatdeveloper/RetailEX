@@ -2020,6 +2020,12 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
     ar: 'حسب تاريخ الموعد؛ يستثنى الملغاة وعدم الحضور.',
     ku: 'بەپێی بەرواری چاوپێکەوتن؛ ڕەتکراوەکان دەرکراون.',
   },
+  serviceBreakdownHintErp: {
+    tr: 'Seçili tarih aralığındaki satış ve hizmet faturası satırları; hizmet kartı veya «hizmet» malzeme tipine göre gruplanır.',
+    en: 'Sales and service invoice lines in the selected date range, grouped by service card or service material type.',
+    ar: 'بنود المبيعات وفواتير الخدمة في النطاق الزمني، مجمعة حسب بطاقة الخدمة أو نوع المادة.',
+    ku: 'ڕیزەکانی فرۆشتن و فاکتۆری خزمەت لە مەودای بەرواردا، بەپێی کارتی خزمەت یان جۆری ماددە.',
+  },
   beautyAppointmentProductSalesHint: {
     tr: 'Ödeme durumu “paid” olan tüm ürün kalemlerini listeler; randevu bağlantısı zorunlu değildir (varsa tarih randevudan alınır).',
     en: 'Lists all paid product lines; appointment link is optional (appointment date used when linked).',

@@ -28,6 +28,7 @@ import { beautyServiceMainKey, beautyServiceSubKey } from '../beauty/beautyServi
 import { localCalendarDateKey, localTodayDateKey, formatIsoDateTr } from '../../utils/localCalendarDate';
 import { type ReportDatePreset, type ReportDateRangeValue } from '../../utils/reportDatePresets';
 import { ReportDateRangePresets } from '../shared/ReportDateRangePresets';
+import { buildErpServiceBreakdownGroups, type ErpServiceBreakdownLine } from '../../utils/serviceBreakdownReport';
 import { buildPosZReportForRange, isReturnSale } from '../../utils/posZReport';
 import { normalizePaymentMethodBucket } from '../../utils/paymentMethodUtils';
 import { BeautyServiceReportCrmModal } from './BeautyServiceReportCrmModal';
@@ -565,7 +566,6 @@ const RESTAURANT_ONLY_REPORT_KEYS = new Set<string>([
 ]);
 
 const BEAUTY_ONLY_REPORT_KEYS = new Set<string>([
-  'beauty-service-report',
   'beauty-cancelled-report',
   'beauty-appointment-product-report',
   'beauty-commission-report',
@@ -883,6 +883,9 @@ export function ReportsModule({
   const [beautySurveyReloadKey, setBeautySurveyReloadKey] = useState(0);
   const [beautyServiceAppointments, setBeautyServiceAppointments] = useState<BeautyAppointment[]>([]);
   const [beautyServiceSales, setBeautyServiceSales] = useState<BeautySale[]>([]);
+  const [erpServiceBreakdownSales, setErpServiceBreakdownSales] = useState<Sale[]>([]);
+  const [erpHizmetSaleIds, setErpHizmetSaleIds] = useState<Set<string>>(() => new Set());
+  const [erpServiceCards, setErpServiceCards] = useState<Array<{ id: string; code: string; name: string }>>([]);
   const [loadingBeautyServiceReport, setLoadingBeautyServiceReport] = useState(false);
   const [beautyCrmModalAppointment, setBeautyCrmModalAppointment] = useState<BeautyAppointment | null>(null);
   /** Boş = tüm ana kategoriler; aksi halde parent_category / category anahtarı */
@@ -985,14 +988,48 @@ export function ReportsModule({
   }, [selectedTab]);
 
   const reloadBeautyServiceReport = useCallback((): Promise<void> => {
-    if (
-      businessType !== 'beauty' ||
-      (selectedTab !== 'beauty-service-report' &&
-        selectedTab !== 'beauty-cancelled-report' &&
-        selectedTab !== 'beauty-appointment-product-report' &&
-        selectedTab !== 'beauty-commission-report') ||
-      !selectedFirm
-    ) {
+    const isServiceReportTab = selectedTab === 'beauty-service-report';
+    const isOtherBeautyReportTab =
+      selectedTab === 'beauty-cancelled-report' ||
+      selectedTab === 'beauty-appointment-product-report' ||
+      selectedTab === 'beauty-commission-report';
+
+    if (!selectedFirm) {
+      return Promise.resolve();
+    }
+
+    if (isServiceReportTab && businessType !== 'beauty') {
+      setLoadingBeautyServiceReport(true);
+      return (async () => {
+        try {
+          const { salesAPI } = await import('../../services/api/sales');
+          const { serviceAPI } = await import('../../services/serviceAPI');
+          const [source, cards] = await Promise.all([
+            salesAPI.getServiceBreakdownSource(beautyServiceFrom, beautyServiceTo),
+            serviceAPI.getAll(),
+          ]);
+          setErpServiceBreakdownSales(source.sales);
+          setErpHizmetSaleIds(source.hizmetSaleIds);
+          setErpServiceCards(
+            cards.map((c) => ({
+              id: String(c.id ?? ''),
+              code: String(c.code ?? ''),
+              name: String(c.name ?? ''),
+            })),
+          );
+          setBeautyServiceAppointments([]);
+          setBeautyServiceSales([]);
+        } catch (err) {
+          console.error('[ReportsModule] Hizmet bazlı rapor (ERP):', err);
+          setErpServiceBreakdownSales([]);
+          setErpHizmetSaleIds(new Set());
+        } finally {
+          setLoadingBeautyServiceReport(false);
+        }
+      })();
+    }
+
+    if (businessType !== 'beauty' || (!isServiceReportTab && !isOtherBeautyReportTab)) {
       return Promise.resolve();
     }
     setLoadingBeautyServiceReport(true);
@@ -1012,6 +1049,8 @@ export function ReportsModule({
         } else {
           setBeautyServiceSales([]);
         }
+        setErpServiceBreakdownSales([]);
+        setErpHizmetSaleIds(new Set());
       })
       .finally(() => setLoadingBeautyServiceReport(false));
   }, [businessType, selectedTab, selectedFirm, beautyServiceFrom, beautyServiceTo]);
@@ -1165,11 +1204,11 @@ export function ReportsModule({
         tasks.push(loadAnalysisRangeSales());
       }
       if (
-        businessType === 'beauty' &&
-        (selectedTab === 'beauty-service-report' ||
-          selectedTab === 'beauty-cancelled-report' ||
-          selectedTab === 'beauty-appointment-product-report' ||
-          selectedTab === 'beauty-commission-report')
+        selectedTab === 'beauty-service-report' ||
+        (businessType === 'beauty' &&
+          (selectedTab === 'beauty-cancelled-report' ||
+            selectedTab === 'beauty-appointment-product-report' ||
+            selectedTab === 'beauty-commission-report'))
       ) {
         tasks.push(reloadBeautyServiceReport());
       }
@@ -1367,6 +1406,28 @@ export function ReportsModule({
         sum: items.reduce((s, it) => s + Number(it.total_price ?? 0), 0),
       }));
   }, [beautyServiceAppointments, beautyMainCategoryFilter, beautySubCategoryFilter, appointmentMatchesMainCategory]);
+
+  const erpServiceBreakdownGrouped = useMemo(
+    () =>
+      buildErpServiceBreakdownGroups(
+        erpServiceBreakdownSales,
+        catalogProducts,
+        erpServiceCards,
+        beautyServiceFrom,
+        beautyServiceTo,
+        erpHizmetSaleIds,
+      ),
+    [
+      erpServiceBreakdownSales,
+      catalogProducts,
+      erpServiceCards,
+      beautyServiceFrom,
+      beautyServiceTo,
+      erpHizmetSaleIds,
+    ],
+  );
+
+  const serviceBreakdownGrouped = businessType === 'beauty' ? beautyServiceGrouped : erpServiceBreakdownGrouped;
 
   /** Randevu iptalleri (ciro raporundan ayrı; ödeme alınmış olsa bile iptal statüsü) */
   const beautyCancelledGrouped = useMemo(() => {
@@ -4003,6 +4064,9 @@ export function ReportsModule({
           { key: 'customer-sales', label: tm('musteriSatis'), icon: <UserOutlined /> },
           { key: 'sales-trend', label: tm('satisTrendAnalizi'), icon: <RiseOutlined /> },
           { key: 'sales-target', label: tm('hedefVsGerceklesen'), icon: <ThunderboltOutlined /> },
+          ...(businessType !== 'beauty'
+            ? [{ key: 'beauty-service-report', label: tm('beautyServiceBreakdownReport'), icon: <DeploymentUnitOutlined /> }]
+            : []),
           { key: 'detailed-sales', label: tm('detayliSatisRaporu'), icon: <LineChartOutlined /> },
           { key: 'analysis', label: tm('analiz'), icon: <BarChart3 /> },
         ],
@@ -4084,6 +4148,7 @@ export function ReportsModule({
 
   const menuItems = getMenuItems();
   const isBeautyServiceReportTab = selectedTab === 'beauty-service-report';
+  const isErpServiceBreakdown = businessType !== 'beauty' && isBeautyServiceReportTab;
   const isBeautyCancelledReportTab = selectedTab === 'beauty-cancelled-report';
   const isBeautyAppointmentProductReportTab = selectedTab === 'beauty-appointment-product-report';
   const isBeautyCommissionReportTab = selectedTab === 'beauty-commission-report';
@@ -6113,7 +6178,9 @@ export function ReportsModule({
               );
             })()}
 
-            {(isBeautyServiceReportTab || isBeautyCancelledReportTab || isBeautyAppointmentProductReportTab || isAnyBeautySurveyReportTab) && (
+            {(isBeautyServiceReportTab ||
+              (businessType === 'beauty' &&
+                (isBeautyCancelledReportTab || isBeautyAppointmentProductReportTab || isAnyBeautySurveyReportTab))) && (
               <div className="space-y-4">
                 <div className="bg-white rounded-xl border border-slate-200 p-4 flex flex-wrap items-end gap-4 shadow-sm">
                   <ReportDateRangePresets
@@ -6121,7 +6188,7 @@ export function ReportsModule({
                     onChange={setBeautyServiceDateRange}
                     tm={tm}
                   />
-                  {(isBeautyServiceReportTab || isBeautyCancelledReportTab) && (
+                  {businessType === 'beauty' && (isBeautyServiceReportTab || isBeautyCancelledReportTab) && (
                     <div className="flex flex-col gap-1 min-w-[220px]">
                       <span className="text-xs font-semibold text-slate-500">{tm('beautyMainCategoryFilterLabel')}</span>
                       <Select
@@ -6136,7 +6203,7 @@ export function ReportsModule({
                       />
                     </div>
                   )}
-                  {(isBeautyServiceReportTab || isBeautyCancelledReportTab) && beautyMainCategoryFilter && beautySubCategoryOptions.length > 0 && (
+                  {(isBeautyServiceReportTab || isBeautyCancelledReportTab) && businessType === 'beauty' && beautyMainCategoryFilter && beautySubCategoryOptions.length > 0 && (
                     <div className="flex flex-col gap-1 min-w-[220px]">
                       <span className="text-xs font-semibold text-slate-500">{tm('beautySubCategoryFilterLabel')}</span>
                       <Select
@@ -6151,7 +6218,7 @@ export function ReportsModule({
                       />
                     </div>
                   )}
-                  {isBeautyAppointmentProductReportTab && (
+                  {businessType === 'beauty' && isBeautyAppointmentProductReportTab && (
                     <>
                       <div className="flex flex-col gap-1 min-w-[200px] flex-1 sm:max-w-[260px]">
                         <span className="text-xs font-semibold text-slate-500">
@@ -6238,40 +6305,52 @@ export function ReportsModule({
                       ? `${tm('beautyCancelledAppointmentsHint')} ${tm('beautyCancelledPaymentsHint')}`
                       : isBeautyAppointmentProductReportTab
                         ? tm('beautyAppointmentProductSalesHint')
+                      : isErpServiceBreakdown
+                        ? tm('serviceBreakdownHintErp')
                       : `${tm('beautyServiceBreakdownHint')} ${tm('beautyServiceRowCrmHint')} ${tm('beautyServiceHeaderCrmHint')}`}
                   </p>
                 </div>
 
                 {isBeautyServiceReportTab && (
                   <Spin spinning={loadingBeautyServiceReport}>
-                    {beautyServiceGrouped.length === 0 ? (
+                    {serviceBreakdownGrouped.length === 0 ? (
                       <div className="bg-white rounded-xl border border-slate-200 p-12 text-center text-slate-500">
                         {tm('noDataFound')}
                       </div>
                     ) : (
                       <div className="space-y-6">
-                        {beautyServiceGrouped.map((g) => (
+                        {serviceBreakdownGrouped.map((g) => (
                           <div
                             key={g.serviceName}
                             className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm"
                           >
                             <div
-                              role="button"
-                              tabIndex={0}
-                              className="px-4 py-3 flex flex-wrap items-center justify-between gap-2 text-white font-bold cursor-pointer select-none hover:brightness-110 transition-[filter]"
+                              role={isErpServiceBreakdown ? undefined : 'button'}
+                              tabIndex={isErpServiceBreakdown ? undefined : 0}
+                              className={`px-4 py-3 flex flex-wrap items-center justify-between gap-2 text-white font-bold select-none ${
+                                isErpServiceBreakdown ? '' : 'cursor-pointer hover:brightness-110 transition-[filter]'
+                              }`}
                               style={{ backgroundColor: bizConfig.color }}
-                              title={tm('beautyServiceHeaderCrmHint')}
-                              onClick={() => {
-                                const first = g.items[0];
-                                if (first) setBeautyCrmModalAppointment(first);
-                              }}
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter' || e.key === ' ') {
-                                  e.preventDefault();
-                                  const first = g.items[0];
-                                  if (first) setBeautyCrmModalAppointment(first);
-                                }
-                              }}
+                              title={isErpServiceBreakdown ? undefined : tm('beautyServiceHeaderCrmHint')}
+                              onClick={
+                                isErpServiceBreakdown
+                                  ? undefined
+                                  : () => {
+                                      const first = g.items[0] as BeautyAppointment;
+                                      if (first) setBeautyCrmModalAppointment(first);
+                                    }
+                              }
+                              onKeyDown={
+                                isErpServiceBreakdown
+                                  ? undefined
+                                  : (e) => {
+                                      if (e.key === 'Enter' || e.key === ' ') {
+                                        e.preventDefault();
+                                        const first = g.items[0] as BeautyAppointment;
+                                        if (first) setBeautyCrmModalAppointment(first);
+                                      }
+                                    }
+                              }
                             >
                               <span className="text-base">{g.serviceName}</span>
                               <span className="text-sm font-semibold opacity-95">
@@ -6284,52 +6363,85 @@ export function ReportsModule({
                                   <tr className="bg-slate-300 border-b border-slate-400 text-left text-[14px] uppercase tracking-wide text-slate-950">
                                     <th className="px-4 py-3 font-black">{tm('date')}</th>
                                     <th className="px-4 py-3 font-black">{tm('customer')}</th>
-                                    <th className="px-4 py-3 font-black">{tm('bStaffView')}</th>
-                                    <th className="px-4 py-3 font-black">{tm('bDeviceView')}</th>
+                                    {isErpServiceBreakdown ? (
+                                      <>
+                                        <th className="px-4 py-3 font-black">{tm('cashier')}</th>
+                                        <th className="px-4 py-3 font-black">{tm('reportsThOrderNo')}</th>
+                                      </>
+                                    ) : (
+                                      <>
+                                        <th className="px-4 py-3 font-black">{tm('bStaffView')}</th>
+                                        <th className="px-4 py-3 font-black">{tm('bDeviceView')}</th>
+                                      </>
+                                    )}
                                     <th className="px-4 py-3 font-black text-right">{tm('amount')}</th>
                                     <th className="px-4 py-3 font-black">{tm('status')}</th>
                                   </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-100">
-                                  {g.items.map((a) => (
-                                    <tr
-                                      key={a.id}
-                                      role="button"
-                                      tabIndex={0}
-                                      onClick={() => setBeautyCrmModalAppointment(a)}
-                                      onKeyDown={(e) => {
-                                        if (e.key === 'Enter' || e.key === ' ') {
-                                          e.preventDefault();
-                                          setBeautyCrmModalAppointment(a);
-                                        }
-                                      }}
-                                      className="cursor-pointer hover:bg-pink-50/90"
-                                    >
-                                      <td className="px-4 py-3 tabular-nums text-slate-900 whitespace-nowrap font-medium">
-                                        {String(a.date ?? a.appointment_date ?? '—')}
-                                        {a.time || a.appointment_time
-                                          ? ` · ${String(a.time ?? a.appointment_time).slice(0, 5)}`
-                                          : ''}
-                                      </td>
-                                      <td className="px-4 py-3 text-slate-900 font-medium">
-                                        {String(a.customer_name ?? '').trim() || '—'}
-                                      </td>
-                                      <td className="px-4 py-3 text-slate-900 font-medium">
-                                        {String(a.specialist_name ?? a.staff_name ?? '').trim() || '—'}
-                                      </td>
-                                      <td className="px-4 py-3 text-slate-900 font-medium">
-                                        {String(a.device_name ?? '').trim() || '—'}
-                                      </td>
-                                      <td className="px-4 py-3 text-right tabular-nums font-semibold text-slate-950">
-                                        {formatNumber(Number(a.total_price ?? 0), 2, false)} {reportCurrency}
-                                      </td>
-                                      <td className="px-4 py-3">
-                                        <span className="inline-flex items-center rounded-md border border-red-200 bg-red-50 px-2 py-0.5 text-xs font-bold capitalize text-red-700">
-                                          {String(a.status ?? '—')}
-                                        </span>
-                                      </td>
-                                    </tr>
-                                  ))}
+                                  {g.items.map((row) => {
+                                    if (isErpServiceBreakdown) {
+                                      const a = row as ErpServiceBreakdownLine;
+                                      return (
+                                        <tr key={a.id} className="hover:bg-slate-50/90">
+                                          <td className="px-4 py-3 tabular-nums text-slate-900 whitespace-nowrap font-medium">
+                                            {a.date}
+                                          </td>
+                                          <td className="px-4 py-3 text-slate-900 font-medium">{a.customerName}</td>
+                                          <td className="px-4 py-3 text-slate-900 font-medium">{a.staffName}</td>
+                                          <td className="px-4 py-3 text-slate-900 font-medium">{a.receiptNumber}</td>
+                                          <td className="px-4 py-3 text-right tabular-nums font-semibold text-slate-950">
+                                            {formatNumber(a.amount, 2, false)} {reportCurrency}
+                                          </td>
+                                          <td className="px-4 py-3">
+                                            <span className="inline-flex items-center rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs font-bold capitalize text-slate-700">
+                                              {a.status}
+                                            </span>
+                                          </td>
+                                        </tr>
+                                      );
+                                    }
+                                    const a = row as BeautyAppointment;
+                                    return (
+                                      <tr
+                                        key={a.id}
+                                        role="button"
+                                        tabIndex={0}
+                                        onClick={() => setBeautyCrmModalAppointment(a)}
+                                        onKeyDown={(e) => {
+                                          if (e.key === 'Enter' || e.key === ' ') {
+                                            e.preventDefault();
+                                            setBeautyCrmModalAppointment(a);
+                                          }
+                                        }}
+                                        className="cursor-pointer hover:bg-pink-50/90"
+                                      >
+                                        <td className="px-4 py-3 tabular-nums text-slate-900 whitespace-nowrap font-medium">
+                                          {String(a.date ?? a.appointment_date ?? '—')}
+                                          {a.time || a.appointment_time
+                                            ? ` · ${String(a.time ?? a.appointment_time).slice(0, 5)}`
+                                            : ''}
+                                        </td>
+                                        <td className="px-4 py-3 text-slate-900 font-medium">
+                                          {String(a.customer_name ?? '').trim() || '—'}
+                                        </td>
+                                        <td className="px-4 py-3 text-slate-900 font-medium">
+                                          {String(a.specialist_name ?? a.staff_name ?? '').trim() || '—'}
+                                        </td>
+                                        <td className="px-4 py-3 text-slate-900 font-medium">
+                                          {String(a.device_name ?? '').trim() || '—'}
+                                        </td>
+                                        <td className="px-4 py-3 text-right tabular-nums font-semibold text-slate-950">
+                                          {formatNumber(Number(a.total_price ?? 0), 2, false)} {reportCurrency}
+                                        </td>
+                                        <td className="px-4 py-3">
+                                          <span className="inline-flex items-center rounded-md border border-red-200 bg-red-50 px-2 py-0.5 text-xs font-bold capitalize text-red-700">
+                                            {String(a.status ?? '—')}
+                                          </span>
+                                        </td>
+                                      </tr>
+                                    );
+                                  })}
                                 </tbody>
                               </table>
                             </div>

@@ -479,6 +479,51 @@ export const salesAPI = {
     }
   },
 
+  /** Hizmet Bazlı Rapor — perakende / market / restoran: satış + hizmet faturaları */
+  async getServiceBreakdownSource(
+    startDate: string,
+    endDate: string,
+  ): Promise<{ sales: Sale[]; hizmetSaleIds: Set<string> }> {
+    try {
+      const pageSize = 5000;
+      const fetchHizmet = async (): Promise<Sale[]> => {
+        const all: Sale[] = [];
+        let page = 1;
+        let totalPages = 1;
+        while (page <= totalPages) {
+          const result = await invoicesAPI.getPaginated({
+            page,
+            startDate,
+            endDate,
+            invoiceCategory: 'Hizmet',
+            pageSize,
+          });
+          const mapped = result.data.map(mapInvoiceToSale);
+          all.push(...(await enrichSalesWithLineItems(mapped)));
+          totalPages = Math.max(1, result.totalPages || 1);
+          if (!result.data.length) break;
+          page += 1;
+        }
+        return all;
+      };
+
+      const [salesRows, hizmetRows] = await Promise.all([
+        this.getByDateRange(startDate, endDate),
+        fetchHizmet(),
+      ]);
+
+      const hizmetSaleIds = new Set(hizmetRows.map((s) => s.id).filter(Boolean));
+      const byId = new Map<string, Sale>();
+      for (const s of [...salesRows, ...hizmetRows]) {
+        if (s.id && !byId.has(s.id)) byId.set(s.id, s);
+      }
+      return { sales: [...byId.values()], hizmetSaleIds };
+    } catch (error) {
+      console.error('[SalesAPI] getServiceBreakdownSource failed:', error);
+      return { sales: [], hizmetSaleIds: new Set() };
+    }
+  },
+
   /**
    * Get sales summary
    */
