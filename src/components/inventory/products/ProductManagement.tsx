@@ -704,28 +704,6 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
               />
             </div>
             <div className="flex flex-wrap items-center gap-2 min-w-0">
-              <button
-                type="button"
-                onClick={() => setShowTodayOnly((v) => !v)}
-                className={`flex items-center justify-center gap-1.5 px-3 py-2 text-sm font-bold rounded border transition-colors whitespace-nowrap shrink-0 ${
-                  showTodayOnly
-                    ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm'
-                    : 'bg-white text-gray-700 border-gray-300 hover:bg-emerald-50 hover:border-emerald-300'
-                }`}
-                title={tm('productFilterTodayTitle')}
-              >
-                <CalendarDays className="w-4 h-4 shrink-0" />
-                <span>{tm('productFilterTodayBtn')}</span>
-                {todayProductsCount > 0 && (
-                  <span
-                    className={`tabular-nums text-[11px] px-1.5 py-0.5 rounded-full font-bold ${
-                      showTodayOnly ? 'bg-emerald-500 text-white' : 'bg-emerald-100 text-emerald-700'
-                    }`}
-                  >
-                    {todayProductsCount}
-                  </span>
-                )}
-              </button>
               {columnVisibilityControl}
               <select
                 value={duplicateDetectBy}

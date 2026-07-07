@@ -898,7 +898,7 @@ export function DevExDataGrid<T>({
               {tm('clear')} ({columnFilters.length})
             </button>
           )}
-          {enableColumnVisibility && (
+          {enableColumnVisibility && showColumnVisibilityToolbar && (
           <ColumnVisibilityMenu
             columns={leafColumnsForVisibility.map((col) => {
               const header = col.columnDef.header;
