@@ -1,7 +1,11 @@
 ﻿import { X, Search, Database, Check, Plus } from 'lucide-react';
-import { useState, useMemo } from 'react';
-import { definitionAPI } from '../../services/definitionAPI';
+import { useState, useMemo, useEffect } from 'react';
 import { toast } from 'sonner';
+import {
+  createMasterDataQuickAddItem,
+  suggestQuickAddCode,
+  type MasterDataQuickAddVariant,
+} from '../../utils/masterDataQuickAdd';
 
 export interface MasterDataItem {
     id: string;
@@ -17,11 +21,16 @@ interface MasterDataSelectionModalProps {
     onSelect: (item: MasterDataItem | MasterDataItem[]) => void;
     onClose: () => void;
     isMulti?: boolean;
-    /** Tanım tablosu adı — verilirse hızlı ekleme gösterilir (categories, brands, product_groups) */
+    /** Tanım tablosu — verilirse hızlı ekleme gösterilir */
     definitionTableName?: string;
-    /** Alt grup için üst grup id */
     parentId?: string | null;
+    quickAddVariant?: MasterDataQuickAddVariant;
+    quickAddExtra?: Record<string, unknown>;
+    /** Özel oluşturma (depo vb.) — tanım API yerine */
+    onQuickAdd?: (input: { code: string; name: string }) => Promise<MasterDataItem | null>;
     onItemsChanged?: () => void;
+    /** false ise ekleme gizlenir */
+    enableQuickAdd?: boolean;
 }
 
 export function MasterDataSelectionModal({
@@ -33,7 +42,11 @@ export function MasterDataSelectionModal({
     isMulti = false,
     definitionTableName,
     parentId = null,
+    quickAddVariant = 'default',
+    quickAddExtra,
+    onQuickAdd,
     onItemsChanged,
+    enableQuickAdd = true,
 }: MasterDataSelectionModalProps) {
     const [searchTerm, setSearchTerm] = useState('');
     const [showQuickAdd, setShowQuickAdd] = useState(false);
@@ -51,6 +64,12 @@ export function MasterDataSelectionModal({
         return [];
     });
 
+    const canQuickAdd = enableQuickAdd && Boolean(definitionTableName || onQuickAdd);
+
+    useEffect(() => {
+        setLocalItems(items);
+    }, [items]);
+
     const filteredItems = useMemo(() => {
         const source = localItems.length ? localItems : items;
         if (!searchTerm.trim()) return source;
@@ -63,29 +82,38 @@ export function MasterDataSelectionModal({
         );
     }, [searchTerm, items, localItems]);
 
+    const openQuickAdd = (prefillName = '') => {
+        const name = prefillName.trim();
+        setQuickName(name);
+        setQuickCode(quickAddVariant === 'taxRate' ? '' : name ? suggestQuickAddCode(name) : '');
+        setShowQuickAdd(true);
+    };
+
     const handleQuickAdd = async () => {
-        if (!definitionTableName || !quickCode.trim() || !quickName.trim()) {
+        if (quickAddVariant !== 'taxRate' && (!quickCode.trim() || !quickName.trim())) {
             toast.error('Kod ve ad zorunludur.');
+            return;
+        }
+        if (quickAddVariant === 'taxRate' && !quickCode.trim()) {
+            toast.error('Vergi oranı zorunludur.');
             return;
         }
         setQuickSaving(true);
         try {
-            const payload: Record<string, unknown> = {
-                code: quickCode.trim(),
-                name: quickName.trim(),
-                is_active: true,
-            };
-            if (definitionTableName === 'categories' || definitionTableName === 'product_groups') {
-                if (parentId) payload.parent_id = parentId;
+            let mapped: MasterDataItem | null = null;
+            if (onQuickAdd) {
+                mapped = await onQuickAdd({ code: quickCode.trim(), name: quickName.trim() });
+            } else if (definitionTableName) {
+                mapped = await createMasterDataQuickAddItem({
+                    tableName: definitionTableName,
+                    code: quickCode.trim(),
+                    name: quickName.trim(),
+                    parentId,
+                    variant: quickAddVariant,
+                    extra: quickAddExtra,
+                });
             }
-            const created = await definitionAPI.create(definitionTableName, payload as any);
-            if (!created) throw new Error('Kayıt oluşturulamadı');
-            const mapped: MasterDataItem = {
-                id: created.id,
-                code: created.code,
-                name: created.name,
-                description: created.description,
-            };
+            if (!mapped) throw new Error('Kayıt oluşturulamadı');
             setLocalItems((prev) => [...prev, mapped]);
             onItemsChanged?.();
             setQuickCode('');
@@ -132,7 +160,6 @@ export function MasterDataSelectionModal({
     return (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-md flex items-center justify-center z-[10001] p-4">
             <div className="bg-white w-full max-w-lg shadow-2xl rounded-lg flex flex-col max-h-[85vh]">
-                {/* Header */}
                 <div className="p-3 border-b border-gray-200 flex items-center justify-between bg-gradient-to-r from-blue-700 to-blue-800 rounded-t-lg">
                     <h3 className="text-sm font-semibold text-white flex items-center gap-2">
                         <Database className="w-4 h-4" />
@@ -146,7 +173,6 @@ export function MasterDataSelectionModal({
                     </button>
                 </div>
 
-                {/* Search */}
                 <div className="p-3 border-b border-gray-200 bg-gray-50">
                     <div className="relative">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -161,12 +187,12 @@ export function MasterDataSelectionModal({
                     </div>
                 </div>
 
-                {definitionTableName && (
-                    <div className="px-4 pb-2 border-b border-gray-100">
+                {canQuickAdd && (
+                    <div className="px-4 py-2 border-b border-gray-100 bg-white">
                         {!showQuickAdd ? (
                             <button
                                 type="button"
-                                onClick={() => setShowQuickAdd(true)}
+                                onClick={() => openQuickAdd(searchTerm)}
                                 className="inline-flex items-center gap-1 text-xs font-medium text-blue-700 hover:text-blue-900"
                             >
                                 <Plus className="w-3 h-3" />
@@ -177,13 +203,13 @@ export function MasterDataSelectionModal({
                                 <input
                                     value={quickCode}
                                     onChange={(e) => setQuickCode(e.target.value)}
-                                    placeholder="Kod"
+                                    placeholder={quickAddVariant === 'taxRate' ? 'Oran (%)' : 'Kod'}
                                     className="flex-1 min-w-[80px] px-2 py-1.5 border rounded text-xs"
                                 />
                                 <input
                                     value={quickName}
                                     onChange={(e) => setQuickName(e.target.value)}
-                                    placeholder="Ad"
+                                    placeholder={quickAddVariant === 'taxRate' ? 'Açıklama' : 'Ad'}
                                     className="flex-[2] min-w-[120px] px-2 py-1.5 border rounded text-xs"
                                 />
                                 <button
@@ -206,12 +232,21 @@ export function MasterDataSelectionModal({
                     </div>
                 )}
 
-                {/* List */}
                 <div className="flex-1 overflow-auto p-2">
                     {filteredItems.length === 0 ? (
                         <div className="text-center py-10">
                             <Database className="w-12 h-12 mx-auto mb-2 text-gray-200" />
                             <p className="text-sm text-gray-500 italic">Kayıt bulunamadı</p>
+                            {canQuickAdd && searchTerm.trim() && !showQuickAdd && (
+                                <button
+                                    type="button"
+                                    onClick={() => openQuickAdd(searchTerm)}
+                                    className="mt-4 inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-blue-700 border border-blue-200 rounded-md hover:bg-blue-50"
+                                >
+                                    <Plus className="w-3 h-3" />
+                                    &quot;{searchTerm.trim()}&quot; olarak ekle
+                                </button>
+                            )}
                         </div>
                     ) : (
                         <div className="grid grid-cols-1 gap-1">
@@ -258,7 +293,6 @@ export function MasterDataSelectionModal({
                     )}
                 </div>
 
-                {/* Footer */}
                 <div className="p-3 border-t border-gray-200 bg-gray-50 flex justify-end gap-2 rounded-b-lg">
                     <button
                         onClick={onClose}
@@ -280,4 +314,3 @@ export function MasterDataSelectionModal({
         </div>
     );
 }
-

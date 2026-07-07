@@ -8,7 +8,9 @@ import {
   ChevronDown, ChevronRight, Printer, Package, Upload
 } from 'lucide-react';
 import { serviceAPI, type Service, type CreateServiceInput } from '../../../services/serviceAPI';
-import { currencyAPI, categoryAPI, taxRateAPI, specialCodeAPI, type Currency, type Category, type TaxRate, type SpecialCode, definitionAPI, brandAPI, productGroupAPI, unitAPI, type Brand } from '../../../services/api/masterData';
+import { currencyAPI, categoryAPI, taxRateAPI, specialCodeAPI, type Currency, type Category, type TaxRate, type SpecialCode, brandAPI, productGroupAPI, unitAPI, type Brand } from '../../../services/api/masterData';
+import { definitionAPI } from '../../../services/definitionAPI';
+import { resolveProductFormQuickAdd } from '../../../utils/masterDataQuickAdd';
 import { unitSetAPI, type UnitSet } from '../../../services/unitSetAPI';
 import { buildUnitSelectOptions } from '../../../utils/unitOptions';
 import { MasterDataSelectionModal, type MasterDataItem } from '../../shared/MasterDataSelectionModal';
@@ -138,6 +140,8 @@ export const ServiceFormPage = React.memo(({ serviceId, onClose, onSave }: Servi
     useTree?: boolean;
     definitionTableName?: string;
     parentId?: string | null;
+    quickAddVariant?: 'default' | 'taxRate';
+    quickAddExtra?: Record<string, unknown>;
   }>({
     show: false,
     title: '',
@@ -416,6 +420,31 @@ export const ServiceFormPage = React.memo(({ serviceId, onClose, onSave }: Servi
     }
   };
 
+  const refreshMasterDataForSelection = useCallback(async () => {
+    try {
+      const [catRes, brandRes, groupRes, unitRes, taxRes, suppRes, specRes, unitSetRes] = await Promise.all([
+        categoryAPI.getAll(),
+        brandAPI.getAll(),
+        productGroupAPI.getAll(),
+        unitAPI.getAll(),
+        taxRateAPI.getAll(),
+        definitionAPI.getAll('suppliers'),
+        specialCodeAPI.getAll(),
+        unitSetAPI.getAll(),
+      ]);
+      setCategories(catRes);
+      setBrands(brandRes);
+      setProductGroups(groupRes);
+      setUnits(unitRes);
+      setUnitSets(unitSetRes);
+      setTaxRates(taxRes);
+      setSuppliers(suppRes);
+      setAllSpecialCodes(specRes);
+    } catch (error) {
+      console.error('[ServiceFormPage] refreshMasterDataForSelection:', error);
+    }
+  }, []);
+
   const openSelectionModal = (type: string) => {
     let title = '';
     let items: any[] = [];
@@ -447,6 +476,16 @@ export const ServiceFormPage = React.memo(({ serviceId, onClose, onSave }: Servi
         items = taxRates.map(tr => ({ id: tr.id, code: `%${tr.rate}`, name: tr.description || `%${tr.rate}` }));
         currentValue = formData.taxRate.toString();
         break;
+      case 'model':
+        title = 'Model Seç';
+        items = allSpecialCodes
+          .filter((s) => String(s.module_type ?? '').toLowerCase() === 'model')
+          .map((s) => ({ id: s.id, code: s.code, name: s.name, description: s.description }));
+        if (items.length === 0) {
+          items = brands.map((b) => ({ id: b.id, code: b.code, name: b.name, description: b.description }));
+        }
+        currentValue = formData.model || '';
+        break;
       case 'supplier':
         title = 'Tedarikçi Seç (Çoklu)';
         items = suppliers;
@@ -465,6 +504,10 @@ export const ServiceFormPage = React.memo(({ serviceId, onClose, onSave }: Servi
         break;
     }
 
+    const quickAdd = resolveProductFormQuickAdd(type, {
+      specialCodeNum: type.startsWith('specialCode') ? Number(type.replace('specialCode', '')) : undefined,
+    });
+
     setSelectionModal({
       show: true,
       title,
@@ -473,15 +516,10 @@ export const ServiceFormPage = React.memo(({ serviceId, onClose, onSave }: Servi
       currentValue,
       isMulti: type === 'supplier',
       useTree: type === 'category' || type === 'productGroup',
-      definitionTableName:
-        type === 'category'
-          ? 'categories'
-          : type === 'brand'
-            ? 'brands'
-          : type === 'productGroup'
-            ? 'product_groups'
-            : undefined,
-      parentId: null,
+      definitionTableName: quickAdd.definitionTableName,
+      parentId: quickAdd.parentId ?? null,
+      quickAddVariant: quickAdd.quickAddVariant,
+      quickAddExtra: quickAdd.quickAddExtra,
     });
   };
 
@@ -513,6 +551,9 @@ export const ServiceFormPage = React.memo(({ serviceId, onClose, onSave }: Servi
       case 'taxRate':
         const rate = parseFloat(item.code.replace('%', ''));
         handleInputChange('taxRate', rate);
+        break;
+      case 'model':
+        handleInputChange('model', item.name);
         break;
       default:
         if (selectionModal.type.startsWith('specialCode')) {
@@ -1356,12 +1397,8 @@ export const ServiceFormPage = React.memo(({ serviceId, onClose, onSave }: Servi
             currentValue={selectionModal.currentValue as string}
             definitionTableName={selectionModal.definitionTableName}
             parentId={selectionModal.parentId}
-            onItemsChanged={async () => {
-              const { categoryAPI, productGroupAPI } = await import('../../../services/api/masterData');
-              const [c, g] = await Promise.all([categoryAPI.getAll(), productGroupAPI.getAll()]);
-              setCategories(c);
-              setProductGroups(g);
-            }}
+            quickAddExtra={selectionModal.quickAddExtra}
+            onItemsChanged={() => void refreshMasterDataForSelection()}
           />
         ) : (
           <MasterDataSelectionModal
@@ -1373,17 +1410,9 @@ export const ServiceFormPage = React.memo(({ serviceId, onClose, onSave }: Servi
             isMulti={selectionModal.isMulti}
             definitionTableName={selectionModal.definitionTableName}
             parentId={selectionModal.parentId}
-            onItemsChanged={async () => {
-              const { categoryAPI, brandAPI, productGroupAPI } = await import('../../../services/api/masterData');
-              const [c, b, g] = await Promise.all([
-                categoryAPI.getAll(),
-                brandAPI.getAll(),
-                productGroupAPI.getAll(),
-              ]);
-              setCategories(c);
-              setBrands(b);
-              setProductGroups(g);
-            }}
+            quickAddVariant={selectionModal.quickAddVariant}
+            quickAddExtra={selectionModal.quickAddExtra}
+            onItemsChanged={() => void refreshMasterDataForSelection()}
           />
         )
       )}

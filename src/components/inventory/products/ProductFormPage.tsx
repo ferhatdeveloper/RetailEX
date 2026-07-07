@@ -12,8 +12,8 @@ import {
   Calendar, Layers, ChevronDown, ChevronRight, Printer, Package, Upload, Banknote, Cloud, Link, Settings as SettingsIcon
 } from 'lucide-react';
 import { currencyAPI, categoryAPI, brandAPI, productGroupAPI, unitAPI, taxRateAPI, specialCodeAPI, type Currency, type Category, type Brand, type ProductGroup, type Unit, type TaxRate, type SpecialCode } from '../../../services/api/masterData';
-import { definitionAPI } from '../../../services/api/masterData';
-import { MasterDataSelectionModal, type MasterDataItem } from '../../shared/MasterDataSelectionModal';
+import { definitionAPI } from '../../../services/definitionAPI';
+import { resolveProductFormQuickAdd } from '../../../utils/masterDataQuickAdd';
 import { TreeSelectionModal, type TreeDataItem } from '../../shared/TreeSelectionModal';
 import { ImageSearchModal } from '../../shared/ImageSearchModal';
 import { CdnGalleryModal } from '../../shared/CdnGalleryModal';
@@ -490,6 +490,8 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
     useTree?: boolean;
     definitionTableName?: string;
     parentId?: string | null;
+    quickAddVariant?: 'default' | 'taxRate';
+    quickAddExtra?: Record<string, unknown>;
   }>({
     show: false,
     title: '',
@@ -563,6 +565,40 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
     fetchMasterData();
   }, []);
 
+  const refreshMasterDataForSelection = useCallback(async (type: string) => {
+    try {
+      const [
+        catRes,
+        brandRes,
+        groupRes,
+        unitRes,
+        taxRes,
+        suppRes,
+        specRes,
+        unitSetRes,
+      ] = await Promise.all([
+        categoryAPI.getAll(),
+        brandAPI.getAll(),
+        productGroupAPI.getAll(),
+        unitAPI.getAll(),
+        taxRateAPI.getAll(),
+        definitionAPI.getAll('suppliers'),
+        specialCodeAPI.getAll(),
+        unitSetAPI.getAll(),
+      ]);
+      setCategories(catRes);
+      setBrands(brandRes);
+      setProductGroups(groupRes);
+      setUnits(unitRes);
+      setUnitSets(unitSetRes);
+      setTaxRates(taxRes);
+      setSuppliers(suppRes);
+      setAllSpecialCodes(specRes);
+    } catch (error) {
+      console.error('[ProductFormPage] refreshMasterDataForSelection:', error);
+    }
+  }, []);
+
   const openSelectionModal = (type: 'category' | 'brand' | 'productGroup' | 'subGroup' | 'unit' | 'taxRate' | 'model' | 'supplier' | 'specialCode1' | 'specialCode2' | 'specialCode3' | 'specialCode4' | 'specialCode5' | 'specialCode6') => {
     let title = '';
     let items: any[] = [];
@@ -605,7 +641,12 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
         break;
       case 'model':
         title = 'Model Seç';
-        items = []; // TODO: Load from models master data
+        items = allSpecialCodes
+          .filter((s) => String(s.module_type ?? '').toLowerCase() === 'model')
+          .map((s) => ({ id: s.id, code: s.code, name: s.name, description: s.description }));
+        if (items.length === 0) {
+          items = brands.map((b) => ({ id: b.id, code: b.code, name: b.name, description: b.description }));
+        }
         currentValue = formData.model || '';
         break;
       case 'supplier':
@@ -626,6 +667,13 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
         break;
     }
 
+    const parentGroupId =
+      type === 'subGroup' ? productGroups.find((g) => g.code === formData.groupCode)?.id ?? null : null;
+    const quickAdd = resolveProductFormQuickAdd(type, {
+      parentGroupId,
+      specialCodeNum: type.startsWith('specialCode') ? Number(type.replace('specialCode', '')) : undefined,
+    });
+
     setSelectionModal({
       show: true,
       title,
@@ -634,18 +682,10 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
       currentValue,
       isMulti: type === 'supplier',
       useTree: type === 'category' || type === 'productGroup' || type === 'subGroup',
-      definitionTableName:
-        type === 'brand'
-          ? 'brands'
-          : type === 'category'
-            ? 'categories'
-            : type === 'productGroup' || type === 'subGroup'
-              ? 'product_groups'
-              : undefined,
-      parentId:
-        type === 'subGroup'
-          ? productGroups.find((g) => g.code === formData.groupCode)?.id ?? null
-          : null,
+      definitionTableName: quickAdd.definitionTableName,
+      parentId: quickAdd.parentId ?? parentGroupId,
+      quickAddVariant: quickAdd.quickAddVariant,
+      quickAddExtra: quickAdd.quickAddExtra,
     });
   };
 
@@ -4204,17 +4244,8 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
               currentValue={selectionModal.currentValue as string}
               definitionTableName={selectionModal.definitionTableName}
               parentId={selectionModal.parentId}
-              onItemsChanged={async () => {
-                const { categoryAPI, brandAPI, productGroupAPI } = await import('../../../services/api/masterData');
-                const [c, b, g] = await Promise.all([
-                  categoryAPI.getAll(),
-                  brandAPI.getAll(),
-                  productGroupAPI.getAll(),
-                ]);
-                setCategories(c);
-                setBrands(b);
-                setProductGroups(g);
-              }}
+              quickAddExtra={selectionModal.quickAddExtra}
+              onItemsChanged={() => void refreshMasterDataForSelection(selectionModal.type)}
               onSelect={handleTreeSelect}
               onClose={() => setSelectionModal((prev: any) => ({ ...prev, show: false }))}
             />
@@ -4226,17 +4257,9 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
               isMulti={selectionModal.isMulti}
               definitionTableName={selectionModal.definitionTableName}
               parentId={selectionModal.parentId}
-              onItemsChanged={async () => {
-                const { categoryAPI, brandAPI, productGroupAPI } = await import('../../../services/api/masterData');
-                const [c, b, g] = await Promise.all([
-                  categoryAPI.getAll(),
-                  brandAPI.getAll(),
-                  productGroupAPI.getAll(),
-                ]);
-                setCategories(c);
-                setBrands(b);
-                setProductGroups(g);
-              }}
+              quickAddVariant={selectionModal.quickAddVariant}
+              quickAddExtra={selectionModal.quickAddExtra}
+              onItemsChanged={() => void refreshMasterDataForSelection(selectionModal.type)}
               onSelect={handleSelectionSelect}
               onClose={() => setSelectionModal((prev: any) => ({ ...prev, show: false }))}
             />

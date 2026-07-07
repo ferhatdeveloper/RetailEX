@@ -362,6 +362,15 @@ export function WarehouseTransferForm({ transfer, onClose, onSave }: WarehouseTr
                     title="Kaynak Depo Seçin"
                     items={warehouses.map((w: WarehouseType) => ({ id: w.id, code: w.code, name: w.name }))}
                     currentValue={formData.from_warehouse_id}
+                    onQuickAdd={async ({ code, name }) => {
+                        const w = await warehouseAPI.create({
+                            code,
+                            name,
+                            is_active: true,
+                        });
+                        return { id: w.id, code: w.code, name: w.name };
+                    }}
+                    onItemsChanged={() => void loadMasterData()}
                     onSelect={(item: any) => {
                         setFormData({ ...formData, from_warehouse_id: item.id, from_warehouse_name: item.name });
                         setShowSourceModal(false);
@@ -375,6 +384,15 @@ export function WarehouseTransferForm({ transfer, onClose, onSave }: WarehouseTr
                     title="Hedef Depo Seçin"
                     items={warehouses.map((w: WarehouseType) => ({ id: w.id, code: w.code, name: w.name }))}
                     currentValue={formData.to_warehouse_id}
+                    onQuickAdd={async ({ code, name }) => {
+                        const w = await warehouseAPI.create({
+                            code,
+                            name,
+                            is_active: true,
+                        });
+                        return { id: w.id, code: w.code, name: w.name };
+                    }}
+                    onItemsChanged={() => void loadMasterData()}
                     onSelect={(item: any) => {
                         setFormData({ ...formData, to_warehouse_id: item.id, to_warehouse_name: item.name });
                         setShowDestModal(false);
@@ -386,6 +404,7 @@ export function WarehouseTransferForm({ transfer, onClose, onSave }: WarehouseTr
             {showProductModal && (
                 <MasterDataSelectionModal
                     title="Ürün Seçin"
+                    enableQuickAdd={false}
                     items={products.map((p: any) => ({ id: p.id, code: p.code || p.barcode, name: p.name, description: p.category }))}
                     currentValue=""
                     onSelect={handleAddItem}

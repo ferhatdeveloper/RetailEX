@@ -1,6 +1,6 @@
 ﻿import React, { useState, useMemo, useEffect } from 'react';
 import { X, Search, Database, ChevronRight, ChevronDown, Folder, FolderOpen, Check, Package, Plus } from 'lucide-react';
-import { definitionAPI } from '../../services/definitionAPI';
+import { createMasterDataQuickAddItem, suggestQuickAddCode } from '../../utils/masterDataQuickAdd';
 import { toast } from 'sonner';
 
 export interface TreeDataItem {
@@ -21,6 +21,7 @@ interface TreeSelectionModalProps {
     definitionTableName?: string;
     /** Alt grup için üst grup id */
     parentId?: string | null;
+    quickAddExtra?: Record<string, unknown>;
     onItemsChanged?: () => void;
 }
 
@@ -36,6 +37,7 @@ export function TreeSelectionModal({
     onClose,
     definitionTableName,
     parentId = null,
+    quickAddExtra,
     onItemsChanged,
 }: TreeSelectionModalProps) {
     const [searchTerm, setSearchTerm] = useState('');
@@ -108,15 +110,7 @@ export function TreeSelectionModal({
         return result;
     }, [searchTerm, treeData]);
 
-    const suggestCodeFromName = (name: string) => {
-        const base = name
-            .trim()
-            .toUpperCase()
-            .replace(/[^A-Z0-9ÇĞİÖŞÜ]/gi, '')
-            .slice(0, 12);
-        if (base) return base;
-        return `YENI${Date.now().toString().slice(-6)}`;
-    };
+    const suggestCodeFromName = (name: string) => suggestQuickAddCode(name);
 
     const openQuickAdd = (prefillName = '') => {
         const name = prefillName.trim();
@@ -132,28 +126,22 @@ export function TreeSelectionModal({
         }
         setQuickSaving(true);
         try {
-            const payload: Record<string, unknown> = {
+            const mapped = await createMasterDataQuickAddItem({
+                tableName: definitionTableName,
                 code: quickCode.trim(),
                 name: quickName.trim(),
-                is_active: true,
+                parentId,
+                extra: quickAddExtra,
+            });
+            const treeItem: TreeDataItem = {
+                ...mapped,
+                parent_id: parentId ?? null,
             };
-            if (definitionTableName === 'categories' || definitionTableName === 'product_groups') {
-                if (parentId) payload.parent_id = parentId;
-            }
-            const created = await definitionAPI.create(definitionTableName, payload as any);
-            if (!created) throw new Error('Kayıt oluşturulamadı');
-            const mapped: TreeDataItem = {
-                id: created.id,
-                code: created.code,
-                name: created.name,
-                parent_id: created.parent_id ?? parentId ?? null,
-                description: created.description,
-            };
-            setLocalItems((prev) => [...prev, mapped]);
-            if (mapped.parent_id) {
+            setLocalItems((prev) => [...prev, treeItem]);
+            if (treeItem.parent_id) {
                 setExpandedNodes((prev) => {
                     const next = new Set(prev);
-                    next.add(mapped.parent_id!);
+                    next.add(treeItem.parent_id!);
                     return next;
                 });
             }
@@ -161,7 +149,7 @@ export function TreeSelectionModal({
             setQuickCode('');
             setQuickName('');
             setShowQuickAdd(false);
-            onSelect(mapped);
+            onSelect(treeItem);
             toast.success('Kayıt eklendi');
         } catch (e: unknown) {
             toast.error(e instanceof Error ? e.message : String(e));
