@@ -251,10 +251,6 @@ export function GenericDefinitionModule({
                             <RefreshCw className={`w-3 h-3 ${loading ? 'animate-spin' : ''}`} />
                             <span className="hidden sm:inline">{tm('refresh')}</span>
                         </button>
-                        <button className="hidden sm:flex items-center gap-1 px-2 py-1 bg-white/10 hover:bg-white/20 transition-colors text-[10px] rounded backdrop-blur-sm">
-                            <Download className="w-3 h-3" />
-                            <span>{tm('export')}</span>
-                        </button>
                         <button
                             onClick={() => {
                                 resetForm();

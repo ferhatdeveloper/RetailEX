@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { stockMovementAPI, type StockMovement } from '../../../services/stockMovementAPI';
 import { DevExDataGrid } from '../../shared/DevExDataGrid';
+import { exportDataGridToExcel } from '../../../utils/gridExcelExport';
 import { createColumnHelper, ColumnDef } from '@tanstack/react-table';
 import { Download, Filter } from 'lucide-react';
 import { format } from 'date-fns';
@@ -112,7 +113,11 @@ export function TransactionBreakdownReport() {
                             <Filter className="w-4 h-4" />
                             {tm('filter') || 'Filtre'}
                         </button>
-                        <button className="flex items-center gap-2 px-4 py-2 border rounded-lg hover:bg-gray-50 text-gray-600">
+                        <button
+                            type="button"
+                            onClick={() => exportDataGridToExcel(rows, columns, tm('transactionBreakdown') || 'hareket_dokumu')}
+                            className="flex items-center gap-2 px-4 py-2 border rounded-lg hover:bg-gray-50 text-gray-600"
+                        >
                             <Download className="w-4 h-4" />
                             {tm('export') || 'Aktar'}
                         </button>
@@ -129,7 +134,7 @@ export function TransactionBreakdownReport() {
                         </div>
                     </div>
                 ) : (
-                    <DevExDataGrid data={rows} columns={columns} pageSize={50} />
+                    <DevExDataGrid data={rows} columns={columns} pageSize={50} enableExcelExport={false} />
                 )}
             </div>
         </div>

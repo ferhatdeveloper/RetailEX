@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { ColumnDef } from '@tanstack/react-table';
 import { DevExDataGrid } from '../../shared/DevExDataGrid';
+import { exportDataGridToExcel } from '../../../utils/gridExcelExport';
 import { ColumnVisibilityMenu } from '../../shared/ColumnVisibilityMenu';
 import type { Product } from '../../../App';
 import { useProductStore } from '../../../store';
@@ -582,7 +583,11 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
               <span className="hidden sm:inline">{tm('productPurchaseDraftFromNewBtn')}</span>
               <span className="sm:hidden">Yeni</span>
             </button>
-            <button className="flex items-center gap-1 px-2 py-1 bg-white/10 hover:bg-white/20 transition-colors text-[10px]">
+            <button
+              type="button"
+              onClick={() => exportDataGridToExcel(filteredProducts, columns, tm('productManagement') || 'urunler')}
+              className="flex items-center gap-1 px-2 py-1 bg-white/10 hover:bg-white/20 transition-colors text-[10px]"
+            >
               <Download className="w-3 h-3" />
               <span>{tm('export')}</span>
             </button>
@@ -881,6 +886,7 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
               columns={columns}
               enableColumnVisibility
               showColumnVisibilityToolbar={false}
+              enableExcelExport={false}
               columnVisibility={columnVisibility}
               onColumnVisibilityChange={setColumnVisibility}
               onRowContextMenu={(e, product) => {

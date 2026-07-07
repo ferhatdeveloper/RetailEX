@@ -3,6 +3,7 @@ import { invoicesAPI } from '../../../services/api/invoices';
 import { productAPI } from '../../../services/api/products';
 import type { Product } from '../../../core/types';
 import { DevExDataGrid } from '../../shared/DevExDataGrid';
+import { exportDataGridToExcel } from '../../../utils/gridExcelExport';
 import { createColumnHelper, ColumnDef } from '@tanstack/react-table';
 import { Download, TrendingDown } from 'lucide-react';
 import { useLanguage } from '../../../contexts/LanguageContext';
@@ -203,7 +204,11 @@ export function CostReport() {
                             </div>
                         </div>
                     </div>
-                    <button className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 rounded-lg transition-colors shadow-sm">
+                    <button
+                        type="button"
+                        onClick={() => exportDataGridToExcel(rows, columns, tm('costAndProfitAnalysis') || 'maliyet_kar')}
+                        className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 rounded-lg transition-colors shadow-sm"
+                    >
                         <Download className="w-4 h-4" />
                         {tm('excel')}
                     </button>
@@ -243,7 +248,7 @@ export function CostReport() {
                         </div>
                     </div>
                 ) : (
-                    <DevExDataGrid data={rows} columns={columns} pageSize={50} />
+                    <DevExDataGrid data={rows} columns={columns} pageSize={50} enableExcelExport={false} />
                 )}
             </div>
         </div>

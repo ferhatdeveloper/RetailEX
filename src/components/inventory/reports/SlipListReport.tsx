@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { stockMovementAPI, type StockMovement } from '../../../services/stockMovementAPI';
 import { DevExDataGrid } from '../../shared/DevExDataGrid';
+import { exportDataGridToExcel } from '../../../utils/gridExcelExport';
 import { createColumnHelper, ColumnDef } from '@tanstack/react-table';
 import { Download, FileText } from 'lucide-react';
 import { format } from 'date-fns';
@@ -89,7 +90,11 @@ export function SlipListReport() {
                     <FileText className="w-5 h-5 text-blue-600" />
                     <h2 className="font-semibold text-gray-800">{tm('slipList') || 'Fiş Listesi'}</h2>
                 </div>
-                <button className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 rounded-lg transition-colors shadow-sm">
+                <button
+                    type="button"
+                    onClick={() => exportDataGridToExcel(rows, columns, tm('slipList') || 'fis_listesi')}
+                    className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 rounded-lg transition-colors shadow-sm"
+                >
                     <Download className="w-4 h-4" />
                     {tm('export') || 'Aktar'}
                 </button>
@@ -104,7 +109,7 @@ export function SlipListReport() {
                         </div>
                     </div>
                 ) : (
-                    <DevExDataGrid data={rows} columns={columns} pageSize={50} />
+                    <DevExDataGrid data={rows} columns={columns} pageSize={50} enableExcelExport={false} />
                 )}
             </div>
         </div>

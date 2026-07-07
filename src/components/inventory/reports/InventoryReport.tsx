@@ -3,6 +3,7 @@ import { productAPI } from '../../../services/api/products';
 import { salesAPI } from '../../../services/api/sales';
 import { Product } from '../../../core/types';
 import { DevExDataGrid } from '../../shared/DevExDataGrid';
+import { exportDataGridToExcel } from '../../../utils/gridExcelExport';
 import { createColumnHelper, ColumnDef } from '@tanstack/react-table';
 import { Download, Package, Columns3 } from 'lucide-react';
 import { useLanguage } from '../../../contexts/LanguageContext';
@@ -174,7 +175,11 @@ export function InventoryReport() {
                             </div>
                         </div>
                     )}
-                    <button className="flex items-center gap-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition-colors">
+                    <button
+                        type="button"
+                        onClick={() => exportDataGridToExcel(products, columns, tm('inventoryList') || 'envanter')}
+                        className="flex items-center gap-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition-colors"
+                    >
                         <Download className="w-4 h-4" />
                         {tm('excel')}
                     </button>
@@ -195,6 +200,8 @@ export function InventoryReport() {
                         columns={columns}
                         columnVisibility={columnVisibility}
                         onColumnVisibilityChange={setColumnVisibility}
+                        showColumnVisibilityToolbar={false}
+                        enableExcelExport={false}
                         pageSize={50}
                         height="100%"
                     />

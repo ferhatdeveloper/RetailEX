@@ -244,10 +244,6 @@ export function CampaignManagement({ campaigns, setCampaigns, products }: Campai
               <RefreshCw className={`w-3 h-3 ${loading ? 'animate-spin' : ''}`} />
               <span>Yenile</span>
             </button>
-            <button className="flex items-center gap-1 px-2 py-1 bg-white/10 hover:bg-white/20 transition-colors text-[10px] font-medium rounded border border-white/10">
-              <Download className="w-3 h-3" />
-              <span>Dışa Aktar</span>
-            </button>
             <button
               onClick={() => {
                 setShowCreatePage(true);

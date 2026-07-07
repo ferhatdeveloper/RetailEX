@@ -821,6 +821,7 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: 'all
               enableSorting
               enableFiltering={false}
               enableColumnResizing={true}
+              enableExcelExport={false}
               onRowClick={selectAccount}
               onRowContextMenu={(e, supplier) => { e.preventDefault(); setContextMenu({ x: e.clientX, y: e.clientY, supplier }); }}
               onRowDoubleClick={selectAccount}

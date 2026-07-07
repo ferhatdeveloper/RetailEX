@@ -3,6 +3,7 @@ import { warehouseAPI, type Warehouse } from '../../../services/warehouseAPI';
 import { productAPI } from '../../../services/api/products';
 import type { Product } from '../../../core/types';
 import { DevExDataGrid } from '../../shared/DevExDataGrid';
+import { exportDataGridToExcel } from '../../../utils/gridExcelExport';
 import { createColumnHelper, ColumnDef } from '@tanstack/react-table';
 import { Download, Building2 } from 'lucide-react';
 import { useLanguage } from '../../../contexts/LanguageContext';
@@ -100,7 +101,11 @@ export function WarehouseStatusReport() {
                         </p>
                     </div>
                 </div>
-                <button className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 rounded-lg transition-colors shadow-sm">
+                <button
+                    type="button"
+                    onClick={() => exportDataGridToExcel(rows, columns, tm('warehouseStatus') || 'ambar_durum')}
+                    className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 rounded-lg transition-colors shadow-sm"
+                >
                     <Download className="w-4 h-4" />
                     {tm('excel')}
                 </button>
@@ -115,7 +120,7 @@ export function WarehouseStatusReport() {
                         </div>
                     </div>
                 ) : (
-                    <DevExDataGrid data={rows} columns={columns} pageSize={50} />
+                    <DevExDataGrid data={rows} columns={columns} pageSize={50} enableExcelExport={false} />
                 )}
             </div>
         </div>

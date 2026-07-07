@@ -467,6 +467,8 @@ export function PurchaseInvoiceModule({ onCreateInvoice, onSwitchTab, activeTab:
               enableFiltering
               enableColumnResizing
               enablePagination
+              enableColumnVisibility
+              showColumnVisibilityToolbar={false}
               columnVisibility={columnVisibility}
               onColumnVisibilityChange={setColumnVisibility}
               onRowDoubleClick={handleRowDoubleClick}
