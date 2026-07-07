@@ -8,6 +8,7 @@ import { type Invoice } from '../../core/types';
 import { customerAPI } from './customers';
 import { productAPI } from './products';
 import { hydrateWeightLineFromDb, resolveStockQuantityFromLine } from '../../utils/scaleQuantity';
+import { canonicalInvoiceLineType, invoiceLineTypeToDb, isInvoiceServiceLineType } from '../../utils/invoiceLineType';
 import { readInvoiceHeaderFields } from '../../utils/invoiceHeaderFields';
 export type { Invoice };
 
@@ -661,6 +662,7 @@ async function createInvoiceViaPostgrest(invoice: Invoice, opts: {
         currency: itemCurrency,
         expiry_date: invoiceLineDateOrNull((item as any).expiryDate),
         batch_no: String((item as any).batchNo || '').trim() || null,
+        item_type: invoiceLineTypeToDb((item as any).type),
       };
     });
     const itemLegacyList = invoice.items.map((item) => ({
@@ -893,6 +895,7 @@ export function mapSaleItemRowToInvoiceLine(item: any, inv: Invoice) {
     currency: item.currency || inv.currency || 'IQD',
     expiryDate: invoiceLineDateOrNull(item.expiry_date),
     batchNo: item.batch_no || undefined,
+    type: canonicalInvoiceLineType(item.item_type ?? item.type),
   };
 }
 
@@ -1069,7 +1072,7 @@ export const invoicesAPI = {
 
       // 2. Insert invoice items (tek INSERT) + 3. stok güncellemeleri paralel
       if (invoice.items && invoice.items.length > 0) {
-        const COLS = 22;
+        const COLS = 23;
         const rowTuples: string[] = [];
         const flatParams: unknown[] = [];
 
@@ -1107,6 +1110,7 @@ export const invoicesAPI = {
             `$${base + 20}::text`,
             `$${base + 21}::date`,
             `$${base + 22}::text`,
+            `$${base + 23}::text`,
           ];
           rowTuples.push(`(${ph.join(', ')})`);
 
@@ -1132,10 +1136,12 @@ export const invoicesAPI = {
             unitPriceFC,
             itemCurrency,
             invoiceLineDateOrNull((item as any).expiryDate),
-            String((item as any).batchNo || '').trim() || null
+            String((item as any).batchNo || '').trim() || null,
+            invoiceLineTypeToDb((item as any).type)
           );
 
-          if (productId) {
+          const isServiceLine = isInvoiceServiceLineType((item as any).type);
+          if (productId && !isServiceLine) {
             let stockModifier = 0;
             if (invoice.invoice_category === 'Alis') stockModifier = baseQty;
             else if (invoice.invoice_category === 'Satis') stockModifier = -baseQty;
@@ -1201,7 +1207,7 @@ export const invoicesAPI = {
                 total_amount, net_amount,
                 unit_cost, total_cost, gross_profit,
                 unit_multiplier, base_quantity, unit_price_fc, currency,
-                expiry_date, batch_no
+                expiry_date, batch_no, item_type
              ) VALUES ${rowTuples.join(', ')}`,
           flatParams,
           queryOptions
@@ -1909,6 +1915,7 @@ export const invoicesAPI = {
               currency: itemCurrency,
               expiry_date: invoiceLineDateOrNull((item as any).expiryDate),
               batch_no: String((item as any).batchNo || '').trim() || null,
+              item_type: invoiceLineTypeToDb((item as any).type),
             };
             const itemLegacy: Record<string, unknown> = {
               id: self.crypto.randomUUID(),
@@ -1997,13 +2004,13 @@ export const invoicesAPI = {
                 total_amount, net_amount,
                 unit_cost, total_cost, gross_profit,
                 unit_multiplier, base_quantity, unit_price_fc, currency,
-                expiry_date, batch_no
+                expiry_date, batch_no, item_type
              ) VALUES ($1::text::uuid, $2::text, $3::text, $4::text, $5::text,
                $6::text::numeric, $7::text, $8::text::numeric, $9::text::numeric, $10::text::numeric,
                $11::text::numeric, $12::text::numeric,
                $13::text::numeric, $14::text::numeric, $15::text::numeric,
                $16::text::numeric, $17::text::numeric, $18::text::numeric, $19::text,
-               $20::date, $21::text)`,
+               $20::date, $21::text, $22::text)`,
             [
               id,
               String(fn0),
@@ -2025,7 +2032,8 @@ export const invoicesAPI = {
               unitPriceFC,
               itemCurrency,
               invoiceLineDateOrNull((item as any).expiryDate),
-              String((item as any).batchNo || '').trim() || null
+              String((item as any).batchNo || '').trim() || null,
+              invoiceLineTypeToDb((item as any).type),
             ],
             sqlOpts
           );

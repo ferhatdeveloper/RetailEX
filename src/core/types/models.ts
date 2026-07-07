@@ -281,6 +281,8 @@ export interface SaleItem {
   multiplier?: number;
   /** Stok düşüm miktarı (tartılı: quantity × multiplier, normalize) */
   baseQuantity?: number;
+  /** Fatura satır türü: Malzeme / Hizmet / İndirim */
+  lineType?: string;
   /** Güzellik: bu satırdaki personel adı (fiş) */
   beautyStaffName?: string;
   /** Eski / alternatif POS bileşenleri — camelCase ile birlikte kullanılabilir */

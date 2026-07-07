@@ -1,5 +1,6 @@
 import type { Product, Sale } from '../core/types/models';
 import { localCalendarDateKey } from './localCalendarDate';
+import { canonicalInvoiceLineType, isInvoiceServiceLineType } from './invoiceLineType';
 
 export interface ErpServiceBreakdownLine {
   id: string;
@@ -36,11 +37,15 @@ function isServiceProduct(p: Product | undefined): boolean {
 }
 
 function isServiceLineItem(
+  lineType: string | undefined,
   productId: string,
   productName: string,
   products: Product[],
   serviceCardKeys: Set<string>,
 ): boolean {
+  if (lineType && isInvoiceServiceLineType(lineType)) return true;
+  if (lineType && canonicalInvoiceLineType(lineType) === 'Malzeme') return false;
+
   const key = String(productId ?? '').trim().toLowerCase();
   const nameKey = String(productName ?? '').trim().toLowerCase();
   if (key && serviceCardKeys.has(key)) return true;
@@ -87,7 +92,8 @@ export function buildErpServiceBreakdownGroups(
       const item = items[i];
       const productId = String(item.productId ?? '');
       const productName = String(item.productName ?? '').trim() || '—';
-      if (!isHizmetInvoice && !isServiceLineItem(productId, productName, products, serviceCardKeys)) {
+      const lineType = String(item.lineType ?? (item as { item_type?: string }).item_type ?? '').trim() || undefined;
+      if (!isHizmetInvoice && !isServiceLineItem(lineType, productId, productName, products, serviceCardKeys)) {
         continue;
       }
       const amount = Number(item.total ?? 0);

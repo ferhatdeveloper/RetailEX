@@ -12,6 +12,7 @@ import { batchCalculateFIFOCost } from '../../hooks/useFIFOCost';
 import { fetchKasalar, createKasaIslemi, type KasaIslemi } from './kasa';
 import { normalizeWeightProductQuantity, resolveStockQuantityFromLine } from '../../utils/scaleQuantity';
 import { normalizePaymentMethodBucket } from '../../utils/paymentMethodUtils';
+import { dbItemTypeToInvoiceLine } from '../../utils/invoiceLineType';
 
 async function enrichSalesWithLineItems(sales: Sale[]): Promise<Sale[]> {
   if (!sales.length) return sales;
@@ -39,6 +40,7 @@ async function enrichSalesWithLineItems(sales: Sale[]): Promise<Sale[]> {
         discount: Number(item.discount_rate || 0),
         total: Number(item.total_amount || item.net_amount || 0),
         unit: item.unit || 'Adet',
+        lineType: dbItemTypeToInvoiceLine(item.item_type ?? item.type),
       }));
       return { ...sale, items };
     });

@@ -2620,7 +2620,8 @@ BEGIN
       unit_price_fc   DECIMAL(15,4) DEFAULT 0,
       currency        VARCHAR(10) DEFAULT ''IQD'',
       expiry_date     DATE,
-      batch_no        VARCHAR(120)
+      batch_no        VARCHAR(120),
+      item_type       VARCHAR(20) DEFAULT ''Malzeme''
     );
   ', v_tbl_items, v_tbl_sales);
   EXECUTE format('CREATE INDEX IF NOT EXISTS %I ON %I (expiry_date) WHERE expiry_date IS NOT NULL', v_tbl_items || '_expiry_date_idx', v_tbl_items);

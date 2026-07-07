@@ -15,6 +15,7 @@ import { toast } from 'sonner';
 import { formatNumber } from '../../../utils/formatNumber';
 import { parseDecimalStringForInput, formatDecimalForTrInput, parseInvoiceWeightQuantity } from '../../../utils/numberFormatter';
 import { normalizeWeightProductQuantity, syncWeightLineQuantities, hydrateWeightLineFromDb } from '../../../utils/scaleQuantity';
+import { canonicalInvoiceLineType, isInvoiceServiceLineType, isInvoiceMaterialLineType } from '../../../utils/invoiceLineType';
 import { DocumentManager } from '../../shared/DocumentManager';
 import { printInvoice } from '../../../utils/printUtils';
 import type { Invoice } from '../../../core/types';
@@ -166,15 +167,6 @@ const mockProducts = [
   { code: 'GID-005', name: 'Şeker 1Kg', unit: 'Kg', price: 3000, vat: 0, barcode: '8690000000005', lastPurchasePrice: 2800 },
 ];
 
-function canonicalInvoiceLineType(raw: string | undefined): string {
-  const t = (raw || '').trim();
-  if (!t || t === 'Malzeme' || t === 'Material' || t === 'مادة' || t === 'ماددە') return 'Malzeme';
-  if (t === 'Hizmet' || t === 'Service' || t === 'خدمة' || t === 'خزمەتگوزاری') return 'Hizmet';
-  if (t === 'İndirim' || t === 'Discount' || t === 'خصم' || t === 'داشکاندن') return 'İndirim';
-  return 'Malzeme';
-}
-
-/** Düzenleme: satır dövizi IQD değilse birim fiyat unit_price_fc; yerel total_amount/net_amount varsa kura bölünür (getById zaten böldüyse total_amount yok, tekrar bölünmez). */
 function invoiceEditLineToFormAmounts(
   item: any,
   headerCurrency: string,
@@ -291,17 +283,13 @@ function buildLocalCatalogFifoCostMap(
   return results;
 }
 
-function isInvoiceServiceLineType(type: string | undefined): boolean {
-  return canonicalInvoiceLineType(type) === 'Hizmet';
-}
-
 function isInvoiceDiscountLineType(type: string | undefined): boolean {
   return canonicalInvoiceLineType(type) === 'İndirim';
 }
 
 /** Barkod/kod ile doldurulabilir satır */
 function isInvoiceProductBarcodeLineType(type: string | undefined): boolean {
-  return canonicalInvoiceLineType(type) === 'Malzeme';
+  return isInvoiceMaterialLineType(type);
 }
 
 function barcodeLookupAttempts(raw: string): string[] {
@@ -656,7 +644,7 @@ export function UniversalInvoiceForm({
         });
         return {
           id: item.id || `item-${index}`,
-          type: canonicalInvoiceLineType(item.type),
+          type: canonicalInvoiceLineType(item.type ?? item.item_type),
           code: item.code || item.productId || '',
           description: item.description || item.productName || '',
           description2: '',
@@ -2379,7 +2367,7 @@ export function UniversalInvoiceForm({
           const q = item.quantity || 0;
           return {
             id: item.id || `item-${index}`,
-            type: canonicalInvoiceLineType(item.type),
+            type: canonicalInvoiceLineType(item.type ?? item.item_type),
             code: productCode,
             description: item.description || item.productName || item.product_name || '',
             description2: item.description2 || '',
