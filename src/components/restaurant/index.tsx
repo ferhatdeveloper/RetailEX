@@ -46,7 +46,7 @@ import { RestaurantStaffPinModal } from './components/RestaurantStaffPinModal';
 import { lazyWithChunkRecovery } from '../../utils/chunkLoadRecovery';
 const CustomerManagementModule = lazyWithChunkRecovery(() => import('../trading/contacts/CustomerManagementModule').then(m => ({ default: m.CustomerManagementModule })));
 const StockModule = lazyWithChunkRecovery(() => import('../inventory/stock/StockModule').then(m => ({ default: m.StockModule })));
-const ReportsModule = lazyWithChunkRecovery(() => import('../reports/ReportsModule').then(m => ({ default: m.ReportsModule })));
+const ReportsModule = lazyWithChunkRecovery(() => import('../reports/ReportsModule'));
 const KasalarModule = lazyWithChunkRecovery(() => import('../accounting/cash-ops/KasalarModule').then(m => ({ default: m.KasalarModule })));
 const RoleManagement = lazyWithChunkRecovery(() => import('../system/RoleManagement').then(m => ({ default: m.RoleManagement })));
 

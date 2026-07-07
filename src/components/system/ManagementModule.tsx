@@ -76,7 +76,7 @@ const QualityModule = lazyWithChunkRecovery(() => import('../modules/QualityModu
 const ServiceModule = lazyWithChunkRecovery(() => import('../modules/ServiceModule').then(m => ({ default: m.ServiceModule })));
 const ProjectModule = lazyWithChunkRecovery(() => import('../modules/ProjectModule').then(m => ({ default: m.ProjectModule })));
 const IntegrationsModule = lazyWithChunkRecovery(() => import('../modules/IntegrationsModule').then(m => ({ default: m.IntegrationsModule })));
-const ReportsModule = lazyWithChunkRecovery(() => import('../reports/ReportsModule').then(m => ({ default: m.ReportsModule })));
+const ReportsModule = lazyWithChunkRecovery(() => import('../reports/ReportsModule'));
 const CategoryGroupSalesProfitReport = lazyWithChunkRecovery(() => import('../reports/CategoryGroupSalesProfitReport').then(m => ({ default: m.CategoryGroupSalesProfitReport })));
 const ProfitDashboard = lazyWithChunkRecovery(() => import('../reports/ProfitDashboard').then(m => ({ default: m.ProfitDashboard })));
 const SettingsPanel = lazyWithChunkRecovery(() => import('./SettingsPanel').then(m => ({ default: m.SettingsPanel })));

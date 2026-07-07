@@ -7981,3 +7981,5 @@ export function ReportsModule({
     </ConfigProvider>
   );
 }
+
+export default ReportsModule;
