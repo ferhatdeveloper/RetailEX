@@ -87,6 +87,12 @@
 83. **098_sale_items_item_type.sql** – `sale_items.item_type` (Malzeme / Hizmet / Promosyon / İndirim).
 84. **099_system_settings_menu_preferences.sql** – `system_settings.menu_preferences` (statik menü gizleme/sıra JSONB).
 
+**099 tüm kiracılara (tek dosya):**
+```bash
+PGHOST=... PGUSER=postgres PGPASSWORD='...' bash database/scripts/apply-099-all-retail-tenants.sh
+```
+VPS: `npm run db:migrate:tenants` veya GitHub Actions → **Migrate tenant databases**.
+
 **Kiracılara toplu uygulama (VPS / uzak PG):**
 - `npm run db:migrate:tenants` — tüm RetailEX kiracı DB'ler (`ilsasupport`, `pagetin_kurye`, `siti_pdks` **hariç** — bkz. `.cursor/rules/database-non-retailex-exclude.mdc`)
 - `bash database/scripts/apply-065-all-retail-tenants.sh` — yalnızca 065 (tenant_registry listesi)
