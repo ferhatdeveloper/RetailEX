@@ -16,7 +16,8 @@ namespace TeraziRongta.Core.Helpers
                 { "All%20PLU%20Barcode%20Type", c => Math.Max(0, Math.Min(99, c.DefaultBarcodeType)).ToString() },
                 { "Barcode%20type", c => Math.Max(0, Math.Min(99, c.DefaultBarcodeType)).ToString() },
                 { "Allow%20print%20zero%20weight", _ => "1" },
-                { "Package%20torlance", _ => "5" },
+                // Sabit paket toleransi/limit etikette barkodu kesebilir; 0 = serbest tartim
+                { "Package%20torlance", _ => "0" },
                 { "Decimal%20position", _ => "0" },
                 { "Total%20price%20precision", _ => "0" },
                 { "Download%20Function%20Set", _ => "true" },

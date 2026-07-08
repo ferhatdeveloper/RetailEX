@@ -63,6 +63,9 @@
   <ItemGroup>
     <RongtaResources Include="..\Resources\Rongta\testRT.RLS" />
     <RongtaResources Include="..\Resources\Rongta\SYSTEM.CFG" />
+    <RongtaResources Include="..\Resources\Rongta\retailex_logoluetiket.scr" />
+    <RongtaResources Include="..\Resources\Rongta\retailex_logoluetiket_onizleme.png" />
+    <RongtaResources Include="..\Resources\Rongta\EN1_logo_OUT.scr" />
     <RongtaResources Include="..\Resources\Rongta\RTRLSLabel.exe" />
     <RongtaResources Include="..\Resources\Rongta\RTPLU.exe" />
   </ItemGroup>
@@ -73,5 +76,7 @@
     <Copy SourceFiles="..\Resources\Rongta\testRT.RLS" DestinationFolder="$(OutputPath)" Condition="Exists('..\Resources\Rongta\testRT.RLS')" />
     <MakeDir Directories="$(OutputPath)Rongta" Condition="!Exists('$(OutputPath)Rongta')" />
     <Copy SourceFiles="@(RongtaResources)" DestinationFolder="$(OutputPath)Rongta" />
+    <MakeDir Directories="$(OutputPath)Rongta\Images" Condition="!Exists('$(OutputPath)Rongta\Images')" />
+    <Copy SourceFiles="..\Resources\Rongta\Images\RT_LOGO.jpg" DestinationFolder="$(OutputPath)Rongta\Images" Condition="Exists('..\Resources\Rongta\Images\RT_LOGO.jpg')" />
   </Target>
 </Project>

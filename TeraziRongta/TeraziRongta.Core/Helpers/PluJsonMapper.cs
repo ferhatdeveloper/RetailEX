@@ -51,6 +51,18 @@ namespace TeraziRongta.Core.Helpers
             };
         }
 
+        /// <summary>
+        /// Terazide sabit paket agırlıgı (orn. 10 kg) varsa etiket barkodu o sinirin ustunde basılmaz.
+        /// Kasap/tartımlı PLU icin her zaman serbest tartım (limit yok) zorlanır.
+        /// </summary>
+        public static void ClearPackageWeightLimit(JObject plu)
+        {
+            if (plu == null) return;
+            plu["PackageType"] = 0;
+            plu["PackageWeight"] = 0;
+            plu["Tolerance"] = 0;
+        }
+
         public static JObject MergePluForUpdate(JObject existing, JObject incoming)
         {
             if (existing == null) return incoming;
@@ -58,9 +70,11 @@ namespace TeraziRongta.Core.Helpers
 
             var merged = (JObject)incoming.DeepClone();
             // UnitPrice, PluName, Code, BarCode, WeightUnit, Deptment: API/RetailEX gelen deger gecerli.
+            // PackageType/PackageWeight/Tolerance cihazdan KORUNMAZ: terazide eski paket limiti
+            // (ornegin 10 kg) kalirsa etiket barkodu 10 kg uzerinde basılmaz.
             foreach (var field in new[]
             {
-                "Tare", "ShlefTime", "PackageType", "PackageWeight", "Tolerance",
+                "Tare", "ShlefTime",
                 "Message1", "Message2", "LabelId", "Reserved2", "Rebate", "Account", "QtyUnit"
             })
             {
@@ -76,6 +90,7 @@ namespace TeraziRongta.Core.Helpers
             }
 
             ScalePriceHelper.SetUnitPrice(merged, ScalePriceHelper.ReadUnitPrice(incoming["UnitPrice"]));
+            ClearPackageWeightLimit(merged);
 
             return merged;
         }

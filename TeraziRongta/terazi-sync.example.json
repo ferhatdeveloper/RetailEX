@@ -17,7 +17,7 @@
   "SendHotkeys": false,
   "MergeExistingPlu": true,
   "RlsHomePath": "C:\\RLS1000",
-  "DefaultLabelScr": "des.scr",
+  "DefaultLabelScr": "retailex_logoluetiket.scr",
   "LabelSlot": "D0",
   "SendLabelOnSync": false,
   "DefaultBarcodeType": 99,

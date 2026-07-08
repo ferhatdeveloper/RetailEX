@@ -798,9 +798,18 @@ namespace TeraziRongta.Core.Services
                 var rc = LabelScaleNative.rtscaleDownLoadData(_connId, bytes, bytes.Length);
                 result.Success = rc == 0;
                 result.SentCount = result.Success ? 1 : 0;
+                var fileName = Path.GetFileName(scrPath);
+                var isMegal = fileName.Equals(
+                    RlsResourceResolver.DefaultMegalLabelFileName,
+                    StringComparison.OrdinalIgnoreCase);
                 result.Message = result.Success
-                    ? "Etiket sablonu gonderildi: " + Path.GetFileName(scrPath)
-                    : "Etiket gonderim hatasi (kod " + rc + "): " + Path.GetFileName(scrPath);
+                    ? (isMegal
+                        ? "Megal logolu etiket gonderildi: " + fileName
+                        : "Etiket sablonu gonderildi: " + fileName)
+                    : "Etiket gonderim hatasi (kod " + rc + "): " + fileName
+                      + (isMegal
+                          ? " — retailex_logoluetiket.scr (Megal) gonderilemedi."
+                          : "");
                 if (!result.Success)
                 {
                     result.Errors.Add(result.Message);
@@ -856,6 +865,7 @@ namespace TeraziRongta.Core.Services
                     var idx = pack * packSize + i;
                     if (idx >= pluList.Count) break;
                     var item = pluList[idx];
+                    PluJsonMapper.ClearPackageWeightLimit(item);
                     ScalePriceHelper.NormalizePluUnitPrice(item);
                     if (applyDevicePriceCompensation)
                     {
@@ -867,7 +877,10 @@ namespace TeraziRongta.Core.Services
                         var lf = item["LFCode"]?.ToString() ?? "?";
                         var name = item["PluName"]?.ToString() ?? "";
                         var unitPrice = ScalePriceHelper.ReadUnitPrice(item["UnitPrice"]);
-                        WriteLog("  PLU JSON LF=" + lf + " UnitPrice=" + unitPrice + " (" + name + ")");
+                        var code = item["Code"]?.ToString() ?? "";
+                        WriteLog("  PLU JSON LF=" + lf + " Code=" + code
+                            + " UnitPrice=" + unitPrice
+                            + " PackageWeight=0 PackageType=0 (" + name + ")");
                         WriteLog("  PLU paket0 ornek: " + item.ToString(Formatting.None));
                     }
                     batch.Add(item);

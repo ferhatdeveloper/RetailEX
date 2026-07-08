@@ -27,7 +27,7 @@ data class AppConfig(
     var scaleId: String = "terazi-1",
     var autoSyncEnabled: Boolean = true,
     var syncOnStartup: Boolean = true,
-    var defaultLabelScr: String = "des.scr",
+    var defaultLabelScr: String = "retailex_logoluetiket.scr",
     var labelSlot: String = "D0",
     var sendLabelOnSync: Boolean = false,
     var firmNr: String = "001",

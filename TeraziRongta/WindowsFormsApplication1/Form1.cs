@@ -33,8 +33,11 @@ namespace WindowsFormsApplication1
         private ComboBox cmbLabelSlot;
         private CheckBox chkSendLabelOnSync;
         private Button btnSendLabel;
+        private Button btnUseDefaultMegalLabel;
         private Button btnOpenLabelEditor;
         private Button btnBrowseLabel;
+        private PictureBox picLabelPreview;
+        private Label lblLabelPreviewHint;
         private ComboBox cmbFirm;
         private ComboBox cmbPeriod;
         private ComboBox cmbStore;
@@ -109,7 +112,7 @@ namespace WindowsFormsApplication1
             panelSettings.Controls.Add(txtRlsHome);
             panelSettings.Controls.Add(chkSendLabelOnSync);
 
-            var lblLabelScr = new Label { AutoSize = true, Location = new Point(20, 132), Text = "Etiket sablonu (.scr)" };
+            var lblLabelScr = new Label { AutoSize = true, Location = new Point(20, 132), Text = "Etiket sablonu (varsayilan: Megal logolu)" };
             txtLabelScr = new TextBox { Location = new Point(20, 152), Size = new Size(420, 23) };
             btnBrowseLabel = new Button { Location = new Point(448, 150), Size = new Size(90, 28), Text = "Sec..." };
             btnBrowseLabel.Click += btnBrowseLabel_Click;
@@ -125,8 +128,30 @@ namespace WindowsFormsApplication1
 
             btnSendLabel = new Button { Location = new Point(160, 200), Size = new Size(170, 36), Text = "Etiketi Teraziye Gonder" };
             btnSendLabel.Click += btnSendLabel_Click;
-            btnOpenLabelEditor = new Button { Location = new Point(340, 200), Size = new Size(170, 36), Text = "Etiket Editoru Ac" };
+            btnUseDefaultMegalLabel = new Button
+            {
+                Location = new Point(340, 200),
+                Size = new Size(170, 36),
+                Text = "Varsayilan Megal Etiket",
+            };
+            btnUseDefaultMegalLabel.Click += btnUseDefaultMegalLabel_Click;
+            btnOpenLabelEditor = new Button { Location = new Point(520, 200), Size = new Size(150, 36), Text = "Etiket Editoru Ac" };
             btnOpenLabelEditor.Click += btnOpenLabelEditor_Click;
+
+            lblLabelPreviewHint = new Label
+            {
+                AutoSize = true,
+                Location = new Point(560, 132),
+                Text = "Onizleme: Megal logo + MEGAL yazisi",
+            };
+            picLabelPreview = new PictureBox
+            {
+                Location = new Point(560, 152),
+                Size = new Size(280, 200),
+                BorderStyle = BorderStyle.FixedSingle,
+                SizeMode = PictureBoxSizeMode.Zoom,
+                BackColor = Color.White,
+            };
 
             panelScale.Controls.Add(lblLabelScr);
             panelScale.Controls.Add(txtLabelScr);
@@ -134,18 +159,23 @@ namespace WindowsFormsApplication1
             panelScale.Controls.Add(lblLabelSlot);
             panelScale.Controls.Add(cmbLabelSlot);
             panelScale.Controls.Add(btnSendLabel);
+            panelScale.Controls.Add(btnUseDefaultMegalLabel);
             panelScale.Controls.Add(btnOpenLabelEditor);
+            panelScale.Controls.Add(lblLabelPreviewHint);
+            panelScale.Controls.Add(picLabelPreview);
 
             UiTheme.StyleTextBox(txtRlsHome);
             UiTheme.StyleTextBox(txtLabelScr);
             UiTheme.StyleComboBox(cmbLabelSlot);
             UiTheme.StyleCheckBox(chkSendLabelOnSync);
             UiTheme.StylePrimaryButton(btnSendLabel);
+            UiTheme.StyleSecondaryButton(btnUseDefaultMegalLabel);
             UiTheme.StyleSecondaryButton(btnOpenLabelEditor);
             UiTheme.StyleSecondaryButton(btnBrowseLabel);
             lblRlsHome.ForeColor = UiTheme.Muted;
             lblLabelScr.ForeColor = UiTheme.Muted;
             lblLabelSlot.ForeColor = UiTheme.Muted;
+            lblLabelPreviewHint.ForeColor = UiTheme.Muted;
         }
 
         private void InitializeScaleBarcodeUi()
@@ -154,7 +184,7 @@ namespace WindowsFormsApplication1
             {
                 AutoSize = true,
                 Location = new Point(20, 248),
-                Text = "Kasap barkod ayarlari (RLS1000 tip 99)",
+                Text = "Kasap barkod ayarlari (tip 99) — 10 kg uzeri barkod icin paket limiti yok (PackageWeight=0)",
             };
 
             lblBarcodeType = new Label { AutoSize = true, Location = new Point(20, 272), Text = "Barkod tipi" };
@@ -622,13 +652,24 @@ namespace WindowsFormsApplication1
 
         private void Form1_Load(object sender, EventArgs e)
         {
+            ApplyApplicationIcon();
             ApplyTheme();
             EnsureScaleDataTab();
+            try
+            {
+                RongtaPaths.EnsureWritableAssets();
+            }
+            catch (Exception ex)
+            {
+                // ProgramData yazilamazsa yine de UI acilsin
+                AppendLog("Rongta dosya senkronu: " + ex.Message);
+            }
+
             LoadSettingsToUi();
             _syncEngine.Log += AppendLog;
             UpdateDashboard();
 
-            AppendLog("RetailEX Terazi Yoneticisi — Cihaz Verileri sekmesinden PLU okuyup duzenleyebilirsiniz.");
+            AppendLog("RetailEX Terazi Yoneticisi — Varsayilan etiket: Megal (retailex_logoluetiket.scr).");
             statusLabel.Text = "Config: " + AppConfig.DefaultConfigPath;
 
             if (_config.AutoSyncEnabled && _config.ShouldRunAutoTimerSync())
@@ -658,6 +699,25 @@ namespace WindowsFormsApplication1
             }
 
             BeginInvoke(new Action(async () => await LoadMasterDataAsync()));
+        }
+
+        private void ApplyApplicationIcon()
+        {
+            try
+            {
+                var icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
+                if (icon == null)
+                {
+                    return;
+                }
+
+                Icon = icon;
+                notifyIcon1.Icon = icon;
+            }
+            catch
+            {
+                // Icon is optional at runtime; exe still carries ApplicationIcon from build.
+            }
         }
 
         private void ApplyTheme()
@@ -848,6 +908,7 @@ namespace WindowsFormsApplication1
             txtRlsHome.Text = _config.RlsHomePath;
             txtLabelScr.Text = _config.ResolveLabelScrPath();
             chkSendLabelOnSync.Checked = _config.SendLabelOnSync;
+            RefreshLabelPreview();
             chkIncrementalSync.Checked = _config.IncrementalSyncEnabled;
             numBarcodeType.Value = Math.Max(numBarcodeType.Minimum, Math.Min(numBarcodeType.Maximum, _config.DefaultBarcodeType));
             numDepartment.Value = Math.Max(numDepartment.Minimum, Math.Min(numDepartment.Maximum, _config.DefaultDepartment));
@@ -1757,11 +1818,86 @@ namespace WindowsFormsApplication1
                 return;
             }
 
+            RongtaPaths.EnsureWritableAssets(_config);
             var scrPath = _config.ResolveLabelScrPath(txtLabelScr.Text.Trim());
+            if (string.IsNullOrWhiteSpace(scrPath) || !File.Exists(scrPath))
+            {
+                // Son carpma: varsayilan Megal etiketine dus
+                scrPath = _config.ResolveLabelScrPath(RlsResourceResolver.DefaultMegalLabelFileName);
+            }
+
+            if (!File.Exists(scrPath))
+            {
+                MessageBox.Show(
+                    "Megal etiket dosyasi bulunamadi.\nBeklenen: retailex_logoluetiket.scr",
+                    "Etiket",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning);
+                return;
+            }
+
+            txtLabelScr.Text = scrPath;
+            RefreshLabelPreview();
+            AppendLog("Etiket gonderiliyor: " + scrPath);
             var result = _scaleService.SendLabelTemplate(scale.IpAddress, scrPath);
             AppendLog(result.Message);
             MessageBox.Show(result.Message, result.Success ? "Etiket" : "Etiket Hatasi",
                 MessageBoxButtons.OK, result.Success ? MessageBoxIcon.Information : MessageBoxIcon.Warning);
+        }
+
+        private void btnUseDefaultMegalLabel_Click(object sender, EventArgs e)
+        {
+            RongtaPaths.EnsureWritableAssets(_config);
+            _config.DefaultLabelScr = RlsResourceResolver.DefaultMegalLabelFileName;
+            var path = _config.ResolveLabelScrPath(RlsResourceResolver.DefaultMegalLabelFileName);
+            txtLabelScr.Text = path;
+            RefreshLabelPreview();
+            AppendLog("Varsayilan Megal etiket secildi: " + path);
+            if (!File.Exists(path))
+            {
+                MessageBox.Show(
+                    "retailex_logoluetiket.scr bulunamadi. Uygulamayi yeniden kurun veya Resources\\Rongta klasorunu kontrol edin.",
+                    "Etiket",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning);
+            }
+        }
+
+        private void RefreshLabelPreview()
+        {
+            if (picLabelPreview == null) return;
+
+            try
+            {
+                var png = RlsResourceResolver.ResolveLabelPreviewPngPath();
+                if (string.IsNullOrEmpty(png) || !File.Exists(png))
+                {
+                    picLabelPreview.Image = null;
+                    if (lblLabelPreviewHint != null)
+                    {
+                        lblLabelPreviewHint.Text = "Onizleme bulunamadi (retailex_logoluetiket_onizleme.png)";
+                    }
+                    return;
+                }
+
+                // Dosya kilitlenmesin diye kopyadan yukle
+                using (var fs = new FileStream(png, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+                using (var img = Image.FromStream(fs))
+                {
+                    var old = picLabelPreview.Image;
+                    picLabelPreview.Image = new Bitmap(img);
+                    old?.Dispose();
+                }
+
+                if (lblLabelPreviewHint != null)
+                {
+                    lblLabelPreviewHint.Text = "Onizleme: Megal logo + MEGAL yazisi";
+                }
+            }
+            catch (Exception ex)
+            {
+                AppendLog("Etiket onizleme yuklenemedi: " + ex.Message);
+            }
         }
 
         private void btnOpenLabelEditor_Click(object sender, EventArgs e)
@@ -1785,6 +1921,7 @@ namespace WindowsFormsApplication1
                 if (dialog.ShowDialog() == DialogResult.OK)
                 {
                     txtLabelScr.Text = dialog.FileName;
+                    RefreshLabelPreview();
                 }
             }
         }

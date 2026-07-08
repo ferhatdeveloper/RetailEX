@@ -19,7 +19,7 @@ DisableProgramGroupPage=yes
 LicenseFile=
 OutputDir=output
 OutputBaseFilename=RetailEX.TeraziManager-Setup-{#MyAppVersion}
-SetupIconFile=
+SetupIconFile=..\WindowsFormsApplication1\Resources\app.ico
 Compression=lzma2/ultra64
 SolidCompression=yes
 WizardStyle=modern
@@ -106,6 +106,20 @@ begin
     if not FileExists(DestFile) then
     begin
       SrcFile := AppDir + '\testRT.RLS';
+      if FileExists(SrcFile) then
+        FileCopy(SrcFile, DestFile, False);
+    end;
+    DestFile := RongtaDir + '\retailex_logoluetiket.scr';
+    if not FileExists(DestFile) then
+    begin
+      SrcFile := AppDir + '\Rongta\retailex_logoluetiket.scr';
+      if FileExists(SrcFile) then
+        FileCopy(SrcFile, DestFile, False);
+    end;
+    DestFile := RongtaDir + '\EN1_logo_OUT.scr';
+    if not FileExists(DestFile) then
+    begin
+      SrcFile := AppDir + '\Rongta\EN1_logo_OUT.scr';
       if FileExists(SrcFile) then
         FileCopy(SrcFile, DestFile, False);
     end;

@@ -28,7 +28,7 @@ namespace TeraziRongta.Core.Config
         public bool AutoSyncEnabled { get; set; } = true;
         public bool SyncOnStartup { get; set; } = true;
         public string RlsHomePath { get; set; } = RongtaPaths.WritableRongtaDir;
-        public string DefaultLabelScr { get; set; } = "des.scr";
+        public string DefaultLabelScr { get; set; } = "retailex_logoluetiket.scr";
         public string LabelSlot { get; set; } = "D0";
         public bool SendLabelOnSync { get; set; }
         /// <summary>001, 002 ... RetailEX firma numarasi</summary>
@@ -228,10 +228,31 @@ namespace TeraziRongta.Core.Config
             }
 
             var labelScr = (DefaultLabelScr ?? "").Trim();
-            if (string.IsNullOrEmpty(labelScr)
-                || labelScr.Equals("rtlabel_en.scr", StringComparison.OrdinalIgnoreCase))
+            var labelFile = string.IsNullOrEmpty(labelScr)
+                ? ""
+                : Path.GetFileName(labelScr);
+            if (string.IsNullOrEmpty(labelFile)
+                || labelFile.Equals("rtlabel_en.scr", StringComparison.OrdinalIgnoreCase)
+                || labelFile.Equals("des.scr", StringComparison.OrdinalIgnoreCase)
+                || labelFile.Equals("logolu_tasarim.scr", StringComparison.OrdinalIgnoreCase)
+                || labelFile.Equals("EN1_logo_OUT.scr", StringComparison.OrdinalIgnoreCase))
             {
-                DefaultLabelScr = "des.scr";
+                DefaultLabelScr = "retailex_logoluetiket.scr";
+                migrated = true;
+            }
+
+            // 10 kg uzeri etiket barkodu icin: format/ondalik tutarli kalsin
+            var fmt = (Barcode99Format ?? "").Trim();
+            if (string.IsNullOrEmpty(fmt))
+            {
+                Barcode99Format = "IIIIIIWWWWW";
+                migrated = true;
+            }
+
+            if (Barcode99WeightDecimals < 0 || Barcode99WeightDecimals > 5)
+            {
+                Barcode99WeightDecimals = 0;
+                migrated = true;
             }
 
             return migrated;

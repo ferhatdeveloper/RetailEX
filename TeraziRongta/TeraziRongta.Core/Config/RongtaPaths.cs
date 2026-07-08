@@ -9,7 +9,15 @@ namespace TeraziRongta.Core.Config
     /// </summary>
     public static class RongtaPaths
     {
-        public static readonly string[] ManagedFileNames = { "SYSTEM.CFG", "testRT.RLS", "rtscale.RLS" };
+        public static readonly string[] ManagedFileNames =
+        {
+            "SYSTEM.CFG",
+            "testRT.RLS",
+            "rtscale.RLS",
+            "retailex_logoluetiket.scr",
+            "retailex_logoluetiket_onizleme.png",
+            "EN1_logo_OUT.scr",
+        };
 
         public static string ProgramDataRoot =>
             Path.Combine(

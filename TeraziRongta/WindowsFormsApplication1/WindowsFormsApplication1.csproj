@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="14.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <PropertyGroup>
     <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
@@ -10,6 +10,7 @@
     <AppDesignerFolder>Properties</AppDesignerFolder>
     <RootNamespace>WindowsFormsApplication1</RootNamespace>
     <AssemblyName>RetailEX.TeraziManager</AssemblyName>
+    <ApplicationIcon>Resources\app.ico</ApplicationIcon>
     <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
     <FileUpgradeFlags>
@@ -152,6 +153,8 @@
     </Compile>
     <Compile Include="uDefine.cs" />
     <None Include="WindowsFormsApplication1_TemporaryKey.pfx" />
+    <Content Include="Resources\app.ico" />
+    <Content Include="Resources\app_icon_512.png" />
   </ItemGroup>
   <ItemGroup>
     <WCFMetadata Include="Service References\" />
@@ -171,6 +174,9 @@
   <ItemGroup>
     <RongtaResources Include="..\Resources\Rongta\testRT.RLS" />
     <RongtaResources Include="..\Resources\Rongta\SYSTEM.CFG" />
+    <RongtaResources Include="..\Resources\Rongta\retailex_logoluetiket.scr" />
+    <RongtaResources Include="..\Resources\Rongta\retailex_logoluetiket_onizleme.png" />
+    <RongtaResources Include="..\Resources\Rongta\EN1_logo_OUT.scr" />
     <RongtaResources Include="..\Resources\Rongta\RTRLSLabel.exe" />
     <RongtaResources Include="..\Resources\Rongta\RTPLU.exe" />
   </ItemGroup>
@@ -181,5 +187,7 @@
     <Copy SourceFiles="..\Resources\Rongta\testRT.RLS" DestinationFolder="$(OutputPath)" Condition="Exists('..\Resources\Rongta\testRT.RLS')" />
     <MakeDir Directories="$(OutputPath)Rongta" Condition="!Exists('$(OutputPath)Rongta')" />
     <Copy SourceFiles="@(RongtaResources)" DestinationFolder="$(OutputPath)Rongta" />
+    <MakeDir Directories="$(OutputPath)Rongta\Images" Condition="!Exists('$(OutputPath)Rongta\Images')" />
+    <Copy SourceFiles="..\Resources\Rongta\Images\RT_LOGO.jpg" DestinationFolder="$(OutputPath)Rongta\Images" Condition="Exists('..\Resources\Rongta\Images\RT_LOGO.jpg')" />
   </Target>
 </Project>
