@@ -65,6 +65,55 @@ function normalizeHiddenModules(raw: unknown): string[] {
   return [...new Set(remapLegacyStaticHiddenModules(list))];
 }
 
+type HiddenModulesListener = (hidden: string[]) => void;
+const hiddenModulesListeners = new Set<HiddenModulesListener>();
+let runtimeHiddenModules: string[] | null = null;
+
+function notifyHiddenModulesListeners(hidden: string[]): void {
+  hiddenModulesListeners.forEach((listener) => {
+    try {
+      listener(hidden);
+    } catch {
+      /* ignore */
+    }
+  });
+}
+
+/** Çalışma anı gizli modül listesi (localStorage ile senkron) */
+export function getRuntimeHiddenModules(): string[] {
+  if (runtimeHiddenModules) return runtimeHiddenModules;
+  return normalizeHiddenModules(readMenuPreferencesFromLocalStorage()?.hidden_modules ?? []);
+}
+
+/** Gizli modülleri güncelle — sidebar anında dinler */
+export function setRuntimeHiddenModules(
+  hidden: string[],
+  opts?: { persist?: boolean; store?: MenuPreferencesStore; prefs?: MenuPreferences },
+): void {
+  const normalized = normalizeHiddenModules(hidden);
+  runtimeHiddenModules = normalized;
+  if (opts?.persist !== false) {
+    const prefs: MenuPreferences = opts?.prefs ?? { hidden_modules: normalized };
+    applyMenuPreferencesToLocalStorage(prefs, opts?.store, { notify: false });
+  }
+  notifyHiddenModulesListeners(normalized);
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(
+      new CustomEvent('menuUpdated', {
+        detail: { forceReload: false, hidden_modules: normalized, preview: true },
+      }),
+    );
+  }
+}
+
+export function subscribeRuntimeHiddenModules(listener: HiddenModulesListener): () => void {
+  hiddenModulesListeners.add(listener);
+  listener(getRuntimeHiddenModules());
+  return () => {
+    hiddenModulesListeners.delete(listener);
+  };
+}
+
 function isRestApi(): boolean {
   return DB_SETTINGS.connectionProvider === 'rest_api';
 }
@@ -255,22 +304,30 @@ async function writeMenuPreferencesStoreToDb(store: MenuPreferencesStore): Promi
 }
 
 /** localStorage + retailex_web_config önbelleğine yazar */
-export function applyMenuPreferencesToLocalStorage(prefs: MenuPreferences, store?: MenuPreferencesStore): void {
+export function applyMenuPreferencesToLocalStorage(
+  prefs: MenuPreferences,
+  store?: MenuPreferencesStore,
+  opts?: { notify?: boolean },
+): void {
   if (typeof localStorage === 'undefined') return;
-  const hidden = prefs.hidden_modules ?? [];
+  const hidden = normalizeHiddenModules(prefs.hidden_modules ?? []);
+  runtimeHiddenModules = hidden;
   try {
     localStorage.setItem(HIDDEN_MODULES_KEY, JSON.stringify(hidden));
-    localStorage.setItem(MENU_PREFS_KEY, JSON.stringify(prefs));
+    localStorage.setItem(MENU_PREFS_KEY, JSON.stringify({ ...prefs, hidden_modules: hidden }));
     if (store) {
       localStorage.setItem(MENU_PREFS_STORE_KEY, JSON.stringify(store));
     }
     const webRaw = localStorage.getItem('retailex_web_config');
     const web = webRaw ? JSON.parse(webRaw) : {};
     web.hidden_modules = hidden;
-    web.menu_preferences = store ?? prefs;
+    web.menu_preferences = store ?? { ...prefs, hidden_modules: hidden };
     localStorage.setItem('retailex_web_config', JSON.stringify(web));
   } catch {
     /* quota / private mode */
+  }
+  if (opts?.notify !== false) {
+    notifyHiddenModulesListeners(hidden);
   }
 }
 

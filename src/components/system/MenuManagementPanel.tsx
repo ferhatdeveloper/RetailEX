@@ -16,8 +16,8 @@ import {
   applyMenuPreferencePresetById,
   deleteMenuPreferencePreset,
   applyDefaultMenuPreferences,
-  applyMenuPreferencesToLocalStorage,
   remapLegacyStaticHiddenModules,
+  setRuntimeHiddenModules,
   type MenuPreferences,
   type MenuPreferencePreset,
 } from '../../services/menuPreferencesService';
@@ -569,11 +569,11 @@ export function MenuManagementPanel({ onClose }: MenuManagementPanelProps) {
 
   const previewStaticMenuVisibility = (items: MenuItem[]) => {
     const hidden_modules = collectHiddenModulesFromTree(items);
-    applyMenuPreferencesToLocalStorage({ hidden_modules }, { version: 2, presets: [] });
     setHiddenModules(hidden_modules);
-    window.dispatchEvent(
-      new CustomEvent('menuUpdated', { detail: { forceReload: true, hidden_modules, preview: true } }),
-    );
+    setRuntimeHiddenModules(hidden_modules, {
+      store: { version: 2, presets: [] },
+      prefs: { hidden_modules },
+    });
   };
 
   // Menü öğelerini hiyerarşik yapıya dönüştür
@@ -789,23 +789,17 @@ export function MenuManagementPanel({ onClose }: MenuManagementPanelProps) {
   // Menü öğesini güncelle
   const updateMenuItem = async (item: MenuItem) => {
     if (menuSource === 'static') {
-      // Statik mönüde sadece yerel state güncelle
-      let nextTree: MenuItem[] = [];
-      setMenuItems((prev) => {
-        const updateInTree = (items: MenuItem[]): MenuItem[] => {
-          return items.map((i) => {
-            if (i.id === item.id) return { ...i, ...item };
-            if (i.children) return { ...i, children: updateInTree(i.children) };
-            return i;
-          });
-        };
-        nextTree = updateInTree(prev);
-        return nextTree;
-      });
+      const updateInTree = (items: MenuItem[]): MenuItem[] =>
+        items.map((i) => {
+          if (i.id === item.id) return { ...i, ...item };
+          if (i.children) return { ...i, children: updateInTree(i.children) };
+          return i;
+        });
+
+      const nextTree = updateInTree(menuItems);
+      setMenuItems(nextTree);
       setEditingItem(null);
-      if (item.screen_id != null) {
-        previewStaticMenuVisibility(nextTree);
-      }
+      previewStaticMenuVisibility(nextTree);
       return;
     }
 

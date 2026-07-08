@@ -172,7 +172,7 @@ import { useTheme } from '../../contexts/ThemeContext';
 import { useResponsive } from '../../hooks/useResponsive';
 import { usePermission } from '../../shared/hooks/usePermission';
 import { getStaticMenuSections } from '../../config/staticMenuConfig';
-import { syncMenuPreferences, remapLegacyStaticHiddenModules } from '../../services/menuPreferencesService';
+import { syncMenuPreferences, remapLegacyStaticHiddenModules, subscribeRuntimeHiddenModules } from '../../services/menuPreferencesService';
 
 // Custom z-index constants to ensure consistent layering
 const Z_INDEX = {
@@ -402,6 +402,10 @@ export function ManagementModule({
     return localStorage.getItem('retailos_rtl_mode') === 'true';
   });
   const [hiddenModules, setHiddenModules] = useState<string[]>([]);
+
+  useEffect(() => {
+    return subscribeRuntimeHiddenModules(setHiddenModules);
+  }, []);
 
 
   // Generate menu with current language translations and convert to expected format
@@ -831,7 +835,10 @@ export function ManagementModule({
         });
     };
 
-    return filterHidden(baseSections);
+    return filterHidden(baseSections).filter((section) => {
+      const items = section.items ?? section.children ?? [];
+      return items.length > 0;
+    });
   }, [dynamicMenuSections, staticMenuSections, effectiveHiddenModules, hasPermission, isAdmin, gibEdocumentMenuEnabled, isTauri]);
 
   // Menü güncellemelerini dinle - useCallback ile sarmalanmış
