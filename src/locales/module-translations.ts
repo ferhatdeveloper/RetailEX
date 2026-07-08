@@ -13,6 +13,7 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
   invalidDate: { tr: 'Geçersiz Tarih', en: 'Invalid Date', ar: 'تاريخ غير صالح', ku: 'تاریکی نادروست' },
   noCustomer: { tr: 'Müşterisiz', en: 'No Customer', ar: 'بدون عميل', ku: 'بێ کڕیار' },
   cameraScan: { tr: 'Kamera ile Tara', en: 'Scan with Camera', ar: 'المسح بالكاميرا', ku: 'بە کامێرا بپشکنە' },
+  cameraBtn: { tr: 'Kamera', en: 'Camera', ar: 'كاميرا', ku: 'کامێرا' },
   mgmtMatIntakeTitle: { tr: 'Malzeme toplama', en: 'Material intake', ar: 'جمع المواد', ku: 'کۆکردنەوەی ماددە' },
   mgmtMatIntakeSubtitle: {
     tr: 'Mobilde kamera izni istenir; barkodu okutup satırı düzenleyin. Onay sonrası Excel’e aktarabilir veya alış faturasına geçebilirsiniz.',

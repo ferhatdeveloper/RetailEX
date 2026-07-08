@@ -1120,6 +1120,14 @@ export function UniversalInvoiceForm({
     setItemColumnVisibility(allHidden);
   };
 
+  useEffect(() => {
+    try {
+      localStorage.setItem('invoiceItemColumnVisibility', JSON.stringify(itemColumnVisibility));
+    } catch {
+      /* ignore */
+    }
+  }, [itemColumnVisibility]);
+
   // Modal states for ellipsis buttons
   const [showEditDateModal, setShowEditDateModal] = useState(false);
   const [showTransactionDateModal, setShowTransactionDateModal] = useState(false);
@@ -3474,39 +3482,38 @@ export function UniversalInvoiceForm({
                   </div>
                 )}
 
-                <div
-                  className={
-                    isMobile
-                      ? 'relative z-20 mb-3 w-full grid grid-cols-[minmax(0,1fr)_auto] gap-2 items-center'
-                      : 'mb-3 flex w-full justify-end'
-                  }
-                >
-                  <div className={isMobile ? 'contents' : 'flex items-center gap-2'}>
-                    <input
-                      type="text"
-                      value={quickBarcodeInput}
-                      onChange={(e) => setQuickBarcodeInput(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          e.preventDefault();
-                          handleQuickBarcodeSubmit();
-                        }
-                      }}
-                      placeholder={tm('barcodeScanOrType')}
-                      autoComplete="off"
-                      inputMode="text"
-                      className={`min-w-0 touch-manipulation border border-gray-300 rounded-lg px-3 py-2 text-sm min-h-[44px] ${isMobile ? 'w-full' : 'w-64'}`}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowCameraScanner(true)}
-                      className={`inline-flex items-center justify-center gap-2 shrink-0 px-3 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 active:scale-[0.99] transition-transform min-h-[44px] ${isMobile ? 'min-w-[44px]' : ''}`}
-                      title="Kamera ile barkod okut"
-                    >
-                      <Camera className="w-4 h-4 shrink-0" />
-                      <span className="whitespace-nowrap">Kamera</span>
-                    </button>
-                  </div>
+                <div className="mb-3 flex w-full items-center gap-2 justify-end">
+                  <input
+                    type="text"
+                    value={quickBarcodeInput}
+                    onChange={(e) => setQuickBarcodeInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleQuickBarcodeSubmit();
+                      }
+                    }}
+                    placeholder={tm('barcodeScanOrType')}
+                    autoComplete="off"
+                    inputMode="text"
+                    className="min-w-0 flex-1 sm:flex-none sm:w-64 touch-manipulation border border-gray-300 rounded-lg px-3 py-2 text-sm min-h-[44px]"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowCameraScanner(true)}
+                    className="inline-flex items-center justify-center gap-2 shrink-0 px-3 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 active:scale-[0.99] transition-transform min-h-[44px] min-w-[44px]"
+                    title={tm('cameraScan')}
+                  >
+                    <Camera className="w-4 h-4 shrink-0" />
+                    <span className="whitespace-nowrap hidden sm:inline">{tm('cameraBtn')}</span>
+                  </button>
+                  <ColumnVisibilityMenu
+                    columns={itemColumns}
+                    onToggle={handleToggleColumn}
+                    onShowAll={handleShowAllColumns}
+                    onHideAll={handleHideAllColumns}
+                    variant="filterBar"
+                  />
                 </div>
 
                 {/* Items Grid */}
@@ -3561,12 +3568,6 @@ export function UniversalInvoiceForm({
                             className="hidden"
                             onChange={(ev) => void handlePurchaseExcelInputChange(ev)}
                           />
-                          <ColumnVisibilityMenu
-                            columns={itemColumns}
-                            onToggle={handleToggleColumn}
-                            onShowAll={handleShowAllColumns}
-                            onHideAll={handleHideAllColumns}
-                          />
                         </div>
                       </div>
                       <p className="text-xs text-gray-500">{tm('purchaseInvoiceExcelHint')}</p>
@@ -3610,17 +3611,6 @@ export function UniversalInvoiceForm({
                           </ul>
                         </div>
                       )}
-                    </div>
-                  )}
-                  {/* Kolon Görünürlüğü Sadece Diğer Fatura Türleri İçin (Alış değilse buraya gelir) */}
-                  {invoiceType.category !== 'Alis' && (
-                    <div className="hidden md:flex justify-end items-center gap-2">
-                      <ColumnVisibilityMenu
-                        columns={itemColumns}
-                        onToggle={handleToggleColumn}
-                        onShowAll={handleShowAllColumns}
-                        onHideAll={handleHideAllColumns}
-                      />
                     </div>
                   )}
 

@@ -183,7 +183,7 @@ export function ColumnVisibilityMenu({
         onClick={() => (isOpen ? closeMenu() : openMenu())}
         className={
           isFilterBar
-            ? `flex items-center gap-1.5 px-3 py-2 text-sm font-bold rounded border transition-colors whitespace-nowrap ${
+            ? `flex items-center gap-1.5 px-3 py-2 min-h-[44px] text-sm font-bold rounded border transition-colors whitespace-nowrap ${
                 isOpen
                   ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
                   : 'bg-white text-gray-700 border-gray-300 hover:bg-blue-50 hover:border-blue-400'
