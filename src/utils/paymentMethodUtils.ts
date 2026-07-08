@@ -1,7 +1,7 @@
 /** Form ödeme kodları (InvoicePaymentInfoModal) */
-export type PaymentFormCode = 'NAKIT' | 'KREDIKARTI' | 'HAVAL' | 'CEK' | 'SENET';
+export type PaymentFormCode = 'NAKIT' | 'KREDIKARTI' | 'ACIK_CARI' | 'HAVAL' | 'CEK' | 'SENET';
 
-const FORM_CODES: PaymentFormCode[] = ['NAKIT', 'KREDIKARTI', 'HAVAL', 'CEK', 'SENET'];
+const FORM_CODES: PaymentFormCode[] = ['NAKIT', 'KREDIKARTI', 'ACIK_CARI', 'HAVAL', 'CEK', 'SENET'];
 
 /** DB / POS değerini forma yüklenecek koda çevirir */
 export function dbPaymentMethodToFormCode(raw: unknown): PaymentFormCode | '' {
@@ -12,6 +12,17 @@ export function dbPaymentMethodToFormCode(raw: unknown): PaymentFormCode | '' {
   const lower = s.toLowerCase();
   if (lower === 'cash' || lower === 'nakit') return 'NAKIT';
   if (lower === 'card' || lower === 'kart' || lower === 'kredi karti' || lower === 'kredi kartı') return 'KREDIKARTI';
+  if (
+    lower === 'veresiye' ||
+    lower === 'open_account' ||
+    lower === 'açık hesap' ||
+    lower === 'acik hesap' ||
+    lower === 'açık cari' ||
+    lower === 'acik cari' ||
+    lower === 'cari'
+  ) {
+    return 'ACIK_CARI';
+  }
   if (lower === 'havale' || lower === 'eft') return 'HAVAL';
   if (lower === 'cek' || lower === 'çek') return 'CEK';
   if (lower === 'senet') return 'SENET';
@@ -24,7 +35,9 @@ export function formCodeToDbPaymentMethod(
   opts?: { posRetail?: boolean }
 ): string {
   const code = String(formCode || '').trim().toUpperCase();
-  if (!code) return opts?.posRetail ? 'cash' : 'Nakit';
+  if (!code || code === 'ACIK_CARI') {
+    return opts?.posRetail ? 'veresiye' : 'Veresiye';
+  }
 
   if (opts?.posRetail) {
     if (code === 'NAKIT') return 'cash';
@@ -37,6 +50,8 @@ export function formCodeToDbPaymentMethod(
       return 'Nakit';
     case 'KREDIKARTI':
       return 'Kredi Kartı';
+    case 'ACIK_CARI':
+      return 'Veresiye';
     case 'HAVAL':
       return 'Havale';
     case 'CEK':
@@ -60,6 +75,8 @@ export function paymentFormCodeTranslationKey(code: string): string {
       return 'paymentCash';
     case 'KREDIKARTI':
       return 'paymentCreditCard';
+    case 'ACIK_CARI':
+      return 'paymentOpenAccount';
     case 'HAVAL':
       return 'paymentTransfer';
     case 'CEK':
@@ -77,13 +94,14 @@ export type PaymentMethodBucket = 'cash' | 'card' | 'credit' | 'transfer' | 'oth
 /** DB / form ham değerini rapor ve POS listelerinde kullanılan gruba çevirir */
 export function normalizePaymentMethodBucket(raw: unknown): PaymentMethodBucket {
   const formCode = dbPaymentMethodToFormCode(raw);
+  if (!formCode || formCode === 'ACIK_CARI') return 'credit';
   if (formCode === 'NAKIT') return 'cash';
   if (formCode === 'KREDIKARTI') return 'card';
   if (formCode === 'HAVAL') return 'transfer';
   if (formCode === 'CEK' || formCode === 'SENET') return 'other';
 
   const pm = String(raw ?? '').toLowerCase().trim();
-  if (!pm) return 'cash';
+  if (!pm) return 'credit';
   if (pm === 'cash' || pm === 'nakit') return 'cash';
   if (pm === 'card' || pm === 'kart' || pm === 'gateway' || pm.includes('kredi')) return 'card';
   if (pm === 'veresiye' || pm === 'credit' || pm === 'cari' || pm.includes('borc') || pm.includes('borç')) {
@@ -128,4 +146,13 @@ export function isPosRetailPaymentContext(ctx: {
   if (pm === 'cash' || pm === 'card') return true;
   if (ctx.cashier != null && String(ctx.cashier).trim() !== '') return true;
   return false;
+}
+
+/** Nakit/kart tahsilat yapıldı mı (açık cari / veresiye değil) */
+export function paymentMethodImpliesPaidNow(raw: unknown): boolean {
+  const code = dbPaymentMethodToFormCode(raw);
+  if (!code || code === 'ACIK_CARI') return false;
+  if (code === 'NAKIT' || code === 'KREDIKARTI') return true;
+  const pm = String(raw ?? '').toLowerCase().trim();
+  return pm === 'cash' || pm === 'nakit' || pm === 'card' || pm === 'kart' || pm === 'credit_card' || pm === 'pos';
 }

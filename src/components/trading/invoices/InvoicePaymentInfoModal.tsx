@@ -1,4 +1,4 @@
-﻿import { X, CreditCard, Wallet, Banknote, Building2 } from 'lucide-react';
+﻿import { X, CreditCard, Wallet, Banknote, Building2, Users } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { dbPaymentMethodToFormCode } from '../../../utils/paymentMethodUtils';
@@ -38,11 +38,14 @@ export function InvoicePaymentInfoModal({
       const all: PaymentMethod[] = [
         { code: 'NAKIT', nameKey: 'paymentCash', icon: Banknote },
         { code: 'KREDIKARTI', nameKey: 'paymentCreditCard', icon: CreditCard },
+        { code: 'ACIK_CARI', nameKey: 'paymentOpenAccount', icon: Users },
         { code: 'HAVAL', nameKey: 'paymentTransfer', icon: Building2 },
         { code: 'CEK', nameKey: 'paymentCheck', icon: Wallet },
         { code: 'SENET', nameKey: 'paymentPromissory', icon: CreditCard },
       ];
-      return retailPosMode ? all.filter((m) => m.code === 'NAKIT' || m.code === 'KREDIKARTI') : all;
+      return retailPosMode
+        ? all.filter((m) => m.code === 'NAKIT' || m.code === 'KREDIKARTI' || m.code === 'ACIK_CARI')
+        : all;
     },
     [retailPosMode],
   );

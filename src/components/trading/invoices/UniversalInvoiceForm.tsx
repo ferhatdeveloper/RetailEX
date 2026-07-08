@@ -70,6 +70,7 @@ import {
   formCodeToDbPaymentMethod,
   isPosRetailPaymentContext,
   paymentFormCodeTranslationKey,
+  paymentMethodImpliesPaidNow,
   RETAIL_SALES_INVOICE_TRCODE,
 } from '../../../utils/paymentMethodUtils';
 import { buildInvoiceHeaderFieldsFromForm, readInvoiceHeaderFields } from '../../../utils/invoiceHeaderFields';
@@ -3067,15 +3068,7 @@ export function UniversalInvoiceForm({
         store_id: (editData as any)?.store_id || undefined,
         status: (() => {
           if (invoiceType.category === 'Alis' || invoiceType.category === 'Iade') return 'completed';
-          const pm = String(resolvePaymentMethodForDb() || '').toLowerCase();
-          const paidNow =
-            pm === 'cash' ||
-            pm === 'nakit' ||
-            pm === 'card' ||
-            pm === 'credit_card' ||
-            pm === 'pos' ||
-            pm === 'paid';
-          return paidNow ? 'completed' : 'unpaid';
+          return paymentMethodImpliesPaidNow(resolvePaymentMethodForDb()) ? 'completed' : 'unpaid';
         })(),
         notes: description,
         document_no: documentNo.trim() || invoiceNo,
