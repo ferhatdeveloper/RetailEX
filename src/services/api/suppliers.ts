@@ -18,6 +18,7 @@ import {
   accountLedgerNameMatch,
 } from './accountBalance';
 import { buildCariDbPayload } from './cariAccountFields';
+import { filterSupplierRowsHiddenByCustomerCode, resolveCanonicalCariAccountId } from './cariAccountResolve';
 export type { Supplier };
 
 export type CariListFilter = 'all' | 'customer' | 'supplier';
@@ -128,7 +129,12 @@ export const supplierAPI = {
         ]);
         const sales = Array.isArray(salesRows) ? salesRows : [];
         const cash = Array.isArray(cashRows) ? cashRows : [];
-        const customerRows = (Array.isArray(customers) ? customers : []).map((r) => ({
+        const customerList = Array.isArray(customers) ? customers : [];
+        const supplierList = filterSupplierRowsHiddenByCustomerCode(
+          Array.isArray(suppliers) ? suppliers : [],
+          customerList,
+        );
+        const customerRows = customerList.map((r) => ({
           ...r,
           card_type: 'customer',
           balance: computeCustomerBalanceFromLedger(
@@ -139,7 +145,7 @@ export const supplierAPI = {
             parseFloat(String(r.balance ?? 0)) || 0,
           ),
         }));
-        const supplierRows = (Array.isArray(suppliers) ? suppliers : []).map((r) => ({
+        const supplierRows = supplierList.map((r) => ({
           ...r,
           card_type: 'supplier',
           balance: computeSupplierBalanceFromLedger(
@@ -183,6 +189,12 @@ export const supplierAPI = {
         FROM ${suppTable} s
         LEFT JOIN supplier_balances b ON s.id = b.id
         WHERE s.is_active = true
+          AND NOT EXISTS (
+            SELECT 1 FROM ${custTable} c2
+            WHERE c2.firm_nr = $1::text
+              AND UPPER(TRIM(COALESCE(c2.code, ''))) = UPPER(TRIM(COALESCE(s.code, '')))
+              AND TRIM(COALESCE(c2.code, '')) <> ''
+          )
         ORDER BY name ASC`;
 
       const { rows } = await postgres.query(sql, [firmNr], {
@@ -227,6 +239,22 @@ export const supplierAPI = {
           { schema: 'public' }
         );
         if (Array.isArray(supRows) && supRows[0]) {
+          const canon = await resolveCanonicalCariAccountId(id);
+          if (canon.cardType === 'customer' && canon.id !== id) {
+            const custCanon = await postgrest.get<any[]>(
+              `/${custTable}`,
+              {
+                select: '*',
+                id: `eq.${canon.id}`,
+                firm_nr: `eq.${ERP_SETTINGS.firmNr}`,
+                limit: 1,
+              },
+              { schema: 'public' },
+            );
+            if (Array.isArray(custCanon) && custCanon[0]) {
+              return mapDatabaseSupplierToSupplier({ ...custCanon[0], card_type: 'customer' });
+            }
+          }
           return mapDatabaseSupplierToSupplier({ ...supRows[0], card_type: 'supplier' });
         }
         return null;

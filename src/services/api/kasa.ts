@@ -8,6 +8,7 @@ import {
   cariCashStoredBalanceDelta,
   normalizeFirmTableNr,
 } from './accountBalance';
+import { resolveCanonicalCariAccountId } from './cariAccountResolve';
 
 function padKasaFirmNr(): string {
   return String(ERP_SETTINGS.firmNr || '001').trim().padStart(3, '0').slice(0, 10);
@@ -558,13 +559,24 @@ async function createKasaIslemiViaPostgrest(
 /**
  * Yeni kasa işlemi oluştur
  */
-export async function createKasaIslemi(islem: KasaIslemi): Promise<KasaIslemi> {
+export async function createKasaIslemi(incoming: KasaIslemi): Promise<KasaIslemi> {
   try {
+    let islem = incoming;
     if (
       (islem.islem_tipi === 'CH_TAHSILAT' || islem.islem_tipi === 'CH_ODEME') &&
       !islem.cari_hesap_id
     ) {
       throw new Error('Cari hesap seçilmeden tahsilat/ödeme kaydedilemez');
+    }
+
+    if (
+      islem.cari_hesap_id &&
+      (islem.islem_tipi === 'CH_TAHSILAT' || islem.islem_tipi === 'CH_ODEME')
+    ) {
+      const canon = await resolveCanonicalCariAccountId(islem.cari_hesap_id);
+      if (canon.id && canon.id !== islem.cari_hesap_id) {
+        islem = { ...islem, cari_hesap_id: canon.id };
+      }
     }
 
     const table = 'cash_lines';
