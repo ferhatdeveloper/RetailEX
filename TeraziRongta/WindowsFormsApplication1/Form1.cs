@@ -138,16 +138,17 @@ namespace WindowsFormsApplication1
             btnOpenLabelEditor = new Button { Location = new Point(520, 200), Size = new Size(150, 36), Text = "Etiket Editoru Ac" };
             btnOpenLabelEditor.Click += btnOpenLabelEditor_Click;
 
+            // Onizleme, butonlarin ALTINA konur (saga binmez)
             lblLabelPreviewHint = new Label
             {
                 AutoSize = true,
-                Location = new Point(560, 132),
+                Location = new Point(20, 460),
                 Text = "Onizleme: Megal logo + MEGAL yazisi",
             };
             picLabelPreview = new PictureBox
             {
-                Location = new Point(560, 152),
-                Size = new Size(280, 200),
+                Location = new Point(20, 480),
+                Size = new Size(320, 200),
                 BorderStyle = BorderStyle.FixedSingle,
                 SizeMode = PictureBoxSizeMode.Zoom,
                 BackColor = Color.White,
@@ -161,8 +162,6 @@ namespace WindowsFormsApplication1
             panelScale.Controls.Add(btnSendLabel);
             panelScale.Controls.Add(btnUseDefaultMegalLabel);
             panelScale.Controls.Add(btnOpenLabelEditor);
-            panelScale.Controls.Add(lblLabelPreviewHint);
-            panelScale.Controls.Add(picLabelPreview);
 
             UiTheme.StyleTextBox(txtRlsHome);
             UiTheme.StyleTextBox(txtLabelScr);
@@ -261,6 +260,9 @@ namespace WindowsFormsApplication1
             panelScale.Controls.Add(numWeightDecimals99);
             panelScale.Controls.Add(chkSendFunctionSetOnSync);
             panelScale.Controls.Add(btnSendFunctionSet);
+            // Onizleme en altta — butonlarin uzerine binmez
+            panelScale.Controls.Add(lblLabelPreviewHint);
+            panelScale.Controls.Add(picLabelPreview);
 
             UiTheme.StyleNumeric(numBarcodeType);
             UiTheme.StyleNumeric(numDepartment);
