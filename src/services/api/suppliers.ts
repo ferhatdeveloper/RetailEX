@@ -192,8 +192,16 @@ export const supplierAPI = {
           AND NOT EXISTS (
             SELECT 1 FROM ${custTable} c2
             WHERE c2.firm_nr = $1::text
-              AND UPPER(TRIM(COALESCE(c2.code, ''))) = UPPER(TRIM(COALESCE(s.code, '')))
-              AND TRIM(COALESCE(c2.code, '')) <> ''
+              AND (
+                (
+                  UPPER(TRIM(COALESCE(c2.code, ''))) = UPPER(TRIM(COALESCE(s.code, '')))
+                  AND TRIM(COALESCE(c2.code, '')) <> ''
+                )
+                OR (
+                  TRIM(LOWER(COALESCE(c2.name, ''))) = TRIM(LOWER(COALESCE(s.name, '')))
+                  AND TRIM(COALESCE(c2.name, '')) <> ''
+                )
+              )
           )
         ORDER BY name ASC`;
 

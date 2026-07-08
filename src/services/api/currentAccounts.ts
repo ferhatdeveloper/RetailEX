@@ -13,6 +13,9 @@ export interface CurrentAccount {
   kod: string;
   unvan: string;
   tip: 'MUSTERI' | 'TEDARIKCI' | 'HER_IKISI';
+  cardType?: 'customer' | 'supplier';
+  /** Defter bakiyesi (B/A yönü için ham değer) */
+  ledgerBalance?: number;
   vergi_no?: string;
   vergi_dairesi?: string;
   adres?: string;
@@ -50,12 +53,15 @@ export async function fetchCurrentAccounts(_firmaId: string, tip?: string): Prom
 }
 
 function mapCustomerToCurrentAccount(c: any): CurrentAccount {
+  const rawBal = parseFloat(String(c.balance ?? 0)) || 0;
   return {
     id: c.id,
     firma_id: c.firma_id || ERP_SETTINGS.firmNr,
     kod: c.code || '',
     unvan: c.name,
     tip: 'MUSTERI',
+    cardType: 'customer',
+    ledgerBalance: rawBal,
     vergi_no: c.tax_number || '',
     vergi_dairesi: c.tax_office || '',
     adres: c.address,
@@ -72,12 +78,15 @@ function mapCustomerToCurrentAccount(c: any): CurrentAccount {
 }
 
 function mapSupplierToCurrentAccount(s: any): CurrentAccount {
+  const rawBal = parseFloat(String(s.balance ?? 0)) || 0;
   return {
     id: s.id,
     firma_id: s.firma_id || ERP_SETTINGS.firmNr,
     kod: s.code || '',
     unvan: s.name,
     tip: 'TEDARIKCI',
+    cardType: 'supplier',
+    ledgerBalance: rawBal,
     vergi_no: s.tax_number || '',
     vergi_dairesi: s.tax_office || '',
     adres: s.address,

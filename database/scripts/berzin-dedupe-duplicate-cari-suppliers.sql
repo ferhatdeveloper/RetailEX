@@ -22,6 +22,21 @@ WHERE UPPER(TRIM(COALESCE(c.code, ''))) = UPPER(TRIM(COALESCE(s.code, '')))
   AND TRIM(COALESCE(c.code, '')) <> ''
   AND COALESCE(s.is_active, true) = true;
 
+-- Aynı ünvanda farklı kodlu tedarikçi kopyalarını kapat (ör. MUS-016 / TED-054 ALI ROMI)
+UPDATE rex_001_suppliers s
+SET is_active = false,
+    notes = COALESCE(NULLIF(TRIM(s.notes), ''), '') ||
+      CASE WHEN COALESCE(NULLIF(TRIM(s.notes), ''), '') = '' THEN '' ELSE ' | ' END ||
+      'Pasif: müşteri tablosunda aynı ünvan (' || TO_CHAR(NOW(), 'YYYY-MM-DD') || ')'
+FROM rex_001_customers c
+WHERE TRIM(LOWER(COALESCE(c.name, ''))) = TRIM(LOWER(COALESCE(s.name, '')))
+  AND TRIM(COALESCE(c.name, '')) <> ''
+  AND COALESCE(s.is_active, true) = true
+  AND NOT (
+    UPPER(TRIM(COALESCE(c.code, ''))) = UPPER(TRIM(COALESCE(s.code, '')))
+    AND TRIM(COALESCE(c.code, '')) <> ''
+  );
+
 -- ankawa TED-002: müşteri eşi yok; anormal bakiye sıfırlanır (defter onarımı UI'da)
 UPDATE rex_001_suppliers
 SET balance = 0,

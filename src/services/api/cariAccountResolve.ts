@@ -7,6 +7,7 @@ import {
   normalizeFirmTableNr,
   firmCustomersTable,
   firmSuppliersTable,
+  normalizeAccountName,
 } from './accountBalance';
 
 export function normalizeCariCode(code: string | null | undefined): string {
@@ -50,7 +51,7 @@ export async function resolveCanonicalCariAccountId(
     const supRows = await postgrest
       .get<any[]>(
         `/${supTable}`,
-        { select: 'id,code', id: `eq.${id}`, limit: '1' },
+        { select: 'id,code,name', id: `eq.${id}`, limit: '1' },
         { schema: 'public' },
       )
       .catch(() => [] as any[]);
@@ -69,6 +70,28 @@ export async function resolveCanonicalCariAccountId(
       const pair = Array.isArray(custByCode) ? custByCode[0] : null;
       if (pair?.id) {
         return { id: String(pair.id), cardType: 'customer', code: pair.code || code };
+      }
+    }
+
+    const supName = String(supHit.name || '').trim();
+    if (supName) {
+      const allCust = await postgrest
+        .get<any[]>(
+          `/${custTable}`,
+          { select: 'id,code,name', firm_nr: `eq.${firmNr}`, limit: '5000' },
+          { schema: 'public' },
+        )
+        .catch(() => [] as any[]);
+      const nameKey = normalizeAccountName(supName);
+      const pairByName = (Array.isArray(allCust) ? allCust : []).find(
+        (c) => normalizeAccountName(c.name) === nameKey,
+      );
+      if (pairByName?.id) {
+        return {
+          id: String(pairByName.id),
+          cardType: 'customer',
+          code: pairByName.code,
+        };
       }
     }
 
@@ -91,7 +114,7 @@ export async function resolveCanonicalCariAccountId(
   }
 
   const { rows: supDirect } = await postgres.query(
-    `SELECT id, code FROM ${supTable} WHERE id = $1::uuid LIMIT 1`,
+    `SELECT id, code, name FROM ${supTable} WHERE id = $1::uuid LIMIT 1`,
     [id],
   );
   const supRow = supDirect[0];
@@ -113,20 +136,42 @@ export async function resolveCanonicalCariAccountId(
     }
   }
 
+  const supName = String(supRow.name || '').trim();
+  if (supName) {
+    const { rows: custByName } = await postgres.query(
+      `SELECT id, code FROM ${custTable}
+       WHERE firm_nr = $1::text
+         AND TRIM(LOWER(name)) = TRIM(LOWER($2::text))
+       LIMIT 1`,
+      [firmNr, supName],
+    );
+    if (custByName[0]?.id) {
+      return {
+        id: String(custByName[0].id),
+        cardType: 'customer',
+        code: custByName[0].code,
+      };
+    }
+  }
+
   return { id: String(supRow.id), cardType: 'supplier', code: supRow.code };
 }
 
-/** Liste: aynı kod müşteri tablosunda varsa tedarikçi kopyasını gösterme */
-export function filterSupplierRowsHiddenByCustomerCode<T extends { code?: string | null }>(
-  suppliers: T[],
-  customers: T[],
-): T[] {
+/** Liste: müşteri tablosunda aynı kod veya ünvan varsa tedarikçi kopyasını gösterme */
+export function filterSupplierRowsHiddenByCustomerCode<
+  T extends { code?: string | null; name?: string | null },
+>(suppliers: T[], customers: T[]): T[] {
   const customerCodes = new Set(
     customers.map((c) => normalizeCariCode(c.code)).filter(Boolean),
   );
+  const customerNames = new Set(
+    customers.map((c) => normalizeAccountName(c.name)).filter(Boolean),
+  );
   return suppliers.filter((s) => {
     const code = normalizeCariCode(s.code);
-    if (!code) return true;
-    return !customerCodes.has(code);
+    if (code && customerCodes.has(code)) return false;
+    const name = normalizeAccountName(s.name);
+    if (name && customerNames.has(name)) return false;
+    return true;
   });
 }

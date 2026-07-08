@@ -14,6 +14,7 @@ import { fetchBankalar, type Banka } from '../../../services/api/banka';
 import { fetchCurrentAccounts } from '../../../services/api/currentAccounts';
 import { formatNumber, parseNumber } from '../../../utils/formatNumber';
 import { formatCurrency, formatMoneyWithCode, getGlobalCurrency } from '../../../utils/currency';
+import { getCariBalanceDirection } from '../../../utils/cariAccountStatement';
 
 interface KasaIslemModalProps {
   kasa: Kasa;
@@ -31,6 +32,8 @@ interface CariHesap {
   kod: string;
   unvan: string;
   bakiye?: number;
+  cardType?: 'customer' | 'supplier';
+  ledgerBalance?: number;
 }
 
 export function KasaIslemModal({
@@ -52,6 +55,28 @@ export function KasaIslemModal({
   )
     .trim()
     .toUpperCase();
+
+  const renderCariBalance = (cari: Pick<CariHesap, 'cardType' | 'ledgerBalance' | 'bakiye'>) => {
+    const raw = cari.ledgerBalance ?? cari.bakiye ?? 0;
+    const { side, sideLabel, hint } = getCariBalanceDirection(cari.cardType, raw, tm);
+    const colorClass = side === 'B' ? 'text-red-600' : side === 'A' ? 'text-orange-600' : 'text-gray-500';
+    const badgeClass = side === 'B' ? 'bg-red-100 text-red-700' : 'bg-orange-100 text-orange-700';
+    return (
+      <div className="text-right flex-shrink-0">
+        <div className="flex items-center gap-1.5 justify-end flex-wrap">
+          <span className={`text-sm font-black ${colorClass}`}>
+            {formatCurrency(Math.abs(raw))}
+          </span>
+          {sideLabel ? (
+            <span className={`text-[8px] px-1.5 py-0.5 rounded font-black whitespace-nowrap ${badgeClass}`} title={hint}>
+              {sideLabel}
+            </span>
+          ) : null}
+        </div>
+        <div className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">{tm('crmBalance')}</div>
+      </div>
+    );
+  };
 
   const isEdit = !!editingIslem?.id;
 
@@ -131,7 +156,8 @@ export function KasaIslemModal({
   const [digerKasalar, setDigerKasalar] = useState<Kasa[]>([]);
   const [showCariDropdown, setShowCariDropdown] = useState(false);
   const [cariSearch, setCariSearch] = useState(initialCari?.unvan || initialCari?.kod || '');
-  const [selectedCariBakiye, setSelectedCariBakiye] = useState<number | null>(initialCari?.bakiye ?? null);
+  const [selectedCariBakiye, setSelectedCariBakiye] = useState<number | null>(initialCari?.ledgerBalance ?? initialCari?.bakiye ?? null);
+  const [selectedCariCardType, setSelectedCariCardType] = useState<CariHesap['cardType']>(initialCari?.cardType);
 
 
 
@@ -155,6 +181,8 @@ export function KasaIslemModal({
         kod: acc.kod,
         unvan: acc.unvan,
         bakiye: acc.bakiye,
+        cardType: acc.cardType,
+        ledgerBalance: acc.ledgerBalance ?? acc.bakiye,
       })));
     } catch (error) {
       console.error('[KasaIslemModal] Cari hesaplar yüklenemedi:', error);
@@ -221,7 +249,8 @@ export function KasaIslemModal({
       cari_hesap_kodu: cari.kod,
       cari_hesap_unvani: cari.unvan,
     });
-    setSelectedCariBakiye(cari.bakiye ?? 0);
+    setSelectedCariBakiye(cari.ledgerBalance ?? cari.bakiye ?? 0);
+    setSelectedCariCardType(cari.cardType);
     setShowCariDropdown(false);
     setCariSearch(cari.unvan || cari.kod);
   };
@@ -303,6 +332,7 @@ export function KasaIslemModal({
                     if (formData.cari_hesap_id) {
                       setFormData(prev => ({ ...prev, cari_hesap_id: undefined, cari_hesap_unvani: undefined, cari_hesap_kodu: undefined }));
                       setSelectedCariBakiye(null);
+                      setSelectedCariCardType(undefined);
                     }
                   }}
                   onFocus={() => setShowCariDropdown(true)}
@@ -316,6 +346,7 @@ export function KasaIslemModal({
                     onClick={() => {
                       setFormData(prev => ({ ...prev, cari_hesap_id: undefined, cari_hesap_unvani: undefined, cari_hesap_kodu: undefined }));
                       setSelectedCariBakiye(null);
+                      setSelectedCariCardType(undefined);
                       setCariSearch('');
                       setShowCariDropdown(true);
                     }}
@@ -337,12 +368,7 @@ export function KasaIslemModal({
                           {cari.unvan || <span className="text-red-400 font-normal">Ünvan belirtilmemiş</span>}
                         </div>
                       </div>
-                      <div className="text-right flex-shrink-0">
-                        <div className={`text-sm font-black ${(cari.bakiye || 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                          {formatCurrency(cari.bakiye || 0)}
-                        </div>
-                        <div className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">{tm('crmBalance')}</div>
-                      </div>
+                      {renderCariBalance(cari)}
                     </button>
                   ))}
                   {filteredCariHesaplar.length === 0 && <div className="p-4 text-center text-gray-400 text-sm">Cari bulunamadı</div>}
@@ -351,12 +377,20 @@ export function KasaIslemModal({
               {selectedCariBakiye !== null && formData.cari_hesap_id && (
                 <div className="mt-2 p-3 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-lg flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <div className={`w-2 h-2 rounded-full ${selectedCariBakiye >= 0 ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.4)]' : 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.4)]'}`} />
+                    <div className={`w-2 h-2 rounded-full ${
+                      getCariBalanceDirection(selectedCariCardType, selectedCariBakiye, tm).side === 'B'
+                        ? 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.4)]'
+                        : getCariBalanceDirection(selectedCariCardType, selectedCariBakiye, tm).side === 'A'
+                          ? 'bg-orange-500 shadow-[0_0_8px_rgba(249,115,22,0.4)]'
+                          : 'bg-gray-400'
+                    }`} />
                     <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">{t['currentBalance']}</span>
                   </div>
-                  <div className={`text-lg font-black ${selectedCariBakiye >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                    {formatCurrency(selectedCariBakiye)}
-                  </div>
+                  {renderCariBalance({
+                    cardType: selectedCariCardType,
+                    ledgerBalance: selectedCariBakiye,
+                    bakiye: selectedCariBakiye,
+                  })}
                 </div>
               )}
             </div>
