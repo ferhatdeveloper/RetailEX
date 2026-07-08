@@ -536,12 +536,14 @@ export function UniversalInvoiceForm({
   const [dueDate, setDueDate] = useState(''); // Satış faturası vade tarihi
   const [paymentMethod, setPaymentMethod] = useState<string>(() => {
     if (editData) {
-      return dbPaymentMethodToFormCode(
-        (editData as any).payment_method ?? (editData as any).paymentMethod,
+      return (
+        dbPaymentMethodToFormCode(
+          (editData as any).payment_method ?? (editData as any).paymentMethod,
+        ) || 'ACIK_CARI'
       );
     }
-    return '';
-  }); // Form kodu: NAKIT, KREDIKARTI, … (boş = açık hesap)
+    return 'ACIK_CARI';
+  }); // Form kodu: NAKIT, KREDIKARTI, ACIK_CARI, …
   const [cashierName, setCashierName] = useState(() => editData?.cashier || ''); // Kasiyer / iade yapan
   const isSalesReturnForm = invoiceType.code === 3;
   const isPosRetail = useMemo(
@@ -556,7 +558,7 @@ export function UniversalInvoiceForm({
     [editData, invoiceType.code, cashierName, paymentMethod],
   );
   const paymentMethodLabel = useMemo(() => {
-    if (!paymentMethod) return tm('openTerms');
+    if (!paymentMethod || paymentMethod === 'ACIK_CARI') return tm('paymentOpenAccount');
     const key = paymentFormCodeTranslationKey(paymentMethod);
     return key === 'openTerms' ? paymentMethod : tm(key);
   }, [paymentMethod, tm]);
@@ -2316,7 +2318,7 @@ export function UniversalInvoiceForm({
         const loadedPayment = dbPaymentMethodToFormCode(
           (editData as any).payment_method ?? (editData as any).paymentMethod,
         );
-        setPaymentMethod(loadedPayment);
+        setPaymentMethod(loadedPayment || 'ACIK_CARI');
 
         const hf = readInvoiceHeaderFields((editData as any).header_fields);
         const docNo = hf.documentNo || String((editData as any).document_no || '').trim();
@@ -3414,6 +3416,8 @@ export function UniversalInvoiceForm({
 
                   paymentMethod={paymentMethod}
                   paymentMethodLabel={paymentMethodLabel}
+                  onPaymentMethodChange={setPaymentMethod}
+                  retailPosMode={isPosRetail}
                   warehouse={warehouse}
                   workplace={workplace}
                   salespersonCode={salespersonCode}

@@ -42,6 +42,9 @@ interface InvoiceHeaderProps {
     paymentMethod: string;
     /** Gösterim etiketi (çevrilmiş); yoksa paymentMethod ham değeri kullanılır */
     paymentMethodLabel?: string;
+    onPaymentMethodChange?: (code: string) => void;
+    /** Perakende: nakit / kart / açık cari */
+    retailPosMode?: boolean;
     warehouse: string;
     workplace: string;
     salespersonCode: string;
@@ -105,6 +108,8 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
     customerTitle,
     paymentMethod,
     paymentMethodLabel,
+    onPaymentMethodChange,
+    retailPosMode = false,
     warehouse,
     workplace,
     salespersonCode,
@@ -139,6 +144,56 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
     const cashierLabel = cashierFieldLabel || tm('cashier');
     const cariTitle = invoiceType.category === 'Alis' ? supplierTitle : customerTitle;
     const showCariMeta = Boolean(cariTitle?.trim());
+
+    const primaryPaymentCodes = ['ACIK_CARI', 'NAKIT', 'KREDIKARTI'] as const;
+    const resolvedPaymentCode = (() => {
+        const raw = String(paymentMethod || '').trim().toUpperCase();
+        if (!raw || raw === 'ACIK_CARI') return 'ACIK_CARI';
+        if (primaryPaymentCodes.includes(raw as (typeof primaryPaymentCodes)[number])) return raw;
+        return raw;
+    })();
+    const selectPaymentValue = primaryPaymentCodes.includes(
+        resolvedPaymentCode as (typeof primaryPaymentCodes)[number],
+    )
+        ? resolvedPaymentCode
+        : 'ACIK_CARI';
+
+    const handlePaymentSelect = (code: string) => {
+        onPaymentMethodChange?.(code);
+        if (code === 'NAKIT' || code === 'KREDIKARTI') {
+            setShowPaymentInfoModal(true);
+        }
+    };
+
+    const paymentSelectEl = (
+        <div className="flex gap-1 min-w-0">
+            <select
+                value={selectPaymentValue}
+                onChange={(e) => handlePaymentSelect(e.target.value)}
+                className="flex-1 min-w-0 px-2 py-1.5 border border-gray-300 rounded text-sm bg-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+            >
+                <option value="ACIK_CARI">{tm('paymentOpenAccount')}</option>
+                <option value="NAKIT">{tm('paymentCash')}</option>
+                <option value="KREDIKARTI">{tm('paymentCreditCard')}</option>
+            </select>
+            {!retailPosMode && (
+                <button
+                    type="button"
+                    onClick={() => setShowPaymentInfoModal(true)}
+                    className="shrink-0 px-2 py-1 border border-gray-300 rounded hover:bg-gray-50"
+                    title={tm('paymentInfo')}
+                >
+                    <MoreVertical className="w-4 h-4 text-gray-600" />
+                </button>
+            )}
+        </div>
+    );
+
+    const paymentExtraLabel =
+        !primaryPaymentCodes.includes(resolvedPaymentCode as (typeof primaryPaymentCodes)[number]) &&
+        paymentMethodLabel
+            ? paymentMethodLabel
+            : null;
 
     const cariMetaBadges = showCariMeta ? (
         <div className="flex flex-wrap items-center gap-2">
@@ -411,22 +466,11 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
                     {/* Column 4 - Cari Hesap Devam */}
                     <div className="space-y-3">
                         <div>
-                            <label className="block mb-1 text-gray-700 text-xs">{tm('payments')}</label>
-                            <div className="flex gap-1">
-                                <input
-                                    type="text"
-                                    value={paymentMethodLabel ?? (paymentMethod || tm('openTerms'))}
-                                    readOnly
-                                    className="flex-1 px-2 py-1 border border-gray-300 rounded text-sm bg-white cursor-pointer"
-                                    onClick={() => setShowPaymentInfoModal(true)}
-                                />
-                                <button
-                                    onClick={() => setShowPaymentInfoModal(true)}
-                                    className="px-2 py-1 border border-gray-300 rounded hover:bg-gray-50"
-                                >
-                                    <MoreVertical className="w-4 h-4 text-gray-600" />
-                                </button>
-                            </div>
+                            <label className="block mb-1 text-gray-700 text-xs">{tm('paymentMethodLabel')}</label>
+                            {paymentSelectEl}
+                            {paymentExtraLabel ? (
+                                <p className="mt-1 text-[11px] text-blue-600 font-medium truncate">{paymentExtraLabel}</p>
+                            ) : null}
                         </div>
 
                         <div>
@@ -502,55 +546,70 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
                     </div>
                 </div>
             ) : (
-                <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 text-sm w-full md:overflow-hidden">
-                    <div className="flex flex-wrap items-center gap-x-4 gap-y-2 flex-1 min-w-0">
-                        <div className="whitespace-nowrap flex gap-1"><span className="font-medium text-gray-700">{tm('invoiceNo')}:</span> <span className="text-gray-500">{invoiceNo}</span></div>
-                        <div className="whitespace-nowrap flex gap-1"><span className="font-medium text-gray-700">{tm('date')}:</span> <span className="text-gray-500">{transactionDate}</span></div>
-                        <div className="whitespace-nowrap flex items-center gap-1">
-                            <span className="font-medium text-gray-700">{tm('documentNo')}:</span>
-                            <input
-                                type="text"
-                                value={documentNo}
-                                onChange={(e) => setDocumentNo(e.target.value)}
-                                className="w-24 px-1.5 py-0.5 border border-gray-200 rounded text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white"
-                                placeholder="..."
-                            />
-                        </div>
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-12 gap-x-4 gap-y-3 items-end w-full">
+                    <div className="lg:col-span-2 min-w-0 flex flex-col gap-1">
+                        <span className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">{tm('invoiceNo')}</span>
+                        <span className="text-sm font-semibold text-gray-800 truncate tabular-nums">{invoiceNo}</span>
                     </div>
 
-                    <div className="flex flex-col sm:flex-row sm:items-center gap-2 flex-1 min-w-0 w-full md:max-w-md">
-                        <span className={`font-semibold shrink-0 ${cariTextColor}`}>{invoiceType.category === 'Alis' ? tm('supplier') : tm('customer')}:</span>
-                        <div className="flex-1 min-w-0 flex flex-col gap-1 w-full sm:w-auto">
-                            <div className="flex gap-1">
-                                <input
-                                    type="text"
-                                    value={invoiceType.category === 'Alis' ? supplierTitle : customerTitle}
-                                    readOnly
-                                    placeholder={`${tm('selectCurrent')}...`}
-                                    className={`flex-1 px-3 py-1 border-2 rounded text-sm bg-white cursor-pointer font-medium hover:border-gray-400 transition-colors ${cariBorderColor}`}
-                                    onClick={() => {
-                                        if (invoiceType.category === 'Alis') {
-                                            setShowSupplierModal(true);
-                                        } else {
-                                            setShowCustomerModal(true);
-                                        }
-                                    }}
-                                />
-                                <button
-                                    onClick={() => {
-                                        if (invoiceType.category === 'Alis') {
-                                            setShowSupplierModal(true);
-                                        } else {
-                                            setShowCustomerModal(true);
-                                        }
-                                    }}
-                                    className="px-2 py-1 border border-gray-300 rounded hover:bg-gray-50"
-                                >
-                                    <MoreVertical className="w-4 h-4 text-gray-600" />
-                                </button>
-                            </div>
-                            {cariMetaBadges}
+                    <div className="lg:col-span-2 min-w-0 flex flex-col gap-1">
+                        <span className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">{tm('date')}</span>
+                        <span className="text-sm text-gray-700 tabular-nums">{transactionDate}</span>
+                    </div>
+
+                    <div className="lg:col-span-2 min-w-0 flex flex-col gap-1">
+                        <label className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">{tm('documentNo')}</label>
+                        <input
+                            type="text"
+                            value={documentNo}
+                            onChange={(e) => setDocumentNo(e.target.value)}
+                            className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white"
+                            placeholder="..."
+                        />
+                    </div>
+
+                    <div className="lg:col-span-2 min-w-0 flex flex-col gap-1">
+                        <label className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">{tm('paymentMethodLabel')}</label>
+                        {paymentSelectEl}
+                        {paymentExtraLabel ? (
+                            <p className="text-[10px] text-blue-600 font-medium truncate">{paymentExtraLabel}</p>
+                        ) : null}
+                    </div>
+
+                    <div className="col-span-2 sm:col-span-3 lg:col-span-4 min-w-0 flex flex-col gap-1">
+                        <label className={`text-[11px] font-semibold uppercase tracking-wide ${cariTextColor}`}>
+                            {invoiceType.category === 'Alis' ? tm('supplier') : tm('customer')}
+                        </label>
+                        <div className="flex gap-1 min-w-0">
+                            <input
+                                type="text"
+                                value={invoiceType.category === 'Alis' ? supplierTitle : customerTitle}
+                                readOnly
+                                placeholder={`${tm('selectCurrent')}...`}
+                                className={`flex-1 min-w-0 px-2 py-1.5 border-2 rounded text-sm bg-white cursor-pointer font-medium hover:border-gray-400 transition-colors truncate ${cariBorderColor}`}
+                                onClick={() => {
+                                    if (invoiceType.category === 'Alis') {
+                                        setShowSupplierModal(true);
+                                    } else {
+                                        setShowCustomerModal(true);
+                                    }
+                                }}
+                            />
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    if (invoiceType.category === 'Alis') {
+                                        setShowSupplierModal(true);
+                                    } else {
+                                        setShowCustomerModal(true);
+                                    }
+                                }}
+                                className="shrink-0 px-2 py-1.5 border border-gray-300 rounded hover:bg-gray-50"
+                            >
+                                <MoreVertical className="w-4 h-4 text-gray-600" />
+                            </button>
                         </div>
+                        {cariMetaBadges}
                     </div>
                 </div>
             )}
