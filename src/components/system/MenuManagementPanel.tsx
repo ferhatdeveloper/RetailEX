@@ -16,6 +16,8 @@ import {
   applyMenuPreferencePresetById,
   deleteMenuPreferencePreset,
   applyDefaultMenuPreferences,
+  applyMenuPreferencesToLocalStorage,
+  remapLegacyStaticHiddenModules,
   type MenuPreferences,
   type MenuPreferencePreset,
 } from '../../services/menuPreferencesService';
@@ -558,6 +560,22 @@ export function MenuManagementPanel({ onClose }: MenuManagementPanelProps) {
     return result;
   };
 
+  const collectHiddenModulesFromTree = (items: MenuItem[]): string[] => {
+    const flat = flattenMenuItems(items);
+    return remapLegacyStaticHiddenModules(
+      flat.filter((item) => !item.is_visible && item.screen_id).map((item) => item.screen_id as string),
+    );
+  };
+
+  const previewStaticMenuVisibility = (items: MenuItem[]) => {
+    const hidden_modules = collectHiddenModulesFromTree(items);
+    applyMenuPreferencesToLocalStorage({ hidden_modules }, { version: 2, presets: [] });
+    setHiddenModules(hidden_modules);
+    window.dispatchEvent(
+      new CustomEvent('menuUpdated', { detail: { forceReload: true, hidden_modules, preview: true } }),
+    );
+  };
+
   // Menü öğelerini hiyerarşik yapıya dönüştür
   const buildMenuTree = (items: MenuItem[]): MenuItem[] => {
     const itemMap = new Map<number, MenuItem>();
@@ -772,17 +790,22 @@ export function MenuManagementPanel({ onClose }: MenuManagementPanelProps) {
   const updateMenuItem = async (item: MenuItem) => {
     if (menuSource === 'static') {
       // Statik mönüde sadece yerel state güncelle
-      setMenuItems(prev => {
+      let nextTree: MenuItem[] = [];
+      setMenuItems((prev) => {
         const updateInTree = (items: MenuItem[]): MenuItem[] => {
-          return items.map(i => {
+          return items.map((i) => {
             if (i.id === item.id) return { ...i, ...item };
             if (i.children) return { ...i, children: updateInTree(i.children) };
             return i;
           });
         };
-        return updateInTree(prev);
+        nextTree = updateInTree(prev);
+        return nextTree;
       });
       setEditingItem(null);
+      if (item.screen_id != null) {
+        previewStaticMenuVisibility(nextTree);
+      }
       return;
     }
 

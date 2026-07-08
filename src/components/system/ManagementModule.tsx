@@ -840,7 +840,14 @@ export function ManagementModule({
     clearMenuCache();
     const forceReload = e?.detail?.forceReload !== false;
     console.log('🔄 Menü yeniden yükleniyor, forceReload:', forceReload);
-    void fetchHiddenModules();
+    const previewHidden = Array.isArray(e?.detail?.hidden_modules)
+      ? remapLegacyStaticHiddenModules(e.detail.hidden_modules.map((m: unknown) => String(m)))
+      : null;
+    if (previewHidden) {
+      setHiddenModules(previewHidden);
+    } else {
+      void fetchHiddenModules();
+    }
     loadMenuStructure(forceReload);
   }, [clearMenuCache, loadMenuStructure, fetchHiddenModules]);
 
