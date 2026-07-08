@@ -25,12 +25,15 @@ export function InvoicePaymentInfoModal({
   retailPosMode = false,
 }: InvoicePaymentInfoModalProps) {
   const { tm } = useLanguage();
-  const initialCode = dbPaymentMethodToFormCode(currentPaymentMethod) || currentPaymentMethod || '';
+  const initialCode =
+    dbPaymentMethodToFormCode(currentPaymentMethod) || currentPaymentMethod || 'ACIK_CARI';
   const [selectedMethod, setSelectedMethod] = useState(initialCode);
   const [notes, setNotes] = useState('');
 
   useEffect(() => {
-    setSelectedMethod(dbPaymentMethodToFormCode(currentPaymentMethod) || currentPaymentMethod || '');
+    setSelectedMethod(
+      dbPaymentMethodToFormCode(currentPaymentMethod) || currentPaymentMethod || 'ACIK_CARI',
+    );
   }, [currentPaymentMethod]);
 
   const paymentMethods: PaymentMethod[] = useMemo(
@@ -51,7 +54,7 @@ export function InvoicePaymentInfoModal({
   );
 
   const handleSave = () => {
-    onSelect(selectedMethod || '');
+    onSelect(selectedMethod || 'ACIK_CARI');
     onClose();
   };
 

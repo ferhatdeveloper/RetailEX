@@ -3424,8 +3424,6 @@ export function UniversalInvoiceForm({
 
                   paymentMethod={paymentMethod}
                   paymentMethodLabel={paymentMethodLabel}
-                  onPaymentMethodChange={setPaymentMethod}
-                  retailPosMode={isPosRetail}
                   warehouse={warehouse}
                   workplace={workplace}
                   salespersonCode={salespersonCode}
