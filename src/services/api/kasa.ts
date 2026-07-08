@@ -4,6 +4,10 @@
  */
 
 import { postgres, ERP_SETTINGS, DB_SETTINGS } from '../postgres';
+import {
+  cariCashStoredBalanceDelta,
+  normalizeFirmTableNr,
+} from './accountBalance';
 
 function padKasaFirmNr(): string {
   return String(ERP_SETTINGS.firmNr || '001').trim().padStart(3, '0').slice(0, 10);
@@ -449,31 +453,37 @@ async function createKasaIslemiViaPostgrest(
   await bumpKasaBalance(islem.kasa_id, Number(islem.tutar || 0) * sign);
 
   if (islem.cari_hesap_id && (islem.islem_tipi === 'CH_ODEME' || islem.islem_tipi === 'CH_TAHSILAT')) {
-    const delta = -Number(islem.tutar || 0);
-    const custPath = `/rex_${fn}_customers`;
-    const supPath = `/rex_${fn}_suppliers`;
-    const patchPartner = async (path: string, withFirm: boolean) => {
-      try {
-        const q: Record<string, string> = {
-          select: 'balance',
-          id: `eq.${islem.cari_hesap_id}`,
-          limit: '1',
-        };
-        if (withFirm) q.firm_nr = `eq.${ERP_SETTINGS.firmNr}`;
-        const rs = await postgrest.get<any[]>(path, q, { schema: 'public' });
-        const r = Array.isArray(rs) ? rs[0] : null;
-        if (!r) return;
-        const nb = Number(r.balance ?? 0) + delta;
-        const url = withFirm
-          ? `${path}?id=eq.${encodeURIComponent(String(islem.cari_hesap_id))}&firm_nr=eq.${encodeURIComponent(String(ERP_SETTINGS.firmNr))}`
-          : `${path}?id=eq.${encodeURIComponent(String(islem.cari_hesap_id))}`;
-        await postgrest.patch(url, { balance: nb }, { schema: 'public', prefer: 'return=minimal' });
-      } catch {
-        /* eşleşmeyen tablo */
+    const delta = cariCashStoredBalanceDelta(islem.tutar, islem.islem_tipi);
+    if (delta !== 0) {
+      const firmNr = normalizeFirmTableNr(ERP_SETTINGS.firmNr);
+      const custPath = `/rex_${firmNr}_customers`;
+      const supPath = `/rex_${firmNr}_suppliers`;
+      const patchPartner = async (path: string, withFirm: boolean) => {
+        try {
+          const q: Record<string, string> = {
+            select: 'balance',
+            id: `eq.${islem.cari_hesap_id}`,
+            limit: '1',
+          };
+          if (withFirm) q.firm_nr = `eq.${firmNr}`;
+          const rs = await postgrest.get<any[]>(path, q, { schema: 'public' });
+          const r = Array.isArray(rs) ? rs[0] : null;
+          if (!r) return false;
+          const nb = Number(r.balance ?? 0) + delta;
+          const url = withFirm
+            ? `${path}?id=eq.${encodeURIComponent(String(islem.cari_hesap_id))}&firm_nr=eq.${encodeURIComponent(firmNr)}`
+            : `${path}?id=eq.${encodeURIComponent(String(islem.cari_hesap_id))}`;
+          await postgrest.patch(url, { balance: nb }, { schema: 'public', prefer: 'return=minimal' });
+          return true;
+        } catch {
+          return false;
+        }
+      };
+      const patchedCustomer = await patchPartner(custPath, true);
+      if (!patchedCustomer) {
+        await patchPartner(supPath, false);
       }
-    };
-    await patchPartner(custPath, true);
-    await patchPartner(supPath, false);
+    }
   }
 
   if (islem.islem_tipi === 'VIRMAN' && islem.target_register_id) {
@@ -659,17 +669,20 @@ export async function createKasaIslemi(islem: KasaIslemi): Promise<KasaIslemi> {
     // CH_ODEME: We pay supplier/customer → reduces outstanding balance → balance decreases
     // CH_TAHSILAT: We collect from customer → reduces their outstanding → balance decreases
     if (islem.cari_hesap_id && (islem.islem_tipi === 'CH_ODEME' || islem.islem_tipi === 'CH_TAHSILAT')) {
-      const delta = (-islem.tutar).toString();
-      // Update customers table (only one UUID will match)
-      await postgres.query(
-        `UPDATE customers SET balance = balance + $1::text::numeric WHERE id = $2::text::uuid`,
-        [delta, islem.cari_hesap_id]
-      );
-      // Update suppliers table (only one UUID will match)
-      await postgres.query(
-        `UPDATE suppliers SET balance = balance + $1::text::numeric WHERE id = $2::text::uuid`,
-        [delta, islem.cari_hesap_id]
-      );
+      const delta = cariCashStoredBalanceDelta(islem.tutar, islem.islem_tipi);
+      if (delta !== 0) {
+        const deltaStr = delta.toString();
+        const { rowCount: custCount } = await postgres.query(
+          `UPDATE customers SET balance = balance + $1::text::numeric WHERE id = $2::text::uuid AND firm_nr = $3::text`,
+          [deltaStr, islem.cari_hesap_id, normalizeFirmTableNr(ERP_SETTINGS.firmNr)],
+        );
+        if (!custCount) {
+          await postgres.query(
+            `UPDATE suppliers SET balance = balance + $1::text::numeric WHERE id = $2::text::uuid`,
+            [deltaStr, islem.cari_hesap_id],
+          );
+        }
+      }
     }
 
     // VIRMAN Logic: Create counter transaction if target_register_id is present
@@ -871,15 +884,20 @@ export async function deleteKasaIslemi(id: string): Promise<void> {
 
     // 3) Cari hesap entegrasyonu — orijinal işlem cari bakiyeyi -tutar ile değiştirmişti, geri al
     if (customerId && (trType === 'CH_ODEME' || trType === 'CH_TAHSILAT')) {
-      const delta = amount.toString();
-      await postgres.query(
-        `UPDATE customers SET balance = balance + $1::text::numeric WHERE id = $2::text::uuid`,
-        [delta, customerId]
-      );
-      await postgres.query(
-        `UPDATE suppliers SET balance = balance + $1::text::numeric WHERE id = $2::text::uuid`,
-        [delta, customerId]
-      );
+      const delta = -cariCashStoredBalanceDelta(amount, trType);
+      if (delta !== 0) {
+        const deltaStr = delta.toString();
+        const { rowCount: custCount } = await postgres.query(
+          `UPDATE customers SET balance = balance + $1::text::numeric WHERE id = $2::text::uuid AND firm_nr = $3::text`,
+          [deltaStr, customerId, normalizeFirmTableNr(ERP_SETTINGS.firmNr)],
+        );
+        if (!custCount) {
+          await postgres.query(
+            `UPDATE suppliers SET balance = balance + $1::text::numeric WHERE id = $2::text::uuid`,
+            [deltaStr, customerId],
+          );
+        }
+      }
     }
 
     // 4) VIRMAN karşı satırını ve hedef kasa bakiyesini temizle
@@ -1002,24 +1020,36 @@ async function deleteKasaIslemiViaPostgrest(id: string): Promise<void> {
 
   // Cari hesap geri al
   if (customerId && (trType === 'CH_ODEME' || trType === 'CH_TAHSILAT')) {
-    const custPath = `/rex_${fn}_customers`;
-    const supPath = `/rex_${fn}_suppliers`;
-    const delta = amount;
-    const patchPartner = async (path: string, withFirm: boolean) => {
-      try {
-        const q: Record<string, string> = { select: 'balance', id: `eq.${customerId}`, limit: '1' };
-        if (withFirm) q.firm_nr = `eq.${ERP_SETTINGS.firmNr}`;
-        const rsP = await postgrest.get<any[]>(path, q, { schema: 'public' });
-        const rp = Array.isArray(rsP) ? rsP[0] : null;
-        if (!rp) return;
-        const url = withFirm
-          ? `${path}?id=eq.${encodeURIComponent(String(customerId))}&firm_nr=eq.${encodeURIComponent(String(ERP_SETTINGS.firmNr))}`
-          : `${path}?id=eq.${encodeURIComponent(String(customerId))}`;
-        await postgrest.patch(url, { balance: Number(rp.balance ?? 0) + delta }, { schema: 'public', prefer: 'return=minimal' });
-      } catch { /* ignore */ }
-    };
-    await patchPartner(custPath, true);
-    await patchPartner(supPath, false);
+    const delta = -cariCashStoredBalanceDelta(amount, trType);
+    if (delta !== 0) {
+      const firmNr = normalizeFirmTableNr(ERP_SETTINGS.firmNr);
+      const custPath = `/rex_${firmNr}_customers`;
+      const supPath = `/rex_${firmNr}_suppliers`;
+      const patchPartner = async (path: string, withFirm: boolean) => {
+        try {
+          const q: Record<string, string> = { select: 'balance', id: `eq.${customerId}`, limit: '1' };
+          if (withFirm) q.firm_nr = `eq.${firmNr}`;
+          const rsP = await postgrest.get<any[]>(path, q, { schema: 'public' });
+          const rp = Array.isArray(rsP) ? rsP[0] : null;
+          if (!rp) return false;
+          const url = withFirm
+            ? `${path}?id=eq.${encodeURIComponent(String(customerId))}&firm_nr=eq.${encodeURIComponent(firmNr)}`
+            : `${path}?id=eq.${encodeURIComponent(String(customerId))}`;
+          await postgrest.patch(
+            url,
+            { balance: Number(rp.balance ?? 0) + delta },
+            { schema: 'public', prefer: 'return=minimal' },
+          );
+          return true;
+        } catch {
+          return false;
+        }
+      };
+      const patchedCustomer = await patchPartner(custPath, true);
+      if (!patchedCustomer) {
+        await patchPartner(supPath, false);
+      }
+    }
   }
 
   // VIRMAN karşı taraf temizle

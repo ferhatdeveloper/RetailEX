@@ -38,7 +38,7 @@ export function sqlCustomerAccountBalancesCte(custTable: string, firmNrBind: str
           AND COALESCE(s.is_cancelled, false) = false
           AND TRIM(COALESCE(s.customer_name, '')) <> ''
         UNION ALL
-        SELECT customer_id AS id, -amount AS line_contrib
+        SELECT customer_id AS id, (CASE WHEN transaction_type IN ('CH_ODEME', 'CH_TAHSILAT') THEN -ABS(amount) ELSE 0 END) AS line_contrib
         FROM cash_lines
         WHERE customer_id IS NOT NULL
           AND transaction_type IN ('CH_ODEME', 'CH_TAHSILAT')
@@ -79,7 +79,7 @@ export function sqlSupplierAccountBalancesCte(suppTable: string): string {
           AND TRIM(COALESCE(sl.customer_name, '')) <> ''
           AND sl.fiche_type IN ('purchase_invoice', 'return_invoice')
         UNION ALL
-        SELECT customer_id AS id, amount AS line_contrib
+        SELECT customer_id AS id, (CASE WHEN transaction_type IN ('CH_ODEME', 'CH_TAHSILAT') THEN -ABS(amount) ELSE 0 END) AS line_contrib
         FROM cash_lines
         WHERE customer_id IS NOT NULL
           AND transaction_type IN ('CH_ODEME', 'CH_TAHSILAT')
@@ -114,6 +114,30 @@ export type LedgerCashRow = {
   amount?: number | string | null;
   transaction_type?: string | null;
 };
+
+/**
+ * Kasa CH_TAHSILAT / CH_ODEME satırının cari bakiyeye katkısı.
+ * Pozitif bakiye: müşteri bize borçlu / tedarikçiye biz borçluyuz.
+ * Tahsilat ve ödeme açık bakiyeyi azaltır (ekstre isReturn=true ile uyumlu).
+ */
+export function cariCashLineLedgerContrib(
+  amount: number | string | null | undefined,
+  transactionType: string | null | undefined,
+): number {
+  const tt = String(transactionType || '').toUpperCase();
+  if (tt !== 'CH_ODEME' && tt !== 'CH_TAHSILAT') return 0;
+  const amt = Math.abs(parseFloat(String(amount ?? 0)) || 0);
+  if (!amt) return 0;
+  return -amt;
+}
+
+/** createKasaIslemi / silme — saklanan balance alanına uygulanacak delta */
+export function cariCashStoredBalanceDelta(
+  amount: number | string | null | undefined,
+  transactionType: string | null | undefined,
+): number {
+  return cariCashLineLedgerContrib(amount, transactionType);
+}
 
 export function normalizeAccountName(name: string | null | undefined): string {
   return String(name || '').trim().toLocaleLowerCase('tr-TR');
@@ -208,10 +232,10 @@ export function computeCustomerBalanceFromLedger(
     if (tt !== 'CH_ODEME' && tt !== 'CH_TAHSILAT') continue;
     const cid = cl.customer_id ? String(cl.customer_id) : '';
     if (!cid || cid !== idStr) continue;
-    const amt = parseFloat(String(cl.amount ?? 0)) || 0;
-    if (!amt) continue;
+    const contrib = cariCashLineLedgerContrib(cl.amount, tt);
+    if (!contrib) continue;
     cashTxn += 1;
-    cashSum += -amt;
+    cashSum += contrib;
   }
   const txnCount = salesTxn + cashTxn;
   if (txnCount > 0) return salesSum + cashSum;
@@ -233,9 +257,9 @@ export function computeSupplierBalanceFromLedger(
     if (tt !== 'CH_ODEME' && tt !== 'CH_TAHSILAT') continue;
     const cid = cl.customer_id ? String(cl.customer_id) : '';
     if (!cid || cid !== idStr) continue;
-    const amt = parseFloat(String(cl.amount ?? 0)) || 0;
-    if (!amt) continue;
-    sum += amt;
+    const contrib = cariCashLineLedgerContrib(cl.amount, tt);
+    if (!contrib) continue;
+    sum += contrib;
   }
   return sum;
 }
