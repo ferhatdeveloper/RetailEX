@@ -130,5 +130,11 @@ export async function importWithChunkRetry<T>(importer: () => Promise<T>, retrie
 export function lazyWithChunkRecovery(
   factory: () => Promise<{ default: ComponentType<any> }>
 ): LazyComponent {
-  return lazy(() => importWithChunkRetry(factory));
+  return lazy(async () => {
+    const mod = await importWithChunkRetry(factory);
+    if (!mod?.default) {
+      throw new Error('Lazy modül default export döndürmedi');
+    }
+    return mod;
+  });
 }

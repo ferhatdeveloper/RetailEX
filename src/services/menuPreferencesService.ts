@@ -3,6 +3,25 @@
  * Birden fazla adlandırılmış yükleme seçeneği (kullanıcı + tarih varsayılan etiket).
  */
 import { postgres, DB_SETTINGS } from './postgres';
+import {
+  normalizeHiddenModules,
+  remapLegacyStaticHiddenModules,
+  getRuntimeHiddenModules,
+  setRuntimeHiddenModules,
+  subscribeRuntimeHiddenModules,
+  syncRuntimeHiddenFromNormalized,
+  writeHiddenModulesToLocalStorage,
+  readHiddenModulesFromLocalStorage,
+  buildDefaultPresetLabel,
+} from './menuPreferencesRuntime';
+
+export {
+  remapLegacyStaticHiddenModules,
+  getRuntimeHiddenModules,
+  setRuntimeHiddenModules,
+  subscribeRuntimeHiddenModules,
+  buildDefaultPresetLabel,
+} from './menuPreferencesRuntime';
 
 export interface MenuPreferences {
   hidden_modules: string[];
@@ -26,93 +45,8 @@ export interface MenuPreferencesStore {
   presets: MenuPreferencePreset[];
 }
 
-const HIDDEN_MODULES_KEY = 'retailex_hidden_modules';
-const MENU_PREFS_KEY = 'retailex_menu_preferences';
 const MENU_PREFS_STORE_KEY = 'retailex_menu_preferences_store';
-
-/** Statik menü bölüm sırası — eski `static_10000+n` gizleme anahtarlarını gerçek id’ye çevirir */
-const STATIC_MENU_SECTION_IDS = [
-  'main-menu',
-  'material-management',
-  'invoices',
-  'finance-management',
-  'retail',
-  'communication-notifications',
-  'reports-analysis',
-  'system-management',
-] as const;
-
-const STATIC_MENU_SECTION_ID_BASE = 10000;
-
-/** Menü yönetiminde bölümler için üretilen `static_1000x` → `communication-notifications` vb. */
-export function remapLegacyStaticHiddenModules(hidden: string[]): string[] {
-  return hidden.map((raw) => {
-    const h = String(raw || '').trim();
-    const m = /^static_(\d+)$/.exec(h);
-    if (!m) return h;
-    const idx = parseInt(m[1], 10) - STATIC_MENU_SECTION_ID_BASE;
-    if (idx >= 0 && idx < STATIC_MENU_SECTION_IDS.length) {
-      return STATIC_MENU_SECTION_IDS[idx];
-    }
-    return h;
-  });
-}
-
-function normalizeHiddenModules(raw: unknown): string[] {
-  const list = Array.isArray(raw)
-    ? raw.map((m) => String(m).trim()).filter(Boolean)
-    : [];
-  return [...new Set(remapLegacyStaticHiddenModules(list))];
-}
-
-type HiddenModulesListener = (hidden: string[]) => void;
-const hiddenModulesListeners = new Set<HiddenModulesListener>();
-let runtimeHiddenModules: string[] | null = null;
-
-function notifyHiddenModulesListeners(hidden: string[]): void {
-  hiddenModulesListeners.forEach((listener) => {
-    try {
-      listener(hidden);
-    } catch {
-      /* ignore */
-    }
-  });
-}
-
-/** Çalışma anı gizli modül listesi (localStorage ile senkron) */
-export function getRuntimeHiddenModules(): string[] {
-  if (runtimeHiddenModules) return runtimeHiddenModules;
-  return normalizeHiddenModules(readMenuPreferencesFromLocalStorage()?.hidden_modules ?? []);
-}
-
-/** Gizli modülleri güncelle — sidebar anında dinler */
-export function setRuntimeHiddenModules(
-  hidden: string[],
-  opts?: { persist?: boolean; store?: MenuPreferencesStore; prefs?: MenuPreferences },
-): void {
-  const normalized = normalizeHiddenModules(hidden);
-  runtimeHiddenModules = normalized;
-  if (opts?.persist !== false) {
-    const prefs: MenuPreferences = opts?.prefs ?? { hidden_modules: normalized };
-    applyMenuPreferencesToLocalStorage(prefs, opts?.store, { notify: false });
-  }
-  notifyHiddenModulesListeners(normalized);
-  if (typeof window !== 'undefined') {
-    window.dispatchEvent(
-      new CustomEvent('menuUpdated', {
-        detail: { forceReload: false, hidden_modules: normalized, preview: true },
-      }),
-    );
-  }
-}
-
-export function subscribeRuntimeHiddenModules(listener: HiddenModulesListener): () => void {
-  hiddenModulesListeners.add(listener);
-  listener(getRuntimeHiddenModules());
-  return () => {
-    hiddenModulesListeners.delete(listener);
-  };
-}
+const MENU_PREFS_KEY = 'retailex_menu_preferences';
 
 function isRestApi(): boolean {
   return DB_SETTINGS.connectionProvider === 'rest_api';
@@ -121,19 +55,6 @@ function isRestApi(): boolean {
 function newPresetId(): string {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();
   return `mp_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
-}
-
-/** Kayıt adı varsayılanı: kullanıcı adı + tarih/saat */
-export function buildDefaultPresetLabel(username: string, at = new Date()): string {
-  const user = String(username || 'kullanici').trim() || 'kullanici';
-  const when = at.toLocaleString('tr-TR', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-  return `${user} - ${when}`;
 }
 
 function normalizeItemOrders(raw: unknown): Record<string, number> | undefined {
@@ -311,24 +232,16 @@ export function applyMenuPreferencesToLocalStorage(
 ): void {
   if (typeof localStorage === 'undefined') return;
   const hidden = normalizeHiddenModules(prefs.hidden_modules ?? []);
-  runtimeHiddenModules = hidden;
   try {
-    localStorage.setItem(HIDDEN_MODULES_KEY, JSON.stringify(hidden));
-    localStorage.setItem(MENU_PREFS_KEY, JSON.stringify({ ...prefs, hidden_modules: hidden }));
+    writeHiddenModulesToLocalStorage(hidden, store);
+    localStorage.setItem('retailex_menu_preferences', JSON.stringify({ ...prefs, hidden_modules: hidden }));
     if (store) {
       localStorage.setItem(MENU_PREFS_STORE_KEY, JSON.stringify(store));
     }
-    const webRaw = localStorage.getItem('retailex_web_config');
-    const web = webRaw ? JSON.parse(webRaw) : {};
-    web.hidden_modules = hidden;
-    web.menu_preferences = store ?? { ...prefs, hidden_modules: hidden };
-    localStorage.setItem('retailex_web_config', JSON.stringify(web));
   } catch {
     /* quota / private mode */
   }
-  if (opts?.notify !== false) {
-    notifyHiddenModulesListeners(hidden);
-  }
+  syncRuntimeHiddenFromNormalized(hidden, opts?.notify !== false);
 }
 
 export function readMenuPreferencesStoreFromLocalStorage(): MenuPreferencesStore | null {
@@ -359,12 +272,9 @@ export function readMenuPreferencesFromLocalStorage(): MenuPreferences | null {
       const parsed = normalizePrefs(JSON.parse(rawPrefs));
       if (parsed) return parsed;
     }
-    const standalone = localStorage.getItem(HIDDEN_MODULES_KEY);
-    if (standalone) {
-      const arr = JSON.parse(standalone);
-      if (Array.isArray(arr)) {
-        return { hidden_modules: arr.map((m) => String(m)) };
-      }
+    const standalone = readHiddenModulesFromLocalStorage();
+    if (standalone.length > 0) {
+      return { hidden_modules: standalone };
     }
     const webRaw = localStorage.getItem('retailex_web_config');
     if (webRaw) {

@@ -9,18 +9,15 @@ import { logger } from '../../services/loggingService';
 import { useAuth } from '../../contexts/AuthContext';
 import { PercentBodyModal, PercentBodyModalScrollBody } from '../shared/PercentBodyModal';
 import {
-  syncMenuPreferences,
-  buildDefaultPresetLabel,
-  listMenuPreferencePresets,
-  saveMenuPreferencePreset,
-  applyMenuPreferencePresetById,
-  deleteMenuPreferencePreset,
-  applyDefaultMenuPreferences,
   remapLegacyStaticHiddenModules,
   setRuntimeHiddenModules,
-  type MenuPreferences,
-  type MenuPreferencePreset,
-} from '../../services/menuPreferencesService';
+} from '../../services/menuPreferencesRuntime';
+import type { MenuPreferences, MenuPreferencePreset } from '../../services/menuPreferencesService';
+import { buildDefaultPresetLabel } from '../../services/menuPreferencesRuntime';
+
+async function loadMenuPrefsService() {
+  return import('../../services/menuPreferencesService');
+}
 
 interface MenuItem {
   id: number;
@@ -78,7 +75,8 @@ export function MenuManagementPanel({ onClose }: MenuManagementPanelProps) {
   // Yerel + PG menü tercihlerini yükle
   const loadLocalConfig = useCallback(async (): Promise<MenuPreferences> => {
     try {
-      return await syncMenuPreferences(currentUsername);
+      const svc = await loadMenuPrefsService();
+      return await svc.syncMenuPreferences(currentUsername);
     } catch (err) {
       console.warn('Menü tercihleri senkronu başarısız:', err);
       return { hidden_modules: [] };
@@ -179,9 +177,10 @@ export function MenuManagementPanel({ onClose }: MenuManagementPanelProps) {
   const openLoadPresetModal = async () => {
     try {
       setSaving(true);
-      const presets = await listMenuPreferencePresets(currentUsername);
+      const svc = await loadMenuPrefsService();
+      const presets = await svc.listMenuPreferencePresets(currentUsername);
       if (presets.length === 0) {
-        const prefs = await applyDefaultMenuPreferences();
+        const prefs = await svc.applyDefaultMenuPreferences();
         setHiddenModules(prefs.hidden_modules ?? []);
         await loadMenuItems();
         window.dispatchEvent(new CustomEvent('menuUpdated', { detail: { forceReload: true } }));
@@ -200,7 +199,8 @@ export function MenuManagementPanel({ onClose }: MenuManagementPanelProps) {
   const handleApplyPreset = async (presetId: string) => {
     try {
       setSaving(true);
-      const prefs = await applyMenuPreferencePresetById(presetId, currentUsername);
+      const svc = await loadMenuPrefsService();
+      const prefs = await svc.applyMenuPreferencePresetById(presetId, currentUsername);
       if (!prefs) {
         alert('Seçilen kayıt bulunamadı.');
         return;
@@ -221,8 +221,9 @@ export function MenuManagementPanel({ onClose }: MenuManagementPanelProps) {
     if (!confirm(`"${presetName}" kaydını silmek istediğinizden emin misiniz?`)) return;
     try {
       setSaving(true);
-      await deleteMenuPreferencePreset(presetId, currentUsername);
-      const presets = await listMenuPreferencePresets(currentUsername);
+      const svc = await loadMenuPrefsService();
+      await svc.deleteMenuPreferencePreset(presetId, currentUsername);
+      const presets = await svc.listMenuPreferencePresets(currentUsername);
       setLoadPresets(presets);
     } catch (e) {
       logger.crudError('MenuManagement', 'deletePreset', e);
@@ -242,7 +243,8 @@ export function MenuManagementPanel({ onClose }: MenuManagementPanelProps) {
     if (!pendingSavePayload) return;
     try {
       setSaving(true);
-      await saveMenuPreferencePreset({
+      const svc = await loadMenuPrefsService();
+      await svc.saveMenuPreferencePreset({
         name: presetName.trim() || buildDefaultPresetLabel(currentUsername),
         saved_by: currentUsername,
         hidden_modules: pendingSavePayload.hidden_modules,
@@ -1320,7 +1322,8 @@ export function MenuManagementPanel({ onClose }: MenuManagementPanelProps) {
                   onClick={async () => {
                     try {
                       setSaving(true);
-                      const prefs = await applyDefaultMenuPreferences();
+                      const svc = await loadMenuPrefsService();
+                      const prefs = await svc.applyDefaultMenuPreferences();
                       setHiddenModules(prefs.hidden_modules ?? []);
                       setShowLoadPresetModal(false);
                       await loadMenuItems();
@@ -1385,4 +1388,4 @@ export function MenuManagementPanel({ onClose }: MenuManagementPanelProps) {
   );
 }
 
-
+export default MenuManagementPanel;

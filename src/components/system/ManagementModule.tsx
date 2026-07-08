@@ -109,7 +109,13 @@ const EnterpriseCentralDataManagement = lazyWithChunkRecovery(() => import('../m
 const ModuleManagement = lazyWithChunkRecovery(() => import('./ModuleManagement').then(m => ({ default: m.ModuleManagement })));
 const SystemManagementModule = lazyWithChunkRecovery(() => import('./SystemManagementModule').then(m => ({ default: m.SystemManagementModule })));
 const RestaurantCallerIdSettings = lazyWithChunkRecovery(() => import('../restaurant/components/RestaurantCallerIdSettings').then(m => ({ default: m.RestaurantCallerIdSettings })));
-const MenuManagementPanel = lazyWithChunkRecovery(() => import('./MenuManagementPanel').then(m => ({ default: m.MenuManagementPanel })));
+const MenuManagementPanel = lazyWithChunkRecovery(() =>
+  import('./MenuManagementPanel').then((m) => {
+    const Comp = m.MenuManagementPanel ?? m.default;
+    if (!Comp) throw new Error('MenuManagementPanel export bulunamadı');
+    return { default: Comp };
+  }),
+);
 const ExpenseManagement = lazyWithChunkRecovery(() => import('../accounting/reports/ExpenseManagement').then(m => ({ default: m.ExpenseManagement })));
 const CompanySetup = lazyWithChunkRecovery(() => import('./CompanySetup').then(m => ({ default: m.CompanySetup })));
 const DiscountManagement = lazyWithChunkRecovery(() => import('../trading/invoices/DiscountManagement').then(m => ({ default: m.DiscountManagement })));
@@ -172,7 +178,8 @@ import { useTheme } from '../../contexts/ThemeContext';
 import { useResponsive } from '../../hooks/useResponsive';
 import { usePermission } from '../../shared/hooks/usePermission';
 import { getStaticMenuSections } from '../../config/staticMenuConfig';
-import { syncMenuPreferences, remapLegacyStaticHiddenModules, subscribeRuntimeHiddenModules } from '../../services/menuPreferencesService';
+import { remapLegacyStaticHiddenModules, subscribeRuntimeHiddenModules } from '../../services/menuPreferencesRuntime';
+import { syncMenuPreferences } from '../../services/menuPreferencesService';
 
 // Custom z-index constants to ensure consistent layering
 const Z_INDEX = {
