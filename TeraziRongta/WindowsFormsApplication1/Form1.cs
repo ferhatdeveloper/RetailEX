@@ -138,29 +138,17 @@ namespace WindowsFormsApplication1
             btnOpenLabelEditor = new Button { Location = new Point(520, 200), Size = new Size(150, 36), Text = "Etiket Editoru Ac" };
             btnOpenLabelEditor.Click += btnOpenLabelEditor_Click;
 
-<<<<<<< Updated upstream
             // Onizleme, butonlarin ALTINA konur (saga binmez)
             lblLabelPreviewHint = new Label
             {
                 AutoSize = true,
                 Location = new Point(20, 460),
-=======
-            lblLabelPreviewHint = new Label
-            {
-                AutoSize = true,
-                Location = new Point(560, 132),
->>>>>>> Stashed changes
                 Text = "Onizleme: Megal logo + MEGAL yazisi",
             };
             picLabelPreview = new PictureBox
             {
-<<<<<<< Updated upstream
                 Location = new Point(20, 480),
                 Size = new Size(320, 200),
-=======
-                Location = new Point(560, 152),
-                Size = new Size(280, 200),
->>>>>>> Stashed changes
                 BorderStyle = BorderStyle.FixedSingle,
                 SizeMode = PictureBoxSizeMode.Zoom,
                 BackColor = Color.White,
@@ -174,8 +162,6 @@ namespace WindowsFormsApplication1
             panelScale.Controls.Add(btnSendLabel);
             panelScale.Controls.Add(btnUseDefaultMegalLabel);
             panelScale.Controls.Add(btnOpenLabelEditor);
-            panelScale.Controls.Add(lblLabelPreviewHint);
-            panelScale.Controls.Add(picLabelPreview);
 
             UiTheme.StyleTextBox(txtRlsHome);
             UiTheme.StyleTextBox(txtLabelScr);
