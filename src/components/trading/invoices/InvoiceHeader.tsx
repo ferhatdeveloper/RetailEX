@@ -170,7 +170,7 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
             <select
                 value={selectPaymentValue}
                 onChange={(e) => handlePaymentSelect(e.target.value)}
-                className="flex-1 min-w-0 px-2 py-1.5 border border-gray-300 rounded text-sm bg-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+                className="w-full min-w-0 max-w-[11rem] px-2 py-1 border border-gray-300 rounded text-xs sm:text-sm bg-white focus:outline-none focus:ring-1 focus:ring-blue-500"
             >
                 <option value="ACIK_CARI">{tm('paymentOpenAccount')}</option>
                 <option value="NAKIT">{tm('paymentCash')}</option>
@@ -180,10 +180,10 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
                 <button
                     type="button"
                     onClick={() => setShowPaymentInfoModal(true)}
-                    className="shrink-0 px-2 py-1 border border-gray-300 rounded hover:bg-gray-50"
+                    className="shrink-0 px-1.5 py-1 border border-gray-300 rounded hover:bg-gray-50"
                     title={tm('paymentInfo')}
                 >
-                    <MoreVertical className="w-4 h-4 text-gray-600" />
+                    <MoreVertical className="w-3.5 h-3.5 text-gray-600" />
                 </button>
             )}
         </div>
@@ -216,11 +216,11 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
     ) : null;
 
     return (
-        <div className="bg-white rounded border border-gray-200 p-3 mb-3">
+        <div className="bg-white rounded border border-gray-200 px-3 py-2 mb-3">
             {/* Form Header - Collapse/Expand */}
             <button
                 onClick={() => setIsFormExpanded(!isFormExpanded)}
-                className="w-full flex items-center justify-between mb-3 pb-2 border-b border-gray-200 hover:bg-gray-50 -mx-3 px-3 py-2 rounded transition-colors"
+                className="w-full flex items-center justify-between mb-2 pb-1.5 border-b border-gray-200 hover:bg-gray-50 -mx-3 px-3 py-1.5 rounded transition-colors"
             >
                 <span className="text-sm font-medium text-gray-700">{tm('invoiceInfo')}</span>
                 {isFormExpanded ? (
@@ -546,47 +546,44 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
                     </div>
                 </div>
             ) : (
-                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-12 gap-x-4 gap-y-3 items-end w-full">
-                    <div className="lg:col-span-2 min-w-0 flex flex-col gap-1">
-                        <span className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">{tm('invoiceNo')}</span>
-                        <span className="text-sm font-semibold text-gray-800 truncate tabular-nums">{invoiceNo}</span>
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-2 w-full text-sm">
+                    <div className="inline-flex items-center gap-1.5 shrink-0 whitespace-nowrap">
+                        <span className="text-[11px] font-semibold text-gray-500 uppercase">{tm('invoiceNo')}</span>
+                        <span className="font-semibold text-gray-800 tabular-nums">{invoiceNo}</span>
                     </div>
 
-                    <div className="lg:col-span-2 min-w-0 flex flex-col gap-1">
-                        <span className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">{tm('date')}</span>
-                        <span className="text-sm text-gray-700 tabular-nums">{transactionDate}</span>
+                    <div className="inline-flex items-center gap-1.5 shrink-0 whitespace-nowrap">
+                        <span className="text-[11px] font-semibold text-gray-500 uppercase">{tm('date')}</span>
+                        <span className="text-gray-700 tabular-nums">{transactionDate}</span>
                     </div>
 
-                    <div className="lg:col-span-2 min-w-0 flex flex-col gap-1">
-                        <label className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">{tm('documentNo')}</label>
+                    <div className="inline-flex items-center gap-1.5 shrink-0">
+                        <span className="text-[11px] font-semibold text-gray-500 uppercase whitespace-nowrap">{tm('documentNo')}</span>
                         <input
                             type="text"
                             value={documentNo}
                             onChange={(e) => setDocumentNo(e.target.value)}
-                            className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white"
+                            className="w-[5.5rem] sm:w-[7rem] px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white"
                             placeholder="..."
                         />
                     </div>
 
-                    <div className="lg:col-span-2 min-w-0 flex flex-col gap-1">
-                        <label className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">{tm('paymentMethodLabel')}</label>
+                    <div className="inline-flex items-center gap-1.5 shrink-0">
+                        <span className="text-[11px] font-semibold text-gray-500 uppercase whitespace-nowrap">{tm('paymentMethodLabel')}</span>
                         {paymentSelectEl}
-                        {paymentExtraLabel ? (
-                            <p className="text-[10px] text-blue-600 font-medium truncate">{paymentExtraLabel}</p>
-                        ) : null}
                     </div>
 
-                    <div className="col-span-2 sm:col-span-3 lg:col-span-4 min-w-0 flex flex-col gap-1">
-                        <label className={`text-[11px] font-semibold uppercase tracking-wide ${cariTextColor}`}>
+                    <div className="inline-flex items-center gap-1.5 flex-1 min-w-[12rem]">
+                        <span className={`text-[11px] font-semibold uppercase whitespace-nowrap shrink-0 ${cariTextColor}`}>
                             {invoiceType.category === 'Alis' ? tm('supplier') : tm('customer')}
-                        </label>
-                        <div className="flex gap-1 min-w-0">
+                        </span>
+                        <div className="flex gap-1 min-w-0 flex-1 max-w-md">
                             <input
                                 type="text"
                                 value={invoiceType.category === 'Alis' ? supplierTitle : customerTitle}
                                 readOnly
                                 placeholder={`${tm('selectCurrent')}...`}
-                                className={`flex-1 min-w-0 px-2 py-1.5 border-2 rounded text-sm bg-white cursor-pointer font-medium hover:border-gray-400 transition-colors truncate ${cariBorderColor}`}
+                                className={`flex-1 min-w-0 px-2 py-1 border-2 rounded text-sm bg-white cursor-pointer font-medium hover:border-gray-400 transition-colors truncate ${cariBorderColor}`}
                                 onClick={() => {
                                     if (invoiceType.category === 'Alis') {
                                         setShowSupplierModal(true);
@@ -604,13 +601,17 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
                                         setShowCustomerModal(true);
                                     }
                                 }}
-                                className="shrink-0 px-2 py-1.5 border border-gray-300 rounded hover:bg-gray-50"
+                                className="shrink-0 px-1.5 py-1 border border-gray-300 rounded hover:bg-gray-50"
                             >
-                                <MoreVertical className="w-4 h-4 text-gray-600" />
+                                <MoreVertical className="w-3.5 h-3.5 text-gray-600" />
                             </button>
                         </div>
-                        {cariMetaBadges}
                     </div>
+
+                    {paymentExtraLabel ? (
+                        <span className="text-[10px] text-blue-600 font-medium truncate max-w-[8rem]">{paymentExtraLabel}</span>
+                    ) : null}
+                    {cariMetaBadges ? <div className="w-full basis-full">{cariMetaBadges}</div> : null}
                 </div>
             )}
         </div>
