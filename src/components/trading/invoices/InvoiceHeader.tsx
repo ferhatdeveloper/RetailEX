@@ -547,9 +547,24 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
                 </div>
             ) : (
                 <div className="flex flex-wrap items-center gap-x-4 gap-y-2 w-full text-sm">
-                    <div className="inline-flex items-center gap-1.5 shrink-0 whitespace-nowrap">
-                        <span className="text-[11px] font-semibold text-gray-500 uppercase">{tm('date')}</span>
-                        <span className="text-gray-700 tabular-nums">{transactionDate}</span>
+                    <div className="inline-flex items-center gap-1.5 shrink-0">
+                        <span className="text-[11px] font-semibold text-gray-500 uppercase whitespace-nowrap">{tm('date')}</span>
+                        <div className="flex gap-1">
+                            <input
+                                type="text"
+                                value={transactionDate}
+                                onChange={(e) => setTransactionDate(e.target.value)}
+                                className="w-[6.5rem] sm:w-[7.5rem] px-2 py-1 border border-gray-300 rounded text-sm tabular-nums focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white"
+                            />
+                            <button
+                                type="button"
+                                onClick={() => setShowTransactionDateModal(true)}
+                                className="shrink-0 px-1.5 py-1 border border-gray-300 rounded hover:bg-gray-50"
+                                title={tm('date')}
+                            >
+                                <MoreVertical className="w-3.5 h-3.5 text-gray-600" />
+                            </button>
+                        </div>
                     </div>
 
                     <div className="inline-flex items-center gap-1.5 shrink-0">
