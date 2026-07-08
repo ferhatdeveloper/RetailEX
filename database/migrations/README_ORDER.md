@@ -84,6 +84,8 @@
 80. **095_eticaret_catalog_firm.sql** – Online vitrin firma seçimi: `eticaret_settings.catalogFirmNr` ve `payload.firm_nr` ile katalog/sipariş fişi firması.
 81. **096_stock_movements_ref_id.sql** – Stok hareketleri (`stock_movements` / `stock_movement_items`) Logo `ref_id` kolonu ve tekrarsız içe aktarım indeksleri.
 82. **097_fix_verify_login_param_shadowing.sql** – `logic.verify_login` parametre gölgeleme düzeltmesi (firma filtresi + güvenli giriş RPC).
+83. **098_sale_items_item_type.sql** – `sale_items.item_type` (Malzeme / Hizmet / Promosyon / İndirim).
+84. **099_system_settings_menu_preferences.sql** – `system_settings.menu_preferences` (statik menü gizleme/sıra JSONB).
 
 **Kiracılara toplu uygulama (VPS / uzak PG):**
 - `npm run db:migrate:tenants` — tüm RetailEX kiracı DB'ler (`ilsasupport`, `pagetin_kurye`, `siti_pdks` **hariç** — bkz. `.cursor/rules/database-non-retailex-exclude.mdc`)

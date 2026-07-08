@@ -2,10 +2,15 @@
 import {
   GripVertical, Plus, Edit2, Trash2, Save, X,
   ChevronDown, ChevronRight, Menu as MenuIcon, Settings,
-  RefreshCw, Eye, EyeOff, Download
+  RefreshCw, Eye, EyeOff, CloudDownload
 } from 'lucide-react';
 import { supabase } from '../../utils/supabase/client';
 import { logger } from '../../services/loggingService';
+import {
+  syncMenuPreferences,
+  persistMenuPreferences,
+  type MenuPreferences,
+} from '../../services/menuPreferencesService';
 
 interface MenuItem {
   id: number;
@@ -49,25 +54,37 @@ export function MenuManagementPanel({ onClose }: MenuManagementPanelProps) {
     is_visible: true
   });
 
-  // Yerel config'den hidden_modules yükle
-  const loadLocalConfig = useCallback(async () => {
+  // Yerel + PG menü tercihlerini yükle
+  const loadLocalConfig = useCallback(async (): Promise<MenuPreferences> => {
     try {
-      // @ts-ignore
-      const { invoke } = await import('@tauri-apps/api/core');
-      const config: any = await invoke('get_app_config');
-      if (config && Array.isArray(config.hidden_modules)) {
-        setHiddenModules(config.hidden_modules);
-      }
+      return await syncMenuPreferences();
     } catch (err) {
-      console.warn('Tauri config yüklenemedi (Web ortamı olabilir):', err);
+      console.warn('Menü tercihleri senkronu başarısız:', err);
+      return { hidden_modules: [] };
     }
   }, []);
+
+  const sortTreeByItemOrders = (items: MenuItem[], orders?: Record<string, number>): MenuItem[] => {
+    if (!orders || Object.keys(orders).length === 0) return items;
+    const orderOf = (item: MenuItem) =>
+      item.screen_id && orders[item.screen_id] != null
+        ? orders[item.screen_id]
+        : item.display_order;
+    return [...items]
+      .sort((a, b) => orderOf(a) - orderOf(b))
+      .map((item) => ({
+        ...item,
+        children: item.children ? sortTreeByItemOrders(item.children, orders) : [],
+      }));
+  };
 
   // Menü öğelerini yükle
   const loadMenuItems = useCallback(async () => {
     try {
       setLoading(true);
-      await loadLocalConfig();
+      const prefs = await loadLocalConfig();
+      const hidden = prefs.hidden_modules ?? [];
+      setHiddenModules(hidden);
 
       if (menuSource === 'static') {
         const staticData = await fetchStaticMenuStructure();
@@ -87,7 +104,7 @@ export function MenuManagementPanel({ onClose }: MenuManagementPanelProps) {
             parent_id: parentId,
             section_id: sectionId,
             is_active: true,
-            is_visible: !hiddenModules.includes(screenId as string),
+            is_visible: !hidden.includes(screenId as string),
             display_order: item.display_order || 0,
             icon_name: item.icon_name || (typeof item.icon === 'string' ? item.icon : null),
             children: item.items ? item.items.map((c: any) => convertStaticToMenuItem(c, idCounter, currentId, sectionId || currentId)) :
@@ -97,7 +114,7 @@ export function MenuManagementPanel({ onClose }: MenuManagementPanelProps) {
 
         const idCounter = { val: 10000 };
         const tree = (Array.isArray(staticData) ? staticData : []).map(section => convertStaticToMenuItem(section, idCounter));
-        setMenuItems(tree);
+        setMenuItems(sortTreeByItemOrders(tree, prefs.item_orders));
 
         const sectionIds = tree.map(t => t.id);
         setExpandedSections(new Set(sectionIds));
@@ -136,7 +153,22 @@ export function MenuManagementPanel({ onClose }: MenuManagementPanelProps) {
     } finally {
       setLoading(false);
     }
-  }, [menuSource, hiddenModules, loadLocalConfig]);
+  }, [menuSource, loadLocalConfig]);
+
+  const pullMenuPreferencesFromDb = async () => {
+    try {
+      setSaving(true);
+      const prefs = await syncMenuPreferences();
+      setHiddenModules(prefs.hidden_modules ?? []);
+      await loadMenuItems();
+      alert('Menü tercihleri veritabanından yüklendi ve yerel önbelleğe yazıldı.');
+    } catch (e) {
+      logger.crudError('MenuManagement', 'pullMenuPreferences', e);
+      alert('Veritabanından menü tercihleri yüklenemedi.');
+    } finally {
+      setSaving(false);
+    }
+  };
 
   // Mevcut statik menü yapısını veritabanına aktar
   const seedCurrentMenu = async () => {
@@ -412,87 +444,6 @@ export function MenuManagementPanel({ onClose }: MenuManagementPanelProps) {
     }
   };
 
-  // Menüyü statik TypeScript koduna dışa aktar
-  const exportMenuToStatic = async () => {
-    try {
-      if (menuItems.length === 0) {
-        alert('Dışa aktarılacak menü öğesi yok. Önce menüyü yükleyin.');
-        return;
-      }
-
-      // Menü yapısını TypeScript koduna dönüştür
-      const generateStaticCode = (items: MenuItem[], indent: string = '    '): string => {
-        return items.map(item => {
-          const lines: string[] = [];
-
-          if (item.menu_type === 'section') {
-            lines.push(`${indent}{`);
-            lines.push(`${indent}  title: '${item.title || item.label}',`);
-            if (item.children && item.children.length > 0) {
-              lines.push(`${indent}  items: [`);
-              lines.push(generateStaticCode(item.children, indent + '    '));
-              lines.push(`${indent}  ]`);
-            }
-            lines.push(`${indent}}`);
-          } else if (item.menu_type === 'main') {
-            lines.push(`${indent}{`);
-            lines.push(`${indent}  label: '${item.label}',`);
-            if (item.label_tr) lines.push(`${indent}  label_tr: '${item.label_tr}',`);
-            if (item.label_en) lines.push(`${indent}  label_en: '${item.label_en}',`);
-            if (item.label_ar) lines.push(`${indent}  label_ar: '${item.label_ar}',`);
-            if (item.screen_id) lines.push(`${indent}  screen: '${item.screen_id}' as ManagementScreen,`);
-            if (item.icon_name) lines.push(`${indent}  icon: ${item.icon_name},`);
-            if (item.badge) lines.push(`${indent}  badge: '${item.badge}',`);
-
-            if (item.children && item.children.length > 0) {
-              lines.push(`${indent}  items: [`);
-              lines.push(generateStaticCode(item.children, indent + '    '));
-              lines.push(`${indent}  ]`);
-            }
-            lines.push(`${indent}}`);
-          } else if (item.menu_type === 'sub') {
-            lines.push(`${indent}{`);
-            lines.push(`${indent}  label: '${item.label}',`);
-            if (item.label_tr) lines.push(`${indent}  label_tr: '${item.label_tr}',`);
-            if (item.label_en) lines.push(`${indent}  label_en: '${item.label_en}',`);
-            if (item.label_ar) lines.push(`${indent}  label_ar: '${item.label_ar}',`);
-            if (item.screen_id) lines.push(`${indent}  screen: '${item.screen_id}' as ManagementScreen,`);
-            if (item.icon_name) lines.push(`${indent}  icon: ${item.icon_name},`);
-            lines.push(`${indent}}`);
-          }
-
-          return lines.join('\n');
-        }).join(',\n');
-      };
-
-      const staticCode = `// Statik Menü Yapısı - ${new Date().toLocaleString('tr-TR')}
-// Bu dosya MenuManagementPanel'den otomatik olarak oluşturulmuştur
-
-const staticMenuSections = [
-${generateStaticCode(menuItems)}
-];
-
-export default staticMenuSections;
-`;
-
-      // Dosyayı indir
-      const blob = new Blob([staticCode], { type: 'text/typescript' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `static-menu-${new Date().getTime()}.ts`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-
-      alert('✅ Menü yapısı başarıyla dışa aktarıldı!\n\nİndirilen dosyayı ManagementModule.tsx içinde kullanabilirsiniz.');
-    } catch (error: any) {
-      console.error('Dışa aktarma hatası:', error);
-      alert(`❌ Menü dışa aktarılırken hata oluştu:\n\n${error.message}`);
-    }
-  };
-
   useEffect(() => {
     loadMenuItems();
   }, [loadMenuItems]);
@@ -655,33 +606,18 @@ export default staticMenuSections;
         const newHiddenModules = flatItems
           .filter(item => !item.is_visible && item.screen_id)
           .map(item => item.screen_id as string);
+        const item_orders: Record<string, number> = {};
+        flatItems.forEach((item) => {
+          if (item.screen_id) item_orders[item.screen_id] = item.display_order;
+        });
 
         try {
-          // @ts-ignore
-          const { invoke } = await import('@tauri-apps/api/core');
-          const { IS_TAURI } = await import('../../utils/env');
-
-          if (IS_TAURI) {
-            const config: any = await invoke('get_app_config');
-            config.hidden_modules = newHiddenModules;
-            await invoke('save_app_config', { config });
-          } else {
-            localStorage.setItem('retailex_hidden_modules', JSON.stringify(newHiddenModules));
-            try {
-              const webRaw = localStorage.getItem('retailex_web_config');
-              const web = webRaw ? JSON.parse(webRaw) : {};
-              web.hidden_modules = newHiddenModules;
-              localStorage.setItem('retailex_web_config', JSON.stringify(web));
-            } catch {
-              /* ignore */
-            }
-          }
-
+          await persistMenuPreferences({ hidden_modules: newHiddenModules, item_orders });
           setHiddenModules(newHiddenModules);
-          alert('Statik menü görünürlük ayarları kaydedildi!');
+          alert('Menü tercihleri veritabanına kaydedildi ve yerel önbelleğe yazıldı!');
         } catch (e) {
           logger.crudError('MenuManagement', 'saveStaticConfig', e);
-          alert('Yerel konfigürasyon kaydedilemedi.');
+          alert('Menü tercihleri kaydedilemedi. Veritabanı bağlantısını kontrol edin.');
         }
       } else {
         const flatItems = flattenMenuItems(menuItems);
@@ -1017,12 +953,13 @@ export default staticMenuSections;
             Yenile
           </button>
           <button
-            onClick={exportMenuToStatic}
-            className="px-4 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-2"
-            title="Menü yapısını statik TypeScript koduna dışa aktar"
+            onClick={pullMenuPreferencesFromDb}
+            disabled={saving}
+            className="px-4 py-2 text-sm bg-teal-600 text-white rounded-lg hover:bg-teal-700 disabled:opacity-50 flex items-center gap-2"
+            title="Menü tercihlerini veritabanından çek ve localStorage önbelleğine yaz"
           >
-            <Download className="w-4 h-4" />
-            Dışa Aktar
+            <CloudDownload className="w-4 h-4" />
+            DB'den Yükle
           </button>
           <button
             onClick={restoreFaturalarMenu}

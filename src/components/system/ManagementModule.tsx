@@ -172,6 +172,7 @@ import { useTheme } from '../../contexts/ThemeContext';
 import { useResponsive } from '../../hooks/useResponsive';
 import { usePermission } from '../../shared/hooks/usePermission';
 import { getStaticMenuSections } from '../../config/staticMenuConfig';
+import { syncMenuPreferences } from '../../services/menuPreferencesService';
 
 // Custom z-index constants to ensure consistent layering
 const Z_INDEX = {
@@ -704,36 +705,15 @@ export function ManagementModule({
     return;
   }, []);
 
-  // Fetch hidden_modules from config (Tauri config.db veya web localStorage)
+  // Fetch hidden_modules: PG → localStorage senkron (tarayıcı geçmişi silinse bile geri yüklenir)
   const fetchHiddenModules = useCallback(async () => {
     try {
-      if (isTauri) {
-        const { invoke } = await import('@tauri-apps/api/core');
-        const config: any = await invoke('get_app_config');
-        if (config && Array.isArray(config.hidden_modules)) {
-          setHiddenModules(config.hidden_modules);
-        }
-        return;
-      }
-      const standalone = localStorage.getItem('retailex_hidden_modules');
-      if (standalone) {
-        const parsed = JSON.parse(standalone);
-        if (Array.isArray(parsed)) {
-          setHiddenModules(parsed);
-          return;
-        }
-      }
-      const webRaw = localStorage.getItem('retailex_web_config');
-      if (webRaw) {
-        const web = JSON.parse(webRaw);
-        if (Array.isArray(web.hidden_modules)) {
-          setHiddenModules(web.hidden_modules);
-        }
-      }
+      const prefs = await syncMenuPreferences();
+      setHiddenModules(prefs.hidden_modules ?? []);
     } catch (err) {
       console.error('Failed to fetch hidden_modules:', err);
     }
-  }, [isTauri]);
+  }, []);
 
   useEffect(() => {
     void fetchHiddenModules();
