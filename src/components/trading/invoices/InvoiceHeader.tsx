@@ -548,11 +548,6 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
             ) : (
                 <div className="flex flex-wrap items-center gap-x-4 gap-y-2 w-full text-sm">
                     <div className="inline-flex items-center gap-1.5 shrink-0 whitespace-nowrap">
-                        <span className="text-[11px] font-semibold text-gray-500 uppercase">{tm('invoiceNo')}</span>
-                        <span className="font-semibold text-gray-800 tabular-nums">{invoiceNo}</span>
-                    </div>
-
-                    <div className="inline-flex items-center gap-1.5 shrink-0 whitespace-nowrap">
                         <span className="text-[11px] font-semibold text-gray-500 uppercase">{tm('date')}</span>
                         <span className="text-gray-700 tabular-nums">{transactionDate}</span>
                     </div>
