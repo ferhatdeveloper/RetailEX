@@ -141,7 +141,21 @@ function resolveActivePreset(store: MenuPreferencesStore): MenuPreferencePreset 
 }
 
 export function emptyMenuPreferences(): MenuPreferences {
+  return defaultMenuPreferences();
+}
+
+/** Statik menü fabrika varsayılanı: gizli modül yok, özel sıra yok */
+export function defaultMenuPreferences(): MenuPreferences {
   return { hidden_modules: [] };
+}
+
+/** Kayıtlı profil yokken varsayılan menüyü uygula (PG'ye yazmaz) */
+export async function applyDefaultMenuPreferences(): Promise<MenuPreferences> {
+  const prefs = defaultMenuPreferences();
+  const store: MenuPreferencesStore = { version: 2, presets: [] };
+  applyMenuPreferencesToLocalStorage(prefs, store);
+  await applyMenuPreferencesToTauriConfig(prefs);
+  return prefs;
 }
 
 async function readRawMenuPreferencesFromDb(): Promise<unknown | null> {
@@ -370,7 +384,7 @@ export async function deleteMenuPreferencePreset(presetId: string, fallbackUser 
     applyMenuPreferencesToLocalStorage(prefs, store);
     await applyMenuPreferencesToTauriConfig(prefs);
   } else {
-    applyMenuPreferencesToLocalStorage(emptyMenuPreferences(), store);
+    await applyDefaultMenuPreferences();
   }
 }
 
@@ -424,8 +438,9 @@ export async function syncMenuPreferences(fallbackUser = 'sistem'): Promise<Menu
     return fromLocal;
   }
 
-  const empty = emptyMenuPreferences();
+  const empty = defaultMenuPreferences();
   applyMenuPreferencesToLocalStorage(empty, { version: 2, presets: [] });
+  await applyMenuPreferencesToTauriConfig(empty);
   return empty;
 }
 

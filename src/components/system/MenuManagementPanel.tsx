@@ -15,6 +15,7 @@ import {
   saveMenuPreferencePreset,
   applyMenuPreferencePresetById,
   deleteMenuPreferencePreset,
+  applyDefaultMenuPreferences,
   type MenuPreferences,
   type MenuPreferencePreset,
 } from '../../services/menuPreferencesService';
@@ -177,6 +178,13 @@ export function MenuManagementPanel({ onClose }: MenuManagementPanelProps) {
     try {
       setSaving(true);
       const presets = await listMenuPreferencePresets(currentUsername);
+      if (presets.length === 0) {
+        const prefs = await applyDefaultMenuPreferences();
+        setHiddenModules(prefs.hidden_modules ?? []);
+        await loadMenuItems();
+        window.dispatchEvent(new CustomEvent('menuUpdated', { detail: { forceReload: true } }));
+        return;
+      }
       setLoadPresets(presets);
       setShowLoadPresetModal(true);
     } catch (e) {
@@ -1284,11 +1292,36 @@ export function MenuManagementPanel({ onClose }: MenuManagementPanelProps) {
             </button>
           </div>
           <PercentBodyModalScrollBody className="p-4">
-            {loadPresets.length === 0 ? (
-              <p className="text-sm text-gray-500 text-center py-8">Henüz kayıtlı yükleme seçeneği yok. Önce Kaydet ile bir profil oluşturun.</p>
-            ) : (
-              <div className="space-y-2">
-                {loadPresets.map((preset) => (
+            <div className="space-y-2">
+              <div className="flex items-center gap-3 p-3 border border-dashed border-gray-300 rounded-lg bg-gray-50">
+                <div className="flex-1 min-w-0">
+                  <div className="font-medium text-sm text-gray-900">Varsayılan menü</div>
+                  <div className="text-xs text-gray-500 mt-0.5">Kayıtlı profil yoksa otomatik bu düzen yüklenir</div>
+                </div>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      setSaving(true);
+                      const prefs = await applyDefaultMenuPreferences();
+                      setHiddenModules(prefs.hidden_modules ?? []);
+                      setShowLoadPresetModal(false);
+                      await loadMenuItems();
+                      window.dispatchEvent(new CustomEvent('menuUpdated', { detail: { forceReload: true } }));
+                    } catch (e) {
+                      logger.crudError('MenuManagement', 'applyDefault', e);
+                      alert('Varsayılan menü yüklenemedi.');
+                    } finally {
+                      setSaving(false);
+                    }
+                  }}
+                  disabled={saving}
+                  className="shrink-0 px-3 py-1.5 text-xs border border-gray-300 rounded hover:bg-white disabled:opacity-50"
+                >
+                  Varsayılanı yükle
+                </button>
+              </div>
+              {loadPresets.map((preset) => (
                   <div
                     key={preset.id}
                     className="flex items-center gap-3 p-3 border border-gray-200 rounded-lg bg-white hover:border-teal-300"
@@ -1318,8 +1351,7 @@ export function MenuManagementPanel({ onClose }: MenuManagementPanelProps) {
                     </button>
                   </div>
                 ))}
-              </div>
-            )}
+            </div>
           </PercentBodyModalScrollBody>
           <div className="p-3 border-t border-gray-200 bg-gray-50 shrink-0">
             <button
