@@ -6,10 +6,17 @@ import {
 } from 'lucide-react';
 import { supabase } from '../../utils/supabase/client';
 import { logger } from '../../services/loggingService';
+import { useAuth } from '../../contexts/AuthContext';
+import { PercentBodyModal, PercentBodyModalScrollBody } from '../shared/PercentBodyModal';
 import {
   syncMenuPreferences,
-  persistMenuPreferences,
+  buildDefaultPresetLabel,
+  listMenuPreferencePresets,
+  saveMenuPreferencePreset,
+  applyMenuPreferencePresetById,
+  deleteMenuPreferencePreset,
   type MenuPreferences,
+  type MenuPreferencePreset,
 } from '../../services/menuPreferencesService';
 
 interface MenuItem {
@@ -36,6 +43,9 @@ interface MenuManagementPanelProps {
 }
 
 export function MenuManagementPanel({ onClose }: MenuManagementPanelProps) {
+  const { user } = useAuth();
+  const currentUsername = user?.username || user?.full_name || 'kullanici';
+
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -46,6 +56,14 @@ export function MenuManagementPanel({ onClose }: MenuManagementPanelProps) {
   const [showAddModal, setShowAddModal] = useState(false);
   const [menuSource, setMenuSource] = useState<'supabase' | 'static'>('static');
   const [hiddenModules, setHiddenModules] = useState<string[]>([]);
+  const [showSavePresetModal, setShowSavePresetModal] = useState(false);
+  const [showLoadPresetModal, setShowLoadPresetModal] = useState(false);
+  const [presetName, setPresetName] = useState('');
+  const [loadPresets, setLoadPresets] = useState<MenuPreferencePreset[]>([]);
+  const [pendingSavePayload, setPendingSavePayload] = useState<{
+    hidden_modules: string[];
+    item_orders: Record<string, number>;
+  } | null>(null);
   const [newItem, setNewItem] = useState<Partial<MenuItem>>({
     menu_type: 'main',
     label: '',
@@ -57,12 +75,12 @@ export function MenuManagementPanel({ onClose }: MenuManagementPanelProps) {
   // Yerel + PG menü tercihlerini yükle
   const loadLocalConfig = useCallback(async (): Promise<MenuPreferences> => {
     try {
-      return await syncMenuPreferences();
+      return await syncMenuPreferences(currentUsername);
     } catch (err) {
       console.warn('Menü tercihleri senkronu başarısız:', err);
       return { hidden_modules: [] };
     }
-  }, []);
+  }, [currentUsername]);
 
   const sortTreeByItemOrders = (items: MenuItem[], orders?: Record<string, number>): MenuItem[] => {
     if (!orders || Object.keys(orders).length === 0) return items;
@@ -155,16 +173,81 @@ export function MenuManagementPanel({ onClose }: MenuManagementPanelProps) {
     }
   }, [menuSource, loadLocalConfig]);
 
-  const pullMenuPreferencesFromDb = async () => {
+  const openLoadPresetModal = async () => {
     try {
       setSaving(true);
-      const prefs = await syncMenuPreferences();
-      setHiddenModules(prefs.hidden_modules ?? []);
-      await loadMenuItems();
-      alert('Menü tercihleri veritabanından yüklendi ve yerel önbelleğe yazıldı.');
+      const presets = await listMenuPreferencePresets(currentUsername);
+      setLoadPresets(presets);
+      setShowLoadPresetModal(true);
     } catch (e) {
-      logger.crudError('MenuManagement', 'pullMenuPreferences', e);
-      alert('Veritabanından menü tercihleri yüklenemedi.');
+      logger.crudError('MenuManagement', 'listPresets', e);
+      alert('Yükleme seçenekleri listelenemedi.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleApplyPreset = async (presetId: string) => {
+    try {
+      setSaving(true);
+      const prefs = await applyMenuPreferencePresetById(presetId, currentUsername);
+      if (!prefs) {
+        alert('Seçilen kayıt bulunamadı.');
+        return;
+      }
+      setHiddenModules(prefs.hidden_modules ?? []);
+      setShowLoadPresetModal(false);
+      await loadMenuItems();
+      window.dispatchEvent(new CustomEvent('menuUpdated', { detail: { forceReload: true } }));
+    } catch (e) {
+      logger.crudError('MenuManagement', 'applyPreset', e);
+      alert('Yükleme seçeneği uygulanamadı.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDeletePreset = async (presetId: string, presetName: string) => {
+    if (!confirm(`"${presetName}" kaydını silmek istediğinizden emin misiniz?`)) return;
+    try {
+      setSaving(true);
+      await deleteMenuPreferencePreset(presetId, currentUsername);
+      const presets = await listMenuPreferencePresets(currentUsername);
+      setLoadPresets(presets);
+    } catch (e) {
+      logger.crudError('MenuManagement', 'deletePreset', e);
+      alert('Kayıt silinemedi.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const openSavePresetModal = (payload: { hidden_modules: string[]; item_orders: Record<string, number> }) => {
+    setPendingSavePayload(payload);
+    setPresetName(buildDefaultPresetLabel(currentUsername));
+    setShowSavePresetModal(true);
+  };
+
+  const confirmSavePreset = async () => {
+    if (!pendingSavePayload) return;
+    try {
+      setSaving(true);
+      await saveMenuPreferencePreset({
+        name: presetName.trim() || buildDefaultPresetLabel(currentUsername),
+        saved_by: currentUsername,
+        hidden_modules: pendingSavePayload.hidden_modules,
+        item_orders: pendingSavePayload.item_orders,
+      });
+      setHiddenModules(pendingSavePayload.hidden_modules);
+      setShowSavePresetModal(false);
+      setPendingSavePayload(null);
+      await loadMenuItems();
+      await new Promise(resolve => setTimeout(resolve, 300));
+      window.dispatchEvent(new CustomEvent('menuUpdated', { detail: { forceReload: true } }));
+      alert('Menü tercihleri kaydedildi.');
+    } catch (e) {
+      logger.crudError('MenuManagement', 'savePreset', e);
+      alert('Menü tercihleri kaydedilemedi. Veritabanı bağlantısını kontrol edin.');
     } finally {
       setSaving(false);
     }
@@ -610,15 +693,9 @@ export function MenuManagementPanel({ onClose }: MenuManagementPanelProps) {
         flatItems.forEach((item) => {
           if (item.screen_id) item_orders[item.screen_id] = item.display_order;
         });
-
-        try {
-          await persistMenuPreferences({ hidden_modules: newHiddenModules, item_orders });
-          setHiddenModules(newHiddenModules);
-          alert('Menü tercihleri veritabanına kaydedildi ve yerel önbelleğe yazıldı!');
-        } catch (e) {
-          logger.crudError('MenuManagement', 'saveStaticConfig', e);
-          alert('Menü tercihleri kaydedilemedi. Veritabanı bağlantısını kontrol edin.');
-        }
+        openSavePresetModal({ hidden_modules: newHiddenModules, item_orders });
+        setSaving(false);
+        return;
       } else {
         const flatItems = flattenMenuItems(menuItems);
         const updates = flatItems.map((item) => ({
@@ -953,13 +1030,13 @@ export function MenuManagementPanel({ onClose }: MenuManagementPanelProps) {
             Yenile
           </button>
           <button
-            onClick={pullMenuPreferencesFromDb}
+            onClick={openLoadPresetModal}
             disabled={saving}
             className="px-4 py-2 text-sm bg-teal-600 text-white rounded-lg hover:bg-teal-700 disabled:opacity-50 flex items-center gap-2"
-            title="Menü tercihlerini veritabanından çek ve localStorage önbelleğine yaz"
+            title="Kayıtlı yükleme seçeneklerinden birini seç"
           >
             <CloudDownload className="w-4 h-4" />
-            DB'den Yükle
+            Yükleme Seçenekleri
           </button>
           <button
             onClick={restoreFaturalarMenu}
@@ -1153,6 +1230,107 @@ export function MenuManagementPanel({ onClose }: MenuManagementPanelProps) {
             </div>
           </div>
         </div>
+      )}
+
+      {showSavePresetModal && (
+        <PercentBodyModal onClose={() => setShowSavePresetModal(false)} size="compact" ariaLabel="Menü kaydı">
+          <div className="p-3 border-b border-gray-200 flex items-center justify-between shrink-0 bg-gradient-to-r from-blue-600 to-blue-700">
+            <h3 className="text-base text-white font-medium">Menü Tercihini Kaydet</h3>
+            <button type="button" onClick={() => setShowSavePresetModal(false)} className="text-white hover:text-gray-200 p-1">
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+          <div className="p-4 space-y-3">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Kayıt adı</label>
+              <input
+                type="text"
+                value={presetName}
+                onChange={(e) => setPresetName(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                placeholder={buildDefaultPresetLabel(currentUsername)}
+              />
+              <p className="mt-1 text-xs text-gray-500">
+                Varsayılan: {currentUsername} ve kayıt tarihi. İsterseniz düzenleyip kaydedebilirsiniz.
+              </p>
+            </div>
+          </div>
+          <div className="p-4 border-t border-gray-200 bg-gray-50 flex gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={() => setShowSavePresetModal(false)}
+              className="flex-1 px-4 py-2 text-sm bg-gray-200 text-gray-700 rounded hover:bg-gray-300"
+            >
+              İptal
+            </button>
+            <button
+              type="button"
+              onClick={confirmSavePreset}
+              disabled={saving}
+              className="flex-1 px-4 py-2 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+            >
+              {saving ? 'Kaydediliyor...' : 'Kaydet'}
+            </button>
+          </div>
+        </PercentBodyModal>
+      )}
+
+      {showLoadPresetModal && (
+        <PercentBodyModal onClose={() => setShowLoadPresetModal(false)} size="list" ariaLabel="Yükleme seçenekleri">
+          <div className="p-3 border-b border-gray-200 flex items-center justify-between shrink-0 bg-gradient-to-r from-teal-600 to-teal-700">
+            <h3 className="text-base text-white font-medium">Yükleme Seçenekleri</h3>
+            <button type="button" onClick={() => setShowLoadPresetModal(false)} className="text-white hover:text-gray-200 p-1">
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+          <PercentBodyModalScrollBody className="p-4">
+            {loadPresets.length === 0 ? (
+              <p className="text-sm text-gray-500 text-center py-8">Henüz kayıtlı yükleme seçeneği yok. Önce Kaydet ile bir profil oluşturun.</p>
+            ) : (
+              <div className="space-y-2">
+                {loadPresets.map((preset) => (
+                  <div
+                    key={preset.id}
+                    className="flex items-center gap-3 p-3 border border-gray-200 rounded-lg bg-white hover:border-teal-300"
+                  >
+                    <div className="flex-1 min-w-0">
+                      <div className="font-medium text-sm text-gray-900 truncate">{preset.name}</div>
+                      <div className="text-xs text-gray-500 mt-0.5">
+                        {preset.saved_by} · {new Date(preset.saved_at).toLocaleString('tr-TR')} · {preset.hidden_modules.length} gizli modül
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleApplyPreset(preset.id)}
+                      disabled={saving}
+                      className="shrink-0 px-3 py-1.5 text-xs bg-teal-600 text-white rounded hover:bg-teal-700 disabled:opacity-50"
+                    >
+                      Yükle
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDeletePreset(preset.id, preset.name)}
+                      disabled={saving}
+                      className="shrink-0 p-1.5 text-red-600 hover:bg-red-50 rounded"
+                      title="Sil"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </PercentBodyModalScrollBody>
+          <div className="p-3 border-t border-gray-200 bg-gray-50 shrink-0">
+            <button
+              type="button"
+              onClick={() => setShowLoadPresetModal(false)}
+              className="w-full px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-white"
+            >
+              Kapat
+            </button>
+          </div>
+        </PercentBodyModal>
       )}
     </div>
   );

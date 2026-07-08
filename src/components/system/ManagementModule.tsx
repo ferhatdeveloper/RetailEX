@@ -708,12 +708,13 @@ export function ManagementModule({
   // Fetch hidden_modules: PG → localStorage senkron (tarayıcı geçmişi silinse bile geri yüklenir)
   const fetchHiddenModules = useCallback(async () => {
     try {
-      const prefs = await syncMenuPreferences();
+      const username = user?.username || user?.full_name || 'kullanici';
+      const prefs = await syncMenuPreferences(username);
       setHiddenModules(prefs.hidden_modules ?? []);
     } catch (err) {
       console.error('Failed to fetch hidden_modules:', err);
     }
-  }, []);
+  }, [user?.username, user?.full_name]);
 
   useEffect(() => {
     void fetchHiddenModules();

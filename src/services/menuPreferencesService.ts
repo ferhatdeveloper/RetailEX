@@ -1,21 +1,65 @@
 /**
  * Statik menü tercihleri: PostgreSQL `system_settings.menu_preferences` ↔ localStorage önbellek.
- * Tarayıcı geçmişi silinse bile PG'den yeniden yüklenir.
+ * Birden fazla adlandırılmış yükleme seçeneği (kullanıcı + tarih varsayılan etiket).
  */
 import { postgres, DB_SETTINGS } from './postgres';
 
 export interface MenuPreferences {
   hidden_modules: string[];
-  /** screen_id → global sıra (sürükle-bırak) */
   item_orders?: Record<string, number>;
   updated_at?: string;
 }
 
+export interface MenuPreferencePreset {
+  id: string;
+  /** Kullanıcının düzenleyebileceği etiket */
+  name: string;
+  saved_by: string;
+  saved_at: string;
+  hidden_modules: string[];
+  item_orders?: Record<string, number>;
+}
+
+export interface MenuPreferencesStore {
+  version: 2;
+  active_preset_id?: string;
+  presets: MenuPreferencePreset[];
+}
+
 const HIDDEN_MODULES_KEY = 'retailex_hidden_modules';
 const MENU_PREFS_KEY = 'retailex_menu_preferences';
+const MENU_PREFS_STORE_KEY = 'retailex_menu_preferences_store';
 
 function isRestApi(): boolean {
   return DB_SETTINGS.connectionProvider === 'rest_api';
+}
+
+function newPresetId(): string {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();
+  return `mp_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+}
+
+/** Kayıt adı varsayılanı: kullanıcı adı + tarih/saat */
+export function buildDefaultPresetLabel(username: string, at = new Date()): string {
+  const user = String(username || 'kullanici').trim() || 'kullanici';
+  const when = at.toLocaleString('tr-TR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+  return `${user} - ${when}`;
+}
+
+function normalizeItemOrders(raw: unknown): Record<string, number> | undefined {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined;
+  const item_orders: Record<string, number> = {};
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    const n = Number(v);
+    if (k && Number.isFinite(n)) item_orders[k] = n;
+  }
+  return Object.keys(item_orders).length > 0 ? item_orders : undefined;
 }
 
 function normalizePrefs(raw: unknown): MenuPreferences | null {
@@ -24,44 +68,179 @@ function normalizePrefs(raw: unknown): MenuPreferences | null {
   const hidden = Array.isArray(o.hidden_modules)
     ? o.hidden_modules.map((m) => String(m).trim()).filter(Boolean)
     : [];
-  let item_orders: Record<string, number> | undefined;
-  if (o.item_orders && typeof o.item_orders === 'object' && !Array.isArray(o.item_orders)) {
-    item_orders = {};
-    for (const [k, v] of Object.entries(o.item_orders as Record<string, unknown>)) {
-      const n = Number(v);
-      if (k && Number.isFinite(n)) item_orders[k] = n;
-    }
-    if (Object.keys(item_orders).length === 0) item_orders = undefined;
-  }
+  const item_orders = normalizeItemOrders(o.item_orders);
   const updated_at = typeof o.updated_at === 'string' ? o.updated_at : undefined;
   return { hidden_modules: hidden, item_orders, updated_at };
+}
+
+function presetFromLegacy(prefs: MenuPreferences, savedBy = 'sistem'): MenuPreferencePreset {
+  const saved_at = prefs.updated_at || new Date().toISOString();
+  return {
+    id: newPresetId(),
+    name: buildDefaultPresetLabel(savedBy, new Date(saved_at)),
+    saved_by: savedBy,
+    saved_at,
+    hidden_modules: prefs.hidden_modules ?? [],
+    item_orders: prefs.item_orders,
+  };
+}
+
+function normalizeStore(raw: unknown, fallbackUser = 'sistem'): MenuPreferencesStore {
+  if (!raw || typeof raw !== 'object') {
+    return { version: 2, presets: [] };
+  }
+  const o = raw as Record<string, unknown>;
+
+  if (o.version === 2 && Array.isArray(o.presets)) {
+    const presets: MenuPreferencePreset[] = o.presets
+      .map((p) => {
+        if (!p || typeof p !== 'object') return null;
+        const pr = p as Record<string, unknown>;
+        const id = String(pr.id || '').trim() || newPresetId();
+        const name = String(pr.name || '').trim() || buildDefaultPresetLabel(String(pr.saved_by || fallbackUser));
+        const saved_by = String(pr.saved_by || fallbackUser).trim() || fallbackUser;
+        const saved_at = typeof pr.saved_at === 'string' ? pr.saved_at : new Date().toISOString();
+        const hidden_modules = Array.isArray(pr.hidden_modules)
+          ? pr.hidden_modules.map((m) => String(m).trim()).filter(Boolean)
+          : [];
+        const item_orders = normalizeItemOrders(pr.item_orders);
+        return { id, name, saved_by, saved_at, hidden_modules, item_orders };
+      })
+      .filter((p): p is MenuPreferencePreset => p != null);
+    return {
+      version: 2,
+      active_preset_id: typeof o.active_preset_id === 'string' ? o.active_preset_id : undefined,
+      presets,
+    };
+  }
+
+  const legacy = normalizePrefs(raw);
+  if (legacy && ((legacy.hidden_modules?.length ?? 0) > 0 || legacy.item_orders)) {
+    const preset = presetFromLegacy(legacy, fallbackUser);
+    return { version: 2, active_preset_id: preset.id, presets: [preset] };
+  }
+
+  return { version: 2, presets: [] };
+}
+
+function presetToMenuPreferences(preset: MenuPreferencePreset): MenuPreferences {
+  return {
+    hidden_modules: preset.hidden_modules ?? [],
+    item_orders: preset.item_orders,
+    updated_at: preset.saved_at,
+  };
+}
+
+function resolveActivePreset(store: MenuPreferencesStore): MenuPreferencePreset | null {
+  if (store.presets.length === 0) return null;
+  if (store.active_preset_id) {
+    const found = store.presets.find((p) => p.id === store.active_preset_id);
+    if (found) return found;
+  }
+  return [...store.presets].sort((a, b) => b.saved_at.localeCompare(a.saved_at))[0];
 }
 
 export function emptyMenuPreferences(): MenuPreferences {
   return { hidden_modules: [] };
 }
 
+async function readRawMenuPreferencesFromDb(): Promise<unknown | null> {
+  if (isRestApi()) {
+    const { postgrest } = await import('./api/postgrestClient');
+    const rows = await postgrest.get<{ menu_preferences?: unknown }[]>(
+      '/system_settings',
+      { select: 'menu_preferences', id: 'eq.1', limit: 1 },
+      { schema: 'public' },
+    );
+    const row = Array.isArray(rows) ? rows[0] : undefined;
+    return row?.menu_preferences ?? null;
+  }
+  const { rows } = await postgres.query(
+    `SELECT menu_preferences FROM public.system_settings WHERE id = 1 LIMIT 1`,
+    [],
+  );
+  const raw = rows[0]?.menu_preferences;
+  if (!raw) return null;
+  return typeof raw === 'string' ? JSON.parse(raw) : raw;
+}
+
+async function writeMenuPreferencesStoreToDb(store: MenuPreferencesStore): Promise<void> {
+  const json = JSON.stringify(store);
+  if (isRestApi()) {
+    const { postgrest } = await import('./api/postgrestClient');
+    const existing = await postgrest.get<{ id?: number }[]>(
+      '/system_settings',
+      { select: 'id', id: 'eq.1', limit: 1 },
+      { schema: 'public' },
+    );
+    if (Array.isArray(existing) && existing[0]) {
+      await postgrest.patch(
+        '/system_settings?id=eq.1',
+        { menu_preferences: store },
+        { schema: 'public', prefer: 'return=minimal' },
+      );
+    } else {
+      await postgrest.post(
+        '/system_settings',
+        { id: 1, menu_preferences: store },
+        { schema: 'public', prefer: 'return=minimal' },
+      );
+    }
+    return;
+  }
+  await postgres.query(
+    `INSERT INTO public.system_settings (id, default_currency, menu_preferences)
+     VALUES (1, 'IQD', $1::jsonb)
+     ON CONFLICT (id) DO UPDATE SET
+       menu_preferences = EXCLUDED.menu_preferences,
+       updated_at = CURRENT_TIMESTAMP`,
+    [json],
+  );
+}
+
 /** localStorage + retailex_web_config önbelleğine yazar */
-export function applyMenuPreferencesToLocalStorage(prefs: MenuPreferences): void {
+export function applyMenuPreferencesToLocalStorage(prefs: MenuPreferences, store?: MenuPreferencesStore): void {
   if (typeof localStorage === 'undefined') return;
   const hidden = prefs.hidden_modules ?? [];
   try {
     localStorage.setItem(HIDDEN_MODULES_KEY, JSON.stringify(hidden));
     localStorage.setItem(MENU_PREFS_KEY, JSON.stringify(prefs));
+    if (store) {
+      localStorage.setItem(MENU_PREFS_STORE_KEY, JSON.stringify(store));
+    }
     const webRaw = localStorage.getItem('retailex_web_config');
     const web = webRaw ? JSON.parse(webRaw) : {};
     web.hidden_modules = hidden;
-    web.menu_preferences = prefs;
+    web.menu_preferences = store ?? prefs;
     localStorage.setItem('retailex_web_config', JSON.stringify(web));
   } catch {
     /* quota / private mode */
   }
 }
 
+export function readMenuPreferencesStoreFromLocalStorage(): MenuPreferencesStore | null {
+  if (typeof localStorage === 'undefined') return null;
+  try {
+    const raw = localStorage.getItem(MENU_PREFS_STORE_KEY);
+    if (raw) return normalizeStore(JSON.parse(raw));
+    const legacy = readMenuPreferencesFromLocalStorage();
+    if (legacy) return normalizeStore(legacy);
+  } catch {
+    /* ignore */
+  }
+  return null;
+}
+
 /** Önbellekten oku (PG erişilemezse yedek) */
 export function readMenuPreferencesFromLocalStorage(): MenuPreferences | null {
   if (typeof localStorage === 'undefined') return null;
   try {
+    const storeRaw = localStorage.getItem(MENU_PREFS_STORE_KEY);
+    if (storeRaw) {
+      const store = normalizeStore(JSON.parse(storeRaw));
+      const active = resolveActivePreset(store);
+      if (active) return presetToMenuPreferences(active);
+    }
     const rawPrefs = localStorage.getItem(MENU_PREFS_KEY);
     if (rawPrefs) {
       const parsed = normalizePrefs(JSON.parse(rawPrefs));
@@ -78,6 +257,9 @@ export function readMenuPreferencesFromLocalStorage(): MenuPreferences | null {
     if (webRaw) {
       const web = JSON.parse(webRaw);
       if (web.menu_preferences) {
+        const store = normalizeStore(web.menu_preferences);
+        const active = resolveActivePreset(store);
+        if (active) return presetToMenuPreferences(active);
         const fromWeb = normalizePrefs(web.menu_preferences);
         if (fromWeb) return fromWeb;
       }
@@ -105,96 +287,118 @@ export async function applyMenuPreferencesToTauriConfig(prefs: MenuPreferences):
   }
 }
 
-/** PostgreSQL'den menü tercihlerini oku */
-export async function loadMenuPreferencesFromDb(): Promise<MenuPreferences | null> {
+/** PostgreSQL'den tüm yükleme seçeneklerini oku */
+export async function loadMenuPreferencesStoreFromDb(fallbackUser = 'sistem'): Promise<MenuPreferencesStore> {
   try {
-    if (isRestApi()) {
-      const { postgrest } = await import('./api/postgrestClient');
-      const rows = await postgrest.get<{ menu_preferences?: unknown }[]>(
-        '/system_settings',
-        { select: 'menu_preferences', id: 'eq.1', limit: 1 },
-        { schema: 'public' },
-      );
-      const row = Array.isArray(rows) ? rows[0] : undefined;
-      if (!row?.menu_preferences) return null;
-      return normalizePrefs(row.menu_preferences);
-    }
-    const { rows } = await postgres.query(
-      `SELECT menu_preferences FROM public.system_settings WHERE id = 1 LIMIT 1`,
-      [],
-    );
-    const raw = rows[0]?.menu_preferences;
-    if (!raw) return null;
-    return normalizePrefs(typeof raw === 'string' ? JSON.parse(raw) : raw);
+    const raw = await readRawMenuPreferencesFromDb();
+    if (!raw) return { version: 2, presets: [] };
+    return normalizeStore(raw, fallbackUser);
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
     if (msg.includes('menu_preferences') || msg.includes('42P01') || msg.includes('does not exist')) {
-      return null;
+      return { version: 2, presets: [] };
     }
-    console.warn('[menuPreferences] loadMenuPreferencesFromDb:', e);
-    return null;
+    console.warn('[menuPreferences] loadMenuPreferencesStoreFromDb:', e);
+    return { version: 2, presets: [] };
   }
 }
 
-/** PostgreSQL'e kaydet (yalnızca menu_preferences kolonu) */
-export async function saveMenuPreferencesToDb(prefs: MenuPreferences): Promise<void> {
-  const payload: MenuPreferences = {
-    hidden_modules: prefs.hidden_modules ?? [],
-    ...(prefs.item_orders && Object.keys(prefs.item_orders).length > 0
-      ? { item_orders: prefs.item_orders }
-      : {}),
-    updated_at: new Date().toISOString(),
+/** PostgreSQL'den aktif menü tercihlerini oku (geriye uyumluluk) */
+export async function loadMenuPreferencesFromDb(fallbackUser = 'sistem'): Promise<MenuPreferences | null> {
+  const store = await loadMenuPreferencesStoreFromDb(fallbackUser);
+  const active = resolveActivePreset(store);
+  return active ? presetToMenuPreferences(active) : null;
+}
+
+export async function listMenuPreferencePresets(fallbackUser = 'sistem'): Promise<MenuPreferencePreset[]> {
+  const store = await loadMenuPreferencesStoreFromDb(fallbackUser);
+  return [...store.presets].sort((a, b) => b.saved_at.localeCompare(a.saved_at));
+}
+
+/** Yeni yükleme seçeneği kaydet ve aktif yap */
+export async function saveMenuPreferencePreset(input: {
+  name: string;
+  saved_by: string;
+  hidden_modules: string[];
+  item_orders?: Record<string, number>;
+}): Promise<MenuPreferencePreset> {
+  const store = await loadMenuPreferencesStoreFromDb(input.saved_by);
+  const now = new Date().toISOString();
+  const preset: MenuPreferencePreset = {
+    id: newPresetId(),
+    name: String(input.name || '').trim() || buildDefaultPresetLabel(input.saved_by),
+    saved_by: String(input.saved_by || 'sistem').trim() || 'sistem',
+    saved_at: now,
+    hidden_modules: input.hidden_modules ?? [],
+    item_orders: normalizeItemOrders(input.item_orders),
   };
-  const json = JSON.stringify(payload);
+  store.presets.push(preset);
+  store.active_preset_id = preset.id;
+  await writeMenuPreferencesStoreToDb(store);
+  const prefs = presetToMenuPreferences(preset);
+  applyMenuPreferencesToLocalStorage(prefs, store);
+  await applyMenuPreferencesToTauriConfig(prefs);
+  return preset;
+}
 
-  if (isRestApi()) {
-    const { postgrest } = await import('./api/postgrestClient');
-    const existing = await postgrest.get<{ id?: number }[]>(
-      '/system_settings',
-      { select: 'id', id: 'eq.1', limit: 1 },
-      { schema: 'public' },
-    );
-    if (Array.isArray(existing) && existing[0]) {
-      await postgrest.patch(
-        '/system_settings?id=eq.1',
-        { menu_preferences: payload },
-        { schema: 'public', prefer: 'return=minimal' },
-      );
-    } else {
-      await postgrest.post(
-        '/system_settings',
-        { id: 1, menu_preferences: payload },
-        { schema: 'public', prefer: 'return=minimal' },
-      );
-    }
-    return;
+/** Seçilen yükleme seçeneğini aktif yap ve önbelleğe yaz */
+export async function applyMenuPreferencePresetById(
+  presetId: string,
+  fallbackUser = 'sistem',
+): Promise<MenuPreferences | null> {
+  const store = await loadMenuPreferencesStoreFromDb(fallbackUser);
+  const preset = store.presets.find((p) => p.id === presetId);
+  if (!preset) return null;
+  store.active_preset_id = preset.id;
+  await writeMenuPreferencesStoreToDb(store);
+  const prefs = presetToMenuPreferences(preset);
+  applyMenuPreferencesToLocalStorage(prefs, store);
+  await applyMenuPreferencesToTauriConfig(prefs);
+  return prefs;
+}
+
+export async function deleteMenuPreferencePreset(presetId: string, fallbackUser = 'sistem'): Promise<void> {
+  const store = await loadMenuPreferencesStoreFromDb(fallbackUser);
+  store.presets = store.presets.filter((p) => p.id !== presetId);
+  if (store.active_preset_id === presetId) {
+    store.active_preset_id = store.presets[0]?.id;
   }
-
-  await postgres.query(
-    `INSERT INTO public.system_settings (id, default_currency, menu_preferences)
-     VALUES (1, 'IQD', $1::jsonb)
-     ON CONFLICT (id) DO UPDATE SET
-       menu_preferences = EXCLUDED.menu_preferences,
-       updated_at = CURRENT_TIMESTAMP`,
-    [json],
-  );
+  await writeMenuPreferencesStoreToDb(store);
+  const active = resolveActivePreset(store);
+  if (active) {
+    const prefs = presetToMenuPreferences(active);
+    applyMenuPreferencesToLocalStorage(prefs, store);
+    await applyMenuPreferencesToTauriConfig(prefs);
+  } else {
+    applyMenuPreferencesToLocalStorage(emptyMenuPreferences(), store);
+  }
 }
 
 /**
  * PG → localStorage senkron (PG öncelikli).
  * PG boşsa yerel önbelleği PG'ye taşır (ilk kurulum migrasyonu).
  */
-export async function syncMenuPreferences(): Promise<MenuPreferences> {
-  const fromDb = await loadMenuPreferencesFromDb();
-  const hasDbData =
-    fromDb &&
-    ((fromDb.hidden_modules?.length ?? 0) > 0 ||
-      (fromDb.item_orders && Object.keys(fromDb.item_orders).length > 0));
+export async function syncMenuPreferences(fallbackUser = 'sistem'): Promise<MenuPreferences> {
+  const fromDbStore = await loadMenuPreferencesStoreFromDb(fallbackUser);
+  const activeDb = resolveActivePreset(fromDbStore);
 
-  if (hasDbData && fromDb) {
-    applyMenuPreferencesToLocalStorage(fromDb);
-    await applyMenuPreferencesToTauriConfig(fromDb);
-    return fromDb;
+  if (activeDb) {
+    const prefs = presetToMenuPreferences(activeDb);
+    applyMenuPreferencesToLocalStorage(prefs, fromDbStore);
+    await applyMenuPreferencesToTauriConfig(prefs);
+    return prefs;
+  }
+
+  const fromLocalStore = readMenuPreferencesStoreFromLocalStorage();
+  const activeLocal = fromLocalStore ? resolveActivePreset(fromLocalStore) : null;
+
+  if (activeLocal) {
+    try {
+      await writeMenuPreferencesStoreToDb(fromLocalStore!);
+    } catch (e) {
+      console.warn('[menuPreferences] Yerel → PG migrasyonu başarısız:', e);
+    }
+    return presetToMenuPreferences(activeLocal);
   }
 
   const fromLocal = readMenuPreferencesFromLocalStorage();
@@ -205,7 +409,15 @@ export async function syncMenuPreferences(): Promise<MenuPreferences> {
 
   if (hasLocalData && fromLocal) {
     try {
-      await saveMenuPreferencesToDb(fromLocal);
+      const migrated = normalizeStore(fromLocal, fallbackUser);
+      if (migrated.presets.length === 0) {
+        const p = presetFromLegacy(fromLocal, fallbackUser);
+        migrated.presets = [p];
+        migrated.active_preset_id = p.id;
+      }
+      await writeMenuPreferencesStoreToDb(migrated);
+      applyMenuPreferencesToLocalStorage(fromLocal, migrated);
+      return fromLocal;
     } catch (e) {
       console.warn('[menuPreferences] Yerel → PG migrasyonu başarısız:', e);
     }
@@ -213,20 +425,16 @@ export async function syncMenuPreferences(): Promise<MenuPreferences> {
   }
 
   const empty = emptyMenuPreferences();
-  applyMenuPreferencesToLocalStorage(empty);
+  applyMenuPreferencesToLocalStorage(empty, { version: 2, presets: [] });
   return empty;
 }
 
-/** Kaydet: PG + localStorage (+ Tauri) */
-export async function persistMenuPreferences(prefs: MenuPreferences): Promise<void> {
-  const normalized: MenuPreferences = {
+/** Kaydet: PG + localStorage (+ Tauri) — geriye uyumluluk; yeni kayıtlar saveMenuPreferencePreset kullanmalı */
+export async function persistMenuPreferences(prefs: MenuPreferences, savedBy = 'sistem'): Promise<void> {
+  await saveMenuPreferencePreset({
+    name: buildDefaultPresetLabel(savedBy),
+    saved_by: savedBy,
     hidden_modules: prefs.hidden_modules ?? [],
-    ...(prefs.item_orders && Object.keys(prefs.item_orders).length > 0
-      ? { item_orders: prefs.item_orders }
-      : {}),
-    updated_at: new Date().toISOString(),
-  };
-  await saveMenuPreferencesToDb(normalized);
-  applyMenuPreferencesToLocalStorage(normalized);
-  await applyMenuPreferencesToTauriConfig(normalized);
+    item_orders: prefs.item_orders,
+  });
 }
