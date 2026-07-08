@@ -30,6 +30,41 @@ const HIDDEN_MODULES_KEY = 'retailex_hidden_modules';
 const MENU_PREFS_KEY = 'retailex_menu_preferences';
 const MENU_PREFS_STORE_KEY = 'retailex_menu_preferences_store';
 
+/** Statik menü bölüm sırası — eski `static_10000+n` gizleme anahtarlarını gerçek id’ye çevirir */
+const STATIC_MENU_SECTION_IDS = [
+  'main-menu',
+  'material-management',
+  'invoices',
+  'finance-management',
+  'retail',
+  'communication-notifications',
+  'reports-analysis',
+  'system-management',
+] as const;
+
+const STATIC_MENU_SECTION_ID_BASE = 10000;
+
+/** Menü yönetiminde bölümler için üretilen `static_1000x` → `communication-notifications` vb. */
+export function remapLegacyStaticHiddenModules(hidden: string[]): string[] {
+  return hidden.map((raw) => {
+    const h = String(raw || '').trim();
+    const m = /^static_(\d+)$/.exec(h);
+    if (!m) return h;
+    const idx = parseInt(m[1], 10) - STATIC_MENU_SECTION_ID_BASE;
+    if (idx >= 0 && idx < STATIC_MENU_SECTION_IDS.length) {
+      return STATIC_MENU_SECTION_IDS[idx];
+    }
+    return h;
+  });
+}
+
+function normalizeHiddenModules(raw: unknown): string[] {
+  const list = Array.isArray(raw)
+    ? raw.map((m) => String(m).trim()).filter(Boolean)
+    : [];
+  return [...new Set(remapLegacyStaticHiddenModules(list))];
+}
+
 function isRestApi(): boolean {
   return DB_SETTINGS.connectionProvider === 'rest_api';
 }
@@ -65,9 +100,7 @@ function normalizeItemOrders(raw: unknown): Record<string, number> | undefined {
 function normalizePrefs(raw: unknown): MenuPreferences | null {
   if (!raw || typeof raw !== 'object') return null;
   const o = raw as Record<string, unknown>;
-  const hidden = Array.isArray(o.hidden_modules)
-    ? o.hidden_modules.map((m) => String(m).trim()).filter(Boolean)
-    : [];
+  const hidden = normalizeHiddenModules(o.hidden_modules);
   const item_orders = normalizeItemOrders(o.item_orders);
   const updated_at = typeof o.updated_at === 'string' ? o.updated_at : undefined;
   return { hidden_modules: hidden, item_orders, updated_at };
@@ -100,9 +133,7 @@ function normalizeStore(raw: unknown, fallbackUser = 'sistem'): MenuPreferencesS
         const name = String(pr.name || '').trim() || buildDefaultPresetLabel(String(pr.saved_by || fallbackUser));
         const saved_by = String(pr.saved_by || fallbackUser).trim() || fallbackUser;
         const saved_at = typeof pr.saved_at === 'string' ? pr.saved_at : new Date().toISOString();
-        const hidden_modules = Array.isArray(pr.hidden_modules)
-          ? pr.hidden_modules.map((m) => String(m).trim()).filter(Boolean)
-          : [];
+        const hidden_modules = normalizeHiddenModules(pr.hidden_modules);
         const item_orders = normalizeItemOrders(pr.item_orders);
         return { id, name, saved_by, saved_at, hidden_modules, item_orders };
       })
@@ -354,7 +385,7 @@ export async function saveMenuPreferencePreset(input: {
     name: String(input.name || '').trim() || buildDefaultPresetLabel(input.saved_by),
     saved_by: String(input.saved_by || 'sistem').trim() || 'sistem',
     saved_at: now,
-    hidden_modules: input.hidden_modules ?? [],
+    hidden_modules: normalizeHiddenModules(input.hidden_modules),
     item_orders: normalizeItemOrders(input.item_orders),
   };
   store.presets.push(preset);

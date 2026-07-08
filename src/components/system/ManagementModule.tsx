@@ -172,7 +172,7 @@ import { useTheme } from '../../contexts/ThemeContext';
 import { useResponsive } from '../../hooks/useResponsive';
 import { usePermission } from '../../shared/hooks/usePermission';
 import { getStaticMenuSections } from '../../config/staticMenuConfig';
-import { syncMenuPreferences } from '../../services/menuPreferencesService';
+import { syncMenuPreferences, remapLegacyStaticHiddenModules } from '../../services/menuPreferencesService';
 
 // Custom z-index constants to ensure consistent layering
 const Z_INDEX = {
@@ -783,6 +783,11 @@ export function ManagementModule({
 
 
 
+  const effectiveHiddenModules = useMemo(
+    () => [...new Set(remapLegacyStaticHiddenModules(hiddenModules))],
+    [hiddenModules],
+  );
+
   // Use dynamic menu if available, otherwise use static menu
   const menuSections = useMemo(() => {
     const isDynamic = dynamicMenuSections && dynamicMenuSections.length > 0;
@@ -798,7 +803,7 @@ export function ManagementModule({
           const isIntegrationsItem = item.id === 'integrations';
 
           // 1. Check hidden_modules from config (DeskApp: Entegrasyonlar menüde kalsın)
-          if (hiddenModules.includes(item.id)) {
+          if (effectiveHiddenModules.includes(item.id)) {
             if (!(isIntegrationsItem && isTauri)) return false;
           }
 
@@ -827,7 +832,7 @@ export function ManagementModule({
     };
 
     return filterHidden(baseSections);
-  }, [dynamicMenuSections, staticMenuSections, hiddenModules, hasPermission, isAdmin, gibEdocumentMenuEnabled, isTauri]);
+  }, [dynamicMenuSections, staticMenuSections, effectiveHiddenModules, hasPermission, isAdmin, gibEdocumentMenuEnabled, isTauri]);
 
   // Menü güncellemelerini dinle - useCallback ile sarmalanmış
   const handleMenuUpdate = useCallback((e?: CustomEvent) => {
@@ -862,6 +867,8 @@ export function ManagementModule({
 
       return {
         menu_type: 'section',
+        id: section.id,
+        screen_id: section.id,
         title: section.title,
         label: section.title,
         items: section.items.map(convertItem)

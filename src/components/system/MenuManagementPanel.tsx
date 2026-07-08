@@ -110,7 +110,7 @@ export function MenuManagementPanel({ onClose }: MenuManagementPanelProps) {
         // Statik menüyü MenuItem formatına dönüştür
         const convertStaticToMenuItem = (item: any, idCounter: { val: number }, parentId?: number, sectionId?: number): MenuItem => {
           const currentId = idCounter.val++;
-          const screenId = item.screen_id || item.screen || `static_${currentId}`;
+          const screenId = item.screen_id || item.screen || item.id || `static_${currentId}`;
 
           return {
             id: currentId,
