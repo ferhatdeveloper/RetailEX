@@ -187,20 +187,31 @@ async function writeMenuPreferencesStoreToDb(store: MenuPreferencesStore): Promi
       { select: 'id', id: 'eq.1', limit: 1 },
       { schema: 'public' },
     );
-    if (Array.isArray(existing) && existing[0]) {
-      await postgrest.patch(
-        '/system_settings?id=eq.1',
-        { menu_preferences: store },
-        { schema: 'public', prefer: 'return=minimal' },
-      );
-    } else {
-      await postgrest.post(
-        '/system_settings',
-        { id: 1, menu_preferences: store },
-        { schema: 'public', prefer: 'return=minimal' },
-      );
+    const patchBody = { menu_preferences: store };
+    try {
+      if (Array.isArray(existing) && existing[0]) {
+        await postgrest.patch(
+          '/system_settings?id=eq.1',
+          patchBody,
+          { schema: 'public', prefer: 'return=minimal' },
+        );
+      } else {
+        await postgrest.post(
+          '/system_settings',
+          { id: 1, menu_preferences: store },
+          { schema: 'public', prefer: 'return=minimal' },
+        );
+      }
+      return;
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      const schemaCacheMiss =
+        msg.includes('PGRST204') ||
+        msg.includes('menu_preferences') ||
+        msg.includes('schema cache');
+      if (!schemaCacheMiss) throw e;
+      console.warn('[menuPreferences] PostgREST PATCH başarısız, pg_query yedeği deneniyor:', msg);
     }
-    return;
   }
   await postgres.query(
     `INSERT INTO public.system_settings (id, default_currency, menu_preferences)

@@ -93,6 +93,7 @@ for db in "${RETAIL_DBS[@]}"; do
   if psql_q -d "$db" -f "$MIGRATION_099"; then
     psql_q -d "$db" -c \
       "INSERT INTO public.schema_migrations (filename) VALUES ('${MIGRATION_NAME}') ON CONFLICT (filename) DO NOTHING;"
+    psql_q -d "$db" -c "NOTIFY pgrst, 'reload schema';" 2>/dev/null || true
     col="$(psql_q -d "$db" -At -c \
       "SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='system_settings' AND column_name='menu_preferences' LIMIT 1;")"
     echo "  OK — menu_preferences kolonu: ${col:+var}${col:-yok}"

@@ -4,3 +4,5 @@ ALTER TABLE public.system_settings
 
 COMMENT ON COLUMN public.system_settings.menu_preferences IS
   'Menü yönetimi: hidden_modules[], item_orders{screen_id:order}, updated_at. İstemci açılışında PG→localStorage senkron.';
+
+NOTIFY pgrst, 'reload schema';
