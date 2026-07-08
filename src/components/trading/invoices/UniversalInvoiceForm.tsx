@@ -3640,57 +3640,8 @@ export function UniversalInvoiceForm({
                   />
                 </div>
 
-                {/* Totals Area: currency selector + totals box */}
+                {/* Totals Area */}
                 <div className="flex justify-end gap-4 items-start">
-                  {/* Döviz & Kur Seçici */}
-                  <div className="flex items-end gap-2">
-                    <div>
-                      <label className="block text-xs font-medium text-gray-500 mb-1">{tm('currencyLabel')}</label>
-                      <select
-                        value={currency}
-                        onChange={(e) => {
-                          const v = e.target.value;
-                          currencyRateUserTouchedRef.current = false;
-                          setCurrency(v);
-                          if (v === ledgerCurrency) {
-                            setCurrencyRate(1);
-                            setCurrencyRateStr('');
-                          }
-                        }}
-                        className="px-2 py-1.5 border border-gray-300 rounded text-sm min-w-[4.5rem]"
-                      >
-                        {invoiceCurrencyCodes.map(code => (
-                          <option key={code} value={code}>{code}</option>
-                        ))}
-                      </select>
-                    </div>
-                    {currency !== ledgerCurrency && (
-                      <div>
-                        <label className="block text-xs font-medium text-gray-500 mb-1" title="Yerel tutar = adet × birim fiyat (döviz) × bu kur">
-                          1 {currency} =
-                        </label>
-                        <div className="flex items-center gap-1">
-                          <input
-                            type="text"
-                            inputMode="decimal"
-                            autoComplete="off"
-                            placeholder="1,54"
-                            value={currencyRateStr}
-                            onChange={(e) => {
-                              currencyRateUserTouchedRef.current = true;
-                              const raw = e.target.value;
-                              setCurrencyRateStr(raw);
-                              const n = parseDecimalStringForInput(raw);
-                              if (Number.isFinite(n) && n > 0) setCurrencyRate(n);
-                            }}
-                            className="w-28 px-2 py-1.5 border border-orange-300 rounded text-sm text-right font-medium"
-                          />
-                          <span className="text-xs text-gray-500">{ledgerCurrency}</span>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
                   {/* Totals Box */}
                   <div className={`${getCariBorderColor()} border p-4 rounded-lg w-full max-w-sm space-y-2 shadow-sm`}>
                     {currency !== ledgerCurrency && (
@@ -3748,7 +3699,46 @@ export function UniversalInvoiceForm({
                   </div>
                 </div>
 
-                <div className="flex justify-end gap-2 mt-3">
+                <div className="flex justify-end gap-2 mt-3 items-center flex-wrap">
+                  <select
+                    value={currency}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      currencyRateUserTouchedRef.current = false;
+                      setCurrency(v);
+                      if (v === ledgerCurrency) {
+                        setCurrencyRate(1);
+                        setCurrencyRateStr('');
+                      }
+                    }}
+                    className="px-2 py-2 border border-gray-300 rounded text-sm min-w-[4.5rem] bg-white"
+                    title={tm('currencyLabel')}
+                  >
+                    {invoiceCurrencyCodes.map(code => (
+                      <option key={code} value={code}>{code}</option>
+                    ))}
+                  </select>
+                  {currency !== ledgerCurrency && (
+                    <div className="flex items-center gap-1" title="Yerel tutar = adet × birim fiyat (döviz) × bu kur">
+                      <span className="text-xs text-gray-500 whitespace-nowrap">1 {currency} =</span>
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        autoComplete="off"
+                        placeholder="1,54"
+                        value={currencyRateStr}
+                        onChange={(e) => {
+                          currencyRateUserTouchedRef.current = true;
+                          const raw = e.target.value;
+                          setCurrencyRateStr(raw);
+                          const n = parseDecimalStringForInput(raw);
+                          if (Number.isFinite(n) && n > 0) setCurrencyRate(n);
+                        }}
+                        className="w-24 px-2 py-2 border border-orange-300 rounded text-sm text-right font-medium"
+                      />
+                      <span className="text-xs text-gray-500">{ledgerCurrency}</span>
+                    </div>
+                  )}
                   <button
                     onClick={handlePrint}
                     className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700 transition-colors flex items-center gap-2"
