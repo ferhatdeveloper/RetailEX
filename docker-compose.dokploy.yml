@@ -95,9 +95,11 @@ services:
       - postgrest_lovan
       - postgrest_zetem
       - postgrest_ferhat
+      - postgrest_ozbek
       - sync_lovan
       - sync_zetem
       - sync_ferhat
+      - sync_ozbek
     volumes:
       - ./database/docker/Caddyfile.api-gateway:/etc/caddy/Caddyfile:ro
     networks:
@@ -487,6 +489,21 @@ services:
     networks:
       - berqenas_net
 
+  postgrest_ozbek:
+    image: postgrest/postgrest:v12.2.0
+    container_name: saas_postgrest_ozbek
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      <<: *postgrest-env
+      PGRST_DB_URI: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/ozbek
+    ports:
+      - "${POSTGREST_PORT_OZBEK:-3021}:3000"
+    networks:
+      - berqenas_net
+
   sync_aqua:
     <<: *sync-service
     container_name: saas_sync_aqua
@@ -563,6 +580,13 @@ services:
     environment:
       <<: *sync-env
       DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/ferhat
+
+  sync_ozbek:
+    <<: *sync-service
+    container_name: saas_sync_ozbek
+    environment:
+      <<: *sync-env
+      DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/ozbek
 
   sync_m10_pdks:
     <<: *sync-service

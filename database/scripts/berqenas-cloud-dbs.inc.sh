@@ -65,6 +65,7 @@ berqenas_default_dbs_array() {
     lovan
     zetem
     ferhat
+    ozbek
   )
 }
 

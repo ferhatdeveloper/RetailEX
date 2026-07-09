@@ -52,7 +52,8 @@ VALUES
   ('mettu',         'Mettu Market',   'retail',            'mettu',           'Market'),
   ('jiber',         'Jiber giyim Mağazası', 'retail',      'jiber',           'Giyim'),
   ('canon',         'Canon Retail',   'retail',            'canon',           'Perakende'),
-  ('lovan',         'Lovan Retail',   'retail',            'lovan',           'Perakende')
+  ('lovan',         'Lovan Retail',   'retail',            'lovan',           'Perakende'),
+  ('ozbek',         'Özbek Restoran', 'restaurant',        'ozbek',           'Restoran')
 ON CONFLICT (code) DO UPDATE SET
   display_name  = EXCLUDED.display_name,
   module        = EXCLUDED.module,
