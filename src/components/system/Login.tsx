@@ -14,6 +14,7 @@ import { toast } from 'sonner';
 import { useAuth } from '../../contexts/AuthContext';
 import { NeonLogo } from '../ui/NeonLogo';
 import { readNeonProductLineFromStorage } from '../../utils/neonProductLine';
+import { isCapacitorNative } from '../../utils/capacitorPlatform';
 import { LanguageSelectionModal } from './LanguageSelectionModal';
 import type {
   ConnectionProvider,
@@ -229,11 +230,20 @@ export function Login({ onLogin }: LoginProps) {
 
     // Auto-prompt Setup on Web / Mobile if not configured
     const isConfiguredFromStorage = localStorage.getItem('exretail_firma_donem_configured') === 'true';
+    const hasWebConfig = !!localStorage.getItem('retailex_web_config');
     const isDesktopApp = isTauri && window.innerWidth >= 1024;
+    const isMobileNative = !isTauri && isCapacitorNative();
 
     // Fixed: Web version should NOT show wizard, always login screen
     if (!isConfiguredFromStorage && isDesktopApp) {
       setShowSetupWizard(true);
+    }
+
+    // Android/iOS ilk kurulum: REST (PostgREST) bağlantı sihirbazını aç
+    if (isMobileNative && !isConfiguredFromStorage && !hasWebConfig) {
+      setConnectionProvider('rest_api');
+      setDbConnectionMode('online');
+      setShowDbSettings(true);
     }
 
     // Load DB Settings for the quick modal
@@ -294,7 +304,13 @@ export function Login({ onLogin }: LoginProps) {
         password: REMOTE_CONFIG.password,
       });
       setDbTestFeedback(null);
-      setDbSettingsStep(0);
+      const postgrestStepIdx = dbSettingsWizardSteps.findIndex((s) => s.id === 'postgrest');
+      const openOnRest =
+        !isTauri &&
+        isCapacitorNative() &&
+        !restLoaded.trim() &&
+        postgrestStepIdx >= 0;
+      setDbSettingsStep(openOnRest ? postgrestStepIdx : 0);
     });
   }, [showDbSettings]);
 

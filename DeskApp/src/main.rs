@@ -1994,6 +1994,21 @@ fn check_bootstrap_config(app: &tauri::AppHandle) {
                     if let Some(l_active) = bootstrap_config.get("logo_objects_active").and_then(|v| v.as_bool()) {
                         config.logo_objects_active = l_active;
                     }
+                    if let Some(cp) = bootstrap_config.get("connection_provider").and_then(|v| v.as_str()) {
+                        if !cp.trim().is_empty() {
+                            config.connection_provider = cp.to_string();
+                        }
+                    }
+                    if let Some(rest) = bootstrap_config.get("remote_rest_url").and_then(|v| v.as_str()) {
+                        if !rest.trim().is_empty() {
+                            config.remote_rest_url = rest.to_string();
+                        }
+                    }
+                    if let Some(mode) = bootstrap_config.get("db_mode").and_then(|v| v.as_str()) {
+                        if !mode.trim().is_empty() {
+                            config.db_mode = mode.to_string();
+                        }
+                    }
                     let _ = config::save_app_config(app.clone(), config);
                     let _ = std::fs::remove_file(bootstrap_path);
                 }

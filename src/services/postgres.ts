@@ -1,4 +1,5 @@
 import { IS_TAURI, safeInvoke, getBridgeUrl, isRetailExProductionWeb } from '../utils/env';
+import { isCapacitorNative } from '../utils/capacitorPlatform';
 import { fetchRetailexAware } from '../utils/retailexDevProxy';
 import { logger } from './loggingService';
 import { setGlobalCurrency } from '../utils/currency';
@@ -618,6 +619,16 @@ export async function initializeFromSQLite(preloadedConfig?: any) {
         const merged = { ...flatObj, ...fullObj };
         applyWebLocalStorageConfig(merged);
         await ensureTenantDatabaseFromRegistry();
+      } else if (isCapacitorNative()) {
+        // Android/iOS: doğrudan PG yok — yalnızca PostgREST (LAN veya bulut).
+        DB_SETTINGS.activeMode = 'online';
+        DB_SETTINGS.connectionProvider = 'rest_api';
+        DB_SETTINGS.remoteRestUrl = '';
+        DB_SETTINGS.hybridReadPreference = 'local_first';
+        DB_SETTINGS.hybridSyncDirection = 'local_to_remote';
+        DB_SETTINGS.hybridSyncTransport = 'both';
+        LOCAL_CONFIG.isConfigured = false;
+        console.log('📱 Capacitor: varsayılan bağlantı REST (PostgREST) — LAN URL girişi gerekli');
       } else {
         // Web'de yapılandırma yoksa uzak demo PG'ye düşme — yerel retailex_local kullan.
         DB_SETTINGS.activeMode = 'offline';
@@ -630,6 +641,8 @@ export async function initializeFromSQLite(preloadedConfig?: any) {
       }
       if (pgFlat || webFull) {
         console.log('🌐 Web Config Loaded (exretail_pg_config + retailex_web_config)');
+      } else if (isCapacitorNative()) {
+        console.log('📱 Capacitor: REST modu — veritabanı ayarlarından LAN PostgREST URL girin');
       } else {
         console.log(`🌐 Web Mode: Yerel PG varsayılanı (${LOCAL_CONFIG.database} @ ${LOCAL_CONFIG.host})`);
       }

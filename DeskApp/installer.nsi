@@ -495,6 +495,8 @@ Function PageLeaveRoleSelection
     ; Default server settings for master
     StrCpy $WSUrl "ws://localhost:8000/api/v1/ws"
     StrCpy $AMQPUrl "amqp://guest:guest@localhost:5672"
+    ; Merkez sunucu: LAN/Android istemcileri için PostgREST varsayılan açık
+    StrCpy $InstallPostgREST 1
   ${Else}
     StrCpy $InstallRole 0
     StrCpy $InstallOfflineMessaging 0
@@ -534,14 +536,17 @@ FunctionEnd
 
 Function PagePostgREST
   Call SkipIfPassive
-  !insertmacro MUI_HEADER_TEXT "PostgREST (isteğe bağlı)" "REST API ile PostgreSQL erişimi; aynı LAN’daki diğer istemciler için isteğe bağlı."
+  !insertmacro MUI_HEADER_TEXT "PostgREST (REST API)" "LAN / Android istemcileri için önerilir; merkez sunucuda varsayılan açık."
   nsDialogs::Create 1018
   Pop $0
-  ${NSD_CreateLabel} 0 0 100% 52u "PostgREST, PostgreSQL’e HTTP (varsayılan port 3002) ile bağlanır. Kutuyu işaretlerseniz postgrest.exe bu kurulum klasörüne indirilir:$\r$\n$INSTDIR$\r$\n$\r$\nİşaretlemezseniz yalnızca RetailEX masaüstü uygulaması kurulur; PostgREST’i sonra elle de ekleyebilirsiniz."
+  ${NSD_CreateLabel} 0 0 100% 52u "PostgREST, PostgreSQL’e HTTP (port 3002) ile bağlanır. Android APK ve aynı WiFi’deki terminaller bu adresi kullanır:$\r$\nhttp://<bu-PC-IP>:3002$\r$\n$\r$\nMerkezi sunucu kurulumunda kutu varsayılan işaretlidir."
   Pop $0
-  ${NSD_CreateCheckBox} 0 58u 100% 14u "Bu bilgisayara PostgREST binary kur (GitHub’dan indir)"
+  ${NSD_CreateCheckBox} 0 58u 100% 14u "Bu bilgisayara PostgREST kur (GitHub’dan indir veya paketten kopyala)"
   Pop $PostgREST_Obj
   ${If} $InstallPostgREST == 1
+    SendMessage $PostgREST_Obj ${BM_SETCHECK} ${BST_CHECKED} 0
+  ${EndIf}
+  ${If} $InstallRole == 1
     SendMessage $PostgREST_Obj ${BM_SETCHECK} ${BST_CHECKED} 0
   ${EndIf}
   ${NSD_CreateLabel} 0 78u 100% 28u "Not: postgresql.conf, güvenlik duvarı ve pg_hba ayarlarını unutmayın. Örnek yapılandırma: _up_\config\postgrest.conf"
@@ -974,6 +979,10 @@ Section Install
 
   ${If} $InstallPostgREST == 1
     Call InstallPostgRESTBinary
+    ${If} $InstallRole == 1
+      DetailPrint "PostgREST LAN güvenlik duvarı (TCP 3002) açılıyor..."
+      ExecWait '"powershell.exe" -NoProfile -ExecutionPolicy Bypass -File "$INSTDIR\postgrest-windows-expose-lan.ps1" -Port 3002' $0
+    ${EndIf}
   ${EndIf}
 
   ; Windows hizmetleri: bosluklu INSTDIR icin -Prefix yerine dosya (install-services-setup.ps1 okur)
@@ -999,7 +1008,11 @@ Section Install
   ${Else}
     StrCpy $2 "false"
   ${EndIf}
-  FileWrite $9 '{ "central_ws_url": "$WSUrl", "amqp_url": "$AMQPUrl", "logo_objects_user": "$LogoObjUser", "logo_objects_pass": "$LogoObjPass", "logo_objects_path": "$LogoObjPath", "logo_objects_active": $1, "use_fixed_vpn_ip": $2 }'
+  FileWrite $9 '{ "central_ws_url": "$WSUrl", "amqp_url": "$AMQPUrl", "logo_objects_user": "$LogoObjUser", "logo_objects_pass": "$LogoObjPass", "logo_objects_path": "$LogoObjPath", "logo_objects_active": $1, "use_fixed_vpn_ip": $2'
+  ${If} $InstallPostgREST == 1
+    FileWrite $9 ', "connection_provider": "rest_api", "remote_rest_url": "http://127.0.0.1:3002", "db_mode": "hybrid"'
+  ${EndIf}
+  FileWrite $9 ' }'
   FileClose $9
 
   ; Write Summary for Notepad
@@ -1084,6 +1097,9 @@ Section Install
   ; Create start menu shortcut (GUI)
   !insertmacro MUI_STARTMENU_WRITE_BEGIN Application
     Call CreateStartMenuShortcut
+    ${If} $InstallPostgREST == 1
+      CreateShortCut "$SMPROGRAMS\$AppStartMenuFolder\PostgREST LAN Baslat.lnk" "$INSTDIR\start-postgrest-lan.cmd" "" "$INSTDIR\${MAINBINARYNAME}.exe" 0 SW_SHOWNORMAL "" "RetailEX PostgREST (port 3002)"
+    ${EndIf}
   !insertmacro MUI_STARTMENU_WRITE_END
 
   ; Create shortcuts for silent and passive installers, which
