@@ -141,8 +141,9 @@ if (-not (Test-IsAdmin)) {
     if ($Uninstall) { $argList += "-Uninstall" }
     if ($Prefix) { $argList += @("-Prefix", $Prefix) }
     $proc = Start-Process -FilePath "powershell.exe" -Verb RunAs -ArgumentList $argList -PassThru -Wait -WorkingDirectory $Prefix
-    if (-not $proc) { exit 1 }
-    exit $(if ($null -ne $proc.ExitCode) { $proc.ExitCode } else { 1 })
+    if (-not $proc) { return 1 }
+    if ($null -eq $proc.ExitCode -or $proc.ExitCode -eq 0) { return 0 }
+    return $proc.ExitCode
 }
 
 if ($Uninstall) {

@@ -1,11 +1,12 @@
 #Requires -Version 5.1
-# NSIS: retailex_install_prefix.txt veya -Prefix veya RETAILEX_INSTALL_DIR ile kurulum dizini alinir (bosluklu yol guvenli).
+# NSIS: retailex_install_prefix.txt veya -Prefix ile kurulum dizini alinir.
 param(
     [Parameter(Mandatory = $false)]
     [string]$Prefix = ""
 )
 
 $ErrorActionPreference = "Stop"
+. "$PSScriptRoot\install-services-common.ps1"
 
 function Get-InstallPrefix {
     param([string]$ParamPrefix)
@@ -22,100 +23,88 @@ function Get-InstallPrefix {
     return ""
 }
 
-function Test-IsAdmin {
-    $id = [Security.Principal.WindowsIdentity]::GetCurrent()
-    $p = New-Object Security.Principal.WindowsPrincipal($id)
-    return $p.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
-}
-
 $Prefix = Get-InstallPrefix -ParamPrefix $Prefix
-
 if (-not (Test-Path -LiteralPath $Prefix)) {
     Write-Error "Kurulum dizini bulunamadi veya bos: '$Prefix'"
     exit 1
 }
 
-if (-not (Test-IsAdmin)) {
-    Write-Host "[RetailEX] Windows hizmetleri icin yonetici izni gerekli; UAC penceresi acilacak..."
-    $argList = @(
-        "-NoProfile",
-        "-ExecutionPolicy", "Bypass",
-        "-File", $PSCommandPath
-    )
-    $proc = Start-Process -FilePath "powershell.exe" -Verb RunAs -ArgumentList $argList -PassThru -Wait -WorkingDirectory $Prefix
-    if (-not $proc) { exit 1 }
-    $code = $proc.ExitCode
-    if ($null -eq $code) { exit 1 }
+if (-not (Test-RetailExAdmin)) {
+    $code = Invoke-RetailExServiceSetupElevation -ScriptPath $PSCommandPath -Prefix $Prefix
     exit $code
 }
 
-function Invoke-ServiceInstall {
-    param([string]$ExePath, [string]$Label)
-    if (-not (Test-Path -LiteralPath $ExePath)) {
-        Write-Error "$Label bulunamadi: $ExePath"
-        exit 1
-    }
-    Write-Host "[RetailEX] Kuruluyor: $Label"
-    $p = Start-Process -FilePath $ExePath -ArgumentList @("--install") -Wait -PassThru -NoNewWindow
-    $code = if ($null -ne $p -and $null -ne $p.ExitCode) { $p.ExitCode } else { -1 }
-    if ($code -ne 0) {
-        Write-Error "$Label --install basarisiz (cikis $code)"
-        exit $code
-    }
+$logFile = "C:\ProgramData\RetailEX\install_services_setup_last.log"
+"=== install-services-setup.ps1 $(Get-Date) Prefix=$Prefix ===" | Out-File $logFile -Encoding utf8
+
+$failures = @()
+
+try {
+    Install-RetailExWindowsService `
+        -ExePath (Join-Path $Prefix "RetailEX_Service.exe") `
+        -ServiceName "RetailEX_Service" `
+        -Label "RetailEX_Service"
+}
+catch {
+    $msg = $_.Exception.Message
+    $failures += $msg
+    $msg | Out-File $logFile -Append
+    Write-Warning $msg
 }
 
-function Start-RetailExService {
-    param([string]$Name)
-    $svc = Get-Service -Name $Name -ErrorAction SilentlyContinue
-    if ($null -eq $svc) { return }
-    if ($svc.Status -ne "Running") {
-        Write-Host "[RetailEX] Baslatiliyor: $Name"
-        Start-Service -Name $Name -ErrorAction SilentlyContinue
-    }
-}
-
-$serviceExe = Join-Path $Prefix "RetailEX_Service.exe"
-$bridgeExe = Join-Path $Prefix "RetailEX_SQL_Bridge.exe"
 $npmScript = Join-Path $Prefix "install-bridge-npm.ps1"
-
-Invoke-ServiceInstall -ExePath $serviceExe -Label "RetailEX_Service"
-Start-RetailExService -Name "RetailEX_Service"
-
 if (Test-Path -LiteralPath $npmScript) {
     Write-Host "[RetailEX] SQL Bridge npm bagimliliklari..."
     try {
         & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $npmScript -Prefix $Prefix
     }
     catch {
-        Write-Warning "install-bridge-npm: $($_.Exception.Message)"
+        $msg = "install-bridge-npm: $($_.Exception.Message)"
+        $failures += $msg
+        $msg | Out-File $logFile -Append
+        Write-Warning $msg
     }
 }
 
+$bridgeExe = Join-Path $Prefix "RetailEX_SQL_Bridge.exe"
 if (Test-Path -LiteralPath $bridgeExe) {
-    Invoke-ServiceInstall -ExePath $bridgeExe -Label "RetailEX_SQL_Bridge"
-    Start-RetailExService -Name "RetailEX_SQL_Bridge"
-}
-
-$postgrestExe = Join-Path $Prefix "postgrest.exe"
-$postgrestScript = Join-Path $Prefix "install-postgrest-service.ps1"
-if ((Test-Path -LiteralPath $postgrestExe) -and (Test-Path -LiteralPath $postgrestScript)) {
-    Write-Host "[RetailEX] PostgREST Windows hizmeti kuruluyor (otomatik baslatma)..."
     try {
-        & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $postgrestScript -Prefix $Prefix
-        $pgrCode = $LASTEXITCODE
-        if ($pgrCode -eq 2) {
-            Write-Warning "PostgREST hizmeti kuruldu ancak baslatilamadi (PostgreSQL hazir olmayabilir). Start-Service RetailEX_PostgREST"
-        }
-        elseif ($pgrCode -ne 0) {
-            Write-Warning "install-postgrest-service.ps1 cikis $pgrCode — manuel: install-postgrest-service.cmd"
-        }
-        else {
-            Start-RetailExService -Name "RetailEX_PostgREST"
-        }
+        Install-RetailExWindowsService `
+            -ExePath $bridgeExe `
+            -ServiceName "RetailEX_SQL_Bridge" `
+            -Label "RetailEX_SQL_Bridge"
     }
     catch {
-        Write-Warning "PostgREST hizmet kurulumu: $($_.Exception.Message)"
+        $msg = $_.Exception.Message
+        $failures += $msg
+        $msg | Out-File $logFile -Append
+        Write-Warning $msg
     }
 }
 
+try {
+    Install-RetailExPostgrestService -Prefix $Prefix
+}
+catch {
+    $msg = "PostgREST: $($_.Exception.Message)"
+    $failures += $msg
+    $msg | Out-File $logFile -Append
+    Write-Warning $msg
+}
+
+$coreOk = @(
+    (Get-Service -Name "RetailEX_Service" -ErrorAction SilentlyContinue),
+    (Get-Service -Name "RetailEX_SQL_Bridge" -ErrorAction SilentlyContinue)
+) | Where-Object { $_ }
+
+if ($coreOk.Count -lt 2) {
+    "BASARISIZ: $($failures -join ' | ')" | Out-File $logFile -Append
+    exit 1
+}
+
+if ($failures.Count -gt 0) {
+    "UYARI (devam): $($failures -join ' | ')" | Out-File $logFile -Append
+}
+
+"TAMAM" | Out-File $logFile -Append
 exit 0

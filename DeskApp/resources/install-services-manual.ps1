@@ -33,25 +33,8 @@ function Test-RequiredFile($path, $label) {
 
 function Install-AppService($exePath, $serviceName) {
     Test-RequiredFile $exePath $serviceName
-
-    Write-Info "Installing $serviceName from $exePath"
-    # GUI-subsystem EXE'lerde & ile calistirmada $LASTEXITCODE guvenilir degil; Start-Process kullan.
-    $p = Start-Process -FilePath $exePath -ArgumentList @("--install") -Wait -PassThru -NoNewWindow
-    $code = if ($null -ne $p -and $null -ne $p.ExitCode) { [int]$p.ExitCode } else { -1 }
-    if ($code -ne 0) {
-        throw "$serviceName --install failed with exit code $code (yonetici haklari gerekir veya ProgramData loguna bakin: C:\ProgramData\RetailEX\${serviceName}_install_last_error.txt)."
-    }
-
-    Start-Sleep -Seconds 1
-    $svc = Get-Service -Name $serviceName -ErrorAction SilentlyContinue
-    if (-not $svc) {
-        throw "$serviceName could not be created."
-    }
-
-    if ($svc.Status -ne "Running") {
-        Write-Info "Starting $serviceName"
-        Start-Service -Name $serviceName
-    }
+    . (Join-Path (Split-Path -Parent $PSCommandPath) 'install-services-common.ps1')
+    Install-RetailExWindowsService -ExePath $exePath -ServiceName $serviceName -Label $serviceName
 }
 
 try {
@@ -78,20 +61,8 @@ try {
     $postgrestScript = Join-Path $baseDir "install-postgrest-service.ps1"
     if ((Test-Path $postgrestExe) -and (Test-Path $postgrestScript)) {
         Write-Info "Installing PostgREST Windows service (automatic startup)..."
-        & powershell -NoProfile -ExecutionPolicy Bypass -File $postgrestScript -Prefix $baseDir
-        $pgrCode = $LASTEXITCODE
-        if ($pgrCode -eq 2) {
-            Write-WarnMsg "PostgREST service installed but not started (PostgreSQL may not be ready). Run: Start-Service RetailEX_PostgREST"
-        }
-        elseif ($pgrCode -ne 0) {
-            Write-WarnMsg "install-postgrest-service.ps1 exit $pgrCode"
-        }
-        else {
-            $pgrSvc = Get-Service -Name "RetailEX_PostgREST" -ErrorAction SilentlyContinue
-            if ($pgrSvc -and $pgrSvc.Status -ne "Running") {
-                Start-Service -Name "RetailEX_PostgREST" -ErrorAction SilentlyContinue
-            }
-        }
+        . (Join-Path $baseDir 'install-services-common.ps1')
+        Install-RetailExPostgrestService -Prefix $baseDir
     }
     else {
         Write-WarnMsg "postgrest.exe/install-postgrest-service.ps1 not found, PostgREST service skipped."

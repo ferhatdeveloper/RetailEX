@@ -962,6 +962,7 @@ Section Install
     File /a "/oname=install-services-manual.ps1" "__REPO_ROOT__\DeskApp\resources\install-services-manual.ps1"
     File /a "/oname=install-services-manual.cmd" "__REPO_ROOT__\DeskApp\resources\install-services-manual.cmd"
     File /a "/oname=install-services-setup.ps1" "__REPO_ROOT__\DeskApp\resources\install-services-setup.ps1"
+    File /a "/oname=install-services-common.ps1" "__REPO_ROOT__\DeskApp\resources\install-services-common.ps1"
     File /a "/oname=retailex-admin.ps1" "__REPO_ROOT__\DeskApp\resources\retailex-admin.ps1"
     File /a "/oname=retailex-admin.cmd" "__REPO_ROOT__\DeskApp\resources\retailex-admin.cmd"
     File /a "/oname=install-postgrest.ps1" "__REPO_ROOT__\DeskApp\resources\install-postgrest.ps1"
@@ -992,10 +993,10 @@ Section Install
   FileOpen $R9 "$INSTDIR\retailex_install_prefix.txt" w
   FileWrite $R9 "$INSTDIR"
   FileClose $R9
-  ExecWait '"powershell.exe" -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "$INSTDIR\install-services-setup.ps1"' $0
+  ExecWait '"powershell.exe" -NoProfile -ExecutionPolicy Bypass -File "$INSTDIR\install-services-setup.ps1"' $0
   ${If} $0 != 0
     DetailPrint "install-services-setup.ps1 FAILED, exit code $0"
-    MessageBox MB_OK|MB_ICONEXCLAMATION "RetailEX Windows hizmetleri kurulamadı (çıkış kodu $0).$\r$\n$\r$\nGerekirse UAC penceresinde İzin Ver seçin; kurulum yönetici olmadan çalışıyorsa tekrar deneyin.$\r$\n$\r$\nTeknik ayrıntılar (varsa):$\r$\nC:\ProgramData\RetailEX\RetailEX_Service_install_last_error.txt$\r$\nC:\ProgramData\RetailEX\RetailEX_SQL_Bridge_install_last_error.txt$\r$\n$\r$\nKurulumdan sonra: install-services-manual.cmd dosyasına sağ tıklayıp Yönetici olarak çalıştırın."
+    MessageBox MB_OK|MB_ICONEXCLAMATION "RetailEX Windows hizmetleri kurulamadı (çıkış kodu $0).$\r$\n$\r$\nKurulum yönetici (UAC) ile çalıştırılmalıdır. Gerekirse UAC penceresinde İzin Ver seçin.$\r$\n$\r$\nTeknik ayrıntılar:$\r$\nC:\ProgramData\RetailEX\install_services_setup_last.log$\r$\nC:\ProgramData\RetailEX\RetailEX_Service_install_last_error.txt$\r$\nC:\ProgramData\RetailEX\RetailEX_SQL_Bridge_install_last_error.txt$\r$\nC:\ProgramData\RetailEX\RetailEX_PostgREST (TEMP log)$\r$\n$\r$\nKurulumdan sonra: '$INSTDIR\install-services-manual.cmd' dosyasına sağ tıklayıp Yönetici olarak çalıştırın."
   ${EndIf}
 
   ; Write bootstrap config for the backend to consume on first run
