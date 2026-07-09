@@ -96,4 +96,26 @@ if (Test-Path -LiteralPath $bridgeExe) {
     Start-RetailExService -Name "RetailEX_SQL_Bridge"
 }
 
+$postgrestExe = Join-Path $Prefix "postgrest.exe"
+$postgrestScript = Join-Path $Prefix "install-postgrest-service.ps1"
+if ((Test-Path -LiteralPath $postgrestExe) -and (Test-Path -LiteralPath $postgrestScript)) {
+    Write-Host "[RetailEX] PostgREST Windows hizmeti kuruluyor (otomatik baslatma)..."
+    try {
+        & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $postgrestScript -Prefix $Prefix
+        $pgrCode = $LASTEXITCODE
+        if ($pgrCode -eq 2) {
+            Write-Warning "PostgREST hizmeti kuruldu ancak baslatilamadi (PostgreSQL hazir olmayabilir). Start-Service RetailEX_PostgREST"
+        }
+        elseif ($pgrCode -ne 0) {
+            Write-Warning "install-postgrest-service.ps1 cikis $pgrCode — manuel: install-postgrest-service.cmd"
+        }
+        else {
+            Start-RetailExService -Name "RetailEX_PostgREST"
+        }
+    }
+    catch {
+        Write-Warning "PostgREST hizmet kurulumu: $($_.Exception.Message)"
+    }
+}
+
 exit 0

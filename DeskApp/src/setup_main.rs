@@ -242,11 +242,27 @@ fn install_services_nearby() -> anyhow::Result<String> {
             .args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", &bridge.to_string_lossy()])
             .status();
     }
-    Ok("Servis kurulum islemleri tetiklendi. Yonetici olarak calistirdiginizdan emin olun.".to_string())
+    let postgrest = base.join("install-postgrest-service.ps1");
+    if base.join("postgrest.exe").exists() && postgrest.exists() {
+        let prefix = base.to_string_lossy();
+        let _ = std::process::Command::new("powershell")
+            .args([
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+                &postgrest.to_string_lossy(),
+                "-Prefix",
+                &prefix,
+            ])
+            .status();
+        let _ = std::process::Command::new("sc").args(["start", "RetailEX_PostgREST"]).status();
+    }
+    Ok("Servis kurulum islemleri tetiklendi. Yonetici olarak calistirdiginizden emin olun.".to_string())
 }
 
 fn get_services_health() -> anyhow::Result<String> {
-    let script = "Get-Service -Name RetailEX_Service,RetailEX_SQL_Bridge -ErrorAction SilentlyContinue | Select-Object Name,Status | Format-Table -HideTableHeaders";
+    let script = "Get-Service -Name RetailEX_Service,RetailEX_SQL_Bridge,RetailEX_PostgREST -ErrorAction SilentlyContinue | Select-Object Name,Status | Format-Table -HideTableHeaders";
     let out = std::process::Command::new("powershell")
         .args(["-NoProfile", "-Command", script])
         .output()?;

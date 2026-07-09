@@ -46,5 +46,6 @@ else {
     Write-Host "[PostgREST-LAN] Bu PC'nin WiFi IP'sini bulun (ipconfig) ve http://<IP>:$Port kullanin."
 }
 
-Write-Host '[PostgREST-LAN] PostgREST baslatma: start-postgrest-lan.cmd veya npm run postgrest:lan:start'
+Write-Host '[PostgREST-LAN] PostgREST Windows hizmeti: RetailEX_PostgREST (kurulumda otomatik)'
+Write-Host '[PostgREST-LAN] Manuel onarim: install-postgrest-service.cmd'
 exit 0

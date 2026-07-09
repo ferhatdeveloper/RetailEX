@@ -549,7 +549,7 @@ Function PagePostgREST
   ${If} $InstallRole == 1
     SendMessage $PostgREST_Obj ${BM_SETCHECK} ${BST_CHECKED} 0
   ${EndIf}
-  ${NSD_CreateLabel} 0 78u 100% 28u "Not: postgresql.conf, güvenlik duvarı ve pg_hba ayarlarını unutmayın. Örnek yapılandırma: _up_\config\postgrest.conf"
+  ${NSD_CreateLabel} 0 78u 100% 28u "Not: Kurulumda RetailEX_PostgREST Windows hizmeti otomatik kurulur (acilista baslar). postgresql.conf ve guvenlik duvari ayarlarini unutmayin."
   Pop $0
   nsDialogs::Show
 FunctionEnd
@@ -973,6 +973,8 @@ Section Install
     File /a "/oname=postgrest-windows-expose-lan.cmd" "__REPO_ROOT__\DeskApp\resources\postgrest-windows-expose-lan.cmd"
     File /a "/oname=start-postgrest-lan.ps1" "__REPO_ROOT__\DeskApp\resources\start-postgrest-lan.ps1"
     File /a "/oname=start-postgrest-lan.cmd" "__REPO_ROOT__\DeskApp\resources\start-postgrest-lan.cmd"
+    File /a "/oname=install-postgrest-service.ps1" "__REPO_ROOT__\DeskApp\resources\install-postgrest-service.ps1"
+    File /a "/oname=install-postgrest-service.cmd" "__REPO_ROOT__\DeskApp\resources\install-postgrest-service.cmd"
     File /a "/oname=RetailEX_PostgreSQLRemote.exe" "${POSTGRESREMOTEENABLESRCPATH}"
     CreateDirectory "$INSTDIR\RetailEXTools"
     File /a "/oname=RetailEXTools\RetailEX_Tools.exe" "__REPO_ROOT__\DeskApp\target\release\RetailEX_Tools.exe"
@@ -1029,6 +1031,9 @@ Section Install
   FileWrite $9 "$\r$\nServis Durumları:$\r$\n"
   FileWrite $9 "- RetailEX Sync Service: KURULDU & ÇALIŞIYOR$\r$\n"
   FileWrite $9 "- RetailEX SQL Bridge (Port 3001): KURULDU (Native Windows Service EXE)$\r$\n"
+  ${If} $InstallPostgREST == 1
+    FileWrite $9 "- RetailEX PostgREST (Port 3002): KURULDU (Windows Hizmeti, otomatik baslatma)$\r$\n"
+  ${EndIf}
   ${If} $InstallRole == 1
     ${If} $InstallOfflineMessaging == 1
       FileWrite $9 "- Redis (Memory Cache): KURULDU (veya zaten vardı)$\r$\n"
@@ -1050,7 +1055,8 @@ Section Install
   FileWrite $9 "6. Gelişmiş yönetim için '$INSTDIR\retailex-admin.cmd' (veya .ps1) veya '$INSTDIR\RetailEXTools\RetailEX_Tools.exe' menüsünü kullanın.$\r$\n"
   FileWrite $9 "7. PostgreSQL'i LAN'dan erişime açmak (yönetici): '$INSTDIR\RetailEX_PostgreSQLRemote.exe' veya pg-windows-expose-remote.cmd$\r$\n"
   ${If} $InstallPostgREST == 1
-    FileWrite $9 "8. PostgREST LAN: '$INSTDIR\postgrest-windows-expose-lan.cmd' (firewall 3002) + '$INSTDIR\start-postgrest-lan.cmd'$\r$\n"
+    FileWrite $9 "8. PostgREST: Windows hizmeti RetailEX_PostgREST (otomatik baslatma, port 3002).$\r$\n"
+    FileWrite $9 "   Manuel onarim: '$INSTDIR\install-postgrest-service.cmd' (Yonetici)$\r$\n"
     FileWrite $9 "   Terminaller: remote_rest_url = http://<A-WiFi-IP>:3002, db_mode=online, connection_provider=rest_api$\r$\n"
   ${EndIf}
   FileWrite $9 "$\r$\nRetailEX Enterprise OS - Keyifli kullanımlar!$\r$\n"
@@ -1098,7 +1104,7 @@ Section Install
   !insertmacro MUI_STARTMENU_WRITE_BEGIN Application
     Call CreateStartMenuShortcut
     ${If} $InstallPostgREST == 1
-      CreateShortCut "$SMPROGRAMS\$AppStartMenuFolder\PostgREST LAN Baslat.lnk" "$INSTDIR\start-postgrest-lan.cmd" "" "$INSTDIR\${MAINBINARYNAME}.exe" 0 SW_SHOWNORMAL "" "RetailEX PostgREST (port 3002)"
+      CreateShortCut "$SMPROGRAMS\$AppStartMenuFolder\PostgREST Hizmeti (Onarim).lnk" "$INSTDIR\install-postgrest-service.cmd" "" "$INSTDIR\${MAINBINARYNAME}.exe" 0 SW_SHOWNORMAL "" "RetailEX PostgREST Windows hizmeti"
     ${EndIf}
   !insertmacro MUI_STARTMENU_WRITE_END
 
@@ -1190,6 +1196,7 @@ Section Uninstall
   ; Stop and Uninstall Services
   ExecWait 'net stop RetailEX_Service'
   ExecWait 'net stop RetailEX_SQL_Bridge'
+  ExecWait 'net stop RetailEX_PostgREST'
   ExecWait 'net stop RetailEXLogoConnector'
   ExecWait 'net stop RetailEX_Logo'
   ExecWait '"$INSTDIR\RetailEX_Service.exe" --uninstall'
@@ -1207,6 +1214,14 @@ Section Uninstall
     Delete "$INSTDIR\RetailEX_Logo_Connector.exe"
     ExecWait 'sc.exe stop RetailEX_SQL_Bridge'
     ExecWait 'sc.exe delete RetailEX_SQL_Bridge'
+    ExecWait 'sc.exe stop RetailEX_PostgREST'
+    ExecWait 'sc.exe delete RetailEX_PostgREST'
+    Delete "$INSTDIR\install-postgrest-service.ps1"
+    Delete "$INSTDIR\install-postgrest-service.cmd"
+    Delete "$INSTDIR\postgrest-windows-expose-lan.ps1"
+    Delete "$INSTDIR\postgrest-windows-expose-lan.cmd"
+    Delete "$INSTDIR\start-postgrest-lan.ps1"
+    Delete "$INSTDIR\start-postgrest-lan.cmd"
     Delete "$INSTDIR\bridge.cjs"
     Delete "$INSTDIR\package.json"
     Delete "$INSTDIR\install-bridge.ps1"

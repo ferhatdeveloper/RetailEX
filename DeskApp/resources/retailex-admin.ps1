@@ -5,7 +5,7 @@ param(
     [switch]$Menu
 )
 
-$Script:ServiceNames = @("RetailEX_Service", "RetailEX_SQL_Bridge")
+$Script:ServiceNames = @("RetailEX_Service", "RetailEX_SQL_Bridge", "RetailEX_PostgREST")
 $Script:PassFields = @("erp_pass", "pg_remote_pass", "pg_local_pass", "logo_objects_pass")
 $Script:LogPath = Join-Path $env:TEMP "retailex_admin.log"
 
@@ -159,6 +159,17 @@ function Install-CoreServices {
         & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $bridgePs
     } else {
         Write-WarnMsg "RetailEX_SQL_Bridge.exe/install-bridge.ps1 bulunamadi, SQL Bridge atlandi."
+    }
+
+    $postgrestPs = Join-Path $baseDir "install-postgrest-service.ps1"
+    $postgrestExe = Join-Path $baseDir "postgrest.exe"
+    if ((Test-Path $postgrestExe) -and (Test-Path $postgrestPs)) {
+        Write-Info "RetailEX_PostgREST kuruluyor..."
+        & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $postgrestPs -Prefix $baseDir
+        Start-Sleep -Seconds 1
+        Start-Service -Name "RetailEX_PostgREST" -ErrorAction SilentlyContinue
+    } else {
+        Write-WarnMsg "postgrest.exe/install-postgrest-service.ps1 bulunamadi, PostgREST atlandi."
     }
 
     Write-Info "Servis kurulum denemesi tamamlandi."

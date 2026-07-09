@@ -74,6 +74,29 @@ try {
         Write-WarnMsg "RetailEX_SQL_Bridge.exe/install-bridge.ps1 not found, SQL Bridge skipped."
     }
 
+    $postgrestExe = Join-Path $baseDir "postgrest.exe"
+    $postgrestScript = Join-Path $baseDir "install-postgrest-service.ps1"
+    if ((Test-Path $postgrestExe) -and (Test-Path $postgrestScript)) {
+        Write-Info "Installing PostgREST Windows service (automatic startup)..."
+        & powershell -NoProfile -ExecutionPolicy Bypass -File $postgrestScript -Prefix $baseDir
+        $pgrCode = $LASTEXITCODE
+        if ($pgrCode -eq 2) {
+            Write-WarnMsg "PostgREST service installed but not started (PostgreSQL may not be ready). Run: Start-Service RetailEX_PostgREST"
+        }
+        elseif ($pgrCode -ne 0) {
+            Write-WarnMsg "install-postgrest-service.ps1 exit $pgrCode"
+        }
+        else {
+            $pgrSvc = Get-Service -Name "RetailEX_PostgREST" -ErrorAction SilentlyContinue
+            if ($pgrSvc -and $pgrSvc.Status -ne "Running") {
+                Start-Service -Name "RetailEX_PostgREST" -ErrorAction SilentlyContinue
+            }
+        }
+    }
+    else {
+        Write-WarnMsg "postgrest.exe/install-postgrest-service.ps1 not found, PostgREST service skipped."
+    }
+
     # PostgreSQL: tum agdan erisim (listen_addresses + pg_hba + firewall 5432)
     $exposeCandidates = @(
         (Join-Path $baseDir "pg-windows-expose-remote.ps1")

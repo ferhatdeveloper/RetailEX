@@ -56,6 +56,7 @@
       "resources/pg-windows-expose-remote.ps1",
       "resources/postgrest-windows-expose-lan.ps1",
       "resources/start-postgrest-lan.ps1",
+      "resources/install-postgrest-service.ps1",
       "resources/bridge.cjs",
       "resources/package.json",
       "resources/install-bridge.ps1",
