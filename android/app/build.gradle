@@ -20,6 +20,8 @@ android {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            // CI / dahili dağıtım: mağaza imzası olmadan yüklenebilir APK
+            signingConfig signingConfigs.debug
         }
     }
 }
