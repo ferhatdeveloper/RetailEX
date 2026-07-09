@@ -105,12 +105,18 @@ jobs:
             Write-Host "Imza secret yok; imzasiz build (WINDOWS_CODESIGN_DISABLE=1)."
           }
 
+      - name: Prepare Tauri updater signing
+        shell: pwsh
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        run: node scripts/tauri-updater-ci-prep.mjs
+
       - name: Build Tauri (Windows)
         shell: pwsh
         env:
           CI: 'true'
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ env.TAURI_SIGNING_ENABLED == '1' && secrets.TAURI_SIGNING_PRIVATE_KEY || '' }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ env.TAURI_SIGNING_ENABLED == '1' && secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD || '' }}
           WINDOWS_CODESIGN_DISABLE: ${{ env.WINDOWS_CODESIGN_DISABLE }}
           WINDOWS_CODESIGN_THUMBPRINT: ${{ env.WINDOWS_CODESIGN_THUMBPRINT }}
           SM_API_KEY: ${{ env.SM_API_KEY }}

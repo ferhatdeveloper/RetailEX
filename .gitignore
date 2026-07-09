@@ -31,6 +31,7 @@ scripts/whatsapp-bridge/node_modules/
 
 # Windows kod imzasi (thumbprint yerel; repoya konmaz)
 DeskApp/tauri.windows.conf.json
+DeskApp/tauri.updater-ci.conf.json
 
 # PostgREST Windows x64 — npm run postgrest:fetch ile üretilir (kuruluma gömülür)
 DeskApp/resources/postgrest/postgrest.exe
