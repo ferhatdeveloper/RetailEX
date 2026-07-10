@@ -1,11 +1,10 @@
 /**
  * ExRetailOS - Main App Router with Authentication
- * 
- * Routes with authentication integration
- * 
- * @created 2024-12-24
+ *
+ * Login + providers eager; App ve diğer ağır ekranlar lazy (Android ilk açılış).
  */
 
+import { Suspense, lazy } from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AntDesignThemeProvider } from './theme/AntDesignThemeProvider';
@@ -14,15 +13,20 @@ import { ThemeSyncToaster } from './components/system/ThemeSyncToaster';
 import { KasaDataArrivalBridge } from './components/system/KasaDataArrivalBridge';
 import { ThemeAwarePageShell } from './components/system/ThemeAwarePageShell';
 import { LanguageProvider } from './contexts/LanguageContext';
-import { AuthProvider } from './contexts/AuthContext';
+import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { FirmaDonemProvider } from './contexts/FirmaDonemContext';
 import { Login } from './components/system/Login';
-import { InfrastructureSettingsPage } from './components/system/InfrastructureSettingsPage';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
-import App from './App';
-import PublicBeautyBooking from './components/beauty/components/PublicBeautyBooking';
-import { RoleManagement } from './components/system/RoleManagement';
-import { RoleForm } from './components/system/RoleForm';
+
+const App = lazy(() => import('./App'));
+const InfrastructureSettingsPage = lazy(() =>
+  import('./components/system/InfrastructureSettingsPage').then((m) => ({
+    default: m.InfrastructureSettingsPage,
+  })),
+);
+const PublicBeautyBooking = lazy(() => import('./components/beauty/components/PublicBeautyBooking'));
+const RoleManagement = lazy(() => import('./components/system/RoleManagement'));
+const RoleForm = lazy(() => import('./components/system/RoleForm'));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -36,59 +40,87 @@ const queryClient = new QueryClient({
   },
 });
 
+function RouteFallback() {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
+      <div className="text-slate-300 text-sm animate-pulse">Yükleniyor…</div>
+    </div>
+  );
+}
+
+/** Giriş yoksa Login (App chunk beklemeden); oturum varsa App lazy. */
+function RootEntry() {
+  const { isAuthenticated, loading } = useAuth();
+  if (loading) return <RouteFallback />;
+  if (!isAuthenticated) {
+    return (
+      <FirmaDonemProvider>
+        <Login onLogin={() => {}} />
+      </FirmaDonemProvider>
+    );
+  }
+  return (
+    <Suspense fallback={<RouteFallback />}>
+      <App />
+    </Suspense>
+  );
+}
+
 export function AppRouter() {
   return (
     <QueryClientProvider client={queryClient}>
-      {/* Dil bağlamı Auth/Routes üstünde olmalı; aksi halde bazı ağaç düzenlerinde MainLayout useLanguage hatası verebilir */}
       <LanguageProvider>
         <ThemeProvider>
-          {/*
-            AuthProvider tüm Router + Routes’u sarar (yalnızca Routes değil).
-            Aksi düzende veya çift React kopyasında usePermission → useAuth “provider yok” hatası görülebilir.
-          */}
           <AuthProvider>
             <ThemeSyncToaster />
             <KasaDataArrivalBridge />
             <Router>
               <AntDesignThemeProvider>
-                <Routes>
-                  {/* Public routes */}
-                  <Route path="/login" element={<FirmaDonemProvider><Login onLogin={() => { }} /></FirmaDonemProvider>} />
-                  <Route path="/infra-settings" element={<InfrastructureSettingsPage />} />
-                  <Route path="/book/:firmNr" element={<PublicBeautyBooking />} />
-
-                  {/* /mgz → eticaret/admin/bootstrap.tsx (ERP CSS yok) */}
-                  {/* /magaza ve /shop → eticaret/storefront/bootstrap.tsx (ERP CSS yok) */}
-                  {/* Protected routes */}
-                  <Route
-                    path="/system/roles"
-                    element={
-                      <ProtectedRoute>
-                        <ThemeAwarePageShell><RoleManagement /></ThemeAwarePageShell>
-                      </ProtectedRoute>
-                    }
-                  />
-                  <Route
-                    path="/system/roles/new"
-                    element={
-                      <ProtectedRoute>
-                        <ThemeAwarePageShell><RoleForm /></ThemeAwarePageShell>
-                      </ProtectedRoute>
-                    }
-                  />
-                  <Route
-                    path="/system/roles/:id"
-                    element={
-                      <ProtectedRoute>
-                        <ThemeAwarePageShell><RoleForm /></ThemeAwarePageShell>
-                      </ProtectedRoute>
-                    }
-                  />
-                  <Route
-                    path="/*"
-                    element={<App />}
-                  />
-                </Routes>
+                <Suspense fallback={<RouteFallback />}>
+                  <Routes>
+                    <Route
+                      path="/login"
+                      element={
+                        <FirmaDonemProvider>
+                          <Login onLogin={() => {}} />
+                        </FirmaDonemProvider>
+                      }
+                    />
+                    <Route path="/infra-settings" element={<InfrastructureSettingsPage />} />
+                    <Route path="/book/:firmNr" element={<PublicBeautyBooking />} />
+                    <Route
+                      path="/system/roles"
+                      element={
+                        <ProtectedRoute>
+                          <ThemeAwarePageShell>
+                            <RoleManagement />
+                          </ThemeAwarePageShell>
+                        </ProtectedRoute>
+                      }
+                    />
+                    <Route
+                      path="/system/roles/new"
+                      element={
+                        <ProtectedRoute>
+                          <ThemeAwarePageShell>
+                            <RoleForm />
+                          </ThemeAwarePageShell>
+                        </ProtectedRoute>
+                      }
+                    />
+                    <Route
+                      path="/system/roles/:id"
+                      element={
+                        <ProtectedRoute>
+                          <ThemeAwarePageShell>
+                            <RoleForm />
+                          </ThemeAwarePageShell>
+                        </ProtectedRoute>
+                      }
+                    />
+                    <Route path="/*" element={<RootEntry />} />
+                  </Routes>
+                </Suspense>
               </AntDesignThemeProvider>
             </Router>
           </AuthProvider>
@@ -99,5 +131,3 @@ export function AppRouter() {
 }
 
 export default AppRouter;
-
-

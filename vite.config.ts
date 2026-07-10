@@ -72,18 +72,25 @@ export default defineConfig({
       // Dokploy/VPS: rendering chunks bellek zirvesi — paralel dosya işlemini kıs
       ...(process.env.DOCKER_BUILD === '1' ? { maxParallelFileOps: 1 } : {}),
       output: {
-        manualChunks: {
-          'react-vendor': ['react', 'react-dom', 'react-router-dom'],
-          'ui-vendor': [
-            '@radix-ui/react-dialog',
-            '@radix-ui/react-dropdown-menu',
-            '@radix-ui/react-select',
-            '@radix-ui/react-tabs',
-            '@radix-ui/react-tooltip'
-          ],
-          'supabase-vendor': ['@supabase/supabase-js', '@jsr/supabase__supabase-js'],
-          'chart-vendor': ['recharts'],
-          'table-vendor': ['@tanstack/react-table']
+        manualChunks(id) {
+          if (id.includes('node_modules/react-dom') || id.includes('/react/') || id.includes('react-router')) {
+            return 'react-vendor';
+          }
+          if (
+            id.includes('@radix-ui/react-dialog') ||
+            id.includes('@radix-ui/react-dropdown-menu') ||
+            id.includes('@radix-ui/react-select') ||
+            id.includes('@radix-ui/react-tabs') ||
+            id.includes('@radix-ui/react-tooltip')
+          ) {
+            return 'ui-vendor';
+          }
+          if (id.includes('@supabase/supabase-js') || id.includes('@jsr/supabase__supabase-js')) {
+            return 'supabase-vendor';
+          }
+          if (id.includes('node_modules/recharts')) return 'chart-vendor';
+          if (id.includes('@tanstack/react-table')) return 'table-vendor';
+          if (id.includes('/src/utils/chunkLoadRecovery')) return 'chunk-recovery';
         },
         assetFileNames: (assetInfo) => {
           const info = assetInfo.name.split('.');
