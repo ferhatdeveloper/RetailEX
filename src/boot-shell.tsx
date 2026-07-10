@@ -1,10 +1,25 @@
 /**
- * Android/Capacitor: anında #root mount — ağır bootstrap-erp chunk'ı arkada yüklenir.
- * Böylece 90sn "Arayüz yüklenemedi" zaman aşımı tetiklenmez.
+ * Android/Capacitor: anında #root mount — erp-entry (küçük) → erp-app-inner (ağır).
  */
 import { createRoot } from 'react-dom/client';
 import { useEffect, useState, type ComponentType } from 'react';
 import { importWithChunkRetry } from './utils/chunkLoadRecovery';
+
+function resolveErpRootComponent(mod: unknown): ComponentType {
+  if (typeof mod === 'function') return mod as ComponentType;
+  if (!mod || typeof mod !== 'object') {
+    throw new Error('ERP modülü boş döndü (bellek veya depolama alanını kontrol edin)');
+  }
+  const record = mod as Record<string, unknown>;
+  const candidate = record.default ?? record.ErpEntry ?? record.ErpRoot;
+  if (typeof candidate === 'function') return candidate as ComponentType;
+  throw new Error('ERP kök bileşeni (default export) bulunamadı');
+}
+
+async function loadErpRootComponent(): Promise<ComponentType> {
+  const mod = await import(/* @vite-ignore */ './erp-entry');
+  return resolveErpRootComponent(mod);
+}
 
 function BootShell() {
   const [ErpRoot, setErpRoot] = useState<ComponentType | null>(null);
@@ -12,18 +27,14 @@ function BootShell() {
 
   useEffect(() => {
     const placeholder = document.getElementById('rex-boot-placeholder');
-    void importWithChunkRetry(() => import('./bootstrap-erp'))
-      .then((mod) => {
-        const Comp =
-          (mod as { ErpRoot?: ComponentType }).ErpRoot ??
-          (mod as { default?: ComponentType }).default;
-        if (!Comp) throw new Error('bootstrap-erp ErpRoot export bulunamadı');
+    void importWithChunkRetry(loadErpRootComponent)
+      .then((Comp) => {
         setErpRoot(() => Comp);
         placeholder?.remove();
       })
       .catch((err: unknown) => {
         const msg = err instanceof Error ? err.message : String(err);
-        console.error('[boot-shell] bootstrap-erp yüklenemedi:', err);
+        console.error('[boot-shell] erp-entry yüklenemedi:', err);
         setError(msg);
         const w = window as Window & { removeLoader?: () => void };
         w.removeLoader?.();

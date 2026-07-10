@@ -128,9 +128,10 @@ export async function importWithChunkRetry<T>(importer: () => Promise<T>, retrie
 }
 
 export function resolveLazyModuleDefault<T extends ComponentType<any>>(
-  mod: Record<string, unknown> | null | undefined,
+  mod: Record<string, unknown> | ComponentType<any> | null | undefined,
   namedExport?: string,
 ): { default: T } {
+  if (typeof mod === 'function') return { default: mod as T };
   if (!mod) throw new Error('Lazy modül boş döndü');
   const raw = mod.default;
   if (typeof raw === 'function') return { default: raw as T };

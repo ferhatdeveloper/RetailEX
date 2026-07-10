@@ -1,6 +1,5 @@
 /**
- * RetailEX ERP — ana giriş (Tailwind, Ant Design, dark mode).
- * Online mağaza (/magaza, /shop) ayrı bootstrap kullanır.
+ * RetailEX ERP — ağır uygulama gövdesi (boot-shell / erp-entry tarafından lazy yüklenir).
  */
 import { Fragment, useEffect, useLayoutEffect, type ReactNode } from 'react';
 import { Capacitor } from '@capacitor/core';
@@ -158,8 +157,7 @@ function PwaPullToRefreshReload() {
   return null;
 }
 
-/** boot-shell tarafından dinamik yüklenir — createRoot burada değil. */
-export function ErpRoot() {
+export default function ErpAppInner() {
   return (
     <Fragment>
       <CapacitorAndroidHtmlClass />
@@ -173,5 +171,3 @@ export function ErpRoot() {
     </Fragment>
   );
 }
-
-export default ErpRoot;
