@@ -1233,6 +1233,7 @@ Section Uninstall
     Delete "$INSTDIR\install-services-manual.ps1"
     Delete "$INSTDIR\install-services-manual.cmd"
     Delete "$INSTDIR\install-services-setup.ps1"
+    Delete "$INSTDIR\install-services-common.ps1"
     Delete "$INSTDIR\retailex_install_prefix.txt"
     Delete "$INSTDIR\retailex-admin.ps1"
     Delete "$INSTDIR\retailex-admin.cmd"

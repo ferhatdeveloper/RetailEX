@@ -504,7 +504,10 @@ function applyWebLocalStorageConfig(config: any): void {
   DB_SETTINGS.activeMode =
     dm === 'online' || dm === 'offline' || dm === 'hybrid' ? (dm as ConnectionMode) : 'online';
   DB_SETTINGS.connectionProvider = (config.connection_provider === 'rest_api' ? 'rest_api' : 'db') as ConnectionProvider;
-  DB_SETTINGS.remoteRestUrl = typeof config.remote_rest_url === 'string' ? config.remote_rest_url : '';
+  DB_SETTINGS.remoteRestUrl =
+    typeof config.remote_rest_url === 'string'
+      ? normalizeStoredRemoteRestUrl(config.remote_rest_url)
+      : '';
   DB_SETTINGS.hybridReadPreference = normalizeHybridReadPreference(
     config.hybrid_read_preference ?? (config as { hybridReadPreference?: unknown }).hybridReadPreference
   );
@@ -659,7 +662,10 @@ export async function initializeFromSQLite(preloadedConfig?: any) {
       DB_SETTINGS.activeMode = config.db_mode as ConnectionMode;
       DB_SETTINGS.systemType = config.system_type || 'retail';
       DB_SETTINGS.connectionProvider = (config.connection_provider === 'rest_api' ? 'rest_api' : 'db') as ConnectionProvider;
-      DB_SETTINGS.remoteRestUrl = typeof config.remote_rest_url === 'string' ? config.remote_rest_url : '';
+      DB_SETTINGS.remoteRestUrl =
+        typeof config.remote_rest_url === 'string'
+          ? normalizeStoredRemoteRestUrl(config.remote_rest_url)
+          : '';
       DB_SETTINGS.hybridReadPreference = normalizeHybridReadPreference(config.hybrid_read_preference);
       DB_SETTINGS.hybridSyncDirection = normalizeHybridSyncDirection(config.hybrid_sync_direction);
       DB_SETTINGS.hybridSyncIntervalSec = normalizeHybridSyncIntervalSec(config.hybrid_sync_interval_sec);
@@ -770,7 +776,13 @@ export async function updateConfigs(updates: {
 }) {
   if (updates.local) LOCAL_CONFIG = { ...LOCAL_CONFIG, ...updates.local };
   if (updates.remote) REMOTE_CONFIG = { ...REMOTE_CONFIG, ...updates.remote };
-  if (updates.settings) DB_SETTINGS = { ...DB_SETTINGS, ...updates.settings };
+  if (updates.settings) {
+    const next = { ...updates.settings };
+    if (typeof next.remoteRestUrl === 'string' && next.remoteRestUrl.trim()) {
+      next.remoteRestUrl = normalizeStoredRemoteRestUrl(next.remoteRestUrl);
+    }
+    DB_SETTINGS = { ...DB_SETTINGS, ...next };
+  }
   if (updates.erp) ERP_SETTINGS = { ...ERP_SETTINGS, ...updates.erp };
   if (DB_SETTINGS.activeMode === 'hybrid') {
     DB_SETTINGS.connectionProvider = IS_TAURI ? 'db' : 'rest_api';
@@ -1051,19 +1063,96 @@ function normalizeBaseUrl(input: string): string {
   return raw.replace(/\/+$/, '');
 }
 
+export const DEFAULT_POSTGREST_PORT = 3002;
+
+/** LAN / IP ile özel URL'de port yoksa varsayılan PostgREST 3002 (APK sık hata). */
+export function normalizeCustomPostgrestUrl(input: string): string {
+  const raw = normalizeBaseUrl(input);
+  if (!raw) return '';
+  try {
+    const u = new URL(raw);
+    if (u.port) return raw;
+    if (u.protocol === 'http:') {
+      const host = u.hostname.toLowerCase();
+      const isIp = /^\d{1,3}(\.\d{1,3}){3}$/.test(host);
+      const isLan =
+        host === 'localhost' ||
+        host === '127.0.0.1' ||
+        host.startsWith('192.168.') ||
+        host.startsWith('10.') ||
+        /^172\.(1[6-9]|2\d|3[0-1])\./.test(host);
+      if (isIp || isLan) {
+        u.port = String(DEFAULT_POSTGREST_PORT);
+        return normalizeBaseUrl(u.toString());
+      }
+    }
+    return raw;
+  } catch {
+    return raw;
+  }
+}
+
+/** Kayıtlı / çalışma anı PostgREST URL — SaaS yollarına dokunmaz, LAN IP’ye :3002 ekler. */
+export function normalizeStoredRemoteRestUrl(input: string): string {
+  const raw = String(input ?? '').trim();
+  if (!raw) return '';
+  const parsed = parseSaaSOrCustomPostgrestUrl(raw);
+  if (parsed.kind === 'saas_single_slug') return normalizeBaseUrl(raw);
+  try {
+    const u = new URL(/^https?:\/\//i.test(raw) ? raw : `http://${raw}`);
+    if (u.hostname === 'api.retailex.app') return normalizeBaseUrl(raw);
+  } catch {
+    /* özel URL */
+  }
+  return normalizeCustomPostgrestUrl(raw);
+}
+
 /**
- * PostgREST için basit erişilebilirlik testi.
- * Not: PostgREST root yolunda 404 dönebilir; bu durumda da bağlantı “var” sayıyoruz.
+ * PostgREST için erişilebilirlik testi — gerçek tablo sorgusu (/firms).
+ * Kök yol 406 dönebilir; bu tek başına yeterli değildir.
  */
 export async function testPostgrestUrl(baseUrl: string): Promise<PostgrestStatus> {
-  const url = normalizeBaseUrl(baseUrl);
+  const url = normalizeCustomPostgrestUrl(baseUrl);
   if (!url) return { connected: false, baseUrl: baseUrl, error: 'PostgREST URL boş' };
+  const probeHeaders = {
+    Accept: 'application/json',
+    'Accept-Profile': 'public',
+  };
   try {
-    // root açık değilse 404 da dönebilir; fetch'in hata vermemesi önemli.
-    const res = await fetchRetailexAware(`${url}/`, { method: 'GET', headers: { Accept: 'application/json' } });
-    return { connected: true, baseUrl: url, httpStatus: res.status };
-  } catch (e: any) {
-    return { connected: false, baseUrl: url, error: e?.message || String(e) };
+    const res = await fetchRetailexAware(`${url}/firms?select=firm_nr&limit=1`, {
+      method: 'GET',
+      headers: probeHeaders,
+    });
+    if (res.ok) {
+      return { connected: true, baseUrl: url, httpStatus: res.status };
+    }
+    if (res.status === 404 || res.status === 406) {
+      return {
+        connected: false,
+        baseUrl: url,
+        httpStatus: res.status,
+        error:
+          res.status === 406
+            ? 'PostgREST yanıt vermiyor (HTTP 406). Port 3002 ve RetailEX_PostgREST servisini kontrol edin.'
+            : 'PostgREST firms erişimi yok (404). URL ve şema yetkilerini kontrol edin.',
+      };
+    }
+    const text = (await res.text()).slice(0, 200);
+    return {
+      connected: false,
+      baseUrl: url,
+      httpStatus: res.status,
+      error: `HTTP ${res.status}${text ? ` — ${text}` : ''}`,
+    };
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return {
+      connected: false,
+      baseUrl: url,
+      error: msg.includes('Failed to fetch') || msg.includes('Network')
+        ? `Ağ hatası: ${msg}. Aynı WiFi, firewall 3002 ve http://IP:3002 adresini kontrol edin.`
+        : msg,
+    };
   }
 }
 

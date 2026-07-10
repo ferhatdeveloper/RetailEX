@@ -4,12 +4,12 @@
  * @see database/README_POSTGREST.md
  */
 
-import { DB_SETTINGS } from '../services/postgres';
+import { DB_SETTINGS, DEFAULT_POSTGREST_PORT, normalizeCustomPostgrestUrl } from '../services/postgres';
 import { IS_TAURI } from '../utils/env';
 import { rewriteRetailexAppUrlForViteDev } from '../utils/retailexDevProxy';
 import { resolveEffectiveRemoteRestUrl } from '../services/merkezTenantRegistry';
 
-const defaultPort = 3002;
+const defaultPort = DEFAULT_POSTGREST_PORT;
 
 function normalizeBaseUrl(input: string): string {
   const raw = (input || '').trim();
@@ -50,8 +50,10 @@ export function shouldUsePostgrestForCrud(): boolean {
 export function getPostgrestBaseUrl(): string {
   // Kiracı PostgREST URL’si (remote_rest_url) varken çevrimdışı değilse doğrudan tenant API.
   // Böylece db + hybrid (pg_query köprüsü zayıf/502) senaryosunda da PostgREST okumaları çalışır.
-  const remote = normalizeBaseUrl(
-    resolveEffectiveRemoteRestUrl(DB_SETTINGS.remoteRestUrl, DB_SETTINGS.merkezTenantCode),
+  const remote = normalizeCustomPostgrestUrl(
+    normalizeBaseUrl(
+      resolveEffectiveRemoteRestUrl(DB_SETTINGS.remoteRestUrl, DB_SETTINGS.merkezTenantCode),
+    ),
   );
   const offline = DB_SETTINGS.activeMode === 'offline';
   if (remote && !offline) {

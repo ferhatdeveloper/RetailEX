@@ -630,9 +630,21 @@ export function Login({ onLogin }: LoginProps) {
     });
     const pr = await testPostgrestUrl(remoteRestUrl);
     if (pr.connected) {
+      const normalizedHint =
+        pr.baseUrl && pr.baseUrl !== url && url !== '(boş URL)'
+          ? `Port otomatik eklendi: ${pr.baseUrl}`
+          : undefined;
       const msg = `Erişilebilir (HTTP ${pr.httpStatus ?? '—'})`;
-      setDbTestFeedback({ phase: 'ok', title: msg, detail: pr.baseUrl, target: pr.baseUrl });
-      toast.success('PostgREST: ' + msg, { description: pr.baseUrl });
+      setDbTestFeedback({
+        phase: 'ok',
+        title: msg,
+        detail: normalizedHint || pr.baseUrl,
+        target: pr.baseUrl,
+      });
+      if (pr.baseUrl && pr.baseUrl !== (remoteRestUrl || '').trim()) {
+        setRemoteRestUrl(pr.baseUrl);
+      }
+      toast.success('PostgREST: ' + msg, { description: normalizedHint || pr.baseUrl });
     } else {
       setDbTestFeedback({
         phase: 'err',
@@ -846,8 +858,14 @@ export function Login({ onLogin }: LoginProps) {
 
   const handleSaveDbSettings = async () => {
     try {
-      const { updateConfigs, initializeFromSQLite } = await import('../../services/postgres');
+      const { updateConfigs, initializeFromSQLite, normalizeStoredRemoteRestUrl } = await import(
+        '../../services/postgres'
+      );
       const { persistTenantFieldsFromRestUrl } = await import('../../services/merkezTenantRegistry');
+      const restUrlToSave = normalizeStoredRemoteRestUrl(remoteRestUrl);
+      if (restUrlToSave !== (remoteRestUrl || '').trim()) {
+        setRemoteRestUrl(restUrlToSave);
+      }
       await updateConfigs({
         local: {
           host: dbConfig.host,
@@ -867,7 +885,7 @@ export function Login({ onLogin }: LoginProps) {
         settings: {
           activeMode: dbConnectionMode,
           connectionProvider: dbConnectionMode === 'hybrid' ? 'rest_api' : connectionProvider,
-          remoteRestUrl,
+          remoteRestUrl: restUrlToSave,
           hybridReadPreference,
           hybridSyncDirection,
           hybridSyncIntervalSec,
@@ -876,7 +894,7 @@ export function Login({ onLogin }: LoginProps) {
         }
       });
 
-      const tenantResult = await persistTenantFieldsFromRestUrl(remoteRestUrl, {
+      const tenantResult = await persistTenantFieldsFromRestUrl(restUrlToSave, {
         forTauri: isTauri,
         preserveDbMode: dbConnectionMode,
       });
