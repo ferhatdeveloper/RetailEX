@@ -54,7 +54,7 @@ jobs:
         run: |
           node scripts/sync-android-version.mjs
           node scripts/sync-pg-expose.mjs
-          npx vite build
+          CAPACITOR_BUILD=1 npx vite build
 
       - name: Capacitor sync Android
         run: npx cap sync android

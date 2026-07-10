@@ -2,14 +2,26 @@
  * RetailEX ERP — ana giriş (Tailwind, Ant Design, dark mode).
  * Online mağaza (/magaza, /shop) ayrı bootstrap kullanır.
  */
-import { Fragment, useEffect, useLayoutEffect } from 'react';
+import { Fragment, Suspense, useEffect, useLayoutEffect, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Capacitor } from '@capacitor/core';
-import { AppRouter } from './AppRouter';
 import { ErrorBoundary } from './components/shared/ErrorBoundary';
+import { lazyWithChunkRecovery } from './utils/chunkLoadRecovery';
 import './index.css';
 import './styles/dark-mode-global.css';
 import { pwaRefreshConfirmMessage } from './utils/pwaRefreshConfirm';
+
+const AppRouter = lazyWithChunkRecovery(() =>
+  import('./AppRouter').then((m) => ({ default: m.AppRouter })),
+);
+
+function BootReady({ children }: { children: ReactNode }) {
+  useEffect(() => {
+    const w = window as Window & { removeLoader?: () => void };
+    w.removeLoader?.();
+  }, []);
+  return <>{children}</>;
+}
 
 function CapacitorAndroidHtmlClass() {
   useLayoutEffect(() => {
@@ -151,14 +163,26 @@ function PwaPullToRefreshReload() {
 
 const rootEl = document.getElementById('root');
 if (rootEl) {
-  createRoot(rootEl).render(
-    <Fragment>
-      <CapacitorAndroidHtmlClass />
-      <IosPwaHtmlClass />
-      <PwaPullToRefreshReload />
-      <ErrorBoundary>
-        <AppRouter />
-      </ErrorBoundary>
-    </Fragment>,
-  );
+  try {
+    createRoot(rootEl).render(
+      <Fragment>
+        <CapacitorAndroidHtmlClass />
+        <IosPwaHtmlClass />
+        <PwaPullToRefreshReload />
+        <ErrorBoundary>
+          <Suspense fallback={<div id="rex-react-booting" className="min-h-screen" aria-hidden />}>
+            <BootReady>
+              <AppRouter />
+            </BootReady>
+          </Suspense>
+        </ErrorBoundary>
+      </Fragment>,
+    );
+  } catch (err) {
+    console.error('[bootstrap-erp] createRoot failed:', err);
+    const w = window as Window & { removeLoader?: () => void };
+    w.removeLoader?.();
+    rootEl.innerHTML =
+      '<div style="box-sizing:border-box;max-width:560px;margin:10vh auto;padding:28px 24px;font-family:system-ui,sans-serif;color:#e2e8f0;text-align:center;line-height:1.65;background:rgba(15,23,42,0.9);border-radius:12px;border:1px solid rgba(148,163,184,0.25)"><strong style="display:block;margin-bottom:12px">Başlatma hatası</strong>Uygulama modülü yüklenemedi. Uygulamayı kapatıp yeniden açın.<br><br><button type="button" onclick="location.reload()" style="margin-top:8px;padding:10px 18px;border:0;border-radius:8px;background:#2563eb;color:#fff;font-weight:700">Yeniden dene</button></div>';
+  }
 }
