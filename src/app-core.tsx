@@ -157,7 +157,8 @@ function PwaPullToRefreshReload() {
   return null;
 }
 
-export default function ErpAppInner() {
+/** Named + default: production dinamik import’ta default interop / çift sarmalama yedekleri. */
+export function ErpAppInner() {
   return (
     <Fragment>
       <CapacitorAndroidHtmlClass />
@@ -171,3 +172,5 @@ export default function ErpAppInner() {
     </Fragment>
   );
 }
+
+export default ErpAppInner;

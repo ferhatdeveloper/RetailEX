@@ -4,7 +4,10 @@
  */
 import { createRoot } from 'react-dom/client';
 import { useEffect, useState, type ComponentType } from 'react';
-import { installChunkLoadGlobalRecovery } from './utils/chunkLoadRecovery';
+import {
+  installChunkLoadGlobalRecovery,
+  resolveLazyModuleDefault,
+} from './utils/chunkLoadRecovery';
 import { isEticaretAdminPath } from '../eticaret/admin/isAdminPath';
 import { isEticaretStorefrontPath } from '../eticaret/storefront/isStorefrontPath';
 
@@ -24,13 +27,16 @@ function showBootstrapFailure(err: unknown) {
   }
 }
 
-function resolveDefaultExport(mod: unknown): ComponentType {
-  if (typeof mod === 'function') return mod as ComponentType;
-  if (mod && typeof mod === 'object') {
-    const d = (mod as { default?: unknown }).default;
-    if (typeof d === 'function') return d as ComponentType;
+/** Vite/Rollup production: bazen `mod.default.default` (çift sarmalama). */
+function resolveAppCoreExport(mod: unknown): ComponentType {
+  try {
+    return resolveLazyModuleDefault(
+      mod as Record<string, unknown>,
+      'ErpAppInner',
+    ).default;
+  } catch {
+    throw new Error('Uygulama kök bileşeni bulunamadı');
   }
-  throw new Error('Uygulama kök bileşeni bulunamadı');
 }
 
 /** Görünür yükleme — boş div yok; splash zaman aşımı tetiklenmez. */
@@ -89,7 +95,9 @@ function ErpBoot() {
         // Tek dinamik sınır — boot-shell/erp-entry yok (Vite d0 + döngüsel chunk hatası önlenir)
         const mod = await import('./app-core');
         if (cancelled) return;
-        setAppCore(() => resolveDefaultExport(mod));
+        // Resolve try/catch içinde; setState updater'ında throw edilmesin
+        const Comp = resolveAppCoreExport(mod);
+        setAppCore(() => Comp);
       } catch (err: unknown) {
         if (cancelled) return;
         console.error('[ErpBoot] app-core yüklenemedi:', err);

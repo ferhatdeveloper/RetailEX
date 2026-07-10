@@ -127,21 +127,45 @@ export async function importWithChunkRetry<T>(importer: () => Promise<T>, retrie
   throw last;
 }
 
+function isComponentExport(v: unknown): v is ComponentType<any> {
+  return typeof v === 'function';
+}
+
+/** Vite shared-chunk: `import('./x').then(c => c.W)` → Module namespace; bazen `{ default: Module }`. */
 export function resolveLazyModuleDefault<T extends ComponentType<any>>(
   mod: Record<string, unknown> | ComponentType<any> | null | undefined,
   namedExport?: string,
 ): { default: T } {
-  if (typeof mod === 'function') return { default: mod as T };
-  if (!mod) throw new Error('Lazy modül boş döndü');
-  const raw = mod.default;
-  if (typeof raw === 'function') return { default: raw as T };
-  if (raw && typeof raw === 'object' && 'default' in (raw as object)) {
-    const nested = (raw as { default?: unknown }).default;
-    if (typeof nested === 'function') return { default: nested as T };
+  if (isComponentExport(mod)) return { default: mod as T };
+  if (!mod || typeof mod !== 'object') throw new Error('Lazy modül boş döndü');
+
+  const tryNamed = (obj: Record<string, unknown>): T | null => {
+    if (namedExport && isComponentExport(obj[namedExport])) return obj[namedExport] as T;
+    return null;
+  };
+
+  const fromNamespace = (obj: Record<string, unknown>): T | null => {
+    const named = tryNamed(obj);
+    if (named) return named;
+    if (isComponentExport(obj.default)) return obj.default as T;
+    const nested = obj.default;
+    if (nested && typeof nested === 'object') {
+      const inner = fromNamespace(nested as Record<string, unknown>);
+      if (inner) return inner;
+    }
+    return null;
+  };
+
+  const direct = fromNamespace(mod as Record<string, unknown>);
+  if (direct) return { default: direct };
+
+  // Shared chunk tam export haritası: Module namespace bir değer olarak gömülü olabilir
+  for (const v of Object.values(mod as Record<string, unknown>)) {
+    if (!v || typeof v !== 'object') continue;
+    const hit = fromNamespace(v as Record<string, unknown>);
+    if (hit) return { default: hit };
   }
-  if (namedExport && typeof mod[namedExport] === 'function') {
-    return { default: mod[namedExport] as T };
-  }
+
   throw new Error('Lazy modül default export döndürmedi');
 }
 
