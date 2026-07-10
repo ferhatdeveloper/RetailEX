@@ -205,7 +205,7 @@
     <div class="loader-spinner" id="splash-spinner" aria-hidden="true"></div>
     <div class="loading-text" id="loading-text" style="margin-top: 12px; font-size: 13px; color: rgba(241,245,249,0.85); font-weight: 500;">RetailEX başlatılıyor...</div>
   </div>
-  <div id="root"></div>
+  <div id="root"><div id="rex-boot-placeholder" aria-busy="true" style="min-height:1px"></div></div>
   <script>
     (function () {
       var RECOVERY_KEY = 'retailex_chunk_auto_recovery';
@@ -343,7 +343,14 @@
         window.Capacitor.isNativePlatform &&
         window.Capacitor.isNativePlatform()) ||
       /;\s*wv\)/i.test(navigator.userAgent || '');
-    var bootTimeoutMs = isNativeApp ? 90000 : 30000;
+    var bootTimeoutMs = isNativeApp ? 180000 : 30000;
+    function isRetailExAppReady() {
+      try {
+        if (window.__retailexAppReady) return true;
+        if (document.querySelector('[data-rex-app-ready]')) return true;
+      } catch (e) {}
+      return false;
+    }
     setTimeout(function () {
       var r = document.getElementById('root');
       if (r && r.childElementCount > 0) return;
@@ -355,13 +362,25 @@
       }
     }, 20000);
     setTimeout(function () {
+      if (isRetailExAppReady()) return;
       const loader = document.getElementById('app-loader');
       if (loader) {
         console.warn('[Splash] Auto-removing loader after ' + bootTimeoutMs + 'ms');
         window.removeLoader();
       }
       setTimeout(function () {
+        if (isRetailExAppReady()) return;
         var r = document.getElementById('root');
+        var stillBooting = document.getElementById('rex-boot-shell') || document.getElementById('rex-boot-placeholder');
+        if (stillBooting && isNativeApp) {
+          r.innerHTML =
+            '<div style="box-sizing:border-box;max-width:560px;margin:10vh auto;padding:28px 24px;font-family:system-ui,-apple-system,sans-serif;color:#e2e8f0;text-align:center;line-height:1.65;background:rgba(15,23,42,0.85);border-radius:12px;border:1px solid rgba(148,163,184,0.25)">' +
+            '<strong style="font-size:1.05rem;display:block;margin-bottom:12px">Modül yüklenemedi</strong>' +
+            'ERP modülü zamanında açılamadı. Depolama alanı ve internet bağlantısını kontrol edin; uygulamayı tamamen kapatıp yeniden açın.' +
+            '<br><br><button type="button" onclick="location.reload()" style="padding:10px 20px;border:0;border-radius:8px;background:#2563eb;color:#fff;font-weight:700;font-size:14px">Yeniden dene</button>' +
+            '</div>';
+          return;
+        }
         if (r && r.childElementCount === 0) {
           r.innerHTML =
             '<div style="box-sizing:border-box;max-width:560px;margin:10vh auto;padding:28px 24px;font-family:system-ui,-apple-system,sans-serif;color:#e2e8f0;text-align:center;line-height:1.65;background:rgba(15,23,42,0.85);border-radius:12px;border:1px solid rgba(148,163,184,0.25)">' +

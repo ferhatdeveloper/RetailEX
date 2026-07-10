@@ -23,5 +23,5 @@ if (isEticaretStorefrontPath()) {
 } else if (isEticaretAdminPath()) {
   void importWithChunkRetry(() => import('../eticaret/admin/bootstrap')).catch(showBootstrapFailure);
 } else {
-  void importWithChunkRetry(() => import('./bootstrap-erp')).catch(showBootstrapFailure);
+  void importWithChunkRetry(() => import('./boot-shell')).catch(showBootstrapFailure);
 }
