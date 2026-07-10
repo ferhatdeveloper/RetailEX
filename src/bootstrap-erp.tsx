@@ -11,9 +11,7 @@ import './index.css';
 import './styles/dark-mode-global.css';
 import { pwaRefreshConfirmMessage } from './utils/pwaRefreshConfirm';
 
-const AppRouter = lazyWithChunkRecovery(() =>
-  import('./AppRouter').then((m) => ({ default: m.AppRouter })),
-);
+const AppRouter = lazyWithChunkRecovery(() => import('./AppRouter'));
 
 function BootReady({ children }: { children: ReactNode }) {
   useEffect(() => {
