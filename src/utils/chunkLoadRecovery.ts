@@ -127,14 +127,29 @@ export async function importWithChunkRetry<T>(importer: () => Promise<T>, retrie
   throw last;
 }
 
+export function resolveLazyModuleDefault<T extends ComponentType<any>>(
+  mod: Record<string, unknown> | null | undefined,
+  namedExport?: string,
+): { default: T } {
+  if (!mod) throw new Error('Lazy modül boş döndü');
+  const raw = mod.default;
+  if (typeof raw === 'function') return { default: raw as T };
+  if (raw && typeof raw === 'object' && 'default' in (raw as object)) {
+    const nested = (raw as { default?: unknown }).default;
+    if (typeof nested === 'function') return { default: nested as T };
+  }
+  if (namedExport && typeof mod[namedExport] === 'function') {
+    return { default: mod[namedExport] as T };
+  }
+  throw new Error('Lazy modül default export döndürmedi');
+}
+
 export function lazyWithChunkRecovery(
-  factory: () => Promise<{ default: ComponentType<any> }>
+  factory: () => Promise<{ default: ComponentType<any> } | Record<string, unknown>>,
+  namedExport?: string,
 ): LazyComponent {
   return lazy(async () => {
     const mod = await importWithChunkRetry(factory);
-    if (!mod?.default) {
-      throw new Error('Lazy modül default export döndürmedi');
-    }
-    return mod;
+    return resolveLazyModuleDefault(mod as Record<string, unknown>, namedExport);
   });
 }

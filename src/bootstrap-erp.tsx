@@ -2,16 +2,14 @@
  * RetailEX ERP — ana giriş (Tailwind, Ant Design, dark mode).
  * Online mağaza (/magaza, /shop) ayrı bootstrap kullanır.
  */
-import { Fragment, Suspense, useEffect, useLayoutEffect, type ReactNode } from 'react';
+import { Fragment, useEffect, useLayoutEffect, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Capacitor } from '@capacitor/core';
+import { AppRouter } from './AppRouter';
 import { ErrorBoundary } from './components/shared/ErrorBoundary';
-import { lazyWithChunkRecovery } from './utils/chunkLoadRecovery';
 import './index.css';
 import './styles/dark-mode-global.css';
 import { pwaRefreshConfirmMessage } from './utils/pwaRefreshConfirm';
-
-const AppRouter = lazyWithChunkRecovery(() => import('./AppRouter'));
 
 function BootReady({ children }: { children: ReactNode }) {
   useEffect(() => {
@@ -168,11 +166,9 @@ if (rootEl) {
         <IosPwaHtmlClass />
         <PwaPullToRefreshReload />
         <ErrorBoundary>
-          <Suspense fallback={<div id="rex-react-booting" className="min-h-screen" aria-hidden />}>
-            <BootReady>
-              <AppRouter />
-            </BootReady>
-          </Suspense>
+          <BootReady>
+            <AppRouter />
+          </BootReady>
         </ErrorBoundary>
       </Fragment>,
     );
