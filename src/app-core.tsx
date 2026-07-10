@@ -1,5 +1,5 @@
 /**
- * RetailEX ERP — ağır uygulama gövdesi (boot-shell / erp-entry tarafından lazy yüklenir).
+ * RetailEX ERP — uygulama gövdesi (main.tsx ErpBoot tarafından tek dinamik import).
  */
 import { Fragment, useEffect, useLayoutEffect, type ReactNode } from 'react';
 import { Capacitor } from '@capacitor/core';

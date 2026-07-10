@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useCallback, Suspense, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { MobilePOS } from '../pos/MobilePOS';
 import { LogOut, User, ShoppingCart, LayoutGrid, Clock, Calendar, Lock, X, Languages, Server, Receipt, Building2, Warehouse, RefreshCw, ChevronDown, AlertCircle, ChevronRight, Check, UtensilsCrossed, Sparkles, Loader2, Smartphone, Menu, MoreVertical, ZoomIn, ZoomOut, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import type { User as UserType, Product, Customer, Sale, Campaign } from '../../core/types';
 import type { Module, ManagementScreen } from '../../App';
@@ -34,6 +33,9 @@ import { useCustomerStore } from '../../store/useCustomerStore';
 import { Capacitor } from '@capacitor/core';
 import { lazyWithChunkRecovery } from '../../utils/chunkLoadRecovery';
 
+const MobilePOS = lazyWithChunkRecovery(() =>
+  import('../pos/MobilePOS').then((m) => ({ default: m.MobilePOS })),
+);
 const MarketPOS = lazyWithChunkRecovery(() => import('../pos/MarketPOS'));
 const ManagementModule = lazyWithChunkRecovery(() =>
   import('./ManagementModule').then((m) => ({ default: m.ManagementModule }))
@@ -1612,13 +1614,17 @@ export function MainLayout({
             />
           </Suspense>
         ) : currentModule === 'mobile-pos' ? (
-          <MobilePOS
-            products={products}
-            customers={customers}
-            campaigns={campaigns}
-            onSaleComplete={onSaleComplete}
-            onBack={() => setCurrentModule('wms')}
-          />
+          <Suspense fallback={
+            <ModuleLazySplash darkMode={darkMode} productLine="retail" accent="blue" subtitle="Mobil POS yükleniyor..." />
+          }>
+            <MobilePOS
+              products={products}
+              customers={customers}
+              campaigns={campaigns}
+              onSaleComplete={onSaleComplete}
+              onBack={() => setCurrentModule('wms')}
+            />
+          </Suspense>
         ) : currentModule === 'restaurant' ? (
           <Suspense fallback={
             <ModuleLazySplash darkMode={darkMode} productLine="restaurant" accent="orange" subtitle="Restoran modülü yükleniyor..." />

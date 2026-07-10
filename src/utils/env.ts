@@ -118,6 +118,14 @@ export const getBridgeUrl = () => {
   if (BRIDGE_URL_OVERRIDE) return BRIDGE_URL_OVERRIDE.replace(/\/+$/, '');
   if (typeof window === 'undefined') return 'http://localhost:3001';
 
+  // Capacitor Android/iOS: WebView hostname localhost — pg_bridge yok; REST kullanın.
+  const cap = (window as Window & { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor;
+  if (cap?.isNativePlatform?.()) {
+    throw new Error(
+      'Mobil uygulama pg_bridge (localhost:3001) kullanmaz. PostgREST URL (http://PC_IP:3002 veya api.retailex.app) ayarlayın.',
+    );
+  }
+
   const host = window.location.hostname.toLowerCase();
   const isLocalHost =
     host === 'localhost' ||
