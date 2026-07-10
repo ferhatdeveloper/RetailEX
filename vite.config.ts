@@ -88,7 +88,8 @@ export default defineConfig({
           if (id.includes('@supabase/supabase-js') || id.includes('@jsr/supabase__supabase-js')) {
             return 'supabase-vendor';
           }
-          if (id.includes('node_modules/recharts')) return 'chart-vendor';
+          // recharts'i ayrı chart-vendor chunk'ına alma: d3/lodash ile circular + TDZ
+          // ("Cannot access 'S' before initialization" — production web)
           if (id.includes('@tanstack/react-table')) return 'table-vendor';
           if (id.includes('/src/utils/chunkLoadRecovery')) return 'chunk-recovery';
         },
