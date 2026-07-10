@@ -10,7 +10,7 @@ import './styles/dark-mode-global.css';
 import { pwaRefreshConfirmMessage } from './utils/pwaRefreshConfirm';
 
 function BootReady({ children }: { children: ReactNode }) {
-  useEffect(() => {
+  useLayoutEffect(() => {
     const w = window as Window & { removeLoader?: () => void; __retailexAppReady?: boolean };
     w.__retailexAppReady = true;
     document.getElementById('rex-boot-placeholder')?.remove();

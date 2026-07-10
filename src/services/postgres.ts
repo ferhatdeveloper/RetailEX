@@ -621,7 +621,11 @@ export async function initializeFromSQLite(preloadedConfig?: any) {
         const fullObj = webFull ? JSON.parse(webFull) : {};
         const merged = { ...flatObj, ...fullObj };
         applyWebLocalStorageConfig(merged);
-        await ensureTenantDatabaseFromRegistry();
+        // Registry çözümlemesi ağda takılırsa startup'ı sonsuza kilitlemesin
+        await Promise.race([
+          ensureTenantDatabaseFromRegistry(),
+          new Promise<void>((resolve) => setTimeout(resolve, 5000)),
+        ]);
       } else if (isCapacitorNative()) {
         // Android/iOS: doğrudan PG yok — yalnızca PostgREST (LAN veya bulut).
         DB_SETTINGS.activeMode = 'online';

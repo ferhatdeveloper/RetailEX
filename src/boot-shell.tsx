@@ -1,9 +1,29 @@
 /**
- * Android/Capacitor: anında #root mount — erp-entry (küçük) → erp-app-inner (ağır).
+ * Anında #root mount — erp-entry (küçük) → erp-app-inner (ağır).
+ * Not: dynamic import'ta @vite-ignore KULLANMA — production'da hash'li chunk çözülmez.
  */
 import { createRoot } from 'react-dom/client';
 import { useEffect, useState, type ComponentType } from 'react';
 import { importWithChunkRetry } from './utils/chunkLoadRecovery';
+
+type BootWindow = Window & {
+  __retailexBootStarted?: boolean;
+  removeLoader?: () => void;
+  Capacitor?: { isNativePlatform?: () => boolean };
+};
+
+function markBootStarted() {
+  (window as BootWindow).__retailexBootStarted = true;
+}
+
+function isNativePlatform(): boolean {
+  try {
+    if ((window as BootWindow).Capacitor?.isNativePlatform?.()) return true;
+  } catch {
+    /* yoksay */
+  }
+  return /;\s*wv\)/i.test(navigator.userAgent || '');
+}
 
 function resolveErpRootComponent(mod: unknown): ComponentType {
   if (typeof mod === 'function') return mod as ComponentType;
@@ -17,7 +37,8 @@ function resolveErpRootComponent(mod: unknown): ComponentType {
 }
 
 async function loadErpRootComponent(): Promise<ComponentType> {
-  const mod = await import(/* @vite-ignore */ './erp-entry');
+  // Vite bu import'u hash'li chunk'a çevirir — @vite-ignore yasak
+  const mod = await import('./erp-entry');
   return resolveErpRootComponent(mod);
 }
 
@@ -26,6 +47,14 @@ function BootShell() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    markBootStarted();
+    const w = window as BootWindow;
+    // Native: HTML splash'i erken kapat (APK "splash'te kaldı" hissi).
+    // Web: splash BootReady (erp-app-inner) ile kalkar — timeout boş ekran/hata basmasın.
+    if (isNativePlatform()) {
+      w.removeLoader?.();
+    }
+
     const placeholder = document.getElementById('rex-boot-placeholder');
     void importWithChunkRetry(loadErpRootComponent)
       .then((Comp) => {
@@ -36,7 +65,6 @@ function BootShell() {
         const msg = err instanceof Error ? err.message : String(err);
         console.error('[boot-shell] erp-entry yüklenemedi:', err);
         setError(msg);
-        const w = window as Window & { removeLoader?: () => void };
         w.removeLoader?.();
       });
   }, []);
@@ -44,6 +72,7 @@ function BootShell() {
   if (error) {
     return (
       <div
+        data-rex-boot-error
         style={{
           boxSizing: 'border-box',
           maxWidth: 560,
@@ -79,7 +108,20 @@ function BootShell() {
   }
 
   if (!ErpRoot) {
-    return <div id="rex-boot-shell" data-rex-boot-shell aria-busy="true" className="min-h-screen" />;
+    return (
+      <div
+        id="rex-boot-shell"
+        data-rex-boot-shell
+        aria-busy="true"
+        className="min-h-screen flex flex-col items-center justify-center gap-4 bg-slate-900 text-slate-300"
+      >
+        <div
+          className="w-9 h-9 rounded-full border-2 border-blue-500/30 border-t-blue-400 animate-spin"
+          aria-hidden
+        />
+        <p className="text-sm">Modül yükleniyor…</p>
+      </div>
+    );
   }
 
   return <ErpRoot />;
@@ -88,10 +130,10 @@ function BootShell() {
 const rootEl = document.getElementById('root');
 if (rootEl) {
   try {
+    markBootStarted();
     createRoot(rootEl).render(<BootShell />);
   } catch (err) {
     console.error('[boot-shell] createRoot failed:', err);
-    const w = window as Window & { removeLoader?: () => void };
-    w.removeLoader?.();
+    (window as BootWindow).removeLoader?.();
   }
 }

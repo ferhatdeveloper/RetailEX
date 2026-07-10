@@ -1,0 +1,27 @@
+---
+description: Her işlem/görev bitince kullanıcıya Git’e yükleme (commit+push main) teklifi sor
+alwaysApply: true
+---
+
+# Git: işlem bitince yükleme teklifi
+
+## Zorunlu
+
+Her anlamlı işlem veya görev tamamlandıktan sonra (kod değişikliği, düzeltme, kural ekleme vb.) kullanıcıya şunu sor:
+
+> **Git’e yükleyeyim mi (commit + push main)?**
+
+## Onay sonrası
+
+Kullanıcı onaylarsa (Accept / evet / yükle):
+
+1. `git checkout main` (gerekirse `git pull origin main`)
+2. Secrets hariç ilgili dosyaları stage et (`.env`, şifreli config vb. **commit etme**)
+3. Türkçe, neden odaklı commit mesajı ile commit et
+4. `git push origin main`
+5. Commit hash ve push durumunu kısaca bildir
+
+## Yapma
+
+- Kullanıcı onaylamadan commit/push yapma (kullanıcı bu turda açıkça “yükle / commit / push” demediyse)
+- Feature branch veya PR açma — yalnızca `main` (`git-main-only-workflow.mdc`)
