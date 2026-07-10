@@ -14,7 +14,7 @@ import { toast } from 'sonner';
 import { useAuth } from '../../contexts/AuthContext';
 import { NeonLogo } from '../ui/NeonLogo';
 import { readNeonProductLineFromStorage } from '../../utils/neonProductLine';
-import { isCapacitorNative } from '../../utils/capacitorPlatform';
+import { isCapacitorNative, isCapacitorAndroid } from '../../utils/capacitorPlatform';
 import { LanguageSelectionModal } from './LanguageSelectionModal';
 import type {
   ConnectionProvider,
@@ -649,9 +649,10 @@ export function Login({ onLogin }: LoginProps) {
       setDbTestFeedback({
         phase: 'err',
         title: pr.error || 'PostgREST yanıt vermiyor',
+        detail: pr.baseUrl && pr.baseUrl !== url ? `Denenen: ${pr.baseUrl}` : undefined,
         target: pr.baseUrl || url,
       });
-      toast.error(pr.error || 'PostgREST erişilemiyor', { description: pr.baseUrl });
+      toast.error(pr.error || 'PostgREST erişilemiyor', { description: pr.baseUrl, duration: 8000 });
     }
   };
 
@@ -2175,9 +2176,29 @@ export function Login({ onLogin }: LoginProps) {
                         )}
                       </div>
                       <p className={`text-[9px] font-bold leading-relaxed ${darkMode ? 'text-slate-400' : 'text-slate-600'}`}>
-                        Kiracı / merkez REST adresi. Aynı ağda örnek: <strong>http://192.168.1.10:3002</strong> veya RetailEX bulutunda yalnızca kiracı adı.
+                        Kiracı / merkez REST adresi. Aynı ağda örnek: <strong>http://192.168.1.10:3002</strong> (port{' '}
+                        <strong>3002</strong>, 3001 değil) veya RetailEX bulutunda yalnızca kiracı adı.
                         Kaydettiğinizde kiracı bağlantısı otomatik uygulanır; firma listesi yenilenir.
                       </p>
+                      {isCapacitorAndroid() && (
+                        <div
+                          className={`rounded-lg border-2 px-3 py-2.5 text-[9px] font-bold leading-relaxed ${
+                            darkMode
+                              ? 'border-amber-500/50 bg-amber-950/40 text-amber-100'
+                              : 'border-amber-400 bg-amber-50 text-amber-950'
+                          }`}
+                        >
+                          <p className="font-black uppercase tracking-wide">Android LAN bağlantısı</p>
+                          <ul className="mt-1.5 list-disc space-y-1 pl-4">
+                            <li>Telefonu <strong>mobil veri yerine aynı Wi‑Fi</strong> ağına bağlayın.</li>
+                            <li>
+                              PC adresi olarak <strong>192.168.x.x</strong> kullanın (cmd → ipconfig → Wi‑Fi IPv4).{' '}
+                              <strong>172.x.x.x</strong> çoğu zaman WSL sanal ağıdır; telefondan erişilemez.
+                            </li>
+                            <li>Merkez PC&apos;de <strong>RetailEX_PostgREST</strong> servisi çalışmalı; güvenlik duvarında TCP 3002 açık olmalı.</li>
+                          </ul>
+                        </div>
+                      )}
                       {renderTenantPostgrestUrlFields(dbConnectionMode === 'hybrid' ? 'hybrid' : 'rest_api')}
                     </div>
                   )}
@@ -2329,6 +2350,11 @@ export function Login({ onLogin }: LoginProps) {
               <div
                 className={`shrink-0 space-y-2 border-t px-4 py-3 sm:px-6 sm:py-4 ${darkMode ? 'border-gray-700 bg-gray-900' : 'border-slate-200 bg-white'}`}
               >
+                {dbSettingsStep >= dbSettingsWizardSteps.length - 1 && (
+                  <p className={`text-center text-[9px] font-bold ${darkMode ? 'text-slate-400' : 'text-slate-600'}`}>
+                    Son adımdasınız — test başarısız olsa bile alttaki <strong>AYARLARI KAYDET</strong> ile devam edebilirsiniz.
+                  </p>
+                )}
                 {dbTestFeedback && (
                   <div
                     role="status"

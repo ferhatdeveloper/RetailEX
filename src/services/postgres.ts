@@ -1107,6 +1107,61 @@ export function normalizeStoredRemoteRestUrl(input: string): string {
   return normalizeCustomPostgrestUrl(raw);
 }
 
+/** Mobil / LAN PostgREST bağlantı hataları için Türkçe yönlendirme metni. */
+export function explainPostgrestConnectionError(
+  url: string,
+  opts?: { error?: string; httpStatus?: number },
+): string {
+  const raw = String(url || '').trim();
+  let host = '';
+  let port = '';
+  try {
+    const u = new URL(/^https?:\/\//i.test(raw) ? raw : `http://${raw}`);
+    host = u.hostname.toLowerCase();
+    port = u.port || (u.protocol === 'https:' ? '443' : '80');
+  } catch {
+    /* geçersiz URL */
+  }
+
+  if (port === '3001') {
+    return 'Port 3001 SQL Bridge servisidir (pg_bridge), PostgREST değil. Adres: http://PC_WiFi_IP:3002';
+  }
+
+  const httpStatus = opts?.httpStatus;
+  if (httpStatus === 404) {
+    return 'PostgREST firms tablosuna erişilemedi (404). Port 3002 ve RetailEX_PostgREST servisini kontrol edin.';
+  }
+  if (httpStatus === 406) {
+    return 'PostgREST yanıt vermiyor (HTTP 406). Port 3002 ve RetailEX_PostgREST servisini kontrol edin.';
+  }
+
+  const msg = String(opts?.error || '').trim();
+  const isNetwork =
+    !httpStatus &&
+    (msg.includes('Failed to fetch') ||
+      msg.includes('Network') ||
+      msg.includes('timeout') ||
+      msg.includes('Unable to resolve') ||
+      msg.includes('ECONNREFUSED') ||
+      msg.includes('Connection refused'));
+
+  if (isNetwork) {
+    const hints = [
+      'Telefon ve merkez PC aynı Wi‑Fi ağında olmalı — mobil veri (4G/5G) ile LAN IP çalışmaz.',
+    ];
+    if (/^172\.(1[6-9]|2\d|3[0-1])\./.test(host)) {
+      hints.push(
+        `${host} genelde WSL sanal ağıdır; Windows'ta cmd → ipconfig ile Wi‑Fi IPv4 (192.168.x.x) adresini kullanın.`,
+      );
+    }
+    hints.push('Merkez PC: RetailEX_PostgREST servisi çalışıyor olmalı; güvenlik duvarında TCP 3002 açık olmalı.');
+    hints.push('Örnek: http://192.168.1.10:3002');
+    return hints.join(' ');
+  }
+
+  return msg || 'PostgREST erişilemedi';
+}
+
 /**
  * PostgREST için erişilebilirlik testi — gerçek tablo sorgusu (/firms).
  * Kök yol 406 dönebilir; bu tek başına yeterli değildir.
@@ -1131,10 +1186,7 @@ export async function testPostgrestUrl(baseUrl: string): Promise<PostgrestStatus
         connected: false,
         baseUrl: url,
         httpStatus: res.status,
-        error:
-          res.status === 406
-            ? 'PostgREST yanıt vermiyor (HTTP 406). Port 3002 ve RetailEX_PostgREST servisini kontrol edin.'
-            : 'PostgREST firms erişimi yok (404). URL ve şema yetkilerini kontrol edin.',
+        error: explainPostgrestConnectionError(url, { httpStatus: res.status }),
       };
     }
     const text = (await res.text()).slice(0, 200);
@@ -1142,16 +1194,17 @@ export async function testPostgrestUrl(baseUrl: string): Promise<PostgrestStatus
       connected: false,
       baseUrl: url,
       httpStatus: res.status,
-      error: `HTTP ${res.status}${text ? ` — ${text}` : ''}`,
+      error: explainPostgrestConnectionError(url, {
+        httpStatus: res.status,
+        error: `HTTP ${res.status}${text ? ` — ${text}` : ''}`,
+      }),
     };
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
     return {
       connected: false,
       baseUrl: url,
-      error: msg.includes('Failed to fetch') || msg.includes('Network')
-        ? `Ağ hatası: ${msg}. Aynı WiFi, firewall 3002 ve http://IP:3002 adresini kontrol edin.`
-        : msg,
+      error: explainPostgrestConnectionError(url, { error: msg }),
     };
   }
 }
