@@ -128,7 +128,10 @@ export async function importWithChunkRetry<T>(importer: () => Promise<T>, retrie
 }
 
 function isComponentExport(v: unknown): v is ComponentType<any> {
-  return typeof v === 'function';
+  if (typeof v === 'function') return true;
+  // memo / forwardRef — typeof === 'object' ama geçerli React bileşeni
+  if (v && typeof v === 'object' && '$$typeof' in (v as object)) return true;
+  return false;
 }
 
 /** Vite shared-chunk: `import('./x').then(c => c.W)` → Module namespace; bazen `{ default: Module }`. */
@@ -156,17 +159,24 @@ export function resolveLazyModuleDefault<T extends ComponentType<any>>(
     return null;
   };
 
-  const direct = fromNamespace(mod as Record<string, unknown>);
+  const root = mod as Record<string, unknown>;
+  const direct = fromNamespace(root);
   if (direct) return { default: direct };
 
   // Shared chunk tam export haritası: Module namespace bir değer olarak gömülü olabilir
-  for (const v of Object.values(mod as Record<string, unknown>)) {
+  for (const v of Object.values(root)) {
     if (!v || typeof v !== 'object') continue;
     const hit = fromNamespace(v as Record<string, unknown>);
     if (hit) return { default: hit };
   }
 
-  throw new Error('Lazy modül default export döndürmedi');
+  // Son çare: tek/ilk function export (app-core gibi dar modüllerde kök bileşen)
+  for (const v of Object.values(root)) {
+    if (typeof v === 'function') return { default: v as T };
+  }
+
+  const keys = Object.keys(root).join(',') || '(yok)';
+  throw new Error(`Lazy modül default export döndürmedi (keys: ${keys})`);
 }
 
 export function lazyWithChunkRecovery(
