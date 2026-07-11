@@ -31,6 +31,7 @@ Kullanıcı bu turda zaten açıkça “evet / yükle / commit / push” demişs
 3. Türkçe, neden odaklı commit mesajı ile commit et
 4. `git push origin main`
 5. Commit hash ve push durumunu kısaca bildir
+6. **Push başarılıysa** hemen ardından CI derleme teklifi sor — `git-ask-ci-build-after-push.mdc` (Android / DeskApp / Hepsi / Şimdi değil)
 
 ## Red (Hayır)
 

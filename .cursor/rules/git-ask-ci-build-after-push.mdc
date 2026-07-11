@@ -1,0 +1,76 @@
+---
+description: Git push main tamamlanınca Android / DeskApp CI derleme seçenekli sor (AskQuestion)
+alwaysApply: true
+---
+
+# Git push sonrası: CI derleme teklifi
+
+`git-ask-upload-after-task.mdc` ile uyumlu **2. adım**. Yalnızca **commit + `push origin main` başarıyla bittikten sonra** sor.
+
+## Ne zaman
+
+- Kullanıcı Git yüklemeyi onayladı ve push tamamlandı
+- Bu turda kullanıcı zaten açıkça “yükle / commit / push” dedi ve ajan push’u yaptı
+
+## Ne zaman sorma
+
+- Push yapılmadı (Hayır / yükleme yok)
+- Kullanıcı bu turda zaten Android / DeskApp / “hepsi” derlemesini açıkça istedi veya reddetti
+- Yalnızca kural/doküman değişikliği ve kullanıcı “şimdi değil” demiş gibi CI anlamsızsa — yine de sor; **Şimdi değil** seçeneği var
+
+## Zorunlu soru (seçenekli)
+
+**Yalnızca düz metin yetmez.** Cursor **AskQuestion** (veya eşdeğer seçenekli UI) kullan.
+
+Soru örneği: **Git yüklendi. CI derleme başlatayım mı?**
+
+| Seçenek | Anlam |
+|---------|--------|
+| **Android derle** | Android App Release |
+| **DeskApp derle** | Desktop App Release (NSIS) |
+| **Hepsi** | Önce Android, sonra DeskApp (veya paralel tetik) |
+| **Şimdi değil** | CI yok; kısa onay yeterli |
+
+## Seçime göre aksiyon
+
+`{version}` = kök `package.json` → `version` (`app-version-single-source.mdc`). Feature branch yok — yalnızca `main`.
+
+### Android derle
+
+1. Gerekirse `node scripts/sync-android-version.mjs` (CI zaten sync eder; yerel tag öncesi sürüm hizası için isteğe bağlı)
+2. Tag: `android-v{version}` oluştur + `git push origin android-v{version}`  
+   **veya** `npm run android:ci:build` (workflow_dispatch / tag akışı)
+3. Workflow: `.github/workflows/android-release.yml`
+4. Run URL’yi bul, **aç** (`open_resource` / tarayıcı), yanıtta markdown link ver
+
+### DeskApp derle
+
+1. Tag: `app-v{version}` oluştur + `git push origin app-v{version}`  
+   **veya** `npm run desktop:ci:build`
+2. Kurallar: `retailex-desktop-build-github-actions.mdc`, `retailex-desktop-build-show-progress.mdc`, `retailex-desktop-release-filename.mdc`
+3. Run sayfasını **mutlaka aç** ve link ver; bitince release + `RetailEX-Desktop-Setup-{version}.exe` indirme linki
+
+### Hepsi
+
+Her iki akışı da tetikle; her biri için ayrı ilerleme linki ver / aç.
+
+### Şimdi değil
+
+CI tetikleme; “Şimdi derlenmedi” yeterli.
+
+## İlerleme URL kalıpları
+
+| Amaç | URL |
+|------|-----|
+| Android workflow | `https://github.com/ferhatdeveloper/RetailEX/actions/workflows/android-release.yml` |
+| DeskApp workflow | `https://github.com/ferhatdeveloper/RetailEX/actions/workflows/desktop-release.yml` |
+| Tek run | `https://github.com/ferhatdeveloper/RetailEX/actions/runs/{run_id}` |
+| Android release | `https://github.com/ferhatdeveloper/RetailEX/releases/tag/android-v{version}` |
+| DeskApp release | `https://github.com/ferhatdeveloper/RetailEX/releases/tag/app-v{version}` |
+
+## Yapma
+
+- Push olmadan CI sorma / tetikleme
+- Yerelde müşteriye gidecek DeskApp `tauri:build` ile yayınlama (CI kuralı)
+- Feature branch / PR
+- Sürümsüz release asset adı
