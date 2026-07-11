@@ -1,5 +1,5 @@
 ---
-description: Her işlem/görev bitince kullanıcıya Git’e yükleme (commit+push main) teklifi sor
+description: Her işlem/görev bitince kullanıcıya Git’e yükleme (commit+push main) teklifi — seçenekli Evet/Hayır
 alwaysApply: true
 ---
 
@@ -7,13 +7,24 @@ alwaysApply: true
 
 ## Zorunlu
 
-Her anlamlı işlem veya görev tamamlandıktan sonra (kod değişikliği, düzeltme, kural ekleme vb.) kullanıcıya şunu sor:
+Her anlamlı işlem veya görev tamamlandıktan sonra (kod değişikliği, düzeltme, kural ekleme vb.) kullanıcıya Git yükleme onayı sor.
 
-> **Git’e yükleyeyim mi (commit + push main)?**
+**Yalnızca düz metin soru yetmez.** Kullanıcıya **seçilebilir Evet / Hayır** seçenekleri sun:
 
-## Onay sonrası
+| Seçenek | Anlam |
+|---------|--------|
+| **Evet** | `commit` + `push origin main` |
+| **Hayır** | Yükleme yapma |
 
-Kullanıcı onaylarsa (Accept / evet / yükle):
+### Nasıl sorulur (öncelik sırası)
+
+1. **Mümkünse** Cursor **AskQuestion** (veya eşdeğer seçenekli UI / accept-button akışı) kullan — iki seçenek: `Evet` ve `Hayır`.
+2. AskQuestion yoksa: kullanıcı kuralı *“Give the accept button when asked if you want to confirm or continue”* ile uyumlu şekilde net **Evet** / **Hayır** seçilebilir onay sun (Accept = Evet).
+3. Soru metni örneği: **Git’e yükleyeyim mi (commit + push main)?** — seçenekler: Evet / Hayır.
+
+Kullanıcı bu turda zaten açıkça “evet / yükle / commit / push” demişse tekrar sorma; doğrudan uygula.
+
+## Onay sonrası (Evet)
 
 1. `git checkout main` (gerekirse `git pull origin main`)
 2. Secrets hariç ilgili dosyaları stage et (`.env`, şifreli config vb. **commit etme**)
@@ -21,7 +32,11 @@ Kullanıcı onaylarsa (Accept / evet / yükle):
 4. `git push origin main`
 5. Commit hash ve push durumunu kısaca bildir
 
+## Red (Hayır)
+
+- Commit/push yapma; kısa onay mesajı yeterli (“Yüklenmedi”).
+
 ## Yapma
 
-- Kullanıcı onaylamadan commit/push yapma (kullanıcı bu turda açıkça “yükle / commit / push” demediyse)
+- Kullanıcı onaylamadan (Evet / Accept / açık “yükle”) commit/push yapma
 - Feature branch veya PR açma — yalnızca `main` (`git-main-only-workflow.mdc`)
