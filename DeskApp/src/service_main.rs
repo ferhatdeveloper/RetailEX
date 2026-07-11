@@ -159,10 +159,13 @@ fn run_service() -> windows_service::Result<()> {
 
     let event_handler = move |control_event| -> ServiceControlHandlerResult {
         match control_event {
-            ServiceControl::Stop | ServiceControl::Interrogate => {
+            // Interrogate yalnizca durum sorgusu — Stop ile birlestirilmemeli (aksi halde
+            // Start-Service / Get-Service sonrasi servis hemen Stopped kalir).
+            ServiceControl::Stop => {
                 shutdown_tx.send(()).ok();
                 ServiceControlHandlerResult::NoError
             }
+            ServiceControl::Interrogate => ServiceControlHandlerResult::NoError,
             _ => ServiceControlHandlerResult::NotImplemented,
         }
     };

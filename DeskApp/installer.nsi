@@ -1053,12 +1053,13 @@ Section Install
   FileWrite $9 "3. Güvenlik duvarından (Firewall) 8000, 5432 portlarına izin verildiğinden emin olun.$\r$\n"
   FileWrite $9 "4. WebSocket adresi ($WSUrl) uygulama ve merkez senkron için kullanılır; ağ/firewall ayarlarını buna göre doğrulayın.$\r$\n"
   FileWrite $9 "5. Servisler kurulmadıysa '$INSTDIR\install-services-manual.cmd' (veya .ps1) dosyasını Yönetici olarak çalıştırın.$\r$\n"
-  FileWrite $9 "6. Gelişmiş yönetim için '$INSTDIR\retailex-admin.cmd' (veya .ps1) veya '$INSTDIR\RetailEXTools\RetailEX_Tools.exe' menüsünü kullanın.$\r$\n"
-  FileWrite $9 "7. PostgreSQL'i LAN'dan erişime açmak (yönetici): '$INSTDIR\RetailEX_PostgreSQLRemote.exe' veya pg-windows-expose-remote.cmd$\r$\n"
+  FileWrite $9 "6. SQL Bridge (port 3001): Node.js LTS gerekir (https://nodejs.org). Kurulumdan sonra: '$INSTDIR\install-bridge-npm.cmd'$\r$\n"
+  FileWrite $9 "7. Gelişmiş yönetim için '$INSTDIR\retailex-admin.cmd' (veya .ps1) veya '$INSTDIR\RetailEXTools\RetailEX_Tools.exe' menüsünü kullanın.$\r$\n"
+  FileWrite $9 "8. PostgreSQL'i LAN'dan erişime açmak (yönetici): '$INSTDIR\RetailEX_PostgreSQLRemote.exe' veya pg-windows-expose-remote.cmd$\r$\n"
   ${If} $InstallPostgREST == 1
-    FileWrite $9 "8. PostgREST: Windows hizmeti RetailEX_PostgREST (otomatik baslatma, port 3002).$\r$\n"
+    FileWrite $9 "9. PostgREST: Windows hizmeti RetailEX_PostgREST (otomatik baslatma, port 3002). Node gerektirmez.$\r$\n"
     FileWrite $9 "   Manuel onarim: '$INSTDIR\install-postgrest-service.cmd' (Yonetici)$\r$\n"
-    FileWrite $9 "   Terminaller: remote_rest_url = http://<A-WiFi-IP>:3002, db_mode=online, connection_provider=rest_api$\r$\n"
+    FileWrite $9 "   Android/APK URL: http://<bu-PC-WiFi-IP>:3002  (port zorunlu; firewall TCP 3002)$\r$\n"
   ${EndIf}
   FileWrite $9 "$\r$\nRetailEX Enterprise OS - Keyifli kullanımlar!$\r$\n"
   FileClose $9

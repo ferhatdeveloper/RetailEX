@@ -37,7 +37,14 @@ function Install-RetailExWindowsService {
     if ($svc.Status -ne 'Running') {
         try {
             Start-Service -Name $ServiceName -ErrorAction Stop
-            Write-Host "[RetailEX] Baslatildi: $ServiceName"
+            Start-Sleep -Seconds 2
+            $svc.Refresh()
+            if ($svc.Status -eq 'Running') {
+                Write-Host "[RetailEX] Baslatildi: $ServiceName (Running)"
+            }
+            else {
+                Write-Warning "$ServiceName Start-Service tamamlandi ancak durum: $($svc.Status). Log: C:\ProgramData\RetailEX\ (service.log / sql_bridge_service.log). Manuel: Start-Service $ServiceName"
+            }
         }
         catch {
             Write-Warning "$ServiceName kuruldu ancak baslatilamadi: $($_.Exception.Message)"
@@ -66,8 +73,13 @@ function Install-RetailExPostgrestService {
     if ($pgrSvc) {
         if ($pgrSvc.Status -ne 'Running') {
             Start-Service -Name 'RetailEX_PostgREST' -ErrorAction SilentlyContinue
+            Start-Sleep -Seconds 2
+            $pgrSvc.Refresh()
         }
         Write-Host "[RetailEX] PostgREST hazir: RetailEX_PostgREST ($($pgrSvc.Status))"
+        if ($pgrSvc.Status -ne 'Running') {
+            Write-Warning 'PostgREST kayitli ama calismiyor. PostgreSQL acik mi? Start-Service RetailEX_PostgREST — log: %TEMP%\retailex_postgrest_service_install.log'
+        }
         return
     }
 

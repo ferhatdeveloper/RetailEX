@@ -114,10 +114,12 @@ fn run_service() -> windows_service::Result<()> {
     let (shutdown_tx, shutdown_rx) = mpsc::channel();
     let event_handler = move |control_event| -> ServiceControlHandlerResult {
         match control_event {
-            ServiceControl::Stop | ServiceControl::Interrogate => {
+            // Interrogate = durum sorgusu; Stop ile ayni islenirse servis hemen kapanir.
+            ServiceControl::Stop => {
                 let _ = shutdown_tx.send(());
                 ServiceControlHandlerResult::NoError
             }
+            ServiceControl::Interrogate => ServiceControlHandlerResult::NoError,
             _ => ServiceControlHandlerResult::NotImplemented,
         }
     };
@@ -224,9 +226,20 @@ fn spawn_bridge_child() -> Result<Child, Box<dyn std::error::Error>> {
 }
 
 fn resolve_node_path() -> Option<PathBuf> {
-    let fixed = PathBuf::from(r"C:\Program Files\nodejs\node.exe");
-    if fixed.exists() {
-        return Some(fixed);
+    let candidates = [
+        PathBuf::from(r"C:\Program Files\nodejs\node.exe"),
+        PathBuf::from(r"C:\Program Files (x86)\nodejs\node.exe"),
+    ];
+    for p in &candidates {
+        if p.exists() {
+            return Some(p.clone());
+        }
+    }
+    if let Ok(local) = env::var("LOCALAPPDATA") {
+        let nvm_current = PathBuf::from(&local).join(r"Programs\node\node.exe");
+        if nvm_current.exists() {
+            return Some(nvm_current);
+        }
     }
 
     let out = Command::new("where").arg("node.exe").output().ok()?;

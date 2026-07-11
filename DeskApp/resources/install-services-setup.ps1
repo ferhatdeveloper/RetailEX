@@ -57,6 +57,19 @@ if (Test-Path -LiteralPath $npmScript) {
     Write-Host "[RetailEX] SQL Bridge npm bagimliliklari..."
     try {
         & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $npmScript -Prefix $Prefix
+        $npmCode = $LASTEXITCODE
+        if ($npmCode -eq 2) {
+            $msg = "Node.js/npm yok — SQL Bridge (3001) calismaz. https://nodejs.org LTS kurun, sonra: $npmScript -Prefix `"$Prefix`". PostgREST (3002) bundan bagimsizdir."
+            $failures += $msg
+            $msg | Out-File $logFile -Append
+            Write-Warning $msg
+        }
+        elseif ($npmCode -ne 0) {
+            $msg = "install-bridge-npm cikis kodu $npmCode (node_modules eksik kalabilir)."
+            $failures += $msg
+            $msg | Out-File $logFile -Append
+            Write-Warning $msg
+        }
     }
     catch {
         $msg = "install-bridge-npm: $($_.Exception.Message)"
