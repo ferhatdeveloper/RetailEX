@@ -17,7 +17,18 @@ import {
 } from '../../utils/invoiceLineType';
 import { readInvoiceHeaderFields } from '../../utils/invoiceHeaderFields';
 import type { PurchasePromotionReportLine } from '../../utils/purchasePromotionReport';
+import {
+  paymentMethodImpliesCustomerDebt,
+  paymentMethodImpliesSupplierDebt,
+} from '../../utils/paymentMethodUtils';
 export type { Invoice };
+
+export {
+  paymentMethodImpliesCustomerDebt,
+  paymentMethodImpliesSupplierDebt,
+  sqlPaymentMethodImpliesCustomerDebtExpr,
+  sqlPaymentMethodImpliesSupplierDebtExpr,
+} from '../../utils/paymentMethodUtils';
 
 // Helper to validate UUID format
 const isValidUuid = (uuid: any): boolean => {
@@ -56,18 +67,8 @@ function extractRestOrderIdFromInvoiceNotes(notes?: string | null): string | nul
 }
 
 /**
- * Satışta cari borç (müşteri bize borçlu) yalnızca veresiye / açık hesap kayıtlarında güncellenir.
- * Nakit, kart, havale, cari bakiyeden tahsilat vb. için balance artırılmaz (MarketPOS / RestPOS / Güzellik).
+ * Satışta cari borç (müşteri bize borçlu) yalnızca veresiye / açık hesap — paymentMethodUtils.
  */
-export function paymentMethodImpliesCustomerDebt(pm: string | undefined | null): boolean {
-  const p = String(pm || '').toLowerCase().trim();
-  if (!p) return false;
-  if (p === 'veresiye' || p === 'open_account') return true;
-  if (p.includes('veresiye')) return true;
-  if (p === 'cari' || p === 'açık hesap' || p === 'acik hesap') return true;
-  return false;
-}
-
 const CANCELLED_INVOICE_STATUSES = new Set(['iptal', 'cancelled', 'canceled', 'deleted', 'silindi']);
 
 function isInvoiceCancelledStatus(status: string | undefined | null): boolean {
@@ -450,7 +451,7 @@ async function applyInvoiceBalanceSideEffectsSql(
         queryOpts
       )
       .catch(() => {});
-  } else if (inv.invoice_category === 'Alis') {
+  } else if (inv.invoice_category === 'Alis' && paymentMethodImpliesSupplierDebt(salePm)) {
     await postgres
       .query(`UPDATE suppliers SET balance = COALESCE(balance, 0) + $1::numeric WHERE id = $2::uuid`, [amount, accountId], queryOpts)
       .catch(() => {});
@@ -490,7 +491,7 @@ async function revertInvoiceBalanceUpdatesRestApi(inv: Invoice, firmNr: string):
     await customerAPI.addBalance(accountId, -amt);
     return;
   }
-  if (inv.invoice_category === 'Alis') {
+  if (inv.invoice_category === 'Alis' && paymentMethodImpliesSupplierDebt(salePm)) {
     await adjustSupplierBalanceDeltaPostgrest(accountId, -amt, firmNr);
     return;
   }
@@ -832,7 +833,7 @@ async function applyInvoiceBalanceUpdatesRestApi(
     await customerAPI.addBalance(accountId, amount);
     return;
   }
-  if (invoice.invoice_category === 'Alis') {
+  if (invoice.invoice_category === 'Alis' && paymentMethodImpliesSupplierDebt(salePm)) {
     await adjustSupplierBalanceDeltaPostgrest(accountId, amount, firmNr);
     return;
   }
@@ -1264,8 +1265,8 @@ export const invoicesAPI = {
             [amount, accountId, firmNr],
             queryOptions
           ).catch(() => { }); // Müşteri bulunamazsa sessizce geç
-        } else if (invoice.invoice_category === 'Alis') {
-          // Alış: tedarikçiye borcumuz artar
+        } else if (invoice.invoice_category === 'Alis' && paymentMethodImpliesSupplierDebt(salePm)) {
+          // Alış: yalnızca açık hesap / veresiye — peşin alışta tedarikçi borcu yazılmaz
           await postgres.query(
             `UPDATE suppliers SET balance = COALESCE(balance, 0) + $1::numeric WHERE id = $2::uuid`,
             [amount, accountId],
@@ -1414,14 +1415,23 @@ export const invoicesAPI = {
 
         if (search) {
           const s = String(search).replace(/,/g, '\\,');
-          const orValue = `(fiche_no.ilike.*${s}*,notes.ilike.*${s}*,document_no.ilike.*${s}*,cashier.ilike.*${s}*,customer_name.ilike.*${s}*)`;
+          const searchOr = `fiche_no.ilike.*${s}*,notes.ilike.*${s}*,document_no.ilike.*${s}*,cashier.ilike.*${s}*,customer_name.ilike.*${s}*`;
           const prevOr = typeof baseFilters.or === 'string' ? baseFilters.or : '';
-          baseFilters.or = prevOr ? `${prevOr},${orValue.slice(1, -1)}` : orValue;
+          // PostgREST: iç içe or birleştirme sözdizimini bozmamak için and ile ayır
+          if (prevOr) {
+            baseFilters.and = `(or${prevOr},or(${searchOr}))`;
+            delete baseFilters.or;
+          } else {
+            baseFilters.or = `(${searchOr})`;
+          }
         }
         if (status) baseFilters.status = `eq.${status}`;
         if (customerId) baseFilters.customer_id = `eq.${customerId}`;
 
         // PostgREST tek parametrede iki ayrı date filtresini desteklemediği için tarih aralığını istemci tarafında kesinleştiriyoruz.
+        // Sunucu max-rows kesmesini aşmak için yüksek limit iste
+        baseFilters.limit = Math.min(Math.max(pageSize * Math.max(page, 1) + pageSize, 5000), 20000);
+
         const fullRows = await postgrest.get<any[]>(
           tableName,
           baseFilters,
@@ -2410,7 +2420,7 @@ export const invoicesAPI = {
                 saleQueryOpts
               ).catch(() => { });
             }
-          } else if (invoice.invoice_category === 'Alis') {
+          } else if (invoice.invoice_category === 'Alis' && paymentMethodImpliesSupplierDebt(invoice.payment_method)) {
             if (DB_SETTINGS.connectionProvider === 'rest_api') {
               try {
                 const { postgrest } = await import('./postgrestClient');

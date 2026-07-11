@@ -162,6 +162,27 @@ export const salesAPI = {
         items: invoiceItems
       };
 
+      // Karma ödeme: veresiye + nakit/kart → faturayı veresiye yaz, peşin kısmı için anında CH_TAHSILAT
+      const paymentRows = Array.isArray((sale as any).payments) ? (sale as any).payments : [];
+      let cashPortion = 0;
+      let cardPortion = 0;
+      let veresiyePortion = 0;
+      if (paymentRows.length > 0) {
+        for (const p of paymentRows) {
+          const amt = Math.abs(Number(p.amount) || 0);
+          if (!amt) continue;
+          let method = String(p.method || '').toLowerCase();
+          if (method === 'gateway') method = 'card';
+          if (method === 'veresiye' || method === 'credit' || method === 'open_account') veresiyePortion += amt;
+          else if (method === 'card' || method === 'kart') cardPortion += amt;
+          else cashPortion += amt;
+        }
+      }
+      const hasMixedWithCredit = veresiyePortion > 0 && (cashPortion > 0 || cardPortion > 0);
+      if (hasMixedWithCredit) {
+        invoiceData.payment_method = 'veresiye';
+      }
+
       const tInv = import.meta.env.DEV ? '[SalesAPI] InvoicesAPI_Create' : '';
       if (import.meta.env.DEV) console.time(tInv);
       const savedInvoice = await invoicesAPI.create(invoiceData);
@@ -171,57 +192,65 @@ export const salesAPI = {
 
       if (import.meta.env.DEV) console.log('[SalesAPI] Sale created successfully:', savedInvoice.id);
 
-      // 6. Create Cash Transaction (Kasa İşlemi) if payment method is Cash
-      // MarketPOS sales usually come with paymentMethod: 'cash'
-      if (sale.paymentMethod === 'cash') {
-        const tKasa = import.meta.env.DEV ? '[SalesAPI] KasaIslemi_Create' : '';
-        if (import.meta.env.DEV) console.time(tKasa);
-        try {
-          // 6a. Find target Cash Register
-          // Use selected cash register from settings if available, otherwise first active one
-          let targetKasaId = ERP_SETTINGS.selected_cash_registers?.[0];
+      // 6. Kasa / kısmi tahsilat
+      // - Saf nakit: KASA_GIRIS (tam tutar)
+      // - Karma veresiye+peşin: CH_TAHSILAT (peşin kısım) + KASA_GIRIS (nakit kısım)
+      const settledNonCredit = cashPortion + cardPortion;
+      const needsCashIn =
+        sale.paymentMethod === 'cash' ||
+        (hasMixedWithCredit && cashPortion > 0) ||
+        (!hasMixedWithCredit && cashPortion > 0 && veresiyePortion === 0);
 
-          if (!targetKasaId) {
-            const kasalar = await fetchKasalar({ firm_nr: String(firmNr), aktif: true });
-            if (kasalar.length > 0) {
-              targetKasaId = kasalar[0].id;
-              if (import.meta.env.DEV) {
-                console.log('[SalesAPI] No default register selected, using first available:', targetKasaId);
-              }
-            }
-          }
-
-          if (targetKasaId) {
-            const kasaAciklama = String(sale.notes || '').includes('GüzellikPOS')
-              ? `Güzellik Satışı - ${sale.receiptNumber}`
-              : `Market Satışı - ${sale.receiptNumber}`;
-            const islem: KasaIslemi = {
-              firma_id: String(firmNr),
-              kasa_id: targetKasaId,
-              islem_no: sale.receiptNumber,
-              islem_tarihi: sale.date || new Date().toISOString(),
-              islem_tipi: 'KASA_GIRIS', // Cash In
-              tutar: sale.total,
-              islem_aciklamasi: kasaAciklama,
-              cari_hesap_id: sale.customerId || undefined,
-              cari_hesap_unvani: sale.customerName || 'Peşin Müşteri',
-              doviz_kodu: 'YEREL', // Local Currency for now
-              dovizli_tutar: 0,
-              target_register_id: undefined
-            };
-
-            await createKasaIslemi(islem);
-            if (import.meta.env.DEV) {
-              console.log('[SalesAPI] Cash transaction created for sale:', sale.receiptNumber);
-            }
-          } else {
-            console.warn('[SalesAPI] No active cash register found for cash payment!');
-          }
-        } catch (kasaError) {
-          console.error('[SalesAPI] Failed to create cash transaction:', kasaError);
-          // Don't fail the sale creation itself, just log the error
+      const createRegisterTx = async (
+        islemTipi: 'KASA_GIRIS' | 'CH_TAHSILAT',
+        tutar: number,
+        aciklamaSuffix: string,
+      ) => {
+        if (tutar <= 0) return;
+        let targetKasaId = ERP_SETTINGS.selected_cash_registers?.[0];
+        if (!targetKasaId) {
+          const kasalar = await fetchKasalar({ firm_nr: String(firmNr), aktif: true });
+          if (kasalar.length > 0) targetKasaId = kasalar[0].id;
         }
-        if (import.meta.env.DEV) console.timeEnd(tKasa);
+        if (!targetKasaId) {
+          console.warn('[SalesAPI] No active cash register found for', islemTipi);
+          return;
+        }
+        const kasaAciklama = String(sale.notes || '').includes('GüzellikPOS')
+          ? `Güzellik Satışı - ${sale.receiptNumber}${aciklamaSuffix}`
+          : `Market Satışı - ${sale.receiptNumber}${aciklamaSuffix}`;
+        const islem: KasaIslemi = {
+          firma_id: String(firmNr),
+          kasa_id: targetKasaId,
+          islem_no: sale.receiptNumber,
+          islem_tarihi: sale.date || new Date().toISOString(),
+          islem_tipi: islemTipi,
+          tutar,
+          islem_aciklamasi: kasaAciklama,
+          cari_hesap_id: sale.customerId || undefined,
+          cari_hesap_unvani: sale.customerName || 'Peşin Müşteri',
+          doviz_kodu: 'YEREL',
+          dovizli_tutar: 0,
+          target_register_id: undefined,
+        };
+        await createKasaIslemi(islem);
+      };
+
+      try {
+        if (hasMixedWithCredit && settledNonCredit > 0 && sale.customerId) {
+          // Veresiye fatura tam tutarı borç yazdı; peşin kısmı tahsilat ile düş
+          await createRegisterTx('CH_TAHSILAT', settledNonCredit, ' (kısmi tahsilat)');
+          if (cashPortion > 0) {
+            // CH_TAHSILAT kasaya girmez; nakit kısmı için ayrıca KASA_GIRIS
+            // Not: CH_TAHSILAT zaten kasa sign=+1 yapıyor createKasaIslemi içinde — çift yazmamak için
+            // yalnızca kart+veresiye karışımında ekstra KASA_GIRIS gerekmez.
+            // createKasaIslemi CH_TAHSILAT → kasa bakiyesi artar. Nakit için yeterli.
+          }
+        } else if (sale.paymentMethod === 'cash' || (needsCashIn && !hasMixedWithCredit)) {
+          await createRegisterTx('KASA_GIRIS', sale.total, '');
+        }
+      } catch (kasaError) {
+        console.error('[SalesAPI] Failed to create cash transaction:', kasaError);
       }
 
       // Veresiye cari borcu: invoicesAPI.create içinde (paymentMethodImpliesCustomerDebt) tek kez güncellenir — burada tekrarlanmaz.
@@ -230,6 +259,7 @@ export const salesAPI = {
       return {
         ...sale,
         id: savedInvoice.id,
+        paymentMethod: hasMixedWithCredit ? 'veresiye' : sale.paymentMethod,
         status: 'completed'
       } as Sale;
 

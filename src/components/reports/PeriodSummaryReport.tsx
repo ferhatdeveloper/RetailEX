@@ -145,11 +145,14 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
       } else if (patch.minorPct != null && patch.majorPct == null) {
         majorPct = 100 - minorPct;
       }
-      const next = normalizePartnerSplitPrefs({
-        enabled: patch.enabled ?? prev.enabled,
-        majorPct,
-        minorPct,
-      });
+      const next = normalizePartnerSplitPrefs(
+        {
+          enabled: patch.enabled ?? prev.enabled,
+          majorPct,
+          minorPct,
+        },
+        { defaultEnabled: false },
+      );
       savePeriodSummaryPartnerSplitPrefs(next);
       return next;
     });

@@ -1,8 +1,15 @@
 /**
  * Cari bakiye — sales + cash_lines (customer_id veya ünvan eşleşmesi).
- * Müşteri: hareket yoksa saklanan balance yedeği. Tedarikçi: yalnızca alış/iade defteri.
+ * Müşteri: yalnızca veresiye/açık hesap satışları + iade/devir + CH_*.
+ * Tedarikçi: peşin alış hariç alış/iade + CH_*.
  */
 import { ERP_SETTINGS } from '../postgres';
+import {
+  paymentMethodImpliesCustomerDebt,
+  paymentMethodImpliesSupplierDebt,
+  sqlPaymentMethodImpliesCustomerDebtExpr,
+  sqlPaymentMethodImpliesSupplierDebtExpr,
+} from '../../utils/paymentMethodUtils';
 
 export function normalizeFirmTableNr(firmNr?: string | number | null): string {
   const d = String(firmNr ?? ERP_SETTINGS.firmNr ?? '001').replace(/\D/g, '');
@@ -18,6 +25,11 @@ export function firmSuppliersTable(firmNr?: string | number | null): string {
   return `rex_${normalizeFirmTableNr(firmNr)}_suppliers`;
 }
 
+const customerDebtPmSql = sqlPaymentMethodImpliesCustomerDebtExpr();
+const customerDebtPmSqlS = sqlPaymentMethodImpliesCustomerDebtExpr('s');
+const supplierDebtPmSql = sqlPaymentMethodImpliesSupplierDebtExpr();
+const supplierDebtPmSqlSl = sqlPaymentMethodImpliesSupplierDebtExpr('sl');
+
 /** Liste/ekstre ile uyumlu müşteri bakiye CTE (postgres.query içinde sales/cash_lines otomatik prefixlenir) */
 export function sqlCustomerAccountBalancesCte(custTable: string, firmNrBind: string): string {
   return `
@@ -28,6 +40,10 @@ export function sqlCustomerAccountBalancesCte(custTable: string, firmNrBind: str
           CASE WHEN fiche_type = 'return_invoice' THEN -net_amount ELSE net_amount END AS line_contrib
         FROM sales
         WHERE customer_id IS NOT NULL AND COALESCE(is_cancelled, false) = false
+          AND (
+            fiche_type IN ('return_invoice', 'opening_balance')
+            OR ${customerDebtPmSql}
+          )
         UNION ALL
         SELECT c.id,
           CASE WHEN s.fiche_type = 'return_invoice' THEN -s.net_amount ELSE s.net_amount END
@@ -37,6 +53,10 @@ export function sqlCustomerAccountBalancesCte(custTable: string, firmNrBind: str
         WHERE (s.customer_id IS NULL OR s.customer_id::text <> c.id::text)
           AND COALESCE(s.is_cancelled, false) = false
           AND TRIM(COALESCE(s.customer_name, '')) <> ''
+          AND (
+            s.fiche_type IN ('return_invoice', 'opening_balance')
+            OR ${customerDebtPmSqlS}
+          )
         UNION ALL
         SELECT customer_id AS id, (CASE WHEN transaction_type IN ('CH_ODEME', 'CH_TAHSILAT') THEN -ABS(amount) ELSE 0 END) AS line_contrib
         FROM cash_lines
@@ -47,7 +67,7 @@ export function sqlCustomerAccountBalancesCte(custTable: string, firmNrBind: str
     )`;
 }
 
-/** Tedarikçi bakiye CTE — yalnızca alış / alış iade faturaları + cari ödeme/tahsilat */
+/** Tedarikçi bakiye CTE — peşin alış hariç alış / alış iade + cari ödeme/tahsilat */
 export function sqlSupplierAccountBalancesCte(suppTable: string): string {
   return `
     supplier_balances AS (
@@ -63,7 +83,11 @@ export function sqlSupplierAccountBalancesCte(suppTable: string): string {
         FROM sales
         WHERE customer_id IS NOT NULL
           AND COALESCE(is_cancelled, false) = false
-          AND fiche_type IN ('purchase_invoice', 'return_invoice')
+          AND fiche_type IN ('purchase_invoice', 'return_invoice', 'opening_balance')
+          AND (
+            fiche_type IN ('return_invoice', 'opening_balance')
+            OR ${supplierDebtPmSql}
+          )
         UNION ALL
         SELECT s.id,
           CASE
@@ -77,7 +101,11 @@ export function sqlSupplierAccountBalancesCte(suppTable: string): string {
         WHERE (sl.customer_id IS NULL OR sl.customer_id::text <> s.id::text)
           AND COALESCE(sl.is_cancelled, false) = false
           AND TRIM(COALESCE(sl.customer_name, '')) <> ''
-          AND sl.fiche_type IN ('purchase_invoice', 'return_invoice')
+          AND sl.fiche_type IN ('purchase_invoice', 'return_invoice', 'opening_balance')
+          AND (
+            sl.fiche_type IN ('return_invoice', 'opening_balance')
+            OR ${supplierDebtPmSqlSl}
+          )
         UNION ALL
         SELECT customer_id AS id, (CASE WHEN transaction_type IN ('CH_ODEME', 'CH_TAHSILAT') THEN -ABS(amount) ELSE 0 END) AS line_contrib
         FROM cash_lines
@@ -107,6 +135,7 @@ export type LedgerSaleRow = {
   net_amount?: number | string | null;
   fiche_type?: string | null;
   is_cancelled?: boolean | null;
+  payment_method?: string | null;
 };
 
 export type LedgerCashRow = {
@@ -153,6 +182,19 @@ export function accountLedgerNameMatch(
   return a.length > 0 && b.length > 0 && a === b;
 }
 
+function saleCountsTowardCustomerDebt(s: LedgerSaleRow): boolean {
+  const ft = String(s.fiche_type || '').toLowerCase();
+  if (ft === 'return_invoice' || ft === 'opening_balance') return true;
+  return paymentMethodImpliesCustomerDebt(s.payment_method);
+}
+
+function saleCountsTowardSupplierDebt(s: LedgerSaleRow): boolean {
+  const ft = String(s.fiche_type || '').toLowerCase();
+  if (ft === 'return_invoice' || ft === 'opening_balance') return true;
+  if (ft !== 'purchase_invoice') return false;
+  return paymentMethodImpliesSupplierDebt(s.payment_method);
+}
+
 function sumCustomerSalesLedger(
   accountId: string,
   accountName: string,
@@ -164,6 +206,7 @@ function sumCustomerSalesLedger(
   let sum = 0;
   for (const s of sales) {
     if (s.is_cancelled === true || String(s.fiche_type || '').toLowerCase() === 'cancelled') continue;
+    if (!saleCountsTowardCustomerDebt(s)) continue;
     const amt = parseFloat(String(s.net_amount ?? 0)) || 0;
     if (!amt) continue;
     const contrib = s.fiche_type === 'return_invoice' ? -amt : amt;
@@ -192,6 +235,7 @@ function sumSupplierSalesLedger(
     const ft = String(s.fiche_type || '').toLowerCase();
     if (ft !== 'purchase_invoice' && ft !== 'return_invoice' && ft !== 'opening_balance') continue;
     if (s.is_cancelled === true) continue;
+    if (!saleCountsTowardSupplierDebt(s)) continue;
     const rawAmt = parseFloat(String(s.net_amount ?? 0)) || 0;
     if (!rawAmt) continue;
     const amt = Math.abs(rawAmt);

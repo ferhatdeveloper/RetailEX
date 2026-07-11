@@ -41,7 +41,7 @@ export const customerAPI = {
             .get<any[]>(
               salesPath,
               {
-                select: 'customer_id,customer_name,net_amount,fiche_type,is_cancelled',
+                select: 'customer_id,customer_name,net_amount,fiche_type,is_cancelled,payment_method',
                 is_cancelled: 'eq.false',
                 limit: '10000',
               },

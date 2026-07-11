@@ -156,3 +156,61 @@ export function paymentMethodImpliesPaidNow(raw: unknown): boolean {
   const pm = String(raw ?? '').toLowerCase().trim();
   return pm === 'cash' || pm === 'nakit' || pm === 'card' || pm === 'kart' || pm === 'credit_card' || pm === 'pos';
 }
+
+/**
+ * Satışta cari borç (müşteri bize borçlu) yalnızca veresiye / açık hesap.
+ * Nakit, kart, havale için balance artırılmaz.
+ */
+export function paymentMethodImpliesCustomerDebt(pm: string | undefined | null): boolean {
+  const code = dbPaymentMethodToFormCode(pm);
+  if (code === 'ACIK_CARI') return true;
+  const p = String(pm || '').toLowerCase().trim();
+  if (!p) return false;
+  if (p === 'veresiye' || p === 'open_account' || p === 'acik_cari' || p === 'açık_cari') return true;
+  if (p.includes('veresiye')) return true;
+  if (
+    p === 'cari' ||
+    p === 'açık hesap' ||
+    p === 'acik hesap' ||
+    p === 'açık cari' ||
+    p === 'acik cari'
+  ) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Alışta tedarikçi borcu: peşin nakit/kart/havale kapalı; boş veya veresiye/çek/senet açık.
+ */
+export function paymentMethodImpliesSupplierDebt(pm: string | undefined | null): boolean {
+  const p = String(pm || '').toLowerCase().trim();
+  if (!p) return true;
+  if (paymentMethodImpliesPaidNow(pm)) return false;
+  if (p === 'havale' || p === 'eft' || p === 'haval' || p === 'transfer') return false;
+  return true;
+}
+
+/** Ledger SQL: satış satırı cari borç yaratır mı */
+export function sqlPaymentMethodImpliesCustomerDebtExpr(alias = ''): string {
+  const col = alias ? `${alias}.payment_method` : 'payment_method';
+  return `(
+    LOWER(TRIM(COALESCE(${col}, ''))) IN (
+      'veresiye', 'open_account', 'cari', 'açık hesap', 'acik hesap',
+      'açık cari', 'acik cari', 'acik_cari', 'açık_cari'
+    )
+    OR LOWER(TRIM(COALESCE(${col}, ''))) LIKE '%veresiye%'
+  )`;
+}
+
+/** Ledger SQL: alış satırı tedarikçi borcu yaratır mı (peşin nakit/kart/havale hariç) */
+export function sqlPaymentMethodImpliesSupplierDebtExpr(alias = ''): string {
+  const col = alias ? `${alias}.payment_method` : 'payment_method';
+  const pm = `LOWER(TRIM(COALESCE(${col}, '')))`;
+  return `(
+    NOT (
+      ${pm} IN ('cash', 'nakit', 'card', 'kart', 'gateway', 'havale', 'eft', 'haval', 'kredikarti', 'transfer')
+      OR ${pm} LIKE '%kredi%kart%'
+    )
+  )`;
+}

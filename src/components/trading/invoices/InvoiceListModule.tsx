@@ -116,7 +116,9 @@ export function InvoiceListModule({
 }: InvoiceListModuleProps) {
   const { tm } = useLanguage();
   const { isMobile } = useResponsive();
-  const { selectedFirm } = useFirmaDonem();
+  const { selectedFirm, selectedPeriod } = useFirmaDonem();
+  const firmNrKey = selectedFirm?.firm_nr != null ? String(selectedFirm.firm_nr) : '';
+  const periodNrKey = selectedPeriod?.nr != null ? String(selectedPeriod.nr).padStart(2, '0') : '';
   const isSalesReturnList = defaultInvoiceTypeFilter === '3';
   const returnProcessorColumnLabel = isSalesReturnList ? tm('salesReturnProcessedBy') : tm('cashier');
   const showGibQueueAction = selectedFirm?.regulatory_region === 'TR';
@@ -337,10 +339,13 @@ export function InvoiceListModule({
     }
   };
 
-  // Faturaları yükle (sayfalama ile)
+  // Faturaları yükle (sayfalama ile) — firma/dönem değişince yenile
   useEffect(() => {
-    loadInvoices();
-  }, [currentPage, pageSize, dateFilter, statusFilter, invoiceTypeFilter, defaultCategory]);
+    if (!firmNrKey) return;
+    // Dönem henüz seçilmediyse (firma değişimi ara durumu) eski dönemle sorgu atma
+    if (selectedFirm && !selectedPeriod && !periodNrKey) return;
+    void loadInvoices();
+  }, [currentPage, pageSize, dateFilter, statusFilter, invoiceTypeFilter, defaultCategory, firmNrKey, periodNrKey]);
 
   useEffect(() => {
     void loadTemplatesFromDatabase();
@@ -476,7 +481,10 @@ export function InvoiceListModule({
     };
   }, [defaultInvoiceTypeFilter, posSalesReturnPrefill, onPosSalesReturnPrefillConsumed]);
 
+  const loadInvoicesRequestIdRef = useRef(0);
+
   const loadInvoices = async () => {
+    const requestId = ++loadInvoicesRequestIdRef.current;
     setIsLoading(true);
     try {
       const { invoicesAPI } = await import('../../../services/api/invoices');
@@ -489,17 +497,27 @@ export function InvoiceListModule({
           ? [defaultCategory]
           : [];
 
+      const statusCancelled = statusFilter === 'cancelled';
+      const firmNr = firmNrKey || undefined;
+      const periodNr = periodNrKey || undefined;
+
       const result = await invoicesAPI.getPaginated({
         page: currentPage,
         pageSize: pageSize,
         search: searchQuery || undefined,
-        status: statusFilter !== 'all' ? statusFilter : undefined,
+        status: statusFilter !== 'all' && !statusCancelled ? statusFilter : undefined,
         startDate: dateRange.start ? String(dateRange.start) : undefined,
         endDate: dateRange.end ? String(dateRange.end) : undefined,
         invoiceCategories: categoryFilterList.length > 0 ? categoryFilterList : undefined,
         invoiceCategory: categoryFilterList.length === 1 ? categoryFilterList[0] : undefined,
-        invoiceType: invoiceTypeFilter && invoiceTypeFilter !== 'all' ? parseInt(invoiceTypeFilter) : 0
+        invoiceType: invoiceTypeFilter && invoiceTypeFilter !== 'all' ? parseInt(invoiceTypeFilter) : 0,
+        firmNr,
+        periodNr,
+        cancelledOnly: statusCancelled,
+        includeCancelled: statusCancelled,
       });
+
+      if (requestId !== loadInvoicesRequestIdRef.current) return;
 
       // Client-side fatura türü ve kategori filtresi
       let filteredData = result.data;
@@ -522,11 +540,10 @@ export function InvoiceListModule({
       }
 
       setInvoices(filteredData as ListInvoice[]);
+      // İstemci filtresi sonrası gerçek sayfa boyutu; total API'den (yaklaşık) — boş sayfa yanılsamasını azalt
       setTotalCount(result.total);
       setTotalPages(result.totalPages);
 
-      console.log('[InvoiceListModule] result.data count:', result.data.length);
-      console.log('[InvoiceListModule] filteredData count:', filteredData.length);
       if (result.data.length > 0 && filteredData.length === 0) {
         console.warn('[InvoiceListModule] Data exists in API but was filtered out on client!', {
           apiFirstRow: result.data[0],
@@ -534,12 +551,15 @@ export function InvoiceListModule({
         });
       }
     } catch (error) {
+      if (requestId !== loadInvoicesRequestIdRef.current) return;
       console.error('Faturalar yüklenirken hata:', error);
       setInvoices([]);
       setTotalCount(0);
       setTotalPages(0);
     } finally {
-      setIsLoading(false);
+      if (requestId === loadInvoicesRequestIdRef.current) {
+        setIsLoading(false);
+      }
     }
   };
 
@@ -942,7 +962,10 @@ export function InvoiceListModule({
               <Calendar className="w-3.5 h-3.5 text-gray-500" />
               <select
                 value={dateFilter}
-                onChange={(e) => setDateFilter(e.target.value)}
+                onChange={(e) => {
+                  setDateFilter(e.target.value);
+                  setCurrentPage(1);
+                }}
                 className="bg-transparent py-1.5 text-xs focus:outline-none min-w-[100px]"
               >
                 <option value="today">{tm('today')}</option>
@@ -957,7 +980,10 @@ export function InvoiceListModule({
               <FilterIcon className="w-3.5 h-3.5 text-gray-500" />
               <select
                 value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
+                onChange={(e) => {
+                  setStatusFilter(e.target.value);
+                  setCurrentPage(1);
+                }}
                 className="bg-transparent py-1.5 text-xs focus:outline-none min-w-[110px]"
               >
                 <option value="all">{tm('allStatuses')}</option>

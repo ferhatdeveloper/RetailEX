@@ -117,7 +117,7 @@ export const supplierAPI = {
             }
           ),
           safeGet(salesPath, {
-            select: 'customer_id,customer_name,net_amount,fiche_type,is_cancelled',
+            select: 'customer_id,customer_name,net_amount,fiche_type,is_cancelled,payment_method',
             is_cancelled: 'eq.false',
             limit: '10000',
           }),
@@ -703,9 +703,24 @@ export const supplierAPI = {
 
       const ledgerFicheFilter =
         cardType === 'supplier'
-          ? ` AND t.fiche_type IN ('purchase_invoice', 'return_invoice', 'opening_balance')`
+          ? ` AND t.fiche_type IN ('purchase_invoice', 'return_invoice', 'opening_balance')
+              AND (
+                t.fiche_type IN ('return_invoice', 'opening_balance')
+                OR NOT (
+                  LOWER(TRIM(COALESCE(t.payment_method, ''))) IN ('cash', 'nakit', 'card', 'kart', 'gateway', 'havale', 'eft', 'haval', 'kredikarti', 'transfer')
+                  OR LOWER(TRIM(COALESCE(t.payment_method, ''))) LIKE '%kredi%kart%'
+                )
+              )`
           : cardType === 'customer'
-            ? ` AND t.fiche_type IN ('sales_invoice', 'return_invoice', 'service', 'hizmet', 'opening_balance')`
+            ? ` AND t.fiche_type IN ('sales_invoice', 'return_invoice', 'service', 'hizmet', 'opening_balance')
+              AND (
+                t.fiche_type IN ('return_invoice', 'opening_balance')
+                OR LOWER(TRIM(COALESCE(t.payment_method, ''))) IN (
+                  'veresiye', 'open_account', 'cari', 'açık hesap', 'acik hesap',
+                  'açık cari', 'acik cari', 'acik_cari', 'açık_cari'
+                )
+                OR LOWER(TRIM(COALESCE(t.payment_method, ''))) LIKE '%veresiye%'
+              )`
             : '';
 
       const sql = `
