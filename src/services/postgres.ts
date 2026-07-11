@@ -15,6 +15,9 @@ import {
   DEFAULT_REMOTE_REST_URL,
 } from '../core/remotePgDefaults';
 import { parseSaaSOrCustomPostgrestUrl, resolveTenantSyncUrls } from './merkezTenantRegistry';
+import { DEFAULT_POSTGREST_PORT } from '../core/postgrestDefaults';
+
+export { DEFAULT_POSTGREST_PORT };
 
 const IS_PRODUCTION = isRetailExProductionWeb();
 
@@ -1066,8 +1069,6 @@ function normalizeBaseUrl(input: string): string {
   if (!raw) return '';
   return raw.replace(/\/+$/, '');
 }
-
-export const DEFAULT_POSTGREST_PORT = 3002;
 
 /** LAN / IP ile özel URL'de port yoksa varsayılan PostgREST 3002 (APK sık hata). */
 export function normalizeCustomPostgrestUrl(input: string): string {

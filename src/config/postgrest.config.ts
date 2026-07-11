@@ -4,7 +4,8 @@
  * @see database/README_POSTGREST.md
  */
 
-import { DB_SETTINGS, DEFAULT_POSTGREST_PORT, normalizeCustomPostgrestUrl } from '../services/postgres';
+import { DEFAULT_POSTGREST_PORT } from '../core/postgrestDefaults';
+import { DB_SETTINGS, normalizeCustomPostgrestUrl } from '../services/postgres';
 import { IS_TAURI } from '../utils/env';
 import { rewriteRetailexAppUrlForViteDev } from '../utils/retailexDevProxy';
 import { resolveEffectiveRemoteRestUrl } from '../services/merkezTenantRegistry';
