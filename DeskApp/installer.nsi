@@ -788,9 +788,9 @@ Function InstallPostgRESTBinary
   ${EndIf}
   pgrst_have_exe:
   CreateDirectory "$INSTDIR\_up_\config"
+  ; NOT: IfFileExists "__REPO_ROOT__\..." kurulum aninda musteri PC'de yok - conf hic cikmazdi.
   IfFileExists "$INSTDIR\_up_\config\postgrest.conf" pgrst_done
-  IfFileExists "__REPO_ROOT__\config\postgrest.conf" 0 pgrst_done
-    File "/oname=_up_\config\postgrest.conf" "__REPO_ROOT__\config\postgrest.conf"
+  File "/oname=_up_\config\postgrest.conf" "__REPO_ROOT__\config\postgrest.conf"
   pgrst_done:
 FunctionEnd
 
@@ -994,9 +994,12 @@ Section Install
   FileWrite $R9 "$INSTDIR"
   FileClose $R9
   ExecWait '"powershell.exe" -NoProfile -ExecutionPolicy Bypass -File "$INSTDIR\install-services-setup.ps1"' $0
-  ${If} $0 != 0
+  ${If} $0 == 2
+    DetailPrint "install-services-setup.ps1 PARTIAL (exit 2): Sync OK, SQL Bridge eksik olabilir"
+    MessageBox MB_OK|MB_ICONINFORMATION "RetailEX çekirdek senkron hizmeti kuruldu; SQL Bridge kaydı eksik veya gecikti (çıkış 2).$\r$\n$\r$\nUygulama kullanılabilir. SQL Bridge (port 3001) için:$\r$\n1) '$INSTDIR\install-services-manual.cmd' (Yönetici)$\r$\n2) Node.js LTS varsa: '$INSTDIR\install-bridge-npm.cmd'$\r$\n$\r$\nPostgREST (3002) ayrıdır: '$INSTDIR\install-postgrest-service.cmd'$\r$\n$\r$\nLog: C:\ProgramData\RetailEX\install_services_setup_last.log"
+  ${ElseIf} $0 != 0
     DetailPrint "install-services-setup.ps1 FAILED, exit code $0"
-    MessageBox MB_OK|MB_ICONEXCLAMATION "RetailEX Windows hizmetleri kurulamadı (çıkış kodu $0).$\r$\n$\r$\nKurulum yönetici (UAC) ile çalıştırılmalıdır. Gerekirse UAC penceresinde İzin Ver seçin.$\r$\n$\r$\nTeknik ayrıntılar:$\r$\nC:\ProgramData\RetailEX\install_services_setup_last.log$\r$\nC:\ProgramData\RetailEX\RetailEX_Service_install_last_error.txt$\r$\nC:\ProgramData\RetailEX\RetailEX_SQL_Bridge_install_last_error.txt$\r$\nC:\ProgramData\RetailEX\RetailEX_PostgREST (TEMP log)$\r$\n$\r$\nKurulumdan sonra: '$INSTDIR\install-services-manual.cmd' dosyasına sağ tıklayıp Yönetici olarak çalıştırın."
+    MessageBox MB_OK|MB_ICONEXCLAMATION "RetailEX Windows hizmetleri kurulamadı (çıkış kodu $0).$\r$\n$\r$\nSık nedenler:$\r$\n- UAC'de İzin Ver seçilmedi$\r$\n- Eski hizmet kilitli (yeniden başlatıp install-services-manual.cmd)$\r$\n- PowerShell script parse (em-dash/kodlama; bu sürümde düzeltildi)$\r$\n$\r$\nLoglar:$\r$\nC:\ProgramData\RetailEX\install_services_setup_last.log$\r$\nC:\ProgramData\RetailEX\RetailEX_Service_install_last_error.txt$\r$\nC:\ProgramData\RetailEX\RetailEX_SQL_Bridge_install_last_error.txt$\r$\n%TEMP%\retailex_postgrest_service_install.log$\r$\n$\r$\nKurtarma (Yönetici): '$INSTDIR\install-services-manual.cmd'$\r$\nPostgREST ayrıca: '$INSTDIR\install-postgrest-service.cmd'"
   ${EndIf}
 
   ; Write bootstrap config for the backend to consume on first run

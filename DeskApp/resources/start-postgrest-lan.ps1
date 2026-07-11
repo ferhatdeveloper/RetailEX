@@ -43,7 +43,7 @@ if (-not $ConfigPath -or -not (Test-Path -LiteralPath $ConfigPath)) {
 }
 
 if (-not $env:PGRST_DB_URI) {
-    Write-Warning 'PGRST_DB_URI bos — config/postgrest.conf icindeki db-uri kullanilacak.'
+    Write-Warning 'PGRST_DB_URI bos - config/postgrest.conf icindeki db-uri kullanilacak.'
     Write-Host 'Onerilen: $env:PGRST_DB_URI = "postgres://postgres:SIFRE@127.0.0.1:5432/retailex_local"'
 }
 

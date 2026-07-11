@@ -1,10 +1,23 @@
 #Requires -Version 5.1
-# Ortak: RetailEX Windows hizmet kurulumu (GUI EXE exit code guvenilmez — servis kaydini dogrula).
+# Ortak: RetailEX Windows hizmet kurulumu (GUI EXE exit code guvenilmez - servis kaydini dogrula).
+# ONEMLI: Bu dosyada em-dash (U+2014) KULLANMA. Windows PowerShell 5.1 -File, BOM'suz UTF-8'i
+# CP1254 okur; em-dash baytlari (E2 80 94) sahte tirnak uretir ve script parse edilemez (exit 1).
 
 function Test-RetailExAdmin {
     $id = [Security.Principal.WindowsIdentity]::GetCurrent()
     $p = New-Object Security.Principal.WindowsPrincipal($id)
     return $p.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+}
+
+function Write-RetailExSetupLog {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$LogFile,
+        [Parameter(Mandatory = $true)]
+        [string]$Message
+    )
+    # PS 5.1: Out-File -Append varsayilan Unicode(UTF-16); her zaman utf8 kullan.
+    $Message | Out-File -FilePath $LogFile -Append -Encoding utf8
 }
 
 function Install-RetailExWindowsService {
@@ -14,7 +27,8 @@ function Install-RetailExWindowsService {
         [Parameter(Mandatory = $true)]
         [string]$ServiceName,
         [Parameter(Mandatory = $true)]
-        [string]$Label
+        [string]$Label,
+        [int]$MaxAttempts = 3
     )
 
     if (-not (Test-Path -LiteralPath $ExePath)) {
@@ -24,13 +38,36 @@ function Install-RetailExWindowsService {
     $logPath = "C:\ProgramData\RetailEX\${ServiceName}_install_last_error.txt"
     Write-Host "[RetailEX] Kuruluyor: $Label ($ServiceName)"
 
-    $null = Start-Process -FilePath $ExePath -ArgumentList @('--install') -Wait -PassThru -WindowStyle Hidden
-    Start-Sleep -Seconds 2
+    $svc = $null
+    for ($attempt = 1; $attempt -le $MaxAttempts; $attempt++) {
+        if ($attempt -gt 1) {
+            Write-Host "[RetailEX] Yeniden deneme $attempt/$MaxAttempts : $ServiceName"
+            $existing = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
+            if ($existing -and $existing.Status -eq 'Running') {
+                try {
+                    Stop-Service -Name $ServiceName -Force -ErrorAction SilentlyContinue
+                    Start-Sleep -Seconds 2
+                }
+                catch {}
+            }
+            # Kilitli/eski kayit: sc delete + kısa bekleme (CreateService ERROR_SERVICE_EXISTS disinda)
+            if ($existing -and $attempt -eq $MaxAttempts) {
+                sc.exe stop $ServiceName 2>$null | Out-Null
+                sc.exe delete $ServiceName 2>$null | Out-Null
+                Start-Sleep -Seconds 3
+            }
+        }
 
-    $svc = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
+        $null = Start-Process -FilePath $ExePath -ArgumentList @('--install') -Wait -PassThru -WindowStyle Hidden
+        Start-Sleep -Seconds 2
+
+        $svc = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
+        if ($svc) { break }
+    }
+
     if (-not $svc) {
         $hint = if (Test-Path -LiteralPath $logPath) { " Log: $logPath" } else { '' }
-        throw "$Label kurulamadi ($ServiceName kaydi yok).$hint"
+        throw "$Label kurulamadi ($ServiceName kaydi yok, $MaxAttempts deneme).$hint"
     }
 
     Write-Host "[RetailEX] $Label hazir: $ServiceName ($($svc.Status))"
@@ -62,12 +99,14 @@ function Install-RetailExPostgrestService {
     $postgrestExe = Join-Path $Prefix 'postgrest.exe'
     $postgrestScript = Join-Path $Prefix 'install-postgrest-service.ps1'
     if (-not ((Test-Path -LiteralPath $postgrestExe) -and (Test-Path -LiteralPath $postgrestScript))) {
-        return
+        Write-Host '[RetailEX] PostgREST atlandi (postgrest.exe veya install-postgrest-service.ps1 yok).'
+        return @{ Ok = $true; Skipped = $true; Code = 0 }
     }
 
     Write-Host '[RetailEX] PostgREST Windows hizmeti kuruluyor (otomatik baslatma)...'
     & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $postgrestScript -Prefix $Prefix
     $pgrCode = $LASTEXITCODE
+    if ($null -eq $pgrCode) { $pgrCode = 0 }
     $pgrSvc = Get-Service -Name 'RetailEX_PostgREST' -ErrorAction SilentlyContinue
 
     if ($pgrSvc) {
@@ -78,17 +117,19 @@ function Install-RetailExPostgrestService {
         }
         Write-Host "[RetailEX] PostgREST hazir: RetailEX_PostgREST ($($pgrSvc.Status))"
         if ($pgrSvc.Status -ne 'Running') {
-            Write-Warning 'PostgREST kayitli ama calismiyor. PostgreSQL acik mi? Start-Service RetailEX_PostgREST — log: %TEMP%\retailex_postgrest_service_install.log'
+            Write-Warning 'PostgREST kayitli ama calismiyor. PostgreSQL acik mi? Start-Service RetailEX_PostgREST - log: %TEMP%\retailex_postgrest_service_install.log'
         }
-        return
+        return @{ Ok = $true; Skipped = $false; Code = 0; Status = $pgrSvc.Status }
     }
 
     if ($pgrCode -eq 2) {
         Write-Warning 'PostgREST hizmeti kuruldu ancak baslatilamadi (PostgreSQL hazir olmayabilir). Start-Service RetailEX_PostgREST'
-        return
+        # Kayit olmasa bile exit 2 = baslatma sorunu; yine de çekirdek kurulumu bozma
+        return @{ Ok = $true; Skipped = $false; Code = 2 }
     }
 
-    Write-Warning "PostgREST hizmeti kurulamadi (cikis $pgrCode). Manuel: install-postgrest-service.cmd"
+    Write-Warning "PostgREST hizmeti kurulamadi (cikis $pgrCode). Manuel: install-postgrest-service.cmd (cekirdek servisler bundan bagimsiz)."
+    return @{ Ok = $false; Skipped = $false; Code = $pgrCode }
 }
 
 function Invoke-RetailExServiceSetupElevation {
@@ -104,7 +145,13 @@ function Invoke-RetailExServiceSetupElevation {
         '-File', $ScriptPath,
         '-Prefix', $Prefix
     )
-    $proc = Start-Process -FilePath 'powershell.exe' -Verb RunAs -ArgumentList $argList -PassThru -Wait -WorkingDirectory $Prefix
+    try {
+        $proc = Start-Process -FilePath 'powershell.exe' -Verb RunAs -ArgumentList $argList -PassThru -Wait -WorkingDirectory $Prefix
+    }
+    catch {
+        Write-Warning "UAC/elevation basarisiz: $($_.Exception.Message)"
+        return 1
+    }
     if (-not $proc) { return 1 }
 
     # Elevated PowerShell child processes often return ExitCode=$null on success.

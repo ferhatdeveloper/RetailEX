@@ -1,5 +1,6 @@
 #Requires -Version 5.1
 # NSIS: retailex_install_prefix.txt veya -Prefix ile kurulum dizini alinir.
+# ONEMLI: em-dash (U+2014) kullanma - PS 5.1 BOM'suz UTF-8'i CP1254 okur, parse bozulur.
 param(
     [Parameter(Mandatory = $false)]
     [string]$Prefix = ""
@@ -34,10 +35,15 @@ if (-not (Test-RetailExAdmin)) {
     exit $code
 }
 
-$logFile = "C:\ProgramData\RetailEX\install_services_setup_last.log"
+$logDir = "C:\ProgramData\RetailEX"
+if (-not (Test-Path -LiteralPath $logDir)) {
+    New-Item -ItemType Directory -Path $logDir -Force | Out-Null
+}
+$logFile = Join-Path $logDir "install_services_setup_last.log"
 "=== install-services-setup.ps1 $(Get-Date) Prefix=$Prefix ===" | Out-File $logFile -Encoding utf8
 
 $failures = @()
+$warnings = @()
 
 try {
     Install-RetailExWindowsService `
@@ -48,7 +54,7 @@ try {
 catch {
     $msg = $_.Exception.Message
     $failures += $msg
-    $msg | Out-File $logFile -Append
+    Write-RetailExSetupLog -LogFile $logFile -Message $msg
     Write-Warning $msg
 }
 
@@ -58,23 +64,24 @@ if (Test-Path -LiteralPath $npmScript) {
     try {
         & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $npmScript -Prefix $Prefix
         $npmCode = $LASTEXITCODE
+        if ($null -eq $npmCode) { $npmCode = 0 }
         if ($npmCode -eq 2) {
-            $msg = "Node.js/npm yok — SQL Bridge (3001) calismaz. https://nodejs.org LTS kurun, sonra: $npmScript -Prefix `"$Prefix`". PostgREST (3002) bundan bagimsizdir."
-            $failures += $msg
-            $msg | Out-File $logFile -Append
+            $msg = "Node.js/npm yok - SQL Bridge (3001) calismaz. https://nodejs.org LTS kurun, sonra: $npmScript -Prefix `"$Prefix`". PostgREST (3002) bundan bagimsizdir."
+            $warnings += $msg
+            Write-RetailExSetupLog -LogFile $logFile -Message "UYARI: $msg"
             Write-Warning $msg
         }
         elseif ($npmCode -ne 0) {
             $msg = "install-bridge-npm cikis kodu $npmCode (node_modules eksik kalabilir)."
-            $failures += $msg
-            $msg | Out-File $logFile -Append
+            $warnings += $msg
+            Write-RetailExSetupLog -LogFile $logFile -Message "UYARI: $msg"
             Write-Warning $msg
         }
     }
     catch {
         $msg = "install-bridge-npm: $($_.Exception.Message)"
-        $failures += $msg
-        $msg | Out-File $logFile -Append
+        $warnings += $msg
+        Write-RetailExSetupLog -LogFile $logFile -Message "UYARI: $msg"
         Write-Warning $msg
     }
 }
@@ -90,34 +97,62 @@ if (Test-Path -LiteralPath $bridgeExe) {
     catch {
         $msg = $_.Exception.Message
         $failures += $msg
-        $msg | Out-File $logFile -Append
+        Write-RetailExSetupLog -LogFile $logFile -Message $msg
         Write-Warning $msg
     }
 }
-
-try {
-    Install-RetailExPostgrestService -Prefix $Prefix
-}
-catch {
-    $msg = "PostgREST: $($_.Exception.Message)"
-    $failures += $msg
-    $msg | Out-File $logFile -Append
+else {
+    $msg = "RetailEX_SQL_Bridge.exe yok - SQL Bridge hizmeti atlandi."
+    $warnings += $msg
+    Write-RetailExSetupLog -LogFile $logFile -Message "UYARI: $msg"
     Write-Warning $msg
 }
 
-$coreOk = @(
-    (Get-Service -Name "RetailEX_Service" -ErrorAction SilentlyContinue),
-    (Get-Service -Name "RetailEX_SQL_Bridge" -ErrorAction SilentlyContinue)
-) | Where-Object { $_ }
+try {
+    $pgr = Install-RetailExPostgrestService -Prefix $Prefix
+    if ($pgr -and -not $pgr.Ok -and -not $pgr.Skipped) {
+        $msg = "PostgREST kurulamadi (cikis $($pgr.Code)) - cekirdek servislerden bagimsiz; manuel: install-postgrest-service.cmd"
+        $warnings += $msg
+        Write-RetailExSetupLog -LogFile $logFile -Message "UYARI: $msg"
+    }
+}
+catch {
+    $msg = "PostgREST: $($_.Exception.Message)"
+    $warnings += $msg
+    Write-RetailExSetupLog -LogFile $logFile -Message "UYARI: $msg"
+    Write-Warning $msg
+}
 
-if ($coreOk.Count -lt 2) {
-    "BASARISIZ: $($failures -join ' | ')" | Out-File $logFile -Append
+$svcCore = Get-Service -Name "RetailEX_Service" -ErrorAction SilentlyContinue
+$svcBridge = Get-Service -Name "RetailEX_SQL_Bridge" -ErrorAction SilentlyContinue
+$bridgeExpected = Test-Path -LiteralPath $bridgeExe
+
+$coreOk = $false
+if ($bridgeExpected) {
+    $coreOk = [bool]$svcCore -and [bool]$svcBridge
+}
+else {
+    # Bridge paketlenmemisse yalnizca Sync Service yeterli
+    $coreOk = [bool]$svcCore
+}
+
+if (-not $coreOk) {
+    $summary = "BASARISIZ: cekirdek hizmet kaydi eksik. failures=$($failures -join ' | '); warnings=$($warnings -join ' | ')"
+    Write-RetailExSetupLog -LogFile $logFile -Message $summary
+    Write-RetailExSetupLog -LogFile $logFile -Message "Manuel: $Prefix\install-services-manual.cmd (Yonetici olarak calistirin)"
+    # Kismi: Sync var, Bridge yok -> exit 2 (NSIS uyari, kurulumu tamamen iptal etme)
+    if ($svcCore -and $bridgeExpected -and -not $svcBridge) {
+        exit 2
+    }
     exit 1
 }
 
+if ($warnings.Count -gt 0) {
+    Write-RetailExSetupLog -LogFile $logFile -Message "UYARI (devam): $($warnings -join ' | ')"
+}
 if ($failures.Count -gt 0) {
-    "UYARI (devam): $($failures -join ' | ')" | Out-File $logFile -Append
+    Write-RetailExSetupLog -LogFile $logFile -Message "NOT: bazi hatalar sonra toparlandi: $($failures -join ' | ')"
 }
 
-"TAMAM" | Out-File $logFile -Append
+Write-RetailExSetupLog -LogFile $logFile -Message "TAMAM"
 exit 0

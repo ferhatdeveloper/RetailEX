@@ -1,5 +1,5 @@
 #Requires -Version 5.1
-# RetailEX PostgREST — Windows hizmeti (otomatik baslatma, port 3002)
+# RetailEX PostgREST - Windows hizmeti (otomatik baslatma, port 3002)
 # Yonetici PowerShell. Onarim: .\install-postgrest-service.ps1 -Repair
 
 param(
@@ -173,7 +173,7 @@ if ($dbUri) {
     Write-Log "PGRST_DB_URI config.db'den uretildi."
 }
 else {
-    Write-Log "PGRST_DB_URI yok — postgrest.conf icindeki db-uri kullanilacak."
+    Write-Log "PGRST_DB_URI yok - postgrest.conf icindeki db-uri kullanilacak."
 }
 
 $Existing = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue

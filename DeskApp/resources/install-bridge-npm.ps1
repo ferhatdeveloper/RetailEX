@@ -26,7 +26,7 @@ function Resolve-NpmCmd {
     if ($env:LOCALAPPDATA) {
         $candidates.Add((Join-Path $env:LOCALAPPDATA "Programs\node\npm.cmd"))
     }
-    # nvm-windows: %NVM_HOME%\<version>\npm.cmd — once nvm current symlink yoksa PATH'e guven
+    # nvm-windows: %NVM_HOME%\<version>\npm.cmd - once nvm current symlink yoksa PATH'e guven
     if ($env:NVM_SYMLINK) {
         $candidates.Add((Join-Path $env:NVM_SYMLINK "npm.cmd"))
     }

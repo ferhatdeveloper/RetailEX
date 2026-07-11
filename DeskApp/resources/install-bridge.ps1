@@ -1,5 +1,5 @@
 #Requires -Version 5.1
-# RetailEX SQL Bridge — once npm install (hono/pg), sonra Windows hizmeti
+# RetailEX SQL Bridge - once npm install (hono/pg), sonra Windows hizmeti
 # Yonetici PowerShell. Eski bozuk kurulum: .\install-bridge.ps1 -Repair
 
 param(
@@ -65,7 +65,7 @@ if (-not (Test-Path -LiteralPath (Join-Path $BaseDir "node_modules\pg"))) {
     exit 1
 }
 
-# Hizmet gorunumu: "node.exe" "bridge.cjs" — modul cozumu bridge.cjs yanindaki node_modules
+# Hizmet gorunumu: "node.exe" "bridge.cjs" - modul cozumu bridge.cjs yanindaki node_modules
 $ImagePath = "`"$NodePath`" `"$BridgePath`""
 
 $Existing = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
@@ -84,7 +84,7 @@ if ($Existing) {
         $img = (Get-ItemProperty -LiteralPath $regPath -ErrorAction Stop).ImagePath
     }
     catch { }
-    # NSIS kurulum: hizmet RetailEX_SQL_Bridge.exe — ImagePath'i node'a cevirme
+    # NSIS kurulum: hizmet RetailEX_SQL_Bridge.exe - ImagePath'i node'a cevirme
     if ($img -and $img -match 'RetailEX_SQL_Bridge\.exe') {
         Write-Log "Hizmet exe saricisi kullaniyor; yalnizca npm deps guncelleniyor: $BaseDir"
         Push-Location $BaseDir
