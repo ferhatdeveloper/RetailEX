@@ -14,7 +14,11 @@ import {
   parsePgEndpointString,
   DEFAULT_REMOTE_REST_URL,
 } from '../core/remotePgDefaults';
-import { parseSaaSOrCustomPostgrestUrl, resolveTenantSyncUrls } from './merkezTenantRegistry';
+import {
+  DEFAULT_SAAS_TENANT_POSTGREST_ORIGIN,
+  parseSaaSOrCustomPostgrestUrl,
+  resolveTenantSyncUrls,
+} from './merkezTenantRegistry';
 import { DEFAULT_POSTGREST_PORT } from '../core/postgrestDefaults';
 
 export { DEFAULT_POSTGREST_PORT };
@@ -1112,10 +1116,20 @@ export function normalizeStoredRemoteRestUrl(input: string): string {
   return normalizeCustomPostgrestUrl(raw);
 }
 
-/** Mobil / LAN PostgREST bağlantı hataları için Türkçe yönlendirme metni. */
+function isRetailexSaasPostgrestHost(host: string): boolean {
+  const h = String(host || '').toLowerCase();
+  return h === 'api.retailex.app' || h.endsWith('.retailex.app');
+}
+
+function saasTenantSlugFromUrl(url: string): string {
+  const parsed = parseSaaSOrCustomPostgrestUrl(url);
+  return parsed.kind === 'saas_single_slug' ? parsed.slug : '';
+}
+
+/** Mobil / LAN veya RetailEX bulutu PostgREST hataları için Türkçe yönlendirme metni. */
 export function explainPostgrestConnectionError(
   url: string,
-  opts?: { error?: string; httpStatus?: number },
+  opts?: { error?: string; httpStatus?: number; bodySnippet?: string },
 ): string {
   const raw = String(url || '').trim();
   let host = '';
@@ -1126,6 +1140,54 @@ export function explainPostgrestConnectionError(
     port = u.port || (u.protocol === 'https:' ? '443' : '80');
   } catch {
     /* geçersiz URL */
+  }
+
+  const saas = isRetailexSaasPostgrestHost(host);
+  const slug = saasTenantSlugFromUrl(raw);
+  const body = String(opts?.bodySnippet || opts?.error || '');
+  const gatewayNotFound = /"not_found"|not_found/i.test(body);
+
+  if (saas) {
+    const httpStatus = opts?.httpStatus;
+    if (httpStatus === 404 || gatewayNotFound) {
+      const kod = slug || 'kiracı_kodu';
+      return (
+        `RetailEX bulutu: https://api.retailex.app/${kod} yolu bulunamadı (HTTP 404` +
+        `${gatewayNotFound ? ', gateway not_found' : ''}). ` +
+        `LAN Wi‑Fi / port 3002 bu mod için geçerli değildir. ` +
+        `Kiracı kodunu kontrol edin (Özbek Restoran: ozbek — berzin_com farklı firmadır). ` +
+        `Kod doğruysa sunucuda postgrest_${kod} ve retailex_api_gateway (Caddy) yeniden yayınlanmalı.`
+      );
+    }
+    if (httpStatus === 503) {
+      return (
+        `RetailEX bulutu: kiracı API'si geçici olarak yanıt vermiyor (HTTP 503). ` +
+        `postgrest_${slug || '…'} veya veritabanı kontrol edilmeli. LAN / port 3002 ile ilgili değildir.`
+      );
+    }
+    if (httpStatus === 406) {
+      return (
+        `RetailEX bulutu: PostgREST Accept başlığı reddedildi (HTTP 406). ` +
+        `Kiracı URL'si doğru mu kontrol edin: https://api.retailex.app/${slug || 'kiracı'}.`
+      );
+    }
+
+    const msg = String(opts?.error || '').trim();
+    const isNetwork =
+      !httpStatus &&
+      (msg.includes('Failed to fetch') ||
+        msg.includes('Network') ||
+        msg.includes('timeout') ||
+        msg.includes('Unable to resolve') ||
+        msg.includes('ECONNREFUSED') ||
+        msg.includes('Connection refused'));
+    if (isNetwork) {
+      return (
+        'RetailEX bulutuna (api.retailex.app) ulaşılamadı. İnternet bağlantınızı kontrol edin. ' +
+        'LAN Wi‑Fi / TCP 3002 bu ekran için geçerli değildir.'
+      );
+    }
+    return msg || 'RetailEX bulutu PostgREST erişilemedi';
   }
 
   if (port === '3001') {
@@ -1167,12 +1229,53 @@ export function explainPostgrestConnectionError(
   return msg || 'PostgREST erişilemedi';
 }
 
+/** SaaS 404: merkez tenant_registry ile «yanlış kod» vs «kayıtlı ama gateway yok» ayrımı. */
+async function enrichSaasPostgrest404Error(
+  url: string,
+  baseError: string,
+): Promise<string> {
+  const slug = saasTenantSlugFromUrl(url);
+  if (!slug) return baseError;
+  try {
+    const regUrl =
+      `${DEFAULT_SAAS_TENANT_POSTGREST_ORIGIN}/merkez/tenant_registry` +
+      `?code=eq.${encodeURIComponent(slug)}&select=code,display_name,is_active&limit=1`;
+    const res = await fetchRetailexAware(regUrl, {
+      method: 'GET',
+      headers: { Accept: 'application/json' },
+    });
+    if (!res.ok) return baseError;
+    const rows = (await res.json()) as Array<{
+      code?: string;
+      display_name?: string;
+      is_active?: boolean;
+    }>;
+    const row = Array.isArray(rows) ? rows[0] : undefined;
+    if (row?.code) {
+      const name = String(row.display_name || row.code).trim();
+      const active = row.is_active === false ? ' (pasif)' : '';
+      return (
+        `Kiracı «${slug}» merkez kayıtta var (${name}${active}), ancak ` +
+        `https://api.retailex.app/${slug} API gateway'de 404 (not_found). ` +
+        `Kod doğru (berzin_com başka firmadır). Sunucuda: ` +
+        `docker compose -f docker-compose.dokploy.yml up -d postgrest_${slug} sync_${slug} retailex_api_gateway`
+      );
+    }
+    return (
+      `Kiracı kodu «${slug}» api.retailex.app üzerinde yok ve merkez tenant_registry'de bulunamadı. ` +
+      `Doğru kodu operatörden alın (Özbek Restoran için beklenen: ozbek).`
+    );
+  } catch {
+    return baseError;
+  }
+}
+
 /**
  * PostgREST için erişilebilirlik testi — gerçek tablo sorgusu (/firms).
  * Kök yol 406 dönebilir; bu tek başına yeterli değildir.
  */
 export async function testPostgrestUrl(baseUrl: string): Promise<PostgrestStatus> {
-  const url = normalizeCustomPostgrestUrl(baseUrl);
+  const url = normalizeStoredRemoteRestUrl(baseUrl);
   if (!url) return { connected: false, baseUrl: baseUrl, error: 'PostgREST URL boş' };
   const probeHeaders = {
     Accept: 'application/json',
@@ -1186,21 +1289,30 @@ export async function testPostgrestUrl(baseUrl: string): Promise<PostgrestStatus
     if (res.ok) {
       return { connected: true, baseUrl: url, httpStatus: res.status };
     }
+    const text = (await res.text()).slice(0, 240);
     if (res.status === 404 || res.status === 406) {
+      let error = explainPostgrestConnectionError(url, {
+        httpStatus: res.status,
+        bodySnippet: text,
+      });
+      const parsed = parseSaaSOrCustomPostgrestUrl(url);
+      if (res.status === 404 && parsed.kind === 'saas_single_slug') {
+        error = await enrichSaasPostgrest404Error(url, error);
+      }
       return {
         connected: false,
         baseUrl: url,
         httpStatus: res.status,
-        error: explainPostgrestConnectionError(url, { httpStatus: res.status }),
+        error,
       };
     }
-    const text = (await res.text()).slice(0, 200);
     return {
       connected: false,
       baseUrl: url,
       httpStatus: res.status,
       error: explainPostgrestConnectionError(url, {
         httpStatus: res.status,
+        bodySnippet: text,
         error: `HTTP ${res.status}${text ? ` — ${text}` : ''}`,
       }),
     };

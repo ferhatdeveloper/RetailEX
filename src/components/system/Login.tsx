@@ -2176,11 +2176,26 @@ export function Login({ onLogin }: LoginProps) {
                         )}
                       </div>
                       <p className={`text-[9px] font-bold leading-relaxed ${darkMode ? 'text-slate-400' : 'text-slate-600'}`}>
-                        Kiracı / merkez REST adresi. Aynı ağda örnek: <strong>http://192.168.1.10:3002</strong> (port{' '}
-                        <strong>3002</strong>, 3001 değil) veya RetailEX bulutunda yalnızca kiracı adı.
-                        Kaydettiğinizde kiracı bağlantısı otomatik uygulanır; firma listesi yenilenir.
+                        {tenantPostgrestEntryMode === 'retailex_cloud' ? (
+                          <>
+                            RetailEX bulutu: yalnızca kiracı kodunu yazın (ör.{' '}
+                            <strong>ozbek</strong>). Hedef{' '}
+                            <span className="font-mono">
+                              {DEFAULT_SAAS_TENANT_POSTGREST_ORIGIN}/kiracı
+                            </span>
+                            . LAN Wi‑Fi / port 3002 bu modda kullanılmaz. Kaydettiğinizde kiracı
+                            bağlantısı uygulanır; firma listesi yenilenir.
+                          </>
+                        ) : (
+                          <>
+                            Kiracı / merkez REST adresi. Aynı ağda örnek:{' '}
+                            <strong>http://192.168.1.10:3002</strong> (port <strong>3002</strong>, 3001
+                            değil) veya RetailEX bulutunda yalnızca kiracı adı. Kaydettiğinizde kiracı
+                            bağlantısı otomatik uygulanır; firma listesi yenilenir.
+                          </>
+                        )}
                       </p>
-                      {isCapacitorAndroid() && (
+                      {isCapacitorAndroid() && tenantPostgrestEntryMode === 'custom_url' && (
                         <div
                           className={`rounded-lg border-2 px-3 py-2.5 text-[9px] font-bold leading-relaxed ${
                             darkMode
@@ -2196,6 +2211,28 @@ export function Login({ onLogin }: LoginProps) {
                               <strong>172.x.x.x</strong> çoğu zaman WSL sanal ağıdır; telefondan erişilemez.
                             </li>
                             <li>Merkez PC&apos;de <strong>RetailEX_PostgREST</strong> servisi çalışmalı; güvenlik duvarında TCP 3002 açık olmalı.</li>
+                          </ul>
+                        </div>
+                      )}
+                      {tenantPostgrestEntryMode === 'retailex_cloud' && (
+                        <div
+                          className={`rounded-lg border-2 px-3 py-2.5 text-[9px] font-bold leading-relaxed ${
+                            darkMode
+                              ? 'border-sky-500/40 bg-sky-950/35 text-sky-100'
+                              : 'border-sky-300 bg-sky-50 text-sky-950'
+                          }`}
+                        >
+                          <p className="font-black uppercase tracking-wide">RetailEX bulutu</p>
+                          <ul className="mt-1.5 list-disc space-y-1 pl-4">
+                            <li>
+                              Özbek Restoran kiracı kodu: <strong className="font-mono">ozbek</strong> (
+                              <span className="font-mono">berzin_com</span> ayrı bir firmadır).
+                            </li>
+                            <li>
+                              Test 404 / not_found verirse kod yanlış değilse sunucuda{' '}
+                              <span className="font-mono">postgrest_ozbek</span> + API gateway yeniden
+                              yayınlanmalıdır.
+                            </li>
                           </ul>
                         </div>
                       )}

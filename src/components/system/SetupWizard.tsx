@@ -2554,11 +2554,28 @@ const SetupWizard: React.FC = () => {
                                                                     />
                                                                 )}
                                                                 <p className="text-[9px] text-slate-400 mt-2">
-                                                                    RetailEX bulutu: kayıtta{' '}
-                                                                    <span className="font-mono text-blue-200/90">
-                                                                        {DEFAULT_SAAS_TENANT_POSTGREST_ORIGIN}/kiracı
-                                                                    </span>{' '}
-                                                                    birleştirilir. VPN/LAN için «Özel tam URL».
+                                                                    {postgrestWizardEntryMode === 'retailex_cloud' ? (
+                                                                      <>
+                                                                        RetailEX bulutu: kayıtta{' '}
+                                                                        <span className="font-mono text-blue-200/90">
+                                                                          {DEFAULT_SAAS_TENANT_POSTGREST_ORIGIN}/kiracı
+                                                                        </span>{' '}
+                                                                        birleştirilir. LAN Wi‑Fi / port 3002 bu modda
+                                                                        geçerli değildir. Özbek Restoran kodu:{' '}
+                                                                        <span className="font-mono text-blue-200/90">
+                                                                          ozbek
+                                                                        </span>{' '}
+                                                                        (<span className="font-mono">berzin_com</span>{' '}
+                                                                        ayrı firmadır). VPN/LAN için «Özel tam URL».
+                                                                      </>
+                                                                    ) : (
+                                                                      <>
+                                                                        Özel tam URL: örn.{' '}
+                                                                        <span className="font-mono">http://IP:3002</span>{' '}
+                                                                        veya başka domain. RetailEX bulutu için üstteki
+                                                                        «RetailEX bulutu» sekmesini kullanın.
+                                                                      </>
+                                                                    )}
                                                                 </p>
                                                             </>
                                                         ) : (
