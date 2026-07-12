@@ -1,5 +1,5 @@
 ---
-description: Git push main tamamlanınca Android / DeskApp CI derleme seçenekli sor (AskQuestion)
+description: Git push main tamamlanınca Android / DeskApp CI derleme — numaralı 1/2/3/4 seçenekli sor
 alwaysApply: true
 ---
 
@@ -14,28 +14,36 @@ alwaysApply: true
 
 ## Ne zaman sorma
 
-- Push yapılmadı (Hayır / yükleme yok)
+- Push yapılmadı (2 / Hayır / yükleme yok)
 - Kullanıcı bu turda zaten Android / DeskApp / “hepsi” derlemesini açıkça istedi veya reddetti
-- Yalnızca kural/doküman değişikliği ve kullanıcı “şimdi değil” demiş gibi CI anlamsızsa — yine de sor; **Şimdi değil** seçeneği var
+- Yalnızca kural/doküman değişikliği ve kullanıcı “şimdi değil” demiş gibi CI anlamsızsa — yine de sor; **4 — Şimdi değil** seçeneği var
 
 ## Zorunlu soru (seçenekli)
 
-**Yalnızca düz metin yetmez.** Cursor **AskQuestion** (veya eşdeğer seçenekli UI) kullan.
+**Yalnızca düz metin yetmez.** Cursor **AskQuestion** (veya eşdeğer seçenekli UI) kullan; label’larda numara olsun.
 
-Soru örneği: **Git yüklendi. CI derleme başlatayım mı?**
+Soru örneği:
+
+**Git yüklendi. CI derleme başlatayım mı?**
+1. Android derle
+2. DeskApp derle
+3. Hepsi
+4. Şimdi değil
 
 | Seçenek | Anlam |
 |---------|--------|
-| **Android derle** | Android App Release |
-| **DeskApp derle** | Desktop App Release (NSIS) |
-| **Hepsi** | Önce Android, sonra DeskApp (veya paralel tetik) |
-| **Şimdi değil** | CI yok; kısa onay yeterli |
+| **1** | Android App Release |
+| **2** | Desktop App Release (NSIS) |
+| **3** | Önce Android, sonra DeskApp (veya paralel tetik) |
+| **4** | CI yok; kısa onay yeterli |
+
+Kullanıcı yanıt olarak **`1`** / **`2`** / **`3`** / **`4`**, veya eşdeğer etiket yazarsa buna göre davran.
 
 ## Seçime göre aksiyon
 
 `{version}` = kök `package.json` → `version` (`app-version-single-source.mdc`). Feature branch yok — yalnızca `main`.
 
-### Android derle
+### 1 — Android derle
 
 1. Gerekirse `node scripts/sync-android-version.mjs` (CI zaten sync eder; yerel tag öncesi sürüm hizası için isteğe bağlı)
 2. Tag: `android-v{version}` oluştur + `git push origin android-v{version}`  
@@ -43,18 +51,18 @@ Soru örneği: **Git yüklendi. CI derleme başlatayım mı?**
 3. Workflow: `.github/workflows/android-release.yml`
 4. Run URL’yi bul, **aç** (`open_resource` / tarayıcı), yanıtta markdown link ver
 
-### DeskApp derle
+### 2 — DeskApp derle
 
 1. Tag: `app-v{version}` oluştur + `git push origin app-v{version}`  
    **veya** `npm run desktop:ci:build`
 2. Kurallar: `retailex-desktop-build-github-actions.mdc`, `retailex-desktop-build-show-progress.mdc`, `retailex-desktop-release-filename.mdc`
 3. Run sayfasını **mutlaka aç** ve link ver; bitince release + `RetailEX-Desktop-Setup-{version}.exe` indirme linki
 
-### Hepsi
+### 3 — Hepsi
 
 Her iki akışı da tetikle; her biri için ayrı ilerleme linki ver / aç.
 
-### Şimdi değil
+### 4 — Şimdi değil
 
 CI tetikleme; “Şimdi derlenmedi” yeterli.
 
