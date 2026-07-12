@@ -8,7 +8,7 @@ import {
   cariCashStoredBalanceDelta,
   normalizeFirmTableNr,
 } from './accountBalance';
-import { resolveCanonicalCariAccountId } from './cariAccountResolve';
+import { ensureCariAccountInCurrentFirm } from './cariAccountResolve';
 
 function padKasaFirmNr(): string {
   return String(ERP_SETTINGS.firmNr || '001').trim().padStart(3, '0').slice(0, 10);
@@ -577,8 +577,11 @@ export async function createKasaIslemi(incoming: KasaIslemi): Promise<KasaIslemi
       islem.cari_hesap_id &&
       (islem.islem_tipi === 'CH_TAHSILAT' || islem.islem_tipi === 'CH_ODEME')
     ) {
-      const canon = await resolveCanonicalCariAccountId(islem.cari_hesap_id);
-      if (canon.id && canon.id !== islem.cari_hesap_id) {
+      const canon = await ensureCariAccountInCurrentFirm(islem.cari_hesap_id, {
+        code: islem.cari_hesap_kodu,
+        name: islem.cari_hesap_unvani,
+      });
+      if (canon.id) {
         islem = { ...islem, cari_hesap_id: canon.id };
       }
     }

@@ -215,10 +215,11 @@ function sumCustomerSalesLedger(
     const contrib = s.fiche_type === 'return_invoice' ? -amt : amt;
     const cid = s.customer_id ? String(s.customer_id) : '';
     const matchesId = cid && cid === idStr;
+    // SQL CTE / ekstre ile aynı: başka (pasif/çift) karta yazılmış aynı ünvan satışları da say
     const matchesName =
-      !cid &&
       nameKey &&
-      normalizeAccountName(s.customer_name) === nameKey;
+      normalizeAccountName(s.customer_name) === nameKey &&
+      (!cid || cid !== idStr);
     if (!matchesId && !matchesName) continue;
     txnCount += 1;
     sum += contrib;
@@ -253,9 +254,9 @@ function sumSupplierSalesLedger(
     const cid = s.customer_id ? String(s.customer_id) : '';
     const matchesId = cid && cid === idStr;
     const matchesName =
-      !cid &&
       nameKey &&
-      normalizeAccountName(s.customer_name) === nameKey;
+      normalizeAccountName(s.customer_name) === nameKey &&
+      (!cid || cid !== idStr);
     if (!matchesId && !matchesName) continue;
     sum += contrib;
   }

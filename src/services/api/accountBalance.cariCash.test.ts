@@ -88,4 +88,38 @@ describe('compute balance from ledger with cash', () => {
     ];
     expect(computeSupplierBalanceFromLedger('s1', 'Test', purchase, [])).toBe(0);
   });
+
+  it('cift kart: baska UUID ayni unvan veresiye satisi aktif musteri bakiyesine eklenir', () => {
+    const salesDup = [
+      {
+        customer_id: 'active-id',
+        customer_name: 'ALI ROMI',
+        net_amount: 1635,
+        fiche_type: 'sales_invoice',
+        is_cancelled: false,
+        payment_method: 'veresiye',
+      },
+      {
+        customer_id: 'inactive-dup',
+        customer_name: 'ALI ROMI',
+        net_amount: 982.5,
+        fiche_type: 'sales_invoice',
+        is_cancelled: false,
+        payment_method: 'veresiye',
+      },
+      {
+        customer_id: 'active-id',
+        customer_name: 'ALI ROMI',
+        net_amount: 37000,
+        fiche_type: 'opening_balance',
+        is_cancelled: false,
+        payment_method: 'devir',
+      },
+    ];
+    const cash = [
+      { customer_id: 'active-id', amount: 39540.04, transaction_type: 'CH_TAHSILAT' },
+    ];
+    // 1635 + 982.5 + 37000 - 39540.04 = 77.46
+    expect(computeCustomerBalanceFromLedger('active-id', 'ALI ROMI', salesDup, cash)).toBeCloseTo(77.46, 2);
+  });
 });
