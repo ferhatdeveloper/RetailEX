@@ -2,7 +2,11 @@ import { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, FileMinus, RefreshCw, Search } from 'lucide-react';
 import { createColumnHelper } from '@tanstack/react-table';
 import { DevExDataGrid } from '../shared/DevExDataGrid';
-import { expiryReportsAPI, type ExpiringPurchaseItem } from '../../services/api/expiryReports';
+import {
+  EXPIRY_REPORT_ALL_FUTURE,
+  expiryReportsAPI,
+  type ExpiringPurchaseItem,
+} from '../../services/api/expiryReports';
 import { useLanguage } from '../../contexts/LanguageContext';
 
 export function PurchaseExpiryReport() {
@@ -10,7 +14,7 @@ export function PurchaseExpiryReport() {
   const [rows, setRows] = useState<ExpiringPurchaseItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
-  const [daysAhead, setDaysAhead] = useState(3);
+  const [daysAhead, setDaysAhead] = useState(30);
 
   const load = async () => {
     setLoading(true);
@@ -98,6 +102,23 @@ export function PurchaseExpiryReport() {
     }),
   ];
 
+  const rangeLabel =
+    daysAhead === EXPIRY_REPORT_ALL_FUTURE
+      ? tm('expiryAllFuture')
+      : daysAhead === 0
+        ? tm('expiryToday')
+        : daysAhead === 3
+          ? tm('expiryNext3')
+          : daysAhead === 7
+            ? tm('expiryNext7')
+            : daysAhead === 30
+              ? tm('expiryNext30')
+              : daysAhead === 90
+                ? tm('expiryNext90')
+                : daysAhead === 365
+                  ? tm('expiryNext365')
+                  : `${daysAhead} gün`;
+
   return (
     <div className="flex h-full min-h-0 flex-col bg-slate-50">
       <div className="border-b border-red-200 bg-gradient-to-r from-red-500 to-orange-500 px-5 py-4 text-white">
@@ -120,21 +141,44 @@ export function PurchaseExpiryReport() {
           <div className="flex flex-wrap items-center gap-3">
             <label className="flex items-center gap-2 text-xs font-bold text-slate-600">
               {tm('expiryRange')}
-              <select value={daysAhead} onChange={e => setDaysAhead(Number(e.target.value))} className="rounded-lg border border-slate-200 px-2 py-1.5 text-sm outline-none focus:ring-2 focus:ring-red-500">
+              <select
+                value={daysAhead}
+                onChange={e => setDaysAhead(Number(e.target.value))}
+                className="rounded-lg border border-slate-200 px-2 py-1.5 text-sm outline-none focus:ring-2 focus:ring-red-500"
+              >
                 <option value={0}>{tm('expiryToday')}</option>
                 <option value={3}>{tm('expiryNext3')}</option>
                 <option value={7}>{tm('expiryNext7')}</option>
                 <option value={30}>{tm('expiryNext30')}</option>
+                <option value={90}>{tm('expiryNext90')}</option>
+                <option value={365}>{tm('expiryNext365')}</option>
+                <option value={EXPIRY_REPORT_ALL_FUTURE}>{tm('expiryAllFuture')}</option>
               </select>
             </label>
             <div className="relative min-w-[260px] flex-1">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-              <input value={search} onChange={e => setSearch(e.target.value)} placeholder={tm('expirySearchPlaceholder')} className="w-full rounded-lg border border-slate-200 py-2 pl-10 pr-3 text-sm outline-none focus:ring-2 focus:ring-red-500" />
+              <input
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                placeholder={tm('expirySearchPlaceholder')}
+                className="w-full rounded-lg border border-slate-200 py-2 pl-10 pr-3 text-sm outline-none focus:ring-2 focus:ring-red-500"
+              />
             </div>
           </div>
+          <p className="mt-2 text-[11px] font-medium text-slate-500">{tm('expiryRangeHint')}</p>
         </div>
         <div className="min-h-0 flex-1 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-          <DevExDataGrid data={filtered} columns={columns} enableSorting enableFiltering={false} enableColumnResizing pageSize={50} />
+          {!loading && filtered.length === 0 ? (
+            <div className="flex h-full min-h-[240px] flex-col items-center justify-center gap-2 px-6 text-center">
+              <AlertTriangle className="h-8 w-8 text-amber-400" />
+              <p className="text-sm font-bold text-slate-700">{tm('noDataFound')}</p>
+              <p className="max-w-lg text-xs font-medium text-slate-500">
+                {tm('expiryEmptyHint').replace('{range}', rangeLabel)}
+              </p>
+            </div>
+          ) : (
+            <DevExDataGrid data={filtered} columns={columns} enableSorting enableFiltering={false} enableColumnResizing pageSize={50} />
+          )}
         </div>
       </div>
     </div>

@@ -1,5 +1,6 @@
 import { postgres, ERP_SETTINGS, DB_SETTINGS } from '../postgres';
 import { normalizeFirmTableNr } from './accountBalance';
+import { localTodayDateKey } from '../../utils/localCalendarDate';
 
 export interface ExpiringPurchaseItem {
   invoiceId: string;
@@ -14,6 +15,19 @@ export interface ExpiringPurchaseItem {
   expiryDate: string;
   batchNo?: string;
   daysLeft: number;
+}
+
+/** -1 = tüm gelecek SKT (üst sınır yok); aksi halde 0…3650 gün */
+export const EXPIRY_REPORT_ALL_FUTURE = -1;
+
+/** Logo alış trcode — invoices.TRCODES_BY_INVOICE_CATEGORY.Alis ile aynı */
+const PURCHASE_TRCODES = [1, 4, 5, 6, 13, 26, 41, 42] as const;
+
+function isPurchaseSaleRow(sale: Record<string, unknown>): boolean {
+  const trcode = Number(sale.invoice_type ?? sale.trcode ?? 0);
+  const fiche = String(sale.fiche_type ?? '').toLowerCase();
+  if (PURCHASE_TRCODES.includes(trcode as (typeof PURCHASE_TRCODES)[number])) return true;
+  return fiche === 'purchase_invoice' || fiche === 'a';
 }
 
 function rowToExpiringItem(row: Record<string, unknown>): ExpiringPurchaseItem {
@@ -34,6 +48,22 @@ function rowToExpiringItem(row: Record<string, unknown>): ExpiringPurchaseItem {
   };
 }
 
+function normalizeLimitDays(daysAhead: number): number {
+  const n = Math.round(Number(daysAhead));
+  if (n === EXPIRY_REPORT_ALL_FUTURE) return EXPIRY_REPORT_ALL_FUTURE;
+  return Math.max(0, Math.min(3650, Number.isFinite(n) ? n : 3));
+}
+
+function addDaysYmd(ymd: string, days: number): string {
+  const [y, m, d] = ymd.split('-').map(x => parseInt(x, 10));
+  const dt = new Date(y, m - 1, d);
+  dt.setDate(dt.getDate() + days);
+  const yy = dt.getFullYear();
+  const mm = String(dt.getMonth() + 1).padStart(2, '0');
+  const dd = String(dt.getDate()).padStart(2, '0');
+  return `${yy}-${mm}-${dd}`;
+}
+
 export const expiryReportsAPI = {
   async getExpiringPurchaseItems(daysAhead = 3): Promise<ExpiringPurchaseItem[]> {
     const fn = normalizeFirmTableNr(ERP_SETTINGS.firmNr);
@@ -42,23 +72,23 @@ export const expiryReportsAPI = {
     const itemsTable = `rex_${fn}_${pn}_sale_items`;
     const suppliersTable = `rex_${fn}_suppliers`;
     const customersTable = `rex_${fn}_customers`;
-    const limitDays = Math.max(0, Math.min(365, Math.round(Number(daysAhead) || 3)));
+    const limitDays = normalizeLimitDays(daysAhead);
 
     if (DB_SETTINGS.connectionProvider === 'rest_api') {
       const { postgrest } = await import('./postgrestClient');
-      const today = new Date();
-      const end = new Date(today);
-      end.setDate(end.getDate() + limitDays);
-      const ymd = (d: Date) => d.toISOString().slice(0, 10);
+      const todayYmd = localTodayDateKey();
+      const filters: Record<string, string> = {
+        select: '*',
+        expiry_date: `gte.${todayYmd}`,
+        order: 'expiry_date.asc',
+        limit: '2000',
+      };
+      if (limitDays !== EXPIRY_REPORT_ALL_FUTURE) {
+        filters.and = `(expiry_date.lte.${addDaysYmd(todayYmd, limitDays)})`;
+      }
       const itemRows = await postgrest.get<Record<string, unknown>[]>(
         `/${itemsTable}`,
-        {
-          select: '*',
-          expiry_date: `gte.${ymd(today)}`,
-          and: `(expiry_date.lte.${ymd(end)})`,
-          order: 'expiry_date.asc',
-          limit: '1000',
-        },
+        filters,
         { schema: 'public' },
       );
       const invoiceIds = Array.from(new Set((itemRows || []).map(row => String(row.invoice_id || '')).filter(Boolean)));
@@ -66,9 +96,9 @@ export const expiryReportsAPI = {
       const salesRows = await postgrest.get<Record<string, unknown>[]>(
         `/${salesTable}`,
         {
-          select: 'id,fiche_no,date,customer_id,customer_name,invoice_type,trcode,fiche_type',
+          select: 'id,fiche_no,date,customer_id,customer_name,invoice_type,trcode,fiche_type,is_cancelled',
           id: `in.(${invoiceIds.join(',')})`,
-          limit: '1000',
+          limit: '2000',
         },
         { schema: 'public' },
       );
@@ -89,15 +119,15 @@ export const expiryReportsAPI = {
           ).catch(() => [] as Record<string, unknown>[])
         : [];
       const names = new Map([...supplierRows, ...customerRows].map(row => [String(row.id), String(row.name || '')]));
-      const now0 = new Date(ymd(today));
+      const now0 = new Date(`${todayYmd}T12:00:00`);
       return (itemRows || [])
         .map(item => {
           const sale = salesById.get(String(item.invoice_id));
           if (!sale) return null;
-          const trcode = Number(sale.invoice_type ?? sale.trcode ?? 0);
-          const fiche = String(sale.fiche_type ?? '').toLowerCase();
-          if (!(trcode === 1 || fiche === 'purchase_invoice')) return null;
-          const exp = new Date(String(item.expiry_date).slice(0, 10));
+          if (sale.is_cancelled === true || sale.is_cancelled === 'true') return null;
+          if (!isPurchaseSaleRow(sale)) return null;
+          const expYmd = String(item.expiry_date).slice(0, 10);
+          const exp = new Date(`${expYmd}T12:00:00`);
           return rowToExpiringItem({
             ...item,
             invoice_id: sale.id,
@@ -105,11 +135,18 @@ export const expiryReportsAPI = {
             invoice_date: sale.date,
             supplier_id: sale.customer_id,
             supplier_name: names.get(String(sale.customer_id)) || sale.customer_name || '',
-            days_left: Math.ceil((exp.getTime() - now0.getTime()) / 86400000),
+            days_left: Math.round((exp.getTime() - now0.getTime()) / 86400000),
           });
         })
         .filter((row): row is ExpiringPurchaseItem => row != null);
     }
+
+    const purchaseTrcodeIn = PURCHASE_TRCODES.join(', ');
+    const upperBoundSql =
+      limitDays === EXPIRY_REPORT_ALL_FUTURE
+        ? ''
+        : `AND it.expiry_date <= CURRENT_DATE + ($1::int * INTERVAL '1 day')`;
+    const queryParams = limitDays === EXPIRY_REPORT_ALL_FUTURE ? [] : [limitDays];
 
     const { rows } = await postgres.query(
       `
@@ -132,12 +169,16 @@ export const expiryReportsAPI = {
         LEFT JOIN ${customersTable} c ON c.id = s.customer_id
         WHERE it.expiry_date IS NOT NULL
           AND it.expiry_date >= CURRENT_DATE
-          AND it.expiry_date <= CURRENT_DATE + ($1::int * INTERVAL '1 day')
-          AND (s.invoice_type = 1 OR s.trcode = 1 OR LOWER(COALESCE(s.fiche_type, '')) = 'purchase_invoice')
+          ${upperBoundSql}
+          AND (
+            COALESCE(s.invoice_type, 0) IN (${purchaseTrcodeIn})
+            OR COALESCE(s.trcode, 0) IN (${purchaseTrcodeIn})
+            OR LOWER(COALESCE(s.fiche_type, '')) IN ('purchase_invoice', 'a')
+          )
           AND COALESCE(s.is_cancelled, false) = false
         ORDER BY it.expiry_date ASC, it.item_name ASC
       `,
-      [limitDays],
+      queryParams,
       { firmNr: fn, periodNr: pn },
     );
     return rows.map(rowToExpiringItem);

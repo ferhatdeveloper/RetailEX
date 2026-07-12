@@ -8,6 +8,7 @@ import { type Invoice } from '../../core/types';
 import { customerAPI } from './customers';
 import { productAPI } from './products';
 import { hydrateWeightLineFromDb, resolveStockQuantityFromLine } from '../../utils/scaleQuantity';
+import { toSqlDateInputString } from '../../utils/localCalendarDate';
 import {
   canonicalInvoiceLineType,
   invoiceLineTypeToDb,
@@ -43,10 +44,8 @@ function isNonEmptyScalar(v: string | number | undefined | null): boolean {
 }
 
 function invoiceLineDateOrNull(value: unknown): string | null {
-  const raw = String(value ?? '').trim();
-  if (!raw) return null;
-  const m = raw.match(/^(\d{4}-\d{2}-\d{2})/);
-  return m ? m[1] : null;
+  const s = toSqlDateInputString(value as string | Date | number | null | undefined);
+  return s || null;
 }
 
 /** Stok hareketi miktarı — KG/GR alış 1,610 = tartı satış 1610 g */
@@ -703,6 +702,9 @@ async function createInvoiceViaPostgrest(invoice: Invoice, opts: {
       vat_rate: Number((item as any).taxRate || (item as any).vat_rate || 0),
       total_amount: Number(item.total || item.netAmount || 0),
       net_amount: Number(item.netAmount || item.total || 0),
+      // SKT/parti — enhanced INSERT düşerse legacy yolda da kaybolmasın
+      expiry_date: invoiceLineDateOrNull((item as any).expiryDate),
+      batch_no: String((item as any).batchNo || '').trim() || null,
     }));
     try {
       await postgrest.post<any>(itemsTable, itemEnhancedList, { schema: 'public', prefer: 'return=minimal' });
@@ -1971,6 +1973,8 @@ export const invoicesAPI = {
               vat_rate: Number((item as any).taxRate || (item as any).vat_rate || 0),
               total_amount: Number(item.total || item.netAmount || 0),
               net_amount: Number(item.netAmount || item.total || 0),
+              expiry_date: invoiceLineDateOrNull((item as any).expiryDate),
+              batch_no: String((item as any).batchNo || '').trim() || null,
             };
             try {
               await postgrest.post<any>(itemsTable, itemEnhanced, { schema: 'public' });
