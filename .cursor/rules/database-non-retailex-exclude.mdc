@@ -26,7 +26,7 @@ Sunucuda (`pg_database`) başka ürünlerin veritabanları da bulunabilir. **`np
 
 ## RetailEX kiracıları
 
-`tenant_registry` (product `retail` / `erp`) veya `schema_migrations` + `sync_queue` olan DB'ler. PDKS retail kiracıları (`dismarco_pdks`, `m10_pdks`, `pdks_demo`) RetailEX altında kalır; yalnızca yukarıdaki üç isim kalıcı hariçtir.
+`tenant_registry` (product `retail` / `erp`) veya `schema_migrations` + `sync_queue` olan DB'ler. `pdks_demo` gibi kalan PDKS demo kiracıları RetailEX altında kalabilir; yalnızca yukarıdaki üç isim kalıcı hariçtir.
 
 ## Ajan checklist
 

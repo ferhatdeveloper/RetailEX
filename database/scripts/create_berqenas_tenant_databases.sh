@@ -25,10 +25,7 @@ psql_exec() {
 # (db_adı açıklama)
 DATABASES=(
   "merkez_db|MERKEZ — kiracı / firma kayıt"
-  "dismarco_pdks|DISMARCO PDKS"
   "aqua_beauty|Aqua Beauty — clinic"
-  "m10_pdks|M10 PDKS"
-  "bestcom_db|BESTCOM — HRM"
   "siti_pdks|Siti PDKS"
   "pdks_demo|PDKS Demo"
   "retailex_demo|RetailEX Demo"

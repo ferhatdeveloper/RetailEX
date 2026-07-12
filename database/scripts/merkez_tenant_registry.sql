@@ -41,16 +41,12 @@ INSERT INTO tenant_registry (code, display_name, module, database_name, notes)
 VALUES
   ('merkez',        'Merkez kayıt',    'tenant_registry', 'merkez_db',       'Kiracı meta verisi'),
   ('aqua_beauty',   'Aqua Beauty',     'clinic',            'aqua_beauty',     'Güzellik'),
-  ('dismarco_pdks', 'DISMARCO PDKS',  'pdks',              'dismarco_pdks',   'PDKS'),
-  ('m10_pdks',      'M10 PDKS',       'pdks',              'm10_pdks',        'PDKS'),
-  ('bestcom',       'BESTCOM',        'hrm',               'bestcom_db',      'İK / HRM'),
   ('siti_pdks',     'Siti PDKS',      'pdks',              'siti_pdks',       'PDKS'),
   ('pdks_demo',     'PDKS Demo',      'pdks',              'pdks_demo',       'Demo'),
   ('retailex_demo', 'RetailEX Demo', 'retail',            'retailex_demo',   'Demo'),
   ('kasap',         'Kasaphane',      'retail',            'kasap',           'Kasap / perakende'),
   ('testere',       'Usta Testere',   'retail',            'testere',         'Testere'),
   ('mettu',         'Mettu Market',   'retail',            'mettu',           'Market'),
-  ('jiber',         'Jiber giyim Mağazası', 'retail',      'jiber',           'Giyim'),
   ('canon',         'Canon Retail',   'retail',            'canon',           'Perakende'),
   ('lovan',         'Lovan Retail',   'retail',            'lovan',           'Perakende'),
   ('ozbek',         'Özbek Restoran', 'restaurant',        'ozbek',           'Restoran')

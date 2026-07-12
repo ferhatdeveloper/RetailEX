@@ -28,20 +28,14 @@ RPC_SQL="${REPO_ROOT}/database/migrations/008_postgrest_verify_login_rpc.sql"
 
 DBS=(
   merkez_db
-  dismarco_pdks
   aqua_beauty
-  m10_pdks
-  bestcom_db
   siti_pdks
   pdks_demo
   retailex_demo
   berzin_com
-  sho_aksesuar
-  kupeli
   kasap
   testere
   mettu
-  jiber
   canon
   lovan
   zetem
@@ -50,20 +44,14 @@ DBS=(
 
 POSTGREST_SERVICES=(
   postgrest_merkez
-  postgrest_dismarco_pdks
   postgrest_aqua_beauty
-  postgrest_m10_pdks
-  postgrest_bestcom
   postgrest_siti_pdks
   postgrest_pdks_demo
   postgrest_retailex_demo
   postgrest_berzin_com
-  postgrest_sho_aksesuar
-  postgrest_kupeli
   postgrest_kasap
   postgrest_testere
   postgrest_mettu
-  postgrest_jiber
   postgrest_canon
   postgrest_lovan
   postgrest_zetem
@@ -198,19 +186,13 @@ INSERT INTO tenant_registry (id, code, display_name, module, connection_provider
 VALUES
   (gen_random_uuid(), 'merkez', 'Merkez Yapi', 'tenant_registry', 'rest_api', :'api' || '/merkez', 'merkez_db'),
   (gen_random_uuid(), 'aqua_beauty', 'Aqua Beauty', 'clinic', 'rest_api', :'api' || '/aqua', 'aqua_beauty'),
-  (gen_random_uuid(), 'bestcom', 'BESTCOM', 'hrm', 'rest_api', :'api' || '/bestcom', 'bestcom_db'),
-  (gen_random_uuid(), 'dismarco_pdks', 'DISMARCO PDKS', 'pdks', 'rest_api', :'api' || '/dismarco_pdks', 'dismarco_pdks'),
-  (gen_random_uuid(), 'm10_pdks', 'M10 PDKS', 'pdks', 'rest_api', :'api' || '/m10_pdks', 'm10_pdks'),
   (gen_random_uuid(), 'siti_pdks', 'Siti PDKS', 'pdks', 'rest_api', :'api' || '/siti_pdks', 'siti_pdks'),
   (gen_random_uuid(), 'pdks_demo', 'PDKS Demo', 'pdks', 'rest_api', :'api' || '/pdks_demo', 'pdks_demo'),
   (gen_random_uuid(), 'retailex_demo', 'RetailEX Demo', 'retail', 'rest_api', :'api' || '/retailex_demo', 'retailex_demo'),
   (gen_random_uuid(), 'berzin_com', 'Berzin Company - Magaza', 'retail', 'rest_api', :'api' || '/berzin_com', 'berzin_com'),
-  (gen_random_uuid(), 'sho_aksesuar', 'Sho Aksesuar - Magaza', 'retail', 'rest_api', :'api' || '/sho_aksesuar', 'sho_aksesuar'),
-  (gen_random_uuid(), 'kupeli', 'Kupeli - Magaza', 'retail', 'rest_api', :'api' || '/kupeli', 'kupeli'),
   (gen_random_uuid(), 'kasap', 'Kasaphane', 'retail', 'rest_api', :'api' || '/kasap', 'kasap'),
   (gen_random_uuid(), 'testere', 'Usta Testere', 'retail', 'rest_api', :'api' || '/testere', 'testere'),
   (gen_random_uuid(), 'mettu', 'Mettu Market', 'retail', 'rest_api', :'api' || '/mettu', 'mettu'),
-  (gen_random_uuid(), 'jiber', 'Jiber giyim Mağazası', 'retail', 'rest_api', :'api' || '/jiber', 'jiber'),
   (gen_random_uuid(), 'canon', 'Canon Retail', 'retail', 'rest_api', :'api' || '/canon', 'canon'),
   (gen_random_uuid(), 'lovan', 'Lovan Retail', 'retail', 'rest_api', :'api' || '/lovan', 'lovan')
 ON CONFLICT (code) DO UPDATE SET

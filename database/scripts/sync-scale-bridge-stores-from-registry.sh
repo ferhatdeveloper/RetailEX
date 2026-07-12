@@ -37,7 +37,7 @@ psql_exec() {
   fi
 }
 
-TENANT_CODES="${TENANT_CODES:-kasap testere mettu jiber canon lovan}"
+TENANT_CODES="${TENANT_CODES:-kasap testere mettu canon lovan}"
 
 echo "== merkez_db tenant_registry → stores senkronu =="
 for code in ${TENANT_CODES}; do

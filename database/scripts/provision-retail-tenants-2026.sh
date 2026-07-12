@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Yeni retail kiracıları — DB, şema, PostgREST SQL, merkez tenant_registry, messaging
 #
-# Firmalar: kasap, testere, mettu, jiber, canon, lovan
+# Firmalar: kasap, testere, mettu, canon, lovan
 #
 # Dokploy terminali / VPS:
 #   POSTGRES_PASSWORD='...' API_BASE_URL='https://api.retailex.app' \
@@ -33,7 +33,6 @@ TENANTS=(
   'kasap|Kasaphane|kasap'
   'testere|Usta Testere|testere'
   'mettu|Mettu Market|mettu'
-  'jiber|Jiber giyim Mağazası|jiber'
   'canon|Canon Retail|canon'
   'lovan|Lovan Retail|lovan'
 )
@@ -134,7 +133,6 @@ VALUES
   (gen_random_uuid(), 'kasap', 'Kasaphane', 'retail', 'rest_api', :'api' || '/kasap', 'kasap', true),
   (gen_random_uuid(), 'testere', 'Usta Testere', 'retail', 'rest_api', :'api' || '/testere', 'testere', true),
   (gen_random_uuid(), 'mettu', 'Mettu Market', 'retail', 'rest_api', :'api' || '/mettu', 'mettu', true),
-  (gen_random_uuid(), 'jiber', 'Jiber giyim Mağazası', 'retail', 'rest_api', :'api' || '/jiber', 'jiber', true),
   (gen_random_uuid(), 'canon', 'Canon Retail', 'retail', 'rest_api', :'api' || '/canon', 'canon', true),
   (gen_random_uuid(), 'lovan', 'Lovan Retail', 'retail', 'rest_api', :'api' || '/lovan', 'lovan', true)
 ON CONFLICT (code) DO UPDATE SET
@@ -154,10 +152,10 @@ for entry in "${TENANTS[@]}"; do
   cnt="$(psql_exec "${db}" -tAc "SELECT COUNT(*) FROM public.firms;" 2>/dev/null || echo 0)"
   echo "  ${db}: firms=${cnt}"
 done
-psql_exec merkez_db -tAc "SELECT code, display_name, rest_base_url FROM tenant_registry WHERE code IN ('kasap','testere','mettu','jiber','canon','lovan') ORDER BY code;"
+psql_exec merkez_db -tAc "SELECT code, display_name, rest_base_url FROM tenant_registry WHERE code IN ('kasap','testere','mettu','canon','lovan') ORDER BY code;"
 
 echo ""
 echo "TAMAMLANDI."
 echo "Sonraki adım (Dokploy):"
 echo "  git pull origin main"
-echo "  docker compose -f docker-compose.dokploy.yml up -d --build postgrest_kasap postgrest_testere postgrest_mettu postgrest_jiber postgrest_canon postgrest_lovan retailex_api_gateway"
+echo "  docker compose -f docker-compose.dokploy.yml up -d --build postgrest_kasap postgrest_testere postgrest_mettu postgrest_canon postgrest_lovan retailex_api_gateway"

@@ -7,7 +7,7 @@
 # İsteğe bağlı:
 #   COMPOSE_FILE=./docker-compose.dokploy.yml
 #   POSTGRES_CONTAINER=saas_postgres
-#   TENANT_DBS="sho_aksesuar berzin_com kupeli"   # boş = tüm retail kiracıları
+#   TENANT_DBS="berzin_com kasap lovan"   # boş = varsayılan retail listesi
 
 set -euo pipefail
 
@@ -25,10 +25,12 @@ DEFAULT_TENANT_DBS=(
   merkez_db
   aqua_beauty
   berzin_com
-  sho_aksesuar
-  kupeli
-  bestcom_db
   retailex_demo
+  kasap
+  testere
+  mettu
+  canon
+  lovan
 )
 
 if [[ -n "${TENANT_DBS:-}" ]]; then
@@ -42,10 +44,12 @@ POSTGREST_MAP=(
   merkez_db:saas_postgrest_merkez
   aqua_beauty:saas_postgrest_aqua_beauty
   berzin_com:saas_postgrest_berzin_com
-  sho_aksesuar:saas_postgrest_sho_aksesuar
-  kupeli:saas_postgrest_kupeli
-  bestcom_db:saas_postgrest_bestcom
   retailex_demo:saas_postgrest_retailex_demo
+  kasap:saas_postgrest_kasap
+  testere:saas_postgrest_testere
+  mettu:saas_postgrest_mettu
+  canon:saas_postgrest_canon
+  lovan:saas_postgrest_lovan
 )
 
 if [[ ! -f "${MIGRATION_SQL}" ]]; then
@@ -105,7 +109,7 @@ if docker ps --format '{{.Names}}' | grep -qx retailex_whatsapp_bridge; then
   echo ""
 fi
 
-for db in sho_aksesuar berzin_com; do
+for db in berzin_com kasap lovan; do
   c="saas_postgrest_${db}"
   if docker ps --format '{{.Names}}' | grep -qx "${c}"; then
     path="/rex_001_messaging_settings?select=id&limit=1"

@@ -85,12 +85,9 @@ services:
       - postgrest_merkez
       - postgrest_aqua_beauty
       - postgrest_berzin_com
-      - postgrest_sho_aksesuar
-      - postgrest_kupeli
       - postgrest_kasap
       - postgrest_testere
       - postgrest_mettu
-      - postgrest_jiber
       - postgrest_canon
       - postgrest_lovan
       - postgrest_zetem
@@ -219,21 +216,6 @@ services:
     networks:
       - berqenas_net
 
-  postgrest_dismarco_pdks:
-    image: postgrest/postgrest:v12.2.0
-    container_name: saas_postgrest_dismarco_pdks
-    restart: always
-    depends_on:
-      postgres:
-        condition: service_healthy
-    environment:
-      <<: *postgrest-env
-      PGRST_DB_URI: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/dismarco_pdks
-    ports:
-      - "${POSTGREST_PORT_DISMARCO:-3003}:3000"
-    networks:
-      - berqenas_net
-
   postgrest_aqua_beauty:
     image: postgrest/postgrest:v12.2.0
     container_name: saas_postgrest_aqua_beauty
@@ -246,36 +228,6 @@ services:
       PGRST_DB_URI: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/aqua_beauty
     ports:
       - "${POSTGREST_PORT_AQUA:-3004}:3000"
-    networks:
-      - berqenas_net
-
-  postgrest_m10_pdks:
-    image: postgrest/postgrest:v12.2.0
-    container_name: saas_postgrest_m10_pdks
-    restart: always
-    depends_on:
-      postgres:
-        condition: service_healthy
-    environment:
-      <<: *postgrest-env
-      PGRST_DB_URI: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/m10_pdks
-    ports:
-      - "${POSTGREST_PORT_M10:-3005}:3000"
-    networks:
-      - berqenas_net
-
-  postgrest_bestcom:
-    image: postgrest/postgrest:v12.2.0
-    container_name: saas_postgrest_bestcom
-    restart: always
-    depends_on:
-      postgres:
-        condition: service_healthy
-    environment:
-      <<: *postgrest-env
-      PGRST_DB_URI: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/bestcom_db
-    ports:
-      - "${POSTGREST_PORT_BESTCOM:-3006}:3000"
     networks:
       - berqenas_net
 
@@ -339,36 +291,6 @@ services:
     networks:
       - berqenas_net
 
-  postgrest_sho_aksesuar:
-    image: postgrest/postgrest:v12.2.0
-    container_name: saas_postgrest_sho_aksesuar
-    restart: always
-    depends_on:
-      postgres:
-        condition: service_healthy
-    environment:
-      <<: *postgrest-env
-      PGRST_DB_URI: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/sho_aksesuar
-    ports:
-      - "${POSTGREST_PORT_SHO:-3011}:3000"
-    networks:
-      - berqenas_net
-
-  postgrest_kupeli:
-    image: postgrest/postgrest:v12.2.0
-    container_name: saas_postgrest_kupeli
-    restart: always
-    depends_on:
-      postgres:
-        condition: service_healthy
-    environment:
-      <<: *postgrest-env
-      PGRST_DB_URI: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/kupeli
-    ports:
-      - "${POSTGREST_PORT_KUPELI:-3012}:3000"
-    networks:
-      - berqenas_net
-
   postgrest_kasap:
     image: postgrest/postgrest:v12.2.0
     container_name: saas_postgrest_kasap
@@ -411,21 +333,6 @@ services:
       PGRST_DB_URI: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/mettu
     ports:
       - "${POSTGREST_PORT_METTU:-3015}:3000"
-    networks:
-      - berqenas_net
-
-  postgrest_jiber:
-    image: postgrest/postgrest:v12.2.0
-    container_name: saas_postgrest_jiber
-    restart: always
-    depends_on:
-      postgres:
-        condition: service_healthy
-    environment:
-      <<: *postgrest-env
-      PGRST_DB_URI: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/jiber
-    ports:
-      - "${POSTGREST_PORT_JIBER:-3016}:3000"
     networks:
       - berqenas_net
 
@@ -518,13 +425,6 @@ services:
       <<: *sync-env
       DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/berzin_com
 
-  sync_bestcom:
-    <<: *sync-service
-    container_name: saas_sync_bestcom
-    environment:
-      <<: *sync-env
-      DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/bestcom_db
-
   sync_canon:
     <<: *sync-service
     container_name: saas_sync_canon
@@ -532,33 +432,12 @@ services:
       <<: *sync-env
       DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/canon
 
-  sync_dismarco_pdks:
-    <<: *sync-service
-    container_name: saas_sync_dismarco_pdks
-    environment:
-      <<: *sync-env
-      DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/dismarco_pdks
-
-  sync_jiber:
-    <<: *sync-service
-    container_name: saas_sync_jiber
-    environment:
-      <<: *sync-env
-      DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/jiber
-
   sync_kasap:
     <<: *sync-service
     container_name: saas_sync_kasap
     environment:
       <<: *sync-env
       DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/kasap
-
-  sync_kupeli:
-    <<: *sync-service
-    container_name: saas_sync_kupeli
-    environment:
-      <<: *sync-env
-      DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/kupeli
 
   sync_lovan:
     <<: *sync-service
@@ -588,13 +467,6 @@ services:
       <<: *sync-env
       DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/ozbek
 
-  sync_m10_pdks:
-    <<: *sync-service
-    container_name: saas_sync_m10_pdks
-    environment:
-      <<: *sync-env
-      DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/m10_pdks
-
   sync_mettu:
     <<: *sync-service
     container_name: saas_sync_mettu
@@ -615,13 +487,6 @@ services:
     environment:
       <<: *sync-env
       DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/retailex_demo
-
-  sync_sho_aksesuar:
-    <<: *sync-service
-    container_name: saas_sync_sho_aksesuar
-    environment:
-      <<: *sync-env
-      DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/sho_aksesuar
 
   sync_siti_pdks:
     <<: *sync-service

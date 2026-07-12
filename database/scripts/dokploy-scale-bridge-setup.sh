@@ -28,14 +28,10 @@ DEFAULT_TENANT_DBS=(
   merkez_db
   aqua_beauty
   berzin_com
-  sho_aksesuar
-  kupeli
-  bestcom_db
   retailex_demo
   kasap
   testere
   mettu
-  jiber
   canon
   lovan
   zetem
@@ -53,14 +49,10 @@ POSTGREST_CONTAINERS=(
   merkez_db:saas_postgrest_merkez
   aqua_beauty:saas_postgrest_aqua_beauty
   berzin_com:saas_postgrest_berzin_com
-  sho_aksesuar:saas_postgrest_sho_aksesuar
-  kupeli:saas_postgrest_kupeli
-  bestcom_db:saas_postgrest_bestcom
   retailex_demo:saas_postgrest_retailex_demo
   kasap:saas_postgrest_kasap
   testere:saas_postgrest_testere
   mettu:saas_postgrest_mettu
-  jiber:saas_postgrest_jiber
   canon:saas_postgrest_canon
   lovan:saas_postgrest_lovan
   zetem:saas_postgrest_zetem

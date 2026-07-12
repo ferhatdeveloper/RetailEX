@@ -29,18 +29,12 @@ fi
 SYNC_SERVICES=(
   sync_aqua
   sync_berzin_com
-  sync_bestcom
   sync_canon
-  sync_dismarco_pdks
-  sync_jiber
   sync_kasap
-  sync_kupeli
   sync_lovan
-  sync_m10_pdks
   sync_mettu
   sync_pdks_demo
   sync_retailex_demo
-  sync_sho_aksesuar
   sync_siti_pdks
   sync_testere
 )

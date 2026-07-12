@@ -100,6 +100,9 @@ tsc-errors*.txt
 *.rar
 *.zip
 
+# Yerel kiracı PG yedekleri (pg_dump) — asla commit etme
+/backups/
+
 # Logs
 logs/
 *.log

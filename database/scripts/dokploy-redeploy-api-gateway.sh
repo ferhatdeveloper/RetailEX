@@ -29,7 +29,7 @@ sleep 2
 docker exec retailex_api_gateway caddy reload --config /etc/caddy/Caddyfile 2>/dev/null || true
 
 echo "=== Doğrulama (gateway içi) ==="
-for slug in lovan kasap testere mettu jiber canon; do
+for slug in lovan kasap testere mettu canon; do
   code="$(docker exec retailex_api_gateway wget -qO- --server-response \
     "http://127.0.0.1/${slug}/sync_queue?select=id&limit=1" 2>&1 | awk '/HTTP/{print $2}' | tail -1 || echo "?")"
   echo "  /${slug}/sync_queue → HTTP ${code}"

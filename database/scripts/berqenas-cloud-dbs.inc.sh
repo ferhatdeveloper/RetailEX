@@ -47,20 +47,14 @@ berqenas_filter_retailex_migration_dbs() {
 berqenas_default_dbs_array() {
   BERQENAS_DEFAULT_DBS=(
     merkez_db
-    dismarco_pdks
     aqua_beauty
-    m10_pdks
-    bestcom_db
     siti_pdks
     pdks_demo
     retailex_demo
     berzin_com
-    sho_aksesuar
-    kupeli
     kasap
     testere
     mettu
-    jiber
     canon
     lovan
     zetem
