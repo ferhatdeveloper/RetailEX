@@ -7,6 +7,7 @@ import {
 import { supplierAPI, type Supplier } from '../../../services/api/suppliers';
 import { toast } from 'sonner';
 import { DevExDataGrid } from '../../shared/DevExDataGrid';
+import { ColumnVisibilityMenu } from '../../shared/ColumnVisibilityMenu';
 import { createColumnHelper } from '@tanstack/react-table';
 import { ContextMenu } from '../../shared/ContextMenu';
 import { confirm as confirmDialog } from '../../shared/ConfirmDialog';
@@ -36,6 +37,13 @@ import {
   preferIntegerAmountDisplay,
   ficheTypeToInfo,
 } from '../../../utils/cariAccountStatement';
+import {
+  SUPPLIER_LIST_COLUMN_ORDER,
+  SUPPLIER_LIST_COLUMN_VISIBILITY_KEY,
+  loadSupplierListColumnVisibility,
+  supplierListColumnVisibilityMenuItems,
+  type SupplierListColumnId,
+} from './supplierListColumns';
 
 export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: 'all' | 'customer' | 'supplier' | 'duplicates' }) {
   const { t, tm } = useLanguage();
@@ -60,10 +68,22 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: 'all
   const [exportingExcel, setExportingExcel] = useState(false);
   /** Liste filtresi: tümü / müşteri (alıcı) / satıcı (tedarikçi) */
   const [accountTypeFilter, setAccountTypeFilter] = useState<'all' | 'customer' | 'supplier' | 'duplicates'>(initialFilter);
+  const [columnVisibility, setColumnVisibility] = useState(loadSupplierListColumnVisibility);
 
   useEffect(() => {
     setAccountTypeFilter(initialFilter);
   }, [initialFilter]);
+
+  useEffect(() => {
+    try {
+      const payload = Object.fromEntries(
+        SUPPLIER_LIST_COLUMN_ORDER.map((id) => [id, columnVisibility[id] !== false])
+      );
+      localStorage.setItem(SUPPLIER_LIST_COLUMN_VISIBILITY_KEY, JSON.stringify(payload));
+    } catch {
+      /* ignore */
+    }
+  }, [columnVisibility]);
 
   useEffect(() => {
     const fetchRates = async () => {
@@ -460,107 +480,170 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: 'all
     };
   };
 
+  const isColumnVisible = (id: SupplierListColumnId) => columnVisibility[id] !== false;
+
+  const columnVisibilityItems = useMemo(
+    () => supplierListColumnVisibilityMenuItems({ columnVisibility, tm }),
+    [columnVisibility, tm]
+  );
+
   const columnHelper = createColumnHelper<Supplier>();
-  const columns: any[] = [
-    columnHelper.accessor('code', {
-      header: tm('code'),
-      cell: info => <span className="font-mono text-xs text-blue-600 font-bold">{info.getValue() || '-'}</span>,
-      size: 100
-    }),
-    columnHelper.accessor('cardType', {
-      header: tm('type'),
-      cell: info => {
-        const type = info.getValue() as 'customer' | 'supplier';
-        return (
-          <div className="flex items-center gap-1.5">
-            {type === 'customer' ? <Users className="w-3.5 h-3.5 text-blue-600" /> : <Truck className="w-3.5 h-3.5 text-orange-600" />}
-            <span className={`text-[10px] font-black uppercase ${type === 'customer' ? 'text-blue-700' : 'text-orange-700'}`}>
-              {type === 'customer' ? tm('customer') : tm('supplierLabel')}
-            </span>
-          </div>
-        );
-      },
-      size: 110
-    }),
-    columnHelper.accessor('name', {
-      header: tm('currentAccountTitle'),
-      cell: info => {
-        const row = info.row.original;
-        const isCustomer = row.cardType === 'customer';
-        return (
-          <div className="min-w-0">
-            <span className="font-semibold text-gray-800">{info.getValue()}</span>
-            <span className={`ml-2 text-[9px] font-black uppercase px-1.5 py-0.5 rounded ${isCustomer ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700'}`}>
-              {row.code || '—'}
-            </span>
-          </div>
-        );
-      }
-    }),
-    columnHelper.accessor('phone', {
-      header: tm('contact'),
-      cell: info => {
-        const row = info.row.original;
-        return (
-          <div className="flex flex-col text-xs text-gray-500">
-            {row.phone && <span className="flex items-center gap-1"><Phone className="w-3 h-3" />{row.phone}</span>}
-            {row.email && <span className="flex items-center gap-1"><Mail className="w-3 h-3" />{row.email}</span>}
-            {row.city && <span className="flex items-center gap-1"><MapPin className="w-3 h-3" />{row.city}</span>}
-          </div>
-        );
-      }
-    }),
-    columnHelper.accessor('balance', {
-      header: tm('crmBalance'),
-      cell: info => {
-        const val = info.getValue() || 0;
-        const rep = reportingCurrency !== mainCurrency ? toReporting(Math.abs(val)) : null;
-        const { side, sideLabel, hint } = getCariBalanceDirection(info.row.original.cardType, val, tm);
-        const colorClass = side === 'B' ? 'text-red-600' : 'text-orange-600';
-        const badgeClass = side === 'B' ? 'bg-red-100 text-red-700' : 'bg-orange-100 text-orange-700';
-        return (
-          <div className="flex flex-col items-end gap-0.5 font-bold">
-            <div className="flex items-center gap-1.5 flex-wrap justify-end">
-              <span className={colorClass}>
-                {formatNumber(Math.abs(val), mainDec, mainShowDec)} {mainCurrency}
-              </span>
-              {sideLabel && (
-                <span className={`text-[8px] px-1.5 py-0.5 rounded font-black whitespace-nowrap ${badgeClass}`} title={hint}>
-                  {sideLabel}
+  const columns = useMemo(() => {
+    const cols: any[] = [];
+    if (isColumnVisible('code')) {
+      cols.push(
+        columnHelper.accessor('code', {
+          header: tm('code'),
+          cell: info => <span className="font-mono text-xs text-blue-600 font-bold">{info.getValue() || '-'}</span>,
+          size: 100
+        })
+      );
+    }
+    if (isColumnVisible('cardType')) {
+      cols.push(
+        columnHelper.accessor('cardType', {
+          header: tm('type'),
+          cell: info => {
+            const type = info.getValue() as 'customer' | 'supplier';
+            return (
+              <div className="flex items-center gap-1.5">
+                {type === 'customer' ? <Users className="w-3.5 h-3.5 text-blue-600" /> : <Truck className="w-3.5 h-3.5 text-orange-600" />}
+                <span className={`text-[10px] font-black uppercase ${type === 'customer' ? 'text-blue-700' : 'text-orange-700'}`}>
+                  {type === 'customer' ? tm('customer') : tm('supplierLabel')}
                 </span>
-              )}
+              </div>
+            );
+          },
+          size: 110
+        })
+      );
+    }
+    if (isColumnVisible('name')) {
+      cols.push(
+        columnHelper.accessor('name', {
+          header: tm('currentAccountTitle'),
+          cell: info => {
+            const row = info.row.original;
+            const isCustomer = row.cardType === 'customer';
+            return (
+              <div className="min-w-0">
+                <span className="font-semibold text-gray-800">{info.getValue()}</span>
+                <span className={`ml-2 text-[9px] font-black uppercase px-1.5 py-0.5 rounded ${isCustomer ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700'}`}>
+                  {row.code || '—'}
+                </span>
+              </div>
+            );
+          }
+        })
+      );
+    }
+    if (isColumnVisible('contact')) {
+      cols.push(
+        columnHelper.accessor('phone', {
+          id: 'contact',
+          header: tm('contact'),
+          cell: info => {
+            const row = info.row.original;
+            return (
+              <div className="flex flex-col text-xs text-gray-500">
+                {row.phone && <span className="flex items-center gap-1"><Phone className="w-3 h-3" />{row.phone}</span>}
+                {row.email && <span className="flex items-center gap-1"><Mail className="w-3 h-3" />{row.email}</span>}
+                {row.city && <span className="flex items-center gap-1"><MapPin className="w-3 h-3" />{row.city}</span>}
+              </div>
+            );
+          }
+        })
+      );
+    }
+    if (isColumnVisible('balance')) {
+      cols.push(
+        columnHelper.accessor('balance', {
+          header: tm('crmBalance'),
+          cell: info => {
+            const val = info.getValue() || 0;
+            const rep = reportingCurrency !== mainCurrency ? toReporting(Math.abs(val)) : null;
+            const { side, sideLabel, hint } = getCariBalanceDirection(info.row.original.cardType, val, tm);
+            const colorClass = side === 'B' ? 'text-red-600' : 'text-orange-600';
+            const badgeClass = side === 'B' ? 'bg-red-100 text-red-700' : 'bg-orange-100 text-orange-700';
+            return (
+              <div className="flex flex-col items-end gap-0.5 font-bold">
+                <div className="flex items-center gap-1.5 flex-wrap justify-end">
+                  <span className={colorClass}>
+                    {formatNumber(Math.abs(val), mainDec, mainShowDec)} {mainCurrency}
+                  </span>
+                  {sideLabel && (
+                    <span className={`text-[8px] px-1.5 py-0.5 rounded font-black whitespace-nowrap ${badgeClass}`} title={hint}>
+                      {sideLabel}
+                    </span>
+                  )}
+                </div>
+                {hint && sideLabel && (
+                  <span className="text-[9px] text-gray-500 font-medium max-w-[140px] text-right leading-tight">{hint}</span>
+                )}
+                {rep != null && reportingCurrency !== mainCurrency && (
+                  <span className="text-[10px] text-gray-400 font-medium">
+                    ({formatNumber(rep, repDec, repShowDec)} {reportingCurrency})
+                  </span>
+                )}
+              </div>
+            );
+          },
+          meta: { align: 'right' }
+        })
+      );
+    }
+    if (isColumnVisible('actions')) {
+      cols.push(
+        columnHelper.display({
+          id: 'actions',
+          header: tm('actions'),
+          cell: ({ row }) => (
+            <div className="flex items-center justify-center gap-1">
+              <button onClick={e => { e.stopPropagation(); handleEditClick(row.original); }} className="p-1 hover:bg-blue-100 rounded" title={tm('edit')}>
+                <Edit className="w-3.5 h-3.5 text-blue-600" />
+              </button>
+              <button onClick={e => { e.stopPropagation(); selectAccount(row.original); }} className="p-1 hover:bg-indigo-100 rounded" title={tm('extractTitle')}>
+                <FileText className="w-3.5 h-3.5 text-indigo-600" />
+              </button>
+              <button onClick={e => { e.stopPropagation(); handleDelete(row.original.id, row.original.name, row.original.cardType || 'supplier'); }} className="p-1 hover:bg-red-100 rounded" title={tm('deleteAction')}>
+                <Trash2 className="w-3.5 h-3.5 text-red-500" />
+              </button>
             </div>
-            {hint && sideLabel && (
-              <span className="text-[9px] text-gray-500 font-medium max-w-[140px] text-right leading-tight">{hint}</span>
-            )}
-            {rep != null && reportingCurrency !== mainCurrency && (
-              <span className="text-[10px] text-gray-400 font-medium">
-                ({formatNumber(rep, repDec, repShowDec)} {reportingCurrency})
-              </span>
-            )}
-          </div>
-        );
-      },
-      meta: { align: 'right' }
-    }),
-    columnHelper.display({
-      id: 'actions',
-      header: tm('actions'),
-      cell: ({ row }) => (
-        <div className="flex items-center justify-center gap-1">
-          <button onClick={e => { e.stopPropagation(); handleEditClick(row.original); }} className="p-1 hover:bg-blue-100 rounded" title={tm('edit')}>
-            <Edit className="w-3.5 h-3.5 text-blue-600" />
-          </button>
-          <button onClick={e => { e.stopPropagation(); selectAccount(row.original); }} className="p-1 hover:bg-indigo-100 rounded" title={tm('extractTitle')}>
-            <FileText className="w-3.5 h-3.5 text-indigo-600" />
-          </button>
-          <button onClick={e => { e.stopPropagation(); handleDelete(row.original.id, row.original.name, row.original.cardType || 'supplier'); }} className="p-1 hover:bg-red-100 rounded" title={tm('deleteAction')}>
-            <Trash2 className="w-3.5 h-3.5 text-red-500" />
-          </button>
-        </div>
-      )
-    })
-  ];
+          )
+        })
+      );
+    }
+    return cols;
+  }, [
+    columnVisibility,
+    tm,
+    mainCurrency,
+    reportingCurrency,
+    mainDec,
+    mainShowDec,
+    repDec,
+    repShowDec,
+    toReporting,
+  ]);
+
+  const columnVisibilityControl = (
+    <ColumnVisibilityMenu
+      variant="toolbar"
+      columns={columnVisibilityItems}
+      onToggle={(columnId) => {
+        setColumnVisibility((prev) => ({
+          ...prev,
+          [columnId]: !(prev[columnId] !== false),
+        }));
+      }}
+      onShowAll={() => {
+        setColumnVisibility(Object.fromEntries(SUPPLIER_LIST_COLUMN_ORDER.map((id) => [id, true])));
+      }}
+      onHideAll={() => {
+        setColumnVisibility(Object.fromEntries(SUPPLIER_LIST_COLUMN_ORDER.map((id) => [id, false])));
+      }}
+    />
+  );
 
   // Ekstresi — ortak yardımcı (CH_TAHSILAT/CH_ODEME alacak; satış gibi borç yazılmaz)
   const isSupplierAccount = selectedAccount?.cardType === 'supplier';
@@ -642,11 +725,12 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: 'all
             <h2 className="text-sm font-semibold">{t.menu?.currentAccounts || 'Cari Hesap / Personel'}</h2>
             <span className="text-blue-100 text-[10px] ml-2">• {suppliers.length} {tm('account')}</span>
           </div>
-          <div className="flex gap-1.5">
+          <div className="flex gap-1.5 items-center">
             <button onClick={loadSuppliers} className="flex items-center gap-1 px-2 py-1 bg-white/10 hover:bg-white/20 transition-colors text-[10px]">
               <RefreshCw className={`w-3 h-3 ${loading ? 'animate-spin' : ''}`} />
               <span>{tm('refreshData')}</span>
             </button>
+            {columnVisibilityControl}
             <button
               type="button"
               onClick={() => window.dispatchEvent(new CustomEvent('navigateToScreen', { detail: 'cari-devir' }))}
