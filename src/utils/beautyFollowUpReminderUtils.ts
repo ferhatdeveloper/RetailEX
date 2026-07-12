@@ -26,6 +26,44 @@ export function getFollowUpReminderDisplayDueDate(r: BeautyFollowUpReminder): st
   return r.due_date;
 }
 
+/**
+ * Günü geçmiş aranmayanlar:
+ * - Görünen vade (`due_date`) bugünden önce
+ * - Durum henüz `contacted` / `dismissed` değil (due | other | postponed)
+ * - Erteleme gölge satırları (`is_natural_shadow`) hariç
+ */
+export function isOverdueUncalledFollowUp(
+  r: BeautyFollowUpReminder,
+  todayYmd: string,
+): boolean {
+  if (!r.due_date || r.due_date >= todayYmd) return false;
+  if (r.is_natural_shadow) return false;
+  const status = r.follow_up_status ?? 'due';
+  if (status === 'contacted' || status === 'dismissed') return false;
+  return true;
+}
+
+export function filterOverdueUncalledFollowUps(
+  reminders: BeautyFollowUpReminder[],
+  todayYmd: string,
+): BeautyFollowUpReminder[] {
+  return reminders
+    .filter((r) => isOverdueUncalledFollowUp(r, todayYmd))
+    .sort((a, b) => {
+      const d = a.due_date.localeCompare(b.due_date);
+      if (d !== 0) return d;
+      return (a.customer_name ?? '').localeCompare(b.customer_name ?? '', 'tr');
+    });
+}
+
+/** Takvim günü farkı (due → today); geçersiz tarihlerde 0. */
+export function followUpDaysOverdue(dueYmd: string, todayYmd: string): number {
+  const due = Date.parse(`${dueYmd}T12:00:00`);
+  const today = Date.parse(`${todayYmd}T12:00:00`);
+  if (!Number.isFinite(due) || !Number.isFinite(today)) return 0;
+  return Math.max(0, Math.round((today - due) / 86_400_000));
+}
+
 export type FollowUpReminderCardTheme = {
   border: string;
   borderLeft: string;

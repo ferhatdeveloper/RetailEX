@@ -69,6 +69,7 @@ const InvoiceListModule = lazyWithChunkRecovery(() => import('../trading/invoice
 const ETransformModule = lazyWithChunkRecovery(() => import('../modules/ETransformModule').then(m => ({ default: m.ETransformModule })));
 const ReturnModule = lazyWithChunkRecovery(() => import('../trading/invoices/ReturnModule').then(m => ({ default: m.ReturnModule })));
 const ProductionModule = lazyWithChunkRecovery(() => import('../modules/ProductionModule').then(m => ({ default: m.ProductionModule })));
+const ButcherProductionModule = lazyWithChunkRecovery(() => import('../modules/butcher/ButcherProductionModule').then(m => ({ default: m.ButcherProductionModule })));
 const AssetManagementModule = lazyWithChunkRecovery(() => import('../modules/AssetManagementModule').then(m => ({ default: m.AssetManagementModule })));
 const BudgetModule = lazyWithChunkRecovery(() => import('../modules/BudgetModule').then(m => ({ default: m.BudgetModule })));
 const ContractModule = lazyWithChunkRecovery(() => import('../modules/ContractModule').then(m => ({ default: m.ContractModule })));
@@ -162,7 +163,7 @@ const WavePickingModule = lazyWithChunkRecovery(() => import('../wms/WavePicking
 const ReconciliationDashboard = lazyWithChunkRecovery(() => import('../accounting/reports/ReconciliationDashboard').then(m => ({ default: m.ReconciliationDashboard })));
 const AIStockPredictionModule = lazyWithChunkRecovery(() => import('../inventory/ai/AIStockPredictionModule').then(m => ({ default: m.AIStockPredictionModule })));
 const GeneralLedgerMizan = lazyWithChunkRecovery(() => import('../accounting/reports/GeneralLedgerMizan').then(m => ({ default: m.GeneralLedgerMizan })));
-const CariHesapEkstresi = lazyWithChunkRecovery(() => import('../accounting/reports/CariHesapEkstresi').then(m => ({ default: m.CariHesapEkstresi })));
+const CariExtractReport = lazyWithChunkRecovery(() => import('../reports/ErpCoreReports').then(m => ({ default: m.CariExtractReport })));
 const StorePerformanceAnalysis = lazyWithChunkRecovery(() => import('../sales/reports/StorePerformanceAnalysis').then(m => ({ default: m.StorePerformanceAnalysis })));
 const InventoryAgingReport = lazyWithChunkRecovery(() => import('../inventory/reports/InventoryAgingReport').then(m => ({ default: m.InventoryAgingReport })));
 const UniversalReportHub = lazyWithChunkRecovery(() => import('../analytics/UniversalReportHub').then(m => ({ default: m.UniversalReportHub })));
@@ -217,7 +218,7 @@ type ExtendedScreen = ManagementScreen | 'dashboard' | 'finance' | 'stock' | 'pu
   'etransform' | 'return' | 'production' | 'assets' | 'budget' | 'contracts' | 'quality' | 'service' | 'projects' | 'excel' | 'scale' |
   'multistore' | 'regional' | 'storeconfig' | 'campaigns_mgmt' | 'roles_mgmt' | 'loyalty' | 'giftcard' | 'notifications' | 'multicurrency' | 'commission' | 'usermanagement' | 'whatsapp' | 'mesaj-bildirim' | 'restaurant' | 'appointment' | 'bi-dashboard' | 'ecommerce' | 'cargo' | 'marketplace' | 'payment' | 'accounting-integration' | 'proforma' | 'einvoice' | 'ewaybill' | 'eledger' |
   'salesquote' | 'purchaserequest' | 'stockmovements' | 'stock-dashboard' | 'warehousetransfer' | 'stockcount' | 'barcode' | 'seriallot' | 'warehouse-definitions' | 'service-cards' | 'virman' | 'firm-period-definitions' | 'payment-plans' | 'bank-payment-plans' |
-  'productionrecipe' | 'capacityplan' | 'cashbank' | 'banks' | 'checkpromissory' | 'collectionpayment' | 'currentaccounts' | 'revenueexpense' | 'customer-call-plan' |
+  'productionrecipe' | 'capacityplan' | 'butcher-production' | 'cashbank' | 'banks' | 'checkpromissory' | 'collectionpayment' | 'currentaccounts' | 'revenueexpense' | 'customer-call-plan' |
   'storetransfer' | 'mobile-inventory-count' | 'interstore-transfer' | 'store-controlled-count' |
   'pricelists' | 'discounts' | 'promotions' | 'shipping' | 'cargotrack' | 'waybillops' | 'routeplan' |
   'servicemaint' | 'warranty' | 'fieldservice' | 'fixedasset' | 'depreciation' | 'maintplan' |
@@ -1276,7 +1277,7 @@ export function ManagementModule({
         case 'universal-report-hub':
           return <UniversalReportHub onNavigate={(s) => setCurrentScreen(s as ExtendedScreen)} />;
         case 'customer-extract':
-          return <CariHesapEkstresi />;
+          return <CariExtractReport />;
         case 'store-performance':
           return <StorePerformanceAnalysis />;
         case 'inventory-aging':
@@ -1360,6 +1361,8 @@ export function ManagementModule({
               description={t.purchaseInvoicesDesc}
               countPurchaseDraftPrefill={countPurchaseDraftPrefill}
               onCountPurchaseDraftPrefillConsumed={clearCountPurchaseDraftPrefill}
+              initialSearchQuery={invoiceSearchPrefill}
+              onInitialSearchConsumed={clearInvoiceSearchPrefill}
             />
           );
         case 'purchase-invoice-standard':
@@ -1373,6 +1376,8 @@ export function ManagementModule({
               description={t.purchaseInvoicesDesc}
               countPurchaseDraftPrefill={countPurchaseDraftPrefill}
               onCountPurchaseDraftPrefillConsumed={clearCountPurchaseDraftPrefill}
+              initialSearchQuery={invoiceSearchPrefill}
+              onInitialSearchConsumed={clearInvoiceSearchPrefill}
             />
           );
         case 'purchase-invoice-return':
@@ -1410,6 +1415,8 @@ export function ManagementModule({
         case 'productionrecipe':
         case 'capacityplan':
           return <ProductionModule />;
+        case 'butcher-production':
+          return <ButcherProductionModule />;
         case 'wave-picking':
           return <WavePickingModule />;
         case 'ai-stock-prediction':

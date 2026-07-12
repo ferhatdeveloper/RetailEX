@@ -8,7 +8,7 @@ import {
     Package, Warehouse, TrendingDown, Boxes, QrCode, Tag, Scale,
     Briefcase, GitBranch, Calendar, CalendarClock, Award, Wallet, CreditCard, Database,
     Globe, Receipt, Building, Calculator, TrendingUpDown, Gift, Percent, Send,
-    PackageSearch, PackagePlus, Wrench, Shield, UserCog, UtensilsCrossed, Phone, Bell,
+    PackageSearch, PackagePlus, Beef, Wrench, Shield, UserCog, UtensilsCrossed, Phone, Bell,
     Smartphone, Mail, BarChart3, TrendingUp, UserCheck, Layers, Clock, AlertCircle,
     Radio, ArrowRightLeft, MoreVertical, Menu, Sparkles, Banknote, Mic, Landmark, Layout, HardDrive, RefreshCw, Monitor
 } from 'lucide-react';
@@ -101,7 +101,8 @@ export const getStaticMenuSections = (t: Translations) => [
             },
             { label: t.menu.excelOperations, screen: 'excel', icon: FileSpreadsheet },
             { label: t.menu.smartMaterialAdd, screen: 'smart-material-add', icon: Sparkles },
-            { label: 'Üretim Reçeteleri', screen: 'production', icon: PackagePlus }
+            { label: 'Üretim Reçeteleri', screen: 'production', icon: PackagePlus },
+            { label: 'Kasap Üretim', screen: 'butcher-production', icon: Beef }
         ]
     },
     {
@@ -215,7 +216,7 @@ export const getStaticMenuSections = (t: Translations) => [
                     // { label: t.menu.journalAndSlips, screen: 'accounting', icon: FileSpreadsheet }
                 ]
             },
-            /* {
+            {
                 label: t.menu.reports,
                 screen: 'finance-reports',
                 icon: BarChart3,
@@ -223,9 +224,11 @@ export const getStaticMenuSections = (t: Translations) => [
                     { label: t.menu.currentAccountReports, screen: 'financereports', icon: BarChart3 },
                     { label: t.menu.cashReports, screen: 'financereports', icon: BarChart3 },
                     { label: t.menu.bankReports, screen: 'financereports', icon: BarChart3 },
+                    { label: t.menu.cariExtractReport, screen: 'customer-extract', icon: FileText },
                     { label: t.menu.trialBalanceReport, screen: 'mizan', icon: BarChart3 }
                 ]
-            }, */
+            },
+
             {
                 label: t.menu.other,
                 screen: 'finance-other',
@@ -397,6 +400,7 @@ export const staticMenuSections = getStaticMenuSections({
         creditCardPosSlips: 'Kredi Kartı Pos Fişleri',
         journalAndSlips: 'Yevmiye Defteri & Fişler',
         currentAccountReports: 'Cari Hesap Raporları',
+        cariExtractReport: 'Cari Ekstre',
         cashReports: 'Kasa Raporları',
         bankReports: 'Banka Raporları',
         trialBalanceReport: 'Mizan Raporu',

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { BarChart3, TrendingUp, Banknote, ShoppingCart, Calendar, Download, FileText, Clock, User, Package, TrendingDown, Award, PieChart as PieChartIcon, CreditCard, AlertCircle, Percent, AlertTriangle, ClipboardList, MessageSquare, LineChart as LineChartLucide, Users, Scissors, ThumbsUp } from 'lucide-react';
+import { BarChart3, TrendingUp, Banknote, ShoppingCart, Calendar, Download, FileText, Clock, User, Package, TrendingDown, Award, PieChart as PieChartIcon, CreditCard, AlertCircle, Percent, AlertTriangle, ClipboardList, MessageSquare, LineChart as LineChartLucide, Users, Scissors, ThumbsUp, PhoneMissed } from 'lucide-react';
 import type { Sale, Product } from '../../App';
 import { MaterialMovementReport } from './MaterialMovementReport';
 import { ProfitLossReport } from './ProfitLossReport';
@@ -36,6 +36,19 @@ import {
 import { buildPosZReportForRange, isReturnSale } from '../../utils/posZReport';
 import { normalizePaymentMethodBucket } from '../../utils/paymentMethodUtils';
 import { BeautyServiceReportCrmModal } from './BeautyServiceReportCrmModal';
+import {
+  CariAgingReport,
+  CariBalanceSummaryReport,
+  CashBankMovementReport,
+  PurchaseSummaryReport,
+  CollectionDueReport,
+  SalesReturnsReport,
+  ProductGrossProfitReport,
+  CariExtractReport,
+  CriticalStockReport,
+  WarehouseStockReport,
+} from './ErpCoreReports';
+
 import { useBeautyStore } from '../beauty/store/useBeautyStore';
 import { CommissionReport } from '../beauty/components/CommissionReport';
 import { SurveyResultsReport } from '../beauty/components/SurveyResultsReport';
@@ -46,6 +59,7 @@ import {
   SurveyNpsReport,
   SurveyCommentsReport,
 } from '../beauty/components/SurveyExtraReports';
+import { OverdueUncalledFollowUpReport } from '../beauty/components/OverdueUncalledFollowUpReport';
 import { Layout, Menu, ConfigProvider, theme, Input, Button, Dropdown, Modal, Table, Spin, Select } from 'antd';
 import { toast } from 'sonner';
 import { usePermission } from '../../shared/hooks/usePermission';
@@ -523,23 +537,20 @@ type ReportTab =
   // Restoran Otomasyon Özel
   'end-of-day' | 'cash-report' | 'product-reports' | 'category-reports' | 'staff-reports' | 'table-reports' | 'payment-reports' | 'discount-reports' | 'detailed-sales' | 'sales-movements' | 'receipts' | 'courier-reports' | 'cash-register-reports' | 'turnover-reports' | 'analysis' |
   // Satış Raporları
-  'top-products' | 'category-analysis' | 'hourly-analysis' | 'cashiers' | 'customer-sales' | 'sales-trend' | 'sales-target' |
+  'top-products' | 'category-analysis' | 'hourly-analysis' | 'cashiers' | 'customer-sales' | 'sales-trend' | 'sales-target' | 'sales-returns' | 'product-gross-profit' |
   // Finansal Raporlar
-  'profit-loss' | 'cash-flow' | 'debt-aging' | 'check-tracking' | 'current-account' |
+  'profit-loss' | 'cash-flow' | 'debt-aging' | 'check-tracking' | 'current-account' | 'purchase-summary' | 'collection-due' | 'cari-extract' |
   // Stok Raporları
-  'stock-status' | 'stock-aging' | 'stock-turnover' | 'stock-abc' | 'materials' | 'purchase-promotion-report' | 'expiring-products' |
+  'stock-status' | 'stock-aging' | 'stock-turnover' | 'stock-abc' | 'materials' | 'purchase-promotion-report' | 'expiring-products' | 'critical-stock' | 'warehouse-stock' |
   // Ödeme & İşlem
   'payment-distribution' | 'discount-report' | 'cash-status' | 'commission' |
   // Güzellik özel
-  'beauty-service-report' | 'beauty-cancelled-report' | 'beauty-appointment-product-report' | 'beauty-commission-report' | 'beauty-staff-treatment-report' | 'beauty-survey-report' | 'beauty-survey-trend-report' | 'beauty-survey-staff-report' | 'beauty-survey-service-report' | 'beauty-survey-nps-report' | 'beauty-survey-comments-report';
+  'beauty-service-report' | 'beauty-cancelled-report' | 'beauty-appointment-product-report' | 'beauty-commission-report' | 'beauty-staff-treatment-report' | 'beauty-survey-report' | 'beauty-survey-trend-report' | 'beauty-survey-staff-report' | 'beauty-survey-service-report' | 'beauty-survey-nps-report' | 'beauty-survey-comments-report' | 'beauty-overdue-uncalled-report';
 
 /** Sol menüde gösterilmez: ekranı yok veya yalnızca “yakında” placeholder idi. */
 const REPORT_TABS_HIDDEN_FROM_MENU = new Set<string>([
   'design-center',
-  'cash-flow',
-  'debt-aging',
   'check-tracking',
-  'current-account',
   'commission',
   'staff-reports',
   'staff-performance',
@@ -580,6 +591,7 @@ const BEAUTY_ONLY_REPORT_KEYS = new Set<string>([
   'beauty-survey-service-report',
   'beauty-survey-nps-report',
   'beauty-survey-comments-report',
+  'beauty-overdue-uncalled-report',
 ]);
 
 function beautyReportMenuItems(tm: (key: string) => string) {
@@ -589,6 +601,7 @@ function beautyReportMenuItems(tm: (key: string) => string) {
     { key: 'beauty-appointment-product-report', label: tm('beautyAppointmentProductSalesReport'), icon: <ShoppingCart className="w-4 h-4" /> },
     { key: 'beauty-commission-report', label: tm('bShellNavCommissionReport'), icon: <SafetyCertificateOutlined /> },
     { key: 'beauty-staff-treatment-report', label: tm('beautyStaffTreatmentReport'), icon: <Users className="w-4 h-4" /> },
+    { key: 'beauty-overdue-uncalled-report', label: tm('bOverdueUncalledReportMenu'), icon: <PhoneMissed className="w-4 h-4" /> },
     { key: 'beauty-survey-report', label: tm('bShellNavSurveyReport'), icon: <ClipboardList className="w-4 h-4" /> },
     { key: 'beauty-survey-trend-report', label: tm('bSurveyTrendReportMenu'), icon: <LineChartLucide className="w-4 h-4" /> },
     { key: 'beauty-survey-staff-report', label: tm('bSurveyStaffReportMenu'), icon: <Users className="w-4 h-4" /> },
@@ -4127,6 +4140,8 @@ export function ReportsModule({
           { key: 'customer-sales', label: tm('musteriSatis'), icon: <UserOutlined /> },
           { key: 'sales-trend', label: tm('satisTrendAnalizi'), icon: <RiseOutlined /> },
           { key: 'sales-target', label: tm('hedefVsGerceklesen'), icon: <ThunderboltOutlined /> },
+          { key: 'sales-returns', label: tm('erpSalesReturnsTitle'), icon: <RetweetOutlined /> },
+          { key: 'product-gross-profit', label: tm('erpProductProfitTitle'), icon: <AccountBookOutlined /> },
           ...(businessType !== 'beauty'
             ? [{ key: 'beauty-service-report', label: tm('beautyServiceBreakdownReport'), icon: <DeploymentUnitOutlined /> }]
             : []),
@@ -4144,8 +4159,11 @@ export function ReportsModule({
           { key: 'yearly-months-summary', label: tm('yillikAyOzeti'), icon: <BarChart3 /> },
           { key: 'cash-flow', label: tm('nakitAkisRaporu'), icon: <TransactionOutlined /> },
           { key: 'debt-aging', label: tm('borcAlacakYaslandirma'), icon: <HistoryOutlined /> },
-          { key: 'check-tracking', label: tm('cekSenetTakibi'), icon: <AuditOutlined /> },
           { key: 'current-account', label: tm('cariHesapOzeti'), icon: <BankOutlined /> },
+          { key: 'cari-extract', label: tm('erpCariExtractTitle'), icon: <AuditOutlined /> },
+          { key: 'collection-due', label: tm('erpCollectionDueTitle'), icon: <HourglassOutlined /> },
+          { key: 'purchase-summary', label: tm('erpPurchaseSummaryTitle'), icon: <TagsOutlined /> },
+          { key: 'check-tracking', label: tm('cekSenetTakibi'), icon: <AuditOutlined /> },
         ],
       },
       {
@@ -4154,6 +4172,8 @@ export function ReportsModule({
         type: 'group',
         children: [
           { key: 'stock-status', label: tm('stockStatus'), icon: <DatabaseOutlined /> },
+          { key: 'critical-stock', label: tm('erpCriticalStockTitle'), icon: <ExclamationCircleOutlined /> },
+          { key: 'warehouse-stock', label: tm('erpWarehouseStockTitle'), icon: <ApartmentOutlined /> },
           { key: 'stock-aging', label: tm('stokYaslandirma'), icon: <HourglassOutlined /> },
           { key: 'stock-turnover', label: tm('stokDonusHizi'), icon: <RetweetOutlined /> },
           { key: 'stock-abc', label: tm('stokAbcAnalizi'), icon: <ApartmentOutlined /> },
@@ -4223,6 +4243,7 @@ export function ReportsModule({
   const isBeautySurveyServiceReportTab = selectedTab === 'beauty-survey-service-report';
   const isBeautySurveyNpsReportTab = selectedTab === 'beauty-survey-nps-report';
   const isBeautySurveyCommentsReportTab = selectedTab === 'beauty-survey-comments-report';
+  const isBeautyOverdueUncalledReportTab = selectedTab === 'beauty-overdue-uncalled-report';
   const isAnyBeautySurveyReportTab =
     isBeautySurveyReportTab ||
     isBeautySurveyTrendReportTab ||
@@ -6028,6 +6049,17 @@ export function ReportsModule({
 
             {selectedTab === 'profit-loss' && <ProfitLossReport />}
 
+            {selectedTab === 'debt-aging' && <CariAgingReport />}
+            {selectedTab === 'current-account' && <CariBalanceSummaryReport />}
+            {selectedTab === 'cash-flow' && <CashBankMovementReport />}
+            {selectedTab === 'purchase-summary' && <PurchaseSummaryReport />}
+            {selectedTab === 'collection-due' && <CollectionDueReport />}
+            {selectedTab === 'sales-returns' && <SalesReturnsReport />}
+            {selectedTab === 'product-gross-profit' && <ProductGrossProfitReport />}
+            {selectedTab === 'cari-extract' && <CariExtractReport />}
+            {selectedTab === 'critical-stock' && <CriticalStockReport />}
+            {selectedTab === 'warehouse-stock' && <WarehouseStockReport />}
+
             {selectedTab === 'customer-sales' && (
               <CustomerSalesReport sales={effectiveCatalogSales} customers={[]} />
             )}
@@ -7002,6 +7034,10 @@ export function ReportsModule({
 
             {isBeautyCommissionReportTab && (
               <CommissionReport />
+            )}
+
+            {isBeautyOverdueUncalledReportTab && (
+              <OverdueUncalledFollowUpReport />
             )}
 
             {isBeautySurveyReportTab && (

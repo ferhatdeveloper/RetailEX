@@ -25,9 +25,10 @@ import { ProductionService } from '@/services/productionService';
 import { useProductStore } from '@/store/useProductStore';
 import { cn } from '@/components/ui/utils';
 import { CarcassDisassemblyPanel } from './CarcassDisassemblyPanel';
+import { ButcherProductionModule } from './butcher/ButcherProductionModule';
 
 export function ProductionModule() {
-  const [activeTab, setActiveTab] = useState('disassembly');
+  const [activeTab, setActiveTab] = useState('butcher');
   const [recipes, setRecipes] = useState<ProductionRecipe[]>([]);
   const [orders, setOrders] = useState<ProductionOrder[]>([]);
   const [loading, setLoading] = useState(false);
@@ -72,7 +73,7 @@ export function ProductionModule() {
           </div>
           <div>
             <h2 className="text-lg font-semibold tracking-tight">Üretim Yönetimi</h2>
-            <p className="text-xs text-slate-400">Reçete, imalat ve karkas parçalama (kasap)</p>
+            <p className="text-xs text-slate-400">Reçete, imalat ve kasap üretim / maliyet</p>
           </div>
         </div>
         <div className="flex gap-2">
@@ -90,8 +91,11 @@ export function ProductionModule() {
       <div className="flex-1 overflow-hidden p-6">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="h-full flex flex-col gap-6">
           <TabsList className="bg-white border border-slate-200 p-1 self-start shadow-sm">
+            <TabsTrigger value="butcher" className="data-[state=active]:bg-amber-50 data-[state=active]:text-amber-800">
+              <Beef className="w-4 h-4 mr-2" /> Kasap Üretim
+            </TabsTrigger>
             <TabsTrigger value="disassembly" className="data-[state=active]:bg-amber-50 data-[state=active]:text-amber-800">
-              <Beef className="w-4 h-4 mr-2" /> Karkas Parçalama
+              <Beef className="w-4 h-4 mr-2" /> Eski Parçalama
             </TabsTrigger>
             <TabsTrigger value="orders" className="data-[state=active]:bg-blue-50 data-[state=active]:text-blue-700">
               <GitBranch className="w-4 h-4 mr-2" /> Üretim Emirleri
@@ -100,6 +104,10 @@ export function ProductionModule() {
               <Layers className="w-4 h-4 mr-2" /> Reçeteler (BOM)
             </TabsTrigger>
           </TabsList>
+
+          <TabsContent value="butcher" className="flex-1 overflow-auto m-0 mt-0 bg-transparent border-0 shadow-none">
+            <ButcherProductionModule embedded />
+          </TabsContent>
 
           <TabsContent value="disassembly" className="flex-1 overflow-auto m-0 mt-0 bg-transparent border-0 shadow-none">
             <CarcassDisassemblyPanel />

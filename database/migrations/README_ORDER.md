@@ -86,6 +86,8 @@
 82. **097_fix_verify_login_param_shadowing.sql** – `logic.verify_login` parametre gölgeleme düzeltmesi (firma filtresi + güvenli giriş RPC).
 83. **098_sale_items_item_type.sql** – `sale_items.item_type` (Malzeme / Hizmet / Promosyon / İndirim).
 84. **099_system_settings_menu_preferences.sql** – `system_settings.menu_preferences` (statik menü gizleme/sıra JSONB).
+85. **100_butcher_production.sql** – Kasap üretim: `butcher_settings`, `butcher_recipes`, `butcher_recipe_outputs`, `butcher_orders`, `butcher_order_outputs` (`INIT_BUTCHER_PRODUCTION_TABLES`).
+86. **101_butcher_purchase_invoice.sql** – Üretim fişine bağlı alış faturası: `purchase_invoice_id` / `purchase_invoice_no`, `supplier_id` / `supplier_name` (`INIT_BUTCHER_PRODUCTION_TABLES` + ALTER).
 
 **099 tüm kiracılara (tek dosya):**
 ```bash

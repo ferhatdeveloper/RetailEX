@@ -31,6 +31,7 @@ export interface MenuTranslations {
   cost: string;
   creditCardPosSlips: string;
   currentAccountReports: string;
+  cariExtractReport: string;
   currentAccountSlips: string;
   currentAccounts: string;
   customReports: string;
@@ -1874,6 +1875,7 @@ export const translations: any = {
       cost: 'Maliyet',
       creditCardPosSlips: 'Kredi Kartı Pos Fişleri',
       currentAccountReports: 'Cari Hesap Raporları',
+      cariExtractReport: 'Cari Ekstre',
       currentAccountSlips: 'Cari Hesap Fişleri',
       currentAccounts: 'Cari Hesaplar',
       customReports: 'Özel Raporlar',
@@ -3351,6 +3353,7 @@ export const translations: any = {
       cost: 'Cost',
       creditCardPosSlips: 'Credit Card POS Slips',
       currentAccountReports: 'Current Account Reports',
+      cariExtractReport: 'Account statement',
       currentAccountSlips: 'Current Account Slips',
       currentAccounts: 'Current Accounts',
       customReports: 'Custom Reports',
@@ -4705,6 +4708,7 @@ export const translations: any = {
       cost: 'التكلفة',
       creditCardPosSlips: 'سندات نقاط البيع (POS)',
       currentAccountReports: 'تقارير الحسابات الجارية',
+      cariExtractReport: 'كشف حساب',
       currentAccountSlips: 'سندات الحسابات الجارية',
       currentAccounts: 'الحسابات الجارية',
       customReports: 'تقارير مخصصة',
@@ -6062,6 +6066,7 @@ export const translations: any = {
       cost: 'تێچوو',
       creditCardPosSlips: 'پسوڵەکانی پۆس',
       currentAccountReports: 'ڕاپۆرتەکانی حیسابی جاری',
+      cariExtractReport: 'پوختەی هەژمار',
       currentAccountSlips: 'پسوڵەکانی حیسابی جاری',
       currentAccounts: 'حیسابە جارییەکان',
       customReports: 'ڕاپۆرتە تایبەتەکان',
