@@ -37,6 +37,9 @@ SYNC_SERVICES=(
   sync_retailex_demo
   sync_siti_pdks
   sync_testere
+  sync_zetem
+  sync_ferhat
+  sync_ozbek
 )
 
 echo "=== Dokploy: Sync Service imajları (cache’siz — Rust 1.88 + locked Cargo.lock) ==="

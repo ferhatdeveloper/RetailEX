@@ -36,6 +36,7 @@ DEFAULT_TENANT_DBS=(
   lovan
   zetem
   ferhat
+  ozbek
 )
 
 if [[ -n "${TENANT_DBS:-}" ]]; then
@@ -57,6 +58,7 @@ POSTGREST_CONTAINERS=(
   lovan:saas_postgrest_lovan
   zetem:saas_postgrest_zetem
   ferhat:saas_postgrest_ferhat
+  ozbek:saas_postgrest_ozbek
 )
 
 psql_db() {

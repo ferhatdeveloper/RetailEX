@@ -40,6 +40,7 @@ DBS=(
   lovan
   zetem
   ferhat
+  ozbek
 )
 
 POSTGREST_SERVICES=(
@@ -56,6 +57,7 @@ POSTGREST_SERVICES=(
   postgrest_lovan
   postgrest_zetem
   postgrest_ferhat
+  postgrest_ozbek
 )
 
 ALL_SERVICES=(
