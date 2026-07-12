@@ -176,24 +176,37 @@ export const supplierAPI = {
       const sql = `
         WITH ${sqlCustomerAccountBalancesCte(custTable, '$1::text')},
         ${sqlSupplierAccountBalancesCte(suppTable)}
-        SELECT 
-          c.id, c.code, c.name, c.phone, c.email, c.address, c.city,
+        SELECT
+          c.id, c.ref_id, c.code, c.name, c.phone, c.phone2, c.email,
+          c.address, c.city, c.district, c.neighborhood,
+          c.tax_nr, c.tax_office, c.notes,
+          c.payment_terms::text AS payment_terms, COALESCE(c.credit_limit, 0) AS credit_limit,
+          NULL::varchar AS contact_person, NULL::varchar AS contact_person_phone,
+          c.age, c.file_id, c.occupation, c.gender, c.customer_tier, c.heard_from,
+          c.points, c.total_spent,
           c.call_plan_enabled, c.call_plan_weekdays, c.call_plan_note,
           c.call_last_status, c.call_last_note, c.call_last_at,
-          ${sqlResolvedCustomerBalanceExpr('c')} as balance, 
-          c.is_active, c.created_at, 'customer' as card_type 
+          ${sqlResolvedCustomerBalanceExpr('c')} as balance,
+          c.is_active, c.created_at, 'customer' as card_type
         FROM ${custTable} c
         LEFT JOIN account_balances b ON c.id = b.id
         WHERE c.firm_nr = $1 AND c.is_active = true
-        
+
         UNION ALL
-        
-        SELECT 
-          s.id, s.code, s.name, s.phone, s.email, s.address, s.city,
+
+        SELECT
+          s.id, s.ref_id, s.code, s.name, s.phone, NULL::varchar AS phone2, s.email,
+          s.address, s.city, s.district, s.neighborhood,
+          s.tax_nr, s.tax_office, s.notes,
+          s.payment_terms::text AS payment_terms, COALESCE(s.credit_limit, 0) AS credit_limit,
+          s.contact_person, s.contact_person_phone,
+          NULL::integer AS age, NULL::varchar AS file_id, NULL::varchar AS occupation,
+          NULL::varchar AS gender, NULL::varchar AS customer_tier, NULL::varchar AS heard_from,
+          NULL::numeric AS points, NULL::numeric AS total_spent,
           false AS call_plan_enabled, ARRAY[]::smallint[] AS call_plan_weekdays, NULL::text AS call_plan_note,
           NULL::varchar AS call_last_status, NULL::text AS call_last_note, NULL::timestamptz AS call_last_at,
-          ${sqlResolvedSupplierBalanceExpr('s')} as balance, 
-          s.is_active, s.created_at, 'supplier' as card_type 
+          ${sqlResolvedSupplierBalanceExpr('s')} as balance,
+          s.is_active, s.created_at, 'supplier' as card_type
         FROM ${suppTable} s
         LEFT JOIN supplier_balances b ON s.id = b.id
         WHERE s.is_active = true
@@ -815,6 +828,8 @@ export const supplierAPI = {
  * Helper: Map database customer record to Supplier type
  */
 function mapDatabaseSupplierToSupplier(dbSupplier: any): Supplier {
+  const paymentRaw = dbSupplier.payment_terms;
+  const paymentNum = typeof paymentRaw === 'number' ? paymentRaw : parseInt(String(paymentRaw ?? ''), 10);
   return {
     id: dbSupplier.id,
     code: dbSupplier.code,
@@ -824,14 +839,23 @@ function mapDatabaseSupplierToSupplier(dbSupplier: any): Supplier {
     email: dbSupplier.email,
     address: dbSupplier.address,
     district: dbSupplier.district,
+    neighborhood: dbSupplier.neighborhood,
     city: dbSupplier.city,
     postal_code: dbSupplier.postal_code,
     country: dbSupplier.country,
     contact_person: dbSupplier.contact_person,
     contact_person_phone: dbSupplier.contact_person_phone,
-    payment_terms: dbSupplier.payment_terms || 30,
+    payment_terms: Number.isFinite(paymentNum) ? paymentNum : (paymentRaw ?? 30),
     credit_limit: parseFloat(dbSupplier.credit_limit || 0),
     balance: parseFloat(dbSupplier.balance || 0),
+    points: dbSupplier.points != null ? parseFloat(String(dbSupplier.points)) || 0 : undefined,
+    total_spent: dbSupplier.total_spent != null ? parseFloat(String(dbSupplier.total_spent)) || 0 : undefined,
+    age: dbSupplier.age != null && dbSupplier.age !== '' ? Number(dbSupplier.age) : null,
+    file_id: dbSupplier.file_id ?? null,
+    gender: dbSupplier.gender ?? null,
+    customer_tier: dbSupplier.customer_tier ?? null,
+    occupation: dbSupplier.occupation ?? null,
+    heard_from: dbSupplier.heard_from ?? null,
     tax_number: dbSupplier.tax_nr || dbSupplier.tax_number,
     tax_office: dbSupplier.tax_office,
     is_active: dbSupplier.is_active !== false,
@@ -844,6 +868,7 @@ function mapDatabaseSupplierToSupplier(dbSupplier: any): Supplier {
     call_last_status: dbSupplier.call_last_status || undefined,
     call_last_note: dbSupplier.call_last_note || undefined,
     call_last_at: dbSupplier.call_last_at || undefined,
+    ref_id: dbSupplier.ref_id != null ? Number(dbSupplier.ref_id) : null,
     firma_id: dbSupplier.firma_id,
     created_at: dbSupplier.created_at,
     updated_at: dbSupplier.updated_at,

@@ -488,6 +488,37 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: 'all
   );
 
   const columnHelper = createColumnHelper<Supplier>();
+
+  const formatCallStatus = (status?: string | null) => {
+    const s = String(status || '').toLowerCase();
+    if (s === 'planned') return tm('callPlanPlanned');
+    if (s === 'called') return tm('callPlanCalled');
+    if (s === 'no_answer') return tm('callPlanNoAnswer');
+    if (s === 'callback') return tm('callPlanCallback');
+    if (s === 'not_interested') return tm('callPlanNotInterested');
+    if (s === 'done') return tm('callPlanDone');
+    return status || '—';
+  };
+
+  const formatGender = (g?: string | null) => {
+    const v = String(g || '').toLowerCase();
+    if (v === 'male' || v === 'm' || v === 'erkek') return tm('custGenderMale');
+    if (v === 'female' || v === 'f' || v === 'kadın' || v === 'kadin') return tm('custGenderFemale');
+    if (v === 'other' || v === 'diğer' || v === 'diger') return tm('custGenderOther');
+    return g || '—';
+  };
+
+  const formatTier = (tier?: string | null) => {
+    const v = String(tier || '').toLowerCase();
+    if (v === 'vip') return tm('custTierVip');
+    if (v === 'normal') return tm('custTierNormal');
+    return tier || '—';
+  };
+
+  const textCell = (value: unknown, className = 'text-xs text-gray-700') => (
+    <span className={className}>{value != null && String(value).trim() !== '' ? String(value) : '—'}</span>
+  );
+
   const columns = useMemo(() => {
     const cols: any[] = [];
     if (isColumnVisible('code')) {
@@ -555,6 +586,203 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: 'all
         })
       );
     }
+    if (isColumnVisible('phone')) {
+      cols.push(columnHelper.accessor('phone', { id: 'phone', header: tm('phoneLabel'), cell: info => textCell(info.getValue()), size: 120 }));
+    }
+    if (isColumnVisible('phone2')) {
+      cols.push(columnHelper.accessor('phone2', { header: tm('custLabelPhone2'), cell: info => textCell(info.getValue()), size: 120 }));
+    }
+    if (isColumnVisible('email')) {
+      cols.push(columnHelper.accessor('email', { header: tm('emailLabel'), cell: info => textCell(info.getValue()), size: 160 }));
+    }
+    if (isColumnVisible('address')) {
+      cols.push(columnHelper.accessor('address', { header: tm('custLabelAddress'), cell: info => textCell(info.getValue()), size: 180 }));
+    }
+    if (isColumnVisible('city')) {
+      cols.push(columnHelper.accessor('city', { header: tm('cariColCity'), cell: info => textCell(info.getValue()), size: 100 }));
+    }
+    if (isColumnVisible('district')) {
+      cols.push(columnHelper.accessor('district', { header: tm('cariColDistrict'), cell: info => textCell(info.getValue()), size: 100 }));
+    }
+    if (isColumnVisible('neighborhood')) {
+      cols.push(columnHelper.accessor('neighborhood', { header: tm('cariColNeighborhood'), cell: info => textCell(info.getValue()), size: 100 }));
+    }
+    if (isColumnVisible('taxNumber')) {
+      cols.push(columnHelper.accessor(row => row.tax_number || row.taxNumber, {
+        id: 'taxNumber',
+        header: tm('custLabelTaxNo'),
+        cell: info => textCell(info.getValue()),
+        size: 120,
+      }));
+    }
+    if (isColumnVisible('taxOffice')) {
+      cols.push(columnHelper.accessor(row => row.tax_office || row.taxOffice, {
+        id: 'taxOffice',
+        header: tm('custLabelTaxOffice'),
+        cell: info => textCell(info.getValue()),
+        size: 120,
+      }));
+    }
+    if (isColumnVisible('notes')) {
+      cols.push(columnHelper.accessor('notes', {
+        header: tm('notes'),
+        cell: info => <span className="text-xs text-gray-600 line-clamp-2 max-w-[200px]">{info.getValue() || '—'}</span>,
+        size: 160,
+      }));
+    }
+    if (isColumnVisible('creditLimit')) {
+      cols.push(columnHelper.accessor('credit_limit', {
+        header: tm('cariColCreditLimit'),
+        cell: info => {
+          const val = Number(info.getValue() || 0);
+          return <span className="text-xs font-semibold tabular-nums">{formatNumber(val, mainDec, mainShowDec)}</span>;
+        },
+        meta: { align: 'right' },
+        size: 110,
+      }));
+    }
+    if (isColumnVisible('paymentTerms')) {
+      cols.push(columnHelper.accessor('payment_terms', {
+        header: tm('cariColPaymentTerms'),
+        cell: info => textCell(info.getValue()),
+        size: 100,
+      }));
+    }
+    if (isColumnVisible('contactPerson')) {
+      cols.push(columnHelper.accessor('contact_person', {
+        header: tm('cariColContactPerson'),
+        cell: info => textCell(info.getValue()),
+        size: 120,
+      }));
+    }
+    if (isColumnVisible('contactPersonPhone')) {
+      cols.push(columnHelper.accessor('contact_person_phone', {
+        header: tm('cariColContactPersonPhone'),
+        cell: info => textCell(info.getValue()),
+        size: 120,
+      }));
+    }
+    if (isColumnVisible('points')) {
+      cols.push(columnHelper.accessor('points', {
+        header: tm('cariColPoints'),
+        cell: info => {
+          const val = info.getValue();
+          return <span className="text-xs tabular-nums">{val != null ? formatNumber(Number(val), 0, false) : '—'}</span>;
+        },
+        meta: { align: 'right' },
+        size: 80,
+      }));
+    }
+    if (isColumnVisible('totalSpent')) {
+      cols.push(columnHelper.accessor('total_spent', {
+        header: tm('cariColTotalSpent'),
+        cell: info => {
+          const val = info.getValue();
+          return <span className="text-xs tabular-nums">{val != null ? formatNumber(Number(val), mainDec, mainShowDec) : '—'}</span>;
+        },
+        meta: { align: 'right' },
+        size: 110,
+      }));
+    }
+    if (isColumnVisible('age')) {
+      cols.push(columnHelper.accessor('age', {
+        header: tm('custLabelAge'),
+        cell: info => textCell(info.getValue()),
+        size: 60,
+      }));
+    }
+    if (isColumnVisible('gender')) {
+      cols.push(columnHelper.accessor('gender', {
+        header: tm('custLabelGender'),
+        cell: info => textCell(formatGender(info.getValue())),
+        size: 80,
+      }));
+    }
+    if (isColumnVisible('customerTier')) {
+      cols.push(columnHelper.accessor('customer_tier', {
+        header: tm('custLabelTier'),
+        cell: info => textCell(formatTier(info.getValue())),
+        size: 90,
+      }));
+    }
+    if (isColumnVisible('occupation')) {
+      cols.push(columnHelper.accessor('occupation', {
+        header: tm('custLabelOccupation'),
+        cell: info => textCell(info.getValue()),
+        size: 120,
+      }));
+    }
+    if (isColumnVisible('heardFrom')) {
+      cols.push(columnHelper.accessor('heard_from', {
+        header: tm('custLabelHeardFrom'),
+        cell: info => textCell(info.getValue()),
+        size: 140,
+      }));
+    }
+    if (isColumnVisible('fileId')) {
+      cols.push(columnHelper.accessor('file_id', {
+        header: tm('custLabelFileId'),
+        cell: info => textCell(info.getValue()),
+        size: 100,
+      }));
+    }
+    if (isColumnVisible('callPlanEnabled')) {
+      cols.push(columnHelper.accessor('call_plan_enabled', {
+        header: tm('cariColCallPlanEnabled'),
+        cell: info => (
+          <span className={`text-[10px] font-bold uppercase ${info.getValue() ? 'text-emerald-700' : 'text-gray-400'}`}>
+            {info.getValue() ? tm('active') : tm('passive')}
+          </span>
+        ),
+        size: 90,
+      }));
+    }
+    if (isColumnVisible('callPlanWeekdays')) {
+      cols.push(columnHelper.accessor('call_plan_weekdays', {
+        header: tm('cariColCallPlanWeekdays'),
+        cell: info => {
+          const days = normalizeCustomerCallWeekdays(info.getValue());
+          return textCell(days.length ? customerCallWeekdaysLabel(days, true) : '—');
+        },
+        size: 140,
+      }));
+    }
+    if (isColumnVisible('callPlanNote')) {
+      cols.push(columnHelper.accessor('call_plan_note', {
+        header: tm('callPlanNote'),
+        cell: info => <span className="text-xs text-gray-600 line-clamp-2 max-w-[160px]">{info.getValue() || '—'}</span>,
+        size: 140,
+      }));
+    }
+    if (isColumnVisible('callLastStatus')) {
+      cols.push(columnHelper.accessor('call_last_status', {
+        header: tm('callPlanLastStatus'),
+        cell: info => textCell(formatCallStatus(info.getValue())),
+        size: 110,
+      }));
+    }
+    if (isColumnVisible('callLastNote')) {
+      cols.push(columnHelper.accessor('call_last_note', {
+        header: tm('callPlanLastStatusNote'),
+        cell: info => <span className="text-xs text-gray-600 line-clamp-2 max-w-[160px]">{info.getValue() || '—'}</span>,
+        size: 140,
+      }));
+    }
+    if (isColumnVisible('callLastAt')) {
+      cols.push(columnHelper.accessor('call_last_at', {
+        header: tm('cariColCallLastAt'),
+        cell: info => {
+          const raw = info.getValue();
+          if (!raw) return textCell('—');
+          try {
+            return textCell(new Date(String(raw)).toLocaleString());
+          } catch {
+            return textCell(raw);
+          }
+        },
+        size: 140,
+      }));
+    }
     if (isColumnVisible('balance')) {
       cols.push(
         columnHelper.accessor('balance', {
@@ -591,6 +819,39 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: 'all
           meta: { align: 'right' }
         })
       );
+    }
+    if (isColumnVisible('isActive')) {
+      cols.push(columnHelper.accessor('is_active', {
+        header: tm('active'),
+        cell: info => (
+          <span className={`text-[10px] font-bold uppercase ${info.getValue() !== false ? 'text-emerald-700' : 'text-gray-400'}`}>
+            {info.getValue() !== false ? tm('active') : tm('passive')}
+          </span>
+        ),
+        size: 80,
+      }));
+    }
+    if (isColumnVisible('createdAt')) {
+      cols.push(columnHelper.accessor('created_at', {
+        header: tm('createdAt'),
+        cell: info => {
+          const raw = info.getValue();
+          if (!raw) return textCell('—');
+          try {
+            return textCell(new Date(String(raw)).toLocaleDateString());
+          } catch {
+            return textCell(raw);
+          }
+        },
+        size: 110,
+      }));
+    }
+    if (isColumnVisible('refId')) {
+      cols.push(columnHelper.accessor('ref_id', {
+        header: tm('cariColRefId'),
+        cell: info => textCell(info.getValue(), 'font-mono text-xs text-gray-600'),
+        size: 90,
+      }));
     }
     if (isColumnVisible('actions')) {
       cols.push(

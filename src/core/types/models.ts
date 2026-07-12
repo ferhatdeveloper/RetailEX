@@ -182,14 +182,23 @@ export interface Supplier {
   email?: string;
   address?: string;
   district?: string;
+  neighborhood?: string;
   city?: string;
   postal_code?: string;
   country?: string;
   contact_person?: string;
   contact_person_phone?: string;
-  payment_terms?: number; // Ödeme vadesi (gün)
+  payment_terms?: number | string; // Ödeme vadesi (gün veya metin)
   credit_limit?: number;
   balance?: number;
+  points?: number;
+  total_spent?: number;
+  age?: number | null;
+  file_id?: string | null;
+  gender?: string | null;
+  customer_tier?: 'normal' | 'vip' | string | null;
+  occupation?: string | null;
+  heard_from?: string | null;
   tax_number?: string;
   taxNumber?: string;
   tax_office?: string;
@@ -202,6 +211,7 @@ export interface Supplier {
   call_last_status?: string | null;
   call_last_note?: string | null;
   call_last_at?: string | null;
+  ref_id?: number | null;
   firma_id?: string;
   created_at?: string;
   updated_at?: string;
