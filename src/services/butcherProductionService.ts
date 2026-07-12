@@ -45,6 +45,11 @@ function nextLotNo(): string {
   return `LOT-${y}${m}${day}-${String(Date.now()).slice(-5)}`;
 }
 
+/** stock_movements.document_no UNIQUE — her hareket için üretim no + sıra etiketi */
+function stockDocNo(orderNo: string, seq: number, tag: string): string {
+  return `${orderNo}-${tag}${String(seq).padStart(2, '0')}`.slice(0, 50);
+}
+
 export class ButcherProductionService {
   static preview(input: CompleteButcherInput) {
     return previewButcherCost(
@@ -126,13 +131,15 @@ export class ButcherProductionService {
       }));
 
       if (status === 'completed') {
+        let movSeq = 0;
+
         await stockMovementAPI.create(
           {
             trcode: STOCK_SLIP_TRCODES.CONSUMPTION,
             movement_type: 'out',
             warehouse_id: input.warehouseId || undefined,
             description: `${orderNo} kasap üretim — girdi`,
-            document_no: orderNo,
+            document_no: stockDocNo(orderNo, ++movSeq, 'S'),
           },
           [
             {
@@ -154,7 +161,7 @@ export class ButcherProductionService {
               movement_type: 'in',
               warehouse_id: input.warehouseId || undefined,
               description: `${orderNo} üretim — ${prod.name}`,
-              document_no: orderNo,
+              document_no: stockDocNo(orderNo, ++movSeq, 'C'),
             },
             [
               {
@@ -192,7 +199,7 @@ export class ButcherProductionService {
               movement_type: 'in',
               warehouse_id: input.warehouseId || undefined,
               description: `${orderNo} fire stok kartı`,
-              document_no: orderNo,
+              document_no: stockDocNo(orderNo, ++movSeq, 'F'),
             },
             [
               {

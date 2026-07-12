@@ -609,91 +609,108 @@ class StockMovementAPI {
     }
 
     /**
-     * Create a new stock movement
+     * Create a new stock movement.
+     * document_no UNIQUE (firma/dönem tablosu) — çakışmada suffix + retry.
      */
     async create(movement: Partial<StockMovement>, items: Partial<StockMovementItem>[]): Promise<StockMovement> {
-        try {
-            const firmNr = padFirmNr();
-            const periodNr = padPeriodNr();
-            const fp = { firmNr, periodNr };
+        const firmNr = padFirmNr();
+        const periodNr = padPeriodNr();
+        const fp = { firmNr, periodNr };
 
-            // Determine trcode if not provided
-            let trcode = movement.trcode || STOCK_SLIP_TRCODES.CONSUMPTION;
-            if (movement.movement_type === 'in') trcode = STOCK_SLIP_TRCODES.PRODUCTION_IN;
-            if (movement.movement_type === 'transfer') trcode = STOCK_SLIP_TRCODES.TRANSFER;
-            if (movement.movement_type === 'adjustment') trcode = STOCK_SLIP_TRCODES.COUNTING;
-            if (movement.movement_type === 'price_change') trcode = STOCK_SLIP_TRCODES.PRICE_CHANGE;
+        let trcode = movement.trcode || STOCK_SLIP_TRCODES.CONSUMPTION;
+        if (movement.movement_type === 'in') trcode = STOCK_SLIP_TRCODES.PRODUCTION_IN;
+        if (movement.movement_type === 'transfer') trcode = STOCK_SLIP_TRCODES.TRANSFER;
+        if (movement.movement_type === 'adjustment') trcode = STOCK_SLIP_TRCODES.COUNTING;
+        if (movement.movement_type === 'price_change') trcode = STOCK_SLIP_TRCODES.PRICE_CHANGE;
 
-            // Header — firm_nr / period_nr NOT NULL (rex_{firm}_{period}_stock_movements)
-            const { rows } = await postgres.query(
-                `INSERT INTO stock_movements (
-                    firm_nr, period_nr, document_no, movement_type, trcode, warehouse_id, target_warehouse_id,
-                    movement_date, exchange_rate, description, status, created_by
-                 ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-                 RETURNING *`,
-                [
-                    firmNr,
-                    periodNr,
-                    movement.document_no || `ST-${Date.now()}`,
-                    movement.movement_type || 'out',
-                    trcode,
-                    movement.warehouse_id,
-                    movement.target_warehouse_id,
-                    movement.movement_date || new Date().toISOString(),
-                    movement.exchange_rate || 1,
-                    movement.description,
-                    movement.status || 'completed',
-                    movement.created_by
-                ],
-                fp,
-            );
-            const newMovement = rows[0];
+        const baseDoc =
+            (movement.document_no && String(movement.document_no).trim()) ||
+            `ST-${Date.now()}`;
+        const maxAttempts = 6;
+        let lastError: unknown;
 
-            // Items
-            for (const item of items) {
-                await postgres.query(
-                    `INSERT INTO stock_movement_items (
-                        movement_id, product_id, quantity, unit_price, cost_price, exchange_rate, unit_name, convert_factor, notes
-                     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+        for (let attempt = 0; attempt < maxAttempts; attempt++) {
+            const documentNo =
+                attempt === 0
+                    ? baseDoc.slice(0, 50)
+                    : `${baseDoc.slice(0, 36)}-${Date.now().toString(36)}${attempt}`.slice(0, 50);
+            try {
+                const { rows } = await postgres.query(
+                    `INSERT INTO stock_movements (
+                        firm_nr, period_nr, document_no, movement_type, trcode, warehouse_id, target_warehouse_id,
+                        movement_date, exchange_rate, description, status, created_by
+                     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+                     RETURNING *`,
                     [
-                        newMovement.id, 
-                        item.product_id, 
-                        item.quantity, 
-                        item.unit_price || 0,
-                        item.cost_price || 0,
-                        item.exchange_rate || movement.exchange_rate || 1,
-                        item.unit_name,
-                        item.convert_factor || 1,
-                        item.notes
+                        firmNr,
+                        periodNr,
+                        documentNo,
+                        movement.movement_type || 'out',
+                        trcode,
+                        movement.warehouse_id,
+                        movement.target_warehouse_id,
+                        movement.movement_date || new Date().toISOString(),
+                        movement.exchange_rate || 1,
+                        movement.description,
+                        movement.status || 'completed',
+                        movement.created_by,
                     ],
                     fp,
                 );
+                const newMovement = rows[0];
 
-                // Fiyat değişim fişi: stok güncellenmez
-                if (movement.movement_type !== 'price_change' && item.product_id) {
-                    let modifier = Number(item.quantity) || 0;
-                    // If out-type movement, subtract stock (except for specific in-types)
-                    if (['out', 'adjustment'].includes(movement.movement_type || 'out')) {
-                        // Adjustment logic could be more complex (expected vs counted), 
-                        // but here we follow movement_type simple logic for now.
-                        modifier = -modifier;
-                    }
+                for (const item of items) {
+                    await postgres.query(
+                        `INSERT INTO stock_movement_items (
+                            movement_id, product_id, quantity, unit_price, cost_price, exchange_rate, unit_name, convert_factor, notes
+                         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+                        [
+                            newMovement.id,
+                            item.product_id,
+                            item.quantity,
+                            item.unit_price || 0,
+                            item.cost_price || 0,
+                            item.exchange_rate || movement.exchange_rate || 1,
+                            item.unit_name,
+                            item.convert_factor || 1,
+                            item.notes,
+                        ],
+                        fp,
+                    );
 
-                    if (movement.movement_type !== 'transfer') { // Transfers don't change global stock in this model
-                        await postgres.query(
-                            `UPDATE products SET stock = stock + $1 WHERE id = $2`,
-                            [modifier, item.product_id],
-                            fp,
-                        );
+                    if (movement.movement_type !== 'price_change' && item.product_id) {
+                        let modifier = Number(item.quantity) || 0;
+                        if (['out', 'adjustment'].includes(movement.movement_type || 'out')) {
+                            modifier = -modifier;
+                        }
+
+                        if (movement.movement_type !== 'transfer') {
+                            await postgres.query(
+                                `UPDATE products SET stock = stock + $1 WHERE id = $2`,
+                                [modifier, item.product_id],
+                                fp,
+                            );
+                        }
                     }
                 }
-            }
 
-            return newMovement;
-        } catch (error) {
-            console.error('[StockMovementAPI] create failed:', error);
-            throw error;
+                return newMovement;
+            } catch (error) {
+                lastError = error;
+                const msg = error instanceof Error ? error.message : String(error);
+                const isDupDoc =
+                    /document_no/i.test(msg) &&
+                    (/unique|duplicate key/i.test(msg) || /_document_no_key/i.test(msg));
+                if (isDupDoc && attempt < maxAttempts - 1) {
+                    continue;
+                }
+                console.error('[StockMovementAPI] create failed:', error);
+                throw error;
+            }
         }
+
+        console.error('[StockMovementAPI] create failed after retries:', lastError);
+        throw lastError instanceof Error ? lastError : new Error(String(lastError));
     }
 
     /**
