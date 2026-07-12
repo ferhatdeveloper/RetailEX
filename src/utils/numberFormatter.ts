@@ -17,15 +17,15 @@ export const formatNumberInput = (value: string, maxDecimalDigits = 2): string =
   // Türkiye formatı: binlik ayırıcı nokta (.), ondalık ayırıcı virgül (,)
   // Kullanıcının yazdığı nokta ve virgülleri koru, sadece geçersiz karakterleri temizle
   const cleanValue = value.replace(/[^\d.,]/g, '');
-  
+
   if (!cleanValue) return '';
-  
+
   // Virgül varsa, ondan önce ve sonra ayır
   const commaIndex = cleanValue.lastIndexOf(',');
-  
+
   let integerPart = '';
   let decimalPart = '';
-  
+
   if (commaIndex !== -1) {
     // Virgül varsa, ondalık ayırıcı olarak kabul et
     integerPart = cleanValue.slice(0, commaIndex).replace(/\./g, '');
@@ -35,17 +35,20 @@ export const formatNumberInput = (value: string, maxDecimalDigits = 2): string =
     integerPart = cleanValue.replace(/\./g, '');
     decimalPart = '';
   }
-  
-  if (!integerPart) return decimalPart && decimalPart !== '00' ? `0,${decimalPart}` : '';
-  
+
+  if (!integerPart) {
+    if (commaIndex !== -1 && maxDecimalDigits > 0) return `0,${decimalPart}`;
+    return decimalPart && decimalPart !== '00' ? `0,${decimalPart}` : '';
+  }
+
   // Binlik ayırıcı olarak nokta ekle
   const formattedInteger = integerPart.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
-  
-  // Ondalık kısmı virgül ile birleştir (sadece sıfır değilse)
-  if (decimalPart && decimalPart !== '00' && decimalPart !== '0') {
+
+  // Yazarken virgülü ve ara ondalığı koru ("77," / "77,0" / "77,46")
+  if (commaIndex !== -1 && maxDecimalDigits > 0) {
     return `${formattedInteger},${decimalPart}`;
   }
-  
+
   return formattedInteger;
 };
 

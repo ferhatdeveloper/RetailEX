@@ -29,7 +29,28 @@ import {
   type CariDevirRecord,
 } from '../../../services/api/cariOpeningBalance';
 import { formatNumber } from '../../../utils/formatNumber';
+import {
+  formatDecimalForTrInput,
+  formatNumberInput,
+  parseDecimalStringForInput,
+} from '../../../utils/numberFormatter';
+import { getCurrencyDecimalPlaces } from '../../../utils/currency';
 import { repairCariLedgerConsistency } from '../../../services/api/accountLedgerRepair';
+
+/** Devir tutarı DB DECIMAL(15,2); IQD gösterimde 0 hane olsa da açılış küsuratı girilebilir. */
+function cariDevirAmountDecimals(currency: string): number {
+  return Math.max(2, getCurrencyDecimalPlaces(currency));
+}
+
+function formatCariDevirAmountInput(raw: string, currency: string): string {
+  return formatNumberInput(raw, cariDevirAmountDecimals(currency));
+}
+
+function parseCariDevirAmount(raw: string): number {
+  const n = parseDecimalStringForInput(raw);
+  if (!Number.isFinite(n) || n <= 0) return 0;
+  return Math.round(n * 100) / 100;
+}
 
 type RowDraft = {
   account: Supplier;
@@ -55,6 +76,7 @@ export function CariDevirFisiModule() {
     () => String(selectedFirm?.ana_para_birimi || 'IQD').trim().toUpperCase().slice(0, 10) || 'IQD',
     [selectedFirm?.ana_para_birimi],
   );
+  const amountDecimals = useMemo(() => cariDevirAmountDecimals(mainCurrency), [mainCurrency]);
 
   const [activeTab, setActiveTab] = useState<'entry' | 'records'>('entry');
   const [accounts, setAccounts] = useState<Supplier[]>([]);
@@ -79,9 +101,14 @@ export function CariDevirFisiModule() {
         const existing = devirMap.get(acc.id);
         const prevRow = prev?.[acc.id];
         if (existing) {
+          const amt = devirAmountFromNet(existing.net_amount);
           next[acc.id] = {
             account: acc,
-            amount: prevRow?.selected ? prevRow.amount : String(devirAmountFromNet(existing.net_amount)),
+            amount: prevRow?.selected
+              ? prevRow.amount
+              : amt > 0
+                ? formatDecimalForTrInput(amt, amountDecimals)
+                : '',
             direction: prevRow?.selected ? prevRow.direction : devirDirectionFromNet(existing.net_amount),
             selected: prevRow?.selected ?? false,
             existingDevirId: existing.id,
@@ -99,7 +126,7 @@ export function CariDevirFisiModule() {
       }
       return next;
     },
-    [],
+    [amountDecimals],
   );
 
   const loadAccounts = useCallback(async () => {
@@ -160,7 +187,9 @@ export function CariDevirFisiModule() {
   }, [records, recordsSearch]);
 
   const selectedCount = useMemo(
-    () => filteredRows.filter((a) => drafts[a.id]?.selected && parseFloat(drafts[a.id]?.amount || '0') > 0).length,
+    () =>
+      filteredRows.filter((a) => drafts[a.id]?.selected && parseCariDevirAmount(drafts[a.id]?.amount || '') > 0)
+        .length,
     [filteredRows, drafts],
   );
 
@@ -173,13 +202,13 @@ export function CariDevirFisiModule() {
 
   const handleSave = async () => {
     const lines = Object.values(drafts)
-      .filter((d) => d.selected && parseFloat(d.amount || '0') > 0)
+      .filter((d) => d.selected && parseCariDevirAmount(d.amount || '') > 0)
       .map((d) => ({
         accountId: d.account.id,
         cardType: (d.account.cardType === 'supplier' ? 'supplier' : 'customer') as 'customer' | 'supplier',
         accountCode: d.account.code,
         accountName: d.account.name,
-        amount: parseFloat(d.amount) || 0,
+        amount: parseCariDevirAmount(d.amount),
         direction: d.direction,
         existingDevirId: d.existingDevirId,
       }));
@@ -227,10 +256,11 @@ export function CariDevirFisiModule() {
   };
 
   const openEdit = (rec: CariDevirRecord) => {
+    const amt = devirAmountFromNet(rec.net_amount);
     setEditForm({
       id: rec.id,
       accountName: rec.customer_name,
-      amount: String(devirAmountFromNet(rec.net_amount)),
+      amount: amt > 0 ? formatDecimalForTrInput(amt, amountDecimals) : '',
       direction: devirDirectionFromNet(rec.net_amount),
       date: rec.date ? rec.date.slice(0, 10) : new Date().toISOString().slice(0, 10),
       notes: rec.notes || '',
@@ -239,7 +269,7 @@ export function CariDevirFisiModule() {
 
   const handleEditSave = async () => {
     if (!editForm) return;
-    const amount = parseFloat(editForm.amount) || 0;
+    const amount = parseCariDevirAmount(editForm.amount);
     if (amount <= 0) {
       toast.error(tm('validAmountRequired'));
       return;
@@ -480,12 +510,23 @@ export function CariDevirFisiModule() {
                             </td>
                             <td className="px-3 py-2">
                               <input
-                                type="number"
-                                min={0}
-                                step="0.01"
+                                type="text"
+                                inputMode="decimal"
+                                autoComplete="off"
                                 value={draft.amount}
-                                onChange={(e) => updateDraft(acc.id, { amount: e.target.value, selected: true })}
-                                placeholder="0"
+                                onChange={(e) =>
+                                  updateDraft(acc.id, {
+                                    amount: formatCariDevirAmountInput(e.target.value, mainCurrency),
+                                    selected: true,
+                                  })
+                                }
+                                onBlur={() => {
+                                  const n = parseCariDevirAmount(draft.amount);
+                                  updateDraft(acc.id, {
+                                    amount: n > 0 ? formatDecimalForTrInput(n, amountDecimals) : draft.amount,
+                                  });
+                                }}
+                                placeholder={amountDecimals > 0 ? '0,00' : '0'}
                                 className="w-full max-w-[140px] ml-auto block border border-gray-300 rounded px-2 py-1 text-sm text-right"
                               />
                             </td>
@@ -629,11 +670,26 @@ export function CariDevirFisiModule() {
               <div>
                 <label className="block text-xs font-bold text-gray-500 uppercase mb-1">{tm('amountLabel')}</label>
                 <input
-                  type="number"
-                  min={0}
-                  step="0.01"
+                  type="text"
+                  inputMode="decimal"
+                  autoComplete="off"
                   value={editForm.amount}
-                  onChange={(e) => setEditForm({ ...editForm, amount: e.target.value })}
+                  onChange={(e) =>
+                    setEditForm({
+                      ...editForm,
+                      amount: formatCariDevirAmountInput(e.target.value, mainCurrency),
+                    })
+                  }
+                  onBlur={() => {
+                    const n = parseCariDevirAmount(editForm.amount);
+                    if (n > 0) {
+                      setEditForm({
+                        ...editForm,
+                        amount: formatDecimalForTrInput(n, amountDecimals),
+                      });
+                    }
+                  }}
+                  placeholder={amountDecimals > 0 ? '0,00' : '0'}
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-right"
                 />
               </div>
