@@ -2936,6 +2936,7 @@ BEGIN
     'CREATE TABLE IF NOT EXISTS public.%I (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       firm_nr VARCHAR(10) NOT NULL,
+      code VARCHAR(50),
       name VARCHAR(255) NOT NULL,
       animal_type VARCHAR(30) NOT NULL DEFAULT ''sheep'',
       input_product_id UUID,
@@ -2946,6 +2947,15 @@ BEGIN
       created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
     );',
+    v_prefix || '_butcher_recipes'
+  );
+  EXECUTE format(
+    'ALTER TABLE public.%I ADD COLUMN IF NOT EXISTS code VARCHAR(50)',
+    v_prefix || '_butcher_recipes'
+  );
+  EXECUTE format(
+    'CREATE UNIQUE INDEX IF NOT EXISTS %I ON public.%I (firm_nr, lower(code)) WHERE code IS NOT NULL AND btrim(code) <> ''''',
+    v_prefix || '_butcher_recipes_code_uidx',
     v_prefix || '_butcher_recipes'
   );
   EXECUTE format(

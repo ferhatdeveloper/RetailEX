@@ -1,6 +1,5 @@
--- 100: Kasap Üretim ve Maliyet Yönetimi
--- Reçete + üretim fişi + çıktı maliyet dağıtımı + firma maliyet ayarı
--- Ürün/depo/stok hareketleri mevcut products / stores / stock_movements ile bağlanır.
+-- 102: Kasap reçetesine üretim / reçete kodu (hızlı fiş doldurma)
+-- butcher_recipes.code + INIT_BUTCHER_PRODUCTION_TABLES güncellemesi
 
 CREATE OR REPLACE FUNCTION public.INIT_BUTCHER_PRODUCTION_TABLES(p_firm_nr VARCHAR)
 RETURNS void AS $$
@@ -34,6 +33,7 @@ BEGIN
     );',
     v_prefix || '_butcher_recipes'
   );
+
   EXECUTE format(
     'ALTER TABLE public.%I ADD COLUMN IF NOT EXISTS code VARCHAR(50)',
     v_prefix || '_butcher_recipes'
@@ -132,17 +132,19 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+-- Mevcut firma tablolarına code kolonu
 DO $$
 DECLARE r RECORD;
 BEGIN
   FOR r IN
-    SELECT DISTINCT regexp_replace(tablename, '^rex_([0-9]+)_products$', '\1') AS firm_nr
-    FROM pg_tables
-    WHERE schemaname = 'public'
-      AND tablename ~ '^rex_[0-9]+_products$'
+    SELECT tablename FROM pg_tables
+    WHERE schemaname = 'public' AND tablename ~ '^rex_[0-9]+_butcher_recipes$'
   LOOP
-    PERFORM public.INIT_BUTCHER_PRODUCTION_TABLES(r.firm_nr);
+    EXECUTE format('ALTER TABLE public.%I ADD COLUMN IF NOT EXISTS code VARCHAR(50)', r.tablename);
+    EXECUTE format(
+      'CREATE UNIQUE INDEX IF NOT EXISTS %I ON public.%I (firm_nr, lower(code)) WHERE code IS NOT NULL AND btrim(code) <> ''''',
+      r.tablename || '_code_uidx',
+      r.tablename
+    );
   END LOOP;
 END $$;
-
-NOTIFY pgrst, 'reload schema';

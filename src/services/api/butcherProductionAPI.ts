@@ -31,6 +31,8 @@ export interface ButcherRecipeOutput {
 
 export interface ButcherRecipe {
   id?: string;
+  /** Üretim / reçete kodu — fişte hızlı seçim */
+  code?: string | null;
   name: string;
   animalType: AnimalType;
   inputProductId?: string | null;
@@ -120,6 +122,7 @@ async function productNameMap(ids: string[]): Promise<Map<string, string>> {
 function mapRecipe(row: any, outputs: any[], names: Map<string, string>): ButcherRecipe {
   return {
     id: row.id,
+    code: row.code != null && String(row.code).trim() !== '' ? String(row.code).trim() : null,
     name: row.name,
     animalType: (row.animal_type || 'sheep') as AnimalType,
     inputProductId: row.input_product_id ?? null,
@@ -267,10 +270,11 @@ export const butcherProductionAPI = {
     if (recipeId) {
       await postgres.query(
         `UPDATE ${px}_butcher_recipes SET
-          name = $1, animal_type = $2, input_product_id = $3, waste_product_id = $4,
-          cost_method = $5, description = $6, is_active = $7, updated_at = CURRENT_TIMESTAMP
-         WHERE id = $8`,
+          code = $1, name = $2, animal_type = $3, input_product_id = $4, waste_product_id = $5,
+          cost_method = $6, description = $7, is_active = $8, updated_at = CURRENT_TIMESTAMP
+         WHERE id = $9`,
         [
+          recipe.code?.trim() || null,
           recipe.name,
           recipe.animalType,
           recipe.inputProductId ?? null,
@@ -285,10 +289,11 @@ export const butcherProductionAPI = {
     } else {
       const { rows } = await postgres.query(
         `INSERT INTO ${px}_butcher_recipes
-          (firm_nr, name, animal_type, input_product_id, waste_product_id, cost_method, description, is_active)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id`,
+          (firm_nr, code, name, animal_type, input_product_id, waste_product_id, cost_method, description, is_active)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`,
         [
           firm,
+          recipe.code?.trim() || null,
           recipe.name,
           recipe.animalType,
           recipe.inputProductId ?? null,

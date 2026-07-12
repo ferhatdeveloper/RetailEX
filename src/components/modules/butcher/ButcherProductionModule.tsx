@@ -82,7 +82,59 @@ type ProductOpt = {
   cost?: number;
   price?: number;
   unit?: string;
+  materialType?: string;
 };
+
+/** Girdi filtresi — products.material_type */
+type InputMaterialFilter = 'semi_finished' | 'raw_material' | 'commercial_goods' | '';
+
+function productMaterialType(p: ProductOpt): string {
+  return String(p.materialType || '').trim().toLowerCase();
+}
+
+function filterProductsByMaterial(products: ProductOpt[], filter: InputMaterialFilter): ProductOpt[] {
+  if (!filter) return products;
+  return products.filter((p) => productMaterialType(p) === filter);
+}
+
+function roundKg(n: number) {
+  return Math.round(n * 1000) / 1000;
+}
+
+function outputsFromRecipe(
+  tpl: ButcherRecipe,
+  products: ProductOpt[],
+  inputKg: number,
+): OutputRow[] {
+  return tpl.outputs
+    .filter((o) => o.productId)
+    .map((o, i) => {
+      const prod = products.find((p) => p.id === o.productId);
+      const ratio = o.standardRatioPercent != null ? Number(o.standardRatioPercent) : null;
+      const outputKg =
+        ratio != null && Number.isFinite(ratio) && inputKg > 0
+          ? roundKg((inputKg * ratio) / 100)
+          : 0;
+      return {
+        key: `tpl-${tpl.id || 'x'}-${i}-${o.productId}`,
+        productId: o.productId,
+        productName: o.productName || prod?.name,
+        outputKg,
+        coefficient: o.coefficient || 1,
+        salePrice: Number(prod?.price) || 0,
+        manualUnitCost: 0,
+      };
+    });
+}
+
+function findRecipeByCode(recipes: ButcherRecipe[], raw: string): ButcherRecipe | undefined {
+  const q = raw.trim().toLocaleLowerCase('tr-TR');
+  if (!q) return undefined;
+  return (
+    recipes.find((r) => (r.code || '').trim().toLocaleLowerCase('tr-TR') === q) ||
+    recipes.find((r) => r.name.trim().toLocaleLowerCase('tr-TR') === q)
+  );
+}
 
 export function ButcherProductionModule({ embedded = false }: { embedded?: boolean }) {
   const { darkMode } = useTheme();
@@ -243,6 +295,8 @@ function VoucherForm({
   const { tm } = useLanguage();
   const [animalType, setAnimalType] = useState<AnimalType>('sheep');
   const [recipeId, setRecipeId] = useState('');
+  const [productionCode, setProductionCode] = useState('');
+  const [inputMaterialFilter, setInputMaterialFilter] = useState<InputMaterialFilter>('semi_finished');
   const [inputProductId, setInputProductId] = useState('');
   const [wasteProductId, setWasteProductId] = useState('');
   const [inputQtyKg, setInputQtyKg] = useState(0);
@@ -259,6 +313,11 @@ function VoucherForm({
     setCostMethod(settings.defaultCostMethod);
   }, [settings.defaultCostMethod]);
 
+  const inputProducts = useMemo(
+    () => filterProductsByMaterial(products, inputMaterialFilter),
+    [products, inputMaterialFilter],
+  );
+
   const selectedInput = products.find((p) => p.id === inputProductId);
 
   useEffect(() => {
@@ -268,28 +327,47 @@ function VoucherForm({
     }
   }, [selectedInput, inputUnitCost]);
 
-  const applyRecipe = (rid: string) => {
+  /** Girdi kg değişince reçete oranlarından kg yenile (manuel satırları ezme: yalnızca reçete satırları) */
+  useEffect(() => {
+    if (!recipeId || inputQtyKg <= 0) return;
+    const tpl = recipes.find((t) => t.id === recipeId);
+    if (!tpl?.outputs.some((o) => o.standardRatioPercent != null)) return;
+    setOutputs(outputsFromRecipe(tpl, products, inputQtyKg));
+  }, [inputQtyKg, recipeId, recipes, products]);
+
+  const applyRecipe = (rid: string, opts?: { codeOverride?: string }) => {
     setRecipeId(rid);
+    if (!rid) {
+      setProductionCode(opts?.codeOverride ?? '');
+      return;
+    }
     const tpl = recipes.find((t) => t.id === rid);
     if (!tpl) return;
-    if (tpl.inputProductId) setInputProductId(tpl.inputProductId);
+    setProductionCode(opts?.codeOverride ?? tpl.code ?? '');
+    if (tpl.inputProductId) {
+      setInputProductId(tpl.inputProductId);
+      const inp = products.find((p) => p.id === tpl.inputProductId);
+      if (inp?.materialType) {
+        const mt = productMaterialType(inp);
+        if (mt === 'semi_finished' || mt === 'raw_material' || mt === 'commercial_goods') {
+          setInputMaterialFilter(mt);
+        }
+      }
+    }
     if (tpl.wasteProductId) setWasteProductId(tpl.wasteProductId);
     if (tpl.costMethod) setCostMethod(tpl.costMethod);
     setAnimalType(tpl.animalType);
-    setOutputs(
-      tpl.outputs.map((o, i) => {
-        const prod = products.find((p) => p.id === o.productId);
-        return {
-          key: `tpl-${i}-${o.productId}`,
-          productId: o.productId,
-          productName: o.productName || prod?.name,
-          outputKg: 0,
-          coefficient: o.coefficient || 1,
-          salePrice: Number(prod?.price) || 0,
-          manualUnitCost: 0,
-        };
-      }),
-    );
+    setOutputs(outputsFromRecipe(tpl, products, inputQtyKg));
+  };
+
+  const applyProductionCode = (raw: string) => {
+    setProductionCode(raw);
+    const q = raw.trim();
+    if (!q) return;
+    const tpl = findRecipeByCode(recipes, q);
+    if (tpl?.id) {
+      applyRecipe(tpl.id, { codeOverride: tpl.code || q });
+    }
   };
 
   const preview = useMemo(
@@ -380,11 +458,34 @@ function VoucherForm({
 
   const card = darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200';
   const labelCls = darkMode ? 'text-gray-300' : 'text-slate-600';
+  const recipeCodeListId = 'butcher-production-code-list';
 
   return (
-    <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
-      <div className={cn('xl:col-span-2 space-y-4 rounded-xl border p-4', card)}>
+    <div className="grid grid-cols-1 xl:grid-cols-12 gap-4">
+      <div className={cn('xl:col-span-10 space-y-4 rounded-xl border p-4', card)}>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <Field label={tm('butcherProductionCode')} className={labelCls}>
+            <Input
+              list={recipeCodeListId}
+              value={productionCode}
+              placeholder={tm('butcherProductionCodeHint')}
+              onChange={(e) => applyProductionCode(e.target.value)}
+              onBlur={() => {
+                const q = productionCode.trim();
+                if (!q) return;
+                if (!findRecipeByCode(recipes, q)) {
+                  toast.message(tm('butcherRecipeNotFound'));
+                }
+              }}
+            />
+            <datalist id={recipeCodeListId}>
+              {recipes.map((r) => (
+                <option key={r.id} value={r.code || r.name}>
+                  {r.code ? `${r.code} — ${r.name}` : r.name}
+                </option>
+              ))}
+            </datalist>
+          </Field>
           <Field label={tm('butcherAnimal')} className={labelCls}>
             <select
               className={selectCls(darkMode)}
@@ -405,13 +506,31 @@ function VoucherForm({
               onChange={(e) => applyRecipe(e.target.value)}
             >
               <option value="">{tm('butcherSelectRecipe')}</option>
-              {recipes
-                .filter((r) => r.animalType === animalType || !animalType)
-                .map((r) => (
-                  <option key={r.id} value={r.id}>
-                    {r.name}
-                  </option>
-                ))}
+              {recipes.map((r) => (
+                <option key={r.id} value={r.id}>
+                  {r.code ? `[${r.code}] ${r.name}` : r.name}
+                  {r.animalType !== animalType ? ` (${tm(ANIMALS.find((a) => a.id === r.animalType)?.labelKey || 'butcherAnimalOther')})` : ''}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label={tm('butcherInputMaterialType')} className={labelCls}>
+            <select
+              className={selectCls(darkMode)}
+              value={inputMaterialFilter}
+              onChange={(e) => {
+                const next = e.target.value as InputMaterialFilter;
+                setInputMaterialFilter(next);
+                if (inputProductId) {
+                  const still = filterProductsByMaterial(products, next).some((p) => p.id === inputProductId);
+                  if (!still) setInputProductId('');
+                }
+              }}
+            >
+              <option value="semi_finished">{tm('semiFinished')}</option>
+              <option value="raw_material">{tm('rawMaterial')}</option>
+              <option value="commercial_goods">{tm('butcherMamul')}</option>
+              <option value="">{tm('butcherAllMaterialTypes')}</option>
             </select>
           </Field>
           <Field label={tm('butcherInputProduct')} className={labelCls}>
@@ -421,12 +540,23 @@ function VoucherForm({
               onChange={(e) => setInputProductId(e.target.value)}
             >
               <option value="">{tm('butcherSelectProduct')}</option>
-              {products.map((p) => (
+              {inputProducts.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.name} {p.stock != null ? `(${p.stock})` : ''}
                 </option>
               ))}
+              {inputProductId && !inputProducts.some((p) => p.id === inputProductId) && (
+                <option value={inputProductId}>
+                  {selectedInput?.name || inputProductId}
+                  {selectedInput?.stock != null ? ` (${selectedInput.stock})` : ''}
+                </option>
+              )}
             </select>
+            {inputProducts.length === 0 && (
+              <p className={cn('text-[11px] mt-1', darkMode ? 'text-amber-400' : 'text-amber-700')}>
+                {tm('butcherNoMatchingProducts')}
+              </p>
+            )}
           </Field>
           <Field label={tm('butcherWasteProductOptional')} className={labelCls}>
             <select
@@ -609,7 +739,7 @@ function VoucherForm({
         </div>
       </div>
 
-      <div className={cn('rounded-xl border p-4 space-y-3 h-fit', card)}>
+      <div className={cn('xl:col-span-2 rounded-xl border p-4 space-y-3 h-fit', card)}>
         <h3 className={cn('text-sm font-bold flex items-center gap-2', darkMode ? 'text-white' : 'text-slate-800')}>
           <FileText className="w-4 h-4 text-amber-500" /> {tm('butcherCostPreview')}
         </h3>
@@ -670,6 +800,7 @@ function RecipeManager({
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<ButcherRecipe | null>(null);
   const [name, setName] = useState('');
+  const [code, setCode] = useState('');
   const [animalType, setAnimalType] = useState<AnimalType>('sheep');
   const [inputProductId, setInputProductId] = useState('');
   const [wasteProductId, setWasteProductId] = useState('');
@@ -677,9 +808,15 @@ function RecipeManager({
   const [outputs, setOutputs] = useState<Array<{ key: string; productId: string; coefficient: number; ratio: string }>>([]);
   const [saving, setSaving] = useState(false);
 
+  const inputProducts = useMemo(
+    () => filterProductsByMaterial(products, 'semi_finished'),
+    [products],
+  );
+
   const openNew = () => {
     setEditing(null);
     setName('');
+    setCode('');
     setAnimalType('sheep');
     setInputProductId('');
     setWasteProductId('');
@@ -691,6 +828,7 @@ function RecipeManager({
   const openEdit = (r: ButcherRecipe) => {
     setEditing(r);
     setName(r.name);
+    setCode(r.code || '');
     setAnimalType(r.animalType);
     setInputProductId(r.inputProductId || '');
     setWasteProductId(r.wasteProductId || '');
@@ -715,6 +853,7 @@ function RecipeManager({
     try {
       await butcherProductionAPI.saveRecipe({
         id: editing?.id,
+        code: code.trim() || null,
         name: name.trim(),
         animalType,
         inputProductId: inputProductId || null,
@@ -760,7 +899,10 @@ function RecipeManager({
             onClick={() => openEdit(r)}
             className={cn('text-left rounded-xl border p-4 hover:border-amber-400 transition-colors', card)}
           >
-            <div className={cn('font-bold text-sm', darkMode ? 'text-white' : 'text-slate-800')}>{r.name}</div>
+            <div className={cn('font-bold text-sm', darkMode ? 'text-white' : 'text-slate-800')}>
+              {r.code ? <span className="font-mono text-amber-600 mr-1.5">[{r.code}]</span> : null}
+              {r.name}
+            </div>
             <div className={cn('text-xs mt-1', darkMode ? 'text-gray-400' : 'text-slate-500')}>
               {tm(ANIMALS.find((a) => a.id === r.animalType)?.labelKey || 'butcherAnimalOther')} ·{' '}
               {r.outputs.length} {tm('butcherOutputLines')}
@@ -786,7 +928,10 @@ function RecipeManager({
             </Button>
           </div>
           <PercentBodyModalScrollBody className={cn('p-5 space-y-3', darkMode ? 'bg-gray-900' : 'bg-slate-50')}>
-            <Input placeholder={tm('butcherRecipeName')} value={name} onChange={(e) => setName(e.target.value)} />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <Input placeholder={tm('butcherRecipeCode')} value={code} onChange={(e) => setCode(e.target.value)} />
+              <Input placeholder={tm('butcherRecipeName')} value={name} onChange={(e) => setName(e.target.value)} />
+            </div>
             <div className="grid grid-cols-2 gap-3">
               <select className={selectCls(darkMode)} value={animalType} onChange={(e) => setAnimalType(e.target.value as AnimalType)}>
                 {ANIMALS.map((a) => (
@@ -800,8 +945,13 @@ function RecipeManager({
                 ))}
               </select>
               <select className={selectCls(darkMode)} value={inputProductId} onChange={(e) => setInputProductId(e.target.value)}>
-                <option value="">{tm('butcherInputProduct')}</option>
-                {products.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                <option value="">{tm('butcherInputProduct')} ({tm('semiFinished')})</option>
+                {inputProducts.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                {inputProductId && !inputProducts.some((p) => p.id === inputProductId) && (
+                  <option value={inputProductId}>
+                    {products.find((p) => p.id === inputProductId)?.name || inputProductId}
+                  </option>
+                )}
               </select>
               <select className={selectCls(darkMode)} value={wasteProductId} onChange={(e) => setWasteProductId(e.target.value)}>
                 <option value="">{tm('butcherWasteProductOptional')}</option>

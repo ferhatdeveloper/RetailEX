@@ -88,6 +88,7 @@
 84. **099_system_settings_menu_preferences.sql** – `system_settings.menu_preferences` (statik menü gizleme/sıra JSONB).
 85. **100_butcher_production.sql** – Kasap üretim: `butcher_settings`, `butcher_recipes`, `butcher_recipe_outputs`, `butcher_orders`, `butcher_order_outputs` (`INIT_BUTCHER_PRODUCTION_TABLES`).
 86. **101_butcher_purchase_invoice.sql** – Üretim fişine bağlı alış faturası: `purchase_invoice_id` / `purchase_invoice_no`, `supplier_id` / `supplier_name` (`INIT_BUTCHER_PRODUCTION_TABLES` + ALTER).
+87. **102_butcher_recipe_code.sql** – Kasap reçetesine `code` (üretim / reçete kodu) + benzersiz indeks; `INIT_BUTCHER_PRODUCTION_TABLES` güncellemesi.
 
 **099 tüm kiracılara (tek dosya):**
 ```bash

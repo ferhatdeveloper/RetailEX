@@ -4,11 +4,13 @@ import { postgres, ERP_SETTINGS } from './postgres';
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function padFirmNr(): string {
-  return String(ERP_SETTINGS.firmNr ?? '001').trim().padStart(3, '0').slice(0, 10);
+  const raw = String(ERP_SETTINGS.firmNr ?? '').trim();
+  return (raw || '001').padStart(3, '0').slice(0, 10);
 }
 
 function padPeriodNr(): string {
-  return String(ERP_SETTINGS.periodNr ?? '01').trim().padStart(2, '0').slice(0, 10);
+  const raw = String(ERP_SETTINGS.periodNr ?? '').trim();
+  return (raw || '01').padStart(2, '0').slice(0, 10);
 }
 
 export interface StockMovement {
@@ -611,6 +613,10 @@ class StockMovementAPI {
      */
     async create(movement: Partial<StockMovement>, items: Partial<StockMovementItem>[]): Promise<StockMovement> {
         try {
+            const firmNr = padFirmNr();
+            const periodNr = padPeriodNr();
+            const fp = { firmNr, periodNr };
+
             // Determine trcode if not provided
             let trcode = movement.trcode || STOCK_SLIP_TRCODES.CONSUMPTION;
             if (movement.movement_type === 'in') trcode = STOCK_SLIP_TRCODES.PRODUCTION_IN;
@@ -618,13 +624,16 @@ class StockMovementAPI {
             if (movement.movement_type === 'adjustment') trcode = STOCK_SLIP_TRCODES.COUNTING;
             if (movement.movement_type === 'price_change') trcode = STOCK_SLIP_TRCODES.PRICE_CHANGE;
 
-            // Header
+            // Header — firm_nr / period_nr NOT NULL (rex_{firm}_{period}_stock_movements)
             const { rows } = await postgres.query(
                 `INSERT INTO stock_movements (
-                    document_no, movement_type, trcode, warehouse_id, target_warehouse_id, movement_date, exchange_rate, description, status, created_by
-                 ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) 
+                    firm_nr, period_nr, document_no, movement_type, trcode, warehouse_id, target_warehouse_id,
+                    movement_date, exchange_rate, description, status, created_by
+                 ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
                  RETURNING *`,
                 [
+                    firmNr,
+                    periodNr,
                     movement.document_no || `ST-${Date.now()}`,
                     movement.movement_type || 'out',
                     trcode,
@@ -635,7 +644,8 @@ class StockMovementAPI {
                     movement.description,
                     movement.status || 'completed',
                     movement.created_by
-                ]
+                ],
+                fp,
             );
             const newMovement = rows[0];
 
@@ -655,7 +665,8 @@ class StockMovementAPI {
                         item.unit_name,
                         item.convert_factor || 1,
                         item.notes
-                    ]
+                    ],
+                    fp,
                 );
 
                 // Fiyat değişim fişi: stok güncellenmez
@@ -671,7 +682,8 @@ class StockMovementAPI {
                     if (movement.movement_type !== 'transfer') { // Transfers don't change global stock in this model
                         await postgres.query(
                             `UPDATE products SET stock = stock + $1 WHERE id = $2`,
-                            [modifier, item.product_id]
+                            [modifier, item.product_id],
+                            fp,
                         );
                     }
                 }
