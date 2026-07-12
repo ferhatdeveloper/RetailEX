@@ -35,17 +35,16 @@ export function WhatsAppTestSendCard({
     ? 'w-full rounded-lg border border-gray-600 bg-gray-900 text-gray-100 p-2.5 text-sm focus:ring-2 focus:ring-emerald-500/40 focus:border-emerald-500'
     : 'w-full rounded-lg border border-gray-200 bg-white p-2.5 text-sm focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500';
   const labelCls = darkMode ? 'text-xs font-medium text-gray-400' : 'text-xs font-medium text-gray-500';
-  const headingCls = darkMode ? 'text-white' : 'text-gray-900';
 
   const providerActive = provider !== 'NONE';
   const needsQr = provider === 'EMBEDDED' && !embedConnected;
   const canSend = providerActive && testPhone.trim() && testMessage.trim() && !testSending;
 
   return (
-    <section className={`rounded-2xl border-2 border-[#25D366]/30 p-5 shadow-sm ${panel} ${className}`}>
-      <h2 className={`mb-1 flex items-center gap-2 text-base font-semibold ${headingCls}`}>
-        <Send className="h-5 w-5 text-[#25D366]" />
-        Test mesajı gönder
+    <section className={`rounded-xl border p-4 ${panel} ${className}`}>
+      <h2 className={`mb-1 flex items-center gap-2 text-sm font-semibold uppercase tracking-wide ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+        <Send className="h-4 w-4 text-emerald-600" />
+        Test mesajı
       </h2>
       <p className={`mb-4 text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
         {!providerActive
@@ -90,9 +89,9 @@ export function WhatsAppTestSendCard({
           type="button"
           onClick={onSend}
           disabled={!canSend}
-          className="inline-flex h-[42px] min-w-[11rem] shrink-0 items-center justify-center gap-2 rounded-xl bg-[#25D366] px-6 text-sm font-bold text-white shadow-md hover:bg-[#1da851] disabled:cursor-not-allowed disabled:bg-gray-400 disabled:shadow-none dark:disabled:bg-gray-600"
+          className="inline-flex h-[42px] min-w-[11rem] shrink-0 items-center justify-center gap-2 rounded-lg bg-emerald-600 px-5 text-sm font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-40"
         >
-          {testSending ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />}
+          {testSending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
           Gönder
         </button>
       </div>

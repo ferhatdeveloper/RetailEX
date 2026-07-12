@@ -127,27 +127,36 @@ export function WhatsAppQrConnectPanel({
   const scanning = status === 'scanning' || (!connected && !!qrImg);
   const waitingQr = status === 'disconnected' && !qrImg && !error;
 
-  const cardBg = darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-emerald-100';
+  const cardBg = darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200';
   const muted = darkMode ? 'text-gray-400' : 'text-gray-500';
+  const heading = darkMode ? 'text-white' : 'text-gray-900';
 
   return (
-    <div className={`rounded-2xl border shadow-sm overflow-hidden ${cardBg} ${className}`}>
-      <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4 bg-gradient-to-r from-[#075E54] to-[#128C7E] text-white">
+    <div className={`overflow-hidden rounded-xl border ${cardBg} ${className}`}>
+      <div
+        className={`flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3.5 ${
+          darkMode ? 'border-gray-700' : 'border-gray-200'
+        }`}
+      >
         <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/15">
-            <QrCode className="w-5 h-5" />
+          <div
+            className={`flex h-9 w-9 items-center justify-center rounded-lg ${
+              darkMode ? 'bg-gray-900 text-emerald-400' : 'bg-emerald-50 text-emerald-700'
+            }`}
+          >
+            <QrCode className="h-4 w-4" />
           </div>
           <div>
-            <p className="font-semibold">Telefon ile bağlan</p>
-            <p className="text-xs text-emerald-100/90">WhatsApp → Bağlı cihazlar → QR okut</p>
+            <p className={`text-sm font-semibold ${heading}`}>Telefon ile bağlan</p>
+            <p className={`text-xs ${muted}`}>WhatsApp → Bağlı cihazlar → QR okut</p>
           </div>
         </div>
         <StatusBadge status={status} connected={connected} polling={polling} darkMode={darkMode} />
       </div>
 
-      <div className="grid gap-6 p-5 lg:grid-cols-[1fr_300px] lg:items-center">
+      <div className="grid gap-6 p-4 lg:grid-cols-[1fr_280px] lg:items-center">
         <div className="space-y-4">
-          <ol className="grid gap-3 sm:grid-cols-3 text-sm">
+          <ol className="grid gap-2 sm:grid-cols-3 text-sm">
             {[
               'WhatsApp uygulamasını açın',
               'Ayarlar → Bağlı cihazlar',
@@ -155,11 +164,15 @@ export function WhatsAppQrConnectPanel({
             ].map((step, i) => (
               <li
                 key={step}
-                className={`flex gap-2 rounded-xl border p-3 ${
-                  darkMode ? 'border-gray-700 bg-gray-900/50' : 'border-gray-100 bg-gray-50'
+                className={`flex gap-2 rounded-lg border p-3 ${
+                  darkMode ? 'border-gray-700 bg-gray-900/50' : 'border-gray-200 bg-gray-50'
                 }`}
               >
-                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[#25D366] text-xs font-bold text-white">
+                <span
+                  className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-xs font-bold ${
+                    darkMode ? 'bg-emerald-900/50 text-emerald-300' : 'bg-emerald-100 text-emerald-800'
+                  }`}
+                >
                   {i + 1}
                 </span>
                 <span className={darkMode ? 'text-gray-200' : 'text-gray-700'}>{step}</span>
@@ -172,7 +185,7 @@ export function WhatsAppQrConnectPanel({
               type="button"
               onClick={() => void refresh()}
               disabled={polling || !baseUrl.trim()}
-              className="inline-flex items-center gap-2 rounded-lg bg-[#25D366] px-4 py-2 text-sm font-medium text-white hover:bg-[#1da851] disabled:opacity-50"
+              className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
             >
               {polling ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
               QR yenile
@@ -186,14 +199,14 @@ export function WhatsAppQrConnectPanel({
             />
             {baseUrl.trim() && (
               <span className={`text-xs ${muted}`}>
-                Köprü: <code className="rounded bg-black/5 px-1.5 py-0.5 font-mono">{baseUrl}</code>
+                Köprü: <code className={`rounded px-1.5 py-0.5 font-mono ${darkMode ? 'bg-gray-900' : 'bg-gray-100'}`}>{baseUrl}</code>
               </span>
             )}
           </div>
 
           {error && (
             <div
-              className={`flex gap-2 rounded-xl border p-3 text-sm ${
+              className={`flex gap-2 rounded-lg border p-3 text-sm ${
                 darkMode ? 'border-amber-800 bg-amber-950/40 text-amber-200' : 'border-amber-200 bg-amber-50 text-amber-900'
               }`}
             >
@@ -218,36 +231,44 @@ export function WhatsAppQrConnectPanel({
           )}
         </div>
 
-        <div className="flex flex-col items-center mx-auto w-full max-w-[300px]">
+        <div className="flex flex-col items-center mx-auto w-full max-w-[280px]">
           <div
-            className={`relative flex aspect-square w-full items-center justify-center rounded-2xl border-2 p-4 transition-colors ${
+            className={`relative flex aspect-square w-full items-center justify-center rounded-xl border p-4 transition-colors ${
               connected
-                ? 'border-green-400 bg-green-50 dark:bg-green-950/30'
+                ? darkMode
+                  ? 'border-emerald-700 bg-emerald-950/30'
+                  : 'border-emerald-300 bg-emerald-50'
                 : qrImg
-                  ? 'border-[#25D366] bg-white dark:bg-gray-900'
+                  ? darkMode
+                    ? 'border-gray-600 bg-gray-900'
+                    : 'border-gray-200 bg-white'
                   : darkMode
-                    ? 'border-gray-600 border-dashed bg-gray-900/50'
-                    : 'border-gray-200 border-dashed bg-gray-50'
+                    ? 'border-dashed border-gray-600 bg-gray-900/50'
+                    : 'border-dashed border-gray-300 bg-gray-50'
             }`}
           >
             {connected ? (
               <div className="flex flex-col items-center gap-3 text-center">
-                <div className="flex h-16 w-16 items-center justify-center rounded-full bg-green-100 dark:bg-green-900/50">
-                  <CheckCheck className="w-9 h-9 text-green-600" />
+                <div
+                  className={`flex h-14 w-14 items-center justify-center rounded-full ${
+                    darkMode ? 'bg-emerald-900/50' : 'bg-emerald-100'
+                  }`}
+                >
+                  <CheckCheck className="h-8 w-8 text-emerald-600" />
                 </div>
-                <p className="font-semibold text-green-800 dark:text-green-300">Bağlandı</p>
-                <p className="text-xs text-green-700 dark:text-green-400">Mesaj göndermeye hazır</p>
+                <p className={`font-semibold ${darkMode ? 'text-emerald-300' : 'text-emerald-800'}`}>Bağlandı</p>
+                <p className={`text-xs ${darkMode ? 'text-emerald-400' : 'text-emerald-700'}`}>Mesaj göndermeye hazır</p>
               </div>
             ) : qrImg ? (
-              <img src={qrImg} alt="WhatsApp QR" className="w-full h-full object-contain rounded-lg" />
+              <img src={qrImg} alt="WhatsApp QR" className="h-full w-full rounded-lg object-contain" />
             ) : polling ? (
-              <div className="flex flex-col items-center gap-3 text-gray-500">
-                <Loader2 className="w-12 h-12 animate-spin text-[#25D366]" />
+              <div className={`flex flex-col items-center gap-3 ${muted}`}>
+                <Loader2 className="h-10 w-10 animate-spin text-emerald-600" />
                 <p className="text-sm font-medium">QR hazırlanıyor…</p>
               </div>
             ) : (
-              <div className="flex flex-col items-center gap-3 text-center px-2">
-                <Smartphone className={`w-14 h-14 ${muted}`} />
+              <div className="flex flex-col items-center gap-3 px-2 text-center">
+                <Smartphone className={`h-12 w-12 ${muted}`} />
                 <p className={`text-sm ${muted}`}>
                   {error ? 'Önce köprü ayarını düzeltin' : 'QR kod burada görünecek'}
                 </p>
@@ -276,40 +297,65 @@ function StatusBadge({
   polling: boolean;
   darkMode: boolean;
 }) {
+  const base = 'inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs font-semibold';
   if (polling && !status) {
     return (
-      <span className="inline-flex items-center gap-1.5 rounded-full bg-white/15 px-3 py-1 text-xs font-medium">
-        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+      <span
+        className={`${base} ${
+          darkMode ? 'border-gray-600 bg-gray-700 text-gray-200' : 'border-gray-200 bg-gray-100 text-gray-700'
+        }`}
+      >
+        <Loader2 className="h-3.5 w-3.5 animate-spin" />
         Kontrol ediliyor…
       </span>
     );
   }
   if (connected) {
     return (
-      <span className="inline-flex items-center gap-1.5 rounded-full bg-white/20 px-3 py-1 text-xs font-bold">
-        <Wifi className="w-3.5 h-3.5" />
+      <span
+        className={`${base} ${
+          darkMode
+            ? 'border-emerald-800 bg-emerald-900/50 text-emerald-300'
+            : 'border-emerald-200 bg-emerald-50 text-emerald-800'
+        }`}
+      >
+        <Wifi className="h-3.5 w-3.5" />
         Bağlı
       </span>
     );
   }
   if (status === 'scanning') {
     return (
-      <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-400/90 px-3 py-1 text-xs font-bold text-amber-950">
-        <QrCode className="w-3.5 h-3.5" />
+      <span
+        className={`${base} ${
+          darkMode
+            ? 'border-amber-800 bg-amber-900/40 text-amber-200'
+            : 'border-amber-200 bg-amber-50 text-amber-900'
+        }`}
+      >
+        <QrCode className="h-3.5 w-3.5" />
         QR bekleniyor
       </span>
     );
   }
   if (status === 'disconnected') {
     return (
-      <span className="inline-flex items-center gap-1.5 rounded-full bg-white/15 px-3 py-1 text-xs font-medium">
-        <WifiOff className="w-3.5 h-3.5" />
+      <span
+        className={`${base} ${
+          darkMode ? 'border-gray-600 bg-gray-700 text-gray-300' : 'border-gray-200 bg-gray-100 text-gray-600'
+        }`}
+      >
+        <WifiOff className="h-3.5 w-3.5" />
         Bağlı değil
       </span>
     );
   }
   return (
-    <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs ${darkMode ? 'bg-gray-700' : 'bg-white/15'}`}>
+    <span
+      className={`${base} ${
+        darkMode ? 'border-gray-600 bg-gray-700 text-gray-300' : 'border-gray-200 bg-gray-100 text-gray-600'
+      }`}
+    >
       {status || '—'}
     </span>
   );

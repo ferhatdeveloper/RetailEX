@@ -95,6 +95,11 @@ export function WhatsAppIntegrationModule() {
     : 'w-full rounded-lg border border-gray-200 bg-white p-2.5 text-sm focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500';
   const labelCls = darkMode ? 'text-xs font-medium text-gray-400' : 'text-xs font-medium text-gray-500';
   const headingCls = darkMode ? 'text-white' : 'text-gray-900';
+  const mutedCls = darkMode ? 'text-gray-400' : 'text-gray-500';
+  const sectionTitleCls = `text-sm font-semibold uppercase tracking-wide ${darkMode ? 'text-gray-300' : 'text-gray-600'}`;
+  const btnSecondary = `inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium ${panel} ${
+    darkMode ? 'text-gray-200 hover:bg-gray-700' : 'text-gray-700 hover:bg-gray-50'
+  }`;
 
   const staleUrlWarning = useMemo(
     () => waProvider === 'EMBEDDED' && isStaleBridgeUrl(waBaseUrl),
@@ -257,10 +262,22 @@ export function WhatsAppIntegrationModule() {
     }
   };
 
+  const statusBadgeCls = connectionOk
+    ? darkMode
+      ? 'bg-emerald-900/50 text-emerald-300 border-emerald-800'
+      : 'bg-emerald-50 text-emerald-800 border-emerald-200'
+    : waProvider === 'NONE'
+      ? darkMode
+        ? 'bg-gray-700 text-gray-300 border-gray-600'
+        : 'bg-gray-100 text-gray-600 border-gray-200'
+      : darkMode
+        ? 'bg-amber-900/40 text-amber-200 border-amber-800'
+        : 'bg-amber-50 text-amber-800 border-amber-200';
+
   if (loading) {
     return (
-      <div className={`flex min-h-[50vh] flex-col items-center justify-center gap-3 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-        <Loader2 className="h-8 w-8 animate-spin text-[#25D366]" />
+      <div className={`flex min-h-[50vh] flex-col items-center justify-center gap-3 ${mutedCls}`}>
+        <Loader2 className="h-8 w-8 animate-spin text-emerald-600" />
         <span className="text-sm">WhatsApp ayarları yükleniyor…</span>
       </div>
     );
@@ -272,82 +289,87 @@ export function WhatsAppIntegrationModule() {
         darkMode ? 'bg-gray-900' : 'bg-gray-50'
       }`}
     >
-    <div className="mx-auto max-w-6xl space-y-6 p-4 pb-8 sm:p-6 sm:pb-10">
-      {/* Üst başlık */}
-      <div className="overflow-hidden rounded-2xl border border-emerald-200/60 shadow-sm dark:border-emerald-900/50">
-        <div className="bg-gradient-to-r from-[#075E54] via-[#128C7E] to-[#25D366] px-5 py-6 text-white sm:px-8">
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div className="flex items-start gap-4">
-              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white/15 backdrop-blur">
-                <Phone className="h-7 w-7" />
-              </div>
-              <div>
-                <h1 className="text-xl font-bold sm:text-2xl">WhatsApp Entegrasyonu</h1>
-                <p className="mt-1 max-w-xl text-sm text-emerald-50/90">
-                  Müşterilere fatura ve randevu bildirimleri gönderin. QR ile bağlanın veya Meta / Evolution kullanın.
-                </p>
-              </div>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <span
-                className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium ${
-                  connectionOk ? 'bg-white/20 text-white' : 'bg-black/20 text-emerald-100'
-                }`}
-              >
-                <CheckCheck className="h-4 w-4" />
-                {connectionLabel}
-              </span>
-              <button
-                type="button"
-                onClick={() => void loadAll()}
-                className="rounded-lg bg-white/15 p-2.5 hover:bg-white/25"
-                title="Yenile"
-              >
-                <RefreshCw className="h-4 w-4" />
-              </button>
-              {waProvider === 'EMBEDDED' && (
-                <WhatsAppSessionResetButton
-                  baseUrl={waBaseUrl}
-                  token={waToken.trim() || null}
-                  variant="header"
-                  onResetComplete={() => void loadAll()}
-                />
-              )}
-              <button
-                type="button"
-                disabled={saving}
-                onClick={() => void handleSave()}
-                className="inline-flex items-center gap-2 rounded-lg bg-white px-4 py-2.5 text-sm font-semibold text-[#075E54] shadow hover:bg-emerald-50 disabled:opacity-60"
-              >
-                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                Kaydet
-              </button>
-            </div>
+    <div className="mx-auto max-w-6xl space-y-5 p-4 pb-8 sm:p-6 sm:pb-10">
+      {/* Sayfa başlığı */}
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2.5">
+            <h1 className={`text-xl font-bold ${headingCls}`}>WhatsApp Entegrasyonu</h1>
+            <span
+              className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs font-semibold ${statusBadgeCls}`}
+            >
+              <CheckCheck className="h-3.5 w-3.5" />
+              {connectionLabel}
+            </span>
           </div>
+          <p className={`mt-1 max-w-2xl text-sm ${mutedCls}`}>
+            Müşterilere fatura ve randevu bildirimleri gönderin. QR ile bağlanın veya Meta / Evolution kullanın.
+          </p>
         </div>
-
-        {/* İstatistikler */}
-        <div className={`grid grid-cols-3 divide-x ${darkMode ? 'divide-gray-700 bg-gray-800' : 'divide-gray-100 bg-white'}`}>
-          {[
-            { key: 'pending', label: 'Bekleyen', value: stats.pending, color: 'text-amber-600' },
-            { key: 'sent', label: 'Gönderildi', value: stats.sent, color: 'text-emerald-600' },
-            { key: 'failed', label: 'Hatalı', value: stats.failed, color: 'text-red-600' },
-          ].map((s) => (
-            <div key={s.key} className="px-4 py-4 text-center sm:px-6">
-              <p className={`text-2xl font-bold tabular-nums ${s.color}`}>{s.value}</p>
-              <p className={`mt-0.5 text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{s.label}</p>
-            </div>
-          ))}
+        <div className="flex flex-wrap items-center gap-2">
+          <button type="button" onClick={() => void loadAll()} className={btnSecondary} title="Yenile">
+            <RefreshCw className="h-4 w-4" />
+            Yenile
+          </button>
+          {waProvider === 'EMBEDDED' && (
+            <WhatsAppSessionResetButton
+              baseUrl={waBaseUrl}
+              token={waToken.trim() || null}
+              variant="header"
+              onResetComplete={() => void loadAll()}
+            />
+          )}
+          <button
+            type="button"
+            disabled={saving}
+            onClick={() => void handleSave()}
+            className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60"
+          >
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+            Kaydet
+          </button>
         </div>
       </div>
 
-      {/* Sağlayıcı seçimi */}
-      <section className={`rounded-2xl border p-5 shadow-sm ${panel}`}>
-        <h2 className={`mb-4 flex items-center gap-2 text-base font-semibold ${headingCls}`}>
-          <QrCode className="h-5 w-5 text-[#25D366]" />
-          Bağlantı yöntemi
-        </h2>
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      {/* İstatistik şeridi */}
+      <div className={`grid grid-cols-3 divide-x overflow-hidden rounded-xl border ${panel} ${darkMode ? 'divide-gray-700' : 'divide-gray-200'}`}>
+        {[
+          {
+            key: 'pending',
+            label: 'Bekleyen',
+            value: stats.pending,
+            color: darkMode ? 'text-amber-400' : 'text-amber-600',
+          },
+          {
+            key: 'sent',
+            label: 'Gönderildi',
+            value: stats.sent,
+            color: darkMode ? 'text-emerald-400' : 'text-emerald-600',
+          },
+          {
+            key: 'failed',
+            label: 'Hatalı',
+            value: stats.failed,
+            color: darkMode ? 'text-red-400' : 'text-red-600',
+          },
+        ].map((s) => (
+          <div key={s.key} className="px-4 py-3.5 text-center sm:px-6">
+            <p className={`text-2xl font-bold tabular-nums ${s.color}`}>{s.value}</p>
+            <p className={`mt-0.5 text-xs font-medium ${mutedCls}`}>{s.label}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Bağlantı yöntemi — segmented */}
+      <section className={`rounded-xl border p-4 ${panel}`}>
+        <h2 className={`mb-3 ${sectionTitleCls}`}>Bağlantı yöntemi</h2>
+        <div
+          className={`flex flex-col gap-1 rounded-lg border p-1 sm:flex-row sm:flex-wrap ${
+            darkMode ? 'border-gray-700 bg-gray-900/50' : 'border-gray-200 bg-gray-100/80'
+          }`}
+          role="radiogroup"
+          aria-label="Bağlantı yöntemi"
+        >
           {PROVIDERS.map((p) => {
             const Icon = p.icon;
             const active = waProvider === p.id;
@@ -355,18 +377,30 @@ export function WhatsAppIntegrationModule() {
               <button
                 key={p.id}
                 type="button"
+                role="radio"
+                aria-checked={active}
                 onClick={() => setWaProvider(p.id)}
-                className={`rounded-xl border-2 p-4 text-left transition-all ${
+                className={`flex min-w-0 flex-1 items-center gap-2.5 rounded-md px-3 py-2.5 text-left transition ${
                   active
-                    ? 'border-[#25D366] bg-emerald-50/80 shadow-sm dark:bg-emerald-950/30'
+                    ? darkMode
+                      ? 'bg-gray-800 text-white shadow-sm ring-1 ring-emerald-500/60'
+                      : 'bg-white text-gray-900 shadow-sm ring-1 ring-emerald-500/50'
                     : darkMode
-                      ? 'border-gray-700 bg-gray-900/40 hover:border-gray-600'
-                      : 'border-gray-100 bg-gray-50/80 hover:border-gray-200'
+                      ? 'text-gray-400 hover:bg-gray-800/80 hover:text-gray-200'
+                      : 'text-gray-600 hover:bg-white/70 hover:text-gray-900'
                 }`}
               >
-                <Icon className={`mb-2 h-5 w-5 ${active ? 'text-[#128C7E]' : darkMode ? 'text-gray-400' : 'text-gray-500'}`} />
-                <p className={`text-sm font-semibold ${headingCls}`}>{p.label}</p>
-                <p className={`mt-1 text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{p.desc}</p>
+                <Icon
+                  className={`h-4 w-4 shrink-0 ${
+                    active ? 'text-emerald-600 dark:text-emerald-400' : ''
+                  }`}
+                />
+                <span className="min-w-0">
+                  <span className="block text-sm font-semibold leading-tight">{p.label}</span>
+                  <span className={`mt-0.5 block text-[11px] leading-snug ${active ? mutedCls : 'opacity-80'}`}>
+                    {p.desc}
+                  </span>
+                </span>
               </button>
             );
           })}
@@ -376,7 +410,7 @@ export function WhatsAppIntegrationModule() {
       {/* EMBEDDED bağlantı */}
       {waProvider === 'EMBEDDED' && (
         <section className="space-y-4">
-          <div className={`rounded-2xl border p-5 shadow-sm ${panel}`}>
+          <div className={`rounded-xl border p-4 ${panel}`}>
             <div className="flex flex-wrap items-end gap-3">
               <div className="min-w-[200px] flex-1">
                 <label className={labelCls}>Köprü adresi</label>
@@ -391,7 +425,11 @@ export function WhatsAppIntegrationModule() {
                 <button
                   type="button"
                   onClick={() => setWaBaseUrl('/__wa_bridge')}
-                  className="rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2.5 text-xs font-medium text-emerald-800 hover:bg-emerald-100 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200"
+                  className={`rounded-lg border px-3 py-2.5 text-xs font-medium ${
+                    darkMode
+                      ? 'border-emerald-800 bg-emerald-950/40 text-emerald-200 hover:bg-emerald-950/60'
+                      : 'border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100'
+                  }`}
                 >
                   Önerilen: /__wa_bridge
                 </button>
@@ -400,16 +438,16 @@ export function WhatsAppIntegrationModule() {
 
             {staleUrlWarning && (
               <div
-                className={`mt-4 flex gap-3 rounded-xl border p-4 text-sm ${
+                className={`mt-4 flex gap-3 rounded-lg border p-4 text-sm ${
                   darkMode ? 'border-amber-800 bg-amber-950/30 text-amber-200' : 'border-amber-200 bg-amber-50 text-amber-900'
                 }`}
               >
                 <AlertTriangle className="h-5 w-5 shrink-0" />
                 <div>
                   <p className="font-medium">Köprü adresi güncellenmeli</p>
-                  <p className="mt-1 text-xs opacity-90">
-                    Geçici veya harici URL kullanılıyor. Canlıda <strong>/__wa_bridge</strong> yazıp{' '}
-                    <strong>Kaydet</strong>e basın.
+                  <p className={`mt-1 text-xs ${mutedCls}`}>
+                    Geçici veya harici URL kullanılıyor. Canlıda <strong className={headingCls}>/__wa_bridge</strong> yazıp{' '}
+                    <strong className={headingCls}>Kaydet</strong>e basın.
                   </p>
                 </div>
               </div>
@@ -459,8 +497,8 @@ export function WhatsAppIntegrationModule() {
 
       {/* Evolution / Meta API alanları */}
       {waProvider !== 'EMBEDDED' && waProvider !== 'NONE' && (
-        <section className={`rounded-2xl border p-5 shadow-sm space-y-4 ${panel}`}>
-          <h2 className={`text-base font-semibold ${headingCls}`}>API ayarları</h2>
+        <section className={`space-y-4 rounded-xl border p-4 ${panel}`}>
+          <h2 className={sectionTitleCls}>API ayarları</h2>
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="sm:col-span-2">
               <label className={labelCls}>API adresi</label>
@@ -490,15 +528,19 @@ export function WhatsAppIntegrationModule() {
             onPhoneChange={setTestPhone}
             onMessageChange={setTestMessage}
             onSend={() => void handleTestSend()}
-            className="mt-4"
+            className="mt-2"
           />
         </section>
       )}
 
       {waProvider === 'NONE' && (
         <>
-          <div className={`rounded-2xl border border-dashed p-8 text-center ${darkMode ? 'border-gray-700 text-gray-400' : 'border-gray-200 text-gray-500'}`}>
-            <Phone className="mx-auto mb-3 h-10 w-10 opacity-40" />
+          <div
+            className={`rounded-xl border border-dashed p-8 text-center ${
+              darkMode ? 'border-gray-700 text-gray-400' : 'border-gray-300 text-gray-500'
+            }`}
+          >
+            <Phone className="mx-auto mb-3 h-9 w-9 opacity-40" />
             <p className="text-sm">WhatsApp kapalı. Bildirim göndermek için yukarıdan bir bağlantı yöntemi seçin.</p>
           </div>
           <WhatsAppTestSendCard
@@ -516,21 +558,25 @@ export function WhatsAppIntegrationModule() {
 
       {/* Bildirimler */}
       {waProvider !== 'NONE' && (
-        <section className={`rounded-2xl border shadow-sm ${panel}`}>
+        <section className={`rounded-xl border ${panel}`}>
           <button
             type="button"
             onClick={() => setShowTemplates((v) => !v)}
-            className={`flex w-full items-center justify-between px-5 py-4 text-left ${headingCls}`}
+            className={`flex w-full items-center justify-between px-4 py-3.5 text-left ${headingCls}`}
           >
-            <span className="flex items-center gap-2 font-semibold">
-              <Bell className="h-5 w-5 text-blue-500" />
+            <span className="flex items-center gap-2 text-sm font-semibold">
+              <Bell className={`h-4 w-4 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`} />
               Otomatik bildirimler
             </span>
             {showTemplates ? <ChevronUp className="h-5 w-5 opacity-50" /> : <ChevronDown className="h-5 w-5 opacity-50" />}
           </button>
           {showTemplates && (
-            <div className="space-y-4 border-t px-5 py-4 dark:border-gray-700">
-              <label className={`flex cursor-pointer items-start gap-3 rounded-xl border p-4 ${darkMode ? 'border-gray-700 bg-gray-900/40' : 'border-gray-100 bg-gray-50'}`}>
+            <div className={`space-y-4 border-t px-4 py-4 ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+              <label
+                className={`flex cursor-pointer items-start gap-3 rounded-lg border p-3.5 ${
+                  darkMode ? 'border-gray-700 bg-gray-900/40' : 'border-gray-200 bg-gray-50'
+                }`}
+              >
                 <input
                   type="checkbox"
                   className="mt-1"
@@ -539,7 +585,7 @@ export function WhatsAppIntegrationModule() {
                 />
                 <div>
                   <p className={`text-sm font-medium ${headingCls}`}>Fatura sonrası WhatsApp bildirimi</p>
-                  <p className={`mt-0.5 text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                  <p className={`mt-0.5 text-xs ${mutedCls}`}>
                     Müşteri kartında telefon numarası olmalı
                   </p>
                 </div>
@@ -554,8 +600,12 @@ export function WhatsAppIntegrationModule() {
                 />
               </div>
               {waProvider === 'META' ? (
-                <div className={`space-y-4 rounded-xl border p-4 ${darkMode ? 'border-indigo-900 bg-indigo-950/30' : 'border-indigo-100 bg-indigo-50/50'}`}>
-                  <p className="text-xs text-indigo-800 dark:text-indigo-200">
+                <div
+                  className={`space-y-4 rounded-lg border p-4 ${
+                    darkMode ? 'border-gray-700 bg-gray-900/40' : 'border-gray-200 bg-gray-50'
+                  }`}
+                >
+                  <p className={`text-xs ${mutedCls}`}>
                     Meta proaktif bildirimler için onaylı şablon zorunludur.
                   </p>
                   <div>
@@ -607,16 +657,16 @@ export function WhatsAppIntegrationModule() {
 
       {/* Kuyruk */}
       {waProvider !== 'NONE' && (
-        <section className={`rounded-2xl border p-5 shadow-sm ${panel}`}>
-          <h2 className={`mb-4 flex items-center gap-2 text-base font-semibold ${headingCls}`}>
-            <Inbox className="h-5 w-5 text-blue-500" />
+        <section className={`rounded-xl border p-4 ${panel}`}>
+          <h2 className={`mb-3 flex items-center gap-2 ${sectionTitleCls}`}>
+            <Inbox className="h-4 w-4" />
             Bildirim kuyruğu
           </h2>
           <button
             type="button"
             disabled={processing || stats.pending === 0}
             onClick={() => void handleProcessQueue()}
-            className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-40"
+            className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-40"
           >
             {processing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
             Bekleyenleri gönder ({stats.pending})
@@ -625,25 +675,25 @@ export function WhatsAppIntegrationModule() {
       )}
 
       {/* Son bildirimler */}
-      <section className={`overflow-hidden rounded-2xl border shadow-sm ${panel}`}>
-        <div className={`flex items-center gap-2 border-b px-5 py-4 font-semibold dark:border-gray-700 ${headingCls}`}>
-          <Inbox className="h-5 w-5 text-gray-400" />
-          Son bildirimler
+      <section className={`overflow-hidden rounded-xl border ${panel}`}>
+        <div className={`flex items-center gap-2 border-b px-4 py-3.5 ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+          <Inbox className={`h-4 w-4 ${mutedCls}`} />
+          <h2 className={sectionTitleCls}>Son bildirimler</h2>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className={darkMode ? 'bg-gray-900/60 text-left text-xs uppercase text-gray-500' : 'bg-gray-50 text-left text-xs uppercase text-gray-500'}>
               <tr>
-                <th className="px-4 py-3">Tarih</th>
-                <th className="px-4 py-3">Olay</th>
-                <th className="px-4 py-3">Alıcı</th>
-                <th className="px-4 py-3">Durum</th>
+                <th className="px-4 py-3 font-medium">Tarih</th>
+                <th className="px-4 py-3 font-medium">Olay</th>
+                <th className="px-4 py-3 font-medium">Alıcı</th>
+                <th className="px-4 py-3 font-medium">Durum</th>
               </tr>
             </thead>
-            <tbody>
+            <tbody className={darkMode ? 'text-gray-200' : 'text-gray-800'}>
               {queue.length === 0 ? (
                 <tr>
-                  <td colSpan={4} className={`px-4 py-10 text-center ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                  <td colSpan={4} className={`px-4 py-10 text-center ${mutedCls}`}>
                     Henüz bildirim kaydı yok
                   </td>
                 </tr>
@@ -659,12 +709,18 @@ export function WhatsAppIntegrationModule() {
                     </td>
                     <td className="px-4 py-3">
                       <span
-                        className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+                        className={`inline-flex rounded-md border px-2 py-0.5 text-xs font-semibold ${
                           row.status === 'sent'
-                            ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300'
+                            ? darkMode
+                              ? 'border-emerald-800 bg-emerald-900/40 text-emerald-300'
+                              : 'border-emerald-200 bg-emerald-50 text-emerald-800'
                             : row.status === 'failed'
-                              ? 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300'
-                              : 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300'
+                              ? darkMode
+                                ? 'border-red-800 bg-red-900/40 text-red-300'
+                                : 'border-red-200 bg-red-50 text-red-800'
+                              : darkMode
+                                ? 'border-amber-800 bg-amber-900/40 text-amber-300'
+                                : 'border-amber-200 bg-amber-50 text-amber-800'
                         }`}
                       >
                         {QUEUE_STATUS_TR[row.status || ''] || row.status}
@@ -678,7 +734,7 @@ export function WhatsAppIntegrationModule() {
         </div>
       </section>
 
-      <p className={`text-center text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+      <p className={`text-center text-xs ${mutedCls}`}>
         Baileys resmi WhatsApp API değildir. Üretimde Meta Cloud API önerilir.
         {settings?.updated_at ? ` · Son güncelleme: ${String(settings.updated_at).split('T')[0]}` : ''}
       </p>
@@ -697,27 +753,41 @@ function MetaTemplateCard({
   darkMode: boolean;
 }) {
   const preview = previewMetaTemplateBody(template, template.sampleValues);
+  const box = darkMode ? 'border-gray-700 bg-gray-900/50' : 'border-gray-200 bg-white';
+  const muted = darkMode ? 'text-gray-400' : 'text-gray-500';
   return (
-    <div className={`mt-2 space-y-2 rounded-xl border p-3 text-xs ${darkMode ? 'border-indigo-900 bg-gray-900/50' : 'border-indigo-100 bg-white'}`}>
+    <div className={`mt-2 space-y-2 rounded-lg border p-3 text-xs ${box}`}>
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <span className="font-mono text-indigo-700 dark:text-indigo-300">{template.metaName}</span>
+        <span className={`font-mono font-medium ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>{template.metaName}</span>
         <button
           type="button"
           onClick={onCopy}
-          className="inline-flex items-center gap-1 rounded-lg border border-indigo-200 px-2 py-1 text-indigo-800 hover:bg-indigo-50 dark:border-indigo-800 dark:text-indigo-200 dark:hover:bg-indigo-950"
+          className={`inline-flex items-center gap-1 rounded-lg border px-2 py-1 ${
+            darkMode
+              ? 'border-gray-600 text-gray-300 hover:bg-gray-800'
+              : 'border-gray-200 text-gray-700 hover:bg-gray-50'
+          }`}
         >
           <Copy className="h-3 w-3" />
           Kopyala
         </button>
       </div>
       {template.headerForMetaConsole && (
-        <p className="text-gray-500">
+        <p className={muted}>
           <FileText className="mr-1 inline h-3 w-3" />
           {template.headerForMetaConsole}
         </p>
       )}
-      <p className="whitespace-pre-wrap break-words font-mono text-gray-600 dark:text-gray-400">{template.bodyForMetaConsole}</p>
-      <p className="rounded-lg bg-emerald-50 p-2 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300">Önizleme: {preview}</p>
+      <p className={`whitespace-pre-wrap break-words font-mono ${muted}`}>{template.bodyForMetaConsole}</p>
+      <p
+        className={`rounded-lg border p-2 ${
+          darkMode
+            ? 'border-emerald-800 bg-emerald-950/40 text-emerald-300'
+            : 'border-emerald-200 bg-emerald-50 text-emerald-800'
+        }`}
+      >
+        Önizleme: {preview}
+      </p>
     </div>
   );
 }
