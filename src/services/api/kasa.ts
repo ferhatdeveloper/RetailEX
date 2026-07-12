@@ -561,7 +561,11 @@ async function createKasaIslemiViaPostgrest(
  */
 export async function createKasaIslemi(incoming: KasaIslemi): Promise<KasaIslemi> {
   try {
-    let islem = incoming;
+    let islem = {
+      ...incoming,
+      islem_tipi: String(incoming.islem_tipi || '').trim().toUpperCase(),
+      tutar: Math.abs(Number(incoming.tutar) || 0),
+    };
     if (
       (islem.islem_tipi === 'CH_TAHSILAT' || islem.islem_tipi === 'CH_ODEME') &&
       !islem.cari_hesap_id
@@ -678,8 +682,9 @@ export async function createKasaIslemi(incoming: KasaIslemi): Promise<KasaIslemi
     );
 
     // Update current account balance for CH_ODEME and CH_TAHSILAT
-    // CH_ODEME: We pay supplier/customer → reduces outstanding balance → balance decreases
-    // CH_TAHSILAT: We collect from customer → reduces their outstanding → balance decreases
+    // Önemli: Kasa sign (+1/-1) cariye uygulanmaz. Tahsilat/ödeme açık bakiyeyi düşürür (-ABS).
+    // CH_TAHSILAT: müşteriden tahsilat → alacak → borç ↓
+    // CH_ODEME: tedarikçiye/müşteriye ödeme → açık ↓
     if (islem.cari_hesap_id && (islem.islem_tipi === 'CH_ODEME' || islem.islem_tipi === 'CH_TAHSILAT')) {
       const delta = cariCashStoredBalanceDelta(islem.tutar, islem.islem_tipi);
       if (delta !== 0) {

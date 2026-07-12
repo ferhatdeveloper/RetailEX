@@ -600,15 +600,16 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: 'all
   // fiche_type → category eşleştirmesi (invoice_category DB'de saklanmaz)
   const ficheTypeToInfo = (ficheType: string, trcode: number, cancelled?: boolean) => {
     if (cancelled) return { label: 'Silindi', color: 'bg-gray-200 text-gray-600 line-through', isReturn: false };
-    if (ficheType === 'purchase_invoice') return { label: 'Alış', color: 'bg-orange-100 text-orange-700', isReturn: false };
-    if (ficheType === 'return_invoice') return { label: 'İade', color: 'bg-red-100 text-red-700', isReturn: true };
-    if (ficheType === 'waybill') return { label: 'İrsaliye', color: 'bg-purple-100 text-purple-700', isReturn: false };
-    if (ficheType === 'order') return { label: 'Sipariş', color: 'bg-gray-100 text-gray-600', isReturn: false };
-    // Kasa işlemleri — isReturn=true: ödeme/tahsilat her iki hesap tipi için bakiyeyi düşürür
-    if (ficheType === 'CH_ODEME') return { label: 'Ödeme', color: 'bg-green-100 text-green-700', isReturn: true };
-    if (ficheType === 'CH_TAHSILAT') return { label: 'Tahsilat', color: 'bg-teal-100 text-teal-700', isReturn: true };
-    if (ficheType === 'opening_balance') return { label: 'Devir', color: 'bg-indigo-100 text-indigo-800', isReturn: false, isOpening: true };
-    // sales_invoice: trcode 9 = Hizmet
+    const ft = String(ficheType || '').trim();
+    const ftUpper = ft.toUpperCase();
+    if (ft === 'purchase_invoice') return { label: 'Alış', color: 'bg-orange-100 text-orange-700', isReturn: false };
+    if (ft === 'return_invoice') return { label: 'İade', color: 'bg-red-100 text-red-700', isReturn: true };
+    if (ft === 'waybill') return { label: 'İrsaliye', color: 'bg-purple-100 text-purple-700', isReturn: false };
+    if (ft === 'order') return { label: 'Sipariş', color: 'bg-gray-100 text-gray-600', isReturn: false };
+    // Kasa: tahsilat/ödeme bakiyeyi düşürür — eşleşme başarısız olursa satış gibi borç yazılırdı
+    if (ftUpper === 'CH_ODEME') return { label: 'Ödeme', color: 'bg-green-100 text-green-700', isReturn: true };
+    if (ftUpper === 'CH_TAHSILAT') return { label: 'Tahsilat', color: 'bg-teal-100 text-teal-700', isReturn: true };
+    if (ft === 'opening_balance') return { label: 'Devir', color: 'bg-indigo-100 text-indigo-800', isReturn: false, isOpening: true };
     if (trcode === 9) return { label: 'Hizmet', color: 'bg-indigo-100 text-indigo-700', isReturn: false };
     return { label: 'Satış', color: 'bg-blue-100 text-blue-700', isReturn: false };
   };
@@ -1224,6 +1225,8 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: 'all
             kod: cashAction.account.code || '',
             unvan: cashAction.account.name,
             bakiye: cashAction.account.balance || 0,
+            cardType: cashAction.account.cardType,
+            ledgerBalance: cashAction.account.balance || 0,
           }}
           initialDescription={`${cashAction.type === 'CH_TAHSILAT' ? 'Tahsilat' : 'Ödeme'}: ${cashAction.account.code || ''} - ${cashAction.account.name}`}
           onClose={() => setCashAction(null)}

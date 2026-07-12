@@ -19,6 +19,11 @@ describe('cariCashLineLedgerContrib', () => {
   it('negatif amount mutlak değerle işlenir', () => {
     expect(cariCashLineLedgerContrib(-200, 'CH_TAHSILAT')).toBe(-200);
   });
+
+  it('küçük harf / boşluklu tip yine borcu azaltır', () => {
+    expect(cariCashLineLedgerContrib(100, ' ch_tahsilat ')).toBe(-100);
+    expect(cariCashLineLedgerContrib(100, 'ch_odeme')).toBe(-100);
+  });
 });
 
 describe('compute balance from ledger with cash', () => {
@@ -36,6 +41,11 @@ describe('compute balance from ledger with cash', () => {
   it('müşteri: tahsilat sonrası bakiye düşer', () => {
     const bal = computeCustomerBalanceFromLedger('c1', 'Test Müşteri', sales, tahsilat);
     expect(bal).toBe(800);
+  });
+
+  it('müşteri: küçük harfli CH_TAHSILAT da bakiyeyi düşürür (satış gibi eklemez)', () => {
+    const messy = [{ customer_id: 'c1', amount: 200, transaction_type: 'ch_tahsilat' }];
+    expect(computeCustomerBalanceFromLedger('c1', 'Test', sales, messy)).toBe(800);
   });
 
   it('peşin nakit satış cari borca yazılmaz', () => {

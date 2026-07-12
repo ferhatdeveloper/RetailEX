@@ -58,10 +58,11 @@ export function sqlCustomerAccountBalancesCte(custTable: string, firmNrBind: str
             OR ${customerDebtPmSqlS}
           )
         UNION ALL
-        SELECT customer_id AS id, (CASE WHEN transaction_type IN ('CH_ODEME', 'CH_TAHSILAT') THEN -ABS(amount) ELSE 0 END) AS line_contrib
+        SELECT customer_id AS id,
+          (CASE WHEN UPPER(TRIM(transaction_type)) IN ('CH_ODEME', 'CH_TAHSILAT') THEN -ABS(amount) ELSE 0 END) AS line_contrib
         FROM cash_lines
         WHERE customer_id IS NOT NULL
-          AND transaction_type IN ('CH_ODEME', 'CH_TAHSILAT')
+          AND UPPER(TRIM(transaction_type)) IN ('CH_ODEME', 'CH_TAHSILAT')
       ) customer_tx
       GROUP BY id
     )`;
@@ -107,10 +108,11 @@ export function sqlSupplierAccountBalancesCte(suppTable: string): string {
             OR ${supplierDebtPmSqlSl}
           )
         UNION ALL
-        SELECT customer_id AS id, (CASE WHEN transaction_type IN ('CH_ODEME', 'CH_TAHSILAT') THEN -ABS(amount) ELSE 0 END) AS line_contrib
+        SELECT customer_id AS id,
+          (CASE WHEN UPPER(TRIM(transaction_type)) IN ('CH_ODEME', 'CH_TAHSILAT') THEN -ABS(amount) ELSE 0 END) AS line_contrib
         FROM cash_lines
         WHERE customer_id IS NOT NULL
-          AND transaction_type IN ('CH_ODEME', 'CH_TAHSILAT')
+          AND UPPER(TRIM(transaction_type)) IN ('CH_ODEME', 'CH_TAHSILAT')
       ) supplier_tx
       GROUP BY id
     )`;
@@ -147,13 +149,14 @@ export type LedgerCashRow = {
 /**
  * Kasa CH_TAHSILAT / CH_ODEME satırının cari bakiyeye katkısı.
  * Pozitif bakiye: müşteri bize borçlu / tedarikçiye biz borçluyuz.
- * Tahsilat ve ödeme açık bakiyeyi azaltır (ekstre isReturn=true ile uyumlu).
+ * Tahsilat (müşteri alacak) ve ödeme (tedarikçi borç kapanışı) açık bakiyeyi düşürür.
+ * Not: Kasa `sign` (+1 tahsilat / -1 ödeme) cari yönü değildir — asla amount*sign kullanma.
  */
 export function cariCashLineLedgerContrib(
   amount: number | string | null | undefined,
   transactionType: string | null | undefined,
 ): number {
-  const tt = String(transactionType || '').toUpperCase();
+  const tt = String(transactionType || '').trim().toUpperCase();
   if (tt !== 'CH_ODEME' && tt !== 'CH_TAHSILAT') return 0;
   const amt = Math.abs(parseFloat(String(amount ?? 0)) || 0);
   if (!amt) return 0;
@@ -272,7 +275,7 @@ export function computeCustomerBalanceFromLedger(
   let cashTxn = 0;
   let cashSum = 0;
   for (const cl of cashLines) {
-    const tt = String(cl.transaction_type || '');
+    const tt = String(cl.transaction_type || '').trim().toUpperCase();
     if (tt !== 'CH_ODEME' && tt !== 'CH_TAHSILAT') continue;
     const cid = cl.customer_id ? String(cl.customer_id) : '';
     if (!cid || cid !== idStr) continue;
@@ -297,7 +300,7 @@ export function computeSupplierBalanceFromLedger(
   const idStr = String(accountId || '');
   let sum = sumSupplierSalesLedger(accountId, accountName, sales);
   for (const cl of cashLines) {
-    const tt = String(cl.transaction_type || '');
+    const tt = String(cl.transaction_type || '').trim().toUpperCase();
     if (tt !== 'CH_ODEME' && tt !== 'CH_TAHSILAT') continue;
     const cid = cl.customer_id ? String(cl.customer_id) : '';
     if (!cid || cid !== idStr) continue;

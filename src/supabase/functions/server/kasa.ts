@@ -86,39 +86,39 @@ async function createAccountingEntry(
     let satirlar: any[] = [];
     
     if (islem.islem_tipi === 'CH_TAHSILAT') {
-      // Cari Hesap Tahsilat: Cari Hesap Borç, Kasa Alacak
+      // Cari Hesap Tahsilat: Kasa Borç, Alıcılar Alacak (müşteri borcu düşer)
       satirlar = [
         {
           hesap_kodu: kasa.muhasebe_hesap_kodu || '100.01.001',
           hesap_adi: kasa.muhasebe_hesap_adi || 'Kasa',
-          borc: 0,
-          alacak: islem.tutar,
+          borc: islem.tutar,
+          alacak: 0,
           aciklama: `Cari Hesap Tahsilat - ${islem.cari_hesap_unvani || ''}`,
         },
         {
           hesap_kodu: islem.cari_hesap_kodu || '120.01.001',
           hesap_adi: islem.cari_hesap_unvani || 'Cari Hesap',
-          borc: islem.tutar,
-          alacak: 0,
+          borc: 0,
+          alacak: islem.tutar,
           aciklama: `Cari Hesap Tahsilat - ${kasa.kasa_adi}`,
         },
       ];
     } else if (islem.islem_tipi === 'CH_ODEME') {
-      // Cari Hesap Ödeme: Kasa Borç, Cari Hesap Alacak
+      // Cari Hesap Ödeme: Satıcılar Borç, Kasa Alacak (tedarikçi borcu düşer)
       satirlar = [
+        {
+          hesap_kodu: islem.cari_hesap_kodu || '320.01.001',
+          hesap_adi: islem.cari_hesap_unvani || 'Cari Hesap',
+          borc: islem.tutar,
+          alacak: 0,
+          aciklama: `Cari Hesap Ödeme - ${kasa.kasa_adi}`,
+        },
         {
           hesap_kodu: kasa.muhasebe_hesap_kodu || '100.01.001',
           hesap_adi: kasa.muhasebe_hesap_adi || 'Kasa',
-          borc: islem.tutar,
-          alacak: 0,
-          aciklama: `Cari Hesap Ödeme - ${islem.cari_hesap_unvani || ''}`,
-        },
-        {
-          hesap_kodu: islem.cari_hesap_kodu || '120.01.001',
-          hesap_adi: islem.cari_hesap_unvani || 'Cari Hesap',
           borc: 0,
           alacak: islem.tutar,
-          aciklama: `Cari Hesap Ödeme - ${kasa.kasa_adi}`,
+          aciklama: `Cari Hesap Ödeme - ${islem.cari_hesap_unvani || ''}`,
         },
       ];
     } else if (islem.islem_tipi === 'KASA_GIRIS') {

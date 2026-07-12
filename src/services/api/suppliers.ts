@@ -19,6 +19,10 @@ import {
 } from './accountBalance';
 import { buildCariDbPayload } from './cariAccountFields';
 import { filterSupplierRowsHiddenByCustomerCode, resolveCanonicalCariAccountId } from './cariAccountResolve';
+import {
+  paymentMethodImpliesCustomerDebt,
+  paymentMethodImpliesSupplierDebt,
+} from '../../utils/paymentMethodUtils';
 export type { Supplier };
 
 export type CariListFilter = 'all' | 'customer' | 'supplier';
@@ -52,24 +56,28 @@ function mapCashRowToEkstre(r: any) {
     fiche_no: r.fiche_no,
     date: r.date,
     trcode: 0,
-    fiche_type: r.transaction_type,
-    total_amount: r.amount,
+    fiche_type: String(r.transaction_type || '').trim().toUpperCase(),
+    total_amount: Math.abs(parseFloat(String(r.amount ?? 0)) || 0),
     currency: r.currency_code,
     notes: r.definition,
   };
 }
 
-/** Tedarikçi ekstresi: alış + alış iade; müşteri ekstresi: satış + satış iade */
+/** Tedarikçi ekstresi: alış + alış iade; müşteri ekstresi: veresiye satış + iade (peşin hariç) */
 function isCariEkstreSaleRow(
-  row: { fiche_type?: string | null },
+  row: { fiche_type?: string | null; payment_method?: string | null },
   cardType?: 'customer' | 'supplier',
 ): boolean {
   const ft = String(row.fiche_type || '').toLowerCase();
   if (cardType === 'supplier') {
-    return ft === 'purchase_invoice' || ft === 'return_invoice' || ft === 'opening_balance';
+    if (ft === 'return_invoice' || ft === 'opening_balance') return true;
+    if (ft !== 'purchase_invoice') return false;
+    return paymentMethodImpliesSupplierDebt(row.payment_method);
   }
   if (cardType === 'customer') {
-    return ft === 'sales_invoice' || ft === 'return_invoice' || ft === 'service' || ft === 'hizmet' || ft === 'opening_balance';
+    if (ft === 'return_invoice' || ft === 'opening_balance') return true;
+    if (ft !== 'sales_invoice' && ft !== 'service' && ft !== 'hizmet') return false;
+    return paymentMethodImpliesCustomerDebt(row.payment_method);
   }
   return true;
 }
@@ -598,7 +606,7 @@ export const supplierAPI = {
         const cashPath = `/rex_${fn}_${pn}_cash_lines`;
 
         const salesByIdQuery: Record<string, string> = {
-          select: 'fiche_no,date,trcode,fiche_type,net_amount,currency,notes,is_cancelled,customer_id,customer_name',
+          select: 'fiche_no,date,trcode,fiche_type,net_amount,currency,notes,is_cancelled,customer_id,customer_name,payment_method',
           customer_id: `eq.${accountId}`,
           order: 'date.asc',
         };
@@ -627,7 +635,7 @@ export const supplierAPI = {
         const nameTrim = String(accountName || '').trim();
         const nameSalesQuery: Record<string, string> | null = nameTrim
           ? {
-              select: 'fiche_no,date,trcode,fiche_type,net_amount,currency,notes,customer_id,customer_name,is_cancelled',
+              select: 'fiche_no,date,trcode,fiche_type,net_amount,currency,notes,customer_id,customer_name,is_cancelled,payment_method',
               customer_name: `not.is.null`,
               order: 'date.asc',
               limit: '5000',
@@ -730,11 +738,11 @@ export const supplierAPI = {
         WHERE ${accountMatchSales}${ledgerFicheFilter}${dateFilter}
         UNION ALL
         SELECT fiche_no, date, 0 AS trcode, transaction_type AS fiche_type,
-               amount AS total_amount, currency_code AS currency, definition AS notes,
+               ABS(amount) AS total_amount, currency_code AS currency, definition AS notes,
                false AS is_cancelled
         FROM cash_lines t
         WHERE t.customer_id::text = $1::text${dateFilter}
-          AND t.transaction_type IN ('CH_ODEME', 'CH_TAHSILAT')
+          AND UPPER(TRIM(t.transaction_type)) IN ('CH_ODEME', 'CH_TAHSILAT')
         ORDER BY date ASC`;
 
       const { rows } = await postgres.query(sql, values);

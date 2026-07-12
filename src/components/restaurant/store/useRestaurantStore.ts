@@ -508,9 +508,7 @@ export const useRestaurantStore = create<RestaurantState>()(
                         if (tableSnapshot.customerId) {
                             const customerStore = useCustomerStore.getState();
                             await customerStore.updatePurchaseHistory(tableSnapshot.customerId, effectiveTotal);
-                            const accountPayments = paymentData.payments?.filter((p: any) => p.method === 'account') || [];
-                            const totalAccountAmount = accountPayments.reduce((sum: number, p: any) => sum + p.amount, 0);
-                            if (totalAccountAmount > 0) await customerStore.updateBalance(tableSnapshot.customerId, totalAccountAmount);
+                            // Veresiye cari borcu salesAPI → invoicesAPI.create içinde tek kez yazılır; burada tekrar ekleme.
                             const points = Math.floor(effectiveTotal / 100);
                             if (points > 0) await customerStore.updatePoints(tableSnapshot.customerId, points);
                         }

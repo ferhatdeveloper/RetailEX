@@ -33,7 +33,7 @@ async function repairCariBalancesRestApi(firmNr: string): Promise<void> {
     safeGet(`/${custTable}`, { select: 'id,name,balance', firm_nr: `eq.${firmNr}`, is_active: 'eq.true', limit: '5000' }),
     safeGet(`/${suppTable}`, { select: 'id,name,balance', is_active: 'eq.true', limit: '5000' }),
     safeGet(salesPath, {
-      select: 'customer_id,customer_name,net_amount,fiche_type,is_cancelled',
+      select: 'customer_id,customer_name,net_amount,fiche_type,is_cancelled,payment_method',
       is_cancelled: 'eq.false',
       limit: '50000',
     }),
