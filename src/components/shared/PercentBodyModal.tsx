@@ -1,4 +1,4 @@
-import { useEffect, type CSSProperties, type ReactNode } from 'react';
+import { useEffect, useState, type CSSProperties, type ReactNode } from 'react';
 import { FullscreenBodyPortal, MODAL_OVERLAY_Z } from './FullscreenBodyPortal';
 
 export const PERCENT_BODY_MODAL_PORTAL_CLASS =
@@ -38,11 +38,16 @@ export function PercentBodyModal({
   shellClassName = '',
   ariaLabel,
 }: PercentBodyModalProps) {
+  /** Satır tıklamasıyla açılınca aynı click overlay’e “düşüp” hemen kapanmasın. */
+  const [overlayCloseArmed, setOverlayCloseArmed] = useState(false);
+
   useEffect(() => {
     const prev = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
+    const arm = window.setTimeout(() => setOverlayCloseArmed(true), 80);
     return () => {
       document.body.style.overflow = prev;
+      window.clearTimeout(arm);
     };
   }, []);
 
@@ -53,7 +58,7 @@ export function PercentBodyModal({
       role="dialog"
       aria-modal
       aria-label={ariaLabel}
-      onClick={onClose}
+      onClick={overlayCloseArmed ? onClose : undefined}
     >
       <div
         className={`flex flex-col shadow-2xl overflow-hidden rounded-xl isolate bg-white text-gray-900 min-h-0 ${shellClassName}`}

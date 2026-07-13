@@ -494,9 +494,12 @@ class StockMovementAPI {
                     }
                 }
 
-                // 2) Fatura satırları — invoicesAPI (PostgREST + item_code / product_id birleşimi)
+                // 2) Fatura satırları — UUID + kod (item_code bazen UUID, bazen ürün kodu)
                 const histPid = resolvedUuid || pid;
-                const hist = await invoicesAPI.getProductHistory(histPid);
+                const hist = await invoicesAPI.getProductHistory(histPid, {
+                    code: hint?.code || (!UUID_RE.test(pid) ? pid : undefined),
+                    barcode: hint?.barcode,
+                });
                 for (const h of hist) {
                     const ficheType = String(h.ficheType || h.fiche_type || '');
                     const kind = String(h.type || '');
@@ -548,7 +551,7 @@ class StockMovementAPI {
                 return combinedRaw.map(mapRow);
             } catch (e) {
                 console.warn('[StockMovementAPI] getProductMovements PostgREST:', e);
-                return [];
+                // Postgres yoluna düş — sessiz [] ile modalın “boş/açılmadı” karışmasın.
             }
         }
 
@@ -569,8 +572,12 @@ class StockMovementAPI {
                  JOIN stock_movements m ON i.movement_id = m.id
                  LEFT JOIN stores s ON m.warehouse_id = s.id
                  WHERE i.product_id::text = $1
-                    OR i.product_id IN (SELECT id FROM products WHERE code = $1 OR id::text = $1)`,
-                [productId]
+                    OR i.product_id IN (
+                         SELECT id FROM products
+                         WHERE code = $1 OR id::text = $1 OR barcode = $1
+                            OR ($2::text <> '' AND (code = $2 OR barcode = $2))
+                       )`,
+                [productId, String(hint?.code || '').trim()]
             );
             slipRows = rows;
         } catch (err) {
@@ -610,9 +617,24 @@ class StockMovementAPI {
                  JOIN sales sl ON si.invoice_id = sl.id
                  LEFT JOIN stores st ON sl.store_id = st.id
                  WHERE si.item_code = $1
-                    OR si.item_code IN (SELECT code FROM products WHERE id::text = $1 OR code = $1)
-                    OR si.product_id::text = $1`,
-                [productId]
+                    OR si.product_id::text = $1
+                    OR si.item_code IN (
+                         SELECT code FROM products WHERE id::text = $1 OR code = $1 OR barcode = $1
+                       )
+                    OR si.item_code IN (
+                         SELECT id::text FROM products WHERE id::text = $1 OR code = $1 OR barcode = $1
+                       )
+                    OR si.product_id IN (
+                         SELECT id FROM products WHERE id::text = $1 OR code = $1 OR barcode = $1
+                       )
+                    OR (
+                         NULLIF(TRIM($2::text), '') IS NOT NULL
+                         AND (
+                           si.item_code = TRIM($2::text)
+                           OR si.product_id IN (SELECT id FROM products WHERE code = TRIM($2::text) OR barcode = TRIM($2::text))
+                         )
+                       )`,
+                [productId, String(hint?.code || '').trim()]
             );
             invoiceRows = rows;
         } catch (err) {

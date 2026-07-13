@@ -16,6 +16,7 @@ import {
   SIGNED_LINE_PROFIT_EXPR,
   SIGNED_LINE_QTY_EXPR,
   SIGNED_LINE_REVENUE_EXPR,
+  SQL_LINE_RESOLVED_PRODUCT_ID,
   SQL_PL_SALES_OR_RETURN,
 } from '../../utils/lastPurchaseCostSql';
 import {
@@ -24,6 +25,7 @@ import {
 } from './ProductMovementHistoryModal';
 interface SalesData {
   rowKey: string;
+  productId: string;
   productCode: string;
   productName: string;
   quantity: number;
@@ -86,6 +88,7 @@ export function ProfitLossReport() {
           sql = `
             WITH ${PROFIT_CTES}
             SELECT
+              ''::text AS product_id,
               COALESCE(leaf_cat.id::text, NULLIF(TRIM(COALESCE(p.category_code, '')), ''), 'diger') AS product_code,
               COALESCE(leaf_cat.name, NULLIF(TRIM(COALESCE(p.category_code, '')), ''), 'Diğer') AS product_name,
               SUM(${SIGNED_LINE_QTY_EXPR}) AS quantity,
@@ -110,6 +113,7 @@ export function ProfitLossReport() {
           sql = `
             WITH ${PROFIT_CTES}
             SELECT
+              ''::text AS product_id,
               to_char((s.date AT TIME ZONE 'UTC')::date, 'YYYY-MM-DD') AS product_code,
               to_char((s.date AT TIME ZONE 'UTC')::date, 'YYYY-MM-DD') AS product_name,
               SUM(${SIGNED_LINE_QTY_EXPR}) AS quantity,
@@ -131,6 +135,7 @@ export function ProfitLossReport() {
           sql = `
             WITH ${PROFIT_CTES}
             SELECT
+              ''::text AS product_id,
               to_char(date_trunc('month', s.date AT TIME ZONE 'UTC'), 'YYYY-MM') AS product_code,
               to_char(date_trunc('month', s.date AT TIME ZONE 'UTC'), 'YYYY-MM') AS product_name,
               SUM(${SIGNED_LINE_QTY_EXPR}) AS quantity,
@@ -152,6 +157,7 @@ export function ProfitLossReport() {
           sql = `
             WITH ${PROFIT_CTES}
             SELECT
+              MAX(COALESCE((${SQL_LINE_RESOLVED_PRODUCT_ID})::text, '')) AS product_id,
               COALESCE(NULLIF(TRIM(p.code), ''), NULLIF(TRIM(si.item_code), ''), '') AS product_code,
               COALESCE(NULLIF(TRIM(si.item_name), ''), p.name, 'Bilinmeyen') AS product_name,
               SUM(${SIGNED_LINE_QTY_EXPR}) AS quantity,
@@ -173,6 +179,7 @@ export function ProfitLossReport() {
       }
 
       const { rows } = await postgres.query<{
+        product_id?: string;
         product_code: string;
         product_name: string;
         quantity: string | number;
@@ -187,6 +194,7 @@ export function ProfitLossReport() {
         const profit = r.profit != null ? parseFloat(String(r.profit)) : revenue - cost;
         const code = r.product_code || '';
         const name = r.product_name || '';
+        const productId = String(r.product_id || '').trim();
         let displayName = name;
         const loc =
           language === 'ar' ? 'ar-SA' : language === 'ku' ? 'ku-IQ' : language === 'en' ? 'en-GB' : 'tr-TR';
@@ -205,7 +213,8 @@ export function ProfitLossReport() {
           });
         }
         return {
-          rowKey: `${reportType}|${code}|${name}|${idx}`,
+          rowKey: `${reportType}|${productId}|${code}|${name}|${idx}`,
+          productId,
           productCode: code,
           productName: displayName,
           quantity: parseFloat(String(r.quantity)) || 0,
@@ -389,13 +398,16 @@ export function ProfitLossReport() {
                   <tr
                     key={item.rowKey}
                     className={
-                      reportType === 'product' && item.productCode
+                      reportType === 'product' && (item.productCode || item.productId)
                         ? 'hover:bg-emerald-50/80 cursor-pointer'
                         : 'hover:bg-gray-50'
                     }
-                    onClick={() => {
-                      if (reportType !== 'product' || !item.productCode) return;
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      if (reportType !== 'product' || (!item.productCode && !item.productId)) return;
                       setMovementTarget({
+                        productId: item.productId || undefined,
                         productCode: item.productCode,
                         productName: item.productName,
                         startDate: toSqlDateInputString(startDate) || undefined,
@@ -403,7 +415,7 @@ export function ProfitLossReport() {
                       });
                     }}
                     title={
-                      reportType === 'product' && item.productCode
+                      reportType === 'product' && (item.productCode || item.productId)
                         ? tm('reportsPlMovClickHint')
                         : undefined
                     }
@@ -471,6 +483,7 @@ export function ProfitLossReport() {
 
       {movementTarget ? (
         <ProductMovementHistoryModal
+          key={`${movementTarget.productId || ''}|${movementTarget.productCode}`}
           target={movementTarget}
           onClose={() => setMovementTarget(null)}
         />

@@ -17,6 +17,7 @@ import {
   SIGNED_LINE_PROFIT_EXPR,
   SIGNED_LINE_QTY_EXPR,
   SIGNED_LINE_REVENUE_EXPR,
+  SQL_LINE_RESOLVED_PRODUCT_ID,
   SQL_PL_SALES_OR_RETURN,
 } from '../../utils/lastPurchaseCostSql';
 import { toast } from 'sonner';
@@ -28,6 +29,7 @@ import {
 export interface CategoryGroupProductRow {
   groupName: string;
   categoryName: string;
+  productId: string;
   productCode: string;
   productName: string;
   quantity: number;
@@ -106,6 +108,7 @@ export function CategoryGroupSalesProfitReport() {
       const { rows: qrows } = await postgres.query<{
         group_name: string;
         category_name: string;
+        product_id: string;
         product_code: string;
         product_name: string;
         qty: string | number;
@@ -117,6 +120,7 @@ export function CategoryGroupSalesProfitReport() {
         SELECT
           COALESCE(parent_cat.name, pg.name, NULLIF(TRIM(COALESCE(p.group_code, '')), ''), 'Genel') AS group_name,
           COALESCE(leaf_cat.name, NULLIF(TRIM(COALESCE(p.category_code, '')), ''), 'Diğer') AS category_name,
+          MAX(COALESCE((${SQL_LINE_RESOLVED_PRODUCT_ID})::text, '')) AS product_id,
           COALESCE(NULLIF(TRIM(p.code), ''), NULLIF(TRIM(si.item_code), ''), '') AS product_code,
           COALESCE(NULLIF(TRIM(si.item_name), ''), p.name, 'Bilinmeyen') AS product_name,
           SUM(${SIGNED_LINE_QTY_EXPR}) AS qty,
@@ -152,6 +156,7 @@ export function CategoryGroupSalesProfitReport() {
       const mapped: CategoryGroupProductRow[] = qrows.map((r) => ({
         groupName: r.group_name,
         categoryName: r.category_name,
+        productId: String(r.product_id || '').trim(),
         productCode: r.product_code,
         productName: r.product_name,
         quantity: Number(r.qty) || 0,
@@ -375,16 +380,23 @@ export function CategoryGroupSalesProfitReport() {
                                     .sort((a, b) => b.revenue - a.revenue)
                                     .map((p, i) => (
                                       <tr
-                                        key={`${p.productCode}-${i}`}
+                                        key={`${p.productId}-${p.productCode}-${i}`}
                                         className="hover:bg-emerald-50/80 cursor-pointer"
-                                        onClick={() =>
+                                        onClick={(e) => {
+                                          e.preventDefault();
+                                          e.stopPropagation();
+                                          if (!p.productCode && !p.productId) {
+                                            toast.error('Ürün kodu bulunamadı');
+                                            return;
+                                          }
                                           setMovementTarget({
+                                            productId: p.productId || undefined,
                                             productCode: p.productCode,
                                             productName: p.productName,
                                             startDate: toSqlDateInputString(dateFrom) || undefined,
                                             endDate: toSqlDateInputString(dateTo) || undefined,
-                                          })
-                                        }
+                                          });
+                                        }}
                                         title="Satıra tıklayarak ürün hareketlerini görüntüleyin"
                                       >
                                         <td className="px-8 py-2 pl-14 font-medium text-slate-800">{p.productName}</td>
@@ -409,7 +421,11 @@ export function CategoryGroupSalesProfitReport() {
       </div>
 
       {movementTarget ? (
-        <ProductMovementHistoryModal target={movementTarget} onClose={() => setMovementTarget(null)} />
+        <ProductMovementHistoryModal
+          key={`${movementTarget.productId || ''}|${movementTarget.productCode}`}
+          target={movementTarget}
+          onClose={() => setMovementTarget(null)}
+        />
       ) : null}
     </div>
   );

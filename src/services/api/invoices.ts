@@ -2131,7 +2131,10 @@ export const invoicesAPI = {
     }
   },
 
-  async getProductHistory(productId: string): Promise<any[]> {
+  async getProductHistory(
+    productId: string,
+    hint?: { code?: string; barcode?: string }
+  ): Promise<any[]> {
     try {
       const pid = String(productId || '').trim();
       if (!pid) return [];
@@ -2139,6 +2142,7 @@ export const invoicesAPI = {
       const { shouldUseTenantPostgrestApi } = await import('../../config/postgrest.config');
       if (shouldUseTenantPostgrestApi()) {
         const { postgrest } = await import('./postgrestClient');
+        const { productAPI } = await import('./products');
         const fn = normalizeFirmNrForRow(ERP_SETTINGS.firmNr);
         const pn = normalizePeriodNrForRow(ERP_SETTINGS.periodNr);
         const itemsPath = `/rex_${fn}_${pn}_sale_items`;
@@ -2163,12 +2167,49 @@ export const invoicesAPI = {
             )
             .catch(() => [] as any[]);
 
-        const rowsByItemCode = await fetchSaleItems({ item_code: `eq.${pid}` });
-        const mergedBuckets: any[] = [...(Array.isArray(rowsByItemCode) ? rowsByItemCode : [])];
-        if (isValidUuid(pid)) {
-          const rowsByProductId = await fetchSaleItems({ product_id: `eq.${pid}` });
-          mergedBuckets.push(...(Array.isArray(rowsByProductId) ? rowsByProductId : []));
+        // item_code bazen ürün kodu, bazen UUID; product_id çoğu zaman UUID — ikisini de çöz.
+        let resolvedUuid = isValidUuid(pid) ? pid : '';
+        let resolvedCode = String(hint?.code || '').trim();
+        if (!isValidUuid(pid) && !resolvedCode) resolvedCode = pid;
+
+        if (!resolvedUuid || !resolvedCode) {
+          try {
+            const byHint = resolvedCode ? await productAPI.getByCode(resolvedCode) : null;
+            const byPid = !byHint
+              ? isValidUuid(pid)
+                ? await productAPI.getById(pid)
+                : await productAPI.getByCode(pid)
+              : byHint;
+            const prod =
+              byHint ||
+              byPid ||
+              (hint?.barcode?.trim() ? await productAPI.getByBarcode(hint.barcode.trim()) : null);
+            if (prod?.id) resolvedUuid = String(prod.id);
+            if (prod?.code && !resolvedCode) resolvedCode = String(prod.code).trim();
+          } catch (e) {
+            console.warn('[InvoicesAPI] getProductHistory product resolve:', e);
+          }
         }
+
+        const codeKeys = new Set<string>();
+        if (resolvedCode) codeKeys.add(resolvedCode);
+        if (pid && !isValidUuid(pid)) codeKeys.add(pid);
+        if (isValidUuid(pid)) codeKeys.add(pid); // item_code = UUID senaryosu
+        if (resolvedUuid) codeKeys.add(resolvedUuid);
+
+        const mergedBuckets: any[] = [];
+        for (const key of codeKeys) {
+          const rows = await fetchSaleItems({ item_code: `eq.${key}` });
+          if (Array.isArray(rows)) mergedBuckets.push(...rows);
+        }
+        if (resolvedUuid) {
+          const rowsByProductId = await fetchSaleItems({ product_id: `eq.${resolvedUuid}` });
+          if (Array.isArray(rowsByProductId)) mergedBuckets.push(...rowsByProductId);
+        } else if (isValidUuid(pid)) {
+          const rowsByProductId = await fetchSaleItems({ product_id: `eq.${pid}` });
+          if (Array.isArray(rowsByProductId)) mergedBuckets.push(...rowsByProductId);
+        }
+
         const seenKeys = new Set<string>();
         const list: any[] = [];
         for (const row of mergedBuckets) {
@@ -2281,9 +2322,24 @@ export const invoicesAPI = {
          LEFT JOIN suppliers sup ON s.customer_id = sup.id
          WHERE it.item_code = $1 
             OR it.product_id::text = $1
-            OR it.item_code IN (SELECT code FROM products WHERE id::text = $1 OR code = $1)
+            OR it.item_code IN (
+                 SELECT code FROM products WHERE id::text = $1 OR code = $1 OR barcode = $1
+               )
+            OR it.item_code IN (
+                 SELECT id::text FROM products WHERE id::text = $1 OR code = $1 OR barcode = $1
+               )
+            OR it.product_id IN (
+                 SELECT id FROM products WHERE id::text = $1 OR code = $1 OR barcode = $1
+               )
+            OR (
+                 NULLIF(TRIM($2::text), '') IS NOT NULL
+                 AND (
+                   it.item_code = TRIM($2::text)
+                   OR it.product_id IN (SELECT id FROM products WHERE code = TRIM($2::text))
+                 )
+               )
          ORDER BY s.date DESC`,
-        [pid]
+        [pid, String(hint?.code || '').trim()]
       );
 
       return rows.map(r => {

@@ -1268,15 +1268,21 @@ export function ProductGrossProfitReport() {
                 className={`${darkMode ? 'border-t border-gray-700' : 'border-t border-gray-100'} cursor-pointer ${
                   darkMode ? 'hover:bg-gray-700/60' : 'hover:bg-emerald-50/80'
                 }`}
-                onClick={() =>
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  if (!r.productCode && !r.productId) {
+                    toast.error(tm('reportsPlMovLoadError') || 'Ürün kimliği bulunamadı');
+                    return;
+                  }
                   setMovementTarget({
                     productId: r.productId || undefined,
                     productCode: r.productCode,
                     productName: r.productName,
                     startDate,
                     endDate,
-                  })
-                }
+                  });
+                }}
                 title={tm('reportsPlMovClickHint')}
               >
                 <td className="px-3 py-2">
@@ -1296,7 +1302,11 @@ export function ProductGrossProfitReport() {
         </table>
       </div>
       {movementTarget ? (
-        <ProductMovementHistoryModal target={movementTarget} onClose={() => setMovementTarget(null)} />
+        <ProductMovementHistoryModal
+          key={`${movementTarget.productId || ''}|${movementTarget.productCode}`}
+          target={movementTarget}
+          onClose={() => setMovementTarget(null)}
+        />
       ) : null}
     </ReportShell>
   );

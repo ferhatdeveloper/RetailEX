@@ -89,46 +89,58 @@ export function ProductMovementHistoryModal({
   const [rows, setRows] = useState<MovementRow[]>([]);
 
   const lookupId = String(target.productId || target.productCode || '').trim();
+  const lookupCode = String(target.productCode || '').trim();
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      if (!lookupId) {
+      if (!lookupId && !lookupCode) {
         setRows([]);
         setLoading(false);
+        toast.error(tm('reportsPlMovLoadError') || 'Ürün kimliği bulunamadı');
         return;
       }
       setLoading(true);
       try {
-        const raw = await stockMovementAPI.getProductMovements(lookupId, {
-          code: target.productCode,
+        const raw = await stockMovementAPI.getProductMovements(lookupId || lookupCode, {
+          code: lookupCode || undefined,
         });
         const startMs = target.startDate ? toDayMs(target.startDate) : NaN;
         const endMs = target.endDate ? toDayMs(target.endDate) : NaN;
-        const mapped: MovementRow[] = (Array.isArray(raw) ? raw : [])
-          .map((m: any, idx: number) => {
-            const dateRaw = m.movement?.movement_date || m.movement_date || m.created_at || '';
-            const day = toDayMs(String(dateRaw));
-            if (Number.isFinite(startMs) && Number.isFinite(day) && day < startMs) return null;
-            if (Number.isFinite(endMs) && Number.isFinite(day) && day > endMs) return null;
-            const qty = Number(m.quantity) || 0;
-            const unitPrice = Number(m.unit_price) || 0;
-            const kind = resolveTypeLabel(m, tm);
-            return {
-              id: String(m.id || `${idx}`),
-              date: String(dateRaw).slice(0, 10),
-              documentNo: String(m.movement?.document_no || m.document_no || '—'),
-              typeLabel: kind.label,
-              typeTone: kind.tone,
-              quantity: qty,
-              unitPrice,
-              amount: qty * unitPrice,
-              partner: String(m.notes || '').trim(),
-            };
-          })
-          .filter((r): r is MovementRow => r != null);
-        mapped.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
-        if (!cancelled) setRows(mapped);
+
+        type Staged = MovementRow & { dayMs: number };
+        const staged: Staged[] = (Array.isArray(raw) ? raw : []).map((m: any, idx: number) => {
+          const dateRaw = m.movement?.movement_date || m.movement_date || m.created_at || '';
+          const qty = Number(m.quantity) || 0;
+          const unitPrice = Number(m.unit_price) || 0;
+          const kind = resolveTypeLabel(m, tm);
+          return {
+            id: String(m.id || `${idx}`),
+            date: String(dateRaw).slice(0, 10),
+            documentNo: String(m.movement?.document_no || m.document_no || '—'),
+            typeLabel: kind.label,
+            typeTone: kind.tone,
+            quantity: qty,
+            unitPrice,
+            amount: qty * unitPrice,
+            partner: String(m.notes || '').trim(),
+            dayMs: toDayMs(String(dateRaw)),
+          };
+        });
+
+        let filtered = staged.filter((r) => {
+          if (Number.isFinite(startMs) && Number.isFinite(r.dayMs) && r.dayMs < startMs) return false;
+          if (Number.isFinite(endMs) && Number.isFinite(r.dayMs) && r.dayMs > endMs) return false;
+          return true;
+        });
+        // Tarih filtresi her şeyi sildi ama ham veri varsa: filtreyi gevşet (TZ kaybı).
+        if (filtered.length === 0 && staged.length > 0) {
+          filtered = staged;
+        }
+
+        const cleaned: MovementRow[] = filtered.map(({ dayMs: _d, ...rest }) => rest);
+        cleaned.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+        if (!cancelled) setRows(cleaned);
       } catch (err: any) {
         console.error('[ProductMovementHistoryModal]', err);
         if (!cancelled) {
@@ -142,7 +154,7 @@ export function ProductMovementHistoryModal({
     return () => {
       cancelled = true;
     };
-  }, [lookupId, target.productCode, target.startDate, target.endDate, tm]);
+  }, [lookupId, lookupCode, target.startDate, target.endDate, tm]);
 
   const rangeNote = useMemo(() => {
     const a = target.startDate?.slice(0, 10);
