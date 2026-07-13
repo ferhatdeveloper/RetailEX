@@ -708,6 +708,33 @@ export function UniversalInvoiceForm({
   const [totalGrossProfit, setTotalGrossProfit] = useState(0);
   const [profitMargin, setProfitMargin] = useState(0);
 
+  /** Dip (fatura seviyesi) indirim — satır indirimine ek */
+  const [footerDiscountMode, setFooterDiscountMode] = useState<'percentage' | 'amount'>(() => {
+    const hf = readInvoiceHeaderFields((editData as any)?.header_fields);
+    const m = String(hf.footerDiscountMode || '').trim();
+    return m === 'amount' ? 'amount' : 'percentage';
+  });
+  const [footerDiscountPercent, setFooterDiscountPercent] = useState(() => {
+    const hf = readInvoiceHeaderFields((editData as any)?.header_fields);
+    const n = parseFloat(String(hf.footerDiscountPercent ?? ''));
+    return Number.isFinite(n) && n > 0 ? n : 0;
+  });
+  const [footerDiscountAmount, setFooterDiscountAmount] = useState(() => {
+    const hf = readInvoiceHeaderFields((editData as any)?.header_fields);
+    const n = parseFloat(String(hf.footerDiscountAmount ?? ''));
+    return Number.isFinite(n) && n > 0 ? n : 0;
+  });
+  const [footerDiscountPercentStr, setFooterDiscountPercentStr] = useState(() => {
+    const hf = readInvoiceHeaderFields((editData as any)?.header_fields);
+    const n = parseFloat(String(hf.footerDiscountPercent ?? ''));
+    return Number.isFinite(n) && n > 0 ? formatDecimalForTrInput(n) : '';
+  });
+  const [footerDiscountAmountStr, setFooterDiscountAmountStr] = useState(() => {
+    const hf = readInvoiceHeaderFields((editData as any)?.header_fields);
+    const n = parseFloat(String(hf.footerDiscountAmount ?? ''));
+    return Number.isFinite(n) && n > 0 ? formatDecimalForTrInput(n) : '';
+  });
+
   // Global Supplier History
   const [showSupplierHistory, setShowSupplierHistory] = useState(false);
   const [selectedSupplierHistory, setSelectedSupplierHistory] = useState<{ id: string, name: string } | null>(null);
@@ -1178,6 +1205,21 @@ export function UniversalInvoiceForm({
 
   // Cari hesap border rengi
   const getCariBorderColor = () => {
+    if (darkMode) {
+      switch (invoiceType.category) {
+        case 'Satis': return 'border-blue-500 bg-gray-800';
+        case 'Alis': return 'border-teal-500 bg-gray-800';
+        case 'Hizmet':
+          if (invoiceType.code === 7) return 'border-blue-500 bg-gray-800';
+          if (invoiceType.code === 8) return 'border-teal-500 bg-gray-800';
+          return 'border-indigo-500 bg-gray-800';
+        case 'Iade': return 'border-red-500 bg-gray-800';
+        case 'Irsaliye': return 'border-orange-500 bg-gray-800';
+        case 'Siparis': return 'border-purple-500 bg-gray-800';
+        case 'Teklif': return 'border-indigo-500 bg-gray-800';
+        default: return 'border-gray-500 bg-gray-800';
+      }
+    }
     switch (invoiceType.category) {
       case 'Satis': return 'border-blue-600 bg-blue-50';
       case 'Alis': return 'border-teal-600 bg-teal-50';
@@ -2342,6 +2384,50 @@ export function UniversalInvoiceForm({
         if (hf.deliveryCode) setDeliveryCode(hf.deliveryCode);
         if (hf.campaignCode) setCampaignCode(hf.campaignCode);
         if (hf.time) setTime(hf.time);
+
+        const hfMode = String(hf.footerDiscountMode || '').trim();
+        const hfPct = parseFloat(String(hf.footerDiscountPercent ?? ''));
+        const hfAmt = parseFloat(String(hf.footerDiscountAmount ?? ''));
+        if (hfMode === 'amount' || hfMode === 'percentage' || (Number.isFinite(hfPct) && hfPct > 0) || (Number.isFinite(hfAmt) && hfAmt > 0)) {
+          const mode: 'percentage' | 'amount' = hfMode === 'amount' ? 'amount' : 'percentage';
+          setFooterDiscountMode(mode);
+          if (Number.isFinite(hfPct) && hfPct > 0) {
+            setFooterDiscountPercent(hfPct);
+            setFooterDiscountPercentStr(formatDecimalForTrInput(hfPct));
+          }
+          if (Number.isFinite(hfAmt) && hfAmt > 0) {
+            setFooterDiscountAmount(hfAmt);
+            setFooterDiscountAmountStr(formatDecimalForTrInput(hfAmt));
+          }
+        } else {
+          /* Eski kayıtlar: total_discount − satır indirimleri = dip indirim (ledger) */
+          const headerDisc = parseFloat(String((editData as any).discount ?? (editData as any).total_discount ?? 0)) || 0;
+          const itemsDataForDisc = editData.items || editData.invoice_items || editData.lines || editData.sale_items || [];
+          let lineDiscIQD = 0;
+          for (const it of itemsDataForDisc) {
+            const da = parseFloat(String(it.discountAmount ?? it.discount_amount ?? 0)) || 0;
+            if (da > 0) {
+              lineDiscIQD += da;
+              continue;
+            }
+            const pct = parseFloat(String(it.discountPercent ?? it.discount ?? it.discount_rate ?? 0)) || 0;
+            const qty = parseFloat(String(it.quantity ?? 0)) || 0;
+            const up = parseFloat(String(it.unitPrice ?? it.unit_price ?? 0)) || 0;
+            if (pct > 0 && qty > 0 && up > 0) lineDiscIQD += (qty * up * pct) / 100;
+          }
+          const residualIQD = Math.max(0, Math.round((headerDisc - lineDiscIQD) * 100) / 100);
+          if (residualIQD > 0.009) {
+            const hdrRate = parseFloat(String((editData as any)?.currency_rate)) || 1;
+            const hdrCur = String((editData as any)?.currency || ledgerCurrency).trim().toUpperCase();
+            const residualFC =
+              hdrCur !== ledgerCurrency && hdrRate > 0 ? residualIQD / hdrRate : residualIQD;
+            setFooterDiscountMode('amount');
+            setFooterDiscountAmount(residualFC);
+            setFooterDiscountAmountStr(formatDecimalForTrInput(residualFC));
+            setFooterDiscountPercent(0);
+            setFooterDiscountPercentStr('');
+          }
+        }
       }
 
       // Farklı field isimlerini kontrol et: items, invoice_items, lines, sale_items
@@ -2658,9 +2744,9 @@ export function UniversalInvoiceForm({
 
   // Toplam hesaplama
   const totals = useMemo(() => {
-    let totalDiscount = 0;
+    let lineDiscount = 0;
     let totalGross = 0;
-    let totalNet = 0;
+    let netAfterLines = 0;
 
     items.forEach(item => {
       if (invoiceType.category === 'Alis' && !isInvoiceSupplierPayableLineType(item.type)) return;
@@ -2669,24 +2755,85 @@ export function UniversalInvoiceForm({
       const itemNet = itemGross - itemTotalDiscount;
 
       totalGross += itemGross;
-      totalDiscount += itemTotalDiscount;
-      totalNet += itemNet;
+      lineDiscount += itemTotalDiscount;
+      netAfterLines += itemNet;
     });
+
+    let footerDiscount = 0;
+    if (footerDiscountMode === 'percentage') {
+      const pct = Math.min(100, Math.max(0, footerDiscountPercent || 0));
+      footerDiscount = netAfterLines > 0 ? (netAfterLines * pct) / 100 : 0;
+    } else {
+      footerDiscount = Math.max(0, footerDiscountAmount || 0);
+    }
+    footerDiscount = Math.round(footerDiscount * 100) / 100;
+    if (footerDiscount > netAfterLines) footerDiscount = Math.max(0, netAfterLines);
+
+    const derivedFooterPercent =
+      netAfterLines > 0 ? Math.round((footerDiscount / netAfterLines) * 10000) / 100 : 0;
+    const totalDiscount = lineDiscount + footerDiscount;
+    const totalNet = netAfterLines - footerDiscount;
 
     // Döviz kuru: yerel (ledger) para karşılıkları
     const rate = currency !== ledgerCurrency ? effectiveInvoiceCurrencyRate : 1;
     return {
       totalExpenses: 0,
+      lineDiscount,
+      footerDiscount,
+      footerDiscountPercent:
+        footerDiscountMode === 'percentage'
+          ? Math.min(100, Math.max(0, footerDiscountPercent || 0))
+          : derivedFooterPercent,
       totalDiscount,
       subtotal: totalGross,       // Fatura dövizinde (FC)
       totalVat: 0,
       net: totalNet,              // Fatura dövizinde (FC)
       rate,
       subtotalIQD: totalGross * rate,
+      lineDiscountIQD: lineDiscount * rate,
+      footerDiscountIQD: footerDiscount * rate,
       totalDiscountIQD: totalDiscount * rate,
       netIQD: totalNet * rate,    // Yerel para karşılığı → DB
     };
-  }, [items, invoiceType.category, currency, ledgerCurrency, effectiveInvoiceCurrencyRate]);
+  }, [
+    items,
+    invoiceType.category,
+    currency,
+    ledgerCurrency,
+    effectiveInvoiceCurrencyRate,
+    footerDiscountMode,
+    footerDiscountPercent,
+    footerDiscountAmount,
+  ]);
+
+  const applyFooterDiscountPercent = useCallback((raw: string) => {
+    setFooterDiscountPercentStr(raw);
+    setFooterDiscountMode('percentage');
+    const n = parseDecimalStringForInput(raw);
+    const pct = Number.isFinite(n) ? Math.min(100, Math.max(0, n)) : 0;
+    setFooterDiscountPercent(pct);
+  }, []);
+
+  const applyFooterDiscountAmount = useCallback((raw: string) => {
+    setFooterDiscountAmountStr(raw);
+    setFooterDiscountMode('amount');
+    const n = parseDecimalStringForInput(raw);
+    const amt = Number.isFinite(n) ? Math.max(0, n) : 0;
+    setFooterDiscountAmount(amt);
+  }, []);
+
+  /* Yüzde modunda satır değişince dip tutarını güncelle; tutar modunda % gösterimini güncelle */
+  useEffect(() => {
+    if (footerDiscountMode === 'percentage') {
+      const amt = totals.footerDiscount;
+      setFooterDiscountAmount(amt);
+      setFooterDiscountAmountStr(amt > 0 ? formatDecimalForTrInput(amt) : '');
+    } else {
+      const pct = totals.footerDiscountPercent;
+      setFooterDiscountPercent(pct);
+      setFooterDiscountPercentStr(pct > 0 ? formatDecimalForTrInput(pct) : '');
+    }
+  }, [footerDiscountMode, totals.footerDiscount, totals.footerDiscountPercent]);
 
   // Kar hesaplama (satış faturaları için)
   useEffect(() => {
@@ -2753,7 +2900,6 @@ export function UniversalInvoiceForm({
         });
 
         const netTotal = validItems.reduce((sum, item) => sum + item.netAmount, 0);
-        const calculatedProfitMargin = netTotal > 0 ? (calculatedTotalGrossProfit / netTotal) * 100 : 0;
 
         // Update individual items with cost and profit info
         let hasChanges = false;
@@ -2793,8 +2939,13 @@ export function UniversalInvoiceForm({
         }
 
         setTotalCost(calculatedTotalCost);
-        setTotalGrossProfit(calculatedTotalGrossProfit);
-        setProfitMargin(calculatedProfitMargin);
+        const footerDisc = totals.footerDiscount || 0;
+        const profitAfterFooter = calculatedTotalGrossProfit - footerDisc;
+        setTotalGrossProfit(profitAfterFooter);
+        const salesNetAfterFooter = Math.max(0, netTotal - footerDisc);
+        setProfitMargin(
+          salesNetAfterFooter > 0 ? (profitAfterFooter / salesNetAfterFooter) * 100 : 0
+        );
       } catch (error) {
         console.error('[UniversalInvoiceForm] Error calculating profit:', error);
         setTotalCost(0);
@@ -2804,7 +2955,7 @@ export function UniversalInvoiceForm({
     };
 
     calculateProfit();
-  }, [items, invoiceType.category, selectedFirm, selectedPeriod, products, storeProducts]);
+  }, [items, invoiceType.category, selectedFirm, selectedPeriod, products, storeProducts, totals.footerDiscount]);
 
   // Yazdırma İşlemi
   const handlePrint = async () => {
@@ -3066,8 +3217,14 @@ export function UniversalInvoiceForm({
         total_amount: totals.netIQD,    // IQD
         total: totals.netIQD,
         total_cost: totalCost,
-        gross_profit: totalGrossProfit,
-        profit_margin: profitMargin,
+        gross_profit:
+          invoiceType.category === 'Satis'
+            ? calculatedGrossProfit - (totals.footerDiscountIQD || 0)
+            : totalGrossProfit,
+        profit_margin:
+          invoiceType.category === 'Satis' && totals.netIQD > 0
+            ? ((calculatedGrossProfit - (totals.footerDiscountIQD || 0)) / totals.netIQD) * 100
+            : profitMargin,
         firma_id: selectedFirm?.logicalref?.toString() || '0',
         firma_name: selectedFirm?.name || '',
         donem_id: selectedPeriod?.logicalref?.toString() || '0',
@@ -3095,6 +3252,9 @@ export function UniversalInvoiceForm({
           deliveryCode,
           campaignCode,
           time,
+          footerDiscountMode,
+          footerDiscountPercent: totals.footerDiscountPercent,
+          footerDiscountAmount: totals.footerDiscount,
         }),
         currency: currency || ledgerCurrency,
         currency_rate: effectiveInvoiceCurrencyRate || 1,
@@ -3643,47 +3803,173 @@ export function UniversalInvoiceForm({
                 {/* Totals Area */}
                 <div className="flex justify-end gap-4 items-start">
                   {/* Totals Box */}
-                  <div className={`${getCariBorderColor()} border p-4 rounded-lg w-full max-w-sm space-y-2 shadow-sm`}>
+                  <div className={`${getCariBorderColor()} border p-4 rounded-lg w-full max-w-sm space-y-2 shadow-sm ${darkMode ? 'text-gray-100' : ''}`}>
                     {currency !== ledgerCurrency && (
-                      <div className="flex justify-between text-xs text-gray-500 pb-1 border-b border-gray-100">
+                      <div className={`flex justify-between text-xs pb-1 border-b ${darkMode ? 'text-gray-400 border-gray-700' : 'text-gray-500 border-gray-100'}`}>
                         <span>{tm('grossTotal')} ({currency})</span>
                         <span>{formatNumber(totals.subtotal, 2, true)}</span>
                       </div>
                     )}
                     <div className="flex justify-between">
-                      <span className="text-gray-600">{tm('grossTotal')}{currency !== ledgerCurrency ? ` (${ledgerCurrency})` : ''}</span>
+                      <span className={darkMode ? 'text-gray-300' : 'text-gray-600'}>{tm('grossTotal')}{currency !== ledgerCurrency ? ` (${ledgerCurrency})` : ''}</span>
                       <span>{formatNumber(currency !== ledgerCurrency ? totals.subtotalIQD : totals.subtotal, 2, false)}</span>
                     </div>
-                    {currency !== ledgerCurrency && totals.totalDiscount > 0 && (
-                      <div className="flex justify-between text-xs text-gray-500">
-                        <span>{tm('discountTotal')} ({currency})</span>
-                        <span className="text-red-400">-{formatNumber(totals.totalDiscount, 2, true)}</span>
-                      </div>
+                    {totals.lineDiscount > 0 && (
+                      <>
+                        {currency !== ledgerCurrency && (
+                          <div className={`flex justify-between text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                            <span>{tm('lineDiscountTotal')} ({currency})</span>
+                            <span className="text-red-400">-{formatNumber(totals.lineDiscount, 2, true)}</span>
+                          </div>
+                        )}
+                        <div className="flex justify-between">
+                          <span className={darkMode ? 'text-gray-300' : 'text-gray-600'}>{tm('lineDiscountTotal')}</span>
+                          <span className="text-red-500">-{formatNumber(currency !== ledgerCurrency ? totals.lineDiscountIQD : totals.lineDiscount, 2, false)}</span>
+                        </div>
+                      </>
                     )}
+
+                    {/* Dip (fatura seviyesi) indirim */}
+                    <div className={`rounded-md border p-2 space-y-2 ${darkMode ? 'border-gray-600 bg-gray-900/40' : 'border-gray-200 bg-white/70'}`}>
+                      <div className="flex items-center justify-between gap-2">
+                        <span className={`text-sm font-medium ${darkMode ? 'text-gray-200' : 'text-gray-700'}`} title={tm('footerDiscountHint')}>
+                          {tm('footerDiscount')}
+                        </span>
+                        <div className="flex gap-1 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const pct = totals.footerDiscountPercent || 0;
+                              setFooterDiscountMode('percentage');
+                              setFooterDiscountPercent(pct);
+                              setFooterDiscountPercentStr(pct > 0 ? formatDecimalForTrInput(pct) : '');
+                              setFooterDiscountAmount(totals.footerDiscount);
+                              setFooterDiscountAmountStr(
+                                totals.footerDiscount > 0 ? formatDecimalForTrInput(totals.footerDiscount) : ''
+                              );
+                            }}
+                            className={`px-2 py-1 text-xs rounded border transition-colors ${
+                              footerDiscountMode === 'percentage'
+                                ? 'bg-blue-600 text-white border-blue-600'
+                                : darkMode
+                                  ? 'bg-gray-700 text-gray-200 border-gray-600 hover:border-blue-400'
+                                  : 'bg-white text-gray-700 border-gray-300 hover:border-blue-400'
+                            }`}
+                          >
+                            %
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const amt = totals.footerDiscount || 0;
+                              setFooterDiscountMode('amount');
+                              setFooterDiscountAmount(amt);
+                              setFooterDiscountAmountStr(amt > 0 ? formatDecimalForTrInput(amt) : '');
+                              const pct = totals.footerDiscountPercent || 0;
+                              setFooterDiscountPercent(pct);
+                              setFooterDiscountPercentStr(pct > 0 ? formatDecimalForTrInput(pct) : '');
+                            }}
+                            className={`px-2 py-1 text-xs rounded border transition-colors ${
+                              footerDiscountMode === 'amount'
+                                ? 'bg-blue-600 text-white border-blue-600'
+                                : darkMode
+                                  ? 'bg-gray-700 text-gray-200 border-gray-600 hover:border-blue-400'
+                                  : 'bg-white text-gray-700 border-gray-300 hover:border-blue-400'
+                            }`}
+                          >
+                            {currency || ledgerCurrency}
+                          </button>
+                        </div>
+                      </div>
+                      <div className="flex gap-2 items-center">
+                        <div className="flex-1">
+                          <label className={`block text-[10px] uppercase tracking-wide mb-0.5 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>%</label>
+                          <input
+                            type="text"
+                            inputMode="decimal"
+                            autoComplete="off"
+                            value={footerDiscountPercentStr}
+                            onChange={(e) => applyFooterDiscountPercent(e.target.value)}
+                            onBlur={() => {
+                              if (footerDiscountMode === 'percentage') {
+                                const pct = Math.min(100, Math.max(0, footerDiscountPercent || 0));
+                                setFooterDiscountPercent(pct);
+                                setFooterDiscountPercentStr(pct > 0 ? formatDecimalForTrInput(pct) : '');
+                                setFooterDiscountAmount(totals.footerDiscount);
+                                setFooterDiscountAmountStr(
+                                  totals.footerDiscount > 0 ? formatDecimalForTrInput(totals.footerDiscount) : ''
+                                );
+                              }
+                            }}
+                            placeholder="0"
+                            className={`w-full px-2 py-1.5 text-sm text-right rounded border outline-none focus:ring-2 focus:ring-blue-500 ${
+                              darkMode
+                                ? 'bg-gray-800 border-gray-600 text-gray-100'
+                                : 'bg-white border-gray-300 text-gray-800'
+                            }`}
+                          />
+                        </div>
+                        <div className="flex-1">
+                          <label className={`block text-[10px] uppercase tracking-wide mb-0.5 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                            {tm('discountAmount')}
+                          </label>
+                          <input
+                            type="text"
+                            inputMode="decimal"
+                            autoComplete="off"
+                            value={footerDiscountAmountStr}
+                            onChange={(e) => applyFooterDiscountAmount(e.target.value)}
+                            onBlur={() => {
+                              if (footerDiscountMode === 'amount') {
+                                const amt = Math.max(0, footerDiscountAmount || 0);
+                                setFooterDiscountAmount(amt);
+                                setFooterDiscountAmountStr(amt > 0 ? formatDecimalForTrInput(amt) : '');
+                                const pct = totals.footerDiscountPercent || 0;
+                                setFooterDiscountPercent(pct);
+                                setFooterDiscountPercentStr(pct > 0 ? formatDecimalForTrInput(pct) : '');
+                              }
+                            }}
+                            placeholder="0"
+                            className={`w-full px-2 py-1.5 text-sm text-right rounded border outline-none focus:ring-2 focus:ring-blue-500 ${
+                              darkMode
+                                ? 'bg-gray-800 border-gray-600 text-gray-100'
+                                : 'bg-white border-gray-300 text-gray-800'
+                            }`}
+                          />
+                        </div>
+                      </div>
+                      {totals.footerDiscount > 0 && currency !== ledgerCurrency && (
+                        <div className={`flex justify-between text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                          <span>{tm('footerDiscount')} ({ledgerCurrency})</span>
+                          <span className="text-red-400">-{formatNumber(totals.footerDiscountIQD, 2, false)}</span>
+                        </div>
+                      )}
+                    </div>
+
                     <div className="flex justify-between">
-                      <span className="text-gray-600">{tm('discountTotal')}</span>
+                      <span className={darkMode ? 'text-gray-300' : 'text-gray-600'}>{tm('discountTotal')}</span>
                       <span className="text-red-500">-{formatNumber(currency !== ledgerCurrency ? totals.totalDiscountIQD : totals.totalDiscount, 2, false)}</span>
                     </div>
                     {invoiceType.category === 'Satis' && totalCost > 0 && canViewPurchasePricing() && (
                       <>
-                        <div className="flex justify-between border-t border-gray-100 pt-2 mt-2">
-                          <span className="text-gray-600">{tm('costPurchase')}</span>
-                          <span className="text-gray-700">{formatNumber(totalCost, 2, false)}</span>
+                        <div className={`flex justify-between border-t pt-2 mt-2 ${darkMode ? 'border-gray-700' : 'border-gray-100'}`}>
+                          <span className={darkMode ? 'text-gray-300' : 'text-gray-600'}>{tm('costPurchase')}</span>
+                          <span className={darkMode ? 'text-gray-200' : 'text-gray-700'}>{formatNumber(totalCost, 2, false)}</span>
                         </div>
-                        <div className="flex justify-between border-t border-gray-100 pt-2 mt-2">
-                          <span className="text-gray-600 font-semibold">{tm('profitSalesPurchase')}</span>
+                        <div className={`flex justify-between border-t pt-2 mt-2 ${darkMode ? 'border-gray-700' : 'border-gray-100'}`}>
+                          <span className={`font-semibold ${darkMode ? 'text-gray-200' : 'text-gray-600'}`}>{tm('profitSalesPurchase')}</span>
                           <span className={totalGrossProfit >= 0 ? 'text-green-600 font-bold' : 'text-red-600 font-bold'}>
                             {formatNumber(totalGrossProfit, 2, false)}
                           </span>
                         </div>
-                        <div className="flex justify-between text-xs text-gray-500">
+                        <div className={`flex justify-between text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
                           <span>{tm('profitMarginLabel')}</span>
                           <span>{formatNumber(profitMargin, 2, false)}%</span>
                         </div>
                       </>
                     )}
-                    <div className="flex justify-between border-t border-gray-100 pt-2 mt-2">
-                      <span className="text-gray-900 font-bold text-lg">
+                    <div className={`flex justify-between border-t pt-2 mt-2 ${darkMode ? 'border-gray-700' : 'border-gray-100'}`}>
+                      <span className={`font-bold text-lg ${darkMode ? 'text-white' : 'text-gray-900'}`}>
                         {tm('net')}{currency !== ledgerCurrency ? ` (${ledgerCurrency})` : ''}
                       </span>
                       <span className={`${getCariTextColor()} text-2xl font-bold`}>
@@ -3691,7 +3977,7 @@ export function UniversalInvoiceForm({
                       </span>
                     </div>
                     {currency !== ledgerCurrency && (
-                      <div className="flex justify-between text-xs text-gray-400 pt-1">
+                      <div className={`flex justify-between text-xs pt-1 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
                         <span>{tm('net')} ({currency})</span>
                         <span>{formatNumber(totals.net, 2, true)} {currency}</span>
                       </div>

@@ -12,6 +12,12 @@ export type InvoiceHeaderFields = {
   deliveryCode?: string;
   campaignCode?: string;
   time?: string;
+  /** Dip (fatura seviyesi) indirim: percentage | amount */
+  footerDiscountMode?: string;
+  /** Dip indirim yüzdesi (string; JSONB uyumu) */
+  footerDiscountPercent?: string;
+  /** Dip indirim tutarı — fatura dövizinde */
+  footerDiscountAmount?: string;
 };
 
 export function readInvoiceHeaderFields(raw: unknown): InvoiceHeaderFields {
@@ -40,6 +46,9 @@ export function buildInvoiceHeaderFieldsFromForm(input: {
   deliveryCode?: string;
   campaignCode?: string;
   time?: string;
+  footerDiscountMode?: string;
+  footerDiscountPercent?: string | number;
+  footerDiscountAmount?: string | number;
 }): InvoiceHeaderFields {
   const out: InvoiceHeaderFields = {};
   const set = (key: keyof InvoiceHeaderFields, val?: string) => {
@@ -58,5 +67,17 @@ export function buildInvoiceHeaderFieldsFromForm(input: {
   set('deliveryCode', input.deliveryCode);
   set('campaignCode', input.campaignCode);
   set('time', input.time);
+  const mode = String(input.footerDiscountMode ?? '').trim();
+  if (mode === 'percentage' || mode === 'amount') {
+    out.footerDiscountMode = mode;
+  }
+  const pct = Number(input.footerDiscountPercent);
+  const amt = Number(input.footerDiscountAmount);
+  if (Number.isFinite(pct) && pct > 0) {
+    out.footerDiscountPercent = String(pct);
+  }
+  if (Number.isFinite(amt) && amt > 0) {
+    out.footerDiscountAmount = String(amt);
+  }
   return out;
 }

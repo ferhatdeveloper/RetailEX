@@ -4085,6 +4085,16 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
   type: { tr: 'Tür', en: 'Type', ar: 'النوع', ku: 'جۆر' },
   grossTotal: { tr: 'Brüt Toplam', en: 'Gross Total', ar: 'المجموع الإجمالي', ku: 'کۆی گشتی' },
   discountTotal: { tr: 'İndirim Toplamı', en: 'Discount Total', ar: 'إجمالي الخصم', ku: 'کۆی داشکاندن' },
+  discountPercent: { tr: 'İndirim %', en: 'Discount %', ar: 'نسبة الخصم %', ku: 'داشکاندن %' },
+  discountAmount: { tr: 'İndirim Tutarı', en: 'Discount Amount', ar: 'مبلغ الخصم', ku: 'بڕی داشکاندن' },
+  lineDiscountTotal: { tr: 'Satır İndirimi', en: 'Line Discount', ar: 'خصم البنود', ku: 'داشکاندنی ڕیز' },
+  footerDiscount: { tr: 'Dip İndirim', en: 'Footer Discount', ar: 'خصم الفاتورة', ku: 'داشکاندنی خوارەوە' },
+  footerDiscountHint: {
+    tr: 'Fatura geneli indirim (satır indirimine ek)',
+    en: 'Invoice-level discount (in addition to line discounts)',
+    ar: 'خصم على مستوى الفاتورة (إضافة لخصم البنود)',
+    ku: 'داشکاندنی گشتی پسوڵە (لەگەڵ داشکاندنی ڕیز)',
+  },
   net: { tr: 'Net', en: 'Net', ar: 'صافي', ku: 'پوخت' },
 
   // Purchase Order & Invoice UI
