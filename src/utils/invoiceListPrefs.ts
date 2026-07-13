@@ -1,5 +1,9 @@
 export type InvoiceListPrefs = {
   dateFilter?: string;
+  /** dateFilter === 'range' iken başlangıç (YYYY-MM-DD) */
+  customDateFrom?: string;
+  /** dateFilter === 'range' iken bitiş (YYYY-MM-DD, dahil) */
+  customDateTo?: string;
   invoiceTypeFilter?: string;
   statusFilter?: string;
   detailInvoiceId?: string | null;

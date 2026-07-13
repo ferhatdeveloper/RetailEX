@@ -34,6 +34,7 @@ import {
   isSayimFazlasiAlisInvoice,
 } from '../../../utils/countInvoicePurchaseDraft';
 import { FullscreenBodyPortal, MODAL_OVERLAY_Z } from '../../shared/FullscreenBodyPortal';
+import { localTodayDateKey } from '../../../utils/localCalendarDate';
 import {
   invoiceListPrefsKey,
   loadInvoiceListPrefs,
@@ -258,6 +259,8 @@ export function InvoiceListModule({
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>(initialPrefs?.statusFilter ?? 'all');
   const [dateFilter, setDateFilter] = useState<string>(initialPrefs?.dateFilter ?? 'all');
+  const [customDateFrom, setCustomDateFrom] = useState<string>(initialPrefs?.customDateFrom ?? '');
+  const [customDateTo, setCustomDateTo] = useState<string>(initialPrefs?.customDateTo ?? '');
   const [invoiceTypeFilter, setInvoiceTypeFilter] = useState<string>(
     initialPrefs?.invoiceTypeFilter ?? (defaultInvoiceTypeFilter || 'all'),
   );
@@ -333,6 +336,17 @@ export function InvoiceListModule({
           start: formatDateLocal(monthStart),
           end: formatDateLocal(new Date(today.getTime() + 24 * 60 * 60 * 1000))
         };
+      case 'range': {
+        // API: date::date >= start AND date::date <= end (bitiş dahil)
+        let start = customDateFrom?.trim().substring(0, 10) || null;
+        let end = customDateTo?.trim().substring(0, 10) || null;
+        if (start && end && start > end) {
+          const tmp = start;
+          start = end;
+          end = tmp;
+        }
+        return { start, end };
+      }
       case 'all':
       default:
         return { start: null, end: null };
@@ -345,7 +359,7 @@ export function InvoiceListModule({
     // Dönem henüz seçilmediyse (firma değişimi ara durumu) eski dönemle sorgu atma
     if (selectedFirm && !selectedPeriod && !periodNrKey) return;
     void loadInvoices();
-  }, [currentPage, pageSize, dateFilter, statusFilter, invoiceTypeFilter, defaultCategory, firmNrKey, periodNrKey]);
+  }, [currentPage, pageSize, dateFilter, customDateFrom, customDateTo, statusFilter, invoiceTypeFilter, defaultCategory, firmNrKey, periodNrKey]);
 
   useEffect(() => {
     void loadTemplatesFromDatabase();
@@ -401,12 +415,14 @@ export function InvoiceListModule({
   useEffect(() => {
     saveInvoiceListPrefs(prefsKey, {
       dateFilter,
+      customDateFrom,
+      customDateTo,
       invoiceTypeFilter,
       statusFilter,
       detailInvoiceId: selectedInvoice?.id ?? null,
       showDetail: showDetailModal,
     });
-  }, [prefsKey, dateFilter, invoiceTypeFilter, statusFilter, selectedInvoice?.id, showDetailModal]);
+  }, [prefsKey, dateFilter, customDateFrom, customDateTo, invoiceTypeFilter, statusFilter, selectedInvoice?.id, showDetailModal]);
 
   /** Sayım → alış taslak: önce props (navigasyon), yoksa sessionStorage (yedek). */
   useEffect(() => {
@@ -1010,22 +1026,60 @@ export function InvoiceListModule({
 
           <div className="flex items-center gap-3">
             {/* Date Filter */}
-            <div className="flex items-center gap-1.5 bg-gray-50 border border-gray-200 rounded px-2">
-              <Calendar className="w-3.5 h-3.5 text-gray-500" />
+            <div className="flex items-center gap-1.5 bg-gray-50 border border-gray-200 rounded px-2 dark:bg-gray-800 dark:border-gray-600">
+              <Calendar className="w-3.5 h-3.5 text-gray-500 dark:text-gray-400" />
               <select
                 value={dateFilter}
                 onChange={(e) => {
-                  setDateFilter(e.target.value);
+                  const next = e.target.value;
+                  if (next === 'range') {
+                    const today = localTodayDateKey();
+                    const monthStart = `${today.slice(0, 7)}-01`;
+                    if (!customDateFrom) setCustomDateFrom(monthStart);
+                    if (!customDateTo) setCustomDateTo(today);
+                  }
+                  setDateFilter(next);
                   setCurrentPage(1);
                 }}
-                className="bg-transparent py-1.5 text-xs focus:outline-none min-w-[100px]"
+                className="bg-transparent py-1.5 text-xs focus:outline-none min-w-[100px] dark:text-gray-200"
               >
                 <option value="today">{tm('today')}</option>
                 <option value="week">{tm('thisWeek')}</option>
                 <option value="month">{tm('thisMonth')}</option>
+                <option value="range">{tm('dateRange')}</option>
                 <option value="all">{tm('all')}</option>
               </select>
             </div>
+
+            {dateFilter === 'range' && (
+              <div className="flex items-center gap-1.5 bg-gray-50 border border-gray-200 rounded px-2 dark:bg-gray-800 dark:border-gray-600">
+                <label className="sr-only" htmlFor="invoice-list-date-from">{tm('dateFrom')}</label>
+                <input
+                  id="invoice-list-date-from"
+                  type="date"
+                  value={customDateFrom}
+                  onChange={(e) => {
+                    setCustomDateFrom(e.target.value);
+                    setCurrentPage(1);
+                  }}
+                  title={tm('dateFrom')}
+                  className="bg-transparent py-1.5 text-xs focus:outline-none dark:text-gray-200 dark:[color-scheme:dark]"
+                />
+                <span className="text-gray-400 text-xs shrink-0">–</span>
+                <label className="sr-only" htmlFor="invoice-list-date-to">{tm('dateTo')}</label>
+                <input
+                  id="invoice-list-date-to"
+                  type="date"
+                  value={customDateTo}
+                  onChange={(e) => {
+                    setCustomDateTo(e.target.value);
+                    setCurrentPage(1);
+                  }}
+                  title={tm('dateTo')}
+                  className="bg-transparent py-1.5 text-xs focus:outline-none dark:text-gray-200 dark:[color-scheme:dark]"
+                />
+              </div>
+            )}
 
             {/* Status Filter */}
             <div className="flex items-center gap-1.5 bg-gray-50 border border-gray-200 rounded px-2">
