@@ -7,10 +7,18 @@ import { normalizeFirmTableNr } from './accountBalance';
 import { SQL_COUNTABLE_SALE_STATUS } from '../../utils/saleInvoiceStatus';
 import { localTodayDateKey } from '../../utils/localCalendarDate';
 import {
-  buildLastPurchaseCte,
+  buildProfitCostCtes,
+  INVOICE_LINE_SCALE_JOIN,
+  isPlSalesOrReturnFiche,
   isPurchaseFiche,
+  isSalesReturnFiche,
   LAST_PURCHASE_JOIN,
-  LINE_COST_EXPR,
+  scaleLineRevenueToInvoiceNet,
+  SIGNED_LINE_COST_EXPR,
+  SIGNED_LINE_PROFIT_EXPR,
+  SIGNED_LINE_QTY_EXPR,
+  SIGNED_LINE_REVENUE_EXPR,
+  SQL_PL_SALES_OR_RETURN,
   unitCostFromPurchaseLine,
 } from '../../utils/lastPurchaseCostSql';
 
@@ -1160,7 +1168,7 @@ export const erpReportsAPI = {
           .get<Record<string, unknown>[]>(
             `/rex_${fn}_${pn}_sales`,
             {
-              select: 'id,date,fiche_type,is_cancelled,status,trcode,created_at',
+              select: 'id,date,fiche_type,is_cancelled,status,trcode,created_at,net_amount',
               order: 'date.desc',
               limit: '8000',
             },
@@ -1218,18 +1226,23 @@ export const erpReportsAPI = {
         if (code && newer(lastByCode.get(code))) lastByCode.set(code, hit);
       }
 
+      const linesNetByInvoice = new Map<string, number>();
+      for (const it of items || []) {
+        const iid = String(it.invoice_id || '');
+        if (!iid) continue;
+        linesNetByInvoice.set(
+          iid,
+          (linesNetByInvoice.get(iid) || 0) + (Number(it.net_amount ?? 0) || 0),
+        );
+      }
+
       const saleOk = new Set(
         (sales || [])
           .filter((s) => {
             if (s.is_cancelled === true || s.is_cancelled === 'true') return false;
             const st = String(s.status || 'approved').toLowerCase();
             if (!(st === 'completed' || st === 'approved' || !s.status)) return false;
-            if (isPurchaseFiche(s)) return false;
-            const ft = String(s.fiche_type || '').toLowerCase();
-            if (ft === 'return_invoice') return false;
-            if (ft && ft !== 'sales_invoice' && ft !== 'service' && ft !== 'hizmet' && ft !== 's') {
-              return false;
-            }
+            if (!isPlSalesOrReturnFiche(s)) return false;
             const d = String(s.date || '').slice(0, 10);
             return d >= start && d <= end;
           })
@@ -1239,21 +1252,35 @@ export const erpReportsAPI = {
       const map = new Map<string, ProductGrossProfitRow>();
       for (const it of items || []) {
         if (!saleOk.has(String(it.invoice_id))) continue;
+        const itemType = String(it.item_type || 'Malzeme');
+        if (itemType === 'Promosyon' || itemType === 'İndirim') continue;
+        const inv = salesById.get(String(it.invoice_id));
+        if (!inv) continue;
+        const sgn = isSalesReturnFiche(inv) ? -1 : 1;
         const code = String(it.item_code || it.product_id || '—');
         const pid = it.product_id != null ? String(it.product_id) : '';
-        const qty = Number(it.quantity ?? 0);
-        const revenue = Number(it.net_amount ?? 0);
+        const qty = sgn * (Number(it.quantity ?? 0) || 0);
+        const rawLineNet = Number(it.net_amount ?? 0) || 0;
+        const revenue =
+          sgn *
+          scaleLineRevenueToInvoiceNet(
+            rawLineNet,
+            linesNetByInvoice.get(String(it.invoice_id)) || 0,
+            Number(inv.net_amount ?? 0) || 0,
+          );
         const lpc =
           (pid && lastById.get(pid)?.unitCost) ||
           (String(it.item_code || '').trim() &&
             lastByCode.get(String(it.item_code || '').trim())?.unitCost) ||
           0;
+        const absQty = Number(it.quantity ?? 0) || 0;
         const cost =
-          (lpc ? lpc * qty : 0) ||
-          Number(it.total_cost ?? 0) ||
-          Number(it.unit_cost ?? 0) * qty ||
-          (pid ? productCost.get(pid) || 0 : 0) * qty ||
-          0;
+          sgn *
+          ((lpc ? lpc * absQty : 0) ||
+            Number(it.total_cost ?? 0) ||
+            Number(it.unit_cost ?? 0) * absQty ||
+            (pid ? productCost.get(pid) || 0 : 0) * absQty ||
+            0);
         const gp = revenue - cost;
         const cur = map.get(code) || {
           productId: pid,
@@ -1275,41 +1302,39 @@ export const erpReportsAPI = {
       return Array.from(map.values())
         .map((r) => ({
           ...r,
-          marginPct: r.revenue > 0 ? (r.grossProfit / r.revenue) * 100 : 0,
+          marginPct: Math.abs(r.revenue) > 0.009 ? (r.grossProfit / r.revenue) * 100 : 0,
         }))
         .sort((a, b) => b.grossProfit - a.grossProfit)
         .slice(0, ROW_LIMIT);
     }
 
-    const lastPurchaseCte = buildLastPurchaseCte('$1');
+    const profitCtes = buildProfitCostCtes('$1');
     const { rows } = await postgres.query(
       `
-      WITH ${lastPurchaseCte}
+      WITH ${profitCtes}
       SELECT
         COALESCE(si.product_id::text, '') AS product_id,
         COALESCE(NULLIF(TRIM(si.item_code), ''), '—') AS product_code,
         COALESCE(NULLIF(TRIM(si.item_name), ''), '—') AS product_name,
-        COALESCE(SUM(si.quantity), 0) AS quantity,
-        COALESCE(SUM(si.net_amount), 0) AS revenue,
-        COALESCE(SUM(${LINE_COST_EXPR}), 0) AS cost,
-        COALESCE(SUM(COALESCE(si.net_amount, 0) - (${LINE_COST_EXPR})), 0) AS gross_profit
+        COALESCE(SUM(${SIGNED_LINE_QTY_EXPR}), 0) AS quantity,
+        COALESCE(SUM(${SIGNED_LINE_REVENUE_EXPR}), 0) AS revenue,
+        COALESCE(SUM(${SIGNED_LINE_COST_EXPR}), 0) AS cost,
+        COALESCE(SUM(${SIGNED_LINE_PROFIT_EXPR}), 0) AS gross_profit
       FROM sale_items si
       INNER JOIN sales s ON s.id = si.invoice_id
       LEFT JOIN products p ON p.id = si.product_id AND p.firm_nr = $1
       ${LAST_PURCHASE_JOIN}
+      ${INVOICE_LINE_SCALE_JOIN}
       WHERE s.firm_nr = $1
         AND COALESCE(s.is_cancelled, false) = false
         AND ${SQL_COUNTABLE_SALE_STATUS}
-        AND (
-          LOWER(TRIM(COALESCE(s.fiche_type, ''))) IN ('sales_invoice', 'service', 'hizmet', 's')
-          OR s.fiche_type IS NULL
-          OR COALESCE(s.trcode, 0) IN (7, 8)
-        )
-        AND LOWER(TRIM(COALESCE(s.fiche_type, ''))) <> 'return_invoice'
+        AND ${SQL_PL_SALES_OR_RETURN}
+        AND COALESCE(si.item_type, 'Malzeme') NOT IN ('Promosyon', 'İndirim')
         AND (s.date AT TIME ZONE 'UTC')::date >= $2::date
         AND (s.date AT TIME ZONE 'UTC')::date <= $3::date
       GROUP BY 1, 2, 3
-      HAVING ABS(COALESCE(SUM(si.net_amount), 0)) > 0.009
+      HAVING ABS(COALESCE(SUM(${SIGNED_LINE_REVENUE_EXPR}), 0)) > 0.009
+         OR ABS(COALESCE(SUM(${SIGNED_LINE_QTY_EXPR}), 0)) > 0.0001
       ORDER BY gross_profit DESC
       LIMIT ${ROW_LIMIT}
       `,
@@ -1327,7 +1352,7 @@ export const erpReportsAPI = {
         revenue,
         cost,
         grossProfit,
-        marginPct: revenue > 0 ? (grossProfit / revenue) * 100 : 0,
+        marginPct: Math.abs(revenue) > 0.009 ? (grossProfit / revenue) * 100 : 0,
       };
     });
   },

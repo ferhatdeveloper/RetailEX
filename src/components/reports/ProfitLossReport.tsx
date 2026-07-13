@@ -8,9 +8,14 @@ import { toSqlDateInputString } from '../../utils/localCalendarDate';
 import { SQL_COUNTABLE_SALE_STATUS } from '../../utils/saleInvoiceStatus';
 import { useLanguage } from '../../contexts/LanguageContext';
 import {
-  buildLastPurchaseCte,
+  buildProfitCostCtes,
+  INVOICE_LINE_SCALE_JOIN,
   LAST_PURCHASE_JOIN,
-  LINE_COST_EXPR,
+  SIGNED_LINE_COST_EXPR,
+  SIGNED_LINE_PROFIT_EXPR,
+  SIGNED_LINE_QTY_EXPR,
+  SIGNED_LINE_REVENUE_EXPR,
+  SQL_PL_SALES_OR_RETURN,
 } from '../../utils/lastPurchaseCostSql';
 import {
   ProductMovementHistoryModal,
@@ -27,13 +32,14 @@ interface SalesData {
   profitMargin: number;
 }
 
-const LAST_PURCHASE_CTE = buildLastPurchaseCte('$1');
+const PROFIT_CTES = buildProfitCostCtes('$1');
 
 const SALES_FILTER = `
   s.firm_nr = $1
   AND COALESCE(s.is_cancelled, false) = false
   AND ${SQL_COUNTABLE_SALE_STATUS}
-  AND (s.fiche_type = 'sales_invoice' OR s.trcode IN (7, 8))
+  AND ${SQL_PL_SALES_OR_RETURN}
+  AND COALESCE(si.item_type, 'Malzeme') NOT IN ('Promosyon', 'İndirim')
   AND (s.date AT TIME ZONE 'UTC')::date >= $2::date
   AND (s.date AT TIME ZONE 'UTC')::date <= $3::date
 `.trim();
@@ -77,41 +83,43 @@ export function ProfitLossReport() {
       switch (reportType) {
         case 'category':
           sql = `
-            WITH ${LAST_PURCHASE_CTE}
+            WITH ${PROFIT_CTES}
             SELECT
               COALESCE(leaf_cat.id::text, NULLIF(TRIM(COALESCE(p.category_code, '')), ''), 'diger') AS product_code,
               COALESCE(leaf_cat.name, NULLIF(TRIM(COALESCE(p.category_code, '')), ''), 'Diğer') AS product_name,
-              SUM(si.quantity) AS quantity,
-              SUM(COALESCE(si.net_amount, 0)) AS revenue,
-              SUM(${LINE_COST_EXPR}) AS cost,
-              SUM(COALESCE(si.net_amount, 0) - (${LINE_COST_EXPR})) AS profit
+              SUM(${SIGNED_LINE_QTY_EXPR}) AS quantity,
+              SUM(${SIGNED_LINE_REVENUE_EXPR}) AS revenue,
+              SUM(${SIGNED_LINE_COST_EXPR}) AS cost,
+              SUM(${SIGNED_LINE_PROFIT_EXPR}) AS profit
             FROM sale_items si
             INNER JOIN sales s ON s.id = si.invoice_id
             LEFT JOIN products p ON p.id = si.product_id AND p.firm_nr = $1
             LEFT JOIN categories leaf_cat ON leaf_cat.id = p.category_id
             ${LAST_PURCHASE_JOIN}
+            ${INVOICE_LINE_SCALE_JOIN}
             WHERE ${SALES_FILTER}
             GROUP BY
               COALESCE(leaf_cat.id::text, NULLIF(TRIM(COALESCE(p.category_code, '')), ''), 'diger'),
               COALESCE(leaf_cat.name, NULLIF(TRIM(COALESCE(p.category_code, '')), ''), 'Diğer')
             HAVING SUM(ABS(si.quantity)) > 0
-            ORDER BY SUM(COALESCE(si.net_amount, 0) - (${LINE_COST_EXPR})) DESC
+            ORDER BY SUM(${SIGNED_LINE_PROFIT_EXPR}) DESC
           `;
           break;
         case 'daily':
           sql = `
-            WITH ${LAST_PURCHASE_CTE}
+            WITH ${PROFIT_CTES}
             SELECT
               to_char((s.date AT TIME ZONE 'UTC')::date, 'YYYY-MM-DD') AS product_code,
               to_char((s.date AT TIME ZONE 'UTC')::date, 'YYYY-MM-DD') AS product_name,
-              SUM(si.quantity) AS quantity,
-              SUM(COALESCE(si.net_amount, 0)) AS revenue,
-              SUM(${LINE_COST_EXPR}) AS cost,
-              SUM(COALESCE(si.net_amount, 0) - (${LINE_COST_EXPR})) AS profit
+              SUM(${SIGNED_LINE_QTY_EXPR}) AS quantity,
+              SUM(${SIGNED_LINE_REVENUE_EXPR}) AS revenue,
+              SUM(${SIGNED_LINE_COST_EXPR}) AS cost,
+              SUM(${SIGNED_LINE_PROFIT_EXPR}) AS profit
             FROM sale_items si
             INNER JOIN sales s ON s.id = si.invoice_id
             LEFT JOIN products p ON p.id = si.product_id AND p.firm_nr = $1
             ${LAST_PURCHASE_JOIN}
+            ${INVOICE_LINE_SCALE_JOIN}
             WHERE ${SALES_FILTER}
             GROUP BY (s.date AT TIME ZONE 'UTC')::date
             HAVING SUM(ABS(si.quantity)) > 0
@@ -120,18 +128,19 @@ export function ProfitLossReport() {
           break;
         case 'monthly':
           sql = `
-            WITH ${LAST_PURCHASE_CTE}
+            WITH ${PROFIT_CTES}
             SELECT
               to_char(date_trunc('month', s.date AT TIME ZONE 'UTC'), 'YYYY-MM') AS product_code,
               to_char(date_trunc('month', s.date AT TIME ZONE 'UTC'), 'YYYY-MM') AS product_name,
-              SUM(si.quantity) AS quantity,
-              SUM(COALESCE(si.net_amount, 0)) AS revenue,
-              SUM(${LINE_COST_EXPR}) AS cost,
-              SUM(COALESCE(si.net_amount, 0) - (${LINE_COST_EXPR})) AS profit
+              SUM(${SIGNED_LINE_QTY_EXPR}) AS quantity,
+              SUM(${SIGNED_LINE_REVENUE_EXPR}) AS revenue,
+              SUM(${SIGNED_LINE_COST_EXPR}) AS cost,
+              SUM(${SIGNED_LINE_PROFIT_EXPR}) AS profit
             FROM sale_items si
             INNER JOIN sales s ON s.id = si.invoice_id
             LEFT JOIN products p ON p.id = si.product_id AND p.firm_nr = $1
             ${LAST_PURCHASE_JOIN}
+            ${INVOICE_LINE_SCALE_JOIN}
             WHERE ${SALES_FILTER}
             GROUP BY date_trunc('month', s.date AT TIME ZONE 'UTC')
             HAVING SUM(ABS(si.quantity)) > 0
@@ -140,24 +149,25 @@ export function ProfitLossReport() {
           break;
         default:
           sql = `
-            WITH ${LAST_PURCHASE_CTE}
+            WITH ${PROFIT_CTES}
             SELECT
               COALESCE(NULLIF(TRIM(si.item_code), ''), p.code, '') AS product_code,
               COALESCE(NULLIF(TRIM(si.item_name), ''), p.name, 'Bilinmeyen') AS product_name,
-              SUM(si.quantity) AS quantity,
-              SUM(COALESCE(si.net_amount, 0)) AS revenue,
-              SUM(${LINE_COST_EXPR}) AS cost,
-              SUM(COALESCE(si.net_amount, 0) - (${LINE_COST_EXPR})) AS profit
+              SUM(${SIGNED_LINE_QTY_EXPR}) AS quantity,
+              SUM(${SIGNED_LINE_REVENUE_EXPR}) AS revenue,
+              SUM(${SIGNED_LINE_COST_EXPR}) AS cost,
+              SUM(${SIGNED_LINE_PROFIT_EXPR}) AS profit
             FROM sale_items si
             INNER JOIN sales s ON s.id = si.invoice_id
             LEFT JOIN products p ON p.id = si.product_id AND p.firm_nr = $1
             ${LAST_PURCHASE_JOIN}
+            ${INVOICE_LINE_SCALE_JOIN}
             WHERE ${SALES_FILTER}
             GROUP BY
               COALESCE(NULLIF(TRIM(si.item_code), ''), p.code, ''),
               COALESCE(NULLIF(TRIM(si.item_name), ''), p.name, 'Bilinmeyen')
             HAVING SUM(ABS(si.quantity)) > 0
-            ORDER BY SUM(COALESCE(si.net_amount, 0) - (${LINE_COST_EXPR})) DESC
+            ORDER BY SUM(${SIGNED_LINE_PROFIT_EXPR}) DESC
           `;
       }
 
@@ -201,7 +211,7 @@ export function ProfitLossReport() {
           revenue,
           cost,
           profit,
-          profitMargin: revenue > 0 ? (profit / revenue) * 100 : 0,
+          profitMargin: Math.abs(revenue) > 0.009 ? (profit / revenue) * 100 : 0,
         };
       });
 
@@ -222,7 +232,7 @@ export function ProfitLossReport() {
   const totalRevenue = salesData.reduce((sum, item) => sum + item.revenue, 0);
   const totalCost = salesData.reduce((sum, item) => sum + item.cost, 0);
   const totalProfit = salesData.reduce((sum, item) => sum + item.profit, 0);
-  const averageMargin = totalRevenue > 0 ? (totalProfit / totalRevenue) * 100 : 0;
+  const averageMargin = Math.abs(totalRevenue) > 0.009 ? (totalProfit / totalRevenue) * 100 : 0;
 
   const sectionTitle = useMemo(() => {
     if (reportType === 'category') return tm('reportsPlSectionCategory');

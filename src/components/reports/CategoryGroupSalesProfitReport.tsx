@@ -10,9 +10,13 @@ import { postgres, ERP_SETTINGS, getAppDefaultCurrency } from '../../services/po
 import { toSqlDateInputString } from '../../utils/localCalendarDate';
 import { SQL_COUNTABLE_SALE_STATUS } from '../../utils/saleInvoiceStatus';
 import {
-  buildLastPurchaseCte,
+  buildProfitCostCtes,
+  INVOICE_LINE_SCALE_JOIN,
   LAST_PURCHASE_JOIN,
-  LINE_COST_EXPR,
+  SIGNED_LINE_PROFIT_EXPR,
+  SIGNED_LINE_QTY_EXPR,
+  SIGNED_LINE_REVENUE_EXPR,
+  SQL_PL_SALES_OR_RETURN,
 } from '../../utils/lastPurchaseCostSql';
 import { toast } from 'sonner';
 import {
@@ -108,15 +112,15 @@ export function CategoryGroupSalesProfitReport() {
         gross_profit: string | number;
       }>(
         `
-        WITH ${buildLastPurchaseCte('$1')}
+        WITH ${buildProfitCostCtes('$1')}
         SELECT
           COALESCE(parent_cat.name, pg.name, NULLIF(TRIM(COALESCE(p.group_code, '')), ''), 'Genel') AS group_name,
           COALESCE(leaf_cat.name, NULLIF(TRIM(COALESCE(p.category_code, '')), ''), 'Diğer') AS category_name,
           COALESCE(NULLIF(TRIM(si.item_code), ''), p.code, '') AS product_code,
           COALESCE(NULLIF(TRIM(si.item_name), ''), p.name, 'Bilinmeyen') AS product_name,
-          SUM(si.quantity) AS qty,
-          SUM(COALESCE(si.net_amount, 0)) AS revenue,
-          SUM(COALESCE(si.net_amount, 0) - (${LINE_COST_EXPR})) AS gross_profit
+          SUM(${SIGNED_LINE_QTY_EXPR}) AS qty,
+          SUM(${SIGNED_LINE_REVENUE_EXPR}) AS revenue,
+          SUM(${SIGNED_LINE_PROFIT_EXPR}) AS gross_profit
         FROM sale_items si
         INNER JOIN sales s ON s.id = si.invoice_id
         LEFT JOIN products p ON p.id = si.product_id AND p.firm_nr = $1
@@ -124,10 +128,12 @@ export function CategoryGroupSalesProfitReport() {
         LEFT JOIN categories parent_cat ON parent_cat.id = leaf_cat.parent_id
         LEFT JOIN product_groups pg ON pg.code = p.group_code
         ${LAST_PURCHASE_JOIN}
+        ${INVOICE_LINE_SCALE_JOIN}
         WHERE s.firm_nr = $1
           AND COALESCE(s.is_cancelled, false) = false
           AND ${SQL_COUNTABLE_SALE_STATUS}
-          AND (s.fiche_type = 'sales_invoice' OR s.trcode IN (7, 8))
+          AND ${SQL_PL_SALES_OR_RETURN}
+          AND COALESCE(si.item_type, 'Malzeme') NOT IN ('Promosyon', 'İndirim')
           AND (s.date AT TIME ZONE 'UTC')::date >= $2::date
           AND (s.date AT TIME ZONE 'UTC')::date <= $3::date
         GROUP BY
@@ -135,8 +141,8 @@ export function CategoryGroupSalesProfitReport() {
           COALESCE(leaf_cat.name, NULLIF(TRIM(COALESCE(p.category_code, '')), ''), 'Diğer'),
           COALESCE(NULLIF(TRIM(si.item_code), ''), p.code, ''),
           COALESCE(NULLIF(TRIM(si.item_name), ''), p.name, 'Bilinmeyen')
-        HAVING SUM(si.quantity) <> 0
-        ORDER BY 1, 2, SUM(si.net_amount) DESC
+        HAVING SUM(ABS(si.quantity)) <> 0
+        ORDER BY 1, 2, SUM(${SIGNED_LINE_REVENUE_EXPR}) DESC
         `,
         [firmNr, from, to],
         { firmNr: firmNr, periodNr: String(selectedDonem.nr ?? ERP_SETTINGS.periodNr).padStart(2, '0') }
