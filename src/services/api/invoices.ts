@@ -2152,7 +2152,8 @@ export const invoicesAPI = {
         const chunkSize = 35;
 
         // Not: dönem sale_items şemasında sale_id yok; yalnızca invoice_id (PostgREST bilinmeyen kolon → 400).
-        const itemSelect = 'id,quantity,unit_price,total_amount,invoice_id,item_code,product_id';
+        const itemSelect =
+          'id,quantity,unit_price,total_amount,net_amount,invoice_id,item_code,product_id';
 
         const fetchSaleItems = async (extra: Record<string, string>) =>
           postgrest
@@ -2167,35 +2168,45 @@ export const invoicesAPI = {
             )
             .catch(() => [] as any[]);
 
-        // item_code bazen ürün kodu, bazen UUID; product_id çoğu zaman UUID — ikisini de çöz.
+        // Satış satırında item_code çoğunlukla UUID; alışta ürün kodu/barkod — her iki anahtarı da topla.
         let resolvedUuid = isValidUuid(pid) ? pid : '';
         let resolvedCode = String(hint?.code || '').trim();
+        let resolvedBarcode = String(hint?.barcode || '').trim();
+        if (isValidUuid(resolvedCode)) {
+          if (!resolvedUuid) resolvedUuid = resolvedCode;
+          resolvedCode = '';
+        }
         if (!isValidUuid(pid) && !resolvedCode) resolvedCode = pid;
 
-        if (!resolvedUuid || !resolvedCode) {
+        const codeLooksLikeUuid = Boolean(resolvedCode && isValidUuid(resolvedCode));
+        // UUID varken gerçek ürün kodunu her zaman karttan çek (hint.code UUID/boş olsa bile).
+        if (!resolvedUuid || !resolvedCode || codeLooksLikeUuid) {
           try {
-            const byHint = resolvedCode ? await productAPI.getByCode(resolvedCode) : null;
-            const byPid = !byHint
-              ? isValidUuid(pid)
-                ? await productAPI.getById(pid)
-                : await productAPI.getByCode(pid)
-              : byHint;
-            const prod =
-              byHint ||
-              byPid ||
-              (hint?.barcode?.trim() ? await productAPI.getByBarcode(hint.barcode.trim()) : null);
+            let prod =
+              (resolvedUuid ? await productAPI.getById(resolvedUuid) : null) ||
+              (resolvedCode && !isValidUuid(resolvedCode)
+                ? await productAPI.getByCode(resolvedCode)
+                : null) ||
+              (pid && !isValidUuid(pid) && pid !== resolvedCode
+                ? await productAPI.getByCode(pid)
+                : null) ||
+              (resolvedBarcode ? await productAPI.getByBarcode(resolvedBarcode) : null);
+            if (!prod && isValidUuid(pid) && pid !== resolvedUuid) {
+              prod = await productAPI.getById(pid);
+            }
             if (prod?.id) resolvedUuid = String(prod.id);
-            if (prod?.code && !resolvedCode) resolvedCode = String(prod.code).trim();
+            if (prod?.code) resolvedCode = String(prod.code).trim();
+            if (prod?.barcode && !resolvedBarcode) resolvedBarcode = String(prod.barcode).trim();
           } catch (e) {
             console.warn('[InvoicesAPI] getProductHistory product resolve:', e);
           }
         }
 
         const codeKeys = new Set<string>();
-        if (resolvedCode) codeKeys.add(resolvedCode);
-        if (pid && !isValidUuid(pid)) codeKeys.add(pid);
-        if (isValidUuid(pid)) codeKeys.add(pid); // item_code = UUID senaryosu
+        if (resolvedCode && !isValidUuid(resolvedCode)) codeKeys.add(resolvedCode);
+        if (pid) codeKeys.add(pid);
         if (resolvedUuid) codeKeys.add(resolvedUuid);
+        if (resolvedBarcode) codeKeys.add(resolvedBarcode);
 
         const mergedBuckets: any[] = [];
         for (const key of codeKeys) {
@@ -2295,13 +2306,20 @@ export const invoicesAPI = {
             if (ficheType === 'purchase_invoice') type = 'purchase';
             else if (ficheType === 'return_invoice' && trcode === 3) type = 'sales_return';
             else if (ficheType === 'return_invoice') type = 'purchase_return';
+            const qty = Math.abs(parseFloat(String(it.quantity ?? 0)) || 0);
+            const total = parseFloat(String(it.total_amount ?? 0)) || 0;
+            const net = parseFloat(String(it.net_amount ?? 0)) || 0;
+            let unitPrice = parseFloat(String(it.unit_price ?? 0)) || 0;
+            if (!unitPrice && qty > 0.0000001) {
+              unitPrice = (net || total) / qty;
+            }
             return {
               date: hd.date,
               documentNo: hd.fiche_no,
               supplier: partner || 'N/A',
               quantity: it.quantity,
-              unitPrice: parseFloat(String(it.unit_price ?? 0)),
-              total: parseFloat(String(it.total_amount ?? 0)),
+              unitPrice,
+              total: total || net || unitPrice * qty,
               type,
               ficheType,
               trcode,
@@ -2312,9 +2330,11 @@ export const invoicesAPI = {
         return mapped;
       }
 
+      const hintCode = String(hint?.code || '').trim();
+      const hintBarcode = String(hint?.barcode || '').trim();
       const { rows } = await postgres.query(
         `SELECT 
-            it.quantity, it.unit_price, it.total_amount, s.fiche_no, s.date, s.fiche_type, s.trcode,
+            it.quantity, it.unit_price, it.total_amount, it.net_amount, s.fiche_no, s.date, s.fiche_type, s.trcode,
             COALESCE(c.name, sup.name) as partner_name
          FROM sale_items it 
          JOIN sales s ON it.invoice_id = s.id 
@@ -2328,6 +2348,9 @@ export const invoicesAPI = {
             OR it.item_code IN (
                  SELECT id::text FROM products WHERE id::text = $1 OR code = $1 OR barcode = $1
                )
+            OR it.item_code IN (
+                 SELECT barcode FROM products WHERE id::text = $1 OR code = $1 OR barcode = $1
+               )
             OR it.product_id IN (
                  SELECT id FROM products WHERE id::text = $1 OR code = $1 OR barcode = $1
                )
@@ -2335,11 +2358,22 @@ export const invoicesAPI = {
                  NULLIF(TRIM($2::text), '') IS NOT NULL
                  AND (
                    it.item_code = TRIM($2::text)
-                   OR it.product_id IN (SELECT id FROM products WHERE code = TRIM($2::text))
+                   OR it.product_id IN (
+                     SELECT id FROM products WHERE code = TRIM($2::text) OR barcode = TRIM($2::text)
+                   )
+                 )
+               )
+            OR (
+                 NULLIF(TRIM($3::text), '') IS NOT NULL
+                 AND (
+                   it.item_code = TRIM($3::text)
+                   OR it.product_id IN (
+                     SELECT id FROM products WHERE barcode = TRIM($3::text) OR code = TRIM($3::text)
+                   )
                  )
                )
          ORDER BY s.date DESC`,
-        [pid, String(hint?.code || '').trim()]
+        [pid, hintCode, hintBarcode]
       );
 
       return rows.map(r => {
@@ -2349,13 +2383,20 @@ export const invoicesAPI = {
         if (ficheType === 'purchase_invoice') type = 'purchase';
         else if (ficheType === 'return_invoice' && trcode === 3) type = 'sales_return';
         else if (ficheType === 'return_invoice') type = 'purchase_return';
+        const qty = Math.abs(parseFloat(String(r.quantity ?? 0)) || 0);
+        const total = parseFloat(String(r.total_amount ?? 0)) || 0;
+        const net = parseFloat(String(r.net_amount ?? 0)) || 0;
+        let unitPrice = parseFloat(String(r.unit_price ?? 0)) || 0;
+        if (!unitPrice && qty > 0.0000001) {
+          unitPrice = (net || total) / qty;
+        }
         return {
           date: r.date,
           documentNo: r.fiche_no,
           supplier: r.partner_name || 'N/A',
           quantity: r.quantity,
-          unitPrice: parseFloat(r.unit_price),
-          total: parseFloat(r.total_amount),
+          unitPrice,
+          total: total || net || unitPrice * qty,
           type,
           ficheType,
           trcode,

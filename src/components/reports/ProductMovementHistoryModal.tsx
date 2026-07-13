@@ -33,10 +33,58 @@ type MovementRow = {
 };
 
 function toDayMs(iso: string): number {
-  const s = String(iso || '').slice(0, 10);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return NaN;
+  const raw = String(iso || '').trim();
+  if (!raw) return NaN;
+  // Timestamptz / Date: yerel takvim günü (UTC slice, UTC+3'te bir gün kaydırır).
+  if (raw.length > 10 && (/[T\s]/.test(raw) || raw.includes('+'))) {
+    const d = new Date(raw);
+    if (!Number.isNaN(d.getTime())) {
+      return Date.UTC(d.getFullYear(), d.getMonth(), d.getDate());
+    }
+  }
+  const s = raw.slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+    const d = new Date(raw);
+    if (!Number.isNaN(d.getTime())) {
+      return Date.UTC(d.getFullYear(), d.getMonth(), d.getDate());
+    }
+    return NaN;
+  }
   const [y, m, d] = s.split('-').map(Number);
   return Date.UTC(y, m - 1, d);
+}
+
+function toDisplayDate(iso: string): string {
+  const raw = String(iso || '').trim();
+  if (!raw) return '—';
+  if (raw.length > 10 && (/[T\s]/.test(raw) || raw.includes('+'))) {
+    const d = new Date(raw);
+    if (!Number.isNaN(d.getTime())) {
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${y}-${m}-${day}`;
+    }
+  }
+  const s = raw.slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : raw.slice(0, 16);
+}
+
+function resolveUnitPrice(m: any, qty: number): number {
+  const direct =
+    Number(m.unit_price ?? m.unitPrice ?? 0) ||
+    Number(m.cost_price ?? 0) ||
+    0;
+  if (direct) return direct;
+  const total = Number(m.total_amount ?? m.total ?? m.net_amount ?? 0) || 0;
+  if (total && Math.abs(qty) > 0.0000001) return total / Math.abs(qty);
+  return 0;
+}
+
+function resolveAmount(m: any, qty: number, unitPrice: number): number {
+  const total = Number(m.total_amount ?? m.total ?? m.net_amount ?? 0) || 0;
+  if (total) return total;
+  return qty * unitPrice;
 }
 
 function resolveTypeLabel(
@@ -89,7 +137,10 @@ export function ProductMovementHistoryModal({
   const [rows, setRows] = useState<MovementRow[]>([]);
 
   const lookupId = String(target.productId || target.productCode || '').trim();
-  const lookupCode = String(target.productCode || '').trim();
+  const rawCode = String(target.productCode || '').trim();
+  const lookupCode = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(rawCode)
+    ? ''
+    : rawCode;
 
   useEffect(() => {
     let cancelled = false;
@@ -112,17 +163,17 @@ export function ProductMovementHistoryModal({
         const staged: Staged[] = (Array.isArray(raw) ? raw : []).map((m: any, idx: number) => {
           const dateRaw = m.movement?.movement_date || m.movement_date || m.created_at || '';
           const qty = Number(m.quantity) || 0;
-          const unitPrice = Number(m.unit_price) || 0;
+          const unitPrice = resolveUnitPrice(m, qty);
           const kind = resolveTypeLabel(m, tm);
           return {
             id: String(m.id || `${idx}`),
-            date: String(dateRaw).slice(0, 10),
+            date: toDisplayDate(String(dateRaw)),
             documentNo: String(m.movement?.document_no || m.document_no || '—'),
             typeLabel: kind.label,
             typeTone: kind.tone,
             quantity: qty,
             unitPrice,
-            amount: qty * unitPrice,
+            amount: resolveAmount(m, qty, unitPrice),
             partner: String(m.notes || '').trim(),
             dayMs: toDayMs(String(dateRaw)),
           };

@@ -410,6 +410,26 @@ class StockMovementAPI {
 
                 const resolvedUuid = (await this.resolveProductUuidForMovements(productId, hint)) || '';
 
+                // UUID → gerçek ürün kodu (alış satırları item_code = kod)
+                let resolvedCode = String(hint?.code || '').trim();
+                let resolvedBarcode = String(hint?.barcode || '').trim();
+                if (UUID_RE.test(resolvedCode)) resolvedCode = '';
+                if (resolvedUuid || resolvedCode || resolvedBarcode || pid) {
+                    try {
+                        const { productAPI } = await import('./api/products');
+                        const prod =
+                            (resolvedUuid ? await productAPI.getById(resolvedUuid) : null) ||
+                            (resolvedCode ? await productAPI.getByCode(resolvedCode) : null) ||
+                            (!UUID_RE.test(pid) ? await productAPI.getByCode(pid) : null) ||
+                            (resolvedBarcode ? await productAPI.getByBarcode(resolvedBarcode) : null) ||
+                            (UUID_RE.test(pid) ? await productAPI.getById(pid) : null);
+                        if (prod?.code) resolvedCode = String(prod.code).trim();
+                        if (prod?.barcode && !resolvedBarcode) resolvedBarcode = String(prod.barcode).trim();
+                    } catch (e) {
+                        console.warn('[StockMovementAPI] product code resolve:', e);
+                    }
+                }
+
                 const combinedRaw: any[] = [];
 
                 // 1) Ambar fişleri (stock_movement_items)
@@ -494,11 +514,11 @@ class StockMovementAPI {
                     }
                 }
 
-                // 2) Fatura satırları — UUID + kod (item_code bazen UUID, bazen ürün kodu)
+                // 2) Fatura satırları — UUID + kod + barkod
                 const histPid = resolvedUuid || pid;
                 const hist = await invoicesAPI.getProductHistory(histPid, {
-                    code: hint?.code || (!UUID_RE.test(pid) ? pid : undefined),
-                    barcode: hint?.barcode,
+                    code: resolvedCode || (!UUID_RE.test(pid) ? pid : undefined),
+                    barcode: resolvedBarcode || undefined,
                 });
                 for (const h of hist) {
                     const ficheType = String(h.ficheType || h.fiche_type || '');
@@ -521,12 +541,17 @@ class StockMovementAPI {
                         movementType = Number(h.trcode) === 3 ? 'in' : 'out';
                         trcode = Number(h.trcode) || 3;
                     }
+                    const qty = Number(h.quantity) || 0;
+                    let unitPrice = Number(h.unitPrice) || 0;
+                    const total = Number(h.total) || 0;
+                    if (!unitPrice && qty) unitPrice = total / Math.abs(qty);
                     combinedRaw.push({
                         id: `inv-${String(h.documentNo)}-${String(h.date)}`,
                         movement_id: h.documentNo,
                         product_id: histPid,
                         quantity: h.quantity,
-                        unit_price: h.unitPrice,
+                        unit_price: unitPrice,
+                        total_amount: total,
                         created_at: h.date,
                         document_no: h.documentNo,
                         movement_type: movementType,
@@ -548,7 +573,9 @@ class StockMovementAPI {
                     const db = new Date(b.movement_date || b.created_at).getTime();
                     return db - da;
                 });
-                return combinedRaw.map(mapRow);
+                const mappedPgrest = combinedRaw.map(mapRow);
+                // PostgREST boş döndüyse (yanlış kiracı / eşleme) postgres yoluna düş.
+                if (mappedPgrest.length > 0) return mappedPgrest;
             } catch (e) {
                 console.warn('[StockMovementAPI] getProductMovements PostgREST:', e);
                 // Postgres yoluna düş — sessiz [] ile modalın “boş/açılmadı” karışmasın.
@@ -588,13 +615,24 @@ class StockMovementAPI {
         let invoiceRows: any[] = [];
         try {
             // sale_items şemasında created_at yok; tarih sales başlığından alınır
+            const hintCode = String(hint?.code || '').trim();
+            const hintBarcode = String(hint?.barcode || '').trim();
             const { rows } = await postgres.query(
                 `SELECT
                     si.id,
                     si.invoice_id as movement_id,
                     si.item_code as product_id,
                     si.quantity,
-                    si.unit_price,
+                    COALESCE(
+                      NULLIF(si.unit_price, 0),
+                      CASE
+                        WHEN ABS(COALESCE(si.quantity, 0)) > 0.0000001
+                        THEN COALESCE(NULLIF(si.net_amount, 0), NULLIF(si.total_amount, 0), 0)
+                             / NULLIF(ABS(si.quantity), 0)
+                        ELSE 0
+                      END
+                    ) as unit_price,
+                    COALESCE(si.total_amount, si.net_amount, 0) as total_amount,
                     sl.date as created_at,
                     sl.fiche_no as document_no,
                     CASE
@@ -624,6 +662,9 @@ class StockMovementAPI {
                     OR si.item_code IN (
                          SELECT id::text FROM products WHERE id::text = $1 OR code = $1 OR barcode = $1
                        )
+                    OR si.item_code IN (
+                         SELECT barcode FROM products WHERE id::text = $1 OR code = $1 OR barcode = $1
+                       )
                     OR si.product_id IN (
                          SELECT id FROM products WHERE id::text = $1 OR code = $1 OR barcode = $1
                        )
@@ -631,10 +672,21 @@ class StockMovementAPI {
                          NULLIF(TRIM($2::text), '') IS NOT NULL
                          AND (
                            si.item_code = TRIM($2::text)
-                           OR si.product_id IN (SELECT id FROM products WHERE code = TRIM($2::text) OR barcode = TRIM($2::text))
+                           OR si.product_id IN (
+                             SELECT id FROM products WHERE code = TRIM($2::text) OR barcode = TRIM($2::text)
+                           )
+                         )
+                       )
+                    OR (
+                         NULLIF(TRIM($3::text), '') IS NOT NULL
+                         AND (
+                           si.item_code = TRIM($3::text)
+                           OR si.product_id IN (
+                             SELECT id FROM products WHERE barcode = TRIM($3::text) OR code = TRIM($3::text)
+                           )
                          )
                        )`,
-                [productId, String(hint?.code || '').trim()]
+                [productId, hintCode, hintBarcode]
             );
             invoiceRows = rows;
         } catch (err) {
