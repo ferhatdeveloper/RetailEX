@@ -220,7 +220,7 @@ type ExtendedScreen = ManagementScreen | 'dashboard' | 'finance' | 'stock' | 'pu
   'salesquote' | 'purchaserequest' | 'stockmovements' | 'stock-dashboard' | 'warehousetransfer' | 'stockcount' | 'barcode' | 'seriallot' | 'warehouse-definitions' | 'service-cards' | 'virman' | 'firm-period-definitions' | 'payment-plans' | 'bank-payment-plans' |
   'productionrecipe' | 'capacityplan' | 'butcher-production' | 'cashbank' | 'banks' | 'checkpromissory' | 'collectionpayment' | 'currentaccounts' | 'revenueexpense' | 'customer-call-plan' |
   'storetransfer' | 'mobile-inventory-count' | 'interstore-transfer' | 'store-controlled-count' |
-  'pricelists' | 'discounts' | 'promotions' | 'shipping' | 'cargotrack' | 'waybillops' | 'routeplan' |
+  'pricelists' | 'discounts' | 'promotions' | 'shipping' | 'cargotrack' | 'waybillops' | 'routeplan' | 'delivery-management' | 'delivery' |
   'servicemaint' | 'warranty' | 'fieldservice' | 'fixedasset' | 'depreciation' | 'maintplan' |
   'MalzemeSiniflari' | 'Birimsetleri' | 'varyant' | 'ozelkodlar' | 'markatanim' | 'groupkodları' |
   'malzemeler' | 'materials-intake' | 'smart-material-add' | 'hareketler' | 'material-list' | 'material-definitions' | 'material-classes' | 'unit-sets' | 'variants' | 'group-codes' | 'product-categories' | 'special-codes' | 'brand-definitions' |
@@ -1314,6 +1314,8 @@ export function ManagementModule({
         case 'cargotrack':
         case 'waybillops':
         case 'routeplan':
+        case 'delivery-management':
+        case 'delivery':
           return <LogisticsModule />;
         case 'salesinvoice':
         case 'sales-invoice-view': // Generic view — satış + müşteri iade faturaları

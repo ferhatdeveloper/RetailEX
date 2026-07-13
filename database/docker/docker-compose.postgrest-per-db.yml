@@ -10,7 +10,7 @@
 
 x-postgrest-env: &postgrest-env
   PGRST_DB_ANON_ROLE: anon
-  PGRST_DB_SCHEMAS: "public,logic,wms,rest,beauty,pos"
+  PGRST_DB_SCHEMAS: "public,logic,wms,rest,beauty,pos,logistics"
   PGRST_SERVER_HOST: "0.0.0.0"
   PGRST_SERVER_PORT: "3000"
   PGRST_SERVER_CORS_ALLOWED_ORIGINS: "*"

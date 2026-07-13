@@ -18,7 +18,7 @@ RetailEX SaaS ortamında **yeni bir PostgreSQL veritabanı** (ör. `aqua_beauty`
 PostgREST ortam değişkenleri (`docker-compose.dokploy.yml`):
 
 - `PGRST_DB_ANON_ROLE=anon`
-- `PGRST_DB_SCHEMAS=public,logic,wms,rest,beauty,pos`
+- `PGRST_DB_SCHEMAS=public,logic,wms,rest,beauty,pos,logistics`
 
 ---
 

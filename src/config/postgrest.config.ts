@@ -29,7 +29,7 @@ export const postgrestConfig = {
   /** Varsayılan şema (Accept-Profile, Content-Profile header) */
   defaultSchema: 'public' as const,
   /** Kullanılacak şemalar */
-  schemas: ['public', 'logic', 'wms', 'rest', 'beauty', 'pos'] as const,
+  schemas: ['public', 'logic', 'wms', 'rest', 'beauty', 'pos', 'logistics'] as const,
 };
 
 /** Kiracı PostgREST ile okuma/yazım (Tauri hibrit hariç — yerel PG) */

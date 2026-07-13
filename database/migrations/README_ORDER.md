@@ -91,6 +91,7 @@
 87. **102_butcher_recipe_code.sql** – Kasap reçetesine `code` (üretim / reçete kodu) + benzersiz indeks; `INIT_BUTCHER_PRODUCTION_TABLES` güncellemesi.
 88. **103_butcher_allow_without_stock.sql** – Kasap ayarı `allow_complete_without_stock` (alışsız / yetersiz stokla üretim tamamlanabilir; varsayılan true).
 89. **104_rex_products_plu_code.sql** – Ürün kartı `plu_code` (terazi PLU numarası; tüm `rex_*_products`).
+90. **105_logistics_delivery.sql** – Teslimat Yönetim: `logistics` şeması (araç, kurye, plan, deliveries/lines, POD, iade, bildirim); `wms.pick_tasks` + `pick_waves.delivery_id`; `sale_items.qty_shipped` / `qty_delivered`.
 
 **099 tüm kiracılara (tek dosya):**
 ```bash

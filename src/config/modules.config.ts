@@ -118,7 +118,7 @@ export const modulesConfig: ModuleConfig[] = [
   // Additional modules
   { id: 'crm', translationKey: 'crmOpportunities', badge: null, isActive: true, category: 'operations' },
   { id: 'hr', translationKey: 'humanResources', badge: null, isActive: false, category: 'operations' },
-  { id: 'logistics', translationKey: 'logisticsShipping', badge: null, isActive: false, category: 'operations' },
+  { id: 'logistics', translationKey: 'logisticsShipping', badge: null, isActive: true, category: 'operations' },
   { id: 'price-management', translationKey: 'priceLists', badge: null, isActive: true, category: 'operations' },
 ];
 
