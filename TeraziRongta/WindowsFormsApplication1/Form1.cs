@@ -2135,24 +2135,44 @@ namespace WindowsFormsApplication1
         private void btnInstallService_Click(object sender, EventArgs e)
         {
             SaveSettingsFromUi();
-            var script = System.IO.Path.Combine(
-                System.IO.Path.GetDirectoryName(Application.ExecutablePath) ?? "",
-                "..", "..", "..", "install-service.ps1");
 
-            script = System.IO.Path.GetFullPath(script);
-            if (!System.IO.File.Exists(script))
+            // Kurulum/portable: script exe yaninda; gelistirme: repo kok / installer
+            var exeDir = System.IO.Path.GetDirectoryName(Application.ExecutablePath) ?? "";
+            var baseDir = AppDomain.CurrentDomain.BaseDirectory ?? "";
+            var candidates = new[]
             {
-                script = System.IO.Path.Combine(
-                    AppDomain.CurrentDomain.BaseDirectory,
-                    "..", "..", "install-service.ps1");
-                script = System.IO.Path.GetFullPath(script);
+                System.IO.Path.Combine(exeDir, "install-service.ps1"),
+                System.IO.Path.Combine(baseDir, "install-service.ps1"),
+                System.IO.Path.Combine(exeDir, "..", "..", "..", "install-service.ps1"),
+                System.IO.Path.Combine(baseDir, "..", "..", "install-service.ps1"),
+                System.IO.Path.Combine(exeDir, "..", "..", "..", "installer", "install-service.ps1"),
+            };
+
+            string script = null;
+            foreach (var candidate in candidates)
+            {
+                try
+                {
+                    var full = System.IO.Path.GetFullPath(candidate);
+                    if (System.IO.File.Exists(full))
+                    {
+                        script = full;
+                        break;
+                    }
+                }
+                catch
+                {
+                    // gecersiz yol — sonraki adaya gec
+                }
             }
 
-            if (!System.IO.File.Exists(script))
+            if (script == null)
             {
+                var expected = System.IO.Path.Combine(exeDir, "install-service.ps1");
                 MessageBox.Show(
-                    "install-service.ps1 bulunamadi.\n\nYönetici PowerShell:\n" +
-                    "powershell -ExecutionPolicy Bypass -File install-service.ps1",
+                    "install-service.ps1 bulunamadı.\n\nBeklenen konum:\n" + expected +
+                    "\n\nYönetici PowerShell:\n" +
+                    "powershell -ExecutionPolicy Bypass -File \"" + expected + "\"",
                     "Servis Kurulumu",
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Information);
@@ -2164,7 +2184,7 @@ namespace WindowsFormsApplication1
                 System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
                 {
                     FileName = "powershell.exe",
-                    Arguments = "-ExecutionPolicy Bypass -File \"" + script + "\"",
+                    Arguments = "-NoProfile -ExecutionPolicy Bypass -File \"" + script + "\"",
                     Verb = "runas",
                     UseShellExecute = true,
                 });

@@ -1,12 +1,13 @@
-# RetailEX Terazi Yönetici — Windows Servisi Kurulumu
-# Yönetici PowerShell ile calistirin.
+# RetailEX Terazi Yonetici — Windows Servisi Kurulumu
+# Yonetici PowerShell ile calistirin.
 
 $ErrorActionPreference = "Stop"
 $serviceName = "RetailEX_Terazi_Sync"
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
 
-# Kurulum paketi: {app}\Service\  |  Gelistirme: TeraziRongta.Service\bin\x86\Release\
+# Kurulum (flat): {app}\  |  Inno Service: {app}\Service\  |  Gelistirme: bin\...
 $candidates = @(
+    (Join-Path $root "RetailEX_Terazi_Sync.exe"),
     (Join-Path $root "Service\RetailEX_Terazi_Sync.exe"),
     (Join-Path $root "TeraziRongta.Service\bin\x86\Release\RetailEX_Terazi_Sync.exe"),
     (Join-Path $root "TeraziRongta.Service\bin\x86\Debug\RetailEX_Terazi_Sync.exe")
