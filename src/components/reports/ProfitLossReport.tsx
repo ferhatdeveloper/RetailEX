@@ -12,7 +12,10 @@ import {
   LAST_PURCHASE_JOIN,
   LINE_COST_EXPR,
 } from '../../utils/lastPurchaseCostSql';
-
+import {
+  ProductMovementHistoryModal,
+  type ProductMovementTarget,
+} from './ProductMovementHistoryModal';
 interface SalesData {
   rowKey: string;
   productCode: string;
@@ -43,6 +46,7 @@ export function ProfitLossReport() {
   const [reportType, setReportType] = useState<'product' | 'category' | 'daily' | 'monthly'>('product');
   const [salesData, setSalesData] = useState<SalesData[]>([]);
   const [loading, setLoading] = useState(false);
+  const [movementTarget, setMovementTarget] = useState<ProductMovementTarget | null>(null);
 
   const reportCurrency = getAppDefaultCurrency();
 
@@ -290,6 +294,12 @@ export function ProfitLossReport() {
         </div>
         <p className="mt-3 text-xs text-gray-500 leading-relaxed">
           {tm('reportsPlCostSourceNote')}
+          {reportType === 'product' ? (
+            <>
+              {' '}
+              {tm('reportsPlMovClickHint')}
+            </>
+          ) : null}
         </p>
       </div>
 
@@ -365,7 +375,28 @@ export function ProfitLossReport() {
               </thead>
               <tbody className="divide-y">
                 {salesData.map((item) => (
-                  <tr key={item.rowKey} className="hover:bg-gray-50">
+                  <tr
+                    key={item.rowKey}
+                    className={
+                      reportType === 'product' && item.productCode
+                        ? 'hover:bg-emerald-50/80 cursor-pointer'
+                        : 'hover:bg-gray-50'
+                    }
+                    onClick={() => {
+                      if (reportType !== 'product' || !item.productCode) return;
+                      setMovementTarget({
+                        productCode: item.productCode,
+                        productName: item.productName,
+                        startDate: toSqlDateInputString(startDate) || undefined,
+                        endDate: toSqlDateInputString(endDate) || undefined,
+                      });
+                    }}
+                    title={
+                      reportType === 'product' && item.productCode
+                        ? tm('reportsPlMovClickHint')
+                        : undefined
+                    }
+                  >
                     <td className="px-4 py-3">
                       <div>
                         <p className="text-sm font-medium text-gray-900">{item.productName}</p>
@@ -426,6 +457,13 @@ export function ProfitLossReport() {
           )}
         </div>
       </div>
+
+      {movementTarget ? (
+        <ProductMovementHistoryModal
+          target={movementTarget}
+          onClose={() => setMovementTarget(null)}
+        />
+      ) : null}
     </div>
   );
 }

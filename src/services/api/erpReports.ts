@@ -66,6 +66,49 @@ export interface PurchaseSummaryRow {
   netAmount: number;
 }
 
+/** Tedarikçi bazlı alış + alış iadesi özeti */
+export interface SupplierPurchaseReturnRow {
+  supplierId: string;
+  supplierCode: string;
+  supplierName: string;
+  purchaseCount: number;
+  returnCount: number;
+  purchaseAmount: number;
+  returnAmount: number;
+  netAmount: number;
+}
+
+/** Alış faturaları (trcode 6 = alış iade hariç) — InvoiceList Alis ile uyumlu */
+const PURCHASE_ONLY_TRCODES = [1, 4, 5, 13, 26, 41, 42] as const;
+const PURCHASE_RETURN_TRCODE = 6;
+const SALES_RETURN_TRCODES = [2, 3] as const;
+
+function isPurchaseInvoiceRow(row: { fiche_type?: unknown; trcode?: unknown }): boolean {
+  const ft = String(row.fiche_type || '')
+    .trim()
+    .toLowerCase();
+  const tr = Number(row.trcode ?? 0);
+  if (tr === PURCHASE_RETURN_TRCODE || (SALES_RETURN_TRCODES as readonly number[]).includes(tr)) return false;
+  if (ft === 'return_invoice') return false;
+  return ft === 'purchase_invoice' || ft === 'a' || (PURCHASE_ONLY_TRCODES as readonly number[]).includes(tr);
+}
+
+function isPurchaseReturnInvoiceRow(
+  row: { fiche_type?: unknown; trcode?: unknown; customer_id?: unknown },
+  supplierIds?: Set<string>,
+): boolean {
+  const ft = String(row.fiche_type || '')
+    .trim()
+    .toLowerCase();
+  const tr = Number(row.trcode ?? 0);
+  if (tr === PURCHASE_RETURN_TRCODE) return true;
+  if ((SALES_RETURN_TRCODES as readonly number[]).includes(tr)) return false;
+  if (ft !== 'return_invoice') return false;
+  if (!supplierIds) return true;
+  const id = String(row.customer_id || '');
+  return Boolean(id && supplierIds.has(id));
+}
+
 export interface CollectionDueRow {
   accountId: string;
   accountCode: string;
@@ -763,6 +806,227 @@ export const erpReportsAPI = {
         totalAmount,
         returnAmount,
         netAmount: totalAmount - returnAmount,
+      };
+    });
+  },
+
+  /**
+   * Tedarikçi bazında toplam alış ve alış iadeleri (net = alış − iade).
+   * Alış: purchase_invoice / Alis trcode (6 hariç).
+   * İade: trcode 6 (Alış İade) veya return_invoice + tedarikçi kartı.
+   */
+  async getSupplierPurchaseReturns(opts: {
+    startDate: string;
+    endDate: string;
+  }): Promise<SupplierPurchaseReturnRow[]> {
+    const start = String(opts.startDate || '').slice(0, 10);
+    const end = String(opts.endDate || '').slice(0, 10);
+    if (!start || !end) return [];
+
+    if (DB_SETTINGS.connectionProvider === 'rest_api') {
+      const { postgrest } = await import('./postgrestClient');
+      const fn = padFirm();
+      const pn = padPeriod();
+      const [sales, suppliers] = await Promise.all([
+        postgrest
+          .get<Record<string, unknown>[]>(
+            `/rex_${fn}_${pn}_sales`,
+            {
+              select:
+                'date,customer_id,customer_name,net_amount,fiche_type,trcode,is_cancelled,status',
+              order: 'date.asc',
+              limit: '8000',
+            },
+            { schema: 'public' },
+          )
+          .catch(() => [] as Record<string, unknown>[]),
+        postgrest
+          .get<Record<string, unknown>[]>(
+            `/rex_${fn}_suppliers`,
+            { select: 'id,code,name', limit: '4000' },
+            { schema: 'public' },
+          )
+          .catch(() => [] as Record<string, unknown>[]),
+      ]);
+
+      const supplierById = new Map(
+        (suppliers || []).map((s) => [String(s.id), s] as const),
+      );
+      const supplierIds = new Set(supplierById.keys());
+
+      const map = new Map<string, SupplierPurchaseReturnRow>();
+      for (const s of sales || []) {
+        if (s.is_cancelled === true || s.is_cancelled === 'true') continue;
+        const st = String(s.status || 'approved').toLowerCase();
+        if (st === 'cancelled' || st === 'canceled') continue;
+        const d = String(s.date || '').slice(0, 10);
+        if (d < start || d > end) continue;
+
+        const purchase = isPurchaseInvoiceRow(s);
+        const ret = isPurchaseReturnInvoiceRow(s, supplierIds);
+        if (!purchase && !ret) continue;
+
+        const sid = String(s.customer_id || '');
+        const card = sid ? supplierById.get(sid) : undefined;
+        const supplierName =
+          String(card?.name || s.customer_name || '').trim() || '—';
+        const supplierCode = String(card?.code || '').trim();
+        const key = sid || `name:${supplierName}`;
+        const amt = Math.abs(Number(s.net_amount ?? 0));
+        const cur = map.get(key) || {
+          supplierId: sid,
+          supplierCode,
+          supplierName,
+          purchaseCount: 0,
+          returnCount: 0,
+          purchaseAmount: 0,
+          returnAmount: 0,
+          netAmount: 0,
+        };
+        if (!cur.supplierCode && supplierCode) cur.supplierCode = supplierCode;
+        if (cur.supplierName === '—' && supplierName !== '—') cur.supplierName = supplierName;
+
+        if (ret) {
+          cur.returnCount += 1;
+          cur.returnAmount += amt;
+          cur.netAmount -= amt;
+        } else {
+          cur.purchaseCount += 1;
+          cur.purchaseAmount += amt;
+          cur.netAmount += amt;
+        }
+        map.set(key, cur);
+      }
+
+      return Array.from(map.values())
+        .filter((r) => r.purchaseAmount > 0.009 || r.returnAmount > 0.009)
+        .sort(
+          (a, b) =>
+            b.purchaseAmount - a.purchaseAmount ||
+            a.supplierName.localeCompare(b.supplierName, 'tr'),
+        )
+        .slice(0, ROW_LIMIT);
+    }
+
+    const purchaseTrSql = PURCHASE_ONLY_TRCODES.join(', ');
+    const { rows } = await postgres.query(
+      `
+      SELECT
+        COALESCE(sup.id::text, c.id::text, '') AS supplier_id,
+        COALESCE(sup.code, c.code, '') AS supplier_code,
+        COALESCE(
+          NULLIF(TRIM(sup.name), ''),
+          NULLIF(TRIM(c.name), ''),
+          NULLIF(TRIM(s.customer_name), ''),
+          '—'
+        ) AS supplier_name,
+        COUNT(*) FILTER (
+          WHERE COALESCE(s.trcode, 0) <> ${PURCHASE_RETURN_TRCODE}
+            AND LOWER(TRIM(COALESCE(s.fiche_type, ''))) <> 'return_invoice'
+            AND (
+              LOWER(TRIM(COALESCE(s.fiche_type, ''))) IN ('purchase_invoice', 'a')
+              OR s.trcode IN (${purchaseTrSql})
+            )
+        ) AS purchase_count,
+        COUNT(*) FILTER (
+          WHERE s.trcode = ${PURCHASE_RETURN_TRCODE}
+            OR (
+              LOWER(TRIM(COALESCE(s.fiche_type, ''))) = 'return_invoice'
+              AND COALESCE(s.trcode, 0) NOT IN (${SALES_RETURN_TRCODES.join(', ')})
+              AND EXISTS (SELECT 1 FROM suppliers sp WHERE sp.id = s.customer_id)
+            )
+        ) AS return_count,
+        COALESCE(SUM(
+          CASE
+            WHEN COALESCE(s.trcode, 0) <> ${PURCHASE_RETURN_TRCODE}
+              AND LOWER(TRIM(COALESCE(s.fiche_type, ''))) <> 'return_invoice'
+              AND (
+                LOWER(TRIM(COALESCE(s.fiche_type, ''))) IN ('purchase_invoice', 'a')
+                OR s.trcode IN (${purchaseTrSql})
+              )
+              THEN ABS(COALESCE(s.net_amount, 0))
+            ELSE 0
+          END
+        ), 0) AS purchase_amount,
+        COALESCE(SUM(
+          CASE
+            WHEN s.trcode = ${PURCHASE_RETURN_TRCODE}
+              OR (
+                LOWER(TRIM(COALESCE(s.fiche_type, ''))) = 'return_invoice'
+                AND COALESCE(s.trcode, 0) NOT IN (${SALES_RETURN_TRCODES.join(', ')})
+                AND EXISTS (SELECT 1 FROM suppliers sp WHERE sp.id = s.customer_id)
+              )
+              THEN ABS(COALESCE(s.net_amount, 0))
+            ELSE 0
+          END
+        ), 0) AS return_amount
+      FROM sales s
+      LEFT JOIN suppliers sup ON sup.id = s.customer_id
+      LEFT JOIN customers c ON c.id = s.customer_id
+      WHERE COALESCE(s.is_cancelled, false) = false
+        AND ${SQL_COUNTABLE_SALE_STATUS}
+        AND (s.date AT TIME ZONE 'UTC')::date >= $1::date
+        AND (s.date AT TIME ZONE 'UTC')::date <= $2::date
+        AND (
+          s.trcode = ${PURCHASE_RETURN_TRCODE}
+          OR (
+            LOWER(TRIM(COALESCE(s.fiche_type, ''))) = 'return_invoice'
+            AND COALESCE(s.trcode, 0) NOT IN (${SALES_RETURN_TRCODES.join(', ')})
+            AND EXISTS (SELECT 1 FROM suppliers sp WHERE sp.id = s.customer_id)
+          )
+          OR (
+            COALESCE(s.trcode, 0) <> ${PURCHASE_RETURN_TRCODE}
+            AND LOWER(TRIM(COALESCE(s.fiche_type, ''))) <> 'return_invoice'
+            AND (
+              LOWER(TRIM(COALESCE(s.fiche_type, ''))) IN ('purchase_invoice', 'a')
+              OR s.trcode IN (${purchaseTrSql})
+            )
+          )
+        )
+      GROUP BY 1, 2, 3
+      HAVING
+        COALESCE(SUM(
+          CASE
+            WHEN COALESCE(s.trcode, 0) <> ${PURCHASE_RETURN_TRCODE}
+              AND LOWER(TRIM(COALESCE(s.fiche_type, ''))) <> 'return_invoice'
+              AND (
+                LOWER(TRIM(COALESCE(s.fiche_type, ''))) IN ('purchase_invoice', 'a')
+                OR s.trcode IN (${purchaseTrSql})
+              )
+              THEN ABS(COALESCE(s.net_amount, 0))
+            ELSE 0
+          END
+        ), 0) > 0.009
+        OR COALESCE(SUM(
+          CASE
+            WHEN s.trcode = ${PURCHASE_RETURN_TRCODE}
+              OR (
+                LOWER(TRIM(COALESCE(s.fiche_type, ''))) = 'return_invoice'
+                AND COALESCE(s.trcode, 0) NOT IN (${SALES_RETURN_TRCODES.join(', ')})
+                AND EXISTS (SELECT 1 FROM suppliers sp WHERE sp.id = s.customer_id)
+              )
+              THEN ABS(COALESCE(s.net_amount, 0))
+            ELSE 0
+          END
+        ), 0) > 0.009
+      ORDER BY purchase_amount DESC, supplier_name ASC
+      LIMIT ${ROW_LIMIT}
+      `,
+      [start, end],
+    );
+
+    return (rows || []).map((r: any) => {
+      const purchaseAmount = Number(r.purchase_amount ?? 0);
+      const returnAmount = Number(r.return_amount ?? 0);
+      return {
+        supplierId: String(r.supplier_id ?? ''),
+        supplierCode: String(r.supplier_code ?? ''),
+        supplierName: String(r.supplier_name || '—'),
+        purchaseCount: Number(r.purchase_count ?? 0),
+        returnCount: Number(r.return_count ?? 0),
+        purchaseAmount,
+        returnAmount,
+        netAmount: purchaseAmount - returnAmount,
       };
     });
   },

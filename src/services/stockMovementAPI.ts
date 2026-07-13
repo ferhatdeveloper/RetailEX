@@ -498,6 +498,26 @@ class StockMovementAPI {
                 const histPid = resolvedUuid || pid;
                 const hist = await invoicesAPI.getProductHistory(histPid);
                 for (const h of hist) {
+                    const ficheType = String(h.ficheType || h.fiche_type || '');
+                    const kind = String(h.type || '');
+                    let movementType = 'out';
+                    let trcode = 8;
+                    if (kind === 'purchase' || ficheType === 'purchase_invoice') {
+                        movementType = 'in';
+                        trcode = 1;
+                    } else if (kind === 'sales_return' || (ficheType === 'return_invoice' && Number(h.trcode) === 3)) {
+                        movementType = 'in';
+                        trcode = 3;
+                    } else if (
+                        kind === 'purchase_return' ||
+                        (ficheType === 'return_invoice' && [2, 6].includes(Number(h.trcode)))
+                    ) {
+                        movementType = 'out';
+                        trcode = Number(h.trcode) || 6;
+                    } else if (ficheType === 'return_invoice') {
+                        movementType = Number(h.trcode) === 3 ? 'in' : 'out';
+                        trcode = Number(h.trcode) || 3;
+                    }
                     combinedRaw.push({
                         id: `inv-${String(h.documentNo)}-${String(h.date)}`,
                         movement_id: h.documentNo,
@@ -506,10 +526,11 @@ class StockMovementAPI {
                         unit_price: h.unitPrice,
                         created_at: h.date,
                         document_no: h.documentNo,
-                        movement_type: h.type === 'purchase' ? 'in' : 'out',
+                        movement_type: movementType,
                         movement_date: h.date,
                         status: 'approved',
-                        trcode: h.type === 'purchase' ? 1 : 8,
+                        trcode,
+                        fiche_type: ficheType || (kind === 'purchase' ? 'purchase_invoice' : 'sales_invoice'),
                         warehouse_name: 'Merkez Ambar',
                         source_type: 'invoice',
                         currency_rate: 1,
@@ -579,6 +600,7 @@ class StockMovementAPI {
                     sl.date as movement_date,
                     sl.status,
                     sl.trcode,
+                    sl.fiche_type,
                     COALESCE(st.name, 'Merkez Ambar') as warehouse_name,
                     'invoice' as source_type,
                     COALESCE(sl.currency_rate, 1.0) as currency_rate,

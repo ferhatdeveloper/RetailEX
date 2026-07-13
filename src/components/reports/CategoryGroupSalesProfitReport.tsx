@@ -15,6 +15,10 @@ import {
   LINE_COST_EXPR,
 } from '../../utils/lastPurchaseCostSql';
 import { toast } from 'sonner';
+import {
+  ProductMovementHistoryModal,
+  type ProductMovementTarget,
+} from './ProductMovementHistoryModal';
 
 export interface CategoryGroupProductRow {
   groupName: string;
@@ -72,6 +76,7 @@ export function CategoryGroupSalesProfitReport() {
   const [dateTo, setDateTo] = useState('');
   const [openGroups, setOpenGroups] = useState<Set<string>>(new Set());
   const [openCats, setOpenCats] = useState<Set<string>>(new Set());
+  const [movementTarget, setMovementTarget] = useState<ProductMovementTarget | null>(null);
 
   const cur = getAppDefaultCurrency();
 
@@ -362,7 +367,19 @@ export function CategoryGroupSalesProfitReport() {
                                   {bucket.products
                                     .sort((a, b) => b.revenue - a.revenue)
                                     .map((p, i) => (
-                                      <tr key={`${p.productCode}-${i}`} className="hover:bg-slate-50/80">
+                                      <tr
+                                        key={`${p.productCode}-${i}`}
+                                        className="hover:bg-emerald-50/80 cursor-pointer"
+                                        onClick={() =>
+                                          setMovementTarget({
+                                            productCode: p.productCode,
+                                            productName: p.productName,
+                                            startDate: toSqlDateInputString(dateFrom) || undefined,
+                                            endDate: toSqlDateInputString(dateTo) || undefined,
+                                          })
+                                        }
+                                        title="Satıra tıklayarak ürün hareketlerini görüntüleyin"
+                                      >
                                         <td className="px-8 py-2 pl-14 font-medium text-slate-800">{p.productName}</td>
                                         <td className="px-2 py-2 text-right text-slate-500">{p.productCode || '—'}</td>
                                         <td className="px-2 py-2 text-right tabular-nums">{fmt(p.quantity)}</td>
@@ -383,6 +400,10 @@ export function CategoryGroupSalesProfitReport() {
           </div>
         )}
       </div>
+
+      {movementTarget ? (
+        <ProductMovementHistoryModal target={movementTarget} onClose={() => setMovementTarget(null)} />
+      ) : null}
     </div>
   );
 }

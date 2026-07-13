@@ -2158,7 +2158,7 @@ export const invoicesAPI = {
 
         const headersById = new Map<
           string,
-          { fiche_no?: string; date?: string; fiche_type?: string; customer_id?: string }
+          { fiche_no?: string; date?: string; fiche_type?: string; customer_id?: string; trcode?: number }
         >();
         for (let i = 0; i < invIds.length; i += chunkSize) {
           const chunk = invIds.slice(i, i + chunkSize);
@@ -2167,7 +2167,7 @@ export const invoicesAPI = {
             .get<any[]>(
               salesPath,
               {
-                select: 'id,fiche_no,date,fiche_type,customer_id',
+                select: 'id,fiche_no,date,fiche_type,customer_id,trcode',
                 id: `in.(${inList})`,
                 limit: chunk.length,
               },
@@ -2216,6 +2216,12 @@ export const invoicesAPI = {
             const hd = invKey ? headersById.get(invKey) : undefined;
             if (!hd) return null;
             const partner = hd.customer_id ? namesById.get(String(hd.customer_id)) : undefined;
+            const ficheType = String(hd.fiche_type || '');
+            const trcode = Number(hd.trcode || 0);
+            let type: string = 'sales';
+            if (ficheType === 'purchase_invoice') type = 'purchase';
+            else if (ficheType === 'return_invoice' && trcode === 3) type = 'sales_return';
+            else if (ficheType === 'return_invoice') type = 'purchase_return';
             return {
               date: hd.date,
               documentNo: hd.fiche_no,
@@ -2223,7 +2229,9 @@ export const invoicesAPI = {
               quantity: it.quantity,
               unitPrice: parseFloat(String(it.unit_price ?? 0)),
               total: parseFloat(String(it.total_amount ?? 0)),
-              type: hd.fiche_type === 'purchase_invoice' ? 'purchase' : 'sales',
+              type,
+              ficheType,
+              trcode,
             };
           })
           .filter((r): r is NonNullable<typeof r> => r != null);
@@ -2233,26 +2241,38 @@ export const invoicesAPI = {
 
       const { rows } = await postgres.query(
         `SELECT 
-            it.quantity, it.unit_price, it.total_amount, s.fiche_no, s.date, s.fiche_type,
+            it.quantity, it.unit_price, it.total_amount, s.fiche_no, s.date, s.fiche_type, s.trcode,
             COALESCE(c.name, sup.name) as partner_name
          FROM sale_items it 
          JOIN sales s ON it.invoice_id = s.id 
          LEFT JOIN customers c ON s.customer_id = c.id 
          LEFT JOIN suppliers sup ON s.customer_id = sup.id
          WHERE it.item_code = $1 
+            OR it.product_id::text = $1
+            OR it.item_code IN (SELECT code FROM products WHERE id::text = $1 OR code = $1)
          ORDER BY s.date DESC`,
         [pid]
       );
 
-      return rows.map(r => ({
-        date: r.date,
-        documentNo: r.fiche_no,
-        supplier: r.partner_name || 'N/A',
-        quantity: r.quantity,
-        unitPrice: parseFloat(r.unit_price),
-        total: parseFloat(r.total_amount),
-        type: r.fiche_type === 'purchase_invoice' ? 'purchase' : 'sales'
-      }));
+      return rows.map(r => {
+        const ficheType = String(r.fiche_type || '');
+        const trcode = Number(r.trcode || 0);
+        let type: string = 'sales';
+        if (ficheType === 'purchase_invoice') type = 'purchase';
+        else if (ficheType === 'return_invoice' && trcode === 3) type = 'sales_return';
+        else if (ficheType === 'return_invoice') type = 'purchase_return';
+        return {
+          date: r.date,
+          documentNo: r.fiche_no,
+          supplier: r.partner_name || 'N/A',
+          quantity: r.quantity,
+          unitPrice: parseFloat(r.unit_price),
+          total: parseFloat(r.total_amount),
+          type,
+          ficheType,
+          trcode,
+        };
+      });
     } catch (error) {
       console.error('[InvoicesAPI] getProductHistory failed:', error);
       return [];

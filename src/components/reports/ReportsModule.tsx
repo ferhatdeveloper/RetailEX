@@ -41,6 +41,7 @@ import {
   CariBalanceSummaryReport,
   CashBankMovementReport,
   PurchaseSummaryReport,
+  SupplierPurchaseReturnsReport,
   CollectionDueReport,
   SalesReturnsReport,
   ProductGrossProfitReport,
@@ -539,7 +540,7 @@ type ReportTab =
   // Satış Raporları
   'top-products' | 'category-analysis' | 'hourly-analysis' | 'cashiers' | 'customer-sales' | 'sales-trend' | 'sales-target' | 'sales-returns' | 'product-gross-profit' |
   // Finansal Raporlar
-  'profit-loss' | 'cash-flow' | 'debt-aging' | 'check-tracking' | 'current-account' | 'purchase-summary' | 'collection-due' | 'cari-extract' |
+  'profit-loss' | 'cash-flow' | 'debt-aging' | 'check-tracking' | 'current-account' | 'purchase-summary' | 'supplier-purchase-returns' | 'collection-due' | 'cari-extract' |
   // Stok Raporları
   'stock-status' | 'stock-aging' | 'stock-turnover' | 'stock-abc' | 'materials' | 'purchase-promotion-report' | 'expiring-products' | 'critical-stock' | 'warehouse-stock' |
   // Ödeme & İşlem
@@ -4162,8 +4163,16 @@ export function ReportsModule({
           { key: 'current-account', label: tm('cariHesapOzeti'), icon: <BankOutlined /> },
           { key: 'cari-extract', label: tm('erpCariExtractTitle'), icon: <AuditOutlined /> },
           { key: 'collection-due', label: tm('erpCollectionDueTitle'), icon: <HourglassOutlined /> },
-          { key: 'purchase-summary', label: tm('erpPurchaseSummaryTitle'), icon: <TagsOutlined /> },
           { key: 'check-tracking', label: tm('cekSenetTakibi'), icon: <AuditOutlined /> },
+        ],
+      },
+      {
+        key: 'grp-purchase',
+        label: tm('erpPurchaseReportsGroup'),
+        type: 'group',
+        children: [
+          { key: 'purchase-summary', label: tm('erpPurchaseSummaryTitle'), icon: <TagsOutlined /> },
+          { key: 'supplier-purchase-returns', label: tm('erpSupplierPurchaseReturnsTitle'), icon: <TagsOutlined /> },
         ],
       },
       {
@@ -6053,6 +6062,7 @@ export function ReportsModule({
             {selectedTab === 'current-account' && <CariBalanceSummaryReport />}
             {selectedTab === 'cash-flow' && <CashBankMovementReport />}
             {selectedTab === 'purchase-summary' && <PurchaseSummaryReport />}
+            {selectedTab === 'supplier-purchase-returns' && <SupplierPurchaseReturnsReport />}
             {selectedTab === 'collection-due' && <CollectionDueReport />}
             {selectedTab === 'sales-returns' && <SalesReturnsReport />}
             {selectedTab === 'product-gross-profit' && <ProductGrossProfitReport />}

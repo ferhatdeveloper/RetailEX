@@ -18,12 +18,23 @@ import {
   type CashBankMovementRow,
   type CollectionDueRow,
   type PurchaseSummaryRow,
+  type SupplierPurchaseReturnRow,
   type SalesReturnRow,
   type ProductGrossProfitRow,
   type CariExtractRow,
   type CriticalStockRow,
   type WarehouseStockRow,
 } from '../../services/api/erpReports';
+import {
+  buildReportDateRangeChange,
+  defaultReportDateRange,
+  type ReportDatePreset,
+  type ReportDateRangeValue,
+} from '../../utils/reportDatePresets';
+import {
+  ProductMovementHistoryModal,
+  type ProductMovementTarget,
+} from './ProductMovementHistoryModal';
 
 type CardFilter = 'all' | 'customer' | 'supplier';
 
@@ -679,6 +690,211 @@ export function PurchaseSummaryReport() {
   );
 }
 
+export function SupplierPurchaseReturnsReport() {
+  const { tm } = useLanguage();
+  const { darkMode } = useTheme();
+  const { selectedFirm } = useFirmaDonem();
+  const currency = getReportingCurrency();
+  const [dateRange, setDateRange] = useState<ReportDateRangeValue>(() => defaultReportDateRange('month'));
+  const [rows, setRows] = useState<SupplierPurchaseReturnRow[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  const applyPreset = (preset: ReportDatePreset) => {
+    setDateRange(buildReportDateRangeChange(preset, 0, dateRange.from, dateRange.to));
+  };
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      setRows(
+        await erpReportsAPI.getSupplierPurchaseReturns({
+          startDate: dateRange.from,
+          endDate: dateRange.to,
+        }),
+      );
+    } catch (err: any) {
+      toast.error(err?.message || String(err));
+      setRows([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [dateRange.from, dateRange.to]);
+
+  useEffect(() => {
+    void load();
+  }, [load, selectedFirm?.firm_nr]);
+
+  const totals = useMemo(
+    () => ({
+      purchaseCount: rows.reduce((s, r) => s + r.purchaseCount, 0),
+      returnCount: rows.reduce((s, r) => s + r.returnCount, 0),
+      purchase: rows.reduce((s, r) => s + r.purchaseAmount, 0),
+      returns: rows.reduce((s, r) => s + r.returnAmount, 0),
+      net: rows.reduce((s, r) => s + r.netAmount, 0),
+    }),
+    [rows],
+  );
+
+  const tableCls = darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200';
+  const thCls = darkMode ? 'bg-gray-900/60 text-gray-300' : 'bg-gray-50 text-gray-600';
+  const inputCls = darkMode ? 'bg-gray-900 border-gray-600 text-gray-100' : 'bg-white border-gray-300';
+  const presetBtn = (active: boolean) =>
+    [
+      'rounded-lg border px-2.5 py-1.5 text-xs font-bold transition-colors',
+      active
+        ? 'border-blue-600 bg-blue-600 text-white'
+        : darkMode
+          ? 'border-gray-600 bg-gray-900 text-gray-200 hover:bg-gray-700'
+          : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50',
+    ].join(' ');
+
+  return (
+    <ReportShell
+      title={tm('erpSupplierPurchaseReturnsTitle')}
+      subtitle={tm('erpSupplierPurchaseReturnsSubtitle')}
+      loading={loading}
+      onRefresh={() => void load()}
+      onExport={() =>
+        exportCsv(
+          'tedarikci_alis_iadeleri',
+          ['Kod', 'Tedarikçi', 'Alış Adedi', 'Alış', 'İade Adedi', 'İade', 'Net'],
+          rows.map((r) => [
+            r.supplierCode,
+            r.supplierName,
+            String(r.purchaseCount),
+            String(r.purchaseAmount),
+            String(r.returnCount),
+            String(r.returnAmount),
+            String(r.netAmount),
+          ]),
+        )
+      }
+      filters={
+        <>
+          <button type="button" className={presetBtn(dateRange.preset === 'today')} onClick={() => applyPreset('today')}>
+            {tm('bCallBoardToday')}
+          </button>
+          <button type="button" className={presetBtn(dateRange.preset === 'week')} onClick={() => applyPreset('week')}>
+            {tm('bCallBoardWeek')}
+          </button>
+          <button type="button" className={presetBtn(dateRange.preset === 'month')} onClick={() => applyPreset('month')}>
+            {tm('bCallBoardMonth')}
+          </button>
+          <button
+            type="button"
+            className={presetBtn(dateRange.preset === 'custom')}
+            onClick={() => applyPreset('custom')}
+            title={tm('bCallBoardDateRange')}
+          >
+            {tm('bCallBoardDateRange')}
+          </button>
+          <input
+            type="date"
+            value={dateRange.from}
+            onChange={(e) =>
+              setDateRange(buildReportDateRangeChange('custom', 0, e.target.value, dateRange.to))
+            }
+            className={`rounded-lg border px-2 py-2 text-sm ${inputCls}`}
+          />
+          <input
+            type="date"
+            value={dateRange.to}
+            onChange={(e) =>
+              setDateRange(buildReportDateRangeChange('custom', 0, dateRange.from, e.target.value))
+            }
+            className={`rounded-lg border px-2 py-2 text-sm ${inputCls}`}
+          />
+        </>
+      }
+    >
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+        <div className={`rounded-lg border p-3 ${tableCls}`}>
+          <p className="text-xs opacity-60">{tm('erpPurchaseAmount')}</p>
+          <p className="text-xl font-bold">
+            {formatNumber(totals.purchase, 2, false)} {currency}
+          </p>
+        </div>
+        <div className={`rounded-lg border p-3 ${tableCls}`}>
+          <p className="text-xs opacity-60">{tm('erpReturnAmount')}</p>
+          <p className="text-xl font-bold text-red-500">
+            {formatNumber(totals.returns, 2, false)} {currency}
+          </p>
+        </div>
+        <div className={`rounded-lg border p-3 ${tableCls}`}>
+          <p className="text-xs opacity-60">{tm('erpNetPurchase')}</p>
+          <p className="text-xl font-bold text-emerald-600">
+            {formatNumber(totals.net, 2, false)} {currency}
+          </p>
+        </div>
+        <div className={`rounded-lg border p-3 ${tableCls}`}>
+          <p className="text-xs opacity-60">{tm('erpInvoiceCount')}</p>
+          <p className="text-xl font-bold">
+            {totals.purchaseCount} / {totals.returnCount}
+          </p>
+        </div>
+      </div>
+      <div className={`overflow-auto rounded-lg border max-h-[520px] ${tableCls}`}>
+        <table className="w-full min-w-[860px] text-sm">
+          <thead className={`sticky top-0 ${thCls}`}>
+            <tr>
+              <th className="px-3 py-2 text-left">{tm('erpColSupplierCode')}</th>
+              <th className="px-3 py-2 text-left">{tm('erpColSupplier')}</th>
+              <th className="px-3 py-2 text-right">{tm('erpPurchaseCount')}</th>
+              <th className="px-3 py-2 text-right">{tm('erpPurchaseAmount')}</th>
+              <th className="px-3 py-2 text-right">{tm('erpReturnCount')}</th>
+              <th className="px-3 py-2 text-right">{tm('erpReturnAmount')}</th>
+              <th className="px-3 py-2 text-right">{tm('erpNetPurchase')}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.length === 0 && !loading && (
+              <tr>
+                <td colSpan={7} className="px-3 py-8 text-center opacity-60">
+                  {tm('erpNoRows')}
+                </td>
+              </tr>
+            )}
+            {rows.map((r) => (
+              <tr
+                key={r.supplierId || `${r.supplierCode}-${r.supplierName}`}
+                className={darkMode ? 'border-t border-gray-700' : 'border-t border-gray-100'}
+              >
+                <td className="px-3 py-2 font-mono text-xs">{r.supplierCode || '—'}</td>
+                <td className="px-3 py-2 font-medium">{r.supplierName}</td>
+                <td className="px-3 py-2 text-right">{r.purchaseCount}</td>
+                <td className="px-3 py-2 text-right">{formatNumber(r.purchaseAmount, 2, false)}</td>
+                <td className="px-3 py-2 text-right">{r.returnCount}</td>
+                <td className="px-3 py-2 text-right text-red-500">{formatNumber(r.returnAmount, 2, false)}</td>
+                <td className="px-3 py-2 text-right font-semibold">
+                  {formatNumber(r.netAmount, 2, false)} {currency}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+          {rows.length > 0 && (
+            <tfoot className={darkMode ? 'border-t-2 border-gray-600 bg-gray-900/40' : 'border-t-2 border-gray-200 bg-gray-50'}>
+              <tr>
+                <td className="px-3 py-2 font-bold" colSpan={2}>
+                  {tm('reportsTotalsRow')}
+                </td>
+                <td className="px-3 py-2 text-right font-bold">{totals.purchaseCount}</td>
+                <td className="px-3 py-2 text-right font-bold">{formatNumber(totals.purchase, 2, false)}</td>
+                <td className="px-3 py-2 text-right font-bold">{totals.returnCount}</td>
+                <td className="px-3 py-2 text-right font-bold text-red-500">
+                  {formatNumber(totals.returns, 2, false)}
+                </td>
+                <td className="px-3 py-2 text-right font-bold">
+                  {formatNumber(totals.net, 2, false)} {currency}
+                </td>
+              </tr>
+            </tfoot>
+          )}
+        </table>
+      </div>
+    </ReportShell>
+  );
+}
+
 export function CollectionDueReport() {
   const { tm } = useLanguage();
   const { darkMode } = useTheme();
@@ -944,6 +1160,7 @@ export function ProductGrossProfitReport() {
   const [endDate, setEndDate] = useState(initial.end);
   const [rows, setRows] = useState<ProductGrossProfitRow[]>([]);
   const [loading, setLoading] = useState(false);
+  const [movementTarget, setMovementTarget] = useState<ProductMovementTarget | null>(null);
 
   useEffect(() => {
     if (selectedDonem?.beg_date && selectedDonem?.end_date) {
@@ -1046,7 +1263,22 @@ export function ProductGrossProfitReport() {
               </tr>
             )}
             {rows.map((r) => (
-              <tr key={`${r.productCode}-${r.productId}`} className={darkMode ? 'border-t border-gray-700' : 'border-t border-gray-100'}>
+              <tr
+                key={`${r.productCode}-${r.productId}`}
+                className={`${darkMode ? 'border-t border-gray-700' : 'border-t border-gray-100'} cursor-pointer ${
+                  darkMode ? 'hover:bg-gray-700/60' : 'hover:bg-emerald-50/80'
+                }`}
+                onClick={() =>
+                  setMovementTarget({
+                    productId: r.productId || undefined,
+                    productCode: r.productCode,
+                    productName: r.productName,
+                    startDate,
+                    endDate,
+                  })
+                }
+                title={tm('reportsPlMovClickHint')}
+              >
                 <td className="px-3 py-2">
                   <div className="font-medium">{r.productName}</div>
                   <div className="font-mono text-xs opacity-60">{r.productCode}</div>
@@ -1063,6 +1295,9 @@ export function ProductGrossProfitReport() {
           </tbody>
         </table>
       </div>
+      {movementTarget ? (
+        <ProductMovementHistoryModal target={movementTarget} onClose={() => setMovementTarget(null)} />
+      ) : null}
     </ReportShell>
   );
 }
