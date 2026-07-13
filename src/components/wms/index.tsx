@@ -25,6 +25,7 @@ import {
   ReportsCenter, TaskManagement
 } from './components/AllWMSModules';
 import { SlottingOptimization, YardManagement, LaborManagement } from './RemainingWMSModules';
+import { StockCountModule } from './components/StockCountModule';
 import { ToastProvider } from './utils/toast';
 import { LanguageProvider } from './utils/i18n/LanguageContext';
 import type { Product, Customer, Sale, Campaign } from '../../core/types';
@@ -95,7 +96,8 @@ function WarehouseManagementInner() {
       case 'transfer':
         return <TransferManagement darkMode={darkMode} onBack={onBack} />;
       case 'counting':
-        return <CountingModule darkMode={darkMode} onBack={onBack} />;
+        // Gerçek sayım modülü (wms.counting_slips/lines) — mock CountingModule yerine
+        return <StockCountModule darkMode={darkMode} onBack={onBack} />;
       case 'alerts':
         return <AlertCenter darkMode={darkMode} onBack={onBack} />;
       case 'quality':

@@ -16,12 +16,13 @@ export function WavePickingModule() {
     }, []);
 
     const loadWaves = async () => {
-        // In a real system, we'd fetch from DB
-        // Simulating waves for demo
-        setWaves([
-            { id: '1', wave_no: 'PW-20260216-01', status: 'picking', order_count: 12, total_items: 45, created_at: new Date().toISOString() },
-            { id: '2', wave_no: 'PW-20260216-02', status: 'pending', order_count: 5, total_items: 18, created_at: new Date().toISOString() },
-        ]);
+        try {
+            const real = await pickingService.listWaves();
+            setWaves(real);
+        } catch (e) {
+            console.warn('[WavePicking] dalga listesi yüklenemedi', e);
+            setWaves([]);
+        }
     };
 
     const handleSelectWave = async (wave: PickWave) => {
@@ -32,6 +33,20 @@ export function WavePickingModule() {
             setTasks(optimizedTasks);
         } finally {
             setLoading(false);
+        }
+    };
+
+    const handleConfirmPick = async (task: PickTask) => {
+        if (task.status === 'completed') return;
+        const remaining = Math.max(task.quantity - task.picked_quantity, 0);
+        try {
+            await pickingService.recordPick(task.id, remaining || task.quantity);
+            if (selectedWave) {
+                const refreshed = await pickingService.getOptimizedTasks(selectedWave.id);
+                setTasks(refreshed);
+            }
+        } catch (e) {
+            console.error('[WavePicking] toplama kaydedilemedi', e);
         }
     };
 
@@ -127,6 +142,8 @@ export function WavePickingModule() {
                                             <button className="w-8 h-8 bg-white rounded border hover:bg-gray-100 active:scale-95 transition-all">+</button>
                                         </div>
                                         <button
+                                            onClick={() => handleConfirmPick(task)}
+                                            disabled={task.status === 'completed'}
                                             className={`px-6 py-2 rounded-lg font-bold flex items-center gap-2 ${task.status === 'completed'
                                                 ? 'bg-green-100 text-green-700 cursor-default'
                                                 : 'bg-orange-600 text-white hover:bg-orange-700 shadow-md shadow-orange-200'
