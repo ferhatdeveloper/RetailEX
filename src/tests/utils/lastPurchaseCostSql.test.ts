@@ -3,6 +3,8 @@ import {
   isPlSalesOrReturnFiche,
   isPurchaseFiche,
   isSalesReturnFiche,
+  lineCostAmount,
+  resolveLineProductId,
   scaleLineRevenueToInvoiceNet,
   unitCostFromPurchaseLine,
 } from '../../utils/lastPurchaseCostSql';
@@ -46,5 +48,35 @@ describe('lastPurchaseCostSql — muhasebe yardımcıları', () => {
   it('alış satırından birim maliyet üretir', () => {
     expect(unitCostFromPurchaseLine({ quantity: 2, net_amount: 10000 })).toBe(5000);
     expect(unitCostFromPurchaseLine({ quantity: 0, unit_price: 12 })).toBe(12);
+  });
+
+  it('product_id boşken UUID item_code ile ürün çözer', () => {
+    const id = 'dbde53c4-a766-4506-b4d0-0938d3d1ff25';
+    expect(resolveLineProductId({ product_id: null, item_code: id })).toBe(id);
+    expect(resolveLineProductId({ product_id: id, item_code: 'PROD-1' })).toBe(id);
+    expect(resolveLineProductId({ item_code: 'PROD-20260622-6158' })).toBe('');
+  });
+
+  it('adet COGS = son alış birim × satılan adet (kart maliyetine düşmez)', () => {
+    // Alış: 20 adet / 180000 → 9000; satış 3 adet
+    const unit = unitCostFromPurchaseLine({ quantity: 20, net_amount: 180000, unit_price: 9000 });
+    expect(unit).toBe(9000);
+    expect(
+      lineCostAmount({
+        quantity: 3,
+        lastPurchaseUnit: unit,
+        totalCost: 0,
+        unitCost: 0,
+        productCost: 5000,
+      }),
+    ).toBe(27000);
+  });
+
+  it('son alış yoksa satır/kart fallback sırası korunur', () => {
+    expect(lineCostAmount({ quantity: 2, lastPurchaseUnit: 0, totalCost: 100, productCost: 9 })).toBe(
+      100,
+    );
+    expect(lineCostAmount({ quantity: 2, lastPurchaseUnit: 0, unitCost: 7, productCost: 9 })).toBe(14);
+    expect(lineCostAmount({ quantity: 2, lastPurchaseUnit: 0, productCost: 9 })).toBe(18);
   });
 });

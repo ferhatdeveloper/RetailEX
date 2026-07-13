@@ -13,11 +13,15 @@ import {
   isPurchaseFiche,
   isSalesReturnFiche,
   LAST_PURCHASE_JOIN,
+  lineCostAmount,
+  PRODUCTS_JOIN,
+  resolveLineProductId,
   scaleLineRevenueToInvoiceNet,
   SIGNED_LINE_COST_EXPR,
   SIGNED_LINE_PROFIT_EXPR,
   SIGNED_LINE_QTY_EXPR,
   SIGNED_LINE_REVENUE_EXPR,
+  SQL_LINE_RESOLVED_PRODUCT_ID,
   SQL_PL_SALES_OR_RETURN,
   unitCostFromPurchaseLine,
 } from '../../utils/lastPurchaseCostSql';
@@ -1189,20 +1193,37 @@ export const erpReportsAPI = {
         postgrest
           .get<Record<string, unknown>[]>(
             `/rex_${fn}_products`,
-            { select: 'id,cost', limit: '8000' },
+            { select: 'id,code,barcode,name,cost', limit: '8000' },
             { schema: 'public' },
           )
           .catch(() => [] as Record<string, unknown>[]),
       ]);
 
       const salesById = new Map((sales || []).map((s) => [String(s.id), s]));
-      const productCost = new Map(
-        (products || []).map((p) => [String(p.id), Number(p.cost ?? 0) || 0]),
+      const productById = new Map(
+        (products || []).map((p) => [String(p.id), p]),
       );
+      const productIdByCode = new Map<string, string>();
+      const productIdByBarcode = new Map<string, string>();
+      for (const p of products || []) {
+        const id = String(p.id);
+        const code = String(p.code || '').trim();
+        const barcode = String(p.barcode || '').trim();
+        if (code) productIdByCode.set(code, id);
+        if (barcode) productIdByBarcode.set(barcode, id);
+      }
 
       type PurchaseHit = { unitCost: number; dateKey: string; createdAt: string };
       const lastById = new Map<string, PurchaseHit>();
       const lastByCode = new Map<string, PurchaseHit>();
+
+      const resolvePurchaseProductId = (it: Record<string, unknown>): string => {
+        const fromLine = resolveLineProductId(it);
+        if (fromLine) return fromLine;
+        const code = String(it.item_code || '').trim();
+        if (!code) return '';
+        return productIdByCode.get(code) || productIdByBarcode.get(code) || '';
+      };
 
       for (const it of items || []) {
         const inv = salesById.get(String(it.invoice_id));
@@ -1220,7 +1241,7 @@ export const erpReportsAPI = {
           dateKey > prev.dateKey ||
           (dateKey === prev.dateKey && createdAt > prev.createdAt);
 
-        const pid = it.product_id != null ? String(it.product_id) : '';
+        const pid = resolvePurchaseProductId(it);
         if (pid && newer(lastById.get(pid))) lastById.set(pid, hit);
         const code = String(it.item_code || '').trim();
         if (code && newer(lastByCode.get(code))) lastByCode.set(code, hit);
@@ -1257,8 +1278,11 @@ export const erpReportsAPI = {
         const inv = salesById.get(String(it.invoice_id));
         if (!inv) continue;
         const sgn = isSalesReturnFiche(inv) ? -1 : 1;
-        const code = String(it.item_code || it.product_id || '—');
-        const pid = it.product_id != null ? String(it.product_id) : '';
+        const pid = resolveLineProductId(it);
+        const prod = pid ? productById.get(pid) : undefined;
+        const code =
+          String(prod?.code || '').trim() ||
+          String(it.item_code || it.product_id || '—');
         const qty = sgn * (Number(it.quantity ?? 0) || 0);
         const rawLineNet = Number(it.net_amount ?? 0) || 0;
         const revenue =
@@ -1272,20 +1296,24 @@ export const erpReportsAPI = {
           (pid && lastById.get(pid)?.unitCost) ||
           (String(it.item_code || '').trim() &&
             lastByCode.get(String(it.item_code || '').trim())?.unitCost) ||
+          (String(prod?.code || '').trim() &&
+            lastByCode.get(String(prod?.code || '').trim())?.unitCost) ||
           0;
         const absQty = Number(it.quantity ?? 0) || 0;
         const cost =
           sgn *
-          ((lpc ? lpc * absQty : 0) ||
-            Number(it.total_cost ?? 0) ||
-            Number(it.unit_cost ?? 0) * absQty ||
-            (pid ? productCost.get(pid) || 0 : 0) * absQty ||
-            0);
+          lineCostAmount({
+            quantity: absQty,
+            lastPurchaseUnit: lpc,
+            totalCost: Number(it.total_cost ?? 0),
+            unitCost: Number(it.unit_cost ?? 0),
+            productCost: Number(prod?.cost ?? 0),
+          });
         const gp = revenue - cost;
         const cur = map.get(code) || {
           productId: pid,
           productCode: code,
-          productName: String(it.item_name ?? ''),
+          productName: String(it.item_name ?? prod?.name ?? ''),
           quantity: 0,
           revenue: 0,
           cost: 0,
@@ -1313,16 +1341,16 @@ export const erpReportsAPI = {
       `
       WITH ${profitCtes}
       SELECT
-        COALESCE(si.product_id::text, '') AS product_id,
-        COALESCE(NULLIF(TRIM(si.item_code), ''), '—') AS product_code,
-        COALESCE(NULLIF(TRIM(si.item_name), ''), '—') AS product_name,
+        COALESCE((${SQL_LINE_RESOLVED_PRODUCT_ID})::text, '') AS product_id,
+        COALESCE(NULLIF(TRIM(p.code), ''), NULLIF(TRIM(si.item_code), ''), '—') AS product_code,
+        COALESCE(NULLIF(TRIM(si.item_name), ''), p.name, '—') AS product_name,
         COALESCE(SUM(${SIGNED_LINE_QTY_EXPR}), 0) AS quantity,
         COALESCE(SUM(${SIGNED_LINE_REVENUE_EXPR}), 0) AS revenue,
         COALESCE(SUM(${SIGNED_LINE_COST_EXPR}), 0) AS cost,
         COALESCE(SUM(${SIGNED_LINE_PROFIT_EXPR}), 0) AS gross_profit
       FROM sale_items si
       INNER JOIN sales s ON s.id = si.invoice_id
-      LEFT JOIN products p ON p.id = si.product_id AND p.firm_nr = $1
+      ${PRODUCTS_JOIN}
       ${LAST_PURCHASE_JOIN}
       ${INVOICE_LINE_SCALE_JOIN}
       WHERE s.firm_nr = $1

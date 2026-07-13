@@ -1,8 +1,13 @@
 /**
  * Kar-zarar / ürün brüt kâr maliyet kaynağı:
- * 1) Son alış faturası birim tutarı × satış miktarı (ürün id, yoksa kod)
+ * 1) Son alış faturası birim tutarı × satış miktarı (ürün id / kod / barkod eşleşmesi)
  * 2) sale_items.total_cost / unit_cost
  * 3) products.cost × miktar
+ *
+ * Satır kimliği (kasap vb.):
+ * - Satış satırlarında product_id çoğu zaman boş; item_code = ürün UUID
+ * - Alış satırlarında product_id çoğu zaman boş; item_code = ürün kodu (veya barkod)
+ * Bu yüzden son alış CTE ürünü id/kod/barkod ile çözer; birim tipine (kg/adet) göre ayrılmaz.
  *
  * Muhasebe (brüt kâr):
  * - Net satış = satış satırları − satış iadeleri (iadeler DB’de pozitif; işaret SQL/JS’te)
@@ -20,38 +25,76 @@ export const SALES_RETURN_TRCODES = [2, 3] as const;
 export const SALES_RETURN_TRCODES_SQL = SALES_RETURN_TRCODES.join(', ');
 export const SALES_TRCODES_SQL = '7, 8';
 
+/** item_code alanı UUID ise ürün id sayılır */
+export const SQL_UUID_TEXT_RE =
+  "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$";
+
+/** Satış/alış satırından ürün UUID (product_id veya UUID item_code) */
+export const SQL_LINE_RESOLVED_PRODUCT_ID = `
+COALESCE(
+  si.product_id,
+  CASE
+    WHEN TRIM(COALESCE(si.item_code, '')) ~* '${SQL_UUID_TEXT_RE}'
+    THEN TRIM(si.item_code)::uuid
+    ELSE NULL
+  END
+)
+`.trim();
+
 /** firmNrParam: örn. `$1` — alış CTE ve satış filtresinde aynı indeks kullanılmalı */
 export function buildLastPurchaseCte(firmNrParam = '$1'): string {
   return `
   last_purchase_by_id AS (
-    SELECT DISTINCT ON (si.product_id)
-      si.product_id,
-      COALESCE(
-        NULLIF(
+    SELECT DISTINCT ON (resolved_pid)
+      resolved_pid AS product_id,
+      unit_cost
+    FROM (
+      SELECT
+        COALESCE(
+          si.product_id,
           CASE
-            WHEN ABS(COALESCE(si.quantity, 0)) > 0.0000001
-              THEN COALESCE(si.net_amount, 0) / NULLIF(ABS(si.quantity), 0)
+            WHEN TRIM(COALESCE(si.item_code, '')) ~* '${SQL_UUID_TEXT_RE}'
+            THEN TRIM(si.item_code)::uuid
             ELSE NULL
           END,
+          p_by_code.id,
+          p_by_barcode.id
+        ) AS resolved_pid,
+        COALESCE(
+          NULLIF(
+            CASE
+              WHEN ABS(COALESCE(si.quantity, 0)) > 0.0000001
+                THEN COALESCE(si.net_amount, 0) / NULLIF(ABS(si.quantity), 0)
+              ELSE NULL
+            END,
+            0
+          ),
+          NULLIF(si.unit_price, 0),
+          NULLIF(si.unit_cost, 0),
           0
-        ),
-        NULLIF(si.unit_price, 0),
-        NULLIF(si.unit_cost, 0),
-        0
-      ) AS unit_cost
-    FROM sale_items si
-    INNER JOIN sales s ON s.id = si.invoice_id
-    WHERE s.firm_nr = ${firmNrParam}
-      AND COALESCE(s.is_cancelled, false) = false
-      AND COALESCE(s.trcode, 0) <> ${PURCHASE_RETURN_TRCODE}
-      AND LOWER(TRIM(COALESCE(s.fiche_type, ''))) <> 'return_invoice'
-      AND (
-        LOWER(TRIM(COALESCE(s.fiche_type, ''))) IN ('purchase_invoice', 'a')
-        OR COALESCE(s.trcode, 0) IN (${PURCHASE_TRCODES_SQL})
-      )
-      AND COALESCE(si.item_type, 'Malzeme') NOT IN ('Promosyon', 'İndirim')
-      AND si.product_id IS NOT NULL
-    ORDER BY si.product_id, s.date DESC NULLS LAST, s.created_at DESC NULLS LAST
+        ) AS unit_cost,
+        s.date,
+        s.created_at
+      FROM sale_items si
+      INNER JOIN sales s ON s.id = si.invoice_id
+      LEFT JOIN products p_by_code
+        ON p_by_code.firm_nr = ${firmNrParam}
+        AND NULLIF(TRIM(p_by_code.code), '') = NULLIF(TRIM(si.item_code), '')
+      LEFT JOIN products p_by_barcode
+        ON p_by_barcode.firm_nr = ${firmNrParam}
+        AND NULLIF(TRIM(p_by_barcode.barcode), '') = NULLIF(TRIM(si.item_code), '')
+      WHERE s.firm_nr = ${firmNrParam}
+        AND COALESCE(s.is_cancelled, false) = false
+        AND COALESCE(s.trcode, 0) <> ${PURCHASE_RETURN_TRCODE}
+        AND LOWER(TRIM(COALESCE(s.fiche_type, ''))) <> 'return_invoice'
+        AND (
+          LOWER(TRIM(COALESCE(s.fiche_type, ''))) IN ('purchase_invoice', 'a')
+          OR COALESCE(s.trcode, 0) IN (${PURCHASE_TRCODES_SQL})
+        )
+        AND COALESCE(si.item_type, 'Malzeme') NOT IN ('Promosyon', 'İndirim')
+    ) lp
+    WHERE resolved_pid IS NOT NULL
+    ORDER BY resolved_pid, date DESC NULLS LAST, created_at DESC NULLS LAST
   ),
   last_purchase_by_code AS (
     SELECT DISTINCT ON (NULLIF(TRIM(si.item_code), ''))
@@ -165,11 +208,15 @@ export const LINE_REVENUE_EXPR = `
 )
 `.trim();
 
-/** product_id eşleşmesi öncelikli; yoksa ürün kodu ile son alış */
+/**
+ * product_id (veya UUID item_code) ile son alış; yoksa satır kodu / ürün kartı kodu.
+ * Birim (kg/adet) ayrımı yok — ikisi de alış birim tutarı × miktar.
+ */
 export const LINE_COST_EXPR = `
   COALESCE(
     NULLIF(lpc_id.unit_cost, 0) * si.quantity,
     NULLIF(lpc_code.unit_cost, 0) * si.quantity,
+    NULLIF(lpc_pcode.unit_cost, 0) * si.quantity,
     NULLIF(si.total_cost, 0),
     NULLIF(si.unit_cost, 0) * si.quantity,
     NULLIF(p.cost, 0) * si.quantity,
@@ -182,11 +229,39 @@ export const SIGNED_LINE_REVENUE_EXPR = `(${SQL_SALES_SIGN}) * ${LINE_REVENUE_EX
 export const SIGNED_LINE_COST_EXPR = `(${SQL_SALES_SIGN}) * (${LINE_COST_EXPR})`;
 export const SIGNED_LINE_PROFIT_EXPR = `(${SIGNED_LINE_REVENUE_EXPR}) - (${SIGNED_LINE_COST_EXPR})`;
 
+/** Ürün kartı: product_id veya UUID item_code ile */
+export function buildProductsJoin(firmNrParam = '$1'): string {
+  return `
+  LEFT JOIN products p
+    ON p.firm_nr = ${firmNrParam}
+    AND p.id = (${SQL_LINE_RESOLVED_PRODUCT_ID})
+`.trim();
+}
+
+export const PRODUCTS_JOIN = buildProductsJoin('$1');
+
 export const LAST_PURCHASE_JOIN = `
-  LEFT JOIN last_purchase_by_id lpc_id ON lpc_id.product_id = si.product_id
+  LEFT JOIN last_purchase_by_id lpc_id
+    ON lpc_id.product_id = (${SQL_LINE_RESOLVED_PRODUCT_ID})
   LEFT JOIN last_purchase_by_code lpc_code
     ON lpc_code.item_code = NULLIF(TRIM(si.item_code), '')
+  LEFT JOIN last_purchase_by_code lpc_pcode
+    ON lpc_pcode.item_code = NULLIF(TRIM(p.code), '')
 `.trim();
+
+const UUID_RE = new RegExp(SQL_UUID_TEXT_RE, 'i');
+
+/** Satırdan ürün UUID (REST/JS) */
+export function resolveLineProductId(it: {
+  product_id?: unknown;
+  item_code?: unknown;
+}): string {
+  const pid = it.product_id != null ? String(it.product_id).trim() : '';
+  if (pid && UUID_RE.test(pid)) return pid;
+  const code = String(it.item_code ?? '').trim();
+  if (code && UUID_RE.test(code)) return code;
+  return '';
+}
 
 /** REST/client yolu: alış satırından birim maliyet */
 export function unitCostFromPurchaseLine(it: {
@@ -204,6 +279,29 @@ export function unitCostFromPurchaseLine(it: {
   const up = Number(it.unit_price ?? 0);
   if (up) return up;
   return Number(it.unit_cost ?? 0) || 0;
+}
+
+/**
+ * Satır COGS (adet/kg aynı): son alış birim × miktar, yoksa satır/kart.
+ * İşaret (iade) çağıran tarafta uygulanır.
+ */
+export function lineCostAmount(opts: {
+  quantity: number;
+  lastPurchaseUnit?: number;
+  totalCost?: number;
+  unitCost?: number;
+  productCost?: number;
+}): number {
+  const qty = Number(opts.quantity) || 0;
+  const lpc = Number(opts.lastPurchaseUnit) || 0;
+  if (lpc) return lpc * qty;
+  const tc = Number(opts.totalCost) || 0;
+  if (tc) return tc;
+  const uc = Number(opts.unitCost) || 0;
+  if (uc) return uc * qty;
+  const pc = Number(opts.productCost) || 0;
+  if (pc) return pc * qty;
+  return 0;
 }
 
 export function isPurchaseFiche(row: {

@@ -11,6 +11,7 @@ import {
   buildProfitCostCtes,
   INVOICE_LINE_SCALE_JOIN,
   LAST_PURCHASE_JOIN,
+  PRODUCTS_JOIN,
   SIGNED_LINE_COST_EXPR,
   SIGNED_LINE_PROFIT_EXPR,
   SIGNED_LINE_QTY_EXPR,
@@ -93,7 +94,7 @@ export function ProfitLossReport() {
               SUM(${SIGNED_LINE_PROFIT_EXPR}) AS profit
             FROM sale_items si
             INNER JOIN sales s ON s.id = si.invoice_id
-            LEFT JOIN products p ON p.id = si.product_id AND p.firm_nr = $1
+            ${PRODUCTS_JOIN}
             LEFT JOIN categories leaf_cat ON leaf_cat.id = p.category_id
             ${LAST_PURCHASE_JOIN}
             ${INVOICE_LINE_SCALE_JOIN}
@@ -117,7 +118,7 @@ export function ProfitLossReport() {
               SUM(${SIGNED_LINE_PROFIT_EXPR}) AS profit
             FROM sale_items si
             INNER JOIN sales s ON s.id = si.invoice_id
-            LEFT JOIN products p ON p.id = si.product_id AND p.firm_nr = $1
+            ${PRODUCTS_JOIN}
             ${LAST_PURCHASE_JOIN}
             ${INVOICE_LINE_SCALE_JOIN}
             WHERE ${SALES_FILTER}
@@ -138,7 +139,7 @@ export function ProfitLossReport() {
               SUM(${SIGNED_LINE_PROFIT_EXPR}) AS profit
             FROM sale_items si
             INNER JOIN sales s ON s.id = si.invoice_id
-            LEFT JOIN products p ON p.id = si.product_id AND p.firm_nr = $1
+            ${PRODUCTS_JOIN}
             ${LAST_PURCHASE_JOIN}
             ${INVOICE_LINE_SCALE_JOIN}
             WHERE ${SALES_FILTER}
@@ -151,7 +152,7 @@ export function ProfitLossReport() {
           sql = `
             WITH ${PROFIT_CTES}
             SELECT
-              COALESCE(NULLIF(TRIM(si.item_code), ''), p.code, '') AS product_code,
+              COALESCE(NULLIF(TRIM(p.code), ''), NULLIF(TRIM(si.item_code), ''), '') AS product_code,
               COALESCE(NULLIF(TRIM(si.item_name), ''), p.name, 'Bilinmeyen') AS product_name,
               SUM(${SIGNED_LINE_QTY_EXPR}) AS quantity,
               SUM(${SIGNED_LINE_REVENUE_EXPR}) AS revenue,
@@ -159,12 +160,12 @@ export function ProfitLossReport() {
               SUM(${SIGNED_LINE_PROFIT_EXPR}) AS profit
             FROM sale_items si
             INNER JOIN sales s ON s.id = si.invoice_id
-            LEFT JOIN products p ON p.id = si.product_id AND p.firm_nr = $1
+            ${PRODUCTS_JOIN}
             ${LAST_PURCHASE_JOIN}
             ${INVOICE_LINE_SCALE_JOIN}
             WHERE ${SALES_FILTER}
             GROUP BY
-              COALESCE(NULLIF(TRIM(si.item_code), ''), p.code, ''),
+              COALESCE(NULLIF(TRIM(p.code), ''), NULLIF(TRIM(si.item_code), ''), ''),
               COALESCE(NULLIF(TRIM(si.item_name), ''), p.name, 'Bilinmeyen')
             HAVING SUM(ABS(si.quantity)) > 0
             ORDER BY SUM(${SIGNED_LINE_PROFIT_EXPR}) DESC

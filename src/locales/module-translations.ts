@@ -6785,10 +6785,10 @@ export const excelModuleTranslations = {
     ku: 'بارکردنی ڕاپۆرتی قازانج و زەرەر سەرکەوتوو نەبوو',
   },
   reportsPlCostSourceNote: {
-    tr: 'Net satış = satış − satış iadesi; dip indirim satırlara oranlanır. SMM: son alış birim × miktar (alış iadesi hariç); yoksa satır/ürün kartı maliyeti.',
-    en: 'Net sales = sales − sales returns; footer discount is prorated to lines. COGS: last purchase unit × qty (excl. purchase returns); else line/product cost.',
-    ar: 'صافي المبيعات = المبيعات − مرتجعات المبيعات؛ يُوزع خصم الفاتورة على الأسطر. تكلفة البضاعة: آخر شراء × الكمية (باستثناء مرتجع الشراء).',
-    ku: 'فرۆشتنی خاوێن = فرۆشتن − گەڕاندنەوە؛ داشکاندنی کۆتایی بەسەر هێڵەکان دابەش دەکرێت. تێچوون: دوایین کڕین × بڕ (بێ گەڕاندنەوەی کڕین).',
+    tr: 'Net satış = satış − satış iadesi; dip indirim satırlara oranlanır. SMM (adet/kg aynı): son alış birim × miktar (alış iadesi hariç; ürün id/kod/barkod eşleşir); yoksa satır/ürün kartı maliyeti.',
+    en: 'Net sales = sales − sales returns; footer discount is prorated to lines. COGS (piece/kg same): last purchase unit × qty (excl. purchase returns; match by id/code/barcode); else line/product cost.',
+    ar: 'صافي المبيعات = المبيعات − مرتجعات المبيعات؛ يُوزع خصم الفاتورة على الأسطر. تكلفة البضاعة (قطعة/كغ): آخر شراء × الكمية (باستثناء مرتجع الشراء).',
+    ku: 'فرۆشتنی خاوێن = فرۆشتن − گەڕاندنەوە؛ داشکاندنی کۆتایی بەسەر هێڵەکان دابەش دەکرێت. تێچوون (دانە/کگ): دوایین کڕین × بڕ (بێ گەڕاندنەوەی کڕین).',
   },
   reportsPlMovTitle: {
     tr: 'Ürün hareket geçmişi',

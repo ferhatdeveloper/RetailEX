@@ -13,6 +13,7 @@ import {
   buildProfitCostCtes,
   INVOICE_LINE_SCALE_JOIN,
   LAST_PURCHASE_JOIN,
+  PRODUCTS_JOIN,
   SIGNED_LINE_PROFIT_EXPR,
   SIGNED_LINE_QTY_EXPR,
   SIGNED_LINE_REVENUE_EXPR,
@@ -116,14 +117,14 @@ export function CategoryGroupSalesProfitReport() {
         SELECT
           COALESCE(parent_cat.name, pg.name, NULLIF(TRIM(COALESCE(p.group_code, '')), ''), 'Genel') AS group_name,
           COALESCE(leaf_cat.name, NULLIF(TRIM(COALESCE(p.category_code, '')), ''), 'Diğer') AS category_name,
-          COALESCE(NULLIF(TRIM(si.item_code), ''), p.code, '') AS product_code,
+          COALESCE(NULLIF(TRIM(p.code), ''), NULLIF(TRIM(si.item_code), ''), '') AS product_code,
           COALESCE(NULLIF(TRIM(si.item_name), ''), p.name, 'Bilinmeyen') AS product_name,
           SUM(${SIGNED_LINE_QTY_EXPR}) AS qty,
           SUM(${SIGNED_LINE_REVENUE_EXPR}) AS revenue,
           SUM(${SIGNED_LINE_PROFIT_EXPR}) AS gross_profit
         FROM sale_items si
         INNER JOIN sales s ON s.id = si.invoice_id
-        LEFT JOIN products p ON p.id = si.product_id AND p.firm_nr = $1
+        ${PRODUCTS_JOIN}
         LEFT JOIN categories leaf_cat ON leaf_cat.id = p.category_id
         LEFT JOIN categories parent_cat ON parent_cat.id = leaf_cat.parent_id
         LEFT JOIN product_groups pg ON pg.code = p.group_code
@@ -139,7 +140,7 @@ export function CategoryGroupSalesProfitReport() {
         GROUP BY
           COALESCE(parent_cat.name, pg.name, NULLIF(TRIM(COALESCE(p.group_code, '')), ''), 'Genel'),
           COALESCE(leaf_cat.name, NULLIF(TRIM(COALESCE(p.category_code, '')), ''), 'Diğer'),
-          COALESCE(NULLIF(TRIM(si.item_code), ''), p.code, ''),
+          COALESCE(NULLIF(TRIM(p.code), ''), NULLIF(TRIM(si.item_code), ''), ''),
           COALESCE(NULLIF(TRIM(si.item_name), ''), p.name, 'Bilinmeyen')
         HAVING SUM(ABS(si.quantity)) <> 0
         ORDER BY 1, 2, SUM(${SIGNED_LINE_REVENUE_EXPR}) DESC
