@@ -1,7 +1,13 @@
 -- 105: RetailEX Teslimat Yönetim Modülü (logistics şeması)
 -- Sipariş (rex_*_sales) → teslimat → WMS pick → irsaliye zinciri
+--
+-- Veri güvenliği: Tümü idempotent (CREATE ... IF NOT EXISTS / ADD COLUMN IF NOT EXISTS
+-- / CREATE OR REPLACE). Yalnızca yeni şema/tablo/kolon ekler; mevcut kiracı verisini
+-- OKUMAZ, SİLMEZ, DEĞİŞTİRMEZ. Eski kiracılarda wms/logic şeması eksikse guard ile atlanır.
 
 CREATE SCHEMA IF NOT EXISTS logistics;
+CREATE SCHEMA IF NOT EXISTS logic;
+CREATE SCHEMA IF NOT EXISTS wms;
 
 -- Araç kartı
 CREATE TABLE IF NOT EXISTS logistics.vehicles (
@@ -193,31 +199,35 @@ CREATE TABLE IF NOT EXISTS logistics.notification_outbox (
 CREATE INDEX IF NOT EXISTS idx_logistics_notify_pending ON logistics.notification_outbox(status, created_at)
   WHERE status = 'pending';
 
--- WMS pick_waves genişletme
-ALTER TABLE wms.pick_waves
-  ADD COLUMN IF NOT EXISTS delivery_id UUID,
-  ADD COLUMN IF NOT EXISTS sales_ids UUID[];
+-- WMS pick_waves genişletme + pick_tasks (wms.pick_waves yoksa güvenli atla)
+DO $$
+BEGIN
+  IF to_regclass('wms.pick_waves') IS NOT NULL THEN
+    ALTER TABLE wms.pick_waves ADD COLUMN IF NOT EXISTS delivery_id UUID;
+    ALTER TABLE wms.pick_waves ADD COLUMN IF NOT EXISTS sales_ids UUID[];
 
-CREATE TABLE IF NOT EXISTS wms.pick_tasks (
-  id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  wave_id          UUID REFERENCES wms.pick_waves(id) ON DELETE CASCADE,
-  delivery_id      UUID,
-  delivery_line_id UUID,
-  product_id       UUID,
-  product_code     VARCHAR(100),
-  product_name     VARCHAR(255),
-  bin_code         VARCHAR(50),
-  qty_to_pick      NUMERIC(18,4) NOT NULL DEFAULT 0,
-  qty_picked       NUMERIC(18,4) NOT NULL DEFAULT 0,
-  status           VARCHAR(30) NOT NULL DEFAULT 'open',
-  assigned_user    VARCHAR(100),
-  firm_nr          VARCHAR(10) NOT NULL,
-  created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at       TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-CREATE INDEX IF NOT EXISTS idx_wms_pick_tasks_wave ON wms.pick_tasks(wave_id);
-CREATE INDEX IF NOT EXISTS idx_wms_pick_tasks_delivery ON wms.pick_tasks(delivery_id);
-CREATE INDEX IF NOT EXISTS idx_wms_pick_tasks_firm_status ON wms.pick_tasks(firm_nr, status);
+    CREATE TABLE IF NOT EXISTS wms.pick_tasks (
+      id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      wave_id          UUID REFERENCES wms.pick_waves(id) ON DELETE CASCADE,
+      delivery_id      UUID,
+      delivery_line_id UUID,
+      product_id       UUID,
+      product_code     VARCHAR(100),
+      product_name     VARCHAR(255),
+      bin_code         VARCHAR(50),
+      qty_to_pick      NUMERIC(18,4) NOT NULL DEFAULT 0,
+      qty_picked       NUMERIC(18,4) NOT NULL DEFAULT 0,
+      status           VARCHAR(30) NOT NULL DEFAULT 'open',
+      assigned_user    VARCHAR(100),
+      firm_nr          VARCHAR(10) NOT NULL,
+      created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+      updated_at       TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS idx_wms_pick_tasks_wave ON wms.pick_tasks(wave_id);
+    CREATE INDEX IF NOT EXISTS idx_wms_pick_tasks_delivery ON wms.pick_tasks(delivery_id);
+    CREATE INDEX IF NOT EXISTS idx_wms_pick_tasks_firm_status ON wms.pick_tasks(firm_nr, status);
+  END IF;
+END $$;
 
 -- Sipariş satırlarında sevkiyat bakiyesi (mevcut dönem tabloları)
 DO $$
@@ -348,7 +358,9 @@ BEGIN
     EXECUTE 'GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA logistics TO anon';
     EXECUTE 'ALTER DEFAULT PRIVILEGES IN SCHEMA logistics GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO anon';
     EXECUTE 'ALTER DEFAULT PRIVILEGES IN SCHEMA logistics GRANT USAGE, SELECT ON SEQUENCES TO anon';
-    EXECUTE 'GRANT SELECT, INSERT, UPDATE, DELETE ON wms.pick_tasks TO anon';
+    IF to_regclass('wms.pick_tasks') IS NOT NULL THEN
+      EXECUTE 'GRANT SELECT, INSERT, UPDATE, DELETE ON wms.pick_tasks TO anon';
+    END IF;
     EXECUTE 'GRANT EXECUTE ON FUNCTION logic.create_delivery_from_sales(VARCHAR, VARCHAR, UUID, VARCHAR) TO anon';
   END IF;
 END $$;
