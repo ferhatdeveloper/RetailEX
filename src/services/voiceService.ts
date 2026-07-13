@@ -220,9 +220,8 @@ export class VoiceService {
      * Listen using Capacitor (mobile)
      */
     private async listenWithCapacitor(): Promise<string> {
-        // Placeholder for Capacitor implementation
-        // You would use @capacitor-community/speech-recognition plugin
-        throw new Error('Capacitor voice recognition not yet implemented');
+        // Mobil (React Native) tarafında native ses tanıma kullanılır; web/Tauri dışı bu dal aktif değil.
+        throw new Error('Native mobil ses tanıma bu istemcide uygulanmadı');
     }
 
     /**

@@ -4,11 +4,8 @@ import react from '@vitejs/plugin-react-swc';
 import path from 'path';
 import { eticaretStaticPlugin } from './vite.eticaret-static';
 
-const isCapacitorBuild = process.env.CAPACITOR_BUILD === '1';
-
 export default defineConfig({
-  /** Capacitor WebView: mutlak /assets yolu bazı cihazlarda kırılır */
-  base: isCapacitorBuild ? './' : '/',
+  base: '/',
   plugins: [react(), eticaretStaticPlugin()],
   publicDir: 'src/public',
   resolve: {
@@ -62,7 +59,7 @@ export default defineConfig({
     },
   },
   build: {
-    target: isCapacitorBuild ? 'es2020' : 'esnext',
+    target: 'esnext',
     outDir: 'build',
     sourcemap: false,
     minify: 'esbuild',

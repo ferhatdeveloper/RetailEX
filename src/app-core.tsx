@@ -2,7 +2,7 @@
  * RetailEX ERP — uygulama gövdesi (main.tsx ErpBoot tarafından tek dinamik import).
  */
 import { Fragment, useEffect, useLayoutEffect, type ReactNode } from 'react';
-import { Capacitor } from '@capacitor/core';
+import { isCapacitorAndroid } from './utils/capacitorPlatform';
 import { AppRouter } from './AppRouter';
 import { ErrorBoundary } from './components/shared/ErrorBoundary';
 import './index.css';
@@ -22,7 +22,7 @@ function BootReady({ children }: { children: ReactNode }) {
 function CapacitorAndroidHtmlClass() {
   useLayoutEffect(() => {
     const el = document.documentElement;
-    if (Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android') {
+    if (isCapacitorAndroid()) {
       el.classList.add('rex-capacitor-android');
     }
     return () => el.classList.remove('rex-capacitor-android');

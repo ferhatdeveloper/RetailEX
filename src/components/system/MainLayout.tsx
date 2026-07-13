@@ -30,7 +30,7 @@ import { loadLogoErpMode, type LogoErpMode } from '../../services/logoErpMode';
 import { showCallerIdDesktopNotification } from '../../utils/callerIdDesktopNotify';
 import { toast } from 'sonner';
 import { useCustomerStore } from '../../store/useCustomerStore';
-import { Capacitor } from '@capacitor/core';
+import { isCapacitorAndroid as detectCapacitorAndroid } from '../../utils/capacitorPlatform';
 import { lazyWithChunkRecovery } from '../../utils/chunkLoadRecovery';
 
 const MobilePOS = lazyWithChunkRecovery(() =>
@@ -386,10 +386,7 @@ export function MainLayout({
   const { isMobile, isTablet, isSmallMobile } = useResponsive();
   /** Mobil + tablet: üst çubuk iki satırlı kompakt düzen */
   const compactShellTopBar = isMobile || isTablet;
-  const isCapacitorAndroid = useMemo(
-    () => Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android',
-    []
-  );
+  const isCapacitorAndroid = useMemo(() => detectCapacitorAndroid(), []);
 
   useEffect(() => {
     if (!mobileTopBarMoreOpen) return;

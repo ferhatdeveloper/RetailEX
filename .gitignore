@@ -47,7 +47,7 @@ yarn-error.log*
 .env.test.local
 .env.production.local
 
-# Android
+# Android / React Native (mobil ayrı proje)
 android/app/build/
 android/.gradle/
 android/local.properties

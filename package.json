@@ -7,9 +7,6 @@
       "dependencies": {
             "@ant-design/icons": "^6.1.0",
             "@ant-design/pro-components": "^2.8.10",
-            "@capacitor/android": "^8.0.0",
-            "@capacitor/cli": "^8.0.0",
-            "@capacitor/core": "^8.0.0",
             "@dnd-kit/core": "^6.3.1",
             "@dnd-kit/sortable": "^10.0.0",
             "@dnd-kit/utilities": "^3.2.2",
@@ -142,7 +139,6 @@
             "tauri:build": "npm run prebuild && npm run sumatra:fetch && npm run postgrest:fetch && node scripts/patch-installer-nsi-repo-root.mjs && node scripts/tauri-windows-signing-prep.mjs && node scripts/tauri-updater-ci-prep.mjs && node scripts/tauri-build-run.mjs && node scripts/verify-windows-installer-signature.mjs",
             "desktop:ci:fetch": "node scripts/fetch-desktop-release-to-desktop.mjs",
             "desktop:ci:build": "node scripts/trigger-desktop-release.mjs",
-            "android:ci:build": "node scripts/trigger-android-release.mjs",
             "desktop:ci:cleanup": "node scripts/cleanup-github-desktop-releases.mjs",
             "tauri:windows-signing:example": "node -e \"const fs=require('fs');const p='DeskApp/tauri.windows.conf.json';if(fs.existsSync(p))throw new Error(p+' zaten var');fs.copyFileSync('DeskApp/tauri.windows.conf.json.example',p);console.log(p+' olusturuldu; certificateThumbprint doldurun.');\"",
             "electron:dev": "electron ./src/electron/main.js --dev",

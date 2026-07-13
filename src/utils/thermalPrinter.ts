@@ -1,6 +1,3 @@
-import type { Sale, SaleItem } from '../core/types/models';
-import { Capacitor } from '@capacitor/core';
-import SunmiPrinter, { SunmiUtils } from './sunmiPrinter';
 import { getStoredWindowsPrinterNameForPrint } from './tauriPrintSettings';
 import { RECEIPT_80MM_DOCUMENT_CSS, RECEIPT_80MM_VIEWPORT_FOR_HEADLESS } from './receipt80mmDocumentCss';
 
@@ -150,11 +147,6 @@ export async function printThermalReceipt(sale: any, companyName: string = 'Reta
       receiptSettings = null;
     }
   }
-  if (Capacitor.getPlatform() === 'android') {
-    try { await printSunmiReceipt(sale, receiptSettings?.companyName || companyName, finalLanguage); return; }
-    catch (e) { console.error('Sunmi failed', e); }
-  }
-
   const receiptHTML = generateReceiptHTML(sale, companyName, finalLanguage, receiptSettings);
 
   if (options?.autoPrint && (window as any).__TAURI_INTERNALS__) {
@@ -191,36 +183,12 @@ export async function printThermalReceipt(sale: any, companyName: string = 'Reta
 }
 
 export async function printReturnReceipt(returnReceipt: ReturnReceipt, companyName: string = 'RetailOS') {
-  if (Capacitor.getPlatform() === 'android') {
-    try { await printSunmiReturnReceipt(returnReceipt, companyName); return; }
-    catch (e) { console.error('Sunmi return failed', e); }
-  }
   const printWindow = window.open('', '_blank', 'width=300,height=600');
   if (!printWindow) return;
   const html = `<html><body><pre>${JSON.stringify(returnReceipt, null, 2)}</pre></body></html>`;
   printWindow.document.write(html);
   printWindow.document.close();
   printWindow.print();
-}
-
-async function printSunmiReceipt(sale: any, companyName: string, language: string) {
-  await SunmiUtils.printHeader(companyName);
-  const labels = language === 'ar' ? { subtotal: 'فرعي', total: 'مجموع' } : { subtotal: 'Ara Toplam', total: 'TOPLAM' };
-  await SunmiPrinter.printText({ text: `FIS: ${sale.receiptNumber}\n` });
-  await SunmiUtils.printDivider();
-  for (const item of sale.items as SaleItem[]) {
-    await SunmiUtils.printItemRow(item.productName.substring(0, 18), item.quantity.toString(), (item.price * item.quantity).toFixed(2));
-  }
-  await SunmiUtils.printDivider();
-  await SunmiUtils.printLabelValue(labels.subtotal, sale.subtotal.toFixed(2));
-  await SunmiPrinter.printTextWithFont({ text: `${labels.total} ${sale.total.toFixed(2)}\n`, fontSize: 32 });
-  await SunmiPrinter.lineWrap({ lines: 4 });
-}
-
-async function printSunmiReturnReceipt(returnReceipt: ReturnReceipt, companyName: string) {
-  await SunmiUtils.printHeader(companyName);
-  await SunmiPrinter.printText({ text: `IADE: ${returnReceipt.returnNumber}\n` });
-  await SunmiPrinter.lineWrap({ lines: 4 });
 }
 
 export async function printTestReceipt() {

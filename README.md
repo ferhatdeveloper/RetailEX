@@ -56,7 +56,6 @@ d:/RetailEX/
 │   └── migrations/
 │       ├── 000_master_schema.sql  # Ana şema (tüm tablolar)
 │       └── 001_demo_data.sql      # Demo veri
-├── android/                     # Capacitor Android uygulaması
 └── package.json
 ```
 
@@ -76,7 +75,7 @@ d:/RetailEX/
 | DB Client (web) | `pg_bridge.ts` — Hono sunucusu üzerinden REST proxy |
 | DB Client (masaüstü) | Tauri `pg_query` / `pg_execute` komutları |
 | Masaüstü runtime | Tauri 2 (Rust) |
-| Mobil | Capacitor 8 (Android) |
+| Mobil | React Native (ayrı proje) |
 | i18n | i18next + özel `LanguageContext` |
 | Raporlama | Stimulsoft Reports JS + jsPDF |
 | ORM yok | Ham SQL — `PostgresConnection.query()` |
@@ -360,7 +359,7 @@ npm run deploy         # Vercel'e deploy (retailex.app)
 ## Önemli Notlar
 
 - Şema değişiklikleri `database/migrations/` altındaki SQL dosyalarıyla takip edilir
-- Android desteği Capacitor 8 ile `android/` klasöründedir
+- Mobil uygulama React Native ile ayrı projede geliştirilir (Capacitor kaldırıldı)
 - WMS tasarım referansı: `D:\Developer\App\EXFIN_OPS\ExWhms`
 - Güzellik modülü tasarım referansı: `C:\Users\FERHAT\Desktop\Beautycentermanagementsystem-main\src`
 - Tüm beauty çevirileri `src/locales/module-translations.ts` içinde `b` prefix ile başlar (satır ~990–1220)
