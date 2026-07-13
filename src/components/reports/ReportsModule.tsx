@@ -66,8 +66,13 @@ import { toast } from 'sonner';
 import { usePermission } from '../../shared/hooks/usePermission';
 import { useResponsive } from '../../hooks/useResponsive';
 import { buildReceipt80mmPrintHtml } from '../../utils/receipt80mmPrintHtml';
+import {
+  printReportHtml,
+  shouldPreviewReportPrint,
+} from '../../utils/reportHtmlPrint';
 import { getReceiptSettings } from '../../services/receiptSettingsService';
 import { retailexAntdThemeWithPrimary } from '../../theme/retailexAntdTheme';
+import { ReportHtmlPrintPreviewModal } from './ReportHtmlPrintPreviewModal';
 import type { ColumnsType } from 'antd/es/table';
 import {
   RobotOutlined,
@@ -884,6 +889,8 @@ export function ReportsModule({
   const [dailyRowReceiptLoading, setDailyRowReceiptLoading] = useState(false);
   /** Fiş önizleme iframe yüksekliği (tam belge; iç içe HTML hatası düzeltildi) */
   const [dailyRowReceiptPreviewH, setDailyRowReceiptPreviewH] = useState(520);
+  /** Mobil: yazdırmadan önce rapor HTML önizlemesi */
+  const [reportPrintPreview, setReportPrintPreview] = useState<{ html: string; title: string } | null>(null);
 
   const [analysisDateFrom, setAnalysisDateFrom] = useState(() => {
     const d = new Date();
@@ -2231,38 +2238,10 @@ export function ReportsModule({
 
   const printDailyRowReceipt = useCallback(() => {
     if (!dailyRowReceiptHtml) return;
-    // Tauri/WebView2 popup engeli: window.open yerine gizli iframe (gunluk rapor / Z ile ayni)
-    const iframe = document.createElement('iframe');
-    iframe.setAttribute('aria-hidden', 'true');
-    iframe.style.cssText =
-      'position:absolute;width:0;height:0;border:0;visibility:hidden;pointer-events:none';
-    document.body.appendChild(iframe);
-    const doc = iframe.contentWindow?.document;
-    if (!doc) {
-      document.body.removeChild(iframe);
-      toast.error(tm('reportToastPrintFrameFail'));
-      return;
-    }
-    // buildReceipt80mmPrintHtml zaten tam HTML belgesi döndürür; tekrar sarmalama geçersiz DOM üretir
-    doc.open();
-    doc.write(dailyRowReceiptHtml);
-    doc.close();
-    const win = iframe.contentWindow;
-    const runPrint = () => {
-      setTimeout(() => {
-        win?.focus();
-        win?.print();
-        setTimeout(() => {
-          if (iframe.parentNode) document.body.removeChild(iframe);
-        }, 1000);
-      }, 100);
-    };
-    if (win?.document.readyState === 'complete') {
-      runPrint();
-    } else {
-      win?.addEventListener('load', runPrint, { once: true });
-    }
-  }, [dailyRowReceiptHtml, tm]);
+    void printReportHtml(dailyRowReceiptHtml, {
+      preferMainDocument: shouldPreviewReportPrint(isMobile),
+    }).catch(() => toast.error(tm('reportToastPrintFrameFail')));
+  }, [dailyRowReceiptHtml, isMobile, tm]);
 
   const confirmReportAction = useCallback((message: string) => {
     return new Promise<{ approved: boolean; reason: string }>((resolve) => {
@@ -3435,35 +3414,12 @@ export function ReportsModule({
 </body></html>`;
 
     const html = format === 'a4' ? htmlA4 : html80;
-    // window.open Tauri/WebView'da popup engeline takılır; iframe ile Z raporuyla aynı yol
-    const iframe = document.createElement('iframe');
-    iframe.setAttribute('aria-hidden', 'true');
-    iframe.style.cssText =
-      'position:absolute;width:0;height:0;border:0;visibility:hidden;pointer-events:none';
-    document.body.appendChild(iframe);
-    const doc = iframe.contentWindow?.document;
-    if (!doc) {
-      document.body.removeChild(iframe);
+    const previewTitle = `${L('reportsPrintDailyTitle')} — ${titleDates}`;
+    if (shouldPreviewReportPrint(isMobile)) {
+      setReportPrintPreview({ html, title: previewTitle });
       return;
     }
-    doc.open();
-    doc.write(html);
-    doc.close();
-    const win = iframe.contentWindow;
-    const runPrint = () => {
-      setTimeout(() => {
-        win?.focus();
-        win?.print();
-        setTimeout(() => {
-          if (iframe.parentNode) document.body.removeChild(iframe);
-        }, 1000);
-      }, 100);
-    };
-    if (win?.document.readyState === 'complete') {
-      runPrint();
-    } else {
-      win?.addEventListener('load', runPrint, { once: true });
-    }
+    void printReportHtml(html).catch(() => toast.error(tm('reportToastPrintFrameFail')));
   };
 
   // Print Z Report
@@ -3624,29 +3580,12 @@ export function ReportsModule({
       </html>
     `;
 
-    const iframe = document.createElement('iframe');
-    iframe.style.position = 'absolute';
-    iframe.style.width = '0';
-    iframe.style.height = '0';
-    iframe.style.border = 'none';
-    iframe.style.visibility = 'hidden';
-
-    document.body.appendChild(iframe);
-
-    const doc = iframe.contentWindow?.document;
-    if (doc) {
-      doc.open();
-      doc.write(reportHTML);
-      doc.close();
-
-      iframe.contentWindow?.addEventListener('load', () => {
-        setTimeout(() => {
-          iframe.contentWindow?.focus();
-          iframe.contentWindow?.print();
-          setTimeout(() => document.body.removeChild(iframe), 1000);
-        }, 100);
-      });
+    const previewTitle = `Z Raporu — ${zReport.dateLabel}`;
+    if (shouldPreviewReportPrint(isMobile)) {
+      setReportPrintPreview({ html: reportHTML, title: previewTitle });
+      return;
     }
+    void printReportHtml(reportHTML).catch(() => toast.error(tm('reportToastPrintFrameFail')));
   };
 
   const getAnalysisColumnsAndData = (kind: AnalysisReportKind): {
@@ -8237,6 +8176,17 @@ export function ReportsModule({
           </Content>
         </Layout>
       </Layout>
+      {reportPrintPreview && (
+        <ReportHtmlPrintPreviewModal
+          html={reportPrintPreview.html}
+          title={reportPrintPreview.title}
+          onClose={() => setReportPrintPreview(null)}
+          darkMode={darkMode}
+          printLabel={t.print}
+          closeLabel={t.close}
+          hintLabel={tm('reportsPrintPreviewHint')}
+        />
+      )}
     </ConfigProvider>
   );
 }
