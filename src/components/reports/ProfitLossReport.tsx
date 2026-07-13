@@ -7,6 +7,11 @@ import { toast } from 'sonner';
 import { toSqlDateInputString } from '../../utils/localCalendarDate';
 import { SQL_COUNTABLE_SALE_STATUS } from '../../utils/saleInvoiceStatus';
 import { useLanguage } from '../../contexts/LanguageContext';
+import {
+  buildLastPurchaseCte,
+  LAST_PURCHASE_JOIN,
+  LINE_COST_EXPR,
+} from '../../utils/lastPurchaseCostSql';
 
 interface SalesData {
   rowKey: string;
@@ -19,91 +24,8 @@ interface SalesData {
   profitMargin: number;
 }
 
-/** Logo alış trcode — invoices / expiryReports ile aynı */
-const PURCHASE_TRCODES_SQL = '1, 4, 5, 6, 13, 26, 41, 42';
+const LAST_PURCHASE_CTE = buildLastPurchaseCte('$1');
 
-/**
- * Satır maliyeti (KOBİ):
- * 1) Son alış faturası birim fiyatı × satış miktarı (ürün id, yoksa kod)
- * 2) sale_items.total_cost / unit_cost
- * 3) products.cost × miktar
- */
-const LAST_PURCHASE_CTE = `
-  last_purchase_by_id AS (
-    SELECT DISTINCT ON (si.product_id)
-      si.product_id,
-      COALESCE(
-        NULLIF(
-          CASE
-            WHEN ABS(COALESCE(si.quantity, 0)) > 0.0000001
-              THEN COALESCE(si.net_amount, 0) / NULLIF(ABS(si.quantity), 0)
-            ELSE NULL
-          END,
-          0
-        ),
-        NULLIF(si.unit_price, 0),
-        NULLIF(si.unit_cost, 0),
-        0
-      ) AS unit_cost
-    FROM sale_items si
-    INNER JOIN sales s ON s.id = si.invoice_id
-    WHERE s.firm_nr = $1
-      AND COALESCE(s.is_cancelled, false) = false
-      AND (
-        LOWER(TRIM(COALESCE(s.fiche_type, ''))) IN ('purchase_invoice', 'a')
-        OR COALESCE(s.trcode, 0) IN (${PURCHASE_TRCODES_SQL})
-      )
-      AND COALESCE(si.item_type, 'Malzeme') NOT IN ('Promosyon', 'İndirim')
-      AND si.product_id IS NOT NULL
-    ORDER BY si.product_id, s.date DESC NULLS LAST, s.created_at DESC NULLS LAST
-  ),
-  last_purchase_by_code AS (
-    SELECT DISTINCT ON (NULLIF(TRIM(si.item_code), ''))
-      NULLIF(TRIM(si.item_code), '') AS item_code,
-      COALESCE(
-        NULLIF(
-          CASE
-            WHEN ABS(COALESCE(si.quantity, 0)) > 0.0000001
-              THEN COALESCE(si.net_amount, 0) / NULLIF(ABS(si.quantity), 0)
-            ELSE NULL
-          END,
-          0
-        ),
-        NULLIF(si.unit_price, 0),
-        NULLIF(si.unit_cost, 0),
-        0
-      ) AS unit_cost
-    FROM sale_items si
-    INNER JOIN sales s ON s.id = si.invoice_id
-    WHERE s.firm_nr = $1
-      AND COALESCE(s.is_cancelled, false) = false
-      AND (
-        LOWER(TRIM(COALESCE(s.fiche_type, ''))) IN ('purchase_invoice', 'a')
-        OR COALESCE(s.trcode, 0) IN (${PURCHASE_TRCODES_SQL})
-      )
-      AND COALESCE(si.item_type, 'Malzeme') NOT IN ('Promosyon', 'İndirim')
-      AND NULLIF(TRIM(si.item_code), '') IS NOT NULL
-    ORDER BY NULLIF(TRIM(si.item_code), ''), s.date DESC NULLS LAST, s.created_at DESC NULLS LAST
-  )
-`.trim();
-
-/** product_id eşleşmesi öncelikli; yoksa ürün kodu ile son alış */
-const LINE_COST_EXPR = `
-  COALESCE(
-    NULLIF(lpc_id.unit_cost, 0) * si.quantity,
-    NULLIF(lpc_code.unit_cost, 0) * si.quantity,
-    NULLIF(si.total_cost, 0),
-    NULLIF(si.unit_cost, 0) * si.quantity,
-    NULLIF(p.cost, 0) * si.quantity,
-    0
-  )
-`.trim();
-
-const LAST_PURCHASE_JOIN = `
-  LEFT JOIN last_purchase_by_id lpc_id ON lpc_id.product_id = si.product_id
-  LEFT JOIN last_purchase_by_code lpc_code
-    ON lpc_code.item_code = NULLIF(TRIM(si.item_code), '')
-`.trim();
 const SALES_FILTER = `
   s.firm_nr = $1
   AND COALESCE(s.is_cancelled, false) = false

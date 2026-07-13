@@ -851,6 +851,58 @@ export function InvoiceListModule({
     [invoices],
   );
 
+  const listFooterTotals = useMemo(() => {
+    const cur = headerTotalsCurrency;
+    const fmt = (n: number) => `${formatNumber(n, 2, true)} ${cur}`;
+    let subtotal = 0;
+    let discount = 0;
+    let tax = 0;
+    let total = 0;
+    let totalCost = 0;
+    let grossProfit = 0;
+    for (const inv of invoices) {
+      subtotal += Number(inv.subtotal || 0);
+      discount += Number(inv.discount || 0);
+      tax += Number(inv.tax || 0);
+      total += Number(inv.total_amount ?? inv.total ?? 0);
+      totalCost += Number(inv.total_cost || 0);
+      grossProfit += Number(inv.gross_profit || 0);
+    }
+    return { subtotal, discount, tax, total, totalCost, grossProfit, fmt, count: invoices.length };
+  }, [invoices, headerTotalsCurrency]);
+
+  const gridFooterSumColumns = useMemo(() => {
+    const cur = headerTotalsCurrency;
+    const formatMoney = (sum: number) => (
+      <span className="tabular-nums">{formatNumber(sum, 2, true)} {cur}</span>
+    );
+    const defs: Array<{
+      columnId: string;
+      getValue: (row: ListInvoice) => number;
+      format: (sum: number) => ReturnType<typeof formatMoney>;
+    }> = [];
+    const pushIfVisible = (
+      id: string,
+      visible: boolean,
+      getValue: (row: ListInvoice) => number,
+    ) => {
+      if (!visible) return;
+      defs.push({ columnId: id, getValue, format: formatMoney });
+    };
+    pushIfVisible('subtotal', columnVisibility.subtotal !== false, (inv) => Number(inv.subtotal || 0));
+    pushIfVisible('discount', columnVisibility.discount !== false, (inv) => Number(inv.discount || 0));
+    pushIfVisible('tax', columnVisibility.tax !== false, (inv) => Number(inv.tax || 0));
+    pushIfVisible('total', columnVisibility.total !== false, (inv) => Number(inv.total_amount ?? inv.total ?? 0));
+    pushIfVisible('total_cost', columnVisibility.total_cost !== false, (inv) => Number(inv.total_cost || 0));
+    pushIfVisible('gross_profit', columnVisibility.gross_profit !== false, (inv) => Number(inv.gross_profit || 0));
+    return defs;
+  }, [columnVisibility, headerTotalsCurrency]);
+
+  const invoiceGridFooterLabel = useMemo(() => {
+    if (columnVisibility.total !== false) return tm('invoiceListDipTotal');
+    return `${tm('invoiceListDipTotal')}: ${formatNumber(listFooterTotals.total, 2, true)} ${headerTotalsCurrency}`;
+  }, [columnVisibility.total, listFooterTotals.total, headerTotalsCurrency, tm]);
+
   const columnVisibilityControl = !isMobile ? (
     <ColumnVisibilityMenu
       variant="filterBar"
@@ -1143,6 +1195,36 @@ export function InvoiceListModule({
               )}
             </div>
             <div className="shrink-0 border-t border-gray-200 bg-white px-2 py-2 mt-1 rounded-b-lg">
+              <div className="flex items-center justify-between gap-2 px-1 pb-2 mb-1 border-b border-gray-100">
+                <span className="text-[11px] font-bold text-blue-800">
+                  {tm('invoiceListDipTotal')}
+                  <span className="ml-1 font-semibold text-blue-600/80">({listFooterTotals.count})</span>
+                </span>
+                <span className="text-xs font-bold tabular-nums text-blue-900">
+                  {listFooterTotals.fmt(listFooterTotals.total)}
+                </span>
+              </div>
+              {(columnVisibility.subtotal !== false ||
+                columnVisibility.discount !== false ||
+                columnVisibility.tax !== false) && (
+                <div className="flex flex-wrap gap-x-3 gap-y-1 px-1 pb-2 text-[10px] text-gray-600">
+                  {columnVisibility.subtotal !== false && (
+                    <span>
+                      {tm('subtotal')}: <strong className="tabular-nums">{listFooterTotals.fmt(listFooterTotals.subtotal)}</strong>
+                    </span>
+                  )}
+                  {columnVisibility.discount !== false && (
+                    <span>
+                      {tm('discount')}: <strong className="tabular-nums">{listFooterTotals.fmt(listFooterTotals.discount)}</strong>
+                    </span>
+                  )}
+                  {columnVisibility.tax !== false && (
+                    <span>
+                      {tm('tax')}: <strong className="tabular-nums">{listFooterTotals.fmt(listFooterTotals.tax)}</strong>
+                    </span>
+                  )}
+                </div>
+              )}
               <div className="flex items-center gap-2">
                 <button
                   type="button"
@@ -1199,6 +1281,8 @@ export function InvoiceListModule({
               onSelectionChange={(rows) => setBulkSelectedInvoices(rows as ListInvoice[])}
               onRowDoubleClick={(invoice) => handleEditInvoice(invoice)}
               onRowContextMenu={handleRowRightClick}
+              footerSumColumns={gridFooterSumColumns.length > 0 ? gridFooterSumColumns : undefined}
+              footerLabel={invoiceGridFooterLabel}
             />
 
             <div className="mt-4 flex items-center justify-between px-4 py-3 bg-white border-t border-gray-200">

@@ -6,6 +6,13 @@ import { postgres, ERP_SETTINGS, DB_SETTINGS } from '../postgres';
 import { normalizeFirmTableNr } from './accountBalance';
 import { SQL_COUNTABLE_SALE_STATUS } from '../../utils/saleInvoiceStatus';
 import { localTodayDateKey } from '../../utils/localCalendarDate';
+import {
+  buildLastPurchaseCte,
+  isPurchaseFiche,
+  LAST_PURCHASE_JOIN,
+  LINE_COST_EXPR,
+  unitCostFromPurchaseLine,
+} from '../../utils/lastPurchaseCostSql';
 
 const ROW_LIMIT = 3000;
 
@@ -878,19 +885,20 @@ export const erpReportsAPI = {
     const start = String(opts.startDate || '').slice(0, 10);
     const end = String(opts.endDate || '').slice(0, 10);
     if (!start || !end) return [];
+    const firmNr = padFirm();
 
     if (DB_SETTINGS.connectionProvider === 'rest_api') {
       const { postgrest } = await import('./postgrestClient');
-      const fn = padFirm();
+      const fn = firmNr;
       const pn = padPeriod();
-      const [sales, items] = await Promise.all([
+      const [sales, items, products] = await Promise.all([
         postgrest
           .get<Record<string, unknown>[]>(
             `/rex_${fn}_${pn}_sales`,
             {
-              select: 'id,date,fiche_type,is_cancelled,status,trcode',
+              select: 'id,date,fiche_type,is_cancelled,status,trcode,created_at',
               order: 'date.desc',
-              limit: '5000',
+              limit: '8000',
             },
             { schema: 'public' },
           )
@@ -899,37 +907,92 @@ export const erpReportsAPI = {
           .get<Record<string, unknown>[]>(
             `/rex_${fn}_${pn}_sale_items`,
             {
-              select: 'invoice_id,product_id,item_code,item_name,quantity,net_amount,total_cost,gross_profit',
-              limit: '8000',
+              select:
+                'invoice_id,product_id,item_code,item_name,item_type,quantity,net_amount,unit_price,unit_cost,total_cost',
+              limit: '12000',
             },
             { schema: 'public' },
           )
           .catch(() => [] as Record<string, unknown>[]),
+        postgrest
+          .get<Record<string, unknown>[]>(
+            `/rex_${fn}_products`,
+            { select: 'id,cost', limit: '8000' },
+            { schema: 'public' },
+          )
+          .catch(() => [] as Record<string, unknown>[]),
       ]);
+
+      const salesById = new Map((sales || []).map((s) => [String(s.id), s]));
+      const productCost = new Map(
+        (products || []).map((p) => [String(p.id), Number(p.cost ?? 0) || 0]),
+      );
+
+      type PurchaseHit = { unitCost: number; dateKey: string; createdAt: string };
+      const lastById = new Map<string, PurchaseHit>();
+      const lastByCode = new Map<string, PurchaseHit>();
+
+      for (const it of items || []) {
+        const inv = salesById.get(String(it.invoice_id));
+        if (!inv || inv.is_cancelled === true || inv.is_cancelled === 'true') continue;
+        if (!isPurchaseFiche(inv)) continue;
+        const itemType = String(it.item_type || 'Malzeme');
+        if (itemType === 'Promosyon' || itemType === 'İndirim') continue;
+        const unitCost = unitCostFromPurchaseLine(it);
+        if (!unitCost) continue;
+        const dateKey = String(inv.date || '').slice(0, 10);
+        const createdAt = String(inv.created_at || '');
+        const hit: PurchaseHit = { unitCost, dateKey, createdAt };
+        const newer = (prev: PurchaseHit | undefined) =>
+          !prev ||
+          dateKey > prev.dateKey ||
+          (dateKey === prev.dateKey && createdAt > prev.createdAt);
+
+        const pid = it.product_id != null ? String(it.product_id) : '';
+        if (pid && newer(lastById.get(pid))) lastById.set(pid, hit);
+        const code = String(it.item_code || '').trim();
+        if (code && newer(lastByCode.get(code))) lastByCode.set(code, hit);
+      }
+
       const saleOk = new Set(
         (sales || [])
           .filter((s) => {
             if (s.is_cancelled === true || s.is_cancelled === 'true') return false;
             const st = String(s.status || 'approved').toLowerCase();
             if (!(st === 'completed' || st === 'approved' || !s.status)) return false;
+            if (isPurchaseFiche(s)) return false;
             const ft = String(s.fiche_type || '').toLowerCase();
-            if (ft && ft !== 'sales_invoice' && ft !== 'service' && ft !== 'hizmet' && ft !== 's') return false;
+            if (ft === 'return_invoice') return false;
+            if (ft && ft !== 'sales_invoice' && ft !== 'service' && ft !== 'hizmet' && ft !== 's') {
+              return false;
+            }
             const d = String(s.date || '').slice(0, 10);
             return d >= start && d <= end;
           })
           .map((s) => String(s.id)),
       );
+
       const map = new Map<string, ProductGrossProfitRow>();
       for (const it of items || []) {
         if (!saleOk.has(String(it.invoice_id))) continue;
         const code = String(it.item_code || it.product_id || '—');
-        const key = code;
+        const pid = it.product_id != null ? String(it.product_id) : '';
         const qty = Number(it.quantity ?? 0);
         const revenue = Number(it.net_amount ?? 0);
-        const cost = Number(it.total_cost ?? 0);
-        const gp = Number(it.gross_profit ?? revenue - cost);
-        const cur = map.get(key) || {
-          productId: String(it.product_id ?? ''),
+        const lpc =
+          (pid && lastById.get(pid)?.unitCost) ||
+          (String(it.item_code || '').trim() &&
+            lastByCode.get(String(it.item_code || '').trim())?.unitCost) ||
+          0;
+        const cost =
+          (lpc ? lpc * qty : 0) ||
+          Number(it.total_cost ?? 0) ||
+          Number(it.unit_cost ?? 0) * qty ||
+          (pid ? productCost.get(pid) || 0 : 0) * qty ||
+          0;
+        const gp = revenue - cost;
+        const cur = map.get(code) || {
+          productId: pid,
           productCode: code,
           productName: String(it.item_name ?? ''),
           quantity: 0,
@@ -943,7 +1006,7 @@ export const erpReportsAPI = {
         cur.cost += cost;
         cur.grossProfit += gp;
         if (!cur.productName && it.item_name) cur.productName = String(it.item_name);
-        map.set(key, cur);
+        map.set(code, cur);
       }
       return Array.from(map.values())
         .map((r) => ({
@@ -954,44 +1017,51 @@ export const erpReportsAPI = {
         .slice(0, ROW_LIMIT);
     }
 
+    const lastPurchaseCte = buildLastPurchaseCte('$1');
     const { rows } = await postgres.query(
       `
+      WITH ${lastPurchaseCte}
       SELECT
         COALESCE(si.product_id::text, '') AS product_id,
         COALESCE(NULLIF(TRIM(si.item_code), ''), '—') AS product_code,
         COALESCE(NULLIF(TRIM(si.item_name), ''), '—') AS product_name,
         COALESCE(SUM(si.quantity), 0) AS quantity,
         COALESCE(SUM(si.net_amount), 0) AS revenue,
-        COALESCE(SUM(si.total_cost), 0) AS cost,
-        COALESCE(SUM(COALESCE(si.gross_profit, si.net_amount - COALESCE(si.total_cost, 0))), 0) AS gross_profit
+        COALESCE(SUM(${LINE_COST_EXPR}), 0) AS cost,
+        COALESCE(SUM(COALESCE(si.net_amount, 0) - (${LINE_COST_EXPR})), 0) AS gross_profit
       FROM sale_items si
       INNER JOIN sales s ON s.id = si.invoice_id
-      WHERE COALESCE(s.is_cancelled, false) = false
+      LEFT JOIN products p ON p.id = si.product_id AND p.firm_nr = $1
+      ${LAST_PURCHASE_JOIN}
+      WHERE s.firm_nr = $1
+        AND COALESCE(s.is_cancelled, false) = false
         AND ${SQL_COUNTABLE_SALE_STATUS}
         AND (
           LOWER(TRIM(COALESCE(s.fiche_type, ''))) IN ('sales_invoice', 'service', 'hizmet', 's')
           OR s.fiche_type IS NULL
+          OR COALESCE(s.trcode, 0) IN (7, 8)
         )
         AND LOWER(TRIM(COALESCE(s.fiche_type, ''))) <> 'return_invoice'
-        AND (s.date AT TIME ZONE 'UTC')::date >= $1::date
-        AND (s.date AT TIME ZONE 'UTC')::date <= $2::date
+        AND (s.date AT TIME ZONE 'UTC')::date >= $2::date
+        AND (s.date AT TIME ZONE 'UTC')::date <= $3::date
       GROUP BY 1, 2, 3
       HAVING ABS(COALESCE(SUM(si.net_amount), 0)) > 0.009
       ORDER BY gross_profit DESC
       LIMIT ${ROW_LIMIT}
       `,
-      [start, end],
+      [firmNr, start, end],
     );
     return (rows || []).map((r: any) => {
       const revenue = Number(r.revenue ?? 0);
-      const grossProfit = Number(r.gross_profit ?? 0);
+      const cost = Number(r.cost ?? 0);
+      const grossProfit = Number(r.gross_profit ?? revenue - cost);
       return {
         productId: String(r.product_id ?? ''),
         productCode: String(r.product_code ?? ''),
         productName: String(r.product_name ?? ''),
         quantity: Number(r.quantity ?? 0),
         revenue,
-        cost: Number(r.cost ?? 0),
+        cost,
         grossProfit,
         marginPct: revenue > 0 ? (grossProfit / revenue) * 100 : 0,
       };

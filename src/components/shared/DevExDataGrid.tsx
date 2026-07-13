@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
+import { useState, useMemo, useEffect, useRef, useCallback, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import {
   useReactTable,
@@ -54,6 +54,17 @@ interface DevExDataGridProps<T> {
   /** true ise filtrelenmiş satırları Excel olarak indirir */
   enableExcelExport?: boolean;
   excelFileName?: string;
+  /**
+   * Tablo altında sticky dip toplam satırı.
+   * Toplamlar `getFilteredRowModel` satırları üzerinden hesaplanır.
+   */
+  footerSumColumns?: Array<{
+    columnId: string;
+    getValue: (row: T) => number;
+    format?: (sum: number, rows: T[]) => ReactNode;
+  }>;
+  /** Dip toplam etiketi (ör. "Dip Toplam") — ilk uygun metin kolonuna yazılır */
+  footerLabel?: ReactNode;
 }
 
 interface FilterMenuProps {
@@ -601,6 +612,8 @@ export function DevExDataGrid<T>({
   density = 'compact',
   enableExcelExport = true,
   excelFileName = 'retailex_export',
+  footerSumColumns,
+  footerLabel,
 }: DevExDataGridProps<T>) {
   const [sorting, setSorting] = useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
@@ -771,6 +784,40 @@ export function DevExDataGrid<T>({
 
   const maxPageSizeOption = resolvedPageSizeOptions[resolvedPageSizeOptions.length - 1] ?? pagination.pageSize;
 
+  const openFilterForHeader = useCallback(
+    (headerId: string, anchorEl: HTMLElement, column: Column<any, unknown>) => {
+      if (openFilterColumn === headerId) {
+        closeFilterMenu();
+        return;
+      }
+      filterColumnsRef.current.set(headerId, column);
+      const rect = anchorEl.getBoundingClientRect();
+      const menuWidth = 300;
+      const menuHeight = 440;
+      let top = rect.bottom + 4;
+      if (top + menuHeight > window.innerHeight - 8) {
+        top = Math.max(8, rect.top - menuHeight - 4);
+      }
+      const left = Math.max(8, Math.min(rect.right - menuWidth, window.innerWidth - menuWidth - 8));
+      setFilterMenuAnchor({ top, left });
+      setOpenFilterColumn(headerId);
+    },
+    [openFilterColumn, closeFilterMenu]
+  );
+
+  const filteredRowsForFooter = table.getFilteredRowModel().rows;
+  const showFooterRow = Boolean(footerLabel) || Boolean(footerSumColumns?.length);
+  const footerSumByColumnId = useMemo(() => {
+    if (!footerSumColumns?.length) return new Map<string, ReactNode>();
+    const originals = filteredRowsForFooter.map((r) => r.original);
+    const map = new Map<string, ReactNode>();
+    for (const def of footerSumColumns) {
+      const sum = originals.reduce((acc, row) => acc + (Number(def.getValue(row)) || 0), 0);
+      map.set(def.columnId, def.format ? def.format(sum, originals) : sum);
+    }
+    return map;
+  }, [footerSumColumns, data, columnFilters, sorting]);
+
   // Mobile Card View
   if (isMobile) {
     return (
@@ -836,27 +883,6 @@ export function DevExDataGrid<T>({
       </div>
     );
   }
-
-  const openFilterForHeader = useCallback(
-    (headerId: string, anchorEl: HTMLElement, column: Column<any, unknown>) => {
-      if (openFilterColumn === headerId) {
-        closeFilterMenu();
-        return;
-      }
-      filterColumnsRef.current.set(headerId, column);
-      const rect = anchorEl.getBoundingClientRect();
-      const menuWidth = 300;
-      const menuHeight = 440;
-      let top = rect.bottom + 4;
-      if (top + menuHeight > window.innerHeight - 8) {
-        top = Math.max(8, rect.top - menuHeight - 4);
-      }
-      const left = Math.max(8, Math.min(rect.right - menuWidth, window.innerWidth - menuWidth - 8));
-      setFilterMenuAnchor({ top, left });
-      setOpenFilterColumn(headerId);
-    },
-    [openFilterColumn, closeFilterMenu]
-  );
 
   const portalFilterColumn =
     openFilterColumn != null ? filterColumnsRef.current.get(openFilterColumn) : undefined;
@@ -1025,6 +1051,44 @@ export function DevExDataGrid<T>({
               </tr>
             ))}
           </tbody>
+          {showFooterRow && (
+            <tfoot
+              className={`sticky bottom-0 z-20 border-t-2 ${
+                darkMode ? 'bg-gray-900 border-blue-500' : 'bg-blue-50 border-blue-300'
+              }`}
+            >
+              <tr>
+                {(() => {
+                  const visibleCols = table.getVisibleLeafColumns();
+                  const labelColId = visibleCols.find(
+                    (c) => c.id !== 'select' && c.id !== 'actions' && !footerSumByColumnId.has(c.id),
+                  )?.id;
+                  return visibleCols.map((col) => {
+                    const sumNode = footerSumByColumnId.get(col.id);
+                    return (
+                      <td
+                        key={`footer-${col.id}`}
+                        className={`px-2 py-1.5 border-r last:border-r-0 ${cellTextSize} font-bold tabular-nums ${
+                          darkMode ? 'text-blue-200 border-gray-600' : 'text-blue-900 border-blue-200'
+                        }`}
+                      >
+                        {sumNode != null ? (
+                          sumNode
+                        ) : col.id === labelColId && footerLabel != null ? (
+                          <span className={darkMode ? 'text-blue-100' : 'text-blue-800'}>
+                            {footerLabel}
+                            <span className={`ml-1 font-semibold ${darkMode ? 'text-gray-400' : 'text-blue-600/80'}`}>
+                              ({filteredRowsForFooter.length})
+                            </span>
+                          </span>
+                        ) : null}
+                      </td>
+                    );
+                  });
+                })()}
+              </tr>
+            </tfoot>
+          )}
         </table>
 
         {/* No Data */}

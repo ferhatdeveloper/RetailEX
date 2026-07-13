@@ -9,6 +9,11 @@ import { useFirmaDonem } from '../../contexts/FirmaDonemContext';
 import { postgres, ERP_SETTINGS, getAppDefaultCurrency } from '../../services/postgres';
 import { toSqlDateInputString } from '../../utils/localCalendarDate';
 import { SQL_COUNTABLE_SALE_STATUS } from '../../utils/saleInvoiceStatus';
+import {
+  buildLastPurchaseCte,
+  LAST_PURCHASE_JOIN,
+  LINE_COST_EXPR,
+} from '../../utils/lastPurchaseCostSql';
 import { toast } from 'sonner';
 
 export interface CategoryGroupProductRow {
@@ -98,6 +103,7 @@ export function CategoryGroupSalesProfitReport() {
         gross_profit: string | number;
       }>(
         `
+        WITH ${buildLastPurchaseCte('$1')}
         SELECT
           COALESCE(parent_cat.name, pg.name, NULLIF(TRIM(COALESCE(p.group_code, '')), ''), 'Genel') AS group_name,
           COALESCE(leaf_cat.name, NULLIF(TRIM(COALESCE(p.category_code, '')), ''), 'Diğer') AS category_name,
@@ -105,18 +111,14 @@ export function CategoryGroupSalesProfitReport() {
           COALESCE(NULLIF(TRIM(si.item_name), ''), p.name, 'Bilinmeyen') AS product_name,
           SUM(si.quantity) AS qty,
           SUM(COALESCE(si.net_amount, 0)) AS revenue,
-          SUM(
-            COALESCE(
-              si.gross_profit,
-              COALESCE(si.net_amount, 0) - COALESCE(si.total_cost, 0)
-            )
-          ) AS gross_profit
+          SUM(COALESCE(si.net_amount, 0) - (${LINE_COST_EXPR})) AS gross_profit
         FROM sale_items si
         INNER JOIN sales s ON s.id = si.invoice_id
         LEFT JOIN products p ON p.id = si.product_id AND p.firm_nr = $1
         LEFT JOIN categories leaf_cat ON leaf_cat.id = p.category_id
         LEFT JOIN categories parent_cat ON parent_cat.id = leaf_cat.parent_id
         LEFT JOIN product_groups pg ON pg.code = p.group_code
+        ${LAST_PURCHASE_JOIN}
         WHERE s.firm_nr = $1
           AND COALESCE(s.is_cancelled, false) = false
           AND ${SQL_COUNTABLE_SALE_STATUS}

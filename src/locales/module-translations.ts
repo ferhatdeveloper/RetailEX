@@ -4080,6 +4080,7 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
   amount: { tr: 'Tutar', en: 'Amount', ar: 'المبلغ', ku: 'بڕ' },
   clickToAddRow: { tr: 'Satır eklemek için tıklayın', en: 'Click to add row', ar: 'انقر لإضافة صف', ku: 'کلیک بکە بۆ زیادکردنی ڕیز' },
   grandTotal: { tr: 'Genel Toplam', en: 'Grand Total', ar: 'المجموع الكلي', ku: 'کۆی گشتی' },
+  invoiceListDipTotal: { tr: 'Dip Toplam', en: 'Footer Total', ar: 'المجموع النهائي', ku: 'کۆی خوارەوە' },
   additionalNotes: { tr: 'Ek Notlar', en: 'Additional Notes', ar: 'ملاحظات إضافية', ku: 'تێبینی زیادە' },
   orderNotes: { tr: 'Sipariş Notları', en: 'Order Notes', ar: 'ملاحظات الطلب', ku: 'تێبینییەکانی داواکاری' },
   noFile: { tr: 'Dosya Yok', en: 'No File', ar: 'لا يوجد ملف', ku: 'هیچ فایلێک نییە' },
@@ -7842,10 +7843,10 @@ export const excelModuleTranslations = {
   },
   erpProductProfitTitle: { tr: 'Ürün Brüt Kârı', en: 'Product gross profit', ar: 'إجمالي ربح المنتج', ku: 'قازانجی خاوی بەرهەم' },
   erpProductProfitSubtitle: {
-    tr: 'Satış kalemlerinden ciro, maliyet ve brüt kâr',
-    en: 'Revenue, cost and gross profit from sale lines',
-    ar: 'الإيراد والتكلفة والربح من بنود البيع',
-    ku: 'داهات، تێچوون و قازانجی خاو لە هێڵی فرۆشتن',
+    tr: 'Ciro ve brüt kâr — maliyet öncelikle son alış birim tutarı',
+    en: 'Revenue and gross profit — cost prefers last purchase unit amount',
+    ar: 'الإيراد والربح — التكلفة تفضل سعر وحدة آخر شراء',
+    ku: 'داهات و قازانجی خاو — تێچوون یەکەم نرخ یەکەی دوایین کڕین',
   },
   erpCariExtractTitle: { tr: 'Cari Ekstre', en: 'Account statement', ar: 'كشف حساب', ku: 'پوختەی هەژمار' },
   erpCariExtractSubtitle: {
