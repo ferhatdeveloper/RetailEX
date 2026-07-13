@@ -31,8 +31,17 @@ namespace TeraziRongta.Core.Services
                 {
                     var body = await RetailExHttp.GetAsync(config, path).ConfigureAwait(false);
                     var products = FilterScaleProducts(ParseProducts(body, config.LfCodeBase));
+                    products = AssignAndSortPluCodes(products, config.LfCodeBase);
                     if (products.Count > 0)
                     {
+                        try
+                        {
+                            await PersistAssignedPluCodesAsync(config, products).ConfigureAwait(false);
+                        }
+                        catch
+                        {
+                            // PLU geri yazma basarisiz olsa da gonderime devam
+                        }
                         return products;
                     }
 
@@ -103,7 +112,7 @@ namespace TeraziRongta.Core.Services
                 all.AddRange(FilterScaleProducts(ParseProducts(body, config.LfCodeBase)));
             }
 
-            return all;
+            return AssignAndSortPluCodes(all, config.LfCodeBase);
         }
 
         public static IList<ScaleProductDto> ParseProducts(string json, int lfCodeBase)
@@ -140,8 +149,92 @@ namespace TeraziRongta.Core.Services
             if (products == null || products.Count == 0) return new List<ScaleProductDto>();
 
             return products
-                .Where(p => p != null && !string.IsNullOrWhiteSpace(p.Name) && IsWeightUnit(p.Unit))
+                .Where(p => p != null
+                    && p.IsActive
+                    && !string.IsNullOrWhiteSpace(p.Name)
+                    && IsWeightUnit(p.Unit))
                 .ToList();
+        }
+
+        /// <summary>
+        /// PLU'ya gore sirala; bos PLU'lara max+1 atayarak LfCode/PluCode doldur.
+        /// </summary>
+        public static IList<ScaleProductDto> AssignAndSortPluCodes(IList<ScaleProductDto> products, int lfCodeBase)
+        {
+            if (products == null || products.Count == 0) return new List<ScaleProductDto>();
+
+            var list = products.Where(p => p != null).ToList();
+            var used = new HashSet<int>();
+            var maxPlu = Math.Max(0, lfCodeBase > 0 ? lfCodeBase - 1 : 0);
+
+            foreach (var p in list)
+            {
+                var lf = p.LfCode > 0 ? p.LfCode : 0;
+                if (lf <= 0 && TryParsePluLfDigits(p.PluCode, out var fromCode))
+                {
+                    lf = fromCode;
+                }
+
+                if (lf > 0)
+                {
+                    p.LfCode = lf;
+                    p.PluCode = lf.ToString(CultureInfo.InvariantCulture);
+                    p.HasExplicitPlu = true;
+                    used.Add(lf);
+                    if (lf > maxPlu) maxPlu = lf;
+                }
+                else
+                {
+                    p.HasExplicitPlu = false;
+                    p.LfCode = 0;
+                }
+            }
+
+            var next = maxPlu + 1;
+            if (next < 1) next = 1;
+
+            foreach (var p in list.Where(x => x.LfCode <= 0).OrderBy(x => x.Name ?? "", StringComparer.OrdinalIgnoreCase))
+            {
+                while (used.Contains(next)) next++;
+                p.LfCode = next;
+                p.PluCode = next.ToString(CultureInfo.InvariantCulture);
+                used.Add(next);
+                next++;
+            }
+
+            return list
+                .OrderBy(p => p.LfCode)
+                .ThenBy(p => p.Name ?? "", StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        }
+
+        /// <summary>Otomatik atanan plu_code degerlerini RetailEX'e geri yazar (best-effort).</summary>
+        public static async Task PersistAssignedPluCodesAsync(AppConfig config, IList<ScaleProductDto> products)
+        {
+            if (config == null || products == null || products.Count == 0) return;
+
+            var firm = AppConfig.NormalizeFirmNr(config.FirmNr);
+            var table = "rex_" + firm + "_products";
+
+            foreach (var p in products)
+            {
+                if (p == null || p.HasExplicitPlu) continue;
+                if (string.IsNullOrWhiteSpace(p.ExternalId) || p.LfCode <= 0) continue;
+
+                try
+                {
+                    var path = "/" + table + "?id=eq." + Uri.EscapeDataString(p.ExternalId.Trim());
+                    await RetailExHttp.PatchAsync(
+                        config,
+                        path,
+                        new { plu_code = p.LfCode.ToString(CultureInfo.InvariantCulture) }).ConfigureAwait(false);
+                    p.HasExplicitPlu = true;
+                }
+                catch
+                {
+                    // kolon yoksa veya yetki yoksa sessizce gec
+                }
+            }
         }
 
         private static List<string> BuildPaths(AppConfig config)
@@ -190,20 +283,40 @@ namespace TeraziRongta.Core.Services
             var price = ParsePrice(row);
 
             var barcode = FirstString(row, "barcode", "barcode_no", "ean", "barcode_number");
-            var pluCode = FirstString(row, "plu_code", "pluCode", "code", "sku") ?? barcode;
-            var lfCode = ResolveStableLfCode(row, pluCode, lfCodeBase, rank);
+            // Yalnizca acik plu_code — urun code/sku PLU sayilmaz (otomatik atama icin)
+            var explicitPlu = FirstString(row, "plu_code", "pluCode");
+            var hasExplicit = TryParsePluLfDigits(explicitPlu, out var lfFromPlu);
+
+            var isActive = true;
+            if (row["is_active"] != null && row["is_active"].Type != JTokenType.Null)
+            {
+                isActive = ParseBool(row["is_active"]);
+            }
+            else
+            {
+                var status = FirstString(row, "status", "state");
+                if (!string.IsNullOrWhiteSpace(status)
+                    && (status.Equals("passive", StringComparison.OrdinalIgnoreCase)
+                        || status.Equals("pasif", StringComparison.OrdinalIgnoreCase)
+                        || status.Equals("inactive", StringComparison.OrdinalIgnoreCase)))
+                {
+                    isActive = false;
+                }
+            }
 
             return new ScaleProductDto
             {
                 Name = name.Length > 36 ? name.Substring(0, 36) : name,
                 Price = ScalePriceHelper.ToUnitPrice(price),
-                PluCode = pluCode,
-                Barcode = barcode ?? pluCode,
+                PluCode = hasExplicit ? lfFromPlu.ToString(CultureInfo.InvariantCulture) : explicitPlu,
+                Barcode = barcode ?? explicitPlu,
                 Unit = NormalizeUnit(unit),
                 BarcodeType = ParseInt(row, "barcode_type", "barcodeType", "BarCode", 99),
                 Department = ParseInt(row, "department", "department_id", "Deptment", 21),
-                LfCode = lfCode,
+                LfCode = hasExplicit ? lfFromPlu : 0,
                 ExternalId = FirstString(row, "id", "item_id", "product_id"),
+                IsActive = isActive,
+                HasExplicitPlu = hasExplicit,
             };
         }
 
@@ -258,17 +371,7 @@ namespace TeraziRongta.Core.Services
         private static int ResolveStableLfCode(JObject row, string pluCode, int lfCodeBase, int rank)
         {
             if (TryParsePluLfDigits(pluCode, out var lf)) return lf;
-
-            var externalId = FirstString(row, "id", "item_id", "product_id");
-            if (!string.IsNullOrWhiteSpace(externalId)
-                && int.TryParse(externalId.Trim(), out var numericId)
-                && numericId > 0
-                && numericId <= 999999)
-            {
-                return numericId;
-            }
-
-            return rank;
+            return 0;
         }
 
         private static bool TryParsePluLfDigits(string value, out int lfCode)

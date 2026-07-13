@@ -449,7 +449,8 @@ namespace WindowsFormsApplication1
             this.btnTestApi.Click += new System.EventHandler(this.btnTestApi_Click);
             // tabLog
             this.tabLog.Controls.Add(this.txtLog);
-            this.tabLog.Text = "Günlük";
+            // tabLog — canlı uygulama konsolu (İşlem Günlüğü sekmesinden ayrı)
+            this.tabLog.Text = "Uygulama Günlüğü";
             // txtLog
             this.txtLog.Dock = System.Windows.Forms.DockStyle.Fill;
             this.txtLog.Multiline = true;

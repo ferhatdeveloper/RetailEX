@@ -2119,6 +2119,7 @@ BEGIN
       preparation_time  INTEGER DEFAULT 5,
       follow_up_reminder_days INTEGER,
       is_scale_product  BOOLEAN NOT NULL DEFAULT false,
+      plu_code          VARCHAR(20),
       expiry_date         DATE,
       expiry_tracking     BOOLEAN NOT NULL DEFAULT false,
       shelf_life_days     INTEGER,

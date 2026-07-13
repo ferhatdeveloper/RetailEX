@@ -11,11 +11,12 @@ import { useAuthStore } from '../../store/useAuthStore';
 
 /** Malzeme listesi: uzun metin kolonları hariç (ağ payload + parse maliyeti) */
 const PRODUCT_LIST_SELECT =
-  'id,firm_nr,code,barcode,name,name2,description_tr,description_en,description_ar,description_ku,image_url,image_url_cdn,category_code,group_code,sub_group_code,brand,model,manufacturer,supplier,origin,material_type,unit,unitset_id,vat_rate,price,cost,stock,min_stock,max_stock,critical_stock,is_active,has_variants,special_code_1,special_code_2,special_code_3,special_code_4,special_code_5,special_code_6,price_list_1,price_list_2,price_list_3,price_list_4,price_list_5,price_list_6,currency,purchase_price_usd,purchase_price_eur,sale_price_usd,sale_price_eur,custom_exchange_rate,auto_calculate_usd,follow_up_reminder_days,is_scale_product,expiry_date,expiry_tracking,shelf_life_days,created_at,updated_at';
+  'id,firm_nr,code,barcode,name,name2,description_tr,description_en,description_ar,description_ku,image_url,image_url_cdn,category_code,group_code,sub_group_code,brand,model,manufacturer,supplier,origin,material_type,unit,unitset_id,vat_rate,price,cost,stock,min_stock,max_stock,critical_stock,is_active,has_variants,special_code_1,special_code_2,special_code_3,special_code_4,special_code_5,special_code_6,price_list_1,price_list_2,price_list_3,price_list_4,price_list_5,price_list_6,currency,purchase_price_usd,purchase_price_eur,sale_price_usd,sale_price_eur,custom_exchange_rate,auto_calculate_usd,follow_up_reminder_days,is_scale_product,plu_code,expiry_date,expiry_tracking,shelf_life_days,created_at,updated_at';
 const PRODUCT_LIST_SELECT_SQL = PRODUCT_LIST_SELECT.replace(/,/g, ', ');
-/** Migration 035/047 öncesi tenant şemaları */
+/** Migration 035/047/104 öncesi tenant şemaları */
 const PRODUCT_LIST_SELECT_FALLBACK = PRODUCT_LIST_SELECT
   .replace(',expiry_date,expiry_tracking,shelf_life_days', '')
+  .replace(',plu_code', '')
   .replace(',is_scale_product', '')
   .replace(',follow_up_reminder_days', '');
 const PRODUCT_LIST_SELECT_FALLBACK_SQL = PRODUCT_LIST_SELECT_FALLBACK.replace(/,/g, ', ');
@@ -115,6 +116,7 @@ const PRODUCT_DB_FIELD_MAPPING: Record<string, string> = {
   image_url_cdn: 'image_url_cdn',
   followUpReminderDays: 'follow_up_reminder_days',
   isScaleProduct: 'is_scale_product',
+  pluCode: 'plu_code',
   expiryTracking: 'expiry_tracking',
   expiryDate: 'expiry_date',
   shelfLifeDays: 'shelf_life_days',
@@ -247,6 +249,7 @@ const OPTIONAL_PRODUCT_DB_COLUMNS = [
   'expiry_tracking',
   'shelf_life_days',
   'is_scale_product',
+  'plu_code',
   'follow_up_reminder_days',
 ] as const;
 
@@ -911,7 +914,7 @@ export const productAPI = {
       if (shouldUsePostgrestForCrud()) {
         const { postgrest } = await import('./postgrestClient');
         for (const code of uniq) {
-          for (const field of ['code', 'barcode', 'special_code_1'] as const) {
+          for (const field of ['plu_code', 'code', 'barcode', 'special_code_1'] as const) {
             let rows = await postgrest.get<any[]>(
               `/${tableName}`,
               {
@@ -948,7 +951,7 @@ export const productAPI = {
         `SELECT * FROM ${tableName}
          WHERE is_active = true
            AND (LPAD(TRIM(COALESCE(firm_nr, '')), 3, '0') = $1 OR TRIM(COALESCE(firm_nr, '')) = $2)
-           AND (code = ANY($3::text[]) OR barcode = ANY($3::text[]) OR special_code_1 = ANY($3::text[]))
+           AND (plu_code = ANY($3::text[]) OR code = ANY($3::text[]) OR barcode = ANY($3::text[]) OR special_code_1 = ANY($3::text[]))
          ORDER BY CASE WHEN is_scale_product = true THEN 0 ELSE 1 END
          LIMIT 1`,
         [firmEq, firmRaw, uniq],
@@ -956,7 +959,23 @@ export const productAPI = {
       return rows[0] ? mapDatabaseProductToProduct(rows[0]) : null;
     } catch (error) {
       console.error('[ProductAPI] getScaleProductByPlu failed:', error);
-      return null;
+      // plu_code kolonu yoksa (migration öncesi) eski sorguya düş
+      try {
+        const tableName = `rex_${firmNrPadded()}_products`;
+        const { eq: firmEq, raw: firmRaw } = firmNrMatchValues();
+        const { rows } = await postgres.query(
+          `SELECT * FROM ${tableName}
+           WHERE is_active = true
+             AND (LPAD(TRIM(COALESCE(firm_nr, '')), 3, '0') = $1 OR TRIM(COALESCE(firm_nr, '')) = $2)
+             AND (code = ANY($3::text[]) OR barcode = ANY($3::text[]) OR special_code_1 = ANY($3::text[]))
+           ORDER BY CASE WHEN is_scale_product = true THEN 0 ELSE 1 END
+           LIMIT 1`,
+          [firmEq, firmRaw, uniq],
+        );
+        return rows[0] ? mapDatabaseProductToProduct(rows[0]) : null;
+      } catch {
+        return null;
+      }
     }
   },
 
@@ -1479,6 +1498,12 @@ export const productAPI = {
           (product as any).followUpReminderDays ?? (product as any).follow_up_reminder_days,
         ),
         is_scale_product: Boolean((product as any).isScaleProduct ?? (product as any).is_scale_product ?? false),
+        plu_code: (() => {
+          const raw = (product as any).pluCode ?? (product as any).plu_code;
+          if (raw == null || raw === '') return null;
+          const s = String(raw).trim().slice(0, 20);
+          return s || null;
+        })(),
         expiry_tracking: Boolean((product as any).expiryTracking ?? (product as any).expiry_tracking ?? false),
         expiry_date: (product as any).expiryDate ?? (product as any).expiry_date ?? null,
         shelf_life_days: normalizeProductShelfLifeDays(
@@ -1572,6 +1597,7 @@ export const productAPI = {
         image_url_cdn: 'image_url_cdn',
         followUpReminderDays: 'follow_up_reminder_days',
         isScaleProduct: 'is_scale_product',
+        pluCode: 'plu_code',
       };
 
       const finalData: Record<string, any> = {};
@@ -1637,6 +1663,11 @@ export const productAPI = {
         if (!dbKey) return;
         if (dbKey === 'is_scale_product' || dbKey === 'expiry_tracking') {
           fieldValues.set(dbKey, Boolean(value));
+          return;
+        }
+        if (dbKey === 'plu_code') {
+          const s = value == null || value === '' ? null : String(value).trim().slice(0, 20);
+          fieldValues.set(dbKey, s || null);
           return;
         }
         if (dbKey === 'follow_up_reminder_days') {
@@ -1946,6 +1977,11 @@ export const productAPI = {
           patchBody[dbKey] = Boolean(value);
           return;
         }
+        if (dbKey === 'plu_code') {
+          const s = value == null || value === '' ? null : String(value).trim().slice(0, 20);
+          patchBody[dbKey] = s || null;
+          return;
+        }
         if (dbKey === 'follow_up_reminder_days') {
           patchBody[dbKey] = normalizeProductFollowUpReminderDays(value);
           return;
@@ -2104,6 +2140,9 @@ function mapDatabaseProductToProduct(dbProduct: any): Product {
     unitsetId: dbProduct.unitset_id || dbProduct.unit_set_id,
     followUpReminderDays: normalizeProductFollowUpReminderDaysForProduct(dbProduct.follow_up_reminder_days),
     isScaleProduct: dbProduct.is_scale_product === true,
+    pluCode: dbProduct.plu_code != null && String(dbProduct.plu_code).trim() !== ''
+      ? String(dbProduct.plu_code).trim()
+      : undefined,
     expiryTracking: dbProduct.expiry_tracking === true,
     expiryDate: dbProduct.expiry_date != null ? String(dbProduct.expiry_date).slice(0, 10) : null,
     shelfLifeDays: normalizeProductShelfLifeDaysForProduct(dbProduct.shelf_life_days),

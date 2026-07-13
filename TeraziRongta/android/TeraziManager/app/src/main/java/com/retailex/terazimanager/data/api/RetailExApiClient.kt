@@ -22,7 +22,10 @@ class RetailExApiClient(
         for (path in paths) {
             try {
                 val body = RetailExHttp.get(config, path, http)
-                val products = filterScaleProducts(parseProducts(body, config.lfCodeBase))
+                val products = assignAndSortPluCodes(
+                    filterScaleProducts(parseProducts(body, config.lfCodeBase)),
+                    config.lfCodeBase,
+                )
                 if (products.isNotEmpty()) return@withContext products
                 lastError = IllegalStateException("Endpoint boş veya tartılı ürün yok: $path")
             } catch (ex: Exception) {
@@ -73,7 +76,43 @@ class RetailExApiClient(
         }
 
         fun filterScaleProducts(products: List<ScaleProductDto>): List<ScaleProductDto> =
-            products.filter { it.name.isNotBlank() && isWeightUnit(it.unit) }
+            products.filter { it.isActive && it.name.isNotBlank() && isWeightUnit(it.unit) }
+
+        fun assignAndSortPluCodes(products: List<ScaleProductDto>, lfCodeBase: Int): List<ScaleProductDto> {
+            if (products.isEmpty()) return emptyList()
+            val used = mutableSetOf<Int>()
+            var maxPlu = maxOf(0, if (lfCodeBase > 0) lfCodeBase - 1 else 0)
+            val working = products.map { p ->
+                var lf = p.lfCode
+                if (lf <= 0) {
+                    val digits = p.pluCode?.filter { it.isDigit() }.orEmpty()
+                    if (digits.isNotEmpty() && digits.length <= 6) {
+                        digits.toIntOrNull()?.takeIf { it > 0 }?.let { lf = it }
+                    }
+                }
+                if (lf > 0) {
+                    used.add(lf)
+                    if (lf > maxPlu) maxPlu = lf
+                    p.copy(lfCode = lf, pluCode = lf.toString(), hasExplicitPlu = true)
+                } else {
+                    p.copy(lfCode = 0, hasExplicitPlu = false)
+                }
+            }.toMutableList()
+
+            var next = maxOf(1, maxPlu + 1)
+            for (i in working.indices) {
+                if (working[i].lfCode > 0) continue
+                while (used.contains(next)) next++
+                working[i] = working[i].copy(
+                    lfCode = next,
+                    pluCode = next.toString(),
+                    hasExplicitPlu = false,
+                )
+                used.add(next)
+                next++
+            }
+            return working.sortedWith(compareBy({ it.lfCode }, { it.name }))
+        }
 
         fun parsePrice(row: JSONObject): Double {
             val keys = if (isRexProductRow(row)) {
@@ -109,19 +148,33 @@ class RetailExApiClient(
 
             val price = parsePrice(row)
             val barcode = firstString(row, "barcode", "barcode_no", "ean", "barcode_number")
-            val pluCode = firstString(row, "plu_code", "pluCode", "code", "sku") ?: barcode
-            val lfCode = resolveStableLfCode(row, pluCode, lfCodeBase, rank)
+            val explicitPlu = firstString(row, "plu_code", "pluCode")
+            val digits = explicitPlu?.filter { it.isDigit() }.orEmpty()
+            val lfFromPlu = if (digits.isNotEmpty() && digits.length <= 6) {
+                digits.toIntOrNull()?.takeIf { it > 0 }
+            } else null
+            val hasExplicit = lfFromPlu != null
+
+            var isActive = true
+            row.opt("is_active")?.let { isActive = parseBool(it) }
+                ?: firstString(row, "status", "state")?.let { st ->
+                    if (st.equals("passive", true) || st.equals("pasif", true) || st.equals("inactive", true)) {
+                        isActive = false
+                    }
+                }
 
             return ScaleProductDto(
                 name = name,
                 price = ScalePriceHelper.toUnitPrice(price).toDouble(),
-                pluCode = pluCode,
-                barcode = barcode ?: pluCode,
+                pluCode = if (hasExplicit) lfFromPlu.toString() else explicitPlu,
+                barcode = barcode ?: explicitPlu,
                 unit = normalizeUnit(unit),
                 barcodeType = parseInt(row, "barcode_type", "barcodeType", "BarCode", 99),
                 department = parseInt(row, "department", "department_id", "Deptment", 21),
-                lfCode = lfCode,
+                lfCode = lfFromPlu ?: 0,
                 externalId = firstString(row, "id", "item_id", "product_id"),
+                isActive = isActive,
+                hasExplicitPlu = hasExplicit,
             )
         }
 

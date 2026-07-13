@@ -399,6 +399,8 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
     warrantyType: '',
     shelfLife: 0, // Gün
     expiryDate: '' as string,
+    /** Terazi PLU numarası */
+    pluCode: '',
     /** Güzellik sarf sonrası takip (gün); boş = kapalı */
     followUpReminderDays: '' as number | '',
 
@@ -822,6 +824,7 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
         return Math.min(3650, n) as number | '';
       })(),
       isScaleProduct: product.isScaleProduct === true || (product as any).is_scale_product === true,
+      pluCode: String((product as any).pluCode ?? (product as any).plu_code ?? '').trim(),
       expiryTracking: (product as any).expiryTracking === true || (product as any).expiry_tracking === true,
       expiryDate: (product as any).expiryDate ?? ((product as any).expiry_date ? String((product as any).expiry_date).slice(0, 10) : ''),
       shelfLife: Number((product as any).shelfLifeDays ?? (product as any).shelf_life_days ?? 0) || 0,
@@ -1794,6 +1797,10 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
         return Math.min(3650, n);
       })(),
       isScaleProduct: formData.isScaleProduct === true,
+      pluCode: (() => {
+        const s = String(formData.pluCode ?? '').trim().slice(0, 20);
+        return s || null;
+      })(),
       expiryTracking: formData.expiryTracking === true,
       expiryDate: formData.expiryDate?.trim() ? formData.expiryDate.trim().slice(0, 10) : null,
       shelfLifeDays: (() => {
@@ -3733,207 +3740,195 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
             </div>
           )}
 
-          {/* EK BİLGİ SEKME */}
+          {/* EK BİLGİ SEKME — sadeleştirilmiş (PLU burada) */}
           {activeTab === 'ek-bilgi' && (
-            <div className="space-y-4">
-              {/* Garanti Bilgileri */}
+            <div className="space-y-3">
+              {/* Terazi / PLU + raf ömrü */}
               <div className="bg-white border border-gray-300">
-                <div className="px-3 py-2 bg-gray-100 border-b border-gray-300 text-right">
-                  <span className="text-xs text-gray-700 font-bold">{tm('warrantyAndLifeInfo')}</span>
+                <div className="px-3 py-1.5 bg-gray-100 border-b border-gray-300">
+                  <span className="text-xs text-gray-700">{tm('scaleAndLifeSection')}</span>
                 </div>
-                <div className="p-3 grid grid-cols-2 gap-4 max-lg:grid-cols-1">
-                  <div>
-                    <div className="grid grid-cols-12 items-center mb-2 max-lg:grid-cols-1">
-                      <div className="col-span-8 max-lg:col-span-1 max-lg:order-2">
-                        <input
-                          type="text"
-                          value={formData.warrantyType || ''}
-                          onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleInputChange('warrantyType', e.target.value)}
-                          className="w-full px-2 py-1 border border-gray-300 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
-                          placeholder={tm('distributorImporter')}
-                        />
-                      </div>
-                      <div className="col-span-4 text-right pl-2 max-lg:col-span-1 max-lg:order-1 max-lg:text-left max-lg:pl-0">
-                        <label className="text-xs text-gray-700">{tm('warrantyType')}</label>
-                      </div>
-                    </div>
+                <div className="grid grid-cols-12 gap-px bg-gray-300 max-lg:grid-cols-1">
+                  <div className="col-span-3 max-lg:col-span-1 bg-gray-100 px-2 py-1.5 flex items-center">
+                    <label className="text-xs text-gray-700">{tm('pluCode')}</label>
                   </div>
-                  <div className="grid grid-cols-2 gap-2 max-lg:grid-cols-1">
-                    <div className="grid grid-cols-12 items-center max-lg:grid-cols-1">
-                      <div className="col-span-8 max-lg:col-span-1 max-lg:order-2">
+                  <div className="col-span-3 max-lg:col-span-1 bg-white px-2 py-1.5">
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      maxLength={20}
+                      value={formData.pluCode || ''}
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                        const digits = e.target.value.replace(/[^\d]/g, '').slice(0, 20);
+                        handleInputChange('pluCode', digits);
+                      }}
+                      placeholder="örn. 1"
+                      className="w-full px-2 py-1 border border-gray-300 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 font-mono"
+                    />
+                    <p className="text-[10px] text-gray-500 mt-0.5 leading-snug">{tm('pluCodeHint')}</p>
+                  </div>
+                  <div className="col-span-3 max-lg:col-span-1 bg-gray-100 px-2 py-1.5 flex items-center">
+                    <label className="text-xs text-gray-700">{tm('shelfLife')} ({tm('days')})</label>
+                  </div>
+                  <div className="col-span-3 max-lg:col-span-1 bg-white px-2 py-1.5">
+                    <input
+                      type="number"
+                      min={0}
+                      value={formData.shelfLife || 0}
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleInputChange('shelfLife', Number(e.target.value))}
+                      className="w-full px-2 py-1 border border-gray-300 text-xs text-right focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div className="col-span-3 max-lg:col-span-1 bg-gray-100 px-2 py-1.5 flex items-center">
+                    <label className="text-xs text-gray-700">{tm('warrantyType')}</label>
+                  </div>
+                  <div className="col-span-3 max-lg:col-span-1 bg-white px-2 py-1.5">
+                    <input
+                      type="text"
+                      value={formData.warrantyType || ''}
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleInputChange('warrantyType', e.target.value)}
+                      className="w-full px-2 py-1 border border-gray-300 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
+                      placeholder={tm('distributorImporter')}
+                    />
+                  </div>
+                  <div className="col-span-3 max-lg:col-span-1 bg-gray-100 px-2 py-1.5 flex items-center">
+                    <label className="text-xs text-gray-700">{tm('warrantyPeriod')} ({tm('months')})</label>
+                  </div>
+                  <div className="col-span-3 max-lg:col-span-1 bg-white px-2 py-1.5">
+                    <input
+                      type="number"
+                      min={0}
+                      value={formData.warrantyPeriod || 0}
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleInputChange('warrantyPeriod', Number(e.target.value))}
+                      className="w-full px-2 py-1 border border-gray-300 text-xs text-right focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    />
+                  </div>
+                  {!formData.isService && (
+                    <>
+                      <div className="col-span-3 max-lg:col-span-1 bg-gray-100 px-2 py-1.5 flex items-center">
+                        <label className="text-xs text-gray-700">{tm('bProductFollowUpReminderDaysShort')}</label>
+                      </div>
+                      <div className="col-span-9 max-lg:col-span-1 bg-white px-2 py-1.5">
                         <input
                           type="number"
-                          value={formData.warrantyPeriod || 0}
-                          onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleInputChange('warrantyPeriod', Number(e.target.value))}
-                          className="w-full px-2 py-1 border border-gray-300 text-xs text-right focus:outline-none focus:ring-1 focus:ring-blue-500"
+                          min={1}
+                          max={3650}
+                          value={formData.followUpReminderDays === '' ? '' : formData.followUpReminderDays}
+                          onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                            const t = e.target.value.trim();
+                            if (t === '') {
+                              handleInputChange('followUpReminderDays', '' as number | '');
+                              return;
+                            }
+                            const n = Math.round(Number(t));
+                            if (!Number.isFinite(n)) {
+                              handleInputChange('followUpReminderDays', '' as number | '');
+                              return;
+                            }
+                            handleInputChange('followUpReminderDays', Math.min(3650, Math.max(1, n)) as number | '');
+                          }}
+                          className="w-full max-w-xs px-2 py-1 border border-gray-300 text-xs text-right focus:outline-none focus:ring-1 focus:ring-blue-500"
+                          placeholder="—"
                         />
+                        <p className="text-[10px] text-gray-500 mt-0.5 leading-snug">{tm('bProductFollowUpReminderHint')}</p>
                       </div>
-                      <div className="col-span-4 text-right pl-2 max-lg:col-span-1 max-lg:order-1 max-lg:text-left max-lg:pl-0">
-                        <label className="text-xs text-gray-700">{tm('warrantyPeriod')} ({tm('months')})</label>
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-12 items-center max-lg:grid-cols-1">
-                      <div className="col-span-8 max-lg:col-span-1 max-lg:order-2">
-                        <input
-                          type="number"
-                          value={formData.shelfLife || 0}
-                          onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleInputChange('shelfLife', Number(e.target.value))}
-                          className="w-full px-2 py-1 border border-gray-300 text-xs text-right focus:outline-none focus:ring-1 focus:ring-blue-500"
-                        />
-                      </div>
-                      <div className="col-span-4 text-right pl-2 max-lg:col-span-1 max-lg:order-1 max-lg:text-left max-lg:pl-0">
-                        <label className="text-xs text-gray-700">{tm('shelfLife')} ({tm('days')})</label>
-                      </div>
-                    </div>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              {/* Notlar — tek kart, etiket solda */}
+              <div className="bg-white border border-gray-300">
+                <div className="px-3 py-1.5 bg-gray-100 border-b border-gray-300">
+                  <span className="text-xs text-gray-700">{tm('notesAndDescriptions')}</span>
+                </div>
+                <div className="grid grid-cols-12 gap-px bg-gray-300 max-lg:grid-cols-1">
+                  <div className="col-span-3 max-lg:col-span-1 bg-gray-100 px-2 py-1.5">
+                    <label className="text-xs text-gray-700">{tm('definitionDescription')}</label>
+                  </div>
+                  <div className="col-span-9 max-lg:col-span-1 bg-white px-2 py-1.5">
+                    <textarea
+                      value={formData.description || ''}
+                      onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => handleInputChange('description', e.target.value)}
+                      rows={2}
+                      className="w-full px-2 py-1 border border-gray-300 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 resize-y min-h-[2.5rem]"
+                    />
+                  </div>
+                  <div className="col-span-3 max-lg:col-span-1 bg-gray-100 px-2 py-1.5">
+                    <label className="text-xs text-gray-700">{tm('technicalSpecs')}</label>
+                  </div>
+                  <div className="col-span-9 max-lg:col-span-1 bg-white px-2 py-1.5">
+                    <textarea
+                      value={formData.technicalSpecs || ''}
+                      onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => handleInputChange('technicalSpecs', e.target.value)}
+                      rows={2}
+                      className="w-full px-2 py-1 border border-gray-300 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 resize-y min-h-[2.5rem]"
+                    />
+                  </div>
+                  <div className="col-span-3 max-lg:col-span-1 bg-gray-100 px-2 py-1.5">
+                    <label className="text-xs text-gray-700">{tm('usageInfo')}</label>
+                  </div>
+                  <div className="col-span-9 max-lg:col-span-1 bg-white px-2 py-1.5">
+                    <textarea
+                      value={formData.usageInfo || ''}
+                      onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => handleInputChange('usageInfo', e.target.value)}
+                      rows={2}
+                      className="w-full px-2 py-1 border border-gray-300 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 resize-y min-h-[2.5rem]"
+                    />
+                  </div>
+                  <div className="col-span-3 max-lg:col-span-1 bg-gray-100 px-2 py-1.5">
+                    <label className="text-xs text-gray-700">{tm('notes')}</label>
+                  </div>
+                  <div className="col-span-9 max-lg:col-span-1 bg-white px-2 py-1.5">
+                    <textarea
+                      value={formData.notes || ''}
+                      onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => handleInputChange('notes', e.target.value)}
+                      rows={2}
+                      className="w-full px-2 py-1 border border-gray-300 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 resize-y min-h-[2.5rem]"
+                    />
                   </div>
                 </div>
               </div>
 
-              {!formData.isService && (
-                <div className="bg-white border border-gray-300">
-                  <div className="px-3 py-2 bg-gray-100 border-b border-gray-300 text-right">
-                    <span className="text-xs text-gray-700 font-bold">{tm('bProductFollowUpReminderSection')}</span>
-                  </div>
-                  <div className="p-3 grid grid-cols-12 gap-2 max-lg:grid-cols-1">
-                    <div className="col-span-8 max-lg:col-span-1 max-lg:order-2">
-                      <input
-                        type="number"
-                        min={1}
-                        max={3650}
-                        value={formData.followUpReminderDays === '' ? '' : formData.followUpReminderDays}
-                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                          const t = e.target.value.trim();
-                          if (t === '') {
-                            handleInputChange('followUpReminderDays', '' as number | '');
-                            return;
-                          }
-                          const n = Math.round(Number(t));
-                          if (!Number.isFinite(n)) {
-                            handleInputChange('followUpReminderDays', '' as number | '');
-                            return;
-                          }
-                          handleInputChange('followUpReminderDays', Math.min(3650, Math.max(1, n)) as number | '');
-                        }}
-                        className="w-full px-2 py-1 border border-gray-300 text-xs text-right focus:outline-none focus:ring-1 focus:ring-blue-500"
-                        placeholder="—"
-                      />
-                    </div>
-                    <div className="col-span-4 text-right pl-2 max-lg:col-span-1 max-lg:order-1 max-lg:text-left max-lg:pl-0">
-                      <label className="text-xs text-gray-700">{tm('bProductFollowUpReminderDaysShort')}</label>
-                    </div>
-                    <div className="col-span-12 text-xs text-gray-500 leading-snug max-lg:order-3">
-                      {tm('bProductFollowUpReminderHint')}
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Açıklamalar */}
+              {/* SEO — kompakt */}
               <div className="bg-white border border-gray-300">
-                <div className="px-3 py-2 bg-gray-100 border-b border-gray-300 text-right">
-                  <span className="text-xs text-gray-700 font-bold">{tm('descriptions')}</span>
+                <div className="px-3 py-1.5 bg-gray-100 border-b border-gray-300">
+                  <span className="text-xs text-gray-700">{tm('ecommerceSeo')}</span>
                 </div>
-                <div className="p-3 space-y-2">
-                  <div className="grid grid-cols-12 gap-2 max-lg:grid-cols-1">
-                    <div className="col-span-10 max-lg:col-span-1 max-lg:order-2">
-                      <textarea
-                        value={formData.description || ''}
-                        onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => handleInputChange('description', e.target.value)}
-                        rows={2}
-                        className="w-full px-2 py-1 border border-gray-300 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 resize-none"
-                      />
-                    </div>
-                    <div className="col-span-2 text-right max-lg:col-span-1 max-lg:order-1 max-lg:text-left">
-                      <label className="text-xs text-gray-700">{tm('definitionDescription')}</label>
-                    </div>
+                <div className="grid grid-cols-12 gap-px bg-gray-300 max-lg:grid-cols-1">
+                  <div className="col-span-3 max-lg:col-span-1 bg-gray-100 px-2 py-1.5 flex items-center">
+                    <label className="text-xs text-gray-700">{tm('seoTitle')}</label>
                   </div>
-                  <div className="grid grid-cols-12 gap-2 max-lg:grid-cols-1">
-                    <div className="col-span-10 max-lg:col-span-1 max-lg:order-2">
-                      <textarea
-                        value={formData.technicalSpecs || ''}
-                        onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => handleInputChange('technicalSpecs', e.target.value)}
-                        rows={2}
-                        className="w-full px-2 py-1 border border-gray-300 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 resize-none"
-                      />
-                    </div>
-                    <div className="col-span-2 text-right max-lg:col-span-1 max-lg:order-1 max-lg:text-left">
-                      <label className="text-xs text-gray-700">{tm('technicalSpecs')}</label>
-                    </div>
+                  <div className="col-span-9 max-lg:col-span-1 bg-white px-2 py-1.5">
+                    <input
+                      type="text"
+                      value={formData.seoTitle || ''}
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleInputChange('seoTitle', e.target.value)}
+                      className="w-full px-2 py-1 border border-gray-300 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    />
                   </div>
-                  <div className="grid grid-cols-12 gap-2 max-lg:grid-cols-1">
-                    <div className="col-span-10 max-lg:col-span-1 max-lg:order-2">
-                      <textarea
-                        value={formData.usageInfo || ''}
-                        onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => handleInputChange('usageInfo', e.target.value)}
-                        rows={2}
-                        className="w-full px-2 py-1 border border-gray-300 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 resize-none"
-                      />
-                    </div>
-                    <div className="col-span-2 text-right max-lg:col-span-1 max-lg:order-1 max-lg:text-left">
-                      <label className="text-xs text-gray-700">{tm('usageInfo')}</label>
-                    </div>
+                  <div className="col-span-3 max-lg:col-span-1 bg-gray-100 px-2 py-1.5">
+                    <label className="text-xs text-gray-700">{tm('seoDescription')}</label>
                   </div>
-                  <div className="grid grid-cols-12 gap-2 max-lg:grid-cols-1">
-                    <div className="col-span-10 max-lg:col-span-1 max-lg:order-2">
-                      <textarea
-                        value={formData.notes || ''}
-                        onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => handleInputChange('notes', e.target.value)}
-                        rows={2}
-                        className="w-full px-2 py-1 border border-gray-300 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 resize-none"
-                      />
-                    </div>
-                    <div className="col-span-2 text-right max-lg:col-span-1 max-lg:order-1 max-lg:text-left">
-                      <label className="text-xs text-gray-700">{tm('notes')}</label>
-                    </div>
+                  <div className="col-span-9 max-lg:col-span-1 bg-white px-2 py-1.5">
+                    <textarea
+                      value={formData.seoDescription || ''}
+                      onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => handleInputChange('seoDescription', e.target.value)}
+                      rows={2}
+                      className="w-full px-2 py-1 border border-gray-300 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 resize-y min-h-[2.5rem]"
+                    />
                   </div>
-                </div>
-              </div>
-
-              {/* SEO Bilgileri */}
-              <div className="bg-white border border-gray-300">
-                <div className="px-3 py-2 bg-gray-100 border-b border-gray-300 text-right">
-                  <span className="text-xs text-gray-700 font-bold">{tm('ecommerceSeo')}</span>
-                </div>
-                <div className="p-3 space-y-2">
-                  <div className="grid grid-cols-12 gap-2 items-center max-lg:grid-cols-1">
-                    <div className="col-span-10 max-lg:col-span-1 max-lg:order-2">
-                      <input
-                        type="text"
-                        value={formData.seoTitle || ''}
-                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleInputChange('seoTitle', e.target.value)}
-                        className="w-full px-2 py-1 border border-gray-300 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
-                      />
-                    </div>
-                    <div className="col-span-2 text-right max-lg:col-span-1 max-lg:order-1 max-lg:text-left">
-                      <label className="text-xs text-gray-700">{tm('seoTitle')}</label>
-                    </div>
+                  <div className="col-span-3 max-lg:col-span-1 bg-gray-100 px-2 py-1.5 flex items-center">
+                    <label className="text-xs text-gray-700">{tm('metaKeywords')}</label>
                   </div>
-                  <div className="grid grid-cols-12 gap-2 max-lg:grid-cols-1">
-                    <div className="col-span-10 max-lg:col-span-1 max-lg:order-2">
-                      <textarea
-                        value={formData.seoDescription || ''}
-                        onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => handleInputChange('seoDescription', e.target.value)}
-                        rows={2}
-                        className="w-full px-2 py-1 border border-gray-300 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 resize-none"
-                      />
-                    </div>
-                    <div className="col-span-2 text-right max-lg:col-span-1 max-lg:order-1 max-lg:text-left">
-                      <label className="text-xs text-gray-700">{tm('seoDescription')}</label>
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-12 gap-2 items-center max-lg:grid-cols-1">
-                    <div className="col-span-10 max-lg:col-span-1 max-lg:order-2">
-                      <input
-                        type="text"
-                        value={formData.metaKeywords || ''}
-                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleInputChange('metaKeywords', e.target.value)}
-                        className="w-full px-2 py-1 border border-gray-300 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
-                        placeholder={tm('commaSeparated')}
-                      />
-                    </div>
-                    <div className="col-span-2 text-right max-lg:col-span-1 max-lg:order-1 max-lg:text-left">
-                      <label className="text-xs text-gray-700">{tm('metaKeywords')}</label>
-                    </div>
+                  <div className="col-span-9 max-lg:col-span-1 bg-white px-2 py-1.5">
+                    <input
+                      type="text"
+                      value={formData.metaKeywords || ''}
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleInputChange('metaKeywords', e.target.value)}
+                      className="w-full px-2 py-1 border border-gray-300 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
+                      placeholder={tm('commaSeparated')}
+                    />
                   </div>
                 </div>
               </div>

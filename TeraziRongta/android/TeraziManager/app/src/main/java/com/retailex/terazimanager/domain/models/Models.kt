@@ -10,6 +10,8 @@ data class ScaleProductDto(
     val department: Int = 21,
     val lfCode: Int = 0,
     val externalId: String? = null,
+    val isActive: Boolean = true,
+    val hasExplicitPlu: Boolean = false,
 )
 
 data class ScalePluDefaults(

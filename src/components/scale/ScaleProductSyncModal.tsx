@@ -3,7 +3,7 @@ import { X, Send, CheckCircle2, XCircle, Loader2, Filter } from 'lucide-react';
 import type { Product } from '../../App';
 import type { ScaleDevice } from '../../utils/scaleProtocol';
 import { sendProductsToScale } from '../../utils/scaleProtocol';
-import { isScaleProductFlag } from '../../utils/scaleProductFilter';
+import { isScaleSyncCandidate } from '../../utils/scaleProductFilter';
 
 interface ScaleProductSyncModalProps {
   device: ScaleDevice;
@@ -25,8 +25,20 @@ export function ScaleProductSyncModal({ device, products, onClose, onSyncComplet
     failedCount?: number;
   } | null>(null);
 
-  // Yalnızca "Tartı ürünü" işaretli ürünler
-  const scaleProducts = products.filter((p) => isScaleProductFlag(p));
+  // Yalnızca aktif "Tartı ürünü" işaretli ürünler
+  const scaleProducts = products
+    .filter((p) => isScaleSyncCandidate(p))
+    .slice()
+    .sort((a, b) => {
+      const pa = parseInt(String((a as any).pluCode ?? (a as any).plu_code ?? '').replace(/\D/g, ''), 10) || 0;
+      const pb = parseInt(String((b as any).pluCode ?? (b as any).plu_code ?? '').replace(/\D/g, ''), 10) || 0;
+      if (pa !== pb) {
+        if (pa === 0) return 1;
+        if (pb === 0) return -1;
+        return pa - pb;
+      }
+      return String(a.name || '').localeCompare(String(b.name || ''), 'tr');
+    });
 
   // Get unique categories
   const categories = Array.from(new Set(scaleProducts.map(p => p.category)));
@@ -207,7 +219,10 @@ export function ScaleProductSyncModal({ device, products, onClose, onSyncComplet
               ) : (
                 <div className="divide-y divide-gray-200">
                   {filteredProducts.map((product, index) => {
-                    const pluCode = pluStartIndex + index;
+                    const explicit = String((product as any).pluCode ?? (product as any).plu_code ?? '').replace(/\D/g, '');
+                    const pluCode = explicit
+                      ? parseInt(explicit, 10) || (pluStartIndex + index)
+                      : pluStartIndex + index;
                     const isSelected = selectedProducts.has(product.id);
                     
                     return (

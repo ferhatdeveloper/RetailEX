@@ -370,16 +370,44 @@ namespace TeraziRongta.Core.Services
             return recordId;
         }
 
-        public async Task<IList<JObject>> FetchRecentSyncLogsAsync(AppConfig config, int limit = 50)
+        /// <summary>
+        /// Son transfer kayıtlarını getirir. maxAgeDays &gt; 0 ise yalnızca son N gün (WinForm işlem günlüğü kuralı).
+        /// </summary>
+        public async Task<IList<JObject>> FetchRecentSyncLogsAsync(
+            AppConfig config,
+            int limit = 50,
+            int maxAgeDays = 0)
         {
             if (string.IsNullOrWhiteSpace(config.StoreId)) return new List<JObject>();
 
             var path = "/device_sync_transfer_log?store_id=eq." + Uri.EscapeDataString(config.StoreId)
-                + "&firm_nr=eq." + Uri.EscapeDataString(AppConfig.NormalizeFirmNr(config.FirmNr))
-                + "&order=created_at.desc&limit=" + Math.Max(1, limit);
+                + "&firm_nr=eq." + Uri.EscapeDataString(AppConfig.NormalizeFirmNr(config.FirmNr));
+
+            if (maxAgeDays > 0)
+            {
+                var since = DateTime.UtcNow.Date.AddDays(-(maxAgeDays - 1));
+                path += "&created_at=gte." + Uri.EscapeDataString(since.ToString("yyyy-MM-ddTHH:mm:ssZ"));
+            }
+
+            path += "&order=created_at.desc&limit=" + Math.Max(1, limit);
 
             var json = await RetailExHttp.GetAsync(config, path).ConfigureAwait(false);
-            return JArray.Parse(json).OfType<JObject>().ToList();
+            var rows = JArray.Parse(json).OfType<JObject>().ToList();
+
+            // API filtreyi yok sayarsa / eski PostgREST: istemci tarafında da son N gün uygula
+            if (maxAgeDays > 0)
+            {
+                var cutoff = DateTime.UtcNow.Date.AddDays(-(maxAgeDays - 1));
+                rows = rows.Where(row =>
+                {
+                    var raw = row["created_at"]?.ToString();
+                    if (string.IsNullOrWhiteSpace(raw)) return false;
+                    if (!DateTime.TryParse(raw, out var created)) return true;
+                    return created.ToUniversalTime() >= cutoff;
+                }).ToList();
+            }
+
+            return rows;
         }
 
         public static ScaleSyncDetail BuildScaleSyncDetail(

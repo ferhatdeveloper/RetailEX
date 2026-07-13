@@ -52,6 +52,13 @@ namespace WindowsFormsApplication1
         private Button btnCreateCentralFullCommand;
         private CheckBox chkIncrementalSync;
         private Label lblCentralHint;
+        /// <summary>device_sync_transfer_log — ayrı sekme; WinForm'da son 7 gün kuralı.</summary>
+        private const int TransferLogMaxAgeDays = 7;
+        private TabPage tabTransferLog;
+        private Panel panelTransferLog;
+        private DataGridView gridTransferLog;
+        private Button btnRefreshTransferLog;
+        private Label lblTransferLogHint;
         private Label lblBarcodeSettings;
         private Label lblBarcodeType;
         private NumericUpDown numBarcodeType;
@@ -138,29 +145,17 @@ namespace WindowsFormsApplication1
             btnOpenLabelEditor = new Button { Location = new Point(520, 200), Size = new Size(150, 36), Text = "Etiket Editoru Ac" };
             btnOpenLabelEditor.Click += btnOpenLabelEditor_Click;
 
-<<<<<<< Updated upstream
             // Onizleme, butonlarin ALTINA konur (saga binmez)
             lblLabelPreviewHint = new Label
             {
                 AutoSize = true,
                 Location = new Point(20, 460),
-=======
-            lblLabelPreviewHint = new Label
-            {
-                AutoSize = true,
-                Location = new Point(560, 132),
->>>>>>> Stashed changes
                 Text = "Onizleme: Megal logo + MEGAL yazisi",
             };
             picLabelPreview = new PictureBox
             {
-<<<<<<< Updated upstream
                 Location = new Point(20, 480),
                 Size = new Size(320, 200),
-=======
-                Location = new Point(560, 152),
-                Size = new Size(280, 200),
->>>>>>> Stashed changes
                 BorderStyle = BorderStyle.FixedSingle,
                 SizeMode = PictureBoxSizeMode.Zoom,
                 BackColor = Color.White,
@@ -612,7 +607,7 @@ namespace WindowsFormsApplication1
                 AutoSize = false,
                 Dock = DockStyle.Top,
                 Height = 48,
-                Text = "Merkez DB: hangi urunun hangi teraziye gittigi / gitmedigi burada gorulur. Teraziler store_devices tablosuna kaydedilir.",
+                Text = "Cihaz özeti: son transfer, watermark ve bekleyen değişiklikler. Detaylı transfer kayıtları «İşlem Günlüğü» sekmesinde (son 7 gün).",
             };
 
             btnRefreshCentral = new Button { Text = "Merkezden Yenile", Width = 150, Height = 36, Location = new Point(0, 56) };
@@ -637,13 +632,10 @@ namespace WindowsFormsApplication1
                 RowHeadersVisible = false,
                 SelectionMode = DataGridViewSelectionMode.FullRowSelect,
             };
-            gridCentralStatus.Columns.Add("colWhen", "Zaman");
+            gridCentralStatus.Columns.Add("colWhen", "Son Transfer");
             gridCentralStatus.Columns.Add("colScale", "Terazi");
-            gridCentralStatus.Columns.Add("colProduct", "Urun");
-            gridCentralStatus.Columns.Add("colBarcode", "Barkod");
-            gridCentralStatus.Columns.Add("colUnit", "Birim");
             gridCentralStatus.Columns.Add("colStatus", "Durum");
-            gridCentralStatus.Columns.Add("colMessage", "Mesaj");
+            gridCentralStatus.Columns.Add("colMessage", "Özet");
 
             panelCentral.Controls.Add(gridCentralStatus);
             panelCentral.Controls.Add(btnPollCentralCommands);
@@ -654,16 +646,69 @@ namespace WindowsFormsApplication1
             panelCentral.Controls.Add(lblCentralHint);
             tabCentral.Controls.Add(panelCentral);
             var syncIndex = mainTabs.TabPages.IndexOf(tabSync);
-            mainTabs.TabPages.Insert(syncIndex >= 0 ? syncIndex + 1 : mainTabs.TabPages.Count, tabCentral);
+            var centralInsert = syncIndex >= 0 ? syncIndex + 1 : mainTabs.TabPages.Count;
+            mainTabs.TabPages.Insert(centralInsert, tabCentral);
+
+            // İşlem günlüğü: Merkez Durum'dan ayrıldı; 7 gün kuralı yalnızca WinForm'da
+            tabTransferLog = new TabPage { Text = "İşlem Günlüğü", Padding = new Padding(12) };
+            panelTransferLog = new Panel { Dock = DockStyle.Fill, Padding = new Padding(16) };
+            lblTransferLogHint = new Label
+            {
+                AutoSize = false,
+                Dock = DockStyle.Top,
+                Height = 40,
+                Text = "device_sync_transfer_log — yalnızca son " + TransferLogMaxAgeDays
+                    + " gün. Daha eski kayıtlar bu ekranda gösterilmez (WinForm kuralı).",
+            };
+            btnRefreshTransferLog = new Button
+            {
+                Text = "Günlüğü Yenile",
+                Width = 150,
+                Height = 36,
+                Location = new Point(0, 48),
+            };
+            btnRefreshTransferLog.Click += async (s, e) =>
+            {
+                SaveSettingsFromUi();
+                await RefreshTransferLogAsync().ConfigureAwait(true);
+            };
+
+            gridTransferLog = new DataGridView
+            {
+                Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right,
+                Location = new Point(0, 96),
+                Size = new Size(920, 330),
+                ReadOnly = true,
+                AllowUserToAddRows = false,
+                RowHeadersVisible = false,
+                SelectionMode = DataGridViewSelectionMode.FullRowSelect,
+            };
+            gridTransferLog.Columns.Add("colLogWhen", "Zaman");
+            gridTransferLog.Columns.Add("colLogScale", "Terazi");
+            gridTransferLog.Columns.Add("colLogProduct", "Ürün");
+            gridTransferLog.Columns.Add("colLogBarcode", "Barkod");
+            gridTransferLog.Columns.Add("colLogUnit", "Birim");
+            gridTransferLog.Columns.Add("colLogStatus", "Durum");
+            gridTransferLog.Columns.Add("colLogMessage", "Mesaj");
+
+            panelTransferLog.Controls.Add(gridTransferLog);
+            panelTransferLog.Controls.Add(btnRefreshTransferLog);
+            panelTransferLog.Controls.Add(lblTransferLogHint);
+            tabTransferLog.Controls.Add(panelTransferLog);
+            mainTabs.TabPages.Insert(centralInsert + 1, tabTransferLog);
 
             UiTheme.StylePanel(panelCentral);
+            UiTheme.StylePanel(panelTransferLog);
             UiTheme.StyleGrid(gridCentralStatus);
+            UiTheme.StyleGrid(gridTransferLog);
             UiTheme.StylePrimaryButton(btnCreateCentralCommand);
             UiTheme.StylePrimaryButton(btnCreateCentralFullCommand);
             UiTheme.StylePrimaryButton(btnPollCentralCommands);
             UiTheme.StyleSecondaryButton(btnRefreshCentral);
             UiTheme.StyleSecondaryButton(btnRegisterScales);
+            UiTheme.StyleSecondaryButton(btnRefreshTransferLog);
             lblCentralHint.ForeColor = UiTheme.Muted;
+            lblTransferLogHint.ForeColor = UiTheme.Muted;
         }
 
         private void Form1_Load(object sender, EventArgs e)
@@ -758,10 +803,13 @@ namespace WindowsFormsApplication1
             }
             UiTheme.StylePanel(panelSettings);
             UiTheme.StylePanel(panelCentral);
+            if (panelTransferLog != null) UiTheme.StylePanel(panelTransferLog);
             UiTheme.StyleTabControl(mainTabs);
             UiTheme.StyleGrid(gridProducts);
             UiTheme.StyleGrid(gridScales);
             if (gridScalePlu != null) UiTheme.StyleGrid(gridScalePlu);
+            if (gridCentralStatus != null) UiTheme.StyleGrid(gridCentralStatus);
+            if (gridTransferLog != null) UiTheme.StyleGrid(gridTransferLog);
             ConfigureProductsGrid();
 
             lblTitle.ForeColor = UiTheme.Text;
@@ -2141,16 +2189,38 @@ namespace WindowsFormsApplication1
                     gridCentralStatus.Rows.Add(
                         device.LastTransferAt?.ToString("yyyy-MM-dd HH:mm") ?? "—",
                         device.DeviceName + " [" + device.IpAddress + "]",
-                        "CIHAZ OZET",
-                        "—",
-                        "—",
                         device.LastTransferStatus ?? "—",
                         "Son OK: " + (device.LastSuccessAt?.ToString("yyyy-MM-dd HH:mm") ?? "—")
                         + " | Watermark: " + (device.LastWatermarkAt?.ToString("yyyy-MM-dd HH:mm") ?? "—")
                         + " | Bekleyen: " + device.PendingChangeCount);
                 }
 
-                var logs = await _centralService.FetchRecentSyncLogsAsync(_config, 30).ConfigureAwait(true);
+                // Transfer satırları «İşlem Günlüğü» sekmesinde (son 7 gün)
+                await RefreshTransferLogAsync().ConfigureAwait(true);
+            }
+            catch (Exception ex)
+            {
+                AppendLog("Merkez durum okuma hatasi: " + ex.Message);
+            }
+        }
+
+        private async Task RefreshTransferLogAsync()
+        {
+            if (gridTransferLog == null) return;
+            if (string.IsNullOrWhiteSpace(_config.StoreId))
+            {
+                gridTransferLog.Rows.Clear();
+                return;
+            }
+
+            try
+            {
+                gridTransferLog.Rows.Clear();
+                var logs = await _centralService.FetchRecentSyncLogsAsync(
+                    _config,
+                    limit: 200,
+                    maxAgeDays: TransferLogMaxAgeDays).ConfigureAwait(true);
+
                 foreach (var log in logs)
                 {
                     var createdAt = log["created_at"]?.ToString();
@@ -2160,7 +2230,7 @@ namespace WindowsFormsApplication1
                     var detailText = log["detail"]?.ToString();
                     if (string.IsNullOrWhiteSpace(detailText))
                     {
-                        gridCentralStatus.Rows.Add(createdAt, terminal, "—", "—", "—", status, message);
+                        gridTransferLog.Rows.Add(createdAt, terminal, "—", "—", "—", status, message);
                         continue;
                     }
 
@@ -2170,13 +2240,13 @@ namespace WindowsFormsApplication1
                         var products = detail["products"] as Newtonsoft.Json.Linq.JArray;
                         if (products == null || products.Count == 0)
                         {
-                            gridCentralStatus.Rows.Add(createdAt, terminal, "—", "—", "—", status, message);
+                            gridTransferLog.Rows.Add(createdAt, terminal, "—", "—", "—", status, message);
                             continue;
                         }
 
                         foreach (var product in products.OfType<Newtonsoft.Json.Linq.JObject>())
                         {
-                            gridCentralStatus.Rows.Add(
+                            gridTransferLog.Rows.Add(
                                 createdAt,
                                 terminal,
                                 product["name"]?.ToString(),
@@ -2188,13 +2258,19 @@ namespace WindowsFormsApplication1
                     }
                     catch
                     {
-                        gridCentralStatus.Rows.Add(createdAt, terminal, "—", "—", "—", status, message);
+                        gridTransferLog.Rows.Add(createdAt, terminal, "—", "—", "—", status, message);
                     }
+                }
+
+                if (lblTransferLogHint != null)
+                {
+                    lblTransferLogHint.Text = "Son " + TransferLogMaxAgeDays + " gün — "
+                        + gridTransferLog.Rows.Count + " satır (device_sync_transfer_log). WinForm kuralı.";
                 }
             }
             catch (Exception ex)
             {
-                AppendLog("Merkez durum okuma hatasi: " + ex.Message);
+                AppendLog("İşlem günlüğü okuma hatası: " + ex.Message);
             }
         }
 

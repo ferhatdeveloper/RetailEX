@@ -108,7 +108,7 @@ export async function testScaleConnection(device: ScaleDevice): Promise<boolean>
 }
 
 /**
- * Ürünleri teraziye gönderir
+ * Ürünleri teraziye gönderir — PLU koduna göre sıralar; boşsa otomatik artırır.
  */
 export async function sendProductsToScale(
   device: ScaleDevice,
@@ -116,14 +116,38 @@ export async function sendProductsToScale(
   pluStartIndex: number = 1
 ): Promise<ScaleSyncResult> {
   try {
-    // Ürünleri terazi formatına dönüştür — kod/barkod son 6 hane PLU (örn. 100000001 → 000001)
-    const scaleProducts: ScaleProduct[] = products.map((product, index) => {
-      const numeric = String(product.code || product.barcode || '').replace(/\D/g, '');
-      const pluCode =
-        numeric.length >= 10
-          ? numeric.padStart(10, '0').slice(-10)
-          : numeric.slice(-6).padStart(6, '0') ||
-            String(pluStartIndex + index).padStart(5, '0');
+    const used = new Set<number>();
+    let maxPlu = Math.max(0, pluStartIndex - 1);
+
+    const withParsed = (products || []).map((product) => {
+      const explicit = String((product as any).pluCode ?? (product as any).plu_code ?? '').replace(/\D/g, '');
+      let pluNum = explicit ? parseInt(explicit, 10) : 0;
+      if (!Number.isFinite(pluNum) || pluNum <= 0) pluNum = 0;
+      if (pluNum > 0) {
+        used.add(pluNum);
+        if (pluNum > maxPlu) maxPlu = pluNum;
+      }
+      return { product, pluNum };
+    });
+
+    let next = maxPlu + 1;
+    if (next < 1) next = 1;
+
+    const assigned = withParsed.map((row) => {
+      let plu = row.pluNum;
+      if (plu <= 0) {
+        while (used.has(next)) next++;
+        plu = next;
+        used.add(next);
+        next++;
+      }
+      return { product: row.product, plu };
+    });
+
+    assigned.sort((a, b) => a.plu - b.plu || String(a.product.name || '').localeCompare(String(b.product.name || ''), 'tr'));
+
+    const scaleProducts: ScaleProduct[] = assigned.map(({ product, plu }) => {
+      const pluCode = String(plu);
       return {
         pluCode,
         name: product.name.substring(0, 40),
@@ -131,7 +155,7 @@ export async function sendProductsToScale(
         unit: product.unit,
         barcode: product.barcode || product.code || pluCode,
         tare: 0,
-        shelfLife: 0,
+        shelfLife: Number((product as any).shelfLifeDays ?? 0) || 0,
         expiryDays: 0,
       };
     });

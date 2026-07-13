@@ -90,6 +90,7 @@
 86. **101_butcher_purchase_invoice.sql** – Üretim fişine bağlı alış faturası: `purchase_invoice_id` / `purchase_invoice_no`, `supplier_id` / `supplier_name` (`INIT_BUTCHER_PRODUCTION_TABLES` + ALTER).
 87. **102_butcher_recipe_code.sql** – Kasap reçetesine `code` (üretim / reçete kodu) + benzersiz indeks; `INIT_BUTCHER_PRODUCTION_TABLES` güncellemesi.
 88. **103_butcher_allow_without_stock.sql** – Kasap ayarı `allow_complete_without_stock` (alışsız / yetersiz stokla üretim tamamlanabilir; varsayılan true).
+89. **104_rex_products_plu_code.sql** – Ürün kartı `plu_code` (terazi PLU numarası; tüm `rex_*_products`).
 
 **099 tüm kiracılara (tek dosya):**
 ```bash

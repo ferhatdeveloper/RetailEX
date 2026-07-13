@@ -77,7 +77,8 @@ namespace TeraziRongta.Core.Config
 
         public const string DefaultProductsPath =
             "/rex_001_products?is_scale_product=eq.true&is_active=eq.true&unit=in.(Kilogram,KG,kg)"
-            + "&select=id,code,name,barcode,unit,price,is_scale_product,updated_at";
+            + "&select=id,code,name,barcode,unit,price,is_scale_product,plu_code,is_active,updated_at"
+            + "&order=plu_code.asc.nullslast";
 
         public static string BuildProductsPath(string firmNr)
         {
@@ -85,7 +86,8 @@ namespace TeraziRongta.Core.Config
             return "/rex_" + firm + "_products"
                 + "?is_scale_product=eq.true&is_active=eq.true"
                 + "&unit=in.(Kilogram,KG,kg)"
-                + "&select=id,code,name,barcode,unit,price,is_scale_product,firm_nr,updated_at";
+                + "&select=id,code,name,barcode,unit,price,is_scale_product,plu_code,is_active,firm_nr,updated_at"
+                + "&order=plu_code.asc.nullslast";
         }
 
         public static string NormalizeFirmNr(string firmNr)
@@ -286,7 +288,8 @@ namespace TeraziRongta.Core.Config
             if (path.IndexOf("weighable=", StringComparison.OrdinalIgnoreCase) >= 0) return true;
 
             if (path.IndexOf("select=", StringComparison.OrdinalIgnoreCase) >= 0
-                && path.IndexOf("price", StringComparison.OrdinalIgnoreCase) < 0)
+                && (path.IndexOf("price", StringComparison.OrdinalIgnoreCase) < 0
+                    || path.IndexOf("plu_code", StringComparison.OrdinalIgnoreCase) < 0))
             {
                 return true;
             }

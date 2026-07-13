@@ -14,6 +14,10 @@ namespace TeraziRongta.Core.Models
         public int Department { get; set; } = 21;
         public int LfCode { get; set; }
         public string ExternalId { get; set; }
+        /// <summary>false ise terazi gonderim listesine alinmaz.</summary>
+        public bool IsActive { get; set; } = true;
+        /// <summary>API'den gelen plu_code doluysa true; otomatik atama ayirt etmek icin.</summary>
+        public bool HasExplicitPlu { get; set; }
     }
 
     public class SyncResult

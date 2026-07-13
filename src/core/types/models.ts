@@ -106,6 +106,8 @@ export interface Product {
   followUpReminderDays?: number | null;
   /** Tartı ürünü — teraziye PLU aktarımına dahil edilir */
   isScaleProduct?: boolean;
+  /** Terazi PLU numarası (LFCode); boşsa senkron otomatik atar */
+  pluCode?: string | null;
   /** Son kullanma takibi açık */
   expiryTracking?: boolean;
   /** SKT (YYYY-MM-DD) */
