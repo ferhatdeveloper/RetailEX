@@ -16,12 +16,18 @@ namespace WindowsFormsApplication1.I18n
         public const string Ku = "ku";
 
         private static string _code = Tr;
-        private static Dictionary<string, string> _pack = Packs[Tr];
+        // Packs alanindan ONCE baslatilamaz — static alan sirasi NullReferenceException uretir (1.0.6 crash).
+        private static Dictionary<string, string> _pack;
 
         public static string Code => _code;
         public static bool IsRtl => string.Equals(_code, Ar, StringComparison.OrdinalIgnoreCase);
 
         public static readonly string[] Codes = { Tr, En, Ar, Ku };
+
+        static UiLang()
+        {
+            _pack = Packs[Tr];
+        }
 
         public static string DisplayName(string code)
         {

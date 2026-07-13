@@ -47,7 +47,8 @@ jobs:
         working-directory: ${{ env.TERAZI_DIR }}
         run: |
           $info = Get-Content "WindowsFormsApplication1\Properties\AssemblyInfo.cs" -Raw -ErrorAction SilentlyContinue
-          if ($info -match 'AssemblyVersion\("([0-9]+\.[0-9]+\.[0-9]+)"') {
+          # AssemblyVersion "1.0.7.0" (4 parca) — 3 parcali regex tırnakta basarisiz olup 1.0.0'a dusuyordu
+          if ($info -match 'Assembly(?:File)?Version\("([0-9]+\.[0-9]+\.[0-9]+)(?:\.[0-9]+)?"') {
             $ver = $Matches[1]
           } else {
             $ver = "1.0.0"
