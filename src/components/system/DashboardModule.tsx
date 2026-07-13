@@ -79,7 +79,7 @@ export function DashboardModule({ products, customers, sales, setCurrentScreen, 
       { id: 'dashboard', icon: TrendingUpDown, label: tLabel(t.dashboard, 'Dashboard'), color: 'from-indigo-400 to-indigo-500', category: tLabel(m.reportsAndAnalysis, 'Raporlar') },
       { id: 'purchase', icon: ShoppingCart, label: tLabel(t.purchasing, 'Satın alma'), color: 'from-teal-500 to-teal-600', category: tLabel(m.purchasing, 'Satın alma') },
       { id: 'suppliers', icon: Truck, label: tLabel(m.supplierCards, 'Tedarikçi kartları'), color: 'from-teal-400 to-teal-500', category: tLabel(m.cards, 'Kartlar') },
-      { id: 'logistics', icon: Truck, label: tLabel(m.warehouseTransferWaybill, 'Lojistik'), color: 'from-cyan-500 to-cyan-600', category: tLabel(m.waybills, 'İrsaliyeler') },
+      { id: 'logistics', icon: Truck, label: tLabel(m.logisticsShipping, 'Teslimat'), color: 'from-cyan-500 to-cyan-600', category: tLabel(m.waybills, 'İrsaliyeler') },
       { id: 'production', icon: GitBranch, label: tLabel(undefined, 'Üretim'), color: 'from-amber-500 to-amber-600', category: tLabel(m.movements, 'Hareketler') },
       { id: 'quality', icon: Award, label: tLabel(undefined, 'Kalite'), color: 'from-amber-400 to-amber-500', category: tLabel(m.designCenter, 'Tasarım') },
       { id: 'hr', icon: UserCog, label: tLabel(m.userManagement, 'İnsan kaynakları'), color: 'from-rose-500 to-rose-600', category: tLabel(m.roleAndAuthorization, 'Rol & yetki') },
@@ -95,7 +95,7 @@ export function DashboardModule({ products, customers, sales, setCurrentScreen, 
       selectedFirm == null ? true : isGibEdocumentUiEnabled(selectedFirm.regulatory_region);
     const source = gibOk ? baseActions : baseActions.filter((a: any) => a.id !== 'etransform');
     if (menuMode === 1) {
-      const hiddenIds = ['crm', 'logistics', 'production', 'quality', 'hr', 'settings', 'integrations', 'budget'];
+      const hiddenIds = ['crm', 'production', 'quality', 'hr', 'settings', 'integrations', 'budget'];
       return source.filter((a: any) => !hiddenIds.includes(a.id));
     }
     return source;

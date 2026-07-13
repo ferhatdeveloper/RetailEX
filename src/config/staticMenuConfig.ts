@@ -166,7 +166,8 @@ export const getStaticMenuSections = (t: Translations) => [
                 icon: ShoppingBag,
                 children: [
                     { label: t.menu.salesOrder, screen: 'salesorder', icon: ShoppingBag },
-                    { label: t.menu.purchaseOrders, screen: 'purchase', icon: ShoppingBag }
+                    { label: t.menu.purchaseOrders, screen: 'purchase', icon: ShoppingBag },
+                    { label: 'Teslimat Yönetimi', screen: 'logistics', icon: Truck }
                 ]
             },
             {
