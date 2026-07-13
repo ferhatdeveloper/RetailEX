@@ -125,7 +125,7 @@ data class AppConfig(
     companion object {
         const val DEFAULT_PRODUCTS_PATH =
             "/rex_001_products?is_scale_product=eq.true&is_active=eq.true&unit=in.(Kilogram,KG,kg)" +
-                "&select=id,code,name,barcode,unit,price,is_scale_product,plu_code,is_active,updated_at" +
+                "&select=id,code,name,barcode,unit,price,is_scale_product,plu_code,is_active,shelf_life_days,updated_at" +
                 "&order=plu_code.asc.nullslast"
 
         fun buildProductsPath(firmNr: String): String {
@@ -133,7 +133,7 @@ data class AppConfig(
             return "/rex_$firm" + "_products" +
                 "?is_scale_product=eq.true&is_active=eq.true" +
                 "&unit=in.(Kilogram,KG,kg)" +
-                "&select=id,code,name,barcode,unit,price,is_scale_product,plu_code,is_active,firm_nr,updated_at" +
+                "&select=id,code,name,barcode,unit,price,is_scale_product,plu_code,is_active,firm_nr,shelf_life_days,updated_at" +
                 "&order=plu_code.asc.nullslast"
         }
 

@@ -48,6 +48,7 @@ namespace WindowsFormsApplication1
             this.colName = new System.Windows.Forms.DataGridViewTextBoxColumn();
             this.colPrice = new System.Windows.Forms.DataGridViewTextBoxColumn();
             this.colUnit = new System.Windows.Forms.DataGridViewTextBoxColumn();
+            this.colShelfLife = new System.Windows.Forms.DataGridViewTextBoxColumn();
             this.colPlu = new System.Windows.Forms.DataGridViewTextBoxColumn();
             this.colBarcode = new System.Windows.Forms.DataGridViewTextBoxColumn();
             this.btnFetchProducts = new System.Windows.Forms.Button();
@@ -272,7 +273,7 @@ namespace WindowsFormsApplication1
             this.gridProducts.AllowUserToAddRows = false;
             this.gridProducts.AllowUserToDeleteRows = false;
             this.gridProducts.Columns.AddRange(new System.Windows.Forms.DataGridViewColumn[] {
-                this.colPlu, this.colName, this.colBarcode, this.colPrice, this.colUnit});
+                this.colPlu, this.colName, this.colBarcode, this.colPrice, this.colUnit, this.colShelfLife});
             this.gridProducts.Dock = System.Windows.Forms.DockStyle.Fill;
             this.gridProducts.ReadOnly = true;
             this.gridProducts.RowHeadersVisible = false;
@@ -285,6 +286,9 @@ namespace WindowsFormsApplication1
             this.colPrice.Name = "colPrice";
             this.colUnit.HeaderText = "Birim";
             this.colUnit.Name = "colUnit";
+            this.colShelfLife.HeaderText = "Raf Ömrü (gün)";
+            this.colShelfLife.Name = "colShelfLife";
+            this.colShelfLife.MinimumWidth = 70;
             this.colPlu.HeaderText = "PLU No";
             this.colPlu.MinimumWidth = 72;
             this.colPlu.Name = "colPlu";
@@ -544,6 +548,7 @@ namespace WindowsFormsApplication1
         private System.Windows.Forms.DataGridViewTextBoxColumn colName;
         private System.Windows.Forms.DataGridViewTextBoxColumn colPrice;
         private System.Windows.Forms.DataGridViewTextBoxColumn colUnit;
+        private System.Windows.Forms.DataGridViewTextBoxColumn colShelfLife;
         private System.Windows.Forms.DataGridViewTextBoxColumn colPlu;
         private System.Windows.Forms.DataGridViewTextBoxColumn colBarcode;
         private System.Windows.Forms.TabPage tabScale;

@@ -1,16 +1,11 @@
 using System;
-
 using System.Drawing;
-
 using System.Linq;
-
 using System.Windows.Forms;
-
 using TeraziRongta.Core.Helpers;
-
 using TeraziRongta.Core.Models;
-
 using TeraziRongta.Core.Services;
+using WindowsFormsApplication1.I18n;
 
 
 
@@ -78,7 +73,7 @@ namespace WindowsFormsApplication1.UI
 
         {
 
-            Text = "Gunluk Etiket Raporu - " + _scaleName;
+            Text = UiLang.T("report.title", _scaleName);
 
             Size = new Size(980, 640);
 
@@ -87,6 +82,7 @@ namespace WindowsFormsApplication1.UI
             MinimumSize = new Size(800, 500);
 
             UiTheme.ApplyForm(this);
+            UiLang.ApplyFormDirection(this);
 
 
 
@@ -106,7 +102,7 @@ namespace WindowsFormsApplication1.UI
 
 
 
-            var lblFrom = new Label { AutoSize = true, Location = new Point(12, 14), Text = "Baslangic" };
+            var lblFrom = new Label { AutoSize = true, Location = new Point(12, 14), Text = UiLang.T("report.from") };
 
             lblFrom.ForeColor = UiTheme.Muted;
 
@@ -126,7 +122,7 @@ namespace WindowsFormsApplication1.UI
 
 
 
-            var lblTo = new Label { AutoSize = true, Location = new Point(164, 14), Text = "Bitis" };
+            var lblTo = new Label { AutoSize = true, Location = new Point(164, 14), Text = UiLang.T("report.to") };
 
             lblTo.ForeColor = UiTheme.Muted;
 
@@ -146,7 +142,7 @@ namespace WindowsFormsApplication1.UI
 
 
 
-            btnToday = new Button { Location = new Point(316, 30), Size = new Size(90, 36), Text = "Bugun" };
+            btnToday = new Button { Location = new Point(316, 30), Size = new Size(90, 36), Text = UiLang.T("report.today") };
 
             btnToday.Click += (s, e) =>
 
@@ -164,7 +160,7 @@ namespace WindowsFormsApplication1.UI
 
 
 
-            btnAllRecords = new Button { Location = new Point(412, 30), Size = new Size(110, 36), Text = "Tum Kayitlar" };
+            btnAllRecords = new Button { Location = new Point(412, 30), Size = new Size(110, 36), Text = UiLang.T("report.all") };
 
             btnAllRecords.Click += (s, e) =>
 
@@ -180,7 +176,7 @@ namespace WindowsFormsApplication1.UI
 
 
 
-            btnFetch = new Button { Location = new Point(530, 30), Size = new Size(160, 36), Text = "Teraziden Al" };
+            btnFetch = new Button { Location = new Point(530, 30), Size = new Size(160, 36), Text = UiLang.T("report.fetch") };
 
             btnFetch.Click += BtnFetch_Click;
 
@@ -196,7 +192,7 @@ namespace WindowsFormsApplication1.UI
 
                 Location = new Point(700, 38),
 
-                Text = "Bilinmeyen tarihleri dahil et",
+                Text = UiLang.T("report.includeUnknown"),
 
                 Checked = true
 
@@ -216,7 +212,7 @@ namespace WindowsFormsApplication1.UI
 
                 Size = new Size(920, 22),
 
-                Text = "Tarih secin ve teraziden satis verisi alin."
+                Text = UiLang.T("report.hint")
 
             };
 

@@ -114,6 +114,7 @@
     </ProjectReference>
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="I18n\UiLang.cs" />
     <Compile Include="Form1.cs">
       <SubType>Form</SubType>
     </Compile>

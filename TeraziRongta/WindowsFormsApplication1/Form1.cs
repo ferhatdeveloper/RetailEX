@@ -11,6 +11,7 @@ using TeraziRongta.Core.Config;
 using TeraziRongta.Core.Helpers;
 using TeraziRongta.Core.Models;
 using TeraziRongta.Core.Services;
+using WindowsFormsApplication1.I18n;
 using WindowsFormsApplication1.UI;
 
 namespace WindowsFormsApplication1
@@ -87,15 +88,113 @@ namespace WindowsFormsApplication1
         private Label lblScaleDataCount;
         private BindingList<ScalePluRecord> _devicePluList = new BindingList<ScalePluRecord>();
         private bool _scaleDataUiInitialized;
+        private Label lblLanguage;
+        private ComboBox cmbLanguage;
+        private bool _languageUiReady;
 
         public Form1()
         {
             InitializeComponent();
+            InitializeLanguageUi();
             InitializeLabelUi();
             InitializeScaleBarcodeUi();
             InitializeSyncUi();
             InitializeCentralUi();
             EnsureScaleDataTab();
+        }
+
+        private void InitializeLanguageUi()
+        {
+            lblLanguage = new Label
+            {
+                AutoSize = true,
+                Location = new Point(20, 340),
+                Text = "Dil / Language",
+            };
+            cmbLanguage = UiLang.CreateLanguageCombo();
+            cmbLanguage.Location = new Point(20, 360);
+            cmbLanguage.Size = new Size(200, 23);
+            cmbLanguage.SelectedIndexChanged += cmbLanguage_SelectedIndexChanged;
+            panelSettings.Controls.Add(lblLanguage);
+            panelSettings.Controls.Add(cmbLanguage);
+            UiTheme.StyleComboBox(cmbLanguage);
+            lblLanguage.ForeColor = UiTheme.Muted;
+            _languageUiReady = true;
+        }
+
+        private void cmbLanguage_SelectedIndexChanged(object sender, EventArgs e)
+        {
+            if (!_languageUiReady || _config == null) return;
+            var code = UiLang.GetSelectedLanguage(cmbLanguage);
+            if (string.Equals(code, UiLang.Code, StringComparison.OrdinalIgnoreCase)) return;
+            UiLang.SetLanguage(code);
+            _config.UiLanguage = code;
+            ApplyLocalizedUi();
+            try { _config.Save(); } catch { /* dil tercihi kaydi kritik degil */ }
+        }
+
+        private void ApplyLocalizedUi()
+        {
+            UiLang.ApplyFormDirection(this);
+            Text = UiLang.T("app.title");
+            lblTitle.Text = UiLang.T("app.title");
+            lblSubtitle.Text = UiLang.T("app.subtitle");
+            if (statusBadge.Text == "Hazır" || statusBadge.Text == "Ready" || statusBadge.Text == "جاهز" || statusBadge.Text == "Amade")
+            {
+                statusBadge.Text = UiLang.T("app.ready");
+            }
+            notifyIcon1.Text = UiLang.T("app.notify");
+            if (lblLanguage != null) lblLanguage.Text = UiLang.T("lang.label");
+
+            tabDashboard.Text = UiLang.T("tab.dashboard");
+            tabScales.Text = UiLang.T("tab.scales");
+            tabSync.Text = UiLang.T("tab.sync");
+            tabScale.Text = UiLang.T("tab.scaleOps");
+            tabSettings.Text = UiLang.T("tab.settings");
+            tabLog.Text = UiLang.T("tab.log");
+            if (tabScaleData != null) tabScaleData.Text = UiLang.T("tab.deviceData");
+            if (tabCentral != null) tabCentral.Text = UiLang.T("tab.central");
+            if (tabTransferLog != null) tabTransferLog.Text = UiLang.T("tab.transferLog");
+
+            lblScalesHint.Text = UiLang.T("scales.hint");
+            btnAddScale.Text = UiLang.T("btn.addScale");
+            btnRemoveScale.Text = UiLang.T("btn.removeScale");
+            colScaleName.HeaderText = UiLang.T("col.scaleName");
+            colScaleIp.HeaderText = UiLang.T("col.scaleIp");
+            colScaleEnabled.HeaderText = UiLang.T("col.scaleEnabled");
+            colScaleLastSync.HeaderText = UiLang.T("col.scaleLastSync");
+            colScaleLastStatus.HeaderText = UiLang.T("col.scaleStatus");
+
+            lblAutoInfo.Text = UiLang.T("dash.autoInfo");
+            btnInstallService.Text = UiLang.T("btn.installService");
+            btnQuickSync.Text = UiLang.T("btn.quickSync");
+            btnTestScale.Text = UiLang.T("btn.testScale");
+
+            btnFetchProducts.Text = UiLang.T("btn.fetchProducts");
+            btnSendToScale.Text = UiLang.T("btn.sendToScale");
+            btnLoadFromDevice.Text = UiLang.T("btn.loadFromDevice");
+            ConfigureProductsGrid();
+
+            lblSelectScale.Text = UiLang.T("scale.select");
+            btnConnect.Text = UiLang.T("btn.connect");
+            btnGetWeight.Text = UiLang.T("btn.getWeight");
+            btnClearPlu.Text = UiLang.T("btn.clearPlu");
+            btnUploadSales.Text = UiLang.T("btn.uploadSales");
+            btnSaleReport.Text = UiLang.T("btn.saleReport");
+
+            lblApiBaseUrl.Text = UiLang.T("set.apiUrl");
+            lblTenantCode.Text = UiLang.T("set.tenant");
+            lblApiToken.Text = UiLang.T("set.token");
+            lblProductsPath.Text = UiLang.T("set.productsPath");
+            lblLfCodeBase.Text = UiLang.T("set.lfBase");
+            lblSyncInterval.Text = UiLang.T("set.syncInterval");
+            lblAuthMode.Text = UiLang.T("set.authMode");
+            chkClearBeforeSend.Text = UiLang.T("set.clearBefore");
+            chkSendHotkeys.Text = UiLang.T("set.sendHotkeys");
+            chkAutoSync.Text = UiLang.T("set.autoSync");
+            chkSyncOnStartup.Text = UiLang.T("set.syncOnStartup");
+            btnSaveSettings.Text = UiLang.T("btn.saveSettings");
+            btnTestApi.Text = UiLang.T("btn.testApi");
         }
 
         private void InitializeSyncUi()
@@ -727,6 +826,7 @@ namespace WindowsFormsApplication1
             }
 
             LoadSettingsToUi();
+            ApplyLocalizedUi();
             _syncEngine.Log += AppendLog;
             UpdateDashboard();
 
@@ -747,7 +847,7 @@ namespace WindowsFormsApplication1
             if (!_config.IsReadyForAutoSync())
             {
                 AppendLog("Yapilandirma eksik: Kiracı kodu + terazi listesi (Teraziler sekmesi). Token yoksa AuthMode=none kullanin.");
-                statusBadge.Text = "Yapılandırma gerekli";
+                statusBadge.Text = UiLang.T("msg.configNeeded");
                 statusBadge.ForeColor = UiTheme.Warning;
                 mainTabs.SelectedTab = tabScales;
                 return;
@@ -850,28 +950,28 @@ namespace WindowsFormsApplication1
                 Alignment = DataGridViewContentAlignment.MiddleRight,
             };
             colPlu.DisplayIndex = 0;
-            colPlu.HeaderText = "PLU No";
+            colPlu.HeaderText = UiLang.T("col.plu");
             colPlu.MinimumWidth = 72;
             colPlu.FillWeight = 70;
             colPlu.Visible = true;
             colPlu.DefaultCellStyle = leftAlign;
 
             colName.DisplayIndex = 1;
-            colName.HeaderText = "Ürün Adı";
+            colName.HeaderText = UiLang.T("col.productName");
             colName.MinimumWidth = 120;
             colName.FillWeight = 200;
             colName.Visible = true;
             colName.DefaultCellStyle = leftAlign;
 
             colBarcode.DisplayIndex = 2;
-            colBarcode.HeaderText = "Barkod";
+            colBarcode.HeaderText = UiLang.T("col.barcode");
             colBarcode.MinimumWidth = 90;
             colBarcode.FillWeight = 110;
             colBarcode.Visible = true;
             colBarcode.DefaultCellStyle = leftAlign;
 
             colPrice.DisplayIndex = 3;
-            colPrice.HeaderText = "Fiyat";
+            colPrice.HeaderText = UiLang.T("col.price");
             colPrice.MinimumWidth = 90;
             colPrice.FillWeight = 90;
             colPrice.Visible = true;
@@ -886,13 +986,27 @@ namespace WindowsFormsApplication1
             colPrice.HeaderCell.Style.Alignment = DataGridViewContentAlignment.MiddleRight;
 
             colUnit.DisplayIndex = 4;
-            colUnit.HeaderText = "Birim";
+            colUnit.HeaderText = UiLang.T("col.unit");
             colUnit.MinimumWidth = 55;
             colUnit.FillWeight = 55;
             colUnit.Visible = true;
             colUnit.DefaultCellStyle = new DataGridViewCellStyle
             {
                 Alignment = DataGridViewContentAlignment.MiddleCenter,
+            };
+
+            colShelfLife.DisplayIndex = 5;
+            colShelfLife.HeaderText = UiLang.T("col.shelfLife");
+            colShelfLife.MinimumWidth = 70;
+            colShelfLife.FillWeight = 70;
+            colShelfLife.Visible = true;
+            colShelfLife.ValueType = typeof(int);
+            colShelfLife.DefaultCellStyle = new DataGridViewCellStyle
+            {
+                Alignment = DataGridViewContentAlignment.MiddleCenter,
+                Format = "0",
+                FormatProvider = CultureInfo.InvariantCulture,
+                NullValue = "0",
             };
         }
 
@@ -1010,6 +1124,11 @@ namespace WindowsFormsApplication1
             LoadScalesToGrid();
             RefreshScaleDataCombo();
             TryApplyBarcodeSettings();
+
+            _languageUiReady = false;
+            UiLang.SetLanguage(_config.UiLanguage ?? UiLang.Tr);
+            UiLang.SelectLanguageCombo(cmbLanguage, UiLang.Code);
+            _languageUiReady = true;
         }
 
         private void TryApplyBarcodeSettings()
@@ -1561,6 +1680,11 @@ namespace WindowsFormsApplication1
             _config.Barcode99Format = txtBarcode99Format.Text.Trim();
             _config.Barcode99WeightDecimals = (int)numWeightDecimals99.Value;
             _config.SendFunctionSetOnSync = chkSendFunctionSetOnSync.Checked;
+            if (cmbLanguage != null)
+            {
+                _config.UiLanguage = UiLang.GetSelectedLanguage(cmbLanguage);
+                UiLang.SetLanguage(_config.UiLanguage);
+            }
             _scaleService.RlsHomePath = _config.RlsHomePath;
             _scaleService.SyncConfig = _config;
 
@@ -1583,6 +1707,7 @@ namespace WindowsFormsApplication1
 
             AppendLog("Ayarlar kaydedildi: " + AppConfig.DefaultConfigPath);
             statusLabel.Text = "Config: " + AppConfig.DefaultConfigPath;
+            ApplyLocalizedUi();
         }
 
         private async void btnQuickSync_Click(object sender, EventArgs e)
@@ -1627,7 +1752,7 @@ namespace WindowsFormsApplication1
 
                     MessageBox.Show(
                         message,
-                        result.Success ? "Senkron Tamam" : "Senkron Uyarı",
+                        result.Success ? UiLang.T("msg.syncOk") : UiLang.T("msg.syncWarn"),
                         MessageBoxButtons.OK,
                         result.Success && (result.Warnings == null || result.Warnings.Count == 0)
                             ? MessageBoxIcon.Information
@@ -2073,7 +2198,8 @@ namespace WindowsFormsApplication1
                     p.Name,
                     p.Barcode ?? p.PluCode ?? "",
                     FormatProductPrice(p.Price),
-                    p.Unit);
+                    p.Unit,
+                    Math.Max(0, p.ShelfLifeDays));
             }
         }
 

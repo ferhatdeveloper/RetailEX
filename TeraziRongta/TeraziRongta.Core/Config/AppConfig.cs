@@ -57,6 +57,8 @@ namespace TeraziRongta.Core.Config
         public int DevicePriceDecimalPosition { get; set; } = 2;
         /// <summary>Function-set basarisizsa PLU UnitPrice carpani uygula (7500 -&gt; 750000).</summary>
         public bool CompensateDevicePriceDecimal { get; set; } = true;
+        /// <summary>UI dili: tr | en | ar | ku</summary>
+        public string UiLanguage { get; set; } = "tr";
         public List<ScaleDeviceConfig> Scales { get; set; } = new List<ScaleDeviceConfig>();
 
         public ScalePluDefaults GetPluDefaults()
@@ -77,7 +79,7 @@ namespace TeraziRongta.Core.Config
 
         public const string DefaultProductsPath =
             "/rex_001_products?is_scale_product=eq.true&is_active=eq.true&unit=in.(Kilogram,KG,kg)"
-            + "&select=id,code,name,barcode,unit,price,is_scale_product,plu_code,is_active,updated_at"
+            + "&select=id,code,name,barcode,unit,price,is_scale_product,plu_code,is_active,shelf_life_days,updated_at"
             + "&order=plu_code.asc.nullslast";
 
         public static string BuildProductsPath(string firmNr)
@@ -86,7 +88,7 @@ namespace TeraziRongta.Core.Config
             return "/rex_" + firm + "_products"
                 + "?is_scale_product=eq.true&is_active=eq.true"
                 + "&unit=in.(Kilogram,KG,kg)"
-                + "&select=id,code,name,barcode,unit,price,is_scale_product,plu_code,is_active,firm_nr,updated_at"
+                + "&select=id,code,name,barcode,unit,price,is_scale_product,plu_code,is_active,firm_nr,shelf_life_days,updated_at"
                 + "&order=plu_code.asc.nullslast";
         }
 
@@ -289,7 +291,8 @@ namespace TeraziRongta.Core.Config
 
             if (path.IndexOf("select=", StringComparison.OrdinalIgnoreCase) >= 0
                 && (path.IndexOf("price", StringComparison.OrdinalIgnoreCase) < 0
-                    || path.IndexOf("plu_code", StringComparison.OrdinalIgnoreCase) < 0))
+                    || path.IndexOf("plu_code", StringComparison.OrdinalIgnoreCase) < 0
+                    || path.IndexOf("shelf_life_days", StringComparison.OrdinalIgnoreCase) < 0))
             {
                 return true;
             }

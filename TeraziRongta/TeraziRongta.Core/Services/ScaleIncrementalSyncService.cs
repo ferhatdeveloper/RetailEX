@@ -147,7 +147,7 @@ namespace TeraziRongta.Core.Services
                 "/" + tableName
                 + "?is_scale_product=eq.true&is_active=eq.true"
                 + "&updated_at=gt." + Uri.EscapeDataString(watermarkIso)
-                + "&select=id,code,name,barcode,unit,price,is_scale_product,plu_code,is_active,updated_at").ConfigureAwait(false);
+                + "&select=id,code,name,barcode,unit,price,is_scale_product,plu_code,is_active,shelf_life_days,updated_at").ConfigureAwait(false);
 
             foreach (var row in JArray.Parse(updatedJson).OfType<JObject>())
             {
