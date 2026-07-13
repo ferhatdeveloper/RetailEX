@@ -636,6 +636,44 @@ function filterReportMenuGroups(groups: { type?: string; children?: { key?: stri
   });
 }
 
+/** Menü etiketi → arama metni (ReactNode / string). */
+function reportMenuLabelText(label: unknown): string {
+  if (label == null || label === false) return '';
+  if (typeof label === 'string' || typeof label === 'number') return String(label);
+  if (typeof label === 'object' && label !== null && 'props' in (label as object)) {
+    const kids = (label as { props?: { children?: unknown } }).props?.children;
+    if (typeof kids === 'string' || typeof kids === 'number') return String(kids);
+    if (Array.isArray(kids)) return kids.map(reportMenuLabelText).join(' ');
+  }
+  return '';
+}
+
+/** Rapor menüsünü grup / öğe adına göre filtrele (tr locale). */
+function filterReportMenuBySearch(
+  groups: { type?: string; label?: unknown; children?: { label?: unknown; key?: string }[]; [k: string]: unknown }[],
+  query: string,
+): any[] {
+  const q = query.trim().toLocaleLowerCase('tr');
+  if (!q) return groups;
+  return groups
+    .map((group) => {
+      if (group?.type === 'group' && Array.isArray(group.children)) {
+        const groupLabel = reportMenuLabelText(group.label).toLocaleLowerCase('tr');
+        const groupMatches = groupLabel.includes(q);
+        const children = groupMatches
+          ? group.children
+          : group.children.filter((child) =>
+              reportMenuLabelText(child?.label).toLocaleLowerCase('tr').includes(q),
+            );
+        if (children.length === 0) return null;
+        return { ...group, children };
+      }
+      const label = reportMenuLabelText(group?.label).toLocaleLowerCase('tr');
+      return label.includes(q) ? group : null;
+    })
+    .filter(Boolean);
+}
+
 export function ReportsModule({
   sales,
   products,
@@ -702,6 +740,7 @@ export function ReportsModule({
   const [expiringDays, setExpiringDays] = useState<number>(30);
   const [loadingExpiring, setLoadingExpiring] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
+  const [reportMenuSearch, setReportMenuSearch] = useState('');
   const prevIsMobileRef = useRef(false);
   useEffect(() => {
     if (isMobile && !prevIsMobileRef.current) {
@@ -4239,7 +4278,8 @@ export function ReportsModule({
     ]);
   };
 
-  const menuItems = getMenuItems();
+  const allMenuItems = getMenuItems();
+  const menuItems = filterReportMenuBySearch(allMenuItems, reportMenuSearch);
   const isBeautyServiceReportTab = selectedTab === 'beauty-service-report';
   const isErpServiceBreakdown = businessType !== 'beauty' && isBeautyServiceReportTab;
   const isBeautyCancelledReportTab = selectedTab === 'beauty-cancelled-report';
@@ -4307,29 +4347,48 @@ export function ReportsModule({
             zIndex: mobileMenuOpen ? REPORTS_MOBILE_DRAWER_Z : undefined,
           }}
         >
-          <div className="p-4 border-b border-slate-100 flex items-center gap-3 bg-white sticky top-0 z-20 h-[72px]">
+          <div className={`p-4 border-b flex items-center gap-3 sticky top-0 z-20 h-[72px] ${darkMode ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-100'}`}>
             <div className="w-10 h-10 rounded-xl flex items-center justify-center shadow-lg shrink-0"
               style={{ backgroundColor: bizConfig.color, boxShadow: `0 10px 15px -3px ${bizConfig.color}44` }}>
               {bizConfig.icon}
             </div>
             {!collapsed && (
               <div className="overflow-hidden">
-                <h2 className="text-base font-black text-slate-800 leading-tight truncate">{bizConfig.title}</h2>
-                <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider truncate">{tm('analizStats')}</p>
+                <h2 className={`text-base font-black leading-tight truncate ${darkMode ? 'text-slate-100' : 'text-slate-800'}`}>{bizConfig.title}</h2>
+                <p className={`text-[10px] font-bold uppercase tracking-wider truncate ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{tm('analizStats')}</p>
               </div>
             )}
           </div>
-          <Menu
-            mode="inline"
-            selectedKeys={[selectedTab]}
-            defaultOpenKeys={defaultOpenKeys}
-            onClick={({ key }) => {
-              setSelectedTab(key as ReportTab);
-              if (isMobile) setCollapsed(true);
-            }}
-            items={menuItems}
-            className="border-none py-2"
-          />
+          {!collapsed && (
+            <div className={`px-3 py-2 border-b sticky top-[72px] z-20 ${darkMode ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-100'}`}>
+              <Input
+                allowClear
+                size="middle"
+                value={reportMenuSearch}
+                onChange={(e) => setReportMenuSearch(e.target.value)}
+                placeholder={tm('reportsMenuSearchPlaceholder')}
+                prefix={<SearchOutlined className={darkMode ? 'text-slate-500' : 'text-slate-400'} />}
+                aria-label={tm('reportsMenuSearchPlaceholder')}
+              />
+            </div>
+          )}
+          {menuItems.length === 0 && !collapsed && reportMenuSearch.trim() ? (
+            <p className={`px-4 py-3 text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
+              {tm('reportsMenuSearchEmpty')}
+            </p>
+          ) : (
+            <Menu
+              mode="inline"
+              selectedKeys={[selectedTab]}
+              defaultOpenKeys={defaultOpenKeys}
+              onClick={({ key }) => {
+                setSelectedTab(key as ReportTab);
+                if (isMobile) setCollapsed(true);
+              }}
+              items={menuItems}
+              className="border-none py-2"
+            />
+          )}
         </Sider>
 
         <Layout className="h-full min-w-0 flex flex-col overflow-hidden bg-slate-50 relative z-0">
@@ -4348,7 +4407,7 @@ export function ReportsModule({
               )}
               <div className="min-w-0 flex-1">
                 <h1 className="text-lg sm:text-xl font-black text-slate-800 flex items-center gap-2 leading-tight">
-                  {menuItems.flatMap(g => g.children).find(i => i?.key === selectedTab)?.label || tm('report')}
+                  {allMenuItems.flatMap(g => g.children).find(i => i?.key === selectedTab)?.label || tm('report')}
                 </h1>
                 <p className="text-xs text-slate-500 font-medium mt-0.5">{tm('checkDataAndPerformance')}</p>
               </div>

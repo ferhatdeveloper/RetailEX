@@ -1399,6 +1399,18 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
   custTaxOfficeShort: { tr: 'Vergi Dairesi:', en: 'Tax office:', ar: 'مكتب الضريبة:', ku: 'نووسینگەی باج:' },
 
   /** Raporlar — grafik / toast (ReportsModule) */
+  reportsMenuSearchPlaceholder: {
+    tr: 'Rapor ara…',
+    en: 'Search reports…',
+    ar: 'بحث في التقارير…',
+    ku: 'ڕاپۆرت بگەڕێ…',
+  },
+  reportsMenuSearchEmpty: {
+    tr: 'Eşleşen rapor yok',
+    en: 'No matching reports',
+    ar: 'لا تقارير مطابقة',
+    ku: 'هیچ ڕاپۆرتێک نەدۆزرایەوە',
+  },
   reportsRefresh: { tr: 'Yenile', en: 'Refresh', ar: 'تحديث', ku: 'نوێکردنەوە' },
   reportsDataRefreshed: { tr: 'Rapor verileri güncellendi', en: 'Report data refreshed', ar: 'تم تحديث بيانات التقارير', ku: 'داتای ڕاپۆرت نوێکرایەوە' },
   reportsRefreshFailed: { tr: 'Rapor verileri yenilenemedi', en: 'Could not refresh report data', ar: 'تعذر تحديث بيانات التقارير', ku: 'نوێکردنەوەی داتای ڕاپۆرت سەرکەوتوو نەبوو' },
