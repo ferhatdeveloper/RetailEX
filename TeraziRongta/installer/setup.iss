@@ -1,6 +1,6 @@
 ﻿; RetailEX TeraziManager - Windows Kurulum
 #define MyAppName "RetailEX TeraziManager"
-#define MyAppVersion "1.0.7"
+#define MyAppVersion "1.0.8"
 #define MyAppPublisher "RetailEX"
 #define MyAppURL "https://github.com/ferhatdeveloper/RetailEX"
 #define MyAppExeName "RetailEX.TeraziManager.exe"
@@ -27,7 +27,7 @@ ArchitecturesAllowed=x86 x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 PrivilegesRequired=admin
 UninstallDisplayIcon={app}\{#MyAppExeName}
-VersionInfoVersion=1.0.7.0
+VersionInfoVersion=1.0.8.0
 VersionInfoCompany=RetailEX
 VersionInfoDescription=RetailEX Terazi Yonetim ve Senkron Kurulumu
 VersionInfoProductName={#MyAppName}

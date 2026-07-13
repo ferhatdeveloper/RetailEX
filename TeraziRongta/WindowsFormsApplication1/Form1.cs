@@ -133,9 +133,57 @@ namespace WindowsFormsApplication1
             try { _config.Save(); } catch { /* dil tercihi kaydi kritik degil */ }
         }
 
+        /// <summary>
+        /// WinForms: TabPage.Text, sayfa TabControl koleksiyonunda degilken (IndexOf=-1)
+        /// ArgumentOutOfRangeException firlatir. Yalnizca gecerli sayfalarda Text guncelle.
+        /// </summary>
+        private static void SetTabPageTextSafe(TabControl tabs, TabPage page, string text)
+        {
+            if (page == null) return;
+            text = text ?? string.Empty;
+            try
+            {
+                if (tabs != null)
+                {
+                    var idx = tabs.TabPages.IndexOf(page);
+                    if (idx < 0)
+                    {
+                        // Koleksiyonda yok — Parent tutarsizsa Text set etme (SetTabPage(-1) crash).
+                        if (ReferenceEquals(page.Parent, tabs)) return;
+                        page.Text = text;
+                        return;
+                    }
+                }
+                else if (page.Parent is TabControl orphanParent
+                         && orphanParent.TabPages.IndexOf(page) < 0)
+                {
+                    return;
+                }
+
+                page.Text = text;
+            }
+            catch (ArgumentOutOfRangeException)
+            {
+                // RTL / handle recreate sirasinda IndexOf gecici olarak -1 olabilir.
+            }
+        }
+
+        private void ApplyTabCaptions()
+        {
+            SetTabPageTextSafe(mainTabs, tabDashboard, UiLang.T("tab.dashboard"));
+            SetTabPageTextSafe(mainTabs, tabScales, UiLang.T("tab.scales"));
+            SetTabPageTextSafe(mainTabs, tabSync, UiLang.T("tab.sync"));
+            SetTabPageTextSafe(mainTabs, tabScale, UiLang.T("tab.scaleOps"));
+            SetTabPageTextSafe(mainTabs, tabSettings, UiLang.T("tab.settings"));
+            SetTabPageTextSafe(mainTabs, tabLog, UiLang.T("tab.log"));
+            SetTabPageTextSafe(mainTabs, tabScaleData, UiLang.T("tab.deviceData"));
+            SetTabPageTextSafe(mainTabs, tabCentral, UiLang.T("tab.central"));
+            SetTabPageTextSafe(mainTabs, tabTransferLog, UiLang.T("tab.transferLog"));
+        }
+
         private void ApplyLocalizedUi()
         {
-            UiLang.ApplyFormDirection(this);
+            // Once sekmeler, sonra RTL — ApplyFormDirection handle recreate edebilir.
             Text = UiLang.T("app.title");
             lblTitle.Text = UiLang.T("app.title");
             lblSubtitle.Text = UiLang.T("app.subtitle");
@@ -146,15 +194,7 @@ namespace WindowsFormsApplication1
             notifyIcon1.Text = UiLang.T("app.notify");
             if (lblLanguage != null) lblLanguage.Text = UiLang.T("lang.label");
 
-            tabDashboard.Text = UiLang.T("tab.dashboard");
-            tabScales.Text = UiLang.T("tab.scales");
-            tabSync.Text = UiLang.T("tab.sync");
-            tabScale.Text = UiLang.T("tab.scaleOps");
-            tabSettings.Text = UiLang.T("tab.settings");
-            tabLog.Text = UiLang.T("tab.log");
-            if (tabScaleData != null) tabScaleData.Text = UiLang.T("tab.deviceData");
-            if (tabCentral != null) tabCentral.Text = UiLang.T("tab.central");
-            if (tabTransferLog != null) tabTransferLog.Text = UiLang.T("tab.transferLog");
+            ApplyTabCaptions();
 
             lblScalesHint.Text = UiLang.T("scales.hint");
             btnAddScale.Text = UiLang.T("btn.addScale");
@@ -195,6 +235,14 @@ namespace WindowsFormsApplication1
             chkSyncOnStartup.Text = UiLang.T("set.syncOnStartup");
             btnSaveSettings.Text = UiLang.T("btn.saveSettings");
             btnTestApi.Text = UiLang.T("btn.testApi");
+
+            UiLang.ApplyFormDirection(this);
+
+            // RTL handle recreate sonrasi sekme basliklarini guvenli yenile.
+            if (IsHandleCreated && mainTabs != null)
+            {
+                BeginInvoke(new Action(ApplyTabCaptions));
+            }
         }
 
         private void InitializeSyncUi()
@@ -826,7 +874,30 @@ namespace WindowsFormsApplication1
             }
 
             LoadSettingsToUi();
-            ApplyLocalizedUi();
+            // Load sirasinda TabControl henuz kararli degilse (IndexOf=-1) HandleCreated/BeginInvoke ile uygula.
+            void applyUi()
+            {
+                try { ApplyLocalizedUi(); }
+                catch (Exception ex) { AppendLog("UI dil uygulanamadi: " + ex.Message); }
+            }
+            if (mainTabs != null && mainTabs.IsHandleCreated)
+            {
+                applyUi();
+            }
+            else if (mainTabs != null)
+            {
+                EventHandler onTabsReady = null;
+                onTabsReady = (s, ev) =>
+                {
+                    mainTabs.HandleCreated -= onTabsReady;
+                    applyUi();
+                };
+                mainTabs.HandleCreated += onTabsReady;
+            }
+            else
+            {
+                applyUi();
+            }
             _syncEngine.Log += AppendLog;
             UpdateDashboard();
 
