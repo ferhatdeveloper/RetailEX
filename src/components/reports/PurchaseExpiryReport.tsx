@@ -4,6 +4,7 @@ import { createColumnHelper } from '@tanstack/react-table';
 import { DevExDataGrid } from '../shared/DevExDataGrid';
 import {
   EXPIRY_REPORT_ALL_FUTURE,
+  EXPIRY_REPORT_ALL_RECORDED,
   expiryReportsAPI,
   type ExpiringPurchaseItem,
 } from '../../services/api/expiryReports';
@@ -13,13 +14,19 @@ export function PurchaseExpiryReport() {
   const { tm } = useLanguage();
   const [rows, setRows] = useState<ExpiringPurchaseItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
-  const [daysAhead, setDaysAhead] = useState(30);
+  // Varsayılan: kayıtlı tüm SKT (geçmiş dahil) — berzin gibi süresi geçmiş kayıtlar da görünsün
+  const [daysAhead, setDaysAhead] = useState(EXPIRY_REPORT_ALL_RECORDED);
 
   const load = async () => {
     setLoading(true);
+    setError(null);
     try {
       setRows(await expiryReportsAPI.getExpiringPurchaseItems(daysAhead));
+    } catch (e: unknown) {
+      setRows([]);
+      setError(e instanceof Error ? e.message : String(e));
     } finally {
       setLoading(false);
     }
@@ -46,10 +53,12 @@ export function PurchaseExpiryReport() {
       header: 'SKT',
       cell: info => {
         const row = info.row.original;
+        const expired = row.daysLeft < 0;
         const urgent = row.daysLeft <= 1;
+        const label = expired ? `${Math.abs(row.daysLeft)} g. geçti` : `${row.daysLeft} gün`;
         return (
-          <span className={`rounded-full px-2 py-1 text-xs font-black ${urgent ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-800'}`}>
-            {info.getValue()} · {row.daysLeft} gün
+          <span className={`rounded-full px-2 py-1 text-xs font-black ${expired || urgent ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-800'}`}>
+            {info.getValue()} · {label}
           </span>
         );
       },
@@ -103,21 +112,23 @@ export function PurchaseExpiryReport() {
   ];
 
   const rangeLabel =
-    daysAhead === EXPIRY_REPORT_ALL_FUTURE
-      ? tm('expiryAllFuture')
-      : daysAhead === 0
-        ? tm('expiryToday')
-        : daysAhead === 3
-          ? tm('expiryNext3')
-          : daysAhead === 7
-            ? tm('expiryNext7')
-            : daysAhead === 30
-              ? tm('expiryNext30')
-              : daysAhead === 90
-                ? tm('expiryNext90')
-                : daysAhead === 365
-                  ? tm('expiryNext365')
-                  : `${daysAhead} gün`;
+    daysAhead === EXPIRY_REPORT_ALL_RECORDED
+      ? tm('expiryAllRecorded')
+      : daysAhead === EXPIRY_REPORT_ALL_FUTURE
+        ? tm('expiryAllFuture')
+        : daysAhead === 0
+          ? tm('expiryToday')
+          : daysAhead === 3
+            ? tm('expiryNext3')
+            : daysAhead === 7
+              ? tm('expiryNext7')
+              : daysAhead === 30
+                ? tm('expiryNext30')
+                : daysAhead === 90
+                  ? tm('expiryNext90')
+                  : daysAhead === 365
+                    ? tm('expiryNext365')
+                    : `${daysAhead} gün`;
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-slate-50">
@@ -146,13 +157,14 @@ export function PurchaseExpiryReport() {
                 onChange={e => setDaysAhead(Number(e.target.value))}
                 className="rounded-lg border border-slate-200 px-2 py-1.5 text-sm outline-none focus:ring-2 focus:ring-red-500"
               >
+                <option value={EXPIRY_REPORT_ALL_RECORDED}>{tm('expiryAllRecorded')}</option>
+                <option value={EXPIRY_REPORT_ALL_FUTURE}>{tm('expiryAllFuture')}</option>
                 <option value={0}>{tm('expiryToday')}</option>
                 <option value={3}>{tm('expiryNext3')}</option>
                 <option value={7}>{tm('expiryNext7')}</option>
                 <option value={30}>{tm('expiryNext30')}</option>
                 <option value={90}>{tm('expiryNext90')}</option>
                 <option value={365}>{tm('expiryNext365')}</option>
-                <option value={EXPIRY_REPORT_ALL_FUTURE}>{tm('expiryAllFuture')}</option>
               </select>
             </label>
             <div className="relative min-w-[260px] flex-1">
@@ -168,7 +180,13 @@ export function PurchaseExpiryReport() {
           <p className="mt-2 text-[11px] font-medium text-slate-500">{tm('expiryRangeHint')}</p>
         </div>
         <div className="min-h-0 flex-1 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-          {!loading && filtered.length === 0 ? (
+          {!loading && error ? (
+            <div className="flex h-full min-h-[240px] flex-col items-center justify-center gap-2 px-6 text-center">
+              <AlertTriangle className="h-8 w-8 text-red-400" />
+              <p className="text-sm font-bold text-slate-700">{tm('noDataFound')}</p>
+              <p className="max-w-lg text-xs font-medium text-red-600">{error}</p>
+            </div>
+          ) : !loading && filtered.length === 0 ? (
             <div className="flex h-full min-h-[240px] flex-col items-center justify-center gap-2 px-6 text-center">
               <AlertTriangle className="h-8 w-8 text-amber-400" />
               <p className="text-sm font-bold text-slate-700">{tm('noDataFound')}</p>

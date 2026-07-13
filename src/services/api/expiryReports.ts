@@ -1,6 +1,6 @@
 import { postgres, ERP_SETTINGS, DB_SETTINGS } from '../postgres';
 import { normalizeFirmTableNr } from './accountBalance';
-import { localTodayDateKey } from '../../utils/localCalendarDate';
+import { localCalendarDateKey, localTodayDateKey, toSqlDateInputString } from '../../utils/localCalendarDate';
 
 export interface ExpiringPurchaseItem {
   invoiceId: string;
@@ -17,25 +17,54 @@ export interface ExpiringPurchaseItem {
   daysLeft: number;
 }
 
-/** -1 = tüm gelecek SKT (üst sınır yok); aksi halde 0…3650 gün */
+/** -1 = tüm gelecek SKT (üst sınır yok); -2 = kayıtlı tüm SKT (geçmiş dahil); aksi halde 0…3650 gün */
 export const EXPIRY_REPORT_ALL_FUTURE = -1;
+export const EXPIRY_REPORT_ALL_RECORDED = -2;
 
 /** Logo alış trcode — invoices.TRCODES_BY_INVOICE_CATEGORY.Alis ile aynı */
 const PURCHASE_TRCODES = [1, 4, 5, 6, 13, 26, 41, 42] as const;
 
 function isPurchaseSaleRow(sale: Record<string, unknown>): boolean {
-  const trcode = Number(sale.invoice_type ?? sale.trcode ?? 0);
+  // rex_*_sales şemasında invoice_type YOK — yalnızca trcode / fiche_type
+  const trcode = Number(sale.trcode ?? sale.invoice_type ?? 0);
   const fiche = String(sale.fiche_type ?? '').toLowerCase();
   if (PURCHASE_TRCODES.includes(trcode as (typeof PURCHASE_TRCODES)[number])) return true;
   return fiche === 'purchase_invoice' || fiche === 'a';
 }
 
-function rowToExpiringItem(row: Record<string, unknown>): ExpiringPurchaseItem {
-  const expiry = String(row.expiry_date ?? '').slice(0, 10);
+/** PG DATE / ISO / Date → YYYY-MM-DD (UTC gece kayması olmadan) */
+function expiryYmd(value: unknown): string {
+  if (value == null || value === '') return '';
+  if (value instanceof Date) return localCalendarDateKey(value);
+  const s = String(value).trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  // 'YYYY-MM-DDTHH:mm...' — saf tarih öneki yalnızca Z/offset yoksa güvenli;
+  // DATE→JS Date UTC+3 kayması için yerel takvim günü kullan
+  if (/^\d{4}-\d{2}-\d{2}T/.test(s)) return localCalendarDateKey(s);
+  return toSqlDateInputString(s) || localCalendarDateKey(s);
+}
+
+function daysBetweenYmd(fromYmd: string, toYmd: string): number {
+  const [fy, fm, fd] = fromYmd.split('-').map((x) => parseInt(x, 10));
+  const [ty, tm, td] = toYmd.split('-').map((x) => parseInt(x, 10));
+  const a = Date.UTC(fy, fm - 1, fd);
+  const b = Date.UTC(ty, tm - 1, td);
+  return Math.round((b - a) / 86400000);
+}
+
+function rowToExpiringItem(row: Record<string, unknown>, todayYmd?: string): ExpiringPurchaseItem {
+  const expiry = expiryYmd(row.expiry_date);
+  const today = todayYmd || localTodayDateKey();
+  const daysLeft =
+    row.days_left != null && row.days_left !== ''
+      ? Number(row.days_left)
+      : expiry
+        ? daysBetweenYmd(today, expiry)
+        : 0;
   return {
     invoiceId: String(row.invoice_id ?? ''),
     invoiceNo: String(row.invoice_no ?? ''),
-    invoiceDate: String(row.invoice_date ?? '').slice(0, 10),
+    invoiceDate: expiryYmd(row.invoice_date) || String(row.invoice_date ?? '').slice(0, 10),
     supplierId: row.supplier_id ? String(row.supplier_id) : undefined,
     supplierName: String(row.supplier_name ?? ''),
     itemCode: String(row.item_code ?? ''),
@@ -44,18 +73,18 @@ function rowToExpiringItem(row: Record<string, unknown>): ExpiringPurchaseItem {
     unit: String(row.unit ?? ''),
     expiryDate: expiry,
     batchNo: row.batch_no ? String(row.batch_no) : undefined,
-    daysLeft: Number(row.days_left ?? 0),
+    daysLeft,
   };
 }
 
 function normalizeLimitDays(daysAhead: number): number {
   const n = Math.round(Number(daysAhead));
-  if (n === EXPIRY_REPORT_ALL_FUTURE) return EXPIRY_REPORT_ALL_FUTURE;
-  return Math.max(0, Math.min(3650, Number.isFinite(n) ? n : 3));
+  if (n === EXPIRY_REPORT_ALL_FUTURE || n === EXPIRY_REPORT_ALL_RECORDED) return n;
+  return Math.max(0, Math.min(3650, Number.isFinite(n) ? n : EXPIRY_REPORT_ALL_FUTURE));
 }
 
 function addDaysYmd(ymd: string, days: number): string {
-  const [y, m, d] = ymd.split('-').map(x => parseInt(x, 10));
+  const [y, m, d] = ymd.split('-').map((x) => parseInt(x, 10));
   const dt = new Date(y, m - 1, d);
   dt.setDate(dt.getDate() + days);
   const yy = dt.getFullYear();
@@ -65,7 +94,7 @@ function addDaysYmd(ymd: string, days: number): string {
 }
 
 export const expiryReportsAPI = {
-  async getExpiringPurchaseItems(daysAhead = 3): Promise<ExpiringPurchaseItem[]> {
+  async getExpiringPurchaseItems(daysAhead = EXPIRY_REPORT_ALL_FUTURE): Promise<ExpiringPurchaseItem[]> {
     const fn = normalizeFirmTableNr(ERP_SETTINGS.firmNr);
     const pn = String(ERP_SETTINGS.periodNr ?? '01').padStart(2, '0');
     const salesTable = `rex_${fn}_${pn}_sales`;
@@ -73,80 +102,99 @@ export const expiryReportsAPI = {
     const suppliersTable = `rex_${fn}_suppliers`;
     const customersTable = `rex_${fn}_customers`;
     const limitDays = normalizeLimitDays(daysAhead);
+    const todayYmd = localTodayDateKey();
 
     if (DB_SETTINGS.connectionProvider === 'rest_api') {
       const { postgrest } = await import('./postgrestClient');
-      const todayYmd = localTodayDateKey();
       const filters: Record<string, string> = {
         select: '*',
-        expiry_date: `gte.${todayYmd}`,
         order: 'expiry_date.asc',
-        limit: '2000',
+        limit: '5000',
       };
-      if (limitDays !== EXPIRY_REPORT_ALL_FUTURE) {
-        filters.and = `(expiry_date.lte.${addDaysYmd(todayYmd, limitDays)})`;
+      if (limitDays === EXPIRY_REPORT_ALL_RECORDED) {
+        filters.expiry_date = 'not.is.null';
+      } else if (limitDays === EXPIRY_REPORT_ALL_FUTURE) {
+        filters.expiry_date = `gte.${todayYmd}`;
+      } else {
+        filters.and = `(expiry_date.gte.${todayYmd},expiry_date.lte.${addDaysYmd(todayYmd, limitDays)})`;
       }
       const itemRows = await postgrest.get<Record<string, unknown>[]>(
         `/${itemsTable}`,
         filters,
         { schema: 'public' },
       );
-      const invoiceIds = Array.from(new Set((itemRows || []).map(row => String(row.invoice_id || '')).filter(Boolean)));
+      const invoiceIds = Array.from(new Set((itemRows || []).map((row) => String(row.invoice_id || '')).filter(Boolean)));
       if (!invoiceIds.length) return [];
+      // invoice_type kolonu tenant şemasında yok — seçme
       const salesRows = await postgrest.get<Record<string, unknown>[]>(
         `/${salesTable}`,
         {
-          select: 'id,fiche_no,date,customer_id,customer_name,invoice_type,trcode,fiche_type,is_cancelled',
+          select: 'id,fiche_no,date,customer_id,customer_name,trcode,fiche_type,is_cancelled',
           id: `in.(${invoiceIds.join(',')})`,
-          limit: '2000',
+          limit: '5000',
         },
         { schema: 'public' },
       );
-      const salesById = new Map((salesRows || []).map(row => [String(row.id), row]));
-      const supplierIds = Array.from(new Set((salesRows || []).map(row => String(row.customer_id || '')).filter(Boolean)));
+      const salesById = new Map((salesRows || []).map((row) => [String(row.id), row]));
+      const supplierIds = Array.from(new Set((salesRows || []).map((row) => String(row.customer_id || '')).filter(Boolean)));
       const supplierRows = supplierIds.length
-        ? await postgrest.get<Record<string, unknown>[]>(
-            `/${suppliersTable}`,
-            { select: 'id,name', id: `in.(${supplierIds.join(',')})`, limit: '1000' },
-            { schema: 'public' },
-          ).catch(() => [] as Record<string, unknown>[])
+        ? await postgrest
+            .get<Record<string, unknown>[]>(
+              `/${suppliersTable}`,
+              { select: 'id,name', id: `in.(${supplierIds.join(',')})`, limit: '1000' },
+              { schema: 'public' },
+            )
+            .catch(() => [] as Record<string, unknown>[])
         : [];
       const customerRows = supplierIds.length
-        ? await postgrest.get<Record<string, unknown>[]>(
-            `/${customersTable}`,
-            { select: 'id,name', id: `in.(${supplierIds.join(',')})`, limit: '1000' },
-            { schema: 'public' },
-          ).catch(() => [] as Record<string, unknown>[])
+        ? await postgrest
+            .get<Record<string, unknown>[]>(
+              `/${customersTable}`,
+              { select: 'id,name', id: `in.(${supplierIds.join(',')})`, limit: '1000' },
+              { schema: 'public' },
+            )
+            .catch(() => [] as Record<string, unknown>[])
         : [];
-      const names = new Map([...supplierRows, ...customerRows].map(row => [String(row.id), String(row.name || '')]));
-      const now0 = new Date(`${todayYmd}T12:00:00`);
+      const names = new Map([...supplierRows, ...customerRows].map((row) => [String(row.id), String(row.name || '')]));
       return (itemRows || [])
-        .map(item => {
+        .map((item) => {
           const sale = salesById.get(String(item.invoice_id));
           if (!sale) return null;
           if (sale.is_cancelled === true || sale.is_cancelled === 'true') return null;
           if (!isPurchaseSaleRow(sale)) return null;
-          const expYmd = String(item.expiry_date).slice(0, 10);
-          const exp = new Date(`${expYmd}T12:00:00`);
-          return rowToExpiringItem({
-            ...item,
-            invoice_id: sale.id,
-            invoice_no: sale.fiche_no,
-            invoice_date: sale.date,
-            supplier_id: sale.customer_id,
-            supplier_name: names.get(String(sale.customer_id)) || sale.customer_name || '',
-            days_left: Math.round((exp.getTime() - now0.getTime()) / 86400000),
-          });
+          const expYmd = expiryYmd(item.expiry_date);
+          if (!expYmd) return null;
+          return rowToExpiringItem(
+            {
+              ...item,
+              expiry_date: expYmd,
+              invoice_id: sale.id,
+              invoice_no: sale.fiche_no,
+              invoice_date: sale.date,
+              supplier_id: sale.customer_id,
+              supplier_name: names.get(String(sale.customer_id)) || sale.customer_name || '',
+              days_left: daysBetweenYmd(todayYmd, expYmd),
+            },
+            todayYmd,
+          );
         })
-        .filter((row): row is ExpiringPurchaseItem => row != null);
+        .filter((row): row is ExpiringPurchaseItem => row != null)
+        .sort((a, b) => a.expiryDate.localeCompare(b.expiryDate) || a.itemName.localeCompare(b.itemName, 'tr'));
     }
 
     const purchaseTrcodeIn = PURCHASE_TRCODES.join(', ');
-    const upperBoundSql =
-      limitDays === EXPIRY_REPORT_ALL_FUTURE
-        ? ''
-        : `AND it.expiry_date <= CURRENT_DATE + ($1::int * INTERVAL '1 day')`;
-    const queryParams = limitDays === EXPIRY_REPORT_ALL_FUTURE ? [] : [limitDays];
+    // rex_*_sales: trcode + fiche_type (invoice_type YOK — eski sorgu tüm kiracılarda patlıyordu)
+    let dateFilterSql = '';
+    const queryParams: number[] = [];
+    if (limitDays === EXPIRY_REPORT_ALL_RECORDED) {
+      dateFilterSql = '';
+    } else if (limitDays === EXPIRY_REPORT_ALL_FUTURE) {
+      dateFilterSql = 'AND it.expiry_date >= CURRENT_DATE';
+    } else {
+      dateFilterSql = `AND it.expiry_date >= CURRENT_DATE
+          AND it.expiry_date <= CURRENT_DATE + ($1::int * INTERVAL '1 day')`;
+      queryParams.push(limitDays);
+    }
 
     const { rows } = await postgres.query(
       `
@@ -168,11 +216,9 @@ export const expiryReportsAPI = {
         LEFT JOIN ${suppliersTable} sup ON sup.id = s.customer_id
         LEFT JOIN ${customersTable} c ON c.id = s.customer_id
         WHERE it.expiry_date IS NOT NULL
-          AND it.expiry_date >= CURRENT_DATE
-          ${upperBoundSql}
+          ${dateFilterSql}
           AND (
-            COALESCE(s.invoice_type, 0) IN (${purchaseTrcodeIn})
-            OR COALESCE(s.trcode, 0) IN (${purchaseTrcodeIn})
+            COALESCE(s.trcode, 0) IN (${purchaseTrcodeIn})
             OR LOWER(COALESCE(s.fiche_type, '')) IN ('purchase_invoice', 'a')
           )
           AND COALESCE(s.is_cancelled, false) = false
@@ -181,6 +227,6 @@ export const expiryReportsAPI = {
       queryParams,
       { firmNr: fn, periodNr: pn },
     );
-    return rows.map(rowToExpiringItem);
+    return rows.map((row) => rowToExpiringItem(row, todayYmd));
   },
 };
