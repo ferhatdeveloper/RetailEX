@@ -21,6 +21,7 @@ import {
   FilePlus2,
   ExternalLink,
   Truck,
+  Eye,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -37,7 +38,11 @@ import {
   type ButcherRecipe,
   type ButcherSettings,
 } from '@/services/api/butcherProductionAPI';
-import { ButcherProductionService } from '@/services/butcherProductionService';
+import {
+  ButcherProductionService,
+  type ButcherStockLineSummary,
+} from '@/services/butcherProductionService';
+import { stockMovementAPI } from '@/services/stockMovementAPI';
 import { supplierAPI } from '@/services/api/suppliers';
 import {
   previewButcherCost,
@@ -143,7 +148,10 @@ export function ButcherProductionModule({ embedded = false }: { embedded?: boole
   const [tab, setTab] = useState<TabId>('voucher');
   const [recipes, setRecipes] = useState<ButcherRecipe[]>([]);
   const [orders, setOrders] = useState<ButcherOrder[]>([]);
-  const [settings, setSettings] = useState<ButcherSettings>({ defaultCostMethod: 'by_weight' });
+  const [settings, setSettings] = useState<ButcherSettings>({
+    defaultCostMethod: 'by_weight',
+    allowCompleteWithoutStock: true,
+  });
   const [loading, setLoading] = useState(false);
 
   const loadMeta = useCallback(async () => {
@@ -248,7 +256,10 @@ export function ButcherProductionModule({ embedded = false }: { embedded?: boole
             recipes={recipes}
             settings={settings}
             darkMode={darkMode}
-            onCompleted={() => void loadMeta()}
+            onCompleted={() => {
+              void useProductStore.getState().loadProducts(true);
+              void loadMeta();
+            }}
           />
         )}
         {tab === 'recipes' && (
@@ -261,7 +272,12 @@ export function ButcherProductionModule({ embedded = false }: { embedded?: boole
           />
         )}
         {tab === 'list' && (
-          <OrderList orders={orders} darkMode={darkMode} onRefresh={() => void loadMeta()} />
+          <OrderList
+            orders={orders}
+            products={products as ProductOpt[]}
+            darkMode={darkMode}
+            onRefresh={() => void loadMeta()}
+          />
         )}
         {tab === 'reports' && <ReportsPanel darkMode={darkMode} />}
         {tab === 'settings' && (
@@ -307,6 +323,14 @@ function VoucherForm({
   const [outputs, setOutputs] = useState<OutputRow[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [purchasePromptOrder, setPurchasePromptOrder] = useState<ButcherOrder | null>(null);
+  const [completeSummary, setCompleteSummary] = useState<{
+    orderNo?: string;
+    orderId?: string;
+    lines: ButcherStockLineSummary[];
+  } | null>(null);
+  const [pendingPurchaseAfterSummary, setPendingPurchaseAfterSummary] = useState<ButcherOrder | null>(
+    null,
+  );
   const { selectedFirm, selectedPeriod } = useFirmaDonem();
 
   useEffect(() => {
@@ -319,6 +343,8 @@ function VoucherForm({
   );
 
   const selectedInput = products.find((p) => p.id === inputProductId);
+  const inputStock = Number(selectedInput?.stock) || 0;
+  const stockShortfall = Boolean(inputProductId && inputQtyKg > 0 && inputStock < inputQtyKg - 0.001);
 
   useEffect(() => {
     if (selectedInput) {
@@ -400,34 +426,32 @@ function VoucherForm({
   };
 
   const submit = async (asComplete: boolean) => {
+    if (asComplete && stockShortfall) {
+      if (!window.confirm(tm('butcherStockShortfallConfirm'))) {
+        return;
+      }
+    }
+
     setSubmitting(true);
     try {
+      const payload = {
+        recipeId: recipeId || null,
+        animalType,
+        inputProductId,
+        inputQtyKg,
+        inputUnitCost,
+        wasteProductId: wasteProductId || null,
+        lotNo: lotNo || null,
+        costMethod,
+        outputs,
+        note,
+        warehouseId: settings.defaultWarehouseId,
+        allowInsufficientStock: asComplete && stockShortfall ? true : undefined,
+      };
       const result = asComplete
-        ? await ButcherProductionService.complete({
-            recipeId: recipeId || null,
-            animalType,
-            inputProductId,
-            inputQtyKg,
-            inputUnitCost,
-            wasteProductId: wasteProductId || null,
-            lotNo: lotNo || null,
-            costMethod,
-            outputs,
-            note,
-            warehouseId: settings.defaultWarehouseId,
-          })
+        ? await ButcherProductionService.complete(payload)
         : await ButcherProductionService.saveDraft({
-            recipeId: recipeId || null,
-            animalType,
-            inputProductId,
-            inputQtyKg,
-            inputUnitCost,
-            wasteProductId: wasteProductId || null,
-            lotNo: lotNo || null,
-            costMethod,
-            outputs,
-            note,
-            warehouseId: settings.defaultWarehouseId,
+            ...payload,
             status: 'open',
           });
 
@@ -436,11 +460,22 @@ function VoucherForm({
         return;
       }
       toast.success(asComplete ? tm('butcherCompleted') : tm('butcherDraftSaved'));
+      if (asComplete && result.stockSummary?.length) {
+        setCompleteSummary({
+          orderNo: result.orderNo,
+          orderId: result.orderId,
+          lines: result.stockSummary,
+        });
+      }
       if (asComplete && result.orderId) {
         try {
           const created = await butcherProductionAPI.getOrderById(result.orderId);
           if (created && !created.purchaseInvoiceId && canCreatePurchaseFromOrder(created)) {
-            setPurchasePromptOrder(created);
+            if (result.stockSummary?.length) {
+              setPendingPurchaseAfterSummary(created);
+            } else {
+              setPurchasePromptOrder(created);
+            }
           }
         } catch {
           /* listeye düşer */
@@ -618,6 +653,9 @@ function VoucherForm({
             <Plus className="w-4 h-4 mr-1" /> {tm('butcherAddLine')}
           </Button>
         </div>
+        <p className={cn('text-[11px]', darkMode ? 'text-gray-400' : 'text-slate-500')}>
+          {tm('butcherOutputProductHint')}
+        </p>
 
         <div className="overflow-x-auto">
           <table className="w-full text-xs">
@@ -653,6 +691,8 @@ function VoucherForm({
                         {products.map((p) => (
                           <option key={p.id} value={p.id}>
                             {p.name}
+                            {p.stock != null ? ` (${Number(p.stock).toLocaleString('tr-TR')})` : ''}
+                            {p.materialType ? ` · ${p.materialType}` : ''}
                           </option>
                         ))}
                       </select>
@@ -724,6 +764,25 @@ function VoucherForm({
           <Input value={note} onChange={(e) => setNote(e.target.value)} />
         </Field>
 
+        {stockShortfall && (
+          <div
+            className={cn(
+              'flex items-start gap-2 text-xs p-3 rounded-lg border',
+              darkMode
+                ? 'bg-amber-950/40 border-amber-700/50 text-amber-200'
+                : 'bg-amber-50 border-amber-200 text-amber-800',
+            )}
+          >
+            <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+            <span>
+              {tm('butcherStockShortfallWarn')}{' '}
+              <span className="font-mono">
+                ({fmtKg(inputStock)} / {fmtKg(inputQtyKg)})
+              </span>
+            </span>
+          </div>
+        )}
+
         <div className="flex flex-wrap gap-2 pt-2">
           <Button type="button" variant="outline" disabled={submitting} onClick={() => void submit(false)}>
             <Save className="w-4 h-4 mr-1" /> {tm('butcherSaveOpen')}
@@ -766,12 +825,127 @@ function VoucherForm({
         )}
       </div>
 
+      {completeSummary && (
+        <PercentBodyModal
+          onClose={() => {
+            const nextPurchase = pendingPurchaseAfterSummary;
+            setCompleteSummary(null);
+            setPendingPurchaseAfterSummary(null);
+            if (nextPurchase) setPurchasePromptOrder(nextPurchase);
+          }}
+          size="list"
+          ariaLabel={tm('butcherCompleteSummaryTitle')}
+        >
+          <div className="shrink-0 px-5 py-4 border-b bg-gradient-to-r from-amber-600 to-amber-700 text-white flex justify-between items-center">
+            <h3 className="font-bold text-sm flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4" />
+              {tm('butcherCompleteSummaryTitle')}
+            </h3>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="text-white hover:bg-white/10"
+              onClick={() => {
+                const nextPurchase = pendingPurchaseAfterSummary;
+                setCompleteSummary(null);
+                setPendingPurchaseAfterSummary(null);
+                if (nextPurchase) setPurchasePromptOrder(nextPurchase);
+              }}
+            >
+              ✕
+            </Button>
+          </div>
+          <PercentBodyModalScrollBody className={cn('p-5 space-y-3', darkMode ? 'bg-gray-900' : 'bg-slate-50')}>
+            {completeSummary.orderNo && (
+              <p className={cn('text-xs font-mono', darkMode ? 'text-gray-300' : 'text-slate-600')}>
+                {tm('butcherOrderNo')}: {completeSummary.orderNo}
+              </p>
+            )}
+            <p className={cn('text-xs', darkMode ? 'text-gray-400' : 'text-slate-500')}>
+              {tm('butcherCompleteSummaryHint')}
+            </p>
+            <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-gray-700">
+              <table className="w-full text-xs">
+                <thead className={darkMode ? 'bg-gray-800 text-gray-400' : 'bg-slate-100 text-slate-500'}>
+                  <tr>
+                    <th className="text-left p-2">{tm('product')}</th>
+                    <th className="text-left p-2">{tm('status')}</th>
+                    <th className="text-right p-2">{tm('butcherKg')}</th>
+                    <th className="text-right p-2">{tm('butcherStockBefore')}</th>
+                    <th className="text-right p-2">{tm('butcherStockAfter')}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {completeSummary.lines.map((line) => (
+                    <tr
+                      key={`${line.direction}-${line.productId}`}
+                      className={cn('border-t', darkMode ? 'border-gray-700' : 'border-slate-100')}
+                    >
+                      <td className="p-2">
+                        <div className={cn('font-medium', darkMode ? 'text-gray-100' : 'text-slate-800')}>
+                          {line.productName}
+                        </div>
+                        {line.productCode && (
+                          <div className="font-mono text-[10px] text-slate-400">{line.productCode}</div>
+                        )}
+                        {line.materialType && (
+                          <div className="text-[10px] text-slate-400">{line.materialType}</div>
+                        )}
+                      </td>
+                      <td className="p-2">
+                        <span
+                          className={cn(
+                            'px-2 py-0.5 rounded-full text-[10px] font-bold',
+                            line.direction === 'in'
+                              ? 'bg-emerald-100 text-emerald-700'
+                              : 'bg-rose-100 text-rose-700',
+                          )}
+                        >
+                          {line.direction === 'in' ? tm('butcherStockIn') : tm('butcherStockOut')}
+                        </span>
+                      </td>
+                      <td className="p-2 text-right font-mono">{fmtKg(line.qtyKg)}</td>
+                      <td className="p-2 text-right font-mono">
+                        {line.stockBefore.toLocaleString('tr-TR', { maximumFractionDigits: 3 })}
+                      </td>
+                      <td className="p-2 text-right font-mono font-bold text-amber-700 dark:text-amber-300">
+                        {line.stockAfter.toLocaleString('tr-TR', { maximumFractionDigits: 3 })}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </PercentBodyModalScrollBody>
+          <div
+            className={cn(
+              'shrink-0 px-5 py-3 border-t flex justify-end',
+              darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-slate-100',
+            )}
+          >
+            <Button
+              type="button"
+              className="bg-amber-600 hover:bg-amber-700 text-white"
+              onClick={() => {
+                const nextPurchase = pendingPurchaseAfterSummary;
+                setCompleteSummary(null);
+                setPendingPurchaseAfterSummary(null);
+                if (nextPurchase) setPurchasePromptOrder(nextPurchase);
+              }}
+            >
+              {tm('butcherCloseSummary')}
+            </Button>
+          </div>
+        </PercentBodyModal>
+      )}
+
       {purchasePromptOrder && (
         <ButcherPurchaseInvoiceModal
           order={purchasePromptOrder}
           darkMode={darkMode}
-          firmaName={selectedFirm?.firma_adi}
-          donemName={selectedPeriod?.donem_adi}
+          firmaName={selectedFirm?.firma_adi || selectedFirm?.name}
+          donemName={selectedPeriod?.donem_adi || selectedPeriod?.name}
           onClose={() => setPurchasePromptOrder(null)}
           onDone={() => {
             setPurchasePromptOrder(null);
@@ -1022,16 +1196,19 @@ function canCreatePurchaseFromOrder(o: ButcherOrder): boolean {
 
 function OrderList({
   orders,
+  products,
   darkMode,
   onRefresh,
 }: {
   orders: ButcherOrder[];
+  products: ProductOpt[];
   darkMode: boolean;
   onRefresh: () => void;
 }) {
   const { tm } = useLanguage();
   const { selectedFirm, selectedPeriod } = useFirmaDonem();
   const [purchaseOrder, setPurchaseOrder] = useState<ButcherOrder | null>(null);
+  const [detailOrder, setDetailOrder] = useState<ButcherOrder | null>(null);
   const card = darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200';
 
   return (
@@ -1075,28 +1252,40 @@ function OrderList({
               </td>
               <td className="text-right font-mono">{fmtMoney(o.inputTotalCost)} TL</td>
               <td className="p-2 text-right">
-                {o.purchaseInvoiceId || o.purchaseInvoiceNo ? (
+                <div className="inline-flex flex-wrap gap-1 justify-end">
                   <Button
                     type="button"
                     size="sm"
                     variant="outline"
                     className="h-7 text-[10px]"
-                    onClick={() => navigateToPurchaseInvoice(o.purchaseInvoiceNo)}
+                    onClick={() => setDetailOrder(o)}
                   >
-                    <ExternalLink className="w-3 h-3 mr-1" />
-                    {tm('butcherOpenPurchaseInvoice')}
+                    <Eye className="w-3 h-3 mr-1" />
+                    {tm('butcherViewDetail')}
                   </Button>
-                ) : canCreatePurchaseFromOrder(o) ? (
-                  <Button
-                    type="button"
-                    size="sm"
-                    className="h-7 text-[10px] bg-teal-600 hover:bg-teal-700 text-white"
-                    onClick={() => setPurchaseOrder(o)}
-                  >
-                    <FilePlus2 className="w-3 h-3 mr-1" />
-                    {tm('butcherCreatePurchaseInvoice')}
-                  </Button>
-                ) : null}
+                  {o.purchaseInvoiceId || o.purchaseInvoiceNo ? (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-7 text-[10px]"
+                      onClick={() => navigateToPurchaseInvoice(o.purchaseInvoiceNo)}
+                    >
+                      <ExternalLink className="w-3 h-3 mr-1" />
+                      {tm('butcherOpenPurchaseInvoice')}
+                    </Button>
+                  ) : canCreatePurchaseFromOrder(o) ? (
+                    <Button
+                      type="button"
+                      size="sm"
+                      className="h-7 text-[10px] bg-teal-600 hover:bg-teal-700 text-white"
+                      onClick={() => setPurchaseOrder(o)}
+                    >
+                      <FilePlus2 className="w-3 h-3 mr-1" />
+                      {tm('butcherCreatePurchaseInvoice')}
+                    </Button>
+                  ) : null}
+                </div>
               </td>
             </tr>
           ))}
@@ -1109,6 +1298,15 @@ function OrderList({
           )}
         </tbody>
       </table>
+
+      {detailOrder && (
+        <ButcherOrderDetailModal
+          order={detailOrder}
+          products={products}
+          darkMode={darkMode}
+          onClose={() => setDetailOrder(null)}
+        />
+      )}
 
       {purchaseOrder && (
         <ButcherPurchaseInvoiceModal
@@ -1124,6 +1322,197 @@ function OrderList({
         />
       )}
     </div>
+  );
+}
+
+function ButcherOrderDetailModal({
+  order,
+  products,
+  darkMode,
+  onClose,
+}: {
+  order: ButcherOrder;
+  products: ProductOpt[];
+  darkMode: boolean;
+  onClose: () => void;
+}) {
+  const { tm } = useLanguage();
+  const [fullOrder, setFullOrder] = useState<ButcherOrder>(order);
+  const [movements, setMovements] = useState<
+    Awaited<ReturnType<typeof stockMovementAPI.listByOrderDocumentNo>>
+  >([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      setLoading(true);
+      try {
+        const [fresh, mov] = await Promise.all([
+          order.id ? butcherProductionAPI.getOrderById(order.id) : Promise.resolve(null),
+          stockMovementAPI.listByOrderDocumentNo(order.orderNo),
+        ]);
+        if (cancelled) return;
+        if (fresh) setFullOrder(fresh);
+        setMovements(mov);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [order.id, order.orderNo]);
+
+  const muted = darkMode ? 'text-gray-400' : 'text-slate-500';
+  const text = darkMode ? 'text-gray-100' : 'text-slate-800';
+
+  return (
+    <PercentBodyModal onClose={onClose} size="wide" ariaLabel={tm('butcherOrderDetail')}>
+      <div className="shrink-0 px-5 py-4 border-b bg-gradient-to-r from-amber-600 to-amber-700 text-white flex justify-between items-center">
+        <h3 className="font-bold text-sm flex items-center gap-2">
+          <Eye className="w-4 h-4" />
+          {tm('butcherOrderDetail')} — {fullOrder.orderNo}
+        </h3>
+        <Button type="button" variant="ghost" size="sm" className="text-white hover:bg-white/10" onClick={onClose}>
+          ✕
+        </Button>
+      </div>
+      <PercentBodyModalScrollBody className={cn('p-5 space-y-4', darkMode ? 'bg-gray-900' : 'bg-slate-50')}>
+        {loading && <p className={cn('text-xs', muted)}>{tm('loading')}</p>}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+          <div>
+            <div className={muted}>{tm('butcherInputProduct')}</div>
+            <div className={cn('font-medium', text)}>{fullOrder.inputProductName || '—'}</div>
+          </div>
+          <div>
+            <div className={muted}>{tm('butcherInputKg')}</div>
+            <div className={cn('font-mono', text)}>{fmtKg(fullOrder.inputQtyKg)}</div>
+          </div>
+          <div>
+            <div className={muted}>{tm('butcherWaste')}</div>
+            <div className={cn('font-mono', text)}>
+              {fmtKg(fullOrder.wasteQtyKg)} (%{fullOrder.wastePercent.toFixed(1)})
+            </div>
+          </div>
+          <div>
+            <div className={muted}>{tm('butcherLotNo')}</div>
+            <div className={cn('font-mono', text)}>{fullOrder.lotNo || '—'}</div>
+          </div>
+        </div>
+
+        <div>
+          <h4 className={cn('text-xs font-bold mb-2', text)}>{tm('butcherOutputs')}</h4>
+          <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-gray-700">
+            <table className="w-full text-xs">
+              <thead className={darkMode ? 'bg-gray-800 text-gray-400' : 'bg-slate-100 text-slate-500'}>
+                <tr>
+                  <th className="text-left p-2">{tm('product')}</th>
+                  <th className="text-right p-2">{tm('butcherKg')}</th>
+                  <th className="text-right p-2">{tm('butcherUnitCost')}</th>
+                  <th className="text-right p-2">{tm('butcherTotalCost')}</th>
+                  <th className="text-right p-2">{tm('butcherStockAfter')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(fullOrder.outputs || []).map((out, idx) => {
+                  const prod = products.find((p) => p.id === out.productId);
+                  const stockNow =
+                    prod?.stock != null
+                      ? Number(prod.stock)
+                      : movements.find((m) => m.product_id === out.productId)?.product_stock;
+                  return (
+                    <tr key={`${out.productId}-${idx}`} className={cn('border-t', darkMode ? 'border-gray-700' : 'border-slate-100')}>
+                      <td className={cn('p-2', text)}>
+                        {out.productName || prod?.name || out.productId}
+                        {prod?.materialType && (
+                          <div className="text-[10px] text-slate-400">{prod.materialType}</div>
+                        )}
+                      </td>
+                      <td className="p-2 text-right font-mono">{fmtKg(out.outputKg)}</td>
+                      <td className="p-2 text-right font-mono">{fmtMoney(out.unitCost)}</td>
+                      <td className="p-2 text-right font-mono">{fmtMoney(out.totalCost)}</td>
+                      <td className="p-2 text-right font-mono font-bold text-amber-700 dark:text-amber-300">
+                        {stockNow != null
+                          ? stockNow.toLocaleString('tr-TR', { maximumFractionDigits: 3 })
+                          : '—'}
+                      </td>
+                    </tr>
+                  );
+                })}
+                {!(fullOrder.outputs || []).length && (
+                  <tr>
+                    <td colSpan={5} className="p-4 text-center text-slate-400">
+                      —
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div>
+          <h4 className={cn('text-xs font-bold mb-2', text)}>{tm('butcherStockMovements')}</h4>
+          <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-gray-700">
+            <table className="w-full text-xs">
+              <thead className={darkMode ? 'bg-gray-800 text-gray-400' : 'bg-slate-100 text-slate-500'}>
+                <tr>
+                  <th className="text-left p-2">{tm('butcherOrderNo')}</th>
+                  <th className="text-left p-2">{tm('product')}</th>
+                  <th className="text-left p-2">{tm('status')}</th>
+                  <th className="text-right p-2">{tm('butcherKg')}</th>
+                  <th className="text-right p-2">{tm('butcherStockAfter')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {movements.map((m, idx) => (
+                  <tr key={`${m.document_no}-${idx}`} className={cn('border-t', darkMode ? 'border-gray-700' : 'border-slate-100')}>
+                    <td className="p-2 font-mono text-[10px]">{m.document_no}</td>
+                    <td className={cn('p-2', text)}>{m.product_name || m.product_id}</td>
+                    <td className="p-2">
+                      <span
+                        className={cn(
+                          'px-2 py-0.5 rounded-full text-[10px] font-bold',
+                          m.movement_type === 'in'
+                            ? 'bg-emerald-100 text-emerald-700'
+                            : 'bg-rose-100 text-rose-700',
+                        )}
+                      >
+                        {m.movement_type === 'in' ? tm('butcherStockIn') : tm('butcherStockOut')}
+                      </span>
+                    </td>
+                    <td className="p-2 text-right font-mono">{fmtKg(m.quantity)}</td>
+                    <td className="p-2 text-right font-mono">
+                      {m.product_stock != null
+                        ? m.product_stock.toLocaleString('tr-TR', { maximumFractionDigits: 3 })
+                        : '—'}
+                    </td>
+                  </tr>
+                ))}
+                {!movements.length && !loading && (
+                  <tr>
+                    <td colSpan={5} className="p-4 text-center text-slate-400">
+                      {tm('butcherNoStockMovements')}
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </PercentBodyModalScrollBody>
+      <div
+        className={cn(
+          'shrink-0 px-5 py-3 border-t flex justify-end',
+          darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-slate-100',
+        )}
+      >
+        <Button type="button" variant="outline" onClick={onClose}>
+          {tm('butcherCloseSummary')}
+        </Button>
+      </div>
+    </PercentBodyModal>
   );
 }
 
@@ -1165,18 +1554,20 @@ function ButcherPurchaseInvoiceModal({
           phone: String(s.phone || ''),
         }));
         setSuppliers(mapped);
-        if (order.supplierId && !supplier) {
+        if (order.supplierId) {
           const found = mapped.find((m) => m.id === order.supplierId);
           if (found) setSupplier(found);
+        } else {
+          setShowCari(true);
         }
       } catch (e) {
         console.warn('[ButcherPurchase] suppliers:', e);
+        if (!order.supplierId) setShowCari(true);
       }
     })();
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount load
   }, [order.supplierId]);
 
   const create = async () => {
@@ -1235,6 +1626,7 @@ function ButcherPurchaseInvoiceModal({
         </div>
         <PercentBodyModalScrollBody className={cn('p-5 space-y-3', darkMode ? 'bg-gray-900' : 'bg-slate-50')}>
           <p className={cn('text-xs leading-relaxed', muted)}>{tm('butcherPurchaseModalHint')}</p>
+          <p className={cn('text-[11px] leading-relaxed', muted)}>{tm('butcherPurchaseSkipHint')}</p>
           <div className={cn('rounded-xl border p-3 space-y-2 text-xs', box, darkMode ? 'border-gray-700' : 'border-slate-200')}>
             <div className="flex justify-between gap-2">
               <span className={muted}>{tm('butcherOrderNo')}</span>
@@ -1265,16 +1657,20 @@ function ButcherPurchaseInvoiceModal({
           </div>
           <div>
             <label className={cn('block text-[11px] font-bold uppercase tracking-wider mb-1.5', muted)}>
-              {tm('butcherSelectSupplier')}
+              {tm('butcherSelectSupplier')} *
             </label>
             <button
               type="button"
               onClick={() => setShowCari(true)}
               className={cn(
                 'w-full flex items-center gap-2 px-4 py-3 rounded-2xl border text-left text-sm font-medium',
-                darkMode
-                  ? 'bg-gray-800 border-gray-600 text-gray-100 hover:border-teal-500'
-                  : 'bg-white border-slate-200 text-slate-800 hover:border-teal-400',
+                !supplier
+                  ? darkMode
+                    ? 'bg-gray-800 border-teal-500 ring-1 ring-teal-500/40 text-gray-100'
+                    : 'bg-white border-teal-500 ring-1 ring-teal-200 text-slate-800'
+                  : darkMode
+                    ? 'bg-gray-800 border-gray-600 text-gray-100 hover:border-teal-500'
+                    : 'bg-white border-slate-200 text-slate-800 hover:border-teal-400',
               )}
             >
               <Truck className="w-4 h-4 text-teal-600 shrink-0" />
@@ -1286,12 +1682,12 @@ function ButcherPurchaseInvoiceModal({
         </PercentBodyModalScrollBody>
         <div className={cn('shrink-0 px-5 py-3 border-t flex justify-end gap-2', darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-slate-100')}>
           <Button type="button" variant="outline" disabled={busy} onClick={onClose}>
-            {tm('cancel')}
+            {tm('butcherPurchaseSkip')}
           </Button>
           <Button
             type="button"
             className="bg-teal-600 hover:bg-teal-700 text-white"
-            disabled={busy}
+            disabled={busy || !supplier?.id}
             onClick={() => void create()}
           >
             <FilePlus2 className="w-4 h-4 mr-1" />
@@ -1487,16 +1883,22 @@ function SettingsPanel({
 }) {
   const { tm } = useLanguage();
   const [method, setMethod] = useState<ButcherCostMethod>(settings.defaultCostMethod);
+  const [allowWithoutStock, setAllowWithoutStock] = useState(settings.allowCompleteWithoutStock !== false);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     setMethod(settings.defaultCostMethod);
-  }, [settings.defaultCostMethod]);
+    setAllowWithoutStock(settings.allowCompleteWithoutStock !== false);
+  }, [settings.defaultCostMethod, settings.allowCompleteWithoutStock]);
 
   const save = async () => {
     setSaving(true);
     try {
-      const next = { ...settings, defaultCostMethod: method };
+      const next: ButcherSettings = {
+        ...settings,
+        defaultCostMethod: method,
+        allowCompleteWithoutStock: allowWithoutStock,
+      };
       await butcherProductionAPI.saveSettings(next);
       onSaved(next);
     } finally {
@@ -1513,6 +1915,24 @@ function SettingsPanel({
           <option key={m.id} value={m.id}>{tm(m.labelKey)}</option>
         ))}
       </select>
+
+      <label className={cn('flex items-start gap-3 cursor-pointer rounded-lg border p-3', darkMode ? 'border-gray-600' : 'border-slate-200')}>
+        <input
+          type="checkbox"
+          className="mt-0.5"
+          checked={allowWithoutStock}
+          onChange={(e) => setAllowWithoutStock(e.target.checked)}
+        />
+        <span className="space-y-1">
+          <span className={cn('block text-sm font-semibold', darkMode ? 'text-gray-100' : 'text-slate-800')}>
+            {tm('butcherAllowWithoutStock')}
+          </span>
+          <span className={cn('block text-xs', darkMode ? 'text-gray-400' : 'text-slate-500')}>
+            {tm('butcherAllowWithoutStockHint')}
+          </span>
+        </span>
+      </label>
+
       <Button type="button" className="bg-amber-600 hover:bg-amber-700 text-white" disabled={saving} onClick={() => void save()}>
         <Save className="w-4 h-4 mr-1" /> {tm('save')}
       </Button>

@@ -92,6 +92,8 @@ export interface ButcherOrder {
 export interface ButcherSettings {
   defaultCostMethod: ButcherCostMethod;
   defaultWarehouseId?: string | null;
+  /** true: yetersiz girdi stoğunda üretim tamamlanabilir (alış sonrası belge ile tamamlanır) */
+  allowCompleteWithoutStock?: boolean;
 }
 
 async function productNameMap(ids: string[]): Promise<Map<string, string>> {
@@ -195,40 +197,78 @@ export const butcherProductionAPI = {
     } catch (e) {
       console.warn('[ButcherAPI] ensureTables:', e);
     }
+    try {
+      const px = firmTablePrefix();
+      await postgres.query(
+        `ALTER TABLE ${px}_butcher_settings
+         ADD COLUMN IF NOT EXISTS allow_complete_without_stock BOOLEAN NOT NULL DEFAULT true`,
+      );
+    } catch (e) {
+      console.warn('[ButcherAPI] allow_complete_without_stock:', e);
+    }
   },
 
   async getSettings(): Promise<ButcherSettings> {
     await this.ensureTables();
     const px = firmTablePrefix();
-    const { rows } = await postgres.query(
-      `SELECT default_cost_method, default_warehouse_id FROM ${px}_butcher_settings LIMIT 1`,
-    );
-    if (!rows.length) {
-      return { defaultCostMethod: 'by_weight', defaultWarehouseId: null };
+    try {
+      const { rows } = await postgres.query(
+        `SELECT default_cost_method, default_warehouse_id, allow_complete_without_stock
+         FROM ${px}_butcher_settings LIMIT 1`,
+      );
+      if (!rows.length) {
+        return {
+          defaultCostMethod: 'by_weight',
+          defaultWarehouseId: null,
+          allowCompleteWithoutStock: true,
+        };
+      }
+      return {
+        defaultCostMethod: (rows[0].default_cost_method || 'by_weight') as ButcherCostMethod,
+        defaultWarehouseId: rows[0].default_warehouse_id ?? null,
+        allowCompleteWithoutStock: rows[0].allow_complete_without_stock !== false,
+      };
+    } catch {
+      const { rows } = await postgres.query(
+        `SELECT default_cost_method, default_warehouse_id FROM ${px}_butcher_settings LIMIT 1`,
+      );
+      if (!rows.length) {
+        return {
+          defaultCostMethod: 'by_weight',
+          defaultWarehouseId: null,
+          allowCompleteWithoutStock: true,
+        };
+      }
+      return {
+        defaultCostMethod: (rows[0].default_cost_method || 'by_weight') as ButcherCostMethod,
+        defaultWarehouseId: rows[0].default_warehouse_id ?? null,
+        allowCompleteWithoutStock: true,
+      };
     }
-    return {
-      defaultCostMethod: (rows[0].default_cost_method || 'by_weight') as ButcherCostMethod,
-      defaultWarehouseId: rows[0].default_warehouse_id ?? null,
-    };
   },
 
   async saveSettings(settings: ButcherSettings): Promise<void> {
     await this.ensureTables();
     const px = firmTablePrefix();
     const firm = padFirmNr();
+    const allow = settings.allowCompleteWithoutStock !== false;
     const { rows } = await postgres.query(`SELECT id FROM ${px}_butcher_settings LIMIT 1`);
     if (rows.length) {
       await postgres.query(
         `UPDATE ${px}_butcher_settings
-         SET default_cost_method = $1, default_warehouse_id = $2, updated_at = CURRENT_TIMESTAMP
-         WHERE id = $3`,
-        [settings.defaultCostMethod, settings.defaultWarehouseId ?? null, rows[0].id],
+         SET default_cost_method = $1,
+             default_warehouse_id = $2,
+             allow_complete_without_stock = $3,
+             updated_at = CURRENT_TIMESTAMP
+         WHERE id = $4`,
+        [settings.defaultCostMethod, settings.defaultWarehouseId ?? null, allow, rows[0].id],
       );
     } else {
       await postgres.query(
-        `INSERT INTO ${px}_butcher_settings (firm_nr, default_cost_method, default_warehouse_id)
-         VALUES ($1, $2, $3)`,
-        [firm, settings.defaultCostMethod, settings.defaultWarehouseId ?? null],
+        `INSERT INTO ${px}_butcher_settings
+           (firm_nr, default_cost_method, default_warehouse_id, allow_complete_without_stock)
+         VALUES ($1, $2, $3, $4)`,
+        [firm, settings.defaultCostMethod, settings.defaultWarehouseId ?? null, allow],
       );
     }
   },

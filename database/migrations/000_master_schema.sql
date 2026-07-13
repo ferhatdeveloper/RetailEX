@@ -2928,8 +2928,13 @@ BEGIN
       firm_nr VARCHAR(10) NOT NULL,
       default_cost_method VARCHAR(30) NOT NULL DEFAULT ''by_weight'',
       default_warehouse_id UUID,
+      allow_complete_without_stock BOOLEAN NOT NULL DEFAULT true,
       updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
     );',
+    v_prefix || '_butcher_settings'
+  );
+  EXECUTE format(
+    'ALTER TABLE public.%I ADD COLUMN IF NOT EXISTS allow_complete_without_stock BOOLEAN NOT NULL DEFAULT true',
     v_prefix || '_butcher_settings'
   );
   EXECUTE format(

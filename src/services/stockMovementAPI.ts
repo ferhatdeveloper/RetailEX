@@ -779,6 +779,65 @@ class StockMovementAPI {
             throw error;
         }
     }
+
+    /**
+     * Kasap üretim fişi (KU-…) için stok hareketleri — document_no / description eşleşmesi.
+     */
+    async listByOrderDocumentNo(orderNo: string): Promise<
+        Array<{
+            document_no: string;
+            movement_type: string;
+            trcode: number;
+            description?: string;
+            created_at?: string;
+            product_id: string;
+            product_name?: string;
+            product_code?: string;
+            quantity: number;
+            unit_price: number;
+            cost_price: number;
+            notes?: string;
+            product_stock?: number;
+        }>
+    > {
+        const q = String(orderNo || '').trim();
+        if (!q) return [];
+        const firmNr = padFirmNr();
+        const periodNr = padPeriodNr();
+        const fp = { firmNr, periodNr };
+        try {
+            const { rows } = await postgres.query(
+                `SELECT m.document_no, m.movement_type, m.trcode, m.description, m.created_at,
+                        i.product_id::text AS product_id, i.quantity, i.unit_price, i.cost_price, i.notes,
+                        p.name AS product_name, p.code AS product_code, p.stock AS product_stock
+                 FROM stock_movements m
+                 JOIN stock_movement_items i ON i.movement_id = m.id
+                 LEFT JOIN products p ON p.id = i.product_id
+                 WHERE m.document_no LIKE $1 OR m.description ILIKE $2
+                 ORDER BY m.created_at ASC, m.document_no ASC`,
+                [`${q}%`, `%${q}%`],
+                fp,
+            );
+            return (rows || []).map((r: any) => ({
+                document_no: String(r.document_no || ''),
+                movement_type: String(r.movement_type || ''),
+                trcode: Number(r.trcode) || 0,
+                description: r.description ?? undefined,
+                created_at: r.created_at ?? undefined,
+                product_id: String(r.product_id || ''),
+                product_name: r.product_name ?? undefined,
+                product_code: r.product_code ?? undefined,
+                quantity: Number(r.quantity) || 0,
+                unit_price: Number(r.unit_price) || 0,
+                cost_price: Number(r.cost_price) || 0,
+                notes: r.notes ?? undefined,
+                product_stock: r.product_stock != null ? Number(r.product_stock) : undefined,
+            }));
+        } catch (error) {
+            console.error('[StockMovementAPI] listByOrderDocumentNo failed:', error);
+            return [];
+        }
+    }
 }
 
 export const stockMovementAPI = new StockMovementAPI();
