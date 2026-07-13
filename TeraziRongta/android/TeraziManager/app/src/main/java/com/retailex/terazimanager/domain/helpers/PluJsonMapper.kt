@@ -32,7 +32,7 @@ object PluJsonMapper {
             put("WeightUnit", mapWeightUnit(product.unit))
             put("Deptment", department)
             put("Tare", 0)
-            put("ShlefTime", 15)
+            put("ShlefTime", clampShelfDays(product.shelfLifeDays))
             put("PackageType", 0)
             put("PackageWeight", 0)
             put("Tolerance", 0)
@@ -82,6 +82,13 @@ object PluJsonMapper {
     }
 
     fun getPluBarcode(json: JSONObject): String = json.optString("Code", "").trim()
+
+    /** Rongta ShlefTime 0-365; 0/eksik ise varsayilan 15 gun. */
+    fun clampShelfDays(days: Int): Int = when {
+        days <= 0 -> 15
+        days > 365 -> 365
+        else -> days
+    }
 
     fun mapWeightUnit(unit: String?): Int {
         if (unit.isNullOrEmpty()) return 4

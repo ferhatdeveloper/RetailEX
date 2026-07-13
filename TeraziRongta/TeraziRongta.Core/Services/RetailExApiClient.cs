@@ -317,6 +317,7 @@ namespace TeraziRongta.Core.Services
                 ExternalId = FirstString(row, "id", "item_id", "product_id"),
                 IsActive = isActive,
                 HasExplicitPlu = hasExplicit,
+                ShelfLifeDays = ParseInt(row, "shelf_life_days", "shelfLifeDays", "ShlefTime", 0),
             };
         }
 

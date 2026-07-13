@@ -18,6 +18,8 @@ namespace TeraziRongta.Core.Models
         public bool IsActive { get; set; } = true;
         /// <summary>API'den gelen plu_code doluysa true; otomatik atama ayirt etmek icin.</summary>
         public bool HasExplicitPlu { get; set; }
+        /// <summary>RetailEX shelf_life_days (gun). Etikette SKT = basim tarihi + ShlefTime.</summary>
+        public int ShelfLifeDays { get; set; }
     }
 
     public class SyncResult

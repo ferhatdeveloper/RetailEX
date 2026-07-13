@@ -12,6 +12,8 @@ data class ScaleProductDto(
     val externalId: String? = null,
     val isActive: Boolean = true,
     val hasExplicitPlu: Boolean = false,
+    /** RetailEX shelf_life_days (gun). Etiket SKT = basim + ShlefTime. */
+    val shelfLifeDays: Int = 0,
 )
 
 data class ScalePluDefaults(

@@ -37,7 +37,7 @@ namespace TeraziRongta.Core.Helpers
                 ["WeightUnit"] = MapWeightUnit(product.Unit),
                 ["Deptment"] = department,
                 ["Tare"] = 0,
-                ["ShlefTime"] = 15,
+                ["ShlefTime"] = ClampShelfDays(product.ShelfLifeDays),
                 ["PackageType"] = 0,
                 ["PackageWeight"] = 0,
                 ["Tolerance"] = 0,
@@ -72,9 +72,10 @@ namespace TeraziRongta.Core.Helpers
             // UnitPrice, PluName, Code, BarCode, WeightUnit, Deptment: API/RetailEX gelen deger gecerli.
             // PackageType/PackageWeight/Tolerance cihazdan KORUNMAZ: terazide eski paket limiti
             // (ornegin 10 kg) kalirsa etiket barkodu 10 kg uzerinde basılmaz.
+            // ShlefTime cihazdan korunmaz: RetailEX shelf_life_days / gelen API degeri gecerli.
             foreach (var field in new[]
             {
-                "Tare", "ShlefTime",
+                "Tare",
                 "Message1", "Message2", "LabelId", "Reserved2", "Rebate", "Account", "QtyUnit"
             })
             {
@@ -132,7 +133,7 @@ namespace TeraziRongta.Core.Helpers
                 ["WeightUnit"] = ResolveWeightUnit(rec),
                 ["Deptment"] = ResolveInt(rec, "department", "Deptment", ResolveInt(rec, "department_id", "departmentId", 21)),
                 ["Tare"] = ResolveDouble(rec, "tareGrams", "Tare", 0),
-                ["ShlefTime"] = ResolveInt(rec, "shelfDays", "ShlefTime", 15),
+                ["ShlefTime"] = ClampShelfDays(ResolveShelfDays(rec)),
                 ["PackageType"] = ResolveInt(rec, "packageType", "PackageType", 0),
                 ["PackageWeight"] = ResolveDouble(rec, "packageWeight", "PackageWeight", 0),
                 ["Tolerance"] = ResolveInt(rec, "tolerance", "Tolerance", 0),
@@ -198,6 +199,27 @@ namespace TeraziRongta.Core.Helpers
             if (existingName.Length == 0 || incomingName.Length == 0) return false;
 
             return !string.Equals(existingName, incomingName, StringComparison.OrdinalIgnoreCase);
+        }
+
+        /// <summary>Rongta ShlefTime 0-365; 0/eksik ise varsayilan 15 gun.</summary>
+        public static int ClampShelfDays(int days)
+        {
+            if (days <= 0) return 15;
+            if (days > 365) return 365;
+            return days;
+        }
+
+        private static int ResolveShelfDays(JObject rec)
+        {
+            foreach (var key in new[] { "shelf_life_days", "shelfLifeDays", "shelfDays", "shelfLife", "ShlefTime" })
+            {
+                if (rec[key] != null && int.TryParse(rec[key].ToString(), out var v) && v > 0)
+                {
+                    return v;
+                }
+            }
+
+            return 15;
         }
 
         private static int ResolveInt(JObject rec, string a, string b, int fallback)

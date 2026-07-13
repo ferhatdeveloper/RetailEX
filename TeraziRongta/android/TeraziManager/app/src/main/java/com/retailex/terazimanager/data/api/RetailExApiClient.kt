@@ -175,6 +175,7 @@ class RetailExApiClient(
                 externalId = firstString(row, "id", "item_id", "product_id"),
                 isActive = isActive,
                 hasExplicitPlu = hasExplicit,
+                shelfLifeDays = parseInt(row, "shelf_life_days", "shelfLifeDays", "ShlefTime", 0),
             )
         }
 
