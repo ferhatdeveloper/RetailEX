@@ -58,6 +58,41 @@ function invoiceLineStockQuantity(item: Record<string, unknown>): number {
   });
 }
 
+/**
+ * Fatura satırının ürün kartı stokuna etkisi.
+ * Logo: trcode 6 = alış iade → stok düşer (kategori yanlışlıkla Alis olsa bile).
+ */
+function invoiceLineStockDelta(
+  category: string | undefined,
+  trcode: number,
+  baseQty: number
+): number {
+  if (!baseQty || !Number.isFinite(baseQty)) return 0;
+  const tc = Number(trcode) || 0;
+  // Alış iade (6) / satış iade stok çıkışı (2): her zaman eksi
+  if (tc === 6 || tc === 2) return -baseQty;
+  if (category === 'Alis') return baseQty;
+  if (category === 'Satis') return -baseQty;
+  if (category === 'Iade') {
+    // 3 = satıştan iade (stok girer)
+    if (tc === 3) return baseQty;
+    return baseQty;
+  }
+  return 0;
+}
+
+function resolveSaleItemProductUuid(item: {
+  productId?: unknown;
+  code?: unknown;
+}): string | null {
+  const candidates = [item.productId, item.code];
+  for (const c of candidates) {
+    const s = String(c ?? '').trim();
+    if (isValidUuid(s)) return s;
+  }
+  return null;
+}
+
 /** Restoran `closeBill` notu — ERP fatura silinince adisyon da iptal */
 function extractRestOrderIdFromInvoiceNotes(notes?: string | null): string | null {
   if (!notes || typeof notes !== 'string') return null;
@@ -377,14 +412,7 @@ async function collectInvoiceStockDeltasByProduct(inv: Invoice, trcode: number):
     const productId = item.code || item.productId;
     if (!productId) continue;
     const baseQty = invoiceLineStockQuantity(item as Record<string, unknown>);
-    let stockModifier = 0;
-    if (category === 'Alis') stockModifier = baseQty;
-    else if (category === 'Satis') stockModifier = -baseQty;
-    else if (category === 'Iade') {
-      if (Number(trcode) === 3) stockModifier = baseQty;
-      else if (Number(trcode) === 2 || Number(trcode) === 6) stockModifier = -baseQty;
-      else stockModifier = baseQty;
-    }
+    const stockModifier = invoiceLineStockDelta(category, Number(trcode), baseQty);
     if (stockModifier === 0) continue;
 
     const prod = await resolveProductForStockLine(String(productId).trim());
@@ -662,11 +690,13 @@ async function createInvoiceViaPostgrest(invoice: Invoice, opts: {
       const baseQty = invoiceLineStockQuantity(item as Record<string, unknown>);
       const unitPriceFC = Number((item as any).unitPriceFC || item.unitPrice || item.price || 0);
       const itemCurrency = String((item as any).currency || (invoice as any).currency || 'IQD');
+      const productUuid = resolveSaleItemProductUuid(item as { productId?: unknown; code?: unknown });
       return {
         id: self.crypto.randomUUID(),
         invoice_id: invoiceId,
         firm_nr: String(opts.firmNr),
         period_nr: String(opts.periodNr),
+        product_id: productUuid,
         item_code: String(item.code || item.productId || ''),
         item_name: String(item.description || item.productName || ''),
         quantity: Number(item.quantity || 0),
@@ -688,24 +718,28 @@ async function createInvoiceViaPostgrest(invoice: Invoice, opts: {
         item_type: invoiceLineTypeToDb((item as any).type),
       };
     });
-    const itemLegacyList = invoice.items.map((item) => ({
-      id: self.crypto.randomUUID(),
-      invoice_id: invoiceId,
-      firm_nr: String(opts.firmNr),
-      period_nr: String(opts.periodNr),
-      item_code: String(item.code || item.productId || ''),
-      item_name: String(item.description || item.productName || ''),
-      quantity: Number(item.quantity || 0),
-      unit: String((item as any).unit || 'Adet'),
-      unit_price: Number(item.unitPrice || item.price || 0),
-      discount_rate: Number(item.discount || 0),
-      vat_rate: Number((item as any).taxRate || (item as any).vat_rate || 0),
-      total_amount: Number(item.total || item.netAmount || 0),
-      net_amount: Number(item.netAmount || item.total || 0),
-      // SKT/parti — enhanced INSERT düşerse legacy yolda da kaybolmasın
-      expiry_date: invoiceLineDateOrNull((item as any).expiryDate),
-      batch_no: String((item as any).batchNo || '').trim() || null,
-    }));
+    const itemLegacyList = invoice.items.map((item) => {
+      const productUuid = resolveSaleItemProductUuid(item as { productId?: unknown; code?: unknown });
+      return {
+        id: self.crypto.randomUUID(),
+        invoice_id: invoiceId,
+        firm_nr: String(opts.firmNr),
+        period_nr: String(opts.periodNr),
+        product_id: productUuid,
+        item_code: String(item.code || item.productId || ''),
+        item_name: String(item.description || item.productName || ''),
+        quantity: Number(item.quantity || 0),
+        unit: String((item as any).unit || 'Adet'),
+        unit_price: Number(item.unitPrice || item.price || 0),
+        discount_rate: Number(item.discount || 0),
+        vat_rate: Number((item as any).taxRate || (item as any).vat_rate || 0),
+        total_amount: Number(item.total || item.netAmount || 0),
+        net_amount: Number(item.netAmount || item.total || 0),
+        // SKT/parti — enhanced INSERT düşerse legacy yolda da kaybolmasın
+        expiry_date: invoiceLineDateOrNull((item as any).expiryDate),
+        batch_no: String((item as any).batchNo || '').trim() || null,
+      };
+    });
     try {
       await postgrest.post<any>(itemsTable, itemEnhancedList, { schema: 'public', prefer: 'return=minimal' });
     } catch {
@@ -759,14 +793,7 @@ async function applyInvoiceStockUpdatesRestApi(
     const productId = item.code || item.productId;
     if (!productId) continue;
     const baseQty = invoiceLineStockQuantity(item as Record<string, unknown>);
-    let stockModifier = 0;
-    if (category === 'Alis') stockModifier = baseQty;
-    else if (category === 'Satis') stockModifier = -baseQty;
-    else if (category === 'Iade') {
-      if (trcode === 3) stockModifier = baseQty;
-      else if (trcode === 2 || trcode === 6) stockModifier = -baseQty;
-      else stockModifier = baseQty;
-    }
+    const stockModifier = invoiceLineStockDelta(category, trcode, baseQty);
     if (stockModifier === 0) continue;
 
     const prod = await resolveProductForStockLine(String(productId).trim());
@@ -1102,7 +1129,7 @@ export const invoicesAPI = {
 
       // 2. Insert invoice items (tek INSERT) + 3. stok güncellemeleri paralel
       if (invoice.items && invoice.items.length > 0) {
-        const COLS = 23;
+        const COLS = 24;
         const rowTuples: string[] = [];
         const flatParams: unknown[] = [];
 
@@ -1111,6 +1138,7 @@ export const invoicesAPI = {
         for (let idx = 0; idx < invoice.items.length; idx++) {
           const item = invoice.items[idx]!;
           const productId = item.code || item.productId;
+          const productUuid = resolveSaleItemProductUuid(item as { productId?: unknown; code?: unknown });
           const unitMultiplier = Number((item as any).multiplier || 1);
           const baseQty = invoiceLineStockQuantity(item as Record<string, unknown>);
           const unitPriceFC = Number((item as any).unitPriceFC || item.unitPrice || item.price || 0);
@@ -1122,11 +1150,11 @@ export const invoicesAPI = {
             `$${base + 2}::text::uuid`,
             `$${base + 3}::text`,
             `$${base + 4}::text`,
-            `$${base + 5}::text`,
+            `$${base + 5}::uuid`,
             `$${base + 6}::text`,
-            `$${base + 7}::text::numeric`,
-            `$${base + 8}::text`,
-            `$${base + 9}::text::numeric`,
+            `$${base + 7}::text`,
+            `$${base + 8}::text::numeric`,
+            `$${base + 9}::text`,
             `$${base + 10}::text::numeric`,
             `$${base + 11}::text::numeric`,
             `$${base + 12}::text::numeric`,
@@ -1137,10 +1165,11 @@ export const invoicesAPI = {
             `$${base + 17}::text::numeric`,
             `$${base + 18}::text::numeric`,
             `$${base + 19}::text::numeric`,
-            `$${base + 20}::text`,
-            `$${base + 21}::date`,
-            `$${base + 22}::text`,
+            `$${base + 20}::text::numeric`,
+            `$${base + 21}::text`,
+            `$${base + 22}::date`,
             `$${base + 23}::text`,
+            `$${base + 24}::text`,
           ];
           rowTuples.push(`(${ph.join(', ')})`);
 
@@ -1149,7 +1178,8 @@ export const invoicesAPI = {
             invoiceId,
             String(firmNr),
             String(periodNr),
-            String(productId),
+            productUuid,
+            String(productId || ''),
             String(item.description || item.productName),
             Number(item.quantity),
             String((item as any).unit || 'Adet'),
@@ -1172,14 +1202,11 @@ export const invoicesAPI = {
 
           const isStockLine = isInvoiceStockLineType((item as any).type, invoice.invoice_category);
           if (productId && isStockLine) {
-            let stockModifier = 0;
-            if (invoice.invoice_category === 'Alis') stockModifier = baseQty;
-            else if (invoice.invoice_category === 'Satis') stockModifier = -baseQty;
-            else if (invoice.invoice_category === 'Iade') {
-              if (Number(trcode) === 3) stockModifier = baseQty;
-              else if (Number(trcode) === 2 || Number(trcode) === 6) stockModifier = -baseQty;
-              else stockModifier = baseQty;
-            }
+            const stockModifier = invoiceLineStockDelta(
+              invoice.invoice_category,
+              Number(trcode),
+              baseQty
+            );
 
             if (stockModifier !== 0 && !createOptions?.skipProductStockUpdate) {
               const pid = String(productId).trim();
@@ -1232,7 +1259,7 @@ export const invoicesAPI = {
         await postgres.query(
           `INSERT INTO sale_items (
                 id,
-                invoice_id, firm_nr, period_nr, item_code, item_name,
+                invoice_id, firm_nr, period_nr, product_id, item_code, item_name,
                 quantity, unit, unit_price, discount_rate, vat_rate,
                 total_amount, net_amount,
                 unit_cost, total_cost, gross_profit,
@@ -1934,11 +1961,13 @@ export const invoicesAPI = {
             const baseQty = invoiceLineStockQuantity(item as Record<string, unknown>);
             const unitPriceFC = Number((item as any).unitPriceFC || item.unitPrice || item.price || 0);
             const itemCurrency = String((item as any).currency || (invoice as any).currency || 'IQD');
+            const productUuid = resolveSaleItemProductUuid(item as { productId?: unknown; code?: unknown });
             const itemEnhanced: Record<string, unknown> = {
               id: self.crypto.randomUUID(),
               invoice_id: cleanId,
               firm_nr: String(fn),
               period_nr: String(pn),
+              product_id: productUuid,
               item_code: String(productId || ''),
               item_name: String(item.description || item.productName || ''),
               quantity: Number(item.quantity || 0),
@@ -1964,6 +1993,7 @@ export const invoicesAPI = {
               invoice_id: cleanId,
               firm_nr: String(fn),
               period_nr: String(pn),
+              product_id: productUuid,
               item_code: String(productId || ''),
               item_name: String(item.description || item.productName || ''),
               quantity: Number(item.quantity || 0),
@@ -2037,29 +2067,31 @@ export const invoicesAPI = {
         await postgres.query(`DELETE FROM sale_items WHERE invoice_id::text::uuid = $1::text::uuid`, [id], sqlOpts);
         for (const item of invoice.items) {
           const productId = item.code || item.productId;
+          const productUuid = resolveSaleItemProductUuid(item as { productId?: unknown; code?: unknown });
           const unitMultiplier = Number((item as any).multiplier || 1);
           const baseQty = invoiceLineStockQuantity(item as Record<string, unknown>);
           const unitPriceFC = Number((item as any).unitPriceFC || item.unitPrice || item.price || 0);
           const itemCurrency = String((item as any).currency || (invoice as any).currency || 'IQD');
           await postgres.query(
             `INSERT INTO sale_items (
-                invoice_id, firm_nr, period_nr, item_code, item_name,
+                invoice_id, firm_nr, period_nr, product_id, item_code, item_name,
                 quantity, unit, unit_price, discount_rate, vat_rate,
                 total_amount, net_amount,
                 unit_cost, total_cost, gross_profit,
                 unit_multiplier, base_quantity, unit_price_fc, currency,
                 expiry_date, batch_no, item_type
-             ) VALUES ($1::text::uuid, $2::text, $3::text, $4::text, $5::text,
-               $6::text::numeric, $7::text, $8::text::numeric, $9::text::numeric, $10::text::numeric,
-               $11::text::numeric, $12::text::numeric,
-               $13::text::numeric, $14::text::numeric, $15::text::numeric,
-               $16::text::numeric, $17::text::numeric, $18::text::numeric, $19::text,
-               $20::date, $21::text, $22::text)`,
+             ) VALUES ($1::text::uuid, $2::text, $3::text, $4::uuid, $5::text, $6::text,
+               $7::text::numeric, $8::text, $9::text::numeric, $10::text::numeric, $11::text::numeric,
+               $12::text::numeric, $13::text::numeric,
+               $14::text::numeric, $15::text::numeric, $16::text::numeric,
+               $17::text::numeric, $18::text::numeric, $19::text::numeric, $20::text,
+               $21::date, $22::text, $23::text)`,
             [
               id,
               String(fn0),
               String(pn0),
-              String(productId),
+              productUuid,
+              String(productId || ''),
               String(item.description || item.productName),
               Number(item.quantity),
               String((item as any).unit || 'Adet'),

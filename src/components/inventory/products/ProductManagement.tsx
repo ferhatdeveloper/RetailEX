@@ -19,6 +19,8 @@ import {
 import { ContextMenu } from '../../shared/ContextMenu';
 import { formatNumber, formatCurrency as formatAmountWithCode } from '../../../utils/formatNumber';
 import { formatCurrency } from '../../../utils/currency';
+import { formatScaleQuantityDisplay } from '../../../utils/scaleQuantity';
+import { isProductStockLow, isWeightBasedUnit } from '../../../utils/productUnits';
 import { toast } from 'sonner';
 import {
   Package,
@@ -753,7 +755,10 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
                     const selected = selectedProducts.some((s) => s.id === p.id);
                     const stockN = Number(p.stock ?? 0);
                     const safeStock = Number.isFinite(stockN) ? stockN : 0;
-                    const low = safeStock < 10;
+                    const low = isProductStockLow(p, safeStock);
+                    const stockLabel = isWeightBasedUnit(p.unit)
+                      ? formatScaleQuantityDisplay(safeStock, p.unit)
+                      : String(safeStock);
                     const code = (p.barcode || p.code || '—').trim();
                     return (
                       <div
@@ -849,7 +854,7 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
                                   : 'bg-emerald-50 text-emerald-800 ring-1 ring-emerald-200/70'
                               }`}
                             >
-                              {tm('stock')} {safeStock}
+                              {tm('stock')} {stockLabel}
                             </span>
                           </div>
                         </div>
@@ -957,7 +962,9 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
                 ...(showPurchasePricing
                   ? [[tm('purchaseTotal').toUpperCase(), String(mobileActionProduct.totalPurchased ?? 0)] as [string, string]]
                   : []),
-                [tm('stock').toUpperCase(), String(mobileActionProduct.stock ?? 0)],
+                [tm('stock').toUpperCase(), isWeightBasedUnit(mobileActionProduct.unit)
+                  ? formatScaleQuantityDisplay(Number(mobileActionProduct.stock ?? 0), mobileActionProduct.unit)
+                  : String(mobileActionProduct.stock ?? 0)],
                 [tm('unit').toUpperCase(), mobileActionProduct.unit || '—'],
               ].map(([label, val]) => (
                 <div key={String(label)} className="flex justify-between gap-3 border-b border-gray-50 pb-2 last:border-0">

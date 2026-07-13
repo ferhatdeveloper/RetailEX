@@ -10,7 +10,7 @@
 
 import { loadRemotePgDefaults } from '../../database/scripts/pg-endpoint-parse.mjs';
 
-const PURCHASE_TRCODES = [1, 4, 5, 6, 13, 26, 41, 42];
+const PURCHASE_TRCODES = [1, 4, 5, 13, 26, 41, 42];
 const SALES_TRCODES = [7, 8, 9, 14, 29, 30, 31, 32];
 const RETURN_TRCODES = [2, 3, 6];
 
@@ -62,10 +62,10 @@ invoice_delta AS (
   SELECT p.id AS product_id,
     SUM(
       CASE
-        WHEN l.trcode IN (${purchaseIn}) OR l.fiche_type = 'purchase_invoice' THEN l.base_qty
-        WHEN l.trcode IN (${salesIn}) OR l.fiche_type = 'sales_invoice' THEN -l.base_qty
         WHEN l.trcode IN (${returnIn}) OR l.fiche_type = 'return_invoice' THEN
           CASE WHEN l.trcode IN (2, 6) THEN -l.base_qty ELSE l.base_qty END
+        WHEN l.trcode IN (${purchaseIn}) OR (l.fiche_type = 'purchase_invoice' AND COALESCE(l.trcode, 0) NOT IN (${returnIn})) THEN l.base_qty
+        WHEN l.trcode IN (${salesIn}) OR l.fiche_type = 'sales_invoice' THEN -l.base_qty
         ELSE 0
       END
     ) AS delta
@@ -128,6 +128,7 @@ WHERE p.is_active IS DISTINCT FROM false;
 function buildDriftSql(productsTable, salesTable, saleItemsTable, movementsTable, movementItemsTable, limit) {
   const purchaseIn = PURCHASE_TRCODES.join(',');
   const salesIn = SALES_TRCODES.join(',');
+  const returnIn = RETURN_TRCODES.join(',');
   return `
 WITH line_qty AS (
   SELECT si.product_id, si.item_code, s.trcode, s.fiche_type,
@@ -140,7 +141,9 @@ WITH line_qty AS (
 invoice_delta AS (
   SELECT p.id AS product_id,
     SUM(CASE
-      WHEN l.trcode IN (${purchaseIn}) OR l.fiche_type = 'purchase_invoice' THEN l.base_qty
+      WHEN l.trcode IN (${returnIn}) OR l.fiche_type = 'return_invoice' THEN
+        CASE WHEN l.trcode IN (2, 6) THEN -l.base_qty ELSE l.base_qty END
+      WHEN l.trcode IN (${purchaseIn}) OR (l.fiche_type = 'purchase_invoice' AND COALESCE(l.trcode, 0) NOT IN (${returnIn})) THEN l.base_qty
       WHEN l.trcode IN (${salesIn}) OR l.fiche_type = 'sales_invoice' THEN -l.base_qty
       ELSE 0 END) AS delta
   FROM line_qty l

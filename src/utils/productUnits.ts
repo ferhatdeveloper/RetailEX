@@ -56,3 +56,33 @@ export function productUnitLabel(unit?: string | null): string {
   if (u === 'LITRE' || u === 'LITER' || u === 'LİTRE') return 'LT';
   return u;
 }
+
+type StockThresholdProduct = {
+  stock?: number | null;
+  unit?: string | null;
+  minStock?: number | null;
+  min_stock?: number | null;
+  criticalStock?: number | null;
+  critical_stock?: number | null;
+};
+
+/**
+ * Ürün listesi düşük stok: min/kritik kart eşikleri.
+ * Ağırlık biriminde sabit <10 kullanılmaz (4,48 kg yanlışlıkla kırmızı olmasın).
+ * Eşik yoksa yalnızca stok ≤ 0 kırmızı; adet biriminde eski <10 yedeği.
+ */
+export function isProductStockLow(product: StockThresholdProduct, stockOverride?: number): boolean {
+  const stock = Number.isFinite(stockOverride)
+    ? Number(stockOverride)
+    : Number(product.stock ?? 0);
+  if (!Number.isFinite(stock)) return false;
+  if (stock <= 0) return true;
+
+  const critical = Number(product.criticalStock ?? product.critical_stock ?? 0);
+  const min = Number(product.minStock ?? product.min_stock ?? 0);
+  const threshold = critical > 0 ? critical : min > 0 ? min : 0;
+  if (threshold > 0) return stock <= threshold;
+
+  if (isWeightBasedUnit(product.unit)) return false;
+  return stock < 10;
+}

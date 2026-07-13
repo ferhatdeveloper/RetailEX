@@ -4,6 +4,8 @@ import { createColumnHelper } from '@tanstack/react-table';
 import type { Product } from '../../../core/types';
 import { formatCurrency as formatAmountWithCode } from '../../../utils/formatNumber';
 import { formatCurrency } from '../../../utils/currency';
+import { formatScaleQuantityDisplay } from '../../../utils/scaleQuantity';
+import { isProductStockLow, isWeightBasedUnit } from '../../../utils/productUnits';
 
 export const PRODUCT_COLUMN_VISIBILITY_KEY = 'retailex_productManagement_columnVisibility_v2';
 
@@ -222,11 +224,16 @@ export function buildProductGridColumns(options: {
       cell: (info) => {
         const raw = info.getValue();
         if (id === 'stock') {
+          const product = info.row.original;
           const stock = typeof raw === 'number' ? raw : Number(raw ?? 0);
           const safeStock = Number.isFinite(stock) ? stock : 0;
+          const low = isProductStockLow(product, safeStock);
+          const display = isWeightBasedUnit(product.unit)
+            ? formatScaleQuantityDisplay(safeStock, product.unit)
+            : String(safeStock);
           return (
-            <span className={safeStock < 10 ? 'text-red-600 font-medium' : 'text-gray-700'}>
-              {safeStock}
+            <span className={low ? 'text-red-600 font-medium' : 'text-gray-700'}>
+              {display}
             </span>
           );
         }

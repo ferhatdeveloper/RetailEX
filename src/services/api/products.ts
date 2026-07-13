@@ -1868,7 +1868,7 @@ export const productAPI = {
       const tableName = `rex_${firmNrPadded()}_products`;
       const firmEq = firmNrPadded();
       const firmRaw = String(ERP_SETTINGS.firmNr ?? '').trim();
-      const normalizedQuantity = Number.isFinite(quantity) ? Math.max(0, quantity) : 0;
+      const normalizedQuantity = Number.isFinite(quantity) ? quantity : 0;
       if (shouldUsePostgrestForCrud()) {
         const { postgrest } = await import('./postgrestClient');
         const firmFilters = [...new Set([firmEq, firmRaw].filter(Boolean))];

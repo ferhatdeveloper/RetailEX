@@ -280,7 +280,7 @@ function App() {
       for (const p of prods) {
         const newStock = stockMap.get(p.id);
         if (newStock === undefined) continue;
-        const normalizedStock = Math.max(0, Number(newStock));
+        const normalizedStock = Number(newStock);
         if (!Number.isFinite(normalizedStock)) {
           logger.warn('[App] Geçersiz stok değeri atlandı', { productId: p.id, rawStock: newStock });
           continue;
