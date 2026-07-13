@@ -1305,9 +1305,6 @@ export const erpReportsAPI = {
           lineCostAmount({
             quantity: absQty,
             lastPurchaseUnit: lpc,
-            totalCost: Number(it.total_cost ?? 0),
-            unitCost: Number(it.unit_cost ?? 0),
-            productCost: Number(prod?.cost ?? 0),
           });
         const gp = revenue - cost;
         const cur = map.get(code) || {

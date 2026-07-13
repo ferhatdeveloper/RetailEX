@@ -1,8 +1,7 @@
 /**
  * Kar-zarar / ürün brüt kâr maliyet kaynağı:
- * 1) Son alış faturası birim tutarı × satış miktarı (ürün id / kod / barkod eşleşmesi)
- * 2) sale_items.total_cost / unit_cost
- * 3) products.cost × miktar
+ * Yalnızca son alış faturası birim tutarı × satış miktarı (ürün id / kod / barkod).
+ * Alış yoksa maliyet = 0 — products.cost / sale_items.total_cost / unit_cost kart veya satış satırı kopyası kullanılmaz.
  *
  * Satır kimliği (kasap vb.):
  * - Satış satırlarında product_id çoğu zaman boş; item_code = ürün UUID
@@ -211,15 +210,13 @@ export const LINE_REVENUE_EXPR = `
 /**
  * product_id (veya UUID item_code) ile son alış; yoksa satır kodu / ürün kartı kodu.
  * Birim (kg/adet) ayrımı yok — ikisi de alış birim tutarı × miktar.
+ * Alış bulunamazsa 0 (kart cost / satış satırı unit_cost / total_cost yok).
  */
 export const LINE_COST_EXPR = `
   COALESCE(
     NULLIF(lpc_id.unit_cost, 0) * si.quantity,
     NULLIF(lpc_code.unit_cost, 0) * si.quantity,
     NULLIF(lpc_pcode.unit_cost, 0) * si.quantity,
-    NULLIF(si.total_cost, 0),
-    NULLIF(si.unit_cost, 0) * si.quantity,
-    NULLIF(p.cost, 0) * si.quantity,
     0
   )
 `.trim();
@@ -282,25 +279,16 @@ export function unitCostFromPurchaseLine(it: {
 }
 
 /**
- * Satır COGS (adet/kg aynı): son alış birim × miktar, yoksa satır/kart.
+ * Satır COGS (adet/kg aynı): yalnızca son alış birim × miktar; alış yoksa 0.
  * İşaret (iade) çağıran tarafta uygulanır.
  */
 export function lineCostAmount(opts: {
   quantity: number;
   lastPurchaseUnit?: number;
-  totalCost?: number;
-  unitCost?: number;
-  productCost?: number;
 }): number {
   const qty = Number(opts.quantity) || 0;
   const lpc = Number(opts.lastPurchaseUnit) || 0;
   if (lpc) return lpc * qty;
-  const tc = Number(opts.totalCost) || 0;
-  if (tc) return tc;
-  const uc = Number(opts.unitCost) || 0;
-  if (uc) return uc * qty;
-  const pc = Number(opts.productCost) || 0;
-  if (pc) return pc * qty;
   return 0;
 }
 

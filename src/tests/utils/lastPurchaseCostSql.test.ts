@@ -3,6 +3,7 @@ import {
   isPlSalesOrReturnFiche,
   isPurchaseFiche,
   isSalesReturnFiche,
+  LINE_COST_EXPR,
   lineCostAmount,
   resolveLineProductId,
   scaleLineRevenueToInvoiceNet,
@@ -10,6 +11,14 @@ import {
 } from '../../utils/lastPurchaseCostSql';
 
 describe('lastPurchaseCostSql — muhasebe yardımcıları', () => {
+  it('LINE_COST_EXPR yalnızca alış CTE birimlerini kullanır (kart/satış cost yok)', () => {
+    expect(LINE_COST_EXPR).toContain('lpc_id.unit_cost');
+    expect(LINE_COST_EXPR).toContain('lpc_code.unit_cost');
+    expect(LINE_COST_EXPR).toContain('lpc_pcode.unit_cost');
+    expect(LINE_COST_EXPR).not.toMatch(/\bp\.cost\b/);
+    expect(LINE_COST_EXPR).not.toContain('si.total_cost');
+    expect(LINE_COST_EXPR).not.toContain('si.unit_cost');
+  });
   it('alış iadesini (trcode 6) son alış saymaz', () => {
     expect(isPurchaseFiche({ fiche_type: 'purchase_invoice', trcode: 6 })).toBe(false);
     expect(isPurchaseFiche({ fiche_type: 'purchase_invoice', trcode: 1 })).toBe(true);
@@ -65,18 +74,13 @@ describe('lastPurchaseCostSql — muhasebe yardımcıları', () => {
       lineCostAmount({
         quantity: 3,
         lastPurchaseUnit: unit,
-        totalCost: 0,
-        unitCost: 0,
-        productCost: 5000,
       }),
     ).toBe(27000);
   });
 
-  it('son alış yoksa satır/kart fallback sırası korunur', () => {
-    expect(lineCostAmount({ quantity: 2, lastPurchaseUnit: 0, totalCost: 100, productCost: 9 })).toBe(
-      100,
-    );
-    expect(lineCostAmount({ quantity: 2, lastPurchaseUnit: 0, unitCost: 7, productCost: 9 })).toBe(14);
-    expect(lineCostAmount({ quantity: 2, lastPurchaseUnit: 0, productCost: 9 })).toBe(18);
+  it('son alış yoksa maliyet 0 (kart / satış satırı cost kullanılmaz)', () => {
+    expect(lineCostAmount({ quantity: 2, lastPurchaseUnit: 0 })).toBe(0);
+    expect(lineCostAmount({ quantity: 2 })).toBe(0);
+    expect(lineCostAmount({ quantity: 5, lastPurchaseUnit: undefined })).toBe(0);
   });
 });
