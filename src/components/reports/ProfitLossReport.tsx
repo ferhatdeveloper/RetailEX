@@ -19,6 +19,100 @@ interface SalesData {
   profitMargin: number;
 }
 
+/** Logo alış trcode — invoices / expiryReports ile aynı */
+const PURCHASE_TRCODES_SQL = '1, 4, 5, 6, 13, 26, 41, 42';
+
+/**
+ * Satır maliyeti (KOBİ):
+ * 1) Son alış faturası birim fiyatı × satış miktarı (ürün id, yoksa kod)
+ * 2) sale_items.total_cost / unit_cost
+ * 3) products.cost × miktar
+ */
+const LAST_PURCHASE_CTE = `
+  last_purchase_by_id AS (
+    SELECT DISTINCT ON (si.product_id)
+      si.product_id,
+      COALESCE(
+        NULLIF(
+          CASE
+            WHEN ABS(COALESCE(si.quantity, 0)) > 0.0000001
+              THEN COALESCE(si.net_amount, 0) / NULLIF(ABS(si.quantity), 0)
+            ELSE NULL
+          END,
+          0
+        ),
+        NULLIF(si.unit_price, 0),
+        NULLIF(si.unit_cost, 0),
+        0
+      ) AS unit_cost
+    FROM sale_items si
+    INNER JOIN sales s ON s.id = si.invoice_id
+    WHERE s.firm_nr = $1
+      AND COALESCE(s.is_cancelled, false) = false
+      AND (
+        LOWER(TRIM(COALESCE(s.fiche_type, ''))) IN ('purchase_invoice', 'a')
+        OR COALESCE(s.trcode, 0) IN (${PURCHASE_TRCODES_SQL})
+      )
+      AND COALESCE(si.item_type, 'Malzeme') NOT IN ('Promosyon', 'İndirim')
+      AND si.product_id IS NOT NULL
+    ORDER BY si.product_id, s.date DESC NULLS LAST, s.created_at DESC NULLS LAST
+  ),
+  last_purchase_by_code AS (
+    SELECT DISTINCT ON (NULLIF(TRIM(si.item_code), ''))
+      NULLIF(TRIM(si.item_code), '') AS item_code,
+      COALESCE(
+        NULLIF(
+          CASE
+            WHEN ABS(COALESCE(si.quantity, 0)) > 0.0000001
+              THEN COALESCE(si.net_amount, 0) / NULLIF(ABS(si.quantity), 0)
+            ELSE NULL
+          END,
+          0
+        ),
+        NULLIF(si.unit_price, 0),
+        NULLIF(si.unit_cost, 0),
+        0
+      ) AS unit_cost
+    FROM sale_items si
+    INNER JOIN sales s ON s.id = si.invoice_id
+    WHERE s.firm_nr = $1
+      AND COALESCE(s.is_cancelled, false) = false
+      AND (
+        LOWER(TRIM(COALESCE(s.fiche_type, ''))) IN ('purchase_invoice', 'a')
+        OR COALESCE(s.trcode, 0) IN (${PURCHASE_TRCODES_SQL})
+      )
+      AND COALESCE(si.item_type, 'Malzeme') NOT IN ('Promosyon', 'İndirim')
+      AND NULLIF(TRIM(si.item_code), '') IS NOT NULL
+    ORDER BY NULLIF(TRIM(si.item_code), ''), s.date DESC NULLS LAST, s.created_at DESC NULLS LAST
+  )
+`.trim();
+
+/** product_id eşleşmesi öncelikli; yoksa ürün kodu ile son alış */
+const LINE_COST_EXPR = `
+  COALESCE(
+    NULLIF(lpc_id.unit_cost, 0) * si.quantity,
+    NULLIF(lpc_code.unit_cost, 0) * si.quantity,
+    NULLIF(si.total_cost, 0),
+    NULLIF(si.unit_cost, 0) * si.quantity,
+    NULLIF(p.cost, 0) * si.quantity,
+    0
+  )
+`.trim();
+
+const LAST_PURCHASE_JOIN = `
+  LEFT JOIN last_purchase_by_id lpc_id ON lpc_id.product_id = si.product_id
+  LEFT JOIN last_purchase_by_code lpc_code
+    ON lpc_code.item_code = NULLIF(TRIM(si.item_code), '')
+`.trim();
+const SALES_FILTER = `
+  s.firm_nr = $1
+  AND COALESCE(s.is_cancelled, false) = false
+  AND ${SQL_COUNTABLE_SALE_STATUS}
+  AND (s.fiche_type = 'sales_invoice' OR s.trcode IN (7, 8))
+  AND (s.date AT TIME ZONE 'UTC')::date >= $2::date
+  AND (s.date AT TIME ZONE 'UTC')::date <= $3::date
+`.trim();
+
 export function ProfitLossReport() {
   const { selectedFirma, selectedDonem } = useFirmaDonem();
   const { tm, language } = useLanguage();
@@ -57,62 +151,42 @@ export function ProfitLossReport() {
       switch (reportType) {
         case 'category':
           sql = `
+            WITH ${LAST_PURCHASE_CTE}
             SELECT
               COALESCE(leaf_cat.id::text, NULLIF(TRIM(COALESCE(p.category_code, '')), ''), 'diger') AS product_code,
               COALESCE(leaf_cat.name, NULLIF(TRIM(COALESCE(p.category_code, '')), ''), 'Diğer') AS product_name,
               SUM(si.quantity) AS quantity,
               SUM(COALESCE(si.net_amount, 0)) AS revenue,
-              SUM(COALESCE(si.total_cost, 0)) AS cost,
-              SUM(
-                COALESCE(
-                  si.gross_profit,
-                  COALESCE(si.net_amount, 0) - COALESCE(si.total_cost, 0)
-                )
-              ) AS profit
+              SUM(${LINE_COST_EXPR}) AS cost,
+              SUM(COALESCE(si.net_amount, 0) - (${LINE_COST_EXPR})) AS profit
             FROM sale_items si
             INNER JOIN sales s ON s.id = si.invoice_id
             LEFT JOIN products p ON p.id = si.product_id AND p.firm_nr = $1
             LEFT JOIN categories leaf_cat ON leaf_cat.id = p.category_id
-            WHERE s.firm_nr = $1
-              AND COALESCE(s.is_cancelled, false) = false
-              AND ${SQL_COUNTABLE_SALE_STATUS}
-              AND (s.fiche_type = 'sales_invoice' OR s.trcode IN (7, 8))
-              AND (s.date AT TIME ZONE 'UTC')::date >= $2::date
-              AND (s.date AT TIME ZONE 'UTC')::date <= $3::date
+            ${LAST_PURCHASE_JOIN}
+            WHERE ${SALES_FILTER}
             GROUP BY
               COALESCE(leaf_cat.id::text, NULLIF(TRIM(COALESCE(p.category_code, '')), ''), 'diger'),
               COALESCE(leaf_cat.name, NULLIF(TRIM(COALESCE(p.category_code, '')), ''), 'Diğer')
             HAVING SUM(ABS(si.quantity)) > 0
-            ORDER BY SUM(
-              COALESCE(
-                si.gross_profit,
-                COALESCE(si.net_amount, 0) - COALESCE(si.total_cost, 0)
-              )
-            ) DESC
+            ORDER BY SUM(COALESCE(si.net_amount, 0) - (${LINE_COST_EXPR})) DESC
           `;
           break;
         case 'daily':
           sql = `
+            WITH ${LAST_PURCHASE_CTE}
             SELECT
               to_char((s.date AT TIME ZONE 'UTC')::date, 'YYYY-MM-DD') AS product_code,
               to_char((s.date AT TIME ZONE 'UTC')::date, 'YYYY-MM-DD') AS product_name,
               SUM(si.quantity) AS quantity,
               SUM(COALESCE(si.net_amount, 0)) AS revenue,
-              SUM(COALESCE(si.total_cost, 0)) AS cost,
-              SUM(
-                COALESCE(
-                  si.gross_profit,
-                  COALESCE(si.net_amount, 0) - COALESCE(si.total_cost, 0)
-                )
-              ) AS profit
+              SUM(${LINE_COST_EXPR}) AS cost,
+              SUM(COALESCE(si.net_amount, 0) - (${LINE_COST_EXPR})) AS profit
             FROM sale_items si
             INNER JOIN sales s ON s.id = si.invoice_id
-            WHERE s.firm_nr = $1
-              AND COALESCE(s.is_cancelled, false) = false
-              AND ${SQL_COUNTABLE_SALE_STATUS}
-              AND (s.fiche_type = 'sales_invoice' OR s.trcode IN (7, 8))
-              AND (s.date AT TIME ZONE 'UTC')::date >= $2::date
-              AND (s.date AT TIME ZONE 'UTC')::date <= $3::date
+            LEFT JOIN products p ON p.id = si.product_id AND p.firm_nr = $1
+            ${LAST_PURCHASE_JOIN}
+            WHERE ${SALES_FILTER}
             GROUP BY (s.date AT TIME ZONE 'UTC')::date
             HAVING SUM(ABS(si.quantity)) > 0
             ORDER BY (s.date AT TIME ZONE 'UTC')::date DESC
@@ -120,26 +194,19 @@ export function ProfitLossReport() {
           break;
         case 'monthly':
           sql = `
+            WITH ${LAST_PURCHASE_CTE}
             SELECT
               to_char(date_trunc('month', s.date AT TIME ZONE 'UTC'), 'YYYY-MM') AS product_code,
               to_char(date_trunc('month', s.date AT TIME ZONE 'UTC'), 'YYYY-MM') AS product_name,
               SUM(si.quantity) AS quantity,
               SUM(COALESCE(si.net_amount, 0)) AS revenue,
-              SUM(COALESCE(si.total_cost, 0)) AS cost,
-              SUM(
-                COALESCE(
-                  si.gross_profit,
-                  COALESCE(si.net_amount, 0) - COALESCE(si.total_cost, 0)
-                )
-              ) AS profit
+              SUM(${LINE_COST_EXPR}) AS cost,
+              SUM(COALESCE(si.net_amount, 0) - (${LINE_COST_EXPR})) AS profit
             FROM sale_items si
             INNER JOIN sales s ON s.id = si.invoice_id
-            WHERE s.firm_nr = $1
-              AND COALESCE(s.is_cancelled, false) = false
-              AND ${SQL_COUNTABLE_SALE_STATUS}
-              AND (s.fiche_type = 'sales_invoice' OR s.trcode IN (7, 8))
-              AND (s.date AT TIME ZONE 'UTC')::date >= $2::date
-              AND (s.date AT TIME ZONE 'UTC')::date <= $3::date
+            LEFT JOIN products p ON p.id = si.product_id AND p.firm_nr = $1
+            ${LAST_PURCHASE_JOIN}
+            WHERE ${SALES_FILTER}
             GROUP BY date_trunc('month', s.date AT TIME ZONE 'UTC')
             HAVING SUM(ABS(si.quantity)) > 0
             ORDER BY date_trunc('month', s.date AT TIME ZONE 'UTC') DESC
@@ -147,37 +214,24 @@ export function ProfitLossReport() {
           break;
         default:
           sql = `
+            WITH ${LAST_PURCHASE_CTE}
             SELECT
               COALESCE(NULLIF(TRIM(si.item_code), ''), p.code, '') AS product_code,
               COALESCE(NULLIF(TRIM(si.item_name), ''), p.name, 'Bilinmeyen') AS product_name,
               SUM(si.quantity) AS quantity,
               SUM(COALESCE(si.net_amount, 0)) AS revenue,
-              SUM(COALESCE(si.total_cost, 0)) AS cost,
-              SUM(
-                COALESCE(
-                  si.gross_profit,
-                  COALESCE(si.net_amount, 0) - COALESCE(si.total_cost, 0)
-                )
-              ) AS profit
+              SUM(${LINE_COST_EXPR}) AS cost,
+              SUM(COALESCE(si.net_amount, 0) - (${LINE_COST_EXPR})) AS profit
             FROM sale_items si
             INNER JOIN sales s ON s.id = si.invoice_id
             LEFT JOIN products p ON p.id = si.product_id AND p.firm_nr = $1
-            WHERE s.firm_nr = $1
-              AND COALESCE(s.is_cancelled, false) = false
-              AND ${SQL_COUNTABLE_SALE_STATUS}
-              AND (s.fiche_type = 'sales_invoice' OR s.trcode IN (7, 8))
-              AND (s.date AT TIME ZONE 'UTC')::date >= $2::date
-              AND (s.date AT TIME ZONE 'UTC')::date <= $3::date
+            ${LAST_PURCHASE_JOIN}
+            WHERE ${SALES_FILTER}
             GROUP BY
               COALESCE(NULLIF(TRIM(si.item_code), ''), p.code, ''),
               COALESCE(NULLIF(TRIM(si.item_name), ''), p.name, 'Bilinmeyen')
             HAVING SUM(ABS(si.quantity)) > 0
-            ORDER BY SUM(
-              COALESCE(
-                si.gross_profit,
-                COALESCE(si.net_amount, 0) - COALESCE(si.total_cost, 0)
-              )
-            ) DESC
+            ORDER BY SUM(COALESCE(si.net_amount, 0) - (${LINE_COST_EXPR})) DESC
           `;
       }
 
@@ -312,6 +366,9 @@ export function ProfitLossReport() {
             </select>
           </div>
         </div>
+        <p className="mt-3 text-xs text-gray-500 leading-relaxed">
+          {tm('reportsPlCostSourceNote')}
+        </p>
       </div>
 
       <div className="grid grid-cols-3 gap-4">

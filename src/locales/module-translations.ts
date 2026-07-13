@@ -6750,6 +6750,12 @@ export const excelModuleTranslations = {
     ar: 'تعذر تحميل تقرير الأرباح والخسائر',
     ku: 'بارکردنی ڕاپۆرتی قازانج و زەرەر سەرکەوتوو نەبوو',
   },
+  reportsPlCostSourceNote: {
+    tr: 'Maliyet kaynağı: öncelik son alış faturası birim tutarı × miktar; yoksa satış satırı / ürün kartı maliyeti.',
+    en: 'Cost source: last purchase invoice unit amount × qty first; else sale line / product card cost.',
+    ar: 'مصدر التكلفة: أولاً سعر وحدة آخر فاتورة شراء × الكمية؛ وإلا تكلفة سطر البيع / بطاقة المنتج.',
+    ku: 'سەرچاوەی تێچوون: یەکەم نرخ یەکەی دوایین پسوڵەی کڕین × بڕ؛ ئەگەرنا تێچوونی هێڵی فرۆشتن / کارتی بەرهەم.',
+  },
   resOrderEmptyTitle: { tr: 'SİPARİŞ BOŞ', en: 'ORDER IS EMPTY', ar: 'الطلب فارغ', ku: 'داواکاری بەتاڵە' },
   resOrderEmptyHint: {
     tr: 'Ürün eklemek için sol taraftaki menüyü kullanın',
