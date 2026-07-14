@@ -1,6 +1,6 @@
 # RetailEX Mobile — TEST_MODULE_REPORT
 
-**Tarih:** 2026-07-14  
+**Tarih:** 2026-07-14 (TEST wave)  
 **Kapsam:** POS, Faturalar, Cari, WMS, Restoran, Güzellik, Finans, Terazi, Raporlar  
 **Ortam:** bridge `http://127.0.0.1:3001` + `config.db` → **lovan** (firm `002` / dönem `01`)  
 **Commit:** yok (yalnızca test + doküman)
@@ -19,11 +19,11 @@
 | Finans | [TEST_SMOKE_FINANCE.md](./TEST_SMOKE_FINANCE.md) | **GEÇTİ** | — | **GEÇTİ** |
 | Terazi | [TEST_SMOKE_SCALE.md](./TEST_SMOKE_SCALE.md) | **KALDI** | — | **KALDI** |
 | Raporlar | [TEST_SMOKE_REPORTS.md](./TEST_SMOKE_REPORTS.md) | **GEÇTİ** | — | **GEÇTİ** |
-| `npm run typecheck` | — | — | **KALDI** | **KALDI** |
+| `npm run typecheck` | — | — | **GEÇTİ** | **GEÇTİ** |
 
 \*Typecheck tüm `mobile/` için tek koşu; modül bazlı değil.
 
-**Genel duman sonucu: KALDI** — Terazi bridge route 404 + typecheck hataları. Modül API okumalarının çoğu GEÇTİ.
+**Genel duman sonucu: KALDI** — yalnızca Terazi `POST /api/scale/rongta/test` → HTTP 404. Typecheck bu dalgada **GEÇTİ**.
 
 ---
 
@@ -43,11 +43,12 @@ cd mobile && npm run typecheck
 
 ## API smoke ayrıntı (bridge)
 
-Komut çıktısı özeti (`mobile-module-api-smoke.mjs`):
+Komut: `node scripts/test/mobile-module-api-smoke.mjs`  
+Exit: **1** (Terazi KALDI)
 
 | Modül | Geçti | Kaldı | Atlandı | Not |
 |-------|------:|------:|--------:|-----|
-| infra | 4 | 0 | 0 | status RUNNING; lovan PG OK |
+| infra | 4 | 0 | 0 | status RUNNING; lovan PG OK; firm=002 period=01 |
 | POS | 4 | 0 | 0 | ürün 5 satır; sales 0 satır OK |
 | Faturalar | 4 | 0 | 0 | sales + sale_items SELECT OK |
 | Cari | 3 | 0 | 0 | 10 cari |
@@ -71,27 +72,16 @@ Kiracı `lovan` firm `002` altında ilgili tablolar yok. Mobil API `tryQueries` 
 
 ---
 
-## Typecheck — KALDI
+## Typecheck — GEÇTİ
 
 ```
 cd mobile && npm run typecheck
-→ EXIT 2
+→ EXIT 0
+> mobile@0.1.227 typecheck
+> tsc --noEmit
 ```
 
-Örnek hatalar (paralel ajan / eksik tip hizası — mevcut ağaç):
-
-| Dosya | Özet |
-|-------|------|
-| `productsApi.ts` | `CachedProduct.vat_rate` → `ProductRow` uyumsuz |
-| `CommunicationsScreen.tsx` | `StyleSheet.absoluteFillObject` yok |
-| `ExcelOpsScreen.tsx` | `ExcelOps` stack param yok |
-| `MaterialDefinitionFormScreen.tsx` / `MaterialDefinitionsScreen.tsx` | `variant` / `special` / `group` Kind dışı |
-| `MultiCurrencyScreen.tsx` | stack param + `PrimaryButton` `title` |
-| `ProductionOpsScreen.tsx` | stack param + `title` |
-| `ReportScreens.tsx` | EmptyState `title` vs `message` |
-| `SystemExtrasScreen.tsx` | stack param + `title` |
-
-Bu hatalar smoke dokümanlarından bağımsız; migrasyon devam ederken typecheck kırmızı.
+Önceki dalgadaki tip hataları bu ağaçta giderilmiş; `tsc --noEmit` temiz.
 
 ---
 
@@ -108,7 +98,7 @@ Bu hatalar smoke dokümanlarından bağımsız; migrasyon devam ederken typechec
 | [TEST_SMOKE_FINANCE.md](./TEST_SMOKE_FINANCE.md) | Finans |
 | [TEST_SMOKE_SCALE.md](./TEST_SMOKE_SCALE.md) | Terazi |
 | [TEST_SMOKE_REPORTS.md](./TEST_SMOKE_REPORTS.md) | Raporlar |
-| [TEST_SMOKE_REPORT.md](./TEST_SMOKE_REPORT.md) | Genel Metro/export duman (önceki) |
+| [TEST_SMOKE_REPORT.md](./TEST_SMOKE_REPORT.md) | Genel Metro/export duman |
 | `scripts/test/mobile-module-api-smoke.mjs` | Tek komutla API smoke |
 
 ---
@@ -116,5 +106,4 @@ Bu hatalar smoke dokümanlarından bağımsız; migrasyon devam ederken typechec
 ## Sonraki adımlar (commit yok)
 
 1. Bridge’i güncel `pg_bridge.ts` ile yeniden başlat → Terazi route smoke tekrar.
-2. Typecheck kırıklarını (özellikle MaterialDefinitions Kind + yeni stack ekranları) düzelt.
-3. Lovan’da rest/beauty şeması isteniyorsa migration; yoksa ATLANDI kabul.
+2. Lovan’da rest/beauty şeması isteniyorsa migration; yoksa ATLANDI kabul.

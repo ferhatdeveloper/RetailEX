@@ -34,6 +34,17 @@ export function appendStoreIdFilter(column: string, params: unknown[]): string {
   return ` AND ${column}::text = $${params.length}`;
 }
 
+/**
+ * Mağaza filtresi — kolonu henüz boş (legacy) satırları da gösterir.
+ * `cash_lines.store_id` gibi yeni eklenen alanlar için.
+ */
+export function appendStoreIdFilterAllowNull(column: string, params: unknown[]): string {
+  const sid = storeId();
+  if (!sid) return '';
+  params.push(sid);
+  return ` AND (${column} IS NULL OR ${column}::text = $${params.length})`;
+}
+
 export function storeName(): string | null {
   const n = useAuthStore.getState().user?.storeName;
   return n ? String(n) : null;
@@ -162,8 +173,16 @@ export function productionRecipesTable(fn = firmNr()): string {
   return `rex_${fn}_production_recipes`;
 }
 
+export function productionRecipeIngredientsTable(fn = firmNr()): string {
+  return `rex_${fn}_production_recipe_ingredients`;
+}
+
 export function butcherRecipesTable(fn = firmNr()): string {
   return `rex_${fn}_butcher_recipes`;
+}
+
+export function butcherRecipeOutputsTable(fn = firmNr()): string {
+  return `rex_${fn}_butcher_recipe_outputs`;
 }
 
 export function campaignsTable(fn = firmNr()): string {

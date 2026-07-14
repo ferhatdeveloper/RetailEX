@@ -85,9 +85,10 @@ Supplier CTE tüm `purchase_invoice` satırlarını `+net` sayıyordu. Veresiye 
 | ID | Risk | Durum / öneri |
 |----|------|----------------|
 | V2-R16 | Peşin alış iadesinde tedarikçiden nakit dönüşün kasa/banka kaydı yok | **Düzeltildi** (`KASA_GIRIS` / `BANKA_GIRIS`) |
+| V2-VIR | Banka↔banka virman + HAVALE tipi | **Düzeltildi** (`createBankVirman` / `HAVALE`) |
+| R11b | Ekstre dönem öncesi “Devir” satırı | **Düzeltildi** (`fetchCariExtract` sentetik satır) |
 | V2-R17 | Web `erpReports.getCariExtract` hâlâ alışta `sign=-1` (mobil düzeltildi, web sapması kalır) | Web’e aynı CASE portu |
 | R6 | Hizmet / irsaliye create | Liste/filter var; create hâlâ sınırlı |
-| R11 | Ekstre açılış satırı otomatiği | `CariDevirScreen` + `opening_balance` var; ekstre UI’da ayrı “açılış” satırı yok |
 | — | POS UI’da veresiye müşteri seçici zayıf | API hazır |
 
 ---
@@ -100,7 +101,7 @@ Supplier CTE tüm `purchase_invoice` satırlarını `+net` sayıyordu. Veresiye 
 | R7 | Tip sözlüğü | `cashTransactionTypes` + `financeApi` `KASA_*` — eski TAHSILAT satırları okumada normalize |
 | R10 | POS/fatura KDV=0 | Rapor sapması riski |
 | R12 | Login `periodNr: '01'` | Organization seçilmezse yanlış dönem |
-| — | Yaşlandırma, virman (tam), gelir/bilanço | Ürün kararı |
+| — | Yaşlandırma, banka CH_*, gelir/bilanço | Ürün kararı |
 
 Menü (V1’den kalan, kısmen düzelmiş):
 - `financereports-bank` → `Finance` (banka ekranı; kasa raporu değil) ✓ iyileşti  
@@ -202,20 +203,20 @@ R4, R7, R10, R12, yaşlandırma / GL mizan — ürün kararı.
 
 | Özellik | Mizan (ledger CTE) | Cari devir fişi | Ekstre UI |
 |---------|-------------------|-----------------|-----------|
-| `opening_balance` dahil | ✓ `accountBalance.ts` | ✓ `CariDevirScreen` + `cariDevirApi.ts` | Kısmi |
-| Dönem öncesi devir satırı | — | — | **Yok** (web de yok) |
+| `opening_balance` dahil | ✓ `accountBalance.ts` | ✓ `CariDevirScreen` + `cariDevirApi.ts` | ✓ |
+| Dönem öncesi satır | — | — | **✓ R11b** (`Devreden` sentetik) |
 | `opening_balance` etiketi | — | trcode 99 | ✓ `Devir` (`fetchCariExtract`) |
 | İşaret (alacak devir) | ✓ işaretli `net_amount` | ✓ `signedNetAmount` | ✓ `saleSignSql` net işareti |
 
 **Ledger (R11 kapanış kısmı):** Dönemsel bakiye CTE’si `opening_balance` satırlarını işaretli `net_amount` ile toplar — **mizan ile uyumlu**.
 
-**Ekstre (R11a kapandı 2026-07-14):**
+**Ekstre (R11a kapandı; R11b kapandı 2026-07-14):**
 
-1. **Sentetik açılış satırı yok (R11b / P2):** Tarih aralığı öncesi toplam “Devir bakiyesi” satırı yok. Web `buildEkstreRows` da aynı — Logo tarzı “devreden” ürün kararı.
-2. **Etiket:** Web `ficheTypeToInfo` → `Devir`; mobil fallback SQL `opening_balance` → `Devir`.
-3. **İşaret:** `saleSignSql` içinde `opening_balance` → `net_amount < 0 ? -1 : 1` (web `buildEkstreRows` `isOpening` / `amount > 0` borç ile uyumlu).
+1. **R11b — dönem öncesi Devreden:** `fetchCariExtract` aralık öncesi neti (`account_movements` veya sales+CH_* aynı işaret) toplar; `|net| ≥ 0,005` ise başına `definition=Devreden` satırı ekler (gerçek `opening_balance` fişi **Devir** kalır).
+2. **Etiket:** Web `ficheTypeToInfo` → `Devir`; mobil SQL `opening_balance` → `Devir`; BF → `Devreden`.
+3. **İşaret:** `saleSignSql` içinde `opening_balance` → `net_amount < 0 ? -1 : 1` (web `buildEkstreRows` `isOpening` ile uyumlu).
 
-**Durum:** **R11a kapalı** — etiket + işaret web ile hizalı. R11b (dönem öncesi satır) açık / P2.
+**Durum:** **R11a + R11b kapalı** (mobil). Web `buildEkstreRows` hâlâ BF yazmıyor — bilinçli mobil ilerleme.
 
 ---
 
@@ -230,7 +231,8 @@ R4, R7, R10, R12, yaşlandırma / GL mizan — ürün kararı.
 | Kasa giriş/çıkış | ✓ `createSimpleCashMovement` | ✓ |
 | Banka giriş/çıkış | ✓ `createSimpleBankMovement` | ✓ |
 | Cari tahsilat/ödeme (CH_*) | ✓ `createCariCashSlip` | ✓ |
-| Banka ↔ banka VIRMAN | **Yok** | ✓ `BankaIslemModal` → `HAVALE` / `EFT` / `VIRMAN` |
+| Banka ↔ banka VIRMAN | ✓ `createBankVirman` (çift satır + bakiye) | ✓ `BankaIslemModal` → `HAVALE` / `EFT` / `VIRMAN` |
+| Banka HAVALE / EFT tipi | ✓ `transactionType: 'HAVALE'\|'EFT'` (sign −1) | ✓ |
 | Banka tarafı CH_TAHSILAT/CH_ODEME | **Yok** | ✓ `banka.ts` |
 | Fatura peşin havale → banka | Alış iade ✓ (V2-R16); satış/alış oluşturma **Yok** (R5 P2) | **Yok** (aynı) |
 | VIRMAN iptal / karşı satır silme | **Yok** | ✓ `kasa.ts` cleanup |
@@ -239,19 +241,19 @@ R4, R7, R10, R12, yaşlandırma / GL mizan — ürün kararı.
 
 | Ekran | Kapsam |
 |-------|--------|
-| `FinanceScreen` | Kasa: Giriş, Çıkış, **Virman**, Bankaya, Bankadan. Banka: yalnız Giriş/Çıkış. |
+| `FinanceScreen` | Kasa: Giriş, Çıkış, **Virman**, Bankaya, Bankadan. Banka: Giriş, Çıkış, **Virman**, **Havale**. |
 | `CashCollectionScreen` | CH_TAHSILAT / CH_ODEME; API tedarikçi fallback var, UI **yalnız müşteri** listesi. |
-| Menü `menuConfig.ts` | `kasalar`, `cashbank`, `cash-slips`, `cari-devir` var; **ayrı “Virman” menü girişi yok** (`navigateToModule` `virman` id’si tanımlı ama menüde yok). |
-| `navigateToModule` | `virman` → Finance `formMode: 'virman'` ✓ |
+| Menü `menuConfig.ts` | `virman`, `bank-virman`, `bank-havale` (+ kasa fişleri) ✓ |
+| `navigateToModule` | `virman` → kasa; `bank-virman` → banka virman; `bank-havale`/`havale` → HAVALE ✓ |
 
 #### Havale özeti
 
 - **POS / satış / alış create:** `paymentMethodUtils` havaleyi peşin sayar ama kasa/banka satırı **yazmaz** (nakit/kart kasaya; havale operasyonel — R5).
 - **Alış iade (trcode 6) havale:** `BANKA_GIRIS` ✓ (V2-R16; varsayılan banka hesabı).
 - **Güzellik:** `beautyApi` transfer → kasa girişi yok (web ile uyumlu kısıt).
-- **Banka ekranı:** Havale/EFT işlem tipi seçimi **yok**; yalnızca genel giriş/çıkış.
+- **Banka ekranı:** Virman (hesap↔hesap) + Havale (dış çıkış, `HAVALE`) ✓.
 
-**Durum:** Virman **kasa düzeyinde tam** (API+UI); havale ve banka virmanı **kısmi** (P2 ürün kararı).
+**Durum:** Virman **kasa + banka** ve banka **HAVALE** tipi kapalı (V2-VIR). Banka CH_* ve fatura peşin havale (R5) hâlâ P2.
 
 ---
 
@@ -271,6 +273,43 @@ Kod taraması — önceki tur düzeltmeleri yerinde:
 |----|------|------|--------|
 | V2-R16 | Peşin alış iade → `KASA_GIRIS` / havale → banka | P1 | **Düzeltildi** |
 | R11a | Ekstre devir etiketi + negatif açılış işareti | P1 | **Kapalı** (`reportsApi.fetchCariExtract`) |
-| R11b | Dönem öncesi “devreden” satırı | P2 | **Açık** (web de yok) |
-| V2-VIR | Banka↔banka virman, HAVALE/EFT tipi | P2 | **Açık** |
-| V2-MENU | Menüde Virman kısayolu | P2 | **Açık** |
+| R11b | Dönem öncesi “Devreden” satırı | P1 | **Kapalı** (`definition=Devreden`) |
+| V2-VIR | Banka↔banka virman, HAVALE tipi | P1 | **Kapalı** (`createBankVirman` + Finance UI) |
+| V2-MENU | Menüde Virman / Havale kısayolu | P1 | **Kapalı** (wave A) |
+
+---
+
+## 11. Dördüncü tur — V2-VIR / R11b (2026-07-14)
+
+**Commit:** yok  
+**Önkoşul:** V2-R16 (peşin alış iadesi) kapalıydı → kalan P1: banka virman+HAVALE, ekstre dönem-öncesi Devir.
+
+### 11.1 V2-VIR — Banka virman + HAVALE
+
+| Katman | Değişiklik |
+|--------|------------|
+| `cashTransactionTypes.ts` | `HAVALE` / `EFT` kanonik tipler + etiket |
+| `cashApi.createBankVirman` | Kaynak −1 / hedef +1 `VIRMAN`; bakiyeler simetrik |
+| `cashApi.createSimpleBankMovement` | `transactionType: HAVALE\|EFT` (sign −1) |
+| `FinanceScreen` | Banka sekmesi: Giriş / Çıkış / Virman / Havale |
+| Navigasyon | `bank-virman`, `havale` → banka form |
+
+**Muhasebe:** Banka↔banka virman toplam banka bakiyesini değiştirmez; dış havale kaynak hesabı düşürür.
+
+### 11.2 R11b — Ekstre Devreden satırı
+
+`fetchCariExtract` → `fetchCariExtractOpeningNet`: aralık öncesi net; başa `definition=Devreden` (fiş no boş); running balance bu net ile başlar. Gerçek `opening_balance` fişi hâlâ **Devir**. Kaynak seçimi dönem sorgusu ile aynı (movements veya sales+CH_*).
+
+### 11.3 Dosya haritası
+
+| Dosya | Değişiklik |
+|-------|------------|
+| `mobile/src/api/cashApi.ts` | `createBankVirman`; HAVALE yazımı |
+| `mobile/src/api/cashTransactionTypes.ts` | HAVALE / EFT |
+| `mobile/src/screens/FinanceScreen.tsx` | Banka Virman/Havale UI |
+| `mobile/src/api/reportsApi.ts` | R11b Devreden |
+| `mobile/src/navigation/types.ts` | `formMode: 'havale'` |
+| `mobile/src/config/menuConfig.ts` | virman / bank-virman / bank-havale |
+| `mobile/src/screens/PosScreen.tsx` + `posUi` i18n | POS başlık/UI |
+| `mobile/RONGTA_LAN.md` | LAN canlı kg sınırı |
+| `mobile/AUDIT_ACCOUNTING_V2.md` | Bu bölüm |

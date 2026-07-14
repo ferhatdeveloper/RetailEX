@@ -8,6 +8,7 @@ import {
 import {
   accountMovementsTable,
   appendStoreIdFilter,
+  appendStoreIdFilterAllowNull,
   cashLinesTable,
   cashRegistersTable,
   customersTable,
@@ -461,6 +462,63 @@ function mapExtractSqlRow(r: {
   };
 }
 
+/** Dönem öncesi net bakiye — ekstre “Devreden” satırı (R11b; gerçek fiş etiketi “Devir”) */
+async function fetchCariExtractOpeningNet(opts: {
+  accountId: string;
+  isCustomer: boolean;
+  startDate: string;
+  useMovements: boolean;
+  ficheFilter: string;
+  saleSignSql: string;
+}): Promise<number> {
+  const { accountId, isCustomer, startDate, useMovements, ficheFilter, saleSignSql } = opts;
+  const idCol = isCustomer ? 'customer_id' : 'supplier_id';
+
+  if (useMovements) {
+    try {
+      const res = await pgQuery<{ net: number }>(
+        `SELECT COALESCE(SUM(
+           ABS(COALESCE(am.amount, 0)) *
+           CASE WHEN COALESCE(am.sign, 1) < 0 THEN -1 ELSE 1 END
+         ), 0)::float8 AS net
+         FROM ${accountMovementsTable()} am
+         WHERE am.${idCol}::text = $1
+           AND COALESCE(am.date::date, (am.date AT TIME ZONE 'UTC')::date) < $2::date`,
+        [accountId, startDate],
+      );
+      return Number(res.rows[0]?.net ?? 0);
+    } catch {
+      return 0;
+    }
+  }
+
+  try {
+    const res = await pgQuery<{ net: number }>(
+      `SELECT COALESCE(SUM(u.signed_amt), 0)::float8 AS net FROM (
+         SELECT
+           ABS(COALESCE(s.net_amount, s.total_net, 0)) * (${saleSignSql})::int AS signed_amt
+         FROM ${salesTable()} s
+         WHERE s.customer_id::text = $1
+           AND COALESCE(s.is_cancelled, false) = false
+           AND ${SQL_COUNTABLE_SALE}
+           AND ${ficheFilter}
+           AND COALESCE(s.date::date, (s.date AT TIME ZONE 'UTC')::date) < $2::date
+         UNION ALL
+         SELECT
+           -ABS(COALESCE(cl.amount, 0)) AS signed_amt
+         FROM ${cashLinesTable()} cl
+         WHERE cl.customer_id::text = $1
+           AND UPPER(TRIM(COALESCE(cl.transaction_type, ''))) IN ('CH_TAHSILAT', 'CH_ODEME')
+           AND COALESCE(cl.date::date, (cl.date AT TIME ZONE 'UTC')::date) < $2::date
+       ) u`,
+      [accountId, startDate],
+    );
+    return Number(res.rows[0]?.net ?? 0);
+  } catch {
+    return 0;
+  }
+}
+
 export async function fetchCariExtract(opts: {
   accountId: string;
   cardType: 'customer' | 'supplier';
@@ -480,6 +538,44 @@ export async function fetchCariExtract(opts: {
   const sales = salesTable();
   const cash = cashLinesTable();
 
+  // Web getAccountStatement: sales UNION ALL cash_lines (CH_*)
+  // + mobil legacy ('sales'/'retail') + trcode 7/8 POS
+  const ficheFilter = isCustomer
+    ? `(
+           LOWER(TRIM(COALESCE(s.fiche_type, ''))) IN (
+             'sales_invoice', 'sales', 'retail', 'service', 'hizmet', 'return_invoice', 'opening_balance'
+           )
+           OR COALESCE(s.trcode, 0) IN (0, 2, 3, 7, 8, 9, 14)
+         )`
+    : `(
+           LOWER(TRIM(COALESCE(s.fiche_type, ''))) IN (
+             'purchase_invoice', 'return_invoice', 'opening_balance'
+           )
+           OR s.trcode IN (1, 4, 5, 6, 13, 26, 41, 42)
+         )`;
+  // Web buildEkstreRows: alış/satış +delta; iade −delta; opening_balance → işaretli net_amount (R11a).
+  // Önceki mobil CASE alış fişlerini de −1 yapıyordu → tedarikçi kapanış bakiyesi ters dönüyordu (V2-R13).
+  // Açılış: cariDevirApi alacak için negatif net_amount yazar; ABS+ELSE 1 → yanlış borç (R11a).
+  const openingSignSql = `CASE
+           WHEN LOWER(TRIM(COALESCE(s.fiche_type, ''))) = 'opening_balance'
+             THEN CASE WHEN COALESCE(s.net_amount, s.total_net, 0) < 0 THEN -1 ELSE 1 END`;
+  const saleSignSql = isCustomer
+    ? `${openingSignSql}
+           WHEN LOWER(TRIM(COALESCE(s.fiche_type, ''))) = 'return_invoice'
+             OR COALESCE(s.trcode, 0) IN (2, 3) THEN -1
+           ELSE 1
+         END`
+    : `${openingSignSql}
+           WHEN COALESCE(s.trcode, 0) = 6
+             OR LOWER(TRIM(COALESCE(s.fiche_type, ''))) = 'return_invoice' THEN -1
+           ELSE 1
+         END`;
+  // Web ficheTypeToInfo(opening_balance) → 'Devir'
+  const saleDefinitionSql = `CASE
+           WHEN LOWER(TRIM(COALESCE(s.fiche_type, ''))) = 'opening_balance' THEN 'Devir'
+           ELSE COALESCE(s.fiche_type, '')
+         END`;
+
   let raw: {
     id: string;
     date: string;
@@ -489,6 +585,7 @@ export async function fetchCariExtract(opts: {
     sign: number;
     source: CariExtractSource;
   }[] = [];
+  let usedMovements = false;
 
   try {
     const res = await pgQuery<{
@@ -517,49 +614,12 @@ export async function fetchCariExtract(opts: {
       [accountId, start, end, limit],
     );
     raw = (res.rows || []).map(mapExtractSqlRow);
+    usedMovements = raw.length > 0;
   } catch {
     raw = [];
   }
 
   if (!raw.length) {
-    // Web getAccountStatement: sales UNION ALL cash_lines (CH_*)
-    // + mobil legacy ('sales'/'retail') + trcode 7/8 POS
-    const ficheFilter = isCustomer
-      ? `(
-           LOWER(TRIM(COALESCE(s.fiche_type, ''))) IN (
-             'sales_invoice', 'sales', 'retail', 'service', 'hizmet', 'return_invoice', 'opening_balance'
-           )
-           OR COALESCE(s.trcode, 0) IN (0, 2, 3, 7, 8, 9, 14)
-         )`
-      : `(
-           LOWER(TRIM(COALESCE(s.fiche_type, ''))) IN (
-             'purchase_invoice', 'return_invoice', 'opening_balance'
-           )
-           OR s.trcode IN (1, 4, 5, 6, 13, 26, 41, 42)
-         )`;
-    // Web buildEkstreRows: alış/satış +delta; iade −delta; opening_balance → işaretli net_amount (R11a).
-    // Önceki mobil CASE alış fişlerini de −1 yapıyordu → tedarikçi kapanış bakiyesi ters dönüyordu (V2-R13).
-    // Açılış: cariDevirApi alacak için negatif net_amount yazar; ABS+ELSE 1 → yanlış borç (R11a).
-    const openingSignSql = `CASE
-           WHEN LOWER(TRIM(COALESCE(s.fiche_type, ''))) = 'opening_balance'
-             THEN CASE WHEN COALESCE(s.net_amount, s.total_net, 0) < 0 THEN -1 ELSE 1 END`;
-    const saleSignSql = isCustomer
-      ? `${openingSignSql}
-           WHEN LOWER(TRIM(COALESCE(s.fiche_type, ''))) = 'return_invoice'
-             OR COALESCE(s.trcode, 0) IN (2, 3) THEN -1
-           ELSE 1
-         END`
-      : `${openingSignSql}
-           WHEN COALESCE(s.trcode, 0) = 6
-             OR LOWER(TRIM(COALESCE(s.fiche_type, ''))) = 'return_invoice' THEN -1
-           ELSE 1
-         END`;
-    // Web ficheTypeToInfo(opening_balance) → 'Devir'
-    const saleDefinitionSql = `CASE
-           WHEN LOWER(TRIM(COALESCE(s.fiche_type, ''))) = 'opening_balance' THEN 'Devir'
-           ELSE COALESCE(s.fiche_type, '')
-         END`;
-
     try {
       const res = await pgQuery<{
         id: string;
@@ -613,7 +673,41 @@ export async function fetchCariExtract(opts: {
     }
   }
 
-  return mapRunningExtract(raw);
+  // R11b: tarih aralığı öncesi net → sentetik “Devreden” (opening_balance fişi “Devir” kalır)
+  let openingNet = await fetchCariExtractOpeningNet({
+    accountId,
+    isCustomer,
+    startDate: start,
+    useMovements: usedMovements,
+    ficheFilter,
+    saleSignSql,
+  });
+  // Sales/cash prior boşsa geçmiş account_movements bakiyesini dene
+  if (!usedMovements && Math.abs(openingNet) < 0.005) {
+    openingNet = await fetchCariExtractOpeningNet({
+      accountId,
+      isCustomer,
+      startDate: start,
+      useMovements: true,
+      ficheFilter,
+      saleSignSql,
+    });
+  }
+
+  const withOpening = [...raw];
+  if (Math.abs(openingNet) >= 0.005) {
+    withOpening.unshift({
+      id: `bf-${accountId}-${start}`,
+      date: start,
+      ficheNo: '',
+      definition: 'Devreden',
+      amount: Math.abs(openingNet),
+      sign: openingNet >= 0 ? 1 : -1,
+      source: usedMovements ? 'movement' : 'sale',
+    });
+  }
+
+  return mapRunningExtract(withOpening);
 }
 
 /** Yerel YYYY-MM-DD */
@@ -1048,6 +1142,9 @@ export async function fetchCashMovements(opts?: {
   const lines = cashLinesTable();
   const registers = cashRegistersTable();
 
+  const params: unknown[] = [start, end, limit];
+  const storeSql = appendStoreIdFilterAllowNull('cl.store_id', params);
+
   try {
     const res = await pgQuery<{
       id: string;
@@ -1072,9 +1169,10 @@ export async function fetchCashMovements(opts?: {
        LEFT JOIN ${registers} cr ON cr.id = cl.register_id
        WHERE COALESCE(cl.date::date, cl.created_at::date) >= $1::date
          AND COALESCE(cl.date::date, cl.created_at::date) <= $2::date
+         ${storeSql}
        ORDER BY COALESCE(cl.date, cl.created_at) DESC
        LIMIT $3`,
-      [start, end, limit],
+      params,
     );
     return res.rows.map((r) => {
       const amount = Number(r.amount ?? 0);

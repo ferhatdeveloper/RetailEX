@@ -13,6 +13,9 @@ export const CASH_TX = {
   BANKADAN_CEKILEN: 'BANKADAN_CEKILEN',
   BANKA_GIRIS: 'BANKA_GIRIS',
   BANKA_CIKIS: 'BANKA_CIKIS',
+  /** Banka dış çıkış — web banka.ts HAVALE (sign −1) */
+  HAVALE: 'HAVALE',
+  EFT: 'EFT',
 } as const;
 
 export type CashTxType = (typeof CASH_TX)[keyof typeof CASH_TX];
@@ -59,6 +62,8 @@ export function cashTransactionTypeLabel(
   if (t === CASH_TX.VIRMAN) return sign > 0 ? 'Virman (giriş)' : 'Virman (çıkış)';
   if (t === CASH_TX.BANKA_YATIRILAN) return 'Bankaya yatırılan';
   if (t === CASH_TX.BANKADAN_CEKILEN) return 'Bankadan çekilen';
+  if (t === CASH_TX.HAVALE) return 'Havale';
+  if (t === CASH_TX.EFT) return 'EFT';
   if (t) return t.replace(/_/g, ' ');
   if (sign > 0) return 'Giriş';
   if (sign < 0) return 'Çıkış';

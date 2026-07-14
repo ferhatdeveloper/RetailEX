@@ -30,6 +30,7 @@ import {
   createSimpleCashMovement,
   createSimpleBankMovement,
   createCashVirman,
+  createBankVirman,
   createCashBankBridge,
   movementTypeLabel,
   type CashRegisterRow,
@@ -44,7 +45,7 @@ import { palette } from '../theme/colors';
 import type { MainStackParamList } from '../navigation/types';
 
 type Kind = 'cash' | 'bank';
-type TxFormMode = 'in' | 'out' | 'virman' | 'bank_deposit' | 'bank_withdraw';
+type TxFormMode = 'in' | 'out' | 'virman' | 'havale' | 'bank_deposit' | 'bank_withdraw';
 type Props = NativeStackScreenProps<MainStackParamList, 'Finance'>;
 
 function todayYmd(): string {
@@ -162,11 +163,17 @@ export function FinanceScreen({ route }: Props) {
     setDescription('');
     setTxDate(todayYmd());
     const list = kind === 'cash' ? cashRegs : bankRegs;
-    const cashId = selectedRegisterId ?? cashRegs[0]?.id ?? null;
-    setFormRegisterId(kind === 'cash' ? cashId : list[0]?.id ?? null);
-    setTargetRegisterId(
-      cashRegs.find((r) => r.id !== cashId)?.id ?? cashRegs[1]?.id ?? null,
-    );
+    const selectedId = selectedRegisterId ?? list[0]?.id ?? null;
+    setFormRegisterId(selectedId);
+    if (kind === 'cash') {
+      setTargetRegisterId(
+        cashRegs.find((r) => r.id !== selectedId)?.id ?? cashRegs[1]?.id ?? null,
+      );
+    } else {
+      setTargetRegisterId(
+        bankRegs.find((r) => r.id !== selectedId)?.id ?? bankRegs[1]?.id ?? null,
+      );
+    }
     setBankRegisterId(bankRegs[0]?.id ?? null);
     setCreateOpen(true);
   };
@@ -180,7 +187,23 @@ export function FinanceScreen({ route }: Props) {
     }
     setSaving(true);
     try {
-      if (formMode === 'virman') {
+      if (formMode === 'virman' && kind === 'bank') {
+        if (!formRegisterId) {
+          setFormError('Kaynak banka seçin');
+          return;
+        }
+        if (!targetRegisterId) {
+          setFormError('Hedef banka seçin');
+          return;
+        }
+        await createBankVirman({
+          sourceRegisterId: formRegisterId,
+          targetRegisterId,
+          amount: amt,
+          date: txDate,
+          description,
+        });
+      } else if (formMode === 'virman') {
         if (!formRegisterId) {
           setFormError('Kaynak kasa seçin');
           return;
@@ -193,6 +216,19 @@ export function FinanceScreen({ route }: Props) {
           sourceRegisterId: formRegisterId,
           targetRegisterId,
           amount: amt,
+          date: txDate,
+          description,
+        });
+      } else if (formMode === 'havale') {
+        if (!formRegisterId) {
+          setFormError('Banka hesabı seçin');
+          return;
+        }
+        await createSimpleBankMovement({
+          registerId: formRegisterId,
+          amount: amt,
+          direction: 'out',
+          transactionType: 'HAVALE',
           date: txDate,
           description,
         });
@@ -459,35 +495,53 @@ export function FinanceScreen({ route }: Props) {
                 ))}
               </ScrollView>
             ) : (
-              <View style={styles.dirRow}>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.modeRow}>
                 {(
                   [
                     { id: 'in' as const, label: 'Giriş' },
                     { id: 'out' as const, label: 'Çıkış' },
+                    { id: 'virman' as const, label: 'Virman' },
+                    { id: 'havale' as const, label: 'Havale' },
                   ] as const
-                ).map((d) => (
+                ).map((m) => (
                   <Pressable
-                    key={d.id}
-                    onPress={() => setFormMode(d.id)}
+                    key={m.id}
+                    onPress={() => {
+                      setFormMode(m.id);
+                      if (m.id === 'virman') {
+                        const src = formRegisterId ?? bankRegs[0]?.id ?? null;
+                        setTargetRegisterId(
+                          bankRegs.find((r) => r.id !== src)?.id ?? bankRegs[1]?.id ?? null,
+                        );
+                      }
+                    }}
                     style={[
-                      styles.dirBtn,
+                      styles.modeChip,
                       {
-                        backgroundColor: formMode === d.id ? palette.orange500 : colors.inputBg,
+                        backgroundColor: formMode === m.id ? palette.orange500 : colors.inputBg,
                         borderColor: colors.inputBorder,
                       },
                     ]}
                   >
-                    <Text style={{ color: formMode === d.id ? palette.white : colors.text, fontWeight: '700' }}>
-                      {d.label}
+                    <Text
+                      style={{
+                        color: formMode === m.id ? palette.white : colors.text,
+                        fontWeight: '700',
+                        fontSize: 11,
+                      }}
+                    >
+                      {m.label}
                     </Text>
                   </Pressable>
                 ))}
-              </View>
+              </ScrollView>
             )}
 
             <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>
               {formMode === 'virman'
-                ? 'Kaynak kasa'
+                ? kind === 'bank'
+                  ? 'Kaynak banka'
+                  : 'Kaynak kasa'
                 : formMode === 'bank_deposit' || formMode === 'bank_withdraw'
                   ? 'Kasa'
                   : kind === 'cash'
@@ -495,7 +549,7 @@ export function FinanceScreen({ route }: Props) {
                     : 'Banka hesabı'}
             </Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
-              {(kind === 'cash' || formMode === 'bank_deposit' || formMode === 'bank_withdraw' || formMode === 'virman'
+              {(kind === 'cash' || formMode === 'bank_deposit' || formMode === 'bank_withdraw'
                 ? cashRegs
                 : bankRegs
               ).map((r) => {
@@ -526,13 +580,18 @@ export function FinanceScreen({ route }: Props) {
 
             {formMode === 'virman' ? (
               <>
-                <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Hedef kasa</Text>
+                <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>
+                  {kind === 'bank' ? 'Hedef banka' : 'Hedef kasa'}
+                </Text>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
-                  {cashRegs
+                  {(kind === 'bank' ? bankRegs : cashRegs)
                     .filter((r) => r.id !== formRegisterId)
                     .map((r) => {
                       const active = targetRegisterId === r.id;
-                      const label = `${r.code || ''} ${r.name}`.trim();
+                      const label =
+                        'bank_name' in r
+                          ? `${r.code || ''} ${r.bank_name || r.name || ''}`.trim()
+                          : `${(r as CashRegisterRow).code || ''} ${(r as CashRegisterRow).name}`.trim();
                       return (
                         <Pressable
                           key={r.id}

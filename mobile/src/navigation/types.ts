@@ -81,6 +81,7 @@ export type MainStackParamList = {
   ReportProductSales: undefined;
   ReportCash: undefined;
   StockMovements: { filter?: 'all' | 'deficit' | 'surplus' } | undefined;
+  StockMovementDetail: { id: string };
   Beauty:
     | { initialTab?: 'appointments' | 'services' | 'specialists' | 'sales'; openCreate?: boolean }
     | undefined;
@@ -105,6 +106,7 @@ export type MainStackParamList = {
     | undefined;
   /** Üretim reçeteleri + kasap üretim */
   ProductionOps: { screenId?: string } | undefined;
+  ProductionRecipeDetail: { recipeId: string; kind: 'production' | 'butcher' };
   /** Çoklu para birimi + kurlar */
   MultiCurrency: undefined;
   /** Excel işlemleri + akıllı malzeme ekleme */
@@ -117,7 +119,7 @@ export type MainStackParamList = {
         initialTab?: 'cash' | 'bank';
         screenId?: string;
         openCreate?: boolean;
-        formMode?: 'in' | 'out' | 'virman' | 'bank_deposit' | 'bank_withdraw';
+        formMode?: 'in' | 'out' | 'virman' | 'havale' | 'bank_deposit' | 'bank_withdraw';
       }
     | undefined;
   /** Cari tahsilat / ödeme */

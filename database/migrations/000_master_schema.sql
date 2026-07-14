@@ -2660,6 +2660,7 @@ BEGIN
       special_code         VARCHAR(50),
       tax_rate             DECIMAL(5,2) DEFAULT 0,
       withholding_tax_rate DECIMAL(5,2) DEFAULT 0,
+      store_id             UUID,
       created_at           TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
     );
   ', v_prefix || '_cash_lines');

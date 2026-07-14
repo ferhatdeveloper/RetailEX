@@ -8,10 +8,12 @@ import {
   buildConnStr,
   getActiveEndpoint,
   getBridgeBaseUrl,
+  shouldPreferPostgrest,
   useConfigStore,
   type DbConfig,
   type PgEndpoint,
 } from '../store/configStore';
+import { postgrestGet, postgrestPost } from './postgrestClient';
 
 export type PgQueryResult<T = Record<string, unknown>> = {
   rows: T[];
@@ -135,24 +137,68 @@ export type LoginRow = {
   allowed_periods?: unknown;
 };
 
-/** Web loginVerify: logic.verify_login → public.users fallback */
-export async function verifyLogin(
+function parseLoginRpcRow(rpcRes: unknown): LoginRow | null {
+  const row = Array.isArray(rpcRes)
+    ? rpcRes[0]
+    : (rpcRes as { 0?: unknown })?.[0] ?? rpcRes;
+  if (!row || typeof row !== 'object') return null;
+  const r = row as Record<string, unknown>;
+  if (!r.id || !r.username) return null;
+  return r as unknown as LoginRow;
+}
+
+/** apiMode postgrest|hybrid (+ remoteRestUrl): POST /rpc/verify_login (schema logic) */
+async function verifyViaPostgrest(
   username: string,
   password: string,
   firmNr: string,
 ): Promise<LoginRow | null> {
-  const firm = normalizeFirmNr(firmNr) || firmNr;
+  if (!shouldPreferPostgrest()) return null;
+  try {
+    const rpcRes = await postgrestPost(
+      '/rpc/verify_login',
+      { username, password, firm_nr: firmNr },
+      { schema: 'logic' },
+    );
+    return parseLoginRpcRow(rpcRes);
+  } catch (err) {
+    if (__DEV__) {
+      console.warn(
+        '[verifyLogin] PostgREST verify_login başarısız',
+        err instanceof Error ? err.message : err,
+      );
+    }
+    return null;
+  }
+}
 
+async function verifyViaSqlRpc(
+  username: string,
+  password: string,
+  firmNr: string,
+): Promise<LoginRow | null> {
   try {
     const rpc = await pgQuery<LoginRow>(
       `SELECT * FROM logic.verify_login($1, $2, $3) LIMIT 1`,
-      [username, password, firm],
+      [username, password, firmNr],
     );
     if (rpc.rowCount > 0 && rpc.rows[0]?.id) return rpc.rows[0];
-  } catch {
-    /* fallback */
+  } catch (err) {
+    if (__DEV__) {
+      console.warn(
+        '[verifyLogin] logic.verify_login SQL başarısız',
+        err instanceof Error ? err.message : err,
+      );
+    }
   }
+  return null;
+}
 
+async function verifyViaPublicUsers(
+  username: string,
+  password: string,
+  firmNr: string,
+): Promise<LoginRow | null> {
   const normalizedFirm = normalizeFirmNr(firmNr);
   const firmClause = normalizedFirm
     ? `AND (
@@ -178,9 +224,46 @@ export async function verifyLogin(
   try {
     const result = await pgQuery<LoginRow>(sql, params);
     if (result.rowCount > 0) return result.rows[0];
-  } catch {
-    /* ignore */
+  } catch (err) {
+    if (__DEV__) {
+      console.warn(
+        '[verifyLogin] public.users fallback başarısız',
+        err instanceof Error ? err.message : err,
+      );
+    }
   }
+  return null;
+}
+
+/**
+ * Web `loginVerify.verifyLoginUser` sırası:
+ * PostgREST logic.verify_login → bridge SQL logic.verify_login → public.users.
+ * Firma adayları: verilen firmNr → firmasız ('').
+ */
+export async function verifyLogin(
+  username: string,
+  password: string,
+  firmNr?: string,
+): Promise<LoginRow | null> {
+  const trimmedUsername = username.trim();
+  const trimmedPassword = password.trim();
+  if (!trimmedUsername || !trimmedPassword) return null;
+
+  const candidates = [normalizeFirmNr(firmNr), ''].filter(
+    (v, i, arr) => arr.indexOf(v) === i,
+  );
+
+  for (const fn of candidates) {
+    const viaRest = await verifyViaPostgrest(trimmedUsername, trimmedPassword, fn);
+    if (viaRest) return viaRest;
+
+    const viaSql = await verifyViaSqlRpc(trimmedUsername, trimmedPassword, fn);
+    if (viaSql) return viaSql;
+
+    const viaPublic = await verifyViaPublicUsers(trimmedUsername, trimmedPassword, fn);
+    if (viaPublic) return viaPublic;
+  }
+
   return null;
 }
 
@@ -190,7 +273,47 @@ export type FirmRow = {
   title?: string | null;
 };
 
+function mapFirmRows(
+  rows: Array<{ firm_nr?: string | number; name?: string | null; title?: string | null; is_active?: boolean | null }>,
+): FirmRow[] {
+  return rows
+    .filter((r) => r.is_active !== false)
+    .map((r) => {
+      const firm_nr = normalizeFirmNr(r.firm_nr) || String(r.firm_nr ?? '');
+      const name = String(r.name || r.title || firm_nr || 'Firma');
+      return { firm_nr, name, title: r.title ?? null };
+    })
+    .filter((r) => r.firm_nr);
+}
+
+/** Web Login: PostgREST `/firms` → bridge SQL `firms` */
 export async function fetchFirms(): Promise<FirmRow[]> {
+  if (shouldPreferPostgrest()) {
+    try {
+      const rows = await postgrestGet<
+        Array<{
+          firm_nr?: string | number;
+          name?: string | null;
+          title?: string | null;
+          is_active?: boolean | null;
+        }>
+      >(
+        '/firms',
+        { select: 'firm_nr,name,title,is_active', order: 'firm_nr.asc', limit: 200 },
+        { schema: 'public' },
+      );
+      const mapped = mapFirmRows(Array.isArray(rows) ? rows : []);
+      if (mapped.length > 0) return mapped;
+    } catch (err) {
+      if (__DEV__) {
+        console.warn(
+          '[fetchFirms] PostgREST /firms başarısız, SQL fallback',
+          err instanceof Error ? err.message : err,
+        );
+      }
+    }
+  }
+
   try {
     const res = await pgQuery<FirmRow>(
       `SELECT firm_nr, COALESCE(name, title, firm_nr) AS name, title

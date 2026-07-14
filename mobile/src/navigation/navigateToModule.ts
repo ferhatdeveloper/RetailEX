@@ -146,6 +146,11 @@ export function financeRouteParams(screen: string): FinanceRouteParams {
       return { initialTab: 'bank', screenId: screen };
     case 'virman':
       return { initialTab: 'cash', screenId: screen, openCreate: true, formMode: 'virman' };
+    case 'bank-virman':
+      return { initialTab: 'bank', screenId: screen, openCreate: true, formMode: 'virman' };
+    case 'bank-havale':
+    case 'havale':
+      return { initialTab: 'bank', screenId: screen, openCreate: true, formMode: 'havale' };
     case 'cashbank':
     case 'kasalar':
     case 'cash-slips':

@@ -5,6 +5,7 @@
 
 import { pgQuery } from './pgClient';
 import {
+  appendStoreIdFilterAllowNull,
   bankLinesTable,
   bankRegistersTable,
   cashLinesTable,
@@ -12,6 +13,7 @@ import {
   firmNr,
   newUuid,
   periodNr,
+  storeId,
 } from './erpTables';
 import {
   bankTxForDirection,
@@ -105,6 +107,8 @@ export async function fetchCashMovements(opts?: {
   const regId = opts?.registerId?.trim();
 
   if (regId) {
+    const params: unknown[] = [regId, limit];
+    const storeSql = appendStoreIdFilterAllowNull('cl.store_id', params);
     return tryQueries<CashMovementRow>([
       {
         sql: `SELECT cl.id::text AS id, cl.fiche_no, cl.date::text AS date, cl.definition,
@@ -115,13 +119,16 @@ export async function fetchCashMovements(opts?: {
               FROM ${lines} cl
               LEFT JOIN ${regs} cr ON cr.id = cl.register_id
               WHERE cl.register_id::text = $1
+                ${storeSql}
               ORDER BY cl.date DESC NULLS LAST, cl.created_at DESC NULLS LAST
               LIMIT $2`,
-        params: [regId, limit],
+        params,
       },
     ]);
   }
 
+  const params: unknown[] = [limit];
+  const storeSql = appendStoreIdFilterAllowNull('cl.store_id', params);
   return tryQueries<CashMovementRow>([
     {
       sql: `SELECT cl.id::text AS id, cl.fiche_no, cl.date::text AS date, cl.definition,
@@ -131,9 +138,11 @@ export async function fetchCashMovements(opts?: {
                    cr.name AS register_name
             FROM ${lines} cl
             LEFT JOIN ${regs} cr ON cr.id = cl.register_id
+            WHERE 1=1
+              ${storeSql}
             ORDER BY cl.date DESC NULLS LAST, cl.created_at DESC NULLS LAST
             LIMIT $1`,
-      params: [limit],
+      params,
     },
   ]);
 }
@@ -203,16 +212,49 @@ export async function createSimpleCashMovement(opts: {
   const desc = opts.description?.trim() || (opts.direction === 'in' ? 'Mobil kasa girişi' : 'Mobil kasa çıkışı');
   const date = opts.date?.trim() || new Date().toISOString().slice(0, 10);
 
-  await pgQuery(
-    `INSERT INTO ${lines} (
-       id, firm_nr, period_nr, register_id, fiche_no, date, amount, sign,
-       definition, transaction_type, currency_code, exchange_rate, f_amount
-     ) VALUES (
-       $1::uuid, $2, $3, $4::uuid, $5, $6::date, $7, $8,
-       $9, $10, 'TRY', 1, $7
-     )`,
-    [newUuid(), fn, pn, opts.registerId, ficheNo, date, amt, sign, desc, txType],
-  );
+  const sid = storeId();
+  const cashId = newUuid();
+  try {
+    if (sid) {
+      await pgQuery(
+        `INSERT INTO ${lines} (
+           id, firm_nr, period_nr, register_id, fiche_no, date, amount, sign,
+           definition, transaction_type, currency_code, exchange_rate, f_amount, store_id
+         ) VALUES (
+           $1::uuid, $2, $3, $4::uuid, $5, $6::date, $7, $8,
+           $9, $10, 'TRY', 1, $7, $11::uuid
+         )`,
+        [cashId, fn, pn, opts.registerId, ficheNo, date, amt, sign, desc, txType, sid],
+      );
+    } else {
+      await pgQuery(
+        `INSERT INTO ${lines} (
+           id, firm_nr, period_nr, register_id, fiche_no, date, amount, sign,
+           definition, transaction_type, currency_code, exchange_rate, f_amount
+         ) VALUES (
+           $1::uuid, $2, $3, $4::uuid, $5, $6::date, $7, $8,
+           $9, $10, 'TRY', 1, $7
+         )`,
+        [cashId, fn, pn, opts.registerId, ficheNo, date, amt, sign, desc, txType],
+      );
+    }
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (sid && /store_id/i.test(msg)) {
+      await pgQuery(
+        `INSERT INTO ${lines} (
+           id, firm_nr, period_nr, register_id, fiche_no, date, amount, sign,
+           definition, transaction_type, currency_code, exchange_rate, f_amount
+         ) VALUES (
+           $1::uuid, $2, $3, $4::uuid, $5, $6::date, $7, $8,
+           $9, $10, 'TRY', 1, $7
+         )`,
+        [cashId, fn, pn, opts.registerId, ficheNo, date, amt, sign, desc, txType],
+      );
+    } else {
+      throw e;
+    }
+  }
 
   await pgQuery(
     `UPDATE ${regs}

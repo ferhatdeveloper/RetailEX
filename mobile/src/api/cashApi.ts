@@ -5,6 +5,7 @@
 
 import { pgQuery } from './pgClient';
 import {
+  appendStoreIdFilterAllowNull,
   bankLinesTable,
   bankRegistersTable,
   cashLinesTable,
@@ -13,6 +14,7 @@ import {
   firmNr,
   newUuid,
   periodNr,
+  storeId,
   suppliersTable,
 } from './erpTables';
 import {
@@ -20,6 +22,115 @@ import {
   cashTransactionTypeLabel,
   cashTxForDirection,
 } from './cashTransactionTypes';
+
+
+type CashLineInsert = {
+  id: string;
+  registerId: string;
+  ficheNo: string;
+  date: string;
+  amount: number;
+  sign: number;
+  definition: string;
+  transactionType: string;
+  customerId?: string | null;
+  bankId?: string | null;
+  targetRegisterId?: string | null;
+  currencyCode?: string;
+  exchangeRate?: number;
+  transferStatus?: number;
+};
+
+/** cash_lines INSERT — oturum storeId yazar; kolon yoksa fallback */
+async function insertCashLine(row: CashLineInsert): Promise<void> {
+  const fn = firmNr();
+  const pn = periodNr();
+  const table = cashLinesTable();
+  const sid = storeId();
+  const currency = row.currencyCode ?? 'YEREL';
+  const rate = row.exchangeRate ?? 1;
+  const transfer = row.transferStatus ?? 0;
+
+  const cols = [
+    'id',
+    'firm_nr',
+    'period_nr',
+    'register_id',
+    'fiche_no',
+    'date',
+    'amount',
+    'sign',
+    'definition',
+    'transaction_type',
+    'currency_code',
+    'exchange_rate',
+    'f_amount',
+    'transfer_status',
+  ];
+  const params: unknown[] = [
+    row.id,
+    fn,
+    pn,
+    row.registerId,
+    row.ficheNo,
+    row.date,
+    row.amount,
+    row.sign,
+    row.definition,
+    row.transactionType,
+    currency,
+    rate,
+    row.amount,
+    transfer,
+  ];
+
+  if (row.customerId) {
+    cols.push('customer_id');
+    params.push(row.customerId);
+  }
+  if (row.bankId) {
+    cols.push('bank_id');
+    params.push(row.bankId);
+  }
+  if (row.targetRegisterId) {
+    cols.push('target_register_id');
+    params.push(row.targetRegisterId);
+  }
+
+  const build = (withStore: boolean) => {
+    const c = withStore && sid ? [...cols, 'store_id'] : cols;
+    const p = withStore && sid ? [...params, sid] : [...params];
+    const ph = c.map((col, i) => {
+      if (
+        ['id', 'register_id', 'customer_id', 'bank_id', 'target_register_id', 'store_id'].includes(
+          col,
+        )
+      ) {
+        return `$${i + 1}::uuid`;
+      }
+      if (col === 'date') return `$${i + 1}::date`;
+      return `$${i + 1}`;
+    });
+    return {
+      sql: `INSERT INTO ${table} (${c.join(', ')}) VALUES (${ph.join(', ')})`,
+      params: p,
+    };
+  };
+
+  try {
+    const q = build(true);
+    await pgQuery(q.sql, q.params);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (sid && /store_id/i.test(msg)) {
+      const q = build(false);
+      await pgQuery(q.sql, q.params);
+      return;
+    }
+    throw e;
+  }
+}
+
 
 export type CashRegisterRow = {
   id: string;
@@ -95,9 +206,20 @@ export type SimpleBankMovementInput = {
   direction: 'in' | 'out';
   date?: string;
   description?: string;
+  /** Varsayılan BANKA_GIRIS/CIKIS; dış havale için HAVALE / EFT */
+  transactionType?: 'BANKA_GIRIS' | 'BANKA_CIKIS' | 'HAVALE' | 'EFT';
 };
 
 export type CashVirmanInput = {
+  sourceRegisterId: string;
+  targetRegisterId: string;
+  amount: number;
+  date?: string;
+  description?: string;
+};
+
+/** Banka ↔ banka virman — çift satır (bank_lines’ta target kolonu yok; fiche_no eşlemesi) */
+export type BankVirmanInput = {
   sourceRegisterId: string;
   targetRegisterId: string;
   amount: number;
@@ -199,6 +321,7 @@ export async function fetchCashMovements(opts?: {
   if (opts?.cariOnly) {
     filter += ` AND UPPER(TRIM(COALESCE(cl.transaction_type, ''))) IN ('CH_TAHSILAT', 'CH_ODEME')`;
   }
+  filter += appendStoreIdFilterAllowNull('cl.store_id', params);
 
   const res = await pgQuery<CashMovementRow>(
     `SELECT cl.id::text AS id,
@@ -290,9 +413,6 @@ export async function createSimpleCashMovement(
   if (!input.registerId) throw new Error('Kasa seçin');
   if (amount <= 0) throw new Error('Tutar 0’dan büyük olmalı');
 
-  const fn = firmNr();
-  const pn = periodNr();
-  const lines = cashLinesTable();
   const regs = cashRegistersTable();
   const txType = cashTxForDirection(input.direction);
   const sign = input.direction === 'in' ? 1 : -1;
@@ -301,15 +421,16 @@ export async function createSimpleCashMovement(
   const date = (input.date || todayYmd()).slice(0, 10);
   const desc = (input.description || '').trim() || (sign > 0 ? 'Kasa giriş' : 'Kasa çıkış');
 
-  await pgQuery(
-    `INSERT INTO ${lines} (
-       id, firm_nr, period_nr, register_id, fiche_no, date, amount, sign,
-       definition, transaction_type, currency_code, exchange_rate, f_amount, transfer_status
-     ) VALUES (
-       $1::uuid, $2, $3, $4::uuid, $5, $6::date, $7, $8, $9, $10, 'YEREL', 1, $7, 0
-     )`,
-    [id, fn, pn, input.registerId, ficheNo, date, amount, sign, desc, txType],
-  );
+  await insertCashLine({
+    id,
+    registerId: input.registerId,
+    ficheNo,
+    date,
+    amount,
+    sign,
+    definition: desc,
+    transactionType: txType,
+  });
 
   await pgQuery(
     `UPDATE ${regs}
@@ -330,9 +451,6 @@ export async function createCariCashSlip(
   if (!input.customerId) throw new Error('Cari hesap seçin');
   if (amount <= 0) throw new Error('Tutar 0’dan büyük olmalı');
 
-  const fn = firmNr();
-  const pn = periodNr();
-  const lines = cashLinesTable();
   const regs = cashRegistersTable();
   const cust = customersTable();
   const supp = suppliersTable();
@@ -345,15 +463,17 @@ export async function createCariCashSlip(
     (input.description || '').trim() ||
     (txType === 'CH_TAHSILAT' ? 'Cari tahsilat' : 'Cari ödeme');
 
-  await pgQuery(
-    `INSERT INTO ${lines} (
-       id, firm_nr, period_nr, register_id, fiche_no, date, amount, sign,
-       definition, transaction_type, customer_id, currency_code, exchange_rate, f_amount, transfer_status
-     ) VALUES (
-       $1::uuid, $2, $3, $4::uuid, $5, $6::date, $7, $8, $9, $10, $11::uuid, 'YEREL', 1, $7, 0
-     )`,
-    [id, fn, pn, input.registerId, ficheNo, date, amount, sign, desc, txType, input.customerId],
-  );
+  await insertCashLine({
+    id,
+    registerId: input.registerId,
+    ficheNo,
+    date,
+    amount,
+    sign,
+    definition: desc,
+    transactionType: txType,
+    customerId: input.customerId,
+  });
 
   await pgQuery(
     `UPDATE ${regs}
@@ -396,50 +516,37 @@ export async function createCashVirman(
   }
   if (amount <= 0) throw new Error('Tutar 0’dan büyük olmalı');
 
-  const fn = firmNr();
-  const pn = periodNr();
-  const lines = cashLinesTable();
   const regs = cashRegistersTable();
   const ficheNo = nextFicheNo('KL');
   const id = newUuid();
   const date = (input.date || todayYmd()).slice(0, 10);
   const desc = (input.description || '').trim() || 'Kasa virman';
 
-  await pgQuery(
-    `INSERT INTO ${lines} (
-       id, firm_nr, period_nr, register_id, fiche_no, date, amount, sign,
-       definition, transaction_type, target_register_id,
-       currency_code, exchange_rate, f_amount, transfer_status
-     ) VALUES (
-       $1::uuid, $2, $3, $4::uuid, $5, $6::date, $7, -1,
-       $8, 'VIRMAN', $9::uuid, 'YEREL', 1, $7, 0
-     )`,
-    [id, fn, pn, input.sourceRegisterId, ficheNo, date, amount, desc, input.targetRegisterId],
-  );
+  await insertCashLine({
+    id,
+    registerId: input.sourceRegisterId,
+    ficheNo,
+    date,
+    amount,
+    sign: -1,
+    definition: desc,
+    transactionType: 'VIRMAN',
+    targetRegisterId: input.targetRegisterId,
+  });
 
   const counterId = newUuid();
   const counterDesc = `${desc} (Virman alındı)`;
-  await pgQuery(
-    `INSERT INTO ${lines} (
-       id, firm_nr, period_nr, register_id, fiche_no, date, amount, sign,
-       definition, transaction_type, target_register_id,
-       currency_code, exchange_rate, f_amount, transfer_status
-     ) VALUES (
-       $1::uuid, $2, $3, $4::uuid, $5, $6::date, $7, 1,
-       $8, 'VIRMAN', $9::uuid, 'YEREL', 1, $7, 0
-     )`,
-    [
-      counterId,
-      fn,
-      pn,
-      input.targetRegisterId,
-      `${ficheNo}-VRM`,
-      date,
-      amount,
-      counterDesc,
-      input.sourceRegisterId,
-    ],
-  );
+  await insertCashLine({
+    id: counterId,
+    registerId: input.targetRegisterId,
+    ficheNo: `${ficheNo}-VRM`,
+    date,
+    amount,
+    sign: 1,
+    definition: counterDesc,
+    transactionType: 'VIRMAN',
+    targetRegisterId: input.sourceRegisterId,
+  });
 
   await pgQuery(
     `UPDATE ${regs}
@@ -486,29 +593,17 @@ export async function createCashBankBridge(
     (txType === 'BANKA_YATIRILAN' ? 'Bankaya yatırılan' : 'Bankadan çekilen');
   const bankDesc = `${desc} (Kasa entegrasyon)`;
 
-  await pgQuery(
-    `INSERT INTO ${cashLines} (
-       id, firm_nr, period_nr, register_id, fiche_no, date, amount, sign,
-       definition, transaction_type, bank_id,
-       currency_code, exchange_rate, f_amount, transfer_status
-     ) VALUES (
-       $1::uuid, $2, $3, $4::uuid, $5, $6::date, $7, $8,
-       $9, $10, $11::uuid, 'YEREL', 1, $7, 0
-     )`,
-    [
-      id,
-      fn,
-      pn,
-      input.cashRegisterId,
-      ficheNo,
-      date,
-      amount,
-      cashSign,
-      desc,
-      txType,
-      input.bankRegisterId,
-    ],
-  );
+  await insertCashLine({
+    id,
+    registerId: input.cashRegisterId,
+    ficheNo,
+    date,
+    amount,
+    sign: cashSign,
+    definition: desc,
+    transactionType: txType,
+    bankId: input.bankRegisterId,
+  });
 
   const bankId = newUuid();
   await pgQuery(
@@ -562,12 +657,35 @@ export async function createSimpleBankMovement(
   const pn = periodNr();
   const lines = bankLinesTable();
   const regs = bankRegistersTable();
-  const txType = input.direction === 'in' ? 'BANKA_GIRIS' : 'BANKA_CIKIS';
-  const sign = input.direction === 'in' ? 1 : -1;
+  const explicit = input.transactionType
+    ? String(input.transactionType).toUpperCase().trim()
+    : '';
+  const isOutboundType = explicit === 'HAVALE' || explicit === 'EFT' || explicit === 'BANKA_CIKIS';
+  const isInboundType = explicit === 'BANKA_GIRIS';
+  const direction: 'in' | 'out' = isOutboundType
+    ? 'out'
+    : isInboundType
+      ? 'in'
+      : input.direction;
+  const txType =
+    explicit === 'HAVALE' || explicit === 'EFT' || explicit === 'BANKA_GIRIS' || explicit === 'BANKA_CIKIS'
+      ? explicit
+      : direction === 'in'
+        ? 'BANKA_GIRIS'
+        : 'BANKA_CIKIS';
+  const sign = direction === 'in' ? 1 : -1;
   const ficheNo = nextFicheNo('BNK');
   const id = newUuid();
   const date = (input.date || todayYmd()).slice(0, 10);
-  const desc = (input.description || '').trim() || (sign > 0 ? 'Banka giriş' : 'Banka çıkış');
+  const defaultDesc =
+    txType === 'HAVALE'
+      ? 'Havale'
+      : txType === 'EFT'
+        ? 'EFT'
+        : sign > 0
+          ? 'Banka giriş'
+          : 'Banka çıkış';
+  const desc = (input.description || '').trim() || defaultDesc;
 
   await pgQuery(
     `INSERT INTO ${lines} (
@@ -585,6 +703,81 @@ export async function createSimpleBankMovement(
          updated_at = NOW()
      WHERE id = $2::uuid`,
     [amount * sign, input.registerId],
+  );
+
+  return { id, ficheNo };
+}
+
+/**
+ * Banka → banka virman — web HAVALE/VIRMAN çift kayıt mantığı.
+ * Kaynak −1 / hedef +1; bakiyeler simetrik güncellenir.
+ */
+export async function createBankVirman(
+  input: BankVirmanInput,
+): Promise<{ id: string; ficheNo: string }> {
+  const amount = Math.abs(Number(input.amount) || 0);
+  if (!input.sourceRegisterId) throw new Error('Kaynak banka seçin');
+  if (!input.targetRegisterId) throw new Error('Hedef banka seçin');
+  if (input.sourceRegisterId === input.targetRegisterId) {
+    throw new Error('Kaynak ve hedef banka aynı olamaz');
+  }
+  if (amount <= 0) throw new Error('Tutar 0’dan büyük olmalı');
+
+  const fn = firmNr();
+  const pn = periodNr();
+  const lines = bankLinesTable();
+  const regs = bankRegistersTable();
+  const ficheNo = nextFicheNo('BNK');
+  const id = newUuid();
+  const date = (input.date || todayYmd()).slice(0, 10);
+  const desc = (input.description || '').trim() || 'Banka virman';
+
+  await pgQuery(
+    `INSERT INTO ${lines} (
+       id, firm_nr, period_nr, register_id, fiche_no, date, amount, sign,
+       definition, transaction_type, currency_code, exchange_rate, f_amount
+     ) VALUES (
+       $1::uuid, $2, $3, $4::uuid, $5, $6::date, $7, -1,
+       $8, 'VIRMAN', 'YEREL', 1, $7
+     )`,
+    [id, fn, pn, input.sourceRegisterId, ficheNo, date, amount, desc],
+  );
+
+  const counterId = newUuid();
+  const counterDesc = `${desc} (Virman alındı)`;
+  await pgQuery(
+    `INSERT INTO ${lines} (
+       id, firm_nr, period_nr, register_id, fiche_no, date, amount, sign,
+       definition, transaction_type, currency_code, exchange_rate, f_amount
+     ) VALUES (
+       $1::uuid, $2, $3, $4::uuid, $5, $6::date, $7, 1,
+       $8, 'VIRMAN', 'YEREL', 1, $7
+     )`,
+    [
+      counterId,
+      fn,
+      pn,
+      input.targetRegisterId,
+      `${ficheNo}-VRM`,
+      date,
+      amount,
+      counterDesc,
+    ],
+  );
+
+  await pgQuery(
+    `UPDATE ${regs}
+     SET balance = COALESCE(balance, 0) + $1::numeric,
+         updated_at = NOW()
+     WHERE id = $2::uuid`,
+    [-amount, input.sourceRegisterId],
+  );
+  await pgQuery(
+    `UPDATE ${regs}
+     SET balance = COALESCE(balance, 0) + $1::numeric,
+         updated_at = NOW()
+     WHERE id = $2::uuid`,
+    [amount, input.targetRegisterId],
   );
 
   return { id, ficheNo };
@@ -631,9 +824,6 @@ export async function recordKasaGirisForSale(opts: {
   const registerId = opts.registerId || (await resolveDefaultCashRegisterId());
   if (!registerId) return null;
 
-  const fn = firmNr();
-  const pn = periodNr();
-  const lines = cashLinesTable();
   const regs = cashRegistersTable();
   const id = newUuid();
   const date = todayYmd();
@@ -642,29 +832,17 @@ export async function recordKasaGirisForSale(opts: {
   const ficheNo = String(opts.ficheNo || '').trim() || nextFicheNo('KL');
   const customerId = opts.customerId || null;
 
-  if (customerId) {
-    await pgQuery(
-      `INSERT INTO ${lines} (
-         id, firm_nr, period_nr, register_id, fiche_no, date, amount, sign,
-         definition, transaction_type, customer_id, currency_code, exchange_rate, f_amount, transfer_status
-       ) VALUES (
-         $1::uuid, $2, $3, $4::uuid, $5, $6::date, $7, 1,
-         $8, $9, $10::uuid, 'YEREL', 1, $7, 0
-       )`,
-      [id, fn, pn, registerId, ficheNo, date, amount, desc, CASH_TX.KASA_GIRIS, customerId],
-    );
-  } else {
-    await pgQuery(
-      `INSERT INTO ${lines} (
-         id, firm_nr, period_nr, register_id, fiche_no, date, amount, sign,
-         definition, transaction_type, currency_code, exchange_rate, f_amount, transfer_status
-       ) VALUES (
-         $1::uuid, $2, $3, $4::uuid, $5, $6::date, $7, 1,
-         $8, $9, 'YEREL', 1, $7, 0
-       )`,
-      [id, fn, pn, registerId, ficheNo, date, amount, desc, CASH_TX.KASA_GIRIS],
-    );
-  }
+  await insertCashLine({
+    id,
+    registerId,
+    ficheNo,
+    date,
+    amount,
+    sign: 1,
+    definition: desc,
+    transactionType: CASH_TX.KASA_GIRIS,
+    customerId,
+  });
 
   await pgQuery(
     `UPDATE ${regs}
@@ -694,9 +872,6 @@ export async function recordKasaCikisForPurchase(opts: {
   const registerId = opts.registerId || (await resolveDefaultCashRegisterId());
   if (!registerId) return null;
 
-  const fn = firmNr();
-  const pn = periodNr();
-  const lines = cashLinesTable();
   const regs = cashRegistersTable();
   const id = newUuid();
   const date = todayYmd();
@@ -705,29 +880,17 @@ export async function recordKasaCikisForPurchase(opts: {
   const ficheNo = String(opts.ficheNo || '').trim() || nextFicheNo('KL');
   const supplierId = opts.supplierId || null;
 
-  if (supplierId) {
-    await pgQuery(
-      `INSERT INTO ${lines} (
-         id, firm_nr, period_nr, register_id, fiche_no, date, amount, sign,
-         definition, transaction_type, customer_id, currency_code, exchange_rate, f_amount, transfer_status
-       ) VALUES (
-         $1::uuid, $2, $3, $4::uuid, $5, $6::date, $7, -1,
-         $8, $9, $10::uuid, 'YEREL', 1, $7, 0
-       )`,
-      [id, fn, pn, registerId, ficheNo, date, amount, desc, CASH_TX.KASA_CIKIS, supplierId],
-    );
-  } else {
-    await pgQuery(
-      `INSERT INTO ${lines} (
-         id, firm_nr, period_nr, register_id, fiche_no, date, amount, sign,
-         definition, transaction_type, currency_code, exchange_rate, f_amount, transfer_status
-       ) VALUES (
-         $1::uuid, $2, $3, $4::uuid, $5, $6::date, $7, -1,
-         $8, $9, 'YEREL', 1, $7, 0
-       )`,
-      [id, fn, pn, registerId, ficheNo, date, amount, desc, CASH_TX.KASA_CIKIS],
-    );
-  }
+  await insertCashLine({
+    id,
+    registerId,
+    ficheNo,
+    date,
+    amount,
+    sign: -1,
+    definition: desc,
+    transactionType: CASH_TX.KASA_CIKIS,
+    customerId: supplierId,
+  });
 
   await pgQuery(
     `UPDATE ${regs}
@@ -757,9 +920,6 @@ export async function recordKasaGirisForPurchaseReturn(opts: {
   const registerId = opts.registerId || (await resolveDefaultCashRegisterId());
   if (!registerId) return null;
 
-  const fn = firmNr();
-  const pn = periodNr();
-  const lines = cashLinesTable();
   const regs = cashRegistersTable();
   const id = newUuid();
   const date = todayYmd();
@@ -768,29 +928,17 @@ export async function recordKasaGirisForPurchaseReturn(opts: {
   const ficheNo = String(opts.ficheNo || '').trim() || nextFicheNo('KL');
   const supplierId = opts.supplierId || null;
 
-  if (supplierId) {
-    await pgQuery(
-      `INSERT INTO ${lines} (
-         id, firm_nr, period_nr, register_id, fiche_no, date, amount, sign,
-         definition, transaction_type, customer_id, currency_code, exchange_rate, f_amount, transfer_status
-       ) VALUES (
-         $1::uuid, $2, $3, $4::uuid, $5, $6::date, $7, 1,
-         $8, $9, $10::uuid, 'YEREL', 1, $7, 0
-       )`,
-      [id, fn, pn, registerId, ficheNo, date, amount, desc, CASH_TX.KASA_GIRIS, supplierId],
-    );
-  } else {
-    await pgQuery(
-      `INSERT INTO ${lines} (
-         id, firm_nr, period_nr, register_id, fiche_no, date, amount, sign,
-         definition, transaction_type, currency_code, exchange_rate, f_amount, transfer_status
-       ) VALUES (
-         $1::uuid, $2, $3, $4::uuid, $5, $6::date, $7, 1,
-         $8, $9, 'YEREL', 1, $7, 0
-       )`,
-      [id, fn, pn, registerId, ficheNo, date, amount, desc, CASH_TX.KASA_GIRIS],
-    );
-  }
+  await insertCashLine({
+    id,
+    registerId,
+    ficheNo,
+    date,
+    amount,
+    sign: 1,
+    definition: desc,
+    transactionType: CASH_TX.KASA_GIRIS,
+    customerId: supplierId,
+  });
 
   await pgQuery(
     `UPDATE ${regs}
@@ -851,9 +999,6 @@ export async function recordKasaCikisForReturn(opts: {
   const registerId = opts.registerId || (await resolveDefaultCashRegisterId());
   if (!registerId) return null;
 
-  const fn = firmNr();
-  const pn = periodNr();
-  const lines = cashLinesTable();
   const regs = cashRegistersTable();
   const id = newUuid();
   const date = todayYmd();
@@ -862,29 +1007,17 @@ export async function recordKasaCikisForReturn(opts: {
   const ficheNo = String(opts.ficheNo || '').trim() || nextFicheNo('KL');
   const customerId = opts.customerId || null;
 
-  if (customerId) {
-    await pgQuery(
-      `INSERT INTO ${lines} (
-         id, firm_nr, period_nr, register_id, fiche_no, date, amount, sign,
-         definition, transaction_type, customer_id, currency_code, exchange_rate, f_amount, transfer_status
-       ) VALUES (
-         $1::uuid, $2, $3, $4::uuid, $5, $6::date, $7, -1,
-         $8, $9, $10::uuid, 'YEREL', 1, $7, 0
-       )`,
-      [id, fn, pn, registerId, ficheNo, date, amount, desc, CASH_TX.KASA_CIKIS, customerId],
-    );
-  } else {
-    await pgQuery(
-      `INSERT INTO ${lines} (
-         id, firm_nr, period_nr, register_id, fiche_no, date, amount, sign,
-         definition, transaction_type, currency_code, exchange_rate, f_amount, transfer_status
-       ) VALUES (
-         $1::uuid, $2, $3, $4::uuid, $5, $6::date, $7, -1,
-         $8, $9, 'YEREL', 1, $7, 0
-       )`,
-      [id, fn, pn, registerId, ficheNo, date, amount, desc, CASH_TX.KASA_CIKIS],
-    );
-  }
+  await insertCashLine({
+    id,
+    registerId,
+    ficheNo,
+    date,
+    amount,
+    sign: -1,
+    definition: desc,
+    transactionType: CASH_TX.KASA_CIKIS,
+    customerId,
+  });
 
   await pgQuery(
     `UPDATE ${regs}

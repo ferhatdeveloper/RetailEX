@@ -17,7 +17,7 @@
 **Durum sayımı (yaprak / özellik bazlı, yaklaşık):**  
 - **`[x]` / `[~]` canlı route** — ürün/cari/fatura, POS, terazi, mağaza, malzeme tanımları, E-Dönüşüm, WMS sayım+transfer+dalga, finans/cari devir, raporlar, sistem, iletişim…  
 - **`Module` yer tutucu** — grup kabukları (`store-management-group`, `waybill`, `Siparişler` …) + `dashboard`  
-- **`[ ]` bekleyen** — EAS ilk preview/production **build** (`eas init` + hesap), ekran-içi TR i18n, Rongta LAN canlı kg…
+- **`[ ]` bekleyen** — EAS ilk preview/production **build** (`eas init` + hesap); diğer ekran-içi TR i18n (POS `posUi` ✅); Rongta LAN canlı kg donanım sınırı ([`RONGTA_LAN.md`](./RONGTA_LAN.md))
 
 ---
 
@@ -217,6 +217,7 @@
 | Öğe | Durum |
 |-----|--------|
 | `pgClient` + connStr / dbMode | `[x]` |
+| Login PostgREST-first (web `loginVerify`) | `[x]` `apiMode` postgrest/hybrid → RPC `verify_login` → SQL → users; firms REST→SQL |
 | Online/Offline/Hybrid (`networkPolicy` + NetInfo + cache/kuyruk) | `[x]` `HYBRID_POLICY.md` · ürün/cari snapshot · cari + POS mutation queue |
 | `menuConfig` ≡ staticMenuConfig + POS/WMS/rest/beauty | `[x]` |
 | Stack + bottom tabs navigasyon | `[x]` |
@@ -281,11 +282,12 @@
 - [x] **P2 `storeId` kritik listeler:** `appendStoreIdFilter` — dashboard satış, fatura listeleri/özet, satış günü/ürün raporları, WMS sayım, stok hareket, bildirim vade
 - [x] **EAS production hazırlığı:** `eas.json`, `EAS_CHECKLIST.md`, `eas-mobile-*.mjs`, kök `mobile:eas:*` scriptleri, `app.json` `retailexEasNotes`
 - [x] **Belge tara → fatura:** `DocumentScan` + `expo-image-picker` + `expo-text-extractor` OCR (fallback manuel) + fatura create API; menü `document-scan` + fatura listesi tarama ikonu
+- [x] **P1 wave A:** banka virman/HAVALE + menü; ekstre R11b `Devreden`; POS `posUi` i18n; [`RONGTA_LAN.md`](./RONGTA_LAN.md)
 
 ## Sonraki (Faz 2+)
 
 1. ~~Fatura / cari oluşturma formları~~ (cari tamam; satış/alış/iade + **hizmet/irsaliye/sipariş/teklif create** `[~]`; KDV satır başlangıç)
-2. Kasa/banka tam form: tahsilat/ödeme, virman, cari entegrasyonu (web `kasa.ts` / `banka.ts`)
+2. ~~Kasa/banka virman + banka HAVALE~~ ✅ · kalan: tahsilat/ödeme derinliği, banka CH_*, fatura peşin havale (R5)
 3. ~~WMS sayım fişi yazma~~ ✅  
 3. ~~WMS sayım mutabakat / applyStockCount~~ ✅  
 4. ~~Restoran adisyon ödeme / kapatma~~ ✅  
@@ -293,12 +295,12 @@
 
 6. ~~Cari ekstre + mizan canlı SQL~~ ✅  
 7. EAS Build — `[x]` repo hazırlığı · `[ ]` `npm run mobile:eas:init` + ilk build → [`EAS_CHECKLIST.md`](./EAS_CHECKLIST.md)  
-8. ~~Menü etiketleri i18n (tr/en/ar/ku)~~ ✅ · kalan: ekran içi hardcoded TR (`Alert`, form hataları)  
+8. ~~Menü etiketleri i18n (tr/en/ar/ku)~~ ✅ · ~~POS ekran `posUi`~~ ✅ · kalan: diğer ekran `Alert` / form hataları  
 9. Teslimat: harita SDK / POD foto — opsiyonel derinlik  
 10. ~~Ürün oluştur/düzenle~~ ✅ · ~~Sistem menü yaprakları (okuma)~~ ✅  
 11. Offline kuyruk genişletme: ~~POS~~ ✅ · ~~fatura satış/alış/iade/belge~~ ✅ · ~~WMS sayım~~ ✅ (`wms.counting.*` · coalesce · cache sync · applyStock idempotent)  
 12. ~~`storeId` kritik listelerde~~ ✅ — kasa satırı mağaza kolonu seyrek; ürün stok hâlâ firma geneli  
 13. ~~Terazi BT: development build + `react-native-ble-plx`~~ ✅ (canlı kg + tarama); classic SPP / USB-OTG Android native hâlâ yok  
-14. Rongta LAN canlı ağırlık (etiket terazisi sürekli kg yaymaz) — tartılı satış simüle / harici tartı BT  
+14. Rongta LAN canlı kg — donanım yaymaz; doküman [`RONGTA_LAN.md`](./RONGTA_LAN.md) · tartılı satış simüle / BLE  
 15. Yazıcı BT / sistem (`expo-print`, `react-native-bluetooth-escpos-printer`) — ağ ESC/POS TCP `[x]` köprü + native TCP yolu  
 16. KDV derinliği: header `total_vat` yazma + POS satır KDV (web `totalVat: 0` parity kaldırılınca)

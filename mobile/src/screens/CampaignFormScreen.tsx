@@ -25,7 +25,7 @@ import { useThemeStore } from '../store/themeStore';
 import { palette } from '../theme/colors';
 import type { MainStackParamList } from '../navigation/types';
 
-type DiscountType = 'percentage' | 'fixed';
+type DiscountType = 'percentage' | 'fixed' | 'buyXgetY' | 'priceOverride';
 
 function todayIsoDate(): string {
   const d = new Date();
@@ -249,10 +249,28 @@ export function CampaignFormScreen() {
                 selected={discountType === 'fixed'}
                 onPress={() => setDiscountType('fixed')}
               />
+              <Chip
+                label="Al X Öde Y"
+                selected={discountType === 'buyXgetY'}
+                onPress={() => setDiscountType('buyXgetY')}
+              />
+              <Chip
+                label="Fiyat override"
+                selected={discountType === 'priceOverride'}
+                onPress={() => setDiscountType('priceOverride')}
+              />
             </View>
 
             <FormField
-              label={discountType === 'percentage' ? 'İndirim %' : 'İndirim tutarı'}
+              label={
+                discountType === 'percentage'
+                  ? 'İndirim %'
+                  : discountType === 'buyXgetY'
+                    ? 'Alınacak adet (X; Y=1)'
+                    : discountType === 'priceOverride'
+                      ? 'Kampanya birim fiyatı'
+                      : 'İndirim tutarı'
+              }
               value={discountValue}
               onChangeText={setDiscountValue}
               keyboardType="decimal-pad"

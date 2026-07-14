@@ -13,7 +13,8 @@ import {
   Platform,
   Alert,
 } from 'react-native';
-import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp, NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Plus } from 'lucide-react-native';
 import { ScreenHeader, EmptyState, ErrorBanner } from '../components/ScreenChrome';
 import { HeaderIconButton } from '../components/GradientHeader';
@@ -45,6 +46,7 @@ export function productionOpsRouteTab(screenId?: string): Tab {
 export function ProductionOpsScreen({ route }: Props) {
   const { colors } = useThemeStore();
   const orgEpoch = useOrgEpoch();
+  const navigation = useNavigation<NativeStackNavigationProp<MainStackParamList>>();
   const user = useAuthStore((s) => s.user);
   const initial = productionOpsRouteTab(route.params?.screenId);
   const [tab, setTab] = useState<Tab>(initial);
@@ -100,11 +102,14 @@ export function ProductionOpsScreen({ route }: Props) {
     setSaving(true);
     try {
       if (tab === 'production') {
-        await createProductionRecipe({ name, description });
+        const id = await createProductionRecipe({ name, description });
+        setShowCreate(false);
+        navigation.navigate('ProductionRecipeDetail', { recipeId: id, kind: 'production' });
       } else {
-        await createButcherRecipe({ name, code, animalType, description });
+        const id = await createButcherRecipe({ name, code, animalType, description });
+        setShowCreate(false);
+        navigation.navigate('ProductionRecipeDetail', { recipeId: id, kind: 'butcher' });
       }
-      setShowCreate(false);
       setLoading(true);
       await load();
     } catch (e) {
@@ -170,7 +175,15 @@ export function ProductionOpsScreen({ route }: Props) {
           ListEmptyComponent={<EmptyState message="Üretim reçetesi yok" />}
           contentContainerStyle={styles.list}
           renderItem={({ item }) => (
-            <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
+            <Pressable
+              onPress={() =>
+                navigation.navigate('ProductionRecipeDetail', {
+                  recipeId: item.id,
+                  kind: 'production',
+                })
+              }
+              style={[styles.card, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}
+            >
               <Text style={{ color: colors.text, fontWeight: '700' }}>{item.name}</Text>
               <Text style={{ color: colors.textMuted, fontSize: 12 }}>
                 {item.product_name || 'Ürün seçilmedi'}
@@ -179,7 +192,7 @@ export function ProductionOpsScreen({ route }: Props) {
               <Text style={{ color: colors.textSubtle, fontSize: 11, marginTop: 4 }}>
                 Maliyet {formatMoney(item.total_cost)}
               </Text>
-            </View>
+            </Pressable>
           )}
         />
       ) : (
@@ -190,7 +203,15 @@ export function ProductionOpsScreen({ route }: Props) {
           ListEmptyComponent={<EmptyState message="Kasap reçetesi yok" />}
           contentContainerStyle={styles.list}
           renderItem={({ item }) => (
-            <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
+            <Pressable
+              onPress={() =>
+                navigation.navigate('ProductionRecipeDetail', {
+                  recipeId: item.id,
+                  kind: 'butcher',
+                })
+              }
+              style={[styles.card, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}
+            >
               <Text style={{ color: colors.text, fontWeight: '700' }}>
                 {item.code ? `${item.code} · ` : ''}
                 {item.name}
@@ -199,7 +220,7 @@ export function ProductionOpsScreen({ route }: Props) {
                 {item.animal_type}
                 {item.description ? ` · ${item.description}` : ''}
               </Text>
-            </View>
+            </Pressable>
           )}
         />
       )}

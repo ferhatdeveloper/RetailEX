@@ -40,6 +40,16 @@ Menü grupları web `src/config/staticMenuConfig.ts` + POS/WMS/Restoran/Güzelli
 | Güzellik | **Canlı (liste)** | Randevu / hizmet / uzman |
 | Diğer menü yaprakları | **Module host** | Alt menü veya ilgili canlı kısayol — boş ekran yok |
 
+## Auth / API taşıma (PostgREST-first)
+
+Config `apiMode` = **postgrest** veya **hybrid** (+ `remoteRestUrl`) iken giriş web ile aynı sırayı izler:
+
+1. PostgREST `POST /rpc/verify_login` (schema `logic`)
+2. Başarısızsa bridge SQL `logic.verify_login`
+3. Sonra `public.users` + `crypt` fallback
+
+Firma listesi: önce PostgREST `GET /firms`, sonra SQL. Salt **postgrest** modunda köprü zorunlu değildir — Config’te PostgREST bağlantı testi yeterlidir.
+
 ## Görsel dil ve i18n
 
 Web Login / Dashboard ile uyumlu: mavi gradient header, hızlı erişim grid.
@@ -53,7 +63,8 @@ Web Login / Dashboard ile uyumlu: mavi gradient header, hızlı erişim grid.
 - Node 20+ (önerilen 22)
 - Android Studio (emülatör) ve/veya fiziksel cihaz
 - iOS: **yalnızca macOS + Xcode**
-- Yerel geliştirmede: kökte `npm run bridge` (port **3001**)
+- Yerel geliştirmede: kökte `npm run bridge` (güncel Node pg_bridge; varsayılan port **3001**)
+- **Terazi / scale (`/api/scale/*`):** güncel Node bridge gerekir. Windows’ta eski `RetailEX_SQL_Bridge` hâlâ **3001**’deyse scale route’ları yoktur — köke `BRIDGE_PORT=3002 npm run bridge` (PowerShell: `$env:BRIDGE_PORT=3002; npm run bridge`), mobilde Config / `EXPO_PUBLIC_BRIDGE_PORT=3002`.
 
 ## Kurulum / test
 
@@ -70,7 +81,7 @@ npx expo start -c
 
 ### Android emülatör + pg_bridge
 
-Emülatörde host = **`10.0.2.2`**, port `3001`. Fiziksel cihazda Bridge host = PC **LAN IP**.
+Emülatörde host = **`10.0.2.2`**, port bridge ile aynı (`3001` veya scale için `3002` — yukarıdaki not). Fiziksel cihazda Bridge host = PC **LAN IP**.
 
 ## Terazi BLE (development build)
 
@@ -84,7 +95,7 @@ Emülatörde host = **`10.0.2.2`**, port `3001`. Fiziksel cihazda Bridge host = 
 | 4. Cihaza kur | `npx expo run:android` **fiziksel cihaz** (emülatörde Bluetooth yok) |
 | 5. Metro | `npx expo start --dev-client` |
 
-- **TCP/LAN Rongta** (etiket terazisi): Expo Go yeterli; PLU + test `pg_bridge` üzerinden. Canlı kg genelde yok.
+- **TCP/LAN Rongta** (etiket terazisi): Expo Go yeterli; PLU + test güncel `pg_bridge` (`npm run bridge`) üzerinden — eski SQL_Bridge 3001 scale route vermez. Canlı kg yok — ayrıntı: [`RONGTA_LAN.md`](./RONGTA_LAN.md).
 - **BLE tartı**: Terazi Yönetimi → Cihazlar → Bluetooth → **BLE Tara** → cihaz ekle → Terazi sekmesinde canlı kg; Tartılı Satış’ta “simüle tercih” kapalıyken poll.
 - Klasik Bluetooth SPP / USB-OTG: bu RN sürümünde yok (Android TeraziManager native).
 

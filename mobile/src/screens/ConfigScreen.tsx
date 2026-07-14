@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -8,6 +8,7 @@ import {
   Platform,
   Alert,
   Pressable,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
@@ -31,6 +32,10 @@ import { flushPendingMutations } from '../offline/syncEngine';
 import { useConnectivityStore } from '../store/connectivityStore';
 import { palette } from '../theme/colors';
 import type { AuthStackParamList } from '../navigation/types';
+import {
+  scanLanServers,
+  type LanScanHit,
+} from '../utils/lanServerScan';
 
 type Props = NativeStackScreenProps<AuthStackParamList, 'Config'>;
 
@@ -54,6 +59,22 @@ export function ConfigScreen({ navigation }: Props) {
 
   const [draft, setDraft] = useState<DbConfig>(() => cloneConfig(stored));
   const [testing, setTesting] = useState(false);
+  const [scanning, setScanning] = useState(false);
+  const [scanPct, setScanPct] = useState(0);
+  const [scanFound, setScanFound] = useState(0);
+  const [scanHits, setScanHits] = useState<LanScanHit[]>([]);
+  const [scanMeta, setScanMeta] = useState<{
+    deviceIp: string | null;
+    prefix: string;
+    usedFallbackSubnet: boolean;
+  } | null>(null);
+  const scanAbortRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    return () => {
+      scanAbortRef.current?.abort();
+    };
+  }, []);
 
   const patch = (partial: Partial<DbConfig>) =>
     setDraft((d) => ({ ...d, ...partial }));
@@ -119,6 +140,94 @@ export function ConfigScreen({ navigation }: Props) {
     Alert.alert(
       result.ok ? t('connectionOk') : t('connectionFail'),
       result.detail,
+    );
+  };
+
+  const onScanLan = async () => {
+    if (scanning) return;
+    scanAbortRef.current?.abort();
+    const ctrl = new AbortController();
+    scanAbortRef.current = ctrl;
+    setScanning(true);
+    setScanPct(0);
+    setScanFound(0);
+    setScanHits([]);
+    setScanMeta(null);
+    try {
+      const result = await scanLanServers({
+        hintHost: draft.bridgeHost,
+        timeoutMs: 600,
+        concurrency: 28,
+        signal: ctrl.signal,
+        onProgress: (p) => {
+          const pct =
+            p.total > 0 ? Math.min(100, Math.round((p.done / p.total) * 100)) : 0;
+          setScanPct(pct);
+          setScanFound(p.found);
+          if (p.hit) {
+            setScanHits((prev) => {
+              const key = `${p.hit!.kind}:${p.hit!.host}:${p.hit!.port}`;
+              if (prev.some((h) => `${h.kind}:${h.host}:${h.port}` === key)) {
+                return prev;
+              }
+              return [...prev, p.hit!];
+            });
+          }
+        },
+      });
+      if (ctrl.signal.aborted) return;
+      setScanHits(result.hits);
+      setScanMeta({
+        deviceIp: result.deviceIp,
+        prefix: result.prefix,
+        usedFallbackSubnet: result.usedFallbackSubnet,
+      });
+      setScanPct(100);
+      if (result.hits.length === 0) {
+        const detail = [
+          t('scanLanNoneDetail', {
+            ip: result.deviceIp ?? '—',
+            prefix: result.prefix,
+          }),
+          result.usedFallbackSubnet
+            ? t('scanLanFallbackSubnet', { prefix: result.prefix })
+            : '',
+        ]
+          .filter(Boolean)
+          .join('\n');
+        Alert.alert(t('scanLanNone'), detail);
+      }
+    } catch (e) {
+      if (!ctrl.signal.aborted) {
+        Alert.alert(
+          t('scanLanNone'),
+          e instanceof Error ? e.message : String(e),
+        );
+      }
+    } finally {
+      if (scanAbortRef.current === ctrl) {
+        setScanning(false);
+      }
+    }
+  };
+
+  const applyScanHit = (hit: LanScanHit) => {
+    if (hit.kind === 'bridge') {
+      patch({ bridgeHost: hit.host, bridgePort: hit.port });
+      Alert.alert(
+        t('scanLanFound'),
+        t('scanLanAppliedBridge', { host: hit.host, port: hit.port }),
+      );
+      return;
+    }
+    patch({
+      remoteRestUrl: hit.baseUrl,
+      apiMode:
+        draft.apiMode === 'bridge' ? 'hybrid' : (draft.apiMode ?? 'hybrid'),
+    });
+    Alert.alert(
+      t('scanLanFound'),
+      t('scanLanAppliedRest', { url: hit.baseUrl }),
     );
   };
 
@@ -447,6 +556,61 @@ export function ConfigScreen({ navigation }: Props) {
                 keyboardType="number-pad"
               />
 
+              <PrimaryButton
+                label={scanning ? t('scanLanScanning', { pct: scanPct, found: scanFound }) : t('scanLan')}
+                onPress={() => void onScanLan()}
+                loading={scanning}
+                variant="ghost"
+              />
+              <Text style={[styles.hint, { color: colors.textSubtle }]}>
+                {t('scanLanHint')}
+              </Text>
+              {scanning ? (
+                <View style={styles.scanProgressRow}>
+                  <ActivityIndicator size="small" color={palette.blue500} />
+                  <Text style={[styles.hint, { color: colors.textMuted, flex: 1 }]}>
+                    {t('scanLanScanning', { pct: scanPct, found: scanFound })}
+                  </Text>
+                </View>
+              ) : null}
+              {scanMeta?.deviceIp ? (
+                <Text style={[styles.hint, { color: colors.textSubtle }]}>
+                  {t('scanLanDeviceIp', { ip: scanMeta.deviceIp })}
+                </Text>
+              ) : null}
+              {scanMeta?.usedFallbackSubnet ? (
+                <Text style={[styles.hint, { color: colors.textSubtle }]}>
+                  {t('scanLanFallbackSubnet', { prefix: scanMeta.prefix })}
+                </Text>
+              ) : null}
+              {scanHits.length > 0 ? (
+                <View style={styles.scanHitsBox}>
+                  <Text style={[styles.section, { color: colors.textMuted, marginTop: 0 }]}>
+                    {t('scanLanFoundCount', { count: scanHits.length })}
+                  </Text>
+                  {scanHits.map((hit) => (
+                    <Pressable
+                      key={`${hit.kind}-${hit.host}-${hit.port}`}
+                      onPress={() => applyScanHit(hit)}
+                      style={[
+                        styles.scanHitRow,
+                        {
+                          borderColor: darkMode ? palette.gray600 : palette.gray200,
+                          backgroundColor: darkMode
+                            ? palette.gray700
+                            : palette.gray100,
+                        },
+                      ]}
+                    >
+                      <Text style={[styles.scanHitLabel, { color: colors.text }]}>
+                        {hit.label}
+                      </Text>
+                      <Text style={styles.scanHitApply}>{t('scanLanFound')}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+              ) : null}
+
               <Text style={[styles.hint, { color: colors.textSubtle }]}>
                 {Platform.OS === 'android' ? t('androidEmulatorHint') : t('iosSimulatorHint')}
               </Text>
@@ -563,5 +727,36 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
     textTransform: 'uppercase',
     color: palette.blue500,
+  },
+  scanProgressRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  scanHitsBox: {
+    gap: 8,
+  },
+  scanHitRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    borderRadius: 2,
+    borderWidth: 1,
+  },
+  scanHitLabel: {
+    flex: 1,
+    fontSize: 12,
+    fontWeight: '700',
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+  },
+  scanHitApply: {
+    fontSize: 9,
+    fontWeight: '900',
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+    color: palette.green600,
   },
 });

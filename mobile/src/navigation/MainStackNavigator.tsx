@@ -20,6 +20,8 @@ import {
   ReportCashScreen,
 } from '../screens/ReportScreens';
 import { StockMovementsScreen } from '../screens/StockMovementsScreen';
+import { StockMovementDetailScreen } from '../screens/StockMovementDetailScreen';
+import { ProductionRecipeDetailScreen } from '../screens/ProductionRecipeDetailScreen';
 import { BeautyScreen } from '../screens/BeautyScreen';
 import { WmsScreen } from '../screens/WmsScreen';
 import { WmsCountScreen } from '../screens/WmsCountScreen';
@@ -85,6 +87,7 @@ export function MainStackNavigator() {
       <Stack.Screen name="ReportProductSales" component={ReportProductSalesScreen} />
       <Stack.Screen name="ReportCash" component={ReportCashScreen} />
       <Stack.Screen name="StockMovements" component={StockMovementsScreen} />
+      <Stack.Screen name="StockMovementDetail" component={StockMovementDetailScreen} />
       <Stack.Screen name="Beauty" component={BeautyScreen} />
       <Stack.Screen name="Wms" component={WmsScreen} />
       <Stack.Screen name="WmsCount" component={WmsCountScreen} />
@@ -105,6 +108,7 @@ export function MainStackNavigator() {
       <Stack.Screen name="MaterialDefinitions" component={MaterialDefinitionsScreen} />
       <Stack.Screen name="MaterialDefinitionForm" component={MaterialDefinitionFormScreen} />
       <Stack.Screen name="ProductionOps" component={ProductionOpsScreen} />
+      <Stack.Screen name="ProductionRecipeDetail" component={ProductionRecipeDetailScreen} />
       <Stack.Screen name="MultiCurrency" component={MultiCurrencyScreen} />
       <Stack.Screen name="ExcelOps" component={ExcelOpsScreen} />
       <Stack.Screen name="SystemExtras" component={SystemExtrasScreen} />

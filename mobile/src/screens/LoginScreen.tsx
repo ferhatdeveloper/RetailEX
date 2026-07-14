@@ -79,7 +79,8 @@ export function LoginScreen({ navigation }: Props) {
     }
     setLoading(true);
     try {
-      const row = await verifyLogin(username.trim(), password, '001');
+      // Web adım 1: firmasız şifre doğrulama (PostgREST-first → SQL → users)
+      const row = await verifyLogin(username.trim(), password, '');
       if (!row) {
         setError(t('loginFailed'));
         return;

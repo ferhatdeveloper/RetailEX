@@ -6,10 +6,22 @@ import {
   StyleSheet,
   ActivityIndicator,
   RefreshControl,
+  Pressable,
+  Modal,
+  KeyboardAvoidingView,
+  Platform,
+  Alert,
+  ScrollView,
 } from 'react-native';
-import { useRoute, type RouteProp } from '@react-navigation/native';
+import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { Plus } from 'lucide-react-native';
 import { ScreenHeader, EmptyState, ErrorBanner } from '../components/ScreenChrome';
+import { HeaderIconButton } from '../components/GradientHeader';
+import { FormField } from '../components/FormField';
+import { PrimaryButton } from '../components/PrimaryButton';
 import {
+  createStockMovement,
   fetchStockMovements,
   STOCK_SLIP_TRCODES,
   stockMovementLabel,
@@ -37,9 +49,12 @@ const FILTER_META: Record<
   },
 };
 
+type CreateType = 'out' | 'in' | 'adjustment';
+
 export function StockMovementsScreen() {
   const { colors } = useThemeStore();
   const orgEpoch = useOrgEpoch();
+  const navigation = useNavigation<NativeStackNavigationProp<MainStackParamList>>();
   const route = useRoute<RouteProp<MainStackParamList, 'StockMovements'>>();
   const filter = route.params?.filter ?? 'all';
   const meta = FILTER_META[filter];
@@ -47,6 +62,11 @@ export function StockMovementsScreen() {
   const [rows, setRows] = useState<StockMovementRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showCreate, setShowCreate] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [createType, setCreateType] = useState<CreateType>('out');
+  const [description, setDescription] = useState('');
+  const [documentNo, setDocumentNo] = useState('');
 
   const load = useCallback(async () => {
     setError(null);
@@ -70,9 +90,50 @@ export function StockMovementsScreen() {
     void load();
   }, [load]);
 
+  const openCreate = () => {
+    setCreateType('out');
+    setDescription('');
+    setDocumentNo('');
+    setShowCreate(true);
+  };
+
+  const handleCreate = async () => {
+    setSaving(true);
+    try {
+      const id = await createStockMovement({
+        movementType: createType,
+        description,
+        documentNo: documentNo.trim() || undefined,
+        items: [],
+      });
+      setShowCreate(false);
+      navigation.navigate('StockMovementDetail', { id });
+    } catch (e) {
+      Alert.alert('Kayıt hatası', e instanceof Error ? e.message : String(e));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const typeChips: { id: CreateType; label: string }[] = [
+    { id: 'out', label: 'Çıkış / Sarf' },
+    { id: 'in', label: 'Giriş' },
+    { id: 'adjustment', label: 'Düzeltme' },
+  ];
+
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
-      <ScreenHeader title={meta.title} subtitle={`${rows.length} kayıt · ${meta.subtitle}`} />
+      <ScreenHeader
+        title={meta.title}
+        subtitle={`${rows.length} kayıt · ${meta.subtitle}`}
+        right={
+          filter === 'all' ? (
+            <HeaderIconButton accent onPress={openCreate}>
+              <Plus size={18} color={palette.white} />
+            </HeaderIconButton>
+          ) : undefined
+        }
+      />
       {error ? <ErrorBanner message={error} onRetry={() => void load()} /> : null}
       {loading ? (
         <ActivityIndicator style={{ marginTop: 40 }} color={palette.blue600} />
@@ -84,7 +145,17 @@ export function StockMovementsScreen() {
           ListEmptyComponent={<EmptyState message="Stok hareketi yok" />}
           contentContainerStyle={{ padding: 12, gap: 8, paddingBottom: 40 }}
           renderItem={({ item }) => (
-            <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
+            <Pressable
+              onPress={() => {
+                if (item.source_kind === 'invoice') {
+                  const invId = item.id.startsWith('inv-') ? item.id.slice(4) : item.id;
+                  navigation.navigate('InvoiceDetail', { invoiceId: invId });
+                  return;
+                }
+                navigation.navigate('StockMovementDetail', { id: item.id });
+              }}
+              style={[styles.card, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}
+            >
               <View style={styles.rowBetween}>
                 <Text style={{ color: colors.text, fontWeight: '700' }} numberOfLines={1}>
                   {item.document_no || '—'}
@@ -118,10 +189,72 @@ export function StockMovementsScreen() {
                   {item.movement_type}
                 </Text>
               </View>
-            </View>
+            </Pressable>
           )}
         />
       )}
+
+      <Modal visible={showCreate} transparent animationType="slide" onRequestClose={() => setShowCreate(false)}>
+        <KeyboardAvoidingView
+          style={styles.modalOverlay}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setShowCreate(false)} />
+          <View style={[styles.modalCard, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
+            <Text style={[styles.modalTitle, { color: colors.text }]}>Yeni stok fişi</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
+              {typeChips.map((c) => (
+                <Pressable
+                  key={c.id}
+                  onPress={() => setCreateType(c.id)}
+                  style={[
+                    styles.chip,
+                    {
+                      backgroundColor: createType === c.id ? palette.blue600 : colors.background,
+                      borderColor: colors.cardBorder,
+                    },
+                  ]}
+                >
+                  <Text
+                    style={{
+                      color: createType === c.id ? palette.white : colors.text,
+                      fontWeight: '700',
+                      fontSize: 12,
+                    }}
+                  >
+                    {c.label}
+                  </Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+            <FormField
+              label="Belge no (opsiyonel)"
+              value={documentNo}
+              onChangeText={setDocumentNo}
+              autoCapitalize="characters"
+            />
+            <FormField
+              label="Açıklama"
+              value={description}
+              onChangeText={setDescription}
+              multiline
+              placeholder="Sarf / giriş açıklaması"
+            />
+            <Text style={{ color: colors.textMuted, fontSize: 11, marginVertical: 6 }}>
+              Kalemler fiş detayından sonra eklenebilir; şu an başlık kaydı oluşturulur.
+            </Text>
+            <PrimaryButton
+              label={saving ? 'Kaydediliyor…' : 'Oluştur'}
+              onPress={() => void handleCreate()}
+              disabled={saving}
+              loading={saving}
+            />
+            <Pressable onPress={() => setShowCreate(false)} style={{ marginTop: 12, alignItems: 'center' }}>
+              <Text style={{ color: colors.textMuted, fontWeight: '600' }}>İptal</Text>
+            </Pressable>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </View>
   );
 }
@@ -130,4 +263,16 @@ const styles = StyleSheet.create({
   root: { flex: 1 },
   card: { borderWidth: 1, borderRadius: 10, padding: 12 },
   rowBetween: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 },
+  modalOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.45)' },
+  modalCard: {
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    borderWidth: 1,
+    padding: 16,
+    paddingBottom: 28,
+    gap: 4,
+  },
+  modalTitle: { fontSize: 17, fontWeight: '800', marginBottom: 8 },
+  chipRow: { gap: 8, paddingVertical: 8 },
+  chip: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, borderWidth: 1 },
 });

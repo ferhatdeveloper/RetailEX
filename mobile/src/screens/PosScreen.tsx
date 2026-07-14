@@ -8,6 +8,7 @@ import {
   Alert,
   ActivityIndicator,
   Modal,
+  ScrollView,
 } from 'react-native';
 import { Plus, Minus, Trash2, ScanBarcode, Tag } from 'lucide-react-native';
 import { useTranslation } from 'react-i18next';
@@ -59,6 +60,7 @@ export function PosScreen() {
   /** null = otomatik en iyi; '' = kampanya yok; id = manuel seçim */
   const [selectedCampaignId, setSelectedCampaignId] = useState<string | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [campaignFilter, setCampaignFilter] = useState('');
 
   useEffect(() => {
     setCart([]);
@@ -271,22 +273,39 @@ export function PosScreen() {
     );
   };
 
+  const filteredCampaigns = useMemo(() => {
+    const q = campaignFilter.trim().toLocaleLowerCase('tr-TR');
+    if (!q) return campaigns;
+    return campaigns.filter((c) => c.name.toLocaleLowerCase('tr-TR').includes(q));
+  }, [campaigns, campaignFilter]);
+
+  const campaignModeLabel =
+    applied.mode === 'auto'
+      ? t('posUi.campaignAuto')
+      : applied.mode === 'off'
+        ? t('posUi.campaignOff')
+        : applied.mode === 'manual'
+          ? t('posUi.campaignManual')
+          : '';
+
   const campaignSubtitle =
     applied.discount > 0 && applied.campaign
       ? `${applied.campaign.name.slice(0, 28)} (−${formatMoney(applied.discount)})`
       : campaigns.length > 0
-        ? `${campaigns.length} aktif kampanya`
-        : 'Kampanya yok';
+        ? t('posUi.campaignsActive', { count: campaigns.length })
+        : t('posUi.noCampaign');
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
       <ScreenHeader
-        title="Satış (POS)"
-        subtitle="Sepet + fiş kaydı"
+        title={t('posUi.title')}
+        subtitle={t('posUi.subtitle')}
         showBack={false}
         right={
           <Pressable onPress={() => navigation.navigate('ScaleSale')} hitSlop={8}>
-            <Text style={{ color: palette.white, fontWeight: '800', fontSize: 12 }}>Terazi</Text>
+            <Text style={{ color: palette.white, fontWeight: '800', fontSize: 12 }}>
+              {t('posUi.scale')}
+            </Text>
           </Pressable>
         }
       />
@@ -294,14 +313,14 @@ export function PosScreen() {
         <View style={styles.searchFlex}>
           <SearchBar
             value={search}
-            onChangeText={(t) => void runSearch(t)}
-            placeholder="Barkod veya ürün adı…"
+            onChangeText={(q) => void runSearch(q)}
+            placeholder={t('posUi.searchPlaceholder')}
           />
         </View>
         <Pressable
           onPress={() => setScannerOpen(true)}
           style={[styles.scanBtn, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}
-          accessibilityLabel="Kamera ile barkod oku"
+          accessibilityLabel={t('posUi.scanA11y')}
         >
           <ScanBarcode size={22} color={palette.blue600} />
         </Pressable>
@@ -311,7 +330,7 @@ export function PosScreen() {
         visible={scannerOpen}
         onClose={() => setScannerOpen(false)}
         onScanned={(data) => void runSearch(data)}
-        title="POS barkod"
+        title={t('posUi.scanTitle')}
       />
 
       {hits.length > 0 ? (
@@ -335,7 +354,7 @@ export function PosScreen() {
             </Pressable>
           ))}
           {searching ? (
-            <Text style={{ color: colors.textMuted, padding: 8 }}>Aranıyor…</Text>
+            <Text style={{ color: colors.textMuted, padding: 8 }}>{t('posUi.searching')}</Text>
           ) : null}
         </View>
       ) : null}
@@ -343,7 +362,7 @@ export function PosScreen() {
       <FlatList
         data={cart}
         keyExtractor={(item) => item.productId}
-        ListEmptyComponent={<EmptyState message="Sepet boş — ürün arayıp ekleyin" />}
+        ListEmptyComponent={<EmptyState message={t('posUi.emptyCart')} />}
         contentContainerStyle={{ padding: 12, gap: 8, paddingBottom: 200 }}
         renderItem={({ item }) => (
           <View style={[styles.line, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
@@ -391,27 +410,29 @@ export function PosScreen() {
           <Tag size={16} color={palette.blue600} />
           <View style={{ flex: 1 }}>
             <Text style={{ color: colors.textMuted, fontSize: 10, fontWeight: '700' }}>
-              KAMPANYA {applied.mode === 'auto' ? '(otomatik)' : applied.mode === 'off' ? '(kapalı)' : ''}
+              {t('posUi.campaignLabel')} {campaignModeLabel}
             </Text>
             <Text style={{ color: colors.text, fontWeight: '700', fontSize: 12 }} numberOfLines={1}>
               {campaignSubtitle}
             </Text>
           </View>
-          <Text style={{ color: palette.blue600, fontWeight: '800', fontSize: 12 }}>Seç</Text>
+          <Text style={{ color: palette.blue600, fontWeight: '800', fontSize: 12 }}>
+            {t('posUi.select')}
+          </Text>
         </Pressable>
 
         {applied.discount > 0 ? (
           <View style={styles.totalsCol}>
             <Text style={{ color: colors.textMuted, fontSize: 12 }}>
-              Ara toplam: {formatMoney(subtotal)} ₺
+              {t('posUi.subtotal')}: {formatMoney(subtotal)} ₺
             </Text>
             <Text style={{ color: palette.green600, fontSize: 13, fontWeight: '700' }}>
-              İndirim: −{formatMoney(applied.discount)} ₺
+              {t('posUi.discount')}: −{formatMoney(applied.discount)} ₺
             </Text>
           </View>
         ) : null}
         <Text style={[styles.total, { color: colors.text }]}>
-          Toplam: {formatMoney(total)} ₺
+          {t('posUi.total')}: {formatMoney(total)} ₺
         </Text>
         {saving ? (
           <ActivityIndicator color={palette.blue600} />
@@ -419,14 +440,14 @@ export function PosScreen() {
           <View style={styles.payRow}>
             <View style={{ flex: 1 }}>
               <PrimaryButton
-                label="Nakit"
+                label={t('posUi.cash')}
                 disabled={cart.length === 0}
                 onPress={() => checkout('Nakit')}
               />
             </View>
             <View style={{ flex: 1 }}>
               <PrimaryButton
-                label="Kart"
+                label={t('posUi.card')}
                 disabled={cart.length === 0}
                 onPress={() => checkout('Kredi Kartı')}
               />
@@ -441,55 +462,120 @@ export function PosScreen() {
             style={[styles.modalCard, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}
             onPress={(e) => e.stopPropagation()}
           >
-            <Text style={[styles.modalTitle, { color: colors.text }]}>Kampanya seç</Text>
-            <Pressable
-              style={styles.modalItem}
-              onPress={() => {
-                setSelectedCampaignId(null);
-                setPickerOpen(false);
-              }}
-            >
-              <Text style={{ color: colors.text, fontWeight: '700' }}>Otomatik (en iyi)</Text>
-            </Pressable>
-            <Pressable
-              style={styles.modalItem}
-              onPress={() => {
-                setSelectedCampaignId('');
-                setPickerOpen(false);
-              }}
-            >
-              <Text style={{ color: colors.textMuted, fontWeight: '600' }}>Kampanya uygulama</Text>
-            </Pressable>
-            {campaigns.map((c) => {
-              const preview = applyCampaign(campaignEngineLines, c);
-              const ok = preview.totalDiscount > 0;
-              return (
-                <Pressable
-                  key={c.id}
-                  style={[styles.modalItem, !ok && { opacity: 0.45 }]}
-                  disabled={!ok && cart.length > 0}
-                  onPress={() => {
-                    setSelectedCampaignId(c.id);
-                    setPickerOpen(false);
-                  }}
-                >
-                  <View style={{ flex: 1 }}>
-                    <Text style={{ color: colors.text, fontWeight: '700' }} numberOfLines={1}>
-                      {c.name}
-                    </Text>
-                    <Text style={{ color: colors.textMuted, fontSize: 11 }}>
-                      {formatCampaignDiscount(c)}
-                      {ok ? ` · −${formatMoney(preview.totalDiscount)} ₺` : ' · bu sepete uygun değil'}
-                    </Text>
-                  </View>
-                </Pressable>
-              );
-            })}
-            {campaigns.length === 0 ? (
-              <Text style={{ color: colors.textMuted, padding: 12, fontSize: 12 }}>
-                Aktif dönem kampanyası yok
-              </Text>
-            ) : null}
+            <Text style={[styles.modalTitle, { color: colors.text }]}>{t('posUi.pickCampaign')}</Text>
+            <View style={{ paddingHorizontal: 4, marginBottom: 4 }}>
+              <SearchBar
+                value={campaignFilter}
+                onChangeText={setCampaignFilter}
+                placeholder={t('posUi.campaignSearch')}
+              />
+            </View>
+            <ScrollView style={{ maxHeight: 360 }} keyboardShouldPersistTaps="handled">
+              <Pressable
+                style={[
+                  styles.modalItem,
+                  selectedCampaignId === null && { backgroundColor: palette.blue600 + '18' },
+                ]}
+                onPress={() => {
+                  setSelectedCampaignId(null);
+                  setPickerOpen(false);
+                }}
+              >
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: colors.text, fontWeight: '700' }}>{t('posUi.autoBest')}</Text>
+                  <Text style={{ color: colors.textMuted, fontSize: 11 }}>
+                    {t('posUi.autoBestHint')}
+                  </Text>
+                </View>
+                {selectedCampaignId === null ? (
+                  <Text style={{ color: palette.blue600, fontWeight: '800', fontSize: 11 }}>
+                    {t('posUi.badgeSelected')}
+                  </Text>
+                ) : null}
+              </Pressable>
+              <Pressable
+                style={[
+                  styles.modalItem,
+                  selectedCampaignId === '' && { backgroundColor: palette.blue600 + '18' },
+                ]}
+                onPress={() => {
+                  setSelectedCampaignId('');
+                  setPickerOpen(false);
+                }}
+              >
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: colors.textMuted, fontWeight: '700' }}>{t('posUi.noApply')}</Text>
+                  <Text style={{ color: colors.textSubtle, fontSize: 11 }}>
+                    {t('posUi.noApplyHint')}
+                  </Text>
+                </View>
+                {selectedCampaignId === '' ? (
+                  <Text style={{ color: palette.blue600, fontWeight: '800', fontSize: 11 }}>
+                    {t('posUi.badgeSelected')}
+                  </Text>
+                ) : null}
+              </Pressable>
+              {filteredCampaigns.map((c) => {
+                const preview = applyCampaign(campaignEngineLines, c);
+                const ok = preview.totalDiscount > 0;
+                const selected = selectedCampaignId === c.id;
+                const reason =
+                  !ok && cart.length > 0
+                    ? c.minPurchaseAmount > 0 && subtotal < c.minPurchaseAmount
+                      ? t('posUi.minPurchase', { amount: formatMoney(c.minPurchaseAmount) })
+                      : t('posUi.notForCart')
+                    : null;
+                return (
+                  <Pressable
+                    key={c.id}
+                    style={[
+                      styles.modalItem,
+                      !ok && { opacity: 0.5 },
+                      selected && { backgroundColor: palette.blue600 + '18' },
+                    ]}
+                    disabled={!ok && cart.length > 0}
+                    onPress={() => {
+                      setSelectedCampaignId(c.id);
+                      setPickerOpen(false);
+                    }}
+                  >
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ color: colors.text, fontWeight: '700' }} numberOfLines={1}>
+                        {c.name}
+                      </Text>
+                      <Text style={{ color: colors.textMuted, fontSize: 11 }}>
+                        {formatCampaignDiscount(c)}
+                        {ok
+                          ? ` · −${formatMoney(preview.totalDiscount)}`
+                          : reason
+                            ? ` · ${reason}`
+                            : ''}
+                      </Text>
+                    </View>
+                    {ok ? (
+                      <Text
+                        style={{
+                          color: selected ? palette.blue600 : palette.green600,
+                          fontWeight: '800',
+                          fontSize: 11,
+                        }}
+                      >
+                        {selected ? t('posUi.badgeSelected') : t('posUi.badgeOk')}
+                      </Text>
+                    ) : null}
+                  </Pressable>
+                );
+              })}
+              {campaigns.length === 0 ? (
+                <Text style={{ color: colors.textMuted, padding: 12, fontSize: 12 }}>
+                  {t('posUi.noPeriodCampaign')}
+                </Text>
+              ) : filteredCampaigns.length === 0 ? (
+                <Text style={{ color: colors.textMuted, padding: 12, fontSize: 12 }}>
+                  {t('posUi.campaignSearchEmpty')}
+                </Text>
+              ) : null}
+            </ScrollView>
           </Pressable>
         </Pressable>
       </Modal>
