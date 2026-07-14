@@ -115,12 +115,14 @@ export function DashboardScreen() {
             ) : null}
           </View>
           <View style={styles.headerRight}>
-            <ConnectivityBadge onDark compact />
+            <View style={styles.headerActions}>
+              <ConnectivityBadge onDark compact />
+              <Pressable onPress={logout} style={styles.logoutBtn} hitSlop={8}>
+                <LogOut size={14} color={palette.white} />
+              </Pressable>
+            </View>
             <Text style={styles.dateText}>{dateStr}</Text>
             <Text style={styles.timeText}>{timeStr}</Text>
-            <Pressable onPress={logout} style={styles.logoutBtn} hitSlop={8}>
-              <LogOut size={14} color={palette.white} />
-            </Pressable>
           </View>
         </View>
       </GradientHeader>
@@ -467,14 +469,18 @@ const styles = StyleSheet.create({
     zIndex: 2,
   },
   headerLeft: { flex: 1, minWidth: 0 },
-  headerRight: { alignItems: 'flex-end', gap: 2 },
+  headerRight: { alignItems: 'flex-end', gap: 4 },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   headerTitle: { color: palette.white, fontSize: 18, fontWeight: '700' },
   headerSub: { color: palette.blue100, fontSize: 10, marginTop: 2 },
   firmLine: { color: 'rgba(191,219,254,0.95)', fontSize: 10, marginTop: 4 },
   dateText: { color: palette.blue100, fontSize: 10 },
   timeText: { color: palette.blue200, fontSize: 9 },
   logoutBtn: {
-    marginTop: 8,
     padding: 8,
     backgroundColor: 'rgba(255,255,255,0.15)',
     borderRadius: 2,
