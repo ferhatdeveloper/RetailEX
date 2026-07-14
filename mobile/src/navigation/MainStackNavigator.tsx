@@ -10,6 +10,7 @@ import { CustomerFormScreen } from '../screens/CustomerFormScreen';
 import { InvoicesScreen } from '../screens/InvoicesScreen';
 import { InvoiceDetailScreen } from '../screens/InvoiceDetailScreen';
 import { InvoiceFormScreen } from '../screens/InvoiceFormScreen';
+import { DocumentScanScreen } from '../screens/DocumentScanScreen';
 import {
   ReportSalesScreen,
   ReportStockScreen,
@@ -71,6 +72,7 @@ export function MainStackNavigator() {
       <Stack.Screen name="Invoices" component={InvoicesScreen} />
       <Stack.Screen name="InvoiceDetail" component={InvoiceDetailScreen} />
       <Stack.Screen name="InvoiceForm" component={InvoiceFormScreen} />
+      <Stack.Screen name="DocumentScan" component={DocumentScanScreen} />
       <Stack.Screen name="Campaigns" component={CampaignsScreen} />
       <Stack.Screen name="CampaignDetail" component={CampaignDetailScreen} />
       <Stack.Screen name="CampaignForm" component={CampaignFormScreen} />

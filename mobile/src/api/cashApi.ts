@@ -604,6 +604,16 @@ export async function resolveDefaultCashRegisterId(): Promise<string | null> {
   }
 }
 
+/** Aktif ilk banka hesabı — peşin havale alış iade fallback */
+export async function resolveDefaultBankRegisterId(): Promise<string | null> {
+  try {
+    const regs = await fetchBankRegisters(1);
+    return regs[0]?.id ?? null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Satış / POS sonrası KASA_GIRIS — web createKasaIslemi pattern.
  * Kasa yoksa sessizce atlar (satış yine kaydedilmiş olur).
@@ -728,6 +738,100 @@ export async function recordKasaCikisForPurchase(opts: {
   );
 
   return { id, registerId };
+}
+
+/**
+ * Peşin alış iadesi (trcode 6) sonrası KASA_GIRIS — tedarikçiden dönen nakit/kart kasaya girer.
+ * Simetri: recordKasaCikisForPurchase. Kasa yoksa sessizce atlar.
+ */
+export async function recordKasaGirisForPurchaseReturn(opts: {
+  amount: number;
+  ficheNo: string;
+  description?: string;
+  supplierId?: string | null;
+  registerId?: string | null;
+}): Promise<{ id: string; registerId: string } | null> {
+  const amount = Math.abs(Number(opts.amount) || 0);
+  if (amount <= 0) return null;
+
+  const registerId = opts.registerId || (await resolveDefaultCashRegisterId());
+  if (!registerId) return null;
+
+  const fn = firmNr();
+  const pn = periodNr();
+  const lines = cashLinesTable();
+  const regs = cashRegistersTable();
+  const id = newUuid();
+  const date = todayYmd();
+  const desc =
+    (opts.description || '').trim() || `Alış iadesi — ${opts.ficheNo}`;
+  const ficheNo = String(opts.ficheNo || '').trim() || nextFicheNo('KL');
+  const supplierId = opts.supplierId || null;
+
+  if (supplierId) {
+    await pgQuery(
+      `INSERT INTO ${lines} (
+         id, firm_nr, period_nr, register_id, fiche_no, date, amount, sign,
+         definition, transaction_type, customer_id, currency_code, exchange_rate, f_amount, transfer_status
+       ) VALUES (
+         $1::uuid, $2, $3, $4::uuid, $5, $6::date, $7, 1,
+         $8, $9, $10::uuid, 'YEREL', 1, $7, 0
+       )`,
+      [id, fn, pn, registerId, ficheNo, date, amount, desc, CASH_TX.KASA_GIRIS, supplierId],
+    );
+  } else {
+    await pgQuery(
+      `INSERT INTO ${lines} (
+         id, firm_nr, period_nr, register_id, fiche_no, date, amount, sign,
+         definition, transaction_type, currency_code, exchange_rate, f_amount, transfer_status
+       ) VALUES (
+         $1::uuid, $2, $3, $4::uuid, $5, $6::date, $7, 1,
+         $8, $9, 'YEREL', 1, $7, 0
+       )`,
+      [id, fn, pn, registerId, ficheNo, date, amount, desc, CASH_TX.KASA_GIRIS],
+    );
+  }
+
+  await pgQuery(
+    `UPDATE ${regs}
+     SET balance = COALESCE(balance, 0) + $1::numeric,
+         updated_at = NOW()
+     WHERE id = $2::uuid`,
+    [amount, registerId],
+  );
+
+  return { id, registerId };
+}
+
+/**
+ * Peşin alış iadesi (havale/EFT) → BANKA_GIRIS.
+ * Varsayılan banka yoksa sessizce atlar.
+ */
+export async function recordBankaGirisForPurchaseReturn(opts: {
+  amount: number;
+  ficheNo: string;
+  description?: string;
+  registerId?: string | null;
+}): Promise<{ id: string; ficheNo: string } | null> {
+  const amount = Math.abs(Number(opts.amount) || 0);
+  if (amount <= 0) return null;
+
+  const registerId = opts.registerId || (await resolveDefaultBankRegisterId());
+  if (!registerId) return null;
+
+  const desc =
+    (opts.description || '').trim() || `Alış iadesi (havale) — ${opts.ficheNo}`;
+
+  try {
+    return await createSimpleBankMovement({
+      registerId,
+      amount,
+      direction: 'in',
+      description: desc,
+    });
+  } catch {
+    return null;
+  }
 }
 
 /**

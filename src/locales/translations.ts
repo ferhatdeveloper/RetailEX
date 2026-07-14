@@ -43,6 +43,11 @@ export interface MenuTranslations {
   definitionsParameters: string;
   demoDataManagement: string;
   designCenter: string;
+  /** Üst menü grubu — faturalar/sipariş altından ayrı */
+  deliveryManagement: string;
+  deliveries: string;
+  liveLocation: string;
+  courierList: string;
   eInvoiceArchive: string;
   emailCampaigns: string;
   exSecureGateSecurity: string;
@@ -1887,6 +1892,10 @@ export const translations: any = {
       definitionsParameters: 'Tanımlar/Parametreler',
       demoDataManagement: 'Demo Veri Yönetimi',
       designCenter: 'Dizayn Merkezi',
+      deliveryManagement: 'Teslimat Yönetimi',
+      deliveries: 'Teslimatlar',
+      liveLocation: 'Canlı Konum',
+      courierList: 'Kurye Listesi',
       eInvoiceArchive: 'E-Dönüşüm (GİB)',
       emailCampaigns: 'E-posta Kampanyaları',
       exSecureGateSecurity: 'ExSecureGate (Güvenlik)',
@@ -3365,6 +3374,10 @@ export const translations: any = {
       definitionsParameters: 'Definitions/Parameters',
       demoDataManagement: 'Demo Data Management',
       designCenter: 'Design Center',
+      deliveryManagement: 'Delivery Management',
+      deliveries: 'Deliveries',
+      liveLocation: 'Live Location',
+      courierList: 'Courier List',
       eInvoiceArchive: 'E-Invoicing (GIB)',
       emailCampaigns: 'Email Campaigns',
       exSecureGateSecurity: 'ExSecureGate (Security)',
@@ -4720,6 +4733,10 @@ export const translations: any = {
       definitionsParameters: 'التعريفات/المعاملات',
       demoDataManagement: 'إدارة البيانات التجريبية',
       designCenter: 'مركز التصميم',
+      deliveryManagement: 'إدارة التسليم',
+      deliveries: 'التسليمات',
+      liveLocation: 'الموقع المباشر',
+      courierList: 'قائمة السعاة',
       eInvoiceArchive: 'الفوترة الإلكترونية',
       emailCampaigns: 'حملات البريد الإلكتروني',
       exSecureGateSecurity: 'ExSecureGate (الأمن)',
@@ -6078,6 +6095,10 @@ export const translations: any = {
       definitionsParameters: 'پێناسە/پارامێتەرەکان',
       demoDataManagement: 'بەڕێوەبردنی داتای تاقikari',
       designCenter: 'سەنتەري ديزاين',
+      deliveryManagement: 'بەڕێوەبردنی گەیاندن',
+      deliveries: 'گەیاندنەکان',
+      liveLocation: 'شوێنی زیندوو',
+      courierList: 'لیستی کۆریەر',
       eInvoiceArchive: 'وەسڵی ئەلیکترۆنی (GIB)',
       emailCampaigns: 'کەمپەینەکانی ئیمەیڵ',
       exSecureGateSecurity: 'ExSecureGate (ئاسایش)',

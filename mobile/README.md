@@ -11,7 +11,8 @@ Bu klasör **gerçek native** React Native uygulamasıdır (View / Text / FlatLi
 
 Kalıcı checklist ve faz planı:
 
-**→ [`TODO_RN_MIGRATION.md`](./TODO_RN_MIGRATION.md)**
+**→ [`TODO_RN_MIGRATION.md`](./TODO_RN_MIGRATION.md)**  
+**→ [`EAS_CHECKLIST.md`](./EAS_CHECKLIST.md)** (store / EAS production hazırlık)
 
 Modül smoke / geçti-kaldı: **[`TEST_MODULE_REPORT.md`](./TEST_MODULE_REPORT.md)**  
 API birim smoke: kökte `node scripts/test/mobile-module-api-smoke.mjs`
@@ -87,6 +88,20 @@ Emülatörde host = **`10.0.2.2`**, port `3001`. Fiziksel cihazda Bridge host = 
 - **BLE tartı**: Terazi Yönetimi → Cihazlar → Bluetooth → **BLE Tara** → cihaz ekle → Terazi sekmesinde canlı kg; Tartılı Satış’ta “simüle tercih” kapalıyken poll.
 - Klasik Bluetooth SPP / USB-OTG: bu RN sürümünde yok (Android TeraziManager native).
 
+## Yazıcı — ağ ESC/POS TCP
+
+«Ağ (IP)» termal yazıcılar için ham ESC/POS (varsayılan port **9100**). DeskApp `print_escpos_tcp` ile aynı mantık.
+
+| Yol | Ne zaman | Gereksinim |
+|-----|----------|------------|
+| **pg_bridge köprüsü** | Expo Go, emülatör, fiziksel cihaz | PC’de `npm run bridge`; Config → Bridge host = PC LAN IP (emülatör `10.0.2.2`) |
+| **Doğrudan TCP** | Telefon ve yazıcı aynı Wi‑Fi | Development build + `npx expo install react-native-tcp-socket` |
+
+- Test: **Diğer** → Yazıcı / Fiş Ayarları → **Test yazdır**
+- POS otomatik yazdır: ayarlarda «Otomatik yazdır» + «Ağ (IP)»
+- Köprü uç noktası: `POST /api/printer/escpos-tcp` (`host`, `port`, `dataB64`)
+- **Faz 2+:** Bluetooth (`react-native-bluetooth-escpos-printer`), sistem (`expo-print` + paylaşım)
+
 ## Scriptler
 
 | Komut | Açıklama |
@@ -94,8 +109,13 @@ Emülatörde host = **`10.0.2.2`**, port `3001`. Fiziksel cihazda Bridge host = 
 | `npm start` / `npx expo start` | Metro |
 | `npm run android` / `ios` | Platform |
 | `npm run typecheck` | `tsc --noEmit` |
+| `npm run eas:check` | EAS hazırlık doğrulama |
+| `npm run eas:init` | Expo projesi bağla (`projectId`) |
+| `npm run eas:preview` / `eas:production` | EAS bulut derleme |
 
-Kök: `mobile:start`, `mobile:android`, `mobile:ios`, `mobile:typecheck`, `mobile:sync-version`, `android:ci:build`.
+Kök: `mobile:start`, `mobile:android`, `mobile:ios`, `mobile:typecheck`, `mobile:sync-version`, `mobile:eas:check|init|debug|preview|production`, `android:ci:build`.
+
+EAS checklist: [`EAS_CHECKLIST.md`](./EAS_CHECKLIST.md)
 
 ## EAS Build
 
@@ -106,9 +126,9 @@ Expo Application Services ile bulut derleme. Sürüm kaynağı **yerel** (`eas.j
 | Yol | Komut / tetik | Çıktı | İmza |
 |-----|----------------|-------|------|
 | **GitHub Actions (varsayılan)** | `npm run android:ci:build` veya tag `android-v{version}` | `RetailEX-Android-{version}.apk` (debug) | Debug keystore |
-| **EAS `debug`** | `npx eas-cli@latest build -p android --profile debug` | APK (`assembleDebug`) | Credentials gerekmez (`withoutCredentials`) |
-| **EAS `preview`** | `npx eas-cli@latest build -p android --profile preview` | Dahili dağıtım **APK** | EAS yönetimli keystore |
-| **EAS `production`** | `npx eas-cli@latest build -p android --profile production` | Play **AAB** | EAS / store credentials |
+| **EAS `debug`** | `npm run mobile:eas:debug` | APK (`assembleDebug`) | Credentials gerekmez (`withoutCredentials`) |
+| **EAS `preview`** | `npm run mobile:eas:preview` | Dahili dağıtım **APK** | EAS yönetimli keystore |
+| **EAS `production`** | `npm run mobile:eas:production` | Play **AAB** | EAS / store credentials |
 
 Günlük / Actions tabanlı APK için **CI yeterlidir**. Store öncesi veya dahili imzalı APK için **EAS `preview` / `production`**.
 
@@ -118,26 +138,22 @@ Günlük / Actions tabanlı APK için **CI yeterlidir**. Store öncesi veya dahi
 cd mobile
 npm install
 npx eas-cli@latest login
-npx eas-cli@latest init   # Expo projesi bağlar → app.json extra.eas.projectId yazar
+npm run mobile:eas:init    # kökten; app.json → extra.eas.projectId yazar
+npm run mobile:eas:check   # hazırlık tablosu
 ```
 
-- `projectId` **uydurulmaz**; yalnızca CLI yazar (`app.json` → `extra.retailexEasNotes`).
-- `EXPO_TOKEN` (Expo hesabı access token) CI’den EAS tetiklemek için gerekir; şu an `android-release.yml` EAS kullanmaz.
+- `projectId` **uydurulmaz**; yalnızca `eas init` yazar (`extra.retailexEasNotes` → durum notu).
+- `EXPO_TOKEN` (Expo access token) headless/CI için; yerelde `eas login` yeterli. `android-release.yml` EAS kullanmaz.
+- Checklist: [`EAS_CHECKLIST.md`](./EAS_CHECKLIST.md)
 
 ### Derleme örnekleri
 
 ```bash
-cd mobile
-node ../scripts/sync-mobile-version.mjs   # isteğe bağlı; sürümü kökle eşitle
+npm run mobile:sync-version    # build öncesi sürüm (eas-mobile-build içinde otomatik)
 
-# CI ile aynı amaç: debug APK (credentials yok)
-npx eas-cli@latest build -p android --profile debug
-
-# Dahili test / paylaşılabilir APK
-npx eas-cli@latest build -p android --profile preview
-
-# Play Store AAB
-npx eas-cli@latest build -p android --profile production
+npm run mobile:eas:debug       # CI benzeri debug APK
+npm run mobile:eas:preview     # dahili imzalı APK
+npm run mobile:eas:production  # Play Store AAB
 ```
 
 iOS: `debug` → simulator; `preview` / `production` → cihaz/store (Apple Developer gerekir).
@@ -176,7 +192,7 @@ mobile/
 
 1. Fatura formu derinliği / diğer mutasyon kuyrukları  
 2. Restoran ödeme / güzellik POS  
-3. EAS: `eas init` + ilk `preview`/`production` build (yapılandırma hazır; proje henüz bağlanmadı)  
+3. EAS: `npm run mobile:eas:init` + ilk `preview`/`production` build — yapılandırma hazır; bkz. [`EAS_CHECKLIST.md`](./EAS_CHECKLIST.md)  
 
 ## Blocker notları
 

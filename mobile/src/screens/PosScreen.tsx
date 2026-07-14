@@ -10,6 +10,7 @@ import {
   Modal,
 } from 'react-native';
 import { Plus, Minus, Trash2, ScanBarcode, Tag } from 'lucide-react-native';
+import { useTranslation } from 'react-i18next';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { ScreenHeader, SearchBar, EmptyState } from '../components/ScreenChrome';
@@ -27,7 +28,7 @@ import { applyCampaign, pickBestCampaign } from '../services/campaignEngine';
 import { useThemeStore } from '../store/themeStore';
 import { useOrgEpoch } from '../hooks/useOrgEpoch';
 import { usePrinterSettingsStore } from '../store/printerSettingsStore';
-import { printSaleReceiptStub } from '../services/printerService';
+import { printSaleReceipt } from '../services/printerService';
 import { palette } from '../theme/colors';
 import type { MainStackParamList } from '../navigation/types';
 
@@ -39,9 +40,11 @@ type CartLine = {
   unit: string | null;
   code: string | null;
   categoryCode: string | null;
+  vatRate: number;
 };
 
 export function PosScreen() {
+  const { t } = useTranslation();
   const { colors } = useThemeStore();
   const navigation = useNavigation<NativeStackNavigationProp<MainStackParamList>>();
   const orgEpoch = useOrgEpoch();
@@ -141,6 +144,8 @@ export function PosScreen() {
           unit: p.unit,
           code: p.code,
           categoryCode: p.category_code ?? null,
+          vatRate:
+            Number.isFinite(p.vat_rate) && p.vat_rate >= 0 ? Number(p.vat_rate) : 20,
         },
       ];
     });
@@ -166,12 +171,12 @@ export function PosScreen() {
         }
         setHits(await fetchProducts(q, 30));
       } catch (e) {
-        Alert.alert('Arama', e instanceof Error ? e.message : String(e));
+        Alert.alert(t('alert.search'), e instanceof Error ? e.message : String(e));
       } finally {
         setSearching(false);
       }
     },
-    [addProduct],
+    [addProduct, t],
   );
 
   const setQty = (productId: string, delta: number) => {
@@ -188,15 +193,22 @@ export function PosScreen() {
     if (cart.length === 0 || saving) return;
     const discLabel =
       applied.discount > 0 && applied.campaign
-        ? `\nKampanya: ${applied.campaign.name} (−${formatMoney(applied.discount)} ₺)`
+        ? t('posAlerts.campaignDiscount', {
+            name: applied.campaign.name,
+            discount: formatMoney(applied.discount),
+          })
         : '';
     Alert.alert(
-      'Ödeme',
-      `${paymentMethod} — toplam ${formatMoney(total)} ₺ kaydedilsin mi?${discLabel}`,
+      t('posAlerts.payment'),
+      t('posAlerts.confirmSave', {
+        method: paymentMethod,
+        total: formatMoney(total),
+        campaign: discLabel,
+      }),
       [
-        { text: 'İptal', style: 'cancel' },
+        { text: t('cancel'), style: 'cancel' },
         {
-          text: 'Kaydet',
+          text: t('save'),
           onPress: () => {
             void (async () => {
               setSaving(true);
@@ -210,31 +222,45 @@ export function PosScreen() {
                 setSelectedCampaignId(null);
                 if (res.queued) {
                   Alert.alert(
-                    'Fiş kuyruğa alındı',
-                    `${res.ficheNo}\nToplam: ${formatMoney(res.total)} ₺\n\nBağlantı gelince otomatik senkron edilir.`,
+                    t('posAlerts.receiptQueuedTitle'),
+                    t('posAlerts.receiptQueuedBody', {
+                      ficheNo: res.ficheNo,
+                      total: formatMoney(res.total),
+                    }),
                   );
                   return;
                 }
                 Alert.alert(
-                  'Fiş kaydedildi',
-                  `${res.ficheNo}\nToplam: ${formatMoney(res.total)} ₺`,
+                  t('posAlerts.receiptSavedTitle'),
+                  t('posAlerts.receiptSavedBody', {
+                    ficheNo: res.ficheNo,
+                    total: formatMoney(res.total),
+                  }),
                   [
                     {
-                      text: 'Detay',
+                      text: t('posAlerts.detail'),
                       onPress: () =>
                         navigation.navigate('InvoiceDetail', { invoiceId: res.id }),
                     },
-                    { text: 'Tamam' },
+                    { text: t('alert.ok') },
                   ],
                 );
                 if (printerSettings.autoPrint) {
-                  const printRes = await printSaleReceiptStub(printerSettings, res.id);
+                  const printRes = await printSaleReceipt(printerSettings, res.id);
                   if (printRes.ok) {
-                    Alert.alert('Yazdırma (stub)', printRes.message);
+                    Alert.alert(t('posAlerts.printOk', { defaultValue: 'Yazdırıldı' }), printRes.message);
+                  } else if (printerSettings.enabled) {
+                    Alert.alert(
+                      t('posAlerts.printFail', { defaultValue: 'Yazdırılamadı' }),
+                      printRes.message,
+                    );
                   }
                 }
               } catch (e) {
-                Alert.alert('Kayıt hatası', e instanceof Error ? e.message : String(e));
+                Alert.alert(
+                  t('alert.saveError'),
+                  e instanceof Error ? e.message : String(e),
+                );
               } finally {
                 setSaving(false);
               }

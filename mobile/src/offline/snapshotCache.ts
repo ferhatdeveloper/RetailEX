@@ -300,6 +300,13 @@ export async function updateCountingSlipStatusInCache(
   await upsertCountingSlipInCache({ ...slip, status });
 }
 
+/** PG senkronu tamamlandı — yerel taslak bayrağını kaldır */
+export async function markCountingSlipSynced(slipId: string): Promise<void> {
+  const { slip } = await getCachedSlipWithLines(slipId);
+  if (!slip) return;
+  await upsertCountingSlipInCache({ ...slip, pending: false });
+}
+
 export async function saveCountingSlipsSnapshot(rows: CachedCountingSlip[]): Promise<void> {
   await saveCountingSlipsRows(rows);
 }

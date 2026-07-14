@@ -15,11 +15,14 @@ import {
 import {
   adjustCustomerBalance,
   adjustSupplierBalance,
+  recordBankaGirisForPurchaseReturn,
   recordKasaCikisForPurchase,
   recordKasaCikisForReturn,
+  recordKasaGirisForPurchaseReturn,
   recordKasaGirisForSale,
 } from './cashApi';
 import {
+  paymentMethodImpliesBankTransfer,
   paymentMethodImpliesCashInKasa,
   paymentMethodImpliesCashOutKasa,
   paymentMethodImpliesCustomerDebt,
@@ -411,7 +414,7 @@ export function invoiceLineNet(line: InvoiceDraftLine): number {
   return Math.max(0, gross * (1 - pct / 100));
 }
 
-/** Satır KDV tutarı (net × oran / 100) — UI özeti; header total_vat web gibi 0 yazılabilir */
+/** Satır KDV tutarı (net × oran / 100) */
 export function invoiceLineVat(line: InvoiceDraftLine): number {
   const rate = Math.max(0, Number(line.vatRate) || 0);
   return invoiceLineNet(line) * (rate / 100);
@@ -430,9 +433,7 @@ export function invoiceLinesDiscountTotal(lines: InvoiceDraftLine[]): number {
 }
 
 /**
- * Özet hesaplama.
- * totalVat: satır oranlarından hesaplanır (UI). DB header’da web parity = 0;
- * satır vat_rate sale_items’a yazılır.
+ * Özet hesaplama — satır vat_rate + header total_vat (web invoicesAPI.tax → total_vat).
  */
 export function invoiceTotalsFromLines(
   lines: InvoiceDraftLine[],
@@ -573,8 +574,8 @@ async function createSalesInvoiceLive(
      ) VALUES (
        $1::uuid, $2, $3, $4, $5, NOW(),
        'sales_invoice', 8, $6::uuid, $7,
-       $8, 0, $9, $10, $8,
-       'TRY', 1, 'approved', $11, $12, $13
+       $8, $9, $10, $11, $8,
+       'TRY', 1, 'approved', $12, $13, $14
      )`,
     [
       id,
@@ -585,6 +586,7 @@ async function createSalesInvoiceLive(
       opts.customerId || null,
       customerName,
       total,
+      totals.totalVat,
       totals.subtotal,
       discountTotal,
       opts.paymentMethod || 'Nakit',
@@ -685,7 +687,7 @@ export async function createSalesInvoice(
       payment_method: opts.paymentMethod || 'Nakit',
       is_cancelled: false,
       notes: opts.notes?.trim() || 'RetailEX Mobile Fatura',
-      total_vat: 0,
+      total_vat: totals.totalVat,
       total_discount: totals.lineDiscount + totals.footerDiscount,
       currency: 'TRY',
       lines: opts.lines.map((l) => ({
@@ -744,8 +746,8 @@ async function createPurchaseInvoiceLive(
      ) VALUES (
        $1::uuid, $2, $3, $4, $5, NOW(),
        'purchase_invoice', 1, $6::uuid, $7,
-       $8, 0, $9, $10, $8,
-       'TRY', 1, 'approved', $11, $12, $13
+       $8, $9, $10, $11, $8,
+       'TRY', 1, 'approved', $12, $13, $14
      )`,
     [
       id,
@@ -756,6 +758,7 @@ async function createPurchaseInvoiceLive(
       opts.supplierId || null,
       supplierName,
       total,
+      totals.totalVat,
       totals.subtotal,
       discountTotal,
       opts.paymentMethod || 'Nakit',
@@ -859,7 +862,7 @@ export async function createPurchaseInvoice(
       payment_method: opts.paymentMethod || 'Nakit',
       is_cancelled: false,
       notes: opts.notes?.trim() || 'RetailEX Mobile Alış Faturası',
-      total_vat: 0,
+      total_vat: totals.totalVat,
       total_discount: totals.lineDiscount + totals.footerDiscount,
       currency: 'TRY',
       lines: opts.lines.map((l) => ({
@@ -936,8 +939,8 @@ async function createReturnInvoiceLive(
      ) VALUES (
        $1::uuid, $2, $3, $4, $5, NOW(),
        $6, $7, $8::uuid, $9,
-       $10, 0, $11, $12, $10,
-       'TRY', 1, 'completed', $13, $14, $15
+       $10, $11, $12, $13, $10,
+       'TRY', 1, 'completed', $14, $15, $16
      )`,
     [
       id,
@@ -950,6 +953,7 @@ async function createReturnInvoiceLive(
       opts.accountId || null,
       accountName,
       total,
+      totals.totalVat,
       totals.subtotal,
       discountTotal,
       opts.paymentMethod || 'Nakit',
@@ -981,11 +985,12 @@ async function createReturnInvoiceLive(
     }
   }
 
-  // Yan etki (V2-R14):
+  // Yan etki (V2-R14 / V2-R16):
   // - Veresiye satış iade → müşteri bakiyesi −
   // - Peşin satış iade → KASA_CIKIS (cariye dokunma; peşin satışta borç oluşmamıştı)
   // - Açık hesap alış iade → tedarikçi bakiyesi −
-  // - Peşin alış iade → cari/kasa yok (tedarikçiden dışarı tahsilat operasyonel)
+  // - Peşin alış iade nakit/kart → KASA_GIRIS (alış KASA_CIKIS simetrisi)
+  // - Peşin alış iade havale → BANKA_GIRIS (varsayılan banka varsa)
   const pm = opts.paymentMethod || 'Nakit';
   if (total > 0) {
     try {
@@ -1002,9 +1007,22 @@ async function createReturnInvoiceLive(
         }
       } else if (opts.accountId && paymentMethodImpliesSupplierDebt(pm)) {
         await adjustSupplierBalance(opts.accountId, -total);
+      } else if (paymentMethodImpliesCashOutKasa(pm)) {
+        await recordKasaGirisForPurchaseReturn({
+          amount: total,
+          ficheNo,
+          description: `Alış iadesi — ${ficheNo}`,
+          supplierId: opts.accountId || null,
+        });
+      } else if (paymentMethodImpliesBankTransfer(pm)) {
+        await recordBankaGirisForPurchaseReturn({
+          amount: total,
+          ficheNo,
+          description: `Alış iadesi (havale) — ${ficheNo}`,
+        });
       }
     } catch {
-      /* kart/kasa yoksa sessiz */
+      /* kart/kasa/banka yoksa sessiz */
     }
   }
 
@@ -1073,7 +1091,7 @@ export async function createReturnInvoice(
       payment_method: opts.paymentMethod || 'Nakit',
       is_cancelled: false,
       notes: opts.notes?.trim() || 'RetailEX Mobile İade',
-      total_vat: 0,
+      total_vat: totals.totalVat,
       total_discount: totals.lineDiscount + totals.footerDiscount,
       currency: 'TRY',
       lines: opts.lines.map((l) => ({
@@ -1302,8 +1320,8 @@ async function createDocumentInvoiceLive(
      ) VALUES (
        $1::uuid, $2, $3, $4, $5, NOW(),
        $6, $7, $8::uuid, $9,
-       $10, 0, $11, $12, $10,
-       'TRY', 1, $13, $14, $15, $16
+       $10, $11, $12, $13, $10,
+       'TRY', 1, $14, $15, $16, $17
      )`,
     [
       id,
@@ -1316,6 +1334,7 @@ async function createDocumentInvoiceLive(
       opts.accountId || null,
       accountName,
       total,
+      totals.totalVat,
       totals.subtotal,
       discountTotal,
       spec.defaultStatus,
@@ -1417,7 +1436,7 @@ export async function createDocumentInvoice(
       payment_method: opts.paymentMethod || 'Nakit',
       is_cancelled: false,
       notes: opts.notes?.trim() || spec.noteDefault,
-      total_vat: 0,
+      total_vat: totals.totalVat,
       total_discount: totals.lineDiscount + totals.footerDiscount,
       currency: 'TRY',
       lines: opts.lines.map((l) => ({

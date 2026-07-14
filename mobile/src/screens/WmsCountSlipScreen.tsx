@@ -438,7 +438,7 @@ export function WmsCountSlipScreen() {
         </View>
       ) : null}
 
-      {canEdit && lines.length > 0 && slip?.status === 'counting' ? (
+      {canEdit && lines.length > 0 && (slip?.status === 'counting' || slip?.status === 'draft' || slip?.status === 'active') ? (
         <View style={styles.finishRow}>
           <PrimaryButton
             label="Mutabakata geç"

@@ -66,6 +66,20 @@ export function paymentMethodImpliesCashOutKasa(pm: string | undefined | null): 
   return paymentMethodImpliesPaidNow(pm);
 }
 
+/** Havale / EFT / transfer → banka defteri (BANKA_GIRIS / BANKA_CIKIS) */
+export function paymentMethodImpliesBankTransfer(pm: string | undefined | null): boolean {
+  const p = String(pm || '').toLowerCase().trim();
+  if (!p) return false;
+  return (
+    p === 'havale' ||
+    p === 'eft' ||
+    p === 'haval' ||
+    p === 'transfer' ||
+    p.includes('havale') ||
+    p.includes('eft')
+  );
+}
+
 /** Ledger SQL: satış satırı cari borç yaratır mı — web `sqlPaymentMethodImpliesCustomerDebtExpr` */
 export function sqlPaymentMethodImpliesCustomerDebtExpr(alias = ''): string {
   const col = alias ? `${alias}.payment_method` : 'payment_method';

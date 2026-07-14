@@ -177,6 +177,11 @@
     "mobile:ios": "npm --prefix mobile run ios",
     "mobile:typecheck": "npm --prefix mobile run typecheck",
     "mobile:sync-version": "node scripts/sync-mobile-version.mjs",
+    "mobile:eas:check": "node scripts/eas-mobile-check.mjs",
+    "mobile:eas:init": "node scripts/eas-mobile-init.mjs",
+    "mobile:eas:debug": "node scripts/eas-mobile-build.mjs --profile debug",
+    "mobile:eas:preview": "node scripts/eas-mobile-build.mjs --profile preview",
+    "mobile:eas:production": "node scripts/eas-mobile-build.mjs --profile production",
     "android:ci:build": "node scripts/trigger-android-release.mjs"
   }
 }

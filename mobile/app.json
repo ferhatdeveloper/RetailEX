@@ -2,7 +2,7 @@
   "expo": {
     "name": "RetailEX",
     "slug": "retailex-mobile",
-    "version": "0.1.224",
+    "version": "0.1.226",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
@@ -25,7 +25,7 @@
         "NSLocationAlwaysAndWhenInUseUsageDescription": "RetailEX teslimat sırasında konum güncellemesi ister.",
         "NSBluetoothAlwaysUsageDescription": "RetailEX BLE tartı terazisine bağlanmak için Bluetooth ister."
       },
-      "buildNumber": "1224"
+      "buildNumber": "1226"
     },
     "android": {
       "package": "app.retailex.mobile",
@@ -37,7 +37,7 @@
       },
       "predictiveBackGestureEnabled": false,
       "usesCleartextTraffic": true,
-      "versionCode": 1224,
+      "versionCode": 1226,
       "permissions": [
         "ACCESS_COARSE_LOCATION",
         "ACCESS_FINE_LOCATION",
@@ -53,10 +53,18 @@
     "extra": {
       "retailexEasNotes": {
         "status": "unlinked",
-        "init": "cd mobile && npx eas-cli@latest login && npx eas-cli@latest init",
-        "projectId": "eas init / eas build:configure CLI ile expo.extra.eas.projectId yazar; UUID uydurma — bu alan bağlanana kadar yoktur.",
-        "ciAlign": "GitHub Actions android-release.yml = kök npm run android:ci:build → debug APK. EAS profile debug ≈ aynı (assembleDebug, withoutCredentials). EAS preview = dahili imzalı APK. EAS production = Play AAB.",
-        "profiles": "mobile/eas.json → debug | preview | production. Ayrıntı: mobile/README.md#eas-build"
+        "checklist": "mobile/EAS_CHECKLIST.md",
+        "init": "npm run mobile:eas:init  (önce: npx eas-cli@latest login)",
+        "projectId": "eas init sonrası expo.extra.eas.projectId yazılır; UUID uydurulmaz — bağlanana kadar extra.eas bloğu yoktur.",
+        "ciAlign": "GitHub Actions android-release.yml = kök npm run android:ci:build → debug APK. EAS debug ≈ aynı (assembleDebug, withoutCredentials). EAS preview = dahili imzalı APK. EAS production = Play AAB.",
+        "profiles": "mobile/eas.json → debug | preview | production",
+        "scripts": {
+          "check": "npm run mobile:eas:check",
+          "init": "npm run mobile:eas:init",
+          "debug": "npm run mobile:eas:debug",
+          "preview": "npm run mobile:eas:preview",
+          "production": "npm run mobile:eas:production"
+        }
       }
     },
     "plugins": [
@@ -64,9 +72,16 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "RetailEX barkod okumak için kameraya erişim ister.",
+          "cameraPermission": "RetailEX barkod okumak ve belge taramak için kameraya erişim ister.",
           "recordAudioAndroid": false,
           "barcodeScannerEnabled": true
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "RetailEX fatura belgesi seçmek için galeriye erişim ister.",
+          "cameraPermission": "RetailEX fatura belgesi çekmek için kameraya erişim ister."
         }
       ],
       [
@@ -80,7 +95,9 @@
         "react-native-ble-plx",
         {
           "isBackgroundEnabled": false,
-          "modes": ["central"],
+          "modes": [
+            "central"
+          ],
           "bluetoothAlwaysPermission": "RetailEX BLE tartı terazisine bağlanmak için Bluetooth ister."
         }
       ]

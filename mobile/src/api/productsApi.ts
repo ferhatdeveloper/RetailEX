@@ -1,7 +1,13 @@
 import { pgQuery } from './pgClient';
+import { postgrestGet } from './postgrestClient';
 import { firmNr, newUuid, productsTable } from './erpTables';
 import { shouldUseLiveData, getNetworkPolicy } from '../offline/policy';
 import { getCachedProducts, saveProductsSnapshot } from '../offline/snapshotCache';
+import {
+  shouldPreferPostgrest,
+  shouldUseBridgeSql,
+  useConfigStore,
+} from '../store/configStore';
 
 export type ProductRow = {
   id: string;
@@ -49,6 +55,65 @@ const LIST_COLS_FALLBACK = `id, code, barcode, name, unit,
   COALESCE(is_active, true) AS is_active,
   20::float8 AS vat_rate`;
 
+const REST_SELECT =
+  'id,code,barcode,name,unit,price,cost,stock,min_stock,brand,category_code,is_active,vat_rate';
+
+function mapProductRow(r: Record<string, unknown>): ProductRow {
+  const vat = Number(r.vat_rate);
+  return {
+    id: String(r.id ?? ''),
+    code: r.code != null ? String(r.code) : null,
+    barcode: r.barcode != null ? String(r.barcode) : null,
+    name: String(r.name ?? ''),
+    unit: r.unit != null ? String(r.unit) : null,
+    price: Number(r.price) || 0,
+    cost: Number(r.cost) || 0,
+    stock: Number(r.stock) || 0,
+    min_stock: r.min_stock == null ? null : Number(r.min_stock),
+    brand: r.brand != null ? String(r.brand) : null,
+    category_code: r.category_code != null ? String(r.category_code) : null,
+    is_active: !(r.is_active === false || r.is_active === 0 || String(r.is_active).toLowerCase() === 'false'),
+    vat_rate: vat >= 0 ? vat : 20,
+  };
+}
+
+/** PostgREST filtre metninde özel karakterleri kaçır */
+function escapeIlike(q: string): string {
+  return q.replace(/[%_*(),]/g, '');
+}
+
+async function fetchProductsViaPostgrest(search = '', limit = 200): Promise<ProductRow[]> {
+  const table = productsTable();
+  const fn = firmNr();
+  const fnBare = fn.replace(/^0+/, '') || fn;
+  const firmParts = Array.from(new Set([fn, fnBare].filter(Boolean)));
+  const firmOr = [
+    ...firmParts.map((f) => `firm_nr.eq.${f}`),
+    'firm_nr.is.null',
+  ].join(',');
+
+  const query: Record<string, string | number> = {
+    select: REST_SELECT,
+    order: 'name.asc',
+    limit,
+    or: `(${firmOr})`,
+  };
+
+  const q = escapeIlike(search.trim());
+  if (q.length >= 1) {
+    query.and = `(or(${firmOr}),or(name.ilike.*${q}*,code.ilike.*${q}*,barcode.ilike.*${q}*,brand.ilike.*${q}*))`;
+    delete query.or;
+  }
+
+  const rows = await postgrestGet<Record<string, unknown>[]>(`/${table}`, query, {
+    schema: 'public',
+  });
+  const list = (Array.isArray(rows) ? rows : [])
+    .map(mapProductRow)
+    .filter((r) => r.is_active && r.id);
+  return list;
+}
+
 async function selectProducts(
   cols: string,
   whereSql: string,
@@ -70,7 +135,7 @@ async function selectProducts(
   }
 }
 
-async function fetchProductsLive(search = '', limit = 200): Promise<ProductRow[]> {
+async function fetchProductsLiveBridge(search = '', limit = 200): Promise<ProductRow[]> {
   const fn = firmNr();
   const q = search.trim();
 
@@ -94,7 +159,7 @@ async function fetchProductsLive(search = '', limit = 200): Promise<ProductRow[]
     );
   }
 
-  const rows = await selectProducts(
+  return selectProducts(
     LIST_COLS,
     `COALESCE(is_active, true) = true
        AND (
@@ -106,8 +171,34 @@ async function fetchProductsLive(search = '', limit = 200): Promise<ProductRow[]
      LIMIT $3`,
     [fn, fn.replace(/^0+/, '') || fn, limit],
   );
-  // Boş arama = tam liste snapshot (offline yedek)
-  await saveProductsSnapshot(rows);
+}
+
+async function fetchProductsLive(search = '', limit = 200): Promise<ProductRow[]> {
+  const cfg = useConfigStore.getState().config;
+  const preferRest = shouldPreferPostgrest(cfg);
+  const canBridge = shouldUseBridgeSql(cfg);
+
+  if (preferRest) {
+    try {
+      const rows = await fetchProductsViaPostgrest(search, limit);
+      if (!search.trim()) await saveProductsSnapshot(rows);
+      return rows;
+    } catch (e) {
+      if (!canBridge) throw e;
+      // hybrid: PostgREST başarısız → bridge
+    }
+  }
+
+  if (!canBridge) {
+    throw new Error(
+      preferRest
+        ? 'PostgREST okuma başarısız ve bridge kapalı (apiMode=postgrest)'
+        : 'Bridge yapılandırması eksik',
+    );
+  }
+
+  const rows = await fetchProductsLiveBridge(search, limit);
+  if (!search.trim()) await saveProductsSnapshot(rows);
   return rows;
 }
 

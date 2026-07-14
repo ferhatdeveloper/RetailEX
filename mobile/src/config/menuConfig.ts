@@ -164,6 +164,12 @@ export const MENU_SECTIONS: MenuSection[] = [
       },
       { id: 'etransform', label: 'E-Dönüşüm (GİB)', screen: 'etransform' },
       {
+        id: 'document-scan',
+        label: 'Belge Tara → Fatura',
+        screen: 'document-scan',
+        badge: 'Yeni',
+      },
+      {
         id: 'waybills',
         label: 'İrsaliyeler',
         screen: 'waybill',
@@ -181,10 +187,18 @@ export const MENU_SECTIONS: MenuSection[] = [
         children: [
           { id: 'salesorder', label: 'Satış Siparişi', screen: 'salesorder' },
           { id: 'purchase-ord', label: 'Satınalma Siparişleri', screen: 'purchase' },
-          { id: 'logistics', label: 'Teslimat Yönetimi', screen: 'logistics' },
         ],
       },
       { id: 'offers', label: 'Teklifler', screen: 'Teklifler' },
+    ],
+  },
+  {
+    id: 'delivery-management',
+    title: 'Teslimat Yönetimi',
+    items: [
+      { id: 'logistics', label: 'Teslimatlar', screen: 'logistics' },
+      { id: 'delivery-live', label: 'Canlı Konum', screen: 'delivery-live' },
+      { id: 'couriers', label: 'Kurye Listesi', screen: 'couriers' },
     ],
   },
   {
@@ -369,6 +383,7 @@ export type LiveRoute =
   | 'ScaleSale'
   | 'StoreManagement'
   | 'ETransform'
+  | 'DocumentScan'
   | 'Module';
 
 const LIVE_MAP: Record<string, LiveRoute> = {
@@ -383,6 +398,7 @@ const LIVE_MAP: Record<string, LiveRoute> = {
   databroadcast: 'Communications',
   integrations: 'Communications',
   etransform: 'ETransform',
+  'document-scan': 'DocumentScan',
   usermanagement: 'System',
   roleauth: 'System',
   menumanagement: 'System',
@@ -502,6 +518,9 @@ const LIVE_MAP: Record<string, LiveRoute> = {
   'restaurant-tables': 'Restaurant',
   'restaurant-orders': 'Restaurant',
   logistics: 'Delivery',
+  'delivery-live': 'Delivery',
+  couriers: 'Delivery',
+  'delivery-management': 'Delivery',
   notifications: 'Notifications',
   whatsapp: 'Communications',
   'mesaj-bildirim': 'Communications',

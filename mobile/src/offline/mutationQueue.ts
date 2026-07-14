@@ -22,6 +22,8 @@ export type PosCartLineInput = {
   qty: number;
   unit: string | null;
   code?: string | null;
+  /** Ürün KDV % — sale_items.vat_rate + header total_vat */
+  vatRate?: number;
 };
 
 /** Fatura kalem — offline fatura kuyruğu */
@@ -34,7 +36,7 @@ export type InvoiceLineInput = {
   unit?: string | null;
   /** Satır indirim % (0–100) */
   discountPercent?: number;
-  /** Satır KDV % (UI + sale_items.vat_rate; header total_vat web gibi 0 kalabilir) */
+  /** Satır KDV % (UI + sale_items.vat_rate + header total_vat) */
   vatRate?: number;
 };
 
@@ -224,6 +226,52 @@ async function saveQueue(items: PendingMutation[]): Promise<void> {
   await AsyncStorage.setItem(QUEUE_KEY, JSON.stringify(items));
 }
 
+/** WMS sayım — aynı fiş/satır için tekrarlayan kuyruk girdilerini birleştir */
+function coalesceWmsMutation(q: PendingMutation[], incoming: PendingMutation): PendingMutation[] {
+  if (incoming.type === 'wms.counting.line.upsert') {
+    const { slipId, lineId } = incoming.payload;
+    const filtered = q.filter(
+      (m) =>
+        !(
+          m.type === 'wms.counting.line.upsert' &&
+          m.payload.slipId === slipId &&
+          m.payload.lineId === lineId
+        ),
+    );
+    return [...filtered, incoming];
+  }
+  if (incoming.type === 'wms.counting.line.delete') {
+    const { slipId, lineId } = incoming.payload;
+    const filtered = q.filter(
+      (m) =>
+        !(
+          (m.type === 'wms.counting.line.upsert' &&
+            m.payload.slipId === slipId &&
+            m.payload.lineId === lineId) ||
+          (m.type === 'wms.counting.line.delete' &&
+            m.payload.slipId === slipId &&
+            m.payload.lineId === lineId)
+        ),
+    );
+    return [...filtered, incoming];
+  }
+  if (incoming.type === 'wms.counting.status.update') {
+    const { slipId } = incoming.payload;
+    const filtered = q.filter(
+      (m) => !(m.type === 'wms.counting.status.update' && m.payload.slipId === slipId),
+    );
+    return [...filtered, incoming];
+  }
+  if (incoming.type === 'wms.counting.applyStock') {
+    const { slipId } = incoming.payload;
+    const filtered = q.filter(
+      (m) => !(m.type === 'wms.counting.applyStock' && m.payload.slipId === slipId),
+    );
+    return [...filtered, incoming];
+  }
+  return [...q, incoming];
+}
+
 export async function enqueueMutation(
   mutation: Omit<PendingMutation, 'id' | 'createdAt'> & { id?: string },
 ): Promise<PendingMutation> {
@@ -233,8 +281,9 @@ export async function enqueueMutation(
     createdAt: new Date().toISOString(),
   } as PendingMutation;
   const q = await loadMutationQueue();
-  q.push(item);
-  await saveQueue(q);
+  const next =
+    item.type.startsWith('wms.counting.') ? coalesceWmsMutation(q, item) : [...q, item];
+  await saveQueue(next);
   return item;
 }
 

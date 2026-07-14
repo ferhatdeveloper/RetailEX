@@ -13,6 +13,12 @@ export type DbMode = 'local' | 'online';
  */
 export type NetworkPolicy = 'online' | 'offline' | 'hybrid';
 
+/**
+ * Veri taşıma katmanı (web `connection_provider` benzeri).
+ * `networkPolicy` ile karıştırma: apiMode = Bridge SQL mi / PostgREST mi.
+ */
+export type ApiMode = 'bridge' | 'postgrest' | 'hybrid';
+
 export type PgEndpoint = {
   host: string;
   port: number;
@@ -32,6 +38,16 @@ export type DbConfig = {
    * hybrid = net varken PG, yokken cache (varsayılan)
    */
   networkPolicy: NetworkPolicy;
+  /**
+   * bridge = yalnızca pg_bridge SQL;
+   * postgrest = kiracı REST (`remote_rest_url`);
+   * hybrid = okumada PostgREST tercih, başarısızsa bridge
+   */
+  apiMode: ApiMode;
+  /** Web `remote_rest_url` — örn. https://api.retailex.app/aqua */
+  remoteRestUrl: string;
+  /** İsteğe bağlı JWT / anon key (Supabase-uyumlu PostgREST Apikey) */
+  postgrestAnonKey: string;
   local: PgEndpoint;
   remote: PgEndpoint;
   /** Kullanıcı en az bir kez Kaydet’e bastı */
@@ -49,6 +65,11 @@ type LegacyFlatConfig = Partial<{
   password: string;
   dbMode: DbMode;
   networkPolicy: NetworkPolicy;
+  apiMode: ApiMode;
+  remoteRestUrl: string;
+  remote_rest_url: string;
+  postgrestAnonKey: string;
+  postgrest_anon_key: string;
   local: Partial<PgEndpoint>;
   remote: Partial<PgEndpoint>;
   isConfigured: boolean;
@@ -81,10 +102,25 @@ const DEFAULT_CONFIG: DbConfig = {
   bridgePort: 3001,
   dbMode: 'local',
   networkPolicy: 'hybrid',
+  apiMode: 'bridge',
+  remoteRestUrl: '',
+  postgrestAnonKey: '',
   local: { ...DEFAULT_LOCAL },
   remote: { ...DEFAULT_REMOTE },
   isConfigured: false,
 };
+
+/** Web ile aynı: sondaki / temizlenir */
+export function normalizeRemoteRestUrl(input: string | null | undefined): string {
+  const raw = String(input ?? '').trim();
+  if (!raw) return '';
+  return raw.replace(/\/+$/, '');
+}
+
+export function parseApiMode(v: unknown): ApiMode {
+  if (v === 'postgrest' || v === 'hybrid' || v === 'bridge') return v;
+  return 'bridge';
+}
 
 function mergeEndpoint(base: PgEndpoint, partial?: Partial<PgEndpoint> | null): PgEndpoint {
   if (!partial || typeof partial !== 'object') return { ...base };
@@ -127,6 +163,16 @@ export function migrateDbConfig(raw: LegacyFlatConfig | DbConfig | null | undefi
     flat.networkPolicy === 'online' || flat.networkPolicy === 'offline'
       ? flat.networkPolicy
       : 'hybrid';
+  const apiMode = parseApiMode(flat.apiMode);
+  const remoteRestUrl = normalizeRemoteRestUrl(
+    flat.remoteRestUrl ?? flat.remote_rest_url ?? '',
+  );
+  const postgrestAnonKey =
+    typeof flat.postgrestAnonKey === 'string'
+      ? flat.postgrestAnonKey
+      : typeof flat.postgrest_anon_key === 'string'
+        ? flat.postgrest_anon_key
+        : '';
 
   return {
     bridgeHost:
@@ -136,6 +182,9 @@ export function migrateDbConfig(raw: LegacyFlatConfig | DbConfig | null | undefi
     bridgePort: Number(flat.bridgePort) > 0 ? Number(flat.bridgePort) : DEFAULT_CONFIG.bridgePort,
     dbMode,
     networkPolicy,
+    apiMode,
+    remoteRestUrl,
+    postgrestAnonKey,
     local,
     remote,
     isConfigured: flat.isConfigured === true,
@@ -182,6 +231,9 @@ export const useConfigStore = create<ConfigState>()(
             bridgeHost: defaultBridgeHost(),
             local: { ...DEFAULT_LOCAL },
             remote: { ...DEFAULT_REMOTE },
+            remoteRestUrl: '',
+            postgrestAnonKey: '',
+            apiMode: 'bridge',
           },
         }),
       setHydrated: (v) => set({ isHydrated: v }),
@@ -221,12 +273,32 @@ export function getBridgeBaseUrl(cfg: DbConfig): string {
   return `http://${host}:${cfg.bridgePort}`.replace(/\/+$/, '');
 }
 
-/** Login öncesi: bridge + aktif PG temel alanları dolu ve kaydedilmiş mi */
-export function isConfigReady(cfg: DbConfig): boolean {
-  if (!cfg.isConfigured) return false;
+function isBridgeEndpointReady(cfg: DbConfig): boolean {
   if (!cfg.bridgeHost.trim() || !(cfg.bridgePort > 0)) return false;
   const ep = getActiveEndpoint(cfg);
   return Boolean(ep.host.trim() && ep.database.trim() && ep.user.trim());
+}
+
+/** Login öncesi: apiMode’a göre bridge ve/veya PostgREST alanları */
+export function isConfigReady(cfg: DbConfig): boolean {
+  if (!cfg.isConfigured) return false;
+  const restOk = Boolean(normalizeRemoteRestUrl(cfg.remoteRestUrl));
+  const bridgeOk = isBridgeEndpointReady(cfg);
+  if (cfg.apiMode === 'postgrest') return restOk;
+  if (cfg.apiMode === 'hybrid') return restOk && bridgeOk;
+  return bridgeOk;
+}
+
+/** Okuma için PostgREST denenmeli mi */
+export function shouldPreferPostgrest(cfg: DbConfig = useConfigStore.getState().config): boolean {
+  if (!normalizeRemoteRestUrl(cfg.remoteRestUrl)) return false;
+  return cfg.apiMode === 'postgrest' || cfg.apiMode === 'hybrid';
+}
+
+/** Bridge SQL kullanılabilir mi (auth / yazma / hybrid fallback) */
+export function shouldUseBridgeSql(cfg: DbConfig = useConfigStore.getState().config): boolean {
+  if (cfg.apiMode === 'postgrest') return false;
+  return isBridgeEndpointReady(cfg);
 }
 
 export { DEFAULT_CONFIG, DEFAULT_LOCAL, DEFAULT_REMOTE };

@@ -6,7 +6,7 @@
 import { pgQuery } from './pgClient';
 import { appendStoreIdFilter, firmNr, newUuid, periodNr, productsTable, storeId } from './erpTables';
 import { useAuthStore } from '../store/authStore';
-import { shouldUseLiveData, getNetworkPolicy } from '../offline/policy';
+import { shouldUseLiveData } from '../offline/policy';
 import { enqueueMutation } from '../offline/mutationQueue';
 import {
   adjustProductStockInCache,
@@ -15,6 +15,7 @@ import {
   getCachedLineByBarcode,
   getCachedProducts,
   getCachedSlipWithLines,
+  markCountingSlipSynced,
   nextOfflineCountingFicheNo,
   saveCountingSlipsSnapshot,
   setProductStockInCache,
@@ -40,6 +41,8 @@ export type CountingSlip = {
   created_at: string;
   store_name?: string | null;
   line_count?: number;
+  /** Yerel kuyruk — henüz PG senkronu yok */
+  pending?: boolean;
 };
 
 export type CountingLine = {
@@ -152,6 +155,7 @@ export async function fetchCountingSlips(): Promise<CountingSlip[]> {
         created_at: s.created_at,
         store_name: s.store_name,
         line_count: s.line_count ?? s.lines.length,
+        pending: s.pending ?? false,
       }));
   }
 
@@ -274,6 +278,15 @@ async function createCountingSlipLive(
   },
   writeOpts?: Pick<WmsWriteOptions, 'id' | 'ficheNo'>,
 ): Promise<CountingSlip> {
+  const slipId = writeOpts?.id;
+  if (slipId) {
+    const existing = await pgQuery<CountingSlip>(
+      `SELECT * FROM wms.counting_slips WHERE id = $1::uuid`,
+      [slipId],
+    );
+    if (existing.rows[0]) return existing.rows[0];
+  }
+
   const firm = fn();
   const ficheNo = writeOpts?.ficheNo || (await generateFicheNo());
   const user = useAuthStore.getState().user;
@@ -347,6 +360,23 @@ export async function createCountingSlip(
   }
 
   const slip = await createCountingSlipLive(data, { id, ficheNo });
+  await upsertCountingSlipInCache({
+    id: slip.id,
+    firm_nr: slip.firm_nr,
+    store_id: slip.store_id,
+    fiche_no: slip.fiche_no,
+    date: String(slip.date),
+    count_type: slip.count_type,
+    location_code: slip.location_code,
+    status: slip.status,
+    description: slip.description,
+    created_by: slip.created_by,
+    created_at: String(slip.created_at),
+    store_name: slip.store_name ?? data.store_name,
+    line_count: 0,
+    lines: [],
+    pending: false,
+  });
   return slip;
 }
 
@@ -367,18 +397,15 @@ export async function updateCountingSlipStatus(
   if (!live && !writeOpts?.skipQueue) {
     const { slip } = await getCachedSlipWithLines(slipId);
     if (!slip) {
-      if (getNetworkPolicy() === 'offline') {
-        throw new Error('Çevrimdışı: sayım fişi önbellekte bulunamadı');
-      }
-    } else {
-      await updateCountingSlipStatusInCache(slipId, status);
-      await enqueueMutation({
-        type: 'wms.counting.status.update',
-        payload: { slipId, status },
-      });
-      await useConnectivityStore.getState().refreshPendingCount();
-      return { queued: true };
+      throw new Error('Çevrimdışı: sayım fişi önbellekte bulunamadı');
     }
+    await updateCountingSlipStatusInCache(slipId, status);
+    await enqueueMutation({
+      type: 'wms.counting.status.update',
+      payload: { slipId, status },
+    });
+    await useConnectivityStore.getState().refreshPendingCount();
+    return { queued: true };
   }
 
   await updateCountingSlipStatusLive(slipId, status);
@@ -562,10 +589,12 @@ export async function upsertCountingLine(
        RETURNING *`,
       [slipId, counted, by, data.product_name || null, data.unit || 'Adet', existing.rows[0].id],
     );
-    return res.rows[0]!;
+    const row = res.rows[0]!;
+    await upsertCountingLineInCache(slipId, row as CachedCountingLine);
+    return row;
   }
 
-  const lineId = newUuid();
+  const lineId = writeOpts?.lineId || newUuid();
   const res = await pgQuery<CountingLine>(
     `INSERT INTO wms.counting_lines
        (id, slip_id, firm_nr, product_id, barcode, product_name,
@@ -586,7 +615,9 @@ export async function upsertCountingLine(
       data.unit || 'Adet',
     ],
   );
-  return res.rows[0]!;
+  const row = res.rows[0]!;
+  await upsertCountingLineInCache(slipId, row as CachedCountingLine);
+  return row;
 }
 
 export async function deleteCountingLine(
@@ -768,8 +799,11 @@ export async function completeCountingReconciliation(slipId: string): Promise<vo
   );
 }
 
-export async function cancelCountingSlip(slipId: string): Promise<void> {
-  await pgQuery(`UPDATE wms.counting_slips SET status = 'cancelled' WHERE id = $1::uuid`, [slipId]);
+export async function cancelCountingSlip(
+  slipId: string,
+  writeOpts?: WmsWriteOptions,
+): Promise<{ queued?: boolean }> {
+  return updateCountingSlipStatus(slipId, 'cancelled', writeOpts);
 }
 
 /**
@@ -783,6 +817,9 @@ async function applyStockCountLive(slipId: string): Promise<ApplyStockCountResul
   );
   const slip = slipRes.rows[0];
   if (!slip) throw new Error('Sayım fişi bulunamadı');
+  if (slip.status === 'completed') {
+    return { processed: 0, surplus: 0, shortage: 0 };
+  }
 
   const linesRes = await pgQuery<CountingLine>(
     `SELECT * FROM wms.counting_lines
@@ -899,6 +936,9 @@ async function applyStockCountLive(slipId: string): Promise<ApplyStockCountResul
   );
 
   await completeCountingReconciliation(slipId);
+
+  await updateCountingSlipStatusInCache(slipId, 'completed');
+  await markCountingSlipSynced(slipId);
 
   return {
     processed: lines.length,

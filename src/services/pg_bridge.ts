@@ -498,6 +498,29 @@ app.post('/api/scale/rongta/fetch-sales', async (c) => {
     }
 });
 
+/** Ağ termal — ham ESC/POS TCP (varsayılan 9100). Mobil pg_bridge köprüsü + DeskApp ile aynı mantık. */
+app.post('/api/printer/escpos-tcp', async (c) => {
+    try {
+        const body = await c.req.json().catch(() => ({})) as Record<string, unknown>;
+        const hostRaw =
+            (typeof body.host === 'string' ? body.host : '') ||
+            (typeof body.ipAddress === 'string' ? body.ipAddress : '');
+        const host = hostRaw.trim();
+        const port = typeof body.port === 'number' ? body.port : undefined;
+        const dataB64 = typeof body.dataB64 === 'string' ? body.dataB64.trim() : '';
+        if (!host) return c.json({ ok: false, message: 'host / ipAddress gerekli' }, 400);
+        if (!dataB64) return c.json({ ok: false, message: 'dataB64 gerekli' }, 400);
+        const binary = Buffer.from(dataB64, 'base64');
+        if (binary.length === 0) return c.json({ ok: false, message: 'ESC/POS verisi boş' }, 400);
+        const { escposTcpSend } = await import('./escposTcpNode');
+        const result = await escposTcpSend(host, port, binary);
+        return c.json(result, result.ok ? 200 : 502);
+    } catch (error: any) {
+        console.error('[ESC/POS TCP]', error);
+        return c.json({ ok: false, message: error?.message || 'escpos-tcp failed' }, 500);
+    }
+});
+
 /**
  * Paket servis: Yemeksepeti / Getir / aracı entegratör gibi dış sistemlerden sipariş oluşturma.
  * Güvenlik: DELIVERY_PUSH_TOKEN tanımlıysa Authorization: Bearer veya ?token= veya body.token

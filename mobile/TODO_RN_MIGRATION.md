@@ -2,7 +2,7 @@
 
 > Kaynak: web `src/config/staticMenuConfig.ts` + ManagementModule (POS / WMS / Restoran / Güzellik)  
 > Hedef: `mobile/` (Expo RN, native ekranlar — WebView yasak)  
-> Son güncelleme: 2026-07-14 (P2: menü i18n · storeId kritik listeler · LIVE_MAP doküman senkronu)
+> Son güncelleme: 2026-07-14 (Belge tara → fatura · DocumentScan · OCR/manuel sihirbaz)
 
 ## Durum özeti
 
@@ -17,7 +17,7 @@
 **Durum sayımı (yaprak / özellik bazlı, yaklaşık):**  
 - **`[x]` / `[~]` canlı route** — ürün/cari/fatura, POS, terazi, mağaza, malzeme tanımları, E-Dönüşüm, WMS sayım+transfer+dalga, finans/cari devir, raporlar, sistem, iletişim…  
 - **`Module` yer tutucu** — grup kabukları (`store-management-group`, `waybill`, `Siparişler` …) + `dashboard`  
-- **`[ ]` bekleyen** — EAS ilk production, ekran-içi TR i18n, Rongta LAN canlı kg…
+- **`[ ]` bekleyen** — EAS ilk preview/production **build** (`eas init` + hesap), ekran-içi TR i18n, Rongta LAN canlı kg…
 
 ---
 
@@ -112,6 +112,7 @@
 | Satış / alış iade | UniversalInvoice trcode 3/6 | `InvoiceForm` (`sales-return` / `purchase-return`) + liste `+` | `[~]` yazma: stok yönü web ile aynı; kasiyer (3 zorunlu) |
 | Hizmet / irsaliye / sipariş / teklif | aynı | `Invoices` + `InvoiceForm` + `createDocumentInvoice` | `[~]` filtreli liste + **create** (TR 9/4/10/11/20/21/30; stok yok; hizmet cari/kasa) |
 | E-Dönüşüm | `etransform` | `ETransform` | `[x]` kuyruk + yeniden dene / durum / toplu mock gönder |
+| Belge Tara → Fatura | `document-scan` | `DocumentScan` | `[x]` ImagePicker (kamera/galeri) + `expo-text-extractor` OCR (yoksa manuel) → cari/tutar/kalem onay → `createSalesInvoice` / `createPurchaseInvoice` / `createDocumentInvoice` |
 | İrsaliyeler | `waybill-*` | `Invoices` + `InvoiceForm` | `[~]` liste + create (10/11; 12/13 trcode override) |
 | Siparişler | `salesorder` / `purchase` | `Invoices` + `InvoiceForm` | `[~]` liste + create (20/21, status draft) |
 | Teslimat Yönetimi | `logistics` | `DeliveryScreen` | `[x]` liste + canlı konum (`expo-location`) + durum + PG `courier_locations` |
@@ -223,8 +224,9 @@
 | i18n tr/en/ar/ku + RTL (`ar`/`ku`) | `[x]` AsyncStorage `retailex_mobile_language` · **menü** `menu.*` (sections/items/quick) |
 | Dark mode | `[x]` AsyncStorage `retailex_mobile_theme` + `colors` |
 | Menü görünümü `menuViewMode` (cards / list) | `[x]` AsyncStorage — mobil-only |
-| EAS Build / store yayın | `[~]` `eas.json` + README; `eas init` / ilk preview-production henüz yok |
+| EAS Build / store yayın | `[x]` yapılandırma (`eas.json`, scriptler, `EAS_CHECKLIST.md`); `[ ]` `eas init` + ilk preview/production build |
 | Kamera barkod (`expo-camera` CameraView) | `[x]` `BarcodeScannerModal` → POS / WMS sayım / ürün arama |
+| Belge tara + fatura (`expo-image-picker` + `expo-text-extractor`) | `[x]` `DocumentScan` → OCR/manuel sihirbaz → fatura create API |
 | Konum (`expo-location`) | `[x]` `DeliveryScreen` → kurye canlı konum + `logistics.courier_locations` |
 
 ---
@@ -272,12 +274,13 @@
 - [x] E-Dönüşüm kuyruk aksiyonları — yeniden dene / durum / toplu mock gönder (`ETransformScreen` + `eTransformApi`)
 - [x] Bildirim merkezi — kritik stok + vadesi geçmiş açık cari (`NotificationsScreen` + `notificationsApi`; menü `notifications`)
 - [x] WMS sayım mutabakat + stoka uygula (`wmsStockCountApi.applyStockCount` — web `wmsStockCount` ile aynı TRCODE 26/50; `WmsCountSlipScreen` mutabakat özeti + stok güncelleme)
-- [x] Yazıcı / fiş ayarları (`PrinterSettingsScreen` + `printerSettingsStore` AsyncStorage + test yazdır stub; POS otomatik yazdır stub)
+- [x] Yazıcı / fiş ayarları (`PrinterSettingsScreen` + `printerSettingsStore` AsyncStorage; **ağ ESC/POS TCP** pg_bridge `/api/printer/escpos-tcp` + isteğe bağlı `react-native-tcp-socket`; BT/sistem Faz 2+)
 - [x] **Terazi (Android TeraziManager → RN):** `ScaleManagement` + `ScaleSale` — TCP/PLU via pg_bridge; simüle tartım; **BLE** `react-native-ble-plx` + config plugin + canlı kg (development build; Expo Go’da native yok)
 - [x] **P1 Module yaprakları LIVE:** varyant/özel/grup kod (`MaterialDefinitions`); üretim/kasap (`ProductionOps`); çoklu PB (`MultiCurrency`); excel/akıllı ekleme (`ExcelOps`); etiket+Caller ID (`SystemExtras`)
 - [x] **P2 menü i18n:** `menu.sections|items|quick` tr/en/ar/ku · Dashboard / Module / More
 - [x] **P2 `storeId` kritik listeler:** `appendStoreIdFilter` — dashboard satış, fatura listeleri/özet, satış günü/ürün raporları, WMS sayım, stok hareket, bildirim vade
-- [x] **P2 doküman:** bayat `Module` satırları `LIVE_MAP` ile hizalandı (Ana Menü, malzeme tanımları, dalga)
+- [x] **EAS production hazırlığı:** `eas.json`, `EAS_CHECKLIST.md`, `eas-mobile-*.mjs`, kök `mobile:eas:*` scriptleri, `app.json` `retailexEasNotes`
+- [x] **Belge tara → fatura:** `DocumentScan` + `expo-image-picker` + `expo-text-extractor` OCR (fallback manuel) + fatura create API; menü `document-scan` + fatura listesi tarama ikonu
 
 ## Sonraki (Faz 2+)
 
@@ -289,12 +292,13 @@
 5. ~~Güzellik randevu düzenleme~~ ✅ · ~~güzellik satış POS (`beauty_sales` + ERP)~~ ✅  
 
 6. ~~Cari ekstre + mizan canlı SQL~~ ✅  
-7. EAS Build  
+7. EAS Build — `[x]` repo hazırlığı · `[ ]` `npm run mobile:eas:init` + ilk build → [`EAS_CHECKLIST.md`](./EAS_CHECKLIST.md)  
 8. ~~Menü etiketleri i18n (tr/en/ar/ku)~~ ✅ · kalan: ekran içi hardcoded TR (`Alert`, form hataları)  
 9. Teslimat: harita SDK / POD foto — opsiyonel derinlik  
 10. ~~Ürün oluştur/düzenle~~ ✅ · ~~Sistem menü yaprakları (okuma)~~ ✅  
-11. Offline kuyruk genişletme: ~~POS~~ ✅ · ~~fatura satış/alış/iade/belge~~ ✅ · WMS sayım  
+11. Offline kuyruk genişletme: ~~POS~~ ✅ · ~~fatura satış/alış/iade/belge~~ ✅ · ~~WMS sayım~~ ✅ (`wms.counting.*` · coalesce · cache sync · applyStock idempotent)  
 12. ~~`storeId` kritik listelerde~~ ✅ — kasa satırı mağaza kolonu seyrek; ürün stok hâlâ firma geneli  
 13. ~~Terazi BT: development build + `react-native-ble-plx`~~ ✅ (canlı kg + tarama); classic SPP / USB-OTG Android native hâlâ yok  
 14. Rongta LAN canlı ağırlık (etiket terazisi sürekli kg yaymaz) — tartılı satış simüle / harici tartı BT  
-15. KDV derinliği: header `total_vat` yazma + POS satır KDV (web `totalVat: 0` parity kaldırılınca)
+15. Yazıcı BT / sistem (`expo-print`, `react-native-bluetooth-escpos-printer`) — ağ ESC/POS TCP `[x]` köprü + native TCP yolu  
+16. KDV derinliği: header `total_vat` yazma + POS satır KDV (web `totalVat: 0` parity kaldırılınca)

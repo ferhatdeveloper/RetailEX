@@ -17,6 +17,7 @@ import { PrimaryButton } from '../components/PrimaryButton';
 import { useThemeStore } from '../store/themeStore';
 import { usePrinterSettingsStore } from '../store/printerSettingsStore';
 import { testPrintReceipt } from '../services/printerService';
+import { escposTransportStatus } from '../services/escpos/escposTcpTransport';
 import {
   type PrinterInterface,
   type ReceiptLangCode,
@@ -127,7 +128,7 @@ export function PrinterSettingsScreen(_props: Props) {
     <View style={[styles.root, { backgroundColor: colors.background }]}>
       <ScreenHeader
         title="Yazıcı / Fiş Ayarları"
-        subtitle="Yerel kayıt · test yazdır stub"
+        subtitle="Ağ ESC/POS · köprü veya doğrudan TCP"
       />
       <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
         <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
@@ -172,6 +173,10 @@ export function PrinterSettingsScreen(_props: Props) {
                 }
                 keyboardType="number-pad"
               />
+              <Text style={[styles.hint, { color: colors.textSubtle }]}>
+                ESC/POS ham TCP (port {settings.port ?? 9100}). Önce pg_bridge köprüsü; development build’de
+                doğrudan TCP de denenir.
+              </Text>
             </>
           ) : null}
 
@@ -225,7 +230,7 @@ export function PrinterSettingsScreen(_props: Props) {
             <View style={{ flex: 1 }}>
               <Text style={{ color: colors.text, fontWeight: '700' }}>Otomatik yazdır</Text>
               <Text style={{ color: colors.textSubtle, fontSize: 11, marginTop: 2 }}>
-                Fiş kaydından sonra (stub)
+                Fiş kaydından sonra (ağ ESC/POS)
               </Text>
             </View>
             <Switch
@@ -293,23 +298,26 @@ export function PrinterSettingsScreen(_props: Props) {
           style={[
             styles.stubBox,
             {
-              borderColor: darkMode ? '#b45309' : '#fde68a',
-              backgroundColor: darkMode ? 'rgba(120,53,15,0.2)' : 'rgba(255,251,235,0.9)',
+              borderColor: darkMode ? '#1d4ed8' : '#bfdbfe',
+              backgroundColor: darkMode ? 'rgba(30,58,138,0.25)' : 'rgba(239,246,255,0.95)',
             },
           ]}
         >
           <Text
             style={{
-              color: darkMode ? '#fde68a' : '#92400e',
+              color: darkMode ? '#93c5fd' : '#1e40af',
               fontSize: 12,
               fontWeight: '700',
             }}
           >
-            Test yazdırma (stub)
+            Ağ yazdırma (ESC/POS TCP)
           </Text>
           <Text style={{ color: colors.textMuted, fontSize: 11, lineHeight: 16, marginTop: 4 }}>
-            Gerçek termal/BT yazıcı henüz bağlı değil. Test, ayarları doğrular ve örnek fiş metnini
-            gösterir.
+            «Ağ (IP)» seçiliyken test fişi ham ESC/POS olarak yazıcıya gönderilir. Taşıyıcı:{' '}
+            {escposTransportStatus().nativeTcp
+              ? 'köprü veya doğrudan TCP'
+              : 'pg_bridge köprüsü (PC’de npm run bridge)'}
+            . Bluetooth ve sistem yazıcısı Faz 2+.
           </Text>
         </View>
 

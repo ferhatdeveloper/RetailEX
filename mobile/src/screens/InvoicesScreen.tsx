@@ -11,7 +11,7 @@ import {
 import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
-import { ChevronRight, Plus } from 'lucide-react-native';
+import { ChevronRight, Plus, ScanLine } from 'lucide-react-native';
 import { ScreenHeader, SearchBar, EmptyState, ErrorBanner } from '../components/ScreenChrome';
 import { HeaderIconButton } from '../components/GradientHeader';
 import {
@@ -152,8 +152,24 @@ export function InvoicesScreen() {
         title={screenTitle}
         subtitle={subtitle}
         right={
-          showAnyAdd ? (
-            <View style={styles.headerActions}>
+          <View style={styles.headerActions}>
+            <HeaderIconButton
+              onPress={() =>
+                navigation.navigate('DocumentScan', {
+                  kind:
+                    listFilter?.preset === 'purchase' ||
+                    listFilter?.preset === 'service-received'
+                      ? 'purchase'
+                      : listFilter?.preset === 'service-given'
+                        ? 'service-given'
+                        : 'sales',
+                })
+              }
+            >
+              <ScanLine size={18} color={palette.white} />
+            </HeaderIconButton>
+            {showAnyAdd ? (
+              <>
               {showSalesAdd ? (
                 <HeaderIconButton
                   accent
@@ -203,8 +219,9 @@ export function InvoicesScreen() {
                   <Plus size={18} color={palette.white} />
                 </HeaderIconButton>
               ) : null}
-            </View>
-          ) : undefined
+              </>
+            ) : null}
+          </View>
         }
       />
 

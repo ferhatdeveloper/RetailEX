@@ -46,6 +46,24 @@ export function restaurantRouteParams(screen: string): RestaurantRouteParams | u
   }
 }
 
+export type DeliveryRouteParams = NonNullable<MainStackParamList['Delivery']>;
+
+/** Menü screen id → Delivery stack params */
+export function deliveryRouteParams(screen: string): DeliveryRouteParams | undefined {
+  switch (screen) {
+    case 'delivery-live':
+      return { initialTab: 'live' };
+    case 'couriers':
+      return { initialTab: 'couriers' };
+    case 'logistics':
+    case 'delivery-management':
+    case 'delivery':
+      return { initialTab: 'deliveries' };
+    default:
+      return undefined;
+  }
+}
+
 /** Menü screen id → System stack params */
 export function systemRouteParams(screen: string): SystemRouteParams {
   if (screen === 'hybrid-sync') {
@@ -268,7 +286,7 @@ export function navigateToModule(
       nav.navigate('Restaurant', restaurantRouteParams(screen));
       return;
     case 'Delivery':
-      nav.navigate('Delivery');
+      nav.navigate('Delivery', deliveryRouteParams(screen));
       return;
     case 'Finance':
       nav.navigate('Finance', financeRouteParams(screen));
@@ -323,6 +341,9 @@ export function navigateToModule(
       return;
     case 'ETransform':
       nav.navigate('ETransform');
+      return;
+    case 'DocumentScan':
+      nav.navigate('DocumentScan', { kind: 'purchase' });
       return;
     default:
       nav.navigate('Module', { screenId: screen, title });

@@ -20,6 +20,11 @@ import { IS_TAURI, safeInvoke } from './utils/env';
 import { mergeRustIntoStoredWebConfig } from './utils/retailexWebConfigMerge';
 import { APP_VERSION } from './core/version';
 import { initRetailexDataSync } from './services/retailexDataSync';
+import {
+  SETUP_WIZARD_EVENT,
+  clearSetupWizardLocalFlags,
+  consumeForceSetupWizard,
+} from './utils/setupWizardGate';
 
 // Import WebSocket patch FIRST to suppress all WebSocket errors globally
 import './services/websocketPatch';
@@ -58,6 +63,19 @@ function App() {
 
   useEffect(() => {
     initRetailexDataSync();
+  }, []);
+
+  // Login → siyah SetupWizard: state ile (reload şart değil)
+  useEffect(() => {
+    if (!IS_TAURI) return;
+    const openWizard = () => {
+      clearSetupWizardLocalFlags();
+      setIsConfigured(false);
+      setIsPgReady(true);
+      if ((window as any).removeLoader) (window as any).removeLoader();
+    };
+    window.addEventListener(SETUP_WIZARD_EVENT, openWizard);
+    return () => window.removeEventListener(SETUP_WIZARD_EVENT, openWizard);
   }, []);
 
   // HTML loader yalnızca ana arayüz (Login/MainLayout/SetupWizard) gösterilmeden önce kaldırılır — arada siyah ekran olmasın
@@ -121,13 +139,15 @@ function App() {
           }
 
           setIsPgReady(true);
-          
-          // Yalnızca gerçek is_configured / firma-dönem bayrağı — kısmi cache SetupWizard’ı atlamasın
-          const finalConfigured = !!(
-            config?.is_configured === true ||
-            localStorage.getItem('exretail_firma_donem_configured') === 'true'
-          );
-          applyConfig(config || { is_configured: finalConfigured });
+
+          // DeskApp: yalnızca config.db is_configured — legacy localStorage tek başına wizard atlamasın
+          const forceWizard = consumeForceSetupWizard();
+          const configured = !forceWizard && config?.is_configured === true;
+          if (config) {
+            applyConfig(configured ? config : { ...config, is_configured: false });
+          } else {
+            applyConfig({ is_configured: false });
+          }
 
           safeInvoke('check_pg16').then((exists: any) => {
             if (!exists) {
@@ -151,7 +171,13 @@ function App() {
       } catch (err) {
         console.error('[Startup] Flow failed:', err);
         setIsPgReady(true);
-        setIsConfigured(localStorage.getItem('exretail_firma_donem_configured') === 'true');
+        if (IS_TAURI) {
+          // DeskApp: hata / timeout → SetupWizard (Login UUID modalına sıkışma)
+          consumeForceSetupWizard();
+          setIsConfigured(false);
+        } else {
+          setIsConfigured(localStorage.getItem('exretail_firma_donem_configured') === 'true');
+        }
         startupCompleteRef.current = true;
         setIsInitialized(true);
       }
@@ -163,38 +189,36 @@ function App() {
     const emergencyTimer = setTimeout(() => {
       if (!startupCompleteRef.current) {
         console.warn('⚠️ Emergency initialization triggered - slow startup detected');
-        
-        // Recover from cache only when truly configured — partial retailex_web_config
-        // must NOT skip SetupWizard (was trapping users on Login Supabase UUID modal).
+
+        const forceWizard = consumeForceSetupWizard();
         const cachedRaw = localStorage.getItem('retailex_web_config');
-        const hasLegacyFlag = localStorage.getItem('exretail_firma_donem_configured') === 'true';
-        let cacheConfigured = hasLegacyFlag;
+        let cacheIsConfigured = false;
         if (cachedRaw) {
           try {
-            const parsed = JSON.parse(cachedRaw);
-            cacheConfigured = cacheConfigured || parsed?.is_configured === true;
+            cacheIsConfigured = JSON.parse(cachedRaw)?.is_configured === true;
           } catch {
-            /* ignore bad cache */
+            /* ignore */
           }
         }
 
-        if (cacheConfigured) {
-          console.info('Retrieved configuration from cache during emergency fallback');
-          setIsConfigured(true);
+        if (IS_TAURI) {
+          // Yalnızca cache’te açık is_configured:true → Login; aksi / force → SetupWizard
+          // Legacy exretail_firma_donem_configured tek başına atlama yapmaz
+          setIsConfigured(!forceWizard && cacheIsConfigured);
         } else {
-          // DeskApp: incomplete/missing config → SetupWizard; web → login
-          setIsConfigured(IS_TAURI ? false : true);
+          const hasLegacyFlag = localStorage.getItem('exretail_firma_donem_configured') === 'true';
+          setIsConfigured(cacheIsConfigured || hasLegacyFlag);
         }
-        
+
         setIsPgReady(true);
         startupCompleteRef.current = true;
         setIsInitialized(true);
       }
-      
+
       const loader = document.getElementById('app-loader');
       if (loader) loader.remove();
       if ((window as any).removeLoader) (window as any).removeLoader();
-    }, 10000); // Fallback if startup hangs; loader removed as soon as ready
+    }, 10000);
 
     return () => clearTimeout(emergencyTimer);
   }, [IS_TAURI]);

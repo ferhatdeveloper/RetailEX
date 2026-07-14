@@ -14,6 +14,8 @@ import {
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Plus, Trash2 } from 'lucide-react-native';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { ScreenHeader, ErrorBanner, SearchBar } from '../components/ScreenChrome';
 import { FormField } from '../components/FormField';
 import { PrimaryButton } from '../components/PrimaryButton';
@@ -169,7 +171,42 @@ function kindAccent(kind: InvoiceFormKind): string {
   return palette.blue600;
 }
 
+function validateCreate(
+  t: TFunction,
+  resolvedKind: InvoiceFormKind,
+  lines: DraftLine[],
+  customerId: string | undefined,
+  customerName: string,
+  cashier: string,
+): string | null {
+  if (!lines.length) return t('invoiceForm.needLine');
+  if (requiresParty(resolvedKind)) {
+    if (
+      !customerId ||
+      !customerName.trim() ||
+      customerName === defaultPartyName(resolvedKind)
+    ) {
+      return isSupplierKind(resolvedKind)
+        ? t('invoiceForm.supplierRequired')
+        : t('invoiceForm.customerRequired');
+    }
+  }
+  if (resolvedKind === 'sales-return') {
+    if (!cashier.trim()) return t('invoiceForm.cashierRequired');
+  }
+  for (const l of lines) {
+    if (!(l.qty > 0)) return t('invoiceForm.qtyPositive', { name: l.name });
+    if (isSupplierKind(resolvedKind)) {
+      if (l.unitPrice < 0) return t('invoiceForm.unitPriceInvalid', { name: l.name });
+    } else if (!(l.unitPrice > 0)) {
+      return t('invoiceForm.unitPricePositive', { name: l.name });
+    }
+  }
+  return null;
+}
+
 export function InvoiceFormScreen() {
+  const { t } = useTranslation();
   const { colors } = useThemeStore();
   const navigation = useNavigation<NativeStackNavigationProp<MainStackParamList>>();
   const route = useRoute<RouteProp<MainStackParamList, 'InvoiceForm'>>();
@@ -229,7 +266,7 @@ export function InvoiceFormScreen() {
     try {
       const doc = await fetchInvoiceById(invoiceId);
       if (!doc) {
-        setError('Fatura bulunamadı');
+        setError(t('invoiceForm.notFound'));
         return;
       }
       const tc = Number(doc.trcode ?? 0);
@@ -248,7 +285,7 @@ export function InvoiceFormScreen() {
     } finally {
       setLoading(false);
     }
-  }, [invoiceId]);
+  }, [invoiceId, t]);
 
   useEffect(() => {
     void load();
@@ -331,33 +368,6 @@ export function InvoiceFormScreen() {
     setLines((prev) => prev.filter((l) => l.key !== key));
   };
 
-  const validateCreate = (): string | null => {
-    if (!lines.length) return 'En az bir ürün satırı ekleyin.';
-    if (requiresParty(resolvedKind)) {
-      if (
-        !customerId ||
-        !customerName.trim() ||
-        customerName === defaultPartyName(resolvedKind)
-      ) {
-        return isSupplierKind(resolvedKind)
-          ? 'Tedarikçi seçimi zorunludur.'
-          : 'Cari (müşteri) seçimi zorunludur.';
-      }
-    }
-    if (resolvedKind === 'sales-return') {
-      if (!cashier.trim()) return 'Satış iadesinde kasiyer zorunludur.';
-    }
-    for (const l of lines) {
-      if (!(l.qty > 0)) return `"${l.name}" için miktar > 0 olmalı.`;
-      if (isSupplierKind(resolvedKind)) {
-        if (l.unitPrice < 0) return `"${l.name}" birim fiyat geçersiz.`;
-      } else if (!(l.unitPrice > 0)) {
-        return `"${l.name}" birim fiyat > 0 olmalı.`;
-      }
-    }
-    return null;
-  };
-
   const handleSave = async () => {
     setSaving(true);
     setError(null);
@@ -367,9 +377,16 @@ export function InvoiceFormScreen() {
         navigation.replace('InvoiceDetail', { invoiceId });
         return;
       }
-      const validationError = validateCreate();
+      const validationError = validateCreate(
+        t,
+        resolvedKind,
+        lines,
+        customerId,
+        customerName,
+        cashier,
+      );
       if (validationError) {
-        Alert.alert('Eksik bilgi', validationError);
+        Alert.alert(t('alert.missingInfo'), validationError);
         setSaving(false);
         return;
       }
@@ -803,7 +820,7 @@ export function InvoiceFormScreen() {
                     </Text>
                   </View>
                   <Text style={{ color: colors.textSubtle, fontSize: 10, marginTop: 2 }}>
-                    Satır KDV % kaydedilir; header total_vat web ile 0
+                    Satır KDV % ve header total_vat kaydedilir (web invoicesAPI.tax)
                   </Text>
                   <View style={[styles.summaryRow, { marginTop: 8 }]}>
                     <Text style={{ color: colors.text, fontWeight: '800' }}>Genel toplam</Text>

@@ -173,6 +173,7 @@ export function WmsCountScreen() {
                 </View>
                 <Text style={{ color: colors.textSubtle, fontSize: 10, marginTop: 6 }}>
                   {item.line_count ?? 0} satır
+                  {item.pending ? ' · senkron bekliyor' : ''}
                   {editable ? ' · dokunarak say' : ''}
                 </Text>
               </Pressable>

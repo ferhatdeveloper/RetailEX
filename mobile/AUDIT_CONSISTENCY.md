@@ -14,7 +14,7 @@ Menü → `LIVE_MAP` → stack navigasyonu hizalı. Yaprakların çoğu canlı; 
 | firmNr / periodNr | ERP tablolarında tutarlı (`erpTables`) |
 | store | Oturumda var; **P2:** kritik listelerde `appendStoreIdFilter` |
 | i18n tr/en/ar/ku | Auth/settings/dashboard + **menü** `menu.*` (sections/items/quick/badge) |
-| Offline | policy ↔ müşteri/ürün okuma ↔ `pos.sale` / fatura kuyruk; WMS yazma sonraki |
+| Offline | policy ↔ müşteri/ürün okuma ↔ `pos.sale` / fatura / **WMS sayım** kuyruk |
 | Typecheck | `npm run typecheck` |
 
 ## 1. LIVE_MAP / menü / stack
@@ -76,9 +76,10 @@ Menü → `LIVE_MAP` → stack navigasyonu hizalı. Yaprakların çoğu canlı; 
 | Ürün / cari liste | Snapshot OK |
 | Cari CRUD | Kuyruk → flush |
 | POS satış | `pos.sale` kuyruk + cache stok |
-| Fatura satış/alış/iade/belge | Kuyruk (önceki turlar) |
+| Fatura satış/alış/iade/belge | Kuyruk |
+| WMS sayım fiş/satır/mutabakat/stok | `wms.counting.*` kuyruk + `retailex_offline_counting_slips` cache |
 | Ürün CRUD | Canlı zorunlu |
-| WMS / Beauty sale / Finance yazma | Canlı zorunlu veya kuyruksuz (sonraki) |
+| WMS / Beauty sale / Finance yazma | WMS sayım kuyruk ✅; Beauty/Finance canlı zorunlu |
 
 ## 5. Typecheck
 
@@ -97,5 +98,5 @@ cd mobile && npm run typecheck
 
 1. Kasa/banka satırlarında mağaza kolon modeli netleşince filtre  
 2. Ekran içi stringleri i18n’e taşıma  
-3. WMS sayım mutation kuyruk  
-4. EAS preview / production  
+3. ~~WMS sayım mutation kuyruk~~ ✅  
+4. EAS preview / production   — yapılandırma hazır; [`EAS_CHECKLIST.md`](./EAS_CHECKLIST.md) → `eas init` + ilk build  

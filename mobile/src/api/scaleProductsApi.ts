@@ -13,6 +13,7 @@ export type ScaleProductRow = {
   name: string;
   unit: string | null;
   price: number;
+  vat_rate: number;
   plu_code: string | null;
   shelf_life_days: number | null;
   is_scale_product: boolean;
@@ -25,6 +26,7 @@ export async function fetchScaleProducts(limit = 500): Promise<ScaleProductRow[]
   const res = await pgQuery<ScaleProductRow>(
     `SELECT id, code, barcode, name, unit,
             COALESCE(price, 0)::float8 AS price,
+            COALESCE(vat_rate, 20)::float8 AS vat_rate,
             plu_code,
             shelf_life_days,
             COALESCE(is_scale_product, false) AS is_scale_product,
@@ -59,6 +61,7 @@ export async function searchWeighableProducts(
   const res = await pgQuery<ScaleProductRow>(
     `SELECT id, code, barcode, name, unit,
             COALESCE(price, 0)::float8 AS price,
+            COALESCE(vat_rate, 20)::float8 AS vat_rate,
             plu_code,
             shelf_life_days,
             COALESCE(is_scale_product, false) AS is_scale_product,

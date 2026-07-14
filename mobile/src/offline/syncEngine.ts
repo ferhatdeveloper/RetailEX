@@ -20,7 +20,7 @@ import {
   removeMutation,
   type PendingMutation,
 } from './mutationQueue';
-import { removePendingInvoiceFromCache } from './snapshotCache';
+import { markCountingSlipSynced, removePendingInvoiceFromCache } from './snapshotCache';
 import { shouldUseLiveData } from './policy';
 
 export type FlushResult = {
@@ -167,6 +167,7 @@ async function applyOne(m: PendingMutation): Promise<void> {
         ficheNo: m.payload.ficheNo,
       },
     );
+    await markCountingSlipSynced(m.payload.localId);
     return;
   }
   if (m.type === 'wms.counting.line.upsert') {

@@ -37,6 +37,10 @@ import {
   buildSaaSTenantPostgrestUrl,
   DEFAULT_SAAS_TENANT_POSTGREST_ORIGIN,
 } from '../../services/merkezTenantRegistry';
+import {
+  markForceSetupWizard,
+  requestOpenSetupWizard,
+} from '../../utils/setupWizardGate';
 
 const isTauri = typeof window !== 'undefined' && !!(window as any).__TAURI_INTERNALS__;
 const isProduction = import.meta.env.PROD;
@@ -235,7 +239,7 @@ export function Login({ onLogin }: LoginProps) {
     const hasWebConfig = !!localStorage.getItem('retailex_web_config');
     const isMobileNative = !isTauri && isCapacitorNative();
 
-    // DeskApp: yapılandırılmamışsa kurulum seçim modalını aç (Supabase UUID zorunlu değil)
+    // DeskApp: App.tsx yanlışlıkla Login’e düştüyse siyah SetupWizard’a geç (mavi UUID modal değil)
     if (isTauri && !isConfiguredFromStorage) {
       void (async () => {
         try {
@@ -246,9 +250,9 @@ export function Login({ onLogin }: LoginProps) {
             return;
           }
         } catch {
-          /* config.db yok / erişilemez → kurulum seç */
+          /* config.db yok / erişilemez → siyah wizard */
         }
-        setShowSetupWizard(true);
+        requestOpenSetupWizard();
       })();
     }
 
@@ -470,12 +474,11 @@ export function Login({ onLogin }: LoginProps) {
     }
   };
 
-  /** Gerçek SetupWizard (App.tsx): config.db is_configured=false + yenile */
+  /** Gerçek SetupWizard (App.tsx): config.db is_configured=false + App state (reload şart değil) */
   const enterDesktopSetupWizard = async () => {
     if (isEnteringFullSetup) return;
     setIsEnteringFullSetup(true);
     try {
-      localStorage.removeItem('exretail_firma_donem_configured');
       if (isTauri) {
         const { invoke } = await import('@tauri-apps/api/core');
         let current: Record<string, unknown> = {};
@@ -490,25 +493,27 @@ export function Login({ onLogin }: LoginProps) {
             is_configured: false,
           },
         });
-      } else {
-        try {
-          const raw = localStorage.getItem('retailex_web_config');
-          const prev = raw ? JSON.parse(raw) : {};
-          localStorage.setItem(
-            'retailex_web_config',
-            JSON.stringify({ ...prev, is_configured: false }),
-          );
-        } catch {
-          localStorage.removeItem('retailex_web_config');
-        }
         setShowSetupWizard(false);
-        setShowDbSettings(true);
+        toast.success('Kurulum sihirbazı açılıyor...');
+        requestOpenSetupWizard();
         setIsEnteringFullSetup(false);
-        toast.message('Veritabanı / PostgREST ayarlarından devam edin');
         return;
       }
-      toast.success('Kurulum sihirbazı açılıyor...');
-      window.location.reload();
+
+      try {
+        const raw = localStorage.getItem('retailex_web_config');
+        const prev = raw ? JSON.parse(raw) : {};
+        localStorage.setItem(
+          'retailex_web_config',
+          JSON.stringify({ ...prev, is_configured: false }),
+        );
+      } catch {
+        localStorage.removeItem('retailex_web_config');
+      }
+      setShowSetupWizard(false);
+      setShowDbSettings(true);
+      setIsEnteringFullSetup(false);
+      toast.message('Veritabanı / PostgREST ayarlarından devam edin');
     } catch (err: any) {
       console.error('enterDesktopSetupWizard failed:', err);
       toast.error('Kurulum sihirbazı açılamadı: ' + (err?.message || String(err)));
@@ -665,8 +670,9 @@ export function Login({ onLogin }: LoginProps) {
 
       // 2. Clear LocalStorage
       localStorage.clear();
+      markForceSetupWizard();
 
-      // 3. Reload
+      // 3. Reload — App force bayrağı ile SetupWizard
       window.location.reload();
     } catch (err) {
       console.error('Reset failed:', err);
@@ -1272,6 +1278,14 @@ export function Login({ onLogin }: LoginProps) {
                 title={darkMode ? 'Açık Tema' : 'Koyu Tema'}
               >
                 {darkMode ? <Sun className="w-3.5 h-3.5" /> : <Moon className="w-3.5 h-3.5" />}
+              </button>
+              <button
+                type="button"
+                title="Kurulum sihirbazı"
+                onClick={() => setShowSetupWizard(true)}
+                className="p-2.5 bg-white/10 hover:bg-white/20 rounded-sm border border-white/10 transition-all backdrop-blur-md group"
+              >
+                <Wand2 className="w-3.5 h-3.5 group-hover:scale-110 transition-transform" />
               </button>
               <button
                 type="button"

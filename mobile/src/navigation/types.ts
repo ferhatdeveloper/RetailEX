@@ -58,6 +58,12 @@ export type MainStackParamList = {
         trcode?: number;
       }
     | undefined;
+  /** Belge fotoğrafı / OCR → fatura sihirbazı */
+  DocumentScan:
+    | {
+        kind?: import('../api/invoicesApi').InvoiceFormKind;
+      }
+    | undefined;
   Campaigns: undefined;
   CampaignDetail: { campaignId: string };
   /** Yeni / düzenle kampanya */
@@ -88,8 +94,8 @@ export type MainStackParamList = {
   /** WMS dalga toplama — görev yürütme */
   WmsWavePickingExecute: { waveId: string };
   Restaurant: { initialTab?: 'tables' | 'orders' } | undefined;
-  /** Teslimat / kurye canlı konum */
-  Delivery: undefined;
+  /** Teslimat / kurye — menü yaprağı sekmesi */
+  Delivery: { initialTab?: 'deliveries' | 'live' | 'couriers' } | undefined;
   /** Finans tanımları: ödeme planı, masraf merkezi, arama planı, gider */
   FinanceDefinitions: { screenId?: string } | undefined;
   /** Malzeme tanımları: sınıf, kategori, marka, birim seti, varyant, özel/grup kod */

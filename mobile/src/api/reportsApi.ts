@@ -537,18 +537,27 @@ export async function fetchCariExtract(opts: {
            )
            OR s.trcode IN (1, 4, 5, 6, 13, 26, 41, 42)
          )`;
-    // Web buildEkstreRows: alış/satış +delta; iade −delta (ledger ile aynı yön).
+    // Web buildEkstreRows: alış/satış +delta; iade −delta; opening_balance → işaretli net_amount (R11a).
     // Önceki mobil CASE alış fişlerini de −1 yapıyordu → tedarikçi kapanış bakiyesi ters dönüyordu (V2-R13).
+    // Açılış: cariDevirApi alacak için negatif net_amount yazar; ABS+ELSE 1 → yanlış borç (R11a).
+    const openingSignSql = `CASE
+           WHEN LOWER(TRIM(COALESCE(s.fiche_type, ''))) = 'opening_balance'
+             THEN CASE WHEN COALESCE(s.net_amount, s.total_net, 0) < 0 THEN -1 ELSE 1 END`;
     const saleSignSql = isCustomer
-      ? `CASE
+      ? `${openingSignSql}
            WHEN LOWER(TRIM(COALESCE(s.fiche_type, ''))) = 'return_invoice'
              OR COALESCE(s.trcode, 0) IN (2, 3) THEN -1
            ELSE 1
          END`
-      : `CASE
+      : `${openingSignSql}
            WHEN COALESCE(s.trcode, 0) = 6
              OR LOWER(TRIM(COALESCE(s.fiche_type, ''))) = 'return_invoice' THEN -1
            ELSE 1
+         END`;
+    // Web ficheTypeToInfo(opening_balance) → 'Devir'
+    const saleDefinitionSql = `CASE
+           WHEN LOWER(TRIM(COALESCE(s.fiche_type, ''))) = 'opening_balance' THEN 'Devir'
+           ELSE COALESCE(s.fiche_type, '')
          END`;
 
     try {
@@ -566,7 +575,7 @@ export async function fetchCariExtract(opts: {
              s.id::text AS id,
              COALESCE(s.date::date, (s.date AT TIME ZONE 'UTC')::date)::text AS date,
              COALESCE(s.fiche_no, '') AS fiche_no,
-             COALESCE(s.fiche_type, '') AS definition,
+             (${saleDefinitionSql}) AS definition,
              ABS(COALESCE(s.net_amount, s.total_net, 0))::float8 AS amount,
              (${saleSignSql})::int AS sign,
              'sale'::text AS source,

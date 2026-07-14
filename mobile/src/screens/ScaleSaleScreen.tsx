@@ -38,6 +38,7 @@ type WeighLine = {
   weightKg: number;
   unit: string;
   code: string | null;
+  vatRate: number;
 };
 
 export function ScaleSaleScreen(_props: Props) {
@@ -213,6 +214,10 @@ export function ScaleSaleScreen(_props: Props) {
         weightKg,
         unit: selected.unit || 'KG',
         code: selected.code,
+        vatRate:
+          Number.isFinite(selected.vat_rate) && selected.vat_rate >= 0
+            ? Number(selected.vat_rate)
+            : 20,
       },
     ]);
     setSelected(null);
@@ -241,6 +246,7 @@ export function ScaleSaleScreen(_props: Props) {
                   qty: l.weightKg,
                   unit: l.unit || null,
                   code: l.code,
+                  vatRate: l.vatRate,
                 }));
                 const res = await savePosSale(posLines, 'Nakit');
                 setCart([]);

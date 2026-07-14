@@ -2,7 +2,7 @@
 // Bu dosya MenuManagementPanel'den dışa aktarılmıştır
 
 import {
-    PieChart, Store, Map, Settings, Zap, FileSpreadsheet,
+    PieChart, Store, Map, MapPin, Settings, Zap, FileSpreadsheet,
     FileText, FileCheck, FileMinus, Truck, Archive,
     ShoppingCart, FileSignature, Users, Target, ShoppingBag, ClipboardList,
     Package, Warehouse, TrendingDown, Boxes, QrCode, Tag, Scale,
@@ -166,8 +166,7 @@ export const getStaticMenuSections = (t: Translations) => [
                 icon: ShoppingBag,
                 children: [
                     { label: t.menu.salesOrder, screen: 'salesorder', icon: ShoppingBag },
-                    { label: t.menu.purchaseOrders, screen: 'purchase', icon: ShoppingBag },
-                    { label: 'Teslimat Yönetimi', screen: 'logistics', icon: Truck }
+                    { label: t.menu.purchaseOrders, screen: 'purchase', icon: ShoppingBag }
                 ]
             },
             {
@@ -175,6 +174,15 @@ export const getStaticMenuSections = (t: Translations) => [
                 screen: 'Teklifler',
                 icon: FileSignature
             }
+        ]
+    },
+    {
+        id: 'delivery-management',
+        title: t.menu.deliveryManagement,
+        items: [
+            { label: t.menu.deliveries, screen: 'logistics', icon: Truck },
+            { label: t.menu.liveLocation, screen: 'delivery-live', icon: MapPin },
+            { label: t.menu.courierList, screen: 'couriers', icon: Users }
         ]
     },
     {
@@ -325,6 +333,10 @@ export const staticMenuSections = getStaticMenuSections({
         communicationAndNotifications: 'İletişim & Bildirimler',
         reportsAndAnalysis: 'Raporlar & Analiz',
         systemManagement: 'Sistem Yönetimi',
+        deliveryManagement: 'Teslimat Yönetimi',
+        deliveries: 'Teslimatlar',
+        liveLocation: 'Canlı Konum',
+        courierList: 'Kurye Listesi',
         masterRecords: 'Ana Kayıtlar',
         movements: 'Hareketler',
         reports: 'Raporlar',

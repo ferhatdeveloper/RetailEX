@@ -1,6 +1,6 @@
 {
   "name": "mobile",
-  "version": "0.1.224",
+  "version": "0.1.226",
   "main": "index.ts",
   "dependencies": {
     "@react-native-async-storage/async-storage": "2.2.0",
@@ -10,9 +10,11 @@
     "@react-navigation/native-stack": "^7.17.10",
     "expo": "~57.0.4",
     "expo-camera": "~57.0.1",
+    "expo-image-picker": "~57.0.2",
     "expo-location": "~57.0.2",
     "expo-secure-store": "^57.0.0",
     "expo-status-bar": "~57.0.0",
+    "expo-text-extractor": "^2.0.0",
     "i18next": "^26.3.6",
     "lucide-react-native": "^1.24.0",
     "react": "19.2.3",
@@ -34,9 +36,11 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "typecheck": "tsc --noEmit",
-    "eas:debug": "eas build --platform android --profile debug",
-    "eas:preview": "eas build --platform android --profile preview",
-    "eas:production": "eas build --platform android --profile production"
+    "eas:check": "node ../scripts/eas-mobile-check.mjs",
+    "eas:init": "node ../scripts/eas-mobile-init.mjs",
+    "eas:debug": "node ../scripts/eas-mobile-build.mjs --profile debug",
+    "eas:preview": "node ../scripts/eas-mobile-build.mjs --profile preview",
+    "eas:production": "node ../scripts/eas-mobile-build.mjs --profile production"
   },
   "private": true
 }

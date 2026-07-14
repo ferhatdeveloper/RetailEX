@@ -44,6 +44,7 @@ export function MoreScreen() {
     { id: 'products', label: 'Ürünler', screen: 'products' },
     { id: 'suppliers', label: 'Cari Hesaplar', screen: 'suppliers' },
     { id: 'sales-inv', label: 'Satış Faturaları', screen: 'salesinvoice' },
+    { id: 'document-scan', label: 'Belge Tara', screen: 'document-scan' },
     { id: 'wms-hub', label: 'WMS Ana Panel', screen: 'wms-hub' },
     { id: 'restaurant', label: 'Restoran Ana Ekran', screen: 'restaurant' },
     { id: 'beauty', label: 'Güzellik Ana Ekran', screen: 'beauty' },

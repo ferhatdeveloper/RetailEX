@@ -18,12 +18,14 @@ import { PrimaryButton } from '../components/PrimaryButton';
 import { useThemeStore } from '../store/themeStore';
 import {
   useConfigStore,
+  type ApiMode,
   type DbConfig,
   type DbMode,
   type NetworkPolicy,
   type PgEndpoint,
 } from '../store/configStore';
 import { testBridgeConnection } from '../api/pgClient';
+import { testPostgrestConnection } from '../api/postgrestClient';
 import { ConnectivityBadge } from '../components/ConnectivityBadge';
 import { flushPendingMutations } from '../offline/syncEngine';
 import { useConnectivityStore } from '../store/connectivityStore';
@@ -36,6 +38,9 @@ function cloneConfig(c: DbConfig): DbConfig {
   return {
     ...c,
     networkPolicy: c.networkPolicy ?? 'hybrid',
+    apiMode: c.apiMode ?? 'bridge',
+    remoteRestUrl: c.remoteRestUrl ?? '',
+    postgrestAnonKey: c.postgrestAnonKey ?? '',
     local: { ...c.local },
     remote: { ...c.remote },
   };
@@ -68,6 +73,9 @@ export function ConfigScreen({ navigation }: Props) {
     const next: DbConfig = {
       ...draft,
       bridgeHost: draft.bridgeHost.trim(),
+      remoteRestUrl: (draft.remoteRestUrl || '').trim().replace(/\/+$/, ''),
+      postgrestAnonKey: draft.postgrestAnonKey || '',
+      apiMode: draft.apiMode ?? 'bridge',
       local: {
         ...draft.local,
         host: draft.local.host.trim(),
@@ -101,6 +109,49 @@ export function ConfigScreen({ navigation }: Props) {
     Alert.alert(
       result.ok ? t('connectionOk') : t('connectionFail'),
       result.detail,
+    );
+  };
+
+  const onTestPostgrest = async () => {
+    setTesting(true);
+    const result = await testPostgrestConnection(draft);
+    setTesting(false);
+    Alert.alert(
+      result.ok ? t('connectionOk') : t('connectionFail'),
+      result.detail,
+    );
+  };
+
+  const ApiModeChip = ({ mode, label }: { mode: ApiMode; label: string }) => {
+    const active = (draft.apiMode ?? 'bridge') === mode;
+    return (
+      <Pressable
+        onPress={() => patch({ apiMode: mode })}
+        style={[
+          styles.modeChip,
+          {
+            backgroundColor: active
+              ? palette.green600
+              : darkMode
+                ? palette.gray700
+                : palette.gray100,
+            borderColor: active
+              ? palette.green600
+              : darkMode
+                ? palette.gray600
+                : palette.gray200,
+          },
+        ]}
+      >
+        <Text
+          style={[
+            styles.modeChipText,
+            { color: active ? palette.white : colors.textMuted },
+          ]}
+        >
+          {label}
+        </Text>
+      </Pressable>
     );
   };
 
@@ -321,6 +372,63 @@ export function ConfigScreen({ navigation }: Props) {
               ) : null}
 
               <Text style={[styles.section, { color: colors.textMuted }]}>
+                {t('apiMode')}
+              </Text>
+              <View style={styles.modeRow}>
+                <ApiModeChip mode="bridge" label={t('apiModeBridge')} />
+                <ApiModeChip mode="postgrest" label={t('apiModePostgrest')} />
+                <ApiModeChip mode="hybrid" label={t('apiModeHybrid')} />
+              </View>
+              <Text style={[styles.hint, { color: colors.textSubtle }]}>
+                {(draft.apiMode ?? 'bridge') === 'postgrest'
+                  ? t('apiModePostgrestHint')
+                  : (draft.apiMode ?? 'bridge') === 'hybrid'
+                    ? t('apiModeHybridHint')
+                    : t('apiModeBridgeHint')}
+              </Text>
+
+              {(draft.apiMode === 'postgrest' || draft.apiMode === 'hybrid') ? (
+                <View
+                  style={[
+                    styles.pgBox,
+                    {
+                      borderColor: darkMode ? 'rgba(52,211,153,0.45)' : '#6ee7b7',
+                      backgroundColor: darkMode
+                        ? 'rgba(6,78,59,0.25)'
+                        : 'rgba(236,253,245,0.8)',
+                    },
+                  ]}
+                >
+                  <View style={styles.pgBoxHeader}>
+                    <Text style={[styles.section, { color: colors.textMuted, marginTop: 0 }]}>
+                      {t('postgrestSection')}
+                    </Text>
+                    <Pressable onPress={() => void onTestPostgrest()} disabled={testing}>
+                      <Text style={styles.testLink}>{t('testPostgrest')}</Text>
+                    </Pressable>
+                  </View>
+                  <Text style={[styles.hint, { color: colors.textSubtle }]}>
+                    {t('postgrestHint')}
+                  </Text>
+                  <FormField
+                    label={t('remoteRestUrl')}
+                    value={draft.remoteRestUrl || ''}
+                    onChangeText={(v) => patch({ remoteRestUrl: v })}
+                    autoCapitalize="none"
+                    placeholder="https://api.retailex.app/tenant"
+                  />
+                  <FormField
+                    label={t('postgrestAnonKey')}
+                    value={draft.postgrestAnonKey || ''}
+                    onChangeText={(v) => patch({ postgrestAnonKey: v })}
+                    autoCapitalize="none"
+                    secureTextEntry
+                    placeholder={t('postgrestAnonKeyPlaceholder')}
+                  />
+                </View>
+              ) : null}
+
+              <Text style={[styles.section, { color: colors.textMuted }]}>
                 pg_bridge
               </Text>
               <FormField
@@ -364,11 +472,27 @@ export function ConfigScreen({ navigation }: Props) {
               )}
 
               <PrimaryButton
-                label={t('testConnection')}
-                onPress={() => void onTest('active')}
+                label={
+                  draft.apiMode === 'postgrest'
+                    ? t('testPostgrest')
+                    : t('testConnection')
+                }
+                onPress={() =>
+                  void (draft.apiMode === 'postgrest'
+                    ? onTestPostgrest()
+                    : onTest('active'))
+                }
                 loading={testing}
                 variant="ghost"
               />
+              {draft.apiMode === 'hybrid' ? (
+                <PrimaryButton
+                  label={t('testPostgrest')}
+                  onPress={() => void onTestPostgrest()}
+                  loading={testing}
+                  variant="ghost"
+                />
+              ) : null}
               <PrimaryButton label={t('save')} onPress={onSave} />
               <PrimaryButton
                 label={t('cancel')}

@@ -1,0 +1,40 @@
+---
+description: Çoklu ajan paralelliği + 90 yıllık kıdemli muhasebeci denetimi (her görev)
+alwaysApply: true
+---
+
+# Çoklu ajan + kıdemli muhasebe denetimi
+
+RetailEX ajanları **hız için paralel** çalışır; mali etkisi olan her değişiklik **kıdemli muhasebeci gözüyle** doğrulanır.
+
+## 1 — Çoklu ajan (zorunlu hız modu)
+
+1. Keşif, uygulama, doğrulama ve denetim **mümkün olduğunca paralel Task / alt ajan** ile yürür; tek ajanla sıraya dizme yalnızca zorunlu bağımlılıkta yapılır.
+2. Bağımsız parçalar aynı turda ayrılır (ör. API + ekran + i18n + web eşdeğeri + typecheck).
+3. Alt ajanlara net çıktı formatı ver: dosya yolu, bulgu, önerilen düzeltme; parent sentezleyip uygular.
+4. Salt okunur tarama → `explore`; komut yoğun iş → `shell`; kod yazımı / çok adımlı iş → `generalPurpose` (veya uygun tip).
+5. Kullanıcı tek basit cümle sormuş olsa bile, görev birden fazla dosya/katmana yayılıyorsa **önce paralel keşif** aç.
+
+## 2 — 90 yıllık kıdemli muhasebeci denetimi (zorunlu)
+
+Kasa, banka, cari, fatura, stok maliyeti, ekstre, mizan, bakiye, KDV, dönem, devir, virman, tahsilat/ödeme veya ledger işareti (+/− borç-alacak) dokunan her işte, teslim öncesi şu kontrol yapılır (kod + iş mantığı):
+
+| Kontrol | Soru |
+|--------|------|
+| **Çift yön** | Borç/alacak veya +/− işaret web ledger / `accountBalance` / ekstre ile aynı mı? |
+| **Cari türü** | Müşteri vs tedarikçi simetrisi bozulmamış mı? (alış +, iade −, açılış işaretli net) |
+| **Devir / açılış** | `opening_balance` tutarı yönü doğru mu; etiket ve bakiye mizan ile uyumlu mu? |
+| **İade / iptal** | İade peşin/veresiye ve iptal satırı bakiyeyi tersine çeviriyor mu, çift yazıyor mu? |
+| **Kasa-banka** | Tahsilat/ödeme cariyi düşürüyor mu; virman çift satır dengeli mi? |
+| **Dönem** | Kapalı döneme yazım engelli mi; tarih aralığı ekstre/mizan ile tutarlı mı? |
+| **Yuvarlama** | Para birimi basamakları (IQD vs TRY vb.) ve ABS/sign karışıklığı yok mu? |
+
+- Web referansı öncelikli: `buildEkstreRows`, `accountBalance`, `suppliers`/`erpReports` ekstre — mobil sapma bilinçli değilse **web ile hizala**.
+- Özet yanıtta mali risk varsa **1–3 maddelik muhasebe denetim notu** yaz (işaret, bakiye, cari türü).
+- Salt UI/metin ve mali nötr işlerde denetim kısa geçilebilir; emin değilsen yine borç-alacak etkisini kontrol et.
+
+## Yapma
+
+- Büyük muhasebe/ekstre/bakiye işini tek ajanla, web karşılaştırmadan bitirme.
+- “ABS + her zaman +1” gibi işaret kısayollarıyla alacak/borç yönünü ezme.
+- Denetimi “typecheck geçti” ile değiştirme — typecheck ≠ muhasebe doğruluğu.

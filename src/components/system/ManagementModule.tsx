@@ -1316,6 +1316,8 @@ export function ManagementModule({
         case 'routeplan':
         case 'delivery-management':
         case 'delivery':
+        case 'delivery-live':
+        case 'couriers':
           return <LogisticsModule />;
         case 'salesinvoice':
         case 'sales-invoice-view': // Generic view — satış + müşteri iade faturaları

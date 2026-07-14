@@ -1,10 +1,11 @@
 import type { MobilePrinterSettings, TestPrintResult } from '../types/printerSettings';
-
-const STUB_DELAY_MS = 700;
+import { buildSaleReceiptEscPos, buildTestReceiptEscPos } from './escpos/buildReceiptEscPos';
+import { escposTransportStatus, sendEscposOverNetwork } from './escpos/escposTcpTransport';
 
 function buildTestReceiptPreview(settings: MobilePrinterSettings): string {
   const now = new Date().toLocaleString('tr-TR');
   const company = settings.companyName?.trim() || 'RetailEX';
+  const transport = escposTransportStatus();
   const lines = [
     '================================',
     `       ${company}`,
@@ -26,19 +27,14 @@ function buildTestReceiptPreview(settings: MobilePrinterSettings): string {
     'TOPLAM                  21,00 TL',
     '================================',
     '        Teşekkürler',
+    settings.interface === 'network'
+      ? `Taşıyıcı: köprü${transport.nativeTcp ? ' / doğrudan TCP' : ''}`
+      : null,
   ].filter(Boolean) as string[];
   return lines.join('\n');
 }
 
-/**
- * Test yazdırma — şimdilik stub (gerçek BT/ağ yazıcı entegrasyonu Faz 2+).
- * Başarılı stub, ileride `expo-print` / native modül ile değiştirilebilir.
- */
-export async function testPrintReceipt(
-  settings: MobilePrinterSettings,
-): Promise<TestPrintResult> {
-  await new Promise((r) => setTimeout(r, STUB_DELAY_MS));
-
+function validatePrinterSettings(settings: MobilePrinterSettings): TestPrintResult | null {
   if (!settings.enabled) {
     return { ok: false, message: 'Yazıcı devre dışı. Önce «Yazıcı aktif» seçeneğini açın.' };
   }
@@ -61,25 +57,89 @@ export async function testPrintReceipt(
     };
   }
 
-  const preview = buildTestReceiptPreview(settings);
+  return null;
+}
+
+async function printNetworkEscPos(
+  settings: MobilePrinterSettings,
+  payload: Uint8Array,
+): Promise<TestPrintResult> {
+  const ip = settings.ipAddress!.trim();
+  const port = settings.port ?? 9100;
+  const res = await sendEscposOverNetwork(ip, port, payload);
+  const transportLabel =
+    res.transport === 'bridge'
+      ? 'köprü'
+      : res.transport === 'native-tcp'
+        ? 'doğrudan TCP'
+        : undefined;
 
   return {
-    ok: true,
-    message:
-      settings.interface === 'network'
-        ? `Test fişi simüle edildi → ${settings.ipAddress}:${settings.port ?? 9100} (gerçek yazdırma henüz bağlı değil).`
-        : 'Test fişi simüle edildi (mobil stub — gerçek donanım Faz 2+).',
-    preview,
+    ok: res.ok,
+    message: res.ok
+      ? `${res.message}${transportLabel ? ` (${transportLabel})` : ''}`
+      : res.message,
+    transport: res.transport,
+    bytesSent: res.bytesSent,
   };
 }
 
-/** POS fiş kaydı sonrası otomatik yazdırma kontrolü (stub). */
-export async function printSaleReceiptStub(
+/**
+ * Test yazdırma.
+ * - Ağ (IP): ESC/POS TCP — pg_bridge veya (dev build) react-native-tcp-socket
+ * - Bluetooth / Sistem: henüz stub (Faz 2+)
+ */
+export async function testPrintReceipt(
   settings: MobilePrinterSettings,
-  _saleId: string,
+): Promise<TestPrintResult> {
+  const validation = validatePrinterSettings(settings);
+  if (validation) return validation;
+
+  const preview = buildTestReceiptPreview(settings);
+
+  if (settings.interface === 'network') {
+    const payload = buildTestReceiptEscPos(settings);
+    const res = await printNetworkEscPos(settings, payload);
+    return { ...res, preview };
+  }
+
+  if (settings.interface === 'bluetooth') {
+    return {
+      ok: false,
+      message:
+        'Bluetooth ESC/POS henüz bağlı değil. SDK yolu: `react-native-bluetooth-escpos-printer` veya `react-native-thermal-receipt-printer` (development build). Şimdilik «Ağ (IP)» kullanın.',
+      preview,
+      transport: 'unavailable',
+    };
+  }
+
+  return {
+    ok: false,
+    message:
+      'Sistem yazıcısı (paylaşım menüsü) henüz bağlı değil. SDK yolu: `expo-print` + `expo-sharing` veya platform Print API. Şimdilik «Ağ (IP)» kullanın.',
+    preview,
+    transport: 'unavailable',
+  };
+}
+
+/** POS fiş kaydı sonrası otomatik yazdırma. */
+export async function printSaleReceipt(
+  settings: MobilePrinterSettings,
+  saleId: string,
 ): Promise<TestPrintResult> {
   if (!settings.enabled || !settings.autoPrint) {
     return { ok: false, message: 'Otomatik yazdırma kapalı.' };
   }
+
+  if (settings.interface === 'network') {
+    const validation = validatePrinterSettings(settings);
+    if (validation) return validation;
+    const payload = buildSaleReceiptEscPos(settings, saleId, [], 0);
+    return printNetworkEscPos(settings, payload);
+  }
+
   return testPrintReceipt(settings);
 }
+
+/** @deprecated printSaleReceipt kullanın */
+export const printSaleReceiptStub = printSaleReceipt;

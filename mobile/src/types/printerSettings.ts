@@ -38,6 +38,9 @@ export const DEFAULT_PRINTER_SETTINGS: MobilePrinterSettings = {
 export type TestPrintResult = {
   ok: boolean;
   message: string;
-  /** Stub önizleme metni */
+  /** Metin önizleme (test / hata durumunda) */
   preview?: string;
+  /** Ağ yazdırma taşıyıcısı */
+  transport?: 'bridge' | 'native-tcp' | 'unavailable';
+  bytesSent?: number;
 };

@@ -1,5 +1,11 @@
 # AGENTS.md
 
+## Çalışma biçimi (zorunlu — tüm ajanlar)
+
+- **Çoklu ajan:** Bağımsız keşif/uygulama/doğrulama parçalarını paralel Task/alt ajanla yürüt; tek ajan sıraya dizme yalnızca zorunlu bağımlılıkta.
+- **Kıdemli muhasebe denetimi:** Kasa, cari, fatura, ekstre, mizan, bakiye, devir, virman veya borç/alacak işareti dokunan işte teslim öncesi 90 yıllık muhasebeci kontrolü (işaret, cari türü, dönem, kasa-banka dengesi).
+- Ayrıntı: `.cursor/rules/agent-multi-and-accounting-review.mdc`
+
 ## Git (zorunlu — tüm ajanlar)
 
 - **Yalnızca `main` branch:** Tüm değişiklikler doğrudan `main` üzerinde yapılır, `main`’e commit ve `git push origin main` edilir.

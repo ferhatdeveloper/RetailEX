@@ -28,6 +28,7 @@ import {
   productionOpsRouteParams,
   reportStockRouteParams,
   restaurantRouteParams,
+  deliveryRouteParams,
   stockMovementsRouteParams,
   storeManagementRouteParams,
   systemExtrasRouteParams,
@@ -127,7 +128,7 @@ export function ModuleScreen() {
         navigation.replace('Restaurant', restaurantRouteParams(screenId));
         break;
       case 'Delivery':
-        navigation.replace('Delivery');
+        navigation.replace('Delivery', deliveryRouteParams(screenId));
         break;
       case 'Finance':
         navigation.replace('Finance', financeRouteParams(screenId));
@@ -180,6 +181,9 @@ export function ModuleScreen() {
       case 'ETransform':
         navigation.replace('ETransform');
         break;
+      case 'DocumentScan':
+        navigation.replace('DocumentScan', { kind: 'purchase' });
+        break;
       default:
         break;
     }
@@ -211,7 +215,9 @@ export function ModuleScreen() {
     stockmovements: 'Malzeme yönetim fişleri — ambar fişleri + fatura hareketleri canlı liste.',
     customreports: 'Raporlar sekmesi: satış özeti + kritik stok.',
     pricing: 'Fiyat listeleri + kampanyalar — `Pricing` / `Campaigns` (liste+form) + POS motoru.',
-    logistics: 'Teslimat / kurye — canlı konum + durum güncelleme (DeliveryScreen).',
+    logistics: 'Teslimat listesi + durum güncelleme (DeliveryScreen).',
+    'delivery-live': 'Kurye canlı konum paylaşımı (DeliveryScreen).',
+    couriers: 'Aktif kurye listesi ve son konum (DeliveryScreen).',
     mizan: 'Cari bakiye özeti (dönem ledger). Yasal / GL mizanı değil.',
     aging: 'Cari yaşlandırma — veresiye fişler ve vade aralıkları.',
     'cari-aging': 'Cari yaşlandırma canlı.',

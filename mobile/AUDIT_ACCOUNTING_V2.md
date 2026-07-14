@@ -34,7 +34,7 @@ Birinci tur sonrasında stok+ciro+veresiye/kasa yazma zinciri genel olarak tutar
 | Satış iade veresiye (3) | + | − | − (`return_invoice`) | − | — |
 | Satış iade peşin (3) | + | **0** (V2-R14) | − / ekstre − | − | **`KASA_CIKIS`** ✓ |
 | Alış iade açık (6) | − | − | **−** (V2-R15) | − | — |
-| Alış iade peşin (6) | − | **0** (V2-R14) | − (trcode 6 her zaman) | − | — (dış tahsilat) |
+| Alış iade peşin (6) | − | **0** (V2-R14) | − (trcode 6 her zaman) | − | **`KASA_GIRIS`** / havale **`BANKA_GIRIS`** ✓ (V2-R16) |
 | CH_TAHSILAT / CH_ODEME | — | −ABS | −ABS | − | kasa ± |
 
 **Mizan notu:** Menü “Mizan” = dönemsel **cari** bakiye (ledger CTE); yasal GL mizan yok (R4 / P2).
@@ -68,7 +68,15 @@ Supplier CTE tüm `purchase_invoice` satırlarını `+net` sayıyordu. Veresiye 
 - Satış iade + veresiye → müşteri −  
 - Satış iade + peşin → `KASA_CIKIS` (cari yok)  
 - Alış iade + açık hesap → tedarikçi −  
-- Alış iade + peşin → cari/kasa yok  
+- Alış iade + peşin → cari yok; kasa/banka V2-R16 ile tamamlandı  
+
+### V2-R16 — Peşin alış iade kasa/banka (düzeltildi)
+
+**Bulgu:** Peşin alışta `KASA_CIKIS` yazılıyordu; peşin alış iadesinde (trcode 6) simetrik `KASA_GIRIS` yoktu — kasa fazla düşük kalıyordu. Havale iadesinde banka girişi de yoktu.
+
+**Düzeltme:** `cashApi.recordKasaGirisForPurchaseReturn` + `recordBankaGirisForPurchaseReturn`; `createReturnInvoiceLive`:
+- Alış iade + nakit/kart → `KASA_GIRIS`  
+- Alış iade + havale/EFT → `BANKA_GIRIS` (varsayılan banka hesabı varsa)  
 
 ---
 
@@ -76,7 +84,7 @@ Supplier CTE tüm `purchase_invoice` satırlarını `+net` sayıyordu. Veresiye 
 
 | ID | Risk | Durum / öneri |
 |----|------|----------------|
-| V2-R16 | Peşin alış iadesinde tedarikçiden nakit dönüşün kasa/banka kaydı yok | Bilinçli; operasyonel tutanak / banka girişi ayrı |
+| V2-R16 | Peşin alış iadesinde tedarikçiden nakit dönüşün kasa/banka kaydı yok | **Düzeltildi** (`KASA_GIRIS` / `BANKA_GIRIS`) |
 | V2-R17 | Web `erpReports.getCariExtract` hâlâ alışta `sign=-1` (mobil düzeltildi, web sapması kalır) | Web’e aynı CASE portu |
 | R6 | Hizmet / irsaliye create | Liste/filter var; create hâlâ sınırlı |
 | R11 | Ekstre açılış satırı otomatiği | `CariDevirScreen` + `opening_balance` var; ekstre UI’da ayrı “açılış” satırı yok |
@@ -106,8 +114,9 @@ Menü (V1’den kalan, kısmen düzelmiş):
 |-------|------------|
 | `mobile/src/api/reportsApi.ts` | Ekstre `saleSignSql` müşteri/tedarikçi ayrımı (V2-R13) |
 | `mobile/src/api/accountBalance.ts` | Supplier CTE trcode 6 → −borç (V2-R15) |
-| `mobile/src/api/cashApi.ts` | `recordKasaCikisForReturn` |
-| `mobile/src/api/invoicesApi.ts` | İade yan etkileri peşin/veresiye (V2-R14) |
+| `mobile/src/api/cashApi.ts` | `recordKasaCikisForReturn`; `recordKasaGirisForPurchaseReturn` / `recordBankaGirisForPurchaseReturn` (V2-R16) |
+| `mobile/src/api/invoicesApi.ts` | İade yan etkileri peşin/veresiye (V2-R14); peşin alış iade kasa/banka (V2-R16) |
+| `mobile/src/api/paymentMethodUtils.ts` | `paymentMethodImpliesBankTransfer` (V2-R16) |
 | `mobile/AUDIT_ACCOUNTING_V2.md` | Bu rapor |
 
 **Commit yapılmadı.**
@@ -131,8 +140,10 @@ Menü (V1’den kalan, kısmen düzelmiş):
 3. **Alış iade 6** (açık hesap) 300 → mizan/ledger **−300** (kart da −); ekstre alacak satırı (V2-R15).  
 4. **Satış iade peşin:** kasa bakiyesi düşer; müşteri kartı değişmez (V2-R14).  
 5. **Satış iade veresiye:** müşteri bakiyesi düşer; kasa değişmez.  
-6. POS nakit → kasa +; günlük ciro +.  
-7. Dönem değiştir → mizan dönem tutarları değişir; kart satırı firma birikimi kalabilir.
+6. **Alış iade peşin nakit/kart:** kasa `KASA_GIRIS`; tedarikçi kartı değişmez (V2-R16).  
+7. **Alış iade havale:** varsayılan banka varsa `BANKA_GIRIS` (V2-R16).  
+8. POS nakit → kasa +; günlük ciro +.  
+9. Dönem değiştir → mizan dönem tutarları değişir; kart satırı firma birikimi kalabilir.
 
 ---
 
@@ -151,7 +162,7 @@ Menü (V1’den kalan, kısmen düzelmiş):
 
 | ID | Risk | Durum |
 |----|------|--------|
-| V2-R16 | Peşin alış iade nakit dönüş | Açık |
+| V2-R16 | Peşin alış iade nakit dönüş | **Düzeltildi** |
 | V2-R17 | Web ekstre aynı bug | Açık (web) |
 | R6 | Hizmet create | Açık |
 | R3/R9/R2/R11 | Önceki P1 | Kapalı / kısmi |
@@ -159,3 +170,107 @@ Menü (V1’den kalan, kısmen düzelmiş):
 ### P2
 
 R4, R7, R10, R12, yaşlandırma / GL mizan — ürün kararı.
+
+---
+
+## 10. Üçüncü tur — V2-R16 / R11 / virman–havale (2026-07-14)
+
+**Commit:** yok  
+**Kapsam:** Kod doğrulama + web karşılaştırma; önceki V2 düzeltmelerine (R13–R15) regresyon kontrolü.
+
+### 10.1 V2-R16 — Peşin alış iadesi kasa (düzeltildi)
+
+| Katman | Peşin alış (trcode 1) | Peşin alış iade (trcode 6) |
+|--------|----------------------|----------------------------|
+| Stok | + | − ✓ |
+| Tedarikçi kart | 0 | 0 ✓ (`paymentMethodImpliesPaidNow`) |
+| Dönem ledger | 0 | − (trcode 6 CTE) ✓ |
+| Kasa | `KASA_CIKIS` ✓ | **`KASA_GIRIS`** ✓ (nakit/kart) |
+| Banka | — (R5 peşin alış havale hâlâ açık) | **`BANKA_GIRIS`** ✓ (havale; varsayılan hesap) |
+
+**Kod:** `createReturnInvoiceLive` — peşin alış iade dalı:
+- `paymentMethodImpliesCashOutKasa` → `recordKasaGirisForPurchaseReturn`
+- `paymentMethodImpliesBankTransfer` → `recordBankaGirisForPurchaseReturn` → `BANKA_GIRIS`
+
+**Web:** `applyInvoiceLedgerSideEffects` hâlâ alış iade için kasa yazmıyor — mobil web’den ileride; web portu ayrı takip.
+
+**Durum:** **Düzeltildi** (mobil).
+
+---
+
+### 10.2 R11 — Ekstre açılış satırı
+
+| Özellik | Mizan (ledger CTE) | Cari devir fişi | Ekstre UI |
+|---------|-------------------|-----------------|-----------|
+| `opening_balance` dahil | ✓ `accountBalance.ts` | ✓ `CariDevirScreen` + `cariDevirApi.ts` | Kısmi |
+| Dönem öncesi devir satırı | — | — | **Yok** (web de yok) |
+| `opening_balance` etiketi | — | trcode 99 | ✓ `Devir` (`fetchCariExtract`) |
+| İşaret (alacak devir) | ✓ işaretli `net_amount` | ✓ `signedNetAmount` | ✓ `saleSignSql` net işareti |
+
+**Ledger (R11 kapanış kısmı):** Dönemsel bakiye CTE’si `opening_balance` satırlarını işaretli `net_amount` ile toplar — **mizan ile uyumlu**.
+
+**Ekstre (R11a kapandı 2026-07-14):**
+
+1. **Sentetik açılış satırı yok (R11b / P2):** Tarih aralığı öncesi toplam “Devir bakiyesi” satırı yok. Web `buildEkstreRows` da aynı — Logo tarzı “devreden” ürün kararı.
+2. **Etiket:** Web `ficheTypeToInfo` → `Devir`; mobil fallback SQL `opening_balance` → `Devir`.
+3. **İşaret:** `saleSignSql` içinde `opening_balance` → `net_amount < 0 ? -1 : 1` (web `buildEkstreRows` `isOpening` / `amount > 0` borç ile uyumlu).
+
+**Durum:** **R11a kapalı** — etiket + işaret web ile hizalı. R11b (dönem öncesi satır) açık / P2.
+
+---
+
+### 10.3 Virman / havale derinlik
+
+#### API katmanı (`cashApi.ts`)
+
+| İşlem | Mobil | Web (`kasa.ts` / `banka.ts`) |
+|-------|-------|------------------------------|
+| Kasa ↔ kasa VIRMAN (çift satır + bakiye) | ✓ `createCashVirman` | ✓ |
+| Kasa → banka / banka → kasa | ✓ `createCashBankBridge` | ✓ `BANKA_YATIRILAN` / `BANKADAN_CEKILEN` |
+| Kasa giriş/çıkış | ✓ `createSimpleCashMovement` | ✓ |
+| Banka giriş/çıkış | ✓ `createSimpleBankMovement` | ✓ |
+| Cari tahsilat/ödeme (CH_*) | ✓ `createCariCashSlip` | ✓ |
+| Banka ↔ banka VIRMAN | **Yok** | ✓ `BankaIslemModal` → `HAVALE` / `EFT` / `VIRMAN` |
+| Banka tarafı CH_TAHSILAT/CH_ODEME | **Yok** | ✓ `banka.ts` |
+| Fatura peşin havale → banka | Alış iade ✓ (V2-R16); satış/alış oluşturma **Yok** (R5 P2) | **Yok** (aynı) |
+| VIRMAN iptal / karşı satır silme | **Yok** | ✓ `kasa.ts` cleanup |
+
+#### UI katmanı
+
+| Ekran | Kapsam |
+|-------|--------|
+| `FinanceScreen` | Kasa: Giriş, Çıkış, **Virman**, Bankaya, Bankadan. Banka: yalnız Giriş/Çıkış. |
+| `CashCollectionScreen` | CH_TAHSILAT / CH_ODEME; API tedarikçi fallback var, UI **yalnız müşteri** listesi. |
+| Menü `menuConfig.ts` | `kasalar`, `cashbank`, `cash-slips`, `cari-devir` var; **ayrı “Virman” menü girişi yok** (`navigateToModule` `virman` id’si tanımlı ama menüde yok). |
+| `navigateToModule` | `virman` → Finance `formMode: 'virman'` ✓ |
+
+#### Havale özeti
+
+- **POS / satış / alış create:** `paymentMethodUtils` havaleyi peşin sayar ama kasa/banka satırı **yazmaz** (nakit/kart kasaya; havale operasyonel — R5).
+- **Alış iade (trcode 6) havale:** `BANKA_GIRIS` ✓ (V2-R16; varsayılan banka hesabı).
+- **Güzellik:** `beautyApi` transfer → kasa girişi yok (web ile uyumlu kısıt).
+- **Banka ekranı:** Havale/EFT işlem tipi seçimi **yok**; yalnızca genel giriş/çıkış.
+
+**Durum:** Virman **kasa düzeyinde tam** (API+UI); havale ve banka virmanı **kısmi** (P2 ürün kararı).
+
+---
+
+### 10.4 Regresyon (V2-R13 / R14 / R15)
+
+Kod taraması — önceki tur düzeltmeleri yerinde:
+
+- `reportsApi.ts` `saleSignSql` müşteri/tedarikçi ayrımı ✓
+- `accountBalance.ts` trcode 6 → `−ABS(net)` ✓
+- `invoicesApi.ts` peşin satış iade → `recordKasaCikisForReturn`; peşin alış iade → `KASA_GIRIS` / havale `BANKA_GIRIS` (V2-R16) ✓
+
+---
+
+### 10.5 Güncellenmiş risk özeti (bu tur)
+
+| ID | Konu | Önem | Durum |
+|----|------|------|--------|
+| V2-R16 | Peşin alış iade → `KASA_GIRIS` / havale → banka | P1 | **Düzeltildi** |
+| R11a | Ekstre devir etiketi + negatif açılış işareti | P1 | **Kapalı** (`reportsApi.fetchCariExtract`) |
+| R11b | Dönem öncesi “devreden” satırı | P2 | **Açık** (web de yok) |
+| V2-VIR | Banka↔banka virman, HAVALE/EFT tipi | P2 | **Açık** |
+| V2-MENU | Menüde Virman kısayolu | P2 | **Açık** |

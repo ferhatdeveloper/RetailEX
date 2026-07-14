@@ -35,7 +35,7 @@ export type PosSaleResult = {
   id: string;
   ficheNo: string;
   total: number;
-  /** Offline/Hybrid kuyruğa alındı — henüz PG’ye yazılmadı */
+  /** Offline/Hybrid kuyruğa alındı — henüz PG'ye yazılmadı */
   queued?: boolean;
 };
 
@@ -63,6 +63,104 @@ function nextFicheNo(): string {
     `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}` +
     `${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
   return `POS-${stamp}`;
+}
+
+/** Satır net (indirim yok; kampanya indirimi header'da) */
+function posLineNet(line: PosCartLine): number {
+  return Math.max(0, Number(line.price) || 0) * Math.max(0, Number(line.qty) || 0);
+}
+
+/** Satır KDV tutarı — web sale_items.vat_rate + invoicesAPI.tax parity */
+function posLineVat(line: PosCartLine): number {
+  const rate = Math.max(0, Number(line.vatRate) || 0);
+  return posLineNet(line) * (rate / 100);
+}
+
+/** POS özet — dip/kampanya indirimi sonrası KDV orantılı ölçeklenir */
+export function posTotalsFromLines(
+  lines: PosCartLine[],
+  headerDiscount = 0,
+): {
+  subtotal: number;
+  headerDiscount: number;
+  totalVat: number;
+  net: number;
+} {
+  const subtotal = lines.reduce((s, l) => s + posLineNet(l), 0);
+  const disc = Math.min(subtotal, Math.max(0, Number(headerDiscount) || 0));
+  const net = Math.max(0, subtotal - disc);
+  const rawVat = lines.reduce((s, l) => s + posLineVat(l), 0);
+  const scale = subtotal > 0 ? net / subtotal : 1;
+  const totalVat = Math.round(rawVat * scale * 100) / 100;
+  return { subtotal, headerDiscount: disc, totalVat, net };
+}
+
+async function insertPosSaleItemRow(
+  itemsTable: string,
+  opts: {
+    invoiceId: string;
+    firmNr: string;
+    periodNr: string;
+    line: PosCartLine;
+  },
+): Promise<void> {
+  const lineNet = posLineNet(opts.line);
+  const lineId = newUuid();
+  const vatRate = Math.max(0, Number(opts.line.vatRate) || 0);
+  try {
+    await pgQuery(
+      `INSERT INTO ${itemsTable} (
+         id, invoice_id, firm_nr, period_nr,
+         product_id, item_code, item_name,
+         quantity, unit_price, vat_rate,
+         net_amount, total_amount, unit
+       ) VALUES (
+         $1::uuid, $2::uuid, $3, $4,
+         $5::uuid, $6, $7,
+         $8, $9, $10,
+         $11, $11, $12
+       )`,
+      [
+        lineId,
+        opts.invoiceId,
+        opts.firmNr,
+        opts.periodNr,
+        opts.line.productId,
+        opts.line.code ?? null,
+        opts.line.name,
+        opts.line.qty,
+        opts.line.price,
+        vatRate,
+        lineNet,
+        opts.line.unit || 'Adet',
+      ],
+    );
+  } catch {
+    await pgQuery(
+      `INSERT INTO ${itemsTable} (
+         id, invoice_id, firm_nr, period_nr,
+         product_id, item_code, item_name,
+         quantity, unit_price, net_amount, total_amount, unit
+       ) VALUES (
+         $1::uuid, $2::uuid, $3, $4,
+         $5::uuid, $6, $7,
+         $8, $9, $10, $10, $11
+       )`,
+      [
+        lineId,
+        opts.invoiceId,
+        opts.firmNr,
+        opts.periodNr,
+        opts.line.productId,
+        opts.line.code ?? null,
+        opts.line.name,
+        opts.line.qty,
+        opts.line.price,
+        lineNet,
+        opts.line.unit || 'Adet',
+      ],
+    );
+  }
 }
 
 async function applyPosAccountingSideEffects(opts: {
@@ -118,16 +216,15 @@ async function savePosSaleLive(
   const user = useAuthStore.getState().user;
   const id = opts?.id || newUuid();
   const ficheNo = opts?.ficheNo || nextFicheNo();
-  const subtotal = lines.reduce((s, l) => s + l.price * l.qty, 0);
-  const discount = Math.max(0, Math.min(Number(opts?.totalDiscount) || 0, subtotal));
-  const total = Math.round((subtotal - discount) * 100) / 100;
+  const totals = posTotalsFromLines(lines, opts?.totalDiscount);
+  const total = Math.round(totals.net * 100) / 100;
   const cashier = user?.fullName || user?.username || 'mobile';
   const customerId = opts?.customerId || null;
   const customerName =
     (opts?.customerName || '').trim() || (customerId ? 'Cari' : 'Perakende');
   const campaignNote =
-    opts?.campaignId && discount > 0
-      ? `Kampanya: ${opts.campaignName || opts.campaignId} (−${discount})`
+    opts?.campaignId && totals.headerDiscount > 0
+      ? `Kampanya: ${opts.campaignName || opts.campaignId} (−${totals.headerDiscount})`
       : null;
   const notes = ['RetailEX Mobile POS', campaignNote].filter(Boolean).join(' | ');
 
@@ -140,8 +237,8 @@ async function savePosSaleLive(
      ) VALUES (
        $1::uuid, $2, $3, $4, $4, NOW(),
        'sales_invoice', 7, $5::uuid, $6,
-       $7, 0, $8, $9, $7,
-       'TRY', 1, 'completed', $10, $11, $12
+       $7, $8, $9, $10, $7,
+       'TRY', 1, 'completed', $11, $12, $13
      )`,
     [
       id,
@@ -151,8 +248,9 @@ async function savePosSaleLive(
       customerId,
       customerName,
       total,
-      subtotal,
-      discount,
+      totals.totalVat,
+      totals.subtotal,
+      totals.headerDiscount,
       paymentMethod,
       cashier,
       notes,
@@ -160,32 +258,12 @@ async function savePosSaleLive(
   );
 
   for (const line of lines) {
-    const lineNet = line.price * line.qty;
-    const lineId = newUuid();
-    await pgQuery(
-      `INSERT INTO ${items} (
-         id, invoice_id, firm_nr, period_nr,
-         product_id, item_code, item_name,
-         quantity, unit_price, net_amount, total_amount, unit
-       ) VALUES (
-         $1::uuid, $2::uuid, $3, $4,
-         $5::uuid, $6, $7,
-         $8, $9, $10, $10, $11
-       )`,
-      [
-        lineId,
-        id,
-        fn,
-        pn,
-        line.productId,
-        line.code ?? null,
-        line.name,
-        line.qty,
-        line.price,
-        lineNet,
-        line.unit || 'Adet',
-      ],
-    );
+    await insertPosSaleItemRow(items, {
+      invoiceId: id,
+      firmNr: fn,
+      periodNr: pn,
+      line,
+    });
 
     try {
       await pgQuery(
@@ -219,9 +297,8 @@ export async function savePosSale(
 
   const id = opts?.id || newUuid();
   const ficheNo = opts?.ficheNo || nextFicheNo();
-  const subtotal = lines.reduce((s, l) => s + l.price * l.qty, 0);
-  const discount = Math.max(0, Math.min(Number(opts?.totalDiscount) || 0, subtotal));
-  const total = Math.round((subtotal - discount) * 100) / 100;
+  const totals = posTotalsFromLines(lines, opts?.totalDiscount);
+  const total = Math.round(totals.net * 100) / 100;
   const live = opts?.forceLive === true || shouldUseLiveData();
 
   if (!live && !opts?.skipQueue) {
@@ -234,7 +311,7 @@ export async function savePosSale(
         paymentMethod,
         customerId: opts?.customerId ?? null,
         customerName: opts?.customerName ?? null,
-        totalDiscount: discount,
+        totalDiscount: totals.headerDiscount,
         campaignId: opts?.campaignId ?? null,
         campaignName: opts?.campaignName ?? null,
       },
@@ -251,7 +328,7 @@ export async function savePosSale(
     ficheNo,
     customerId: opts?.customerId,
     customerName: opts?.customerName,
-    totalDiscount: discount,
+    totalDiscount: totals.headerDiscount,
     campaignId: opts?.campaignId,
     campaignName: opts?.campaignName,
   });
