@@ -138,11 +138,17 @@ export function BeautyScreen({ route }: Props) {
   }, [route.params?.initialTab]);
 
   useEffect(() => {
-    if (route.params?.openCreate) {
+    if (route.params?.openCreate || route.params?.callerPhone) {
       setTab('appointments');
+      const phone = route.params?.callerPhone?.trim() || '';
+      const name = route.params?.callerName?.trim() || '';
+      if (phone || name) {
+        setCustomerName(name || phone);
+        setNotes(phone ? `Tel: ${phone}` : '');
+      }
       setCreateOpen(true);
     }
-  }, [route.params?.openCreate]);
+  }, [route.params?.openCreate, route.params?.callerPhone, route.params?.callerName]);
 
   const filteredAppointments = useMemo(() => {
     if (apptFilter === 'all') return appointments;

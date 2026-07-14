@@ -7,6 +7,8 @@ import { MainStackNavigator } from './MainStackNavigator';
 import { useAuthStore } from '../store/authStore';
 import { useThemeStore } from '../store/themeStore';
 import { useConfigStore } from '../store/configStore';
+import { CallerIdHost } from '../components/CallerIdHost';
+import { navigationRef } from './navigationRef';
 import { palette } from '../theme/colors';
 import type { RootStackParamList } from './types';
 
@@ -50,7 +52,7 @@ export function RootNavigator() {
   };
 
   return (
-    <NavigationContainer theme={navTheme}>
+    <NavigationContainer ref={navigationRef} theme={navTheme}>
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         {user ? (
           <Stack.Screen name="Main" component={MainStackNavigator} />
@@ -58,6 +60,7 @@ export function RootNavigator() {
           <Stack.Screen name="Auth" component={AuthNavigator} />
         )}
       </Stack.Navigator>
+      {user ? <CallerIdHost /> : null}
     </NavigationContainer>
   );
 }

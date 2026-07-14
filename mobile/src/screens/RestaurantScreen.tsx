@@ -111,6 +111,7 @@ export function RestaurantScreen({ route }: Props) {
   const { colors, darkMode } = useThemeStore();
   const { width } = useWindowDimensions();
   const initialTab = route.params?.initialTab ?? 'tables';
+  const callerPhone = route.params?.callerPhone?.trim() || '';
   const [tab, setTab] = useState<Tab>(initialTab === 'schedule' ? 'schedule' : initialTab);
   const [tables, setTables] = useState<RestTable[]>([]);
   const [orders, setOrders] = useState<RestOrder[]>([]);
@@ -219,6 +220,12 @@ export function RestaurantScreen({ route }: Props) {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    if (callerPhone && !route.params?.initialTab) {
+      setTab('orders');
+    }
+  }, [callerPhone, route.params?.initialTab]);
 
   useEffect(() => {
     if (route.params?.initialTab) {
@@ -444,7 +451,14 @@ export function RestaurantScreen({ route }: Props) {
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
-      <ScreenHeader title="Restoran" subtitle="Masalar, adisyon ve bugünkü akış" />
+      <ScreenHeader
+        title="Restoran"
+        subtitle={
+          callerPhone
+            ? `Caller ID: ${callerPhone}`
+            : 'Masalar, adisyon ve bugünkü akış'
+        }
+      />
 
       <SegmentTabBar
         layout="scroll"

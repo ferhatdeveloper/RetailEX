@@ -37,7 +37,7 @@ export type MainStackParamList = {
   ProductForm: { productId?: string } | undefined;
   /** Raf / etiket OCR → malzeme (ürün kartı) oluştur */
   MaterialLabelScan: { productKind?: 'stock' | 'weighed' } | undefined;
-  Customers: undefined;
+  Customers: { initialSearch?: string; callerPhone?: string } | undefined;
   CustomerDetail: { customerId: string };
   CustomerForm: { customerId?: string } | undefined;
   /** Kimlik / kart OCR → cari oluştur */
@@ -87,7 +87,13 @@ export type MainStackParamList = {
   StockMovements: { filter?: 'all' | 'deficit' | 'surplus' } | undefined;
   StockMovementDetail: { id: string };
   Beauty:
-    | { initialTab?: 'appointments' | 'services' | 'specialists' | 'sales'; openCreate?: boolean }
+    | {
+        initialTab?: 'appointments' | 'services' | 'specialists' | 'sales';
+        openCreate?: boolean;
+        /** Caller ID — randevu formu prefill */
+        callerPhone?: string;
+        callerName?: string;
+      }
     | undefined;
   Wms: undefined;
   WmsCount: { autoCreate?: boolean } | undefined;
@@ -98,7 +104,13 @@ export type MainStackParamList = {
   WmsWavePicking: undefined;
   /** WMS dalga toplama — görev yürütme */
   WmsWavePickingExecute: { waveId: string };
-  Restaurant: { initialTab?: 'tables' | 'orders' | 'schedule' } | undefined;
+  Restaurant:
+    | {
+        initialTab?: 'tables' | 'orders' | 'schedule';
+        /** Caller ID — hızlı sipariş bağlamı */
+        callerPhone?: string;
+      }
+    | undefined;
   /** Teslimat / kurye — menü yaprağı sekmesi */
   Delivery: { initialTab?: 'deliveries' | 'live' | 'couriers' } | undefined;
   /** Finans tanımları: ödeme planı, masraf merkezi, arama planı, gider */
@@ -157,5 +169,5 @@ export type MainStackParamList = {
 
 export type RootStackParamList = {
   Auth: undefined;
-  Main: undefined;
+  Main: NavigatorScreenParams<MainStackParamList> | undefined;
 };

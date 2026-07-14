@@ -1,6 +1,8 @@
 # RetailEX CallerID Bridge (Android MVP)
 
-Bu proje, mevcut RetailEX Android uygulamasından ayridir. Telefona gelen cagri/SMS/bildirim olaylarini LAN uzerinden bilgisayardaki `pg_bridge` servisine yollar.
+Bu proje, Expo `mobile/` uygulamasından **ayrı** bir producer APK’dır. Telefona gelen çağrı/SMS/bildirim olaylarını LAN üzerinden bilgisayardaki `pg_bridge` servisine yollar.
+
+**RN consumer:** `mobile/` içindeki poll + banner (`mobile/CALLER_ID.md`). Expo Go ile birlikte bu APK kullanılabilir; EAS/dev build’de ayrıca gömülü `CallStateReceiver` de push üretebilir (SMS/WhatsApp için bu companion APK gerekir).
 
 ## Ne yapiyor?
 

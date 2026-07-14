@@ -211,7 +211,7 @@ export function ModuleScreen() {
     excel: 'Excel/CSV canlı özet + ürün/cari CSV paylaşımı.',
     'smart-material-add': 'Akıllı ekleme — kamera OCR ile malzeme kartı (MaterialLabelScan).',
     'invoice-label-designer': 'Barkod/etiket şablonları listesi + ekleme canlı.',
-    'virtual-pbx-caller-id': 'Caller ID yerel ayar (AsyncStorage); dinleme masaüstü.',
+    'virtual-pbx-caller-id': 'Caller ID: poll + banner (SystemExtras); native push EAS / companion APK.',
     'finance-cards': 'Cari hesaplar listesi + detay + son faturalar canlı.',
     salesinvoice: 'Satış faturaları listesi + detay (kalemler) canlı.',
     'material-reports': 'Stok raporları: kritik stok, min/max, değer, ambar durum, ekstre canlı.',

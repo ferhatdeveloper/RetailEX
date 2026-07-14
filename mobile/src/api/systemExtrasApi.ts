@@ -1,6 +1,15 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { pgQuery } from './pgClient';
 import { newUuid } from './erpTables';
+
+export type {
+  CallerIdConfig,
+  CallerIdMode,
+} from './callerIdApi';
+export {
+  loadCallerIdConfig,
+  saveCallerIdConfig,
+  DEFAULT_CALLER_ID_CONFIG,
+} from './callerIdApi';
 
 export type BarcodeTemplateRow = {
   id: string;
@@ -16,24 +25,6 @@ export type BarcodeTemplateInput = {
   prefix?: string;
   currentValue?: number;
   length?: number;
-};
-
-export type CallerIdMode = 'off' | 'virtual_pbx' | 'physical_device' | 'physical_serial';
-
-export type CallerIdConfig = {
-  mode: CallerIdMode;
-  pollUrl: string;
-  pollIntervalSec: number;
-  deviceHint: string;
-};
-
-const CALLER_ID_KEY = 'retailex_mobile_caller_id_config';
-
-const DEFAULT_CALLER: CallerIdConfig = {
-  mode: 'off',
-  pollUrl: '',
-  pollIntervalSec: 3,
-  deviceHint: '',
 };
 
 async function tryQueries<T>(queries: { sql: string; params?: unknown[] }[]): Promise<T[]> {
@@ -85,32 +76,4 @@ export async function createBarcodeTemplate(input: BarcodeTemplateInput): Promis
     [id, name, prefix, current, length],
   );
   return id;
-}
-
-export async function loadCallerIdConfig(): Promise<CallerIdConfig> {
-  try {
-    const raw = await AsyncStorage.getItem(CALLER_ID_KEY);
-    if (!raw) return { ...DEFAULT_CALLER };
-    const parsed = JSON.parse(raw) as Partial<CallerIdConfig>;
-    return {
-      mode: parsed.mode ?? DEFAULT_CALLER.mode,
-      pollUrl: parsed.pollUrl ?? '',
-      pollIntervalSec: Math.max(1, Number(parsed.pollIntervalSec) || 3),
-      deviceHint: parsed.deviceHint ?? '',
-    };
-  } catch {
-    return { ...DEFAULT_CALLER };
-  }
-}
-
-export async function saveCallerIdConfig(cfg: CallerIdConfig): Promise<void> {
-  await AsyncStorage.setItem(
-    CALLER_ID_KEY,
-    JSON.stringify({
-      mode: cfg.mode,
-      pollUrl: cfg.pollUrl.trim(),
-      pollIntervalSec: Math.max(1, Number(cfg.pollIntervalSec) || 3),
-      deviceHint: cfg.deviceHint.trim(),
-    }),
-  );
 }

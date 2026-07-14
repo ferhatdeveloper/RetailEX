@@ -69,6 +69,7 @@
       }
     },
     "plugins": [
+      "./plugins/withCallerIdAndroid",
       "expo-secure-store",
       [
         "expo-camera",

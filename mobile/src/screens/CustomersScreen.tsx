@@ -9,8 +9,8 @@ import {
   Pressable,
   Alert,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
-import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useNavigation, useRoute } from '@react-navigation/native';
+import type { NativeStackNavigationProp, NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useTranslation } from 'react-i18next';
 import { ChevronRight, Plus, ScanLine } from 'lucide-react-native';
 import { ScreenHeader, SearchBar, EmptyState, ErrorBanner } from '../components/ScreenChrome';
@@ -22,15 +22,24 @@ import { useOrgEpoch } from '../hooks/useOrgEpoch';
 import { palette } from '../theme/colors';
 import type { MainStackParamList } from '../navigation/types';
 
+type Props = NativeStackScreenProps<MainStackParamList, 'Customers'>;
+
 export function CustomersScreen() {
   const { t } = useTranslation();
   const { colors } = useThemeStore();
   const navigation = useNavigation<NativeStackNavigationProp<MainStackParamList>>();
+  const route = useRoute<Props['route']>();
   const orgEpoch = useOrgEpoch();
-  const [search, setSearch] = useState('');
+  const initialQ = route.params?.initialSearch || route.params?.callerPhone || '';
+  const [search, setSearch] = useState(initialQ);
   const [rows, setRows] = useState<CustomerRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const q = route.params?.initialSearch || route.params?.callerPhone;
+    if (q) setSearch(q);
+  }, [route.params?.initialSearch, route.params?.callerPhone]);
 
   const load = useCallback(async () => {
     setError(null);

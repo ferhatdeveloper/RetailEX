@@ -208,7 +208,7 @@
 | Yedekleme / Log / Kasa cihazları | backuprestore… | `SystemScreen` | `[x]` log + kasa okuma; yedekleme=şema özeti (yazma DeskApp) |
 | Bağlantı ayarları | Login gear | `ConfigScreen` | `[x]` |
 | Fatura etiket tasarımı | `invoice-label-designer` | `SystemExtras` | `[~]` barkod şablon liste + create |
-| Sanal santral Caller ID | `virtual-pbx-caller-id` | `SystemExtras` | `[~]` yerel ayar (AsyncStorage) |
+| Sanal santral Caller ID | `virtual-pbx-caller-id` | `SystemExtras` + `CallerIdHost` | `[x]` AsyncStorage config · HTTP poll `/api/caller_id/*` · gelen arama banner (restoran/güzellik/cari/POS) · LAN bridge discover · EAS native CallStateReceiver (`CALLER_ID.md`); Expo Go’da native push yok (companion `android-callerid-bridge`) |
 
 ---
 
