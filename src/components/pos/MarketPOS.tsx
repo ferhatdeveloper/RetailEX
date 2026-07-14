@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useFirmaDonem } from '../../contexts/FirmaDonemContext';
+import { exchangeRateAPI } from '../../services/api/masterData';
 import { logger } from '../../utils/logger';
 import { resolveScaleBarcodeSale } from '../../utils/scaleBarcodeSale';
 import { isCompositeScaleBarcode, normalizeScannedBarcode, parseBarcode, expandBarcodeLookupKeys } from '../../utils/barcodeParser';
@@ -265,7 +266,6 @@ export default function MarketPOS({
   useEffect(() => {
     const fetchRate = async () => {
       try {
-        const { exchangeRateAPI } = await import('../../services/api/masterData');
         const rates = await exchangeRateAPI.getLatestRates();
         const usdRate = rates.find(r => r.currency_code === 'USD');
         if (usdRate) {

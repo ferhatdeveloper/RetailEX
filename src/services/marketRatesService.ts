@@ -6,6 +6,7 @@
 import { getBridgeUrl, IS_TAURI } from '../utils/env';
 import type { MarketRatesConfig } from './marketRatesConfig';
 import { MARKET_RATES_SNAPSHOT_KEY } from './marketRatesConfig';
+import { exchangeRateAPI } from './api/masterData';
 
 const MITHQAL_GRAMS = 5;
 const GRAM_PER_OUNCE = 31.1035;
@@ -329,7 +330,6 @@ export function loadMarketRatesSnapshot(): MarketRatesSnapshot | null {
 export async function applyMarketRatesToDatabase(
   currencies: ExternalCurrencyRate[]
 ): Promise<number> {
-  const { exchangeRateAPI } = await import('./api/masterData');
   const today = new Date().toISOString().slice(0, 10);
   let saved = 0;
   for (const row of currencies) {

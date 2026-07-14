@@ -13,7 +13,7 @@
 
 import type { Product } from '../App';
 import { RONGTA_DEFAULT_PORT } from './rongtaRlsProtocol';
-import { rongtaTestConnectionDetailed, rongtaSendPluRecords } from '../services/rongtaScaleTransport';
+import { rongtaTestConnectionDetailed, rongtaSendPluRecords, rongtaFetchSalesRecords } from '../services/rongtaScaleTransport';
 import { productsToRongtaPluRecords } from './rongtaRlsProtocol';
 
 export interface ScaleDevice {
@@ -292,7 +292,6 @@ export async function sendSingleProductToScale(
 export async function readProductsFromScale(device: ScaleDevice): Promise<ScaleProduct[]> {
   try {
     if (device.brand === 'rongta' && device.connectionType === 'tcp' && device.ipAddress) {
-      const { rongtaFetchSalesRecords } = await import('../services/rongtaScaleTransport');
       const result = await rongtaFetchSalesRecords({
         ipAddress: device.ipAddress,
         port: device.port,

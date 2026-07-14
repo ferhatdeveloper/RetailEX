@@ -2,7 +2,7 @@ import type { EticaretSettings } from './types';
 import type { StorefrontProduct } from './types';
 import { DEFAULT_ETICARET_CONTENT } from './contentTypes';
 import { mergeEticaretSettings } from './mergeSettings';
-import { loadTenantEticaretSettingsFromRegistry } from './tenantRegistryApi';
+import { loadTenantEticaretSettingsFromRegistry, saveTenantEticaretSettings } from './tenantRegistryApi';
 
 export type StorefrontConfigResponse = EticaretSettings & {
   providers: Array<{ id: string; label: string }>;
@@ -64,7 +64,6 @@ export async function saveTenantEticaretSettingsFull(
     tenant_code: code,
     settings,
   });
-  const { saveTenantEticaretSettings } = await import('./tenantRegistryApi');
   await saveTenantEticaretSettings(code, settings);
 }
 

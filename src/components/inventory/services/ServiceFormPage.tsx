@@ -8,7 +8,7 @@ import {
   ChevronDown, ChevronRight, Printer, Package, Upload
 } from 'lucide-react';
 import { serviceAPI, type Service, type CreateServiceInput } from '../../../services/serviceAPI';
-import { currencyAPI, categoryAPI, taxRateAPI, specialCodeAPI, type Currency, type Category, type TaxRate, type SpecialCode, brandAPI, productGroupAPI, unitAPI, type Brand } from '../../../services/api/masterData';
+import { currencyAPI, categoryAPI, taxRateAPI, specialCodeAPI, type Currency, type Category, type TaxRate, type SpecialCode, brandAPI, productGroupAPI, unitAPI, type Brand, exchangeRateAPI } from '../../../services/api/masterData';
 import { definitionAPI } from '../../../services/definitionAPI';
 import { resolveProductFormQuickAdd } from '../../../utils/masterDataQuickAdd';
 import { unitSetAPI, type UnitSet } from '../../../services/unitSetAPI';
@@ -203,7 +203,6 @@ export const ServiceFormPage = React.memo(({ serviceId, onClose, onSave }: Servi
         setAllSpecialCodes(specRes);
 
         // Fetch latest USD exchange rate
-        const { exchangeRateAPI } = await import('../../../services/api/masterData');
         const latestRates = await exchangeRateAPI.getLatestRates();
         const usdRate = latestRates.find(r => r.currency_code === 'USD');
         if (usdRate) {

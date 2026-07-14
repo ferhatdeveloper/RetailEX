@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { Search, Plus, Minus, X, Trash2, User, CreditCard, Banknote, Smartphone, ShoppingBag, Grid3x3, ArrowLeft, Tag, RefreshCw, FileText, Truck, Send, FileCheck, Menu, Camera, Database, Globe } from 'lucide-react';
 import type { Product, Customer, Sale, SaleItem, Campaign } from '../../App';
+import { exchangeRateAPI } from '../../services/api/masterData';
 import { BarcodeScanner } from '../inventory/stock/BarcodeScanner';
 import { formatNumber } from '../../utils/formatNumber';
 import { useTheme } from '../../contexts/ThemeContext';
@@ -102,7 +103,6 @@ export function MobilePOS({ products, customers, campaigns, onSaleComplete, onBa
   useEffect(() => {
     const fetchRate = async () => {
       try {
-        const { exchangeRateAPI } = await import('../../services/api/masterData');
         const rates = await exchangeRateAPI.getLatestRates();
         const usdRate = rates.find(r => r.currency_code === 'USD');
         if (usdRate) {

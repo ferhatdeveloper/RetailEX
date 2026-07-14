@@ -11,7 +11,7 @@ import {
   Image as ImageIcon, FileText, Globe, Building, Ruler, Weight,
   Calendar, Layers, ChevronDown, ChevronRight, Printer, Package, Upload, Banknote, Cloud, Link, Settings as SettingsIcon
 } from 'lucide-react';
-import { currencyAPI, categoryAPI, brandAPI, productGroupAPI, unitAPI, taxRateAPI, specialCodeAPI, type Currency, type Category, type Brand, type ProductGroup, type Unit, type TaxRate, type SpecialCode } from '../../../services/api/masterData';
+import { currencyAPI, categoryAPI, brandAPI, productGroupAPI, unitAPI, taxRateAPI, specialCodeAPI, exchangeRateAPI, type Currency, type Category, type Brand, type ProductGroup, type Unit, type TaxRate, type SpecialCode } from '../../../services/api/masterData';
 import { definitionAPI } from '../../../services/definitionAPI';
 import { resolveProductFormQuickAdd } from '../../../utils/masterDataQuickAdd';
 import { TreeSelectionModal, type TreeDataItem } from '../../shared/TreeSelectionModal';
@@ -1022,7 +1022,6 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
         setCurrencies(currenciesData);
 
         // Fetch latest USD exchange rate
-        const { exchangeRateAPI } = await import('../../../services/api/masterData');
         const latestRates = await exchangeRateAPI.getLatestRates();
         const usdRate = latestRates.find(r => r.currency_code === 'USD');
         if (usdRate) {
