@@ -64,26 +64,35 @@ async function tryExtractOcr(uri: string): Promise<{
   ocrAvailable: boolean;
   ocrError?: string;
 }> {
-  // Native OCR — Expo Go / web'de olmayabilir
-  const { blocks, ocrAvailable, ocrError } = await extractTextFromImageUri(uri);
-  if (ocrError === 'ocrUnsupported') {
+  // Native OCR — Expo Go / web'de olmayabilir (ham JS hatası kullanıcıya sızmaz)
+  try {
+    const { blocks, ocrAvailable, ocrError } = await extractTextFromImageUri(uri);
+    if (ocrError === 'ocrUnsupported') {
+      return {
+        fields: parseInvoiceOcr([]),
+        ocrAvailable: false,
+        ocrError:
+          'OCR bu ortamda kullanılamıyor (Expo Go veya native derleme gerekir). Alanları elle doldurun.',
+      };
+    }
+    if (ocrError) {
+      return {
+        fields: parseInvoiceOcr([]),
+        ocrAvailable: false,
+        ocrError: 'OCR açılamadı. Manuel doldurma ile devam edin.',
+      };
+    }
+    return {
+      fields: parseInvoiceOcr(Array.isArray(blocks) ? blocks : []),
+      ocrAvailable,
+    };
+  } catch {
     return {
       fields: parseInvoiceOcr([]),
       ocrAvailable: false,
-      ocrError: 'Bu cihazda OCR desteklenmiyor; alanları elle doldurun.',
+      ocrError: 'OCR açılamadı. Manuel doldurma ile devam edin.',
     };
   }
-  if (ocrError) {
-    return {
-      fields: parseInvoiceOcr([]),
-      ocrAvailable: false,
-      ocrError: `OCR açılamadı (${ocrError}). Manuel doldurma ile devam edin.`,
-    };
-  }
-  return {
-    fields: parseInvoiceOcr(blocks),
-    ocrAvailable,
-  };
 }
 
 function fieldsToDraftLines(

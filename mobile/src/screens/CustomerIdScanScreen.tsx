@@ -144,7 +144,7 @@ export function CustomerIdScanScreen() {
   };
 
   const openConfirmWithParsed = useCallback(
-    async (fields: ParsedIdentityFields, hintKey?: string, hintDetail?: string) => {
+    async (fields: ParsedIdentityFields, hintKey?: string) => {
       let code = '';
       try {
         code =
@@ -162,11 +162,7 @@ export function CustomerIdScanScreen() {
       } else if (hintKey === 'ocrEmpty') {
         setOcrHint(t('idScan.ocrEmpty'));
       } else if (hintKey === 'ocrFailed') {
-        setOcrHint(
-          hintDetail
-            ? t('idScan.ocrFailedDetail', { message: hintDetail })
-            : t('idScan.ocrFailed'),
-        );
+        setOcrHint(t('idScan.ocrFailed'));
       } else if (fields.rawText.trim()) {
         setOcrHint(
           t('idScan.ocrOk', {
@@ -193,12 +189,14 @@ export function CustomerIdScanScreen() {
         if (ocrError === 'ocrUnsupported') {
           await openConfirmWithParsed(fields, 'ocrUnsupported');
         } else if (ocrError) {
-          await openConfirmWithParsed(fields, 'ocrFailed', ocrError);
+          await openConfirmWithParsed(fields, 'ocrFailed');
         } else if (ocrAvailable && !fields.rawText.trim()) {
           await openConfirmWithParsed(fields, 'ocrEmpty');
         } else {
           await openConfirmWithParsed(fields);
         }
+      } catch {
+        await openConfirmWithParsed(parseIdentityCardOcr([]), 'ocrFailed');
       } finally {
         setOcrBusy(false);
       }

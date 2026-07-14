@@ -97,6 +97,8 @@ export function MaterialLabelScanScreen() {
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [ocrBusy, setOcrBusy] = useState(false);
   const [ocrHint, setOcrHint] = useState<string | null>(null);
+  /** OCR uyarı/manuel — modalda turuncu ipucu */
+  const [ocrHintWarn, setOcrHintWarn] = useState(false);
   const [rawPreview, setRawPreview] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [form, setForm] = useState<FormState>({ ...EMPTY_FORM });
@@ -117,7 +119,7 @@ export function MaterialLabelScanScreen() {
   };
 
   const openConfirmWithParsed = useCallback(
-    async (fields: ParsedProductFields, hintKey?: string, hintDetail?: string) => {
+    async (fields: ParsedProductFields, hintKey?: string) => {
       let code = '';
       try {
         code = await generateProductCode();
@@ -125,25 +127,27 @@ export function MaterialLabelScanScreen() {
         code = 'P001';
       }
       setRawPreview(fields.rawText.slice(0, 800));
+      // Kod alanı OCR'dan değil — sıradaki ürün kodu (P001…); OCR sadece code etiketi bulursa override
       setForm(parsedToForm(fields, code, productKind));
       if (hintKey === 'ocrUnsupported') {
         setOcrHint(t('materialScan.ocrUnsupported'));
+        setOcrHintWarn(true);
       } else if (hintKey === 'ocrEmpty') {
         setOcrHint(t('materialScan.ocrEmpty'));
+        setOcrHintWarn(true);
       } else if (hintKey === 'ocrFailed') {
-        setOcrHint(
-          hintDetail
-            ? t('materialScan.ocrFailedDetail', { message: hintDetail })
-            : t('materialScan.ocrFailed'),
-        );
+        setOcrHint(t('materialScan.ocrFailed'));
+        setOcrHintWarn(true);
       } else if (fields.rawText.trim()) {
         setOcrHint(
           t('materialScan.ocrOk', {
             lines: fields.ocrLines.length,
           }),
         );
+        setOcrHintWarn(false);
       } else {
         setOcrHint(t('materialScan.ocrEmpty'));
+        setOcrHintWarn(true);
       }
       setConfirmOpen(true);
     },
@@ -156,18 +160,22 @@ export function MaterialLabelScanScreen() {
       setOcrBusy(true);
       setError(null);
       setOcrHint(null);
+      setOcrHintWarn(false);
       try {
         const { blocks, ocrAvailable, ocrError } = await extractTextFromImageUri(uri);
-        const fields = parseProductFromOcr(blocks);
+        const fields = parseProductFromOcr(Array.isArray(blocks) ? blocks : []);
         if (ocrError === 'ocrUnsupported') {
           await openConfirmWithParsed(fields, 'ocrUnsupported');
         } else if (ocrError) {
-          await openConfirmWithParsed(fields, 'ocrFailed', ocrError);
+          await openConfirmWithParsed(fields, 'ocrFailed');
         } else if (ocrAvailable && !fields.rawText.trim()) {
           await openConfirmWithParsed(fields, 'ocrEmpty');
         } else {
           await openConfirmWithParsed(fields);
         }
+      } catch {
+        // Fotoğraf kalsın; modal boş/elle doldurulabilir açılsın — kırmızı ErrorBanner yok
+        await openConfirmWithParsed(parseProductFromOcr([]), 'ocrFailed');
       } finally {
         setOcrBusy(false);
       }
@@ -371,8 +379,19 @@ export function MaterialLabelScanScreen() {
           </View>
         }
       >
+        {imageUri ? (
+          <Image source={{ uri: imageUri }} style={styles.modalPreview} resizeMode="cover" />
+        ) : null}
         {ocrHint ? (
-          <Text style={{ color: colors.textMuted, fontSize: 12 }}>{ocrHint}</Text>
+          <Text
+            style={{
+              color: ocrHintWarn ? '#b45309' : colors.textMuted,
+              fontSize: 12,
+              lineHeight: 17,
+            }}
+          >
+            {ocrHint}
+          </Text>
         ) : null}
         <View style={styles.modalKindRow}>
           <ScanLine size={16} color={palette.blue600} />
@@ -478,4 +497,9 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   modalKindRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  modalPreview: {
+    width: '100%',
+    height: 120,
+    borderRadius: 10,
+  },
 });
