@@ -111,10 +111,14 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
         run: node scripts/tauri-updater-ci-prep.mjs
 
+      # CARGO_BUILD_JOBS=2: windows-latest uzerinde tam paralellik Rust derlemesinde
+      # CPU/RAM acligi yaratip "hosted runner lost communication" flake'ine yol acabiliyor.
       - name: Build Tauri (Windows)
         shell: pwsh
         env:
           CI: 'true'
+          CARGO_BUILD_JOBS: '2'
+          CARGO_INCREMENTAL: '0'
           TAURI_SIGNING_PRIVATE_KEY: ${{ env.TAURI_SIGNING_ENABLED == '1' && secrets.TAURI_SIGNING_PRIVATE_KEY || '' }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ env.TAURI_SIGNING_ENABLED == '1' && secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD || '' }}
           WINDOWS_CODESIGN_DISABLE: ${{ env.WINDOWS_CODESIGN_DISABLE }}
