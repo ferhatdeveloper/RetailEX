@@ -410,6 +410,208 @@ export async function createStockAdjustment(data: {
   return { id, adj_no: adjNo };
 }
 
+// ── Packing (paketleme istasyonu) ─────────────────────────────────────────────
+export interface PackingSlip {
+  id: string;
+  firm_nr: string;
+  store_id?: string | null;
+  pack_no: string;
+  dispatch_slip_id?: string | null;
+  delivery_id?: string | null;
+  sales_id?: string | null;
+  status: string;
+  packed_by?: string | null;
+  created_at?: string;
+}
+
+export interface PackingCarton {
+  id: string;
+  packing_slip_id: string;
+  carton_no?: string | null;
+  sscc?: string | null;
+  tracking_no?: string | null;
+  weight_kg?: number | null;
+}
+
+export async function listPackingSlips(status = 'all'): Promise<PackingSlip[]> {
+  const f = firmNr();
+  if (isRestApi()) {
+    const { postgrest } = await import('./api/postgrestClient');
+    const q: Record<string, string | number> = { select: '*', firm_nr: `eq.${f}`, order: 'created_at.desc', limit: 300 };
+    if (status && status !== 'all') q.status = `eq.${status}`;
+    const rows = await postgrest.get<any[]>('/packing_slips', q, { schema: 'wms' });
+    return (Array.isArray(rows) ? rows : []) as PackingSlip[];
+  }
+  const c = conn();
+  const params: unknown[] = [f];
+  let where = `firm_nr = $1`;
+  if (status && status !== 'all') {
+    params.push(status);
+    where += ` AND status = $${params.length}`;
+  }
+  const r = await c.query(`SELECT * FROM wms.packing_slips WHERE ${where} ORDER BY created_at DESC LIMIT 300`, params);
+  return (r?.rows || []) as PackingSlip[];
+}
+
+export async function createPackingSlip(data: { deliveryId?: string; dispatchSlipId?: string; salesId?: string; storeId?: string; packedBy?: string }): Promise<PackingSlip | null> {
+  const f = firmNr();
+  const packNo = `PACK-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${String(Date.now()).slice(-4)}`;
+  const payload = {
+    firm_nr: f,
+    store_id: data.storeId ?? null,
+    pack_no: packNo,
+    delivery_id: data.deliveryId ?? null,
+    dispatch_slip_id: data.dispatchSlipId ?? null,
+    sales_id: data.salesId ?? null,
+    status: 'open',
+    packed_by: data.packedBy ?? null,
+  };
+  if (isRestApi()) {
+    const { postgrest } = await import('./api/postgrestClient');
+    const rows = await postgrest.post<any[]>('/packing_slips', payload, { schema: 'wms', prefer: 'return=representation' });
+    return (Array.isArray(rows) ? rows[0] : rows) as PackingSlip;
+  }
+  const c = conn();
+  const r = await c.query(
+    `INSERT INTO wms.packing_slips (firm_nr, store_id, pack_no, delivery_id, dispatch_slip_id, sales_id, status, packed_by)
+     VALUES ($1,$2,$3,$4,$5,$6,'open',$7) RETURNING *`,
+    [f, payload.store_id, packNo, payload.delivery_id, payload.dispatch_slip_id, payload.sales_id, payload.packed_by]
+  );
+  return (r?.rows?.[0] || null) as PackingSlip | null;
+}
+
+export async function listCartons(packingSlipId: string): Promise<PackingCarton[]> {
+  if (isRestApi()) {
+    const { postgrest } = await import('./api/postgrestClient');
+    const rows = await postgrest.get<any[]>('/packing_cartons', { select: '*', packing_slip_id: `eq.${packingSlipId}`, order: 'created_at.asc' }, { schema: 'wms' });
+    return (Array.isArray(rows) ? rows : []) as PackingCarton[];
+  }
+  const c = conn();
+  const r = await c.query(`SELECT * FROM wms.packing_cartons WHERE packing_slip_id = $1 ORDER BY created_at`, [packingSlipId]);
+  return (r?.rows || []) as PackingCarton[];
+}
+
+export async function addCarton(packingSlipId: string, data: { cartonNo?: string; sscc?: string; trackingNo?: string; weightKg?: number }): Promise<void> {
+  if (isRestApi()) {
+    const { postgrest } = await import('./api/postgrestClient');
+    await postgrest.post(
+      '/packing_cartons',
+      { packing_slip_id: packingSlipId, carton_no: data.cartonNo ?? null, sscc: data.sscc ?? null, tracking_no: data.trackingNo ?? null, weight_kg: data.weightKg ?? null },
+      { schema: 'wms', prefer: 'return=minimal' }
+    );
+    return;
+  }
+  const c = conn();
+  await c.query(
+    `INSERT INTO wms.packing_cartons (packing_slip_id, carton_no, sscc, tracking_no, weight_kg) VALUES ($1,$2,$3,$4,$5)`,
+    [packingSlipId, data.cartonNo ?? null, data.sscc ?? null, data.trackingNo ?? null, data.weightKg ?? null]
+  );
+}
+
+export async function setPackingStatus(packingSlipId: string, status: string): Promise<void> {
+  if (isRestApi()) {
+    const { postgrest } = await import('./api/postgrestClient');
+    await postgrest.patch(`/packing_slips?id=eq.${encodeURIComponent(packingSlipId)}`, { status }, { schema: 'wms' });
+    return;
+  }
+  const c = conn();
+  await c.query(`UPDATE wms.packing_slips SET status = $2, updated_at = now() WHERE id = $1`, [packingSlipId, status]);
+}
+
+// ── Fire / stok düzeltme listesi + uygula ─────────────────────────────────────
+export interface StockAdjustment {
+  id: string;
+  firm_nr: string;
+  adj_no: string;
+  adj_type: string;
+  reason_code?: string | null;
+  reason_text?: string | null;
+  status: string;
+  created_at?: string;
+}
+
+export async function listStockAdjustments(status = 'all'): Promise<StockAdjustment[]> {
+  const f = firmNr();
+  if (isRestApi()) {
+    const { postgrest } = await import('./api/postgrestClient');
+    const q: Record<string, string | number> = { select: '*', firm_nr: `eq.${f}`, order: 'created_at.desc', limit: 300 };
+    if (status && status !== 'all') q.status = `eq.${status}`;
+    const rows = await postgrest.get<any[]>('/stock_adjustments', q, { schema: 'wms' });
+    return (Array.isArray(rows) ? rows : []) as StockAdjustment[];
+  }
+  const c = conn();
+  const params: unknown[] = [f];
+  let where = `firm_nr = $1`;
+  if (status && status !== 'all') {
+    params.push(status);
+    where += ` AND status = $${params.length}`;
+  }
+  const r = await c.query(`SELECT * FROM wms.stock_adjustments WHERE ${where} ORDER BY created_at DESC LIMIT 300`, params);
+  return (r?.rows || []) as StockAdjustment[];
+}
+
+/** Düzeltmeyi onayla → satır delta'larını bin envanterine uygula (bin_id olanlar) */
+export async function applyStockAdjustment(adjustmentId: string, storeId?: string | null): Promise<void> {
+  let lines: any[] = [];
+  if (isRestApi()) {
+    const { postgrest } = await import('./api/postgrestClient');
+    lines = await postgrest.get<any[]>('/stock_adjustment_lines', { select: '*', adjustment_id: `eq.${adjustmentId}` }, { schema: 'wms' });
+  } else {
+    const c = conn();
+    const r = await c.query(`SELECT * FROM wms.stock_adjustment_lines WHERE adjustment_id = $1`, [adjustmentId]);
+    lines = r?.rows || [];
+  }
+  for (const ln of Array.isArray(lines) ? lines : []) {
+    if (ln.bin_id && ln.product_id) {
+      await adjustBinInventory({
+        storeId: storeId ?? null,
+        binId: String(ln.bin_id),
+        productId: String(ln.product_id),
+        qtyDelta: Number(ln.qty_delta || 0),
+        lotNo: ln.lot_no ?? null,
+        expiryDate: ln.expiry_date ?? null,
+        productCode: ln.product_code ?? null,
+        productName: ln.product_name ?? null,
+      });
+    }
+  }
+  if (isRestApi()) {
+    const { postgrest } = await import('./api/postgrestClient');
+    await postgrest.patch(`/stock_adjustments?id=eq.${encodeURIComponent(adjustmentId)}`, { status: 'applied' }, { schema: 'wms' });
+  } else {
+    const c = conn();
+    await c.query(`UPDATE wms.stock_adjustments SET status = 'applied', updated_at = now() WHERE id = $1`, [adjustmentId]);
+  }
+}
+
+/** Bin-to-bin transfer: kaynaktan düş, hedefe ekle (aynı lot/SKT) */
+export async function binToBinTransfer(args: {
+  storeId?: string | null;
+  fromBinId: string;
+  toBinId: string;
+  productId: string;
+  qty: number;
+  lotNo?: string | null;
+  expiryDate?: string | null;
+  productCode?: string | null;
+  productName?: string | null;
+}): Promise<void> {
+  await adjustBinInventory({ ...args, binId: args.fromBinId, qtyDelta: -Math.abs(args.qty) });
+  await adjustBinInventory({ ...args, binId: args.toBinId, qtyDelta: Math.abs(args.qty) });
+}
+
+/** Putaway üretmek için mevcut mal kabul fişleri (wmsService köprüsü) */
+export async function listReceivingForPutaway(): Promise<Array<{ id: string; slip_no: string; supplier_name?: string; status?: string }>> {
+  const { getReceivingSlips } = await import('./wmsService');
+  const slips = await getReceivingSlips().catch(() => []);
+  return (Array.isArray(slips) ? slips : []).map((s: any) => ({
+    id: s.id,
+    slip_no: s.slip_no,
+    supplier_name: s.supplier_name,
+    status: s.status,
+  }));
+}
+
 export const wmsEnterpriseService = {
   listBins,
   createBin,
@@ -420,6 +622,15 @@ export const wmsEnterpriseService = {
   createPutawayFromReceiving,
   completePutaway,
   createStockAdjustment,
+  listStockAdjustments,
+  applyStockAdjustment,
+  binToBinTransfer,
+  listPackingSlips,
+  createPackingSlip,
+  listCartons,
+  addCarton,
+  setPackingStatus,
+  listReceivingForPutaway,
 };
 
 export default wmsEnterpriseService;

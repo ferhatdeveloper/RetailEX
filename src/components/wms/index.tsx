@@ -28,6 +28,9 @@ import { SlottingOptimization, YardManagement, LaborManagement } from './Remaini
 import { StockCountModule } from './components/StockCountModule';
 import { BinManagement } from './components/BinManagement';
 import { PutawayModule } from './components/PutawayModule';
+import { PackingModule } from './components/PackingModule';
+import { StockAdjustmentModule } from './components/StockAdjustmentModule';
+import { WavePickingModule } from './WavePickingModule';
 import { ToastProvider } from './utils/toast';
 import { LanguageProvider } from './utils/i18n/LanguageContext';
 import type { Product, Customer, Sale, Campaign } from '../../core/types';
@@ -104,6 +107,12 @@ function WarehouseManagementInner() {
         return <BinManagement darkMode={darkMode} onBack={onBack} />;
       case 'putaway':
         return <PutawayModule darkMode={darkMode} onBack={onBack} />;
+      case 'packing':
+        return <PackingModule darkMode={darkMode} onBack={onBack} />;
+      case 'fire':
+        return <StockAdjustmentModule darkMode={darkMode} onBack={onBack} />;
+      case 'wave-picking':
+        return <WavePickingModule />;
       case 'alerts':
         return <AlertCenter darkMode={darkMode} onBack={onBack} />;
       case 'quality':

@@ -1,15 +1,21 @@
 import React, { useState, useEffect } from 'react';
 import {
     Box, ClipboardList, Navigation, CheckSquare,
-    MapPin, User, ChevronRight, Package, Search
+    MapPin, User, ChevronRight, Package, Search, Plus, X
 } from 'lucide-react';
 import { pickingService, PickWave, PickTask } from '../../services/wms/pickingService';
+import { invoicesAPI } from '../../services/api/invoices';
+import type { Invoice } from '../../core/types';
 
 export function WavePickingModule() {
     const [waves, setWaves] = useState<PickWave[]>([]);
     const [selectedWave, setSelectedWave] = useState<PickWave | null>(null);
     const [tasks, setTasks] = useState<PickTask[]>([]);
     const [loading, setLoading] = useState(false);
+    const [showCreate, setShowCreate] = useState(false);
+    const [orders, setOrders] = useState<Invoice[]>([]);
+    const [picked, setPicked] = useState<Record<string, boolean>>({});
+    const [creating, setCreating] = useState(false);
 
     useEffect(() => {
         loadWaves();
@@ -54,9 +60,23 @@ export function WavePickingModule() {
         <div className="h-full flex bg-gray-50 overflow-hidden">
             {/* Wave List Sidebar */}
             <div className="w-80 bg-white border-r flex flex-col">
-                <div className="p-4 border-b bg-orange-600 text-white flex items-center gap-2">
-                    <ClipboardList className="w-5 h-5" />
-                    <h2 className="font-bold">Toplama Dalgaları (Waves)</h2>
+                <div className="p-4 border-b bg-orange-600 text-white flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                        <ClipboardList className="w-5 h-5" />
+                        <h2 className="font-bold">Toplama Dalgaları</h2>
+                    </div>
+                    <button
+                        onClick={async () => {
+                            setShowCreate(true);
+                            try {
+                                const p = await invoicesAPI.getPaginated({ page: 1, pageSize: 100, invoiceCategory: 'Siparis' });
+                                setOrders(p.data || []);
+                            } catch { setOrders([]); }
+                        }}
+                        className="flex items-center gap-1 px-2 py-1 bg-white text-orange-700 rounded text-xs font-medium hover:bg-orange-50"
+                    >
+                        <Plus className="w-3.5 h-3.5" /> Dalga
+                    </button>
                 </div>
                 <div className="flex-1 overflow-auto">
                     {waves.map(wave => (
@@ -171,6 +191,60 @@ export function WavePickingModule() {
                     </>
                 )}
             </div>
+
+            {showCreate && (
+                <div className="fixed inset-0 bg-black/50 z-[2147483646] flex items-center justify-center p-4" onClick={() => setShowCreate(false)}>
+                    <div className="w-full max-w-2xl bg-white rounded-xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
+                        <div className="bg-orange-600 text-white px-4 py-3 flex items-center justify-between">
+                            <h3 className="font-semibold text-sm">Siparişten Toplama Dalgası Oluştur</h3>
+                            <button onClick={() => setShowCreate(false)}><X className="w-4 h-4" /></button>
+                        </div>
+                        <div className="p-3 max-h-[60vh] overflow-auto">
+                            {orders.length === 0 ? (
+                                <p className="text-xs text-gray-500 p-3">Açık satış siparişi bulunamadı.</p>
+                            ) : (
+                                <table className="w-full text-sm">
+                                    <thead className="bg-gray-50"><tr className="text-[10px] text-left"><th className="px-2 py-1"><input type="checkbox" onChange={(e) => { const all: Record<string, boolean> = {}; if (e.target.checked) orders.forEach((o) => { if (o.id) all[o.id] = true; }); setPicked(all); }} /></th><th className="px-2 py-1">SİPARİŞ</th><th className="px-2 py-1">MÜŞTERİ</th><th className="px-2 py-1 text-right">TUTAR</th></tr></thead>
+                                    <tbody>
+                                        {orders.map((o) => (
+                                            <tr key={o.id || o.invoice_no} className="border-t text-xs">
+                                                <td className="px-2 py-1"><input type="checkbox" checked={!!(o.id && picked[o.id])} onChange={(e) => o.id && setPicked({ ...picked, [o.id]: e.target.checked })} /></td>
+                                                <td className="px-2 py-1 font-mono">{o.invoice_no}</td>
+                                                <td className="px-2 py-1">{o.customer_name || '—'}</td>
+                                                <td className="px-2 py-1 text-right">{Number(o.total_amount ?? o.total ?? 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            )}
+                        </div>
+                        <div className="px-4 py-3 border-t flex justify-end gap-2">
+                            <button onClick={() => setShowCreate(false)} className="px-3 py-1.5 text-xs border rounded">İptal</button>
+                            <button
+                                onClick={async () => {
+                                    const ids = Object.keys(picked).filter((k) => picked[k]);
+                                    if (!ids.length) return;
+                                    setCreating(true);
+                                    try {
+                                        await pickingService.createWaveFromSales(ids);
+                                        setShowCreate(false);
+                                        setPicked({});
+                                        await loadWaves();
+                                    } catch (e) {
+                                        console.error('[WavePicking] dalga oluşturulamadı', e);
+                                    } finally {
+                                        setCreating(false);
+                                    }
+                                }}
+                                disabled={creating || Object.values(picked).every((v) => !v)}
+                                className="px-3 py-1.5 text-xs bg-orange-600 text-white rounded disabled:opacity-50"
+                            >
+                                {creating ? 'Oluşturuluyor…' : 'Dalga Oluştur'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

@@ -96,10 +96,13 @@ export function Dashboard({ darkMode, onNavigate, onLogout }: DashboardProps) {
     { id: 'receiving',   icon: MODULE_ICONS.receiving,          nameKey: 'wmsReceiving',       name: '',            color: 'text-green-500',  highlight: false },
     { id: 'putaway',     icon: ArrowDownRight,                  nameKey: '',                   name: 'Yerleştirme', color: 'text-emerald-500', highlight: true },
     { id: 'bins',        icon: MapPin,                          nameKey: '',                   name: 'Lokasyon & Bin', color: 'text-cyan-500', highlight: true },
-    { id: 'returns',     icon: MODULE_ICONS.returns,            nameKey: 'wmsReturnRecycling', name: '',            color: 'text-orange-500', highlight: false },
+    { id: 'wave-picking', icon: ClipboardCheck,                 nameKey: '',                   name: 'Dalga Toplama', color: 'text-amber-500', highlight: true },
+    { id: 'packing',     icon: Package,                         nameKey: '',                   name: 'Paketleme',   color: 'text-indigo-500', highlight: true },
     { id: 'issue',       icon: MODULE_ICONS.issue,              nameKey: 'wmsDispatch',        name: '',            color: 'text-red-500',    highlight: false },
     { id: 'transfer',    icon: MODULE_ICONS.transfer,           nameKey: 'wmsTransfer',        name: '',            color: 'text-blue-500',   highlight: false },
     { id: 'counting',    icon: MODULE_ICONS.counting,           nameKey: 'wmsCount',           name: '',            color: 'text-purple-500', highlight: false },
+    { id: 'fire',        icon: AlertCircle,                     nameKey: '',                   name: 'Fire / Düzeltme', color: 'text-rose-500', highlight: true },
+    { id: 'returns',     icon: MODULE_ICONS.returns,            nameKey: 'wmsReturnRecycling', name: '',            color: 'text-orange-500', highlight: false },
     { id: 'stock-query', icon: MODULE_ICONS['stock-query'],     nameKey: 'wmsStockQuery',      name: '',            color: 'text-teal-500',   highlight: false },
   ];
 

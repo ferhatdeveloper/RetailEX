@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { ArrowDownToLine, RefreshCw, ArrowLeft, Check, X } from 'lucide-react';
+import { ArrowDownToLine, RefreshCw, ArrowLeft, Check, X, PackagePlus } from 'lucide-react';
 import { wmsEnterpriseService, type PutawayTask, type WmsBin } from '../../../services/wmsEnterpriseService';
 
 interface Props {
@@ -15,6 +15,8 @@ export function PutawayModule({ darkMode, onBack }: Props) {
   const [statusFilter, setStatusFilter] = useState('open');
   const [selectedBin, setSelectedBin] = useState<Record<string, string>>({});
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [showGen, setShowGen] = useState(false);
+  const [receiving, setReceiving] = useState<Array<{ id: string; slip_no: string; supplier_name?: string; status?: string }>>([]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -74,6 +76,12 @@ export function PutawayModule({ darkMode, onBack }: Props) {
             <option value="done">Tamamlanan</option>
             <option value="all">Tümü</option>
           </select>
+          <button
+            onClick={async () => { setShowGen(true); try { setReceiving(await wmsEnterpriseService.listReceivingForPutaway()); } catch { setReceiving([]); } }}
+            className="flex items-center gap-1 px-2 py-1 bg-white text-green-700 hover:bg-green-50 rounded text-xs font-medium"
+          >
+            <PackagePlus className="w-3.5 h-3.5" /> Mal Kabulden Üret
+          </button>
           <button onClick={() => void load()} className="flex items-center gap-1 px-2 py-1 bg-white/15 hover:bg-white/25 rounded text-xs">
             <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} /> Yenile
           </button>
@@ -145,6 +153,55 @@ export function PutawayModule({ darkMode, onBack }: Props) {
           </table>
         </div>
       </div>
+
+      {showGen && (
+        <div className="fixed inset-0 bg-black/50 z-[2147483646] flex items-center justify-center p-4" onClick={() => setShowGen(false)}>
+          <div className={`w-full max-w-lg rounded-xl overflow-hidden ${darkMode ? 'bg-gray-800' : 'bg-white'}`} onClick={(e) => e.stopPropagation()}>
+            <div className="bg-gradient-to-r from-green-600 to-green-700 text-white px-4 py-3 flex items-center justify-between">
+              <h3 className="font-semibold text-sm">Mal Kabulden Putaway Üret</h3>
+              <button onClick={() => setShowGen(false)}><X className="w-4 h-4" /></button>
+            </div>
+            <div className="p-3 max-h-[60vh] overflow-auto">
+              {receiving.length === 0 ? (
+                <p className={`text-xs p-3 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Mal kabul fişi yok.</p>
+              ) : (
+                <table className="w-full text-sm">
+                  <thead className={darkMode ? 'bg-gray-700' : 'bg-gray-50'}><tr className="text-[10px] text-left"><th className="px-2 py-1">FİŞ</th><th className="px-2 py-1">TEDARİKÇİ</th><th className="px-2 py-1"></th></tr></thead>
+                  <tbody>
+                    {receiving.map((r) => (
+                      <tr key={r.id} className={`border-t text-xs ${darkMode ? 'border-gray-700' : 'border-gray-100'} ${text}`}>
+                        <td className="px-2 py-1 font-mono">{r.slip_no}</td>
+                        <td className="px-2 py-1">{r.supplier_name || '—'}</td>
+                        <td className="px-2 py-1 text-right">
+                          <button
+                            onClick={async () => {
+                              setBusyId(r.id);
+                              try {
+                                const n = await wmsEnterpriseService.createPutawayFromReceiving(r.id);
+                                setShowGen(false);
+                                await load();
+                                if (n === 0) setError('Bu fişte satır yok veya görev üretilmedi');
+                              } catch (e: any) {
+                                setError(e?.message || 'Üretilemedi');
+                              } finally {
+                                setBusyId(null);
+                              }
+                            }}
+                            disabled={busyId === r.id}
+                            className="px-2 py-1 bg-green-600 text-white rounded text-[10px] disabled:opacity-50"
+                          >
+                            {busyId === r.id ? '…' : 'Üret'}
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
