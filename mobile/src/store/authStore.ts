@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
+import { bumpOrgSession } from './orgSessionStore';
 
 export type AuthUser = {
   id: string;
@@ -14,6 +15,8 @@ export type AuthUser = {
   storeName?: string | null;
 };
 
+export type OrgFields = Pick<AuthUser, 'firmNr' | 'periodNr' | 'storeId' | 'storeName'>;
+
 type AuthState = {
   user: AuthUser | null;
   token: string | null;
@@ -21,8 +24,17 @@ type AuthState = {
   setHydrated: (v: boolean) => void;
   login: (user: AuthUser) => void;
   logout: () => void;
-  updateOrg: (partial: Partial<Pick<AuthUser, 'firmNr' | 'periodNr' | 'storeId' | 'storeName'>>) => void;
+  updateOrg: (partial: Partial<OrgFields>) => void;
 };
+
+function orgChanged(prev: AuthUser, next: AuthUser): boolean {
+  return (
+    prev.firmNr !== next.firmNr ||
+    prev.periodNr !== next.periodNr ||
+    (prev.storeId ?? '') !== (next.storeId ?? '') ||
+    (prev.storeName ?? '') !== (next.storeName ?? '')
+  );
+}
 
 export const useAuthStore = create<AuthState>()(
   persist(
@@ -40,7 +52,9 @@ export const useAuthStore = create<AuthState>()(
       updateOrg: (partial) => {
         const u = get().user;
         if (!u) return;
-        set({ user: { ...u, ...partial } });
+        const next = { ...u, ...partial };
+        set({ user: next });
+        if (orgChanged(u, next)) bumpOrgSession();
       },
     }),
     {

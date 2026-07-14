@@ -17,7 +17,7 @@ alwaysApply: true
 - `src/components/`: system, pos, inventory, trading, accounting, wms, restaurant, beauty, management, reports, shared.
 - `src/services/`: postgres.ts, pg_bridge.ts, api/, beautyService, wmsService, rbacService.
 - `src/contexts/`: Auth, Language, Theme, FirmaDonem, Version.
-- `DeskApp/`: Tauri 2 (Rust). `database/migrations/`: şema + demo. Mobil: **React Native** (ayrı proje; Capacitor kaldırıldı).
+- `DeskApp/`: Tauri 2 (Rust). `database/migrations/`: şema + demo. Mobil: **React Native / Expo** → **`mobile/`** (native UI; WebView/Capacitor yasak — Capacitor kök `android/` legacy/kaldırıldı). Ayrıntı: `retailex-mobile-react-native.mdc`.
 
 ## Veritabanı
 - Multi-tenant: kart `rex_{firmNr}_{table}`, hareket `rex_{firmNr}_{periodNr}_{table}`. Tablo adını düz yaz; prefix postgres.ts ekler.

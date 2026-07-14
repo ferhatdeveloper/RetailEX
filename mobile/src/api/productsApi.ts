@@ -1,5 +1,7 @@
 import { pgQuery } from './pgClient';
-import { firmNr, productsTable } from './erpTables';
+import { firmNr, newUuid, productsTable } from './erpTables';
+import { shouldUseLiveData, getNetworkPolicy } from '../offline/policy';
+import { getCachedProducts, saveProductsSnapshot } from '../offline/snapshotCache';
 
 export type ProductRow = {
   id: string;
@@ -16,6 +18,19 @@ export type ProductRow = {
   is_active: boolean;
 };
 
+export type ProductInput = {
+  code?: string;
+  barcode?: string;
+  name: string;
+  unit?: string;
+  price?: number;
+  cost?: number;
+  stock?: number;
+  min_stock?: number | null;
+  brand?: string;
+  category_code?: string;
+};
+
 const LIST_COLS = `id, code, barcode, name, unit,
   COALESCE(price, 0)::float8 AS price,
   COALESCE(cost, 0)::float8 AS cost,
@@ -23,7 +38,7 @@ const LIST_COLS = `id, code, barcode, name, unit,
   min_stock, brand, category_code,
   COALESCE(is_active, true) AS is_active`;
 
-export async function fetchProducts(search = '', limit = 200): Promise<ProductRow[]> {
+async function fetchProductsLive(search = '', limit = 200): Promise<ProductRow[]> {
   const table = productsTable();
   const fn = firmNr();
   const q = search.trim();
@@ -63,33 +78,208 @@ export async function fetchProducts(search = '', limit = 200): Promise<ProductRo
      LIMIT $3`,
     [fn, fn.replace(/^0+/, '') || fn, limit],
   );
+  // Boş arama = tam liste snapshot (offline yedek)
+  await saveProductsSnapshot(res.rows);
   return res.rows;
 }
 
+export async function fetchProducts(search = '', limit = 200): Promise<ProductRow[]> {
+  if (!shouldUseLiveData()) {
+    return getCachedProducts(search, limit);
+  }
+  try {
+    return await fetchProductsLive(search, limit);
+  } catch (e) {
+    // Hybrid: bridge/net hatasında son snapshot; Online politikada cache yok
+    if (getNetworkPolicy() === 'online') throw e;
+    const cached = await getCachedProducts(search, limit);
+    if (cached.length > 0) return cached;
+    throw e;
+  }
+}
+
 export async function fetchProductByBarcode(barcode: string): Promise<ProductRow | null> {
-  const table = productsTable();
   const code = barcode.trim();
   if (!code) return null;
-  const res = await pgQuery<ProductRow>(
-    `SELECT ${LIST_COLS}
-     FROM ${table}
-     WHERE COALESCE(is_active, true) = true
-       AND (barcode = $1 OR code = $1)
-     LIMIT 1`,
-    [code],
-  );
-  return res.rows[0] ?? null;
+
+  if (!shouldUseLiveData()) {
+    const rows = await getCachedProducts(code, 50);
+    return (
+      rows.find((r) => r.barcode === code || r.code === code) ??
+      rows[0] ??
+      null
+    );
+  }
+
+  const table = productsTable();
+  try {
+    const res = await pgQuery<ProductRow>(
+      `SELECT ${LIST_COLS}
+       FROM ${table}
+       WHERE COALESCE(is_active, true) = true
+         AND (barcode = $1 OR code = $1)
+       LIMIT 1`,
+      [code],
+    );
+    return res.rows[0] ?? null;
+  } catch {
+    const rows = await getCachedProducts(code, 50);
+    return rows.find((r) => r.barcode === code || r.code === code) ?? null;
+  }
 }
 
 export async function fetchProductById(id: string): Promise<ProductRow | null> {
   if (!id) return null;
+
+  if (!shouldUseLiveData()) {
+    const rows = await getCachedProducts('', 500);
+    return rows.find((r) => String(r.id) === String(id)) ?? null;
+  }
+
   const table = productsTable();
-  const res = await pgQuery<ProductRow>(
-    `SELECT ${LIST_COLS}
-     FROM ${table}
-     WHERE id::text = $1
-     LIMIT 1`,
-    [id],
-  );
-  return res.rows[0] ?? null;
+  try {
+    const res = await pgQuery<ProductRow>(
+      `SELECT ${LIST_COLS}
+       FROM ${table}
+       WHERE id::text = $1
+       LIMIT 1`,
+      [id],
+    );
+    return res.rows[0] ?? null;
+  } catch {
+    const rows = await getCachedProducts('', 500);
+    return rows.find((r) => String(r.id) === String(id)) ?? null;
+  }
+}
+
+/** Basit kod üretimi — P001, P002… */
+export async function generateProductCode(): Promise<string> {
+  const table = productsTable();
+  const fn = firmNr();
+  try {
+    const res = await pgQuery<{ code: string | null }>(
+      `SELECT code FROM ${table}
+       WHERE (
+         LPAD(TRIM(COALESCE(firm_nr, '')), 3, '0') = $1
+         OR TRIM(COALESCE(firm_nr, '')) = $2
+         OR firm_nr IS NULL
+       )
+       AND code ~ '^P[0-9]+$'
+       ORDER BY code DESC
+       LIMIT 1`,
+      [fn, fn.replace(/^0+/, '') || fn],
+    );
+    const last = res.rows[0]?.code;
+    if (!last) return 'P001';
+    const num = parseInt(String(last).slice(1), 10);
+    if (Number.isNaN(num)) return 'P001';
+    return `P${String(num + 1).padStart(3, '0')}`;
+  } catch {
+    return `P${Date.now().toString().slice(-3)}`;
+  }
+}
+
+/** Basit ürün oluştur (web ProductAPI.create alt kümesi) */
+export async function createProduct(input: ProductInput): Promise<string> {
+  if (!shouldUseLiveData()) {
+    throw new Error('Çevrimdışı: ürün oluşturma için canlı bağlantı gerekir');
+  }
+  const table = productsTable();
+  const fn = firmNr();
+  const id = newUuid();
+  const code = (input.code || '').trim() || (await generateProductCode());
+  const name = input.name.trim();
+  if (!name) throw new Error('Ürün adı zorunlu');
+
+  const price = Math.max(0, Number(input.price) || 0);
+  const cost = Math.max(0, Number(input.cost) || 0);
+  const stock = Number(input.stock) || 0;
+  const unit = (input.unit || 'AD').trim() || 'AD';
+  const barcode = input.barcode?.trim() || null;
+  const brand = input.brand?.trim() || null;
+  const category = input.category_code?.trim() || null;
+  const minStock =
+    input.min_stock === undefined || input.min_stock === null
+      ? null
+      : Number(input.min_stock);
+
+  const attempts: { sql: string; params: unknown[] }[] = [
+    {
+      sql: `INSERT INTO ${table} (
+         id, firm_nr, code, barcode, name, unit, price, cost, stock, min_stock,
+         brand, category_code, is_active, price_list_1
+       ) VALUES (
+         $1::uuid, $2, $3, $4, $5, $6, $7, $8, $9, $10,
+         $11, $12, true, $7
+       )`,
+      params: [id, fn, code, barcode, name, unit, price, cost, stock, minStock, brand, category],
+    },
+    {
+      sql: `INSERT INTO ${table} (
+         id, firm_nr, code, barcode, name, unit, price, cost, stock, min_stock,
+         brand, category_code, is_active
+       ) VALUES (
+         $1::uuid, $2, $3, $4, $5, $6, $7, $8, $9, $10,
+         $11, $12, true
+       )`,
+      params: [id, fn, code, barcode, name, unit, price, cost, stock, minStock, brand, category],
+    },
+    {
+      sql: `INSERT INTO ${table} (
+         id, firm_nr, code, barcode, name, unit, price, cost, stock, is_active
+       ) VALUES (
+         $1::uuid, $2, $3, $4, $5, $6, $7, $8, $9, true
+       )`,
+      params: [id, fn, code, barcode, name, unit, price, cost, stock],
+    },
+  ];
+
+  let lastErr: unknown;
+  for (const a of attempts) {
+    try {
+      await pgQuery(a.sql, a.params);
+      return id;
+    } catch (e) {
+      lastErr = e;
+    }
+  }
+  throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
+}
+
+export async function updateProduct(id: string, input: Partial<ProductInput>): Promise<void> {
+  if (!id) throw new Error('Ürün id gerekli');
+  if (!shouldUseLiveData()) {
+    throw new Error('Çevrimdışı: ürün güncelleme için canlı bağlantı gerekir');
+  }
+  const table = productsTable();
+  const sets: string[] = [];
+  const vals: unknown[] = [];
+  let i = 1;
+
+  const push = (col: string, v: unknown) => {
+    sets.push(`${col} = $${i++}`);
+    vals.push(v);
+  };
+
+  if (input.code !== undefined) push('code', input.code.trim() || null);
+  if (input.barcode !== undefined) push('barcode', input.barcode.trim() || null);
+  if (input.name !== undefined) push('name', input.name.trim());
+  if (input.unit !== undefined) push('unit', input.unit.trim() || null);
+  if (input.price !== undefined) push('price', Math.max(0, Number(input.price) || 0));
+  if (input.cost !== undefined) push('cost', Math.max(0, Number(input.cost) || 0));
+  if (input.stock !== undefined) push('stock', Number(input.stock) || 0);
+  if (input.min_stock !== undefined) {
+    push(
+      'min_stock',
+      input.min_stock === null || Number.isNaN(Number(input.min_stock))
+        ? null
+        : Number(input.min_stock),
+    );
+  }
+  if (input.brand !== undefined) push('brand', input.brand.trim() || null);
+  if (input.category_code !== undefined) push('category_code', input.category_code.trim() || null);
+
+  if (!sets.length) return;
+  vals.push(id);
+  await pgQuery(`UPDATE ${table} SET ${sets.join(', ')} WHERE id::text = $${i}`, vals);
 }

@@ -3,6 +3,7 @@ import { View, Text, Pressable, StyleSheet, TextInput } from 'react-native';
 import { ArrowLeft, Search } from 'lucide-react-native';
 import { useNavigation } from '@react-navigation/native';
 import { GradientHeader, HeaderIconButton } from './GradientHeader';
+import { ConnectivityBadge } from './ConnectivityBadge';
 import { useThemeStore } from '../store/themeStore';
 import { palette } from '../theme/colors';
 
@@ -11,9 +12,17 @@ type Props = {
   subtitle?: string;
   showBack?: boolean;
   right?: React.ReactNode;
+  /** Ağ rozeti (varsayılan açık) */
+  showConnectivity?: boolean;
 };
 
-export function ScreenHeader({ title, subtitle, showBack = true, right }: Props) {
+export function ScreenHeader({
+  title,
+  subtitle,
+  showBack = true,
+  right,
+  showConnectivity = true,
+}: Props) {
   const navigation = useNavigation();
   return (
     <GradientHeader compact>
@@ -33,6 +42,11 @@ export function ScreenHeader({ title, subtitle, showBack = true, right }: Props)
             <Text style={styles.sub} numberOfLines={1}>
               {subtitle}
             </Text>
+          ) : null}
+          {showConnectivity ? (
+            <View style={styles.badgeRow}>
+              <ConnectivityBadge onDark compact />
+            </View>
           ) : null}
         </View>
         {right ?? <View style={{ width: 36 }} />}
@@ -101,6 +115,7 @@ const styles = StyleSheet.create({
   mid: { flex: 1, minWidth: 0 },
   title: { color: palette.white, fontSize: 16, fontWeight: '700' },
   sub: { color: palette.blue100, fontSize: 10, marginTop: 2 },
+  badgeRow: { marginTop: 6 },
   searchWrap: {
     flexDirection: 'row',
     alignItems: 'center',

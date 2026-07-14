@@ -7,6 +7,8 @@ import {
   type ViewStyle,
   type StyleProp,
 } from 'react-native';
+import { StatusBar } from 'expo-status-bar';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradientFallback } from './LinearGradientFallback';
 import { palette } from '../theme/colors';
 
@@ -17,6 +19,12 @@ type Props = {
   children?: React.ReactNode;
   style?: StyleProp<ViewStyle>;
   compact?: boolean;
+  /**
+   * Status bar / notch üst boşluğu.
+   * Edge-to-edge app bar’larda true (varsayılan).
+   * Kart içi header’larda false — üst güvenli alanı ekran SafeAreaView sağlar.
+   */
+  safeTop?: boolean;
 };
 
 /** Login / Dashboard mavi-indigo gradient header */
@@ -27,12 +35,17 @@ export function GradientHeader({
   children,
   style,
   compact,
+  safeTop = true,
 }: Props) {
+  const insets = useSafeAreaInsets();
+  const paddingTop = (safeTop ? insets.top : 0) + (compact ? 12 : 16);
+
   return (
     <LinearGradientFallback
       colors={[palette.blue600, palette.indigo600, palette.blue700]}
-      style={[styles.header, compact && styles.compact, style]}
+      style={[styles.header, compact && styles.compact, { paddingTop }, style]}
     >
+      {safeTop ? <StatusBar style="light" /> : null}
       <View style={styles.gloss} pointerEvents="none" />
       {(title || right) && (
         <View style={styles.topRow}>
@@ -71,12 +84,10 @@ export function HeaderIconButton({
 const styles = StyleSheet.create({
   header: {
     paddingHorizontal: 24,
-    paddingTop: 48,
     paddingBottom: 36,
     overflow: 'hidden',
   },
   compact: {
-    paddingTop: 16,
     paddingBottom: 12,
     paddingHorizontal: 16,
   },

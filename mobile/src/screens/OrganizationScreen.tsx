@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -24,27 +24,45 @@ import {
   type PeriodRow,
 } from '../api/pgClient';
 import { palette } from '../theme/colors';
-import type { AuthStackParamList } from '../navigation/types';
+import type { AuthStackParamList, MainStackParamList, PendingUser } from '../navigation/types';
 
-type Props = NativeStackScreenProps<AuthStackParamList, 'Organization'>;
+type AuthProps = NativeStackScreenProps<AuthStackParamList, 'Organization'>;
+type MainProps = NativeStackScreenProps<MainStackParamList, 'Organization'>;
+type Props = AuthProps | MainProps;
+
+function isLoginRoute(
+  params: AuthStackParamList['Organization'] | MainStackParamList['Organization'] | undefined,
+): params is AuthStackParamList['Organization'] {
+  return !!(params && typeof params === 'object' && 'pendingUser' in params);
+}
 
 export function OrganizationScreen({ navigation, route }: Props) {
   const { t } = useTranslation();
   const { colors, darkMode } = useThemeStore();
   const login = useAuthStore((s) => s.login);
-  const { pendingUser, offlineDemo } = route.params;
+  const updateOrg = useAuthStore((s) => s.updateOrg);
+  const sessionUser = useAuthStore((s) => s.user);
+
+  const loginParams = isLoginRoute(route.params) ? route.params : null;
+  const isSwitch = !loginParams;
+  const seed: PendingUser | null = loginParams?.pendingUser ?? sessionUser;
+  const offlineDemo = loginParams?.offlineDemo === true;
 
   const [firms, setFirms] = useState<FirmRow[]>([]);
   const [stores, setStores] = useState<StoreRow[]>([]);
   const [periods, setPeriods] = useState<PeriodRow[]>([]);
-  const [firmNr, setFirmNr] = useState(pendingUser.firmNr || '001');
-  const [storeId, setStoreId] = useState(pendingUser.storeId || '');
-  const [storeName, setStoreName] = useState(pendingUser.storeName || '');
-  const [periodNr, setPeriodNr] = useState(pendingUser.periodNr || '01');
+  const [firmNr, setFirmNr] = useState(seed?.firmNr || '001');
+  const [storeId, setStoreId] = useState(seed?.storeId || '');
+  const [storeName, setStoreName] = useState(seed?.storeName || '');
+  const [periodNr, setPeriodNr] = useState(seed?.periodNr || '01');
   const [loading, setLoading] = useState(true);
   const [showFirms, setShowFirms] = useState(false);
   const [showStores, setShowStores] = useState(false);
   const [showPeriods, setShowPeriods] = useState(false);
+  const storeIdRef = useRef(storeId);
+  const periodNrRef = useRef(periodNr);
+  storeIdRef.current = storeId;
+  periodNrRef.current = periodNr;
 
   useEffect(() => {
     let cancelled = false;
@@ -57,53 +75,91 @@ export function OrganizationScreen({ navigation, route }: Props) {
           { nr: '01', label: 'Dönem 01' },
           { nr: '02', label: 'Dönem 02' },
         ]);
-        setStoreId('1');
-        setStoreName('Merkez Mağaza');
+        if (!storeIdRef.current) {
+          setStoreId('1');
+          setStoreName('Merkez Mağaza');
+        }
         setLoading(false);
         return;
       }
-      const [f, p] = await Promise.all([fetchFirms(), fetchPeriods(firmNr)]);
+      const fn = firmNr;
+      const [f, p, s] = await Promise.all([
+        fetchFirms(),
+        fetchPeriods(fn),
+        fetchStores(fn),
+      ]);
       if (cancelled) return;
-      setFirms(f.length ? f : [{ firm_nr: firmNr, name: `Firma ${firmNr}` }]);
+      setFirms(f.length ? f : [{ firm_nr: fn, name: `Firma ${fn}` }]);
       setPeriods(p);
-      const s = await fetchStores(firmNr);
-      if (cancelled) return;
       setStores(s);
-      if (s[0] && !storeId) {
-        setStoreId(s[0].id);
-        setStoreName(s[0].name);
+      if (s.length && !storeIdRef.current) {
+        setStoreId(s[0]!.id);
+        setStoreName(s[0]!.name);
       }
       setLoading(false);
     })();
     return () => {
       cancelled = true;
     };
+    // İlk yükleme — firma değişince aşağıdaki effect
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [offlineDemo]);
 
   useEffect(() => {
     if (offlineDemo || loading) return;
+    let cancelled = false;
     void (async () => {
       const [s, p] = await Promise.all([fetchStores(firmNr), fetchPeriods(firmNr)]);
+      if (cancelled) return;
       setStores(s);
       setPeriods(p);
-      if (s[0]) {
+      const keepStore = s.find((x) => x.id === storeIdRef.current);
+      if (keepStore) {
+        setStoreName(keepStore.name);
+      } else if (s[0]) {
         setStoreId(s[0].id);
         setStoreName(s[0].name);
+      } else {
+        setStoreId('');
+        setStoreName('');
       }
-      if (p[0]) setPeriodNr(p[0].nr);
+      if (!p.find((x) => x.nr === periodNrRef.current) && p[0]) {
+        setPeriodNr(p[0].nr);
+      }
     })();
-  }, [firmNr]);
+    return () => {
+      cancelled = true;
+    };
+  }, [firmNr, offlineDemo, loading]);
+
+  if (!seed) {
+    return (
+      <SafeAreaView style={[styles.safe, { backgroundColor: colors.background }]} edges={['top']}>
+        <Text style={{ color: colors.text, padding: 24 }}>{t('loginRequired')}</Text>
+        <PrimaryButton label={t('back')} onPress={() => navigation.goBack()} variant="ghost" />
+      </SafeAreaView>
+    );
+  }
 
   const selectedFirmName =
     firms.find((f) => f.firm_nr === firmNr)?.name || t('selectFirm');
 
-  const onEnter = () => {
-    login({
-      ...pendingUser,
+  const onConfirm = () => {
+    const org = {
       firmNr,
       periodNr,
       storeId: storeId || null,
       storeName: storeName || null,
+    };
+    if (isSwitch) {
+      updateOrg(org);
+      const nav = navigation as { canGoBack: () => boolean; goBack: () => void };
+      if (nav.canGoBack()) nav.goBack();
+      return;
+    }
+    login({
+      ...seed,
+      ...org,
     });
   };
 
@@ -112,8 +168,15 @@ export function OrganizationScreen({ navigation, route }: Props) {
     borderColor: darkMode ? palette.gray700 : palette.gray100,
   };
 
+  const subtitle = isSwitch
+    ? `${seed.fullName} · ${t('changeOrganizationHint')}`
+    : `${seed.fullName} · ${t('step02Scope')}`;
+
   return (
-    <SafeAreaView style={[styles.safe, { backgroundColor: colors.background }]} edges={['bottom']}>
+    <SafeAreaView
+      style={[styles.safe, { backgroundColor: colors.background }]}
+      edges={['top', 'bottom']}
+    >
       <ScrollView contentContainerStyle={styles.scroll}>
         <View
           style={[
@@ -126,12 +189,12 @@ export function OrganizationScreen({ navigation, route }: Props) {
         >
           <GradientHeader
             compact
+            safeTop={false}
             title={t('organization')}
-            subtitle={`${pendingUser.fullName} · ${t('step02Scope')}`}
+            subtitle={subtitle}
           />
 
           <View style={styles.form}>
-            {/* Tab benzeri — web Login organization */}
             <View style={styles.tabBar}>
               <View style={[styles.tabActive, { backgroundColor: palette.blue600 }]}>
                 <Text style={styles.tabText}>{t('firmSelection')}</Text>
@@ -145,7 +208,7 @@ export function OrganizationScreen({ navigation, route }: Props) {
                 <SelectRow
                   icon={<Building2 size={16} color={palette.gray400} />}
                   label={t('firmSelection')}
-                  hint={t('step02Scope')}
+                  hint={isSwitch ? t('runtimeScope') : t('step02Scope')}
                   value={selectedFirmName}
                   colors={colors}
                   darkMode={darkMode}
@@ -193,22 +256,26 @@ export function OrganizationScreen({ navigation, route }: Props) {
                 />
                 {showStores && (
                   <View style={[styles.dropdown, listStyle]}>
-                    {stores.map((s) => (
-                      <Pressable
-                        key={s.id}
-                        onPress={() => {
-                          setStoreId(s.id);
-                          setStoreName(s.name);
-                          setShowStores(false);
-                        }}
-                        style={[styles.dropItem, { borderBottomColor: listStyle.borderColor }]}
-                      >
-                        <Text style={[styles.dropTitle, { color: colors.text }]}>{s.name}</Text>
-                        {s.region ? (
-                          <Text style={styles.dropCode}>REGION: {s.region}</Text>
-                        ) : null}
-                      </Pressable>
-                    ))}
+                    {stores.length === 0 ? (
+                      <Text style={{ color: colors.textMuted, padding: 12 }}>{t('selectStore')}</Text>
+                    ) : (
+                      stores.map((s) => (
+                        <Pressable
+                          key={s.id}
+                          onPress={() => {
+                            setStoreId(s.id);
+                            setStoreName(s.name);
+                            setShowStores(false);
+                          }}
+                          style={[styles.dropItem, { borderBottomColor: listStyle.borderColor }]}
+                        >
+                          <Text style={[styles.dropTitle, { color: colors.text }]}>{s.name}</Text>
+                          {s.region ? (
+                            <Text style={styles.dropCode}>REGION: {s.region}</Text>
+                          ) : null}
+                        </Pressable>
+                      ))
+                    )}
                   </View>
                 )}
 
@@ -249,7 +316,11 @@ export function OrganizationScreen({ navigation, route }: Props) {
               </>
             )}
 
-            <PrimaryButton label={t('enterApp')} onPress={onEnter} disabled={loading} />
+            <PrimaryButton
+              label={isSwitch ? t('applyOrganization') : t('enterApp')}
+              onPress={onConfirm}
+              disabled={loading}
+            />
             <PrimaryButton
               label={t('back')}
               onPress={() => navigation.goBack()}

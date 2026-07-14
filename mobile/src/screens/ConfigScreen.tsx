@@ -20,9 +20,13 @@ import {
   useConfigStore,
   type DbConfig,
   type DbMode,
+  type NetworkPolicy,
   type PgEndpoint,
 } from '../store/configStore';
 import { testBridgeConnection } from '../api/pgClient';
+import { ConnectivityBadge } from '../components/ConnectivityBadge';
+import { flushPendingMutations } from '../offline/syncEngine';
+import { useConnectivityStore } from '../store/connectivityStore';
 import { palette } from '../theme/colors';
 import type { AuthStackParamList } from '../navigation/types';
 
@@ -31,6 +35,7 @@ type Props = NativeStackScreenProps<AuthStackParamList, 'Config'>;
 function cloneConfig(c: DbConfig): DbConfig {
   return {
     ...c,
+    networkPolicy: c.networkPolicy ?? 'hybrid',
     local: { ...c.local },
     remote: { ...c.remote },
   };
@@ -132,6 +137,54 @@ export function ConfigScreen({ navigation }: Props) {
     );
   };
 
+  const NetPolicyChip = ({ mode, label }: { mode: NetworkPolicy; label: string }) => {
+    const active = (draft.networkPolicy ?? 'hybrid') === mode;
+    return (
+      <Pressable
+        onPress={() => patch({ networkPolicy: mode })}
+        style={[
+          styles.modeChip,
+          {
+            backgroundColor: active
+              ? palette.indigo600
+              : darkMode
+                ? palette.gray700
+                : palette.gray100,
+            borderColor: active
+              ? palette.indigo600
+              : darkMode
+                ? palette.gray600
+                : palette.gray200,
+          },
+        ]}
+      >
+        <Text
+          style={[
+            styles.modeChipText,
+            { color: active ? palette.white : colors.textMuted },
+          ]}
+        >
+          {label}
+        </Text>
+      </Pressable>
+    );
+  };
+
+  const pendingCount = useConnectivityStore((s) => s.pendingCount);
+  const syncing = useConnectivityStore((s) => s.syncing);
+
+  const onFlushQueue = async () => {
+    const result = await flushPendingMutations();
+    if (result.skipped) {
+      Alert.alert(t('connSync'), t('connSyncSkipped'));
+      return;
+    }
+    Alert.alert(
+      t('connSync'),
+      t('connSyncResult', { ok: result.ok, failed: result.failed }),
+    );
+  };
+
   const renderPgSection = (
     which: 'local' | 'remote',
     title: string,
@@ -202,7 +255,10 @@ export function ConfigScreen({ navigation }: Props) {
   };
 
   return (
-    <SafeAreaView style={[styles.safe, { backgroundColor: colors.background }]} edges={['bottom']}>
+    <SafeAreaView
+      style={[styles.safe, { backgroundColor: colors.background }]}
+      edges={['top', 'bottom']}
+    >
       <KeyboardAvoidingView
         style={styles.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -219,8 +275,10 @@ export function ConfigScreen({ navigation }: Props) {
           >
             <GradientHeader
               compact
+              safeTop={false}
               title={t('configTitle')}
               subtitle={t('configSubtitle')}
+              right={<ConnectivityBadge onDark compact />}
             />
 
             <View style={styles.form}>
@@ -237,6 +295,30 @@ export function ConfigScreen({ navigation }: Props) {
               <Text style={[styles.activeTarget, { color: palette.blue500 }]}>
                 {t('activeTarget')}: {activeHint}
               </Text>
+
+              <Text style={[styles.section, { color: colors.textMuted }]}>
+                {t('networkPolicy')}
+              </Text>
+              <View style={styles.modeRow}>
+                <NetPolicyChip mode="online" label={t('connOnline')} />
+                <NetPolicyChip mode="offline" label={t('connOffline')} />
+                <NetPolicyChip mode="hybrid" label={t('connHybrid')} />
+              </View>
+              <Text style={[styles.hint, { color: colors.textSubtle }]}>
+                {(draft.networkPolicy ?? 'hybrid') === 'online'
+                  ? t('networkPolicyOnlineHint')
+                  : (draft.networkPolicy ?? 'hybrid') === 'offline'
+                    ? t('networkPolicyOfflineHint')
+                    : t('networkPolicyHybridHint')}
+              </Text>
+              {pendingCount > 0 ? (
+                <PrimaryButton
+                  label={t('connSyncPending', { count: pendingCount })}
+                  onPress={() => void onFlushQueue()}
+                  loading={syncing}
+                  variant="ghost"
+                />
+              ) : null}
 
               <Text style={[styles.section, { color: colors.textMuted }]}>
                 pg_bridge

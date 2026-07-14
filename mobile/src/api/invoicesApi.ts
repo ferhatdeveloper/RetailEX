@@ -1,5 +1,5 @@
 import { pgQuery } from './pgClient';
-import { firmNr, periodNr, saleItemsTable, salesTable } from './erpTables';
+import { firmNr, newUuid, periodNr, productsTable, saleItemsTable, salesTable } from './erpTables';
 
 export type InvoiceRow = {
   id: string;
@@ -160,4 +160,139 @@ export async function fetchInvoiceById(id: string): Promise<InvoiceDetail | null
   }
 
   return { ...row, lines };
+}
+
+export type InvoiceDraftLine = {
+  productId: string;
+  code?: string | null;
+  name: string;
+  qty: number;
+  unitPrice: number;
+  unit?: string | null;
+};
+
+function nextSalesFicheNo(): string {
+  const d = new Date();
+  const pad = (n: number, w = 2) => String(n).padStart(w, '0');
+  const stamp =
+    `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}` +
+    `${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
+  return `SF-${stamp}`;
+}
+
+/** Basit satış faturası — POS ile aynı tablolar, trcode=0 (standart satış) */
+export async function createSalesInvoice(opts: {
+  customerId?: string;
+  customerName: string;
+  notes?: string;
+  paymentMethod?: string;
+  lines: InvoiceDraftLine[];
+}): Promise<{ id: string; ficheNo: string; total: number }> {
+  if (!opts.lines.length) throw new Error('En az bir kalem gerekli');
+
+  const fn = firmNr();
+  const pn = periodNr();
+  const sales = salesTable(fn, pn);
+  const items = saleItemsTable(fn, pn);
+  const { useAuthStore } = await import('../store/authStore');
+
+  const id = newUuid();
+  const ficheNo = nextSalesFicheNo();
+  const total = opts.lines.reduce((s, l) => s + l.unitPrice * l.qty, 0);
+  const user = useAuthStore.getState().user;
+  const cashier = user?.fullName || user?.username || 'mobile';
+  const customerName = opts.customerName.trim() || 'Perakende';
+
+  await pgQuery(
+    `INSERT INTO ${sales} (
+       id, firm_nr, period_nr, fiche_no, document_no, date,
+       fiche_type, trcode, customer_id, customer_name,
+       total_net, total_vat, total_gross, total_discount, net_amount,
+       currency, currency_rate, status, payment_method, cashier, notes
+     ) VALUES (
+       $1::uuid, $2, $3, $4, $4, NOW(),
+       'sales', 0, $5::uuid, $6,
+       $7, 0, $7, 0, $7,
+       'TRY', 1, 'approved', $8, $9, $10
+     )`,
+    [
+      id,
+      fn,
+      pn,
+      ficheNo,
+      opts.customerId || null,
+      customerName,
+      total,
+      opts.paymentMethod || 'Nakit',
+      cashier,
+      opts.notes?.trim() || 'RetailEX Mobile Fatura',
+    ],
+  );
+
+  for (const line of opts.lines) {
+    const lineNet = line.unitPrice * line.qty;
+    const lineId = newUuid();
+    await pgQuery(
+      `INSERT INTO ${items} (
+         id, invoice_id, firm_nr, period_nr,
+         product_id, item_code, item_name,
+         quantity, unit_price, net_amount, total_amount, unit
+       ) VALUES (
+         $1::uuid, $2::uuid, $3, $4,
+         $5::uuid, $6, $7,
+         $8, $9, $10, $10, $11
+       )`,
+      [
+        lineId,
+        id,
+        fn,
+        pn,
+        line.productId,
+        line.code ?? null,
+        line.name,
+        line.qty,
+        line.unitPrice,
+        lineNet,
+        line.unit || 'Adet',
+      ],
+    );
+
+    try {
+      await pgQuery(
+        `UPDATE ${productsTable(fn)}
+         SET stock = COALESCE(stock, 0) - $1, updated_at = NOW()
+         WHERE id::text = $2`,
+        [line.qty, line.productId],
+      );
+    } catch {
+      /* şema farkı */
+    }
+  }
+
+  return { id, ficheNo, total };
+}
+
+/** Mevcut fatura — not ve durum güncelleme (mobil düzenleme) */
+export async function updateInvoiceHeader(
+  id: string,
+  patch: { notes?: string; status?: string },
+): Promise<void> {
+  if (!id) throw new Error('Fatura id gerekli');
+  const table = salesTable();
+  const sets: string[] = [];
+  const vals: unknown[] = [];
+  let i = 1;
+
+  if (patch.notes !== undefined) {
+    sets.push(`notes = $${i++}`);
+    vals.push(patch.notes.trim() || null);
+  }
+  if (patch.status !== undefined) {
+    sets.push(`status = $${i++}`);
+    vals.push(patch.status.trim() || null);
+  }
+  if (!sets.length) return;
+
+  vals.push(id);
+  await pgQuery(`UPDATE ${table} SET ${sets.join(', ')} WHERE id::text = $${i}`, vals);
 }

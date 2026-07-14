@@ -8,6 +8,7 @@ import {
   Menu,
 } from 'lucide-react-native';
 import { useTranslation } from 'react-i18next';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { DashboardScreen } from '../screens/DashboardScreen';
 import { PosScreen } from '../screens/PosScreen';
 import { ProductsScreen } from '../screens/ProductsScreen';
@@ -22,6 +23,8 @@ const Tab = createBottomTabNavigator<MainTabParamList>();
 export function MainTabNavigator() {
   const { t } = useTranslation();
   const { colors, darkMode } = useThemeStore();
+  const insets = useSafeAreaInsets();
+  const tabBottom = Math.max(insets.bottom, 8);
 
   return (
     <Tab.Navigator
@@ -32,8 +35,8 @@ export function MainTabNavigator() {
         tabBarStyle: {
           backgroundColor: colors.tabBar,
           borderTopColor: darkMode ? palette.gray700 : palette.gray200,
-          height: 60,
-          paddingBottom: 8,
+          height: 52 + tabBottom,
+          paddingBottom: tabBottom,
           paddingTop: 6,
         },
         tabBarLabelStyle: {

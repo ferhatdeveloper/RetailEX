@@ -2,7 +2,7 @@
   "expo": {
     "name": "RetailEX",
     "slug": "retailex-mobile",
-    "version": "0.1.0",
+    "version": "0.1.224",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
@@ -20,8 +20,11 @@
         "NSAppTransportSecurity": {
           "NSAllowsArbitraryLoads": true,
           "NSAllowsLocalNetworking": true
-        }
-      }
+        },
+        "NSLocationWhenInUseUsageDescription": "RetailEX teslimat kuryesi için canlı konum paylaşımı ister.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "RetailEX teslimat sırasında konum güncellemesi ister."
+      },
+      "buildNumber": "1224"
     },
     "android": {
       "package": "app.retailex.mobile",
@@ -32,13 +35,33 @@
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "usesCleartextTraffic": true
+      "usesCleartextTraffic": true,
+      "versionCode": 1224,
+      "permissions": [
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "RetailEX barkod okumak için kameraya erişim ister.",
+          "recordAudioAndroid": false,
+          "barcodeScannerEnabled": true
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "RetailEX teslimat kuryesi için canlı konum paylaşımı ister.",
+          "isAndroidForegroundServiceEnabled": false
+        }
+      ]
     ]
   }
 }

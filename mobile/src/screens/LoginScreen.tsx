@@ -8,6 +8,7 @@ import {
   Platform,
   Pressable,
   Switch,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
@@ -25,16 +26,20 @@ import { FormField } from '../components/FormField';
 import { GradientHeader, HeaderIconButton } from '../components/GradientHeader';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { useThemeStore } from '../store/themeStore';
+import { useLanguageStore } from '../store/languageStore';
 import { isConfigReady, useConfigStore } from '../store/configStore';
 import { verifyLogin, normalizeFirmNr } from '../api/pgClient';
+import { reloadAppForRtl } from '../i18n/languages';
 import { palette } from '../theme/colors';
 import type { AuthStackParamList } from '../navigation/types';
 
 type Props = NativeStackScreenProps<AuthStackParamList, 'Login'>;
 
 export function LoginScreen({ navigation }: Props) {
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
   const { colors, darkMode, toggleDarkMode } = useThemeStore();
+  const language = useLanguageStore((s) => s.language);
+  const cycleLanguage = useLanguageStore((s) => s.cycleLanguage);
   const config = useConfigStore((s) => s.config);
   const configHydrated = useConfigStore((s) => s.isHydrated);
 
@@ -53,7 +58,13 @@ export function LoginScreen({ navigation }: Props) {
   }, [configHydrated, config, navigation]);
 
   const toggleLang = () => {
-    void i18n.changeLanguage(i18n.language === 'tr' ? 'en' : 'tr');
+    const rtlChanged = cycleLanguage();
+    if (rtlChanged) {
+      Alert.alert(t('languageSelection'), t('rtlRestartHint'), [
+        { text: t('cancel'), style: 'cancel' },
+        { text: t('continue'), onPress: () => reloadAppForRtl() },
+      ]);
+    }
   };
 
   const openConfig = () => navigation.navigate('Config');
@@ -94,7 +105,10 @@ export function LoginScreen({ navigation }: Props) {
   };
 
   return (
-    <SafeAreaView style={[styles.safe, { backgroundColor: colors.background }]} edges={['bottom']}>
+    <SafeAreaView
+      style={[styles.safe, { backgroundColor: colors.background }]}
+      edges={['top', 'bottom']}
+    >
       <KeyboardAvoidingView
         style={styles.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -112,7 +126,7 @@ export function LoginScreen({ navigation }: Props) {
               },
             ]}
           >
-            <GradientHeader>
+            <GradientHeader safeTop={false}>
               <View style={styles.toolpad}>
                 <HeaderIconButton onPress={toggleDarkMode}>
                   {darkMode ? (
@@ -122,7 +136,10 @@ export function LoginScreen({ navigation }: Props) {
                   )}
                 </HeaderIconButton>
                 <HeaderIconButton onPress={toggleLang}>
-                  <Languages size={14} color={palette.white} />
+                  <View style={styles.langBadge}>
+                    <Languages size={12} color={palette.white} />
+                    <Text style={styles.langBadgeText}>{language.toUpperCase()}</Text>
+                  </View>
                 </HeaderIconButton>
                 <HeaderIconButton accent onPress={openConfig}>
                   <Database size={14} color={palette.white} />
@@ -242,6 +259,17 @@ const styles = StyleSheet.create({
     zIndex: 20,
     flexDirection: 'row',
     gap: 4,
+  },
+  langBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+  },
+  langBadgeText: {
+    color: palette.white,
+    fontSize: 9,
+    fontWeight: '800',
+    letterSpacing: 0.5,
   },
   logoBlock: {
     alignItems: 'center',

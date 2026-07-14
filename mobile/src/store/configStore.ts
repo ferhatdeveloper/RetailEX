@@ -6,6 +6,13 @@ import { createJSONStorage, persist } from 'zustand/middleware';
 /** Web Login `db_mode`: offline≈local, online≈uzak. Mobil UI: local | online */
 export type DbMode = 'local' | 'online';
 
+/**
+ * Cihaz ağ politikası (NetInfo + cache).
+ * `dbMode` ile karıştırma: dbMode = hangi PG ucu; networkPolicy = canlı mı / cache mi.
+ * Ayrıntı: `src/offline/HYBRID_POLICY.md`
+ */
+export type NetworkPolicy = 'online' | 'offline' | 'hybrid';
+
 export type PgEndpoint = {
   host: string;
   port: number;
@@ -19,6 +26,12 @@ export type DbConfig = {
   bridgePort: number;
   /** local = şube/yerel PG; online = merkez/uzak PG */
   dbMode: DbMode;
+  /**
+   * online = her zaman bridge/PG;
+   * offline = yalnızca cache + kuyruk;
+   * hybrid = net varken PG, yokken cache (varsayılan)
+   */
+  networkPolicy: NetworkPolicy;
   local: PgEndpoint;
   remote: PgEndpoint;
   /** Kullanıcı en az bir kez Kaydet’e bastı */
@@ -35,6 +48,7 @@ type LegacyFlatConfig = Partial<{
   user: string;
   password: string;
   dbMode: DbMode;
+  networkPolicy: NetworkPolicy;
   local: Partial<PgEndpoint>;
   remote: Partial<PgEndpoint>;
   isConfigured: boolean;
@@ -66,6 +80,7 @@ const DEFAULT_CONFIG: DbConfig = {
   bridgeHost: defaultBridgeHost(),
   bridgePort: 3001,
   dbMode: 'local',
+  networkPolicy: 'hybrid',
   local: { ...DEFAULT_LOCAL },
   remote: { ...DEFAULT_REMOTE },
   isConfigured: false,
@@ -108,6 +123,10 @@ export function migrateDbConfig(raw: LegacyFlatConfig | DbConfig | null | undefi
   }
 
   const dbMode: DbMode = flat.dbMode === 'online' ? 'online' : 'local';
+  const networkPolicy: NetworkPolicy =
+    flat.networkPolicy === 'online' || flat.networkPolicy === 'offline'
+      ? flat.networkPolicy
+      : 'hybrid';
 
   return {
     bridgeHost:
@@ -116,6 +135,7 @@ export function migrateDbConfig(raw: LegacyFlatConfig | DbConfig | null | undefi
         : DEFAULT_CONFIG.bridgeHost,
     bridgePort: Number(flat.bridgePort) > 0 ? Number(flat.bridgePort) : DEFAULT_CONFIG.bridgePort,
     dbMode,
+    networkPolicy,
     local,
     remote,
     isConfigured: flat.isConfigured === true,

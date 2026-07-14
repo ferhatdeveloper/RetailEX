@@ -6,15 +6,23 @@ import {
   StyleSheet,
   ActivityIndicator,
   RefreshControl,
+  Pressable,
 } from 'react-native';
+import { ClipboardList } from 'lucide-react-native';
+import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { ScreenHeader, SearchBar, EmptyState, ErrorBanner } from '../components/ScreenChrome';
 import { fetchWmsStock, fetchWmsSummary, type WmsStockRow } from '../api/wmsApi';
 import { formatMoney } from '../api/erpTables';
 import { useThemeStore } from '../store/themeStore';
+import { useOrgEpoch } from '../hooks/useOrgEpoch';
 import { palette } from '../theme/colors';
+import type { MainStackParamList } from '../navigation/types';
 
 export function WmsScreen() {
   const { colors } = useThemeStore();
+  const navigation = useNavigation<NativeStackNavigationProp<MainStackParamList>>();
+  const orgEpoch = useOrgEpoch();
   const [search, setSearch] = useState('');
   const [rows, setRows] = useState<WmsStockRow[]>([]);
   const [summary, setSummary] = useState({ productCount: 0, belowMin: 0, zeroStock: 0, totalStockValue: 0 });
@@ -32,7 +40,7 @@ export function WmsScreen() {
     } finally {
       setLoading(false);
     }
-  }, [search]);
+  }, [search, orgEpoch]);
 
   useEffect(() => {
     setLoading(true);
@@ -43,6 +51,19 @@ export function WmsScreen() {
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
       <ScreenHeader title="WMS / Depo" subtitle="Stok durumu" />
+      <Pressable
+        onPress={() => navigation.navigate('WmsCount')}
+        style={[styles.countBanner, { backgroundColor: colors.card, borderColor: palette.blue600 }]}
+      >
+        <ClipboardList size={20} color={palette.blue600} />
+        <View style={{ flex: 1 }}>
+          <Text style={{ color: colors.text, fontWeight: '700' }}>Stok sayım fişi</Text>
+          <Text style={{ color: colors.textMuted, fontSize: 11 }}>
+            Fiş oluştur, barkod okut, satır kaydet
+          </Text>
+        </View>
+        <Text style={{ color: palette.blue600, fontWeight: '800', fontSize: 11 }}>Aç →</Text>
+      </Pressable>
       <View style={styles.kpiRow}>
         {[
           { l: 'Ürün', v: String(summary.productCount) },
@@ -90,6 +111,16 @@ export function WmsScreen() {
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
+  countBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginHorizontal: 12,
+    marginTop: 8,
+    borderWidth: 1,
+    borderRadius: 10,
+    padding: 12,
+  },
   kpiRow: { flexDirection: 'row', gap: 4, paddingHorizontal: 8, paddingTop: 8 },
   kpi: { flex: 1, borderWidth: 1, borderRadius: 8, padding: 6 },
   lbl: { fontSize: 9, color: '#6b7280', fontWeight: '600' },

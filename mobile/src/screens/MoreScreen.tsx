@@ -1,19 +1,41 @@
 import React from 'react';
-import { View, Text, StyleSheet, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Pressable, Alert } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { LayoutGrid, List } from 'lucide-react-native';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { ScreenHeader } from '../components/ScreenChrome';
+import { ConnectivityBadge } from '../components/ConnectivityBadge';
 import { useThemeStore } from '../store/themeStore';
+import { usePreferencesStore, type MenuViewMode } from '../store/preferencesStore';
+import { useLanguageStore } from '../store/languageStore';
 import { useAuthStore } from '../store/authStore';
+import { useConfigStore, type NetworkPolicy } from '../store/configStore';
+import { useConnectivityStore } from '../store/connectivityStore';
+import { flushPendingMutations } from '../offline/syncEngine';
 import { MENU_SECTIONS } from '../config/menuConfig';
 import { navigateToModule } from '../navigation/navigateToModule';
+import {
+  APP_LANGUAGES,
+  LANGUAGE_LABEL_KEYS,
+  reloadAppForRtl,
+  type AppLanguage,
+} from '../i18n/languages';
+import { palette } from '../theme/colors';
 import type { MainStackParamList } from '../navigation/types';
 
 export function MoreScreen() {
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
   const { darkMode, toggleDarkMode, colors } = useThemeStore();
+  const language = useLanguageStore((s) => s.language);
+  const setLanguage = useLanguageStore((s) => s.setLanguage);
+  const menuViewMode = usePreferencesStore((s) => s.menuViewMode);
+  const setMenuViewMode = usePreferencesStore((s) => s.setMenuViewMode);
+  const networkPolicy = useConfigStore((s) => s.config.networkPolicy ?? 'hybrid');
+  const setConfig = useConfigStore((s) => s.setConfig);
+  const pendingCount = useConnectivityStore((s) => s.pendingCount);
+  const syncing = useConnectivityStore((s) => s.syncing);
   const logout = useAuthStore((s) => s.logout);
   const navigation = useNavigation<NativeStackNavigationProp<MainStackParamList>>();
 
@@ -27,6 +49,41 @@ export function MoreScreen() {
     { label: 'Raporlar', screen: 'customreports' },
     { label: 'Sistem', screen: 'usermanagement' },
   ];
+
+  const viewOptions: { mode: MenuViewMode; labelKey: 'menuViewCards' | 'menuViewList'; Icon: typeof LayoutGrid }[] =
+    [
+      { mode: 'list', labelKey: 'menuViewList', Icon: List },
+      { mode: 'cards', labelKey: 'menuViewCards', Icon: LayoutGrid },
+    ];
+
+  const netOptions: { mode: NetworkPolicy; labelKey: 'connOnline' | 'connOffline' | 'connHybrid' }[] = [
+    { mode: 'online', labelKey: 'connOnline' },
+    { mode: 'offline', labelKey: 'connOffline' },
+    { mode: 'hybrid', labelKey: 'connHybrid' },
+  ];
+
+  const onSelectLanguage = (lang: AppLanguage) => {
+    if (lang === language) return;
+    const rtlChanged = setLanguage(lang);
+    if (rtlChanged) {
+      Alert.alert(t('languageSelection'), t('rtlRestartHint'), [
+        { text: t('cancel'), style: 'cancel' },
+        { text: t('continue'), onPress: () => reloadAppForRtl() },
+      ]);
+    }
+  };
+
+  const onFlush = async () => {
+    const result = await flushPendingMutations();
+    if (result.skipped) {
+      Alert.alert(t('connSync'), t('connSyncSkipped'));
+      return;
+    }
+    Alert.alert(
+      t('connSync'),
+      t('connSyncResult', { ok: result.ok, failed: result.failed }),
+    );
+  };
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
@@ -42,20 +99,148 @@ export function MoreScreen() {
             style={{ marginBottom: 8 }}
           />
         ))}
-        <Text style={[styles.sec, { color: colors.text, marginTop: 12 }]}>Ayarlar</Text>
+
+        {/* Menü görünümü — dil/tema bölümünden ayrı (çakışma azaltma) */}
+        <Text style={[styles.sec, { color: colors.text, marginTop: 12 }]}>{t('menuViewMode')}</Text>
+        <View style={styles.modeRow}>
+          {viewOptions.map(({ mode, labelKey, Icon }) => {
+            const active = menuViewMode === mode;
+            return (
+              <Pressable
+                key={mode}
+                onPress={() => setMenuViewMode(mode)}
+                style={[
+                  styles.modeChip,
+                  {
+                    backgroundColor: active ? palette.blue600 : colors.card,
+                    borderColor: active ? palette.blue600 : colors.cardBorder,
+                  },
+                ]}
+              >
+                <Icon size={16} color={active ? palette.white : colors.textMuted} />
+                <Text
+                  style={{
+                    color: active ? palette.white : colors.text,
+                    fontSize: 12,
+                    fontWeight: '700',
+                  }}
+                >
+                  {t(labelKey)}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+
+        <Text style={[styles.sec, { color: colors.text, marginTop: 12 }]}>{t('networkPolicy')}</Text>
+        <View style={{ marginBottom: 8 }}>
+          <ConnectivityBadge />
+        </View>
+        <View style={styles.modeRow}>
+          {netOptions.map(({ mode, labelKey }) => {
+            const active = networkPolicy === mode;
+            return (
+              <Pressable
+                key={mode}
+                onPress={() => setConfig({ networkPolicy: mode })}
+                style={[
+                  styles.modeChip,
+                  {
+                    backgroundColor: active ? palette.indigo600 : colors.card,
+                    borderColor: active ? palette.indigo600 : colors.cardBorder,
+                  },
+                ]}
+              >
+                <Text
+                  style={{
+                    color: active ? palette.white : colors.text,
+                    fontSize: 11,
+                    fontWeight: '700',
+                    textAlign: 'center',
+                  }}
+                >
+                  {t(labelKey)}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+        <Text style={[styles.hint, { color: colors.textSubtle }]}>
+          {networkPolicy === 'online'
+            ? t('networkPolicyOnlineHint')
+            : networkPolicy === 'offline'
+              ? t('networkPolicyOfflineHint')
+              : t('networkPolicyHybridHint')}
+        </Text>
+        {pendingCount > 0 ? (
+          <PrimaryButton
+            label={t('connSyncPending', { count: pendingCount })}
+            onPress={() => void onFlush()}
+            loading={syncing}
+            variant="ghost"
+            style={{ marginTop: 8 }}
+          />
+        ) : null}
+
+        <Text style={[styles.sec, { color: colors.text, marginTop: 12 }]}>{t('settings')}</Text>
+        <PrimaryButton
+          label={t('changeOrganization')}
+          onPress={() => navigation.navigate('Organization')}
+          variant="ghost"
+          style={{ marginBottom: 8 }}
+        />
+
+        <Text style={[styles.subSec, { color: colors.textMuted }]}>{t('appearance')}</Text>
         <PrimaryButton
           label={darkMode ? t('lightMode') : t('darkMode')}
           onPress={toggleDarkMode}
           variant="ghost"
           style={{ marginBottom: 8 }}
         />
-        <PrimaryButton
-          label={`${t('language')}: ${i18n.language.toUpperCase()}`}
-          onPress={() => void i18n.changeLanguage(i18n.language === 'tr' ? 'en' : 'tr')}
-          variant="ghost"
-          style={{ marginBottom: 8 }}
-        />
-        <PrimaryButton label={t('logout')} onPress={logout} variant="danger" />
+
+        <Text style={[styles.subSec, { color: colors.textMuted }]}>{t('languageSelection')}</Text>
+        <View style={styles.langGrid}>
+          {APP_LANGUAGES.map((code) => {
+            const active = language === code;
+            return (
+              <Pressable
+                key={code}
+                onPress={() => onSelectLanguage(code)}
+                style={[
+                  styles.langChip,
+                  {
+                    backgroundColor: active ? palette.blue600 : colors.card,
+                    borderColor: active ? palette.blue600 : colors.cardBorder,
+                  },
+                ]}
+              >
+                <Text
+                  style={{
+                    color: active ? palette.white : colors.text,
+                    fontSize: 13,
+                    fontWeight: '700',
+                    textAlign: 'center',
+                  }}
+                >
+                  {t(LANGUAGE_LABEL_KEYS[code])}
+                </Text>
+                <Text
+                  style={{
+                    color: active ? 'rgba(255,255,255,0.8)' : colors.textSubtle,
+                    fontSize: 10,
+                    fontWeight: '600',
+                    textAlign: 'center',
+                    marginTop: 2,
+                  }}
+                >
+                  {code.toUpperCase()}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+
+        <PrimaryButton label={t('logout')} onPress={logout} variant="danger" style={{ marginTop: 16 }} />
       </ScrollView>
     </View>
   );
@@ -65,4 +250,32 @@ const styles = StyleSheet.create({
   root: { flex: 1 },
   body: { padding: 16, paddingBottom: 48 },
   sec: { fontSize: 13, fontWeight: '800', marginBottom: 8 },
+  subSec: { fontSize: 11, fontWeight: '700', marginBottom: 6, marginTop: 4 },
+  modeRow: { flexDirection: 'row', gap: 8, marginBottom: 4 },
+  modeChip: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 8,
+  },
+  hint: { fontSize: 11, lineHeight: 16, marginBottom: 4 },
+  langGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 4,
+  },
+  langChip: {
+    width: '47%',
+    flexGrow: 1,
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 10,
+  },
 });

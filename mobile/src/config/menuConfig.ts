@@ -333,12 +333,28 @@ export type LiveRoute =
   | 'Reports'
   | 'ReportSales'
   | 'ReportStock'
+  | 'ReportMizan'
+  | 'ReportCariExtract'
   | 'Beauty'
   | 'Wms'
+  | 'WmsCount'
   | 'Restaurant'
+  | 'Delivery'
+  | 'Organization'
+  | 'System'
   | 'Module';
 
 const LIVE_MAP: Record<string, LiveRoute> = {
+  'firm-period-definitions': 'Organization',
+  organization: 'Organization',
+  'change-organization': 'Organization',
+  usermanagement: 'System',
+  roleauth: 'System',
+  menumanagement: 'System',
+  logaudit: 'System',
+  pendingposdevices: 'System',
+  backuprestore: 'System',
+  'supabase-migration': 'System',
   products: 'Products',
   materials: 'Products',
   'material-definitions': 'Products',
@@ -346,7 +362,7 @@ const LIVE_MAP: Record<string, LiveRoute> = {
   suppliers: 'Customers',
   customers: 'Customers',
   'finance-cards': 'Customers',
-  'customer-extract': 'Customers',
+  'customer-extract': 'ReportCariExtract',
   salesinvoice: 'Invoices',
   'sales-invoice-standard': 'Invoices',
   'sales-invoice-retail': 'Invoices',
@@ -368,9 +384,10 @@ const LIVE_MAP: Record<string, LiveRoute> = {
   'profit-dashboard': 'ReportSales',
   'bi-dashboard': 'ReportSales',
   'category-group-profit-report': 'ReportSales',
-  financereports: 'ReportSales',
-  'financereports-cash': 'ReportSales',
-  'financereports-bank': 'ReportSales',
+  financereports: 'ReportMizan',
+  'financereports-cash': 'ReportMizan',
+  'financereports-bank': 'ReportMizan',
+  mizan: 'ReportMizan',
   'customer-in-out-totals': 'ReportSales',
   'report-slip-list': 'ReportSales',
   'report-critical-stock': 'ReportStock',
@@ -388,15 +405,16 @@ const LIVE_MAP: Record<string, LiveRoute> = {
   'beauty-services': 'Beauty',
   'beauty-specialists': 'Beauty',
   'wms-hub': 'Wms',
-  stockcounting: 'Wms',
+  stockcounting: 'WmsCount',
   'wave-picking': 'Wms',
-  'mobile-inventory-count': 'Wms',
+  'mobile-inventory-count': 'WmsCount',
   stockmovements: 'Wms',
   'stockmovements-deficit': 'Wms',
   'stockmovements-surplus': 'Wms',
   restaurant: 'Restaurant',
   'restaurant-tables': 'Restaurant',
   'restaurant-orders': 'Restaurant',
+  logistics: 'Delivery',
 };
 
 export function resolveLiveRoute(screen: string): LiveRoute {

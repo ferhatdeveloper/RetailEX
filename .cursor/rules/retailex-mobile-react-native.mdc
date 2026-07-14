@@ -1,0 +1,40 @@
+---
+description: RetailEX mobil hedefi React Native/Expo (mobile/) — Capacitor/WebView yasak; Android CI = RN
+alwaysApply: true
+---
+
+# RetailEX mobil — React Native / Expo
+
+## Hedef
+
+- **Android ve iOS hedefi:** React Native + Expo → **`mobile/`**
+- **Native UI** (View, Text, FlatList, React Navigation) — zorunlu
+- **Yasak:** Capacitor / Cordova / WebView ile Vite SPA (`src/`) paketlemek
+- Kök **`android/`** (Capacitor) **legacy / kaldırıldı**; yeni özellikler yalnızca **`mobile/`** içine yazılır
+
+## Geliştirme
+
+| Ortam | Kullanım |
+|-------|----------|
+| **Expo Go** | Hızlı UI / API denemesi (`npm run mobile:start`) |
+| **Dev client / emülatör** | Native modül gerekirken (`npm run mobile:android`) |
+| **Release APK/AAB** | GitHub Actions (`android-release.yml`) veya ileride EAS |
+
+- Sürüm: kök **`package.json`** → `"version"` (`app-version-single-source.mdc`); CI `scripts/sync-mobile-version.mjs` ile `mobile/app.json` hizalar
+- Git: yalnızca **`main`** (`git-main-only-workflow.mdc`)
+- Yerel bridge: kökte `npm run bridge` (:3001); emülatör host `10.0.2.2`
+
+## Android CI (“Android derle”)
+
+- Workflow: **`.github/workflows/android-release.yml`** — **RN/Expo `mobile/`**, Capacitor değil
+- Tag: **`android-v{version}`** (ör. `android-v0.1.224`)
+- Tetikleme: tag push **veya** `npm run android:ci:build` (`scripts/trigger-android-release.mjs`)
+- Artifact: `RetailEX-Android-{version}.apk` (imza secret yoksa debug/preview APK)
+- Push sonrası soru: `git-ask-ci-build-after-push.mdc` → **1 — Android derle** = bu RN akışı
+
+## Yapma
+
+- Yeni mobil ekranı Capacitor `android/` veya web SPA WebView ile “mobil” sayma
+- `npx expo export` / web export’u Android release sanma — **APK/AAB** üret
+- Feature branch / PR
+- `android-v*` tag’ini Capacitor derlemesine bağlama

@@ -17,6 +17,17 @@ export function periodNr(): string {
   return (p || '01').padStart(2, '0').slice(0, 10);
 }
 
+/** Oturumdaki aktif mağaza — WMS sayım vb. */
+export function storeId(): string | null {
+  const id = useAuthStore.getState().user?.storeId;
+  return id ? String(id) : null;
+}
+
+export function storeName(): string | null {
+  const n = useAuthStore.getState().user?.storeName;
+  return n ? String(n) : null;
+}
+
 export function productsTable(fn = firmNr()): string {
   return `rex_${fn}_products`;
 }
@@ -25,8 +36,16 @@ export function customersTable(fn = firmNr()): string {
   return `rex_${fn}_customers`;
 }
 
+export function suppliersTable(fn = firmNr()): string {
+  return `rex_${fn}_suppliers`;
+}
+
 export function salesTable(fn = firmNr(), pn = periodNr()): string {
   return `rex_${fn}_${pn}_sales`;
+}
+
+export function accountMovementsTable(fn = firmNr(), pn = periodNr()): string {
+  return `rex_${fn}_${pn}_account_movements`;
 }
 
 export function saleItemsTable(fn = firmNr(), pn = periodNr()): string {
@@ -35,6 +54,31 @@ export function saleItemsTable(fn = firmNr(), pn = periodNr()): string {
 
 export function cashLinesTable(fn = firmNr(), pn = periodNr()): string {
   return `rex_${fn}_${pn}_cash_lines`;
+}
+
+/** rest / beauty şema tabloları — web postgres prefix deseni */
+export function restTablesTable(fn = firmNr()): string {
+  return `rest.rex_${fn}_rest_tables`;
+}
+
+export function restOrdersTable(fn = firmNr(), pn = periodNr()): string {
+  return `rest.rex_${fn}_${pn}_rest_orders`;
+}
+
+export function restOrderItemsTable(fn = firmNr(), pn = periodNr()): string {
+  return `rest.rex_${fn}_${pn}_rest_order_items`;
+}
+
+export function beautyAppointmentsTable(fn = firmNr(), pn = periodNr()): string {
+  return `beauty.rex_${fn}_${pn}_beauty_appointments`;
+}
+
+export function beautyServicesTable(fn = firmNr()): string {
+  return `beauty.rex_${fn}_beauty_services`;
+}
+
+export function beautySpecialistsTable(fn = firmNr()): string {
+  return `beauty.rex_${fn}_beauty_specialists`;
 }
 
 /** Basit UUID — Expo'da crypto.randomUUID her zaman yok */

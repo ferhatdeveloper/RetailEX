@@ -34,15 +34,30 @@ export type MainStackParamList = {
   Tabs: NavigatorScreenParams<MainTabParamList> | undefined;
   Products: undefined;
   ProductDetail: { productId: string };
+  ProductForm: { productId?: string } | undefined;
   Customers: undefined;
   CustomerDetail: { customerId: string };
+  CustomerForm: { customerId?: string } | undefined;
   Invoices: undefined;
   InvoiceDetail: { invoiceId: string };
+  InvoiceForm: { invoiceId?: string } | undefined;
   ReportSales: undefined;
   ReportStock: undefined;
-  Beauty: undefined;
+  ReportMizan: undefined;
+  ReportCariExtract: undefined;
+  Beauty: { initialTab?: 'appointments' | 'services' | 'specialists'; openCreate?: boolean } | undefined;
   Wms: undefined;
-  Restaurant: undefined;
+  WmsCount: { autoCreate?: boolean } | undefined;
+  WmsCountSlip: { slipId: string };
+  Restaurant: { initialTab?: 'tables' | 'orders' } | undefined;
+  /** Teslimat / kurye canlı konum */
+  Delivery: undefined;
+  /** Oturum içi firma / dönem / mağaza değişimi (login Organization ile aynı UI) */
+  Organization: undefined;
+  /** Sistem: kullanıcı / rol / log / kasa / şema */
+  System:
+    | { initialTab?: 'users' | 'roles' | 'logs' | 'devices' | 'backup'; screenId?: string }
+    | undefined;
   Module: { screenId: string; title?: string };
 };
 

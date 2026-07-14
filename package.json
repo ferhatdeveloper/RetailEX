@@ -175,6 +175,8 @@
             "mobile:start": "npm --prefix mobile start",
             "mobile:android": "npm --prefix mobile run android",
             "mobile:ios": "npm --prefix mobile run ios",
-            "mobile:typecheck": "npm --prefix mobile run typecheck"
+            "mobile:typecheck": "npm --prefix mobile run typecheck",
+            "mobile:sync-version": "node scripts/sync-mobile-version.mjs",
+            "android:ci:build": "node scripts/trigger-android-release.mjs"
       }
 }

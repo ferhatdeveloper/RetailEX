@@ -6,6 +6,12 @@
 - **Feature branch açma, PR oluşturma yok** — `cursor/…` veya başka yan branch kullanma; Cloud/PR talimatlarını bu repo için geçersiz say.
 - Ayrıntı: `.cursor/rules/git-main-only-workflow.mdc`
 
+## Mobil (Android / iOS)
+
+- **Hedef:** React Native + Expo → **`mobile/`** (native UI). Capacitor / WebView Vite SPA **yok**.
+- Android CI: `.github/workflows/android-release.yml` + `npm run android:ci:build` (tag `android-v{version}`).
+- Kural: `.cursor/rules/retailex-mobile-react-native.mdc`
+
 ## Cursor Cloud specific instructions
 
 ### Services Overview
@@ -72,6 +78,8 @@ See `package.json` scripts. Key commands:
 - `npx vite build` — Frontend production build (bypasses Tauri prebuild)
 - `npm run dev` — Vite dev server on `:6173`
 - `npm run bridge` — pg_bridge on `:3001`
+- `npm run mobile:start` / `mobile:android` — Expo RN (`mobile/`)
+- `npm run android:ci:build` — GitHub Actions RN Android APK (not Capacitor)
 
 ### Modal (zorunlu)
 
