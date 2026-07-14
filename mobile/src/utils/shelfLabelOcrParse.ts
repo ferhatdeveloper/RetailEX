@@ -24,12 +24,15 @@ const UNIT_RE =
   /\b(?:birim|unit)[:\s]*([A-Za-zğüşıöçĞÜŞİÖÇ]{1,12})\b|\b(adet|ad\.?|kg|gr|g\.?|lt|l\.?|ml|paket|pkt|koli|çuval|cuval|mt|m\.?)\b/i;
 
 const CODE_RE =
-  /(?:ürün\s*kodu|urun\s*kodu|stok\s*kodu|malzeme\s*kodu|sku|kod)[:\s#]*([A-Za-z0-9\-_./]{2,24})/i;
+  /(?:ürün\s*kodu|urun\s*kodu|stok\s*kodu|malzeme\s*kodu|sku|kod|plu)[:\s#]*([A-Za-z0-9\-_./]{2,24})/i;
+
+/** Terazi / massa etiketi PLU (örn. PLU 67, P067) */
+const PLU_RE = /\bPLU\s*[#:.]?\s*([A-Za-z]?\d{1,6})\b/i;
 
 const VAT_RE = /(?:kdv|vat)\s*%?\s*[:\s]*(\d{1,2})(?:[.,]\d+)?/i;
 
 const PRICE_LABEL_RE =
-  /(?:fiyat|satış|satis|price|tutar)[\s:]*([\d.,]+)\s*(?:tl|try|₺)?/i;
+  /(?:fiyat|satış|satis|price|tutar|birim\s*fiyat)[\s:]*([\d.,]+)\s*(?:tl|try|₺)?(?:\s*\/?\s*kg)?/i;
 
 function normalizeUnit(raw: string): string {
   const u = raw.trim().toLocaleLowerCase('tr-TR');
@@ -71,15 +74,20 @@ function extractBarcode(flat: string, lines: string[]): string | undefined {
 }
 
 function extractPrice(flat: string): number | undefined {
-  const pr = flat.match(/(\d{1,6})[.,](\d{2})\s*(?:tl|try|₺)?/i);
-  if (pr) {
-    const n = parseFloat(`${pr[1]}.${pr[2]}`);
-    if (n > 0) return n;
-  }
   const labeled = flat.match(PRICE_LABEL_RE);
   if (labeled?.[1]) {
     const n = parseTrAmount(labeled[1]);
     if (n != null && n > 0) return n;
+  }
+  const perKg = flat.match(/(\d{1,6})[.,](\d{2})\s*(?:tl|try|₺)?\s*\/?\s*kg/i);
+  if (perKg) {
+    const n = parseFloat(`${perKg[1]}.${perKg[2]}`);
+    if (n > 0) return n;
+  }
+  const pr = flat.match(/(\d{1,6})[.,](\d{2})\s*(?:tl|try|₺)/i);
+  if (pr) {
+    const n = parseFloat(`${pr[1]}.${pr[2]}`);
+    if (n > 0) return n;
   }
   const w = flat.match(/\b(\d{1,5})\s*(?:TL|TRY|₺)\b/i);
   if (w) {
@@ -142,8 +150,14 @@ export function parseShelfLabelOcr(blocks: string[]): ParsedProductFields {
   let code: string | undefined;
   const cm = flat.match(CODE_RE);
   if (cm?.[1]) code = cm[1].slice(0, 24);
-  else if (barcode && barcode.length <= 14) {
-    // Barkodu kod olarak da önermiyoruz — ayrı alan kalır
+  if (!code) {
+    const plu = flat.match(PLU_RE);
+    if (plu?.[1]) {
+      const raw = plu[1].trim();
+      code = /^[A-Za-z]/.test(raw)
+        ? raw.toUpperCase().slice(0, 24)
+        : `P${raw.padStart(3, '0')}`.slice(0, 24);
+    }
   }
 
   let vatRate: number | undefined;

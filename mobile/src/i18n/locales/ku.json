@@ -283,6 +283,24 @@
     "addManual": "فۆرمی دەستی",
     "addWithId": "بە ناسنامە زیاد بکە"
   },
+  "docScan": {
+    "scanDocument": "بەڵگە پشکنە",
+    "gallery": "لە گەلەری هەڵبژێرە",
+    "manualContinue": "بێ وێنە بەردەوام بە (دەستی)",
+    "processing": "پشکنین و OCR…",
+    "permissionTitle": "مۆڵەت پێویستە",
+    "cameraPermission": "بۆ پشکنینی بەڵگە کامێرا ڕێگە بدە.",
+    "galleryPermission": "بۆ هەڵبژاردن یان پاشەکەوت گەلەری ڕێگە بدە.",
+    "saveToGallery": "بەڵگە لە گەلەری پاشەکەوت بکە",
+    "saveToGalleryHint": "وێنەی پشکنراو لە ئەلبوومی RetailEX پاشەکەوت دەکات.",
+    "savedToGallery": "بەڵگە لە گەلەری پاشەکەوت کرا.",
+    "saveFailed": "گەلەری پاشەکەوت نەبوو — دەتوانیت بەردەوام بیت.",
+    "nativeScanOk": "قەراغ و گۆشە چاککرا (native scanner).",
+    "fallbackScanOk": "Expo Go: بڕین + کوالێتی. قەراغی تەواو EAS پێویستە.",
+    "invoiceCaptureHint": "وەک Adobe Scan پشکنە پاشان OCR. Expo Go بڕین بەکاردەهێنێت.",
+    "ocrEmptyInvoice": "دەق نەخوێندرایەوە — بە دەستی پڕ بکە.",
+    "ocrOkInvoice": "OCR {{lines}} هێڵ — پشکنە و پشتڕاست بکە."
+  },
   "materialScan": {
     "title": "بە کامێرا ماددە زیاد بکە",
     "subtitle": "لایبڵی ڕەف · بارکۆد · نرخ",

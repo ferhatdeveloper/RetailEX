@@ -11,9 +11,11 @@ import {
   FlatList,
   KeyboardAvoidingView,
   Platform,
+  Switch,
 } from 'react-native';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useTranslation } from 'react-i18next';
 import { ImageIcon, ScanLine, Trash2, Plus, FilePlus } from 'lucide-react-native';
 import { ScreenHeader, ErrorBanner, SearchBar } from '../components/ScreenChrome';
 import { FormField } from '../components/FormField';
@@ -33,11 +35,7 @@ import { fetchSuppliers, type SupplierRow } from '../api/suppliersApi';
 import { fetchProducts, type ProductRow } from '../api/productsApi';
 import { formatMoney, newUuid } from '../api/erpTables';
 import { parseInvoiceOcr, type ParsedInvoiceFields } from '../utils/documentOcrParse';
-import {
-  extractTextFromImageUri,
-  pickImageFromCamera,
-  pickImageFromGallery,
-} from '../utils/scanOcr';
+import { runDocumentScanPipeline } from '../utils/documentScanPipeline';
 import { useThemeStore } from '../store/themeStore';
 import { palette } from '../theme/colors';
 import type { MainStackParamList } from '../navigation/types';
@@ -57,42 +55,6 @@ const KIND_OPTIONS: { id: InvoiceFormKind; label: string }[] = [
 
 function isSupplierKind(kind: InvoiceFormKind): boolean {
   return kind === 'purchase' || kind === 'service-received';
-}
-
-async function tryExtractOcr(uri: string): Promise<{
-  fields: ParsedInvoiceFields;
-  ocrAvailable: boolean;
-  ocrError?: string;
-}> {
-  // Native OCR — Expo Go / web'de olmayabilir (ham JS hatası kullanıcıya sızmaz)
-  try {
-    const { blocks, ocrAvailable, ocrError } = await extractTextFromImageUri(uri);
-    if (ocrError === 'ocrUnsupported') {
-      return {
-        fields: parseInvoiceOcr([]),
-        ocrAvailable: false,
-        ocrError:
-          'OCR bu ortamda kullanılamıyor (Expo Go veya native derleme gerekir). Alanları elle doldurun.',
-      };
-    }
-    if (ocrError) {
-      return {
-        fields: parseInvoiceOcr([]),
-        ocrAvailable: false,
-        ocrError: 'OCR açılamadı. Manuel doldurma ile devam edin.',
-      };
-    }
-    return {
-      fields: parseInvoiceOcr(Array.isArray(blocks) ? blocks : []),
-      ocrAvailable,
-    };
-  } catch {
-    return {
-      fields: parseInvoiceOcr([]),
-      ocrAvailable: false,
-      ocrError: 'OCR açılamadı. Manuel doldurma ile devam edin.',
-    };
-  }
 }
 
 function fieldsToDraftLines(
@@ -139,6 +101,7 @@ function fieldsToDraftLines(
 }
 
 export function DocumentScanScreen() {
+  const { t } = useTranslation();
   const { colors } = useThemeStore();
   const navigation = useNavigation<NativeStackNavigationProp<MainStackParamList>>();
   const route = useRoute<RouteProp<MainStackParamList, 'DocumentScan'>>();
@@ -151,6 +114,7 @@ export function DocumentScanScreen() {
   const [rawPreview, setRawPreview] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [saveToGallery, setSaveToGallery] = useState(false);
 
   const [kind, setKind] = useState<InvoiceFormKind>(initialKind);
   const [partyId, setPartyId] = useState<string | undefined>();
@@ -235,59 +199,76 @@ export function DocumentScanScreen() {
     setLines(fieldsToDraftLines(fields, matched));
   }, []);
 
-  const processUri = useCallback(
-    async (uri: string) => {
-      setImageUri(uri);
+  const runScan = useCallback(
+    async (fromGallery: boolean) => {
       setOcrBusy(true);
       setError(null);
       setOcrHint(null);
       try {
-        const { fields, ocrAvailable, ocrError } = await tryExtractOcr(uri);
-        if (ocrError) setOcrHint(ocrError);
-        else if (ocrAvailable && !fields.rawText.trim()) {
-          setOcrHint('Metin okunamadı — cari, tutar ve kalemleri elle girin.');
+        const res = await runDocumentScanPipeline({
+          maxPages: 1,
+          fromGallery,
+          saveToGallery,
+          albumName: 'RetailEX',
+        });
+        if (res.canceled) return;
+        if ('permissionDenied' in res && res.permissionDenied) {
+          Alert.alert(
+            t('docScan.permissionTitle'),
+            res.permissionDenied === 'camera'
+              ? t('docScan.cameraPermission')
+              : t('docScan.galleryPermission'),
+          );
+          return;
+        }
+        if (!('uri' in res)) return;
+
+        setImageUri(res.uri);
+        const { blocks, ocrAvailable, ocrError } = res.ocr;
+        const used = parseInvoiceOcr(Array.isArray(blocks) ? blocks : []);
+        const scanNote =
+          res.mode === 'native' ? t('docScan.nativeScanOk') : t('docScan.fallbackScanOk');
+        if (ocrError === 'ocrUnsupported') {
+          setOcrHint(
+            `${scanNote}\nOCR bu ortamda kullanılamıyor (Expo Go veya native derleme gerekir). Alanları elle doldurun.`,
+          );
+        } else if (ocrError) {
+          setOcrHint(`${scanNote}\nOCR açılamadı. Manuel doldurma ile devam edin.`);
+        } else if (ocrAvailable && !used.rawText.trim()) {
+          setOcrHint(`${scanNote}\n${t('docScan.ocrEmptyInvoice')}`);
         } else if (ocrAvailable) {
           setOcrHint(
-            `OCR ${fields.ocrLines.length} satır buldu. Alanları kontrol edip onaylayın.`,
+            `${scanNote}\n${t('docScan.ocrOkInvoice', { lines: used.ocrLines.length })}`,
+          );
+        } else {
+          setOcrHint(scanNote);
+        }
+        if (saveToGallery) {
+          setOcrHint((prev) =>
+            `${prev ?? ''}\n${
+              res.savedToGallery ? t('docScan.savedToGallery') : t('docScan.saveFailed')
+            }`.trim(),
           );
         }
-        await applyParsed(fields);
+        await applyParsed(used);
         setStep('review');
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e));
       } finally {
         setOcrBusy(false);
       }
     },
-    [applyParsed],
+    [applyParsed, saveToGallery, t],
   );
 
   const pickCamera = async () => {
     setError(null);
-    try {
-      const res = await pickImageFromCamera(0.85);
-      if (res.canceled) return;
-      if ('permissionDenied' in res) {
-        Alert.alert('İzin gerekli', 'Belge çekmek için kamera izni verin.');
-        return;
-      }
-      await processUri(res.uri);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    }
+    await runScan(false);
   };
 
   const pickGallery = async () => {
     setError(null);
-    try {
-      const res = await pickImageFromGallery(0.85);
-      if (res.canceled) return;
-      if ('permissionDenied' in res) {
-        Alert.alert('İzin gerekli', 'Galeriden seçmek için izin verin.');
-        return;
-      }
-      await processUri(res.uri);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    }
+    await runScan(true);
   };
 
   const skipToManual = () => {
@@ -455,26 +436,50 @@ export function DocumentScanScreen() {
                 Fatura / irsaliye fotoğrafı
               </Text>
               <Text style={[styles.heroSub, { color: colors.textMuted }]}>
-                Kamerayla çekin veya galeriden seçin. Mümkünse cihaz OCR ile alan önerilir;
-                yoksa manuel sihirbazla devam edin.
+                {t('docScan.invoiceCaptureHint')}
               </Text>
             </View>
 
+            <View
+              style={[
+                styles.saveRow,
+                {
+                  backgroundColor: colors.card,
+                  borderColor: colors.cardBorder,
+                  marginTop: 14,
+                },
+              ]}
+            >
+              <View style={{ flex: 1, paddingRight: 10 }}>
+                <Text style={{ color: colors.text, fontWeight: '700', fontSize: 13 }}>
+                  {t('docScan.saveToGallery')}
+                </Text>
+                <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 2 }}>
+                  {t('docScan.saveToGalleryHint')}
+                </Text>
+              </View>
+              <Switch
+                value={saveToGallery}
+                onValueChange={setSaveToGallery}
+                trackColor={{ false: colors.cardBorder, true: palette.blue600 }}
+              />
+            </View>
+
             <PrimaryButton
-              label="Kamera ile çek"
+              label={t('docScan.scanDocument')}
               onPress={() => void pickCamera()}
               loading={ocrBusy}
               style={{ marginTop: 16 }}
             />
             <PrimaryButton
-              label="Galeriden seç"
+              label={t('docScan.gallery')}
               onPress={() => void pickGallery()}
               loading={ocrBusy}
               variant="ghost"
               style={{ marginTop: 10 }}
             />
             <PrimaryButton
-              label="Fotoğrafsız devam (manuel)"
+              label={t('docScan.manualContinue')}
               onPress={skipToManual}
               variant="ghost"
               style={{ marginTop: 10 }}
@@ -483,7 +488,9 @@ export function DocumentScanScreen() {
             {ocrBusy ? (
               <View style={styles.busyRow}>
                 <ActivityIndicator color={palette.blue600} />
-                <Text style={{ color: colors.textMuted, marginLeft: 10 }}>OCR işleniyor…</Text>
+                <Text style={{ color: colors.textMuted, marginLeft: 10 }}>
+                  {t('docScan.processing')}
+                </Text>
               </View>
             ) : null}
 
@@ -849,6 +856,14 @@ const styles = StyleSheet.create({
   },
   heroTitle: { fontSize: 18, fontWeight: '800', textAlign: 'center' },
   heroSub: { fontSize: 13, textAlign: 'center', lineHeight: 18 },
+  saveRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
   busyRow: { flexDirection: 'row', alignItems: 'center', marginTop: 16, justifyContent: 'center' },
   kindRow: { marginTop: 24 },
   sectionLabel: {

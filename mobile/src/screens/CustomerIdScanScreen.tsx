@@ -13,6 +13,7 @@ import {
   Alert,
   ActivityIndicator,
   Pressable,
+  Switch,
 } from 'react-native';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -33,11 +34,7 @@ import {
   type IdentityDocKind,
   type ParsedIdentityFields,
 } from '../utils/identityCardOcrParse';
-import {
-  extractTextFromImageUri,
-  pickImageFromCamera,
-  pickImageFromGallery,
-} from '../utils/scanOcr';
+import { runDocumentScanPipeline } from '../utils/documentScanPipeline';
 import { useThemeStore } from '../store/themeStore';
 import { palette } from '../theme/colors';
 import type { MainStackParamList } from '../navigation/types';
@@ -67,19 +64,6 @@ const EMPTY_FORM: FormState = {
   phone: '',
   notes: '',
 };
-
-async function tryExtractIdentityOcr(uri: string): Promise<{
-  fields: ParsedIdentityFields;
-  ocrAvailable: boolean;
-  ocrError?: string;
-}> {
-  const { blocks, ocrAvailable, ocrError } = await extractTextFromImageUri(uri);
-  return {
-    fields: parseIdentityCardOcr(blocks),
-    ocrAvailable,
-    ocrError,
-  };
-}
 
 function parsedToForm(fields: ParsedIdentityFields, code: string): FormState {
   const noteBits = ['Kimlik / kart taramadan oluşturuldu'];
@@ -129,6 +113,7 @@ export function CustomerIdScanScreen() {
   const [form, setForm] = useState<FormState>({ ...EMPTY_FORM });
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [saveToGallery, setSaveToGallery] = useState(false);
 
   const typeOptions = useMemo(
     () =>
@@ -178,14 +163,34 @@ export function CustomerIdScanScreen() {
     [cardType, t],
   );
 
-  const processUri = useCallback(
-    async (uri: string) => {
-      setImageUri(uri);
+  const runScan = useCallback(
+    async (fromGallery: boolean) => {
       setOcrBusy(true);
       setError(null);
       setOcrHint(null);
       try {
-        const { fields, ocrAvailable, ocrError } = await tryExtractIdentityOcr(uri);
+        const res = await runDocumentScanPipeline({
+          maxPages: 1,
+          fromGallery,
+          saveToGallery,
+          albumName: 'RetailEX',
+        });
+        if (res.canceled) return;
+        if ('permissionDenied' in res && res.permissionDenied) {
+          Alert.alert(
+            t('idScan.permissionTitle'),
+            res.permissionDenied === 'camera'
+              ? t('idScan.cameraPermission')
+              : t('idScan.galleryPermission'),
+          );
+          return;
+        }
+        if (!('uri' in res)) return;
+
+        setImageUri(res.uri);
+        const { blocks, ocrAvailable, ocrError } = res.ocr;
+        const fields = parseIdentityCardOcr(Array.isArray(blocks) ? blocks : []);
+
         if (ocrError === 'ocrUnsupported') {
           await openConfirmWithParsed(fields, 'ocrUnsupported');
         } else if (ocrError) {
@@ -195,43 +200,34 @@ export function CustomerIdScanScreen() {
         } else {
           await openConfirmWithParsed(fields);
         }
+
+        const scanNote =
+          res.mode === 'native' ? t('docScan.nativeScanOk') : t('docScan.fallbackScanOk');
+        setOcrHint((prev) => `${scanNote}\n${prev ?? ''}`.trim());
+        if (saveToGallery) {
+          setOcrHint((prev) =>
+            `${prev ?? ''}\n${
+              res.savedToGallery ? t('docScan.savedToGallery') : t('docScan.saveFailed')
+            }`.trim(),
+          );
+        }
       } catch {
         await openConfirmWithParsed(parseIdentityCardOcr([]), 'ocrFailed');
       } finally {
         setOcrBusy(false);
       }
     },
-    [openConfirmWithParsed],
+    [openConfirmWithParsed, saveToGallery, t],
   );
 
   const pickCamera = async () => {
     setError(null);
-    try {
-      const res = await pickImageFromCamera(0.9);
-      if (res.canceled) return;
-      if ('permissionDenied' in res) {
-        Alert.alert(t('idScan.permissionTitle'), t('idScan.cameraPermission'));
-        return;
-      }
-      await processUri(res.uri);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    }
+    await runScan(false);
   };
 
   const pickGallery = async () => {
     setError(null);
-    try {
-      const res = await pickImageFromGallery(0.9);
-      if (res.canceled) return;
-      if ('permissionDenied' in res) {
-        Alert.alert(t('idScan.permissionTitle'), t('idScan.galleryPermission'));
-        return;
-      }
-      await processUri(res.uri);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    }
+    await runScan(true);
   };
 
   const skipManual = async () => {
@@ -317,6 +313,27 @@ export function CustomerIdScanScreen() {
 
         <Text style={[styles.hint, { color: colors.textMuted }]}>{t('idScan.captureHint')}</Text>
 
+        <View
+          style={[
+            styles.saveRow,
+            { backgroundColor: colors.card, borderColor: colors.cardBorder },
+          ]}
+        >
+          <View style={{ flex: 1, paddingRight: 10 }}>
+            <Text style={{ color: colors.text, fontWeight: '700', fontSize: 13 }}>
+              {t('docScan.saveToGallery')}
+            </Text>
+            <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 2 }}>
+              {t('docScan.saveToGalleryHint')}
+            </Text>
+          </View>
+          <Switch
+            value={saveToGallery}
+            onValueChange={setSaveToGallery}
+            trackColor={{ false: colors.cardBorder, true: palette.blue600 }}
+          />
+        </View>
+
         {ocrBusy ? (
           <View style={styles.busyBox}>
             <ActivityIndicator color={palette.blue600} />
@@ -329,7 +346,7 @@ export function CustomerIdScanScreen() {
               style={[styles.captureBtn, { backgroundColor: palette.blue600 }]}
             >
               <Camera size={18} color={palette.white} />
-              <Text style={styles.captureBtnLabel}>{t('idScan.camera')}</Text>
+              <Text style={styles.captureBtnLabel}>{t('docScan.scanDocument')}</Text>
             </Pressable>
             <Pressable
               onPress={() => void pickGallery()}
@@ -479,6 +496,14 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   hint: { fontSize: 13, lineHeight: 18 },
+  saveRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
   actions: { marginTop: 4, gap: 10 },
   captureBtn: {
     flexDirection: 'row',

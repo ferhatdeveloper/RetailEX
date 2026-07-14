@@ -101,6 +101,20 @@
           ],
           "bluetoothAlwaysPermission": "RetailEX BLE tartı terazisine bağlanmak için Bluetooth ister."
         }
+      ],
+      [
+        "react-native-document-scanner-plugin",
+        {
+          "cameraPermission": "RetailEX belge kenarlarını bulup taramak için kameraya erişim ister."
+        }
+      ],
+      [
+        "expo-media-library",
+        {
+          "photosPermission": "RetailEX taranmış belgeleri galeriye kaydetmek için fotoğraflara erişim ister.",
+          "savePhotosPermission": "RetailEX taranmış belgeyi galeriye kaydetmek ister.",
+          "isAccessMediaLocationEnabled": false
+        }
       ]
     ]
   }

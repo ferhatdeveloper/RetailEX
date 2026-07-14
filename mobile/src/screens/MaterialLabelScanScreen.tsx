@@ -13,6 +13,7 @@ import {
   Alert,
   ActivityIndicator,
   Pressable,
+  Switch,
 } from 'react-native';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -27,11 +28,7 @@ import {
   generateProductCode,
   type ProductInput,
 } from '../api/productsApi';
-import {
-  extractTextFromImageUri,
-  pickImageFromCamera,
-  pickImageFromGallery,
-} from '../utils/scanOcr';
+import { runDocumentScanPipeline } from '../utils/documentScanPipeline';
 import {
   parseProductFromOcr,
   type ParsedProductFields,
@@ -104,6 +101,8 @@ export function MaterialLabelScanScreen() {
   const [form, setForm] = useState<FormState>({ ...EMPTY_FORM });
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  /** Taranmış belgeyi cihaza kaydet (kullanıcı onayı) */
+  const [saveToGallery, setSaveToGallery] = useState(false);
 
   const kindOptions = useMemo(
     () =>
@@ -154,63 +153,83 @@ export function MaterialLabelScanScreen() {
     [productKind, t],
   );
 
-  const processUri = useCallback(
-    async (uri: string) => {
-      setImageUri(uri);
+  const runScan = useCallback(
+    async (fromGallery: boolean) => {
       setOcrBusy(true);
       setError(null);
       setOcrHint(null);
       setOcrHintWarn(false);
       try {
-        const { blocks, ocrAvailable, ocrError } = await extractTextFromImageUri(uri);
+        const res = await runDocumentScanPipeline({
+          maxPages: 1,
+          fromGallery,
+          saveToGallery,
+          albumName: 'RetailEX',
+        });
+        if (res.canceled) return;
+        if ('permissionDenied' in res && res.permissionDenied) {
+          Alert.alert(
+            t('materialScan.permissionTitle'),
+            res.permissionDenied === 'camera'
+              ? t('materialScan.cameraPermission')
+              : t('materialScan.galleryPermission'),
+          );
+          return;
+        }
+        if (!('uri' in res)) return;
+
+        setImageUri(res.uri);
+        const { blocks, ocrAvailable, ocrError } = res.ocr;
         const fields = parseProductFromOcr(Array.isArray(blocks) ? blocks : []);
-        if (ocrError === 'ocrUnsupported') {
-          await openConfirmWithParsed(fields, 'ocrUnsupported');
-        } else if (ocrError) {
-          await openConfirmWithParsed(fields, 'ocrFailed');
-        } else if (ocrAvailable && !fields.rawText.trim()) {
-          await openConfirmWithParsed(fields, 'ocrEmpty');
+
+        let hint: string | undefined;
+        if (ocrError === 'ocrUnsupported') hint = 'ocrUnsupported';
+        else if (ocrError) hint = 'ocrFailed';
+        else if (ocrAvailable && !fields.rawText.trim()) hint = 'ocrEmpty';
+
+        await openConfirmWithParsed(fields, hint);
+
+        if (res.mode === 'native') {
+          setOcrHint((prev) =>
+            prev
+              ? `${t('docScan.nativeScanOk')}\n${prev}`
+              : t('docScan.nativeScanOk'),
+          );
         } else {
-          await openConfirmWithParsed(fields);
+          setOcrHint((prev) =>
+            prev
+              ? `${t('docScan.fallbackScanOk')}\n${prev}`
+              : t('docScan.fallbackScanOk'),
+          );
+          setOcrHintWarn(true);
+        }
+        if (saveToGallery) {
+          if (res.savedToGallery) {
+            setOcrHint((prev) => `${prev ?? ''}\n${t('docScan.savedToGallery')}`.trim());
+          } else if (res.saveError) {
+            setOcrHint((prev) =>
+              `${prev ?? ''}\n${t('docScan.saveFailed')}`.trim(),
+            );
+            setOcrHintWarn(true);
+          }
         }
       } catch {
-        // Fotoğraf kalsın; modal boş/elle doldurulabilir açılsın — kırmızı ErrorBanner yok
         await openConfirmWithParsed(parseProductFromOcr([]), 'ocrFailed');
       } finally {
         setOcrBusy(false);
       }
     },
-    [openConfirmWithParsed],
+    [openConfirmWithParsed, saveToGallery, t],
   );
 
   const pickCamera = async () => {
     setError(null);
-    try {
-      const res = await pickImageFromCamera(0.9);
-      if ('permissionDenied' in res && res.permissionDenied === 'camera') {
-        Alert.alert(t('materialScan.permissionTitle'), t('materialScan.cameraPermission'));
-        return;
-      }
-      if (res.canceled || !('uri' in res)) return;
-      await processUri(res.uri);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    }
+    await runScan(false);
   };
 
   const pickGallery = async () => {
     setError(null);
-    try {
-      const res = await pickImageFromGallery(0.9);
-      if ('permissionDenied' in res && res.permissionDenied === 'gallery') {
-        Alert.alert(t('materialScan.permissionTitle'), t('materialScan.galleryPermission'));
-        return;
-      }
-      if (res.canceled || !('uri' in res)) return;
-      await processUri(res.uri);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    }
+    await runScan(true);
   };
 
   const skipManual = async () => {
@@ -298,6 +317,27 @@ export function MaterialLabelScanScreen() {
           {t('materialScan.captureHint')}
         </Text>
 
+        <View
+          style={[
+            styles.saveRow,
+            { backgroundColor: colors.card, borderColor: colors.cardBorder },
+          ]}
+        >
+          <View style={{ flex: 1, paddingRight: 10 }}>
+            <Text style={{ color: colors.text, fontWeight: '700', fontSize: 13 }}>
+              {t('docScan.saveToGallery')}
+            </Text>
+            <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 2 }}>
+              {t('docScan.saveToGalleryHint')}
+            </Text>
+          </View>
+          <Switch
+            value={saveToGallery}
+            onValueChange={setSaveToGallery}
+            trackColor={{ false: colors.cardBorder, true: palette.blue600 }}
+          />
+        </View>
+
         {ocrBusy ? (
           <View style={styles.busyBox}>
             <ActivityIndicator color={palette.blue600} />
@@ -312,7 +352,7 @@ export function MaterialLabelScanScreen() {
               style={[styles.captureBtn, { backgroundColor: palette.blue600 }]}
             >
               <Camera size={18} color={palette.white} />
-              <Text style={styles.captureBtnLabel}>{t('materialScan.camera')}</Text>
+              <Text style={styles.captureBtnLabel}>{t('docScan.scanDocument')}</Text>
             </Pressable>
             <Pressable
               onPress={() => void pickGallery()}
@@ -461,6 +501,14 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   hint: { fontSize: 13, lineHeight: 18 },
+  saveRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
   actions: { marginTop: 4, gap: 10 },
   captureBtn: {
     flexDirection: 'row',

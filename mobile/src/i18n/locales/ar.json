@@ -283,6 +283,24 @@
     "addManual": "نموذج يدوي",
     "addWithId": "إضافة بالمسح"
   },
+  "docScan": {
+    "scanDocument": "مسح المستند",
+    "gallery": "اختر من المعرض",
+    "manualContinue": "متابعة بدون صورة (يدوي)",
+    "processing": "جارٍ المسح والتعرف…",
+    "permissionTitle": "إذن مطلوب",
+    "cameraPermission": "اسمح بالكاميرا لمسح المستندات.",
+    "galleryPermission": "اسمح بالمعرض للاختيار أو الحفظ.",
+    "saveToGallery": "حفظ المستند في المعرض",
+    "saveToGalleryHint": "يحفظ الصورة الممسوحة في ألبوم RetailEX.",
+    "savedToGallery": "تم حفظ المستند في المعرض.",
+    "saveFailed": "تعذر الحفظ في المعرض — يمكنك المتابعة.",
+    "nativeScanOk": "اكتمل كشف الحواف وتصحيح المنظور (ماسح أصلي).",
+    "fallbackScanOk": "Expo Go: اقتصاص وتحسين جودة. الحواف الكاملة تحتاج بناء EAS.",
+    "invoiceCaptureHint": "امسح كـ Adobe Scan ثم OCR. في Expo Go يُستخدم الاقتصاص.",
+    "ocrEmptyInvoice": "لم يُقرأ نص — أدخل البيانات يدوياً.",
+    "ocrOkInvoice": "OCR وجد {{lines}} سطراً. راجع وأكد."
+  },
   "materialScan": {
     "title": "إضافة مادة بالكاميرا",
     "subtitle": "ملصق الرف · باركود · سعر",
