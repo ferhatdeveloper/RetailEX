@@ -1,7 +1,15 @@
 import { pgQuery } from './pgClient';
 import { postgrestGet } from './postgrestClient';
 import { runDataTransport, rethrowTransportInfra } from './dataTransport';
-import { firmNr, periodNr, productsTable, salesTable, storeId } from './erpTables';
+import {
+  appendStoreIdFilterAllowNull,
+  firmNr,
+  matchesSessionStoreAllowNull,
+  periodNr,
+  productsTable,
+  salesTable,
+  storeId,
+} from './erpTables';
 import { useAuthStore } from '../store/authStore';
 
 /** Web `saleInvoiceStatus.ts` — `SQL_COUNTABLE_SALE_STATUS_PLAIN` */
@@ -14,15 +22,6 @@ export type DashboardStats = {
   activeStores: number;
   totalStores: number;
   criticalAlerts: number;
-};
-
-const EMPTY_STATS: DashboardStats = {
-  totalRevenue: 0,
-  totalTransactions: 0,
-  avgBasket: 0,
-  activeStores: 0,
-  totalStores: 0,
-  criticalAlerts: 0,
 };
 
 function firmMatchSql(column: string, rawParam: string, paddedParam: string): string {
@@ -75,7 +74,6 @@ async function fetchDashboardStatsViaRest(): Promise<DashboardStats> {
   const pn = periodNr();
   const sales = salesTable(fn, pn);
   const products = productsTable(fn);
-  const sid = storeId();
   const today = toYmdLocal(new Date());
   const rawFn = String(useAuthStore.getState().user?.firmNr ?? fn).trim();
   const firmCandidates = Array.from(
@@ -121,7 +119,7 @@ async function fetchDashboardStatsViaRest(): Promise<DashboardStats> {
     if (!isSalesRevenueRow(r)) continue;
     const day = String(r.date || r.created_at || '').slice(0, 10);
     if (day !== today) continue;
-    if (sid && String(r.store_id ?? '') !== String(sid)) continue;
+    if (!matchesSessionStoreAllowNull(r.store_id)) continue;
     const rFirm = String(r.firm_nr ?? '').trim();
     if (rFirm && !firmCandidates.includes(rFirm) && !firmCandidates.includes(rFirm.padStart(3, '0'))) {
       continue;
@@ -161,7 +159,6 @@ async function fetchDashboardStatsViaBridge(): Promise<DashboardStats> {
   const rawFn = String(useAuthStore.getState().user?.firmNr ?? fn).trim();
   const sales = salesTable(fn, pn);
   const products = productsTable(fn);
-  const sid = storeId();
 
   const salesConds = [
     'COALESCE(is_cancelled, false) = false',
@@ -174,10 +171,8 @@ async function fetchDashboardStatsViaBridge(): Promise<DashboardStats> {
       OR (fiche_type IS NULL AND COALESCE(trcode, 0) NOT IN (1, 4, 5, 6, 13, 26, 41, 42)))`,
   ];
   const salesParams: unknown[] = [rawFn, fn];
-  if (sid) {
-    salesConds.push(`store_id::text = $${salesParams.length + 1}`);
-    salesParams.push(sid);
-  }
+  const storeSql = appendStoreIdFilterAllowNull('store_id', salesParams);
+  if (storeSql) salesConds.push(storeSql.replace(/^\s*AND\s+/i, ''));
 
   const [salesRes, storesRes, alertRes] = await Promise.all([
     pgQuery<{ revenue: string | number; count: string | number }>(
@@ -246,6 +241,9 @@ export async function fetchDashboardStats(): Promise<DashboardStats> {
     });
   } catch (e) {
     rethrowTransportInfra(e, 'fetchDashboardStats');
-    return { ...EMPTY_STATS };
+    const msg = e instanceof Error ? e.message : String(e || 'Dashboard veri hatası');
+    throw new Error(
+      `${msg} [dashboard · firma=${firmNr()} dönem=${periodNr()}${storeId() ? ` mağaza=${storeId()}` : ''}]`,
+    );
   }
 }

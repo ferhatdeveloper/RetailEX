@@ -12,12 +12,12 @@ import {
 } from './accountBalance';
 import {
   accountMovementsTable,
-  appendStoreIdFilter,
   appendStoreIdFilterAllowNull,
   cashLinesTable,
   cashRegistersTable,
   customersTable,
   firmNr,
+  matchesSessionStoreAllowNull,
   periodNr,
   productsTable,
   saleItemsTable,
@@ -28,9 +28,17 @@ import {
   suppliersTable,
 } from './erpTables';
 
+/** Rapor API hatalarını yutma — ekranda gerçek mesaj görünsün */
+function throwReportError(err: unknown, label: string): never {
+  const base = err instanceof Error ? err.message : String(err || 'Bilinmeyen hata');
+  throw new Error(
+    `${base} [${label} · firma=${firmNr()} dönem=${periodNr()}${storeId() ? ` mağaza=${storeId()}` : ''}]`,
+  );
+}
 
-function rethrowReportsInfra(err: unknown, label: string): void {
-  if (isReportsInfrastructureError(err)) throw err;
+/** Köprü/ağ → throw; şema eksikliği → devam (fallback) */
+function softSchemaOrThrow(err: unknown, label: string): void {
+  if (isReportsInfrastructureError(err)) throwReportError(err, label);
   if (__DEV__) {
     console.warn(
       `[reportsApi:${label}]`,
@@ -69,6 +77,8 @@ function isSalesRevenueRow(r: Record<string, unknown>): boolean {
   ) {
     return true;
   }
+  /** Dashboard ile aynı — boş fiche_type, alış trcode değilse satış say */
+  if (ft === '' && ![1, 4, 5, 6, 13, 26, 41, 42].includes(tr)) return true;
   return [0, 2, 3, 7, 8, 9, 14].includes(tr);
 }
 
@@ -96,9 +106,7 @@ function isCountableSaleStatus(r: Record<string, unknown>): boolean {
 }
 
 function matchesSessionStore(r: Record<string, unknown>): boolean {
-  const sid = storeId();
-  if (!sid) return true;
-  return String(r.store_id ?? '') === sid;
+  return matchesSessionStoreAllowNull(r.store_id);
 }
 
 /** Web `SQL_COUNTABLE_SALE_STATUS` — alias `s` */
@@ -167,6 +175,7 @@ async function fetchSalesByDayViaRest(days: number): Promise<SalesDayRow[]> {
 
   for (const r of sales || []) {
     if (isCancelledRow(r)) continue;
+    if (!isCountableSaleStatus(r)) continue;
     if (!isSalesRevenueRow(r)) continue;
     if (!matchesSessionStore(r)) continue;
     const day = String(r.date || r.created_at || '').slice(0, 10);
@@ -188,7 +197,7 @@ async function fetchSalesByDayViaBridge(days: number): Promise<SalesDayRow[]> {
   const table = salesTable(firmNr(), periodNr());
   const sign = sqlSalesRevenueSign();
   const params: unknown[] = [days];
-  const storeSql = appendStoreIdFilter('store_id', params);
+  const storeSql = appendStoreIdFilterAllowNull('store_id', params);
   const res = await pgQuery<{ day: string; revenue: string | number; count: string | number }>(
     `SELECT date_trunc('day', COALESCE(date::timestamp, created_at))::date::text AS day,
             COALESCE(SUM(
@@ -291,7 +300,6 @@ async function fetchTopProductsViaRest(limit: number): Promise<TopProductRow[]> 
   const pn = periodNr();
   const items = saleItemsTable(fn, pn);
   const sales = salesTable(fn, pn);
-  const sid = storeId();
 
   const [salesRows, itemRows] = await Promise.all([
     postgrestGet<Record<string, unknown>[]>(
@@ -318,7 +326,7 @@ async function fetchTopProductsViaRest(limit: number): Promise<TopProductRow[]> 
     if (!isSalesRevenueRow(s)) continue;
     const st = String(s.status ?? 'approved').trim().toLowerCase();
     if (st && st !== 'completed' && st !== 'approved') continue;
-    if (sid && String(s.store_id ?? '') !== String(sid)) continue;
+    if (!matchesSessionStore(s)) continue;
     salesOk.set(String(s.id), salesRevenueSign(s));
   }
 
@@ -346,7 +354,7 @@ async function fetchTopProductsViaBridge(limit: number): Promise<TopProductRow[]
   const sales = salesTable(fn, pn);
   const sign = sqlSalesRevenueSign('s');
   const params: unknown[] = [limit];
-  const storeSql = appendStoreIdFilter('s.store_id', params);
+  const storeSql = appendStoreIdFilterAllowNull('s.store_id', params);
   const res = await pgQuery<TopProductRow>(
     `SELECT COALESCE(si.item_name, si.item_code, 'Ürün') AS product_name,
             COALESCE(SUM((${sign}) * COALESCE(si.quantity, 0)), 0)::float8 AS qty,
@@ -375,8 +383,7 @@ export async function fetchTopProducts(limit = 20): Promise<TopProductRow[]> {
       viaBridge: () => fetchTopProductsViaBridge(limit),
     });
   } catch (err) {
-    rethrowReportsInfra(err, 'fetchTopProducts');
-    return [];
+    throwReportError(err, 'fetchTopProducts');
   }
 }
 
@@ -500,8 +507,7 @@ async function fetchCariBalancesFromCard(opts: {
       viaBridge: () => fetchCariBalancesFromCardViaBridge(opts),
     });
   } catch (err) {
-    rethrowReportsInfra(err, 'fetchCariBalancesFromCard');
-    return [];
+    throwReportError(err, 'fetchCariBalancesFromCard');
   }
 }
 
@@ -554,7 +560,7 @@ async function fetchCariBalancesFromCardViaBridge(opts: {
     }>(`${parts.join(' UNION ALL ')} ORDER BY ABS(balance) DESC LIMIT $1`, [limit]);
     return res.rows.map((r) => mapCardFallbackRow(r, 'customer', fn, pn));
   } catch (err) {
-    rethrowReportsInfra(err, 'fetchCariBalancesFromCard');
+    softSchemaOrThrow(err, 'fetchCariBalancesFromCard');
     if (want === 'supplier') return [];
     const res = await pgQuery<{
       account_id: string;
@@ -684,7 +690,7 @@ export async function fetchCariBalances(opts?: {
       firmNr: fn,
     }));
   } catch (err) {
-    rethrowReportsInfra(err, 'fetchCariBalances');
+    softSchemaOrThrow(err, 'fetchCariBalances');
     // CTE / cash_lines yoksa kart bakiyesine düş
     return fetchCariBalancesFromCard({ want, onlyNonZero, limit, fn, pn });
   }
@@ -792,7 +798,7 @@ async function fetchCariExtractOpeningNet(opts: {
       );
       return Number(res.rows[0]?.net ?? 0);
     } catch (err) {
-      rethrowReportsInfra(err, 'fetchCariExtractOpeningNet.mov');
+      softSchemaOrThrow(err, 'fetchCariExtractOpeningNet.mov');
       return 0;
     }
   }
@@ -820,7 +826,7 @@ async function fetchCariExtractOpeningNet(opts: {
     );
     return Number(res.rows[0]?.net ?? 0);
   } catch (err) {
-    rethrowReportsInfra(err, 'fetchCariExtractOpeningNet.sale');
+    softSchemaOrThrow(err, 'fetchCariExtractOpeningNet.sale');
     return 0;
   }
 }
@@ -1112,7 +1118,7 @@ async function fetchCariExtractViaBridge(opts: {
     raw = (res.rows || []).map(mapExtractSqlRow);
     usedMovements = raw.length > 0;
   } catch (err) {
-    rethrowReportsInfra(err, 'fetchCariExtract.mov');
+    softSchemaOrThrow(err, 'fetchCariExtract.mov');
     raw = [];
   }
 
@@ -1166,8 +1172,7 @@ async function fetchCariExtractViaBridge(opts: {
       );
       raw = (res.rows || []).map(mapExtractSqlRow);
     } catch (err) {
-      rethrowReportsInfra(err, 'fetchCariExtract.saleCash');
-      raw = [];
+      throwReportError(err, 'fetchCariExtract.saleCash');
     }
   }
 
@@ -1325,8 +1330,7 @@ export async function fetchMinMaxStock(opts?: {
       viaBridge: () => fetchMinMaxStockViaBridge({ filter, limit }),
     });
   } catch (err) {
-    rethrowReportsInfra(err, 'fetchMinMaxStock');
-    return [];
+    throwReportError(err, 'fetchMinMaxStock');
   }
 }
 
@@ -1378,8 +1382,7 @@ export async function fetchMaterialValue(limit = 500): Promise<MaterialValueRow[
       viaBridge: () => fetchMaterialValueViaBridge(limit),
     });
   } catch (err) {
-    rethrowReportsInfra(err, 'fetchMaterialValue');
-    return [];
+    throwReportError(err, 'fetchMaterialValue');
   }
 }
 
@@ -1441,7 +1444,7 @@ export async function fetchWarehouseStatus(limit = 500): Promise<{
     );
     warehouseName = wh.rows[0]?.name ?? null;
   } catch (err) {
-    rethrowReportsInfra(err, 'fetchWarehouseStatus.stores');
+    softSchemaOrThrow(err, 'fetchWarehouseStatus.stores');
     warehouseName = null;
   }
 
@@ -1552,7 +1555,7 @@ export async function fetchMaterialExtract(opts: {
     );
     raw.push(...res.rows);
   } catch (err) {
-    rethrowReportsInfra(err, 'fetchMaterialExtract.slip');
+    softSchemaOrThrow(err, 'fetchMaterialExtract.slip');
   }
 
   try {
@@ -1606,7 +1609,7 @@ export async function fetchMaterialExtract(opts: {
     );
     raw.push(...res.rows);
   } catch (err) {
-    rethrowReportsInfra(err, 'fetchMaterialExtract.invoice');
+    throwReportError(err, 'fetchMaterialExtract.invoice');
   }
 
   raw.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
@@ -1678,7 +1681,7 @@ async function fetchProductSalesViaRest(
         limit: 8000,
       },
       { schema: 'public' },
-    ).catch(() => [] as Record<string, unknown>[]),
+    ),
     postgrestGet<Record<string, unknown>[]>(
       itemsPath,
       {
@@ -1686,18 +1689,19 @@ async function fetchProductSalesViaRest(
         limit: 12000,
       },
       { schema: 'public' },
-    ).catch(() => [] as Record<string, unknown>[]),
+    ),
     postgrestGet<Record<string, unknown>[]>(
       productsPath,
       { select: 'id,code,name', limit: 8000 },
       { schema: 'public' },
-    ).catch(() => [] as Record<string, unknown>[]),
+    ),
   ]);
 
   const salesById = new Map<string, Record<string, unknown>>();
   for (const s of sales || []) {
     if (isCancelledRow(s)) continue;
     if (!isCountableSaleStatus(s)) continue;
+    if (!isSalesRevenueRow(s)) continue;
     if (!matchesSessionStore(s)) continue;
     const day = String(s.date || s.created_at || '').slice(0, 10);
     if (!day || day < start || day > end) continue;
@@ -1755,7 +1759,7 @@ async function fetchProductSalesViaBridge(
 
   try {
     const params: unknown[] = [start, end, limit];
-    const storeSql = appendStoreIdFilter('s.store_id', params);
+    const storeSql = appendStoreIdFilterAllowNull('s.store_id', params);
     const res = await pgQuery<{
       product_id: string;
       product_code: string;
@@ -1793,8 +1797,7 @@ async function fetchProductSalesViaBridge(
       amount: Number(r.amount ?? 0),
     }));
   } catch (err) {
-    rethrowReportsInfra(err, 'fetchProductSales');
-    return [];
+    throwReportError(err, 'fetchProductSales');
   }
 }
 
@@ -1937,8 +1940,7 @@ export async function fetchCashMovements(opts?: {
       viaBridge: () => fetchCashMovementsViaBridge(start, end, limit),
     });
   } catch (err) {
-    rethrowReportsInfra(err, 'fetchCashMovements');
-    return [];
+    throwReportError(err, 'fetchCashMovements');
   }
 }
 
@@ -2090,7 +2092,7 @@ export async function fetchCariAging(opts?: {
       );
       for (const r of res.rows) out.push(mapRow(r, 'customer'));
     } catch (err) {
-      rethrowReportsInfra(err, 'fetchCariAging.customer');
+      softSchemaOrThrow(err, 'fetchCariAging.customer');
     }
   }
 
@@ -2133,7 +2135,7 @@ export async function fetchCariAging(opts?: {
       );
       for (const r of res.rows) out.push(mapRow(r, 'supplier'));
     } catch (err) {
-      rethrowReportsInfra(err, 'fetchCariAging.supplier');
+      softSchemaOrThrow(err, 'fetchCariAging.supplier');
     }
   }
 

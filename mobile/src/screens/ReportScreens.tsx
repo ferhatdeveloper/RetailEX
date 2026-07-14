@@ -38,7 +38,7 @@ import {
   type AgingBucket,
 } from '../api/reportsApi';
 import { fetchProducts } from '../api/productsApi';
-import { formatMoney, firmNr, periodNr } from '../api/erpTables';
+import { formatMoney, firmNr, periodNr, storeId, storeName } from '../api/erpTables';
 import { useThemeStore } from '../store/themeStore';
 import { useOrgEpoch } from '../hooks/useOrgEpoch';
 import { palette } from '../theme/colors';
@@ -84,7 +84,8 @@ export function ReportSalesScreen() {
   const totalRev = days.reduce((s, d) => s + d.revenue, 0);
   const totalCnt = days.reduce((s, d) => s + d.count, 0);
 
-  const orgLabel = `Firma ${firmNr()} · Dönem ${periodNr()} · Son 14 gün`;
+  const storeLbl = storeName() || storeId() || 'firma geneli';
+  const orgLabel = `Firma ${firmNr()} · Dönem ${periodNr()} · ${storeLbl} · Son 14 gün`;
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
@@ -109,7 +110,11 @@ export function ReportSalesScreen() {
           refreshControl={<RefreshControl refreshing={loading} onRefresh={() => void load()} />}
           ListEmptyComponent={
             <EmptyState
-              message={`Satış verisi yok (${orgLabel}). Tablo: rex_${firmNr()}_${periodNr()}_sales — dönem/mağaza doğru mu?`}
+              message={
+                error
+                  ? 'Hata yukarıda — Yenile ile tekrar deneyin'
+                  : `Satış satırı yok (${orgLabel}). Tablo: rex_${firmNr()}_${periodNr()}_sales — Organizasyon’da firma/dönem doğru mu? (store_id boş fişler artık dahildir)`
+              }
             />
           }
           ListHeaderComponent={
@@ -181,7 +186,10 @@ export function ReportStockScreen() {
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
-      <ScreenHeader title={meta.title} subtitle={`${rows.length} malzeme`} />
+      <ScreenHeader
+        title={meta.title}
+        subtitle={`Firma ${firmNr()} · ${rows.length} malzeme`}
+      />
       {error ? <ErrorBanner message={error} onRetry={() => void load()} /> : null}
       {loading ? (
         <ActivityIndicator style={{ marginTop: 40 }} color={palette.blue600} />
@@ -190,7 +198,15 @@ export function ReportStockScreen() {
           data={rows}
           keyExtractor={(item) => String(item.id)}
           refreshControl={<RefreshControl refreshing={loading} onRefresh={() => void load()} />}
-          ListEmptyComponent={<EmptyState message="Kritik stok yok" />}
+          ListEmptyComponent={
+            <EmptyState
+              message={
+                error
+                  ? 'Hata yukarıda — Yenile ile tekrar deneyin'
+                  : `Kritik stok yok (firma ${firmNr()}) — min/critical altı ürün bulunamadı`
+              }
+            />
+          }
           contentContainerStyle={{ padding: 12, gap: 8, paddingBottom: 40 }}
           renderItem={({ item }) => (
             <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
@@ -1056,7 +1072,10 @@ export function ReportProductSalesScreen() {
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
-      <ScreenHeader title="Ürün Satış Raporu" subtitle={`${range.start} → ${range.end}`} />
+      <ScreenHeader
+        title="Ürün Satış Raporu"
+        subtitle={`Firma ${firmNr()} · Dönem ${periodNr()} · ${range.start} → ${range.end}`}
+      />
       <SearchBar value={search} onChangeText={setSearch} placeholder="Ürün adı veya kod…" />
       <View style={styles.kpiRow}>
         <View style={[styles.kpi, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
@@ -1080,7 +1099,15 @@ export function ReportProductSalesScreen() {
           data={filtered}
           keyExtractor={(item, i) => `${item.productId}-${item.productCode}-${i}`}
           refreshControl={<RefreshControl refreshing={loading} onRefresh={() => void load()} />}
-          ListEmptyComponent={<EmptyState message="Satış kalemi yok" />}
+          ListEmptyComponent={
+            <EmptyState
+              message={
+                error
+                  ? 'Hata yukarıda — Yenile ile tekrar deneyin'
+                  : `Satış kalemi yok (rex_${firmNr()}_${periodNr()}_sale_items · ${range.start}→${range.end})`
+              }
+            />
+          }
           contentContainerStyle={{ padding: 12, gap: 8, paddingBottom: 40 }}
           renderItem={({ item, index }) => (
             <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>

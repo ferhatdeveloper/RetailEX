@@ -36,13 +36,25 @@ export function appendStoreIdFilter(column: string, params: unknown[]): string {
 
 /**
  * Mağaza filtresi — kolonu henüz boş (legacy) satırları da gösterir.
- * `cash_lines.store_id` gibi yeni eklenen alanlar için.
+ * `cash_lines.store_id` / satış fişleri (kasap: store_id çoğunlukla NULL) için.
  */
 export function appendStoreIdFilterAllowNull(column: string, params: unknown[]): string {
   const sid = storeId();
   if (!sid) return '';
   params.push(sid);
   return ` AND (${column} IS NULL OR ${column}::text = $${params.length})`;
+}
+
+/**
+ * REST client-side mağaza filtresi — web `erpReports` mağaza süzmez;
+ * oturumda mağaza varken `store_id` NULL satırlar (Logo/POS legacy) saklanır.
+ */
+export function matchesSessionStoreAllowNull(rowStoreId: unknown): boolean {
+  const sid = storeId();
+  if (!sid) return true;
+  const rowSid = String(rowStoreId ?? '').trim();
+  if (!rowSid) return true;
+  return rowSid === sid;
 }
 
 export function storeName(): string | null {
