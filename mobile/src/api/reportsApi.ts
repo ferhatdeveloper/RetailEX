@@ -7,6 +7,7 @@ import {
 } from './accountBalance';
 import {
   accountMovementsTable,
+  appendStoreIdFilter,
   cashLinesTable,
   cashRegistersTable,
   customersTable,
@@ -62,6 +63,8 @@ function sqlSalesRevenueSign(alias = ''): string {
 export async function fetchSalesByDay(days = 14): Promise<SalesDayRow[]> {
   const table = salesTable(firmNr(), periodNr());
   const sign = sqlSalesRevenueSign();
+  const params: unknown[] = [days];
+  const storeSql = appendStoreIdFilter('store_id', params);
   const res = await pgQuery<{ day: string; revenue: string | number; count: string | number }>(
     `SELECT date_trunc('day', COALESCE(date::timestamp, created_at))::date::text AS day,
             COALESCE(SUM(
@@ -72,9 +75,10 @@ export async function fetchSalesByDay(days = 14): Promise<SalesDayRow[]> {
      WHERE COALESCE(is_cancelled, false) = false
        AND (${sqlSalesRevenueFt()})
        AND COALESCE(date::date, created_at::date) >= (CURRENT_DATE - ($1::int || ' days')::interval)
+       ${storeSql}
      GROUP BY 1
      ORDER BY 1 DESC`,
-    [days],
+    params,
   );
   return res.rows.map((r) => ({
     day: r.day,
@@ -123,6 +127,8 @@ export async function fetchTopProducts(limit = 20): Promise<TopProductRow[]> {
   const sales = salesTable(fn, pn);
   const sign = sqlSalesRevenueSign('s');
   try {
+    const params: unknown[] = [limit];
+    const storeSql = appendStoreIdFilter('s.store_id', params);
     const res = await pgQuery<TopProductRow>(
       `SELECT COALESCE(si.item_name, si.item_code, 'Ürün') AS product_name,
               COALESCE(SUM((${sign}) * COALESCE(si.quantity, 0)), 0)::float8 AS qty,
@@ -134,10 +140,11 @@ export async function fetchTopProducts(limit = 20): Promise<TopProductRow[]> {
        WHERE COALESCE(s.is_cancelled, false) = false
          AND ${SQL_COUNTABLE_SALE}
          AND (${sqlSalesRevenueFt('s')})
+         ${storeSql}
        GROUP BY 1
        ORDER BY amount DESC
        LIMIT $1`,
-      [limit],
+      params,
     );
     return res.rows;
   } catch {
@@ -530,6 +537,20 @@ export async function fetchCariExtract(opts: {
            )
            OR s.trcode IN (1, 4, 5, 6, 13, 26, 41, 42)
          )`;
+    // Web buildEkstreRows: alış/satış +delta; iade −delta (ledger ile aynı yön).
+    // Önceki mobil CASE alış fişlerini de −1 yapıyordu → tedarikçi kapanış bakiyesi ters dönüyordu (V2-R13).
+    const saleSignSql = isCustomer
+      ? `CASE
+           WHEN LOWER(TRIM(COALESCE(s.fiche_type, ''))) = 'return_invoice'
+             OR COALESCE(s.trcode, 0) IN (2, 3) THEN -1
+           ELSE 1
+         END`
+      : `CASE
+           WHEN COALESCE(s.trcode, 0) = 6
+             OR LOWER(TRIM(COALESCE(s.fiche_type, ''))) = 'return_invoice' THEN -1
+           ELSE 1
+         END`;
+
     try {
       const res = await pgQuery<{
         id: string;
@@ -547,11 +568,7 @@ export async function fetchCariExtract(opts: {
              COALESCE(s.fiche_no, '') AS fiche_no,
              COALESCE(s.fiche_type, '') AS definition,
              ABS(COALESCE(s.net_amount, s.total_net, 0))::float8 AS amount,
-             CASE
-               WHEN LOWER(TRIM(COALESCE(s.fiche_type, ''))) IN ('return_invoice', 'purchase_invoice')
-                 OR COALESCE(s.trcode, 0) IN (1, 2, 3, 6) THEN -1
-               ELSE 1
-             END AS sign,
+             (${saleSignSql})::int AS sign,
              'sale'::text AS source,
              COALESCE(s.date::timestamptz, s.created_at) AS sort_ts
            FROM ${sales} s
@@ -954,6 +971,8 @@ export async function fetchProductSales(opts?: {
   const products = productsTable();
 
   try {
+    const params: unknown[] = [start, end, limit];
+    const storeSql = appendStoreIdFilter('s.store_id', params);
     const res = await pgQuery<{
       product_id: string;
       product_code: string;
@@ -975,12 +994,13 @@ export async function fetchProductSales(opts?: {
          AND COALESCE(s.date::date, s.created_at::date) >= $1::date
          AND COALESCE(s.date::date, s.created_at::date) <= $2::date
          AND COALESCE(si.item_type, 'Malzeme') NOT IN ('Promosyon', 'İndirim')
+         ${storeSql}
        GROUP BY 1, 2, 3
        HAVING COALESCE(SUM(COALESCE(si.quantity, 0)), 0) <> 0
           OR COALESCE(SUM(COALESCE(si.net_amount, si.total_amount, 0)), 0) <> 0
        ORDER BY amount DESC
        LIMIT $3`,
-      [start, end, limit],
+      params,
     );
     return res.rows.map((r) => ({
       productId: String(r.product_id ?? ''),
@@ -1065,4 +1085,205 @@ export async function fetchCashMovements(opts?: {
   } catch {
     return [];
   }
+}
+
+/** Web `AgingBucket` — vade aşım aralıkları */
+export type AgingBucket = 'current' | 'd1_30' | 'd31_60' | 'd61_90' | 'd90_plus';
+
+export type CariAgingRow = {
+  accountId: string;
+  accountCode: string;
+  accountName: string;
+  cardType: 'customer' | 'supplier';
+  ficheNo: string;
+  invoiceDate: string;
+  dueDate: string;
+  amount: number;
+  daysOverdue: number;
+  bucket: AgingBucket;
+  termsDays: number;
+};
+
+function parseTermsDays(raw: unknown, fallback = 30): number {
+  const digits = String(raw ?? '').replace(/[^\d]/g, '');
+  const n = parseInt(digits, 10);
+  if (!Number.isFinite(n) || n < 0) return fallback;
+  return Math.min(n, 3650);
+}
+
+function addDaysYmd(ymd: string, days: number): string {
+  const [y, m, d] = ymd.split('-').map((x) => parseInt(x, 10));
+  const dt = new Date(y, (m || 1) - 1, d || 1);
+  dt.setDate(dt.getDate() + days);
+  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+}
+
+function ymdDiff(a: string, b: string): number {
+  const da = new Date(`${a}T12:00:00`);
+  const db = new Date(`${b}T12:00:00`);
+  return Math.round((da.getTime() - db.getTime()) / 86400000);
+}
+
+function todayYmdLocal(): string {
+  const d = new Date();
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+function bucketFromDaysOverdue(days: number): AgingBucket {
+  if (days <= 0) return 'current';
+  if (days <= 30) return 'd1_30';
+  if (days <= 60) return 'd31_60';
+  if (days <= 90) return 'd61_90';
+  return 'd90_plus';
+}
+
+export function agingBucketLabel(bucket: AgingBucket): string {
+  switch (bucket) {
+    case 'current':
+      return 'Vadesi gelmemiş';
+    case 'd1_30':
+      return '1–30 gün';
+    case 'd31_60':
+      return '31–60 gün';
+    case 'd61_90':
+      return '61–90 gün';
+    case 'd90_plus':
+      return '90+ gün';
+    default:
+      return bucket;
+  }
+}
+
+/**
+ * Basit cari yaşlandırma — web `erpReports.getCariAging` (dönem sales, veresiye/açık).
+ */
+export async function fetchCariAging(opts?: {
+  cardType?: 'customer' | 'supplier' | 'all';
+  limit?: number;
+}): Promise<CariAgingRow[]> {
+  const want = opts?.cardType ?? 'all';
+  const limit = opts?.limit ?? 400;
+  const today = todayYmdLocal();
+  const fn = firmNr();
+  const pn = periodNr();
+  const sales = salesTable(fn, pn);
+  const cust = customersTable(fn);
+  const supp = suppliersTable(fn);
+  const out: CariAgingRow[] = [];
+
+  const mapRow = (
+    r: Record<string, unknown>,
+    cardType: 'customer' | 'supplier',
+  ): CariAgingRow => {
+    const invoiceDate = String(r.invoice_date ?? '').slice(0, 10);
+    const termsDays = parseTermsDays(r.payment_terms, 30);
+    const dueDate =
+      String(r.due_date ?? '').slice(0, 10) || addDaysYmd(invoiceDate || today, termsDays);
+    const daysOverdue = Math.max(0, ymdDiff(today, dueDate));
+    return {
+      accountId: String(r.account_id ?? ''),
+      accountCode: String(r.account_code ?? ''),
+      accountName: String(r.account_name ?? ''),
+      cardType,
+      ficheNo: String(r.fiche_no ?? ''),
+      invoiceDate,
+      dueDate,
+      amount: Number(r.amount ?? 0),
+      daysOverdue,
+      bucket: bucketFromDaysOverdue(daysOverdue),
+      termsDays,
+    };
+  };
+
+  if (want === 'all' || want === 'customer') {
+    try {
+      const res = await pgQuery<Record<string, unknown>>(
+        `SELECT
+           c.id::text AS account_id,
+           COALESCE(c.code, '') AS account_code,
+           COALESCE(c.name, s.customer_name, '') AS account_name,
+           c.payment_terms,
+           s.fiche_no,
+           COALESCE(s.date::date, s.created_at::date)::text AS invoice_date,
+           CASE
+             WHEN LOWER(TRIM(COALESCE(s.fiche_type, ''))) = 'return_invoice'
+               THEN -ABS(COALESCE(s.net_amount, 0))
+             ELSE ABS(COALESCE(s.net_amount, 0))
+           END::float8 AS amount
+         FROM ${sales} s
+         LEFT JOIN ${cust} c ON c.id = s.customer_id
+         WHERE COALESCE(s.is_cancelled, false) = false
+           AND ${SQL_COUNTABLE_SALE}
+           AND (
+             LOWER(TRIM(COALESCE(s.fiche_type, ''))) IN (
+               'sales_invoice', 'sales', 'retail', 'service', 'hizmet', 'return_invoice'
+             )
+             OR COALESCE(s.trcode, 0) IN (0, 2, 3, 7, 8, 9, 14)
+           )
+           AND (
+             LOWER(TRIM(COALESCE(s.fiche_type, ''))) = 'return_invoice'
+             OR LOWER(TRIM(COALESCE(s.payment_method, ''))) IN (
+               'veresiye', 'open_account', 'cari', 'açık hesap', 'acik hesap',
+               'açık cari', 'acik cari', 'acik_cari', 'açık_cari'
+             )
+             OR LOWER(TRIM(COALESCE(s.payment_method, ''))) LIKE '%veresiye%'
+           )
+         ORDER BY s.date DESC NULLS LAST
+         LIMIT $1`,
+        [limit],
+      );
+      for (const r of res.rows) out.push(mapRow(r, 'customer'));
+    } catch {
+      /* şema */
+    }
+  }
+
+  if (want === 'all' || want === 'supplier') {
+    try {
+      const res = await pgQuery<Record<string, unknown>>(
+        `SELECT
+           COALESCE(sup.id, c.id)::text AS account_id,
+           COALESCE(sup.code, c.code, '') AS account_code,
+           COALESCE(sup.name, c.name, s.customer_name, '') AS account_name,
+           COALESCE(sup.payment_terms, c.payment_terms) AS payment_terms,
+           s.fiche_no,
+           COALESCE(s.date::date, s.created_at::date)::text AS invoice_date,
+           CASE
+             WHEN LOWER(TRIM(COALESCE(s.fiche_type, ''))) = 'return_invoice'
+               THEN -ABS(COALESCE(s.net_amount, 0))
+             ELSE ABS(COALESCE(s.net_amount, 0))
+           END::float8 AS amount
+         FROM ${sales} s
+         LEFT JOIN ${supp} sup ON sup.id = s.customer_id
+         LEFT JOIN ${cust} c ON c.id = s.customer_id
+         WHERE COALESCE(s.is_cancelled, false) = false
+           AND ${SQL_COUNTABLE_SALE}
+           AND (
+             LOWER(TRIM(COALESCE(s.fiche_type, ''))) IN ('purchase_invoice', 'return_invoice')
+             OR COALESCE(s.trcode, 0) IN (1, 4, 5, 6, 13, 26, 41, 42)
+           )
+           AND (
+             LOWER(TRIM(COALESCE(s.fiche_type, ''))) = 'return_invoice'
+             OR NOT (
+               LOWER(TRIM(COALESCE(s.payment_method, ''))) IN (
+                 'cash', 'nakit', 'card', 'kart', 'gateway', 'havale', 'eft', 'haval', 'kredikarti', 'transfer'
+               )
+               OR LOWER(TRIM(COALESCE(s.payment_method, ''))) LIKE '%kredi%kart%'
+             )
+           )
+         ORDER BY s.date DESC NULLS LAST
+         LIMIT $1`,
+        [limit],
+      );
+      for (const r of res.rows) out.push(mapRow(r, 'supplier'));
+    } catch {
+      /* şema */
+    }
+  }
+
+  return out
+    .filter((r) => Math.abs(r.amount) > 0.009)
+    .sort((a, b) => b.daysOverdue - a.daysOverdue || b.amount - a.amount)
+    .slice(0, limit);
 }

@@ -1,5 +1,6 @@
 import { pgQuery } from './pgClient';
 import {
+  appendStoreIdFilter,
   customersTable,
   firmNr,
   periodNr,
@@ -75,6 +76,8 @@ export async function fetchStockMovements(opts?: {
 
   let slips: StockMovementRow[] = [];
   try {
+    const slipParams: unknown[] = [trcode, limit];
+    const slipStoreSql = appendStoreIdFilter('m.warehouse_id', slipParams);
     const res = await pgQuery<{
       id: string;
       document_no: string;
@@ -98,9 +101,10 @@ export async function fetchStockMovements(opts?: {
        FROM ${mov} m
        LEFT JOIN public.stores s ON m.warehouse_id = s.id
        WHERE ($1::int IS NULL OR COALESCE(m.trcode, 0) = $1)
+         ${slipStoreSql}
        ORDER BY m.movement_date DESC NULLS LAST, m.created_at DESC NULLS LAST
        LIMIT $2`,
-      [trcode, limit],
+      slipParams,
     );
     slips = res.rows.map((r) => ({
       ...r,
@@ -118,6 +122,8 @@ export async function fetchStockMovements(opts?: {
   const supp = suppliersTable(fn);
   let invoices: StockMovementRow[] = [];
   try {
+    const invParams: unknown[] = [];
+    const invStoreSql = appendStoreIdFilter('s.store_id', invParams);
     const res = await pgQuery<{
       id: string;
       document_no: string;
@@ -157,8 +163,10 @@ export async function fetchStockMovements(opts?: {
        LEFT JOIN ${supp} sup ON sup.id::text = s.customer_id::text
        WHERE s.fiche_type IN ('purchase_invoice', 'sales_invoice', 'return_invoice')
          AND COALESCE(s.is_cancelled, false) = false
+         ${invStoreSql}
        ORDER BY s.date DESC NULLS LAST, s.created_at DESC NULLS LAST
        LIMIT 200`,
+      invParams,
     );
     invoices = res.rows.map((r) => ({
       ...r,

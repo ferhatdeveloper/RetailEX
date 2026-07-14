@@ -23,6 +23,7 @@ import {
   type StoreRow,
   type PeriodRow,
 } from '../api/pgClient';
+import { saveLastOrg } from '../api/lastOrgPrefs';
 import { palette } from '../theme/colors';
 import type { AuthStackParamList, MainStackParamList, PendingUser } from '../navigation/types';
 
@@ -54,7 +55,7 @@ export function OrganizationScreen({ navigation, route }: Props) {
   const [firmNr, setFirmNr] = useState(seed?.firmNr || '001');
   const [storeId, setStoreId] = useState(seed?.storeId || '');
   const [storeName, setStoreName] = useState(seed?.storeName || '');
-  const [periodNr, setPeriodNr] = useState(seed?.periodNr || '01');
+  const [periodNr, setPeriodNr] = useState(seed?.periodNr || '');
   const [loading, setLoading] = useState(true);
   const [showFirms, setShowFirms] = useState(false);
   const [showStores, setShowStores] = useState(false);
@@ -79,6 +80,9 @@ export function OrganizationScreen({ navigation, route }: Props) {
           setStoreId('1');
           setStoreName('Merkez Mağaza');
         }
+        if (!periodNrRef.current) {
+          setPeriodNr('02');
+        }
         setLoading(false);
         return;
       }
@@ -95,6 +99,13 @@ export function OrganizationScreen({ navigation, route }: Props) {
       if (s.length && !storeIdRef.current) {
         setStoreId(s[0]!.id);
         setStoreName(s[0]!.name);
+      }
+      // R12: seed boş/geçersizse sunucudaki en yüksek (son) aktif dönem
+      if (p.length) {
+        const ok = p.find((x) => x.nr === periodNrRef.current);
+        if (!ok) {
+          setPeriodNr(p[p.length - 1]!.nr);
+        }
       }
       setLoading(false);
     })();
@@ -123,8 +134,8 @@ export function OrganizationScreen({ navigation, route }: Props) {
         setStoreId('');
         setStoreName('');
       }
-      if (!p.find((x) => x.nr === periodNrRef.current) && p[0]) {
-        setPeriodNr(p[0].nr);
+      if (!p.find((x) => x.nr === periodNrRef.current) && p.length) {
+        setPeriodNr(p[p.length - 1]!.nr);
       }
     })();
     return () => {
@@ -147,10 +158,11 @@ export function OrganizationScreen({ navigation, route }: Props) {
   const onConfirm = () => {
     const org = {
       firmNr,
-      periodNr,
+      periodNr: periodNr || '01',
       storeId: storeId || null,
       storeName: storeName || null,
     };
+    void saveLastOrg(org);
     if (isSwitch) {
       updateOrg(org);
       const nav = navigation as { canGoBack: () => boolean; goBack: () => void };

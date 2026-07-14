@@ -7,8 +7,9 @@ import {
   Pressable,
   Alert,
   ActivityIndicator,
+  Modal,
 } from 'react-native';
-import { Plus, Minus, Trash2, ScanBarcode } from 'lucide-react-native';
+import { Plus, Minus, Trash2, ScanBarcode, Tag } from 'lucide-react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { ScreenHeader, SearchBar, EmptyState } from '../components/ScreenChrome';
@@ -16,7 +17,13 @@ import { PrimaryButton } from '../components/PrimaryButton';
 import { BarcodeScannerModal } from '../components/BarcodeScannerModal';
 import { fetchProducts, fetchProductByBarcode, type ProductRow } from '../api/productsApi';
 import { savePosSale } from '../api/posApi';
+import {
+  fetchActiveCampaigns,
+  formatCampaignDiscount,
+  type CampaignDetail,
+} from '../api/campaignsApi';
 import { formatMoney } from '../api/erpTables';
+import { applyCampaign, pickBestCampaign } from '../services/campaignEngine';
 import { useThemeStore } from '../store/themeStore';
 import { useOrgEpoch } from '../hooks/useOrgEpoch';
 import { usePrinterSettingsStore } from '../store/printerSettingsStore';
@@ -31,6 +38,7 @@ type CartLine = {
   qty: number;
   unit: string | null;
   code: string | null;
+  categoryCode: string | null;
 };
 
 export function PosScreen() {
@@ -44,17 +52,76 @@ export function PosScreen() {
   const [searching, setSearching] = useState(false);
   const [saving, setSaving] = useState(false);
   const [scannerOpen, setScannerOpen] = useState(false);
+  const [campaigns, setCampaigns] = useState<CampaignDetail[]>([]);
+  /** null = otomatik en iyi; '' = kampanya yok; id = manuel seçim */
+  const [selectedCampaignId, setSelectedCampaignId] = useState<string | null>(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
 
   useEffect(() => {
     setCart([]);
     setHits([]);
     setSearch('');
+    setSelectedCampaignId(null);
   }, [orgEpoch]);
 
-  const total = useMemo(
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const list = await fetchActiveCampaigns();
+        if (!cancelled) setCampaigns(list);
+      } catch {
+        if (!cancelled) setCampaigns([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [orgEpoch]);
+
+  const subtotal = useMemo(
     () => cart.reduce((s, l) => s + l.price * l.qty, 0),
     [cart],
   );
+
+  const campaignEngineLines = useMemo(
+    () =>
+      cart.map((l) => ({
+        productId: l.productId,
+        price: l.price,
+        qty: l.qty,
+        categoryCode: l.categoryCode,
+      })),
+    [cart],
+  );
+
+  const applied = useMemo(() => {
+    if (cart.length === 0) {
+      return { campaign: null as CampaignDetail | null, discount: 0, mode: 'none' as const };
+    }
+    if (selectedCampaignId === '') {
+      return { campaign: null, discount: 0, mode: 'off' as const };
+    }
+    if (selectedCampaignId) {
+      const c = campaigns.find((x) => x.id === selectedCampaignId) || null;
+      if (!c) return { campaign: null, discount: 0, mode: 'manual' as const };
+      const r = applyCampaign(campaignEngineLines, c);
+      return {
+        campaign: r.appliedCampaignId ? c : null,
+        discount: r.totalDiscount,
+        mode: 'manual' as const,
+      };
+    }
+    const best = pickBestCampaign(campaignEngineLines, campaigns);
+    if (!best) return { campaign: null, discount: 0, mode: 'auto' as const };
+    return {
+      campaign: best.campaign,
+      discount: best.result.totalDiscount,
+      mode: 'auto' as const,
+    };
+  }, [cart.length, campaignEngineLines, campaigns, selectedCampaignId]);
+
+  const total = Math.round((subtotal - applied.discount) * 100) / 100;
 
   const addProduct = useCallback((p: ProductRow) => {
     setCart((prev) => {
@@ -73,6 +140,7 @@ export function PosScreen() {
           qty: 1,
           unit: p.unit,
           code: p.code,
+          categoryCode: p.category_code ?? null,
         },
       ];
     });
@@ -118,9 +186,13 @@ export function PosScreen() {
 
   const checkout = (paymentMethod: string) => {
     if (cart.length === 0 || saving) return;
+    const discLabel =
+      applied.discount > 0 && applied.campaign
+        ? `\nKampanya: ${applied.campaign.name} (−${formatMoney(applied.discount)} ₺)`
+        : '';
     Alert.alert(
       'Ödeme',
-      `${paymentMethod} — toplam ${formatMoney(total)} ₺ kaydedilsin mi?`,
+      `${paymentMethod} — toplam ${formatMoney(total)} ₺ kaydedilsin mi?${discLabel}`,
       [
         { text: 'İptal', style: 'cancel' },
         {
@@ -129,8 +201,13 @@ export function PosScreen() {
             void (async () => {
               setSaving(true);
               try {
-                const res = await savePosSale(cart, paymentMethod);
+                const res = await savePosSale(cart, paymentMethod, {
+                  totalDiscount: applied.discount,
+                  campaignId: applied.campaign?.id ?? null,
+                  campaignName: applied.campaign?.name ?? null,
+                });
                 setCart([]);
+                setSelectedCampaignId(null);
                 if (res.queued) {
                   Alert.alert(
                     'Fiş kuyruğa alındı',
@@ -167,6 +244,13 @@ export function PosScreen() {
       ],
     );
   };
+
+  const campaignSubtitle =
+    applied.discount > 0 && applied.campaign
+      ? `${applied.campaign.name.slice(0, 28)} (−${formatMoney(applied.discount)})`
+      : campaigns.length > 0
+        ? `${campaigns.length} aktif kampanya`
+        : 'Kampanya yok';
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
@@ -234,7 +318,7 @@ export function PosScreen() {
         data={cart}
         keyExtractor={(item) => item.productId}
         ListEmptyComponent={<EmptyState message="Sepet boş — ürün arayıp ekleyin" />}
-        contentContainerStyle={{ padding: 12, gap: 8, paddingBottom: 160 }}
+        contentContainerStyle={{ padding: 12, gap: 8, paddingBottom: 200 }}
         renderItem={({ item }) => (
           <View style={[styles.line, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
             <View style={{ flex: 1 }}>
@@ -274,6 +358,32 @@ export function PosScreen() {
       />
 
       <View style={[styles.footer, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
+        <Pressable
+          onPress={() => setPickerOpen(true)}
+          style={[styles.campaignRow, { borderColor: colors.cardBorder }]}
+        >
+          <Tag size={16} color={palette.blue600} />
+          <View style={{ flex: 1 }}>
+            <Text style={{ color: colors.textMuted, fontSize: 10, fontWeight: '700' }}>
+              KAMPANYA {applied.mode === 'auto' ? '(otomatik)' : applied.mode === 'off' ? '(kapalı)' : ''}
+            </Text>
+            <Text style={{ color: colors.text, fontWeight: '700', fontSize: 12 }} numberOfLines={1}>
+              {campaignSubtitle}
+            </Text>
+          </View>
+          <Text style={{ color: palette.blue600, fontWeight: '800', fontSize: 12 }}>Seç</Text>
+        </Pressable>
+
+        {applied.discount > 0 ? (
+          <View style={styles.totalsCol}>
+            <Text style={{ color: colors.textMuted, fontSize: 12 }}>
+              Ara toplam: {formatMoney(subtotal)} ₺
+            </Text>
+            <Text style={{ color: palette.green600, fontSize: 13, fontWeight: '700' }}>
+              İndirim: −{formatMoney(applied.discount)} ₺
+            </Text>
+          </View>
+        ) : null}
         <Text style={[styles.total, { color: colors.text }]}>
           Toplam: {formatMoney(total)} ₺
         </Text>
@@ -298,6 +408,65 @@ export function PosScreen() {
           </View>
         )}
       </View>
+
+      <Modal visible={pickerOpen} transparent animationType="fade" onRequestClose={() => setPickerOpen(false)}>
+        <Pressable style={styles.modalOverlay} onPress={() => setPickerOpen(false)}>
+          <Pressable
+            style={[styles.modalCard, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}
+            onPress={(e) => e.stopPropagation()}
+          >
+            <Text style={[styles.modalTitle, { color: colors.text }]}>Kampanya seç</Text>
+            <Pressable
+              style={styles.modalItem}
+              onPress={() => {
+                setSelectedCampaignId(null);
+                setPickerOpen(false);
+              }}
+            >
+              <Text style={{ color: colors.text, fontWeight: '700' }}>Otomatik (en iyi)</Text>
+            </Pressable>
+            <Pressable
+              style={styles.modalItem}
+              onPress={() => {
+                setSelectedCampaignId('');
+                setPickerOpen(false);
+              }}
+            >
+              <Text style={{ color: colors.textMuted, fontWeight: '600' }}>Kampanya uygulama</Text>
+            </Pressable>
+            {campaigns.map((c) => {
+              const preview = applyCampaign(campaignEngineLines, c);
+              const ok = preview.totalDiscount > 0;
+              return (
+                <Pressable
+                  key={c.id}
+                  style={[styles.modalItem, !ok && { opacity: 0.45 }]}
+                  disabled={!ok && cart.length > 0}
+                  onPress={() => {
+                    setSelectedCampaignId(c.id);
+                    setPickerOpen(false);
+                  }}
+                >
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: colors.text, fontWeight: '700' }} numberOfLines={1}>
+                      {c.name}
+                    </Text>
+                    <Text style={{ color: colors.textMuted, fontSize: 11 }}>
+                      {formatCampaignDiscount(c)}
+                      {ok ? ` · −${formatMoney(preview.totalDiscount)} ₺` : ' · bu sepete uygun değil'}
+                    </Text>
+                  </View>
+                </Pressable>
+              );
+            })}
+            {campaigns.length === 0 ? (
+              <Text style={{ color: colors.textMuted, padding: 12, fontSize: 12 }}>
+                Aktif dönem kampanyası yok
+              </Text>
+            ) : null}
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -360,8 +529,42 @@ const styles = StyleSheet.create({
     bottom: 0,
     borderTopWidth: 1,
     padding: 16,
-    gap: 10,
+    gap: 8,
   },
+  campaignRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  totalsCol: { gap: 2 },
   total: { fontSize: 18, fontWeight: '800' },
   payRow: { flexDirection: 'row', gap: 8 },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'flex-end',
+  },
+  modalCard: {
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    borderWidth: 1,
+    maxHeight: '70%',
+    paddingBottom: 24,
+  },
+  modalTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    padding: 16,
+    paddingBottom: 8,
+  },
+  modalItem: {
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: '#e5e7eb',
+  },
 });

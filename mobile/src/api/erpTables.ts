@@ -23,6 +23,17 @@ export function storeId(): string | null {
   return id ? String(id) : null;
 }
 
+/**
+ * Kritik listelerde oturum `storeId` filtresi.
+ * `storeId` yoksa (firma geneli) boş string; varsa `AND col::text = $N` ekler / params’a push eder.
+ */
+export function appendStoreIdFilter(column: string, params: unknown[]): string {
+  const sid = storeId();
+  if (!sid) return '';
+  params.push(sid);
+  return ` AND ${column}::text = $${params.length}`;
+}
+
 export function storeName(): string | null {
   const n = useAuthStore.getState().user?.storeName;
   return n ? String(n) : null;
@@ -123,6 +134,32 @@ export function unitsetsTable(fn = firmNr()): string {
 
 export function unitsetLinesTable(fn = firmNr()): string {
   return `rex_${fn}_unitsetl`;
+}
+
+export function specialCodesTable(fn = firmNr()): string {
+  return `rex_${fn}_special_codes`;
+}
+
+/** Varyant tanım tablosu (varsa); yoksa product_variants kullanılır */
+export function variantsTable(fn = firmNr()): string {
+  return `rex_${fn}_variants`;
+}
+
+export function productVariantsTable(fn = firmNr()): string {
+  return `rex_${fn}_product_variants`;
+}
+
+/** Global şema — firma öneksiz */
+export function productGroupsTable(): string {
+  return `product_groups`;
+}
+
+export function productionRecipesTable(fn = firmNr()): string {
+  return `rex_${fn}_production_recipes`;
+}
+
+export function butcherRecipesTable(fn = firmNr()): string {
+  return `rex_${fn}_butcher_recipes`;
 }
 
 export function campaignsTable(fn = firmNr()): string {

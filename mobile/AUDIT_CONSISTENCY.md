@@ -1,49 +1,73 @@
 # RetailEX Mobile — Tutarlılık Denetimi
 
-Tarih: 2026-07-14 · Kapsam: `mobile/` RN/Expo · Commit yok
+Tarih: 2026-07-14 · Kapsam: `mobile/` RN/Expo · Commit yok  
+Tur: **P2** — menü i18n · `storeId` kritik listeler · TODO / bu dosya `LIVE_MAP` senkronu
 
 ## Özet
 
-Menü → `LIVE_MAP` → stack navigasyonu hizalandı (kritik ölü/yanlış bağlar düzeltildi). Typecheck **geçiyor** (`npm run typecheck`). Offline kuyruk cari + POS ile uyumlu; ürün/fatura/WMS yazmaları canlı zorunlu. `storeId` oturumda tutuluyor, çoğu API yalnızca `firmNr`/`periodNr` ile tablo seçiyor.
+Menü → `LIVE_MAP` → stack navigasyonu hizalı. Yaprakların çoğu canlı; `Module` kalanlar çoğunlukla **grup kabuğu** (`store-management-group`, `waybill`, `Siparişler` …) + `dashboard` (Tabs özel). Typecheck hedeflenir. Offline kuyruk cari + POS (+ fatura) ile uyumlu. Oturum `storeId` kritik satış/WMS/fatura listelerinde filtrelenir.
 
 | Alan | Durum |
 |------|--------|
-| LIVE_MAP vs menü (125 screen) | ~92 canlı / ~33 `Module` yer tutucu |
-| Stack ↔ `LiveRoute` ↔ `navigateToModule` | Hizalı (Finance, Communications, WmsTransfer, CashCollection, Campaigns, …) |
+| LIVE_MAP vs menü (~127 screen) | ~118 canlı / ~9 `Module` (grup host + dashboard) |
+| Stack ↔ `LiveRoute` ↔ `navigateToModule` | Hizalı (StoreManagement, ETransform, MaterialDefinitions, WmsWavePicking, Scale*, CariDevir, ProductionOps, ExcelOps, MultiCurrency, SystemExtras, …) |
 | firmNr / periodNr | ERP tablolarında tutarlı (`erpTables`) |
-| store | Oturumda var; filtreleme seyrek (`dashboardApi` vb.) |
-| i18n tr | Auth/settings/dashboard anahtarları tam; menü etiketleri hâlâ hardcoded TR |
-| Offline | policy ↔ müşteri/ürün okuma ↔ `pos.sale` kuyruk OK; diğer yazmalar kuyruksuz |
-| Typecheck | **0 hata** (`tsc --noEmit`) |
+| store | Oturumda var; **P2:** kritik listelerde `appendStoreIdFilter` |
+| i18n tr/en/ar/ku | Auth/settings/dashboard + **menü** `menu.*` (sections/items/quick/badge) |
+| Offline | policy ↔ müşteri/ürün okuma ↔ `pos.sale` / fatura kuyruk; WMS yazma sonraki |
+| Typecheck | `npm run typecheck` |
 
 ## 1. LIVE_MAP / menü / stack
 
-**Düzeltilen kritikler (bu tur):**
+**Bayat `Module` satırları (düzeltildi — TODO ile senkron):**
 
-- `customer-in-out-totals` yazım hatası → `report-in-out-totals` (önceden hep `Module`)
-- Çakışan `kasalar` / `cash-slips` (Finance vs ReportCash) temizlendi
-- `PrinterSettings`, `Communications`, `Finance`, `CashCollection`, `WmsTransfer`, `Campaigns` route bağları + `MainStackParamList` / navigator / `navigateToModule` tamamlandı
-- Beauty satış tipleri (`BeautySale` …) eklendi; WMS sayım `number`/`string` karşılaştırma düzeltildi
+| Screen | Eski doküman | Güncel LiveRoute |
+|--------|--------------|------------------|
+| `store-management` / `multistore` / `regional` | Module | `StoreManagement` |
+| `interstore-transfer` | Module | `WmsTransfer` |
+| `hybrid-sync` | Module | `System` |
+| `storeconfig` | Organization / Module | `Organization` |
+| `databroadcast` / `integrations` | Module | `Communications` |
+| `material-classes` / `unit-sets` / `product-categories` / brands / variants / … | Module | `MaterialDefinitions` |
+| `service-cards` | Module | `Products` |
+| `etransform` | Module | `ETransform` |
+| `cashier-scale` / `scale-management` / `scale` | POS / Module | `ScaleSale` / `ScaleManagement` |
+| `wave-picking` | Wms `[~]` | `WmsWavePicking` |
+| `cari-devir` | ReportCariExtract / Module | `CariDevir` |
 
-**Kalan (bilinçli yer tutucu):** ~33 menü screen → `Module` (ör. e-dönüşüm, excel, butcher, marka, entegrasyon, `Siparişler`/`Teklifler` Türkçe id). `dashboard` özel-cased `Tabs`.
+**Bilinçli `Module` (grup / özel):**  
+`dashboard` (Tabs), `store-management-group`, `material-movements`, `inventory-count-ops`, `finance-movements`, `finance-reports`, `analytics-dashboard-group`, `waybill`, `Siparişler`.
 
-**Semantik gevşeklik (kabul edilebilir / teknik borç):**
+**Semantik gevşeklik (kabul / borç):**
 
-- `financereports` → `ReportMizan` (genel cari rapor ≠ mizan)
 - AI/BI menüleri → `ReportSales` / `ReportProductSales`
-- `cashier-scale` → `POS` (terazi UI yok)
+- `service-cards` → Products (ayrı hizmet kartı UI yok)
+- Mobil “mizan” = cari bakiye — `AUDIT_ACCOUNTING.md`
 
 ## 2. firmNr / periodNr / store
 
 - Tek kaynak: `authStore` → `erpTables.firmNr()` / `periodNr()` / `storeId()`
-- Hareket tabloları: `rex_{firm}_{period}_*`; kartlar: `rex_{firm}_*`
-- **Boşluk:** Mağaza filtresi çoğu listede yok; WMS sayım `store_id` ile yazar, POS satışta mağaza kolonu yok
+- Hareket: `rex_{firm}_{period}_*`; kart: `rex_{firm}_*`
+- **P2 `appendStoreIdFilter(column, params)`** — `storeId` yoksa firma geneli (filtre yok)
 
-## 3. i18n (tr)
+| API / liste | Filtre kolonu |
+|-------------|----------------|
+| `dashboardApi.fetchDashboardStats` | `store_id` (önceden vardı) |
+| `invoicesApi` liste + özet | `store_id` |
+| `reportsApi` satış günü / top ürün / ürün satış | `store_id` / `s.store_id` |
+| `wmsStockCountApi.fetchCountingSlips` | `cs.store_id` (+ offline cache) |
+| `stockMovementApi` fiş + fatura birleşik | `warehouse_id` / `s.store_id` |
+| `notificationsApi` vadesi geçmiş cari | `s.store_id` |
 
-- `tr.json` ↔ `en.json` anahtar sayısı hizalı (~102+)
-- Göze çarpan: `MENU_SECTIONS` / `QUICK_ACCESS` etiketleri i18n değil (dil değişince menü Türkçe kalır)
-- Ekran içi birçok kullanıcı mesajı hardcode (`Alert`, form hataları)
+**Kalan boşluk:** ürün kritik stok / stok miktarı firma geneli (mağaza stok kolon modeli yok); kasa `cash_lines` mağaza kolonu seyrek.
+
+## 3. i18n (tr / en / ar / ku)
+
+- Locale dosyaları: `mobile/src/i18n/locales/{tr,en,ar,ku}.json` — `menu.sections|items|quick|badge*|groupsCount|moduleShortcuts`
+- Helper: `mobile/src/i18n/menuLabels.ts` (`tMenuItem` / `tMenuSection` / `tMenuQuick` / `tMenuBadge`)
+- UI: `DashboardScreen`, `ModuleScreen`, `MoreScreen`
+- Üretici: `mobile/scripts/gen-menu-i18n.mjs` (etiket eklenince yeniden çalıştır)
+- **Kalan:** ekran içi birçok `Alert` / form mesajı hâlâ TR hardcode
 
 ## 4. Offline policy vs write path
 
@@ -52,29 +76,26 @@ Menü → `LIVE_MAP` → stack navigasyonu hizalandı (kritik ölü/yanlış ba�
 | Ürün / cari liste | Snapshot OK |
 | Cari CRUD | Kuyruk → flush |
 | POS satış | `pos.sale` kuyruk + cache stok |
-| Ürün CRUD | Canlı zorunlu (hata) |
-| Fatura / WMS / Beauty sale / Finance yazma | Canlı zorunlu veya net kontrolü yok / kuyruksuz |
-
-`HYBRID_POLICY.md` POS kuyruğunu tanımlıyor; fatura/WMS bilinçli sonraki faz.
+| Fatura satış/alış/iade/belge | Kuyruk (önceki turlar) |
+| Ürün CRUD | Canlı zorunlu |
+| WMS / Beauty sale / Finance yazma | Canlı zorunlu veya kuyruksuz (sonraki) |
 
 ## 5. Typecheck
 
 ```
-npm run typecheck  →  exit 0
+cd mobile && npm run typecheck
 ```
 
-## Bu turda yapılan düzeltmeler (minimal)
+## Bu turda yapılanlar (P2)
 
-- `menuConfig` LIVE_MAP / LiveRoute
-- `navigation/types` + `MainStackNavigator` + `navigateToModule`
-- `beautyApi` tip + helpers
-- `wmsStockCountApi` sayım karşılaştırma
-- Tema (`red600`/`amber600`), `absoluteFill`, PrimaryButton `ghost`
-- `ReportScreens` mode Record tipi
+- Menü i18n (4 dil) + ekran bağları
+- `appendStoreIdFilter` + kritik liste SQL
+- `TODO_RN_MIGRATION.md` bayat Module satırları
+- Bu dosya `LIVE_MAP` / store / i18n durumu
 
 ## Önerilen sonraki adımlar
 
-1. `Module` kalan ~33 öğeyi öncelik sırasıyla LIVE’a almak veya menüden ayıklamak  
-2. `storeId` filtre politikasını ürün/satış/rapor API’lerine tutarlı yazmak  
-3. Menü etiketlerini i18n anahtarlarına taşımak  
-4. Fatura / WMS / Beauty yazmalarını kuyruğa almak veya UI’da net “çevrimiçi gerekli”  
+1. Kasa/banka satırlarında mağaza kolon modeli netleşince filtre  
+2. Ekran içi stringleri i18n’e taşıma  
+3. WMS sayım mutation kuyruk  
+4. EAS preview / production  

@@ -50,6 +50,10 @@ export type PosSaleWriteOptions = {
   /** Veresiye için cari */
   customerId?: string | null;
   customerName?: string | null;
+  /** Kampanya indirimi (header total_discount) */
+  totalDiscount?: number;
+  campaignId?: string | null;
+  campaignName?: string | null;
 };
 
 function nextFicheNo(): string {
@@ -96,7 +100,13 @@ async function savePosSaleLive(
   paymentMethod: string,
   opts?: Pick<
     PosSaleWriteOptions,
-    'id' | 'ficheNo' | 'customerId' | 'customerName'
+    | 'id'
+    | 'ficheNo'
+    | 'customerId'
+    | 'customerName'
+    | 'totalDiscount'
+    | 'campaignId'
+    | 'campaignName'
   >,
 ): Promise<PosSaleResult> {
   if (!lines.length) throw new Error('Sepet boş');
@@ -108,11 +118,18 @@ async function savePosSaleLive(
   const user = useAuthStore.getState().user;
   const id = opts?.id || newUuid();
   const ficheNo = opts?.ficheNo || nextFicheNo();
-  const total = lines.reduce((s, l) => s + l.price * l.qty, 0);
+  const subtotal = lines.reduce((s, l) => s + l.price * l.qty, 0);
+  const discount = Math.max(0, Math.min(Number(opts?.totalDiscount) || 0, subtotal));
+  const total = Math.round((subtotal - discount) * 100) / 100;
   const cashier = user?.fullName || user?.username || 'mobile';
   const customerId = opts?.customerId || null;
   const customerName =
     (opts?.customerName || '').trim() || (customerId ? 'Cari' : 'Perakende');
+  const campaignNote =
+    opts?.campaignId && discount > 0
+      ? `Kampanya: ${opts.campaignName || opts.campaignId} (−${discount})`
+      : null;
+  const notes = ['RetailEX Mobile POS', campaignNote].filter(Boolean).join(' | ');
 
   await pgQuery(
     `INSERT INTO ${sales} (
@@ -123,10 +140,23 @@ async function savePosSaleLive(
      ) VALUES (
        $1::uuid, $2, $3, $4, $4, NOW(),
        'sales_invoice', 7, $5::uuid, $6,
-       $7, 0, $7, 0, $7,
-       'TRY', 1, 'completed', $8, $9, 'RetailEX Mobile POS'
+       $7, 0, $8, $9, $7,
+       'TRY', 1, 'completed', $10, $11, $12
      )`,
-    [id, fn, pn, ficheNo, customerId, customerName, total, paymentMethod, cashier],
+    [
+      id,
+      fn,
+      pn,
+      ficheNo,
+      customerId,
+      customerName,
+      total,
+      subtotal,
+      discount,
+      paymentMethod,
+      cashier,
+      notes,
+    ],
   );
 
   for (const line of lines) {
@@ -189,7 +219,9 @@ export async function savePosSale(
 
   const id = opts?.id || newUuid();
   const ficheNo = opts?.ficheNo || nextFicheNo();
-  const total = lines.reduce((s, l) => s + l.price * l.qty, 0);
+  const subtotal = lines.reduce((s, l) => s + l.price * l.qty, 0);
+  const discount = Math.max(0, Math.min(Number(opts?.totalDiscount) || 0, subtotal));
+  const total = Math.round((subtotal - discount) * 100) / 100;
   const live = opts?.forceLive === true || shouldUseLiveData();
 
   if (!live && !opts?.skipQueue) {
@@ -202,6 +234,9 @@ export async function savePosSale(
         paymentMethod,
         customerId: opts?.customerId ?? null,
         customerName: opts?.customerName ?? null,
+        totalDiscount: discount,
+        campaignId: opts?.campaignId ?? null,
+        campaignName: opts?.campaignName ?? null,
       },
     });
     for (const line of lines) {
@@ -216,5 +251,8 @@ export async function savePosSale(
     ficheNo,
     customerId: opts?.customerId,
     customerName: opts?.customerName,
+    totalDiscount: discount,
+    campaignId: opts?.campaignId,
+    campaignName: opts?.campaignName,
   });
 }

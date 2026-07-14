@@ -8,10 +8,11 @@ import {
   RefreshControl,
   Pressable,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { ChevronRight, Tag } from 'lucide-react-native';
+import { ChevronRight, Plus, Tag } from 'lucide-react-native';
 import { ScreenHeader, SearchBar, EmptyState, ErrorBanner } from '../components/ScreenChrome';
+import { HeaderIconButton } from '../components/GradientHeader';
 import {
   fetchCampaigns,
   formatCampaignDiscount,
@@ -68,9 +69,23 @@ export function CampaignsScreen() {
     return () => clearTimeout(t);
   }, [load, search]);
 
+  useFocusEffect(
+    useCallback(() => {
+      void load();
+    }, [load]),
+  );
+
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
-      <ScreenHeader title="Kampanyalar" subtitle={`${rows.length} kayıt`} />
+      <ScreenHeader
+        title="Kampanyalar"
+        subtitle={`${rows.length} kayıt`}
+        right={
+          <HeaderIconButton accent onPress={() => navigation.navigate('CampaignForm')}>
+            <Plus size={18} color={palette.white} />
+          </HeaderIconButton>
+        }
+      />
       <SearchBar
         value={search}
         onChangeText={setSearch}

@@ -4,7 +4,7 @@
  */
 
 import { pgQuery } from './pgClient';
-import { firmNr, newUuid, periodNr, productsTable } from './erpTables';
+import { appendStoreIdFilter, firmNr, newUuid, periodNr, productsTable, storeId } from './erpTables';
 import { useAuthStore } from '../store/authStore';
 import { shouldUseLiveData, getNetworkPolicy } from '../offline/policy';
 import { enqueueMutation } from '../offline/mutationQueue';
@@ -135,24 +135,29 @@ export async function fetchCountingStores(): Promise<WmsStore[]> {
 export async function fetchCountingSlips(): Promise<CountingSlip[]> {
   if (!shouldUseLiveData()) {
     const cached = await getCachedCountingSlips();
-    return cached.map((s) => ({
-      id: s.id,
-      firm_nr: s.firm_nr,
-      store_id: s.store_id,
-      fiche_no: s.fiche_no,
-      date: s.date,
-      count_type: s.count_type,
-      location_code: s.location_code,
-      status: s.status,
-      description: s.description,
-      created_by: s.created_by,
-      created_at: s.created_at,
-      store_name: s.store_name,
-      line_count: s.line_count ?? s.lines.length,
-    }));
+    const sid = storeId();
+    return cached
+      .filter((s) => !sid || String(s.store_id) === sid)
+      .map((s) => ({
+        id: s.id,
+        firm_nr: s.firm_nr,
+        store_id: s.store_id,
+        fiche_no: s.fiche_no,
+        date: s.date,
+        count_type: s.count_type,
+        location_code: s.location_code,
+        status: s.status,
+        description: s.description,
+        created_by: s.created_by,
+        created_at: s.created_at,
+        store_name: s.store_name,
+        line_count: s.line_count ?? s.lines.length,
+      }));
   }
 
   const firm = fn();
+  const params: unknown[] = [firm];
+  const storeSql = appendStoreIdFilter('cs.store_id', params);
   const res = await pgQuery<CountingSlip>(
     `SELECT cs.*,
             s.name AS store_name,
@@ -162,10 +167,11 @@ export async function fetchCountingSlips(): Promise<CountingSlip[]> {
      LEFT JOIN wms.counting_lines cl ON cs.id = cl.slip_id
      WHERE cs.firm_nr = $1
        AND cs.status NOT IN ('cancelled')
+       ${storeSql}
      GROUP BY cs.id, s.name
      ORDER BY cs.created_at DESC
      LIMIT 100`,
-    [firm],
+    params,
   );
   const rows = res.rows;
   if (rows.length) {

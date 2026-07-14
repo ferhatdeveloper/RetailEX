@@ -13,6 +13,11 @@ import {
   newUuid,
   periodNr,
 } from './erpTables';
+import {
+  bankTxForDirection,
+  cashTransactionTypeLabel,
+  cashTxForDirection,
+} from './cashTransactionTypes';
 
 export type CashRegisterRow = {
   id: string;
@@ -194,7 +199,7 @@ export async function createSimpleCashMovement(opts: {
   const sign = opts.direction === 'in' ? 1 : -1;
   const amt = Math.abs(opts.amount);
   const ficheNo = nextFiche('KM');
-  const txType = opts.direction === 'in' ? 'TAHSILAT' : 'ODEME';
+  const txType = cashTxForDirection(opts.direction);
   const desc = opts.description?.trim() || (opts.direction === 'in' ? 'Mobil kasa girişi' : 'Mobil kasa çıkışı');
   const date = opts.date?.trim() || new Date().toISOString().slice(0, 10);
 
@@ -231,7 +236,7 @@ export async function createSimpleBankMovement(opts: {
   const sign = opts.direction === 'in' ? 1 : -1;
   const amt = Math.abs(opts.amount);
   const ficheNo = nextFiche('BM');
-  const txType = opts.direction === 'in' ? 'GIRIS' : 'CIKIS';
+  const txType = bankTxForDirection(opts.direction);
   const desc = opts.description?.trim() || (opts.direction === 'in' ? 'Mobil banka girişi' : 'Mobil banka çıkışı');
   const date = opts.date?.trim() || new Date().toISOString().slice(0, 10);
 
@@ -255,7 +260,5 @@ export async function createSimpleBankMovement(opts: {
 }
 
 export function movementTypeLabel(type: string | null | undefined, sign: number): string {
-  const t = String(type || '').trim();
-  if (t) return t.replace(/_/g, ' ');
-  return sign >= 0 ? 'Giriş' : 'Çıkış';
+  return cashTransactionTypeLabel(type, sign);
 }

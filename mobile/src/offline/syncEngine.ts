@@ -3,6 +3,7 @@ import {
   createPurchaseInvoice,
   createReturnInvoice,
   createSalesInvoice,
+  createDocumentInvoice,
   updateInvoiceHeader,
 } from '../api/invoicesApi';
 import { savePosSale } from '../api/posApi';
@@ -53,6 +54,9 @@ async function applyOne(m: PendingMutation): Promise<void> {
       ficheNo: m.payload.ficheNo,
       customerId: m.payload.customerId,
       customerName: m.payload.customerName,
+      totalDiscount: m.payload.totalDiscount,
+      campaignId: m.payload.campaignId,
+      campaignName: m.payload.campaignName,
     });
     return;
   }
@@ -106,6 +110,29 @@ async function applyOne(m: PendingMutation): Promise<void> {
         returnReason: m.payload.returnReason,
         documentNo: m.payload.documentNo,
         lines: m.payload.lines,
+      },
+      {
+        forceLive: true,
+        skipQueue: true,
+        id: m.payload.localId,
+        ficheNo: m.payload.ficheNo,
+      },
+    );
+    await removePendingInvoiceFromCache(m.payload.localId);
+    return;
+  }
+  if (m.type === 'invoice.document.create') {
+    await createDocumentInvoice(
+      m.payload.kind,
+      {
+        accountId: m.payload.accountId,
+        accountName: m.payload.accountName,
+        notes: m.payload.notes,
+        paymentMethod: m.payload.paymentMethod,
+        documentNo: m.payload.documentNo,
+        footerDiscountAmount: m.payload.footerDiscountAmount,
+        lines: m.payload.lines,
+        trcodeOverride: m.payload.trcode,
       },
       {
         forceLive: true,

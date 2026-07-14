@@ -58,6 +58,14 @@ export function paymentMethodImpliesCashInKasa(pm: string | undefined | null): b
   return paymentMethodImpliesPaidNow(pm);
 }
 
+/**
+ * Peşin alış: kasa defterine KASA_CIKIS yazılmalı mı (nakit/kart).
+ * Havale/EFT banka tarafına bırakılır (R5 / P2).
+ */
+export function paymentMethodImpliesCashOutKasa(pm: string | undefined | null): boolean {
+  return paymentMethodImpliesPaidNow(pm);
+}
+
 /** Ledger SQL: satış satırı cari borç yaratır mı — web `sqlPaymentMethodImpliesCustomerDebtExpr` */
 export function sqlPaymentMethodImpliesCustomerDebtExpr(alias = ''): string {
   const col = alias ? `${alias}.payment_method` : 'payment_method';

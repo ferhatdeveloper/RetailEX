@@ -14,6 +14,7 @@ import {
   ReportSalesScreen,
   ReportStockScreen,
   ReportMizanScreen,
+  ReportAgingScreen,
   ReportCariExtractScreen,
   ReportProductSalesScreen,
   ReportCashScreen,
@@ -34,6 +35,7 @@ import { FinanceDefinitionsScreen } from '../screens/FinanceDefinitionsScreen';
 import { MaterialDefinitionsScreen } from '../screens/MaterialDefinitionsScreen';
 import { MaterialDefinitionFormScreen } from '../screens/MaterialDefinitionFormScreen';
 import { CashCollectionScreen } from '../screens/CashCollectionScreen';
+import { CariDevirScreen } from '../screens/CariDevirScreen';
 import { OrganizationScreen } from '../screens/OrganizationScreen';
 import { SystemScreen } from '../screens/SystemScreen';
 import { CommunicationsScreen } from '../screens/CommunicationsScreen';
@@ -46,7 +48,12 @@ import { ETransformScreen } from '../screens/ETransformScreen';
 import { PricingScreen } from '../screens/PricingScreen';
 import { CampaignsScreen } from '../screens/CampaignsScreen';
 import { CampaignDetailScreen } from '../screens/CampaignDetailScreen';
+import { CampaignFormScreen } from '../screens/CampaignFormScreen';
 import { ModuleScreen } from '../screens/ModuleScreen';
+import { ProductionOpsScreen } from '../screens/ProductionOpsScreen';
+import { MultiCurrencyScreen } from '../screens/MultiCurrencyScreen';
+import { ExcelOpsScreen } from '../screens/ExcelOpsScreen';
+import { SystemExtrasScreen } from '../screens/SystemExtrasScreen';
 import type { MainStackParamList } from './types';
 
 const Stack = createNativeStackNavigator<MainStackParamList>();
@@ -66,9 +73,11 @@ export function MainStackNavigator() {
       <Stack.Screen name="InvoiceForm" component={InvoiceFormScreen} />
       <Stack.Screen name="Campaigns" component={CampaignsScreen} />
       <Stack.Screen name="CampaignDetail" component={CampaignDetailScreen} />
+      <Stack.Screen name="CampaignForm" component={CampaignFormScreen} />
       <Stack.Screen name="ReportSales" component={ReportSalesScreen} />
       <Stack.Screen name="ReportStock" component={ReportStockScreen} />
       <Stack.Screen name="ReportMizan" component={ReportMizanScreen} />
+      <Stack.Screen name="ReportAging" component={ReportAgingScreen} />
       <Stack.Screen name="ReportCariExtract" component={ReportCariExtractScreen} />
       <Stack.Screen name="ReportProductSales" component={ReportProductSalesScreen} />
       <Stack.Screen name="ReportCash" component={ReportCashScreen} />
@@ -87,7 +96,12 @@ export function MainStackNavigator() {
       <Stack.Screen name="FinanceDefinitions" component={FinanceDefinitionsScreen} />
       <Stack.Screen name="MaterialDefinitions" component={MaterialDefinitionsScreen} />
       <Stack.Screen name="MaterialDefinitionForm" component={MaterialDefinitionFormScreen} />
+      <Stack.Screen name="ProductionOps" component={ProductionOpsScreen} />
+      <Stack.Screen name="MultiCurrency" component={MultiCurrencyScreen} />
+      <Stack.Screen name="ExcelOps" component={ExcelOpsScreen} />
+      <Stack.Screen name="SystemExtras" component={SystemExtrasScreen} />
       <Stack.Screen name="CashCollection" component={CashCollectionScreen} />
+      <Stack.Screen name="CariDevir" component={CariDevirScreen} />
       <Stack.Screen name="Organization" component={OrganizationScreen} />
       <Stack.Screen name="System" component={SystemScreen} />
       <Stack.Screen name="Pricing" component={PricingScreen} />

@@ -3,7 +3,7 @@
  *
  * - network: pg_bridge → Rongta TCP (LAN)
  * - simulate: UI / tartılı satış geliştirme (donanım yok)
- * - bluetooth: arayüz hazır; Expo Go'da native BT yok → development build + ble-plx
+ * - bluetooth: react-native-ble-plx (Expo development build; Expo Go’da native yok)
  */
 
 import type {
@@ -16,6 +16,15 @@ import type {
   ScaleSyncResult,
   ScaleTransportKind,
 } from '../../types/scale';
+import {
+  bleDevBuildHint,
+  connectBleScale,
+  disconnectBleScale,
+  getBleLiveReading,
+  isBleNativeAvailable,
+  isBleSessionConnected,
+  scanBleDevices,
+} from './blePlx';
 import {
   bridgeRongtaFetchSales,
   bridgeRongtaSendPlu,
@@ -189,21 +198,24 @@ export class NetworkScaleTransport implements ScaleTransport {
 }
 
 /**
- * Bluetooth taşıma — gerçek GATT/SPP için `react-native-ble-plx` (+ opsiyonel classic BT)
- * ve Expo development build gerekir. Expo Go'da `isAvailable() === false`.
+ * Bluetooth / BLE taşıma — `react-native-ble-plx`.
+ * Expo Go: `isAvailable() === false`. Development build’de GATT notify ile canlı kg.
  */
 export class BluetoothScaleTransport implements ScaleTransport, BluetoothScaleConnection {
   readonly kind = 'bluetooth' as const;
   readonly displayName: string;
-  private connected = false;
 
   constructor(private readonly address: string) {
     this.displayName = `BT ${address || '(adres yok)'}`;
   }
 
   isAvailable(): boolean {
-    // Native modül yüklü değil — açıkça false
-    return false;
+    return isBleNativeAvailable();
+  }
+
+  async scan(timeoutMs = 8000): Promise<{ id: string; name: string }[]> {
+    const hits = await scanBleDevices(timeoutMs);
+    return hits.map((h) => ({ id: h.id, name: h.name }));
   }
 
   async connect(): Promise<ScaleConnectionResult> {
@@ -211,54 +223,81 @@ export class BluetoothScaleTransport implements ScaleTransport, BluetoothScaleCo
   }
 
   async disconnect(): Promise<void> {
-    this.connected = false;
+    await disconnectBleScale(this.address);
   }
 
   async testConnection(): Promise<ScaleConnectionResult> {
-    this.connected = false;
+    if (!this.isAvailable()) {
+      return {
+        ok: false,
+        message: bleDevBuildHint(),
+        weight: {
+          connected: false,
+          weightKg: null,
+          stable: false,
+          detail: 'BT native modül yok (Expo Go)',
+          source: 'bluetooth',
+        },
+      };
+    }
+    const r = await connectBleScale(this.address);
     return {
-      ok: false,
-      message:
-        'Bluetooth terazi Expo Go’da yok. Development build + react-native-ble-plx (veya classic SPP) ekleyin. Rongta etiket terazileri genelde TCP/LAN kullanır.',
-      weight: {
-        connected: false,
-        weightKg: null,
-        stable: false,
-        detail: 'BT native modül yok',
-        source: 'bluetooth',
-      },
+      ok: r.ok,
+      message: r.message,
+      displayText: r.ok ? 'BLE SCALE' : undefined,
+      weight: r.reading,
     };
   }
 
   async readLiveWeight(): Promise<LiveWeightReading> {
-    return {
-      connected: this.connected,
-      weightKg: null,
-      stable: false,
-      detail: 'BT bağlantısı yok',
-      source: 'bluetooth',
-    };
+    if (!this.address.trim()) {
+      return {
+        connected: false,
+        weightKg: null,
+        stable: false,
+        detail: 'BT adres yok',
+        source: 'bluetooth',
+      };
+    }
+    if (!this.isAvailable()) {
+      return {
+        connected: false,
+        weightKg: null,
+        stable: false,
+        detail: 'BT native yok — development build',
+        source: 'bluetooth',
+      };
+    }
+    if (!isBleSessionConnected(this.address)) {
+      const r = await connectBleScale(this.address);
+      return r.reading;
+    }
+    return getBleLiveReading(this.address);
   }
 
   async sendPlu(records: RongtaPluPayload[]): Promise<ScaleSyncResult> {
     return {
       success: false,
-      message: 'Bluetooth PLU gönderimi henüz bağlanmadı (native modül gerekli)',
+      message:
+        'Bluetooth PLU gönderimi desteklenmiyor — Rongta etiket terazileri TCP/LAN kullanır. Tartım için canlı BLE kg kullanın.',
       productCount: records.length,
       sentCount: 0,
       failedCount: records.length,
-      errors: ['BT native yok'],
+      errors: ['BLE PLU yok'],
     };
   }
 
   async fetchSales() {
     return {
       ok: false,
-      message: 'BT satış okuma yok',
+      message: 'BT satış raporu yok — TCP/LAN Rongta kullanın',
       records: [] as ScaleSaleRecord[],
     };
   }
 }
+
+/** Ortak BLE tarama (ekranlar için) */
+export { scanBleDevices, isBleNativeAvailable, bleDevBuildHint } from './blePlx';
 
 const simulateSingleton = new SimulateScaleTransport();
 

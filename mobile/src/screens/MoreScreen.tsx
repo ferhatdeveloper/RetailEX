@@ -22,6 +22,7 @@ import {
   reloadAppForRtl,
   type AppLanguage,
 } from '../i18n/languages';
+import { tMenuItem } from '../i18n/menuLabels';
 import { palette } from '../theme/colors';
 import type { MainStackParamList } from '../navigation/types';
 
@@ -40,14 +41,14 @@ export function MoreScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<MainStackParamList>>();
 
   const hubs = [
-    { label: 'Ürünler', screen: 'products' },
-    { label: 'Cariler', screen: 'suppliers' },
-    { label: 'Faturalar', screen: 'salesinvoice' },
-    { label: 'WMS / Depo', screen: 'wms-hub' },
-    { label: 'Restoran', screen: 'restaurant' },
-    { label: 'Güzellik', screen: 'beauty' },
-    { label: 'Raporlar', screen: 'customreports' },
-    { label: 'Sistem', screen: 'usermanagement' },
+    { id: 'products', label: 'Ürünler', screen: 'products' },
+    { id: 'suppliers', label: 'Cari Hesaplar', screen: 'suppliers' },
+    { id: 'sales-inv', label: 'Satış Faturaları', screen: 'salesinvoice' },
+    { id: 'wms-hub', label: 'WMS Ana Panel', screen: 'wms-hub' },
+    { id: 'restaurant', label: 'Restoran Ana Ekran', screen: 'restaurant' },
+    { id: 'beauty', label: 'Güzellik Ana Ekran', screen: 'beauty' },
+    { id: 'customreports', label: 'Genel Rapor', screen: 'customreports' },
+    { id: 'usermanagement', label: 'Kullanıcı Yönetimi', screen: 'usermanagement' },
   ];
 
   const viewOptions: { mode: MenuViewMode; labelKey: 'menuViewCards' | 'menuViewList'; Icon: typeof LayoutGrid }[] =
@@ -87,18 +88,27 @@ export function MoreScreen() {
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
-      <ScreenHeader title={t('more')} subtitle={`${MENU_SECTIONS.length} menü grubu`} showBack={false} />
+      <ScreenHeader
+        title={t('more')}
+        subtitle={t('menu.groupsCount', { count: MENU_SECTIONS.length })}
+        showBack={false}
+      />
       <ScrollView contentContainerStyle={styles.body}>
-        <Text style={[styles.sec, { color: colors.text }]}>Modül kısayolları</Text>
-        {hubs.map((h) => (
-          <PrimaryButton
-            key={h.screen}
-            label={h.label}
-            variant="ghost"
-            onPress={() => navigateToModule(navigation, h.screen, h.label)}
-            style={{ marginBottom: 8 }}
-          />
-        ))}
+        <Text style={[styles.sec, { color: colors.text }]}>
+          {t('menu.moduleShortcuts')}
+        </Text>
+        {hubs.map((h) => {
+          const label = tMenuItem(t, h.id, h.label);
+          return (
+            <PrimaryButton
+              key={h.screen}
+              label={label}
+              variant="ghost"
+              onPress={() => navigateToModule(navigation, h.screen, label)}
+              style={{ marginBottom: 8 }}
+            />
+          );
+        })}
 
         {/* Menü görünümü — dil/tema bölümünden ayrı (çakışma azaltma) */}
         <Text style={[styles.sec, { color: colors.text, marginTop: 12 }]}>{t('menuViewMode')}</Text>

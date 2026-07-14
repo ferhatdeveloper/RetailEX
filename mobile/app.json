@@ -22,7 +22,8 @@
           "NSAllowsLocalNetworking": true
         },
         "NSLocationWhenInUseUsageDescription": "RetailEX teslimat kuryesi için canlı konum paylaşımı ister.",
-        "NSLocationAlwaysAndWhenInUseUsageDescription": "RetailEX teslimat sırasında konum güncellemesi ister."
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "RetailEX teslimat sırasında konum güncellemesi ister.",
+        "NSBluetoothAlwaysUsageDescription": "RetailEX BLE tartı terazisine bağlanmak için Bluetooth ister."
       },
       "buildNumber": "1224"
     },
@@ -39,11 +40,24 @@
       "versionCode": 1224,
       "permissions": [
         "ACCESS_COARSE_LOCATION",
-        "ACCESS_FINE_LOCATION"
+        "ACCESS_FINE_LOCATION",
+        "BLUETOOTH",
+        "BLUETOOTH_ADMIN",
+        "BLUETOOTH_SCAN",
+        "BLUETOOTH_CONNECT"
       ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
+    },
+    "extra": {
+      "retailexEasNotes": {
+        "status": "unlinked",
+        "init": "cd mobile && npx eas-cli@latest login && npx eas-cli@latest init",
+        "projectId": "eas init / eas build:configure CLI ile expo.extra.eas.projectId yazar; UUID uydurma — bu alan bağlanana kadar yoktur.",
+        "ciAlign": "GitHub Actions android-release.yml = kök npm run android:ci:build → debug APK. EAS profile debug ≈ aynı (assembleDebug, withoutCredentials). EAS preview = dahili imzalı APK. EAS production = Play AAB.",
+        "profiles": "mobile/eas.json → debug | preview | production. Ayrıntı: mobile/README.md#eas-build"
+      }
     },
     "plugins": [
       "expo-secure-store",
@@ -60,6 +74,14 @@
         {
           "locationWhenInUsePermission": "RetailEX teslimat kuryesi için canlı konum paylaşımı ister.",
           "isAndroidForegroundServiceEnabled": false
+        }
+      ],
+      [
+        "react-native-ble-plx",
+        {
+          "isBackgroundEnabled": false,
+          "modes": ["central"],
+          "bluetoothAlwaysPermission": "RetailEX BLE tartı terazisine bağlanmak için Bluetooth ister."
         }
       ]
     ]

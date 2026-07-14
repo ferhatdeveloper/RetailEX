@@ -6,21 +6,26 @@ import {
   StyleSheet,
   ActivityIndicator,
   RefreshControl,
+  Alert,
 } from 'react-native';
-import { useRoute, type RouteProp } from '@react-navigation/native';
+import { useNavigation, useRoute, useFocusEffect, type RouteProp } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { Pencil } from 'lucide-react-native';
 import { ScreenHeader, ErrorBanner, EmptyState } from '../components/ScreenChrome';
+import { HeaderIconButton } from '../components/GradientHeader';
+import { PrimaryButton } from '../components/PrimaryButton';
 import {
   fetchCampaignById,
   formatCampaignDiscount,
   formatCampaignPeriod,
   isCampaignInPeriod,
+  setCampaignActive,
   type CampaignDetail,
 } from '../api/campaignsApi';
 import { formatMoney } from '../api/erpTables';
 import { useThemeStore } from '../store/themeStore';
 import { palette } from '../theme/colors';
 import type { MainStackParamList } from '../navigation/types';
-
 const TYPE_LABELS: Record<string, string> = {
   percentage: 'Yüzde indirim',
   fixed: 'Sabit tutar',
@@ -69,10 +74,12 @@ function Row({
 
 export function CampaignDetailScreen() {
   const { colors } = useThemeStore();
+  const navigation = useNavigation<NativeStackNavigationProp<MainStackParamList>>();
   const route = useRoute<RouteProp<MainStackParamList, 'CampaignDetail'>>();
   const { campaignId } = route.params;
   const [row, setRow] = useState<CampaignDetail | null>(null);
   const [loading, setLoading] = useState(true);
+  const [toggling, setToggling] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -93,6 +100,12 @@ export function CampaignDetailScreen() {
     void load();
   }, [load]);
 
+  useFocusEffect(
+    useCallback(() => {
+      void load();
+    }, [load]),
+  );
+
   const inPeriod = row ? isCampaignInPeriod(row) : false;
   const statusLabel =
     row == null
@@ -110,9 +123,34 @@ export function CampaignDetailScreen() {
         ? palette.orange500
         : palette.gray400;
 
+  const toggleActive = async () => {
+    if (!row || toggling) return;
+    setToggling(true);
+    try {
+      const ok = await setCampaignActive(row.id, !row.active);
+      if (!ok) throw new Error('Durum güncellenemedi');
+      await load();
+    } catch (e) {
+      Alert.alert('Hata', e instanceof Error ? e.message : String(e));
+    } finally {
+      setToggling(false);
+    }
+  };
+
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
-      <ScreenHeader title="Kampanya Detay" subtitle={row?.name?.slice(0, 24) || campaignId.slice(0, 8)} />
+      <ScreenHeader
+        title="Kampanya Detay"
+        subtitle={row?.name?.slice(0, 24) || campaignId.slice(0, 8)}
+        right={
+          <HeaderIconButton
+            accent
+            onPress={() => navigation.navigate('CampaignForm', { campaignId })}
+          >
+            <Pencil size={16} color={palette.white} />
+          </HeaderIconButton>
+        }
+      />
       {error ? <ErrorBanner message={error} onRetry={() => void load()} /> : null}
       {loading && !row ? (
         <ActivityIndicator style={{ marginTop: 40 }} color={palette.blue600} />
@@ -175,6 +213,12 @@ export function CampaignDetailScreen() {
               value={row.updatedAt ? new Date(row.updatedAt).toLocaleString('tr-TR') : '—'}
             />
           </View>
+
+          <PrimaryButton
+            label={row.active ? 'Pasife al' : 'Aktifleştir'}
+            onPress={() => void toggleActive()}
+            loading={toggling}
+          />
 
           {row.productIds.length > 0 ? (
             <>

@@ -4,13 +4,17 @@ Bu klasör **gerçek native** React Native uygulamasıdır (View / Text / FlatLi
 
 - **WebView / Capacitor / Cordova yok** — mevcut Vite SPA buraya yüklenmez.
 - Kök Capacitor `android/` **kaldırıldı / legacy**; RetailEX mobil hedefi yalnızca **`mobile/`**.
-- Android CI: kökte `npm run android:ci:build` → `.github/workflows/android-release.yml` (tag `android-v{version}`).
+- Android CI (varsayılan dağıtım): kökte `npm run android:ci:build` → `.github/workflows/android-release.yml` (tag `android-v{version}`) → **debug APK**.
+- EAS Build (isteğe bağlı / store yolu): [`eas.json`](./eas.json) + aşağıdaki [EAS Build](#eas-build) bölümü.
 
 ## Migrasyon durumu
 
 Kalıcı checklist ve faz planı:
 
 **→ [`TODO_RN_MIGRATION.md`](./TODO_RN_MIGRATION.md)**
+
+Modül smoke / geçti-kaldı: **[`TEST_MODULE_REPORT.md`](./TEST_MODULE_REPORT.md)**  
+API birim smoke: kökte `node scripts/test/mobile-module-api-smoke.mjs`
 
 | Sembol | Anlam |
 |--------|--------|
@@ -67,6 +71,22 @@ npx expo start -c
 
 Emülatörde host = **`10.0.2.2`**, port `3001`. Fiziksel cihazda Bridge host = PC **LAN IP**.
 
+## Terazi BLE (development build)
+
+`react-native-ble-plx` **Expo Go’da çalışmaz** (native modül). Canlı BLE kg / tarama için **development build** gerekir.
+
+| Adım | Komut / not |
+|------|-------------|
+| 1. Bağımlılık | `cd mobile && npx expo install react-native-ble-plx` (kurulu) |
+| 2. Plugin | `app.json` → `plugins`: `react-native-ble-plx` (BT izin metni dahil) |
+| 3. Native üret | `npx expo prebuild` *(veya EAS native build)* |
+| 4. Cihaza kur | `npx expo run:android` **fiziksel cihaz** (emülatörde Bluetooth yok) |
+| 5. Metro | `npx expo start --dev-client` |
+
+- **TCP/LAN Rongta** (etiket terazisi): Expo Go yeterli; PLU + test `pg_bridge` üzerinden. Canlı kg genelde yok.
+- **BLE tartı**: Terazi Yönetimi → Cihazlar → Bluetooth → **BLE Tara** → cihaz ekle → Terazi sekmesinde canlı kg; Tartılı Satış’ta “simüle tercih” kapalıyken poll.
+- Klasik Bluetooth SPP / USB-OTG: bu RN sürümünde yok (Android TeraziManager native).
+
 ## Scriptler
 
 | Komut | Açıklama |
@@ -76,6 +96,58 @@ Emülatörde host = **`10.0.2.2`**, port `3001`. Fiziksel cihazda Bridge host = 
 | `npm run typecheck` | `tsc --noEmit` |
 
 Kök: `mobile:start`, `mobile:android`, `mobile:ios`, `mobile:typecheck`, `mobile:sync-version`, `android:ci:build`.
+
+## EAS Build
+
+Expo Application Services ile bulut derleme. Sürüm kaynağı **yerel** (`eas.json` → `cli.appVersionSource: "local"`); semver kök `package.json` + `npm run mobile:sync-version` ile hizalanır (`app.json` / `versionCode` / `buildNumber`).
+
+### CI vs EAS (Android)
+
+| Yol | Komut / tetik | Çıktı | İmza |
+|-----|----------------|-------|------|
+| **GitHub Actions (varsayılan)** | `npm run android:ci:build` veya tag `android-v{version}` | `RetailEX-Android-{version}.apk` (debug) | Debug keystore |
+| **EAS `debug`** | `npx eas-cli@latest build -p android --profile debug` | APK (`assembleDebug`) | Credentials gerekmez (`withoutCredentials`) |
+| **EAS `preview`** | `npx eas-cli@latest build -p android --profile preview` | Dahili dağıtım **APK** | EAS yönetimli keystore |
+| **EAS `production`** | `npx eas-cli@latest build -p android --profile production` | Play **AAB** | EAS / store credentials |
+
+Günlük / Actions tabanlı APK için **CI yeterlidir**. Store öncesi veya dahili imzalı APK için **EAS `preview` / `production`**.
+
+### İlk kurulum (bir kez)
+
+```bash
+cd mobile
+npm install
+npx eas-cli@latest login
+npx eas-cli@latest init   # Expo projesi bağlar → app.json extra.eas.projectId yazar
+```
+
+- `projectId` **uydurulmaz**; yalnızca CLI yazar (`app.json` → `extra.retailexEasNotes`).
+- `EXPO_TOKEN` (Expo hesabı access token) CI’den EAS tetiklemek için gerekir; şu an `android-release.yml` EAS kullanmaz.
+
+### Derleme örnekleri
+
+```bash
+cd mobile
+node ../scripts/sync-mobile-version.mjs   # isteğe bağlı; sürümü kökle eşitle
+
+# CI ile aynı amaç: debug APK (credentials yok)
+npx eas-cli@latest build -p android --profile debug
+
+# Dahili test / paylaşılabilir APK
+npx eas-cli@latest build -p android --profile preview
+
+# Play Store AAB
+npx eas-cli@latest build -p android --profile production
+```
+
+iOS: `debug` → simulator; `preview` / `production` → cihaz/store (Apple Developer gerekir).
+
+### Notlar
+
+- Profil tanımları: [`eas.json`](./eas.json) (`debug` | `preview` | `production`).
+- Node **22** (GHA ile aynı major).
+- Capacitor / kök `android/` yok — yalnızca Expo prebuild (`mobile/`).
+- Resmi referans: [EAS Build setup](https://docs.expo.dev/build/setup/), [eas.json](https://docs.expo.dev/eas/json/).
 
 ## Mimari
 
@@ -104,7 +176,7 @@ mobile/
 
 1. Fatura formu derinliği / diğer mutasyon kuyrukları  
 2. Restoran ödeme / güzellik POS  
-3. EAS Build  
+3. EAS: `eas init` + ilk `preview`/`production` build (yapılandırma hazır; proje henüz bağlanmadı)  
 
 ## Blocker notları
 

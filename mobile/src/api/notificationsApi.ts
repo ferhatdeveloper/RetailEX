@@ -4,7 +4,7 @@
  */
 
 import { pgQuery } from './pgClient';
-import { customersTable, formatMoney, salesTable } from './erpTables';
+import { appendStoreIdFilter, customersTable, formatMoney, salesTable } from './erpTables';
 import { fetchCriticalStock, type CriticalStockRow } from './reportsApi';
 
 const SQL_COUNTABLE_SALE = `COALESCE(s.status, 'approved') IN ('completed', 'approved')`;
@@ -81,6 +81,8 @@ export async function fetchOverdueCollectionDues(limit = 50): Promise<OverdueDue
   const today = localTodayYmd();
 
   try {
+    const params: unknown[] = [Math.min(limit * 3, 300)];
+    const storeSql = appendStoreIdFilter('s.store_id', params);
     const res = await pgQuery<{
       id: string;
       account_id: string;
@@ -113,9 +115,10 @@ export async function fetchOverdueCollectionDues(limit = 50): Promise<OverdueDue
            LOWER(TRIM(COALESCE(s.fiche_type, ''))) = 'return_invoice'
            OR ${OPEN_ACCOUNT_SQL}
          )
+         ${storeSql}
        ORDER BY s.date DESC
        LIMIT $1`,
-      [Math.min(limit * 3, 300)],
+      params,
     );
 
     const rows: OverdueDueRow[] = [];

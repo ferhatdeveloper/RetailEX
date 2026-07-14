@@ -17,6 +17,7 @@ import { useScaleStore } from '../store/scaleStore';
 import {
   createScaleTransport,
   getSimulateTransport,
+  isBleNativeAvailable,
 } from '../services/scale/scaleTransport';
 import {
   searchWeighableProducts,
@@ -43,6 +44,7 @@ export function ScaleSaleScreen(_props: Props) {
   const { colors } = useThemeStore();
   const orgEpoch = useOrgEpoch();
   const settings = useScaleStore((s) => s.settings);
+  const devices = useScaleStore((s) => s.devices);
   const getSelectedDevice = useScaleStore((s) => s.getSelectedDevice);
   const pushLog = useScaleStore((s) => s.pushLog);
 
@@ -55,6 +57,18 @@ export function ScaleSaleScreen(_props: Props) {
   const [cart, setCart] = useState<WeighLine[]>([]);
   const [searching, setSearching] = useState(false);
   const [reading, setReading] = useState(false);
+  const selectedDevice = useMemo(() => getSelectedDevice(), [devices, settings.lastSelectedDeviceId]);
+  const bleNative = isBleNativeAvailable();
+  const weighSourceHint = useMemo(() => {
+    if (settings.preferSimulateWeigh) return 'Kaynak: simüle (ayar)';
+    if (!selectedDevice) return 'Kaynak: simüle (cihaz yok)';
+    if (selectedDevice.transport === 'bluetooth') {
+      return bleNative ? `Kaynak: BLE ${selectedDevice.bluetoothAddress ?? ''}` : 'Kaynak: simüle (BLE native yok)';
+    }
+    if (selectedDevice.transport === 'network') return 'Kaynak: TCP (kg yoksa simüle yedek)';
+    return 'Kaynak: simülasyon';
+  }, [bleNative, selectedDevice, settings.preferSimulateWeigh]);
+
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -95,11 +109,12 @@ export function ScaleSaleScreen(_props: Props) {
     setReading(true);
     try {
       const device = getSelectedDevice();
+      const bleOk = isBleNativeAvailable();
       const useSim =
         settings.preferSimulateWeigh ||
         !device ||
         device.transport === 'simulate' ||
-        device.transport === 'bluetooth';
+        (device.transport === 'bluetooth' && !bleOk);
 
       if (useSim) {
         const sim = getSimulateTransport();
@@ -107,7 +122,11 @@ export function ScaleSaleScreen(_props: Props) {
         const w = await sim.readLiveWeight();
         setWeightKg(w.weightKg);
         setStable(w.stable);
-        setWeightDetail(w.detail);
+        setWeightDetail(
+          device?.transport === 'bluetooth' && !bleOk
+            ? `${w.detail} · BLE native yok (simüle)`
+            : w.detail,
+        );
         pushLog(`Tartım (sim): ${w.weightKg?.toFixed(3)} kg`);
         return;
       }
@@ -115,7 +134,7 @@ export function ScaleSaleScreen(_props: Props) {
       const t = createScaleTransport(device);
       await t.connect();
       const w = await t.readLiveWeight();
-      if (w.weightKg == null) {
+      if (w.weightKg == null && device.transport === 'network') {
         // LAN Rongta canlı kg vermez — simülasyona düş
         const sim = getSimulateTransport();
         await sim.connect();
@@ -129,13 +148,56 @@ export function ScaleSaleScreen(_props: Props) {
       setWeightKg(w.weightKg);
       setStable(w.stable);
       setWeightDetail(w.detail);
-      pushLog(`Tartım: ${w.weightKg.toFixed(3)} kg`);
+      pushLog(
+        `Tartım (${device.transport}): ${w.weightKg != null ? w.weightKg.toFixed(3) : 'null'} kg`,
+      );
     } catch (e) {
       Alert.alert('Tartım', e instanceof Error ? e.message : String(e));
     } finally {
       setReading(false);
     }
   }, [getSelectedDevice, pushLog, settings.preferSimulateWeigh]);
+
+  // BLE seçiliyse (ve simüle tercih kapalıysa) canlı kg poll
+  useEffect(() => {
+    const device = getSelectedDevice();
+    if (
+      settings.preferSimulateWeigh ||
+      !device ||
+      device.transport !== 'bluetooth' ||
+      !isBleNativeAvailable()
+    ) {
+      return;
+    }
+    let cancelled = false;
+    const tick = async () => {
+      try {
+        const t = createScaleTransport(device);
+        const w = await t.readLiveWeight();
+        if (cancelled) return;
+        if (w.weightKg != null) {
+          setWeightKg(w.weightKg);
+          setStable(w.stable);
+          setWeightDetail(w.detail);
+        } else {
+          setWeightDetail(w.detail);
+        }
+      } catch {
+        /* poll sessiz */
+      }
+    };
+    void tick();
+    const id = setInterval(() => void tick(), 450);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [
+    devices,
+    getSelectedDevice,
+    settings.preferSimulateWeigh,
+    settings.lastSelectedDeviceId,
+  ]);
 
   const addToCart = () => {
     if (!selected || weightKg == null || weightKg <= 0) {
@@ -232,6 +294,7 @@ export function ScaleSaleScreen(_props: Props) {
         <Text style={{ color: stable ? palette.green600 : colors.textMuted, fontSize: 12 }}>
           {stable ? 'Stabil' : 'Kararsız / bekleniyor'} · {weightDetail}
         </Text>
+        <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 4 }}>{weighSourceHint}</Text>
         {selected ? (
           <Text style={{ color: colors.text, marginTop: 8, fontWeight: '600' }}>
             {selected.name} · {formatMoney(selected.price)} ₺/kg

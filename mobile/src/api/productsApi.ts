@@ -16,6 +16,8 @@ export type ProductRow = {
   brand: string | null;
   category_code: string | null;
   is_active: boolean;
+  /** Ürün kartı KDV % (yoksa 20) */
+  vat_rate: number;
 };
 
 export type ProductInput = {
@@ -36,19 +38,47 @@ const LIST_COLS = `id, code, barcode, name, unit,
   COALESCE(cost, 0)::float8 AS cost,
   COALESCE(stock, 0)::float8 AS stock,
   min_stock, brand, category_code,
-  COALESCE(is_active, true) AS is_active`;
+  COALESCE(is_active, true) AS is_active,
+  COALESCE(vat_rate, vatrate, 20)::float8 AS vat_rate`;
+
+const LIST_COLS_FALLBACK = `id, code, barcode, name, unit,
+  COALESCE(price, 0)::float8 AS price,
+  COALESCE(cost, 0)::float8 AS cost,
+  COALESCE(stock, 0)::float8 AS stock,
+  min_stock, brand, category_code,
+  COALESCE(is_active, true) AS is_active,
+  20::float8 AS vat_rate`;
+
+async function selectProducts(
+  cols: string,
+  whereSql: string,
+  params: unknown[],
+): Promise<ProductRow[]> {
+  const table = productsTable();
+  try {
+    const res = await pgQuery<ProductRow>(
+      `SELECT ${cols} FROM ${table} WHERE ${whereSql}`,
+      params,
+    );
+    return res.rows.map((r) => ({
+      ...r,
+      vat_rate: Number(r.vat_rate) >= 0 ? Number(r.vat_rate) : 20,
+    }));
+  } catch {
+    if (cols === LIST_COLS_FALLBACK) throw new Error('Ürün listesi okunamadı');
+    return selectProducts(LIST_COLS_FALLBACK, whereSql, params);
+  }
+}
 
 async function fetchProductsLive(search = '', limit = 200): Promise<ProductRow[]> {
-  const table = productsTable();
   const fn = firmNr();
   const q = search.trim();
 
   if (q.length >= 1) {
     const like = `%${q}%`;
-    const res = await pgQuery<ProductRow>(
-      `SELECT ${LIST_COLS}
-       FROM ${table}
-       WHERE COALESCE(is_active, true) = true
+    return selectProducts(
+      LIST_COLS,
+      `COALESCE(is_active, true) = true
          AND (
            name ILIKE $1 OR code ILIKE $1 OR barcode ILIKE $1
            OR COALESCE(brand,'') ILIKE $1
@@ -62,13 +92,11 @@ async function fetchProductsLive(search = '', limit = 200): Promise<ProductRow[]
        LIMIT $4`,
       [like, fn, fn.replace(/^0+/, '') || fn, limit],
     );
-    return res.rows;
   }
 
-  const res = await pgQuery<ProductRow>(
-    `SELECT ${LIST_COLS}
-     FROM ${table}
-     WHERE COALESCE(is_active, true) = true
+  const rows = await selectProducts(
+    LIST_COLS,
+    `COALESCE(is_active, true) = true
        AND (
          LPAD(TRIM(COALESCE(firm_nr, '')), 3, '0') = $1
          OR TRIM(COALESCE(firm_nr, '')) = $2
@@ -79,13 +107,16 @@ async function fetchProductsLive(search = '', limit = 200): Promise<ProductRow[]
     [fn, fn.replace(/^0+/, '') || fn, limit],
   );
   // Boş arama = tam liste snapshot (offline yedek)
-  await saveProductsSnapshot(res.rows);
-  return res.rows;
+  await saveProductsSnapshot(rows);
+  return rows;
 }
 
 export async function fetchProducts(search = '', limit = 200): Promise<ProductRow[]> {
   if (!shouldUseLiveData()) {
-    return getCachedProducts(search, limit);
+    return (await getCachedProducts(search, limit)).map((r) => ({
+      ...r,
+      vat_rate: r.vat_rate ?? 20,
+    }));
   }
   try {
     return await fetchProductsLive(search, limit);
@@ -93,7 +124,9 @@ export async function fetchProducts(search = '', limit = 200): Promise<ProductRo
     // Hybrid: bridge/net hatasında son snapshot; Online politikada cache yok
     if (getNetworkPolicy() === 'online') throw e;
     const cached = await getCachedProducts(search, limit);
-    if (cached.length > 0) return cached;
+    if (cached.length > 0) {
+      return cached.map((r) => ({ ...r, vat_rate: r.vat_rate ?? 20 }));
+    }
     throw e;
   }
 }
@@ -104,27 +137,24 @@ export async function fetchProductByBarcode(barcode: string): Promise<ProductRow
 
   if (!shouldUseLiveData()) {
     const rows = await getCachedProducts(code, 50);
-    return (
-      rows.find((r) => r.barcode === code || r.code === code) ??
-      rows[0] ??
-      null
-    );
+    const hit =
+      rows.find((r) => r.barcode === code || r.code === code) ?? rows[0] ?? null;
+    return hit ? { ...hit, vat_rate: hit.vat_rate ?? 20 } : null;
   }
 
-  const table = productsTable();
   try {
-    const res = await pgQuery<ProductRow>(
-      `SELECT ${LIST_COLS}
-       FROM ${table}
-       WHERE COALESCE(is_active, true) = true
+    const rows = await selectProducts(
+      LIST_COLS,
+      `COALESCE(is_active, true) = true
          AND (barcode = $1 OR code = $1)
        LIMIT 1`,
       [code],
     );
-    return res.rows[0] ?? null;
+    return rows[0] ?? null;
   } catch {
     const rows = await getCachedProducts(code, 50);
-    return rows.find((r) => r.barcode === code || r.code === code) ?? null;
+    const hit = rows.find((r) => r.barcode === code || r.code === code);
+    return hit ? { ...hit, vat_rate: hit.vat_rate ?? 20 } : null;
   }
 }
 
@@ -133,22 +163,17 @@ export async function fetchProductById(id: string): Promise<ProductRow | null> {
 
   if (!shouldUseLiveData()) {
     const rows = await getCachedProducts('', 500);
-    return rows.find((r) => String(r.id) === String(id)) ?? null;
+    const hit = rows.find((r) => String(r.id) === String(id));
+    return hit ? { ...hit, vat_rate: hit.vat_rate ?? 20 } : null;
   }
 
-  const table = productsTable();
   try {
-    const res = await pgQuery<ProductRow>(
-      `SELECT ${LIST_COLS}
-       FROM ${table}
-       WHERE id::text = $1
-       LIMIT 1`,
-      [id],
-    );
-    return res.rows[0] ?? null;
+    const rows = await selectProducts(LIST_COLS, `id::text = $1 LIMIT 1`, [id]);
+    return rows[0] ?? null;
   } catch {
     const rows = await getCachedProducts('', 500);
-    return rows.find((r) => String(r.id) === String(id)) ?? null;
+    const hit = rows.find((r) => String(r.id) === String(id));
+    return hit ? { ...hit, vat_rate: hit.vat_rate ?? 20 } : null;
   }
 }
 

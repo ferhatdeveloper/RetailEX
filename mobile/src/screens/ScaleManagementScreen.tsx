@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -17,8 +17,11 @@ import { PrimaryButton } from '../components/PrimaryButton';
 import { useThemeStore } from '../store/themeStore';
 import { createManualNetworkDevice, useScaleStore } from '../store/scaleStore';
 import {
+  bleDevBuildHint,
   createScaleTransport,
   getSimulateTransport,
+  isBleNativeAvailable,
+  scanBleDevices,
 } from '../services/scale/scaleTransport';
 import {
   fetchScaleProducts,
@@ -61,8 +64,37 @@ export function ScaleManagementScreen(_props: Props) {
   const [manualPort, setManualPort] = useState(String(settings.defaultPort));
   const [manualTransport, setManualTransport] = useState<ScaleTransportKind>('network');
   const [lastSyncMsg, setLastSyncMsg] = useState<string | null>(null);
+  const [liveKg, setLiveKg] = useState<number | null>(null);
+  const [liveStable, setLiveStable] = useState(false);
+  const [liveDetail, setLiveDetail] = useState('');
+  const [scanHits, setScanHits] = useState<{ id: string; name: string }[]>([]);
+  const bleNative = isBleNativeAvailable();
 
   const selected = useMemo(() => getSelectedDevice(), [devices, settings.lastSelectedDeviceId]);
+
+  useEffect(() => {
+    if (tab !== 'scale') return;
+    if (!selected || selected.transport !== 'bluetooth') return;
+    let cancelled = false;
+    const tick = async () => {
+      try {
+        const t = createScaleTransport(selected);
+        const w = await t.readLiveWeight();
+        if (cancelled) return;
+        setLiveKg(w.weightKg);
+        setLiveStable(w.stable);
+        setLiveDetail(w.detail);
+      } catch {
+        /* sessiz — log sekmesi için ayrı */
+      }
+    };
+    void tick();
+    const id = setInterval(() => void tick(), 500);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [tab, selected?.id, selected?.transport, selected?.bluetoothAddress]);
 
   const runBusy = useCallback(
     async (label: string, fn: () => Promise<void>) => {
@@ -165,6 +197,27 @@ export function ScaleManagementScreen(_props: Props) {
     upsertDevice(device);
     selectDevice(device.id);
     pushLog('Simülasyon terazisi eklendi');
+  };
+
+  const onBleScan = () =>
+    void runBusy('BLE taranıyor…', async () => {
+      if (!isBleNativeAvailable()) {
+        Alert.alert('Bluetooth', bleDevBuildHint());
+        return;
+      }
+      const hits = await scanBleDevices(8000);
+      setScanHits(hits.map((h) => ({ id: h.id, name: h.name })));
+      pushLog(`BLE tarama: ${hits.length} cihaz`);
+      if (hits.length === 0) {
+        Alert.alert('BLE', 'Cihaz bulunamadı. Tartının açık ve eşleşmeye hazır olduğundan emin olun.');
+      }
+    });
+
+  const onPickScanHit = (hit: { id: string; name: string }) => {
+    setManualTransport('bluetooth');
+    setManualIp(hit.id);
+    if (!manualName.trim()) setManualName(hit.name);
+    pushLog(`BLE seçildi: ${hit.name} (${hit.id})`);
   };
 
   const transportChip = (
@@ -302,10 +355,42 @@ export function ScaleManagementScreen(_props: Props) {
               />
             ) : null}
             {manualTransport === 'bluetooth' ? (
-              <Text style={[styles.help, { color: palette.amber600 }]}>
-                Expo Go Bluetooth desteklemez. Development build + react-native-ble-plx gerekir.
-                Rongta etiket terazileri çoğunlukla TCP/LAN kullanır.
-              </Text>
+              <>
+                <Text style={[styles.help, { color: bleNative ? palette.green600 : palette.amber600 }]}>
+                  {bleNative
+                    ? 'BLE native hazır (development build). Tarayıp cihaz seçin veya MAC/UUID yapıştırın.'
+                    : 'Expo Go Bluetooth desteklemez. Development build + react-native-ble-plx gerekir. Rongta etiket terazileri çoğunlukla TCP/LAN kullanır.'}
+                </Text>
+                <PrimaryButton
+                  label="BLE Tara (8 sn)"
+                  onPress={onBleScan}
+                  loading={busy}
+                  disabled={busy || !bleNative}
+                  variant="ghost"
+                />
+                {scanHits.length > 0 ? (
+                  <View
+                    style={[
+                      styles.card,
+                      { backgroundColor: colors.card, borderColor: colors.cardBorder },
+                    ]}
+                  >
+                    <Text style={{ color: colors.text, fontWeight: '700' }}>Bulunan cihazlar</Text>
+                    {scanHits.map((h) => (
+                      <Pressable
+                        key={h.id}
+                        onPress={() => onPickScanHit(h)}
+                        style={styles.scanHit}
+                      >
+                        <Text style={{ color: colors.text, flex: 1 }} numberOfLines={1}>
+                          {h.name}
+                        </Text>
+                        <Text style={{ color: colors.textMuted, fontSize: 10 }}>{h.id.slice(-12)}</Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                ) : null}
+              </>
             ) : null}
             <PrimaryButton label="Cihaz Ekle" onPress={onAddDevice} />
             <PrimaryButton label="Simülasyon Terazisi Ekle" onPress={onAddSimulate} variant="ghost" />
@@ -387,6 +472,23 @@ export function ScaleManagementScreen(_props: Props) {
                 ? `Seçili: ${selected.name} (${selected.transport})`
                 : 'Terazi seçilmedi — Cihazlar sekmesinden ekleyin'}
             </Text>
+            {selected?.transport === 'bluetooth' ? (
+              <View
+                style={[
+                  styles.card,
+                  { backgroundColor: colors.card, borderColor: colors.cardBorder },
+                ]}
+              >
+                <Text style={{ color: colors.textMuted, fontSize: 12 }}>Canlı BLE kg</Text>
+                <Text style={{ color: colors.text, fontSize: 28, fontWeight: '900' }}>
+                  {liveKg != null ? `${liveKg.toFixed(3)} kg` : '— · — — kg'}
+                </Text>
+                <Text style={{ color: liveStable ? palette.green600 : colors.textMuted, fontSize: 12 }}>
+                  {liveStable ? 'Stabil' : 'Kararsız / bekleniyor'}
+                  {liveDetail ? ` · ${liveDetail}` : ''}
+                </Text>
+              </View>
+            ) : null}
             <PrimaryButton
               label="Bağlantıyı Test Et"
               onPress={onTestSelected}
@@ -409,6 +511,35 @@ export function ScaleManagementScreen(_props: Props) {
               }
               variant="ghost"
               disabled={busy || !selected || selected.transport !== 'network'}
+            />
+            <PrimaryButton
+              label="Canlı Tartım Oku"
+              onPress={() =>
+                void runBusy('Tartım…', async () => {
+                  if (!selected) {
+                    const w = await getSimulateTransport().connect();
+                    const kg = w.weight?.weightKg;
+                    pushLog(`Simüle kg: ${kg}`);
+                    Alert.alert('Simüle tartım', `${kg?.toFixed(3) ?? '—'} kg`);
+                    return;
+                  }
+                  const t = createScaleTransport(selected);
+                  await t.connect();
+                  const w = await t.readLiveWeight();
+                  setLiveKg(w.weightKg);
+                  setLiveStable(w.stable);
+                  setLiveDetail(w.detail);
+                  pushLog(`Tartım (${selected.transport}): ${w.weightKg?.toFixed(3) ?? 'null'} kg`);
+                  Alert.alert(
+                    'Tartım',
+                    w.weightKg != null
+                      ? `${w.weightKg.toFixed(3)} kg\n${w.detail}`
+                      : w.detail || 'kg yok',
+                  );
+                })
+              }
+              variant="ghost"
+              disabled={busy}
             />
             <PrimaryButton
               label="Simüle Tartım Önizleme"
@@ -445,9 +576,9 @@ export function ScaleManagementScreen(_props: Props) {
               />
             </View>
             <Text style={[styles.help, { color: colors.textMuted }]}>
-              Bluetooth: Expo SDK 57’de resmi expo-bluetooth yok. BLE için react-native-ble-plx +
-              development build gerekir (Expo Go’da çalışmaz). Klasik Rongta: TCP/LAN + USB (Android
-              native); USB bu RN sürümünde yok.
+              Bluetooth: react-native-ble-plx + development build (Expo Go çalışmaz). BLE native:{' '}
+              {bleNative ? 'açık' : 'kapalı'}. Klasik Rongta: TCP/LAN + USB (Android native); USB bu
+              RN sürümünde yok. Ayrıntı: README → Terazi BLE.
             </Text>
           </View>
         ) : null}
@@ -521,6 +652,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 8,
+  },
+  scanHit: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 10,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: '#e5e7eb',
   },
   switchRow: {
     flexDirection: 'row',

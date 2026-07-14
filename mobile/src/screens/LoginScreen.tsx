@@ -29,6 +29,7 @@ import { useThemeStore } from '../store/themeStore';
 import { useLanguageStore } from '../store/languageStore';
 import { isConfigReady, useConfigStore } from '../store/configStore';
 import { verifyLogin, normalizeFirmNr } from '../api/pgClient';
+import { loadLastOrg } from '../api/lastOrgPrefs';
 import { reloadAppForRtl } from '../i18n/languages';
 import { palette } from '../theme/colors';
 import type { AuthStackParamList } from '../navigation/types';
@@ -84,6 +85,21 @@ export function LoginScreen({ navigation }: Props) {
         return;
       }
       const firmNr = normalizeFirmNr(row.firm_nr) || '001';
+      const lastOrg = await loadLastOrg();
+      const seedPeriod =
+        lastOrg && lastOrg.firmNr === firmNr && lastOrg.periodNr
+          ? lastOrg.periodNr
+          : '';
+      const seedStoreId =
+        lastOrg && lastOrg.firmNr === firmNr && lastOrg.storeId
+          ? lastOrg.storeId
+          : row.store_id
+            ? String(row.store_id)
+            : null;
+      const seedStoreName =
+        lastOrg && lastOrg.firmNr === firmNr && lastOrg.storeName
+          ? lastOrg.storeName
+          : null;
       navigation.navigate('Organization', {
         pendingUser: {
           id: String(row.id),
@@ -92,8 +108,9 @@ export function LoginScreen({ navigation }: Props) {
           email: row.email,
           roleName: row.role_name,
           firmNr,
-          periodNr: '01',
-          storeId: row.store_id ? String(row.store_id) : null,
+          periodNr: seedPeriod,
+          storeId: seedStoreId,
+          storeName: seedStoreName,
         },
         rememberMe,
       });

@@ -31,6 +31,7 @@ import { useThemeStore } from '../store/themeStore';
 import { usePreferencesStore } from '../store/preferencesStore';
 import { useAuthStore } from '../store/authStore';
 import { localeTagForLanguage } from '../i18n/languages';
+import { tMenuBadge, tMenuItem, tMenuQuick, tMenuSection } from '../i18n/menuLabels';
 import { palette } from '../theme/colors';
 import {
   MENU_SECTIONS,
@@ -60,6 +61,7 @@ export function DashboardScreen() {
   const [statsError, setStatsError] = useState<string | null>(null);
 
   const counts = useMemo(() => countMenuItems(), []);
+  const labelOf = useCallback((item: MenuItem) => tMenuItem(t, item.id, item.label), [t]);
 
   const loadStats = useCallback(async () => {
     setLoading(true);
@@ -94,7 +96,7 @@ export function DashboardScreen() {
       setExpanded((e) => ({ ...e, [item.id]: !e[item.id] }));
       return;
     }
-    navigateToModule(navigation, item.screen, item.label);
+    navigateToModule(navigation, item.screen, labelOf(item));
   };
 
   return (
@@ -254,17 +256,20 @@ export function DashboardScreen() {
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.chipRow}
         >
-          {QUICK_ACCESS.map((action) => (
-            <Pressable
-              key={action.id}
-              onPress={() => navigateToModule(navigation, action.screen, action.label)}
-              style={[styles.chip, { backgroundColor: action.gradient[0] }]}
-            >
-              <Text style={styles.chipLabel} numberOfLines={1}>
-                {action.label}
-              </Text>
-            </Pressable>
-          ))}
+          {QUICK_ACCESS.map((action) => {
+            const qLabel = tMenuQuick(t, action.id, action.label);
+            return (
+              <Pressable
+                key={action.id}
+                onPress={() => navigateToModule(navigation, action.screen, qLabel)}
+                style={[styles.chip, { backgroundColor: action.gradient[0] }]}
+              >
+                <Text style={styles.chipLabel} numberOfLines={1}>
+                  {qLabel}
+                </Text>
+              </Pressable>
+            );
+          })}
         </ScrollView>
 
         <Text style={[styles.menuMeta, { color: colors.textMuted }]}>
@@ -276,140 +281,161 @@ export function DashboardScreen() {
         {/* Ana menü — grup başlıklı tek akış (liste varsayılan; kart = 3+ sütun) */}
         {MENU_SECTIONS.map((section) => (
           <View key={section.id} style={styles.sectionBlock}>
-            <Text style={[styles.catTitle, { color: colors.text }]}>{section.title}</Text>
+            <Text style={[styles.catTitle, { color: colors.text }]}>
+              {tMenuSection(t, section.id, section.title)}
+            </Text>
             {isCards ? (
               <View style={styles.cardsBlock}>
                 <MenuCardGrid>
-                  {section.items.map((item) => (
-                    <MenuCardGridItem key={item.id}>
-                      <Pressable
-                        onPress={() => openItem(item)}
-                        style={[
-                          menuCardStyles.card,
-                          { backgroundColor: colors.card, borderColor: colors.cardBorder },
-                        ]}
-                      >
-                        <Text
-                          style={[menuCardStyles.label, { color: colors.text }]}
-                          numberOfLines={2}
-                          ellipsizeMode="tail"
+                  {section.items.map((item) => {
+                    const itemLabel = labelOf(item);
+                    const badge = tMenuBadge(t, item.badge);
+                    return (
+                      <MenuCardGridItem key={item.id}>
+                        <Pressable
+                          onPress={() => openItem(item)}
+                          style={[
+                            menuCardStyles.card,
+                            { backgroundColor: colors.card, borderColor: colors.cardBorder },
+                          ]}
                         >
-                          {item.label}
-                        </Text>
-                        <View style={menuCardStyles.footer}>
-                          {item.badge ? (
-                            <Text style={styles.badge} numberOfLines={1}>
-                              {item.badge}
-                            </Text>
-                          ) : (
-                            <View />
-                          )}
-                          {item.children?.length ? (
-                            expanded[item.id] ? (
-                              <ChevronDown size={14} color={colors.textMuted} />
+                          <Text
+                            style={[menuCardStyles.label, { color: colors.text }]}
+                            numberOfLines={2}
+                            ellipsizeMode="tail"
+                          >
+                            {itemLabel}
+                          </Text>
+                          <View style={menuCardStyles.footer}>
+                            {badge ? (
+                              <Text style={styles.badge} numberOfLines={1}>
+                                {badge}
+                              </Text>
                             ) : (
-                              <ChevronRight size={14} color={colors.textMuted} />
-                            )
-                          ) : (
-                            <ChevronRight size={14} color={colors.textSubtle} />
-                          )}
-                        </View>
-                      </Pressable>
-                    </MenuCardGridItem>
-                  ))}
+                              <View />
+                            )}
+                            {item.children?.length ? (
+                              expanded[item.id] ? (
+                                <ChevronDown size={14} color={colors.textMuted} />
+                              ) : (
+                                <ChevronRight size={14} color={colors.textMuted} />
+                              )
+                            ) : (
+                              <ChevronRight size={14} color={colors.textSubtle} />
+                            )}
+                          </View>
+                        </Pressable>
+                      </MenuCardGridItem>
+                    );
+                  })}
                 </MenuCardGrid>
                 {/* Alt menü: kart modunda parent ile aynı 3 sütun grid — liste satırı değil */}
                 {section.items.map((item) =>
                   expanded[item.id] && item.children?.length ? (
                     <View key={`${item.id}-children`} style={styles.childGridBlock}>
                       <Text style={[styles.childGridTitle, { color: colors.textMuted }]} numberOfLines={1}>
-                        {item.label}
+                        {labelOf(item)}
                       </Text>
                       <MenuCardGrid>
-                        {item.children.map((child) => (
-                          <MenuCardGridItem key={child.id}>
-                            <Pressable
-                              onPress={() => navigateToModule(navigation, child.screen, child.label)}
-                              style={[
-                                menuCardStyles.card,
-                                {
-                                  backgroundColor: colors.backgroundAlt,
-                                  borderColor: colors.cardBorder,
-                                },
-                              ]}
-                            >
-                              <Text
-                                style={[menuCardStyles.label, { color: colors.text }]}
-                                numberOfLines={2}
-                                ellipsizeMode="tail"
+                        {item.children.map((child) => {
+                          const childLabel = labelOf(child);
+                          const childBadge = tMenuBadge(t, child.badge);
+                          return (
+                            <MenuCardGridItem key={child.id}>
+                              <Pressable
+                                onPress={() => navigateToModule(navigation, child.screen, childLabel)}
+                                style={[
+                                  menuCardStyles.card,
+                                  {
+                                    backgroundColor: colors.backgroundAlt,
+                                    borderColor: colors.cardBorder,
+                                  },
+                                ]}
                               >
-                                {child.label}
-                              </Text>
-                              <View style={menuCardStyles.footer}>
-                                {child.badge ? (
-                                  <Text style={styles.badge} numberOfLines={1}>
-                                    {child.badge}
-                                  </Text>
-                                ) : (
-                                  <View />
-                                )}
-                                <ChevronRight size={14} color={colors.textMuted} />
-                              </View>
-                            </Pressable>
-                          </MenuCardGridItem>
-                        ))}
+                                <Text
+                                  style={[menuCardStyles.label, { color: colors.text }]}
+                                  numberOfLines={2}
+                                  ellipsizeMode="tail"
+                                >
+                                  {childLabel}
+                                </Text>
+                                <View style={menuCardStyles.footer}>
+                                  {childBadge ? (
+                                    <Text style={styles.badge} numberOfLines={1}>
+                                      {childBadge}
+                                    </Text>
+                                  ) : (
+                                    <View />
+                                  )}
+                                  <ChevronRight size={14} color={colors.textMuted} />
+                                </View>
+                              </Pressable>
+                            </MenuCardGridItem>
+                          );
+                        })}
                       </MenuCardGrid>
                     </View>
                   ) : null,
                 )}
               </View>
             ) : (
-              section.items.map((item) => (
-                <View key={item.id}>
-                  <Pressable
-                    onPress={() => openItem(item)}
-                    style={[
-                      styles.menuRowCompact,
-                      { backgroundColor: colors.card, borderColor: colors.cardBorder },
-                    ]}
-                  >
-                    <View style={[styles.rowIcon, { backgroundColor: palette.blue100 }]}>
-                      <Text style={styles.rowIconLetter}>
-                        {item.label.trim().charAt(0).toLocaleUpperCase('tr-TR')}
+              section.items.map((item) => {
+                const itemLabel = labelOf(item);
+                const badge = tMenuBadge(t, item.badge);
+                return (
+                  <View key={item.id}>
+                    <Pressable
+                      onPress={() => openItem(item)}
+                      style={[
+                        styles.menuRowCompact,
+                        { backgroundColor: colors.card, borderColor: colors.cardBorder },
+                      ]}
+                    >
+                      <View style={[styles.rowIcon, { backgroundColor: palette.blue100 }]}>
+                        <Text style={styles.rowIconLetter}>
+                          {itemLabel.trim().charAt(0).toLocaleUpperCase('tr-TR')}
+                        </Text>
+                      </View>
+                      <Text
+                        style={{ color: colors.text, fontWeight: '600', flex: 1, fontSize: 13 }}
+                        numberOfLines={1}
+                      >
+                        {itemLabel}
                       </Text>
-                    </View>
-                    <Text style={{ color: colors.text, fontWeight: '600', flex: 1, fontSize: 13 }} numberOfLines={1}>
-                      {item.label}
-                    </Text>
-                    {item.badge ? <Text style={styles.badge}>{item.badge}</Text> : null}
-                    {item.children?.length ? (
-                      expanded[item.id] ? (
-                        <ChevronDown size={14} color={colors.textMuted} />
+                      {badge ? <Text style={styles.badge}>{badge}</Text> : null}
+                      {item.children?.length ? (
+                        expanded[item.id] ? (
+                          <ChevronDown size={14} color={colors.textMuted} />
+                        ) : (
+                          <ChevronRight size={14} color={colors.textMuted} />
+                        )
                       ) : (
-                        <ChevronRight size={14} color={colors.textMuted} />
-                      )
-                    ) : (
-                      <ChevronRight size={14} color={colors.textSubtle} />
-                    )}
-                  </Pressable>
-                  {expanded[item.id] && item.children
-                    ? item.children.map((child) => (
-                        <Pressable
-                          key={child.id}
-                          onPress={() => navigateToModule(navigation, child.screen, child.label)}
-                          style={[
-                            styles.childRowCompact,
-                            { backgroundColor: colors.backgroundAlt, borderColor: colors.cardBorder },
-                          ]}
-                        >
-                          <Text style={{ color: colors.text, fontSize: 12, flex: 1 }}>{child.label}</Text>
-                          {child.badge ? <Text style={styles.badge}>{child.badge}</Text> : null}
-                          <ChevronRight size={12} color={colors.textMuted} />
-                        </Pressable>
-                      ))
-                    : null}
-                </View>
-              ))
+                        <ChevronRight size={14} color={colors.textSubtle} />
+                      )}
+                    </Pressable>
+                    {expanded[item.id] && item.children
+                      ? item.children.map((child) => {
+                          const childLabel = labelOf(child);
+                          const childBadge = tMenuBadge(t, child.badge);
+                          return (
+                            <Pressable
+                              key={child.id}
+                              onPress={() => navigateToModule(navigation, child.screen, childLabel)}
+                              style={[
+                                styles.childRowCompact,
+                                { backgroundColor: colors.backgroundAlt, borderColor: colors.cardBorder },
+                              ]}
+                            >
+                              <Text style={{ color: colors.text, fontSize: 12, flex: 1 }}>{childLabel}</Text>
+                              {childBadge ? <Text style={styles.badge}>{childBadge}</Text> : null}
+                              <ChevronRight size={12} color={colors.textMuted} />
+                            </Pressable>
+                          );
+                        })
+                      : null}
+                  </View>
+                );
+              })
             )}
           </View>
         ))}

@@ -15,6 +15,11 @@ import {
   periodNr,
   suppliersTable,
 } from './erpTables';
+import {
+  CASH_TX,
+  cashTransactionTypeLabel,
+  cashTxForDirection,
+} from './cashTransactionTypes';
 
 export type CashRegisterRow = {
   id: string;
@@ -289,7 +294,7 @@ export async function createSimpleCashMovement(
   const pn = periodNr();
   const lines = cashLinesTable();
   const regs = cashRegistersTable();
-  const txType = input.direction === 'in' ? 'KASA_GIRIS' : 'KASA_CIKIS';
+  const txType = cashTxForDirection(input.direction);
   const sign = input.direction === 'in' ? 1 : -1;
   const ficheNo = nextFicheNo('KL');
   const id = newUuid();
@@ -586,17 +591,7 @@ export async function createSimpleBankMovement(
 }
 
 export function movementTypeLabel(type: string | null, sign: number): string {
-  const t = String(type || '').toUpperCase();
-  if (t === 'KASA_GIRIS' || t === 'BANKA_GIRIS') return 'Giriş';
-  if (t === 'KASA_CIKIS' || t === 'BANKA_CIKIS') return 'Çıkış';
-  if (t === 'CH_TAHSILAT') return 'Tahsilat';
-  if (t === 'CH_ODEME') return 'Ödeme';
-  if (t === 'VIRMAN') return sign > 0 ? 'Virman (giriş)' : 'Virman (çıkış)';
-  if (t === 'BANKA_YATIRILAN') return 'Bankaya yatırılan';
-  if (t === 'BANKADAN_CEKILEN') return 'Bankadan çekilen';
-  if (sign > 0) return 'Giriş';
-  if (sign < 0) return 'Çıkış';
-  return type || '—';
+  return cashTransactionTypeLabel(type, sign);
 }
 
 /** Aktif ilk kasa — web MarketPOS selected_cash_registers fallback */
@@ -644,9 +639,9 @@ export async function recordKasaGirisForSale(opts: {
          definition, transaction_type, customer_id, currency_code, exchange_rate, f_amount, transfer_status
        ) VALUES (
          $1::uuid, $2, $3, $4::uuid, $5, $6::date, $7, 1,
-         $8, 'KASA_GIRIS', $9::uuid, 'YEREL', 1, $7, 0
+         $8, $9, $10::uuid, 'YEREL', 1, $7, 0
        )`,
-      [id, fn, pn, registerId, ficheNo, date, amount, desc, customerId],
+      [id, fn, pn, registerId, ficheNo, date, amount, desc, CASH_TX.KASA_GIRIS, customerId],
     );
   } else {
     await pgQuery(
@@ -655,15 +650,141 @@ export async function recordKasaGirisForSale(opts: {
          definition, transaction_type, currency_code, exchange_rate, f_amount, transfer_status
        ) VALUES (
          $1::uuid, $2, $3, $4::uuid, $5, $6::date, $7, 1,
-         $8, 'KASA_GIRIS', 'YEREL', 1, $7, 0
+         $8, $9, 'YEREL', 1, $7, 0
        )`,
-      [id, fn, pn, registerId, ficheNo, date, amount, desc],
+      [id, fn, pn, registerId, ficheNo, date, amount, desc, CASH_TX.KASA_GIRIS],
     );
   }
 
   await pgQuery(
     `UPDATE ${regs}
      SET balance = COALESCE(balance, 0) + $1::numeric,
+         updated_at = NOW()
+     WHERE id = $2::uuid`,
+    [amount, registerId],
+  );
+
+  return { id, registerId };
+}
+
+/**
+ * Peşin alış sonrası KASA_CIKIS — stok + ödeme nakit/kart ise kasa düşer.
+ * Kasa yoksa sessizce atlar (alış yine kaydedilmiş olur).
+ */
+export async function recordKasaCikisForPurchase(opts: {
+  amount: number;
+  ficheNo: string;
+  description?: string;
+  supplierId?: string | null;
+  registerId?: string | null;
+}): Promise<{ id: string; registerId: string } | null> {
+  const amount = Math.abs(Number(opts.amount) || 0);
+  if (amount <= 0) return null;
+
+  const registerId = opts.registerId || (await resolveDefaultCashRegisterId());
+  if (!registerId) return null;
+
+  const fn = firmNr();
+  const pn = periodNr();
+  const lines = cashLinesTable();
+  const regs = cashRegistersTable();
+  const id = newUuid();
+  const date = todayYmd();
+  const desc =
+    (opts.description || '').trim() || `Alış — ${opts.ficheNo}`;
+  const ficheNo = String(opts.ficheNo || '').trim() || nextFicheNo('KL');
+  const supplierId = opts.supplierId || null;
+
+  if (supplierId) {
+    await pgQuery(
+      `INSERT INTO ${lines} (
+         id, firm_nr, period_nr, register_id, fiche_no, date, amount, sign,
+         definition, transaction_type, customer_id, currency_code, exchange_rate, f_amount, transfer_status
+       ) VALUES (
+         $1::uuid, $2, $3, $4::uuid, $5, $6::date, $7, -1,
+         $8, $9, $10::uuid, 'YEREL', 1, $7, 0
+       )`,
+      [id, fn, pn, registerId, ficheNo, date, amount, desc, CASH_TX.KASA_CIKIS, supplierId],
+    );
+  } else {
+    await pgQuery(
+      `INSERT INTO ${lines} (
+         id, firm_nr, period_nr, register_id, fiche_no, date, amount, sign,
+         definition, transaction_type, currency_code, exchange_rate, f_amount, transfer_status
+       ) VALUES (
+         $1::uuid, $2, $3, $4::uuid, $5, $6::date, $7, -1,
+         $8, $9, 'YEREL', 1, $7, 0
+       )`,
+      [id, fn, pn, registerId, ficheNo, date, amount, desc, CASH_TX.KASA_CIKIS],
+    );
+  }
+
+  await pgQuery(
+    `UPDATE ${regs}
+     SET balance = COALESCE(balance, 0) - $1::numeric,
+         updated_at = NOW()
+     WHERE id = $2::uuid`,
+    [amount, registerId],
+  );
+
+  return { id, registerId };
+}
+
+/**
+ * Satış iadesi (peşin) sonrası KASA_CIKIS — nakit/kart iade kasadan çıkar.
+ * Kasa yoksa sessizce atlar.
+ */
+export async function recordKasaCikisForReturn(opts: {
+  amount: number;
+  ficheNo: string;
+  description?: string;
+  customerId?: string | null;
+  registerId?: string | null;
+}): Promise<{ id: string; registerId: string } | null> {
+  const amount = Math.abs(Number(opts.amount) || 0);
+  if (amount <= 0) return null;
+
+  const registerId = opts.registerId || (await resolveDefaultCashRegisterId());
+  if (!registerId) return null;
+
+  const fn = firmNr();
+  const pn = periodNr();
+  const lines = cashLinesTable();
+  const regs = cashRegistersTable();
+  const id = newUuid();
+  const date = todayYmd();
+  const desc =
+    (opts.description || '').trim() || `Satış iadesi — ${opts.ficheNo}`;
+  const ficheNo = String(opts.ficheNo || '').trim() || nextFicheNo('KL');
+  const customerId = opts.customerId || null;
+
+  if (customerId) {
+    await pgQuery(
+      `INSERT INTO ${lines} (
+         id, firm_nr, period_nr, register_id, fiche_no, date, amount, sign,
+         definition, transaction_type, customer_id, currency_code, exchange_rate, f_amount, transfer_status
+       ) VALUES (
+         $1::uuid, $2, $3, $4::uuid, $5, $6::date, $7, -1,
+         $8, $9, $10::uuid, 'YEREL', 1, $7, 0
+       )`,
+      [id, fn, pn, registerId, ficheNo, date, amount, desc, CASH_TX.KASA_CIKIS, customerId],
+    );
+  } else {
+    await pgQuery(
+      `INSERT INTO ${lines} (
+         id, firm_nr, period_nr, register_id, fiche_no, date, amount, sign,
+         definition, transaction_type, currency_code, exchange_rate, f_amount, transfer_status
+       ) VALUES (
+         $1::uuid, $2, $3, $4::uuid, $5, $6::date, $7, -1,
+         $8, $9, 'YEREL', 1, $7, 0
+       )`,
+      [id, fn, pn, registerId, ficheNo, date, amount, desc, CASH_TX.KASA_CIKIS],
+    );
+  }
+
+  await pgQuery(
+    `UPDATE ${regs}
+     SET balance = COALESCE(balance, 0) - $1::numeric,
          updated_at = NOW()
      WHERE id = $2::uuid`,
     [amount, registerId],

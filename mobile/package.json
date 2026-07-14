@@ -18,6 +18,7 @@
     "react": "19.2.3",
     "react-i18next": "^17.0.9",
     "react-native": "0.86.0",
+    "react-native-ble-plx": "^3.5.1",
     "react-native-safe-area-context": "~5.7.0",
     "react-native-screens": "4.25.2",
     "react-native-svg": "15.15.4",
@@ -32,7 +33,10 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "eas:debug": "eas build --platform android --profile debug",
+    "eas:preview": "eas build --platform android --profile preview",
+    "eas:production": "eas build --platform android --profile production"
   },
   "private": true
 }

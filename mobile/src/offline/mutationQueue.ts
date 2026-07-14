@@ -34,6 +34,8 @@ export type InvoiceLineInput = {
   unit?: string | null;
   /** Satır indirim % (0–100) */
   discountPercent?: number;
+  /** Satır KDV % (UI + sale_items.vat_rate; header total_vat web gibi 0 kalabilir) */
+  vatRate?: number;
 };
 
 export type CountingSlipStatus =
@@ -82,6 +84,9 @@ export type PendingMutation =
         paymentMethod: string;
         customerId?: string | null;
         customerName?: string | null;
+        totalDiscount?: number;
+        campaignId?: string | null;
+        campaignName?: string | null;
       };
     }
   | {
@@ -134,6 +139,31 @@ export type PendingMutation =
         cashier?: string;
         returnReason?: string;
         documentNo?: string;
+        lines: InvoiceLineInput[];
+      };
+    }
+  | {
+      id: string;
+      createdAt: string;
+      type: 'invoice.document.create';
+      payload: {
+        localId: string;
+        ficheNo: string;
+        kind:
+          | 'service-given'
+          | 'service-received'
+          | 'waybill-sales'
+          | 'waybill-purchase'
+          | 'order-sales'
+          | 'order-purchase'
+          | 'quote';
+        trcode?: number;
+        accountId?: string;
+        accountName: string;
+        notes?: string;
+        paymentMethod?: string;
+        documentNo?: string;
+        footerDiscountAmount?: number;
         lines: InvoiceLineInput[];
       };
     }

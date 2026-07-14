@@ -21,6 +21,8 @@ import {
   fetchMaterialValue,
   fetchWarehouseStatus,
   fetchMaterialExtract,
+  fetchCariAging,
+  agingBucketLabel,
   defaultExtractRange,
   type SalesDayRow,
   type TopProductRow,
@@ -32,6 +34,8 @@ import {
   type MaterialValueRow,
   type WarehouseStatusRow,
   type MaterialExtractRow,
+  type CariAgingRow,
+  type AgingBucket,
 } from '../api/reportsApi';
 import { fetchProducts } from '../api/productsApi';
 import { formatMoney, firmNr, periodNr } from '../api/erpTables';
@@ -665,8 +669,8 @@ export function ReportMizanScreen() {
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
       <ScreenHeader
-        title="Mizan (Dönemsel Cari)"
-        subtitle={`${orgLabel} · ${filtered.length} hesap`}
+        title="Cari Bakiye Özeti"
+        subtitle={`${orgLabel} · ${filtered.length} hesap · yasal GL mizanı değil`}
       />
       <View
         style={[
@@ -679,7 +683,7 @@ export function ReportMizanScreen() {
         </Text>
         <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 2, lineHeight: 15 }}>
           {isLedger
-            ? 'Açılış + dönem satış/alış + kasa CH_* hareketleri. Ana tutar dönemseldir; kart satırı firma birikimidir.'
+            ? 'Cari hesap özeti: açılış + dönem satış/alış + CH_*. Hesap planı / genel muhasebe mizanı değildir.'
             : 'Ledger CTE kullanılamadı; gösterim firma kart kolonundan (dönem bağımsız).'}
         </Text>
       </View>
@@ -1172,6 +1176,153 @@ export function ReportCashScreen() {
               </Text>
               <Text style={{ color: colors.textMuted, fontSize: 12, marginTop: 4 }} numberOfLines={2}>
                 {item.definition || item.transactionType || '—'}
+              </Text>
+            </View>
+          )}
+        />
+      )}
+    </View>
+  );
+}
+
+/** Web `getCariAging` — basit vade yaşlandırma (P2) */
+export function ReportAgingScreen() {
+  const { colors } = useThemeStore();
+  const orgEpoch = useOrgEpoch();
+  const [cardType, setCardType] = useState<CardFilter>('all');
+  const [rows, setRows] = useState<CariAgingRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const orgLabel = useMemo(() => {
+    const fn = firmNr();
+    const pn = periodNr();
+    return `Firma ${fn} · Dönem ${pn}`;
+  }, [orgEpoch]);
+
+  const load = useCallback(async () => {
+    setError(null);
+    try {
+      setRows(await fetchCariAging({ cardType, limit: 400 }));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+      setRows([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [cardType, orgEpoch]);
+
+  useEffect(() => {
+    setLoading(true);
+    void load();
+  }, [load]);
+
+  const bucketTotals = useMemo(() => {
+    const init: Record<AgingBucket, number> = {
+      current: 0,
+      d1_30: 0,
+      d31_60: 0,
+      d61_90: 0,
+      d90_plus: 0,
+    };
+    for (const r of rows) {
+      if (r.amount > 0) init[r.bucket] += r.amount;
+    }
+    return init;
+  }, [rows]);
+
+  const filters: { id: CardFilter; label: string }[] = [
+    { id: 'all', label: 'Tümü' },
+    { id: 'customer', label: 'Müşteri' },
+    { id: 'supplier', label: 'Tedarikçi' },
+  ];
+
+  return (
+    <View style={[styles.root, { backgroundColor: colors.background }]}>
+      <ScreenHeader
+        title="Cari Yaşlandırma"
+        subtitle={`${orgLabel} · ${rows.length} açık fiş`}
+      />
+      <View
+        style={[
+          styles.hintBox,
+          { backgroundColor: colors.card, borderColor: colors.cardBorder },
+        ]}
+      >
+        <Text style={{ color: colors.textMuted, fontSize: 11, lineHeight: 15 }}>
+          Veresiye / açık hesap fişleri. Vade = fatura tarihi + ödeme günü (yoksa 30). Tahsilat
+          netleştirmesi yok — basit önizleme.
+        </Text>
+      </View>
+      <View style={styles.filterRow}>
+        {filters.map((f) => (
+          <Pressable
+            key={f.id}
+            onPress={() => setCardType(f.id)}
+            style={[
+              styles.chip,
+              {
+                backgroundColor: cardType === f.id ? palette.blue600 : colors.card,
+                borderColor: cardType === f.id ? palette.blue600 : colors.cardBorder,
+              },
+            ]}
+          >
+            <Text style={{ color: cardType === f.id ? '#fff' : colors.text, fontSize: 12, fontWeight: '700' }}>
+              {f.label}
+            </Text>
+          </Pressable>
+        ))}
+      </View>
+      <View style={styles.kpiRow}>
+        {(['current', 'd1_30', 'd31_60', 'd90_plus'] as AgingBucket[]).map((b) => (
+          <View
+            key={b}
+            style={[styles.kpi, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}
+          >
+            <Text style={styles.lbl}>{agingBucketLabel(b)}</Text>
+            <Text style={[styles.valSm, { color: colors.text }]}>{formatMoney(bucketTotals[b])}</Text>
+          </View>
+        ))}
+      </View>
+      {error ? <ErrorBanner message={error} onRetry={() => void load()} /> : null}
+      {loading ? (
+        <ActivityIndicator style={{ marginTop: 24 }} color={palette.blue600} />
+      ) : (
+        <FlatList
+          data={rows}
+          keyExtractor={(item, i) => `${item.ficheNo}-${item.accountId}-${i}`}
+          contentContainerStyle={{ padding: 12, paddingBottom: 40 }}
+          refreshControl={
+            <RefreshControl
+              refreshing={loading}
+              onRefresh={() => {
+                setLoading(true);
+                void load();
+              }}
+            />
+          }
+          ListEmptyComponent={<EmptyState message="Açık vade fişi yok" />}
+          renderItem={({ item }) => (
+            <View
+              style={[
+                styles.card,
+                { backgroundColor: colors.card, borderColor: colors.cardBorder, marginBottom: 8 },
+              ]}
+            >
+              <View style={styles.rowBetween}>
+                <Text style={{ color: colors.text, fontWeight: '700', flex: 1 }} numberOfLines={1}>
+                  {item.accountName || item.accountCode || '—'}
+                </Text>
+                <Text style={{ color: palette.blue600, fontWeight: '800' }}>
+                  {formatMoney(item.amount)}
+                </Text>
+              </View>
+              <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 4 }}>
+                {item.ficheNo} · {item.invoiceDate} → vade {item.dueDate}
+              </Text>
+              <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 2 }}>
+                {item.cardType === 'customer' ? 'Müşteri' : 'Tedarikçi'} ·{' '}
+                {agingBucketLabel(item.bucket)}
+                {item.daysOverdue > 0 ? ` · ${item.daysOverdue} gün gecikme` : ''}
               </Text>
             </View>
           )}

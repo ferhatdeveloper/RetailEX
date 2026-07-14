@@ -1,4 +1,4 @@
-# RetailEX Mobile — TEST SMOKE REPORT
+# RetailEX Mobile - TEST SMOKE REPORT
 
 **Tarih:** 2026-07-14  
 **Kök:** `mobile/` (Expo / React Native)  
@@ -9,13 +9,13 @@
 
 | # | Kontrol | Sonuç | Not |
 |---|---------|--------|-----|
-| 1 | `npm run typecheck` (`tsc --noEmit`) | **GEÇTİ** | Exit 0 (oturum başı + final doğrulama) |
-| 2 | `npx expo export` (android) | **KALDI** | SyntaxError → `ModuleScreen.tsx` |
-| 2b | adb / logcat ReactNativeJS (30 sn) | **ATLANDI** | `adb devices` boş — cihaz yok |
-| 3 | Metro bundle HTTP 200 | **KALDI** | Metro ara ara status 200; bundle bağlantı hatası |
+| 1 | `npm run typecheck` (`tsc --noEmit`) | **GEÇTİ** | Exit 0 (final doğrulama) |
+| 2 | `npx expo export --platform android` | **GEÇTİ** | Exit 0; `.tmp-smoke-export` 24 dosya |
+| 2b | adb / logcat ReactNativeJS | **ATLANDI** | `adb` PATH’te yok / cihaz yok |
+| 3 | Metro bundle HTTP 200 | **GEÇTİ** | :8082 — status 3/3 + bundle 2/2 (~10.9 MB) |
 | 4 | Bridge `:3001/api/status` | **GEÇTİ** | 200 + RUNNING |
 
-**Genel duman sonucu: KALDI** (typecheck + bridge geçti; export ve stabil Metro bundle başarısız)
+**Genel duman sonucu: GEÇTİ** (typecheck + export + Metro bundle + bridge)
 
 ---
 
@@ -27,30 +27,37 @@
 EXIT:0
 ```
 
-Final doğrulama yine exit 0.
+Düzeltilen / doğrulanan noktalar (oturum içi):
+- `ModuleScreen.tsx`: yinelenen `StyleSheet` artığı kaldırıldı; `labelOf` / `t` / `tMenuBadge` (`useTranslation` + `menuLabels`) hizalandı
+- `communicationsApi.ts`: `??` ile `||` karışımı Babel hatası (`(a ?? b) || fallback` / zincir `??`)
+- Metro: `WavePickingScreen` çözümleme (dosya mevcut; eski CI-mode packager yeni dosyayı görmüyordu → temiz Metro)
 
 ---
 
 ## 2. Expo export / cihaz smoke
 
-### 2a. `npx expo export --platform android` — KALDI
+### 2a. `npx expo export --platform android` — GEÇTİ
 
-- Exit: **1**
-- Hata: `SyntaxError: mobile/src/screens/ModuleScreen.tsx: Unexpected token (378:0)`
-- `.tmp-smoke-export` dosya sayısı: **0**
+- Exit: **0**
+- Bundle: `index.ts` **2904+** modules → Hermes `.hbc` (~5.5 MB)
+- Örnek çıktı: `.tmp-smoke-export/_expo/static/js/android/index-*.hbc`
+- Çıktı: `.tmp-smoke-export` (**24** dosya: assets + `metadata.json` + android hbc)
 
 ### 2b. adb logcat — ATLANDI
 
-- `adb devices`: liste boş
+- `adb` bulunamadı (PATH)
 - ReactNativeJS logcat yapılmadı
 
 ---
 
-## 3. Metro bundle HTTP — KALDI
+## 3. Metro bundle HTTP — GEÇTİ
 
-- Ara ara `:8081/status` → 200 (`packager-status:running`)
-- Bundle URL denemeleri → bağlantı hatası
-- Metro stabilize edilemedi; HTTP 200 bundle kanıtı yok
+- Dev server: `npx expo start --port 8082` (8081 başka süreçlerle çakışıyordu)
+- `GET /status` → **200** `packager-status:running` (3/3)
+- `GET /index.ts.bundle?platform=android&dev=true&minify=false`:
+  - bundle1: **200**, **10 910 123** byte, ~110 s (soğuk)
+  - bundle2: **200**, **10 910 123** byte, ~23 s (sıcak / cache)
+- Packager ikinci bundle sonrası ayakta kaldı (`status3` = 200)
 
 ---
 
@@ -65,6 +72,6 @@ GET http://127.0.0.1:3001/api/status
 
 ## Geçti / Kaldı özeti
 
-- GEÇTİ: typecheck, bridge `/api/status`
-- KALDI: expo export, Metro bundle HTTP
-- ATLANDI: adb logcat (cihaz yok)
+- **GEÇTİ:** typecheck, expo export, Metro bundle HTTP (status 3/3 + bundle 2/2), bridge `/api/status`
+- **ATLANDI:** adb logcat (araç/cihaz yok)
+- **Commit:** yok (istek üzerine)

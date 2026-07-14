@@ -22,6 +22,7 @@ export type CachedProduct = {
   brand: string | null;
   category_code: string | null;
   is_active: boolean;
+  vat_rate?: number;
 };
 
 export type CachedCustomer = {

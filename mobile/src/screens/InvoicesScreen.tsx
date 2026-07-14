@@ -19,6 +19,7 @@ import {
   fetchInvoiceSummary,
   fetchInvoiceFilterSummary,
   invoiceFilterLabel,
+  invoiceFormParamsFromFilter,
   invoiceKindLabel,
   isPurchaseInvoice,
   trcodeBadgeLabel,
@@ -110,15 +111,40 @@ export function InvoicesScreen() {
         ? 'Alış iade faturası bulunamadı'
         : listFilter?.preset === 'purchase'
           ? 'Alış faturası bulunamadı'
-          : 'Fatura bulunamadı';
+          : listFilter?.preset === 'service-given'
+            ? 'Verilen hizmet fişi bulunamadı'
+            : listFilter?.preset === 'service-received'
+              ? 'Alınan hizmet fişi bulunamadı'
+              : listFilter?.preset === 'waybill'
+                ? 'İrsaliye bulunamadı'
+                : listFilter?.preset === 'order'
+                  ? 'Sipariş bulunamadı'
+                  : listFilter?.preset === 'quote'
+                    ? 'Teklif bulunamadı'
+                    : 'Fatura bulunamadı';
 
-  const showSalesAdd = !isReturnList && (showGeneralKpi || listFilter?.preset === 'sales');
+  const formFromFilter = useMemo(
+    () => invoiceFormParamsFromFilter(listFilter),
+    [listFilter],
+  );
+
+  const showSalesAdd = !listFilter || listFilter.preset === 'all' || listFilter.preset === 'sales';
   const showPurchaseAdd =
-    !isReturnList && (showGeneralKpi || listFilter?.preset === 'purchase');
+    !listFilter || listFilter.preset === 'all' || listFilter.preset === 'purchase';
   const showSalesReturnAdd = listFilter?.preset === 'sales-return';
   const showPurchaseReturnAdd = listFilter?.preset === 'purchase-return';
+  const showDocumentAdd =
+    !!formFromFilter &&
+    formFromFilter.kind !== 'sales' &&
+    formFromFilter.kind !== 'purchase' &&
+    formFromFilter.kind !== 'sales-return' &&
+    formFromFilter.kind !== 'purchase-return';
   const showAnyAdd =
-    showSalesAdd || showPurchaseAdd || showSalesReturnAdd || showPurchaseReturnAdd;
+    showSalesAdd ||
+    showPurchaseAdd ||
+    showSalesReturnAdd ||
+    showPurchaseReturnAdd ||
+    showDocumentAdd;
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
@@ -159,6 +185,19 @@ export function InvoicesScreen() {
                   accent
                   onPress={() =>
                     navigation.navigate('InvoiceForm', { kind: 'purchase-return' })
+                  }
+                >
+                  <Plus size={18} color={palette.white} />
+                </HeaderIconButton>
+              ) : null}
+              {showDocumentAdd && formFromFilter ? (
+                <HeaderIconButton
+                  accent
+                  onPress={() =>
+                    navigation.navigate('InvoiceForm', {
+                      kind: formFromFilter.kind,
+                      trcode: formFromFilter.trcode,
+                    })
                   }
                 >
                   <Plus size={18} color={palette.white} />

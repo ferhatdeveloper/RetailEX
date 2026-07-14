@@ -2,7 +2,7 @@
 
 > Kaynak: web `src/config/staticMenuConfig.ts` + ManagementModule (POS / WMS / Restoran / Güzellik)  
 > Hedef: `mobile/` (Expo RN, native ekranlar — WebView yasak)  
-> Son güncelleme: 2026-07-14 (fatura form + iade trcode 3/6; terazi RN)
+> Son güncelleme: 2026-07-14 (P2: menü i18n · storeId kritik listeler · LIVE_MAP doküman senkronu)
 
 ## Durum özeti
 
@@ -12,12 +12,12 @@
 | `[~]` | Kısmi (liste / host / okuma; CRUD veya tam form yok) |
 | `[ ]` | Henüz yok / yalnızca iskelet hedefi |
 
-**Menü yapısı (RN `menuConfig`):** 11 grup · 131 öğe · 115 yaprak  
+**Menü yapısı (RN `menuConfig`):** 11 grup · ~131 öğe · ~115 yaprak · yaprak `LIVE_MAP` çoğunlukla canlı (~9 `Module` = grup kabuğu / `dashboard` Tabs özel)
 
 **Durum sayımı (yaprak / özellik bazlı, yaklaşık):**  
-- **`[x]` canlı ~30** — auth, dashboard, ürün CRUD basit, cari/fatura, POS, raporlar (satış özeti, kritik stok, mizan, ekstre, **ürün satış, kasa**), WMS sayım+mutabakat, **WMS depo transferi**, restoran adisyon+ödeme, güzellik randevu + **satış POS (ERP)**, teslimat konum, sistem kullanıcı/rol/log, **iletişim müşteri+kuyruk okuma**
-- **`[~]` kısmi ~82+** — Module host veya canlı route’a yönlendirme (tam yedekleme yazma yok)  
-- **`[ ]` bekleyen ~7+** — dalga toplama, EAS…
+- **`[x]` / `[~]` canlı route** — ürün/cari/fatura, POS, terazi, mağaza, malzeme tanımları, E-Dönüşüm, WMS sayım+transfer+dalga, finans/cari devir, raporlar, sistem, iletişim…  
+- **`Module` yer tutucu** — grup kabukları (`store-management-group`, `waybill`, `Siparişler` …) + `dashboard`  
+- **`[ ]` bekleyen** — EAS ilk production, ekran-içi TR i18n, Rongta LAN canlı kg…
 
 ---
 
@@ -30,13 +30,15 @@
 - Rapor: satış özeti + kritik stok + **cari ekstre** + **mizan (cari bakiye)**
 
 ### Faz 2 — Ticaret / finans formları
-- Fatura oluşturma/düzenleme, irsaliye, sipariş, teklif
+- Fatura oluşturma/düzenleme; ~~irsaliye, sipariş, teklif~~ ✅ create (liste +)
+- ~~Hizmet verilen/alınan create~~ ✅ (`service-given` / `service-received`)
 - Cari hareket, kasa fişleri, ödeme planları
+- KDV: satır `vat_rate` + UI özeti (header `total_vat` web gibi 0)
 
 ### Faz 3 — WMS / Restoran / Güzellik işlemleri
 - ~~Sayım fişi yazma~~ ✅ mobil (`WmsCount` / `WmsCountSlip`)
 - ~~Sayım mutabakat + stoka uygula~~ ✅ (`applyStockCount` — web `wmsStockCount` ile aynı TRCODE 26/50)
-- Dalga toplama
+- ~~Dalga toplama~~ ✅ (`WmsWavePicking` / `WmsWavePickingExecute` — liste + yürütme)
 - ~~Adisyon aç + kalem ekle~~ ✅ (`RestaurantScreen` + `restaurantApi`)
 - ~~Randevu oluştur + filtre~~ ✅ (`BeautyScreen` + `beautyApi`)
 - ~~Restoran ödeme / kapatma~~ ✅ (`completeTablePayment`)
@@ -53,15 +55,15 @@
 
 | Öğe | Web | RN hedef | Durum |
 |-----|-----|----------|-------|
-| Dashboard | `dashboard` → DashboardModule | `DashboardScreen` | `[x]` |
-| Mağaza Paneli | `store-management` | `Module` host | `[~]` |
-| Şube Veri Senkronu | `hybrid-sync` | `Module` | `[~]` |
-| Mağaza Transferi | `interstore-transfer` | `Module` | `[~]` |
-| Çoklu Mağaza | `multistore` | `Module` | `[~]` |
-| Bölgesel Bayilik | `regional` | `Module` | `[~]` |
-| Mağaza Yapılandırma | `storeconfig` | `Module` | `[~]` |
-| Bilgi Gönder/Al | `databroadcast` | `Module` | `[~]` |
-| Entegrasyonlar | `integrations` | `Module` | `[~]` |
+| Dashboard | `dashboard` → DashboardModule | `DashboardScreen` (Tabs) | `[x]` |
+| Mağaza Paneli | `store-management` | `StoreManagement` | `[~]` liste (`public.stores`) |
+| Şube Veri Senkronu | `hybrid-sync` | `System` | `[~]` okuma host |
+| Mağaza Transferi | `interstore-transfer` | `WmsTransfer` | `[x]` liste + oluştur + kalem + tamamla |
+| Çoklu Mağaza | `multistore` | `StoreManagement` | `[~]` aynı mağaza paneli |
+| Bölgesel Bayilik | `regional` | `StoreManagement` (`groupByRegion`) | `[~]` bölgesel gruplama |
+| Mağaza Yapılandırma | `storeconfig` | `Organization` | `[~]` firma/dönem/mağaza kapsam |
+| Bilgi Gönder/Al | `databroadcast` | `Communications` | `[~]` iletişim kuyruk okuma |
+| Entegrasyonlar | `integrations` | `Communications` | `[~]` iletişim host |
 
 ---
 
@@ -70,9 +72,9 @@
 | Öğe | Web | RN hedef | Durum |
 |-----|-----|----------|-------|
 | Satış (POS) | MarketPOS / MobilePOS | `PosScreen` | `[x]` sepet + fiş kaydı + offline kuyruk/senkron + kamera barkod (`expo-camera`) |
-| Terazi & Tartılı Satış | `cashier-scale` | `ScaleSale` | `[x]` simüle tartım + kg sepet → POS fiş; LAN canlı kg yok (Rongta etiket) |
-| Terazi Yönetimi | `scale-management` | `ScaleManagement` | `[x]` cihaz/senkron/test (pg_bridge TCP); BT arayüz hazır, Expo Go native BT yok |
-| Fiyat & Kampanya | `pricing` | `PricingScreen` + `Campaigns` | `[~]` fiyat listeleri canlı (price_list_*); kampanya liste+detay okuma |
+| Terazi & Tartılı Satış | `cashier-scale` | `ScaleSale` | `[x]` simüle + **BLE canlı kg** (dev build); LAN Rongta canlı kg yok |
+| Terazi Yönetimi | `scale-management` | `ScaleManagement` | `[x]` TCP/PLU + **BLE tara/bağlan** (`react-native-ble-plx`); Expo Go’da BT native yok |
+| Fiyat & Kampanya | `pricing` | `PricingScreen` + `Campaigns` + `CampaignForm` | `[~]` fiyat listeleri canlı; kampanya CRUD + POS basit motor |
 
 ---
 
@@ -81,23 +83,23 @@
 | Öğe | Web | RN hedef | Durum |
 |-----|-----|----------|-------|
 | Malzemeler | `products` / ProductModule | `Products` + `ProductDetail` + `ProductForm` | `[x]` liste+detay+ oluştur/düzenle + kamera barkod arama |
-| Malzeme Sınıfları | `material-classes` | `Module` | `[~]` |
-| Birim Setleri | `unit-sets` | `Module` | `[~]` |
-| Varyantlar | `variants` | `Module` | `[~]` |
-| Özel Kodlar | `special-codes` | `Module` | `[~]` |
-| Marka Tanımları | `brand-definitions` | `Module` | `[~]` |
+| Malzeme Sınıfları | `material-classes` | `MaterialDefinitions` | `[~]` liste + basit ekleme |
+| Birim Setleri | `unit-sets` | `MaterialDefinitions` | `[~]` liste + basit ekleme |
+| Varyantlar | `variants` | `MaterialDefinitions` | `[~]` liste + create |
+| Özel Kodlar | `special-codes` | `MaterialDefinitions` | `[~]` liste + create |
+| Marka Tanımları | `brand-definitions` | `MaterialDefinitions` | `[~]` liste + basit ekleme |
 | Terazi Tanımları | `scale` | `ScaleManagement` | `[x]` aynı Terazi Yönetimi ekranı |
-| Grup Kodları | `group-codes` | `Module` | `[~]` |
-| Ürün Kategorileri | `product-categories` | `Module` | `[~]` |
-| Hizmet Kartları | `service-cards` | `Module` | `[~]` |
+| Grup Kodları | `group-codes` | `MaterialDefinitions` | `[~]` liste + create |
+| Ürün Kategorileri | `product-categories` | `MaterialDefinitions` | `[~]` liste |
+| Hizmet Kartları | `service-cards` | `Products` | `[~]` ürün listesi (hizmet kartı filtre/web derinliği yok) |
 | Malzeme Yönetim Fişleri | `stockmovements` | `StockMovements` | `[~]` liste SQL (fiş + fatura) |
 | Stok Devir Fişi | `stok-devir` | `StockMovements` | `[~]` liste SQL |
 | Stok Fiyat Değişim | `stock-price-change-slips` | `StockMovements` | `[~]` liste SQL |
 | Mobil Sayım | `mobile-inventory-count` | `WmsCount` | `[x]` fiş + satır + mutabakat + stoka uygula |
 | Sayım Eksiği / Fazlası | `stockmovements-*` | `StockMovements` (filtre) | `[~]` liste SQL |
 | Malzeme raporları (10) | `report-*` / `inventory` / `cost` | `ReportStock` (mode) | `[~]` kritik + min/max + değer + ambar + ekstre canlı |
-| Excel / Akıllı ekleme | `excel` / `smart-material-add` | `Module` | `[~]` |
-| Üretim / Kasap | `production` / `butcher-production` | `Module` | `[~]` |
+| Excel / Akıllı ekleme | `excel` / `smart-material-add` | `ExcelOps` | `[~]` CSV paylaşım + ProductForm |
+| Üretim / Kasap | `production` / `butcher-production` | `ProductionOps` | `[~]` reçete liste + basit create |
 
 ---
 
@@ -105,15 +107,15 @@
 
 | Öğe | Web | RN hedef | Durum |
 |-----|-----|----------|-------|
-| Satış faturaları (tüm türler) | UniversalInvoice* | `Invoices` + `InvoiceDetail` + `InvoiceForm` | `[~]` liste+detay+ satış yazma (cari*, kalem, ödeme chip, belge no, satır/dip indirim, vergi özeti KDV=0); edit=not/durum |
-| Alış faturası (standart) | purchase-invoice-standard | `Invoices` (purchase) + `InvoiceForm` (`kind: purchase`) | `[~]` tedarikçi seçimi (`suppliersApi`), kalem+özet, stok + / veresiye borç |
-| Satış / alış iade | UniversalInvoice trcode 3/6 | `InvoiceForm` (`sales-return` / `purchase-return`) + liste `+` | `[~]` yazma: stok yönü web ile aynı; kasiyer (3 zorunlu); hizmet/irsaliye/sipariş formu yok |
-| Hizmet / irsaliye / sipariş / teklif | aynı | `Invoices` (`invoiceFilters` trcode) | `[~]` filtreli liste; create formu web |
-| E-Dönüşüm | `etransform` | `Module` | `[~]` |
-| İrsaliyeler | `waybill-*` | `Invoices` (`invoiceFilters` trcode 10–13) | `[~]` filtreli liste canlı |
-| Siparişler | `salesorder` / `purchase` | `Invoices` (trcode 20/21) | `[~]` filtreli liste canlı |
+| Satış faturaları (tüm türler) | UniversalInvoice* | `Invoices` + `InvoiceDetail` + `InvoiceForm` | `[~]` liste+detay+ satış yazma (cari*, kalem, ödeme, belge no, satır/dip indirim, **satır KDV %**); edit=not/durum |
+| Alış faturası (standart) | purchase-invoice-standard | `Invoices` (purchase) + `InvoiceForm` (`kind: purchase`) | `[~]` tedarikçi seçimi (`suppliersApi`), kalem+özet+KDV satır, stok + / veresiye borç |
+| Satış / alış iade | UniversalInvoice trcode 3/6 | `InvoiceForm` (`sales-return` / `purchase-return`) + liste `+` | `[~]` yazma: stok yönü web ile aynı; kasiyer (3 zorunlu) |
+| Hizmet / irsaliye / sipariş / teklif | aynı | `Invoices` + `InvoiceForm` + `createDocumentInvoice` | `[~]` filtreli liste + **create** (TR 9/4/10/11/20/21/30; stok yok; hizmet cari/kasa) |
+| E-Dönüşüm | `etransform` | `ETransform` | `[x]` kuyruk + yeniden dene / durum / toplu mock gönder |
+| İrsaliyeler | `waybill-*` | `Invoices` + `InvoiceForm` | `[~]` liste + create (10/11; 12/13 trcode override) |
+| Siparişler | `salesorder` / `purchase` | `Invoices` + `InvoiceForm` | `[~]` liste + create (20/21, status draft) |
 | Teslimat Yönetimi | `logistics` | `DeliveryScreen` | `[x]` liste + canlı konum (`expo-location`) + durum + PG `courier_locations` |
-| Teklifler | `Teklifler` | `Invoices` (trcode 30/31) | `[~]` filtreli liste canlı |
+| Teklifler | `Teklifler` | `Invoices` + `InvoiceForm` | `[~]` liste + create (TR 30) |
 
 ---
 
@@ -125,12 +127,12 @@
 | Ödeme Planları / Masraf Merkezi | `payment-plans` / `cost-centers` | `FinanceDefinitions` | `[~]` okuma listesi (`financeDefinitionsApi`) |
 | Müşteri Arama Planı | `customer-call-plan` | `FinanceDefinitions` | `[~]` haftalık arşiv + cari plan okuma |
 | Kasa Kartları | `cashbank` | `Finance` | `[x]` kart listesi + hareket + basit KASA_GIRIS/CIKIS (`financeApi`) |
-| Cari Devir | `cari-devir` | `ReportCariExtract` | `[~]` ekstre ekranına yönlendirme |
+| Cari Devir | `cari-devir` | `CariDevir` | `[x]` toplu açılış bakiyesi + kayıtlı fiş düzenle/iptal |
 | Kasa / Kasa Fişleri | `kasalar` / `cash-slips` | `Finance` / `CashCollection` | `[x]` hareket listesi + basit giriş |
 | Banka (kart/hareket) | `banks` / `bank-vouchers` | `Finance` | `[x]` banka sekmesi + BANKA_GIRIS/CIKIS (menüde yorumlu; ekranda canlı) |
 | Cari / Kasa / Banka raporları | `financereports*` | `ReportMizan` / `ReportCash` | `[x]` cari bakiye + **kasa hareket** |
 | Cari Ekstre / Mizan | `customer-extract` / `mizan` | `ReportCariExtract` / `ReportMizan` | `[x]` |
-| Gider / Çoklu PB | `revenueexpense` / `multicurrency` | `FinanceDefinitions` / `Module` | `[~]` gider okuma canlı; çoklu PB host |
+| Gider / Çoklu PB | `revenueexpense` / `multicurrency` | `FinanceDefinitions` / `MultiCurrency` | `[~]` gider okuma; PB+kur okuma/ekleme |
 
 ---
 
@@ -141,7 +143,7 @@
 | WMS Ana Panel | wms modules | `WmsScreen` | `[x]` özet+liste+sayım+transfer kısayolu |
 | Stok Sayım | `stockcounting` | `WmsCount` | `[x]` fiş listesi + satır + mutabakat + `applyStockCount` |
 | Depo / Ambar Transferi | `interstore-transfer` / `waybill-transfer` | `WmsTransfer` | `[x]` liste + oluştur + kalem + tamamla |
-| Dalga Toplama | `wave-picking` | `Wms` | `[~]` |
+| Dalga Toplama | `wave-picking` | `WmsWavePicking` + `WmsWavePickingExecute` | `[~]` dalga liste + yürütme (`wmsPickingApi`) |
 | Mobil Sayım yazma | GoodsReceipt / InventoryCount | `WmsCount` + `WmsCountSlip` | `[x]` oluştur + barkod satır + mutabakat + stok uygula + kamera (`BarcodeScannerModal`) |
 
 ---
@@ -171,7 +173,7 @@
 
 | Öğe | Web | RN hedef | Durum |
 |-----|-----|----------|-------|
-| WhatsApp / Mesaj / Bildirim / SMS / E-posta | MesajBildirimModule, messagingService | `CommunicationsScreen` | `[~]` telefonlu müşteri + `notification_queue` kuyruk listesi canlı; gönderim/ayar yazma yok |
+| WhatsApp / Mesaj / Bildirim / SMS / E-posta | MesajBildirimModule, messagingService | `CommunicationsScreen` | `[x]` müşteri gönderim + kuyruk işle/yeniden dene + sağlayıcı/fatura bildirimi yazma (SMS Atak masaüstü) |
 
 ---
 
@@ -204,6 +206,8 @@
 | Kullanıcı / Rol / Menü | usermanagement… | `SystemScreen` sekmeler | `[x]` kullanıcı + rol liste (`LIVE_MAP` → System) |
 | Yedekleme / Log / Kasa cihazları | backuprestore… | `SystemScreen` | `[x]` log + kasa okuma; yedekleme=şema özeti (yazma DeskApp) |
 | Bağlantı ayarları | Login gear | `ConfigScreen` | `[x]` |
+| Fatura etiket tasarımı | `invoice-label-designer` | `SystemExtras` | `[~]` barkod şablon liste + create |
+| Sanal santral Caller ID | `virtual-pbx-caller-id` | `SystemExtras` | `[~]` yerel ayar (AsyncStorage) |
 
 ---
 
@@ -215,11 +219,11 @@
 | Online/Offline/Hybrid (`networkPolicy` + NetInfo + cache/kuyruk) | `[x]` `HYBRID_POLICY.md` · ürün/cari snapshot · cari + POS mutation queue |
 | `menuConfig` ≡ staticMenuConfig + POS/WMS/rest/beauty | `[x]` |
 | Stack + bottom tabs navigasyon | `[x]` |
-| `LIVE_MAP` → `navigateToModule` / `ModuleScreen.replace` | `[x]` Report* / StockMovements / Restaurant / Beauty / Delivery / Finance / **FinanceDefinitions** / System / Communications / Organization / Campaigns / Pricing / WmsTransfer |
-| i18n tr/en/ar/ku + RTL (`ar`/`ku`) | `[x]` AsyncStorage `retailex_mobile_language` |
+| `LIVE_MAP` → `navigateToModule` / `ModuleScreen.replace` | `[x]` Report* / StockMovements / Restaurant / Beauty / Delivery / Finance / FinanceDefinitions / MaterialDefinitions / StoreManagement / ETransform / WmsWavePicking / Scale* / CariDevir / ProductionOps / ExcelOps / MultiCurrency / SystemExtras / … |
+| i18n tr/en/ar/ku + RTL (`ar`/`ku`) | `[x]` AsyncStorage `retailex_mobile_language` · **menü** `menu.*` (sections/items/quick) |
 | Dark mode | `[x]` AsyncStorage `retailex_mobile_theme` + `colors` |
 | Menü görünümü `menuViewMode` (cards / list) | `[x]` AsyncStorage — mobil-only |
-| EAS Build / store yayın | `[ ]` |
+| EAS Build / store yayın | `[~]` `eas.json` + README; `eas init` / ilk preview-production henüz yok |
 | Kamera barkod (`expo-camera` CameraView) | `[x]` `BarcodeScannerModal` → POS / WMS sayım / ürün arama |
 | Konum (`expo-location`) | `[x]` `DeliveryScreen` → kurye canlı konum + `logistics.courier_locations` |
 
@@ -254,24 +258,30 @@
 - [x] Online/Offline/Hybrid (`networkPolicy` + NetInfo + ürün/cari AsyncStorage cache + cari mutation kuyruk)
 - [x] **Ajan 10/10:** `FinanceDefinitionsScreen` + `financeDefinitionsApi` — `payment-plans`, `cost-centers`, `customer-call-plan`, `revenueexpense` LIVE_MAP
 - [x] **Ajan 10/10:** Fatura yaprakları — `salesorder`, `purchase`, `purchaserequest`, `Teklifler`, `waybill-sales|purchase|fire` → `Invoices` + `invoiceFilters` trcode
-- [x] **Ajan 10/10:** `cari-devir` → `ReportCariExtract`; `stok-devir` / `stock-price-change-slips` → `StockMovements`
+- [x] **Ajan 10/10:** `cari-devir` → `CariDevir` (fiş formu); `stok-devir` / `stock-price-change-slips` → `StockMovements`
 - [x] **Ajan 10/10:** `financeApi` kasa/banka hareket API geri yüklendi; `navigateToModule` fatura filtresi + `Campaigns` case
 - [~] Stok hareketleri liste SQL (`StockMovements` + `stockMovementApi`) — fiş + fatura birleşik; CRUD yok
 - [~] Malzeme raporları liste SQL (`ReportStock` mode: min-max, değer, ambar, ekstre) — kritik stok zaten `[x]`
 - [x] Fiyat listesi görüntüleme (`PricingScreen` + `pricingApi` → products price_list_* kolonları)
 - [x] Kampanya listesi + detay okuma (`CampaignsScreen` / `CampaignDetailScreen` + `campaignsApi`; `campaigns_mgmt` → LIVE_MAP)
+- [x] Kampanya create/edit (`CampaignFormScreen` + `createCampaign` / `updateCampaign`) + POS basit motor (`campaignEngine` + `PosScreen`)
 - [x] POS fiş offline kuyruk + senkron (`pos.sale` · `mutationQueue` · `syncEngine` · cache stok düşümü)
 - [x] **Ürün satış raporu** (`ReportProductSales` + `fetchProductSales` — sale_items, 30 gün)
 - [x] **Kasa raporu** (`ReportCash` + `fetchCashMovements` — cash_lines + kasa kartı, 30 gün)
-- [x] İletişim menü yaprakları — telefonlu müşteri + bildirim kuyruğu (`CommunicationsScreen` + `communicationsApi`; `LIVE_MAP` → whatsapp / mesaj-bildirim / sms / e-posta)
+- [x] İletişim — müşteri WhatsApp gönderim + kuyruk işle/yeniden dene + sağlayıcı/fatura bildirimi yazma (`CommunicationsScreen` + `communicationsApi`)
+- [x] E-Dönüşüm kuyruk aksiyonları — yeniden dene / durum / toplu mock gönder (`ETransformScreen` + `eTransformApi`)
 - [x] Bildirim merkezi — kritik stok + vadesi geçmiş açık cari (`NotificationsScreen` + `notificationsApi`; menü `notifications`)
 - [x] WMS sayım mutabakat + stoka uygula (`wmsStockCountApi.applyStockCount` — web `wmsStockCount` ile aynı TRCODE 26/50; `WmsCountSlipScreen` mutabakat özeti + stok güncelleme)
 - [x] Yazıcı / fiş ayarları (`PrinterSettingsScreen` + `printerSettingsStore` AsyncStorage + test yazdır stub; POS otomatik yazdır stub)
-- [x] **Terazi (Android TeraziManager → RN):** `ScaleManagement` + `ScaleSale` — kaynak `TeraziRongta/android/TeraziManager` (`com.retailex.terazimanager`); TCP/PLU via pg_bridge; simüle tartım; BT `ScaleTransport` arayüzü (Expo Go’da native yok — `react-native-ble-plx` + development build)
+- [x] **Terazi (Android TeraziManager → RN):** `ScaleManagement` + `ScaleSale` — TCP/PLU via pg_bridge; simüle tartım; **BLE** `react-native-ble-plx` + config plugin + canlı kg (development build; Expo Go’da native yok)
+- [x] **P1 Module yaprakları LIVE:** varyant/özel/grup kod (`MaterialDefinitions`); üretim/kasap (`ProductionOps`); çoklu PB (`MultiCurrency`); excel/akıllı ekleme (`ExcelOps`); etiket+Caller ID (`SystemExtras`)
+- [x] **P2 menü i18n:** `menu.sections|items|quick` tr/en/ar/ku · Dashboard / Module / More
+- [x] **P2 `storeId` kritik listeler:** `appendStoreIdFilter` — dashboard satış, fatura listeleri/özet, satış günü/ürün raporları, WMS sayım, stok hareket, bildirim vade
+- [x] **P2 doküman:** bayat `Module` satırları `LIVE_MAP` ile hizalandı (Ana Menü, malzeme tanımları, dalga)
 
 ## Sonraki (Faz 2+)
 
-1. ~~Fatura / cari oluşturma formları~~ (cari tamam; satış/alış/iade yazma `[~]`; hizmet/irsaliye/sipariş hâlâ liste)
+1. ~~Fatura / cari oluşturma formları~~ (cari tamam; satış/alış/iade + **hizmet/irsaliye/sipariş/teklif create** `[~]`; KDV satır başlangıç)
 2. Kasa/banka tam form: tahsilat/ödeme, virman, cari entegrasyonu (web `kasa.ts` / `banka.ts`)
 3. ~~WMS sayım fişi yazma~~ ✅  
 3. ~~WMS sayım mutabakat / applyStockCount~~ ✅  
@@ -280,9 +290,11 @@
 
 6. ~~Cari ekstre + mizan canlı SQL~~ ✅  
 7. EAS Build  
-8. Modül ekranlarındaki hardcoded TR stringleri i18n anahtarlarına taşıma  
-9. Teslimat: harita SDK / POD foto — opsiyonel derinlik 
-10. ~~Ürün oluştur/düzenle~~ ✅ · ~~Sistem menü yaprakları (okuma)~~ ✅ 
-11. Offline kuyruk genişletme: ~~POS~~ ✅ · ~~fatura satış/alış/iade~~ ✅ · WMS sayım
-12. Terazi BT: development build + `react-native-ble-plx` (veya classic SPP); USB/OTG Android native (terazi manager) RN’de yok
-13. Rongta LAN canlı ağırlık (etiket terazisi sürekli kg yaymaz) — tartılı satış simüle / harici tartı BT
+8. ~~Menü etiketleri i18n (tr/en/ar/ku)~~ ✅ · kalan: ekran içi hardcoded TR (`Alert`, form hataları)  
+9. Teslimat: harita SDK / POD foto — opsiyonel derinlik  
+10. ~~Ürün oluştur/düzenle~~ ✅ · ~~Sistem menü yaprakları (okuma)~~ ✅  
+11. Offline kuyruk genişletme: ~~POS~~ ✅ · ~~fatura satış/alış/iade/belge~~ ✅ · WMS sayım  
+12. ~~`storeId` kritik listelerde~~ ✅ — kasa satırı mağaza kolonu seyrek; ürün stok hâlâ firma geneli  
+13. ~~Terazi BT: development build + `react-native-ble-plx`~~ ✅ (canlı kg + tarama); classic SPP / USB-OTG Android native hâlâ yok  
+14. Rongta LAN canlı ağırlık (etiket terazisi sürekli kg yaymaz) — tartılı satış simüle / harici tartı BT  
+15. KDV derinliği: header `total_vat` yazma + POS satır KDV (web `totalVat: 0` parity kaldırılınca)

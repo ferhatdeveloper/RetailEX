@@ -87,6 +87,9 @@ export function stockMovementsRouteParams(screen: string): StockMovementsRoutePa
 
 export type FinanceDefinitionsRouteParams = NonNullable<MainStackParamList['FinanceDefinitions']>;
 export type MaterialDefinitionsRouteParams = NonNullable<MainStackParamList['MaterialDefinitions']>;
+export type ProductionOpsRouteParams = NonNullable<MainStackParamList['ProductionOps']>;
+export type ExcelOpsRouteParams = NonNullable<MainStackParamList['ExcelOps']>;
+export type SystemExtrasRouteParams = NonNullable<MainStackParamList['SystemExtras']>;
 
 /** Menü screen id → FinanceDefinitions stack params */
 export function financeDefinitionsRouteParams(screen: string): FinanceDefinitionsRouteParams {
@@ -95,6 +98,21 @@ export function financeDefinitionsRouteParams(screen: string): FinanceDefinition
 
 /** Menü screen id → MaterialDefinitions stack params */
 export function materialDefinitionsRouteParams(screen: string): MaterialDefinitionsRouteParams {
+  return { screenId: screen };
+}
+
+/** Menü screen id → ProductionOps stack params */
+export function productionOpsRouteParams(screen: string): ProductionOpsRouteParams {
+  return { screenId: screen };
+}
+
+/** Menü screen id → ExcelOps stack params */
+export function excelOpsRouteParams(screen: string): ExcelOpsRouteParams {
+  return { screenId: screen };
+}
+
+/** Menü screen id → SystemExtras stack params */
+export function systemExtrasRouteParams(screen: string): SystemExtrasRouteParams {
   return { screenId: screen };
 }
 
@@ -216,6 +234,9 @@ export function navigateToModule(
     case 'ReportMizan':
       nav.navigate('ReportMizan');
       return;
+    case 'ReportAging':
+      nav.navigate('ReportAging');
+      return;
     case 'ReportCariExtract':
       nav.navigate('ReportCariExtract');
       return;
@@ -258,8 +279,23 @@ export function navigateToModule(
     case 'MaterialDefinitions':
       nav.navigate('MaterialDefinitions', materialDefinitionsRouteParams(screen));
       return;
+    case 'ProductionOps':
+      nav.navigate('ProductionOps', productionOpsRouteParams(screen));
+      return;
+    case 'MultiCurrency':
+      nav.navigate('MultiCurrency');
+      return;
+    case 'ExcelOps':
+      nav.navigate('ExcelOps', excelOpsRouteParams(screen));
+      return;
+    case 'SystemExtras':
+      nav.navigate('SystemExtras', systemExtrasRouteParams(screen));
+      return;
     case 'CashCollection':
       nav.navigate('CashCollection', cashCollectionRouteParams(screen));
+      return;
+    case 'CariDevir':
+      nav.navigate('CariDevir');
       return;
     case 'Communications':
       nav.navigate('Communications', communicationsRouteParams(screen));

@@ -44,6 +44,7 @@ type StackReportRoute =
   | 'ReportSales'
   | 'ReportStock'
   | 'ReportMizan'
+  | 'ReportAging'
   | 'ReportCariExtract'
   | 'ReportProductSales'
   | 'ReportCash';
@@ -85,11 +86,19 @@ const LIVE_REPORTS: ReportEntry[] = [
   },
   {
     id: 'mizan',
-    title: 'Mizan (Cari Bakiye)',
-    desc: 'Müşteri / tedarikçi bakiyeleri — alacak / borç',
+    title: 'Cari Bakiye Özeti',
+    desc: 'Dönemsel müşteri / tedarikçi bakiyesi (yasal GL mizanı değil)',
     kind: 'stack',
     route: 'ReportMizan',
     Icon: Scale,
+  },
+  {
+    id: 'aging',
+    title: 'Cari Yaşlandırma',
+    desc: 'Veresiye fişler — vade ve gecikme aralıkları',
+    kind: 'stack',
+    route: 'ReportAging',
+    Icon: FileText,
   },
   {
     id: 'extract',

@@ -18,7 +18,10 @@ import { PrimaryButton } from '../components/PrimaryButton';
 import {
   createBrand,
   createCategory,
+  createGroupCode,
+  createSpecialCode,
   createUnitSet,
+  createVariantDefinition,
   generateDefinitionCode,
 } from '../api/materialDefinitionsApi';
 import { useThemeStore } from '../store/themeStore';
@@ -37,6 +40,12 @@ function kindTitle(kind: Kind): string {
       return 'Yeni malzeme sınıfı';
     case 'unitset':
       return 'Yeni birim seti';
+    case 'variant':
+      return 'Yeni varyant';
+    case 'special':
+      return 'Yeni özel kod';
+    case 'group':
+      return 'Yeni grup kodu';
     default: {
       const _exhaustive: never = kind;
       return _exhaustive;
@@ -44,9 +53,12 @@ function kindTitle(kind: Kind): string {
   }
 }
 
-function codeKind(kind: Kind): 'brand' | 'category' | 'unitset' {
+function codeKind(kind: Kind): 'brand' | 'category' | 'unitset' | 'special' | 'group' | 'variant' {
   if (kind === 'brand') return 'brand';
   if (kind === 'unitset') return 'unitset';
+  if (kind === 'special') return 'special';
+  if (kind === 'group') return 'group';
+  if (kind === 'variant') return 'variant';
   return 'category';
 }
 
@@ -99,6 +111,12 @@ export function MaterialDefinitionFormScreen() {
         await createUnitSet({ code: trimmedCode, name: trimmedName });
       } else if (kind === 'brand') {
         await createBrand({ code: trimmedCode, name: trimmedName, description });
+      } else if (kind === 'special') {
+        await createSpecialCode({ code: trimmedCode, name: trimmedName, description });
+      } else if (kind === 'group') {
+        await createGroupCode({ code: trimmedCode, name: trimmedName, description });
+      } else if (kind === 'variant') {
+        await createVariantDefinition({ code: trimmedCode, name: trimmedName, description });
       } else {
         await createCategory({
           code: trimmedCode,

@@ -1,7 +1,8 @@
-import React, { useEffect, useMemo } from 'react';
+import React, { useCallback, useEffect, useMemo } from 'react';
 import { View, Text, StyleSheet, Pressable, ScrollView } from 'react-native';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useTranslation } from 'react-i18next';
 import { ChevronRight, Layers } from 'lucide-react-native';
 import { ScreenHeader } from '../components/ScreenChrome';
 import {
@@ -12,20 +13,24 @@ import {
 import { findMenuItem, resolveLiveRoute, type MenuItem } from '../config/menuConfig';
 import { useThemeStore } from '../store/themeStore';
 import { usePreferencesStore } from '../store/preferencesStore';
+import { tMenuBadge, tMenuItem } from '../i18n/menuLabels';
 import { palette } from '../theme/colors';
 import type { MainStackParamList } from '../navigation/types';
 import { resolveInvoicesRouteParams } from '../api/invoiceFilters';
 import {
   beautyRouteParams,
   communicationsRouteParams,
+  excelOpsRouteParams,
   financeRouteParams,
   financeDefinitionsRouteParams,
   materialDefinitionsRouteParams,
   navigateToModule,
+  productionOpsRouteParams,
   reportStockRouteParams,
   restaurantRouteParams,
   stockMovementsRouteParams,
   storeManagementRouteParams,
+  systemExtrasRouteParams,
   systemRouteParams,
 } from '../navigation/navigateToModule';
 
@@ -38,6 +43,7 @@ type StackNav = NativeStackNavigationProp<MainStackParamList>;
  * - Aksi halde ilgili veri bağlamı + alt kısayollar
  */
 export function ModuleScreen() {
+  const { t } = useTranslation();
   const { colors } = useThemeStore();
   const menuViewMode = usePreferencesStore((s) => s.menuViewMode);
   const isCards = menuViewMode === 'cards';
@@ -48,6 +54,7 @@ export function ModuleScreen() {
   const item = useMemo(() => findMenuItem(screenId), [screenId]);
   const title = titleParam || item?.label || screenId;
   const children = item?.children ?? [];
+  const labelOf = useCallback((m: MenuItem) => tMenuItem(t, m.id, m.label), [t]);
 
   const relatedLive = resolveLiveRoute(screenId);
 
@@ -89,6 +96,9 @@ export function ModuleScreen() {
       case 'ReportMizan':
         navigation.replace('ReportMizan');
         break;
+      case 'ReportAging':
+        navigation.replace('ReportAging');
+        break;
       case 'ReportCariExtract':
         navigation.replace('ReportCariExtract');
         break;
@@ -128,8 +138,23 @@ export function ModuleScreen() {
       case 'MaterialDefinitions':
         navigation.replace('MaterialDefinitions', materialDefinitionsRouteParams(screenId));
         break;
+      case 'ProductionOps':
+        navigation.replace('ProductionOps', productionOpsRouteParams(screenId));
+        break;
+      case 'MultiCurrency':
+        navigation.replace('MultiCurrency');
+        break;
+      case 'ExcelOps':
+        navigation.replace('ExcelOps', excelOpsRouteParams(screenId));
+        break;
+      case 'SystemExtras':
+        navigation.replace('SystemExtras', systemExtrasRouteParams(screenId));
+        break;
       case 'CashCollection':
         navigation.replace('CashCollection');
+        break;
+      case 'CariDevir':
+        navigation.replace('CariDevir');
         break;
       case 'WmsTransfer':
         navigation.replace('WmsTransfer');
@@ -161,7 +186,7 @@ export function ModuleScreen() {
   }, [relatedLive, navigation, screenId]);
 
   const openChild = (child: MenuItem) => {
-    navigateToModule(navigation, child.screen, child.label);
+    navigateToModule(navigation, child.screen, labelOf(child));
   };
 
   const hints: Record<string, string> = {
@@ -170,40 +195,52 @@ export function ModuleScreen() {
     'product-categories': 'Ürün kategorileri listesi canlı (MaterialDefinitions).',
     'brand-definitions': 'Marka tanımları listesi + basit ekleme canlı (MaterialDefinitions).',
     'unit-sets': 'Birim setleri listesi + basit ekleme canlı (MaterialDefinitions).',
+    variants: 'Varyant tanımları / ürün SKU listesi + basit ekleme canlı.',
+    'special-codes': 'Özel kodlar listesi + basit ekleme canlı.',
+    'group-codes': 'Grup kodları (product_groups) listesi + basit ekleme canlı.',
+    production: 'Üretim reçeteleri listesi + basit ekleme canlı (ProductionOps).',
+    'butcher-production': 'Kasap üretim reçeteleri listesi + basit ekleme canlı.',
+    multicurrency: 'Para birimleri + kurlar okuma/ekleme canlı.',
+    excel: 'Excel/CSV canlı özet + ürün/cari CSV paylaşımı.',
+    'smart-material-add': 'Akıllı ekleme — mobil ProductForm kısayolu.',
+    'invoice-label-designer': 'Barkod/etiket şablonları listesi + ekleme canlı.',
+    'virtual-pbx-caller-id': 'Caller ID yerel ayar (AsyncStorage); dinleme masaüstü.',
     'finance-cards': 'Cari hesaplar listesi + detay + son faturalar canlı.',
     salesinvoice: 'Satış faturaları listesi + detay (kalemler) canlı.',
     'material-reports': 'Stok raporları: kritik stok, min/max, değer, ambar durum, ekstre canlı.',
     stockmovements: 'Malzeme yönetim fişleri — ambar fişleri + fatura hareketleri canlı liste.',
     customreports: 'Raporlar sekmesi: satış özeti + kritik stok.',
-    pricing: 'Fiyat listeleri + kampanyalar — `Pricing` (ürün fiyatları) ve `Campaigns` (liste+detay).',
+    pricing: 'Fiyat listeleri + kampanyalar — `Pricing` / `Campaigns` (liste+form) + POS motoru.',
     logistics: 'Teslimat / kurye — canlı konum + durum güncelleme (DeliveryScreen).',
-    mizan: 'Cari bakiye mizanı canlı (erpReports.getCariBalances).',
+    mizan: 'Cari bakiye özeti (dönem ledger). Yasal / GL mizanı değil.',
+    aging: 'Cari yaşlandırma — veresiye fişler ve vade aralıkları.',
+    'cari-aging': 'Cari yaşlandırma canlı.',
     'customer-extract': 'Cari ekstre canlı (hareket + satış fallback).',
     'customer-call-plan': 'Müşteri arama planı — haftalık arşiv + cari plan canlı (FinanceDefinitions).',
     'payment-plans': 'Ödeme planları listesi canlı (logic.pay_plans / FinanceDefinitions).',
     'cost-centers': 'Masraf merkezleri canlı (FinanceDefinitions).',
     revenueexpense: 'Gider kayıtları okuma canlı (FinanceDefinitions).',
-    salesorder: 'Satış siparişi — trcode 20 filtreli fatura listesi canlı.',
-    purchase: 'Satınalma siparişi — trcode 21 filtreli liste canlı.',
-    Teklifler: 'Teklif fişleri — trcode 30/31 filtreli liste canlı.',
-    'waybill-sales': 'Satış irsaliyesi — trcode 10 filtreli liste canlı.',
+    salesorder: 'Satış siparişi — liste + create (TR 20).',
+    purchase: 'Satınalma siparişi — liste + create (TR 21).',
+    Teklifler: 'Teklif — liste + create (TR 30).',
+    'waybill-sales': 'Satış irsaliyesi — liste + create (TR 10).',
     'stok-devir': 'Stok devir fişleri — StockMovements canlı liste.',
     cashbank: 'Kasa kartları + hareket listesi + basit giriş/çıkış canlı (FinanceScreen).',
     kasalar: 'Kasa işlemleri — hareket listesi + basit giriş/çıkış canlı (FinanceScreen).',
     'cash-slips': 'Kasa fişleri — hareket listesi + basit giriş canlı (FinanceScreen).',
-    'cari-devir': 'Cari devir fişi web’de; mobil form henüz yok.',
+    'cari-devir': 'Cari devir fişi canlı (CariDevir — açılış bakiyesi toplu kaydet).',
     financereports: 'Cari hesap raporları hub — Raporlar sekmesi (web ReportsModule).',
     'financereports-cash': 'Kasa hareket raporu canlı (ReportCash).',
     'financereports-bank': 'Banka kartları / hareketleri canlı (FinanceScreen banka sekmesi).',
     whatsapp: 'WhatsApp entegrasyonu web’de; bildirim ayarları masaüstünden.',
-    integrations: 'Entegrasyon sağlayıcı özeti — WhatsApp / bildirim ayarları canlı (Communications).',
-    databroadcast: 'Bilgi gönder/al — bildirim kuyruğu canlı (Communications).',
+    integrations: 'Entegrasyon — WhatsApp sağlayıcı + fatura bildirimi yazma (Communications).',
+    databroadcast: 'Bilgi gönder/al — bildirim kuyruğu işle / yeniden dene (Communications).',
     'store-management': 'Mağaza listesi canlı (public.stores) — StoreManagement.',
     multistore: 'Çoklu mağaza listesi canlı — StoreManagement.',
     regional: 'Bölgesel mağaza grupları canlı — StoreManagement.',
     storeconfig: 'Aktif mağaza seçimi — Organization.',
     'hybrid-sync': 'Şube sync_queue kuyruğu canlı — Sistem › Senkron sekmesi.',
-    etransform: 'GİB e-belge kuyruğu canlı (gib_edocument_queue) — ETransform.',
+    etransform: 'GİB e-belge kuyruğu — yeniden dene / durum / toplu gönder (ETransform).',
     notifications: 'Kritik stok + vadesi geçmiş açık cari hatırlatmaları canlı.',
     usermanagement: 'Kullanıcı listesi canlı (public.users). Rol / log / kasa sekmeleri Sistem ekranında.',
     roleauth: 'Roller listesi canlı (public.roles). Yetki düzenleme web’de.',
@@ -240,56 +277,64 @@ export function ModuleScreen() {
             <Text style={[styles.sec, { color: colors.text }]}>Alt menü</Text>
             {isCards ? (
               <MenuCardGrid>
-                {children.map((c) => (
-                  <MenuCardGridItem key={c.id}>
-                    <Pressable
-                      onPress={() => openChild(c)}
-                      style={[
-                        menuCardStyles.card,
-                        { backgroundColor: colors.card, borderColor: colors.cardBorder },
-                      ]}
-                    >
-                      <Text
-                        style={[menuCardStyles.label, { color: colors.text }]}
-                        numberOfLines={2}
-                        ellipsizeMode="tail"
+                {children.map((c) => {
+                  const cLabel = labelOf(c);
+                  const badge = tMenuBadge(t, c.badge);
+                  return (
+                    <MenuCardGridItem key={c.id}>
+                      <Pressable
+                        onPress={() => openChild(c)}
+                        style={[
+                          menuCardStyles.card,
+                          { backgroundColor: colors.card, borderColor: colors.cardBorder },
+                        ]}
                       >
-                        {c.label}
-                      </Text>
-                      <View style={menuCardStyles.footer}>
-                        {c.badge ? (
-                          <Text style={styles.badge} numberOfLines={1}>
-                            {c.badge}
-                          </Text>
-                        ) : (
-                          <View />
-                        )}
-                        <ChevronRight size={14} color={colors.textMuted} />
-                      </View>
-                    </Pressable>
-                  </MenuCardGridItem>
-                ))}
+                        <Text
+                          style={[menuCardStyles.label, { color: colors.text }]}
+                          numberOfLines={2}
+                          ellipsizeMode="tail"
+                        >
+                          {cLabel}
+                        </Text>
+                        <View style={menuCardStyles.footer}>
+                          {badge ? (
+                            <Text style={styles.badge} numberOfLines={1}>
+                              {badge}
+                            </Text>
+                          ) : (
+                            <View />
+                          )}
+                          <ChevronRight size={14} color={colors.textMuted} />
+                        </View>
+                      </Pressable>
+                    </MenuCardGridItem>
+                  );
+                })}
               </MenuCardGrid>
             ) : (
-              children.map((c) => (
-                <Pressable
-                  key={c.id}
-                  onPress={() => openChild(c)}
-                  style={[styles.rowCompact, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}
-                >
-                  <View style={[styles.rowIcon, { backgroundColor: palette.blue100 }]}>
-                    <Text style={styles.rowIconLetter}>
-                      {c.label.trim().charAt(0).toLocaleUpperCase('tr-TR')}
-                    </Text>
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={{ color: colors.text, fontWeight: '600', fontSize: 13 }}>{c.label}</Text>
-                    <Text style={{ color: colors.textSubtle, fontSize: 10 }}>{c.screen}</Text>
-                  </View>
-                  {c.badge ? <Text style={styles.badge}>{c.badge}</Text> : null}
-                  <ChevronRight size={14} color={colors.textMuted} />
-                </Pressable>
-              ))
+              children.map((c) => {
+                const cLabel = labelOf(c);
+                const badge = tMenuBadge(t, c.badge);
+                return (
+                  <Pressable
+                    key={c.id}
+                    onPress={() => openChild(c)}
+                    style={[styles.rowCompact, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}
+                  >
+                    <View style={[styles.rowIcon, { backgroundColor: palette.blue100 }]}>
+                      <Text style={styles.rowIconLetter}>
+                        {cLabel.trim().charAt(0).toLocaleUpperCase('tr-TR')}
+                      </Text>
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ color: colors.text, fontWeight: '600', fontSize: 13 }}>{cLabel}</Text>
+                      <Text style={{ color: colors.textSubtle, fontSize: 10 }}>{c.screen}</Text>
+                    </View>
+                    {badge ? <Text style={styles.badge}>{badge}</Text> : null}
+                    <ChevronRight size={14} color={colors.textMuted} />
+                  </Pressable>
+                );
+              })
             )}
           </>
         ) : (

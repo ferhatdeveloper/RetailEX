@@ -17,7 +17,10 @@ import { HeaderIconButton } from '../components/GradientHeader';
 import {
   fetchBrands,
   fetchCategories,
+  fetchGroupCodes,
+  fetchSpecialCodes,
   fetchUnitSets,
+  fetchVariants,
   type DefinitionRow,
   type UnitSetRow,
 } from '../api/materialDefinitionsApi';
@@ -27,7 +30,14 @@ import { useAuthStore } from '../store/authStore';
 import { palette } from '../theme/colors';
 import type { MainStackParamList } from '../navigation/types';
 
-export type MaterialDefinitionsTab = 'classes' | 'categories' | 'brands' | 'unitSets';
+export type MaterialDefinitionsTab =
+  | 'classes'
+  | 'categories'
+  | 'brands'
+  | 'unitSets'
+  | 'variants'
+  | 'specialCodes'
+  | 'groupCodes';
 
 type Props = NativeStackScreenProps<MainStackParamList, 'MaterialDefinitions'>;
 
@@ -42,6 +52,12 @@ export function materialDefinitionsRouteTab(screenId?: string): MaterialDefiniti
       return 'brands';
     case 'unit-sets':
       return 'unitSets';
+    case 'variants':
+      return 'variants';
+    case 'special-codes':
+      return 'specialCodes';
+    case 'group-codes':
+      return 'groupCodes';
     default:
       return 'classes';
   }
@@ -57,10 +73,18 @@ function tabTitle(tab: MaterialDefinitionsTab): string {
       return 'Marka tanımları';
     case 'unitSets':
       return 'Birim setleri';
+    case 'variants':
+      return 'Varyantlar';
+    case 'specialCodes':
+      return 'Özel kodlar';
+    case 'groupCodes':
+      return 'Grup kodları';
   }
 }
 
-function tabFormKind(tab: MaterialDefinitionsTab): 'brand' | 'category' | 'unitset' | 'class' {
+function tabFormKind(
+  tab: MaterialDefinitionsTab,
+): NonNullable<NonNullable<MainStackParamList['MaterialDefinitionForm']>['kind']> {
   switch (tab) {
     case 'brands':
       return 'brand';
@@ -68,6 +92,12 @@ function tabFormKind(tab: MaterialDefinitionsTab): 'brand' | 'category' | 'units
       return 'category';
     case 'unitSets':
       return 'unitset';
+    case 'variants':
+      return 'variant';
+    case 'specialCodes':
+      return 'special';
+    case 'groupCodes':
+      return 'group';
     case 'classes':
     default:
       return 'class';
@@ -86,6 +116,9 @@ export function MaterialDefinitionsScreen({ route }: Props) {
   const [brands, setBrands] = useState<DefinitionRow[]>([]);
   const [categories, setCategories] = useState<DefinitionRow[]>([]);
   const [unitSets, setUnitSets] = useState<UnitSetRow[]>([]);
+  const [variants, setVariants] = useState<DefinitionRow[]>([]);
+  const [specialCodes, setSpecialCodes] = useState<DefinitionRow[]>([]);
+  const [groupCodes, setGroupCodes] = useState<DefinitionRow[]>([]);
 
   useEffect(() => {
     setTab(materialDefinitionsRouteTab(route.params?.screenId));
@@ -94,10 +127,20 @@ export function MaterialDefinitionsScreen({ route }: Props) {
   const load = useCallback(async () => {
     setError(null);
     try {
-      const [b, c, u] = await Promise.all([fetchBrands(), fetchCategories(), fetchUnitSets()]);
+      const [b, c, u, v, s, g] = await Promise.all([
+        fetchBrands(),
+        fetchCategories(),
+        fetchUnitSets(),
+        fetchVariants(),
+        fetchSpecialCodes(),
+        fetchGroupCodes(),
+      ]);
       setBrands(b);
       setCategories(c);
       setUnitSets(u);
+      setVariants(v);
+      setSpecialCodes(s);
+      setGroupCodes(g);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -117,6 +160,9 @@ export function MaterialDefinitionsScreen({ route }: Props) {
     { id: 'categories', label: 'Kategoriler' },
     { id: 'brands', label: 'Markalar' },
     { id: 'unitSets', label: 'Birim seti' },
+    { id: 'variants', label: 'Varyant' },
+    { id: 'specialCodes', label: 'Özel kod' },
+    { id: 'groupCodes', label: 'Grup kodu' },
   ];
 
   const listCount = useMemo(() => {
@@ -128,8 +174,22 @@ export function MaterialDefinitionsScreen({ route }: Props) {
         return categories.length;
       case 'unitSets':
         return unitSets.length;
+      case 'variants':
+        return variants.length;
+      case 'specialCodes':
+        return specialCodes.length;
+      case 'groupCodes':
+        return groupCodes.length;
     }
-  }, [tab, brands.length, categories.length, unitSets.length]);
+  }, [
+    tab,
+    brands.length,
+    categories.length,
+    unitSets.length,
+    variants.length,
+    specialCodes.length,
+    groupCodes.length,
+  ]);
 
   const openCreate = () => {
     navigation.navigate('MaterialDefinitionForm', { kind: tabFormKind(tab) });
@@ -150,6 +210,17 @@ export function MaterialDefinitionsScreen({ route }: Props) {
         <Text style={{ color: colors.textSubtle, fontSize: 11, marginTop: 4 }}>Pasif</Text>
       ) : null}
     </View>
+  );
+
+  const definitionList = (data: DefinitionRow[], empty: string, showRestaurant?: boolean) => (
+    <FlatList
+      data={data}
+      keyExtractor={(item) => item.id}
+      refreshControl={<RefreshControl refreshing={loading} onRefresh={() => void load()} />}
+      ListEmptyComponent={<EmptyState message={empty} />}
+      contentContainerStyle={styles.list}
+      renderItem={({ item }) => renderDefinitionCard(item, showRestaurant)}
+    />
   );
 
   return (
@@ -186,32 +257,17 @@ export function MaterialDefinitionsScreen({ route }: Props) {
       {loading ? (
         <ActivityIndicator style={{ marginTop: 40 }} color={palette.blue600} />
       ) : tab === 'brands' ? (
-        <FlatList
-          data={brands}
-          keyExtractor={(item) => item.id}
-          refreshControl={<RefreshControl refreshing={loading} onRefresh={() => void load()} />}
-          ListEmptyComponent={<EmptyState message="Marka tanımı yok" />}
-          contentContainerStyle={styles.list}
-          renderItem={({ item }) => renderDefinitionCard(item)}
-        />
+        definitionList(brands, 'Marka tanımı yok')
       ) : tab === 'classes' ? (
-        <FlatList
-          data={categories}
-          keyExtractor={(item) => item.id}
-          refreshControl={<RefreshControl refreshing={loading} onRefresh={() => void load()} />}
-          ListEmptyComponent={<EmptyState message="Malzeme sınıfı yok" />}
-          contentContainerStyle={styles.list}
-          renderItem={({ item }) => renderDefinitionCard(item)}
-        />
+        definitionList(categories, 'Malzeme sınıfı yok')
       ) : tab === 'categories' ? (
-        <FlatList
-          data={categories}
-          keyExtractor={(item) => item.id}
-          refreshControl={<RefreshControl refreshing={loading} onRefresh={() => void load()} />}
-          ListEmptyComponent={<EmptyState message="Ürün kategorisi yok" />}
-          contentContainerStyle={styles.list}
-          renderItem={({ item }) => renderDefinitionCard(item, true)}
-        />
+        definitionList(categories, 'Ürün kategorisi yok', true)
+      ) : tab === 'variants' ? (
+        definitionList(variants, 'Varyant kaydı yok')
+      ) : tab === 'specialCodes' ? (
+        definitionList(specialCodes, 'Özel kod yok')
+      ) : tab === 'groupCodes' ? (
+        definitionList(groupCodes, 'Grup kodu yok')
       ) : (
         <FlatList
           data={unitSets}

@@ -229,7 +229,8 @@ export const MENU_SECTIONS: MenuSection[] = [
           { id: 'cash-reports', label: 'Kasa Raporları', screen: 'financereports-cash' },
           { id: 'bank-reports', label: 'Banka Raporları', screen: 'financereports-bank' },
           { id: 'customer-extract', label: 'Cari Ekstre', screen: 'customer-extract' },
-          { id: 'mizan', label: 'Mizan Raporu', screen: 'mizan' },
+          { id: 'mizan', label: 'Cari Bakiye Özeti', screen: 'mizan' },
+          { id: 'aging', label: 'Cari Yaşlandırma', screen: 'aging' },
         ],
       },
       {
@@ -304,7 +305,8 @@ export const MENU_SECTIONS: MenuSection[] = [
       { id: 'report-critical-stock', label: 'Kritik Stok Raporu', screen: 'report-critical-stock' },
       { id: 'financereports', label: 'Cari Hesap Raporları', screen: 'financereports' },
       { id: 'customer-extract', label: 'Cari Ekstre', screen: 'customer-extract' },
-      { id: 'mizan', label: 'Mizan Raporu', screen: 'mizan' },
+      { id: 'mizan', label: 'Cari Bakiye Özeti', screen: 'mizan' },
+      { id: 'aging', label: 'Cari Yaşlandırma', screen: 'aging' },
     ],
   },
   {
@@ -336,6 +338,7 @@ export type LiveRoute =
   | 'ReportStock'
   | 'StockMovements'
   | 'ReportMizan'
+  | 'ReportAging'
   | 'ReportCariExtract'
   | 'ReportProductSales'
   | 'ReportCash'
@@ -349,7 +352,12 @@ export type LiveRoute =
   | 'Finance'
   | 'FinanceDefinitions'
   | 'MaterialDefinitions'
+  | 'ProductionOps'
+  | 'MultiCurrency'
+  | 'ExcelOps'
+  | 'SystemExtras'
   | 'CashCollection'
+  | 'CariDevir'
   | 'Organization'
   | 'System'
   | 'Pricing'
@@ -390,6 +398,16 @@ const LIVE_MAP: Record<string, LiveRoute> = {
   'unit-sets': 'MaterialDefinitions',
   'brand-definitions': 'MaterialDefinitions',
   'product-categories': 'MaterialDefinitions',
+  variants: 'MaterialDefinitions',
+  'special-codes': 'MaterialDefinitions',
+  'group-codes': 'MaterialDefinitions',
+  production: 'ProductionOps',
+  'butcher-production': 'ProductionOps',
+  multicurrency: 'MultiCurrency',
+  excel: 'ExcelOps',
+  'smart-material-add': 'ExcelOps',
+  'invoice-label-designer': 'SystemExtras',
+  'virtual-pbx-caller-id': 'SystemExtras',
   'service-cards': 'Products',
   suppliers: 'Customers',
   customers: 'Customers',
@@ -400,7 +418,7 @@ const LIVE_MAP: Record<string, LiveRoute> = {
   revenueexpense: 'FinanceDefinitions',
   'finance-definitions': 'FinanceDefinitions',
   'finance-other': 'FinanceDefinitions',
-  // cari-devir → Module (web: CariDevirFisiModule; ekstre değil)
+  'cari-devir': 'CariDevir',
   cashbank: 'Finance',
   kasalar: 'Finance',
   'cash-slips': 'Finance',
@@ -444,11 +462,14 @@ const LIVE_MAP: Record<string, LiveRoute> = {
   'profit-dashboard': 'ReportProductSales',
   'bi-dashboard': 'ReportSales',
   'category-group-profit-report': 'ReportProductSales',
-  // web: financereports → ReportsModule (hub); mizan ayrı GeneralLedgerMizan
+  // web: financereports → ReportsModule (hub); mizan = cari bakiye özeti (GL değil)
   financereports: 'Reports',
   'financereports-cash': 'ReportCash',
   'financereports-bank': 'Finance',
   mizan: 'ReportMizan',
+  aging: 'ReportAging',
+  'cari-aging': 'ReportAging',
+  yaslandirma: 'ReportAging',
   'report-in-out-totals': 'ReportStock',
   'report-slip-list': 'ReportStock',
   'report-critical-stock': 'ReportStock',

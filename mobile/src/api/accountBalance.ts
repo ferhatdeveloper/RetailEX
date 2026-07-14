@@ -78,6 +78,7 @@ export function sqlSupplierAccountBalancesCte(opts: {
       FROM (
         SELECT customer_id AS id,
           CASE
+            WHEN COALESCE(trcode, 0) = 6 THEN -ABS(net_amount)
             WHEN fiche_type = 'purchase_invoice' THEN net_amount
             WHEN fiche_type = 'return_invoice' THEN -net_amount
             WHEN fiche_type = 'opening_balance' THEN net_amount
@@ -86,14 +87,19 @@ export function sqlSupplierAccountBalancesCte(opts: {
         FROM ${sales}
         WHERE customer_id IS NOT NULL
           AND COALESCE(is_cancelled, false) = false
-          AND fiche_type IN ('purchase_invoice', 'return_invoice', 'opening_balance')
+          AND (
+            fiche_type IN ('purchase_invoice', 'return_invoice', 'opening_balance')
+            OR COALESCE(trcode, 0) = 6
+          )
           AND (
             fiche_type IN ('return_invoice', 'opening_balance')
+            OR COALESCE(trcode, 0) = 6
             OR ${supplierDebtPmSql}
           )
         UNION ALL
         SELECT s.id,
           CASE
+            WHEN COALESCE(sl.trcode, 0) = 6 THEN -ABS(sl.net_amount)
             WHEN sl.fiche_type = 'purchase_invoice' THEN sl.net_amount
             WHEN sl.fiche_type = 'return_invoice' THEN -sl.net_amount
             WHEN sl.fiche_type = 'opening_balance' THEN sl.net_amount
@@ -104,9 +110,13 @@ export function sqlSupplierAccountBalancesCte(opts: {
         WHERE (sl.customer_id IS NULL OR sl.customer_id::text <> s.id::text)
           AND COALESCE(sl.is_cancelled, false) = false
           AND TRIM(COALESCE(sl.customer_name, '')) <> ''
-          AND sl.fiche_type IN ('purchase_invoice', 'return_invoice', 'opening_balance')
+          AND (
+            sl.fiche_type IN ('purchase_invoice', 'return_invoice', 'opening_balance')
+            OR COALESCE(sl.trcode, 0) = 6
+          )
           AND (
             sl.fiche_type IN ('return_invoice', 'opening_balance')
+            OR COALESCE(sl.trcode, 0) = 6
             OR ${supplierDebtPmSqlSl}
           )
         UNION ALL

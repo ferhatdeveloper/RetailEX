@@ -163,9 +163,16 @@ export function trcodeBadgeLabel(trcode: number | null | undefined): string | nu
   if (tc === PURCHASE_RETURN_TRCODE) return 'Alış İade';
   if (tc === 2) return 'Tedarikçi İade';
   if ([7, 8].includes(tc)) return 'Satış';
-  if ([1, 4, 5].includes(tc)) return 'Alış';
+  if (tc === 1 || tc === 5) return 'Alış';
   if (tc === 9) return 'Verilen Hizmet';
   if (tc === 4) return 'Alınan Hizmet';
+  if (tc === 10) return 'Satış İrsaliye';
+  if (tc === 11) return 'Alış İrsaliye';
+  if (tc === 12) return 'Transfer İrsaliye';
+  if (tc === 13) return 'Fire İrsaliye';
+  if (tc === 20) return 'Satış Sipariş';
+  if (tc === 21) return 'Alış Sipariş';
+  if (tc === 30 || tc === 31) return 'Teklif';
   return tc > 0 ? `TRCODE ${tc}` : null;
 }
 

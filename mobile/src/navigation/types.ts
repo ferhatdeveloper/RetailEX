@@ -49,12 +49,19 @@ export type MainStackParamList = {
   InvoiceForm:
     | {
         invoiceId?: string;
-        /** sales | purchase | sales-return (trcode 3) | purchase-return (trcode 6) */
-        kind?: 'sales' | 'purchase' | 'sales-return' | 'purchase-return';
+        /**
+         * sales | purchase | iade (3/6) |
+         * service-given/received | waybill-* | order-* | quote
+         */
+        kind?: import('../api/invoicesApi').InvoiceFormKind;
+        /** İrsaliye 12/13 vb. menü trcode override */
+        trcode?: number;
       }
     | undefined;
   Campaigns: undefined;
   CampaignDetail: { campaignId: string };
+  /** Yeni / düzenle kampanya */
+  CampaignForm: { campaignId?: string } | undefined;
   /** Ürün fiyat listeleri (price_list_1…6, perakende, alış) */
   Pricing: undefined;
   ReportSales: undefined;
@@ -62,6 +69,8 @@ export type MainStackParamList = {
     | { mode?: 'critical' | 'min-max' | 'material-value' | 'warehouse-status' | 'material-extract' }
     | undefined;
   ReportMizan: undefined;
+  /** Cari yaşlandırma — açık vade fişleri */
+  ReportAging: undefined;
   ReportCariExtract: { accountId?: string; cardType?: 'customer' | 'supplier' } | undefined;
   ReportProductSales: undefined;
   ReportCash: undefined;
@@ -83,9 +92,19 @@ export type MainStackParamList = {
   Delivery: undefined;
   /** Finans tanımları: ödeme planı, masraf merkezi, arama planı, gider */
   FinanceDefinitions: { screenId?: string } | undefined;
-  /** Malzeme tanımları: sınıf, kategori, marka, birim seti */
+  /** Malzeme tanımları: sınıf, kategori, marka, birim seti, varyant, özel/grup kod */
   MaterialDefinitions: { screenId?: string } | undefined;
-  MaterialDefinitionForm: { kind?: 'brand' | 'category' | 'class' | 'unitset' } | undefined;
+  MaterialDefinitionForm:
+    | { kind?: 'brand' | 'category' | 'class' | 'unitset' | 'variant' | 'special' | 'group' }
+    | undefined;
+  /** Üretim reçeteleri + kasap üretim */
+  ProductionOps: { screenId?: string } | undefined;
+  /** Çoklu para birimi + kurlar */
+  MultiCurrency: undefined;
+  /** Excel işlemleri + akıllı malzeme ekleme */
+  ExcelOps: { screenId?: string } | undefined;
+  /** Fatura etiket şablonu + sanal santral Caller ID */
+  SystemExtras: { screenId?: string } | undefined;
   /** Kasa / banka hareketleri */
   Finance:
     | {
@@ -97,6 +116,8 @@ export type MainStackParamList = {
     | undefined;
   /** Cari tahsilat / ödeme */
   CashCollection: { openCreate?: boolean; customerId?: string } | undefined;
+  /** Cari devir / açılış bakiyesi fişi */
+  CariDevir: undefined;
   /** Oturum içi firma / dönem / mağaza değişimi (login Organization ile aynı UI) */
   Organization: undefined;
   /** Sistem: kullanıcı / rol / log / kasa / şema */

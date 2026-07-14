@@ -1,5 +1,13 @@
 import { pgQuery } from './pgClient';
-import { firmNr, newUuid, periodNr, productsTable, saleItemsTable, salesTable } from './erpTables';
+import {
+  appendStoreIdFilter,
+  firmNr,
+  newUuid,
+  periodNr,
+  productsTable,
+  saleItemsTable,
+  salesTable,
+} from './erpTables';
 import {
   buildInvoiceFilterClause,
   type InvoiceListFilter,
@@ -7,10 +15,13 @@ import {
 import {
   adjustCustomerBalance,
   adjustSupplierBalance,
+  recordKasaCikisForPurchase,
+  recordKasaCikisForReturn,
   recordKasaGirisForSale,
 } from './cashApi';
 import {
   paymentMethodImpliesCashInKasa,
+  paymentMethodImpliesCashOutKasa,
   paymentMethodImpliesCustomerDebt,
   paymentMethodImpliesSupplierDebt,
 } from './paymentMethodUtils';
@@ -160,6 +171,8 @@ export async function fetchInvoices(opts?: {
 
   if (q.length >= 1) {
     const like = `%${q}%`;
+    const params: unknown[] = [like, limit, ...filterParams];
+    const storeSql = appendStoreIdFilter('store_id', params);
     const res = await pgQuery<InvoiceRow>(
       `SELECT ${cols}
        FROM ${table}
@@ -167,21 +180,23 @@ export async function fetchInvoices(opts?: {
          AND (
            fiche_no ILIKE $1 OR COALESCE(customer_name,'') ILIKE $1
            OR COALESCE(document_no,'') ILIKE $1
-         )${filterSql}
+         )${filterSql}${storeSql}
        ORDER BY date DESC NULLS LAST, created_at DESC NULLS LAST
        LIMIT $2`,
-      [like, limit, ...filterParams],
+      params,
     );
     return res.rows;
   }
 
+  const params: unknown[] = [limit, ...filterParams];
+  const storeSql = appendStoreIdFilter('store_id', params);
   const res = await pgQuery<InvoiceRow>(
     `SELECT ${cols}
      FROM ${table}
-     WHERE COALESCE(is_cancelled, false) = false${filterSql}
+     WHERE COALESCE(is_cancelled, false) = false${filterSql}${storeSql}
      ORDER BY date DESC NULLS LAST, created_at DESC NULLS LAST
      LIMIT $1`,
-    [limit, ...filterParams],
+    params,
   );
   return res.rows;
 }
@@ -196,12 +211,14 @@ export async function fetchInvoiceFilterSummary(
   const table = salesTable();
   const fc = buildInvoiceFilterClause(filter, 1);
   try {
+    const params: unknown[] = [...fc.params];
+    const storeSql = appendStoreIdFilter('store_id', params);
     const res = await pgQuery<{ cnt: string | number; total: string | number }>(
       `SELECT COUNT(*)::int AS cnt,
               COALESCE(SUM(COALESCE(net_amount, total_net, total_gross, 0)), 0)::float8 AS total
        FROM ${table}
-       WHERE COALESCE(is_cancelled, false) = false${fc.sql}`,
-      fc.params,
+       WHERE COALESCE(is_cancelled, false) = false${fc.sql}${storeSql}`,
+      params,
     );
     const r = res.rows[0];
     return { count: Number(r?.cnt ?? 0), total: Number(r?.total ?? 0) };
@@ -220,6 +237,8 @@ export async function fetchInvoiceSummary(): Promise<{
   const purchaseCond = kindSqlWhere('purchase');
   const salesCond = kindSqlWhere('sales');
   try {
+    const params: unknown[] = [];
+    const storeSql = appendStoreIdFilter('store_id', params);
     const res = await pgQuery<{
       sales_total: string | number;
       sales_count: string | number;
@@ -240,7 +259,8 @@ export async function fetchInvoiceSummary(): Promise<{
            WHERE COALESCE(is_cancelled,false)=false AND (${purchaseCond})
          )::int AS purchase_count
        FROM ${table}
-       WHERE date::date >= (CURRENT_DATE - INTERVAL '30 days')`,
+       WHERE date::date >= (CURRENT_DATE - INTERVAL '30 days')${storeSql}`,
+      params,
     );
     const r = res.rows[0];
     return {
@@ -348,7 +368,21 @@ export async function fetchInvoiceById(id: string): Promise<InvoiceDetail | null
 export type InvoiceDraftLine = InvoiceLineInput;
 
 /** Form / API — fatura yazma türü */
-export type InvoiceFormKind = 'sales' | 'purchase' | 'sales-return' | 'purchase-return';
+export type InvoiceDocumentKind =
+  | 'service-given'
+  | 'service-received'
+  | 'waybill-sales'
+  | 'waybill-purchase'
+  | 'order-sales'
+  | 'order-purchase'
+  | 'quote';
+
+export type InvoiceFormKind =
+  | 'sales'
+  | 'purchase'
+  | 'sales-return'
+  | 'purchase-return'
+  | InvoiceDocumentKind;
 
 export type InvoiceWriteResult = {
   id: string;
@@ -377,6 +411,12 @@ export function invoiceLineNet(line: InvoiceDraftLine): number {
   return Math.max(0, gross * (1 - pct / 100));
 }
 
+/** Satır KDV tutarı (net × oran / 100) — UI özeti; header total_vat web gibi 0 yazılabilir */
+export function invoiceLineVat(line: InvoiceDraftLine): number {
+  const rate = Math.max(0, Number(line.vatRate) || 0);
+  return invoiceLineNet(line) * (rate / 100);
+}
+
 export function invoiceLinesSubtotal(lines: InvoiceDraftLine[]): number {
   return lines.reduce((s, l) => s + invoiceLineNet(l), 0);
 }
@@ -389,7 +429,11 @@ export function invoiceLinesDiscountTotal(lines: InvoiceDraftLine[]): number {
   }, 0);
 }
 
-/** Web ile aynı: KDV DB’ye 0 yazılır; UI özeti için ayrı gösterim */
+/**
+ * Özet hesaplama.
+ * totalVat: satır oranlarından hesaplanır (UI). DB header’da web parity = 0;
+ * satır vat_rate sale_items’a yazılır.
+ */
 export function invoiceTotalsFromLines(
   lines: InvoiceDraftLine[],
   footerDiscountAmount = 0,
@@ -404,16 +448,91 @@ export function invoiceTotalsFromLines(
   const lineDiscount = invoiceLinesDiscountTotal(lines);
   const footerDiscount = Math.min(subtotal, Math.max(0, Number(footerDiscountAmount) || 0));
   const net = Math.max(0, subtotal - footerDiscount);
-  return { subtotal, lineDiscount, footerDiscount, totalVat: 0, net };
+  // Dip indirim sonrası KDV’yi satır oranlarının ağırlıklı ortalaması ile yaklaşıkla
+  const rawVat = lines.reduce((s, l) => s + invoiceLineVat(l), 0);
+  const scale = subtotal > 0 ? net / subtotal : 1;
+  const totalVat = Math.round(rawVat * scale * 100) / 100;
+  return { subtotal, lineDiscount, footerDiscount, totalVat, net };
 }
 
-function nextFicheNo(prefix: 'SF' | 'AF' | 'SI' | 'AI'): string {
+function nextFicheNo(prefix: string): string {
   const d = new Date();
   const pad = (n: number, w = 2) => String(n).padStart(w, '0');
   const stamp =
     `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}` +
     `${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
   return `${prefix}-${stamp}`;
+}
+
+async function insertSaleItemRow(
+  itemsTable: string,
+  opts: {
+    invoiceId: string;
+    firmNr: string;
+    periodNr: string;
+    line: InvoiceDraftLine;
+  },
+): Promise<void> {
+  const lineNet = invoiceLineNet(opts.line);
+  const lineId = newUuid();
+  const vatRate = Math.max(0, Number(opts.line.vatRate) || 0);
+  const disc = Math.min(100, Math.max(0, Number(opts.line.discountPercent) || 0));
+  try {
+    await pgQuery(
+      `INSERT INTO ${itemsTable} (
+         id, invoice_id, firm_nr, period_nr,
+         product_id, item_code, item_name,
+         quantity, unit_price, discount_rate, vat_rate,
+         net_amount, total_amount, unit
+       ) VALUES (
+         $1::uuid, $2::uuid, $3, $4,
+         $5::uuid, $6, $7,
+         $8, $9, $10, $11,
+         $12, $12, $13
+       )`,
+      [
+        lineId,
+        opts.invoiceId,
+        opts.firmNr,
+        opts.periodNr,
+        opts.line.productId,
+        opts.line.code ?? null,
+        opts.line.name,
+        opts.line.qty,
+        opts.line.unitPrice,
+        disc,
+        vatRate,
+        lineNet,
+        opts.line.unit || 'Adet',
+      ],
+    );
+  } catch {
+    /* vat_rate / discount_rate kolonu yoksa sade insert */
+    await pgQuery(
+      `INSERT INTO ${itemsTable} (
+         id, invoice_id, firm_nr, period_nr,
+         product_id, item_code, item_name,
+         quantity, unit_price, net_amount, total_amount, unit
+       ) VALUES (
+         $1::uuid, $2::uuid, $3, $4,
+         $5::uuid, $6, $7,
+         $8, $9, $10, $10, $11
+       )`,
+      [
+        lineId,
+        opts.invoiceId,
+        opts.firmNr,
+        opts.periodNr,
+        opts.line.productId,
+        opts.line.code ?? null,
+        opts.line.name,
+        opts.line.qty,
+        opts.line.unitPrice,
+        lineNet,
+        opts.line.unit || 'Adet',
+      ],
+    );
+  }
 }
 
 /** Basit satış faturası — POS ile aynı tablolar, fiche_type=sales_invoice, trcode=8 (toptan) */
@@ -475,32 +594,12 @@ async function createSalesInvoiceLive(
   );
 
   for (const line of opts.lines) {
-    const lineNet = invoiceLineNet(line);
-    const lineId = newUuid();
-    await pgQuery(
-      `INSERT INTO ${items} (
-         id, invoice_id, firm_nr, period_nr,
-         product_id, item_code, item_name,
-         quantity, unit_price, net_amount, total_amount, unit
-       ) VALUES (
-         $1::uuid, $2::uuid, $3, $4,
-         $5::uuid, $6, $7,
-         $8, $9, $10, $10, $11
-       )`,
-      [
-        lineId,
-        id,
-        fn,
-        pn,
-        line.productId,
-        line.code ?? null,
-        line.name,
-        line.qty,
-        line.unitPrice,
-        lineNet,
-        line.unit || 'Adet',
-      ],
-    );
+    await insertSaleItemRow(items, {
+      invoiceId: id,
+      firmNr: fn,
+      periodNr: pn,
+      line,
+    });
 
     try {
       await pgQuery(
@@ -666,32 +765,12 @@ async function createPurchaseInvoiceLive(
   );
 
   for (const line of opts.lines) {
-    const lineNet = invoiceLineNet(line);
-    const lineId = newUuid();
-    await pgQuery(
-      `INSERT INTO ${items} (
-         id, invoice_id, firm_nr, period_nr,
-         product_id, item_code, item_name,
-         quantity, unit_price, net_amount, total_amount, unit
-       ) VALUES (
-         $1::uuid, $2::uuid, $3, $4,
-         $5::uuid, $6, $7,
-         $8, $9, $10, $10, $11
-       )`,
-      [
-        lineId,
-        id,
-        fn,
-        pn,
-        line.productId,
-        line.code ?? null,
-        line.name,
-        line.qty,
-        line.unitPrice,
-        lineNet,
-        line.unit || 'Adet',
-      ],
-    );
+    await insertSaleItemRow(items, {
+      invoiceId: id,
+      firmNr: fn,
+      periodNr: pn,
+      line,
+    });
 
     try {
       await pgQuery(
@@ -712,6 +791,20 @@ async function createPurchaseInvoiceLive(
       await adjustSupplierBalance(opts.supplierId, total);
     } catch {
       /* tedarikçi yoksa sessiz */
+    }
+  }
+
+  // Peşin nakit/kart → KASA_CIKIS (R5 tamamı)
+  if (paymentMethodImpliesCashOutKasa(pm) && total > 0) {
+    try {
+      await recordKasaCikisForPurchase({
+        amount: total,
+        ficheNo,
+        description: `Alış faturası — ${ficheNo}`,
+        supplierId: opts.supplierId || null,
+      });
+    } catch {
+      /* kasa yok / şema — alış yine geçerli */
     }
   }
 
@@ -869,32 +962,12 @@ async function createReturnInvoiceLive(
   const stockSign = isSalesReturn ? 1 : -1;
 
   for (const line of opts.lines) {
-    const lineNet = invoiceLineNet(line);
-    const lineId = newUuid();
-    await pgQuery(
-      `INSERT INTO ${items} (
-         id, invoice_id, firm_nr, period_nr,
-         product_id, item_code, item_name,
-         quantity, unit_price, net_amount, total_amount, unit
-       ) VALUES (
-         $1::uuid, $2::uuid, $3, $4,
-         $5::uuid, $6, $7,
-         $8, $9, $10, $10, $11
-       )`,
-      [
-        lineId,
-        id,
-        fn,
-        pn,
-        line.productId,
-        line.code ?? null,
-        line.name,
-        line.qty,
-        line.unitPrice,
-        lineNet,
-        line.unit || 'Adet',
-      ],
-    );
+    await insertSaleItemRow(items, {
+      invoiceId: id,
+      firmNr: fn,
+      periodNr: pn,
+      line,
+    });
 
     try {
       await pgQuery(
@@ -908,16 +981,30 @@ async function createReturnInvoiceLive(
     }
   }
 
-  // Cari: iade tutarı bakiyeyi düşürür (müşteri / tedarikçi)
-  if (opts.accountId && total > 0) {
+  // Yan etki (V2-R14):
+  // - Veresiye satış iade → müşteri bakiyesi −
+  // - Peşin satış iade → KASA_CIKIS (cariye dokunma; peşin satışta borç oluşmamıştı)
+  // - Açık hesap alış iade → tedarikçi bakiyesi −
+  // - Peşin alış iade → cari/kasa yok (tedarikçiden dışarı tahsilat operasyonel)
+  const pm = opts.paymentMethod || 'Nakit';
+  if (total > 0) {
     try {
       if (isSalesReturn) {
-        await adjustCustomerBalance(opts.accountId, -total);
-      } else {
+        if (opts.accountId && paymentMethodImpliesCustomerDebt(pm)) {
+          await adjustCustomerBalance(opts.accountId, -total);
+        } else if (paymentMethodImpliesCashOutKasa(pm)) {
+          await recordKasaCikisForReturn({
+            amount: total,
+            ficheNo,
+            description: `Satış iadesi — ${ficheNo}`,
+            customerId: opts.accountId || null,
+          });
+        }
+      } else if (opts.accountId && paymentMethodImpliesSupplierDebt(pm)) {
         await adjustSupplierBalance(opts.accountId, -total);
       }
     } catch {
-      /* kart yoksa sessiz */
+      /* kart/kasa yoksa sessiz */
     }
   }
 
@@ -1058,4 +1145,333 @@ export async function updateInvoiceHeader(
 
   await updateInvoiceHeaderLive(id, patch);
   return {};
+}
+
+type DocumentSpec = {
+  trcode: number;
+  ficheType: string;
+  prefix: string;
+  party: 'customer' | 'supplier';
+  applyCustomerDebt: boolean;
+  applySupplierDebt: boolean;
+  applyCashIn: boolean;
+  /** Web Irsaliye/Siparis/Teklif stok=0; Hizmet de stok=0 */
+  noteDefault: string;
+  defaultStatus: 'approved' | 'draft';
+};
+
+const DOCUMENT_SPECS: Record<InvoiceDocumentKind, DocumentSpec> = {
+  'service-given': {
+    trcode: 9,
+    ficheType: 'sales_invoice',
+    prefix: 'HI',
+    party: 'customer',
+    applyCustomerDebt: true,
+    applySupplierDebt: false,
+    applyCashIn: true,
+    noteDefault: 'RetailEX Mobile Verilen Hizmet',
+    defaultStatus: 'approved',
+  },
+  'service-received': {
+    trcode: 4,
+    ficheType: 'purchase_invoice',
+    prefix: 'HA',
+    party: 'supplier',
+    applyCustomerDebt: false,
+    applySupplierDebt: true,
+    applyCashIn: false,
+    noteDefault: 'RetailEX Mobile Alınan Hizmet',
+    defaultStatus: 'approved',
+  },
+  'waybill-sales': {
+    trcode: 10,
+    ficheType: 'waybill',
+    prefix: 'IS',
+    party: 'customer',
+    applyCustomerDebt: false,
+    applySupplierDebt: false,
+    applyCashIn: false,
+    noteDefault: 'RetailEX Mobile Satış İrsaliyesi',
+    defaultStatus: 'approved',
+  },
+  'waybill-purchase': {
+    trcode: 11,
+    ficheType: 'waybill',
+    prefix: 'IA',
+    party: 'supplier',
+    applyCustomerDebt: false,
+    applySupplierDebt: false,
+    applyCashIn: false,
+    noteDefault: 'RetailEX Mobile Alış İrsaliyesi',
+    defaultStatus: 'approved',
+  },
+  'order-sales': {
+    trcode: 20,
+    ficheType: 'order',
+    prefix: 'SS',
+    party: 'customer',
+    applyCustomerDebt: false,
+    applySupplierDebt: false,
+    applyCashIn: false,
+    noteDefault: 'RetailEX Mobile Satış Siparişi',
+    defaultStatus: 'draft',
+  },
+  'order-purchase': {
+    trcode: 21,
+    ficheType: 'order',
+    prefix: 'SA',
+    party: 'supplier',
+    applyCustomerDebt: false,
+    applySupplierDebt: false,
+    applyCashIn: false,
+    noteDefault: 'RetailEX Mobile Satınalma Siparişi',
+    defaultStatus: 'draft',
+  },
+  quote: {
+    trcode: 30,
+    ficheType: 'quote',
+    prefix: 'TK',
+    party: 'customer',
+    applyCustomerDebt: false,
+    applySupplierDebt: false,
+    applyCashIn: false,
+    noteDefault: 'RetailEX Mobile Teklif',
+    defaultStatus: 'draft',
+  },
+};
+
+export function isInvoiceDocumentKind(kind: string): kind is InvoiceDocumentKind {
+  return kind in DOCUMENT_SPECS;
+}
+
+export function documentSpecForKind(
+  kind: InvoiceDocumentKind,
+  trcodeOverride?: number,
+): DocumentSpec {
+  const base = DOCUMENT_SPECS[kind];
+  if (trcodeOverride != null && trcodeOverride > 0 && trcodeOverride !== base.trcode) {
+    return { ...base, trcode: trcodeOverride };
+  }
+  return base;
+}
+
+/**
+ * Hizmet / irsaliye / sipariş / teklif create — web UniversalInvoice trcode + fiche_type.
+ * Stok yok (web `invoiceLineStockDelta` Irsaliye/Siparis/Teklif/Hizmet = 0).
+ * Hizmet: cari borç (veresiye) + verilen hizmette peşin kasa.
+ */
+async function createDocumentInvoiceLive(
+  kind: InvoiceDocumentKind,
+  opts: {
+    accountId?: string;
+    accountName: string;
+    notes?: string;
+    paymentMethod?: string;
+    lines: InvoiceDraftLine[];
+    trcodeOverride?: number;
+  } & InvoiceCreateExtras,
+  writeOpts?: Pick<InvoiceWriteOptions, 'id' | 'ficheNo'>,
+): Promise<InvoiceWriteResult> {
+  if (!opts.lines.length) throw new Error('En az bir kalem gerekli');
+
+  const spec = documentSpecForKind(kind, opts.trcodeOverride);
+  const fn = firmNr();
+  const pn = periodNr();
+  const sales = salesTable(fn, pn);
+  const items = saleItemsTable(fn, pn);
+  const { useAuthStore } = await import('../store/authStore');
+
+  const id = writeOpts?.id || newUuid();
+  const ficheNo = writeOpts?.ficheNo || nextFicheNo(spec.prefix);
+  const totals = invoiceTotalsFromLines(opts.lines, opts.footerDiscountAmount);
+  const total = totals.net;
+  const discountTotal = totals.lineDiscount + totals.footerDiscount;
+  const user = useAuthStore.getState().user;
+  const cashier = user?.fullName || user?.username || 'mobile';
+  const accountName =
+    opts.accountName.trim() ||
+    (spec.party === 'supplier' ? 'Tedarikçi' : 'Perakende');
+  const documentNo = opts.documentNo?.trim() || ficheNo;
+
+  await pgQuery(
+    `INSERT INTO ${sales} (
+       id, firm_nr, period_nr, fiche_no, document_no, date,
+       fiche_type, trcode, customer_id, customer_name,
+       total_net, total_vat, total_gross, total_discount, net_amount,
+       currency, currency_rate, status, payment_method, cashier, notes
+     ) VALUES (
+       $1::uuid, $2, $3, $4, $5, NOW(),
+       $6, $7, $8::uuid, $9,
+       $10, 0, $11, $12, $10,
+       'TRY', 1, $13, $14, $15, $16
+     )`,
+    [
+      id,
+      fn,
+      pn,
+      ficheNo,
+      documentNo,
+      spec.ficheType,
+      spec.trcode,
+      opts.accountId || null,
+      accountName,
+      total,
+      totals.subtotal,
+      discountTotal,
+      spec.defaultStatus,
+      opts.paymentMethod || 'Nakit',
+      cashier,
+      opts.notes?.trim() || spec.noteDefault,
+    ],
+  );
+
+  for (const line of opts.lines) {
+    await insertSaleItemRow(items, {
+      invoiceId: id,
+      firmNr: fn,
+      periodNr: pn,
+      line,
+    });
+  }
+
+  const pm = opts.paymentMethod || 'Nakit';
+  if (total > 0) {
+    try {
+      if (spec.applyCustomerDebt && opts.accountId && paymentMethodImpliesCustomerDebt(pm)) {
+        await adjustCustomerBalance(opts.accountId, total);
+      } else if (
+        spec.applySupplierDebt &&
+        opts.accountId &&
+        paymentMethodImpliesSupplierDebt(pm)
+      ) {
+        await adjustSupplierBalance(opts.accountId, total);
+      }
+      if (spec.applyCashIn && paymentMethodImpliesCashInKasa(pm)) {
+        await recordKasaGirisForSale({
+          amount: total,
+          ficheNo,
+          description: `${spec.noteDefault} — ${ficheNo}`,
+          customerId: opts.accountId || null,
+        });
+      }
+    } catch {
+      /* kart/kasa yoksa sessiz */
+    }
+  }
+
+  return { id, ficheNo, total };
+}
+
+export async function createDocumentInvoice(
+  kind: InvoiceDocumentKind,
+  opts: {
+    accountId?: string;
+    accountName: string;
+    notes?: string;
+    paymentMethod?: string;
+    lines: InvoiceDraftLine[];
+    trcodeOverride?: number;
+  } & InvoiceCreateExtras,
+  writeOpts?: InvoiceWriteOptions,
+): Promise<InvoiceWriteResult> {
+  if (!opts.lines.length) throw new Error('En az bir kalem gerekli');
+  if (!isInvoiceDocumentKind(kind)) {
+    throw new Error(`Geçersiz belge türü: ${kind}`);
+  }
+
+  const spec = documentSpecForKind(kind, opts.trcodeOverride);
+  const id = writeOpts?.id || newUuid();
+  const ficheNo = writeOpts?.ficheNo || nextFicheNo(spec.prefix);
+  const totals = invoiceTotalsFromLines(opts.lines, opts.footerDiscountAmount);
+  const total = totals.net;
+  const live = writeOpts?.forceLive === true || shouldUseLiveData();
+
+  if (!live && !writeOpts?.skipQueue) {
+    await enqueueMutation({
+      type: 'invoice.document.create',
+      payload: {
+        localId: id,
+        ficheNo,
+        kind,
+        trcode: spec.trcode,
+        accountId: opts.accountId,
+        accountName: opts.accountName,
+        notes: opts.notes,
+        paymentMethod: opts.paymentMethod,
+        documentNo: opts.documentNo,
+        footerDiscountAmount: opts.footerDiscountAmount,
+        lines: opts.lines.map((l) => ({ ...l })),
+      },
+    });
+    const now = new Date().toISOString();
+    await upsertPendingInvoiceInCache({
+      id,
+      fiche_no: ficheNo,
+      date: now.slice(0, 10),
+      customer_name: opts.accountName.trim() || accountFallback(spec),
+      net_amount: total,
+      total_gross: totals.subtotal,
+      status: spec.defaultStatus,
+      fiche_type: spec.ficheType,
+      trcode: spec.trcode,
+      payment_method: opts.paymentMethod || 'Nakit',
+      is_cancelled: false,
+      notes: opts.notes?.trim() || spec.noteDefault,
+      total_vat: 0,
+      total_discount: totals.lineDiscount + totals.footerDiscount,
+      currency: 'TRY',
+      lines: opts.lines.map((l) => ({
+        id: newUuid(),
+        item_code: l.code ?? null,
+        item_name: l.name,
+        quantity: l.qty,
+        unit_price: l.unitPrice,
+        net_amount: invoiceLineNet(l),
+        unit: l.unit || 'Adet',
+      })),
+      pending: true,
+    });
+    await useConnectivityStore.getState().refreshPendingCount();
+    return { id, ficheNo, total, queued: true };
+  }
+
+  return createDocumentInvoiceLive(kind, opts, { id, ficheNo });
+}
+
+function accountFallback(spec: DocumentSpec): string {
+  return spec.party === 'supplier' ? 'Tedarikçi' : 'Perakende';
+}
+
+/** Liste filtresinden form kind + opsiyonel trcode (12/13 irsaliye vb.) */
+export function invoiceFormParamsFromFilter(
+  filter?: InvoiceListFilter,
+): { kind: InvoiceFormKind; trcode?: number } | null {
+  if (!filter || filter.preset === 'all') return null;
+  const tc = filter.trcode;
+  switch (filter.preset) {
+    case 'service-given':
+      return { kind: 'service-given', trcode: tc ?? 9 };
+    case 'service-received':
+      return { kind: 'service-received', trcode: tc ?? 4 };
+    case 'waybill':
+      if (tc === 11 || tc === 13) return { kind: 'waybill-purchase', trcode: tc };
+      return { kind: 'waybill-sales', trcode: tc ?? 10 };
+    case 'order':
+      if (tc === 21) return { kind: 'order-purchase', trcode: 21 };
+      return { kind: 'order-sales', trcode: tc ?? 20 };
+    case 'quote':
+      return { kind: 'quote', trcode: tc ?? 30 };
+    case 'purchase-request':
+      return { kind: 'order-sales', trcode: tc ?? 20 };
+    case 'sales':
+      return { kind: 'sales' };
+    case 'purchase':
+      return { kind: 'purchase' };
+    case 'sales-return':
+      return { kind: 'sales-return' };
+    case 'purchase-return':
+      return { kind: 'purchase-return' };
+    default:
+      return null;
+  }
 }

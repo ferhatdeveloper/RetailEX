@@ -68,14 +68,14 @@ export type ScaleConnectionResult = {
   weight?: LiveWeightReading;
 };
 
-/** Bluetooth bağlantı sözleşmesi — Expo Go'da native BT yok; interface hazır. */
+/** Bluetooth bağlantı sözleşmesi — Expo Go’da native BT yok; development build + ble-plx. */
 export type BluetoothScaleConnection = {
   readonly kind: 'bluetooth';
   isAvailable(): boolean;
   scan?(timeoutMs?: number): Promise<{ id: string; name: string }[]>;
-  connect(address: string): Promise<ScaleConnectionResult>;
+  connect(): Promise<ScaleConnectionResult>;
   disconnect(): Promise<void>;
-  readWeight?(): Promise<LiveWeightReading>;
+  readLiveWeight?(): Promise<LiveWeightReading>;
 };
 
 export const RONGTA_DEFAULT_PORT = 5001;

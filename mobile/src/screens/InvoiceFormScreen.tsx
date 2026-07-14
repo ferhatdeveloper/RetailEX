@@ -21,11 +21,14 @@ import {
   createPurchaseInvoice,
   createReturnInvoice,
   createSalesInvoice,
+  createDocumentInvoice,
   fetchInvoiceById,
   invoiceLineNet,
   invoiceTotalsFromLines,
+  isInvoiceDocumentKind,
   isPurchaseInvoice,
   updateInvoiceHeader,
+  type InvoiceDocumentKind,
   type InvoiceDraftLine,
   type InvoiceFormKind,
 } from '../api/invoicesApi';
@@ -55,6 +58,20 @@ function titleForKind(kind: InvoiceFormKind, isEdit: boolean): string {
         return 'Satış İade Düzenle';
       case 'purchase-return':
         return 'Alış İade Düzenle';
+      case 'service-given':
+        return 'Verilen Hizmet Düzenle';
+      case 'service-received':
+        return 'Alınan Hizmet Düzenle';
+      case 'waybill-sales':
+        return 'Satış İrsaliyesi Düzenle';
+      case 'waybill-purchase':
+        return 'Alış İrsaliyesi Düzenle';
+      case 'order-sales':
+        return 'Satış Siparişi Düzenle';
+      case 'order-purchase':
+        return 'Satınalma Siparişi Düzenle';
+      case 'quote':
+        return 'Teklif Düzenle';
       default:
         return 'Satış Faturası Düzenle';
     }
@@ -66,23 +83,90 @@ function titleForKind(kind: InvoiceFormKind, isEdit: boolean): string {
       return 'Yeni Satış İade (TR 3)';
     case 'purchase-return':
       return 'Yeni Alış İade (TR 6)';
+    case 'service-given':
+      return 'Yeni Verilen Hizmet (TR 9)';
+    case 'service-received':
+      return 'Yeni Alınan Hizmet (TR 4)';
+    case 'waybill-sales':
+      return 'Yeni Satış İrsaliyesi (TR 10)';
+    case 'waybill-purchase':
+      return 'Yeni Alış İrsaliyesi (TR 11)';
+    case 'order-sales':
+      return 'Yeni Satış Siparişi (TR 20)';
+    case 'order-purchase':
+      return 'Yeni Satınalma Siparişi (TR 21)';
+    case 'quote':
+      return 'Yeni Teklif (TR 30)';
     default:
       return 'Yeni Satış Faturası';
   }
 }
 
 function defaultPartyName(kind: InvoiceFormKind): string {
-  if (kind === 'purchase' || kind === 'purchase-return') return 'Tedarikçi seçin';
+  if (
+    kind === 'purchase' ||
+    kind === 'purchase-return' ||
+    kind === 'service-received' ||
+    kind === 'waybill-purchase' ||
+    kind === 'order-purchase'
+  ) {
+    return 'Tedarikçi seçin';
+  }
   if (kind === 'sales-return') return 'Müşteri (opsiyonel)';
+  if (kind === 'quote' || kind === 'order-sales' || kind === 'waybill-sales') {
+    return 'Cari seçin';
+  }
   return 'Cari seçin';
 }
 
 function isSupplierKind(kind: InvoiceFormKind): boolean {
-  return kind === 'purchase' || kind === 'purchase-return';
+  return (
+    kind === 'purchase' ||
+    kind === 'purchase-return' ||
+    kind === 'service-received' ||
+    kind === 'waybill-purchase' ||
+    kind === 'order-purchase'
+  );
 }
 
 function isReturnKind(kind: InvoiceFormKind): boolean {
   return kind === 'sales-return' || kind === 'purchase-return';
+}
+
+function isDocumentKind(kind: InvoiceFormKind): kind is InvoiceDocumentKind {
+  return isInvoiceDocumentKind(kind);
+}
+
+function requiresParty(kind: InvoiceFormKind): boolean {
+  if (kind === 'sales-return') return false;
+  return true;
+}
+
+function saveButtonLabel(kind: InvoiceFormKind, isEdit: boolean): string {
+  if (isEdit) return 'Güncelle';
+  if (isReturnKind(kind)) return 'İadeyi Kaydet';
+  if (kind === 'quote') return 'Teklifi Kaydet';
+  if (kind === 'order-sales' || kind === 'order-purchase') return 'Siparişi Kaydet';
+  if (kind === 'waybill-sales' || kind === 'waybill-purchase') return 'İrsaliyeyi Kaydet';
+  if (kind === 'service-given' || kind === 'service-received') return 'Hizmeti Kaydet';
+  return 'Faturayı Kaydet';
+}
+
+function showPaymentChips(kind: InvoiceFormKind): boolean {
+  // Sipariş / teklif / irsaliye: opsiyonel ödeme bilgisi (web formunda da var)
+  return true;
+}
+
+function kindAccent(kind: InvoiceFormKind): string {
+  if (kind === 'purchase' || kind === 'purchase-return' || kind === 'service-received') {
+    return palette.orange500;
+  }
+  if (kind === 'waybill-sales' || kind === 'waybill-purchase') return '#0d9488';
+  if (kind === 'order-sales' || kind === 'order-purchase') return '#7c3aed';
+  if (kind === 'quote') return '#4f46e5';
+  if (kind === 'service-given') return '#6366f1';
+  if (isReturnKind(kind)) return palette.red500;
+  return palette.blue600;
 }
 
 export function InvoiceFormScreen() {
@@ -92,6 +176,7 @@ export function InvoiceFormScreen() {
   const user = useAuthStore((s) => s.user);
   const invoiceId = route.params?.invoiceId;
   const routeKind = route.params?.kind;
+  const routeTrcode = route.params?.trcode;
   const isEdit = Boolean(invoiceId);
 
   const [loading, setLoading] = useState(isEdit);
@@ -127,13 +212,7 @@ export function InvoiceFormScreen() {
     [lines, footerDiscountNum],
   );
 
-  const accent = useMemo(() => {
-    if (resolvedKind === 'purchase' || resolvedKind === 'purchase-return') {
-      return palette.orange500;
-    }
-    if (isReturnKind(resolvedKind)) return palette.red500;
-    return palette.blue600;
-  }, [resolvedKind]);
+  const accent = useMemo(() => kindAccent(resolvedKind), [resolvedKind]);
 
   useEffect(() => {
     if (!isEdit && routeKind) {
@@ -219,11 +298,13 @@ export function InvoiceFormScreen() {
 
   const addProduct = (p: ProductRow) => {
     const unitPrice =
-      resolvedKind === 'purchase' || resolvedKind === 'purchase-return'
+      isSupplierKind(resolvedKind)
         ? p.cost > 0
           ? p.cost
           : p.price
         : p.price;
+    const vatRate =
+      Number.isFinite(p.vat_rate) && p.vat_rate >= 0 ? Number(p.vat_rate) : 20;
     setLines((prev) => [
       ...prev,
       {
@@ -235,6 +316,7 @@ export function InvoiceFormScreen() {
         unitPrice,
         unit: p.unit,
         discountPercent: 0,
+        vatRate,
       },
     ]);
     setShowProdPicker(false);
@@ -251,14 +333,15 @@ export function InvoiceFormScreen() {
 
   const validateCreate = (): string | null => {
     if (!lines.length) return 'En az bir ürün satırı ekleyin.';
-    if (resolvedKind === 'purchase' || resolvedKind === 'purchase-return') {
-      if (!customerId || !customerName.trim() || customerName === defaultPartyName(resolvedKind)) {
-        return 'Tedarikçi seçimi zorunludur.';
-      }
-    }
-    if (resolvedKind === 'sales') {
-      if (!customerId || !customerName.trim() || customerName === defaultPartyName('sales')) {
-        return 'Cari (müşteri) seçimi zorunludur.';
+    if (requiresParty(resolvedKind)) {
+      if (
+        !customerId ||
+        !customerName.trim() ||
+        customerName === defaultPartyName(resolvedKind)
+      ) {
+        return isSupplierKind(resolvedKind)
+          ? 'Tedarikçi seçimi zorunludur.'
+          : 'Cari (müşteri) seçimi zorunludur.';
       }
     }
     if (resolvedKind === 'sales-return') {
@@ -266,7 +349,7 @@ export function InvoiceFormScreen() {
     }
     for (const l of lines) {
       if (!(l.qty > 0)) return `"${l.name}" için miktar > 0 olmalı.`;
-      if (resolvedKind === 'purchase' || resolvedKind === 'purchase-return') {
+      if (isSupplierKind(resolvedKind)) {
         if (l.unitPrice < 0) return `"${l.name}" birim fiyat geçersiz.`;
       } else if (!(l.unitPrice > 0)) {
         return `"${l.name}" birim fiyat > 0 olmalı.`;
@@ -331,6 +414,16 @@ export function InvoiceFormScreen() {
           lines: draftLines,
           ...extras,
         });
+      } else if (isDocumentKind(resolvedKind)) {
+        result = await createDocumentInvoice(resolvedKind, {
+          accountId: customerId,
+          accountName: customerName,
+          notes,
+          paymentMethod,
+          lines: draftLines,
+          trcodeOverride: routeTrcode,
+          ...extras,
+        });
       } else {
         result = await createSalesInvoice({
           customerId,
@@ -363,7 +456,9 @@ export function InvoiceFormScreen() {
             ? 'Not ve durum'
             : isReturnKind(resolvedKind)
               ? `TRCODE ${resolvedKind === 'sales-return' ? '3' : '6'} · ${customerName}`
-              : customerName
+              : isDocumentKind(resolvedKind)
+                ? `${titleForKind(resolvedKind, false).replace(/^Yeni /, '')} · ${customerName}`
+                : customerName
         }
       />
       {error ? <ErrorBanner message={error} onRetry={() => void load()} /> : null}
@@ -395,7 +490,9 @@ export function InvoiceFormScreen() {
                 >
                   <Text style={{ color: colors.textMuted, fontSize: 10, fontWeight: '700' }}>
                     {partyLabel}
-                    {resolvedKind === 'sales-return' ? ' (opsiyonel)' : ' *'}
+                    {resolvedKind === 'sales-return' || !requiresParty(resolvedKind)
+                      ? ' (opsiyonel)'
+                      : ' *'}
                   </Text>
                   <Text style={{ color: colors.text, fontWeight: '700', marginTop: 4 }}>
                     {customerName}
@@ -471,7 +568,7 @@ export function InvoiceFormScreen() {
               style={{ minHeight: 72, textAlignVertical: 'top' }}
             />
 
-            {!isEdit ? (
+            {!isEdit && showPaymentChips(resolvedKind) ? (
               <View style={styles.statusWrap}>
                 <Text style={[styles.statusLabel, { color: colors.textMuted }]}>ÖDEME</Text>
                 <View style={styles.statusRow}>
@@ -572,7 +669,7 @@ export function InvoiceFormScreen() {
                           </Text>
                           <Text style={{ color: accent, fontSize: 11, fontWeight: '700' }}>
                             {formatMoney(
-                              resolvedKind === 'purchase' || resolvedKind === 'purchase-return'
+                              isSupplierKind(resolvedKind)
                                 ? item.cost > 0
                                   ? item.cost
                                   : item.price
@@ -641,7 +738,19 @@ export function InvoiceFormScreen() {
                           });
                         }}
                         keyboardType="decimal-pad"
-                        containerStyle={{ width: 72 }}
+                        containerStyle={{ width: 64 }}
+                      />
+                      <FormField
+                        label="KDV %"
+                        value={String(line.vatRate ?? 0)}
+                        onChangeText={(t) => {
+                          const n = parseFloat(t.replace(',', '.'));
+                          updateLine(line.key, {
+                            vatRate: Number.isFinite(n) && n >= 0 ? Math.min(100, n) : 0,
+                          });
+                        }}
+                        keyboardType="decimal-pad"
+                        containerStyle={{ width: 64 }}
                       />
                     </View>
                     <Text style={{ color: accent, fontWeight: '800', textAlign: 'right' }}>
@@ -688,13 +797,13 @@ export function InvoiceFormScreen() {
                     </View>
                   ) : null}
                   <View style={styles.summaryRow}>
-                    <Text style={{ color: colors.textMuted }}>KDV</Text>
+                    <Text style={{ color: colors.textMuted }}>KDV (satır)</Text>
                     <Text style={{ color: colors.textMuted, fontWeight: '600' }}>
                       {formatMoney(totals.totalVat)} ₺
                     </Text>
                   </View>
                   <Text style={{ color: colors.textSubtle, fontSize: 10, marginTop: 2 }}>
-                    Web ile aynı: KDV DB’ye 0 yazılır
+                    Satır KDV % kaydedilir; header total_vat web ile 0
                   </Text>
                   <View style={[styles.summaryRow, { marginTop: 8 }]}>
                     <Text style={{ color: colors.text, fontWeight: '800' }}>Genel toplam</Text>
@@ -707,13 +816,7 @@ export function InvoiceFormScreen() {
             ) : null}
 
             <PrimaryButton
-              label={
-                isEdit
-                  ? 'Güncelle'
-                  : isReturnKind(resolvedKind)
-                    ? 'İadeyi Kaydet'
-                    : 'Faturayı Kaydet'
-              }
+              label={saveButtonLabel(resolvedKind, isEdit)}
               onPress={() => void handleSave()}
               loading={saving}
               style={{ marginTop: 8 }}

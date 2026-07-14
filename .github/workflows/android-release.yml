@@ -103,7 +103,7 @@ jobs:
 
             **Sürüm:** ${{ env.PACKAGE_VERSION }}
             **Dosya:** `RetailEX-Android-${{ env.PACKAGE_VERSION }}.apk`
-            **Not:** İmza secret yokken CI **debug/preview** APK üretir. Play Store / üretim için EAS veya keystore secret’ları gerekir.
+            **Not:** İmza secret yokken CI **debug** APK üretir (`assembleDebug`). EAS alternatifleri (`mobile/eas.json`): profil `debug` ≈ bu CI; `preview` = dahili APK; `production` = Play AAB. Ayrıntı: `mobile/README.md` → EAS Build.
 
             Kurulum: APK’yı cihaza aktarıp yükleyin (bilinmeyen kaynaklara izin gerekebilir).
           files: RetailEX-Android-${{ env.PACKAGE_VERSION }}.apk
