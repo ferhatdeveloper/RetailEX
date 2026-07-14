@@ -22,9 +22,11 @@ import { adjustProductStockInCache } from '../offline/snapshotCache';
 import { useConnectivityStore } from '../store/connectivityStore';
 import {
   adjustCustomerBalance,
+  recordBankaGirisForSale,
   recordKasaGirisForSale,
 } from './cashApi';
 import {
+  paymentMethodImpliesBankTransfer,
   paymentMethodImpliesCashInKasa,
   paymentMethodImpliesCustomerDebt,
 } from './paymentMethodUtils';
@@ -181,6 +183,16 @@ async function applyPosAccountingSideEffects(opts: {
       });
     } catch {
       /* kasa yazılamasa satış yine geçerli */
+    }
+  } else if (paymentMethodImpliesBankTransfer(paymentMethod) && total > 0) {
+    try {
+      await recordBankaGirisForSale({
+        amount: total,
+        ficheNo,
+        description: `Market Satışı (havale) - ${ficheNo}`,
+      });
+    } catch {
+      /* banka yazılamasa satış yine geçerli */
     }
   }
 

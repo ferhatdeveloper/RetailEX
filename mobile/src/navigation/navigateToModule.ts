@@ -313,6 +313,9 @@ export function navigateToModule(
     case 'ExcelOps':
       nav.navigate('ExcelOps', excelOpsRouteParams(screen));
       return;
+    case 'MaterialLabelScan':
+      nav.navigate('MaterialLabelScan');
+      return;
     case 'SystemExtras':
       nav.navigate('SystemExtras', systemExtrasRouteParams(screen));
       return;

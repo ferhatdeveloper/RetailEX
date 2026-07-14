@@ -1,11 +1,13 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable, Alert } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LayoutGrid, List } from 'lucide-react-native';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { ScreenHeader } from '../components/ScreenChrome';
+import { SegmentTabBar } from '../components/SegmentTabBar';
 import { ConnectivityBadge } from '../components/ConnectivityBadge';
 import { useThemeStore } from '../store/themeStore';
 import { usePreferencesStore, type MenuViewMode } from '../store/preferencesStore';
@@ -28,6 +30,7 @@ import type { MainStackParamList } from '../navigation/types';
 
 export function MoreScreen() {
   const { t } = useTranslation();
+  const insets = useSafeAreaInsets();
   const { darkMode, toggleDarkMode, colors } = useThemeStore();
   const language = useLanguageStore((s) => s.language);
   const setLanguage = useLanguageStore((s) => s.setLanguage);
@@ -52,17 +55,24 @@ export function MoreScreen() {
     { id: 'usermanagement', label: 'Kullanıcı Yönetimi', screen: 'usermanagement' },
   ];
 
-  const viewOptions: { mode: MenuViewMode; labelKey: 'menuViewCards' | 'menuViewList'; Icon: typeof LayoutGrid }[] =
-    [
-      { mode: 'list', labelKey: 'menuViewList', Icon: List },
-      { mode: 'cards', labelKey: 'menuViewCards', Icon: LayoutGrid },
-    ];
+  const viewTabItems = useMemo(
+    () =>
+      [
+        { id: 'list' as const, label: t('menuViewList'), icon: List },
+        { id: 'cards' as const, label: t('menuViewCards'), icon: LayoutGrid },
+      ] as const,
+    [t],
+  );
 
-  const netOptions: { mode: NetworkPolicy; labelKey: 'connOnline' | 'connOffline' | 'connHybrid' }[] = [
-    { mode: 'online', labelKey: 'connOnline' },
-    { mode: 'offline', labelKey: 'connOffline' },
-    { mode: 'hybrid', labelKey: 'connHybrid' },
-  ];
+  const netTabItems = useMemo(
+    () =>
+      [
+        { id: 'online' as const, label: t('connOnline') },
+        { id: 'offline' as const, label: t('connOffline') },
+        { id: 'hybrid' as const, label: t('connHybrid') },
+      ] as const,
+    [t],
+  );
 
   const onSelectLanguage = (lang: AppLanguage) => {
     if (lang === language) return;
@@ -94,7 +104,9 @@ export function MoreScreen() {
         subtitle={t('menu.groupsCount', { count: MENU_SECTIONS.length })}
         showBack={false}
       />
-      <ScrollView contentContainerStyle={styles.body}>
+      <ScrollView
+        contentContainerStyle={[styles.body, { paddingBottom: 48 + Math.max(insets.bottom, 0) }]}
+      >
         <Text style={[styles.sec, { color: colors.text }]}>
           {t('menu.moduleShortcuts')}
         </Text>
@@ -113,69 +125,25 @@ export function MoreScreen() {
 
         {/* Menü görünümü — dil/tema bölümünden ayrı (çakışma azaltma) */}
         <Text style={[styles.sec, { color: colors.text, marginTop: 12 }]}>{t('menuViewMode')}</Text>
-        <View style={styles.modeRow}>
-          {viewOptions.map(({ mode, labelKey, Icon }) => {
-            const active = menuViewMode === mode;
-            return (
-              <Pressable
-                key={mode}
-                onPress={() => setMenuViewMode(mode)}
-                style={[
-                  styles.modeChip,
-                  {
-                    backgroundColor: active ? palette.blue600 : colors.card,
-                    borderColor: active ? palette.blue600 : colors.cardBorder,
-                  },
-                ]}
-              >
-                <Icon size={16} color={active ? palette.white : colors.textMuted} />
-                <Text
-                  style={{
-                    color: active ? palette.white : colors.text,
-                    fontSize: 12,
-                    fontWeight: '700',
-                  }}
-                >
-                  {t(labelKey)}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
+        <SegmentTabBar
+          layout="equal"
+          value={menuViewMode}
+          onChange={(mode) => setMenuViewMode(mode as MenuViewMode)}
+          items={[...viewTabItems]}
+          style={styles.segFlush}
+        />
 
         <Text style={[styles.sec, { color: colors.text, marginTop: 12 }]}>{t('networkPolicy')}</Text>
         <View style={{ marginBottom: 8 }}>
           <ConnectivityBadge />
         </View>
-        <View style={styles.modeRow}>
-          {netOptions.map(({ mode, labelKey }) => {
-            const active = networkPolicy === mode;
-            return (
-              <Pressable
-                key={mode}
-                onPress={() => setConfig({ networkPolicy: mode })}
-                style={[
-                  styles.modeChip,
-                  {
-                    backgroundColor: active ? palette.indigo600 : colors.card,
-                    borderColor: active ? palette.indigo600 : colors.cardBorder,
-                  },
-                ]}
-              >
-                <Text
-                  style={{
-                    color: active ? palette.white : colors.text,
-                    fontSize: 11,
-                    fontWeight: '700',
-                    textAlign: 'center',
-                  }}
-                >
-                  {t(labelKey)}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
+        <SegmentTabBar
+          layout="equal"
+          value={networkPolicy}
+          onChange={(mode) => setConfig({ networkPolicy: mode as NetworkPolicy })}
+          items={[...netTabItems]}
+          style={styles.segFlush}
+        />
         <Text style={[styles.hint, { color: colors.textSubtle }]}>
           {networkPolicy === 'online'
             ? t('networkPolicyOnlineHint')
@@ -195,7 +163,7 @@ export function MoreScreen() {
 
         <Text style={[styles.sec, { color: colors.text, marginTop: 12 }]}>{t('settings')}</Text>
         <PrimaryButton
-          label="Yazıcı / Fiş Ayarları"
+          label={t('printerSettings.menuLabel')}
           onPress={() => navigation.navigate('PrinterSettings')}
           variant="ghost"
           style={{ marginBottom: 8 }}
@@ -268,18 +236,8 @@ const styles = StyleSheet.create({
   body: { padding: 16, paddingBottom: 48 },
   sec: { fontSize: 13, fontWeight: '800', marginBottom: 8 },
   subSec: { fontSize: 11, fontWeight: '700', marginBottom: 6, marginTop: 4 },
-  modeRow: { flexDirection: 'row', gap: 8, marginBottom: 4 },
-  modeChip: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    borderWidth: 1,
-    borderRadius: 10,
-    paddingVertical: 12,
-    paddingHorizontal: 8,
-  },
+  /** SegmentTabBar varsayılan horizontal padding’i More body ile çiftlememek için */
+  segFlush: { paddingHorizontal: 0, marginHorizontal: -4, marginBottom: 4 },
   hint: { fontSize: 11, lineHeight: 16, marginBottom: 4 },
   langGrid: {
     flexDirection: 'row',

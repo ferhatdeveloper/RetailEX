@@ -35,9 +35,13 @@ export type MainStackParamList = {
   Products: undefined;
   ProductDetail: { productId: string };
   ProductForm: { productId?: string } | undefined;
+  /** Raf / etiket OCR → malzeme (ürün kartı) oluştur */
+  MaterialLabelScan: { productKind?: 'stock' | 'weighed' } | undefined;
   Customers: undefined;
   CustomerDetail: { customerId: string };
   CustomerForm: { customerId?: string } | undefined;
+  /** Kimlik / kart OCR → cari oluştur */
+  CustomerIdScan: { cardType?: 'customer' | 'supplier' } | undefined;
   Invoices:
     | {
         filter?: import('../api/invoiceFilters').InvoiceListFilter;
@@ -102,14 +106,14 @@ export type MainStackParamList = {
   /** Malzeme tanımları: sınıf, kategori, marka, birim seti, varyant, özel/grup kod */
   MaterialDefinitions: { screenId?: string } | undefined;
   MaterialDefinitionForm:
-    | { kind?: 'brand' | 'category' | 'class' | 'unitset' | 'variant' | 'special' | 'group' }
+    | { kind?: 'brand' | 'category' | 'class' | 'unitset' | 'variant' | 'special' | 'group'; id?: string }
     | undefined;
   /** Üretim reçeteleri + kasap üretim */
   ProductionOps: { screenId?: string } | undefined;
   ProductionRecipeDetail: { recipeId: string; kind: 'production' | 'butcher' };
   /** Çoklu para birimi + kurlar */
   MultiCurrency: undefined;
-  /** Excel işlemleri + akıllı malzeme ekleme */
+  /** Excel işlemleri (CSV paylaşım); akıllı ekleme → MaterialLabelScan */
   ExcelOps: { screenId?: string } | undefined;
   /** Fatura etiket şablonu + sanal santral Caller ID */
   SystemExtras: { screenId?: string } | undefined;

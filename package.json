@@ -182,6 +182,7 @@
     "mobile:eas:debug": "node scripts/eas-mobile-build.mjs --profile debug",
     "mobile:eas:preview": "node scripts/eas-mobile-build.mjs --profile preview",
     "mobile:eas:production": "node scripts/eas-mobile-build.mjs --profile production",
+    "mobile:eas:submit": "node scripts/eas-mobile-submit.mjs --latest",
     "android:ci:build": "node scripts/trigger-android-release.mjs"
   }
 }

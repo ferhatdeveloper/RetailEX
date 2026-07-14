@@ -43,7 +43,7 @@ function cloneConfig(c: DbConfig): DbConfig {
   return {
     ...c,
     networkPolicy: c.networkPolicy ?? 'hybrid',
-    apiMode: c.apiMode ?? 'bridge',
+    apiMode: c.apiMode ?? 'hybrid',
     remoteRestUrl: c.remoteRestUrl ?? '',
     postgrestAnonKey: c.postgrestAnonKey ?? '',
     local: { ...c.local },
@@ -96,7 +96,7 @@ export function ConfigScreen({ navigation }: Props) {
       bridgeHost: draft.bridgeHost.trim(),
       remoteRestUrl: (draft.remoteRestUrl || '').trim().replace(/\/+$/, ''),
       postgrestAnonKey: draft.postgrestAnonKey || '',
-      apiMode: draft.apiMode ?? 'bridge',
+      apiMode: draft.apiMode ?? 'hybrid',
       local: {
         ...draft.local,
         host: draft.local.host.trim(),
@@ -231,8 +231,11 @@ export function ConfigScreen({ navigation }: Props) {
     );
   };
 
+  const apiMode = draft.apiMode ?? 'hybrid';
+
   const ApiModeChip = ({ mode, label }: { mode: ApiMode; label: string }) => {
-    const active = (draft.apiMode ?? 'bridge') === mode;
+    const active = apiMode === mode;
+    const danger = mode === 'postgrest' && active;
     return (
       <Pressable
         onPress={() => patch({ apiMode: mode })}
@@ -240,12 +243,16 @@ export function ConfigScreen({ navigation }: Props) {
           styles.modeChip,
           {
             backgroundColor: active
-              ? palette.green600
+              ? danger
+                ? palette.amber600
+                : palette.green600
               : darkMode
                 ? palette.gray700
                 : palette.gray100,
             borderColor: active
-              ? palette.green600
+              ? danger
+                ? palette.amber600
+                : palette.green600
               : darkMode
                 ? palette.gray600
                 : palette.gray200,
@@ -452,6 +459,59 @@ export function ConfigScreen({ navigation }: Props) {
               <Text style={[styles.hint, { color: colors.textSubtle }]}>
                 {draft.dbMode === 'online' ? t('dbModeOnlineHint') : t('dbModeLocalHint')}
               </Text>
+              {draft.dbMode === 'online' &&
+              apiMode === 'postgrest' &&
+              Boolean(String(draft.remoteRestUrl || '').trim()) ? (
+                <View
+                  style={[
+                    styles.warnBox,
+                    {
+                      borderColor: darkMode ? 'rgba(96,165,250,0.55)' : '#2563eb',
+                      backgroundColor: darkMode
+                        ? 'rgba(30,58,138,0.35)'
+                        : 'rgba(239,246,255,0.95)',
+                      marginTop: 8,
+                    },
+                  ]}
+                >
+                  <Text style={[styles.warnTitle, { color: darkMode ? '#93c5fd' : '#1e40af' }]}>
+                    {t('remoteDataPostgrestTitle')}
+                  </Text>
+                  <Text style={[styles.warnBody, { color: darkMode ? '#bfdbfe' : '#1d4ed8' }]}>
+                    {t('remoteDataPostgrestOk')}
+                  </Text>
+                </View>
+              ) : draft.dbMode === 'online' && apiMode !== 'postgrest' ? (
+                <View
+                  style={[
+                    styles.warnBox,
+                    {
+                      borderColor: darkMode ? 'rgba(52,211,153,0.55)' : '#059669',
+                      backgroundColor: darkMode
+                        ? 'rgba(6,78,59,0.35)'
+                        : 'rgba(236,253,245,0.95)',
+                      marginTop: 8,
+                    },
+                  ]}
+                >
+                  <Text style={[styles.warnTitle, { color: darkMode ? '#6ee7b7' : '#065f46' }]}>
+                    {t('remoteDataRecommendTitle')}
+                  </Text>
+                  <Text style={[styles.warnBody, { color: darkMode ? '#a7f3d0' : '#047857' }]}>
+                    {t('remoteDataRecommendHybrid')}
+                  </Text>
+                  {apiMode !== 'hybrid' ? (
+                    <Pressable
+                      onPress={() => patch({ apiMode: 'hybrid' })}
+                      style={{ marginTop: 8 }}
+                    >
+                      <Text style={{ color: palette.blue500, fontWeight: '700', fontSize: 13 }}>
+                        {t('remoteDataApplyHybrid')}
+                      </Text>
+                    </Pressable>
+                  ) : null}
+                </View>
+              ) : null}
               <Text style={[styles.activeTarget, { color: palette.blue500 }]}>
                 {t('activeTarget')}: {activeHint}
               </Text>
@@ -489,12 +549,41 @@ export function ConfigScreen({ navigation }: Props) {
                 <ApiModeChip mode="hybrid" label={t('apiModeHybrid')} />
               </View>
               <Text style={[styles.hint, { color: colors.textSubtle }]}>
-                {(draft.apiMode ?? 'bridge') === 'postgrest'
+                {apiMode === 'postgrest'
                   ? t('apiModePostgrestHint')
-                  : (draft.apiMode ?? 'bridge') === 'hybrid'
+                  : apiMode === 'hybrid'
                     ? t('apiModeHybridHint')
                     : t('apiModeBridgeHint')}
               </Text>
+              {apiMode === 'hybrid' ? (
+                <Text style={[styles.hint, { color: palette.green600, fontWeight: '700' }]}>
+                  {t('apiModeReportsRecommendHybrid')}
+                </Text>
+              ) : null}
+              {apiMode === 'postgrest' && !String(draft.remoteRestUrl || '').trim() ? (
+                <View
+                  style={[
+                    styles.warnBox,
+                    {
+                      borderColor: darkMode ? '#fbbf24' : '#d97706',
+                      backgroundColor: darkMode
+                        ? 'rgba(120,53,15,0.35)'
+                        : 'rgba(254,243,199,0.95)',
+                    },
+                  ]}
+                >
+                  <Text style={[styles.warnTitle, { color: darkMode ? '#fcd34d' : '#92400e' }]}>
+                    {t('apiModePostgrestWarningTitle')}
+                  </Text>
+                  <Text style={[styles.warnBody, { color: darkMode ? '#fde68a' : '#78350f' }]}>
+                    {t('apiModePostgrestWarning')}
+                  </Text>
+                </View>
+              ) : apiMode === 'postgrest' ? (
+                <Text style={[styles.hint, { color: colors.textSubtle }]}>
+                  {t('apiModePostgrestOptionalBridge')}
+                </Text>
+              ) : null}
 
               {(draft.apiMode === 'postgrest' || draft.apiMode === 'hybrid') ? (
                 <View
@@ -689,6 +778,23 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   hint: { fontSize: 11, lineHeight: 16 },
+  warnBox: {
+    borderWidth: 2,
+    borderRadius: 4,
+    padding: 12,
+    gap: 6,
+  },
+  warnTitle: {
+    fontSize: 11,
+    fontWeight: '900',
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+  },
+  warnBody: {
+    fontSize: 12,
+    lineHeight: 17,
+    fontWeight: '600',
+  },
   activeTarget: {
     fontSize: 11,
     fontWeight: '700',

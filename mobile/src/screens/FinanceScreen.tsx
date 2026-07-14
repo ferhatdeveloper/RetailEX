@@ -20,6 +20,7 @@ import {
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Plus, ArrowDownLeft, ArrowUpRight } from 'lucide-react-native';
 import { ScreenHeader, EmptyState, ErrorBanner } from '../components/ScreenChrome';
+import { SegmentTabBar } from '../components/SegmentTabBar';
 import { FormField } from '../components/FormField';
 import { PrimaryButton } from '../components/PrimaryButton';
 import {
@@ -308,32 +309,22 @@ export function FinanceScreen({ route }: Props) {
         }
       />
 
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabs}>
-        {(
-          [
-            { id: 'cash' as const, label: 'Kasa' },
-            { id: 'bank' as const, label: 'Banka' },
-          ] as const
-        ).map((t) => (
-          <Pressable
-            key={t.id}
-            onPress={() => onKindChange(t.id)}
-            style={[
-              styles.tab,
-              {
-                backgroundColor: kind === t.id ? palette.orange500 : colors.card,
-                borderColor: colors.cardBorder,
-              },
-            ]}
-          >
-            <Text style={{ color: kind === t.id ? palette.white : colors.text, fontSize: 12, fontWeight: '700' }}>
-              {t.label}
-            </Text>
-          </Pressable>
-        ))}
-      </ScrollView>
+      <SegmentTabBar
+        layout="equal"
+        value={kind}
+        onChange={onKindChange}
+        items={[
+          { id: 'cash' as const, label: 'Kasa' },
+          { id: 'bank' as const, label: 'Banka' },
+        ]}
+      />
 
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={styles.hScrollShell}
+        contentContainerStyle={styles.chips}
+      >
         <Pressable
           onPress={() => setSelectedRegisterId(null)}
           style={[
@@ -672,13 +663,7 @@ export function FinanceScreen({ route }: Props) {
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
-  tabs: { paddingHorizontal: 12, paddingVertical: 8, gap: 8 },
-  tab: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    borderWidth: 1,
-  },
+  hScrollShell: { flexGrow: 0, flexShrink: 0 },
   chips: { paddingHorizontal: 12, paddingBottom: 8, gap: 8, alignItems: 'center' },
   chip: {
     paddingHorizontal: 12,

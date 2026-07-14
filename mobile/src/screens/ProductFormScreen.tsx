@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useTranslation } from 'react-i18next';
 import { ScreenHeader, ErrorBanner } from '../components/ScreenChrome';
 import { FormField } from '../components/FormField';
 import { PrimaryButton } from '../components/PrimaryButton';
@@ -67,6 +68,7 @@ function toInput(form: FormState): ProductInput {
 }
 
 export function ProductFormScreen() {
+  const { t } = useTranslation();
   const { colors } = useThemeStore();
   const navigation = useNavigation<NativeStackNavigationProp<MainStackParamList>>();
   const route = useRoute<RouteProp<MainStackParamList, 'ProductForm'>>();
@@ -97,7 +99,7 @@ export function ProductFormScreen() {
     try {
       const row = await fetchProductById(productId);
       if (!row) {
-        setError('Ürün bulunamadı');
+        setError(t('formValidation.productNotFound'));
         return;
       }
       setForm({
@@ -126,7 +128,7 @@ export function ProductFormScreen() {
   const handleSave = async () => {
     const name = form.name.trim();
     if (!name) {
-      Alert.alert('Eksik alan', 'Ürün adı zorunludur.');
+      Alert.alert(t('alert.missingField'), t('formValidation.productNameRequired'));
       return;
     }
     setSaving(true);

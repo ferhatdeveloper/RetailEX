@@ -176,6 +176,72 @@ export function trcodeBadgeLabel(trcode: number | null | undefined): string | nu
   return tc > 0 ? `TRCODE ${tc}` : null;
 }
 
+/** PostgREST istemci tarafı filtre — SQL `buildInvoiceFilterClause` ile aynı kurallar */
+export function matchesInvoiceListFilter(
+  row: {
+    trcode?: number | null;
+    fiche_type?: string | null;
+  },
+  filter?: InvoiceListFilter,
+): boolean {
+  if (!filter || filter.preset === 'all') return true;
+
+  const tc = Number(row.trcode ?? 0);
+  const ft = String(row.fiche_type ?? '').trim();
+  const ftLower = ft.toLocaleLowerCase('tr-TR');
+
+  if (filter.trcode != null && filter.trcode > 0) {
+    if (tc === filter.trcode) return true;
+    const legacy = (filter.legacyFicheTypes ?? legacyFicheTypesByInvoiceType(filter.trcode)).map(
+      (x) => String(x).toLocaleLowerCase('tr-TR'),
+    );
+    return legacy.includes(ftLower);
+  }
+
+  switch (filter.preset) {
+    case 'sales-return':
+      return matchesInvoiceListFilter(row, { preset: 'sales-return', trcode: SALES_RETURN_TRCODE });
+    case 'purchase-return':
+      return matchesInvoiceListFilter(row, {
+        preset: 'purchase-return',
+        trcode: PURCHASE_RETURN_TRCODE,
+      });
+    case 'sales': {
+      const trcodes = TRCODES_BY_INVOICE_CATEGORY.Satis;
+      const ficheTypes = legacyFicheTypesByCategory('Satis').map((x) =>
+        x.toLocaleLowerCase('tr-TR'),
+      );
+      return trcodes.includes(tc) || ficheTypes.includes(ftLower);
+    }
+    case 'purchase': {
+      const trcodes = TRCODES_BY_INVOICE_CATEGORY.Alis.filter((c) => c !== PURCHASE_RETURN_TRCODE);
+      const ficheTypes = legacyFicheTypesByCategory('Alis').map((x) =>
+        x.toLocaleLowerCase('tr-TR'),
+      );
+      return trcodes.includes(tc) || ficheTypes.includes(ftLower);
+    }
+    case 'service-given':
+      return matchesInvoiceListFilter(row, { preset: 'service-given', trcode: 9 });
+    case 'service-received':
+      return matchesInvoiceListFilter(row, { preset: 'service-received', trcode: 4 });
+    case 'waybill':
+      return TRCODES_BY_INVOICE_CATEGORY.Irsaliye.includes(tc);
+    case 'order':
+      return TRCODES_BY_INVOICE_CATEGORY.Siparis.includes(tc);
+    case 'quote':
+      return TRCODES_BY_INVOICE_CATEGORY.Teklif.includes(tc);
+    case 'purchase-request':
+      return matchesInvoiceListFilter(row, { preset: 'purchase-request', trcode: 20 });
+    default: {
+      const trcodes = trcodesForCategories(['Iade']);
+      const ficheTypes = ficheTypesForCategories(['Iade']).map((x) =>
+        x.toLocaleLowerCase('tr-TR'),
+      );
+      return trcodes.includes(tc) || ficheTypes.includes(ftLower);
+    }
+  }
+}
+
 /** SQL WHERE parçası — $1 tabanlı parametre indeksi verilir */
 export function buildInvoiceFilterClause(
   filter: InvoiceListFilter | undefined,

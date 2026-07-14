@@ -7,12 +7,12 @@ import {
   ActivityIndicator,
   RefreshControl,
   Pressable,
-  ScrollView,
 } from 'react-native';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import type { NativeStackNavigationProp, NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Plus } from 'lucide-react-native';
 import { ScreenHeader, EmptyState, ErrorBanner } from '../components/ScreenChrome';
+import { SegmentTabBar } from '../components/SegmentTabBar';
 import { HeaderIconButton } from '../components/GradientHeader';
 import {
   fetchBrands,
@@ -195,8 +195,15 @@ export function MaterialDefinitionsScreen({ route }: Props) {
     navigation.navigate('MaterialDefinitionForm', { kind: tabFormKind(tab) });
   };
 
+  const openEdit = (itemId: string) => {
+    navigation.navigate('MaterialDefinitionForm', { kind: tabFormKind(tab), id: itemId });
+  };
+
   const renderDefinitionCard = (item: DefinitionRow, showRestaurant?: boolean) => (
-    <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
+    <Pressable
+      onPress={() => openEdit(item.id)}
+      style={[styles.card, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}
+    >
       <Text style={{ color: colors.text, fontWeight: '700' }}>
         {item.code} · {item.name}
       </Text>
@@ -209,7 +216,7 @@ export function MaterialDefinitionsScreen({ route }: Props) {
       {!item.is_active ? (
         <Text style={{ color: colors.textSubtle, fontSize: 11, marginTop: 4 }}>Pasif</Text>
       ) : null}
-    </View>
+    </Pressable>
   );
 
   const definitionList = (data: DefinitionRow[], empty: string, showRestaurant?: boolean) => (
@@ -234,25 +241,7 @@ export function MaterialDefinitionsScreen({ route }: Props) {
           </HeaderIconButton>
         }
       />
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabs}>
-        {tabs.map((t) => (
-          <Pressable
-            key={t.id}
-            onPress={() => setTab(t.id)}
-            style={[
-              styles.tab,
-              {
-                backgroundColor: tab === t.id ? palette.blue600 : colors.card,
-                borderColor: colors.cardBorder,
-              },
-            ]}
-          >
-            <Text style={{ color: tab === t.id ? palette.white : colors.text, fontSize: 12, fontWeight: '700' }}>
-              {t.label}
-            </Text>
-          </Pressable>
-        ))}
-      </ScrollView>
+      <SegmentTabBar layout="scroll" value={tab} onChange={setTab} items={tabs} />
       {error ? <ErrorBanner message={error} onRetry={() => void load()} /> : null}
       {loading ? (
         <ActivityIndicator style={{ marginTop: 40 }} color={palette.blue600} />
@@ -276,7 +265,10 @@ export function MaterialDefinitionsScreen({ route }: Props) {
           ListEmptyComponent={<EmptyState message="Birim seti yok" />}
           contentContainerStyle={styles.list}
           renderItem={({ item }) => (
-            <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
+            <Pressable
+              onPress={() => openEdit(item.id)}
+              style={[styles.card, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}
+            >
               <Text style={{ color: colors.text, fontWeight: '700' }}>
                 {item.code} · {item.name}
               </Text>
@@ -284,7 +276,7 @@ export function MaterialDefinitionsScreen({ route }: Props) {
                 {item.line_count} birim satırı
                 {!item.is_active ? ' · Pasif' : ''}
               </Text>
-            </View>
+            </Pressable>
           )}
         />
       )}
@@ -294,8 +286,6 @@ export function MaterialDefinitionsScreen({ route }: Props) {
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
-  tabs: { paddingHorizontal: 12, paddingVertical: 8, gap: 8 },
-  tab: { paddingHorizontal: 14, paddingVertical: 10, borderRadius: 8, borderWidth: 1 },
   list: { padding: 12, gap: 8, paddingBottom: 40 },
   card: { borderWidth: 1, borderRadius: 10, padding: 12 },
 });

@@ -63,9 +63,24 @@ export function MainStackNavigator() {
       <Stack.Screen name="Products" component={ProductsScreen} />
       <Stack.Screen name="ProductDetail" component={ProductDetailScreen} />
       <Stack.Screen name="ProductForm" component={ProductFormScreen} />
+      {/* Etiket OCR / akıllı malzeme — expo-image-picker cold start’ta çekilmesin */}
+      <Stack.Screen
+        name="MaterialLabelScan"
+        getComponent={() =>
+          require('../screens/MaterialLabelScanScreen')
+            .MaterialLabelScanScreen as React.ComponentType
+        }
+      />
       <Stack.Screen name="Customers" component={CustomersScreen} />
       <Stack.Screen name="CustomerDetail" component={CustomerDetailScreen} />
       <Stack.Screen name="CustomerForm" component={CustomerFormScreen} />
+      {/* Kimlik tara / OCR — expo-image-picker cold start’ta çekilmesin */}
+      <Stack.Screen
+        name="CustomerIdScan"
+        getComponent={() =>
+          require('../screens/CustomerIdScanScreen').CustomerIdScanScreen as React.ComponentType
+        }
+      />
       <Stack.Screen name="Invoices" component={InvoicesScreen} />
       <Stack.Screen name="InvoiceDetail" component={InvoiceDetailScreen} />
       <Stack.Screen name="InvoiceForm" component={InvoiceFormScreen} />

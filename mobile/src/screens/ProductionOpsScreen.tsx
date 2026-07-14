@@ -17,6 +17,7 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp, NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Plus } from 'lucide-react-native';
 import { ScreenHeader, EmptyState, ErrorBanner } from '../components/ScreenChrome';
+import { SegmentTabBar } from '../components/SegmentTabBar';
 import { HeaderIconButton } from '../components/GradientHeader';
 import { FormField } from '../components/FormField';
 import { PrimaryButton } from '../components/PrimaryButton';
@@ -140,30 +141,15 @@ export function ProductionOpsScreen({ route }: Props) {
           </HeaderIconButton>
         }
       />
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabs}>
-        {(
-          [
-            { id: 'production' as const, label: 'Üretim' },
-            { id: 'butcher' as const, label: 'Kasap' },
-          ] as const
-        ).map((t) => (
-          <Pressable
-            key={t.id}
-            onPress={() => setTab(t.id)}
-            style={[
-              styles.tab,
-              {
-                backgroundColor: tab === t.id ? palette.blue600 : colors.card,
-                borderColor: colors.cardBorder,
-              },
-            ]}
-          >
-            <Text style={{ color: tab === t.id ? palette.white : colors.text, fontSize: 12, fontWeight: '700' }}>
-              {t.label}
-            </Text>
-          </Pressable>
-        ))}
-      </ScrollView>
+      <SegmentTabBar
+        layout="scroll"
+        value={tab}
+        onChange={setTab}
+        items={[
+          { id: 'production' as const, label: 'Üretim' },
+          { id: 'butcher' as const, label: 'Kasap' },
+        ]}
+      />
       {error ? <ErrorBanner message={error} onRetry={() => void load()} /> : null}
       {loading ? (
         <ActivityIndicator style={{ marginTop: 40 }} color={palette.blue600} />
@@ -285,8 +271,6 @@ export function ProductionOpsScreen({ route }: Props) {
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
-  tabs: { paddingHorizontal: 12, paddingVertical: 8, gap: 8 },
-  tab: { paddingHorizontal: 14, paddingVertical: 10, borderRadius: 8, borderWidth: 1 },
   list: { padding: 12, gap: 8, paddingBottom: 40 },
   card: { borderWidth: 1, borderRadius: 10, padding: 12 },
   modalOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.45)' },

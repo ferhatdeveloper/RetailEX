@@ -13,6 +13,7 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp, NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Download, Sparkles } from 'lucide-react-native';
 import { ScreenHeader, ErrorBanner } from '../components/ScreenChrome';
+import { SegmentTabBar } from '../components/SegmentTabBar';
 import {
   fetchExcelEntitySummaries,
   shareCustomersCsv,
@@ -80,30 +81,15 @@ export function ExcelOpsScreen({ route }: Props) {
         title={tab === 'smart' ? 'Akıllı malzeme ekleme' : 'Excel işlemleri'}
         subtitle="Mobil: CSV paylaşım + hızlı ürün oluşturma"
       />
-      <View style={styles.tabs}>
-        {(
-          [
-            { id: 'excel' as const, label: 'Excel / dışa aktar' },
-            { id: 'smart' as const, label: 'Akıllı ekleme' },
-          ] as const
-        ).map((t) => (
-          <Pressable
-            key={t.id}
-            onPress={() => setTab(t.id)}
-            style={[
-              styles.tab,
-              {
-                backgroundColor: tab === t.id ? palette.blue600 : colors.card,
-                borderColor: colors.cardBorder,
-              },
-            ]}
-          >
-            <Text style={{ color: tab === t.id ? palette.white : colors.text, fontSize: 12, fontWeight: '700' }}>
-              {t.label}
-            </Text>
-          </Pressable>
-        ))}
-      </View>
+      <SegmentTabBar
+        layout="equal"
+        value={tab}
+        onChange={setTab}
+        items={[
+          { id: 'excel' as const, label: 'Excel / dışa aktar' },
+          { id: 'smart' as const, label: 'Akıllı ekleme' },
+        ]}
+      />
       {error ? <ErrorBanner message={error} onRetry={() => void load()} /> : null}
       {loading ? (
         <ActivityIndicator style={{ marginTop: 40 }} color={palette.blue600} />
@@ -137,8 +123,22 @@ export function ExcelOpsScreen({ route }: Props) {
           ) : (
             <>
               <Text style={[styles.hint, { color: colors.textMuted }]}>
-                Akıllı barkod/içe aktarım masaüstünde. Mobilde hızlı ürün formu açılır.
+                Raf / fiyat etiketi kamera OCR ile malzeme kartı; isterseniz manuel form da açılır.
               </Text>
+              <Pressable
+                onPress={() => navigation.navigate('MaterialLabelScan')}
+                style={[styles.card, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}
+              >
+                <View style={styles.cardRow}>
+                  <Sparkles size={18} color={palette.blue600} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: colors.text, fontWeight: '700' }}>Kamera ile akıllı ekle</Text>
+                    <Text style={{ color: colors.textMuted, fontSize: 12 }}>
+                      Etiket OCR → kod, barkod, ad, fiyat, KDV
+                    </Text>
+                  </View>
+                </View>
+              </Pressable>
               <Pressable
                 onPress={() => navigation.navigate('ProductForm')}
                 style={[styles.card, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}
@@ -146,7 +146,7 @@ export function ExcelOpsScreen({ route }: Props) {
                 <View style={styles.cardRow}>
                   <Sparkles size={18} color={palette.blue600} />
                   <View style={{ flex: 1 }}>
-                    <Text style={{ color: colors.text, fontWeight: '700' }}>Yeni malzeme oluştur</Text>
+                    <Text style={{ color: colors.text, fontWeight: '700' }}>Yeni malzeme (manuel)</Text>
                     <Text style={{ color: colors.textMuted, fontSize: 12 }}>
                       Kod, barkod, fiyat ile basit kayıt
                     </Text>
@@ -163,8 +163,6 @@ export function ExcelOpsScreen({ route }: Props) {
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
-  tabs: { flexDirection: 'row', paddingHorizontal: 12, paddingVertical: 8, gap: 8 },
-  tab: { flex: 1, paddingVertical: 10, borderRadius: 8, borderWidth: 1, alignItems: 'center' },
   body: { padding: 12, gap: 10, paddingBottom: 40 },
   hint: { fontSize: 12, lineHeight: 18, marginBottom: 4 },
   card: { borderWidth: 1, borderRadius: 10, padding: 14 },

@@ -107,10 +107,10 @@
 
 | Öğe | Web | RN hedef | Durum |
 |-----|-----|----------|-------|
-| Satış faturaları (tüm türler) | UniversalInvoice* | `Invoices` + `InvoiceDetail` + `InvoiceForm` | `[~]` liste+detay+ satış yazma (cari*, kalem, ödeme, belge no, satır/dip indirim, **satır KDV %**); edit=not/durum |
+| Satış faturaları (tüm türler) | UniversalInvoice* | `Invoices` + `InvoiceDetail` + `InvoiceForm` | `[~]` create+header parity (tarih/döviz/depo/vade/kasa); edit=header; **draft kalem edit** |
 | Alış faturası (standart) | purchase-invoice-standard | `Invoices` (purchase) + `InvoiceForm` (`kind: purchase`) | `[~]` tedarikçi seçimi (`suppliersApi`), kalem+özet+KDV satır, stok + / veresiye borç |
 | Satış / alış iade | UniversalInvoice trcode 3/6 | `InvoiceForm` (`sales-return` / `purchase-return`) + liste `+` | `[~]` yazma: stok yönü web ile aynı; kasiyer (3 zorunlu) |
-| Hizmet / irsaliye / sipariş / teklif | aynı | `Invoices` + `InvoiceForm` + `createDocumentInvoice` | `[~]` filtreli liste + **create** (TR 9/4/10/11/20/21/30; stok yok; hizmet cari/kasa) |
+| Hizmet / irsaliye / sipariş / teklif | aynı | `Invoices` + `InvoiceForm` + `createDocumentInvoice` | `[~]` hizmet **kart picker** (`servicesApi`, item_type=Hizmet) + TR 9/4 create; stok yok |
 | E-Dönüşüm | `etransform` | `ETransform` | `[x]` kuyruk + yeniden dene / durum / toplu mock gönder |
 | Belge Tara → Fatura | `document-scan` | `DocumentScan` | `[x]` ImagePicker (kamera/galeri) + `expo-text-extractor` OCR (yoksa manuel) → cari/tutar/kalem onay → `createSalesInvoice` / `createPurchaseInvoice` / `createDocumentInvoice` |
 | İrsaliyeler | `waybill-*` | `Invoices` + `InvoiceForm` | `[~]` liste + create (10/11; 12/13 trcode override) |
@@ -242,7 +242,7 @@
 - [x] README migration linki
 - [x] `npm run typecheck` (temiz)
 - [x] Cari oluştur/düzenle formu (`CustomerForm`)
-- [~] Satış/alış fatura formu güçlendirildi: cari/tedarikçi, belge no, ödeme chip, satır/dip indirim, vergi özeti; edit=not/durum
+- [~] Satış/alış/hizmet fatura formu P1 R6: hizmet kartı, tarih/döviz/kur/depo/vade/özel kod/satış elemanı/kasa; edit header + draft kalem
 - [~] İade yazma formu (trcode 3/6) + iade listelerinde `+` → `InvoiceForm`; `createReturnInvoice` + offline kuyruk/senkron
 - [~] Alış formu tedarikçi listesi (`suppliersApi`)
 - [x] Restoran adisyon aç + kalem ekle; adisyon listesinden `getOrderDetailById` ile kalem yükleme
@@ -295,12 +295,12 @@
 
 6. ~~Cari ekstre + mizan canlı SQL~~ ✅  
 7. EAS Build — `[x]` repo hazırlığı · `[ ]` `npm run mobile:eas:init` + ilk build → [`EAS_CHECKLIST.md`](./EAS_CHECKLIST.md)  
-8. ~~Menü etiketleri i18n (tr/en/ar/ku)~~ ✅ · ~~POS ekran `posUi`~~ ✅ · kalan: diğer ekran `Alert` / form hataları  
+8. ~~Menü etiketleri i18n (tr/en/ar/ku)~~ ✅ · ~~POS ekran `posUi`~~ ✅ · kalan: diğer ekran `Alert` / form hataları — `[~]` `formValidation` + `printerSettings` + cari/ürün/kampanya/malzeme formları  
 9. Teslimat: harita SDK / POD foto — opsiyonel derinlik  
 10. ~~Ürün oluştur/düzenle~~ ✅ · ~~Sistem menü yaprakları (okuma)~~ ✅  
 11. Offline kuyruk genişletme: ~~POS~~ ✅ · ~~fatura satış/alış/iade/belge~~ ✅ · ~~WMS sayım~~ ✅ (`wms.counting.*` · coalesce · cache sync · applyStock idempotent)  
 12. ~~`storeId` kritik listelerde~~ ✅ — kasa satırı mağaza kolonu seyrek; ürün stok hâlâ firma geneli  
 13. ~~Terazi BT: development build + `react-native-ble-plx`~~ ✅ (canlı kg + tarama); classic SPP / USB-OTG Android native hâlâ yok  
 14. Rongta LAN canlı kg — donanım yaymaz; doküman [`RONGTA_LAN.md`](./RONGTA_LAN.md) · tartılı satış simüle / BLE  
-15. Yazıcı BT / sistem (`expo-print`, `react-native-bluetooth-escpos-printer`) — ağ ESC/POS TCP `[x]` köprü + native TCP yolu  
+15. Yazıcı BT / sistem — `[~]` iskelet: `escposBluetoothTransport` + `systemPrintTransport` + `printerTransportStatus`; SDK: `react-native-bluetooth-escpos-printer`, `expo-print` (ağ ESC/POS TCP `[x]`)  
 16. KDV derinliği: header `total_vat` yazma + POS satır KDV (web `totalVat: 0` parity kaldırılınca)

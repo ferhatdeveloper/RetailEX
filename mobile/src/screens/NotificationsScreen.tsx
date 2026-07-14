@@ -7,12 +7,12 @@ import {
   ActivityIndicator,
   RefreshControl,
   Pressable,
-  ScrollView,
 } from 'react-native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useNavigation } from '@react-navigation/native';
 import { AlertTriangle, Bell, Clock } from 'lucide-react-native';
 import { ScreenHeader, EmptyState, ErrorBanner } from '../components/ScreenChrome';
+import { SegmentTabBar } from '../components/SegmentTabBar';
 import {
   fetchNotificationAlerts,
   type NotificationAlertRow,
@@ -141,35 +141,19 @@ export function NotificationsScreen() {
         </View>
       </View>
 
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.tabRow}
-      >
-        {FILTERS.map((f) => {
-          const active = filter === f.id;
+      <SegmentTabBar
+        layout="scroll"
+        value={filter}
+        onChange={setFilter}
+        items={FILTERS.map((f) => {
           const count =
             f.id === 'all' ? total : f.id === 'stock' ? counts.stock : counts.overdue;
-          return (
-            <Pressable
-              key={f.id}
-              onPress={() => setFilter(f.id)}
-              style={[
-                styles.tab,
-                {
-                  backgroundColor: active ? palette.blue600 : colors.card,
-                  borderColor: active ? palette.blue600 : colors.cardBorder,
-                },
-              ]}
-            >
-              <Text style={{ color: active ? palette.white : colors.text, fontWeight: '700', fontSize: 12 }}>
-                {f.label}
-                {count > 0 ? ` (${count})` : ''}
-              </Text>
-            </Pressable>
-          );
+          return {
+            id: f.id,
+            label: count > 0 ? `${f.label} (${count})` : f.label,
+          };
         })}
-      </ScrollView>
+      />
 
       {error ? <ErrorBanner message={error} onRetry={() => void load()} /> : null}
 
@@ -215,18 +199,6 @@ const styles = StyleSheet.create({
     gap: 4,
     paddingVertical: 8,
     borderRadius: 10,
-    borderWidth: 1,
-  },
-  tabRow: {
-    paddingHorizontal: 12,
-    paddingTop: 10,
-    paddingBottom: 4,
-    gap: 8,
-  },
-  tab: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 20,
     borderWidth: 1,
   },
   card: {

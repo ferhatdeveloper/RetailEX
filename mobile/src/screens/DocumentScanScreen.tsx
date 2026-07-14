@@ -33,6 +33,11 @@ import { fetchSuppliers, type SupplierRow } from '../api/suppliersApi';
 import { fetchProducts, type ProductRow } from '../api/productsApi';
 import { formatMoney, newUuid } from '../api/erpTables';
 import { parseInvoiceOcr, type ParsedInvoiceFields } from '../utils/documentOcrParse';
+import {
+  extractTextFromImageUri,
+  pickImageFromCamera,
+  pickImageFromGallery,
+} from '../utils/scanOcr';
 import { useThemeStore } from '../store/themeStore';
 import { palette } from '../theme/colors';
 import type { MainStackParamList } from '../navigation/types';
@@ -54,48 +59,31 @@ function isSupplierKind(kind: InvoiceFormKind): boolean {
   return kind === 'purchase' || kind === 'service-received';
 }
 
-async function loadImagePicker() {
-  try {
-    return await import('expo-image-picker');
-  } catch (e) {
-    throw new Error(
-      e instanceof Error
-        ? `expo-image-picker yüklenemedi: ${e.message}`
-        : 'expo-image-picker yüklenemedi',
-    );
-  }
-}
-
 async function tryExtractOcr(uri: string): Promise<{
   fields: ParsedInvoiceFields;
   ocrAvailable: boolean;
   ocrError?: string;
 }> {
-  try {
-    // Native modül — Expo Go / web'de olmayabilir
-    const mod = await import('expo-text-extractor');
-    if (!mod.isSupported) {
-      return {
-        fields: parseInvoiceOcr([]),
-        ocrAvailable: false,
-        ocrError: 'Bu cihazda OCR desteklenmiyor; alanları elle doldurun.',
-      };
-    }
-    const blocks = await mod.extractTextFromImage(uri);
-    return {
-      fields: parseInvoiceOcr(Array.isArray(blocks) ? blocks : []),
-      ocrAvailable: true,
-    };
-  } catch (e) {
+  // Native OCR — Expo Go / web'de olmayabilir
+  const { blocks, ocrAvailable, ocrError } = await extractTextFromImageUri(uri);
+  if (ocrError === 'ocrUnsupported') {
     return {
       fields: parseInvoiceOcr([]),
       ocrAvailable: false,
-      ocrError:
-        e instanceof Error
-          ? `OCR açılamadı (${e.message}). Manuel doldurma ile devam edin.`
-          : 'OCR açılamadı. Manuel doldurma ile devam edin.',
+      ocrError: 'Bu cihazda OCR desteklenmiyor; alanları elle doldurun.',
     };
   }
+  if (ocrError) {
+    return {
+      fields: parseInvoiceOcr([]),
+      ocrAvailable: false,
+      ocrError: `OCR açılamadı (${ocrError}). Manuel doldurma ile devam edin.`,
+    };
+  }
+  return {
+    fields: parseInvoiceOcr(blocks),
+    ocrAvailable,
+  };
 }
 
 function fieldsToDraftLines(
@@ -266,19 +254,13 @@ export function DocumentScanScreen() {
   const pickCamera = async () => {
     setError(null);
     try {
-      const ImagePicker = await loadImagePicker();
-      const perm = await ImagePicker.requestCameraPermissionsAsync();
-      if (!perm.granted) {
+      const res = await pickImageFromCamera(0.85);
+      if (res.canceled) return;
+      if ('permissionDenied' in res) {
         Alert.alert('İzin gerekli', 'Belge çekmek için kamera izni verin.');
         return;
       }
-      const res = await ImagePicker.launchCameraAsync({
-        mediaTypes: ['images'],
-        quality: 0.85,
-        allowsEditing: false,
-      });
-      if (res.canceled || !res.assets?.[0]?.uri) return;
-      await processUri(res.assets[0].uri);
+      await processUri(res.uri);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
@@ -287,19 +269,13 @@ export function DocumentScanScreen() {
   const pickGallery = async () => {
     setError(null);
     try {
-      const ImagePicker = await loadImagePicker();
-      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (!perm.granted) {
+      const res = await pickImageFromGallery(0.85);
+      if (res.canceled) return;
+      if ('permissionDenied' in res) {
         Alert.alert('İzin gerekli', 'Galeriden seçmek için izin verin.');
         return;
       }
-      const res = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ['images'],
-        quality: 0.85,
-        allowsEditing: false,
-      });
-      if (res.canceled || !res.assets?.[0]?.uri) return;
-      await processUri(res.assets[0].uri);
+      await processUri(res.uri);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
@@ -658,7 +634,7 @@ export function DocumentScanScreen() {
               Ödeme
             </Text>
             <View style={styles.chips}>
-              {(['Nakit', 'Kredi Kartı', 'Veresiye'] as const).map((pm) => (
+              {(['Nakit', 'Kredi Kartı', 'Havale', 'Veresiye'] as const).map((pm) => (
                 <Pressable
                   key={pm}
                   onPress={() => setPaymentMethod(pm)}

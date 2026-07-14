@@ -143,19 +143,25 @@ Expo Application Services ile bulut derleme. Sürüm kaynağı **yerel** (`eas.j
 
 Günlük / Actions tabanlı APK için **CI yeterlidir**. Store öncesi veya dahili imzalı APK için **EAS `preview` / `production`**.
 
-### İlk kurulum (bir kez)
+### İlk kurulum (bir kez) — login kullanıcı adımı
 
 ```bash
 cd mobile
 npm install
-npx eas-cli@latest login
-npm run mobile:eas:init    # kökten; app.json → extra.eas.projectId yazar
-npm run mobile:eas:check   # hazırlık tablosu
+npx eas-cli@latest login          # KULLANICI (ajan otomatik edemez)
+npx eas-cli@latest whoami         # kullanıcı adını görmeli
+npm run mobile:eas:init           # kökten; app.json → extra.eas.projectId
+# headless / CI (login veya EXPO_TOKEN sonrası):
+# npm run mobile:eas:init -- --non-interactive [--force]
+npm run mobile:eas:check          # hazırlık + whoami
 ```
 
-- `projectId` **uydurulmaz**; yalnızca `eas init` yazar (`extra.retailexEasNotes` → durum notu).
-- `EXPO_TOKEN` (Expo access token) headless/CI için; yerelde `eas login` yeterli. `android-release.yml` EAS kullanmaz.
-- Checklist: [`EAS_CHECKLIST.md`](./EAS_CHECKLIST.md)
+- `projectId` **uydurulmaz**; yalnızca `eas init` yazar (`extra.retailexEasNotes`).
+- Non-interactive: `eas init [--id UUID] [--force] [--non-interactive]` — [EAS CLI](https://docs.expo.dev/eas/cli/#eas-init).
+- `EXPO_TOKEN` headless/CI için; yerelde `eas login` yeterli.
+- Opsiyonel Play submit: `.github/workflows/android-play-submit.yml` — secrets `EXPO_TOKEN`, `GOOGLE_SERVICE_ACCOUNT_JSON` (**JSON commit yasak**).
+- Checklist: [`EAS_CHECKLIST.md`](./EAS_CHECKLIST.md) · [`PLAY_SUBMIT.md`](./PLAY_SUBMIT.md)
+- Play Submit (internal track, secrets): [`PLAY_SUBMIT.md`](./PLAY_SUBMIT.md) · `npm run mobile:eas:submit`
 
 ### Derleme örnekleri
 

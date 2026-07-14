@@ -60,7 +60,7 @@ export function paymentMethodImpliesCashInKasa(pm: string | undefined | null): b
 
 /**
  * Peşin alış: kasa defterine KASA_CIKIS yazılmalı mı (nakit/kart).
- * Havale/EFT banka tarafına bırakılır (R5 / P2).
+ * Havale/EFT → paymentMethodImpliesBankTransfer (BANKA_CIKIS).
  */
 export function paymentMethodImpliesCashOutKasa(pm: string | undefined | null): boolean {
   return paymentMethodImpliesPaidNow(pm);

@@ -1455,7 +1455,7 @@ export const erpReportsAPI = {
         .get<Record<string, unknown>[]>(
           `/rex_${fn}_${pn}_sales`,
           {
-            select: 'id,fiche_no,date,net_amount,fiche_type,customer_id,is_cancelled,status',
+            select: 'id,fiche_no,date,net_amount,fiche_type,trcode,customer_id,is_cancelled,status',
             customer_id: `eq.${accountId}`,
             order: 'date.asc',
             limit: String(ROW_LIMIT),
@@ -1464,6 +1464,8 @@ export const erpReportsAPI = {
         )
         .catch(() => [] as Record<string, unknown>[]);
 
+      // V2-R17 / mobilde V2-R13: alış ≠ iade; kart tipine göre işaret.
+      // buildEkstreRows / ledger: alış +net, iade −net. Eski kod purchase_invoice'u da −1 yapıyordu.
       return mapRunning(
         (sales || [])
           .filter((s) => {
@@ -1472,15 +1474,23 @@ export const erpReportsAPI = {
             return d >= start && d <= end;
           })
           .map((s) => {
-            const ft = String(s.fiche_type || '').toLowerCase();
+            const ft = String(s.fiche_type || '').trim().toLowerCase();
+            const tr = Number(s.trcode ?? 0) || 0;
+            const net = Number(s.net_amount ?? 0);
             let sign = 1;
-            if (ft === 'return_invoice' || ft === 'purchase_invoice') sign = -1;
+            if (ft === 'opening_balance') {
+              sign = net < 0 ? -1 : 1;
+            } else if (isCustomer) {
+              if (ft === 'return_invoice' || tr === 2 || tr === 3) sign = -1;
+            } else if (tr === 6 || ft === 'return_invoice') {
+              sign = -1;
+            }
             return {
               id: String(s.id ?? ''),
               date: String(s.date || '').slice(0, 10),
               ficheNo: String(s.fiche_no ?? ''),
-              definition: ft || 'sale',
-              amount: Number(s.net_amount ?? 0),
+              definition: ft === 'opening_balance' ? 'Devir' : ft || 'sale',
+              amount: Math.abs(net),
               sign,
               source: 'sale' as const,
             };
@@ -1519,18 +1529,35 @@ export const erpReportsAPI = {
       const ficheFilter = isCustomer
         ? `s.fiche_type IN ('sales_invoice', 'service', 'hizmet', 'return_invoice', 'opening_balance')`
         : `(s.fiche_type = 'purchase_invoice' OR s.trcode IN (1, 4, 5, 6, 13, 26, 41, 42) OR s.fiche_type IN ('return_invoice', 'opening_balance'))`;
+      // V2-R17: kart tipine göre CASE (mobil reportsApi saleSignSql / V2-R13 ile aynı).
+      // Alış (purchase_invoice / trcode 1…) → +1; iade → −1. Opening: işaretli net_amount.
+      const openingSignSql = `CASE
+            WHEN LOWER(TRIM(COALESCE(s.fiche_type, ''))) = 'opening_balance'
+              THEN CASE WHEN COALESCE(s.net_amount, 0) < 0 THEN -1 ELSE 1 END`;
+      const saleSignSql = isCustomer
+        ? `${openingSignSql}
+            WHEN LOWER(TRIM(COALESCE(s.fiche_type, ''))) = 'return_invoice'
+              OR COALESCE(s.trcode, 0) IN (2, 3) THEN -1
+            ELSE 1
+          END`
+        : `${openingSignSql}
+            WHEN COALESCE(s.trcode, 0) = 6
+              OR LOWER(TRIM(COALESCE(s.fiche_type, ''))) = 'return_invoice' THEN -1
+            ELSE 1
+          END`;
+      const saleDefinitionSql = `CASE
+            WHEN LOWER(TRIM(COALESCE(s.fiche_type, ''))) = 'opening_balance' THEN 'Devir'
+            ELSE COALESCE(s.fiche_type, '')
+          END`;
       const res = await postgres.query(
         `
         SELECT
           s.id::text AS id,
           (s.date AT TIME ZONE 'UTC')::date::text AS date,
           COALESCE(s.fiche_no, '') AS fiche_no,
-          COALESCE(s.fiche_type, '') AS definition,
+          ${saleDefinitionSql} AS definition,
           ABS(COALESCE(s.net_amount, 0)) AS amount,
-          CASE
-            WHEN LOWER(TRIM(COALESCE(s.fiche_type, ''))) IN ('return_invoice', 'purchase_invoice') THEN -1
-            ELSE 1
-          END AS sign,
+          ${saleSignSql} AS sign,
           'sale'::text AS source
         FROM sales s
         WHERE s.customer_id::text = $1

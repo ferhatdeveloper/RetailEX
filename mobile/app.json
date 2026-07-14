@@ -54,9 +54,10 @@
       "retailexEasNotes": {
         "status": "unlinked",
         "checklist": "mobile/EAS_CHECKLIST.md",
-        "init": "npm run mobile:eas:init  (önce: npx eas-cli@latest login)",
+        "userLoginRequired": "npx eas-cli@latest login  (veya EXPO_TOKEN) → whoami → npm run mobile:eas:init",
+        "init": "npm run mobile:eas:init | headless: npm run mobile:eas:init -- --non-interactive [--force|--id UUID]",
         "projectId": "eas init sonrası expo.extra.eas.projectId yazılır; UUID uydurulmaz — bağlanana kadar extra.eas bloğu yoktur.",
-        "ciAlign": "GitHub Actions android-release.yml = kök npm run android:ci:build → debug APK. EAS debug ≈ aynı (assembleDebug, withoutCredentials). EAS preview = dahili imzalı APK. EAS production = Play AAB.",
+        "ciAlign": "android-release.yml = debug APK. Opsiyonel Play submit: android-play-submit.yml + EXPO_TOKEN, GOOGLE_SERVICE_ACCOUNT_JSON (JSON commit yasak). Bkz. PLAY_SUBMIT.md.",
         "profiles": "mobile/eas.json → debug | preview | production",
         "scripts": {
           "check": "npm run mobile:eas:check",

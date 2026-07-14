@@ -25,10 +25,11 @@ import {
   createSalesInvoice,
   createDocumentInvoice,
   fetchInvoiceById,
+  invoiceAllowsLineEdit,
+  invoiceFormKindFromTrcode,
   invoiceLineNet,
   invoiceTotalsFromLines,
   isInvoiceDocumentKind,
-  isPurchaseInvoice,
   updateInvoiceHeader,
   type InvoiceDocumentKind,
   type InvoiceDraftLine,
@@ -37,7 +38,10 @@ import {
 import { fetchCustomers, type CustomerRow } from '../api/customersApi';
 import { fetchSuppliers, type SupplierRow } from '../api/suppliersApi';
 import { fetchProducts, type ProductRow } from '../api/productsApi';
-import { formatMoney } from '../api/erpTables';
+import { fetchServices, type ServiceRow } from '../api/servicesApi';
+import { fetchCashRegisters, type CashRegisterRow } from '../api/financeApi';
+import { firmNr, formatMoney, storeId as sessionStoreId } from '../api/erpTables';
+import { fetchStores, type StoreRow } from '../api/pgClient';
 import { useThemeStore } from '../store/themeStore';
 import { useAuthStore } from '../store/authStore';
 import { palette } from '../theme/colors';
@@ -49,7 +53,15 @@ const STATUS_OPTIONS = ['approved', 'draft', 'completed', 'cancelled'] as const;
 
 const PAYMENT_OPTIONS = ['Nakit', 'Kredi Kartı', 'Veresiye'] as const;
 
+const CURRENCY_OPTIONS = ['TRY', 'IQD', 'USD', 'EUR'] as const;
+
 type PartyRow = { id: string; name: string; code: string | null };
+
+function todayYmd(): string {
+  const d = new Date();
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
 
 function titleForKind(kind: InvoiceFormKind, isEdit: boolean): string {
   if (isEdit) {
@@ -135,6 +147,10 @@ function isReturnKind(kind: InvoiceFormKind): boolean {
   return kind === 'sales-return' || kind === 'purchase-return';
 }
 
+function isServiceKind(kind: InvoiceFormKind): boolean {
+  return kind === 'service-given' || kind === 'service-received';
+}
+
 function isDocumentKind(kind: InvoiceFormKind): kind is InvoiceDocumentKind {
   return isInvoiceDocumentKind(kind);
 }
@@ -155,7 +171,6 @@ function saveButtonLabel(kind: InvoiceFormKind, isEdit: boolean): string {
 }
 
 function showPaymentChips(kind: InvoiceFormKind): boolean {
-  // Sipariş / teklif / irsaliye: opsiyonel ödeme bilgisi (web formunda da var)
   return true;
 }
 
@@ -179,7 +194,11 @@ function validateCreate(
   customerName: string,
   cashier: string,
 ): string | null {
-  if (!lines.length) return t('invoiceForm.needLine');
+  if (!lines.length) {
+    return isServiceKind(resolvedKind)
+      ? t('invoiceForm.needServiceLine')
+      : t('invoiceForm.needLine');
+  }
   if (requiresParty(resolvedKind)) {
     if (
       !customerId ||
@@ -205,6 +224,39 @@ function validateCreate(
   return null;
 }
 
+function lineFromDetail(
+  l: {
+    id: string;
+    product_id?: string | null;
+    item_code: string | null;
+    item_name: string | null;
+    quantity: number;
+    unit_price: number;
+    unit: string | null;
+    vat_rate?: number;
+    discount_rate?: number;
+    item_type?: string | null;
+  },
+): DraftLine {
+  const itemType = l.item_type || 'Malzeme';
+  const isService =
+    String(itemType).toLowerCase() === 'hizmet' ||
+    String(itemType).toLowerCase() === 'service';
+  return {
+    key: l.id || `${l.item_code}-${Math.random()}`,
+    productId: l.product_id || null,
+    code: l.item_code,
+    name: l.item_name || '—',
+    qty: Number(l.quantity) || 1,
+    unitPrice: Number(l.unit_price) || 0,
+    unit: l.unit,
+    discountPercent: Number(l.discount_rate) || 0,
+    vatRate: Number(l.vat_rate) || 0,
+    lineType: isService ? 'service' : 'product',
+    itemType,
+  };
+}
+
 export function InvoiceFormScreen() {
   const { t } = useTranslation();
   const { colors } = useThemeStore();
@@ -220,6 +272,7 @@ export function InvoiceFormScreen() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [resolvedKind, setResolvedKind] = useState<InvoiceFormKind>(routeKind ?? 'sales');
+  const [canEditLines, setCanEditLines] = useState(!isEdit);
 
   const [customerId, setCustomerId] = useState<string | undefined>();
   const [customerName, setCustomerName] = useState(defaultPartyName(routeKind ?? 'sales'));
@@ -232,17 +285,38 @@ export function InvoiceFormScreen() {
   const [footerDiscount, setFooterDiscount] = useState('0');
   const [lines, setLines] = useState<DraftLine[]>([]);
 
+  const [invoiceDate, setInvoiceDate] = useState(todayYmd());
+  const [dueDate, setDueDate] = useState('');
+  const [currency, setCurrency] = useState<string>('TRY');
+  const [currencyRate, setCurrencyRate] = useState('1');
+  const [specialCode, setSpecialCode] = useState('');
+  const [salespersonCode, setSalespersonCode] = useState('');
+  const [warehouseLabel, setWarehouseLabel] = useState('');
+  const [selectedStoreId, setSelectedStoreId] = useState<string | null>(
+    sessionStoreId(),
+  );
+  const [cashRegisterId, setCashRegisterId] = useState<string | null>(null);
+  const [cashRegisterName, setCashRegisterName] = useState('');
+
   const [partySearch, setPartySearch] = useState('');
   const [partyRows, setPartyRows] = useState<PartyRow[]>([]);
   const [prodSearch, setProdSearch] = useState('');
   const [prodRows, setProdRows] = useState<ProductRow[]>([]);
+  const [svcRows, setSvcRows] = useState<ServiceRow[]>([]);
   const [showPartyPicker, setShowPartyPicker] = useState(false);
   const [showProdPicker, setShowProdPicker] = useState(false);
+  const [stores, setStores] = useState<StoreRow[]>([]);
+  const [cashRegs, setCashRegs] = useState<CashRegisterRow[]>([]);
 
   const footerDiscountNum = useMemo(() => {
     const n = parseFloat(String(footerDiscount).replace(',', '.'));
     return Number.isFinite(n) && n > 0 ? n : 0;
   }, [footerDiscount]);
+
+  const currencyRateNum = useMemo(() => {
+    const n = parseFloat(String(currencyRate).replace(',', '.'));
+    return Number.isFinite(n) && n > 0 ? n : 1;
+  }, [currencyRate]);
 
   const totals = useMemo(
     () => invoiceTotalsFromLines(lines, footerDiscountNum),
@@ -250,14 +324,44 @@ export function InvoiceFormScreen() {
   );
 
   const accent = useMemo(() => kindAccent(resolvedKind), [resolvedKind]);
+  const serviceMode = isServiceKind(resolvedKind);
 
   useEffect(() => {
     if (!isEdit && routeKind) {
       setResolvedKind(routeKind);
       setCustomerName(defaultPartyName(routeKind));
       setCustomerId(undefined);
+      setCanEditLines(true);
     }
   }, [routeKind, isEdit]);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const [s, regs] = await Promise.all([
+          fetchStores(firmNr()),
+          fetchCashRegisters(40),
+        ]);
+        setStores(s);
+        setCashRegs(regs);
+        if (!warehouseLabel && s.length) {
+          const sid = sessionStoreId();
+          const match = sid ? s.find((x) => x.id === sid) : s[0];
+          if (match) {
+            setWarehouseLabel(match.name);
+            setSelectedStoreId(match.id);
+          }
+        }
+        if (!cashRegisterId && regs.length) {
+          setCashRegisterId(regs[0].id);
+          setCashRegisterName(regs[0].name);
+        }
+      } catch {
+        /* opsiyonel picker */
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount bootstrap
+  }, []);
 
   const load = useCallback(async () => {
     if (!invoiceId) return;
@@ -269,17 +373,46 @@ export function InvoiceFormScreen() {
         setError(t('invoiceForm.notFound'));
         return;
       }
-      const tc = Number(doc.trcode ?? 0);
-      if (tc === 3) setResolvedKind('sales-return');
-      else if (tc === 6) setResolvedKind('purchase-return');
-      else setResolvedKind(isPurchaseInvoice(doc) ? 'purchase' : 'sales');
+      const kind = invoiceFormKindFromTrcode(
+        Number(doc.trcode ?? 0),
+        doc.fiche_type,
+      );
+      setResolvedKind(kind);
+      setCustomerId(doc.customer_id || undefined);
       setCustomerName(
         doc.customer_name ||
-          (isPurchaseInvoice(doc) || tc === 6 ? 'Tedarikçi' : 'Perakende'),
+          (isSupplierKind(kind) ? 'Tedarikçi' : 'Perakende'),
       );
       setNotes(doc.notes || '');
       setStatus(doc.status || 'approved');
       setPaymentMethod(doc.payment_method || 'Nakit');
+      setDocumentNo(doc.document_no || '');
+      const dateStr = String(doc.date || '').slice(0, 10);
+      if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) setInvoiceDate(dateStr);
+      setCurrency((doc.currency || 'TRY').trim() || 'TRY');
+      setCurrencyRate(String(doc.currency_rate ?? 1));
+      const hf = doc.header_fields || {};
+      setSpecialCode(hf.specialCode || '');
+      setSalespersonCode(hf.salespersonCode || '');
+      setDueDate(hf.dueDate || '');
+      if (hf.warehouse) setWarehouseLabel(hf.warehouse);
+      if (hf.cashRegisterId) {
+        setCashRegisterId(hf.cashRegisterId);
+        setCashRegisterName(hf.cashRegisterName || '');
+      }
+      if (doc.store_id) setSelectedStoreId(doc.store_id);
+      const draft = (doc.lines || []).map(lineFromDetail);
+      setLines(draft);
+      const allow = invoiceAllowsLineEdit(doc.status);
+      setCanEditLines(allow);
+      if (doc.total_discount != null && doc.total_discount > 0) {
+        const lineDisc = draft.reduce((s, l) => {
+          const gross = l.unitPrice * l.qty;
+          return s + gross * ((l.discountPercent || 0) / 100);
+        }, 0);
+        const foot = Math.max(0, Number(doc.total_discount) - lineDisc);
+        if (foot > 0) setFooterDiscount(String(Math.round(foot * 100) / 100));
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -293,7 +426,7 @@ export function InvoiceFormScreen() {
 
   useEffect(() => {
     if (!showPartyPicker) return;
-    const t = setTimeout(async () => {
+    const timer = setTimeout(async () => {
       try {
         if (isSupplierKind(resolvedKind)) {
           const rows = await fetchSuppliers(partySearch, 30);
@@ -318,20 +451,27 @@ export function InvoiceFormScreen() {
         setPartyRows([]);
       }
     }, partySearch ? 280 : 0);
-    return () => clearTimeout(t);
+    return () => clearTimeout(timer);
   }, [partySearch, showPartyPicker, resolvedKind]);
 
   useEffect(() => {
     if (!showProdPicker) return;
-    const t = setTimeout(async () => {
+    const timer = setTimeout(async () => {
       try {
-        setProdRows(await fetchProducts(prodSearch, 30));
+        if (serviceMode) {
+          setSvcRows(await fetchServices(prodSearch, 30));
+          setProdRows([]);
+        } else {
+          setProdRows(await fetchProducts(prodSearch, 30));
+          setSvcRows([]);
+        }
       } catch {
         setProdRows([]);
+        setSvcRows([]);
       }
     }, prodSearch ? 280 : 0);
-    return () => clearTimeout(t);
-  }, [prodSearch, showProdPicker]);
+    return () => clearTimeout(timer);
+  }, [prodSearch, showProdPicker, serviceMode]);
 
   const addProduct = (p: ProductRow) => {
     const unitPrice =
@@ -354,6 +494,35 @@ export function InvoiceFormScreen() {
         unit: p.unit,
         discountPercent: 0,
         vatRate,
+        lineType: 'product',
+        itemType: 'Malzeme',
+      },
+    ]);
+    setShowProdPicker(false);
+    setProdSearch('');
+  };
+
+  const addService = (s: ServiceRow) => {
+    const unitPrice =
+      isSupplierKind(resolvedKind)
+        ? s.purchase_price > 0
+          ? s.purchase_price
+          : s.unit_price
+        : s.unit_price;
+    setLines((prev) => [
+      ...prev,
+      {
+        key: `svc-${s.id}-${Date.now()}`,
+        productId: String(s.id),
+        code: s.code,
+        name: s.name,
+        qty: 1,
+        unitPrice,
+        unit: s.unit || 'Adet',
+        discountPercent: 0,
+        vatRate: Number.isFinite(s.tax_rate) ? s.tax_rate : 18,
+        lineType: 'service',
+        itemType: 'Hizmet',
       },
     ]);
     setShowProdPicker(false);
@@ -368,12 +537,61 @@ export function InvoiceFormScreen() {
     setLines((prev) => prev.filter((l) => l.key !== key));
   };
 
+  const buildExtras = () => ({
+    documentNo: documentNo.trim() || undefined,
+    footerDiscountAmount: footerDiscountNum,
+    invoiceDate: invoiceDate.trim() || undefined,
+    currency,
+    currencyRate: currencyRateNum,
+    storeId: selectedStoreId,
+    cashRegisterId:
+      paymentMethod === 'Nakit' || paymentMethod === 'Kredi Kartı'
+        ? cashRegisterId
+        : null,
+    headerFields: {
+      documentNo: documentNo.trim() || undefined,
+      specialCode: specialCode.trim() || undefined,
+      warehouse: warehouseLabel.trim() || undefined,
+      salespersonCode: salespersonCode.trim() || undefined,
+      dueDate: dueDate.trim() || undefined,
+      cashRegisterId: cashRegisterId || undefined,
+      cashRegisterName: cashRegisterName || undefined,
+    },
+  });
+
   const handleSave = async () => {
     setSaving(true);
     setError(null);
     try {
       if (isEdit && invoiceId) {
-        await updateInvoiceHeader(invoiceId, { notes, status });
+        const draftLines = lines.map(({ key: _k, ...rest }) => rest);
+        if (canEditLines) {
+          const validationError = validateCreate(
+            t,
+            resolvedKind,
+            lines,
+            customerId,
+            customerName,
+            cashier,
+          );
+          if (validationError) {
+            Alert.alert(t('alert.missingInfo'), validationError);
+            setSaving(false);
+            return;
+          }
+        }
+        await updateInvoiceHeader(invoiceId, {
+          notes,
+          status,
+          documentNo: documentNo.trim() || undefined,
+          invoiceDate: invoiceDate.trim() || undefined,
+          currency,
+          currencyRate: currencyRateNum,
+          headerFields: buildExtras().headerFields,
+          ...(canEditLines
+            ? { lines: draftLines, footerDiscountAmount: footerDiscountNum }
+            : {}),
+        });
         navigation.replace('InvoiceDetail', { invoiceId });
         return;
       }
@@ -392,10 +610,7 @@ export function InvoiceFormScreen() {
       }
 
       const draftLines = lines.map(({ key: _k, ...rest }) => rest);
-      const extras = {
-        documentNo: documentNo.trim() || undefined,
-        footerDiscountAmount: footerDiscountNum,
-      };
+      const extras = buildExtras();
 
       let result: { id: string };
       if (resolvedKind === 'purchase') {
@@ -463,6 +678,101 @@ export function InvoiceFormScreen() {
   const partyHint = isSupplierKind(resolvedKind)
     ? 'Tedarikçi ara…'
     : 'Cari / müşteri ara…';
+  const lineButtonLabel = serviceMode ? 'Hizmet' : 'Ürün';
+  const showLinesEditor = !isEdit || canEditLines;
+  const showCashPicker =
+    paymentMethod === 'Nakit' || paymentMethod === 'Kredi Kartı';
+
+  const renderLineEditor = (line: DraftLine, editable: boolean) => (
+    <View
+      key={line.key}
+      style={[
+        styles.lineCard,
+        { backgroundColor: colors.card, borderColor: colors.cardBorder },
+      ]}
+    >
+      <View style={styles.lineTop}>
+        <View style={{ flex: 1 }}>
+          <Text
+            style={{ color: colors.text, fontWeight: '700' }}
+            numberOfLines={2}
+          >
+            {line.name}
+          </Text>
+          {line.lineType === 'service' || line.itemType === 'Hizmet' ? (
+            <Text style={{ color: accent, fontSize: 10, fontWeight: '800', marginTop: 2 }}>
+              HİZMET
+            </Text>
+          ) : null}
+        </View>
+        {editable ? (
+          <Pressable onPress={() => removeLine(line.key)} hitSlop={8}>
+            <Trash2 size={16} color={palette.red500} />
+          </Pressable>
+        ) : null}
+      </View>
+      {editable ? (
+        <View style={styles.lineFields}>
+          <FormField
+            label="Miktar"
+            value={String(line.qty)}
+            onChangeText={(txt) => {
+              const n = parseFloat(txt.replace(',', '.'));
+              updateLine(line.key, {
+                qty: Number.isFinite(n) && n > 0 ? n : 1,
+              });
+            }}
+            keyboardType="decimal-pad"
+            containerStyle={{ flex: 1 }}
+          />
+          <FormField
+            label="Birim fiyat"
+            value={String(line.unitPrice)}
+            onChangeText={(txt) => {
+              const n = parseFloat(txt.replace(',', '.'));
+              updateLine(line.key, {
+                unitPrice: Number.isFinite(n) && n >= 0 ? n : 0,
+              });
+            }}
+            keyboardType="decimal-pad"
+            containerStyle={{ flex: 1 }}
+          />
+          <FormField
+            label="İnd. %"
+            value={String(line.discountPercent ?? 0)}
+            onChangeText={(txt) => {
+              const n = parseFloat(txt.replace(',', '.'));
+              updateLine(line.key, {
+                discountPercent:
+                  Number.isFinite(n) && n >= 0 ? Math.min(100, n) : 0,
+              });
+            }}
+            keyboardType="decimal-pad"
+            containerStyle={{ width: 64 }}
+          />
+          <FormField
+            label="KDV %"
+            value={String(line.vatRate ?? 0)}
+            onChangeText={(txt) => {
+              const n = parseFloat(txt.replace(',', '.'));
+              updateLine(line.key, {
+                vatRate: Number.isFinite(n) && n >= 0 ? Math.min(100, n) : 0,
+              });
+            }}
+            keyboardType="decimal-pad"
+            containerStyle={{ width: 64 }}
+          />
+        </View>
+      ) : (
+        <Text style={{ color: colors.textMuted, fontSize: 12 }}>
+          {line.qty} × {formatMoney(line.unitPrice)} · KDV %{line.vatRate ?? 0}
+        </Text>
+      )}
+      <Text style={{ color: accent, fontWeight: '800', textAlign: 'right' }}>
+        {formatMoney(invoiceLineNet(line))} {currency}
+      </Text>
+    </View>
+  );
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
@@ -470,7 +780,9 @@ export function InvoiceFormScreen() {
         title={titleForKind(resolvedKind, isEdit)}
         subtitle={
           isEdit
-            ? 'Not ve durum'
+            ? canEditLines
+              ? 'Taslak — kalem + header'
+              : 'Header · kalemler salt okunur'
             : isReturnKind(resolvedKind)
               ? `TRCODE ${resolvedKind === 'sales-return' ? '3' : '6'} · ${customerName}`
               : isDocumentKind(resolvedKind)
@@ -487,16 +799,19 @@ export function InvoiceFormScreen() {
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         >
           <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
-            {isEdit ? (
+            {isEdit && !canEditLines ? (
               <View
                 style={[styles.info, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}
               >
                 <Text style={{ color: colors.textMuted, fontSize: 12 }}>
-                  Mobil düzenleme: yalnızca not ve durum güncellenir. Kalem ekleme/silme web
-                  fatura formunda yapılmalıdır.
+                  Onaylı/tamamlanmış fişte kalem değişimi stok ve cari bakiyeyi etkiler; mobil
+                  yalnızca tarih, döviz, depo, vade, özel kod, satış elemanı, not ve durum
+                  günceller. Taslak faturalarda kalem düzenlenebilir.
                 </Text>
               </View>
-            ) : (
+            ) : null}
+
+            {!isEdit || canEditLines ? (
               <>
                 <Pressable
                   onPress={() => setShowPartyPicker((v) => !v)}
@@ -549,32 +864,161 @@ export function InvoiceFormScreen() {
                     />
                   </View>
                 ) : null}
-
-                <FormField
-                  label="Belge no"
-                  value={documentNo}
-                  onChangeText={setDocumentNo}
-                  placeholder="Opsiyonel belge / irsaliye no"
-                />
-
-                {isReturnKind(resolvedKind) ? (
-                  <>
-                    <FormField
-                      label={resolvedKind === 'sales-return' ? 'Kasiyer *' : 'Kasiyer'}
-                      value={cashier}
-                      onChangeText={setCashier}
-                      placeholder="İşlemi yapan"
-                    />
-                    <FormField
-                      label="İade nedeni"
-                      value={returnReason}
-                      onChangeText={setReturnReason}
-                      placeholder="Hasar, yanlış ürün…"
-                    />
-                  </>
-                ) : null}
               </>
+            ) : (
+              <View
+                style={[
+                  styles.pickerBtn,
+                  { borderColor: colors.cardBorder, backgroundColor: colors.card },
+                ]}
+              >
+                <Text style={{ color: colors.textMuted, fontSize: 10, fontWeight: '700' }}>
+                  {partyLabel}
+                </Text>
+                <Text style={{ color: colors.text, fontWeight: '700', marginTop: 4 }}>
+                  {customerName}
+                </Text>
+              </View>
             )}
+
+            <FormField
+              label="Belge no"
+              value={documentNo}
+              onChangeText={setDocumentNo}
+              placeholder="Opsiyonel belge / irsaliye no"
+            />
+
+            <View style={styles.row2}>
+              <FormField
+                label="Fatura tarihi"
+                value={invoiceDate}
+                onChangeText={setInvoiceDate}
+                placeholder="YYYY-MM-DD"
+                containerStyle={{ flex: 1 }}
+              />
+              <FormField
+                label="Vade"
+                value={dueDate}
+                onChangeText={setDueDate}
+                placeholder="YYYY-MM-DD"
+                containerStyle={{ flex: 1 }}
+              />
+            </View>
+
+            <View style={styles.statusWrap}>
+              <Text style={[styles.statusLabel, { color: colors.textMuted }]}>DÖVİZ</Text>
+              <View style={styles.statusRow}>
+                {CURRENCY_OPTIONS.map((c) => (
+                  <Pressable
+                    key={c}
+                    onPress={() => setCurrency(c)}
+                    style={[
+                      styles.chip,
+                      {
+                        borderColor: currency === c ? accent : colors.cardBorder,
+                        backgroundColor: currency === c ? accent : colors.card,
+                      },
+                    ]}
+                  >
+                    <Text
+                      style={{
+                        color: currency === c ? palette.white : colors.text,
+                        fontSize: 11,
+                        fontWeight: '700',
+                      }}
+                    >
+                      {c}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+            </View>
+            <FormField
+              label="Kur"
+              value={currencyRate}
+              onChangeText={setCurrencyRate}
+              keyboardType="decimal-pad"
+              placeholder="1"
+            />
+
+            <View style={styles.row2}>
+              <FormField
+                label="Özel kod"
+                value={specialCode}
+                onChangeText={setSpecialCode}
+                placeholder="Opsiyonel"
+                containerStyle={{ flex: 1 }}
+              />
+              <FormField
+                label="Satış elemanı"
+                value={salespersonCode}
+                onChangeText={setSalespersonCode}
+                placeholder="Kod / ad"
+                containerStyle={{ flex: 1 }}
+              />
+            </View>
+
+            {stores.length ? (
+              <View style={styles.statusWrap}>
+                <Text style={[styles.statusLabel, { color: colors.textMuted }]}>DEPO / MAĞAZA</Text>
+                <View style={styles.statusRow}>
+                  {stores.slice(0, 8).map((s) => {
+                    const active = selectedStoreId === s.id;
+                    return (
+                      <Pressable
+                        key={s.id}
+                        onPress={() => {
+                          setSelectedStoreId(s.id);
+                          setWarehouseLabel(s.name);
+                        }}
+                        style={[
+                          styles.chip,
+                          {
+                            borderColor: active ? accent : colors.cardBorder,
+                            backgroundColor: active ? accent : colors.card,
+                          },
+                        ]}
+                      >
+                        <Text
+                          style={{
+                            color: active ? palette.white : colors.text,
+                            fontSize: 11,
+                            fontWeight: '700',
+                          }}
+                          numberOfLines={1}
+                        >
+                          {s.name}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              </View>
+            ) : (
+              <FormField
+                label="Depo / ambar"
+                value={warehouseLabel}
+                onChangeText={setWarehouseLabel}
+                placeholder="Merkez"
+              />
+            )}
+
+            {isReturnKind(resolvedKind) && (!isEdit || canEditLines) ? (
+              <>
+                <FormField
+                  label={resolvedKind === 'sales-return' ? 'Kasiyer *' : 'Kasiyer'}
+                  value={cashier}
+                  onChangeText={setCashier}
+                  placeholder="İşlemi yapan"
+                />
+                <FormField
+                  label="İade nedeni"
+                  value={returnReason}
+                  onChangeText={setReturnReason}
+                  placeholder="Hasar, yanlış ürün…"
+                />
+              </>
+            ) : null}
 
             <FormField
               label="Not"
@@ -585,7 +1029,7 @@ export function InvoiceFormScreen() {
               style={{ minHeight: 72, textAlignVertical: 'top' }}
             />
 
-            {!isEdit && showPaymentChips(resolvedKind) ? (
+            {(!isEdit || canEditLines) && showPaymentChips(resolvedKind) ? (
               <View style={styles.statusWrap}>
                 <Text style={[styles.statusLabel, { color: colors.textMuted }]}>ÖDEME</Text>
                 <View style={styles.statusRow}>
@@ -612,6 +1056,48 @@ export function InvoiceFormScreen() {
                       </Text>
                     </Pressable>
                   ))}
+                </View>
+                {serviceMode ? (
+                  <Text style={{ color: colors.textSubtle, fontSize: 10, paddingHorizontal: 4 }}>
+                    Hizmet: stok düşmez · verilen hizmette peşin → kasa; veresiye → cari borç
+                  </Text>
+                ) : null}
+              </View>
+            ) : null}
+
+            {showCashPicker && cashRegs.length && (!isEdit || canEditLines) ? (
+              <View style={styles.statusWrap}>
+                <Text style={[styles.statusLabel, { color: colors.textMuted }]}>KASA</Text>
+                <View style={styles.statusRow}>
+                  {cashRegs.slice(0, 6).map((r) => {
+                    const active = cashRegisterId === r.id;
+                    return (
+                      <Pressable
+                        key={r.id}
+                        onPress={() => {
+                          setCashRegisterId(r.id);
+                          setCashRegisterName(r.name);
+                        }}
+                        style={[
+                          styles.chip,
+                          {
+                            borderColor: active ? accent : colors.cardBorder,
+                            backgroundColor: active ? accent : colors.card,
+                          },
+                        ]}
+                      >
+                        <Text
+                          style={{
+                            color: active ? palette.white : colors.text,
+                            fontSize: 11,
+                            fontWeight: '700',
+                          }}
+                        >
+                          {r.name}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
                 </View>
               </View>
             ) : null}
@@ -647,190 +1133,160 @@ export function InvoiceFormScreen() {
               </View>
             ) : null}
 
-            {!isEdit ? (
-              <>
-                <View style={styles.lineHeader}>
-                  <Text style={[styles.sec, { color: colors.text }]}>
-                    Kalemler ({lines.length})
-                  </Text>
-                  <Pressable
-                    onPress={() => setShowProdPicker((v) => !v)}
-                    style={[styles.addBtn, { backgroundColor: accent }]}
-                  >
-                    <Plus size={16} color={palette.white} />
-                    <Text style={styles.addBtnText}>Ürün</Text>
-                  </Pressable>
-                </View>
+            <View style={styles.lineHeader}>
+              <Text style={[styles.sec, { color: colors.text }]}>
+                Kalemler ({lines.length})
+              </Text>
+              {showLinesEditor ? (
+                <Pressable
+                  onPress={() => setShowProdPicker((v) => !v)}
+                  style={[styles.addBtn, { backgroundColor: accent }]}
+                >
+                  <Plus size={16} color={palette.white} />
+                  <Text style={styles.addBtnText}>{lineButtonLabel}</Text>
+                </Pressable>
+              ) : null}
+            </View>
 
-                {showProdPicker ? (
-                  <View style={[styles.pickerPanel, { borderColor: colors.cardBorder }]}>
-                    <SearchBar
-                      value={prodSearch}
-                      onChangeText={setProdSearch}
-                      placeholder="Ürün ara…"
-                    />
-                    <FlatList
-                      data={prodRows}
-                      keyExtractor={(item) => String(item.id)}
-                      scrollEnabled={false}
-                      renderItem={({ item }) => (
-                        <Pressable
-                          onPress={() => addProduct(item)}
-                          style={[styles.pickRow, { borderBottomColor: colors.cardBorder }]}
-                        >
+            {showLinesEditor && showProdPicker ? (
+              <View style={[styles.pickerPanel, { borderColor: colors.cardBorder }]}>
+                <SearchBar
+                  value={prodSearch}
+                  onChangeText={setProdSearch}
+                  placeholder={serviceMode ? 'Hizmet ara…' : 'Ürün ara…'}
+                />
+                {serviceMode ? (
+                  <FlatList
+                    data={svcRows}
+                    keyExtractor={(item) => String(item.id)}
+                    scrollEnabled={false}
+                    ListEmptyComponent={
+                      <Text style={{ color: colors.textMuted, padding: 8, fontSize: 12 }}>
+                        Hizmet kartı bulunamadı
+                      </Text>
+                    }
+                    renderItem={({ item }) => (
+                      <Pressable
+                        onPress={() => addService(item)}
+                        style={[styles.pickRow, { borderBottomColor: colors.cardBorder }]}
+                      >
+                        <View style={{ flex: 1 }}>
                           <Text
-                            style={{ color: colors.text, fontWeight: '600', flex: 1 }}
+                            style={{ color: colors.text, fontWeight: '600' }}
                             numberOfLines={1}
                           >
                             {item.name}
                           </Text>
-                          <Text style={{ color: accent, fontSize: 11, fontWeight: '700' }}>
-                            {formatMoney(
-                              isSupplierKind(resolvedKind)
-                                ? item.cost > 0
-                                  ? item.cost
-                                  : item.price
-                                : item.price,
-                            )}{' '}
-                            ₺
+                          <Text style={{ color: colors.textMuted, fontSize: 10 }}>
+                            {item.code || '—'}
+                            {item.category ? ` · ${item.category}` : ''}
                           </Text>
-                        </Pressable>
-                      )}
-                    />
-                  </View>
-                ) : null}
-
-                {lines.map((line) => (
-                  <View
-                    key={line.key}
-                    style={[
-                      styles.lineCard,
-                      { backgroundColor: colors.card, borderColor: colors.cardBorder },
-                    ]}
-                  >
-                    <View style={styles.lineTop}>
-                      <Text
-                        style={{ color: colors.text, fontWeight: '700', flex: 1 }}
-                        numberOfLines={2}
-                      >
-                        {line.name}
-                      </Text>
-                      <Pressable onPress={() => removeLine(line.key)} hitSlop={8}>
-                        <Trash2 size={16} color={palette.red500} />
+                        </View>
+                        <Text style={{ color: accent, fontSize: 11, fontWeight: '700' }}>
+                          {formatMoney(
+                            isSupplierKind(resolvedKind)
+                              ? item.purchase_price > 0
+                                ? item.purchase_price
+                                : item.unit_price
+                              : item.unit_price,
+                          )}{' '}
+                          {currency}
+                        </Text>
                       </Pressable>
-                    </View>
-                    <View style={styles.lineFields}>
-                      <FormField
-                        label="Miktar"
-                        value={String(line.qty)}
-                        onChangeText={(t) => {
-                          const n = parseFloat(t.replace(',', '.'));
-                          updateLine(line.key, {
-                            qty: Number.isFinite(n) && n > 0 ? n : 1,
-                          });
-                        }}
-                        keyboardType="decimal-pad"
-                        containerStyle={{ flex: 1 }}
-                      />
-                      <FormField
-                        label="Birim fiyat"
-                        value={String(line.unitPrice)}
-                        onChangeText={(t) => {
-                          const n = parseFloat(t.replace(',', '.'));
-                          updateLine(line.key, {
-                            unitPrice: Number.isFinite(n) && n >= 0 ? n : 0,
-                          });
-                        }}
-                        keyboardType="decimal-pad"
-                        containerStyle={{ flex: 1 }}
-                      />
-                      <FormField
-                        label="İnd. %"
-                        value={String(line.discountPercent ?? 0)}
-                        onChangeText={(t) => {
-                          const n = parseFloat(t.replace(',', '.'));
-                          updateLine(line.key, {
-                            discountPercent:
-                              Number.isFinite(n) && n >= 0 ? Math.min(100, n) : 0,
-                          });
-                        }}
-                        keyboardType="decimal-pad"
-                        containerStyle={{ width: 64 }}
-                      />
-                      <FormField
-                        label="KDV %"
-                        value={String(line.vatRate ?? 0)}
-                        onChangeText={(t) => {
-                          const n = parseFloat(t.replace(',', '.'));
-                          updateLine(line.key, {
-                            vatRate: Number.isFinite(n) && n >= 0 ? Math.min(100, n) : 0,
-                          });
-                        }}
-                        keyboardType="decimal-pad"
-                        containerStyle={{ width: 64 }}
-                      />
-                    </View>
-                    <Text style={{ color: accent, fontWeight: '800', textAlign: 'right' }}>
-                      {formatMoney(invoiceLineNet(line))} ₺
-                    </Text>
-                  </View>
-                ))}
-
-                <FormField
-                  label="Dip indirim (tutar)"
-                  value={footerDiscount}
-                  onChangeText={setFooterDiscount}
-                  keyboardType="decimal-pad"
-                  placeholder="0"
-                />
-
-                <View
-                  style={[
-                    styles.totalCard,
-                    { backgroundColor: colors.card, borderColor: colors.cardBorder },
-                  ]}
-                >
-                  <Text style={[styles.summaryTitle, { color: colors.text }]}>Özet</Text>
-                  <View style={styles.summaryRow}>
-                    <Text style={{ color: colors.textMuted }}>Ara toplam</Text>
-                    <Text style={{ color: colors.text, fontWeight: '600' }}>
-                      {formatMoney(totals.subtotal + totals.lineDiscount)} ₺
-                    </Text>
-                  </View>
-                  {totals.lineDiscount > 0 ? (
-                    <View style={styles.summaryRow}>
-                      <Text style={{ color: colors.textMuted }}>Satır indirimi</Text>
-                      <Text style={{ color: palette.red500, fontWeight: '600' }}>
-                        −{formatMoney(totals.lineDiscount)} ₺
-                      </Text>
-                    </View>
-                  ) : null}
-                  {totals.footerDiscount > 0 ? (
-                    <View style={styles.summaryRow}>
-                      <Text style={{ color: colors.textMuted }}>Dip indirim</Text>
-                      <Text style={{ color: palette.red500, fontWeight: '600' }}>
-                        −{formatMoney(totals.footerDiscount)} ₺
-                      </Text>
-                    </View>
-                  ) : null}
-                  <View style={styles.summaryRow}>
-                    <Text style={{ color: colors.textMuted }}>KDV (satır)</Text>
-                    <Text style={{ color: colors.textMuted, fontWeight: '600' }}>
-                      {formatMoney(totals.totalVat)} ₺
-                    </Text>
-                  </View>
-                  <Text style={{ color: colors.textSubtle, fontSize: 10, marginTop: 2 }}>
-                    Satır KDV % ve header total_vat kaydedilir (web invoicesAPI.tax)
-                  </Text>
-                  <View style={[styles.summaryRow, { marginTop: 8 }]}>
-                    <Text style={{ color: colors.text, fontWeight: '800' }}>Genel toplam</Text>
-                    <Text style={{ color: accent, fontSize: 22, fontWeight: '800' }}>
-                      {formatMoney(totals.net)} ₺
-                    </Text>
-                  </View>
-                </View>
-              </>
+                    )}
+                  />
+                ) : (
+                  <FlatList
+                    data={prodRows}
+                    keyExtractor={(item) => String(item.id)}
+                    scrollEnabled={false}
+                    renderItem={({ item }) => (
+                      <Pressable
+                        onPress={() => addProduct(item)}
+                        style={[styles.pickRow, { borderBottomColor: colors.cardBorder }]}
+                      >
+                        <Text
+                          style={{ color: colors.text, fontWeight: '600', flex: 1 }}
+                          numberOfLines={1}
+                        >
+                          {item.name}
+                        </Text>
+                        <Text style={{ color: accent, fontSize: 11, fontWeight: '700' }}>
+                          {formatMoney(
+                            isSupplierKind(resolvedKind)
+                              ? item.cost > 0
+                                ? item.cost
+                                : item.price
+                              : item.price,
+                          )}{' '}
+                          {currency}
+                        </Text>
+                      </Pressable>
+                    )}
+                  />
+                )}
+              </View>
             ) : null}
+
+            {lines.map((line) => renderLineEditor(line, showLinesEditor))}
+
+            {showLinesEditor ? (
+              <FormField
+                label="Dip indirim (tutar)"
+                value={footerDiscount}
+                onChangeText={setFooterDiscount}
+                keyboardType="decimal-pad"
+                placeholder="0"
+              />
+            ) : null}
+
+            <View
+              style={[
+                styles.totalCard,
+                { backgroundColor: colors.card, borderColor: colors.cardBorder },
+              ]}
+            >
+              <Text style={[styles.summaryTitle, { color: colors.text }]}>Özet</Text>
+              <View style={styles.summaryRow}>
+                <Text style={{ color: colors.textMuted }}>Ara toplam</Text>
+                <Text style={{ color: colors.text, fontWeight: '600' }}>
+                  {formatMoney(totals.subtotal + totals.lineDiscount)} {currency}
+                </Text>
+              </View>
+              {totals.lineDiscount > 0 ? (
+                <View style={styles.summaryRow}>
+                  <Text style={{ color: colors.textMuted }}>Satır indirimi</Text>
+                  <Text style={{ color: palette.red500, fontWeight: '600' }}>
+                    −{formatMoney(totals.lineDiscount)} {currency}
+                  </Text>
+                </View>
+              ) : null}
+              {totals.footerDiscount > 0 ? (
+                <View style={styles.summaryRow}>
+                  <Text style={{ color: colors.textMuted }}>Dip indirim</Text>
+                  <Text style={{ color: palette.red500, fontWeight: '600' }}>
+                    −{formatMoney(totals.footerDiscount)} {currency}
+                  </Text>
+                </View>
+              ) : null}
+              <View style={styles.summaryRow}>
+                <Text style={{ color: colors.textMuted }}>KDV (satır)</Text>
+                <Text style={{ color: colors.textMuted, fontWeight: '600' }}>
+                  {formatMoney(totals.totalVat)} {currency}
+                </Text>
+              </View>
+              {currencyRateNum !== 1 ? (
+                <Text style={{ color: colors.textSubtle, fontSize: 10, marginTop: 2 }}>
+                  Kur {currencyRateNum} · {currency}
+                </Text>
+              ) : null}
+              <View style={[styles.summaryRow, { marginTop: 8 }]}>
+                <Text style={{ color: colors.text, fontWeight: '800' }}>Genel toplam</Text>
+                <Text style={{ color: accent, fontSize: 22, fontWeight: '800' }}>
+                  {formatMoney(totals.net)} {currency}
+                </Text>
+              </View>
+            </View>
 
             <PrimaryButton
               label={saveButtonLabel(resolvedKind, isEdit)}
@@ -884,4 +1340,5 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
   },
+  row2: { flexDirection: 'row', gap: 10 },
 });

@@ -31,6 +31,7 @@ import {
   type CashRegisterRow,
 } from '../api/cashApi';
 import { fetchCustomers, fetchCustomerById, type CustomerRow } from '../api/customersApi';
+import { fetchSuppliers, type SupplierRow } from '../api/suppliersApi';
 import { formatMoney } from '../api/erpTables';
 import { useThemeStore } from '../store/themeStore';
 import { useOrgEpoch } from '../hooks/useOrgEpoch';
@@ -38,6 +39,36 @@ import { palette } from '../theme/colors';
 import type { MainStackParamList } from '../navigation/types';
 
 type Props = NativeStackScreenProps<MainStackParamList, 'CashCollection'>;
+
+type PartyKind = 'customer' | 'supplier';
+
+type PartyRow = {
+  id: string;
+  code: string | null;
+  name: string;
+  balance: number;
+  kind: PartyKind;
+};
+
+function toPartyFromCustomer(c: CustomerRow): PartyRow {
+  return {
+    id: c.id,
+    code: c.code,
+    name: c.name,
+    balance: Number(c.balance) || 0,
+    kind: 'customer',
+  };
+}
+
+function toPartyFromSupplier(s: SupplierRow): PartyRow {
+  return {
+    id: s.id,
+    code: s.code,
+    name: s.name,
+    balance: Number(s.balance) || 0,
+    kind: 'supplier',
+  };
+}
 
 function todayYmd(): string {
   const d = new Date();
@@ -66,16 +97,17 @@ export function CashCollectionScreen({ route }: Props) {
   const [createOpen, setCreateOpen] = useState(route.params?.openCreate ?? false);
   const [slipType, setSlipType] = useState<CariCashSlipType>('CH_TAHSILAT');
   const [registerId, setRegisterId] = useState<string | null>(null);
-  const [customerId, setCustomerId] = useState<string | null>(presetCustomerId ?? null);
+  const [partyKind, setPartyKind] = useState<PartyKind>('customer');
+  const [partyId, setPartyId] = useState<string | null>(presetCustomerId ?? null);
   const [amount, setAmount] = useState('');
   const [description, setDescription] = useState('');
   const [txDate, setTxDate] = useState(todayYmd());
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
-  const [custSearch, setCustSearch] = useState('');
-  const [customers, setCustomers] = useState<CustomerRow[]>([]);
-  const [custLoading, setCustLoading] = useState(false);
+  const [partySearch, setPartySearch] = useState('');
+  const [parties, setParties] = useState<PartyRow[]>([]);
+  const [partyLoading, setPartyLoading] = useState(false);
 
   const load = useCallback(async () => {
     setError(null);
@@ -108,10 +140,12 @@ export function CashCollectionScreen({ route }: Props) {
     void (async () => {
       const row = await fetchCustomerById(presetCustomerId);
       if (cancelled || !row) return;
-      setCustomerId(row.id);
-      setCustomers((prev) => {
-        if (prev.some((c) => c.id === row.id)) return prev;
-        return [row, ...prev];
+      setPartyKind('customer');
+      setPartyId(row.id);
+      setParties((prev) => {
+        const mapped = toPartyFromCustomer(row);
+        if (prev.some((c) => c.id === mapped.id)) return prev;
+        return [mapped, ...prev];
       });
     })();
     return () => {
@@ -123,32 +157,38 @@ export function CashCollectionScreen({ route }: Props) {
     if (!createOpen) return;
     let cancelled = false;
     const t = setTimeout(async () => {
-      setCustLoading(true);
+      setPartyLoading(true);
       try {
-        const rows = await fetchCustomers(custSearch, 40);
-        if (!cancelled) {
-          setCustomers((prev) => {
-            const preset = presetCustomerId
-              ? prev.find((c) => c.id === presetCustomerId) ??
-                (customerId === presetCustomerId ? prev.find((c) => c.id === customerId) : null)
-              : null;
-            if (preset && !rows.some((c) => c.id === preset.id)) {
-              return [preset, ...rows];
-            }
-            return rows;
-          });
+        if (partyKind === 'supplier') {
+          const rows = await fetchSuppliers(partySearch, 40);
+          if (!cancelled) setParties(rows.map(toPartyFromSupplier));
+        } else {
+          const rows = await fetchCustomers(partySearch, 40);
+          if (!cancelled) {
+            setParties((prev) => {
+              const mapped = rows.map(toPartyFromCustomer);
+              const preset =
+                partyKind === 'customer' && presetCustomerId
+                  ? prev.find((c) => c.id === presetCustomerId && c.kind === 'customer')
+                  : null;
+              if (preset && !mapped.some((c) => c.id === preset.id)) {
+                return [preset, ...mapped];
+              }
+              return mapped;
+            });
+          }
         }
       } catch {
-        if (!cancelled) setCustomers([]);
+        if (!cancelled) setParties([]);
       } finally {
-        if (!cancelled) setCustLoading(false);
+        if (!cancelled) setPartyLoading(false);
       }
-    }, custSearch ? 280 : 0);
+    }, partySearch ? 280 : 0);
     return () => {
       cancelled = true;
       clearTimeout(t);
     };
-  }, [createOpen, custSearch, presetCustomerId, customerId]);
+  }, [createOpen, partySearch, partyKind, presetCustomerId]);
 
   const visibleSlips = presetCustomerId
     ? slips.filter((s) => s.customer_id === presetCustomerId)
@@ -160,9 +200,10 @@ export function CashCollectionScreen({ route }: Props) {
     setAmount('');
     setDescription('');
     setTxDate(todayYmd());
-    setCustomerId(presetCustomerId ?? null);
+    setPartyKind('customer');
+    setPartyId(presetCustomerId ?? null);
     setRegisterId(registers[0]?.id ?? null);
-    setCustSearch('');
+    setPartySearch('');
     setCreateOpen(true);
   };
 
@@ -173,8 +214,8 @@ export function CashCollectionScreen({ route }: Props) {
       setFormError('Kasa seçin');
       return;
     }
-    if (!customerId) {
-      setFormError('Cari hesap seçin');
+    if (!partyId) {
+      setFormError(partyKind === 'supplier' ? 'Tedarikçi seçin' : 'Cari hesap seçin');
       return;
     }
     if (!Number.isFinite(amt) || amt <= 0) {
@@ -185,7 +226,7 @@ export function CashCollectionScreen({ route }: Props) {
     try {
       await createCariCashSlip({
         registerId,
-        customerId,
+        customerId: partyId,
         amount: amt,
         type: slipType,
         date: txDate,
@@ -201,15 +242,15 @@ export function CashCollectionScreen({ route }: Props) {
     }
   };
 
-  const selectedCustomer = customers.find((c) => c.id === customerId);
+  const selectedParty = parties.find((c) => c.id === partyId && c.kind === partyKind);
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
       <ScreenHeader
         title="Tahsilat / Ödeme"
         subtitle={
-          presetCustomerId && selectedCustomer
-            ? selectedCustomer.name
+          presetCustomerId && selectedParty
+            ? selectedParty.name
             : presetCustomerId
               ? `${visibleSlips.length} fiş`
               : `${slips.length} cari fiş`
@@ -280,12 +321,32 @@ export function CashCollectionScreen({ route }: Props) {
         />
       )}
 
-      <Modal visible={createOpen} animationType="slide" transparent onRequestClose={() => setCreateOpen(false)}>
+      <Modal
+        visible={createOpen}
+        animationType="slide"
+        transparent
+        onRequestClose={() => {
+          setCreateOpen(false);
+          if (presetCustomerId) {
+            setPartyKind('customer');
+            setPartyId(presetCustomerId);
+          }
+        }}
+      >
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           style={styles.modalOverlay}
         >
-          <Pressable style={styles.modalBackdrop} onPress={() => setCreateOpen(false)} />
+          <Pressable
+            style={styles.modalBackdrop}
+            onPress={() => {
+              setCreateOpen(false);
+              if (presetCustomerId) {
+                setPartyKind('customer');
+                setPartyId(presetCustomerId);
+              }
+            }}
+          />
           <View style={[styles.modalSheet, { backgroundColor: colors.card }]}>
             <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
               <Text style={[styles.modalTitle, { color: colors.text }]}>Cari tahsilat / ödeme</Text>
@@ -340,29 +401,68 @@ export function CashCollectionScreen({ route }: Props) {
                 })}
               </ScrollView>
 
-              <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Cari hesap</Text>
-              {selectedCustomer ? (
+              <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Cari türü</Text>
+              <View style={styles.dirRow}>
+                {(
+                  [
+                    { id: 'customer' as const, label: 'Müşteri' },
+                    { id: 'supplier' as const, label: 'Tedarikçi' },
+                  ] as const
+                ).map((d) => (
+                  <Pressable
+                    key={d.id}
+                    onPress={() => {
+                      if (partyKind === d.id) return;
+                      setPartyKind(d.id);
+                      setPartyId(null);
+                      setPartySearch('');
+                      setParties([]);
+                    }}
+                    style={[
+                      styles.dirBtn,
+                      {
+                        backgroundColor: partyKind === d.id ? palette.blue600 : colors.inputBg,
+                        borderColor: colors.inputBorder,
+                      },
+                    ]}
+                  >
+                    <Text style={{ color: partyKind === d.id ? palette.white : colors.text, fontWeight: '700' }}>
+                      {d.label}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+
+              <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>
+                {partyKind === 'supplier' ? 'Tedarikçi' : 'Müşteri'}
+              </Text>
+              {selectedParty ? (
                 <Pressable
-                  onPress={() => setCustomerId(null)}
+                  onPress={() => setPartyId(null)}
                   style={[styles.selectedCari, { borderColor: colors.inputBorder, backgroundColor: colors.inputBg }]}
                 >
-                  <Text style={{ color: colors.text, fontWeight: '700' }}>{selectedCustomer.name}</Text>
+                  <Text style={{ color: colors.text, fontWeight: '700' }}>{selectedParty.name}</Text>
                   <Text style={{ color: colors.textMuted, fontSize: 12, marginTop: 2 }}>
-                    {selectedCustomer.code || '—'} · Bakiye: {formatMoney(selectedCustomer.balance)}
+                    {selectedParty.code || '—'} · Bakiye: {formatMoney(selectedParty.balance)}
+                    {partyKind === 'supplier' ? ' · Tedarikçi' : ''}
                   </Text>
                   <Text style={{ color: palette.blue600, fontSize: 11, marginTop: 4 }}>Değiştirmek için dokunun</Text>
                 </Pressable>
               ) : (
                 <>
-                  <SearchBar value={custSearch} onChangeText={setCustSearch} placeholder="Cari ara…" />
-                  {custLoading ? (
+                  <SearchBar
+                    value={partySearch}
+                    onChangeText={setPartySearch}
+                    placeholder={partyKind === 'supplier' ? 'Tedarikçi ara…' : 'Müşteri ara…'}
+                  />
+                  {partyLoading ? (
                     <ActivityIndicator style={{ marginVertical: 12 }} color={palette.green600} />
                   ) : (
                     <View style={styles.cariList}>
-                      {customers.slice(0, 8).map((c) => (
+                      {parties.slice(0, 8).map((c) => (
                         <Pressable
-                          key={c.id}
-                          onPress={() => setCustomerId(c.id)}
+                          key={`${c.kind}-${c.id}`}
+                          onPress={() => setPartyId(c.id)}
                           style={[styles.cariItem, { borderColor: colors.cardBorder }]}
                         >
                           <Text style={{ color: colors.text, fontWeight: '600' }}>{c.name}</Text>
@@ -371,8 +471,10 @@ export function CashCollectionScreen({ route }: Props) {
                           </Text>
                         </Pressable>
                       ))}
-                      {customers.length === 0 ? (
-                        <Text style={{ color: colors.textMuted, fontSize: 12, padding: 8 }}>Cari bulunamadı</Text>
+                      {parties.length === 0 ? (
+                        <Text style={{ color: colors.textMuted, fontSize: 12, padding: 8 }}>
+                          {partyKind === 'supplier' ? 'Tedarikçi bulunamadı' : 'Müşteri bulunamadı'}
+                        </Text>
                       ) : null}
                     </View>
                   )}

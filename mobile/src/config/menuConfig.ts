@@ -388,6 +388,7 @@ export type LiveRoute =
   | 'StoreManagement'
   | 'ETransform'
   | 'DocumentScan'
+  | 'MaterialLabelScan'
   | 'Module';
 
 const LIVE_MAP: Record<string, LiveRoute> = {
@@ -425,7 +426,7 @@ const LIVE_MAP: Record<string, LiveRoute> = {
   'butcher-production': 'ProductionOps',
   multicurrency: 'MultiCurrency',
   excel: 'ExcelOps',
-  'smart-material-add': 'ExcelOps',
+  'smart-material-add': 'MaterialLabelScan',
   'invoice-label-designer': 'SystemExtras',
   'virtual-pbx-caller-id': 'SystemExtras',
   'service-cards': 'Products',

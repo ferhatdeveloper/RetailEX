@@ -54,6 +54,11 @@ export function productsTable(fn = firmNr()): string {
   return `rex_${fn}_products`;
 }
 
+/** Firma hizmet kartları — web `serviceAPI` / `rex_{firm}_services` */
+export function servicesTable(fn = firmNr()): string {
+  return `rex_${fn}_services`;
+}
+
 export function customersTable(fn = firmNr()): string {
   return `rex_${fn}_customers`;
 }

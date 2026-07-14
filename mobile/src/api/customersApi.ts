@@ -1,4 +1,5 @@
 import { pgQuery } from './pgClient';
+import { postgrestGet, postgrestPost } from './postgrestClient';
 import { customersTable, firmNr, newUuid } from './erpTables';
 import { shouldUseLiveData, getNetworkPolicy } from '../offline/policy';
 import {
@@ -8,6 +9,11 @@ import {
 } from '../offline/snapshotCache';
 import { enqueueMutation, type CustomerInput } from '../offline/mutationQueue';
 import { useConnectivityStore } from '../store/connectivityStore';
+import {
+  shouldPreferPostgrest,
+  shouldUseBridgeSql,
+  useConfigStore,
+} from '../store/configStore';
 
 export type CustomerRow = {
   id: string;
@@ -29,7 +35,56 @@ export type CustomerWriteOptions = {
   id?: string;
 };
 
-async function fetchCustomersLive(search = '', limit = 200): Promise<CustomerRow[]> {
+const REST_SELECT = 'id,code,name,phone,email,city,balance,is_active';
+
+function mapCustomerRow(r: Record<string, unknown>): CustomerRow {
+  return {
+    id: String(r.id ?? ''),
+    code: r.code != null ? String(r.code) : null,
+    name: String(r.name ?? ''),
+    phone: r.phone != null ? String(r.phone) : null,
+    email: r.email != null ? String(r.email) : null,
+    city: r.city != null ? String(r.city) : null,
+    balance: Number(r.balance) || 0,
+    is_active: !(r.is_active === false || r.is_active === 0 || String(r.is_active).toLowerCase() === 'false'),
+  };
+}
+
+function escapeIlike(q: string): string {
+  return q.replace(/[%_*(),]/g, '');
+}
+
+/** Web customers getAll/search — kart bakiyesi (ledger client-side opsiyonel) */
+async function fetchCustomersViaPostgrest(search = '', limit = 200): Promise<CustomerRow[]> {
+  const table = customersTable();
+  const fn = firmNr();
+  const fnBare = fn.replace(/^0+/, '') || fn;
+  const firmOr = [...Array.from(new Set([fn, fnBare].filter(Boolean))).map((f) => `firm_nr.eq.${f}`), 'firm_nr.is.null'].join(
+    ',',
+  );
+
+  const query: Record<string, string | number> = {
+    select: REST_SELECT,
+    order: 'name.asc',
+    limit,
+    or: `(${firmOr})`,
+  };
+
+  const q = escapeIlike(search.trim());
+  if (q.length >= 1) {
+    query.and = `(or(${firmOr}),or(name.ilike.*${q}*,code.ilike.*${q}*,phone.ilike.*${q}*,email.ilike.*${q}*))`;
+    delete query.or;
+  }
+
+  const rows = await postgrestGet<Record<string, unknown>[]>(`/${table}`, query, {
+    schema: 'public',
+  });
+  return (Array.isArray(rows) ? rows : [])
+    .map(mapCustomerRow)
+    .filter((r) => r.is_active && r.id);
+}
+
+async function fetchCustomersLiveBridge(search = '', limit = 200): Promise<CustomerRow[]> {
   const table = customersTable();
   const fn = firmNr();
   const q = search.trim();
@@ -74,8 +129,35 @@ async function fetchCustomersLive(search = '', limit = 200): Promise<CustomerRow
      LIMIT $3`,
     [fn, fn.replace(/^0+/, '') || fn, limit],
   );
-  await saveCustomersSnapshot(res.rows);
   return res.rows;
+}
+
+async function fetchCustomersLive(search = '', limit = 200): Promise<CustomerRow[]> {
+  const cfg = useConfigStore.getState().config;
+  const preferRest = shouldPreferPostgrest(cfg);
+  const canBridge = shouldUseBridgeSql(cfg);
+
+  if (preferRest) {
+    try {
+      const rows = await fetchCustomersViaPostgrest(search, limit);
+      if (!search.trim()) await saveCustomersSnapshot(rows);
+      return rows;
+    } catch (e) {
+      if (!canBridge) throw e;
+    }
+  }
+
+  if (!canBridge) {
+    throw new Error(
+      preferRest
+        ? 'PostgREST cari okuma başarısız ve bridge kapalı (apiMode=postgrest)'
+        : 'Bridge yapılandırması eksik',
+    );
+  }
+
+  const rows = await fetchCustomersLiveBridge(search, limit);
+  if (!search.trim()) await saveCustomersSnapshot(rows);
+  return rows;
 }
 
 export async function fetchCustomers(search = '', limit = 200): Promise<CustomerRow[]> {
@@ -109,6 +191,38 @@ export async function fetchCustomerById(id: string): Promise<CustomerDetail | nu
   }
 
   const table = customersTable();
+  const cfg = useConfigStore.getState().config;
+
+  if (shouldPreferPostgrest(cfg)) {
+    try {
+      const rows = await postgrestGet<Record<string, unknown>[]>(
+        `/${table}`,
+        {
+          select: 'id,code,name,phone,email,city,balance,is_active,address,tax_nr,tax_office,district',
+          id: `eq.${id}`,
+          limit: 1,
+        },
+        { schema: 'public' },
+      );
+      const r = Array.isArray(rows) ? rows[0] : null;
+      if (r) {
+        return {
+          ...mapCustomerRow(r),
+          address: r.address != null ? String(r.address) : null,
+          tax_no: r.tax_nr != null ? String(r.tax_nr) : null,
+          tax_office: r.tax_office != null ? String(r.tax_office) : null,
+          district: r.district != null ? String(r.district) : null,
+        };
+      }
+    } catch {
+      if (!shouldUseBridgeSql(cfg)) {
+        const cached = await getCachedCustomers('', 500);
+        const hit = cached.find((r) => String(r.id) === String(id));
+        return hit ? { ...hit } : null;
+      }
+    }
+  }
+
   try {
     try {
       const res = await pgQuery<CustomerDetail>(
@@ -181,7 +295,37 @@ export async function generateCustomerCode(): Promise<string> {
   }
 }
 
-async function createCustomerLive(input: CustomerInput, id: string): Promise<string> {
+async function createCustomerViaPostgrest(input: CustomerInput, id: string): Promise<string> {
+  const table = customersTable();
+  const fn = firmNr();
+  const code = (input.code || '').trim() || (await generateCustomerCode());
+  const body: Record<string, unknown> = {
+    id,
+    firm_nr: fn,
+    code,
+    name: input.name.trim(),
+    phone: input.phone?.trim() || null,
+    email: input.email?.trim() || null,
+    address: input.address?.trim() || null,
+    city: input.city?.trim() || null,
+    district: input.district?.trim() || null,
+    tax_nr: input.tax_nr?.trim() || null,
+    tax_office: input.tax_office?.trim() || null,
+    notes: input.notes?.trim() || null,
+    is_active: true,
+    balance: 0,
+    points: 0,
+    total_spent: 0,
+  };
+  const rows = await postgrestPost<Record<string, unknown>[]>(`/${table}`, body, {
+    schema: 'public',
+    prefer: 'return=representation',
+  });
+  const row = Array.isArray(rows) ? rows[0] : rows;
+  return row?.id != null ? String(row.id) : id;
+}
+
+async function createCustomerViaBridge(input: CustomerInput, id: string): Promise<string> {
   const table = customersTable();
   const fn = firmNr();
   const code = (input.code || '').trim() || (await generateCustomerCode());
@@ -210,6 +354,30 @@ async function createCustomerLive(input: CustomerInput, id: string): Promise<str
     ],
   );
   return id;
+}
+
+async function createCustomerLive(input: CustomerInput, id: string): Promise<string> {
+  const cfg = useConfigStore.getState().config;
+  const preferRest = shouldPreferPostgrest(cfg);
+  const canBridge = shouldUseBridgeSql(cfg);
+
+  if (preferRest) {
+    try {
+      return await createCustomerViaPostgrest(input, id);
+    } catch (e) {
+      if (!canBridge) throw e;
+    }
+  }
+
+  if (!canBridge) {
+    throw new Error(
+      preferRest
+        ? 'PostgREST cari kaydı başarısız ve bridge kapalı (apiMode=postgrest)'
+        : 'Bridge yapılandırması eksik',
+    );
+  }
+
+  return createCustomerViaBridge(input, id);
 }
 
 export async function createCustomer(

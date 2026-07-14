@@ -34,6 +34,15 @@ yarn-error.*
 .env
 .env*.local
 
+# Google Play / EAS secrets — JSON asla commit edilmez (bkz. PLAY_SUBMIT.md)
+secrets/**
+!secrets/.gitkeep
+!secrets/README.md
+*service-account*.json
+google-play*.json
+play-store*.json
+credentials.json
+
 # typescript
 *.tsbuildinfo
 

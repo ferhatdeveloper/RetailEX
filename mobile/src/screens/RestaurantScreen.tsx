@@ -19,6 +19,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { ArrowLeft, Clock, Users, Utensils } from 'lucide-react-native';
 import { GradientHeader, HeaderIconButton } from '../components/GradientHeader';
 import { ScreenHeader, EmptyState, ErrorBanner } from '../components/ScreenChrome';
+import { SegmentTabBar } from '../components/SegmentTabBar';
 import { FormField } from '../components/FormField';
 import { PrimaryButton } from '../components/PrimaryButton';
 import {
@@ -445,33 +446,12 @@ export function RestaurantScreen({ route }: Props) {
     <View style={[styles.root, { backgroundColor: colors.background }]}>
       <ScreenHeader title="Restoran" subtitle="Masalar, adisyon ve bugünkü akış" />
 
-      <View style={styles.tabs}>
-        {tabs.map((t) => (
-          <Pressable
-            key={t.id}
-            onPress={() => setTab(t.id)}
-            style={[
-              styles.tab,
-              {
-                backgroundColor: tab === t.id ? palette.blue600 : colors.card,
-                borderColor: colors.cardBorder,
-              },
-            ]}
-          >
-            <Text
-              style={{
-                color: tab === t.id ? palette.white : colors.text,
-                fontWeight: '700',
-                fontSize: 11,
-                textAlign: 'center',
-              }}
-              numberOfLines={1}
-            >
-              {t.label}
-            </Text>
-          </Pressable>
-        ))}
-      </View>
+      <SegmentTabBar
+        layout="scroll"
+        value={tab}
+        onChange={setTab}
+        items={tabs.map((t) => ({ id: t.id, label: t.label }))}
+      />
 
       {tab === 'tables' ? (
         <ScrollView
@@ -845,15 +825,6 @@ export function RestaurantScreen({ route }: Props) {
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
-  tabs: { flexDirection: 'row', gap: 6, paddingHorizontal: 12, paddingBottom: 8 },
-  tab: {
-    flex: 1,
-    paddingVertical: 10,
-    borderRadius: 10,
-    borderWidth: 1,
-    alignItems: 'center',
-    paddingHorizontal: 4,
-  },
   legendScroll: {
     maxHeight: 40,
     borderTopWidth: StyleSheet.hairlineWidth,

@@ -7,6 +7,7 @@
  */
 
 import { readFileSync, existsSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -39,6 +40,12 @@ if (existsSync(easPath)) {
     'eas-app-version-source',
     'eas.json → cli.appVersionSource = local',
     eas.cli?.appVersionSource === 'local',
+  );
+  add(
+    'eas-submit-production',
+    'eas.json → submit.production.android.track',
+    eas.submit?.production?.android?.track === 'internal',
+    eas.submit?.production?.android?.track ?? 'yok',
   );
 } else {
   add('eas-json', 'mobile/eas.json', false, 'dosya yok');
@@ -90,15 +97,39 @@ add(
   `code=${versionCode} beklenen=${expectedCode}`,
 );
 
+// Expo oturumu (whoami) — login kullanıcı adımı
+let whoamiOk = false;
+let whoamiDetail = 'Not logged in — kullanıcı: npx eas-cli@latest login';
+try {
+  const who = spawnSync('npx', ['eas-cli@latest', 'whoami'], {
+    cwd: mobileDir,
+    encoding: 'utf8',
+    shell: true,
+    env: process.env,
+  });
+  const out = `${who.stdout || ''}${who.stderr || ''}`.trim();
+  whoamiOk = who.status === 0 && Boolean(out) && !/not logged in/i.test(out);
+  if (whoamiOk) {
+    whoamiDetail = out.split('\n').filter(Boolean).pop() || 'oturum açık';
+  } else if (process.env.EXPO_TOKEN) {
+    whoamiDetail = 'EXPO_TOKEN var ama whoami başarısız — token/geçerlilik kontrol et';
+  }
+} catch {
+  whoamiDetail = 'eas-cli whoami çalıştırılamadı';
+}
+add('expo-whoami', 'Expo login (eas whoami)', whoamiOk, whoamiDetail);
+
 // EXPO_TOKEN (isteğe bağlı — CI/headless)
 add(
   'expo-token',
   'EXPO_TOKEN (CI/headless; yerel login yeterli)',
-  Boolean(process.env.EXPO_TOKEN) || process.stdin.isTTY,
-  process.env.EXPO_TOKEN ? 'tanımlı' : 'yerel oturum veya .env',
+  Boolean(process.env.EXPO_TOKEN) || whoamiOk || process.stdin.isTTY,
+  process.env.EXPO_TOKEN ? 'tanımlı' : whoamiOk ? 'yerel login OK' : 'gerekli: login veya token',
 );
 
-const prepIds = checks.filter((c) => c.id !== 'eas-project-id' && c.id !== 'expo-token');
+const prepIds = checks.filter(
+  (c) => !['eas-project-id', 'expo-token', 'expo-whoami'].includes(c.id),
+);
 const prepOk = prepIds.every((c) => c.ok);
 const linked = checks.find((c) => c.id === 'eas-project-id')?.ok;
 
@@ -111,7 +142,14 @@ for (const c of checks) {
 
 console.log('\nÖzet:');
 console.log(`  Yapılandırma hazırlığı: ${prepOk ? 'TAMAM' : 'EKSİK'}`);
-console.log(`  Expo projesi bağlı:     ${linked ? 'EVET' : 'HAYIR (npm run mobile:eas:init)'}`);
+console.log(`  Expo login:             ${whoamiOk ? 'EVET' : 'HAYIR → npx eas-cli@latest login'}`);
+console.log(`  Expo projesi bağlı:     ${linked ? 'EVET' : 'HAYIR (önce login, sonra npm run mobile:eas:init)'}`);
+if (!whoamiOk) {
+  console.log('\n  >>> Kullanıcı adımı: Expo hesabına giriş (otomatik edilemez)');
+  console.log('      npx eas-cli@latest login');
+  console.log('      npx eas-cli@latest whoami');
+  console.log('      npm run mobile:eas:init');
+}
 console.log('\nDetay: mobile/EAS_CHECKLIST.md · mobile/README.md#eas-build\n');
 
 process.exit(prepOk ? 0 : 1);

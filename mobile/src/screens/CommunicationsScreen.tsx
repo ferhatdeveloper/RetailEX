@@ -28,6 +28,7 @@ import {
   EmptyState,
   ErrorBanner,
 } from '../components/ScreenChrome';
+import { SegmentTabBar } from '../components/SegmentTabBar';
 import {
   fetchNotifyCustomers,
   fetchNotificationQueue,
@@ -286,34 +287,7 @@ export function CommunicationsScreen({ route }: Props) {
         </View>
       </View>
 
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.tabBar}
-      >
-        {tabs.map((t) => {
-          const Icon = t.icon;
-          const active = tab === t.id;
-          return (
-            <Pressable
-              key={t.id}
-              onPress={() => setTab(t.id)}
-              style={[
-                styles.tab,
-                {
-                  backgroundColor: active ? palette.blue600 : colors.card,
-                  borderColor: active ? palette.blue600 : colors.cardBorder,
-                },
-              ]}
-            >
-              <Icon size={14} color={active ? palette.white : colors.textMuted} />
-              <Text style={{ color: active ? palette.white : colors.text, fontWeight: '700', fontSize: 12 }}>
-                {t.label}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </ScrollView>
+      <SegmentTabBar layout="scroll" value={tab} onChange={setTab} items={tabs} />
 
       {tab === 'customers' ? (
         <SearchBar value={search} onChangeText={setSearch} placeholder="Ad, telefon, şehir…" />
@@ -592,16 +566,6 @@ const styles = StyleSheet.create({
   },
   statN: { fontSize: 18, fontWeight: '800' },
   statL: { fontSize: 10, fontWeight: '600', marginTop: 2 },
-  tabBar: { paddingHorizontal: 12, gap: 8, paddingVertical: 8 },
-  tab: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 20,
-    borderWidth: 1,
-  },
   toolbar: { paddingHorizontal: 12, paddingBottom: 4 },
   toolBtn: {
     flexDirection: 'row',

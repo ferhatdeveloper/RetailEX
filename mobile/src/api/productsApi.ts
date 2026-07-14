@@ -1,5 +1,5 @@
 import { pgQuery } from './pgClient';
-import { postgrestGet } from './postgrestClient';
+import { postgrestGet, postgrestPost } from './postgrestClient';
 import { firmNr, newUuid, productsTable } from './erpTables';
 import { shouldUseLiveData, getNetworkPolicy } from '../offline/policy';
 import { getCachedProducts, saveProductsSnapshot } from '../offline/snapshotCache';
@@ -37,6 +37,8 @@ export type ProductInput = {
   min_stock?: number | null;
   brand?: string;
   category_code?: string;
+  /** KDV % — yoksa DB default / 20 */
+  vat_rate?: number;
 };
 
 const LIST_COLS = `id, code, barcode, name, unit,
@@ -233,6 +235,32 @@ export async function fetchProductByBarcode(barcode: string): Promise<ProductRow
     return hit ? { ...hit, vat_rate: hit.vat_rate ?? 20 } : null;
   }
 
+  const cfg = useConfigStore.getState().config;
+  if (shouldPreferPostgrest(cfg)) {
+    try {
+      const table = productsTable();
+      const rows = await postgrestGet<Record<string, unknown>[]>(
+        `/${table}`,
+        {
+          select: REST_SELECT,
+          or: `(barcode.eq.${code},code.eq.${code})`,
+          is_active: 'eq.true',
+          limit: 1,
+        },
+        { schema: 'public' },
+      );
+      const list = (Array.isArray(rows) ? rows : []).map(mapProductRow).filter((r) => r.id);
+      if (list[0]) return list[0];
+    } catch (e) {
+      if (!shouldUseBridgeSql(cfg)) {
+        const rows = await getCachedProducts(code, 50);
+        const hit = rows.find((r) => r.barcode === code || r.code === code);
+        if (hit) return { ...hit, vat_rate: hit.vat_rate ?? 20 };
+        throw e;
+      }
+    }
+  }
+
   try {
     const rows = await selectProducts(
       LIST_COLS,
@@ -256,6 +284,31 @@ export async function fetchProductById(id: string): Promise<ProductRow | null> {
     const rows = await getCachedProducts('', 500);
     const hit = rows.find((r) => String(r.id) === String(id));
     return hit ? { ...hit, vat_rate: hit.vat_rate ?? 20 } : null;
+  }
+
+  const cfg = useConfigStore.getState().config;
+  if (shouldPreferPostgrest(cfg)) {
+    try {
+      const table = productsTable();
+      const rows = await postgrestGet<Record<string, unknown>[]>(
+        `/${table}`,
+        {
+          select: REST_SELECT,
+          id: `eq.${id}`,
+          limit: 1,
+        },
+        { schema: 'public' },
+      );
+      const list = (Array.isArray(rows) ? rows : []).map(mapProductRow).filter((r) => r.id);
+      if (list[0]) return list[0];
+    } catch (e) {
+      if (!shouldUseBridgeSql(cfg)) {
+        const rows = await getCachedProducts('', 500);
+        const hit = rows.find((r) => String(r.id) === String(id));
+        if (hit) return { ...hit, vat_rate: hit.vat_rate ?? 20 };
+        throw e;
+      }
+    }
   }
 
   try {
@@ -295,14 +348,75 @@ export async function generateProductCode(): Promise<string> {
   }
 }
 
-/** Basit ürün oluştur (web ProductAPI.create alt kümesi) */
-export async function createProduct(input: ProductInput): Promise<string> {
-  if (!shouldUseLiveData()) {
-    throw new Error('Çevrimdışı: ürün oluşturma için canlı bağlantı gerekir');
-  }
+function normalizeVatRate(input: ProductInput): number {
+  const v = Number(input.vat_rate);
+  if (!Number.isFinite(v) || v < 0) return 20;
+  return Math.min(100, v);
+}
+
+async function createProductViaPostgrest(input: ProductInput, id: string): Promise<string> {
   const table = productsTable();
   const fn = firmNr();
-  const id = newUuid();
+  const code = (input.code || '').trim() || (await generateProductCode());
+  const name = input.name.trim();
+  if (!name) throw new Error('Ürün adı zorunlu');
+
+  const price = Math.max(0, Number(input.price) || 0);
+  const cost = Math.max(0, Number(input.cost) || 0);
+  const stock = Number(input.stock) || 0;
+  const unit = (input.unit || 'AD').trim() || 'AD';
+  const vatRate = normalizeVatRate(input);
+  const minStock =
+    input.min_stock === undefined || input.min_stock === null
+      ? null
+      : Number(input.min_stock);
+
+  const body: Record<string, unknown> = {
+    id,
+    firm_nr: fn,
+    code,
+    barcode: input.barcode?.trim() || null,
+    name,
+    unit,
+    price,
+    cost,
+    stock,
+    min_stock: minStock,
+    brand: input.brand?.trim() || null,
+    category_code: input.category_code?.trim() || null,
+    is_active: true,
+    vat_rate: vatRate,
+    price_list_1: price,
+  };
+
+  try {
+    const rows = await postgrestPost<Record<string, unknown>[]>(`/${table}`, body, {
+      schema: 'public',
+      prefer: 'return=representation',
+    });
+    const row = Array.isArray(rows) ? rows[0] : rows;
+    return row?.id != null ? String(row.id) : id;
+  } catch (e) {
+    // Bazı kiracılarda price_list_1 / vat_rate yok — sade gövde dene
+    const slim = { ...body };
+    delete slim.price_list_1;
+    delete slim.vat_rate;
+    delete slim.min_stock;
+    delete slim.brand;
+    delete slim.category_code;
+    const rows = await postgrestPost<Record<string, unknown>[]>(`/${table}`, slim, {
+      schema: 'public',
+      prefer: 'return=representation',
+    });
+    const row = Array.isArray(rows) ? rows[0] : rows;
+    if (row?.id != null) return String(row.id);
+    throw e;
+  }
+}
+
+async function createProductViaBridge(input: ProductInput, id: string): Promise<string> {
+  const table = productsTable();
+  const fn = firmNr();
   const code = (input.code || '').trim() || (await generateProductCode());
   const name = input.name.trim();
   if (!name) throw new Error('Ürün adı zorunlu');
@@ -314,12 +428,37 @@ export async function createProduct(input: ProductInput): Promise<string> {
   const barcode = input.barcode?.trim() || null;
   const brand = input.brand?.trim() || null;
   const category = input.category_code?.trim() || null;
+  const vatRate = normalizeVatRate(input);
   const minStock =
     input.min_stock === undefined || input.min_stock === null
       ? null
       : Number(input.min_stock);
 
   const attempts: { sql: string; params: unknown[] }[] = [
+    {
+      sql: `INSERT INTO ${table} (
+         id, firm_nr, code, barcode, name, unit, price, cost, stock, min_stock,
+         brand, category_code, is_active, price_list_1, vat_rate
+       ) VALUES (
+         $1::uuid, $2, $3, $4, $5, $6, $7, $8, $9, $10,
+         $11, $12, true, $7, $13
+       )`,
+      params: [
+        id,
+        fn,
+        code,
+        barcode,
+        name,
+        unit,
+        price,
+        cost,
+        stock,
+        minStock,
+        brand,
+        category,
+        vatRate,
+      ],
+    },
     {
       sql: `INSERT INTO ${table} (
          id, firm_nr, code, barcode, name, unit, price, cost, stock, min_stock,
@@ -360,6 +499,38 @@ export async function createProduct(input: ProductInput): Promise<string> {
     }
   }
   throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
+}
+
+/** Basit ürün oluştur (web ProductAPI.create alt kümesi) — PostgREST veya bridge */
+export async function createProduct(input: ProductInput): Promise<string> {
+  if (!shouldUseLiveData()) {
+    throw new Error('Çevrimdışı: ürün oluşturma için canlı bağlantı gerekir');
+  }
+  const id = newUuid();
+  const name = input.name.trim();
+  if (!name) throw new Error('Ürün adı zorunlu');
+
+  const cfg = useConfigStore.getState().config;
+  const preferRest = shouldPreferPostgrest(cfg);
+  const canBridge = shouldUseBridgeSql(cfg);
+
+  if (preferRest) {
+    try {
+      return await createProductViaPostgrest(input, id);
+    } catch (e) {
+      if (!canBridge) throw e;
+    }
+  }
+
+  if (!canBridge) {
+    throw new Error(
+      preferRest
+        ? 'PostgREST ürün kaydı başarısız ve bridge kapalı (apiMode=postgrest)'
+        : 'Bridge yapılandırması eksik',
+    );
+  }
+
+  return createProductViaBridge(input, id);
 }
 
 export async function updateProduct(id: string, input: Partial<ProductInput>): Promise<void> {

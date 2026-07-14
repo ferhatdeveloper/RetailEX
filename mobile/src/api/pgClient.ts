@@ -26,6 +26,18 @@ export function normalizeFirmNr(v: string | number | undefined | null): string {
   return d.length <= 3 ? d.padStart(3, '0') : d;
 }
 
+/** Ham SQL — apiMode=postgrest iken engelli (REST yolu olmayan yazma / WMS vb.) */
+export function assertBridgeSqlAllowed(cfg?: DbConfig): void {
+  const config = cfg ?? useConfigStore.getState().config;
+  if (config.apiMode !== 'postgrest') return;
+  throw new Error(
+    'Bu işlem hâlâ Bridge SQL ister (apiMode=postgrest). ' +
+      'Giriş, firma/dönem/mağaza, ürün/cari listesi, dashboard ve ana raporlar PostgREST ile gelir. ' +
+      'Kalan SQL (bazı yazma/WMS) için Config → Hybrid veya Bridge; host = PC LAN IP, port 3001. ' +
+      'Port 3002 PostgREST’tir — /api/pg_query yoktur.',
+  );
+}
+
 export async function pgQuery<T = Record<string, unknown>>(
   sql: string,
   params: unknown[] = [],
@@ -33,6 +45,7 @@ export async function pgQuery<T = Record<string, unknown>>(
   endpointOverride?: PgEndpoint,
 ): Promise<PgQueryResult<T>> {
   const cfg = cfgOverride ?? useConfigStore.getState().config;
+  assertBridgeSqlAllowed(cfg);
   const bridgeUrl = getBridgeBaseUrl(cfg);
   const connStr = buildConnStr(cfg, endpointOverride);
 
@@ -47,7 +60,10 @@ export async function pgQuery<T = Record<string, unknown>>(
     const msg = e instanceof Error ? e.message : String(e);
     if (/network|failed to fetch|network request failed/i.test(msg)) {
       throw new Error(
-        `PostgreSQL köprüsüne ulaşılamadı (${bridgeUrl}/api/pg_query). PC'de npm run bridge çalışıyor mu? Fiziksel cihazda Bridge host = PC LAN IP (192.168.x.x) olmalı.`,
+        `PostgreSQL köprüsüne ulaşılamadı (${bridgeUrl}/api/pg_query). ` +
+          `PC'de npm run bridge (port ${cfg.bridgePort || 3001}) çalışıyor mu? ` +
+          `Fiziksel cihazda Bridge host = PC LAN IP olmalı. ` +
+          `Not: 3002 PostgREST’tir; SQL köprüsü genelde 3001’dir.`,
       );
     }
     throw e;
@@ -57,10 +73,19 @@ export async function pgQuery<T = Record<string, unknown>>(
     rows?: T[];
     rowCount?: number;
     error?: string;
+    message?: string;
   };
 
   if (!response.ok) {
-    throw new Error(data.error || `pg_query HTTP ${response.status}`);
+    const detail = data.error || data.message || `HTTP ${response.status}`;
+    if (response.status === 404 || /not found|cannot POST/i.test(String(detail))) {
+      throw new Error(
+        `pg_query bulunamadı (${bridgeUrl}/api/pg_query → ${detail}). ` +
+          `Muhtemel neden: Bridge port PostgREST (3002) veya eski SQL_Bridge. ` +
+          `Güncel Node pg_bridge: npm run bridge (varsayılan 3001).`,
+      );
+    }
+    throw new Error(typeof detail === 'string' ? detail : `pg_query HTTP ${response.status}`);
   }
 
   return {
@@ -337,23 +362,70 @@ export type StoreRow = {
   region?: string | null;
 };
 
+function mapStoreRows(
+  rows: Array<{ id?: string | number; name?: string | null; region?: string | null; is_active?: boolean | null }>,
+): StoreRow[] {
+  return rows
+    .filter((s) => s.is_active !== false)
+    .map((s) => ({
+      id: String(s.id ?? ''),
+      name: String(s.name || 'Mağaza'),
+      region: s.region ?? null,
+    }))
+    .filter((s) => s.id);
+}
+
+/** Web organization.getStoresByFirmNr: PostgREST `/stores` → bridge SQL */
 export async function fetchStores(firmNr: string): Promise<StoreRow[]> {
   const firm = normalizeFirmNr(firmNr) || firmNr;
+  const firmBare = firm.replace(/^0+/, '') || firm;
+
+  if (shouldPreferPostgrest()) {
+    try {
+      const firmOr = Array.from(new Set([firm, firmBare].filter(Boolean)))
+        .map((f) => `firm_nr.eq.${f}`)
+        .join(',');
+      const rows = await postgrestGet<
+        Array<{ id?: string | number; name?: string | null; region?: string | null; is_active?: boolean | null }>
+      >(
+        '/stores',
+        {
+          select: 'id,name,region,is_active',
+          or: `(${firmOr})`,
+          order: 'name.asc',
+          limit: 200,
+        },
+        { schema: 'public' },
+      );
+      const mapped = mapStoreRows(Array.isArray(rows) ? rows : []);
+      if (mapped.length > 0) return mapped;
+    } catch (err) {
+      if (__DEV__) {
+        console.warn(
+          '[fetchStores] PostgREST /stores başarısız, SQL fallback',
+          err instanceof Error ? err.message : err,
+        );
+      }
+    }
+  }
+
   try {
     const res = await pgQuery<{ id: string | number; name: string; region?: string | null }>(
       `SELECT id, name, region FROM stores
-       WHERE firm_nr = $1 AND is_active = true
+       WHERE (
+         LPAD(TRIM(COALESCE(firm_nr, '')), 3, '0') = $1
+         OR TRIM(COALESCE(firm_nr, '')) = $2
+       )
+         AND COALESCE(is_active, true) = true
        ORDER BY name ASC`,
-      [firm],
+      [firm, firmBare],
     );
-    return res.rows.map((s) => ({
-      id: String(s.id),
-      name: s.name,
-      region: s.region,
-    }));
+    const mapped = mapStoreRows(res.rows);
+    if (mapped.length > 0) return mapped;
   } catch {
-    return [{ id: '1', name: 'Merkez Mağaza', region: 'TR' }];
+    /* demo */
   }
+  return [{ id: '1', name: 'Merkez Mağaza', region: 'TR' }];
 }
 
 export type PeriodRow = {
@@ -361,24 +433,85 @@ export type PeriodRow = {
   label: string;
 };
 
+function mapPeriodRows(
+  rows: Array<{ nr?: string | number; name?: string | null; is_active?: boolean | null; active?: boolean | null }>,
+): PeriodRow[] {
+  return rows
+    .filter((p) => p.is_active !== false && p.active !== false)
+    .map((p) => {
+      const nr = String(p.nr ?? '').padStart(2, '0');
+      return {
+        nr,
+        label: p.name ? String(p.name) : `Dönem ${nr}`,
+      };
+    })
+    .filter((p) => p.nr && p.nr !== '00');
+}
+
+/**
+ * Web FirmaDonemContext: firm_nr → /firms id → /periods?firm_id=…
+ * SQL: periods.firm_id ⊆ firms.id (periods.firm_nr yok).
+ */
 export async function fetchPeriods(firmNr: string): Promise<PeriodRow[]> {
   const firm = normalizeFirmNr(firmNr) || firmNr;
-  try {
-    const res = await pgQuery<{ nr: string | number; name?: string | null }>(
-      `SELECT nr, name FROM periods
-       WHERE firm_nr = $1 AND COALESCE(active, true) = true
-       ORDER BY nr ASC
-       LIMIT 50`,
-      [firm],
-    );
-    if (res.rows.length) {
-      return res.rows.map((p) => ({
-        nr: String(p.nr).padStart(2, '0'),
-        label: p.name || `Dönem ${p.nr}`,
-      }));
+  const firmBare = firm.replace(/^0+/, '') || firm;
+
+  if (shouldPreferPostgrest()) {
+    try {
+      const firmOr = Array.from(new Set([firm, firmBare].filter(Boolean)))
+        .map((f) => `firm_nr.eq.${f}`)
+        .join(',');
+      const firms = await postgrestGet<Array<{ id?: string }>>(
+        '/firms',
+        { select: 'id', or: `(${firmOr})`, limit: 1 },
+        { schema: 'public' },
+      );
+      const firmId = Array.isArray(firms) && firms[0]?.id ? String(firms[0].id) : '';
+      if (firmId) {
+        const rows = await postgrestGet<
+          Array<{ nr?: string | number; name?: string | null; is_active?: boolean | null }>
+        >(
+          '/periods',
+          {
+            select: 'nr,is_active',
+            firm_id: `eq.${firmId}`,
+            order: 'nr.asc',
+            limit: 50,
+          },
+          { schema: 'public' },
+        );
+        const mapped = mapPeriodRows(Array.isArray(rows) ? rows : []);
+        if (mapped.length > 0) return mapped;
+      }
+    } catch (err) {
+      if (__DEV__) {
+        console.warn(
+          '[fetchPeriods] PostgREST /periods başarısız, SQL fallback',
+          err instanceof Error ? err.message : err,
+        );
+      }
     }
+  }
+
+  try {
+    const res = await pgQuery<{ nr: string | number; name?: string | null; is_active?: boolean | null }>(
+      `SELECT p.nr, COALESCE(p.is_active, true) AS is_active
+       FROM periods p
+       INNER JOIN firms f ON f.id = p.firm_id
+       WHERE (
+         LPAD(TRIM(COALESCE(f.firm_nr, '')), 3, '0') = $1
+         OR TRIM(COALESCE(f.firm_nr, '')) = $2
+         OR f.id::text = $3
+       )
+         AND COALESCE(p.is_active, true) = true
+       ORDER BY p.nr ASC
+       LIMIT 50`,
+      [firm, firmBare, firmNr],
+    );
+    const mapped = mapPeriodRows(res.rows);
+    if (mapped.length > 0) return mapped;
   } catch {
-    /* fallback */
+    /* demo */
   }
   return [
     { nr: '01', label: 'Dönem 01' },

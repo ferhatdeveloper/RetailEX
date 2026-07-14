@@ -1,4 +1,9 @@
 import { pgQuery } from './pgClient';
+import { postgrestGet } from './postgrestClient';
+import {
+  isTransportInfrastructureError as isReportsInfrastructureError,
+  runDataTransport as runReportTransport,
+} from './dataTransport';
 import {
   customerBalancesCteForSession,
   supplierBalancesCteForSession,
@@ -19,8 +24,82 @@ import {
   salesTable,
   stockMovementItemsTable,
   stockMovementsTable,
+  storeId,
   suppliersTable,
 } from './erpTables';
+
+
+function rethrowReportsInfra(err: unknown, label: string): void {
+  if (isReportsInfrastructureError(err)) throw err;
+  if (__DEV__) {
+    console.warn(
+      `[reportsApi:${label}]`,
+      err instanceof Error ? err.message : err,
+      `| firma=${firmNr()} dönem=${periodNr()}`,
+    );
+  }
+}
+
+/** Yerel YYYY-MM-DD — REST filtreleri için erken tanım */
+export function toYmd(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+export function defaultExtractRange(days = 90): { start: string; end: string } {
+  const end = new Date();
+  const start = new Date();
+  start.setDate(start.getDate() - days);
+  return { start: toYmd(start), end: toYmd(end) };
+}
+
+/** SQL `sqlSalesRevenueFt` istemci karşılığı */
+function isSalesRevenueRow(r: Record<string, unknown>): boolean {
+  const ft = String(r.fiche_type || '').trim().toLowerCase();
+  const tr = Number(r.trcode ?? 0) || 0;
+  if (
+    ft === 'sales_invoice' ||
+    ft === 'sales' ||
+    ft === 'retail' ||
+    ft === 'service' ||
+    ft === 'hizmet' ||
+    ft === 'return_invoice'
+  ) {
+    return true;
+  }
+  return [0, 2, 3, 7, 8, 9, 14].includes(tr);
+}
+
+/** SQL `sqlSalesRevenueSign` istemci karşılığı */
+function salesRevenueSign(r: Record<string, unknown>): number {
+  const ft = String(r.fiche_type || '').trim().toLowerCase();
+  const tr = Number(r.trcode ?? 0) || 0;
+  if (tr === 2 || tr === 3) return -1;
+  if (
+    ft === 'return_invoice' &&
+    ![1, 4, 5, 6, 13, 26, 41, 42].includes(tr)
+  ) {
+    return -1;
+  }
+  return 1;
+}
+
+function isCancelledRow(r: Record<string, unknown>): boolean {
+  return r.is_cancelled === true || r.is_cancelled === 'true';
+}
+
+function isCountableSaleStatus(r: Record<string, unknown>): boolean {
+  const st = String(r.status ?? 'approved').trim().toLowerCase();
+  return st === 'completed' || st === 'approved' || st === '';
+}
+
+function matchesSessionStore(r: Record<string, unknown>): boolean {
+  const sid = storeId();
+  if (!sid) return true;
+  return String(r.store_id ?? '') === sid;
+}
 
 /** Web `SQL_COUNTABLE_SALE_STATUS` — alias `s` */
 const SQL_COUNTABLE_SALE = `COALESCE(s.status, 'approved') IN ('completed', 'approved')`;
@@ -62,6 +141,50 @@ function sqlSalesRevenueSign(alias = ''): string {
 }
 
 export async function fetchSalesByDay(days = 14): Promise<SalesDayRow[]> {
+  return runReportTransport({
+    label: 'fetchSalesByDay',
+    viaRest: () => fetchSalesByDayViaRest(days),
+    viaBridge: () => fetchSalesByDayViaBridge(days),
+  });
+}
+
+async function fetchSalesByDayViaRest(days: number): Promise<SalesDayRow[]> {
+  const table = salesTable(firmNr(), periodNr());
+  const sales = await postgrestGet<Record<string, unknown>[]>(
+    `/${table}`,
+    {
+      select:
+        'date,created_at,net_amount,total_net,fiche_type,trcode,is_cancelled,store_id,status',
+      order: 'date.desc',
+      limit: 8000,
+    },
+    { schema: 'public' },
+  );
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - Math.max(1, days));
+  const cutoffYmd = toYmd(cutoff);
+  const byDay = new Map<string, { revenue: number; count: number }>();
+
+  for (const r of sales || []) {
+    if (isCancelledRow(r)) continue;
+    if (!isSalesRevenueRow(r)) continue;
+    if (!matchesSessionStore(r)) continue;
+    const day = String(r.date || r.created_at || '').slice(0, 10);
+    if (!day || day < cutoffYmd) continue;
+    const sign = salesRevenueSign(r);
+    const net = Math.abs(Number(r.net_amount ?? r.total_net ?? 0) || 0);
+    const cur = byDay.get(day) || { revenue: 0, count: 0 };
+    cur.revenue += sign * net;
+    cur.count += 1;
+    byDay.set(day, cur);
+  }
+
+  return [...byDay.entries()]
+    .map(([day, v]) => ({ day, revenue: v.revenue, count: v.count }))
+    .sort((a, b) => b.day.localeCompare(a.day));
+}
+
+async function fetchSalesByDayViaBridge(days: number): Promise<SalesDayRow[]> {
   const table = salesTable(firmNr(), periodNr());
   const sign = sqlSalesRevenueSign();
   const params: unknown[] = [days];
@@ -98,6 +221,48 @@ export type CriticalStockRow = {
 };
 
 export async function fetchCriticalStock(limit = 100): Promise<CriticalStockRow[]> {
+  return runReportTransport({
+    label: 'fetchCriticalStock',
+    viaRest: () => fetchCriticalStockViaRest(limit),
+    viaBridge: () => fetchCriticalStockViaBridge(limit),
+  });
+}
+
+async function fetchCriticalStockViaRest(limit: number): Promise<CriticalStockRow[]> {
+  const table = productsTable();
+  const products = await postgrestGet<Record<string, unknown>[]>(
+    `/${table}`,
+    {
+      select: 'id,code,name,stock,min_stock,critical_stock,unit,is_active',
+      is_active: 'eq.true',
+      order: 'name.asc',
+      limit: 4000,
+    },
+    { schema: 'public' },
+  );
+  const out: CriticalStockRow[] = [];
+  for (const p of products || []) {
+    const id = String(p.id ?? '');
+    if (!id) continue;
+    const stock = Number(p.stock ?? 0);
+    const minStock = Number(p.min_stock ?? 0);
+    const criticalStock = Number(p.critical_stock ?? 0);
+    const belowCrit = criticalStock > 0 && stock <= criticalStock;
+    const belowMin = minStock > 0 && stock < minStock;
+    if (!belowCrit && !belowMin) continue;
+    out.push({
+      id,
+      code: p.code != null ? String(p.code) : null,
+      name: String(p.name ?? ''),
+      stock,
+      min_stock: minStock,
+      unit: p.unit != null ? String(p.unit) : null,
+    });
+  }
+  return out.sort((a, b) => a.stock - b.stock).slice(0, limit);
+}
+
+async function fetchCriticalStockViaBridge(limit: number): Promise<CriticalStockRow[]> {
   const table = productsTable();
   const res = await pgQuery<CriticalStockRow>(
     `SELECT id, code, name,
@@ -121,34 +286,96 @@ export type TopProductRow = {
   amount: number;
 };
 
-export async function fetchTopProducts(limit = 20): Promise<TopProductRow[]> {
+async function fetchTopProductsViaRest(limit: number): Promise<TopProductRow[]> {
+  const fn = firmNr();
+  const pn = periodNr();
+  const items = saleItemsTable(fn, pn);
+  const sales = salesTable(fn, pn);
+  const sid = storeId();
+
+  const [salesRows, itemRows] = await Promise.all([
+    postgrestGet<Record<string, unknown>[]>(
+      `/${sales}`,
+      {
+        select: 'id,fiche_type,trcode,is_cancelled,store_id,status',
+        limit: 8000,
+      },
+      { schema: 'public' },
+    ),
+    postgrestGet<Record<string, unknown>[]>(
+      `/${items}`,
+      {
+        select: 'invoice_id,item_name,item_code,quantity,net_amount,total_amount',
+        limit: 20000,
+      },
+      { schema: 'public' },
+    ),
+  ]);
+
+  const salesOk = new Map<string, number>();
+  for (const s of Array.isArray(salesRows) ? salesRows : []) {
+    if (isCancelledRow(s)) continue;
+    if (!isSalesRevenueRow(s)) continue;
+    const st = String(s.status ?? 'approved').trim().toLowerCase();
+    if (st && st !== 'completed' && st !== 'approved') continue;
+    if (sid && String(s.store_id ?? '') !== String(sid)) continue;
+    salesOk.set(String(s.id), salesRevenueSign(s));
+  }
+
+  const byName = new Map<string, { qty: number; amount: number }>();
+  for (const it of Array.isArray(itemRows) ? itemRows : []) {
+    const sign = salesOk.get(String(it.invoice_id ?? ''));
+    if (sign == null) continue;
+    const name = String(it.item_name || it.item_code || 'Ürün');
+    const cur = byName.get(name) || { qty: 0, amount: 0 };
+    cur.qty += sign * (Number(it.quantity) || 0);
+    cur.amount += sign * Math.abs(Number(it.net_amount ?? it.total_amount ?? 0) || 0);
+    byName.set(name, cur);
+  }
+
+  return [...byName.entries()]
+    .map(([product_name, v]) => ({ product_name, qty: v.qty, amount: v.amount }))
+    .sort((a, b) => b.amount - a.amount)
+    .slice(0, limit);
+}
+
+async function fetchTopProductsViaBridge(limit: number): Promise<TopProductRow[]> {
   const fn = firmNr();
   const pn = periodNr();
   const items = saleItemsTable(fn, pn);
   const sales = salesTable(fn, pn);
   const sign = sqlSalesRevenueSign('s');
+  const params: unknown[] = [limit];
+  const storeSql = appendStoreIdFilter('s.store_id', params);
+  const res = await pgQuery<TopProductRow>(
+    `SELECT COALESCE(si.item_name, si.item_code, 'Ürün') AS product_name,
+            COALESCE(SUM((${sign}) * COALESCE(si.quantity, 0)), 0)::float8 AS qty,
+            COALESCE(SUM(
+              (${sign}) * ABS(COALESCE(si.net_amount, si.total_amount, 0))
+            ), 0)::float8 AS amount
+     FROM ${items} si
+     INNER JOIN ${sales} s ON s.id = si.invoice_id
+     WHERE COALESCE(s.is_cancelled, false) = false
+       AND ${SQL_COUNTABLE_SALE}
+       AND (${sqlSalesRevenueFt('s')})
+       ${storeSql}
+     GROUP BY 1
+     ORDER BY amount DESC
+     LIMIT $1`,
+    params,
+  );
+  return res.rows;
+}
+
+export async function fetchTopProducts(limit = 20): Promise<TopProductRow[]> {
   try {
-    const params: unknown[] = [limit];
-    const storeSql = appendStoreIdFilter('s.store_id', params);
-    const res = await pgQuery<TopProductRow>(
-      `SELECT COALESCE(si.item_name, si.item_code, 'Ürün') AS product_name,
-              COALESCE(SUM((${sign}) * COALESCE(si.quantity, 0)), 0)::float8 AS qty,
-              COALESCE(SUM(
-                (${sign}) * ABS(COALESCE(si.net_amount, si.total_amount, 0))
-              ), 0)::float8 AS amount
-       FROM ${items} si
-       INNER JOIN ${sales} s ON s.id = si.invoice_id
-       WHERE COALESCE(s.is_cancelled, false) = false
-         AND ${SQL_COUNTABLE_SALE}
-         AND (${sqlSalesRevenueFt('s')})
-         ${storeSql}
-       GROUP BY 1
-       ORDER BY amount DESC
-       LIMIT $1`,
-      params,
-    );
-    return res.rows;
-  } catch {
+    return await runReportTransport({
+      label: 'fetchTopProducts',
+      viaRest: () => fetchTopProductsViaRest(limit),
+      viaBridge: () => fetchTopProductsViaBridge(limit),
+    });
+  } catch (err) {
+    rethrowReportsInfra(err, 'fetchTopProducts');
     return [];
   }
 }
@@ -203,7 +430,82 @@ function mapCardFallbackRow(
   };
 }
 
+async function fetchCariBalancesFromCardViaRest(opts: {
+  want: 'customer' | 'supplier' | 'all';
+  onlyNonZero: boolean;
+  limit: number;
+  fn: string;
+  pn: string;
+}): Promise<CariBalanceRow[]> {
+  const { want, onlyNonZero, limit, fn, pn } = opts;
+  const cust = customersTable(fn);
+  const supp = suppliersTable(fn);
+  const out: CariBalanceRow[] = [];
+
+  const fetchCard = async (table: string, cardType: 'customer' | 'supplier') => {
+    const rows = await postgrestGet<Record<string, unknown>[]>(
+      `/${table}`,
+      {
+        select: 'id,code,name,balance,credit_limit,is_active',
+        is_active: 'eq.true',
+        order: 'name.asc',
+        limit: Math.min(limit * 2, 2000),
+      },
+      { schema: 'public' },
+    );
+    for (const r of Array.isArray(rows) ? rows : []) {
+      const bal = Number(r.balance ?? 0) || 0;
+      if (onlyNonZero && Math.abs(bal) <= 0.009) continue;
+      out.push(
+        mapCardFallbackRow(
+          {
+            account_id: String(r.id ?? ''),
+            account_code: String(r.code ?? ''),
+            account_name: String(r.name ?? ''),
+            card_type: cardType,
+            balance: bal,
+            credit_limit: Number(r.credit_limit ?? 0) || 0,
+          },
+          cardType,
+          fn,
+          pn,
+        ),
+      );
+    }
+  };
+
+  if (want === 'all' || want === 'customer') await fetchCard(cust, 'customer');
+  if (want === 'all' || want === 'supplier') {
+    try {
+      await fetchCard(supp, 'supplier');
+    } catch {
+      /* supplier table eksik olabilir */
+    }
+  }
+
+  return out.sort((a, b) => Math.abs(b.balance) - Math.abs(a.balance)).slice(0, limit);
+}
+
 async function fetchCariBalancesFromCard(opts: {
+  want: 'customer' | 'supplier' | 'all';
+  onlyNonZero: boolean;
+  limit: number;
+  fn: string;
+  pn: string;
+}): Promise<CariBalanceRow[]> {
+  try {
+    return await runReportTransport({
+      label: 'fetchCariBalancesFromCard',
+      viaRest: () => fetchCariBalancesFromCardViaRest(opts),
+      viaBridge: () => fetchCariBalancesFromCardViaBridge(opts),
+    });
+  } catch (err) {
+    rethrowReportsInfra(err, 'fetchCariBalancesFromCard');
+    return [];
+  }
+}
+
+async function fetchCariBalancesFromCardViaBridge(opts: {
   want: 'customer' | 'supplier' | 'all';
   onlyNonZero: boolean;
   limit: number;
@@ -251,7 +553,8 @@ async function fetchCariBalancesFromCard(opts: {
       credit_limit: number;
     }>(`${parts.join(' UNION ALL ')} ORDER BY ABS(balance) DESC LIMIT $1`, [limit]);
     return res.rows.map((r) => mapCardFallbackRow(r, 'customer', fn, pn));
-  } catch {
+  } catch (err) {
+    rethrowReportsInfra(err, 'fetchCariBalancesFromCard');
     if (want === 'supplier') return [];
     const res = await pgQuery<{
       account_id: string;
@@ -380,7 +683,8 @@ export async function fetchCariBalances(opts?: {
       periodNr: pn,
       firmNr: fn,
     }));
-  } catch {
+  } catch (err) {
+    rethrowReportsInfra(err, 'fetchCariBalances');
     // CTE / cash_lines yoksa kart bakiyesine düş
     return fetchCariBalancesFromCard({ want, onlyNonZero, limit, fn, pn });
   }
@@ -487,7 +791,8 @@ async function fetchCariExtractOpeningNet(opts: {
         [accountId, startDate],
       );
       return Number(res.rows[0]?.net ?? 0);
-    } catch {
+    } catch (err) {
+      rethrowReportsInfra(err, 'fetchCariExtractOpeningNet.mov');
       return 0;
     }
   }
@@ -514,7 +819,8 @@ async function fetchCariExtractOpeningNet(opts: {
       [accountId, startDate],
     );
     return Number(res.rows[0]?.net ?? 0);
-  } catch {
+  } catch (err) {
+    rethrowReportsInfra(err, 'fetchCariExtractOpeningNet.sale');
     return 0;
   }
 }
@@ -530,10 +836,200 @@ export async function fetchCariExtract(opts: {
   const start = String(opts.startDate || '').slice(0, 10);
   const end = String(opts.endDate || '').slice(0, 10);
   if (!accountId || !start || !end) return [];
+  const limit = opts.limit ?? 1000;
+  return runReportTransport({
+    label: 'fetchCariExtract',
+    viaRest: () =>
+      fetchCariExtractViaRest({
+        accountId,
+        cardType: opts.cardType,
+        start,
+        end,
+        limit,
+      }),
+    viaBridge: () =>
+      fetchCariExtractViaBridge({
+        accountId,
+        cardType: opts.cardType,
+        start,
+        end,
+        limit,
+      }),
+  });
+}
 
+/** Web `erpReports.getCariExtract` rest_api — movements → sales fallback */
+async function fetchCariExtractViaRest(opts: {
+  accountId: string;
+  cardType: 'customer' | 'supplier';
+  start: string;
+  end: string;
+  limit: number;
+}): Promise<CariExtractRow[]> {
+  const { accountId, start, end, limit } = opts;
+  const isCustomer = opts.cardType === 'customer';
+  const fn = firmNr();
+  const pn = periodNr();
+  const movPath = `/${accountMovementsTable(fn, pn)}`;
+  const salesPath = `/${salesTable(fn, pn)}`;
+
+  const movements = await postgrestGet<Record<string, unknown>[]>(
+    movPath,
+    {
+      select: 'id,fiche_no,date,amount,sign,definition,customer_id,supplier_id,created_at',
+      order: 'date.asc',
+      limit: 5000,
+    },
+    { schema: 'public' },
+  ).catch(() => [] as Record<string, unknown>[]);
+
+  const accountMatch = (m: Record<string, unknown>) => {
+    const id = isCustomer
+      ? String(m.customer_id || '')
+      : String(m.supplier_id || m.customer_id || '');
+    return id === accountId;
+  };
+
+  const inRange = (m: Record<string, unknown>[]) =>
+    m.filter((row) => {
+      const d = String(row.date || '').slice(0, 10);
+      return d >= start && d <= end && accountMatch(row);
+    });
+
+  const filteredMov = inRange(movements || []);
+  let openingNet = 0;
+  for (const m of movements || []) {
+    if (!accountMatch(m)) continue;
+    const d = String(m.date || '').slice(0, 10);
+    if (!d || d >= start) continue;
+    const amt = Math.abs(Number(m.amount ?? 0) || 0);
+    const sign = Number(m.sign ?? 1) < 0 ? -1 : 1;
+    openingNet += sign * amt;
+  }
+
+  type Raw = {
+    id: string;
+    date: string;
+    ficheNo: string;
+    definition: string;
+    amount: number;
+    sign: number;
+    source: CariExtractSource;
+  };
+
+  let raw: Raw[] = [];
+  let usedMovements = false;
+
+  if (filteredMov.length) {
+    usedMovements = true;
+    raw = filteredMov.map((m) => ({
+      id: String(m.id ?? `${m.fiche_no}-${m.date}`),
+      date: String(m.date || '').slice(0, 10),
+      ficheNo: String(m.fiche_no ?? ''),
+      definition: String(m.definition ?? ''),
+      amount: Math.abs(Number(m.amount ?? 0) || 0),
+      sign: Number(m.sign ?? 1) < 0 ? -1 : 1,
+      source: 'movement' as const,
+    }));
+  } else {
+    const sales = await postgrestGet<Record<string, unknown>[]>(
+      salesPath,
+      {
+        select:
+          'id,fiche_no,date,net_amount,total_net,fiche_type,trcode,customer_id,is_cancelled,status',
+        customer_id: `eq.${accountId}`,
+        order: 'date.asc',
+        limit: 5000,
+      },
+      { schema: 'public' },
+    ).catch(() => [] as Record<string, unknown>[]);
+
+    const saleSign = (s: Record<string, unknown>): number => {
+      const ft = String(s.fiche_type || '').trim().toLowerCase();
+      const tr = Number(s.trcode ?? 0) || 0;
+      const net = Number(s.net_amount ?? s.total_net ?? 0);
+      if (ft === 'opening_balance') return net < 0 ? -1 : 1;
+      if (isCustomer) {
+        if (ft === 'return_invoice' || tr === 2 || tr === 3) return -1;
+        return 1;
+      }
+      if (tr === 6 || ft === 'return_invoice') return -1;
+      return 1;
+    };
+
+    const isRelevantSale = (s: Record<string, unknown>): boolean => {
+      if (isCancelledRow(s)) return false;
+      if (!isCountableSaleStatus(s)) return false;
+      const ft = String(s.fiche_type || '').trim().toLowerCase();
+      const tr = Number(s.trcode ?? 0) || 0;
+      if (isCustomer) {
+        return (
+          [
+            'sales_invoice',
+            'sales',
+            'retail',
+            'service',
+            'hizmet',
+            'return_invoice',
+            'opening_balance',
+          ].includes(ft) || [0, 2, 3, 7, 8, 9, 14].includes(tr)
+        );
+      }
+      return (
+        ['purchase_invoice', 'return_invoice', 'opening_balance'].includes(ft) ||
+        [1, 4, 5, 6, 13, 26, 41, 42].includes(tr)
+      );
+    };
+
+    for (const s of sales || []) {
+      if (!isRelevantSale(s)) continue;
+      const d = String(s.date || '').slice(0, 10);
+      const net = Number(s.net_amount ?? s.total_net ?? 0);
+      const sign = saleSign(s);
+      if (d && d < start) {
+        openingNet += sign * Math.abs(net);
+        continue;
+      }
+      if (!d || d < start || d > end) continue;
+      const ft = String(s.fiche_type || '').trim().toLowerCase();
+      raw.push({
+        id: String(s.id ?? ''),
+        date: d,
+        ficheNo: String(s.fiche_no ?? ''),
+        definition: ft === 'opening_balance' ? 'Devir' : ft || 'sale',
+        amount: Math.abs(net),
+        sign,
+        source: 'sale',
+      });
+    }
+  }
+
+  raw.sort((a, b) => a.date.localeCompare(b.date));
+  const withOpening = [...raw];
+  if (Math.abs(openingNet) >= 0.005) {
+    withOpening.unshift({
+      id: `bf-${accountId}-${start}`,
+      date: start,
+      ficheNo: '',
+      definition: 'Devreden',
+      amount: Math.abs(openingNet),
+      sign: openingNet >= 0 ? 1 : -1,
+      source: usedMovements ? 'movement' : 'sale',
+    });
+  }
+  return mapRunningExtract(withOpening.slice(0, limit));
+}
+
+async function fetchCariExtractViaBridge(opts: {
+  accountId: string;
+  cardType: 'customer' | 'supplier';
+  start: string;
+  end: string;
+  limit: number;
+}): Promise<CariExtractRow[]> {
+  const { accountId, start, end, limit } = opts;
   const isCustomer = opts.cardType === 'customer';
   const idCol = isCustomer ? 'customer_id' : 'supplier_id';
-  const limit = opts.limit ?? 1000;
   const movTable = accountMovementsTable();
   const sales = salesTable();
   const cash = cashLinesTable();
@@ -615,7 +1111,8 @@ export async function fetchCariExtract(opts: {
     );
     raw = (res.rows || []).map(mapExtractSqlRow);
     usedMovements = raw.length > 0;
-  } catch {
+  } catch (err) {
+    rethrowReportsInfra(err, 'fetchCariExtract.mov');
     raw = [];
   }
 
@@ -668,7 +1165,8 @@ export async function fetchCariExtract(opts: {
         [accountId, start, end, limit],
       );
       raw = (res.rows || []).map(mapExtractSqlRow);
-    } catch {
+    } catch (err) {
+      rethrowReportsInfra(err, 'fetchCariExtract.saleCash');
       raw = [];
     }
   }
@@ -710,21 +1208,6 @@ export async function fetchCariExtract(opts: {
   return mapRunningExtract(withOpening);
 }
 
-/** Yerel YYYY-MM-DD */
-export function toYmd(d: Date): string {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
-}
-
-export function defaultExtractRange(days = 90): { start: string; end: string } {
-  const end = new Date();
-  const start = new Date();
-  start.setDate(start.getDate() - days);
-  return { start: toYmd(start), end: toYmd(end) };
-}
-
 /** Web `MinMaxStockReport` — min/max stok kontrol listesi */
 export type MinMaxStockRow = {
   id: string;
@@ -737,17 +1220,74 @@ export type MinMaxStockRow = {
   status: 'normal' | 'critical' | 'depleted' | 'over';
 };
 
-export async function fetchMinMaxStock(opts?: {
-  filter?: 'all' | 'low' | 'out';
-  limit?: number;
+function mapMinMaxStockRow(r: {
+  id: string;
+  code: string | null;
+  name: string;
+  stock: number;
+  min_stock: number | null;
+  max_stock: number | null;
+  unit: string | null;
+}): MinMaxStockRow {
+  const stock = Number(r.stock ?? 0);
+  const min = r.min_stock != null ? Number(r.min_stock) : null;
+  const max = r.max_stock != null ? Number(r.max_stock) : null;
+  let status: MinMaxStockRow['status'] = 'normal';
+  if (stock === 0) status = 'depleted';
+  else if (min != null && stock <= min) status = 'critical';
+  else if (max != null && stock >= max) status = 'over';
+  return {
+    id: String(r.id),
+    code: r.code,
+    name: r.name,
+    stock,
+    min_stock: min,
+    max_stock: max,
+    unit: r.unit,
+    status,
+  };
+}
+
+async function fetchMinMaxStockViaRest(opts: {
+  filter: 'all' | 'low' | 'out';
+  limit: number;
 }): Promise<MinMaxStockRow[]> {
   const table = productsTable();
-  const limit = opts?.limit ?? 500;
-  const filter = opts?.filter ?? 'all';
+  const rows = await postgrestGet<Record<string, unknown>[]>(
+    `/${table}`,
+    {
+      select: 'id,code,name,stock,min_stock,max_stock,unit,is_active',
+      is_active: 'eq.true',
+      order: 'name.asc',
+      limit: Math.min(opts.limit * 3, 5000),
+    },
+    { schema: 'public' },
+  );
+  let list = (Array.isArray(rows) ? rows : []).map((r) =>
+    mapMinMaxStockRow({
+      id: String(r.id ?? ''),
+      code: r.code != null ? String(r.code) : null,
+      name: String(r.name ?? ''),
+      stock: Number(r.stock ?? 0) || 0,
+      min_stock: r.min_stock == null ? null : Number(r.min_stock),
+      max_stock: r.max_stock == null ? null : Number(r.max_stock),
+      unit: r.unit != null ? String(r.unit) : null,
+    }),
+  );
+  if (opts.filter === 'low') list = list.filter((r) => r.stock <= (r.min_stock ?? 0));
+  if (opts.filter === 'out') list = list.filter((r) => r.stock === 0);
+  return list.sort((a, b) => a.stock - b.stock || a.name.localeCompare(b.name)).slice(0, opts.limit);
+}
+
+async function fetchMinMaxStockViaBridge(opts: {
+  filter: 'all' | 'low' | 'out';
+  limit: number;
+}): Promise<MinMaxStockRow[]> {
+  const table = productsTable();
   let where = `COALESCE(is_active, true) = true`;
-  if (filter === 'low') {
+  if (opts.filter === 'low') {
     where += ` AND COALESCE(stock, 0) <= COALESCE(min_stock, 0)`;
-  } else if (filter === 'out') {
+  } else if (opts.filter === 'out') {
     where += ` AND COALESCE(stock, 0) = 0`;
   }
 
@@ -767,28 +1307,27 @@ export async function fetchMinMaxStock(opts?: {
      WHERE ${where}
      ORDER BY COALESCE(stock, 0) ASC, name ASC
      LIMIT $1`,
-    [limit],
+    [opts.limit],
   );
+  return res.rows.map(mapMinMaxStockRow);
+}
 
-  return res.rows.map((r) => {
-    const stock = Number(r.stock ?? 0);
-    const min = r.min_stock != null ? Number(r.min_stock) : null;
-    const max = r.max_stock != null ? Number(r.max_stock) : null;
-    let status: MinMaxStockRow['status'] = 'normal';
-    if (stock === 0) status = 'depleted';
-    else if (min != null && stock <= min) status = 'critical';
-    else if (max != null && stock >= max) status = 'over';
-    return {
-      id: String(r.id),
-      code: r.code,
-      name: r.name,
-      stock,
-      min_stock: min,
-      max_stock: max,
-      unit: r.unit,
-      status,
-    };
-  });
+export async function fetchMinMaxStock(opts?: {
+  filter?: 'all' | 'low' | 'out';
+  limit?: number;
+}): Promise<MinMaxStockRow[]> {
+  const limit = opts?.limit ?? 500;
+  const filter = opts?.filter ?? 'all';
+  try {
+    return await runReportTransport({
+      label: 'fetchMinMaxStock',
+      viaRest: () => fetchMinMaxStockViaRest({ filter, limit }),
+      viaBridge: () => fetchMinMaxStockViaBridge({ filter, limit }),
+    });
+  } catch (err) {
+    rethrowReportsInfra(err, 'fetchMinMaxStock');
+    return [];
+  }
 }
 
 /** Web `MaterialValueReport` — stok × ortalama maliyet */
@@ -803,6 +1342,48 @@ export type MaterialValueRow = {
 };
 
 export async function fetchMaterialValue(limit = 500): Promise<MaterialValueRow[]> {
+  try {
+    return await runReportTransport({
+      label: 'fetchMaterialValue',
+      viaRest: async () => {
+        const table = productsTable();
+        const rows = await postgrestGet<Record<string, unknown>[]>(
+          `/${table}`,
+          {
+            select: 'id,code,name,unit,stock,cost,price,is_active',
+            is_active: 'eq.true',
+            order: 'name.asc',
+            limit: Math.min(limit * 2, 5000),
+          },
+          { schema: 'public' },
+        );
+        return (Array.isArray(rows) ? rows : [])
+          .map((r) => {
+            const quantity = Number(r.stock ?? 0) || 0;
+            const unit_cost = Number(r.cost ?? r.price ?? 0) || 0;
+            return {
+              id: String(r.id ?? ''),
+              code: r.code != null ? String(r.code) : null,
+              name: String(r.name ?? ''),
+              unit: r.unit != null ? String(r.unit) : null,
+              quantity,
+              unit_cost,
+              total_value: quantity * unit_cost,
+            };
+          })
+          .filter((r) => r.quantity > 0 && r.id)
+          .sort((a, b) => b.total_value - a.total_value)
+          .slice(0, limit);
+      },
+      viaBridge: () => fetchMaterialValueViaBridge(limit),
+    });
+  } catch (err) {
+    rethrowReportsInfra(err, 'fetchMaterialValue');
+    return [];
+  }
+}
+
+async function fetchMaterialValueViaBridge(limit: number): Promise<MaterialValueRow[]> {
   const table = productsTable();
   const res = await pgQuery<{
     id: string;
@@ -859,7 +1440,8 @@ export async function fetchWarehouseStatus(limit = 500): Promise<{
        LIMIT 1`,
     );
     warehouseName = wh.rows[0]?.name ?? null;
-  } catch {
+  } catch (err) {
+    rethrowReportsInfra(err, 'fetchWarehouseStatus.stores');
     warehouseName = null;
   }
 
@@ -969,8 +1551,8 @@ export async function fetchMaterialExtract(opts: {
       [productId, hintCode, start, end, limit],
     );
     raw.push(...res.rows);
-  } catch {
-    // slip yok
+  } catch (err) {
+    rethrowReportsInfra(err, 'fetchMaterialExtract.slip');
   }
 
   try {
@@ -1023,8 +1605,8 @@ export async function fetchMaterialExtract(opts: {
       [productId, hintCode, start, end, limit],
     );
     raw.push(...res.rows);
-  } catch {
-    // fatura satırı yok
+  } catch (err) {
+    rethrowReportsInfra(err, 'fetchMaterialExtract.invoice');
   }
 
   raw.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
@@ -1069,6 +1651,104 @@ export async function fetchProductSales(opts?: {
   const start = String(opts?.startDate || range.start).slice(0, 10);
   const end = String(opts?.endDate || range.end).slice(0, 10);
   const limit = opts?.limit ?? 200;
+  return runReportTransport({
+    label: 'fetchProductSales',
+    viaRest: () => fetchProductSalesViaRest(start, end, limit),
+    viaBridge: () => fetchProductSalesViaBridge(start, end, limit),
+  });
+}
+
+async function fetchProductSalesViaRest(
+  start: string,
+  end: string,
+  limit: number,
+): Promise<ProductSalesRow[]> {
+  const fn = firmNr();
+  const pn = periodNr();
+  const salesPath = `/${salesTable(fn, pn)}`;
+  const itemsPath = `/${saleItemsTable(fn, pn)}`;
+  const productsPath = `/${productsTable(fn)}`;
+
+  const [sales, items, products] = await Promise.all([
+    postgrestGet<Record<string, unknown>[]>(
+      salesPath,
+      {
+        select: 'id,date,created_at,fiche_type,trcode,is_cancelled,status,store_id',
+        order: 'date.desc',
+        limit: 8000,
+      },
+      { schema: 'public' },
+    ).catch(() => [] as Record<string, unknown>[]),
+    postgrestGet<Record<string, unknown>[]>(
+      itemsPath,
+      {
+        select: 'invoice_id,product_id,item_code,item_name,item_type,quantity,net_amount,total_amount',
+        limit: 12000,
+      },
+      { schema: 'public' },
+    ).catch(() => [] as Record<string, unknown>[]),
+    postgrestGet<Record<string, unknown>[]>(
+      productsPath,
+      { select: 'id,code,name', limit: 8000 },
+      { schema: 'public' },
+    ).catch(() => [] as Record<string, unknown>[]),
+  ]);
+
+  const salesById = new Map<string, Record<string, unknown>>();
+  for (const s of sales || []) {
+    if (isCancelledRow(s)) continue;
+    if (!isCountableSaleStatus(s)) continue;
+    if (!matchesSessionStore(s)) continue;
+    const day = String(s.date || s.created_at || '').slice(0, 10);
+    if (!day || day < start || day > end) continue;
+    salesById.set(String(s.id), s);
+  }
+
+  const productById = new Map(
+    (products || []).map((p) => [String(p.id), p] as const),
+  );
+
+  const agg = new Map<string, ProductSalesRow>();
+  for (const it of items || []) {
+    const inv = salesById.get(String(it.invoice_id || ''));
+    if (!inv) continue;
+    const itemType = String(it.item_type || 'Malzeme');
+    if (itemType === 'Promosyon' || itemType === 'İndirim') continue;
+    const pid = String(it.product_id ?? it.item_code ?? '');
+    const p = pid ? productById.get(pid) : undefined;
+    const productCode = String(it.item_code || p?.code || '').trim();
+    const productName = String(it.item_name || p?.name || 'Ürün').trim() || 'Ürün';
+    const key = pid || productCode || productName;
+    if (!key) continue;
+    const qty = Number(it.quantity ?? 0) || 0;
+    const amount = Number(it.net_amount ?? it.total_amount ?? 0) || 0;
+    const cur = agg.get(key) || {
+      productId: pid,
+      productCode,
+      productName,
+      qty: 0,
+      amount: 0,
+    };
+    cur.qty += qty;
+    cur.amount += amount;
+    if (!cur.productCode && productCode) cur.productCode = productCode;
+    if ((!cur.productName || cur.productName === 'Ürün') && productName) {
+      cur.productName = productName;
+    }
+    agg.set(key, cur);
+  }
+
+  return [...agg.values()]
+    .filter((r) => r.qty !== 0 || r.amount !== 0)
+    .sort((a, b) => b.amount - a.amount)
+    .slice(0, limit);
+}
+
+async function fetchProductSalesViaBridge(
+  start: string,
+  end: string,
+  limit: number,
+): Promise<ProductSalesRow[]> {
   const items = saleItemsTable();
   const sales = salesTable();
   const products = productsTable();
@@ -1112,7 +1792,8 @@ export async function fetchProductSales(opts?: {
       qty: Number(r.qty ?? 0),
       amount: Number(r.amount ?? 0),
     }));
-  } catch {
+  } catch (err) {
+    rethrowReportsInfra(err, 'fetchProductSales');
     return [];
   }
 }
@@ -1130,6 +1811,116 @@ export type CashMovementRow = {
   netAmount: number;
 };
 
+async function fetchCashMovementsViaRest(
+  start: string,
+  end: string,
+  limit: number,
+): Promise<CashMovementRow[]> {
+  const lines = cashLinesTable();
+  const registers = cashRegistersTable();
+  const sid = storeId();
+
+  const [lineRows, regRows] = await Promise.all([
+    postgrestGet<Record<string, unknown>[]>(
+      `/${lines}`,
+      {
+        select:
+          'id,register_id,fiche_no,date,created_at,transaction_type,definition,amount,sign,store_id',
+        order: 'date.desc',
+        limit: Math.min(limit * 3, 5000),
+      },
+      { schema: 'public' },
+    ),
+    postgrestGet<Array<{ id?: string; name?: string; code?: string }>>(
+      `/${registers}`,
+      { select: 'id,name,code', limit: 500 },
+      { schema: 'public' },
+    ).catch(() => [] as Array<{ id?: string; name?: string; code?: string }>),
+  ]);
+
+  const regMap = new Map(
+    (Array.isArray(regRows) ? regRows : [])
+      .filter((r) => r.id)
+      .map((r) => [String(r.id), String(r.name || r.code || '')]),
+  );
+
+  const out: CashMovementRow[] = [];
+  for (const r of Array.isArray(lineRows) ? lineRows : []) {
+    const day = String(r.date || r.created_at || '').slice(0, 10);
+    if (!day || day < start || day > end) continue;
+    if (sid && r.store_id != null && String(r.store_id) !== String(sid)) continue;
+    const amount = Number(r.amount ?? 0) || 0;
+    const sign = Number(r.sign ?? 1) || 1;
+    out.push({
+      id: String(r.id ?? ''),
+      registerName: regMap.get(String(r.register_id ?? '')) || '',
+      ficheNo: String(r.fiche_no ?? ''),
+      date: day,
+      transactionType: String(r.transaction_type ?? ''),
+      definition: String(r.definition ?? ''),
+      amount,
+      sign,
+      netAmount: amount * sign,
+    });
+    if (out.length >= limit) break;
+  }
+  return out;
+}
+
+async function fetchCashMovementsViaBridge(
+  start: string,
+  end: string,
+  limit: number,
+): Promise<CashMovementRow[]> {
+  const lines = cashLinesTable();
+  const registers = cashRegistersTable();
+  const params: unknown[] = [start, end, limit];
+  const storeSql = appendStoreIdFilterAllowNull('cl.store_id', params);
+  const res = await pgQuery<{
+    id: string;
+    register_name: string;
+    fiche_no: string;
+    date: string;
+    transaction_type: string;
+    definition: string;
+    amount: string | number;
+    sign: string | number;
+  }>(
+    `SELECT
+       cl.id::text AS id,
+       COALESCE(cr.name, cr.code, '') AS register_name,
+       COALESCE(cl.fiche_no, '') AS fiche_no,
+       COALESCE(cl.date::date, cl.created_at::date)::text AS date,
+       COALESCE(cl.transaction_type, '') AS transaction_type,
+       COALESCE(cl.definition, '') AS definition,
+       COALESCE(cl.amount, 0)::float8 AS amount,
+       COALESCE(cl.sign, 1)::int AS sign
+     FROM ${lines} cl
+     LEFT JOIN ${registers} cr ON cr.id = cl.register_id
+     WHERE COALESCE(cl.date::date, cl.created_at::date) >= $1::date
+       AND COALESCE(cl.date::date, cl.created_at::date) <= $2::date
+       ${storeSql}
+     ORDER BY COALESCE(cl.date, cl.created_at) DESC
+     LIMIT $3`,
+    params,
+  );
+  return res.rows.map((r) => {
+    const amount = Number(r.amount ?? 0);
+    const sign = Number(r.sign ?? 1) || 1;
+    return {
+      id: String(r.id ?? ''),
+      registerName: String(r.register_name ?? ''),
+      ficheNo: String(r.fiche_no ?? ''),
+      date: String(r.date ?? '').slice(0, 10),
+      transactionType: String(r.transaction_type ?? ''),
+      definition: String(r.definition ?? ''),
+      amount,
+      sign,
+      netAmount: amount * sign,
+    };
+  });
+}
+
 export async function fetchCashMovements(opts?: {
   startDate?: string;
   endDate?: string;
@@ -1139,57 +1930,14 @@ export async function fetchCashMovements(opts?: {
   const start = String(opts?.startDate || range.start).slice(0, 10);
   const end = String(opts?.endDate || range.end).slice(0, 10);
   const limit = opts?.limit ?? 500;
-  const lines = cashLinesTable();
-  const registers = cashRegistersTable();
-
-  const params: unknown[] = [start, end, limit];
-  const storeSql = appendStoreIdFilterAllowNull('cl.store_id', params);
-
   try {
-    const res = await pgQuery<{
-      id: string;
-      register_name: string;
-      fiche_no: string;
-      date: string;
-      transaction_type: string;
-      definition: string;
-      amount: string | number;
-      sign: string | number;
-    }>(
-      `SELECT
-         cl.id::text AS id,
-         COALESCE(cr.name, cr.code, '') AS register_name,
-         COALESCE(cl.fiche_no, '') AS fiche_no,
-         COALESCE(cl.date::date, cl.created_at::date)::text AS date,
-         COALESCE(cl.transaction_type, '') AS transaction_type,
-         COALESCE(cl.definition, '') AS definition,
-         COALESCE(cl.amount, 0)::float8 AS amount,
-         COALESCE(cl.sign, 1)::int AS sign
-       FROM ${lines} cl
-       LEFT JOIN ${registers} cr ON cr.id = cl.register_id
-       WHERE COALESCE(cl.date::date, cl.created_at::date) >= $1::date
-         AND COALESCE(cl.date::date, cl.created_at::date) <= $2::date
-         ${storeSql}
-       ORDER BY COALESCE(cl.date, cl.created_at) DESC
-       LIMIT $3`,
-      params,
-    );
-    return res.rows.map((r) => {
-      const amount = Number(r.amount ?? 0);
-      const sign = Number(r.sign ?? 1) || 1;
-      return {
-        id: String(r.id ?? ''),
-        registerName: String(r.register_name ?? ''),
-        ficheNo: String(r.fiche_no ?? ''),
-        date: String(r.date ?? '').slice(0, 10),
-        transactionType: String(r.transaction_type ?? ''),
-        definition: String(r.definition ?? ''),
-        amount,
-        sign,
-        netAmount: amount * sign,
-      };
+    return await runReportTransport({
+      label: 'fetchCashMovements',
+      viaRest: () => fetchCashMovementsViaRest(start, end, limit),
+      viaBridge: () => fetchCashMovementsViaBridge(start, end, limit),
     });
-  } catch {
+  } catch (err) {
+    rethrowReportsInfra(err, 'fetchCashMovements');
     return [];
   }
 }
@@ -1341,8 +2089,8 @@ export async function fetchCariAging(opts?: {
         [limit],
       );
       for (const r of res.rows) out.push(mapRow(r, 'customer'));
-    } catch {
-      /* şema */
+    } catch (err) {
+      rethrowReportsInfra(err, 'fetchCariAging.customer');
     }
   }
 
@@ -1384,8 +2132,8 @@ export async function fetchCariAging(opts?: {
         [limit],
       );
       for (const r of res.rows) out.push(mapRow(r, 'supplier'));
-    } catch {
-      /* şema */
+    } catch (err) {
+      rethrowReportsInfra(err, 'fetchCariAging.supplier');
     }
   }
 

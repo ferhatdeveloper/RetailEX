@@ -41,7 +41,8 @@
     "eas:init": "node ../scripts/eas-mobile-init.mjs",
     "eas:debug": "node ../scripts/eas-mobile-build.mjs --profile debug",
     "eas:preview": "node ../scripts/eas-mobile-build.mjs --profile preview",
-    "eas:production": "node ../scripts/eas-mobile-build.mjs --profile production"
+    "eas:production": "node ../scripts/eas-mobile-build.mjs --profile production",
+    "eas:submit": "node ../scripts/eas-mobile-submit.mjs --latest"
   },
   "private": true
 }

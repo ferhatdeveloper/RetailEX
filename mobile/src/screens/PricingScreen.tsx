@@ -133,6 +133,7 @@ export function PricingScreen() {
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
+        style={styles.hScrollShell}
         contentContainerStyle={styles.chipRow}
       >
         {PRICE_LIST_OPTIONS.map((opt) => (
@@ -220,7 +221,8 @@ export function PricingScreen() {
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
-  chipRow: { paddingHorizontal: 12, paddingVertical: 8, gap: 8 },
+  hScrollShell: { flexGrow: 0, flexShrink: 0 },
+  chipRow: { paddingHorizontal: 12, paddingVertical: 8, gap: 8, alignItems: 'center' },
   chip: {
     paddingHorizontal: 12,
     paddingVertical: 8,

@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useTranslation } from 'react-i18next';
 import { ScreenHeader, ErrorBanner } from '../components/ScreenChrome';
 import { FormField } from '../components/FormField';
 import { PrimaryButton } from '../components/PrimaryButton';
@@ -22,7 +23,16 @@ import {
   createSpecialCode,
   createUnitSet,
   createVariantDefinition,
+  fetchDefinitionById,
   generateDefinitionCode,
+  updateBrand,
+  updateCategory,
+  updateGroupCode,
+  updateSpecialCode,
+  updateUnitSet,
+  updateVariantDefinition,
+  type DefinitionRow,
+  type UnitSetRow,
 } from '../api/materialDefinitionsApi';
 import { useThemeStore } from '../store/themeStore';
 import { palette } from '../theme/colors';
@@ -30,22 +40,23 @@ import type { MainStackParamList } from '../navigation/types';
 
 type Kind = NonNullable<NonNullable<MainStackParamList['MaterialDefinitionForm']>['kind']>;
 
-function kindTitle(kind: Kind): string {
+function kindTitle(kind: Kind, editing: boolean): string {
+  const prefix = editing ? 'Düzenle — ' : 'Yeni ';
   switch (kind) {
     case 'brand':
-      return 'Yeni marka';
+      return `${prefix}marka`;
     case 'category':
-      return 'Yeni kategori';
+      return `${prefix}kategori`;
     case 'class':
-      return 'Yeni malzeme sınıfı';
+      return `${prefix}malzeme sınıfı`;
     case 'unitset':
-      return 'Yeni birim seti';
+      return `${prefix}birim seti`;
     case 'variant':
-      return 'Yeni varyant';
+      return `${prefix}varyant`;
     case 'special':
-      return 'Yeni özel kod';
+      return `${prefix}özel kod`;
     case 'group':
-      return 'Yeni grup kodu';
+      return `${prefix}grup kodu`;
     default: {
       const _exhaustive: never = kind;
       return _exhaustive;
@@ -62,32 +73,62 @@ function codeKind(kind: Kind): 'brand' | 'category' | 'unitset' | 'special' | 'g
   return 'category';
 }
 
+function isUnitSetRow(row: DefinitionRow | UnitSetRow): row is UnitSetRow {
+  return 'line_count' in row;
+}
+
 export function MaterialDefinitionFormScreen() {
+  const { t } = useTranslation();
   const { colors } = useThemeStore();
   const navigation = useNavigation<NativeStackNavigationProp<MainStackParamList>>();
   const route = useRoute<RouteProp<MainStackParamList, 'MaterialDefinitionForm'>>();
   const kind = route.params?.kind ?? 'class';
+  const editId = route.params?.id;
+  const isEdit = Boolean(editId);
 
   const [code, setCode] = useState('');
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [isRestaurant, setIsRestaurant] = useState(false);
+  const [isActive, setIsActive] = useState(true);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const fillFrom = useCallback((row: DefinitionRow | UnitSetRow) => {
+    setCode(row.code);
+    setName(row.name);
+    if (!isUnitSetRow(row)) {
+      setDescription(row.description || '');
+      setIsRestaurant(Boolean(row.is_restaurant));
+      setIsActive(row.is_active);
+    } else {
+      setDescription('');
+      setIsActive(row.is_active);
+    }
+  }, []);
 
   const load = useCallback(async () => {
     setError(null);
     setLoading(true);
     try {
+      if (editId) {
+        const row = await fetchDefinitionById(codeKind(kind), editId);
+        if (!row) {
+          setError('Kayıt bulunamadı');
+          return;
+        }
+        fillFrom(row);
+        return;
+      }
       const generated = await generateDefinitionCode(codeKind(kind));
       setCode(generated);
-    } catch {
-      /* kod üretilemezse boş bırak */
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
     } finally {
       setLoading(false);
     }
-  }, [kind]);
+  }, [editId, fillFrom, kind]);
 
   useEffect(() => {
     void load();
@@ -97,17 +138,57 @@ export function MaterialDefinitionFormScreen() {
     const trimmedName = name.trim();
     const trimmedCode = code.trim();
     if (!trimmedName) {
-      Alert.alert('Eksik alan', 'Ad zorunludur.');
+      Alert.alert(t('alert.missingField'), t('formValidation.nameRequired'));
       return;
     }
     if (!trimmedCode) {
-      Alert.alert('Eksik alan', 'Kod zorunludur.');
+      Alert.alert(t('alert.missingField'), t('formValidation.codeRequired'));
       return;
     }
     setSaving(true);
     setError(null);
     try {
-      if (kind === 'unitset') {
+      if (isEdit && editId) {
+        if (kind === 'unitset') {
+          await updateUnitSet(editId, { code: trimmedCode, name: trimmedName, is_active: isActive });
+        } else if (kind === 'brand') {
+          await updateBrand(editId, {
+            code: trimmedCode,
+            name: trimmedName,
+            description,
+            is_active: isActive,
+          });
+        } else if (kind === 'special') {
+          await updateSpecialCode(editId, {
+            code: trimmedCode,
+            name: trimmedName,
+            description,
+            is_active: isActive,
+          });
+        } else if (kind === 'group') {
+          await updateGroupCode(editId, {
+            code: trimmedCode,
+            name: trimmedName,
+            description,
+            is_active: isActive,
+          });
+        } else if (kind === 'variant') {
+          await updateVariantDefinition(editId, {
+            code: trimmedCode,
+            name: trimmedName,
+            description,
+            is_active: isActive,
+          });
+        } else {
+          await updateCategory(editId, {
+            code: trimmedCode,
+            name: trimmedName,
+            description,
+            is_restaurant: kind === 'category' ? isRestaurant : undefined,
+            is_active: isActive,
+          });
+        }
+      } else if (kind === 'unitset') {
         await createUnitSet({ code: trimmedCode, name: trimmedName });
       } else if (kind === 'brand') {
         await createBrand({ code: trimmedCode, name: trimmedName, description });
@@ -135,8 +216,11 @@ export function MaterialDefinitionFormScreen() {
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
-      <ScreenHeader title={kindTitle(kind)} subtitle="Malzeme tanımı ekle" />
-      {error ? <ErrorBanner message={error} /> : null}
+      <ScreenHeader
+        title={kindTitle(kind, isEdit)}
+        subtitle={isEdit ? 'Malzeme tanımı düzenle' : 'Malzeme tanımı ekle'}
+      />
+      {error ? <ErrorBanner message={error} onRetry={() => void load()} /> : null}
       {loading ? (
         <ActivityIndicator style={{ marginTop: 40 }} color={palette.blue600} />
       ) : (
@@ -172,7 +256,28 @@ export function MaterialDefinitionFormScreen() {
                 </Text>
               </Pressable>
             ) : null}
-            <PrimaryButton label="Kaydet" onPress={() => void handleSave()} loading={saving} />
+            {isEdit ? (
+              <Pressable
+                onPress={() => setIsActive((v) => !v)}
+                style={[
+                  styles.toggle,
+                  {
+                    backgroundColor: colors.card,
+                    borderColor: isActive ? palette.blue600 : colors.cardBorder,
+                  },
+                ]}
+              >
+                <Text style={{ color: colors.text, fontWeight: '600' }}>Aktif</Text>
+                <Text style={{ color: isActive ? palette.blue600 : colors.textMuted, fontWeight: '700' }}>
+                  {isActive ? 'Evet' : 'Hayır'}
+                </Text>
+              </Pressable>
+            ) : null}
+            <PrimaryButton
+              label={saving ? 'Kaydediliyor…' : isEdit ? 'Güncelle' : 'Kaydet'}
+              onPress={() => void handleSave()}
+              loading={saving}
+            />
           </ScrollView>
         </KeyboardAvoidingView>
       )}

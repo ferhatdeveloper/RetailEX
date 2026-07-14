@@ -10,7 +10,7 @@ import {
   Modal,
   ScrollView,
 } from 'react-native';
-import { Plus, Minus, Trash2, ScanBarcode, Tag } from 'lucide-react-native';
+import { Plus, Minus, Trash2, ScanBarcode, Tag, UserRound } from 'lucide-react-native';
 import { useTranslation } from 'react-i18next';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -18,6 +18,7 @@ import { ScreenHeader, SearchBar, EmptyState } from '../components/ScreenChrome'
 import { PrimaryButton } from '../components/PrimaryButton';
 import { BarcodeScannerModal } from '../components/BarcodeScannerModal';
 import { fetchProducts, fetchProductByBarcode, type ProductRow } from '../api/productsApi';
+import { fetchCustomers, type CustomerRow } from '../api/customersApi';
 import { savePosSale } from '../api/posApi';
 import {
   fetchActiveCampaigns,
@@ -44,6 +45,13 @@ type CartLine = {
   vatRate: number;
 };
 
+type SelectedCustomer = {
+  id: string;
+  name: string;
+  code: string | null;
+  balance: number;
+};
+
 export function PosScreen() {
   const { t } = useTranslation();
   const { colors } = useThemeStore();
@@ -61,13 +69,39 @@ export function PosScreen() {
   const [selectedCampaignId, setSelectedCampaignId] = useState<string | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [campaignFilter, setCampaignFilter] = useState('');
+  const [selectedCustomer, setSelectedCustomer] = useState<SelectedCustomer | null>(null);
+  const [customerPickerOpen, setCustomerPickerOpen] = useState(false);
+  const [customerSearch, setCustomerSearch] = useState('');
+  const [customerHits, setCustomerHits] = useState<CustomerRow[]>([]);
+  const [customerLoading, setCustomerLoading] = useState(false);
 
   useEffect(() => {
     setCart([]);
     setHits([]);
     setSearch('');
     setSelectedCampaignId(null);
+    setSelectedCustomer(null);
   }, [orgEpoch]);
+
+  useEffect(() => {
+    if (!customerPickerOpen) return;
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      setCustomerLoading(true);
+      try {
+        const rows = await fetchCustomers(customerSearch, 40);
+        if (!cancelled) setCustomerHits(rows);
+      } catch {
+        if (!cancelled) setCustomerHits([]);
+      } finally {
+        if (!cancelled) setCustomerLoading(false);
+      }
+    }, customerSearch ? 280 : 0);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [customerPickerOpen, customerSearch]);
 
   useEffect(() => {
     let cancelled = false;
@@ -193,6 +227,13 @@ export function PosScreen() {
 
   const checkout = (paymentMethod: string) => {
     if (cart.length === 0 || saving) return;
+    const isCredit =
+      paymentMethod.toLocaleLowerCase('tr-TR').includes('veresiye');
+    if (isCredit && !selectedCustomer) {
+      Alert.alert(t('posAlerts.payment'), t('posUi.creditNeedsCustomer'));
+      setCustomerPickerOpen(true);
+      return;
+    }
     const discLabel =
       applied.discount > 0 && applied.campaign
         ? t('posAlerts.campaignDiscount', {
@@ -200,13 +241,17 @@ export function PosScreen() {
             discount: formatMoney(applied.discount),
           })
         : '';
+    const customerLabel =
+      isCredit && selectedCustomer
+        ? t('posAlerts.creditCustomer', { name: selectedCustomer.name })
+        : '';
     Alert.alert(
       t('posAlerts.payment'),
       t('posAlerts.confirmSave', {
         method: paymentMethod,
         total: formatMoney(total),
         campaign: discLabel,
-      }),
+      }) + customerLabel,
       [
         { text: t('cancel'), style: 'cancel' },
         {
@@ -219,9 +264,12 @@ export function PosScreen() {
                   totalDiscount: applied.discount,
                   campaignId: applied.campaign?.id ?? null,
                   campaignName: applied.campaign?.name ?? null,
+                  customerId: selectedCustomer?.id ?? null,
+                  customerName: selectedCustomer?.name ?? null,
                 });
                 setCart([]);
                 setSelectedCampaignId(null);
+                setSelectedCustomer(null);
                 if (res.queued) {
                   Alert.alert(
                     t('posAlerts.receiptQueuedTitle'),
@@ -363,7 +411,7 @@ export function PosScreen() {
         data={cart}
         keyExtractor={(item) => item.productId}
         ListEmptyComponent={<EmptyState message={t('posUi.emptyCart')} />}
-        contentContainerStyle={{ padding: 12, gap: 8, paddingBottom: 200 }}
+        contentContainerStyle={{ padding: 12, gap: 8, paddingBottom: 280 }}
         renderItem={({ item }) => (
           <View style={[styles.line, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
             <View style={{ flex: 1 }}>
@@ -404,6 +452,36 @@ export function PosScreen() {
 
       <View style={[styles.footer, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
         <Pressable
+          onPress={() => {
+            setCustomerSearch('');
+            setCustomerPickerOpen(true);
+          }}
+          style={[styles.campaignRow, { borderColor: colors.cardBorder }]}
+        >
+          <UserRound size={16} color={palette.blue600} />
+          <View style={{ flex: 1 }}>
+            <Text style={{ color: colors.textMuted, fontSize: 10, fontWeight: '700' }}>
+              {t('posUi.customerLabel')}
+            </Text>
+            <Text style={{ color: colors.text, fontWeight: '700', fontSize: 12 }} numberOfLines={1}>
+              {selectedCustomer
+                ? `${selectedCustomer.name}${
+                    selectedCustomer.code ? ` · ${selectedCustomer.code}` : ''
+                  }`
+                : t('posUi.customerNone')}
+            </Text>
+            {selectedCustomer ? (
+              <Text style={{ color: colors.textMuted, fontSize: 11 }}>
+                {t('posUi.balance')}: {formatMoney(selectedCustomer.balance)} ₺
+              </Text>
+            ) : null}
+          </View>
+          <Text style={{ color: palette.blue600, fontWeight: '800', fontSize: 12 }}>
+            {selectedCustomer ? t('posUi.change') : t('posUi.select')}
+          </Text>
+        </Pressable>
+
+        <Pressable
           onPress={() => setPickerOpen(true)}
           style={[styles.campaignRow, { borderColor: colors.cardBorder }]}
         >
@@ -437,24 +515,129 @@ export function PosScreen() {
         {saving ? (
           <ActivityIndicator color={palette.blue600} />
         ) : (
-          <View style={styles.payRow}>
-            <View style={{ flex: 1 }}>
-              <PrimaryButton
-                label={t('posUi.cash')}
-                disabled={cart.length === 0}
-                onPress={() => checkout('Nakit')}
-              />
+          <View style={styles.payCol}>
+            <View style={styles.payRow}>
+              <View style={{ flex: 1 }}>
+                <PrimaryButton
+                  label={t('posUi.cash')}
+                  disabled={cart.length === 0}
+                  onPress={() => checkout('Nakit')}
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <PrimaryButton
+                  label={t('posUi.card')}
+                  disabled={cart.length === 0}
+                  onPress={() => checkout('Kredi Kartı')}
+                />
+              </View>
             </View>
-            <View style={{ flex: 1 }}>
-              <PrimaryButton
-                label={t('posUi.card')}
-                disabled={cart.length === 0}
-                onPress={() => checkout('Kredi Kartı')}
-              />
+            <View style={styles.payRow}>
+              <View style={{ flex: 1 }}>
+                <PrimaryButton
+                  label={t('posUi.transfer')}
+                  disabled={cart.length === 0}
+                  onPress={() => checkout('Havale')}
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <PrimaryButton
+                  label={t('posUi.credit')}
+                  disabled={cart.length === 0}
+                  onPress={() => checkout('Veresiye')}
+                />
+              </View>
             </View>
           </View>
         )}
       </View>
+
+      <Modal
+        visible={customerPickerOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setCustomerPickerOpen(false)}
+      >
+        <Pressable style={styles.modalOverlay} onPress={() => setCustomerPickerOpen(false)}>
+          <Pressable
+            style={[styles.modalCard, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}
+            onPress={(e) => e.stopPropagation()}
+          >
+            <Text style={[styles.modalTitle, { color: colors.text }]}>{t('posUi.pickCustomer')}</Text>
+            <View style={{ paddingHorizontal: 4, marginBottom: 4 }}>
+              <SearchBar
+                value={customerSearch}
+                onChangeText={setCustomerSearch}
+                placeholder={t('posUi.customerSearch')}
+              />
+            </View>
+            <ScrollView style={{ maxHeight: 360 }} keyboardShouldPersistTaps="handled">
+              {selectedCustomer ? (
+                <Pressable
+                  style={styles.modalItem}
+                  onPress={() => {
+                    setSelectedCustomer(null);
+                    setCustomerPickerOpen(false);
+                  }}
+                >
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: colors.textMuted, fontWeight: '700' }}>
+                      {t('posUi.clearCustomer')}
+                    </Text>
+                    <Text style={{ color: colors.textSubtle, fontSize: 11 }}>
+                      {t('posUi.clearCustomerHint')}
+                    </Text>
+                  </View>
+                </Pressable>
+              ) : null}
+              {customerLoading ? (
+                <ActivityIndicator style={{ marginVertical: 16 }} color={palette.blue600} />
+              ) : (
+                customerHits.map((c) => {
+                  const selected = selectedCustomer?.id === c.id;
+                  return (
+                    <Pressable
+                      key={c.id}
+                      style={[
+                        styles.modalItem,
+                        selected && { backgroundColor: palette.blue600 + '18' },
+                      ]}
+                      onPress={() => {
+                        setSelectedCustomer({
+                          id: c.id,
+                          name: c.name,
+                          code: c.code,
+                          balance: Number(c.balance) || 0,
+                        });
+                        setCustomerPickerOpen(false);
+                      }}
+                    >
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ color: colors.text, fontWeight: '700' }} numberOfLines={1}>
+                          {c.name}
+                        </Text>
+                        <Text style={{ color: colors.textMuted, fontSize: 11 }}>
+                          {c.code || '—'} · {t('posUi.balance')}: {formatMoney(c.balance)} ₺
+                        </Text>
+                      </View>
+                      {selected ? (
+                        <Text style={{ color: palette.blue600, fontWeight: '800', fontSize: 11 }}>
+                          {t('posUi.badgeSelected')}
+                        </Text>
+                      ) : null}
+                    </Pressable>
+                  );
+                })
+              )}
+              {!customerLoading && customerHits.length === 0 ? (
+                <Text style={{ color: colors.textMuted, padding: 12, fontSize: 12 }}>
+                  {t('posUi.customerSearchEmpty')}
+                </Text>
+              ) : null}
+            </ScrollView>
+          </Pressable>
+        </Pressable>
+      </Modal>
 
       <Modal visible={pickerOpen} transparent animationType="fade" onRequestClose={() => setPickerOpen(false)}>
         <Pressable style={styles.modalOverlay} onPress={() => setPickerOpen(false)}>
@@ -654,6 +837,7 @@ const styles = StyleSheet.create({
   },
   totalsCol: { gap: 2 },
   total: { fontSize: 18, fontWeight: '800' },
+  payCol: { gap: 8 },
   payRow: { flexDirection: 'row', gap: 8 },
   modalOverlay: {
     flex: 1,

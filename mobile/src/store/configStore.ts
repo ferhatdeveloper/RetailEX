@@ -102,7 +102,8 @@ const DEFAULT_CONFIG: DbConfig = {
   bridgePort: 3001,
   dbMode: 'local',
   networkPolicy: 'hybrid',
-  apiMode: 'bridge',
+  /** Varsayılan hybrid; saf PostgREST + remoteRestUrl ile ana okumalar REST */
+  apiMode: 'hybrid',
   remoteRestUrl: '',
   postgrestAnonKey: '',
   local: { ...DEFAULT_LOCAL },
@@ -119,7 +120,7 @@ export function normalizeRemoteRestUrl(input: string | null | undefined): string
 
 export function parseApiMode(v: unknown): ApiMode {
   if (v === 'postgrest' || v === 'hybrid' || v === 'bridge') return v;
-  return 'bridge';
+  return 'hybrid';
 }
 
 function mergeEndpoint(base: PgEndpoint, partial?: Partial<PgEndpoint> | null): PgEndpoint {
@@ -233,7 +234,7 @@ export const useConfigStore = create<ConfigState>()(
             remote: { ...DEFAULT_REMOTE },
             remoteRestUrl: '',
             postgrestAnonKey: '',
-            apiMode: 'bridge',
+            apiMode: 'hybrid',
           },
         }),
       setHydrated: (v) => set({ isHydrated: v }),
@@ -285,7 +286,8 @@ export function isConfigReady(cfg: DbConfig): boolean {
   const restOk = Boolean(normalizeRemoteRestUrl(cfg.remoteRestUrl));
   const bridgeOk = isBridgeEndpointReady(cfg);
   if (cfg.apiMode === 'postgrest') return restOk;
-  if (cfg.apiMode === 'hybrid') return restOk && bridgeOk;
+  /** hybrid: PostgREST veya Bridge yeter (Bridge yalnız kalan SQL için) */
+  if (cfg.apiMode === 'hybrid') return bridgeOk || restOk;
   return bridgeOk;
 }
 

@@ -26,6 +26,7 @@ import {
   EmptyState,
   ErrorBanner,
 } from '../components/ScreenChrome';
+import { SegmentTabBar } from '../components/SegmentTabBar';
 import {
   listDeliveries,
   listCouriers,
@@ -254,32 +255,13 @@ export function DeliveryScreen() {
         subtitle={tabs.find((x) => x.id === tab)?.label}
       />
 
-      <View style={[styles.tabRow, { borderBottomColor: colors.cardBorder }]}>
-        {tabs.map((item) => {
-          const on = item.id === tab;
-          return (
-            <Pressable
-              key={item.id}
-              onPress={() => setTab(item.id)}
-              style={[
-                styles.tabBtn,
-                on && { borderBottomColor: palette.blue600, borderBottomWidth: 2 },
-              ]}
-            >
-              <Text
-                style={{
-                  color: on ? palette.blue700 : colors.textMuted,
-                  fontWeight: on ? '800' : '600',
-                  fontSize: 12,
-                }}
-                numberOfLines={1}
-              >
-                {item.label}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </View>
+      <SegmentTabBar
+        layout="equal"
+        variant="underline"
+        value={tab}
+        onChange={setTab}
+        items={tabs.map((item) => ({ id: item.id, label: item.label }))}
+      />
 
       {showLive ? (
         <View style={[styles.trackCard, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
@@ -532,17 +514,6 @@ export function DeliveryScreen() {
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
-  tabRow: {
-    flexDirection: 'row',
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    marginHorizontal: 4,
-  },
-  tabBtn: {
-    flex: 1,
-    alignItems: 'center',
-    paddingVertical: 10,
-    paddingHorizontal: 4,
-  },
   trackCard: {
     marginHorizontal: 12,
     marginTop: 8,

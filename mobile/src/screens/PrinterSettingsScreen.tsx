@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -10,40 +10,48 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { Printer, Wifi, Bluetooth, Smartphone } from 'lucide-react-native';
+import { useTranslation } from 'react-i18next';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { ScreenHeader } from '../components/ScreenChrome';
 import { FormField } from '../components/FormField';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { useThemeStore } from '../store/themeStore';
 import { usePrinterSettingsStore } from '../store/printerSettingsStore';
-import { testPrintReceipt } from '../services/printerService';
-import { escposTransportStatus } from '../services/escpos/escposTcpTransport';
+import { printerTransportStatus, testPrintReceipt } from '../services/printerService';
 import {
   type PrinterInterface,
   type ReceiptLangCode,
   type ReceiptPaperSize,
+  type TestPrintResult,
 } from '../types/printerSettings';
 import { palette } from '../theme/colors';
 import type { MainStackParamList } from '../navigation/types';
 
 type Props = NativeStackScreenProps<MainStackParamList, 'PrinterSettings'>;
 
-const INTERFACE_OPTIONS: { id: PrinterInterface; label: string; Icon: typeof Wifi }[] = [
-  { id: 'network', label: 'Ağ (IP)', Icon: Wifi },
-  { id: 'bluetooth', label: 'Bluetooth', Icon: Bluetooth },
-  { id: 'system', label: 'Sistem', Icon: Smartphone },
-];
-
 const PAPER_OPTIONS: ReceiptPaperSize[] = ['58mm', '80mm', 'A5', 'A4'];
 
-const LANG_OPTIONS: { code: ReceiptLangCode; label: string }[] = [
-  { code: 'tr', label: 'Türkçe' },
-  { code: 'en', label: 'English' },
-  { code: 'ar', label: 'العربية' },
-  { code: 'ku', label: 'Kurdî' },
-];
+const LANG_LABEL_KEYS: Record<ReceiptLangCode, 'langTr' | 'langEn' | 'langAr' | 'langKu'> = {
+  tr: 'langTr',
+  en: 'langEn',
+  ar: 'langAr',
+  ku: 'langKu',
+};
+
+function resolvePrintMessage(
+  result: TestPrintResult,
+  t: (key: string, opts?: Record<string, unknown>) => string,
+): string {
+  if (result.code) {
+    const key = `printerSettings.errors.${result.code}`;
+    const translated = t(key);
+    if (translated !== key) return translated;
+  }
+  return result.message;
+}
 
 export function PrinterSettingsScreen(_props: Props) {
+  const { t } = useTranslation();
   const { colors, darkMode } = useThemeStore();
   const settings = usePrinterSettingsStore((s) => s.settings);
   const setSettings = usePrinterSettingsStore((s) => s.setSettings);
@@ -52,28 +60,56 @@ export function PrinterSettingsScreen(_props: Props) {
   const [testing, setTesting] = useState(false);
   const [lastPreview, setLastPreview] = useState<string | null>(null);
 
+  const transport = useMemo(() => printerTransportStatus(), []);
+
+  const interfaceOptions = useMemo(
+    (): { id: PrinterInterface; label: string; Icon: typeof Wifi }[] => [
+      { id: 'network', label: t('printerSettings.interfaceNetwork'), Icon: Wifi },
+      { id: 'bluetooth', label: t('printerSettings.interfaceBluetooth'), Icon: Bluetooth },
+      { id: 'system', label: t('printerSettings.interfaceSystem'), Icon: Smartphone },
+    ],
+    [t],
+  );
+
+  const langOptions = useMemo(
+    () =>
+      (Object.keys(LANG_LABEL_KEYS) as ReceiptLangCode[]).map((code) => ({
+        code,
+        label: t(LANG_LABEL_KEYS[code]),
+      })),
+    [t],
+  );
+
+  const networkCarrier = transport.network.nativeTcp
+    ? t('printerSettings.transportCarrierBoth')
+    : t('printerSettings.transportCarrierBridge');
+
   const onTestPrint = useCallback(async () => {
     setTesting(true);
     setLastPreview(null);
     try {
       const result = await testPrintReceipt(settings);
       if (result.preview) setLastPreview(result.preview);
-      Alert.alert(result.ok ? 'Test yazdırma' : 'Yazdırılamadı', result.message);
+      const msg = resolvePrintMessage(result, t);
+      Alert.alert(
+        result.ok ? t('printerSettings.testPrintOk') : t('printerSettings.testPrintFail'),
+        msg,
+      );
     } finally {
       setTesting(false);
     }
-  }, [settings]);
+  }, [settings, t]);
 
   const onReset = () => {
-    Alert.alert('Varsayılana dön', 'Tüm yazıcı/fiş ayarları sıfırlansın mı?', [
-      { text: 'İptal', style: 'cancel' },
+    Alert.alert(t('printerSettings.resetConfirmTitle'), t('printerSettings.resetConfirmBody'), [
+      { text: t('alert.cancel'), style: 'cancel' },
       {
-        text: 'Sıfırla',
+        text: t('alert.reset'),
         style: 'destructive',
         onPress: () => {
           resetSettings();
           setLastPreview(null);
-          Alert.alert('Kaydedildi', 'Varsayılan ayarlar yüklendi.');
+          Alert.alert(t('alert.saved'), t('printerSettings.resetDone'));
         },
       },
     ]);
@@ -124,20 +160,54 @@ export function PrinterSettingsScreen(_props: Props) {
     </View>
   );
 
+  const TransportBox = ({
+    title,
+    body,
+    accentDark,
+    accentLight,
+  }: {
+    title: string;
+    body: string;
+    accentDark: string;
+    accentLight: string;
+  }) => (
+    <View
+      style={[
+        styles.stubBox,
+        {
+          borderColor: darkMode ? accentDark : accentLight,
+          backgroundColor: darkMode ? `${accentDark}40` : `${accentLight}18`,
+        },
+      ]}
+    >
+      <Text
+        style={{
+          color: darkMode ? accentLight : accentDark,
+          fontSize: 12,
+          fontWeight: '700',
+        }}
+      >
+        {title}
+      </Text>
+      <Text style={{ color: colors.textMuted, fontSize: 11, lineHeight: 16, marginTop: 4 }}>
+        {body}
+      </Text>
+    </View>
+  );
+
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
-      <ScreenHeader
-        title="Yazıcı / Fiş Ayarları"
-        subtitle="Ağ ESC/POS · köprü veya doğrudan TCP"
-      />
+      <ScreenHeader title={t('printerSettings.title')} subtitle={t('printerSettings.subtitle')} />
       <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
         <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
           <View style={styles.cardHeader}>
             <Printer size={20} color={palette.blue600} />
-            <Text style={[styles.cardTitle, { color: colors.text }]}>Yazıcı</Text>
+            <Text style={[styles.cardTitle, { color: colors.text }]}>{t('printerSettings.printer')}</Text>
           </View>
           <View style={styles.switchRow}>
-            <Text style={{ color: colors.text, fontWeight: '700', flex: 1 }}>Yazıcı aktif</Text>
+            <Text style={{ color: colors.text, fontWeight: '700', flex: 1 }}>
+              {t('printerSettings.enabled')}
+            </Text>
             <Switch
               value={settings.enabled}
               onValueChange={(v) => setSettings({ enabled: v })}
@@ -145,13 +215,11 @@ export function PrinterSettingsScreen(_props: Props) {
               thumbColor={settings.enabled ? palette.blue600 : palette.gray100}
             />
           </View>
-          <Text style={[styles.hint, { color: colors.textSubtle }]}>
-            Kapalıyken POS fiş kaydı yapılır; yazdırma atlanır.
-          </Text>
+          <Text style={[styles.hint, { color: colors.textSubtle }]}>{t('printerSettings.enabledHint')}</Text>
 
-          <Text style={[styles.sec, { color: colors.textMuted }]}>Bağlantı tipi</Text>
+          <Text style={[styles.sec, { color: colors.textMuted }]}>{t('printerSettings.connectionType')}</Text>
           <ChipRow
-            options={INTERFACE_OPTIONS}
+            options={interfaceOptions}
             value={settings.interface}
             onSelect={(iface) => setSettings({ interface: iface })}
           />
@@ -159,14 +227,14 @@ export function PrinterSettingsScreen(_props: Props) {
           {settings.interface === 'network' ? (
             <>
               <FormField
-                label="Yazıcı IP"
+                label={t('printerSettings.printerIp')}
                 value={settings.ipAddress ?? ''}
                 onChangeText={(v) => setSettings({ ipAddress: v })}
                 autoCapitalize="none"
                 placeholder="192.168.1.100"
               />
               <FormField
-                label="Port"
+                label={t('printerSettings.port')}
                 value={String(settings.port ?? 9100)}
                 onChangeText={(v) =>
                   setSettings({ port: parseInt(v.replace(/\D/g, ''), 10) || 9100 })
@@ -174,28 +242,25 @@ export function PrinterSettingsScreen(_props: Props) {
                 keyboardType="number-pad"
               />
               <Text style={[styles.hint, { color: colors.textSubtle }]}>
-                ESC/POS ham TCP (port {settings.port ?? 9100}). Önce pg_bridge köprüsü; development build’de
-                doğrudan TCP de denenir.
+                {t('printerSettings.networkHint', { port: settings.port ?? 9100 })}
               </Text>
             </>
           ) : null}
 
           {settings.interface === 'bluetooth' ? (
             <FormField
-              label="Bluetooth cihaz adı"
+              label={t('printerSettings.bluetoothDeviceName')}
               value={settings.bluetoothDeviceName ?? ''}
               onChangeText={(v) => setSettings({ bluetoothDeviceName: v })}
-              placeholder="Örn: RPP02N"
+              placeholder={t('printerSettings.bluetoothPlaceholder')}
             />
           ) : null}
 
           {settings.interface === 'system' ? (
-            <Text style={[styles.hint, { color: colors.textSubtle }]}>
-              Android/iOS paylaşım menüsü veya sistem varsayılanı (gerçek entegrasyon Faz 2+).
-            </Text>
+            <Text style={[styles.hint, { color: colors.textSubtle }]}>{t('printerSettings.systemHint')}</Text>
           ) : null}
 
-          <Text style={[styles.sec, { color: colors.textMuted }]}>Kağıt boyutu</Text>
+          <Text style={[styles.sec, { color: colors.textMuted }]}>{t('printerSettings.paperSize')}</Text>
           <View style={styles.chipRow}>
             {PAPER_OPTIONS.map((ps) => {
               const active = settings.paperSize === ps;
@@ -228,9 +293,9 @@ export function PrinterSettingsScreen(_props: Props) {
 
           <View style={styles.switchRow}>
             <View style={{ flex: 1 }}>
-              <Text style={{ color: colors.text, fontWeight: '700' }}>Otomatik yazdır</Text>
+              <Text style={{ color: colors.text, fontWeight: '700' }}>{t('printerSettings.autoPrint')}</Text>
               <Text style={{ color: colors.textSubtle, fontSize: 11, marginTop: 2 }}>
-                Fiş kaydından sonra (ağ ESC/POS)
+                {t('printerSettings.autoPrintHint')}
               </Text>
             </View>
             <Switch
@@ -243,28 +308,27 @@ export function PrinterSettingsScreen(_props: Props) {
         </View>
 
         <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
-          <Text style={[styles.cardTitle, { color: colors.text }]}>Fiş / üst bilgi</Text>
+          <Text style={[styles.cardTitle, { color: colors.text }]}>{t('printerSettings.receiptHeader')}</Text>
           <Text style={[styles.hint, { color: colors.textSubtle, marginBottom: 8 }]}>
-            PG bağlantısı yoksa bu yerel bilgiler test fişinde kullanılır. Tam firma logosu masaüstü
-            Sistem → Fiş / Firma Bilgisi’nden yönetilir.
+            {t('printerSettings.receiptHeaderHint')}
           </Text>
           <FormField
-            label="Firma adı (yerel)"
+            label={t('printerSettings.companyName')}
             value={settings.companyName ?? ''}
             onChangeText={(v) => setSettings({ companyName: v })}
-            placeholder="Mağaza adı"
+            placeholder={t('printerSettings.companyNamePlaceholder')}
           />
           <FormField
-            label="Telefon (yerel)"
+            label={t('printerSettings.companyPhone')}
             value={settings.companyPhone ?? ''}
             onChangeText={(v) => setSettings({ companyPhone: v })}
             keyboardType="phone-pad"
-            placeholder="+90 …"
+            placeholder={t('printerSettings.companyPhonePlaceholder')}
           />
 
-          <Text style={[styles.sec, { color: colors.textMuted }]}>Varsayılan fiş dili</Text>
+          <Text style={[styles.sec, { color: colors.textMuted }]}>{t('printerSettings.defaultReceiptLang')}</Text>
           <View style={styles.langGrid}>
-            {LANG_OPTIONS.map(({ code, label }) => {
+            {langOptions.map(({ code, label }) => {
               const active = settings.defaultLanguage === code;
               return (
                 <Pressable
@@ -294,37 +358,29 @@ export function PrinterSettingsScreen(_props: Props) {
           </View>
         </View>
 
-        <View
-          style={[
-            styles.stubBox,
-            {
-              borderColor: darkMode ? '#1d4ed8' : '#bfdbfe',
-              backgroundColor: darkMode ? 'rgba(30,58,138,0.25)' : 'rgba(239,246,255,0.95)',
-            },
-          ]}
-        >
-          <Text
-            style={{
-              color: darkMode ? '#93c5fd' : '#1e40af',
-              fontSize: 12,
-              fontWeight: '700',
-            }}
-          >
-            Ağ yazdırma (ESC/POS TCP)
-          </Text>
-          <Text style={{ color: colors.textMuted, fontSize: 11, lineHeight: 16, marginTop: 4 }}>
-            «Ağ (IP)» seçiliyken test fişi ham ESC/POS olarak yazıcıya gönderilir. Taşıyıcı:{' '}
-            {escposTransportStatus().nativeTcp
-              ? 'köprü veya doğrudan TCP'
-              : 'pg_bridge köprüsü (PC’de npm run bridge)'}
-            . Bluetooth ve sistem yazıcısı Faz 2+.
-          </Text>
-        </View>
+        <TransportBox
+          title={t('printerSettings.transportNetworkTitle')}
+          body={t('printerSettings.transportNetworkBody', { carrier: networkCarrier })}
+          accentDark="#1d4ed8"
+          accentLight="#bfdbfe"
+        />
+        <TransportBox
+          title={t('printerSettings.transportBluetoothTitle')}
+          body={t('printerSettings.transportBluetoothBody', { status: transport.bluetooth.hint })}
+          accentDark="#7c3aed"
+          accentLight="#ddd6fe"
+        />
+        <TransportBox
+          title={t('printerSettings.transportSystemTitle')}
+          body={t('printerSettings.transportSystemBody', { status: transport.system.hint })}
+          accentDark="#047857"
+          accentLight="#a7f3d0"
+        />
 
         {testing ? (
           <ActivityIndicator color={palette.blue600} style={{ marginVertical: 8 }} />
         ) : (
-          <PrimaryButton label="Test yazdır" onPress={() => void onTestPrint()} />
+          <PrimaryButton label={t('printerSettings.testPrint')} onPress={() => void onTestPrint()} />
         )}
 
         {lastPreview ? (
@@ -337,17 +393,19 @@ export function PrinterSettingsScreen(_props: Props) {
               },
             ]}
           >
-            <Text style={[styles.previewLabel, { color: colors.textMuted }]}>Son test önizlemesi</Text>
+            <Text style={[styles.previewLabel, { color: colors.textMuted }]}>
+              {t('printerSettings.lastPreview')}
+            </Text>
             <Text style={[styles.previewMono, { color: colors.text }]}>{lastPreview}</Text>
           </View>
         ) : null}
 
         <PrimaryButton
-          label="Ayarlar kaydedildi (otomatik)"
-          onPress={() => Alert.alert('Kayıt', 'Ayarlar cihazda saklanıyor (AsyncStorage).')}
+          label={t('printerSettings.savedAuto')}
+          onPress={() => Alert.alert(t('alert.saved'), t('printerSettings.savedAutoHint'))}
           variant="ghost"
         />
-        <PrimaryButton label="Varsayılana dön" onPress={onReset} variant="ghost" />
+        <PrimaryButton label={t('printerSettings.resetDefaults')} onPress={onReset} variant="ghost" />
       </ScrollView>
     </View>
   );

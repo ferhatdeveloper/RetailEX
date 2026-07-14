@@ -120,6 +120,15 @@ DeskApp/C:/
 **/migration_log.json
 **/schema_gaps.json
 
+# Google Play service account — asla commit (EAS_CHECKLIST.md / PLAY_SUBMIT.md)
+mobile/secrets/**
+!mobile/secrets/.gitkeep
+!mobile/secrets/README.md
+**/google-play-service-account.json
+**/play-store-service-account.json
+mobile/google-service-account.json
+**/google-service-account.json
+
 # SumatraPDF portable (npm run sumatra:fetch — kurulum paketine dahil edilir)
 DeskApp/resources/sumatra/SumatraPDF.exe
 

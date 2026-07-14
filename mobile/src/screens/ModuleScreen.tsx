@@ -184,6 +184,9 @@ export function ModuleScreen() {
       case 'DocumentScan':
         navigation.replace('DocumentScan', { kind: 'purchase' });
         break;
+      case 'MaterialLabelScan':
+        navigation.replace('MaterialLabelScan');
+        break;
       default:
         break;
     }
@@ -206,7 +209,7 @@ export function ModuleScreen() {
     'butcher-production': 'Kasap üretim reçeteleri listesi + basit ekleme canlı.',
     multicurrency: 'Para birimleri + kurlar okuma/ekleme canlı.',
     excel: 'Excel/CSV canlı özet + ürün/cari CSV paylaşımı.',
-    'smart-material-add': 'Akıllı ekleme — mobil ProductForm kısayolu.',
+    'smart-material-add': 'Akıllı ekleme — kamera OCR ile malzeme kartı (MaterialLabelScan).',
     'invoice-label-designer': 'Barkod/etiket şablonları listesi + ekleme canlı.',
     'virtual-pbx-caller-id': 'Caller ID yerel ayar (AsyncStorage); dinleme masaüstü.',
     'finance-cards': 'Cari hesaplar listesi + detay + son faturalar canlı.',

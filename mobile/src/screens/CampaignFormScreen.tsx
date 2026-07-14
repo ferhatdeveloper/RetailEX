@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useTranslation } from 'react-i18next';
 import { ScreenHeader, ErrorBanner } from '../components/ScreenChrome';
 import { FormField } from '../components/FormField';
 import { PrimaryButton } from '../components/PrimaryButton';
@@ -86,6 +87,7 @@ function Chip({
 }
 
 export function CampaignFormScreen() {
+  const { t } = useTranslation();
   const { colors } = useThemeStore();
   const navigation = useNavigation<NativeStackNavigationProp<MainStackParamList>>();
   const route = useRoute<RouteProp<MainStackParamList, 'CampaignForm'>>();
@@ -158,16 +160,16 @@ export function CampaignFormScreen() {
   const handleSave = async () => {
     const trimmed = name.trim();
     if (!trimmed) {
-      Alert.alert('Eksik alan', 'Kampanya adı zorunludur.');
+      Alert.alert(t('alert.missingField'), t('formValidation.campaignNameRequired'));
       return;
     }
     const value = Number(String(discountValue).replace(',', '.'));
     if (!Number.isFinite(value) || value < 0) {
-      Alert.alert('Geçersiz', 'İndirim değeri sayı olmalıdır.');
+      Alert.alert(t('alert.invalid'), t('formValidation.discountValueNumber'));
       return;
     }
     if (discountType === 'percentage' && value > 100) {
-      Alert.alert('Geçersiz', 'Yüzde indirim en fazla 100 olabilir.');
+      Alert.alert(t('alert.invalid'), t('formValidation.discountPercentMax'));
       return;
     }
 
@@ -177,7 +179,7 @@ export function CampaignFormScreen() {
       const startIso = parseDateToIso(startDate, false);
       const endIso = parseDateToIso(endDate, true);
       if (!startIso || !endIso) {
-        Alert.alert('Eksik alan', 'Başlangıç ve bitiş tarihi zorunludur (YYYY-MM-DD).');
+        Alert.alert(t('alert.missingField'), t('formValidation.dateRangeRequired'));
         setSaving(false);
         return;
       }

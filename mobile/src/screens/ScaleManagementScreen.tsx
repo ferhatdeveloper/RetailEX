@@ -12,6 +12,7 @@ import {
 import { Scale, Wifi, Bluetooth, FlaskConical, Trash2 } from 'lucide-react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { ScreenHeader } from '../components/ScreenChrome';
+import { SegmentTabBar } from '../components/SegmentTabBar';
 import { FormField } from '../components/FormField';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { useThemeStore } from '../store/themeStore';
@@ -259,38 +260,7 @@ export function ScaleManagementScreen(_props: Props) {
         subtitle="Rongta · Android TeraziManager eşleniği"
       />
 
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.tabRow}
-      >
-        {TABS.map((t) => {
-          const active = tab === t.id;
-          return (
-            <Pressable
-              key={t.id}
-              onPress={() => setTab(t.id)}
-              style={[
-                styles.tab,
-                {
-                  backgroundColor: active ? palette.blue600 : colors.card,
-                  borderColor: active ? palette.blue600 : colors.cardBorder,
-                },
-              ]}
-            >
-              <Text
-                style={{
-                  color: active ? palette.white : colors.text,
-                  fontWeight: '700',
-                  fontSize: 12,
-                }}
-              >
-                {t.label}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </ScrollView>
+      <SegmentTabBar layout="scroll" value={tab} onChange={setTab} items={TABS} />
 
       {(busy || status) && (
         <View style={styles.statusRow}>
@@ -612,13 +582,6 @@ export function ScaleManagementScreen(_props: Props) {
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
-  tabRow: { paddingHorizontal: 12, gap: 8, paddingVertical: 8 },
-  tab: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 999,
-    borderWidth: 1,
-  },
   statusRow: {
     flexDirection: 'row',
     alignItems: 'center',

@@ -7,10 +7,12 @@ import {
   ActivityIndicator,
   RefreshControl,
   Pressable,
+  Alert,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { ChevronRight, Plus } from 'lucide-react-native';
+import { useTranslation } from 'react-i18next';
+import { ChevronRight, Plus, ScanLine } from 'lucide-react-native';
 import { ScreenHeader, SearchBar, EmptyState, ErrorBanner } from '../components/ScreenChrome';
 import { HeaderIconButton } from '../components/GradientHeader';
 import { fetchCustomers, type CustomerRow } from '../api/customersApi';
@@ -21,6 +23,7 @@ import { palette } from '../theme/colors';
 import type { MainStackParamList } from '../navigation/types';
 
 export function CustomersScreen() {
+  const { t } = useTranslation();
   const { colors } = useThemeStore();
   const navigation = useNavigation<NativeStackNavigationProp<MainStackParamList>>();
   const orgEpoch = useOrgEpoch();
@@ -43,9 +46,23 @@ export function CustomersScreen() {
 
   useEffect(() => {
     setLoading(true);
-    const t = setTimeout(() => void load(), search ? 280 : 0);
-    return () => clearTimeout(t);
+    const tmr = setTimeout(() => void load(), search ? 280 : 0);
+    return () => clearTimeout(tmr);
   }, [load, search]);
+
+  const openAddMenu = () => {
+    Alert.alert(t('idScan.addMenuTitle'), t('idScan.addMenuHint'), [
+      {
+        text: t('idScan.addManual'),
+        onPress: () => navigation.navigate('CustomerForm'),
+      },
+      {
+        text: t('idScan.addWithId'),
+        onPress: () => navigation.navigate('CustomerIdScan', { cardType: 'customer' }),
+      },
+      { text: t('cancel'), style: 'cancel' },
+    ]);
+  };
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
@@ -53,9 +70,16 @@ export function CustomersScreen() {
         title="Cari Hesaplar"
         subtitle={`${rows.length} kayıt`}
         right={
-          <HeaderIconButton accent onPress={() => navigation.navigate('CustomerForm')}>
-            <Plus size={18} color={palette.white} />
-          </HeaderIconButton>
+          <View style={styles.headerActions}>
+            <HeaderIconButton
+              onPress={() => navigation.navigate('CustomerIdScan', { cardType: 'customer' })}
+            >
+              <ScanLine size={18} color={palette.white} />
+            </HeaderIconButton>
+            <HeaderIconButton accent onPress={openAddMenu}>
+              <Plus size={18} color={palette.white} />
+            </HeaderIconButton>
+          </View>
         }
       />
       <SearchBar value={search} onChangeText={setSearch} placeholder="Ad, kod, telefon…" />
@@ -111,6 +135,7 @@ export function CustomersScreen() {
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
+  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   card: { borderWidth: 1, borderRadius: 10, padding: 12 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   name: { fontSize: 14, fontWeight: '600', marginBottom: 2 },

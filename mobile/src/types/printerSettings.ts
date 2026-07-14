@@ -35,12 +35,32 @@ export const DEFAULT_PRINTER_SETTINGS: MobilePrinterSettings = {
   defaultLanguage: 'tr',
 };
 
+export type PrinterTransportKind =
+  | 'bridge'
+  | 'native-tcp'
+  | 'bluetooth-escpos'
+  | 'system-print'
+  | 'unavailable';
+
+export type PrinterErrorCode =
+  | 'disabled'
+  | 'ipRequired'
+  | 'invalidPort'
+  | 'btNameRequired'
+  | 'btNativeUnavailable'
+  | 'btSdkNotWired'
+  | 'systemPrintUnavailable'
+  | 'systemPrintFailed'
+  | 'systemPrintCancelled'
+  | 'autoPrintOff';
+
 export type TestPrintResult = {
   ok: boolean;
   message: string;
+  /** i18n anahtarı — ekran `printerSettings.errors.{code}` ile çevirir */
+  code?: PrinterErrorCode;
   /** Metin önizleme (test / hata durumunda) */
   preview?: string;
-  /** Ağ yazdırma taşıyıcısı */
-  transport?: 'bridge' | 'native-tcp' | 'unavailable';
+  transport?: PrinterTransportKind;
   bytesSent?: number;
 };

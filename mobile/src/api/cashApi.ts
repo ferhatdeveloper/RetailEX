@@ -208,6 +208,8 @@ export type SimpleBankMovementInput = {
   description?: string;
   /** Varsayılan BANKA_GIRIS/CIKIS; dış havale için HAVALE / EFT */
   transactionType?: 'BANKA_GIRIS' | 'BANKA_CIKIS' | 'HAVALE' | 'EFT';
+  /** Fatura/POS fiş no — kasa satırı gibi satış fişiyle eşlemek için */
+  ficheNo?: string;
 };
 
 export type CashVirmanInput = {
@@ -674,7 +676,8 @@ export async function createSimpleBankMovement(
         ? 'BANKA_GIRIS'
         : 'BANKA_CIKIS';
   const sign = direction === 'in' ? 1 : -1;
-  const ficheNo = nextFicheNo('BNK');
+  const ficheNo =
+    String(input.ficheNo || '').trim() || nextFicheNo('BNK');
   const id = newUuid();
   const date = (input.date || todayYmd()).slice(0, 10);
   const defaultDesc =
@@ -952,6 +955,108 @@ export async function recordKasaGirisForPurchaseReturn(opts: {
 }
 
 /**
+ * Peşin satış / POS (havale/EFT) → BANKA_GIRIS.
+ * Simetri: recordKasaGirisForSale. Varsayılan banka yoksa sessizce atlar.
+ */
+export async function recordBankaGirisForSale(opts: {
+  amount: number;
+  ficheNo: string;
+  description?: string;
+  registerId?: string | null;
+}): Promise<{ id: string; ficheNo: string } | null> {
+  const amount = Math.abs(Number(opts.amount) || 0);
+  if (amount <= 0) return null;
+
+  const registerId = opts.registerId || (await resolveDefaultBankRegisterId());
+  if (!registerId) return null;
+
+  const ficheNo = String(opts.ficheNo || '').trim() || nextFicheNo('BNK');
+  const desc =
+    (opts.description || '').trim() || `Satış (havale) — ${ficheNo}`;
+
+  try {
+    return await createSimpleBankMovement({
+      registerId,
+      amount,
+      direction: 'in',
+      description: desc,
+      transactionType: CASH_TX.BANKA_GIRIS,
+      ficheNo,
+    });
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Peşin alış (havale/EFT) → BANKA_CIKIS.
+ * Simetri: recordKasaCikisForPurchase. Varsayılan banka yoksa sessizce atlar.
+ */
+export async function recordBankaCikisForPurchase(opts: {
+  amount: number;
+  ficheNo: string;
+  description?: string;
+  registerId?: string | null;
+}): Promise<{ id: string; ficheNo: string } | null> {
+  const amount = Math.abs(Number(opts.amount) || 0);
+  if (amount <= 0) return null;
+
+  const registerId = opts.registerId || (await resolveDefaultBankRegisterId());
+  if (!registerId) return null;
+
+  const ficheNo = String(opts.ficheNo || '').trim() || nextFicheNo('BNK');
+  const desc =
+    (opts.description || '').trim() || `Alış (havale) — ${ficheNo}`;
+
+  try {
+    return await createSimpleBankMovement({
+      registerId,
+      amount,
+      direction: 'out',
+      description: desc,
+      transactionType: CASH_TX.BANKA_CIKIS,
+      ficheNo,
+    });
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Peşin satış iadesi (havale/EFT) → BANKA_CIKIS.
+ * Simetri: recordKasaCikisForReturn. Varsayılan banka yoksa sessizce atlar.
+ */
+export async function recordBankaCikisForReturn(opts: {
+  amount: number;
+  ficheNo: string;
+  description?: string;
+  registerId?: string | null;
+}): Promise<{ id: string; ficheNo: string } | null> {
+  const amount = Math.abs(Number(opts.amount) || 0);
+  if (amount <= 0) return null;
+
+  const registerId = opts.registerId || (await resolveDefaultBankRegisterId());
+  if (!registerId) return null;
+
+  const ficheNo = String(opts.ficheNo || '').trim() || nextFicheNo('BNK');
+  const desc =
+    (opts.description || '').trim() || `Satış iadesi (havale) — ${ficheNo}`;
+
+  try {
+    return await createSimpleBankMovement({
+      registerId,
+      amount,
+      direction: 'out',
+      description: desc,
+      transactionType: CASH_TX.BANKA_CIKIS,
+      ficheNo,
+    });
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Peşin alış iadesi (havale/EFT) → BANKA_GIRIS.
  * Varsayılan banka yoksa sessizce atlar.
  */
@@ -967,8 +1072,9 @@ export async function recordBankaGirisForPurchaseReturn(opts: {
   const registerId = opts.registerId || (await resolveDefaultBankRegisterId());
   if (!registerId) return null;
 
+  const ficheNo = String(opts.ficheNo || '').trim() || nextFicheNo('BNK');
   const desc =
-    (opts.description || '').trim() || `Alış iadesi (havale) — ${opts.ficheNo}`;
+    (opts.description || '').trim() || `Alış iadesi (havale) — ${ficheNo}`;
 
   try {
     return await createSimpleBankMovement({
@@ -976,6 +1082,8 @@ export async function recordBankaGirisForPurchaseReturn(opts: {
       amount,
       direction: 'in',
       description: desc,
+      transactionType: CASH_TX.BANKA_GIRIS,
+      ficheNo,
     });
   } catch {
     return null;

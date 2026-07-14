@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { ScreenHeader, EmptyState, ErrorBanner } from '../components/ScreenChrome';
+import { SegmentTabBar } from '../components/SegmentTabBar';
 import {
   fetchSystemUsers,
   fetchSystemRoles,
@@ -138,25 +139,7 @@ export function SystemScreen({ route, navigation }: Props) {
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
       <ScreenHeader title={title} subtitle={user?.firmNr ? `Firma ${user.firmNr}` : 'Sistem'} />
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabs}>
-        {tabs.map((t) => (
-          <Pressable
-            key={t.id}
-            onPress={() => setTab(t.id)}
-            style={[
-              styles.tab,
-              {
-                backgroundColor: tab === t.id ? palette.blue600 : colors.card,
-                borderColor: colors.cardBorder,
-              },
-            ]}
-          >
-            <Text style={{ color: tab === t.id ? palette.white : colors.text, fontSize: 12, fontWeight: '700' }}>
-              {t.label}
-            </Text>
-          </Pressable>
-        ))}
-      </ScrollView>
+      <SegmentTabBar layout="scroll" value={tab} onChange={setTab} items={tabs} />
       {error ? <ErrorBanner message={error} onRetry={() => void load()} /> : null}
       {loading ? (
         <ActivityIndicator style={{ marginTop: 40 }} color={palette.blue600} />
@@ -304,8 +287,6 @@ export function SystemScreen({ route, navigation }: Props) {
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
-  tabs: { paddingHorizontal: 12, paddingVertical: 8, gap: 8 },
-  tab: { paddingHorizontal: 14, paddingVertical: 10, borderRadius: 8, borderWidth: 1 },
   list: { padding: 12, gap: 8, paddingBottom: 40 },
   card: { borderWidth: 1, borderRadius: 10, padding: 12 },
   sec: { fontSize: 13, fontWeight: '700', marginTop: 8, marginBottom: 4 },

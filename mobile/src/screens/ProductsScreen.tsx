@@ -7,10 +7,12 @@ import {
   ActivityIndicator,
   RefreshControl,
   Pressable,
+  Alert,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { ChevronRight, Plus, ScanBarcode } from 'lucide-react-native';
+import { useTranslation } from 'react-i18next';
+import { ChevronRight, Plus, ScanBarcode, ScanLine } from 'lucide-react-native';
 import { ScreenHeader, SearchBar, EmptyState, ErrorBanner } from '../components/ScreenChrome';
 import { HeaderIconButton } from '../components/GradientHeader';
 import { BarcodeScannerModal } from '../components/BarcodeScannerModal';
@@ -22,6 +24,7 @@ import { palette } from '../theme/colors';
 import type { MainStackParamList } from '../navigation/types';
 
 export function ProductsScreen() {
+  const { t } = useTranslation();
   const { colors } = useThemeStore();
   const navigation = useNavigation<NativeStackNavigationProp<MainStackParamList>>();
   const orgEpoch = useOrgEpoch();
@@ -30,6 +33,20 @@ export function ProductsScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [scannerOpen, setScannerOpen] = useState(false);
+
+  const openAddMenu = () => {
+    Alert.alert(t('materialScan.addMenuTitle'), t('materialScan.addMenuHint'), [
+      {
+        text: t('materialScan.addManual'),
+        onPress: () => navigation.navigate('ProductForm'),
+      },
+      {
+        text: t('materialScan.addWithCamera'),
+        onPress: () => navigation.navigate('MaterialLabelScan'),
+      },
+      { text: t('cancel'), style: 'cancel' },
+    ]);
+  };
 
   const load = useCallback(async () => {
     setError(null);
@@ -56,9 +73,14 @@ export function ProductsScreen() {
         title="Malzemeler"
         subtitle={`${rows.length} kayıt`}
         right={
-          <HeaderIconButton accent onPress={() => navigation.navigate('ProductForm')}>
-            <Plus size={18} color={palette.white} />
-          </HeaderIconButton>
+          <View style={styles.headerActions}>
+            <HeaderIconButton onPress={() => navigation.navigate('MaterialLabelScan')}>
+              <ScanLine size={18} color={palette.white} />
+            </HeaderIconButton>
+            <HeaderIconButton accent onPress={openAddMenu}>
+              <Plus size={18} color={palette.white} />
+            </HeaderIconButton>
+          </View>
         }
       />
       <View style={styles.searchRow}>
@@ -138,6 +160,7 @@ export function ProductsScreen() {
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
+  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   searchRow: {
     flexDirection: 'row',
     alignItems: 'center',

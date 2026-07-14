@@ -28,7 +28,8 @@ export type PosCartLineInput = {
 
 /** Fatura kalem — offline fatura kuyruğu */
 export type InvoiceLineInput = {
-  productId: string;
+  /** Ürün id — hizmet satırında opsiyonel / null */
+  productId?: string | null;
   code?: string | null;
   name: string;
   qty: number;
@@ -38,6 +39,21 @@ export type InvoiceLineInput = {
   discountPercent?: number;
   /** Satır KDV % (UI + sale_items.vat_rate + header total_vat) */
   vatRate?: number;
+  /** product | service — hizmette stok yok */
+  lineType?: 'product' | 'service';
+  /** sale_items.item_type — Malzeme | Hizmet */
+  itemType?: string | null;
+};
+
+/** Web `invoiceHeaderFields` mobil alt kümesi — sales.header_fields JSONB */
+export type InvoiceHeaderFieldsInput = {
+  documentNo?: string;
+  specialCode?: string;
+  warehouse?: string;
+  salespersonCode?: string;
+  dueDate?: string;
+  cashRegisterId?: string;
+  cashRegisterName?: string;
 };
 
 export type CountingSlipStatus =
@@ -123,7 +139,19 @@ export type PendingMutation =
       id: string;
       createdAt: string;
       type: 'invoice.header.update';
-      payload: { invoiceId: string; notes?: string; status?: string };
+      payload: {
+        invoiceId: string;
+        notes?: string;
+        status?: string;
+        documentNo?: string;
+        invoiceDate?: string;
+        currency?: string;
+        currencyRate?: number;
+        headerFields?: InvoiceHeaderFieldsInput;
+        /** Yalnızca draft — kalem değişimi */
+        lines?: InvoiceLineInput[];
+        footerDiscountAmount?: number;
+      };
     }
   | {
       id: string;

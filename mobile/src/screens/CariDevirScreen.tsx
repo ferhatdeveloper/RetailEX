@@ -22,6 +22,7 @@ import {
 } from 'react-native';
 import { ArrowRightLeft, Pencil, Trash2 } from 'lucide-react-native';
 import { ScreenHeader, EmptyState, ErrorBanner, SearchBar } from '../components/ScreenChrome';
+import { SegmentTabBar } from '../components/SegmentTabBar';
 import { FormField } from '../components/FormField';
 import { PrimaryButton } from '../components/PrimaryButton';
 import {
@@ -551,18 +552,15 @@ export function CariDevirScreen() {
         right={<ArrowRightLeft size={20} color={palette.white} />}
       />
 
-      <View style={styles.tabRow}>
-        {(
-          [
-            { key: 'entry' as const, label: 'Giriş / Düzenle' },
-            { key: 'records' as const, label: 'Kayıtlı Fişler' },
-          ] as const
-        ).map((t) => (
-          <Pressable key={t.key} onPress={() => setTab(t.key)} style={chip(tab === t.key)}>
-            <Text style={chipText(tab === t.key)}>{t.label}</Text>
-          </Pressable>
-        ))}
-      </View>
+      <SegmentTabBar
+        layout="equal"
+        value={tab}
+        onChange={setTab}
+        items={[
+          { id: 'entry' as const, label: 'Giriş / Düzenle' },
+          { id: 'records' as const, label: 'Kayıtlı Fişler' },
+        ]}
+      />
 
       {error ? <ErrorBanner message={error} onRetry={() => setError(null)} /> : null}
       {statusMsg ? (
@@ -782,13 +780,6 @@ export function CariDevirScreen() {
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
-  tabRow: {
-    flexDirection: 'row',
-    gap: 8,
-    paddingHorizontal: 16,
-    paddingTop: 8,
-    paddingBottom: 4,
-  },
   filterRow: {
     flexDirection: 'row',
     gap: 8,

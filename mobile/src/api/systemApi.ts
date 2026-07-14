@@ -1,5 +1,8 @@
 import { pgQuery } from './pgClient';
+import { postgrestGet } from './postgrestClient';
+import { runDataTransport, rethrowTransportInfra } from './dataTransport';
 import { firmNr } from './erpTables';
+import { shouldPreferPostgrest, shouldUseBridgeSql, useConfigStore } from '../store/configStore';
 
 export type SystemUserRow = {
   id: string;
@@ -47,14 +50,70 @@ async function tryQueries<T>(queries: { sql: string; params?: unknown[] }[]): Pr
     try {
       const res = await pgQuery<T>(q.sql, q.params ?? []);
       return res.rows;
-    } catch {
+    } catch (e) {
+      rethrowTransportInfra(e, 'systemApi.tryQueries');
       /* next */
     }
   }
   return [];
 }
 
-export async function fetchSystemUsers(limit = 100): Promise<SystemUserRow[]> {
+function mapSystemUser(r: Record<string, unknown>, rolesById?: Map<string, string>): SystemUserRow {
+  const roleId = r.role_id != null ? String(r.role_id) : '';
+  const roleFromJoin = roleId && rolesById?.get(roleId);
+  return {
+    id: String(r.id ?? ''),
+    username: String(r.username ?? ''),
+    full_name: r.full_name != null ? String(r.full_name) : null,
+    email: r.email != null ? String(r.email) : null,
+    role_name: roleFromJoin || (r.role != null ? String(r.role) : null) || null,
+    firm_nr: r.firm_nr != null ? String(r.firm_nr) : null,
+    is_active: !(r.is_active === false || r.is_active === 0 || String(r.is_active).toLowerCase() === 'false'),
+    last_login_at: r.last_login_at != null ? String(r.last_login_at) : null,
+  };
+}
+
+/** Web Login `/users` — PostgREST public.users (+ roles adı) */
+async function fetchSystemUsersViaRest(limit: number): Promise<SystemUserRow[]> {
+  const fn = firmNr();
+  const fnBare = fn.replace(/^0+/, '') || fn;
+  const [users, roles] = await Promise.all([
+    postgrestGet<Record<string, unknown>[]>(
+      '/users',
+      {
+        select: 'id,username,full_name,email,role,role_id,firm_nr,is_active,last_login_at',
+        order: 'username.asc',
+        limit: Math.min(limit * 2, 300),
+      },
+      { schema: 'public' },
+    ),
+    postgrestGet<Array<{ id?: string; name?: string }>>(
+      '/roles',
+      { select: 'id,name', limit: 200 },
+      { schema: 'public' },
+    ).catch(() => [] as Array<{ id?: string; name?: string }>),
+  ]);
+
+  const rolesById = new Map(
+    (Array.isArray(roles) ? roles : [])
+      .filter((r) => r.id)
+      .map((r) => [String(r.id), String(r.name || '')]),
+  );
+
+  const firmSet = new Set([fn, fnBare].filter(Boolean));
+  return (Array.isArray(users) ? users : [])
+    .map((r) => mapSystemUser(r, rolesById))
+    .filter((u) => {
+      if (!u.id || !u.username) return false;
+      if (!u.firm_nr) return true;
+      const padded = String(u.firm_nr).replace(/\D/g, '');
+      const norm = padded.length <= 3 ? padded.padStart(3, '0') : padded;
+      return firmSet.has(String(u.firm_nr)) || firmSet.has(norm) || firmSet.has(padded);
+    })
+    .slice(0, limit);
+}
+
+async function fetchSystemUsersViaBridge(limit: number): Promise<SystemUserRow[]> {
   const fn = firmNr();
   return tryQueries<SystemUserRow>([
     {
@@ -86,7 +145,40 @@ export async function fetchSystemUsers(limit = 100): Promise<SystemUserRow[]> {
   ]);
 }
 
+export async function fetchSystemUsers(limit = 100): Promise<SystemUserRow[]> {
+  try {
+    return await runDataTransport({
+      label: 'fetchSystemUsers',
+      viaRest: () => fetchSystemUsersViaRest(limit),
+      viaBridge: () => fetchSystemUsersViaBridge(limit),
+    });
+  } catch (e) {
+    rethrowTransportInfra(e, 'fetchSystemUsers');
+    return [];
+  }
+}
+
 export async function fetchSystemRoles(limit = 50): Promise<SystemRoleRow[]> {
+  const cfg = useConfigStore.getState().config;
+  if (shouldPreferPostgrest(cfg)) {
+    try {
+      const rows = await postgrestGet<Array<{ id?: string; name?: string; description?: string | null }>>(
+        '/roles',
+        { select: 'id,name,description', order: 'name.asc', limit },
+        { schema: 'public' },
+      );
+      const mapped = (Array.isArray(rows) ? rows : [])
+        .filter((r) => r.id && r.name)
+        .map((r) => ({
+          id: String(r.id),
+          name: String(r.name),
+          description: r.description != null ? String(r.description) : null,
+        }));
+      if (mapped.length > 0) return mapped;
+    } catch {
+      if (!shouldUseBridgeSql(cfg)) return [];
+    }
+  }
   return tryQueries<SystemRoleRow>([
     {
       sql: `SELECT id, name, COALESCE(description, '') AS description

@@ -228,6 +228,18 @@ export function LoginScreen({ navigation }: Props) {
                 </View>
               ) : null}
 
+              {config.apiMode === 'postgrest' && !String(config.remoteRestUrl || '').trim() ? (
+                <Pressable onPress={openConfig} style={styles.postgrestWarnBox}>
+                  <Text style={styles.postgrestWarnTitle}>
+                    {t('apiModePostgrestWarningTitle')}
+                  </Text>
+                  <Text style={styles.postgrestWarnBody}>
+                    {t('apiModePostgrestWarning')}
+                  </Text>
+                  <Text style={styles.postgrestWarnLink}>{t('configTitle')}</Text>
+                </Pressable>
+              ) : null}
+
               <Text style={[styles.demoHint, { color: colors.textSubtle }]}>
                 {t('demoHint')}
               </Text>
@@ -360,6 +372,33 @@ const styles = StyleSheet.create({
     color: palette.red500,
     fontSize: 12,
     fontWeight: '700',
+  },
+  postgrestWarnBox: {
+    backgroundColor: 'rgba(254,243,199,0.95)',
+    borderWidth: 2,
+    borderColor: palette.amber600,
+    padding: 12,
+    borderRadius: 4,
+    gap: 4,
+  },
+  postgrestWarnTitle: {
+    color: '#92400e',
+    fontSize: 11,
+    fontWeight: '900',
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+  },
+  postgrestWarnBody: {
+    color: '#78350f',
+    fontSize: 12,
+    lineHeight: 17,
+    fontWeight: '600',
+  },
+  postgrestWarnLink: {
+    color: palette.blue500,
+    fontSize: 11,
+    fontWeight: '800',
+    marginTop: 4,
   },
   demoHint: {
     fontSize: 11,

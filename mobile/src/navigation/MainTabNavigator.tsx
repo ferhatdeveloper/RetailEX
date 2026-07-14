@@ -1,4 +1,5 @@
 import React from 'react';
+import { Platform, StyleSheet } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import {
   LayoutDashboard,
@@ -20,30 +21,49 @@ import { palette } from '../theme/colors';
 
 const Tab = createBottomTabNavigator<MainTabParamList>();
 
+/** İkon + etiket alanı (safe area hariç) — kesilmeyi önlemek için yeterli yükseklik */
+const TAB_CONTENT_HEIGHT = 56;
+const ICON_SIZE = 22;
+
 export function MainTabNavigator() {
   const { t } = useTranslation();
   const { colors, darkMode } = useThemeStore();
   const insets = useSafeAreaInsets();
-  const tabBottom = Math.max(insets.bottom, 8);
+  /** Home indicator / gesture bar; en az 8px nefes boşluğu */
+  const tabBottom = Math.max(insets.bottom, Platform.OS === 'android' ? 8 : 4);
 
   return (
     <Tab.Navigator
+      /** Çift inset olmasın: yüksekliği/padding’i kendimiz uyguluyoruz */
+      safeAreaInsets={{ bottom: 0 }}
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: palette.blue600,
+        tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.tabInactive,
+        tabBarHideOnKeyboard: true,
+        tabBarAllowFontScaling: false,
         tabBarStyle: {
           backgroundColor: colors.tabBar,
           borderTopColor: darkMode ? palette.gray700 : palette.gray200,
-          height: 52 + tabBottom,
+          borderTopWidth: StyleSheet.hairlineWidth,
+          height: TAB_CONTENT_HEIGHT + tabBottom,
           paddingBottom: tabBottom,
           paddingTop: 6,
+          overflow: 'visible',
+        },
+        tabBarItemStyle: {
+          justifyContent: 'center',
+          alignItems: 'center',
+          paddingTop: 2,
+        },
+        tabBarIconStyle: {
+          marginBottom: 2,
         },
         tabBarLabelStyle: {
-          fontSize: 10,
+          fontSize: 11,
           fontWeight: '700',
-          textTransform: 'uppercase',
-          letterSpacing: 0.5,
+          lineHeight: 14,
+          marginBottom: Platform.OS === 'ios' ? 0 : 2,
         },
       }}
     >
@@ -52,9 +72,7 @@ export function MainTabNavigator() {
         component={DashboardScreen}
         options={{
           title: t('dashboard'),
-          tabBarIcon: ({ color, size }) => (
-            <LayoutDashboard size={size} color={color} />
-          ),
+          tabBarIcon: ({ color }) => <LayoutDashboard size={ICON_SIZE} color={color} />,
         }}
       />
       <Tab.Screen
@@ -62,9 +80,7 @@ export function MainTabNavigator() {
         component={PosScreen}
         options={{
           title: t('pos'),
-          tabBarIcon: ({ color, size }) => (
-            <ShoppingCart size={size} color={color} />
-          ),
+          tabBarIcon: ({ color }) => <ShoppingCart size={ICON_SIZE} color={color} />,
         }}
       />
       <Tab.Screen
@@ -72,9 +88,7 @@ export function MainTabNavigator() {
         component={ProductsScreen}
         options={{
           title: t('products'),
-          tabBarIcon: ({ color, size }) => (
-            <Package size={size} color={color} />
-          ),
+          tabBarIcon: ({ color }) => <Package size={ICON_SIZE} color={color} />,
         }}
       />
       <Tab.Screen
@@ -82,9 +96,7 @@ export function MainTabNavigator() {
         component={ReportsScreen}
         options={{
           title: t('reports'),
-          tabBarIcon: ({ color, size }) => (
-            <BarChart3 size={size} color={color} />
-          ),
+          tabBarIcon: ({ color }) => <BarChart3 size={ICON_SIZE} color={color} />,
         }}
       />
       <Tab.Screen
@@ -92,7 +104,7 @@ export function MainTabNavigator() {
         component={MoreScreen}
         options={{
           title: t('more'),
-          tabBarIcon: ({ color, size }) => <Menu size={size} color={color} />,
+          tabBarIcon: ({ color }) => <Menu size={ICON_SIZE} color={color} />,
         }}
       />
     </Tab.Navigator>

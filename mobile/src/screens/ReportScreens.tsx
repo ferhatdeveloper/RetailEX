@@ -84,9 +84,11 @@ export function ReportSalesScreen() {
   const totalRev = days.reduce((s, d) => s + d.revenue, 0);
   const totalCnt = days.reduce((s, d) => s + d.count, 0);
 
+  const orgLabel = `Firma ${firmNr()} · Dönem ${periodNr()} · Son 14 gün`;
+
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
-      <ScreenHeader title="Günlük Satış Özeti" subtitle="Son 14 gün" />
+      <ScreenHeader title="Günlük Satış Özeti" subtitle={orgLabel} />
       <View style={styles.kpiRow}>
         <View style={[styles.kpi, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
           <Text style={styles.lbl}>Ciro</Text>
@@ -105,7 +107,11 @@ export function ReportSalesScreen() {
           data={days}
           keyExtractor={(item) => item.day}
           refreshControl={<RefreshControl refreshing={loading} onRefresh={() => void load()} />}
-          ListEmptyComponent={<EmptyState message="Satış verisi yok" />}
+          ListEmptyComponent={
+            <EmptyState
+              message={`Satış verisi yok (${orgLabel}). Tablo: rex_${firmNr()}_${periodNr()}_sales — dönem/mağaza doğru mu?`}
+            />
+          }
           ListHeaderComponent={
             top.length > 0 ? (
               <View style={{ marginBottom: 12 }}>
