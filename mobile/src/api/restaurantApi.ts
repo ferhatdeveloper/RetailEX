@@ -3,6 +3,7 @@ import {
   newUuid,
   restOrderItemsTable,
   restOrdersTable,
+  restReservationsTable,
   restTablesTable,
 } from './erpTables';
 import { useAuthStore } from '../store/authStore';
@@ -14,6 +15,8 @@ export type RestTable = {
   waiter: string | null;
   total: number;
   floor_id: string | null;
+  seats?: number | null;
+  start_time?: string | null;
 };
 
 export type RestOrder = {
@@ -25,6 +28,19 @@ export type RestOrder = {
   total_amount: number;
   waiter: string | null;
   created_at: string | null;
+};
+
+export type RestReservation = {
+  id: string;
+  customer_name: string;
+  phone: string | null;
+  reservation_date: string;
+  reservation_time: string;
+  guest_count: number;
+  table_id: string | null;
+  table_name: string | null;
+  status: string | null;
+  note: string | null;
 };
 
 export type RestOrderItem = {
@@ -51,7 +67,19 @@ async function tryQueries<T>(queries: { sql: string; params?: unknown[] }[]): Pr
 
 export async function fetchRestaurantTables(): Promise<RestTable[]> {
   const tbl = restTablesTable();
-  return tryQueries<RestTable>([
+  const rows = await tryQueries<RestTable>([
+    {
+      sql: `SELECT id,
+              COALESCE(number, id::text) AS name,
+              status, waiter,
+              COALESCE(total, 0)::float8 AS total,
+              floor_id::text AS floor_id,
+              COALESCE(seats, 0)::int AS seats,
+              start_time::text AS start_time
+       FROM ${tbl}
+       ORDER BY number ASC
+       LIMIT 200`,
+    },
     {
       sql: `SELECT id,
               COALESCE(number, id::text) AS name,
@@ -63,6 +91,7 @@ export async function fetchRestaurantTables(): Promise<RestTable[]> {
        LIMIT 200`,
     },
   ]);
+  return rows;
 }
 
 export async function fetchOpenOrders(limit = 50): Promise<RestOrder[]> {
@@ -85,6 +114,103 @@ export async function fetchOpenOrders(limit = 50): Promise<RestOrder[]> {
       params: [limit],
     },
   ]);
+}
+
+/** Bugünkü siparişler (açık + kapalı) — zaman çizelgesi */
+export async function fetchTodayOrders(limit = 120): Promise<RestOrder[]> {
+  const orders = restOrdersTable();
+  const tables = restTablesTable();
+  return tryQueries<RestOrder>([
+    {
+      sql: `SELECT o.id, o.order_no, o.table_id::text AS table_id,
+              COALESCE(t.number, o.table_id::text) AS table_name,
+              o.status,
+              COALESCE(o.total_amount, 0)::float8 AS total_amount,
+              o.waiter,
+              COALESCE(o.opened_at, o.created_at)::text AS created_at
+       FROM ${orders} o
+       LEFT JOIN ${tables} t ON t.id = o.table_id
+       WHERE COALESCE(o.opened_at, o.created_at)::date = CURRENT_DATE
+       ORDER BY COALESCE(o.opened_at, o.created_at) ASC NULLS LAST
+       LIMIT $1`,
+      params: [limit],
+    },
+    {
+      sql: `SELECT o.id, o.order_no, o.table_id::text AS table_id,
+              COALESCE(t.number, o.table_id::text) AS table_name,
+              o.status,
+              COALESCE(o.total_amount, 0)::float8 AS total_amount,
+              o.waiter,
+              o.created_at::text AS created_at
+       FROM ${orders} o
+       LEFT JOIN ${tables} t ON t.id = o.table_id
+       WHERE o.created_at::date = CURRENT_DATE
+       ORDER BY o.created_at ASC NULLS LAST
+       LIMIT $1`,
+      params: [limit],
+    },
+  ]);
+}
+
+export async function fetchReservationsForDate(dateYmd: string): Promise<RestReservation[]> {
+  const pref = restReservationsTable();
+  const rows = await tryQueries<RestReservation>([
+    {
+      sql: `SELECT id,
+              customer_name,
+              phone,
+              reservation_date::text AS reservation_date,
+              to_char(reservation_time, 'HH24:MI') AS reservation_time,
+              COALESCE(guest_count, 2)::int AS guest_count,
+              table_id::text AS table_id,
+              table_number AS table_name,
+              status,
+              note
+       FROM ${pref}
+       WHERE reservation_date = $1::date
+       ORDER BY reservation_time ASC
+       LIMIT 100`,
+      params: [dateYmd],
+    },
+    {
+      sql: `SELECT id,
+              customer_name,
+              phone,
+              reservation_date::text AS reservation_date,
+              substring(reservation_time::text, 1, 5) AS reservation_time,
+              COALESCE(guest_count, 2)::int AS guest_count,
+              table_id::text AS table_id,
+              table_number AS table_name,
+              status,
+              note
+       FROM rest.rest_reservations
+       WHERE reservation_date = $1::date
+       ORDER BY reservation_time ASC
+       LIMIT 100`,
+      params: [dateYmd],
+    },
+    {
+      sql: `SELECT id,
+              customer_name,
+              phone,
+              reservation_date::text AS reservation_date,
+              substring(reservation_time::text, 1, 5) AS reservation_time,
+              COALESCE(guest_count, 2)::int AS guest_count,
+              table_id::text AS table_id,
+              table_number AS table_name,
+              status,
+              note
+       FROM rest_reservations
+       WHERE reservation_date = $1::date
+       ORDER BY reservation_time ASC
+       LIMIT 100`,
+      params: [dateYmd],
+    },
+  ]);
+  return rows.map((r) => ({
+    ...r,
+    reservation_time: String(r.reservation_time || '').slice(0, 5),
+  }));
 }
 
 function mapOrderDetail(

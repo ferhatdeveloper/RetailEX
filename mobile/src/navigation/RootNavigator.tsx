@@ -12,6 +12,21 @@ import type { RootStackParamList } from './types';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
+function BootSpinner({ bg }: { bg: string }) {
+  return (
+    <View
+      style={{
+        flex: 1,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: bg,
+      }}
+    >
+      <ActivityIndicator size="large" color={palette.blue600} />
+    </View>
+  );
+}
+
 export function RootNavigator() {
   const user = useAuthStore((s) => s.user);
   const isHydrated = useAuthStore((s) => s.isHydrated);
@@ -19,18 +34,7 @@ export function RootNavigator() {
   const { darkMode, colors } = useThemeStore();
 
   if (!isHydrated || !configHydrated) {
-    return (
-      <View
-        style={{
-          flex: 1,
-          alignItems: 'center',
-          justifyContent: 'center',
-          backgroundColor: colors.background,
-        }}
-      >
-        <ActivityIndicator size="large" color={palette.blue600} />
-      </View>
-    );
+    return <BootSpinner bg={colors.background} />;
   }
 
   const navTheme = {

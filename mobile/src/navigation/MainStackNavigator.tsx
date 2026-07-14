@@ -10,7 +10,6 @@ import { CustomerFormScreen } from '../screens/CustomerFormScreen';
 import { InvoicesScreen } from '../screens/InvoicesScreen';
 import { InvoiceDetailScreen } from '../screens/InvoiceDetailScreen';
 import { InvoiceFormScreen } from '../screens/InvoiceFormScreen';
-import { DocumentScanScreen } from '../screens/DocumentScanScreen';
 import {
   ReportSalesScreen,
   ReportStockScreen,
@@ -30,7 +29,6 @@ import { WmsTransferSlipScreen } from '../screens/WmsTransferSlipScreen';
 import { WavePickingScreen } from '../screens/WavePickingScreen';
 import { WavePickingExecuteScreen } from '../screens/WavePickingExecuteScreen';
 import { RestaurantScreen } from '../screens/RestaurantScreen';
-import { DeliveryScreen } from '../screens/DeliveryScreen';
 import { FinanceScreen } from '../screens/FinanceScreen';
 import { FinanceDefinitionsScreen } from '../screens/FinanceDefinitionsScreen';
 import { MaterialDefinitionsScreen } from '../screens/MaterialDefinitionsScreen';
@@ -41,9 +39,6 @@ import { OrganizationScreen } from '../screens/OrganizationScreen';
 import { SystemScreen } from '../screens/SystemScreen';
 import { CommunicationsScreen } from '../screens/CommunicationsScreen';
 import { NotificationsScreen } from '../screens/NotificationsScreen';
-import { PrinterSettingsScreen } from '../screens/PrinterSettingsScreen';
-import { ScaleManagementScreen } from '../screens/ScaleManagementScreen';
-import { ScaleSaleScreen } from '../screens/ScaleSaleScreen';
 import { StoreManagementScreen } from '../screens/StoreManagementScreen';
 import { ETransformScreen } from '../screens/ETransformScreen';
 import { PricingScreen } from '../screens/PricingScreen';
@@ -72,7 +67,13 @@ export function MainStackNavigator() {
       <Stack.Screen name="Invoices" component={InvoicesScreen} />
       <Stack.Screen name="InvoiceDetail" component={InvoiceDetailScreen} />
       <Stack.Screen name="InvoiceForm" component={InvoiceFormScreen} />
-      <Stack.Screen name="DocumentScan" component={DocumentScanScreen} />
+      {/* Belge tara / OCR — expo-image-picker cold start’ta çekilmesin */}
+      <Stack.Screen
+        name="DocumentScan"
+        getComponent={() =>
+          require('../screens/DocumentScanScreen').DocumentScanScreen as React.ComponentType
+        }
+      />
       <Stack.Screen name="Campaigns" component={CampaignsScreen} />
       <Stack.Screen name="CampaignDetail" component={CampaignDetailScreen} />
       <Stack.Screen name="CampaignForm" component={CampaignFormScreen} />
@@ -93,7 +94,12 @@ export function MainStackNavigator() {
       <Stack.Screen name="WmsWavePicking" component={WavePickingScreen} />
       <Stack.Screen name="WmsWavePickingExecute" component={WavePickingExecuteScreen} />
       <Stack.Screen name="Restaurant" component={RestaurantScreen} />
-      <Stack.Screen name="Delivery" component={DeliveryScreen} />
+      <Stack.Screen
+        name="Delivery"
+        getComponent={() =>
+          require('../screens/DeliveryScreen').DeliveryScreen as React.ComponentType
+        }
+      />
       <Stack.Screen name="Finance" component={FinanceScreen} />
       <Stack.Screen name="FinanceDefinitions" component={FinanceDefinitionsScreen} />
       <Stack.Screen name="MaterialDefinitions" component={MaterialDefinitionsScreen} />
@@ -109,9 +115,24 @@ export function MainStackNavigator() {
       <Stack.Screen name="Pricing" component={PricingScreen} />
       <Stack.Screen name="Communications" component={CommunicationsScreen} />
       <Stack.Screen name="Notifications" component={NotificationsScreen} />
-      <Stack.Screen name="PrinterSettings" component={PrinterSettingsScreen} />
-      <Stack.Screen name="ScaleManagement" component={ScaleManagementScreen} />
-      <Stack.Screen name="ScaleSale" component={ScaleSaleScreen} />
+      <Stack.Screen
+        name="PrinterSettings"
+        getComponent={() =>
+          require('../screens/PrinterSettingsScreen').PrinterSettingsScreen as React.ComponentType
+        }
+      />
+      <Stack.Screen
+        name="ScaleManagement"
+        getComponent={() =>
+          require('../screens/ScaleManagementScreen').ScaleManagementScreen as React.ComponentType
+        }
+      />
+      <Stack.Screen
+        name="ScaleSale"
+        getComponent={() =>
+          require('../screens/ScaleSaleScreen').ScaleSaleScreen as React.ComponentType
+        }
+      />
       <Stack.Screen name="StoreManagement" component={StoreManagementScreen} />
       <Stack.Screen name="ETransform" component={ETransformScreen} />
       <Stack.Screen name="Module" component={ModuleScreen} />

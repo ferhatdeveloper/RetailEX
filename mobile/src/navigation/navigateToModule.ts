@@ -41,6 +41,8 @@ export function restaurantRouteParams(screen: string): RestaurantRouteParams | u
       return { initialTab: 'tables' };
     case 'restaurant-orders':
       return { initialTab: 'orders' };
+    case 'restaurant-schedule':
+      return { initialTab: 'schedule' };
     default:
       return undefined;
   }

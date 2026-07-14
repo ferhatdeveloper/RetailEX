@@ -108,6 +108,10 @@ export function restOrderItemsTable(fn = firmNr(), pn = periodNr()): string {
   return `rest.rex_${fn}_${pn}_rest_order_items`;
 }
 
+export function restReservationsTable(fn = firmNr(), pn = periodNr()): string {
+  return `rest.rex_${fn}_${pn}_rest_reservations`;
+}
+
 export function beautyAppointmentsTable(fn = firmNr(), pn = periodNr()): string {
   return `beauty.rex_${fn}_${pn}_beauty_appointments`;
 }

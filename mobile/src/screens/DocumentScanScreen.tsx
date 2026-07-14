@@ -14,7 +14,6 @@ import {
 } from 'react-native';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import * as ImagePicker from 'expo-image-picker';
 import { ImageIcon, ScanLine, Trash2, Plus, FilePlus } from 'lucide-react-native';
 import { ScreenHeader, ErrorBanner, SearchBar } from '../components/ScreenChrome';
 import { FormField } from '../components/FormField';
@@ -53,6 +52,18 @@ const KIND_OPTIONS: { id: InvoiceFormKind; label: string }[] = [
 
 function isSupplierKind(kind: InvoiceFormKind): boolean {
   return kind === 'purchase' || kind === 'service-received';
+}
+
+async function loadImagePicker() {
+  try {
+    return await import('expo-image-picker');
+  } catch (e) {
+    throw new Error(
+      e instanceof Error
+        ? `expo-image-picker yüklenemedi: ${e.message}`
+        : 'expo-image-picker yüklenemedi',
+    );
+  }
 }
 
 async function tryExtractOcr(uri: string): Promise<{
@@ -254,34 +265,44 @@ export function DocumentScanScreen() {
 
   const pickCamera = async () => {
     setError(null);
-    const perm = await ImagePicker.requestCameraPermissionsAsync();
-    if (!perm.granted) {
-      Alert.alert('İzin gerekli', 'Belge çekmek için kamera izni verin.');
-      return;
+    try {
+      const ImagePicker = await loadImagePicker();
+      const perm = await ImagePicker.requestCameraPermissionsAsync();
+      if (!perm.granted) {
+        Alert.alert('İzin gerekli', 'Belge çekmek için kamera izni verin.');
+        return;
+      }
+      const res = await ImagePicker.launchCameraAsync({
+        mediaTypes: ['images'],
+        quality: 0.85,
+        allowsEditing: false,
+      });
+      if (res.canceled || !res.assets?.[0]?.uri) return;
+      await processUri(res.assets[0].uri);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
     }
-    const res = await ImagePicker.launchCameraAsync({
-      mediaTypes: ['images'],
-      quality: 0.85,
-      allowsEditing: false,
-    });
-    if (res.canceled || !res.assets?.[0]?.uri) return;
-    await processUri(res.assets[0].uri);
   };
 
   const pickGallery = async () => {
     setError(null);
-    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!perm.granted) {
-      Alert.alert('İzin gerekli', 'Galeriden seçmek için izin verin.');
-      return;
+    try {
+      const ImagePicker = await loadImagePicker();
+      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!perm.granted) {
+        Alert.alert('İzin gerekli', 'Galeriden seçmek için izin verin.');
+        return;
+      }
+      const res = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        quality: 0.85,
+        allowsEditing: false,
+      });
+      if (res.canceled || !res.assets?.[0]?.uri) return;
+      await processUri(res.assets[0].uri);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
     }
-    const res = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
-      quality: 0.85,
-      allowsEditing: false,
-    });
-    if (res.canceled || !res.assets?.[0]?.uri) return;
-    await processUri(res.assets[0].uri);
   };
 
   const skipToManual = () => {

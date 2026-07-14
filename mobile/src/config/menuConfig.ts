@@ -275,6 +275,7 @@ export const MENU_SECTIONS: MenuSection[] = [
       { id: 'restaurant', label: 'Restoran Ana Ekran', screen: 'restaurant' },
       { id: 'rest-tables', label: 'Masalar', screen: 'restaurant-tables' },
       { id: 'rest-orders', label: 'Açık Adisyonlar', screen: 'restaurant-orders' },
+      { id: 'rest-schedule', label: 'Bugünkü Akış', screen: 'restaurant-schedule' },
     ],
   },
   {
@@ -517,6 +518,7 @@ const LIVE_MAP: Record<string, LiveRoute> = {
   restaurant: 'Restaurant',
   'restaurant-tables': 'Restaurant',
   'restaurant-orders': 'Restaurant',
+  'restaurant-schedule': 'Restaurant',
   logistics: 'Delivery',
   'delivery-live': 'Delivery',
   couriers: 'Delivery',

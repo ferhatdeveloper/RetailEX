@@ -7,17 +7,20 @@ import {
   ActivityIndicator,
   RefreshControl,
   Pressable,
-  Modal,
   ScrollView,
-  KeyboardAvoidingView,
-  Platform,
 } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { Plus, ArrowLeft } from 'lucide-react-native';
-import { GradientHeader, HeaderIconButton } from '../components/GradientHeader';
+import { Plus } from 'lucide-react-native';
 import { ScreenHeader, EmptyState, ErrorBanner } from '../components/ScreenChrome';
 import { FormField } from '../components/FormField';
 import { PrimaryButton } from '../components/PrimaryButton';
+import { PercentBodySheet } from '../components/PercentBodySheet';
+import {
+  BeautyCalendarPanel,
+  type CalView,
+  formatLocalYmd,
+  parseYmd,
+} from '../components/BeautyCalendarPanel';
 import {
   fetchBeautyAppointments,
   fetchBeautyServices,
@@ -39,13 +42,12 @@ import { palette } from '../theme/colors';
 import type { MainStackParamList } from '../navigation/types';
 
 type Tab = 'appointments' | 'services' | 'specialists' | 'sales';
+type ApptMode = 'calendar' | 'list';
 type ApptFilter = 'all' | 'scheduled' | 'completed';
 type Props = NativeStackScreenProps<MainStackParamList, 'Beauty'>;
 
 function todayYmd(): string {
-  const d = new Date();
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  return formatLocalYmd(new Date());
 }
 
 function statusLabel(status: string | null): string {
@@ -67,10 +69,21 @@ function parseStartsAt(starts: string | null | undefined): { date: string; time:
   return { date: /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : todayYmd(), time: '10:00' };
 }
 
+function normalizeTimeInput(raw: string): string {
+  const m = raw.trim().match(/^(\d{1,2}):(\d{2})/);
+  if (!m) return raw.trim();
+  const hh = Math.min(23, Math.max(0, parseInt(m[1], 10)));
+  const mm = Math.min(59, Math.max(0, parseInt(m[2], 10)));
+  return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
+}
+
 export function BeautyScreen({ route }: Props) {
   const { colors } = useThemeStore();
   const initialTab = route.params?.initialTab ?? 'appointments';
   const [tab, setTab] = useState<Tab>(initialTab);
+  const [apptMode, setApptMode] = useState<ApptMode>('calendar');
+  const [calView, setCalView] = useState<CalView>('day');
+  const [calDate, setCalDate] = useState(() => new Date());
   const [apptFilter, setApptFilter] = useState<ApptFilter>('all');
   const [appointments, setAppointments] = useState<BeautyAppointment[]>([]);
   const [sales, setSales] = useState<BeautySale[]>([]);
@@ -96,8 +109,9 @@ export function BeautyScreen({ route }: Props) {
   const load = useCallback(async () => {
     setError(null);
     try {
+      // TODO(beauty-mobile): tarih aralığına göre sayfalı yükleme (web loadAppointmentsInRange)
       const [a, sal, s, sp] = await Promise.all([
-        fetchBeautyAppointments(),
+        fetchBeautyAppointments(200),
         fetchBeautySales(),
         fetchBeautyServices(),
         fetchBeautySpecialists(),
@@ -134,6 +148,11 @@ export function BeautyScreen({ route }: Props) {
     return appointments.filter((a) => String(a.status || '').toLowerCase() === apptFilter);
   }, [appointments, apptFilter]);
 
+  const selectedService = useMemo(
+    () => services.find((s) => s.id === selectedServiceId) ?? null,
+    [services, selectedServiceId],
+  );
+
   const tabs: { id: Tab; label: string; count: number }[] = [
     { id: 'appointments', label: 'Randevu', count: appointments.length },
     { id: 'sales', label: 'Satış', count: sales.length },
@@ -141,10 +160,10 @@ export function BeautyScreen({ route }: Props) {
     { id: 'specialists', label: 'Uzman', count: specialists.length },
   ];
 
-  const resetForm = () => {
+  const resetForm = (dateYmd?: string, timeHHmm?: string) => {
     setCustomerName('');
-    setAppointmentDate(todayYmd());
-    setAppointmentTime('10:00');
+    setAppointmentDate(dateYmd || todayYmd());
+    setAppointmentTime(normalizeTimeInput(timeHHmm || '10:00'));
     setNotes('');
     setEditStatus('scheduled');
     setSelectedSpecialistId(null);
@@ -152,12 +171,17 @@ export function BeautyScreen({ route }: Props) {
     if (services.length) setSelectedServiceId(services[0].id);
   };
 
+  const openCreate = (dateYmd?: string, timeHHmm?: string) => {
+    resetForm(dateYmd, timeHHmm);
+    setCreateOpen(true);
+  };
+
   const openEdit = (item: BeautyAppointment) => {
     const parsed = parseStartsAt(item.starts_at);
     setEditAppt(item);
     setAppointmentDate(item.appointment_date || parsed.date);
     setAppointmentTime(
-      (item.appointment_time || parsed.time).toString().slice(0, 5) || '10:00',
+      normalizeTimeInput((item.appointment_time || parsed.time).toString().slice(0, 5) || '10:00'),
     );
     setNotes(item.notes || '');
     setEditStatus(String(item.status || 'scheduled').toLowerCase());
@@ -187,7 +211,7 @@ export function BeautyScreen({ route }: Props) {
         serviceId: selectedServiceId,
         specialistId: selectedSpecialistId,
         appointmentDate: appointmentDate.trim(),
-        appointmentTime: appointmentTime.trim(),
+        appointmentTime: normalizeTimeInput(appointmentTime),
         notes: notes.trim() || undefined,
       });
       setCreateOpen(false);
@@ -200,7 +224,7 @@ export function BeautyScreen({ route }: Props) {
     }
   };
 
-  const handleUpdate = async () => {
+  const handleUpdate = async (forceStatus?: string) => {
     if (!editAppt) return;
     if (!selectedServiceId) {
       setFormError('Hizmet seçin');
@@ -218,8 +242,8 @@ export function BeautyScreen({ route }: Props) {
         specialistId: selectedSpecialistId,
         clearSpecialist: !selectedSpecialistId,
         appointmentDate: appointmentDate.trim(),
-        appointmentTime: appointmentTime.trim(),
-        status: editStatus,
+        appointmentTime: normalizeTimeInput(appointmentTime),
+        status: forceStatus || editStatus,
         notes: notes.trim() || null,
       });
       setEditAppt(null);
@@ -231,9 +255,150 @@ export function BeautyScreen({ route }: Props) {
     }
   };
 
+  const renderChipRow = (
+    label: string,
+    options: { id: string; label: string }[],
+    selectedId: string | null,
+    onSelect: (id: string | null) => void,
+    allowNull?: { label: string },
+  ) => (
+    <View>
+      <Text style={[styles.pickLabel, { color: colors.textMuted }]}>{label}</Text>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.pickRow}>
+        {allowNull ? (
+          <Pressable
+            onPress={() => onSelect(null)}
+            style={[
+              styles.pickChip,
+              {
+                backgroundColor: !selectedId ? palette.purple500 : colors.card,
+                borderColor: colors.cardBorder,
+              },
+            ]}
+          >
+            <Text
+              style={{
+                color: !selectedId ? palette.white : colors.text,
+                fontSize: 11,
+                fontWeight: '700',
+              }}
+            >
+              {allowNull.label}
+            </Text>
+          </Pressable>
+        ) : null}
+        {options.map((opt) => (
+          <Pressable
+            key={opt.id}
+            onPress={() => onSelect(opt.id)}
+            style={[
+              styles.pickChip,
+              {
+                backgroundColor: selectedId === opt.id ? palette.purple500 : colors.card,
+                borderColor: colors.cardBorder,
+              },
+            ]}
+          >
+            <Text
+              style={{
+                color: selectedId === opt.id ? palette.white : colors.text,
+                fontSize: 11,
+                fontWeight: '700',
+              }}
+            >
+              {opt.label}
+            </Text>
+          </Pressable>
+        ))}
+      </ScrollView>
+    </View>
+  );
+
+  /** Web AppointmentPOS üst şerit hiyerarşisi: Tarih → Saat → (süre) → Müşteri → Hizmet → Uzman → Durum → Not */
+  const renderAppointmentFormFields = (mode: 'create' | 'edit') => (
+    <>
+      {formError ? <ErrorBanner message={formError} onRetry={() => setFormError(null)} /> : null}
+
+      <View style={styles.formSection}>
+        <Text style={[styles.sectionTitle, { color: colors.textMuted }]}>Zaman</Text>
+        <View style={styles.row2}>
+          <FormField
+            label="Tarih"
+            value={appointmentDate}
+            onChangeText={setAppointmentDate}
+            placeholder="YYYY-MM-DD"
+            containerStyle={{ flex: 1 }}
+          />
+          <FormField
+            label="Saat"
+            value={appointmentTime}
+            onChangeText={setAppointmentTime}
+            placeholder="10:00"
+            containerStyle={{ flex: 1 }}
+          />
+        </View>
+        {selectedService?.duration_min ? (
+          <Text style={{ color: colors.textSubtle, fontSize: 11, marginTop: 4 }}>
+            Süre (hizmet): {selectedService.duration_min} dk
+            {/* TODO(beauty-mobile): süre override + cihaz alanı (web AppointmentPOS) */}
+          </Text>
+        ) : null}
+      </View>
+
+      <View style={styles.formSection}>
+        <Text style={[styles.sectionTitle, { color: colors.textMuted }]}>Müşteri & hizmet</Text>
+        {mode === 'create' ? (
+          <FormField
+            label="Müşteri adı"
+            value={customerName}
+            onChangeText={setCustomerName}
+            placeholder="Ad soyad"
+          />
+        ) : (
+          <View style={[styles.readOnlyBox, { backgroundColor: colors.backgroundAlt, borderColor: colors.cardBorder }]}>
+            <Text style={[styles.pickLabel, { color: colors.textMuted, marginTop: 0 }]}>Müşteri</Text>
+            <Text style={{ color: colors.text, fontWeight: '700' }}>
+              {editAppt?.customer_name || 'Müşteri'}
+            </Text>
+          </View>
+        )}
+        {renderChipRow(
+          'Hizmet',
+          services.map((s) => ({ id: s.id, label: s.name })),
+          selectedServiceId,
+          (id) => setSelectedServiceId(id),
+        )}
+        {specialists.length > 0
+          ? renderChipRow(
+              'Uzman',
+              specialists.map((sp) => ({ id: sp.id, label: sp.name })),
+              selectedSpecialistId,
+              setSelectedSpecialistId,
+              { label: 'Fark etmez' },
+            )
+          : null}
+      </View>
+
+      {mode === 'edit' ? (
+        <View style={styles.formSection}>
+          {renderChipRow(
+            'Durum',
+            BEAUTY_STATUSES.map((s) => ({ id: s, label: statusLabel(s) })),
+            editStatus,
+            (id) => setEditStatus(id || 'scheduled'),
+          )}
+        </View>
+      ) : null}
+
+      <View style={styles.formSection}>
+        <FormField label="Not" value={notes} onChangeText={setNotes} placeholder="İsteğe bağlı" />
+      </View>
+    </>
+  );
+
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
-      <ScreenHeader title="Güzellik Merkezi" subtitle="Randevu · Satış · Hizmet · Uzman" />
+      <ScreenHeader title="Güzellik Merkezi" subtitle="Takvim · Randevu · Satış · Hizmet · Uzman" />
       <View style={styles.tabs}>
         {tabs.map((t) => (
           <Pressable
@@ -258,65 +423,120 @@ export function BeautyScreen({ route }: Props) {
         <ActivityIndicator style={{ marginTop: 40 }} color={palette.blue600} />
       ) : tab === 'appointments' ? (
         <>
-          <View style={styles.filters}>
-            {(['all', 'scheduled', 'completed'] as ApptFilter[]).map((f) => (
+          <View style={styles.modeRow}>
+            {(
+              [
+                { id: 'calendar' as const, label: 'Takvim' },
+                { id: 'list' as const, label: 'Liste' },
+              ] as const
+            ).map((m) => (
               <Pressable
-                key={f}
-                onPress={() => setApptFilter(f)}
+                key={m.id}
+                onPress={() => setApptMode(m.id)}
                 style={[
-                  styles.filterChip,
+                  styles.modeChip,
                   {
-                    backgroundColor: apptFilter === f ? palette.blue600 : colors.card,
+                    backgroundColor: apptMode === m.id ? palette.indigo600 : colors.card,
                     borderColor: colors.cardBorder,
                   },
                 ]}
               >
-                <Text style={{ color: apptFilter === f ? palette.white : colors.text, fontSize: 11, fontWeight: '700' }}>
-                  {f === 'all' ? 'Tümü' : f === 'scheduled' ? 'Planlı' : 'Tamamlanan'}
+                <Text
+                  style={{
+                    color: apptMode === m.id ? palette.white : colors.text,
+                    fontSize: 11,
+                    fontWeight: '800',
+                  }}
+                >
+                  {m.label}
                 </Text>
               </Pressable>
             ))}
           </View>
-          <FlatList
-            data={filteredAppointments}
-            keyExtractor={(item) => String(item.id)}
-            refreshControl={<RefreshControl refreshing={loading} onRefresh={() => void load()} />}
-            ListEmptyComponent={<EmptyState message="Randevu kaydı yok (şema/veri kontrol)" />}
-            contentContainerStyle={styles.list}
-            renderItem={({ item }) => (
-              <Pressable
-                onPress={() => openEdit(item)}
-                style={[styles.card, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}
-              >
-                <View style={styles.cardTop}>
-                  <Text style={{ color: colors.text, fontWeight: '700', flex: 1 }}>
-                    {item.customer_name || 'Müşteri'}
-                  </Text>
-                  <View style={[styles.badge, { backgroundColor: palette.blue100 }]}>
-                    <Text style={{ color: palette.blue700, fontSize: 10, fontWeight: '800' }}>
-                      {statusLabel(item.status)}
+
+          {apptMode === 'calendar' ? (
+            <BeautyCalendarPanel
+              colors={colors}
+              appointments={appointments}
+              currentDate={calDate}
+              view={calView}
+              onViewChange={setCalView}
+              onDateChange={setCalDate}
+              onAppointmentPress={openEdit}
+              onSlotPress={(dateYmd, timeHHmm) => {
+                setCalDate(parseYmd(dateYmd));
+                openCreate(dateYmd, timeHHmm);
+              }}
+              refreshing={loading}
+              onRefresh={() => void load()}
+            />
+          ) : (
+            <>
+              <View style={styles.filters}>
+                {(['all', 'scheduled', 'completed'] as ApptFilter[]).map((f) => (
+                  <Pressable
+                    key={f}
+                    onPress={() => setApptFilter(f)}
+                    style={[
+                      styles.filterChip,
+                      {
+                        backgroundColor: apptFilter === f ? palette.blue600 : colors.card,
+                        borderColor: colors.cardBorder,
+                      },
+                    ]}
+                  >
+                    <Text
+                      style={{
+                        color: apptFilter === f ? palette.white : colors.text,
+                        fontSize: 11,
+                        fontWeight: '700',
+                      }}
+                    >
+                      {f === 'all' ? 'Tümü' : f === 'scheduled' ? 'Planlı' : 'Tamamlanan'}
                     </Text>
-                  </View>
-                </View>
-                <Text style={{ color: colors.textMuted, fontSize: 12 }}>{item.service_name || '—'}</Text>
-                <Text style={{ color: colors.textSubtle, fontSize: 11, marginTop: 4 }}>
-                  {item.starts_at?.slice(0, 16) || '—'}
-                  {item.specialist_name ? ` · ${item.specialist_name}` : ''}
-                </Text>
-                {item.total_price > 0 ? (
-                  <Text style={{ color: palette.blue600, fontWeight: '700', marginTop: 4 }}>
-                    {formatMoney(item.total_price)} ₺
-                  </Text>
-                ) : null}
-              </Pressable>
-            )}
-          />
+                  </Pressable>
+                ))}
+              </View>
+              <FlatList
+                data={filteredAppointments}
+                keyExtractor={(item) => String(item.id)}
+                refreshControl={<RefreshControl refreshing={loading} onRefresh={() => void load()} />}
+                ListEmptyComponent={<EmptyState message="Randevu kaydı yok (şema/veri kontrol)" />}
+                contentContainerStyle={styles.list}
+                renderItem={({ item }) => (
+                  <Pressable
+                    onPress={() => openEdit(item)}
+                    style={[styles.card, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}
+                  >
+                    <View style={styles.cardTop}>
+                      <Text style={{ color: colors.text, fontWeight: '700', flex: 1 }}>
+                        {item.customer_name || 'Müşteri'}
+                      </Text>
+                      <View style={[styles.badge, { backgroundColor: palette.blue100 }]}>
+                        <Text style={{ color: palette.blue700, fontSize: 10, fontWeight: '800' }}>
+                          {statusLabel(item.status)}
+                        </Text>
+                      </View>
+                    </View>
+                    <Text style={{ color: colors.textMuted, fontSize: 12 }}>{item.service_name || '—'}</Text>
+                    <Text style={{ color: colors.textSubtle, fontSize: 11, marginTop: 4 }}>
+                      {item.starts_at?.slice(0, 16) || '—'}
+                      {item.specialist_name ? ` · ${item.specialist_name}` : ''}
+                    </Text>
+                    {item.total_price > 0 ? (
+                      <Text style={{ color: palette.blue600, fontWeight: '700', marginTop: 4 }}>
+                        {formatMoney(item.total_price)} ₺
+                      </Text>
+                    ) : null}
+                  </Pressable>
+                )}
+              />
+            </>
+          )}
+
           <Pressable
-            style={[styles.fab, { backgroundColor: palette.blue600 }]}
-            onPress={() => {
-              resetForm();
-              setCreateOpen(true);
-            }}
+            style={[styles.fab, { backgroundColor: palette.purple500 }]}
+            onPress={() => openCreate(formatLocalYmd(calDate))}
           >
             <Plus color={palette.white} size={22} />
           </Pressable>
@@ -362,293 +582,71 @@ export function BeautyScreen({ route }: Props) {
         />
       )}
 
-      <Modal visible={createOpen} animationType="slide" onRequestClose={() => setCreateOpen(false)}>
-        <KeyboardAvoidingView
-          style={[styles.modalRoot, { backgroundColor: colors.background }]}
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        >
-          <GradientHeader compact>
-            <View style={styles.modalHeaderRow}>
-              <HeaderIconButton onPress={() => setCreateOpen(false)}>
-                <ArrowLeft size={18} color={palette.white} />
-              </HeaderIconButton>
-              <View style={{ flex: 1, minWidth: 0 }}>
-                <Text style={{ color: palette.white, fontSize: 16, fontWeight: '700' }}>Yeni randevu</Text>
-                <Text style={{ color: palette.blue100, fontSize: 10, marginTop: 2 }}>Güzellik merkezi</Text>
-              </View>
-              <View style={{ width: 36 }} />
-            </View>
-          </GradientHeader>
-          <ScrollView contentContainerStyle={styles.modalBody}>
-            {formError ? <ErrorBanner message={formError} onRetry={() => setFormError(null)} /> : null}
-            <FormField label="Müşteri adı" value={customerName} onChangeText={setCustomerName} placeholder="Ad soyad" />
-            <FormField
-              label="Tarih"
-              value={appointmentDate}
-              onChangeText={setAppointmentDate}
-              placeholder="YYYY-MM-DD"
+      <PercentBodySheet
+        visible={createOpen}
+        onClose={() => setCreateOpen(false)}
+        title="Yeni randevu"
+        subtitle="Güzellik merkezi"
+        size="list"
+        footer={
+          <>
+            <PrimaryButton label="İptal" variant="ghost" onPress={() => setCreateOpen(false)} style={{ flex: 1 }} />
+            <PrimaryButton
+              label="Randevu kaydet"
+              onPress={() => void handleCreate()}
+              loading={saving}
+              style={{ flex: 2 }}
             />
-            <FormField label="Saat" value={appointmentTime} onChangeText={setAppointmentTime} placeholder="10:00" />
-            <Text style={[styles.pickLabel, { color: colors.textMuted }]}>Hizmet</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.pickRow}>
-              {services.map((s) => (
-                <Pressable
-                  key={s.id}
-                  onPress={() => setSelectedServiceId(s.id)}
-                  style={[
-                    styles.pickChip,
-                    {
-                      backgroundColor: selectedServiceId === s.id ? palette.blue600 : colors.card,
-                      borderColor: colors.cardBorder,
-                    },
-                  ]}
-                >
-                  <Text
-                    style={{
-                      color: selectedServiceId === s.id ? palette.white : colors.text,
-                      fontSize: 11,
-                      fontWeight: '700',
-                    }}
-                  >
-                    {s.name}
-                  </Text>
-                </Pressable>
-              ))}
-            </ScrollView>
-            {specialists.length > 0 ? (
-              <>
-                <Text style={[styles.pickLabel, { color: colors.textMuted }]}>Uzman (isteğe bağlı)</Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.pickRow}>
-                  <Pressable
-                    onPress={() => setSelectedSpecialistId(null)}
-                    style={[
-                      styles.pickChip,
-                      {
-                        backgroundColor: !selectedSpecialistId ? palette.blue600 : colors.card,
-                        borderColor: colors.cardBorder,
-                      },
-                    ]}
-                  >
-                    <Text
-                      style={{
-                        color: !selectedSpecialistId ? palette.white : colors.text,
-                        fontSize: 11,
-                        fontWeight: '700',
-                      }}
-                    >
-                      Fark etmez
-                    </Text>
-                  </Pressable>
-                  {specialists.map((sp) => (
-                    <Pressable
-                      key={sp.id}
-                      onPress={() => setSelectedSpecialistId(sp.id)}
-                      style={[
-                        styles.pickChip,
-                        {
-                          backgroundColor: selectedSpecialistId === sp.id ? palette.blue600 : colors.card,
-                          borderColor: colors.cardBorder,
-                        },
-                      ]}
-                    >
-                      <Text
-                        style={{
-                          color: selectedSpecialistId === sp.id ? palette.white : colors.text,
-                          fontSize: 11,
-                          fontWeight: '700',
-                        }}
-                      >
-                        {sp.name}
-                      </Text>
-                    </Pressable>
-                  ))}
-                </ScrollView>
-              </>
-            ) : null}
-            <FormField label="Not" value={notes} onChangeText={setNotes} placeholder="İsteğe bağlı" />
-            <PrimaryButton label="Randevu kaydet" onPress={() => void handleCreate()} loading={saving} />
-          </ScrollView>
-        </KeyboardAvoidingView>
-      </Modal>
+          </>
+        }
+      >
+        {renderAppointmentFormFields('create')}
+      </PercentBodySheet>
 
-      <Modal visible={!!editAppt} animationType="slide" onRequestClose={() => setEditAppt(null)}>
-        <KeyboardAvoidingView
-          style={[styles.modalRoot, { backgroundColor: colors.background }]}
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        >
-          <GradientHeader compact>
-            <View style={styles.modalHeaderRow}>
-              <HeaderIconButton onPress={() => setEditAppt(null)}>
-                <ArrowLeft size={18} color={palette.white} />
-              </HeaderIconButton>
-              <View style={{ flex: 1, minWidth: 0 }}>
-                <Text style={{ color: palette.white, fontSize: 16, fontWeight: '700' }} numberOfLines={1}>
-                  Randevu düzenle
-                </Text>
-                <Text style={{ color: palette.blue100, fontSize: 10, marginTop: 2 }} numberOfLines={1}>
-                  {editAppt?.customer_name || 'Randevu'}
-                </Text>
-              </View>
-              <View style={{ width: 36 }} />
-            </View>
-          </GradientHeader>
-          <ScrollView contentContainerStyle={styles.modalBody}>
-            {formError ? <ErrorBanner message={formError} onRetry={() => setFormError(null)} /> : null}
-            <FormField
-              label="Tarih"
-              value={appointmentDate}
-              onChangeText={setAppointmentDate}
-              placeholder="YYYY-MM-DD"
+      <PercentBodySheet
+        visible={!!editAppt}
+        onClose={() => setEditAppt(null)}
+        title="Randevu düzenle"
+        subtitle={editAppt?.customer_name || 'Randevu'}
+        size="list"
+        footer={
+          <>
+            <PrimaryButton label="İptal" variant="ghost" onPress={() => setEditAppt(null)} style={{ flex: 1 }} />
+            <PrimaryButton
+              label="Kaydet"
+              onPress={() => void handleUpdate()}
+              loading={saving}
+              style={{ flex: 2 }}
             />
-            <FormField label="Saat" value={appointmentTime} onChangeText={setAppointmentTime} placeholder="10:00" />
-            <Text style={[styles.pickLabel, { color: colors.textMuted }]}>Durum</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.pickRow}>
-              {BEAUTY_STATUSES.map((s) => (
-                <Pressable
-                  key={s}
-                  onPress={() => setEditStatus(s)}
-                  style={[
-                    styles.pickChip,
-                    {
-                      backgroundColor: editStatus === s ? palette.blue600 : colors.card,
-                      borderColor: colors.cardBorder,
-                    },
-                  ]}
-                >
-                  <Text
-                    style={{
-                      color: editStatus === s ? palette.white : colors.text,
-                      fontSize: 11,
-                      fontWeight: '700',
-                    }}
-                  >
-                    {statusLabel(s)}
-                  </Text>
-                </Pressable>
-              ))}
-            </ScrollView>
-            <Text style={[styles.pickLabel, { color: colors.textMuted }]}>Hizmet</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.pickRow}>
-              {services.map((s) => (
-                <Pressable
-                  key={s.id}
-                  onPress={() => setSelectedServiceId(s.id)}
-                  style={[
-                    styles.pickChip,
-                    {
-                      backgroundColor: selectedServiceId === s.id ? palette.blue600 : colors.card,
-                      borderColor: colors.cardBorder,
-                    },
-                  ]}
-                >
-                  <Text
-                    style={{
-                      color: selectedServiceId === s.id ? palette.white : colors.text,
-                      fontSize: 11,
-                      fontWeight: '700',
-                    }}
-                  >
-                    {s.name}
-                  </Text>
-                </Pressable>
-              ))}
-            </ScrollView>
-            {specialists.length > 0 ? (
-              <>
-                <Text style={[styles.pickLabel, { color: colors.textMuted }]}>Uzman</Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.pickRow}>
-                  <Pressable
-                    onPress={() => setSelectedSpecialistId(null)}
-                    style={[
-                      styles.pickChip,
-                      {
-                        backgroundColor: !selectedSpecialistId ? palette.blue600 : colors.card,
-                        borderColor: colors.cardBorder,
-                      },
-                    ]}
-                  >
-                    <Text
-                      style={{
-                        color: !selectedSpecialistId ? palette.white : colors.text,
-                        fontSize: 11,
-                        fontWeight: '700',
-                      }}
-                    >
-                      Fark etmez
-                    </Text>
-                  </Pressable>
-                  {specialists.map((sp) => (
-                    <Pressable
-                      key={sp.id}
-                      onPress={() => setSelectedSpecialistId(sp.id)}
-                      style={[
-                        styles.pickChip,
-                        {
-                          backgroundColor: selectedSpecialistId === sp.id ? palette.blue600 : colors.card,
-                          borderColor: colors.cardBorder,
-                        },
-                      ]}
-                    >
-                      <Text
-                        style={{
-                          color: selectedSpecialistId === sp.id ? palette.white : colors.text,
-                          fontSize: 11,
-                          fontWeight: '700',
-                        }}
-                      >
-                        {sp.name}
-                      </Text>
-                    </Pressable>
-                  ))}
-                </ScrollView>
-              </>
-            ) : null}
-            <FormField label="Not" value={notes} onChangeText={setNotes} placeholder="İsteğe bağlı" />
-            <PrimaryButton label="Kaydet" onPress={() => void handleUpdate()} loading={saving} />
-            {String(editAppt?.status || '').toLowerCase() !== 'completed' ? (
-              <PrimaryButton
-                label="Tamamlandı olarak kaydet"
-                variant="ghost"
-                loading={saving}
-                onPress={() => {
-                  setEditStatus('completed');
-                  void (async () => {
-                    if (!editAppt || !selectedServiceId) return;
-                    setSaving(true);
-                    setFormError(null);
-                    try {
-                      await updateBeautyAppointment(editAppt.id, {
-                        serviceId: selectedServiceId,
-                        specialistId: selectedSpecialistId,
-                        clearSpecialist: !selectedSpecialistId,
-                        appointmentDate: appointmentDate.trim(),
-                        appointmentTime: appointmentTime.trim(),
-                        status: 'completed',
-                        notes: notes.trim() || null,
-                      });
-                      setEditAppt(null);
-                      await load();
-                    } catch (e) {
-                      setFormError(e instanceof Error ? e.message : String(e));
-                    } finally {
-                      setSaving(false);
-                    }
-                  })();
-                }}
-                style={{ marginTop: 4 }}
-              />
-            ) : null}
-          </ScrollView>
-        </KeyboardAvoidingView>
-      </Modal>
+          </>
+        }
+      >
+        {renderAppointmentFormFields('edit')}
+        {editAppt && String(editAppt.status || '').toLowerCase() !== 'completed' ? (
+          <PrimaryButton
+            label="Tamamlandı olarak kaydet"
+            variant="ghost"
+            loading={saving}
+            onPress={() => void handleUpdate('completed')}
+            style={{ marginTop: 4 }}
+          />
+        ) : null}
+      </PercentBodySheet>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
-  tabs: { flexDirection: 'row', gap: 6, padding: 12 },
+  tabs: { flexDirection: 'row', gap: 6, paddingHorizontal: 12, paddingTop: 12, paddingBottom: 6 },
   tab: { flex: 1, paddingVertical: 10, borderRadius: 8, borderWidth: 1, alignItems: 'center' },
+  modeRow: { flexDirection: 'row', gap: 8, paddingHorizontal: 12, paddingBottom: 6 },
+  modeChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 16,
+    borderWidth: 1,
+  },
   filters: { flexDirection: 'row', gap: 8, paddingHorizontal: 12, paddingBottom: 4 },
   filterChip: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, borderWidth: 1 },
   list: { padding: 12, gap: 8, paddingBottom: 88 },
@@ -666,10 +664,28 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     elevation: 4,
   },
-  modalRoot: { flex: 1 },
-  modalBody: { padding: 16, gap: 12, paddingBottom: 48 },
-  pickLabel: { fontSize: 10, fontWeight: '900', letterSpacing: 2, textTransform: 'uppercase', marginTop: 4 },
+  pickLabel: {
+    fontSize: 10,
+    fontWeight: '900',
+    letterSpacing: 2,
+    textTransform: 'uppercase',
+    marginTop: 4,
+    marginBottom: 6,
+  },
   pickRow: { gap: 8, paddingVertical: 4 },
   pickChip: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, borderWidth: 1 },
-  modalHeaderRow: { flexDirection: 'row', alignItems: 'center', gap: 10, zIndex: 2 },
+  formSection: { gap: 8, marginBottom: 4 },
+  sectionTitle: {
+    fontSize: 10,
+    fontWeight: '900',
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+  },
+  row2: { flexDirection: 'row', gap: 10 },
+  readOnlyBox: {
+    borderWidth: 1,
+    borderRadius: 10,
+    padding: 12,
+    gap: 4,
+  },
 });

@@ -93,7 +93,7 @@ export type MainStackParamList = {
   WmsWavePicking: undefined;
   /** WMS dalga toplama — görev yürütme */
   WmsWavePickingExecute: { waveId: string };
-  Restaurant: { initialTab?: 'tables' | 'orders' } | undefined;
+  Restaurant: { initialTab?: 'tables' | 'orders' | 'schedule' } | undefined;
   /** Teslimat / kurye — menü yaprağı sekmesi */
   Delivery: { initialTab?: 'deliveries' | 'live' | 'couriers' } | undefined;
   /** Finans tanımları: ödeme planı, masraf merkezi, arama planı, gider */

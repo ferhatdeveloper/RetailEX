@@ -4,6 +4,7 @@ import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import './src/i18n';
 import { RootNavigator } from './src/navigation/RootNavigator';
+import { AppErrorBoundary } from './src/components/AppErrorBoundary';
 import { useThemeStore } from './src/store/themeStore';
 import { useLanguageStore } from './src/store/languageStore';
 import { useAuthStore } from './src/store/authStore';
@@ -59,6 +60,9 @@ export default function App() {
       if (done) return;
       done = true;
       markHydrated();
+      if (__DEV__) {
+        console.log('[boot] hydrated');
+      }
     };
 
     const unsubAuth = useAuthStore.persist.onFinishHydration(() => {
@@ -92,9 +96,13 @@ export default function App() {
         cfgReady ? Promise.resolve() : useConfigStore.persist.rehydrate(),
         langReady ? Promise.resolve() : useLanguageStore.persist.rehydrate(),
         themeReady ? Promise.resolve() : useThemeStore.persist.rehydrate(),
-      ]).finally(() => {
-        finish();
-      });
+      ])
+        .catch((e) => {
+          console.warn('[boot] rehydrate error', e);
+        })
+        .finally(() => {
+          finish();
+        });
     }
 
     const timer = setTimeout(finish, HYDRATE_TIMEOUT_MS);
@@ -111,9 +119,11 @@ export default function App() {
   return (
     <SafeAreaProvider>
       <StatusBar style={darkMode ? 'light' : 'dark'} />
-      <Suspense fallback={<BootFallback />}>
-        <RootNavigator />
-      </Suspense>
+      <AppErrorBoundary>
+        <Suspense fallback={<BootFallback />}>
+          <RootNavigator />
+        </Suspense>
+      </AppErrorBoundary>
     </SafeAreaProvider>
   );
 }
