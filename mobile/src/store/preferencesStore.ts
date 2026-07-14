@@ -18,7 +18,7 @@ type PersistedPreferences = {
 export const usePreferencesStore = create<PreferencesState>()(
   persist(
     (set, get) => ({
-      /** Varsayılan: grup başlıklı liste (web sidebar hissi; “ikili kart” yok). */
+      /** Varsayılan: grup başlıklı liste. Kart modu = telefon portrait’te 3 sütun. */
       menuViewMode: 'list',
       setMenuViewMode: (mode) => set({ menuViewMode: mode }),
       toggleMenuViewMode: () =>

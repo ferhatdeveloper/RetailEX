@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { createContext, useContext, useMemo, useState } from 'react';
 import {
   View,
   StyleSheet,
   useWindowDimensions,
+  type LayoutChangeEvent,
   type StyleProp,
   type ViewStyle,
 } from 'react-native';
@@ -14,9 +15,16 @@ export const MENU_GRID_HORIZONTAL_PADDING = 12;
 /** Dar telefon + 3 sütunda kompakt eşit kart. */
 export const MENU_CARD_HEIGHT = 76;
 
+type MenuGridContextValue = {
+  cellWidth: number;
+  cols: number;
+};
+
+const MenuGridContext = createContext<MenuGridContextValue | null>(null);
+
 /**
- * Genişliğe göre sütun: 3 (telefon) | 4 (geniş / tablet).
- * 2 sütun bilerek desteklenmez.
+ * Genişliğe göre sütun: 3 (telefon portrait / dar) | 4 (geniş / tablet).
+ * 2 sütun bilerek desteklenmez — telefon kartları her zaman 3’lü.
  */
 export function useMenuGridColumns(): number {
   const { width } = useWindowDimensions();
@@ -24,10 +32,16 @@ export function useMenuGridColumns(): number {
   return MENU_GRID_MIN_COLUMNS;
 }
 
+/** Pencere bazlı yedek (ölçüm yokken); asıl ölçü MenuCardGrid onLayout. */
 export function useMenuGridCellWidth(horizontalPadding = MENU_GRID_HORIZONTAL_PADDING): number {
   const { width } = useWindowDimensions();
   const cols = useMenuGridColumns();
   return (width - horizontalPadding * 2 - MENU_GRID_GAP * (cols - 1)) / cols;
+}
+
+function cellWidthFor(containerWidth: number, cols: number): number {
+  if (containerWidth <= 0) return 0;
+  return (containerWidth - MENU_GRID_GAP * (cols - 1)) / cols;
 }
 
 type MenuCardGridProps = {
@@ -36,7 +50,32 @@ type MenuCardGridProps = {
 };
 
 export function MenuCardGrid({ children, style }: MenuCardGridProps) {
-  return <View style={[styles.grid, style]}>{children}</View>;
+  const cols = useMenuGridColumns();
+  const fallbackWidth = useMenuGridCellWidth();
+  const [containerWidth, setContainerWidth] = useState(0);
+
+  const onLayout = (e: LayoutChangeEvent) => {
+    const w = e.nativeEvent.layout.width;
+    if (w > 0 && Math.abs(w - containerWidth) > 0.5) {
+      setContainerWidth(w);
+    }
+  };
+
+  const value = useMemo<MenuGridContextValue>(() => {
+    const measured = cellWidthFor(containerWidth, cols);
+    return {
+      cols,
+      cellWidth: measured > 0 ? measured : fallbackWidth,
+    };
+  }, [containerWidth, cols, fallbackWidth]);
+
+  return (
+    <MenuGridContext.Provider value={value}>
+      <View style={[styles.grid, style]} onLayout={onLayout}>
+        {children}
+      </View>
+    </MenuGridContext.Provider>
+  );
 }
 
 type MenuCardGridItemProps = {
@@ -45,7 +84,9 @@ type MenuCardGridItemProps = {
 };
 
 export function MenuCardGridItem({ children, style }: MenuCardGridItemProps) {
-  const cellWidth = useMenuGridCellWidth();
+  const ctx = useContext(MenuGridContext);
+  const fallback = useMenuGridCellWidth();
+  const cellWidth = ctx?.cellWidth && ctx.cellWidth > 0 ? ctx.cellWidth : fallback;
   return (
     <View style={[styles.gridItem, { width: cellWidth }, style]}>
       {children}

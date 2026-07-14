@@ -20,7 +20,7 @@ type StackNav = NativeStackNavigationProp<MainStackParamList>;
 
 /**
  * Menü öğesi için native host:
- * - Alt menü varsa liste gösterir
+ * - Alt menü varsa `menuViewMode` ile kart (3 sütun) veya liste gösterir
  * - Canlı route’a map edilebilirse yönlendirir
  * - Aksi halde ilgili veri bağlamı + alt kısayollar
  */

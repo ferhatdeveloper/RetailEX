@@ -182,64 +182,91 @@ export function DashboardScreen() {
           <View key={section.id} style={styles.sectionBlock}>
             <Text style={[styles.catTitle, { color: colors.text }]}>{section.title}</Text>
             {isCards ? (
-              <MenuCardGrid>
-                {section.items.map((item) => (
-                  <MenuCardGridItem key={item.id}>
-                    <Pressable
-                      onPress={() => openItem(item)}
-                      style={[
-                        menuCardStyles.card,
-                        { backgroundColor: colors.card, borderColor: colors.cardBorder },
-                      ]}
-                    >
-                      <Text
-                        style={[menuCardStyles.label, { color: colors.text }]}
-                        numberOfLines={2}
-                        ellipsizeMode="tail"
+              <View style={styles.cardsBlock}>
+                <MenuCardGrid>
+                  {section.items.map((item) => (
+                    <MenuCardGridItem key={item.id}>
+                      <Pressable
+                        onPress={() => openItem(item)}
+                        style={[
+                          menuCardStyles.card,
+                          { backgroundColor: colors.card, borderColor: colors.cardBorder },
+                        ]}
                       >
+                        <Text
+                          style={[menuCardStyles.label, { color: colors.text }]}
+                          numberOfLines={2}
+                          ellipsizeMode="tail"
+                        >
+                          {item.label}
+                        </Text>
+                        <View style={menuCardStyles.footer}>
+                          {item.badge ? (
+                            <Text style={styles.badge} numberOfLines={1}>
+                              {item.badge}
+                            </Text>
+                          ) : (
+                            <View />
+                          )}
+                          {item.children?.length ? (
+                            expanded[item.id] ? (
+                              <ChevronDown size={14} color={colors.textMuted} />
+                            ) : (
+                              <ChevronRight size={14} color={colors.textMuted} />
+                            )
+                          ) : (
+                            <ChevronRight size={14} color={colors.textSubtle} />
+                          )}
+                        </View>
+                      </Pressable>
+                    </MenuCardGridItem>
+                  ))}
+                </MenuCardGrid>
+                {/* Alt menü: kart modunda parent ile aynı 3 sütun grid — liste satırı değil */}
+                {section.items.map((item) =>
+                  expanded[item.id] && item.children?.length ? (
+                    <View key={`${item.id}-children`} style={styles.childGridBlock}>
+                      <Text style={[styles.childGridTitle, { color: colors.textMuted }]} numberOfLines={1}>
                         {item.label}
                       </Text>
-                      <View style={menuCardStyles.footer}>
-                        {item.badge ? (
-                          <Text style={styles.badge} numberOfLines={1}>
-                            {item.badge}
-                          </Text>
-                        ) : (
-                          <View />
-                        )}
-                        {item.children?.length ? (
-                          expanded[item.id] ? (
-                            <ChevronDown size={14} color={colors.textMuted} />
-                          ) : (
-                            <ChevronRight size={14} color={colors.textMuted} />
-                          )
-                        ) : (
-                          <ChevronRight size={14} color={colors.textSubtle} />
-                        )}
-                      </View>
-                    </Pressable>
-                    {expanded[item.id] && item.children ? (
-                      <View style={styles.childCardWrap}>
+                      <MenuCardGrid>
                         {item.children.map((child) => (
-                          <Pressable
-                            key={child.id}
-                            onPress={() => navigateToModule(navigation, child.screen, child.label)}
-                            style={[
-                              styles.childCard,
-                              { backgroundColor: colors.backgroundAlt, borderColor: colors.cardBorder },
-                            ]}
-                          >
-                            <Text style={{ color: colors.text, fontSize: 11, flex: 1 }} numberOfLines={2}>
-                              {child.label}
-                            </Text>
-                            {child.badge ? <Text style={styles.badge}>{child.badge}</Text> : null}
-                          </Pressable>
+                          <MenuCardGridItem key={child.id}>
+                            <Pressable
+                              onPress={() => navigateToModule(navigation, child.screen, child.label)}
+                              style={[
+                                menuCardStyles.card,
+                                {
+                                  backgroundColor: colors.backgroundAlt,
+                                  borderColor: colors.cardBorder,
+                                },
+                              ]}
+                            >
+                              <Text
+                                style={[menuCardStyles.label, { color: colors.text }]}
+                                numberOfLines={2}
+                                ellipsizeMode="tail"
+                              >
+                                {child.label}
+                              </Text>
+                              <View style={menuCardStyles.footer}>
+                                {child.badge ? (
+                                  <Text style={styles.badge} numberOfLines={1}>
+                                    {child.badge}
+                                  </Text>
+                                ) : (
+                                  <View />
+                                )}
+                                <ChevronRight size={14} color={colors.textMuted} />
+                              </View>
+                            </Pressable>
+                          </MenuCardGridItem>
                         ))}
-                      </View>
-                    ) : null}
-                  </MenuCardGridItem>
-                ))}
-              </MenuCardGrid>
+                      </MenuCardGrid>
+                    </View>
+                  ) : null,
+                )}
+              </View>
             ) : (
               section.items.map((item) => (
                 <View key={item.id}>
@@ -360,15 +387,13 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   sectionBlock: { marginTop: 4 },
-  childCardWrap: { marginTop: 4, gap: 4 },
-  childCard: {
-    borderWidth: 1,
-    borderRadius: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 8,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
+  cardsBlock: { gap: 8 },
+  childGridBlock: { gap: 6 },
+  childGridTitle: {
+    fontSize: 11,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
   },
   menuMeta: { fontSize: 11, marginTop: 2 },
   catTitle: {
