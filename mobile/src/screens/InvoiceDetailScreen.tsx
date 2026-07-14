@@ -1,0 +1,141 @@
+import React, { useCallback, useEffect, useState } from 'react';
+import {
+  View,
+  Text,
+  FlatList,
+  StyleSheet,
+  ActivityIndicator,
+  RefreshControl,
+} from 'react-native';
+import { useRoute, type RouteProp } from '@react-navigation/native';
+import { ScreenHeader, ErrorBanner, EmptyState } from '../components/ScreenChrome';
+import { fetchInvoiceById, type InvoiceDetail } from '../api/invoicesApi';
+import { formatMoney } from '../api/erpTables';
+import { useThemeStore } from '../store/themeStore';
+import { palette } from '../theme/colors';
+import type { MainStackParamList } from '../navigation/types';
+
+export function InvoiceDetailScreen() {
+  const { colors } = useThemeStore();
+  const route = useRoute<RouteProp<MainStackParamList, 'InvoiceDetail'>>();
+  const { invoiceId } = route.params;
+  const [doc, setDoc] = useState<InvoiceDetail | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setError(null);
+    try {
+      setDoc(await fetchInvoiceById(invoiceId));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+      setDoc(null);
+    } finally {
+      setLoading(false);
+    }
+  }, [invoiceId]);
+
+  useEffect(() => {
+    setLoading(true);
+    void load();
+  }, [load]);
+
+  return (
+    <View style={[styles.root, { backgroundColor: colors.background }]}>
+      <ScreenHeader
+        title="Fatura Detay"
+        subtitle={doc?.fiche_no || invoiceId.slice(0, 8)}
+      />
+      {error ? <ErrorBanner message={error} onRetry={() => void load()} /> : null}
+      {loading && !doc ? (
+        <ActivityIndicator style={{ marginTop: 40 }} color={palette.blue600} />
+      ) : !doc ? (
+        <EmptyState message="Fatura bulunamadı" />
+      ) : (
+        <FlatList
+          data={doc.lines}
+          keyExtractor={(item) => String(item.id)}
+          refreshControl={<RefreshControl refreshing={loading} onRefresh={() => void load()} />}
+          ListHeaderComponent={
+            <View style={{ gap: 10, marginBottom: 8 }}>
+              <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
+                <Text style={[styles.fiche, { color: colors.text }]}>{doc.fiche_no || '—'}</Text>
+                <Text style={{ color: colors.textMuted, marginTop: 4 }}>
+                  {doc.customer_name || 'Perakende'} · {doc.date?.slice(0, 10) || '—'}
+                </Text>
+                <Text style={{ color: colors.textSubtle, fontSize: 11, marginTop: 4 }}>
+                  {[doc.fiche_type, doc.payment_method, doc.status].filter(Boolean).join(' · ')}
+                </Text>
+                <Text style={[styles.total, { color: palette.blue600 }]}>
+                  {formatMoney(doc.net_amount)} ₺
+                </Text>
+                <View style={styles.metaRow}>
+                  <Text style={{ color: colors.textMuted, fontSize: 11 }}>
+                    KDV: {formatMoney(doc.total_vat)}
+                  </Text>
+                  <Text style={{ color: colors.textMuted, fontSize: 11 }}>
+                    İndirim: {formatMoney(doc.total_discount)}
+                  </Text>
+                  <Text style={{ color: colors.textMuted, fontSize: 11 }}>
+                    {doc.currency || 'TRY'}
+                  </Text>
+                </View>
+                {doc.notes ? (
+                  <Text style={{ color: colors.textMuted, fontSize: 12, marginTop: 8 }}>
+                    Not: {doc.notes}
+                  </Text>
+                ) : null}
+              </View>
+              <Text style={[styles.sec, { color: colors.text }]}>
+                Kalemler ({doc.lines.length})
+              </Text>
+            </View>
+          }
+          ListEmptyComponent={<EmptyState message="Kalem yok veya satır tablosu yok" />}
+          contentContainerStyle={{ padding: 12, paddingBottom: 40 }}
+          renderItem={({ item }) => (
+            <View
+              style={[styles.line, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}
+            >
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: colors.text, fontWeight: '600' }} numberOfLines={2}>
+                  {item.item_name || '—'}
+                </Text>
+                <Text style={{ color: colors.textMuted, fontSize: 11 }}>
+                  {[item.item_code, `${item.quantity} ${item.unit || ''}`]
+                    .filter(Boolean)
+                    .join(' · ')}
+                </Text>
+              </View>
+              <View style={{ alignItems: 'flex-end' }}>
+                <Text style={{ color: palette.blue600, fontWeight: '800' }}>
+                  {formatMoney(item.net_amount)} ₺
+                </Text>
+                <Text style={{ color: colors.textSubtle, fontSize: 10 }}>
+                  @{formatMoney(item.unit_price)}
+                </Text>
+              </View>
+            </View>
+          )}
+        />
+      )}
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  root: { flex: 1 },
+  card: { borderWidth: 1, borderRadius: 12, padding: 14 },
+  fiche: { fontSize: 18, fontWeight: '800' },
+  total: { fontSize: 22, fontWeight: '800', marginTop: 10 },
+  metaRow: { flexDirection: 'row', gap: 12, marginTop: 8, flexWrap: 'wrap' },
+  sec: { fontSize: 13, fontWeight: '700' },
+  line: {
+    borderWidth: 1,
+    borderRadius: 10,
+    padding: 12,
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 8,
+  },
+});

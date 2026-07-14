@@ -171,6 +171,10 @@
             "db:provision-ozbek": "bash database/scripts/provision-ozbek-restaurant.sh",
             "db:merkez:tenant-retail-full-setup": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/merkez-tenant-retail-full-setup.ps1",
             "db:tenant-post-schema": "node scripts/tenant-databases-post-schema.mjs",
-            "db:tenant-ensure-app-users": "node scripts/tenant-databases-ensure-app-users.mjs"
+            "db:tenant-ensure-app-users": "node scripts/tenant-databases-ensure-app-users.mjs",
+            "mobile:start": "npm --prefix mobile start",
+            "mobile:android": "npm --prefix mobile run android",
+            "mobile:ios": "npm --prefix mobile run ios",
+            "mobile:typecheck": "npm --prefix mobile run typecheck"
       }
 }
