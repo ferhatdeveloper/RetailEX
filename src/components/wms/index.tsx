@@ -26,6 +26,8 @@ import {
 } from './components/AllWMSModules';
 import { SlottingOptimization, YardManagement, LaborManagement } from './RemainingWMSModules';
 import { StockCountModule } from './components/StockCountModule';
+import { BinManagement } from './components/BinManagement';
+import { PutawayModule } from './components/PutawayModule';
 import { ToastProvider } from './utils/toast';
 import { LanguageProvider } from './utils/i18n/LanguageContext';
 import type { Product, Customer, Sale, Campaign } from '../../core/types';
@@ -98,6 +100,10 @@ function WarehouseManagementInner() {
       case 'counting':
         // Gerçek sayım modülü (wms.counting_slips/lines) — mock CountingModule yerine
         return <StockCountModule darkMode={darkMode} onBack={onBack} />;
+      case 'bins':
+        return <BinManagement darkMode={darkMode} onBack={onBack} />;
+      case 'putaway':
+        return <PutawayModule darkMode={darkMode} onBack={onBack} />;
       case 'alerts':
         return <AlertCenter darkMode={darkMode} onBack={onBack} />;
       case 'quality':

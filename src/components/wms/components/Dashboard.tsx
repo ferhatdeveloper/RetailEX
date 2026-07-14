@@ -93,12 +93,14 @@ export function Dashboard({ darkMode, onNavigate, onLogout }: DashboardProps) {
 
   // Module arrays — defined inside component so tm() works
   const activeModules = [
-    { id: 'receiving',   icon: MODULE_ICONS.receiving,          nameKey: 'wmsReceiving',       color: 'text-green-500',  highlight: false },
-    { id: 'returns',     icon: MODULE_ICONS.returns,            nameKey: 'wmsReturnRecycling', color: 'text-orange-500', highlight: false },
-    { id: 'issue',       icon: MODULE_ICONS.issue,              nameKey: 'wmsDispatch',        color: 'text-red-500',    highlight: false },
-    { id: 'transfer',    icon: MODULE_ICONS.transfer,           nameKey: 'wmsTransfer',        color: 'text-blue-500',   highlight: false },
-    { id: 'counting',    icon: MODULE_ICONS.counting,           nameKey: 'wmsCount',           color: 'text-purple-500', highlight: false },
-    { id: 'stock-query', icon: MODULE_ICONS['stock-query'],     nameKey: 'wmsStockQuery',      color: 'text-teal-500',   highlight: false },
+    { id: 'receiving',   icon: MODULE_ICONS.receiving,          nameKey: 'wmsReceiving',       name: '',            color: 'text-green-500',  highlight: false },
+    { id: 'putaway',     icon: ArrowDownRight,                  nameKey: '',                   name: 'Yerleştirme', color: 'text-emerald-500', highlight: true },
+    { id: 'bins',        icon: MapPin,                          nameKey: '',                   name: 'Lokasyon & Bin', color: 'text-cyan-500', highlight: true },
+    { id: 'returns',     icon: MODULE_ICONS.returns,            nameKey: 'wmsReturnRecycling', name: '',            color: 'text-orange-500', highlight: false },
+    { id: 'issue',       icon: MODULE_ICONS.issue,              nameKey: 'wmsDispatch',        name: '',            color: 'text-red-500',    highlight: false },
+    { id: 'transfer',    icon: MODULE_ICONS.transfer,           nameKey: 'wmsTransfer',        name: '',            color: 'text-blue-500',   highlight: false },
+    { id: 'counting',    icon: MODULE_ICONS.counting,           nameKey: 'wmsCount',           name: '',            color: 'text-purple-500', highlight: false },
+    { id: 'stock-query', icon: MODULE_ICONS['stock-query'],     nameKey: 'wmsStockQuery',      name: '',            color: 'text-teal-500',   highlight: false },
   ];
 
   const comingSoonModules = [
@@ -233,7 +235,7 @@ export function Dashboard({ darkMode, onNavigate, onLogout }: DashboardProps) {
                 }`}
               >
                 <Icon className={`w-5 h-5 ${item.color}`} />
-                <span className={`text-xs font-medium ${textClass} text-center leading-tight`}>{tm(item.nameKey)}</span>
+                <span className={`text-xs font-medium ${textClass} text-center leading-tight`}>{item.name || tm(item.nameKey)}</span>
               </button>
             );
           })}
