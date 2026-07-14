@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { Scale, RefreshCw } from 'lucide-react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { useTranslation } from 'react-i18next';
 import { ScreenHeader, SearchBar, EmptyState } from '../components/ScreenChrome';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { useThemeStore } from '../store/themeStore';
@@ -18,6 +19,7 @@ import {
   createScaleTransport,
   getSimulateTransport,
   isBleNativeAvailable,
+  isSppNativeAvailable,
 } from '../services/scale/scaleTransport';
 import {
   searchWeighableProducts,
@@ -42,6 +44,7 @@ type WeighLine = {
 };
 
 export function ScaleSaleScreen(_props: Props) {
+  const { t } = useTranslation();
   const { colors } = useThemeStore();
   const orgEpoch = useOrgEpoch();
   const settings = useScaleStore((s) => s.settings);
@@ -54,21 +57,29 @@ export function ScaleSaleScreen(_props: Props) {
   const [selected, setSelected] = useState<ScaleProductRow | null>(null);
   const [weightKg, setWeightKg] = useState<number | null>(null);
   const [stable, setStable] = useState(false);
-  const [weightDetail, setWeightDetail] = useState('Tartı bekleniyor');
+  const [weightDetail, setWeightDetail] = useState('');
   const [cart, setCart] = useState<WeighLine[]>([]);
   const [searching, setSearching] = useState(false);
   const [reading, setReading] = useState(false);
   const selectedDevice = useMemo(() => getSelectedDevice(), [devices, settings.lastSelectedDeviceId]);
   const bleNative = isBleNativeAvailable();
+  const sppNative = isSppNativeAvailable();
   const weighSourceHint = useMemo(() => {
-    if (settings.preferSimulateWeigh) return 'Kaynak: simüle (ayar)';
-    if (!selectedDevice) return 'Kaynak: simüle (cihaz yok)';
+    if (settings.preferSimulateWeigh) return t('scaleUi.weighSourceSim');
+    if (!selectedDevice) return t('scaleUi.weighSourceNoDevice');
     if (selectedDevice.transport === 'bluetooth') {
-      return bleNative ? `Kaynak: BLE ${selectedDevice.bluetoothAddress ?? ''}` : 'Kaynak: simüle (BLE native yok)';
+      if (selectedDevice.bluetoothProfile === 'spp') {
+        return sppNative
+          ? t('scaleUi.weighSourceSpp', { addr: selectedDevice.bluetoothAddress ?? '' })
+          : t('scaleUi.weighSourceBleMissing');
+      }
+      return bleNative
+        ? t('scaleUi.weighSourceBle', { addr: selectedDevice.bluetoothAddress ?? '' })
+        : t('scaleUi.weighSourceBleMissing');
     }
-    if (selectedDevice.transport === 'network') return 'Kaynak: TCP (kg yoksa simüle yedek)';
-    return 'Kaynak: simülasyon';
-  }, [bleNative, selectedDevice, settings.preferSimulateWeigh]);
+    if (selectedDevice.transport === 'network') return t('scaleUi.weighSourceTcp');
+    return t('scaleUi.weighSourceSimDefault');
+  }, [bleNative, sppNative, selectedDevice, settings.preferSimulateWeigh, t]);
 
   const [saving, setSaving] = useState(false);
 
@@ -111,11 +122,14 @@ export function ScaleSaleScreen(_props: Props) {
     try {
       const device = getSelectedDevice();
       const bleOk = isBleNativeAvailable();
+      const sppOk = isSppNativeAvailable();
+      const btOk =
+        device?.bluetoothProfile === 'spp' ? sppOk : bleOk;
       const useSim =
         settings.preferSimulateWeigh ||
         !device ||
         device.transport === 'simulate' ||
-        (device.transport === 'bluetooth' && !bleOk);
+        (device.transport === 'bluetooth' && !btOk);
 
       if (useSim) {
         const sim = getSimulateTransport();
@@ -124,19 +138,18 @@ export function ScaleSaleScreen(_props: Props) {
         setWeightKg(w.weightKg);
         setStable(w.stable);
         setWeightDetail(
-          device?.transport === 'bluetooth' && !bleOk
-            ? `${w.detail} · BLE native yok (simüle)`
+          device?.transport === 'bluetooth' && !btOk
+            ? `${w.detail} · BT native yok (simüle)`
             : w.detail,
         );
         pushLog(`Tartım (sim): ${w.weightKg?.toFixed(3)} kg`);
         return;
       }
 
-      const t = createScaleTransport(device);
-      await t.connect();
-      const w = await t.readLiveWeight();
+      const transport = createScaleTransport(device);
+      await transport.connect();
+      const w = await transport.readLiveWeight();
       if (w.weightKg == null && device.transport === 'network') {
-        // LAN Rongta canlı kg vermez — simülasyona düş
         const sim = getSimulateTransport();
         await sim.connect();
         const sw = await sim.readLiveWeight();
@@ -153,28 +166,32 @@ export function ScaleSaleScreen(_props: Props) {
         `Tartım (${device.transport}): ${w.weightKg != null ? w.weightKg.toFixed(3) : 'null'} kg`,
       );
     } catch (e) {
-      Alert.alert('Tartım', e instanceof Error ? e.message : String(e));
+      Alert.alert(t('scaleUi.alertTitle'), e instanceof Error ? e.message : String(e));
     } finally {
       setReading(false);
     }
-  }, [getSelectedDevice, pushLog, settings.preferSimulateWeigh]);
+  }, [getSelectedDevice, pushLog, settings.preferSimulateWeigh, t]);
 
-  // BLE seçiliyse (ve simüle tercih kapalıysa) canlı kg poll
+  // BLE/SPP seçiliyse (ve simüle tercih kapalıysa) canlı kg poll
   useEffect(() => {
     const device = getSelectedDevice();
+    const btNative =
+      device?.bluetoothProfile === 'spp'
+        ? isSppNativeAvailable()
+        : isBleNativeAvailable();
     if (
       settings.preferSimulateWeigh ||
       !device ||
       device.transport !== 'bluetooth' ||
-      !isBleNativeAvailable()
+      !btNative
     ) {
       return;
     }
     let cancelled = false;
     const tick = async () => {
       try {
-        const t = createScaleTransport(device);
-        const w = await t.readLiveWeight();
+        const transport = createScaleTransport(device);
+        const w = await transport.readLiveWeight();
         if (cancelled) return;
         if (w.weightKg != null) {
           setWeightKg(w.weightKg);
@@ -269,7 +286,7 @@ export function ScaleSaleScreen(_props: Props) {
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
       <ScreenHeader
-        title="Terazi & Tartılı Satış"
+        title={t('scaleUi.saleTitle')}
         subtitle="PLU / kg ürün · tartım → sepet"
       />
 

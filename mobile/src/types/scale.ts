@@ -1,6 +1,9 @@
 /** RetailEX mobil terazi — Android TeraziManager + web ScaleManagement ile hizalı tipler */
 
-export type ScaleTransportKind = 'network' | 'bluetooth' | 'simulate';
+export type ScaleTransportKind = 'network' | 'bluetooth' | 'simulate' | 'usb';
+
+/** Bluetooth alt profili — BLE GATT veya Classic SPP */
+export type BluetoothScaleProfile = 'ble' | 'spp';
 
 export type ScaleDeviceStatus = 'unknown' | 'online' | 'offline' | 'error';
 
@@ -12,8 +15,12 @@ export type ScaleDevice = {
   port: number;
   enabled: boolean;
   transport: ScaleTransportKind;
-  /** BLE / Classic BT adres (gelecek native modül) */
+  /** BLE / Classic BT adres */
   bluetoothAddress?: string | null;
+  bluetoothProfile?: BluetoothScaleProfile | null;
+  /** USB cihaz kimliği (native) */
+  usbDeviceId?: string | null;
+  usbBaudRate?: number;
   brand: 'rongta' | 'generic';
   status: ScaleDeviceStatus;
   lastSync?: string | null;
@@ -48,7 +55,7 @@ export type LiveWeightReading = {
   weightKg: number | null;
   stable: boolean;
   detail: string;
-  /** simulate | network | bluetooth */
+  /** simulate | network | bluetooth | usb */
   source: ScaleTransportKind;
 };
 
@@ -68,7 +75,7 @@ export type ScaleConnectionResult = {
   weight?: LiveWeightReading;
 };
 
-/** Bluetooth bağlantı sözleşmesi — Expo Go’da native BT yok; development build + ble-plx. */
+/** Bluetooth bağlantı sözleşmesi — Expo Go’da native BT yok; development build. */
 export type BluetoothScaleConnection = {
   readonly kind: 'bluetooth';
   isAvailable(): boolean;

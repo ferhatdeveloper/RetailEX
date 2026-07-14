@@ -6,51 +6,60 @@ RetailEX mobil (`mobile/`) Rongta **etiket terazisi** ile TCP/LAN üzerinden ça
 
 | İşlem | Yol | Not |
 |-------|-----|-----|
-| Bağlantı testi | `POST /api/scale/rongta/test` | pg_bridge zorunlu |
-| PLU gönderme | `POST /api/scale/rongta/send-plu` | Ürün/etiket sync |
-| Satış raporu çekme | `POST /api/scale/rongta/fetch-sales` | Cihaz günlük satış |
-| Canlı kg (sürekli) | — | **Yok** — etiket terazisi sürekli ağırlık yaymaz |
+| Bağlantı testi | Doğrudan TCP **veya** `POST /api/scale/rongta/test` | Dev build: telefon→terazi; Expo Go: pg_bridge |
+| PLU gönderme | Doğrudan / `send-plu` | Ürün/etiket sync; `LabelId` slot ayarından |
+| PLU temizleme | Doğrudan / `clear-plu` | Açık protokol: `operate=D` (SDK `clearPludata` değil) |
+| Satış raporu | Doğrudan / `fetch-sales` | Cihaz günlük satış |
+| LAN tarama | Doğrudan TCP probe **veya** `lan-scan` | Portlar: 5001, 9100, 4001, 20304 |
+| Hotkey / .scr / SYSTEM.CFG | Bridge dürüst yanıt | Windows DLL / Android `lib_plu` gerekir |
+| Canlı kg (sürekli LAN) | — | **Yok** — etiket terazisi sürekli ağırlık yaymaz |
 
-Telefon **doğrudan** cihaz TCP’sine bağlanmaz; istekler PC’deki **pg_bridge** (`npm run bridge`, `:3001`) üzerinden gider.
+## Transport önceliği (network)
+
+1. `react-native-tcp-socket` yüklüyse → **doğrudan** telefon → terazi IP:port  
+2. Aksi halde / başarısızlıkta → **pg_bridge** (`npm run bridge`, `:3001`)
 
 - Emülatör Bridge host: `10.0.2.2`
-- Fiziksel cihaz: PC’nin **LAN IP** adresi
+- Fiziksel cihaz (köprü): PC’nin **LAN IP** adresi
 
-## Canlı kg neden yok?
+## Canlı kg neden LAN’da yok?
 
 Rongta RLS / etiket modelleri tipik olarak PLU ve satış/rapor protokolü sunar; tartım değerini sürekli stream etmez. Bu nedenle:
 
-1. **LAN seçili** → `NetworkScaleTransport.readLiveWeight()` `weightKg: null` döner.
+1. **LAN seçili** → `NetworkScaleTransport.readLiveWeight()` `weightKg: null` döner (dürüst UI).
 2. **Tartılı satış** (`ScaleSale`) LAN’da kg yoksa **simüle** yedek kullanabilir.
-3. Gerçek canlı kg için **BLE tartı** gerekir (`react-native-ble-plx`, development build; Expo Go’da native yok).
+3. Gerçek canlı kg: **BLE** (`react-native-ble-plx`) veya **Classic SPP** (`react-native-bluetooth-classic`, opsiyonel).
 
-Bu bir eksik entegrasyon değil; donanım/protokol sınırı + bilinçli ürün kararıdır (`TODO_RN_MIGRATION.md` madde 14).
+## USB-OTG / SPP
+
+| Yol | Expo Go | Dev client |
+|-----|---------|------------|
+| USB seri (FTDI/CH340…) | ✗ | Native modül + Rt2 köprüsü gerekir (`usbSerialScale.ts`) |
+| Classic SPP | ✗ | `react-native-bluetooth-classic` (tartım ASCII) |
+| BLE canlı kg | ✗ | `react-native-ble-plx` |
 
 ## Transport mimarisi
 
 ```
 ScaleManagement / ScaleSale
-  → scaleStore (IP/port, transport)
+  → scaleStore (IP/port, transport, labelSlot, hotkey flags)
   → createScaleTransport()
-       ├─ NetworkScaleTransport  → rongtaBridge → pg_bridge
-       ├─ SimulateScaleTransport → rastgele canlı kg (geliştirme)
-       └─ BluetoothScaleTransport → blePlx (dev client)
+       ├─ NetworkScaleTransport  → rongtaTcpNative → yedek rongtaBridge
+       ├─ BluetoothScaleTransport → blePlx | sppBluetoothScale
+       ├─ UsbScaleTransport      → usbSerialScale (native bağlanınca)
+       └─ SimulateScaleTransport → rastgele canlı kg
 ```
 
-İlgili kod: `mobile/src/services/scale/scaleTransport.ts`, `rongtaBridge.ts`.
+İlgili kod: `mobile/src/services/scale/*`, bridge: `src/services/pg_bridge.ts` + `rongtaTcpNode.ts`.
 
 ## Expo Go vs development build
 
 | Özellik | Expo Go | Dev client / EAS |
 |---------|---------|------------------|
-| LAN test / PLU / satış çek | ✓ | ✓ |
+| LAN test / PLU / satış / clear (köprü) | ✓ | ✓ |
+| Doğrudan TCP + LAN tarama | ✗ | ✓ (`react-native-tcp-socket`) |
 | Simüle kg | ✓ | ✓ |
-| BLE canlı kg / tarama | ✗ | ✓ (`expo run:android` vb.) |
+| BLE / SPP canlı kg | ✗ | ✓ (modül + izinler) |
+| USB-OTG PLU | ✗ | Partial (native köprü) |
 
-Smoke: [`TEST_SMOKE_SCALE.md`](./TEST_SMOKE_SCALE.md) · kısa özet: [`README.md`](./README.md) § Terazi BLE.
-
-## Yapma
-
-- LAN Rongta için “canlı kg stream” vaat etme veya `readLiveWeight` ile sürekli kg bekleyen UI yazma.
-- Bridge olmadan telefonda ham TCP varsayma.
-- Klasik Bluetooth SPP / USB-OTG bekleme — bu RN sürümünde yok (Android TeraziManager native).
+Smoke: [`TEST_SMOKE_SCALE.md`](./TEST_SMOKE_SCALE.md).

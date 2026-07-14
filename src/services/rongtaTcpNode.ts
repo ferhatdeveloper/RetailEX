@@ -193,6 +193,89 @@ export async function rongtaTcpSendPlu(
   }
 }
 
+/** PLU temizleme — açık TCP protokolünde clear komutu yok; operate=D ile silme. */
+export async function rongtaTcpClearPlu(
+  ipAddress: string,
+  port: number | undefined,
+  records: RongtaPluRecord[]
+) {
+  const deletes = records.map((r) => ({ ...r, operate: 'D' as const }));
+  const result = await rongtaTcpSendPlu(ipAddress, port, deletes);
+  return {
+    ...result,
+    message: result.success
+      ? `${result.sentCount} PLU silindi (operate=D, port ${result.port ?? port})`
+      : result.message,
+  };
+}
+
+/** Alt ağ TCP port taraması (TeraziManager LanScaleScanner). */
+export async function rongtaTcpLanScan(options?: {
+  deviceIp?: string | null;
+  hintHost?: string;
+  ports?: number[];
+  timeoutMs?: number;
+}) {
+  const timeoutMs = options?.timeoutMs ?? 350;
+  const ports = options?.ports?.length
+    ? options.ports
+    : [5001, 9100, 4001, 20304];
+  const hint = options?.hintHost?.trim();
+  const baseIp = (options?.deviceIp || hint || '').trim();
+  const prefix = baseIp
+    ? baseIp.split('.').slice(0, 3).join('.')
+    : null;
+  if (!prefix || prefix.split('.').length !== 3) {
+    return {
+      success: false,
+      message: 'deviceIp veya hintHost (IPv4) gerekli — örn. telefon/PC LAN IP',
+      hits: [] as Array<{ ip: string; port: number; reachable: boolean; responseMs: number }>,
+    };
+  }
+
+  const hosts: string[] = [];
+  if (hint) hosts.push(hint);
+  for (let i = 1; i <= 254; i++) hosts.push(`${prefix}.${i}`);
+  const unique = [...new Set(hosts)];
+  const hits: Array<{ ip: string; port: number; reachable: boolean; responseMs: number }> = [];
+  const concurrency = 40;
+  let idx = 0;
+
+  const probe = (host: string, port: number) =>
+    new Promise<{ ok: boolean; ms: number }>((resolve) => {
+      const t0 = Date.now();
+      const socket = new net.Socket();
+      let settled = false;
+      const finish = (ok: boolean) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        socket.destroy();
+        resolve({ ok, ms: Date.now() - t0 });
+      };
+      const timer = setTimeout(() => finish(false), timeoutMs);
+      socket.once('error', () => finish(false));
+      socket.connect(port, host, () => finish(true));
+    });
+
+  const worker = async () => {
+    while (idx < unique.length * ports.length) {
+      const job = idx++;
+      const host = unique[Math.floor(job / ports.length)]!;
+      const port = ports[job % ports.length]!;
+      const r = await probe(host, port);
+      if (r.ok) hits.push({ ip: host, port, reachable: true, responseMs: r.ms });
+    }
+  };
+
+  await Promise.all(Array.from({ length: concurrency }, () => worker()));
+  return {
+    success: true,
+    message: `${hits.length} açık terazi portu (${prefix}.0/24)`,
+    hits,
+  };
+}
+
 export async function rongtaTcpFetchSales(
   ipAddress: string,
   port?: number,

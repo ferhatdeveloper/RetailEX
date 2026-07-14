@@ -498,6 +498,88 @@ app.post('/api/scale/rongta/fetch-sales', async (c) => {
     }
 });
 
+/** PLU temizleme — operate=D (açık TCP; SDK clearPludata değil). */
+app.post('/api/scale/rongta/clear-plu', async (c) => {
+    try {
+        const body = await c.req.json().catch(() => ({})) as Record<string, unknown>;
+        const ipAddress = typeof body.ipAddress === 'string' ? body.ipAddress.trim() : '';
+        const port = typeof body.port === 'number' ? body.port : undefined;
+        const records = Array.isArray(body.records) ? body.records : [];
+        if (!ipAddress) return c.json({ success: false, message: 'ipAddress gerekli' }, 400);
+        if (!records.length) return c.json({ success: false, message: 'records boş' }, 400);
+        const { rongtaTcpClearPlu } = await import('./rongtaTcpNode');
+        const result = await rongtaTcpClearPlu(ipAddress, port, records as any);
+        return c.json(result);
+    } catch (error: any) {
+        console.error('[Rongta clear-plu]', error);
+        return c.json({
+            success: false,
+            message: error?.message || 'clear-plu failed',
+            sentCount: 0,
+            failedCount: 0,
+        }, 500);
+    }
+});
+
+/** LAN subnet TCP tarama (mobil Expo Go yedek — PC köprüsünden). */
+app.post('/api/scale/rongta/lan-scan', async (c) => {
+    try {
+        const body = await c.req.json().catch(() => ({})) as Record<string, unknown>;
+        const deviceIp = typeof body.deviceIp === 'string' ? body.deviceIp.trim() : null;
+        const hintHost = typeof body.hintHost === 'string' ? body.hintHost.trim() : undefined;
+        const timeoutMs = typeof body.timeoutMs === 'number' ? body.timeoutMs : undefined;
+        const ports = Array.isArray(body.ports)
+            ? body.ports.filter((p): p is number => typeof p === 'number')
+            : undefined;
+        const { rongtaTcpLanScan } = await import('./rongtaTcpNode');
+        const result = await rongtaTcpLanScan({ deviceIp, hintHost, ports, timeoutMs });
+        return c.json(result);
+    } catch (error: any) {
+        console.error('[Rongta lan-scan]', error);
+        return c.json({
+            success: false,
+            message: error?.message || 'lan-scan failed',
+            hits: [],
+        }, 500);
+    }
+});
+
+/**
+ * Hotkey — açık TCP ASCII’de komut yok; Windows DLL / Android lib_plu gerekir.
+ * Tablo istemci tarafından hazırlanır; burada dürüst yanıt.
+ */
+app.post('/api/scale/rongta/send-hotkeys', async (c) => {
+    try {
+        const body = await c.req.json().catch(() => ({})) as Record<string, unknown>;
+        const tables = Array.isArray(body.tables) ? body.tables : [];
+        return c.json({
+            success: false,
+            message:
+                'Hotkey gönderimi Windows TeraziRongta (rtscaleDownLoadHotkey) veya Android lib_plu.writeHotkey ister. ' +
+                `Açık TCP protokolünde hotkey komutu yok. Tablo paketleri hazır: ${tables.length}.`,
+            tables,
+        });
+    } catch (error: any) {
+        return c.json({ success: false, message: error?.message || 'send-hotkeys failed' }, 500);
+    }
+});
+
+/** Etiket .scr / SYSTEM.CFG — Windows DLL rtscaleDownLoadData. */
+app.post('/api/scale/rongta/send-label-template', async (c) => {
+    try {
+        const body = await c.req.json().catch(() => ({})) as Record<string, unknown>;
+        const slot = typeof body.slot === 'string' ? body.slot : 'D0';
+        return c.json({
+            success: false,
+            message:
+                `Etiket .scr / SYSTEM.CFG / RLS gönderimi Windows TeraziRongta DLL gerektirir (slot ${slot}). ` +
+                'Mobilde LabelId PLU senkronuna yazılır; dosya indirme masaüstünden yapılır.',
+        });
+    } catch (error: any) {
+        return c.json({ success: false, message: error?.message || 'send-label failed' }, 500);
+    }
+});
+
 /** Ağ termal — ham ESC/POS TCP (varsayılan 9100). Mobil pg_bridge köprüsü + DeskApp ile aynı mantık. */
 app.post('/api/printer/escpos-tcp', async (c) => {
     try {

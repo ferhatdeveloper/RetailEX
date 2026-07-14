@@ -685,7 +685,7 @@
     "on": "ڤەكری",
     "off": "گرتی",
     "selectedDevice": "هەلبژارتی: {{name}} ({{transport}})",
-    "noDeviceSelected": "تەرەزی نەهاتە هەلبژartن — ژ ئامێران زیاد بكە",
+    "noDeviceSelected": "تەرەزی نەهاتە هەلبژارتن — ژ ئامێران زیاد بكە",
     "liveBleKg": "كگ زیندی BLE / SPP",
     "stable": "جێگیر",
     "unstable": "نەجێگیر / چاڤەڕێ",

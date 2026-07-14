@@ -1,10 +1,19 @@
 /**
- * Rongta TCP — pg_bridge `/api/scale/rongta/*` (web `rongtaScaleTransport` ile aynı).
- * Telefonda ham TCP soketi yok; köprü LAN üzerinden teraziye ulaşır.
+ * Rongta TCP — önce doğrudan (dev client + tcp-socket), yoksa pg_bridge.
  */
 
 import { getBridgeBaseUrl, useConfigStore } from '../../store/configStore';
 import type { ScaleSyncResult } from '../../types/scale';
+import { buildHotkeyTables, hotkeyTransportHint } from './hotkeyHelper';
+import { labelTemplateTransportHint } from './labelSlotHelper';
+import {
+  isNativeScaleTcpAvailable,
+  nativeRongtaClearPlu,
+  nativeRongtaFetchSales,
+  nativeRongtaSendPlu,
+  nativeRongtaTest,
+} from './rongtaTcpNative';
+import type { RongtaPluRecord } from './rongtaProtocol';
 
 export type RongtaPluPayload = {
   pluCode: string;
@@ -18,7 +27,10 @@ export type RongtaPluPayload = {
   shelfDays?: number;
   operate?: 'I' | 'D';
   rank?: number;
+  labelId?: number;
 };
+
+export type RongtaVia = 'direct' | 'bridge';
 
 async function postBridge<T>(path: string, body: Record<string, unknown>): Promise<T> {
   const bridgeUrl = getBridgeBaseUrl(useConfigStore.getState().config);
@@ -47,18 +59,57 @@ async function postBridge<T>(path: string, body: Record<string, unknown>): Promi
   return json;
 }
 
+function toNativeRecords(records: RongtaPluPayload[]): RongtaPluRecord[] {
+  return records.map((r, i) => ({
+    pluCode: r.pluCode,
+    name: r.name,
+    price: r.price,
+    unit: r.unit,
+    barcode: r.barcode,
+    lfCode: r.lfCode,
+    barcodeType: r.barcodeType,
+    department: r.department,
+    shelfDays: r.shelfDays,
+    operate: r.operate ?? 'I',
+    rank: r.rank ?? i + 1,
+    labelId: r.labelId,
+  }));
+}
+
 export async function bridgeRongtaTest(
   ipAddress: string,
   port?: number,
-): Promise<{ ok: boolean; message?: string; displayText?: string }> {
-  return postBridge('/api/scale/rongta/test', { ipAddress, port });
+): Promise<{ ok: boolean; message?: string; displayText?: string; via?: RongtaVia }> {
+  if (isNativeScaleTcpAvailable()) {
+    try {
+      const r = await nativeRongtaTest(ipAddress, port);
+      if (r.ok) return r;
+      // Doğrudan başarısızsa bridge yedek
+    } catch {
+      /* bridge fallback */
+    }
+  }
+  const r = await postBridge<{
+    ok?: boolean;
+    message?: string;
+    displayText?: string;
+  }>('/api/scale/rongta/test', { ipAddress, port });
+  return { ...r, ok: !!r.ok, via: 'bridge' };
 }
 
 export async function bridgeRongtaSendPlu(
   ipAddress: string,
   port: number | undefined,
   records: RongtaPluPayload[],
-): Promise<ScaleSyncResult> {
+): Promise<ScaleSyncResult & { via?: RongtaVia }> {
+  if (isNativeScaleTcpAvailable()) {
+    try {
+      const r = await nativeRongtaSendPlu(ipAddress, port, toNativeRecords(records));
+      if (r.success || r.sentCount > 0) return r;
+    } catch {
+      /* bridge */
+    }
+  }
   const json = await postBridge<{
     success?: boolean;
     message?: string;
@@ -76,6 +127,7 @@ export async function bridgeRongtaSendPlu(
     sentCount: sent,
     failedCount: failed,
     errors: json.errors ?? [],
+    via: 'bridge',
   };
 }
 
@@ -86,6 +138,7 @@ export async function bridgeRongtaFetchSales(
   success: boolean;
   message: string;
   count: number;
+  via?: RongtaVia;
   records: Array<{
     pluName?: string;
     lfCode?: number;
@@ -96,6 +149,29 @@ export async function bridgeRongtaFetchSales(
     saleDate?: string;
   }>;
 }> {
+  if (isNativeScaleTcpAvailable()) {
+    try {
+      const r = await nativeRongtaFetchSales(ipAddress, port);
+      return {
+        success: r.success,
+        message: r.message,
+        count: r.count,
+        via: 'direct',
+        records: r.records.map((row) => ({
+          pluName: row.freshCode,
+          lfCode: Number(row.freshCode) || 0,
+          weight: row.weight,
+          totalPrice: row.totalAmount,
+          unitPrice: row.unitPrice,
+          quantity: 1,
+          saleDate: row.saleDate,
+        })),
+      };
+    } catch {
+      /* bridge */
+    }
+  }
+
   const json = await postBridge<{
     success?: boolean;
     message?: string;
@@ -107,6 +183,7 @@ export async function bridgeRongtaFetchSales(
     success: !!json.success,
     message: json.message || '',
     count: Number(json.count ?? json.records?.length ?? 0),
+    via: 'bridge',
     records: (json.records ?? []) as Array<{
       pluName?: string;
       lfCode?: number;
@@ -117,4 +194,99 @@ export async function bridgeRongtaFetchSales(
       saleDate?: string;
     }>,
   };
+}
+
+/** PLU temizle — operate=D (açık TCP) veya bridge aynı mantık. */
+export async function bridgeRongtaClearPlu(
+  ipAddress: string,
+  port: number | undefined,
+  records: RongtaPluPayload[],
+): Promise<ScaleSyncResult & { via?: RongtaVia }> {
+  if (!records.length) {
+    return {
+      success: false,
+      message: 'Silinecek PLU listesi boş — önce ürün senkronu listesi gerekir.',
+      productCount: 0,
+      sentCount: 0,
+      failedCount: 0,
+      errors: ['records boş'],
+    };
+  }
+
+  const deletes = records.map((r) => ({ ...r, operate: 'D' as const }));
+
+  if (isNativeScaleTcpAvailable()) {
+    try {
+      const r = await nativeRongtaClearPlu(ipAddress, port, toNativeRecords(deletes));
+      if (r.success || r.sentCount > 0) return r;
+    } catch {
+      /* bridge */
+    }
+  }
+
+  const json = await postBridge<{
+    success?: boolean;
+    message?: string;
+    sentCount?: number;
+    failedCount?: number;
+    errors?: string[];
+  }>('/api/scale/rongta/clear-plu', { ipAddress, port, records: deletes });
+
+  return {
+    success: !!json.success,
+    message: json.message || (json.success ? 'PLU temizlendi' : 'PLU temizlenemedi'),
+    productCount: deletes.length,
+    sentCount: Number(json.sentCount ?? 0),
+    failedCount: Number(json.failedCount ?? deletes.length),
+    errors: json.errors ?? [],
+    via: 'bridge',
+  };
+}
+
+/**
+ * Hotkey gönderimi — tablo hazırlanır; açık TCP’de komut yok.
+ * Bridge dürüst yanıt (DLL/SDK gerekli).
+ */
+export async function bridgeRongtaSendHotkeys(
+  ipAddress: string,
+  port: number | undefined,
+  lfCodes: number[],
+): Promise<{ success: boolean; message: string; tables: number[][] }> {
+  const tables = buildHotkeyTables(lfCodes);
+  try {
+    const json = await postBridge<{ success?: boolean; message?: string }>(
+      '/api/scale/rongta/send-hotkeys',
+      { ipAddress, port, lfCodes, tables },
+    );
+    return {
+      success: !!json.success,
+      message: json.message || hotkeyTransportHint(),
+      tables,
+    };
+  } catch {
+    return {
+      success: false,
+      message: hotkeyTransportHint(),
+      tables,
+    };
+  }
+}
+
+export async function bridgeRongtaSendLabelTemplate(
+  ipAddress: string,
+  _slot: string,
+): Promise<{ success: boolean; message: string }> {
+  void ipAddress;
+  try {
+    const json = await postBridge<{ success?: boolean; message?: string }>(
+      '/api/scale/rongta/send-label-template',
+      { ipAddress, slot: _slot },
+    );
+    return {
+      success: !!json.success,
+      message: json.message || labelTemplateTransportHint(),
+    };
+  } catch {
+    return { success: false, message: labelTemplateTransportHint() };
+  }
 }

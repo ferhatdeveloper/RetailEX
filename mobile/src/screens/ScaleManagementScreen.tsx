@@ -9,8 +9,17 @@ import {
   ActivityIndicator,
   Switch,
 } from 'react-native';
-import { Scale, Wifi, Bluetooth, FlaskConical, Trash2 } from 'lucide-react-native';
+import {
+  Scale,
+  Wifi,
+  Bluetooth,
+  FlaskConical,
+  Trash2,
+  Usb,
+  Radio,
+} from 'lucide-react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { useTranslation } from 'react-i18next';
 import { ScreenHeader } from '../components/ScreenChrome';
 import { SegmentTabBar } from '../components/SegmentTabBar';
 import { FormField } from '../components/FormField';
@@ -22,28 +31,32 @@ import {
   createScaleTransport,
   getSimulateTransport,
   isBleNativeAvailable,
+  isNativeScaleTcpAvailable,
+  isSppNativeAvailable,
+  isUsbSerialNativeAvailable,
+  listUsbSerialDevices,
   scanBleDevices,
+  scanSppBondedDevices,
+  sppDevBuildHint,
+  usbSerialDevBuildHint,
 } from '../services/scale/scaleTransport';
+import { scanLanScales } from '../services/scale/lanScaleScan';
+import { LABEL_SLOTS, type LabelSlot } from '../services/scale/labelSlotHelper';
 import {
   fetchScaleProducts,
   scaleProductsToPluPayload,
 } from '../api/scaleProductsApi';
 import { palette } from '../theme/colors';
-import type { ScaleDevice, ScaleTransportKind } from '../types/scale';
+import type { BluetoothScaleProfile, ScaleDevice, ScaleTransportKind } from '../types/scale';
 import type { MainStackParamList } from '../navigation/types';
 
 type Props = NativeStackScreenProps<MainStackParamList, 'ScaleManagement'>;
 type TabId = 'sync' | 'devices' | 'scale' | 'settings' | 'log';
 
-const TABS: { id: TabId; label: string }[] = [
-  { id: 'sync', label: 'Senkron' },
-  { id: 'devices', label: 'Cihazlar' },
-  { id: 'scale', label: 'Terazi' },
-  { id: 'settings', label: 'Ayarlar' },
-  { id: 'log', label: 'Log' },
-];
+type ManualKind = ScaleTransportKind | 'bluetooth-spp';
 
 export function ScaleManagementScreen(_props: Props) {
+  const { t } = useTranslation();
   const { colors } = useThemeStore();
   const devices = useScaleStore((s) => s.devices);
   const settings = useScaleStore((s) => s.settings);
@@ -63,30 +76,51 @@ export function ScaleManagementScreen(_props: Props) {
   const [manualName, setManualName] = useState('');
   const [manualIp, setManualIp] = useState('192.168.1.87');
   const [manualPort, setManualPort] = useState(String(settings.defaultPort));
-  const [manualTransport, setManualTransport] = useState<ScaleTransportKind>('network');
+  const [manualKind, setManualKind] = useState<ManualKind>('network');
   const [lastSyncMsg, setLastSyncMsg] = useState<string | null>(null);
   const [liveKg, setLiveKg] = useState<number | null>(null);
   const [liveStable, setLiveStable] = useState(false);
   const [liveDetail, setLiveDetail] = useState('');
   const [scanHits, setScanHits] = useState<{ id: string; name: string }[]>([]);
-  const bleNative = isBleNativeAvailable();
+  const [lanHits, setLanHits] = useState<Array<{ ip: string; port: number; ms: number }>>([]);
 
-  const selected = useMemo(() => getSelectedDevice(), [devices, settings.lastSelectedDeviceId]);
+  const bleNative = isBleNativeAvailable();
+  const sppNative = isSppNativeAvailable();
+  const usbNative = isUsbSerialNativeAvailable();
+  const tcpNative = isNativeScaleTcpAvailable();
+
+  const tabs = useMemo(
+    () =>
+      [
+        { id: 'sync' as const, label: t('scaleUi.tabSync') },
+        { id: 'devices' as const, label: t('scaleUi.tabDevices') },
+        { id: 'scale' as const, label: t('scaleUi.tabScale') },
+        { id: 'settings' as const, label: t('scaleUi.tabSettings') },
+        { id: 'log' as const, label: t('scaleUi.tabLog') },
+      ] as const,
+    [t],
+  );
+
+  const selected = useMemo(
+    () => getSelectedDevice(),
+    [devices, settings.lastSelectedDeviceId, getSelectedDevice],
+  );
+
+  const livePoll = selected?.transport === 'bluetooth';
 
   useEffect(() => {
-    if (tab !== 'scale') return;
-    if (!selected || selected.transport !== 'bluetooth') return;
+    if (tab !== 'scale' || !livePoll || !selected) return;
     let cancelled = false;
     const tick = async () => {
       try {
-        const t = createScaleTransport(selected);
-        const w = await t.readLiveWeight();
+        const tr = createScaleTransport(selected);
+        const w = await tr.readLiveWeight();
         if (cancelled) return;
         setLiveKg(w.weightKg);
         setLiveStable(w.stable);
         setLiveDetail(w.detail);
       } catch {
-        /* sessiz — log sekmesi için ayrı */
+        /* sessiz */
       }
     };
     void tick();
@@ -95,7 +129,7 @@ export function ScaleManagementScreen(_props: Props) {
       cancelled = true;
       clearInterval(id);
     };
-  }, [tab, selected?.id, selected?.transport, selected?.bluetoothAddress]);
+  }, [tab, livePoll, selected?.id, selected?.bluetoothAddress, selected?.bluetoothProfile]);
 
   const runBusy = useCallback(
     async (label: string, fn: () => Promise<void>) => {
@@ -108,23 +142,20 @@ export function ScaleManagementScreen(_props: Props) {
         const msg = e instanceof Error ? e.message : String(e);
         setStatus(msg);
         pushLog(`HATA: ${msg}`);
-        Alert.alert('Terazi', msg);
+        Alert.alert(t('scaleUi.alertTitle'), msg);
       } finally {
         setBusy(false);
       }
     },
-    [busy, pushLog],
+    [busy, pushLog, t],
   );
 
   const onTestApiHint = () => {
-    Alert.alert(
-      'API / köprü',
-      'PLU senkronu ve TCP test, oturumdaki Bridge (pg_bridge) üzerinden yapılır. Config ekranında Bridge host = PC LAN IP olmalıdır.',
-    );
+    Alert.alert(t('scaleUi.bridgeHintTitle'), t('scaleUi.bridgeHintBody'));
   };
 
   const onSync = () =>
-    void runBusy('Ürünler yükleniyor…', async () => {
+    void runBusy(t('loading'), async () => {
       const products = await fetchScaleProducts();
       const payload = scaleProductsToPluPayload(products);
       pushLog(`Tartı ürünü: ${products.length}`);
@@ -134,14 +165,14 @@ export function ScaleManagementScreen(_props: Props) {
         const r = await sim.sendPlu(payload);
         setLastSyncMsg(r.message);
         pushLog(r.message);
-        Alert.alert('Senkron (simülasyon)', r.message);
+        Alert.alert(t('scaleUi.syncSimTitle'), r.message);
         return;
       }
       const errors: string[] = [];
       let sent = 0;
       for (const d of targets) {
-        const t = createScaleTransport(d);
-        const r = await t.sendPlu(payload);
+        const tr = createScaleTransport(d);
+        const r = await tr.sendPlu(payload);
         pushLog(`${d.name}: ${r.message}`);
         if (r.success) {
           sent += r.sentCount;
@@ -159,34 +190,44 @@ export function ScaleManagementScreen(_props: Props) {
       }
       const msg = `Gönderilen: ${sent} / ${payload.length}${errors.length ? `\n${errors.join('\n')}` : ''}`;
       setLastSyncMsg(msg);
-      Alert.alert(errors.length ? 'Kısmi senkron' : 'Senkron tamam', msg);
+      Alert.alert(errors.length ? t('scaleUi.syncPartial') : t('scaleUi.syncDone'), msg);
     });
 
   const onTestSelected = () =>
-    void runBusy('Bağlantı test…', async () => {
+    void runBusy(t('testConnection'), async () => {
       const d = selected;
       if (!d) {
-        Alert.alert('Terazi', 'Önce cihaz ekleyin veya simülasyon kullanın.');
+        Alert.alert(t('scaleUi.alertTitle'), t('scaleUi.needDevice'));
         return;
       }
-      const t = createScaleTransport(d);
-      const r = await t.testConnection();
+      const tr = createScaleTransport(d);
+      const r = await tr.testConnection();
       upsertDevice({
         ...d,
         status: r.ok ? 'online' : 'offline',
         lastStatus: r.message,
       });
       pushLog(`Test ${d.name}: ${r.message}`);
-      Alert.alert(r.ok ? 'Test başarılı' : 'Test başarısız', r.message);
+      Alert.alert(r.ok ? t('connectionOk') : t('connectionFail'), r.message);
     });
 
+  const resolveManual = (): { transport: ScaleTransportKind; profile?: BluetoothScaleProfile } => {
+    if (manualKind === 'bluetooth-spp') return { transport: 'bluetooth', profile: 'spp' };
+    if (manualKind === 'bluetooth') return { transport: 'bluetooth', profile: 'ble' };
+    return { transport: manualKind };
+  };
+
   const onAddDevice = () => {
+    const { transport, profile } = resolveManual();
     const port = Number(manualPort) || settings.defaultPort;
-    const device = createManualNetworkDevice(manualName, manualIp, port, manualTransport);
+    const device = createManualNetworkDevice(manualName, manualIp, port, transport, {
+      bluetoothProfile: profile,
+      usbBaudRate: settings.usbBaudRate,
+    });
     upsertDevice(device);
     selectDevice(device.id);
     pushLog(`Cihaz eklendi: ${device.name} (${device.transport})`);
-    setStatus(`Eklendi: ${device.name}`);
+    setStatus(`${device.name}`);
   };
 
   const onAddSimulate = () => {
@@ -200,37 +241,108 @@ export function ScaleManagementScreen(_props: Props) {
     pushLog('Simülasyon terazisi eklendi');
   };
 
+  const onLanScan = () =>
+    void runBusy(t('scaleUi.scanLanBusy'), async () => {
+      const r = await scanLanScales({ hintHost: manualIp });
+      pushLog(r.message);
+      setLanHits(r.hits.map((h) => ({ ip: h.ip, port: h.port, ms: h.responseMs })));
+      if (r.hits.length === 0) {
+        Alert.alert(t('scaleUi.scanLanDone'), t('scaleUi.scanLanEmpty'));
+        return;
+      }
+      Alert.alert(t('scaleUi.scanLanDone'), r.message);
+    });
+
   const onBleScan = () =>
-    void runBusy('BLE taranıyor…', async () => {
+    void runBusy(t('scaleUi.scanBle'), async () => {
       if (!isBleNativeAvailable()) {
-        Alert.alert('Bluetooth', bleDevBuildHint());
+        Alert.alert(t('scaleUi.alertTitle'), bleDevBuildHint());
         return;
       }
       const hits = await scanBleDevices(8000);
       setScanHits(hits.map((h) => ({ id: h.id, name: h.name })));
-      pushLog(`BLE tarama: ${hits.length} cihaz`);
-      if (hits.length === 0) {
-        Alert.alert('BLE', 'Cihaz bulunamadı. Tartının açık ve eşleşmeye hazır olduğundan emin olun.');
+      pushLog(`BLE: ${hits.length}`);
+      setManualKind('bluetooth');
+    });
+
+  const onSppScan = () =>
+    void runBusy(t('scaleUi.scanSpp'), async () => {
+      if (!isSppNativeAvailable()) {
+        Alert.alert(t('scaleUi.alertTitle'), sppDevBuildHint());
+        return;
       }
+      const hits = await scanSppBondedDevices();
+      setScanHits(hits.map((h) => ({ id: h.id, name: h.name })));
+      pushLog(`SPP: ${hits.length}`);
+      setManualKind('bluetooth-spp');
+    });
+
+  const onUsbScan = () =>
+    void runBusy(t('scaleUi.scanUsb'), async () => {
+      const r = await listUsbSerialDevices(settings.usbBaudRate);
+      pushLog(r.message);
+      if (!usbNative) {
+        Alert.alert(t('scaleUi.alertTitle'), usbSerialDevBuildHint());
+        return;
+      }
+      setScanHits(r.devices.map((d) => ({ id: d.id, name: d.name })));
+      setManualKind('usb');
+      Alert.alert(t('scaleUi.scanUsb'), r.message);
     });
 
   const onPickScanHit = (hit: { id: string; name: string }) => {
-    setManualTransport('bluetooth');
     setManualIp(hit.id);
     if (!manualName.trim()) setManualName(hit.name);
-    pushLog(`BLE seçildi: ${hit.name} (${hit.id})`);
+    pushLog(`Seçildi: ${hit.name}`);
+  };
+
+  const onPickLanHit = (hit: { ip: string; port: number }) => {
+    setManualKind('network');
+    setManualIp(hit.ip);
+    setManualPort(String(hit.port));
+    if (!manualName.trim()) setManualName(`Terazi ${hit.ip}`);
+  };
+
+  const onClearPlu = () => {
+    if (!selected || selected.transport !== 'network') {
+      Alert.alert(t('scaleUi.alertTitle'), t('scaleUi.needDevice'));
+      return;
+    }
+    Alert.alert(t('scaleUi.confirmClearTitle'), t('scaleUi.confirmClearBody'), [
+      { text: t('cancel'), style: 'cancel' },
+      {
+        text: t('scaleUi.clearPlu'),
+        style: 'destructive',
+        onPress: () =>
+          void runBusy(t('scaleUi.clearPlu'), async () => {
+            const products = await fetchScaleProducts();
+            const payload = scaleProductsToPluPayload(products);
+            const tr = createScaleTransport(selected);
+            const r = (await tr.clearPlu?.(payload)) ?? {
+              success: false,
+              message: 'clearPlu yok',
+              productCount: 0,
+              sentCount: 0,
+              failedCount: 0,
+              errors: [],
+            };
+            pushLog(r.message);
+            Alert.alert(t('scaleUi.alertTitle'), r.message);
+          }),
+      },
+    ]);
   };
 
   const transportChip = (
-    id: ScaleTransportKind,
+    id: ManualKind,
     label: string,
     Icon: typeof Wifi,
   ) => {
-    const active = manualTransport === id;
+    const active = manualKind === id;
     return (
       <Pressable
         key={id}
-        onPress={() => setManualTransport(id)}
+        onPress={() => setManualKind(id)}
         style={[
           styles.chip,
           {
@@ -253,14 +365,26 @@ export function ScaleManagementScreen(_props: Props) {
     );
   };
 
+  const describeDevice = (d: ScaleDevice) => {
+    if (d.transport === 'network') {
+      return t('scaleUi.transportTcp', { ip: d.ipAddress, port: d.port });
+    }
+    if (d.transport === 'bluetooth') {
+      return t('scaleUi.transportBt', {
+        addr: `${d.bluetoothProfile === 'spp' ? 'SPP ' : 'BLE '}${d.bluetoothAddress || '—'}`,
+      });
+    }
+    if (d.transport === 'usb') {
+      return t('scaleUi.transportUsb', { id: d.usbDeviceId || '—' });
+    }
+    return t('scaleUi.transportSim');
+  };
+
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
-      <ScreenHeader
-        title="Terazi Yönetimi"
-        subtitle="Rongta · Android TeraziManager eşleniği"
-      />
+      <ScreenHeader title={t('scaleUi.title')} subtitle={t('scaleUi.subtitle')} />
 
-      <SegmentTabBar layout="scroll" value={tab} onChange={setTab} items={TABS} />
+      <SegmentTabBar layout="scroll" value={tab} onChange={setTab} items={[...tabs]} />
 
       {(busy || status) && (
         <View style={styles.statusRow}>
@@ -272,13 +396,10 @@ export function ScaleManagementScreen(_props: Props) {
       <ScrollView contentContainerStyle={styles.body}>
         {tab === 'sync' ? (
           <View style={styles.section}>
-            <Text style={[styles.help, { color: colors.textMuted }]}>
-              RetailEX tartı ürünlerini (`is_scale_product`) aktif cihazlara PLU olarak gönderir.
-              TCP için pg_bridge gerekir.
-            </Text>
-            <PrimaryButton label="Köprü / API hakkında" onPress={onTestApiHint} variant="ghost" />
+            <Text style={[styles.help, { color: colors.textMuted }]}>{t('scaleUi.syncHelp')}</Text>
+            <PrimaryButton label={t('scaleUi.apiAbout')} onPress={onTestApiHint} variant="ghost" />
             <PrimaryButton
-              label="Senkronizasyonu Başlat"
+              label={t('scaleUi.startSync')}
               onPress={onSync}
               loading={busy}
               disabled={busy}
@@ -290,7 +411,7 @@ export function ScaleManagementScreen(_props: Props) {
                   { backgroundColor: colors.card, borderColor: colors.cardBorder },
                 ]}
               >
-                <Text style={{ color: colors.text, fontWeight: '700' }}>Son senkron</Text>
+                <Text style={{ color: colors.text, fontWeight: '700' }}>{t('scaleUi.lastSync')}</Text>
                 <Text style={{ color: colors.textMuted, marginTop: 6 }}>{lastSyncMsg}</Text>
               </View>
             ) : null}
@@ -300,73 +421,157 @@ export function ScaleManagementScreen(_props: Props) {
         {tab === 'devices' ? (
           <View style={styles.section}>
             <Text style={[styles.help, { color: colors.textMuted }]}>
-              Kayıtlı: {devices.length} · Aktif: {devices.filter((d) => d.enabled).length}
+              {t('scaleUi.registered', {
+                count: devices.length,
+                active: devices.filter((d) => d.enabled).length,
+              })}
             </Text>
-            <Text style={[styles.sectionTitle, { color: colors.text }]}>Manuel cihaz</Text>
+            <Text style={[styles.help, { color: colors.textMuted }]}>
+              {t('scaleUi.tcpDirect', { state: tcpNative ? t('scaleUi.on') : t('scaleUi.off') })}
+            </Text>
+
+            <PrimaryButton
+              label={t('scaleUi.scanLan')}
+              onPress={onLanScan}
+              loading={busy}
+              disabled={busy}
+              variant="ghost"
+            />
+            {lanHits.length > 0 ? (
+              <View
+                style={[
+                  styles.card,
+                  { backgroundColor: colors.card, borderColor: colors.cardBorder },
+                ]}
+              >
+                <Text style={{ color: colors.text, fontWeight: '700' }}>{t('scaleUi.foundDevices')}</Text>
+                {lanHits.map((h) => (
+                  <Pressable
+                    key={`${h.ip}:${h.port}`}
+                    onPress={() => onPickLanHit(h)}
+                    style={styles.scanHit}
+                  >
+                    <Text style={{ color: colors.text, flex: 1 }}>
+                      {h.ip}:{h.port}
+                    </Text>
+                    <Text style={{ color: colors.textMuted, fontSize: 10 }}>{h.ms} ms</Text>
+                  </Pressable>
+                ))}
+              </View>
+            ) : null}
+
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>{t('scaleUi.manualDevice')}</Text>
             <View style={styles.chipRow}>
-              {transportChip('network', 'TCP/LAN', Wifi)}
-              {transportChip('bluetooth', 'Bluetooth', Bluetooth)}
-              {transportChip('simulate', 'Simüle', FlaskConical)}
+              {transportChip('network', t('scaleUi.chipTcp'), Wifi)}
+              {transportChip('bluetooth', t('scaleUi.chipBle'), Bluetooth)}
+              {transportChip('bluetooth-spp', t('scaleUi.chipSpp'), Radio)}
+              {transportChip('usb', t('scaleUi.chipUsb'), Usb)}
+              {transportChip('simulate', t('scaleUi.chipSim'), FlaskConical)}
             </View>
-            <FormField label="Ad" value={manualName} onChangeText={setManualName} placeholder="Terazi 1" />
             <FormField
-              label={manualTransport === 'bluetooth' ? 'BT Adres' : 'IP'}
+              label={t('scaleUi.fieldName')}
+              value={manualName}
+              onChangeText={setManualName}
+              placeholder="Terazi 1"
+            />
+            <FormField
+              label={
+                manualKind === 'bluetooth' || manualKind === 'bluetooth-spp'
+                  ? t('scaleUi.fieldBt')
+                  : manualKind === 'usb'
+                    ? t('scaleUi.fieldUsbId')
+                    : t('scaleUi.fieldIp')
+              }
               value={manualIp}
               onChangeText={setManualIp}
-              placeholder={manualTransport === 'bluetooth' ? 'AA:BB:…' : '192.168.1.87'}
+              placeholder={
+                manualKind.startsWith('bluetooth')
+                  ? 'AA:BB:…'
+                  : manualKind === 'usb'
+                    ? 'usb-…'
+                    : '192.168.1.87'
+              }
               autoCapitalize="none"
             />
-            {manualTransport === 'network' ? (
+            {manualKind === 'network' ? (
               <FormField
-                label="Port"
+                label={t('scaleUi.fieldPort')}
                 value={manualPort}
                 onChangeText={setManualPort}
                 keyboardType="number-pad"
               />
             ) : null}
-            {manualTransport === 'bluetooth' ? (
+            {manualKind === 'bluetooth' ? (
               <>
-                <Text style={[styles.help, { color: bleNative ? palette.green600 : palette.amber600 }]}>
-                  {bleNative
-                    ? 'BLE native hazır (development build). Tarayıp cihaz seçin veya MAC/UUID yapıştırın.'
-                    : 'Expo Go Bluetooth desteklemez. Development build + react-native-ble-plx gerekir. Rongta etiket terazileri çoğunlukla TCP/LAN kullanır.'}
+                <Text
+                  style={[
+                    styles.help,
+                    { color: bleNative ? palette.green600 : palette.amber600 },
+                  ]}
+                >
+                  {bleNative ? t('scaleUi.bleReady') : t('scaleUi.bleMissing')}
                 </Text>
                 <PrimaryButton
-                  label="BLE Tara (8 sn)"
+                  label={t('scaleUi.scanBle')}
                   onPress={onBleScan}
                   loading={busy}
                   disabled={busy || !bleNative}
                   variant="ghost"
                 />
-                {scanHits.length > 0 ? (
-                  <View
-                    style={[
-                      styles.card,
-                      { backgroundColor: colors.card, borderColor: colors.cardBorder },
-                    ]}
-                  >
-                    <Text style={{ color: colors.text, fontWeight: '700' }}>Bulunan cihazlar</Text>
-                    {scanHits.map((h) => (
-                      <Pressable
-                        key={h.id}
-                        onPress={() => onPickScanHit(h)}
-                        style={styles.scanHit}
-                      >
-                        <Text style={{ color: colors.text, flex: 1 }} numberOfLines={1}>
-                          {h.name}
-                        </Text>
-                        <Text style={{ color: colors.textMuted, fontSize: 10 }}>{h.id.slice(-12)}</Text>
-                      </Pressable>
-                    ))}
-                  </View>
-                ) : null}
               </>
             ) : null}
-            <PrimaryButton label="Cihaz Ekle" onPress={onAddDevice} />
-            <PrimaryButton label="Simülasyon Terazisi Ekle" onPress={onAddSimulate} variant="ghost" />
+            {manualKind === 'bluetooth-spp' ? (
+              <>
+                <Text style={[styles.help, { color: colors.textMuted }]}>{t('scaleUi.sppHint')}</Text>
+                <PrimaryButton
+                  label={t('scaleUi.scanSpp')}
+                  onPress={onSppScan}
+                  loading={busy}
+                  disabled={busy || !sppNative}
+                  variant="ghost"
+                />
+              </>
+            ) : null}
+            {manualKind === 'usb' ? (
+              <>
+                <Text style={[styles.help, { color: colors.textMuted }]}>{t('scaleUi.usbHint')}</Text>
+                <PrimaryButton
+                  label={t('scaleUi.scanUsb')}
+                  onPress={onUsbScan}
+                  loading={busy}
+                  disabled={busy}
+                  variant="ghost"
+                />
+              </>
+            ) : null}
+            {scanHits.length > 0 ? (
+              <View
+                style={[
+                  styles.card,
+                  { backgroundColor: colors.card, borderColor: colors.cardBorder },
+                ]}
+              >
+                <Text style={{ color: colors.text, fontWeight: '700' }}>{t('scaleUi.foundDevices')}</Text>
+                {scanHits.map((h) => (
+                  <Pressable key={h.id} onPress={() => onPickScanHit(h)} style={styles.scanHit}>
+                    <Text style={{ color: colors.text, flex: 1 }} numberOfLines={1}>
+                      {h.name}
+                    </Text>
+                    <Text style={{ color: colors.textMuted, fontSize: 10 }}>{h.id.slice(-12)}</Text>
+                  </Pressable>
+                ))}
+              </View>
+            ) : null}
+
+            <PrimaryButton label={t('scaleUi.addDevice')} onPress={onAddDevice} />
+            <PrimaryButton
+              label={t('scaleUi.addSimulate')}
+              onPress={onAddSimulate}
+              variant="ghost"
+            />
 
             {devices.length === 0 ? (
-              <Text style={{ color: colors.textMuted, marginTop: 8 }}>Henüz terazi eklenmedi.</Text>
+              <Text style={{ color: colors.textMuted, marginTop: 8 }}>{t('scaleUi.noDevices')}</Text>
             ) : (
               devices.map((d) => (
                 <View
@@ -384,13 +589,9 @@ export function ScaleManagementScreen(_props: Props) {
                     </Pressable>
                   </View>
                   <Text style={{ color: colors.textMuted, fontSize: 12 }}>
-                    {d.transport === 'network'
-                      ? `TCP ${d.ipAddress}:${d.port}`
-                      : d.transport === 'bluetooth'
-                        ? `BT ${d.bluetoothAddress || '—'}`
-                        : 'Simülasyon'}
+                    {describeDevice(d)}
                     {' · '}
-                    {d.enabled ? 'Aktif' : 'Pasif'}
+                    {d.enabled ? t('scaleUi.active') : t('scaleUi.passive')}
                     {' · '}
                     {d.status}
                   </Text>
@@ -417,7 +618,9 @@ export function ScaleManagementScreen(_props: Props) {
                           fontSize: 11,
                         }}
                       >
-                        {settings.lastSelectedDeviceId === d.id ? 'Seçili' : 'Seç'}
+                        {settings.lastSelectedDeviceId === d.id
+                          ? t('scaleUi.selected')
+                          : t('scaleUi.select')}
                       </Text>
                     </Pressable>
                     <Pressable
@@ -425,7 +628,7 @@ export function ScaleManagementScreen(_props: Props) {
                       style={[styles.miniBtn, { backgroundColor: colors.background }]}
                     >
                       <Text style={{ color: colors.text, fontWeight: '700', fontSize: 11 }}>
-                        {d.enabled ? 'Pasif Yap' : 'Aktif Yap'}
+                        {d.enabled ? t('scaleUi.disable') : t('scaleUi.enable')}
                       </Text>
                     </Pressable>
                   </View>
@@ -439,9 +642,17 @@ export function ScaleManagementScreen(_props: Props) {
           <View style={styles.section}>
             <Text style={[styles.sectionTitle, { color: colors.text }]}>
               {selected
-                ? `Seçili: ${selected.name} (${selected.transport})`
-                : 'Terazi seçilmedi — Cihazlar sekmesinden ekleyin'}
+                ? t('scaleUi.selectedDevice', {
+                    name: selected.name,
+                    transport: selected.transport,
+                  })
+                : t('scaleUi.noDeviceSelected')}
             </Text>
+            {selected?.transport === 'network' ? (
+              <Text style={[styles.help, { color: palette.amber600 }]}>
+                {t('scaleUi.lanNoLiveKg')}
+              </Text>
+            ) : null}
             {selected?.transport === 'bluetooth' ? (
               <View
                 style={[
@@ -449,33 +660,38 @@ export function ScaleManagementScreen(_props: Props) {
                   { backgroundColor: colors.card, borderColor: colors.cardBorder },
                 ]}
               >
-                <Text style={{ color: colors.textMuted, fontSize: 12 }}>Canlı BLE kg</Text>
+                <Text style={{ color: colors.textMuted, fontSize: 12 }}>{t('scaleUi.liveBleKg')}</Text>
                 <Text style={{ color: colors.text, fontSize: 28, fontWeight: '900' }}>
                   {liveKg != null ? `${liveKg.toFixed(3)} kg` : '— · — — kg'}
                 </Text>
-                <Text style={{ color: liveStable ? palette.green600 : colors.textMuted, fontSize: 12 }}>
-                  {liveStable ? 'Stabil' : 'Kararsız / bekleniyor'}
+                <Text
+                  style={{
+                    color: liveStable ? palette.green600 : colors.textMuted,
+                    fontSize: 12,
+                  }}
+                >
+                  {liveStable ? t('scaleUi.stable') : t('scaleUi.unstable')}
                   {liveDetail ? ` · ${liveDetail}` : ''}
                 </Text>
               </View>
             ) : null}
             <PrimaryButton
-              label="Bağlantıyı Test Et"
+              label={t('scaleUi.testConnection')}
               onPress={onTestSelected}
               loading={busy}
               disabled={busy || !selected}
             />
             <PrimaryButton
-              label="Satış Raporu Oku (TCP)"
+              label={t('scaleUi.fetchSales')}
               onPress={() =>
-                void runBusy('Satış okunuyor…', async () => {
+                void runBusy(t('scaleUi.fetchSales'), async () => {
                   if (!selected) return;
-                  const t = createScaleTransport(selected);
-                  const r = await t.fetchSales();
+                  const tr = createScaleTransport(selected);
+                  const r = await tr.fetchSales();
                   pushLog(`Satış: ${r.message} (${r.records.length})`);
                   Alert.alert(
-                    r.ok ? 'Satış raporu' : 'Okunamadı',
-                    `${r.message}\nKayıt: ${r.records.length}`,
+                    r.ok ? t('scaleUi.fetchSales') : t('connectionFail'),
+                    `${r.message}\n${r.records.length}`,
                   );
                 })
               }
@@ -483,25 +699,70 @@ export function ScaleManagementScreen(_props: Props) {
               disabled={busy || !selected || selected.transport !== 'network'}
             />
             <PrimaryButton
-              label="Canlı Tartım Oku"
+              label={t('scaleUi.clearPlu')}
+              onPress={onClearPlu}
+              variant="ghost"
+              disabled={busy || !selected || selected.transport !== 'network'}
+            />
+            <PrimaryButton
+              label={t('scaleUi.sendHotkeys')}
               onPress={() =>
-                void runBusy('Tartım…', async () => {
+                void runBusy(t('scaleUi.sendHotkeys'), async () => {
+                  if (!selected || selected.transport !== 'network') return;
+                  const products = await fetchScaleProducts();
+                  const payload = scaleProductsToPluPayload(products);
+                  const lf = payload
+                    .map((p) => Number(p.lfCode || p.pluCode) || 0)
+                    .filter((n) => n > 0);
+                  const tr = createScaleTransport(selected);
+                  const r = (await tr.sendHotkeys?.(lf)) ?? {
+                    success: false,
+                    message: 'sendHotkeys yok',
+                  };
+                  pushLog(r.message);
+                  Alert.alert(t('scaleUi.alertTitle'), r.message);
+                })
+              }
+              variant="ghost"
+              disabled={busy || !selected || selected.transport !== 'network'}
+            />
+            <PrimaryButton
+              label={t('scaleUi.sendLabel')}
+              onPress={() =>
+                void runBusy(t('scaleUi.sendLabel'), async () => {
+                  if (!selected || selected.transport !== 'network') return;
+                  const tr = createScaleTransport(selected);
+                  const r = (await tr.sendLabelTemplate?.(settings.labelSlot)) ?? {
+                    success: false,
+                    message: '—',
+                  };
+                  pushLog(r.message);
+                  Alert.alert(t('scaleUi.alertTitle'), r.message);
+                })
+              }
+              variant="ghost"
+              disabled={busy || !selected || selected.transport !== 'network'}
+            />
+            <PrimaryButton
+              label={t('scaleUi.readLive')}
+              onPress={() =>
+                void runBusy(t('scaleUi.readLive'), async () => {
                   if (!selected) {
                     const w = await getSimulateTransport().connect();
                     const kg = w.weight?.weightKg;
                     pushLog(`Simüle kg: ${kg}`);
-                    Alert.alert('Simüle tartım', `${kg?.toFixed(3) ?? '—'} kg`);
+                    Alert.alert(t('scaleUi.simPreview'), `${kg?.toFixed(3) ?? '—'} kg`);
                     return;
                   }
-                  const t = createScaleTransport(selected);
-                  await t.connect();
-                  const w = await t.readLiveWeight();
+                  const tr = createScaleTransport(selected);
+                  await tr.connect();
+                  const w = await tr.readLiveWeight();
                   setLiveKg(w.weightKg);
                   setLiveStable(w.stable);
                   setLiveDetail(w.detail);
                   pushLog(`Tartım (${selected.transport}): ${w.weightKg?.toFixed(3) ?? 'null'} kg`);
                   Alert.alert(
-                    'Tartım',
+                    t('scaleUi.readLive'),
                     w.weightKg != null
                       ? `${w.weightKg.toFixed(3)} kg\n${w.detail}`
                       : w.detail || 'kg yok',
@@ -512,13 +773,13 @@ export function ScaleManagementScreen(_props: Props) {
               disabled={busy}
             />
             <PrimaryButton
-              label="Simüle Tartım Önizleme"
+              label={t('scaleUi.simPreview')}
               onPress={() =>
-                void runBusy('Tartım…', async () => {
+                void runBusy(t('scaleUi.simPreview'), async () => {
                   const w = await getSimulateTransport().connect();
                   const kg = w.weight?.weightKg;
                   pushLog(`Simüle kg: ${kg}`);
-                  Alert.alert('Simüle tartım', `${kg?.toFixed(3) ?? '—'} kg`);
+                  Alert.alert(t('scaleUi.simPreview'), `${kg?.toFixed(3) ?? '—'} kg`);
                 })
               }
               variant="ghost"
@@ -529,35 +790,75 @@ export function ScaleManagementScreen(_props: Props) {
         {tab === 'settings' ? (
           <View style={styles.section}>
             <FormField
-              label="Varsayılan TCP Port"
+              label={t('scaleUi.defaultPort')}
               value={String(settings.defaultPort)}
-              onChangeText={(t) =>
-                updateSettings({ defaultPort: Number(t.replace(/\D/g, '')) || 5001 })
+              onChangeText={(txt) =>
+                updateSettings({ defaultPort: Number(txt.replace(/\D/g, '')) || 5001 })
               }
               keyboardType="number-pad"
             />
-            <View style={styles.switchRow}>
-              <Text style={{ color: colors.text, flex: 1, fontWeight: '600' }}>
-                Tartılı satışta simüle tartımı tercih et
-              </Text>
-              <Switch
-                value={settings.preferSimulateWeigh}
-                onValueChange={(v) => updateSettings({ preferSimulateWeigh: v })}
-              />
+            <FormField
+              label={t('scaleUi.usbBaud')}
+              value={String(settings.usbBaudRate)}
+              onChangeText={(txt) =>
+                updateSettings({ usbBaudRate: Number(txt.replace(/\D/g, '')) || 9600 })
+              }
+              keyboardType="number-pad"
+            />
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>{t('scaleUi.labelSlot')}</Text>
+            <View style={styles.chipRow}>
+              {LABEL_SLOTS.map((slot) => {
+                const active = settings.labelSlot === slot;
+                return (
+                  <Pressable
+                    key={slot}
+                    onPress={() => updateSettings({ labelSlot: slot as LabelSlot })}
+                    style={[
+                      styles.chip,
+                      {
+                        backgroundColor: active ? palette.blue600 : colors.card,
+                        borderColor: active ? palette.blue600 : colors.cardBorder,
+                      },
+                    ]}
+                  >
+                    <Text
+                      style={{
+                        color: active ? palette.white : colors.text,
+                        fontWeight: '700',
+                        fontSize: 11,
+                      }}
+                    >
+                      {slot}
+                    </Text>
+                  </Pressable>
+                );
+              })}
             </View>
-            <Text style={[styles.help, { color: colors.textMuted }]}>
-              Bluetooth: react-native-ble-plx + development build (Expo Go çalışmaz). BLE native:{' '}
-              {bleNative ? 'açık' : 'kapalı'}. Klasik Rongta: TCP/LAN + USB (Android native); USB bu
-              RN sürümünde yok. Ayrıntı: README → Terazi BLE.
-            </Text>
+            {(
+              [
+                ['preferSimulateWeigh', t('scaleUi.preferSim')],
+                ['clearBeforeSend', t('scaleUi.clearBeforeSend')],
+                ['sendHotkeys', t('scaleUi.sendHotkeysOpt')],
+                ['sendLabelOnSync', t('scaleUi.sendLabelOpt')],
+              ] as const
+            ).map(([key, label]) => (
+              <View key={key} style={styles.switchRow}>
+                <Text style={{ color: colors.text, flex: 1, fontWeight: '600' }}>{label}</Text>
+                <Switch
+                  value={settings[key]}
+                  onValueChange={(v) => updateSettings({ [key]: v })}
+                />
+              </View>
+            ))}
+            <Text style={[styles.help, { color: colors.textMuted }]}>{t('scaleUi.settingsHelp')}</Text>
           </View>
         ) : null}
 
         {tab === 'log' ? (
           <View style={styles.section}>
-            <PrimaryButton label="Log Temizle" onPress={clearLogs} variant="ghost" />
+            <PrimaryButton label={t('scaleUi.clearLog')} onPress={clearLogs} variant="ghost" />
             {logs.length === 0 ? (
-              <Text style={{ color: colors.textMuted }}>Log boş</Text>
+              <Text style={{ color: colors.textMuted }}>{t('scaleUi.logEmpty')}</Text>
             ) : (
               [...logs].reverse().map((line, i) => (
                 <Text

@@ -3,15 +3,26 @@ import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 import {
   DEFAULT_SCALE_DEVICE,
+  type BluetoothScaleProfile,
   type ScaleDevice,
   type ScaleTransportKind,
 } from '../types/scale';
+import type { LabelSlot } from '../services/scale/labelSlotHelper';
+import { USB_DEFAULT_BAUD } from '../services/scale/usbSerialScale';
 
 export type ScaleUiSettings = {
   /** Tartılı satışta ağırlık kaynağı tercihi */
   preferSimulateWeigh: boolean;
   defaultPort: number;
   lastSelectedDeviceId: string | null;
+  /** Senkron sonrası hotkey tablosu hazırla / gönder (DLL/SDK) */
+  sendHotkeys: boolean;
+  /** PLU göndermeden önce operate=D temizliği */
+  clearBeforeSend: boolean;
+  labelSlot: LabelSlot;
+  sendLabelOnSync: boolean;
+  usbBaudRate: number;
+  bluetoothProfile: BluetoothScaleProfile;
 };
 
 type ScaleState = {
@@ -33,6 +44,12 @@ const DEFAULT_SETTINGS: ScaleUiSettings = {
   preferSimulateWeigh: true,
   defaultPort: 5001,
   lastSelectedDeviceId: null,
+  sendHotkeys: false,
+  clearBeforeSend: false,
+  labelSlot: 'D0',
+  sendLabelOnSync: false,
+  usbBaudRate: USB_DEFAULT_BAUD,
+  bluetoothProfile: 'ble',
 };
 
 function logTs(msg: string): string {
@@ -91,7 +108,7 @@ export const useScaleStore = create<ScaleState>()(
     }),
     {
       name: 'retailex_mobile_scale',
-      version: 1,
+      version: 2,
       storage: createJSONStorage(() => AsyncStorage),
       partialize: (s) => ({
         devices: s.devices,
@@ -116,14 +133,23 @@ export function createManualNetworkDevice(
   ipAddress: string,
   port: number,
   transport: ScaleTransportKind = 'network',
+  opts?: {
+    bluetoothProfile?: BluetoothScaleProfile;
+    usbDeviceId?: string | null;
+    usbBaudRate?: number;
+  },
 ): ScaleDevice {
   const base = DEFAULT_SCALE_DEVICE();
+  const isBt = transport === 'bluetooth';
   return {
     ...base,
-    name: name.trim() || `Terazi ${ipAddress || 'sim'}`,
-    ipAddress: ipAddress.trim(),
+    name: name.trim() || `Terazi ${ipAddress || transport}`,
+    ipAddress: transport === 'network' ? ipAddress.trim() : '',
     port: port || 5001,
     transport,
-    bluetoothAddress: transport === 'bluetooth' ? ipAddress.trim() : null,
+    bluetoothAddress: isBt ? ipAddress.trim() : null,
+    bluetoothProfile: isBt ? opts?.bluetoothProfile ?? 'ble' : null,
+    usbDeviceId: transport === 'usb' ? opts?.usbDeviceId ?? ipAddress.trim() : null,
+    usbBaudRate: opts?.usbBaudRate ?? USB_DEFAULT_BAUD,
   };
 }

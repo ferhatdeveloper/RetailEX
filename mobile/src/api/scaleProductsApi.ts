@@ -90,6 +90,7 @@ export async function searchWeighableProducts(
 }
 
 export function scaleProductsToPluPayload(rows: ScaleProductRow[]): RongtaPluPayload[] {
+  // LabelId senkron sırasında NetworkScaleTransport / settings.labelSlot ile eklenir
   return rows.map((p, idx) => {
     const plu = (p.plu_code || p.code || p.barcode || String(idx + 1)).replace(/\D/g, '') || String(idx + 1);
     return {

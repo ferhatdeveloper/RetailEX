@@ -276,7 +276,7 @@
 - [x] Bildirim merkezi — kritik stok + vadesi geçmiş açık cari (`NotificationsScreen` + `notificationsApi`; menü `notifications`)
 - [x] WMS sayım mutabakat + stoka uygula (`wmsStockCountApi.applyStockCount` — web `wmsStockCount` ile aynı TRCODE 26/50; `WmsCountSlipScreen` mutabakat özeti + stok güncelleme)
 - [x] Yazıcı / fiş ayarları (`PrinterSettingsScreen` + `printerSettingsStore` AsyncStorage; **ağ ESC/POS TCP** pg_bridge `/api/printer/escpos-tcp` + isteğe bağlı `react-native-tcp-socket`; BT/sistem Faz 2+)
-- [x] **Terazi (Android TeraziManager → RN):** `ScaleManagement` + `ScaleSale` — TCP/PLU via pg_bridge; simüle tartım; **BLE** `react-native-ble-plx` + config plugin + canlı kg (development build; Expo Go’da native yok)
+- [x] **Terazi (Android TeraziManager → RN):** `ScaleManagement` + `ScaleSale` — doğrudan TCP (`react-native-tcp-socket` varsa) + pg_bridge yedek; LAN tarama; `clearPlu` (operate=D); hotkey/etiket yardımcıları + dürüst DLL sınırı; BLE + Classic SPP iskeleti; USB-OTG native probe; `scaleUi` i18n tr/en/ar/ku; simüle tartım
 - [x] **P1 Module yaprakları LIVE:** varyant/özel/grup kod (`MaterialDefinitions`); üretim/kasap (`ProductionOps`); çoklu PB (`MultiCurrency`); excel/akıllı ekleme (`ExcelOps`); etiket+Caller ID (`SystemExtras`)
 - [x] **P2 menü i18n:** `menu.sections|items|quick` tr/en/ar/ku · Dashboard / Module / More
 - [x] **P2 `storeId` kritik listeler:** `appendStoreIdFilter` — dashboard satış, fatura listeleri/özet, satış günü/ürün raporları, WMS sayım, stok hareket, bildirim vade
@@ -300,7 +300,8 @@
 10. ~~Ürün oluştur/düzenle~~ ✅ · ~~Sistem menü yaprakları (okuma)~~ ✅  
 11. Offline kuyruk genişletme: ~~POS~~ ✅ · ~~fatura satış/alış/iade/belge~~ ✅ · ~~WMS sayım~~ ✅ (`wms.counting.*` · coalesce · cache sync · applyStock idempotent)  
 12. ~~`storeId` kritik listelerde~~ ✅ — kasa satırı mağaza kolonu seyrek; ürün stok hâlâ firma geneli  
-13. ~~Terazi BT: development build + `react-native-ble-plx`~~ ✅ (canlı kg + tarama); classic SPP / USB-OTG Android native hâlâ yok  
-14. Rongta LAN canlı kg — donanım yaymaz; doküman [`RONGTA_LAN.md`](./RONGTA_LAN.md) · tartılı satış simüle / BLE  
+13. ~~Terazi BT BLE~~ ✅ · Classic SPP port (`sppBluetoothScale` + `react-native-bluetooth-classic` opsiyonel) · USB-OTG native probe (`usbSerialScale`; Rt2 köprü [~] config plugin)  
+14. ~~Rongta LAN canlı kg~~ bilinçli yok — [`RONGTA_LAN.md`](./RONGTA_LAN.md); doğrudan TCP + LAN tarama + clearPlu ✅; hotkey/.scr gönderimi Windows DLL/Android JAR sınırı (dürüst UI)  
+
 15. Yazıcı BT / sistem — `[~]` iskelet: `escposBluetoothTransport` + `systemPrintTransport` + `printerTransportStatus`; SDK: `react-native-bluetooth-escpos-printer`, `expo-print` (ağ ESC/POS TCP `[x]`)  
 16. KDV derinliği: header `total_vat` yazma + POS satır KDV (web `totalVat: 0` parity kaldırılınca)

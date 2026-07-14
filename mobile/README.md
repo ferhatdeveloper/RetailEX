@@ -95,9 +95,9 @@ Emülatörde host = **`10.0.2.2`**, port bridge ile aynı (`3001` veya scale iç
 | 4. Cihaza kur | `npx expo run:android` **fiziksel cihaz** (emülatörde Bluetooth yok) |
 | 5. Metro | `npx expo start --dev-client` |
 
-- **TCP/LAN Rongta** (etiket terazisi): Expo Go yeterli; PLU + test güncel `pg_bridge` (`npm run bridge`) üzerinden — eski SQL_Bridge 3001 scale route vermez. Canlı kg yok — ayrıntı: [`RONGTA_LAN.md`](./RONGTA_LAN.md).
-- **BLE tartı**: Terazi Yönetimi → Cihazlar → Bluetooth → **BLE Tara** → cihaz ekle → Terazi sekmesinde canlı kg; Tartılı Satış’ta “simüle tercih” kapalıyken poll.
-- Klasik Bluetooth SPP / USB-OTG: bu RN sürümünde yok (Android TeraziManager native).
+- **TCP/LAN Rongta** (etiket terazisi): Expo Go → `pg_bridge`; development build → önce **doğrudan TCP** (`react-native-tcp-socket`), sonra köprü. LAN tarama, PLU, `clearPlu` (operate=D), satış raporu. Canlı kg LAN’da yok — [`RONGTA_LAN.md`](./RONGTA_LAN.md).
+- **BLE tartı**: Terazi Yönetimi → Cihazlar → BLE → **BLE Tara** → cihaz ekle → Terazi sekmesinde canlı kg; Tartılı Satış’ta “simüle tercih” kapalıyken poll.
+- **Classic SPP / USB-OTG**: SPP (`react-native-bluetooth-classic` opsiyonel) + USB native probe (`usbSerialScale`); Expo Go’da yok. Hotkey/.scr dosya indirme Windows TeraziRongta DLL / Android JAR sınırı (dürüst UI).
 
 ## Yazıcı — ağ ESC/POS TCP
 
