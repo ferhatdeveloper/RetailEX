@@ -100,5 +100,20 @@
   "langEn": "English",
   "langAr": "العربية",
   "langKu": "کوردی",
-  "rtlRestartHint": "Arayüz yönünün tam uygulanması için uygulamayı yeniden başlatmanız gerekebilir."
+  "rtlRestartHint": "Arayüz yönünün tam uygulanması için uygulamayı yeniden başlatmanız gerekebilir.",
+  "kpiTodayRevenue": "Bugün ciro",
+  "kpiTransactions": "İşlem",
+  "kpiAvgBasket": "Ort. sepet",
+  "kpiActiveStores": "Aktif mağaza",
+  "kpiCriticalStock": "Kritik stok",
+  "kpiToday": "Bugün",
+  "kpiPerCustomer": "Müşteri başı",
+  "kpiStoresOf": "/ {{total}} toplam",
+  "kpiCriticalHint": "Min. stok altında",
+  "dashboardKpiError": "KPI verileri yüklenemedi",
+  "dashboardKpiEmptyTitle": "Bugün satış yok",
+  "dashboardKpiEmpty": "Henüz bugüne ait onaylı satış kaydı bulunmuyor.",
+  "dashboardNoCriticalStock": "Kritik stok uyarısı yok",
+  "dashboardNoStores": "Bu firma için mağaza kaydı bulunamadı.",
+  "dashboardCriticalStockBanner": "{{count}} ürün kritik stok seviyesinde — Stok raporuna bakın."
 }

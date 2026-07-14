@@ -1,6 +1,8 @@
 import { pgQuery } from './pgClient';
 import {
   beautyAppointmentsTable,
+  beautySaleItemsTable,
+  beautySalesTable,
   beautyServicesTable,
   beautySpecialistsTable,
   customersTable,
@@ -56,6 +58,104 @@ export type UpdateBeautyAppointmentInput = {
   totalPrice?: number;
   clearSpecialist?: boolean;
 };
+
+export type BeautyPaymentMethod = 'cash' | 'card' | 'transfer';
+
+export type BeautySale = {
+  id: string;
+  invoice_number: string | null;
+  customer_id: string | null;
+  customer_name: string | null;
+  subtotal: number;
+  discount: number;
+  tax: number;
+  total: number;
+  payment_method: string | null;
+  payment_status: string | null;
+  paid_amount: number;
+  notes: string | null;
+  created_at: string | null;
+  item_count: number;
+};
+
+export type BeautySaleItemRow = {
+  id: string;
+  sale_id: string;
+  item_type: string | null;
+  item_id: string | null;
+  name: string | null;
+  quantity: number;
+  unit_price: number;
+  discount: number;
+  total: number;
+  staff_id: string | null;
+};
+
+export type CreateBeautySaleItemInput = {
+  item_type: 'service' | 'product' | 'package';
+  item_id: string;
+  name: string;
+  quantity: number;
+  unit_price: number;
+  discount?: number;
+  total?: number;
+  staff_id?: string | null;
+};
+
+export type CreateBeautySaleInput = {
+  customerId?: string | null;
+  customerName?: string;
+  subtotal: number;
+  discount: number;
+  tax?: number;
+  total: number;
+  paymentMethod: BeautyPaymentMethod | string;
+  paymentStatus?: string;
+  paidAmount?: number;
+  notes?: string;
+  items: CreateBeautySaleItemInput[];
+};
+
+export type CreateBeautySaleResult = {
+  id: string;
+  invoiceNumber: string;
+  total: number;
+};
+
+function nextBeautyInvoiceNumber(): string {
+  const d = new Date();
+  const pad = (n: number, w = 2) => String(n).padStart(w, '0');
+  return (
+    `BS-${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}` +
+    `${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`
+  );
+}
+
+/** Web `beautySaleLineDiscount` — genel indirimi satırlara oransal böl */
+function splitProportionalLineDiscount(
+  lineGrosses: number[],
+  headerDiscount: number,
+): { discount: number; total: number }[] {
+  const n = lineGrosses.length;
+  const subtotal = lineGrosses.reduce((a, b) => a + b, 0);
+  if (n === 0 || subtotal <= 0 || headerDiscount <= 0) {
+    return lineGrosses.map((g) => ({ discount: 0, total: g }));
+  }
+  let allocated = 0;
+  return lineGrosses.map((lineGross, idx) => {
+    let lineDisc: number;
+    if (idx === n - 1) {
+      lineDisc = Math.max(0, headerDiscount - allocated);
+    } else {
+      lineDisc = Math.round(((headerDiscount * lineGross) / subtotal) * 100) / 100;
+      allocated += lineDisc;
+    }
+    return {
+      discount: lineDisc,
+      total: Math.max(0, lineGross - lineDisc),
+    };
+  });
+}
 
 export const BEAUTY_STATUSES = [
   'scheduled',
@@ -271,4 +371,147 @@ export async function updateBeautyAppointment(
 
 export async function updateBeautyAppointmentStatus(id: string, status: string): Promise<void> {
   await updateBeautyAppointment(id, { status });
+}
+
+/** Web beautyService.getSales — son güzellik POS fişleri */
+export async function fetchBeautySales(limit = 80): Promise<BeautySale[]> {
+  const fn = firmNr();
+  const pn = periodNr();
+  const sales = beautySalesTable(fn, pn);
+  const cust = customersTable(fn);
+  const items = beautySaleItemsTable(fn, pn);
+
+  return tryQueries<BeautySale>([
+    {
+      sql: `SELECT s.id,
+              s.invoice_number,
+              s.customer_id::text AS customer_id,
+              c.name AS customer_name,
+              COALESCE(s.subtotal, 0)::float8 AS subtotal,
+              COALESCE(s.discount, 0)::float8 AS discount,
+              COALESCE(s.tax, 0)::float8 AS tax,
+              COALESCE(s.total, 0)::float8 AS total,
+              s.payment_method,
+              s.payment_status,
+              COALESCE(s.paid_amount, 0)::float8 AS paid_amount,
+              s.notes,
+              s.created_at::text AS created_at,
+              COALESCE((SELECT COUNT(*)::int FROM ${items} i WHERE i.sale_id = s.id), 0) AS item_count
+       FROM ${sales} s
+       LEFT JOIN ${cust} c ON c.id = s.customer_id
+       ORDER BY s.created_at DESC NULLS LAST
+       LIMIT $1`,
+      params: [limit],
+    },
+    {
+      sql: `SELECT s.id,
+              s.invoice_number,
+              NULL::text AS customer_id,
+              NULL::text AS customer_name,
+              COALESCE(s.subtotal, 0)::float8 AS subtotal,
+              COALESCE(s.discount, 0)::float8 AS discount,
+              COALESCE(s.tax, 0)::float8 AS tax,
+              COALESCE(s.total, 0)::float8 AS total,
+              s.payment_method,
+              s.payment_status,
+              COALESCE(s.paid_amount, 0)::float8 AS paid_amount,
+              s.notes,
+              s.created_at::text AS created_at,
+              0 AS item_count
+       FROM ${sales} s
+       ORDER BY s.created_at DESC NULLS LAST
+       LIMIT $1`,
+      params: [limit],
+    },
+  ]);
+}
+
+export async function fetchBeautySaleItems(saleId: string): Promise<BeautySaleItemRow[]> {
+  if (!saleId) return [];
+  const items = beautySaleItemsTable();
+  return tryQueries<BeautySaleItemRow>([
+    {
+      sql: `SELECT id, sale_id::text AS sale_id, item_type, item_id::text AS item_id,
+              name, COALESCE(quantity, 1)::int AS quantity,
+              COALESCE(unit_price, 0)::float8 AS unit_price,
+              COALESCE(discount, 0)::float8 AS discount,
+              COALESCE(total, 0)::float8 AS total,
+              staff_id::text AS staff_id
+       FROM ${items}
+       WHERE sale_id = $1::uuid
+       ORDER BY created_at ASC NULLS LAST`,
+      params: [saleId],
+    },
+  ]);
+}
+
+/** Web beautyService.createSale — beauty şeması (ERP/kasa senkronu mobilde atlanır) */
+export async function createBeautySale(input: CreateBeautySaleInput): Promise<CreateBeautySaleResult> {
+  if (!input.items.length) throw new Error('Sepet boş');
+
+  const fn = firmNr();
+  const pn = periodNr();
+  const sales = beautySalesTable(fn, pn);
+  const itemsTbl = beautySaleItemsTable(fn, pn);
+  const id = newUuid();
+  const invoiceNumber = nextBeautyInvoiceNumber();
+  const tax = input.tax ?? 0;
+  const paidAmount = input.paidAmount ?? input.total;
+  const notes = [input.customerName?.trim(), input.notes?.trim()].filter(Boolean).join(' — ') || null;
+
+  await pgQuery(
+    `INSERT INTO ${sales} (
+       id, invoice_number, customer_id, subtotal, discount, tax, total,
+       payment_method, payment_status, paid_amount, remaining_amount, notes
+     ) VALUES (
+       $1::uuid, $2, $3::uuid, $4, $5, $6, $7,
+       $8, $9, $10, $11, $12
+     )`,
+    [
+      id,
+      invoiceNumber,
+      input.customerId || null,
+      input.subtotal,
+      input.discount,
+      tax,
+      input.total,
+      input.paymentMethod,
+      input.paymentStatus ?? 'paid',
+      paidAmount,
+      Math.max(0, input.total - paidAmount),
+      notes,
+    ],
+  );
+
+  const lineGrosses = input.items.map((i) => i.unit_price * i.quantity);
+  const lineSplits = splitProportionalLineDiscount(lineGrosses, input.discount);
+
+  for (let idx = 0; idx < input.items.length; idx++) {
+    const item = input.items[idx]!;
+    const split = lineSplits[idx] ?? { discount: 0, total: item.unit_price * item.quantity };
+    const itemId = newUuid();
+    await pgQuery(
+      `INSERT INTO ${itemsTbl} (
+         id, sale_id, item_type, item_id, name, quantity, unit_price,
+         discount, total, staff_id, commission_amount
+       ) VALUES (
+         $1::uuid, $2::uuid, $3, $4::uuid, $5, $6, $7,
+         $8, $9, $10::uuid, 0
+       )`,
+      [
+        itemId,
+        id,
+        item.item_type,
+        item.item_id,
+        item.name,
+        item.quantity,
+        item.unit_price,
+        item.discount ?? split.discount,
+        item.total ?? split.total,
+        item.staff_id || null,
+      ],
+    );
+  }
+
+  return { id, invoiceNumber, total: input.total };
 }

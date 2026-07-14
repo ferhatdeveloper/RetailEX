@@ -22,20 +22,23 @@ import {
   fetchBeautyAppointments,
   fetchBeautyServices,
   fetchBeautySpecialists,
+  fetchBeautySales,
   createBeautyAppointment,
   updateBeautyAppointment,
   BEAUTY_STATUSES,
   type BeautyAppointment,
+  type BeautySale,
   type BeautyService,
   type BeautySpecialist,
 } from '../api/beautyApi';
+import { BeautySalesPanel } from '../components/BeautySalesPanel';
 import { formatMoney } from '../api/erpTables';
 import { useThemeStore } from '../store/themeStore';
 import { useOrgEpoch } from '../hooks/useOrgEpoch';
 import { palette } from '../theme/colors';
 import type { MainStackParamList } from '../navigation/types';
 
-type Tab = 'appointments' | 'services' | 'specialists';
+type Tab = 'appointments' | 'services' | 'specialists' | 'sales';
 type ApptFilter = 'all' | 'scheduled' | 'completed';
 type Props = NativeStackScreenProps<MainStackParamList, 'Beauty'>;
 
@@ -70,6 +73,7 @@ export function BeautyScreen({ route }: Props) {
   const [tab, setTab] = useState<Tab>(initialTab);
   const [apptFilter, setApptFilter] = useState<ApptFilter>('all');
   const [appointments, setAppointments] = useState<BeautyAppointment[]>([]);
+  const [sales, setSales] = useState<BeautySale[]>([]);
   const [services, setServices] = useState<BeautyService[]>([]);
   const [specialists, setSpecialists] = useState<BeautySpecialist[]>([]);
   const [loading, setLoading] = useState(true);
@@ -92,12 +96,14 @@ export function BeautyScreen({ route }: Props) {
   const load = useCallback(async () => {
     setError(null);
     try {
-      const [a, s, sp] = await Promise.all([
+      const [a, sal, s, sp] = await Promise.all([
         fetchBeautyAppointments(),
+        fetchBeautySales(),
         fetchBeautyServices(),
         fetchBeautySpecialists(),
       ]);
       setAppointments(a);
+      setSales(sal);
       setServices(s);
       setSpecialists(sp);
       setSelectedServiceId((prev) => prev ?? (s[0]?.id ?? null));
@@ -130,6 +136,7 @@ export function BeautyScreen({ route }: Props) {
 
   const tabs: { id: Tab; label: string; count: number }[] = [
     { id: 'appointments', label: 'Randevu', count: appointments.length },
+    { id: 'sales', label: 'Satış', count: sales.length },
     { id: 'services', label: 'Hizmet', count: services.length },
     { id: 'specialists', label: 'Uzman', count: specialists.length },
   ];
@@ -226,7 +233,7 @@ export function BeautyScreen({ route }: Props) {
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
-      <ScreenHeader title="Güzellik Merkezi" subtitle="Randevu · Hizmet · Uzman" />
+      <ScreenHeader title="Güzellik Merkezi" subtitle="Randevu · Satış · Hizmet · Uzman" />
       <View style={styles.tabs}>
         {tabs.map((t) => (
           <Pressable
@@ -314,6 +321,16 @@ export function BeautyScreen({ route }: Props) {
             <Plus color={palette.white} size={22} />
           </Pressable>
         </>
+      ) : tab === 'sales' ? (
+        <BeautySalesPanel
+          colors={colors}
+          sales={sales}
+          services={services}
+          specialists={specialists}
+          loading={loading}
+          onRefresh={() => void load()}
+          onSaleCreated={() => void load()}
+        />
       ) : tab === 'services' ? (
         <FlatList
           data={services}

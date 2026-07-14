@@ -8,22 +8,49 @@ import {
   RefreshControl,
   Pressable,
 } from 'react-native';
+import { useRoute, type RouteProp } from '@react-navigation/native';
 import { ScreenHeader, EmptyState, ErrorBanner, SearchBar } from '../components/ScreenChrome';
 import {
   fetchSalesByDay,
   fetchTopProducts,
   fetchCariBalances,
   fetchCariExtract,
+  fetchProductSales,
+  fetchCashMovements,
+  fetchMinMaxStock,
+  fetchMaterialValue,
+  fetchWarehouseStatus,
+  fetchMaterialExtract,
   defaultExtractRange,
   type SalesDayRow,
   type TopProductRow,
   type CariBalanceRow,
   type CariExtractRow,
+  type ProductSalesRow,
+  type CashMovementRow,
+  type MinMaxStockRow,
+  type MaterialValueRow,
+  type WarehouseStatusRow,
+  type MaterialExtractRow,
 } from '../api/reportsApi';
+import { fetchProducts } from '../api/productsApi';
 import { formatMoney } from '../api/erpTables';
 import { useThemeStore } from '../store/themeStore';
 import { useOrgEpoch } from '../hooks/useOrgEpoch';
 import { palette } from '../theme/colors';
+import type { MainStackParamList } from '../navigation/types';
+
+type ReportStockMode = NonNullable<
+  NonNullable<MainStackParamList['ReportStock']>['mode']
+>;
+
+const REPORT_META: Record<ReportStockMode, { title: string; subtitle: string }> = {
+  critical: { title: 'Kritik Stok', subtitle: 'Min. stok altı malzemeler' },
+  'min-max': { title: 'Min / Max Stok', subtitle: 'Stok seviye kontrolü' },
+  'material-value': { title: 'Malzeme Değer', subtitle: 'Stok × maliyet' },
+  'warehouse-status': { title: 'Malzeme Ambar Durum', subtitle: 'Depo stok özeti' },
+  'material-extract': { title: 'Malzeme Ekstresi', subtitle: 'Ürün hareket dökümü' },
+};
 
 export function ReportSalesScreen() {
   const { colors } = useThemeStore();
@@ -105,6 +132,23 @@ export function ReportSalesScreen() {
 export function ReportStockScreen() {
   const { colors } = useThemeStore();
   const orgEpoch = useOrgEpoch();
+  const route = useRoute<RouteProp<MainStackParamList, 'ReportStock'>>();
+  const mode = route.params?.mode ?? 'critical';
+  const meta = REPORT_META[mode];
+
+  if (mode === 'min-max') {
+    return <ReportMinMaxStock meta={meta} />;
+  }
+  if (mode === 'material-value') {
+    return <ReportMaterialValue meta={meta} />;
+  }
+  if (mode === 'warehouse-status') {
+    return <ReportWarehouseStatus meta={meta} />;
+  }
+  if (mode === 'material-extract') {
+    return <ReportMaterialExtract meta={meta} />;
+  }
+
   const [rows, setRows] = useState<Awaited<ReturnType<typeof import('../api/reportsApi').fetchCriticalStock>>>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -127,7 +171,7 @@ export function ReportStockScreen() {
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
-      <ScreenHeader title="Kritik Stok" subtitle={`${rows.length} malzeme`} />
+      <ScreenHeader title={meta.title} subtitle={`${rows.length} malzeme`} />
       {error ? <ErrorBanner message={error} onRetry={() => void load()} /> : null}
       {loading ? (
         <ActivityIndicator style={{ marginTop: 40 }} color={palette.blue600} />
@@ -145,6 +189,401 @@ export function ReportStockScreen() {
               <Text style={{ color: palette.red500, fontWeight: '700', marginTop: 4 }}>
                 Stok {item.stock} / Min {item.min_stock} {item.unit || ''}
               </Text>
+            </View>
+          )}
+        />
+      )}
+    </View>
+  );
+}
+
+function ReportMinMaxStock({ meta }: { meta: { title: string; subtitle: string } }) {
+  const { colors } = useThemeStore();
+  const orgEpoch = useOrgEpoch();
+  const [filter, setFilter] = useState<'all' | 'low' | 'out'>('all');
+  const [rows, setRows] = useState<MinMaxStockRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setError(null);
+    try {
+      setRows(await fetchMinMaxStock({ filter }));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+      setRows([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [filter, orgEpoch]);
+
+  useEffect(() => {
+    setLoading(true);
+    void load();
+  }, [load]);
+
+  const filters: { id: 'all' | 'low' | 'out'; label: string }[] = [
+    { id: 'all', label: 'Tümü' },
+    { id: 'low', label: 'Kritik' },
+    { id: 'out', label: 'Tükenen' },
+  ];
+
+  const statusColor = (s: MinMaxStockRow['status']) => {
+    if (s === 'depleted' || s === 'critical') return palette.red500;
+    if (s === 'over') return palette.blue600;
+    return colors.text;
+  };
+
+  return (
+    <View style={[styles.root, { backgroundColor: colors.background }]}>
+      <ScreenHeader title={meta.title} subtitle={`${rows.length} malzeme · ${meta.subtitle}`} />
+      <View style={styles.filterRow}>
+        {filters.map((f) => (
+          <Pressable
+            key={f.id}
+            onPress={() => setFilter(f.id)}
+            style={[
+              styles.chip,
+              {
+                backgroundColor: filter === f.id ? palette.blue600 : colors.card,
+                borderColor: filter === f.id ? palette.blue600 : colors.cardBorder,
+              },
+            ]}
+          >
+            <Text style={{ color: filter === f.id ? '#fff' : colors.text, fontSize: 12, fontWeight: '700' }}>
+              {f.label}
+            </Text>
+          </Pressable>
+        ))}
+      </View>
+      {error ? <ErrorBanner message={error} onRetry={() => void load()} /> : null}
+      {loading ? (
+        <ActivityIndicator style={{ marginTop: 40 }} color={palette.blue600} />
+      ) : (
+        <FlatList
+          data={rows}
+          keyExtractor={(item) => item.id}
+          refreshControl={<RefreshControl refreshing={loading} onRefresh={() => void load()} />}
+          ListEmptyComponent={<EmptyState message="Kayıt yok" />}
+          contentContainerStyle={{ padding: 12, gap: 8, paddingBottom: 40 }}
+          renderItem={({ item }) => (
+            <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
+              <Text style={{ color: colors.text, fontWeight: '600' }}>{item.name}</Text>
+              <Text style={{ color: colors.textMuted, fontSize: 11 }}>{item.code || '—'}</Text>
+              <Text style={{ color: statusColor(item.status), fontWeight: '700', marginTop: 4 }}>
+                Stok {item.stock}
+                {item.min_stock != null ? ` / Min ${item.min_stock}` : ''}
+                {item.max_stock != null ? ` / Max ${item.max_stock}` : ''}
+                {item.unit ? ` ${item.unit}` : ''}
+              </Text>
+            </View>
+          )}
+        />
+      )}
+    </View>
+  );
+}
+
+function ReportMaterialValue({ meta }: { meta: { title: string; subtitle: string } }) {
+  const { colors } = useThemeStore();
+  const orgEpoch = useOrgEpoch();
+  const [rows, setRows] = useState<MaterialValueRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setError(null);
+    try {
+      setRows(await fetchMaterialValue());
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+      setRows([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [orgEpoch]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const total = useMemo(() => rows.reduce((s, r) => s + r.total_value, 0), [rows]);
+
+  return (
+    <View style={[styles.root, { backgroundColor: colors.background }]}>
+      <ScreenHeader title={meta.title} subtitle={`${rows.length} malzeme · ${meta.subtitle}`} />
+      <View style={styles.kpiRow}>
+        <View style={[styles.kpi, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
+          <Text style={styles.lbl}>Toplam değer</Text>
+          <Text style={[styles.val, { color: palette.blue600 }]}>{formatMoney(total)}</Text>
+        </View>
+      </View>
+      {error ? <ErrorBanner message={error} onRetry={() => void load()} /> : null}
+      {loading ? (
+        <ActivityIndicator style={{ marginTop: 40 }} color={palette.blue600} />
+      ) : (
+        <FlatList
+          data={rows}
+          keyExtractor={(item) => item.id}
+          refreshControl={<RefreshControl refreshing={loading} onRefresh={() => void load()} />}
+          ListEmptyComponent={<EmptyState message="Stoklu malzeme yok" />}
+          contentContainerStyle={{ padding: 12, gap: 8, paddingBottom: 40 }}
+          renderItem={({ item }) => (
+            <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
+              <Text style={{ color: colors.text, fontWeight: '600' }}>{item.name}</Text>
+              <Text style={{ color: colors.textMuted, fontSize: 11 }}>{item.code || '—'}</Text>
+              <Text style={{ color: colors.textMuted, fontSize: 12, marginTop: 4 }}>
+                {item.quantity} {item.unit || ''} × {formatMoney(item.unit_cost)}
+              </Text>
+              <Text style={{ color: palette.blue600, fontWeight: '800', marginTop: 4 }}>
+                {formatMoney(item.total_value)}
+              </Text>
+            </View>
+          )}
+        />
+      )}
+    </View>
+  );
+}
+
+function ReportWarehouseStatus({ meta }: { meta: { title: string; subtitle: string } }) {
+  const { colors } = useThemeStore();
+  const orgEpoch = useOrgEpoch();
+  const [warehouseName, setWarehouseName] = useState<string | null>(null);
+  const [rows, setRows] = useState<WarehouseStatusRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setError(null);
+    try {
+      const data = await fetchWarehouseStatus();
+      setWarehouseName(data.warehouseName);
+      setRows(data.rows);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+      setRows([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [orgEpoch]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  return (
+    <View style={[styles.root, { backgroundColor: colors.background }]}>
+      <ScreenHeader
+        title={meta.title}
+        subtitle={warehouseName ? `${warehouseName} · ${rows.length} malzeme` : `${rows.length} malzeme`}
+      />
+      {error ? <ErrorBanner message={error} onRetry={() => void load()} /> : null}
+      {loading ? (
+        <ActivityIndicator style={{ marginTop: 40 }} color={palette.blue600} />
+      ) : (
+        <FlatList
+          data={rows}
+          keyExtractor={(item) => item.id}
+          refreshControl={<RefreshControl refreshing={loading} onRefresh={() => void load()} />}
+          ListEmptyComponent={<EmptyState message="Stok kaydı yok" />}
+          contentContainerStyle={{ padding: 12, gap: 8, paddingBottom: 40 }}
+          renderItem={({ item }) => (
+            <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
+              <Text style={{ color: colors.text, fontWeight: '600' }}>{item.name}</Text>
+              <Text style={{ color: colors.textMuted, fontSize: 11 }}>{item.code || '—'}</Text>
+              <Text style={{ color: palette.blue600, fontWeight: '700', marginTop: 4 }}>
+                Toplam {item.total}
+                {item.warehouse_name ? ` · ${item.warehouse_name}: ${item.warehouse_qty}` : ''}
+              </Text>
+            </View>
+          )}
+        />
+      )}
+    </View>
+  );
+}
+
+function ReportMaterialExtract({ meta }: { meta: { title: string; subtitle: string } }) {
+  const { colors } = useThemeStore();
+  const orgEpoch = useOrgEpoch();
+  const range = useMemo(() => defaultExtractRange(30), []);
+  const [products, setProducts] = useState<Awaited<ReturnType<typeof fetchProducts>>>([]);
+  const [productId, setProductId] = useState('');
+  const [productSearch, setProductSearch] = useState('');
+  const [rows, setRows] = useState<MaterialExtractRow[]>([]);
+  const [loadingProducts, setLoadingProducts] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [picking, setPicking] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      setLoadingProducts(true);
+      try {
+        const list = await fetchProducts('', 400);
+        if (cancelled) return;
+        setProducts(list);
+        setProductId((prev) => (list.some((p) => p.id === prev) ? prev : list[0]?.id || ''));
+      } catch (e) {
+        if (!cancelled) {
+          setProducts([]);
+          setProductId('');
+          setError(e instanceof Error ? e.message : String(e));
+        }
+      } finally {
+        if (!cancelled) setLoadingProducts(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [orgEpoch]);
+
+  const selected = useMemo(
+    () => products.find((p) => p.id === productId) ?? null,
+    [products, productId],
+  );
+
+  const filteredProducts = useMemo(() => {
+    const q = productSearch.trim().toLocaleLowerCase('tr-TR');
+    if (!q) return products.slice(0, 80);
+    return products
+      .filter(
+        (p) =>
+          p.name.toLocaleLowerCase('tr-TR').includes(q) ||
+          (p.code || '').toLocaleLowerCase('tr-TR').includes(q),
+      )
+      .slice(0, 80);
+  }, [products, productSearch]);
+
+  const load = useCallback(async () => {
+    if (!productId) {
+      setRows([]);
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      setRows(
+        await fetchMaterialExtract({
+          productId,
+          productCode: selected?.code || undefined,
+          startDate: range.start,
+          endDate: range.end,
+        }),
+      );
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+      setRows([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [productId, selected?.code, range.start, range.end]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const closing = rows.length ? rows[rows.length - 1].running_balance : 0;
+
+  if (picking) {
+    return (
+      <View style={[styles.root, { backgroundColor: colors.background }]}>
+        <ScreenHeader title="Malzeme Seç" subtitle={`${filteredProducts.length} ürün`} />
+        <SearchBar value={productSearch} onChangeText={setProductSearch} placeholder="Kod veya ad…" />
+        {loadingProducts ? (
+          <ActivityIndicator style={{ marginTop: 40 }} color={palette.blue600} />
+        ) : (
+          <FlatList
+            data={filteredProducts}
+            keyExtractor={(item) => item.id}
+            ListEmptyComponent={<EmptyState message="Malzeme bulunamadı" />}
+            contentContainerStyle={{ padding: 12, gap: 8, paddingBottom: 40 }}
+            renderItem={({ item }) => (
+              <Pressable
+                onPress={() => {
+                  setProductId(item.id);
+                  setPicking(false);
+                  setProductSearch('');
+                }}
+                style={[styles.card, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}
+              >
+                <Text style={{ color: colors.text, fontWeight: '700' }}>{item.name}</Text>
+                <Text style={{ color: colors.textMuted, fontSize: 11 }}>
+                  {item.code || '—'} · Stok {item.stock}
+                </Text>
+              </Pressable>
+            )}
+          />
+        )}
+        <Pressable
+          onPress={() => setPicking(false)}
+          style={[styles.footerBtn, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}
+        >
+          <Text style={{ color: colors.text, fontWeight: '700' }}>Vazgeç</Text>
+        </Pressable>
+      </View>
+    );
+  }
+
+  return (
+    <View style={[styles.root, { backgroundColor: colors.background }]}>
+      <ScreenHeader title={meta.title} subtitle={`${range.start} → ${range.end}`} />
+      <Pressable
+        onPress={() => setPicking(true)}
+        style={[styles.picker, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}
+      >
+        <Text style={{ color: colors.textMuted, fontSize: 10, fontWeight: '700' }}>MALZEME</Text>
+        <Text style={{ color: colors.text, fontWeight: '700', marginTop: 2 }} numberOfLines={1}>
+          {selected ? selected.name : loadingProducts ? 'Yükleniyor…' : 'Malzeme seçin'}
+        </Text>
+        {selected ? (
+          <Text style={{ color: colors.textMuted, fontSize: 11 }}>{selected.code || '—'}</Text>
+        ) : null}
+      </Pressable>
+      <View style={styles.kpiRow}>
+        <View style={[styles.kpi, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
+          <Text style={styles.lbl}>Hareket</Text>
+          <Text style={[styles.valSm, { color: colors.text }]}>{rows.length}</Text>
+        </View>
+        <View style={[styles.kpi, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
+          <Text style={styles.lbl}>Bakiye</Text>
+          <Text style={[styles.valSm, { color: palette.blue600 }]}>{closing}</Text>
+        </View>
+      </View>
+      {error ? <ErrorBanner message={error} onRetry={() => void load()} /> : null}
+      {loading || loadingProducts ? (
+        <ActivityIndicator style={{ marginTop: 40 }} color={palette.blue600} />
+      ) : (
+        <FlatList
+          data={rows}
+          keyExtractor={(item) => item.id}
+          refreshControl={<RefreshControl refreshing={loading} onRefresh={() => void load()} />}
+          ListEmptyComponent={<EmptyState message="Hareket yok — malzeme seçin" />}
+          contentContainerStyle={{ padding: 12, gap: 6, paddingBottom: 40 }}
+          renderItem={({ item }) => (
+            <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
+              <View style={styles.rowBetween}>
+                <Text style={{ color: colors.text, fontWeight: '600' }}>{item.date}</Text>
+                <Text style={{ color: colors.textMuted, fontSize: 11, fontFamily: 'monospace' }}>
+                  {item.document_no || '—'}
+                </Text>
+              </View>
+              <Text style={{ color: colors.textMuted, fontSize: 12, marginTop: 2 }} numberOfLines={2}>
+                {item.description || item.movement_type}
+                {item.source === 'invoice' ? ' · Fatura' : ''}
+              </Text>
+              <View style={[styles.rowBetween, { marginTop: 6 }]}>
+                <Text style={{ color: colors.text, fontSize: 12 }}>
+                  {item.movement_type === 'in' ? '+' : item.movement_type === 'out' ? '−' : ''}
+                  {item.quantity}
+                </Text>
+                <Text style={{ color: palette.blue600, fontWeight: '800', fontSize: 12 }}>
+                  Bakiye {item.running_balance}
+                </Text>
+              </View>
             </View>
           )}
         />
@@ -483,6 +922,190 @@ export function ReportCariExtractScreen() {
                   {formatMoney(item.balance)}
                 </Text>
               </View>
+            </View>
+          )}
+        />
+      )}
+    </View>
+  );
+}
+
+/** Web `ProductGrossProfitReport` / menü product-analytics — ürün satış dökümü */
+export function ReportProductSalesScreen() {
+  const { colors } = useThemeStore();
+  const orgEpoch = useOrgEpoch();
+  const range = useMemo(() => defaultExtractRange(30), []);
+  const [rows, setRows] = useState<ProductSalesRow[]>([]);
+  const [search, setSearch] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setError(null);
+    try {
+      setRows(await fetchProductSales({ startDate: range.start, endDate: range.end, limit: 200 }));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+      setRows([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [range.start, range.end, orgEpoch]);
+
+  useEffect(() => {
+    setLoading(true);
+    void load();
+  }, [load]);
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLocaleLowerCase('tr-TR');
+    if (!q) return rows;
+    return rows.filter(
+      (r) =>
+        r.productName.toLocaleLowerCase('tr-TR').includes(q) ||
+        r.productCode.toLocaleLowerCase('tr-TR').includes(q),
+    );
+  }, [rows, search]);
+
+  const totals = useMemo(() => {
+    let qty = 0;
+    let amount = 0;
+    for (const r of filtered) {
+      qty += r.qty;
+      amount += r.amount;
+    }
+    return { qty, amount };
+  }, [filtered]);
+
+  return (
+    <View style={[styles.root, { backgroundColor: colors.background }]}>
+      <ScreenHeader title="Ürün Satış Raporu" subtitle={`${range.start} → ${range.end}`} />
+      <SearchBar value={search} onChangeText={setSearch} placeholder="Ürün adı veya kod…" />
+      <View style={styles.kpiRow}>
+        <View style={[styles.kpi, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
+          <Text style={styles.lbl}>Ürün</Text>
+          <Text style={[styles.valSm, { color: colors.text }]}>{filtered.length}</Text>
+        </View>
+        <View style={[styles.kpi, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
+          <Text style={styles.lbl}>Miktar</Text>
+          <Text style={[styles.valSm, { color: palette.blue600 }]}>{totals.qty.toLocaleString('tr-TR')}</Text>
+        </View>
+        <View style={[styles.kpi, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
+          <Text style={styles.lbl}>Tutar</Text>
+          <Text style={[styles.valSm, { color: palette.blue600 }]}>{formatMoney(totals.amount)}</Text>
+        </View>
+      </View>
+      {error ? <ErrorBanner message={error} onRetry={() => void load()} /> : null}
+      {loading ? (
+        <ActivityIndicator style={{ marginTop: 40 }} color={palette.blue600} />
+      ) : (
+        <FlatList
+          data={filtered}
+          keyExtractor={(item, i) => `${item.productId}-${item.productCode}-${i}`}
+          refreshControl={<RefreshControl refreshing={loading} onRefresh={() => void load()} />}
+          ListEmptyComponent={<EmptyState message="Satış kalemi yok" />}
+          contentContainerStyle={{ padding: 12, gap: 8, paddingBottom: 40 }}
+          renderItem={({ item, index }) => (
+            <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
+              <View style={styles.rowBetween}>
+                <Text style={{ color: colors.text, fontWeight: '700', flex: 1 }} numberOfLines={2}>
+                  {index + 1}. {item.productName}
+                </Text>
+                <Text style={{ color: palette.blue600, fontWeight: '800' }}>{formatMoney(item.amount)}</Text>
+              </View>
+              <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 2 }}>
+                {item.productCode || '—'} · {item.qty.toLocaleString('tr-TR')} adet
+              </Text>
+            </View>
+          )}
+        />
+      )}
+    </View>
+  );
+}
+
+/** Web `getCashBankMovements` / menü financereports-cash — kasa hareketleri */
+export function ReportCashScreen() {
+  const { colors } = useThemeStore();
+  const orgEpoch = useOrgEpoch();
+  const range = useMemo(() => defaultExtractRange(30), []);
+  const [rows, setRows] = useState<CashMovementRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setError(null);
+    try {
+      setRows(await fetchCashMovements({ startDate: range.start, endDate: range.end, limit: 500 }));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+      setRows([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [range.start, range.end, orgEpoch]);
+
+  useEffect(() => {
+    setLoading(true);
+    void load();
+  }, [load]);
+
+  const totals = useMemo(() => {
+    let inflow = 0;
+    let outflow = 0;
+    for (const r of rows) {
+      if (r.netAmount >= 0) inflow += r.netAmount;
+      else outflow += Math.abs(r.netAmount);
+    }
+    return { inflow, outflow, net: inflow - outflow };
+  }, [rows]);
+
+  return (
+    <View style={[styles.root, { backgroundColor: colors.background }]}>
+      <ScreenHeader title="Kasa Raporu" subtitle={`${range.start} → ${range.end}`} />
+      <View style={styles.kpiRow}>
+        <View style={[styles.kpi, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
+          <Text style={styles.lbl}>Giriş</Text>
+          <Text style={[styles.valSm, { color: palette.blue600 }]}>{formatMoney(totals.inflow)}</Text>
+        </View>
+        <View style={[styles.kpi, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
+          <Text style={styles.lbl}>Çıkış</Text>
+          <Text style={[styles.valSm, { color: palette.red500 }]}>{formatMoney(totals.outflow)}</Text>
+        </View>
+        <View style={[styles.kpi, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
+          <Text style={styles.lbl}>Net</Text>
+          <Text style={[styles.valSm, { color: colors.text }]}>{formatMoney(totals.net)}</Text>
+        </View>
+      </View>
+      {error ? <ErrorBanner message={error} onRetry={() => void load()} /> : null}
+      {loading ? (
+        <ActivityIndicator style={{ marginTop: 40 }} color={palette.blue600} />
+      ) : (
+        <FlatList
+          data={rows}
+          keyExtractor={(item) => item.id}
+          refreshControl={<RefreshControl refreshing={loading} onRefresh={() => void load()} />}
+          ListEmptyComponent={<EmptyState message="Kasa hareketi yok" />}
+          contentContainerStyle={{ padding: 12, gap: 8, paddingBottom: 40 }}
+          renderItem={({ item }) => (
+            <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
+              <View style={styles.rowBetween}>
+                <Text style={{ color: colors.text, fontWeight: '600' }}>{item.date}</Text>
+                <Text
+                  style={{
+                    color: item.netAmount >= 0 ? palette.blue600 : palette.red500,
+                    fontWeight: '800',
+                  }}
+                >
+                  {formatMoney(item.netAmount)}
+                </Text>
+              </View>
+              <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 2 }}>
+                {item.registerName || 'Kasa'} · {item.ficheNo || '—'}
+              </Text>
+              <Text style={{ color: colors.textMuted, fontSize: 12, marginTop: 4 }} numberOfLines={2}>
+                {item.definition || item.transactionType || '—'}
+              </Text>
             </View>
           )}
         />

@@ -333,15 +333,27 @@ export type LiveRoute =
   | 'Reports'
   | 'ReportSales'
   | 'ReportStock'
+  | 'StockMovements'
   | 'ReportMizan'
   | 'ReportCariExtract'
+  | 'ReportProductSales'
+  | 'ReportCash'
   | 'Beauty'
   | 'Wms'
   | 'WmsCount'
+  | 'WmsTransfer'
   | 'Restaurant'
   | 'Delivery'
+  | 'Finance'
+  | 'FinanceDefinitions'
+  | 'CashCollection'
   | 'Organization'
   | 'System'
+  | 'Pricing'
+  | 'Campaigns'
+  | 'Communications'
+  | 'Notifications'
+  | 'PrinterSettings'
   | 'Module';
 
 const LIVE_MAP: Record<string, LiveRoute> = {
@@ -353,6 +365,7 @@ const LIVE_MAP: Record<string, LiveRoute> = {
   menumanagement: 'System',
   logaudit: 'System',
   pendingposdevices: 'System',
+  'printer-settings': 'PrinterSettings',
   backuprestore: 'System',
   'supabase-migration': 'System',
   products: 'Products',
@@ -362,6 +375,21 @@ const LIVE_MAP: Record<string, LiveRoute> = {
   suppliers: 'Customers',
   customers: 'Customers',
   'finance-cards': 'Customers',
+  'payment-plans': 'FinanceDefinitions',
+  'cost-centers': 'FinanceDefinitions',
+  'customer-call-plan': 'FinanceDefinitions',
+  revenueexpense: 'FinanceDefinitions',
+  'finance-definitions': 'FinanceDefinitions',
+  'finance-other': 'FinanceDefinitions',
+  'cari-devir': 'ReportCariExtract',
+  cashbank: 'Finance',
+  kasalar: 'Finance',
+  'cash-slips': 'CashCollection',
+  collectionpayment: 'CashCollection',
+  finance: 'CashCollection',
+  banks: 'Finance',
+  'bank-accounts': 'Finance',
+  'bank-vouchers': 'Finance',
   'customer-extract': 'ReportCariExtract',
   salesinvoice: 'Invoices',
   'sales-invoice-standard': 'Invoices',
@@ -375,20 +403,31 @@ const LIVE_MAP: Record<string, LiveRoute> = {
   serviceinvoice: 'Invoices',
   'serviceinvoice-given': 'Invoices',
   'serviceinvoice-received': 'Invoices',
+  salesorder: 'Invoices',
+  purchase: 'Invoices',
+  purchaserequest: 'Invoices',
+  Teklifler: 'Invoices',
+  'waybill-sales': 'Invoices',
+  'waybill-purchase': 'Invoices',
+  'waybill-fire': 'Invoices',
   pos: 'POS',
   newsale: 'POS',
   'cashier-scale': 'POS',
+  pricing: 'Pricing',
+  pricelists: 'Pricing',
+  promotions: 'Pricing',
+  campaigns_mgmt: 'Campaigns',
   customreports: 'Reports',
   'report-sales-summary': 'ReportSales',
-  'product-analytics': 'ReportSales',
-  'profit-dashboard': 'ReportSales',
+  'product-analytics': 'ReportProductSales',
+  'profit-dashboard': 'ReportProductSales',
   'bi-dashboard': 'ReportSales',
-  'category-group-profit-report': 'ReportSales',
+  'category-group-profit-report': 'ReportProductSales',
   financereports: 'ReportMizan',
-  'financereports-cash': 'ReportMizan',
-  'financereports-bank': 'ReportMizan',
+  'financereports-cash': 'ReportCash',
+  'financereports-bank': 'ReportCash',
   mizan: 'ReportMizan',
-  'customer-in-out-totals': 'ReportSales',
+  'report-in-out-totals': 'ReportSales',
   'report-slip-list': 'ReportSales',
   'report-critical-stock': 'ReportStock',
   inventory: 'ReportStock',
@@ -408,13 +447,22 @@ const LIVE_MAP: Record<string, LiveRoute> = {
   stockcounting: 'WmsCount',
   'wave-picking': 'Wms',
   'mobile-inventory-count': 'WmsCount',
-  stockmovements: 'Wms',
-  'stockmovements-deficit': 'Wms',
-  'stockmovements-surplus': 'Wms',
+  'interstore-transfer': 'WmsTransfer',
+  'waybill-transfer': 'WmsTransfer',
+  stockmovements: 'StockMovements',
+  'stockmovements-deficit': 'StockMovements',
+  'stockmovements-surplus': 'StockMovements',
+  'stok-devir': 'StockMovements',
+  'stock-price-change-slips': 'StockMovements',
   restaurant: 'Restaurant',
   'restaurant-tables': 'Restaurant',
   'restaurant-orders': 'Restaurant',
   logistics: 'Delivery',
+  notifications: 'Notifications',
+  whatsapp: 'Communications',
+  'mesaj-bildirim': 'Communications',
+  smsmanage: 'Communications',
+  emailcamp: 'Communications',
 };
 
 export function resolveLiveRoute(screen: string): LiveRoute {

@@ -8,7 +8,7 @@ import {
   RefreshControl,
   Pressable,
 } from 'react-native';
-import { ClipboardList } from 'lucide-react-native';
+import { ClipboardList, ArrowLeftRight } from 'lucide-react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { ScreenHeader, SearchBar, EmptyState, ErrorBanner } from '../components/ScreenChrome';
@@ -63,6 +63,19 @@ export function WmsScreen() {
           </Text>
         </View>
         <Text style={{ color: palette.blue600, fontWeight: '800', fontSize: 11 }}>Aç →</Text>
+      </Pressable>
+      <Pressable
+        onPress={() => navigation.navigate('WmsTransfer')}
+        style={[styles.countBanner, { backgroundColor: colors.card, borderColor: palette.green600 }]}
+      >
+        <ArrowLeftRight size={20} color={palette.green600} />
+        <View style={{ flex: 1 }}>
+          <Text style={{ color: colors.text, fontWeight: '700' }}>Depo transferi</Text>
+          <Text style={{ color: colors.textMuted, fontSize: 11 }}>
+            Ambar/mağaza arası ürün transferi
+          </Text>
+        </View>
+        <Text style={{ color: palette.green600, fontWeight: '800', fontSize: 11 }}>Aç →</Text>
       </Pressable>
       <View style={styles.kpiRow}>
         {[

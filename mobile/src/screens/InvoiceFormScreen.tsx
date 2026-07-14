@@ -18,8 +18,10 @@ import { ScreenHeader, ErrorBanner, SearchBar } from '../components/ScreenChrome
 import { FormField } from '../components/FormField';
 import { PrimaryButton } from '../components/PrimaryButton';
 import {
+  createPurchaseInvoice,
   createSalesInvoice,
   fetchInvoiceById,
+  isPurchaseInvoice,
   updateInvoiceHeader,
   type InvoiceDraftLine,
 } from '../api/invoicesApi';
@@ -39,14 +41,17 @@ export function InvoiceFormScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<MainStackParamList>>();
   const route = useRoute<RouteProp<MainStackParamList, 'InvoiceForm'>>();
   const invoiceId = route.params?.invoiceId;
+  const routeKind = route.params?.kind;
   const isEdit = Boolean(invoiceId);
 
   const [loading, setLoading] = useState(isEdit);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [resolvedKind, setResolvedKind] = useState<'sales' | 'purchase'>(routeKind ?? 'sales');
+  const isPurchase = resolvedKind === 'purchase';
 
   const [customerId, setCustomerId] = useState<string | undefined>();
-  const [customerName, setCustomerName] = useState('Perakende');
+  const [customerName, setCustomerName] = useState(isPurchase ? 'Tedarikçi' : 'Perakende');
   const [notes, setNotes] = useState('');
   const [status, setStatus] = useState<string>('approved');
   const [paymentMethod, setPaymentMethod] = useState('Nakit');
@@ -64,6 +69,13 @@ export function InvoiceFormScreen() {
     [lines],
   );
 
+  useEffect(() => {
+    if (!isEdit && routeKind) {
+      setResolvedKind(routeKind);
+      setCustomerName(routeKind === 'purchase' ? 'Tedarikçi' : 'Perakende');
+    }
+  }, [routeKind, isEdit]);
+
   const load = useCallback(async () => {
     if (!invoiceId) return;
     setError(null);
@@ -74,7 +86,8 @@ export function InvoiceFormScreen() {
         setError('Fatura bulunamadı');
         return;
       }
-      setCustomerName(doc.customer_name || 'Perakende');
+      setResolvedKind(isPurchaseInvoice(doc) ? 'purchase' : 'sales');
+      setCustomerName(doc.customer_name || (isPurchaseInvoice(doc) ? 'Tedarikçi' : 'Perakende'));
       setNotes(doc.notes || '');
       setStatus(doc.status || 'approved');
       setPaymentMethod(doc.payment_method || 'Nakit');
@@ -152,13 +165,21 @@ export function InvoiceFormScreen() {
         setSaving(false);
         return;
       }
-      const result = await createSalesInvoice({
-        customerId,
-        customerName,
-        notes,
-        paymentMethod,
-        lines,
-      });
+      const result = isPurchase
+        ? await createPurchaseInvoice({
+            supplierId: customerId,
+            supplierName: customerName,
+            notes,
+            paymentMethod,
+            lines,
+          })
+        : await createSalesInvoice({
+            customerId,
+            customerName,
+            notes,
+            paymentMethod,
+            lines,
+          });
       navigation.replace('InvoiceDetail', { invoiceId: result.id });
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -170,7 +191,15 @@ export function InvoiceFormScreen() {
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
       <ScreenHeader
-        title={isEdit ? 'Fatura Düzenle' : 'Yeni Satış Faturası'}
+        title={
+          isEdit
+            ? isPurchase
+              ? 'Alış Faturası Düzenle'
+              : 'Satış Faturası Düzenle'
+            : isPurchase
+              ? 'Yeni Alış Faturası'
+              : 'Yeni Satış Faturası'
+        }
         subtitle={isEdit ? 'Not ve durum' : customerName}
       />
       {error ? <ErrorBanner message={error} onRetry={() => void load()} /> : null}
@@ -195,7 +224,9 @@ export function InvoiceFormScreen() {
                   onPress={() => setShowCustPicker((v) => !v)}
                   style={[styles.pickerBtn, { borderColor: colors.cardBorder, backgroundColor: colors.card }]}
                 >
-                  <Text style={{ color: colors.textMuted, fontSize: 10, fontWeight: '700' }}>CARİ</Text>
+                  <Text style={{ color: colors.textMuted, fontSize: 10, fontWeight: '700' }}>
+                    {isPurchase ? 'TEDARİKÇİ' : 'CARİ'}
+                  </Text>
                   <Text style={{ color: colors.text, fontWeight: '700', marginTop: 4 }}>{customerName}</Text>
                 </Pressable>
                 {showCustPicker ? (
@@ -203,7 +234,7 @@ export function InvoiceFormScreen() {
                     <SearchBar
                       value={custSearch}
                       onChangeText={setCustSearch}
-                      placeholder="Cari ara…"
+                      placeholder={isPurchase ? 'Tedarikçi ara…' : 'Cari ara…'}
                     />
                     <FlatList
                       data={custRows}
@@ -360,7 +391,13 @@ export function InvoiceFormScreen() {
 
                 <View style={[styles.totalCard, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
                   <Text style={{ color: colors.textMuted, fontSize: 11 }}>Toplam</Text>
-                  <Text style={{ color: palette.blue600, fontSize: 22, fontWeight: '800' }}>
+                  <Text
+                    style={{
+                      color: isPurchase ? palette.orange500 : palette.blue600,
+                      fontSize: 22,
+                      fontWeight: '800',
+                    }}
+                  >
                     {formatMoney(total)} ₺
                   </Text>
                 </View>

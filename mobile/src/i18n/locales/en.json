@@ -100,5 +100,20 @@
   "langEn": "English",
   "langAr": "العربية",
   "langKu": "کوردی",
-  "rtlRestartHint": "You may need to restart the app for layout direction to fully apply."
+  "rtlRestartHint": "You may need to restart the app for layout direction to fully apply.",
+  "kpiTodayRevenue": "Today's revenue",
+  "kpiTransactions": "Transactions",
+  "kpiAvgBasket": "Avg. basket",
+  "kpiActiveStores": "Active stores",
+  "kpiCriticalStock": "Critical stock",
+  "kpiToday": "Today",
+  "kpiPerCustomer": "Per customer",
+  "kpiStoresOf": "/ {{total}} total",
+  "kpiCriticalHint": "Below min. stock",
+  "dashboardKpiError": "Could not load KPI data",
+  "dashboardKpiEmptyTitle": "No sales today",
+  "dashboardKpiEmpty": "No approved sales recorded for today yet.",
+  "dashboardNoCriticalStock": "No critical stock alerts",
+  "dashboardNoStores": "No store records found for this firm.",
+  "dashboardCriticalStockBanner": "{{count}} products below critical stock — check Stock report."
 }

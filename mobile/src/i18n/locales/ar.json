@@ -95,5 +95,20 @@
   "langEn": "English",
   "langAr": "العربية",
   "langKu": "کوردی",
-  "rtlRestartHint": "لتطبيق اتجاه الواجهة بالكامل قد تحتاج لإعادة تشغيل التطبيق."
+  "rtlRestartHint": "لتطبيق اتجاه الواجهة بالكامل قد تحتاج لإعادة تشغيل التطبيق.",
+  "kpiTodayRevenue": "إيراد اليوم",
+  "kpiTransactions": "المعاملات",
+  "kpiAvgBasket": "متوسط السلة",
+  "kpiActiveStores": "المتاجر النشطة",
+  "kpiCriticalStock": "المخزون الحرج",
+  "kpiToday": "اليوم",
+  "kpiPerCustomer": "لكل عميل",
+  "kpiStoresOf": "/ {{total}} الإجمالي",
+  "kpiCriticalHint": "أقل من الحد الأدنى",
+  "dashboardKpiError": "تعذر تحميل مؤشرات الأداء",
+  "dashboardKpiEmptyTitle": "لا مبيعات اليوم",
+  "dashboardKpiEmpty": "لا توجد مبيعات معتمدة مسجلة لليوم بعد.",
+  "dashboardNoCriticalStock": "لا تنبيهات مخزون حرجة",
+  "dashboardNoStores": "لم يتم العثور على متاجر لهذه الشركة.",
+  "dashboardCriticalStockBanner": "{{count}} منتج تحت مستوى المخزون الحرج — راجع تقرير المخزون."
 }

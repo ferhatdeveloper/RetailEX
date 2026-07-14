@@ -14,6 +14,9 @@ import {
   LogOut,
   ChevronDown,
   ChevronRight,
+  BarChart3,
+  Store,
+  AlertTriangle,
 } from 'lucide-react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -38,6 +41,7 @@ import {
 import { navigateToModule } from '../navigation/navigateToModule';
 import { fetchDashboardStats, type DashboardStats } from '../api/dashboardApi';
 import { formatMoney } from '../api/erpTables';
+import { ErrorBanner } from '../components/ScreenChrome';
 import { useOrgEpoch } from '../hooks/useOrgEpoch';
 import type { MainStackParamList } from '../navigation/types';
 
@@ -53,19 +57,22 @@ export function DashboardScreen() {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
+  const [statsError, setStatsError] = useState<string | null>(null);
 
   const counts = useMemo(() => countMenuItems(), []);
 
   const loadStats = useCallback(async () => {
     setLoading(true);
+    setStatsError(null);
     try {
       setStats(await fetchDashboardStats());
-    } catch {
+    } catch (e) {
       setStats(null);
+      setStatsError(e instanceof Error ? e.message : t('dashboardKpiError'));
     } finally {
       setLoading(false);
     }
-  }, [orgEpoch]);
+  }, [orgEpoch, t]);
 
   useEffect(() => {
     void loadStats();
@@ -120,33 +127,122 @@ export function DashboardScreen() {
         contentContainerStyle={styles.body}
         refreshControl={<RefreshControl refreshing={loading} onRefresh={() => void loadStats()} />}
       >
-        {/* KPI */}
+        {/* KPI — web dashboardAPI.getStats() ile aynı metrikler */}
+        {statsError ? (
+          <ErrorBanner message={statsError} onRetry={() => void loadStats()} />
+        ) : null}
         <View style={styles.kpiGrid}>
           {(
             [
-              ['Bugün ciro', formatMoney(stats?.totalRevenue ?? 0), palette.blue600],
-              ['Fiş', String(stats?.totalTransactions ?? 0), palette.indigo600],
-              ['Ort. sepet', formatMoney(stats?.avgBasket ?? 0), palette.green600],
-              ['Kritik stok', String(stats?.criticalAlerts ?? 0), palette.red500],
-              ['Ürün', String(stats?.productCount ?? 0), palette.green500],
-              ['Cari', String(stats?.customerCount ?? 0), palette.purple500],
+              {
+                key: 'revenue',
+                label: t('kpiTodayRevenue'),
+                value: formatMoney(stats?.totalRevenue ?? 0),
+                sub: stats?.totalTransactions
+                  ? `${stats.totalTransactions} ${t('kpiTransactions').toLowerCase()}`
+                  : t('kpiToday'),
+                color: palette.blue600,
+              },
+              {
+                key: 'tx',
+                label: t('kpiTransactions'),
+                value: String(stats?.totalTransactions ?? 0),
+                sub: t('kpiToday'),
+                color: palette.indigo600,
+              },
+              {
+                key: 'basket',
+                label: t('kpiAvgBasket'),
+                value: formatMoney(stats?.avgBasket ?? 0),
+                sub: t('kpiPerCustomer'),
+                color: palette.green600,
+              },
+              {
+                key: 'stores',
+                label: t('kpiActiveStores'),
+                value: String(stats?.activeStores ?? 0),
+                sub: t('kpiStoresOf', { total: stats?.totalStores ?? 0 }),
+                color: palette.orange500,
+              },
+              {
+                key: 'critical',
+                label: t('kpiCriticalStock'),
+                value: String(stats?.criticalAlerts ?? 0),
+                sub:
+                  (stats?.criticalAlerts ?? 0) > 0
+                    ? t('kpiCriticalHint')
+                    : t('dashboardNoCriticalStock'),
+                color: (stats?.criticalAlerts ?? 0) > 0 ? palette.red500 : palette.green600,
+              },
             ] as const
-          ).map(([label, value, color]) => (
+          ).map((item) => (
             <View
-              key={label}
+              key={item.key}
               style={[styles.kpi, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}
             >
-              <Text style={{ color: colors.textMuted, fontSize: 10, fontWeight: '600' }}>{label}</Text>
+              <Text style={{ color: colors.textMuted, fontSize: 10, fontWeight: '600' }}>{item.label}</Text>
               {loading && !stats ? (
-                <ActivityIndicator size="small" color={color} style={{ marginTop: 6 }} />
+                <ActivityIndicator size="small" color={item.color} style={{ marginTop: 6 }} />
               ) : (
-                <Text style={{ color, fontSize: 15, fontWeight: '800', marginTop: 4 }} numberOfLines={1}>
-                  {value}
-                </Text>
+                <>
+                  <Text
+                    style={{ color: item.color, fontSize: 15, fontWeight: '800', marginTop: 4 }}
+                    numberOfLines={1}
+                  >
+                    {item.value}
+                  </Text>
+                  <Text style={{ color: colors.textSubtle, fontSize: 9, marginTop: 2 }} numberOfLines={1}>
+                    {item.sub}
+                  </Text>
+                </>
               )}
             </View>
           ))}
         </View>
+        {!loading && !statsError && stats && stats.totalTransactions === 0 ? (
+          <View
+            style={[
+              styles.kpiEmptyBanner,
+              { backgroundColor: colors.backgroundAlt, borderColor: colors.cardBorder },
+            ]}
+          >
+            <BarChart3 size={18} color={colors.textMuted} />
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: colors.text, fontSize: 12, fontWeight: '600' }}>
+                {t('dashboardKpiEmptyTitle')}
+              </Text>
+              <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 2 }}>
+                {t('dashboardKpiEmpty')}
+              </Text>
+            </View>
+          </View>
+        ) : null}
+        {!loading && !statsError && stats && stats.totalStores === 0 ? (
+          <View
+            style={[
+              styles.kpiEmptyBanner,
+              { backgroundColor: colors.backgroundAlt, borderColor: colors.cardBorder },
+            ]}
+          >
+            <Store size={18} color={colors.textMuted} />
+            <Text style={{ color: colors.textMuted, fontSize: 11, flex: 1 }}>
+              {t('dashboardNoStores')}
+            </Text>
+          </View>
+        ) : null}
+        {!loading && !statsError && stats && stats.criticalAlerts > 0 ? (
+          <View
+            style={[
+              styles.kpiAlertBanner,
+              { backgroundColor: palette.red100, borderColor: palette.red500 },
+            ]}
+          >
+            <AlertTriangle size={16} color={palette.red500} />
+            <Text style={{ color: palette.red500, fontSize: 11, flex: 1 }}>
+              {t('dashboardCriticalStockBanner', { count: stats.criticalAlerts })}
+            </Text>
+          </View>
+        ) : null}
 
         {/* Hızlı erişim — yalnızca kompakt chip; ana menünün ikinci kopyası değil */}
         <View style={styles.sectionHead}>
@@ -366,6 +462,24 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: 10,
     padding: 10,
+  },
+  kpiEmptyBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    borderWidth: 1,
+    borderRadius: 10,
+    padding: 12,
+    marginTop: 2,
+  },
+  kpiAlertBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderWidth: 1,
+    borderRadius: 10,
+    padding: 10,
+    marginTop: 2,
   },
   sectionHead: {
     flexDirection: 'row',

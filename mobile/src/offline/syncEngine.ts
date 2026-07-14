@@ -1,4 +1,5 @@
 import { createCustomer, updateCustomer } from '../api/customersApi';
+import { savePosSale } from '../api/posApi';
 import { useConnectivityStore } from '../store/connectivityStore';
 import {
   loadMutationQueue,
@@ -27,6 +28,17 @@ async function applyOne(m: PendingMutation): Promise<void> {
     await updateCustomer(m.payload.customerId, m.payload.input, {
       forceLive: true,
       skipQueue: true,
+    });
+    return;
+  }
+  if (m.type === 'pos.sale') {
+    await savePosSale(m.payload.lines, m.payload.paymentMethod, {
+      forceLive: true,
+      skipQueue: true,
+      id: m.payload.localId,
+      ficheNo: m.payload.ficheNo,
+      customerId: m.payload.customerId,
+      customerName: m.payload.customerName,
     });
   }
 }

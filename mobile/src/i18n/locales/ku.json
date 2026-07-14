@@ -95,5 +95,20 @@
   "langEn": "English",
   "langAr": "العربية",
   "langKu": "کوردی",
-  "rtlRestartHint": "بۆ جێبەجێکردنی تەواوی ئاراستەی ڕووکار لەوانەیە پێویست بێت ئەپ دووبارە دەستپێبکەیتەوە."
+  "rtlRestartHint": "بۆ جێبەجێکردنی تەواوی ئاراستەی ڕووکار لەوانەیە پێویست بێت ئەپ دووبارە دەستپێبکەیتەوە.",
+  "kpiTodayRevenue": "داهاتی ئەمڕۆ",
+  "kpiTransactions": "مامەڵەکان",
+  "kpiAvgBasket": "تێکڕای سەبەتە",
+  "kpiActiveStores": "فرۆشگای چالاک",
+  "kpiCriticalStock": "کۆگای هەستیار",
+  "kpiToday": "ئەمڕۆ",
+  "kpiPerCustomer": "بۆ هەر کڕیار",
+  "kpiStoresOf": "/ {{total}} کۆی گشتی",
+  "kpiCriticalHint": "ژێر کەمترین کۆگا",
+  "dashboardKpiError": "نەتوانرا داتای KPI بار بکرێت",
+  "dashboardKpiEmptyTitle": "ئەمڕۆ فرۆشتن نییە",
+  "dashboardKpiEmpty": "هێشتا هیچ فرۆشتنێکی پەسەندکراو بۆ ئەمڕۆ تۆمار نەکراوە.",
+  "dashboardNoCriticalStock": "هیچ ئاگادارکردنەوەی کۆگای هەستیار نییە",
+  "dashboardNoStores": "هیچ تۆماری فرۆشگا بۆ ئەم کۆمپانیایە نەدۆزرایەوە.",
+  "dashboardCriticalStockBanner": "{{count}} بەرهەم لە ئاستی کۆگای هەستیار — ڕاپۆرتی کۆگا بپشکنە."
 }

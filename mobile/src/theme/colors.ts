@@ -32,7 +32,10 @@ export const palette = {
   purple500: '#a855f7',
   pink500: '#ec4899',
   red500: '#ef4444',
+  red600: '#dc2626',
   red100: '#fee2e2',
+  amber500: '#f59e0b',
+  amber600: '#d97706',
 } as const;
 
 export type ThemeColors = {

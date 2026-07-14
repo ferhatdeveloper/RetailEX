@@ -12,7 +12,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Pencil } from 'lucide-react-native';
 import { ScreenHeader, ErrorBanner, EmptyState } from '../components/ScreenChrome';
 import { HeaderIconButton } from '../components/GradientHeader';
-import { fetchInvoiceById, type InvoiceDetail } from '../api/invoicesApi';
+import { fetchInvoiceById, invoiceKindLabel, isPurchaseInvoice, type InvoiceDetail } from '../api/invoicesApi';
 import { formatMoney } from '../api/erpTables';
 import { useThemeStore } from '../store/themeStore';
 import { palette } from '../theme/colors';
@@ -44,10 +44,14 @@ export function InvoiceDetailScreen() {
     void load();
   }, [load]);
 
+  const isPurchase = doc ? isPurchaseInvoice(doc) : false;
+  const accent = isPurchase ? palette.orange500 : palette.blue600;
+  const partyLabel = isPurchase ? 'Tedarikçi' : 'Müşteri';
+
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
       <ScreenHeader
-        title="Fatura Detay"
+        title={isPurchase ? 'Alış Fatura Detay' : 'Satış Fatura Detay'}
         subtitle={doc?.fiche_no || invoiceId.slice(0, 8)}
         right={
           doc ? (
@@ -75,14 +79,25 @@ export function InvoiceDetailScreen() {
           ListHeaderComponent={
             <View style={{ gap: 10, marginBottom: 8 }}>
               <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
-                <Text style={[styles.fiche, { color: colors.text }]}>{doc.fiche_no || '—'}</Text>
+                <View style={styles.titleRow}>
+                  <Text style={[styles.fiche, { color: colors.text }]}>{doc.fiche_no || '—'}</Text>
+                  <View style={[styles.kindBadge, { backgroundColor: `${accent}22` }]}>
+                    <Text style={{ color: accent, fontSize: 10, fontWeight: '800' }}>
+                      {invoiceKindLabel(doc)}
+                    </Text>
+                  </View>
+                </View>
                 <Text style={{ color: colors.textMuted, marginTop: 4 }}>
-                  {doc.customer_name || 'Perakende'} · {doc.date?.slice(0, 10) || '—'}
+                  {doc.customer_name || (isPurchase ? 'Tedarikçi' : 'Perakende')} ·{' '}
+                  {doc.date?.slice(0, 10) || '—'}
+                </Text>
+                <Text style={{ color: colors.textSubtle, fontSize: 11, marginTop: 2 }}>
+                  {partyLabel}
                 </Text>
                 <Text style={{ color: colors.textSubtle, fontSize: 11, marginTop: 4 }}>
                   {[doc.fiche_type, doc.payment_method, doc.status].filter(Boolean).join(' · ')}
                 </Text>
-                <Text style={[styles.total, { color: palette.blue600 }]}>
+                <Text style={[styles.total, { color: accent }]}>
                   {formatMoney(doc.net_amount)} ₺
                 </Text>
                 <View style={styles.metaRow}>
@@ -124,7 +139,7 @@ export function InvoiceDetailScreen() {
                 </Text>
               </View>
               <View style={{ alignItems: 'flex-end' }}>
-                <Text style={{ color: palette.blue600, fontWeight: '800' }}>
+                <Text style={{ color: accent, fontWeight: '800' }}>
                   {formatMoney(item.net_amount)} ₺
                 </Text>
                 <Text style={{ color: colors.textSubtle, fontSize: 10 }}>
@@ -142,6 +157,8 @@ export function InvoiceDetailScreen() {
 const styles = StyleSheet.create({
   root: { flex: 1 },
   card: { borderWidth: 1, borderRadius: 12, padding: 14 },
+  titleRow: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
+  kindBadge: { borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 },
   fiche: { fontSize: 18, fontWeight: '800' },
   total: { fontSize: 22, fontWeight: '800', marginTop: 10 },
   metaRow: { flexDirection: 'row', gap: 12, marginTop: 8, flexWrap: 'wrap' },

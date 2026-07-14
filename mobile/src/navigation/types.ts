@@ -38,26 +38,61 @@ export type MainStackParamList = {
   Customers: undefined;
   CustomerDetail: { customerId: string };
   CustomerForm: { customerId?: string } | undefined;
-  Invoices: undefined;
+  Invoices:
+    | {
+        filter?: import('../api/invoiceFilters').InvoiceListFilter;
+        title?: string;
+        kind?: import('../api/invoicesApi').InvoiceKind;
+      }
+    | undefined;
   InvoiceDetail: { invoiceId: string };
-  InvoiceForm: { invoiceId?: string } | undefined;
+  InvoiceForm: { invoiceId?: string; kind?: 'sales' | 'purchase' } | undefined;
+  Campaigns: undefined;
+  CampaignDetail: { campaignId: string };
+  /** Ürün fiyat listeleri (price_list_1…6, perakende, alış) */
+  Pricing: undefined;
   ReportSales: undefined;
-  ReportStock: undefined;
+  ReportStock:
+    | { mode?: 'critical' | 'min-max' | 'material-value' | 'warehouse-status' | 'material-extract' }
+    | undefined;
   ReportMizan: undefined;
   ReportCariExtract: undefined;
-  Beauty: { initialTab?: 'appointments' | 'services' | 'specialists'; openCreate?: boolean } | undefined;
+  ReportProductSales: undefined;
+  ReportCash: undefined;
+  StockMovements: { filter?: 'all' | 'deficit' | 'surplus' } | undefined;
+  Beauty:
+    | { initialTab?: 'appointments' | 'services' | 'specialists' | 'sales'; openCreate?: boolean }
+    | undefined;
   Wms: undefined;
   WmsCount: { autoCreate?: boolean } | undefined;
   WmsCountSlip: { slipId: string };
+  WmsTransfer: undefined;
+  WmsTransferSlip: { transferId: string };
   Restaurant: { initialTab?: 'tables' | 'orders' } | undefined;
   /** Teslimat / kurye canlı konum */
   Delivery: undefined;
+  /** Finans tanımları: ödeme planı, masraf merkezi, arama planı, gider */
+  FinanceDefinitions: { screenId?: string } | undefined;
+  /** Kasa / banka hareketleri */
+  Finance:
+    | { initialTab?: 'cash' | 'bank'; screenId?: string; openCreate?: boolean }
+    | undefined;
+  /** Cari tahsilat / ödeme */
+  CashCollection: { openCreate?: boolean; customerId?: string } | undefined;
   /** Oturum içi firma / dönem / mağaza değişimi (login Organization ile aynı UI) */
   Organization: undefined;
   /** Sistem: kullanıcı / rol / log / kasa / şema */
   System:
     | { initialTab?: 'users' | 'roles' | 'logs' | 'devices' | 'backup'; screenId?: string }
     | undefined;
+  /** Bildirim merkezi — kritik stok + vadesi geçmiş hatırlatmalar */
+  Notifications: undefined;
+  /** İletişim: mesaj kuyruğu / WhatsApp özeti */
+  Communications:
+    | { screenId?: string; initialTab?: 'customers' | 'queue' | 'provider' }
+    | undefined;
+  /** Yazıcı / fiş ayarları (yerel persist + test stub) */
+  PrinterSettings: undefined;
   Module: { screenId: string; title?: string };
 };
 

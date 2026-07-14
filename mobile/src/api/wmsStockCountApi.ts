@@ -4,7 +4,7 @@
  */
 
 import { pgQuery } from './pgClient';
-import { firmNr, newUuid, productsTable } from './erpTables';
+import { firmNr, newUuid, periodNr, productsTable } from './erpTables';
 import { useAuthStore } from '../store/authStore';
 
 export type CountingSlip = {
@@ -319,4 +319,253 @@ export function slipStatusLabel(status: CountingSlip['status']): string {
     cancelled: 'İptal',
   };
   return map[status] ?? status;
+}
+
+export type VarianceSummary = {
+  total_items: number;
+  items_with_variance: number;
+  total_variance: number;
+  accuracy_rate: number;
+  shortage_qty: number;
+  surplus_qty: number;
+  shortage_sale_value: number;
+  shortage_purchase_value: number;
+  surplus_purchase_value: number;
+  net_profit_impact: number;
+};
+
+export type ApplyStockCountResult = {
+  processed: number;
+  surplus: number;
+  shortage: number;
+};
+
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function stockMovementsTable(): string {
+  return `rex_${firmNr()}_${periodNr()}_stock_movements`;
+}
+
+function stockMovementItemsTable(): string {
+  return `rex_${firmNr()}_${periodNr()}_stock_movement_items`;
+}
+
+function createdByUuid(raw: unknown): string | null {
+  const s = String(raw ?? '').trim();
+  return UUID_RE.test(s) ? s : null;
+}
+
+function lineCountedBase(line: CountingLine): number {
+  const q = Number(line.counted_qty);
+  const m = Number(line.unit_multiplier) > 0 ? Number(line.unit_multiplier) : 1;
+  const fromCounted = (Number.isFinite(q) ? q : 0) * m;
+  const rawBase = line.base_counted_qty;
+  if (rawBase != null && Number.isFinite(Number(rawBase))) {
+    const b = Number(rawBase);
+    if (Math.abs(b) < 1e-9 && Math.abs(fromCounted) > 1e-9) return fromCounted;
+    return b;
+  }
+  return fromCounted;
+}
+
+function lineIsCountable(line: CountingLine): boolean {
+  if (!line.product_id) return false;
+  if (line.counted_qty != null && Number.isFinite(Number(line.counted_qty))) return true;
+  if (line.base_counted_qty != null && Number.isFinite(Number(line.base_counted_qty))) {
+    return true;
+  }
+  return false;
+}
+
+export async function fetchVarianceSummary(slipId: string): Promise<VarianceSummary> {
+  const res = await pgQuery<{
+    total_items: number;
+    items_with_variance: number;
+    total_variance: number;
+    shortage_qty: number;
+    surplus_qty: number;
+    shortage_sale_value: number;
+    shortage_purchase_value: number;
+    surplus_purchase_value: number;
+  }>(
+    `SELECT
+       COUNT(*)::int AS total_items,
+       COUNT(CASE WHEN ABS(COALESCE(cl.variance, 0)) > 0 THEN 1 END)::int AS items_with_variance,
+       COALESCE(SUM(ABS(COALESCE(cl.variance, 0))), 0)::float8 AS total_variance,
+       COALESCE(SUM(CASE WHEN cl.variance < 0 THEN ABS(cl.variance) ELSE 0 END), 0)::float8 AS shortage_qty,
+       COALESCE(SUM(CASE WHEN cl.variance > 0 THEN cl.variance ELSE 0 END), 0)::float8 AS surplus_qty,
+       0::float8 AS shortage_sale_value,
+       0::float8 AS shortage_purchase_value,
+       0::float8 AS surplus_purchase_value
+     FROM wms.counting_lines cl
+     WHERE cl.slip_id = $1::uuid AND cl.counted_qty IS NOT NULL`,
+    [slipId],
+  );
+  const r = res.rows[0];
+  const totalItems = r?.total_items ?? 0;
+  const itemsWithVariance = r?.items_with_variance ?? 0;
+  const accuracyRate =
+    totalItems > 0 ? ((totalItems - itemsWithVariance) / totalItems) * 100 : 100;
+
+  return {
+    total_items: totalItems,
+    items_with_variance: itemsWithVariance,
+    total_variance: Number(r?.total_variance ?? 0),
+    accuracy_rate: Math.round(accuracyRate * 10) / 10,
+    shortage_qty: Number(r?.shortage_qty ?? 0),
+    surplus_qty: Number(r?.surplus_qty ?? 0),
+    shortage_sale_value: 0,
+    shortage_purchase_value: 0,
+    surplus_purchase_value: 0,
+    net_profit_impact: 0,
+  };
+}
+
+export async function completeCountingReconciliation(slipId: string): Promise<void> {
+  await pgQuery(
+    `UPDATE wms.counting_slips
+     SET status = 'completed', completed_at = NOW()
+     WHERE id = $1::uuid`,
+    [slipId],
+  );
+}
+
+export async function cancelCountingSlip(slipId: string): Promise<void> {
+  await pgQuery(`UPDATE wms.counting_slips SET status = 'cancelled' WHERE id = $1::uuid`, [slipId]);
+}
+
+/**
+ * Web wmsStockCount.applyStockCount ile aynı mantık:
+ * TRCODE 26 (fazla) / 50 (eksik) stok fişleri + ürün stok güncelleme + fiş tamamlandı.
+ */
+export async function applyStockCount(slipId: string): Promise<ApplyStockCountResult> {
+  const slipRes = await pgQuery<CountingSlip>(
+    `SELECT * FROM wms.counting_slips WHERE id = $1::uuid`,
+    [slipId],
+  );
+  const slip = slipRes.rows[0];
+  if (!slip) throw new Error('Sayım fişi bulunamadı');
+
+  const linesRes = await pgQuery<CountingLine>(
+    `SELECT * FROM wms.counting_lines
+     WHERE slip_id = $1::uuid
+       AND product_id IS NOT NULL
+       AND (counted_qty IS NOT NULL OR base_counted_qty IS NOT NULL)`,
+    [slipId],
+  );
+  const lines = linesRes.rows.filter(lineIsCountable);
+
+  if (!lines.length) {
+    await completeCountingReconciliation(slipId);
+    return { processed: 0, surplus: 0, shortage: 0 };
+  }
+
+  const fn = firmNr();
+  const pn = periodNr();
+  const movTable = stockMovementsTable();
+  const itemTable = stockMovementItemsTable();
+  const prodTable = productsTable();
+  const now = new Date().toISOString();
+  const warehouseId = slip.store_id || null;
+  const createdBy = createdByUuid(slip.created_by);
+
+  const surplusLines = lines.filter(
+    (l) => lineCountedBase(l) > (Number(l.expected_qty) || 0) + 1e-9,
+  );
+  const shortageLines = lines.filter(
+    (l) => lineCountedBase(l) < (Number(l.expected_qty) || 0) - 1e-9,
+  );
+
+  const insertMovement = async (
+    documentNo: string,
+    movementType: 'in' | 'out',
+    trcode: number,
+    description: string,
+    movementLines: CountingLine[],
+    qtyFn: (line: CountingLine) => number,
+  ) => {
+    const withQty = movementLines.filter((l) => qtyFn(l) > 1e-9);
+    if (!withQty.length) return;
+
+    const headerParams: unknown[] = [
+      fn,
+      pn,
+      documentNo,
+      movementType,
+      trcode,
+      warehouseId,
+      now,
+      1,
+      description,
+      'completed',
+      createdBy,
+    ];
+    const movRes = await pgQuery<{ id: string }>(
+      `INSERT INTO ${movTable}
+         (firm_nr, period_nr, document_no, movement_type, trcode, warehouse_id,
+          movement_date, exchange_rate, description, status, created_by)
+       VALUES ($1, $2, $3, $4, $5, $6::uuid, $7, $8, $9, $10, $11::uuid)
+       RETURNING id::text`,
+      headerParams,
+    );
+    const mvId = movRes.rows[0]?.id;
+    if (!mvId) throw new Error('Stok fişi oluşturulamadı');
+
+    for (const line of withQty) {
+      const qty = qtyFn(line);
+      await pgQuery(
+        `INSERT INTO ${itemTable}
+           (movement_id, product_id, quantity, unit_price, cost_price, exchange_rate, unit_name, convert_factor, notes)
+         VALUES ($1::uuid, $2::uuid, $3, 0, 0, 1, $4, $5, $6)`,
+        [
+          mvId,
+          line.product_id,
+          qty,
+          line.unit || 'Adet',
+          Number(line.unit_multiplier) > 0 ? Number(line.unit_multiplier) : 1,
+          `Sayım: ${line.product_name || ''}`,
+        ],
+      );
+    }
+  };
+
+  await insertMovement(
+    `SAY-FAZ-${slip.fiche_no}`,
+    'in',
+    26,
+    `Sayım Fazlası - ${slip.fiche_no}`,
+    surplusLines,
+    (line) => lineCountedBase(line) - (Number(line.expected_qty) || 0),
+  );
+
+  await insertMovement(
+    `SAY-EKS-${slip.fiche_no}`,
+    'out',
+    50,
+    `Sayım Eksiği - ${slip.fiche_no}`,
+    shortageLines,
+    (line) => (Number(line.expected_qty) || 0) - lineCountedBase(line),
+  );
+
+  const ids = lines.map((l) => String(l.product_id));
+  const stocks = lines.map((l) => lineCountedBase(l));
+  await pgQuery(
+    `UPDATE ${prodTable} AS p
+     SET stock = d.new_stock
+     FROM (
+       SELECT unnest($1::uuid[]) AS id,
+              unnest($2::numeric[]) AS new_stock
+     ) AS d
+     WHERE p.id = d.id`,
+    [ids, stocks],
+  );
+
+  await completeCountingReconciliation(slipId);
+
+  return {
+    processed: lines.length,
+    surplus: surplusLines.length,
+    shortage: shortageLines.length,
+  };
 }

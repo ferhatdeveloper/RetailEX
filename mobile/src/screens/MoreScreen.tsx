@@ -184,6 +184,12 @@ export function MoreScreen() {
 
         <Text style={[styles.sec, { color: colors.text, marginTop: 12 }]}>{t('settings')}</Text>
         <PrimaryButton
+          label="Yazıcı / Fiş Ayarları"
+          onPress={() => navigation.navigate('PrinterSettings')}
+          variant="ghost"
+          style={{ marginBottom: 8 }}
+        />
+        <PrimaryButton
           label={t('changeOrganization')}
           onPress={() => navigation.navigate('Organization')}
           variant="ghost"

@@ -14,7 +14,18 @@ import { useThemeStore } from '../store/themeStore';
 import { usePreferencesStore } from '../store/preferencesStore';
 import { palette } from '../theme/colors';
 import type { MainStackParamList } from '../navigation/types';
-import { beautyRouteParams, navigateToModule, restaurantRouteParams, systemRouteParams } from '../navigation/navigateToModule';
+import { resolveInvoicesRouteParams } from '../api/invoiceFilters';
+import {
+  beautyRouteParams,
+  communicationsRouteParams,
+  financeRouteParams,
+  financeDefinitionsRouteParams,
+  navigateToModule,
+  reportStockRouteParams,
+  restaurantRouteParams,
+  stockMovementsRouteParams,
+  systemRouteParams,
+} from '../navigation/navigateToModule';
 
 type StackNav = NativeStackNavigationProp<MainStackParamList>;
 
@@ -47,8 +58,19 @@ export function ModuleScreen() {
       case 'Customers':
         navigation.replace('Customers');
         break;
-      case 'Invoices':
-        navigation.replace('Invoices');
+      case 'Invoices': {
+        const inv = resolveInvoicesRouteParams(screenId);
+        navigation.replace('Invoices', {
+          ...inv,
+          kind: inv.filter?.preset === 'purchase' ? 'purchase' : inv.filter?.preset === 'sales' ? 'sales' : undefined,
+        });
+        break;
+      }
+      case 'Campaigns':
+        navigation.replace('Campaigns');
+        break;
+      case 'Pricing':
+        navigation.replace('Pricing');
         break;
       case 'POS':
         navigation.replace('Tabs', { screen: 'POS' });
@@ -60,7 +82,7 @@ export function ModuleScreen() {
         navigation.replace('ReportSales');
         break;
       case 'ReportStock':
-        navigation.replace('ReportStock');
+        navigation.replace('ReportStock', reportStockRouteParams(screenId));
         break;
       case 'ReportMizan':
         navigation.replace('ReportMizan');
@@ -68,11 +90,20 @@ export function ModuleScreen() {
       case 'ReportCariExtract':
         navigation.replace('ReportCariExtract');
         break;
+      case 'ReportProductSales':
+        navigation.replace('ReportProductSales');
+        break;
+      case 'ReportCash':
+        navigation.replace('ReportCash');
+        break;
       case 'Beauty':
         navigation.replace('Beauty', beautyRouteParams(screenId));
         break;
       case 'Wms':
         navigation.replace('Wms');
+        break;
+      case 'StockMovements':
+        navigation.replace('StockMovements', stockMovementsRouteParams(screenId));
         break;
       case 'WmsCount':
         navigation.replace(
@@ -86,11 +117,32 @@ export function ModuleScreen() {
       case 'Delivery':
         navigation.replace('Delivery');
         break;
+      case 'Finance':
+        navigation.replace('Finance', financeRouteParams(screenId));
+        break;
+      case 'FinanceDefinitions':
+        navigation.replace('FinanceDefinitions', financeDefinitionsRouteParams(screenId));
+        break;
+      case 'CashCollection':
+        navigation.replace('CashCollection');
+        break;
+      case 'WmsTransfer':
+        navigation.replace('WmsTransfer');
+        break;
       case 'Organization':
         navigation.replace('Organization');
         break;
       case 'System':
         navigation.replace('System', systemRouteParams(screenId));
+        break;
+      case 'Communications':
+        navigation.replace('Communications', communicationsRouteParams(screenId));
+        break;
+      case 'Notifications':
+        navigation.replace('Notifications');
+        break;
+      case 'PrinterSettings':
+        navigation.replace('PrinterSettings');
         break;
       default:
         break;
@@ -105,15 +157,28 @@ export function ModuleScreen() {
     'material-definitions': 'Malzeme kartları — Malzemeler listesi + detay canlı.',
     'finance-cards': 'Cari hesaplar listesi + detay + son faturalar canlı.',
     salesinvoice: 'Satış faturaları listesi + detay (kalemler) canlı.',
-    'material-reports': 'Stok raporları: Kritik stok / envanter canlı.',
+    'material-reports': 'Stok raporları: kritik stok, min/max, değer, ambar durum, ekstre canlı.',
+    stockmovements: 'Malzeme yönetim fişleri — ambar fişleri + fatura hareketleri canlı liste.',
     customreports: 'Raporlar sekmesi: satış özeti + kritik stok.',
-    pricing: 'Fiyat & kampanya — web Pricing; mobil iskelet. POS’tan satış yapabilirsiniz.',
+    pricing: 'Fiyat listeleri + kampanyalar — `Pricing` (ürün fiyatları) ve `Campaigns` (liste+detay).',
     logistics: 'Teslimat / kurye — canlı konum + durum güncelleme (DeliveryScreen).',
     mizan: 'Cari bakiye mizanı canlı (erpReports.getCariBalances).',
     'customer-extract': 'Cari ekstre canlı (hareket + satış fallback).',
-    'customer-call-plan': 'Müşteri arama planı — web plan ekranı; cariler canlı.',
-    kasalar: 'Kasa işlemleri — fiş listesi Faturalar’da; kasa formları Faz 2.',
+    'customer-call-plan': 'Müşteri arama planı — haftalık arşiv + cari plan canlı (FinanceDefinitions).',
+    'payment-plans': 'Ödeme planları listesi canlı (logic.pay_plans / FinanceDefinitions).',
+    'cost-centers': 'Masraf merkezleri canlı (FinanceDefinitions).',
+    revenueexpense: 'Gider kayıtları okuma canlı (FinanceDefinitions).',
+    salesorder: 'Satış siparişi — trcode 20 filtreli fatura listesi canlı.',
+    purchase: 'Satınalma siparişi — trcode 21 filtreli liste canlı.',
+    Teklifler: 'Teklif fişleri — trcode 30/31 filtreli liste canlı.',
+    'waybill-sales': 'Satış irsaliyesi — trcode 10 filtreli liste canlı.',
+    'stok-devir': 'Stok devir fişleri — StockMovements canlı liste.',
+    cashbank: 'Kasa kartları + hareket listesi + basit giriş/çıkış canlı (FinanceScreen).',
+    kasalar: 'Kasa işlemleri — hareket listesi + basit giriş/çıkış canlı (FinanceScreen).',
+    'cash-slips': 'Kasa fişleri — hareket listesi + basit giriş canlı (FinanceScreen).',
+    'financereports-cash': 'Kasa hareket raporu canlı (ReportCash).',
     whatsapp: 'WhatsApp entegrasyonu web’de; bildirim ayarları masaüstünden.',
+    notifications: 'Kritik stok + vadesi geçmiş açık cari hatırlatmaları canlı.',
     usermanagement: 'Kullanıcı listesi canlı (public.users). Rol / log / kasa sekmeleri Sistem ekranında.',
     roleauth: 'Roller listesi canlı (public.roles). Yetki düzenleme web’de.',
     logaudit: 'Audit log listesi canlı (public.audit_logs).',

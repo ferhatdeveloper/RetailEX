@@ -41,7 +41,13 @@ const styles = StyleSheet.create({
   sec: { fontSize: 12, fontWeight: '700', marginTop: 8, marginBottom: 2, letterSpacing: 0.3 },
 });
 
-type StackReportRoute = 'ReportSales' | 'ReportStock' | 'ReportMizan' | 'ReportCariExtract';
+type StackReportRoute =
+  | 'ReportSales'
+  | 'ReportStock'
+  | 'ReportMizan'
+  | 'ReportCariExtract'
+  | 'ReportProductSales'
+  | 'ReportCash';
 
 type ReportEntry =
   | {
@@ -95,6 +101,22 @@ const LIVE_REPORTS: ReportEntry[] = [
     Icon: FileText,
   },
   {
+    id: 'product-sales',
+    title: 'Ürün Satış Raporu',
+    desc: 'Son 30 gün ürün bazlı miktar ve tutar',
+    kind: 'stack',
+    route: 'ReportProductSales',
+    Icon: Package,
+  },
+  {
+    id: 'cash',
+    title: 'Kasa Raporu',
+    desc: 'Son 30 gün kasa giriş / çıkış hareketleri',
+    kind: 'stack',
+    route: 'ReportCash',
+    Icon: BarChart3,
+  },
+  {
     id: 'mat-reports',
     title: 'Malzeme / Envanter',
     desc: 'Stok durumu (kritik stok canlı)',
@@ -116,7 +138,7 @@ const MENU_REPORTS: ReportEntry[] = [
   {
     id: 'ai',
     title: 'AI Ürün Analitiği',
-    desc: 'Menü: product-analytics → satış özeti',
+    desc: 'Menü: product-analytics → ürün satış raporu',
     kind: 'module',
     screen: 'product-analytics',
     Icon: Layers,
@@ -124,7 +146,7 @@ const MENU_REPORTS: ReportEntry[] = [
   {
     id: 'profit',
     title: 'Karlılık Analizi',
-    desc: 'Menü: profit-dashboard',
+    desc: 'Menü: profit-dashboard → ürün satış raporu',
     kind: 'module',
     screen: 'profit-dashboard',
     Icon: TrendingUp,

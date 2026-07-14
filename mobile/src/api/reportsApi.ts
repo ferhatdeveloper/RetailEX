@@ -1,11 +1,16 @@
 import { pgQuery } from './pgClient';
 import {
   accountMovementsTable,
+  cashLinesTable,
+  cashRegistersTable,
   customersTable,
   firmNr,
   periodNr,
   productsTable,
+  saleItemsTable,
   salesTable,
+  stockMovementItemsTable,
+  stockMovementsTable,
   suppliersTable,
 } from './erpTables';
 
@@ -18,6 +23,17 @@ export type SalesDayRow = {
   count: number;
 };
 
+/** Alış / irsaliye vb. hariç — ciro yalnız satış yönlü fişler (web SalesAPI ile uyumlu) */
+function sqlSalesRevenueFt(alias = ''): string {
+  const p = alias ? `${alias}.` : '';
+  return `
+  LOWER(TRIM(COALESCE(${p}fiche_type, ''))) IN (
+    'sales_invoice', 'sales', 'retail', 'service', 'hizmet', 'return_invoice'
+  )
+  OR COALESCE(${p}trcode, 0) IN (0, 2, 3, 7, 8, 9, 14)
+`;
+}
+
 export async function fetchSalesByDay(days = 14): Promise<SalesDayRow[]> {
   const table = salesTable(firmNr(), periodNr());
   const res = await pgQuery<{ day: string; revenue: string | number; count: string | number }>(
@@ -26,6 +42,7 @@ export async function fetchSalesByDay(days = 14): Promise<SalesDayRow[]> {
             COUNT(*)::int AS count
      FROM ${table}
      WHERE COALESCE(is_cancelled, false) = false
+       AND (${sqlSalesRevenueFt()})
        AND COALESCE(date::date, created_at::date) >= (CURRENT_DATE - ($1::int || ' days')::interval)
      GROUP BY 1
      ORDER BY 1 DESC`,
@@ -74,13 +91,18 @@ export type TopProductRow = {
 export async function fetchTopProducts(limit = 20): Promise<TopProductRow[]> {
   const fn = firmNr();
   const pn = periodNr();
-  // sale_items tablosu — yoksa boş
+  const items = saleItemsTable(fn, pn);
+  const sales = salesTable(fn, pn);
   try {
     const res = await pgQuery<TopProductRow>(
-      `SELECT COALESCE(item_name, item_code, 'Ürün') AS product_name,
-              COALESCE(SUM(quantity), 0)::float8 AS qty,
-              COALESCE(SUM(COALESCE(net_amount, total_amount, 0)), 0)::float8 AS amount
-       FROM rex_${fn}_${pn}_sale_items
+      `SELECT COALESCE(si.item_name, si.item_code, 'Ürün') AS product_name,
+              COALESCE(SUM(si.quantity), 0)::float8 AS qty,
+              COALESCE(SUM(COALESCE(si.net_amount, si.total_amount, 0)), 0)::float8 AS amount
+       FROM ${items} si
+       INNER JOIN ${sales} s ON s.id = si.invoice_id
+       WHERE COALESCE(s.is_cancelled, false) = false
+         AND ${SQL_COUNTABLE_SALE}
+         AND (${sqlSalesRevenueFt('s')})
        GROUP BY 1
        ORDER BY amount DESC
        LIMIT $1`,
@@ -300,9 +322,20 @@ export async function fetchCariExtract(opts: {
   }
 
   if (!raw.length) {
+    // Web erpReports + mobil legacy ('sales'/'retail') + trcode 7/8 POS
     const ficheFilter = isCustomer
-      ? `s.fiche_type IN ('sales_invoice', 'service', 'hizmet', 'return_invoice', 'opening_balance')`
-      : `(s.fiche_type = 'purchase_invoice' OR s.trcode IN (1, 4, 5, 6, 13, 26, 41, 42) OR s.fiche_type IN ('return_invoice', 'opening_balance'))`;
+      ? `(
+           LOWER(TRIM(COALESCE(s.fiche_type, ''))) IN (
+             'sales_invoice', 'sales', 'retail', 'service', 'hizmet', 'return_invoice', 'opening_balance'
+           )
+           OR COALESCE(s.trcode, 0) IN (0, 2, 3, 7, 8, 9, 14)
+         )`
+      : `(
+           LOWER(TRIM(COALESCE(s.fiche_type, ''))) IN (
+             'purchase_invoice', 'return_invoice', 'opening_balance'
+           )
+           OR s.trcode IN (1, 4, 5, 6, 13, 26, 41, 42)
+         )`;
     try {
       const res = await pgQuery<{
         id: string;
@@ -320,7 +353,8 @@ export async function fetchCariExtract(opts: {
            COALESCE(s.fiche_type, '') AS definition,
            ABS(COALESCE(s.net_amount, s.total_net, 0))::float8 AS amount,
            CASE
-             WHEN LOWER(TRIM(COALESCE(s.fiche_type, ''))) IN ('return_invoice', 'purchase_invoice') THEN -1
+             WHEN LOWER(TRIM(COALESCE(s.fiche_type, ''))) IN ('return_invoice', 'purchase_invoice')
+               OR COALESCE(s.trcode, 0) IN (1, 3, 6) THEN -1
              ELSE 1
            END AS sign,
            'sale'::text AS source
@@ -365,4 +399,466 @@ export function defaultExtractRange(days = 90): { start: string; end: string } {
   const start = new Date();
   start.setDate(start.getDate() - days);
   return { start: toYmd(start), end: toYmd(end) };
+}
+
+/** Web `MinMaxStockReport` — min/max stok kontrol listesi */
+export type MinMaxStockRow = {
+  id: string;
+  code: string | null;
+  name: string;
+  stock: number;
+  min_stock: number | null;
+  max_stock: number | null;
+  unit: string | null;
+  status: 'normal' | 'critical' | 'depleted' | 'over';
+};
+
+export async function fetchMinMaxStock(opts?: {
+  filter?: 'all' | 'low' | 'out';
+  limit?: number;
+}): Promise<MinMaxStockRow[]> {
+  const table = productsTable();
+  const limit = opts?.limit ?? 500;
+  const filter = opts?.filter ?? 'all';
+  let where = `COALESCE(is_active, true) = true`;
+  if (filter === 'low') {
+    where += ` AND COALESCE(stock, 0) <= COALESCE(min_stock, 0)`;
+  } else if (filter === 'out') {
+    where += ` AND COALESCE(stock, 0) = 0`;
+  }
+
+  const res = await pgQuery<{
+    id: string;
+    code: string | null;
+    name: string;
+    stock: number;
+    min_stock: number | null;
+    max_stock: number | null;
+    unit: string | null;
+  }>(
+    `SELECT id::text AS id, code, name,
+            COALESCE(stock, 0)::float8 AS stock,
+            min_stock, max_stock, unit
+     FROM ${table}
+     WHERE ${where}
+     ORDER BY COALESCE(stock, 0) ASC, name ASC
+     LIMIT $1`,
+    [limit],
+  );
+
+  return res.rows.map((r) => {
+    const stock = Number(r.stock ?? 0);
+    const min = r.min_stock != null ? Number(r.min_stock) : null;
+    const max = r.max_stock != null ? Number(r.max_stock) : null;
+    let status: MinMaxStockRow['status'] = 'normal';
+    if (stock === 0) status = 'depleted';
+    else if (min != null && stock <= min) status = 'critical';
+    else if (max != null && stock >= max) status = 'over';
+    return {
+      id: String(r.id),
+      code: r.code,
+      name: r.name,
+      stock,
+      min_stock: min,
+      max_stock: max,
+      unit: r.unit,
+      status,
+    };
+  });
+}
+
+/** Web `MaterialValueReport` — stok × ortalama maliyet */
+export type MaterialValueRow = {
+  id: string;
+  code: string | null;
+  name: string;
+  unit: string | null;
+  quantity: number;
+  unit_cost: number;
+  total_value: number;
+};
+
+export async function fetchMaterialValue(limit = 500): Promise<MaterialValueRow[]> {
+  const table = productsTable();
+  const res = await pgQuery<{
+    id: string;
+    code: string | null;
+    name: string;
+    unit: string | null;
+    quantity: number;
+    unit_cost: number;
+    total_value: number;
+  }>(
+    `SELECT id::text AS id, code, name, unit,
+            COALESCE(stock, 0)::float8 AS quantity,
+            COALESCE(cost, price, 0)::float8 AS unit_cost,
+            (COALESCE(stock, 0) * COALESCE(cost, price, 0))::float8 AS total_value
+     FROM ${table}
+     WHERE COALESCE(is_active, true) = true
+       AND COALESCE(stock, 0) > 0
+     ORDER BY total_value DESC, name ASC
+     LIMIT $1`,
+    [limit],
+  );
+  return res.rows.map((r) => ({
+    id: String(r.id),
+    code: r.code,
+    name: r.name,
+    unit: r.unit,
+    quantity: Number(r.quantity ?? 0),
+    unit_cost: Number(r.unit_cost ?? 0),
+    total_value: Number(r.total_value ?? 0),
+  }));
+}
+
+/** Web `WarehouseStatusReport` — çoklu depo yok; toplam stok + ilk aktif depo */
+export type WarehouseStatusRow = {
+  id: string;
+  code: string | null;
+  name: string;
+  total: number;
+  warehouse_name: string | null;
+  warehouse_qty: number;
+};
+
+export async function fetchWarehouseStatus(limit = 500): Promise<{
+  warehouseName: string | null;
+  rows: WarehouseStatusRow[];
+}> {
+  const table = productsTable();
+  let warehouseName: string | null = null;
+  try {
+    const wh = await pgQuery<{ name: string }>(
+      `SELECT name FROM public.stores
+       WHERE COALESCE(is_active, true) = true
+       ORDER BY created_at ASC NULLS LAST
+       LIMIT 1`,
+    );
+    warehouseName = wh.rows[0]?.name ?? null;
+  } catch {
+    warehouseName = null;
+  }
+
+  const res = await pgQuery<{
+    id: string;
+    code: string | null;
+    name: string;
+    total: number;
+  }>(
+    `SELECT id::text AS id, code, name,
+            COALESCE(stock, 0)::float8 AS total
+     FROM ${table}
+     WHERE COALESCE(is_active, true) = true
+     ORDER BY total DESC, name ASC
+     LIMIT $1`,
+    [limit],
+  );
+
+  return {
+    warehouseName,
+    rows: res.rows.map((r) => ({
+      id: String(r.id),
+      code: r.code,
+      name: r.name,
+      total: Number(r.total ?? 0),
+      warehouse_name: warehouseName,
+      warehouse_qty: Number(r.total ?? 0),
+    })),
+  };
+}
+
+/** Web `MaterialExtractReport` — ürün hareket ekstresi */
+export type MaterialExtractRow = {
+  id: string;
+  date: string;
+  document_no: string;
+  movement_type: string;
+  description: string;
+  quantity: number;
+  unit_price: number;
+  amount: number;
+  running_balance: number;
+  warehouse_name: string | null;
+  source: 'slip' | 'invoice';
+};
+
+export async function fetchMaterialExtract(opts: {
+  productId: string;
+  productCode?: string;
+  startDate: string;
+  endDate: string;
+  limit?: number;
+}): Promise<MaterialExtractRow[]> {
+  const productId = String(opts.productId || '').trim();
+  const start = String(opts.startDate || '').slice(0, 10);
+  const end = String(opts.endDate || '').slice(0, 10);
+  if (!productId || !start || !end) return [];
+
+  const fn = firmNr();
+  const pn = periodNr();
+  const mov = stockMovementsTable(fn, pn);
+  const items = stockMovementItemsTable(fn, pn);
+  const products = productsTable(fn);
+  const sales = salesTable(fn, pn);
+  const saleItems = saleItemsTable(fn, pn);
+  const hintCode = String(opts.productCode || '').trim();
+  const limit = opts.limit ?? 1000;
+
+  type Raw = {
+    id: string;
+    date: string;
+    document_no: string;
+    movement_type: string;
+    description: string;
+    quantity: number;
+    unit_price: number;
+    warehouse_name: string | null;
+    source: 'slip' | 'invoice';
+  };
+
+  const raw: Raw[] = [];
+
+  try {
+    const res = await pgQuery<Raw>(
+      `SELECT i.id::text AS id,
+              COALESCE(m.movement_date::date, m.created_at::date)::text AS date,
+              COALESCE(m.document_no, '') AS document_no,
+              COALESCE(m.movement_type, '') AS movement_type,
+              COALESCE(NULLIF(TRIM(m.description), ''), '') AS description,
+              COALESCE(i.quantity, 0)::float8 AS quantity,
+              COALESCE(i.unit_price, i.cost_price, 0)::float8 AS unit_price,
+              s.name AS warehouse_name,
+              'slip'::text AS source
+       FROM ${items} i
+       JOIN ${mov} m ON i.movement_id = m.id
+       LEFT JOIN public.stores s ON m.warehouse_id = s.id
+       WHERE i.product_id::text = $1
+          OR i.product_id IN (
+               SELECT id FROM ${products}
+               WHERE id::text = $1 OR code = $1
+                  OR ($2::text <> '' AND code = $2)
+             )
+         AND COALESCE(m.movement_date::date, m.created_at::date) >= $3::date
+         AND COALESCE(m.movement_date::date, m.created_at::date) <= $4::date
+       ORDER BY m.movement_date ASC, m.created_at ASC NULLS LAST
+       LIMIT $5`,
+      [productId, hintCode, start, end, limit],
+    );
+    raw.push(...res.rows);
+  } catch {
+    // slip yok
+  }
+
+  try {
+    const res = await pgQuery<Raw>(
+      `SELECT si.id::text AS id,
+              COALESCE(sl.date::date, sl.created_at::date)::text AS date,
+              COALESCE(sl.fiche_no, '') AS document_no,
+              CASE
+                WHEN LOWER(TRIM(COALESCE(sl.fiche_type, ''))) = 'purchase_invoice'
+                  OR COALESCE(sl.trcode, 0) IN (1, 4, 5) THEN 'in'
+                WHEN LOWER(TRIM(COALESCE(sl.fiche_type, ''))) = 'return_invoice'
+                  AND COALESCE(sl.trcode, 0) = 3 THEN 'in'
+                WHEN LOWER(TRIM(COALESCE(sl.fiche_type, ''))) = 'return_invoice' THEN 'out'
+                WHEN LOWER(TRIM(COALESCE(sl.fiche_type, ''))) IN (
+                  'sales_invoice', 'sales', 'retail', 'service', 'hizmet'
+                )
+                  OR COALESCE(sl.trcode, 0) IN (0, 7, 8, 9) THEN 'out'
+                ELSE 'out'
+              END AS movement_type,
+              COALESCE(sl.fiche_type, '') AS description,
+              COALESCE(si.quantity, 0)::float8 AS quantity,
+              COALESCE(
+                NULLIF(si.unit_price, 0),
+                CASE
+                  WHEN ABS(COALESCE(si.quantity, 0)) > 0.0000001
+                  THEN COALESCE(NULLIF(si.net_amount, 0), NULLIF(si.total_amount, 0), 0)
+                       / NULLIF(ABS(si.quantity), 0)
+                  ELSE 0
+                END
+              )::float8 AS unit_price,
+              st.name AS warehouse_name,
+              'invoice'::text AS source
+       FROM ${saleItems} si
+       JOIN ${sales} sl ON si.invoice_id = sl.id
+       LEFT JOIN public.stores st ON sl.store_id = st.id
+       WHERE COALESCE(sl.is_cancelled, false) = false
+         AND (
+           si.product_id::text = $1
+           OR si.item_code = $1
+           OR si.item_code IN (
+                SELECT code FROM ${products}
+                WHERE id::text = $1 OR code = $1
+                   OR ($2::text <> '' AND code = $2)
+              )
+         )
+         AND COALESCE(sl.date::date, sl.created_at::date) >= $3::date
+         AND COALESCE(sl.date::date, sl.created_at::date) <= $4::date
+       ORDER BY sl.date ASC
+       LIMIT $5`,
+      [productId, hintCode, start, end, limit],
+    );
+    raw.push(...res.rows);
+  } catch {
+    // fatura satırı yok
+  }
+
+  raw.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+  let balance = 0;
+  return raw.map((m) => {
+    const qty = Number(m.quantity) || 0;
+    const unitPrice = Number(m.unit_price) || 0;
+    if (m.movement_type === 'in') balance += qty;
+    else if (m.movement_type === 'out') balance -= qty;
+    return {
+      id: m.id,
+      date: m.date,
+      document_no: m.document_no,
+      movement_type: m.movement_type,
+      description: m.description,
+      quantity: qty,
+      unit_price: unitPrice,
+      amount: qty * unitPrice,
+      running_balance: balance,
+      warehouse_name: m.warehouse_name,
+      source: m.source,
+    };
+  });
+}
+
+/** Web `erpReports.getProductGrossProfit` — basitleştirilmiş ürün satış dökümü */
+export type ProductSalesRow = {
+  productId: string;
+  productCode: string;
+  productName: string;
+  qty: number;
+  amount: number;
+};
+
+export async function fetchProductSales(opts?: {
+  startDate?: string;
+  endDate?: string;
+  limit?: number;
+}): Promise<ProductSalesRow[]> {
+  const range = defaultExtractRange(30);
+  const start = String(opts?.startDate || range.start).slice(0, 10);
+  const end = String(opts?.endDate || range.end).slice(0, 10);
+  const limit = opts?.limit ?? 200;
+  const items = saleItemsTable();
+  const sales = salesTable();
+  const products = productsTable();
+
+  try {
+    const res = await pgQuery<{
+      product_id: string;
+      product_code: string;
+      product_name: string;
+      qty: string | number;
+      amount: string | number;
+    }>(
+      `SELECT
+         COALESCE(si.product_id::text, si.item_code, '') AS product_id,
+         COALESCE(NULLIF(TRIM(si.item_code), ''), p.code, '') AS product_code,
+         COALESCE(NULLIF(TRIM(si.item_name), ''), p.name, 'Ürün') AS product_name,
+         COALESCE(SUM(COALESCE(si.quantity, 0)), 0)::float8 AS qty,
+         COALESCE(SUM(COALESCE(si.net_amount, si.total_amount, 0)), 0)::float8 AS amount
+       FROM ${items} si
+       INNER JOIN ${sales} s ON s.id = si.invoice_id
+       LEFT JOIN ${products} p ON p.id = si.product_id
+       WHERE COALESCE(s.is_cancelled, false) = false
+         AND ${SQL_COUNTABLE_SALE}
+         AND COALESCE(s.date::date, s.created_at::date) >= $1::date
+         AND COALESCE(s.date::date, s.created_at::date) <= $2::date
+         AND COALESCE(si.item_type, 'Malzeme') NOT IN ('Promosyon', 'İndirim')
+       GROUP BY 1, 2, 3
+       HAVING COALESCE(SUM(COALESCE(si.quantity, 0)), 0) <> 0
+          OR COALESCE(SUM(COALESCE(si.net_amount, si.total_amount, 0)), 0) <> 0
+       ORDER BY amount DESC
+       LIMIT $3`,
+      [start, end, limit],
+    );
+    return res.rows.map((r) => ({
+      productId: String(r.product_id ?? ''),
+      productCode: String(r.product_code ?? ''),
+      productName: String(r.product_name ?? ''),
+      qty: Number(r.qty ?? 0),
+      amount: Number(r.amount ?? 0),
+    }));
+  } catch {
+    return [];
+  }
+}
+
+/** Web `erpReports.getCashBankMovements` — kasa hareketleri (cash) */
+export type CashMovementRow = {
+  id: string;
+  registerName: string;
+  ficheNo: string;
+  date: string;
+  transactionType: string;
+  definition: string;
+  amount: number;
+  sign: number;
+  netAmount: number;
+};
+
+export async function fetchCashMovements(opts?: {
+  startDate?: string;
+  endDate?: string;
+  limit?: number;
+}): Promise<CashMovementRow[]> {
+  const range = defaultExtractRange(30);
+  const start = String(opts?.startDate || range.start).slice(0, 10);
+  const end = String(opts?.endDate || range.end).slice(0, 10);
+  const limit = opts?.limit ?? 500;
+  const lines = cashLinesTable();
+  const registers = cashRegistersTable();
+
+  try {
+    const res = await pgQuery<{
+      id: string;
+      register_name: string;
+      fiche_no: string;
+      date: string;
+      transaction_type: string;
+      definition: string;
+      amount: string | number;
+      sign: string | number;
+    }>(
+      `SELECT
+         cl.id::text AS id,
+         COALESCE(cr.name, cr.code, '') AS register_name,
+         COALESCE(cl.fiche_no, '') AS fiche_no,
+         COALESCE(cl.date::date, cl.created_at::date)::text AS date,
+         COALESCE(cl.transaction_type, '') AS transaction_type,
+         COALESCE(cl.definition, '') AS definition,
+         COALESCE(cl.amount, 0)::float8 AS amount,
+         COALESCE(cl.sign, 1)::int AS sign
+       FROM ${lines} cl
+       LEFT JOIN ${registers} cr ON cr.id = cl.register_id
+       WHERE COALESCE(cl.date::date, cl.created_at::date) >= $1::date
+         AND COALESCE(cl.date::date, cl.created_at::date) <= $2::date
+       ORDER BY COALESCE(cl.date, cl.created_at) DESC
+       LIMIT $3`,
+      [start, end, limit],
+    );
+    return res.rows.map((r) => {
+      const amount = Number(r.amount ?? 0);
+      const sign = Number(r.sign ?? 1) || 1;
+      return {
+        id: String(r.id ?? ''),
+        registerName: String(r.register_name ?? ''),
+        ficheNo: String(r.fiche_no ?? ''),
+        date: String(r.date ?? '').slice(0, 10),
+        transactionType: String(r.transaction_type ?? ''),
+        definition: String(r.definition ?? ''),
+        amount,
+        sign,
+        netAmount: amount * sign,
+      };
+    });
+  } catch {
+    return [];
+  }
 }

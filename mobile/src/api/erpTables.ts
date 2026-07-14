@@ -52,8 +52,36 @@ export function saleItemsTable(fn = firmNr(), pn = periodNr()): string {
   return `rex_${fn}_${pn}_sale_items`;
 }
 
+export function stockMovementsTable(fn = firmNr(), pn = periodNr()): string {
+  return `rex_${fn}_${pn}_stock_movements`;
+}
+
+export function stockMovementItemsTable(fn = firmNr(), pn = periodNr()): string {
+  return `rex_${fn}_${pn}_stock_movement_items`;
+}
+
 export function cashLinesTable(fn = firmNr(), pn = periodNr()): string {
   return `rex_${fn}_${pn}_cash_lines`;
+}
+
+export function cashRegistersTable(fn = firmNr()): string {
+  return `rex_${fn}_cash_registers`;
+}
+
+export function bankLinesTable(fn = firmNr(), pn = periodNr()): string {
+  return `rex_${fn}_${pn}_bank_lines`;
+}
+
+export function bankRegistersTable(fn = firmNr()): string {
+  return `rex_${fn}_bank_registers`;
+}
+
+export function costCentersTable(fn = firmNr()): string {
+  return `rex_${fn}_cost_centers`;
+}
+
+export function expensesTable(fn = firmNr()): string {
+  return `rex_${fn}_expenses`;
 }
 
 /** rest / beauty şema tabloları — web postgres prefix deseni */
@@ -79,6 +107,26 @@ export function beautyServicesTable(fn = firmNr()): string {
 
 export function beautySpecialistsTable(fn = firmNr()): string {
   return `beauty.rex_${fn}_beauty_specialists`;
+}
+
+export function campaignsTable(fn = firmNr()): string {
+  return `rex_${fn}_campaigns`;
+}
+
+export function messagingSettingsTable(fn = firmNr()): string {
+  return `rex_${fn}_messaging_settings`;
+}
+
+export function notificationQueueTable(fn = firmNr(), pn = periodNr()): string {
+  return `rex_${fn}_${pn}_notification_queue`;
+}
+
+export function beautySalesTable(fn = firmNr(), pn = periodNr()): string {
+  return `beauty.rex_${fn}_${pn}_beauty_sales`;
+}
+
+export function beautySaleItemsTable(fn = firmNr(), pn = periodNr()): string {
+  return `beauty.rex_${fn}_${pn}_beauty_sale_items`;
 }
 
 /** Basit UUID — Expo'da crypto.randomUUID her zaman yok */

@@ -108,6 +108,23 @@ export async function getCachedCustomers(search = '', limit = 200): Promise<Cach
   return filtered.slice(0, limit);
 }
 
+/** Offline POS satışında cache stok düşümü */
+export async function adjustProductStockInCache(
+  productId: string,
+  delta: number,
+): Promise<void> {
+  const snap = await loadProductsSnapshot();
+  if (!snap) return;
+  const idx = snap.rows.findIndex((r) => String(r.id) === String(productId));
+  if (idx < 0) return;
+  const row = snap.rows[idx]!;
+  snap.rows[idx] = {
+    ...row,
+    stock: Math.max(0, (Number(row.stock) || 0) + delta),
+  };
+  await writeSnapshot(PRODUCTS_KEY, snap.rows);
+}
+
 export async function upsertCustomerInCache(row: CachedCustomer): Promise<void> {
   const snap = (await loadCustomersSnapshot()) ?? {
     firmNr: firmNr(),

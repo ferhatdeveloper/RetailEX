@@ -19,6 +19,8 @@ import { savePosSale } from '../api/posApi';
 import { formatMoney } from '../api/erpTables';
 import { useThemeStore } from '../store/themeStore';
 import { useOrgEpoch } from '../hooks/useOrgEpoch';
+import { usePrinterSettingsStore } from '../store/printerSettingsStore';
+import { printSaleReceiptStub } from '../services/printerService';
 import { palette } from '../theme/colors';
 import type { MainStackParamList } from '../navigation/types';
 
@@ -35,6 +37,7 @@ export function PosScreen() {
   const { colors } = useThemeStore();
   const navigation = useNavigation<NativeStackNavigationProp<MainStackParamList>>();
   const orgEpoch = useOrgEpoch();
+  const printerSettings = usePrinterSettingsStore((s) => s.settings);
   const [search, setSearch] = useState('');
   const [hits, setHits] = useState<ProductRow[]>([]);
   const [cart, setCart] = useState<CartLine[]>([]);
@@ -128,6 +131,13 @@ export function PosScreen() {
               try {
                 const res = await savePosSale(cart, paymentMethod);
                 setCart([]);
+                if (res.queued) {
+                  Alert.alert(
+                    'Fiş kuyruğa alındı',
+                    `${res.ficheNo}\nToplam: ${formatMoney(res.total)} ₺\n\nBağlantı gelince otomatik senkron edilir.`,
+                  );
+                  return;
+                }
                 Alert.alert(
                   'Fiş kaydedildi',
                   `${res.ficheNo}\nToplam: ${formatMoney(res.total)} ₺`,
@@ -140,6 +150,12 @@ export function PosScreen() {
                     { text: 'Tamam' },
                   ],
                 );
+                if (printerSettings.autoPrint) {
+                  const printRes = await printSaleReceiptStub(printerSettings, res.id);
+                  if (printRes.ok) {
+                    Alert.alert('Yazdırma (stub)', printRes.message);
+                  }
+                }
               } catch (e) {
                 Alert.alert('Kayıt hatası', e instanceof Error ? e.message : String(e));
               } finally {

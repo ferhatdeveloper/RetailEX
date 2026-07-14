@@ -17,8 +17,10 @@ import { ScreenHeader, EmptyState, ErrorBanner } from '../components/ScreenChrom
 import { PrimaryButton } from '../components/PrimaryButton';
 import { BarcodeScannerModal } from '../components/BarcodeScannerModal';
 import {
+  applyStockCount,
   deleteCountingLine,
   fetchSlipWithLines,
+  fetchVarianceSummary,
   getLineByBarcode,
   getProductStock,
   lookupProductByBarcode,
@@ -27,6 +29,7 @@ import {
   upsertCountingLine,
   type CountingLine,
   type CountingSlip,
+  type VarianceSummary,
 } from '../api/wmsStockCountApi';
 import { useThemeStore } from '../store/themeStore';
 import { palette } from '../theme/colors';
@@ -51,8 +54,12 @@ export function WmsCountSlipScreen() {
   const [countedQty, setCountedQty] = useState('1');
   const [pendingProductId, setPendingProductId] = useState<string | null>(null);
   const [scannerOpen, setScannerOpen] = useState(false);
+  const [summary, setSummary] = useState<VarianceSummary | null>(null);
+  const [applying, setApplying] = useState(false);
 
   const canEdit = slip ? EDITABLE.has(slip.status) : false;
+  const isReconciliation = slip?.status === 'reconciliation';
+  const isCompleted = slip?.status === 'completed';
 
   const load = useCallback(async () => {
     setError(null);
@@ -61,6 +68,12 @@ export function WmsCountSlipScreen() {
       if (!s) throw new Error('Sayım fişi bulunamadı');
       setSlip(s);
       setLines(l);
+      if (s.status === 'reconciliation' || s.status === 'completed') {
+        const sum = await fetchVarianceSummary(slipId);
+        setSummary(sum);
+      } else {
+        setSummary(null);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -199,6 +212,72 @@ export function WmsCountSlipScreen() {
     [canEdit, load],
   );
 
+  const finishCounting = useCallback(() => {
+    if (!slip || slip.status !== 'counting' && slip.status !== 'draft' && slip.status !== 'active') return;
+    if (!lines.length) {
+      Alert.alert('Satır yok', 'Mutabakata geçmeden önce en az bir sayım satırı ekleyin.');
+      return;
+    }
+    Alert.alert(
+      'Sayımı bitir',
+      `${lines.length} satır mutabakat aşamasına alınsın mı?`,
+      [
+        { text: 'İptal', style: 'cancel' },
+        {
+          text: 'Mutabakata geç',
+          onPress: () => {
+            void (async () => {
+              setSaving(true);
+              try {
+                await updateCountingSlipStatus(slipId, 'reconciliation');
+                await load();
+              } catch (e) {
+                Alert.alert('Hata', e instanceof Error ? e.message : String(e));
+              } finally {
+                setSaving(false);
+              }
+            })();
+          },
+        },
+      ],
+    );
+  }, [lines.length, load, slip, slipId]);
+
+  const handleApplyStock = useCallback(() => {
+    if (!isReconciliation) return;
+    Alert.alert(
+      'Stoka uygula',
+      'Sayım farkları stok fişlerine yazılacak ve ürün stokları güncellenecek. Devam edilsin mi?',
+      [
+        { text: 'İptal', style: 'cancel' },
+        {
+          text: 'Uygula',
+          style: 'destructive',
+          onPress: () => {
+            void (async () => {
+              setApplying(true);
+              setError(null);
+              try {
+                const result = await applyStockCount(slipId);
+                await load();
+                Alert.alert(
+                  'Tamamlandı',
+                  `${result.processed} ürün işlendi · fazla ${result.surplus} · eksik ${result.shortage}`,
+                );
+              } catch (e) {
+                const msg = e instanceof Error ? e.message : String(e);
+                setError(msg);
+                Alert.alert('Uygulama hatası', msg);
+              } finally {
+                setApplying(false);
+              }
+            })();
+          },
+        },
+      ],
+    );
+  }, [isReconciliation, load, slipId]);
+
   if (loading && !slip) {
     return (
       <View style={[styles.root, { backgroundColor: colors.background }]}>
@@ -293,6 +372,54 @@ export function WmsCountSlipScreen() {
         </View>
       )}
 
+      {(isReconciliation || isCompleted) && summary ? (
+        <View style={[styles.summary, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
+          <Text style={[styles.summaryTitle, { color: colors.text }]}>Mutabakat özeti</Text>
+          <View style={styles.summaryRow}>
+            <Text style={{ color: colors.textMuted, fontSize: 11 }}>Toplam kalem</Text>
+            <Text style={{ color: colors.text, fontWeight: '700' }}>{summary.total_items}</Text>
+          </View>
+          <View style={styles.summaryRow}>
+            <Text style={{ color: colors.textMuted, fontSize: 11 }}>Farklı kalem</Text>
+            <Text style={{ color: palette.orange500, fontWeight: '700' }}>
+              {summary.items_with_variance}
+            </Text>
+          </View>
+          <View style={styles.summaryRow}>
+            <Text style={{ color: colors.textMuted, fontSize: 11 }}>Doğruluk</Text>
+            <Text style={{ color: palette.green600, fontWeight: '700' }}>%{summary.accuracy_rate}</Text>
+          </View>
+          <View style={styles.summaryRow}>
+            <Text style={{ color: colors.textMuted, fontSize: 11 }}>Eksik / Fazla adet</Text>
+            <Text style={{ color: colors.text, fontWeight: '700' }}>
+              {summary.shortage_qty.toFixed(2)} / {summary.surplus_qty.toFixed(2)}
+            </Text>
+          </View>
+          {isReconciliation ? (
+            <PrimaryButton
+              label="Stoka uygula"
+              onPress={() => handleApplyStock()}
+              loading={applying}
+              style={{ marginTop: 8 }}
+            />
+          ) : (
+            <Text style={{ color: palette.green600, fontSize: 11, fontWeight: '700', marginTop: 6 }}>
+              Stok güncellemesi tamamlandı.
+            </Text>
+          )}
+        </View>
+      ) : null}
+
+      {canEdit && lines.length > 0 && slip?.status === 'counting' ? (
+        <View style={styles.finishRow}>
+          <PrimaryButton
+            label="Mutabakata geç"
+            onPress={() => finishCounting()}
+            loading={saving}
+          />
+        </View>
+      ) : null}
+
       <BarcodeScannerModal
         visible={scannerOpen}
         onClose={() => setScannerOpen(false)}
@@ -359,6 +486,10 @@ const styles = StyleSheet.create({
   },
   qtyRow: { flexDirection: 'row', gap: 8 },
   readonly: { margin: 12, borderWidth: 1, borderRadius: 10, padding: 12 },
+  summary: { marginHorizontal: 12, marginBottom: 4, borderWidth: 1, borderRadius: 10, padding: 12, gap: 4 },
+  summaryTitle: { fontSize: 13, fontWeight: '800', marginBottom: 4 },
+  summaryRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  finishRow: { paddingHorizontal: 12, paddingBottom: 4 },
   line: {
     flexDirection: 'row',
     alignItems: 'center',

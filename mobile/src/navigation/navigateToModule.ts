@@ -1,3 +1,4 @@
+import { resolveInvoicesRouteParams } from '../api/invoiceFilters';
 import { resolveLiveRoute } from '../config/menuConfig';
 import type { MainStackParamList } from './types';
 
@@ -9,6 +10,11 @@ type AnyNav = {
 export type BeautyRouteParams = NonNullable<MainStackParamList['Beauty']>;
 export type RestaurantRouteParams = NonNullable<MainStackParamList['Restaurant']>;
 export type SystemRouteParams = NonNullable<MainStackParamList['System']>;
+export type ReportStockRouteParams = NonNullable<MainStackParamList['ReportStock']>;
+export type StockMovementsRouteParams = NonNullable<MainStackParamList['StockMovements']>;
+export type FinanceRouteParams = NonNullable<MainStackParamList['Finance']>;
+export type CashCollectionRouteParams = NonNullable<MainStackParamList['CashCollection']>;
+export type CommunicationsRouteParams = NonNullable<MainStackParamList['Communications']>;
 
 /** Menü screen id → Beauty stack params */
 export function beautyRouteParams(screen: string): BeautyRouteParams | undefined {
@@ -20,6 +26,8 @@ export function beautyRouteParams(screen: string): BeautyRouteParams | undefined
       return { initialTab: 'services' };
     case 'beauty-specialists':
       return { initialTab: 'specialists' };
+    case 'beauty-sales':
+      return { initialTab: 'sales' };
     default:
       return undefined;
   }
@@ -40,6 +48,77 @@ export function restaurantRouteParams(screen: string): RestaurantRouteParams | u
 /** Menü screen id → System stack params */
 export function systemRouteParams(screen: string): SystemRouteParams {
   return { screenId: screen };
+}
+
+/** Menü screen id → malzeme rapor modu */
+export function reportStockRouteParams(screen: string): ReportStockRouteParams {
+  switch (screen) {
+    case 'report-min-max':
+    case 'inventory':
+      return { mode: 'min-max' };
+    case 'report-material-value':
+    case 'cost':
+      return { mode: 'material-value' };
+    case 'report-warehouse-status':
+      return { mode: 'warehouse-status' };
+    case 'report-material-extract':
+      return { mode: 'material-extract' };
+    case 'report-critical-stock':
+    default:
+      return { mode: 'critical' };
+  }
+}
+
+/** Menü screen id → stok hareket fişi filtresi */
+export function stockMovementsRouteParams(screen: string): StockMovementsRouteParams {
+  switch (screen) {
+    case 'stockmovements-deficit':
+      return { filter: 'deficit' };
+    case 'stockmovements-surplus':
+      return { filter: 'surplus' };
+    default:
+      return { filter: 'all' };
+  }
+}
+
+export type FinanceDefinitionsRouteParams = NonNullable<MainStackParamList['FinanceDefinitions']>;
+
+/** Menü screen id → FinanceDefinitions stack params */
+export function financeDefinitionsRouteParams(screen: string): FinanceDefinitionsRouteParams {
+  return { screenId: screen };
+}
+
+/** Menü screen id → Finance stack params */
+export function financeRouteParams(screen: string): FinanceRouteParams {
+  switch (screen) {
+    case 'banks':
+    case 'bank-accounts':
+    case 'bank-vouchers':
+      return { initialTab: 'bank', screenId: screen };
+    case 'cashbank':
+    case 'kasalar':
+      return { initialTab: 'cash', screenId: screen };
+    default:
+      return { initialTab: 'cash', screenId: screen };
+  }
+}
+
+/** Menü screen id → CashCollection stack params */
+export function cashCollectionRouteParams(screen: string): CashCollectionRouteParams {
+  return { openCreate: screen === 'collectionpayment' };
+}
+
+/** Menü screen id → Communications stack params */
+export function communicationsRouteParams(screen: string): CommunicationsRouteParams {
+  switch (screen) {
+    case 'notifications':
+    case 'smsmanage':
+      return { screenId: screen, initialTab: 'queue' };
+    case 'whatsapp':
+      return { screenId: screen, initialTab: 'provider' };
+    default:
+      return { screenId: screen, initialTab: 'customers' };
+  }
 }
 
 /** @deprecated tercihen beautyRouteParams / restaurantRouteParams */
@@ -84,9 +163,19 @@ export function navigateToModule(
     case 'Customers':
       nav.navigate('Customers');
       return;
-    case 'Invoices':
-      nav.navigate('Invoices');
+    case 'Invoices': {
+      const inv = resolveInvoicesRouteParams(screen);
+      nav.navigate('Invoices', {
+        ...inv,
+        kind:
+          inv.filter?.preset === 'purchase'
+            ? 'purchase'
+            : inv.filter?.preset === 'sales'
+              ? 'sales'
+              : undefined,
+      });
       return;
+    }
     case 'POS':
       nav.navigate('Tabs', { screen: 'POS' });
       return;
@@ -97,13 +186,22 @@ export function navigateToModule(
       nav.navigate('ReportSales');
       return;
     case 'ReportStock':
-      nav.navigate('ReportStock');
+      nav.navigate('ReportStock', reportStockRouteParams(screen));
       return;
     case 'ReportMizan':
       nav.navigate('ReportMizan');
       return;
     case 'ReportCariExtract':
       nav.navigate('ReportCariExtract');
+      return;
+    case 'ReportProductSales':
+      nav.navigate('ReportProductSales');
+      return;
+    case 'ReportCash':
+      nav.navigate('ReportCash');
+      return;
+    case 'StockMovements':
+      nav.navigate('StockMovements', stockMovementsRouteParams(screen));
       return;
     case 'Beauty':
       nav.navigate('Beauty', beautyRouteParams(screen));
@@ -117,11 +215,38 @@ export function navigateToModule(
         screen === 'mobile-inventory-count' ? { autoCreate: true } : undefined,
       );
       return;
+    case 'WmsTransfer':
+      nav.navigate('WmsTransfer');
+      return;
     case 'Restaurant':
       nav.navigate('Restaurant', restaurantRouteParams(screen));
       return;
     case 'Delivery':
       nav.navigate('Delivery');
+      return;
+    case 'Finance':
+      nav.navigate('Finance', financeRouteParams(screen));
+      return;
+    case 'FinanceDefinitions':
+      nav.navigate('FinanceDefinitions', financeDefinitionsRouteParams(screen));
+      return;
+    case 'CashCollection':
+      nav.navigate('CashCollection', cashCollectionRouteParams(screen));
+      return;
+    case 'Communications':
+      nav.navigate('Communications', communicationsRouteParams(screen));
+      return;
+    case 'Notifications':
+      nav.navigate('Notifications');
+      return;
+    case 'Pricing':
+      nav.navigate('Pricing');
+      return;
+    case 'Campaigns':
+      nav.navigate('Campaigns');
+      return;
+    case 'PrinterSettings':
+      nav.navigate('PrinterSettings');
       return;
     default:
       nav.navigate('Module', { screenId: screen, title });

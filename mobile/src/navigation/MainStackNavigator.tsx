@@ -15,15 +15,29 @@ import {
   ReportStockScreen,
   ReportMizanScreen,
   ReportCariExtractScreen,
+  ReportProductSalesScreen,
+  ReportCashScreen,
 } from '../screens/ReportScreens';
+import { StockMovementsScreen } from '../screens/StockMovementsScreen';
 import { BeautyScreen } from '../screens/BeautyScreen';
 import { WmsScreen } from '../screens/WmsScreen';
 import { WmsCountScreen } from '../screens/WmsCountScreen';
 import { WmsCountSlipScreen } from '../screens/WmsCountSlipScreen';
+import { WmsTransferScreen } from '../screens/WmsTransferScreen';
+import { WmsTransferSlipScreen } from '../screens/WmsTransferSlipScreen';
 import { RestaurantScreen } from '../screens/RestaurantScreen';
 import { DeliveryScreen } from '../screens/DeliveryScreen';
+import { FinanceScreen } from '../screens/FinanceScreen';
+import { FinanceDefinitionsScreen } from '../screens/FinanceDefinitionsScreen';
+import { CashCollectionScreen } from '../screens/CashCollectionScreen';
 import { OrganizationScreen } from '../screens/OrganizationScreen';
 import { SystemScreen } from '../screens/SystemScreen';
+import { CommunicationsScreen } from '../screens/CommunicationsScreen';
+import { NotificationsScreen } from '../screens/NotificationsScreen';
+import { PrinterSettingsScreen } from '../screens/PrinterSettingsScreen';
+import { PricingScreen } from '../screens/PricingScreen';
+import { CampaignsScreen } from '../screens/CampaignsScreen';
+import { CampaignDetailScreen } from '../screens/CampaignDetailScreen';
 import { ModuleScreen } from '../screens/ModuleScreen';
 import type { MainStackParamList } from './types';
 
@@ -42,18 +56,32 @@ export function MainStackNavigator() {
       <Stack.Screen name="Invoices" component={InvoicesScreen} />
       <Stack.Screen name="InvoiceDetail" component={InvoiceDetailScreen} />
       <Stack.Screen name="InvoiceForm" component={InvoiceFormScreen} />
+      <Stack.Screen name="Campaigns" component={CampaignsScreen} />
+      <Stack.Screen name="CampaignDetail" component={CampaignDetailScreen} />
       <Stack.Screen name="ReportSales" component={ReportSalesScreen} />
       <Stack.Screen name="ReportStock" component={ReportStockScreen} />
       <Stack.Screen name="ReportMizan" component={ReportMizanScreen} />
       <Stack.Screen name="ReportCariExtract" component={ReportCariExtractScreen} />
+      <Stack.Screen name="ReportProductSales" component={ReportProductSalesScreen} />
+      <Stack.Screen name="ReportCash" component={ReportCashScreen} />
+      <Stack.Screen name="StockMovements" component={StockMovementsScreen} />
       <Stack.Screen name="Beauty" component={BeautyScreen} />
       <Stack.Screen name="Wms" component={WmsScreen} />
       <Stack.Screen name="WmsCount" component={WmsCountScreen} />
       <Stack.Screen name="WmsCountSlip" component={WmsCountSlipScreen} />
+      <Stack.Screen name="WmsTransfer" component={WmsTransferScreen} />
+      <Stack.Screen name="WmsTransferSlip" component={WmsTransferSlipScreen} />
       <Stack.Screen name="Restaurant" component={RestaurantScreen} />
       <Stack.Screen name="Delivery" component={DeliveryScreen} />
+      <Stack.Screen name="Finance" component={FinanceScreen} />
+      <Stack.Screen name="FinanceDefinitions" component={FinanceDefinitionsScreen} />
+      <Stack.Screen name="CashCollection" component={CashCollectionScreen} />
       <Stack.Screen name="Organization" component={OrganizationScreen} />
       <Stack.Screen name="System" component={SystemScreen} />
+      <Stack.Screen name="Pricing" component={PricingScreen} />
+      <Stack.Screen name="Communications" component={CommunicationsScreen} />
+      <Stack.Screen name="Notifications" component={NotificationsScreen} />
+      <Stack.Screen name="PrinterSettings" component={PrinterSettingsScreen} />
       <Stack.Screen name="Module" component={ModuleScreen} />
     </Stack.Navigator>
   );

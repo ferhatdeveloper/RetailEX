@@ -14,6 +14,16 @@ export type CustomerInput = {
   notes?: string;
 };
 
+/** POS sepet satırı — offline fiş kuyruğu */
+export type PosCartLineInput = {
+  productId: string;
+  name: string;
+  price: number;
+  qty: number;
+  unit: string | null;
+  code?: string | null;
+};
+
 const QUEUE_KEY = 'retailex_offline_mutations';
 
 export type PendingMutation =
@@ -28,6 +38,19 @@ export type PendingMutation =
       createdAt: string;
       type: 'customer.update';
       payload: { customerId: string; input: Partial<CustomerInput> };
+    }
+  | {
+      id: string;
+      createdAt: string;
+      type: 'pos.sale';
+      payload: {
+        localId: string;
+        ficheNo: string;
+        lines: PosCartLineInput[];
+        paymentMethod: string;
+        customerId?: string | null;
+        customerName?: string | null;
+      };
     };
 
 function newId(): string {
