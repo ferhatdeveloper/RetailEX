@@ -9,7 +9,11 @@ import {
   firmNr,
   newUuid,
   periodNr,
+  saleItemsTable,
+  salesTable,
 } from './erpTables';
+import { recordKasaGirisForSale } from './cashApi';
+import { useAuthStore } from '../store/authStore';
 
 export type BeautyAppointment = {
   id: string;
@@ -120,15 +124,150 @@ export type CreateBeautySaleResult = {
   id: string;
   invoiceNumber: string;
   total: number;
+  /** ERP satış + (nakit) kasa yazıldı mı — web runBeautySaleErpAndLoyalty */
+  erpSynced?: boolean;
 };
 
+/** Web beautyService: BEA-{year}-{base36} */
 function nextBeautyInvoiceNumber(): string {
-  const d = new Date();
-  const pad = (n: number, w = 2) => String(n).padStart(w, '0');
-  return (
-    `BS-${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}` +
-    `${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`
+  return `BEA-${new Date().getFullYear()}-${Date.now().toString(36).toUpperCase()}`;
+}
+
+function isUuid(raw: string | null | undefined): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+    String(raw || '').trim(),
   );
+}
+
+/** Web mapBeautyPaymentToErpMethod */
+function mapBeautyPaymentToErp(raw: string | undefined): string {
+  const s = String(raw ?? '').trim();
+  const m = s.toLowerCase();
+  if (m === 'cash' || /^nak[ıi]t$/i.test(s) || m === 'nakit') return 'cash';
+  if (m === 'transfer' || m === 'havale' || /havale|eft|transfer/i.test(s)) return 'transfer';
+  if (m === 'card' || m === 'kart' || /kredi|kart/i.test(s)) return 'card';
+  if (m === 'veresiye') return 'veresiye';
+  return 'cash';
+}
+
+/**
+ * Web runBeautySaleErpAndLoyalty — perakende satış + kasa (yalnızca nakit) + müşteri puanı.
+ * Stok düşmez (hizmet kalemleri). Hata beauty fişini geri almaz.
+ */
+async function syncBeautySaleToErp(
+  input: CreateBeautySaleInput,
+  ctx: { beautySaleId: string; invoiceNumber: string },
+): Promise<void> {
+  const fn = firmNr();
+  const pn = periodNr();
+  const erpSales = salesTable(fn, pn);
+  const erpItems = saleItemsTable(fn, pn);
+  const erpId = newUuid();
+  const pm = mapBeautyPaymentToErp(String(input.paymentMethod));
+  const customerName =
+    (input.customerName || '').trim() || (input.customerId ? 'Cari' : 'Peşin Müşteri');
+  const noteTail = (input.notes || '').trim() || 'Güzellik satışı';
+  const erpNotes = `GüzellikPOS|beauty_sale_id:${ctx.beautySaleId}|${noteTail}`;
+  const user = useAuthStore.getState().user;
+  const cashier = user?.fullName || user?.username || 'Güzellik';
+  const tax = input.tax ?? 0;
+  const net = Math.max(0, Number(input.total) || 0);
+
+  await pgQuery(
+    `INSERT INTO ${erpSales} (
+       id, firm_nr, period_nr, fiche_no, document_no, date,
+       fiche_type, trcode, customer_id, customer_name,
+       total_net, total_vat, total_gross, total_discount, net_amount,
+       currency, currency_rate, status, payment_method, cashier, notes
+     ) VALUES (
+       $1::uuid, $2, $3, $4, $4, NOW(),
+       'sales_invoice', 7, $5::uuid, $6,
+       $7, $8, $9, $10, $7,
+       'TRY', 1, 'completed', $11, $12, $13
+     )`,
+    [
+      erpId,
+      fn,
+      pn,
+      ctx.invoiceNumber,
+      input.customerId || null,
+      customerName,
+      net,
+      tax,
+      Math.max(0, Number(input.subtotal) || 0),
+      Math.max(0, Number(input.discount) || 0),
+      pm,
+      cashier,
+      erpNotes,
+    ],
+  );
+
+  const lineGrosses = input.items.map((i) => i.unit_price * i.quantity);
+  const lineSplits = splitProportionalLineDiscount(lineGrosses, input.discount);
+
+  for (let idx = 0; idx < input.items.length; idx++) {
+    const item = input.items[idx]!;
+    const split = lineSplits[idx] ?? { discount: 0, total: item.unit_price * item.quantity };
+    const lineNet = item.total ?? split.total;
+    const productId = isUuid(item.item_id) ? item.item_id : null;
+    const itemCode =
+      productId ||
+      `beauty-${String(item.item_type || 'line')}-${String(item.name || 'x').slice(0, 24)}`;
+    await pgQuery(
+      `INSERT INTO ${erpItems} (
+         id, invoice_id, firm_nr, period_nr,
+         product_id, item_code, item_name,
+         quantity, unit_price, net_amount, total_amount, unit
+       ) VALUES (
+         $1::uuid, $2::uuid, $3, $4,
+         $5::uuid, $6, $7,
+         $8, $9, $10, $10, 'Adet'
+       )`,
+      [
+        newUuid(),
+        erpId,
+        fn,
+        pn,
+        productId,
+        itemCode,
+        item.name || 'Kalem',
+        item.quantity,
+        item.unit_price,
+        lineNet,
+      ],
+    );
+  }
+
+  // Web salesAPI: güzellikte yalnızca nakit → KASA_GIRIS
+  if (pm === 'cash' && net > 0) {
+    try {
+      await recordKasaGirisForSale({
+        amount: net,
+        ficheNo: ctx.invoiceNumber,
+        description: `Güzellik Satışı - ${ctx.invoiceNumber}`,
+        customerId: input.customerId || null,
+      });
+    } catch {
+      /* kasa yoksa sessiz */
+    }
+  }
+
+  const cid = input.customerId && isUuid(input.customerId) ? input.customerId : null;
+  if (cid && net > 0) {
+    const pts = Math.floor(net / 100);
+    try {
+      await pgQuery(
+        `UPDATE ${customersTable(fn)}
+         SET total_spent = COALESCE(total_spent, 0) + $1::numeric,
+             points = COALESCE(points, 0) + $2::int,
+             updated_at = NOW()
+         WHERE id = $3::uuid`,
+        [net, pts, cid],
+      );
+    } catch {
+      /* kolon / şema farkı */
+    }
+  }
 }
 
 /** Web `beautySaleLineDiscount` — genel indirimi satırlara oransal böl */
@@ -445,7 +584,9 @@ export async function fetchBeautySaleItems(saleId: string): Promise<BeautySaleIt
   ]);
 }
 
-/** Web beautyService.createSale — beauty şeması (ERP/kasa senkronu mobilde atlanır) */
+/**
+ * Web beautyService.createSale — beauty_sales + kalemler, sonra ERP (sales/sale_items + nakit kasa).
+ */
 export async function createBeautySale(input: CreateBeautySaleInput): Promise<CreateBeautySaleResult> {
   if (!input.items.length) throw new Error('Sepet boş');
 
@@ -490,6 +631,7 @@ export async function createBeautySale(input: CreateBeautySaleInput): Promise<Cr
     const item = input.items[idx]!;
     const split = lineSplits[idx] ?? { discount: 0, total: item.unit_price * item.quantity };
     const itemId = newUuid();
+    const itemUuid = isUuid(item.item_id) ? item.item_id : null;
     await pgQuery(
       `INSERT INTO ${itemsTbl} (
          id, sale_id, item_type, item_id, name, quantity, unit_price,
@@ -502,16 +644,24 @@ export async function createBeautySale(input: CreateBeautySaleInput): Promise<Cr
         itemId,
         id,
         item.item_type,
-        item.item_id,
+        itemUuid,
         item.name,
         item.quantity,
         item.unit_price,
         item.discount ?? split.discount,
         item.total ?? split.total,
-        item.staff_id || null,
+        item.staff_id && isUuid(item.staff_id) ? item.staff_id : null,
       ],
     );
   }
 
-  return { id, invoiceNumber, total: input.total };
+  let erpSynced = false;
+  try {
+    await syncBeautySaleToErp(input, { beautySaleId: id, invoiceNumber });
+    erpSynced = true;
+  } catch (erpErr) {
+    console.warn('[createBeautySale] ERP senkronu başarısız — beauty fişi kayıtlı:', erpErr);
+  }
+
+  return { id, invoiceNumber, total: input.total, erpSynced };
 }

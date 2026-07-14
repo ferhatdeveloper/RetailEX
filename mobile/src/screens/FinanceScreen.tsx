@@ -29,12 +29,14 @@ import {
   fetchBankMovements,
   createSimpleCashMovement,
   createSimpleBankMovement,
+  createCashVirman,
+  createCashBankBridge,
   movementTypeLabel,
   type CashRegisterRow,
   type BankRegisterRow,
   type CashMovementRow,
   type BankMovementRow,
-} from '../api/financeApi';
+} from '../api/cashApi';
 import { formatMoney } from '../api/erpTables';
 import { useThemeStore } from '../store/themeStore';
 import { useOrgEpoch } from '../hooks/useOrgEpoch';
@@ -42,6 +44,7 @@ import { palette } from '../theme/colors';
 import type { MainStackParamList } from '../navigation/types';
 
 type Kind = 'cash' | 'bank';
+type TxFormMode = 'in' | 'out' | 'virman' | 'bank_deposit' | 'bank_withdraw';
 type Props = NativeStackScreenProps<MainStackParamList, 'Finance'>;
 
 function todayYmd(): string {
@@ -84,11 +87,13 @@ export function FinanceScreen({ route }: Props) {
   const [error, setError] = useState<string | null>(null);
 
   const [createOpen, setCreateOpen] = useState(route.params?.openCreate ?? false);
-  const [direction, setDirection] = useState<'in' | 'out'>('in');
+  const [formMode, setFormMode] = useState<TxFormMode>(route.params?.formMode ?? 'in');
   const [amount, setAmount] = useState('');
   const [description, setDescription] = useState('');
   const [txDate, setTxDate] = useState(todayYmd());
   const [formRegisterId, setFormRegisterId] = useState<string | null>(null);
+  const [targetRegisterId, setTargetRegisterId] = useState<string | null>(null);
+  const [bankRegisterId, setBankRegisterId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
@@ -118,6 +123,8 @@ export function FinanceScreen({ route }: Props) {
         const list = kind === 'cash' ? cr : br;
         return list[0]?.id ?? null;
       });
+      setTargetRegisterId((prev) => prev ?? cr[1]?.id ?? cr[0]?.id ?? null);
+      setBankRegisterId((prev) => prev ?? br[0]?.id ?? null);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -137,6 +144,10 @@ export function FinanceScreen({ route }: Props) {
     if (route.params?.openCreate) setCreateOpen(true);
   }, [route.params?.openCreate]);
 
+  useEffect(() => {
+    if (route.params?.formMode) setFormMode(route.params.formMode);
+  }, [route.params?.formMode]);
+
   const onKindChange = (k: Kind) => {
     setKind(k);
     setSelectedRegisterId(null);
@@ -146,41 +157,83 @@ export function FinanceScreen({ route }: Props) {
 
   const openCreate = () => {
     setFormError(null);
-    setDirection('in');
+    setFormMode('in');
     setAmount('');
     setDescription('');
     setTxDate(todayYmd());
     const list = kind === 'cash' ? cashRegs : bankRegs;
-    setFormRegisterId(selectedRegisterId ?? list[0]?.id ?? null);
+    const cashId = selectedRegisterId ?? cashRegs[0]?.id ?? null;
+    setFormRegisterId(kind === 'cash' ? cashId : list[0]?.id ?? null);
+    setTargetRegisterId(
+      cashRegs.find((r) => r.id !== cashId)?.id ?? cashRegs[1]?.id ?? null,
+    );
+    setBankRegisterId(bankRegs[0]?.id ?? null);
     setCreateOpen(true);
   };
 
   const onSave = async () => {
     setFormError(null);
     const amt = Number(String(amount).replace(',', '.'));
-    if (!formRegisterId) {
-      setFormError(kind === 'cash' ? 'Kasa seçin' : 'Banka hesabı seçin');
-      return;
-    }
     if (!Number.isFinite(amt) || amt <= 0) {
       setFormError('Geçerli tutar girin');
       return;
     }
     setSaving(true);
     try {
-      if (kind === 'cash') {
+      if (formMode === 'virman') {
+        if (!formRegisterId) {
+          setFormError('Kaynak kasa seçin');
+          return;
+        }
+        if (!targetRegisterId) {
+          setFormError('Hedef kasa seçin');
+          return;
+        }
+        await createCashVirman({
+          sourceRegisterId: formRegisterId,
+          targetRegisterId,
+          amount: amt,
+          date: txDate,
+          description,
+        });
+      } else if (formMode === 'bank_deposit' || formMode === 'bank_withdraw') {
+        if (!formRegisterId) {
+          setFormError('Kasa seçin');
+          return;
+        }
+        if (!bankRegisterId) {
+          setFormError('Banka hesabı seçin');
+          return;
+        }
+        await createCashBankBridge({
+          type: formMode === 'bank_deposit' ? 'BANKA_YATIRILAN' : 'BANKADAN_CEKILEN',
+          cashRegisterId: formRegisterId,
+          bankRegisterId,
+          amount: amt,
+          date: txDate,
+          description,
+        });
+      } else if (kind === 'cash') {
+        if (!formRegisterId) {
+          setFormError('Kasa seçin');
+          return;
+        }
         await createSimpleCashMovement({
           registerId: formRegisterId,
           amount: amt,
-          direction,
+          direction: formMode === 'out' ? 'out' : 'in',
           date: txDate,
           description,
         });
       } else {
+        if (!formRegisterId) {
+          setFormError('Banka hesabı seçin');
+          return;
+        }
         await createSimpleBankMovement({
           registerId: formRegisterId,
           amount: amt,
-          direction,
+          direction: formMode === 'out' ? 'out' : 'in',
           date: txDate,
           description,
         });
@@ -371,41 +424,86 @@ export function FinanceScreen({ route }: Props) {
               {kind === 'cash' ? 'Kasa hareketi' : 'Banka hareketi'}
             </Text>
 
-            <View style={styles.dirRow}>
-              {(
-                [
-                  { id: 'in' as const, label: 'Giriş' },
-                  { id: 'out' as const, label: 'Çıkış' },
-                ] as const
-              ).map((d) => (
-                <Pressable
-                  key={d.id}
-                  onPress={() => setDirection(d.id)}
-                  style={[
-                    styles.dirBtn,
-                    {
-                      backgroundColor: direction === d.id ? palette.orange500 : colors.inputBg,
-                      borderColor: colors.inputBorder,
-                    },
-                  ]}
-                >
-                  <Text style={{ color: direction === d.id ? palette.white : colors.text, fontWeight: '700' }}>
-                    {d.label}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
+            {kind === 'cash' ? (
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.modeRow}>
+                {(
+                  [
+                    { id: 'in' as const, label: 'Giriş' },
+                    { id: 'out' as const, label: 'Çıkış' },
+                    { id: 'virman' as const, label: 'Virman' },
+                    { id: 'bank_deposit' as const, label: 'Bankaya' },
+                    { id: 'bank_withdraw' as const, label: 'Bankadan' },
+                  ] as const
+                ).map((m) => (
+                  <Pressable
+                    key={m.id}
+                    onPress={() => setFormMode(m.id)}
+                    style={[
+                      styles.modeChip,
+                      {
+                        backgroundColor: formMode === m.id ? palette.orange500 : colors.inputBg,
+                        borderColor: colors.inputBorder,
+                      },
+                    ]}
+                  >
+                    <Text
+                      style={{
+                        color: formMode === m.id ? palette.white : colors.text,
+                        fontWeight: '700',
+                        fontSize: 11,
+                      }}
+                    >
+                      {m.label}
+                    </Text>
+                  </Pressable>
+                ))}
+              </ScrollView>
+            ) : (
+              <View style={styles.dirRow}>
+                {(
+                  [
+                    { id: 'in' as const, label: 'Giriş' },
+                    { id: 'out' as const, label: 'Çıkış' },
+                  ] as const
+                ).map((d) => (
+                  <Pressable
+                    key={d.id}
+                    onPress={() => setFormMode(d.id)}
+                    style={[
+                      styles.dirBtn,
+                      {
+                        backgroundColor: formMode === d.id ? palette.orange500 : colors.inputBg,
+                        borderColor: colors.inputBorder,
+                      },
+                    ]}
+                  >
+                    <Text style={{ color: formMode === d.id ? palette.white : colors.text, fontWeight: '700' }}>
+                      {d.label}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+            )}
 
             <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>
-              {kind === 'cash' ? 'Kasa' : 'Banka hesabı'}
+              {formMode === 'virman'
+                ? 'Kaynak kasa'
+                : formMode === 'bank_deposit' || formMode === 'bank_withdraw'
+                  ? 'Kasa'
+                  : kind === 'cash'
+                    ? 'Kasa'
+                    : 'Banka hesabı'}
             </Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
-              {(kind === 'cash' ? cashRegs : bankRegs).map((r) => {
+              {(kind === 'cash' || formMode === 'bank_deposit' || formMode === 'bank_withdraw' || formMode === 'virman'
+                ? cashRegs
+                : bankRegs
+              ).map((r) => {
                 const active = formRegisterId === r.id;
                 const label =
-                  kind === 'cash'
-                    ? `${(r as CashRegisterRow).code || ''} ${(r as CashRegisterRow).name}`.trim()
-                    : `${(r as BankRegisterRow).code || ''} ${(r as BankRegisterRow).bank_name || ''}`.trim();
+                  'bank_name' in r
+                    ? `${r.code || ''} ${r.bank_name || r.name || ''}`.trim()
+                    : `${(r as CashRegisterRow).code || ''} ${(r as CashRegisterRow).name}`.trim();
                 return (
                   <Pressable
                     key={r.id}
@@ -425,6 +523,70 @@ export function FinanceScreen({ route }: Props) {
                 );
               })}
             </ScrollView>
+
+            {formMode === 'virman' ? (
+              <>
+                <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Hedef kasa</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
+                  {cashRegs
+                    .filter((r) => r.id !== formRegisterId)
+                    .map((r) => {
+                      const active = targetRegisterId === r.id;
+                      const label = `${r.code || ''} ${r.name}`.trim();
+                      return (
+                        <Pressable
+                          key={r.id}
+                          onPress={() => setTargetRegisterId(r.id)}
+                          style={[
+                            styles.chip,
+                            {
+                              backgroundColor: active ? palette.blue600 : colors.inputBg,
+                              borderColor: colors.inputBorder,
+                            },
+                          ]}
+                        >
+                          <Text
+                            style={{ color: active ? palette.white : colors.text, fontSize: 11, fontWeight: '700' }}
+                          >
+                            {label || '—'}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                </ScrollView>
+              </>
+            ) : null}
+
+            {formMode === 'bank_deposit' || formMode === 'bank_withdraw' ? (
+              <>
+                <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Banka hesabı</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
+                  {bankRegs.map((r) => {
+                    const active = bankRegisterId === r.id;
+                    const label = `${r.code || ''} ${r.bank_name || r.name || ''}`.trim();
+                    return (
+                      <Pressable
+                        key={r.id}
+                        onPress={() => setBankRegisterId(r.id)}
+                        style={[
+                          styles.chip,
+                          {
+                            backgroundColor: active ? palette.blue600 : colors.inputBg,
+                            borderColor: colors.inputBorder,
+                          },
+                        ]}
+                      >
+                        <Text
+                          style={{ color: active ? palette.white : colors.text, fontSize: 11, fontWeight: '700' }}
+                        >
+                          {label || '—'}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </ScrollView>
+              </>
+            ) : null}
 
             <FormField label="Tutar" value={amount} onChangeText={setAmount} keyboardType="decimal-pad" placeholder="0,00" />
             <FormField label="Tarih (YYYY-MM-DD)" value={txDate} onChangeText={setTxDate} placeholder={todayYmd()} />
@@ -509,6 +671,13 @@ const styles = StyleSheet.create({
     maxHeight: '88%',
   },
   modalTitle: { fontSize: 18, fontWeight: '800', marginBottom: 14 },
+  modeRow: { gap: 8, paddingBottom: 12 },
+  modeChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 16,
+    borderWidth: 1,
+  },
   dirRow: { flexDirection: 'row', gap: 10, marginBottom: 12 },
   dirBtn: {
     flex: 1,

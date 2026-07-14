@@ -109,6 +109,22 @@ export function beautySpecialistsTable(fn = firmNr()): string {
   return `beauty.rex_${fn}_beauty_specialists`;
 }
 
+export function brandsTable(fn = firmNr()): string {
+  return `rex_${fn}_brands`;
+}
+
+export function categoriesTable(fn = firmNr()): string {
+  return `rex_${fn}_categories`;
+}
+
+export function unitsetsTable(fn = firmNr()): string {
+  return `rex_${fn}_unitsets`;
+}
+
+export function unitsetLinesTable(fn = firmNr()): string {
+  return `rex_${fn}_unitsetl`;
+}
+
 export function campaignsTable(fn = firmNr()): string {
   return `rex_${fn}_campaigns`;
 }

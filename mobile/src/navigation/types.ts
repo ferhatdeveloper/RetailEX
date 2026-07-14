@@ -46,7 +46,13 @@ export type MainStackParamList = {
       }
     | undefined;
   InvoiceDetail: { invoiceId: string };
-  InvoiceForm: { invoiceId?: string; kind?: 'sales' | 'purchase' } | undefined;
+  InvoiceForm:
+    | {
+        invoiceId?: string;
+        /** sales | purchase | sales-return (trcode 3) | purchase-return (trcode 6) */
+        kind?: 'sales' | 'purchase' | 'sales-return' | 'purchase-return';
+      }
+    | undefined;
   Campaigns: undefined;
   CampaignDetail: { campaignId: string };
   /** Ürün fiyat listeleri (price_list_1…6, perakende, alış) */
@@ -56,7 +62,7 @@ export type MainStackParamList = {
     | { mode?: 'critical' | 'min-max' | 'material-value' | 'warehouse-status' | 'material-extract' }
     | undefined;
   ReportMizan: undefined;
-  ReportCariExtract: undefined;
+  ReportCariExtract: { accountId?: string; cardType?: 'customer' | 'supplier' } | undefined;
   ReportProductSales: undefined;
   ReportCash: undefined;
   StockMovements: { filter?: 'all' | 'deficit' | 'surplus' } | undefined;
@@ -68,14 +74,26 @@ export type MainStackParamList = {
   WmsCountSlip: { slipId: string };
   WmsTransfer: undefined;
   WmsTransferSlip: { transferId: string };
+  /** WMS dalga toplama — dalga listesi */
+  WmsWavePicking: undefined;
+  /** WMS dalga toplama — görev yürütme */
+  WmsWavePickingExecute: { waveId: string };
   Restaurant: { initialTab?: 'tables' | 'orders' } | undefined;
   /** Teslimat / kurye canlı konum */
   Delivery: undefined;
   /** Finans tanımları: ödeme planı, masraf merkezi, arama planı, gider */
   FinanceDefinitions: { screenId?: string } | undefined;
+  /** Malzeme tanımları: sınıf, kategori, marka, birim seti */
+  MaterialDefinitions: { screenId?: string } | undefined;
+  MaterialDefinitionForm: { kind?: 'brand' | 'category' | 'class' | 'unitset' } | undefined;
   /** Kasa / banka hareketleri */
   Finance:
-    | { initialTab?: 'cash' | 'bank'; screenId?: string; openCreate?: boolean }
+    | {
+        initialTab?: 'cash' | 'bank';
+        screenId?: string;
+        openCreate?: boolean;
+        formMode?: 'in' | 'out' | 'virman' | 'bank_deposit' | 'bank_withdraw';
+      }
     | undefined;
   /** Cari tahsilat / ödeme */
   CashCollection: { openCreate?: boolean; customerId?: string } | undefined;
@@ -83,7 +101,7 @@ export type MainStackParamList = {
   Organization: undefined;
   /** Sistem: kullanıcı / rol / log / kasa / şema */
   System:
-    | { initialTab?: 'users' | 'roles' | 'logs' | 'devices' | 'backup'; screenId?: string }
+    | { initialTab?: 'users' | 'roles' | 'logs' | 'devices' | 'sync' | 'backup'; screenId?: string }
     | undefined;
   /** Bildirim merkezi — kritik stok + vadesi geçmiş hatırlatmalar */
   Notifications: undefined;
@@ -91,8 +109,16 @@ export type MainStackParamList = {
   Communications:
     | { screenId?: string; initialTab?: 'customers' | 'queue' | 'provider' }
     | undefined;
+  /** Mağaza paneli — canlı stores listesi */
+  StoreManagement: { screenId?: string; groupByRegion?: boolean } | undefined;
+  /** E-Dönüşüm — GİB e-belge kuyruğu okuma */
+  ETransform: undefined;
   /** Yazıcı / fiş ayarları (yerel persist + test stub) */
   PrinterSettings: undefined;
+  /** Terazi yönetimi (Rongta TCP / simüle / BT arayüzü) */
+  ScaleManagement: undefined;
+  /** Tartılı satış — kg ürün + tartım → POS fişi */
+  ScaleSale: undefined;
   Module: { screenId: string; title?: string };
 };
 

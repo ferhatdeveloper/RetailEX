@@ -174,6 +174,11 @@ export function PosScreen() {
         title="Satış (POS)"
         subtitle="Sepet + fiş kaydı"
         showBack={false}
+        right={
+          <Pressable onPress={() => navigation.navigate('ScaleSale')} hitSlop={8}>
+            <Text style={{ color: palette.white, fontWeight: '800', fontSize: 12 }}>Terazi</Text>
+          </Pressable>
+        }
       />
       <View style={styles.searchRow}>
         <View style={styles.searchFlex}>

@@ -14,6 +14,19 @@ import {
   paymentMethodImpliesCustomerDebt,
   paymentMethodImpliesSupplierDebt,
 } from './paymentMethodUtils';
+import { shouldUseLiveData, getNetworkPolicy } from '../offline/policy';
+import {
+  enqueueMutation,
+  type InvoiceLineInput,
+} from '../offline/mutationQueue';
+import {
+  adjustProductStockInCache,
+  getPendingInvoiceById,
+  getPendingInvoices,
+  patchPendingInvoiceInCache,
+  upsertPendingInvoiceInCache,
+} from '../offline/snapshotCache';
+import { useConnectivityStore } from '../store/connectivityStore';
 
 export type { InvoiceListFilter, InvoicesListPreset } from './invoiceFilters';
 export {
@@ -98,6 +111,31 @@ export async function fetchInvoices(opts?: {
   /** trcode / fiche_type — satış iade (3), alış iade (6) vb. */
   filter?: InvoiceListFilter;
 }): Promise<InvoiceRow[]> {
+  if (!shouldUseLiveData()) {
+    const pending = await getPendingInvoices();
+    const q = (opts?.search ?? '').trim().toLowerCase();
+    const filtered = pending.filter((p) => {
+      if (!q) return true;
+      return (
+        (p.fiche_no || '').toLowerCase().includes(q) ||
+        (p.customer_name || '').toLowerCase().includes(q)
+      );
+    });
+    return filtered.slice(0, opts?.limit ?? 100).map((p) => ({
+      id: p.id,
+      fiche_no: p.fiche_no,
+      date: p.date,
+      customer_name: p.customer_name,
+      net_amount: p.net_amount,
+      total_gross: p.total_gross,
+      status: p.status,
+      fiche_type: p.fiche_type,
+      trcode: p.trcode,
+      payment_method: p.payment_method,
+      is_cancelled: p.is_cancelled,
+    }));
+  }
+
   const table = salesTable(firmNr(), periodNr());
   const limit = opts?.limit ?? 100;
   const q = (opts?.search ?? '').trim();
@@ -236,6 +274,30 @@ export type InvoiceDetail = InvoiceRow & {
 
 export async function fetchInvoiceById(id: string): Promise<InvoiceDetail | null> {
   if (!id) return null;
+
+  if (!shouldUseLiveData()) {
+    const pending = await getPendingInvoiceById(id);
+    if (!pending) return null;
+    return {
+      id: pending.id,
+      fiche_no: pending.fiche_no,
+      date: pending.date,
+      customer_name: pending.customer_name,
+      net_amount: pending.net_amount,
+      total_gross: pending.total_gross,
+      status: pending.status,
+      fiche_type: pending.fiche_type,
+      trcode: pending.trcode,
+      payment_method: pending.payment_method,
+      is_cancelled: pending.is_cancelled,
+      notes: pending.notes,
+      total_vat: pending.total_vat,
+      total_discount: pending.total_discount,
+      currency: pending.currency,
+      lines: pending.lines,
+    };
+  }
+
   const header = salesTable();
   const items = saleItemsTable();
 
@@ -283,16 +345,69 @@ export async function fetchInvoiceById(id: string): Promise<InvoiceDetail | null
   return { ...row, lines };
 }
 
-export type InvoiceDraftLine = {
-  productId: string;
-  code?: string | null;
-  name: string;
-  qty: number;
-  unitPrice: number;
-  unit?: string | null;
+export type InvoiceDraftLine = InvoiceLineInput;
+
+/** Form / API — fatura yazma türü */
+export type InvoiceFormKind = 'sales' | 'purchase' | 'sales-return' | 'purchase-return';
+
+export type InvoiceWriteResult = {
+  id: string;
+  ficheNo: string;
+  total: number;
+  queued?: boolean;
 };
 
-function nextFicheNo(prefix: 'SF' | 'AF'): string {
+export type InvoiceWriteOptions = {
+  forceLive?: boolean;
+  skipQueue?: boolean;
+  id?: string;
+  ficheNo?: string;
+};
+
+export type InvoiceCreateExtras = {
+  documentNo?: string;
+  /** Dip indirim tutarı (satır netlerinden düşülür) */
+  footerDiscountAmount?: number;
+};
+
+/** Satır brüt → indirim sonrası net */
+export function invoiceLineNet(line: InvoiceDraftLine): number {
+  const gross = Math.max(0, Number(line.unitPrice) || 0) * Math.max(0, Number(line.qty) || 0);
+  const pct = Math.min(100, Math.max(0, Number(line.discountPercent) || 0));
+  return Math.max(0, gross * (1 - pct / 100));
+}
+
+export function invoiceLinesSubtotal(lines: InvoiceDraftLine[]): number {
+  return lines.reduce((s, l) => s + invoiceLineNet(l), 0);
+}
+
+export function invoiceLinesDiscountTotal(lines: InvoiceDraftLine[]): number {
+  return lines.reduce((s, l) => {
+    const gross = Math.max(0, Number(l.unitPrice) || 0) * Math.max(0, Number(l.qty) || 0);
+    const pct = Math.min(100, Math.max(0, Number(l.discountPercent) || 0));
+    return s + gross * (pct / 100);
+  }, 0);
+}
+
+/** Web ile aynı: KDV DB’ye 0 yazılır; UI özeti için ayrı gösterim */
+export function invoiceTotalsFromLines(
+  lines: InvoiceDraftLine[],
+  footerDiscountAmount = 0,
+): {
+  subtotal: number;
+  lineDiscount: number;
+  footerDiscount: number;
+  totalVat: number;
+  net: number;
+} {
+  const subtotal = invoiceLinesSubtotal(lines);
+  const lineDiscount = invoiceLinesDiscountTotal(lines);
+  const footerDiscount = Math.min(subtotal, Math.max(0, Number(footerDiscountAmount) || 0));
+  const net = Math.max(0, subtotal - footerDiscount);
+  return { subtotal, lineDiscount, footerDiscount, totalVat: 0, net };
+}
+
+function nextFicheNo(prefix: 'SF' | 'AF' | 'SI' | 'AI'): string {
   const d = new Date();
   const pad = (n: number, w = 2) => String(n).padStart(w, '0');
   const stamp =
@@ -302,13 +417,16 @@ function nextFicheNo(prefix: 'SF' | 'AF'): string {
 }
 
 /** Basit satış faturası — POS ile aynı tablolar, fiche_type=sales_invoice, trcode=8 (toptan) */
-export async function createSalesInvoice(opts: {
-  customerId?: string;
-  customerName: string;
-  notes?: string;
-  paymentMethod?: string;
-  lines: InvoiceDraftLine[];
-}): Promise<{ id: string; ficheNo: string; total: number }> {
+async function createSalesInvoiceLive(
+  opts: {
+    customerId?: string;
+    customerName: string;
+    notes?: string;
+    paymentMethod?: string;
+    lines: InvoiceDraftLine[];
+  } & InvoiceCreateExtras,
+  writeOpts?: Pick<InvoiceWriteOptions, 'id' | 'ficheNo'>,
+): Promise<InvoiceWriteResult> {
   if (!opts.lines.length) throw new Error('En az bir kalem gerekli');
 
   const fn = firmNr();
@@ -317,12 +435,15 @@ export async function createSalesInvoice(opts: {
   const items = saleItemsTable(fn, pn);
   const { useAuthStore } = await import('../store/authStore');
 
-  const id = newUuid();
-  const ficheNo = nextFicheNo('SF');
-  const total = opts.lines.reduce((s, l) => s + l.unitPrice * l.qty, 0);
+  const id = writeOpts?.id || newUuid();
+  const ficheNo = writeOpts?.ficheNo || nextFicheNo('SF');
+  const totals = invoiceTotalsFromLines(opts.lines, opts.footerDiscountAmount);
+  const total = totals.net;
+  const discountTotal = totals.lineDiscount + totals.footerDiscount;
   const user = useAuthStore.getState().user;
   const cashier = user?.fullName || user?.username || 'mobile';
   const customerName = opts.customerName.trim() || 'Perakende';
+  const documentNo = opts.documentNo?.trim() || ficheNo;
 
   await pgQuery(
     `INSERT INTO ${sales} (
@@ -331,19 +452,22 @@ export async function createSalesInvoice(opts: {
        total_net, total_vat, total_gross, total_discount, net_amount,
        currency, currency_rate, status, payment_method, cashier, notes
      ) VALUES (
-       $1::uuid, $2, $3, $4, $4, NOW(),
-       'sales_invoice', 8, $5::uuid, $6,
-       $7, 0, $7, 0, $7,
-       'TRY', 1, 'approved', $8, $9, $10
+       $1::uuid, $2, $3, $4, $5, NOW(),
+       'sales_invoice', 8, $6::uuid, $7,
+       $8, 0, $9, $10, $8,
+       'TRY', 1, 'approved', $11, $12, $13
      )`,
     [
       id,
       fn,
       pn,
       ficheNo,
+      documentNo,
       opts.customerId || null,
       customerName,
       total,
+      totals.subtotal,
+      discountTotal,
       opts.paymentMethod || 'Nakit',
       cashier,
       opts.notes?.trim() || 'RetailEX Mobile Fatura',
@@ -351,7 +475,7 @@ export async function createSalesInvoice(opts: {
   );
 
   for (const line of opts.lines) {
-    const lineNet = line.unitPrice * line.qty;
+    const lineNet = invoiceLineNet(line);
     const lineId = newUuid();
     await pgQuery(
       `INSERT INTO ${items} (
@@ -414,14 +538,86 @@ export async function createSalesInvoice(opts: {
   return { id, ficheNo, total };
 }
 
+export async function createSalesInvoice(
+  opts: {
+    customerId?: string;
+    customerName: string;
+    notes?: string;
+    paymentMethod?: string;
+    lines: InvoiceDraftLine[];
+  } & InvoiceCreateExtras,
+  writeOpts?: InvoiceWriteOptions,
+): Promise<InvoiceWriteResult> {
+  if (!opts.lines.length) throw new Error('En az bir kalem gerekli');
+
+  const id = writeOpts?.id || newUuid();
+  const ficheNo = writeOpts?.ficheNo || nextFicheNo('SF');
+  const totals = invoiceTotalsFromLines(opts.lines, opts.footerDiscountAmount);
+  const total = totals.net;
+  const live = writeOpts?.forceLive === true || shouldUseLiveData();
+
+  if (!live && !writeOpts?.skipQueue) {
+    await enqueueMutation({
+      type: 'invoice.sales.create',
+      payload: {
+        localId: id,
+        ficheNo,
+        customerId: opts.customerId,
+        customerName: opts.customerName,
+        notes: opts.notes,
+        paymentMethod: opts.paymentMethod,
+        lines: opts.lines.map((l) => ({ ...l })),
+      },
+    });
+    for (const line of opts.lines) {
+      await adjustProductStockInCache(line.productId, -line.qty);
+    }
+    const now = new Date().toISOString();
+    await upsertPendingInvoiceInCache({
+      id,
+      fiche_no: ficheNo,
+      date: now.slice(0, 10),
+      customer_name: opts.customerName.trim() || 'Perakende',
+      net_amount: total,
+      total_gross: totals.subtotal,
+      status: 'approved',
+      fiche_type: 'sales_invoice',
+      trcode: 8,
+      payment_method: opts.paymentMethod || 'Nakit',
+      is_cancelled: false,
+      notes: opts.notes?.trim() || 'RetailEX Mobile Fatura',
+      total_vat: 0,
+      total_discount: totals.lineDiscount + totals.footerDiscount,
+      currency: 'TRY',
+      lines: opts.lines.map((l) => ({
+        id: newUuid(),
+        item_code: l.code ?? null,
+        item_name: l.name,
+        quantity: l.qty,
+        unit_price: l.unitPrice,
+        net_amount: invoiceLineNet(l),
+        unit: l.unit || 'Adet',
+      })),
+      pending: true,
+    });
+    await useConnectivityStore.getState().refreshPendingCount();
+    return { id, ficheNo, total, queued: true };
+  }
+
+  return createSalesInvoiceLive(opts, { id, ficheNo });
+}
+
 /** Basit alış faturası — trcode=1, stok artışı */
-export async function createPurchaseInvoice(opts: {
-  supplierId?: string;
-  supplierName: string;
-  notes?: string;
-  paymentMethod?: string;
-  lines: InvoiceDraftLine[];
-}): Promise<{ id: string; ficheNo: string; total: number }> {
+async function createPurchaseInvoiceLive(
+  opts: {
+    supplierId?: string;
+    supplierName: string;
+    notes?: string;
+    paymentMethod?: string;
+    lines: InvoiceDraftLine[];
+  } & InvoiceCreateExtras,
+  writeOpts?: Pick<InvoiceWriteOptions, 'id' | 'ficheNo'>,
+): Promise<InvoiceWriteResult> {
   if (!opts.lines.length) throw new Error('En az bir kalem gerekli');
 
   const fn = firmNr();
@@ -430,12 +626,15 @@ export async function createPurchaseInvoice(opts: {
   const items = saleItemsTable(fn, pn);
   const { useAuthStore } = await import('../store/authStore');
 
-  const id = newUuid();
-  const ficheNo = nextFicheNo('AF');
-  const total = opts.lines.reduce((s, l) => s + l.unitPrice * l.qty, 0);
+  const id = writeOpts?.id || newUuid();
+  const ficheNo = writeOpts?.ficheNo || nextFicheNo('AF');
+  const totals = invoiceTotalsFromLines(opts.lines, opts.footerDiscountAmount);
+  const total = totals.net;
+  const discountTotal = totals.lineDiscount + totals.footerDiscount;
   const user = useAuthStore.getState().user;
   const cashier = user?.fullName || user?.username || 'mobile';
   const supplierName = opts.supplierName.trim() || 'Tedarikçi';
+  const documentNo = opts.documentNo?.trim() || ficheNo;
 
   await pgQuery(
     `INSERT INTO ${sales} (
@@ -444,19 +643,22 @@ export async function createPurchaseInvoice(opts: {
        total_net, total_vat, total_gross, total_discount, net_amount,
        currency, currency_rate, status, payment_method, cashier, notes
      ) VALUES (
-       $1::uuid, $2, $3, $4, $4, NOW(),
-       'purchase_invoice', 1, $5::uuid, $6,
-       $7, 0, $7, 0, $7,
-       'TRY', 1, 'approved', $8, $9, $10
+       $1::uuid, $2, $3, $4, $5, NOW(),
+       'purchase_invoice', 1, $6::uuid, $7,
+       $8, 0, $9, $10, $8,
+       'TRY', 1, 'approved', $11, $12, $13
      )`,
     [
       id,
       fn,
       pn,
       ficheNo,
+      documentNo,
       opts.supplierId || null,
       supplierName,
       total,
+      totals.subtotal,
+      discountTotal,
       opts.paymentMethod || 'Nakit',
       cashier,
       opts.notes?.trim() || 'RetailEX Mobile Alış Faturası',
@@ -464,7 +666,7 @@ export async function createPurchaseInvoice(opts: {
   );
 
   for (const line of opts.lines) {
-    const lineNet = line.unitPrice * line.qty;
+    const lineNet = invoiceLineNet(line);
     const lineId = newUuid();
     await pgQuery(
       `INSERT INTO ${items} (
@@ -516,8 +718,296 @@ export async function createPurchaseInvoice(opts: {
   return { id, ficheNo, total };
 }
 
-/** Mevcut fatura — not ve durum güncelleme (mobil düzenleme) */
-export async function updateInvoiceHeader(
+export async function createPurchaseInvoice(
+  opts: {
+    supplierId?: string;
+    supplierName: string;
+    notes?: string;
+    paymentMethod?: string;
+    lines: InvoiceDraftLine[];
+  } & InvoiceCreateExtras,
+  writeOpts?: InvoiceWriteOptions,
+): Promise<InvoiceWriteResult> {
+  if (!opts.lines.length) throw new Error('En az bir kalem gerekli');
+
+  const id = writeOpts?.id || newUuid();
+  const ficheNo = writeOpts?.ficheNo || nextFicheNo('AF');
+  const totals = invoiceTotalsFromLines(opts.lines, opts.footerDiscountAmount);
+  const total = totals.net;
+  const live = writeOpts?.forceLive === true || shouldUseLiveData();
+
+  if (!live && !writeOpts?.skipQueue) {
+    await enqueueMutation({
+      type: 'invoice.purchase.create',
+      payload: {
+        localId: id,
+        ficheNo,
+        supplierId: opts.supplierId,
+        supplierName: opts.supplierName,
+        notes: opts.notes,
+        paymentMethod: opts.paymentMethod,
+        lines: opts.lines.map((l) => ({ ...l })),
+      },
+    });
+    for (const line of opts.lines) {
+      await adjustProductStockInCache(line.productId, line.qty);
+    }
+    const now = new Date().toISOString();
+    await upsertPendingInvoiceInCache({
+      id,
+      fiche_no: ficheNo,
+      date: now.slice(0, 10),
+      customer_name: opts.supplierName.trim() || 'Tedarikçi',
+      net_amount: total,
+      total_gross: totals.subtotal,
+      status: 'approved',
+      fiche_type: 'purchase_invoice',
+      trcode: 1,
+      payment_method: opts.paymentMethod || 'Nakit',
+      is_cancelled: false,
+      notes: opts.notes?.trim() || 'RetailEX Mobile Alış Faturası',
+      total_vat: 0,
+      total_discount: totals.lineDiscount + totals.footerDiscount,
+      currency: 'TRY',
+      lines: opts.lines.map((l) => ({
+        id: newUuid(),
+        item_code: l.code ?? null,
+        item_name: l.name,
+        quantity: l.qty,
+        unit_price: l.unitPrice,
+        net_amount: invoiceLineNet(l),
+        unit: l.unit || 'Adet',
+      })),
+      pending: true,
+    });
+    await useConnectivityStore.getState().refreshPendingCount();
+    return { id, ficheNo, total, queued: true };
+  }
+
+  return createPurchaseInvoiceLive(opts, { id, ficheNo });
+}
+
+/**
+ * İade faturası — Logo trcode:
+ * - 3 satış iade: fiche_type=return_invoice, stok +, müşteri bakiyesi −
+ * - 6 alış iade: fiche_type=purchase_invoice, stok −, tedarikçi bakiyesi −
+ */
+async function createReturnInvoiceLive(
+  opts: {
+    trcode: 3 | 6;
+    accountId?: string;
+    accountName: string;
+    notes?: string;
+    paymentMethod?: string;
+    cashier?: string;
+    returnReason?: string;
+    lines: InvoiceDraftLine[];
+  } & InvoiceCreateExtras,
+  writeOpts?: Pick<InvoiceWriteOptions, 'id' | 'ficheNo'>,
+): Promise<InvoiceWriteResult> {
+  if (!opts.lines.length) throw new Error('En az bir kalem gerekli');
+
+  const isSalesReturn = opts.trcode === 3;
+  const fn = firmNr();
+  const pn = periodNr();
+  const sales = salesTable(fn, pn);
+  const items = saleItemsTable(fn, pn);
+  const { useAuthStore } = await import('../store/authStore');
+
+  const id = writeOpts?.id || newUuid();
+  const ficheNo = writeOpts?.ficheNo || nextFicheNo(isSalesReturn ? 'SI' : 'AI');
+  const totals = invoiceTotalsFromLines(opts.lines, opts.footerDiscountAmount);
+  const total = totals.net;
+  const discountTotal = totals.lineDiscount + totals.footerDiscount;
+  const user = useAuthStore.getState().user;
+  const cashier =
+    opts.cashier?.trim() || user?.fullName || user?.username || 'mobile';
+  const accountName =
+    opts.accountName.trim() || (isSalesReturn ? 'Perakende' : 'Tedarikçi');
+  const documentNo = opts.documentNo?.trim() || ficheNo;
+  const ficheType = isSalesReturn ? 'return_invoice' : 'purchase_invoice';
+  const reasonNote = opts.returnReason?.trim();
+  const notesParts = [
+    opts.notes?.trim(),
+    reasonNote ? `İade nedeni: ${reasonNote}` : null,
+    'RetailEX Mobile İade',
+  ].filter(Boolean);
+  const notes = notesParts.join(' · ');
+
+  await pgQuery(
+    `INSERT INTO ${sales} (
+       id, firm_nr, period_nr, fiche_no, document_no, date,
+       fiche_type, trcode, customer_id, customer_name,
+       total_net, total_vat, total_gross, total_discount, net_amount,
+       currency, currency_rate, status, payment_method, cashier, notes
+     ) VALUES (
+       $1::uuid, $2, $3, $4, $5, NOW(),
+       $6, $7, $8::uuid, $9,
+       $10, 0, $11, $12, $10,
+       'TRY', 1, 'completed', $13, $14, $15
+     )`,
+    [
+      id,
+      fn,
+      pn,
+      ficheNo,
+      documentNo,
+      ficheType,
+      opts.trcode,
+      opts.accountId || null,
+      accountName,
+      total,
+      totals.subtotal,
+      discountTotal,
+      opts.paymentMethod || 'Nakit',
+      cashier,
+      notes,
+    ],
+  );
+
+  // stok: 3 → +, 6 → −
+  const stockSign = isSalesReturn ? 1 : -1;
+
+  for (const line of opts.lines) {
+    const lineNet = invoiceLineNet(line);
+    const lineId = newUuid();
+    await pgQuery(
+      `INSERT INTO ${items} (
+         id, invoice_id, firm_nr, period_nr,
+         product_id, item_code, item_name,
+         quantity, unit_price, net_amount, total_amount, unit
+       ) VALUES (
+         $1::uuid, $2::uuid, $3, $4,
+         $5::uuid, $6, $7,
+         $8, $9, $10, $10, $11
+       )`,
+      [
+        lineId,
+        id,
+        fn,
+        pn,
+        line.productId,
+        line.code ?? null,
+        line.name,
+        line.qty,
+        line.unitPrice,
+        lineNet,
+        line.unit || 'Adet',
+      ],
+    );
+
+    try {
+      await pgQuery(
+        `UPDATE ${productsTable(fn)}
+         SET stock = COALESCE(stock, 0) + $1, updated_at = NOW()
+         WHERE id::text = $2`,
+        [stockSign * line.qty, line.productId],
+      );
+    } catch {
+      /* şema farkı */
+    }
+  }
+
+  // Cari: iade tutarı bakiyeyi düşürür (müşteri / tedarikçi)
+  if (opts.accountId && total > 0) {
+    try {
+      if (isSalesReturn) {
+        await adjustCustomerBalance(opts.accountId, -total);
+      } else {
+        await adjustSupplierBalance(opts.accountId, -total);
+      }
+    } catch {
+      /* kart yoksa sessiz */
+    }
+  }
+
+  return { id, ficheNo, total };
+}
+
+export async function createReturnInvoice(
+  opts: {
+    /** 3 = satış iade, 6 = alış iade */
+    trcode: 3 | 6;
+    accountId?: string;
+    accountName: string;
+    notes?: string;
+    paymentMethod?: string;
+    cashier?: string;
+    returnReason?: string;
+    lines: InvoiceDraftLine[];
+  } & InvoiceCreateExtras,
+  writeOpts?: InvoiceWriteOptions,
+): Promise<InvoiceWriteResult> {
+  if (!opts.lines.length) throw new Error('En az bir kalem gerekli');
+  if (opts.trcode !== 3 && opts.trcode !== 6) {
+    throw new Error('İade için trcode 3 veya 6 gerekli');
+  }
+
+  const isSalesReturn = opts.trcode === 3;
+  const id = writeOpts?.id || newUuid();
+  const ficheNo = writeOpts?.ficheNo || nextFicheNo(isSalesReturn ? 'SI' : 'AI');
+  const totals = invoiceTotalsFromLines(opts.lines, opts.footerDiscountAmount);
+  const total = totals.net;
+  const live = writeOpts?.forceLive === true || shouldUseLiveData();
+
+  if (!live && !writeOpts?.skipQueue) {
+    await enqueueMutation({
+      type: 'invoice.return.create',
+      payload: {
+        localId: id,
+        ficheNo,
+        trcode: opts.trcode,
+        accountId: opts.accountId,
+        accountName: opts.accountName,
+        notes: opts.notes,
+        paymentMethod: opts.paymentMethod,
+        cashier: opts.cashier,
+        returnReason: opts.returnReason,
+        documentNo: opts.documentNo,
+        lines: opts.lines.map((l) => ({ ...l })),
+      },
+    });
+    const stockDelta = isSalesReturn ? 1 : -1;
+    for (const line of opts.lines) {
+      await adjustProductStockInCache(line.productId, stockDelta * line.qty);
+    }
+    const now = new Date().toISOString();
+    await upsertPendingInvoiceInCache({
+      id,
+      fiche_no: ficheNo,
+      date: now.slice(0, 10),
+      customer_name:
+        opts.accountName.trim() || (isSalesReturn ? 'Perakende' : 'Tedarikçi'),
+      net_amount: total,
+      total_gross: totals.subtotal,
+      status: 'completed',
+      fiche_type: isSalesReturn ? 'return_invoice' : 'purchase_invoice',
+      trcode: opts.trcode,
+      payment_method: opts.paymentMethod || 'Nakit',
+      is_cancelled: false,
+      notes: opts.notes?.trim() || 'RetailEX Mobile İade',
+      total_vat: 0,
+      total_discount: totals.lineDiscount + totals.footerDiscount,
+      currency: 'TRY',
+      lines: opts.lines.map((l) => ({
+        id: newUuid(),
+        item_code: l.code ?? null,
+        item_name: l.name,
+        quantity: l.qty,
+        unit_price: l.unitPrice,
+        net_amount: invoiceLineNet(l),
+        unit: l.unit || 'Adet',
+      })),
+      pending: true,
+    });
+    await useConnectivityStore.getState().refreshPendingCount();
+    return { id, ficheNo, total, queued: true };
+  }
+
+  return createReturnInvoiceLive(opts, { id, ficheNo });
+}
+
+async function updateInvoiceHeaderLive(
   id: string,
   patch: { notes?: string; status?: string },
 ): Promise<void> {
@@ -539,4 +1029,33 @@ export async function updateInvoiceHeader(
 
   vals.push(id);
   await pgQuery(`UPDATE ${table} SET ${sets.join(', ')} WHERE id::text = $${i}`, vals);
+}
+
+/** Mevcut fatura — not ve durum güncelleme (mobil düzenleme) */
+export async function updateInvoiceHeader(
+  id: string,
+  patch: { notes?: string; status?: string },
+  writeOpts?: InvoiceWriteOptions,
+): Promise<{ queued?: boolean }> {
+  if (!id) throw new Error('Fatura id gerekli');
+  const live = writeOpts?.forceLive === true || shouldUseLiveData();
+
+  if (!live && !writeOpts?.skipQueue) {
+    const pending = await getPendingInvoiceById(id);
+    if (pending) {
+      await patchPendingInvoiceInCache(id, patch);
+      await enqueueMutation({
+        type: 'invoice.header.update',
+        payload: { invoiceId: id, ...patch },
+      });
+      await useConnectivityStore.getState().refreshPendingCount();
+      return { queued: true };
+    }
+    if (getNetworkPolicy() === 'offline') {
+      throw new Error('Çevrimdışı: yalnızca bekleyen faturalar düzenlenebilir');
+    }
+  }
+
+  await updateInvoiceHeaderLive(id, patch);
+  return {};
 }

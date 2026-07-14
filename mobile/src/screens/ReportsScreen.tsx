@@ -7,7 +7,6 @@ import {
   AlertTriangle,
   TrendingUp,
   Package,
-  Users,
   Layers,
   Scale,
   FileText,
@@ -123,14 +122,6 @@ const LIVE_REPORTS: ReportEntry[] = [
     kind: 'stack',
     route: 'ReportStock',
     Icon: Package,
-  },
-  {
-    id: 'finance',
-    title: 'Cari Hesap Raporları',
-    desc: 'Cari bakiye mizanı',
-    kind: 'stack',
-    route: 'ReportMizan',
-    Icon: Users,
   },
 ];
 

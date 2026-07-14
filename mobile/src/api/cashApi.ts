@@ -92,6 +92,25 @@ export type SimpleBankMovementInput = {
   description?: string;
 };
 
+export type CashVirmanInput = {
+  sourceRegisterId: string;
+  targetRegisterId: string;
+  amount: number;
+  date?: string;
+  description?: string;
+};
+
+export type CashBankBridgeType = 'BANKA_YATIRILAN' | 'BANKADAN_CEKILEN';
+
+export type CashBankBridgeInput = {
+  type: CashBankBridgeType;
+  cashRegisterId: string;
+  bankRegisterId: string;
+  amount: number;
+  date?: string;
+  description?: string;
+};
+
 function todayYmd(): string {
   const d = new Date();
   const pad = (n: number) => String(n).padStart(2, '0');
@@ -360,6 +379,173 @@ export async function createCariCashSlip(
   return { id, ficheNo };
 }
 
+/** Kasa → kasa virman — web kasa.ts VIRMAN karşı satır */
+export async function createCashVirman(
+  input: CashVirmanInput,
+): Promise<{ id: string; ficheNo: string }> {
+  const amount = Math.abs(Number(input.amount) || 0);
+  if (!input.sourceRegisterId) throw new Error('Kaynak kasa seçin');
+  if (!input.targetRegisterId) throw new Error('Hedef kasa seçin');
+  if (input.sourceRegisterId === input.targetRegisterId) {
+    throw new Error('Kaynak ve hedef kasa aynı olamaz');
+  }
+  if (amount <= 0) throw new Error('Tutar 0’dan büyük olmalı');
+
+  const fn = firmNr();
+  const pn = periodNr();
+  const lines = cashLinesTable();
+  const regs = cashRegistersTable();
+  const ficheNo = nextFicheNo('KL');
+  const id = newUuid();
+  const date = (input.date || todayYmd()).slice(0, 10);
+  const desc = (input.description || '').trim() || 'Kasa virman';
+
+  await pgQuery(
+    `INSERT INTO ${lines} (
+       id, firm_nr, period_nr, register_id, fiche_no, date, amount, sign,
+       definition, transaction_type, target_register_id,
+       currency_code, exchange_rate, f_amount, transfer_status
+     ) VALUES (
+       $1::uuid, $2, $3, $4::uuid, $5, $6::date, $7, -1,
+       $8, 'VIRMAN', $9::uuid, 'YEREL', 1, $7, 0
+     )`,
+    [id, fn, pn, input.sourceRegisterId, ficheNo, date, amount, desc, input.targetRegisterId],
+  );
+
+  const counterId = newUuid();
+  const counterDesc = `${desc} (Virman alındı)`;
+  await pgQuery(
+    `INSERT INTO ${lines} (
+       id, firm_nr, period_nr, register_id, fiche_no, date, amount, sign,
+       definition, transaction_type, target_register_id,
+       currency_code, exchange_rate, f_amount, transfer_status
+     ) VALUES (
+       $1::uuid, $2, $3, $4::uuid, $5, $6::date, $7, 1,
+       $8, 'VIRMAN', $9::uuid, 'YEREL', 1, $7, 0
+     )`,
+    [
+      counterId,
+      fn,
+      pn,
+      input.targetRegisterId,
+      `${ficheNo}-VRM`,
+      date,
+      amount,
+      counterDesc,
+      input.sourceRegisterId,
+    ],
+  );
+
+  await pgQuery(
+    `UPDATE ${regs}
+     SET balance = COALESCE(balance, 0) + $1::numeric,
+         updated_at = NOW()
+     WHERE id = $2::uuid`,
+    [-amount, input.sourceRegisterId],
+  );
+  await pgQuery(
+    `UPDATE ${regs}
+     SET balance = COALESCE(balance, 0) + $1::numeric,
+         updated_at = NOW()
+     WHERE id = $2::uuid`,
+    [amount, input.targetRegisterId],
+  );
+
+  return { id, ficheNo };
+}
+
+/** Kasa ↔ banka — web BANKA_YATIRILAN / BANKADAN_CEKILEN */
+export async function createCashBankBridge(
+  input: CashBankBridgeInput,
+): Promise<{ id: string; ficheNo: string }> {
+  const amount = Math.abs(Number(input.amount) || 0);
+  if (!input.cashRegisterId) throw new Error('Kasa seçin');
+  if (!input.bankRegisterId) throw new Error('Banka hesabı seçin');
+  if (amount <= 0) throw new Error('Tutar 0’dan büyük olmalı');
+
+  const fn = firmNr();
+  const pn = periodNr();
+  const cashLines = cashLinesTable();
+  const bankLines = bankLinesTable();
+  const cashRegs = cashRegistersTable();
+  const bankRegs = bankRegistersTable();
+  const ficheNo = nextFicheNo('KL');
+  const id = newUuid();
+  const date = (input.date || todayYmd()).slice(0, 10);
+  const txType = input.type;
+  const cashSign = txType === 'BANKA_YATIRILAN' ? -1 : 1;
+  const bankSign = txType === 'BANKA_YATIRILAN' ? 1 : -1;
+  const bankTxType = txType === 'BANKA_YATIRILAN' ? 'BANKA_GIRIS' : 'BANKA_CIKIS';
+  const desc =
+    (input.description || '').trim() ||
+    (txType === 'BANKA_YATIRILAN' ? 'Bankaya yatırılan' : 'Bankadan çekilen');
+  const bankDesc = `${desc} (Kasa entegrasyon)`;
+
+  await pgQuery(
+    `INSERT INTO ${cashLines} (
+       id, firm_nr, period_nr, register_id, fiche_no, date, amount, sign,
+       definition, transaction_type, bank_id,
+       currency_code, exchange_rate, f_amount, transfer_status
+     ) VALUES (
+       $1::uuid, $2, $3, $4::uuid, $5, $6::date, $7, $8,
+       $9, $10, $11::uuid, 'YEREL', 1, $7, 0
+     )`,
+    [
+      id,
+      fn,
+      pn,
+      input.cashRegisterId,
+      ficheNo,
+      date,
+      amount,
+      cashSign,
+      desc,
+      txType,
+      input.bankRegisterId,
+    ],
+  );
+
+  const bankId = newUuid();
+  await pgQuery(
+    `INSERT INTO ${bankLines} (
+       id, firm_nr, period_nr, register_id, fiche_no, date, amount, sign,
+       definition, transaction_type, currency_code, exchange_rate, f_amount
+     ) VALUES (
+       $1::uuid, $2, $3, $4::uuid, $5, $6::date, $7, $8,
+       $9, $10, 'YEREL', 1, $7
+     )`,
+    [
+      bankId,
+      fn,
+      pn,
+      input.bankRegisterId,
+      ficheNo,
+      date,
+      amount,
+      bankSign,
+      bankDesc,
+      bankTxType,
+    ],
+  );
+
+  await pgQuery(
+    `UPDATE ${cashRegs}
+     SET balance = COALESCE(balance, 0) + $1::numeric,
+         updated_at = NOW()
+     WHERE id = $2::uuid`,
+    [amount * cashSign, input.cashRegisterId],
+  );
+  await pgQuery(
+    `UPDATE ${bankRegs}
+     SET balance = COALESCE(balance, 0) + $1::numeric,
+         updated_at = NOW()
+     WHERE id = $2::uuid`,
+    [amount * bankSign, input.bankRegisterId],
+  );
+
+  return { id, ficheNo };
+}
+
 export async function createSimpleBankMovement(
   input: SimpleBankMovementInput,
 ): Promise<{ id: string; ficheNo: string }> {
@@ -405,7 +591,9 @@ export function movementTypeLabel(type: string | null, sign: number): string {
   if (t === 'KASA_CIKIS' || t === 'BANKA_CIKIS') return 'Çıkış';
   if (t === 'CH_TAHSILAT') return 'Tahsilat';
   if (t === 'CH_ODEME') return 'Ödeme';
-  if (t === 'VIRMAN') return 'Virman';
+  if (t === 'VIRMAN') return sign > 0 ? 'Virman (giriş)' : 'Virman (çıkış)';
+  if (t === 'BANKA_YATIRILAN') return 'Bankaya yatırılan';
+  if (t === 'BANKADAN_CEKILEN') return 'Bankadan çekilen';
   if (sign > 0) return 'Giriş';
   if (sign < 0) return 'Çıkış';
   return type || '—';

@@ -50,8 +50,10 @@ export function communicationsRouteTab(screenIdOrTab?: string): Tab {
   switch (screenIdOrTab) {
     case 'notifications':
     case 'smsmanage':
+    case 'databroadcast':
       return 'queue';
     case 'whatsapp':
+    case 'integrations':
       return 'provider';
     case 'mesaj-bildirim':
     case 'emailcamp':

@@ -30,7 +30,7 @@ import {
   type CashMovementRow,
   type CashRegisterRow,
 } from '../api/cashApi';
-import { fetchCustomers, type CustomerRow } from '../api/customersApi';
+import { fetchCustomers, fetchCustomerById, type CustomerRow } from '../api/customersApi';
 import { formatMoney } from '../api/erpTables';
 import { useThemeStore } from '../store/themeStore';
 import { useOrgEpoch } from '../hooks/useOrgEpoch';
@@ -103,13 +103,41 @@ export function CashCollectionScreen({ route }: Props) {
   }, [route.params?.openCreate]);
 
   useEffect(() => {
+    if (!presetCustomerId) return;
+    let cancelled = false;
+    void (async () => {
+      const row = await fetchCustomerById(presetCustomerId);
+      if (cancelled || !row) return;
+      setCustomerId(row.id);
+      setCustomers((prev) => {
+        if (prev.some((c) => c.id === row.id)) return prev;
+        return [row, ...prev];
+      });
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [presetCustomerId]);
+
+  useEffect(() => {
     if (!createOpen) return;
     let cancelled = false;
     const t = setTimeout(async () => {
       setCustLoading(true);
       try {
         const rows = await fetchCustomers(custSearch, 40);
-        if (!cancelled) setCustomers(rows);
+        if (!cancelled) {
+          setCustomers((prev) => {
+            const preset = presetCustomerId
+              ? prev.find((c) => c.id === presetCustomerId) ??
+                (customerId === presetCustomerId ? prev.find((c) => c.id === customerId) : null)
+              : null;
+            if (preset && !rows.some((c) => c.id === preset.id)) {
+              return [preset, ...rows];
+            }
+            return rows;
+          });
+        }
       } catch {
         if (!cancelled) setCustomers([]);
       } finally {
@@ -120,7 +148,11 @@ export function CashCollectionScreen({ route }: Props) {
       cancelled = true;
       clearTimeout(t);
     };
-  }, [createOpen, custSearch]);
+  }, [createOpen, custSearch, presetCustomerId, customerId]);
+
+  const visibleSlips = presetCustomerId
+    ? slips.filter((s) => s.customer_id === presetCustomerId)
+    : slips;
 
   const openCreate = () => {
     setFormError(null);
@@ -175,7 +207,13 @@ export function CashCollectionScreen({ route }: Props) {
     <View style={[styles.root, { backgroundColor: colors.background }]}>
       <ScreenHeader
         title="Tahsilat / Ödeme"
-        subtitle={`${slips.length} cari fiş`}
+        subtitle={
+          presetCustomerId && selectedCustomer
+            ? selectedCustomer.name
+            : presetCustomerId
+              ? `${visibleSlips.length} fiş`
+              : `${slips.length} cari fiş`
+        }
         right={
           <Pressable onPress={openCreate} style={styles.fabHeader} accessibilityLabel="Yeni fiş">
             <Plus size={22} color={palette.white} />
@@ -189,10 +227,10 @@ export function CashCollectionScreen({ route }: Props) {
         <ActivityIndicator style={{ marginTop: 40 }} color={palette.green600} />
       ) : (
         <FlatList
-          data={slips}
+          data={visibleSlips}
           keyExtractor={(item) => item.id}
           refreshControl={<RefreshControl refreshing={loading} onRefresh={() => void load()} />}
-          contentContainerStyle={slips.length ? styles.list : styles.listEmpty}
+          contentContainerStyle={visibleSlips.length ? styles.list : styles.listEmpty}
           ListEmptyComponent={
             <EmptyState
               message={

@@ -34,7 +34,7 @@ import {
   type MaterialExtractRow,
 } from '../api/reportsApi';
 import { fetchProducts } from '../api/productsApi';
-import { formatMoney } from '../api/erpTables';
+import { formatMoney, firmNr, periodNr } from '../api/erpTables';
 import { useThemeStore } from '../store/themeStore';
 import { useOrgEpoch } from '../hooks/useOrgEpoch';
 import { palette } from '../theme/colors';
@@ -594,7 +594,7 @@ function ReportMaterialExtract({ meta }: { meta: { title: string; subtitle: stri
 
 type CardFilter = 'all' | 'customer' | 'supplier';
 
-/** Web `CariBalanceSummaryReport` / menü `mizan` — cari bakiye mizanı */
+/** Web ledger CTE + menü `mizan` — dönemsel cari bakiye (R2/R11) */
 export function ReportMizanScreen() {
   const { colors } = useThemeStore();
   const orgEpoch = useOrgEpoch();
@@ -603,6 +603,11 @@ export function ReportMizanScreen() {
   const [rows, setRows] = useState<CariBalanceRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const orgLabel = useMemo(() => {
+    const fn = firmNr();
+    const pn = periodNr();
+    return `Firma ${fn} · Dönem ${pn}`;
+  }, [orgEpoch]);
 
   const load = useCallback(async () => {
     setError(null);
@@ -634,12 +639,22 @@ export function ReportMizanScreen() {
   const totals = useMemo(() => {
     let recv = 0;
     let pay = 0;
+    let cardRecv = 0;
+    let cardPay = 0;
     for (const r of rows) {
-      if (r.cardType === 'customer') recv += r.balance;
-      else pay += r.balance;
+      if (r.cardType === 'customer') {
+        recv += r.balance;
+        cardRecv += r.cardBalance;
+      } else {
+        pay += r.balance;
+        cardPay += r.cardBalance;
+      }
     }
-    return { recv, pay, net: recv - pay };
+    return { recv, pay, net: recv - pay, cardRecv, cardPay, cardNet: cardRecv - cardPay };
   }, [rows]);
+
+  const source = rows[0]?.balanceSource ?? 'period_ledger';
+  const isLedger = source === 'period_ledger';
 
   const filters: { id: CardFilter; label: string }[] = [
     { id: 'all', label: 'Tümü' },
@@ -649,7 +664,25 @@ export function ReportMizanScreen() {
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
-      <ScreenHeader title="Mizan (Cari Bakiye)" subtitle={`${filtered.length} hesap`} />
+      <ScreenHeader
+        title="Mizan (Dönemsel Cari)"
+        subtitle={`${orgLabel} · ${filtered.length} hesap`}
+      />
+      <View
+        style={[
+          styles.hintBox,
+          { backgroundColor: colors.card, borderColor: colors.cardBorder },
+        ]}
+      >
+        <Text style={{ color: colors.text, fontSize: 12, fontWeight: '700' }}>
+          {isLedger ? 'Dönem bakiyesi (ledger)' : 'Kart bakiyesi (firma)'}
+        </Text>
+        <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 2, lineHeight: 15 }}>
+          {isLedger
+            ? 'Açılış + dönem satış/alış + kasa CH_* hareketleri. Ana tutar dönemseldir; kart satırı firma birikimidir.'
+            : 'Ledger CTE kullanılamadı; gösterim firma kart kolonundan (dönem bağımsız).'}
+        </Text>
+      </View>
       <View style={styles.filterRow}>
         {filters.map((f) => (
           <Pressable
@@ -672,18 +705,23 @@ export function ReportMizanScreen() {
       <SearchBar value={search} onChangeText={setSearch} placeholder="Kod veya unvan…" />
       <View style={styles.kpiRow}>
         <View style={[styles.kpi, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
-          <Text style={styles.lbl}>Alacak</Text>
+          <Text style={styles.lbl}>Alacak (dönem)</Text>
           <Text style={[styles.valSm, { color: palette.blue600 }]}>{formatMoney(totals.recv)}</Text>
         </View>
         <View style={[styles.kpi, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
-          <Text style={styles.lbl}>Borç</Text>
+          <Text style={styles.lbl}>Borç (dönem)</Text>
           <Text style={[styles.valSm, { color: palette.orange500 }]}>{formatMoney(totals.pay)}</Text>
         </View>
         <View style={[styles.kpi, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
-          <Text style={styles.lbl}>Net</Text>
+          <Text style={styles.lbl}>Net (dönem)</Text>
           <Text style={[styles.valSm, { color: colors.text }]}>{formatMoney(totals.net)}</Text>
         </View>
       </View>
+      {isLedger ? (
+        <Text style={{ color: colors.textMuted, fontSize: 10, paddingHorizontal: 12, marginBottom: 4 }}>
+          Kart net (firma): {formatMoney(totals.cardNet)}
+        </Text>
+      ) : null}
       {error ? <ErrorBanner message={error} onRetry={() => void load()} /> : null}
       {loading ? (
         <ActivityIndicator style={{ marginTop: 40 }} color={palette.blue600} />
@@ -692,28 +730,37 @@ export function ReportMizanScreen() {
           data={filtered}
           keyExtractor={(item) => `${item.cardType}-${item.accountId}`}
           refreshControl={<RefreshControl refreshing={loading} onRefresh={() => void load()} />}
-          ListEmptyComponent={<EmptyState message="Bakiye kaydı yok" />}
+          ListEmptyComponent={<EmptyState message="Dönemde bakiyesi olan cari yok" />}
           contentContainerStyle={{ padding: 12, gap: 8, paddingBottom: 40 }}
-          renderItem={({ item }) => (
-            <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
-              <View style={styles.rowBetween}>
-                <Text style={{ color: colors.text, fontWeight: '700', flex: 1 }} numberOfLines={1}>
-                  {item.accountName}
+          renderItem={({ item }) => {
+            const cardDiffers = Math.abs(item.balance - item.cardBalance) > 0.009;
+            return (
+              <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
+                <View style={styles.rowBetween}>
+                  <Text style={{ color: colors.text, fontWeight: '700', flex: 1 }} numberOfLines={1}>
+                    {item.accountName}
+                  </Text>
+                  <Text
+                    style={{
+                      color: item.balance >= 0 ? palette.blue600 : palette.red500,
+                      fontWeight: '800',
+                    }}
+                  >
+                    {formatMoney(item.balance)}
+                  </Text>
+                </View>
+                <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 2 }}>
+                  {item.accountCode || '—'} · {item.cardType === 'customer' ? 'Müşteri' : 'Tedarikçi'}
+                  {item.txnCount > 0 ? ` · ${item.txnCount} hareket` : ''}
                 </Text>
-                <Text
-                  style={{
-                    color: item.balance >= 0 ? palette.blue600 : palette.red500,
-                    fontWeight: '800',
-                  }}
-                >
-                  {formatMoney(item.balance)}
-                </Text>
+                {isLedger && cardDiffers ? (
+                  <Text style={{ color: colors.textMuted, fontSize: 10, marginTop: 3 }}>
+                    Kart (firma): {formatMoney(item.cardBalance)}
+                  </Text>
+                ) : null}
               </View>
-              <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 2 }}>
-                {item.accountCode || '—'} · {item.cardType === 'customer' ? 'Müşteri' : 'Tedarikçi'}
-              </Text>
-            </View>
-          )}
+            );
+          }}
         />
       )}
     </View>
@@ -723,11 +770,14 @@ export function ReportMizanScreen() {
 /** Web `CariExtractReport` / menü `customer-extract` */
 export function ReportCariExtractScreen() {
   const { colors } = useThemeStore();
+  const route = useRoute<RouteProp<MainStackParamList, 'ReportCariExtract'>>();
+  const presetAccountId = route.params?.accountId;
+  const presetCardType = route.params?.cardType;
   const orgEpoch = useOrgEpoch();
   const range = useMemo(() => defaultExtractRange(90), []);
-  const [cardType, setCardType] = useState<'customer' | 'supplier'>('customer');
+  const [cardType, setCardType] = useState<'customer' | 'supplier'>(presetCardType ?? 'customer');
   const [accounts, setAccounts] = useState<CariBalanceRow[]>([]);
-  const [accountId, setAccountId] = useState('');
+  const [accountId, setAccountId] = useState(presetAccountId ?? '');
   const [accountSearch, setAccountSearch] = useState('');
   const [rows, setRows] = useState<CariExtractRow[]>([]);
   const [loadingAccounts, setLoadingAccounts] = useState(true);
@@ -743,7 +793,13 @@ export function ReportCariExtractScreen() {
         const list = await fetchCariBalances({ cardType, onlyNonZero: false, limit: 400 });
         if (cancelled) return;
         setAccounts(list);
-        setAccountId((prev) => (list.some((a) => a.accountId === prev) ? prev : list[0]?.accountId || ''));
+        setAccountId((prev) => {
+          if (presetAccountId && list.some((a) => a.accountId === presetAccountId)) {
+            return presetAccountId;
+          }
+          if (prev && list.some((a) => a.accountId === prev)) return prev;
+          return list[0]?.accountId || '';
+        });
       } catch (e) {
         if (!cancelled) {
           setAccounts([]);
@@ -757,7 +813,15 @@ export function ReportCariExtractScreen() {
     return () => {
       cancelled = true;
     };
-  }, [cardType, orgEpoch]);
+  }, [cardType, orgEpoch, presetAccountId]);
+
+  useEffect(() => {
+    if (presetCardType) setCardType(presetCardType);
+  }, [presetCardType]);
+
+  useEffect(() => {
+    if (presetAccountId) setAccountId(presetAccountId);
+  }, [presetAccountId]);
 
   const selected = useMemo(
     () => accounts.find((a) => a.accountId === accountId) ?? null,
@@ -828,7 +892,10 @@ export function ReportCariExtractScreen() {
               >
                 <Text style={{ color: colors.text, fontWeight: '700' }}>{item.accountName}</Text>
                 <Text style={{ color: colors.textMuted, fontSize: 11 }}>
-                  {item.accountCode || '—'} · Bakiye {formatMoney(item.balance)}
+                  {item.accountCode || '—'} · Dönem {formatMoney(item.balance)}
+                  {Math.abs(item.balance - item.cardBalance) > 0.009
+                    ? ` · Kart ${formatMoney(item.cardBalance)}`
+                    : ''}
                 </Text>
               </Pressable>
             )}
@@ -1116,6 +1183,14 @@ export function ReportCashScreen() {
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
+  hintBox: {
+    marginHorizontal: 12,
+    marginTop: 8,
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
   kpiRow: { flexDirection: 'row', gap: 8, padding: 12, paddingBottom: 4 },
   kpi: { flex: 1, borderWidth: 1, borderRadius: 10, padding: 12 },
   lbl: { fontSize: 10, color: '#6b7280', fontWeight: '600' },

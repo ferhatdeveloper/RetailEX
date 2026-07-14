@@ -1,5 +1,11 @@
 import { pgQuery } from './pgClient';
 import {
+  customerBalancesCteForSession,
+  supplierBalancesCteForSession,
+  sqlResolvedCustomerBalanceExpr,
+  sqlResolvedSupplierBalanceExpr,
+} from './accountBalance';
+import {
   accountMovementsTable,
   cashLinesTable,
   cashRegistersTable,
@@ -34,11 +40,33 @@ function sqlSalesRevenueFt(alias = ''): string {
 `;
 }
 
+/**
+ * Satış iadesi işareti — web `SQL_SALES_SIGN` / `SQL_IS_SALES_RETURN`.
+ * trcode 2–3 veya return_invoice (alış iade trcode hariç) → −1.
+ */
+function sqlSalesRevenueSign(alias = ''): string {
+  const p = alias ? `${alias}.` : '';
+  return `
+  CASE
+    WHEN COALESCE(${p}trcode, 0) IN (2, 3)
+      OR (
+        LOWER(TRIM(COALESCE(${p}fiche_type, ''))) = 'return_invoice'
+        AND COALESCE(${p}trcode, 0) NOT IN (1, 4, 5, 6, 13, 26, 41, 42)
+      )
+    THEN -1
+    ELSE 1
+  END
+`;
+}
+
 export async function fetchSalesByDay(days = 14): Promise<SalesDayRow[]> {
   const table = salesTable(firmNr(), periodNr());
+  const sign = sqlSalesRevenueSign();
   const res = await pgQuery<{ day: string; revenue: string | number; count: string | number }>(
     `SELECT date_trunc('day', COALESCE(date::timestamp, created_at))::date::text AS day,
-            COALESCE(SUM(COALESCE(net_amount, total_net, 0)), 0)::float8 AS revenue,
+            COALESCE(SUM(
+              (${sign}) * ABS(COALESCE(net_amount, total_net, 0))
+            ), 0)::float8 AS revenue,
             COUNT(*)::int AS count
      FROM ${table}
      WHERE COALESCE(is_cancelled, false) = false
@@ -93,11 +121,14 @@ export async function fetchTopProducts(limit = 20): Promise<TopProductRow[]> {
   const pn = periodNr();
   const items = saleItemsTable(fn, pn);
   const sales = salesTable(fn, pn);
+  const sign = sqlSalesRevenueSign('s');
   try {
     const res = await pgQuery<TopProductRow>(
       `SELECT COALESCE(si.item_name, si.item_code, 'Ürün') AS product_name,
-              COALESCE(SUM(si.quantity), 0)::float8 AS qty,
-              COALESCE(SUM(COALESCE(si.net_amount, si.total_amount, 0)), 0)::float8 AS amount
+              COALESCE(SUM((${sign}) * COALESCE(si.quantity, 0)), 0)::float8 AS qty,
+              COALESCE(SUM(
+                (${sign}) * ABS(COALESCE(si.net_amount, si.total_amount, 0))
+              ), 0)::float8 AS amount
        FROM ${items} si
        INNER JOIN ${sales} s ON s.id = si.invoice_id
        WHERE COALESCE(s.is_cancelled, false) = false
@@ -114,28 +145,67 @@ export async function fetchTopProducts(limit = 20): Promise<TopProductRow[]> {
   }
 }
 
-/** Web `erpReports.getCariBalances` — cari mizan / bakiye özeti */
+/**
+ * Cari mizan / bakiye özeti.
+ * Varsayılan `balance` = aktif dönem ledger CTE (web `accountBalance.ts`).
+ * `cardBalance` = firma kart kolonu (dönem bağımsız) — R2/R11 ayrımı.
+ */
 export type CariBalanceRow = {
   accountId: string;
   accountCode: string;
   accountName: string;
   cardType: 'customer' | 'supplier';
+  /** Dönem ledger bakiyesi (gösterim varsayılanı) */
   balance: number;
+  /** Kart `balance` kolonu — firma genel */
+  cardBalance: number;
   creditLimit: number;
+  txnCount: number;
+  balanceSource: 'period_ledger' | 'card';
+  periodNr: string;
+  firmNr: string;
 };
 
-export async function fetchCariBalances(opts?: {
-  cardType?: 'customer' | 'supplier' | 'all';
-  onlyNonZero?: boolean;
-  limit?: number;
-}): Promise<CariBalanceRow[]> {
-  const want = opts?.cardType ?? 'all';
-  const onlyNonZero = opts?.onlyNonZero !== false;
-  const limit = opts?.limit ?? 500;
-  const balFilter = onlyNonZero ? 'AND ABS(COALESCE(balance, 0)) > 0.009' : '';
-  const cust = customersTable();
-  const supp = suppliersTable();
+function mapCardFallbackRow(
+  r: {
+    account_id: string;
+    account_code: string;
+    account_name: string;
+    card_type?: string;
+    balance: number;
+    credit_limit: number;
+  },
+  cardType: 'customer' | 'supplier',
+  fn: string,
+  pn: string,
+): CariBalanceRow {
+  const bal = Number(r.balance ?? 0);
+  return {
+    accountId: String(r.account_id ?? ''),
+    accountCode: String(r.account_code ?? ''),
+    accountName: String(r.account_name ?? ''),
+    cardType: r.card_type === 'supplier' || cardType === 'supplier' ? 'supplier' : 'customer',
+    balance: bal,
+    cardBalance: bal,
+    creditLimit: Number(r.credit_limit ?? 0),
+    txnCount: 0,
+    balanceSource: 'card',
+    periodNr: pn,
+    firmNr: fn,
+  };
+}
 
+async function fetchCariBalancesFromCard(opts: {
+  want: 'customer' | 'supplier' | 'all';
+  onlyNonZero: boolean;
+  limit: number;
+  fn: string;
+  pn: string;
+}): Promise<CariBalanceRow[]> {
+  const { want, onlyNonZero, limit, fn, pn } = opts;
+  const balFilter = onlyNonZero ? 'AND ABS(COALESCE(balance, 0)) > 0.009' : '';
+  const cust = customersTable(fn);
+  const supp = suppliersTable(fn);
   const parts: string[] = [];
   if (want === 'all' || want === 'customer') {
     parts.push(`
@@ -172,16 +242,8 @@ export async function fetchCariBalances(opts?: {
       balance: number;
       credit_limit: number;
     }>(`${parts.join(' UNION ALL ')} ORDER BY ABS(balance) DESC LIMIT $1`, [limit]);
-    return res.rows.map((r) => ({
-      accountId: String(r.account_id ?? ''),
-      accountCode: String(r.account_code ?? ''),
-      accountName: String(r.account_name ?? ''),
-      cardType: r.card_type === 'supplier' ? 'supplier' : 'customer',
-      balance: Number(r.balance ?? 0),
-      creditLimit: Number(r.credit_limit ?? 0),
-    }));
+    return res.rows.map((r) => mapCardFallbackRow(r, 'customer', fn, pn));
   } catch {
-    // Tedarikçi tablosu yoksa yalnızca müşteri
     if (want === 'supplier') return [];
     const res = await pgQuery<{
       account_id: string;
@@ -201,18 +263,124 @@ export async function fetchCariBalances(opts?: {
        LIMIT $1`,
       [limit],
     );
+    return res.rows.map((r) => mapCardFallbackRow(r, 'customer', fn, pn));
+  }
+}
+
+export async function fetchCariBalances(opts?: {
+  cardType?: 'customer' | 'supplier' | 'all';
+  onlyNonZero?: boolean;
+  limit?: number;
+  /** true → yalnızca kart kolonu (eski davranış) */
+  useCardBalance?: boolean;
+}): Promise<CariBalanceRow[]> {
+  const want = opts?.cardType ?? 'all';
+  const onlyNonZero = opts?.onlyNonZero !== false;
+  const limit = opts?.limit ?? 500;
+  const fn = firmNr();
+  const pn = periodNr();
+
+  if (opts?.useCardBalance) {
+    return fetchCariBalancesFromCard({ want, onlyNonZero, limit, fn, pn });
+  }
+
+  const cust = customersTable(fn);
+  const supp = suppliersTable(fn);
+  const balOuter = onlyNonZero ? 'WHERE ABS(COALESCE(period_balance, 0)) > 0.009' : '';
+
+  const parts: string[] = [];
+  if (want === 'all' || want === 'customer') {
+    parts.push(`
+      SELECT c.id::text AS account_id,
+             COALESCE(c.code,'') AS account_code,
+             COALESCE(c.name,'') AS account_name,
+             'customer'::text AS card_type,
+             (${sqlResolvedCustomerBalanceExpr()})::float8 AS period_balance,
+             COALESCE(c.balance,0)::float8 AS card_balance,
+             COALESCE(c.credit_limit,0)::float8 AS credit_limit,
+             COALESCE(b.txn_count, 0)::int AS txn_count
+      FROM ${cust} c
+      LEFT JOIN account_balances b ON c.id = b.id
+      WHERE COALESCE(c.is_active, true) = true
+        AND (
+          c.firm_nr = $1
+          OR LPAD(TRIM(COALESCE(c.firm_nr, '')), 3, '0') = LPAD(TRIM($1::text), 3, '0')
+          OR c.firm_nr IS NULL
+          OR TRIM(COALESCE(c.firm_nr, '')) = ''
+        )
+    `);
+  }
+  if (want === 'all' || want === 'supplier') {
+    parts.push(`
+      SELECT s.id::text AS account_id,
+             COALESCE(s.code,'') AS account_code,
+             COALESCE(s.name,'') AS account_name,
+             'supplier'::text AS card_type,
+             (${sqlResolvedSupplierBalanceExpr()})::float8 AS period_balance,
+             COALESCE(s.balance,0)::float8 AS card_balance,
+             COALESCE(s.credit_limit,0)::float8 AS credit_limit,
+             COALESCE(b.txn_count, 0)::int AS txn_count
+      FROM ${supp} s
+      LEFT JOIN supplier_balances b ON s.id = b.id
+      WHERE COALESCE(s.is_active, true) = true
+    `);
+  }
+  if (!parts.length) return [];
+
+  const withParts: string[] = [];
+  if (want === 'all' || want === 'customer') {
+    withParts.push(customerBalancesCteForSession('$1::text'));
+  }
+  if (want === 'all' || want === 'supplier') {
+    withParts.push(supplierBalancesCteForSession());
+  }
+
+  const includeCustomer = want === 'all' || want === 'customer';
+  // PG parametreleri $1'den ardışık olmalı — yalnızca tedarikçide $1 = limit
+  const limitParam = includeCustomer ? '$2' : '$1';
+  const queryParams = includeCustomer ? [fn, limit] : [limit];
+
+  try {
+    const sql = `
+      WITH ${withParts.join(',\n')}
+      SELECT * FROM (
+        ${parts.join(' UNION ALL ')}
+      ) balances
+      ${balOuter}
+      ORDER BY ABS(period_balance) DESC
+      LIMIT ${limitParam}`;
+    const res = await pgQuery<{
+      account_id: string;
+      account_code: string;
+      account_name: string;
+      card_type: string;
+      period_balance: number;
+      card_balance: number;
+      credit_limit: number;
+      txn_count: number;
+    }>(sql, queryParams);
     return res.rows.map((r) => ({
       accountId: String(r.account_id ?? ''),
       accountCode: String(r.account_code ?? ''),
       accountName: String(r.account_name ?? ''),
-      cardType: 'customer' as const,
-      balance: Number(r.balance ?? 0),
+      cardType: r.card_type === 'supplier' ? 'supplier' : 'customer',
+      balance: Number(r.period_balance ?? 0),
+      cardBalance: Number(r.card_balance ?? 0),
       creditLimit: Number(r.credit_limit ?? 0),
+      txnCount: Number(r.txn_count ?? 0),
+      balanceSource: 'period_ledger' as const,
+      periodNr: pn,
+      firmNr: fn,
     }));
+  } catch {
+    // CTE / cash_lines yoksa kart bakiyesine düş
+    return fetchCariBalancesFromCard({ want, onlyNonZero, limit, fn, pn });
   }
 }
 
-/** Web `erpReports.getCariExtract` — cari ekstre */
+/** Web `erpReports.getCariExtract` / `supplierAPI.getAccountStatement` — cari ekstre */
+export type CariExtractSource = 'movement' | 'sale' | 'cash';
+
 export type CariExtractRow = {
   id: string;
   date: string;
@@ -221,7 +389,7 @@ export type CariExtractRow = {
   debit: number;
   credit: number;
   balance: number;
-  source: 'movement' | 'sale';
+  source: CariExtractSource;
 };
 
 function mapRunningExtract(
@@ -232,7 +400,7 @@ function mapRunningExtract(
     definition: string;
     amount: number;
     sign: number;
-    source: 'movement' | 'sale';
+    source: CariExtractSource;
   }[],
 ): CariExtractRow[] {
   let running = 0;
@@ -254,6 +422,38 @@ function mapRunningExtract(
   });
 }
 
+function mapExtractSqlRow(r: {
+  id: string;
+  date: string;
+  fiche_no: string;
+  definition: string;
+  amount: number;
+  sign: number;
+  source: string;
+}): {
+  id: string;
+  date: string;
+  ficheNo: string;
+  definition: string;
+  amount: number;
+  sign: number;
+  source: CariExtractSource;
+} {
+  const src = String(r.source || 'sale');
+  const source: CariExtractSource =
+    src === 'movement' ? 'movement' : src === 'cash' ? 'cash' : 'sale';
+  const signNum = Number(r.sign);
+  return {
+    id: String(r.id ?? ''),
+    date: String(r.date ?? '').slice(0, 10),
+    ficheNo: String(r.fiche_no ?? ''),
+    definition: String(r.definition ?? ''),
+    amount: Number(r.amount ?? 0),
+    sign: signNum < 0 ? -1 : 1,
+    source,
+  };
+}
+
 export async function fetchCariExtract(opts: {
   accountId: string;
   cardType: 'customer' | 'supplier';
@@ -271,6 +471,7 @@ export async function fetchCariExtract(opts: {
   const limit = opts.limit ?? 1000;
   const movTable = accountMovementsTable();
   const sales = salesTable();
+  const cash = cashLinesTable();
 
   let raw: {
     id: string;
@@ -279,7 +480,7 @@ export async function fetchCariExtract(opts: {
     definition: string;
     amount: number;
     sign: number;
-    source: 'movement' | 'sale';
+    source: CariExtractSource;
   }[] = [];
 
   try {
@@ -308,21 +509,14 @@ export async function fetchCariExtract(opts: {
        LIMIT $4`,
       [accountId, start, end, limit],
     );
-    raw = (res.rows || []).map((r) => ({
-      id: String(r.id ?? ''),
-      date: String(r.date ?? '').slice(0, 10),
-      ficheNo: String(r.fiche_no ?? ''),
-      definition: String(r.definition ?? ''),
-      amount: Number(r.amount ?? 0),
-      sign: Number(r.sign ?? 1) || 1,
-      source: 'movement' as const,
-    }));
+    raw = (res.rows || []).map(mapExtractSqlRow);
   } catch {
     raw = [];
   }
 
   if (!raw.length) {
-    // Web erpReports + mobil legacy ('sales'/'retail') + trcode 7/8 POS
+    // Web getAccountStatement: sales UNION ALL cash_lines (CH_*)
+    // + mobil legacy ('sales'/'retail') + trcode 7/8 POS
     const ficheFilter = isCustomer
       ? `(
            LOWER(TRIM(COALESCE(s.fiche_type, ''))) IN (
@@ -346,38 +540,48 @@ export async function fetchCariExtract(opts: {
         sign: number;
         source: string;
       }>(
-        `SELECT
-           s.id::text AS id,
-           COALESCE(s.date::date, (s.date AT TIME ZONE 'UTC')::date)::text AS date,
-           COALESCE(s.fiche_no, '') AS fiche_no,
-           COALESCE(s.fiche_type, '') AS definition,
-           ABS(COALESCE(s.net_amount, s.total_net, 0))::float8 AS amount,
-           CASE
-             WHEN LOWER(TRIM(COALESCE(s.fiche_type, ''))) IN ('return_invoice', 'purchase_invoice')
-               OR COALESCE(s.trcode, 0) IN (1, 3, 6) THEN -1
-             ELSE 1
-           END AS sign,
-           'sale'::text AS source
-         FROM ${sales} s
-         WHERE s.customer_id::text = $1
-           AND COALESCE(s.is_cancelled, false) = false
-           AND ${SQL_COUNTABLE_SALE}
-           AND ${ficheFilter}
-           AND COALESCE(s.date::date, (s.date AT TIME ZONE 'UTC')::date) >= $2::date
-           AND COALESCE(s.date::date, (s.date AT TIME ZONE 'UTC')::date) <= $3::date
-         ORDER BY s.date ASC
+        `SELECT * FROM (
+           SELECT
+             s.id::text AS id,
+             COALESCE(s.date::date, (s.date AT TIME ZONE 'UTC')::date)::text AS date,
+             COALESCE(s.fiche_no, '') AS fiche_no,
+             COALESCE(s.fiche_type, '') AS definition,
+             ABS(COALESCE(s.net_amount, s.total_net, 0))::float8 AS amount,
+             CASE
+               WHEN LOWER(TRIM(COALESCE(s.fiche_type, ''))) IN ('return_invoice', 'purchase_invoice')
+                 OR COALESCE(s.trcode, 0) IN (1, 2, 3, 6) THEN -1
+               ELSE 1
+             END AS sign,
+             'sale'::text AS source,
+             COALESCE(s.date::timestamptz, s.created_at) AS sort_ts
+           FROM ${sales} s
+           WHERE s.customer_id::text = $1
+             AND COALESCE(s.is_cancelled, false) = false
+             AND ${SQL_COUNTABLE_SALE}
+             AND ${ficheFilter}
+             AND COALESCE(s.date::date, (s.date AT TIME ZONE 'UTC')::date) >= $2::date
+             AND COALESCE(s.date::date, (s.date AT TIME ZONE 'UTC')::date) <= $3::date
+           UNION ALL
+           SELECT
+             cl.id::text AS id,
+             COALESCE(cl.date::date, (cl.date AT TIME ZONE 'UTC')::date)::text AS date,
+             COALESCE(cl.fiche_no, '') AS fiche_no,
+             COALESCE(NULLIF(TRIM(cl.definition), ''), UPPER(TRIM(COALESCE(cl.transaction_type, ''))), 'Kasa') AS definition,
+             ABS(COALESCE(cl.amount, 0))::float8 AS amount,
+             -1 AS sign,
+             'cash'::text AS source,
+             COALESCE(cl.date::timestamptz, cl.created_at) AS sort_ts
+           FROM ${cash} cl
+           WHERE cl.customer_id::text = $1
+             AND UPPER(TRIM(COALESCE(cl.transaction_type, ''))) IN ('CH_TAHSILAT', 'CH_ODEME')
+             AND COALESCE(cl.date::date, (cl.date AT TIME ZONE 'UTC')::date) >= $2::date
+             AND COALESCE(cl.date::date, (cl.date AT TIME ZONE 'UTC')::date) <= $3::date
+         ) u
+         ORDER BY u.date ASC, u.sort_ts ASC NULLS LAST
          LIMIT $4`,
         [accountId, start, end, limit],
       );
-      raw = (res.rows || []).map((r) => ({
-        id: String(r.id ?? ''),
-        date: String(r.date ?? '').slice(0, 10),
-        ficheNo: String(r.fiche_no ?? ''),
-        definition: String(r.definition ?? ''),
-        amount: Number(r.amount ?? 0),
-        sign: Number(r.sign ?? 1) || 1,
-        source: 'sale' as const,
-      }));
+      raw = (res.rows || []).map(mapExtractSqlRow);
     } catch {
       raw = [];
     }

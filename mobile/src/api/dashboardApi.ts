@@ -64,7 +64,19 @@ export async function fetchDashboardStats(): Promise<DashboardStats> {
     const [salesRes, storesRes, alertRes] = await Promise.all([
       pgQuery<{ revenue: string | number; count: string | number }>(
         `SELECT
-           COALESCE(SUM(COALESCE(net_amount, total_net, total_gross, 0)), 0)::numeric AS revenue,
+           COALESCE(SUM(
+             (
+               CASE
+                 WHEN COALESCE(trcode, 0) IN (2, 3)
+                   OR (
+                     LOWER(TRIM(COALESCE(fiche_type, ''))) = 'return_invoice'
+                     AND COALESCE(trcode, 0) NOT IN (1, 4, 5, 6, 13, 26, 41, 42)
+                   )
+                 THEN -1
+                 ELSE 1
+               END
+             ) * ABS(COALESCE(net_amount, total_net, total_gross, 0))
+           ), 0)::numeric AS revenue,
            COUNT(*)::int AS count
          FROM ${sales}
          WHERE ${salesConds.join(' AND ')}`,

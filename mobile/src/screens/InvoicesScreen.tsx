@@ -115,6 +115,10 @@ export function InvoicesScreen() {
   const showSalesAdd = !isReturnList && (showGeneralKpi || listFilter?.preset === 'sales');
   const showPurchaseAdd =
     !isReturnList && (showGeneralKpi || listFilter?.preset === 'purchase');
+  const showSalesReturnAdd = listFilter?.preset === 'sales-return';
+  const showPurchaseReturnAdd = listFilter?.preset === 'purchase-return';
+  const showAnyAdd =
+    showSalesAdd || showPurchaseAdd || showSalesReturnAdd || showPurchaseReturnAdd;
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
@@ -122,7 +126,7 @@ export function InvoicesScreen() {
         title={screenTitle}
         subtitle={subtitle}
         right={
-          showSalesAdd || showPurchaseAdd ? (
+          showAnyAdd ? (
             <View style={styles.headerActions}>
               {showSalesAdd ? (
                 <HeaderIconButton
@@ -136,6 +140,26 @@ export function InvoicesScreen() {
                 <HeaderIconButton
                   accent={!showSalesAdd}
                   onPress={() => navigation.navigate('InvoiceForm', { kind: 'purchase' })}
+                >
+                  <Plus size={18} color={palette.white} />
+                </HeaderIconButton>
+              ) : null}
+              {showSalesReturnAdd ? (
+                <HeaderIconButton
+                  accent
+                  onPress={() =>
+                    navigation.navigate('InvoiceForm', { kind: 'sales-return' })
+                  }
+                >
+                  <Plus size={18} color={palette.white} />
+                </HeaderIconButton>
+              ) : null}
+              {showPurchaseReturnAdd ? (
+                <HeaderIconButton
+                  accent
+                  onPress={() =>
+                    navigation.navigate('InvoiceForm', { kind: 'purchase-return' })
+                  }
                 >
                   <Plus size={18} color={palette.white} />
                 </HeaderIconButton>

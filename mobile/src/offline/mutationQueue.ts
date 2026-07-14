@@ -24,6 +24,38 @@ export type PosCartLineInput = {
   code?: string | null;
 };
 
+/** Fatura kalem — offline fatura kuyruğu */
+export type InvoiceLineInput = {
+  productId: string;
+  code?: string | null;
+  name: string;
+  qty: number;
+  unitPrice: number;
+  unit?: string | null;
+  /** Satır indirim % (0–100) */
+  discountPercent?: number;
+};
+
+export type CountingSlipStatus =
+  | 'draft'
+  | 'active'
+  | 'counting'
+  | 'reconciliation'
+  | 'completed'
+  | 'cancelled';
+
+/** WMS sayım satırı — offline upsert kuyruğu */
+export type CountingLineInput = {
+  slipId: string;
+  lineId?: string;
+  product_id?: string;
+  barcode?: string;
+  product_name?: string;
+  expected_qty?: number;
+  counted_qty: number;
+  unit?: string;
+};
+
 const QUEUE_KEY = 'retailex_offline_mutations';
 
 export type PendingMutation =
@@ -51,6 +83,96 @@ export type PendingMutation =
         customerId?: string | null;
         customerName?: string | null;
       };
+    }
+  | {
+      id: string;
+      createdAt: string;
+      type: 'invoice.sales.create';
+      payload: {
+        localId: string;
+        ficheNo: string;
+        customerId?: string;
+        customerName: string;
+        notes?: string;
+        paymentMethod?: string;
+        lines: InvoiceLineInput[];
+      };
+    }
+  | {
+      id: string;
+      createdAt: string;
+      type: 'invoice.purchase.create';
+      payload: {
+        localId: string;
+        ficheNo: string;
+        supplierId?: string;
+        supplierName: string;
+        notes?: string;
+        paymentMethod?: string;
+        lines: InvoiceLineInput[];
+      };
+    }
+  | {
+      id: string;
+      createdAt: string;
+      type: 'invoice.header.update';
+      payload: { invoiceId: string; notes?: string; status?: string };
+    }
+  | {
+      id: string;
+      createdAt: string;
+      type: 'invoice.return.create';
+      payload: {
+        localId: string;
+        ficheNo: string;
+        /** 3 = satış iade, 6 = alış iade */
+        trcode: 3 | 6;
+        accountId?: string;
+        accountName: string;
+        notes?: string;
+        paymentMethod?: string;
+        cashier?: string;
+        returnReason?: string;
+        documentNo?: string;
+        lines: InvoiceLineInput[];
+      };
+    }
+  | {
+      id: string;
+      createdAt: string;
+      type: 'wms.counting.slip.create';
+      payload: {
+        localId: string;
+        ficheNo: string;
+        store_id: string;
+        store_name?: string | null;
+        count_type?: 'full' | 'cycle' | 'location';
+        description?: string;
+      };
+    }
+  | {
+      id: string;
+      createdAt: string;
+      type: 'wms.counting.line.upsert';
+      payload: CountingLineInput;
+    }
+  | {
+      id: string;
+      createdAt: string;
+      type: 'wms.counting.line.delete';
+      payload: { slipId: string; lineId: string };
+    }
+  | {
+      id: string;
+      createdAt: string;
+      type: 'wms.counting.status.update';
+      payload: { slipId: string; status: CountingSlipStatus };
+    }
+  | {
+      id: string;
+      createdAt: string;
+      type: 'wms.counting.applyStock';
+      payload: { slipId: string };
     };
 
 function newId(): string {

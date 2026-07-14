@@ -151,6 +151,73 @@ export async function fetchPosDevices(limit = 50): Promise<PosDeviceRow[]> {
   ]);
 }
 
+export type SyncQueueRow = {
+  id: string;
+  table_name: string;
+  action: string;
+  status: string;
+  terminal_name: string | null;
+  error_message: string | null;
+  created_at: string | null;
+  synced_at: string | null;
+};
+
+export type SyncQueueStats = {
+  pending: number;
+  synced: number;
+  failed: number;
+};
+
+export async function fetchSyncQueue(limit = 60): Promise<SyncQueueRow[]> {
+  const fn = firmNr();
+  return tryQueries<SyncQueueRow>([
+    {
+      sql: `SELECT id::text, table_name, action, COALESCE(status, 'pending') AS status,
+              terminal_name, error_message,
+              created_at::text AS created_at,
+              synced_at::text AS synced_at
+       FROM public.sync_queue
+       WHERE LPAD(TRIM(COALESCE(firm_nr::text, '')), 3, '0') = $1
+          OR TRIM(COALESCE(firm_nr::text, '')) = $2
+       ORDER BY created_at DESC NULLS LAST
+       LIMIT $3`,
+      params: [fn, fn.replace(/^0+/, '') || fn, limit],
+    },
+    {
+      sql: `SELECT id::text, table_name, action, COALESCE(status, 'pending') AS status,
+              terminal_name, error_message,
+              created_at::text AS created_at,
+              synced_at::text AS synced_at
+       FROM public.sync_queue
+       ORDER BY created_at DESC NULLS LAST
+       LIMIT $1`,
+      params: [limit],
+    },
+  ]);
+}
+
+export async function fetchSyncQueueStats(): Promise<SyncQueueStats> {
+  const fn = firmNr();
+  const rows = await tryQueries<{ pending: string | number; synced: string | number; failed: string | number }>([
+    {
+      sql: `SELECT
+              COUNT(*) FILTER (WHERE COALESCE(status, 'pending') = 'pending')::int AS pending,
+              COUNT(*) FILTER (WHERE status = 'synced')::int AS synced,
+              COUNT(*) FILTER (WHERE status IN ('failed', 'error'))::int AS failed
+            FROM public.sync_queue
+            WHERE LPAD(TRIM(COALESCE(firm_nr::text, '')), 3, '0') = $1
+               OR TRIM(COALESCE(firm_nr::text, '')) = $2`,
+      params: [fn, fn.replace(/^0+/, '') || fn],
+    },
+  ]);
+  const row = rows[0];
+  return {
+    pending: Number(row?.pending ?? 0),
+    synced: Number(row?.synced ?? 0),
+    failed: Number(row?.failed ?? 0),
+  };
+}
+
 /** Yedekleme ekranı için: uygulanan migration özeti (okuma) */
 export async function fetchRecentMigrations(limit = 15): Promise<MigrationRow[]> {
   return tryQueries<MigrationRow>([

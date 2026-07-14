@@ -200,7 +200,9 @@ export function BeautySalesPanel({
       onSaleCreated();
       Alert.alert(
         'Satış kaydedildi',
-        `${result.invoiceNumber}\nToplam: ${formatMoney(result.total)} ₺`,
+        result.erpSynced === false
+          ? `${result.invoiceNumber}\nToplam: ${formatMoney(result.total)} ₺\n\nUyarı: Güzellik fişi yazıldı; ERP/kasa senkronu tamamlanamadı.`
+          : `${result.invoiceNumber}\nToplam: ${formatMoney(result.total)} ₺`,
       );
     } catch (e) {
       setFormError(e instanceof Error ? e.message : String(e));

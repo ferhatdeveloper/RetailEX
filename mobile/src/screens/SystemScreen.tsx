@@ -17,11 +17,15 @@ import {
   fetchAuditLogs,
   fetchPosDevices,
   fetchRecentMigrations,
+  fetchSyncQueue,
+  fetchSyncQueueStats,
   type SystemUserRow,
   type SystemRoleRow,
   type AuditLogRow,
   type PosDeviceRow,
   type MigrationRow,
+  type SyncQueueRow,
+  type SyncQueueStats,
 } from '../api/systemApi';
 import { useThemeStore } from '../store/themeStore';
 import { useOrgEpoch } from '../hooks/useOrgEpoch';
@@ -29,7 +33,7 @@ import { useAuthStore } from '../store/authStore';
 import { palette } from '../theme/colors';
 import type { MainStackParamList } from '../navigation/types';
 
-type Tab = 'users' | 'roles' | 'logs' | 'devices' | 'backup';
+type Tab = 'users' | 'roles' | 'logs' | 'devices' | 'sync' | 'backup';
 type Props = NativeStackScreenProps<MainStackParamList, 'System'>;
 
 export function systemRouteTab(screenId?: string): Tab {
@@ -44,6 +48,9 @@ export function systemRouteTab(screenId?: string): Tab {
     case 'devices':
     case 'pendingposdevices':
       return 'devices';
+    case 'sync':
+    case 'hybrid-sync':
+      return 'sync';
     case 'backup':
     case 'backuprestore':
     case 'supabase-migration':
@@ -68,6 +75,8 @@ export function SystemScreen({ route, navigation }: Props) {
   const [logs, setLogs] = useState<AuditLogRow[]>([]);
   const [devices, setDevices] = useState<PosDeviceRow[]>([]);
   const [migrations, setMigrations] = useState<MigrationRow[]>([]);
+  const [syncRows, setSyncRows] = useState<SyncQueueRow[]>([]);
+  const [syncStats, setSyncStats] = useState<SyncQueueStats>({ pending: 0, synced: 0, failed: 0 });
 
   useEffect(() => {
     const next = systemRouteTab(route.params?.initialTab || route.params?.screenId);
@@ -77,18 +86,22 @@ export function SystemScreen({ route, navigation }: Props) {
   const load = useCallback(async () => {
     setError(null);
     try {
-      const [u, r, l, d, m] = await Promise.all([
+      const [u, r, l, d, m, sq, ss] = await Promise.all([
         fetchSystemUsers(),
         fetchSystemRoles(),
         fetchAuditLogs(),
         fetchPosDevices(),
         fetchRecentMigrations(),
+        fetchSyncQueue(),
+        fetchSyncQueueStats(),
       ]);
       setUsers(u);
       setRoles(r);
       setLogs(l);
       setDevices(d);
       setMigrations(m);
+      setSyncRows(sq);
+      setSyncStats(ss);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -105,6 +118,7 @@ export function SystemScreen({ route, navigation }: Props) {
     { id: 'roles', label: 'Rol' },
     { id: 'logs', label: 'Log' },
     { id: 'devices', label: 'Kasa' },
+    { id: 'sync', label: 'Senkron' },
     { id: 'backup', label: 'Şema' },
   ];
 
@@ -115,8 +129,10 @@ export function SystemScreen({ route, navigation }: Props) {
         ? 'Roller'
         : tab === 'logs'
           ? 'Log / Denetim'
-          : tab === 'devices'
-            ? 'Kasa cihazları'
+        : tab === 'devices'
+          ? 'Kasa cihazları'
+          : tab === 'sync'
+            ? 'Şube veri senkronu'
             : 'Yedekleme / şema';
 
   return (
@@ -210,6 +226,45 @@ export function SystemScreen({ route, navigation }: Props) {
               <Text style={{ color: colors.textSubtle, fontSize: 11, marginTop: 4 }}>
                 {item.last_seen_at?.slice(0, 16) || item.registered_at?.slice(0, 16) || '—'}
               </Text>
+            </View>
+          )}
+        />
+      ) : tab === 'sync' ? (
+        <FlatList
+          data={syncRows}
+          keyExtractor={(item) => item.id}
+          ListEmptyComponent={<EmptyState message="sync_queue kaydı yok" />}
+          contentContainerStyle={styles.list}
+          ListHeaderComponent={
+            <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
+              <Text style={{ color: colors.text, fontWeight: '700' }}>Kuyruk özeti</Text>
+              <Text style={{ color: colors.textMuted, fontSize: 12, marginTop: 4 }}>
+                Bekleyen {syncStats.pending} · Senkron {syncStats.synced} · Hata {syncStats.failed}
+              </Text>
+              <Text style={{ color: colors.textSubtle, fontSize: 11, marginTop: 6, lineHeight: 16 }}>
+                Manuel senkron başlatma masaüstü Hibrit Senkron modülünden yapılır. Mobil yalnızca
+                sync_queue okuma.
+              </Text>
+            </View>
+          }
+          renderItem={({ item }) => (
+            <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
+              <Text style={{ color: colors.text, fontWeight: '700' }}>
+                {item.action} · {item.table_name}
+              </Text>
+              <Text style={{ color: colors.textMuted, fontSize: 12 }}>
+                {item.status}
+                {item.terminal_name ? ` · ${item.terminal_name}` : ''}
+              </Text>
+              <Text style={{ color: colors.textSubtle, fontSize: 11, marginTop: 4 }}>
+                {item.created_at?.slice(0, 19) || '—'}
+                {item.synced_at ? ` → ${item.synced_at.slice(0, 19)}` : ''}
+              </Text>
+              {item.error_message ? (
+                <Text style={{ color: palette.red500, fontSize: 11, marginTop: 4 }} numberOfLines={2}>
+                  {item.error_message}
+                </Text>
+              ) : null}
             </View>
           )}
         />

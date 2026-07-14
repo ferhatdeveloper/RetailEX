@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { ChevronRight, Pencil } from 'lucide-react-native';
+import { ChevronRight, Pencil, HandCoins, FileText } from 'lucide-react-native';
 import { ScreenHeader, ErrorBanner, EmptyState } from '../components/ScreenChrome';
 import { HeaderIconButton } from '../components/GradientHeader';
 import {
@@ -128,6 +128,33 @@ export function CustomerDetailScreen() {
             ))}
           </View>
 
+          <View style={styles.actions}>
+            <Pressable
+              onPress={() =>
+                navigation.navigate('CashCollection', {
+                  customerId,
+                  openCreate: true,
+                })
+              }
+              style={[styles.actionBtn, { backgroundColor: palette.green600 }]}
+            >
+              <HandCoins size={18} color={palette.white} />
+              <Text style={styles.actionLabel}>Tahsilat / Ödeme</Text>
+            </Pressable>
+            <Pressable
+              onPress={() =>
+                navigation.navigate('ReportCariExtract', {
+                  accountId: customerId,
+                  cardType: 'customer',
+                })
+              }
+              style={[styles.actionBtn, { backgroundColor: palette.blue600 }]}
+            >
+              <FileText size={18} color={palette.white} />
+              <Text style={styles.actionLabel}>Hesap ekstresi</Text>
+            </Pressable>
+          </View>
+
           <Text style={[styles.sec, { color: colors.text }]}>Son faturalar</Text>
           {sales.length === 0 ? (
             <Text style={{ color: colors.textMuted, fontSize: 13 }}>Kayıt yok</Text>
@@ -169,6 +196,17 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
   sec: { fontSize: 13, fontWeight: '700', marginTop: 8 },
+  actions: { flexDirection: 'row', gap: 10, marginTop: 4 },
+  actionBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 12,
+    borderRadius: 10,
+  },
+  actionLabel: { color: palette.white, fontWeight: '700', fontSize: 12 },
   saleRow: {
     flexDirection: 'row',
     alignItems: 'center',

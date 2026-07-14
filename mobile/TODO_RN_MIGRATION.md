@@ -2,7 +2,7 @@
 
 > Kaynak: web `src/config/staticMenuConfig.ts` + ManagementModule (POS / WMS / Restoran / Güzellik)  
 > Hedef: `mobile/` (Expo RN, native ekranlar — WebView yasak)  
-> Son güncelleme: 2026-07-14 (ajan 3/10 — WMS mutabakat / applyStockCount)
+> Son güncelleme: 2026-07-14 (fatura form + iade trcode 3/6; terazi RN)
 
 ## Durum özeti
 
@@ -15,9 +15,9 @@
 **Menü yapısı (RN `menuConfig`):** 11 grup · 131 öğe · 115 yaprak  
 
 **Durum sayımı (yaprak / özellik bazlı, yaklaşık):**  
-- **`[x]` canlı ~29** — auth, dashboard, ürün CRUD basit, cari/fatura, POS, raporlar (satış özeti, kritik stok, mizan, ekstre, **ürün satış, kasa**), WMS sayım+mutabakat, **WMS depo transferi**, restoran adisyon+ödeme, güzellik randevu oluştur/düzenle, teslimat konum, sistem kullanıcı/rol/log, **iletişim müşteri+kuyruk okuma**
-- **`[~]` kısmi ~83+** — Module host veya canlı route’a yönlendirme (güzellik POS fiş / tam yedekleme yazma yok)  
-- **`[ ]` bekleyen ~8+** — dalga toplama, güzellik satış POS, EAS…
+- **`[x]` canlı ~30** — auth, dashboard, ürün CRUD basit, cari/fatura, POS, raporlar (satış özeti, kritik stok, mizan, ekstre, **ürün satış, kasa**), WMS sayım+mutabakat, **WMS depo transferi**, restoran adisyon+ödeme, güzellik randevu + **satış POS (ERP)**, teslimat konum, sistem kullanıcı/rol/log, **iletişim müşteri+kuyruk okuma**
+- **`[~]` kısmi ~82+** — Module host veya canlı route’a yönlendirme (tam yedekleme yazma yok)  
+- **`[ ]` bekleyen ~7+** — dalga toplama, EAS…
 
 ---
 
@@ -40,7 +40,8 @@
 - ~~Adisyon aç + kalem ekle~~ ✅ (`RestaurantScreen` + `restaurantApi`)
 - ~~Randevu oluştur + filtre~~ ✅ (`BeautyScreen` + `beautyApi`)
 - ~~Restoran ödeme / kapatma~~ ✅ (`completeTablePayment`)
-- ~~Randevu düzenleme~~ ✅ (`updateBeautyAppointment`); güzellik satış POS fişi hâlâ kısmi
+- ~~Randevu düzenleme~~ ✅ (`updateBeautyAppointment`)
+- ~~Güzellik satış POS~~ ✅ (`BeautySalesPanel` + `createBeautySale` ERP/kasa)
 
 ### Faz 4 — Raporlar / sistem derinliği
 - Tüm malzeme/finans raporları, BI, yedekleme yazma, RBAC düzenleme UI
@@ -69,8 +70,8 @@
 | Öğe | Web | RN hedef | Durum |
 |-----|-----|----------|-------|
 | Satış (POS) | MarketPOS / MobilePOS | `PosScreen` | `[x]` sepet + fiş kaydı + offline kuyruk/senkron + kamera barkod (`expo-camera`) |
-| Terazi & Tartılı Satış | `cashier-scale` | `PosScreen` (aynı) | `[~]` tartı donanım yok |
-| Terazi Yönetimi | `scale-management` | `Module` | `[~]` |
+| Terazi & Tartılı Satış | `cashier-scale` | `ScaleSale` | `[x]` simüle tartım + kg sepet → POS fiş; LAN canlı kg yok (Rongta etiket) |
+| Terazi Yönetimi | `scale-management` | `ScaleManagement` | `[x]` cihaz/senkron/test (pg_bridge TCP); BT arayüz hazır, Expo Go native BT yok |
 | Fiyat & Kampanya | `pricing` | `PricingScreen` + `Campaigns` | `[~]` fiyat listeleri canlı (price_list_*); kampanya liste+detay okuma |
 
 ---
@@ -85,7 +86,7 @@
 | Varyantlar | `variants` | `Module` | `[~]` |
 | Özel Kodlar | `special-codes` | `Module` | `[~]` |
 | Marka Tanımları | `brand-definitions` | `Module` | `[~]` |
-| Terazi Tanımları | `scale` | `Module` | `[~]` |
+| Terazi Tanımları | `scale` | `ScaleManagement` | `[x]` aynı Terazi Yönetimi ekranı |
 | Grup Kodları | `group-codes` | `Module` | `[~]` |
 | Ürün Kategorileri | `product-categories` | `Module` | `[~]` |
 | Hizmet Kartları | `service-cards` | `Module` | `[~]` |
@@ -104,9 +105,10 @@
 
 | Öğe | Web | RN hedef | Durum |
 |-----|-----|----------|-------|
-| Satış faturaları (tüm türler) | UniversalInvoice* | `Invoices` + `InvoiceDetail` + `InvoiceForm` | `[~]` liste+detay+ basit satış faturası yazma / not-durum düzenleme |
-| Alış faturası (standart) | purchase-invoice-standard | `Invoices` (purchase filtresi) + `InvoiceForm` (`kind: purchase`) | `[~]` liste+detay+ basit alış yazma (`createPurchaseInvoice`, stok +) |
-| Alış / hizmet / iade (diğer) | aynı | `Invoices` (`invoiceFilters` trcode) | `[~]` iade/hizmet filtreli liste; tam form web |
+| Satış faturaları (tüm türler) | UniversalInvoice* | `Invoices` + `InvoiceDetail` + `InvoiceForm` | `[~]` liste+detay+ satış yazma (cari*, kalem, ödeme chip, belge no, satır/dip indirim, vergi özeti KDV=0); edit=not/durum |
+| Alış faturası (standart) | purchase-invoice-standard | `Invoices` (purchase) + `InvoiceForm` (`kind: purchase`) | `[~]` tedarikçi seçimi (`suppliersApi`), kalem+özet, stok + / veresiye borç |
+| Satış / alış iade | UniversalInvoice trcode 3/6 | `InvoiceForm` (`sales-return` / `purchase-return`) + liste `+` | `[~]` yazma: stok yönü web ile aynı; kasiyer (3 zorunlu); hizmet/irsaliye/sipariş formu yok |
+| Hizmet / irsaliye / sipariş / teklif | aynı | `Invoices` (`invoiceFilters` trcode) | `[~]` filtreli liste; create formu web |
 | E-Dönüşüm | `etransform` | `Module` | `[~]` |
 | İrsaliyeler | `waybill-*` | `Invoices` (`invoiceFilters` trcode 10–13) | `[~]` filtreli liste canlı |
 | Siparişler | `salesorder` / `purchase` | `Invoices` (trcode 20/21) | `[~]` filtreli liste canlı |
@@ -161,7 +163,7 @@
 | Ana / Randevu / Hizmet / Uzman | beautyService | `BeautyScreen` | `[x]` liste + durum filtresi |
 | Randevu oluştur | BeautyPOS | `BeautyScreen` modal | `[x]` oluştur (hizmet/uzman seçimi) |
 | Randevu düzenle | BeautyPOS | `BeautyScreen` edit modal | `[x]` tarih/saat/durum/hizmet/uzman (`updateBeautyAppointment`) |
-| Güzellik satış POS | BeautyPOS / createSale | — | `[ ]` `beauty_sales` henüz yok |
+| Güzellik satış POS | BeautyPOS / createSale | `BeautySalesPanel` + `createBeautySale` | `[x]` beauty_sales + ERP/kasa (nakit) |
 
 ---
 
@@ -233,8 +235,9 @@
 - [x] README migration linki
 - [x] `npm run typecheck` (temiz)
 - [x] Cari oluştur/düzenle formu (`CustomerForm`)
-- [~] Basit satış faturası oluşturma + not/durum düzenleme (`InvoiceForm`)
-- [~] Basit alış faturası oluşturma (`createPurchaseInvoice`, AF-* fiş, stok artışı) + liste filtresi (`invoiceFilters` / menü → purchase)
+- [~] Satış/alış fatura formu güçlendirildi: cari/tedarikçi, belge no, ödeme chip, satır/dip indirim, vergi özeti; edit=not/durum
+- [~] İade yazma formu (trcode 3/6) + iade listelerinde `+` → `InvoiceForm`; `createReturnInvoice` + offline kuyruk/senkron
+- [~] Alış formu tedarikçi listesi (`suppliersApi`)
 - [x] Restoran adisyon aç + kalem ekle; adisyon listesinden `getOrderDetailById` ile kalem yükleme
 - [x] Güzellik randevu oluştur + liste filtre; `load` dependency düzeltmesi; uzman SQL fallback
 - [x] Cari ekstre + mizan SQL (`ReportCariExtract` / `ReportMizan` + `LIVE_MAP`)
@@ -264,18 +267,22 @@
 - [x] Bildirim merkezi — kritik stok + vadesi geçmiş açık cari (`NotificationsScreen` + `notificationsApi`; menü `notifications`)
 - [x] WMS sayım mutabakat + stoka uygula (`wmsStockCountApi.applyStockCount` — web `wmsStockCount` ile aynı TRCODE 26/50; `WmsCountSlipScreen` mutabakat özeti + stok güncelleme)
 - [x] Yazıcı / fiş ayarları (`PrinterSettingsScreen` + `printerSettingsStore` AsyncStorage + test yazdır stub; POS otomatik yazdır stub)
+- [x] **Terazi (Android TeraziManager → RN):** `ScaleManagement` + `ScaleSale` — kaynak `TeraziRongta/android/TeraziManager` (`com.retailex.terazimanager`); TCP/PLU via pg_bridge; simüle tartım; BT `ScaleTransport` arayüzü (Expo Go’da native yok — `react-native-ble-plx` + development build)
 
 ## Sonraki (Faz 2+)
 
-1. ~~Fatura / cari oluşturma formları~~ (cari tamam; fatura kısmi)
+1. ~~Fatura / cari oluşturma formları~~ (cari tamam; satış/alış/iade yazma `[~]`; hizmet/irsaliye/sipariş hâlâ liste)
 2. Kasa/banka tam form: tahsilat/ödeme, virman, cari entegrasyonu (web `kasa.ts` / `banka.ts`)
 3. ~~WMS sayım fişi yazma~~ ✅  
 3. ~~WMS sayım mutabakat / applyStockCount~~ ✅  
 4. ~~Restoran adisyon ödeme / kapatma~~ ✅  
-5. ~~Güzellik randevu düzenleme~~ ✅ · güzellik satış POS (`beauty_sales`) hâlâ açık  
+5. ~~Güzellik randevu düzenleme~~ ✅ · ~~güzellik satış POS (`beauty_sales` + ERP)~~ ✅  
+
 6. ~~Cari ekstre + mizan canlı SQL~~ ✅  
 7. EAS Build  
 8. Modül ekranlarındaki hardcoded TR stringleri i18n anahtarlarına taşıma  
 9. Teslimat: harita SDK / POD foto — opsiyonel derinlik 
 10. ~~Ürün oluştur/düzenle~~ ✅ · ~~Sistem menü yaprakları (okuma)~~ ✅ 
-11. Offline kuyruk genişletme: ~~POS~~ ✅ · fatura / WMS sayım
+11. Offline kuyruk genişletme: ~~POS~~ ✅ · ~~fatura satış/alış/iade~~ ✅ · WMS sayım
+12. Terazi BT: development build + `react-native-ble-plx` (veya classic SPP); USB/OTG Android native (terazi manager) RN’de yok
+13. Rongta LAN canlı ağırlık (etiket terazisi sürekli kg yaymaz) — tartılı satış simüle / harici tartı BT

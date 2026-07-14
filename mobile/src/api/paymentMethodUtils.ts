@@ -57,3 +57,27 @@ export function paymentMethodImpliesPaidNow(pm: string | undefined | null): bool
 export function paymentMethodImpliesCashInKasa(pm: string | undefined | null): boolean {
   return paymentMethodImpliesPaidNow(pm);
 }
+
+/** Ledger SQL: satış satırı cari borç yaratır mı — web `sqlPaymentMethodImpliesCustomerDebtExpr` */
+export function sqlPaymentMethodImpliesCustomerDebtExpr(alias = ''): string {
+  const col = alias ? `${alias}.payment_method` : 'payment_method';
+  return `(
+    LOWER(TRIM(COALESCE(${col}, ''))) IN (
+      'veresiye', 'open_account', 'cari', 'açık hesap', 'acik hesap',
+      'açık cari', 'acik cari', 'acik_cari', 'açık_cari'
+    )
+    OR LOWER(TRIM(COALESCE(${col}, ''))) LIKE '%veresiye%'
+  )`;
+}
+
+/** Ledger SQL: alış satırı tedarikçi borcu yaratır mı — web `sqlPaymentMethodImpliesSupplierDebtExpr` */
+export function sqlPaymentMethodImpliesSupplierDebtExpr(alias = ''): string {
+  const col = alias ? `${alias}.payment_method` : 'payment_method';
+  const pm = `LOWER(TRIM(COALESCE(${col}, '')))`;
+  return `(
+    NOT (
+      ${pm} IN ('cash', 'nakit', 'card', 'kart', 'gateway', 'havale', 'eft', 'haval', 'kredikarti', 'transfer')
+      OR ${pm} LIKE '%kredi%kart%'
+    )
+  )`;
+}

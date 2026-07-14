@@ -15,6 +15,7 @@ export type StockMovementsRouteParams = NonNullable<MainStackParamList['StockMov
 export type FinanceRouteParams = NonNullable<MainStackParamList['Finance']>;
 export type CashCollectionRouteParams = NonNullable<MainStackParamList['CashCollection']>;
 export type CommunicationsRouteParams = NonNullable<MainStackParamList['Communications']>;
+export type StoreManagementRouteParams = NonNullable<MainStackParamList['StoreManagement']>;
 
 /** Menü screen id → Beauty stack params */
 export function beautyRouteParams(screen: string): BeautyRouteParams | undefined {
@@ -47,6 +48,9 @@ export function restaurantRouteParams(screen: string): RestaurantRouteParams | u
 
 /** Menü screen id → System stack params */
 export function systemRouteParams(screen: string): SystemRouteParams {
+  if (screen === 'hybrid-sync') {
+    return { screenId: screen, initialTab: 'sync' };
+  }
   return { screenId: screen };
 }
 
@@ -82,9 +86,15 @@ export function stockMovementsRouteParams(screen: string): StockMovementsRoutePa
 }
 
 export type FinanceDefinitionsRouteParams = NonNullable<MainStackParamList['FinanceDefinitions']>;
+export type MaterialDefinitionsRouteParams = NonNullable<MainStackParamList['MaterialDefinitions']>;
 
 /** Menü screen id → FinanceDefinitions stack params */
 export function financeDefinitionsRouteParams(screen: string): FinanceDefinitionsRouteParams {
+  return { screenId: screen };
+}
+
+/** Menü screen id → MaterialDefinitions stack params */
+export function materialDefinitionsRouteParams(screen: string): MaterialDefinitionsRouteParams {
   return { screenId: screen };
 }
 
@@ -94,9 +104,14 @@ export function financeRouteParams(screen: string): FinanceRouteParams {
     case 'banks':
     case 'bank-accounts':
     case 'bank-vouchers':
+    case 'financereports-bank':
       return { initialTab: 'bank', screenId: screen };
+    case 'virman':
+      return { initialTab: 'cash', screenId: screen, openCreate: true, formMode: 'virman' };
     case 'cashbank':
     case 'kasalar':
+    case 'cash-slips':
+    case 'financereports-cash':
       return { initialTab: 'cash', screenId: screen };
     default:
       return { initialTab: 'cash', screenId: screen };
@@ -113,12 +128,22 @@ export function communicationsRouteParams(screen: string): CommunicationsRoutePa
   switch (screen) {
     case 'notifications':
     case 'smsmanage':
+    case 'databroadcast':
       return { screenId: screen, initialTab: 'queue' };
     case 'whatsapp':
+    case 'integrations':
       return { screenId: screen, initialTab: 'provider' };
     default:
       return { screenId: screen, initialTab: 'customers' };
   }
+}
+
+/** Menü screen id → StoreManagement stack params */
+export function storeManagementRouteParams(screen: string): StoreManagementRouteParams {
+  return {
+    screenId: screen,
+    groupByRegion: screen === 'regional',
+  };
 }
 
 /** @deprecated tercihen beautyRouteParams / restaurantRouteParams */
@@ -230,6 +255,9 @@ export function navigateToModule(
     case 'FinanceDefinitions':
       nav.navigate('FinanceDefinitions', financeDefinitionsRouteParams(screen));
       return;
+    case 'MaterialDefinitions':
+      nav.navigate('MaterialDefinitions', materialDefinitionsRouteParams(screen));
+      return;
     case 'CashCollection':
       nav.navigate('CashCollection', cashCollectionRouteParams(screen));
       return;
@@ -247,6 +275,18 @@ export function navigateToModule(
       return;
     case 'PrinterSettings':
       nav.navigate('PrinterSettings');
+      return;
+    case 'ScaleManagement':
+      nav.navigate('ScaleManagement');
+      return;
+    case 'ScaleSale':
+      nav.navigate('ScaleSale');
+      return;
+    case 'StoreManagement':
+      nav.navigate('StoreManagement', storeManagementRouteParams(screen));
+      return;
+    case 'ETransform':
+      nav.navigate('ETransform');
       return;
     default:
       nav.navigate('Module', { screenId: screen, title });

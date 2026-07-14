@@ -8,7 +8,7 @@ import {
   RefreshControl,
   Pressable,
 } from 'react-native';
-import { ClipboardList, ArrowLeftRight } from 'lucide-react-native';
+import { ClipboardList, ArrowLeftRight, Navigation } from 'lucide-react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { ScreenHeader, SearchBar, EmptyState, ErrorBanner } from '../components/ScreenChrome';
@@ -76,6 +76,19 @@ export function WmsScreen() {
           </Text>
         </View>
         <Text style={{ color: palette.green600, fontWeight: '800', fontSize: 11 }}>Aç →</Text>
+      </Pressable>
+      <Pressable
+        onPress={() => navigation.navigate('WmsWavePicking')}
+        style={[styles.countBanner, { backgroundColor: colors.card, borderColor: palette.orange500 }]}
+      >
+        <Navigation size={20} color={palette.orange500} />
+        <View style={{ flex: 1 }}>
+          <Text style={{ color: colors.text, fontWeight: '700' }}>Dalga toplama</Text>
+          <Text style={{ color: colors.textMuted, fontSize: 11 }}>
+            Siparişten dalga, lokasyon rotası ile topla
+          </Text>
+        </View>
+        <Text style={{ color: palette.orange500, fontWeight: '800', fontSize: 11 }}>Aç →</Text>
       </Pressable>
       <View style={styles.kpiRow}>
         {[

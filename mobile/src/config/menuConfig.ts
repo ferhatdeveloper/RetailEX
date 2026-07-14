@@ -270,6 +270,7 @@ export const MENU_SECTIONS: MenuSection[] = [
       { id: 'appointment', label: 'Randevular', screen: 'appointment' },
       { id: 'beauty-services', label: 'Hizmetler', screen: 'beauty-services' },
       { id: 'beauty-specialists', label: 'Uzmanlar', screen: 'beauty-specialists' },
+      { id: 'beauty-sales', label: 'Güzellik Satış POS', screen: 'beauty-sales' },
     ],
   },
   {
@@ -342,10 +343,12 @@ export type LiveRoute =
   | 'Wms'
   | 'WmsCount'
   | 'WmsTransfer'
+  | 'WmsWavePicking'
   | 'Restaurant'
   | 'Delivery'
   | 'Finance'
   | 'FinanceDefinitions'
+  | 'MaterialDefinitions'
   | 'CashCollection'
   | 'Organization'
   | 'System'
@@ -354,12 +357,24 @@ export type LiveRoute =
   | 'Communications'
   | 'Notifications'
   | 'PrinterSettings'
+  | 'ScaleManagement'
+  | 'ScaleSale'
+  | 'StoreManagement'
+  | 'ETransform'
   | 'Module';
 
 const LIVE_MAP: Record<string, LiveRoute> = {
   'firm-period-definitions': 'Organization',
   organization: 'Organization',
   'change-organization': 'Organization',
+  'store-management': 'StoreManagement',
+  multistore: 'StoreManagement',
+  regional: 'StoreManagement',
+  storeconfig: 'Organization',
+  'hybrid-sync': 'System',
+  databroadcast: 'Communications',
+  integrations: 'Communications',
+  etransform: 'ETransform',
   usermanagement: 'System',
   roleauth: 'System',
   menumanagement: 'System',
@@ -371,6 +386,10 @@ const LIVE_MAP: Record<string, LiveRoute> = {
   products: 'Products',
   materials: 'Products',
   'material-definitions': 'Products',
+  'material-classes': 'MaterialDefinitions',
+  'unit-sets': 'MaterialDefinitions',
+  'brand-definitions': 'MaterialDefinitions',
+  'product-categories': 'MaterialDefinitions',
   'service-cards': 'Products',
   suppliers: 'Customers',
   customers: 'Customers',
@@ -381,10 +400,10 @@ const LIVE_MAP: Record<string, LiveRoute> = {
   revenueexpense: 'FinanceDefinitions',
   'finance-definitions': 'FinanceDefinitions',
   'finance-other': 'FinanceDefinitions',
-  'cari-devir': 'ReportCariExtract',
+  // cari-devir → Module (web: CariDevirFisiModule; ekstre değil)
   cashbank: 'Finance',
   kasalar: 'Finance',
-  'cash-slips': 'CashCollection',
+  'cash-slips': 'Finance',
   collectionpayment: 'CashCollection',
   finance: 'CashCollection',
   banks: 'Finance',
@@ -412,7 +431,9 @@ const LIVE_MAP: Record<string, LiveRoute> = {
   'waybill-fire': 'Invoices',
   pos: 'POS',
   newsale: 'POS',
-  'cashier-scale': 'POS',
+  'cashier-scale': 'ScaleSale',
+  'scale-management': 'ScaleManagement',
+  scale: 'ScaleManagement',
   pricing: 'Pricing',
   pricelists: 'Pricing',
   promotions: 'Pricing',
@@ -423,12 +444,13 @@ const LIVE_MAP: Record<string, LiveRoute> = {
   'profit-dashboard': 'ReportProductSales',
   'bi-dashboard': 'ReportSales',
   'category-group-profit-report': 'ReportProductSales',
-  financereports: 'ReportMizan',
+  // web: financereports → ReportsModule (hub); mizan ayrı GeneralLedgerMizan
+  financereports: 'Reports',
   'financereports-cash': 'ReportCash',
-  'financereports-bank': 'ReportCash',
+  'financereports-bank': 'Finance',
   mizan: 'ReportMizan',
-  'report-in-out-totals': 'ReportSales',
-  'report-slip-list': 'ReportSales',
+  'report-in-out-totals': 'ReportStock',
+  'report-slip-list': 'ReportStock',
   'report-critical-stock': 'ReportStock',
   inventory: 'ReportStock',
   'report-min-max': 'ReportStock',
@@ -443,9 +465,10 @@ const LIVE_MAP: Record<string, LiveRoute> = {
   appointment: 'Beauty',
   'beauty-services': 'Beauty',
   'beauty-specialists': 'Beauty',
+  'beauty-sales': 'Beauty',
   'wms-hub': 'Wms',
   stockcounting: 'WmsCount',
-  'wave-picking': 'Wms',
+  'wave-picking': 'WmsWavePicking',
   'mobile-inventory-count': 'WmsCount',
   'interstore-transfer': 'WmsTransfer',
   'waybill-transfer': 'WmsTransfer',

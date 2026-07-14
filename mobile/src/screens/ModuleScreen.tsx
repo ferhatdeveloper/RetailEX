@@ -20,10 +20,12 @@ import {
   communicationsRouteParams,
   financeRouteParams,
   financeDefinitionsRouteParams,
+  materialDefinitionsRouteParams,
   navigateToModule,
   reportStockRouteParams,
   restaurantRouteParams,
   stockMovementsRouteParams,
+  storeManagementRouteParams,
   systemRouteParams,
 } from '../navigation/navigateToModule';
 
@@ -123,6 +125,9 @@ export function ModuleScreen() {
       case 'FinanceDefinitions':
         navigation.replace('FinanceDefinitions', financeDefinitionsRouteParams(screenId));
         break;
+      case 'MaterialDefinitions':
+        navigation.replace('MaterialDefinitions', materialDefinitionsRouteParams(screenId));
+        break;
       case 'CashCollection':
         navigation.replace('CashCollection');
         break;
@@ -144,6 +149,12 @@ export function ModuleScreen() {
       case 'PrinterSettings':
         navigation.replace('PrinterSettings');
         break;
+      case 'StoreManagement':
+        navigation.replace('StoreManagement', storeManagementRouteParams(screenId));
+        break;
+      case 'ETransform':
+        navigation.replace('ETransform');
+        break;
       default:
         break;
     }
@@ -154,7 +165,11 @@ export function ModuleScreen() {
   };
 
   const hints: Record<string, string> = {
-    'material-definitions': 'Malzeme kartları — Malzemeler listesi + detay canlı.',
+    'material-definitions': 'Malzeme kartları — sınıf/kategori/marka/birim seti canlı (MaterialDefinitions).',
+    'material-classes': 'Malzeme sınıfları listesi canlı (rex_*_categories / MaterialDefinitions).',
+    'product-categories': 'Ürün kategorileri listesi canlı (MaterialDefinitions).',
+    'brand-definitions': 'Marka tanımları listesi + basit ekleme canlı (MaterialDefinitions).',
+    'unit-sets': 'Birim setleri listesi + basit ekleme canlı (MaterialDefinitions).',
     'finance-cards': 'Cari hesaplar listesi + detay + son faturalar canlı.',
     salesinvoice: 'Satış faturaları listesi + detay (kalemler) canlı.',
     'material-reports': 'Stok raporları: kritik stok, min/max, değer, ambar durum, ekstre canlı.',
@@ -176,8 +191,19 @@ export function ModuleScreen() {
     cashbank: 'Kasa kartları + hareket listesi + basit giriş/çıkış canlı (FinanceScreen).',
     kasalar: 'Kasa işlemleri — hareket listesi + basit giriş/çıkış canlı (FinanceScreen).',
     'cash-slips': 'Kasa fişleri — hareket listesi + basit giriş canlı (FinanceScreen).',
+    'cari-devir': 'Cari devir fişi web’de; mobil form henüz yok.',
+    financereports: 'Cari hesap raporları hub — Raporlar sekmesi (web ReportsModule).',
     'financereports-cash': 'Kasa hareket raporu canlı (ReportCash).',
+    'financereports-bank': 'Banka kartları / hareketleri canlı (FinanceScreen banka sekmesi).',
     whatsapp: 'WhatsApp entegrasyonu web’de; bildirim ayarları masaüstünden.',
+    integrations: 'Entegrasyon sağlayıcı özeti — WhatsApp / bildirim ayarları canlı (Communications).',
+    databroadcast: 'Bilgi gönder/al — bildirim kuyruğu canlı (Communications).',
+    'store-management': 'Mağaza listesi canlı (public.stores) — StoreManagement.',
+    multistore: 'Çoklu mağaza listesi canlı — StoreManagement.',
+    regional: 'Bölgesel mağaza grupları canlı — StoreManagement.',
+    storeconfig: 'Aktif mağaza seçimi — Organization.',
+    'hybrid-sync': 'Şube sync_queue kuyruğu canlı — Sistem › Senkron sekmesi.',
+    etransform: 'GİB e-belge kuyruğu canlı (gib_edocument_queue) — ETransform.',
     notifications: 'Kritik stok + vadesi geçmiş açık cari hatırlatmaları canlı.',
     usermanagement: 'Kullanıcı listesi canlı (public.users). Rol / log / kasa sekmeleri Sistem ekranında.',
     roleauth: 'Roller listesi canlı (public.roles). Yetki düzenleme web’de.',

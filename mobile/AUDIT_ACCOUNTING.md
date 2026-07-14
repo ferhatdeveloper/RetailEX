@@ -13,14 +13,14 @@ Mobil muhasebe katmanı web ERP’nin **okuma + sınırlı yazma** alt kümesidi
 
 | Boyut | Web (canlı kaynak) | Mobil | Tutarlılık |
 |-------|--------------------|-------|------------|
-| Cari bakiye listesi / “mizan” | Kart `balance` **veya** ledger CTE (`accountBalance.ts`) | Kart `balance` okuma | Kısmi — mobil ledger yeniden hesaplamıyor |
-| Cari ekstre | `sales` + `cash_lines` (web) / `account_movements` | `account_movements` → yoksa `sales` fallback | Kısmi — kasa satırları ekstrede yok |
+| Cari bakiye listesi / “mizan” | Kart `balance` **veya** ledger CTE (`accountBalance.ts`) | Dönem ledger CTE + `cardBalance` | Uyumlu (P1 R2/R11) |
+| Cari ekstre | `sales` + `cash_lines` (web) / `account_movements` | `account_movements` → yoksa `sales` **UNION** `cash_lines` (CH_*) | Uyumlu (P1 R3) |
 | Genel muhasebe mizanı (hesap planı) | GL / journal (kısmen legacy) | Yok — “mizan” = cari bakiye özeti | Ad yanıltıcı |
 | Satış / alış yönü | `fiche_type` + Logo `trcode` | Liste/filtre iyi; yazma sınırlı | İyileştirildi (*) |
 | POS: stok + ciro | Stok − / `sales` / kasa / (veresiye) cari | Stok − / `sales` / **KASA_GIRIS** / veresiye `customers.balance` ✓ | Uyumlu (P0 düzeltildi) |
 | Dönem (`periodNr`) | Hareket tabloları dönemli | Aynı kalıp (`erpTables`) | Uyumlu |
 
-(*) Bu turda küçük düzeltmeler: POS/fatura `fiche_type` hizalama, ekstre/stok filtreleri, ciroya alış karışması engeli. Geniş rewrite yok; commit yok.
+(*) Önceki: P0 stok/kasa/cari yazma; P1 R3/R9 ekstre+ciro. Bu tur: R2/R11 dönem ledger CTE + ReportMizan. Commit yok.
 
 ---
 
@@ -53,7 +53,7 @@ Tablo öneki (her iki tarafta aynı fikir):
 
 | | Web | Mobil |
 |--|-----|-------|
-| Liste bakiyesi | Tercihen **ledger CTE** (`sqlCustomerAccountBalancesCte` / tedarikçi eşdeğeri): veresiye `sales` ± `cash_lines` | Doğrudan `customers.balance` / `suppliers.balance` |
+| Liste bakiyesi | Tercihen **ledger CTE** (`sqlCustomerAccountBalancesCte` / tedarikçi eşdeğeri): veresiye `sales` ± `cash_lines` | **Dönem ledger CTE** (`mobile/src/api/accountBalance.ts` → `fetchCariBalances`); kart kolonu `cardBalance` |
 | Fatura anında | `UPDATE … balance` + ledger ile senkron beklentisi | Satış/alış create: veresiye → `customers`/`suppliers.balance` ✓ (P0 düzeltildi) |
 | Tahsilat | `CH_TAHSILAT` → bakiyeyi düşürür | `cashApi.createCariCashSlip` → kart bakiyesini düşürür ✓ |
 
@@ -61,16 +61,17 @@ Tablo öneki (her iki tarafta aynı fikir):
 
 **Risk R1 (P0) — düzeltildi (2026-07-14):** Mobil POS / `createSalesInvoice` veresiye satışında `customers.balance += net`. Peşin (nakit/kart) cariye yazılmaz (web ile aynı).
 
-**Risk R2 (P1):** Mobil “mizan” (`ReportMizan` / `fetchCariBalances`) dönem bağımsız kart bakiyesidir. Dönem değişince hareketler sıfırlansa bile kart bakiyesi firma genelinde kalır → **dönemsel cari mizan ≠ dönem hareket toplamı**. Web liste CTE kullanırsa dönemli hareketlere bağlanır; kart kolonu yine firmaya aittir.
+**Risk R2 (P1) — düzeltildi (2026-07-14):** `fetchCariBalances` web `accountBalance` CTE portu ile **dönem ledger** hesaplar; `ReportMizan` ana tutar dönemsel, `cardBalance` firma kartı (fark satırda gösterilir). CTE başarısızsa kart fallback.
 
-**Risk R3 (P1):** Ekstre önce `account_movements` okur; boşsa `sales` fallback. Web canlı ekstre `sales` **+ `cash_lines` (CH_*)**. Mobil fallback’te tahsilat/ödeme satırları yok → ekstreden kapanış bakiyesi ile kart bakiyesi uyuşmayabilir.
+**Risk R3 (P1) — düzeltildi (2026-07-14):** Ekstre önce `account_movements`; boşsa `sales` **UNION ALL** `cash_lines` (`CH_TAHSILAT` / `CH_ODEME`, işaret −1 — web `getAccountStatement` / `buildEkstreRows`). Tahsilat/ödeme satırları kapanış bakiyesine yansır.
 
 **Risk R4 (P2):** “Mizan” menü etiketi kullanıcıyı genel muhasebe mizanı sanabilir; aslında cari bakiye listesidir. GL mizan mobilde yok.
 
-### 3.2 Bu turda yapılan ekstre düzeltmeleri
+### 3.2 Ekstre düzeltmeleri
 
 - Müşteri `sales` fallback: `sales_invoice` / `sales` / `retail` / trcode 7–8 dahil (eski mobil fişler + web POS).
-- İade/alış işareti: `return_invoice` / `purchase_invoice` / trcode 1,3,6 → `sign = -1`.
+- İade/alış işareti: `return_invoice` / `purchase_invoice` / trcode 1,2,3,6 → `sign = -1`.
+- **P1:** Fallback’e `cash_lines` UNION (`CH_*`, `sign = -1`, `source = 'cash'`).
 - Malzeme ekstresi: satış yönlü `fiche_type` ve trcode’lar `out` olarak eşlendi.
 
 ---
@@ -102,7 +103,7 @@ Tablo öneki (her iki tarafta aynı fikir):
 
 **Risk R5 (P0) — düzeltildi (2026-07-14):** Alış faturası peşin değilse (`paymentMethodImpliesSupplierDebt`) `suppliers.balance +=`. Peşin nakit/kart/havale’de tedarikçi borcu yazılmaz. Peşin alışta kasa çıkışı hâlâ opsiyonel (yapılmadı).
 
-**Risk R6 (P1):** İade oluşturma formu yok; liste filtresi var. Yanlış elle `trcode` ile oluşturulmuş fişlerde stok/bakiye yönü mobil yazma yollarında ele alınmıyor.
+**Risk R6 (P1) — kısmen düzeltildi (2026-07-14):** `createReturnInvoice` + `InvoiceForm` (`sales-return` / `purchase-return`); liste `+`. Stok: 3 → +, 6 → −; cari bakiye −. Hizmet/irsaliye create hâlâ yok.
 
 **Risk R7 (P2):** `financeApi` basit kasa tipi `TAHSILAT`/`ODEME`; web/POS `KASA_GIRIS` / `KASA_CIKIS`. `cashApi` doğru tipleri kullanıyor. İki API paralel → raporlarda tip çeşitliliği.
 
@@ -127,8 +128,7 @@ Tablo öneki (her iki tarafta aynı fikir):
 
 **Risk R8 (P0) — düzeltildi (2026-07-14):** POS nakit/kart sonrası varsayılan aktif kasaya `KASA_GIRIS` (`recordKasaGirisForSale`). Kasa yoksa satış yine kaydedilir (web gibi uyarı/sessiz).
 
-**Risk R9 (P1 — bu turda azaltıldı):** Günlük ciro ve top ürünler **alış fişlerini** de toplayabiliyordu. `fetchSalesByDay`, `fetchTopProducts`, dashboard gelir sorgusu satış yönü ile süzülüyor.  
-**Kalan:** İade (`return_invoice`) tutarı hâlâ pozitif `SUM` ile ciroya eklenebilir; net ciro için iade işareti (web ile aynı kuralla) ayrıca ele alınmalı.
+**Risk R9 (P1 — düzeltildi 2026-07-14):** Günlük ciro / top ürün / dashboard gelir **alış** fişlerini elemişti; iade pozitif kalıyordu. Artık web `SQL_SALES_SIGN` ile hizalı: `return_invoice` / trcode 2–3 → tutar (ve top ürün qty) **negatif**; net ciro = satış − iade.
 
 **Risk R10 (P2):** POS KDV=0 hardcode; web vergi satırları varsa raporlar sapar.
 
@@ -143,7 +143,7 @@ Tablo öneki (her iki tarafta aynı fikir):
 | Cari kart bakiyesi | Firma scoped — **dönem filtresi yok** |
 | `orgSessionStore.epoch` | Dönem değişince listeler yenilenir ✓ |
 
-**Risk R11 (P1):** Kullanıcı dönem 02’ye geçince ekstre 02 hareketlerini gösterir; mizan kart bakiyesi hâlâ tüm dönemlerin birikimini (web’in yazdığı kadarıyla) gösterir. Muhasebeci beklentisi: dönemsel açılış + hareket = kapanış. Mobilde açılış bakiyesi satırı yok (`opening_balance` fişleri filtrede var ama topluca açılış eklenmiyor).
+**Risk R11 (P1) — kısmen düzeltildi (2026-07-14):** Mizan seçili dönem `sales` + `cash_lines` ledger’ına bağlı (`opening_balance` CTE’de). Ekstrede CH_* UNION tamam (R3); toplu açılış satırı / devir formu hâlâ yok.
 
 **Risk R12 (P2):** Login seed `periodNr: '01'`; Organization seçilmezse yanlış döneme yazım.
 
@@ -154,13 +154,14 @@ Tablo öneki (her iki tarafta aynı fikir):
 | Ekran / işlev | Web | Mobil | Öncelik |
 |---------------|-----|-------|---------|
 | Cari liste + bakiye | ✓ | ✓ okuma | — |
-| Cari ekstre | ✓ | ✓ (kasa satırı eksik) | P1 |
+| Cari ekstre | ✓ | ✓ (sales + CH_* fallback) | — |
 | Cari devir / açılış | ✓ | Menü → ekstre yönlendirme / form yok | P1 |
 | Kasa işlem / tahsilat | ✓ | Finance + CashCollection | — |
 | Banka | ✓ | Finance (basit) | P2 |
-| Satış faturası | ✓ | Form (basit) | P1 (bakiye/kasa) |
-| Alış faturası | ✓ | API var, UI zayıf | P1 |
-| İade / hizmet formları | ✓ | Liste filtresi / Module | P1 |
+| Satış faturası | ✓ | Form güçlendirildi (cari/kalem/özet) | P1 |
+| Alış faturası | ✓ | Form + `suppliersApi` | P1 |
+| İade formları (3/6) | ✓ | `InvoiceForm` + `createReturnInvoice` | P1 kısmi ✓ |
+| Hizmet formları | ✓ | Liste filtresi / Module | P1 |
 | POS | ✓ tam zincir | Stok+ciro only | P0 |
 | Yaşlandırma | ✓ | Yok | P2 |
 | Virman | ✓ | Yok | P2 |
@@ -189,10 +190,10 @@ Menü yanıltması (P2):
 
 | ID | Risk | Öneri |
 |----|------|-------|
-| R3 | Ekstrede `cash_lines` yok | Fallback’e `UNION ALL` CH_TAHSILAT/CH_ODEME (web `getAccountStatement`) |
-| R2 / R11 | Dönemsel mizan ≠ kart bakiyesi | `fetchCariBalances` için web `accountBalance` CTE’yi port et; UI’da “kart bakiyesi (firma)” vs “dönem bakiyesi” ayrımı |
-| R9 kalan | İade ciro işareti | Satış raporlarında iade `net_amount` negatif veya ayrı kolon |
-| R6 | İade/hizmet yazma | En az satış iade (trcode 3) ve alış iade (6) formları veya mevcut web API proxy |
+| R3 | ~~Ekstrede `cash_lines` yok~~ **düzeltildi** | Fallback `sales` UNION `CH_*` |
+| R9 | ~~İade ciro işareti~~ **düzeltildi** | `sqlSalesRevenueSign` / dashboard CASE (−ABS iade) |
+| R2 / R11 | ~~Dönemsel mizan ≠ kart bakiyesi~~ **düzeltildi** | `accountBalance.ts` CTE + `ReportMizan` dönem/kart ayrımı; ekstre açılış satırı / R3 ayrı |
+| R6 | ~~İade yazma~~ kısmi · hizmet yazma | İade 3/6 mobil form var; hizmet create hâlâ web |
 | — | Menü: kasa/banka/devir yanlış hedef | `LIVE_MAP` düzelt; Module yerine doğru ekran veya “yakında” |
 
 ### P2 — orta vade
@@ -212,9 +213,11 @@ Menü yanıltması (P2):
 
 ---
 
-## 9. Bu turda uygulanan küçük düzeltmeler
+## 9. Uygulanan düzeltmeler
 
-Commit yapılmadı. Dosyalar:
+Commit yapılmadı.
+
+### P0 (önceki tur)
 
 | Dosya | Değişiklik |
 |-------|------------|
@@ -222,11 +225,26 @@ Commit yapılmadı. Dosyalar:
 | `mobile/src/api/invoicesApi.ts` | Satış formu `sales_invoice` / trcode 8; veresiye bakiye + peşin kasa; alış tedarikçi bakiye |
 | `mobile/src/api/cashApi.ts` | `recordKasaGirisForSale`, `adjustCustomerBalance`, `adjustSupplierBalance` |
 | `mobile/src/api/paymentMethodUtils.ts` | Web ile uyumlu peşin/veresiye/kasa yardımcıları |
-| `mobile/src/api/reportsApi.ts` | Ciro filtreleri; ekstre legacy+trcode; malzeme yönü; top ürün join+filtre |
-| `mobile/src/api/dashboardApi.ts` | Günlük cirodan alış fişlerini eleme |
-| `mobile/AUDIT_ACCOUNTING.md` | P0 R1/R5/R8 düzeltildi notları |
 
-**Yapılmadı (bilinçli — geniş rewrite):** ekstreye `cash_lines` UNION, ledger CTE portu, peşin alışta `KASA_CIKIS`, POS UI’da veresiye müşteri seçici.
+### P1 (önceki — R3 + R9)
+
+| Dosya | Değişiklik |
+|-------|------------|
+| `mobile/src/api/reportsApi.ts` | Ekstre fallback: `sales` UNION ALL `cash_lines` (CH_*, sign −1); `sqlSalesRevenueSign`; `fetchSalesByDay` / `fetchTopProducts` iade negatif |
+| `mobile/src/api/dashboardApi.ts` | Günlük ciroda iade (−ABS) işareti |
+| `mobile/AUDIT_ACCOUNTING.md` | R3 / R9 kapatıldı |
+
+### P1 (bu tur — R2 / R11)
+
+| Dosya | Değişiklik |
+|-------|------------|
+| `mobile/src/api/accountBalance.ts` | Web ledger CTE portu (açık `sales` / `cash_lines` tablo adları) |
+| `mobile/src/api/paymentMethodUtils.ts` | `sqlPaymentMethodImplies*DebtExpr` |
+| `mobile/src/api/reportsApi.ts` | `fetchCariBalances` → dönem ledger + `cardBalance` |
+| `mobile/src/screens/ReportScreens.tsx` | `ReportMizanScreen` dönem/kart ayrımı UI |
+| `mobile/AUDIT_ACCOUNTING.md` | R2 / R11 notları |
+
+**Yapılmadı (bilinçli):** peşin alışta `KASA_CIKIS`, POS UI veresiye müşteri seçici, hizmet create formu, ekstrede toplu açılış satırı.
 
 ---
 
@@ -236,7 +254,9 @@ Commit yapılmadı. Dosyalar:
 2. Web’den veresiye satış → mobilde mizan/ekstre bakiyesi.  
 3. Mobil POS nakit → stok −, ciro +, kasa bakiyesi **artmalı** (R8 düzeltildi).  
 4. Mobil alış faturası veresiye + tedarikçi → stok +, `suppliers.balance` **artmalı** (R5 düzeltildi); peşin alışta bakiye 0 kalır.  
-5. Dönem değiştir → fatura listesi değişir; kart bakiyeleri aynı kalır (R2).
+5. Dönem değiştir → mizan **dönem ledger** bakiyeleri değişmeli; satırdaki “Kart (firma)” aynı kalabilir (R2/R11).  
+6. Cari tahsilat (`CH_TAHSILAT`) → ekstrede alacak satırı; kapanış bakiyesi düşer (R3).  
+7. Satış iade fişi → günlük ciro / satış raporu net tutarı **azalır** (R9).
 
 ---
 
@@ -245,7 +265,7 @@ Commit yapılmadı. Dosyalar:
 ```
 mobile/src/api/
   reportsApi.ts       # mizan okuma, ekstre, ciro, kasa hareket raporu
-  accountBalance      # (yok — web’de var)
+  accountBalance.ts   # dönem ledger CTE (web accountBalance portu)
   customersApi.ts     # kart balance okuma
   invoicesApi.ts      # liste + satış/alış create
   posApi.ts           # POS yazma

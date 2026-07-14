@@ -74,18 +74,27 @@ export function WmsCountScreen() {
     try {
       const stores = await fetchCountingStores();
       let storeId = user?.storeId || stores[0]?.id;
+      let storeName = stores.find((s) => s.id === storeId)?.name ?? stores[0]?.name ?? null;
       if (!storeId) {
         Alert.alert('Mağaza yok', 'Aktif mağaza bulunamadı. Firma/dönem ayarlarını kontrol edin.');
         return;
       }
       if (stores.length > 1 && !user?.storeId) {
         storeId = stores[0]!.id;
+        storeName = stores[0]!.name;
       }
       const slip = await createCountingSlip({
         store_id: storeId,
+        store_name: storeName,
         count_type: 'full',
         description: 'RetailEX Mobile sayım',
       });
+      if (slip.queued) {
+        Alert.alert(
+          'Fiş kuyruğa alındı',
+          `${slip.fiche_no}\n\nBağlantı gelince otomatik senkron edilir.`,
+        );
+      }
       openSlip(slip.id);
       void load();
     } catch (e) {

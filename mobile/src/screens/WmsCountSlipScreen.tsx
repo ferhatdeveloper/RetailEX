@@ -158,9 +158,12 @@ export function WmsCountSlipScreen() {
     setError(null);
     try {
       if (slip?.status === 'draft') {
-        await updateCountingSlipStatus(slipId, 'counting');
+        const st = await updateCountingSlipStatus(slipId, 'counting');
+        if (st.queued) {
+          setSlip((prev) => (prev ? { ...prev, status: 'counting' } : prev));
+        }
       }
-      await upsertCountingLine(slipId, {
+      const lineRes = await upsertCountingLine(slipId, {
         product_id: pendingProductId || undefined,
         barcode: bc || undefined,
         product_name: name || bc,
@@ -169,6 +172,12 @@ export function WmsCountSlipScreen() {
       });
       resetEntry();
       await load();
+      if (lineRes.queued) {
+        Alert.alert(
+          'Satır kuyruğa alındı',
+          'Bağlantı gelince otomatik senkron edilir.',
+        );
+      }
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       setError(msg);
@@ -199,8 +208,14 @@ export function WmsCountSlipScreen() {
           onPress: () => {
             void (async () => {
               try {
-                await deleteCountingLine(lineId);
+                const del = await deleteCountingLine(slipId, lineId);
                 await load();
+                if (del.queued) {
+                  Alert.alert(
+                    'Silme kuyruğa alındı',
+                    'Bağlantı gelince otomatik senkron edilir.',
+                  );
+                }
               } catch (e) {
                 Alert.alert('Hata', e instanceof Error ? e.message : String(e));
               }
@@ -229,8 +244,14 @@ export function WmsCountSlipScreen() {
             void (async () => {
               setSaving(true);
               try {
-                await updateCountingSlipStatus(slipId, 'reconciliation');
+                const st = await updateCountingSlipStatus(slipId, 'reconciliation');
                 await load();
+                if (st.queued) {
+                  Alert.alert(
+                    'Durum kuyruğa alındı',
+                    'Mutabakat aşaması bağlantı gelince senkron edilir.',
+                  );
+                }
               } catch (e) {
                 Alert.alert('Hata', e instanceof Error ? e.message : String(e));
               } finally {
@@ -260,6 +281,13 @@ export function WmsCountSlipScreen() {
               try {
                 const result = await applyStockCount(slipId);
                 await load();
+                if (result.queued) {
+                  Alert.alert(
+                    'Stok uygulama kuyruğa alındı',
+                    `${result.processed} ürün · bağlantı gelince senkron edilir.`,
+                  );
+                  return;
+                }
                 Alert.alert(
                   'Tamamlandı',
                   `${result.processed} ürün işlendi · fazla ${result.surplus} · eksik ${result.shortage}`,

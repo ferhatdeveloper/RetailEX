@@ -1,11 +1,25 @@
 import { createCustomer, updateCustomer } from '../api/customersApi';
+import {
+  createPurchaseInvoice,
+  createReturnInvoice,
+  createSalesInvoice,
+  updateInvoiceHeader,
+} from '../api/invoicesApi';
 import { savePosSale } from '../api/posApi';
+import {
+  applyStockCount,
+  createCountingSlip,
+  deleteCountingLine,
+  updateCountingSlipStatus,
+  upsertCountingLine,
+} from '../api/wmsStockCountApi';
 import { useConnectivityStore } from '../store/connectivityStore';
 import {
   loadMutationQueue,
   removeMutation,
   type PendingMutation,
 } from './mutationQueue';
+import { removePendingInvoiceFromCache } from './snapshotCache';
 import { shouldUseLiveData } from './policy';
 
 export type FlushResult = {
@@ -39,6 +53,132 @@ async function applyOne(m: PendingMutation): Promise<void> {
       ficheNo: m.payload.ficheNo,
       customerId: m.payload.customerId,
       customerName: m.payload.customerName,
+    });
+    return;
+  }
+  if (m.type === 'invoice.sales.create') {
+    await createSalesInvoice(
+      {
+        customerId: m.payload.customerId,
+        customerName: m.payload.customerName,
+        notes: m.payload.notes,
+        paymentMethod: m.payload.paymentMethod,
+        lines: m.payload.lines,
+      },
+      {
+        forceLive: true,
+        skipQueue: true,
+        id: m.payload.localId,
+        ficheNo: m.payload.ficheNo,
+      },
+    );
+    await removePendingInvoiceFromCache(m.payload.localId);
+    return;
+  }
+  if (m.type === 'invoice.purchase.create') {
+    await createPurchaseInvoice(
+      {
+        supplierId: m.payload.supplierId,
+        supplierName: m.payload.supplierName,
+        notes: m.payload.notes,
+        paymentMethod: m.payload.paymentMethod,
+        lines: m.payload.lines,
+      },
+      {
+        forceLive: true,
+        skipQueue: true,
+        id: m.payload.localId,
+        ficheNo: m.payload.ficheNo,
+      },
+    );
+    await removePendingInvoiceFromCache(m.payload.localId);
+    return;
+  }
+  if (m.type === 'invoice.return.create') {
+    await createReturnInvoice(
+      {
+        trcode: m.payload.trcode,
+        accountId: m.payload.accountId,
+        accountName: m.payload.accountName,
+        notes: m.payload.notes,
+        paymentMethod: m.payload.paymentMethod,
+        cashier: m.payload.cashier,
+        returnReason: m.payload.returnReason,
+        documentNo: m.payload.documentNo,
+        lines: m.payload.lines,
+      },
+      {
+        forceLive: true,
+        skipQueue: true,
+        id: m.payload.localId,
+        ficheNo: m.payload.ficheNo,
+      },
+    );
+    await removePendingInvoiceFromCache(m.payload.localId);
+    return;
+  }
+  if (m.type === 'invoice.header.update') {
+    await updateInvoiceHeader(m.payload.invoiceId, m.payload, {
+      forceLive: true,
+      skipQueue: true,
+    });
+    await removePendingInvoiceFromCache(m.payload.invoiceId);
+    return;
+  }
+  if (m.type === 'wms.counting.slip.create') {
+    await createCountingSlip(
+      {
+        store_id: m.payload.store_id,
+        store_name: m.payload.store_name,
+        count_type: m.payload.count_type,
+        description: m.payload.description,
+      },
+      {
+        forceLive: true,
+        skipQueue: true,
+        id: m.payload.localId,
+        ficheNo: m.payload.ficheNo,
+      },
+    );
+    return;
+  }
+  if (m.type === 'wms.counting.line.upsert') {
+    await upsertCountingLine(
+      m.payload.slipId,
+      {
+        product_id: m.payload.product_id,
+        barcode: m.payload.barcode,
+        product_name: m.payload.product_name,
+        expected_qty: m.payload.expected_qty,
+        counted_qty: m.payload.counted_qty,
+        unit: m.payload.unit,
+      },
+      {
+        forceLive: true,
+        skipQueue: true,
+        lineId: m.payload.lineId,
+      },
+    );
+    return;
+  }
+  if (m.type === 'wms.counting.line.delete') {
+    await deleteCountingLine(m.payload.slipId, m.payload.lineId, {
+      forceLive: true,
+      skipQueue: true,
+    });
+    return;
+  }
+  if (m.type === 'wms.counting.status.update') {
+    await updateCountingSlipStatus(m.payload.slipId, m.payload.status, {
+      forceLive: true,
+      skipQueue: true,
+    });
+    return;
+  }
+  if (m.type === 'wms.counting.applyStock') {
+    await applyStockCount(m.payload.slipId, {
+      forceLive: true,
+      skipQueue: true,
     });
   }
 }

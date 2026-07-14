@@ -32,9 +32,11 @@ RetailEX mobil (`mobile/`) ağ davranışı. Web Login `db_mode` (local / online
 |---------|--------|------------|
 | `retailex_offline_products` | Son başarılı ürün listesi (firma bazlı snapshot) | Canlı `fetchProducts` (boş arama veya full sonuç) |
 | `retailex_offline_customers` | Son başarılı cari listesi | Canlı `fetchCustomers` |
-| `retailex_offline_mutations` | Bekleyen mutasyonlar (`customer.create` / `customer.update` / `pos.sale`) | Offline/Hybrid yazma |
+| `retailex_offline_mutations` | Bekleyen mutasyonlar (`customer.*` / `pos.sale` / `invoice.*` / `wms.counting.*`) | Offline/Hybrid yazma |
+| `retailex_offline_pending_invoices` | Kuyruğa alınmış fatura taslakları (liste/detay) | Fatura offline create/update |
+| `retailex_offline_counting_slips` | Sayım fişleri + satırlar (yerel taslak) | WMS sayım offline fiş/satır |
 
-POS / fatura / WMS sayım kuyruğu: **POS fiş** (`pos.sale`) eklendi; fatura ve WMS sayım sonraki faz.
+POS / fatura / WMS sayım kuyruğu: **POS fiş**, **satış/alış fatura**, **WMS sayım fiş/satır/mutabakat/stok uygulama** desteklenir.
 
 ## UI göstergesi
 

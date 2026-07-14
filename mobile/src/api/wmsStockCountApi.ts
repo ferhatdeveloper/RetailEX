@@ -6,6 +6,25 @@
 import { pgQuery } from './pgClient';
 import { firmNr, newUuid, periodNr, productsTable } from './erpTables';
 import { useAuthStore } from '../store/authStore';
+import { shouldUseLiveData, getNetworkPolicy } from '../offline/policy';
+import { enqueueMutation } from '../offline/mutationQueue';
+import {
+  adjustProductStockInCache,
+  deleteCountingLineInCache,
+  getCachedCountingSlips,
+  getCachedLineByBarcode,
+  getCachedProducts,
+  getCachedSlipWithLines,
+  nextOfflineCountingFicheNo,
+  saveCountingSlipsSnapshot,
+  setProductStockInCache,
+  updateCountingSlipStatusInCache,
+  upsertCountingLineInCache,
+  upsertCountingSlipInCache,
+  type CachedCountingLine,
+  type CachedCountingSlip,
+} from '../offline/snapshotCache';
+import { useConnectivityStore } from '../store/connectivityStore';
 
 export type CountingSlip = {
   id: string;
@@ -49,6 +68,16 @@ export type ProductLookup = {
 
 export type WmsStore = { id: string; name: string; code: string };
 
+export type WmsWriteResult<T> = T & { queued?: boolean };
+
+export type WmsWriteOptions = {
+  forceLive?: boolean;
+  skipQueue?: boolean;
+  id?: string;
+  ficheNo?: string;
+  lineId?: string;
+};
+
 function fn(): string {
   return firmNr();
 }
@@ -59,6 +88,9 @@ function cashier(): string {
 }
 
 export async function generateFicheNo(): Promise<string> {
+  if (!shouldUseLiveData()) {
+    return nextOfflineCountingFicheNo();
+  }
   const firm = fn();
   const year = new Date().getFullYear();
   const res = await pgQuery<{ count: string }>(
@@ -101,6 +133,25 @@ export async function fetchCountingStores(): Promise<WmsStore[]> {
 }
 
 export async function fetchCountingSlips(): Promise<CountingSlip[]> {
+  if (!shouldUseLiveData()) {
+    const cached = await getCachedCountingSlips();
+    return cached.map((s) => ({
+      id: s.id,
+      firm_nr: s.firm_nr,
+      store_id: s.store_id,
+      fiche_no: s.fiche_no,
+      date: s.date,
+      count_type: s.count_type,
+      location_code: s.location_code,
+      status: s.status,
+      description: s.description,
+      created_by: s.created_by,
+      created_at: s.created_at,
+      store_name: s.store_name,
+      line_count: s.line_count ?? s.lines.length,
+    }));
+  }
+
   const firm = fn();
   const res = await pgQuery<CountingSlip>(
     `SELECT cs.*,
@@ -116,12 +167,61 @@ export async function fetchCountingSlips(): Promise<CountingSlip[]> {
      LIMIT 100`,
     [firm],
   );
-  return res.rows;
+  const rows = res.rows;
+  if (rows.length) {
+    const existing = await getCachedCountingSlips();
+    await saveCountingSlipsSnapshot(
+      rows.map((s) => {
+        const prev = existing.find((e) => String(e.id) === String(s.id));
+        return {
+          id: s.id,
+          firm_nr: s.firm_nr,
+          store_id: s.store_id,
+          fiche_no: s.fiche_no,
+          date: String(s.date),
+          count_type: s.count_type,
+          location_code: s.location_code,
+          status: s.status,
+          description: s.description,
+          created_by: s.created_by,
+          created_at: String(s.created_at),
+          store_name: s.store_name,
+          line_count: s.line_count,
+          lines: prev?.lines ?? [],
+          pending: prev?.pending ?? false,
+        };
+      }),
+    );
+  }
+  return rows;
 }
 
 export async function fetchSlipWithLines(
   slipId: string,
 ): Promise<{ slip: CountingSlip | null; lines: CountingLine[] }> {
+  if (!shouldUseLiveData()) {
+    const { slip, lines } = await getCachedSlipWithLines(slipId);
+    if (!slip) return { slip: null, lines: [] };
+    return {
+      slip: {
+        id: slip.id,
+        firm_nr: slip.firm_nr,
+        store_id: slip.store_id,
+        fiche_no: slip.fiche_no,
+        date: slip.date,
+        count_type: slip.count_type,
+        location_code: slip.location_code,
+        status: slip.status,
+        description: slip.description,
+        created_by: slip.created_by,
+        created_at: slip.created_at,
+        store_name: slip.store_name,
+        line_count: slip.lines.length,
+      },
+      lines: lines as CountingLine[],
+    };
+  }
+
   const slipRes = await pgQuery<CountingSlip>(
     `SELECT cs.*, s.name AS store_name
      FROM wms.counting_slips cs
@@ -136,23 +236,48 @@ export async function fetchSlipWithLines(
      ORDER BY COALESCE(cl.counted_at, '1970-01-01'::timestamptz) DESC, cl.id ASC`,
     [slipId],
   );
-  return { slip: slipRes.rows[0] ?? null, lines: linesRes.rows };
+  const slip = slipRes.rows[0] ?? null;
+  if (slip) {
+    await upsertCountingSlipInCache({
+      id: slip.id,
+      firm_nr: slip.firm_nr,
+      store_id: slip.store_id,
+      fiche_no: slip.fiche_no,
+      date: String(slip.date),
+      count_type: slip.count_type,
+      location_code: slip.location_code,
+      status: slip.status,
+      description: slip.description,
+      created_by: slip.created_by,
+      created_at: String(slip.created_at),
+      store_name: slip.store_name,
+      line_count: linesRes.rows.length,
+      lines: linesRes.rows as CachedCountingLine[],
+      pending: false,
+    });
+  }
+  return { slip, lines: linesRes.rows };
 }
 
-export async function createCountingSlip(data: {
-  store_id: string;
-  count_type?: 'full' | 'cycle' | 'location';
-  description?: string;
-}): Promise<CountingSlip> {
+async function createCountingSlipLive(
+  data: {
+    store_id: string;
+    store_name?: string | null;
+    count_type?: 'full' | 'cycle' | 'location';
+    description?: string;
+  },
+  writeOpts?: Pick<WmsWriteOptions, 'id' | 'ficheNo'>,
+): Promise<CountingSlip> {
   const firm = fn();
-  const ficheNo = await generateFicheNo();
+  const ficheNo = writeOpts?.ficheNo || (await generateFicheNo());
   const user = useAuthStore.getState().user;
   const res = await pgQuery<CountingSlip>(
     `INSERT INTO wms.counting_slips
-       (firm_nr, store_id, fiche_no, count_type, description, status, created_by, date)
-     VALUES ($1, $2::uuid, $3, $4, $5, 'draft', $6::uuid, CURRENT_DATE)
+       (id, firm_nr, store_id, fiche_no, count_type, description, status, created_by, date)
+     VALUES ($1::uuid, $2, $3::uuid, $4, $5, $6, 'draft', $7::uuid, CURRENT_DATE)
      RETURNING *`,
     [
+      writeOpts?.id || newUuid(),
       firm,
       data.store_id,
       ficheNo,
@@ -166,18 +291,115 @@ export async function createCountingSlip(data: {
   return slip;
 }
 
-export async function updateCountingSlipStatus(
+export async function createCountingSlip(
+  data: {
+    store_id: string;
+    store_name?: string | null;
+    count_type?: 'full' | 'cycle' | 'location';
+    description?: string;
+  },
+  writeOpts?: WmsWriteOptions,
+): Promise<WmsWriteResult<CountingSlip>> {
+  const live = writeOpts?.forceLive === true || shouldUseLiveData();
+  const id = writeOpts?.id || newUuid();
+  const ficheNo = writeOpts?.ficheNo || (await generateFicheNo());
+  const firm = fn();
+  const user = useAuthStore.getState().user;
+  const now = new Date().toISOString();
+
+  if (!live && !writeOpts?.skipQueue) {
+    await enqueueMutation({
+      type: 'wms.counting.slip.create',
+      payload: {
+        localId: id,
+        ficheNo,
+        store_id: data.store_id,
+        store_name: data.store_name,
+        count_type: data.count_type,
+        description: data.description,
+      },
+    });
+    const slip: CachedCountingSlip = {
+      id,
+      firm_nr: firm,
+      store_id: data.store_id,
+      fiche_no: ficheNo,
+      date: now.slice(0, 10),
+      count_type: data.count_type || 'full',
+      status: 'draft',
+      description: data.description || null,
+      created_by: user?.id || null,
+      created_at: now,
+      store_name: data.store_name,
+      line_count: 0,
+      lines: [],
+      pending: true,
+    };
+    await upsertCountingSlipInCache(slip);
+    await useConnectivityStore.getState().refreshPendingCount();
+    return { ...slip, queued: true };
+  }
+
+  const slip = await createCountingSlipLive(data, { id, ficheNo });
+  return slip;
+}
+
+async function updateCountingSlipStatusLive(
   slipId: string,
   status: CountingSlip['status'],
 ): Promise<void> {
   await pgQuery(`UPDATE wms.counting_slips SET status = $2 WHERE id = $1::uuid`, [slipId, status]);
 }
 
+export async function updateCountingSlipStatus(
+  slipId: string,
+  status: CountingSlip['status'],
+  writeOpts?: WmsWriteOptions,
+): Promise<{ queued?: boolean }> {
+  const live = writeOpts?.forceLive === true || shouldUseLiveData();
+
+  if (!live && !writeOpts?.skipQueue) {
+    const { slip } = await getCachedSlipWithLines(slipId);
+    if (!slip) {
+      if (getNetworkPolicy() === 'offline') {
+        throw new Error('Çevrimdışı: sayım fişi önbellekte bulunamadı');
+      }
+    } else {
+      await updateCountingSlipStatusInCache(slipId, status);
+      await enqueueMutation({
+        type: 'wms.counting.status.update',
+        payload: { slipId, status },
+      });
+      await useConnectivityStore.getState().refreshPendingCount();
+      return { queued: true };
+    }
+  }
+
+  await updateCountingSlipStatusLive(slipId, status);
+  await updateCountingSlipStatusInCache(slipId, status);
+  return {};
+}
+
 export async function lookupProductByBarcode(barcode: string): Promise<ProductLookup | null> {
-  const table = productsTable();
   const code = barcode.trim();
   if (!code) return null;
 
+  if (!shouldUseLiveData()) {
+    const rows = await getCachedProducts(code, 50);
+    const hit =
+      rows.find((r) => r.barcode === code || r.code === code) ?? rows[0] ?? null;
+    if (!hit) return null;
+    return {
+      id: hit.id,
+      name: hit.name,
+      code: hit.code,
+      barcode: hit.barcode || code,
+      stock: hit.stock,
+      unit: hit.unit,
+    };
+  }
+
+  const table = productsTable();
   const direct = await pgQuery<ProductLookup>(
     `SELECT id::text, name, code, barcode,
             COALESCE(stock, 0)::float8 AS stock,
@@ -218,6 +440,12 @@ export async function lookupProductByBarcode(barcode: string): Promise<ProductLo
 }
 
 export async function getProductStock(productId: string): Promise<number> {
+  if (!shouldUseLiveData()) {
+    const rows = await getCachedProducts('', 500);
+    const hit = rows.find((r) => String(r.id) === String(productId));
+    return Number(hit?.stock ?? 0);
+  }
+
   const table = productsTable();
   const res = await pgQuery<{ stock: number }>(
     `SELECT COALESCE(stock, 0)::float8 AS stock FROM ${table} WHERE id::text = $1`,
@@ -230,6 +458,11 @@ export async function getLineByBarcode(
   slipId: string,
   barcode: string,
 ): Promise<CountingLine | null> {
+  if (!shouldUseLiveData()) {
+    const line = await getCachedLineByBarcode(slipId, barcode);
+    return line as CountingLine | null;
+  }
+
   const res = await pgQuery<CountingLine>(
     `SELECT * FROM wms.counting_lines
      WHERE slip_id = $1::uuid AND barcode = $2
@@ -249,13 +482,58 @@ export async function upsertCountingLine(
     counted_qty: number;
     unit?: string;
   },
-): Promise<CountingLine> {
+  writeOpts?: WmsWriteOptions,
+): Promise<WmsWriteResult<CountingLine>> {
+  const live = writeOpts?.forceLive === true || shouldUseLiveData();
   const firm = fn();
-  const by = cashier();
   const barcode = data.barcode?.trim() || null;
   const expected = data.expected_qty ?? 0;
   const counted = data.counted_qty;
   const variance = counted - expected;
+  const now = new Date().toISOString();
+
+  if (!live && !writeOpts?.skipQueue) {
+    const { slip, lines } = await getCachedSlipWithLines(slipId);
+    if (!slip) {
+      throw new Error('Çevrimdışı: sayım fişi önbellekte bulunamadı');
+    }
+    const existing = lines.find(
+      (l) =>
+        (barcode && (l.barcode || '').trim() === barcode) ||
+        (data.product_id && String(l.product_id) === String(data.product_id) && !barcode),
+    );
+    const lineId = writeOpts?.lineId || existing?.id || newUuid();
+    const line: CachedCountingLine = {
+      id: lineId,
+      slip_id: slipId,
+      product_id: data.product_id || existing?.product_id || null,
+      barcode,
+      product_name: data.product_name || existing?.product_name || null,
+      expected_qty: expected,
+      counted_qty: counted,
+      variance,
+      unit: data.unit || existing?.unit || 'Adet',
+      counted_at: now,
+    };
+    await upsertCountingLineInCache(slipId, line);
+    await enqueueMutation({
+      type: 'wms.counting.line.upsert',
+      payload: {
+        slipId,
+        lineId,
+        product_id: data.product_id,
+        barcode: barcode || undefined,
+        product_name: data.product_name,
+        expected_qty: expected,
+        counted_qty: counted,
+        unit: data.unit,
+      },
+    });
+    await useConnectivityStore.getState().refreshPendingCount();
+    return { ...(line as CountingLine), queued: true };
+  }
+
+  const by = cashier();
 
   const existing = await pgQuery<CountingLine>(
     `SELECT * FROM wms.counting_lines
@@ -305,8 +583,26 @@ export async function upsertCountingLine(
   return res.rows[0]!;
 }
 
-export async function deleteCountingLine(lineId: string): Promise<void> {
+export async function deleteCountingLine(
+  slipId: string,
+  lineId: string,
+  writeOpts?: WmsWriteOptions,
+): Promise<{ queued?: boolean }> {
+  const live = writeOpts?.forceLive === true || shouldUseLiveData();
+
+  if (!live && !writeOpts?.skipQueue) {
+    await deleteCountingLineInCache(slipId, lineId);
+    await enqueueMutation({
+      type: 'wms.counting.line.delete',
+      payload: { slipId, lineId },
+    });
+    await useConnectivityStore.getState().refreshPendingCount();
+    return { queued: true };
+  }
+
   await pgQuery(`DELETE FROM wms.counting_lines WHERE id = $1::uuid`, [lineId]);
+  await deleteCountingLineInCache(slipId, lineId);
+  return {};
 }
 
 export function slipStatusLabel(status: CountingSlip['status']): string {
@@ -378,7 +674,42 @@ function lineIsCountable(line: CountingLine): boolean {
   return false;
 }
 
+function summarizeVarianceFromLines(lines: CountingLine[]): VarianceSummary {
+  const counted = lines.filter((l) => l.counted_qty != null);
+  const totalItems = counted.length;
+  let itemsWithVariance = 0;
+  let totalVariance = 0;
+  let shortageQty = 0;
+  let surplusQty = 0;
+  for (const l of counted) {
+    const v = Number(l.variance ?? 0);
+    if (Math.abs(v) > 0) itemsWithVariance += 1;
+    totalVariance += Math.abs(v);
+    if (v < 0) shortageQty += Math.abs(v);
+    if (v > 0) surplusQty += v;
+  }
+  const accuracyRate =
+    totalItems > 0 ? ((totalItems - itemsWithVariance) / totalItems) * 100 : 100;
+  return {
+    total_items: totalItems,
+    items_with_variance: itemsWithVariance,
+    total_variance: totalVariance,
+    accuracy_rate: Math.round(accuracyRate * 10) / 10,
+    shortage_qty: shortageQty,
+    surplus_qty: surplusQty,
+    shortage_sale_value: 0,
+    shortage_purchase_value: 0,
+    surplus_purchase_value: 0,
+    net_profit_impact: 0,
+  };
+}
+
 export async function fetchVarianceSummary(slipId: string): Promise<VarianceSummary> {
+  if (!shouldUseLiveData()) {
+    const { lines } = await getCachedSlipWithLines(slipId);
+    return summarizeVarianceFromLines(lines as CountingLine[]);
+  }
+
   const res = await pgQuery<{
     total_items: number;
     items_with_variance: number;
@@ -439,7 +770,7 @@ export async function cancelCountingSlip(slipId: string): Promise<void> {
  * Web wmsStockCount.applyStockCount ile aynı mantık:
  * TRCODE 26 (fazla) / 50 (eksik) stok fişleri + ürün stok güncelleme + fiş tamamlandı.
  */
-export async function applyStockCount(slipId: string): Promise<ApplyStockCountResult> {
+async function applyStockCountLive(slipId: string): Promise<ApplyStockCountResult> {
   const slipRes = await pgQuery<CountingSlip>(
     `SELECT * FROM wms.counting_slips WHERE id = $1::uuid`,
     [slipId],
@@ -568,4 +899,46 @@ export async function applyStockCount(slipId: string): Promise<ApplyStockCountRe
     surplus: surplusLines.length,
     shortage: shortageLines.length,
   };
+}
+
+export async function applyStockCount(
+  slipId: string,
+  writeOpts?: WmsWriteOptions,
+): Promise<WmsWriteResult<ApplyStockCountResult>> {
+  const live = writeOpts?.forceLive === true || shouldUseLiveData();
+
+  if (!live && !writeOpts?.skipQueue) {
+    const { slip, lines } = await getCachedSlipWithLines(slipId);
+    if (!slip) throw new Error('Sayım fişi bulunamadı');
+
+    const countable = (lines as CountingLine[]).filter(lineIsCountable);
+    const surplusLines = countable.filter(
+      (l) => lineCountedBase(l) > (Number(l.expected_qty) || 0) + 1e-9,
+    );
+    const shortageLines = countable.filter(
+      (l) => lineCountedBase(l) < (Number(l.expected_qty) || 0) - 1e-9,
+    );
+
+    for (const line of countable) {
+      if (line.product_id) {
+        await setProductStockInCache(String(line.product_id), lineCountedBase(line));
+      }
+    }
+
+    await updateCountingSlipStatusInCache(slipId, 'completed');
+    await enqueueMutation({
+      type: 'wms.counting.applyStock',
+      payload: { slipId },
+    });
+    await useConnectivityStore.getState().refreshPendingCount();
+
+    return {
+      processed: countable.length,
+      surplus: surplusLines.length,
+      shortage: shortageLines.length,
+      queued: true,
+    };
+  }
+
+  return applyStockCountLive(slipId);
 }

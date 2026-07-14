@@ -25,16 +25,24 @@ import { WmsCountScreen } from '../screens/WmsCountScreen';
 import { WmsCountSlipScreen } from '../screens/WmsCountSlipScreen';
 import { WmsTransferScreen } from '../screens/WmsTransferScreen';
 import { WmsTransferSlipScreen } from '../screens/WmsTransferSlipScreen';
+import { WavePickingScreen } from '../screens/WavePickingScreen';
+import { WavePickingExecuteScreen } from '../screens/WavePickingExecuteScreen';
 import { RestaurantScreen } from '../screens/RestaurantScreen';
 import { DeliveryScreen } from '../screens/DeliveryScreen';
 import { FinanceScreen } from '../screens/FinanceScreen';
 import { FinanceDefinitionsScreen } from '../screens/FinanceDefinitionsScreen';
+import { MaterialDefinitionsScreen } from '../screens/MaterialDefinitionsScreen';
+import { MaterialDefinitionFormScreen } from '../screens/MaterialDefinitionFormScreen';
 import { CashCollectionScreen } from '../screens/CashCollectionScreen';
 import { OrganizationScreen } from '../screens/OrganizationScreen';
 import { SystemScreen } from '../screens/SystemScreen';
 import { CommunicationsScreen } from '../screens/CommunicationsScreen';
 import { NotificationsScreen } from '../screens/NotificationsScreen';
 import { PrinterSettingsScreen } from '../screens/PrinterSettingsScreen';
+import { ScaleManagementScreen } from '../screens/ScaleManagementScreen';
+import { ScaleSaleScreen } from '../screens/ScaleSaleScreen';
+import { StoreManagementScreen } from '../screens/StoreManagementScreen';
+import { ETransformScreen } from '../screens/ETransformScreen';
 import { PricingScreen } from '../screens/PricingScreen';
 import { CampaignsScreen } from '../screens/CampaignsScreen';
 import { CampaignDetailScreen } from '../screens/CampaignDetailScreen';
@@ -71,10 +79,14 @@ export function MainStackNavigator() {
       <Stack.Screen name="WmsCountSlip" component={WmsCountSlipScreen} />
       <Stack.Screen name="WmsTransfer" component={WmsTransferScreen} />
       <Stack.Screen name="WmsTransferSlip" component={WmsTransferSlipScreen} />
+      <Stack.Screen name="WmsWavePicking" component={WavePickingScreen} />
+      <Stack.Screen name="WmsWavePickingExecute" component={WavePickingExecuteScreen} />
       <Stack.Screen name="Restaurant" component={RestaurantScreen} />
       <Stack.Screen name="Delivery" component={DeliveryScreen} />
       <Stack.Screen name="Finance" component={FinanceScreen} />
       <Stack.Screen name="FinanceDefinitions" component={FinanceDefinitionsScreen} />
+      <Stack.Screen name="MaterialDefinitions" component={MaterialDefinitionsScreen} />
+      <Stack.Screen name="MaterialDefinitionForm" component={MaterialDefinitionFormScreen} />
       <Stack.Screen name="CashCollection" component={CashCollectionScreen} />
       <Stack.Screen name="Organization" component={OrganizationScreen} />
       <Stack.Screen name="System" component={SystemScreen} />
@@ -82,6 +94,10 @@ export function MainStackNavigator() {
       <Stack.Screen name="Communications" component={CommunicationsScreen} />
       <Stack.Screen name="Notifications" component={NotificationsScreen} />
       <Stack.Screen name="PrinterSettings" component={PrinterSettingsScreen} />
+      <Stack.Screen name="ScaleManagement" component={ScaleManagementScreen} />
+      <Stack.Screen name="ScaleSale" component={ScaleSaleScreen} />
+      <Stack.Screen name="StoreManagement" component={StoreManagementScreen} />
+      <Stack.Screen name="ETransform" component={ETransformScreen} />
       <Stack.Screen name="Module" component={ModuleScreen} />
     </Stack.Navigator>
   );
