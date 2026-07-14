@@ -39,7 +39,6 @@ function App() {
   const [isInitialized, setIsInitialized] = useState(false);
   const [installingPg, setInstallingPg] = useState(false);
   const [version, setVersion] = useState<string>(() => APP_VERSION.full);
-  const [windowWidth, setWindowWidth] = useState(window.innerWidth);
   const recentSaleReceiptsRef = useRef<Map<string, number>>(new Map());
   /** Acil zamanlayıcı closure’da `isInitialized` hep eski kalır; yalnızca ref ile gerçek tamamlanmayı izleyin. */
   const startupCompleteRef = useRef(false);
@@ -56,19 +55,6 @@ function App() {
       return Boolean(localStorage.getItem('exretail_selected_tenant'));
     }
   };
-
-  useEffect(() => {
-    let raf = 0;
-    const handleResize = () => {
-      if (raf) cancelAnimationFrame(raf);
-      raf = requestAnimationFrame(() => setWindowWidth(window.innerWidth));
-    };
-    window.addEventListener('resize', handleResize, { passive: true });
-    return () => {
-      window.removeEventListener('resize', handleResize);
-      if (raf) cancelAnimationFrame(raf);
-    };
-  }, []);
 
   useEffect(() => {
     initRetailexDataSync();
@@ -136,8 +122,11 @@ function App() {
 
           setIsPgReady(true);
           
-          // Final configuration check: if we have a config object OR something in localStorage
-          const finalConfigured = !!(config?.is_configured || localStorage.getItem('exretail_firma_donem_configured'));
+          // Yalnızca gerçek is_configured / firma-dönem bayrağı — kısmi cache SetupWizard’ı atlamasın
+          const finalConfigured = !!(
+            config?.is_configured === true ||
+            localStorage.getItem('exretail_firma_donem_configured') === 'true'
+          );
           applyConfig(config || { is_configured: finalConfigured });
 
           safeInvoke('check_pg16').then((exists: any) => {
@@ -162,7 +151,7 @@ function App() {
       } catch (err) {
         console.error('[Startup] Flow failed:', err);
         setIsPgReady(true);
-        setIsConfigured(!!localStorage.getItem('exretail_firma_donem_configured'));
+        setIsConfigured(localStorage.getItem('exretail_firma_donem_configured') === 'true');
         startupCompleteRef.current = true;
         setIsInitialized(true);
       }
@@ -175,15 +164,25 @@ function App() {
       if (!startupCompleteRef.current) {
         console.warn('⚠️ Emergency initialization triggered - slow startup detected');
         
-        // Recover from cache if possible
+        // Recover from cache only when truly configured — partial retailex_web_config
+        // must NOT skip SetupWizard (was trapping users on Login Supabase UUID modal).
         const cachedRaw = localStorage.getItem('retailex_web_config');
-        const hasLegacyFlag = !!localStorage.getItem('exretail_firma_donem_configured');
-        
-        if (cachedRaw || hasLegacyFlag) {
+        const hasLegacyFlag = localStorage.getItem('exretail_firma_donem_configured') === 'true';
+        let cacheConfigured = hasLegacyFlag;
+        if (cachedRaw) {
+          try {
+            const parsed = JSON.parse(cachedRaw);
+            cacheConfigured = cacheConfigured || parsed?.is_configured === true;
+          } catch {
+            /* ignore bad cache */
+          }
+        }
+
+        if (cacheConfigured) {
           console.info('Retrieved configuration from cache during emergency fallback');
           setIsConfigured(true);
         } else {
-          // Only show wizard if absolutely no config is found
+          // DeskApp: incomplete/missing config → SetupWizard; web → login
           setIsConfigured(IS_TAURI ? false : true);
         }
         
@@ -346,7 +345,7 @@ function App() {
                 <p className="text-slate-400 text-sm">Yükleniyor...</p>
               </div>
             </div>
-          ) : (IS_TAURI && windowWidth >= 1024 && !isConfigured) ? (
+          ) : (IS_TAURI && !isConfigured) ? (
             <SetupWizard />
           ) : (
             <>

@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
-import { Lock, User, CheckCircle, Store, MoreHorizontal, Grid3x3, Languages, AlertCircle, Building2, Settings as Gear, Loader2, ArrowRight, ArrowLeft, Maximize2, ShieldCheck, Shield, X as CloseIcon, Activity, ChevronRight, Terminal, Trash2, Download, Search, RotateCcw, Database, Save, RefreshCw, Moon, Sun } from 'lucide-react';
+import { Lock, User, CheckCircle, Store, MoreHorizontal, Grid3x3, Languages, AlertCircle, Building2, Settings as Gear, Loader2, ArrowRight, ArrowLeft, Maximize2, ShieldCheck, Shield, X as CloseIcon, Activity, ChevronRight, Terminal, Trash2, Download, Search, RotateCcw, Database, Save, RefreshCw, Moon, Sun, Server, Wand2 } from 'lucide-react';
 import { HybridSyncPanel } from './HybridSyncPanel';
 import { DeviceRegistrationForm } from './DeviceRegistrationForm';
 import { logger, LogEntry } from '../../services/loggingService';
@@ -62,6 +62,8 @@ export function Login({ onLogin }: LoginProps) {
   const [showSetupWizard, setShowSetupWizard] = useState(false);
   const [setupFirmId, setSetupFirmId] = useState('');
   const [isSetupLoading, setIsSetupLoading] = useState(false);
+  const [isEnteringFullSetup, setIsEnteringFullSetup] = useState(false);
+  const [showCloudOrgFetch, setShowCloudOrgFetch] = useState(false);
   const [setupSuccessData, setSetupSuccessData] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -231,12 +233,23 @@ export function Login({ onLogin }: LoginProps) {
     // Auto-prompt Setup on Web / Mobile if not configured
     const isConfiguredFromStorage = localStorage.getItem('exretail_firma_donem_configured') === 'true';
     const hasWebConfig = !!localStorage.getItem('retailex_web_config');
-    const isDesktopApp = isTauri && window.innerWidth >= 1024;
     const isMobileNative = !isTauri && isCapacitorNative();
 
-    // Fixed: Web version should NOT show wizard, always login screen
-    if (!isConfiguredFromStorage && isDesktopApp) {
-      setShowSetupWizard(true);
+    // DeskApp: yapılandırılmamışsa kurulum seçim modalını aç (Supabase UUID zorunlu değil)
+    if (isTauri && !isConfiguredFromStorage) {
+      void (async () => {
+        try {
+          const { invoke } = await import('@tauri-apps/api/core');
+          const cfg: any = await invoke('get_app_config');
+          if (cfg?.is_configured === true) {
+            localStorage.setItem('exretail_firma_donem_configured', 'true');
+            return;
+          }
+        } catch {
+          /* config.db yok / erişilemez → kurulum seç */
+        }
+        setShowSetupWizard(true);
+      })();
     }
 
     // Android/iOS ilk kurulum: REST (PostgREST) bağlantı sihirbazını aç
@@ -454,6 +467,52 @@ export function Login({ onLogin }: LoginProps) {
       setDbUsers(authResult.rows || []);
     } catch (e) {
       console.error('Failed to load users for login:', e);
+    }
+  };
+
+  /** Gerçek SetupWizard (App.tsx): config.db is_configured=false + yenile */
+  const enterDesktopSetupWizard = async () => {
+    if (isEnteringFullSetup) return;
+    setIsEnteringFullSetup(true);
+    try {
+      localStorage.removeItem('exretail_firma_donem_configured');
+      if (isTauri) {
+        const { invoke } = await import('@tauri-apps/api/core');
+        let current: Record<string, unknown> = {};
+        try {
+          current = (await invoke('get_app_config')) as Record<string, unknown>;
+        } catch {
+          current = {};
+        }
+        await invoke('save_app_config', {
+          config: {
+            ...current,
+            is_configured: false,
+          },
+        });
+      } else {
+        try {
+          const raw = localStorage.getItem('retailex_web_config');
+          const prev = raw ? JSON.parse(raw) : {};
+          localStorage.setItem(
+            'retailex_web_config',
+            JSON.stringify({ ...prev, is_configured: false }),
+          );
+        } catch {
+          localStorage.removeItem('retailex_web_config');
+        }
+        setShowSetupWizard(false);
+        setShowDbSettings(true);
+        setIsEnteringFullSetup(false);
+        toast.message('Veritabanı / PostgREST ayarlarından devam edin');
+        return;
+      }
+      toast.success('Kurulum sihirbazı açılıyor...');
+      window.location.reload();
+    } catch (err: any) {
+      console.error('enterDesktopSetupWizard failed:', err);
+      toast.error('Kurulum sihirbazı açılamadı: ' + (err?.message || String(err)));
+      setIsEnteringFullSetup(false);
     }
   };
 
@@ -1562,11 +1621,16 @@ export function Login({ onLogin }: LoginProps) {
       )}
 
 
-      {/* Setup Wizard Modal — flat modal standard */}
+      {/* Kurulum seçimi — asıl adımlar SetupWizard (App); bu modal giriş kapısı */}
       {showSetupWizard && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-[5000] p-4 animate-in fade-in duration-200" onClick={() => !isSetupLoading && setShowSetupWizard(false)}>
+        <div
+          className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-[5000] p-4 animate-in fade-in duration-200"
+          onClick={() => !isSetupLoading && !isEnteringFullSetup && setShowSetupWizard(false)}
+        >
           <div
-            className="bg-white rounded-[2rem] w-full max-w-md max-h-[90vh] overflow-hidden shadow-xl border border-slate-200/80 flex flex-col animate-in zoom-in-95 duration-200"
+            className={`rounded-[2rem] w-full max-w-md max-h-[90vh] overflow-hidden shadow-xl border flex flex-col animate-in zoom-in-95 duration-200 ${
+              darkMode ? 'bg-slate-900 border-white/10' : 'bg-white border-slate-200/80'
+            }`}
             onClick={(e) => e.stopPropagation()}
           >
             <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-8 py-6 text-white shrink-0">
@@ -1582,7 +1646,7 @@ export function Login({ onLogin }: LoginProps) {
                 </div>
                 <button
                   type="button"
-                  onClick={() => !isSetupLoading && setShowSetupWizard(false)}
+                  onClick={() => !isSetupLoading && !isEnteringFullSetup && setShowSetupWizard(false)}
                   className="w-12 h-12 rounded-2xl bg-white/20 hover:bg-white/30 flex items-center justify-center transition-colors"
                   aria-label="Kapat"
                 >
@@ -1594,27 +1658,27 @@ export function Login({ onLogin }: LoginProps) {
             <div className="flex-1 overflow-y-auto p-8">
               {setupSuccessData ? (
                 <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-300">
-                  <div className="p-5 rounded-2xl border border-slate-200 bg-slate-50/50 space-y-4">
+                  <div className={`p-5 rounded-2xl border space-y-4 ${darkMode ? 'border-white/10 bg-slate-800/50' : 'border-slate-200 bg-slate-50/50'}`}>
                     <div className="flex items-center gap-4">
-                      <div className="w-12 h-12 rounded-2xl bg-blue-100 flex items-center justify-center border border-blue-200">
+                      <div className={`w-12 h-12 rounded-2xl flex items-center justify-center border ${darkMode ? 'bg-blue-950 border-blue-800' : 'bg-blue-100 border-blue-200'}`}>
                         <CheckCircle className="w-6 h-6 text-blue-600" />
                       </div>
                       <div>
-                        <h3 className="text-base font-bold tracking-tight text-slate-900">{setupSuccessData.terminal_name || 'Terminal'}</h3>
-                        <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mt-0.5">Lisans bilgisi</p>
+                        <h3 className={`text-base font-bold tracking-tight ${darkMode ? 'text-white' : 'text-slate-900'}`}>{setupSuccessData.terminal_name || 'Terminal'}</h3>
+                        <p className={`text-[10px] font-semibold uppercase tracking-wider mt-0.5 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>Lisans bilgisi</p>
                       </div>
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <div className="p-4 rounded-xl bg-white border border-slate-200">
-                        <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Cihaz / Lisans ID</p>
-                        <p className="text-xs font-medium text-slate-800 truncate" title={setupSuccessData.device_id || setupSuccessData.terminal_name}>
+                      <div className={`p-4 rounded-xl border ${darkMode ? 'bg-slate-900 border-white/10' : 'bg-white border-slate-200'}`}>
+                        <p className={`text-[10px] font-bold uppercase tracking-wider mb-1 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>Cihaz / Lisans ID</p>
+                        <p className={`text-xs font-medium truncate ${darkMode ? 'text-slate-200' : 'text-slate-800'}`} title={setupSuccessData.device_id || setupSuccessData.terminal_name}>
                           {setupSuccessData.device_id || setupSuccessData.terminal_name || '—'}
                         </p>
                       </div>
-                      <div className="p-4 rounded-xl bg-white border border-slate-200">
-                        <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Lisans bitiş</p>
-                        <p className="text-sm font-semibold text-slate-800">
+                      <div className={`p-4 rounded-xl border ${darkMode ? 'bg-slate-900 border-white/10' : 'bg-white border-slate-200'}`}>
+                        <p className={`text-[10px] font-bold uppercase tracking-wider mb-1 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>Lisans bitiş</p>
+                        <p className={`text-sm font-semibold ${darkMode ? 'text-slate-200' : 'text-slate-800'}`}>
                           {(() => {
                             const raw = setupSuccessData.license_expiry;
                             if (!raw) return '—';
@@ -1625,9 +1689,9 @@ export function Login({ onLogin }: LoginProps) {
                       </div>
                     </div>
 
-                    <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center gap-3">
+                    <div className={`p-4 rounded-xl border flex items-center gap-3 ${darkMode ? 'bg-emerald-950/40 border-emerald-800' : 'bg-emerald-50 border-emerald-200'}`}>
                       <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
-                      <p className="text-[11px] font-bold text-emerald-700 uppercase tracking-wider">Lisans aktif & güvenli</p>
+                      <p className={`text-[11px] font-bold uppercase tracking-wider ${darkMode ? 'text-emerald-300' : 'text-emerald-700'}`}>Lisans aktif & güvenli</p>
                     </div>
                   </div>
 
@@ -1641,52 +1705,117 @@ export function Login({ onLogin }: LoginProps) {
                   </button>
                 </div>
               ) : (
-                <div className="space-y-5">
-                  <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Organizasyon / Firma ID</label>
-                  <div className="relative">
-                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                    <input
-                      type="text"
-                      value={setupFirmId}
-                      onChange={(e) => setSetupFirmId(e.target.value)}
-                      disabled={isSetupLoading}
-                      placeholder="Örn: 550e8400-e29b-..."
-                      className="w-full pl-12 pr-4 py-3 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-blue-500 focus:border-blue-400 outline-none font-medium text-slate-800 bg-white"
-                    />
-                  </div>
-                  <p className="text-[10px] font-semibold text-slate-500 leading-relaxed">
-                    Supabase üzerindeki organizasyon ID'sini girerek veritabanı ayarlarını otomatik çekebilirsiniz.
+                <div className="space-y-4">
+                  <p className={`text-[11px] font-semibold leading-relaxed ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
+                    Yerel PostgreSQL / PostgREST kurulum sihirbazına geçin veya isteğe bağlı olarak buluttan ayar çekin. UUID zorunlu değildir.
                   </p>
 
                   <button
                     type="button"
-                    onClick={handleSetup}
-                    disabled={isSetupLoading || !setupFirmId.trim()}
+                    onClick={() => void enterDesktopSetupWizard()}
+                    disabled={isEnteringFullSetup || isSetupLoading}
                     className="w-full py-4 rounded-2xl font-bold uppercase tracking-wider flex items-center justify-center gap-3 transition-all active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-200/50"
                   >
-                    {isSetupLoading ? (
+                    {isEnteringFullSetup ? (
                       <>
                         <Loader2 className="w-5 h-5 animate-spin" />
-                        Kuruluyor...
+                        Sihirbaz açılıyor...
                       </>
                     ) : (
                       <>
-                        <Download className="w-4 h-4" />
-                        Ayarları Getir ve Kur
+                        <Wand2 className="w-4 h-4" />
+                        Manuel / yerel kurulum sihirbazı
                       </>
                     )}
                   </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowSetupWizard(false);
+                      setShowDbSettings(true);
+                      setDbSettingsStep(0);
+                    }}
+                    disabled={isEnteringFullSetup || isSetupLoading}
+                    className={`w-full py-3 rounded-2xl font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 border-2 transition-all ${
+                      darkMode
+                        ? 'border-slate-600 text-slate-200 hover:bg-slate-800'
+                        : 'border-slate-200 text-slate-700 hover:bg-slate-50'
+                    }`}
+                  >
+                    <Server className="w-4 h-4" />
+                    Veritabanı / PostgREST ayarları
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setShowCloudOrgFetch((v) => !v)}
+                    className={`w-full text-left text-[10px] font-bold uppercase tracking-wider py-1 ${
+                      darkMode ? 'text-slate-500 hover:text-slate-300' : 'text-slate-400 hover:text-slate-600'
+                    }`}
+                  >
+                    {showCloudOrgFetch ? '▾' : '▸'} İsteğe bağlı: buluttan organizasyon ID ile ayar getir
+                  </button>
+
+                  {showCloudOrgFetch && (
+                    <div className="space-y-3 pt-1">
+                      <label className={`block text-[11px] font-bold uppercase tracking-wider mb-1.5 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
+                        Organizasyon / Firma ID
+                      </label>
+                      <div className="relative">
+                        <Search className={`absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 ${darkMode ? 'text-slate-500' : 'text-slate-400'}`} />
+                        <input
+                          type="text"
+                          value={setupFirmId}
+                          onChange={(e) => setSetupFirmId(e.target.value)}
+                          disabled={isSetupLoading}
+                          placeholder="Örn: 550e8400-e29b-..."
+                          className={`w-full pl-12 pr-4 py-3 border rounded-2xl focus:ring-2 focus:ring-blue-500 focus:border-blue-400 outline-none font-medium ${
+                            darkMode
+                              ? 'border-slate-600 bg-slate-800 text-slate-100'
+                              : 'border-slate-200 bg-white text-slate-800'
+                          }`}
+                        />
+                      </div>
+                      <p className={`text-[10px] font-semibold leading-relaxed ${darkMode ? 'text-slate-500' : 'text-slate-500'}`}>
+                        Supabase / merkezi kayıt üzerindeki organizasyon ID ile bağlantı ayarlarını çekebilirsiniz (zorunlu değil).
+                      </p>
+
+                      <button
+                        type="button"
+                        onClick={handleSetup}
+                        disabled={isSetupLoading || isEnteringFullSetup || !setupFirmId.trim()}
+                        className="w-full py-3.5 rounded-2xl font-bold uppercase tracking-wider flex items-center justify-center gap-3 transition-all active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed bg-indigo-600 hover:bg-indigo-700 text-white"
+                      >
+                        {isSetupLoading ? (
+                          <>
+                            <Loader2 className="w-5 h-5 animate-spin" />
+                            Kuruluyor...
+                          </>
+                        ) : (
+                          <>
+                            <Download className="w-4 h-4" />
+                            Ayarları Getir ve Kur
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
 
-              <div className="mt-6 pt-6 border-t border-slate-200">
+              <div className={`mt-6 pt-6 border-t ${darkMode ? 'border-white/10' : 'border-slate-200'}`}>
                 <button
                   type="button"
                   onClick={() => {
                     setFactoryResetDeleteCRetailex(false);
                     setShowFactoryResetModal(true);
                   }}
-                  className="w-full py-2.5 rounded-2xl border-2 border-slate-200 text-slate-600 font-bold text-xs uppercase tracking-wider hover:bg-slate-100 hover:border-red-200 hover:text-red-600 transition-all flex items-center justify-center gap-2"
+                  className={`w-full py-2.5 rounded-2xl border-2 font-bold text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-2 ${
+                    darkMode
+                      ? 'border-slate-600 text-slate-300 hover:bg-slate-800 hover:border-red-800 hover:text-red-400'
+                      : 'border-slate-200 text-slate-600 hover:bg-slate-100 hover:border-red-200 hover:text-red-600'
+                  }`}
                 >
                   <RotateCcw className="w-4 h-4" />
                   Fabrika ayarlarına döndür
