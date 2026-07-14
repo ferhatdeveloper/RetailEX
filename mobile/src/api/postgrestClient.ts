@@ -79,11 +79,26 @@ function toQueryString(params: PostgrestQueryParams): string {
   return s ? `?${s}` : '';
 }
 
+const RETRYABLE_STATUS = new Set([502, 503, 504]);
+const MAX_RETRIES = 3;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function formatHttpError(method: string, path: string, status: number, statusText: string): Error {
+  if (RETRYABLE_STATUS.has(status)) {
+    return new Error(
+      `Sunucu geçici olarak yanıt vermedi (${status}). Yenile’yi deneyin.`,
+    );
+  }
+  const shortPath = path.length > 64 ? `${path.slice(0, 61)}…` : path;
+  return new Error(`PostgREST ${method} ${shortPath}: ${status}${statusText ? ` ${statusText}` : ''}`);
+}
+
 async function parseError(res: Response, method: string, path: string): Promise<never> {
-  const text = await res.text().catch(() => '');
-  throw new Error(
-    `PostgREST ${method} ${path}: ${res.status} ${res.statusText}${text ? ` — ${text.slice(0, 240)}` : ''}`,
-  );
+  await res.text().catch(() => '');
+  throw formatHttpError(method, path, res.status, res.statusText);
 }
 
 function networkError(e: unknown, cfg?: DbConfig): never {
@@ -96,6 +111,34 @@ function networkError(e: unknown, cfg?: DbConfig): never {
   throw e;
 }
 
+async function fetchWithRetry(
+  url: string,
+  init: RequestInit,
+  method: string,
+  path: string,
+  cfg?: DbConfig,
+): Promise<Response> {
+  let lastRes: Response | undefined;
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    let res: Response;
+    try {
+      res = await fetch(url, init);
+    } catch (e) {
+      if (attempt < MAX_RETRIES) {
+        await sleep(300 * 2 ** attempt);
+        continue;
+      }
+      networkError(e, cfg);
+    }
+    if (res.ok || !RETRYABLE_STATUS.has(res.status) || attempt === MAX_RETRIES) {
+      return res;
+    }
+    lastRes = res;
+    await sleep(300 * 2 ** attempt);
+  }
+  return lastRes!;
+}
+
 /** GET — liste veya tek kayıt */
 export async function postgrestGet<T = unknown>(
   path: string,
@@ -103,15 +146,13 @@ export async function postgrestGet<T = unknown>(
   options?: PostgrestClientOptions,
 ): Promise<T> {
   const url = getPostgrestUrl(path, options?.cfg) + (query ? toQueryString(query) : '');
-  let res: Response;
-  try {
-    res = await fetch(url, {
-      method: 'GET',
-      headers: buildHeaders(options),
-    });
-  } catch (e) {
-    networkError(e, options?.cfg);
-  }
+  const res = await fetchWithRetry(
+    url,
+    { method: 'GET', headers: buildHeaders(options) },
+    'GET',
+    path,
+    options?.cfg,
+  );
   if (!res.ok) await parseError(res, 'GET', path);
   return res.json() as Promise<T>;
 }
@@ -128,16 +169,13 @@ export async function postgrestPost<T = unknown>(
   const url = getPostgrestUrl(path, options?.cfg);
   const headers = buildHeaders(options);
   headers.Prefer = options?.prefer ?? 'return=representation';
-  let res: Response;
-  try {
-    res = await fetch(url, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(body),
-    });
-  } catch (e) {
-    networkError(e, options?.cfg);
-  }
+  const res = await fetchWithRetry(
+    url,
+    { method: 'POST', headers, body: JSON.stringify(body) },
+    'POST',
+    path,
+    options?.cfg,
+  );
   if (!res.ok) await parseError(res, 'POST', path);
   const ct = res.headers.get('Content-Type');
   if (ct?.includes('application/json')) return res.json() as Promise<T>;

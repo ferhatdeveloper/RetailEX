@@ -84,10 +84,13 @@ async function fetchDashboardStatsViaRest(): Promise<DashboardStats> {
     postgrestGet<Record<string, unknown>[]>(
       `/${sales}`,
       {
+        // Bugün KPI — dar select + tarih filtresi (geçici 502 / ağır payload azaltır).
+        // store_id boş fişler client’ta matchesSessionStoreAllowNull ile dahil kalır.
         select:
           'net_amount,total_net,total_gross,date,created_at,fiche_type,trcode,is_cancelled,store_id,status,firm_nr',
+        or: `(date.eq.${today},and(date.is.null,created_at.gte.${today}T00:00:00))`,
         order: 'date.desc',
-        limit: 5000,
+        limit: 2000,
       },
       { schema: 'public' },
     ),
