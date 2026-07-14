@@ -387,7 +387,6 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
   searchCashRegister: { tr: 'Kasa ara...', en: 'Search cash register...', ar: 'البحث عن صندوق...', ku: 'گەڕان بۆ سندوق...' },
   searchInDetails: { tr: 'Detaylarda ara...', en: 'Search in details...', ar: 'البحث في التفاصيل...', ku: 'گەڕان لە وردەکارییەکان...' },
   noCashRegisterFound: { tr: 'Kasa bulunamadı', en: 'No cash register found', ar: 'لم يتم العثور على صندوق', ku: 'هیچ سندوقێک نەدۆزرایەوە' },
-  currentBalance: { tr: 'Güncel Bakiye', en: 'Current Balance', ar: 'الرصيد الحالي', ku: 'باڵانسی ئێستا' },
   transactionsSuffix: { tr: 'hareket', en: 'transactions', ar: 'معاملات', ku: 'مامەڵە' },
   receiptNo: { tr: 'Fiş Numarası', en: 'Receipt Number', ar: 'رقم الإيصال', ku: 'ژمارەی پسوڵە' },
   currentAccountTitle: { tr: 'Cari Hesap Unvanı', en: 'Current Account Title', ar: 'عنوان الحساب الجاري', ku: 'ناونیشانی هەژماری جاری' },
@@ -2862,7 +2861,6 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
   enterValue: { tr: 'giriniz', en: 'enter', ar: 'أدخل', ku: 'داخل بکە' },
   information: { tr: 'Bilgilendirme', en: 'Information', ar: 'معلومات', ku: 'زانیاری' },
   slipAutoGenerateInfo: { tr: 'Fiş numarası otomatik olarak oluşturulacaktır. Hareket detaylarını kayıt sonrası ekleyebilirsiniz.', en: 'Slip number will be auto-generated. You can add movement details after saving.', ar: 'سيتم إنشاء رقم القسيمة تلقائيًا. يمكنك إضافة تفاصيل الحركة بعد الحفظ.', ku: 'ژمارەی پسوڵە بە شێوەی خۆکار دروست دەکرێت. دەتوانیت وردەکاریەکانی جوڵە دوای پاشەکەوتکردن زیاد بکەیت.' },
-  selectWarehouse: { tr: 'Depo Seçiniz', en: 'Select Warehouse', ar: 'اختر المستودع', ku: 'کۆگا هەڵبژێرە' },
 
   // Label Printing
   labelPrinting: { tr: 'Etiket Yazdırma', en: 'Label Printing', ar: 'طباعة الملصقات', ku: 'چاپکردنی لایبڵ' },
@@ -3303,12 +3301,10 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
   stockOpeningSubtitle: { tr: 'Eski programdan geçiş — ürün açılış stok miktarları', en: 'Legacy migration — product opening stock quantities', ar: 'ترحيل من النظام القديم — كميات مخزون افتتاحية للمنتجات', ku: 'گواستنەوە لە سیستەمی کۆن — بڕی کۆگای سەرەتایی بەرهەم' },
   searchCariOrSlip: { tr: 'Cari veya fiş no ara...', en: 'Search account or slip no...', ar: 'ابحث عن حساب أو رقم سند...', ku: 'هەژمار یان ژمارەی پسوولە بگەڕێ...' },
   searchProductOrSlip: { tr: 'Ürün veya fiş no ara...', en: 'Search product or slip no...', ar: 'ابحث عن منتج أو رقم سند...', ku: 'بەرهەم یان ژمارەی پسوولە بگەڕێ...' },
-  searchProductPlaceholder: { tr: 'Kod, barkod veya ürün adı ara...', en: 'Search code, barcode or product name...', ar: 'ابحث بالرمز أو الباركود أو اسم المنتج...', ku: 'کۆد، بارکۆد یان ناوی بەرهەم بگەڕێ...' },
   cancelOpeningConfirmCari: { tr: 'için devir fişini iptal etmek istiyor musunuz?', en: 'Cancel opening balance for', ar: 'هل تريد إلغاء سند الافتتاح لـ', ku: 'دەتەوێت پسوولەی گواستنەوە هەڵبوەشێنیت بۆ' },
   cancelOpeningConfirmStock: { tr: 'için stok devir fişini iptal etmek istiyor musunuz?', en: 'Cancel stock opening for', ar: 'هل تريد إلغاء افتتاح المخزون لـ', ku: 'دەتەوێت گواستنەوەی کۆگا هەڵبوەشێنیت بۆ' },
   directionDebtShort: { tr: 'Borç', en: 'Debit', ar: 'مدين', ku: 'قەرز' },
   directionCreditShort: { tr: 'Alacak', en: 'Credit', ar: 'دائن', ku: 'قەرزدار' },
-  slipNo: { tr: 'Fiş No', en: 'Slip No', ar: 'رقم السند', ku: 'ژمارەی پسوولە' },
   cancelAction: { tr: 'İptal et', en: 'Cancel slip', ar: 'إلغاء السند', ku: 'هەڵوەشاندنەوە' },
 
   // Return invoices
@@ -3318,11 +3314,8 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
   returnSummary: { tr: 'İade Özeti', en: 'Return Summary', ar: 'ملخص الإرجاع', ku: 'پوختەی گەڕاندنەوە' },
   totalReturns: { tr: 'Toplam İade', en: 'Total Returns', ar: 'إجمالي الإرجاع', ku: 'کۆی گەڕاندنەوە' },
   returnAmount: { tr: 'İade Tutarı', en: 'Return Amount', ar: 'مبلغ الإرجاع', ku: 'بڕی گەڕاندنەوە' },
-  salesReturn: { tr: 'Satış İadesi', en: 'Sales Return', ar: 'إرجاع مبيعات', ku: 'گەڕاندنەوەی فرۆشتن' },
-  purchaseReturn: { tr: 'Alış İadesi', en: 'Purchase Return', ar: 'إرجاع شراء', ku: 'گەڕاندنەوەی کڕین' },
   newReturnInvoice: { tr: 'Yeni İade Faturası', en: 'New Return Invoice', ar: 'فاتورة إرجاع جديدة', ku: 'وەسڵی گەڕاندنەوەی نوێ' },
   editReturnInvoice: { tr: 'İade Faturası Düzenle', en: 'Edit Return Invoice', ar: 'تعديل فاتورة الإرجاع', ku: 'دەستکاری وەسڵی گەڕاندنەوە' },
-  returnNo: { tr: 'İade No', en: 'Return No', ar: 'رقم الإرجاع', ku: 'ژمارەی گەڕاندنەوە' },
   returnType: { tr: 'İade Türü', en: 'Return Type', ar: 'نوع الإرجاع', ku: 'جۆری گەڕاندنەوە' },
   originalInvoiceNo: { tr: 'Orijinal Fatura No', en: 'Original Invoice No', ar: 'رقم الفاتورة الأصلية', ku: 'ژمارەی وەسڵی سەرەکی' },
   returnDate: { tr: 'İade Tarihi', en: 'Return Date', ar: 'تاريخ الإرجاع', ku: 'بەرواری گەڕاندنەوە' },
@@ -3350,7 +3343,6 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
   colDate: { tr: 'TARİH', en: 'DATE', ar: 'التاريخ', ku: 'بەروار' },
   colAmount: { tr: 'TUTAR', en: 'AMOUNT', ar: 'المبلغ', ku: 'بڕ' },
   colReason: { tr: 'SEBEP', en: 'REASON', ar: 'السبب', ku: 'هۆکار' },
-  colStatus: { tr: 'DURUM', en: 'STATUS', ar: 'الحالة', ku: 'دۆخ' },
   colActions: { tr: 'İŞLEMLER', en: 'ACTIONS', ar: 'الإجراءات', ku: 'کردارەکان' },
 
   // Invoice specific
