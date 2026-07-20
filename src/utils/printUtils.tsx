@@ -3,6 +3,8 @@ import type { Invoice } from '../core/types';
 import { CorporateInvoiceTemplate, PrintConfig } from '../components/trading/invoices/CorporateInvoiceTemplate';
 import { PostgresConnection, ERP_SETTINGS } from '../services/postgres';
 import { getReceiptSettings } from '../services/receiptSettingsService';
+import { enqueuePrintJob, isWindowsPrinterServiceEnabled } from '../services/unifiedPrintQueueService';
+import { getStoredWindowsPrinterNameForPrint } from './tauriPrintSettings';
 
 export const printInvoice = async (invoice: Invoice, typeLabel: string = 'FATURA') => {
   try {
@@ -55,9 +57,7 @@ export const printInvoice = async (invoice: Invoice, typeLabel: string = 'FATURA
         typeLabel={typeLabel}
       />
     );
-
-    doc.open();
-    doc.write(`
+    const fullHtml = `
       <!DOCTYPE html>
       <html>
         <head>
@@ -70,6 +70,38 @@ export const printInvoice = async (invoice: Invoice, typeLabel: string = 'FATURA
         </head>
         <body>
           ${htmlContent}
+        </body>
+      </html>
+    `;
+
+    try {
+      if (await isWindowsPrinterServiceEnabled()) {
+        await enqueuePrintJob({
+          jobType: 'invoice_a4',
+          connection: 'system',
+          printerName: getStoredWindowsPrinterNameForPrint(),
+          refType: 'invoice',
+          refId: invoice.id ?? invoice.invoice_no ?? null,
+          payload: {
+            kind: 'invoice_a4',
+            html: fullHtml,
+            paperHint: 'A4',
+            invoiceNo: invoice.invoice_no ?? null,
+            typeLabel,
+          },
+        });
+        document.body.removeChild(iframe);
+        toast.success('Fatura yazıcı kuyruğuna eklendi.');
+        return;
+      }
+    } catch (error) {
+      console.warn('[printUtils] unified enqueue failed, local print fallback:', error);
+    }
+
+    doc.open();
+    doc.write(`${fullHtml.replace(
+      '</body>',
+      `
           <script>
             // Wait for tailwind and images
             window.onload = () => {
@@ -82,9 +114,8 @@ export const printInvoice = async (invoice: Invoice, typeLabel: string = 'FATURA
               }, 1000);
             };
           </script>
-        </body>
-      </html>
-    `);
+        </body>`,
+    )}`);
     doc.close();
 
   } catch (error) {

@@ -227,10 +227,10 @@ export const RestaurantPrinterSettings: React.FC = () => {
                         />
                         <span className="min-w-0">
                             <span className="block text-base font-black text-slate-900">
-                                Windows yazıcı servisi (RetailEX_Printer) — mutfak fişlerini servis dağıtır
+                                Windows yazıcı servisi (RetailEX_Printer) — tüm yazıcı işlerini servis dağıtır
                             </span>
                             <span className="mt-1 block text-sm text-slate-600 leading-snug">
-                                Açıkken web ve mobil mutfağa gönderimde fişi doğrudan basmaz; yazıcı hedeflerine göre kuyruk kaydı oluşturur.
+                                Açıkken mutfak, POS fişi, hesap fişi ve FastReport şablonları doğrudan basılmaz; yazıcı kuyruğuna eklenir.
                             </span>
                         </span>
                     </label>

@@ -95,6 +95,7 @@
 91. **106_wms_enterprise.sql** – WMS kurumsal katman: `wms.bin_inventory` (bin+lot+SKT bazlı stok), `putaway_tasks`, `packing_slips`/`cartons`/`carton_lines`, `stock_adjustments` (fire), `cross_dock_links`, `logo_sync_outbox`; `bins` hiyerarşi (rack/bin_type/barcode/firm_nr); receiving/dispatch/pick/transfer/counting lot-SKT-bin + Logo senkron kolonları; `wms.allocate_fefo` (FEFO/FIFO) ve `wms.upsert_bin_inventory` fonksiyonları.
 92. **107_cash_lines_store_id.sql** – Dönem `cash_lines` tablolarına çok mağazalı filtre için `store_id` kolonu ve indeks.
 93. **108_kitchen_print_jobs.sql** – Restoran mutfak yazıcı servis kuyruğu: dönem bazlı `kitchen_print_jobs` tabloları + pending/failed indeks.
+94. **109_unified_print_jobs.sql** – RetailEX_Printer birleşik yazıcı kuyruğu: dönem bazlı `print_jobs` tabloları, job type/payload alanları ve eski `kitchen_print_jobs.job_type`.
 
 **099 tüm kiracılara (tek dosya):**
 ```bash

@@ -3,6 +3,9 @@ import { useProductStore } from '../store/useProductStore';
 import type { KitchenReceiptLocale } from '../utils/restaurantReceiptPrint';
 import { DB_SETTINGS, postgres } from './postgres';
 import { getRestaurantPrinterConfig } from './restaurantPrinterConfigService';
+import { enqueuePrintJob } from './unifiedPrintQueueService';
+
+export { isWindowsPrinterServiceEnabled } from './unifiedPrintQueueService';
 
 type KitchenPrintConnection = 'network' | 'system' | 'html_fallback';
 
@@ -137,11 +140,6 @@ function currentSourceDb(): 'local' | 'remote' {
   return DB_SETTINGS.activeMode === 'online' ? 'remote' : 'local';
 }
 
-export async function isWindowsPrinterServiceEnabled(): Promise<boolean> {
-  const cfg = await getRestaurantPrinterConfig();
-  return cfg.printViaWindowsService === true;
-}
-
 export async function enqueueKitchenPrintJobs(
   params: EnqueueKitchenPrintJobsParams,
 ): Promise<EnqueueKitchenPrintJobsResult> {
@@ -176,6 +174,7 @@ export async function enqueueKitchenPrintJobs(
   for (const { target, items } of groups.values()) {
     const lines = items.map(orderItemToKitchenLine);
     const payload = {
+      kind: 'kitchen_ticket',
       tableNumber: params.table.number,
       floorName: params.table.location,
       waiter: params.table.waiter,
@@ -184,11 +183,26 @@ export async function enqueueKitchenPrintJobs(
       sourceDb,
     };
 
+    await enqueuePrintJob({
+      jobType: 'kitchen_ticket',
+      connection: target.connection === 'html_fallback' ? 'auto' : target.connection,
+      address: target.address ?? null,
+      port: target.port ?? null,
+      printerName: target.printerName ?? null,
+      printerProfileId: target.profile?.id ?? null,
+      locale,
+      payload,
+      refType: params.kitchenOrderId ? 'kitchen_order' : params.orderId ? 'order' : null,
+      refId: params.kitchenOrderId ?? params.orderId ?? null,
+      sourceSystem: params.sourceSystem ?? 'web',
+      priority: 50,
+    });
+
     await postgres.query(
       `INSERT INTO ${jobsTable}
-        (kitchen_order_id, order_id, printer_profile_id, printer_name, connection, address, port,
+        (job_type, kitchen_order_id, order_id, printer_profile_id, printer_name, connection, address, port,
          locale, payload, status, source_system, source_db)
-       VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7, $8, $9::jsonb, 'pending', $10, $11)`,
+       VALUES ('kitchen_ticket', $1::uuid, $2::uuid, $3, $4, $5, $6, $7, $8, $9::jsonb, 'pending', $10, $11)`,
       [
         params.kitchenOrderId ?? null,
         params.orderId ?? null,

@@ -282,8 +282,8 @@ async function withClient(target, fn) {
     query_timeout: 20_000,
     application_name: 'RetailEX_Printer',
   });
-  await client.connect();
   try {
+    await client.connect();
     return await fn(client);
   } finally {
     await client.end().catch(() => {});

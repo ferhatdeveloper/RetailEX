@@ -28,6 +28,7 @@ import type { TemplateUsageScope } from '../../../core/types/templates';
 import { TEMPLATE_USAGE_SCOPE_LABELS } from '../../../core/types/templates';
 import { useTemplateStore } from '../../../store';
 import { buildInvoicePrintContext, convertTemplateToReportTemplate, invoiceScopeFromTrcode } from '../../../services/templateRenderService';
+import { enqueueFastReportTemplateJob, isWindowsPrinterServiceEnabled } from '../../../services/unifiedPrintQueueService';
 import { PREFILL_PURCHASE_FROM_COUNT_STORAGE_KEY } from '../../../utils/countSlipPurchaseDraft';
 import {
   buildPurchaseEditDataFromSayimInvoices,
@@ -40,6 +41,7 @@ import {
   loadInvoiceListPrefs,
   saveInvoiceListPrefs,
 } from '../../../utils/invoiceListPrefs';
+import { PercentBodyModal, PercentBodyModalScrollBody } from '../../shared/PercentBodyModal';
 
 export type CountPurchaseDraftPrefill = {
   editData: Record<string, unknown>;
@@ -230,6 +232,22 @@ export function InvoiceListModule({
       const context = buildInvoicePrintContext(invoiceData);
       if (specialPrintState.makeDefault) {
         await setTemplateDefaultForScope(selectedTemplate.id, specialPrintState.scope);
+      }
+      if (await isWindowsPrinterServiceEnabled()) {
+        await enqueueFastReportTemplateJob({
+          templateId: selectedTemplate.id,
+          type: 'invoice',
+          data: context,
+          connection: 'system',
+          refType: 'invoice',
+          refId: invoiceData.id ?? specialPrintState.invoice.id ?? null,
+          sourceSystem: 'web',
+          priority: 80,
+        });
+        toast.success('Yazıcı kuyruğuna eklendi.');
+        setSpecialPrintState(null);
+        setContextMenu(null);
+        return;
       }
       setActiveTemplate(reportTemplate);
       setViewerData(context);

@@ -1495,6 +1495,7 @@ export class PostgresConnection {
     'virman_operations', 'virman_items',
     // Restaurant movement tables (rest schema)
     'rest_orders', 'rest_order_items', 'rest_kitchen_orders', 'rest_kitchen_items', 'rest_reservations',
+    'kitchen_print_jobs', 'print_jobs',
     // Beauty movement tables (beauty schema)
     'beauty_appointments', 'beauty_sessions', 'beauty_session_logs',
     'beauty_package_purchases', 'beauty_package_sales', 'beauty_device_usage',
@@ -1509,6 +1510,7 @@ export class PostgresConnection {
   private static TABLE_SCHEMA: Record<string, string> = {
     'rest_tables': 'rest', 'rest_recipes': 'rest', 'rest_recipe_ingredients': 'rest', 'rest_staff': 'rest',
     'rest_orders': 'rest', 'rest_order_items': 'rest', 'rest_kitchen_orders': 'rest', 'rest_kitchen_items': 'rest', 'rest_reservations': 'rest',
+    'kitchen_print_jobs': 'rest', 'print_jobs': 'rest',
     'beauty_specialists': 'beauty', 'beauty_services': 'beauty', 'beauty_packages': 'beauty', 'beauty_devices': 'beauty',
     'beauty_appointments': 'beauty', 'beauty_sessions': 'beauty', 'beauty_session_logs': 'beauty',
     'beauty_package_purchases': 'beauty', 'beauty_package_sales': 'beauty', 'beauty_device_usage': 'beauty',

@@ -1,5 +1,6 @@
 import { getStoredWindowsPrinterNameForPrint } from './tauriPrintSettings';
 import { RECEIPT_80MM_DOCUMENT_CSS, RECEIPT_80MM_VIEWPORT_FOR_HEADLESS } from './receipt80mmDocumentCss';
+import { enqueuePrintJob, isWindowsPrinterServiceEnabled } from '../services/unifiedPrintQueueService';
 
 export interface ReturnReceipt {
   id: string;
@@ -149,6 +150,28 @@ export async function printThermalReceipt(sale: any, companyName: string = 'Reta
   }
   const receiptHTML = generateReceiptHTML(sale, companyName, finalLanguage, receiptSettings);
 
+  try {
+    if (await isWindowsPrinterServiceEnabled()) {
+      await enqueuePrintJob({
+        jobType: 'pos_receipt_80',
+        connection: 'system',
+        printerName: getStoredWindowsPrinterNameForPrint(),
+        locale: finalLanguage,
+        refType: 'pos_sale',
+        refId: sale?.id ?? sale?.receiptNumber ?? null,
+        payload: {
+          kind: 'pos_receipt_80',
+          html: receiptHTML,
+          paperHint: '80mm',
+          receiptNumber: sale?.receiptNumber ?? null,
+        },
+      });
+      return;
+    }
+  } catch (error) {
+    console.warn('[thermalPrinter] unified enqueue failed, local print fallback:', error);
+  }
+
   if (options?.autoPrint && (window as any).__TAURI_INTERNALS__) {
     try {
       const { invoke } = await import('@tauri-apps/api/core');
@@ -183,9 +206,31 @@ export async function printThermalReceipt(sale: any, companyName: string = 'Reta
 }
 
 export async function printReturnReceipt(returnReceipt: ReturnReceipt, companyName: string = 'RetailOS') {
+  const html = `<html><body><pre>${JSON.stringify(returnReceipt, null, 2)}</pre></body></html>`;
+  try {
+    if (await isWindowsPrinterServiceEnabled()) {
+      await enqueuePrintJob({
+        jobType: 'pos_receipt_80',
+        connection: 'system',
+        printerName: getStoredWindowsPrinterNameForPrint(),
+        refType: 'pos_return',
+        refId: returnReceipt.id || returnReceipt.returnNumber,
+        payload: {
+          kind: 'pos_receipt_80',
+          html,
+          paperHint: '80mm',
+          companyName,
+          receiptNumber: returnReceipt.returnNumber,
+        },
+      });
+      return;
+    }
+  } catch (error) {
+    console.warn('[thermalPrinter] return enqueue failed, local print fallback:', error);
+  }
+
   const printWindow = window.open('', '_blank', 'width=300,height=600');
   if (!printWindow) return;
-  const html = `<html><body><pre>${JSON.stringify(returnReceipt, null, 2)}</pre></body></html>`;
   printWindow.document.write(html);
   printWindow.document.close();
   printWindow.print();

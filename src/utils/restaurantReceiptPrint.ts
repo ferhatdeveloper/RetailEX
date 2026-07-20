@@ -2,6 +2,7 @@ import type { Sale } from '../core/types/models';
 import type { ReceiptSettings } from '../services/receiptSettingsService';
 import { buildReceipt80mmPrintHtml } from './receipt80mmPrintHtml';
 import { RECEIPT_80MM_DOCUMENT_CSS, RECEIPT_80MM_VIEWPORT_FOR_HEADLESS } from './receipt80mmDocumentCss';
+import { enqueueHtmlDocumentJob, isWindowsPrinterServiceEnabled } from '../services/unifiedPrintQueueService';
 import { IS_TAURI } from './env';
 
 /** Receipt80mm / mutfak fişi ile aynı dil kodları */
@@ -519,18 +520,35 @@ export async function printHtmlInHiddenIframe(html: string): Promise<void> {
  * @param explicitPrinter — `undefined`: kasa fişi ayarındaki Windows yazıcısı; `string`: bu ad; `null`: OS varsayılanı
  */
 export async function printRestaurantHtmlNoPreview(html: string, explicitPrinter?: string | null): Promise<void> {
-  if (IS_TAURI) {
-    const { invoke } = await import('@tauri-apps/api/core');
-    let printerName: string | null;
+  const resolvePrinterName = async (): Promise<string | null> => {
     if (explicitPrinter === undefined || explicitPrinter === '') {
       const { getAccountReceiptSystemPrinterName } = await import('./restaurantAccountReceiptPrinter');
-      printerName = getAccountReceiptSystemPrinterName();
-    } else if (explicitPrinter === null) {
-      printerName = null;
-    } else {
-      const t = String(explicitPrinter).trim();
-      printerName = t.length > 0 ? t : null;
+      return getAccountReceiptSystemPrinterName();
     }
+    if (explicitPrinter === null) return null;
+    const t = String(explicitPrinter).trim();
+    return t.length > 0 ? t : null;
+  };
+
+  try {
+    if (await isWindowsPrinterServiceEnabled()) {
+      await enqueueHtmlDocumentJob({
+        html,
+        paperHint: '80mm',
+        connection: 'system',
+        printerName: await resolvePrinterName(),
+        refType: 'restaurant_receipt',
+        sourceSystem: 'web',
+      });
+      return;
+    }
+  } catch (error) {
+    console.warn('[restaurantReceiptPrint] unified enqueue failed, local print fallback:', error);
+  }
+
+  if (IS_TAURI) {
+    const { invoke } = await import('@tauri-apps/api/core');
+    const printerName = await resolvePrinterName();
     try {
       await invoke('print_html_silent', { html, printerName: printerName ?? null });
       return;
