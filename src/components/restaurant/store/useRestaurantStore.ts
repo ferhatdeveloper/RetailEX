@@ -391,14 +391,42 @@ export const useRestaurantStore = create<RestaurantState>()(
                     await RestaurantService.updateTableStatus(tableId, 'kitchen', table.waiter, table.staffId, table.total);
 
                     const st = get();
-                    void printKitchenTicketsAfterSend({
-                        table,
-                        pendingItems,
-                        menu: st.menu,
-                        printerProfiles: st.printerProfiles,
-                        printerRoutes: st.printerRoutes,
-                        commonPrinterId: st.commonPrinterId,
-                    });
+                    // Mutfak fişi dili: fiş ayarı → yazıcı defaultLanguage → UI dili → tr
+                    void (async () => {
+                        let locale: 'tr' | 'en' | 'ar' | 'ku' | undefined;
+                        try {
+                            const { getReceiptSettings, resolveDefaultReceiptLang } = await import(
+                                '../../../services/receiptSettingsService'
+                            );
+                            let printerDefault: string | undefined;
+                            try {
+                                const raw = localStorage.getItem('retailos-printer-settings');
+                                if (raw) {
+                                    const cfg = JSON.parse(raw) as { defaultLanguage?: string };
+                                    printerDefault = cfg.defaultLanguage;
+                                }
+                            } catch {
+                                /* ignore */
+                            }
+                            const uiLang =
+                                (typeof localStorage !== 'undefined' && localStorage.getItem('language')) ||
+                                (typeof localStorage !== 'undefined' && localStorage.getItem('i18nextLng')) ||
+                                'tr';
+                            const rs = await getReceiptSettings().catch(() => ({}));
+                            locale = resolveDefaultReceiptLang(rs, String(uiLang), printerDefault);
+                        } catch {
+                            locale = 'tr';
+                        }
+                        await printKitchenTicketsAfterSend({
+                            table,
+                            pendingItems,
+                            menu: st.menu,
+                            printerProfiles: st.printerProfiles,
+                            printerRoutes: st.printerRoutes,
+                            commonPrinterId: st.commonPrinterId,
+                            locale,
+                        });
+                    })();
                 } catch (error) {
                     console.error("Mutfak siparişi gönderilirken hata oluştu:", error);
                     throw error;

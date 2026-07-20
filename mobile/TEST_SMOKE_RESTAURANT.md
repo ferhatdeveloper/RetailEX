@@ -20,7 +20,9 @@
 | 4 | Mutfağa gönder | order item `status='cooking'`; kitchen tabloları varsa fiş oluşturur | Kitchen tablo yok → kalem statüsü yine güncellenir |
 | 5 | Mutfak ekranı | aktif kitchen order + item listesi | `Hazırla` item/order status günceller |
 | 6 | Rezervasyon | create + status update | Şema yok → UI hata banner gösterir |
-| 7 | Dosyalar | `RestaurantScreen.tsx`, `restaurantApi.ts` | zorunlu **GEÇTİ** |
+| 7 | Mutfak fişi yazdır | `restaurant_printer_config` kategori rotası → ağ ESC/POS (`/api/printer/escpos-tcp`) | Dil: TR/EN/AR/KU seçici; profil yoksa skip + mesaj |
+| 8 | LAN köprü | Config → Ağı tara → `pg_bridge :3001` | Fiziksel cihazda `10.0.2.2` uyarısı; PostgREST `:3002` de bulunur |
+| 9 | Dosyalar | `RestaurantScreen.tsx`, `restaurantApi.ts`, `kitchenTicketPrint.ts` | zorunlu **GEÇTİ** |
 
 ## Manuel UI checklist
 
@@ -30,9 +32,12 @@
 | 2 | Masa seç → adisyon | |
 | 3 | Ürün ara → ürün seç → miktar/fiyat dolar → kalem ekle | |
 | 4 | Mutfağa gönder → kalem statüsü pişiyor olur, mutfak sekmesinde fiş görünür | |
-| 5 | Mutfak sekmesi → kalem hazırla / tümünü hazırla | |
-| 6 | Bugünkü akış → hızlı rezervasyon ekle → Onayla/Oturdu/İptal durumları | |
-| 7 | Ödeme al / kapat mevcut davranışı korur | |
+| 5 | Mutfak fişi dili seç (TR/EN/AR/KU) → gönder + yazdır; etiketler seçilen dilde | |
+| 6 | Yazıcı: Restoran yazıcı ayarlarında kategori→ağ IP; fiş doğru yazıcıya gider | |
+| 7 | Mutfak sekmesi → kalem hazırla / tümünü hazırla | |
+| 8 | Bugünkü akış → hızlı rezervasyon ekle → Onayla/Oturdu/İptal durumları | |
+| 9 | Config: aynı Wi‑Fi → Ağı tara → köprü seç → Test bağlantı | |
+| 10 | Ödeme al / kapat mevcut davranışı korur | |
 
 ## Geçti / Kaldı
 
