@@ -24,6 +24,7 @@ const CLAIM_LIMIT = clampNumber(process.env.PRINT_CLAIM_LIMIT, 1, 50, 10);
 const TCP_TIMEOUT_MS = clampNumber(process.env.PRINT_TCP_TIMEOUT_MS, 1000, 60_000, 8000);
 const WORKER_ID = `RetailEX_Printer/${os.hostname()}/${process.pid}`;
 const RUN_ONCE = process.argv.includes('--once') || process.env.PRINT_ONCE === '1';
+const SHOW_HELP = process.argv.includes('--help') || process.argv.includes('-h');
 
 const KITCHEN_I18N = {
   tr: {
@@ -148,6 +149,14 @@ async function loadConfigDb() {
 
   try {
     const db = new Database(configPath, { readonly: true });
+    const hasConfig = db
+      .prepare("SELECT 1 AS ok FROM sqlite_master WHERE type='table' AND name='config' LIMIT 1")
+      .get();
+    if (!hasConfig) {
+      db.close();
+      // Bos / yanlis dosya (or. gelistirme kokunde bos config.db) — PG env'e dus
+      return null;
+    }
     const row = db.prepare('SELECT data FROM config WHERE id = 1').get();
     db.close();
     if (!row?.data) {
@@ -609,7 +618,31 @@ async function pollOnce() {
   }
 }
 
+function printHelp() {
+  const text = `RetailEX mutfak yazıcı servisi (kitchen-print-service)
+
+Kullanım:
+  node scripts/kitchen-print-service.mjs [--once] [--help]
+
+Seçenekler:
+  --once     Tek poll turu çalıştırıp çık
+  --help     Bu yardımı göster
+
+Ortam:
+  CONFIG_DB, PGHOST, PGPORT, PGDATABASE, PGUSER, PGPASSWORD
+  PRINT_FIRM_NR, PRINT_PERIOD_NR, PRINT_POLL_MS
+
+Windows hizmeti: RetailEX_Printer.exe
+Ayrıntı: DeskApp/resources/README_PRINTER_SERVICE.md
+`;
+  console.log(text);
+}
+
 async function main() {
+  if (SHOW_HELP) {
+    printHelp();
+    return;
+  }
   logLine(`RetailEX Printer worker started. worker=${WORKER_ID}, poll=${POLL_MS}ms`);
   do {
     await pollOnce();
