@@ -1,6 +1,10 @@
 import { pgQuery } from './pgClient';
 import {
+  categoriesTable,
   newUuid,
+  productsTable,
+  restKitchenItemsTable,
+  restKitchenOrdersTable,
   restOrderItemsTable,
   restOrdersTable,
   restReservationsTable,
@@ -43,15 +47,66 @@ export type RestReservation = {
   note: string | null;
 };
 
+export type RestReservationStatus = 'pending' | 'confirmed' | 'seated' | 'cancelled' | 'no_show';
+
 export type RestOrderItem = {
   id: string;
+  product_id: string | null;
   product_name: string;
   quantity: number;
   unit_price: number;
   subtotal: number;
+  status: string | null;
+  course?: string | null;
+  note?: string | null;
+  options?: unknown;
+  sent_to_kitchen_at: string | null;
 };
 
 export type RestOrderDetail = RestOrder & { items: RestOrderItem[] };
+
+export type RestMenuItem = {
+  id: string;
+  code: string | null;
+  name: string;
+  price: number;
+  category: string;
+  preparation_time: number;
+};
+
+export type RestKitchenItem = {
+  id: string;
+  order_item_id: string | null;
+  product_name: string;
+  quantity: number;
+  course: string | null;
+  note: string | null;
+  status: string | null;
+  preparation_time: number | null;
+  start_at: string | null;
+  estimated_ready_at: string | null;
+};
+
+export type RestKitchenOrder = {
+  id: string;
+  order_id: string;
+  table_id: string | null;
+  table_number: string | null;
+  floor_name: string | null;
+  waiter: string | null;
+  status: string | null;
+  note: string | null;
+  sent_at: string | null;
+  estimated_ready_at: string | null;
+  items: RestKitchenItem[];
+};
+
+export type SendToKitchenResult = {
+  kitchenOrderId: string | null;
+  sentItemIds: string[];
+  sentItemCount: number;
+  kitchenOrderCreated: boolean;
+};
 
 async function tryQueries<T>(queries: { sql: string; params?: unknown[] }[]): Promise<T[]> {
   for (const q of queries) {
@@ -63,6 +118,18 @@ async function tryQueries<T>(queries: { sql: string; params?: unknown[] }[]): Pr
     }
   }
   return [];
+}
+
+async function runFirst(queries: { sql: string; params?: unknown[] }[]): Promise<boolean> {
+  for (const q of queries) {
+    try {
+      await pgQuery(q.sql, q.params ?? []);
+      return true;
+    } catch {
+      /* next */
+    }
+  }
+  return false;
 }
 
 export async function fetchRestaurantTables(): Promise<RestTable[]> {
@@ -213,6 +280,100 @@ export async function fetchReservationsForDate(dateYmd: string): Promise<RestRes
   }));
 }
 
+export async function fetchRestaurantMenuItems(
+  search = '',
+  limit = 120,
+): Promise<RestMenuItem[]> {
+  const products = productsTable();
+  const categories = categoriesTable();
+  const q = search.trim();
+  const like = `%${q}%`;
+  const capped = Math.max(10, Math.min(300, Number(limit) || 120));
+  const queries = [
+    {
+      sql: `SELECT p.id::text AS id,
+              p.code,
+              p.name,
+              COALESCE(p.price, 0)::float8 AS price,
+              COALESCE(NULLIF(c.name, ''), NULLIF(p.category_code, ''), NULLIF(p.group_code, ''), 'Genel') AS category,
+              COALESCE(p.preparation_time, 5)::int AS preparation_time
+       FROM ${products} p
+       LEFT JOIN ${categories} c ON c.id = p.category_id OR c.code = p.category_code
+       WHERE COALESCE(p.is_active, true) = true
+         AND COALESCE(p.price, 0) > 0
+         AND COALESCE(c.is_restaurant, false) = true
+         AND (
+           $1 = '%%'
+           OR p.name ILIKE $1
+           OR COALESCE(p.code, '') ILIKE $1
+           OR COALESCE(p.barcode, '') ILIKE $1
+           OR COALESCE(c.name, '') ILIKE $1
+         )
+       ORDER BY c.name ASC NULLS LAST, p.name ASC
+       LIMIT $2`,
+      params: [like, capped],
+    },
+    {
+      sql: `SELECT p.id::text AS id,
+              p.code,
+              p.name,
+              COALESCE(p.price, 0)::float8 AS price,
+              COALESCE(NULLIF(c.name, ''), NULLIF(p.category_code, ''), NULLIF(p.group_code, ''), 'Genel') AS category,
+              COALESCE(p.preparation_time, 5)::int AS preparation_time
+       FROM ${products} p
+       LEFT JOIN ${categories} c ON c.id = p.category_id OR c.code = p.category_code
+       WHERE COALESCE(p.is_active, true) = true
+         AND COALESCE(p.price, 0) > 0
+         AND (
+           $1 = '%%'
+           OR p.name ILIKE $1
+           OR COALESCE(p.code, '') ILIKE $1
+           OR COALESCE(p.barcode, '') ILIKE $1
+           OR COALESCE(c.name, '') ILIKE $1
+         )
+       ORDER BY c.name ASC NULLS LAST, p.name ASC
+       LIMIT $2`,
+      params: [like, capped],
+    },
+    {
+      sql: `SELECT p.id::text AS id,
+              p.code,
+              p.name,
+              COALESCE(p.price, 0)::float8 AS price,
+              COALESCE(NULLIF(p.category_code, ''), NULLIF(p.group_code, ''), 'Genel') AS category,
+              COALESCE(p.preparation_time, 5)::int AS preparation_time
+       FROM ${products} p
+       WHERE COALESCE(p.is_active, true) = true
+         AND COALESCE(p.price, 0) > 0
+         AND (
+           $1 = '%%'
+           OR p.name ILIKE $1
+           OR COALESCE(p.code, '') ILIKE $1
+           OR COALESCE(p.barcode, '') ILIKE $1
+         )
+       ORDER BY p.name ASC
+       LIMIT $2`,
+      params: [like, capped],
+    },
+  ];
+
+  for (const query of queries) {
+    const rows = await tryQueries<RestMenuItem>([query]);
+    const mapped = rows
+      .map((r) => ({
+      id: String(r.id),
+      code: r.code == null ? null : String(r.code),
+      name: String(r.name ?? ''),
+      price: Number(r.price) || 0,
+      category: String(r.category || 'Genel'),
+      preparation_time: Math.max(1, Number(r.preparation_time) || 5),
+    }))
+    .filter((r) => r.id && r.name);
+    if (mapped.length > 0) return mapped;
+  }
+  return [];
+}
+
 function mapOrderDetail(
   row: RestOrder & { item_json?: RestOrderItem[] | null },
 ): RestOrderDetail {
@@ -220,10 +381,17 @@ function mapOrderDetail(
   const itemsList: RestOrderItem[] = Array.isArray(rawItems)
     ? rawItems.map((it) => ({
         id: String(it.id),
+        product_id: it.product_id == null ? null : String(it.product_id),
         product_name: String(it.product_name ?? ''),
         quantity: Number(it.quantity) || 0,
         unit_price: Number(it.unit_price) || 0,
         subtotal: Number(it.subtotal) || 0,
+        status: it.status == null ? null : String(it.status),
+        course: it.course == null ? null : String(it.course),
+        note: it.note == null ? null : String(it.note),
+        options: it.options,
+        sent_to_kitchen_at:
+          it.sent_to_kitchen_at == null ? null : String(it.sent_to_kitchen_at),
       }))
     : [];
 
@@ -251,10 +419,16 @@ const ORDER_DETAIL_SELECT = (orders: string, tables: string, items: string) =>
         json_agg(
           json_build_object(
             'id', i.id,
+            'product_id', i.product_id,
             'product_name', i.product_name,
             'quantity', i.quantity,
             'unit_price', i.unit_price,
-            'subtotal', i.subtotal
+            'subtotal', i.subtotal,
+            'status', i.status,
+            'course', i.course,
+            'note', i.note,
+            'options', i.options,
+            'sent_to_kitchen_at', i.sent_to_kitchen_at
           )
           ORDER BY i.created_at
         ) FILTER (WHERE i.id IS NOT NULL),
@@ -412,6 +586,403 @@ export async function addRestaurantOrderItem(
     );
   } catch {
     /* şema farkı */
+  }
+}
+
+function isKitchenPendingItem(item: RestOrderItem): boolean {
+  const status = String(item.status || 'pending').toLowerCase();
+  return (
+    !item.sent_to_kitchen_at &&
+    status !== 'cooking' &&
+    status !== 'ready' &&
+    status !== 'served' &&
+    status !== 'cancelled'
+  );
+}
+
+async function markOrderItemsCooking(itemIds: string[]): Promise<void> {
+  if (itemIds.length === 0) return;
+  const items = restOrderItemsTable();
+  const idsCsv = itemIds.join(',');
+  const ok = await runFirst([
+    {
+      sql: `UPDATE ${items}
+       SET status = 'cooking', sent_to_kitchen_at = COALESCE(sent_to_kitchen_at, NOW())
+       WHERE id = ANY(string_to_array($1, ',')::uuid[])`,
+      params: [idsCsv],
+    },
+    {
+      sql: `UPDATE ${items}
+       SET status = 'cooking'
+       WHERE id = ANY(string_to_array($1, ',')::uuid[])`,
+      params: [idsCsv],
+    },
+  ]);
+  if (!ok) {
+    throw new Error('Adisyon kalemleri mutfak statüsüne alınamadı');
+  }
+}
+
+export async function sendRestaurantItemsToKitchen(orderId: string): Promise<SendToKitchenResult> {
+  const orders = restOrdersTable();
+  const tables = restTablesTable();
+  const kitchenOrders = restKitchenOrdersTable();
+  const kitchenItems = restKitchenItemsTable();
+  const products = productsTable();
+  const detail = await getOrderDetailById(orderId);
+  if (!detail) {
+    throw new Error('Adisyon bulunamadı');
+  }
+
+  const pendingItems = detail.items.filter(isKitchenPendingItem);
+  if (pendingItems.length === 0) {
+    return {
+      kitchenOrderId: null,
+      sentItemIds: [],
+      sentItemCount: 0,
+      kitchenOrderCreated: false,
+    };
+  }
+
+  const sentItemIds = pendingItems.map((item) => item.id);
+  await markOrderItemsCooking(sentItemIds);
+
+  let activeItemCount = 0;
+  try {
+    const active = await pgQuery<{ count: string | number }>(
+      `SELECT COUNT(*) AS count FROM ${kitchenItems} WHERE status IN ('new', 'pending', 'cooking')`,
+    );
+    activeItemCount = Number(active.rows[0]?.count) || 0;
+  } catch {
+    activeItemCount = 0;
+  }
+
+  const productIds = pendingItems.map((item) => item.product_id).filter(Boolean) as string[];
+  const prepTimeMap = new Map<string, number>();
+  if (productIds.length > 0) {
+    try {
+      const prep = await pgQuery<{ id: string; preparation_time: number }>(
+        `SELECT id::text AS id, COALESCE(preparation_time, 5)::int AS preparation_time
+         FROM ${products}
+         WHERE id = ANY(string_to_array($1, ',')::uuid[])`,
+        [productIds.join(',')],
+      );
+      for (const row of prep.rows) {
+        prepTimeMap.set(String(row.id), Math.max(1, Number(row.preparation_time) || 5));
+      }
+    } catch {
+      /* ürün hazırlık süresi yoksa 5 dk */
+    }
+  }
+
+  const loadMultiplier = 1 + activeItemCount * 0.05;
+  const maxPrepTime = Math.max(
+    5,
+    ...pendingItems.map((item) => prepTimeMap.get(item.product_id || '') || 5),
+  );
+  const adjustedMaxPrepTime = Math.round(maxPrepTime * loadMultiplier);
+  const now = Date.now();
+  const estimatedFinish = new Date(now + adjustedMaxPrepTime * 60_000).toISOString();
+  const kitchenOrderId = newUuid();
+  const tableNumber = detail.table_name || detail.table_id || 'Masa';
+
+  let kitchenOrderCreated = false;
+  try {
+    await pgQuery(
+      `INSERT INTO ${kitchenOrders}
+         (id, order_id, table_number, floor_name, waiter, staff_id, status, note, estimated_ready_at)
+       VALUES ($1::uuid, $2::uuid, $3, NULL, $4, NULL, 'new', NULL, $5::timestamptz)`,
+      [kitchenOrderId, orderId, tableNumber, detail.waiter || null, estimatedFinish],
+    );
+
+    for (const item of pendingItems) {
+      const prepMinutes = Math.max(
+        1,
+        Math.round((prepTimeMap.get(item.product_id || '') || 5) * loadMultiplier),
+      );
+      const startAt = new Date(new Date(estimatedFinish).getTime() - prepMinutes * 60_000).toISOString();
+      await pgQuery(
+        `INSERT INTO ${kitchenItems}
+           (id, kitchen_order_id, order_item_id, product_name, quantity, course, note, status,
+            preparation_time, start_at, estimated_ready_at)
+         VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, NULL, NULL, 'new',
+            $6, $7::timestamptz, $8::timestamptz)`,
+        [
+          newUuid(),
+          kitchenOrderId,
+          item.id,
+          item.product_name,
+          item.quantity,
+          prepMinutes,
+          startAt,
+          estimatedFinish,
+        ],
+      );
+    }
+    kitchenOrderCreated = true;
+  } catch {
+    kitchenOrderCreated = false;
+  }
+
+  try {
+    await pgQuery(
+      `UPDATE ${orders}
+       SET status = 'open', estimated_ready_at = COALESCE(estimated_ready_at, $2::timestamptz),
+           updated_at = NOW()
+       WHERE id = $1::uuid`,
+      [orderId, estimatedFinish],
+    );
+  } catch {
+    /* şema farkı */
+  }
+
+  if (detail.table_id) {
+    try {
+      await pgQuery(
+        `UPDATE ${tables}
+         SET status = 'kitchen', updated_at = NOW()
+         WHERE id = $1::uuid`,
+        [detail.table_id],
+      );
+    } catch {
+      /* şema farkı */
+    }
+  }
+
+  return {
+    kitchenOrderId: kitchenOrderCreated ? kitchenOrderId : null,
+    sentItemIds,
+    sentItemCount: sentItemIds.length,
+    kitchenOrderCreated,
+  };
+}
+
+function mapKitchenOrder(row: RestKitchenOrder & { item_json?: RestKitchenItem[] | null }): RestKitchenOrder {
+  const rawItems = row.item_json;
+  return {
+    id: String(row.id),
+    order_id: String(row.order_id),
+    table_id: row.table_id == null ? null : String(row.table_id),
+    table_number: row.table_number == null ? null : String(row.table_number),
+    floor_name: row.floor_name == null ? null : String(row.floor_name),
+    waiter: row.waiter == null ? null : String(row.waiter),
+    status: row.status == null ? null : String(row.status),
+    note: row.note == null ? null : String(row.note),
+    sent_at: row.sent_at == null ? null : String(row.sent_at),
+    estimated_ready_at:
+      row.estimated_ready_at == null ? null : String(row.estimated_ready_at),
+    items: Array.isArray(rawItems)
+      ? rawItems.map((item) => ({
+          id: String(item.id),
+          order_item_id: item.order_item_id == null ? null : String(item.order_item_id),
+          product_name: String(item.product_name ?? ''),
+          quantity: Number(item.quantity) || 0,
+          course: item.course == null ? null : String(item.course),
+          note: item.note == null ? null : String(item.note),
+          status: item.status == null ? null : String(item.status),
+          preparation_time:
+            item.preparation_time == null ? null : Number(item.preparation_time) || null,
+          start_at: item.start_at == null ? null : String(item.start_at),
+          estimated_ready_at:
+            item.estimated_ready_at == null ? null : String(item.estimated_ready_at),
+        }))
+      : [],
+  };
+}
+
+export async function fetchActiveKitchenOrders(limit = 50): Promise<RestKitchenOrder[]> {
+  const kitchenOrders = restKitchenOrdersTable();
+  const kitchenItems = restKitchenItemsTable();
+  const orders = restOrdersTable();
+  const rows = await tryQueries<RestKitchenOrder & { item_json?: RestKitchenItem[] | null }>([
+    {
+      sql: `SELECT ko.id,
+              ko.order_id::text AS order_id,
+              o.table_id::text AS table_id,
+              ko.table_number,
+              ko.floor_name,
+              ko.waiter,
+              ko.status,
+              ko.note,
+              ko.sent_at::text AS sent_at,
+              ko.estimated_ready_at::text AS estimated_ready_at,
+              COALESCE(
+                json_agg(
+                  json_build_object(
+                    'id', ki.id,
+                    'order_item_id', ki.order_item_id,
+                    'product_name', ki.product_name,
+                    'quantity', ki.quantity,
+                    'course', ki.course,
+                    'note', ki.note,
+                    'status', ki.status,
+                    'preparation_time', ki.preparation_time,
+                    'start_at', ki.start_at,
+                    'estimated_ready_at', ki.estimated_ready_at
+                  )
+                  ORDER BY ki.id
+                ) FILTER (WHERE ki.id IS NOT NULL),
+                '[]'::json
+              ) AS item_json
+       FROM ${kitchenOrders} ko
+       LEFT JOIN ${orders} o ON o.id = ko.order_id
+       LEFT JOIN ${kitchenItems} ki ON ki.kitchen_order_id = ko.id
+       WHERE COALESCE(ko.status, 'new') NOT IN ('served', 'cancelled')
+       GROUP BY ko.id, o.table_id
+       ORDER BY ko.sent_at ASC NULLS LAST
+       LIMIT $1`,
+      params: [limit],
+    },
+  ]);
+  return rows.map(mapKitchenOrder);
+}
+
+export async function updateRestaurantKitchenItemStatus(
+  kitchenItemId: string,
+  status: 'new' | 'cooking' | 'ready' | 'served',
+): Promise<void> {
+  const kitchenItems = restKitchenItemsTable();
+  const orderItems = restOrderItemsTable();
+  await pgQuery(
+    `UPDATE ${kitchenItems}
+     SET status = $2
+     WHERE id = $1::uuid`,
+    [kitchenItemId, status],
+  );
+
+  if (status === 'ready' || status === 'served') {
+    await runFirst([
+      {
+        sql: `UPDATE ${orderItems} oi
+         SET status = $2${status === 'served' ? ', served_at = COALESCE(served_at, NOW())' : ''}
+         FROM ${kitchenItems} ki
+         WHERE ki.id = $1::uuid AND oi.id = ki.order_item_id`,
+        params: [kitchenItemId, status],
+      },
+    ]);
+  }
+}
+
+export async function updateRestaurantKitchenOrderStatus(
+  kitchenOrderId: string,
+  status: 'new' | 'cooking' | 'ready' | 'served',
+): Promise<void> {
+  const kitchenOrders = restKitchenOrdersTable();
+  const kitchenItems = restKitchenItemsTable();
+  const orderItems = restOrderItemsTable();
+  await pgQuery(
+    `UPDATE ${kitchenOrders}
+     SET status = $2
+     WHERE id = $1::uuid`,
+    [kitchenOrderId, status],
+  );
+
+  if (status === 'ready' || status === 'served') {
+    await pgQuery(
+      `UPDATE ${kitchenItems}
+       SET status = $2
+       WHERE kitchen_order_id = $1::uuid
+         AND COALESCE(status, 'new') NOT IN ('served', 'cancelled')`,
+      [kitchenOrderId, status],
+    );
+    await runFirst([
+      {
+        sql: `UPDATE ${orderItems} oi
+         SET status = $2${status === 'served' ? ', served_at = COALESCE(served_at, NOW())' : ''}
+         FROM ${kitchenItems} ki
+         WHERE ki.kitchen_order_id = $1::uuid AND oi.id = ki.order_item_id`,
+        params: [kitchenOrderId, status],
+      },
+    ]);
+  }
+}
+
+export async function createRestaurantReservation(params: {
+  customerName: string;
+  phone?: string | null;
+  reservationDate: string;
+  reservationTime: string;
+  guestCount: number;
+  tableId?: string | null;
+  note?: string | null;
+}): Promise<void> {
+  const reservations = restReservationsTable();
+  const tables = restTablesTable();
+  const id = newUuid();
+  let tableNumber: string | null = null;
+  if (params.tableId) {
+    try {
+      const row = await pgQuery<{ number: string | null }>(
+        `SELECT number FROM ${tables} WHERE id = $1::uuid LIMIT 1`,
+        [params.tableId],
+      );
+      tableNumber = row.rows[0]?.number ?? null;
+    } catch {
+      tableNumber = null;
+    }
+  }
+
+  const ok = await runFirst([
+    {
+      sql: `INSERT INTO ${reservations}
+         (id, customer_name, phone, reservation_date, reservation_time, guest_count,
+          table_id, table_number, status, note)
+       VALUES ($1::uuid, $2, $3, $4::date, $5::time, $6, $7::uuid, $8, 'pending', $9)`,
+      params: [
+        id,
+        params.customerName.trim(),
+        params.phone?.trim() || null,
+        params.reservationDate,
+        params.reservationTime,
+        Math.max(1, Number(params.guestCount) || 1),
+        params.tableId || null,
+        tableNumber,
+        params.note?.trim() || null,
+      ],
+    },
+    {
+      sql: `INSERT INTO ${reservations}
+         (id, customer_name, phone, reservation_date, reservation_time, guest_count,
+          table_id, status, note)
+       VALUES ($1::uuid, $2, $3, $4::date, $5::time, $6, $7::uuid, 'pending', $8)`,
+      params: [
+        id,
+        params.customerName.trim(),
+        params.phone?.trim() || null,
+        params.reservationDate,
+        params.reservationTime,
+        Math.max(1, Number(params.guestCount) || 1),
+        params.tableId || null,
+        params.note?.trim() || null,
+      ],
+    },
+  ]);
+  if (!ok) {
+    throw new Error('Rezervasyon kaydedilemedi');
+  }
+}
+
+export async function updateRestaurantReservationStatus(
+  reservationId: string,
+  status: RestReservationStatus,
+): Promise<void> {
+  const reservations = restReservationsTable();
+  const ok = await runFirst([
+    {
+      sql: `UPDATE ${reservations}
+       SET status = $2, updated_at = NOW()
+       WHERE id = $1::uuid`,
+      params: [reservationId, status],
+    },
+    {
+      sql: `UPDATE ${reservations}
+       SET status = $2
+       WHERE id = $1::uuid`,
+      params: [reservationId, status],
+    },
+  ]);
+  if (!ok) {
+    throw new Error('Rezervasyon durumu güncellenemedi');
   }
 }
 

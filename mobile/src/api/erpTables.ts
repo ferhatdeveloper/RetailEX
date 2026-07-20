@@ -136,6 +136,14 @@ export function restOrderItemsTable(fn = firmNr(), pn = periodNr()): string {
   return `rest.rex_${fn}_${pn}_rest_order_items`;
 }
 
+export function restKitchenOrdersTable(fn = firmNr(), pn = periodNr()): string {
+  return `rest.rex_${fn}_${pn}_rest_kitchen_orders`;
+}
+
+export function restKitchenItemsTable(fn = firmNr(), pn = periodNr()): string {
+  return `rest.rex_${fn}_${pn}_rest_kitchen_items`;
+}
+
 export function restReservationsTable(fn = firmNr(), pn = periodNr()): string {
   return `rest.rex_${fn}_${pn}_rest_reservations`;
 }

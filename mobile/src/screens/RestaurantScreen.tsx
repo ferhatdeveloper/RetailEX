@@ -31,12 +31,22 @@ import {
   getOrderDetailById,
   createRestaurantOrder,
   addRestaurantOrderItem,
+  fetchRestaurantMenuItems,
+  sendRestaurantItemsToKitchen,
+  fetchActiveKitchenOrders,
+  updateRestaurantKitchenItemStatus,
+  updateRestaurantKitchenOrderStatus,
+  createRestaurantReservation,
+  updateRestaurantReservationStatus,
   completeTablePayment,
   type RestPaymentMethod,
   type RestTable,
   type RestOrder,
   type RestOrderDetail,
   type RestReservation,
+  type RestReservationStatus,
+  type RestMenuItem,
+  type RestKitchenOrder,
 } from '../api/restaurantApi';
 import { formatMoney } from '../api/erpTables';
 import { useThemeStore } from '../store/themeStore';
@@ -50,13 +60,22 @@ import {
   type TableStatus,
 } from '../theme/tableStatusConfig';
 import type { MainStackParamList } from '../navigation/types';
+import { printKitchenTicketsForOrder } from '../services/kitchenTicketPrint';
+import { resolveKitchenTicketLocale } from '../services/escpos/buildKitchenTicketEscPos';
+import type { ReceiptLangCode } from '../types/printerSettings';
 
-type Tab = 'tables' | 'orders' | 'schedule';
+type Tab = 'tables' | 'orders' | 'schedule' | 'kitchen';
 type Props = NativeStackScreenProps<MainStackParamList, 'Restaurant'>;
 
 const COLS = 3;
 const GRID_GAP = 8;
 const GRID_PAD = 12;
+const KITCHEN_LANGS: { code: ReceiptLangCode; label: string }[] = [
+  { code: 'tr', label: 'TR' },
+  { code: 'en', label: 'EN' },
+  { code: 'ar', label: 'AR' },
+  { code: 'ku', label: 'KU' },
+];
 
 type ScheduleItem = {
   id: string;
@@ -67,6 +86,7 @@ type ScheduleItem = {
   amount?: number;
   status: string | null;
   order?: RestOrder;
+  reservation?: RestReservation;
 };
 
 function todayYmd(): string {
@@ -107,16 +127,41 @@ function orderStatusLabel(status: string | null | undefined): string {
   return getStatusConfig(status).label;
 }
 
+function kitchenStatusLabel(status: string | null | undefined): string {
+  const s = String(status || '').toLowerCase();
+  if (!s || s === 'new' || s === 'pending') return 'Bekliyor';
+  if (s === 'cooking') return 'Pişiyor';
+  if (s === 'ready') return 'Hazır';
+  if (s === 'served') return 'Servis edildi';
+  if (s === 'cancelled') return 'İptal';
+  return status || '—';
+}
+
+function isPendingKitchenLine(item: { status?: string | null; sent_to_kitchen_at?: string | null }): boolean {
+  const s = String(item.status || 'pending').toLowerCase();
+  return (
+    !item.sent_to_kitchen_at &&
+    s !== 'cooking' &&
+    s !== 'ready' &&
+    s !== 'served' &&
+    s !== 'cancelled'
+  );
+}
+
 export function RestaurantScreen({ route }: Props) {
   const { colors, darkMode } = useThemeStore();
   const { width } = useWindowDimensions();
   const initialTab = route.params?.initialTab ?? 'tables';
   const callerPhone = route.params?.callerPhone?.trim() || '';
-  const [tab, setTab] = useState<Tab>(initialTab === 'schedule' ? 'schedule' : initialTab);
+  const [tab, setTab] = useState<Tab>(initialTab);
   const [tables, setTables] = useState<RestTable[]>([]);
   const [orders, setOrders] = useState<RestOrder[]>([]);
   const [todayOrders, setTodayOrders] = useState<RestOrder[]>([]);
   const [reservations, setReservations] = useState<RestReservation[]>([]);
+  const [kitchenOrders, setKitchenOrders] = useState<RestKitchenOrder[]>([]);
+  const [menuItems, setMenuItems] = useState<RestMenuItem[]>([]);
+  const [menuSearch, setMenuSearch] = useState('');
+  const [menuLoading, setMenuLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -124,13 +169,24 @@ export function RestaurantScreen({ route }: Props) {
   const [selectedTable, setSelectedTable] = useState<RestTable | null>(null);
   const [orderDetail, setOrderDetail] = useState<RestOrderDetail | null>(null);
   const [orderLoading, setOrderLoading] = useState(false);
+  const [selectedMenuItem, setSelectedMenuItem] = useState<RestMenuItem | null>(null);
   const [itemName, setItemName] = useState('');
   const [itemQty, setItemQty] = useState('1');
   const [itemPrice, setItemPrice] = useState('');
   const [saving, setSaving] = useState(false);
   const [paying, setPaying] = useState(false);
+  const [sendingKitchen, setSendingKitchen] = useState(false);
+  const [kitchenActionId, setKitchenActionId] = useState<string | null>(null);
+  const [kitchenLocale, setKitchenLocale] = useState<ReceiptLangCode>(() => resolveKitchenTicketLocale());
   const [payMethod, setPayMethod] = useState<RestPaymentMethod>('cash');
   const [modalError, setModalError] = useState<string | null>(null);
+  const [reservationForm, setReservationForm] = useState({
+    customerName: '',
+    phone: callerPhone,
+    time: '19:00',
+    guestCount: '2',
+    note: '',
+  });
 
   const orgEpoch = useOrgEpoch();
 
@@ -178,6 +234,7 @@ export function RestaurantScreen({ route }: Props) {
           r.table_name ? ` · Masa ${r.table_name}` : ''
         }`,
         status: r.status,
+        reservation: r,
       });
     }
     return items.sort((a, b) => a.time.localeCompare(b.time, 'tr'));
@@ -194,21 +251,28 @@ export function RestaurantScreen({ route }: Props) {
     return Array.from(map.entries());
   }, [scheduleItems]);
 
+  const pendingKitchenCount = useMemo(
+    () => orderDetail?.items.filter(isPendingKitchenLine).length ?? 0,
+    [orderDetail],
+  );
+
   const load = useCallback(async (opts?: { soft?: boolean }) => {
     if (opts?.soft) setRefreshing(true);
     else setError(null);
     try {
       const date = todayYmd();
-      const [t, o, todays, res] = await Promise.all([
+      const [t, o, todays, res, kitchen] = await Promise.all([
         fetchRestaurantTables(),
         fetchOpenOrders(),
         fetchTodayOrders(),
         fetchReservationsForDate(date),
+        fetchActiveKitchenOrders(),
       ]);
       setTables(t);
       setOrders(o);
       setTodayOrders(todays);
       setReservations(res);
+      setKitchenOrders(kitchen);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -225,16 +289,35 @@ export function RestaurantScreen({ route }: Props) {
     if (callerPhone && !route.params?.initialTab) {
       setTab('orders');
     }
+    if (callerPhone) {
+      setReservationForm((prev) => ({ ...prev, phone: prev.phone || callerPhone }));
+    }
   }, [callerPhone, route.params?.initialTab]);
 
   useEffect(() => {
     if (route.params?.initialTab) {
-      const next = route.params.initialTab;
-      setTab(next === 'schedule' ? 'schedule' : next);
+      setTab(route.params.initialTab);
     }
   }, [route.params?.initialTab]);
 
+  const loadMenuItems = useCallback(async (searchText = '') => {
+    setMenuLoading(true);
+    try {
+      setMenuItems(await fetchRestaurantMenuItems(searchText, 120));
+    } finally {
+      setMenuLoading(false);
+    }
+  }, [orgEpoch]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      void loadMenuItems(menuSearch);
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [loadMenuItems, menuSearch]);
+
   const resetItemForm = () => {
+    setSelectedMenuItem(null);
     setItemName('');
     setItemQty('1');
     setItemPrice('');
@@ -244,6 +327,7 @@ export function RestaurantScreen({ route }: Props) {
     setSelectedTable(table);
     setOrderDetail(null);
     setModalError(null);
+    setKitchenLocale(resolveKitchenTicketLocale());
     resetItemForm();
     setOrderLoading(true);
     try {
@@ -271,6 +355,7 @@ export function RestaurantScreen({ route }: Props) {
     setSelectedTable(tbl);
     setOrderDetail(null);
     setModalError(null);
+    setKitchenLocale(resolveKitchenTicketLocale());
     resetItemForm();
     setOrderLoading(true);
     try {
@@ -384,6 +469,7 @@ export function RestaurantScreen({ route }: Props) {
         productName: name,
         quantity: qty,
         unitPrice: price,
+        productId: selectedMenuItem?.id,
       });
       resetItemForm();
       if (selectedTable) await refreshOrder(selectedTable.id, oid);
@@ -391,6 +477,132 @@ export function RestaurantScreen({ route }: Props) {
       setModalError(e instanceof Error ? e.message : String(e));
     } finally {
       setSaving(false);
+    }
+  };
+
+  const selectMenuItem = (item: RestMenuItem) => {
+    setSelectedMenuItem(item);
+    setItemName(item.name);
+    setItemPrice(String(item.price));
+    setModalError(null);
+  };
+
+  const handleSendToKitchen = async () => {
+    if (!orderDetail?.id || !selectedTable) return;
+    if (pendingKitchenCount === 0) {
+      setModalError('Mutfağa gönderilecek bekleyen kalem yok');
+      return;
+    }
+    setSendingKitchen(true);
+    setKitchenActionId(orderDetail.id);
+    setModalError(null);
+    const orderBeforeSend = orderDetail;
+    try {
+      const oid = orderBeforeSend.id;
+      const result = await sendRestaurantItemsToKitchen(oid);
+      if (result.sentItemCount === 0) {
+        setModalError('Mutfağa gönderilecek yeni kalem yok');
+        return;
+      }
+      const printResult = await printKitchenTicketsForOrder({
+        order: orderBeforeSend,
+        kitchenResult: result,
+        tableName: selectedTable.name || orderBeforeSend.table_name,
+        locale: kitchenLocale,
+      });
+      await refreshOrder(selectedTable.id, oid);
+      setKitchenOrders(await fetchActiveKitchenOrders());
+      if (printResult.ok) {
+        Alert.alert('Mutfak', `${result.sentItemCount} kalem mutfağa gönderildi.\n${printResult.message}`);
+      } else {
+        setModalError(printResult.message);
+        Alert.alert('Mutfak yazdırma', printResult.message);
+      }
+    } catch (e) {
+      setModalError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSendingKitchen(false);
+      setKitchenActionId(null);
+    }
+  };
+
+  const handleKitchenItemReady = async (itemId: string) => {
+    setKitchenActionId(itemId);
+    try {
+      await updateRestaurantKitchenItemStatus(itemId, 'ready');
+      await load({ soft: true });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setKitchenActionId(null);
+    }
+  };
+
+  const handleKitchenOrderReady = async (orderId: string) => {
+    setKitchenActionId(orderId);
+    try {
+      await updateRestaurantKitchenOrderStatus(orderId, 'ready');
+      await load({ soft: true });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setKitchenActionId(null);
+    }
+  };
+
+  const handleCreateReservation = async () => {
+    const customerName = reservationForm.customerName.trim();
+    const guestCount = Number(reservationForm.guestCount.replace(',', '.'));
+    if (!customerName) {
+      setError('Rezervasyon için müşteri adı gerekli');
+      return;
+    }
+    if (!/^\d{1,2}:\d{2}$/.test(reservationForm.time.trim())) {
+      setError('Rezervasyon saati HH:MM formatında olmalı');
+      return;
+    }
+    if (!Number.isFinite(guestCount) || guestCount <= 0) {
+      setError('Rezervasyon kişi sayısı geçersiz');
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      await createRestaurantReservation({
+        customerName,
+        phone: reservationForm.phone,
+        reservationDate: todayYmd(),
+        reservationTime: reservationForm.time.trim(),
+        guestCount,
+        note: reservationForm.note,
+      });
+      setReservationForm((prev) => ({
+        ...prev,
+        customerName: '',
+        phone: callerPhone || '',
+        guestCount: '2',
+        note: '',
+      }));
+      await load({ soft: true });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleReservationStatus = async (
+    reservationId: string,
+    status: RestReservationStatus,
+  ) => {
+    setKitchenActionId(reservationId);
+    try {
+      await updateRestaurantReservationStatus(reservationId, status);
+      await load({ soft: true });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setKitchenActionId(null);
     }
   };
 
@@ -447,6 +659,7 @@ export function RestaurantScreen({ route }: Props) {
     { id: 'tables', label: `Masalar (${tables.length})` },
     { id: 'orders', label: `Adisyon (${orders.length})` },
     { id: 'schedule', label: `Bugün (${scheduleItems.length})` },
+    { id: 'kitchen', label: `Mutfak (${kitchenOrders.length})` },
   ];
 
   return (
@@ -546,7 +759,7 @@ export function RestaurantScreen({ route }: Props) {
             );
           }}
         />
-      ) : (
+      ) : tab === 'schedule' ? (
         <FlatList
           data={scheduleByHour}
           keyExtractor={([hour]) => hour}
@@ -564,6 +777,54 @@ export function RestaurantScreen({ route }: Props) {
               <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 4 }}>
                 {todayOrders.length} sipariş · {reservations.length} rezervasyon
               </Text>
+              <View style={[styles.reservationForm, { borderColor: colors.cardBorder }]}>
+                <Text style={{ color: colors.text, fontWeight: '800', fontSize: 12 }}>
+                  Hızlı rezervasyon
+                </Text>
+                <FormField
+                  label="Müşteri"
+                  value={reservationForm.customerName}
+                  onChangeText={(customerName) => setReservationForm((p) => ({ ...p, customerName }))}
+                  placeholder="Ad soyad"
+                />
+                <View style={styles.rowFields}>
+                  <View style={{ flex: 1 }}>
+                    <FormField
+                      label="Telefon"
+                      value={reservationForm.phone}
+                      onChangeText={(phone) => setReservationForm((p) => ({ ...p, phone }))}
+                      keyboardType="phone-pad"
+                    />
+                  </View>
+                  <View style={{ width: 92 }}>
+                    <FormField
+                      label="Saat"
+                      value={reservationForm.time}
+                      onChangeText={(time) => setReservationForm((p) => ({ ...p, time }))}
+                      placeholder="19:00"
+                    />
+                  </View>
+                  <View style={{ width: 72 }}>
+                    <FormField
+                      label="Kişi"
+                      value={reservationForm.guestCount}
+                      onChangeText={(guestCount) => setReservationForm((p) => ({ ...p, guestCount }))}
+                      keyboardType="number-pad"
+                    />
+                  </View>
+                </View>
+                <FormField
+                  label="Not"
+                  value={reservationForm.note}
+                  onChangeText={(note) => setReservationForm((p) => ({ ...p, note }))}
+                  placeholder="İsteğe bağlı"
+                />
+                <PrimaryButton
+                  label="Rezervasyon ekle"
+                  onPress={() => void handleCreateReservation()}
+                  loading={saving}
+                />
+              </View>
             </View>
           }
           ListEmptyComponent={
@@ -579,6 +840,7 @@ export function RestaurantScreen({ route }: Props) {
               </View>
               {rows.map((row) => {
                 const isRes = row.kind === 'reservation';
+                const reservation = row.reservation;
                 const accent = isRes ? palette.amber500 : getStatusConfig(row.status === 'open' ? 'occupied' : row.status).bg;
                 return (
                   <Pressable
@@ -609,6 +871,49 @@ export function RestaurantScreen({ route }: Props) {
                       <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 2 }} numberOfLines={2}>
                         {row.subtitle}
                       </Text>
+                      {reservation ? (
+                        <View style={styles.resStatusRow}>
+                          {[
+                            ['confirmed', 'Onayla'],
+                            ['seated', 'Oturdu'],
+                            ['cancelled', 'İptal'],
+                          ].map(([status, label]) => (
+                            <Pressable
+                              key={status}
+                              disabled={kitchenActionId === reservation.id}
+                              onPress={() =>
+                                void handleReservationStatus(
+                                  reservation.id,
+                                  status as RestReservationStatus,
+                                )
+                              }
+                              style={[
+                                styles.smallAction,
+                                {
+                                  borderColor: colors.cardBorder,
+                                  backgroundColor:
+                                    reservation?.status === status
+                                      ? palette.blue600
+                                      : colors.backgroundAlt,
+                                },
+                              ]}
+                            >
+                              <Text
+                                style={{
+                                  color:
+                                    reservation?.status === status
+                                      ? palette.white
+                                      : colors.textMuted,
+                                  fontSize: 10,
+                                  fontWeight: '800',
+                                }}
+                              >
+                                {label}
+                              </Text>
+                            </Pressable>
+                          ))}
+                        </View>
+                      ) : null}
                     </View>
                     {row.amount != null ? (
                       <Text style={{ color: palette.blue600, fontWeight: '800', fontSize: 12 }}>
@@ -622,6 +927,107 @@ export function RestaurantScreen({ route }: Props) {
               })}
             </View>
           )}
+        />
+      ) : (
+        <FlatList
+          data={kitchenOrders}
+          keyExtractor={(item) => String(item.id)}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={() => void load({ soft: true })} />
+          }
+          ListEmptyComponent={<EmptyState message="Aktif mutfak fişi yok" />}
+          contentContainerStyle={{ padding: 12, gap: 10, paddingBottom: 40 }}
+          renderItem={({ item }) => {
+            const kitchenCfg = getStatusConfig('kitchen');
+            const allReady = item.items.length > 0 && item.items.every((it) => {
+              const s = String(it.status || '').toLowerCase();
+              return s === 'ready' || s === 'served';
+            });
+            return (
+              <View
+                style={[
+                  styles.kitchenCard,
+                  {
+                    backgroundColor: colors.card,
+                    borderColor: colors.cardBorder,
+                    borderLeftColor: kitchenCfg.bg,
+                  },
+                ]}
+              >
+                <View style={styles.kitchenHeaderRow}>
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={{ color: colors.text, fontWeight: '900' }} numberOfLines={1}>
+                      {item.table_number || 'Masa'} · {kitchenStatusLabel(item.status)}
+                    </Text>
+                    <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 2 }}>
+                      {item.waiter || '—'}
+                      {item.sent_at ? ` · ${formatClock(item.sent_at)}` : ''}
+                    </Text>
+                  </View>
+                  <Pressable
+                    disabled={allReady || kitchenActionId === item.id}
+                    onPress={() => void handleKitchenOrderReady(item.id)}
+                    style={[
+                      styles.readyButton,
+                      {
+                        backgroundColor: allReady ? palette.green600 : kitchenCfg.bg,
+                        opacity: kitchenActionId === item.id ? 0.6 : 1,
+                      },
+                    ]}
+                  >
+                    <Text style={styles.readyButtonText}>
+                      {allReady ? 'Hazır' : 'Tümünü hazırla'}
+                    </Text>
+                  </Pressable>
+                </View>
+                {item.items.map((ki) => {
+                  const s = String(ki.status || 'new').toLowerCase();
+                  const isReady = s === 'ready' || s === 'served';
+                  return (
+                    <View
+                      key={ki.id}
+                      style={[
+                        styles.kitchenItemRow,
+                        { borderColor: colors.cardBorder, backgroundColor: colors.backgroundAlt },
+                      ]}
+                    >
+                      <View style={{ flex: 1, minWidth: 0 }}>
+                        <Text style={{ color: colors.text, fontWeight: '700' }} numberOfLines={2}>
+                          {ki.product_name}
+                        </Text>
+                        <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 2 }}>
+                          {ki.quantity} adet · {kitchenStatusLabel(ki.status)}
+                          {ki.preparation_time ? ` · ${ki.preparation_time} dk` : ''}
+                        </Text>
+                      </View>
+                      <Pressable
+                        disabled={isReady || kitchenActionId === ki.id}
+                        onPress={() => void handleKitchenItemReady(ki.id)}
+                        style={[
+                          styles.smallAction,
+                          {
+                            backgroundColor: isReady ? palette.green600 : colors.card,
+                            borderColor: isReady ? palette.green600 : kitchenCfg.bg,
+                            opacity: kitchenActionId === ki.id ? 0.6 : 1,
+                          },
+                        ]}
+                      >
+                        <Text
+                          style={{
+                            color: isReady ? palette.white : kitchenCfg.bg,
+                            fontSize: 10,
+                            fontWeight: '900',
+                          }}
+                        >
+                          {isReady ? 'Hazır' : 'Hazırla'}
+                        </Text>
+                      </Pressable>
+                    </View>
+                  );
+                })}
+              </View>
+            );
+          }}
         />
       )}
 
@@ -709,9 +1115,15 @@ export function RestaurantScreen({ route }: Props) {
                           { borderColor: colors.cardBorder, backgroundColor: colors.card },
                         ]}
                       >
-                        <Text style={{ color: colors.text, fontWeight: '600', flex: 1 }} numberOfLines={2}>
-                          {it.product_name}
-                        </Text>
+                        <View style={{ flex: 1, minWidth: 0 }}>
+                          <Text style={{ color: colors.text, fontWeight: '600' }} numberOfLines={2}>
+                            {it.product_name}
+                          </Text>
+                          <Text style={{ color: colors.textMuted, fontSize: 10, marginTop: 2 }}>
+                            {kitchenStatusLabel(it.status)}
+                            {it.sent_to_kitchen_at ? ` · ${formatClock(it.sent_to_kitchen_at)}` : ''}
+                          </Text>
+                        </View>
                         <Text style={{ color: colors.textMuted, fontSize: 12 }}>
                           {it.quantity} × {formatMoney(it.unit_price)}
                         </Text>
@@ -727,6 +1139,57 @@ export function RestaurantScreen({ route }: Props) {
                       <Text style={[styles.sectionTitle, { color: colors.text, marginTop: 16 }]}>
                         Kalem ekle
                       </Text>
+                      <FormField
+                        label="Ürün ara"
+                        value={menuSearch}
+                        onChangeText={setMenuSearch}
+                        placeholder="Menüde ara"
+                        hintRight={menuLoading ? 'Yükleniyor' : `${menuItems.length} ürün`}
+                      />
+                      <ScrollView
+                        horizontal
+                        showsHorizontalScrollIndicator={false}
+                        keyboardShouldPersistTaps="handled"
+                        contentContainerStyle={styles.menuPickerRow}
+                      >
+                        {menuItems.map((mi) => {
+                          const selected = selectedMenuItem?.id === mi.id;
+                          return (
+                            <Pressable
+                              key={mi.id}
+                              onPress={() => selectMenuItem(mi)}
+                              style={[
+                                styles.menuChip,
+                                {
+                                  backgroundColor: selected ? palette.blue600 : colors.card,
+                                  borderColor: selected ? palette.blue600 : colors.cardBorder,
+                                },
+                              ]}
+                            >
+                              <Text
+                                style={{
+                                  color: selected ? palette.white : colors.text,
+                                  fontWeight: '800',
+                                  fontSize: 12,
+                                }}
+                                numberOfLines={1}
+                              >
+                                {mi.name}
+                              </Text>
+                              <Text
+                                style={{
+                                  color: selected ? palette.blue100 : colors.textMuted,
+                                  fontSize: 10,
+                                  marginTop: 2,
+                                }}
+                                numberOfLines={1}
+                              >
+                                {mi.category} · {formatMoney(mi.price)} ₺
+                              </Text>
+                            </Pressable>
+                          );
+                        })}
+                      </ScrollView>
                       <FormField
                         label="Ürün adı"
                         value={itemName}
@@ -798,6 +1261,43 @@ export function RestaurantScreen({ route }: Props) {
                 <Text style={[styles.sectionTitle, { color: colors.text, marginTop: 0 }]}>
                   Ödeme / kapat
                 </Text>
+                <View style={styles.kitchenLangBlock}>
+                  <Text style={{ color: colors.textMuted, fontSize: 11, fontWeight: '800' }}>
+                    Mutfak fişi dili
+                  </Text>
+                  <View style={styles.payRow}>
+                    {KITCHEN_LANGS.map((lang) => (
+                      <Pressable
+                        key={lang.code}
+                        onPress={() => setKitchenLocale(lang.code)}
+                        style={[
+                          styles.langChip,
+                          {
+                            backgroundColor:
+                              kitchenLocale === lang.code ? palette.blue600 : colors.backgroundAlt,
+                            borderColor: colors.cardBorder,
+                          },
+                        ]}
+                      >
+                        <Text
+                          style={{
+                            color: kitchenLocale === lang.code ? palette.white : colors.text,
+                            fontSize: 11,
+                            fontWeight: '900',
+                          }}
+                        >
+                          {lang.label}
+                        </Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                </View>
+                <PrimaryButton
+                  label={`Mutfağa gönder + yazdır (${pendingKitchenCount})`}
+                  onPress={() => void handleSendToKitchen()}
+                  loading={sendingKitchen}
+                  disabled={pendingKitchenCount === 0}
+                />
                 <View style={styles.payRow}>
                   {PAY_METHODS.map((m) => (
                     <Pressable
@@ -945,6 +1445,35 @@ const styles = StyleSheet.create({
     marginLeft: 4,
   },
   timelineTimeCol: { width: 44, alignItems: 'center' },
+  reservationForm: {
+    borderTopWidth: 1,
+    marginTop: 12,
+    paddingTop: 12,
+    gap: 8,
+  },
+  resStatusRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 },
+  kitchenCard: {
+    borderWidth: 1,
+    borderLeftWidth: 4,
+    borderRadius: 14,
+    padding: 12,
+    gap: 10,
+  },
+  kitchenHeaderRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  kitchenItemRow: {
+    borderWidth: 1,
+    borderRadius: 10,
+    padding: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  readyButton: {
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+    borderRadius: 10,
+  },
+  readyButtonText: { color: palette.white, fontSize: 10, fontWeight: '900' },
   modalRoot: { flex: 1 },
   modalBody: { padding: 16, gap: 10, paddingBottom: 24 },
   modalHeaderRow: { flexDirection: 'row', alignItems: 'center', gap: 10, zIndex: 2 },
@@ -970,6 +1499,21 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     padding: 10,
     marginBottom: 6,
+    gap: 8,
+  },
+  menuPickerRow: { gap: 8, paddingVertical: 4 },
+  menuChip: {
+    width: 150,
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+  },
+  smallAction: {
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 9,
+    paddingVertical: 6,
   },
   rowFields: { flexDirection: 'row', gap: 8 },
   emptyOrderBox: {
@@ -986,6 +1530,13 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   payRow: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
+  kitchenLangBlock: { gap: 6 },
+  langChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
   payChip: {
     paddingHorizontal: 14,
     paddingVertical: 10,

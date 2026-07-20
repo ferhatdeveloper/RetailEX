@@ -279,6 +279,7 @@ export const MENU_SECTIONS: MenuSection[] = [
       { id: 'rest-tables', label: 'Masalar', screen: 'restaurant-tables' },
       { id: 'rest-orders', label: 'Açık Adisyonlar', screen: 'restaurant-orders' },
       { id: 'rest-schedule', label: 'Bugünkü Akış', screen: 'restaurant-schedule' },
+      { id: 'rest-kitchen', label: 'Mutfak Ekranı', screen: 'restaurant-kitchen' },
     ],
   },
   {
