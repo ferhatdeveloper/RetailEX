@@ -219,7 +219,7 @@ export const RestPOS: React.FC<RestPOSProps> = ({
     const fmt = useCallback((n: number) => formatCurrency(n, 2, false), []);
 
     const isKitchenReceiptLang = (s: string): s is KitchenReceiptLocale =>
-        s === 'tr' || s === 'en' || s === 'ar' || s === 'ku';
+        s === 'tr' || s === 'en' || s === 'ar' || s === 'ku' || s === 'uz';
     /** Fiş ayarları `app_settings` anahtarı firma no ile eşleşmeli (ERP / seçili firma) */
     const receiptFirmNr = useMemo(() => {
         const f = selectedFirm;
@@ -1475,7 +1475,7 @@ export const RestPOS: React.FC<RestPOSProps> = ({
             await persistOrderDiscountToDb(orderDiscount);
             invalidateReceiptSettingsCache();
             const receiptSettings = await getReceiptSettings(receiptFirmNr).catch((): ReceiptSettings => ({}));
-            const lang: KitchenReceiptLocale = (['tr', 'en', 'ar', 'ku'] as const).includes(
+            const lang: KitchenReceiptLocale = (['tr', 'en', 'ar', 'ku', 'uz'] as const).includes(
                 ctx.receiptLanguage as KitchenReceiptLocale
             )
                 ? (ctx.receiptLanguage as KitchenReceiptLocale)
@@ -2769,6 +2769,7 @@ export const RestPOS: React.FC<RestPOSProps> = ({
                                             { code: 'en' as const, label: 'EN' },
                                             { code: 'ar' as const, label: 'AR' },
                                             { code: 'ku' as const, label: 'KU' },
+                                            { code: 'uz' as const, label: 'UZ' },
                                         ]
                                     ).map(({ code, label }) => (
                                         <button

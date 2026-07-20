@@ -393,7 +393,7 @@ export const useRestaurantStore = create<RestaurantState>()(
                     const st = get();
                     // Mutfak fişi dili: fiş ayarı → yazıcı defaultLanguage → UI dili → tr
                     void (async () => {
-                        let locale: 'tr' | 'en' | 'ar' | 'ku' | undefined;
+                        let locale: 'tr' | 'en' | 'ar' | 'ku' | 'uz' | undefined;
                         try {
                             const { getReceiptSettings, resolveDefaultReceiptLang } = await import(
                                 '../../../services/receiptSettingsService'

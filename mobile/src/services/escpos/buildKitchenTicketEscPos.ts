@@ -91,10 +91,21 @@ const KITCHEN_I18N: Record<KitchenReceiptLocale, KitchenTicketLabels> = {
     colQty: 'ژمارە',
     colProduct: 'بەرهەم',
   },
+  uz: {
+    title: 'OSHXONA CHEKI',
+    tableSource: 'STOL / MANBA:',
+    floor: 'HUDUD:',
+    waiter: 'OFITSANT:',
+    time: 'VAQT:',
+    empty: "(mahsulot yo'q)",
+    footer: '— tayyorlash uchun —',
+    colQty: 'Soni',
+    colProduct: 'Mahsulot',
+  },
 };
 
 function isKitchenLocale(v: unknown): v is KitchenReceiptLocale {
-  return v === 'tr' || v === 'en' || v === 'ar' || v === 'ku';
+  return v === 'tr' || v === 'en' || v === 'ar' || v === 'ku' || v === 'uz';
 }
 
 export function getKitchenTicketLabels(locale?: KitchenReceiptLocale): KitchenTicketLabels {
@@ -109,6 +120,8 @@ function kitchenDateLocale(locale: KitchenReceiptLocale): string {
       return 'ar-IQ';
     case 'ku':
       return 'ku-IQ';
+    case 'uz':
+      return 'uz-UZ';
     default:
       return 'tr-TR';
   }

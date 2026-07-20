@@ -32,7 +32,7 @@
 | 2 | Masa seç → adisyon | |
 | 3 | Ürün ara → ürün seç → miktar/fiyat dolar → kalem ekle | |
 | 4 | Mutfağa gönder → kalem statüsü pişiyor olur, mutfak sekmesinde fiş görünür | |
-| 5 | Mutfak fişi dili seç (TR/EN/AR/KU) → gönder + yazdır; etiketler seçilen dilde | |
+| 5 | Mutfak fişi dili seç (TR/EN/AR/KU/UZ) → gönder + yazdır; etiketler seçilen dilde (Özbekçe: OSHXONA CHEKI) | |
 | 6 | Yazıcı: Restoran yazıcı ayarlarında kategori→ağ IP; fiş doğru yazıcıya gider | |
 | 7 | Mutfak sekmesi → kalem hazırla / tümünü hazırla | |
 | 8 | Bugünkü akış → hızlı rezervasyon ekle → Onayla/Oturdu/İptal durumları | |

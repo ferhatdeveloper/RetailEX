@@ -66,7 +66,7 @@ export function MobilePOS({ products, customers, campaigns, onSaleComplete, onBa
 
   // Printing options
   const [autoPrint, setAutoPrint] = useState(false);
-  const [receiptLanguage, setReceiptLanguage] = useState<'tr' | 'en' | 'ar' | 'ku'>('tr');
+  const [receiptLanguage, setReceiptLanguage] = useState<'tr' | 'en' | 'ar' | 'ku' | 'uz'>('tr');
 
   useEffect(() => {
     let cancelled = false;
@@ -1064,6 +1064,7 @@ export function MobilePOS({ products, customers, campaigns, onSaleComplete, onBa
                       <option value="en">EN</option>
                       <option value="ar">AR</option>
                       <option value="ku">KU</option>
+                      <option value="uz">UZ</option>
                     </select>
                   </div>
                 </div>

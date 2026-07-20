@@ -31,11 +31,15 @@ type Props = NativeStackScreenProps<MainStackParamList, 'PrinterSettings'>;
 
 const PAPER_OPTIONS: ReceiptPaperSize[] = ['58mm', '80mm', 'A5', 'A4'];
 
-const LANG_LABEL_KEYS: Record<ReceiptLangCode, 'langTr' | 'langEn' | 'langAr' | 'langKu'> = {
+const LANG_LABEL_KEYS: Record<
+  ReceiptLangCode,
+  'langTr' | 'langEn' | 'langAr' | 'langKu' | 'langUz'
+> = {
   tr: 'langTr',
   en: 'langEn',
   ar: 'langAr',
   ku: 'langKu',
+  uz: 'langUz',
 };
 
 function resolvePrintMessage(

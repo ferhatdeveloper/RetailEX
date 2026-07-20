@@ -104,7 +104,7 @@ interface ExistingEditSnap {
 }
 
 function isKitchenReceiptLocale(s: string): s is KitchenReceiptLocale {
-    return s === 'tr' || s === 'en' || s === 'ar' || s === 'ku';
+    return s === 'tr' || s === 'en' || s === 'ar' || s === 'ku' || s === 'uz';
 }
 
 /** Randevu cihazı → fişte gösterilecek ad */

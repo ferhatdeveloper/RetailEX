@@ -31,6 +31,7 @@ const LABELS: Record<
   en: { testTitle: 'TEST RECEIPT', thanks: 'Thank you', total: 'TOTAL', date: 'Date', saleRef: 'Receipt' },
   ar: { testTitle: 'إيصال تجريبي', thanks: 'شكراً', total: 'المجموع', date: 'التاريخ', saleRef: 'إيصال' },
   ku: { testTitle: 'TEST FÎŞ', thanks: 'Spas', total: 'KOMÎ', date: 'Dîrok', saleRef: 'Fîş' },
+  uz: { testTitle: 'TEST CHEK', thanks: 'Rahmat', total: 'JAMI', date: 'Sana', saleRef: 'Chek' },
 };
 
 function formatMoney(n: number): string {

@@ -4,10 +4,10 @@
 import { postgres, ERP_SETTINGS } from './postgres';
 
 /** Fiş / önizleme dilleri — POS fişi ve çeviri anahtarları ile uyumlu */
-export type ReceiptLangCode = 'tr' | 'en' | 'ar' | 'ku';
+export type ReceiptLangCode = 'tr' | 'en' | 'ar' | 'ku' | 'uz';
 export type PosReceiptPrintFormat = '80mm' | 'A5' | 'A4';
 
-const RECEIPT_LANG_CODES: readonly ReceiptLangCode[] = ['tr', 'en', 'ar', 'ku'];
+const RECEIPT_LANG_CODES: readonly ReceiptLangCode[] = ['tr', 'en', 'ar', 'ku', 'uz'];
 const POS_RECEIPT_PRINT_FORMATS: readonly PosReceiptPrintFormat[] = ['80mm', 'A5', 'A4'];
 
 export function isReceiptLangCode(s: string | undefined | null): s is ReceiptLangCode {

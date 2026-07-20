@@ -9,7 +9,7 @@ import { formatNumber } from './formatNumber';
 import { formatCurrency, formatMoneyWithCode, getGlobalCurrency, getCurrencyDecimalPlaces, moneyEpsilon } from './currency';
 import { receiptNotesForDisplay } from './receiptNotes';
 /** Receipt80mm / POS fiş dili */
-export type Receipt80mmPrintLocale = 'tr' | 'en' | 'ar' | 'ku';
+export type Receipt80mmPrintLocale = 'tr' | 'en' | 'ar' | 'ku' | 'uz';
 
 function escapeHtml(s: string): string {
   return s
@@ -22,7 +22,15 @@ function escapeHtml(s: string): string {
 function formatReceiptDate(iso: string, locale: Receipt80mmPrintLocale): string {
   const d = new Date(iso);
   const loc =
-    locale === 'ar' ? 'ar-SA' : locale === 'ku' ? 'ku-IQ' : locale === 'en' ? 'en-GB' : 'tr-TR';
+    locale === 'ar'
+      ? 'ar-SA'
+      : locale === 'ku'
+        ? 'ku-IQ'
+        : locale === 'en'
+          ? 'en-GB'
+          : locale === 'uz'
+            ? 'uz-UZ'
+            : 'tr-TR';
   return `${d.toLocaleDateString(loc)} ${d.toLocaleTimeString(loc)}`;
 }
 
@@ -178,6 +186,36 @@ const TEXT: Record<Receipt80mmPrintLocale, RText> = {
     treatmentShots: 'تەقینەوە',
     noteLabel: 'تێبینی',
   },
+  uz: {
+    receiptNo: 'CHEK №',
+    date: 'SANA',
+    cashier: 'KASSIR',
+    customer: 'MIJOZ',
+    table: 'STOL',
+    device: 'QURILMA',
+    staff: 'XODIM',
+    operation: 'XIZMAT',
+    productLabel: 'Mahsulot',
+    qtyLabel: 'Soni',
+    amountLabel: 'Summa',
+    subtotal: 'ORALIQ JAMI',
+    discount: 'CHEGIRMA',
+    campaign: 'AKSIYA',
+    total: 'JAMI',
+    paymentDetails: "TO'LOV TAFSILOTLARI",
+    paid: "TO'LANGAN",
+    change: 'QAYTIM',
+    remaining: 'QOLDIQ',
+    thanks: 'Bizni tanlaganingiz uchun rahmat',
+    footerLine: 'Professional ERP yechimlari',
+    cash: 'Naqd',
+    card: 'Karta',
+    veresiye: 'Nasiya',
+    qr: 'QR',
+    treatmentDegree: 'Daraja',
+    treatmentShots: 'Zarba',
+    noteLabel: 'IZOH',
+  },
 };
 
 function paymentLabel(method: string, T: RText): string {
@@ -258,7 +296,13 @@ export function buildReceipt80mmPrintHtml(input: BuildReceipt80mmPrintHtmlInput)
   };
 
   const locale: Receipt80mmPrintLocale =
-    localeIn === 'tr' || localeIn === 'en' || localeIn === 'ar' || localeIn === 'ku' ? localeIn : 'tr';
+    localeIn === 'tr' ||
+    localeIn === 'en' ||
+    localeIn === 'ar' ||
+    localeIn === 'ku' ||
+    localeIn === 'uz'
+      ? localeIn
+      : 'tr';
   const T = TEXT[locale];
   const isRTL = locale === 'ar' || locale === 'ku';
   const dir = isRTL ? 'rtl' : 'ltr';

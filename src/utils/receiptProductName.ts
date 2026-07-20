@@ -8,6 +8,7 @@ export const RECEIPT_PRODUCT_NAME_FIELD_OPTIONS: { value: string; label: string 
   { value: 'name_en', label: 'name_en' },
   { value: 'name_ar', label: 'name_ar' },
   { value: 'name_ku', label: 'name_ku' },
+  { value: 'name_uz', label: 'name_uz' },
   { value: 'code', label: 'code' },
   { value: 'sku', label: 'sku' },
   { value: 'description', label: 'description' },
@@ -15,6 +16,7 @@ export const RECEIPT_PRODUCT_NAME_FIELD_OPTIONS: { value: string; label: string 
   { value: 'description_en', label: 'description_en' },
   { value: 'description_ar', label: 'description_ar' },
   { value: 'description_ku', label: 'description_ku' },
+  { value: 'description_uz', label: 'description_uz' },
 ];
 
 const ALLOWED_FIELDS = new Set(RECEIPT_PRODUCT_NAME_FIELD_OPTIONS.map((o) => o.value));

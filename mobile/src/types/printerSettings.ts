@@ -2,7 +2,7 @@
 export type PrinterInterface = 'bluetooth' | 'network' | 'system';
 export type PrinterType = 'thermal' | 'standard';
 export type ReceiptPaperSize = '58mm' | '80mm' | 'A4' | 'A5';
-export type ReceiptLangCode = 'tr' | 'en' | 'ar' | 'ku';
+export type ReceiptLangCode = 'tr' | 'en' | 'ar' | 'ku' | 'uz';
 
 export type MobilePrinterSettings = {
   enabled: boolean;

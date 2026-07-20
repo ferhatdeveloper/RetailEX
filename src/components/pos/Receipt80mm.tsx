@@ -31,7 +31,7 @@ interface Receipt80mmProps {
   headerBanner?: string;
 }
 
-const RECEIPT_LANGS = ['tr', 'en', 'ar', 'ku'] as const;
+const RECEIPT_LANGS = ['tr', 'en', 'ar', 'ku', 'uz'] as const;
 type ReceiptLang = (typeof RECEIPT_LANGS)[number];
 
 function isReceiptLang(s: string | undefined): s is ReceiptLang {
@@ -120,6 +120,44 @@ export function Receipt80mm({
     // Safety fallback for missing receipt translations
     if (!langTrans.receipt) {
       langTrans.receipt = (allTranslations as any)['tr'].receipt;
+    }
+    // Uygulama UI dilinde henüz tam `uz` paketi yok — fiş etiketlerini Özbekçe doldur
+    if (selectedLang === 'uz') {
+      return {
+        ...langTrans,
+        receipt: {
+          ...((allTranslations as any).tr?.receipt || {}),
+          title: 'SOTUV CHEKI',
+          receiptNo: 'CHEK №',
+          date: 'SANA',
+          cashier: 'KASSIR',
+          customer: 'MIJOZ',
+          table: 'STOL',
+          device: 'QURILMA',
+          staff: 'XODIM',
+          operation: 'XIZMAT',
+          treatmentDegreeLabel: 'Daraja',
+          treatmentShotsLabel: 'Zarba',
+          noteLabel: 'IZOH',
+          productLabel: 'Mahsulot',
+          qtyLabel: 'Soni',
+          amountLabel: 'Summa',
+          unitPriceLabel: 'Birlik narxi',
+          subtotal: 'ORALIQ JAMI',
+          discount: 'CHEGIRMA',
+          campaign: 'AKSIYA',
+          total: 'JAMI',
+          paymentDetails: "TO'LOV TAFSILOTLARI",
+          paid: "TO'LANGAN",
+          change: 'QAYTIM',
+          thanks: 'Bizni tanlaganingiz uchun rahmat',
+          returnPolicy: "Bu chek qaytarish va almashtirish uchun kerak.",
+          footer: 'Professional ERP yechimlari',
+          autoPrintReceipt: 'Chekni avtomatik chop etish',
+        },
+        cash: 'Naqd',
+        card: 'Karta',
+      };
     }
     return langTrans;
   }, [selectedLang, allTranslations, currentSystemLang]);
@@ -412,7 +450,16 @@ export function Receipt80mm({
 
   const formatDate = (date: string) => {
     const d = new Date(date);
-    const locale = selectedLang === 'ar' ? 'ar-SA' : selectedLang === 'ku' ? 'ku-IQ' : 'tr-TR';
+    const locale =
+      selectedLang === 'ar'
+        ? 'ar-SA'
+        : selectedLang === 'ku'
+          ? 'ku-IQ'
+          : selectedLang === 'en'
+            ? 'en-GB'
+            : selectedLang === 'uz'
+              ? 'uz-UZ'
+              : 'tr-TR';
     return d.toLocaleDateString(locale) + ' ' + d.toLocaleTimeString(locale);
   };
 
@@ -420,7 +467,8 @@ export function Receipt80mm({
     { code: 'tr', label: 'TR', flag: '🇹🇷' },
     { code: 'en', label: 'EN', flag: '🇬🇧' },
     { code: 'ar', label: 'AR', flag: '🇮🇶' },
-    { code: 'ku', label: 'KU', flag: '☀️' }
+    { code: 'ku', label: 'KU', flag: '☀️' },
+    { code: 'uz', label: 'UZ', flag: '🇺🇿' },
   ];
 
   return (

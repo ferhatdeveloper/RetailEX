@@ -75,6 +75,7 @@ const KITCHEN_LANGS: { code: ReceiptLangCode; label: string }[] = [
   { code: 'en', label: 'EN' },
   { code: 'ar', label: 'AR' },
   { code: 'ku', label: 'KU' },
+  { code: 'uz', label: 'UZ' },
 ];
 
 type ScheduleItem = {

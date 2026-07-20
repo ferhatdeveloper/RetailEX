@@ -28,7 +28,7 @@ interface PrinterConfig {
   orientation?: 'portrait' | 'landscape';
   // Auto print & default language
   autoPrint?: boolean;
-  defaultLanguage?: 'tr' | 'en' | 'ar' | 'ku';
+  defaultLanguage?: 'tr' | 'en' | 'ar' | 'ku' | 'uz';
   /** Tauri Desktop: 80mm fiş için Windows yazıcı adı (Denetim Masası ile birebir). Boş = varsayılan yazıcı. */
   windowsPrinterName?: string;
 }
@@ -353,6 +353,7 @@ export function PrinterSettings() {
                     <option value="en">English</option>
                     <option value="ar">العربية (Arapça)</option>
                     <option value="ku">Kurdî (Kürtçe)</option>
+                    <option value="uz">Oʻzbekcha (Özbekçe)</option>
                   </select>
                 </div>
               </div>

@@ -5,7 +5,7 @@ import { RECEIPT_80MM_DOCUMENT_CSS, RECEIPT_80MM_VIEWPORT_FOR_HEADLESS } from '.
 import { IS_TAURI } from './env';
 
 /** Receipt80mm / mutfak fişi ile aynı dil kodları */
-export type KitchenReceiptLocale = 'tr' | 'en' | 'ar' | 'ku';
+export type KitchenReceiptLocale = 'tr' | 'en' | 'ar' | 'ku' | 'uz';
 
 /** 80mm ön hesap — `Receipt80mm` / `translations.receipt` ile uyumlu etiketler */
 const ADISYON_I18N: Record<
@@ -135,6 +135,31 @@ const ADISYON_I18N: Record<
     payQr: 'QR',
     taxId: 'ژمارەی باج',
     taxOffice: 'نووسینگەی باج',
+  },
+  uz: {
+    docTitle: 'Chek',
+    draftBanner: 'OLDINDAN HISOB',
+    receiptNo: 'CHEK №',
+    date: 'SANA',
+    cashier: 'KASSIR',
+    table: 'STOL',
+    colProduct: 'Mahsulot',
+    colQty: 'Soni',
+    colAmount: 'Summa',
+    subtotal: 'ORALIQ JAMI',
+    discount: 'CHEGIRMA',
+    total: 'JAMI',
+    paymentHeading: "TO'LOV",
+    paid: "TO'LANGAN",
+    remaining: 'QOLDIQ',
+    change: 'QAYTIM',
+    thanksLine: 'Bizni tanlaganingiz uchun rahmat',
+    payCash: 'NAQD',
+    payCard: 'KARTA',
+    payCredit: 'NASIYA',
+    payQr: 'QR',
+    taxId: 'STIR',
+    taxOffice: 'DSI',
   },
 };
 
@@ -292,12 +317,26 @@ const KITCHEN_I18N: Record<
     colQty: 'ژمارە',
     colProduct: 'بەرهەم',
   },
+  uz: {
+    title: 'OSHXONA CHEKI',
+    tableSource: 'STOL / MANBA:',
+    floor: 'HUDUD:',
+    waiter: 'OFITSANT:',
+    time: 'VAQT:',
+    empty: "(mahsulot yo'q)",
+    footer: '— tayyorlash uchun —',
+    colQty: 'Soni',
+    colProduct: 'Mahsulot',
+  },
 };
+
+function isKitchenReceiptLocale(locale: string | undefined): locale is KitchenReceiptLocale {
+  return locale === 'tr' || locale === 'en' || locale === 'ar' || locale === 'ku' || locale === 'uz';
+}
 
 /** Mutfak fişi etiketleri (HTML / ESC/POS) */
 export function getKitchenTicketLabels(locale?: KitchenReceiptLocale) {
-  const loc: KitchenReceiptLocale =
-    locale === 'tr' || locale === 'en' || locale === 'ar' || locale === 'ku' ? locale : 'tr';
+  const loc: KitchenReceiptLocale = isKitchenReceiptLocale(locale) ? locale : 'tr';
   return KITCHEN_I18N[loc];
 }
 
@@ -309,6 +348,8 @@ function kitchenDateLocale(locale: KitchenReceiptLocale): string {
       return 'ar-IQ';
     case 'ku':
       return 'ku-IQ';
+    case 'uz':
+      return 'uz-UZ';
     default:
       return 'tr-TR';
   }
@@ -316,8 +357,7 @@ function kitchenDateLocale(locale: KitchenReceiptLocale): string {
 
 /** Mutfak fişi «SAAT» satırı (ESC/POS ile aynı biçim) */
 export function formatKitchenTicketTime(locale?: KitchenReceiptLocale): string {
-  const loc: KitchenReceiptLocale =
-    locale === 'tr' || locale === 'en' || locale === 'ar' || locale === 'ku' ? locale : 'tr';
+  const loc: KitchenReceiptLocale = isKitchenReceiptLocale(locale) ? locale : 'tr';
   return new Date().toLocaleString(kitchenDateLocale(loc));
 }
 

@@ -498,11 +498,12 @@ function ReceiptSettingsView() {
     companyTaxNumber: '',
     logoDataUrl: '' as string,
     /** Boş = uygulama dili; dolu = POS fiş varsayılanı */
-    defaultReceiptLanguage: '' as '' | 'tr' | 'en' | 'ar' | 'ku',
+    defaultReceiptLanguage: '' as '' | 'tr' | 'en' | 'ar' | 'ku' | 'uz',
     productNameFieldTr: 'name',
     productNameFieldEn: 'name',
     productNameFieldAr: 'name',
     productNameFieldKu: 'name',
+    productNameFieldUz: 'name',
   });
 
   useEffect(() => {
@@ -520,13 +521,14 @@ function ReceiptSettingsView() {
             companyTaxOffice: data.companyTaxOffice ?? '',
             companyTaxNumber: data.companyTaxNumber ?? '',
             logoDataUrl: data.logoDataUrl ?? '',
-            defaultReceiptLanguage: (['tr', 'en', 'ar', 'ku'].includes(String(data.defaultReceiptLanguage))
-              ? (data.defaultReceiptLanguage as 'tr' | 'en' | 'ar' | 'ku')
-              : '') as '' | 'tr' | 'en' | 'ar' | 'ku',
+            defaultReceiptLanguage: (['tr', 'en', 'ar', 'ku', 'uz'].includes(String(data.defaultReceiptLanguage))
+              ? (data.defaultReceiptLanguage as 'tr' | 'en' | 'ar' | 'ku' | 'uz')
+              : '') as '' | 'tr' | 'en' | 'ar' | 'ku' | 'uz',
             productNameFieldTr: m.tr || 'name',
             productNameFieldEn: m.en || 'name',
             productNameFieldAr: m.ar || 'name',
             productNameFieldKu: m.ku || 'name',
+            productNameFieldUz: m.uz || 'name',
           });
         }
       } catch (e) {
@@ -564,6 +566,7 @@ function ReceiptSettingsView() {
           en: form.productNameFieldEn || 'name',
           ar: form.productNameFieldAr || 'name',
           ku: form.productNameFieldKu || 'name',
+          uz: form.productNameFieldUz || 'name',
         },
       });
       invalidateReceiptSettingsCache();
@@ -684,6 +687,7 @@ function ReceiptSettingsView() {
                 <option value="en">English</option>
                 <option value="ar">العربية</option>
                 <option value="ku">کوردی</option>
+                <option value="uz">Oʻzbekcha</option>
               </select>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -693,6 +697,7 @@ function ReceiptSettingsView() {
                   { key: 'productNameFieldEn' as const, label: 'EN — ürün adı alanı' },
                   { key: 'productNameFieldAr' as const, label: 'AR — ürün adı alanı' },
                   { key: 'productNameFieldKu' as const, label: 'KU — ürün adı alanı' },
+                  { key: 'productNameFieldUz' as const, label: 'UZ — ürün adı alanı' },
                 ]
               ).map(({ key, label }) => (
                 <div key={key}>
