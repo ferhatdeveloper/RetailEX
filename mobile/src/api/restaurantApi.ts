@@ -60,6 +60,9 @@ export type RestOrderItem = {
   course?: string | null;
   note?: string | null;
   options?: unknown;
+  category_name?: string | null;
+  category_id?: string | null;
+  category_code?: string | null;
   sent_to_kitchen_at: string | null;
 };
 
@@ -390,6 +393,9 @@ function mapOrderDetail(
         course: it.course == null ? null : String(it.course),
         note: it.note == null ? null : String(it.note),
         options: it.options,
+        category_name: it.category_name == null ? null : String(it.category_name),
+        category_id: it.category_id == null ? null : String(it.category_id),
+        category_code: it.category_code == null ? null : String(it.category_code),
         sent_to_kitchen_at:
           it.sent_to_kitchen_at == null ? null : String(it.sent_to_kitchen_at),
       }))
@@ -428,6 +434,9 @@ const ORDER_DETAIL_SELECT = (orders: string, tables: string, items: string) =>
             'course', i.course,
             'note', i.note,
             'options', i.options,
+            'category_name', COALESCE(NULLIF(c.name, ''), NULLIF(p.category_code, ''), NULLIF(p.group_code, '')),
+            'category_id', p.category_id,
+            'category_code', p.category_code,
             'sent_to_kitchen_at', i.sent_to_kitchen_at
           )
           ORDER BY i.created_at
@@ -436,7 +445,9 @@ const ORDER_DETAIL_SELECT = (orders: string, tables: string, items: string) =>
       ) AS item_json
    FROM ${orders} o
    LEFT JOIN ${tables} t ON t.id = o.table_id
-   LEFT JOIN ${items} i ON i.order_id = o.id AND COALESCE(i.is_void, false) = false`;
+   LEFT JOIN ${items} i ON i.order_id = o.id AND COALESCE(i.is_void, false) = false
+   LEFT JOIN ${productsTable()} p ON p.id = i.product_id
+   LEFT JOIN ${categoriesTable()} c ON c.id = p.category_id OR c.code = p.category_code`;
 
 export async function getActiveOrderForTable(tableId: string): Promise<RestOrderDetail | null> {
   const orders = restOrdersTable();

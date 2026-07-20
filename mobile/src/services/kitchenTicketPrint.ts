@@ -9,6 +9,7 @@ export type KitchenTicketPrintRequest = {
   order: RestOrderDetail;
   kitchenResult: SendToKitchenResult;
   tableName?: string | null;
+  menu?: Array<{ id: string; category?: string | null }>;
   locale?: ReceiptLangCode | null;
 };
 
@@ -32,6 +33,9 @@ export async function printKitchenTicketsForOrder(
       course: item.course,
       note: item.note,
       options: item.options,
+      categoryName: item.category_name,
+      categoryId: item.category_id,
+      categoryCode: item.category_code,
     }));
 
   return printEscposKitchenTicketsForOrder({
@@ -40,6 +44,7 @@ export async function printKitchenTicketsForOrder(
       waiter: request.order.waiter,
     },
     pendingItems,
+    menu: request.menu,
     locale: request.locale,
   });
 }

@@ -508,6 +508,7 @@ export function RestaurantScreen({ route }: Props) {
         order: orderBeforeSend,
         kitchenResult: result,
         tableName: selectedTable.name || orderBeforeSend.table_name,
+        menu: menuItems,
         locale: kitchenLocale,
       });
       await refreshOrder(selectedTable.id, oid);
