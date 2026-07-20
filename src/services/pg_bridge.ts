@@ -1252,13 +1252,36 @@ const port = (() => {
     return n;
 })();
 
+const hostname = (process.env.BRIDGE_BIND || '0.0.0.0').trim() || '0.0.0.0';
+
+function detectedLanIps(): string[] {
+    const ips: string[] = [];
+    const nets = os.networkInterfaces();
+    for (const entries of Object.values(nets)) {
+        for (const entry of entries || []) {
+            const family = typeof entry.family === 'string' ? entry.family : String(entry.family);
+            if (family !== 'IPv4' || entry.internal) continue;
+            ips.push(entry.address);
+        }
+    }
+    return Array.from(new Set(ips)).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+}
+
 const server = serve(
     {
         fetch: app.fetch,
         port,
+        hostname,
     },
     () => {
-        console.log(`🚀 SQL Bridge started on http://localhost:${port}`);
+        const lanIps = detectedLanIps();
+        console.log(`🚀 SQL Bridge started on http://${hostname}:${port}`);
+        console.log(`[PG Bridge] Bind: ${hostname}:${port}`);
+        if (lanIps.length) {
+            console.log(`[PG Bridge] LAN URL adayları: ${lanIps.map((ip) => `http://${ip}:${port}`).join(', ')}`);
+        } else {
+            console.log('[PG Bridge] LAN IPv4 adresi bulunamadı; ipconfig/ifconfig ile PC LAN IP adresini kontrol edin.');
+        }
     }
 );
 

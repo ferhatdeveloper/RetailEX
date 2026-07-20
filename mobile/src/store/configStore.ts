@@ -54,6 +54,36 @@ export type DbConfig = {
   isConfigured: boolean;
 };
 
+function envString(value: string | undefined): string {
+  return String(value ?? '').trim();
+}
+
+function envPort(value: string | undefined, fallback: number): number {
+  const n = Number(envString(value));
+  return Number.isFinite(n) && n > 0 && n <= 65535 ? n : fallback;
+}
+
+function envDbMode(value: string | undefined): DbMode {
+  return envString(value) === 'online' ? 'online' : 'local';
+}
+
+function envNetworkPolicy(value: string | undefined): NetworkPolicy {
+  const v = envString(value);
+  return v === 'online' || v === 'offline' || v === 'hybrid' ? v : 'hybrid';
+}
+
+function envApiMode(value: string | undefined): ApiMode {
+  const v = envString(value);
+  return v === 'postgrest' || v === 'hybrid' || v === 'bridge' ? v : 'hybrid';
+}
+
+/** Web ile aynı: sondaki / temizlenir */
+export function normalizeRemoteRestUrl(input: string | null | undefined): string {
+  const raw = String(input ?? '').trim();
+  if (!raw) return '';
+  return raw.replace(/\/+$/, '');
+}
+
 /** Eski tek-uç alanlar (migration) */
 type LegacyFlatConfig = Partial<{
   bridgeHost: string;
@@ -97,26 +127,53 @@ function defaultBridgeHost(): string {
   return '127.0.0.1';
 }
 
+function publicPgEndpoint(which: 'local' | 'remote', fallback: PgEndpoint): PgEndpoint {
+  const isRemote = which === 'remote';
+  return {
+    host:
+      envString(
+        isRemote
+          ? process.env.EXPO_PUBLIC_REMOTE_PG_HOST || process.env.EXPO_PUBLIC_PG_HOST
+          : process.env.EXPO_PUBLIC_LOCAL_PG_HOST || process.env.EXPO_PUBLIC_PG_HOST,
+      ) || fallback.host,
+    port: envPort(
+      isRemote
+        ? process.env.EXPO_PUBLIC_REMOTE_PG_PORT || process.env.EXPO_PUBLIC_PG_PORT
+        : process.env.EXPO_PUBLIC_LOCAL_PG_PORT || process.env.EXPO_PUBLIC_PG_PORT,
+      fallback.port,
+    ),
+    database:
+      envString(
+        isRemote
+          ? process.env.EXPO_PUBLIC_REMOTE_PG_DATABASE || process.env.EXPO_PUBLIC_PG_DATABASE
+          : process.env.EXPO_PUBLIC_LOCAL_PG_DATABASE || process.env.EXPO_PUBLIC_PG_DATABASE,
+      ) || fallback.database,
+    user:
+      envString(
+        isRemote
+          ? process.env.EXPO_PUBLIC_REMOTE_PG_USER || process.env.EXPO_PUBLIC_PG_USER
+          : process.env.EXPO_PUBLIC_LOCAL_PG_USER || process.env.EXPO_PUBLIC_PG_USER,
+      ) || fallback.user,
+    password:
+      isRemote
+        ? process.env.EXPO_PUBLIC_REMOTE_PG_PASSWORD ?? process.env.EXPO_PUBLIC_PG_PASSWORD ?? fallback.password
+        : process.env.EXPO_PUBLIC_LOCAL_PG_PASSWORD ?? process.env.EXPO_PUBLIC_PG_PASSWORD ?? fallback.password,
+  };
+}
+
 const DEFAULT_CONFIG: DbConfig = {
-  bridgeHost: defaultBridgeHost(),
-  bridgePort: 3001,
-  dbMode: 'local',
-  networkPolicy: 'hybrid',
+  bridgeHost: envString(process.env.EXPO_PUBLIC_BRIDGE_HOST) || defaultBridgeHost(),
+  bridgePort: envPort(process.env.EXPO_PUBLIC_BRIDGE_PORT, 3001),
+  dbMode: envDbMode(process.env.EXPO_PUBLIC_DB_MODE),
+  networkPolicy: envNetworkPolicy(process.env.EXPO_PUBLIC_NETWORK_POLICY),
   /** Varsayılan hybrid; saf PostgREST + remoteRestUrl ile ana okumalar REST */
-  apiMode: 'hybrid',
-  remoteRestUrl: '',
-  postgrestAnonKey: '',
-  local: { ...DEFAULT_LOCAL },
-  remote: { ...DEFAULT_REMOTE },
+  apiMode: envApiMode(process.env.EXPO_PUBLIC_API_MODE),
+  remoteRestUrl: normalizeRemoteRestUrl(process.env.EXPO_PUBLIC_REMOTE_REST_URL),
+  postgrestAnonKey: process.env.EXPO_PUBLIC_POSTGREST_ANON_KEY ?? '',
+  local: publicPgEndpoint('local', DEFAULT_LOCAL),
+  remote: publicPgEndpoint('remote', DEFAULT_REMOTE),
   isConfigured: false,
 };
-
-/** Web ile aynı: sondaki / temizlenir */
-export function normalizeRemoteRestUrl(input: string | null | undefined): string {
-  const raw = String(input ?? '').trim();
-  if (!raw) return '';
-  return raw.replace(/\/+$/, '');
-}
 
 export function parseApiMode(v: unknown): ApiMode {
   if (v === 'postgrest' || v === 'hybrid' || v === 'bridge') return v;
@@ -229,12 +286,8 @@ export const useConfigStore = create<ConfigState>()(
         set({
           config: {
             ...DEFAULT_CONFIG,
-            bridgeHost: defaultBridgeHost(),
-            local: { ...DEFAULT_LOCAL },
-            remote: { ...DEFAULT_REMOTE },
-            remoteRestUrl: '',
-            postgrestAnonKey: '',
-            apiMode: 'hybrid',
+            local: { ...DEFAULT_CONFIG.local },
+            remote: { ...DEFAULT_CONFIG.remote },
           },
         }),
       setHydrated: (v) => set({ isHydrated: v }),

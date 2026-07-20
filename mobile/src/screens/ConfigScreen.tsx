@@ -38,6 +38,12 @@ import {
 } from '../utils/lanServerScan';
 
 type Props = NativeStackScreenProps<AuthStackParamList, 'Config'>;
+type ConnectionStatusTone = 'ok' | 'warn' | 'fail';
+type ConnectionStatus = {
+  tone: ConnectionStatusTone;
+  title: string;
+  detail: string;
+};
 
 function cloneConfig(c: DbConfig): DbConfig {
   return {
@@ -48,6 +54,52 @@ function cloneConfig(c: DbConfig): DbConfig {
     postgrestAnonKey: c.postgrestAnonKey ?? '',
     local: { ...c.local },
     remote: { ...c.remote },
+  };
+}
+
+function isLikelyAndroidEmulator(): boolean {
+  if (Platform.OS !== 'android') return false;
+  const constants = Platform.constants as Record<string, unknown> | undefined;
+  const haystack = [
+    constants?.Brand,
+    constants?.Manufacturer,
+    constants?.Model,
+    constants?.Device,
+    constants?.Product,
+    constants?.Fingerprint,
+    constants?.Hardware,
+  ]
+    .map((v) => String(v ?? '').toLowerCase())
+    .join(' ');
+  return /emulator|simulator|sdk_gphone|sdk_google|generic|goldfish|ranchu|vbox|genymotion/.test(haystack);
+}
+
+function isAndroidLoopbackBridgeHostOnDevice(host: string): boolean {
+  return Platform.OS === 'android' && host.trim() === '10.0.2.2' && !isLikelyAndroidEmulator();
+}
+
+function statusColors(tone: ConnectionStatusTone, darkMode: boolean) {
+  if (tone === 'ok') {
+    return {
+      borderColor: darkMode ? 'rgba(52,211,153,0.55)' : '#059669',
+      backgroundColor: darkMode ? 'rgba(6,78,59,0.35)' : 'rgba(236,253,245,0.95)',
+      titleColor: darkMode ? '#6ee7b7' : '#065f46',
+      bodyColor: darkMode ? '#a7f3d0' : '#047857',
+    };
+  }
+  if (tone === 'fail') {
+    return {
+      borderColor: darkMode ? 'rgba(248,113,113,0.55)' : '#dc2626',
+      backgroundColor: darkMode ? 'rgba(127,29,29,0.35)' : 'rgba(254,242,242,0.95)',
+      titleColor: darkMode ? '#fca5a5' : '#991b1b',
+      bodyColor: darkMode ? '#fecaca' : '#b91c1c',
+    };
+  }
+  return {
+    borderColor: darkMode ? '#fbbf24' : '#d97706',
+    backgroundColor: darkMode ? 'rgba(120,53,15,0.35)' : 'rgba(254,243,199,0.95)',
+    titleColor: darkMode ? '#fcd34d' : '#92400e',
+    bodyColor: darkMode ? '#fde68a' : '#78350f',
   };
 }
 
@@ -63,6 +115,7 @@ export function ConfigScreen({ navigation }: Props) {
   const [scanPct, setScanPct] = useState(0);
   const [scanFound, setScanFound] = useState(0);
   const [scanHits, setScanHits] = useState<LanScanHit[]>([]);
+  const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus | null>(null);
   const [scanMeta, setScanMeta] = useState<{
     deviceIp: string | null;
     prefix: string;
@@ -89,6 +142,10 @@ export function ConfigScreen({ navigation }: Props) {
     const ep = draft.dbMode === 'online' ? draft.remote : draft.local;
     return `${ep.host}:${ep.port}/${ep.database}`;
   }, [draft]);
+  const androidLoopbackWarning = useMemo(
+    () => isAndroidLoopbackBridgeHostOnDevice(draft.bridgeHost),
+    [draft.bridgeHost],
+  );
 
   const onSave = () => {
     const next: DbConfig = {
@@ -127,6 +184,11 @@ export function ConfigScreen({ navigation }: Props) {
     setTesting(true);
     const result = await testBridgeConnection(draft, which);
     setTesting(false);
+    setConnectionStatus({
+      tone: result.ok ? 'ok' : 'fail',
+      title: result.ok ? t('connectionOk') : t('connectionFail'),
+      detail: result.detail,
+    });
     Alert.alert(
       result.ok ? t('connectionOk') : t('connectionFail'),
       result.detail,
@@ -137,6 +199,11 @@ export function ConfigScreen({ navigation }: Props) {
     setTesting(true);
     const result = await testPostgrestConnection(draft);
     setTesting(false);
+    setConnectionStatus({
+      tone: result.ok ? 'ok' : 'fail',
+      title: result.ok ? t('connectionOk') : t('connectionFail'),
+      detail: result.detail,
+    });
     Alert.alert(
       result.ok ? t('connectionOk') : t('connectionFail'),
       result.detail,
@@ -153,6 +220,11 @@ export function ConfigScreen({ navigation }: Props) {
     setScanFound(0);
     setScanHits([]);
     setScanMeta(null);
+    setConnectionStatus({
+      tone: 'warn',
+      title: t('scanLan'),
+      detail: t('scanLanScanning', { pct: 0, found: 0 }),
+    });
     try {
       const result = await scanLanServers({
         hintHost: draft.bridgeHost,
@@ -195,13 +267,35 @@ export function ConfigScreen({ navigation }: Props) {
         ]
           .filter(Boolean)
           .join('\n');
+        setConnectionStatus({
+          tone: 'warn',
+          title: t('scanLanNone'),
+          detail,
+        });
         Alert.alert(t('scanLanNone'), detail);
+      } else {
+        const bridgeCount = result.hits.filter((h) => h.kind === 'bridge').length;
+        const postgrestCount = result.hits.filter((h) => h.kind === 'postgrest').length;
+        setConnectionStatus({
+          tone: 'ok',
+          title: t('scanLanFoundCount', { count: result.hits.length }),
+          detail: t('scanLanStatusFound', {
+            bridge: bridgeCount,
+            postgrest: postgrestCount,
+          }),
+        });
       }
     } catch (e) {
       if (!ctrl.signal.aborted) {
+        const detail = e instanceof Error ? e.message : String(e);
+        setConnectionStatus({
+          tone: 'fail',
+          title: t('scanLanNone'),
+          detail,
+        });
         Alert.alert(
           t('scanLanNone'),
-          e instanceof Error ? e.message : String(e),
+          detail,
         );
       }
     } finally {
@@ -644,6 +738,26 @@ export function ConfigScreen({ navigation }: Props) {
                 }
                 keyboardType="number-pad"
               />
+              {androidLoopbackWarning ? (
+                <View
+                  style={[
+                    styles.warnBox,
+                    {
+                      borderColor: darkMode ? '#fbbf24' : '#d97706',
+                      backgroundColor: darkMode
+                        ? 'rgba(120,53,15,0.35)'
+                        : 'rgba(254,243,199,0.95)',
+                    },
+                  ]}
+                >
+                  <Text style={[styles.warnTitle, { color: darkMode ? '#fcd34d' : '#92400e' }]}>
+                    {t('androidPhysicalBridgeHostWarningTitle')}
+                  </Text>
+                  <Text style={[styles.warnBody, { color: darkMode ? '#fde68a' : '#78350f' }]}>
+                    {t('androidPhysicalBridgeHostWarning')}
+                  </Text>
+                </View>
+              ) : null}
 
               <PrimaryButton
                 label={scanning ? t('scanLanScanning', { pct: scanPct, found: scanFound }) : t('scanLan')}
@@ -659,6 +773,34 @@ export function ConfigScreen({ navigation }: Props) {
                   <ActivityIndicator size="small" color={palette.blue500} />
                   <Text style={[styles.hint, { color: colors.textMuted, flex: 1 }]}>
                     {t('scanLanScanning', { pct: scanPct, found: scanFound })}
+                  </Text>
+                </View>
+              ) : null}
+              {connectionStatus ? (
+                <View
+                  style={[
+                    styles.warnBox,
+                    {
+                      borderColor: statusColors(connectionStatus.tone, darkMode).borderColor,
+                      backgroundColor: statusColors(connectionStatus.tone, darkMode).backgroundColor,
+                    },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.warnTitle,
+                      { color: statusColors(connectionStatus.tone, darkMode).titleColor },
+                    ]}
+                  >
+                    {connectionStatus.title}
+                  </Text>
+                  <Text
+                    style={[
+                      styles.warnBody,
+                      { color: statusColors(connectionStatus.tone, darkMode).bodyColor },
+                    ]}
+                  >
+                    {connectionStatus.detail}
                   </Text>
                 </View>
               ) : null}

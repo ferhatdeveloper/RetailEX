@@ -40,7 +40,7 @@ export type LanScanOptions = {
 };
 
 const BRIDGE_PORTS = [3001, 3002] as const;
-const POSTGREST_PORTS = [3000, 54321] as const;
+const POSTGREST_PORTS = [3000, 3002, 54321] as const;
 const DEFAULT_TIMEOUT_MS = 600;
 const DEFAULT_CONCURRENCY = 28;
 
