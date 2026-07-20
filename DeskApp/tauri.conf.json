@@ -58,6 +58,8 @@
       "resources/start-postgrest-lan.ps1",
       "resources/install-postgrest-service.ps1",
       "resources/bridge.cjs",
+      "resources/kitchen-print-service.mjs",
+      "resources/README_PRINTER_SERVICE.md",
       "resources/package.json",
       "resources/install-bridge.ps1",
       "resources/install-bridge-npm.ps1",

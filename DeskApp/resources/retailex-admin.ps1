@@ -5,7 +5,7 @@ param(
     [switch]$Menu
 )
 
-$Script:ServiceNames = @("RetailEX_Service", "RetailEX_SQL_Bridge", "RetailEX_PostgREST")
+$Script:ServiceNames = @("RetailEX_Service", "RetailEX_SQL_Bridge", "RetailEX_Printer", "RetailEX_PostgREST")
 $Script:PassFields = @("erp_pass", "pg_remote_pass", "pg_local_pass", "logo_objects_pass")
 $Script:LogPath = Join-Path $env:TEMP "retailex_admin.log"
 
@@ -140,6 +140,7 @@ function Install-CoreServices {
     $baseDir = Split-Path -Parent $PSCommandPath
     $svcExe = Join-Path $baseDir "RetailEX_Service.exe"
     $bridgeExe = Join-Path $baseDir "RetailEX_SQL_Bridge.exe"
+    $printerExe = Join-Path $baseDir "RetailEX_Printer.exe"
     $bridgePs = Join-Path $baseDir "install-bridge.ps1"
 
     if (-not (Test-Path $svcExe)) { throw "RetailEX_Service.exe bulunamadi: $svcExe" }
@@ -159,6 +160,15 @@ function Install-CoreServices {
         & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $bridgePs
     } else {
         Write-WarnMsg "RetailEX_SQL_Bridge.exe/install-bridge.ps1 bulunamadi, SQL Bridge atlandi."
+    }
+
+    if (Test-Path $printerExe) {
+        Write-Info "RetailEX_Printer kuruluyor..."
+        & $printerExe --install
+        Start-Sleep -Seconds 1
+        Start-Service -Name "RetailEX_Printer" -ErrorAction SilentlyContinue
+    } else {
+        Write-WarnMsg "RetailEX_Printer.exe bulunamadi, Printer servisi atlandi."
     }
 
     $postgrestPs = Join-Path $baseDir "install-postgrest-service.ps1"

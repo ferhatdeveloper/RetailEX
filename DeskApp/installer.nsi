@@ -952,8 +952,10 @@ Section Install
   ; Copy external binaries
     File /a "/oname=RetailEX_Service.exe" "__REPO_ROOT__\DeskApp\target\release\RetailEX_Service.exe"
     File /a "/oname=RetailEX_SQL_Bridge.exe" "__REPO_ROOT__\DeskApp\target\release\RetailEX_SQL_Bridge.exe"
+    File /a "/oname=RetailEX_Printer.exe" "__REPO_ROOT__\DeskApp\target\release\RetailEX_Printer.exe"
     File /a "/oname=RetailEX_Config.exe" "__REPO_ROOT__\DeskApp\target\release\RetailEX_Config.exe"
     File /a "/oname=bridge.cjs" "__REPO_ROOT__\DeskApp\resources\bridge.cjs"
+    File /a "/oname=kitchen-print-service.mjs" "__REPO_ROOT__\DeskApp\resources\kitchen-print-service.mjs"
     File /a "/oname=package.json" "__REPO_ROOT__\DeskApp\resources\package.json"
     File /a "/oname=install-bridge.ps1" "__REPO_ROOT__\DeskApp\resources\install-bridge.ps1"
     File /a "/oname=install-bridge.cmd" "__REPO_ROOT__\DeskApp\resources\install-bridge.cmd"
@@ -965,6 +967,7 @@ Section Install
     File /a "/oname=install-services-common.ps1" "__REPO_ROOT__\DeskApp\resources\install-services-common.ps1"
     File /a "/oname=retailex-admin.ps1" "__REPO_ROOT__\DeskApp\resources\retailex-admin.ps1"
     File /a "/oname=retailex-admin.cmd" "__REPO_ROOT__\DeskApp\resources\retailex-admin.cmd"
+    File /a "/oname=README_PRINTER_SERVICE.md" "__REPO_ROOT__\DeskApp\resources\README_PRINTER_SERVICE.md"
     File /a "/oname=install-postgrest.ps1" "__REPO_ROOT__\DeskApp\resources\install-postgrest.ps1"
     ; Gömülü PostgREST (npm run postgrest:fetch — yoksa /nonfatal ile atlanır, kurulumda GitHub yedeği)
     File /nonfatal /a "/oname=postgrest.exe" "resources\postgrest\postgrest.exe"
@@ -999,7 +1002,7 @@ Section Install
     MessageBox MB_OK|MB_ICONINFORMATION "RetailEX çekirdek senkron hizmeti kuruldu; SQL Bridge kaydı eksik veya gecikti (çıkış 2).$\r$\n$\r$\nUygulama kullanılabilir. SQL Bridge (port 3001) için:$\r$\n1) '$INSTDIR\install-services-manual.cmd' (Yönetici)$\r$\n2) Node.js LTS varsa: '$INSTDIR\install-bridge-npm.cmd'$\r$\n$\r$\nPostgREST (3002) ayrıdır: '$INSTDIR\install-postgrest-service.cmd'$\r$\n$\r$\nLog: C:\ProgramData\RetailEX\install_services_setup_last.log"
   ${ElseIf} $0 != 0
     DetailPrint "install-services-setup.ps1 FAILED, exit code $0"
-    MessageBox MB_OK|MB_ICONEXCLAMATION "RetailEX Windows hizmetleri kurulamadı (çıkış kodu $0).$\r$\n$\r$\nSık nedenler:$\r$\n- UAC'de İzin Ver seçilmedi$\r$\n- Eski hizmet kilitli (yeniden başlatıp install-services-manual.cmd)$\r$\n- PowerShell script parse (em-dash/kodlama; bu sürümde düzeltildi)$\r$\n$\r$\nLoglar:$\r$\nC:\ProgramData\RetailEX\install_services_setup_last.log$\r$\nC:\ProgramData\RetailEX\RetailEX_Service_install_last_error.txt$\r$\nC:\ProgramData\RetailEX\RetailEX_SQL_Bridge_install_last_error.txt$\r$\n%TEMP%\retailex_postgrest_service_install.log$\r$\n$\r$\nKurtarma (Yönetici): '$INSTDIR\install-services-manual.cmd'$\r$\nPostgREST ayrıca: '$INSTDIR\install-postgrest-service.cmd'"
+    MessageBox MB_OK|MB_ICONEXCLAMATION "RetailEX Windows hizmetleri kurulamadı (çıkış kodu $0).$\r$\n$\r$\nSık nedenler:$\r$\n- UAC'de İzin Ver seçilmedi$\r$\n- Eski hizmet kilitli (yeniden başlatıp install-services-manual.cmd)$\r$\n- PowerShell script parse (em-dash/kodlama; bu sürümde düzeltildi)$\r$\n$\r$\nLoglar:$\r$\nC:\ProgramData\RetailEX\install_services_setup_last.log$\r$\nC:\ProgramData\RetailEX\RetailEX_Service_install_last_error.txt$\r$\nC:\ProgramData\RetailEX\RetailEX_SQL_Bridge_install_last_error.txt$\r$\nC:\ProgramData\RetailEX\RetailEX_Printer_install_last_error.txt$\r$\n%TEMP%\retailex_postgrest_service_install.log$\r$\n$\r$\nKurtarma (Yönetici): '$INSTDIR\install-services-manual.cmd'$\r$\nPostgREST ayrıca: '$INSTDIR\install-postgrest-service.cmd'"
   ${EndIf}
 
   ; Write bootstrap config for the backend to consume on first run
@@ -1035,6 +1038,7 @@ Section Install
   FileWrite $9 "$\r$\nServis Durumları:$\r$\n"
   FileWrite $9 "- RetailEX Sync Service: KURULDU & ÇALIŞIYOR$\r$\n"
   FileWrite $9 "- RetailEX SQL Bridge (Port 3001): KURULDU (Native Windows Service EXE)$\r$\n"
+  FileWrite $9 "- RetailEX Printer Service: KURULDU (mutfak ESC/POS kuyruk servisi)$\r$\n"
   ${If} $InstallPostgREST == 1
     FileWrite $9 "- RetailEX PostgREST (Port 3002): KURULDU (Windows Hizmeti, otomatik baslatma)$\r$\n"
   ${EndIf}
@@ -1056,11 +1060,12 @@ Section Install
   FileWrite $9 "3. Güvenlik duvarından (Firewall) 8000, 5432 portlarına izin verildiğinden emin olun.$\r$\n"
   FileWrite $9 "4. WebSocket adresi ($WSUrl) uygulama ve merkez senkron için kullanılır; ağ/firewall ayarlarını buna göre doğrulayın.$\r$\n"
   FileWrite $9 "5. Servisler kurulmadıysa '$INSTDIR\install-services-manual.cmd' (veya .ps1) dosyasını Yönetici olarak çalıştırın.$\r$\n"
-  FileWrite $9 "6. SQL Bridge (port 3001): Node.js LTS gerekir (https://nodejs.org). Kurulumdan sonra: '$INSTDIR\install-bridge-npm.cmd'$\r$\n"
-  FileWrite $9 "7. Gelişmiş yönetim için '$INSTDIR\retailex-admin.cmd' (veya .ps1) veya '$INSTDIR\RetailEXTools\RetailEX_Tools.exe' menüsünü kullanın.$\r$\n"
-  FileWrite $9 "8. PostgreSQL'i LAN'dan erişime açmak (yönetici): '$INSTDIR\RetailEX_PostgreSQLRemote.exe' veya pg-windows-expose-remote.cmd$\r$\n"
+  FileWrite $9 "6. SQL Bridge (port 3001) ve Printer servisi: Node.js LTS gerekir (https://nodejs.org). Kurulumdan sonra: '$INSTDIR\install-bridge-npm.cmd'$\r$\n"
+  FileWrite $9 "7. Mutfak yazdırma: Restoran yazıcı ayarlarında Windows servisi + Ağ (IP) ESC/POS kullanın.$\r$\n"
+  FileWrite $9 "8. Gelişmiş yönetim için '$INSTDIR\retailex-admin.cmd' (veya .ps1) veya '$INSTDIR\RetailEXTools\RetailEX_Tools.exe' menüsünü kullanın.$\r$\n"
+  FileWrite $9 "9. PostgreSQL'i LAN'dan erişime açmak (yönetici): '$INSTDIR\RetailEX_PostgreSQLRemote.exe' veya pg-windows-expose-remote.cmd$\r$\n"
   ${If} $InstallPostgREST == 1
-    FileWrite $9 "9. PostgREST: Windows hizmeti RetailEX_PostgREST (otomatik baslatma, port 3002). Node gerektirmez.$\r$\n"
+    FileWrite $9 "10. PostgREST: Windows hizmeti RetailEX_PostgREST (otomatik baslatma, port 3002). Node gerektirmez.$\r$\n"
     FileWrite $9 "   Manuel onarim: '$INSTDIR\install-postgrest-service.cmd' (Yonetici)$\r$\n"
     FileWrite $9 "   Android/APK URL: http://<bu-PC-WiFi-IP>:3002  (port zorunlu; firewall TCP 3002)$\r$\n"
   ${EndIf}
@@ -1201,11 +1206,13 @@ Section Uninstall
   ; Stop and Uninstall Services
   ExecWait 'net stop RetailEX_Service'
   ExecWait 'net stop RetailEX_SQL_Bridge'
+  ExecWait 'net stop RetailEX_Printer'
   ExecWait 'net stop RetailEX_PostgREST'
   ExecWait 'net stop RetailEXLogoConnector'
   ExecWait 'net stop RetailEX_Logo'
   ExecWait '"$INSTDIR\RetailEX_Service.exe" --uninstall'
   ExecWait '"$INSTDIR\RetailEX_SQL_Bridge.exe" --uninstall'
+  ExecWait '"$INSTDIR\RetailEX_Printer.exe" --uninstall'
   IfFileExists "$INSTDIR\RetailEX_Logo.exe" 0 +2
     ExecWait '"$INSTDIR\RetailEX_Logo.exe" --uninstall'
   IfFileExists "$INSTDIR\RetailEX_Logo_Connector.exe" 0 +2
@@ -1214,11 +1221,14 @@ Section Uninstall
   ; Delete external binaries
     Delete "$INSTDIR\RetailEX_Service.exe"
     Delete "$INSTDIR\RetailEX_SQL_Bridge.exe"
+    Delete "$INSTDIR\RetailEX_Printer.exe"
     Delete "$INSTDIR\RetailEX_Config.exe"
     Delete "$INSTDIR\RetailEX_Logo.exe"
     Delete "$INSTDIR\RetailEX_Logo_Connector.exe"
     ExecWait 'sc.exe stop RetailEX_SQL_Bridge'
     ExecWait 'sc.exe delete RetailEX_SQL_Bridge'
+    ExecWait 'sc.exe stop RetailEX_Printer'
+    ExecWait 'sc.exe delete RetailEX_Printer'
     ExecWait 'sc.exe stop RetailEX_PostgREST'
     ExecWait 'sc.exe delete RetailEX_PostgREST'
     Delete "$INSTDIR\install-postgrest-service.ps1"
@@ -1228,6 +1238,7 @@ Section Uninstall
     Delete "$INSTDIR\start-postgrest-lan.ps1"
     Delete "$INSTDIR\start-postgrest-lan.cmd"
     Delete "$INSTDIR\bridge.cjs"
+    Delete "$INSTDIR\kitchen-print-service.mjs"
     Delete "$INSTDIR\package.json"
     Delete "$INSTDIR\install-bridge.ps1"
     Delete "$INSTDIR\install-bridge.cmd"
@@ -1241,6 +1252,7 @@ Section Uninstall
     Delete "$INSTDIR\retailex_install_prefix.txt"
     Delete "$INSTDIR\retailex-admin.ps1"
     Delete "$INSTDIR\retailex-admin.cmd"
+    Delete "$INSTDIR\README_PRINTER_SERVICE.md"
     Delete "$INSTDIR\install-postgrest.ps1"
     Delete "$INSTDIR\postgrest.exe"
     Delete "$INSTDIR\pg-windows-expose-remote.ps1"

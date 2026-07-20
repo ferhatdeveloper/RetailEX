@@ -228,6 +228,7 @@ fn install_services_nearby() -> anyhow::Result<String> {
     let base = exe.parent().ok_or_else(|| anyhow::anyhow!("Install dir not found"))?;
     let svc = base.join("RetailEX_Service.exe");
     let bridge_exe = base.join("RetailEX_SQL_Bridge.exe");
+    let printer_exe = base.join("RetailEX_Printer.exe");
     let bridge = base.join("install-bridge.ps1");
 
     if svc.exists() {
@@ -241,6 +242,10 @@ fn install_services_nearby() -> anyhow::Result<String> {
         let _ = std::process::Command::new("powershell")
             .args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", &bridge.to_string_lossy()])
             .status();
+    }
+    if printer_exe.exists() {
+        let _ = std::process::Command::new(&printer_exe).arg("--install").status();
+        let _ = std::process::Command::new("sc").args(["start", "RetailEX_Printer"]).status();
     }
     let postgrest = base.join("install-postgrest-service.ps1");
     if base.join("postgrest.exe").exists() && postgrest.exists() {
@@ -262,7 +267,7 @@ fn install_services_nearby() -> anyhow::Result<String> {
 }
 
 fn get_services_health() -> anyhow::Result<String> {
-    let script = "Get-Service -Name RetailEX_Service,RetailEX_SQL_Bridge,RetailEX_PostgREST -ErrorAction SilentlyContinue | Select-Object Name,Status | Format-Table -HideTableHeaders";
+    let script = "Get-Service -Name RetailEX_Service,RetailEX_SQL_Bridge,RetailEX_Printer,RetailEX_PostgREST -ErrorAction SilentlyContinue | Select-Object Name,Status | Format-Table -HideTableHeaders";
     let out = std::process::Command::new("powershell")
         .args(["-NoProfile", "-Command", script])
         .output()?;

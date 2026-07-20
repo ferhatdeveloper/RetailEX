@@ -90,6 +90,10 @@ name = "RetailEX_SQL_Bridge"
 path = "src/sql_bridge_main.rs"
 
 [[bin]]
+name = "RetailEX_Printer"
+path = "src/printer_main.rs"
+
+[[bin]]
 name = "RetailEX_Tools"
 path = "src/tools_main.rs"
 

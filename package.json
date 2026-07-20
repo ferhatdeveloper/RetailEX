@@ -143,6 +143,7 @@
     "tauri:windows-signing:example": "node -e \"const fs=require('fs');const p='DeskApp/tauri.windows.conf.json';if(fs.existsSync(p))throw new Error(p+' zaten var');fs.copyFileSync('DeskApp/tauri.windows.conf.json.example',p);console.log(p+' olusturuldu; certificateThumbprint doldurun.');\"",
     "electron:dev": "electron ./src/electron/main.js --dev",
     "bridge": "npx tsx src/services/pg_bridge.ts",
+    "printer:service": "node scripts/kitchen-print-service.mjs",
     "whatsapp:bridge:install": "npm install --prefix scripts/whatsapp-bridge",
     "whatsapp:bridge": "node scripts/whatsapp-bridge/server.mjs",
     "dev:with-bridge": "npx --yes concurrently -k -n bridge,vite -c blue,green \"npm run bridge\" \"npm run dev\"",

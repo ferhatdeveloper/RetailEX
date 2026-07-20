@@ -43,6 +43,7 @@ try {
     $baseDir = Split-Path -Parent $PSCommandPath
     $serviceExe = Join-Path $baseDir "RetailEX_Service.exe"
     $bridgeExe = Join-Path $baseDir "RetailEX_SQL_Bridge.exe"
+    $printerExe = Join-Path $baseDir "RetailEX_Printer.exe"
     $bridgeScript = Join-Path $baseDir "install-bridge.ps1"
 
     Install-AppService -exePath $serviceExe -serviceName "RetailEX_Service"
@@ -55,6 +56,13 @@ try {
         & powershell -NoProfile -ExecutionPolicy Bypass -File $bridgeScript
     }     else {
         Write-WarnMsg "RetailEX_SQL_Bridge.exe/install-bridge.ps1 not found, SQL Bridge skipped."
+    }
+
+    if (Test-Path $printerExe) {
+        Install-AppService -exePath $printerExe -serviceName "RetailEX_Printer"
+    }
+    else {
+        Write-WarnMsg "RetailEX_Printer.exe not found, Printer service skipped."
     }
 
     $postgrestExe = Join-Path $baseDir "postgrest.exe"

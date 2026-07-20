@@ -1,5 +1,5 @@
 #Requires -Version 5.1
-# Kurulum dizininde bridge.cjs icin npm install (NSIS / elle). -Prefix ile klasor verilebilir.
+# Kurulum dizininde bridge.cjs ve kitchen-print-service.mjs icin npm install (NSIS / elle). -Prefix ile klasor verilebilir.
 # Cikis kodlari: 0=ok/atlandi, 1=npm install hatasi, 2=Node/npm bulunamadi
 param(
     [string]$Prefix = ""
@@ -61,12 +61,12 @@ if (-not $npm) {
     Write-Host ""
     Write-Host "============================================================" -ForegroundColor Yellow
     Write-Host "[install-bridge-npm] Node.js / npm bulunamadi." -ForegroundColor Yellow
-    Write-Host "SQL Bridge (port 3001) icin Node.js LTS gerekir." -ForegroundColor Yellow
+    Write-Host "SQL Bridge (port 3001) ve Printer servisi icin Node.js LTS gerekir." -ForegroundColor Yellow
     Write-Host ""
     Write-Host "  1) https://nodejs.org  adresinden LTS kurun (onerilen)."
     Write-Host "  2) Kurulumdan sonra bu scripti yeniden calistirin:"
     Write-Host "     $PSCommandPath"
-    Write-Host "  3) Veya: Start-Service RetailEX_SQL_Bridge (node + node_modules hazirsa)"
+    Write-Host "  3) Veya: Start-Service RetailEX_SQL_Bridge; Start-Service RetailEX_Printer (node + node_modules hazirsa)"
     Write-Host ""
     Write-Host "Not: PostgREST (port 3002) Node gerektirmez; ayri kurulur."
     Write-Host "     Yalnizca bulut/online REST kullanacaksaniz yerel Bridge atlanabilir."

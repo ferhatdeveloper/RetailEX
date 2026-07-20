@@ -60,13 +60,13 @@ catch {
 
 $npmScript = Join-Path $Prefix "install-bridge-npm.ps1"
 if (Test-Path -LiteralPath $npmScript) {
-    Write-Host "[RetailEX] SQL Bridge npm bagimliliklari..."
+    Write-Host "[RetailEX] SQL Bridge / Printer npm bagimliliklari..."
     try {
         & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $npmScript -Prefix $Prefix
         $npmCode = $LASTEXITCODE
         if ($null -eq $npmCode) { $npmCode = 0 }
         if ($npmCode -eq 2) {
-            $msg = "Node.js/npm yok - SQL Bridge (3001) calismaz. https://nodejs.org LTS kurun, sonra: $npmScript -Prefix `"$Prefix`". PostgREST (3002) bundan bagimsizdir."
+            $msg = "Node.js/npm yok - SQL Bridge (3001) ve Printer servisi calismaz. https://nodejs.org LTS kurun, sonra: $npmScript -Prefix `"$Prefix`". PostgREST (3002) bundan bagimsizdir."
             $warnings += $msg
             Write-RetailExSetupLog -LogFile $logFile -Message "UYARI: $msg"
             Write-Warning $msg
@@ -108,6 +108,28 @@ else {
     Write-Warning $msg
 }
 
+$printerExe = Join-Path $Prefix "RetailEX_Printer.exe"
+if (Test-Path -LiteralPath $printerExe) {
+    try {
+        Install-RetailExWindowsService `
+            -ExePath $printerExe `
+            -ServiceName "RetailEX_Printer" `
+            -Label "RetailEX_Printer"
+    }
+    catch {
+        $msg = $_.Exception.Message
+        $failures += $msg
+        Write-RetailExSetupLog -LogFile $logFile -Message $msg
+        Write-Warning $msg
+    }
+}
+else {
+    $msg = "RetailEX_Printer.exe yok - Printer hizmeti atlandi."
+    $warnings += $msg
+    Write-RetailExSetupLog -LogFile $logFile -Message "UYARI: $msg"
+    Write-Warning $msg
+}
+
 try {
     $pgr = Install-RetailExPostgrestService -Prefix $Prefix
     if ($pgr -and -not $pgr.Ok -and -not $pgr.Skipped) {
@@ -125,7 +147,9 @@ catch {
 
 $svcCore = Get-Service -Name "RetailEX_Service" -ErrorAction SilentlyContinue
 $svcBridge = Get-Service -Name "RetailEX_SQL_Bridge" -ErrorAction SilentlyContinue
+$svcPrinter = Get-Service -Name "RetailEX_Printer" -ErrorAction SilentlyContinue
 $bridgeExpected = Test-Path -LiteralPath $bridgeExe
+$printerExpected = Test-Path -LiteralPath $printerExe
 
 $coreOk = $false
 if ($bridgeExpected) {
@@ -134,6 +158,9 @@ if ($bridgeExpected) {
 else {
     # Bridge paketlenmemisse yalnizca Sync Service yeterli
     $coreOk = [bool]$svcCore
+}
+if ($coreOk -and $printerExpected) {
+    $coreOk = [bool]$svcPrinter
 }
 
 if (-not $coreOk) {
