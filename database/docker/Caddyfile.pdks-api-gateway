@@ -1,0 +1,59 @@
+# PDKS API gateway — RetailEX Caddyfile.api-gateway kalıbı
+# Dış: Dokploy domain → bu Caddy :80
+# Path: /{slug}/* → PostgREST (uzak PG)
+
+:80 {
+	encode gzip
+
+	@preflight method OPTIONS
+	header @preflight Access-Control-Allow-Methods "GET,POST,PUT,PATCH,DELETE,OPTIONS"
+	header @preflight Access-Control-Allow-Headers "Authorization,Content-Type,apikey,Prefer,Accept,Origin,Content-Profile,Accept-Profile"
+	header @preflight Access-Control-Max-Age "86400"
+	header @preflight Access-Control-Allow-Origin "*"
+	handle @preflight {
+		respond 204
+	}
+
+	@health path / /health /status
+	handle @health {
+		header Content-Type "application/json; charset=utf-8"
+		respond "{\"ok\":true,\"service\":\"pdks-api-gateway\",\"tenants\":[\"naw_pdks\",\"exfin_pdks\",\"xnawcomrest\"]}" 200
+	}
+
+	handle_path /naw_pdks/* {
+		header Access-Control-Allow-Origin "*"
+		reverse_proxy postgrest_naw_pdks:3000 {
+			header_down -Access-Control-Allow-Origin
+			header_down Access-Control-Allow-Origin "*"
+		}
+	}
+
+	handle_path /exfin_pdks/* {
+		header Access-Control-Allow-Origin "*"
+		reverse_proxy postgrest_exfin_pdks:3000 {
+			header_down -Access-Control-Allow-Origin
+			header_down Access-Control-Allow-Origin "*"
+		}
+	}
+
+	handle_path /dismarco_pdks/* {
+		header Access-Control-Allow-Origin "*"
+		reverse_proxy postgrest_exfin_pdks:3000 {
+			header_down -Access-Control-Allow-Origin
+			header_down Access-Control-Allow-Origin "*"
+		}
+	}
+
+	handle_path /xnawcomrest/* {
+		header Access-Control-Allow-Origin "*"
+		reverse_proxy pdks_remote_rest:8000 {
+			header_down -Access-Control-Allow-Origin
+			header_down Access-Control-Allow-Origin "*"
+		}
+	}
+
+	handle {
+		header Content-Type "application/json; charset=utf-8"
+		respond "{\"ok\":false,\"error\":\"not_found\",\"hint\":\"Use /naw_pdks/, /exfin_pdks/, /xnawcomrest/\"}" 404
+	}
+}

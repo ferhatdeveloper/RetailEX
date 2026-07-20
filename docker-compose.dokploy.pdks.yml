@@ -1,0 +1,88 @@
+version: "3.9"
+
+# Dokploy → PDKS projesi → Compose servisi (RetailEX api_gateway kalıbı)
+# Rex/RetailEX: docker-compose.dokploy.yml + Caddyfile.api-gateway + PostgREST/{slug}
+# PDKS:       docker-compose.dokploy.pdks.yml + Caddyfile.pdks-api-gateway + uzak PG
+#
+# Git (önerilen, RetailEX gibi):
+#   sourceType=github, repo=ferhatdeveloper/RetailEX, branch=main
+#   composePath=./docker-compose.dokploy.pdks.yml
+#
+# Environment (Dokploy → Environment):
+#   PDKS_PG_HOST=91.205.41.130
+#   PDKS_PG_PORT=5432
+#   PDKS_PG_USER=postgres
+#   PDKS_PG_PASSWORD=***
+#   PDKS_DB_NAW=NAW_PDKS
+#   PDKS_DB_EXFIN=EXFIN_PDKS
+#   PDKS_REMOTE_REST_HOST=91.205.41.130
+#   PDKS_REMOTE_REST_PORT=8000
+#
+# Domain: pdks_api_gateway servisine bağlayın (örn. api-pdks.berqenas.cloud)
+# Test: https://DOMAIN/  |  /naw_pdks/  |  /exfin_pdks/  |  /xnawcomrest/
+# Doc: database/DOKPLOY_PDKS_API.md
+
+x-postgrest-env: &postgrest-env
+  PGRST_DB_ANON_ROLE: ${PDKS_PGRST_ANON_ROLE:-postgres}
+  PGRST_DB_SCHEMAS: ${PDKS_PGRST_SCHEMAS:-public}
+  PGRST_SERVER_HOST: "0.0.0.0"
+  PGRST_SERVER_PORT: "3000"
+  PGRST_SERVER_CORS_ALLOWED_ORIGINS: "*"
+
+services:
+  # RetailEX’teki retailex_api_gateway ile aynı rol
+  api_gateway:
+    image: caddy:2.8-alpine
+    container_name: pdks_api_gateway
+    restart: always
+    depends_on:
+      - postgrest_naw_pdks
+      - postgrest_exfin_pdks
+      - pdks_remote_rest
+    volumes:
+      - ./database/docker/Caddyfile.pdks-api-gateway:/etc/caddy/Caddyfile:ro
+    ports:
+      - "${PDKS_API_HOST_PORT:-8100}:80"
+    networks:
+      - pdks_net
+
+  # FRM001 / demo → uzak NAW_PDKS (firmalar.connection_config)
+  postgrest_naw_pdks:
+    image: postgrest/postgrest:v12.2.0
+    container_name: pdks_postgrest_naw
+    restart: always
+    environment:
+      <<: *postgrest-env
+      PGRST_DB_URI: postgres://${PDKS_PG_USER:-postgres}:${PDKS_PG_PASSWORD}@${PDKS_PG_HOST:?PDKS_PG_HOST gerekli}:${PDKS_PG_PORT:-5432}/${PDKS_DB_NAW:-NAW_PDKS}
+    ports:
+      - "${PDKS_POSTGREST_PORT_NAW:-3110}:3000"
+    networks:
+      - pdks_net
+
+  # DISMARCO → uzak EXFIN_PDKS
+  postgrest_exfin_pdks:
+    image: postgrest/postgrest:v12.2.0
+    container_name: pdks_postgrest_exfin
+    restart: always
+    environment:
+      <<: *postgrest-env
+      PGRST_DB_URI: postgres://${PDKS_PG_USER:-postgres}:${PDKS_PG_PASSWORD}@${PDKS_PG_HOST}:${PDKS_PG_PORT:-5432}/${PDKS_DB_EXFIN:-EXFIN_PDKS}
+    ports:
+      - "${PDKS_POSTGREST_PORT_EXFIN:-3111}:3000"
+    networks:
+      - pdks_net
+
+  # xNAWCOMREST → uzak REST (:8000) — Caddy /xnawcomrest
+  pdks_remote_rest:
+    image: alpine/socat:1.8.0.0
+    container_name: pdks_remote_rest
+    restart: always
+    command: >
+      TCP-LISTEN:8000,fork,reuseaddr
+      TCP:${PDKS_REMOTE_REST_HOST:-91.205.41.130}:${PDKS_REMOTE_REST_PORT:-8000}
+    networks:
+      - pdks_net
+
+networks:
+  pdks_net:
+    driver: bridge
