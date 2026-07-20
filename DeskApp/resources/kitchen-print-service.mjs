@@ -1,23 +1,26 @@
 #!/usr/bin/env node
 /**
- * RetailEX mutfak yazdirma servisi.
+ * RetailEX Printer Service (unified).
  *
  * Windows hizmeti RetailEX_Printer tarafindan Node worker olarak calistirilir.
- * config.db icinden local/cloud PostgreSQL hedeflerini okur, mutfak print job
- * tablosunu poll eder ve ag ESC/POS yazicilarina ham TCP gonderir.
+ * config.db icinden local/cloud PostgreSQL hedeflerini okur, unified print_jobs
+ * ve legacy kitchen_print_jobs kuyruklarini poll eder.
  */
 
+import { execFile } from 'node:child_process';
 import fs from 'node:fs';
 import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
+import { promisify } from 'node:util';
 import { Client } from 'pg';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
 const IS_WIN = process.platform === 'win32';
+const execFileAsync = promisify(execFile);
 const LOG_FILE = 'C:\\ProgramData\\RetailEX\\printer_service.log';
 const POLL_MS = clampNumber(process.env.PRINT_POLL_MS, 500, 60_000, 2500);
 const CLAIM_LIMIT = clampNumber(process.env.PRINT_CLAIM_LIMIT, 1, 50, 10);
@@ -25,6 +28,17 @@ const TCP_TIMEOUT_MS = clampNumber(process.env.PRINT_TCP_TIMEOUT_MS, 1000, 60_00
 const WORKER_ID = `RetailEX_Printer/${os.hostname()}/${process.pid}`;
 const RUN_ONCE = process.argv.includes('--once') || process.env.PRINT_ONCE === '1';
 const SHOW_HELP = process.argv.includes('--help') || process.argv.includes('-h');
+const LEGACY_JOB_TYPE = 'kitchen_ticket';
+const HTML_JOB_TYPES = new Set([
+  'html_document',
+  'pos_receipt_80',
+  'account_receipt',
+  'invoice_a4',
+  'report_html',
+  'product_label',
+]);
+const TEMPLATE_CATALOG_CATEGORY = 'template_catalog';
+const TEMPLATE_CATALOG_TYPE = 'template_designer_v2';
 
 const KITCHEN_I18N = {
   tr: {
@@ -247,7 +261,14 @@ function resolveFirmPeriod(configWrap) {
   const periodRaw = process.env.PRINT_PERIOD_NR ?? cfg.erp_period_nr ?? cfg.period_nr ?? cfg.periodNr;
   const firm = onlyDigits(firmRaw, '1').padStart(3, '0').slice(-3);
   const period = onlyDigits(periodRaw, '1').padStart(2, '0').slice(-2);
-  return { firm, period, table: `rex_${firm}_${period}_kitchen_print_jobs` };
+  return {
+    firm,
+    period,
+    tables: [
+      { tableName: `rex_${firm}_${period}_print_jobs`, legacy: false },
+      { tableName: `rex_${firm}_${period}_kitchen_print_jobs`, legacy: true },
+    ],
+  };
 }
 
 async function withClient(target, fn) {
@@ -269,35 +290,57 @@ async function withClient(target, fn) {
   }
 }
 
-async function tableExists(client, tableName) {
-  const res = await client.query('SELECT to_regclass($1) AS oid', [`rest.${tableName}`]);
-  return Boolean(res.rows[0]?.oid);
+async function tableInfo(client, tableName) {
+  const res = await client.query(
+    `SELECT column_name
+       FROM information_schema.columns
+      WHERE table_schema = 'rest'
+        AND table_name = $1`,
+    [tableName],
+  );
+  return {
+    tableName,
+    exists: res.rows.length > 0,
+    columns: new Set(res.rows.map((r) => r.column_name)),
+  };
 }
 
 function tableSql(tableName) {
-  if (!/^rex_\d{3}_\d{2}_kitchen_print_jobs$/.test(tableName)) {
-    throw new Error(`Gecersiz mutfak print job tablo adi: ${tableName}`);
+  if (!/^rex_\d{3}_\d{2}_(kitchen_)?print_jobs$/.test(tableName)) {
+    throw new Error(`Gecersiz print job tablo adi: ${tableName}`);
   }
   return `rest.${tableName}`;
 }
 
-async function claimJobs(client, tableName) {
-  const tbl = tableSql(tableName);
+function requireColumns(info, ...columns) {
+  for (const column of columns) {
+    if (!info.columns.has(column)) throw new Error(`rest.${info.tableName} kolon eksik: ${column}`);
+  }
+}
+
+async function claimJobs(client, info, legacy) {
+  requireColumns(info, 'id', 'status', 'payload');
+  const tbl = tableSql(info.tableName);
+  const attemptsExpr = info.columns.has('attempts') ? 'COALESCE(attempts, 0)' : '0';
+  const orderColumn = info.columns.has('created_at') ? 'created_at' : 'id';
+  const assignments = [`status = 'printing'`];
+  if (info.columns.has('claimed_by')) assignments.push('claimed_by = $1');
+  if (info.columns.has('claimed_at')) assignments.push('claimed_at = NOW()');
+  if (info.columns.has('attempts')) assignments.push('attempts = COALESCE(attempts, 0) + 1');
+  if (legacy && info.columns.has('job_type')) assignments.push(`job_type = COALESCE(job_type, '${LEGACY_JOB_TYPE}')`);
+
   try {
     await client.query('BEGIN');
     const res = await client.query(
       `
         UPDATE ${tbl}
-           SET status = 'printing',
-               claimed_by = $1,
-               claimed_at = NOW(),
-               attempts = COALESCE(attempts, 0) + 1
+           SET ${assignments.join(',\n               ')}
          WHERE id IN (
            SELECT id
              FROM ${tbl}
             WHERE status IN ('pending', 'failed')
-              AND COALESCE(attempts, 0) < 5
-            ORDER BY created_at
+              AND ${attemptsExpr} < 5
+            ORDER BY ${orderColumn}
             FOR UPDATE SKIP LOCKED
             LIMIT $2
          )
@@ -317,20 +360,17 @@ async function claimJobs(client, tableName) {
   const res = await client.query(
     `
       UPDATE ${tbl}
-         SET status = 'printing',
-             claimed_by = $1,
-             claimed_at = NOW(),
-             attempts = COALESCE(attempts, 0) + 1
+         SET ${assignments.join(',\n             ')}
        WHERE id IN (
          SELECT id
            FROM ${tbl}
           WHERE status IN ('pending', 'failed')
-            AND COALESCE(attempts, 0) < 5
-          ORDER BY created_at
+            AND ${attemptsExpr} < 5
+          ORDER BY ${orderColumn}
           LIMIT $2
        )
          AND status IN ('pending', 'failed')
-         AND COALESCE(attempts, 0) < 5
+         AND ${attemptsExpr} < 5
        RETURNING *
     `,
     [WORKER_ID, CLAIM_LIMIT],
@@ -338,25 +378,31 @@ async function claimJobs(client, tableName) {
   return res.rows;
 }
 
-async function markPrinted(client, tableName, id) {
+async function markPrinted(client, info, id) {
+  const assignments = [`status = 'printed'`];
+  if (info.columns.has('printed_at')) assignments.push('printed_at = NOW()');
+  if (info.columns.has('last_error')) assignments.push('last_error = NULL');
   await client.query(
-    `UPDATE ${tableSql(tableName)}
-        SET status = 'printed',
-            printed_at = NOW(),
-            last_error = NULL
+    `UPDATE ${tableSql(info.tableName)}
+        SET ${assignments.join(',\n            ')}
       WHERE id = $1`,
     [id],
   );
 }
 
-async function markFailed(client, tableName, id, error) {
+async function markFailed(client, info, id, error) {
   const text = String(error?.message || error || 'Yazdirma hatasi').slice(0, 1000);
+  const assignments = [`status = 'failed'`];
+  const params = [id];
+  if (info.columns.has('last_error')) {
+    params.push(text);
+    assignments.push('last_error = $2');
+  }
   await client.query(
-    `UPDATE ${tableSql(tableName)}
-        SET status = 'failed',
-            last_error = $2
+    `UPDATE ${tableSql(info.tableName)}
+        SET ${assignments.join(',\n            ')}
       WHERE id = $1`,
-    [id, text],
+    params,
   );
 }
 
@@ -389,14 +435,22 @@ function firstNumber(fallback, ...values) {
   return fallback;
 }
 
+function firstObject(...values) {
+  for (const value of values) {
+    if (value && typeof value === 'object' && !Array.isArray(value) && !Buffer.isBuffer(value)) return value;
+  }
+  return {};
+}
+
 function normalizeLocale(value) {
   return ['tr', 'en', 'ar', 'ku', 'uz'].includes(value) ? value : 'tr';
 }
 
-function normalizeJob(row) {
+function normalizeJob(row, context = {}) {
   const payload = parsePayload(row.payload);
   const printer = payload.printer || payload.target || payload.profile || {};
   const ticket = payload.ticket || payload.kitchenTicket || payload;
+  const settings = context.settings || {};
   const connection = firstString(
     row.connection,
     row.connection_type,
@@ -405,15 +459,70 @@ function normalizeJob(row) {
     printer.connection,
     printer.connectionType,
   ).toLowerCase();
+  const jobType = firstString(row.job_type, payload.jobType, payload.job_type, payload.kind, payload.type)
+    .toLowerCase()
+    .replace(/\s+/g, '_') || (context.legacy ? LEGACY_JOB_TYPE : '');
 
   return {
     payload,
     ticket,
+    jobType,
     connection,
     address: firstString(row.address, row.printer_address, payload.address, payload.host, printer.address, printer.host),
     port: firstNumber(9100, row.port, row.printer_port, payload.port, printer.port),
-    systemName: firstString(row.system_name, row.printer_name, payload.systemName, payload.system_name, printer.systemName),
+    systemName: firstString(
+      row.system_name,
+      row.printer_name,
+      payload.systemName,
+      payload.system_name,
+      payload.printerName,
+      payload.printer_name,
+      printer.systemName,
+      printer.system_name,
+      printer.name,
+      settings.defaultSystemPrinterName,
+      settings.defaultPrinterName,
+      settings.printerName,
+    ),
   };
+}
+
+function normalizePrinterServiceSettings(value) {
+  const cfg = firstObject(value);
+  return {
+    defaultSystemPrinterName: firstString(
+      cfg.defaultSystemPrinterName,
+      cfg.default_system_printer_name,
+      cfg.defaultPrinterName,
+      cfg.default_printer_name,
+      cfg.systemPrinterName,
+      cfg.system_printer_name,
+      cfg.printerName,
+      cfg.printer_name,
+    ),
+    sumatraPath: firstString(cfg.sumatraPath, cfg.sumatra_path),
+    browserPath: firstString(cfg.browserPath, cfg.browser_path),
+  };
+}
+
+async function loadPrinterServiceSettings(client, firm) {
+  try {
+    const exists = await client.query("SELECT to_regclass('public.app_settings') AS oid");
+    if (!exists.rows[0]?.oid) return {};
+    const res = await client.query(
+      `SELECT value
+         FROM public.app_settings
+        WHERE key = 'printer_service'
+          AND (firm_nr = $1 OR firm_nr = '000')
+        ORDER BY CASE WHEN firm_nr = $1 THEN 0 ELSE 1 END
+        LIMIT 1`,
+      [firm],
+    );
+    return normalizePrinterServiceSettings(res.rows[0]?.value);
+  } catch (e) {
+    logLine(`printer_service ayari okunamadi: ${e?.message || e}`);
+    return {};
+  }
 }
 
 function enc(text) {
@@ -560,49 +669,395 @@ async function sendEscPosTcp(host, port, payload) {
   });
 }
 
-async function printJob(row) {
-  const job = normalizeJob(row);
-  if (job.connection === 'system') {
-    const name = job.systemName || '(adsiz sistem yazicisi)';
-    throw new Error(`Sistem yazicisi desteklenmiyor (${name}); mutfak servisi icin Ag (IP) ESC/POS kullanin.`);
-  }
-  if (job.connection && job.connection !== 'network') {
-    throw new Error(`Desteklenmeyen yazici baglantisi: ${job.connection}`);
-  }
-  if (!job.address) {
-    throw new Error('Ag yazicisi adresi yok.');
-  }
-  const payload = buildKitchenTicketEscPos(job);
-  await sendEscPosTcp(job.address, job.port, payload);
-  return `${job.address}:${job.port} (${payload.length} bayt)`;
+function htmlEscape(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
-async function pollTarget(target, tableName) {
-  await withClient(target, async (client) => {
-    if (!(await tableExists(client, tableName))) {
-      logLine(`${target.name}: rest.${tableName} yok, atlandi.`);
-      return;
+function attrEscape(value) {
+  return htmlEscape(value).replace(/`/g, '&#96;');
+}
+
+function cssColor(value, fallback = 'transparent') {
+  const text = String(value || '').trim();
+  if (!text) return fallback;
+  if (/^#[0-9a-f]{3,8}$/i.test(text)) return text;
+  if (/^(rgb|rgba|hsl|hsla)\([0-9.,% /-]+\)$/i.test(text)) return text;
+  if (/^[a-z]+$/i.test(text)) return text;
+  return fallback;
+}
+
+function mm(value, fallback = 0) {
+  const n = Number(value);
+  return Number.isFinite(n) ? Math.max(0, n) : fallback;
+}
+
+function lookupPath(data, token) {
+  const pathText = String(token || '').trim();
+  if (!pathText) return '';
+  const parts = pathText.split('.').filter(Boolean);
+  let cur = data;
+  for (const part of parts) {
+    if (cur == null) return '';
+    const key = Array.isArray(cur) && /^\d+$/.test(part) ? Number(part) : part;
+    cur = cur[key];
+  }
+  if (cur == null) return '';
+  if (typeof cur === 'object') return JSON.stringify(cur);
+  return String(cur);
+}
+
+function interpolateTemplateText(value, data) {
+  return String(value ?? '').replace(/{{\s*([^{}]+?)\s*}}/g, (_m, token) => lookupPath(data, token));
+}
+
+function templateElementText(element, data) {
+  const raw = firstString(element.content, element.field);
+  return interpolateTemplateText(raw, data);
+}
+
+function renderTableElement(element, data) {
+  const rows = Array.isArray(data?.items) ? data.items : [];
+  const staticRows = Array.isArray(element.rows) ? element.rows : [];
+  const columns = Array.isArray(element.columns) && element.columns.length > 0
+    ? element.columns
+    : ['name', 'quantity', 'unitPrice', 'total'];
+  const labels = {
+    name: 'Ürün',
+    productName: 'Ürün',
+    quantity: 'Adet',
+    qty: 'Adet',
+    unitPrice: 'Fiyat',
+    price: 'Fiyat',
+    total: 'Tutar',
+    amount: 'Tutar',
+  };
+  const bodyRows = rows.length > 0
+    ? rows.map((row) => columns.map((column) => lookupPath(row, column)))
+    : staticRows.map((row) => row.map((cell) => interpolateTemplateText(cell, data)));
+  return `
+    <table class="rx-table">
+      <thead>
+        <tr>${columns.map((c) => `<th>${htmlEscape(labels[c] || c)}</th>`).join('')}</tr>
+      </thead>
+      <tbody>
+        ${bodyRows.map((row) => `<tr>${row.map((cell) => `<td>${htmlEscape(cell)}</td>`).join('')}</tr>`).join('')}
+      </tbody>
+    </table>
+  `;
+}
+
+function renderTemplateElement(element, data) {
+  const type = String(element.type || 'text').toLowerCase();
+  const borderWidth = mm(element.borderWidth, type === 'box' ? 0.2 : 0);
+  const styles = [
+    'position:absolute',
+    `left:${mm(element.x)}mm`,
+    `top:${mm(element.y)}mm`,
+    `width:${mm(element.width, 10)}mm`,
+    `height:${mm(element.height, 5)}mm`,
+    `font-size:${mm(element.fontSize, 10)}pt`,
+    `font-weight:${element.fontWeight === 'bold' ? '700' : '400'}`,
+    `text-align:${['left', 'center', 'right'].includes(element.textAlign) ? element.textAlign : 'left'}`,
+    `color:${cssColor(element.color, '#111')}`,
+    `background:${cssColor(element.backgroundColor)}`,
+    `border:${borderWidth > 0 ? `${borderWidth}mm solid ${cssColor(element.borderColor, '#111')}` : 'none'}`,
+    'box-sizing:border-box',
+    'overflow:hidden',
+    'padding:0.8mm',
+  ];
+  const open = `<div class="rx-el rx-${type}" style="${styles.join(';')}">`;
+  if (type === 'line') {
+    return `<div class="rx-el rx-line" style="position:absolute;left:${mm(element.x)}mm;top:${mm(element.y)}mm;width:${mm(element.width, 10)}mm;height:${Math.max(0.2, mm(element.height, 0.2))}mm;background:${cssColor(element.borderColor || element.color, '#111')};"></div>`;
+  }
+  if (type === 'table') {
+    return `${open}${renderTableElement(element, data)}</div>`;
+  }
+  if (type === 'image') {
+    const src = interpolateTemplateText(firstString(element.content, element.field), data);
+    return `${open}${src ? `<img src="${attrEscape(src)}" alt="" />` : ''}</div>`;
+  }
+  if (type === 'barcode' || type === 'qr') {
+    const value = templateElementText(element, data);
+    const label = type === 'qr' ? 'QR' : 'CODE128';
+    return `${open}<div class="rx-code">${htmlEscape(label)}<br>${htmlEscape(value)}</div></div>`;
+  }
+  if (type === 'box') {
+    return `${open}</div>`;
+  }
+  return `${open}<span>${htmlEscape(templateElementText(element, data))}</span></div>`;
+}
+
+function normalizeTemplateCatalog(content) {
+  if (Array.isArray(content)) return content;
+  if (content && typeof content === 'object' && Array.isArray(content.templates)) return content.templates;
+  return [];
+}
+
+async function loadFastReportTemplate(client, firm, templateId) {
+  if (!templateId) throw new Error('fastreport_template icin payload.templateId zorunlu.');
+  const res = await client.query(
+    `SELECT content
+       FROM public.report_templates
+      WHERE category = $1
+        AND template_type = $2
+        AND (firm_nr = $3 OR firm_nr IS NULL)
+      ORDER BY CASE WHEN firm_nr = $3 THEN 0 ELSE 1 END, updated_at DESC
+      LIMIT 1`,
+    [TEMPLATE_CATALOG_CATEGORY, TEMPLATE_CATALOG_TYPE, firm],
+  );
+  const templates = normalizeTemplateCatalog(res.rows[0]?.content);
+  const template = templates.find((t) => String(t?.id || '') === String(templateId));
+  if (!template) throw new Error(`Template bulunamadi: ${templateId}`);
+  return template;
+}
+
+function renderFastReportTemplateHtml(template, data) {
+  const width = mm(template.width, 80);
+  const height = mm(template.height, 297);
+  const pageTitle = firstString(template.name, 'RetailEX Print');
+  const elements = Array.isArray(template.elements) ? template.elements : [];
+  return `<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>${htmlEscape(pageTitle)}</title>
+  <style>
+    @page { size: ${width}mm ${height}mm; margin: 0; }
+    html, body { margin: 0; padding: 0; background: #fff; color: #111; font-family: Arial, Helvetica, sans-serif; }
+    .rx-page { position: relative; width: ${width}mm; min-height: ${height}mm; page-break-after: always; overflow: hidden; }
+    .rx-el span { white-space: pre-wrap; word-break: break-word; line-height: 1.15; }
+    .rx-el img { width: 100%; height: 100%; object-fit: contain; display: block; }
+    .rx-code { width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; font-family: Consolas, "Courier New", monospace; letter-spacing: 0.8px; text-align: center; }
+    .rx-table { width: 100%; border-collapse: collapse; font-size: inherit; }
+    .rx-table th, .rx-table td { border: 0.1mm solid #999; padding: 0.8mm; vertical-align: top; }
+    .rx-table th { background: #f2f2f2; font-weight: 700; }
+  </style>
+</head>
+<body>
+  <main class="rx-page">
+    ${elements.map((element) => renderTemplateElement(element, data)).join('\n    ')}
+  </main>
+</body>
+</html>`;
+}
+
+function findExistingPath(candidates) {
+  return candidates.filter(Boolean).find((candidate) => {
+    try {
+      return fs.existsSync(candidate);
+    } catch {
+      return false;
     }
-    const jobs = await claimJobs(client, tableName);
-    if (jobs.length > 0) logLine(`${target.name}: ${jobs.length} mutfak print job alindi.`);
-    for (const row of jobs) {
-      try {
-        const info = await printJob(row);
-        await markPrinted(client, tableName, row.id);
-        logLine(`${target.name}: job ${row.id} printed -> ${info}`);
-      } catch (e) {
-        await markFailed(client, tableName, row.id, e).catch((markErr) => {
-          logLine(`${target.name}: job ${row.id} failed, durum yazilamadi: ${markErr?.message || markErr}`);
-        });
-        logLine(`${target.name}: job ${row.id} failed: ${e?.message || e}`);
-      }
+  }) || '';
+}
+
+function findBrowserPath(settings = {}) {
+  return firstString(
+    process.env.PRINT_BROWSER,
+    settings.browserPath,
+    findExistingPath([
+      'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
+      'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe',
+      'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+      'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+    ]),
+  );
+}
+
+function findSumatraPath(settings = {}) {
+  return firstString(
+    process.env.SUMATRA_PDF,
+    settings.sumatraPath,
+    findExistingPath([
+      path.join(__dirname, 'SumatraPDF.exe'),
+      path.join(__dirname, 'sumatra', 'SumatraPDF.exe'),
+      path.join(ROOT, 'resources', 'SumatraPDF.exe'),
+      path.join(ROOT, 'resources', 'sumatra', 'SumatraPDF.exe'),
+      'C:\\Program Files\\SumatraPDF\\SumatraPDF.exe',
+      'C:\\Program Files (x86)\\SumatraPDF\\SumatraPDF.exe',
+    ]),
+  );
+}
+
+async function writeTempHtml(html) {
+  const dir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'retailex-print-'));
+  const htmlPath = path.join(dir, 'job.html');
+  await fs.promises.writeFile(htmlPath, html, 'utf8');
+  return { dir, htmlPath, pdfPath: path.join(dir, 'job.pdf') };
+}
+
+async function htmlToPdfWithBrowser(browserPath, htmlPath, pdfPath) {
+  const fileUrl = `file:///${htmlPath.replace(/\\/g, '/')}`;
+  const args = ['--headless=new', '--disable-gpu', `--print-to-pdf=${pdfPath}`, fileUrl];
+  try {
+    await execFileAsync(browserPath, args, { windowsHide: true, timeout: 60_000 });
+  } catch {
+    await execFileAsync(browserPath, ['--headless', '--disable-gpu', `--print-to-pdf=${pdfPath}`, fileUrl], {
+      windowsHide: true,
+      timeout: 60_000,
+    });
+  }
+  if (!fs.existsSync(pdfPath)) throw new Error('HTML PDF ciktisi olusmadi.');
+}
+
+async function powershellStartPrintHtml(htmlPath) {
+  const ps = [
+    '-NoProfile',
+    '-ExecutionPolicy',
+    'Bypass',
+    '-Command',
+    `Start-Process -FilePath '${htmlPath.replace(/'/g, "''")}' -Verb Print -WindowStyle Hidden`,
+  ];
+  await execFileAsync('powershell.exe', ps, { windowsHide: true, timeout: 30_000 });
+}
+
+async function printHtmlDocument(html, printerName, settings = {}) {
+  if (!html || typeof html !== 'string') throw new Error('HTML yazdirma icin payload.html zorunlu.');
+  if (!IS_WIN) throw new Error('HTML sistem yazdirma yalnizca Windows servis host uzerinde desteklenir.');
+  const targetPrinter = firstString(printerName, settings.defaultSystemPrinterName);
+  const temp = await writeTempHtml(html);
+  const browserPath = findBrowserPath(settings);
+  const sumatraPath = findSumatraPath(settings);
+
+  try {
+    if (browserPath && sumatraPath && targetPrinter) {
+      await htmlToPdfWithBrowser(browserPath, temp.htmlPath, temp.pdfPath);
+      await execFileAsync(sumatraPath, ['-print-to', targetPrinter, '-silent', temp.pdfPath], {
+        windowsHide: true,
+        timeout: 60_000,
+      });
+      return `system:${targetPrinter} HTML->PDF->Sumatra`;
+    }
+    if (browserPath && !sumatraPath && targetPrinter) {
+      throw new Error(`SumatraPDF bulunamadi; ${targetPrinter} yazicisina sessiz PDF yazdirma yapilamiyor.`);
+    }
+    await powershellStartPrintHtml(temp.htmlPath);
+    return `system:${targetPrinter || 'varsayilan'} HTML Start-Process best-effort`;
+  } finally {
+    setTimeout(() => fs.rm(temp.dir, { recursive: true, force: true }, () => {}), 30_000).unref();
+  }
+}
+
+function buildTestPageEscPos(job) {
+  const text = [
+    esc(0x1b, 0x40),
+    esc(0x1b, 0x61, 1),
+    esc(0x1b, 0x21, 0x30),
+    enc('RetailEX Printer\n'),
+    esc(0x1b, 0x21, 0),
+    enc('Test Page\n'),
+    enc(new Date().toLocaleString('tr-TR')),
+    enc('\n\n'),
+    enc(`Target: ${job.address || job.systemName || 'default'}\n\n\n`),
+    esc(0x1d, 0x56, 0x00),
+  ];
+  return Buffer.concat(text);
+}
+
+function buildTestPageHtml() {
+  return `<!doctype html><html><head><meta charset="utf-8"><title>RetailEX Printer Test</title>
+<style>@page{margin:10mm}body{font-family:Arial,sans-serif}.box{border:1px solid #111;padding:12mm}</style></head>
+<body><div class="box"><h1>RetailEX Printer</h1><p>Test Page</p><p>${htmlEscape(new Date().toLocaleString('tr-TR'))}</p></div></body></html>`;
+}
+
+async function printJob(row, context) {
+  const job = normalizeJob(row, context);
+  const jobType = job.jobType || LEGACY_JOB_TYPE;
+  if (jobType === LEGACY_JOB_TYPE || job.payload?.kind === LEGACY_JOB_TYPE) {
+    if (job.connection && job.connection !== 'network') {
+      throw new Error(`Mutfak fisi ESC/POS icin network baglanti gerekir: ${job.connection || 'bos'}`);
+    }
+    if (!job.address) throw new Error('Ag yazicisi adresi yok.');
+    const payload = buildKitchenTicketEscPos(job);
+    await sendEscPosTcp(job.address, job.port, payload);
+    return `${job.address}:${job.port} kitchen_ticket (${payload.length} bayt)`;
+  }
+
+  if (jobType === 'escpos_raw' || job.payload?.escposBase64) {
+    const base64 = firstString(job.payload?.escposBase64, job.payload?.escpos_b64, job.payload?.dataB64, job.payload?.data_b64);
+    if (!base64) throw new Error('escpos_raw icin payload.escposBase64 zorunlu.');
+    if (!job.address) throw new Error('ESC/POS raw icin ag yazicisi adresi yok.');
+    const payload = Buffer.from(base64, 'base64');
+    await sendEscPosTcp(job.address, job.port, payload);
+    return `${job.address}:${job.port} escpos_raw (${payload.length} bayt)`;
+  }
+
+  if (HTML_JOB_TYPES.has(jobType)) {
+    if (job.connection === 'network' && !job.systemName) {
+      throw new Error('HTML belge raw ESC/POS ag portuna gonderilemez; system yazici/printer_name gerekli.');
+    }
+    const info = await printHtmlDocument(job.payload.html, job.systemName, context.settings);
+    return `${jobType} -> ${info}`;
+  }
+
+  if (jobType === 'fastreport_template') {
+    const templateId = firstString(job.payload.templateId, job.payload.template_id);
+    const data = firstObject(job.payload.data);
+    const template = await loadFastReportTemplate(context.client, context.firm, templateId);
+    const html = renderFastReportTemplateHtml(template, data);
+    if (job.connection === 'network' && !job.systemName) {
+      throw new Error('FastReport-like HTML raw ESC/POS ag portuna gonderilemez; system yazici/printer_name gerekli.');
+    }
+    const info = await printHtmlDocument(html, job.systemName, context.settings);
+    return `fastreport_template:${templateId} -> ${info}`;
+  }
+
+  if (jobType === 'test_page') {
+    if (job.connection === 'network' || job.address) {
+      if (!job.address) throw new Error('Network test sayfasi icin ag yazicisi adresi gerekli.');
+      const payload = buildTestPageEscPos(job);
+      await sendEscPosTcp(job.address, job.port, payload);
+      return `${job.address}:${job.port} test_page (${payload.length} bayt)`;
+    }
+    if (job.connection === 'system' || job.systemName) {
+      const info = await printHtmlDocument(buildTestPageHtml(), job.systemName, context.settings);
+      return `test_page -> ${info}`;
+    }
+    throw new Error('Test sayfasi icin ag yazicisi adresi veya system yazici gerekli.');
+  }
+
+  throw new Error(`Desteklenmeyen print job tipi: ${jobType}`);
+}
+
+async function pollTargetTable(client, target, tableDef, context) {
+  const info = await tableInfo(client, tableDef.tableName);
+  if (!info.exists) {
+    logLine(`${target.name}: rest.${tableDef.tableName} yok, atlandi.`);
+    return;
+  }
+  const jobs = await claimJobs(client, info, tableDef.legacy);
+  if (jobs.length > 0) logLine(`${target.name}: ${jobs.length} print job alindi (${info.tableName}).`);
+  for (const row of jobs) {
+    try {
+      const infoText = await printJob(row, { ...context, legacy: tableDef.legacy });
+      await markPrinted(client, info, row.id);
+      logLine(`${target.name}: ${info.tableName} job ${row.id} printed -> ${infoText}`);
+    } catch (e) {
+      await markFailed(client, info, row.id, e).catch((markErr) => {
+        logLine(`${target.name}: ${info.tableName} job ${row.id} failed, durum yazilamadi: ${markErr?.message || markErr}`);
+      });
+      logLine(`${target.name}: ${info.tableName} job ${row.id} failed: ${e?.message || e}`);
+    }
+  }
+}
+
+async function pollTarget(target, firm, tables) {
+  await withClient(target, async (client) => {
+    const settings = await loadPrinterServiceSettings(client, firm);
+    for (const tableDef of tables) {
+      await pollTargetTable(client, target, tableDef, { client, firm, settings });
     }
   });
 }
 
 async function pollOnce() {
   const configWrap = await loadConfigDb();
-  const { firm, period, table } = resolveFirmPeriod(configWrap);
+  const { firm, period, tables } = resolveFirmPeriod(configWrap);
   const targets = resolveTargets(configWrap);
   if (targets.length === 0) {
     logLine('PostgreSQL hedefi yok: config.db veya PGHOST/PGDATABASE ayarlari bulunamadi.');
@@ -611,7 +1066,7 @@ async function pollOnce() {
   logLine(`Poll: firma=${firm}, donem=${period}, hedef=${targets.map((t) => `${t.name}:${t.host}/${t.database}`).join(', ')}`);
   for (const target of targets) {
     try {
-      await pollTarget(target, table);
+      await pollTarget(target, firm, tables);
     } catch (e) {
       logLine(`${target.name}: PG erisim/poll hatasi: ${e?.message || e}`);
     }
@@ -619,7 +1074,7 @@ async function pollOnce() {
 }
 
 function printHelp() {
-  const text = `RetailEX mutfak yazıcı servisi (kitchen-print-service)
+  const text = `RetailEX Printer Service (unified) - kitchen-print-service
 
 Kullanım:
   node scripts/kitchen-print-service.mjs [--once] [--help]
@@ -631,6 +1086,14 @@ Seçenekler:
 Ortam:
   CONFIG_DB, PGHOST, PGPORT, PGDATABASE, PGUSER, PGPASSWORD
   PRINT_FIRM_NR, PRINT_PERIOD_NR, PRINT_POLL_MS
+
+Kuyruklar:
+  rest.rex_{firm}_{period}_print_jobs
+  rest.rex_{firm}_{period}_kitchen_print_jobs (legacy)
+
+Job tipleri:
+  kitchen_ticket, escpos_raw, html_document, pos_receipt_80, account_receipt
+  invoice_a4, report_html, product_label, fastreport_template, test_page
 
 Windows hizmeti: RetailEX_Printer.exe
 Ayrıntı: DeskApp/resources/README_PRINTER_SERVICE.md
