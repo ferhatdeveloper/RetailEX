@@ -10,6 +10,7 @@ export type RestaurantPrinterConfig = {
   printerProfiles: PrinterProfile[];
   printerRoutes: PrinterRouting[];
   commonPrinterId?: string;
+  printViaWindowsService?: boolean;
 };
 
 export async function getRestaurantPrinterConfig(firmNr?: string): Promise<RestaurantPrinterConfig> {
@@ -26,6 +27,7 @@ export async function getRestaurantPrinterConfig(firmNr?: string): Promise<Resta
         printerProfiles: Array.isArray(v.printerProfiles) ? v.printerProfiles : [],
         printerRoutes: Array.isArray(v.printerRoutes) ? v.printerRoutes : [],
         commonPrinterId: v.commonPrinterId,
+        printViaWindowsService: v.printViaWindowsService === true,
       };
     }
   } catch (e) {

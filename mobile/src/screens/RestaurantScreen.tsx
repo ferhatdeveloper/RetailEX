@@ -60,6 +60,10 @@ import {
   type TableStatus,
 } from '../theme/tableStatusConfig';
 import type { MainStackParamList } from '../navigation/types';
+import {
+  enqueueKitchenPrintJobs,
+  isWindowsPrinterServiceEnabled,
+} from '../api/kitchenPrintQueueApi';
 import { printKitchenTicketsForOrder } from '../services/kitchenTicketPrint';
 import { resolveKitchenTicketLocale } from '../services/escpos/buildKitchenTicketEscPos';
 import type { ReceiptLangCode } from '../types/printerSettings';
@@ -505,20 +509,38 @@ export function RestaurantScreen({ route }: Props) {
         setModalError('Mutfağa gönderilecek yeni kalem yok');
         return;
       }
-      const printResult = await printKitchenTicketsForOrder({
-        order: orderBeforeSend,
-        kitchenResult: result,
-        tableName: selectedTable.name || orderBeforeSend.table_name,
-        menu: menuItems,
-        locale: kitchenLocale,
-      });
+      const serviceEnabled = await isWindowsPrinterServiceEnabled();
+      const queueResult = serviceEnabled
+        ? await enqueueKitchenPrintJobs({
+            order: orderBeforeSend,
+            kitchenResult: result,
+            tableName: selectedTable.name || orderBeforeSend.table_name,
+            menu: menuItems,
+            locale: kitchenLocale,
+          })
+        : null;
+      const printResult = serviceEnabled
+        ? null
+        : await printKitchenTicketsForOrder({
+            order: orderBeforeSend,
+            kitchenResult: result,
+            tableName: selectedTable.name || orderBeforeSend.table_name,
+            menu: menuItems,
+            locale: kitchenLocale,
+          });
       await refreshOrder(selectedTable.id, oid);
       setKitchenOrders(await fetchActiveKitchenOrders());
-      if (printResult.ok) {
+      if (serviceEnabled) {
+        Alert.alert(
+          'Mutfak',
+          `${result.sentItemCount} kalem mutfağa gönderildi.\n${queueResult?.jobCount ?? 0} yazdırma işi RetailEX_Printer kuyruğuna eklendi.`,
+        );
+      } else if (printResult?.ok) {
         Alert.alert('Mutfak', `${result.sentItemCount} kalem mutfağa gönderildi.\n${printResult.message}`);
       } else {
-        setModalError(printResult.message);
-        Alert.alert('Mutfak yazdırma', printResult.message);
+        const message = printResult?.message ?? 'Mutfak fişi yazdırılamadı';
+        setModalError(message);
+        Alert.alert('Mutfak yazdırma', message);
       }
     } catch (e) {
       setModalError(e instanceof Error ? e.message : String(e));

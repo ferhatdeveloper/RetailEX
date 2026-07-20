@@ -27,11 +27,13 @@ export const RestaurantPrinterSettings: React.FC = () => {
         printerProfiles,
         printerRoutes,
         commonPrinterId,
+        printViaWindowsService,
         updatePrinterProfile,
         removePrinterProfile,
         updatePrinterRoute,
         removePrinterRoute,
         setCommonPrinter,
+        setPrintViaWindowsService,
         menu,
         systemPrinters,
         loadSystemPrinters,
@@ -214,7 +216,27 @@ export const RestaurantPrinterSettings: React.FC = () => {
                         ) : null}
                 </div>
 
-                {/* 3. Kategori rotalama — ortak yazıcının altında */}
+                {/* 3. Windows servis modu */}
+                <div className="bg-white rounded-[32px] p-8 shadow-sm border-2 border-indigo-100 ring-1 ring-indigo-50">
+                    <label className="flex items-start gap-4 cursor-pointer select-none">
+                        <input
+                            type="checkbox"
+                            checked={printViaWindowsService}
+                            onChange={(e) => setPrintViaWindowsService(e.target.checked)}
+                            className="mt-1 h-5 w-5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                        />
+                        <span className="min-w-0">
+                            <span className="block text-base font-black text-slate-900">
+                                Windows yazıcı servisi (RetailEX_Printer) — mutfak fişlerini servis dağıtır
+                            </span>
+                            <span className="mt-1 block text-sm text-slate-600 leading-snug">
+                                Açıkken web ve mobil mutfağa gönderimde fişi doğrudan basmaz; yazıcı hedeflerine göre kuyruk kaydı oluşturur.
+                            </span>
+                        </span>
+                    </label>
+                </div>
+
+                {/* 4. Kategori rotalama — ortak yazıcının altında */}
                 <div className="bg-white rounded-[32px] p-8 shadow-sm border border-slate-100">
                         <div className="flex items-center gap-3 mb-8">
                             <div className="p-3 bg-emerald-50 rounded-2xl text-emerald-600">

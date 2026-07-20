@@ -40,6 +40,7 @@ interface RestaurantState {
     printerRoutes: PrinterRouting[];
     printerProfiles: PrinterProfile[];
     commonPrinterId?: string;
+    printViaWindowsService: boolean;
     categories: Category[];
     kitchenOrders: KitchenOrder[];
     currentStaff: Staff | null;
@@ -100,6 +101,7 @@ interface RestaurantState {
     updatePrinterProfile: (profile: PrinterProfile) => void;
     removePrinterProfile: (profileId: string) => void;
     setCommonPrinter: (printerId: string | undefined) => void;
+    setPrintViaWindowsService: (enabled: boolean) => void;
     setCustomerForTable: (tableId: string, customerId?: string, customerName?: string) => void;
 
     // Course & Plate Actions
@@ -168,6 +170,7 @@ function scheduleRestaurantPrinterPersist(get: () => RestaurantState) {
                 printerProfiles: s.printerProfiles,
                 printerRoutes: s.printerRoutes,
                 commonPrinterId: s.commonPrinterId,
+                printViaWindowsService: s.printViaWindowsService,
             })
         ).catch((e) => console.warn('[restaurant] printer persist', e));
     }, 500);
@@ -183,6 +186,7 @@ export const useRestaurantStore = create<RestaurantState>()(
             printerRoutes: [],
             printerProfiles: [],
             commonPrinterId: undefined,
+            printViaWindowsService: false,
             kitchenOrders: [],
             currentStaff: null,
             staffList: [],
@@ -417,16 +421,32 @@ export const useRestaurantStore = create<RestaurantState>()(
                         } catch {
                             locale = 'tr';
                         }
-                        await printKitchenTicketsAfterSend({
-                            table,
-                            pendingItems,
-                            menu: st.menu,
-                            printerProfiles: st.printerProfiles,
-                            printerRoutes: st.printerRoutes,
-                            commonPrinterId: st.commonPrinterId,
-                            locale,
-                        });
-                    })();
+                        const { enqueueKitchenPrintJobs, isWindowsPrinterServiceEnabled } = await import(
+                            '../../../services/kitchenPrintQueueService'
+                        );
+                        const serviceEnabled = await isWindowsPrinterServiceEnabled();
+                        if (serviceEnabled) {
+                            await enqueueKitchenPrintJobs({
+                                kitchenOrderId,
+                                orderId: dbOrderId,
+                                table,
+                                pendingItems,
+                                menu: st.menu,
+                                locale,
+                                sourceSystem: 'web',
+                            });
+                        } else {
+                            await printKitchenTicketsAfterSend({
+                                table,
+                                pendingItems,
+                                menu: st.menu,
+                                printerProfiles: st.printerProfiles,
+                                printerRoutes: st.printerRoutes,
+                                commonPrinterId: st.commonPrinterId,
+                                locale,
+                            });
+                        }
+                    })().catch((e) => console.warn('[restaurant] kitchen print dispatch', e));
                 } catch (error) {
                     console.error("Mutfak siparişi gönderilirken hata oluştu:", error);
                     throw error;
@@ -845,6 +865,7 @@ export const useRestaurantStore = create<RestaurantState>()(
                         printerProfiles: cfg.printerProfiles,
                         printerRoutes: cfg.printerRoutes,
                         commonPrinterId: cfg.commonPrinterId,
+                        printViaWindowsService: cfg.printViaWindowsService === true,
                     });
                 } catch (e) {
                     console.warn('[restaurant] loadPrinterConfigFromDb', e);
@@ -868,6 +889,10 @@ export const useRestaurantStore = create<RestaurantState>()(
             },
             setCommonPrinter: (printerId) => {
                 set({ commonPrinterId: printerId });
+                scheduleRestaurantPrinterPersist(get);
+            },
+            setPrintViaWindowsService: (enabled) => {
+                set({ printViaWindowsService: enabled });
                 scheduleRestaurantPrinterPersist(get);
             },
             setCustomerForTable: (tableId, customerId, customerName) => set(state => ({ tables: state.tables.map(t => t.id === tableId ? { ...t, customerId, customerName } : t) })),

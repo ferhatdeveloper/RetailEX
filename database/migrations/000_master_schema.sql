@@ -3087,6 +3087,53 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+CREATE OR REPLACE FUNCTION INIT_RESTAURANT_KITCHEN_PRINT_JOBS_TABLE(p_firm_nr VARCHAR, p_period_nr VARCHAR)
+RETURNS void AS $$
+DECLARE
+  v_firm TEXT := lower(trim(p_firm_nr));
+  v_period TEXT := lower(trim(p_period_nr));
+  v_table TEXT;
+BEGIN
+  IF length(v_firm) <= 3 THEN
+    v_firm := lpad(v_firm, 3, '0');
+  END IF;
+  IF length(v_period) <= 2 THEN
+    v_period := lpad(v_period, 2, '0');
+  END IF;
+
+  v_table := 'rex_' || v_firm || '_' || v_period || '_kitchen_print_jobs';
+
+  EXECUTE format('
+    CREATE TABLE IF NOT EXISTS rest.%I (
+      id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      kitchen_order_id   UUID,
+      order_id           UUID,
+      printer_profile_id TEXT,
+      printer_name       TEXT,
+      connection         TEXT,
+      address            TEXT,
+      port               INT,
+      locale             TEXT DEFAULT ''tr'',
+      payload            JSONB NOT NULL,
+      status             VARCHAR(20) NOT NULL DEFAULT ''pending'',
+      attempts           INT NOT NULL DEFAULT 0,
+      last_error         TEXT,
+      claimed_by         TEXT,
+      claimed_at         TIMESTAMPTZ,
+      printed_at         TIMESTAMPTZ,
+      source_system      TEXT,
+      source_db          TEXT,
+      created_at         TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+    );
+  ', v_table);
+
+  EXECUTE format('CREATE INDEX IF NOT EXISTS %I ON rest.%I (status, created_at) WHERE status IN (''pending'', ''failed'')',
+    'idx_' || v_table || '_status_created_at',
+    v_table
+  );
+END;
+$$ LANGUAGE plpgsql;
+
 CREATE OR REPLACE FUNCTION INIT_RESTAURANT_PERIOD_TABLES(p_firm_nr VARCHAR, p_period_nr VARCHAR)
 RETURNS void AS $$
 DECLARE v_prefix TEXT := lower('rex_' || p_firm_nr || '_' || p_period_nr);
@@ -3142,6 +3189,7 @@ BEGIN
   ', v_prefix || '_rest_order_items', v_prefix || '_rest_orders');
   EXECUTE format('CREATE TABLE IF NOT EXISTS rest.%I (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), order_id UUID REFERENCES rest.%I(id) ON DELETE CASCADE, table_number VARCHAR(50), floor_name VARCHAR(100), waiter VARCHAR(255), staff_id UUID, status VARCHAR(20) DEFAULT ''new'', note TEXT, estimated_ready_at TIMESTAMPTZ, sent_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP);', v_prefix || '_rest_kitchen_orders', v_prefix || '_rest_orders');
   EXECUTE format('CREATE TABLE IF NOT EXISTS rest.%I (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), kitchen_order_id UUID REFERENCES rest.%I(id) ON DELETE CASCADE, order_item_id UUID REFERENCES rest.%I(id) ON DELETE CASCADE, product_name VARCHAR(255) NOT NULL, quantity DECIMAL(15,3) NOT NULL, course VARCHAR(50), note TEXT, status VARCHAR(20) DEFAULT ''new'', preparation_time INTEGER, start_at TIMESTAMPTZ, estimated_ready_at TIMESTAMPTZ, served_at TIMESTAMPTZ);', v_prefix || '_rest_kitchen_items', v_prefix || '_rest_kitchen_orders', v_prefix || '_rest_order_items');
+  PERFORM INIT_RESTAURANT_KITCHEN_PRINT_JOBS_TABLE(p_firm_nr, p_period_nr);
 END;
 $$ LANGUAGE plpgsql;
 

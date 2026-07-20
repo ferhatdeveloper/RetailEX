@@ -93,6 +93,8 @@
 89. **104_rex_products_plu_code.sql** – Ürün kartı `plu_code` (terazi PLU numarası; tüm `rex_*_products`).
 90. **105_logistics_delivery.sql** – Teslimat Yönetim: `logistics` şeması (araç, kurye, plan, deliveries/lines, POD, iade, bildirim); `wms.pick_tasks` + `pick_waves.delivery_id`; `sale_items.qty_shipped` / `qty_delivered`.
 91. **106_wms_enterprise.sql** – WMS kurumsal katman: `wms.bin_inventory` (bin+lot+SKT bazlı stok), `putaway_tasks`, `packing_slips`/`cartons`/`carton_lines`, `stock_adjustments` (fire), `cross_dock_links`, `logo_sync_outbox`; `bins` hiyerarşi (rack/bin_type/barcode/firm_nr); receiving/dispatch/pick/transfer/counting lot-SKT-bin + Logo senkron kolonları; `wms.allocate_fefo` (FEFO/FIFO) ve `wms.upsert_bin_inventory` fonksiyonları.
+92. **107_cash_lines_store_id.sql** – Dönem `cash_lines` tablolarına çok mağazalı filtre için `store_id` kolonu ve indeks.
+93. **108_kitchen_print_jobs.sql** – Restoran mutfak yazıcı servis kuyruğu: dönem bazlı `kitchen_print_jobs` tabloları + pending/failed indeks.
 
 **099 tüm kiracılara (tek dosya):**
 ```bash
