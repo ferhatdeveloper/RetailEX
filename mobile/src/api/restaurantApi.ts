@@ -1,4 +1,7 @@
 import { pgQuery } from './pgClient';
+import { postgrestGet } from './postgrestClient';
+import { runDataTransport, rethrowTransportInfra } from './dataTransport';
+import { fetchProducts } from './productsApi';
 import {
   categoriesTable,
   newUuid,
@@ -11,6 +14,19 @@ import {
   restTablesTable,
 } from './erpTables';
 import { useAuthStore } from '../store/authStore';
+
+/** SQL `rest.rex_…` → PostgREST path segment (`Accept-Profile: rest`) */
+function restTableBare(sqlName: string): string {
+  return sqlName.replace(/^rest\./, '');
+}
+
+function todayYmdLocal(): string {
+  const n = new Date();
+  const y = n.getFullYear();
+  const m = String(n.getMonth() + 1).padStart(2, '0');
+  const d = String(n.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
 
 export type RestTable = {
   id: string;
@@ -116,8 +132,9 @@ async function tryQueries<T>(queries: { sql: string; params?: unknown[] }[]): Pr
     try {
       const res = await pgQuery<T>(q.sql, q.params ?? []);
       return res.rows;
-    } catch {
-      /* next */
+    } catch (e) {
+      rethrowTransportInfra(e, 'restaurantApi.tryQueries');
+      /* next — şema farkı */
     }
   }
   return [];
@@ -128,16 +145,97 @@ async function runFirst(queries: { sql: string; params?: unknown[] }[]): Promise
     try {
       await pgQuery(q.sql, q.params ?? []);
       return true;
-    } catch {
-      /* next */
+    } catch (e) {
+      rethrowTransportInfra(e, 'restaurantApi.runFirst');
+      /* next — şema farkı */
     }
   }
   return false;
 }
 
-export async function fetchRestaurantTables(): Promise<RestTable[]> {
+function mapRestTableRow(r: Record<string, unknown>): RestTable {
+  const number = r.number != null ? String(r.number) : null;
+  return {
+    id: String(r.id ?? ''),
+    name: number ?? (r.name != null ? String(r.name) : String(r.id ?? '')),
+    status: r.status == null ? null : String(r.status),
+    waiter: r.waiter == null ? null : String(r.waiter),
+    total: Number(r.total) || 0,
+    floor_id: r.floor_id == null ? null : String(r.floor_id),
+    seats: r.seats == null ? null : Number(r.seats) || 0,
+    start_time: r.start_time == null ? null : String(r.start_time),
+  };
+}
+
+async function fetchTablesNameMapViaRest(): Promise<Map<string, string>> {
+  const bare = restTableBare(restTablesTable());
+  const rows = await postgrestGet<Array<{ id?: string; number?: string | null }>>(
+    `/${bare}`,
+    { select: 'id,number', order: 'number.asc', limit: 500 },
+    { schema: 'rest' },
+  );
+  const map = new Map<string, string>();
+  for (const r of Array.isArray(rows) ? rows : []) {
+    if (r.id == null) continue;
+    map.set(String(r.id), r.number != null ? String(r.number) : String(r.id));
+  }
+  return map;
+}
+
+function mapRestOrderRow(
+  r: Record<string, unknown>,
+  tableNames: Map<string, string>,
+): RestOrder {
+  const tableId = r.table_id == null ? null : String(r.table_id);
+  const created =
+    r.opened_at != null
+      ? String(r.opened_at)
+      : r.created_at == null
+        ? null
+        : String(r.created_at);
+  return {
+    id: String(r.id ?? ''),
+    order_no: r.order_no == null ? null : String(r.order_no),
+    table_id: tableId,
+    table_name: tableId ? tableNames.get(tableId) ?? tableId : null,
+    status: r.status == null ? null : String(r.status),
+    total_amount: Number(r.total_amount) || 0,
+    waiter: r.waiter == null ? null : String(r.waiter),
+    created_at: created,
+  };
+}
+
+async function fetchRestaurantTablesViaRest(): Promise<RestTable[]> {
+  const bare = restTableBare(restTablesTable());
+  try {
+    const rows = await postgrestGet<Record<string, unknown>[]>(
+      `/${bare}`,
+      {
+        select: 'id,number,status,waiter,total,floor_id,seats,start_time',
+        order: 'number.asc',
+        limit: 200,
+      },
+      { schema: 'rest' },
+    );
+    return (Array.isArray(rows) ? rows : []).map(mapRestTableRow).filter((r) => r.id);
+  } catch {
+    /* seats/start_time yoksa sade select */
+    const rows = await postgrestGet<Record<string, unknown>[]>(
+      `/${bare}`,
+      {
+        select: 'id,number,status,waiter,total,floor_id',
+        order: 'number.asc',
+        limit: 200,
+      },
+      { schema: 'rest' },
+    );
+    return (Array.isArray(rows) ? rows : []).map(mapRestTableRow).filter((r) => r.id);
+  }
+}
+
+async function fetchRestaurantTablesViaBridge(): Promise<RestTable[]> {
   const tbl = restTablesTable();
-  const rows = await tryQueries<RestTable>([
+  return tryQueries<RestTable>([
     {
       sql: `SELECT id,
               COALESCE(number, id::text) AS name,
@@ -161,10 +259,35 @@ export async function fetchRestaurantTables(): Promise<RestTable[]> {
        LIMIT 200`,
     },
   ]);
-  return rows;
 }
 
-export async function fetchOpenOrders(limit = 50): Promise<RestOrder[]> {
+export async function fetchRestaurantTables(): Promise<RestTable[]> {
+  return runDataTransport({
+    label: 'fetchRestaurantTables',
+    viaRest: fetchRestaurantTablesViaRest,
+    viaBridge: fetchRestaurantTablesViaBridge,
+  });
+}
+
+async function fetchOpenOrdersViaRest(limit: number): Promise<RestOrder[]> {
+  const bare = restTableBare(restOrdersTable());
+  const rows = await postgrestGet<Record<string, unknown>[]>(
+    `/${bare}`,
+    {
+      select: 'id,order_no,table_id,status,total_amount,waiter,created_at',
+      or: '(status.is.null,status.not.in.(closed,cancelled))',
+      order: 'created_at.desc',
+      limit,
+    },
+    { schema: 'rest' },
+  );
+  const tableNames = await fetchTablesNameMapViaRest();
+  return (Array.isArray(rows) ? rows : [])
+    .map((r) => mapRestOrderRow(r, tableNames))
+    .filter((r) => r.id);
+}
+
+async function fetchOpenOrdersViaBridge(limit: number): Promise<RestOrder[]> {
   const orders = restOrdersTable();
   const tables = restTablesTable();
   return tryQueries<RestOrder>([
@@ -186,8 +309,52 @@ export async function fetchOpenOrders(limit = 50): Promise<RestOrder[]> {
   ]);
 }
 
-/** Bugünkü siparişler (açık + kapalı) — zaman çizelgesi */
-export async function fetchTodayOrders(limit = 120): Promise<RestOrder[]> {
+export async function fetchOpenOrders(limit = 50): Promise<RestOrder[]> {
+  return runDataTransport({
+    label: 'fetchOpenOrders',
+    viaRest: () => fetchOpenOrdersViaRest(limit),
+    viaBridge: () => fetchOpenOrdersViaBridge(limit),
+  });
+}
+
+async function fetchTodayOrdersViaRest(limit: number): Promise<RestOrder[]> {
+  const dateStr = todayYmdLocal();
+  const bare = restTableBare(restOrdersTable());
+  let rows: Record<string, unknown>[];
+  try {
+    rows = await postgrestGet<Record<string, unknown>[]>(
+      `/${bare}`,
+      {
+        select: 'id,order_no,table_id,status,total_amount,waiter,created_at,opened_at',
+        or: `(opened_at.gte.${dateStr},created_at.gte.${dateStr})`,
+        order: 'created_at.asc',
+        limit,
+      },
+      { schema: 'rest' },
+    );
+  } catch {
+    rows = await postgrestGet<Record<string, unknown>[]>(
+      `/${bare}`,
+      {
+        select: 'id,order_no,table_id,status,total_amount,waiter,created_at',
+        created_at: `gte.${dateStr}`,
+        order: 'created_at.asc',
+        limit,
+      },
+      { schema: 'rest' },
+    );
+  }
+  const tableNames = await fetchTablesNameMapViaRest();
+  return (Array.isArray(rows) ? rows : [])
+    .map((r) => mapRestOrderRow(r, tableNames))
+    .filter((r) => {
+      if (!r.id) return false;
+      const ts = r.created_at || '';
+      return ts.startsWith(dateStr) || ts.slice(0, 10) === dateStr;
+    });
+}
+
+async function fetchTodayOrdersViaBridge(limit: number): Promise<RestOrder[]> {
   const orders = restOrdersTable();
   const tables = restTablesTable();
   return tryQueries<RestOrder>([
@@ -220,6 +387,15 @@ export async function fetchTodayOrders(limit = 120): Promise<RestOrder[]> {
       params: [limit],
     },
   ]);
+}
+
+/** Bugünkü siparişler (açık + kapalı) — zaman çizelgesi */
+export async function fetchTodayOrders(limit = 120): Promise<RestOrder[]> {
+  return runDataTransport({
+    label: 'fetchTodayOrders',
+    viaRest: () => fetchTodayOrdersViaRest(limit),
+    viaBridge: () => fetchTodayOrdersViaBridge(limit),
+  });
 }
 
 export async function fetchReservationsForDate(dateYmd: string): Promise<RestReservation[]> {
@@ -292,9 +468,39 @@ export async function fetchRestaurantMenuItems(
   const q = search.trim();
   const like = `%${q}%`;
   const capped = Math.max(10, Math.min(300, Number(limit) || 120));
-  const queries = [
-    {
-      sql: `SELECT p.id::text AS id,
+
+  const mapMenu = (rows: RestMenuItem[]): RestMenuItem[] =>
+    rows
+      .map((r) => ({
+        id: String(r.id),
+        code: r.code == null ? null : String(r.code),
+        name: String(r.name ?? ''),
+        price: Number(r.price) || 0,
+        category: String(r.category || 'Genel'),
+        preparation_time: Math.max(1, Number(r.preparation_time) || 5),
+      }))
+      .filter((r) => r.id && r.name);
+
+  async function viaRest(): Promise<RestMenuItem[]> {
+    const list = await fetchProducts(q, capped);
+    return mapMenu(
+      list
+        .filter((p) => p.is_active && (Number(p.price) || 0) > 0)
+        .map((p) => ({
+          id: p.id,
+          code: p.code,
+          name: p.name,
+          price: Number(p.price) || 0,
+          category: String(p.category_code || 'Genel'),
+          preparation_time: 5,
+        })),
+    );
+  }
+
+  async function viaBridge(): Promise<RestMenuItem[]> {
+    const queries = [
+      {
+        sql: `SELECT p.id::text AS id,
               p.code,
               p.name,
               COALESCE(p.price, 0)::float8 AS price,
@@ -314,10 +520,10 @@ export async function fetchRestaurantMenuItems(
          )
        ORDER BY c.name ASC NULLS LAST, p.name ASC
        LIMIT $2`,
-      params: [like, capped],
-    },
-    {
-      sql: `SELECT p.id::text AS id,
+        params: [like, capped],
+      },
+      {
+        sql: `SELECT p.id::text AS id,
               p.code,
               p.name,
               COALESCE(p.price, 0)::float8 AS price,
@@ -336,10 +542,10 @@ export async function fetchRestaurantMenuItems(
          )
        ORDER BY c.name ASC NULLS LAST, p.name ASC
        LIMIT $2`,
-      params: [like, capped],
-    },
-    {
-      sql: `SELECT p.id::text AS id,
+        params: [like, capped],
+      },
+      {
+        sql: `SELECT p.id::text AS id,
               p.code,
               p.name,
               COALESCE(p.price, 0)::float8 AS price,
@@ -356,25 +562,28 @@ export async function fetchRestaurantMenuItems(
          )
        ORDER BY p.name ASC
        LIMIT $2`,
-      params: [like, capped],
-    },
-  ];
+        params: [like, capped],
+      },
+    ];
 
-  for (const query of queries) {
-    const rows = await tryQueries<RestMenuItem>([query]);
-    const mapped = rows
-      .map((r) => ({
-      id: String(r.id),
-      code: r.code == null ? null : String(r.code),
-      name: String(r.name ?? ''),
-      price: Number(r.price) || 0,
-      category: String(r.category || 'Genel'),
-      preparation_time: Math.max(1, Number(r.preparation_time) || 5),
-    }))
-    .filter((r) => r.id && r.name);
-    if (mapped.length > 0) return mapped;
+    for (const query of queries) {
+      const rows = await tryQueries<RestMenuItem>([query]);
+      const mapped = mapMenu(rows);
+      if (mapped.length > 0) return mapped;
+    }
+    return [];
   }
-  return [];
+
+  try {
+    return await runDataTransport({
+      label: 'fetchRestaurantMenuItems',
+      viaRest,
+      viaBridge,
+    });
+  } catch (e) {
+    rethrowTransportInfra(e, 'fetchRestaurantMenuItems');
+    return [];
+  }
 }
 
 function mapOrderDetail(
