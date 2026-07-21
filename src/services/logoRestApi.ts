@@ -268,6 +268,16 @@ async function postLogoBridgeProxy(
   });
 }
 
+/** Logo REST "no idle LObjects.exe" — sunucu havuz hatası (istemci çözemez). */
+export function isLogoIdleLObjectsError(message: string | undefined | null): boolean {
+  const m = String(message || '').toLocaleLowerCase('en-US');
+  return (
+    m.includes('no idle lobjects') ||
+    m.includes('idle lobjects') ||
+    (m.includes('lobjects.exe') && (m.includes('yok') || m.includes('denied') || m.includes('idle')))
+  );
+}
+
 function formatLogoOAuthErrorCode(code: string, description?: string): string {
   const desc = (description || '').trim();
   const descLower = desc.toLocaleLowerCase('en-US');
@@ -279,8 +289,9 @@ function formatLogoOAuthErrorCode(code: string, description?: string): string {
     descLower.includes('idle lobjects')
   ) {
     return (
-      'Logo REST: Boşta LObjects.exe yok. Logo sunucusunda Logo Objects (LObjects) servisini/uygulamasını başlatın; ' +
-      'REST kullanıcı havuzunda idle oturum olmalı. ' +
+      'Logo REST: Boşta LObjects.exe yok. Bu hata RetailEX kodundan çözülmez — Logo sunucusunda ' +
+      'Servis Yönetim Panelindeki Tiger kullanıcısı/şifre/firma ile LObjects havuzunun ayağa kalktığını doğrulayın; ' +
+      "Görev Yöneticisi'nde LObjects.exe oluşmalı; RESTServis\\Logs dosyasına bakın. " +
       (desc ? `(${desc})` : '')
     ).trim();
   }
@@ -973,6 +984,28 @@ export async function logoObtainToken(
         },
         body: basicBody.toString(),
       });
+    }
+  }
+
+  // Geçici havuz doluluğu: tek kez kısa bekleyip aynı firmno ile yeniden dene (firma değiştirme).
+  if (!tokenRes.ok) {
+    const failMsg = formatLogoHttpFailure(baseUrl, tokenRes.status, tokenRes.data, tokenRes.text);
+    if (isLogoIdleLObjectsError(failMsg)) {
+      await new Promise((r) => setTimeout(r, 4000));
+      if (clientId && clientSecret) {
+        const bodyRetry = new URLSearchParams(tokenBody);
+        bodyRetry.set('client_id', clientId);
+        bodyRetry.set('client_secret', clientSecret);
+        tokenRes = await logoHttp(baseUrl, 'POST', '/token', {
+          headers: tokenHeaders,
+          body: bodyRetry.toString(),
+        });
+      } else {
+        tokenRes = await logoHttp(baseUrl, 'POST', '/token', {
+          headers: { ...tokenHeaders, Authorization: basicAuth(clientId, clientSecret) },
+          body: tokenBody.toString(),
+        });
+      }
     }
   }
 
