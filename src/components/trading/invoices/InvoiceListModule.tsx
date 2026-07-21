@@ -28,7 +28,8 @@ import type { TemplateUsageScope } from '../../../core/types/templates';
 import { TEMPLATE_USAGE_SCOPE_LABELS } from '../../../core/types/templates';
 import { useTemplateStore } from '../../../store';
 import { buildInvoicePrintContext, convertTemplateToReportTemplate, invoiceScopeFromTrcode } from '../../../services/templateRenderService';
-import { enqueueFastReportTemplateJob, isWindowsPrinterServiceEnabled } from '../../../services/unifiedPrintQueueService';
+import { getBindingForScope } from '../../../services/printDesignBindingService';
+import { enqueueFastReportFrxJob, enqueueFastReportTemplateJob, isWindowsPrinterServiceEnabled } from '../../../services/unifiedPrintQueueService';
 import { PREFILL_PURCHASE_FROM_COUNT_STORAGE_KEY } from '../../../utils/countSlipPurchaseDraft';
 import {
   buildPurchaseEditDataFromSayimInvoices,
@@ -196,9 +197,79 @@ export function InvoiceListModule({
     await printInvoice(invoice as Invoice, typeLabel);
   };
 
-  const openSpecialPrint = (invoice: ListInvoice) => {
+  const printBoundInvoiceDesign = async (
+    invoice: ListInvoice,
+    scope: TemplateUsageScope,
+    binding: Awaited<ReturnType<typeof getBindingForScope>>,
+  ): Promise<boolean> => {
+    if (!binding || binding.designKind === 'builtin' || !binding.designId) return false;
+    if (!invoice.id) {
+      toast.error('Fatura kimliği bulunamadı.');
+      return true;
+    }
+
+    const fullInvoice = await invoicesAPI.getById(invoice.id);
+    const invoiceData = (fullInvoice ?? invoice) as Invoice;
+    const context = buildInvoicePrintContext(invoiceData);
+
+    if (binding.designKind === 'fastreport_frx') {
+      if (!(await isWindowsPrinterServiceEnabled())) {
+        toast.error('FastReport .frx yazdırma için Windows yazıcı servisi açık olmalı.');
+        return true;
+      }
+      await enqueueFastReportFrxJob({
+        designId: binding.designId,
+        designName: binding.designName,
+        scope,
+        data: context,
+        connection: 'system',
+        refType: 'invoice',
+        refId: invoiceData.id ?? invoice.id ?? null,
+        sourceSystem: 'web',
+        priority: 85,
+      });
+      toast.success('FastReport .frx yazıcı kuyruğuna eklendi.');
+      return true;
+    }
+
+    const selectedTemplate = designTemplates.find((t) => t.id === binding.designId);
+    if (!selectedTemplate) {
+      toast.error('Eşleşen Dizayn Merkezi şablonu bulunamadı.');
+      return true;
+    }
+    const reportTemplate = convertTemplateToReportTemplate(selectedTemplate);
+    if (await isWindowsPrinterServiceEnabled()) {
+      await enqueueFastReportTemplateJob({
+        templateId: selectedTemplate.id,
+        type: 'invoice',
+        data: context,
+        connection: 'system',
+        refType: 'invoice',
+        refId: invoiceData.id ?? invoice.id ?? null,
+        sourceSystem: 'web',
+        priority: 85,
+      });
+      toast.success('Yazıcı kuyruğuna eklendi.');
+      return true;
+    }
+    setActiveTemplate(reportTemplate);
+    setViewerData(context);
+    setShowViewer(true);
+    return true;
+  };
+
+  const openSpecialPrint = async (invoice: ListInvoice) => {
     const trcode = Number(invoice.invoice_type || invoice.trcode || 0);
     const scope = invoiceScopeFromTrcode(trcode);
+    try {
+      const binding = await getBindingForScope(firmNrKey || undefined, scope);
+      if (await printBoundInvoiceDesign(invoice, scope, binding)) {
+        setContextMenu(null);
+        return;
+      }
+    } catch (error) {
+      console.warn('[InvoiceListModule] binding read failed, falling back to template resolver:', error);
+    }
     const scopedTemplates = getTemplatesForScope('invoice', scope);
     const preferred = resolveTemplateForScope('invoice', scope) ?? scopedTemplates[0] ?? null;
     if (!preferred) {
@@ -1575,7 +1646,7 @@ export function InvoiceListModule({
               icon: Printer,
               onClick: () => {
                 if (contextMenu.invoice) {
-                  openSpecialPrint(contextMenu.invoice);
+                  void openSpecialPrint(contextMenu.invoice);
                 }
               }
             },

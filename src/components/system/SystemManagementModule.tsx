@@ -21,6 +21,7 @@ import {
 } from '../../services/desktopUpdater';
 import { APP_VERSION } from '../../core/version';
 import { PrinterSettings } from './PrinterSettings';
+import { PrintOptionsSettings } from './PrintOptionsSettings';
 import { TemplateManager } from '../modules/TemplateManager';
 import { RestaurantCallerIdSettings } from '../restaurant/components/RestaurantCallerIdSettings';
 import { RECEIPT_PRODUCT_NAME_FIELD_OPTIONS } from '../../utils/receiptProductName';
@@ -32,6 +33,7 @@ type SystemView =
   | 'receiptSettings'
   | 'invoiceLabelDesigner'
   | 'printerSettings'
+  | 'printOptions'
   | 'callerIdVirtualPbx'
   | 'dataBroadcast'
   | 'pendingPosDevices'
@@ -61,6 +63,8 @@ const ROUTE_HINT_TO_VIEW: Partial<Record<string, SystemView>> = {
   'invoice-label-designer': 'invoiceLabelDesigner',
   'report-designer': 'invoiceLabelDesigner',
   'label-designer': 'invoiceLabelDesigner',
+  'print-options': 'printOptions',
+  printoptions: 'printOptions',
   smsmanage: 'definitionsParameters',
   emailcamp: 'definitionsParameters',
 };
@@ -101,6 +105,7 @@ export function SystemManagementModule({ routeHint }: SystemManagementModuleProp
     { id: 'receiptSettings' as const, label: 'Fiş / Firma Bilgisi', icon: Receipt, color: 'amber' },
     { id: 'invoiceLabelDesigner' as const, label: tm('invoiceLabelDesigner'), icon: FileText, color: 'indigo' },
     { id: 'printerSettings' as const, label: 'Yazıcı Ayarları', icon: Printer, color: 'slate' },
+    { id: 'printOptions' as const, label: 'Yazdırma Seçenekleri', icon: Printer, color: 'blue' },
     { id: 'callerIdVirtualPbx' as const, label: 'Sanal santral (Caller ID)', icon: Phone, color: 'violet' },
     { id: 'dataBroadcast' as const, label: 'Bilgi Gönder/AI Merkezi', icon: Radio, color: 'orange' },
     { id: 'pendingPosDevices' as const, label: 'Kasa Cihazları', icon: Monitor, color: 'amber' },
@@ -225,6 +230,7 @@ export function SystemManagementModule({ routeHint }: SystemManagementModuleProp
           </div>
         )}
         {currentView === 'printerSettings' && <PrinterSettings />}
+        {currentView === 'printOptions' && <PrintOptionsSettings />}
         {currentView === 'callerIdVirtualPbx' && (
           <div className="min-h-full bg-gray-50">
             <RestaurantCallerIdSettings />

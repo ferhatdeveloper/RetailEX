@@ -1,6 +1,7 @@
 import { getStoredWindowsPrinterNameForPrint } from './tauriPrintSettings';
 import { RECEIPT_80MM_DOCUMENT_CSS, RECEIPT_80MM_VIEWPORT_FOR_HEADLESS } from './receipt80mmDocumentCss';
-import { enqueuePrintJob, isWindowsPrinterServiceEnabled } from '../services/unifiedPrintQueueService';
+import { getBindingForScope } from '../services/printDesignBindingService';
+import { enqueueFastReportFrxJob, enqueueFastReportTemplateJob, enqueuePrintJob, isWindowsPrinterServiceEnabled } from '../services/unifiedPrintQueueService';
 
 export interface ReturnReceipt {
   id: string;
@@ -137,6 +138,27 @@ function generateReceiptHTML(sale: any, companyName: string, language: string, r
   `;
 }
 
+function buildPosReceiptPrintData(sale: any, companyName: string, language: string, receiptSettings?: ReceiptSettingsForPrint | null) {
+  return {
+    sale,
+    receipt: sale,
+    items: Array.isArray(sale?.items) ? sale.items : [],
+    storeName: receiptSettings?.companyName || companyName,
+    storeAddress: receiptSettings?.companyAddress || '',
+    storePhone: receiptSettings?.companyPhone || '',
+    receiptNumber: sale?.receiptNumber ?? '',
+    date: sale?.date ?? new Date().toISOString(),
+    cashier: sale?.cashier ?? '',
+    customerName: sale?.customerName ?? '',
+    subtotal: sale?.subtotal ?? 0,
+    discount: sale?.discount ?? 0,
+    total: sale?.total ?? 0,
+    paymentMethod: sale?.paymentMethod ?? '',
+    change: sale?.change ?? 0,
+    language,
+  };
+}
+
 export async function printThermalReceipt(sale: any, companyName: string = 'RetailOS', options?: { autoPrint?: boolean, language?: string; receiptSettings?: ReceiptSettingsForPrint | null }) {
   const finalLanguage = options?.language || 'tr';
   let receiptSettings = options?.receiptSettings;
@@ -152,6 +174,36 @@ export async function printThermalReceipt(sale: any, companyName: string = 'Reta
 
   try {
     if (await isWindowsPrinterServiceEnabled()) {
+      const binding = await getBindingForScope(undefined, 'pos_receipt').catch(() => null);
+      if (binding?.designId && binding.designKind === 'fastreport_frx') {
+        await enqueueFastReportFrxJob({
+          designId: binding.designId,
+          designName: binding.designName,
+          scope: 'pos_receipt',
+          data: buildPosReceiptPrintData(sale, companyName, finalLanguage, receiptSettings),
+          connection: 'system',
+          printerName: getStoredWindowsPrinterNameForPrint(),
+          refType: 'pos_sale',
+          refId: sale?.id ?? sale?.receiptNumber ?? null,
+          sourceSystem: 'web',
+          priority: 80,
+        });
+        return;
+      }
+      if (binding?.designId && binding.designKind === 'design_center') {
+        await enqueueFastReportTemplateJob({
+          templateId: binding.designId,
+          type: 'receipt',
+          data: buildPosReceiptPrintData(sale, companyName, finalLanguage, receiptSettings),
+          connection: 'system',
+          printerName: getStoredWindowsPrinterNameForPrint(),
+          refType: 'pos_sale',
+          refId: sale?.id ?? sale?.receiptNumber ?? null,
+          sourceSystem: 'web',
+          priority: 80,
+        });
+        return;
+      }
       await enqueuePrintJob({
         jobType: 'pos_receipt_80',
         connection: 'system',

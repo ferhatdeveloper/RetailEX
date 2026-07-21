@@ -1,9 +1,15 @@
 import type { MenuItem, OrderItem, PrinterProfile, PrinterRouting, Table } from '../components/restaurant/types';
 import { useProductStore } from '../store/useProductStore';
 import type { KitchenReceiptLocale } from '../utils/restaurantReceiptPrint';
-import { DB_SETTINGS, postgres } from './postgres';
+import { DB_SETTINGS, ERP_SETTINGS, postgres } from './postgres';
+import { getBindingForScope } from './printDesignBindingService';
 import { getRestaurantPrinterConfig } from './restaurantPrinterConfigService';
-import { enqueuePrintJob } from './unifiedPrintQueueService';
+import {
+  enqueueFastReportFrxJob,
+  enqueueFastReportTemplateJob,
+  enqueuePrintJob,
+  isWindowsPrinterServiceEnabled as isUnifiedWindowsPrinterServiceEnabled,
+} from './unifiedPrintQueueService';
 
 export { isWindowsPrinterServiceEnabled } from './unifiedPrintQueueService';
 
@@ -168,6 +174,15 @@ export async function enqueueKitchenPrintJobs(
   const locale = params.locale ?? 'tr';
   const sourceDb = currentSourceDb();
   const jobsTable = postgres.getMovementTableName('kitchen_print_jobs', 'rest');
+  const designBinding = await (async () => {
+    try {
+      if (!(await isUnifiedWindowsPrinterServiceEnabled())) return null;
+      return await getBindingForScope(ERP_SETTINGS.firmNr, 'kitchen_ticket');
+    } catch (error) {
+      console.warn('[kitchenPrintQueueService] print design binding read failed:', error);
+      return null;
+    }
+  })();
   let jobCount = 0;
   let itemCount = 0;
 
@@ -182,6 +197,36 @@ export async function enqueueKitchenPrintJobs(
       items: lines,
       sourceDb,
     };
+
+    if (designBinding?.designId && target.connection !== 'network') {
+      const common = {
+        connection: 'system' as const,
+        printerName: target.connection === 'system' ? target.printerName ?? null : null,
+        refType: params.kitchenOrderId ? 'kitchen_order' : params.orderId ? 'order' : null,
+        refId: params.kitchenOrderId ?? params.orderId ?? null,
+        sourceSystem: params.sourceSystem ?? 'web',
+        priority: 55,
+      };
+      if (designBinding.designKind === 'fastreport_frx') {
+        await enqueueFastReportFrxJob({
+          ...common,
+          designId: designBinding.designId,
+          designName: designBinding.designName,
+          scope: 'kitchen_ticket',
+          data: payload,
+        });
+      } else if (designBinding.designKind === 'design_center') {
+        await enqueueFastReportTemplateJob({
+          ...common,
+          templateId: designBinding.designId,
+          type: 'kitchen',
+          data: payload,
+        });
+      }
+      jobCount += 1;
+      itemCount += lines.length;
+      continue;
+    }
 
     await enqueuePrintJob({
       jobType: 'kitchen_ticket',

@@ -94,4 +94,4 @@ DB kayıt formatı:
 
 ## DeskApp Yazdırma Seçenekleri bağlantısı
 
-Bu araç `.frx` tasarımını üretip `public.report_templates` içine kaydeder. DeskApp tarafındaki [Yazdırma Seçenekleri başlangıç noktası](../../src/components/system/PrinterSettings.tsx) / şablon seçimi ekranı bu `fastreport_frx` kayıtlarını kullanacak şekilde bağlandığında, kullanıcı lokal dosya taşımadan `.frx` tasarımlarını firmaya göre seçebilir.
+Bu araç `.frx` tasarımını üretip `public.report_templates` içine kaydeder. DeskApp tarafındaki [Yazdırma Seçenekleri ekranı](../../src/components/system/PrintOptionsSettings.tsx), bu `fastreport_frx` kayıtlarını belge türüne göre seçtirir; kullanıcı lokal dosya taşımadan `.frx` tasarımlarını firmaya göre kullanabilir.

@@ -10,7 +10,7 @@ import {
     Globe, Receipt, Building, Calculator, TrendingUpDown, Gift, Percent, Send,
     PackageSearch, PackagePlus, Beef, Wrench, Shield, UserCog, UtensilsCrossed, Phone, Bell,
     Smartphone, Mail, BarChart3, TrendingUp, UserCheck, Layers, Clock, AlertCircle,
-    Radio, ArrowRightLeft, MoreVertical, Menu, Sparkles, Banknote, Mic, Landmark, Layout, HardDrive, RefreshCw, Monitor
+    Radio, ArrowRightLeft, MoreVertical, Menu, Sparkles, Banknote, Mic, Landmark, Layout, HardDrive, RefreshCw, Monitor, Printer
 } from 'lucide-react';
 import { Translations } from '../locales/translations';
 
@@ -310,6 +310,7 @@ export const getStaticMenuSections = (t: Translations) => [
             { label: t.menu.firmPeriodDefinitions, screen: 'firm-period-definitions', icon: Building },
             { label: t.menu.userManagement, screen: 'usermanagement', icon: UserCheck },
             { label: t.menu.invoiceLabelDesigner, screen: 'invoice-label-designer', icon: FileText },
+            { label: 'Yazdırma Seçenekleri', screen: 'print-options', icon: Printer },
             { label: t.menu.roleAndAuthorization, screen: 'roleauth', icon: Shield },
             { label: t.menu.menuManagement, screen: 'menumanagement', icon: Menu },
             { label: t.menu.virtualPbxCallerId, screen: 'virtual-pbx-caller-id', icon: Phone },

@@ -816,6 +816,36 @@ async function loadFastReportTemplate(client, firm, templateId) {
   return template;
 }
 
+async function loadFastReportFrxDesign(client, firm, designId) {
+  if (!designId) throw new Error('fastreport_frx icin payload.designId zorunlu.');
+  const res = await client.query(
+    `SELECT id::text, name, content
+       FROM public.report_templates
+      WHERE id = $1::uuid
+        AND (firm_nr = $2 OR firm_nr IS NULL)
+        AND (LOWER(template_type) = 'fastreport_frx' OR LOWER(category) = 'fastreport_frx')
+      ORDER BY CASE WHEN firm_nr = $2 THEN 0 ELSE 1 END
+      LIMIT 1`,
+    [designId, firm],
+  );
+  const row = res.rows[0];
+  if (!row) throw new Error(`FastReport .frx dizayni bulunamadi: ${designId}`);
+  return row;
+}
+
+function extractFrxText(content) {
+  if (typeof content === 'string') return content;
+  if (!content || typeof content !== 'object') return '';
+  return firstString(
+    content.frxXml,
+    content.frx_xml,
+    content.xml,
+    content.text,
+    content.content,
+    content.template,
+  );
+}
+
 function renderFastReportTemplateHtml(template, data) {
   const width = mm(template.width, 80);
   const height = mm(template.height, 297);
@@ -854,6 +884,19 @@ function findExistingPath(candidates) {
       return false;
     }
   }) || '';
+}
+
+function findFastReportCliPath(settings = {}) {
+  return firstString(
+    process.env.FASTREPORT_CLI,
+    settings.fastReportCliPath,
+    findExistingPath([
+      'C:\\Program Files\\FastReport\\FastReport.Cli.exe',
+      'C:\\Program Files (x86)\\FastReport\\FastReport.Cli.exe',
+      path.join(__dirname, 'FastReport.Cli.exe'),
+      path.join(ROOT, 'resources', 'FastReport.Cli.exe'),
+    ]),
+  );
 }
 
 function findBrowserPath(settings = {}) {
@@ -943,6 +986,32 @@ async function printHtmlDocument(html, printerName, settings = {}) {
   }
 }
 
+async function printFastReportFrx(job, context) {
+  if (!IS_WIN) throw new Error('FastReport runtime kurulmalı');
+  const designId = firstString(job.payload.designId, job.payload.design_id);
+  const design = await loadFastReportFrxDesign(context.client, context.firm, designId);
+  const frxText = extractFrxText(design.content);
+  if (!frxText) throw new Error('FastReport .frx içeriği report_templates.content içinde bulunamadı.');
+
+  const cliPath = findFastReportCliPath(context.settings);
+  if (!cliPath) throw new Error('FastReport runtime kurulmalı');
+
+  const dir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'retailex-frx-'));
+  const frxPath = path.join(dir, 'design.frx');
+  const dataPath = path.join(dir, 'data.json');
+  const targetPrinter = firstString(job.systemName, context.settings.defaultSystemPrinterName);
+  await fs.promises.writeFile(frxPath, frxText, 'utf8');
+  await fs.promises.writeFile(dataPath, JSON.stringify(firstObject(job.payload.data), null, 2), 'utf8');
+  const args = ['print', '--template', frxPath, '--data', dataPath];
+  if (targetPrinter) args.push('--printer', targetPrinter);
+  try {
+    await execFileAsync(cliPath, args, { windowsHide: true, timeout: 120_000 });
+    return `fastreport_frx:${designId} -> ${targetPrinter || 'varsayilan'}`;
+  } finally {
+    setTimeout(() => fs.rm(dir, { recursive: true, force: true }, () => {}), 30_000).unref();
+  }
+}
+
 function buildTestPageEscPos(job) {
   const text = [
     esc(0x1b, 0x40),
@@ -1005,6 +1074,10 @@ async function printJob(row, context) {
     }
     const info = await printHtmlDocument(html, job.systemName, context.settings);
     return `fastreport_template:${templateId} -> ${info}`;
+  }
+
+  if (jobType === 'fastreport_frx' || job.payload?.kind === 'fastreport_frx') {
+    return await printFastReportFrx(job, context);
   }
 
   if (jobType === 'test_page') {
@@ -1093,7 +1166,7 @@ Kuyruklar:
 
 Job tipleri:
   kitchen_ticket, escpos_raw, html_document, pos_receipt_80, account_receipt
-  invoice_a4, report_html, product_label, fastreport_template, test_page
+  invoice_a4, report_html, product_label, fastreport_template, fastreport_frx, test_page
 
 Windows hizmeti: RetailEX_Printer.exe
 Ayrıntı: DeskApp/resources/README_PRINTER_SERVICE.md

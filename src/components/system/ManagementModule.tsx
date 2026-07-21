@@ -240,7 +240,7 @@ type ExtendedScreen = ManagementScreen | 'dashboard' | 'finance' | 'stock' | 'pu
   'stockmovements-deficit' | 'stockmovements-surplus' | 'stock-price-change-slips' |
   'inventory-count-ops' |
   'analytics-group' | 'sales-stock-group' | 'finance-reps-group' | 'advanced-reps-group' |
-  'report-designer' | 'label-designer' | 'invoice-label-designer' |
+  'report-designer' | 'label-designer' | 'invoice-label-designer' | 'print-options' |
   'supabase-migration' |
   'virtual-pbx-caller-id' |
   'restaurant' | 'beauty';
@@ -1458,6 +1458,7 @@ export function ManagementModule({
         case 'smsmanage':
         case 'emailcamp':
         case 'invoice-label-designer':
+        case 'print-options':
           return <SystemManagementModule routeHint={currentScreen} />;
         case 'excel':
           return <ExcelModule />;

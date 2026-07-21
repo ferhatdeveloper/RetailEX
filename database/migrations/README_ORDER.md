@@ -96,6 +96,7 @@
 92. **107_cash_lines_store_id.sql** – Dönem `cash_lines` tablolarına çok mağazalı filtre için `store_id` kolonu ve indeks.
 93. **108_kitchen_print_jobs.sql** – Restoran mutfak yazıcı servis kuyruğu: dönem bazlı `kitchen_print_jobs` tabloları + pending/failed indeks.
 94. **109_unified_print_jobs.sql** – RetailEX_Printer birleşik yazıcı kuyruğu: dönem bazlı `print_jobs` tabloları, job type/payload alanları ve eski `kitchen_print_jobs.job_type`.
+95. **110_print_design_bindings.sql** – Sistem → Yazdırma Seçenekleri: belge türü bazında FastReport `.frx`, Dizayn Merkezi veya yerleşik yazdırma eşleştirmeleri (`public.print_design_bindings`).
 
 **099 tüm kiracılara (tek dosya):**
 ```bash

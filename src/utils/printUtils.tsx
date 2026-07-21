@@ -3,7 +3,9 @@ import type { Invoice } from '../core/types';
 import { CorporateInvoiceTemplate, PrintConfig } from '../components/trading/invoices/CorporateInvoiceTemplate';
 import { PostgresConnection, ERP_SETTINGS } from '../services/postgres';
 import { getReceiptSettings } from '../services/receiptSettingsService';
-import { enqueuePrintJob, isWindowsPrinterServiceEnabled } from '../services/unifiedPrintQueueService';
+import { getBindingForScope } from '../services/printDesignBindingService';
+import { buildInvoicePrintContext, invoiceScopeFromTrcode } from '../services/templateRenderService';
+import { enqueueFastReportFrxJob, enqueueFastReportTemplateJob, enqueuePrintJob, isWindowsPrinterServiceEnabled } from '../services/unifiedPrintQueueService';
 import { getStoredWindowsPrinterNameForPrint } from './tauriPrintSettings';
 
 export const printInvoice = async (invoice: Invoice, typeLabel: string = 'FATURA') => {
@@ -76,6 +78,42 @@ export const printInvoice = async (invoice: Invoice, typeLabel: string = 'FATURA
 
     try {
       if (await isWindowsPrinterServiceEnabled()) {
+        const scope = invoiceScopeFromTrcode(Number((invoice as any).invoice_type || (invoice as any).trcode || 0));
+        const binding = await getBindingForScope(ERP_SETTINGS.firmNr, scope).catch(() => null);
+        const context = buildInvoicePrintContext(invoice);
+        if (binding?.designId && binding.designKind === 'fastreport_frx') {
+          await enqueueFastReportFrxJob({
+            designId: binding.designId,
+            designName: binding.designName,
+            scope,
+            data: context,
+            connection: 'system',
+            printerName: getStoredWindowsPrinterNameForPrint(),
+            refType: 'invoice',
+            refId: invoice.id ?? invoice.invoice_no ?? null,
+            sourceSystem: 'web',
+            priority: 85,
+          });
+          document.body.removeChild(iframe);
+          toast.success('FastReport .frx yazıcı kuyruğuna eklendi.');
+          return;
+        }
+        if (binding?.designId && binding.designKind === 'design_center') {
+          await enqueueFastReportTemplateJob({
+            templateId: binding.designId,
+            type: 'invoice',
+            data: context,
+            connection: 'system',
+            printerName: getStoredWindowsPrinterNameForPrint(),
+            refType: 'invoice',
+            refId: invoice.id ?? invoice.invoice_no ?? null,
+            sourceSystem: 'web',
+            priority: 85,
+          });
+          document.body.removeChild(iframe);
+          toast.success('Yazıcı kuyruğuna eklendi.');
+          return;
+        }
         await enqueuePrintJob({
           jobType: 'invoice_a4',
           connection: 'system',
@@ -120,7 +158,7 @@ export const printInvoice = async (invoice: Invoice, typeLabel: string = 'FATURA
 
   } catch (error) {
     console.error('Printing error:', error);
-    toast.error('Yazdrıma işlemi başlatılamadı.');
+    toast.error('Yazdırma işlemi başlatılamadı.');
   }
 };
 

@@ -106,6 +106,9 @@ export const RestaurantPrinterSettings: React.FC = () => {
                     <p className="text-slate-500 font-bold mt-1 text-[10px] tracking-widest">
                         {tm('restPrintSubtitle')}
                     </p>
+                    <p className="mt-2 text-xs font-bold text-blue-700">
+                        Belge–dizayn eşlemesi: Sistem → Yazdırma Seçenekleri
+                    </p>
                 </div>
                 <button
                     onClick={() =>

@@ -7,6 +7,9 @@ import { formatNumber } from '../../utils/formatNumber';
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { useFirmaDonem } from '../../contexts/FirmaDonemContext';
 import { isPosReceiptPrintFormat, type PosReceiptPrintFormat, type ReceiptSettings } from '../../services/receiptSettingsService';
+import type { PrintDesignScope } from '../../core/types/printDesignBindings';
+import { getBindingForScope } from '../../services/printDesignBindingService';
+import { enqueueFastReportFrxJob, enqueueFastReportTemplateJob, isWindowsPrinterServiceEnabled } from '../../services/unifiedPrintQueueService';
 import { useProductStore } from '../../store/useProductStore';
 import { resolveProductNameForReceipt } from '../../utils/receiptProductName';
 import { getAccountReceiptSystemPrinterName } from '../../utils/restaurantAccountReceiptPrinter';
@@ -321,6 +324,27 @@ export function Receipt80mm({
     return inner?.innerHTML ?? '';
   };
 
+  const buildBoundReceiptData = () => ({
+    sale,
+    receipt: sale,
+    paymentData,
+    payments: paymentData?.payments ?? [],
+    items: sale.items,
+    receiptNumber: sale.receiptNumber,
+    date: sale.date,
+    cashier: sale.cashier,
+    customerName: sale.customerName,
+    table: sale.table,
+    subtotal: sale.subtotal,
+    discount: sale.discount,
+    total: sale.total,
+    totalPaid: paymentData?.totalPaid ?? 0,
+    change: paymentData?.change ?? 0,
+    currencyCode: baseCurrency,
+    language: selectedLang,
+    firmTitle: selectedFirm?.title || selectedFirm?.name || '',
+  });
+
   const runPrint = async (onFinished?: () => void) => {
     setIsPrinting(true);
     try {
@@ -349,6 +373,48 @@ export function Receipt80mm({
       .border-t { border-top: 1px solid #000; }
       .border-dashed { border-style: dashed; }
     </style></head><body>${fragment}</body></html>`;
+
+      try {
+        if (await isWindowsPrinterServiceEnabled()) {
+          const scope: PrintDesignScope = headerBanner || sale.table ? 'account_receipt' : 'pos_receipt';
+          const binding = await getBindingForScope(selectedFirm?.firm_nr, scope).catch(() => null);
+          if (binding?.designId && binding.designKind === 'fastreport_frx') {
+            await enqueueFastReportFrxJob({
+              designId: binding.designId,
+              designName: binding.designName,
+              scope,
+              data: buildBoundReceiptData(),
+              connection: 'system',
+              printerName: getAccountReceiptSystemPrinterName(),
+              refType: scope,
+              refId: sale.id ?? sale.receiptNumber ?? null,
+              sourceSystem: 'web',
+              priority: 80,
+            });
+            setIsPrinting(false);
+            onFinished?.();
+            return;
+          }
+          if (binding?.designId && binding.designKind === 'design_center') {
+            await enqueueFastReportTemplateJob({
+              templateId: binding.designId,
+              type: 'receipt',
+              data: buildBoundReceiptData(),
+              connection: 'system',
+              printerName: getAccountReceiptSystemPrinterName(),
+              refType: scope,
+              refId: sale.id ?? sale.receiptNumber ?? null,
+              sourceSystem: 'web',
+              priority: 80,
+            });
+            setIsPrinting(false);
+            onFinished?.();
+            return;
+          }
+        }
+      } catch (e) {
+        console.warn('[Receipt80mm] binding enqueue failed, local print fallback:', e);
+      }
 
       if (typeof (window as any).__TAURI_INTERNALS__ !== 'undefined' || (window as any).__TAURI__) {
         try {

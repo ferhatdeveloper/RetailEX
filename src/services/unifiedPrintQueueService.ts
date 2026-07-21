@@ -10,6 +10,7 @@ export type UnifiedPrintJobType =
   | 'invoice_a4'
   | 'product_label'
   | 'fastreport_template'
+  | 'fastreport_frx'
   | 'test_page'
   | 'report_html'
   | 'price_change_voucher';
@@ -35,7 +36,14 @@ export type EnqueuePrintJobParams = {
 export type EnqueueFastReportTemplateJobParams = Omit<EnqueuePrintJobParams, 'jobType' | 'payload'> & {
   templateId: string;
   data: Record<string, unknown>;
-  type?: 'invoice' | 'label';
+  type?: 'invoice' | 'label' | 'kitchen' | 'receipt' | 'voucher';
+};
+
+export type EnqueueFastReportFrxJobParams = Omit<EnqueuePrintJobParams, 'jobType' | 'payload'> & {
+  designId: string;
+  designName?: string | null;
+  data: Record<string, unknown>;
+  scope?: string | null;
 };
 
 export type EnqueueHtmlDocumentJobParams = Omit<EnqueuePrintJobParams, 'jobType' | 'payload'> & {
@@ -140,6 +148,20 @@ export async function enqueueFastReportTemplateJob(params: EnqueueFastReportTemp
       templateType: params.type ?? 'invoice',
       data: params.data,
       engine: 'fastreport-like',
+    },
+  });
+}
+
+export async function enqueueFastReportFrxJob(params: EnqueueFastReportFrxJobParams): Promise<{ id?: string }> {
+  return enqueuePrintJob({
+    ...params,
+    jobType: 'fastreport_frx',
+    payload: {
+      kind: 'fastreport_frx',
+      designId: params.designId,
+      designName: params.designName ?? null,
+      scope: params.scope ?? null,
+      data: params.data,
     },
   });
 }
