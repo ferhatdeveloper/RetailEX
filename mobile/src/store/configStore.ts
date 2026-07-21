@@ -48,6 +48,10 @@ export type DbConfig = {
   remoteRestUrl: string;
   /** İsteğe bağlı JWT / anon key (Supabase-uyumlu PostgREST Apikey) */
   postgrestAnonKey: string;
+  /** Kısa kiracı kodu (örn. ozbek) — uzun URL yerine */
+  merkezTenantCode: string;
+  /** tenant_registry.display_name */
+  merkezDisplayName: string;
   local: PgEndpoint;
   remote: PgEndpoint;
   /** Kullanıcı en az bir kez Kaydet’e bastı */
@@ -100,6 +104,10 @@ type LegacyFlatConfig = Partial<{
   remote_rest_url: string;
   postgrestAnonKey: string;
   postgrest_anon_key: string;
+  merkezTenantCode: string;
+  merkez_tenant_code: string;
+  merkezDisplayName: string;
+  merkez_display_name: string;
   local: Partial<PgEndpoint>;
   remote: Partial<PgEndpoint>;
   isConfigured: boolean;
@@ -170,6 +178,8 @@ const DEFAULT_CONFIG: DbConfig = {
   apiMode: envApiMode(process.env.EXPO_PUBLIC_API_MODE),
   remoteRestUrl: normalizeRemoteRestUrl(process.env.EXPO_PUBLIC_REMOTE_REST_URL),
   postgrestAnonKey: process.env.EXPO_PUBLIC_POSTGREST_ANON_KEY ?? '',
+  merkezTenantCode: envString(process.env.EXPO_PUBLIC_TENANT_CODE),
+  merkezDisplayName: '',
   local: publicPgEndpoint('local', DEFAULT_LOCAL),
   remote: publicPgEndpoint('remote', DEFAULT_REMOTE),
   isConfigured: false,
@@ -231,6 +241,18 @@ export function migrateDbConfig(raw: LegacyFlatConfig | DbConfig | null | undefi
       : typeof flat.postgrest_anon_key === 'string'
         ? flat.postgrest_anon_key
         : '';
+  const merkezTenantCode =
+    typeof flat.merkezTenantCode === 'string' && flat.merkezTenantCode.trim()
+      ? flat.merkezTenantCode.trim().toLowerCase()
+      : typeof flat.merkez_tenant_code === 'string' && flat.merkez_tenant_code.trim()
+        ? flat.merkez_tenant_code.trim().toLowerCase()
+        : '';
+  const merkezDisplayName =
+    typeof flat.merkezDisplayName === 'string'
+      ? flat.merkezDisplayName
+      : typeof flat.merkez_display_name === 'string'
+        ? flat.merkez_display_name
+        : '';
 
   return {
     bridgeHost:
@@ -243,6 +265,8 @@ export function migrateDbConfig(raw: LegacyFlatConfig | DbConfig | null | undefi
     apiMode,
     remoteRestUrl,
     postgrestAnonKey,
+    merkezTenantCode,
+    merkezDisplayName,
     local,
     remote,
     isConfigured: flat.isConfigured === true,
