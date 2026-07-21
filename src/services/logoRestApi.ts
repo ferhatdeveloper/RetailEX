@@ -268,21 +268,58 @@ async function postLogoBridgeProxy(
   });
 }
 
+function formatLogoOAuthErrorCode(code: string, description?: string): string {
+  const desc = (description || '').trim();
+  const descLower = desc.toLocaleLowerCase('en-US');
+
+  // Logo Objects REST: token için sunucuda boşta LObjects.exe oturumu gerekir.
+  if (
+    descLower.includes('no idle lobjects') ||
+    descLower.includes('lobjects.exe') ||
+    descLower.includes('idle lobjects')
+  ) {
+    return (
+      'Logo REST: Boşta LObjects.exe yok. Logo sunucusunda Logo Objects (LObjects) servisini/uygulamasını başlatın; ' +
+      'REST kullanıcı havuzunda idle oturum olmalı. ' +
+      (desc ? `(${desc})` : '')
+    ).trim();
+  }
+
+  const known: Record<string, string> = {
+    login_error:
+      'Logo girişi reddedildi (login_error). Kullanıcı adı/şifre, firma no veya REST kullanıcı yetkisini kontrol edin.',
+    invalid_client:
+      'Logo istemci kimliği geçersiz (invalid_client). Client ID / Client Secret bu sunucu için doğru mu?',
+    invalid_grant: 'Logo yetkilendirme reddedildi (invalid_grant). Kullanıcı veya şifre hatalı olabilir.',
+    unauthorized_client: 'Bu istemcinin Logo REST erişim yetkisi yok (unauthorized_client).',
+  };
+  const base = known[code] || `Logo REST: ${code}`;
+  if (desc && desc !== code) return `${base} — ${desc}`;
+  return base;
+}
+
 function formatLogoHttpFailure(baseUrl: string, status: number, data: unknown, text: string): string {
   if (data && typeof data === 'object') {
     const o = data as Record<string, unknown>;
     if (typeof o.upstreamError === 'string' && o.upstreamError) {
       return formatLogoUpstreamError(baseUrl, o.upstreamError);
     }
-    if (typeof o.error === 'string' && o.error) {
-      if (o.error === 'fetch failed' || String(o.error).includes('fetch failed')) {
-        return formatLogoUpstreamError(baseUrl, o.error);
-      }
-      return String(o.error);
+    const errCode = typeof o.error === 'string' ? o.error : '';
+    const errDesc =
+      typeof o.error_description === 'string'
+        ? o.error_description
+        : typeof o.message === 'string'
+          ? o.message
+          : '';
+    if (errCode === 'fetch failed' || errCode.includes('fetch failed')) {
+      return formatLogoUpstreamError(baseUrl, errCode);
     }
-    const err = o as { error_description?: string; message?: string };
-    if (err.error_description) return err.error_description;
-    if (err.message) return err.message;
+    // OAuth: önce açıklama; yoksa bilinen kodları Türkçe mesaja çevir (ham "login_error" gösterme)
+    if (errCode && (errCode === 'login_error' || errCode.startsWith('invalid_') || errCode.includes('_'))) {
+      return formatLogoOAuthErrorCode(errCode, errDesc || undefined);
+    }
+    if (errDesc) return errDesc;
+    if (errCode) return errCode;
   }
   const blob = `${text || ''}`.trim();
   if (blob && blob.length < 240) return blob;

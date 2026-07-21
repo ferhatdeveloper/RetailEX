@@ -362,14 +362,19 @@ export function LogoErpConnectorSection() {
       username: values.rest.username,
       password: values.rest.password,
       clientId: values.rest.clientId || LOGO_DEFAULT_CLIENT_ID,
-      clientSecret: values.rest.clientSecret,
+      clientSecret: values.rest.clientSecret?.trim()
+        ? values.rest.clientSecret
+        : prevRest.clientSecret,
     };
     setLogoRestBaseUrl(nextRest.baseUrl, { manual: true });
     saveLogoRestConfig(nextRest);
 
-    await saveLogoLobjectConfig(values.lobject);
-    if (values.lobject.erp_db?.trim()) {
-      await setLogoMssqlDatabase(values.lobject.erp_db.trim());
+    // REST modunda LOBJECT Form.Item'ları unmount olabilir; validateFields lobject döndürmez.
+    const lobjectPatch = values.lobject ?? {};
+    await saveLogoLobjectConfig(lobjectPatch);
+    const erpDb = lobjectPatch.erp_db?.trim();
+    if (erpDb) {
+      await setLogoMssqlDatabase(erpDb);
     }
 
     saveLogoErpIntegrationParams({
@@ -471,7 +476,9 @@ export function LogoErpConnectorSection() {
   const handleSave = async () => {
     setSaving(true);
     try {
-      const values = await form.validateFields();
+      await form.validateFields();
+      // validateFields yalnızca kayıtlı alanları döner; unmount LOBJECT için tam değerleri al.
+      const values = form.getFieldsValue(true) as FormValues;
       await persistForm(values);
       toast.success('Entegrasyon ayarları kaydedildi');
       window.dispatchEvent(new CustomEvent('retailex:logo-settings-saved'));
