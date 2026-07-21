@@ -146,6 +146,8 @@ add_all_files.ps1
 # Separate Repositories (kök dizin; services/logo-connector repoda)
 /logo-connector/
 tools/*/
+!tools/FastReportDesigner/
+!tools/FastReportDesigner/**
 !tools/postgresql-remote-enable/
 !tools/.gitkeep
 
