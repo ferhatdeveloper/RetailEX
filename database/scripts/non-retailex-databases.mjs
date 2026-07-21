@@ -9,6 +9,8 @@ export const NON_RETAILEX_DATABASES = Object.freeze([
   'ilsasupport',   // ayrı destek / ILSA ürünü
   'pagetin_kurye', // kurye uygulaması (RetailEX ERP değil)
   'siti_pdks',     // bağımsız PDKS kiracısı — RetailEX şema/migration zinciri yok
+  'aram',          // PDKS/İK şeması (employees/attendance) — RetailEX ERP değil
+  'naw',           // PDKS/İK şeması (employees/attendance) — RetailEX ERP değil
 ]);
 
 const NON_RETAILEX_SET = new Set(NON_RETAILEX_DATABASES);

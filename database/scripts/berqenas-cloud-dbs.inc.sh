@@ -6,13 +6,15 @@
 # her zaman kaldırmaz; numaralı migration'ları tümüne basmadan önce dosyanın hedefini kontrol edin.
 #
 # RetailEX migration hariç DB'ler (database/scripts/non-retailex-databases.mjs ile senkron):
-#   ilsasupport, pagetin_kurye, siti_pdks
+#   ilsasupport, pagetin_kurye, siti_pdks, aram, naw
 
 berqenas_non_retailex_dbs_array() {
   BERQENAS_NON_RETAIL_DBS=(
     ilsasupport
     pagetin_kurye
     siti_pdks
+    aram
+    naw
   )
 }
 

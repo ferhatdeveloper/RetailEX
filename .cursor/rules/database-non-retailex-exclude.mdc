@@ -26,10 +26,10 @@ Sunucuda (`pg_database`) başka ürünlerin veritabanları da bulunabilir. **`np
 
 ## RetailEX kiracıları
 
-`tenant_registry` (product `retail` / `erp`) veya `schema_migrations` + `sync_queue` olan DB'ler. `pdks_demo` gibi kalan PDKS demo kiracıları RetailEX altında kalabilir; yalnızca yukarıdaki üç isim kalıcı hariçtir.
+`tenant_registry` (product `retail` / `erp`) veya `schema_migrations` + `sync_queue` olan DB'ler. `pdks_demo` gibi kalan PDKS demo kiracıları RetailEX altında kalabilir; kalıcı hariç liste: `ilsasupport`, `pagetin_kurye`, `siti_pdks`, `aram`, `naw`.
 
 ## Ajan checklist
 
 - [ ] `migrate-all-tenant-dbs.mjs` veya shell migrate döngüsü hariç listeyi kullanıyor mu?
 - [ ] Yeni “tüm DB'lere uygula” komutu aynı listeyi import ediyor mu?
-- [ ] Dokümantasyonda `ilsasupport` / `pagetin_kurye` / `siti_pdks` RetailEX migration hedefi olarak geçmiyor mu?
+- [ ] Dokümantasyonda `ilsasupport` / `pagetin_kurye` / `siti_pdks` / `aram` / `naw` RetailEX migration hedefi olarak geçmiyor mu?
