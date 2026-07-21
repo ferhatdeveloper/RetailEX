@@ -159,6 +159,7 @@
     "db:migrate:remote:dry": "node scripts/migrate-remote-pg.mjs --dry-run",
     "db:migrate:tenants": "node scripts/migrate-all-tenant-dbs.mjs",
     "db:migrate:tenants:dry": "node scripts/migrate-all-tenant-dbs.mjs --dry-run",
+    "db:seed:retailex-demo": "node scripts/seed-retailex-demo-full.mjs",
     "db:migrate:099:tenants": "bash database/scripts/apply-099-all-retail-tenants.sh",
     "db:migrate:065:tenants": "node scripts/migrate-all-tenant-dbs.mjs --from-registry",
     "db:postgrest:reload": "node database/scripts/postgrest-reload-schema.mjs",

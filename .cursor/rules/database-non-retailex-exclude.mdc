@@ -16,6 +16,8 @@ Sunucuda (`pg_database`) başka ürünlerin veritabanları da bulunabilir. **`np
 | `ilsasupport` | ILSA destek / ayrı ürün |
 | `pagetin_kurye` | Pagetin kurye uygulaması |
 | `siti_pdks` | Bağımsız PDKS kiracısı; RetailEX ERP migration zinciri değil |
+| `aram` | PDKS/İK şeması (employees/attendance); RetailEX ERP değil |
+| `naw` | PDKS/İK şeması (employees/attendance); RetailEX ERP değil |
 
 ## Zorunlu davranış
 

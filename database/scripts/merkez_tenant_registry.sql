@@ -11,7 +11,9 @@ CREATE TABLE IF NOT EXISTS tenant_registry (
                     'restaurant',
                     'hrm',
                     'retail',
-                    'pdks'
+                    'pdks',
+                    'wms',
+                    'all'
                   )),
   connection_provider TEXT NOT NULL DEFAULT 'rest_api' CHECK (connection_provider IN ('db', 'rest_api')),
   rest_base_url   TEXT,
@@ -43,7 +45,7 @@ VALUES
   ('aqua_beauty',   'Aqua Beauty',     'clinic',            'aqua_beauty',     'Güzellik'),
   ('siti_pdks',     'Siti PDKS',      'pdks',              'siti_pdks',       'PDKS'),
   ('pdks_demo',     'PDKS Demo',      'pdks',              'pdks_demo',       'Demo'),
-  ('retailex_demo', 'RetailEX Demo', 'retail',            'retailex_demo',   'Demo'),
+  ('retailex_demo', 'RetailEX Demo', 'all',               'retailex_demo',   'Demo — tüm kabuk modülleri'),
   ('kasap',         'Kasaphane',      'retail',            'kasap',           'Kasap / perakende'),
   ('testere',       'Usta Testere',   'retail',            'testere',         'Testere'),
   ('mettu',         'Mettu Market',   'retail',            'mettu',           'Market'),

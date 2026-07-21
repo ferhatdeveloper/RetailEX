@@ -311,11 +311,18 @@ export function getMerkezRestBaseUrl(): string {
 }
 
 function moduleToSystemType(module: string): 'retail' | 'market' | 'wms' | 'restaurant' | 'beauty' | 'bayi' {
-  switch (module) {
+  const m = String(module || '').toLowerCase().trim();
+  switch (m) {
     case 'clinic':
       return 'beauty';
     case 'restaurant':
       return 'restaurant';
+    case 'wms':
+      return 'wms';
+    case 'all':
+    case 'full':
+    case 'complete':
+      return 'bayi';
     case 'retail':
       return 'retail';
     case 'pdks':
@@ -339,6 +346,7 @@ export function preferredShellModuleForTenantModule(module: string): string {
   if (m === 'retail') return 'management';
   if (m === 'pdks' || m === 'hrm' || m === 'tenant_registry') return 'management';
   if (m === 'wms') return 'wms';
+  if (m === 'all' || m === 'full' || m === 'complete' || m === 'demo') return 'management';
   return '';
 }
 
@@ -428,8 +436,28 @@ export async function resolveTenantRegistryForDirectPostgrest(input: {
   return null;
 }
 
+/** Üst kabukta açılabilecek tüm iş + yönetim modülleri (demo / full kiracı). */
+export const ALL_SHELL_MODULES = [
+  'pos',
+  'management',
+  'wms',
+  'mobile-pos',
+  'restaurant',
+  'beauty',
+] as const;
+
 export function shellEnabledModulesForTenantRegistryModule(module: string): string[] {
-  const m = String(module || '').toLowerCase();
+  const m = String(module || '').toLowerCase().trim();
+  if (
+    m === 'all' ||
+    m === 'full' ||
+    m === 'complete' ||
+    m === 'demo' ||
+    m.includes('all') ||
+    m.includes('full')
+  ) {
+    return [...ALL_SHELL_MODULES];
+  }
   switch (m) {
     case 'clinic':
       return ['beauty'];
