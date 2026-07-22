@@ -4,6 +4,7 @@
  */
 
 import { pgQuery } from './pgClient';
+import { postgrestGet, postgrestPatch, postgrestPost } from './postgrestClient';
 import {
   firmNr,
   newUuid,
@@ -13,6 +14,11 @@ import {
   salesTable,
 } from './erpTables';
 import { useAuthStore } from '../store/authStore';
+import {
+  shouldPreferPostgrest,
+  shouldUseBridgeSql,
+  useConfigStore,
+} from '../store/configStore';
 import { shouldUseLiveData } from '../offline/policy';
 import {
   enqueueMutation,
@@ -95,6 +101,72 @@ export function posTotalsFromLines(
   const scale = subtotal > 0 ? net / subtotal : 1;
   const totalVat = Math.round(rawVat * scale * 100) / 100;
   return { subtotal, headerDiscount: disc, totalVat, net };
+}
+
+async function adjustProductStockViaPostgrest(
+  productId: string,
+  delta: number,
+  fn = firmNr(),
+): Promise<void> {
+  if (!productId || !delta) return;
+  const table = productsTable(fn);
+  const rows = await postgrestGet<Record<string, unknown>[]>(
+    `/${table}`,
+    { select: 'stock', id: `eq.${productId}`, limit: 1 },
+    { schema: 'public' },
+  );
+  const row = Array.isArray(rows) ? rows[0] : null;
+  if (!row) {
+    throw new Error(`Stok güncelleme: ürün bulunamadı (${productId})`);
+  }
+  const current = Number(row.stock ?? 0) || 0;
+  await postgrestPatch(
+    `/${table}?id=eq.${encodeURIComponent(productId)}`,
+    { stock: current + delta, updated_at: new Date().toISOString() },
+    { schema: 'public', prefer: 'return=minimal' },
+  );
+}
+
+async function insertPosSaleItemViaPostgrest(
+  itemsTable: string,
+  opts: {
+    invoiceId: string;
+    firmNr: string;
+    periodNr: string;
+    line: PosCartLine;
+  },
+): Promise<void> {
+  const lineNet = posLineNet(opts.line);
+  const lineId = newUuid();
+  const vatRate = Math.max(0, Number(opts.line.vatRate) || 0);
+  const body: Record<string, unknown> = {
+    id: lineId,
+    invoice_id: opts.invoiceId,
+    firm_nr: opts.firmNr,
+    period_nr: opts.periodNr,
+    product_id: opts.line.productId,
+    item_code: opts.line.code ?? null,
+    item_name: opts.line.name,
+    quantity: opts.line.qty,
+    unit_price: opts.line.price,
+    vat_rate: vatRate,
+    net_amount: lineNet,
+    total_amount: lineNet,
+    unit: opts.line.unit || 'Adet',
+  };
+  try {
+    await postgrestPost(`/${itemsTable}`, body, {
+      schema: 'public',
+      prefer: 'return=minimal',
+    });
+  } catch {
+    const slim = { ...body };
+    delete slim.vat_rate;
+    await postgrestPost(`/${itemsTable}`, slim, {
+      schema: 'public',
+      prefer: 'return=minimal',
+    });
+  }
 }
 
 async function insertPosSaleItemRow(
@@ -205,26 +277,24 @@ async function applyPosAccountingSideEffects(opts: {
   }
 }
 
-async function savePosSaleLive(
+type PosSaleLiveOpts = Pick<
+  PosSaleWriteOptions,
+  | 'id'
+  | 'ficheNo'
+  | 'customerId'
+  | 'customerName'
+  | 'totalDiscount'
+  | 'campaignId'
+  | 'campaignName'
+>;
+
+function resolvePosSaleContext(
   lines: PosCartLine[],
   paymentMethod: string,
-  opts?: Pick<
-    PosSaleWriteOptions,
-    | 'id'
-    | 'ficheNo'
-    | 'customerId'
-    | 'customerName'
-    | 'totalDiscount'
-    | 'campaignId'
-    | 'campaignName'
-  >,
-): Promise<PosSaleResult> {
-  if (!lines.length) throw new Error('Sepet boş');
-
+  opts?: PosSaleLiveOpts,
+) {
   const fn = firmNr();
   const pn = periodNr();
-  const sales = salesTable(fn, pn);
-  const items = saleItemsTable(fn, pn);
   const user = useAuthStore.getState().user;
   const id = opts?.id || newUuid();
   const ficheNo = opts?.ficheNo || nextFicheNo();
@@ -239,9 +309,91 @@ async function savePosSaleLive(
       ? `Kampanya: ${opts.campaignName || opts.campaignId} (−${totals.headerDiscount})`
       : null;
   const notes = ['RetailEX Mobile POS', campaignNote].filter(Boolean).join(' | ');
+  return {
+    fn,
+    pn,
+    sales: salesTable(fn, pn),
+    items: saleItemsTable(fn, pn),
+    id,
+    ficheNo,
+    totals,
+    total,
+    cashier,
+    customerId,
+    customerName,
+    notes,
+    paymentMethod,
+  };
+}
+
+async function savePosSaleViaPostgrest(
+  lines: PosCartLine[],
+  paymentMethod: string,
+  opts?: PosSaleLiveOpts,
+): Promise<PosSaleResult> {
+  const ctx = resolvePosSaleContext(lines, paymentMethod, opts);
+
+  await postgrestPost(
+    `/${ctx.sales}`,
+    {
+      id: ctx.id,
+      firm_nr: ctx.fn,
+      period_nr: ctx.pn,
+      fiche_no: ctx.ficheNo,
+      document_no: ctx.ficheNo,
+      date: new Date().toISOString(),
+      fiche_type: 'sales_invoice',
+      trcode: 7,
+      customer_id: ctx.customerId,
+      customer_name: ctx.customerName,
+      total_net: ctx.total,
+      total_vat: ctx.totals.totalVat,
+      total_gross: ctx.totals.subtotal,
+      total_discount: ctx.totals.headerDiscount,
+      net_amount: ctx.total,
+      currency: 'TRY',
+      currency_rate: 1,
+      status: 'completed',
+      payment_method: paymentMethod,
+      cashier: ctx.cashier,
+      notes: ctx.notes,
+    },
+    { schema: 'public', prefer: 'return=minimal' },
+  );
+
+  for (const line of lines) {
+    await insertPosSaleItemViaPostgrest(ctx.items, {
+      invoiceId: ctx.id,
+      firmNr: ctx.fn,
+      periodNr: ctx.pn,
+      line,
+    });
+    try {
+      await adjustProductStockViaPostgrest(line.productId, -line.qty, ctx.fn);
+    } catch {
+      /* şema farkı */
+    }
+  }
+
+  await applyPosAccountingSideEffects({
+    ficheNo: ctx.ficheNo,
+    total: ctx.total,
+    paymentMethod,
+    customerId: ctx.customerId,
+  });
+
+  return { id: ctx.id, ficheNo: ctx.ficheNo, total: ctx.total };
+}
+
+async function savePosSaleViaBridge(
+  lines: PosCartLine[],
+  paymentMethod: string,
+  opts?: PosSaleLiveOpts,
+): Promise<PosSaleResult> {
+  const ctx = resolvePosSaleContext(lines, paymentMethod, opts);
 
   await pgQuery(
-    `INSERT INTO ${sales} (
+    `INSERT INTO ${ctx.sales} (
        id, firm_nr, period_nr, fiche_no, document_no, date,
        fiche_type, trcode, customer_id, customer_name,
        total_net, total_vat, total_gross, total_discount, net_amount,
@@ -253,33 +405,33 @@ async function savePosSaleLive(
        'TRY', 1, 'completed', $11, $12, $13
      )`,
     [
-      id,
-      fn,
-      pn,
-      ficheNo,
-      customerId,
-      customerName,
-      total,
-      totals.totalVat,
-      totals.subtotal,
-      totals.headerDiscount,
+      ctx.id,
+      ctx.fn,
+      ctx.pn,
+      ctx.ficheNo,
+      ctx.customerId,
+      ctx.customerName,
+      ctx.total,
+      ctx.totals.totalVat,
+      ctx.totals.subtotal,
+      ctx.totals.headerDiscount,
       paymentMethod,
-      cashier,
-      notes,
+      ctx.cashier,
+      ctx.notes,
     ],
   );
 
   for (const line of lines) {
-    await insertPosSaleItemRow(items, {
-      invoiceId: id,
-      firmNr: fn,
-      periodNr: pn,
+    await insertPosSaleItemRow(ctx.items, {
+      invoiceId: ctx.id,
+      firmNr: ctx.fn,
+      periodNr: ctx.pn,
       line,
     });
 
     try {
       await pgQuery(
-        `UPDATE ${productsTable(fn)}
+        `UPDATE ${productsTable(ctx.fn)}
          SET stock = COALESCE(stock, 0) - $1,
              updated_at = NOW()
          WHERE id::text = $2`,
@@ -291,13 +443,49 @@ async function savePosSaleLive(
   }
 
   await applyPosAccountingSideEffects({
-    ficheNo,
-    total,
+    ficheNo: ctx.ficheNo,
+    total: ctx.total,
     paymentMethod,
-    customerId,
+    customerId: ctx.customerId,
   });
 
-  return { id, ficheNo, total };
+  return { id: ctx.id, ficheNo: ctx.ficheNo, total: ctx.total };
+}
+
+async function savePosSaleLive(
+  lines: PosCartLine[],
+  paymentMethod: string,
+  opts?: PosSaleLiveOpts,
+): Promise<PosSaleResult> {
+  if (!lines.length) throw new Error('Sepet boş');
+
+  const cfg = useConfigStore.getState().config;
+  const preferRest = shouldPreferPostgrest(cfg);
+  const canBridge = shouldUseBridgeSql(cfg);
+
+  if (preferRest) {
+    try {
+      return await savePosSaleViaPostgrest(lines, paymentMethod, opts);
+    } catch (e) {
+      if (!canBridge) throw e;
+      if (__DEV__) {
+        console.warn(
+          '[savePosSaleLive] PostgREST → bridge',
+          e instanceof Error ? e.message : e,
+        );
+      }
+    }
+  }
+
+  if (!canBridge) {
+    throw new Error(
+      preferRest
+        ? 'PostgREST POS kaydı başarısız ve bridge kapalı (apiMode=postgrest)'
+        : 'Bridge yapılandırması eksik',
+    );
+  }
+
+  return savePosSaleViaBridge(lines, paymentMethod, opts);
 }
 
 export async function savePosSale(

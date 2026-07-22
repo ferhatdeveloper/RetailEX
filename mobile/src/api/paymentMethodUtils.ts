@@ -52,18 +52,19 @@ export function paymentMethodImpliesPaidNow(pm: string | undefined | null): bool
 
 /**
  * POS / satış: kasa defterine KASA_GIRIS yazılmalı mı.
- * Web POS saf nakit için yazar; mobil audit (R8) nakit + kart ister.
+ * Web `invoices.ts`: yalnızca nakit/cash — kart kasayı şişirmesin.
  */
 export function paymentMethodImpliesCashInKasa(pm: string | undefined | null): boolean {
-  return paymentMethodImpliesPaidNow(pm);
+  const p = String(pm || '').toLowerCase().trim();
+  return p === 'cash' || p === 'nakit';
 }
 
 /**
- * Peşin alış: kasa defterine KASA_CIKIS yazılmalı mı (nakit/kart).
+ * Peşin alış: kasa defterine KASA_CIKIS yazılmalı mı (yalnızca nakit).
  * Havale/EFT → paymentMethodImpliesBankTransfer (BANKA_CIKIS).
  */
 export function paymentMethodImpliesCashOutKasa(pm: string | undefined | null): boolean {
-  return paymentMethodImpliesPaidNow(pm);
+  return paymentMethodImpliesCashInKasa(pm);
 }
 
 /** Havale / EFT / transfer → banka defteri (BANKA_GIRIS / BANKA_CIKIS) */

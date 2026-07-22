@@ -81,11 +81,77 @@ function envApiMode(value: string | undefined): ApiMode {
   return v === 'postgrest' || v === 'hybrid' || v === 'bridge' ? v : 'hybrid';
 }
 
-/** Web ile aynı: sondaki / temizlenir */
+/** Varsayılan PostgREST port (web `DEFAULT_POSTGREST_PORT`) */
+export const DEFAULT_POSTGREST_PORT = 3002;
+
+/**
+ * Web `normalizeCustomPostgrestUrl` / `normalizeStoredRemoteRestUrl`:
+ * sondaki / temizlenir; LAN/IP http URL’de port yoksa :3002 eklenir.
+ * SaaS (`api.retailex.app`) yollarına dokunulmaz.
+ */
 export function normalizeRemoteRestUrl(input: string | null | undefined): string {
-  const raw = String(input ?? '').trim();
+  const raw = String(input ?? '').trim().replace(/\/+$/, '');
   if (!raw) return '';
-  return raw.replace(/\/+$/, '');
+  try {
+    const withProto = /^https?:\/\//i.test(raw) ? raw : `http://${raw}`;
+    const u = new URL(withProto);
+    const host = u.hostname.toLowerCase();
+    if (host === 'api.retailex.app' || host.endsWith('.retailex.app')) {
+      // Protokolsüz SaaS girişi → https (fetch schemesiz URL kırılır)
+      const saas = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
+      return saas.replace(/\/+$/, '');
+    }
+    if (u.port) return u.toString().replace(/\/+$/, '');
+    if (u.protocol === 'http:') {
+      const isIp = /^\d{1,3}(\.\d{1,3}){3}$/.test(host);
+      const isLan =
+        host === 'localhost' ||
+        host === '127.0.0.1' ||
+        host.startsWith('192.168.') ||
+        host.startsWith('10.') ||
+        /^172\.(1[6-9]|2\d|3[0-1])\./.test(host);
+      if (isIp || isLan) {
+        u.port = String(DEFAULT_POSTGREST_PORT);
+        return u.toString().replace(/\/+$/, '');
+      }
+    }
+    return u.toString().replace(/\/+$/, '');
+  } catch {
+    return raw;
+  }
+}
+
+/**
+ * Çalışma anı PostgREST tabanı: kayıtlı URL veya kiracı kodundan SaaS URL.
+ * Web `resolveEffectiveRemoteRestUrl` + boş URL’de `buildSaaSTenantPostgrestUrl` tamamlayıcısı.
+ */
+export function resolveEffectiveRemoteRestUrl(
+  remoteRestUrl?: string | null,
+  merkezTenantCode?: string | null,
+): string {
+  const remote = normalizeRemoteRestUrl(remoteRestUrl);
+  const tenant = String(merkezTenantCode ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/^\/+|\/+$/g, '');
+  if (remote) {
+    try {
+      const u = new URL(/^https?:\/\//i.test(remote) ? remote : `https://${remote}`);
+      if (u.hostname === 'api.retailex.app') {
+        const segs = u.pathname.replace(/\/+$/, '').split('/').filter(Boolean);
+        if (segs.length === 0 && tenant && tenant !== 'merkez') {
+          return normalizeRemoteRestUrl(`https://api.retailex.app/${tenant}`);
+        }
+      }
+    } catch {
+      /* olduğu gibi */
+    }
+    return remote;
+  }
+  if (tenant && tenant !== 'merkez') {
+    return normalizeRemoteRestUrl(`https://api.retailex.app/${tenant}`);
+  }
+  return '';
 }
 
 /** Eski tek-uç alanlar (migration) */
@@ -360,7 +426,9 @@ function isBridgeEndpointReady(cfg: DbConfig): boolean {
 /** Login öncesi: apiMode’a göre bridge ve/veya PostgREST alanları */
 export function isConfigReady(cfg: DbConfig): boolean {
   if (!cfg.isConfigured) return false;
-  const restOk = Boolean(normalizeRemoteRestUrl(cfg.remoteRestUrl));
+  const restOk = Boolean(
+    resolveEffectiveRemoteRestUrl(cfg.remoteRestUrl, cfg.merkezTenantCode),
+  );
   const bridgeOk = isBridgeEndpointReady(cfg);
   if (cfg.apiMode === 'postgrest') return restOk;
   /** hybrid: PostgREST veya Bridge yeter (Bridge yalnız kalan SQL için) */
@@ -370,7 +438,7 @@ export function isConfigReady(cfg: DbConfig): boolean {
 
 /** Okuma için PostgREST denenmeli mi */
 export function shouldPreferPostgrest(cfg: DbConfig = useConfigStore.getState().config): boolean {
-  if (!normalizeRemoteRestUrl(cfg.remoteRestUrl)) return false;
+  if (!resolveEffectiveRemoteRestUrl(cfg.remoteRestUrl, cfg.merkezTenantCode)) return false;
   return cfg.apiMode === 'postgrest' || cfg.apiMode === 'hybrid';
 }
 

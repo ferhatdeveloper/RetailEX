@@ -1,4 +1,6 @@
 import { pgQuery } from './pgClient';
+import { postgrestGet } from './postgrestClient';
+import { runDataTransport } from './dataTransport';
 import {
   costCentersTable,
   customersTable,
@@ -53,60 +55,173 @@ async function tryQueries<T>(queries: { sql: string; params?: unknown[] }[]): Pr
   return [];
 }
 
+function mapPaymentPlan(r: Record<string, unknown>): PaymentPlanRow {
+  return {
+    id: String(r.id ?? ''),
+    code: String(r.code ?? ''),
+    name: String(r.name ?? ''),
+    description: r.description != null ? String(r.description) : null,
+    is_active: !(r.is_active === false || String(r.is_active).toLowerCase() === 'false'),
+  };
+}
+
 export async function fetchPaymentPlans(limit = 100): Promise<PaymentPlanRow[]> {
   const fn = firmNr();
-  return tryQueries<PaymentPlanRow>([
-    {
-      sql: `SELECT id::text AS id, code, name, description, COALESCE(is_active, true) AS is_active
+  return runDataTransport({
+    label: 'fetchPaymentPlans',
+    viaRest: async () => {
+      try {
+        const logicRows = await postgrestGet<Record<string, unknown>[]>(
+          '/pay_plans',
+          {
+            select: 'id,code,name,description,is_active',
+            firm_nr: `eq.${fn}`,
+            order: 'code.asc',
+            limit,
+          },
+          { schema: 'logic' },
+        );
+        if (Array.isArray(logicRows) && logicRows.length) {
+          return logicRows.map(mapPaymentPlan);
+        }
+      } catch {
+        /* public fallback */
+      }
+      const pubTable = `rex_${fn}_pay_plans`;
+      const rows = await postgrestGet<Record<string, unknown>[]>(
+        `/${pubTable}`,
+        { select: 'id,code,name,description,is_active', order: 'code.asc', limit },
+        { schema: 'public' },
+      );
+      return (Array.isArray(rows) ? rows : []).map(mapPaymentPlan);
+    },
+    viaBridge: () =>
+      tryQueries<PaymentPlanRow>([
+        {
+          sql: `SELECT id::text AS id, code, name, description, COALESCE(is_active, true) AS is_active
             FROM logic.pay_plans
             WHERE firm_nr = $1
             ORDER BY code ASC NULLS LAST
             LIMIT $2`,
-      params: [fn, limit],
-    },
-    {
-      sql: `SELECT id::text AS id, code, name, description, COALESCE(is_active, true) AS is_active
+          params: [fn, limit],
+        },
+        {
+          sql: `SELECT id::text AS id, code, name, description, COALESCE(is_active, true) AS is_active
             FROM public.rex_${fn}_pay_plans
             ORDER BY code ASC NULLS LAST
             LIMIT $1`,
-      params: [limit],
-    },
-  ]);
+          params: [limit],
+        },
+      ]),
+  });
 }
 
 export async function fetchCostCenters(limit = 100): Promise<CostCenterRow[]> {
   const table = costCentersTable();
-  return tryQueries<CostCenterRow>([
-    {
-      sql: `SELECT id::text AS id, code, name, description, COALESCE(is_active, true) AS is_active
+  return runDataTransport({
+    label: 'fetchCostCenters',
+    viaRest: async () => {
+      const rows = await postgrestGet<Record<string, unknown>[]>(
+        `/${table}`,
+        { select: 'id,code,name,description,is_active', order: 'code.asc', limit },
+        { schema: 'public' },
+      );
+      return (Array.isArray(rows) ? rows : []).map((r) => ({
+        id: String(r.id ?? ''),
+        code: String(r.code ?? ''),
+        name: String(r.name ?? ''),
+        description: r.description != null ? String(r.description) : null,
+        is_active: !(r.is_active === false || String(r.is_active).toLowerCase() === 'false'),
+      }));
+    },
+    viaBridge: () =>
+      tryQueries<CostCenterRow>([
+        {
+          sql: `SELECT id::text AS id, code, name, description, COALESCE(is_active, true) AS is_active
             FROM ${table}
             ORDER BY code ASC NULLS LAST
             LIMIT $1`,
-      params: [limit],
-    },
-  ]);
+          params: [limit],
+        },
+      ]),
+  });
 }
 
 export async function fetchCallPlanRows(limit = 100): Promise<CallPlanRow[]> {
   const fn = firmNr();
-  const weekly = await tryQueries<CallPlanRow>([
-    {
-      sql: `SELECT id::text AS id, customer_name, customer_code,
+  return runDataTransport({
+    label: 'fetchCallPlanRows',
+    viaRest: async () => {
+      try {
+        const weekly = await postgrestGet<Record<string, unknown>[]>(
+          '/customer_call_plan_weekly',
+          {
+            select:
+              'id,customer_name,customer_code,week_start,call_plan_weekdays,call_last_status,call_last_at',
+            firm_nr: `eq.${fn}`,
+            order: 'week_start.desc',
+            limit,
+          },
+          { schema: 'public' },
+        );
+        if (Array.isArray(weekly) && weekly.length) {
+          return weekly.map((r) => ({
+            id: String(r.id ?? ''),
+            customer_name: String(r.customer_name ?? ''),
+            customer_code: r.customer_code != null ? String(r.customer_code) : null,
+            week_start: r.week_start != null ? String(r.week_start).slice(0, 10) : null,
+            call_plan_weekdays: Array.isArray(r.call_plan_weekdays)
+              ? (r.call_plan_weekdays as number[])
+              : [],
+            call_last_status: r.call_last_status != null ? String(r.call_last_status) : null,
+            call_last_at: r.call_last_at != null ? String(r.call_last_at) : null,
+          }));
+        }
+      } catch {
+        /* customers fallback */
+      }
+      const cust = customersTable();
+      const rows = await postgrestGet<Record<string, unknown>[]>(
+        `/${cust}`,
+        {
+          select:
+            'id,name,code,call_plan_weekdays,call_last_status,call_last_at,call_plan_enabled',
+          call_plan_enabled: 'eq.true',
+          order: 'name.asc',
+          limit,
+        },
+        { schema: 'public' },
+      );
+      return (Array.isArray(rows) ? rows : []).map((r) => ({
+        id: String(r.id ?? ''),
+        customer_name: String(r.name ?? ''),
+        customer_code: r.code != null ? String(r.code) : null,
+        week_start: null,
+        call_plan_weekdays: Array.isArray(r.call_plan_weekdays)
+          ? (r.call_plan_weekdays as number[])
+          : [],
+        call_last_status: r.call_last_status != null ? String(r.call_last_status) : null,
+        call_last_at: r.call_last_at != null ? String(r.call_last_at) : null,
+      }));
+    },
+    viaBridge: async () => {
+      const weekly = await tryQueries<CallPlanRow>([
+        {
+          sql: `SELECT id::text AS id, customer_name, customer_code,
                    week_start::text AS week_start,
                    call_plan_weekdays, call_last_status, call_last_at::text AS call_last_at
             FROM public.customer_call_plan_weekly
             WHERE firm_nr = $1
             ORDER BY week_start DESC NULLS LAST, customer_name ASC
             LIMIT $2`,
-      params: [fn, limit],
-    },
-  ]);
-  if (weekly.length) return weekly;
-
-  const cust = customersTable();
-  return tryQueries<CallPlanRow>([
-    {
-      sql: `SELECT id::text AS id, name AS customer_name, code AS customer_code,
+          params: [fn, limit],
+        },
+      ]);
+      if (weekly.length) return weekly;
+      const cust = customersTable();
+      return tryQueries<CallPlanRow>([
+        {
+          sql: `SELECT id::text AS id, name AS customer_name, code AS customer_code,
                    NULL::text AS week_start,
                    COALESCE(call_plan_weekdays, ARRAY[]::int[]) AS call_plan_weekdays,
                    call_last_status, call_last_at::text AS call_last_at
@@ -114,24 +229,49 @@ export async function fetchCallPlanRows(limit = 100): Promise<CallPlanRow[]> {
             WHERE COALESCE(call_plan_enabled, false) = true
             ORDER BY name ASC
             LIMIT $1`,
-      params: [limit],
+          params: [limit],
+        },
+      ]);
     },
-  ]);
+  });
 }
 
 export async function fetchExpenses(limit = 100): Promise<ExpenseRow[]> {
   const table = expensesTable();
-  return tryQueries<ExpenseRow>([
-    {
-      sql: `SELECT id::text AS id, category, description,
+  return runDataTransport({
+    label: 'fetchExpenses',
+    viaRest: async () => {
+      const rows = await postgrestGet<Record<string, unknown>[]>(
+        `/${table}`,
+        {
+          select: 'id,category,description,amount,expense_date,payment_method',
+          order: 'expense_date.desc',
+          limit,
+        },
+        { schema: 'public' },
+      );
+      return (Array.isArray(rows) ? rows : []).map((r) => ({
+        id: String(r.id ?? ''),
+        category: String(r.category ?? ''),
+        description: String(r.description ?? ''),
+        amount: Number(r.amount ?? 0) || 0,
+        expense_date: r.expense_date != null ? String(r.expense_date).slice(0, 10) : null,
+        payment_method: r.payment_method != null ? String(r.payment_method) : null,
+      }));
+    },
+    viaBridge: () =>
+      tryQueries<ExpenseRow>([
+        {
+          sql: `SELECT id::text AS id, category, description,
                    COALESCE(amount, 0)::float8 AS amount,
                    expense_date::text AS expense_date, payment_method
             FROM ${table}
             ORDER BY expense_date DESC NULLS LAST, created_at DESC NULLS LAST
             LIMIT $1`,
-      params: [limit],
-    },
-  ]);
+          params: [limit],
+        },
+      ]),
+  });
 }
 
 const TR_WEEKDAYS = ['Paz', 'Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt'];

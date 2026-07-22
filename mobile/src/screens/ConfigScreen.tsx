@@ -214,7 +214,16 @@ export function ConfigScreen({ navigation }: Props) {
 
   const onTestPostgrest = async () => {
     setTesting(true);
-    const result = await testPostgrestConnection(draft);
+    let remoteRestUrl = (draft.remoteRestUrl || '').trim().replace(/\/+$/, '');
+    const code = (draft.merkezTenantCode || '').trim().toLowerCase();
+    if (!remoteRestUrl && code) {
+      remoteRestUrl = `${DEFAULT_SAAS_TENANT_POSTGREST_ORIGIN.replace(/\/+$/, '')}/${code}`;
+    }
+    const result = await testPostgrestConnection({
+      ...draft,
+      remoteRestUrl,
+      merkezTenantCode: code || draft.merkezTenantCode,
+    });
     setTesting(false);
     setConnectionStatus({
       tone: result.ok ? 'ok' : 'fail',
