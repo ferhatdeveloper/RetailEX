@@ -39,6 +39,7 @@ Alternatif tetikleme: GitHub → Actions → **Desktop App Release** → Run wor
 - Müşteriye / release'e gidecek `.exe` için yerelde `npm run tauri:build` çalıştırıp dosyayı dağıtma.
 - `DeskApp/target/release/bundle/nsis/*setup.exe` çıktısını GitHub release yerine manuel yayınlama.
 - Sürümsüz `RetailEX-Desktop-Setup.exe` adıyla asset yükleme.
+- `AsinERP-*` portable/setup/apk veya Asin release title’ını RetailEX’e yükleme — `retailex-desktop-portable-release-guard.mdc` (önce `git remote` / `origin`).
 
 ## CI notları
 

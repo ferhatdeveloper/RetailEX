@@ -35,3 +35,4 @@ alwaysApply: true
 - RetailEX remote’una Asin rebrand, Asin setup/exe adı veya Asin-only UI yazma.
 - Bir workspace’te diğer ürünün commit’ini veya push’unu yapma.
 - Aynı turda her iki repoyu “tek ürün” sanarak karışık patch atma.
+- RetailEX Actions/release’e `AsinERP-*` asset, title veya tag yazma; Asin portable yalnızca `ferhatdeveloper/asin` (`retailex-desktop-portable-release-guard.mdc`).

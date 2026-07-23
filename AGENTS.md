@@ -3,6 +3,7 @@
 ## Ürün ayrımı (zorunlu)
 
 - **AsinERP** ve **RetailEX** ayrı ürün / ayrı repo — karıştırma. Ayrıntı: .cursor/rules/asin-retailex-product-separation.mdc
+- **Portable / release markası:** RetailEX’e `AsinERP-*` asset yasak — `.cursor/rules/retailex-desktop-portable-release-guard.mdc`
 
 ## Çalışma biçimi (zorunlu — tüm ajanlar)
 

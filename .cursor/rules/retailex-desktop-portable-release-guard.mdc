@@ -1,0 +1,53 @@
+---
+description: RetailEX release/portable — AsinERP asset yasak; remote kontrol zorunlu
+alwaysApply: true
+---
+
+# RetailEX — portable / desktop release marka koruması
+
+AsinERP Portable yanlışlıkla RetailEX releases’a düşmesin. Ürün ayrımı: `asin-retailex-product-separation.mdc`.
+
+## Remote kontrol (zorunlu — her tag / release öncesi)
+
+`app-v*`, `portable-v*`, `android-v*` push veya `gh release` / `gh workflow run` **öncesi**:
+
+1. `git remote -v` → **`origin`** URL’sinde **`RetailEX`** olmalı.
+2. `origin` **`asin`** ise: **dur** — AsinERP işi yalnızca `ferhatdeveloper/asin` kökünde (`C:\Users\FERHAT\Desktop\asin`).
+3. Yanlış repoya tag, asset veya workflow tetikleme **yasak**.
+
+## RetailEX Actions / GitHub Release — yasak
+
+| Yasak | Örnek |
+|-------|--------|
+| AsinERP asset adı | `AsinERP-Portable-*.zip`, `AsinERP-Desktop-Setup-*.exe`, `AsinERP-Android-*.apk` |
+| AsinERP release title / body | `AsinERP Portable …` |
+| Asin portable workflow / script | `desktop-portable-release.yml` (Asin), `pack-asin-portable-zip.mjs` |
+| Asin tag’ini RetailEX’e push | `portable-v*` / `app-v*` yanlış origin’e |
+
+## RetailEX portable (gerekirse)
+
+Yalnızca **bu** repoda ve **RetailEX** markasıyla:
+
+| Öğe | Kalıp |
+|-----|--------|
+| Zip | `RetailEX-Portable-{version}.zip` |
+| Tag | `portable-v{version}` (yalnızca `origin` = RetailEX) |
+| Release adı | `RetailEX Portable {version}` |
+
+NSIS kurulum: `RetailEX-Desktop-Setup-{version}.exe` + tag `app-v{version}` (`retailex-desktop-release-filename.mdc`).
+
+Terazi yardımcı portable: `RetailEX.TeraziManager-Portable-{version}.zip` — yine RetailEX markası; AsinERP değil.
+
+## Asin portable — yalnızca asin repo
+
+- Repo: `https://github.com/ferhatdeveloper/asin`
+- Asset: `AsinERP-Portable-{version}.zip`
+- Workflow: `.github/workflows/desktop-portable-release.yml` (Asin)
+- RetailEX workspace’te Asin portable tetikleme / zip yükleme / release oluşturma **yasak**
+
+## Ajan checklist
+
+- [ ] `origin` = RetailEX mi doğrulandı?
+- [ ] Release asset / title’da `AsinERP` yok mu?
+- [ ] Portable gerekiyorsa ad `RetailEX-Portable-…` mi (Asin script kopyası değil)?
+- [ ] CI yalnızca doküman/kural değişikliğinde tetiklenmedi mi?
