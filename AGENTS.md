@@ -1,5 +1,9 @@
 # AGENTS.md
 
+## Ürün ayrımı (zorunlu)
+
+- **AsinERP** ve **RetailEX** ayrı ürün / ayrı repo — karıştırma. Ayrıntı: .cursor/rules/asin-retailex-product-separation.mdc
+
 ## Çalışma biçimi (zorunlu — tüm ajanlar)
 
 - **Çoklu ajan:** Bağımsız keşif/uygulama/doğrulama parçalarını paralel Task/alt ajanla yürüt; tek ajan sıraya dizme yalnızca zorunlu bağımlılıkta.

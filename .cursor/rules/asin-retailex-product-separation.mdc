@@ -1,0 +1,37 @@
+---
+description: AsinERP ve RetailEX ayrı ürün/repo — karıştırmayı yasaklar
+alwaysApply: true
+---
+
+# AsinERP ≠ RetailEX (ürün ve repo ayrımı)
+
+**AsinERP** ve **RetailEX** ayrı ürünlerdir; **ayrı git repoları** vardır. Karıştırma.
+
+## Repolar
+
+| Ürün | GitHub | Yerel kök |
+|------|--------|-----------|
+| **AsinERP** | `https://github.com/ferhatdeveloper/asin.git` | `C:\Users\FERHAT\Desktop\asin` |
+| **RetailEX** | `https://github.com/ferhatdeveloper/RetailEX.git` | `C:\Users\FERHAT\Desktop\as-main` (veya RetailEX clone) |
+
+- Ürün adı **AsinERP** ≠ repo adı **`asin`**.
+- Ürün adı **RetailEX** ≠ **Asin** / AsinERP.
+
+## Workspace kimliği (zorunlu)
+
+1. Çalışmadan önce kökte `git remote -v` bak.
+2. `origin` URL’de **`asin`** → yalnızca **AsinERP** işi; marka/UI/exe/tasarım Asin kurallarına uy.
+3. `origin` URL’de **`RetailEX`** → yalnızca **RetailEX** işi; Asin rebrand / Asin exe / Asin UI yazma.
+4. Commit ve push **yalnızca bu workspace’in `origin`’ine**. Yanlış repoya push **yasak**.
+
+## Kullanıcı dili → kök
+
+- Kullanıcı **“Asin”** / AsinERP derse → `C:\Users\FERHAT\Desktop\asin` (gerekirse `move_agent_to_root`).
+- Kullanıcı **“RetailEX”** derse → RetailEX kökü (`as-main` veya ilgili clone).
+
+## Yapma
+
+- Asin remote’una RetailEX marka, tasarım, release adı veya doküman yazma.
+- RetailEX remote’una Asin rebrand, Asin setup/exe adı veya Asin-only UI yazma.
+- Bir workspace’te diğer ürünün commit’ini veya push’unu yapma.
+- Aynı turda her iki repoyu “tek ürün” sanarak karışık patch atma.
