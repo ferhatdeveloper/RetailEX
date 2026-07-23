@@ -75,7 +75,7 @@ export function RestaurantTableOpenModal({
                     onClick={e => e.stopPropagation()}
                 >
                     {/* Header with Gradient */}
-                    <div className="relative z-10 bg-[var(--asin-primary,#0E2433)] p-6 flex items-center justify-between text-white overflow-hidden shrink-0 border-b border-[var(--asin-accent,#1FA8A0)]/35">
+                    <div className="relative z-10 bg-gradient-to-r from-blue-600 to-blue-700 p-6 flex items-center justify-between text-white overflow-hidden shrink-0">
                         <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -mr-16 -mt-16 blur-2xl pointer-events-none" />
 
                         <div className="flex items-center gap-4 relative z-10">
@@ -194,7 +194,7 @@ export function RestaurantTableOpenModal({
                         </button>
                         <button
                             onClick={() => onConfirm(covers, selectedResId)}
-                            className="relative z-20 flex-1 px-6 py-4 bg-[var(--asin-accent,#1FA8A0)] hover:bg-[#178f88] text-white rounded-2xl font-black uppercase text-[12px] flex items-center justify-center gap-3 shadow-xl active:scale-95 transition-all"
+                            className="relative z-20 flex-1 px-6 py-4 bg-blue-600 text-white rounded-2xl font-black uppercase text-[12px] flex items-center justify-center gap-3 shadow-xl shadow-blue-200 hover:bg-blue-700 active:scale-95 transition-all"
                         >
                             <CheckCircle className="w-5 h-5" />
                             <span>{tmR('resTableOpenConfirmBtn')}</span>

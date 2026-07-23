@@ -6726,7 +6726,7 @@ export const excelModuleTranslations = {
   reportsPrintSummaryTxnCount: { tr: 'İşlem adedi', en: 'Transaction count', ar: 'عدد العمليات', ku: 'ژمارەی مامەڵە' },
   reportsPrintSummaryTotalRev: { tr: 'Toplam ciro', en: 'Total revenue', ar: 'إجمالي الإيرادات', ku: 'کۆی داهات' },
   reportsPrintSummaryTotalDisc: { tr: 'Toplam indirim', en: 'Total discount', ar: 'إجمالي الخصم', ku: 'کۆی داشکاندن' },
-  reportsPrintFooter: { tr: 'Asin · Günlük rapor', en: 'Asin · Daily report', ar: 'Asin · تقرير يومي', ku: 'Asin · ڕاپۆرتی ڕۆژانە' },
+  reportsPrintFooter: { tr: 'RetailEX · Günlük rapor', en: 'RetailEX · Daily report', ar: 'RetailEX · تقرير يومي', ku: 'RetailEX · ڕاپۆرتی ڕۆژانە' },
   reportsPrintNoRecords: { tr: 'Kayıt yok', en: 'No records', ar: 'لا سجلات', ku: 'تۆمار نییە' },
   reportsPlNeedFirmPeriod: {
     tr: 'Kar-zarar raporu için üst menüden firma ve dönem seçin. Tarihler seçili döneme göre doldurulur.',

@@ -10,10 +10,9 @@ export function normalizeDbMode(raw: string | undefined, role: SetupAppConfig['r
     return value as SetupDbMode;
   }
   if (value === 'local') {
-    return role === 'center' ? 'offline' : 'online';
+    return role === 'center' ? 'offline' : 'hybrid';
   }
-  // Terminal (client) bilinmeyen mod → doğrudan PostgreSQL; Merkez → hibrit varsayılan
-  return role === 'center' ? 'hybrid' : 'online';
+  return role === 'center' ? 'hybrid' : 'hybrid';
 }
 
 export function isRemoteDbConfigured(remoteDb?: string): boolean {
@@ -130,8 +129,7 @@ export function normalizeSetupConfig(config: SetupAppConfig): SetupAppConfig {
   } else if (db_mode === 'offline') {
     normalized.connection_provider = 'db';
   } else if (db_mode === 'online' && !normalized.connection_provider) {
-    // Terminal: doğrudan PostgreSQL; Merkez online boş provider → PostgREST (SaaS)
-    normalized.connection_provider = normalized.role === 'client' ? 'db' : 'rest_api';
+    normalized.connection_provider = 'rest_api';
   }
 
   if (!normalized.remote_rest_url?.trim()) {

@@ -584,12 +584,39 @@ async function fetchCariBalancesFromCardViaBridge(opts: {
   }
 }
 
-export async function fetchCariBalances(opts?: {
+/** account_movements REST — dönem ledger özeti (CTE yok) */
+async function aggregateLedgerFromMovementsRest(
+  fn: string,
+  pn: string,
+): Promise<Map<string, { balance: number; txnCount: number }> | null> {
+  const movTable = accountMovementsTable(fn, pn);
+  const rows = await postgrestGet<Record<string, unknown>[]>(
+    `/${movTable}`,
+    {
+      select: 'customer_id,supplier_id,amount,sign',
+      limit: 15000,
+    },
+    { schema: 'public' },
+  );
+  if (!Array.isArray(rows) || !rows.length) return null;
+  const map = new Map<string, { balance: number; txnCount: number }>();
+  for (const r of rows) {
+    const id = String(r.customer_id || r.supplier_id || '').trim();
+    if (!id) continue;
+    const amt = Math.abs(Number(r.amount ?? 0) || 0);
+    const sign = Number(r.sign ?? 1) < 0 ? -1 : 1;
+    const cur = map.get(id) || { balance: 0, txnCount: 0 };
+    cur.balance += sign * amt;
+    cur.txnCount += 1;
+    map.set(id, cur);
+  }
+  return map.size ? map : null;
+}
+
+async function fetchCariBalancesViaRest(opts?: {
   cardType?: 'customer' | 'supplier' | 'all';
   onlyNonZero?: boolean;
   limit?: number;
-  /** true → yalnızca kart kolonu (eski davranış) */
-  useCardBalance?: boolean;
 }): Promise<CariBalanceRow[]> {
   const want = opts?.cardType ?? 'all';
   const onlyNonZero = opts?.onlyNonZero !== false;
@@ -597,9 +624,54 @@ export async function fetchCariBalances(opts?: {
   const fn = firmNr();
   const pn = periodNr();
 
-  if (opts?.useCardBalance) {
-    return fetchCariBalancesFromCard({ want, onlyNonZero, limit, fn, pn });
+  const cardRows = await fetchCariBalancesFromCardViaRest({
+    want,
+    onlyNonZero: false,
+    limit: Math.min(limit * 2, 2000),
+    fn,
+    pn,
+  });
+
+  let ledger: Map<string, { balance: number; txnCount: number }> | null = null;
+  try {
+    ledger = await aggregateLedgerFromMovementsRest(fn, pn);
+  } catch {
+    ledger = null;
   }
+
+  if (!ledger) {
+    const filtered = onlyNonZero
+      ? cardRows.filter((r) => Math.abs(r.balance) > 0.009)
+      : cardRows;
+    return filtered.slice(0, limit);
+  }
+
+  const out: CariBalanceRow[] = cardRows.map((r) => {
+    const led = ledger!.get(r.accountId);
+    const periodBal = led ? led.balance : r.cardBalance;
+    return {
+      ...r,
+      balance: periodBal,
+      cardBalance: r.cardBalance,
+      txnCount: led?.txnCount ?? 0,
+      balanceSource: led ? ('period_ledger' as const) : ('card' as const),
+    };
+  });
+
+  const filtered = onlyNonZero ? out.filter((r) => Math.abs(r.balance) > 0.009) : out;
+  return filtered.sort((a, b) => Math.abs(b.balance) - Math.abs(a.balance)).slice(0, limit);
+}
+
+async function fetchCariBalancesViaBridge(opts?: {
+  cardType?: 'customer' | 'supplier' | 'all';
+  onlyNonZero?: boolean;
+  limit?: number;
+}): Promise<CariBalanceRow[]> {
+  const want = opts?.cardType ?? 'all';
+  const onlyNonZero = opts?.onlyNonZero !== false;
+  const limit = opts?.limit ?? 500;
+  const fn = firmNr();
+  const pn = periodNr();
 
   const cust = customersTable(fn);
   const supp = suppliersTable(fn);
@@ -691,9 +763,32 @@ export async function fetchCariBalances(opts?: {
     }));
   } catch (err) {
     softSchemaOrThrow(err, 'fetchCariBalances');
-    // CTE / cash_lines yoksa kart bakiyesine düş
     return fetchCariBalancesFromCard({ want, onlyNonZero, limit, fn, pn });
   }
+}
+
+export async function fetchCariBalances(opts?: {
+  cardType?: 'customer' | 'supplier' | 'all';
+  onlyNonZero?: boolean;
+  limit?: number;
+  /** true → yalnızca kart kolonu (eski davranış) */
+  useCardBalance?: boolean;
+}): Promise<CariBalanceRow[]> {
+  const want = opts?.cardType ?? 'all';
+  const onlyNonZero = opts?.onlyNonZero !== false;
+  const limit = opts?.limit ?? 500;
+  const fn = firmNr();
+  const pn = periodNr();
+
+  if (opts?.useCardBalance) {
+    return fetchCariBalancesFromCard({ want, onlyNonZero, limit, fn, pn });
+  }
+
+  return runReportTransport({
+    label: 'fetchCariBalances',
+    viaRest: () => fetchCariBalancesViaRest(opts),
+    viaBridge: () => fetchCariBalancesViaBridge(opts),
+  });
 }
 
 /** Web `erpReports.getCariExtract` / `supplierAPI.getAccountStatement` — cari ekstre */
@@ -1429,7 +1524,59 @@ export type WarehouseStatusRow = {
   warehouse_qty: number;
 };
 
-export async function fetchWarehouseStatus(limit = 500): Promise<{
+async function fetchWarehouseStatusViaRest(limit: number): Promise<{
+  warehouseName: string | null;
+  rows: WarehouseStatusRow[];
+}> {
+  const table = productsTable();
+  let warehouseName: string | null = null;
+  try {
+    const stores = await postgrestGet<Array<{ name?: string }>>(
+      '/stores',
+      {
+        select: 'name',
+        is_active: 'eq.true',
+        order: 'created_at.asc',
+        limit: 1,
+      },
+      { schema: 'public' },
+    );
+    warehouseName = stores?.[0]?.name != null ? String(stores[0].name) : null;
+  } catch {
+    warehouseName = null;
+  }
+
+  const products = await postgrestGet<Record<string, unknown>[]>(
+    `/${table}`,
+    {
+      select: 'id,code,name,stock',
+      is_active: 'eq.true',
+      order: 'stock.desc,name.asc',
+      limit: Math.min(limit * 2, 5000),
+    },
+    { schema: 'public' },
+  );
+
+  const rows = (Array.isArray(products) ? products : [])
+    .map((r) => ({
+      id: String(r.id ?? ''),
+      code: r.code != null ? String(r.code) : null,
+      name: String(r.name ?? ''),
+      total: Number(r.stock ?? 0) || 0,
+    }))
+    .filter((r) => r.id)
+    .sort((a, b) => b.total - a.total || a.name.localeCompare(b.name))
+    .slice(0, limit)
+    .map((r) => ({
+      ...r,
+      warehouse_name: warehouseName,
+      warehouse_qty: r.total,
+    }));
+
+  return { warehouseName, rows };
+}
+
+async function fetchWarehouseStatusViaBridge(limit: number): Promise<{
   warehouseName: string | null;
   rows: WarehouseStatusRow[];
 }> {
@@ -1476,6 +1623,17 @@ export async function fetchWarehouseStatus(limit = 500): Promise<{
   };
 }
 
+export async function fetchWarehouseStatus(limit = 500): Promise<{
+  warehouseName: string | null;
+  rows: WarehouseStatusRow[];
+}> {
+  return runReportTransport({
+    label: 'fetchWarehouseStatus',
+    viaRest: () => fetchWarehouseStatusViaRest(limit),
+    viaBridge: () => fetchWarehouseStatusViaBridge(limit),
+  });
+}
+
 /** Web `MaterialExtractReport` — ürün hareket ekstresi */
 export type MaterialExtractRow = {
   id: string;
@@ -1503,6 +1661,216 @@ export async function fetchMaterialExtract(opts: {
   const end = String(opts.endDate || '').slice(0, 10);
   if (!productId || !start || !end) return [];
 
+  return runReportTransport({
+    label: 'fetchMaterialExtract',
+    viaRest: () => fetchMaterialExtractViaRest({ ...opts, productId, start, end }),
+    viaBridge: () => fetchMaterialExtractViaBridge({ ...opts, productId, start, end }),
+  });
+}
+
+async function fetchMaterialExtractViaRest(opts: {
+  productId: string;
+  productCode?: string;
+  start: string;
+  end: string;
+  limit?: number;
+}): Promise<MaterialExtractRow[]> {
+  const fn = firmNr();
+  const pn = periodNr();
+  const mov = stockMovementsTable(fn, pn);
+  const items = stockMovementItemsTable(fn, pn);
+  const sales = salesTable(fn, pn);
+  const saleItems = saleItemsTable(fn, pn);
+  const hintCode = String(opts.productCode || '').trim();
+  const limit = opts.limit ?? 1000;
+  const productId = opts.productId;
+  const { start, end } = opts;
+
+  type Raw = {
+    id: string;
+    date: string;
+    document_no: string;
+    movement_type: string;
+    description: string;
+    quantity: number;
+    unit_price: number;
+    warehouse_name: string | null;
+    source: 'slip' | 'invoice';
+  };
+
+  const raw: Raw[] = [];
+  const storeNames = new Map<string, string>();
+
+  try {
+    const stores = await postgrestGet<Array<{ id?: string; name?: string }>>(
+      '/stores',
+      { select: 'id,name', limit: 500 },
+      { schema: 'public' },
+    );
+    for (const s of Array.isArray(stores) ? stores : []) {
+      if (s.id) storeNames.set(String(s.id), String(s.name || ''));
+    }
+  } catch {
+    /* optional */
+  }
+
+  try {
+    const [movRows, itemRows] = await Promise.all([
+      postgrestGet<Record<string, unknown>[]>(
+        `/${mov}`,
+        {
+          select: 'id,document_no,movement_type,movement_date,created_at,warehouse_id,description',
+          order: 'movement_date.asc',
+          limit: 5000,
+        },
+        { schema: 'public' },
+      ),
+      postgrestGet<Record<string, unknown>[]>(
+        `/${items}`,
+        {
+          select: 'id,movement_id,product_id,quantity,unit_price,cost_price',
+          limit: 10000,
+        },
+        { schema: 'public' },
+      ),
+    ]);
+    const movById = new Map(
+      (Array.isArray(movRows) ? movRows : []).map((m) => [String(m.id), m]),
+    );
+    for (const it of Array.isArray(itemRows) ? itemRows : []) {
+      const pid = String(it.product_id ?? '');
+      if (pid !== productId && (!hintCode || pid !== hintCode)) continue;
+      const m = movById.get(String(it.movement_id ?? ''));
+      if (!m) continue;
+      const day = String(m.movement_date || m.created_at || '').slice(0, 10);
+      if (!day || day < start || day > end) continue;
+      const wid = m.warehouse_id != null ? String(m.warehouse_id) : '';
+      raw.push({
+        id: String(it.id ?? ''),
+        date: day,
+        document_no: String(m.document_no ?? ''),
+        movement_type: String(m.movement_type ?? ''),
+        description: String(m.description ?? '').trim(),
+        quantity: Number(it.quantity ?? 0) || 0,
+        unit_price: Number(it.unit_price ?? it.cost_price ?? 0) || 0,
+        warehouse_name: wid ? storeNames.get(wid) || null : null,
+        source: 'slip',
+      });
+    }
+  } catch (err) {
+    softSchemaOrThrow(err, 'fetchMaterialExtract.slip');
+  }
+
+  try {
+    const [saleRows, siRows] = await Promise.all([
+      postgrestGet<Record<string, unknown>[]>(
+        `/${sales}`,
+        {
+          select: 'id,fiche_no,fiche_type,trcode,date,created_at,store_id,is_cancelled',
+          is_cancelled: 'eq.false',
+          order: 'date.asc',
+          limit: 5000,
+        },
+        { schema: 'public' },
+      ),
+      postgrestGet<Record<string, unknown>[]>(
+        `/${saleItems}`,
+        {
+          select: 'id,invoice_id,product_id,item_code,quantity,unit_price,net_amount,total_amount',
+          limit: 10000,
+        },
+        { schema: 'public' },
+      ),
+    ]);
+    const salesById = new Map(
+      (Array.isArray(saleRows) ? saleRows : []).map((s) => [String(s.id), s]),
+    );
+    for (const si of Array.isArray(siRows) ? siRows : []) {
+      const pid = String(si.product_id ?? si.item_code ?? '');
+      if (pid !== productId && (!hintCode || String(si.item_code ?? '') !== hintCode)) continue;
+      const sl = salesById.get(String(si.invoice_id ?? ''));
+      if (!sl || isCancelledRow(sl)) continue;
+      const day = String(sl.date || sl.created_at || '').slice(0, 10);
+      if (!day || day < start || day > end) continue;
+      const ft = String(sl.fiche_type || '').trim().toLowerCase();
+      const tr = Number(sl.trcode ?? 0) || 0;
+      let movement_type = 'out';
+      if (ft === 'purchase_invoice' || tr === 1 || tr === 4 || tr === 5) movement_type = 'in';
+      else if (ft === 'return_invoice' && tr === 3) movement_type = 'in';
+      else if (ft === 'return_invoice') movement_type = 'out';
+      const qty = Number(si.quantity ?? 0) || 0;
+      const unitPrice =
+        Number(si.unit_price ?? 0) ||
+        (Math.abs(qty) > 0.0000001
+          ? Math.abs(Number(si.net_amount ?? si.total_amount ?? 0) || 0) / Math.abs(qty)
+          : 0);
+      const storeKey = sl.store_id != null ? String(sl.store_id) : '';
+      raw.push({
+        id: String(si.id ?? ''),
+        date: day,
+        document_no: String(sl.fiche_no ?? ''),
+        movement_type,
+        description: ft,
+        quantity: qty,
+        unit_price: unitPrice,
+        warehouse_name: storeKey ? storeNames.get(storeKey) || null : null,
+        source: 'invoice',
+      });
+    }
+  } catch (err) {
+    throwReportError(err, 'fetchMaterialExtract.invoice');
+  }
+
+  return mapMaterialExtractRunning(raw, limit);
+}
+
+function mapMaterialExtractRunning(
+  raw: Array<{
+    id: string;
+    date: string;
+    document_no: string;
+    movement_type: string;
+    description: string;
+    quantity: number;
+    unit_price: number;
+    warehouse_name: string | null;
+    source: 'slip' | 'invoice';
+  }>,
+  limit: number,
+): MaterialExtractRow[] {
+  raw.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+  let balance = 0;
+  return raw.slice(0, limit).map((m) => {
+    const qty = Number(m.quantity) || 0;
+    const unitPrice = Number(m.unit_price) || 0;
+    if (m.movement_type === 'in') balance += qty;
+    else if (m.movement_type === 'out') balance -= qty;
+    return {
+      id: m.id,
+      date: m.date,
+      document_no: m.document_no,
+      movement_type: m.movement_type,
+      description: m.description,
+      quantity: qty,
+      unit_price: unitPrice,
+      amount: qty * unitPrice,
+      running_balance: balance,
+      warehouse_name: m.warehouse_name,
+      source: m.source,
+    };
+  });
+}
+
+async function fetchMaterialExtractViaBridge(opts: {
+  productId: string;
+  productCode?: string;
+  start: string;
+  end: string;
+  limit?: number;
+}): Promise<MaterialExtractRow[]> {
+  const productId = opts.productId;
+  const start = opts.start;
+  const end = opts.end;
   const fn = firmNr();
   const pn = periodNr();
   const mov = stockMovementsTable(fn, pn);
@@ -1614,26 +1982,7 @@ export async function fetchMaterialExtract(opts: {
 
   raw.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
-  let balance = 0;
-  return raw.map((m) => {
-    const qty = Number(m.quantity) || 0;
-    const unitPrice = Number(m.unit_price) || 0;
-    if (m.movement_type === 'in') balance += qty;
-    else if (m.movement_type === 'out') balance -= qty;
-    return {
-      id: m.id,
-      date: m.date,
-      document_no: m.document_no,
-      movement_type: m.movement_type,
-      description: m.description,
-      quantity: qty,
-      unit_price: unitPrice,
-      amount: qty * unitPrice,
-      running_balance: balance,
-      warehouse_name: m.warehouse_name,
-      source: m.source,
-    };
-  });
+  return mapMaterialExtractRunning(raw, limit);
 }
 
 /** Web `erpReports.getProductGrossProfit` — basitleştirilmiş ürün satış dökümü */
@@ -2012,10 +2361,173 @@ export function agingBucketLabel(bucket: AgingBucket): string {
   }
 }
 
-/**
- * Basit cari yaşlandırma — web `erpReports.getCariAging` (dönem sales, veresiye/açık).
- */
-export async function fetchCariAging(opts?: {
+const OPEN_ACCOUNT_PM = new Set([
+  'veresiye',
+  'open_account',
+  'cari',
+  'açık hesap',
+  'acik hesap',
+  'açık cari',
+  'acik cari',
+  'acik_cari',
+  'açık_cari',
+]);
+
+const CASH_PM = new Set([
+  'cash',
+  'nakit',
+  'card',
+  'kart',
+  'gateway',
+  'havale',
+  'eft',
+  'haval',
+  'kredikarti',
+  'transfer',
+]);
+
+function isOpenAccountPayment(pm: unknown): boolean {
+  const s = String(pm ?? '').trim().toLowerCase();
+  if (!s) return false;
+  if (OPEN_ACCOUNT_PM.has(s)) return true;
+  return s.includes('veresiye');
+}
+
+function isCashPayment(pm: unknown): boolean {
+  const s = String(pm ?? '').trim().toLowerCase();
+  if (!s) return false;
+  if (CASH_PM.has(s)) return true;
+  return s.includes('kredi') && s.includes('kart');
+}
+
+async function fetchCariAgingViaRest(opts?: {
+  cardType?: 'customer' | 'supplier' | 'all';
+  limit?: number;
+}): Promise<CariAgingRow[]> {
+  const want = opts?.cardType ?? 'all';
+  const limit = opts?.limit ?? 400;
+  const today = todayYmdLocal();
+  const fn = firmNr();
+  const pn = periodNr();
+  const salesPath = `/${salesTable(fn, pn)}`;
+  const out: CariAgingRow[] = [];
+
+  const sales = await postgrestGet<Record<string, unknown>[]>(
+    salesPath,
+    {
+      select:
+        'id,fiche_no,date,created_at,fiche_type,trcode,net_amount,total_net,payment_method,customer_id,customer_name,is_cancelled,status',
+      is_cancelled: 'eq.false',
+      order: 'date.desc',
+      limit: Math.min(limit * 4, 3000),
+    },
+    { schema: 'public' },
+  );
+
+  const custMap = new Map<string, Record<string, unknown>>();
+  const suppMap = new Map<string, Record<string, unknown>>();
+
+  if (want === 'all' || want === 'customer') {
+    try {
+      const cust = await postgrestGet<Record<string, unknown>[]>(
+        `/${customersTable(fn)}`,
+        { select: 'id,code,name,payment_terms', limit: 3000 },
+        { schema: 'public' },
+      );
+      for (const c of Array.isArray(cust) ? cust : []) {
+        if (c.id) custMap.set(String(c.id), c);
+      }
+    } catch {
+      /* optional */
+    }
+  }
+  if (want === 'all' || want === 'supplier') {
+    try {
+      const supp = await postgrestGet<Record<string, unknown>[]>(
+        `/${suppliersTable(fn)}`,
+        { select: 'id,code,name,payment_terms', limit: 3000 },
+        { schema: 'public' },
+      );
+      for (const s of Array.isArray(supp) ? supp : []) {
+        if (s.id) suppMap.set(String(s.id), s);
+      }
+    } catch {
+      /* optional */
+    }
+  }
+
+  const mapRow = (
+    r: Record<string, unknown>,
+    cardType: 'customer' | 'supplier',
+    account: Record<string, unknown> | undefined,
+  ): CariAgingRow | null => {
+    const ft = String(r.fiche_type || '').trim().toLowerCase();
+    const tr = Number(r.trcode ?? 0) || 0;
+    const net = Number(r.net_amount ?? r.total_net ?? 0) || 0;
+    let amount = Math.abs(net);
+    if (ft === 'return_invoice') amount = -amount;
+    if (Math.abs(amount) <= 0.009) return null;
+    const invoiceDate = String(r.date || r.created_at || '').slice(0, 10);
+    const termsDays = parseTermsDays(account?.payment_terms, 30);
+    const dueDate =
+      String(r.due_date ?? '').slice(0, 10) || addDaysYmd(invoiceDate || today, termsDays);
+    const daysOverdue = Math.max(0, ymdDiff(today, dueDate));
+    return {
+      accountId: String(account?.id ?? r.customer_id ?? ''),
+      accountCode: String(account?.code ?? ''),
+      accountName: String(account?.name ?? r.customer_name ?? ''),
+      cardType,
+      ficheNo: String(r.fiche_no ?? ''),
+      invoiceDate,
+      dueDate,
+      amount,
+      daysOverdue,
+      bucket: bucketFromDaysOverdue(daysOverdue),
+      termsDays,
+    };
+  };
+
+  for (const s of Array.isArray(sales) ? sales : []) {
+    if (isCancelledRow(s)) continue;
+    if (!isCountableSaleStatus(s)) continue;
+    const ft = String(s.fiche_type || '').trim().toLowerCase();
+    const tr = Number(s.trcode ?? 0) || 0;
+    const pm = s.payment_method;
+
+    if (want === 'all' || want === 'customer') {
+      const isCustomerSale =
+        ['sales_invoice', 'sales', 'retail', 'service', 'hizmet', 'return_invoice'].includes(ft) ||
+        [0, 2, 3, 7, 8, 9, 14].includes(tr);
+      const open =
+        ft === 'return_invoice' || isOpenAccountPayment(pm);
+      if (isCustomerSale && open) {
+        const acc = custMap.get(String(s.customer_id ?? ''));
+        const row = mapRow(s, 'customer', acc);
+        if (row) out.push(row);
+      }
+    }
+
+    if (want === 'all' || want === 'supplier') {
+      const isSupplierSale =
+        ['purchase_invoice', 'return_invoice'].includes(ft) ||
+        [1, 4, 5, 6, 13, 26, 41, 42].includes(tr);
+      const open = ft === 'return_invoice' || !isCashPayment(pm);
+      if (isSupplierSale && open) {
+        const acc =
+          suppMap.get(String(s.customer_id ?? '')) || custMap.get(String(s.customer_id ?? ''));
+        const row = mapRow(s, 'supplier', acc);
+        if (row) out.push(row);
+      }
+    }
+  }
+
+  return out
+    .filter((r) => Math.abs(r.amount) > 0.009)
+    .sort((a, b) => b.daysOverdue - a.daysOverdue || b.amount - a.amount)
+    .slice(0, limit);
+}
+
+async function fetchCariAgingViaBridge(opts?: {
   cardType?: 'customer' | 'supplier' | 'all';
   limit?: number;
 }): Promise<CariAgingRow[]> {
@@ -2143,4 +2655,18 @@ export async function fetchCariAging(opts?: {
     .filter((r) => Math.abs(r.amount) > 0.009)
     .sort((a, b) => b.daysOverdue - a.daysOverdue || b.amount - a.amount)
     .slice(0, limit);
+}
+
+/**
+ * Basit cari yaşlandırma — web `erpReports.getCariAging` (dönem sales, veresiye/açık).
+ */
+export async function fetchCariAging(opts?: {
+  cardType?: 'customer' | 'supplier' | 'all';
+  limit?: number;
+}): Promise<CariAgingRow[]> {
+  return runReportTransport({
+    label: 'fetchCariAging',
+    viaRest: () => fetchCariAgingViaRest(opts),
+    viaBridge: () => fetchCariAgingViaBridge(opts),
+  });
 }

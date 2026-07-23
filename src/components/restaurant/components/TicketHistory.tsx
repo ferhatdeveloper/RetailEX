@@ -110,7 +110,7 @@ export function TicketHistory({ onClose }: TicketHistoryProps) {
             {/* Standardized Premium Appbar */}
             <div
                 className="border-b px-6 py-4 flex items-center justify-between z-20 shrink-0 gap-8 shadow-2xl"
-                style={{ backgroundColor: 'var(--asin-primary, #0E2433)', borderColor: 'rgba(31,168,160,0.35)' }}
+                style={{ backgroundColor: '#2563eb', borderColor: 'rgba(96,165,250,0.4)' }}
             >
                 <div className="flex items-center gap-4 flex-1">
                     <button
@@ -238,7 +238,7 @@ export function TicketHistory({ onClose }: TicketHistoryProps) {
 
             {/* Footer */}
             <div className="bg-white border-t border-slate-100 p-3 flex justify-between items-center shrink-0 px-6 shadow-[0_-4px_20px_rgba(0,0,0,0.02)]">
-                <span className="text-[10px] font-black text-slate-300 uppercase tracking-[0.2em]">Asin Platform Engine</span>
+                <span className="text-[10px] font-black text-slate-300 uppercase tracking-[0.2em]">RetailEX Platform Engine</span>
                 <div className="flex items-center gap-6">
                     <div className="flex items-center gap-2">
                         <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>

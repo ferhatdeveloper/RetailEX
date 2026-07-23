@@ -208,7 +208,7 @@ export function PaymentPlansModule() {
                 </div>
                 <button
                     onClick={handleCreateNew}
-                    className="px-4 py-2 bg-[var(--asin-accent,#1FA8A0)] text-white rounded-xl shadow-lg shadow-[rgb(14_36_51/0.12)] hover:bg-[#178f88] transition-all flex items-center justify-center gap-2 font-medium"
+                    className="px-4 py-2 bg-blue-600 text-white rounded-xl shadow-lg shadow-blue-500/20 hover:bg-blue-700 transition-all flex items-center justify-center gap-2 font-medium"
                 >
                     <Plus className="w-5 h-5" />
                     Yeni Ödeme Planı
@@ -420,7 +420,7 @@ export function PaymentPlansModule() {
                             <button
                                 onClick={handleSave}
                                 disabled={loading}
-                                className="px-8 py-2.5 bg-[var(--asin-accent,#1FA8A0)] text-white rounded-2xl font-bold shadow-lg shadow-[rgb(14_36_51/0.12)] hover:bg-[#178f88] transition-all flex items-center gap-2 disabled:opacity-50"
+                                className="px-8 py-2.5 bg-blue-600 text-white rounded-2xl font-bold shadow-lg shadow-blue-500/20 hover:bg-blue-700 transition-all flex items-center gap-2 disabled:opacity-50"
                             >
                                 {loading ? <RefreshCw className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
                                 {editingPlan ? 'Güncelle' : 'Kaydet'}

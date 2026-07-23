@@ -11,7 +11,7 @@ export function ThemeAwarePageShell({
 
   return (
     <div
-      className={`h-screen w-full overflow-hidden ${darkMode ? 'bg-[var(--asin-primary,#0E2433)] text-gray-100' : 'bg-[var(--asin-surface,#F3F5F7)] text-gray-900'} ${className}`}
+      className={`h-screen w-full overflow-hidden ${darkMode ? 'bg-slate-900 text-gray-100' : 'bg-slate-50 text-gray-900'} ${className}`}
     >
       {children}
     </div>

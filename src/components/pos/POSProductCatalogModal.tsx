@@ -230,9 +230,9 @@ export function POSProductCatalogModal({
     >
       <div className="bg-white w-full h-full min-h-[100dvh] flex flex-col shadow-2xl relative isolate">
         {/* Header */}
-        <div className="relative z-30 bg-[var(--asin-primary,#0E2433)] text-white px-4 py-3 flex items-center justify-between flex-shrink-0 shadow-md">
+        <div className="relative z-30 bg-gradient-to-r from-blue-600 to-blue-700 text-white px-4 py-3 flex items-center justify-between flex-shrink-0 shadow-md">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-[var(--asin-accent,#1FA8A0)] flex items-center justify-center">
+            <div className="w-8 h-8 bg-blue-500 flex items-center justify-center">
               <Package className="w-5 h-5" />
             </div>
             <div>
@@ -243,7 +243,7 @@ export function POSProductCatalogModal({
                     ? `${t.quickProductSlot} #${(slotNumber || 0) + 1} - ${t.productSelection}`
                     : t.productQuery}
               </h2>
-              <p className="text-sm text-[var(--asin-accent-muted,#D5F0EE)]">
+              <p className="text-sm text-blue-100">
                 {filteredProducts.length} {t.productCount} · {selectedCategory}
                 {isInvoiceMultiSelect && ` · ${multiSelectHintText}`}
                 {mode === 'assign-to-slot' && ' · Shift + Tıkla veya Çift Tıkla'}
@@ -271,7 +271,7 @@ export function POSProductCatalogModal({
                   key={category.name}
                   onClick={() => setSelectedCategory(category.name)}
                   className={`w-full px-3 py-2 text-left text-xs flex items-center justify-between transition-colors ${selectedCategory === category.name
-                    ? 'bg-[var(--asin-accent-muted,#D5F0EE)] text-[var(--asin-primary,#0E2433)] border-l-2 border-[var(--asin-accent,#1FA8A0)]'
+                    ? 'bg-blue-50 text-blue-700 border-l-2 border-blue-600'
                     : 'text-gray-700 hover:bg-gray-50'
                     }`}
                 >
@@ -294,7 +294,7 @@ export function POSProductCatalogModal({
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     placeholder={searchPlaceholder}
-                    className="w-full pl-10 pr-4 py-2 border border-gray-300 focus:outline-none focus:border-[var(--asin-accent,#1FA8A0)] transition-colors text-xs"
+                    className="w-full pl-10 pr-4 py-2 border border-gray-300 focus:outline-none focus:border-blue-400 transition-colors text-xs"
                     autoFocus
                   />
                 </div>
@@ -302,7 +302,7 @@ export function POSProductCatalogModal({
                   <button
                     type="button"
                     onClick={handleSelectAllFiltered}
-                    className="px-3 py-2 text-xs font-semibold text-[var(--asin-primary,#0E2433)] border border-[var(--asin-accent,#1FA8A0)]/40 bg-[var(--asin-accent-muted,#D5F0EE)] hover:bg-[var(--asin-accent-muted,#D5F0EE)] transition-colors whitespace-nowrap"
+                    className="px-3 py-2 text-xs font-semibold text-blue-700 border border-blue-200 bg-blue-50 hover:bg-blue-100 transition-colors whitespace-nowrap"
                   >
                     {allFilteredSelected ? clearSelectionText : selectAllText}
                   </button>
@@ -311,7 +311,7 @@ export function POSProductCatalogModal({
                   <button
                     onClick={() => setViewMode('grid')}
                     className={`px-3 py-2.5 text-sm transition-colors ${viewMode === 'grid'
-                      ? 'bg-[var(--asin-accent,#1FA8A0)] text-white'
+                      ? 'bg-blue-600 text-white'
                       : 'text-gray-600 hover:bg-gray-50'
                       }`}
                   >
@@ -320,7 +320,7 @@ export function POSProductCatalogModal({
                   <button
                     onClick={() => setViewMode('list')}
                     className={`px-3 py-2.5 text-sm transition-colors ${viewMode === 'list'
-                      ? 'bg-[var(--asin-accent,#1FA8A0)] text-white'
+                      ? 'bg-blue-600 text-white'
                       : 'text-gray-600 hover:bg-gray-50'
                       }`}
                   >
@@ -341,8 +341,8 @@ export function POSProductCatalogModal({
                       key={product.id}
                       className={`bg-white border transition-all flex flex-col p-3 group relative ${
                         isInvoiceMultiSelect && isMultiSelected
-                          ? 'border-[var(--asin-accent,#1FA8A0)] ring-2 ring-[var(--asin-accent-muted,#D5F0EE)] shadow-md'
-                          : 'border-gray-200 hover:border-[var(--asin-accent,#1FA8A0)] hover:shadow-lg'
+                          ? 'border-blue-500 ring-2 ring-blue-200 shadow-md'
+                          : 'border-gray-200 hover:border-blue-400 hover:shadow-lg'
                       }`}
                       onShortPress={() => handleProductPrimaryClick({ ctrlKey: false, metaKey: false } as React.MouseEvent, product)}
                       onLongPress={() => handleProductLongPress(product)}
@@ -357,14 +357,14 @@ export function POSProductCatalogModal({
                             toggleMultiSelect(product.id);
                           }}
                           className={`absolute top-2 right-2 w-5 h-5 rounded border-2 flex items-center justify-center cursor-pointer ${
-                            isMultiSelected ? 'bg-[var(--asin-accent,#1FA8A0)] border-[var(--asin-accent,#1FA8A0)]' : 'border-gray-300 bg-white'
+                            isMultiSelected ? 'bg-blue-600 border-blue-600' : 'border-gray-300 bg-white'
                           }`}
                         >
                           {isMultiSelected && <Check className="w-3 h-3 text-white" />}
                         </div>
                       )}
                       <div className="w-full aspect-square bg-gray-100 flex items-center justify-center mb-3">
-                        <Package className="w-12 h-12 text-gray-400 group-hover:text-[var(--asin-accent,#1FA8A0)] transition-colors" />
+                        <Package className="w-12 h-12 text-gray-400 group-hover:text-blue-500 transition-colors" />
                       </div>
                       <div className="text-left">
                         <h3 className="text-sm font-medium text-gray-900 mb-1 line-clamp-2">
@@ -385,11 +385,11 @@ export function POSProductCatalogModal({
                             {product.stock || 0} {tm('pieceUnitShort')}
                           </span>
                         </div>
-                        <p className="text-sm font-medium text-[var(--asin-primary,#0E2433)] mt-1">
+                        <p className="text-sm font-medium text-blue-700 mt-1">
                           {(product.price || 0).toFixed(2)}
                         </p>
                         {product.variants && product.variants.length > 0 && (
-                          <div className="mt-1 text-xs text-[var(--asin-primary,#0E2433)] font-medium">
+                          <div className="mt-1 text-xs text-purple-600 font-medium">
                             {product.variants.length} Varyant
                           </div>
                         )}
@@ -408,8 +408,8 @@ export function POSProductCatalogModal({
                       as="div"
                       className={`w-full bg-white border transition-all p-4 flex items-center gap-4 cursor-pointer relative overflow-hidden ${
                         isInvoiceMultiSelect && isMultiSelected
-                          ? 'border-[var(--asin-accent,#1FA8A0)] ring-2 ring-[var(--asin-accent-muted,#D5F0EE)] shadow-md'
-                          : 'border-gray-200 hover:border-[var(--asin-accent,#1FA8A0)] hover:shadow-lg'
+                          ? 'border-blue-500 ring-2 ring-blue-200 shadow-md'
+                          : 'border-gray-200 hover:border-blue-400 hover:shadow-lg'
                       }`}
                       onShortPress={() => handleProductPrimaryClick({ ctrlKey: false, metaKey: false } as React.MouseEvent, product)}
                       onLongPress={() => handleProductLongPress(product)}
@@ -424,7 +424,7 @@ export function POSProductCatalogModal({
                             toggleMultiSelect(product.id);
                           }}
                           className={`w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 cursor-pointer ${
-                            isMultiSelected ? 'bg-[var(--asin-accent,#1FA8A0)] border-[var(--asin-accent,#1FA8A0)]' : 'border-gray-300 bg-white'
+                            isMultiSelected ? 'bg-blue-600 border-blue-600' : 'border-gray-300 bg-white'
                           }`}
                         >
                           {isMultiSelected && <Check className="w-3 h-3 text-white" />}
@@ -461,13 +461,13 @@ export function POSProductCatalogModal({
                           <p className="font-mono">{t.barcode}: {product.barcode || '-'}</p>
                         </div>
                         {product.variants && product.variants.length > 0 && (
-                          <div className="mt-1 text-xs text-[var(--asin-primary,#0E2433)] font-medium">
+                          <div className="mt-1 text-xs text-purple-600 font-medium">
                             {product.variants.length} {t.variantAvailable}
                           </div>
                         )}
                       </div>
                       <div className="text-right">
-                        <p className="text-base font-medium text-[var(--asin-primary,#0E2433)]">{(product.price || 0).toFixed(2)}</p>
+                        <p className="text-base font-medium text-blue-700">{(product.price || 0).toFixed(2)}</p>
                         <span className={`text-xs px-2 py-0.5 inline-block mt-1 ${(product.stock || 0) > 50
                           ? 'bg-green-100 text-green-700'
                           : (product.stock || 0) > 0
@@ -485,7 +485,7 @@ export function POSProductCatalogModal({
                             setSelectedProduct(product);
                             setShowDetailModal(true);
                           }}
-                          className="px-4 py-2 border border-[var(--asin-accent,#1FA8A0)] text-[var(--asin-accent,#1FA8A0)] hover:bg-[var(--asin-accent-muted,#D5F0EE)] text-xs transition-colors flex-shrink-0"
+                          className="px-4 py-2 border border-blue-600 text-blue-600 hover:bg-blue-50 text-xs transition-colors flex-shrink-0"
                         >
                           {t.detail}
                         </button>
@@ -499,7 +499,7 @@ export function POSProductCatalogModal({
                               onSelect(product);
                             }
                           }}
-                          className="px-4 py-2 bg-[var(--asin-accent,#1FA8A0)] hover:bg-[#178f88] text-white text-xs transition-colors flex-shrink-0"
+                          className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs transition-colors flex-shrink-0"
                         >
                           {t.assignToSlot}
                         </button>
@@ -513,11 +513,11 @@ export function POSProductCatalogModal({
 
             {/* Variant Selector - Bottom Panel */}
             {selectedProduct && selectedProduct.variants && selectedProduct.variants.length > 0 && mode === 'add-to-cart' && !isInvoiceMultiSelect && (
-              <div className="relative z-20 bg-white border-t-2 border-[var(--asin-accent,#1FA8A0)] p-4 flex-shrink-0 shadow-[0_-8px_24px_rgba(15,23,42,0.08)]">
+              <div className="relative z-20 bg-white border-t-2 border-blue-600 p-4 flex-shrink-0 shadow-[0_-8px_24px_rgba(15,23,42,0.08)]">
                 <div className="flex items-start gap-4">
                   {/* Product Info */}
                   <div className="flex items-center gap-3 flex-shrink-0">
-                    <div className="w-12 h-12 bg-[var(--asin-accent,#1FA8A0)] flex items-center justify-center">
+                    <div className="w-12 h-12 bg-blue-600 flex items-center justify-center">
                       <Package className="w-6 h-6 text-white" />
                     </div>
                     <div>
@@ -547,9 +547,9 @@ export function POSProductCatalogModal({
                             className={`
                               p-2 border-2 transition-all text-left text-xs
                               ${isSelected
-                                ? 'border-[var(--asin-accent,#1FA8A0)] bg-[var(--asin-accent-muted,#D5F0EE)]'
+                                ? 'border-blue-600 bg-blue-50'
                                 : isAvailable
-                                  ? 'border-gray-200 bg-white hover:border-[var(--asin-accent,#1FA8A0)]'
+                                  ? 'border-gray-200 bg-white hover:border-blue-400'
                                   : 'border-gray-200 bg-gray-50 opacity-50 cursor-not-allowed'
                               }
                             `}
@@ -573,7 +573,7 @@ export function POSProductCatalogModal({
                             )}
 
                             {/* Price */}
-                            <div className="text-xs font-bold text-[var(--asin-accent,#1FA8A0)] mt-1">
+                            <div className="text-xs font-bold text-blue-600 mt-1">
                               {(variant.price || 0).toFixed(2)}
                             </div>
 
@@ -609,7 +609,7 @@ export function POSProductCatalogModal({
                         }
                       }}
                       disabled={!selectedVariant}
-                      className="px-6 py-2 bg-[var(--asin-accent,#1FA8A0)] hover:bg-[#178f88] text-white text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       {t.addToCart}
                     </button>
@@ -638,7 +638,7 @@ export function POSProductCatalogModal({
                 type="button"
                 onClick={handleAddMultiple}
                 disabled={multiSelectedIds.size === 0}
-                className="px-6 py-2 bg-[var(--asin-accent,#1FA8A0)] hover:bg-[#178f88] text-white text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {(addSelectedLabel === 'catalogAddSelected' ? addSelectedFallback : addSelectedLabel)
                   .replace('{count}', String(multiSelectedIds.size))}

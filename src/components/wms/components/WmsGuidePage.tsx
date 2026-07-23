@@ -270,10 +270,10 @@ export function WmsGuidePage({ darkMode, onBack }: WmsGuidePageProps) {
                         <ArrowLeft className="w-6 h-6" />
                     </button>
                     <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 bg-[var(--asin-primary,#0E2433)] rounded-xl flex items-center justify-center text-white font-bold shadow-lg ring-2 ring-[var(--asin-accent,#1FA8A0)]/40">W</div>
+                        <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center text-white font-bold shadow-lg shadow-blue-500/20">W</div>
                         <div>
                             <h1 className={`font-bold text-base leading-tight ${textClass}`}>WMS Sistem Rehberi</h1>
-                            <p className={`text-[10px] font-bold uppercase tracking-widest ${darkMode ? 'text-gray-500' : 'text-slate-400'}`}>Asin · Tüm Modüller & Operasyonel Bilgiler</p>
+                            <p className={`text-[10px] font-bold uppercase tracking-widest ${darkMode ? 'text-gray-500' : 'text-slate-400'}`}>Tüm Modüller & Operasyonel Bilgiler</p>
                         </div>
                     </div>
                 </div>
@@ -366,7 +366,7 @@ export function WmsGuidePage({ darkMode, onBack }: WmsGuidePageProps) {
                                 <div className="mt-16 pt-10 border-t border-gray-800/10 dark:border-white/5">
                                     <button
                                         onClick={() => setShowLive(true)}
-                                        className="w-full md:w-auto px-12 py-5 bg-[var(--asin-accent,#1FA8A0)] hover:bg-[#178f88] text-white rounded-3xl font-black text-lg shadow-2xl shadow-[var(--asin-accent,#1FA8A0)]/30 transition-all active:scale-95 flex items-center justify-center gap-4 group"
+                                        className="w-full md:w-auto px-12 py-5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-3xl font-black text-lg shadow-2xl shadow-blue-500/30 hover:shadow-blue-500/50 transition-all active:scale-95 flex items-center justify-center gap-4 group"
                                     >
                                         <Play className="w-6 h-6 fill-white group-hover:scale-125 transition-transform" />
                                         MODÜLÜ CANLI DENEYİMLE

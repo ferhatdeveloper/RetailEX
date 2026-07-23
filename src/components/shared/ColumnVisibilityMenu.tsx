@@ -112,7 +112,7 @@ export function ColumnVisibilityMenu({
           <button
             type="button"
             onClick={onShowAll}
-            className="flex-1 px-2 py-1 text-xs bg-[var(--asin-accent-muted,#D5F0EE)] text-[var(--asin-accent,#1FA8A0)] rounded hover:bg-[var(--asin-accent-muted,#D5F0EE)] font-medium"
+            className="flex-1 px-2 py-1 text-xs bg-blue-50 text-blue-600 rounded hover:bg-blue-100 font-medium"
           >
             {tm('showAllColumns')}
           </button>
@@ -131,7 +131,7 @@ export function ColumnVisibilityMenu({
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder={tm('searchColumns')}
-            className="w-full pl-8 pr-2 py-1.5 text-xs border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-[var(--asin-accent,#1FA8A0)]"
+            className="w-full pl-8 pr-2 py-1.5 text-xs border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
           />
         </div>
         <p className="mt-2 text-[10px] text-gray-500 tabular-nums">
@@ -154,7 +154,7 @@ export function ColumnVisibilityMenu({
                 type="checkbox"
                 checked={column.visible}
                 onChange={() => onToggle(column.id)}
-                className="w-4 h-4 text-[var(--asin-accent,#1FA8A0)] rounded focus:ring-2 focus:ring-[var(--asin-accent,#1FA8A0)] shrink-0"
+                className="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500 shrink-0"
               />
               <span className="text-sm text-gray-700 flex-1 truncate" title={column.label}>
                 {column.label}
@@ -185,8 +185,8 @@ export function ColumnVisibilityMenu({
           isFilterBar
             ? `flex items-center gap-1.5 px-3 py-2 min-h-[44px] text-sm font-bold rounded border transition-colors whitespace-nowrap ${
                 isOpen
-                  ? 'bg-[var(--asin-accent,#1FA8A0)] text-white border-[var(--asin-accent,#1FA8A0)] shadow-sm'
-                  : 'bg-white text-gray-700 border-gray-300 hover:bg-[var(--asin-accent-muted,#D5F0EE)] hover:border-[var(--asin-accent,#1FA8A0)]'
+                  ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
+                  : 'bg-white text-gray-700 border-gray-300 hover:bg-blue-50 hover:border-blue-400'
               }`
             : isToolbar
               ? 'flex items-center gap-1 px-2 py-1 bg-white/10 hover:bg-white/20 transition-colors text-[10px] font-bold'

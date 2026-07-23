@@ -306,7 +306,7 @@ export function Receipt80mm({
           <p className="text-red-600 font-bold mb-4">Fiş verileri yüklenemedi</p>
           <button
             onClick={onClose}
-            className="px-4 py-2 bg-[var(--asin-accent,#1FA8A0)] text-white rounded hover:bg-[#178f88]"
+            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
           >
             Kapat
           </button>
@@ -544,7 +544,7 @@ export function Receipt80mm({
       {printImmediately && (
         <div className="absolute inset-0 z-20 flex items-center justify-center pointer-events-none">
           <div className="pointer-events-auto flex items-center gap-3 rounded-2xl bg-white px-6 py-4 shadow-xl dark:bg-gray-800">
-            <span className="inline-block h-8 w-8 border-[3px] border-[var(--asin-accent,#1FA8A0)] border-t-transparent rounded-full animate-spin" />
+            <span className="inline-block h-8 w-8 border-[3px] border-blue-600 border-t-transparent rounded-full animate-spin" />
             <span className="text-sm font-bold text-slate-800 dark:text-slate-100">Yazdırılıyor...</span>
           </div>
         </div>
@@ -568,8 +568,8 @@ export function Receipt80mm({
           } ${printImmediately ? 'hidden' : ''}`}>
           <div className="flex items-center gap-2 sm:gap-3 min-w-0">
             {isPrinting ? (
-              <span className="text-sm font-bold text-[var(--asin-accent,#1FA8A0)] dark:text-[var(--asin-accent-muted,#D5F0EE)] flex items-center gap-2">
-                <span className="inline-block w-4 h-4 border-2 border-[var(--asin-accent,#1FA8A0)] border-t-transparent rounded-full animate-spin" />
+              <span className="text-sm font-bold text-blue-600 dark:text-blue-400 flex items-center gap-2">
+                <span className="inline-block w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
                 Yazdırılıyor...
               </span>
             ) : (
@@ -581,7 +581,7 @@ export function Receipt80mm({
                       key={lang.code}
                       onClick={() => setSelectedLang(lang.code as any)}
                       className={`px-2.5 sm:px-3 py-1.5 text-xs font-bold rounded-md transition-all ${selectedLang === lang.code
-                        ? 'bg-white text-[var(--asin-accent,#1FA8A0)] shadow-sm dark:bg-gray-600 dark:text-[var(--asin-accent-muted,#D5F0EE)]'
+                        ? 'bg-white text-blue-600 shadow-sm dark:bg-gray-600 dark:text-blue-400'
                         : 'text-gray-500 hover:text-gray-700 dark:text-gray-400'
                         }`}
                     >
@@ -667,7 +667,7 @@ export function Receipt80mm({
                 </div>
               )}
               <div className="text-[1.35rem] font-black mb-0.5 text-gray-950 leading-tight print:text-lg print:font-black">
-                {receiptSettings?.companyName || selectedFirm?.name || 'Asin'}
+                {receiptSettings?.companyName || selectedFirm?.name || 'RetailEX'}
               </div>
               {(receiptSettings?.companyAddress || receiptSettings?.companyPhone) && (
                 <div className="text-[12px] font-bold text-gray-900 space-y-0 leading-tight mt-0.5 print:text-[10px] print:font-bold">
@@ -955,7 +955,7 @@ export function Receipt80mm({
             type="button"
             onClick={handlePrint}
             disabled={isPrinting}
-            className="flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl font-bold text-white bg-[var(--asin-accent,#1FA8A0)] hover:bg-[#178f88] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            className="flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl font-bold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
             {isPrinting ? (
               <span className="inline-block w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />

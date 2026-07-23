@@ -77,9 +77,9 @@ export function HierarchicalStoreTree({ onStoreSelect }: HierarchicalStoreTreePr
   return (
     <div className="bg-white rounded-lg shadow-sm border">
       {/* Header */}
-      <div className="p-4 border-b bg-[var(--asin-accent-muted,#D5F0EE)]">
+      <div className="p-4 border-b bg-gradient-to-r from-blue-50 to-blue-100">
         <div className="flex items-center gap-2">
-          <Folder className="h-5 w-5 text-[var(--asin-accent,#1FA8A0)]" />
+          <Folder className="h-5 w-5 text-blue-600" />
           <h3 className="font-semibold text-gray-900">Hiyerarşik Mağaza Görünümü</h3>
         </div>
         <p className="text-sm text-gray-600 mt-1">
@@ -98,7 +98,7 @@ export function HierarchicalStoreTree({ onStoreSelect }: HierarchicalStoreTreePr
               {/* Region Node */}
               <button
                 onClick={() => toggleNode(regionNodeId, 'region')}
-                className="w-full flex items-center gap-2 p-3 rounded-lg hover:bg-[var(--asin-accent-muted,#D5F0EE)] transition-colors text-left group"
+                className="w-full flex items-center gap-2 p-3 rounded-lg hover:bg-blue-50 transition-colors text-left group"
               >
                 {isRegionExpanded ? (
                   <ChevronDown className="h-5 w-5 text-gray-600 flex-shrink-0" />
@@ -106,9 +106,9 @@ export function HierarchicalStoreTree({ onStoreSelect }: HierarchicalStoreTreePr
                   <ChevronRight className="h-5 w-5 text-gray-600 flex-shrink-0" />
                 )}
                 {isRegionExpanded ? (
-                  <FolderOpen className="h-5 w-5 text-[var(--asin-accent,#1FA8A0)] flex-shrink-0" />
+                  <FolderOpen className="h-5 w-5 text-blue-600 flex-shrink-0" />
                 ) : (
-                  <Folder className="h-5 w-5 text-[var(--asin-accent,#1FA8A0)] flex-shrink-0" />
+                  <Folder className="h-5 w-5 text-blue-600 flex-shrink-0" />
                 )}
                 <div className="flex-1 min-w-0">
                   <div className="font-semibold text-gray-900">{region.name}</div>

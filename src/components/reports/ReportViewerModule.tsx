@@ -317,7 +317,7 @@ export function ReportViewerModule({ template, data, onClose }: ReportViewerProp
                     <button
                         type="button"
                         onClick={handlePrint}
-                        className="flex items-center gap-2 px-4 py-1.5 text-xs font-bold text-white bg-[var(--asin-accent,#1FA8A0)] rounded-lg hover:bg-[#178f88] shadow-md shadow-[rgb(14_36_51/0.12)] transition-all"
+                        className="flex items-center gap-2 px-4 py-1.5 text-xs font-bold text-white bg-blue-600 rounded-lg hover:bg-blue-700 shadow-md shadow-blue-500/20 transition-all"
                     >
                         <Printer className="w-4 h-4" />
                         YAZDIR

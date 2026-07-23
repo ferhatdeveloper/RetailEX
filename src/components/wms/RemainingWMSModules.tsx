@@ -150,7 +150,7 @@ export function VoicePicking({ onBack }: { onBack: () => void }) {
       </div>
       <div className="p-6">
         <div className="bg-white rounded-xl p-6 text-center">
-          <div className="text-5xl mb-3">��¤</div>
+          <div className="text-5xl mb-3">�¤</div>
           <div className="font-bold text-lg mb-2">Hands-Free Picking</div>
           <div className="text-sm text-gray-600 mb-4">"A-01-05'e git"</div>
           <button className="px-6 py-2 bg-yellow-600 text-white rounded-lg">
@@ -188,8 +188,8 @@ export function RFIDSupport({ onBack }: { onBack: () => void }) {
 // 28. AR Navigation
 export function ARNavigation({ onBack }: { onBack: () => void }) {
   return (
-    <div className="min-h-screen bg-[var(--asin-accent-muted,#D5F0EE)]/40">
-      <div className="bg-[var(--asin-primary,#0E2433)] text-white p-4 border-b border-[var(--asin-accent,#1FA8A0)]/35">
+    <div className="min-h-screen bg-gradient-to-br from-indigo-50 to-indigo-100">
+      <div className="bg-gradient-to-r from-indigo-600 to-indigo-700 text-white p-4">
         <button onClick={onBack} className="p-2"><ArrowLeft className="w-5 h-5" /></button>
         <h1 className="text-lg font-bold mt-2">AR Navigasyon</h1>
       </div>
@@ -198,7 +198,7 @@ export function ARNavigation({ onBack }: { onBack: () => void }) {
           <div className="text-5xl mb-3">🥽</div>
           <div className="font-bold text-lg mb-2">Artırılmış Gerçeklik</div>
           <div className="text-sm text-gray-600 mb-4">Kameradan rafa yön bulma</div>
-          <button className="px-6 py-2 bg-[var(--asin-accent,#1FA8A0)] hover:bg-[#178f88] text-white rounded-lg">
+          <button className="px-6 py-2 bg-indigo-600 text-white rounded-lg">
             AR Modunu Aç
           </button>
         </div>
@@ -250,7 +250,7 @@ export function AIMLFeatures({ onBack }: { onBack: () => void }) {
           <div className="text-sm text-green-600">✅ Sistem normal çalışıyor</div>
         </div>
         <div className="bg-white rounded-xl p-4">
-          <div className="font-bold mb-2">��¯ Otomatik Optimizasyon</div>
+          <div className="font-bold mb-2">�¯ Otomatik Optimizasyon</div>
           <div className="text-sm text-gray-600">Rota optimizasyonu aktif</div>
           <div className="text-xs text-green-600">%18 verimlilik artışı</div>
         </div>

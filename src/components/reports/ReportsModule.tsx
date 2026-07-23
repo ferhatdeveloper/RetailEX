@@ -2218,7 +2218,7 @@ export function ReportsModule({
             change: Number(sale.change) || 0,
           },
           receiptSettings: rs,
-          companyNameFallback: selectedFirm?.name?.trim() || selectedFirm?.title?.trim() || 'Asin',
+          companyNameFallback: selectedFirm?.name?.trim() || selectedFirm?.title?.trim() || 'RetailEX',
           firmTitle: selectedFirm?.title?.trim() || selectedFirm?.name?.trim() || '',
           locale: language === 'en' || language === 'ar' || language === 'ku' ? language : 'tr',
           currencyCode: reportCurrency || selectedFirm?.ana_para_birimi || undefined,
@@ -4763,7 +4763,7 @@ export function ReportsModule({
                     </div>
                     <button
                       onClick={printZReport}
-                      className="flex items-center gap-2 px-4 py-2 bg-[var(--asin-accent,#1FA8A0)] text-white rounded-lg hover:bg-[#178f88]"
+                      className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
                     >
                       <Download className="w-5 h-5" />
                       {t.print}
@@ -4803,9 +4803,9 @@ export function ReportsModule({
                           <p className="text-sm text-gray-600">Toplam gider</p>
                           <p className="text-2xl font-bold text-rose-700 mt-1">{formatNumber(zReport.totalExpenses, 2, false)}</p>
                         </div>
-                        <div className="p-4 bg-[var(--asin-accent-muted,#D5F0EE)] rounded-lg border border-[var(--asin-accent,#1FA8A0)]/30">
+                        <div className="p-4 bg-indigo-50 rounded-lg border border-indigo-100">
                           <p className="text-sm text-gray-600">Gider sonrası net</p>
-                          <p className="text-2xl font-bold text-[var(--asin-primary,#0E2433)] mt-1">{formatNumber(zReport.netAfterExpenses, 2, false)}</p>
+                          <p className="text-2xl font-bold text-indigo-700 mt-1">{formatNumber(zReport.netAfterExpenses, 2, false)}</p>
                         </div>
                       </div>
                     </div>
@@ -4893,7 +4893,7 @@ export function ReportsModule({
                         <tr key={cashier.name} className="hover:bg-gray-50">
                           <td className="px-4 py-3">
                             <div className="flex items-center gap-2">
-                              <div className="w-8 h-8 bg-[var(--asin-accent,#1FA8A0)] rounded flex items-center justify-center text-white text-sm">
+                              <div className="w-8 h-8 bg-blue-600 rounded flex items-center justify-center text-white text-sm">
                                 {cashier.name && cashier.name.length > 0 ? cashier.name.charAt(0).toUpperCase() : '?'}
                               </div>
                               <span>{cashier.name}</span>

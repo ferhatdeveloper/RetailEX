@@ -102,7 +102,7 @@ export async function printReceiptViaSystem(
     };
     await Print.printAsync({
       html,
-      jobName: options?.jobName ?? 'Asin Receipt',
+      jobName: options?.jobName ?? 'RetailEX Receipt',
     });
     return {
       ok: true,

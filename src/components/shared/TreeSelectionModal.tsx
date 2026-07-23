@@ -177,14 +177,14 @@ export function TreeSelectionModal({
             <div key={node.id} className="flex flex-col">
                 <div
                     onClick={() => onSelect(node)}
-                    className={`flex items-center gap-2 px-3 py-2 rounded-md cursor-pointer transition-all hover:bg-[var(--asin-accent-muted,#D5F0EE)] group ${isSelected ? 'bg-[var(--asin-accent-muted,#D5F0EE)] border-l-4 border-[var(--asin-accent,#1FA8A0)]' : ''}`}
+                    className={`flex items-center gap-2 px-3 py-2 rounded-md cursor-pointer transition-all hover:bg-blue-50 group ${isSelected ? 'bg-blue-100 border-l-4 border-blue-600' : ''}`}
                     style={{ paddingLeft: `${(depth * 16) + 12}px` }}
                 >
                     <div className="flex items-center gap-1 min-w-[20px]">
                         {hasChildren ? (
                             <button
                                 onClick={(e) => toggleNode(node.id, e)}
-                                className="p-0.5 hover:bg-[var(--asin-accent-muted,#D5F0EE)] rounded transition-colors"
+                                className="p-0.5 hover:bg-blue-200 rounded transition-colors"
                             >
                                 {isExpanded ? <ChevronDown className="w-4 h-4 text-gray-600" /> : <ChevronRight className="w-4 h-4 text-gray-600" />}
                             </button>
@@ -195,18 +195,18 @@ export function TreeSelectionModal({
 
                     <div className="flex items-center gap-2 flex-1 min-w-0">
                         {hasChildren ? (
-                            isExpanded ? <FolderOpen className="w-4 h-4 text-[var(--asin-accent,#1FA8A0)] flex-shrink-0" /> : <Folder className="w-4 h-4 text-[var(--asin-accent,#1FA8A0)] flex-shrink-0" />
+                            isExpanded ? <FolderOpen className="w-4 h-4 text-blue-500 flex-shrink-0" /> : <Folder className="w-4 h-4 text-blue-400 flex-shrink-0" />
                         ) : (
                             <Package className="w-4 h-4 text-gray-400 flex-shrink-0" />
                         )}
 
                         <div className="flex flex-col min-w-0">
                             <div className="flex items-center gap-2">
-                                <span className={`text-xs font-semibold truncate ${isSelected ? 'text-[var(--asin-accent,#1FA8A0)]' : 'text-gray-700'}`}>
+                                <span className={`text-xs font-semibold truncate ${isSelected ? 'text-blue-700' : 'text-gray-700'}`}>
                                     {node.code}
                                 </span>
                                 <span className="text-gray-300 text-[10px]">|</span>
-                                <span className={`text-xs truncate ${isSelected ? 'text-[var(--asin-primary,#0E2433)] font-medium' : 'text-gray-900'}`}>
+                                <span className={`text-xs truncate ${isSelected ? 'text-blue-900 font-medium' : 'text-gray-900'}`}>
                                     {node.name}
                                 </span>
                             </div>
@@ -216,7 +216,7 @@ export function TreeSelectionModal({
                         </div>
                     </div>
 
-                    {isSelected && <Check className="w-4 h-4 text-[var(--asin-accent,#1FA8A0)] flex-shrink-0" />}
+                    {isSelected && <Check className="w-4 h-4 text-blue-600 flex-shrink-0" />}
                 </div>
 
                 {hasChildren && isExpanded && (
@@ -232,7 +232,7 @@ export function TreeSelectionModal({
         <div className="fixed inset-0 bg-black/40 backdrop-blur-md flex items-center justify-center z-[10001] p-4">
             <div className="bg-white w-full max-w-lg shadow-2xl rounded-lg flex flex-col max-h-[85vh] animate-in fade-in zoom-in duration-200">
                 {/* Header */}
-                <div className="p-3 border-b border-gray-200 flex items-center justify-between bg-[var(--asin-primary,#0E2433)] rounded-t-lg">
+                <div className="p-3 border-b border-gray-200 flex items-center justify-between bg-gradient-to-r from-blue-700 to-blue-800 rounded-t-lg">
                     <h3 className="text-sm font-semibold text-white flex items-center gap-2">
                         <Database className="w-4 h-4" />
                         {title}
@@ -254,7 +254,7 @@ export function TreeSelectionModal({
                             placeholder="Kategori veya kod ara..."
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
-                            className="w-full pl-9 pr-4 py-2 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-[var(--asin-accent,#1FA8A0)]/20 focus:border-[var(--asin-accent,#1FA8A0)] transition-all shadow-sm"
+                            className="w-full pl-9 pr-4 py-2 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all shadow-sm"
                             autoFocus
                         />
                     </div>
@@ -266,7 +266,7 @@ export function TreeSelectionModal({
                             <button
                                 type="button"
                                 onClick={() => openQuickAdd(searchTerm)}
-                                className="inline-flex items-center gap-1 text-xs font-medium text-[var(--asin-accent,#1FA8A0)] hover:text-[var(--asin-primary,#0E2433)]"
+                                className="inline-flex items-center gap-1 text-xs font-medium text-blue-700 hover:text-blue-900"
                             >
                                 <Plus className="w-3 h-3" />
                                 Yeni ekle
@@ -289,7 +289,7 @@ export function TreeSelectionModal({
                                     type="button"
                                     disabled={quickSaving}
                                     onClick={() => void handleQuickAdd()}
-                                    className="px-3 py-1.5 bg-[var(--asin-accent,#1FA8A0)] text-white text-xs rounded disabled:opacity-50"
+                                    className="px-3 py-1.5 bg-blue-600 text-white text-xs rounded disabled:opacity-50"
                                 >
                                     Kaydet
                                 </button>
@@ -315,7 +315,7 @@ export function TreeSelectionModal({
                                 <button
                                     type="button"
                                     onClick={() => openQuickAdd(searchTerm)}
-                                    className="mt-4 inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-[var(--asin-accent,#1FA8A0)] border border-[var(--asin-accent-muted,#D5F0EE)] rounded-md hover:bg-[var(--asin-accent-muted,#D5F0EE)]"
+                                    className="mt-4 inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-blue-700 border border-blue-200 rounded-md hover:bg-blue-50"
                                 >
                                     <Plus className="w-3 h-3" />
                                     &quot;{searchTerm.trim()}&quot; olarak ekle

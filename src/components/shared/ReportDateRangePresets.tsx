@@ -28,7 +28,7 @@ function presetButtonClass(active: boolean): string {
   return [
     'px-3 py-1.5 rounded-lg text-xs font-bold transition-colors',
     active
-      ? 'bg-[var(--asin-accent,#1FA8A0)] text-white shadow-sm'
+      ? 'bg-blue-600 text-white shadow-sm'
       : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50',
   ].join(' ');
 }
@@ -81,7 +81,7 @@ export function ReportDateRangePresets({
           className={[
             'inline-flex items-center justify-center p-2 rounded-lg transition-colors',
             value.preset === 'custom'
-              ? 'bg-[var(--asin-accent,#1FA8A0)] text-white shadow-sm'
+              ? 'bg-blue-600 text-white shadow-sm'
               : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50',
           ].join(' ')}
         >

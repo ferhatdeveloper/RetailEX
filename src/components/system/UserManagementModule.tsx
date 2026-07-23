@@ -275,11 +275,11 @@ export function UserManagementModule() {
   return (
     <div className="h-full flex flex-col bg-white">
       {/* Header */}
-      <div className="flex-shrink-0 border-b border-gray-200 p-6 bg-[var(--asin-accent-muted,#D5F0EE)]/60">
+      <div className="flex-shrink-0 border-b border-gray-200 p-6 bg-gradient-to-r from-blue-50 to-purple-50">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-xl bg-[var(--asin-primary,#0E2433)] flex items-center justify-center">
-              <Users className="w-6 h-6 text-[var(--asin-accent,#1FA8A0)]" />
+            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
+              <Users className="w-6 h-6 text-white" />
             </div>
             <div>
               <h1 className="text-2xl font-bold text-gray-900">{tm('userManagement')}</h1>
@@ -288,7 +288,7 @@ export function UserManagementModule() {
           </div>
           <button
             onClick={handleAddUser}
-            className="px-4 py-2 bg-[var(--asin-accent,#1FA8A0)] hover:bg-[#178f88] text-white rounded-lg flex items-center gap-2 transition-colors"
+            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg flex items-center gap-2 transition-colors"
           >
             <Plus className="w-5 h-5" />
             {tm('newUser')}
@@ -380,13 +380,13 @@ export function UserManagementModule() {
         <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-[9999] p-4 animate-in fade-in duration-200">
           <div className="bg-white rounded-[2rem] w-full max-w-2xl max-h-[90vh] overflow-hidden shadow-xl border border-slate-200/80 flex flex-col animate-in zoom-in-95 duration-200">
             {/* Header */}
-            <div className="bg-[var(--asin-primary,#0E2433)] px-8 py-6 text-white shrink-0">
+            <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-8 py-6 text-white shrink-0">
               <div className="flex items-center justify-between">
                 <div>
                   <h2 className="text-xl font-black uppercase tracking-tight">
                 {editingUser ? tm('editUser') : tm('createUser')}
               </h2>
-                  <p className="text-[var(--asin-accent-muted,#D5F0EE)] text-xs font-semibold uppercase tracking-wider mt-0.5 opacity-90">
+                  <p className="text-blue-100 text-xs font-semibold uppercase tracking-wider mt-0.5 opacity-90">
                     {editingUser ? 'Bilgileri güncelleyin' : 'Yeni kullanıcı ekleyin'}
                   </p>
                 </div>

@@ -135,7 +135,7 @@ impl LogoBridge {
         sqlx::query(
             "SELECT public.upsert_service_health($1, $2, $3, $4)"
         )
-        .bind("AsinERP-Logo-Connector")
+        .bind("RetailEX-Logo-Connector")
         .bind(status)
         .bind("1.0.0")
         .bind(metadata)

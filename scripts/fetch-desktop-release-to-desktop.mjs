@@ -18,13 +18,12 @@ import { fileURLToPath } from 'node:url';
 import {
   desktopInstallerFilename,
   LEGACY_DESKTOP_INSTALLER_FILENAME,
-  legacyDesktopInstallerFilename,
 } from './desktop-installer-filename.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.join(__dirname, '..');
 const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
-const defaultRepo = process.env.GITHUB_REPOSITORY || 'ferhatdeveloper/asin';
+const defaultRepo = process.env.GITHUB_REPOSITORY || 'ferhatdeveloper/RetailEX';
 
 function parseArgs() {
   const args = process.argv.slice(2);
@@ -91,7 +90,6 @@ function main() {
   console.log(`[desktop:fetch] Release: ${tag} (${repo})`);
 
   const versionedName = desktopInstallerFilename(version);
-  const legacyVersioned = legacyDesktopInstallerFilename(version);
   let src = null;
   try {
     src = downloadAsset(repo, tag, versionedName, tmp);
@@ -100,15 +98,7 @@ function main() {
   }
   if (!src) {
     try {
-      console.warn(`[desktop:fetch] ${versionedName} yok; deneniyor: ${legacyVersioned}`);
-      src = downloadAsset(repo, tag, legacyVersioned, tmp);
-    } catch {
-      /* */
-    }
-  }
-  if (!src) {
-    try {
-      console.warn(`[desktop:fetch] ${legacyVersioned} yok; eski ad: ${LEGACY_DESKTOP_INSTALLER_FILENAME}`);
+      console.warn(`[desktop:fetch] ${versionedName} yok; eski ad deneniyor: ${LEGACY_DESKTOP_INSTALLER_FILENAME}`);
       src = downloadAsset(repo, tag, LEGACY_DESKTOP_INSTALLER_FILENAME, tmp);
     } catch (e) {
       console.error(`[desktop:fetch] İndirme başarısız. gh release view ${tag} --repo ${repo}`);

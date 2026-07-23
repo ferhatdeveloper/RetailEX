@@ -56,17 +56,17 @@ export function PackageManagement() {
         <div className="flex flex-col h-full bg-[#f8fafc] animate-in fade-in duration-500">
             <div className="bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between shrink-0">
                 <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 bg-[var(--asin-accent-muted,#D5F0EE)] rounded-2xl flex items-center justify-center text-[var(--asin-accent,#1FA8A0)]">
+                    <div className="w-12 h-12 bg-indigo-100 rounded-2xl flex items-center justify-center text-indigo-600">
                         <Package size={24} />
                     </div>
                     <div>
-                        <h1 className="text-xl font-bold text-[var(--asin-primary,#0E2433)]">{tm('bPackageManagement')}</h1>
+                        <h1 className="text-xl font-bold text-slate-900">{tm('bPackageManagement')}</h1>
                         <p className="text-xs text-slate-500 font-medium">
                             {isLoading ? tm('bLoading') : `${packages.length} aktif paket`}
                         </p>
                     </div>
                 </div>
-                <Button onClick={openCreate} className="h-10 rounded-xl px-4 bg-[var(--asin-accent,#1FA8A0)] hover:bg-[#178f88] text-white font-bold gap-2 shadow-lg shadow-[var(--asin-accent,#1FA8A0)]/20 active:scale-95 transition-all">
+                <Button onClick={openCreate} className="h-10 rounded-xl px-4 bg-indigo-600 hover:bg-indigo-700 text-white font-bold gap-2 shadow-lg shadow-indigo-600/20 active:scale-95 transition-all">
                     <Plus size={18} /> {tm('bPackageCreate')}
                 </Button>
             </div>
@@ -78,7 +78,7 @@ export function PackageManagement() {
                     <div className="flex flex-col items-center justify-center h-40 gap-3 text-slate-400">
                         <Package size={40} />
                         <p className="text-sm font-medium">{tm('bNoPackages')}</p>
-                        <Button onClick={openCreate} variant="outline" className="text-[var(--asin-accent,#1FA8A0)] border-[var(--asin-accent,#1FA8A0)]/40 rounded-xl">
+                        <Button onClick={openCreate} variant="outline" className="text-indigo-600 border-indigo-200 rounded-xl">
                             <Plus size={16} className="mr-2" /> {tm('bCreateFirstPackage')}
                         </Button>
                     </div>
@@ -139,8 +139,8 @@ export function PackageManagement() {
                                 </Card>
                             );
                         })}
-                        <div onClick={openCreate} className="bg-gray-50 rounded-[2rem] border-4 border-dashed border-gray-200 flex flex-col items-center justify-center p-8 text-gray-400 hover:border-[var(--asin-accent,#1FA8A0)] hover:bg-[var(--asin-accent-muted,#D5F0EE)]/30 transition-all cursor-pointer group min-h-[260px]">
-                            <div className="w-16 h-16 rounded-full bg-gray-100 flex items-center justify-center mb-4 group-hover:bg-[var(--asin-accent-muted,#D5F0EE)] group-hover:text-[var(--asin-accent,#1FA8A0)] transition-all"><Plus size={32} /></div>
+                        <div onClick={openCreate} className="bg-gray-50 rounded-[2rem] border-4 border-dashed border-gray-200 flex flex-col items-center justify-center p-8 text-gray-400 hover:border-indigo-300 hover:bg-indigo-50/30 transition-all cursor-pointer group min-h-[260px]">
+                            <div className="w-16 h-16 rounded-full bg-gray-100 flex items-center justify-center mb-4 group-hover:bg-indigo-100 group-hover:text-indigo-600 transition-all"><Plus size={32} /></div>
                             <p className="text-[10px] font-black uppercase tracking-widest">{tm('bDefineNewPackage')}</p>
                         </div>
                     </div>

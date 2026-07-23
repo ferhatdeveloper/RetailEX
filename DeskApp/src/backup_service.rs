@@ -58,13 +58,7 @@ fn backup_target_dir(config: &AppConfig) -> PathBuf {
         .map(|b| b.backup_path.trim())
         .filter(|s| !s.is_empty())
         .map(PathBuf::from)
-        .unwrap_or_else(|| {
-            if crate::config::is_portable_mode() {
-                crate::config::get_backups_dir()
-            } else {
-                PathBuf::from(r"C:\AsinERP_Backups")
-            }
-        })
+        .unwrap_or_else(|| PathBuf::from("C:\\RetailEX_Backups"))
 }
 
 /// Sistem ayarlarından: `db_mode == online` ise uzak PG, aksi halde yerel (hibritte yerel şube yedeği).
@@ -145,11 +139,7 @@ impl BackupService {
             }
 
             let backup_path_str = if backup_conf.backup_path.trim().is_empty() {
-                if crate::config::is_portable_mode() {
-                    crate::config::get_backups_dir().to_string_lossy().to_string()
-                } else {
-                    r"C:\AsinERP_Backups".to_string()
-                }
+                "C:\\RetailEX_Backups".to_string()
             } else {
                 backup_conf.backup_path.clone()
             };

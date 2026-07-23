@@ -1,5 +1,5 @@
 #Requires -Version 5.1
-# NSIS: asinerp_install_prefix.txt veya -Prefix ile kurulum dizini alinir.
+# NSIS: retailex_install_prefix.txt veya -Prefix ile kurulum dizini alinir.
 # ONEMLI: em-dash (U+2014) kullanma - PS 5.1 BOM'suz UTF-8'i CP1254 okur, parse bozulur.
 param(
     [Parameter(Mandatory = $false)]
@@ -14,16 +14,12 @@ function Get-InstallPrefix {
     $p = $ParamPrefix.Trim()
     if ($p) { return $p }
     $root = if ($PSScriptRoot) { $PSScriptRoot } else { Split-Path -Parent $MyInvocation.MyCommand.Path }
-    $marker = Join-Path $root "asinerp_install_prefix.txt"
-    if (-not (Test-Path -LiteralPath $marker)) {
-        $marker = Join-Path $root "retailex_install_prefix.txt"
-    }
+    $marker = Join-Path $root "retailex_install_prefix.txt"
     if (Test-Path -LiteralPath $marker) {
         $t = (Get-Content -LiteralPath $marker -Raw).Trim()
         if ($t) { return $t }
     }
-    $e = [Environment]::GetEnvironmentVariable("ASINERP_INSTALL_DIR", "Process")
-    if (-not $e) { $e = [Environment]::GetEnvironmentVariable("RETAILEX_INSTALL_DIR", "Process") }
+    $e = [Environment]::GetEnvironmentVariable("RETAILEX_INSTALL_DIR", "Process")
     if ($e) { return $e.Trim() }
     return ""
 }
@@ -39,7 +35,7 @@ if (-not (Test-RetailExAdmin)) {
     exit $code
 }
 
-$logDir = "C:\ProgramData\AsinERP"
+$logDir = "C:\ProgramData\RetailEX"
 if (-not (Test-Path -LiteralPath $logDir)) {
     New-Item -ItemType Directory -Path $logDir -Force | Out-Null
 }
@@ -51,9 +47,9 @@ $warnings = @()
 
 try {
     Install-RetailExWindowsService `
-        -ExePath (Join-Path $Prefix "AsinERP_Service.exe") `
-        -ServiceName "AsinERP_Service" `
-        -Label "AsinERP_Service"
+        -ExePath (Join-Path $Prefix "RetailEX_Service.exe") `
+        -ServiceName "RetailEX_Service" `
+        -Label "RetailEX_Service"
 }
 catch {
     $msg = $_.Exception.Message
@@ -64,7 +60,7 @@ catch {
 
 $npmScript = Join-Path $Prefix "install-bridge-npm.ps1"
 if (Test-Path -LiteralPath $npmScript) {
-    Write-Host "[AsinERP] SQL Bridge / Printer npm bagimliliklari..."
+    Write-Host "[RetailEX] SQL Bridge / Printer npm bagimliliklari..."
     try {
         & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $npmScript -Prefix $Prefix
         $npmCode = $LASTEXITCODE
@@ -90,13 +86,13 @@ if (Test-Path -LiteralPath $npmScript) {
     }
 }
 
-$bridgeExe = Join-Path $Prefix "AsinERP_SQL_Bridge.exe"
+$bridgeExe = Join-Path $Prefix "RetailEX_SQL_Bridge.exe"
 if (Test-Path -LiteralPath $bridgeExe) {
     try {
         Install-RetailExWindowsService `
             -ExePath $bridgeExe `
-            -ServiceName "AsinERP_SQL_Bridge" `
-            -Label "AsinERP_SQL_Bridge"
+            -ServiceName "RetailEX_SQL_Bridge" `
+            -Label "RetailEX_SQL_Bridge"
     }
     catch {
         $msg = $_.Exception.Message
@@ -106,19 +102,19 @@ if (Test-Path -LiteralPath $bridgeExe) {
     }
 }
 else {
-    $msg = "AsinERP_SQL_Bridge.exe yok - SQL Bridge hizmeti atlandi."
+    $msg = "RetailEX_SQL_Bridge.exe yok - SQL Bridge hizmeti atlandi."
     $warnings += $msg
     Write-RetailExSetupLog -LogFile $logFile -Message "UYARI: $msg"
     Write-Warning $msg
 }
 
-$printerExe = Join-Path $Prefix "AsinERP_Printer.exe"
+$printerExe = Join-Path $Prefix "RetailEX_Printer.exe"
 if (Test-Path -LiteralPath $printerExe) {
     try {
         Install-RetailExWindowsService `
             -ExePath $printerExe `
-            -ServiceName "AsinERP_Printer" `
-            -Label "AsinERP_Printer"
+            -ServiceName "RetailEX_Printer" `
+            -Label "RetailEX_Printer"
     }
     catch {
         $msg = $_.Exception.Message
@@ -128,7 +124,7 @@ if (Test-Path -LiteralPath $printerExe) {
     }
 }
 else {
-    $msg = "AsinERP_Printer.exe yok - Printer hizmeti atlandi."
+    $msg = "RetailEX_Printer.exe yok - Printer hizmeti atlandi."
     $warnings += $msg
     Write-RetailExSetupLog -LogFile $logFile -Message "UYARI: $msg"
     Write-Warning $msg
@@ -149,9 +145,9 @@ catch {
     Write-Warning $msg
 }
 
-$svcCore = Get-Service -Name "AsinERP_Service" -ErrorAction SilentlyContinue
-$svcBridge = Get-Service -Name "AsinERP_SQL_Bridge" -ErrorAction SilentlyContinue
-$svcPrinter = Get-Service -Name "AsinERP_Printer" -ErrorAction SilentlyContinue
+$svcCore = Get-Service -Name "RetailEX_Service" -ErrorAction SilentlyContinue
+$svcBridge = Get-Service -Name "RetailEX_SQL_Bridge" -ErrorAction SilentlyContinue
+$svcPrinter = Get-Service -Name "RetailEX_Printer" -ErrorAction SilentlyContinue
 $bridgeExpected = Test-Path -LiteralPath $bridgeExe
 $printerExpected = Test-Path -LiteralPath $printerExe
 

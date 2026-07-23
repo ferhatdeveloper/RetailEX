@@ -75,9 +75,9 @@ export function NewModulesDashboard() {
   const getBadgeColor = (badge: string) => {
     switch (badge) {
       case 'YENİ':
-        return 'bg-[var(--asin-accent,#1FA8A0)] text-white';
+        return 'bg-gradient-to-r from-blue-500 to-blue-600 text-white';
       case 'AI':
-        return 'bg-[var(--asin-primary,#0E2433)] text-white';
+        return 'bg-gradient-to-r from-purple-500 to-purple-600 text-white';
       case 'PRO':
         return 'bg-gradient-to-r from-amber-500 to-amber-600 text-white';
       case 'BETA':
@@ -191,15 +191,15 @@ export function NewModulesDashboard() {
   const mainModules = newModules.filter(m => m.menu_type === 'main');
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-[var(--asin-accent-muted,#D5F0EE)] to-slate-100 p-8">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 p-8">
       {/* Header */}
       <div className="max-w-7xl mx-auto mb-8">
         <div className="flex items-center gap-3 mb-3">
-          <div className="p-3 bg-[var(--asin-primary,#0E2433)] rounded-xl">
-            <Sparkles className="w-8 h-8 text-[var(--asin-accent,#1FA8A0)]" />
+          <div className="p-3 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-xl">
+            <Sparkles className="w-8 h-8 text-white" />
           </div>
           <div>
-            <h1 className="text-4xl font-bold text-[var(--asin-primary,#0E2433)]">
+            <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
               Yeni Eklenenler
             </h1>
             <p className="text-slate-600 mt-1">
@@ -225,7 +225,7 @@ export function NewModulesDashboard() {
                 className="group bg-white rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-300 overflow-hidden border border-slate-200 cursor-pointer transform hover:-translate-y-1"
               >
                 {/* Card Header */}
-                <div className="relative h-32 bg-[var(--asin-primary,#0E2433)] p-6">
+                <div className="relative h-32 bg-gradient-to-br from-blue-600 via-indigo-600 to-purple-600 p-6">
                   <div className="absolute top-4 right-4">
                     <span className={`px-3 py-1 rounded-full text-xs font-bold ${getBadgeColor(module.badge)}`}>
                       {module.badge}
@@ -277,7 +277,7 @@ export function NewModulesDashboard() {
                   )}
 
                   {/* Action Button */}
-                  <button className="mt-6 w-full flex items-center justify-center gap-2 px-4 py-3 bg-[var(--asin-accent,#1FA8A0)] text-white rounded-xl hover:bg-[#178f88] transition-all group-hover:shadow-lg">
+                  <button className="mt-6 w-full flex items-center justify-center gap-2 px-4 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl hover:from-blue-700 hover:to-indigo-700 transition-all group-hover:shadow-lg">
                     <span className="font-semibold">Modülü Aç</span>
                     <ChevronRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
                   </button>
@@ -347,7 +347,7 @@ export function NewModulesDashboard() {
                     window.dispatchEvent(new CustomEvent('navigateToScreen', { detail: screen }));
                   }
                 }}
-                className="flex-1 px-6 py-3 bg-[var(--asin-accent,#1FA8A0)] text-white rounded-xl hover:bg-[#178f88] transition-all font-semibold"
+                className="flex-1 px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl hover:from-blue-700 hover:to-indigo-700 transition-all font-semibold"
               >
                 Modülü Başlat
               </button>

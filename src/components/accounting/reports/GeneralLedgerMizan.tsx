@@ -40,7 +40,7 @@ export function GeneralLedgerMizan() {
                         </div>
                         <div>
                             <h1 className="text-xl font-black text-gray-900 uppercase tracking-tighter">Genel Mizan (Trial Balance)</h1>
-                            <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest mt-1">Logo ERP Hesap Planı Standardı • Asin Yerel Veri</p>
+                            <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest mt-1">Logo ERP Hesap Planı Standardı • RetailEX Yerel Veri</p>
                         </div>
                     </div>
                     <div className="flex gap-2">
@@ -52,13 +52,13 @@ export function GeneralLedgerMizan() {
 
             {/* AI Intelligence Briefing */}
             {briefing && (
-                <div className="mx-6 mt-6 p-4 bg-[var(--asin-accent-muted,#D5F0EE)] border border-[var(--asin-accent,#1FA8A0)]/30 rounded-xl flex items-center gap-4">
-                    <div className="bg-[var(--asin-accent,#1FA8A0)] p-2 rounded-lg text-white shadow-lg shadow-[rgb(14_36_51/0.12)]">
+                <div className="mx-6 mt-6 p-4 bg-purple-50 border border-purple-100 rounded-xl flex items-center gap-4">
+                    <div className="bg-purple-600 p-2 rounded-lg text-white shadow-lg shadow-purple-200">
                         <Sparkles className="w-5 h-5" />
                     </div>
                     <div className="flex-1">
-                        <span className="text-[10px] font-black uppercase text-[var(--asin-accent,#1FA8A0)] tracking-widest">AI Finansal Analiz Özet</span>
-                        <p className="text-sm text-[var(--asin-primary,#0E2433)] font-medium italic">"{briefing}"</p>
+                        <span className="text-[10px] font-black uppercase text-purple-600 tracking-widest">AI Finansal Analiz Özet</span>
+                        <p className="text-sm text-purple-900 font-medium italic">"{briefing}"</p>
                     </div>
                 </div>
             )}

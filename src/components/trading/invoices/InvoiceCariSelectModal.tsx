@@ -48,9 +48,9 @@ export function InvoiceCariSelectModal({
     });
   }, [items, searchTerm]);
 
-  const headerGradient = isCustomer ? 'from-[var(--asin-primary,#0E2433)] to-[var(--asin-primary,#0E2433)]' : 'from-teal-600 to-teal-700';
-  const accentBorder = isCustomer ? 'border-[var(--asin-accent,#1FA8A0)] bg-[var(--asin-accent-muted,#D5F0EE)]' : 'border-teal-500 bg-teal-50';
-  const hoverBorder = isCustomer ? 'hover:border-[var(--asin-accent,#1FA8A0)] hover:bg-[var(--asin-accent-muted,#D5F0EE)]' : 'hover:border-teal-500 hover:bg-teal-50';
+  const headerGradient = isCustomer ? 'from-blue-600 to-blue-700' : 'from-teal-600 to-teal-700';
+  const accentBorder = isCustomer ? 'border-blue-500 bg-blue-50' : 'border-teal-500 bg-teal-50';
+  const hoverBorder = isCustomer ? 'hover:border-blue-500 hover:bg-blue-50' : 'hover:border-teal-500 hover:bg-teal-50';
 
   const handleQuickCreate = async () => {
     const name = quickName.trim();
@@ -91,7 +91,7 @@ export function InvoiceCariSelectModal({
               placeholder={tm('cariSelectSearchPlaceholder')}
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:border-[var(--asin-accent,#1FA8A0)] focus:ring-1 focus:ring-[var(--asin-accent,#1FA8A0)]"
+              className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-500"
               autoFocus
             />
           </div>
@@ -106,7 +106,7 @@ export function InvoiceCariSelectModal({
                 <button
                   type="button"
                   onClick={() => setShowQuickAdd(true)}
-                  className="mt-4 inline-flex items-center gap-2 px-4 py-2 text-sm font-bold text-[var(--asin-primary,#0E2433)] border-2 border-dashed border-[var(--asin-accent,#1FA8A0)]/50 rounded-lg hover:bg-[var(--asin-accent-muted,#D5F0EE)]"
+                  className="mt-4 inline-flex items-center gap-2 px-4 py-2 text-sm font-bold text-blue-700 border-2 border-dashed border-blue-300 rounded-lg hover:bg-blue-50"
                 >
                   <Plus className="w-4 h-4" />
                   {isCustomer ? tm('addNewCustomerCari') : tm('addNewSupplierCari')}
@@ -128,8 +128,8 @@ export function InvoiceCariSelectModal({
                 <div className="flex items-center justify-between">
                   <p className="font-medium text-gray-900">{tm('cariSelectNone')}</p>
                   {!selectedId && (
-                    <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${isCustomer ? 'border-[var(--asin-accent,#1FA8A0)]' : 'border-teal-600'}`}>
-                      <div className={`w-2.5 h-2.5 rounded-full ${isCustomer ? 'bg-[var(--asin-accent,#1FA8A0)]' : 'bg-teal-600'}`} />
+                    <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${isCustomer ? 'border-blue-600' : 'border-teal-600'}`}>
+                      <div className={`w-2.5 h-2.5 rounded-full ${isCustomer ? 'bg-blue-600' : 'bg-teal-600'}`} />
                     </div>
                   )}
                 </div>
@@ -171,8 +171,8 @@ export function InvoiceCariSelectModal({
                         )}
                       </div>
                       {selected && (
-                        <div className={`w-5 h-5 shrink-0 rounded-full border-2 flex items-center justify-center mt-0.5 ${isCustomer ? 'border-[var(--asin-accent,#1FA8A0)]' : 'border-teal-600'}`}>
-                          <div className={`w-2.5 h-2.5 rounded-full ${isCustomer ? 'bg-[var(--asin-accent,#1FA8A0)]' : 'bg-teal-600'}`} />
+                        <div className={`w-5 h-5 shrink-0 rounded-full border-2 flex items-center justify-center mt-0.5 ${isCustomer ? 'border-blue-600' : 'border-teal-600'}`}>
+                          <div className={`w-2.5 h-2.5 rounded-full ${isCustomer ? 'bg-blue-600' : 'bg-teal-600'}`} />
                         </div>
                       )}
                     </div>
@@ -192,21 +192,21 @@ export function InvoiceCariSelectModal({
                   value={quickName}
                   onChange={(e) => setQuickName(e.target.value)}
                   placeholder={`${tm('currentAccountTitle')} *`}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-[var(--asin-accent,#1FA8A0)]"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-blue-500"
                 />
                 <input
                   type="tel"
                   value={quickPhone}
                   onChange={(e) => setQuickPhone(e.target.value)}
                   placeholder={tm('phoneLabel')}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-[var(--asin-accent,#1FA8A0)]"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-blue-500"
                 />
                 <div className="flex gap-2">
                   <button
                     type="button"
                     disabled={creating || !quickName.trim()}
                     onClick={() => void handleQuickCreate()}
-                    className="flex-1 py-2 bg-[var(--asin-accent,#1FA8A0)] text-white rounded-lg text-sm font-bold disabled:opacity-50 flex items-center justify-center gap-2"
+                    className="flex-1 py-2 bg-blue-600 text-white rounded-lg text-sm font-bold disabled:opacity-50 flex items-center justify-center gap-2"
                   >
                     {creating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
                     {tm('add')}
@@ -228,7 +228,7 @@ export function InvoiceCariSelectModal({
               <button
                 type="button"
                 onClick={() => setShowQuickAdd(true)}
-                className="w-full py-2.5 border-2 border-dashed border-[var(--asin-accent,#1FA8A0)]/50 text-[var(--asin-primary,#0E2433)] rounded-lg text-sm font-bold flex items-center justify-center gap-2 hover:bg-[var(--asin-accent-muted,#D5F0EE)] bg-white"
+                className="w-full py-2.5 border-2 border-dashed border-blue-300 text-blue-700 rounded-lg text-sm font-bold flex items-center justify-center gap-2 hover:bg-blue-50 bg-white"
               >
                 <Plus className="w-4 h-4" />
                 {isCustomer ? tm('addNewCustomerCari') : tm('addNewSupplierCari')}

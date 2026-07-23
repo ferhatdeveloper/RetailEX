@@ -38,10 +38,10 @@ export function CariHesapEkstresi() {
     return (
         <div className="h-full flex flex-col bg-white">
             {/* Header & Filters */}
-            <div className="bg-[var(--asin-primary,#0E2433)] text-white p-6 shadow-md">
+            <div className="bg-slate-800 text-white p-6 shadow-md">
                 <div className="flex justify-between items-center mb-6">
                     <h1 className="text-xl font-black tracking-tighter flex items-center gap-2 uppercase">
-                        <Users className="w-6 h-6 text-[var(--asin-accent,#1FA8A0)]" />
+                        <Users className="w-6 h-6 text-indigo-400" />
                         Cari Hesap Hareket Ekstresi
                     </h1>
                     <div className="flex gap-2">
@@ -63,19 +63,19 @@ export function CariHesapEkstresi() {
                         <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Bitiş</label>
                         <input type="date" value={dateRange.end} className="bg-slate-900 border-none rounded-lg px-4 py-2 text-sm text-white" />
                     </div>
-                    <button onClick={loadReport} className="bg-[var(--asin-accent,#1FA8A0)] hover:bg-[#178f88] px-6 py-2 rounded-lg font-bold text-sm h-[38px] transition-all">Sorgula</button>
+                    <button onClick={loadReport} className="bg-indigo-600 hover:bg-indigo-500 px-6 py-2 rounded-lg font-bold text-sm h-[38px] transition-all">Sorgula</button>
                 </div>
             </div>
 
             {/* AI Briefing */}
             {briefing && (
-                <div className="mx-8 mt-6 p-4 bg-[var(--asin-accent-muted,#D5F0EE)] border border-[var(--asin-accent,#1FA8A0)]/30 rounded-2xl flex items-start gap-3">
-                    <div className="bg-[var(--asin-accent,#1FA8A0)] p-2 rounded-xl text-white mt-1">
+                <div className="mx-8 mt-6 p-4 bg-indigo-50 border border-indigo-100 rounded-2xl flex items-start gap-3">
+                    <div className="bg-indigo-600 p-2 rounded-xl text-white mt-1">
                         <Sparkles className="w-4 h-4" />
                     </div>
                     <div>
-                        <h4 className="text-[10px] font-black uppercase text-[var(--asin-accent,#1FA8A0)] tracking-widest">AI Yönetici Özeti</h4>
-                        <p className="text-sm text-[var(--asin-primary,#0E2433)] mt-1 italic leading-relaxed">"{briefing}"</p>
+                        <h4 className="text-[10px] font-black uppercase text-indigo-600 tracking-widest">AI Yönetici Özeti</h4>
+                        <p className="text-sm text-indigo-900 mt-1 italic leading-relaxed">"{briefing}"</p>
                     </div>
                 </div>
             )}
@@ -91,8 +91,8 @@ export function CariHesapEkstresi() {
                             <th className="px-4 py-3 text-left border">Açıklama</th>
                             <th className="px-4 py-3 text-right border">Borç (Debit)</th>
                             <th className="px-4 py-3 text-right border">Alacak (Credit)</th>
-                            <th className="px-4 py-3 text-right border bg-[var(--asin-accent-muted,#D5F0EE)]">Bakiye</th>
-                            <th className="px-2 py-3 text-center border bg-[var(--asin-accent-muted,#D5F0EE)] w-8">B/A</th>
+                            <th className="px-4 py-3 text-right border bg-indigo-50">Bakiye</th>
+                            <th className="px-2 py-3 text-center border bg-indigo-50 w-8">B/A</th>
                         </tr>
                     </thead>
                     <tbody className="text-[11px] text-gray-700">
@@ -106,8 +106,8 @@ export function CariHesapEkstresi() {
                                 <td className="px-4 py-2 border italic">{row.description}</td>
                                 <td className="px-4 py-2 border text-right font-medium">{formatNumber(row.debit, 2, false)}</td>
                                 <td className="px-4 py-2 border text-right font-medium">{formatNumber(row.credit, 2, false)}</td>
-                                <td className="px-4 py-2 border text-right font-bold bg-[var(--asin-accent-muted,#D5F0EE)]/40">{formatNumber(Math.abs(row.running_balance), 2, false)}</td>
-                                <td className={`px-2 py-2 border text-center font-black bg-[var(--asin-accent-muted,#D5F0EE)]/40 ${row.status === 'D' ? 'text-red-600' : 'text-green-600'}`}>
+                                <td className="px-4 py-2 border text-right font-bold bg-indigo-50/30">{formatNumber(Math.abs(row.running_balance), 2, false)}</td>
+                                <td className={`px-2 py-2 border text-center font-black bg-indigo-50/30 ${row.status === 'D' ? 'text-red-600' : 'text-green-600'}`}>
                                     {row.status}
                                 </td>
                             </tr>
@@ -122,7 +122,7 @@ export function CariHesapEkstresi() {
                             <td className="px-4 py-3 text-right border-gray-700">
                                 {formatNumber(data.reduce((s, r) => s + (parseFloat(r.credit) || 0), 0), 2, false)}
                             </td>
-                            <td colSpan={2} className="px-4 py-3 text-right bg-[var(--asin-primary,#0E2433)]">
+                            <td colSpan={2} className="px-4 py-3 text-right bg-indigo-700">
                                 {formatNumber(Math.abs(data[data.length - 1]?.running_balance || 0), 2, false)} {data[data.length - 1]?.status}
                             </td>
                         </tr>

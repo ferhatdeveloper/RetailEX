@@ -77,7 +77,7 @@ export function MultiStoreManagement() {
                 <Download className="h-4 w-4" />
                 <span>Excel'e Aktar</span>
               </button>
-              <button className="px-4 py-2 bg-[var(--asin-accent,#1FA8A0)] text-white rounded-lg hover:bg-[#178f88] flex items-center gap-2">
+              <button className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2">
                 <Settings className="h-4 w-4" />
                 <span>Ayarlar</span>
               </button>
@@ -95,7 +95,7 @@ export function MultiStoreManagement() {
                   className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${tab.disabled
                     ? 'bg-gray-100 text-gray-400 cursor-not-allowed opacity-60'
                     : selectedView === tab.id
-                      ? 'bg-[var(--asin-accent,#1FA8A0)] text-white'
+                      ? 'bg-blue-600 text-white'
                       : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                     }`}
                   disabled={tab.disabled}
@@ -358,7 +358,7 @@ function TargetManagementView({ formatNumber }: { formatNumber: (value: number) 
               setEditingTarget(null);
               setShowTargetModal(true);
             }}
-            className="px-3 py-1.5 bg-[var(--asin-accent,#1FA8A0)] text-white rounded-lg hover:bg-[#178f88] flex items-center gap-1 text-sm"
+            className="px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-1 text-sm"
           >
             <Plus className="h-4 w-4" />
             Hedef Güncelle
@@ -469,7 +469,7 @@ function TargetEditModal({
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
-        <div className="p-4 border-b flex items-center justify-between bg-[var(--asin-primary,#0E2433)]">
+        <div className="p-4 border-b flex items-center justify-between bg-gradient-to-r from-blue-600 to-blue-700">
           <h3 className="text-lg font-semibold text-white flex items-center gap-2">
             <Target className="h-5 w-5" />
             Hedef Düzenle
@@ -571,7 +571,7 @@ function TargetEditModal({
           <button
             onClick={handleSave}
             disabled={!selectedRegion || !targetValue || parseFormattedNumber(targetValue) <= 0}
-            className="flex-1 px-4 py-2 bg-[var(--asin-accent,#1FA8A0)] text-white rounded-lg hover:bg-[#178f88] disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Kaydet
           </button>
@@ -657,7 +657,7 @@ function DetailedAnalyticsView() {
                     key={range.id}
                     onClick={() => setTimeRange(range.id as any)}
                     className={`px-3 py-1.5 rounded text-sm transition-colors ${timeRange === range.id
-                      ? 'bg-[var(--asin-accent,#1FA8A0)] text-white'
+                      ? 'bg-blue-600 text-white'
                       : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                       }`}
                   >
@@ -681,7 +681,7 @@ function DetailedAnalyticsView() {
                       key={metric.id}
                       onClick={() => setSelectedMetric(metric.id as any)}
                       className={`px-3 py-1.5 rounded text-sm flex items-center gap-1.5 transition-colors ${selectedMetric === metric.id
-                        ? 'bg-[var(--asin-accent,#1FA8A0)] text-white'
+                        ? 'bg-blue-600 text-white'
                         : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                         }`}
                     >

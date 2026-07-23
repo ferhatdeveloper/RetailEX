@@ -23,9 +23,9 @@ export function WMSGoodsReceiving({ onBack }: WMSGoodsReceivingProps) {
       <div className={`min-h-screen p-6 ${darkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
         <div className={`max-w-7xl mx-auto ${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow-lg p-6`}>
           <div className="flex items-center gap-3 mb-6">
-            <Package className="w-8 h-8 text-[var(--asin-accent,#1FA8A0)]" />
+            <Package className="w-8 h-8 text-blue-600" />
             <div>
-              <h1 className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-[var(--asin-primary,#0E2433)]'}`}>
+              <h1 className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
                 Mal Kabul İşlemleri
               </h1>
               <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>

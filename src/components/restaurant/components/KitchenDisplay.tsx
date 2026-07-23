@@ -41,7 +41,7 @@ export function KitchenDisplay({ onBack }: KitchenDisplayProps) {
         <div className="flex flex-col h-full bg-[#f8f9fa] animate-in fade-in duration-300 overflow-hidden">
             {/* Header — butonlar görünür, sağ blok taşmayacak */}
             <div className="border-b px-4 sm:px-6 py-4 flex flex-wrap items-center justify-between gap-4 z-20 shrink-0 shadow-2xl min-h-[72px]"
-                style={{ backgroundColor: 'var(--asin-primary, #0E2433)', borderColor: 'rgba(31,168,160,0.35)' }}>
+                style={{ backgroundColor: '#2563eb', borderColor: 'rgba(96,165,250,0.4)' }}>
                 <div className="flex items-center gap-3 sm:gap-4 min-w-0 flex-shrink-0">
                     <button onClick={onBack}
                         className="flex items-center gap-2 px-4 py-2.5 sm:px-6 sm:py-3 bg-white text-blue-600 hover:bg-white/95 rounded-xl sm:rounded-2xl transition-all active:scale-95 border-2 border-white font-black uppercase text-[11px] sm:text-[12px] shrink-0 shadow-lg">

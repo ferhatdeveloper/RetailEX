@@ -109,7 +109,7 @@ export const RestaurantStaffPinModal: React.FC<RestaurantStaffPinModalProps> = (
                 )}
 
                 {/* Header */}
-                <div className="bg-[var(--asin-primary,#0E2433)] p-8 flex flex-col gap-2 text-white relative overflow-hidden shrink-0 border-b border-[var(--asin-accent,#1FA8A0)]/35">
+                <div className="bg-gradient-to-r from-blue-600 to-indigo-700 p-8 flex flex-col gap-2 text-white relative overflow-hidden shrink-0">
                     <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full -mr-32 -mt-32 blur-3xl opacity-50" />
 
                     <div className="relative z-10 pr-14">
@@ -237,7 +237,7 @@ export const RestaurantStaffPinModal: React.FC<RestaurantStaffPinModalProps> = (
                                 </button>
                                 <button
                                     onClick={(e) => { e.stopPropagation(); handleConfirm(); }}
-                                    className="flex-1 px-6 py-4 rounded-2xl bg-[var(--asin-accent,#1FA8A0)] text-white font-black uppercase text-sm shadow-xl hover:bg-[#178f88] transition-all active:scale-95 flex items-center justify-center gap-2"
+                                    className="flex-1 px-6 py-4 rounded-2xl bg-blue-600 text-white font-black uppercase text-sm shadow-xl shadow-blue-200 hover:bg-blue-700 transition-all active:scale-95 flex items-center justify-center gap-2"
                                 >
                                     <CheckCircle className="w-5 h-5" />
                                     ONAYLA

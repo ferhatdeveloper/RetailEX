@@ -86,7 +86,7 @@ async function main() {
   const run = await waitForRun(repo, beforeId);
   if (!run) process.exit(1);
 
-  const artifactName = `AsinERP-Android-${version}`;
+  const artifactName = `RetailEX-Android-${version}`;
   console.log(`[android:ci] Artifact: ${artifactName}`);
   console.log(`[android:ci] İndirme: ${run.url} → Artifacts bölümü`);
 

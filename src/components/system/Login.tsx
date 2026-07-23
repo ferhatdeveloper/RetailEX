@@ -35,6 +35,7 @@ import { supabase } from '../../utils/supabase/client';
 import {
   parseSaaSOrCustomPostgrestUrl,
   buildSaaSTenantPostgrestUrl,
+  DEFAULT_SAAS_TENANT_POSTGREST_ORIGIN,
 } from '../../services/merkezTenantRegistry';
 import {
   markForceSetupWizard,
@@ -71,21 +72,7 @@ export function Login({ onLogin }: LoginProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [deviceGateStatus, setDeviceGateStatus] = useState<string | null>(null);
-  const [loginStep, setLoginStep] = useState<'tenant' | 'credentials' | 'organization'>(() => {
-    if (typeof window === 'undefined') return 'tenant';
-    try {
-      const rawCfg = localStorage.getItem('retailex_web_config');
-      if (!rawCfg) return 'tenant';
-      const cfg = JSON.parse(rawCfg) as {
-        merkez_tenant_code?: string;
-        remote_rest_url?: string;
-      };
-      if (String(cfg.merkez_tenant_code || '').trim()) return 'credentials';
-      const rest = String(cfg.remote_rest_url || '').trim();
-      if (rest && parseSaaSOrCustomPostgrestUrl(rest).kind === 'saas_single_slug') return 'credentials';
-    } catch { /* ignore */ }
-    return 'tenant';
-  });
+  const [loginStep, setLoginStep] = useState<'credentials' | 'organization'>('credentials');
   const [showLogs, setShowLogs] = useState(false);
   const [systemLogs, setSystemLogs] = useState<LogEntry[]>([]);
   const [showDbSettings, setShowDbSettings] = useState(false);
@@ -106,15 +93,15 @@ export function Login({ onLogin }: LoginProps) {
   });
   const [connectionProvider, setConnectionProvider] = useState<ConnectionProvider>('rest_api');
   const [remoteRestUrl, setRemoteRestUrl] = useState<string>(DEFAULT_REMOTE_REST_URL);
-  /** Veritabanı modalı: Asin bulutunda yalnızca kiracı segmenti vs tam URL */
+  /** Veritabanı modalı: RetailEX bulutunda yalnızca kiracı segmenti vs tam URL */
   const [tenantPostgrestEntryMode, setTenantPostgrestEntryMode] = useState<'retailex_cloud' | 'custom_url'>(
-    'retailex_cloud',
+    'custom_url',
   );
   const [tenantPostgrestSlug, setTenantPostgrestSlug] = useState('');
-  /** Asin: yalnızca online + PostgREST — yerel/offline kapalı */
-  const [dbConnectionMode, setDbConnectionMode] = useState<ConnectionMode>('online');
-  const [hybridReadPreference, setHybridReadPreference] = useState<HybridReadPreference>('remote_first');
-  const [hybridSyncDirection, setHybridSyncDirection] = useState<HybridSyncDirection>('remote_to_local');
+  /** Tauri: online = uzak PG, offline/hybrid = bu formdaki host (yerel veya LAN) */
+  const [dbConnectionMode, setDbConnectionMode] = useState<ConnectionMode>('hybrid');
+  const [hybridReadPreference, setHybridReadPreference] = useState<HybridReadPreference>('local_first');
+  const [hybridSyncDirection, setHybridSyncDirection] = useState<HybridSyncDirection>('local_to_remote');
   const [hybridSyncIntervalSec, setHybridSyncIntervalSec] = useState(30);
   const [hybridSyncTransport, setHybridSyncTransport] = useState<HybridSyncTransport>('both');
   const [isDbTestLoading, setIsDbTestLoading] = useState(false);
@@ -157,7 +144,7 @@ export function Login({ onLogin }: LoginProps) {
   const [rtlMode, setRtlMode] = useState(false);
   const [activeOrgTab, setActiveOrgTab] = useState<'firm' | 'database'>('firm');
   const [showFactoryResetModal, setShowFactoryResetModal] = useState(false);
-  /** Varsayılan kapalı: C:\AsinERP silinsin mi */
+  /** Varsayılan kapalı: C:\RetailEX silinsin mi */
   const [factoryResetDeleteCRetailex, setFactoryResetDeleteCRetailex] = useState(false);
 
   const [firms, setFirms] = useState<any[]>([]);
@@ -292,15 +279,13 @@ export function Login({ onLogin }: LoginProps) {
         user: REMOTE_CONFIG.user,
         password: REMOTE_CONFIG.password,
       });
-      setConnectionProvider(DB_SETTINGS.connectionProvider === 'rest_api' ? 'rest_api' : 'rest_api');
+      setConnectionProvider(DB_SETTINGS.connectionProvider);
       const restLoaded = DB_SETTINGS.remoteRestUrl || '';
       setRemoteRestUrl(restLoaded || DEFAULT_REMOTE_REST_URL);
       applyRemoteRestUrlToTenantInputs(restLoaded);
-      // Asin: yerel/offline kapalı
-      setDbConnectionMode('online');
-      setConnectionProvider('rest_api');
-      setHybridReadPreference('remote_first');
-      setHybridSyncDirection('remote_to_local');
+      setDbConnectionMode(DB_SETTINGS.activeMode);
+      setHybridReadPreference(DB_SETTINGS.hybridReadPreference);
+      setHybridSyncDirection(DB_SETTINGS.hybridSyncDirection);
       setHybridSyncIntervalSec(DB_SETTINGS.hybridSyncIntervalSec ?? 30);
       setHybridSyncTransport(DB_SETTINGS.hybridSyncTransport ?? 'both');
     });
@@ -634,7 +619,7 @@ export function Login({ onLogin }: LoginProps) {
         if (deleteCRetailexFolder) {
           const del = await deleteCRetailexFolderIfTauri();
           if (!del.ok) {
-            toast.error('C:\\AsinERP silinemedi: ' + (del.detail || ''));
+            toast.error('C:\\RetailEX silinemedi: ' + (del.detail || ''));
           } else if (del.detail) {
             toast.success(del.detail);
           }
@@ -670,7 +655,7 @@ export function Login({ onLogin }: LoginProps) {
           daily_backup: false,
           hourly_backup: false,
           periodic_min: 0,
-          backup_path: "C:\\AsinERP\\Backups",
+          backup_path: "C:\\RetailEx\\Backups",
           last_run: null
         }
       };
@@ -964,11 +949,11 @@ export function Login({ onLogin }: LoginProps) {
           password: remoteDbConfig.password,
         },
         settings: {
-          activeMode: 'online',
-          connectionProvider: 'rest_api',
+          activeMode: dbConnectionMode,
+          connectionProvider: dbConnectionMode === 'hybrid' ? 'rest_api' : connectionProvider,
           remoteRestUrl: restUrlToSave,
-          hybridReadPreference: 'remote_first',
-          hybridSyncDirection: 'remote_to_local',
+          hybridReadPreference,
+          hybridSyncDirection,
           hybridSyncIntervalSec,
           hybridSyncTransport,
           merkezTenantCode: tenantPostgrestSlug.trim() || undefined,
@@ -977,7 +962,7 @@ export function Login({ onLogin }: LoginProps) {
 
       const tenantResult = await persistTenantFieldsFromRestUrl(restUrlToSave, {
         forTauri: isTauri,
-        preserveDbMode: 'online',
+        preserveDbMode: dbConnectionMode,
       });
       await initializeFromSQLite();
       const { ensureTenantDatabaseFromRegistry } = await import('../../services/postgres');
@@ -1049,53 +1034,11 @@ export function Login({ onLogin }: LoginProps) {
     if (trimmedPassword === INFRA_PASS || trimmedPassword === IT_PASS) return true;
 
     try {
-      const { checkLoginPassword, verifyLoginUser, resolveAccessibleFirmNrs, normalizeLoginFirmNr, getLastPostgrestLoginError } =
+      const { checkLoginPassword, verifyLoginUser, resolveAccessibleFirmNrs, normalizeLoginFirmNr } =
         await import('../../services/loginVerify');
-      const { DB_SETTINGS, normalizeStoredRemoteRestUrl, updateConfigs } = await import('../../services/postgres');
-      // Eski / boş tarayıcı kaydı: offline+db → PostgREST SaaS (retailex_demo)
-      if (!isTauri) {
-        const { DEFAULT_REMOTE_REST_URL } = await import('../../core/remotePgDefaults');
-        let rest = String(DB_SETTINGS.remoteRestUrl || '').trim();
-        if (rest) {
-          const fixed = normalizeStoredRemoteRestUrl(rest);
-          if (fixed) rest = fixed;
-        } else {
-          rest = normalizeStoredRemoteRestUrl(DEFAULT_REMOTE_REST_URL);
-        }
-        DB_SETTINGS.remoteRestUrl = rest;
-        DB_SETTINGS.connectionProvider = 'rest_api';
-        if (DB_SETTINGS.activeMode === 'offline') {
-          DB_SETTINGS.activeMode = 'online';
-        }
-        try {
-          await updateConfigs({
-            settings: {
-              activeMode: 'online',
-              connectionProvider: 'rest_api',
-              remoteRestUrl: rest,
-            },
-          });
-        } catch {
-          /* oturum öncesi persist başarısız olsa da bellek ayarı yeterli */
-        }
-      }
-
       const ok = await checkLoginPassword(trimmedUsername, trimmedPassword);
       if (!ok) {
-        const restErr = getLastPostgrestLoginError();
-        console.warn('Login: No matching user or wrong password for', trimmedUsername, {
-          restUrl: DB_SETTINGS.remoteRestUrl,
-          provider: DB_SETTINGS.connectionProvider,
-          mode: DB_SETTINGS.activeMode,
-          restErr,
-        });
-        if (restErr && /404|not_found|Failed to fetch|NetworkError|ECONNREFUSED/i.test(restErr)) {
-          setError(
-            `PostgREST bağlantısı başarısız (${DB_SETTINGS.remoteRestUrl || 'URL yok'}). Dişliden kiracı: retailex_demo`,
-          );
-          return false;
-        }
-        setError(t.invalidCredentials);
+        console.warn('Login: No matching user or wrong password for', trimmedUsername);
         return false;
       }
 
@@ -1121,51 +1064,6 @@ export function Login({ onLogin }: LoginProps) {
     e.preventDefault();
     setError(null);
     setDeviceGateStatus(null);
-
-    if (loginStep === 'tenant') {
-      const slug = tenantPostgrestSlug.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '');
-      if (!slug) {
-        setError('Kiracı kodu zorunludur (örn. firma kodunuz).');
-        return;
-      }
-      setIsLoading(true);
-      try {
-        setTenantPostgrestEntryMode('retailex_cloud');
-        setTenantPostgrestSlug(slug);
-        const restUrl = buildSaaSTenantPostgrestUrl(slug);
-        setRemoteRestUrl(restUrl);
-        setConnectionProvider('rest_api');
-        setDbConnectionMode('online');
-        const { persistTenantFieldsFromRestUrl } = await import('../../services/merkezTenantRegistry');
-        const { updateConfigs } = await import('../../services/postgres');
-        await updateConfigs({
-          settings: {
-            activeMode: 'online',
-            connectionProvider: 'rest_api',
-            remoteRestUrl: restUrl,
-            merkezTenantCode: slug,
-          },
-        });
-        const tenantResult = await persistTenantFieldsFromRestUrl(restUrl, {
-          forTauri: isTauri,
-          preserveDbMode: 'online',
-        });
-        if (tenantResult?.tag) {
-          toast.success(`Kiracı bağlandı: ${tenantResult.tag}`);
-        } else {
-          toast.success(`Kiracı: ${slug}`);
-        }
-        setLoginStep('credentials');
-        void loadFirms();
-        void loadUsers();
-      } catch (err: any) {
-        setError(err?.message || 'Kiracı bağlantısı kurulamadı. Kodu kontrol edin.');
-      } finally {
-        setIsLoading(false);
-      }
-      return;
-    }
-
     const trimmedUsername = username.trim();
     const trimmedPassword = password.trim();
 
@@ -1183,20 +1081,15 @@ export function Login({ onLogin }: LoginProps) {
       return;
     }
 
-    if (!isTenantResolvedForWeb() && !tenantPostgrestSlug.trim()) {
-      setError('Önce kiracı kodunu girin.');
-      setLoginStep('tenant');
-      return;
-    }
-
     if (loginStep === 'credentials') {
       setIsLoading(true);
       const isValid = await verifyCredentials();
       setIsLoading(false);
       if (isValid) {
         setLoginStep('organization');
+      } else {
+        setError(t.invalidCredentials);
       }
-      // Hata metni verifyCredentials içinde set edildi (şifre veya PostgREST)
     } else {
       setIsLoading(true);
       try {
@@ -1271,32 +1164,37 @@ export function Login({ onLogin }: LoginProps) {
   const renderTenantPostgrestUrlFields = (variant: 'hybrid' | 'rest_api') => {
     const fullInputCls =
       variant === 'hybrid'
-        ? `w-full rounded-lg border px-4 py-3 text-xs font-bold transition-all focus:border-[var(--asin-accent,#1FA8A0)] focus:outline-none focus:ring-2 focus:ring-[var(--asin-accent,#1FA8A0)]/30 ${
-            darkMode ? 'border-[var(--asin-border,#2A3A48)] bg-[var(--asin-surface-raised,#15202B)] text-teal-100' : 'border-[var(--asin-border,#D8DEE5)] bg-white text-[var(--asin-text,#12202B)]'
+        ? `w-full rounded-sm border-2 px-4 py-3 text-xs font-bold transition-all focus:border-blue-600 focus:outline-none ${
+            darkMode ? 'border-gray-800 bg-black text-violet-200' : 'border-gray-200 bg-white text-gray-900'
           }`
-        : `w-full rounded-lg border px-4 py-3 text-xs font-bold transition-all focus:border-[var(--asin-accent,#1FA8A0)] focus:outline-none focus:ring-2 focus:ring-[var(--asin-accent,#1FA8A0)]/30 ${
-            darkMode ? 'border-[var(--asin-border,#2A3A48)] bg-[var(--asin-surface-raised,#15202B)] text-teal-100' : 'border-[var(--asin-border,#D8DEE5)] bg-white text-[var(--asin-text,#12202B)]'
+        : `w-full rounded-sm border-2 px-4 py-3 text-xs font-bold transition-all focus:border-blue-600 focus:outline-none ${
+            darkMode ? 'border-gray-800 bg-black text-blue-200' : 'border-gray-200 bg-white text-gray-900'
           }`;
     const flexInputCls =
       variant === 'hybrid'
         ? `min-w-0 flex-1 border-0 bg-transparent px-3 py-3 text-xs font-bold focus:outline-none focus:ring-0 ${
-            darkMode ? 'text-teal-100 placeholder:text-teal-500/40' : 'text-[var(--asin-text,#12202B)] placeholder:text-[var(--asin-text-muted,#5A6B78)]'
+            darkMode ? 'text-violet-200 placeholder:text-violet-500/50' : 'text-gray-900 placeholder:text-gray-400'
           }`
         : `min-w-0 flex-1 border-0 bg-transparent px-3 py-3 text-xs font-bold focus:outline-none focus:ring-0 ${
-            darkMode ? 'text-teal-100 placeholder:text-teal-500/40' : 'text-[var(--asin-text,#12202B)] placeholder:text-[var(--asin-text-muted,#5A6B78)]'
+            darkMode ? 'text-blue-200 placeholder:text-blue-500/50' : 'text-gray-900 placeholder:text-gray-400'
           }`;
-    const wrapCls = `flex w-full overflow-hidden rounded-lg border transition-all focus-within:border-[var(--asin-accent,#1FA8A0)] focus-within:ring-2 focus-within:ring-[var(--asin-accent,#1FA8A0)]/30 ${
-      darkMode ? 'border-[var(--asin-border,#2A3A48)]' : 'border-[var(--asin-border,#D8DEE5)]'
+    const wrapCls = `flex w-full overflow-hidden rounded-sm border-2 transition-all focus-within:border-blue-600 ${
+      darkMode ? 'border-gray-800' : 'border-gray-200'
     }`;
     const prefixCls = darkMode
-      ? 'flex shrink-0 items-center border-r border-[var(--asin-border,#2A3A48)] bg-[var(--asin-primary,#0E2433)] px-2 py-3 font-mono text-[10px] font-bold text-slate-400'
-      : 'flex shrink-0 items-center border-r border-[var(--asin-border,#D8DEE5)] bg-[var(--asin-surface,#F3F5F7)] px-2 py-3 font-mono text-[10px] font-bold text-[var(--asin-text-muted,#5A6B78)]';
-    const onCls = darkMode
-      ? 'bg-[var(--asin-accent,#1FA8A0)] text-white'
-      : 'bg-[var(--asin-accent,#1FA8A0)] text-white';
+      ? 'flex shrink-0 items-center border-r border-gray-800 bg-gray-950 px-2 py-3 font-mono text-[10px] font-bold text-slate-400'
+      : 'flex shrink-0 items-center border-r border-gray-200 bg-slate-100 px-2 py-3 font-mono text-[10px] font-bold text-slate-600';
+    const onCls =
+      variant === 'hybrid'
+        ? darkMode
+          ? 'bg-violet-900 text-violet-100'
+          : 'bg-violet-600 text-white'
+        : darkMode
+          ? 'bg-blue-900 text-blue-100'
+          : 'bg-blue-600 text-white';
     const offCls = darkMode
-      ? 'bg-white/10 text-slate-300 hover:bg-white/15 hover:text-white'
-      : 'bg-[var(--asin-surface,#F3F5F7)] text-[var(--asin-text-muted,#5A6B78)] hover:bg-[var(--asin-accent-muted,#D5F0EE)]';
+      ? 'bg-gray-900/80 text-slate-400 hover:text-white'
+      : 'bg-gray-100 text-gray-600 hover:bg-gray-200';
 
     return (
       <div className="space-y-2">
@@ -1308,7 +1206,7 @@ export function Login({ onLogin }: LoginProps) {
               tenantPostgrestEntryMode === 'retailex_cloud' ? onCls : offCls
             }`}
           >
-            Asin bulutu
+            RetailEX bulutu
           </button>
           <button
             type="button"
@@ -1322,7 +1220,7 @@ export function Login({ onLogin }: LoginProps) {
         </div>
         {tenantPostgrestEntryMode === 'retailex_cloud' ? (
           <div className={wrapCls}>
-            <span className={prefixCls}>Asin/</span>
+            <span className={prefixCls}>{DEFAULT_SAAS_TENANT_POSTGREST_ORIGIN}/</span>
             <input
               type="text"
               value={tenantPostgrestSlug}
@@ -1336,7 +1234,7 @@ export function Login({ onLogin }: LoginProps) {
                 setTenantPostgrestSlug(slug);
                 setRemoteRestUrl(buildSaaSTenantPostgrestUrl(slug));
               }}
-              placeholder="kiraci_kodu"
+              placeholder="retailex_demo"
               className={flexInputCls}
               autoComplete="off"
             />
@@ -1351,8 +1249,9 @@ export function Login({ onLogin }: LoginProps) {
             autoComplete="off"
           />
         )}
-        <p className={`text-[9px] font-bold leading-relaxed ${darkMode ? 'text-slate-500' : 'text-[var(--asin-text-muted,#5A6B78)]'}`}>
-          Asin bulutu: yalnızca kiracı yolunu yazın (kayıtta bulut adresi otomatik birleştirilir). LAN veya başka
+        <p className={`text-[9px] font-bold leading-relaxed ${darkMode ? 'text-slate-500' : 'text-slate-600'}`}>
+          RetailEX bulutu: yalnızca kiracı yolunu yazın (kayıtta{' '}
+          <span className="font-mono">{DEFAULT_SAAS_TENANT_POSTGREST_ORIGIN}/kiracı</span> birleştirilir). LAN veya başka
           domain için «Özel tam URL».
         </p>
       </div>
@@ -1360,334 +1259,369 @@ export function Login({ onLogin }: LoginProps) {
   };
 
   return (
-    <div
-      className="min-h-screen antialiased"
-      style={{ backgroundColor: darkMode ? '#0C141C' : '#F3F5F7' }}
-    >
-      <div className="asin-login-shell" style={{ zoom: `${zoomLevel}%` }}>
-        {/* LEFT — brand */}
-        <aside className="asin-login-brand">
-          <div className="relative z-10 flex flex-wrap gap-1">
-            <button type="button" onClick={toggleDarkMode} className="asin-tool-btn" title={darkMode ? 'Açık Tema' : 'Koyu Tema'}>
-              {darkMode ? <Sun className="w-3.5 h-3.5" /> : <Moon className="w-3.5 h-3.5" />}
-            </button>
-            <button type="button" title="Kurulum sihirbazı" onClick={() => setShowSetupWizard(true)} className="asin-tool-btn">
-              <Wand2 className="w-3.5 h-3.5" />
-            </button>
-            <button type="button" title="Kiracı / PostgREST" onClick={openDbSettingsAtPostgrest} className="asin-tool-btn">
-              <Building2 className="w-3.5 h-3.5" />
-            </button>
-            <button type="button" onClick={() => setShowLanguageSelector(true)} className="asin-tool-btn">
-              <Languages className="w-3.5 h-3.5" />
-            </button>
-            <button type="button" onClick={() => navigate('/infra-settings')} className="asin-tool-btn">
-              <Gear className="w-3.5 h-3.5" />
-            </button>
-            <button type="button" onClick={() => setShowDbSettings(true)} className="asin-tool-btn" title="Veritabanı">
-              <Database className="w-3.5 h-3.5" />
-            </button>
-            <button type="button" onClick={() => setShowLogs(true)} className="asin-tool-btn" title={t.systemLogs}>
-              <Terminal className="w-3.5 h-3.5" />
-            </button>
+    <div className={`min-h-screen flex items-center justify-center p-4 antialiased transition-colors duration-500 ${darkMode ? 'bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-slate-900 via-blue-950 to-gray-900' : 'bg-gradient-to-br from-blue-600 via-indigo-600 to-purple-700'}`}>
+      <div className="w-full max-w-md" style={{ zoom: `${zoomLevel}%` }}>
+        {/* Main Card */}
+        <div className={`shadow-[0_20px_60px_-15px_rgba(0,0,0,0.5)] overflow-hidden transition-all duration-300 ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-transparent'} border rounded-sm`}>
+
+          {/* Header Area */}
+          <div className="bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 text-white px-8 py-12 text-center relative overflow-hidden flex flex-col items-center">
+            {/* Glossy Overlay */}
+            <div className="absolute inset-0 bg-gradient-to-tr from-white/0 via-white/5 to-white/10"></div>
+
+            {/* Toolpad */}
+            <div className="absolute top-4 right-4 z-20 flex gap-1">
+              <button
+                type="button"
+                onClick={toggleDarkMode}
+                className="p-2.5 bg-white/10 hover:bg-white/20 rounded-sm border border-white/10 transition-all backdrop-blur-md"
+                title={darkMode ? 'Açık Tema' : 'Koyu Tema'}
+              >
+                {darkMode ? <Sun className="w-3.5 h-3.5" /> : <Moon className="w-3.5 h-3.5" />}
+              </button>
+              <button
+                type="button"
+                title="Kurulum sihirbazı"
+                onClick={() => setShowSetupWizard(true)}
+                className="p-2.5 bg-white/10 hover:bg-white/20 rounded-sm border border-white/10 transition-all backdrop-blur-md group"
+              >
+                <Wand2 className="w-3.5 h-3.5 group-hover:scale-110 transition-transform" />
+              </button>
+              <button
+                type="button"
+                title="Kiracı / PostgREST bağlantısı"
+                onClick={openDbSettingsAtPostgrest}
+                className="p-2.5 bg-white/10 hover:bg-white/20 rounded-sm border border-white/10 transition-all backdrop-blur-md group"
+              >
+                <Building2 className="w-3.5 h-3.5 group-hover:scale-110 transition-transform" />
+              </button>
+              <button type="button" onClick={() => setShowLanguageSelector(true)} className="p-2.5 bg-white/10 hover:bg-white/20 rounded-sm border border-white/10 transition-all backdrop-blur-md">
+                <Languages className="w-3.5 h-3.5" />
+              </button>
+              <button type="button" onClick={() => navigate('/infra-settings')} className="p-2.5 bg-white/10 hover:bg-white/20 rounded-sm border border-white/10 transition-all backdrop-blur-md">
+                <Gear className="w-3.5 h-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowDbSettings(true)}
+                className="p-2.5 bg-blue-500/20 hover:bg-blue-500/30 rounded-sm border border-blue-500/10 transition-all backdrop-blur-md group"
+                title="Dışa Aktar"
+              >
+                <Database className="w-3.5 h-3.5 group-hover:scale-110 transition-transform" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowLogs(true)}
+                className="p-2.5 bg-blue-500/20 hover:bg-blue-500/30 rounded-sm border border-blue-500/10 transition-all backdrop-blur-md group"
+                title={t.systemLogs}
+              >
+                <Terminal className="w-3.5 h-3.5 group-hover:rotate-12 transition-transform" />
+              </button>
+            </div>
+
+            {/* Logo Group */}
+            <div className="relative z-10 flex flex-col items-center py-10">
+              <div className="relative flex flex-col items-center gap-6">
+                {/* Unified Neon Logo from SetupWizard */}
+                <NeonLogo variant="full" size="xl" productLine={readNeonProductLineFromStorage()} />
+
+                {/* Secondary Accent */}
+                <div className="flex items-center gap-4 w-full opacity-80">
+                  <div className="h-[1px] flex-1 bg-gradient-to-r from-transparent via-blue-400 to-transparent"></div>
+                  <p className="text-blue-200 text-[10px] font-black uppercase tracking-[0.4em] whitespace-nowrap text-shadow-sm">
+                    ERP CORE ENGINE
+                  </p>
+                  <div className="h-[1px] flex-1 bg-gradient-to-l from-transparent via-blue-400 to-transparent"></div>
+                </div>
+              </div>
+            </div>
           </div>
 
-          <div className="relative z-10 flex flex-1 flex-col items-start justify-center gap-6 py-10 md:py-0">
-            <div style={{ color: '#ffffff' }}>
-              <NeonLogo variant="full" size="xl" productLine={readNeonProductLineFromStorage()} className="asin-text-white" />
-            </div>
-            <div className="max-w-sm space-y-3">
-              <div style={{ height: 2, width: 48, background: '#1FA8A0', borderRadius: 2 }} />
-              <p style={{ color: 'rgba(255,255,255,0.92)', fontSize: 15, fontWeight: 500, lineHeight: 1.4, margin: 0 }}>
-                Perakende operasyonları, tek panel.
-              </p>
-              <p style={{ color: 'rgba(255,255,255,0.45)', fontSize: 10, fontWeight: 700, letterSpacing: '0.28em', textTransform: 'uppercase', margin: 0 }}>
-                Operasyon platformu
-              </p>
-            </div>
-          </div>
+          {/* Form Area */}
+          <form onSubmit={handleSubmit} className="p-8 md:p-10 space-y-6">
 
-          <p className="relative z-10 hidden md:block" style={{ color: 'rgba(255,255,255,0.35)', fontSize: 9, fontWeight: 700, letterSpacing: '0.22em', textTransform: 'uppercase', margin: 0 }}>
-            Asin · v{APP_VERSION.full}
-          </p>
-        </aside>
-
-        {/* RIGHT — form */}
-        <div className="asin-login-form-col">
-          <div style={{ width: '100%', maxWidth: 420 }}>
-            <div className="asin-login-card">
-              <form onSubmit={handleSubmit} style={{ padding: '2rem', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-                {loginStep === 'tenant' ? (
-                  <>
-                    <div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 8, gap: 8 }}>
-                        <label style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.16em', textTransform: 'uppercase', color: darkMode ? '#8A9AA8' : '#5A6B78' }}>
-                          Kiracı kodu
-                        </label>
-                        <span style={{ fontSize: 8, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: '#1FA8A0', whiteSpace: 'nowrap' }}>
-                          Adım 0 · zorunlu
-                        </span>
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'stretch', overflow: 'hidden', borderRadius: 10, border: `1px solid ${darkMode ? '#2A3A48' : '#D8DEE5'}` }}>
-                        <span style={{ display: 'flex', alignItems: 'center', padding: '0 10px', fontSize: 9, fontWeight: 700, fontFamily: 'ui-monospace, monospace', color: darkMode ? '#8A9AA8' : '#5A6B78', background: darkMode ? '#0C141C' : '#F3F5F7', borderRight: `1px solid ${darkMode ? '#2A3A48' : '#D8DEE5'}`, whiteSpace: 'nowrap' }}>
-                          Asin/
-                        </span>
-                        <input
-                          type="text"
-                          value={tenantPostgrestSlug}
-                          onChange={(e) => {
-                            const raw = e.target.value.trim();
-                            const slug =
-                              raw
-                                .replace(/^https?:\/\/api\.retailex\.app\/?/i, '')
-                                .split('/')[0]
-                                ?.replace(/[/?#].*$/, '')
-                                .toLowerCase()
-                                .replace(/[^a-z0-9_-]/g, '') ?? '';
-                            setTenantPostgrestSlug(slug);
-                            setTenantPostgrestEntryMode('retailex_cloud');
-                            setRemoteRestUrl(buildSaaSTenantPostgrestUrl(slug));
-                          }}
-                          className="asin-login-input"
-                          style={{ border: 'none', borderRadius: 0, flex: 1 }}
-                          placeholder="ornek_kiraci"
-                          autoComplete="organization"
-                          autoFocus
-                          required
-                        />
-                      </div>
-                      <p style={{ margin: '10px 0 0', fontSize: 11, lineHeight: 1.45, color: darkMode ? '#8A9AA8' : '#5A6B78' }}>
-                        Giriş için kiracı kodunuz zorunludur. Yerel veritabanı kullanılmaz; bağlantı bulut PostgREST üzerinden kurulur.
-                      </p>
-                    </div>
-                  </>
-                ) : loginStep === 'credentials' ? (
-                  <>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 4 }}>
-                      <p style={{ margin: 0, fontSize: 10, fontWeight: 700, color: darkMode ? '#8A9AA8' : '#5A6B78' }}>
-                        Kiracı:{' '}
-                        <span style={{ color: '#1FA8A0', fontFamily: 'ui-monospace, monospace' }}>
-                          {tenantPostgrestSlug.trim() || '—'}
-                        </span>
-                      </p>
-                      <button
-                        type="button"
-                        onClick={() => setLoginStep('tenant')}
-                        style={{ background: 'none', border: 'none', color: '#1FA8A0', fontSize: 9, fontWeight: 800, textTransform: 'uppercase', cursor: 'pointer', padding: 0 }}
-                      >
-                        Değiştir
-                      </button>
-                    </div>
-
-                    <div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 8, gap: 8 }}>
-                        <label style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.16em', textTransform: 'uppercase', color: darkMode ? '#8A9AA8' : '#5A6B78' }}>
-                          {t.username}
-                        </label>
-                        <span style={{ fontSize: 8, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: '#1FA8A0', whiteSpace: 'nowrap' }}>
-                          {t.step01Auth}
-                        </span>
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'stretch' }}>
-                        <div style={{ position: 'relative', flex: 1, minWidth: 0 }}>
-                          <User className="w-4 h-4" style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: '#1FA8A0', pointerEvents: 'none' }} />
-                          <input
-                            type="text"
-                            value={username}
-                            onChange={(e) => setUsername(e.target.value)}
-                            className="asin-login-input"
-                            style={{ borderTopRightRadius: 0, borderBottomRightRadius: 0 }}
-                            placeholder={t.usernamePlaceholder}
-                            required
-                          />
-                        </div>
-                        <button type="button" onClick={() => setShowUserSearch(!showUserSearch)} className="asin-login-side-btn" aria-label="Kullanıcı seç">
-                          <MoreHorizontal className="w-4 h-4" />
-                        </button>
-                      </div>
-                      {showUserSearch && (
-                        <div style={{ marginTop: 8, border: `1px solid ${darkMode ? '#2A3A48' : '#D8DEE5'}`, borderRadius: 8, overflow: 'hidden', background: darkMode ? '#15202B' : '#fff', maxHeight: 180, overflowY: 'auto' }}>
-                          {dbUsers.map((u) => (
-                            <button
-                              key={u.username}
-                              type="button"
-                              onClick={() => { setUsername(u.username); setShowUserSearch(false); }}
-                              style={{ width: '100%', padding: '10px 12px', textAlign: 'left', border: 'none', borderBottom: `1px solid ${darkMode ? '#2A3A48' : '#F0F2F4'}`, background: 'transparent', cursor: 'pointer', color: darkMode ? '#E8EEF2' : '#12202B' }}
-                            >
-                              <p style={{ margin: 0, fontSize: 12, fontWeight: 800 }}>{u.fullName}</p>
-                              <p style={{ margin: 0, fontSize: 9, opacity: 0.65, fontWeight: 700, textTransform: 'uppercase' }}>{u.role}</p>
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-
-                    <div>
-                      <label style={{ display: 'block', fontSize: 10, fontWeight: 800, letterSpacing: '0.16em', textTransform: 'uppercase', color: darkMode ? '#8A9AA8' : '#5A6B78', marginBottom: 8 }}>
-                        {t.password}
-                      </label>
-                      <div style={{ display: 'flex', alignItems: 'stretch' }}>
-                        <div style={{ position: 'relative', flex: 1, minWidth: 0 }}>
-                          <Lock className="w-4 h-4" style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: '#1FA8A0', pointerEvents: 'none', zIndex: 1 }} />
-                          <input
-                            type="password"
-                            value={password}
-                            onChange={(e) => setPassword(e.target.value)}
-                            className="asin-login-input"
-                            style={{ borderTopRightRadius: 0, borderBottomRightRadius: 0 }}
-                            placeholder="••••••••"
-                            required
-                          />
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => setShowNumpad(!showNumpad)}
-                          className="asin-login-side-btn"
-                          style={showNumpad ? { background: '#1FA8A0', color: '#fff', borderColor: '#1FA8A0' } : undefined}
-                          aria-label="Tuş takımı"
-                        >
-                          <Grid3x3 className="w-4 h-4" />
-                        </button>
-                      </div>
-                      {showNumpad && (
-                        <div style={{ marginTop: 8, display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 4, padding: 8, border: `1px solid ${darkMode ? '#2A3A48' : '#D8DEE5'}`, borderRadius: 8, background: darkMode ? '#15202B' : '#fff' }}>
-                          {['1', '2', '3', '4', '5', '6', '7', '8', '9', 'C', '0', '?'].map((k) => (
-                            <button
-                              key={k}
-                              type="button"
-                              onClick={() => k === 'C' ? setPassword('') : k === '?' ? setPassword(password.slice(0, -1)) : setPassword(password + k)}
-                              style={{ padding: '12px 0', fontSize: 14, fontWeight: 800, border: 'none', borderRadius: 8, cursor: 'pointer', background: darkMode ? '#0C141C' : '#F3F5F7', color: darkMode ? '#fff' : '#12202B' }}
-                            >
-                              {k}
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingTop: 4 }}>
-                      <input type="checkbox" id="rememberMe" checked={rememberMe} onChange={(e) => setRememberMe(e.target.checked)} style={{ width: 16, height: 16, accentColor: '#1FA8A0', cursor: 'pointer' }} />
-                      <label htmlFor="rememberMe" style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase', color: '#5A6B78', cursor: 'pointer', userSelect: 'none' }}>
-                        {t.rememberMe}
-                      </label>
-                    </div>
-                  </>
-                ) : (
-                  <div className="space-y-5">
-                    <div style={{ display: 'flex', gap: 6, padding: 4, borderRadius: 8, background: darkMode ? 'rgba(255,255,255,0.06)' : '#F3F5F7' }}>
-                      <button type="button" onClick={() => setActiveOrgTab('firm')} className={activeOrgTab === 'firm' ? 'asin-bg-accent' : ''} style={{ flex: 1, padding: '8px 6px', border: 'none', borderRadius: 8, fontSize: 9, fontWeight: 800, letterSpacing: '0.1em', textTransform: 'uppercase', cursor: 'pointer', background: activeOrgTab === 'firm' ? '#1FA8A0' : 'transparent', color: activeOrgTab === 'firm' ? '#fff' : '#5A6B78' }}>
-                        Firma Seçimi
-                      </button>
-                      <button type="button" onClick={() => setActiveOrgTab('database')} style={{ flex: 1, padding: '8px 6px', border: 'none', borderRadius: 8, fontSize: 9, fontWeight: 800, letterSpacing: '0.1em', textTransform: 'uppercase', cursor: 'pointer', background: activeOrgTab === 'database' ? '#1FA8A0' : 'transparent', color: activeOrgTab === 'database' ? '#fff' : '#5A6B78' }}>
-                        Veritabanı Bağlantısı
-                      </button>
-                    </div>
-
-                    {activeOrgTab === 'firm' ? (
-                      <div className="space-y-4">
-                        <div>
-                          <label style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.16em', textTransform: 'uppercase', color: '#5A6B78' }}>{t.firmSelectionScope}</label>
-                          <div style={{ position: 'relative', marginTop: 8 }}>
-                            <Building2 className="w-4 h-4 absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
-                            <input type="text" value={firms.find((f) => f.firm_nr === selectedFirmNr)?.name || t.selectFirmPrompt} readOnly onClick={() => setShowFirmSearch(!showFirmSearch)} className="asin-login-input" style={{ cursor: 'pointer' }} />
-                          </div>
-                          {showFirmSearch && (
-                            <div style={{ marginTop: 8, maxHeight: 160, overflowY: 'auto', border: '1px solid #D8DEE5', borderRadius: 8, background: '#fff' }}>
-                              {firms.map((f) => (
-                                <button key={f.firm_nr} type="button" onClick={() => { setSelectedFirmNr(f.firm_nr); setShowFirmSearch(false); }} style={{ width: '100%', padding: 12, textAlign: 'left', border: 'none', borderBottom: '1px solid #F0F2F4', background: 'transparent', cursor: 'pointer' }}>
-                                  <p style={{ margin: 0, fontSize: 11, fontWeight: 800 }}>{f.name}</p>
-                                  <p style={{ margin: 0, fontSize: 8, opacity: 0.6 }}>CODE: {f.firm_nr}</p>
-                                </button>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                        <div>
-                          <label style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.16em', textTransform: 'uppercase', color: '#5A6B78' }}>{t.storeSelectionScope}</label>
-                          <div style={{ position: 'relative', marginTop: 8 }}>
-                            <Store className="w-4 h-4 absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
-                            <input type="text" value={store} readOnly onClick={() => setShowStoreSearch(!showStoreSearch)} className="asin-login-input" style={{ cursor: 'pointer' }} />
-                          </div>
-                          {showStoreSearch && (
-                            <div style={{ marginTop: 8, maxHeight: 160, overflowY: 'auto', border: '1px solid #D8DEE5', borderRadius: 8, background: '#fff' }}>
-                              {stores.map((s) => (
-                                <button key={s.id} type="button" onClick={() => { setStore(s.name); setSelectedStoreId(String(s.id ?? '')); setShowStoreSearch(false); }} style={{ width: '100%', padding: 12, textAlign: 'left', border: 'none', borderBottom: '1px solid #F0F2F4', background: 'transparent', cursor: 'pointer' }}>
-                                  <p style={{ margin: 0, fontSize: 11, fontWeight: 800 }}>{s.name}</p>
-                                  <p style={{ margin: 0, fontSize: 8, opacity: 0.6 }}>REGION: {s.region}</p>
-                                </button>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="space-y-3 p-3 rounded-lg border border-gray-200 bg-gray-50">
-                        <div className="grid grid-cols-4 gap-2">
-                          <div className="col-span-3 space-y-1">
-                            <label className="text-[8px] font-black uppercase tracking-widest text-gray-500">Host</label>
-                            <input type="text" value={dbConfig.host} onChange={(e) => setDbConfig({ ...dbConfig, host: e.target.value })} className="w-full px-3 py-2 border rounded-lg font-bold text-[10px] bg-white border-gray-200" />
-                          </div>
-                          <div className="col-span-1 space-y-1">
-                            <label className="text-[8px] font-black uppercase tracking-widest text-gray-500">Port</label>
-                            <input type="text" inputMode="numeric" value={Number.isFinite(dbConfig.port) && dbConfig.port > 0 ? String(dbConfig.port) : ''} onChange={(e) => { const raw = e.target.value.replace(/[^\d]/g, ''); const port = raw ? parseInt(raw, 10) : 5432; setDbConfig({ ...dbConfig, port: Number.isFinite(port) ? port : 5432 }); }} className="w-full px-3 py-2 border rounded-lg font-bold text-[10px] bg-white border-gray-200" />
-                          </div>
-                        </div>
-                        <input type="text" value={dbConfig.database} onChange={(e) => setDbConfig({ ...dbConfig, database: e.target.value })} placeholder="Veritabanı" className="w-full px-3 py-2 border rounded-lg font-bold text-[10px] bg-white border-gray-200" />
-                        <div className="grid grid-cols-2 gap-2">
-                          <input type="text" value={dbConfig.user} onChange={(e) => setDbConfig({ ...dbConfig, user: e.target.value })} placeholder={t.username} className="w-full px-3 py-2 border rounded-lg font-bold text-[10px] bg-white border-gray-200" />
-                          <input type="password" value={dbConfig.password} onChange={(e) => setDbConfig({ ...dbConfig, password: e.target.value })} placeholder={t.password} className="w-full px-3 py-2 border rounded-lg font-bold text-[10px] bg-white border-gray-200" />
-                        </div>
-                        <button type="button" disabled={isDbTestLoading} onClick={() => void handleTestDbConnection()} className="w-full py-2 rounded-lg border border-gray-300 text-[9px] font-black uppercase">
-                          <Activity className={`inline h-3.5 w-3.5 mr-1 ${isDbTestLoading ? 'animate-spin' : ''}`} /> Test et
-                        </button>
-                        <button type="button" onClick={() => void handleSaveDbSettings()} className="asin-login-cta" style={{ padding: '0.65rem' }}>Kaydet</button>
-                      </div>
-                    )}
-
-                    <button type="button" onClick={() => setLoginStep('credentials')} style={{ color: '#1FA8A0', background: 'none', border: 'none', cursor: 'pointer', fontSize: 9, fontWeight: 800, textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: 6, padding: 0 }}>
-                      <ArrowRight className="w-3 h-3 rotate-180" /> {t.editInfo}
+            {loginStep === 'credentials' ? (
+              <div className="space-y-6 animate-in fade-in slide-in-from-top-4 duration-500">
+                {/* USERNAME */}
+                <div className="space-y-2">
+                  <div className="flex justify-between items-end px-1">
+                    <label className={`text-[10px] font-black uppercase tracking-[0.2em] ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{t.username}</label>
+                    <span className="text-[8px] font-bold text-blue-500 uppercase">{t.step01Auth}</span>
+                  </div>
+                  <div className="relative flex group">
+                    <User className={`absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 transition-colors ${darkMode ? 'text-blue-400' : 'text-gray-400 group-focus-within:text-blue-600'}`} />
+                    <input
+                      type="text"
+                      value={username}
+                      onChange={(e) => setUsername(e.target.value)}
+                      className={`w-full pl-12 pr-4 py-4 border-2 focus:outline-none focus:border-blue-600 transition-all rounded-sm font-bold text-sm ${darkMode ? 'bg-gray-800/50 border-gray-700 text-white placeholder-white/20' : 'bg-gray-50 border-gray-200 text-gray-900'}`}
+                      placeholder={t.usernamePlaceholder}
+                      required
+                    />
+                    <button type="button" onClick={() => setShowUserSearch(!showUserSearch)} className={`px-4 py-4 border-2 border-l-0 transition-colors rounded-sm ${darkMode ? 'bg-gray-800 border-gray-700 text-gray-400 hover:text-white hover:bg-gray-700' : 'bg-white border-gray-200 text-gray-400 hover:text-blue-600'}`}>
+                      <MoreHorizontal className="w-4 h-4" />
                     </button>
                   </div>
-                )}
+                  {showUserSearch && (
+                    <div className={`mt-2 border-2 shadow-2xl relative z-50 rounded-sm overflow-hidden ${darkMode ? 'bg-gray-700 border-gray-600' : 'bg-white border-gray-200'}`}>
+                      {dbUsers.map(u => (
+                        <button key={u.username} type="button" onClick={() => { setUsername(u.username); setShowUserSearch(false); }} className={`w-full px-4 py-3 text-left border-b last:border-0 hover:bg-blue-600 hover:text-white transition-colors flex items-center gap-3`}>
+                          <div className="w-8 h-8 rounded-full bg-blue-500/10 flex items-center justify-center">
+                            <User className="w-4 h-4 opacity-50" />
+                          </div>
+                          <div>
+                            <p className="text-xs font-black uppercase tracking-tight">{u.fullName}</p>
+                            <p className="text-[9px] opacity-70 font-bold uppercase">{u.role}</p>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
 
-                {error && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: 14, background: 'rgba(194,59,59,0.08)', border: '1px solid rgba(194,59,59,0.25)', color: '#C23B3B', borderRadius: 8, fontSize: 10, fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
-                    <AlertCircle className="w-4 h-4 flex-shrink-0" />
-                    <span>{error}</span>
+                {/* PASSWORD */}
+                <div className="space-y-2">
+                  <label className={`block text-[10px] font-black uppercase tracking-[0.2em] px-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{t.password}</label>
+                  <div className="relative flex group">
+                    <Lock className={`absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 transition-colors z-10 ${darkMode ? 'text-blue-400' : 'text-gray-400 group-focus-within:text-blue-600'}`} />
+                    <input
+                      type="password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      className={`w-full pl-12 pr-4 py-4 border-2 focus:outline-none focus:border-blue-600 transition-all rounded-sm font-bold text-sm ${darkMode ? 'bg-gray-800/50 border-gray-700 text-white placeholder-white/20' : 'bg-gray-50 border-gray-200 text-gray-900'}`}
+                      placeholder="••••••••"
+                      required
+                    />
+                    <button type="button" onClick={() => setShowNumpad(!showNumpad)} className={`px-4 py-4 border-2 border-l-0 transition-colors rounded-sm ${showNumpad ? 'bg-blue-600 text-white border-blue-600' : darkMode ? 'bg-gray-800 border-gray-700 text-gray-400 hover:text-white hover:bg-gray-700' : 'bg-white border-gray-200 text-gray-400 hover:text-blue-600'}`}>
+                      <Grid3x3 className="w-4 h-4" />
+                    </button>
+                  </div>
+                  {showNumpad && (
+                    <div className={`mt-2 border-2 p-2 grid grid-cols-3 gap-1 shadow-2xl rounded-sm ${darkMode ? 'bg-gray-700 border-gray-600' : 'bg-white border-gray-200'}`}>
+                      {['1', '2', '3', '4', '5', '6', '7', '8', '9', 'C', '0', '?'].map(k => (
+                        <button key={k} type="button" onClick={() => k === 'C' ? setPassword('') : k === '?' ? setPassword(password.slice(0, -1)) : setPassword(password + k)} className={`py-3.5 text-sm font-black hover:bg-blue-600 hover:text-white transition-all rounded-sm active:scale-95 ${darkMode ? 'bg-gray-800 text-white' : 'bg-gray-50 text-gray-900'}`}>{k}</button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-2 pt-2">
+                  <input type="checkbox" id="rememberMe" checked={rememberMe} onChange={e => setRememberMe(e.target.checked)} className="w-4 h-4 accent-blue-600 cursor-pointer" />
+                  <label htmlFor="rememberMe" className="text-[10px] font-black uppercase tracking-widest text-gray-500 cursor-pointer select-none">{t.rememberMe}</label>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                {/* Tab Switcher */}
+                <div className="flex p-1 bg-black/10 rounded-sm border border-white/5">
+                  <button
+                    type="button"
+                    onClick={() => setActiveOrgTab('firm')}
+                    className={`flex-1 py-2 text-[9px] font-black uppercase tracking-widest rounded-sm transition-all ${activeOrgTab === 'firm' ? 'bg-blue-600 text-white shadow-lg' : 'text-gray-400 hover:text-white'}`}
+                  >
+                    Firma Seçimi
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveOrgTab('database')}
+                    className={`flex-1 py-2 text-[9px] font-black uppercase tracking-widest rounded-sm transition-all ${activeOrgTab === 'database' ? 'bg-blue-600 text-white shadow-lg' : 'text-gray-400 hover:text-white'}`}
+                  >
+                    Veritabanı Bağlantısı
+                  </button>
+                </div>
+
+                {activeOrgTab === 'firm' ? (
+                  <div className="space-y-6 animate-in fade-in duration-300">
+                    {/* FIRM SELECTION */}
+                    <div className="space-y-2">
+                      <div className="flex justify-between items-end px-1">
+                        <label className={`text-[10px] font-black uppercase tracking-[0.2em] ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{t.firmSelectionScope}</label>
+                        <span className="text-[8px] font-bold text-blue-500 uppercase">{t.step02Scope}</span>
+                      </div>
+                      <div className="relative flex">
+                        <Building2 className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                        <input
+                          type="text"
+                          value={firms.find(f => f.firm_nr === selectedFirmNr)?.name || t.selectFirmPrompt}
+                          readOnly
+                          onClick={() => setShowFirmSearch(!showFirmSearch)}
+                          className={`w-full pl-12 pr-4 py-4 border-2 transition-all cursor-pointer font-bold text-xs uppercase tracking-tight rounded-sm ${darkMode ? 'bg-gray-900 border-gray-700 text-white' : 'bg-gray-50 border-gray-200 text-gray-900'}`}
+                        />
+                      </div>
+                      {showFirmSearch && (
+                        <div className="mt-1 max-h-40 overflow-y-auto border-2 shadow-2xl z-50 rounded-sm">
+                          {firms.map(f => (
+                            <button key={f.firm_nr} type="button" onClick={() => { setSelectedFirmNr(f.firm_nr); setShowFirmSearch(false); }} className={`w-full px-4 py-4 text-left border-b last:border-0 hover:bg-blue-600 hover:text-white transition-all ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-100'}`}>
+                              <p className="text-[10px] font-black uppercase tracking-tight">{f.name}</p>
+                              <p className="text-[8px] opacity-60 font-bold">CODE: {f.firm_nr}</p>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* STORE SELECTION */}
+                    <div className="space-y-2">
+                      <label className={`block text-[10px] font-black uppercase tracking-[0.2em] px-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{t.storeSelectionScope}</label>
+                      <div className="relative flex">
+                        <Store className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                        <input
+                          type="text"
+                          value={store}
+                          readOnly
+                          onClick={() => setShowStoreSearch(!showStoreSearch)}
+                          className={`w-full pl-12 pr-4 py-4 border-2 transition-all cursor-pointer font-bold text-xs uppercase tracking-tight rounded-sm ${darkMode ? 'bg-gray-800/50 border-gray-700 text-white' : 'bg-gray-50 border-gray-200 text-gray-900'}`}
+                        />
+                      </div>
+                      {showStoreSearch && (
+                        <div className="mt-1 max-h-40 overflow-y-auto border-2 shadow-2xl z-50 rounded-sm">
+                          {stores.map(s => (
+                            <button key={s.id} type="button" onClick={() => { setStore(s.name); setSelectedStoreId(String(s.id ?? '')); setShowStoreSearch(false); }} className={`w-full px-4 py-4 text-left border-b last:border-0 hover:bg-blue-600 hover:text-white transition-all ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-100'}`}>
+                              <p className="text-[10px] font-black uppercase tracking-tight">{s.name}</p>
+                              <p className={`text-[8px] font-bold opacity-60 ${darkMode ? 'text-blue-200' : ''}`}>REGION: {s.region}</p>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-4 animate-in fade-in duration-300">
+                    <div className="space-y-4 p-4 bg-black/5 rounded-sm border border-white/5">
+                      <div className="grid grid-cols-4 gap-2">
+                        <div className="col-span-3 space-y-1">
+                          <label className="text-[8px] font-black uppercase tracking-widest text-gray-500">Host (sunucu / LAN IP)</label>
+                          <input
+                            type="text"
+                            value={dbConfig.host}
+                            onChange={(e) => setDbConfig({ ...dbConfig, host: e.target.value })}
+                            placeholder="Örn. 10.x veya 26.x sunucu IP"
+                            className={`w-full px-3 py-2 border-2 focus:border-blue-600 rounded-sm font-bold text-[10px] ${darkMode ? 'bg-gray-800 border-gray-700 text-white' : 'bg-white border-gray-200 text-gray-900'}`}
+                          />
+                        </div>
+                        <div className="col-span-1 space-y-1">
+                          <label className="text-[8px] font-black uppercase tracking-widest text-gray-500">Port</label>
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            value={Number.isFinite(dbConfig.port) && dbConfig.port > 0 ? String(dbConfig.port) : ''}
+                            onChange={(e) => {
+                              const raw = e.target.value.replace(/[^\d]/g, '');
+                              const port = raw ? parseInt(raw, 10) : 5432;
+                              setDbConfig({ ...dbConfig, port: Number.isFinite(port) ? port : 5432 });
+                            }}
+                            placeholder="5432"
+                            className={`w-full px-3 py-2 border-2 focus:border-blue-600 rounded-sm font-bold text-[10px] ${darkMode ? 'bg-gray-800 border-gray-700 text-white' : 'bg-white border-gray-200 text-gray-900'}`}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest px-1">Veritabanı adı</label>
+                        <input
+                          type="text"
+                          value={dbConfig.database}
+                          onChange={(e) => setDbConfig({ ...dbConfig, database: e.target.value })}
+                          className={`w-full px-3 py-2 border-2 focus:border-blue-600 rounded-sm font-bold text-[10px] ${darkMode ? 'bg-gray-800 border-gray-700 text-white' : 'bg-white border-gray-200 text-gray-900'}`}
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest px-1">{t.username}</label>
+                          <input
+                            type="text"
+                            value={dbConfig.user}
+                            onChange={(e) => setDbConfig({ ...dbConfig, user: e.target.value })}
+                            className={`w-full px-3 py-2 border-2 focus:border-blue-600 rounded-sm font-bold text-[10px] ${darkMode ? 'bg-gray-800 border-gray-700 text-white' : 'bg-white border-gray-200 text-gray-900'}`}
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest px-1">{t.password}</label>
+                          <input
+                            type="password"
+                            value={dbConfig.password}
+                            onChange={(e) => setDbConfig({ ...dbConfig, password: e.target.value })}
+                            className={`w-full px-3 py-2 border-2 focus:border-blue-600 rounded-sm font-bold text-[10px] ${darkMode ? 'bg-gray-800 border-gray-700 text-white' : 'bg-white border-gray-200 text-gray-900'}`}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="mt-2 flex flex-col gap-2">
+                        <button
+                          type="button"
+                          disabled={isDbTestLoading}
+                          onClick={() => void handleTestDbConnection()}
+                          className={`flex w-full items-center justify-center gap-2 rounded-sm border-2 py-2.5 text-[9px] font-black uppercase tracking-[0.15em] transition-all disabled:opacity-50 ${darkMode ? 'border-slate-500 bg-slate-800 text-white hover:bg-slate-700' : 'border-slate-400 bg-slate-100 text-slate-900 hover:bg-slate-200'}`}
+                        >
+                          <Activity className={`h-3.5 w-3.5 shrink-0 ${isDbTestLoading ? 'animate-spin' : ''}`} /> Bağlantıyı test et
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void handleSaveDbSettings()}
+                          className="flex w-full items-center justify-center gap-2 rounded-sm bg-blue-600 py-2.5 text-[9px] font-black uppercase tracking-[0.15em] text-white transition-all hover:bg-blue-500"
+                        >
+                          <Save className="h-3.5 w-3.5 shrink-0" /> Kaydet
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 )}
 
-                {isTauri && deviceGateStatus && deviceGateStatus !== 'approved' && (
-                  <DeviceRegistrationForm
-                    darkMode={darkMode}
-                    onRegistered={(status) => {
-                      if (status === 'approved') {
-                        setDeviceGateStatus(null);
-                        setError(null);
-                        toast.success('Cihaz onaylandı. Giriş yapabilirsiniz.');
-                      } else {
-                        setDeviceGateStatus(status);
-                      }
-                    }}
-                  />
-                )}
-
-                <button type="submit" disabled={isLoading} className="asin-login-cta">
-                  {isLoading
-                    ? t.verifying
-                    : loginStep === 'tenant'
-                      ? 'Kiracıya bağlan'
-                      : loginStep === 'credentials'
-                        ? t.continue
-                        : t.systemLogin}
+                <button type="button" onClick={() => setLoginStep('credentials')} className="text-[9px] font-black uppercase text-blue-600 hover:text-blue-500 transition-colors flex items-center gap-1.5 pt-2 group">
+                  <ArrowRight className="w-3 h-3 rotate-180 group-hover:-translate-x-1 transition-transform" /> {t.editInfo}
                 </button>
-              </form>
-            </div>
+              </div>
+            )}
 
-            <div style={{ textAlign: 'center', marginTop: 28, color: darkMode ? 'rgba(255,255,255,0.4)' : '#5A6B78' }}>
-              <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.28em', textTransform: 'uppercase', margin: '0 0 6px' }}>Asin v{APP_VERSION.full}</p>
-              <p style={{ fontSize: 8, fontWeight: 600, letterSpacing: '0.16em', textTransform: 'uppercase', margin: 0, opacity: 0.7 }}>Operasyon platformu © 2026</p>
-            </div>
+
+            {error && (
+              <div className="flex items-center gap-3 p-4 bg-red-600/5 border border-red-600/20 text-red-500 text-[10px] font-black uppercase tracking-widest rounded-sm animate-in shake-200">
+                <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                <span>{error}</span>
+              </div>
+            )}
+
+            {isTauri && deviceGateStatus && deviceGateStatus !== 'approved' && (
+              <DeviceRegistrationForm
+                darkMode={darkMode}
+                onRegistered={(status) => {
+                  if (status === 'approved') {
+                    setDeviceGateStatus(null);
+                    setError(null);
+                    toast.success('Cihaz onaylandı. Giriş yapabilirsiniz.');
+                  } else {
+                    setDeviceGateStatus(status);
+                  }
+                }}
+              />
+            )}
+
+            <button
+              type="submit"
+              disabled={isLoading}
+              className={`w-full py-5 text-white font-black uppercase tracking-[0.4em] shadow-xl hover:shadow-2xl active:scale-[0.98] transition-all flex items-center justify-center gap-4 rounded-sm ${isLoading ? 'bg-gray-600 cursor-wait' : 'bg-blue-600 hover:bg-blue-500 hover:-translate-y-0.5'}`}
+            >
+              {isLoading ? (
+                <>
+                  <NeonLogo variant="badge" size="sm" className="scale-75 origin-center animate-pulse" />
+                  {t.verifying}
+                </>
+              ) : (
+                loginStep === 'credentials' ? t.continue : t.systemLogin
+              )}
+            </button>
+          </form>
+        </div>
+
+        {/* Branding Footer */}
+        <div className="text-center mt-12 space-y-2 opacity-50">
+          <div className="flex items-center justify-center gap-4">
+            <div className="h-[1px] w-8 bg-white/20"></div>
+            <p className="text-white text-[10px] font-black uppercase tracking-[0.5em]">RetailEX v{APP_VERSION.full}</p>
+            <div className="h-[1px] w-8 bg-white/20"></div>
           </div>
+          <p className="text-white text-[8px] font-bold uppercase tracking-[0.2em] opacity-70">Sistem Mühendisliği & Altyapı Hizmetleri © 2025</p>
         </div>
       </div>
 
@@ -1713,7 +1647,7 @@ export function Login({ onLogin }: LoginProps) {
             }`}
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="bg-[var(--asin-primary,#0E2433)] px-8 py-6 text-white shrink-0">
+            <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-8 py-6 text-white shrink-0">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center">
@@ -1721,7 +1655,7 @@ export function Login({ onLogin }: LoginProps) {
                   </div>
                   <div>
                     <h2 className="text-lg font-black uppercase tracking-tight">Kurulum</h2>
-                    <p className="text-[var(--asin-accent-muted,#D5F0EE)] text-xs font-semibold uppercase tracking-wider mt-0.5 opacity-90">Asin</p>
+                    <p className="text-blue-100 text-xs font-semibold uppercase tracking-wider mt-0.5 opacity-90">ERP Core Engine</p>
                   </div>
                 </div>
                 <button
@@ -1914,7 +1848,7 @@ export function Login({ onLogin }: LoginProps) {
                       Fabrika ayarlarına dön
                     </h3>
                     <p className="text-sm leading-relaxed opacity-90 mb-4">
-                      Tüm yerel ayarlar silinecek; Windows Asin hizmetleri kaldırılacak; kurulum sihirbazı tekrar açılacak.
+                      Tüm yerel ayarlar silinecek; Windows RetailEX hizmetleri kaldırılacak; kurulum sihirbazı tekrar açılacak.
                       Veritabanı sunucunuzdaki veriler bu işlemle silinmez.
                     </p>
                     <label className="flex items-start gap-3 cursor-pointer text-sm">
@@ -1925,7 +1859,7 @@ export function Login({ onLogin }: LoginProps) {
                         onChange={(e) => setFactoryResetDeleteCRetailex(e.target.checked)}
                       />
                       <span>
-                        <span className="font-semibold">C:\AsinERP</span> klasörünü de sil (eski kurulum dosyaları; geri alınamaz)
+                        <span className="font-semibold">C:\RetailEX</span> klasörünü de sil (eski kurulum dosyaları; geri alınamaz)
                       </span>
                     </label>
                     <div className="flex gap-3 mt-6 justify-end">
@@ -2387,8 +2321,11 @@ export function Login({ onLogin }: LoginProps) {
                       <p className={`text-[9px] font-bold leading-relaxed ${darkMode ? 'text-slate-400' : 'text-slate-600'}`}>
                         {tenantPostgrestEntryMode === 'retailex_cloud' ? (
                           <>
-                            Asin bulutu: yalnızca kiracı kodunu yazın (ör.{' '}
-                            <strong>ozbek</strong>). Bulut adresi kayıtta otomatik birleştirilir
+                            RetailEX bulutu: yalnızca kiracı kodunu yazın (ör.{' '}
+                            <strong>ozbek</strong>). Hedef{' '}
+                            <span className="font-mono">
+                              {DEFAULT_SAAS_TENANT_POSTGREST_ORIGIN}/kiracı
+                            </span>
                             . LAN Wi‑Fi / port 3002 bu modda kullanılmaz. Kaydettiğinizde kiracı
                             bağlantısı uygulanır; firma listesi yenilenir.
                           </>
@@ -2396,7 +2333,7 @@ export function Login({ onLogin }: LoginProps) {
                           <>
                             Kiracı / merkez REST adresi. Aynı ağda örnek:{' '}
                             <strong>http://192.168.1.10:3002</strong> (port <strong>3002</strong>, 3001
-                            değil) veya Asin bulutunda yalnızca kiracı adı. Kaydettiğinizde kiracı
+                            değil) veya RetailEX bulutunda yalnızca kiracı adı. Kaydettiğinizde kiracı
                             bağlantısı otomatik uygulanır; firma listesi yenilenir.
                           </>
                         )}
@@ -2416,7 +2353,7 @@ export function Login({ onLogin }: LoginProps) {
                               PC adresi olarak <strong>192.168.x.x</strong> kullanın (cmd → ipconfig → Wi‑Fi IPv4).{' '}
                               <strong>172.x.x.x</strong> çoğu zaman WSL sanal ağıdır; telefondan erişilemez.
                             </li>
-                            <li>Merkez PC&apos;de <strong>Asin PostgREST</strong> servisi çalışmalı; güvenlik duvarında TCP 3002 açık olmalı.</li>
+                            <li>Merkez PC&apos;de <strong>RetailEX_PostgREST</strong> servisi çalışmalı; güvenlik duvarında TCP 3002 açık olmalı.</li>
                           </ul>
                         </div>
                       )}
@@ -2428,7 +2365,7 @@ export function Login({ onLogin }: LoginProps) {
                               : 'border-sky-300 bg-sky-50 text-sky-950'
                           }`}
                         >
-                          <p className="font-black uppercase tracking-wide">Asin bulutu</p>
+                          <p className="font-black uppercase tracking-wide">RetailEX bulutu</p>
                           <ul className="mt-1.5 list-disc space-y-1 pl-4">
                             <li>
                               Özbek Restoran kiracı kodu: <strong className="font-mono">ozbek</strong> (

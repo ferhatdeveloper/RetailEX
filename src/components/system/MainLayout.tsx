@@ -70,7 +70,7 @@ function normalizeZoomLevel(rawValue: unknown): number {
   return Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, stepped));
 }
 
-/** Lazy chunk yüklenirken — modüle göre satır etiketi (Retail / Rest / Clinic) */
+/** Lazy chunk yüklenirken — modüle göre marka (RetailEx / RestEx / ClinicEx) */
 function ModuleLazySplash({
   productLine,
   accent,
@@ -183,8 +183,8 @@ function WsConnectionStatusDot() {
       : status === 'connecting'
         ? 'Gerçek zamanlı sunucuya bağlanılıyor…'
         : IS_TAURI
-          ? 'WebSocket yok — arka plan servisi veya kiracı central_ws_url yapılandırmasını kontrol edin'
-          : 'WebSocket bağlı değil — kiracı bağlantısı sonrası bulut /{kiracı}/ws denenir';
+          ? 'WebSocket yok — RetailEX_Service veya kiracı central_ws_url yapılandırmasını kontrol edin'
+          : 'WebSocket bağlı değil — kiracı bağlantısı sonrası api.retailex.app/{kiracı}/ws denenir';
 
   let boxClass =
     'w-4 h-4 sm:w-5 sm:h-5 rounded transition-colors flex-shrink-0 ';
@@ -239,7 +239,7 @@ export function MainLayout({
   const getInitialModule = (): Module => {
     const rawSaved = localStorage.getItem('retailex_active_module');
     const savedModule = (rawSaved === 'backoffice' ? 'management' : rawSaved) as Module;
-    if (savedModule && ['pos', 'management', 'wms', 'mobile-pos'].includes(savedModule)) {
+    if (savedModule && ['pos', 'management', 'wms', 'mobile-pos', 'restaurant', 'beauty'].includes(savedModule)) {
       if (isMainModuleVisible(savedModule)) return savedModule;
     }
 
@@ -250,16 +250,9 @@ export function MainLayout({
         const cfg = JSON.parse(rawCfg) as { system_type?: string; tenant_module?: string };
         const systemType = String(cfg.system_type || '').toLowerCase();
         const tenantModule = String(cfg.tenant_module || '').toLowerCase();
-        // Restoran / güzellik pasif
-        if (
-          systemType === 'beauty' ||
-          tenantModule === 'clinic' ||
-          systemType === 'restaurant' ||
-          tenantModule === 'restaurant'
-        ) {
-          return isMainModuleVisible('pos') ? 'pos' : 'management';
-        }
         const mapped: Module | null =
+          systemType === 'beauty' || tenantModule === 'clinic' ? 'beauty' :
+          systemType === 'restaurant' || tenantModule === 'restaurant' ? 'restaurant' :
           systemType === 'wms' ? 'wms' :
           systemType === 'market' ? 'pos' :
           systemType === 'retail' || tenantModule === 'retail' ? 'management' :
@@ -274,20 +267,20 @@ export function MainLayout({
     const moduleByTenant = pickBySystemType();
     if (moduleByTenant) return moduleByTenant;
 
-    // Garson / waiter → Asin'de restoran yok; POS
+    // 0b. Garson / Waiter rolü — koşulsuz restoran
     const primaryRoleName = (
       ((currentUser as { roles?: { name?: string }[] }).roles?.[0]?.name) ||
       currentUser?.role ||
       ''
     ).toLowerCase();
-    if (primaryRoleName === 'garson' || primaryRoleName === 'waiter') {
-      return isMainModuleVisible('pos') ? 'pos' : 'management';
-    }
+    if (primaryRoleName === 'garson' || primaryRoleName === 'waiter') return 'restaurant';
 
     // Yönetici: varsayılan yönetim paneli (yönetim sekmesi her zaman görünür)
     if (isAdmin() || (currentUser?.role && ['admin', 'manager'].includes(currentUser.role))) return 'management';
 
-    // 2. Diğer Yetki bazlı öncelikler (restoran/güzellik pasif):
+    // 2. Diğer Yetki bazlı öncelikler:
+    if (hasPermission('restaurant', 'READ')) return 'restaurant';
+    if (hasPermission('beauty', 'READ') || hasPermission('beauty.surveys', 'READ')) return 'beauty';
     if (hasPermission('wms', 'READ')) return 'wms';
     if (hasPermission('management', 'READ')) return 'management';
 
@@ -299,13 +292,6 @@ export function MainLayout({
   /** Caller ID bildirimi tıklaması gibi async kapaklarda güncel modül */
   const currentModuleRef = useRef(currentModule);
   currentModuleRef.current = currentModule;
-
-  // Asin: restoran / güzellik asla aktif olmasın
-  useEffect(() => {
-    if (currentModule === 'restaurant' || currentModule === 'beauty') {
-      setCurrentModule(isMainModuleVisible('pos') ? 'pos' : 'management');
-    }
-  }, [currentModule]);
 
   // Check for WMS redirect flag from login (depo store login) or URL parameter
   useEffect(() => {
@@ -332,7 +318,7 @@ export function MainLayout({
   }, [currentModule]);
 
   // Aktif modül görünür değilse ilk görünür modüle düş (geçersiz id — örn. eski 'backoffice' — düzeltilir)
-  const MAIN_MODULE_IDS: Module[] = ['pos', 'management', 'wms', 'mobile-pos'];
+  const MAIN_MODULE_IDS: Module[] = ['pos', 'management', 'wms', 'mobile-pos', 'restaurant', 'beauty'];
   useEffect(() => {
     const cm = currentModule as string;
     if (cm === 'backoffice') {
@@ -714,7 +700,7 @@ export function MainLayout({
     lastDesktopNotifyKeyRef.current = key;
 
     const show = async () => {
-      const title = 'Asin Caller ID';
+      const title = 'RetailEX Caller ID';
       const namePart = matchedCallerCustomer?.name ? `Müşteri: ${matchedCallerCustomer.name}` : 'Müşteri eşleşmedi';
       const primary = getPrimaryShellModuleForCallerId(currentModuleRef.current);
       let salePart = 'Geçmiş kayıt bulunamadı';
@@ -818,7 +804,7 @@ export function MainLayout({
       customerName: matchedCallerCustomer.name,
       address: addressLine,
       locationUrl,
-      note: 'Asin CallerID match',
+      note: 'RetailEX CallerID match',
       token: callerIdConfig.apiToken || '',
     };
     fetch(bridgeUrl, {
@@ -1060,7 +1046,7 @@ export function MainLayout({
       {/* Top Bar - Hidden on mobile POS mode and Restaurant module */}
       {!(compactShellTopBar && currentModule === 'pos') && currentModule !== 'restaurant' && currentModule !== 'beauty' && (
         <div
-          className="asin-shell-top pl-[env(safe-area-inset-left,0px)] pr-[env(safe-area-inset-right,0px)]"
+          className="relative z-[100] shrink-0 bg-gradient-to-r from-blue-600 via-blue-600 to-blue-700 text-white border-b border-blue-800 shadow-md pl-[env(safe-area-inset-left,0px)] pr-[env(safe-area-inset-right,0px)]"
           style={{
             paddingTop: isCapacitorAndroid
               ? 'max(1.75rem, env(safe-area-inset-top, 0px))'
@@ -1080,26 +1066,34 @@ export function MainLayout({
                   <button
                     type="button"
                     onClick={() => window.dispatchEvent(new CustomEvent('retailex-toggle-management-sidebar'))}
-                    className={cn('asin-shell-icon-btn shrink-0 touch-manipulation', isSmallMobile ? 'h-9 w-9' : 'h-10 w-10')}
+                    className={cn(
+                      'shrink-0 flex items-center justify-center rounded-xl bg-white/15 border border-white/25 text-white shadow-inner active:scale-[0.98] touch-manipulation',
+                      isSmallMobile ? 'h-9 w-9' : 'h-10 w-10'
+                    )}
                     aria-label="Menüyü aç/kapa"
                     title="Menüyü aç/kapa"
                   >
                     <Menu className={isSmallMobile ? 'w-4 h-4' : 'w-5 h-5'} />
                   </button>
                 )}
-                <div className="asin-shell-brand-mark shrink-0" aria-hidden>
-                  A
+                <div
+                  className={cn(
+                    'flex shrink-0 items-center justify-center overflow-hidden rounded-xl border border-white/25 bg-white/15 p-1 ring-1 ring-white/10 shadow-md shadow-blue-900/20',
+                    isSmallMobile ? 'h-8 w-8' : 'h-9 w-9'
+                  )}
+                >
+                  <img src="/logo.png" alt="RetailEx" className="h-full w-full object-contain drop-shadow-sm" />
                 </div>
                 <h1
                   className={cn(
-                    'asin-shell-brand-text shrink-0 truncate',
+                    'shrink-0 truncate font-black tracking-tight text-white',
                     isSmallMobile ? 'sr-only' : 'max-w-[5.5rem] text-sm'
                   )}
                 >
-                  ASIN
+                  RetailEx
                 </h1>
                 <div className="min-w-0 flex-1 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                  <div className={cn('asin-shell-modules justify-end py-0.5', isSmallMobile ? 'gap-0.5' : 'gap-1')}>
+                  <div className={cn('flex items-center justify-end py-0.5', isSmallMobile ? 'gap-0.5' : 'gap-1')}>
                     {topModuleButtons.map((btn) => {
                       const Icon = btn.icon;
                       return (
@@ -1110,14 +1104,16 @@ export function MainLayout({
                           title={btn.title}
                           aria-label={btn.title}
                           className={cn(
-                            'asin-shell-icon-btn shrink-0 touch-manipulation',
+                            'group flex shrink-0 items-center justify-center rounded-xl transition-all active:scale-[0.98] touch-manipulation',
                             isSmallMobile ? 'h-8 w-8' : 'h-9 w-9',
-                            currentModule === btn.id && 'is-active',
+                            currentModule === btn.id
+                              ? 'bg-white text-blue-700 shadow-md shadow-blue-900/20 ring-1 ring-white/50'
+                              : 'bg-white/10 text-white hover:bg-white/20 hover:ring-1 hover:ring-white/25'
                           )}
                         >
                           <Icon
                             className={cn(
-                              'shrink-0',
+                              'shrink-0 opacity-95 transition-transform group-hover:scale-105',
                               isSmallMobile ? 'h-4 w-4' : 'h-[18px] w-[18px]'
                             )}
                             strokeWidth={2}
@@ -1152,7 +1148,10 @@ export function MainLayout({
                   onClick={() => {
                     if (currentModule === 'pos') setShowStaffModal(true);
                   }}
-                  className={cn('asin-shell-icon-btn shrink-0 touch-manipulation', isSmallMobile ? 'h-8 w-8' : 'h-9 w-9')}
+                  className={cn(
+                    'flex shrink-0 items-center justify-center rounded-xl bg-white/10 hover:bg-white/20 active:scale-95 touch-manipulation',
+                    isSmallMobile ? 'h-8 w-8' : 'h-9 w-9'
+                  )}
                   title={currentModule === 'pos' ? t.changeCashier : currentUser.fullName || t.systemAdministrator}
                 >
                   <User className={isSmallMobile ? 'h-3.5 w-3.5' : 'h-4 w-4'} />
@@ -1164,7 +1163,10 @@ export function MainLayout({
                       e.stopPropagation();
                       setMobileTopBarMoreOpen((o) => !o);
                     }}
-                    className={cn('asin-shell-icon-btn touch-manipulation', isSmallMobile ? 'h-8 w-8' : 'h-9 w-9')}
+                    className={cn(
+                      'flex items-center justify-center rounded-xl bg-white/10 hover:bg-white/20 active:scale-95 touch-manipulation',
+                      isSmallMobile ? 'h-8 w-8' : 'h-9 w-9'
+                    )}
                     aria-expanded={mobileTopBarMoreOpen}
                     aria-haspopup="menu"
                     title={t.languageSelectionTitle}
@@ -1173,7 +1175,7 @@ export function MainLayout({
                   </button>
                   {mobileTopBarMoreOpen && (
                     <div
-                      className="absolute right-0 top-[calc(100%+4px)] z-[20050] min-w-[11rem] overflow-hidden border border-[#1FA8A0]/50 bg-[#0E2433] py-1 text-sm shadow-2xl"
+                      className="absolute right-0 top-[calc(100%+4px)] z-[20050] min-w-[11rem] overflow-hidden rounded-xl border border-white/20 bg-blue-700 py-1 text-sm shadow-2xl ring-1 ring-black/10"
                       role="menu"
                     >
                       <button
@@ -1222,14 +1224,14 @@ export function MainLayout({
               </div>
             </div>
           ) : (
-            <div className="asin-shell-top-inner">
-              {/* Left — Menü toggle (yönetim modülü) + Logo */}
-              <div className="asin-shell-brand flex-shrink-0">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between px-2 sm:px-4 md:px-5 py-1.5 sm:py-2 gap-2 sm:gap-3">
+              {/* Left — Menü toggle (yönetim modülü) + Logo (büyük kutu + başlık) */}
+              <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
                 {currentModule === 'management' && (
                   <button
                     type="button"
                     onClick={() => window.dispatchEvent(new CustomEvent('retailex-toggle-management-sidebar'))}
-                    className="asin-shell-icon-btn"
+                    className="shrink-0 inline-flex items-center justify-center w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-white/15 hover:bg-white/25 border border-white/25 text-white shadow-inner transition-all active:scale-[0.97]"
                     aria-label={managementSidebarOpen ? (t.sidebar?.hideMenu || 'Menüyü gizle') : (t.sidebar?.showMenu || 'Menüyü göster')}
                     title={`${managementSidebarOpen ? (t.sidebar?.hideMenu || 'Menüyü gizle') : (t.sidebar?.showMenu || 'Menüyü göster')} (Ctrl+B)`}
                     aria-expanded={managementSidebarOpen}
@@ -1239,16 +1241,21 @@ export function MainLayout({
                       : <PanelLeftOpen className="w-5 h-5" />}
                   </button>
                 )}
-                <div className="asin-shell-brand-mark" aria-hidden>A</div>
+                <div className="w-11 h-11 sm:w-14 sm:h-14 rounded-2xl bg-white/15 flex items-center justify-center p-1.5 sm:p-2 border border-white/25 overflow-hidden shadow-lg shadow-blue-900/20 ring-1 ring-white/10">
+                  <img src="/logo.png" alt="RetailEx" className="w-full h-full object-contain drop-shadow-sm" />
+                </div>
                 <div className={isSmallMobile ? 'hidden sm:block min-w-0' : 'min-w-0'}>
-                  <h1 className="asin-shell-brand-text">ASIN</h1>
-                  <p className="asin-shell-brand-sub hidden sm:block">Operasyon</p>
+                  <h1 className="text-base sm:text-lg font-black tracking-tight text-white leading-tight">RetailEx</h1>
+                  <p className="text-[9px] sm:text-[10px] text-blue-100/95 font-semibold uppercase tracking-[0.12em] mt-0.5 hidden sm:block">
+                    AKILLI AI-NATIVE ERP
+                  </p>
                 </div>
               </div>
 
               {/* Center — yalnızca modül sekmeleri */}
-              <div className="asin-shell-modules">
-                {topModuleButtons.map((btn) => {
+              <div className="flex flex-wrap items-center justify-center gap-1.5 sm:gap-2 flex-1 min-w-0">
+                <div className="flex flex-wrap items-center justify-center gap-1 sm:gap-1.5 flex-shrink-0">
+                  {topModuleButtons.map((btn) => {
                     const Icon = btn.icon;
                     return (
                       <button
@@ -1258,14 +1265,18 @@ export function MainLayout({
                         title={btn.title}
                         aria-label={btn.title}
                         className={cn(
-                          'asin-shell-icon-btn',
-                          currentModule === btn.id && 'is-active',
+                          'group flex items-center justify-center rounded-xl transition-all active:scale-[0.98]',
+                          'w-9 h-9 sm:w-10 sm:h-10',
+                          currentModule === btn.id
+                            ? 'bg-white text-blue-700 shadow-md shadow-blue-900/20 ring-1 ring-white/50'
+                            : 'bg-white/10 hover:bg-white/20 text-white hover:ring-1 hover:ring-white/25'
                         )}
                       >
-                        <Icon className="w-5 h-5 shrink-0" strokeWidth={2} />
+                        <Icon className="w-5 h-5 sm:w-5 sm:h-5 shrink-0 opacity-95 group-hover:scale-105 transition-transform" strokeWidth={2} />
                       </button>
                     );
                   })}
+                </div>
               </div>
 
               {/* Right — firma, saat, sonra diğer ikonlar */}
@@ -1285,10 +1296,10 @@ export function MainLayout({
                       window.dispatchEvent(event);
                     }}
                     disabled={sales.length === 0}
-                    className={cn(
-                      'asin-shell-chip text-xs sm:text-sm min-h-[44px]',
-                      sales.length === 0 && 'opacity-40 cursor-not-allowed',
-                    )}
+                    className={`flex items-center gap-1 px-2 sm:px-2.5 py-1.5 sm:py-2 rounded text-xs sm:text-sm transition-colors min-h-[44px] active:scale-95 ${sales.length > 0
+                      ? 'bg-white/10 hover:bg-white/20 text-white'
+                      : 'bg-white/5 opacity-50 cursor-not-allowed'
+                      }`}
                     title={t.lastReceiptButton}
                   >
                     <Receipt className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
@@ -1299,22 +1310,21 @@ export function MainLayout({
                 {/* User / Kasiyer */}
                 <button
                   onClick={() => currentModule === 'pos' ? setShowStaffModal(true) : null}
-                  className="asin-shell-chip min-h-[44px]"
+                  className="flex items-center gap-1.5 bg-white/10 px-2 sm:px-2.5 py-1.5 sm:py-2 rounded hover:bg-white/20 transition-colors min-h-[44px] active:scale-95"
                   title={currentModule === 'pos' ? t.changeCashier : ''}
                 >
-                  <div className="asin-shell-brand-mark" style={{ width: '1.25rem', height: '1.25rem', fontSize: '0.65rem' }}>
-                    <User className="w-3 h-3" />
+                  <div className="w-4 h-4 sm:w-5 sm:h-5 bg-white/20 rounded flex items-center justify-center flex-shrink-0">
+                    <User className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
                   </div>
                   <div className="text-left hidden sm:block">
                     <p className="text-xs leading-none truncate max-w-[120px]">{currentModule === 'pos' ? currentStaff : (currentUser.fullName || t.systemAdministrator)}</p>
-                    <p className="text-[7px] sm:text-[8px] text-[var(--asin-accent-muted,#D5F0EE)] mt-0.5 truncate opacity-80">{currentUser.role || t.administrator}</p>
+                    <p className="text-[7px] sm:text-[8px] text-blue-100 mt-0.5 truncate">{currentUser.role || t.administrator}</p>
                   </div>
                 </button>
 
-                {/* Zoom controls */}
+                {/* Zoom controls — kullanıcı UI ölçeğini canlı değiştirir, %100'e basınca sıfırlar */}
                 <div
-                  className="asin-shell-chip overflow-hidden min-h-[44px]"
-                  style={{ padding: 0 }}
+                  className="flex items-center bg-white/10 rounded overflow-hidden min-h-[44px]"
                   role="group"
                   aria-label={tm('uiZoom') || 'Yakınlaştırma'}
                 >
@@ -1324,7 +1334,7 @@ export function MainLayout({
                       applyZoomLevel(zoomLevel - ZOOM_STEP);
                     }}
                     disabled={zoomLevel <= ZOOM_MIN}
-                    className="px-2 py-1.5 sm:py-2 hover:bg-white/10 disabled:opacity-40 disabled:cursor-not-allowed transition-colors min-h-[44px] min-w-[36px] flex items-center justify-center"
+                    className="px-2 py-1.5 sm:py-2 hover:bg-white/15 disabled:opacity-40 disabled:cursor-not-allowed transition-colors active:scale-95 min-h-[44px] min-w-[36px] flex items-center justify-center"
                     title={tm('zoomOut') || 'Küçült'}
                     aria-label={tm('zoomOut') || 'Küçült'}
                   >
@@ -1335,7 +1345,7 @@ export function MainLayout({
                     onClick={() => {
                       applyZoomLevel(ZOOM_DEFAULT);
                     }}
-                    className="hidden sm:inline-block px-1.5 text-[10px] font-mono tabular-nums leading-none min-w-[40px] text-center hover:bg-white/10 transition-colors"
+                    className="hidden sm:inline-block px-1.5 text-[10px] font-mono tabular-nums leading-none min-w-[40px] text-center hover:bg-white/15 transition-colors"
                     title={tm('zoomReset') || 'Sıfırla (%100)'}
                     aria-label={tm('zoomReset') || 'Sıfırla'}
                   >
@@ -1347,7 +1357,7 @@ export function MainLayout({
                       applyZoomLevel(zoomLevel + ZOOM_STEP);
                     }}
                     disabled={zoomLevel >= ZOOM_MAX}
-                    className="px-2 py-1.5 sm:py-2 hover:bg-white/10 disabled:opacity-40 disabled:cursor-not-allowed transition-colors min-h-[44px] min-w-[36px] flex items-center justify-center"
+                    className="px-2 py-1.5 sm:py-2 hover:bg-white/15 disabled:opacity-40 disabled:cursor-not-allowed transition-colors active:scale-95 min-h-[44px] min-w-[36px] flex items-center justify-center"
                     title={tm('zoomIn') || 'Büyüt'}
                     aria-label={tm('zoomIn') || 'Büyüt'}
                   >
@@ -1355,17 +1365,19 @@ export function MainLayout({
                   </button>
                 </div>
 
+                {/* Language Selector */}
                 <button
                   onClick={() => setShowLanguageModal(true)}
-                  className="asin-shell-icon-btn min-h-[44px] min-w-[44px]"
+                  className="p-2 sm:p-2.5 hover:bg-white/10 rounded transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center active:scale-95"
                   title={t.languageSelectionTitle}
                 >
                   <Languages className="w-4 h-4 sm:w-4.5 sm:h-4.5" />
                 </button>
 
+                {/* Logout */}
                 <button
                   onClick={onLogout}
-                  className="asin-shell-icon-btn min-h-[44px] min-w-[44px]"
+                  className="p-2 sm:p-2.5 hover:bg-white/10 rounded transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center active:scale-95"
                   title="Çıkış Yap"
                 >
                   <LogOut className="w-4 h-4 sm:w-4.5 sm:h-4.5" />

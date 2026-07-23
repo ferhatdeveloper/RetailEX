@@ -186,20 +186,20 @@ export function CheckPromissoryNoteModule() {
   return (
     <div className="h-full flex flex-col bg-gray-50">
       {/* Header */}
-      <div className="bg-[var(--asin-primary,#0E2433)] text-white px-6 py-4 border-b">
+      <div className="bg-gradient-to-r from-indigo-600 to-indigo-700 text-white px-6 py-4 border-b">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <FileText className="w-6 h-6 text-[var(--asin-accent,#1FA8A0)]" />
+            <FileText className="w-6 h-6" />
             <div>
               <h2 className="text-xl font-semibold">Çek ve Senet Yönetimi</h2>
-              <p className="text-sm text-[var(--asin-accent-muted,#D5F0EE)] mt-0.5 opacity-90">
+              <p className="text-sm text-indigo-100 mt-0.5">
                 Portföy takibi, tahsilat ve ödeme yönetimi
               </p>
             </div>
           </div>
           <button
             onClick={() => setShowAddModal(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-white text-[var(--asin-primary,#0E2433)] rounded-lg hover:bg-[var(--asin-accent-muted,#D5F0EE)] transition-colors"
+            className="flex items-center gap-2 px-4 py-2 bg-white text-indigo-700 rounded-lg hover:bg-indigo-50 transition-colors"
           >
             <Plus className="w-5 h-5" />
             Yeni Kayıt

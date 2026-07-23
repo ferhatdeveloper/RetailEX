@@ -180,7 +180,7 @@ export function RecipeManagement({ onBack }: RecipeManagementProps) {
             {/* Standardized Premium Appbar */}
             <div
                 className="border-b px-6 py-2.5 flex items-center justify-between z-20 shrink-0 gap-8 shadow-2xl"
-                style={{ backgroundColor: 'var(--asin-primary, #0E2433)', borderColor: 'rgba(31,168,160,0.35)' }}
+                style={{ backgroundColor: '#2563eb', borderColor: 'rgba(96,165,250,0.4)' }}
             >
                 <div className="flex items-center gap-4 flex-1">
                     <button

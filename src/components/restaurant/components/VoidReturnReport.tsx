@@ -147,7 +147,7 @@ export function VoidReturnReport({ onBack }: VoidReturnReportProps) {
         <div className="flex flex-col h-full bg-slate-50">
             <div
                 className="border-b px-6 py-4 flex items-center justify-between z-20 shrink-0 shadow-lg"
-                style={{ backgroundColor: 'var(--asin-primary, #0E2433)', borderColor: 'rgba(31,168,160,0.35)' }}
+                style={{ backgroundColor: '#2563eb', borderColor: 'rgba(96,165,250,0.4)' }}
             >
                 <div className="flex items-center gap-4">
                     <button

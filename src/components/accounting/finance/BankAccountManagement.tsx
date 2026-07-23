@@ -305,23 +305,23 @@ export function BankAccountManagement() {
     
     return (
       <div className="h-full flex flex-col bg-gray-50">
-        <div className="bg-[var(--asin-primary,#0E2433)] text-white px-6 py-4 border-b">
+        <div className="bg-gradient-to-r from-blue-600 to-blue-700 text-white px-6 py-4 border-b">
           <div className="flex items-center justify-between">
             <div>
               <h2 className="text-xl font-semibold">{selectedAccount.bank_name} - Hesap Hareketleri</h2>
-              <p className="text-sm text-[var(--asin-accent-muted,#D5F0EE)] mt-1 opacity-90">IBAN: {selectedAccount.iban}</p>
+              <p className="text-sm text-blue-100 mt-1">IBAN: {selectedAccount.iban}</p>
             </div>
             <div className="flex items-center gap-2">
               <button
                 onClick={() => setShowAddTransactionModal(true)}
-                className="px-4 py-2 bg-white text-[var(--asin-primary,#0E2433)] rounded-lg hover:bg-[var(--asin-accent-muted,#D5F0EE)]"
+                className="px-4 py-2 bg-white text-blue-700 rounded-lg hover:bg-blue-50"
               >
                 <Plus className="w-5 h-5 inline mr-2" />
                 Yeni İşlem
               </button>
               <button
                 onClick={() => setView('accounts')}
-                className="px-4 py-2 bg-[var(--asin-accent,#1FA8A0)] hover:bg-[#178f88] rounded-lg"
+                className="px-4 py-2 bg-blue-500 hover:bg-blue-600 rounded-lg"
               >
                 Geri Dön
               </button>
@@ -380,20 +380,20 @@ export function BankAccountManagement() {
   return (
     <div className="h-full flex flex-col bg-gray-50">
       {/* Header */}
-      <div className="bg-[var(--asin-primary,#0E2433)] text-white px-6 py-4 border-b">
+      <div className="bg-gradient-to-r from-blue-600 to-blue-700 text-white px-6 py-4 border-b">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <Building2 className="w-6 h-6 text-[var(--asin-accent,#1FA8A0)]" />
+            <Building2 className="w-6 h-6" />
             <div>
               <h2 className="text-xl font-semibold">Banka Hesap Yönetimi</h2>
-              <p className="text-sm text-[var(--asin-accent-muted,#D5F0EE)] mt-0.5 opacity-90">
+              <p className="text-sm text-blue-100 mt-0.5">
                 Banka hesapları, hareketler ve mutabakat
               </p>
             </div>
           </div>
           <button
             onClick={() => setShowAddAccountModal(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-white text-[var(--asin-primary,#0E2433)] rounded-lg hover:bg-[var(--asin-accent-muted,#D5F0EE)] transition-colors"
+            className="flex items-center gap-2 px-4 py-2 bg-white text-blue-700 rounded-lg hover:bg-blue-50 transition-colors"
           >
             <Plus className="w-5 h-5" />
             Yeni Hesap

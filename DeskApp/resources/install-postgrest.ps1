@@ -1,4 +1,4 @@
-# AsinERP kurulumu: PostgREST Windows x64 - önce bu script ile aynı kökteki resources/postgrest/postgrest.exe (gömülü), yoksa GitHub indirme.
+# RetailEX kurulumu: PostgREST Windows x64 - önce bu script ile aynı kökteki resources/postgrest/postgrest.exe (gömülü), yoksa GitHub indirme.
 param(
     [Parameter(Mandatory = $true)]
     [string]$DestinationDir

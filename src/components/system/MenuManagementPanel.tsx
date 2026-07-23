@@ -1261,7 +1261,7 @@ export function MenuManagementPanel({ onClose }: MenuManagementPanelProps) {
 
       {showSavePresetModal && (
         <PercentBodyModal onClose={() => setShowSavePresetModal(false)} size="compact" ariaLabel="Menü kaydı">
-          <div className="p-3 border-b border-gray-200 flex items-center justify-between shrink-0 bg-[var(--asin-primary,#0E2433)]">
+          <div className="p-3 border-b border-gray-200 flex items-center justify-between shrink-0 bg-gradient-to-r from-blue-600 to-blue-700">
             <h3 className="text-base text-white font-medium">Menü Tercihini Kaydet</h3>
             <button type="button" onClick={() => setShowSavePresetModal(false)} className="text-white hover:text-gray-200 p-1">
               <X className="w-5 h-5" />

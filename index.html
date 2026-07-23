@@ -4,13 +4,13 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-  <title>Asin</title>
+  <title>RetailEx</title>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 
   <!-- PWA / iOS Add-to-Home-Screen -->
   <link rel="manifest" href="/manifest.json" />
-  <meta name="theme-color" content="#0E2433" />
+  <meta name="theme-color" content="#2563eb" />
   <meta name="color-scheme" content="light dark" />
   <script>
     (function () {
@@ -27,24 +27,21 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <meta name="apple-mobile-web-app-title" content="Asin" />
-  <meta name="application-name" content="Asin" />
+  <meta name="apple-mobile-web-app-title" content="RetailEX" />
+  <meta name="application-name" content="RetailEX" />
   <link rel="apple-touch-icon" sizes="180x180" href="/icons/icon-192x192.svg" />
   <link rel="apple-touch-icon" sizes="152x152" href="/icons/icon-152x152.svg" />
   <link rel="apple-touch-icon" sizes="144x144" href="/icons/icon-144x144.svg" />
   <link rel="apple-touch-icon" sizes="120x120" href="/icons/icon-128x128.svg" />
   <link rel="apple-touch-icon" href="/icons/icon-192x192.svg" />
-  <link rel="mask-icon" href="/favicon.svg" color="#0E2433" />
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&family=Outfit:wght@500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="mask-icon" href="/favicon.svg" color="#2563eb" />
 
   <style>
     body {
       margin: 0;
       padding: 0;
-      background: #0E2433;
-      font-family: 'Figtree', system-ui, sans-serif;
+      background: linear-gradient(145deg, #0f172a 0%, #1e293b 50%, #0f172a 100%);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
       min-height: 100vh;
     }
 
@@ -59,7 +56,7 @@
       align-items: center;
       justify-content: center;
       z-index: 9999;
-      background: #0E2433;
+      background: linear-gradient(145deg, #0f172a 0%, #1e293b 50%, #0f172a 100%);
       color: #f1f5f9;
       transition: opacity 0.4s ease-out;
     }
@@ -77,9 +74,9 @@
       position: absolute;
       width: 150px;
       height: 150px;
-      background: #1FA8A0;
+      background: #3b82f6;
       filter: blur(80px);
-      opacity: 0.2;
+      opacity: 0.15;
       border-radius: 50%;
       top: 50%;
       left: 50%;
@@ -89,15 +86,13 @@
     .logo-svg {
       width: 80px;
       height: 80px;
-      filter: drop-shadow(0 0 10px rgba(31, 168, 160, 0.35));
+      filter: drop-shadow(0 0 10px rgba(59, 130, 246, 0.3));
     }
 
     .logo-text {
-      font-family: 'Outfit', system-ui, sans-serif;
       font-size: 32px;
-      font-weight: 700;
-      letter-spacing: -0.04em;
-      color: #fff;
+      font-weight: 900;
+      letter-spacing: -0.05em;
     }
 
     .logo-text .retail {
@@ -105,14 +100,17 @@
     }
 
     .logo-text .ex {
-      color: #1FA8A0;
-      font-style: normal;
-      margin-left: 0;
+      color: #3b82f6;
+      font-style: italic;
+      margin-left: 2px;
     }
 
-    .logo-text.splash-clinic .ex,
+    .logo-text.splash-clinic .ex {
+      color: #a78bfa;
+    }
+
     .logo-text.splash-restaurant .ex {
-      color: #1FA8A0;
+      color: #fb923c;
     }
 
     .loading-bar-container {
@@ -127,7 +125,7 @@
     .loading-bar {
       width: 100%;
       height: 100%;
-      background: linear-gradient(90deg, transparent, #1FA8A0, transparent);
+      background: linear-gradient(90deg, transparent, #3b82f6, transparent);
       animation: loading-slide 1.5s infinite ease-in-out;
     }
 
@@ -161,8 +159,8 @@
     .loader-spinner {
       width: 40px;
       height: 40px;
-      border: 2px solid rgba(31, 168, 160, 0.2);
-      border-top-color: #1FA8A0;
+      border: 2px solid rgba(59, 130, 246, 0.2);
+      border-top-color: #3b82f6;
       border-radius: 50%;
       animation: loader-spin 0.7s linear infinite;
       margin-top: 8px;
@@ -180,11 +178,11 @@
   <div id="app-loader">
     <div class="logo-container">
       <div class="logo-glow"></div>
-      <svg viewBox="0 0 100 100" class="logo-svg" aria-label="Asin">
+      <svg viewBox="0 0 100 100" class="logo-svg">
         <defs>
           <linearGradient id="loaderGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stop-color="#F3F5F7" />
-            <stop offset="100%" stop-color="#1FA8A0" />
+            <stop offset="0%" stop-color="#3b82f6" />
+            <stop offset="100%" stop-color="#8b5cf6" />
           </linearGradient>
           <filter id="loaderGlow">
             <feGaussianBlur stdDeviation="2" result="coloredBlur" />
@@ -194,18 +192,18 @@
             </feMerge>
           </filter>
         </defs>
-        <path d="M50 5 L89 27.5 L89 72.5 L50 95 L11 72.5 L11 27.5 Z" fill="none" stroke="#1FA8A0"
-          stroke-width="2" stroke-linejoin="round" opacity="0.55" />
-        <path d="M50 28 L72 72 H62 L56 58 H44 L38 72 H28 L50 28 Z M47 50 H53 L50 42 Z" fill="url(#loaderGrad)"
+        <path d="M50 5 L89 27.5 L89 72.5 L50 95 L11 72.5 L11 27.5 Z" fill="none" stroke="url(#loaderGrad)"
+          stroke-width="2" stroke-linejoin="round" opacity="0.4" />
+        <path d="M35 35 L65 35 L65 45 L45 45 L45 55 L65 55 L65 65 L35 65 Z" fill="url(#loaderGrad)"
           filter="url(#loaderGlow)" class="pulse-animation" />
-        <rect x="74" y="38" width="6" height="28" fill="#1FA8A0" rx="2" opacity="0.95" />
+        <rect x="70" y="35" width="8" height="30" fill="url(#loaderGrad)" rx="2" opacity="0.8" />
       </svg>
       <div class="logo-text" id="splash-brand">
-        <span class="retail" id="splash-brand-left">Asin</span><span class="ex" id="splash-brand-ex"></span>
+        <span class="retail" id="splash-brand-left">Retail</span><span class="ex" id="splash-brand-ex">Ex</span>
       </div>
     </div>
     <div class="loader-spinner" id="splash-spinner" aria-hidden="true"></div>
-    <div class="loading-text" id="loading-text" style="margin-top: 12px; font-size: 13px; color: rgba(241,245,249,0.85); font-weight: 500;">Asin başlatılıyor...</div>
+    <div class="loading-text" id="loading-text" style="margin-top: 12px; font-size: 13px; color: rgba(241,245,249,0.85); font-weight: 500;">RetailEX başlatılıyor...</div>
   </div>
   <div id="root"><div id="rex-boot-placeholder" aria-busy="true" style="min-height:1px"></div></div>
   <script>
@@ -279,13 +277,24 @@
       var brandBox = document.getElementById('splash-brand');
       var spin = document.getElementById('splash-spinner');
       if (leftEl && exEl && brandBox) {
-        leftEl.textContent = 'Asin';
-        exEl.textContent = '';
-        brandBox.classList.remove('splash-clinic', 'splash-restaurant');
+        if (kind === 'clinic') {
+          leftEl.textContent = 'Clinic';
+          exEl.textContent = 'Ex';
+          brandBox.classList.add('splash-clinic');
+        } else if (kind === 'restaurant') {
+          leftEl.textContent = 'Rest';
+          exEl.textContent = 'Ex';
+          brandBox.classList.add('splash-restaurant');
+        }
       }
       if (spin) {
-        spin.style.borderColor = 'rgba(31, 168, 160, 0.25)';
-        spin.style.borderTopColor = '#1FA8A0';
+        if (kind === 'clinic') {
+          spin.style.borderColor = 'rgba(167, 139, 250, 0.25)';
+          spin.style.borderTopColor = '#a78bfa';
+        } else if (kind === 'restaurant') {
+          spin.style.borderColor = 'rgba(251, 146, 60, 0.25)';
+          spin.style.borderTopColor = '#fb923c';
+        }
       }
     })();
 
@@ -300,7 +309,7 @@
     }
     if (loadingTextEl && !isRefresh) {
       var loadingMessages = [
-        "Asin başlatılıyor...",
+        "RetailEX başlatılıyor...",
         "Sistem hazırlanıyor...",
         "Veritabanı bağlantısı bekleniyor...",
         "Modüller yükleniyor...",
@@ -384,8 +393,8 @@
             'Uygulama zamanında başlamadı veya JavaScript hatası oluştu. Uygulamayı tamamen kapatıp yeniden açın. Güncel APK kullandığınızdan emin olun.' +
             (isNativeApp
               ? ' İlk kurulumda 1–2 dakika bekleyip tekrar deneyin.'
-              : ' Sorun sürerse Wi‑Fi üzerinden Asin bulutu ile deneyin.') +
-            '<br><br><button type="button" onclick="location.reload()" style="padding:10px 20px;border:0;border-radius:8px;background:#1FA8A0;color:#fff;font-weight:700;font-size:14px">Yeniden dene</button>' +
+              : ' Sorun sürerse Wi‑Fi üzerinden RetailEX bulutu (api.retailex.app) ile deneyin.') +
+            '<br><br><button type="button" onclick="location.reload()" style="padding:10px 20px;border:0;border-radius:8px;background:#2563eb;color:#fff;font-weight:700;font-size:14px">Yeniden dene</button>' +
             '</div>';
         }
       }, 700);

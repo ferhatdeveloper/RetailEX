@@ -73,7 +73,7 @@ export function OfflineQueueIndicator() {
   const getStatusColor = (status: QueuedTransaction['status']) => {
     switch (status) {
       case 'pending': return 'bg-yellow-500';
-      case 'syncing': return 'bg-[var(--asin-accent,#1FA8A0)] animate-pulse';
+      case 'syncing': return 'bg-blue-500 animate-pulse';
       case 'failed': return 'bg-red-500';
       case 'completed': return 'bg-green-500';
     }
@@ -119,7 +119,7 @@ export function OfflineQueueIndicator() {
         )}
 
         {isSyncing && (
-          <RefreshCw className="w-4 h-4 animate-spin text-[var(--asin-accent,#1FA8A0)]" />
+          <RefreshCw className="w-4 h-4 animate-spin text-blue-500" />
         )}
       </button>
 

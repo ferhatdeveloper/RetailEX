@@ -225,14 +225,14 @@ export function ProductMovementHistoryModal({
       ariaLabel={tm('reportsPlMovTitle')}
       shellClassName={darkMode ? '!bg-gray-900 !text-gray-100' : ''}
     >
-      <div className="bg-[var(--asin-primary,#0E2433)] px-6 py-4 text-white shrink-0 flex items-start justify-between gap-3">
+      <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-6 py-4 text-white shrink-0 flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex items-center gap-2 text-sm font-semibold opacity-90">
-            <Package className="w-4 h-4 shrink-0 text-[var(--asin-accent,#1FA8A0)]" />
+            <Package className="w-4 h-4 shrink-0" />
             {tm('reportsPlMovTitle')}
           </div>
           <h2 className="mt-1 text-lg font-bold truncate">{target.productName || '—'}</h2>
-          <p className="text-xs text-[var(--asin-accent-muted,#D5F0EE)] font-mono mt-0.5 opacity-90">
+          <p className="text-xs text-blue-100 font-mono mt-0.5">
             {target.productCode || lookupId}
             <span className="mx-2 opacity-50">·</span>
             {rangeNote}

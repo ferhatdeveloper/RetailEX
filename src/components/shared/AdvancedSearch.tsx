@@ -191,7 +191,7 @@ export function AdvancedSearch<T = Product>({
 
         {/* Right side buttons */}
         <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
-          {isSearching && <Loader2 className="w-4 h-4 animate-spin text-[var(--asin-accent,#1FA8A0)]" />}
+          {isSearching && <Loader2 className="w-4 h-4 animate-spin text-blue-500" />}
           
           {query && (
             <Button
@@ -256,8 +256,8 @@ export function AdvancedSearch<T = Product>({
               className={`w-full text-left px-4 py-3 transition-colors border-b last:border-b-0 ${
                 index === selectedIndex
                   ? darkMode
-                    ? 'bg-[var(--asin-primary,#0E2433)] text-white'
-                    : 'bg-[var(--asin-accent-muted,#D5F0EE)] text-[var(--asin-primary,#0E2433)]'
+                    ? 'bg-blue-900 text-white'
+                    : 'bg-blue-50 text-blue-900'
                   : darkMode
                     ? 'hover:bg-gray-700 text-gray-200 border-gray-700'
                     : 'hover:bg-gray-50 text-gray-900 border-gray-100'

@@ -56,8 +56,8 @@ export function KeyboardShortcutOverlay({ shortcuts, onClose }: KeyboardShortcut
                     <Badge
                       variant="outline"
                       className={`font-mono ${darkMode
-                        ? 'bg-gray-900 text-[var(--asin-accent,#1FA8A0)] border-[var(--asin-accent,#1FA8A0)]'
-                        : 'bg-white text-[var(--asin-accent,#1FA8A0)] border-[var(--asin-accent,#1FA8A0)]/50'
+                        ? 'bg-gray-900 text-blue-400 border-blue-500'
+                        : 'bg-white text-blue-600 border-blue-300'
                         }`}
                     >
                       {formatShortcutKey(shortcut)}
@@ -110,8 +110,8 @@ export function KeyboardShortcutHint({ onClick }: { onClick: () => void }) {
       <button
         onClick={onClick}
         className={`fixed bottom-4 right-4 p-3 rounded-full shadow-lg transition-all hover:scale-110 z-50 ${darkMode
-          ? 'bg-gray-800 text-[var(--asin-accent,#1FA8A0)] hover:bg-gray-700'
-          : 'bg-white text-[var(--asin-accent,#1FA8A0)] hover:bg-gray-50'
+          ? 'bg-gray-800 text-blue-400 hover:bg-gray-700'
+          : 'bg-white text-blue-600 hover:bg-gray-50'
           }`}
         title="Press ? to view keyboard shortcuts"
       >
@@ -135,7 +135,7 @@ export function KeyboardShortcutHint({ onClick }: { onClick: () => void }) {
       </button>
 
       <div className="flex items-start gap-3">
-        <Keyboard className="w-6 h-6 text-[var(--asin-accent,#1FA8A0)] dark:text-[var(--asin-accent,#1FA8A0)] mt-1" />
+        <Keyboard className="w-6 h-6 text-blue-600 dark:text-blue-400 mt-1" />
         <div>
           <p className="font-semibold mb-1">Keyboard Shortcuts Available</p>
           <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">

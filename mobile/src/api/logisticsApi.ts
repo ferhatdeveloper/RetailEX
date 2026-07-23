@@ -5,6 +5,8 @@
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { pgQuery } from './pgClient';
+import { postgrestGet, postgrestPatch, postgrestPost } from './postgrestClient';
+import { runDataTransport } from './dataTransport';
 import { firmNr, periodNr } from './erpTables';
 import { useAuthStore } from '../store/authStore';
 
@@ -104,6 +106,76 @@ export async function listDeliveries(opts?: {
   limit?: number;
   search?: string;
 }): Promise<LogisticsDelivery[]> {
+  return runDataTransport({
+    label: 'listDeliveries',
+    viaRest: () => listDeliveriesViaRest(opts),
+    viaBridge: () => listDeliveriesViaBridge(opts),
+  });
+}
+
+async function listDeliveriesViaRest(opts?: {
+  status?: string;
+  limit?: number;
+  search?: string;
+}): Promise<LogisticsDelivery[]> {
+  const f = firmNr();
+  const p = periodNr();
+  const limit = opts?.limit ?? 80;
+  const query: Record<string, string | number> = {
+    select:
+      'id,delivery_no,delivery_date,customer_name,address_text,phone,status,courier_id,sales_fiche_no,lat,lng,vehicle_id,firm_nr,period_nr',
+    firm_nr: `eq.${f}`,
+    period_nr: `eq.${p}`,
+    status: 'neq.cancelled',
+    order: 'delivery_date.desc',
+    limit,
+  };
+  if (opts?.status && opts.status !== 'all') {
+    query.status = `eq.${opts.status}`;
+  }
+
+  const rows = await postgrestGet<Record<string, unknown>[]>(
+    '/deliveries',
+    query,
+    { schema: 'logistics' },
+  );
+
+  const search = opts?.search?.trim().toLowerCase() || '';
+  let list = (Array.isArray(rows) ? rows : []).map((d) => ({
+    id: String(d.id ?? ''),
+    delivery_no: String(d.delivery_no ?? ''),
+    delivery_date: String(d.delivery_date || '').slice(0, 10),
+    customer_name: d.customer_name != null ? String(d.customer_name) : null,
+    address_text: d.address_text != null ? String(d.address_text) : null,
+    phone: d.phone != null ? String(d.phone) : null,
+    status: String(d.status || 'draft'),
+    courier_id: d.courier_id ? String(d.courier_id) : null,
+    courier_name: null as string | null,
+    vehicle_plate: null as string | null,
+    sales_fiche_no: d.sales_fiche_no != null ? String(d.sales_fiche_no) : null,
+    lat: d.lat != null ? Number(d.lat) : null,
+    lng: d.lng != null ? Number(d.lng) : null,
+    line_count: 0,
+  }));
+
+  if (search) {
+    list = list.filter(
+      (d) =>
+        d.delivery_no.toLowerCase().includes(search) ||
+        (d.sales_fiche_no || '').toLowerCase().includes(search) ||
+        (d.customer_name || '').toLowerCase().includes(search) ||
+        (d.address_text || '').toLowerCase().includes(search),
+    );
+  }
+
+  return list.slice(0, limit);
+}
+
+async function listDeliveriesViaBridge(opts?: {
+  status?: string;
+  limit?: number;
+  search?: string;
+}): Promise<LogisticsDelivery[]> {
   const f = firmNr();
   const p = periodNr();
   const limit = opts?.limit ?? 80;
@@ -176,31 +248,57 @@ export async function listDeliveries(opts?: {
 
 export async function listCouriers(): Promise<LogisticsCourier[]> {
   const f = firmNr();
-  const { rows } = await pgQuery<{
-    id: string;
-    full_name: string;
-    phone: string | null;
-    last_lat: string | number | null;
-    last_lng: string | number | null;
-    last_location_at: string | null;
-    user_id: string | null;
-  }>(
-    `SELECT id, full_name, phone, last_lat, last_lng, last_location_at, user_id::text AS user_id
-     FROM logistics.couriers
-     WHERE firm_nr = $1 AND is_active
-     ORDER BY full_name`,
-    [f],
-  );
-
-  return rows.map((r) => ({
-    id: String(r.id),
-    full_name: String(r.full_name),
-    phone: r.phone,
-    last_lat: r.last_lat != null ? Number(r.last_lat) : null,
-    last_lng: r.last_lng != null ? Number(r.last_lng) : null,
-    last_location_at: r.last_location_at,
-    user_id: r.user_id,
-  }));
+  return runDataTransport({
+    label: 'listCouriers',
+    viaRest: async () => {
+      const rows = await postgrestGet<Record<string, unknown>[]>(
+        '/couriers',
+        {
+          select: 'id,full_name,phone,last_lat,last_lng,last_location_at,user_id',
+          firm_nr: `eq.${f}`,
+          is_active: 'eq.true',
+          order: 'full_name.asc',
+          limit: 500,
+        },
+        { schema: 'logistics' },
+      );
+      return (Array.isArray(rows) ? rows : []).map((r) => ({
+        id: String(r.id ?? ''),
+        full_name: String(r.full_name ?? ''),
+        phone: r.phone != null ? String(r.phone) : null,
+        last_lat: r.last_lat != null ? Number(r.last_lat) : null,
+        last_lng: r.last_lng != null ? Number(r.last_lng) : null,
+        last_location_at: r.last_location_at != null ? String(r.last_location_at) : null,
+        user_id: r.user_id != null ? String(r.user_id) : null,
+      }));
+    },
+    viaBridge: async () => {
+      const { rows } = await pgQuery<{
+        id: string;
+        full_name: string;
+        phone: string | null;
+        last_lat: string | number | null;
+        last_lng: string | number | null;
+        last_location_at: string | null;
+        user_id: string | null;
+      }>(
+        `SELECT id, full_name, phone, last_lat, last_lng, last_location_at, user_id::text AS user_id
+         FROM logistics.couriers
+         WHERE firm_nr = $1 AND is_active
+         ORDER BY full_name`,
+        [f],
+      );
+      return rows.map((r) => ({
+        id: String(r.id),
+        full_name: String(r.full_name),
+        phone: r.phone,
+        last_lat: r.last_lat != null ? Number(r.last_lat) : null,
+        last_lng: r.last_lng != null ? Number(r.last_lng) : null,
+        last_location_at: r.last_location_at,
+        user_id: r.user_id,
+      }));
+    },
+  });
 }
 
 /** Oturum kullanıcısına bağlı veya ilk aktif kuryeyi öner */
@@ -215,6 +313,54 @@ export function pickDefaultCourier(couriers: LogisticsCourier[]): LogisticsCouri
 }
 
 export async function transitionDeliveryStatus(
+  deliveryId: string,
+  toStatus: DeliveryStatus | string,
+  opts?: { note?: string; lat?: number | null; lng?: number | null },
+): Promise<void> {
+  return runDataTransport({
+    label: 'transitionDeliveryStatus',
+    viaRest: () => transitionDeliveryStatusViaRest(deliveryId, toStatus, opts),
+    viaBridge: () => transitionDeliveryStatusViaBridge(deliveryId, toStatus, opts),
+  });
+}
+
+async function transitionDeliveryStatusViaRest(
+  deliveryId: string,
+  toStatus: DeliveryStatus | string,
+  opts?: { note?: string; lat?: number | null; lng?: number | null },
+): Promise<void> {
+  const rows = await postgrestGet<Array<{ status?: string }>>(
+    '/deliveries',
+    { select: 'status', id: `eq.${deliveryId}`, limit: 1 },
+    { schema: 'logistics' },
+  );
+  const from = normalizeStatus(rows?.[0]?.status);
+  const to = normalizeStatus(toStatus);
+  if (!(STATUS_FLOW[from] || []).includes(to)) {
+    throw new Error(`Durum geçişi geçersiz: ${statusLabel(from)} → ${statusLabel(to)}`);
+  }
+  const actor = useAuthStore.getState().user?.username ?? null;
+  await postgrestPatch(
+    `/deliveries?id=eq.${encodeURIComponent(deliveryId)}`,
+    { status: to, status_changed_at: new Date().toISOString(), updated_at: new Date().toISOString() },
+    { schema: 'logistics', prefer: 'return=minimal' },
+  );
+  await postgrestPost(
+    '/delivery_status_events',
+    {
+      delivery_id: deliveryId,
+      from_status: from,
+      to_status: to,
+      actor_id: actor,
+      note: opts?.note ?? null,
+      lat: opts?.lat ?? null,
+      lng: opts?.lng ?? null,
+    },
+    { schema: 'logistics', prefer: 'return=minimal' },
+  );
+}
+
+async function transitionDeliveryStatusViaBridge(
   deliveryId: string,
   toStatus: DeliveryStatus | string,
   opts?: { note?: string; lat?: number | null; lng?: number | null },
@@ -299,6 +445,36 @@ export async function flushLocalLocationQueue(): Promise<number> {
   return ok;
 }
 
+async function writeCourierLocationViaRest(
+  courierId: string,
+  point: CourierLocationPoint,
+  f: string,
+): Promise<void> {
+  await postgrestPost(
+    '/courier_locations',
+    {
+      firm_nr: f,
+      courier_id: courierId,
+      delivery_id: point.deliveryId ?? null,
+      lat: point.lat,
+      lng: point.lng,
+      speed_kmh: point.speedKmh ?? null,
+      recorded_at: point.recordedAt ?? new Date().toISOString(),
+    },
+    { schema: 'logistics', prefer: 'return=minimal' },
+  );
+  await postgrestPatch(
+    `/couriers?id=eq.${encodeURIComponent(courierId)}`,
+    {
+      last_lat: point.lat,
+      last_lng: point.lng,
+      last_location_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    },
+    { schema: 'logistics', prefer: 'return=minimal' },
+  );
+}
+
 async function writeCourierLocationPg(
   courierId: string,
   point: CourierLocationPoint,
@@ -327,7 +503,7 @@ async function writeCourierLocationPg(
 }
 
 /**
- * Kurye konumunu PG’ye yazar; hata olursa AsyncStorage kuyruğuna alır.
+ * Kurye konumunu PG'ye yazar; hata olursa AsyncStorage kuyruğuna alır.
  * Döner: `'pg' | 'local'`
  */
 export async function recordCourierLocation(
@@ -337,7 +513,11 @@ export async function recordCourierLocation(
   if (!courierId) throw new Error('Kurye seçilmedi');
   const f = firmNr();
   try {
-    await writeCourierLocationPg(courierId, point, f);
+    await runDataTransport({
+      label: 'recordCourierLocation',
+      viaRest: () => writeCourierLocationViaRest(courierId, point, f),
+      viaBridge: () => writeCourierLocationPg(courierId, point, f),
+    });
     return 'pg';
   } catch {
     await enqueueLocal({

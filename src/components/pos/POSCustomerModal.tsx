@@ -184,8 +184,8 @@ export function POSCustomerModal({
               onChange={(e) => setSearchTerm(e.target.value)}
               className={`w-full pl-10 pr-4 py-2.5 border rounded focus:outline-none ${
                 darkMode 
-                  ? 'bg-gray-800 border-gray-600 text-white placeholder-gray-500 focus:border-[var(--asin-accent,#1FA8A0)]' 
-                  : 'bg-white border-gray-300 focus:border-[var(--asin-accent,#1FA8A0)]'
+                  ? 'bg-gray-800 border-gray-600 text-white placeholder-gray-500 focus:border-blue-500' 
+                  : 'bg-white border-gray-300 focus:border-blue-600'
               }`}
               autoFocus
             />
@@ -202,7 +202,7 @@ export function POSCustomerModal({
             }}
             className={`w-full p-4 rounded border-2 transition-all text-left ${
               highlightNoCustomerRow
-                ? darkMode ? 'border-[var(--asin-accent,#1FA8A0)] bg-[var(--asin-primary,#0E2433)]/40' : 'border-[var(--asin-accent,#1FA8A0)] bg-[var(--asin-accent-muted,#D5F0EE)]'
+                ? darkMode ? 'border-blue-500 bg-blue-900/30' : 'border-blue-400 bg-blue-50'
                 : darkMode ? 'border-gray-700 bg-gray-800 hover:border-gray-600' : 'border-gray-200 bg-white hover:border-gray-300'
             }`}
           >
@@ -212,9 +212,9 @@ export function POSCustomerModal({
                 <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>{t.noCustomerSaleDescription}</p>
               </div>
               {highlightNoCustomerRow && (
-                <div className="text-[var(--asin-accent,#1FA8A0)]">
-                  <div className="w-5 h-5 rounded-full border-2 border-[var(--asin-accent,#1FA8A0)] flex items-center justify-center">
-                    <div className="w-2.5 h-2.5 rounded-full bg-[var(--asin-accent,#1FA8A0)]" />
+                <div className="text-blue-600">
+                  <div className="w-5 h-5 rounded-full border-2 border-blue-600 flex items-center justify-center">
+                    <div className="w-2.5 h-2.5 rounded-full bg-blue-600" />
                   </div>
                 </div>
               )}
@@ -241,8 +241,8 @@ export function POSCustomerModal({
                   }}
                   className={`p-4 rounded border-2 transition-all text-left ${
                     selectedCustomer?.id === customer.id
-                      ? darkMode ? 'border-[var(--asin-accent,#1FA8A0)] bg-[var(--asin-primary,#0E2433)]/40' : 'border-[var(--asin-accent,#1FA8A0)] bg-[var(--asin-accent-muted,#D5F0EE)]'
-                      : darkMode ? 'border-gray-700 bg-gray-800 hover:border-gray-600' : 'border-gray-200 bg-white hover:border-[var(--asin-accent,#1FA8A0)]/50'
+                      ? darkMode ? 'border-blue-500 bg-blue-900/30' : 'border-blue-500 bg-blue-50'
+                      : darkMode ? 'border-gray-700 bg-gray-800 hover:border-gray-600' : 'border-gray-200 bg-white hover:border-blue-300'
                   }`}
                 >
                   <div className="flex items-start justify-between">
@@ -252,7 +252,7 @@ export function POSCustomerModal({
                         <span className={`px-2 py-0.5 rounded text-xs font-semibold ${
                           customer.cardType === 'supplier'
                             ? darkMode ? 'bg-orange-900/40 text-orange-300' : 'bg-orange-100 text-orange-700'
-                            : darkMode ? 'bg-[var(--asin-primary,#0E2433)]/40 text-[var(--asin-accent-muted,#D5F0EE)]' : 'bg-[var(--asin-accent-muted,#D5F0EE)] text-[var(--asin-primary,#0E2433)]'
+                            : darkMode ? 'bg-blue-900/40 text-blue-300' : 'bg-blue-100 text-blue-700'
                         }`}>
                           {customer.cardType === 'supplier' ? 'Tedarikçi' : 'Müşteri'}
                         </span>
@@ -290,9 +290,9 @@ export function POSCustomerModal({
                       )}
                     </div>
                     {selectedCustomer?.id === customer.id && (
-                      <div className="text-[var(--asin-accent,#1FA8A0)] ml-3">
-                        <div className="w-5 h-5 rounded-full border-2 border-[var(--asin-accent,#1FA8A0)] flex items-center justify-center">
-                          <div className="w-2.5 h-2.5 rounded-full bg-[var(--asin-accent,#1FA8A0)]" />
+                      <div className="text-blue-600 ml-3">
+                        <div className="w-5 h-5 rounded-full border-2 border-blue-600 flex items-center justify-center">
+                          <div className="w-2.5 h-2.5 rounded-full bg-blue-600" />
                         </div>
                       </div>
                     )}
@@ -307,8 +307,8 @@ export function POSCustomerModal({
         <div className={`px-4 py-3 border-t shrink-0 ${darkMode ? 'border-gray-700 bg-gray-900' : 'border-gray-200 bg-gray-50'} space-y-3`}>
           {/* Payment Type Selection */}
           {allowPaymentTypeSelection && selectedCustomer && (
-            <div className="bg-[var(--asin-accent-muted,#D5F0EE)] border border-[var(--asin-accent,#1FA8A0)]/40 p-3 rounded-lg">
-              <h4 className="text-sm font-medium text-[var(--asin-primary,#0E2433)] mb-2">Ödeme Türü Seçin</h4>
+            <div className="bg-blue-50 border border-blue-200 p-3 rounded-lg">
+              <h4 className="text-sm font-medium text-blue-900 mb-2">Ödeme Türü Seçin</h4>
               <div className="grid grid-cols-2 gap-2">
                 <button
                   onClick={() => setSelectedPaymentType('cash')}
@@ -325,15 +325,15 @@ export function POSCustomerModal({
                   onClick={() => setSelectedPaymentType('credit')}
                   className={`px-4 py-2.5 rounded-lg border-2 transition-all flex items-center justify-center gap-2 ${
                     selectedPaymentType === 'credit'
-                      ? 'border-[var(--asin-accent,#1FA8A0)] bg-[var(--asin-accent-muted,#D5F0EE)] text-[var(--asin-primary,#0E2433)]'
-                      : 'border-gray-300 bg-white text-gray-700 hover:border-[var(--asin-accent,#1FA8A0)]'
+                      ? 'border-blue-600 bg-blue-50 text-blue-900'
+                      : 'border-gray-300 bg-white text-gray-700 hover:border-blue-400'
                   }`}
                 >
                   <CreditCard className="w-5 h-5" />
                   <span className="font-medium">Veresiye</span>
                 </button>
               </div>
-              <p className="text-xs text-[var(--asin-primary,#0E2433)] mt-2">
+              <p className="text-xs text-blue-700 mt-2">
                 {selectedPaymentType === 'cash' 
                   ? 'Satış nakit olarak kapatılacak' 
                   : 'Satış müşterinin cari hesabına veresiye olarak işlenecek'}
@@ -345,7 +345,7 @@ export function POSCustomerModal({
           <div className="flex items-center justify-between gap-2">
             <button
               onClick={handleOpenCurrentAccountCreateModal}
-              className="px-4 py-2 text-sm rounded bg-[var(--asin-accent,#1FA8A0)] text-white hover:bg-[#178f88] transition-colors flex items-center gap-2"
+              className="px-4 py-2 text-sm rounded bg-blue-600 text-white hover:bg-blue-700 transition-colors flex items-center gap-2"
             >
               <Plus className="w-4 h-4" />
               {t.newCustomer}

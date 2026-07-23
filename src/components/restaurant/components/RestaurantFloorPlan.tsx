@@ -212,7 +212,7 @@ export function RestaurantFloorPlan({ onSelectTable, onBack, moveTableSource, mo
         <div className="flex flex-col h-full" style={{ backgroundColor: '#f1f3f5' }}>
             <div
                 className="border-b px-3 sm:px-6 py-3 sm:py-4 flex flex-wrap items-center justify-between z-20 shrink-0 gap-3 sm:gap-8 shadow-2xl"
-                style={{ backgroundColor: 'var(--asin-primary, #0E2433)', borderColor: 'rgba(31,168,160,0.35)' }}
+                style={{ backgroundColor: '#2563eb', borderColor: 'rgba(96,165,250,0.4)' }}
             >
                 <div className="flex items-center gap-4 flex-1">
                     <button
@@ -268,7 +268,7 @@ export function RestaurantFloorPlan({ onSelectTable, onBack, moveTableSource, mo
 
             <div
                 className="border-b flex items-center px-6 pr-4 z-10 shrink-0 shadow-lg max-md:overflow-x-auto max-md:no-scrollbar max-md:px-3"
-                style={{ backgroundColor: 'var(--asin-primary-hover, #163A52)', borderColor: 'rgba(30,58,138,0.2)' }}
+                style={{ backgroundColor: '#1d4ed8', borderColor: 'rgba(30,58,138,0.2)' }}
             >
                 <div className="flex items-center gap-1 flex-1 py-2">
                     <button
@@ -665,7 +665,7 @@ export function RestaurantFloorPlan({ onSelectTable, onBack, moveTableSource, mo
                         style={{ zIndex: 10 }}
                         onClick={e => e.stopPropagation()}
                     >
-                        <div className="bg-[var(--asin-primary,#0E2433)] px-8 py-6 text-white shrink-0">
+                        <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-8 py-6 text-white shrink-0">
                             <div className="flex items-center justify-between">
                                 <div>
                                     <h2 className="text-xl font-black uppercase tracking-tight">Masa yönetimi</h2>
@@ -758,7 +758,7 @@ export function RestaurantFloorPlan({ onSelectTable, onBack, moveTableSource, mo
                         style={{ zIndex: 10 }}
                         onClick={e => e.stopPropagation()}
                     >
-                        <div className="bg-[var(--asin-primary,#0E2433)] px-8 py-6 text-white shrink-0">
+                        <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-8 py-6 text-white shrink-0">
                             <div className="flex items-center justify-between">
                                 <div>
                                     <h2 className="text-xl font-black uppercase tracking-tight">Bölge adını güncelle</h2>
@@ -963,7 +963,7 @@ export function RestaurantFloorPlan({ onSelectTable, onBack, moveTableSource, mo
                         style={{ zIndex: 10 }}
                         onClick={e => e.stopPropagation()}
                     >
-                        <div className="bg-[var(--asin-primary,#0E2433)] px-8 py-6 text-white shrink-0">
+                        <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-8 py-6 text-white shrink-0">
                             <div className="flex items-center justify-between">
                                 <div>
                                     <h2 className="text-xl font-black uppercase tracking-tight">Masa düzenle</h2>

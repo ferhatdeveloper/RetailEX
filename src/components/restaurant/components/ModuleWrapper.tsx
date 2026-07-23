@@ -15,7 +15,7 @@ export const ModuleWrapper: React.FC<ModuleWrapperProps> = ({ title, onBack, chi
             {/* Standardized Restaurant Appbar */}
             <header
                 className="px-6 py-4 flex items-center gap-6 shadow-xl shrink-0 z-30"
-                style={{ backgroundColor: 'var(--asin-primary, #0E2433)', borderBottom: '1px solid rgba(31,168,160,0.35)' }}
+                style={{ backgroundColor: '#2563eb', borderBottom: '1px solid rgba(96,165,250,0.4)' }}
             >
                 <button
                     onClick={onBack}

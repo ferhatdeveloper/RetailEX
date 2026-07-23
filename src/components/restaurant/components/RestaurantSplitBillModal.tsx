@@ -27,7 +27,7 @@ export function RestaurantSplitBillModal({
                     onClick={e => e.stopPropagation()}
                 >
                 {/* Header with Indigo Gradient */}
-                <div className="bg-[var(--asin-primary,#0E2433)] px-6 sm:px-8 py-6 sm:py-8 text-white flex justify-between items-center relative overflow-hidden shrink-0">
+                <div className="bg-gradient-to-r from-indigo-600 to-indigo-700 px-6 sm:px-8 py-6 sm:py-8 text-white flex justify-between items-center relative overflow-hidden shrink-0">
                     <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -mr-16 -mt-16 blur-2xl" />
 
                     <div className="relative z-10 flex items-center gap-4">

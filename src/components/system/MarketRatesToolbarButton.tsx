@@ -105,7 +105,7 @@ export function MarketRatesToolbarModal({ open, onClose }: MarketRatesToolbarMod
 
   return (
     <PercentBodyModal onClose={onClose} size="wide" ariaLabel={tm('marketRatesTitle')}>
-      <div className="shrink-0 px-4 py-3 border-b border-gray-200 bg-[var(--asin-primary,#0E2433)] flex items-center justify-between gap-2">
+      <div className="shrink-0 px-4 py-3 border-b border-gray-200 bg-gradient-to-r from-blue-600 to-blue-700 flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 text-white min-w-0">
           <Coins className="w-5 h-5 shrink-0" />
           <div className="min-w-0">
@@ -333,7 +333,7 @@ export function MarketRatesToolbarModal({ open, onClose }: MarketRatesToolbarMod
             type="button"
             onClick={() => void handleApplyToDb()}
             disabled={saving || editableFx.length === 0}
-            className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-semibold rounded-lg bg-[var(--asin-accent,#1FA8A0)] text-white hover:bg-[#178f88] disabled:opacity-50"
+            className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-semibold rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
           >
             {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
             {tm('marketRatesApplyToDb')}

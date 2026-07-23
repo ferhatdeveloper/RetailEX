@@ -92,7 +92,7 @@ export function PackingModule({ darkMode, onBack }: Props) {
 
   return (
     <div className={`h-full flex flex-col ${darkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
-      <div className="bg-[var(--asin-primary,#0E2433)] text-white px-4 py-3 flex items-center justify-between border-b border-[var(--asin-accent,#1FA8A0)]/35">
+      <div className="bg-gradient-to-r from-indigo-600 to-indigo-700 text-white px-4 py-3 flex items-center justify-between">
         <div className="flex items-center gap-2">
           {onBack && <button onClick={onBack} className="p-1 hover:bg-white/15 rounded"><ArrowLeft className="w-5 h-5" /></button>}
           <PackageCheck className="w-5 h-5" />
@@ -102,7 +102,7 @@ export function PackingModule({ darkMode, onBack }: Props) {
           <button onClick={() => void load()} className="flex items-center gap-1 px-2 py-1 bg-white/15 hover:bg-white/25 rounded text-xs">
             <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} /> Yenile
           </button>
-          <button onClick={() => void newSlip()} disabled={busy} className="flex items-center gap-1 px-2 py-1 bg-[var(--asin-accent,#1FA8A0)] text-white hover:bg-[#178f88] rounded text-xs font-medium">
+          <button onClick={() => void newSlip()} disabled={busy} className="flex items-center gap-1 px-2 py-1 bg-white text-indigo-700 hover:bg-indigo-50 rounded text-xs font-medium">
             <Plus className="w-3.5 h-3.5" /> Yeni Paket
           </button>
         </div>

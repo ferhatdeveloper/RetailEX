@@ -1,6 +1,10 @@
 import React, { useState } from 'react';
 import {
-  ChevronDown, ChevronRight, Package, Search, X, Languages, Moon, Sun
+  LayoutGrid, ChevronDown, ChevronRight, Package, FileText, Layers,
+  ShoppingCart, TrendingUp, Wallet, Users, Settings, Tag, Scale,
+  Boxes, FileSignature, Truck, BarChart3, Receipt, Warehouse,
+  FileCheck, Target, GitBranch, Building2, Store, PackagePlus,
+  ShoppingBag, Wrench, Search, X, Languages, Moon, Sun
 } from 'lucide-react';
 import { useTheme } from '../../contexts/ThemeContext';
 import type { Language } from '../../locales/module-translations';
@@ -52,8 +56,11 @@ export function ModernSidebar({
   handleSearchItemClick,
   expandedSections,
   toggleSection,
-  showLanguageMenu: _showLanguageMenu,
+  currentLanguage,
+  setCurrentLanguage,
+  showLanguageMenu,
   setShowLanguageMenu,
+  languages,
   APP_VERSION,
   t,
 }: ModernSidebarProps) {
@@ -62,75 +69,113 @@ export function ModernSidebar({
   const [expandedItems, setExpandedItems] = useState<string[]>([]);
 
   const toggleItem = (itemId: string) => {
-    setExpandedItems((prev) =>
-      prev.includes(itemId) ? prev.filter((id) => id !== itemId) : [...prev, itemId],
+    setExpandedItems(prev =>
+      prev.includes(itemId)
+        ? prev.filter(id => id !== itemId)
+        : [...prev, itemId]
     );
   };
 
-  const renderMenuItem = (
-    item: { id: string; label: string; icon: any; badge: string | null; children?: any[] },
-    level: number = 0,
-  ) => {
+  const renderMenuItem = (item: { id: string; label: string; icon: any; badge: string | null; children?: any[]; }, level: number = 0) => {
     const isActive = currentScreen === item.id;
     const Icon = item.icon;
     const hasChildren = item.children && item.children.length > 0;
     const expandKey = hasChildren
-      ? item.id != null && item.id !== ''
-        ? String(item.id)
-        : `group:${item.label}`
+      ? (item.id != null && item.id !== '' ? String(item.id) : `group:${item.label}`)
       : String(item.id ?? '');
-    const isExpanded = hasChildren
-      ? expandedItems.includes(expandKey)
-      : expandedItems.includes(item.id);
+    const isExpanded = hasChildren ? expandedItems.includes(expandKey) : expandedItems.includes(item.id);
 
+    // Tutarlı spacing ve font boyutları - Responsive
+    const basePadding = level === 0
+      ? (isMobile ? 'px-3 sm:px-4' : 'px-4')
+      : level === 1
+        ? (isMobile ? 'px-4 sm:px-5' : 'px-5')
+        : level === 2
+          ? (isMobile ? 'px-5 sm:px-6' : 'px-6')
+          : (isMobile ? 'px-7 sm:px-8' : 'px-8');
+    const iconSize = level === 0
+      ? (isMobile ? 'w-5 h-5' : 'w-5 h-5')
+      : (isMobile ? 'w-4 h-4' : 'w-4 h-4');
+    const fontSize = level === 0
+      ? 'text-sm'
+      : 'text-xs';
+    const fontWeight = level === 0 ? 'font-medium' : 'font-normal';
+    const pySize = level === 0
+      ? 'py-2.5 min-h-[40px]'
+      : 'py-1.5 min-h-[32px]';
+
+    // Eğer children varsa, expandable item render et
     if (hasChildren) {
       return (
         <div key={expandKey}>
-          <button type="button" onClick={() => toggleItem(expandKey)} className="asin-shell-nav-group">
-            <span className="flex items-center gap-2 min-w-0">
-              {Icon ? <Icon aria-hidden /> : null}
-              <span className="truncate" style={{ paddingLeft: level ? 4 : 0 }}>
-                {item.label}
-              </span>
-            </span>
-            {isExpanded ? <ChevronDown className="w-3.5 h-3.5 opacity-60" /> : <ChevronRight className="w-3.5 h-3.5 opacity-60" />}
-          </button>
-          {isExpanded && item.children ? (
-            <div className="asin-shell-nav-items">
-              {item.children.map((child) => renderMenuItem(child, level + 1))}
+          <button
+            onClick={() => toggleItem(expandKey)}
+            className={`w-full flex items-center justify-between ${pySize} ${fontSize} ${fontWeight} transition-all duration-200 ${basePadding} active:scale-[0.98] ${darkMode
+              ? level === 0
+                ? 'text-gray-200 hover:bg-gray-700 hover:text-white active:bg-gray-600'
+                : 'text-gray-400 hover:bg-gray-700 hover:text-white active:bg-gray-600'
+              : level === 0
+                ? 'text-gray-700 hover:bg-gray-100 hover:text-gray-900 active:bg-gray-200'
+                : 'text-gray-600 hover:bg-gray-200 hover:text-gray-900 active:bg-gray-300'
+              }`}
+          >
+            <div className="flex items-center gap-3 min-w-0 flex-1">
+              {Icon && <Icon className={`${iconSize} shrink-0`} />}
+              <span className="truncate">{item.label}</span>
             </div>
-          ) : null}
+            {isExpanded ? (
+              <ChevronDown className="w-4 h-4 shrink-0" />
+            ) : (
+              <ChevronRight className="w-4 h-4 shrink-0" />
+            )}
+          </button>
+          {isExpanded && item.children && (
+            <div className={`${darkMode ? 'bg-gray-800 border-l-2 border-gray-600' : 'bg-gray-100 border-l-2 border-gray-300'} ml-4`}>
+              {item.children.map(child => renderMenuItem(child, level + 1))}
+            </div>
+          )}
         </div>
       );
     }
 
+    // Leaf items (actual navigation items) - Badge gösterilmiyor
     return (
       <button
         key={item.id != null && item.id !== '' ? String(item.id) : `leaf:${item.label}`}
-        type="button"
         onClick={() => {
           if (item.id != null && item.id !== '') setCurrentScreen(item.id);
         }}
-        className={`asin-shell-nav-item${isActive ? ' is-active' : ''}`}
+        className={`w-full flex items-center gap-2 sm:gap-3 ${pySize} ${fontSize} ${fontWeight} transition-all duration-200 ${basePadding} active:scale-[0.98] ${isActive
+          ? darkMode
+            ? 'bg-blue-600 text-white shadow-md'
+            : 'bg-blue-50 text-blue-700 border-l-4 border-blue-600'
+          : darkMode
+            ? level === 0
+              ? 'text-gray-200 hover:bg-gray-700 hover:text-white active:bg-gray-600'
+              : 'text-gray-400 hover:bg-gray-700 hover:text-white active:bg-gray-600'
+            : level === 0
+              ? 'text-gray-700 hover:bg-gray-100 hover:text-gray-900 active:bg-gray-200'
+              : 'text-gray-600 hover:bg-gray-200 hover:text-gray-900 active:bg-gray-300'
+          }`}
       >
-        {Icon ? <Icon aria-hidden /> : null}
-        <span className="truncate flex-1">{item.label}</span>
+        {Icon && <Icon className={`${iconSize} shrink-0`} />}
+        <span className="flex-1 text-left truncate">{item.label}</span>
       </button>
     );
   };
 
+  // Keyboard shortcut for search (Ctrl+K or Cmd+K)
   React.useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
         e.preventDefault();
-        const searchInput = document.querySelector(
-          '.asin-shell-nav-search input',
-        ) as HTMLInputElement | null;
+        const searchInput = document.querySelector('input[placeholder*="ara"]') as HTMLInputElement;
         if (searchInput) {
           searchInput.focus();
           searchInput.select();
         }
       }
+      // ESC to clear search
       if (e.key === 'Escape' && menuSearchQuery) {
         setMenuSearchQuery('');
       }
@@ -140,94 +185,180 @@ export function ModernSidebar({
   }, [menuSearchQuery, setMenuSearchQuery]);
 
   return (
-    <nav className="asin-shell-nav" aria-label="Ana menü">
-      <div className="asin-shell-nav-search">
-        <Search className="asin-shell-nav-search-icon w-4 h-4" aria-hidden />
-        <input
-          type="text"
-          placeholder={isMobile ? t.sidebar.searchPlaceholderShort : t.sidebar.searchPlaceholderFull}
-          value={menuSearchQuery}
-          onChange={(e) => setMenuSearchQuery(e.target.value)}
-          autoComplete="off"
-        />
-        {menuSearchQuery ? (
-          <button
-            type="button"
-            onClick={() => setMenuSearchQuery('')}
-            className="absolute right-4 top-1/2 -translate-y-1/2 text-white/50 hover:text-[#1FA8A0]"
-            title={t.sidebar.clearSearch}
-            aria-label={t.sidebar.clearSearch}
-          >
-            <X className="w-4 h-4" />
-          </button>
-        ) : (
-          <span className="asin-shell-nav-kbd">⌘K</span>
-        )}
+    <div className={`h-full overflow-y-auto overscroll-contain touch-pan-y ${darkMode ? 'bg-gray-900' : 'bg-white'} border-r ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+      {/* Search Box - Enhanced */}
+      <div className={`p-3 sm:p-4 border-b ${darkMode ? 'border-gray-700 bg-gray-800/50' : 'border-gray-200 bg-gradient-to-br from-blue-50/50 to-white'}`}>
+        <div className="relative">
+          <div className={`absolute left-3 sm:left-4 top-1/2 -translate-y-1/2 flex items-center gap-2 ${darkMode ? 'text-gray-400' : 'text-gray-500'
+            }`}>
+            <Search className="w-4 h-4 sm:w-5 sm:h-5" />
+          </div>
+          <input
+            type="text"
+            placeholder={isMobile ? t.sidebar.searchPlaceholderShort : t.sidebar.searchPlaceholderFull}
+            value={menuSearchQuery}
+            onChange={(e) => setMenuSearchQuery(e.target.value)}
+            className={`w-full pl-10 sm:pl-12 pr-10 sm:pr-12 py-2.5 sm:py-3.5 border-2 rounded-lg sm:rounded-xl text-sm sm:text-base font-medium shadow-sm transition-all duration-200 focus:outline-none focus:ring-2 sm:focus:ring-4 focus:ring-blue-500/20 focus:border-blue-500 min-h-[44px] ${darkMode
+              ? 'bg-gray-800/80 border-gray-600 text-white placeholder-gray-400 focus:bg-gray-800 focus:shadow-lg'
+              : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500 focus:bg-white focus:shadow-lg focus:border-blue-500'
+              }`}
+            autoComplete="off"
+          />
+          {menuSearchQuery && (
+            <button
+              onClick={() => setMenuSearchQuery('')}
+              className={`absolute right-3 top-1/2 -translate-y-1/2 p-1.5 rounded-lg transition-all duration-200 ${darkMode
+                ? 'hover:bg-gray-700 text-gray-400 hover:text-gray-200'
+                : 'hover:bg-gray-100 text-gray-400 hover:text-gray-600'
+                }`}
+              title={t.sidebar.clearSearch}
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
+          {!menuSearchQuery && (
+            <div className={`absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1 px-2 py-1 rounded text-xs ${darkMode ? 'text-gray-500 bg-gray-700/50' : 'text-gray-400 bg-gray-100'
+              }`}>
+              <kbd className="px-1.5 py-0.5 rounded text-xs font-mono border border-gray-300">Ctrl</kbd>
+              <span>+</span>
+              <kbd className="px-1.5 py-0.5 rounded text-xs font-mono border border-gray-300">K</kbd>
+            </div>
+          )}
+        </div>
 
+        {/* Search Results Dropdown - Enhanced */}
         {searchResults.length > 0 && (
-          <div className="asin-shell-nav-results">
-            {searchResults.map((item, index) => (
-              <button
-                key={`${item.id}-${index}`}
-                type="button"
-                onClick={() => handleSearchItemClick(item)}
-              >
-                <span className="asin-shell-brand-mark" style={{ width: '1.75rem', height: '1.75rem', fontSize: '0.7rem' }}>
-                  {item.icon ? <item.icon className="w-3.5 h-3.5" /> : <Package className="w-3.5 h-3.5" />}
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block font-semibold truncate">{item.label}</span>
-                  <span className="block text-[0.68rem] opacity-55 truncate">
-                    {[item.grandParentLabel, item.parentLabel, item.sectionTitle].filter(Boolean).join(' · ')}
-                  </span>
-                </span>
-              </button>
-            ))}
+          <div className={`absolute left-4 right-4 mt-2 max-h-80 overflow-y-auto rounded-xl shadow-2xl border z-50 backdrop-blur-sm ${darkMode
+            ? 'bg-gray-800/95 border-gray-600 shadow-gray-900/50'
+            : 'bg-white/95 border-gray-200 shadow-gray-900/10'
+            }`}>
+            <div className={`p-2 border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+              <div className={`text-xs font-semibold px-3 py-1.5 ${darkMode ? 'text-gray-400' : 'text-gray-600'
+                }`}>
+                {searchResults.length} {t.sidebar.resultsFound}
+              </div>
+            </div>
+            <div className="py-1">
+              {searchResults.map((item, index) => (
+                <button
+                  key={`${item.id}-${index}`}
+                  onClick={() => handleSearchItemClick(item)}
+                  className={`w-full flex items-center gap-3 px-4 py-3 text-base text-left transition-all duration-200 border-b last:border-b-0 ${darkMode
+                    ? 'hover:bg-gray-700/80 text-gray-200 border-gray-700/50'
+                    : 'hover:bg-blue-50 text-gray-700 border-gray-100'
+                    }`}
+                >
+                  <div className={`flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center ${darkMode ? 'bg-gray-700' : 'bg-blue-100'
+                    }`}>
+                    {item.icon ? (
+                      <item.icon className={`w-4 h-4 ${darkMode ? 'text-gray-300' : 'text-blue-600'}`} />
+                    ) : (
+                      <Package className={`w-4 h-4 ${darkMode ? 'text-gray-300' : 'text-blue-600'}`} />
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-semibold truncate">{item.label}</div>
+                    <div className={`text-sm truncate flex items-center gap-1 flex-wrap ${darkMode ? 'text-gray-400' : 'text-gray-500'
+                      }`}>
+                      {item.grandParentLabel && (
+                        <>
+                          <span className="font-medium">{item.grandParentLabel}</span>
+                          <span>•</span>
+                        </>
+                      )}
+                      {item.parentLabel && (
+                        <>
+                          <span className="font-medium">{item.parentLabel}</span>
+                          <span>•</span>
+                        </>
+                      )}
+                      <span>{item.sectionTitle}</span>
+                    </div>
+                  </div>
+                </button>
+              ))}
+            </div>
           </div>
         )}
 
+        {/* No Results Message */}
         {menuSearchQuery && searchResults.length === 0 && (
-          <div className="asin-shell-nav-results p-4 text-center text-sm opacity-60">
-            {t.sidebar.noResultsFound}
+          <div className={`absolute left-4 right-4 mt-2 p-4 rounded-xl text-center ${darkMode
+            ? 'bg-gray-800/95 border border-gray-600 text-gray-400'
+            : 'bg-white/95 border border-gray-200 text-gray-500'
+            }`}>
+            <Search className="w-6 h-6 mx-auto mb-2 opacity-50" />
+            <p className="text-sm">{t.sidebar.noResultsFound}</p>
+            <p className="text-xs mt-1 opacity-75">{t.sidebar.tryDifferentSearch}</p>
           </div>
         )}
       </div>
 
-      <div className="asin-shell-nav-body">
-        {menuSections.map((section) => (
-          <div key={section.title} className="asin-shell-nav-section">
-            <button type="button" onClick={() => toggleSection(section.title)}>
-              <span className="truncate">{section.title}</span>
+      {/* Menu Items */}
+      <div className="py-2">
+        {menuSections.map(section => (
+          <div key={section.title} className="mb-1">
+            <button
+              onClick={() => toggleSection(section.title)}
+              className={`w-full flex items-center justify-between px-3 sm:px-4 py-2.5 sm:py-3.5 text-sm sm:text-base font-semibold transition-all duration-200 min-h-[44px] active:scale-[0.98] ${darkMode
+                ? 'text-gray-100 hover:bg-gray-700 hover:text-white active:bg-gray-600'
+                : 'text-gray-800 hover:bg-gray-100 hover:text-gray-900 active:bg-gray-200'
+                }`}
+            >
+              <span className="flex items-center gap-3 min-w-0 flex-1 text-left">
+                <Package className="w-5 h-5 shrink-0" />
+                <span className="truncate">{section.title}</span>
+              </span>
               {expandedSections.includes(section.title) ? (
-                <ChevronDown className="w-4 h-4 opacity-50 shrink-0" />
+                <ChevronDown className="w-5 h-5 shrink-0" />
               ) : (
-                <ChevronRight className="w-4 h-4 opacity-50 shrink-0" />
+                <ChevronRight className="w-5 h-5 shrink-0" />
               )}
             </button>
+
             {expandedSections.includes(section.title) && (
-              <div className="asin-shell-nav-items">
-                {section.items.map((item) => renderMenuItem(item, 0))}
+              <div className={`${darkMode ? 'bg-gray-800 border-l-2 border-gray-600' : 'bg-gray-100 border-l-2 border-gray-300'} ml-4`}>
+                {section.items.map(item => renderMenuItem(item, 0))}
               </div>
             )}
           </div>
         ))}
       </div>
 
-      <div className="asin-shell-nav-foot">
-        <button type="button" onClick={() => setShowLanguageMenu(true)} title={t.sidebar.languageSelection}>
-          <Languages className="w-4 h-4" />
-          <span>{t.sidebar.languageSelection}</span>
+      {/* Dark Mode Toggle */}
+      <div className={`p-3 sm:p-4 border-t ${darkMode ? 'border-gray-700' : 'border-gray-200'} space-y-2`}>
+        <button
+          onClick={() => setShowLanguageMenu(true)}
+          className={`w-full flex items-center justify-between px-3 sm:px-4 py-2.5 sm:py-3.5 rounded-lg text-sm sm:text-base font-medium transition-all duration-200 min-h-[44px] active:scale-[0.98] ${darkMode
+            ? 'text-gray-200 hover:bg-gray-700 bg-gray-800 hover:text-white active:bg-gray-600'
+            : 'text-gray-700 hover:bg-gray-100 hover:text-gray-900 active:bg-gray-200'
+            }`}
+          title={t.sidebar.languageSelection}
+        >
+          <span className="flex items-center gap-3">
+            <Languages className="w-5 h-5" />
+            <span>{t.sidebar.languageSelection}</span>
+          </span>
         </button>
         <button
-          type="button"
           onClick={toggleDarkMode}
+          className={`w-full flex items-center justify-between px-3 sm:px-4 py-2.5 sm:py-3.5 rounded-lg text-sm sm:text-base font-medium transition-all duration-200 min-h-[44px] active:scale-[0.98] ${darkMode
+            ? 'text-gray-200 hover:bg-gray-700 bg-gray-800 hover:text-white active:bg-gray-600'
+            : 'text-gray-700 hover:bg-gray-100 hover:text-gray-900 active:bg-gray-200'
+            }`}
           title={darkMode ? t.sidebar.lightMode : t.sidebar.darkMode}
         >
-          {darkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-          <span>{darkMode ? t.sidebar.lightMode : t.sidebar.darkMode}</span>
+          <span className="flex items-center gap-3">
+            {darkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+            <span>{darkMode ? t.sidebar.lightMode : t.sidebar.darkMode}</span>
+          </span>
         </button>
-        <div className="asin-shell-nav-ver">v{APP_VERSION.full}</div>
       </div>
-    </nav>
+
+      {/* Uygulama sürümü — tek kaynak: package.json → APP_VERSION.full */}
+      <div className={`p-3 text-center text-xs border-t ${darkMode ? 'border-gray-700 text-gray-400' : 'border-gray-200 text-gray-500'}`}>
+        <p className="font-mono font-semibold tracking-wide">v{APP_VERSION.full}</p>
+      </div>
+    </div>
   );
 }

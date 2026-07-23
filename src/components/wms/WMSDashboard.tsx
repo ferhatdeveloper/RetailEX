@@ -51,7 +51,7 @@ export function WMSDashboard({ onModuleSelect, onBack }: WMSDashboardProps) {
       titleKey: 'exitOperations',
       descKey: 'warehouseTransferWaybill',
       icon: <ArrowUp className="w-8 h-8" />,
-      color: 'from-[var(--asin-accent,#1FA8A0)] to-cyan-600',
+      color: 'from-blue-500 to-cyan-600',
       modules: 3
     },
     {
@@ -59,7 +59,7 @@ export function WMSDashboard({ onModuleSelect, onBack }: WMSDashboardProps) {
       titleKey: 'warehouseTransfer',
       descKey: 'transferMovement',
       icon: <ArrowRightLeft className="w-8 h-8" />,
-      color: 'from-[var(--asin-primary,#0E2433)] to-[var(--asin-primary-hover,#163A52)]',
+      color: 'from-purple-500 to-pink-600',
       modules: 4
     },
     {
@@ -75,7 +75,7 @@ export function WMSDashboard({ onModuleSelect, onBack }: WMSDashboardProps) {
       titleKey: 'planningOptimization',
       descKey: 'taskManagement',
       icon: <TrendingUp className="w-8 h-8" />,
-      color: 'from-[var(--asin-primary,#0E2433)] to-[var(--asin-accent,#1FA8A0)]',
+      color: 'from-indigo-500 to-blue-600',
       modules: 6
     },
     {
@@ -83,7 +83,7 @@ export function WMSDashboard({ onModuleSelect, onBack }: WMSDashboardProps) {
       titleKey: 'reportsAndAnalysis',
       descKey: 'reportingDesc',
       icon: <BarChart3 className="w-8 h-8" />,
-      color: 'from-[var(--asin-accent,#1FA8A0)] to-cyan-600',
+      color: 'from-teal-500 to-cyan-600',
       modules: 10
     },
   ];
@@ -99,25 +99,28 @@ export function WMSDashboard({ onModuleSelect, onBack }: WMSDashboardProps) {
 
   return (
     <WMSLayout onBack={onBack}>
-      <div className={`min-h-full p-6 ${darkMode ? 'bg-gradient-to-br from-gray-900 via-gray-900 to-gray-800' : 'bg-gradient-to-br from-gray-50 via-[var(--asin-accent-muted,#D5F0EE)]/40 to-gray-50'}`}>
+      <div className={`min-h-full p-6 ${darkMode ? 'bg-gradient-to-br from-gray-900 via-gray-900 to-gray-800' : 'bg-gradient-to-br from-gray-50 via-blue-50/30 to-gray-50'}`}>
         {/* Header */}
         <div className={`mb-8 p-6 rounded-2xl ${darkMode
-          ? 'bg-[var(--asin-primary,#0E2433)]/80 border border-[var(--asin-accent,#1FA8A0)]/30'
-          : 'bg-[var(--asin-accent-muted,#D5F0EE)]/60 border border-[var(--asin-accent,#1FA8A0)]/35'
+          ? 'bg-gradient-to-r from-blue-900/50 to-indigo-900/50 border border-blue-800/50'
+          : 'bg-gradient-to-r from-blue-500/10 to-indigo-500/10 border border-blue-200/50'
           } backdrop-blur-sm`}>
           <div className="flex items-center justify-between">
             <div>
-              <h1 className={`text-4xl font-bold mb-2 ${darkMode ? 'text-white' : 'text-[var(--asin-primary,#0E2433)]'}`}>
+              <h1 className={`text-4xl font-bold mb-2 bg-gradient-to-r ${darkMode
+                ? 'from-blue-400 to-indigo-400 bg-clip-text text-transparent'
+                : 'from-blue-600 to-indigo-600 bg-clip-text text-transparent'
+                }`}>
                 {t.wmsModule}
               </h1>
               <p className={`text-lg ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
                 {t.inventoryManagement}
               </p>
             </div>
-            <div className={`hidden md:flex items-center gap-2 px-4 py-2 rounded-lg ${darkMode ? 'bg-[var(--asin-accent,#1FA8A0)]/15' : 'bg-[var(--asin-accent-muted,#D5F0EE)]'
+            <div className={`hidden md:flex items-center gap-2 px-4 py-2 rounded-lg ${darkMode ? 'bg-blue-900/30' : 'bg-blue-100'
               }`}>
-              <Activity className={`w-5 h-5 ${darkMode ? 'text-[var(--asin-accent,#1FA8A0)]' : 'text-[var(--asin-accent,#1FA8A0)]'}`} />
-              <span className={`font-semibold ${darkMode ? 'text-[var(--asin-accent-muted,#D5F0EE)]' : 'text-[var(--asin-primary,#0E2433)]'}`}>
+              <Activity className={`w-5 h-5 ${darkMode ? 'text-blue-400' : 'text-blue-600'}`} />
+              <span className={`font-semibold ${darkMode ? 'text-blue-300' : 'text-blue-700'}`}>
                 {t.wsConnected}
               </span>
             </div>
@@ -127,14 +130,14 @@ export function WMSDashboard({ onModuleSelect, onBack }: WMSDashboardProps) {
         {/* Quick Stats */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
           <div className={`group p-5 rounded-xl border-2 transition-all duration-300 hover:shadow-xl hover:scale-105 ${darkMode
-            ? 'bg-gradient-to-br from-gray-800 to-gray-800/80 border-gray-700 hover:border-[var(--asin-accent,#1FA8A0)]'
-            : 'bg-gradient-to-br from-white to-[var(--asin-accent-muted,#D5F0EE)]/50 border-gray-200 hover:border-[var(--asin-accent,#1FA8A0)]'
+            ? 'bg-gradient-to-br from-gray-800 to-gray-800/80 border-gray-700 hover:border-blue-500'
+            : 'bg-gradient-to-br from-white to-blue-50/50 border-gray-200 hover:border-blue-400'
             }`}>
             <div className={`flex items-center justify-between mb-3`}>
               <div className={`text-xs font-semibold uppercase tracking-wider ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
                 {t.totalStock}
               </div>
-              <Package className={`w-4 h-4 ${darkMode ? 'text-[var(--asin-accent,#1FA8A0)]' : 'text-[var(--asin-accent,#1FA8A0)]'}`} />
+              <Package className={`w-4 h-4 ${darkMode ? 'text-blue-400' : 'text-blue-600'}`} />
             </div>
             <div className={`text-3xl font-bold mb-1 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
               {stats.totalStock.toLocaleString()}

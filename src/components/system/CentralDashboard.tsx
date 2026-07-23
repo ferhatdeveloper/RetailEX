@@ -211,7 +211,7 @@ export function CentralDashboard({ onStoreSelect }: CentralDashboardProps) {
                 key={region}
                 onClick={() => setSelectedRegion(region)}
                 className={`px-4 py-2 rounded-lg text-sm transition-colors ${selectedRegion === region
-                  ? 'bg-[var(--asin-accent,#1FA8A0)] text-white'
+                  ? 'bg-blue-600 text-white'
                   : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                   }`}
               >

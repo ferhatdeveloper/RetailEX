@@ -1622,7 +1622,7 @@ export function ManagementModule({
             </p>
             <button
               onClick={() => setCurrentScreen('dashboard')}
-              className="px-4 py-2 bg-[var(--asin-accent,#1FA8A0)] text-white rounded-lg hover:bg-[#178f88]"
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
             >
               {t.backToDashboard}
             </button>
@@ -1633,11 +1633,11 @@ export function ManagementModule({
   };
 
   return (
-    <div className="asin-shell-frame h-full min-h-0 relative">
+    <div className={`h-full min-h-0 flex relative ${darkMode ? 'bg-gray-900' : 'bg-white'}`}>
       {/* Mobile Overlay - Sidebar açıkken arka planı karart */}
       {isMobile && effectiveSidebarOpen && (
         <div
-          className="fixed inset-0 bg-black/45"
+          className="fixed inset-0 bg-black/30"
           style={{ zIndex: Z_INDEX.MOBILE_OVERLAY }}
           onClick={() => effectiveSetSidebarOpen(false)}
           aria-hidden
@@ -1676,7 +1676,7 @@ export function ManagementModule({
           </div>
         </div>
       ) : effectiveSidebarOpen ? (
-        <div className="w-64 md:w-72 flex-shrink-0 h-full">
+        <div className="w-64 md:w-80 flex-shrink-0 h-full">
           <ModernSidebar
             menuSections={menuSections}
             currentScreen={currentScreen}
@@ -1698,9 +1698,10 @@ export function ManagementModule({
         </div>
       ) : null}
 
-      {/* Main Content */}
+      {/* Main Content — mobilde üst bardaki hamburger ile, desktop'ta üst bardaki
+          panel toggle butonu (veya Ctrl+B) ile aç/kapa. */}
       <div
-        className={`asin-shell-content ${isMobile ? 'relative w-full z-[10] touch-manipulation' : ''}`}
+        className={`flex-1 min-h-0 min-w-0 h-full overflow-hidden transition-all duration-300 ${darkMode ? 'bg-gray-900' : 'bg-gray-50'} ${isMobile ? 'relative w-full z-[10] touch-manipulation' : ''}`}
       >
         <Suspense fallback={
           <div className="h-full flex items-center justify-center">
@@ -1729,8 +1730,8 @@ export function ManagementModule({
 function PlaceholderModule({ screenName, onBack, t }: { screenName: string; onBack: () => void; t: any }) {
   return (
     <div className="flex flex-col items-center justify-center h-full p-8 bg-slate-50">
-      <div className="w-20 h-20 bg-[var(--asin-accent-muted,#D5F0EE)] rounded-2xl flex items-center justify-center mb-6">
-        <Layers className="w-10 h-10 text-[var(--asin-accent,#1FA8A0)]" />
+      <div className="w-20 h-20 bg-blue-100 rounded-2xl flex items-center justify-center mb-6">
+        <Layers className="w-10 h-10 text-blue-600" />
       </div>
       <h2 className="text-2xl font-bold text-slate-800 mb-2">
         {t.preparingModule.replace('{screenName}', screenName)}
@@ -1740,7 +1741,7 @@ function PlaceholderModule({ screenName, onBack, t }: { screenName: string; onBa
       </p>
       <button
         onClick={onBack}
-        className="px-6 py-2 bg-[var(--asin-accent,#1FA8A0)] text-white rounded-lg hover:bg-[#178f88] transition-colors font-medium"
+        className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
       >
         {t.backToDashboard}
       </button>

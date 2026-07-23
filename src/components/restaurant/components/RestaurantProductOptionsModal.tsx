@@ -95,7 +95,7 @@ export function RestaurantProductOptionsModal({
                 onClick={e => e.stopPropagation()}
             >
                 {/* Header with Blue Gradient */}
-                <div className="bg-[var(--asin-primary,#0E2433)] p-6 sm:p-8 flex items-center justify-between text-white relative overflow-hidden shrink-0">
+                <div className="bg-gradient-to-r from-blue-600 to-blue-700 p-6 sm:p-8 flex items-center justify-between text-white relative overflow-hidden shrink-0">
                     <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -mr-16 -mt-16 blur-2xl" />
 
                     <div className="flex items-center gap-4 relative z-10">

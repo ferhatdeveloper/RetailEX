@@ -453,19 +453,19 @@ function UnlimitedCentralDashboardContent({ onStoreSelect }: UnlimitedCentralDas
   return (
     <div className={`h-full flex flex-col ${darkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
       {/* Header */}
-      <div className="bg-[var(--asin-primary,#0E2433)] text-white shadow-lg">
+      <div className="bg-gradient-to-r from-blue-600 to-blue-700 text-white shadow-lg">
         <div className="px-6 py-4">
           <div className="flex items-center justify-between mb-4">
             <div>
               <h1 className="text-2xl">Merkezi Kontrol Paneli - Enterprise</h1>
-              <p className="text-sm text-[var(--asin-accent-muted,#D5F0EE)] mt-1 opacity-90">
+              <p className="text-sm text-blue-100 mt-1">
                 Sınırsız Mağaza Yönetim Sistemi • Real-time Monitoring
               </p>
             </div>
 
             <div className="flex items-center gap-4">
               {/* Current Time */}
-              <div className="flex items-center gap-2 text-sm bg-[var(--asin-accent,#1FA8A0)]/30 px-4 py-2 rounded-lg backdrop-blur">
+              <div className="flex items-center gap-2 text-sm bg-blue-500 bg-opacity-30 px-4 py-2 rounded-lg backdrop-blur">
                 <Clock className="w-4 h-4" />
                 <span>{currentTime.toLocaleTimeString('tr-TR')}</span>
               </div>
@@ -485,7 +485,7 @@ function UnlimitedCentralDashboardContent({ onStoreSelect }: UnlimitedCentralDas
         <div className="px-6 py-4">
           <div className="grid grid-cols-5 gap-4">
             {/* Total Revenue */}
-            <div className="bg-gradient-to-br from-[var(--asin-accent-muted,#D5F0EE)] to-white rounded-lg p-4 border border-[var(--asin-accent,#1FA8A0)]/30">
+            <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-lg p-4 border border-blue-200">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-sm text-gray-600">Toplam Ciro</span>
                 <Banknote className="w-5 h-5 text-blue-600" />
@@ -678,7 +678,7 @@ function UnlimitedCentralDashboardContent({ onStoreSelect }: UnlimitedCentralDas
                 <button
                   onClick={() => setViewMode('list')}
                   className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${viewMode === 'list'
-                    ? 'bg-[var(--asin-accent,#1FA8A0)] text-white'
+                    ? 'bg-blue-600 text-white'
                     : 'bg-white text-gray-700 hover:bg-gray-100 border'
                     }`}
                 >
@@ -688,7 +688,7 @@ function UnlimitedCentralDashboardContent({ onStoreSelect }: UnlimitedCentralDas
                 <button
                   onClick={() => setViewMode('tree')}
                   className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${viewMode === 'tree'
-                    ? 'bg-[var(--asin-accent,#1FA8A0)] text-white'
+                    ? 'bg-blue-600 text-white'
                     : 'bg-white text-gray-700 hover:bg-gray-100 border'
                     }`}
                 >

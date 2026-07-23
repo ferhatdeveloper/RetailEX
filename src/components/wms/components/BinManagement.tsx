@@ -65,7 +65,7 @@ export function BinManagement({ darkMode, onBack }: Props) {
 
   return (
     <div className={`h-full flex flex-col ${darkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
-      <div className="bg-[var(--asin-primary,#0E2433)] text-white px-4 py-3 flex items-center justify-between border-b border-[var(--asin-accent,#1FA8A0)]/35">
+      <div className="bg-gradient-to-r from-blue-600 to-blue-700 text-white px-4 py-3 flex items-center justify-between">
         <div className="flex items-center gap-2">
           {onBack && (
             <button onClick={onBack} className="p-1 hover:bg-white/15 rounded">
@@ -80,7 +80,7 @@ export function BinManagement({ darkMode, onBack }: Props) {
             <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} /> Yenile
           </button>
           {tab === 'bins' && (
-            <button onClick={() => setShowCreate(true)} className="flex items-center gap-1 px-2 py-1 bg-[var(--asin-accent,#1FA8A0)] text-white hover:bg-[#178f88] rounded text-xs font-medium">
+            <button onClick={() => setShowCreate(true)} className="flex items-center gap-1 px-2 py-1 bg-white text-blue-700 hover:bg-blue-50 rounded text-xs font-medium">
               <Plus className="w-3.5 h-3.5" /> Bin Ekle
             </button>
           )}
@@ -251,7 +251,7 @@ function CreateBinModal({ darkMode, onClose, onCreated }: { darkMode?: boolean; 
   return (
     <div className="fixed inset-0 bg-black/50 z-[2147483646] flex items-center justify-center p-4" onClick={onClose}>
       <div className={`w-full max-w-md rounded-xl overflow-hidden ${darkMode ? 'bg-gray-800' : 'bg-white'}`} onClick={(e) => e.stopPropagation()}>
-        <div className="bg-[var(--asin-primary,#0E2433)] text-white px-4 py-3 flex items-center justify-between">
+        <div className="bg-gradient-to-r from-blue-600 to-blue-700 text-white px-4 py-3 flex items-center justify-between">
           <h3 className="font-semibold text-sm">Yeni Lokasyon / Bin</h3>
           <button onClick={onClose}><X className="w-4 h-4" /></button>
         </div>

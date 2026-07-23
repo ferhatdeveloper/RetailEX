@@ -280,7 +280,7 @@ export function buildReceipt80mmPrintHtml(input: BuildReceipt80mmPrintHtmlInput)
     sale,
     paymentData,
     receiptSettings,
-    companyNameFallback = 'Asin',
+    companyNameFallback = 'RetailEX',
     firmTitle = '',
     currencyCode,
     locale: localeIn = 'tr',
@@ -309,7 +309,7 @@ export function buildReceipt80mmPrintHtml(input: BuildReceipt80mmPrintHtmlInput)
   const ta = isRTL ? 'right' : 'left';
 
   const companyName =
-    receiptSettings.companyName?.trim() || companyNameFallback.trim() || 'Asin';
+    receiptSettings.companyName?.trim() || companyNameFallback.trim() || 'RetailEX';
   const logoTrim = receiptSettings.logoDataUrl && String(receiptSettings.logoDataUrl).trim();
   const logoSafe =
     logoTrim && logoTrim.startsWith('data:image/') ? logoTrim : undefined;

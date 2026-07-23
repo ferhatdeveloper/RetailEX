@@ -1,5 +1,5 @@
 #Requires -Version 5.1
-# AsinERP PostgREST - Windows hizmeti (otomatik baslatma, port 3002)
+# RetailEX PostgREST - Windows hizmeti (otomatik baslatma, port 3002)
 # Yonetici PowerShell. Onarim: .\install-postgrest-service.ps1 -Repair
 
 param(
@@ -8,9 +8,9 @@ param(
     [switch]$Uninstall
 )
 
-$ServiceName = "AsinERP_PostgREST"
-$DisplayName = "AsinERP PostgREST"
-$Description = "PostgreSQL REST API (port 3002) for AsinERP LAN/Android clients."
+$ServiceName = "RetailEX_PostgREST"
+$DisplayName = "RetailEX PostgREST"
+$Description = "PostgreSQL REST API (port 3002) for RetailEX LAN/Android clients."
 
 $LogFile = "$env:TEMP\retailex_postgrest_service_install.log"
 function Write-Log($m) { $m | Out-File $LogFile -Append; Write-Host $m }
@@ -22,16 +22,12 @@ function Get-InstallPrefix {
     $p = $ParamPrefix.Trim()
     if ($p) { return $p }
     $root = if ($PSScriptRoot) { $PSScriptRoot } else { Split-Path -Parent $MyInvocation.MyCommand.Path }
-    $marker = Join-Path $root "asinerp_install_prefix.txt"
-    if (-not (Test-Path -LiteralPath $marker)) {
-        $marker = Join-Path $root "retailex_install_prefix.txt"
-    }
+    $marker = Join-Path $root "retailex_install_prefix.txt"
     if (Test-Path -LiteralPath $marker) {
         $t = (Get-Content -LiteralPath $marker -Raw).Trim()
         if ($t) { return $t }
     }
-    $e = [Environment]::GetEnvironmentVariable("ASINERP_INSTALL_DIR", "Process")
-    if (-not $e) { $e = [Environment]::GetEnvironmentVariable("RETAILEX_INSTALL_DIR", "Process") }
+    $e = [Environment]::GetEnvironmentVariable("RETAILEX_INSTALL_DIR", "Process")
     if ($e) { return $e.Trim() }
     if ($root) { return $root }
     return ""
@@ -67,10 +63,9 @@ function ConvertFrom-Base64Safe([string]$Value) {
 
 function Get-PgrestDbUriFromConfigDb {
   $dbPaths = @(
-        "C:\AsinERP\config.db",
         "C:\RetailEX\config.db",
         "C:\RetailEx\config.db",
-        (Join-Path $env:ProgramData "AsinERP\config.db")
+        (Join-Path $env:ProgramData "RetailEX\config.db")
     )
     $sqlite = Get-Command sqlite3.exe -ErrorAction SilentlyContinue
     if (-not $sqlite) { return $null }
@@ -140,7 +135,7 @@ if (-not $Prefix -or -not (Test-Path -LiteralPath $Prefix)) {
 }
 
 if (-not (Test-IsAdmin)) {
-    Write-Host "[AsinERP] PostgREST hizmeti icin yonetici izni gerekli; UAC acilacak..."
+    Write-Host "[RetailEX] PostgREST hizmeti icin yonetici izni gerekli; UAC acilacak..."
     $argList = @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $PSCommandPath)
     if ($Repair) { $argList += "-Repair" }
     if ($Uninstall) { $argList += "-Uninstall" }

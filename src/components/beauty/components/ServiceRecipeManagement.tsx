@@ -256,7 +256,7 @@ export function ServiceRecipeManagement({ onBack }: ServiceRecipeManagementProps
         <div className="relative flex h-full min-h-[560px] animate-in flex-col bg-[#f1f3f5] fade-in duration-300">
             <div
                 className="z-20 flex shrink-0 items-center justify-between gap-8 border-b px-6 py-2.5 shadow-2xl"
-                style={{ backgroundColor: 'var(--asin-primary, #0E2433)', borderColor: 'rgba(31,168,160,0.35)' }}
+                style={{ backgroundColor: '#2563eb', borderColor: 'rgba(96,165,250,0.4)' }}
             >
                 <div className="flex flex-1 items-center gap-4">
                     {onBack && (

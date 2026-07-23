@@ -1,11 +1,11 @@
 [package]
 name = "retailex"
-version = "0.1.233"
+version = "0.1.232"
 description = "A Tauri App"
 authors = ["you"]
 license = ""
 repository = ""
-default-run = "AsinERP"
+default-run = "retailex"
 edition = "2021"
 rust-version = "1.77"
 
@@ -69,32 +69,32 @@ legacy-logo-bin = []
 
 
 [[bin]]
-name = "AsinERP"
+name = "retailex"
 path = "src/main.rs"
 
 [[bin]]
-name = "AsinERP_Service"
+name = "RetailEX_Service"
 path = "src/service_main.rs"
 
 [[bin]]
-name = "AsinERP_Config"
+name = "RetailEX_Config"
 path = "src/setup_main.rs"
 
 [[bin]]
-name = "AsinERP_Logo"
+name = "RetailEX_Logo"
 path = "src/logo_main.rs"
 required-features = ["legacy-logo-bin"]
 
 [[bin]]
-name = "AsinERP_SQL_Bridge"
+name = "RetailEX_SQL_Bridge"
 path = "src/sql_bridge_main.rs"
 
 [[bin]]
-name = "AsinERP_Printer"
+name = "RetailEX_Printer"
 path = "src/printer_main.rs"
 
 [[bin]]
-name = "AsinERP_Tools"
+name = "RetailEX_Tools"
 path = "src/tools_main.rs"
 
 [dependencies.windows-service]

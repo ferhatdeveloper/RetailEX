@@ -119,14 +119,14 @@ export const ImageSearchModal: React.FC<ImageSearchModalProps> = ({
                                 onChange={(e) => setSearchQuery(e.target.value)}
                                 onKeyPress={handleKeyPress}
                                 placeholder="Ürün açıklaması girin (örn: laptop, phone, coffee cup)"
-                                className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[var(--asin-accent,#1FA8A0)] focus:border-transparent"
+                                className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                                 disabled={isSearching}
                             />
                         </div>
                         <button
                             onClick={handleSearch}
                             disabled={isSearching || !searchQuery.trim()}
-                            className="px-6 py-2.5 bg-[var(--asin-accent,#1FA8A0)] text-white rounded-lg text-sm font-medium hover:bg-[#178f88] disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
+                            className="px-6 py-2.5 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
                         >
                             {isSearching ? (
                                 <>
@@ -164,7 +164,7 @@ export const ImageSearchModal: React.FC<ImageSearchModalProps> = ({
                     {/* Loading State */}
                     {isSearching && (
                         <div className="flex flex-col items-center justify-center py-12">
-                            <Loader2 className="w-12 h-12 text-[var(--asin-accent,#1FA8A0)] animate-spin mb-4" />
+                            <Loader2 className="w-12 h-12 text-blue-600 animate-spin mb-4" />
                             <p className="text-sm font-medium text-gray-700">Resimler aranıyor...</p>
                             <p className="text-xs text-gray-500 mt-1">Lütfen bekleyin</p>
                         </div>
@@ -197,8 +197,8 @@ export const ImageSearchModal: React.FC<ImageSearchModalProps> = ({
                                     <div
                                         key={result.id}
                                         className={`group relative cursor-pointer rounded-lg overflow-hidden border-2 transition-all ${selectedImageId === result.id
-                                            ? 'border-[var(--asin-accent,#1FA8A0)] ring-2 ring-[var(--asin-accent-muted,#D5F0EE)]'
-                                            : 'border-gray-200 hover:border-[var(--asin-accent,#1FA8A0)]/50'
+                                            ? 'border-blue-500 ring-2 ring-blue-200'
+                                            : 'border-gray-200 hover:border-blue-300'
                                             }`}
                                         onClick={() => handleImageSelect(result)}
                                     >
@@ -216,7 +216,7 @@ export const ImageSearchModal: React.FC<ImageSearchModalProps> = ({
                                         <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-all flex items-center justify-center">
                                             <div className="opacity-0 group-hover:opacity-100 transition-opacity">
                                                 <div className="bg-white rounded-full p-3 shadow-lg">
-                                                    <Download className="w-5 h-5 text-[var(--asin-accent,#1FA8A0)]" />
+                                                    <Download className="w-5 h-5 text-blue-600" />
                                                 </div>
                                             </div>
                                         </div>
@@ -224,7 +224,7 @@ export const ImageSearchModal: React.FC<ImageSearchModalProps> = ({
                                         {/* Loading Overlay */}
                                         {selectedImageId === result.id && isConverting && (
                                             <div className="absolute inset-0 bg-white/90 flex flex-col items-center justify-center">
-                                                <Loader2 className="w-8 h-8 text-[var(--asin-accent,#1FA8A0)] animate-spin mb-2" />
+                                                <Loader2 className="w-8 h-8 text-blue-600 animate-spin mb-2" />
                                                 <p className="text-xs font-medium text-gray-700">İşleniyor...</p>
                                             </div>
                                         )}
@@ -250,7 +250,7 @@ export const ImageSearchModal: React.FC<ImageSearchModalProps> = ({
                             href="https://unsplash.com"
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="text-[var(--asin-accent,#1FA8A0)] hover:underline font-medium"
+                            className="text-blue-600 hover:underline font-medium"
                         >
                             Unsplash
                         </a>
@@ -260,7 +260,7 @@ export const ImageSearchModal: React.FC<ImageSearchModalProps> = ({
                             href="https://commons.wikimedia.org"
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="text-[var(--asin-accent,#1FA8A0)] hover:underline font-medium"
+                            className="text-blue-600 hover:underline font-medium"
                         >
                             Wikimedia Commons
                         </a>
@@ -269,7 +269,7 @@ export const ImageSearchModal: React.FC<ImageSearchModalProps> = ({
                             href="https://openverse.org"
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="text-[var(--asin-accent,#1FA8A0)] hover:underline font-medium"
+                            className="text-blue-600 hover:underline font-medium"
                         >
                             Openverse
                         </a>

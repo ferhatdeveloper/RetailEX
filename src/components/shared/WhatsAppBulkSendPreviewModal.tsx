@@ -340,12 +340,12 @@ export function WhatsAppBulkSendPreviewModal({
               />
             </>
           ) : waConn.provider === 'META' ? (
-            <div className="rounded-xl border border-[var(--asin-accent-muted,#D5F0EE)] bg-[var(--asin-accent-muted,#D5F0EE)]/80 p-4 flex gap-3">
-              <CheckCircle2 className="text-[var(--asin-accent,#1FA8A0)] shrink-0" size={20} />
-              <div className="text-sm text-[var(--asin-primary,#0E2433)] space-y-1">
+            <div className="rounded-xl border border-blue-100 bg-blue-50/60 p-4 flex gap-3">
+              <CheckCircle2 className="text-blue-600 shrink-0" size={20} />
+              <div className="text-sm text-blue-900 space-y-1">
                 <p className="font-bold">{tm('msgNotifyBulkWaMetaTitle')}</p>
                 <p>{tm('msgNotifyBulkWaMetaHint')}</p>
-                <p className="text-xs text-[var(--asin-accent,#1FA8A0)]">
+                <p className="text-xs text-blue-700">
                   {waConn.connected
                     ? tm('msgNotifyBulkWaMetaOk')
                     : tm('msgNotifyBulkWaMetaMissing')}
@@ -353,12 +353,12 @@ export function WhatsAppBulkSendPreviewModal({
               </div>
             </div>
           ) : waConn.provider === 'EVOLUTION' ? (
-            <div className="rounded-xl border border-[var(--asin-accent-muted,#D5F0EE)] bg-[var(--asin-accent-muted,#D5F0EE)]/80 p-4 flex gap-3">
-              <CheckCircle2 className="text-[var(--asin-accent,#1FA8A0)] shrink-0" size={20} />
-              <div className="text-sm text-[var(--asin-primary,#0E2433)] space-y-1">
+            <div className="rounded-xl border border-violet-100 bg-violet-50/60 p-4 flex gap-3">
+              <CheckCircle2 className="text-violet-600 shrink-0" size={20} />
+              <div className="text-sm text-violet-900 space-y-1">
                 <p className="font-bold">{tm('msgNotifyBulkWaEvolutionTitle')}</p>
                 <p>{tm('msgNotifyBulkWaEvolutionHint')}</p>
-                <p className="text-xs text-[var(--asin-accent,#1FA8A0)]">
+                <p className="text-xs text-violet-700">
                   {waConn.connected
                     ? tm('msgNotifyBulkWaEvolutionOk')
                     : tm('msgNotifyBulkWaEvolutionMissing')}

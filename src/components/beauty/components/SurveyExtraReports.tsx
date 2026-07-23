@@ -146,8 +146,8 @@ export function SurveyTrendReport(embed?: BeautySurveyReportEmbedProps) {
                 titleKey="bSurveyTrendReportTitle"
                 subtitleKey="bSurveyTrendReportSubtitle"
                 icon={<TrendingUp size={22} />}
-                iconClassName="bg-[var(--asin-accent-muted,#D5F0EE)] text-[var(--asin-accent,#1FA8A0)]"
-                buttonClassName="bg-[var(--asin-accent,#1FA8A0)] hover:bg-[#178f88] disabled:opacity-40"
+                iconClassName="bg-blue-100 text-blue-700"
+                buttonClassName="bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300"
                 startYmd={startYmd}
                 endYmd={endYmd}
                 onStartChange={setStartYmd}
@@ -243,7 +243,7 @@ export function SurveyStaffReport(embed?: BeautySurveyReportEmbedProps) {
                 titleKey="bSurveyStaffReportTitle"
                 subtitleKey="bSurveyStaffReportSubtitle"
                 icon={<Users size={22} />}
-                iconClassName="bg-[var(--asin-accent-muted,#D5F0EE)] text-[var(--asin-primary,#0E2433)]"
+                iconClassName="bg-indigo-100 text-indigo-700"
                 startYmd={startYmd}
                 endYmd={endYmd}
                 onStartChange={setStartYmd}

@@ -36,7 +36,7 @@ const T = {
     greenLight:  '#d1fae5',
     amber:       '#d97706',
     amberLight:  '#fef3c7',
-    blue:        '#1FA8A0',
+    blue:        '#2563eb',
     blueLight:   '#dbeafe',
 };
 

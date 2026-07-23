@@ -112,7 +112,7 @@ export function KasaIslemleriModal({ kasa, islemler, loading, onClose, onIslemCl
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
       <div className="bg-white dark:bg-gray-900 w-full max-w-6xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
         {/* Header - Flat Blue */}
-        <div className="bg-[var(--asin-primary,#0E2433)] p-4 text-white flex items-center justify-between border-b dark:border-gray-700">
+        <div className="bg-gradient-to-r from-blue-600 to-blue-700 p-4 text-white flex items-center justify-between border-b dark:border-gray-700">
           <div className="flex items-center gap-3">
             <Wallet className="w-6 h-6" />
             <div>

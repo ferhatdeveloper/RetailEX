@@ -4,6 +4,8 @@
  */
 
 import { pgQuery } from './pgClient';
+import { postgrestGet, postgrestPatch, postgrestPost } from './postgrestClient';
+import { runDataTransport } from './dataTransport';
 import {
   customersTable,
   firmNr,
@@ -107,11 +109,35 @@ export async function fetchNotifyCustomers(
   const fn = firmNr();
   const ct = customersTable(fn);
   const q = search.trim().toLowerCase();
-  const like = q ? `%${q}%` : null;
 
-  const rows = await tryQueries<Record<string, unknown>>([
-    {
-      sql: `SELECT id, name, phone, customer_tier, city, district
+  return runDataTransport({
+    label: 'fetchNotifyCustomers',
+    viaRest: async () => {
+      const rows = await postgrestGet<Record<string, unknown>[]>(
+        `/${ct}`,
+        {
+          select: 'id,name,phone,customer_tier,city,district',
+          is_active: 'eq.true',
+          order: 'name.asc',
+          limit: Math.min(limit * 2, 500),
+        },
+        { schema: 'public' },
+      );
+      return (Array.isArray(rows) ? rows : [])
+        .map(mapCustomerRow)
+        .filter((r): r is NotifyCustomerRow => {
+          if (!r) return false;
+          if (!q) return true;
+          const hay = `${r.name} ${r.phone} ${r.city || ''}`.toLowerCase();
+          return hay.includes(q);
+        })
+        .slice(0, limit);
+    },
+    viaBridge: async () => {
+      const like = q ? `%${q}%` : null;
+      const rows = await tryQueries<Record<string, unknown>>([
+        {
+          sql: `SELECT id, name, phone, customer_tier, city, district
             FROM ${ct}
             WHERE COALESCE(is_active, true) = true
               AND phone IS NOT NULL AND TRIM(phone) <> ''
@@ -123,30 +149,58 @@ export async function fetchNotifyCustomers(
               )
             ORDER BY name ASC
             LIMIT $2`,
-      params: [like, limit],
-    },
-    {
-      sql: `SELECT id, name, phone, customer_tier, city, district
+          params: [like, limit],
+        },
+        {
+          sql: `SELECT id, name, phone, customer_tier, city, district
             FROM public.customers
             WHERE firm_nr = $1
               AND COALESCE(is_active, true) = true
               AND phone IS NOT NULL AND TRIM(phone) <> ''
             ORDER BY name ASC
             LIMIT $2`,
-      params: [fn, limit],
+          params: [fn, limit],
+        },
+      ]);
+      return rows.map(mapCustomerRow).filter((r): r is NotifyCustomerRow => r != null);
     },
-  ]);
-
-  return rows.map(mapCustomerRow).filter((r): r is NotifyCustomerRow => r != null);
+  });
 }
 
 export async function fetchNotificationQueue(limit = 80): Promise<NotificationQueueRow[]> {
   const fn = firmNr();
   const qt = notificationQueueTable(fn);
 
-  return tryQueries<NotificationQueueRow>([
-    {
-      sql: `SELECT id,
+  return runDataTransport({
+    label: 'fetchNotificationQueue',
+    viaRest: async () => {
+      const rows = await postgrestGet<Record<string, unknown>[]>(
+        `/${qt}`,
+        {
+          select:
+            'id,event_type,channel,recipient_phone,recipient_name,message_text,status,created_at,sent_at,error_text',
+          order: 'created_at.desc',
+          limit,
+        },
+        { schema: 'public' },
+      );
+      return (Array.isArray(rows) ? rows : []).map((r) => ({
+        id: String(r.id ?? ''),
+        event_type: String(r.event_type ?? ''),
+        channel: String(r.channel ?? 'whatsapp'),
+        recipient_phone: r.recipient_phone != null ? String(r.recipient_phone) : null,
+        recipient_name: r.recipient_name != null ? String(r.recipient_name) : null,
+        message_text: r.message_text != null ? String(r.message_text) : null,
+        status: String(r.status ?? 'pending'),
+        created_at: r.created_at != null ? String(r.created_at) : null,
+        sent_at: r.sent_at != null ? String(r.sent_at) : null,
+        error_text: r.error_text != null ? String(r.error_text) : null,
+      }));
+    },
+    viaBridge: () =>
+      tryQueries<NotificationQueueRow>([
+        {
+          sql: `SELECT id,
               COALESCE(event_type, '') AS event_type,
               COALESCE(channel, 'whatsapp') AS channel,
               recipient_phone,
@@ -159,28 +213,58 @@ export async function fetchNotificationQueue(limit = 80): Promise<NotificationQu
        FROM ${qt}
        ORDER BY created_at DESC NULLS LAST
        LIMIT $1`,
-      params: [limit],
-    },
-  ]);
+          params: [limit],
+        },
+      ]),
+  });
 }
 
 export async function fetchMessagingSettings(): Promise<MessagingSettingsRow | null> {
   const fn = firmNr();
   const mt = messagingSettingsTable(fn);
 
-  const rows = await tryQueries<{
-    id: string;
-    whatsapp_provider: string;
-    notify_invoice_whatsapp: boolean;
-    whatsapp_base_url: string | null;
-    whatsapp_token: string | null;
-    whatsapp_instance_id: string | null;
-    whatsapp_phone_id: string | null;
-    default_reminder_channel: string | null;
-    whatsapp_template: string | null;
-  }>([
-    {
-      sql: `SELECT id::text AS id,
+  return runDataTransport({
+    label: 'fetchMessagingSettings',
+    viaRest: async () => {
+      const rows = await postgrestGet<Record<string, unknown>[]>(
+        `/${mt}`,
+        {
+          select:
+            'id,whatsapp_provider,notify_invoice_whatsapp,whatsapp_base_url,whatsapp_token,whatsapp_instance_id,whatsapp_phone_id,default_reminder_channel,whatsapp_template',
+          order: 'created_at.asc',
+          limit: 1,
+        },
+        { schema: 'public' },
+      );
+      const row = Array.isArray(rows) ? rows[0] : null;
+      if (!row) return null;
+      return {
+        id: String(row.id ?? ''),
+        whatsapp_provider: String(row.whatsapp_provider || 'NONE').toUpperCase(),
+        notify_invoice_whatsapp: row.notify_invoice_whatsapp === true,
+        whatsapp_base_url: row.whatsapp_base_url != null ? String(row.whatsapp_base_url) : null,
+        whatsapp_token: row.whatsapp_token != null ? String(row.whatsapp_token) : null,
+        whatsapp_instance_id:
+          row.whatsapp_instance_id != null ? String(row.whatsapp_instance_id) : null,
+        whatsapp_phone_id: row.whatsapp_phone_id != null ? String(row.whatsapp_phone_id) : null,
+        default_reminder_channel: String(row.default_reminder_channel || 'whatsapp').toLowerCase(),
+        whatsapp_template: row.whatsapp_template != null ? String(row.whatsapp_template) : null,
+      };
+    },
+    viaBridge: async () => {
+      const rows = await tryQueries<{
+        id: string;
+        whatsapp_provider: string;
+        notify_invoice_whatsapp: boolean;
+        whatsapp_base_url: string | null;
+        whatsapp_token: string | null;
+        whatsapp_instance_id: string | null;
+        whatsapp_phone_id: string | null;
+        default_reminder_channel: string | null;
+        whatsapp_template: string | null;
+      }>([
+        {
+          sql: `SELECT id::text AS id,
               COALESCE(whatsapp_provider, 'NONE') AS whatsapp_provider,
               COALESCE(notify_invoice_whatsapp, false) AS notify_invoice_whatsapp,
               whatsapp_base_url,
@@ -192,22 +276,23 @@ export async function fetchMessagingSettings(): Promise<MessagingSettingsRow | n
        FROM ${mt}
        ORDER BY created_at ASC NULLS LAST
        LIMIT 1`,
+        },
+      ]);
+      const row = rows[0];
+      if (!row) return null;
+      return {
+        id: String(row.id),
+        whatsapp_provider: (row.whatsapp_provider || 'NONE').toString().toUpperCase(),
+        notify_invoice_whatsapp: row.notify_invoice_whatsapp === true,
+        whatsapp_base_url: row.whatsapp_base_url,
+        whatsapp_token: row.whatsapp_token,
+        whatsapp_instance_id: row.whatsapp_instance_id,
+        whatsapp_phone_id: row.whatsapp_phone_id,
+        default_reminder_channel: (row.default_reminder_channel || 'whatsapp').toString().toLowerCase(),
+        whatsapp_template: row.whatsapp_template,
+      };
     },
-  ]);
-
-  const row = rows[0];
-  if (!row) return null;
-  return {
-    id: String(row.id),
-    whatsapp_provider: (row.whatsapp_provider || 'NONE').toString().toUpperCase(),
-    notify_invoice_whatsapp: row.notify_invoice_whatsapp === true,
-    whatsapp_base_url: row.whatsapp_base_url,
-    whatsapp_token: row.whatsapp_token,
-    whatsapp_instance_id: row.whatsapp_instance_id,
-    whatsapp_phone_id: row.whatsapp_phone_id,
-    default_reminder_channel: (row.default_reminder_channel || 'whatsapp').toString().toLowerCase(),
-    whatsapp_template: row.whatsapp_template,
-  };
+  });
 }
 
 export async function fetchMessagingProvider(): Promise<MessagingProviderSummary> {
@@ -228,11 +313,25 @@ export async function ensureMessagingSettings(): Promise<MessagingSettingsRow> {
   const fn = firmNr();
   const mt = messagingSettingsTable(fn);
   const id = newUuid();
-  await pgQuery(
-    `INSERT INTO ${mt} (id, whatsapp_provider, notify_invoice_whatsapp)
-     VALUES ($1::uuid, 'NONE', false)`,
-    [id],
-  );
+
+  await runDataTransport({
+    label: 'ensureMessagingSettings',
+    viaRest: async () => {
+      await postgrestPost(
+        `/${mt}`,
+        { id, whatsapp_provider: 'NONE', notify_invoice_whatsapp: false },
+        { schema: 'public', prefer: 'return=minimal' },
+      );
+    },
+    viaBridge: async () => {
+      await pgQuery(
+        `INSERT INTO ${mt} (id, whatsapp_provider, notify_invoice_whatsapp)
+         VALUES ($1::uuid, 'NONE', false)`,
+        [id],
+      );
+    },
+  });
+
   const created = await fetchMessagingSettings();
   if (!created) {
     return {
@@ -268,15 +367,33 @@ export async function updateMessagingSettings(patch: {
 
   const fn = firmNr();
   const mt = messagingSettingsTable(fn);
-  await pgQuery(
-    `UPDATE ${mt} SET
-       whatsapp_provider = $2,
-       notify_invoice_whatsapp = $3,
-       default_reminder_channel = $4,
-       updated_at = CURRENT_TIMESTAMP
-     WHERE id = $1::uuid`,
-    [cur.id, provider, notify, channel],
-  );
+
+  await runDataTransport({
+    label: 'updateMessagingSettings',
+    viaRest: async () => {
+      await postgrestPatch(
+        `/${mt}?id=eq.${encodeURIComponent(cur.id)}`,
+        {
+          whatsapp_provider: provider,
+          notify_invoice_whatsapp: notify,
+          default_reminder_channel: channel,
+          updated_at: new Date().toISOString(),
+        },
+        { schema: 'public', prefer: 'return=minimal' },
+      );
+    },
+    viaBridge: async () => {
+      await pgQuery(
+        `UPDATE ${mt} SET
+           whatsapp_provider = $2,
+           notify_invoice_whatsapp = $3,
+           default_reminder_channel = $4,
+           updated_at = CURRENT_TIMESTAMP
+         WHERE id = $1::uuid`,
+        [cur.id, provider, notify, channel],
+      );
+    },
+  });
 }
 
 export async function fetchQueueStats(): Promise<QueueStats> {
@@ -307,24 +424,48 @@ export async function enqueueNotification(params: {
   if (!text) throw new Error('Mesaj metni boş olamaz');
 
   const id = newUuid();
-  await pgQuery(
-    `INSERT INTO ${qt} (
-      id, firm_nr, period_nr, event_type, channel, recipient_phone, recipient_name,
-      message_text, payload_json, status
-    ) VALUES (
-      $1::uuid, $2, $3, $4, $5, $6, $7, $8, '{}'::jsonb, 'pending'
-    )`,
-    [
-      id,
-      fn,
-      pn,
-      params.event_type || 'customer_broadcast',
-      params.channel || 'whatsapp',
-      phone,
-      params.recipient_name ?? null,
-      text,
-    ],
-  );
+
+  await runDataTransport({
+    label: 'enqueueNotification',
+    viaRest: async () => {
+      await postgrestPost(
+        `/${qt}`,
+        {
+          id,
+          firm_nr: fn,
+          period_nr: pn,
+          event_type: params.event_type || 'customer_broadcast',
+          channel: params.channel || 'whatsapp',
+          recipient_phone: phone,
+          recipient_name: params.recipient_name ?? null,
+          message_text: text,
+          payload_json: {},
+          status: 'pending',
+        },
+        { schema: 'public', prefer: 'return=minimal' },
+      );
+    },
+    viaBridge: async () => {
+      await pgQuery(
+        `INSERT INTO ${qt} (
+          id, firm_nr, period_nr, event_type, channel, recipient_phone, recipient_name,
+          message_text, payload_json, status
+        ) VALUES (
+          $1::uuid, $2, $3, $4, $5, $6, $7, $8, '{}'::jsonb, 'pending'
+        )`,
+        [
+          id,
+          fn,
+          pn,
+          params.event_type || 'customer_broadcast',
+          params.channel || 'whatsapp',
+          phone,
+          params.recipient_name ?? null,
+          text,
+        ],
+      );
+    },
+  });
   return id;
 }
 
@@ -332,12 +473,25 @@ export async function enqueueNotification(params: {
 export async function retryNotificationItem(queueId: string): Promise<void> {
   const fn = firmNr();
   const qt = notificationQueueTable(fn);
-  await pgQuery(
-    `UPDATE ${qt}
-     SET status = 'pending', error_text = NULL, sent_at = NULL
-     WHERE id = $1::uuid`,
-    [queueId],
-  );
+
+  await runDataTransport({
+    label: 'retryNotificationItem',
+    viaRest: async () => {
+      await postgrestPatch(
+        `/${qt}?id=eq.${encodeURIComponent(queueId)}`,
+        { status: 'pending', error_text: null, sent_at: null },
+        { schema: 'public', prefer: 'return=minimal' },
+      );
+    },
+    viaBridge: async () => {
+      await pgQuery(
+        `UPDATE ${qt}
+         SET status = 'pending', error_text = NULL, sent_at = NULL
+         WHERE id = $1::uuid`,
+        [queueId],
+      );
+    },
+  });
 }
 
 async function markNotificationRow(

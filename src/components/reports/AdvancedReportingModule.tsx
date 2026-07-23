@@ -81,12 +81,12 @@ export function AdvancedReportingModule() {
     <div className={`p-6 space-y-6 ${darkMode ? 'bg-gray-900' : 'bg-gray-50'} min-h-screen`}>
       <div className="flex items-center justify-between">
         <h1 className={`text-2xl font-bold flex items-center gap-2 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-          <FileText className="w-8 h-8 text-[var(--asin-accent,#1FA8A0)]" />
+          <FileText className="w-8 h-8 text-blue-600" />
           Gelişmiş Raporlama
         </h1>
         <button 
           onClick={handleCreateNewReport}
-          className="px-4 py-2 bg-[var(--asin-accent,#1FA8A0)] text-white rounded-lg hover:bg-[#178f88] flex items-center gap-2 transition-colors"
+          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2 transition-colors"
         >
           <PieChart className="w-4 h-4" />
           Yeni Rapor Oluştur
@@ -95,20 +95,20 @@ export function AdvancedReportingModule() {
 
       {/* Stats */}
       <div className="grid grid-cols-4 gap-4">
-        <div className={`${darkMode ? 'bg-gray-800 border border-gray-700' : 'bg-[var(--asin-accent-muted,#D5F0EE)]'} rounded-lg p-4 transition-colors`}>
-          <FileText className={`w-8 h-8 ${darkMode ? 'text-[var(--asin-accent,#1FA8A0)]' : 'text-[var(--asin-accent,#1FA8A0)]'} mb-2`} />
-          <p className={`text-sm ${darkMode ? 'text-gray-300' : 'text-[var(--asin-primary,#0E2433)]'}`}>Toplam Rapor</p>
-          <p className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-[var(--asin-primary,#0E2433)]'}`}>105</p>
+        <div className={`${darkMode ? 'bg-gray-800 border border-gray-700' : 'bg-blue-50'} rounded-lg p-4 transition-colors`}>
+          <FileText className={`w-8 h-8 ${darkMode ? 'text-blue-400' : 'text-blue-600'} mb-2`} />
+          <p className={`text-sm ${darkMode ? 'text-gray-300' : 'text-blue-700'}`}>Toplam Rapor</p>
+          <p className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-blue-900'}`}>105</p>
         </div>
         <div className={`${darkMode ? 'bg-gray-800 border border-gray-700' : 'bg-green-50'} rounded-lg p-4 transition-colors`}>
           <Download className={`w-8 h-8 ${darkMode ? 'text-green-400' : 'text-green-600'} mb-2`} />
           <p className={`text-sm ${darkMode ? 'text-gray-300' : 'text-green-700'}`}>Bu Ay İndirme</p>
           <p className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-green-900'}`}>1,247</p>
         </div>
-        <div className={`${darkMode ? 'bg-gray-800 border border-gray-700' : 'bg-[var(--asin-accent-muted,#D5F0EE)]'} rounded-lg p-4 transition-colors`}>
-          <Calendar className={`w-8 h-8 ${darkMode ? 'text-[var(--asin-accent,#1FA8A0)]' : 'text-[var(--asin-accent,#1FA8A0)]'} mb-2`} />
-          <p className={`text-sm ${darkMode ? 'text-gray-300' : 'text-[var(--asin-primary,#0E2433)]'}`}>Zamanlanmış</p>
-          <p className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-[var(--asin-primary,#0E2433)]'}`}>23</p>
+        <div className={`${darkMode ? 'bg-gray-800 border border-gray-700' : 'bg-purple-50'} rounded-lg p-4 transition-colors`}>
+          <Calendar className={`w-8 h-8 ${darkMode ? 'text-purple-400' : 'text-purple-600'} mb-2`} />
+          <p className={`text-sm ${darkMode ? 'text-gray-300' : 'text-purple-700'}`}>Zamanlanmış</p>
+          <p className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-purple-900'}`}>23</p>
         </div>
         <div className={`${darkMode ? 'bg-gray-800 border border-gray-700' : 'bg-yellow-50'} rounded-lg p-4 transition-colors`}>
           <TrendingUp className={`w-8 h-8 ${darkMode ? 'text-yellow-400' : 'text-yellow-600'} mb-2`} />
@@ -154,7 +154,7 @@ export function AdvancedReportingModule() {
               setShowFilter(!showFilter);
               console.log('Filtreleme paneli:', !showFilter ? 'açıldı' : 'kapatıldı');
             }}
-            className={`px-3 py-1 border ${showFilter ? 'bg-[var(--asin-accent,#1FA8A0)] text-white border-[var(--asin-accent,#1FA8A0)]' : darkMode ? 'border-gray-600 bg-gray-700 text-gray-200 hover:bg-gray-600' : 'border-gray-300 hover:bg-gray-50'} rounded-lg text-sm flex items-center gap-2 transition-colors`}
+            className={`px-3 py-1 border ${showFilter ? 'bg-blue-600 text-white border-blue-600' : darkMode ? 'border-gray-600 bg-gray-700 text-gray-200 hover:bg-gray-600' : 'border-gray-300 hover:bg-gray-50'} rounded-lg text-sm flex items-center gap-2 transition-colors`}
           >
             <Filter className="w-4 h-4" />
             Filtrele
@@ -241,7 +241,7 @@ export function AdvancedReportingModule() {
                           handleRunReport(report.id, report.name);
                         }}
                         disabled={runningReport === report.id}
-                        className={`px-3 py-1 bg-[var(--asin-accent,#1FA8A0)] text-white rounded hover:bg-[#178f88] text-sm flex items-center gap-1 transition-colors ${
+                        className={`px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm flex items-center gap-1 transition-colors ${
                           runningReport === report.id ? 'opacity-50 cursor-not-allowed' : ''
                         }`}
                       >
@@ -282,18 +282,18 @@ export function AdvancedReportingModule() {
         </div>
       </div>
 
-      <div className={`${darkMode ? 'bg-gradient-to-r from-gray-800 to-gray-700 border border-gray-600' : 'bg-[var(--asin-accent-muted,#D5F0EE)]'} rounded-lg p-6`}>
+      <div className={`${darkMode ? 'bg-gradient-to-r from-gray-800 to-gray-700 border border-gray-600' : 'bg-gradient-to-r from-blue-50 to-purple-50'} rounded-lg p-6`}>
         <div className="flex items-start gap-4">
-          <BarChart3 className={`w-8 h-8 ${darkMode ? 'text-[var(--asin-accent,#1FA8A0)]' : 'text-[var(--asin-accent,#1FA8A0)]'} flex-shrink-0`} />
+          <BarChart3 className={`w-8 h-8 ${darkMode ? 'text-blue-400' : 'text-blue-600'} flex-shrink-0`} />
           <div>
-            <h3 className={`font-semibold mb-2 ${darkMode ? 'text-white' : 'text-[var(--asin-primary,#0E2433)]'}`}>Özel Rapor Oluşturucu</h3>
+            <h3 className={`font-semibold mb-2 ${darkMode ? 'text-white' : 'text-blue-900'}`}>Özel Rapor Oluşturucu</h3>
             <p className={`text-sm mb-3 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
               Drag & Drop rapor editörü ile kendi raporlarınızı oluşturun. 
               SQL sorguları yazın, grafikler ekleyin ve otomatik zamanlama ayarlayın.
             </p>
             <button 
               onClick={handleCreateNewReport}
-              className="px-4 py-2 bg-[var(--asin-accent,#1FA8A0)] text-white rounded-lg hover:bg-[#178f88] text-sm transition-colors flex items-center gap-2"
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm transition-colors flex items-center gap-2"
             >
               <Database className="w-4 h-4" />
               Özel Rapor Oluştur
@@ -306,11 +306,11 @@ export function AdvancedReportingModule() {
       {showNewReportModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden`}>
-            <div className={`${darkMode ? 'bg-gray-900' : 'bg-[var(--asin-primary,#0E2433)]'} px-6 py-4 flex items-center justify-between`}>
+            <div className={`${darkMode ? 'bg-gray-900' : 'bg-blue-600'} px-6 py-4 flex items-center justify-between`}>
               <h2 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-white'}`}>Yeni Rapor Oluştur</h2>
               <button
                 onClick={() => setShowNewReportModal(false)}
-                className={`${darkMode ? 'text-gray-300 hover:bg-gray-800' : 'text-white hover:bg-white/15'} rounded-lg p-2 transition-colors`}
+                className={`${darkMode ? 'text-gray-300 hover:bg-gray-800' : 'text-white hover:bg-blue-700'} rounded-lg p-2 transition-colors`}
               >
                 <X className="w-5 h-5" />
               </button>
@@ -361,7 +361,7 @@ export function AdvancedReportingModule() {
                     toast.success('Rapor şablonu oluşturuldu!');
                     setShowNewReportModal(false);
                   }}
-                  className="px-4 py-2 bg-[var(--asin-accent,#1FA8A0)] text-white rounded-lg hover:bg-[#178f88] transition-colors"
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
                 >
                   Oluştur
                 </button>

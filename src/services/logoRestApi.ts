@@ -268,21 +268,69 @@ async function postLogoBridgeProxy(
   });
 }
 
+/** Logo REST "no idle LObjects.exe" — sunucu havuz hatası (istemci çözemez). */
+export function isLogoIdleLObjectsError(message: string | undefined | null): boolean {
+  const m = String(message || '').toLocaleLowerCase('en-US');
+  return (
+    m.includes('no idle lobjects') ||
+    m.includes('idle lobjects') ||
+    (m.includes('lobjects.exe') && (m.includes('yok') || m.includes('denied') || m.includes('idle')))
+  );
+}
+
+function formatLogoOAuthErrorCode(code: string, description?: string): string {
+  const desc = (description || '').trim();
+  const descLower = desc.toLocaleLowerCase('en-US');
+
+  // Logo Objects REST: token için sunucuda boşta LObjects.exe oturumu gerekir.
+  if (
+    descLower.includes('no idle lobjects') ||
+    descLower.includes('lobjects.exe') ||
+    descLower.includes('idle lobjects')
+  ) {
+    return (
+      'Logo REST: Boşta LObjects.exe yok. Bu hata RetailEX kodundan çözülmez — Logo sunucusunda ' +
+      'Servis Yönetim Panelindeki Tiger kullanıcısı/şifre/firma ile LObjects havuzunun ayağa kalktığını doğrulayın; ' +
+      "Görev Yöneticisi'nde LObjects.exe oluşmalı; RESTServis\\Logs dosyasına bakın. " +
+      (desc ? `(${desc})` : '')
+    ).trim();
+  }
+
+  const known: Record<string, string> = {
+    login_error:
+      'Logo girişi reddedildi (login_error). Kullanıcı adı/şifre, firma no veya REST kullanıcı yetkisini kontrol edin.',
+    invalid_client:
+      'Logo istemci kimliği geçersiz (invalid_client). Client ID / Client Secret bu sunucu için doğru mu?',
+    invalid_grant: 'Logo yetkilendirme reddedildi (invalid_grant). Kullanıcı veya şifre hatalı olabilir.',
+    unauthorized_client: 'Bu istemcinin Logo REST erişim yetkisi yok (unauthorized_client).',
+  };
+  const base = known[code] || `Logo REST: ${code}`;
+  if (desc && desc !== code) return `${base} — ${desc}`;
+  return base;
+}
+
 function formatLogoHttpFailure(baseUrl: string, status: number, data: unknown, text: string): string {
   if (data && typeof data === 'object') {
     const o = data as Record<string, unknown>;
     if (typeof o.upstreamError === 'string' && o.upstreamError) {
       return formatLogoUpstreamError(baseUrl, o.upstreamError);
     }
-    if (typeof o.error === 'string' && o.error) {
-      if (o.error === 'fetch failed' || String(o.error).includes('fetch failed')) {
-        return formatLogoUpstreamError(baseUrl, o.error);
-      }
-      return String(o.error);
+    const errCode = typeof o.error === 'string' ? o.error : '';
+    const errDesc =
+      typeof o.error_description === 'string'
+        ? o.error_description
+        : typeof o.message === 'string'
+          ? o.message
+          : '';
+    if (errCode === 'fetch failed' || errCode.includes('fetch failed')) {
+      return formatLogoUpstreamError(baseUrl, errCode);
     }
-    const err = o as { error_description?: string; message?: string };
-    if (err.error_description) return err.error_description;
-    if (err.message) return err.message;
+    // OAuth: önce açıklama; yoksa bilinen kodları Türkçe mesaja çevir (ham "login_error" gösterme)
+    if (errCode && (errCode === 'login_error' || errCode.startsWith('invalid_') || errCode.includes('_'))) {
+      return formatLogoOAuthErrorCode(errCode, errDesc || undefined);
+    }
+    if (errDesc) return errDesc;
+    if (errCode) return errCode;
   }
   const blob = `${text || ''}`.trim();
   if (blob && blob.length < 240) return blob;
@@ -936,6 +984,28 @@ export async function logoObtainToken(
         },
         body: basicBody.toString(),
       });
+    }
+  }
+
+  // Geçici havuz doluluğu: tek kez kısa bekleyip aynı firmno ile yeniden dene (firma değiştirme).
+  if (!tokenRes.ok) {
+    const failMsg = formatLogoHttpFailure(baseUrl, tokenRes.status, tokenRes.data, tokenRes.text);
+    if (isLogoIdleLObjectsError(failMsg)) {
+      await new Promise((r) => setTimeout(r, 4000));
+      if (clientId && clientSecret) {
+        const bodyRetry = new URLSearchParams(tokenBody);
+        bodyRetry.set('client_id', clientId);
+        bodyRetry.set('client_secret', clientSecret);
+        tokenRes = await logoHttp(baseUrl, 'POST', '/token', {
+          headers: tokenHeaders,
+          body: bodyRetry.toString(),
+        });
+      } else {
+        tokenRes = await logoHttp(baseUrl, 'POST', '/token', {
+          headers: { ...tokenHeaders, Authorization: basicAuth(clientId, clientSecret) },
+          body: tokenBody.toString(),
+        });
+      }
     }
   }
 

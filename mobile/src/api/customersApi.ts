@@ -1,5 +1,6 @@
 import { pgQuery } from './pgClient';
-import { postgrestGet, postgrestPost } from './postgrestClient';
+import { postgrestGet, postgrestPatch, postgrestPost } from './postgrestClient';
+import { runDataTransport } from './dataTransport';
 import { customersTable, firmNr, newUuid } from './erpTables';
 import { shouldUseLiveData, getNetworkPolicy } from '../offline/policy';
 import {
@@ -65,6 +66,7 @@ async function fetchCustomersViaPostgrest(search = '', limit = 200): Promise<Cus
 
   const query: Record<string, string | number> = {
     select: REST_SELECT,
+    is_active: 'eq.true',
     order: 'name.asc',
     limit,
     or: `(${firmOr})`,
@@ -257,7 +259,14 @@ export async function fetchCustomerById(id: string): Promise<CustomerDetail | nu
 
 export type { CustomerInput };
 
-/** Web customerAPI.generateCode ile aynı M001 deseni */
+function nextMCode(last: string | null | undefined): string {
+  if (!last) return 'M001';
+  const num = parseInt(String(last).slice(1), 10);
+  if (Number.isNaN(num)) return 'M001';
+  return `M${String(num + 1).padStart(3, '0')}`;
+}
+
+/** Web customerAPI.generateCode ile aynı M001 deseni (PostgREST önce) */
 export async function generateCustomerCode(): Promise<string> {
   if (!shouldUseLiveData()) {
     const cached = await getCachedCustomers('', 500);
@@ -272,6 +281,46 @@ export async function generateCustomerCode(): Promise<string> {
 
   const table = customersTable();
   const fn = firmNr();
+  const fnBare = fn.replace(/^0+/, '') || fn;
+  const cfg = useConfigStore.getState().config;
+
+  if (shouldPreferPostgrest(cfg)) {
+    try {
+      const firmOr = Array.from(new Set([fn, fnBare].filter(Boolean)))
+        .map((f) => `firm_nr.eq.${f}`)
+        .concat('firm_nr.is.null')
+        .join(',');
+      const rows = await postgrestGet<Array<{ code?: string | null }>>(
+        `/${table}`,
+        {
+          select: 'code',
+          and: `(or(${firmOr}),code.like.M*)`,
+          order: 'code.desc',
+          limit: 40,
+        },
+        { schema: 'public' },
+      );
+      const last = (Array.isArray(rows) ? rows : [])
+        .map((r) => String(r.code || ''))
+        .find((c) => /^M\d+/i.test(c));
+      return nextMCode(last);
+    } catch (e) {
+      if (!shouldUseBridgeSql(cfg)) {
+        return `M${Date.now().toString().slice(-3)}`;
+      }
+      if (__DEV__) {
+        console.warn(
+          '[generateCustomerCode] PostgREST → bridge',
+          e instanceof Error ? e.message : e,
+        );
+      }
+    }
+  }
+
+  if (!shouldUseBridgeSql(cfg)) {
+    return `M${Date.now().toString().slice(-3)}`;
+  }
+
   try {
     const res = await pgQuery<{ code: string | null }>(
       `SELECT code FROM ${table}
@@ -283,13 +332,9 @@ export async function generateCustomerCode(): Promise<string> {
        AND code LIKE 'M%'
        ORDER BY code DESC
        LIMIT 1`,
-      [fn, fn.replace(/^0+/, '') || fn],
+      [fn, fnBare],
     );
-    const last = res.rows[0]?.code;
-    if (!last) return 'M001';
-    const num = parseInt(String(last).slice(1), 10);
-    if (Number.isNaN(num)) return 'M001';
-    return `M${String(num + 1).padStart(3, '0')}`;
+    return nextMCode(res.rows[0]?.code);
   } catch {
     return `M${Date.now().toString().slice(-3)}`;
   }
@@ -420,12 +465,7 @@ export async function createCustomer(
   return savedId;
 }
 
-async function updateCustomerLive(id: string, input: Partial<CustomerInput>): Promise<void> {
-  const table = customersTable();
-  const sets: string[] = [];
-  const vals: unknown[] = [];
-  let i = 1;
-
+function buildCustomerPatchBody(input: Partial<CustomerInput>): Record<string, unknown> {
   const map: Record<keyof CustomerInput, string> = {
     code: 'code',
     name: 'name',
@@ -438,15 +478,57 @@ async function updateCustomerLive(id: string, input: Partial<CustomerInput>): Pr
     tax_office: 'tax_office',
     notes: 'notes',
   };
-
+  const body: Record<string, unknown> = {};
   for (const [key, col] of Object.entries(map) as [keyof CustomerInput, string][]) {
     const v = input[key];
     if (v === undefined) continue;
-    sets.push(`${col} = $${i++}`);
-    vals.push(typeof v === 'string' ? v.trim() || null : v);
+    body[col] = typeof v === 'string' ? v.trim() || null : v;
   }
-  if (!sets.length) return;
+  return body;
+}
 
+async function updateCustomerLive(id: string, input: Partial<CustomerInput>): Promise<void> {
+  const body = buildCustomerPatchBody(input);
+  if (!Object.keys(body).length) return;
+
+  const table = customersTable();
+  const cfg = useConfigStore.getState().config;
+  const preferRest = shouldPreferPostgrest(cfg);
+  const canBridge = shouldUseBridgeSql(cfg);
+
+  if (preferRest) {
+    try {
+      await postgrestPatch(`/${table}?id=eq.${encodeURIComponent(id)}`, body, {
+        schema: 'public',
+        prefer: 'return=minimal',
+      });
+      return;
+    } catch (e) {
+      if (!canBridge) throw e;
+      if (__DEV__) {
+        console.warn(
+          '[updateCustomer] PostgREST → bridge',
+          e instanceof Error ? e.message : e,
+        );
+      }
+    }
+  }
+
+  if (!canBridge) {
+    throw new Error(
+      preferRest
+        ? 'PostgREST cari güncelleme başarısız ve bridge kapalı (apiMode=postgrest)'
+        : 'Bridge yapılandırması eksik',
+    );
+  }
+
+  const sets: string[] = [];
+  const vals: unknown[] = [];
+  let i = 1;
+  for (const [col, v] of Object.entries(body)) {
+    sets.push(`${col} = $${i++}`);
+    vals.push(v);
+  }
   vals.push(id);
   await pgQuery(`UPDATE ${table} SET ${sets.join(', ')} WHERE id::text = $${i}`, vals);
 }
@@ -498,7 +580,44 @@ export async function fetchCustomerRecentSales(
   limit = 20,
 ): Promise<{ id: string; fiche_no: string | null; date: string | null; net_amount: number }[]> {
   if (!shouldUseLiveData()) return [];
+  if (!customerId) return [];
 
+  return runDataTransport({
+    label: 'fetchCustomerRecentSales',
+    viaRest: () => fetchCustomerRecentSalesViaRest(customerId, limit),
+    viaBridge: () => fetchCustomerRecentSalesViaBridge(customerId, limit),
+  });
+}
+
+async function fetchCustomerRecentSalesViaRest(
+  customerId: string,
+  limit: number,
+): Promise<{ id: string; fiche_no: string | null; date: string | null; net_amount: number }[]> {
+  const { salesTable } = await import('./erpTables');
+  const table = salesTable();
+  const rows = await postgrestGet<Record<string, unknown>[]>(
+    `/${table}`,
+    {
+      customer_id: `eq.${customerId}`,
+      is_cancelled: 'eq.false',
+      select: 'id,fiche_no,date,net_amount,total_net',
+      order: 'date.desc',
+      limit,
+    },
+    { schema: 'public' },
+  );
+  return (Array.isArray(rows) ? rows : []).map((r) => ({
+    id: String(r.id ?? ''),
+    fiche_no: r.fiche_no != null ? String(r.fiche_no) : null,
+    date: r.date != null ? String(r.date).slice(0, 10) : null,
+    net_amount: Number(r.net_amount ?? r.total_net ?? 0) || 0,
+  }));
+}
+
+async function fetchCustomerRecentSalesViaBridge(
+  customerId: string,
+  limit: number,
+): Promise<{ id: string; fiche_no: string | null; date: string | null; net_amount: number }[]> {
   const { salesTable } = await import('./erpTables');
   const table = salesTable();
   try {

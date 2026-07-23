@@ -6,7 +6,7 @@
 
   Ornek:
     $env:PGRST_DB_URI = 'postgres://postgres:SIFRE@127.0.0.1:5432/retailex_local'
-    .\start-postgrest-lan.ps1 -InstallDir 'C:\Program Files\AsinERP'
+    .\start-postgrest-lan.ps1 -InstallDir 'C:\Program Files\RetailEX'
 #>
 param(
     [string]$InstallDir = '',

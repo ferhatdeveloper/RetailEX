@@ -1,16 +1,10 @@
 import type { Module } from '../App';
 import { shellEnabledModulesForTenantRegistryModule } from '../services/merkezTenantRegistry';
-import {
-  ASIN_SHELL_FALLBACK_ORDER,
-  isAsinDisabledShellModule,
-} from './asinProductGates';
 
 function readStoredShellEnabledModules(): string[] {
   try {
     const enabled: unknown = JSON.parse(localStorage.getItem('retailex_enabled_modules') || '[]');
-    return Array.isArray(enabled)
-      ? (enabled as string[]).filter((id) => !isAsinDisabledShellModule(id))
-      : [];
+    return Array.isArray(enabled) ? (enabled as string[]) : [];
   } catch {
     return [];
   }
@@ -19,7 +13,6 @@ function readStoredShellEnabledModules(): string[] {
 /**
  * Kabuk için açık modül listesi: önce `retailex_enabled_modules`; boşsa merkez kiracı
  * `retailex_web_config.tenant_module` (tenant_registry.module) ile türetilir; ikisi de yoksa null (bayi / tümü mantığı).
- * Restoran ve güzellik Asin'de her zaman filtrelenir.
  */
 function getExplicitShellEnabledList(): string[] | null {
   const stored = readStoredShellEnabledModules();
@@ -30,13 +23,7 @@ function getExplicitShellEnabledList(): string[] | null {
     const cfg = JSON.parse(rawCfg) as { tenant_module?: string };
     const tm = String(cfg.tenant_module || '').trim().toLowerCase();
     if (!tm) return null;
-    // clinic / restaurant tenant_module → kabukta pasif; retail kabuğuna düş
-    if (tm === 'clinic' || tm === 'restaurant' || tm === 'beauty') {
-      return ['pos', 'management', 'wms', 'mobile-pos'];
-    }
-    const shell = shellEnabledModulesForTenantRegistryModule(tm).filter(
-      (id) => !isAsinDisabledShellModule(id),
-    );
+    const shell = shellEnabledModulesForTenantRegistryModule(tm);
     return shell.length > 0 ? shell : null;
   } catch {
     return null;
@@ -44,11 +31,11 @@ function getExplicitShellEnabledList(): string[] | null {
 }
 
 /**
- * MainLayout üst modül sekmeleri.
- * Yönetim her zaman erişilebilir. Restoran / güzellik tamamen pasif.
+ * MainLayout üst modül sekmeleri: `retailex_enabled_modules`, yoksa `retailex_web_config.tenant_module`
+ * (merkez tenant_registry.module), bayi_seti ile uyumlu görünürlük.
+ * Yönetim (Backoffice) her zaman erişilebilir.
  */
 export function isMainModuleVisible(moduleId: string): boolean {
-  if (isAsinDisabledShellModule(moduleId)) return false;
   if (moduleId === 'management') return true;
   if (typeof localStorage === 'undefined') return true;
   const bayiSeti = localStorage.getItem('retailex_bayi_seti') === 'true';
@@ -61,10 +48,10 @@ export function isMainModuleVisible(moduleId: string): boolean {
   }
 }
 
-const PRIMARY_SHELL_IDS = new Set<string>(['pos', 'wms', 'mobile-pos']);
+const PRIMARY_SHELL_IDS = new Set<string>(['pos', 'wms', 'mobile-pos', 'restaurant', 'beauty']);
 
-/** Ana kabuk modülleri — restoran/güzellik yok */
-const SHELL_MODULE_IDS = new Set<string>(['pos', 'management', 'wms', 'mobile-pos']);
+/** Ana kabuk modülleri — üst çubuk sırası ve `retailex_enabled_modules` ile eşleşen id'ler. */
+const SHELL_MODULE_IDS = new Set<string>(['pos', 'management', 'wms', 'mobile-pos', 'restaurant', 'beauty']);
 
 function isPrimaryShellId(id: string): id is Module {
   return PRIMARY_SHELL_IDS.has(id);
@@ -94,17 +81,20 @@ export function getPrimaryShellModuleForCallerId(activeShell?: Module): Module {
   return 'pos';
 }
 
-/** Görünür modül yoksa sırayla denenecek id'ler — Asin: yalnızca perakende kabuğu. */
+/** Görünür modül yoksa sırayla denenecek id'ler — işletme tipine göre (restoran önce POS değil). */
 export function getShellModuleFallbackOrder(): string[] {
   try {
     const raw = localStorage.getItem('retailex_web_config');
-    if (!raw) return [...ASIN_SHELL_FALLBACK_ORDER];
+    if (!raw) return ['pos', 'restaurant', 'wms', 'beauty', 'mobile-pos', 'management'];
     const cfg = JSON.parse(raw) as { system_type?: string };
     const st = cfg.system_type;
-    if (st === 'wms') return ['wms', 'pos', 'management', 'mobile-pos'];
-    return [...ASIN_SHELL_FALLBACK_ORDER];
+    if (st === 'restaurant') return ['restaurant', 'pos', 'wms', 'beauty', 'mobile-pos', 'management'];
+    if (st === 'beauty') return ['beauty', 'pos', 'restaurant', 'wms', 'mobile-pos', 'management'];
+    if (st === 'wms') return ['wms', 'pos', 'restaurant', 'beauty', 'mobile-pos', 'management'];
+    if (st === 'bayi') return ['pos', 'restaurant', 'wms', 'beauty', 'mobile-pos', 'management'];
+    return ['pos', 'restaurant', 'wms', 'beauty', 'mobile-pos', 'management'];
   } catch {
-    return [...ASIN_SHELL_FALLBACK_ORDER];
+    return ['pos', 'restaurant', 'wms', 'beauty', 'mobile-pos', 'management'];
   }
 }
 

@@ -2238,7 +2238,7 @@ export function AppointmentPOS({
                 receiptSettings.companyName?.trim()
                 || selectedFirm?.title?.trim()
                 || selectedFirm?.name?.trim()
-                || 'Asin';
+                || 'RetailEX';
             const html = buildRestaurantAdisyonHtml({
                 sale,
                 ctx: {
@@ -3976,13 +3976,13 @@ export function AppointmentPOS({
                                                                 width: 44,
                                                                 height: 44,
                                                                 borderRadius: 10,
-                                                                border: '1px solid color-mix(in srgb, #1FA8A0 35%, #D8DEE5)',
-                                                                background: 'var(--asin-accent-muted, #D5F0EE)',
+                                                                border: '1px solid #bfdbfe',
+                                                                background: '#eff6ff',
                                                                 cursor: 'pointer',
                                                                 display: 'flex',
                                                                 alignItems: 'center',
                                                                 justifyContent: 'center',
-                                                                color: 'var(--asin-accent, #1FA8A0)',
+                                                                color: '#2563eb',
                                                                 touchAction: 'manipulation',
                                                                 WebkitTapHighlightColor: 'transparent',
                                                                 flexShrink: 0,

@@ -123,8 +123,8 @@ export function WMSLayout({
           } flex items-center justify-between`}>
           {sidebarOpen && (
             <div className="flex items-center gap-2">
-              <Package className="w-6 h-6 text-[var(--asin-accent,#1FA8A0)]" />
-              <h2 className={`font-bold text-lg ${darkMode ? 'text-white' : 'text-[var(--asin-primary,#0E2433)]'}`}>
+              <Package className="w-6 h-6 text-blue-600" />
+              <h2 className={`font-bold text-lg ${darkMode ? 'text-white' : 'text-gray-900'}`}>
                 WMS
               </h2>
             </div>

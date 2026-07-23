@@ -379,7 +379,7 @@ export async function printLabelElementsInBrowser(
 <html>
   <head>
     <meta charset="utf-8" />
-    <title>Asin Label Print</title>
+    <title>RetailEX Label Print</title>
     <style>
       @page {
         size: ${pw}mm ${ph}mm;

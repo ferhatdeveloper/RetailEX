@@ -87,7 +87,7 @@ export function WmsCountScreen() {
         store_id: storeId,
         store_name: storeName,
         count_type: 'full',
-        description: 'Asin Mobile sayım',
+        description: 'RetailEX Mobile sayım',
       });
       if (slip.queued) {
         Alert.alert(

@@ -9,7 +9,7 @@
   "bundle": {
     "active": true,
     "category": "DeveloperTool",
-    "publisher": "Asin",
+    "publisher": "RetailEX",
     "copyright": "",
     "targets": [
       "nsis",
@@ -73,15 +73,15 @@
     },
     "createUpdaterArtifacts": true
   },
-  "productName": "AsinERP",
-  "mainBinaryName": "AsinERP",
-  "version": "0.1.233",
-  "identifier": "com.asin.erp",
+  "productName": "retailex",
+  "mainBinaryName": "retailex",
+  "version": "0.1.232",
+  "identifier": "com.retailex.app",
   "plugins": {
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDIyNUNEMDQ5MjcyRUM2RTMKUldUanhpNG5TZEJjSXA1VllKVENrQUNXdGw2aG1oYm8rVER6L2xnR2lJNjdWdWVmcStyL3hKcHAK",
       "endpoints": [
-        "https://github.com/ferhatdeveloper/asin/releases/latest/download/latest.json"
+        "https://github.com/ferhatdeveloper/RetailEX/releases/latest/download/latest.json"
       ]
     }
   },
@@ -92,7 +92,7 @@
         "maximized": true,
         "decorations": true,
         "resizable": true,
-        "title": "AsinERP",
+        "title": "RetailEX",
         "width": 1024,
         "height": 768,
         "useHttpsScheme": true

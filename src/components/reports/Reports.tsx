@@ -94,14 +94,14 @@ export function Reports({ sales, products }: ReportsProps) {
           <div className="flex items-center gap-2">
             <div className="flex bg-gray-100/80 p-1 rounded-lg border border-gray-200 mr-2">
               <button className="px-3 py-1 text-[10px] font-bold text-gray-600 hover:bg-white rounded transition-all">GÜNLÜK</button>
-              <button className="px-3 py-1 text-[10px] font-bold text-white bg-[var(--asin-accent,#1FA8A0)] rounded shadow-sm">AYLIK</button>
+              <button className="px-3 py-1 text-[10px] font-bold text-white bg-blue-600 rounded shadow-sm">AYLIK</button>
               <button className="px-3 py-1 text-[10px] font-bold text-gray-600 hover:bg-white rounded transition-all">YILLIK</button>
             </div>
             <button className="flex items-center gap-2 px-3 py-1.5 bg-white border border-gray-300 text-gray-700 text-[11px] font-bold rounded hover:bg-gray-50 transition-all shadow-sm">
-              <Download className="w-3.5 h-3.5 text-[var(--asin-accent,#1FA8A0)]" />
+              <Download className="w-3.5 h-3.5 text-blue-600" />
               <span>DIŞA AKTAR</span>
             </button>
-            <button className="flex items-center gap-2 px-3 py-1.5 bg-[var(--asin-accent,#1FA8A0)] text-white text-[11px] font-bold rounded hover:bg-[#178f88] transition-all shadow-md">
+            <button className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 text-white text-[11px] font-bold rounded hover:bg-blue-700 transition-all shadow-md">
               <Printer className="w-3.5 h-3.5" />
               <span>YAZDIR</span>
             </button>

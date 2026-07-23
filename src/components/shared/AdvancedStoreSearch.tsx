@@ -79,7 +79,7 @@ export function AdvancedStoreSearch({ onSearch, onStoreSelect }: AdvancedStoreSe
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder={`Mağaza kodu, adı, şehir veya müdür ara... (${totalStores.toLocaleString('tr-TR')} mağaza)`}
-              className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--asin-accent,#1FA8A0)] focus:border-[var(--asin-accent,#1FA8A0)]"
+              className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             />
             {query && (
               <button
@@ -96,14 +96,14 @@ export function AdvancedStoreSearch({ onSearch, onStoreSelect }: AdvancedStoreSe
             onClick={() => setShowFilters(!showFilters)}
             className={`flex items-center gap-2 px-4 py-2.5 border rounded-lg transition-colors ${
               hasActiveFilters 
-                ? 'bg-[var(--asin-accent-muted,#D5F0EE)] border-[var(--asin-accent,#1FA8A0)] text-[var(--asin-accent,#1FA8A0)]' 
+                ? 'bg-blue-50 border-blue-500 text-blue-700' 
                 : 'border-gray-300 text-gray-700 hover:bg-gray-50'
             }`}
           >
             <Filter className="h-5 w-5" />
             <span>Filtreler</span>
             {hasActiveFilters && (
-              <span className="bg-[var(--asin-accent,#1FA8A0)] text-white px-2 py-0.5 rounded-full text-xs">
+              <span className="bg-blue-600 text-white px-2 py-0.5 rounded-full text-xs">
                 {Object.keys(filters).length + (query ? 1 : 0)}
               </span>
             )}
@@ -134,10 +134,10 @@ export function AdvancedStoreSearch({ onSearch, onStoreSelect }: AdvancedStoreSe
                       onStoreSelect?.(store);
                       setQuery('');
                     }}
-                    className="w-full p-3 hover:bg-[var(--asin-accent-muted,#D5F0EE)] border-b last:border-b-0 text-left transition-colors"
+                    className="w-full p-3 hover:bg-blue-50 border-b last:border-b-0 text-left transition-colors"
                   >
                     <div className="flex items-center gap-3">
-                      <StoreIcon className="h-5 w-5 text-[var(--asin-accent,#1FA8A0)] flex-shrink-0" />
+                      <StoreIcon className="h-5 w-5 text-blue-600 flex-shrink-0" />
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
                           <span className="font-medium truncate">{store.name}</span>
@@ -171,7 +171,7 @@ export function AdvancedStoreSearch({ onSearch, onStoreSelect }: AdvancedStoreSe
               <select
                 value={filters.region || ''}
                 onChange={(e) => setFilters({ ...filters, region: e.target.value || undefined })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--asin-accent,#1FA8A0)] focus:border-[var(--asin-accent,#1FA8A0)]"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               >
                 <option value="">Tümü</option>
                 {regions.map((region) => (
@@ -190,7 +190,7 @@ export function AdvancedStoreSearch({ onSearch, onStoreSelect }: AdvancedStoreSe
               <select
                 value={filters.subRegion || ''}
                 onChange={(e) => setFilters({ ...filters, subRegion: e.target.value || undefined })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--asin-accent,#1FA8A0)] focus:border-[var(--asin-accent,#1FA8A0)]"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 disabled={!filters.region}
               >
                 <option value="">Tümü</option>
@@ -214,7 +214,7 @@ export function AdvancedStoreSearch({ onSearch, onStoreSelect }: AdvancedStoreSe
               <select
                 value={filters.status || ''}
                 onChange={(e) => setFilters({ ...filters, status: e.target.value || undefined })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--asin-accent,#1FA8A0)] focus:border-[var(--asin-accent,#1FA8A0)]"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               >
                 <option value="">Tümü</option>
                 <option value="active">Aktif</option>
@@ -231,7 +231,7 @@ export function AdvancedStoreSearch({ onSearch, onStoreSelect }: AdvancedStoreSe
               <select
                 value={filters.revenue ?? ''}
                 onChange={(e) => setFilters({ ...filters, revenue: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--asin-accent,#1FA8A0)]"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
               >
                 <option value="">Tümü</option>
                 <option value="100k+">130,000,000 IQD üzeri</option>
@@ -245,7 +245,7 @@ export function AdvancedStoreSearch({ onSearch, onStoreSelect }: AdvancedStoreSe
           <div className="flex items-center gap-2 mt-4 pt-4 border-t">
             <button
               onClick={handleApplyFilters}
-              className="px-4 py-2 bg-[var(--asin-accent,#1FA8A0)] text-white rounded-lg hover:bg-[#178f88] transition-colors flex items-center gap-2"
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
             >
               <Filter className="h-4 w-4" />
               <span>Filtreleri Uygula</span>
