@@ -7,6 +7,7 @@ import { AppRouter } from './AppRouter';
 import { ErrorBoundary } from './components/shared/ErrorBoundary';
 import './index.css';
 import './styles/dark-mode-global.css';
+import './styles/asin-global.css';
 import { pwaRefreshConfirmMessage } from './utils/pwaRefreshConfirm';
 
 function BootReady({ children }: { children: ReactNode }) {

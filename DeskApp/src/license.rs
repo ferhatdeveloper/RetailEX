@@ -25,7 +25,7 @@ impl LicenseManager {
         
         LicenseInfo {
             key: "BYPASS-ACTIVE".to_string(),
-            owner: "RetailEX Enterprise User".to_string(),
+            owner: "AsinERP Enterprise User".to_string(),
             expiry_date: "2099-12-31".to_string(),
             machine_id: current_machine,
             status: "ACTIVE".to_string(),

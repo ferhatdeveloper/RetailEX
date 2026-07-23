@@ -1,5 +1,5 @@
 # Müşteri / kurulum PC: setup çift tıklayınca hiç açılmıyorsa veya "engellendi" diyorsa deneyin.
-# Kullanım (PowerShell): .\scripts\customer-unblock-setup.ps1 -SetupPath "E:\PRG\EXFIN\retailex_0.1.66_x64-setup.exe"
+# Kullanım (PowerShell): .\scripts\customer-unblock-setup.ps1 -SetupPath "E:\PRG\AsinERP\AsinERP_0.1.66_x64-setup.exe"
 param(
   [Parameter(Mandatory = $true)]
   [string] $SetupPath

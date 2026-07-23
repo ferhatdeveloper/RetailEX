@@ -1,11 +1,5 @@
 import { pgQuery } from './pgClient';
 import {
-  postgrestGet,
-  postgrestPatch,
-  postgrestPost,
-} from './postgrestClient';
-import { runDataTransport } from './dataTransport';
-import {
   beautyAppointmentsTable,
   beautySaleItemsTable,
   beautySalesTable,
@@ -20,38 +14,6 @@ import {
 } from './erpTables';
 import { recordKasaGirisForSale } from './cashApi';
 import { useAuthStore } from '../store/authStore';
-
-const BEAUTY_SCHEMA = { schema: 'beauty' as const };
-
-function beautyBare(sqlName: string): string {
-  return sqlName.replace(/^beauty\./, '');
-}
-
-function apptTablePath(): string {
-  return `/${beautyBare(beautyAppointmentsTable())}`;
-}
-
-function beautyServicesPath(): string {
-  return `/${beautyBare(beautyServicesTable())}`;
-}
-
-function beautySpecialistsPath(): string {
-  return `/${beautyBare(beautySpecialistsTable())}`;
-}
-
-function beautySalesPath(): string {
-  return `/${beautyBare(beautySalesTable())}`;
-}
-
-function beautySaleItemsPath(): string {
-  return `/${beautyBare(beautySaleItemsTable())}`;
-}
-
-function pgUuidOrNull(v: unknown): string | null {
-  if (v == null) return null;
-  const s = String(v).trim();
-  return s.length ? s : null;
-}
 
 export type BeautyAppointment = {
   id: string;
@@ -365,82 +327,6 @@ function normalizeTimeForPg(t: string): string {
 }
 
 export async function fetchBeautyAppointments(limit = 80): Promise<BeautyAppointment[]> {
-  return runDataTransport({
-    label: 'fetchBeautyAppointments',
-    viaRest: () => fetchBeautyAppointmentsViaRest(limit),
-    viaBridge: () => fetchBeautyAppointmentsViaBridge(limit),
-  });
-}
-
-async function fetchBeautyAppointmentsViaRest(limit = 80): Promise<BeautyAppointment[]> {
-  const rows = await postgrestGet<Record<string, unknown>[]>(
-    apptTablePath(),
-    {
-      select:
-        'id,service_id,specialist_id,appointment_date,appointment_time,status,total_price,notes',
-      order: 'appointment_date.desc,appointment_time.desc',
-      limit,
-    },
-    BEAUTY_SCHEMA,
-  );
-  const list = Array.isArray(rows) ? rows : [];
-  const serviceIds = Array.from(new Set(list.map((r) => String(r.service_id || '')).filter(Boolean)));
-  const specialistIds = Array.from(new Set(list.map((r) => String(r.specialist_id || '')).filter(Boolean)));
-
-  const serviceMap = new Map<string, string>();
-  if (serviceIds.length) {
-    try {
-      const svcs = await postgrestGet<Record<string, unknown>[]>(
-        beautyServicesPath(),
-        { id: `in.(${serviceIds.join(',')})`, select: 'id,name' },
-        BEAUTY_SCHEMA,
-      );
-      for (const s of Array.isArray(svcs) ? svcs : []) {
-        serviceMap.set(String(s.id), String(s.name ?? ''));
-      }
-    } catch {
-      /* ignore */
-    }
-  }
-
-  const specialistMap = new Map<string, string>();
-  if (specialistIds.length) {
-    try {
-      const sps = await postgrestGet<Record<string, unknown>[]>(
-        beautySpecialistsPath(),
-        { id: `in.(${specialistIds.join(',')})`, select: 'id,name' },
-        BEAUTY_SCHEMA,
-      );
-      for (const s of Array.isArray(sps) ? sps : []) {
-        specialistMap.set(String(s.id), String(s.name ?? ''));
-      }
-    } catch {
-      /* ignore */
-    }
-  }
-
-  return list.map((a) => {
-    const date = a.appointment_date != null ? String(a.appointment_date) : '';
-    const timeRaw = a.appointment_time != null ? String(a.appointment_time) : '';
-    const time = timeRaw.slice(0, 5);
-    return {
-      id: String(a.id ?? ''),
-      customer_name: a.notes != null ? String(a.notes).split(' — ')[0] || 'Müşteri' : 'Müşteri',
-      service_name: a.service_id ? serviceMap.get(String(a.service_id)) ?? null : null,
-      specialist_name: a.specialist_id ? specialistMap.get(String(a.specialist_id)) ?? null : null,
-      starts_at: `${date} ${timeRaw}`.trim() || null,
-      status: a.status != null ? String(a.status) : null,
-      total_price: Number(a.total_price) || 0,
-      notes: a.notes != null ? String(a.notes) : null,
-      service_id: a.service_id != null ? String(a.service_id) : null,
-      specialist_id: a.specialist_id != null ? String(a.specialist_id) : null,
-      appointment_date: date || null,
-      appointment_time: time || null,
-    };
-  });
-}
-
-async function fetchBeautyAppointmentsViaBridge(limit = 80): Promise<BeautyAppointment[]> {
   const fn = firmNr();
   const pn = periodNr();
   const appt = beautyAppointmentsTable(fn, pn);
@@ -474,33 +360,6 @@ async function fetchBeautyAppointmentsViaBridge(limit = 80): Promise<BeautyAppoi
 }
 
 export async function fetchBeautyServices(): Promise<BeautyService[]> {
-  return runDataTransport({
-    label: 'fetchBeautyServices',
-    viaRest: fetchBeautyServicesViaRest,
-    viaBridge: fetchBeautyServicesViaBridge,
-  });
-}
-
-async function fetchBeautyServicesViaRest(): Promise<BeautyService[]> {
-  const rows = await postgrestGet<Record<string, unknown>[]>(
-    beautyServicesPath(),
-    {
-      select: 'id,name,duration_min,price',
-      is_active: 'eq.true',
-      order: 'name.asc',
-      limit: 100,
-    },
-    BEAUTY_SCHEMA,
-  );
-  return (Array.isArray(rows) ? rows : []).map((r) => ({
-    id: String(r.id ?? ''),
-    name: String(r.name ?? ''),
-    duration_min: r.duration_min == null ? null : Number(r.duration_min),
-    price: Number(r.price) || 0,
-  }));
-}
-
-async function fetchBeautyServicesViaBridge(): Promise<BeautyService[]> {
   const svc = beautyServicesTable();
   return tryQueries<BeautyService>([
     {
@@ -516,50 +375,6 @@ async function fetchBeautyServicesViaBridge(): Promise<BeautyService[]> {
 }
 
 export async function fetchBeautySpecialists(): Promise<BeautySpecialist[]> {
-  return runDataTransport({
-    label: 'fetchBeautySpecialists',
-    viaRest: fetchBeautySpecialistsViaRest,
-    viaBridge: fetchBeautySpecialistsViaBridge,
-  });
-}
-
-async function fetchBeautySpecialistsViaRest(): Promise<BeautySpecialist[]> {
-  try {
-    const rows = await postgrestGet<Record<string, unknown>[]>(
-      beautySpecialistsPath(),
-      {
-        select: 'id,name,specialty',
-        is_active: 'eq.true',
-        order: 'name.asc',
-        limit: 100,
-      },
-      BEAUTY_SCHEMA,
-    );
-    return (Array.isArray(rows) ? rows : []).map((r) => ({
-      id: String(r.id ?? ''),
-      name: String(r.name ?? ''),
-      title: r.specialty != null ? String(r.specialty) : null,
-    }));
-  } catch {
-    const rows = await postgrestGet<Record<string, unknown>[]>(
-      beautySpecialistsPath(),
-      {
-        select: 'id,name,title',
-        is_active: 'eq.true',
-        order: 'name.asc',
-        limit: 100,
-      },
-      BEAUTY_SCHEMA,
-    );
-    return (Array.isArray(rows) ? rows : []).map((r) => ({
-      id: String(r.id ?? ''),
-      name: String(r.name ?? ''),
-      title: r.title != null ? String(r.title) : null,
-    }));
-  }
-}
-
-async function fetchBeautySpecialistsViaBridge(): Promise<BeautySpecialist[]> {
   const sp = beautySpecialistsTable();
   return tryQueries<BeautySpecialist>([
     {
@@ -588,47 +403,6 @@ async function fetchBeautySpecialistsViaBridge(): Promise<BeautySpecialist[]> {
 export async function createBeautyAppointment(
   input: CreateBeautyAppointmentInput,
 ): Promise<string> {
-  return runDataTransport({
-    label: 'createBeautyAppointment',
-    viaRest: () => createBeautyAppointmentViaRest(input),
-    viaBridge: () => createBeautyAppointmentViaBridge(input),
-  });
-}
-
-async function createBeautyAppointmentViaRest(input: CreateBeautyAppointmentInput): Promise<string> {
-  const id = newUuid();
-  const svcRows = await postgrestGet<Record<string, unknown>[]>(
-    beautyServicesPath(),
-    { id: `eq.${input.serviceId}`, select: 'price,duration_min', limit: 1 },
-    BEAUTY_SCHEMA,
-  );
-  const svcRow = Array.isArray(svcRows) ? svcRows[0] : undefined;
-  const price = Number(svcRow?.price) || 0;
-  const duration = Math.max(1, Math.round(Number(svcRow?.duration_min) || 30));
-  const timePg = normalizeTimeForPg(input.appointmentTime);
-  const notes = [input.customerName.trim(), input.notes?.trim()].filter(Boolean).join(' — ');
-
-  await postgrestPost(
-    apptTablePath(),
-    {
-      id,
-      service_id: input.serviceId,
-      specialist_id: pgUuidOrNull(input.specialistId),
-      appointment_date: input.appointmentDate,
-      appointment_time: timePg,
-      duration,
-      status: 'scheduled',
-      type: 'regular',
-      notes: notes || null,
-      total_price: price,
-      booking_channel: 'mobile',
-    },
-    { ...BEAUTY_SCHEMA, prefer: 'return=minimal' },
-  );
-  return id;
-}
-
-async function createBeautyAppointmentViaBridge(input: CreateBeautyAppointmentInput): Promise<string> {
   const fn = firmNr();
   const pn = periodNr();
   const appt = beautyAppointmentsTable(fn, pn);
@@ -676,61 +450,6 @@ export async function updateBeautyAppointment(
   input: UpdateBeautyAppointmentInput,
 ): Promise<void> {
   if (!id) throw new Error('Randevu id gerekli');
-  await runDataTransport({
-    label: 'updateBeautyAppointment',
-    viaRest: () => updateBeautyAppointmentViaRest(id, input),
-    viaBridge: () => updateBeautyAppointmentViaBridge(id, input),
-  });
-}
-
-async function updateBeautyAppointmentViaRest(
-  id: string,
-  input: UpdateBeautyAppointmentInput,
-): Promise<void> {
-  const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
-
-  if (input.serviceId !== undefined && input.serviceId) {
-    patch.service_id = input.serviceId;
-    if (input.totalPrice === undefined) {
-      try {
-        const svcRows = await postgrestGet<Record<string, unknown>[]>(
-          beautyServicesPath(),
-          { id: `eq.${input.serviceId}`, select: 'price', limit: 1 },
-          BEAUTY_SCHEMA,
-        );
-        const svc = Array.isArray(svcRows) ? svcRows[0] : undefined;
-        if (svc) patch.total_price = Number(svc.price) || 0;
-      } catch {
-        /* fiyat güncellenemese devam */
-      }
-    }
-  }
-  if (input.clearSpecialist) {
-    patch.specialist_id = null;
-  } else if (input.specialistId !== undefined) {
-    patch.specialist_id = input.specialistId ? input.specialistId : null;
-  }
-  if (input.appointmentDate !== undefined) patch.appointment_date = input.appointmentDate;
-  if (input.appointmentTime !== undefined) {
-    patch.appointment_time = normalizeTimeForPg(input.appointmentTime);
-  }
-  if (input.status !== undefined) patch.status = input.status;
-  if (input.notes !== undefined) patch.notes = input.notes?.trim() || null;
-  if (input.totalPrice !== undefined) patch.total_price = input.totalPrice;
-
-  if (Object.keys(patch).length <= 1) return;
-
-  await postgrestPatch(
-    `${apptTablePath()}?id=eq.${encodeURIComponent(id)}`,
-    patch,
-    { ...BEAUTY_SCHEMA, prefer: 'return=minimal' },
-  );
-}
-
-async function updateBeautyAppointmentViaBridge(
-  id: string,
-  input: UpdateBeautyAppointmentInput,
-): Promise<void> {
   const appt = beautyAppointmentsTable();
   const sets: string[] = ['updated_at = NOW()'];
   const vals: unknown[] = [];
@@ -795,85 +514,6 @@ export async function updateBeautyAppointmentStatus(id: string, status: string):
 
 /** Web beautyService.getSales — son güzellik POS fişleri */
 export async function fetchBeautySales(limit = 80): Promise<BeautySale[]> {
-  return runDataTransport({
-    label: 'fetchBeautySales',
-    viaRest: () => fetchBeautySalesViaRest(limit),
-    viaBridge: () => fetchBeautySalesViaBridge(limit),
-  });
-}
-
-async function fetchBeautySalesViaRest(limit: number): Promise<BeautySale[]> {
-  const salesRows = await postgrestGet<Record<string, unknown>[]>(
-    beautySalesPath(),
-    {
-      select:
-        'id,invoice_number,customer_id,subtotal,discount,tax,total,payment_method,payment_status,paid_amount,notes,created_at',
-      order: 'created_at.desc',
-      limit,
-    },
-    BEAUTY_SCHEMA,
-  );
-  const sales = Array.isArray(salesRows) ? salesRows : [];
-  const customerIds = Array.from(
-    new Set(sales.map((s) => String(s.customer_id ?? '')).filter(Boolean)),
-  );
-  const customerMap = new Map<string, string>();
-  if (customerIds.length) {
-    try {
-      const custTable = customersTable();
-      const crows = await postgrestGet<Record<string, unknown>[]>(
-        `/${custTable}`,
-        { id: `in.(${customerIds.join(',')})`, select: 'id,name', limit: 500 },
-        { schema: 'public' },
-      );
-      for (const c of Array.isArray(crows) ? crows : []) {
-        if (c.id) customerMap.set(String(c.id), String(c.name ?? ''));
-      }
-    } catch {
-      /* optional */
-    }
-  }
-
-  const itemCounts = new Map<string, number>();
-  if (sales.length) {
-    try {
-      const saleIds = sales.map((s) => String(s.id)).filter(Boolean);
-      const irows = await postgrestGet<Array<{ sale_id?: string }>>(
-        beautySaleItemsPath(),
-        { sale_id: `in.(${saleIds.join(',')})`, select: 'sale_id', limit: 5000 },
-        BEAUTY_SCHEMA,
-      );
-      for (const i of Array.isArray(irows) ? irows : []) {
-        const sid = String(i.sale_id ?? '');
-        if (sid) itemCounts.set(sid, (itemCounts.get(sid) || 0) + 1);
-      }
-    } catch {
-      /* optional */
-    }
-  }
-
-  return sales.map((s) => {
-    const cid = s.customer_id != null ? String(s.customer_id) : null;
-    return {
-      id: String(s.id ?? ''),
-      invoice_number: s.invoice_number != null ? String(s.invoice_number) : null,
-      customer_id: cid,
-      customer_name: cid ? customerMap.get(cid) ?? null : null,
-      subtotal: Number(s.subtotal ?? 0) || 0,
-      discount: Number(s.discount ?? 0) || 0,
-      tax: Number(s.tax ?? 0) || 0,
-      total: Number(s.total ?? 0) || 0,
-      payment_method: s.payment_method != null ? String(s.payment_method) : null,
-      payment_status: s.payment_status != null ? String(s.payment_status) : null,
-      paid_amount: Number(s.paid_amount ?? 0) || 0,
-      notes: s.notes != null ? String(s.notes) : null,
-      created_at: s.created_at != null ? String(s.created_at) : null,
-      item_count: itemCounts.get(String(s.id ?? '')) || 0,
-    };
-  });
-}
-
-async function fetchBeautySalesViaBridge(limit: number): Promise<BeautySale[]> {
   const fn = firmNr();
   const pn = periodNr();
   const sales = beautySalesTable(fn, pn);
@@ -927,40 +567,6 @@ async function fetchBeautySalesViaBridge(limit: number): Promise<BeautySale[]> {
 
 export async function fetchBeautySaleItems(saleId: string): Promise<BeautySaleItemRow[]> {
   if (!saleId) return [];
-  return runDataTransport({
-    label: 'fetchBeautySaleItems',
-    viaRest: () => fetchBeautySaleItemsViaRest(saleId),
-    viaBridge: () => fetchBeautySaleItemsViaBridge(saleId),
-  });
-}
-
-async function fetchBeautySaleItemsViaRest(saleId: string): Promise<BeautySaleItemRow[]> {
-  const rows = await postgrestGet<Record<string, unknown>[]>(
-    beautySaleItemsPath(),
-    {
-      sale_id: `eq.${saleId}`,
-      select:
-        'id,sale_id,item_type,item_id,name,quantity,unit_price,discount,total,staff_id,created_at',
-      order: 'created_at.asc',
-      limit: 500,
-    },
-    BEAUTY_SCHEMA,
-  );
-  return (Array.isArray(rows) ? rows : []).map((r) => ({
-    id: String(r.id ?? ''),
-    sale_id: String(r.sale_id ?? ''),
-    item_type: r.item_type != null ? String(r.item_type) : null,
-    item_id: r.item_id != null ? String(r.item_id) : null,
-    name: r.name != null ? String(r.name) : null,
-    quantity: Number(r.quantity ?? 1) || 1,
-    unit_price: Number(r.unit_price ?? 0) || 0,
-    discount: Number(r.discount ?? 0) || 0,
-    total: Number(r.total ?? 0) || 0,
-    staff_id: r.staff_id != null ? String(r.staff_id) : null,
-  }));
-}
-
-async function fetchBeautySaleItemsViaBridge(saleId: string): Promise<BeautySaleItemRow[]> {
   const items = beautySaleItemsTable();
   return tryQueries<BeautySaleItemRow>([
     {
@@ -984,122 +590,70 @@ async function fetchBeautySaleItemsViaBridge(saleId: string): Promise<BeautySale
 export async function createBeautySale(input: CreateBeautySaleInput): Promise<CreateBeautySaleResult> {
   if (!input.items.length) throw new Error('Sepet boş');
 
+  const fn = firmNr();
+  const pn = periodNr();
+  const sales = beautySalesTable(fn, pn);
+  const itemsTbl = beautySaleItemsTable(fn, pn);
   const id = newUuid();
   const invoiceNumber = nextBeautyInvoiceNumber();
   const tax = input.tax ?? 0;
   const paidAmount = input.paidAmount ?? input.total;
   const notes = [input.customerName?.trim(), input.notes?.trim()].filter(Boolean).join(' — ') || null;
 
-  await runDataTransport({
-    label: 'createBeautySale',
-    viaRest: async () => {
-      await postgrestPost(
-        beautySalesPath(),
-        {
-          id,
-          invoice_number: invoiceNumber,
-          customer_id: pgUuidOrNull(input.customerId),
-          subtotal: input.subtotal,
-          discount: input.discount,
-          tax,
-          total: input.total,
-          payment_method: input.paymentMethod,
-          payment_status: input.paymentStatus ?? 'paid',
-          paid_amount: paidAmount,
-          remaining_amount: Math.max(0, input.total - paidAmount),
-          notes,
-        },
-        { ...BEAUTY_SCHEMA, prefer: 'return=minimal' },
-      );
+  await pgQuery(
+    `INSERT INTO ${sales} (
+       id, invoice_number, customer_id, subtotal, discount, tax, total,
+       payment_method, payment_status, paid_amount, remaining_amount, notes
+     ) VALUES (
+       $1::uuid, $2, $3::uuid, $4, $5, $6, $7,
+       $8, $9, $10, $11, $12
+     )`,
+    [
+      id,
+      invoiceNumber,
+      input.customerId || null,
+      input.subtotal,
+      input.discount,
+      tax,
+      input.total,
+      input.paymentMethod,
+      input.paymentStatus ?? 'paid',
+      paidAmount,
+      Math.max(0, input.total - paidAmount),
+      notes,
+    ],
+  );
 
-      const lineGrosses = input.items.map((i) => i.unit_price * i.quantity);
-      const lineSplits = splitProportionalLineDiscount(lineGrosses, input.discount);
+  const lineGrosses = input.items.map((i) => i.unit_price * i.quantity);
+  const lineSplits = splitProportionalLineDiscount(lineGrosses, input.discount);
 
-      if (input.items.length > 0) {
-        const payload = input.items.map((item, idx) => {
-          const split = lineSplits[idx] ?? { discount: 0, total: item.unit_price * item.quantity };
-          return {
-            id: newUuid(),
-            sale_id: id,
-            item_type: item.item_type,
-            item_id: pgUuidOrNull(item.item_id),
-            name: item.name,
-            quantity: item.quantity,
-            unit_price: item.unit_price,
-            discount: item.discount ?? split.discount,
-            total: item.total ?? split.total,
-            staff_id: pgUuidOrNull(item.staff_id),
-            commission_amount: 0,
-          };
-        });
-        await postgrestPost(beautySaleItemsPath(), payload, {
-          ...BEAUTY_SCHEMA,
-          prefer: 'return=minimal',
-        });
-      }
-    },
-    viaBridge: async () => {
-      const fn = firmNr();
-      const pn = periodNr();
-      const sales = beautySalesTable(fn, pn);
-      const itemsTbl = beautySaleItemsTable(fn, pn);
-
-      await pgQuery(
-        `INSERT INTO ${sales} (
-           id, invoice_number, customer_id, subtotal, discount, tax, total,
-           payment_method, payment_status, paid_amount, remaining_amount, notes
-         ) VALUES (
-           $1::uuid, $2, $3::uuid, $4, $5, $6, $7,
-           $8, $9, $10, $11, $12
-         )`,
-        [
-          id,
-          invoiceNumber,
-          input.customerId || null,
-          input.subtotal,
-          input.discount,
-          tax,
-          input.total,
-          input.paymentMethod,
-          input.paymentStatus ?? 'paid',
-          paidAmount,
-          Math.max(0, input.total - paidAmount),
-          notes,
-        ],
-      );
-
-      const lineGrosses = input.items.map((i) => i.unit_price * i.quantity);
-      const lineSplits = splitProportionalLineDiscount(lineGrosses, input.discount);
-
-      for (let idx = 0; idx < input.items.length; idx++) {
-        const item = input.items[idx]!;
-        const split = lineSplits[idx] ?? { discount: 0, total: item.unit_price * item.quantity };
-        const itemId = newUuid();
-        const itemUuid = isUuid(item.item_id) ? item.item_id : null;
-        await pgQuery(
-          `INSERT INTO ${itemsTbl} (
-             id, sale_id, item_type, item_id, name, quantity, unit_price,
-             discount, total, staff_id, commission_amount
-           ) VALUES (
-             $1::uuid, $2::uuid, $3, $4::uuid, $5, $6, $7,
-             $8, $9, $10::uuid, 0
-           )`,
-          [
-            itemId,
-            id,
-            item.item_type,
-            itemUuid,
-            item.name,
-            item.quantity,
-            item.unit_price,
-            item.discount ?? split.discount,
-            item.total ?? split.total,
-            item.staff_id && isUuid(item.staff_id) ? item.staff_id : null,
-          ],
-        );
-      }
-    },
-  });
+  for (let idx = 0; idx < input.items.length; idx++) {
+    const item = input.items[idx]!;
+    const split = lineSplits[idx] ?? { discount: 0, total: item.unit_price * item.quantity };
+    const itemId = newUuid();
+    const itemUuid = isUuid(item.item_id) ? item.item_id : null;
+    await pgQuery(
+      `INSERT INTO ${itemsTbl} (
+         id, sale_id, item_type, item_id, name, quantity, unit_price,
+         discount, total, staff_id, commission_amount
+       ) VALUES (
+         $1::uuid, $2::uuid, $3, $4::uuid, $5, $6, $7,
+         $8, $9, $10::uuid, 0
+       )`,
+      [
+        itemId,
+        id,
+        item.item_type,
+        itemUuid,
+        item.name,
+        item.quantity,
+        item.unit_price,
+        item.discount ?? split.discount,
+        item.total ?? split.total,
+        item.staff_id && isUuid(item.staff_id) ? item.staff_id : null,
+      ],
+    );
+  }
 
   let erpSynced = false;
   try {

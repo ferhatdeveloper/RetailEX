@@ -209,7 +209,7 @@ export function DocumentScanScreen() {
           maxPages: 1,
           fromGallery,
           saveToGallery,
-          albumName: 'RetailEX',
+          albumName: 'Asin',
         });
         if (res.canceled) return;
         if ('permissionDenied' in res && res.permissionDenied) {

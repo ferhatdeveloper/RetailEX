@@ -4,7 +4,7 @@
  * numaralı migration dosyalarını (002+, 000/001 hariç) PostgreSQL'de çalıştırır.
  *
  * Ortam değişkenleri:
- *   CONFIG_DB      — SQLite yolu (varsayılan: C:\\RetailEX\\config.db, C:\\RetailEx\\config.db, ./config.db)
+ *   CONFIG_DB      — SQLite yolu (varsayılan: C:\\AsinERP\\config.db, eski C:\\RetailEX\\config.db, ./config.db)
  *   MIGRATE_TARGET — local | remote | auto (auto: db_mode online→remote, diğer→local)
  *   PGHOST, PGUSER, PGPASSWORD, PGDATABASE, PGPORT — CONFIG_DB yoksa veya --env-only
  *
@@ -54,6 +54,7 @@ function resolveConfigDbPath() {
   const env = process.env.CONFIG_DB;
   if (env && existsSync(env)) return env;
   const candidates = [
+    'C:\\AsinERP\\config.db',
     'C:\\RetailEX\\config.db',
     'C:\\RetailEx\\config.db',
     join(process.cwd(), 'config.db'),

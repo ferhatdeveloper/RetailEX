@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { X, Loader2 } from 'lucide-react';
 import { useTheme } from '../../contexts/ThemeContext';
 import { MODAL_OVERLAY_Z } from './FullscreenBodyPortal';
+import { ASIN_MODAL_HEADER_CLASS, ASIN_MODAL_PRIMARY_BTN_CLASS } from './PercentBodyModal';
 
 export type RetailExFlatModalProps = {
     open: boolean;
@@ -29,7 +30,7 @@ const overlayCls =
     'fixed inset-0 overflow-y-auto overflow-x-hidden bg-black/60 backdrop-blur-md animate-in fade-in duration-200';
 
 /**
- * POS ödeme modalı / ui-flat-modal-standard ile aynı kabuk: gradient başlık, gövde scroll, alt çubuk.
+ * POS ödeme modalı / ui-flat-modal-standard ile aynı kabuk: Asin ink başlık, gövde scroll, alt çubuk.
  */
 export function RetailExFlatModal({
     open,
@@ -71,9 +72,9 @@ export function RetailExFlatModal({
     const boxLight = 'bg-white border-slate-200/80';
     const boxDark = 'bg-gray-900 border-gray-700';
 
-    const headerBase = 'px-6 py-5 sm:px-8 sm:py-6 text-white shrink-0 border-b';
-    const headerLight = 'border-transparent bg-gradient-to-r from-blue-600 to-indigo-600';
-    const headerDark = 'border-gray-700 bg-gradient-to-r from-gray-700 to-gray-600';
+    const headerBase = `px-6 py-5 sm:px-8 sm:py-6 ${ASIN_MODAL_HEADER_CLASS} border-b`;
+    const headerLight = 'border-transparent';
+    const headerDark = 'border-gray-700';
 
     const bodyBase =
         'flex-1 min-h-0 overflow-y-auto overscroll-contain p-6 sm:p-8';
@@ -93,11 +94,11 @@ export function RetailExFlatModal({
         'border-gray-600 text-gray-200 hover:bg-gray-700';
 
     const primaryBtn =
-        'flex-1 py-3.5 rounded-2xl font-bold uppercase text-sm tracking-wider shadow-lg transition-colors active:scale-[0.98] disabled:opacity-50 flex items-center justify-center gap-2';
+        `flex-1 py-3.5 rounded-2xl font-bold uppercase text-sm tracking-wider shadow-lg transition-colors active:scale-[0.98] disabled:opacity-50 flex items-center justify-center gap-2 ${ASIN_MODAL_PRIMARY_BTN_CLASS}`;
     const primaryLight =
-        'bg-blue-600 text-white shadow-blue-200/50 hover:bg-blue-700';
+        'shadow-[0_4px_12px_rgb(14_36_51/0.12)]';
     const primaryDark =
-        'bg-blue-600 text-white shadow-blue-900/40 hover:bg-blue-500';
+        'shadow-[0_4px_12px_rgb(0_0_0/0.35)]';
 
     const showDefaultFooter = footer === undefined && onConfirm !== undefined;
 
@@ -132,7 +133,7 @@ export function RetailExFlatModal({
                                     </h2>
                                 </div>
                                 {subtitle ? (
-                                    <p className="text-blue-100 text-[11px] font-semibold uppercase tracking-wider mt-1 opacity-90 line-clamp-2 dark:text-gray-300">
+                                    <p className="text-[var(--asin-accent-muted,#D5F0EE)] text-[11px] font-semibold uppercase tracking-wider mt-1 opacity-90 line-clamp-2 dark:text-gray-300">
                                         {subtitle}
                                     </p>
                                 ) : null}

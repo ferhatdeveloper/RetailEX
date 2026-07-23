@@ -41,28 +41,28 @@ try {
     Start-AdminSession
 
     $baseDir = Split-Path -Parent $PSCommandPath
-    $serviceExe = Join-Path $baseDir "RetailEX_Service.exe"
-    $bridgeExe = Join-Path $baseDir "RetailEX_SQL_Bridge.exe"
-    $printerExe = Join-Path $baseDir "RetailEX_Printer.exe"
+    $serviceExe = Join-Path $baseDir "AsinERP_Service.exe"
+    $bridgeExe = Join-Path $baseDir "AsinERP_SQL_Bridge.exe"
+    $printerExe = Join-Path $baseDir "AsinERP_Printer.exe"
     $bridgeScript = Join-Path $baseDir "install-bridge.ps1"
 
-    Install-AppService -exePath $serviceExe -serviceName "RetailEX_Service"
+    Install-AppService -exePath $serviceExe -serviceName "AsinERP_Service"
 
     if (Test-Path $bridgeExe) {
-        Install-AppService -exePath $bridgeExe -serviceName "RetailEX_SQL_Bridge"
+        Install-AppService -exePath $bridgeExe -serviceName "AsinERP_SQL_Bridge"
     }
     elseif (Test-Path $bridgeScript) {
         Write-Info "Installing SQL Bridge service with legacy script..."
         & powershell -NoProfile -ExecutionPolicy Bypass -File $bridgeScript
     }     else {
-        Write-WarnMsg "RetailEX_SQL_Bridge.exe/install-bridge.ps1 not found, SQL Bridge skipped."
+        Write-WarnMsg "AsinERP_SQL_Bridge.exe/install-bridge.ps1 not found, SQL Bridge skipped."
     }
 
     if (Test-Path $printerExe) {
-        Install-AppService -exePath $printerExe -serviceName "RetailEX_Printer"
+        Install-AppService -exePath $printerExe -serviceName "AsinERP_Printer"
     }
     else {
-        Write-WarnMsg "RetailEX_Printer.exe not found, Printer service skipped."
+        Write-WarnMsg "AsinERP_Printer.exe not found, Printer service skipped."
     }
 
     $postgrestExe = Join-Path $baseDir "postgrest.exe"

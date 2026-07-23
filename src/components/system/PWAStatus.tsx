@@ -217,7 +217,7 @@ export function PWAStatus() {
         {!status.installed && status.canInstall && (
           <button
             onClick={handleInstall}
-            className="w-full bg-gradient-to-r from-blue-600 to-blue-700 text-white py-2.5 px-4 rounded-lg font-medium hover:from-blue-700 hover:to-blue-800 transition-all flex items-center justify-center gap-2"
+            className="w-full bg-[var(--asin-primary,#0E2433)] text-white py-2.5 px-4 rounded-lg font-medium hover:from-blue-700 hover:to-blue-800 transition-all flex items-center justify-center gap-2"
           >
             <Download className="w-4 h-4" />
             Uygulamayı Yükle

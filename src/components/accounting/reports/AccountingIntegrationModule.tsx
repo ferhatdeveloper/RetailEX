@@ -54,7 +54,7 @@ export function AccountingIntegrationModule() {
             <div className="flex gap-2">
               {sys.status === 'connected' ? (
                 <>
-                  <button className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center justify-center gap-2">
+                  <button className="flex-1 px-4 py-2 bg-[var(--asin-accent,#1FA8A0)] text-white rounded-lg hover:bg-[#178f88] flex items-center justify-center gap-2">
                     <RefreshCw className="w-4 h-4" />
                     Senkronize Et
                   </button>

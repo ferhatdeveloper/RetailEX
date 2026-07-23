@@ -1,6 +1,6 @@
 #Requires -Version 5.1
 <#
-  PostgREST LAN erisimi: Windows guvenlik duvari TCP 3002 (varsayilan RetailEX portu).
+  PostgREST LAN erisimi: Windows guvenlik duvari TCP 3002 (varsayilan AsinERP portu).
   Cihaz A (merkez): postgrest.exe 0.0.0.0:3002 dinlemeli (config/postgrest.conf).
 
   Kullanim (yonetici):
@@ -26,7 +26,7 @@ if (-not (Test-IsAdmin)) {
     exit $(if ($null -ne $proc.ExitCode) { $proc.ExitCode } else { 1 })
 }
 
-$ruleName = "RetailEX PostgREST TCP $Port (LAN)"
+$ruleName = "AsinERP PostgREST TCP $Port (LAN)"
 $existing = Get-NetFirewallRule -DisplayName $ruleName -ErrorAction SilentlyContinue
 if (-not $existing) {
     New-NetFirewallRule -DisplayName $ruleName -Direction Inbound -Action Allow -Protocol TCP -LocalPort $Port | Out-Null
@@ -46,6 +46,6 @@ else {
     Write-Host "[PostgREST-LAN] Bu PC'nin WiFi IP'sini bulun (ipconfig) ve http://<IP>:$Port kullanin."
 }
 
-Write-Host '[PostgREST-LAN] PostgREST Windows hizmeti: RetailEX_PostgREST (kurulumda otomatik)'
+Write-Host '[PostgREST-LAN] PostgREST Windows hizmeti: AsinERP_PostgREST (kurulumda otomatik)'
 Write-Host '[PostgREST-LAN] Manuel onarim: install-postgrest-service.cmd'
 exit 0

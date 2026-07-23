@@ -13,7 +13,7 @@ param(
   [int]$Port = 5432,
   [switch]$SkipFirewall,
   [switch]$WhatIf,
-  <# Tum IPv4/IPv6 adreslerinden baglanti (kurulum / RetailEX install_pg16). Guvenlik: postgres sifresi guclu olmali; mumkunse VPN veya -AllowCidr ile alt ag kullanin. #>
+  <# Tum IPv4/IPv6 adreslerinden baglanti (kurulum / AsinERP install_pg16). Guvenlik: postgres sifresi guclu olmali; mumkunse VPN veya -AllowCidr ile alt ag kullanin. #>
   [switch]$AllowAllNetworks
 )
 
@@ -100,7 +100,7 @@ $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 Write-Info "postgresql.conf: listen_addresses = '*'"
 
 # pg_hba.conf: append once
-$marker = "# --- RetailEX pg-windows-expose-remote (restore from backup to undo) ---"
+$marker = "# --- AsinERP pg-windows-expose-remote (restore from backup to undo) ---"
 $hbaText = [System.IO.File]::ReadAllText($hbaPath, [System.Text.Encoding]::UTF8)
 if ($hbaText -notmatch [regex]::Escape($marker)) {
   if ($AllowAllNetworks) {
@@ -132,7 +132,7 @@ if (-not $SkipFirewall) {
     Write-Warn "Not admin: firewall rule skipped. Re-run elevated or use -SkipFirewall."
   }
   else {
-    $ruleName = "PostgreSQL TCP $Port (RetailEX script)"
+    $ruleName = "PostgreSQL TCP $Port (AsinERP script)"
     $existing = Get-NetFirewallRule -DisplayName $ruleName -ErrorAction SilentlyContinue
     if (-not $existing) {
       New-NetFirewallRule -DisplayName $ruleName -Direction Inbound -Action Allow -Protocol TCP -LocalPort $Port | Out-Null

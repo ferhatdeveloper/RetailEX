@@ -219,6 +219,8 @@ fn default_beauty_slot_interval_min() -> i32 {
 
 fn default_hidden_modules() -> Vec<String> {
     vec![
+        "restaurant".to_string(),
+        "beauty".to_string(),
         "retail".to_string(),
         "communication-notifications".to_string(),
         "stock-dashboard".to_string(),
@@ -261,14 +263,14 @@ impl Default for AppConfig {
     fn default() -> Self {
         Self {
             is_configured: false,
-            db_mode: "hybrid".to_string(),
+            db_mode: "online".to_string(),
             local_db: "localhost:5432/retailex_local".to_string(),
             remote_db: "72.60.182.107:5432/retailex_demo".to_string(), // sync: config/remote-pg.defaults.json
-            connection_provider: default_connection_provider(),
+            connection_provider: "db".to_string(),
             remote_rest_url: default_remote_rest_url(),
             merkez_tenant_code: String::new(),
-            hybrid_read_preference: default_hybrid_read_preference(),
-            hybrid_sync_direction: default_hybrid_sync_direction(),
+            hybrid_read_preference: "remote_first".to_string(),
+            hybrid_sync_direction: "remote_to_local".to_string(),
             hybrid_sync_interval_sec: default_hybrid_sync_interval_sec(),
             hybrid_sync_transport: default_hybrid_sync_transport(),
             terminal_name: "".to_string(),
@@ -309,13 +311,67 @@ impl Default for AppConfig {
     }
 }
 
-pub fn get_db_path() -> PathBuf {
-    let app_dir = PathBuf::from("C:\\RetailEx");
+/// Çalışan exe'nin klasörü (USB harfi değişse bile göreli kök).
+pub fn exe_dir() -> PathBuf {
+    std::env::current_exe()
+        .ok()
+        .and_then(|p| p.parent().map(|d| d.to_path_buf()))
+        .unwrap_or_else(|| PathBuf::from("."))
+}
 
-    if !app_dir.exists() {
-        let _ = std::fs::create_dir_all(&app_dir);
+/// Taşınabilir (USB) mod: `ASIN_PORTABLE=1` / `RETAILEX_PORTABLE=1` veya exe yanında `portable.dat`.
+pub fn is_portable_mode() -> bool {
+    for key in ["ASIN_PORTABLE", "RETAILEX_PORTABLE"] {
+        if let Ok(v) = std::env::var(key) {
+            let t = v.trim().to_ascii_lowercase();
+            if t == "1" || t == "true" || t == "yes" {
+                return true;
+            }
+        }
     }
-    app_dir.join("config.db")
+    let root = exe_dir();
+    root.join("portable.dat").is_file() || root.join("AsinERP.portable").is_file()
+}
+
+/// Sabit kurulum: `C:\AsinERP` — portable: `{exe_dir}\data` (flash harfinden bağımsız).
+/// Eski kurulumda `config.db` hâlâ `C:\RetailEX` / `C:\RetailEx` altındaysa onu kullanır.
+pub fn get_app_data_dir() -> PathBuf {
+    if is_portable_mode() {
+        let dir = exe_dir().join("data");
+        let _ = std::fs::create_dir_all(&dir);
+        dir
+    } else {
+        let app_dir = PathBuf::from(r"C:\AsinERP");
+        if app_dir.join("config.db").exists() {
+            return app_dir;
+        }
+        for legacy in [r"C:\RetailEX", r"C:\RetailEx"] {
+            let p = PathBuf::from(legacy);
+            if p.join("config.db").exists() {
+                return p;
+            }
+        }
+        if !app_dir.exists() {
+            let _ = std::fs::create_dir_all(&app_dir);
+        }
+        app_dir
+    }
+}
+
+pub fn get_logs_dir() -> PathBuf {
+    let dir = get_app_data_dir().join("logs");
+    let _ = std::fs::create_dir_all(&dir);
+    dir
+}
+
+pub fn get_backups_dir() -> PathBuf {
+    let dir = get_app_data_dir().join("backups");
+    let _ = std::fs::create_dir_all(&dir);
+    dir
+}
+
+pub fn get_db_path() -> PathBuf {
+    get_app_data_dir().join("config.db")
 }
 
 pub fn init_config_db() -> Result<(), String> {

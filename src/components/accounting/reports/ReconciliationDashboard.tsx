@@ -37,13 +37,13 @@ export function ReconciliationDashboard() {
                 <div className="flex justify-between items-center">
                     <div>
                         <h1 className="text-xl font-bold text-gray-900">Mali Mutabakat (Reconciliation)</h1>
-                        <p className="text-sm text-gray-500 mt-1">Logo ERP vs RetailEX Local Bakiyelerin Denetimi</p>
+                        <p className="text-sm text-gray-500 mt-1">Logo ERP vs Asin Local Bakiyelerin Denetimi</p>
                     </div>
                     <div className="flex gap-2">
                         <button
                             onClick={loadReconciliation}
                             disabled={loading}
-                            className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 flex items-center gap-2 transition-all disabled:opacity-50"
+                            className="px-4 py-2 bg-[var(--asin-accent,#1FA8A0)] text-white rounded-lg hover:bg-[#178f88] flex items-center gap-2 transition-all disabled:opacity-50"
                         >
                             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
                             Yeniden Denetle
@@ -70,7 +70,7 @@ export function ReconciliationDashboard() {
 
                     <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
                         <div className="flex items-center gap-3 mb-4">
-                            <ArrowRightLeft className="w-6 h-6 text-indigo-600" />
+                            <ArrowRightLeft className="w-6 h-6 text-[var(--asin-accent,#1FA8A0)]" />
                             <h3 className="font-semibold text-gray-900">Toplam Sapma Payı</h3>
                         </div>
                         <div className={`text-2xl font-bold ${totalDiff > 0 ? 'text-red-600' : 'text-green-600'}`}>
@@ -102,7 +102,7 @@ export function ReconciliationDashboard() {
                             <tr className="bg-gray-50 text-left border-b border-gray-200">
                                 <th className="px-6 py-3 text-xs font-semibold text-gray-500 uppercase">Hesap Bilgisi</th>
                                 <th className="px-6 py-3 text-xs font-semibold text-gray-500 uppercase text-right">Logo Bakiyesi</th>
-                                <th className="px-6 py-3 text-xs font-semibold text-gray-500 uppercase text-right">RetailEX Bakiyesi</th>
+                                <th className="px-6 py-3 text-xs font-semibold text-gray-500 uppercase text-right">Asin Bakiyesi</th>
                                 <th className="px-6 py-3 text-xs font-semibold text-gray-500 uppercase text-right">Fark</th>
                                 <th className="px-6 py-3 text-xs font-semibold text-gray-500 uppercase">Durum</th>
                                 <th className="px-6 py-3 text-xs font-semibold text-gray-500 uppercase text-right">İşlem</th>
@@ -132,7 +132,7 @@ export function ReconciliationDashboard() {
                                     <td className="px-6 py-4 text-right">
                                         <button
                                             disabled={item.difference === 0}
-                                            className="px-3 py-1 bg-white border border-gray-200 text-indigo-600 rounded hover:bg-indigo-50 transition-colors text-xs font-medium disabled:opacity-30"
+                                            className="px-3 py-1 bg-white border border-gray-200 text-[var(--asin-accent,#1FA8A0)] rounded hover:bg-[var(--asin-accent-muted,#D5F0EE)] transition-colors text-xs font-medium disabled:opacity-30"
                                         >
                                             Düzelt & Senkron Et
                                         </button>
@@ -144,16 +144,16 @@ export function ReconciliationDashboard() {
                 </div>
 
                 {/* Audit Hints */}
-                <div className="bg-indigo-900 text-indigo-100 p-6 rounded-2xl shadow-lg relative overflow-hidden">
+                <div className="bg-[var(--asin-primary,#0E2433)] text-[var(--asin-accent-muted,#D5F0EE)] p-6 rounded-2xl shadow-lg relative overflow-hidden">
                     <div className="relative z-10 flex items-center gap-6">
-                        <div className="bg-indigo-700 p-4 rounded-xl">
+                        <div className="bg-[var(--asin-accent,#1FA8A0)] p-4 rounded-xl text-white">
                             <FileText className="w-8 h-8" />
                         </div>
                         <div>
-                            <h4 className="text-lg font-bold">Muhasebe Mutabakat Notu</h4>
+                            <h4 className="text-lg font-bold text-white">Muhasebe Mutabakat Notu</h4>
                             <p className="opacity-80 text-sm max-w-2xl mt-1">
                                 Farklar genellikle Logo ERP tarafındaki manuel fiş girişlerinden kaynaklanmaktadır.
-                                "Düzelt" butonu, Logo'daki bakiyeyi kaynak alarak RetailEX tarafını günceller ve Audit Log'a "Mali Düzeltme" olarak işler.
+                                "Düzelt" butonu, Logo'daki bakiyeyi kaynak alarak Asin tarafını günceller ve Audit Log'a "Mali Düzeltme" olarak işler.
                             </p>
                         </div>
                     </div>

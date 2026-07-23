@@ -293,10 +293,10 @@ export function DeviceManagement() {
             {showModal && (
                 <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
                     <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-200">
-                        <div className="bg-gradient-to-r from-blue-600 to-purple-600 p-6 text-white flex items-center justify-between">
+                        <div className="bg-[var(--asin-primary,#0E2433)] p-6 text-white flex items-center justify-between border-b border-[var(--asin-accent,#1FA8A0)]/35">
                             <div>
                                 <h2 className="text-lg font-black">{isEdit ? tm('bDeviceEdit') : tm('bDeviceNew')}</h2>
-                                <p className="text-white/70 text-xs mt-1">beauty.rex_firma_beauty_devices</p>
+                                <p className="text-[var(--asin-accent-muted,#D5F0EE)] text-xs mt-1 opacity-80">beauty.rex_firma_beauty_devices</p>
                             </div>
                             <button onClick={() => setShowModal(false)} className="p-2 hover:bg-white/20 rounded-xl transition"><X size={20} /></button>
                         </div>

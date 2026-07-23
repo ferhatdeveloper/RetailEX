@@ -447,7 +447,7 @@ export const DEFAULT_TEMPLATES: Template[] = [
       { id: 'msi-items', type: 'table', x: 15, y: 88, width: 180, height: 130, field: '{{items}}' },
       { id: 'msi-totals-box', type: 'box', x: 118, y: 224, width: 77, height: 44, borderWidth: 1, borderColor: '#D1D5DB' },
       { id: 'msi-totals', type: 'text', x: 122, y: 228, width: 68, height: 36, content: 'Ara Toplam: {{subtotal}}\nİndirim: {{discount}}\nVergi: {{tax}}\nGenel Toplam: {{total}}', fontSize: 10, fontWeight: 'bold', textAlign: 'right' },
-      { id: 'msi-footer', type: 'text', x: 15, y: 275, width: 180, height: 8, content: 'Bu belge RetailEX Dizayn Merkezi ile oluşturulmuştur.', fontSize: 9, textAlign: 'center' }
+      { id: 'msi-footer', type: 'text', x: 15, y: 275, width: 180, height: 8, content: 'Bu belge Asin Dizayn Merkezi ile oluşturulmuştur.', fontSize: 9, textAlign: 'center' }
     ]
   },
   {

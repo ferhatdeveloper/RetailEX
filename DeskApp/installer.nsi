@@ -214,19 +214,19 @@ Function PageReinstall
   
   ; Turkish Language Handling for Update/Reinstall
   ${If} $R0 == 0
-    StrCpy $R1 "RetailEX zaten kurulu. Ne yapmak istersiniz?"
+    StrCpy $R1 "AsinERP zaten kurulu. Ne yapmak istersiniz?"
     StrCpy $R2 "Mevcut kurulumu güncelle/onar"
     StrCpy $R3 "Kaldır ve yeniden kur"
     !insertmacro MUI_HEADER_TEXT "Zaten Kurulu" "Bakım modunu seçin."
     StrCpy $R5 "2"
   ${ElseIf} $R0 == 1
-    StrCpy $R1 "Eski bir RetailEX sürümü bulundu ($R0). Güncelleme mevcut."
+    StrCpy $R1 "Eski bir AsinERP sürümü bulundu ($R0). Güncelleme mevcut."
     StrCpy $R2 "Sistemi şimdi güncelle (Önerilen)"
     StrCpy $R3 "Kaldır ve sıfırdan kur"
     !insertmacro MUI_HEADER_TEXT "Güncelleme Mevcut" "Nasıl devam etmek istersiniz?"
     StrCpy $R5 "1"
   ${ElseIf} $R0 == -1
-    StrCpy $R1 "Daha yeni bir RetailEX sürümü zaten kurulu."
+    StrCpy $R1 "Daha yeni bir AsinERP sürümü zaten kurulu."
     StrCpy $R2 "Düşük sürüme güncelle (Eski veriler korunur)"
     !if "${ALLOWDOWNGRADES}" == "true"
       StrCpy $R3 "Kaldırma yapmadan devam et"
@@ -549,7 +549,7 @@ Function PagePostgREST
   ${If} $InstallRole == 1
     SendMessage $PostgREST_Obj ${BM_SETCHECK} ${BST_CHECKED} 0
   ${EndIf}
-  ${NSD_CreateLabel} 0 78u 100% 28u "Not: Kurulumda RetailEX_PostgREST Windows hizmeti otomatik kurulur (acilista baslar). postgresql.conf ve guvenlik duvari ayarlarini unutmayin."
+  ${NSD_CreateLabel} 0 78u 100% 28u "Not: Kurulumda AsinERP_PostgREST Windows hizmeti otomatik kurulur (acilista baslar). postgresql.conf ve guvenlik duvari ayarlarini unutmayin."
   Pop $0
   nsDialogs::Show
 FunctionEnd
@@ -950,10 +950,10 @@ Section Install
   ${EndIf}
 
   ; Copy external binaries
-    File /a "/oname=RetailEX_Service.exe" "__REPO_ROOT__\DeskApp\target\release\RetailEX_Service.exe"
-    File /a "/oname=RetailEX_SQL_Bridge.exe" "__REPO_ROOT__\DeskApp\target\release\RetailEX_SQL_Bridge.exe"
-    File /a "/oname=RetailEX_Printer.exe" "__REPO_ROOT__\DeskApp\target\release\RetailEX_Printer.exe"
-    File /a "/oname=RetailEX_Config.exe" "__REPO_ROOT__\DeskApp\target\release\RetailEX_Config.exe"
+    File /a "/oname=AsinERP_Service.exe" "__REPO_ROOT__\DeskApp\target\release\AsinERP_Service.exe"
+    File /a "/oname=AsinERP_SQL_Bridge.exe" "__REPO_ROOT__\DeskApp\target\release\AsinERP_SQL_Bridge.exe"
+    File /a "/oname=AsinERP_Printer.exe" "__REPO_ROOT__\DeskApp\target\release\AsinERP_Printer.exe"
+    File /a "/oname=AsinERP_Config.exe" "__REPO_ROOT__\DeskApp\target\release\AsinERP_Config.exe"
     File /a "/oname=bridge.cjs" "__REPO_ROOT__\DeskApp\resources\bridge.cjs"
     File /a "/oname=kitchen-print-service.mjs" "__REPO_ROOT__\DeskApp\resources\kitchen-print-service.mjs"
     File /a "/oname=package.json" "__REPO_ROOT__\DeskApp\resources\package.json"
@@ -965,8 +965,8 @@ Section Install
     File /a "/oname=install-services-manual.cmd" "__REPO_ROOT__\DeskApp\resources\install-services-manual.cmd"
     File /a "/oname=install-services-setup.ps1" "__REPO_ROOT__\DeskApp\resources\install-services-setup.ps1"
     File /a "/oname=install-services-common.ps1" "__REPO_ROOT__\DeskApp\resources\install-services-common.ps1"
-    File /a "/oname=retailex-admin.ps1" "__REPO_ROOT__\DeskApp\resources\retailex-admin.ps1"
-    File /a "/oname=retailex-admin.cmd" "__REPO_ROOT__\DeskApp\resources\retailex-admin.cmd"
+    File /a "/oname=asinerp-admin.ps1" "__REPO_ROOT__\DeskApp\resources\asinerp-admin.ps1"
+    File /a "/oname=asinerp-admin.cmd" "__REPO_ROOT__\DeskApp\resources\asinerp-admin.cmd"
     File /a "/oname=README_PRINTER_SERVICE.md" "__REPO_ROOT__\DeskApp\resources\README_PRINTER_SERVICE.md"
     File /a "/oname=install-postgrest.ps1" "__REPO_ROOT__\DeskApp\resources\install-postgrest.ps1"
     ; Gömülü PostgREST (npm run postgrest:fetch — yoksa /nonfatal ile atlanır, kurulumda GitHub yedeği)
@@ -979,9 +979,9 @@ Section Install
     File /a "/oname=start-postgrest-lan.cmd" "__REPO_ROOT__\DeskApp\resources\start-postgrest-lan.cmd"
     File /a "/oname=install-postgrest-service.ps1" "__REPO_ROOT__\DeskApp\resources\install-postgrest-service.ps1"
     File /a "/oname=install-postgrest-service.cmd" "__REPO_ROOT__\DeskApp\resources\install-postgrest-service.cmd"
-    File /a "/oname=RetailEX_PostgreSQLRemote.exe" "${POSTGRESREMOTEENABLESRCPATH}"
-    CreateDirectory "$INSTDIR\RetailEXTools"
-    File /a "/oname=RetailEXTools\RetailEX_Tools.exe" "__REPO_ROOT__\DeskApp\target\release\RetailEX_Tools.exe"
+    File /a "/oname=AsinERP_PostgreSQLRemote.exe" "${POSTGRESREMOTEENABLESRCPATH}"
+    CreateDirectory "$INSTDIR\AsinERPTools"
+    File /a "/oname=AsinERPTools\AsinERP_Tools.exe" "__REPO_ROOT__\DeskApp\target\release\AsinERP_Tools.exe"
 
   ${If} $InstallPostgREST == 1
     Call InstallPostgRESTBinary
@@ -993,16 +993,16 @@ Section Install
 
   ; Windows hizmetleri: bosluklu INSTDIR icin -Prefix yerine dosya (install-services-setup.ps1 okur)
   DetailPrint "Installing Background Services (UAC if needed)..."
-  FileOpen $R9 "$INSTDIR\retailex_install_prefix.txt" w
+  FileOpen $R9 "$INSTDIR\asinerp_install_prefix.txt" w
   FileWrite $R9 "$INSTDIR"
   FileClose $R9
   ExecWait '"powershell.exe" -NoProfile -ExecutionPolicy Bypass -File "$INSTDIR\install-services-setup.ps1"' $0
   ${If} $0 == 2
     DetailPrint "install-services-setup.ps1 PARTIAL (exit 2): Sync OK, SQL Bridge eksik olabilir"
-    MessageBox MB_OK|MB_ICONINFORMATION "RetailEX çekirdek senkron hizmeti kuruldu; SQL Bridge kaydı eksik veya gecikti (çıkış 2).$\r$\n$\r$\nUygulama kullanılabilir. SQL Bridge (port 3001) için:$\r$\n1) '$INSTDIR\install-services-manual.cmd' (Yönetici)$\r$\n2) Node.js LTS varsa: '$INSTDIR\install-bridge-npm.cmd'$\r$\n$\r$\nPostgREST (3002) ayrıdır: '$INSTDIR\install-postgrest-service.cmd'$\r$\n$\r$\nLog: C:\ProgramData\RetailEX\install_services_setup_last.log"
+    MessageBox MB_OK|MB_ICONINFORMATION "AsinERP çekirdek senkron hizmeti kuruldu; SQL Bridge kaydı eksik veya gecikti (çıkış 2).$\r$\n$\r$\nUygulama kullanılabilir. SQL Bridge (port 3001) için:$\r$\n1) '$INSTDIR\install-services-manual.cmd' (Yönetici)$\r$\n2) Node.js LTS varsa: '$INSTDIR\install-bridge-npm.cmd'$\r$\n$\r$\nPostgREST (3002) ayrıdır: '$INSTDIR\install-postgrest-service.cmd'$\r$\n$\r$\nLog: C:\ProgramData\AsinERP\install_services_setup_last.log"
   ${ElseIf} $0 != 0
     DetailPrint "install-services-setup.ps1 FAILED, exit code $0"
-    MessageBox MB_OK|MB_ICONEXCLAMATION "RetailEX Windows hizmetleri kurulamadı (çıkış kodu $0).$\r$\n$\r$\nSık nedenler:$\r$\n- UAC'de İzin Ver seçilmedi$\r$\n- Eski hizmet kilitli (yeniden başlatıp install-services-manual.cmd)$\r$\n- PowerShell script parse (em-dash/kodlama; bu sürümde düzeltildi)$\r$\n$\r$\nLoglar:$\r$\nC:\ProgramData\RetailEX\install_services_setup_last.log$\r$\nC:\ProgramData\RetailEX\RetailEX_Service_install_last_error.txt$\r$\nC:\ProgramData\RetailEX\RetailEX_SQL_Bridge_install_last_error.txt$\r$\nC:\ProgramData\RetailEX\RetailEX_Printer_install_last_error.txt$\r$\n%TEMP%\retailex_postgrest_service_install.log$\r$\n$\r$\nKurtarma (Yönetici): '$INSTDIR\install-services-manual.cmd'$\r$\nPostgREST ayrıca: '$INSTDIR\install-postgrest-service.cmd'"
+    MessageBox MB_OK|MB_ICONEXCLAMATION "AsinERP Windows hizmetleri kurulamadı (çıkış kodu $0).$\r$\n$\r$\nSık nedenler:$\r$\n- UAC'de İzin Ver seçilmedi$\r$\n- Eski hizmet kilitli (yeniden başlatıp install-services-manual.cmd)$\r$\n- PowerShell script parse (em-dash/kodlama; bu sürümde düzeltildi)$\r$\n$\r$\nLoglar:$\r$\nC:\ProgramData\AsinERP\install_services_setup_last.log$\r$\nC:\ProgramData\AsinERP\AsinERP_Service_install_last_error.txt$\r$\nC:\ProgramData\AsinERP\AsinERP_SQL_Bridge_install_last_error.txt$\r$\nC:\ProgramData\AsinERP\AsinERP_Printer_install_last_error.txt$\r$\n%TEMP%\retailex_postgrest_service_install.log$\r$\n$\r$\nKurtarma (Yönetici): '$INSTDIR\install-services-manual.cmd'$\r$\nPostgREST ayrıca: '$INSTDIR\install-postgrest-service.cmd'"
   ${EndIf}
 
   ; Write bootstrap config for the backend to consume on first run
@@ -1025,9 +1025,9 @@ Section Install
   FileClose $9
 
   ; Write Summary for Notepad
-  FileOpen $9 "$INSTDIR\RETAILEX_INSTALL_INFO.txt" w
+  FileOpen $9 "$INSTDIR\ASINERP_INSTALL_INFO.txt" w
   FileWrite $9 "========================================================$\r$\n"
-  FileWrite $9 "           RetailEX KURULUM ÖZETİ & BİLGİLENDİRME        $\r$\n"
+  FileWrite $9 "           AsinERP KURULUM ÖZETİ & BİLGİLENDİRME        $\r$\n"
   FileWrite $9 "========================================================$\r$\n$\r$\n"
   FileWrite $9 "Kurulum Tarihi: ${__DATE__} ${__TIME__}$\r$\n"
   ${If} $InstallRole == 1
@@ -1036,11 +1036,11 @@ Section Install
     FileWrite $9 "Kurulum Rolü: TERMİNAL (Kasa)$\r$\n"
   ${EndIf}
   FileWrite $9 "$\r$\nServis Durumları:$\r$\n"
-  FileWrite $9 "- RetailEX Sync Service: KURULDU & ÇALIŞIYOR$\r$\n"
-  FileWrite $9 "- RetailEX SQL Bridge (Port 3001): KURULDU (Native Windows Service EXE)$\r$\n"
-  FileWrite $9 "- RetailEX Printer Service: KURULDU (mutfak ESC/POS kuyruk servisi)$\r$\n"
+  FileWrite $9 "- AsinERP Sync Service: KURULDU & ÇALIŞIYOR$\r$\n"
+  FileWrite $9 "- AsinERP SQL Bridge (Port 3001): KURULDU (Native Windows Service EXE)$\r$\n"
+  FileWrite $9 "- AsinERP Printer Service: KURULDU (mutfak ESC/POS kuyruk servisi)$\r$\n"
   ${If} $InstallPostgREST == 1
-    FileWrite $9 "- RetailEX PostgREST (Port 3002): KURULDU (Windows Hizmeti, otomatik baslatma)$\r$\n"
+    FileWrite $9 "- AsinERP PostgREST (Port 3002): KURULDU (Windows Hizmeti, otomatik baslatma)$\r$\n"
   ${EndIf}
   ${If} $InstallRole == 1
     ${If} $InstallOfflineMessaging == 1
@@ -1056,24 +1056,24 @@ Section Install
   FileWrite $9 "- Messaging: $AMQPUrl$\r$\n"
   FileWrite $9 "$\r$\nÖnemli Notlar:$\r$\n"
   FileWrite $9 "1. Logo entegrasyonu: Uygulama → Entegrasyonlar → Logo ERP (REST veya LOBJECT).$\r$\n"
-  FileWrite $9 "2. Terazi: Doğrudan TCP (Rongta) veya ayrı yerel terazi uygulamanız; RetailEX içinde Terazi Yönetimi.$\r$\n"
+  FileWrite $9 "2. Terazi: Doğrudan TCP (Rongta) veya ayrı yerel terazi uygulamanız; AsinERP içinde Terazi Yönetimi.$\r$\n"
   FileWrite $9 "3. Güvenlik duvarından (Firewall) 8000, 5432 portlarına izin verildiğinden emin olun.$\r$\n"
   FileWrite $9 "4. WebSocket adresi ($WSUrl) uygulama ve merkez senkron için kullanılır; ağ/firewall ayarlarını buna göre doğrulayın.$\r$\n"
   FileWrite $9 "5. Servisler kurulmadıysa '$INSTDIR\install-services-manual.cmd' (veya .ps1) dosyasını Yönetici olarak çalıştırın.$\r$\n"
   FileWrite $9 "6. SQL Bridge (port 3001) ve Printer servisi: Node.js LTS gerekir (https://nodejs.org). Kurulumdan sonra: '$INSTDIR\install-bridge-npm.cmd'$\r$\n"
   FileWrite $9 "7. Mutfak yazdırma: Restoran yazıcı ayarlarında Windows servisi + Ağ (IP) ESC/POS kullanın.$\r$\n"
-  FileWrite $9 "8. Gelişmiş yönetim için '$INSTDIR\retailex-admin.cmd' (veya .ps1) veya '$INSTDIR\RetailEXTools\RetailEX_Tools.exe' menüsünü kullanın.$\r$\n"
-  FileWrite $9 "9. PostgreSQL'i LAN'dan erişime açmak (yönetici): '$INSTDIR\RetailEX_PostgreSQLRemote.exe' veya pg-windows-expose-remote.cmd$\r$\n"
+  FileWrite $9 "8. Gelişmiş yönetim için '$INSTDIR\asinerp-admin.cmd' (veya .ps1) veya '$INSTDIR\AsinERPTools\AsinERP_Tools.exe' menüsünü kullanın.$\r$\n"
+  FileWrite $9 "9. PostgreSQL'i LAN'dan erişime açmak (yönetici): '$INSTDIR\AsinERP_PostgreSQLRemote.exe' veya pg-windows-expose-remote.cmd$\r$\n"
   ${If} $InstallPostgREST == 1
-    FileWrite $9 "10. PostgREST: Windows hizmeti RetailEX_PostgREST (otomatik baslatma, port 3002). Node gerektirmez.$\r$\n"
+    FileWrite $9 "10. PostgREST: Windows hizmeti AsinERP_PostgREST (otomatik baslatma, port 3002). Node gerektirmez.$\r$\n"
     FileWrite $9 "   Manuel onarim: '$INSTDIR\install-postgrest-service.cmd' (Yonetici)$\r$\n"
     FileWrite $9 "   Android/APK URL: http://<bu-PC-WiFi-IP>:3002  (port zorunlu; firewall TCP 3002)$\r$\n"
   ${EndIf}
-  FileWrite $9 "$\r$\nRetailEX Enterprise OS - Keyifli kullanımlar!$\r$\n"
+  FileWrite $9 "$\r$\nAsinERP Enterprise OS - Keyifli kullanımlar!$\r$\n"
   FileClose $9
 
   ; Open the summary in Notepad immediately
-  Exec 'notepad.exe "$INSTDIR\RETAILEX_INSTALL_INFO.txt"'
+  Exec 'notepad.exe "$INSTDIR\ASINERP_INSTALL_INFO.txt"'
 
   ; Create uninstaller
   WriteUninstaller "$INSTDIR\uninstall.exe"
@@ -1114,7 +1114,7 @@ Section Install
   !insertmacro MUI_STARTMENU_WRITE_BEGIN Application
     Call CreateStartMenuShortcut
     ${If} $InstallPostgREST == 1
-      CreateShortCut "$SMPROGRAMS\$AppStartMenuFolder\PostgREST Hizmeti (Onarim).lnk" "$INSTDIR\install-postgrest-service.cmd" "" "$INSTDIR\${MAINBINARYNAME}.exe" 0 SW_SHOWNORMAL "" "RetailEX PostgREST Windows hizmeti"
+      CreateShortCut "$SMPROGRAMS\$AppStartMenuFolder\PostgREST Hizmeti (Onarim).lnk" "$INSTDIR\install-postgrest-service.cmd" "" "$INSTDIR\${MAINBINARYNAME}.exe" 0 SW_SHOWNORMAL "" "AsinERP PostgREST Windows hizmeti"
     ${EndIf}
   !insertmacro MUI_STARTMENU_WRITE_END
 
@@ -1203,34 +1203,40 @@ Section Uninstall
     Delete "$INSTDIR\_up_\database\migrations\060_ensure_create_firm_period_engine.sql"
     Delete "$INSTDIR\_up_\database\sys\.keep"
 
-  ; Stop and Uninstall Services
+  ; Stop and Uninstall Services (yeni + eski adlar — yükseltme uyumu)
+  ExecWait 'net stop AsinERP_Service'
+  ExecWait 'net stop AsinERP_SQL_Bridge'
+  ExecWait 'net stop AsinERP_Printer'
+  ExecWait 'net stop AsinERP_PostgREST'
+  ExecWait 'net stop AsinERPLogoConnector'
+  ExecWait 'net stop AsinERP_Logo'
   ExecWait 'net stop RetailEX_Service'
   ExecWait 'net stop RetailEX_SQL_Bridge'
   ExecWait 'net stop RetailEX_Printer'
   ExecWait 'net stop RetailEX_PostgREST'
   ExecWait 'net stop RetailEXLogoConnector'
   ExecWait 'net stop RetailEX_Logo'
-  ExecWait '"$INSTDIR\RetailEX_Service.exe" --uninstall'
-  ExecWait '"$INSTDIR\RetailEX_SQL_Bridge.exe" --uninstall'
-  ExecWait '"$INSTDIR\RetailEX_Printer.exe" --uninstall'
-  IfFileExists "$INSTDIR\RetailEX_Logo.exe" 0 +2
-    ExecWait '"$INSTDIR\RetailEX_Logo.exe" --uninstall'
-  IfFileExists "$INSTDIR\RetailEX_Logo_Connector.exe" 0 +2
-    ExecWait '"$INSTDIR\RetailEX_Logo_Connector.exe" --uninstall'
+  ExecWait '"$INSTDIR\AsinERP_Service.exe" --uninstall'
+  ExecWait '"$INSTDIR\AsinERP_SQL_Bridge.exe" --uninstall'
+  ExecWait '"$INSTDIR\AsinERP_Printer.exe" --uninstall'
+  IfFileExists "$INSTDIR\AsinERP_Logo.exe" 0 +2
+    ExecWait '"$INSTDIR\AsinERP_Logo.exe" --uninstall'
+  IfFileExists "$INSTDIR\AsinERP_Logo_Connector.exe" 0 +2
+    ExecWait '"$INSTDIR\AsinERP_Logo_Connector.exe" --uninstall'
 
   ; Delete external binaries
-    Delete "$INSTDIR\RetailEX_Service.exe"
-    Delete "$INSTDIR\RetailEX_SQL_Bridge.exe"
-    Delete "$INSTDIR\RetailEX_Printer.exe"
-    Delete "$INSTDIR\RetailEX_Config.exe"
-    Delete "$INSTDIR\RetailEX_Logo.exe"
-    Delete "$INSTDIR\RetailEX_Logo_Connector.exe"
-    ExecWait 'sc.exe stop RetailEX_SQL_Bridge'
-    ExecWait 'sc.exe delete RetailEX_SQL_Bridge'
-    ExecWait 'sc.exe stop RetailEX_Printer'
-    ExecWait 'sc.exe delete RetailEX_Printer'
-    ExecWait 'sc.exe stop RetailEX_PostgREST'
-    ExecWait 'sc.exe delete RetailEX_PostgREST'
+    Delete "$INSTDIR\AsinERP_Service.exe"
+    Delete "$INSTDIR\AsinERP_SQL_Bridge.exe"
+    Delete "$INSTDIR\AsinERP_Printer.exe"
+    Delete "$INSTDIR\AsinERP_Config.exe"
+    Delete "$INSTDIR\AsinERP_Logo.exe"
+    Delete "$INSTDIR\AsinERP_Logo_Connector.exe"
+    ExecWait 'sc.exe stop AsinERP_SQL_Bridge'
+    ExecWait 'sc.exe delete AsinERP_SQL_Bridge'
+    ExecWait 'sc.exe stop AsinERP_Printer'
+    ExecWait 'sc.exe delete AsinERP_Printer'
+    ExecWait 'sc.exe stop AsinERP_PostgREST'
+    ExecWait 'sc.exe delete AsinERP_PostgREST'
     Delete "$INSTDIR\install-postgrest-service.ps1"
     Delete "$INSTDIR\install-postgrest-service.cmd"
     Delete "$INSTDIR\postgrest-windows-expose-lan.ps1"
@@ -1249,17 +1255,17 @@ Section Uninstall
     Delete "$INSTDIR\install-services-manual.cmd"
     Delete "$INSTDIR\install-services-setup.ps1"
     Delete "$INSTDIR\install-services-common.ps1"
-    Delete "$INSTDIR\retailex_install_prefix.txt"
-    Delete "$INSTDIR\retailex-admin.ps1"
-    Delete "$INSTDIR\retailex-admin.cmd"
+    Delete "$INSTDIR\asinerp_install_prefix.txt"
+    Delete "$INSTDIR\asinerp-admin.ps1"
+    Delete "$INSTDIR\asinerp-admin.cmd"
     Delete "$INSTDIR\README_PRINTER_SERVICE.md"
     Delete "$INSTDIR\install-postgrest.ps1"
     Delete "$INSTDIR\postgrest.exe"
     Delete "$INSTDIR\pg-windows-expose-remote.ps1"
     Delete "$INSTDIR\pg-windows-expose-remote.cmd"
-    Delete "$INSTDIR\RetailEX_PostgreSQLRemote.exe"
-    Delete "$INSTDIR\RetailEXTools\RetailEX_Tools.exe"
-    RMDir "$INSTDIR\RetailEXTools"
+    Delete "$INSTDIR\AsinERP_PostgreSQLRemote.exe"
+    Delete "$INSTDIR\AsinERPTools\AsinERP_Tools.exe"
+    RMDir "$INSTDIR\AsinERPTools"
 
   ; Delete uninstaller
   Delete "$INSTDIR\uninstall.exe"

@@ -1,4 +1,4 @@
-﻿// RetailEX PWA — v3: HTML kabuğu önbelleğe alınmaz; chunk uyumsuzluğu azaltılır
+﻿// Asin PWA — v3: HTML kabuğu önbelleğe alınmaz; chunk uyumsuzluğu azaltılır
 const CACHE_NAME = 'retailex-sw-v3';
 const RUNTIME_CACHE = 'retailex-runtime-v3';
 const IMAGE_CACHE = 'retailex-images-v3';

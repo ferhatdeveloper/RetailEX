@@ -309,7 +309,7 @@ export async function postCallerIdCustomerContext(
       customerName: ctx.customerName,
       address: ctx.address,
       locationUrl: ctx.locationUrl,
-      note: ctx.note || 'RetailEX Mobile CallerID match',
+      note: ctx.note || 'Asin Mobile CallerID match',
       token: token || undefined,
     }),
   });

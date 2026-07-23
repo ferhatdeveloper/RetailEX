@@ -228,7 +228,7 @@ export function RoleForm() {
                         type="button"
                         onClick={handleSubmit}
                         disabled={saving}
-                        className="px-6 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl hover:shadow-lg hover:shadow-blue-200 hover:-translate-y-0.5 transition-all flex items-center gap-2 font-black uppercase text-sm tracking-wide disabled:opacity-50"
+                        className="px-6 py-2.5 bg-[var(--asin-accent,#1FA8A0)] text-white rounded-xl hover:bg-[#178f88] hover:shadow-lg hover:shadow-[rgb(14_36_51/0.12)] hover:-translate-y-0.5 transition-all flex items-center gap-2 font-black uppercase text-sm tracking-wide disabled:opacity-50"
                     >
                         {saving ? (
                             <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>

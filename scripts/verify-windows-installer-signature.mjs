@@ -40,7 +40,7 @@ if (!fs.existsSync(nsisDir)) {
   process.exit(0);
 }
 
-// Tauri NSIS: retailex_*_x64-setup.exe; eski kalip *_setup.exe
+// Tauri NSIS: AsinERP_*_x64-setup.exe (productName); eski kalip *_setup.exe / retailex_*
 const files = fs
   .readdirSync(nsisDir)
   .filter((n) => {

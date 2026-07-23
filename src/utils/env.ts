@@ -75,7 +75,7 @@ export async function removeRetailexWindowsServicesIfTauri(): Promise<{ ok: bool
   }
 }
 
-/** Windows Tauri: `C:\\RetailEX` klasorunu siler (fabrika / yeniden kurulum secenegi). */
+/** Windows Tauri: `C:\\AsinERP` klasorunu siler (fabrika / yeniden kurulum secenegi). */
 export async function deleteCRetailexFolderIfTauri(): Promise<{ ok: boolean; detail?: string }> {
   if (!IS_TAURI) return { ok: true };
   try {

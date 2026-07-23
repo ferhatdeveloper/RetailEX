@@ -236,7 +236,7 @@ export function DocumentManager() {
         {wsStatus === 'disconnected' && (
           <button 
             onClick={connectToScanService}
-            className="px-3 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700 transition-colors"
+            className="px-3 py-1 bg-[var(--asin-accent,#1FA8A0)] text-white text-xs rounded hover:bg-[#178f88] transition-colors"
           >
             Tekrar Bağlan
           </button>
@@ -253,7 +253,7 @@ export function DocumentManager() {
             </div>
             <button
               onClick={() => setShowScanSettings(!showScanSettings)}
-              className="text-xs text-blue-600 hover:text-blue-700"
+              className="text-xs text-[var(--asin-accent,#1FA8A0)] hover:text-[var(--asin-accent,#1FA8A0)]"
             >
               {showScanSettings ? 'Gizle' : 'Göster'}
             </button>
@@ -324,11 +324,11 @@ export function DocumentManager() {
       {/* Upload & Scanner Cards */}
       <div className="grid grid-cols-2 gap-4">
         {/* File Upload */}
-        <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-blue-400 transition-colors">
+        <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-[var(--asin-accent,#1FA8A0)] transition-colors">
           <label htmlFor="file-upload" className="cursor-pointer">
             <Upload className="h-12 w-12 mx-auto text-gray-400 mb-3" />
             <div className="text-sm text-gray-600">
-              Dosyaları sürükleyin veya <span className="text-blue-600 underline">göz atın</span>
+              Dosyaları sürükleyin veya <span className="text-[var(--asin-accent,#1FA8A0)] underline">göz atın</span>
             </div>
             <div className="text-xs text-gray-500 mt-1">PDF, Word, Excel, Resim</div>
             <input
@@ -347,21 +347,21 @@ export function DocumentManager() {
           onClick={handleScan}
           className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors cursor-pointer ${
             wsConnected && !isScanning 
-              ? 'border-blue-300 bg-blue-50 hover:border-blue-500 hover:bg-blue-100' 
+              ? 'border-[var(--asin-accent,#1FA8A0)]/50 bg-[var(--asin-accent-muted,#D5F0EE)] hover:border-[var(--asin-accent,#1FA8A0)] hover:bg-[var(--asin-accent-muted,#D5F0EE)]' 
               : 'border-gray-300 bg-gray-50 cursor-not-allowed opacity-60'
           }`}
         >
           {isScanning ? (
             <>
-              <Loader className="h-12 w-12 mx-auto text-blue-600 mb-3 animate-spin" />
-              <div className="text-sm text-blue-900">Taranıyor...</div>
-              <div className="text-xs text-blue-600 mt-1">Lütfen bekleyin</div>
+              <Loader className="h-12 w-12 mx-auto text-[var(--asin-accent,#1FA8A0)] mb-3 animate-spin" />
+              <div className="text-sm text-[var(--asin-primary,#0E2433)]">Taranıyor...</div>
+              <div className="text-xs text-[var(--asin-accent,#1FA8A0)] mt-1">Lütfen bekleyin</div>
             </>
           ) : (
             <>
-              <Printer className="h-12 w-12 mx-auto text-blue-600 mb-3" />
-              <div className="text-sm text-blue-900">Tarayıcıdan Tara</div>
-              <div className="text-xs text-blue-600 mt-1">
+              <Printer className="h-12 w-12 mx-auto text-[var(--asin-accent,#1FA8A0)] mb-3" />
+              <div className="text-sm text-[var(--asin-primary,#0E2433)]">Tarayıcıdan Tara</div>
+              <div className="text-xs text-[var(--asin-accent,#1FA8A0)] mt-1">
                 {wsConnected ? `${scanners.length} cihaz hazır` : 'Servis bağlı değil'}
               </div>
             </>
@@ -381,7 +381,7 @@ export function DocumentManager() {
               className="flex items-center justify-between p-3 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
             >
               <div className="flex items-center gap-3 flex-1">
-                <FileText className="h-5 w-5 text-blue-600" />
+                <FileText className="h-5 w-5 text-[var(--asin-accent,#1FA8A0)]" />
                 <div className="flex-1">
                   <div className="text-sm text-gray-900">{doc.name}</div>
                   <div className="text-xs text-gray-500">
@@ -422,20 +422,20 @@ export function DocumentManager() {
 
       {/* Installation Instructions (if not connected) */}
       {wsStatus === 'disconnected' && (
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+        <div className="bg-[var(--asin-accent-muted,#D5F0EE)] border border-[var(--asin-accent-muted,#D5F0EE)] rounded-lg p-4">
           <div className="flex items-start gap-3">
-            <AlertCircle className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+            <AlertCircle className="w-5 h-5 text-[var(--asin-accent,#1FA8A0)] flex-shrink-0 mt-0.5" />
             <div className="flex-1">
-              <div className="font-medium text-sm text-blue-900 mb-1">
+              <div className="font-medium text-sm text-[var(--asin-primary,#0E2433)] mb-1">
                 Tarayıcı Servisi Nasıl Kurulur?
               </div>
-              <div className="text-xs text-blue-800 space-y-1">
+              <div className="text-xs text-[var(--asin-primary,#0E2433)] space-y-1">
                 <p>1. ExRetailOS Scanner Service uygulamasını indirin ve çalıştırın</p>
                 <p>2. Servis otomatik olarak localhost:9999 portunda başlayacak</p>
                 <p>3. TWAIN/WIA uyumlu tüm tarayıcılar otomatik algılanacak</p>
                 <p>4. Ağ üzerindeki tarayıcılar TCP/IP ile erişilebilir</p>
               </div>
-              <button className="mt-2 px-3 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700">
+              <button className="mt-2 px-3 py-1 bg-[var(--asin-accent,#1FA8A0)] text-white text-xs rounded hover:bg-[#178f88]">
                 Servis Uygulamasını İndir
               </button>
             </div>

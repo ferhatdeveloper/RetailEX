@@ -362,19 +362,14 @@ export function LogoErpConnectorSection() {
       username: values.rest.username,
       password: values.rest.password,
       clientId: values.rest.clientId || LOGO_DEFAULT_CLIENT_ID,
-      clientSecret: values.rest.clientSecret?.trim()
-        ? values.rest.clientSecret
-        : prevRest.clientSecret,
+      clientSecret: values.rest.clientSecret,
     };
     setLogoRestBaseUrl(nextRest.baseUrl, { manual: true });
     saveLogoRestConfig(nextRest);
 
-    // REST modunda LOBJECT Form.Item'ları unmount olabilir; validateFields lobject döndürmez.
-    const lobjectPatch = values.lobject ?? {};
-    await saveLogoLobjectConfig(lobjectPatch);
-    const erpDb = lobjectPatch.erp_db?.trim();
-    if (erpDb) {
-      await setLogoMssqlDatabase(erpDb);
+    await saveLogoLobjectConfig(values.lobject);
+    if (values.lobject.erp_db?.trim()) {
+      await setLogoMssqlDatabase(values.lobject.erp_db.trim());
     }
 
     saveLogoErpIntegrationParams({
@@ -449,22 +444,7 @@ export function LogoErpConnectorSection() {
         return;
       }
 
-      // Bağlantı öncesi Logo firma/dönem (ör. paneldeki 401) eşlemesini kaydet — ERP 001 ≠ Logo 401.
-      let cfg = loadLogoRestConfig();
-      const firmForTest =
-        restLogoFirmNr != null && restLogoFirmNr > 0
-          ? restLogoFirmNr
-          : resolveLogoContext(cfg).firmNr;
-      const periodForTest =
-        restLogoPeriodNr != null && restLogoPeriodNr > 0
-          ? restLogoPeriodNr
-          : resolveLogoContext(cfg).periodNr;
-      cfg = saveLogoFirmMappingForErp(cfg, {
-        logoFirmNr: firmForTest,
-        logoPeriodNr: periodForTest,
-        logoDb: restLogoDb || cfg.logoDb,
-      });
-
+      const cfg = loadLogoRestConfig();
       const result = await logoTestConnection(cfg);
       if (result.ok) {
         toast.success('Logo REST bağlantısı başarılı');
@@ -478,7 +458,7 @@ export function LogoErpConnectorSection() {
         await refreshRestDatabases();
         return;
       } else {
-        toast.error(result.error || 'Bağlantı hatası', { duration: 12_000 });
+        toast.error(result.error || 'Bağlantı hatası');
       }
     } catch (e: unknown) {
       if (e && typeof e === 'object' && 'errorFields' in e) return;
@@ -486,14 +466,12 @@ export function LogoErpConnectorSection() {
     } finally {
       setTesting(false);
     }
-  }, [form, persistForm, restLogoFirmNr, restLogoPeriodNr, restLogoDb, refreshRestFirms, refreshRestDatabases]);
+  }, [form, persistForm]);
 
   const handleSave = async () => {
     setSaving(true);
     try {
-      await form.validateFields();
-      // validateFields yalnızca kayıtlı alanları döner; unmount LOBJECT için tam değerleri al.
-      const values = form.getFieldsValue(true) as FormValues;
+      const values = await form.validateFields();
       await persistForm(values);
       toast.success('Entegrasyon ayarları kaydedildi');
       window.dispatchEvent(new CustomEvent('retailex:logo-settings-saved'));
@@ -702,7 +680,7 @@ export function LogoErpConnectorSection() {
                   <span style={subsectionTitleStyle}>Logo firma, dönem ve veritabanı</span>
                   {!restContextReady ? (
                     <Text type="secondary" style={{ fontSize: 12 }}>
-                      Liste yoksa Logo firma no’yu elle girin (ör. 401), sonra bağlantı testi
+                      Listeler bağlantı testinden sonra dolar
                     </Text>
                   ) : null}
                 </div>
@@ -710,74 +688,34 @@ export function LogoErpConnectorSection() {
                 <Row gutter={16}>
                   <Col xs={24} md={8}>
                     <Form.Item label="Firma" required>
-                      {restFirms.length > 0 ? (
-                        <Select
-                          showSearch
-                          allowClear
-                          loading={restFirmsLoading}
-                          placeholder="Firma seçin"
-                          value={restLogoFirmNr}
-                          onChange={handleRestFirmSelect}
-                          options={restFirms.map((f) => ({
-                            value: f.firmNr,
-                            label: `${f.firmNr} — ${f.title || f.name}`,
-                          }))}
-                          notFoundContent={restFirmsLoading ? <Spin size="small" /> : 'Firma bulunamadı'}
-                        />
-                      ) : (
-                        <InputNumber
-                          min={1}
-                          style={{ width: '100%' }}
-                          placeholder="Logo firma no (ör. 401)"
-                          value={restLogoFirmNr}
-                          onChange={(v) => {
-                            const n = typeof v === 'number' ? v : undefined;
-                            setRestLogoFirmNr(n);
-                            if (n != null && n > 0) {
-                              const cfg = loadLogoRestConfig();
-                              saveLogoFirmMappingForErp(cfg, {
-                                logoFirmNr: n,
-                                logoPeriodNr: restLogoPeriodNr && restLogoPeriodNr > 0 ? restLogoPeriodNr : 1,
-                                logoDb: restLogoDb || cfg.logoDb,
-                              });
-                            }
-                          }}
-                        />
-                      )}
+                      <Select
+                        showSearch
+                        allowClear
+                        loading={restFirmsLoading}
+                        placeholder={restFirms.length ? 'Firma seçin' : 'Önce bağlantı testi'}
+                        value={restLogoFirmNr}
+                        onChange={handleRestFirmSelect}
+                        disabled={!restFirms.length && !restFirmsLoading}
+                        options={restFirms.map((f) => ({
+                          value: f.firmNr,
+                          label: `${f.firmNr} — ${f.title || f.name}`,
+                        }))}
+                        notFoundContent={restFirmsLoading ? <Spin size="small" /> : 'Firma bulunamadı'}
+                      />
                     </Form.Item>
                   </Col>
                   <Col xs={24} md={8}>
                     <Form.Item label="Dönem" required>
-                      {restPeriods.length > 0 ? (
-                        <Select
-                          placeholder="Dönem seçin"
-                          value={restLogoPeriodNr}
-                          onChange={handleRestPeriodSelect}
-                          options={restPeriods.map((p) => ({
-                            value: p.number,
-                            label: `${p.number}${p.active ? ' (aktif)' : ''}`,
-                          }))}
-                        />
-                      ) : (
-                        <InputNumber
-                          min={1}
-                          style={{ width: '100%' }}
-                          placeholder="Dönem no (ör. 1)"
-                          value={restLogoPeriodNr}
-                          onChange={(v) => {
-                            const n = typeof v === 'number' ? v : undefined;
-                            setRestLogoPeriodNr(n);
-                            if (restLogoFirmNr != null && restLogoFirmNr > 0 && n != null && n > 0) {
-                              const cfg = loadLogoRestConfig();
-                              saveLogoFirmMappingForErp(cfg, {
-                                logoFirmNr: restLogoFirmNr,
-                                logoPeriodNr: n,
-                                logoDb: restLogoDb || cfg.logoDb,
-                              });
-                            }
-                          }}
-                        />
-                      )}
+                      <Select
+                        placeholder="Dönem seçin"
+                        value={restLogoPeriodNr}
+                        onChange={handleRestPeriodSelect}
+                        disabled={!restPeriods.length}
+                        options={restPeriods.map((p) => ({
+                          value: p.number,
+                          label: `${p.number}${p.active ? ' (aktif)' : ''}`,
+                        }))}
+                      />
                     </Form.Item>
                   </Col>
                   <Col xs={24} md={8}>

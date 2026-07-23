@@ -1,12 +1,11 @@
 /**
  * PostgREST REST istemcisi — web `src/services/api/postgrestClient.ts` deseni.
- * Base URL: config `remoteRestUrl` veya kiracı kodundan SaaS URL.
+ * Base URL: config `remoteRestUrl` (web `remote_rest_url`).
  * İsteğe bağlı `postgrestAnonKey` → Authorization Bearer + apikey.
  */
 
 import {
   normalizeRemoteRestUrl,
-  resolveEffectiveRemoteRestUrl,
   useConfigStore,
   type DbConfig,
 } from '../store/configStore';
@@ -38,12 +37,12 @@ export type PostgrestQueryParams = {
 
 export function getPostgrestBaseUrl(cfg?: DbConfig): string {
   const config = cfg ?? useConfigStore.getState().config;
-  return resolveEffectiveRemoteRestUrl(config.remoteRestUrl, config.merkezTenantCode);
+  return normalizeRemoteRestUrl(config.remoteRestUrl);
 }
 
 export function getPostgrestUrl(path: string, cfg?: DbConfig): string {
   const base = getPostgrestBaseUrl(cfg);
-  if (!base) throw new Error('PostgREST URL boş (remote_rest_url / remoteRestUrl / kiracı kodu)');
+  if (!base) throw new Error('PostgREST URL boş (remote_rest_url / remoteRestUrl)');
   const p = path.startsWith('/') ? path : `/${path}`;
   return `${base}${p}`;
 }
@@ -87,33 +86,19 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function truncateBody(text: string, max = 180): string {
-  const t = text.replace(/\s+/g, ' ').trim();
-  if (!t) return '';
-  return t.length > max ? `${t.slice(0, max - 1)}…` : t;
-}
-
-function formatHttpError(
-  method: string,
-  path: string,
-  status: number,
-  statusText: string,
-  bodyText?: string,
-): Error {
+function formatHttpError(method: string, path: string, status: number, statusText: string): Error {
   if (RETRYABLE_STATUS.has(status)) {
     return new Error(
       `Sunucu geçici olarak yanıt vermedi (${status}). Yenile’yi deneyin.`,
     );
   }
   const shortPath = path.length > 64 ? `${path.slice(0, 61)}…` : path;
-  const body = truncateBody(bodyText || '');
-  const base = `PostgREST ${method} ${shortPath}: ${status}${statusText ? ` ${statusText}` : ''}`;
-  return new Error(body ? `${base} — ${body}` : base);
+  return new Error(`PostgREST ${method} ${shortPath}: ${status}${statusText ? ` ${statusText}` : ''}`);
 }
 
 async function parseError(res: Response, method: string, path: string): Promise<never> {
-  const text = await res.text().catch(() => '');
-  throw formatHttpError(method, path, res.status, res.statusText, text);
+  await res.text().catch(() => '');
+  throw formatHttpError(method, path, res.status, res.statusText);
 }
 
 function networkError(e: unknown, cfg?: DbConfig): never {
@@ -154,12 +139,6 @@ async function fetchWithRetry(
   return lastRes!;
 }
 
-async function parseJsonBody<T>(res: Response): Promise<T> {
-  const ct = res.headers.get('Content-Type');
-  if (ct?.includes('application/json')) return res.json() as Promise<T>;
-  return undefined as unknown as T;
-}
-
 /** GET — liste veya tek kayıt */
 export async function postgrestGet<T = unknown>(
   path: string,
@@ -198,76 +177,9 @@ export async function postgrestPost<T = unknown>(
     options?.cfg,
   );
   if (!res.ok) await parseError(res, 'POST', path);
-  return parseJsonBody<T>(res);
-}
-
-/** PATCH — güncelleme (web ile aynı Prefer) */
-export async function postgrestPatch<T = unknown>(
-  path: string,
-  body: Record<string, unknown>,
-  options?: PostgrestClientOptions & { prefer?: 'return=representation' | 'return=minimal' },
-): Promise<T> {
-  const url = getPostgrestUrl(path, options?.cfg);
-  const headers = buildHeaders(options);
-  headers.Prefer = options?.prefer ?? 'return=representation';
-  const res = await fetchWithRetry(
-    url,
-    { method: 'PATCH', headers, body: JSON.stringify(body) },
-    'PATCH',
-    path,
-    options?.cfg,
-  );
-  if (!res.ok) await parseError(res, 'PATCH', path);
-  return parseJsonBody<T>(res);
-}
-
-/** DELETE — silme */
-export async function postgrestDelete<T = unknown>(
-  path: string,
-  options?: PostgrestClientOptions & { prefer?: 'return=representation' | 'return=minimal' },
-): Promise<T> {
-  const url = getPostgrestUrl(path, options?.cfg);
-  const headers = buildHeaders(options);
-  headers.Prefer = options?.prefer ?? 'return=minimal';
-  const res = await fetchWithRetry(
-    url,
-    { method: 'DELETE', headers },
-    'DELETE',
-    path,
-    options?.cfg,
-  );
-  if (!res.ok) await parseError(res, 'DELETE', path);
-  return parseJsonBody<T>(res);
-}
-
-/** POST upsert — on_conflict ile birleştirme */
-export async function postgrestUpsert<T = unknown>(
-  path: string,
-  body: Record<string, unknown> | unknown[],
-  onConflict: string,
-  options?: PostgrestClientOptions & { prefer?: 'return=representation' | 'return=minimal' },
-): Promise<T> {
-  const sep = path.includes('?') ? '&' : '?';
-  const url =
-    getPostgrestUrl(path, options?.cfg) +
-    `${sep}on_conflict=${encodeURIComponent(onConflict)}`;
-  const headers = buildHeaders(options);
-  headers.Prefer = options?.prefer ?? 'resolution=merge-duplicates,return=minimal';
-  const res = await fetchWithRetry(
-    url,
-    { method: 'POST', headers, body: JSON.stringify(body) },
-    'UPSERT',
-    path,
-    options?.cfg,
-  );
-  if (!res.ok) await parseError(res, 'UPSERT', path);
-  return parseJsonBody<T>(res);
-}
-
-/** Tek kayıt path yardımcısı — örn. `/rex_001_products?id=eq.uuid` */
-export function postgrestPathOne(table: string, column: string, value: string): string {
-  const t = table.startsWith('/') ? table : `/${table}`;
-  return `${t}?${column}=eq.${encodeURIComponent(value)}`;
+  const ct = res.headers.get('Content-Type');
+  if (ct?.includes('application/json')) return res.json() as Promise<T>;
+  return undefined as unknown as T;
 }
 
 /**
@@ -277,23 +189,16 @@ export async function testPostgrestConnection(
   cfg?: DbConfig,
 ): Promise<{ ok: boolean; detail: string; baseUrl?: string; httpStatus?: number }> {
   const config = cfg ?? useConfigStore.getState().config;
-  const resolved = {
-    ...config,
-    remoteRestUrl: resolveEffectiveRemoteRestUrl(config.remoteRestUrl, config.merkezTenantCode),
-  };
-  const base = normalizeRemoteRestUrl(resolved.remoteRestUrl);
+  const base = normalizeRemoteRestUrl(config.remoteRestUrl);
   if (!base) {
-    return {
-      ok: false,
-      detail: 'PostgREST URL boş (web: remote_rest_url veya kiracı kodu)',
-    };
+    return { ok: false, detail: 'PostgREST URL boş (web: remote_rest_url)' };
   }
 
   try {
     const rows = await postgrestGet<{ firm_nr?: string }[]>(
       '/firms',
       { select: 'firm_nr', limit: 1 },
-      { schema: 'public', cfg: resolved },
+      { schema: 'public', cfg: config },
     );
     const n = Array.isArray(rows) ? rows.length : 0;
     return {
@@ -314,10 +219,6 @@ export async function testPostgrestConnection(
 export const postgrest = {
   get: postgrestGet,
   post: postgrestPost,
-  patch: postgrestPatch,
-  delete: postgrestDelete,
-  upsert: postgrestUpsert,
-  pathOne: postgrestPathOne,
   test: testPostgrestConnection,
   getBaseUrl: getPostgrestBaseUrl,
 };

@@ -14,7 +14,9 @@ pub fn init_db(_app_handle: &AppHandle) -> Result<(), String> {
 }
 
 pub fn init_db_internal() -> Result<(), String> {
-    let app_dir = {
+    let app_dir = if crate::config::is_portable_mode() {
+        crate::config::get_app_data_dir()
+    } else {
         let home = std::env::var("USERPROFILE").unwrap_or_else(|_| "C:".to_string());
         PathBuf::from(home).join(".retailex")
     };

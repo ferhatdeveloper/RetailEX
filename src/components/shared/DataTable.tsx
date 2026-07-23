@@ -269,7 +269,7 @@ export function DataTable<T extends Record<string, any>>({
                 placeholder={tm('dataTableSearchPlaceholder')}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-9 pr-8 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full pl-9 pr-8 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[var(--asin-accent,#1FA8A0)]"
               />
               {searchQuery && (
                 <button
@@ -326,7 +326,7 @@ export function DataTable<T extends Record<string, any>>({
                   type="checkbox"
                   checked={!col.hidden}
                   onChange={() => toggleColumn(col.id)}
-                  className="w-4 h-4 text-blue-600"
+                  className="w-4 h-4 text-[var(--asin-accent,#1FA8A0)]"
                 />
                 <span className="text-sm text-gray-700">{col.header}</span>
               </label>
@@ -351,7 +351,7 @@ export function DataTable<T extends Record<string, any>>({
                     type="checkbox"
                     checked={selectedRows.size === sortedData.length && sortedData.length > 0}
                     onChange={handleSelectAll}
-                    className="w-4 h-4 text-blue-600"
+                    className="w-4 h-4 text-[var(--asin-accent,#1FA8A0)]"
                   />
                 </th>
               )}
@@ -378,9 +378,9 @@ export function DataTable<T extends Record<string, any>>({
                       >
                         {sortConfig?.key === column.id ? (
                           sortConfig.direction === 'asc' ? (
-                            <ChevronUp className="h-4 w-4 text-blue-600" />
+                            <ChevronUp className="h-4 w-4 text-[var(--asin-accent,#1FA8A0)]" />
                           ) : (
-                            <ChevronDown className="h-4 w-4 text-blue-600" />
+                            <ChevronDown className="h-4 w-4 text-[var(--asin-accent,#1FA8A0)]" />
                           )
                         ) : (
                           <ChevronsUpDown className="h-4 w-4 text-gray-400" />
@@ -394,7 +394,7 @@ export function DataTable<T extends Record<string, any>>({
                         className="p-1 hover:bg-gray-200 rounded"
                         onClick={(e) => e.stopPropagation()}
                       >
-                        <Filter className={`h-4 w-4 ${filters[column.id] ? 'text-blue-600' : 'text-gray-400'}`} />
+                        <Filter className={`h-4 w-4 ${filters[column.id] ? 'text-[var(--asin-accent,#1FA8A0)]' : 'text-gray-400'}`} />
                       </button>
                     )}
                   </div>
@@ -402,7 +402,7 @@ export function DataTable<T extends Record<string, any>>({
                   {/* Column Resize Handle */}
                   {columnResizable && (
                     <div
-                      className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-blue-500 opacity-0 group-hover:opacity-100"
+                      className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-[var(--asin-accent,#1FA8A0)] opacity-0 group-hover:opacity-100"
                       onMouseDown={(e) => startResize(column.id, e)}
                     />
                   )}
@@ -420,7 +420,7 @@ export function DataTable<T extends Record<string, any>>({
                   className="px-4 py-8 text-center text-gray-500"
                 >
                   <div className="flex items-center justify-center gap-2">
-                    <div className="w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+                    <div className="w-5 h-5 border-2 border-[var(--asin-accent,#1FA8A0)] border-t-transparent rounded-full animate-spin" />
                     <span>{tm('dataTableLoading')}</span>
                   </div>
                 </td>
@@ -441,7 +441,7 @@ export function DataTable<T extends Record<string, any>>({
                   onClick={() => onRowClick?.(row)}
                   className={`border-b hover:bg-gray-50 transition-colors ${
                     onRowClick ? 'cursor-pointer' : ''
-                  } ${selectedRows.has(index) ? 'bg-blue-50' : ''}`}
+                  } ${selectedRows.has(index) ? 'bg-[var(--asin-accent-muted,#D5F0EE)]' : ''}`}
                 >
                   {selectable && (
                     <td className="px-4 py-3">
@@ -452,7 +452,7 @@ export function DataTable<T extends Record<string, any>>({
                           e.stopPropagation();
                           handleRowSelect(index);
                         }}
-                        className="w-4 h-4 text-blue-600"
+                        className="w-4 h-4 text-[var(--asin-accent,#1FA8A0)]"
                       />
                     </td>
                   )}

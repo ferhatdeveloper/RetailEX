@@ -40,9 +40,7 @@ export function ReportHtmlPrintPreviewModal({
       shellClassName={darkMode ? '!bg-gray-800 !text-gray-100' : ''}
     >
       <div
-        className={`shrink-0 px-4 sm:px-6 py-4 text-white flex items-center justify-between gap-3 bg-gradient-to-r ${
-          darkMode ? 'from-blue-700 to-indigo-800' : 'from-blue-600 to-indigo-600'
-        }`}
+        className="shrink-0 px-4 sm:px-6 py-4 text-white flex items-center justify-between gap-3 bg-[var(--asin-primary,#0E2433)]"
       >
         <div className="min-w-0">
           <h2 className="text-sm sm:text-base font-bold truncate">{title}</h2>
@@ -111,7 +109,7 @@ export function ReportHtmlPrintPreviewModal({
         <button
           type="button"
           onClick={handlePrint}
-          className="flex-1 px-4 py-2.5 rounded-2xl bg-blue-600 text-white text-sm font-bold uppercase tracking-wider shadow-lg shadow-blue-200/40 hover:bg-blue-700 active:scale-[0.98] flex items-center justify-center gap-2"
+          className="flex-1 px-4 py-2.5 rounded-2xl bg-[var(--asin-accent,#1FA8A0)] text-white text-sm font-bold uppercase tracking-wider shadow-lg shadow-[rgb(14_36_51/0.12)] hover:bg-[#178f88] active:scale-[0.98] flex items-center justify-center gap-2"
         >
           <Printer className="w-4 h-4" />
           {printLabel}

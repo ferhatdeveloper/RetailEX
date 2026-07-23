@@ -160,7 +160,7 @@ export function MasterDataSelectionModal({
     return (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-md flex items-center justify-center z-[10001] p-4">
             <div className="bg-white w-full max-w-lg shadow-2xl rounded-lg flex flex-col max-h-[85vh]">
-                <div className="p-3 border-b border-gray-200 flex items-center justify-between bg-gradient-to-r from-blue-700 to-blue-800 rounded-t-lg">
+                <div className="p-3 border-b border-gray-200 flex items-center justify-between bg-[var(--asin-primary,#0E2433)] rounded-t-lg">
                     <h3 className="text-sm font-semibold text-white flex items-center gap-2">
                         <Database className="w-4 h-4" />
                         {title} {isMulti && <span className="text-[10px] font-normal bg-white/20 px-1.5 py-0.5 rounded ml-1">Çoklu Seçim</span>}
@@ -181,7 +181,7 @@ export function MasterDataSelectionModal({
                             placeholder="Ara..."
                             value={searchTerm}
                             onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearchTerm(e.target.value)}
-                            className="w-full pl-9 pr-4 py-2 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+                            className="w-full pl-9 pr-4 py-2 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-[var(--asin-accent,#1FA8A0)]/20 focus:border-[var(--asin-accent,#1FA8A0)] transition-all"
                             autoFocus
                         />
                     </div>
@@ -193,7 +193,7 @@ export function MasterDataSelectionModal({
                             <button
                                 type="button"
                                 onClick={() => openQuickAdd(searchTerm)}
-                                className="inline-flex items-center gap-1 text-xs font-medium text-blue-700 hover:text-blue-900"
+                                className="inline-flex items-center gap-1 text-xs font-medium text-[var(--asin-accent,#1FA8A0)] hover:text-[var(--asin-primary,#0E2433)]"
                             >
                                 <Plus className="w-3 h-3" />
                                 Yeni ekle
@@ -216,7 +216,7 @@ export function MasterDataSelectionModal({
                                     type="button"
                                     disabled={quickSaving}
                                     onClick={() => void handleQuickAdd()}
-                                    className="px-3 py-1.5 bg-blue-600 text-white text-xs rounded disabled:opacity-50"
+                                    className="px-3 py-1.5 bg-[var(--asin-accent,#1FA8A0)] text-white text-xs rounded disabled:opacity-50"
                                 >
                                     Kaydet
                                 </button>
@@ -241,7 +241,7 @@ export function MasterDataSelectionModal({
                                 <button
                                     type="button"
                                     onClick={() => openQuickAdd(searchTerm)}
-                                    className="mt-4 inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-blue-700 border border-blue-200 rounded-md hover:bg-blue-50"
+                                    className="mt-4 inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-[var(--asin-accent,#1FA8A0)] border border-[var(--asin-accent-muted,#D5F0EE)] rounded-md hover:bg-[var(--asin-accent-muted,#D5F0EE)]"
                                 >
                                     <Plus className="w-3 h-3" />
                                     &quot;{searchTerm.trim()}&quot; olarak ekle
@@ -255,13 +255,13 @@ export function MasterDataSelectionModal({
                                     key={item.id}
                                     onClick={() => handleItemClick(item)}
                                     className={`w-full group px-3 py-2 rounded-md border text-left transition-all flex items-center justify-between ${isItemSelected(item)
-                                        ? 'border-blue-500 bg-blue-50'
+                                        ? 'border-[var(--asin-accent,#1FA8A0)] bg-[var(--asin-accent-muted,#D5F0EE)]'
                                         : 'border-transparent hover:border-gray-300 hover:bg-gray-50'
                                         }`}
                                 >
                                     <div className="flex items-center gap-3">
                                         {isMulti && (
-                                            <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${isItemSelected(item) ? 'bg-blue-600 border-blue-600' : 'bg-white border-gray-300'}`}>
+                                            <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${isItemSelected(item) ? 'bg-[var(--asin-accent,#1FA8A0)] border-[var(--asin-accent,#1FA8A0)]' : 'bg-white border-gray-300'}`}>
                                                 {isItemSelected(item) && <Check className="w-3 h-3 text-white" />}
                                             </div>
                                         )}
@@ -283,7 +283,7 @@ export function MasterDataSelectionModal({
                                         </div>
                                     </div>
                                     {!isMulti && isItemSelected(item) && (
-                                        <div className="w-4 h-4 rounded-full bg-blue-600 flex items-center justify-center">
+                                        <div className="w-4 h-4 rounded-full bg-[var(--asin-accent,#1FA8A0)] flex items-center justify-center">
                                             <div className="w-1.5 h-1.5 rounded-full bg-white" />
                                         </div>
                                     )}
@@ -303,7 +303,7 @@ export function MasterDataSelectionModal({
                     {isMulti && (
                         <button
                             onClick={handleConfirm}
-                            className="px-4 py-2 text-xs font-medium bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors shadow-sm flex items-center gap-1"
+                            className="px-4 py-2 text-xs font-medium bg-[var(--asin-accent,#1FA8A0)] text-white rounded-md hover:bg-[#178f88] transition-colors shadow-sm flex items-center gap-1"
                         >
                             <Check className="w-3 h-3" />
                             Tamam ({selectedItems.length})

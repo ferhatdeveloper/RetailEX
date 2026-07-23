@@ -945,7 +945,7 @@ function BackupRestoreView() {
           {IS_TAURI && (
             <p className="text-sm text-gray-600">
               Yedek dosyası, yapılandırmada tanımlı yedek klasörüne (boşsa{' '}
-              <code className="text-xs bg-gray-100 px-1 rounded">C:\RetailEX_Backups</code>) yazılır. PostgreSQL
+              <code className="text-xs bg-gray-100 px-1 rounded">C:\AsinERP_Backups</code>) yazılır. PostgreSQL
               istemci araçlarında <code className="text-xs bg-gray-100 px-1 rounded">pg_dump</code> bulunmalıdır.
             </p>
           )}

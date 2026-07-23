@@ -734,8 +734,8 @@ pub async fn apply_migrations_internal(
     let json_report = serde_json::to_string_pretty(&report).unwrap_or_else(|_| format!("{} dosya işlendi (JSON hatası)", applied_count));
 
     // Persistent Audit: Save to disk for transparency
-    let log_dir = std::path::Path::new("C:\\RetailEX\\logs");
-    if let Err(e) = std::fs::create_dir_all(log_dir) {
+    let log_dir = crate::config::get_logs_dir();
+    if let Err(e) = std::fs::create_dir_all(&log_dir) {
         println!("⚠️ Log dizini oluşturulamadı: {}", e);
     } else {
         let log_file = log_dir.join("migration_log.json");
@@ -807,13 +807,13 @@ pub async fn diagnose_schema_gaps_cmd(
 
 #[command]
 pub async fn open_migration_log() -> Result<(), String> {
-    let log_path = "C:\\RetailEX\\logs\\migration_log.json";
-    if std::path::Path::new(log_path).exists() {
+    let log_path = crate::config::get_logs_dir().join("migration_log.json");
+    if log_path.exists() {
         #[cfg(target_os = "windows")]
         {
             use std::process::Command;
             Command::new("explorer")
-                .arg(log_path)
+                .arg(&log_path)
                 .spawn()
                 .map_err(|e| format!("Dosya açılamadı: {}", e))?;
         }
@@ -1186,7 +1186,8 @@ pub async fn pg_execute_supabase_dump(
                 // Execute batch if it gets too large (500KB) OR reaches 50 statements
                 if current_batch.len() >= 500 * 1024 || stmt_count >= 50 {
                     if let Err(e) = client.batch_execute(&current_batch).await {
-                        let _ = std::fs::write("C:\\RetailEx\\last_failed_dump.sql", &current_batch);
+                        let dump = crate::config::get_app_data_dir().join("last_failed_dump.sql");
+                        let _ = std::fs::write(&dump, &current_batch);
                         return Err(crate::db_utils::format_pg_error(e));
                     }
                     current_batch.clear();
@@ -1201,7 +1202,8 @@ pub async fn pg_execute_supabase_dump(
     // Execute any remaining statements in the final batch
     if !current_batch.trim().is_empty() {
         if let Err(e) = client.batch_execute(&current_batch).await {
-            let _ = std::fs::write("C:\\RetailEx\\last_failed_dump.sql", &current_batch);
+            let dump = crate::config::get_app_data_dir().join("last_failed_dump.sql");
+            let _ = std::fs::write(&dump, &current_batch);
             return Err(crate::db_utils::format_pg_error(e));
         }
     }

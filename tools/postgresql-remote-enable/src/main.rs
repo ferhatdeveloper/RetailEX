@@ -1,4 +1,4 @@
-//! RetailEX_PostgreSQLRemote.exe — kurulum dizinindeki pg-windows-expose-remote.ps1 dosyasını
+//! AsinERP_PostgreSQLRemote.exe — kurulum dizinindeki pg-windows-expose-remote.ps1 dosyasını
 //! yönetici (UAC) ile çalıştırır.
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]

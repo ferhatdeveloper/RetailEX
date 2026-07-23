@@ -1,13 +1,7 @@
 import { pgQuery } from './pgClient';
-import { postgrestGet } from './postgrestClient';
 import { firmNr, productsTable } from './erpTables';
 import { shouldUseLiveData, getNetworkPolicy } from '../offline/policy';
 import { getCachedProducts } from '../offline/snapshotCache';
-import {
-  shouldPreferPostgrest,
-  shouldUseBridgeSql,
-  useConfigStore,
-} from '../store/configStore';
 
 export type PriceListKey =
   | 'price'
@@ -73,43 +67,11 @@ const BASIC_COLS = `id, code, barcode, name, unit,
   0::float8 AS price_list_5,
   0::float8 AS price_list_6`;
 
-const REST_SELECT =
-  'id,code,barcode,name,unit,price,purchase_price,cost,price_list_1,price_list_2,price_list_3,price_list_4,price_list_5,price_list_6,is_active';
-
 const FIRM_WHERE = `(
   LPAD(TRIM(COALESCE(firm_nr, '')), 3, '0') = $FIRM$
   OR TRIM(COALESCE(firm_nr, '')) = $FIRM_TRIM$
   OR firm_nr IS NULL
 )`;
-
-function n0(v: unknown): number {
-  return Number(v) || 0;
-}
-
-function mapPriceRow(r: Record<string, unknown>): ProductPriceRow {
-  const cost = n0(r.cost);
-  const purchase = r.purchase_price != null && r.purchase_price !== '' ? n0(r.purchase_price) : cost;
-  return {
-    id: String(r.id ?? ''),
-    code: r.code != null ? String(r.code) : null,
-    barcode: r.barcode != null ? String(r.barcode) : null,
-    name: String(r.name ?? ''),
-    unit: r.unit != null ? String(r.unit) : null,
-    price: n0(r.price),
-    purchase_price: purchase,
-    cost,
-    price_list_1: n0(r.price_list_1),
-    price_list_2: n0(r.price_list_2),
-    price_list_3: n0(r.price_list_3),
-    price_list_4: n0(r.price_list_4),
-    price_list_5: n0(r.price_list_5),
-    price_list_6: n0(r.price_list_6),
-  };
-}
-
-function escapeIlike(q: string): string {
-  return q.replace(/[%_*(),]/g, '');
-}
 
 function cachedToPriceRow(
   rows: Awaited<ReturnType<typeof getCachedProducts>>,
@@ -130,42 +92,6 @@ function cachedToPriceRow(
     price_list_5: 0,
     price_list_6: 0,
   }));
-}
-
-/** PostgREST — ürün fiyat kolonları */
-async function fetchProductPricesViaPostgrest(
-  search = '',
-  limit = 300,
-): Promise<ProductPriceRow[]> {
-  const table = productsTable();
-  const fn = firmNr();
-  const fnBare = fn.replace(/^0+/, '') || fn;
-  const firmParts = Array.from(new Set([fn, fnBare].filter(Boolean)));
-  const firmOr = [
-    ...firmParts.map((f) => `firm_nr.eq.${f}`),
-    'firm_nr.is.null',
-  ].join(',');
-
-  const query: Record<string, string | number> = {
-    select: REST_SELECT,
-    is_active: 'eq.true',
-    order: 'name.asc',
-    limit,
-    or: `(${firmOr})`,
-  };
-
-  const q = escapeIlike(search.trim());
-  if (q.length >= 1) {
-    query.and = `(or(${firmOr}),or(name.ilike.*${q}*,code.ilike.*${q}*,barcode.ilike.*${q}*,brand.ilike.*${q}*))`;
-    delete query.or;
-  }
-
-  const rows = await postgrestGet<Record<string, unknown>[]>(`/${table}`, query, {
-    schema: 'public',
-  });
-  return (Array.isArray(rows) ? rows : [])
-    .map(mapPriceRow)
-    .filter((r) => r.id);
 }
 
 async function queryPrices(
@@ -194,7 +120,7 @@ async function queryPrices(
        LIMIT $4`,
       [like, fn, fnTrim, limit],
     );
-    return res.rows.map((r) => mapPriceRow(r as unknown as Record<string, unknown>));
+    return res.rows;
   }
 
   const res = await pgQuery<ProductPriceRow>(
@@ -206,43 +132,15 @@ async function queryPrices(
      LIMIT $3`,
     [fn, fnTrim, limit],
   );
-  return res.rows.map((r) => mapPriceRow(r as unknown as Record<string, unknown>));
+  return res.rows;
 }
 
-async function fetchProductPricesLiveBridge(
-  search = '',
-  limit = 300,
-): Promise<ProductPriceRow[]> {
+async function fetchProductPricesLive(search = '', limit = 300): Promise<ProductPriceRow[]> {
   try {
     return await queryPrices(FULL_COLS, search, limit);
   } catch {
     return queryPrices(BASIC_COLS, search, limit);
   }
-}
-
-async function fetchProductPricesLive(search = '', limit = 300): Promise<ProductPriceRow[]> {
-  const cfg = useConfigStore.getState().config;
-  const preferRest = shouldPreferPostgrest(cfg);
-  const canBridge = shouldUseBridgeSql(cfg);
-
-  if (preferRest) {
-    try {
-      return await fetchProductPricesViaPostgrest(search, limit);
-    } catch (e) {
-      if (!canBridge) throw e;
-      // hybrid: PostgREST başarısız → bridge
-    }
-  }
-
-  if (!canBridge) {
-    throw new Error(
-      preferRest
-        ? 'PostgREST fiyat okuma başarısız ve bridge kapalı (apiMode=postgrest)'
-        : 'Bridge yapılandırması eksik',
-    );
-  }
-
-  return fetchProductPricesLiveBridge(search, limit);
 }
 
 export async function fetchProductPrices(search = '', limit = 300): Promise<ProductPriceRow[]> {

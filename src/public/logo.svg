@@ -1,5 +1,14 @@
-<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <rect width="512" height="512" rx="100" fill="#0F172A"/>
-  <text x="50%" y="54%" dominant-baseline="middle" text-anchor="middle" fill="#06B6D4" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" font-weight="900" font-size="280">RX</text>
-  <text x="50%" y="85%" dominant-baseline="middle" text-anchor="middle" fill="#06B6D4" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" font-weight="bold" font-size="40">RetailEx</text>
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-label="Asin">
+  <defs>
+    <linearGradient id="asinG512" x1="8%" y1="0%" x2="92%" y2="100%">
+      <stop offset="0%" stop-color="#F3F5F7"/>
+      <stop offset="100%" stop-color="#1FA8A0"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="#0E2433"/>
+  <rect x="28.00" y="28.00" width="456.00" height="456.00" rx="96" fill="none" stroke="#1FA8A0" stroke-opacity="0.22" stroke-width="4"/>
+  <path d="M256.00 72.00 L420.00 168.00 L420.00 344.00 L256.00 440.00 L92.00 344.00 L92.00 168.00 Z" fill="none" stroke="#1FA8A0" stroke-width="14" stroke-linejoin="round" opacity="0.9"/>
+  <path d="M256.00 140.00 L360.00 372.00 H318.00 L292.00 312.00 H220.00 L194.00 372.00 H152.00 L256.00 140.00 Z M232.00 268.00 H280.00 L256.00 212.00 Z" fill="url(#asinG512)"/>
+  <rect x="372.00" y="196.00" width="28.00" height="120.00" rx="10.00" fill="#1FA8A0"/>
 </svg>

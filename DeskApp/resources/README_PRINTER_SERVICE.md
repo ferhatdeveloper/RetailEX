@@ -1,6 +1,6 @@
-# RetailEX Printer Service (unified)
+# AsinERP Printer Service (unified)
 
-`RetailEX_Printer`, RetailEX yazdırma işlerini Windows hizmeti olarak arka planda çalıştıran birleşik servistir. EXE adı ve worker dosyası kurulum uyumluluğu için değişmedi: servis `RetailEX_Printer`, script `kitchen-print-service.mjs`.
+`AsinERP_Printer`, AsinERP yazdırma işlerini Windows hizmeti olarak arka planda çalıştıran birleşik servistir. EXE adı ve worker dosyası kurulum uyumluluğu için değişmedi: servis `AsinERP_Printer`, script `kitchen-print-service.mjs`.
 
 ## Etkinleştirme
 
@@ -53,7 +53,7 @@ Servis `config.db` içinden `local_db`, `remote_db`, `db_mode`, `erp_firm_nr` ve
 
 ## FastReport-like şablonlar
 
-Bu servis `.frx` dosyası çalıştırmaz. RetailEX Design Center içindeki JSON şablon kataloglarını kullanır:
+Bu servis `.frx` dosyası çalıştırmaz. AsinERP Design Center içindeki JSON şablon kataloglarını kullanır:
 
 - Kaynak tablo: `public.report_templates`
 - Filtre: `category='template_catalog'`, `template_type='template_designer_v2'`
@@ -69,7 +69,7 @@ Bu servis `.frx` dosyası çalıştırmaz. RetailEX Design Center içindeki JSON
   "templateType": "invoice",
   "engine": "fastreport-like",
   "data": {
-    "storeName": "RetailEX Market",
+    "storeName": "AsinERP Market",
     "receiptNumber": "POS-0001",
     "date": "20.07.2026",
     "time": "19:16",
@@ -116,7 +116,7 @@ node kitchen-print-service.mjs --help
 
 ## Log
 
-- Servis adı: `RetailEX_Printer`
+- Servis adı: `AsinERP_Printer`
 - Worker: `kitchen-print-service.mjs`
-- Log: `C:\ProgramData\RetailEX\printer_service.log`
+- Log: `C:\ProgramData\AsinERP\printer_service.log`
 - Poll aralığı: varsayılan 2500 ms

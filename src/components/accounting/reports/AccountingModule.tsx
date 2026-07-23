@@ -12,9 +12,9 @@ export function AccountingModule() {
   return (
     <div className="h-full flex flex-col">
       {/* Header - Minimal */}
-      <div className="bg-gradient-to-r from-indigo-600 to-indigo-700 text-white px-4 py-2">
+      <div className="bg-[var(--asin-primary,#0E2433)] text-white px-4 py-2">
         <div className="flex items-center gap-2">
-          <FileSpreadsheet className="w-4 h-4" />
+          <FileSpreadsheet className="w-4 h-4 text-[var(--asin-accent,#1FA8A0)]" />
           <h2 className="text-sm">Muhasebe & Mali İşlemler</h2>
         </div>
       </div>

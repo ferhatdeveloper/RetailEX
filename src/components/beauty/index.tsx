@@ -597,7 +597,7 @@ function BeautyModuleShell({ sales = [], products = [], onRequestManagementAcces
                                 <Menu size={20} aria-hidden />
                             </button>
                         )}
-                        <span className="truncate min-w-0" style={{ fontWeight: 800, fontSize: 15, color: '#111827', letterSpacing: '-0.01em' }}>
+                        <span className="truncate min-w-0" style={{ fontWeight: 800, fontSize: 15, color: 'var(--asin-primary, #0E2433)', letterSpacing: '-0.01em', fontFamily: 'var(--asin-font-brand, Outfit, system-ui, sans-serif)' }}>
                             {PAGE_TITLES[activeTab] ?? activeTab}
                         </span>
                         <span className="hidden sm:inline-flex shrink-0 items-center gap-1.5 font-bold text-[10px] uppercase tracking-wide text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded">

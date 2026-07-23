@@ -56,7 +56,10 @@ export function getPostgrestBaseUrl(): string {
       resolveEffectiveRemoteRestUrl(DB_SETTINGS.remoteRestUrl, DB_SETTINGS.merkezTenantCode),
     ),
   );
-  const offline = DB_SETTINGS.activeMode === 'offline';
+  // rest_api + URL varsa offline bayrağı login’i localhost:3002’ye düşürmesin
+  const forceRest =
+    DB_SETTINGS.connectionProvider === 'rest_api' && Boolean(remote);
+  const offline = DB_SETTINGS.activeMode === 'offline' && !forceRest;
   if (remote && !offline) {
     return rewriteRetailexAppUrlForViteDev(remote);
   }

@@ -1774,7 +1774,7 @@ export const RestPOS: React.FC<RestPOSProps> = ({
                 <div
                     className="flex items-center justify-between px-6 z-10 shrink-0 border-b border-white/10 max-lg:overflow-x-auto max-lg:no-scrollbar"
                     style={{
-                        background: 'linear-gradient(to bottom, #2563eb, #1d4ed8)',
+                        background: 'linear-gradient(to bottom, var(--asin-primary, #0E2433), var(--asin-primary-hover, #163A52))',
                         boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.1), 0 4px 6px -1px rgba(0,0,0,0.1)'
                     }}
                 >
@@ -2061,8 +2061,31 @@ export const RestPOS: React.FC<RestPOSProps> = ({
                             const pm = parseMainSub(product);
                             const cat = pm.sub ? `${pm.main} › ${pm.sub}` : pm.main;
 
-                            /* Yalnızca gerçek ürün görseli; yoksa nötr placeholder (Unsplash yok) */
-                            const imgSrc = product.image_url_cdn || product.image_url || null;
+                            /* Unsplash fallback per category keyword */
+                            const unsplashMap: Record<string, string> = {
+                                'kırmızı et': 'https://images.unsplash.com/photo-1558030006-450675393462?w=300&h=200&fit=crop&auto=format',
+                                'beyaz et': 'https://images.unsplash.com/photo-1604908176997-125f25cc6f3d?w=300&h=200&fit=crop&auto=format',
+                                'tavuk': 'https://images.unsplash.com/photo-1598103442097-8b74394b95c3?w=300&h=200&fit=crop&auto=format',
+                                'deniz': 'https://images.unsplash.com/photo-1565680018093-ebb6b9ab5460?w=300&h=200&fit=crop&auto=format',
+                                'balık': 'https://images.unsplash.com/photo-1565680018093-ebb6b9ab5460?w=300&h=200&fit=crop&auto=format',
+                                'pide': 'https://images.unsplash.com/photo-1574071318508-1cdbab80d002?w=300&h=200&fit=crop&auto=format',
+                                'pizza': 'https://images.unsplash.com/photo-1565299624946-b28f40a0ae38?w=300&h=200&fit=crop&auto=format',
+                                'tatlı': 'https://images.unsplash.com/photo-1551024601-bec78aea704b?w=300&h=200&fit=crop&auto=format',
+                                'fast food': 'https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=300&h=200&fit=crop&auto=format',
+                                'burger': 'https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=300&h=200&fit=crop&auto=format',
+                                'kahvaltı': 'https://images.unsplash.com/photo-1533089860892-a7c6f0a88666?w=300&h=200&fit=crop&auto=format',
+                                'çorba': 'https://images.unsplash.com/photo-1547592166-23ac45744acd?w=300&h=200&fit=crop&auto=format',
+                                'salata': 'https://images.unsplash.com/photo-1512621776951-a57141f2eefd?w=300&h=200&fit=crop&auto=format',
+                                'makarna': 'https://images.unsplash.com/photo-1555949258-eb67b1ef0ceb?w=300&h=200&fit=crop&auto=format',
+                                'içecek': 'https://images.unsplash.com/photo-1544145945-f90425340c7e?w=300&h=200&fit=crop&auto=format',
+                                'kahve': 'https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?w=300&h=200&fit=crop&auto=format',
+                            };
+
+                            const catLower = `${pm.main} ${pm.sub ?? ''}`.toLowerCase();
+                            const fallbackImg = Object.entries(unsplashMap).find(([k]) => catLower.includes(k))?.[1]
+                                ?? 'https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=300&h=200&fit=crop&auto=format';
+
+                            const imgSrc = product.image_url_cdn || product.image_url || fallbackImg;
 
                             return (
                                 <button
@@ -2101,18 +2124,18 @@ export const RestPOS: React.FC<RestPOSProps> = ({
                                     onTouchCancel={cancelLongPress}
                                     className="bg-white rounded-[24px] border border-slate-200 flex flex-col text-left cursor-pointer hover:shadow-2xl hover:border-blue-400 transition-all overflow-hidden group hover:-translate-y-1.5 select-none relative active:scale-95"
                                 >
-                                    {/* Product image — kompakt masaüstü yükseklik */}
-                                    <div className="w-full h-[90px] overflow-hidden bg-slate-100 shrink-0 relative">
-                                        {imgSrc ? (
-                                            <img
-                                                src={imgSrc}
-                                                alt={product.name}
-                                                className="w-full h-full object-cover object-center group-hover:scale-125 transition-transform duration-700 ease-in-out"
-                                                onError={e => {
-                                                    (e.target as HTMLImageElement).style.display = 'none';
-                                                }}
-                                            />
-                                        ) : null}
+                                    {/* Product image */}
+                                    <div className="w-full aspect-[218/244] max-h-[244px] overflow-hidden bg-slate-50 shrink-0 relative">
+                                        <img
+                                            src={imgSrc}
+                                            alt={product.name}
+                                            width={218}
+                                            height={244}
+                                            className="w-full h-full object-cover object-center group-hover:scale-125 transition-transform duration-700 ease-in-out"
+                                            onError={e => {
+                                                (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=300&h=200&fit=crop&auto=format';
+                                            }}
+                                        />
                                         <div className="absolute inset-x-0 bottom-0 h-2/3 bg-gradient-to-t from-black/40 via-black/10 to-transparent opacity-0 group-hover:opacity-100 transition-all duration-300" />
 
                                         {/* Quick Add Badge */}
@@ -2155,7 +2178,7 @@ export const RestPOS: React.FC<RestPOSProps> = ({
 
                 {/* ── RIGHT ORDER PANEL ────────────────────────────────── */}
                 <aside
-                    className="bg-white border-l border-gray-200 flex flex-col overflow-hidden w-[520px] shrink-0"
+                    className="bg-white border-l border-gray-200 flex flex-col overflow-hidden shrink-0 w-[520px] min-w-[300px] max-w-[38vw]"
                 >
 
                     {/* ── CART ITEMS ── */}
@@ -2233,7 +2256,7 @@ export const RestPOS: React.FC<RestPOSProps> = ({
                                     if (activePlate && (item as any).plate !== activePlate) return null;
                                     const hasDiscount = item.discount > 0;
                                     const plateIdx = plates.indexOf((item as any).plate);
-                                    const plateColor = (item as any).plate && plateIdx !== -1 ? PLATE_PALETTE[plateIdx % PLATE_PALETTE.length].text : '#2563eb';
+                                    const plateColor = (item as any).plate && plateIdx !== -1 ? PLATE_PALETTE[plateIdx % PLATE_PALETTE.length].text : '#1FA8A0';
 
                                     return (
                                         <div
@@ -2425,7 +2448,7 @@ export const RestPOS: React.FC<RestPOSProps> = ({
                                             if (activePlate && (item as any).plate !== activePlate) return null;
                                             const hasDiscount = item.discount > 0;
                                             const plateIdx = plates.indexOf((item as any).plate);
-                                            const plateColor = (item as any).plate && plateIdx !== -1 ? PLATE_PALETTE[plateIdx % PLATE_PALETTE.length].text : '#2563eb';
+                                            const plateColor = (item as any).plate && plateIdx !== -1 ? PLATE_PALETTE[plateIdx % PLATE_PALETTE.length].text : '#1FA8A0';
 
                                             return (
                                                 <React.Fragment key={`${item.product.id}-${idx}`}>

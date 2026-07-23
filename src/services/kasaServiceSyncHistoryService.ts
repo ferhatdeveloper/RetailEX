@@ -1,6 +1,6 @@
 /**
  * Windows servisi — uygulama kapalıyken yapılan kasa inbound sync geçmişi.
- * Kaynak: C:\ProgramData\RetailEX\kasa_service_sync_history.json (Tauri)
+ * Kaynak: C:\ProgramData\AsinERP\kasa_service_sync_history.json (Tauri)
  * ve terminal_sync_log (file_type = service_background).
  */
 

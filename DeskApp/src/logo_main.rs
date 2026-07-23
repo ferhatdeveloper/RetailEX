@@ -18,8 +18,8 @@ mod logo_bridge;
 
 slint::include_modules!();
 
-const SERVICE_NAME: &str = "RetailEX_Logo";
-const DISPLAY_NAME: &str = "RetailEX Logo Sync Service";
+const SERVICE_NAME: &str = "AsinERP_Logo";
+const DISPLAY_NAME: &str = "AsinERP Logo Sync Service";
 const SERVICE_TYPE: ServiceType = ServiceType::OWN_PROCESS;
 
 define_windows_service!(ffi_service_main, logo_connector_service_main);
@@ -147,7 +147,7 @@ fn install_service() -> anyhow::Result<()> {
         return Ok(());
     }
 
-    println!("Installing RetailEX_Logo as Windows Service...");
+    println!("Installing AsinERP_Logo as Windows Service...");
     
     let info = ServiceInfo {
         name: SERVICE_NAME.to_string().into(),
@@ -171,7 +171,7 @@ fn install_service() -> anyhow::Result<()> {
 
 fn uninstall_service() -> anyhow::Result<()> {
     let manager = ServiceManager::local_computer(None::<&str>, ServiceManagerAccess::CONNECT)?;
-    println!("Removing RetailEX_Logo service...");
+    println!("Removing AsinERP_Logo service...");
     
     if let Ok(service) = manager.open_service(SERVICE_NAME, windows_service::service::ServiceAccess::STOP | windows_service::service::ServiceAccess::DELETE) {
         let _: windows_service::service::ServiceStatus = service.stop()?;
@@ -192,7 +192,7 @@ fn logo_connector_service_main(_arguments: Vec<OsString>) {
             .with_env_filter("retailex_logo=debug")
             .init();
 
-        info!("🚀 RetailEX_Logo Windows Service starting...");
+        info!("🚀 AsinERP_Logo Windows Service starting...");
 
         let (stop_tx, stop_rx) = oneshot::channel();
         let stop_tx_mutex = std::sync::Mutex::new(Some(stop_tx));

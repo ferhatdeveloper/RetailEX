@@ -1,5 +1,5 @@
 /**
- * NSIS / kurulum: RetailEX_PostgreSQLRemote.exe icin release derlemesi.
+ * NSIS / kurulum: AsinERP_PostgreSQLRemote.exe icin release derlemesi.
  * tools/postgresql-remote-enable (Rust) — Windows'ta tauri:build oncesi calisir.
  *
  * Docker / Linux (yalnizca Vite web imaji): Dockerfile'da

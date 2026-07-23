@@ -1,5 +1,5 @@
 /**
- * RetailEX - ConfirmDialog
+ * Asin - ConfirmDialog
  *
  * Radix AlertDialog tabanlı, projedeki tema (Tailwind + dark mode) ile uyumlu
  * onay diyaloğu. Hem JSX olarak (state-tabanlı `open`/`onOpenChange`) hem de
@@ -62,16 +62,16 @@ const variantStyles: Record<ConfirmVariant, {
   confirmClass: string;
 }> = {
   default: {
-    iconBg: 'bg-blue-50 dark:bg-blue-900/30',
-    iconColor: 'text-blue-600 dark:text-blue-300',
+    iconBg: 'bg-[var(--asin-accent-muted,#D5F0EE)] dark:bg-[var(--asin-accent,#1FA8A0)]/20',
+    iconColor: 'text-[var(--asin-accent,#1FA8A0)] dark:text-[var(--asin-accent,#1FA8A0)]',
     Icon: Info,
-    confirmClass: 'bg-blue-600 hover:bg-blue-700 text-white',
+    confirmClass: 'bg-[var(--asin-accent,#1FA8A0)] hover:bg-[#178f88] text-white',
   },
   info: {
-    iconBg: 'bg-blue-50 dark:bg-blue-900/30',
-    iconColor: 'text-blue-600 dark:text-blue-300',
+    iconBg: 'bg-[var(--asin-accent-muted,#D5F0EE)] dark:bg-[var(--asin-accent,#1FA8A0)]/20',
+    iconColor: 'text-[var(--asin-accent,#1FA8A0)] dark:text-[var(--asin-accent,#1FA8A0)]',
     Icon: Info,
-    confirmClass: 'bg-blue-600 hover:bg-blue-700 text-white',
+    confirmClass: 'bg-[var(--asin-accent,#1FA8A0)] hover:bg-[#178f88] text-white',
   },
   warning: {
     iconBg: 'bg-amber-50 dark:bg-amber-900/30',
@@ -181,7 +181,7 @@ export function ConfirmDialog({
               value={typed}
               onChange={e => setTyped(e.target.value)}
               autoFocus
-              className="w-full px-3 py-2 rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:text-gray-100"
+              className="w-full px-3 py-2 rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--asin-accent,#1FA8A0)] dark:text-gray-100"
               placeholder={requireText}
               autoComplete="off"
             />

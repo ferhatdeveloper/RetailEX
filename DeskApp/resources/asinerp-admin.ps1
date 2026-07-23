@@ -1,11 +1,11 @@
 $ErrorActionPreference = "Stop"
 
 param(
-    [string]$ConfigDbPath = "C:\RetailEx\config.db",
+    [string]$ConfigDbPath = "C:\AsinERP\config.db",
     [switch]$Menu
 )
 
-$Script:ServiceNames = @("RetailEX_Service", "RetailEX_SQL_Bridge", "RetailEX_Printer", "RetailEX_PostgREST")
+$Script:ServiceNames = @("AsinERP_Service", "AsinERP_SQL_Bridge", "AsinERP_Printer", "AsinERP_PostgREST")
 $Script:PassFields = @("erp_pass", "pg_remote_pass", "pg_local_pass", "logo_objects_pass")
 $Script:LogPath = Join-Path $env:TEMP "retailex_admin.log"
 
@@ -138,46 +138,46 @@ function Set-LogoConfig {
 
 function Install-CoreServices {
     $baseDir = Split-Path -Parent $PSCommandPath
-    $svcExe = Join-Path $baseDir "RetailEX_Service.exe"
-    $bridgeExe = Join-Path $baseDir "RetailEX_SQL_Bridge.exe"
-    $printerExe = Join-Path $baseDir "RetailEX_Printer.exe"
+    $svcExe = Join-Path $baseDir "AsinERP_Service.exe"
+    $bridgeExe = Join-Path $baseDir "AsinERP_SQL_Bridge.exe"
+    $printerExe = Join-Path $baseDir "AsinERP_Printer.exe"
     $bridgePs = Join-Path $baseDir "install-bridge.ps1"
 
-    if (-not (Test-Path $svcExe)) { throw "RetailEX_Service.exe bulunamadi: $svcExe" }
+    if (-not (Test-Path $svcExe)) { throw "AsinERP_Service.exe bulunamadi: $svcExe" }
 
-    Write-Info "RetailEX_Service kuruluyor..."
+    Write-Info "AsinERP_Service kuruluyor..."
     & $svcExe --install
     Start-Sleep -Seconds 1
-    Start-Service -Name "RetailEX_Service" -ErrorAction SilentlyContinue
+    Start-Service -Name "AsinERP_Service" -ErrorAction SilentlyContinue
 
     if (Test-Path $bridgeExe) {
-        Write-Info "RetailEX_SQL_Bridge kuruluyor..."
+        Write-Info "AsinERP_SQL_Bridge kuruluyor..."
         & $bridgeExe --install
         Start-Sleep -Seconds 1
-        Start-Service -Name "RetailEX_SQL_Bridge" -ErrorAction SilentlyContinue
+        Start-Service -Name "AsinERP_SQL_Bridge" -ErrorAction SilentlyContinue
     } elseif (Test-Path $bridgePs) {
-        Write-Info "RetailEX_SQL_Bridge legacy script ile kuruluyor..."
+        Write-Info "AsinERP_SQL_Bridge legacy script ile kuruluyor..."
         & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $bridgePs
     } else {
-        Write-WarnMsg "RetailEX_SQL_Bridge.exe/install-bridge.ps1 bulunamadi, SQL Bridge atlandi."
+        Write-WarnMsg "AsinERP_SQL_Bridge.exe/install-bridge.ps1 bulunamadi, SQL Bridge atlandi."
     }
 
     if (Test-Path $printerExe) {
-        Write-Info "RetailEX_Printer kuruluyor..."
+        Write-Info "AsinERP_Printer kuruluyor..."
         & $printerExe --install
         Start-Sleep -Seconds 1
-        Start-Service -Name "RetailEX_Printer" -ErrorAction SilentlyContinue
+        Start-Service -Name "AsinERP_Printer" -ErrorAction SilentlyContinue
     } else {
-        Write-WarnMsg "RetailEX_Printer.exe bulunamadi, Printer servisi atlandi."
+        Write-WarnMsg "AsinERP_Printer.exe bulunamadi, Printer servisi atlandi."
     }
 
     $postgrestPs = Join-Path $baseDir "install-postgrest-service.ps1"
     $postgrestExe = Join-Path $baseDir "postgrest.exe"
     if ((Test-Path $postgrestExe) -and (Test-Path $postgrestPs)) {
-        Write-Info "RetailEX_PostgREST kuruluyor..."
+        Write-Info "AsinERP_PostgREST kuruluyor..."
         & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $postgrestPs -Prefix $baseDir
         Start-Sleep -Seconds 1
-        Start-Service -Name "RetailEX_PostgREST" -ErrorAction SilentlyContinue
+        Start-Service -Name "AsinERP_PostgREST" -ErrorAction SilentlyContinue
     } else {
         Write-WarnMsg "postgrest.exe/install-postgrest-service.ps1 bulunamadi, PostgREST atlandi."
     }
@@ -211,13 +211,13 @@ function Show-RecentServiceLogs {
 }
 
 function Set-BackupSchedule {
-    $taskName = "RetailEX_Periodic_Backup"
+    $taskName = "AsinERP_Periodic_Backup"
     $minutes = Read-Host "Kac dakikada bir yedek (orn: 30)"
     if (-not [int]::TryParse($minutes, [ref]([int]$null))) { throw "Dakika sayisi gecersiz." }
 
     $baseDir = Split-Path -Parent $PSCommandPath
-    $backupRunner = Join-Path $baseDir "RetailEX_Service.exe"
-    if (-not (Test-Path $backupRunner)) { throw "RetailEX_Service.exe bulunamadi." }
+    $backupRunner = Join-Path $baseDir "AsinERP_Service.exe"
+    if (-not (Test-Path $backupRunner)) { throw "AsinERP_Service.exe bulunamadi." }
 
     $action = New-ScheduledTaskAction -Execute $backupRunner -Argument "--backup-once"
     $trigger = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1) `
@@ -251,7 +251,7 @@ function Show-ImprovementHints {
 function Show-MenuAndRun {
     while ($true) {
         Write-Host ""
-        Write-Host "==== RetailEX Admin ===="
+        Write-Host "==== AsinERP Admin ===="
         Write-Host "1) Config goster (config.db)"
         Write-Host "2) Rol + db_mode degistir"
         Write-Host "3) Logo Objects ayarlari"
@@ -279,7 +279,7 @@ function Show-MenuAndRun {
 
 try {
     Start-AdminSession
-    Write-Info "RetailEX admin araci basladi. Log: $Script:LogPath"
+    Write-Info "AsinERP admin araci basladi. Log: $Script:LogPath"
     if ($Menu) {
         Show-MenuAndRun
     } else {

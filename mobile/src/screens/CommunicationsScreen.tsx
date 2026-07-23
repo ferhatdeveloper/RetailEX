@@ -144,7 +144,7 @@ export function CommunicationsScreen({ route }: Props) {
 
   const openCompose = (c: NotifyCustomerRow) => {
     setComposeTarget(c);
-    setComposeText(`Merhaba ${c.name}, RetailEX bilgilendirme.`);
+    setComposeText(`Merhaba ${c.name}, Asin bilgilendirme.`);
     setComposeOpen(true);
   };
 

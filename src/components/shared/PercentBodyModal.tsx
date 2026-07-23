@@ -1,6 +1,12 @@
 import { useEffect, useState, type CSSProperties, type ReactNode } from 'react';
 import { FullscreenBodyPortal, MODAL_OVERLAY_Z } from './FullscreenBodyPortal';
 
+/** Asin Ink & Signal — modal başlık / birincil aksiyon (portal/z-index değişmez) */
+export const ASIN_MODAL_HEADER_CLASS =
+  'bg-[var(--asin-primary,#0E2433)] text-white shrink-0';
+export const ASIN_MODAL_PRIMARY_BTN_CLASS =
+  'bg-[var(--asin-accent,#1FA8A0)] text-white hover:bg-[#178f88]';
+
 export const PERCENT_BODY_MODAL_PORTAL_CLASS =
   'overflow-hidden bg-black/60 backdrop-blur-sm flex items-center justify-center p-4';
 

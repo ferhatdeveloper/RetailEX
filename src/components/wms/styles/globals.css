@@ -3,12 +3,12 @@
 /* ExRetailOS WMS - Global Styles */
 
 :root {
-  /* Color Tokens - Modern Blue Gradient */
-  --color-primary: #2563eb;
-  --color-primary-light: #3b82f6;
-  --color-primary-dark: #1d4ed8;
-  --color-secondary: #06b6d4;
-  --color-accent: #8b5cf6;
+  /* Color Tokens — Asin Ink & Signal */
+  --color-primary: #0E2433;
+  --color-primary-light: #163A52;
+  --color-primary-dark: #0A1A24;
+  --color-secondary: #1FA8A0;
+  --color-accent: #1FA8A0;
   
   /* Neutral Colors */
   --color-background: #ffffff;
@@ -143,15 +143,15 @@ p {
 
 /* Utility Classes */
 .gradient-blue {
-  background: linear-gradient(135deg, #2563eb 0%, #3b82f6 100%);
+  background: linear-gradient(135deg, #0E2433 0%, #163A52 100%);
 }
 
 .gradient-cyan {
-  background: linear-gradient(135deg, #06b6d4 0%, #3b82f6 100%);
+  background: linear-gradient(135deg, #1FA8A0 0%, #178f88 100%);
 }
 
 .gradient-purple {
-  background: linear-gradient(135deg, #8b5cf6 0%, #3b82f6 100%);
+  background: linear-gradient(135deg, #0E2433 0%, #1FA8A0 100%);
 }
 
 .glass-effect {

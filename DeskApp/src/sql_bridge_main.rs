@@ -21,14 +21,14 @@ use windows_service::service_manager::{ServiceManager, ServiceManagerAccess};
 #[path = "windows_service_install.rs"]
 mod windows_service_install;
 
-const SERVICE_NAME: &str = "RetailEX_SQL_Bridge";
-const DISPLAY_NAME: &str = "RetailEX SQL Bridge";
-const LOG_FILE: &str = "C:\\ProgramData\\RetailEX\\sql_bridge_service.log";
+const SERVICE_NAME: &str = "AsinERP_SQL_Bridge";
+const DISPLAY_NAME: &str = "AsinERP SQL Bridge";
+const LOG_FILE: &str = "C:\\ProgramData\\AsinERP\\sql_bridge_service.log";
 
 fn main() {
     if let Err(e) = run() {
         log_line(&format!("Fatal error: {}", e));
-        eprintln!("RetailEX_SQL_Bridge error: {}", e);
+        eprintln!("AsinERP_SQL_Bridge error: {}", e);
         std::process::exit(1);
     }
 }
@@ -39,13 +39,13 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         Some(windows_service_install::BootstrapServiceCmd::Install) => return install_service(),
         Some(windows_service_install::BootstrapServiceCmd::Uninstall) => return uninstall_service(),
         Some(windows_service_install::BootstrapServiceCmd::Console) => {
-            println!("Usage: RetailEX_SQL_Bridge.exe [--install | --uninstall]");
+            println!("Usage: AsinERP_SQL_Bridge.exe [--install | --uninstall]");
             return Ok(());
         }
         None => {}
     }
     if args.len() > 1 {
-        println!("Usage: RetailEX_SQL_Bridge.exe [--install | --uninstall]");
+        println!("Usage: AsinERP_SQL_Bridge.exe [--install | --uninstall]");
         return Ok(());
     }
     service_dispatcher::start(SERVICE_NAME, ffi_service_main).map_err(|e| e.into())
@@ -57,11 +57,11 @@ fn install_service() -> Result<(), Box<dyn std::error::Error>> {
         ServiceManagerAccess::CONNECT | ServiceManagerAccess::CREATE_SERVICE,
     )
     .map_err(|e| {
-        windows_service_install::log_service_install_failure("RetailEX_SQL_Bridge", &e);
+        windows_service_install::log_service_install_failure("AsinERP_SQL_Bridge", &e);
         Box::new(e) as Box<dyn std::error::Error>
     })?;
     let exe_path = env::current_exe().map_err(|e| {
-        windows_service_install::log_install_any_error("RetailEX_SQL_Bridge", &e);
+        windows_service_install::log_install_any_error("AsinERP_SQL_Bridge", &e);
         Box::new(e) as Box<dyn std::error::Error>
     })?;
 
@@ -82,7 +82,7 @@ fn install_service() -> Result<(), Box<dyn std::error::Error>> {
         &manager,
         &info,
         ServiceAccess::all(),
-        "RetailEX_SQL_Bridge",
+        "AsinERP_SQL_Bridge",
     )? {
         windows_service_install::CreateServiceOutcome::Created => {
             println!("Service installed successfully.");
@@ -135,7 +135,7 @@ fn run_service() -> windows_service::Result<()> {
         process_id: None,
     })?;
 
-    log_line("RetailEX SQL Bridge service started.");
+    log_line("AsinERP SQL Bridge service started.");
 
     let mut bridge = match spawn_bridge_child() {
         Ok(c) => c,
@@ -157,7 +157,7 @@ fn run_service() -> windows_service::Result<()> {
     loop {
         if shutdown_rx.try_recv().is_ok() {
             let _ = stop_child(&mut bridge);
-            log_line("RetailEX SQL Bridge service stopped by SCM.");
+            log_line("AsinERP SQL Bridge service stopped by SCM.");
             status_handle.set_service_status(ServiceStatus {
                 service_type: ServiceType::OWN_PROCESS,
                 current_state: ServiceState::Stopped,
@@ -263,7 +263,7 @@ fn stop_child(child: &mut Child) -> Result<(), Box<dyn std::error::Error>> {
 }
 
 fn log_line(message: &str) {
-    let _ = std::fs::create_dir_all("C:\\ProgramData\\RetailEX");
+    let _ = std::fs::create_dir_all("C:\\ProgramData\\AsinERP");
     if let Ok(mut file) = OpenOptions::new().create(true).append(true).open(LOG_FILE) {
         let _ = writeln!(file, "[{}] {}", chrono::Local::now(), message);
     }

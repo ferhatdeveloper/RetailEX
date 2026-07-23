@@ -28,9 +28,9 @@ export function IconPicker({ value, onChange }: IconPickerProps) {
         <div className="relative">
             <div
                 onClick={() => setShowPicker(!showPicker)}
-                className="flex items-center gap-3 p-2 bg-gray-50 border border-gray-300 rounded cursor-pointer hover:border-blue-400 transition-all"
+                className="flex items-center gap-3 p-2 bg-gray-50 border border-gray-300 rounded cursor-pointer hover:border-[var(--asin-accent,#1FA8A0)] transition-all"
             >
-                <div className="w-8 h-8 bg-white rounded border border-gray-100 flex items-center justify-center text-blue-600 shadow-sm">
+                <div className="w-8 h-8 bg-white rounded border border-gray-100 flex items-center justify-center text-[var(--asin-accent,#1FA8A0)] shadow-sm">
                     <SelectedIcon className="w-5 h-5" />
                 </div>
                 <span className="text-sm text-gray-700 font-medium">{value || 'İkon Seçiniz'}</span>
@@ -53,7 +53,7 @@ export function IconPicker({ value, onChange }: IconPickerProps) {
                             placeholder="Ara..."
                             value={search}
                             onChange={(e) => setSearch(e.target.value)}
-                            className="w-full pl-8 pr-3 py-1.5 text-xs border border-gray-200 rounded focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none"
+                            className="w-full pl-8 pr-3 py-1.5 text-xs border border-gray-200 rounded focus:border-[var(--asin-accent,#1FA8A0)] focus:ring-1 focus:ring-[var(--asin-accent,#1FA8A0)] outline-none"
                         />
                     </div>
 
@@ -67,10 +67,10 @@ export function IconPicker({ value, onChange }: IconPickerProps) {
                                         onChange(name);
                                         setShowPicker(false);
                                     }}
-                                    className={`p-2 rounded flex flex-col items-center justify-center gap-1 hover:bg-blue-50 transition-colors ${value === name ? 'bg-blue-100 ring-1 ring-blue-500' : ''}`}
+                                    className={`p-2 rounded flex flex-col items-center justify-center gap-1 hover:bg-[var(--asin-accent-muted,#D5F0EE)] transition-colors ${value === name ? 'bg-[var(--asin-accent-muted,#D5F0EE)] ring-1 ring-[var(--asin-accent,#1FA8A0)]' : ''}`}
                                     title={name}
                                 >
-                                    <IconComp className={`w-5 h-5 ${value === name ? 'text-blue-600' : 'text-gray-600'}`} />
+                                    <IconComp className={`w-5 h-5 ${value === name ? 'text-[var(--asin-accent,#1FA8A0)]' : 'text-gray-600'}`} />
                                 </button>
                             );
                         })}

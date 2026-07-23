@@ -766,7 +766,7 @@ export function CurrencyManagement() {
           </button>
           <button
             onClick={handleAddCurrency}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2"
+            className="px-4 py-2 bg-[var(--asin-accent,#1FA8A0)] text-white rounded-lg hover:bg-[#178f88] flex items-center gap-2"
           >
             <Plus className="w-4 h-4" />
             {tm('addCurrency')}
@@ -967,7 +967,7 @@ export function CurrencyManagement() {
                 type="button"
                 onClick={() => void loadRateHistory()}
                 disabled={historyLoading}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2"
+                className="px-4 py-2 bg-[var(--asin-accent,#1FA8A0)] text-white rounded-lg hover:bg-[#178f88] disabled:opacity-50 flex items-center gap-2"
               >
                 <RefreshCw className={`w-4 h-4 ${historyLoading ? 'animate-spin' : ''}`} />
                 {tm('refresh')}
@@ -1121,7 +1121,7 @@ export function CurrencyManagement() {
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in duration-200">
             {/* Header */}
-            <div className="bg-gradient-to-r from-blue-600 to-blue-700 p-4 text-white flex items-center justify-between">
+            <div className="bg-[var(--asin-primary,#0E2433)] p-4 text-white flex items-center justify-between">
               <h2 className="text-lg font-bold flex items-center gap-2">
                 <Globe className="w-5 h-5" />
                 {isEditing ? (tm('editCurrency') || 'Para Birimi Düzenle') : (tm('addCurrency') || 'Yeni Para Birimi')}
@@ -1193,7 +1193,7 @@ export function CurrencyManagement() {
               </button>
               <button
                 onClick={handleSaveCurrency}
-                className="flex-1 px-4 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 disabled:opacity-50 flex items-center justify-center gap-2 font-bold shadow-lg shadow-blue-200 transition-all"
+                className="flex-1 px-4 py-3 bg-[var(--asin-accent,#1FA8A0)] text-white rounded-xl hover:bg-[#178f88] disabled:opacity-50 flex items-center justify-center gap-2 font-bold shadow-lg shadow-blue-200 transition-all"
                 disabled={isLoading}
               >
                 {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Check className="w-5 h-5" />}

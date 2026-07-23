@@ -1,4 +1,4 @@
-PostgREST (Windows x64) — RetailEX kurulum paketine gömülür
+PostgREST (Windows x64) — AsinERP kurulum paketine gömülür
 ===========================================================
 
 Bu klasördeki postgrest.exe repoda tutulmaz (.gitignore). Üretmek için kök dizinde:

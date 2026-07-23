@@ -49,6 +49,7 @@ function decodeB64(s) {
 function loadPgFromConfigDb() {
   const candidates = [
     process.env.CONFIG_DB,
+    'C:/AsinERP/config.db',
     'C:/RetailEX/config.db',
     'C:/RetailEx/config.db',
     path.join(ROOT, 'config.db'),

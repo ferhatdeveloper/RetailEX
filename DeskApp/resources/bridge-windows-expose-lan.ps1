@@ -1,7 +1,7 @@
 #Requires -Version 5.1
 <#
-  pg_bridge LAN erisimi: Windows guvenlik duvari TCP 3001 (varsayilan RetailEX bridge portu).
-  Cihaz A (merkez): npm run bridge / RetailEX bridge 0.0.0.0:3001 dinlemeli.
+  pg_bridge LAN erisimi: Windows guvenlik duvari TCP 3001 (varsayilan AsinERP bridge portu).
+  Cihaz A (merkez): npm run bridge / AsinERP bridge 0.0.0.0:3001 dinlemeli.
 
   Kullanim (yonetici):
     .\bridge-windows-expose-lan.ps1
@@ -26,7 +26,7 @@ if (-not (Test-IsAdmin)) {
     exit $(if ($null -ne $proc.ExitCode) { $proc.ExitCode } else { 1 })
 }
 
-$ruleName = "RetailEX pg_bridge TCP $Port (LAN)"
+$ruleName = "AsinERP pg_bridge TCP $Port (LAN)"
 $existing = Get-NetFirewallRule -DisplayName $ruleName -ErrorAction SilentlyContinue
 if (-not $existing) {
     New-NetFirewallRule -DisplayName $ruleName -Direction Inbound -Action Allow -Protocol TCP -LocalPort $Port | Out-Null

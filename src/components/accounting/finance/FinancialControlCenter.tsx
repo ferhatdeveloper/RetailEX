@@ -53,7 +53,7 @@ export function FinancialControlCenter() {
                 onChange={(e) => setSelectedDate(e.target.value)}
                 className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-600"
               />
-              <button className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2">
+              <button className="px-4 py-2 bg-[var(--asin-accent,#1FA8A0)] text-white rounded-lg hover:bg-[#178f88] flex items-center gap-2">
                 <Download className="w-4 h-4" />
                 <span>Rapor Al</span>
               </button>

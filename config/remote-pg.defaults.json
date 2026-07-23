@@ -5,6 +5,6 @@
   "user": "postgres",
   "password": "Yq7xwQpt6c",
   "endpoint": "72.60.182.107:5432/retailex_demo",
-  "remoteRestUrl": "https://api.retailex.app",
+  "remoteRestUrl": "https://api.retailex.app/retailex_demo",
   "defaultConnectionProvider": "rest_api"
 }

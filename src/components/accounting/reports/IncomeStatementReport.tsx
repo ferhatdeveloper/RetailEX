@@ -96,7 +96,7 @@ export function IncomeStatementReport() {
           <button
             onClick={loadReport}
             disabled={loading}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 transition-colors"
+            className="flex items-center gap-2 px-4 py-2 bg-[var(--asin-accent,#1FA8A0)] text-white rounded hover:bg-[#178f88] disabled:opacity-50 transition-colors"
           >
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
             Yenile

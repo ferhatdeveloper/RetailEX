@@ -533,7 +533,7 @@ export function RestaurantScreen({ route }: Props) {
       if (serviceEnabled) {
         Alert.alert(
           'Mutfak',
-          `${result.sentItemCount} kalem mutfağa gönderildi.\n${queueResult?.jobCount ?? 0} yazdırma işi RetailEX_Printer kuyruğuna eklendi.`,
+          `${result.sentItemCount} kalem mutfağa gönderildi.\n${queueResult?.jobCount ?? 0} yazdırma işi yazıcı kuyruğuna eklendi.`,
         );
       } else if (printResult?.ok) {
         Alert.alert('Mutfak', `${result.sentItemCount} kalem mutfağa gönderildi.\n${printResult.message}`);

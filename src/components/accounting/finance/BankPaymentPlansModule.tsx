@@ -188,7 +188,7 @@ export function BankPaymentPlansModule() {
                             setFormData({ code: '', name: '', bank_name: '', card_brand: 'Visa', is_active: true, lines: [] });
                             setShowModal(true);
                         }}
-                        className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl transition-all shadow-lg shadow-blue-500/20 active:scale-95"
+                        className="flex items-center gap-2 px-4 py-2 bg-[var(--asin-accent,#1FA8A0)] hover:bg-[#178f88] text-white rounded-xl transition-all shadow-lg shadow-blue-500/20 active:scale-95"
                     >
                         <Plus className="w-5 h-5" />
                         Yeni Ödeme Planı
@@ -241,7 +241,7 @@ export function BankPaymentPlansModule() {
                     <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowModal(false)} />
                     <div className="relative bg-white dark:bg-gray-800 rounded-3xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-hidden flex flex-col border dark:border-gray-700">
                         {/* Modal Header */}
-                        <div className="bg-gradient-to-r from-blue-600 to-blue-700 px-8 py-6 text-white flex items-center justify-between">
+                        <div className="bg-[var(--asin-primary,#0E2433)] px-8 py-6 text-white flex items-center justify-between">
                             <div className="flex items-center gap-3">
                                 <div className="p-2 bg-white/20 rounded-xl backdrop-blur-md">
                                     <CreditCard className="w-6 h-6" />
@@ -390,7 +390,7 @@ export function BankPaymentPlansModule() {
                                 </button>
                                 <button
                                     type="submit"
-                                    className="px-8 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-2xl transition-all shadow-lg shadow-blue-500/20 active:scale-95 flex items-center gap-2"
+                                    className="px-8 py-3 bg-[var(--asin-accent,#1FA8A0)] hover:bg-[#178f88] text-white font-bold rounded-2xl transition-all shadow-lg shadow-blue-500/20 active:scale-95 flex items-center gap-2"
                                 >
                                     <Save className="w-5 h-5" />
                                     {editingPlan ? 'Güncelle' : 'Kaydet'}

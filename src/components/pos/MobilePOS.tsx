@@ -552,7 +552,7 @@ export function MobilePOS({ products, customers, campaigns, onSaleComplete, onBa
 
     // Automatic Printing Logic
     if (autoPrint) {
-      const companyName = 'RetailEX Mobile'; // Dynamic value could be added if needed
+      const companyName = 'Asin Mobile'; // Dynamic value could be added if needed
       printThermalReceipt(sale, companyName, { 
         autoPrint: true, 
         language: receiptLanguage 
@@ -570,11 +570,11 @@ export function MobilePOS({ products, customers, campaigns, onSaleComplete, onBa
   return (
     <div className="h-full flex flex-col bg-gray-50">
       {/* Top Bar */}
-      <div className="bg-gradient-to-r from-blue-600 to-blue-700 text-white shadow-lg">
+      <div className="bg-[var(--asin-primary,#0E2433)] text-white shadow-lg">
         <div className="p-3 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <div className="w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center border border-white/30">
-              <span className="text-lg font-bold text-white">R</span>
+              <span className="text-lg font-bold text-white">A</span>
             </div>
             <button
               onClick={() => setShowCustomerModal(true)}
@@ -622,39 +622,39 @@ export function MobilePOS({ products, customers, campaigns, onSaleComplete, onBa
         {showQuickActions && (
           <div className="bg-white p-3 border-b">
             <div className="grid grid-cols-4 gap-2">
-              <button className="flex flex-col items-center justify-center gap-2 p-3 min-h-[44px] bg-white border-2 border-gray-200 rounded hover:border-blue-500 transition-all active:bg-blue-50">
+              <button className="flex flex-col items-center justify-center gap-2 p-3 min-h-[44px] bg-white border-2 border-gray-200 rounded hover:border-[var(--asin-accent,#1FA8A0)] transition-all active:bg-[var(--asin-accent-muted,#D5F0EE)]">
                 <Tag className="w-6 h-6 text-orange-600" />
                 <span className="text-xs text-center leading-tight">Kampanya</span>
               </button>
               <button
                 onClick={() => setShowProductsModal(true)}
-                className="flex flex-col items-center justify-center gap-2 p-3 min-h-[44px] bg-white border-2 border-gray-200 rounded hover:border-blue-500 transition-all active:bg-blue-50"
+                className="flex flex-col items-center justify-center gap-2 p-3 min-h-[44px] bg-white border-2 border-gray-200 rounded hover:border-[var(--asin-accent,#1FA8A0)] transition-all active:bg-[var(--asin-accent-muted,#D5F0EE)]"
               >
-                <Grid3x3 className="w-6 h-6 text-blue-600" />
+                <Grid3x3 className="w-6 h-6 text-[var(--asin-accent,#1FA8A0)]" />
                 <span className="text-xs text-center leading-tight">Kategori</span>
               </button>
-              <button className="flex flex-col items-center justify-center gap-2 p-3 min-h-[44px] bg-white border-2 border-gray-200 rounded hover:border-blue-500 transition-all active:bg-blue-50">
-                <RefreshCw className="w-6 h-6 text-purple-600" />
+              <button className="flex flex-col items-center justify-center gap-2 p-3 min-h-[44px] bg-white border-2 border-gray-200 rounded hover:border-[var(--asin-accent,#1FA8A0)] transition-all active:bg-[var(--asin-accent-muted,#D5F0EE)]">
+                <RefreshCw className="w-6 h-6 text-[var(--asin-primary,#0E2433)]" />
                 <span className="text-xs text-center leading-tight">İade</span>
               </button>
-              <button className="flex flex-col items-center justify-center gap-2 p-3 min-h-[44px] bg-white border-2 border-gray-200 rounded hover:border-blue-500 transition-all active:bg-blue-50">
+              <button className="flex flex-col items-center justify-center gap-2 p-3 min-h-[44px] bg-white border-2 border-gray-200 rounded hover:border-[var(--asin-accent,#1FA8A0)] transition-all active:bg-[var(--asin-accent-muted,#D5F0EE)]">
                 <FileText className="w-6 h-6 text-red-600" />
                 <span className="text-xs text-center leading-tight">Fiş İptal</span>
               </button>
-              <button className="flex flex-col items-center justify-center gap-2 p-3 min-h-[44px] bg-white border-2 border-gray-200 rounded hover:border-blue-500 transition-all active:bg-blue-50">
+              <button className="flex flex-col items-center justify-center gap-2 p-3 min-h-[44px] bg-white border-2 border-gray-200 rounded hover:border-[var(--asin-accent,#1FA8A0)] transition-all active:bg-[var(--asin-accent-muted,#D5F0EE)]">
                 <FileCheck className="w-6 h-6 text-green-600" />
                 <span className="text-xs text-center leading-tight">Son Fiş</span>
               </button>
-              <button className="flex flex-col items-center justify-center gap-2 p-3 min-h-[44px] bg-white border-2 border-gray-200 rounded hover:border-blue-500 transition-all active:bg-blue-50">
+              <button className="flex flex-col items-center justify-center gap-2 p-3 min-h-[44px] bg-white border-2 border-gray-200 rounded hover:border-[var(--asin-accent,#1FA8A0)] transition-all active:bg-[var(--asin-accent-muted,#D5F0EE)]">
                 <Truck className="w-6 h-6 text-cyan-600" />
                 <span className="text-xs text-center leading-tight">Park Et</span>
               </button>
-              <button className="flex flex-col items-center justify-center gap-2 p-3 min-h-[44px] bg-white border-2 border-gray-200 rounded hover:border-blue-500 transition-all active:bg-blue-50">
+              <button className="flex flex-col items-center justify-center gap-2 p-3 min-h-[44px] bg-white border-2 border-gray-200 rounded hover:border-[var(--asin-accent,#1FA8A0)] transition-all active:bg-[var(--asin-accent-muted,#D5F0EE)]">
                 <Send className="w-6 h-6 text-pink-600" />
                 <span className="text-xs text-center leading-tight">Et</span>
               </button>
-              <button className="flex flex-col items-center justify-center gap-2 p-3 min-h-[44px] bg-white border-2 border-gray-200 rounded hover:border-blue-500 transition-all active:bg-blue-50">
-                <Menu className="w-6 h-6 text-indigo-600" />
+              <button className="flex flex-col items-center justify-center gap-2 p-3 min-h-[44px] bg-white border-2 border-gray-200 rounded hover:border-[var(--asin-accent,#1FA8A0)] transition-all active:bg-[var(--asin-accent-muted,#D5F0EE)]">
+                <Menu className="w-6 h-6 text-[var(--asin-accent,#1FA8A0)]" />
                 <span className="text-xs text-center leading-tight">Bekleyen</span>
               </button>
             </div>
@@ -691,9 +691,9 @@ export function MobilePOS({ products, customers, campaigns, onSaleComplete, onBa
 
       {/* Customer Info */}
       {selectedCustomer && (
-        <div className="bg-blue-50 border-b border-blue-200 px-4 py-2 flex items-center justify-between">
+        <div className="bg-[var(--asin-accent-muted,#D5F0EE)] border-b border-[var(--asin-accent,#1FA8A0)]/40 px-4 py-2 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <User className="w-4 h-4 text-blue-600" />
+            <User className="w-4 h-4 text-[var(--asin-accent,#1FA8A0)]" />
             <div>
               <div className="text-sm font-medium">{selectedCustomer.name}</div>
               <div className="text-xs text-gray-600">{selectedCustomer.phone}</div>
@@ -795,7 +795,7 @@ export function MobilePOS({ products, customers, campaigns, onSaleComplete, onBa
                       <Plus className="w-4 h-4" />
                     </button>
                   </div>
-                  <div className="text-blue-600 font-medium text-lg">
+                  <div className="text-[var(--asin-accent,#1FA8A0)] font-medium text-lg">
                     {item.total.toFixed(2)}
                   </div>
                 </div>
@@ -836,7 +836,7 @@ export function MobilePOS({ products, customers, campaigns, onSaleComplete, onBa
               type="number"
               value={discount}
               onChange={(e) => setDiscount(parseFloat(e.target.value) || 0)}
-              className="w-20 px-2 py-1.5 border border-gray-300 rounded text-sm text-right focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              className="w-20 px-2 py-1.5 border border-gray-300 rounded text-sm text-right focus:outline-none focus:ring-2 focus:ring-[var(--asin-accent,#1FA8A0)] focus:border-[var(--asin-accent,#1FA8A0)]"
               min="0"
               max="100"
             />
@@ -867,7 +867,7 @@ export function MobilePOS({ products, customers, campaigns, onSaleComplete, onBa
           <div className="flex items-center gap-3">
             <span className="text-gray-400">ExRetailOS {APP_VERSION.display}</span>
             <button className="p-1.5 hover:bg-gray-800 rounded-lg transition-colors">
-              <Database className="w-4 h-4 text-blue-400" />
+              <Database className="w-4 h-4 text-[var(--asin-accent,#1FA8A0)]" />
             </button>
           </div>
         </div>
@@ -887,7 +887,7 @@ export function MobilePOS({ products, customers, campaigns, onSaleComplete, onBa
       {showProductsModal && (
         <div className="fixed inset-0 bg-white z-50 flex flex-col">
           {/* Header */}
-          <div className="bg-gradient-to-r from-blue-600 to-blue-700 text-white p-4 flex items-center justify-between shadow-lg">
+          <div className="bg-[var(--asin-primary,#0E2433)] text-white p-4 flex items-center justify-between shadow-lg">
             <h3 className="font-medium text-lg">Ürünler</h3>
             <button onClick={() => setShowProductsModal(false)} className="p-1">
               <X className="w-6 h-6" />
@@ -903,7 +903,7 @@ export function MobilePOS({ products, customers, campaigns, onSaleComplete, onBa
                 placeholder="Kod, ad veya barkod ara..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-11 pr-4 py-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:border-blue-600"
+                className="w-full pl-11 pr-4 py-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:border-[var(--asin-accent,#1FA8A0)]"
               />
             </div>
           </div>
@@ -916,7 +916,7 @@ export function MobilePOS({ products, customers, campaigns, onSaleComplete, onBa
                   key={cat}
                   onClick={() => setSelectedCategory(cat)}
                   className={`px-4 py-2 whitespace-nowrap text-sm rounded-lg transition-all ${selectedCategory === cat
-                    ? 'bg-blue-600 text-white shadow'
+                    ? 'bg-[var(--asin-accent,#1FA8A0)] text-white shadow'
                     : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                     }`}
                 >
@@ -945,10 +945,10 @@ export function MobilePOS({ products, customers, campaigns, onSaleComplete, onBa
                     addToCart(product, undefined, undefined, undefined, price);
                     setShowProductsModal(false);
                   }}
-                  className="bg-white border-2 border-gray-200 p-3 text-left hover:shadow-lg hover:border-blue-500 active:bg-blue-50 transition-all rounded-lg"
+                  className="bg-white border-2 border-gray-200 p-3 text-left hover:shadow-lg hover:border-[var(--asin-accent,#1FA8A0)] active:bg-[var(--asin-accent-muted,#D5F0EE)] transition-all rounded-lg"
                 >
                   <div className="font-medium text-sm mb-2 line-clamp-2 min-h-[40px]">{product.name}</div>
-                  <div className="text-blue-600 font-bold text-lg mb-1">
+                  <div className="text-[var(--asin-accent,#1FA8A0)] font-bold text-lg mb-1">
                     {product.price.toFixed(2)}
                   </div>
                   <div className="text-xs text-gray-500">Stok: {product.stock}</div>
@@ -989,7 +989,7 @@ export function MobilePOS({ products, customers, campaigns, onSaleComplete, onBa
 
               <button
                 onClick={() => completeSale('Kredi Kartı')}
-                className="w-full flex items-center gap-3 px-4 py-4 min-h-[44px] bg-blue-50 border-2 border-blue-500 text-blue-700 hover:bg-blue-100 active:bg-blue-200 transition-all rounded-lg"
+                className="w-full flex items-center gap-3 px-4 py-4 min-h-[44px] bg-[var(--asin-accent-muted,#D5F0EE)] border-2 border-[var(--asin-accent,#1FA8A0)] text-[var(--asin-primary,#0E2433)] hover:bg-[var(--asin-accent-muted,#D5F0EE)] active:bg-[var(--asin-accent-muted,#D5F0EE)] transition-all rounded-lg"
               >
                 <CreditCard className="w-6 h-6" />
                 <div className="flex-1 text-left">
@@ -999,7 +999,7 @@ export function MobilePOS({ products, customers, campaigns, onSaleComplete, onBa
 
               <button
                 onClick={() => completeSale('Banka Kartı')}
-                className="w-full flex items-center gap-3 px-4 py-4 min-h-[44px] bg-purple-50 border-2 border-purple-500 text-purple-700 hover:bg-purple-100 active:bg-purple-200 transition-all rounded-lg"
+                className="w-full flex items-center gap-3 px-4 py-4 min-h-[44px] bg-[var(--asin-accent-muted,#D5F0EE)] border-2 border-[var(--asin-primary,#0E2433)] text-[var(--asin-primary,#0E2433)] hover:bg-[var(--asin-accent-muted,#D5F0EE)] active:bg-[#c5e8e5] transition-all rounded-lg"
               >
                 <CreditCard className="w-6 h-6" />
                 <div className="flex-1 text-left">
@@ -1034,9 +1034,9 @@ export function MobilePOS({ products, customers, campaigns, onSaleComplete, onBa
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">
-                  <label className={`flex flex-col gap-2 p-3 rounded-xl border-2 transition-all cursor-pointer ${autoPrint ? 'border-blue-500 bg-blue-50' : 'border-gray-200 bg-white'}`}>
+                  <label className={`flex flex-col gap-2 p-3 rounded-xl border-2 transition-all cursor-pointer ${autoPrint ? 'border-[var(--asin-accent,#1FA8A0)] bg-[var(--asin-accent-muted,#D5F0EE)]' : 'border-gray-200 bg-white'}`}>
                     <div className="flex items-center justify-between">
-                      <div className={`p-1.5 rounded-lg ${autoPrint ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-400'}`}>
+                      <div className={`p-1.5 rounded-lg ${autoPrint ? 'bg-[var(--asin-accent,#1FA8A0)] text-white' : 'bg-gray-100 text-gray-400'}`}>
                         <Plus className={`w-4 h-4 ${autoPrint ? '' : 'rotate-45'}`} />
                       </div>
                       <input
@@ -1049,9 +1049,9 @@ export function MobilePOS({ products, customers, campaigns, onSaleComplete, onBa
                     <div className="text-[11px] font-bold text-gray-900 leading-tight">Otomatik Yazdır</div>
                   </label>
 
-                  <div className={`flex flex-col gap-2 p-3 rounded-xl border-2 border-purple-500 bg-purple-50 transition-all`}>
+                  <div className={`flex flex-col gap-2 p-3 rounded-xl border-2 border-[var(--asin-primary,#0E2433)] bg-[var(--asin-accent-muted,#D5F0EE)] transition-all`}>
                     <div className="flex items-center justify-between">
-                      <div className="p-1.5 rounded-lg bg-purple-600 text-white">
+                      <div className="p-1.5 rounded-lg bg-[var(--asin-primary,#0E2433)] text-white">
                         <Globe className="w-4 h-4" />
                       </div>
                     </div>
@@ -1087,7 +1087,7 @@ export function MobilePOS({ products, customers, campaigns, onSaleComplete, onBa
       {showCustomerModal && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl max-h-[80vh] flex flex-col overflow-hidden">
-            <div className="bg-gradient-to-r from-blue-600 to-blue-700 text-white px-6 py-4">
+            <div className="bg-[var(--asin-primary,#0E2433)] text-white px-6 py-4">
               <h3 className="font-medium text-lg">Müşteri Seç</h3>
             </div>
 
@@ -1097,7 +1097,7 @@ export function MobilePOS({ products, customers, campaigns, onSaleComplete, onBa
                   setSelectedCustomer(null);
                   setShowCustomerModal(false);
                 }}
-                className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg hover:border-blue-500 hover:bg-blue-50 active:bg-blue-100 text-left"
+                className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg hover:border-[var(--asin-accent,#1FA8A0)] hover:bg-[var(--asin-accent-muted,#D5F0EE)] active:bg-[var(--asin-accent-muted,#D5F0EE)] text-left"
               >
                 <p className="font-medium">Müşterisiz Devam Et</p>
               </button>
@@ -1110,8 +1110,8 @@ export function MobilePOS({ products, customers, campaigns, onSaleComplete, onBa
                     setShowCustomerModal(false);
                   }}
                   className={`w-full px-4 py-3 border-2 rounded-lg text-left transition-all ${selectedCustomer?.id === customer.id
-                    ? 'border-blue-500 bg-blue-50'
-                    : 'border-gray-300 hover:border-blue-500 hover:bg-blue-50 active:bg-blue-100'
+                    ? 'border-[var(--asin-accent,#1FA8A0)] bg-[var(--asin-accent-muted,#D5F0EE)]'
+                    : 'border-gray-300 hover:border-[var(--asin-accent,#1FA8A0)] hover:bg-[var(--asin-accent-muted,#D5F0EE)] active:bg-[var(--asin-accent-muted,#D5F0EE)]'
                     }`}
                 >
                   <p className="font-medium">{customer.name}</p>
@@ -1138,13 +1138,13 @@ export function MobilePOS({ products, customers, campaigns, onSaleComplete, onBa
           <div className={`px-6 py-4 shadow-2xl border-l-4 min-w-[300px] ${notificationType === 'success' ? 'bg-green-50 border-green-600' :
             notificationType === 'error' ? 'bg-red-50 border-red-600' :
               notificationType === 'warning' ? 'bg-yellow-50 border-yellow-600' :
-                'bg-blue-50 border-blue-600'
+                'bg-[var(--asin-accent-muted,#D5F0EE)] border-[var(--asin-accent,#1FA8A0)]'
             }`}>
             <div className="flex items-start gap-3">
               <div className={`mt-0.5 ${notificationType === 'success' ? 'text-green-600' :
                 notificationType === 'error' ? 'text-red-600' :
                   notificationType === 'warning' ? 'text-yellow-600' :
-                    'text-blue-600'
+                    'text-[var(--asin-accent,#1FA8A0)]'
                 }`}>
                 {notificationType === 'success' ? <FileCheck className="w-5 h-5" /> :
                   notificationType === 'error' ? <X className="w-5 h-5" /> :
@@ -1154,7 +1154,7 @@ export function MobilePOS({ products, customers, campaigns, onSaleComplete, onBa
                 <p className={`text-sm whitespace-pre-line ${notificationType === 'success' ? 'text-green-800' :
                   notificationType === 'error' ? 'text-red-800' :
                     notificationType === 'warning' ? 'text-yellow-800' :
-                      'text-blue-800'
+                      'text-[var(--asin-primary,#0E2433)]'
                   }`}>{notificationMessage}</p>
               </div>
               <button
@@ -1162,7 +1162,7 @@ export function MobilePOS({ products, customers, campaigns, onSaleComplete, onBa
                 className={`${notificationType === 'success' ? 'text-green-600 hover:text-green-800' :
                   notificationType === 'error' ? 'text-red-600 hover:text-red-800' :
                     notificationType === 'warning' ? 'text-yellow-600 hover:text-yellow-800' :
-                      'text-blue-600 hover:text-blue-800'
+                      'text-[var(--asin-accent,#1FA8A0)] hover:text-[var(--asin-primary,#0E2433)]'
                   }`}
               >
                 <X className="w-4 h-4" />

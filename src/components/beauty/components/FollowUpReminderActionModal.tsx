@@ -115,11 +115,11 @@ export function FollowUpReminderActionModal({
     <div className="fixed inset-0 z-[2147483646] overflow-y-auto overflow-x-hidden bg-black/60 backdrop-blur-md">
       <div className="flex min-h-[100dvh] min-h-screen w-full items-center justify-center p-4 py-6">
         <div className="bg-white rounded-[2rem] w-full max-w-md max-h-[min(90vh,100dvh)] min-h-0 overflow-hidden shadow-xl border border-slate-200/80 flex flex-col">
-          <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-6 py-5 text-white shrink-0">
+          <div className="bg-gradient-to-r from-[var(--asin-primary,#0E2433)] to-[var(--asin-primary-hover,#163A52)] px-6 py-5 text-white shrink-0">
             <div className="flex items-center justify-between gap-3">
               <div className="min-w-0">
                 <h2 className="text-lg font-black uppercase tracking-tight truncate">{labels.title}</h2>
-                <p className="text-blue-100 text-xs font-semibold mt-1 truncate">{reminder.customer_name}</p>
+                <p className="text-[var(--asin-accent-muted,#D5F0EE)] text-xs font-semibold mt-1 truncate">{reminder.customer_name}</p>
               </div>
               <button
                 type="button"
@@ -231,7 +231,7 @@ export function FollowUpReminderActionModal({
               type="button"
               onClick={() => void handleSave()}
               disabled={saving || (status === 'postponed' && !postponedDate.trim())}
-              className="flex-1 rounded-2xl bg-blue-600 text-white font-bold uppercase text-sm tracking-wider py-3 hover:bg-blue-700 disabled:opacity-50"
+              className="flex-1 rounded-2xl bg-[var(--asin-accent,#1FA8A0)] text-white font-bold uppercase text-sm tracking-wider py-3 hover:bg-[#178f88] disabled:opacity-50"
             >
               {saving ? labels.saving : labels.save}
             </button>

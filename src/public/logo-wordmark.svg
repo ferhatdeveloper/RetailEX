@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="640" viewBox="0 0 640 640" role="img" aria-label="Asin">
+  <defs>
+    <linearGradient id="asinWmGrad" x1="8%" y1="0%" x2="92%" y2="100%">
+      <stop offset="0%" stop-color="#0E2433"/>
+      <stop offset="100%" stop-color="#1FA8A0"/>
+    </linearGradient>
+  </defs>
+  <rect width="640" height="640" fill="#FFFFFF"/>
+  <!-- Mark -->
+  <g transform="translate(176 48)">
+    <path
+      d="M144 16 L264 86 L264 226 L144 296 L24 226 L24 86 Z"
+      fill="#0E2433"
+    />
+    <path
+      d="M144 40 L240 96 L240 216 L144 272 L48 216 L48 96 Z"
+      fill="none"
+      stroke="#1FA8A0"
+      stroke-width="10"
+      stroke-linejoin="round"
+      opacity="0.9"
+    />
+    <path
+      d="M144 84 L214 228 H186 L168 188 H120 L102 228 H74 L144 84 Z M128 164 H160 L144 128 Z"
+      fill="url(#asinWmGrad)"
+    />
+    <rect x="236" y="118" width="18" height="76" rx="6" fill="#1FA8A0"/>
+  </g>
+  <!-- Wordmark -->
+  <text
+    x="320"
+    y="440"
+    text-anchor="middle"
+    font-family="Outfit, Figtree, Arial, Helvetica, sans-serif"
+    font-size="96"
+    font-weight="700"
+    letter-spacing="-2"
+    fill="#0E2433"
+  >Asin</text>
+  <rect x="248" y="456" width="144" height="6" rx="3" fill="#1FA8A0"/>
+  <text
+    x="320"
+    y="512"
+    text-anchor="middle"
+    font-family="Figtree, Arial, Helvetica, sans-serif"
+    font-size="28"
+    font-weight="600"
+    letter-spacing="6"
+    fill="#5A6B78"
+  >ERP</text>
+</svg>

@@ -403,7 +403,7 @@ export function POSPaymentModal({
           }`}
       >
         {/* Header */}
-        <div className={`p-3 border-b flex items-center justify-between ${darkMode ? 'border-gray-700 bg-gradient-to-r from-gray-700 to-gray-600' : 'border-gray-200 bg-gradient-to-r from-blue-600 to-blue-700'
+        <div className={`p-3 border-b flex items-center justify-between ${darkMode ? 'border-gray-700 bg-gradient-to-r from-gray-700 to-gray-600' : 'border-gray-200 bg-[var(--asin-primary,#0E2433)]'
           }`}>
           <h3 className="text-base text-white flex items-center gap-2">
             <CreditCard className="w-5 h-5" />
@@ -442,7 +442,7 @@ export function POSPaymentModal({
                     alert(`${provider.name} ${t.paymentFailed || 'ödemesi başlatılamadı:'} ${result.error}`);
                   }
                 }}
-                className="px-3 py-1.5 rounded text-sm bg-purple-600 hover:bg-purple-700 text-white transition-colors font-medium"
+                className="px-3 py-1.5 rounded text-sm bg-[var(--asin-primary,#0E2433)] hover:bg-[#163447] text-white transition-colors font-medium"
               >
                 {provider.name}
               </button>
@@ -469,8 +469,8 @@ export function POSPaymentModal({
             {/* Left - Summary */}
             <div className="space-y-3">
               {/* Discount Input */}
-              <div className={`border p-4 ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-blue-50 border-blue-200'}`}>
-                <h4 className={`text-sm mb-3 flex items-center gap-2 ${darkMode ? 'text-blue-400' : 'text-blue-800'}`}>
+              <div className={`border p-4 ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-[var(--asin-accent-muted,#D5F0EE)] border-[var(--asin-accent,#1FA8A0)]/40'}`}>
+                <h4 className={`text-sm mb-3 flex items-center gap-2 ${darkMode ? 'text-[var(--asin-accent,#1FA8A0)]' : 'text-[var(--asin-primary,#0E2433)]'}`}>
                   <TrendingDown className="w-4 h-4" />
                   {t.discountOptional || 'İlave İndirim (Opsiyonel)'}
                 </h4>
@@ -479,10 +479,10 @@ export function POSPaymentModal({
                   <button
                     onClick={() => setDiscountType('percentage')}
                     className={`flex-1 px-3 py-2 text-xs border transition-colors ${discountType === 'percentage'
-                      ? 'bg-blue-600 text-white border-blue-600'
+                      ? 'bg-[var(--asin-accent,#1FA8A0)] text-white border-[var(--asin-accent,#1FA8A0)]'
                       : darkMode
-                        ? 'bg-gray-700 text-gray-200 border-gray-600 hover:border-blue-400'
-                        : 'bg-white text-gray-700 border-gray-300 hover:border-blue-400'
+                        ? 'bg-gray-700 text-gray-200 border-gray-600 hover:border-[var(--asin-accent,#1FA8A0)]'
+                        : 'bg-white text-gray-700 border-gray-300 hover:border-[var(--asin-accent,#1FA8A0)]'
                       }`}
                   >
                     %
@@ -490,10 +490,10 @@ export function POSPaymentModal({
                   <button
                     onClick={() => setDiscountType('amount')}
                     className={`flex-1 px-3 py-2 text-xs border transition-colors ${discountType === 'amount'
-                      ? 'bg-blue-600 text-white border-blue-600'
+                      ? 'bg-[var(--asin-accent,#1FA8A0)] text-white border-[var(--asin-accent,#1FA8A0)]'
                       : darkMode
-                        ? 'bg-gray-700 text-gray-200 border-gray-600 hover:border-blue-400'
-                        : 'bg-white text-gray-700 border-gray-300 hover:border-blue-400'
+                        ? 'bg-gray-700 text-gray-200 border-gray-600 hover:border-[var(--asin-accent,#1FA8A0)]'
+                        : 'bg-white text-gray-700 border-gray-300 hover:border-[var(--asin-accent,#1FA8A0)]'
                       }`}
                   >
                     <Banknote className="w-3.5 h-3.5 inline mr-1" />
@@ -508,7 +508,7 @@ export function POSPaymentModal({
                   placeholder={discountType === 'percentage' ? t.discountPercentage || 'İndirim %' : t.discountAmount || 'İndirim Tutarı'}
                   step={discountType === 'percentage' ? '1' : (discountAmountDecimals > 0 ? '0.01' : '1')}
                   min="0"
-                  className={`w-full px-3 py-2.5 text-sm border focus:outline-none focus:border-blue-600 mb-3 ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'
+                  className={`w-full px-3 py-2.5 text-sm border focus:outline-none focus:border-[var(--asin-accent,#1FA8A0)] mb-3 ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'
                     }`}
                 />
 
@@ -519,8 +519,8 @@ export function POSPaymentModal({
                         key={percent}
                         onClick={() => setDiscountValue(percent.toString())}
                         className={`px-2 py-1.5 text-xs border transition-colors ${darkMode
-                          ? 'bg-gray-700 border-gray-600 text-blue-400 hover:bg-gray-600'
-                          : 'bg-white border-blue-300 text-blue-700 hover:bg-blue-100'
+                          ? 'bg-gray-700 border-gray-600 text-[var(--asin-accent,#1FA8A0)] hover:bg-gray-600'
+                          : 'bg-white border-[var(--asin-accent,#1FA8A0)]/50 text-[var(--asin-primary,#0E2433)] hover:bg-[var(--asin-accent-muted,#D5F0EE)]'
                           }`}
                       >
                         %{percent}
@@ -534,8 +534,8 @@ export function POSPaymentModal({
                         key={amount}
                         onClick={() => setDiscountValue(amount.toString())}
                         className={`px-2 py-1.5 text-xs border transition-colors ${darkMode
-                          ? 'bg-gray-700 border-gray-600 text-blue-400 hover:bg-gray-600'
-                          : 'bg-white border-blue-300 text-blue-700 hover:bg-blue-100'
+                          ? 'bg-gray-700 border-gray-600 text-[var(--asin-accent,#1FA8A0)] hover:bg-gray-600'
+                          : 'bg-white border-[var(--asin-accent,#1FA8A0)]/50 text-[var(--asin-primary,#0E2433)] hover:bg-[var(--asin-accent-muted,#D5F0EE)]'
                           }`}
                       >
                         {formatMoneyWithCode(amount, baseCurrency)}
@@ -583,7 +583,7 @@ export function POSPaymentModal({
                     <span className={`font-bold ${darkMode ? 'text-gray-100' : 'text-gray-900'}`}>
                       {t.total || 'TOPLAM'}:
                     </span>
-                    <span className={`font-bold font-mono px-3 py-1 rounded ${darkMode ? 'text-blue-400 bg-blue-900/30' : 'text-blue-700 bg-blue-50'
+                    <span className={`font-bold font-mono px-3 py-1 rounded ${darkMode ? 'text-[var(--asin-accent,#1FA8A0)] bg-[var(--asin-primary,#0E2433)]/40' : 'text-[var(--asin-primary,#0E2433)] bg-[var(--asin-accent-muted,#D5F0EE)]'
                       }`}>
                       {formatCurrency(finalTotal)}
                     </span>
@@ -631,11 +631,11 @@ export function POSPaymentModal({
                           {payment.method === 'cash' ? (
                             <Banknote className="w-4 h-4 text-green-600" />
                           ) : payment.method === 'card' ? (
-                            <CreditCard className="w-4 h-4 text-blue-600" />
+                            <CreditCard className="w-4 h-4 text-[var(--asin-accent,#1FA8A0)]" />
                           ) : payment.method === 'veresiye' ? (
                             <Wallet className="w-4 h-4 text-orange-600" />
                           ) : (
-                            <Smartphone className="w-4 h-4 text-purple-600" />
+                            <Smartphone className="w-4 h-4 text-[var(--asin-primary,#0E2433)]" />
                           )}
                           <span className="text-sm font-medium font-mono">
                             {payment.currency === baseCurrency
@@ -643,7 +643,7 @@ export function POSPaymentModal({
                               : formatMoneyWithCode(payment.amount, payment.currency)}
                           </span>
                           {payment.gatewayProvider && (
-                            <span className="text-xs px-1.5 py-0.5 bg-purple-100 text-purple-700 rounded">
+                            <span className="text-xs px-1.5 py-0.5 bg-[var(--asin-accent-muted,#D5F0EE)] text-[var(--asin-primary,#0E2433)] rounded">
                               {payment.gatewayProvider.toUpperCase()}
                             </span>
                           )}
@@ -675,19 +675,19 @@ export function POSPaymentModal({
                       onClick={() => !method.disabled && setCurrentMethod(method.id as any)}
                       className={`p-3 border transition-all flex items-center gap-2 ${currentMethod === method.id
                         ? darkMode
-                          ? 'border-blue-500 bg-blue-900/30 shadow-md'
-                          : 'border-blue-600 bg-blue-50 shadow-md'
+                          ? 'border-[var(--asin-accent,#1FA8A0)] bg-[var(--asin-primary,#0E2433)]/40 shadow-md'
+                          : 'border-[var(--asin-accent,#1FA8A0)] bg-[var(--asin-accent-muted,#D5F0EE)] shadow-md'
                         : darkMode
                           ? 'border-gray-600 bg-gray-800'
-                          : 'border-gray-300 bg-white hover:border-blue-500 hover:bg-blue-50'
+                          : 'border-gray-300 bg-white hover:border-[var(--asin-accent,#1FA8A0)] hover:bg-[var(--asin-accent-muted,#D5F0EE)]'
                         } ${method.disabled ? 'opacity-50 cursor-not-allowed grayscale' : ''}`}
                       disabled={method.disabled}
                     >
-                      <div className={`w-8 h-8 flex items-center justify-center ${currentMethod === method.id ? 'bg-blue-600' : darkMode ? 'bg-gray-700' : 'bg-gray-200'
+                      <div className={`w-8 h-8 flex items-center justify-center ${currentMethod === method.id ? 'bg-[var(--asin-accent,#1FA8A0)]' : darkMode ? 'bg-gray-700' : 'bg-gray-200'
                         }`}>
                         <method.icon className={`w-4 h-4 ${currentMethod === method.id ? 'text-white' : darkMode ? 'text-gray-400' : 'text-gray-600'}`} />
                       </div>
-                      <span className={`text-sm ${currentMethod === method.id ? 'text-blue-700 font-medium' : darkMode ? 'text-gray-300' : 'text-gray-900'}`}>
+                      <span className={`text-sm ${currentMethod === method.id ? 'text-[var(--asin-primary,#0E2433)] font-medium' : darkMode ? 'text-gray-300' : 'text-gray-900'}`}>
                         {method.name}
                       </span>
                     </button>
@@ -707,11 +707,11 @@ export function POSPaymentModal({
                       onClick={() => setCurrentCurrency(curr.code)}
                       className={`p-2 border text-sm transition-colors ${currentCurrency === curr.code
                         ? darkMode
-                          ? 'bg-blue-900/30 text-blue-400 border-blue-700'
-                          : 'bg-blue-50 text-blue-700 border-blue-200'
+                          ? 'bg-[var(--asin-primary,#0E2433)]/40 text-[var(--asin-accent,#1FA8A0)] border-[var(--asin-accent,#1FA8A0)]'
+                          : 'bg-[var(--asin-accent-muted,#D5F0EE)] text-[var(--asin-primary,#0E2433)] border-[var(--asin-accent,#1FA8A0)]/40'
                         : darkMode
-                          ? 'bg-gray-800 border-gray-600 text-gray-300 hover:border-blue-500'
-                          : 'bg-white border-gray-300 hover:border-blue-300'
+                          ? 'bg-gray-800 border-gray-600 text-gray-300 hover:border-[var(--asin-accent,#1FA8A0)]'
+                          : 'bg-white border-gray-300 hover:border-[var(--asin-accent,#1FA8A0)]/50'
                         }`}
                     >
                       <div className="flex flex-col items-center gap-0.5">
@@ -770,8 +770,8 @@ export function POSPaymentModal({
                       setCurrentAmount(formatNumberInput((current + amount).toString()));
                     }}
                     className={`py-2 text-sm transition-colors ${darkMode
-                      ? 'bg-blue-900/30 hover:bg-blue-900/50 text-blue-400 border border-blue-700'
-                      : 'bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200'
+                      ? 'bg-[var(--asin-primary,#0E2433)]/40 hover:bg-[var(--asin-primary,#0E2433)]/50 text-[var(--asin-accent,#1FA8A0)] border border-[var(--asin-accent,#1FA8A0)]'
+                      : 'bg-[var(--asin-accent-muted,#D5F0EE)] hover:bg-[var(--asin-accent-muted,#D5F0EE)] text-[var(--asin-primary,#0E2433)] border border-[var(--asin-accent,#1FA8A0)]/40'
                       }`}
                   >
                     +{formatNumberTR(amount, 2, true)}
@@ -836,8 +836,8 @@ export function POSPaymentModal({
                   onClick={handleAddPayment}
                   disabled={!currentAmount || parseFormattedNumber(currentAmount) <= 0}
                   className={`py-3 text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 ${darkMode
-                    ? 'bg-purple-900/30 hover:bg-purple-900/50 text-purple-400 border border-purple-700'
-                    : 'bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200'
+                    ? 'bg-[var(--asin-primary,#0E2433)]/40 hover:bg-[var(--asin-primary,#0E2433)]/50 text-[var(--asin-accent,#1FA8A0)] border border-[var(--asin-accent,#1FA8A0)]'
+                    : 'bg-[var(--asin-accent-muted,#D5F0EE)] hover:bg-[#c5e8e5] text-[var(--asin-primary,#0E2433)] border border-[var(--asin-accent,#1FA8A0)]/40'
                     }`}
                 >
                   <Plus className="w-4 h-4" />
@@ -877,8 +877,8 @@ export function POSPaymentModal({
                   <button
                     onClick={() => handleNumpadClick('clear')}
                     className={`p-4 font-medium transition-colors ${darkMode
-                      ? 'bg-blue-900/40 hover:bg-blue-900/60 text-blue-300 active:bg-blue-900/80'
-                      : 'bg-blue-200 hover:bg-blue-300 text-blue-700 active:bg-blue-400'
+                      ? 'bg-[var(--asin-primary,#0E2433)]/40 hover:bg-[var(--asin-primary,#0E2433)]/60 text-[var(--asin-accent-muted,#D5F0EE)] active:bg-[var(--asin-primary,#0E2433)]/80'
+                      : 'bg-[var(--asin-accent-muted,#D5F0EE)] hover:bg-[#c5e8e5] text-[var(--asin-primary,#0E2433)] active:bg-[#b3dfdb]'
                       }`}
                   >
                     ⫿
@@ -887,8 +887,8 @@ export function POSPaymentModal({
                   <button
                     onClick={() => handleNumpadClick('backspace')}
                     className={`p-4 font-medium transition-colors ${darkMode
-                      ? 'bg-blue-900/40 hover:bg-blue-900/60 text-blue-300 active:bg-blue-900/80'
-                      : 'bg-blue-200 hover:bg-blue-300 text-blue-700 active:bg-blue-400'
+                      ? 'bg-[var(--asin-primary,#0E2433)]/40 hover:bg-[var(--asin-primary,#0E2433)]/60 text-[var(--asin-accent-muted,#D5F0EE)] active:bg-[var(--asin-primary,#0E2433)]/80'
+                      : 'bg-[var(--asin-accent-muted,#D5F0EE)] hover:bg-[#c5e8e5] text-[var(--asin-primary,#0E2433)] active:bg-[#b3dfdb]'
                       }`}
                   >
                     ×
@@ -911,8 +911,8 @@ export function POSPaymentModal({
                   <button
                     onClick={() => handleNumpadClick('clear')}
                     className={`p-4 font-medium transition-colors ${darkMode
-                      ? 'bg-blue-900/40 hover:bg-blue-900/60 text-blue-300 active:bg-blue-900/80'
-                      : 'bg-blue-200 hover:bg-blue-300 text-blue-700 active:bg-blue-400'
+                      ? 'bg-[var(--asin-primary,#0E2433)]/40 hover:bg-[var(--asin-primary,#0E2433)]/60 text-[var(--asin-accent-muted,#D5F0EE)] active:bg-[var(--asin-primary,#0E2433)]/80'
+                      : 'bg-[var(--asin-accent-muted,#D5F0EE)] hover:bg-[#c5e8e5] text-[var(--asin-primary,#0E2433)] active:bg-[#b3dfdb]'
                       }`}
                   >
                     C
@@ -935,8 +935,8 @@ export function POSPaymentModal({
                   <button
                     onClick={() => setCurrentAmount(Math.floor(finalTotal).toString())}
                     className={`p-4 text-xs font-medium transition-colors ${darkMode
-                      ? 'bg-blue-900/40 hover:bg-blue-900/60 text-blue-300 active:bg-blue-900/80'
-                      : 'bg-blue-200 hover:bg-blue-300 text-blue-700 active:bg-blue-400'
+                      ? 'bg-[var(--asin-primary,#0E2433)]/40 hover:bg-[var(--asin-primary,#0E2433)]/60 text-[var(--asin-accent-muted,#D5F0EE)] active:bg-[var(--asin-primary,#0E2433)]/80'
+                      : 'bg-[var(--asin-accent-muted,#D5F0EE)] hover:bg-[#c5e8e5] text-[var(--asin-primary,#0E2433)] active:bg-[#b3dfdb]'
                       }`}
                   >
                     {t.priceLabel || 'Fiyat'}
@@ -960,8 +960,8 @@ export function POSPaymentModal({
                     onClick={handleAddPayment}
                     disabled={!currentAmount || parseFormattedNumber(currentAmount) <= 0}
                     className={`row-span-2 p-4 text-sm font-bold transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${darkMode
-                      ? 'bg-blue-600 hover:bg-blue-700 text-white active:bg-blue-800'
-                      : 'bg-blue-600 hover:bg-blue-700 text-white active:bg-blue-800'
+                      ? 'bg-[var(--asin-accent,#1FA8A0)] hover:bg-[#178f88] text-white active:bg-[#147a74]'
+                      : 'bg-[var(--asin-accent,#1FA8A0)] hover:bg-[#178f88] text-white active:bg-[#147a74]'
                       }`}
                   >
                     {t.okLabel || 'Tamam'}
@@ -1003,9 +1003,9 @@ export function POSPaymentModal({
                   type="checkbox"
                   checked={autoPrint}
                   onChange={(e) => setAutoPrint(e.target.checked)}
-                  className="w-5 h-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500 transition-all"
+                  className="w-5 h-5 rounded border-gray-300 text-[var(--asin-accent,#1FA8A0)] focus:ring-[var(--asin-accent,#1FA8A0)] transition-all"
                 />
-                <span className={`text-sm font-medium transition-colors ${darkMode ? 'text-gray-300 group-hover:text-white' : 'text-gray-700 group-hover:text-blue-600'}`}>
+                <span className={`text-sm font-medium transition-colors ${darkMode ? 'text-gray-300 group-hover:text-white' : 'text-gray-700 group-hover:text-[var(--asin-accent,#1FA8A0)]'}`}>
                   {t.autoPrintReceipt || 'Otomatik Yazdır'}
                 </span>
               </label>
@@ -1016,9 +1016,9 @@ export function POSPaymentModal({
                     type="checkbox"
                     checked={showReceiptPreview}
                     onChange={(e) => setShowReceiptPreview(e.target.checked)}
-                    className="w-5 h-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500 transition-all"
+                    className="w-5 h-5 rounded border-gray-300 text-[var(--asin-accent,#1FA8A0)] focus:ring-[var(--asin-accent,#1FA8A0)] transition-all"
                   />
-                  <span className={`text-sm font-medium transition-colors ${darkMode ? 'text-gray-300 group-hover:text-white' : 'text-gray-700 group-hover:text-blue-600'}`}>
+                  <span className={`text-sm font-medium transition-colors ${darkMode ? 'text-gray-300 group-hover:text-white' : 'text-gray-700 group-hover:text-[var(--asin-accent,#1FA8A0)]'}`}>
                     {t.showReceiptPreviewLabel}
                   </span>
                 </label>
@@ -1028,11 +1028,11 @@ export function POSPaymentModal({
             <div className={`h-6 w-px shrink-0 ${darkMode ? 'bg-gray-700' : 'bg-gray-300'}`} />
 
             <div className="flex items-center gap-2 shrink-0">
-              <Globe className={`w-4 h-4 ${darkMode ? 'text-purple-400' : 'text-purple-600'}`} />
+              <Globe className={`w-4 h-4 ${darkMode ? 'text-[var(--asin-accent,#1FA8A0)]' : 'text-[var(--asin-primary,#0E2433)]'}`} />
               <select
                 value={receiptLanguage}
                 onChange={(e) => setReceiptLanguage(e.target.value as any)}
-                className={`text-sm bg-transparent border-none focus:ring-0 cursor-pointer font-medium p-0 ${darkMode ? 'text-gray-300 hover:text-white' : 'text-gray-700 hover:text-blue-600'}`}
+                className={`text-sm bg-transparent border-none focus:ring-0 cursor-pointer font-medium p-0 ${darkMode ? 'text-gray-300 hover:text-white' : 'text-gray-700 hover:text-[var(--asin-accent,#1FA8A0)]'}`}
               >
                 <option value="tr">Türkçe</option>
                 <option value="en">English</option>
@@ -1049,7 +1049,7 @@ export function POSPaymentModal({
               <select
                 value={printFormat}
                 onChange={(e) => void handlePrintFormatChange(e.target.value as PosReceiptPrintFormat)}
-                className={`text-sm bg-transparent border-none focus:ring-0 cursor-pointer font-medium p-0 ${darkMode ? 'text-gray-300 hover:text-white' : 'text-gray-700 hover:text-blue-600'}`}
+                className={`text-sm bg-transparent border-none focus:ring-0 cursor-pointer font-medium p-0 ${darkMode ? 'text-gray-300 hover:text-white' : 'text-gray-700 hover:text-[var(--asin-accent,#1FA8A0)]'}`}
               >
                 <option value="80mm">80mm</option>
                 <option value="A5">A5</option>
@@ -1058,7 +1058,7 @@ export function POSPaymentModal({
             </div>
           </div>
 
-          <div className={`text-[10px] px-2 py-1 rounded-full shrink-0 ${darkMode ? 'bg-blue-900/30 text-blue-400' : 'bg-blue-50 text-blue-600'}`}>
+          <div className={`text-[10px] px-2 py-1 rounded-full shrink-0 ${darkMode ? 'bg-[var(--asin-primary,#0E2433)]/40 text-[var(--asin-accent,#1FA8A0)]' : 'bg-[var(--asin-accent-muted,#D5F0EE)] text-[var(--asin-accent,#1FA8A0)]'}`}>
             POS ID: {receiptNumber.split('-').pop()}
           </div>
         </div>
@@ -1083,11 +1083,11 @@ export function POSPaymentModal({
               aria-busy={draftPrintLoading}
               className={`flex-1 px-4 py-3 rounded font-medium flex items-center justify-center gap-2 border-2 transition-colors min-h-[3rem] ${draftPrintLoading
                 ? darkMode
-                  ? 'border-blue-400 bg-blue-950/40 text-blue-100'
-                  : 'border-blue-500 bg-blue-50 text-blue-800'
+                  ? 'border-[var(--asin-accent,#1FA8A0)] bg-[var(--asin-primary,#0E2433)]/40 text-[var(--asin-accent-muted,#D5F0EE)]'
+                  : 'border-[var(--asin-accent,#1FA8A0)] bg-[var(--asin-accent-muted,#D5F0EE)] text-[var(--asin-primary,#0E2433)]'
                 : darkMode
-                  ? 'border-blue-500 text-blue-200 hover:bg-blue-950/50'
-                  : 'border-blue-600 text-blue-700 hover:bg-blue-50'
+                  ? 'border-[var(--asin-accent,#1FA8A0)] text-[var(--asin-accent-muted,#D5F0EE)] hover:bg-[var(--asin-primary,#0E2433)]/50'
+                  : 'border-[var(--asin-accent,#1FA8A0)] text-[var(--asin-primary,#0E2433)] hover:bg-[var(--asin-accent-muted,#D5F0EE)]'
                 } disabled:cursor-wait`}
             >
               {draftPrintLoading ? (
@@ -1143,7 +1143,7 @@ export function POSPaymentModal({
 
             {/* Payment Info */}
             <div className="space-y-4">
-              <div className="inline-block px-6 py-2 bg-purple-600 rounded-full">
+              <div className="inline-block px-6 py-2 bg-[var(--asin-primary,#0E2433)] rounded-full">
                 <h3 className="text-2xl font-bold text-white">
                   {qrGatewayName.toUpperCase()}
                 </h3>

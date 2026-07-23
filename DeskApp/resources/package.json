@@ -1,7 +1,7 @@
 {
   "name": "retailex-sql-bridge",
   "private": true,
-  "description": "PostgreSQL bridge for RetailEX (Windows service / node bridge.cjs)",
+  "description": "PostgreSQL bridge for AsinERP (Windows service / node bridge.cjs)",
   "dependencies": {
     "@hono/node-server": "^1.19.11",
     "better-sqlite3": "^12.11.1",

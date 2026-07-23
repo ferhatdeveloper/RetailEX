@@ -92,7 +92,7 @@ export async function enhanceScanImage(uri: string): Promise<string> {
 /** Taranmış belgeyi cihaz galerisine kaydet (izin + onay kullanıcıda) */
 export async function saveScanToGallery(
   uri: string,
-  albumName = 'RetailEX',
+  albumName = 'Asin',
 ): Promise<{ ok: boolean; error?: string }> {
   const safe = normalizeScanUri(uri);
   try {
@@ -224,7 +224,7 @@ export async function runDocumentScanPipeline(options?: {
   let savedToGallery = false;
   let saveError: string | undefined;
   if (options?.saveToGallery) {
-    const saved = await saveScanToGallery(uri, options.albumName ?? 'RetailEX');
+    const saved = await saveScanToGallery(uri, options.albumName ?? 'Asin');
     savedToGallery = saved.ok;
     if (!saved.ok) saveError = saved.error;
   }

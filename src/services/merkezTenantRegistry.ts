@@ -53,7 +53,7 @@ export function parseTenantConnectionLine(raw: string): ParsedTenantConnection {
     const pathParts = parsedUrl.pathname.replace(/\/+$/, '').split('/').filter(Boolean);
     if (pathParts.length === 0) {
       throw new Error(
-        'Adreste kiracı yolu yok. Örnek: https://api.retailex.app/aqua — veya yalnızca kiracı kodunu girin.'
+        'Adreste kiracı yolu yok. Örnek: https://…/aqua — veya yalnızca kiracı kodunu girin.'
       );
     }
     const last = pathParts[pathParts.length - 1]!;

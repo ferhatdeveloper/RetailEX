@@ -16,7 +16,7 @@ npm run db:migrate
 ## Nasıl çalışır
 
 1. **Bağlantı:** `config.db` (SQLite) içindeki `config` tablosu `id=1` satırındaki JSON okunur — DeskApp ile aynı yapı (`local_db`, `remote_db`, `pg_local_*`, `pg_remote_*`, `db_mode`). Şifreler Base64 decode edilir (Rust tarafıyla uyumlu).
-2. **config.db yolu sırası:** `CONFIG_DB` ortam değişkeni → `C:\RetailEX\config.db` → `C:\RetailEx\config.db` → proje kökü `config.db`.
+2. **config.db yolu sırası:** `CONFIG_DB` ortam değişkeni → `C:\AsinERP\config.db` → eski `C:\RetailEX\config.db` / `C:\RetailEx\config.db` → proje kökü `config.db`.
 3. **Hedef PG:** `db_mode === 'online'` ise **remote** (`remote_db` + `pg_remote_*`), aksi halde **local**. İsterseniz `MIGRATE_TARGET=local` veya `MIGRATE_TARGET=remote` ile zorlayın.
 4. **Dosyalar:** `database/migrations/` altında `NNN_*.sql` (`N` rakam), **000** ve **001** hariç (sıfır kurulum / demo). `SETUP_*.sql` gibi numarasız dosyalar otomatik çalışmaz.
 5. **Durum:** `public.schema_migrations` tablosunda uygulanan dosya adları tutulur; tekrar çalıştırmada atlanır.

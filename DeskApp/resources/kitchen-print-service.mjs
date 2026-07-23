@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
- * RetailEX Printer Service (unified).
+ * AsinERP Printer Service (unified).
  *
- * Windows hizmeti RetailEX_Printer tarafindan Node worker olarak calistirilir.
+ * Windows hizmeti AsinERP_Printer tarafindan Node worker olarak calistirilir.
  * config.db icinden local/cloud PostgreSQL hedeflerini okur, unified print_jobs
  * ve legacy kitchen_print_jobs kuyruklarini poll eder.
  */
@@ -21,11 +21,11 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
 const IS_WIN = process.platform === 'win32';
 const execFileAsync = promisify(execFile);
-const LOG_FILE = 'C:\\ProgramData\\RetailEX\\printer_service.log';
+const LOG_FILE = 'C:\\ProgramData\\AsinERP\\printer_service.log';
 const POLL_MS = clampNumber(process.env.PRINT_POLL_MS, 500, 60_000, 2500);
 const CLAIM_LIMIT = clampNumber(process.env.PRINT_CLAIM_LIMIT, 1, 50, 10);
 const TCP_TIMEOUT_MS = clampNumber(process.env.PRINT_TCP_TIMEOUT_MS, 1000, 60_000, 8000);
-const WORKER_ID = `RetailEX_Printer/${os.hostname()}/${process.pid}`;
+const WORKER_ID = `AsinERP_Printer/${os.hostname()}/${process.pid}`;
 const RUN_ONCE = process.argv.includes('--once') || process.env.PRINT_ONCE === '1';
 const SHOW_HELP = process.argv.includes('--help') || process.argv.includes('-h');
 const LEGACY_JOB_TYPE = 'kitchen_ticket';
@@ -140,6 +140,7 @@ function parsePgEndpoint(raw, fallback) {
 function resolveConfigDbPath() {
   const candidates = [
     process.env.CONFIG_DB,
+    'C:\\AsinERP\\config.db',
     'C:\\RetailEX\\config.db',
     'C:\\RetailEx\\config.db',
     path.join(process.cwd(), 'config.db'),
@@ -280,7 +281,7 @@ async function withClient(target, fn) {
     password: target.password,
     connectionTimeoutMillis: 3000,
     query_timeout: 20_000,
-    application_name: 'RetailEX_Printer',
+    application_name: 'AsinERP_Printer',
   });
   try {
     await client.connect();
@@ -849,7 +850,7 @@ function extractFrxText(content) {
 function renderFastReportTemplateHtml(template, data) {
   const width = mm(template.width, 80);
   const height = mm(template.height, 297);
-  const pageTitle = firstString(template.name, 'RetailEX Print');
+  const pageTitle = firstString(template.name, 'AsinERP Print');
   const elements = Array.isArray(template.elements) ? template.elements : [];
   return `<!doctype html>
 <html>
@@ -1017,7 +1018,7 @@ function buildTestPageEscPos(job) {
     esc(0x1b, 0x40),
     esc(0x1b, 0x61, 1),
     esc(0x1b, 0x21, 0x30),
-    enc('RetailEX Printer\n'),
+    enc('AsinERP Printer\n'),
     esc(0x1b, 0x21, 0),
     enc('Test Page\n'),
     enc(new Date().toLocaleString('tr-TR')),
@@ -1029,9 +1030,9 @@ function buildTestPageEscPos(job) {
 }
 
 function buildTestPageHtml() {
-  return `<!doctype html><html><head><meta charset="utf-8"><title>RetailEX Printer Test</title>
+  return `<!doctype html><html><head><meta charset="utf-8"><title>AsinERP Printer Test</title>
 <style>@page{margin:10mm}body{font-family:Arial,sans-serif}.box{border:1px solid #111;padding:12mm}</style></head>
-<body><div class="box"><h1>RetailEX Printer</h1><p>Test Page</p><p>${htmlEscape(new Date().toLocaleString('tr-TR'))}</p></div></body></html>`;
+<body><div class="box"><h1>AsinERP Printer</h1><p>Test Page</p><p>${htmlEscape(new Date().toLocaleString('tr-TR'))}</p></div></body></html>`;
 }
 
 async function printJob(row, context) {
@@ -1147,7 +1148,7 @@ async function pollOnce() {
 }
 
 function printHelp() {
-  const text = `RetailEX Printer Service (unified) - kitchen-print-service
+  const text = `AsinERP Printer Service (unified) - kitchen-print-service
 
 Kullanım:
   node scripts/kitchen-print-service.mjs [--once] [--help]
@@ -1168,7 +1169,7 @@ Job tipleri:
   kitchen_ticket, escpos_raw, html_document, pos_receipt_80, account_receipt
   invoice_a4, report_html, product_label, fastreport_template, fastreport_frx, test_page
 
-Windows hizmeti: RetailEX_Printer.exe
+Windows hizmeti: AsinERP_Printer.exe
 Ayrıntı: DeskApp/resources/README_PRINTER_SERVICE.md
 `;
   console.log(text);
@@ -1179,7 +1180,7 @@ async function main() {
     printHelp();
     return;
   }
-  logLine(`RetailEX Printer worker started. worker=${WORKER_ID}, poll=${POLL_MS}ms`);
+  logLine(`AsinERP Printer worker started. worker=${WORKER_ID}, poll=${POLL_MS}ms`);
   do {
     await pollOnce();
     if (RUN_ONCE) break;

@@ -45,7 +45,7 @@ export function LanguageSelectionModal({ onClose, rtlMode, setRtlMode }: Languag
       <div className={`rounded-lg sm:rounded-xl w-full max-w-sm max-h-[90vh] overflow-y-auto shadow-2xl transition-all ${darkMode ? 'bg-gray-900 border border-gray-800' : 'bg-white'
         } ${rtlMode ? 'rtl' : 'ltr'}`}>
         {/* Header */}
-        <div className="px-4 py-3 bg-gradient-to-r from-blue-600 to-blue-700 flex items-center justify-between sticky top-0 z-10">
+        <div className="px-4 py-3 bg-[var(--asin-primary,#0E2433)] flex items-center justify-between sticky top-0 z-10">
           <h3 className="text-base font-semibold flex items-center gap-2 text-white">
             <Globe className="w-4 h-4" />
             {t.languageSelectionTitle}
@@ -85,7 +85,7 @@ export function LanguageSelectionModal({ onClose, rtlMode, setRtlMode }: Languag
                     <rect width="3" height="0.66" y="1.34" fill="#00A651" />
                   </svg>
                 ) : (
-                  <div className={`w-full h-full flex items-center justify-center text-xs font-bold ${language === lang.code ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700'
+                  <div className={`w-full h-full flex items-center justify-center text-xs font-bold ${language === lang.code ? 'bg-[var(--asin-accent,#1FA8A0)] text-white' : 'bg-gray-100 text-gray-700'
                     }`}>
                     {lang.localName}
                   </div>

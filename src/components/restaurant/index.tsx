@@ -357,11 +357,11 @@ export default function RestaurantModule({
     return (
         <div className="flex flex-col h-full bg-[#f1f3f5] overflow-hidden font-sans relative">
             {/* Unified Restaurant Header */}
-            <header className="h-14 flex flex-nowrap items-center justify-between gap-4 px-6 shadow-2xl shrink-0 z-50 min-w-0 max-md:flex-wrap max-md:h-auto max-md:py-2 max-md:px-3" style={{ backgroundColor: '#2563eb', borderBottom: '1px solid rgba(96,165,250,0.4)' }}>
+            <header className="h-14 flex flex-nowrap items-center justify-between gap-4 px-6 shadow-2xl shrink-0 z-50 min-w-0 max-md:flex-wrap max-md:h-auto max-md:py-2 max-md:px-3" style={{ backgroundColor: 'var(--asin-primary, #0E2433)', borderBottom: '1px solid rgba(31,168,160,0.35)' }}>
                 <div className="flex items-center gap-2 select-none min-w-0 shrink-0">
-                    <h1 className="text-[32px] max-md:text-xl font-black tracking-tighter flex items-center" style={{ fontFamily: 'system-ui, -apple-system, sans-serif' }}>
+                    <h1 className="text-[32px] max-md:text-xl font-black tracking-tighter flex items-center" style={{ fontFamily: 'var(--asin-font-brand, Outfit, system-ui, sans-serif)' }}>
                         <span className="text-white drop-shadow-md">Rest</span>
-                        <span className="text-red-500 italic drop-shadow-md" style={{ marginLeft: '-1px' }}>Ex</span>
+                        <span className="italic drop-shadow-md" style={{ marginLeft: '-1px', color: 'var(--asin-accent, #1FA8A0)' }}>Ex</span>
                     </h1>
                 </div>
 
@@ -373,7 +373,7 @@ export default function RestaurantModule({
                                 {activeTablesCount + emptyTablesCount} {tm('resTablesWord')}
                             </span>
                         </div>
-                        <div className="flex items-center gap-2 font-bold text-sm text-blue-200">
+                        <div className="flex items-center gap-2 font-bold text-sm" style={{ color: 'var(--asin-accent-muted, #D5F0EE)' }}>
                             <PlusCircle className="w-4 h-4" /> <span>{tm('resWaiterRequestZero')}</span>
                         </div>
                     </div>
@@ -393,12 +393,12 @@ export default function RestaurantModule({
                         </button>
 
                         <div className="flex items-center gap-2 px-3 py-1.5 bg-white/5 rounded-xl border border-white/10">
-                            <div className="w-8 h-8 rounded-lg bg-blue-500/20 flex items-center justify-center border border-blue-400/30">
-                                <User className="w-4 h-4 text-blue-100" />
+                            <div className="w-8 h-8 rounded-lg flex items-center justify-center border" style={{ backgroundColor: 'rgba(31,168,160,0.2)', borderColor: 'rgba(31,168,160,0.35)' }}>
+                                <User className="w-4 h-4" style={{ color: 'var(--asin-accent-muted, #D5F0EE)' }} />
                             </div>
                             <div className="flex flex-col max-md:hidden">
                                 <span className="text-xs font-bold text-white leading-tight">{currentUser.fullName || currentUser.username}</span>
-                                <span className="text-[9px] font-medium text-blue-200 uppercase tracking-wider">{currentUser.role || tm('resRoleStaffDefault')}</span>
+                                <span className="text-[9px] font-medium uppercase tracking-wider" style={{ color: 'var(--asin-accent-muted, #D5F0EE)' }}>{currentUser.role || tm('resRoleStaffDefault')}</span>
                             </div>
                         </div>
 
@@ -439,7 +439,7 @@ export default function RestaurantModule({
                                     <div className="res-stat-label text-white/80">{tm('resStatTableStatus')}</div>
                                 </div>
                             </div>
-                            <div className="res-stat-card cursor-pointer bg-blue-500" onClick={() => setActiveTab('floor')}>
+                            <div className="res-stat-card cursor-pointer" style={{ backgroundColor: 'var(--asin-accent, #1FA8A0)' }} onClick={() => setActiveTab('floor')}>
                                 <LayoutGrid className="w-6 h-6 text-white" />
                                 <div className="ml-5">
                                     <div className="res-stat-value text-white">

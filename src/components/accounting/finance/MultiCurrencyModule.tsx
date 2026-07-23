@@ -285,7 +285,7 @@ export function MultiCurrencyModule() {
           
           <button
             onClick={() => setShowAddRate(true)}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2"
+            className="px-4 py-2 bg-[var(--asin-accent,#1FA8A0)] text-white rounded-lg hover:bg-[#178f88] flex items-center gap-2"
           >
             <Plus className="w-4 h-4" />
             Kur Ekle
@@ -294,9 +294,9 @@ export function MultiCurrencyModule() {
       </div>
 
       {/* Currency Converter */}
-      <div className="bg-gradient-to-br from-blue-50 to-purple-50 rounded-lg border-2 border-blue-200 p-6">
+      <div className="bg-[var(--asin-accent-muted,#D5F0EE)] rounded-lg border-2 border-[var(--asin-accent,#1FA8A0)]/40 p-6">
         <h3 className="font-semibold mb-4 flex items-center gap-2">
-          <Banknote className="w-5 h-5 text-blue-600" />
+          <Banknote className="w-5 h-5 text-[var(--asin-accent,#1FA8A0)]" />
           Hızlı Dönüştürücü
         </h3>
         
@@ -505,7 +505,7 @@ export function MultiCurrencyModule() {
               <div className="flex gap-2">
                 <button
                   onClick={addExchangeRate}
-                  className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                  className="flex-1 px-4 py-2 bg-[var(--asin-accent,#1FA8A0)] text-white rounded-lg hover:bg-[#178f88]"
                 >
                   Ekle
                 </button>
@@ -542,7 +542,7 @@ export function MultiCurrencyModule() {
               <div className="flex gap-2">
                 <button
                   onClick={updateExchangeRate}
-                  className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                  className="flex-1 px-4 py-2 bg-[var(--asin-accent,#1FA8A0)] text-white rounded-lg hover:bg-[#178f88]"
                 >
                   Güncelle
                 </button>

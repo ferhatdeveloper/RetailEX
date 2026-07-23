@@ -1,5 +1,5 @@
 import { pgQuery } from './pgClient';
-import { postgrestDelete, postgrestGet, postgrestPatch, postgrestPost } from './postgrestClient';
+import { postgrestGet } from './postgrestClient';
 import { runDataTransport } from './dataTransport';
 import {
   appendStoreIdFilter,
@@ -51,11 +51,6 @@ import {
   upsertPendingInvoiceInCache,
 } from '../offline/snapshotCache';
 import { useConnectivityStore } from '../store/connectivityStore';
-import {
-  shouldPreferPostgrest,
-  shouldUseBridgeSql,
-  useConfigStore,
-} from '../store/configStore';
 
 export type { InvoiceListFilter, InvoicesListPreset } from './invoiceFilters';
 export {
@@ -447,89 +442,32 @@ export type InvoiceDetail = InvoiceRow & {
   lines: InvoiceLine[];
 };
 
-function mapInvoiceLine(r: Record<string, unknown>): InvoiceLine {
-  return {
-    id: r.id != null ? String(r.id) : '',
-    item_code: r.item_code != null ? String(r.item_code) : null,
-    item_name: r.item_name != null ? String(r.item_name) : null,
-    product_id: r.product_id != null ? String(r.product_id) : null,
-    quantity: Number(r.quantity ?? 0) || 0,
-    unit_price: Number(r.unit_price ?? 0) || 0,
-    net_amount: Number(r.net_amount ?? r.total_amount ?? 0) || 0,
-    unit: r.unit != null ? String(r.unit) : null,
-    vat_rate: Number(r.vat_rate ?? 0) || 0,
-    discount_rate: Number(r.discount_rate ?? 0) || 0,
-    item_type: r.item_type != null ? String(r.item_type) : null,
-  };
-}
+export async function fetchInvoiceById(id: string): Promise<InvoiceDetail | null> {
+  if (!id) return null;
 
-async function fetchInvoiceByIdViaRest(id: string): Promise<InvoiceDetail | null> {
-  const header = salesTable();
-  const items = saleItemsTable();
-  const rows = await postgrestGet<Record<string, unknown>[]>(
-    `/${header}`,
-    {
-      select:
-        'id,fiche_no,date,customer_name,customer_id,document_no,store_id,net_amount,total_net,total_gross,status,fiche_type,trcode,payment_method,is_cancelled,notes,total_vat,total_discount,currency,currency_rate,header_fields',
-      id: `eq.${id}`,
-      limit: 1,
-    },
-    { schema: 'public' },
-  );
-  const raw = Array.isArray(rows) ? rows[0] : null;
-  if (!raw) return null;
-
-  const base = mapInvoiceRow(raw);
-  let lineRows: Record<string, unknown>[] = [];
-  try {
-    const full = await postgrestGet<Record<string, unknown>[]>(
-      `/${items}`,
-      {
-        select:
-          'id,item_code,item_name,product_id,quantity,unit_price,net_amount,total_amount,unit,vat_rate,discount_rate,item_type',
-        invoice_id: `eq.${id}`,
-        order: 'id.asc',
-        limit: 2000,
-      },
-      { schema: 'public' },
-    );
-    lineRows = Array.isArray(full) ? full : [];
-  } catch {
-    const slim = await postgrestGet<Record<string, unknown>[]>(
-      `/${items}`,
-      {
-        select: 'id,item_code,item_name,product_id,quantity,unit_price,net_amount,total_amount,unit',
-        invoice_id: `eq.${id}`,
-        order: 'id.asc',
-        limit: 2000,
-      },
-      { schema: 'public' },
-    );
-    lineRows = Array.isArray(slim) ? slim : [];
+  if (!shouldUseLiveData()) {
+    const pending = await getPendingInvoiceById(id);
+    if (!pending) return null;
+    return {
+      id: pending.id,
+      fiche_no: pending.fiche_no,
+      date: pending.date,
+      customer_name: pending.customer_name,
+      net_amount: pending.net_amount,
+      total_gross: pending.total_gross,
+      status: pending.status,
+      fiche_type: pending.fiche_type,
+      trcode: pending.trcode,
+      payment_method: pending.payment_method,
+      is_cancelled: pending.is_cancelled,
+      notes: pending.notes,
+      total_vat: pending.total_vat,
+      total_discount: pending.total_discount,
+      currency: pending.currency,
+      lines: pending.lines,
+    };
   }
 
-  const hfRaw = raw.header_fields;
-  const header_fields =
-    hfRaw && typeof hfRaw === 'object' && !Array.isArray(hfRaw)
-      ? (hfRaw as InvoiceHeaderFieldsInput)
-      : null;
-
-  return {
-    ...base,
-    notes: raw.notes != null ? String(raw.notes) : null,
-    total_vat: Number(raw.total_vat ?? 0) || 0,
-    total_discount: Number(raw.total_discount ?? 0) || 0,
-    currency: raw.currency != null ? String(raw.currency) : null,
-    currency_rate: Number(raw.currency_rate ?? 1) || 1,
-    document_no: raw.document_no != null ? String(raw.document_no) : null,
-    customer_id: raw.customer_id != null ? String(raw.customer_id) : null,
-    store_id: raw.store_id != null ? String(raw.store_id) : null,
-    header_fields,
-    lines: lineRows.map(mapInvoiceLine),
-  };
-}
-
-async function fetchInvoiceByIdViaBridge(id: string): Promise<InvoiceDetail | null> {
   const header = salesTable();
   const items = saleItemsTable();
 
@@ -613,39 +551,6 @@ async function fetchInvoiceByIdViaBridge(id: string): Promise<InvoiceDetail | nu
       : null;
 
   return { ...row, header_fields, lines };
-}
-
-export async function fetchInvoiceById(id: string): Promise<InvoiceDetail | null> {
-  if (!id) return null;
-
-  if (!shouldUseLiveData()) {
-    const pending = await getPendingInvoiceById(id);
-    if (!pending) return null;
-    return {
-      id: pending.id,
-      fiche_no: pending.fiche_no,
-      date: pending.date,
-      customer_name: pending.customer_name,
-      net_amount: pending.net_amount,
-      total_gross: pending.total_gross,
-      status: pending.status,
-      fiche_type: pending.fiche_type,
-      trcode: pending.trcode,
-      payment_method: pending.payment_method,
-      is_cancelled: pending.is_cancelled,
-      notes: pending.notes,
-      total_vat: pending.total_vat,
-      total_discount: pending.total_discount,
-      currency: pending.currency,
-      lines: pending.lines,
-    };
-  }
-
-  return runDataTransport({
-    label: 'fetchInvoiceById',
-    viaRest: () => fetchInvoiceByIdViaRest(id),
-    viaBridge: () => fetchInvoiceByIdViaBridge(id),
-  });
 }
 
 export type InvoiceDraftLine = InvoiceLineInput;
@@ -827,109 +732,6 @@ function nextFicheNo(prefix: string): string {
   return `${prefix}-${stamp}`;
 }
 
-async function adjustProductStockViaPostgrest(
-  productId: string,
-  delta: number,
-  fn = firmNr(),
-): Promise<void> {
-  if (!productId || !delta) return;
-  const table = productsTable(fn);
-  const rows = await postgrestGet<Record<string, unknown>[]>(
-    `/${table}`,
-    { select: 'stock', id: `eq.${productId}`, limit: 1 },
-    { schema: 'public' },
-  );
-  const row = Array.isArray(rows) ? rows[0] : null;
-  if (!row) {
-    throw new Error(`Stok güncelleme: ürün bulunamadı (${productId})`);
-  }
-  const current = Number(row.stock ?? 0) || 0;
-  await postgrestPatch(
-    `/${table}?id=eq.${encodeURIComponent(productId)}`,
-    { stock: current + delta, updated_at: new Date().toISOString() },
-    { schema: 'public', prefer: 'return=minimal' },
-  );
-}
-
-async function insertSaleItemViaPostgrest(
-  itemsTable: string,
-  opts: {
-    invoiceId: string;
-    firmNr: string;
-    periodNr: string;
-    line: InvoiceDraftLine;
-  },
-): Promise<void> {
-  const lineNet = invoiceLineNet(opts.line);
-  const lineId = newUuid();
-  const vatRate = Math.max(0, Number(opts.line.vatRate) || 0);
-  const disc = Math.min(100, Math.max(0, Number(opts.line.discountPercent) || 0));
-  const body: Record<string, unknown> = {
-    id: lineId,
-    invoice_id: opts.invoiceId,
-    firm_nr: opts.firmNr,
-    period_nr: opts.periodNr,
-    product_id: opts.line.productId,
-    item_code: opts.line.code ?? null,
-    item_name: opts.line.name,
-    quantity: opts.line.qty,
-    unit_price: opts.line.unitPrice,
-    discount_rate: disc,
-    vat_rate: vatRate,
-    net_amount: lineNet,
-    total_amount: lineNet,
-    unit: opts.line.unit || 'Adet',
-  };
-  try {
-    await postgrestPost(`/${itemsTable}`, body, {
-      schema: 'public',
-      prefer: 'return=minimal',
-    });
-  } catch {
-    const slim = { ...body };
-    delete slim.vat_rate;
-    delete slim.discount_rate;
-    await postgrestPost(`/${itemsTable}`, slim, {
-      schema: 'public',
-      prefer: 'return=minimal',
-    });
-  }
-}
-
-async function runInvoiceWriteTransport<T>(
-  label: string,
-  viaRest: () => Promise<T>,
-  viaBridge: () => Promise<T>,
-): Promise<T> {
-  const cfg = useConfigStore.getState().config;
-  const preferRest = shouldPreferPostgrest(cfg);
-  const canBridge = shouldUseBridgeSql(cfg);
-
-  if (preferRest) {
-    try {
-      return await viaRest();
-    } catch (e) {
-      if (!canBridge) throw e;
-      if (__DEV__) {
-        console.warn(
-          `[${label}] PostgREST → bridge`,
-          e instanceof Error ? e.message : e,
-        );
-      }
-    }
-  }
-
-  if (!canBridge) {
-    throw new Error(
-      preferRest
-        ? `PostgREST ${label} başarısız ve bridge kapalı (apiMode=postgrest)`
-        : 'Bridge yapılandırması eksik',
-    );
-  }
-
-  return viaBridge();
-}
-
 async function insertSaleItemRow(
   itemsTable: string,
   opts: {
@@ -1002,123 +804,7 @@ async function insertSaleItemRow(
 }
 
 /** Basit satış faturası — POS ile aynı tablolar, fiche_type=sales_invoice, trcode=8 (toptan) */
-async function createSalesInvoiceViaPostgrest(
-  opts: {
-    customerId?: string;
-    customerName: string;
-    notes?: string;
-    paymentMethod?: string;
-    lines: InvoiceDraftLine[];
-  } & InvoiceCreateExtras,
-  writeOpts?: Pick<InvoiceWriteOptions, 'id' | 'ficheNo'>,
-): Promise<InvoiceWriteResult> {
-  if (!opts.lines.length) throw new Error('En az bir kalem gerekli');
-
-  const fn = firmNr();
-  const pn = periodNr();
-  const sales = salesTable(fn, pn);
-  const items = saleItemsTable(fn, pn);
-  const { useAuthStore } = await import('../store/authStore');
-
-  const id = writeOpts?.id || newUuid();
-  const ficheNo = writeOpts?.ficheNo || nextFicheNo('SF');
-  const totals = invoiceTotalsFromLines(opts.lines, opts.footerDiscountAmount);
-  const total = totals.net;
-  const discountTotal = totals.lineDiscount + totals.footerDiscount;
-  const user = useAuthStore.getState().user;
-  const cashier = user?.fullName || user?.username || 'mobile';
-  const customerName = opts.customerName.trim() || 'Perakende';
-  const documentNo = opts.documentNo?.trim() || ficheNo;
-  const invDate = normalizeInvoiceDate(opts.invoiceDate);
-  const currency = (opts.currency || 'TRY').trim() || 'TRY';
-  const currencyRate = Number(opts.currencyRate) > 0 ? Number(opts.currencyRate) : 1;
-  const headerFields = JSON.parse(buildHeaderFieldsJson(opts, documentNo)) as Record<
-    string,
-    unknown
-  >;
-
-  await postgrestPost(
-    `/${sales}`,
-    {
-      id,
-      firm_nr: fn,
-      period_nr: pn,
-      fiche_no: ficheNo,
-      document_no: documentNo,
-      date: invDate ? `${invDate}T12:00:00.000Z` : new Date().toISOString(),
-      fiche_type: 'sales_invoice',
-      trcode: 8,
-      customer_id: opts.customerId || null,
-      customer_name: customerName,
-      store_id: opts.storeId || null,
-      total_net: total,
-      total_vat: totals.totalVat,
-      total_gross: totals.subtotal,
-      total_discount: discountTotal,
-      net_amount: total,
-      currency,
-      currency_rate: currencyRate,
-      status: 'approved',
-      payment_method: opts.paymentMethod || 'Nakit',
-      cashier,
-      notes: opts.notes?.trim() || 'RetailEX Mobile Fatura',
-      header_fields: headerFields,
-    },
-    { schema: 'public', prefer: 'return=minimal' },
-  );
-
-  for (const line of opts.lines) {
-    await insertSaleItemViaPostgrest(items, {
-      invoiceId: id,
-      firmNr: fn,
-      periodNr: pn,
-      line,
-    });
-
-    if (!lineAffectsStock(line)) continue;
-    try {
-      await adjustProductStockViaPostgrest(line.productId ?? '', -line.qty, fn);
-    } catch {
-      /* şema farkı */
-    }
-  }
-
-  const pm = opts.paymentMethod || 'Nakit';
-  if (opts.customerId && paymentMethodImpliesCustomerDebt(pm) && total > 0) {
-    try {
-      await adjustCustomerBalance(opts.customerId, total);
-    } catch {
-      /* cari yoksa sessiz */
-    }
-  }
-  if (paymentMethodImpliesCashInKasa(pm) && total > 0) {
-    try {
-      await recordKasaGirisForSale({
-        amount: total,
-        ficheNo,
-        description: `Satış faturası — ${ficheNo}`,
-        customerId: opts.customerId || null,
-        registerId: opts.cashRegisterId || null,
-      });
-    } catch {
-      /* kasa yoksa sessiz */
-    }
-  } else if (paymentMethodImpliesBankTransfer(pm) && total > 0) {
-    try {
-      await recordBankaGirisForSale({
-        amount: total,
-        ficheNo,
-        description: `Satış faturası (havale) — ${ficheNo}`,
-      });
-    } catch {
-      /* banka yoksa sessiz */
-    }
-  }
-
-  return { id, ficheNo, total };
-}
-
-async function createSalesInvoiceViaBridge(
+async function createSalesInvoiceLive(
   opts: {
     customerId?: string;
     customerName: string;
@@ -1181,7 +867,7 @@ async function createSalesInvoiceViaBridge(
       currencyRate,
       opts.paymentMethod || 'Nakit',
       cashier,
-      opts.notes?.trim() || 'RetailEX Mobile Fatura',
+      opts.notes?.trim() || 'Asin Mobile Fatura',
       headerFieldsJson,
     ],
   );
@@ -1242,23 +928,6 @@ async function createSalesInvoiceViaBridge(
   return { id, ficheNo, total };
 }
 
-async function createSalesInvoiceLive(
-  opts: {
-    customerId?: string;
-    customerName: string;
-    notes?: string;
-    paymentMethod?: string;
-    lines: InvoiceDraftLine[];
-  } & InvoiceCreateExtras,
-  writeOpts?: Pick<InvoiceWriteOptions, 'id' | 'ficheNo'>,
-): Promise<InvoiceWriteResult> {
-  return runInvoiceWriteTransport(
-    'createSalesInvoice',
-    () => createSalesInvoiceViaPostgrest(opts, writeOpts),
-    () => createSalesInvoiceViaBridge(opts, writeOpts),
-  );
-}
-
 export async function createSalesInvoice(
   opts: {
     customerId?: string;
@@ -1308,7 +977,7 @@ export async function createSalesInvoice(
       trcode: 8,
       payment_method: opts.paymentMethod || 'Nakit',
       is_cancelled: false,
-      notes: opts.notes?.trim() || 'RetailEX Mobile Fatura',
+      notes: opts.notes?.trim() || 'Asin Mobile Fatura',
       total_vat: totals.totalVat,
       total_discount: totals.lineDiscount + totals.footerDiscount,
       currency: 'TRY',
@@ -1331,123 +1000,7 @@ export async function createSalesInvoice(
 }
 
 /** Basit alış faturası — trcode=1, stok artışı */
-async function createPurchaseInvoiceViaPostgrest(
-  opts: {
-    supplierId?: string;
-    supplierName: string;
-    notes?: string;
-    paymentMethod?: string;
-    lines: InvoiceDraftLine[];
-  } & InvoiceCreateExtras,
-  writeOpts?: Pick<InvoiceWriteOptions, 'id' | 'ficheNo'>,
-): Promise<InvoiceWriteResult> {
-  if (!opts.lines.length) throw new Error('En az bir kalem gerekli');
-
-  const fn = firmNr();
-  const pn = periodNr();
-  const sales = salesTable(fn, pn);
-  const items = saleItemsTable(fn, pn);
-  const { useAuthStore } = await import('../store/authStore');
-
-  const id = writeOpts?.id || newUuid();
-  const ficheNo = writeOpts?.ficheNo || nextFicheNo('AF');
-  const totals = invoiceTotalsFromLines(opts.lines, opts.footerDiscountAmount);
-  const total = totals.net;
-  const discountTotal = totals.lineDiscount + totals.footerDiscount;
-  const user = useAuthStore.getState().user;
-  const cashier = user?.fullName || user?.username || 'mobile';
-  const supplierName = opts.supplierName.trim() || 'Tedarikçi';
-  const documentNo = opts.documentNo?.trim() || ficheNo;
-  const invDate = normalizeInvoiceDate(opts.invoiceDate);
-  const currency = (opts.currency || 'TRY').trim() || 'TRY';
-  const currencyRate = Number(opts.currencyRate) > 0 ? Number(opts.currencyRate) : 1;
-  const headerFields = JSON.parse(buildHeaderFieldsJson(opts, documentNo)) as Record<
-    string,
-    unknown
-  >;
-
-  await postgrestPost(
-    `/${sales}`,
-    {
-      id,
-      firm_nr: fn,
-      period_nr: pn,
-      fiche_no: ficheNo,
-      document_no: documentNo,
-      date: invDate ? `${invDate}T12:00:00.000Z` : new Date().toISOString(),
-      fiche_type: 'purchase_invoice',
-      trcode: 1,
-      customer_id: opts.supplierId || null,
-      customer_name: supplierName,
-      store_id: opts.storeId || null,
-      total_net: total,
-      total_vat: totals.totalVat,
-      total_gross: totals.subtotal,
-      total_discount: discountTotal,
-      net_amount: total,
-      currency,
-      currency_rate: currencyRate,
-      status: 'approved',
-      payment_method: opts.paymentMethod || 'Nakit',
-      cashier,
-      notes: opts.notes?.trim() || 'RetailEX Mobile Alış Faturası',
-      header_fields: headerFields,
-    },
-    { schema: 'public', prefer: 'return=minimal' },
-  );
-
-  for (const line of opts.lines) {
-    await insertSaleItemViaPostgrest(items, {
-      invoiceId: id,
-      firmNr: fn,
-      periodNr: pn,
-      line,
-    });
-
-    if (!lineAffectsStock(line)) continue;
-    try {
-      await adjustProductStockViaPostgrest(line.productId ?? '', line.qty, fn);
-    } catch {
-      /* şema farkı */
-    }
-  }
-
-  const pm = opts.paymentMethod || 'Nakit';
-  if (opts.supplierId && paymentMethodImpliesSupplierDebt(pm) && total > 0) {
-    try {
-      await adjustSupplierBalance(opts.supplierId, total);
-    } catch {
-      /* tedarikçi yoksa sessiz */
-    }
-  }
-
-  if (paymentMethodImpliesCashOutKasa(pm) && total > 0) {
-    try {
-      await recordKasaCikisForPurchase({
-        amount: total,
-        ficheNo,
-        description: `Alış faturası — ${ficheNo}`,
-        supplierId: opts.supplierId || null,
-      });
-    } catch {
-      /* kasa yok / şema — alış yine geçerli */
-    }
-  } else if (paymentMethodImpliesBankTransfer(pm) && total > 0) {
-    try {
-      await recordBankaCikisForPurchase({
-        amount: total,
-        ficheNo,
-        description: `Alış faturası (havale) — ${ficheNo}`,
-      });
-    } catch {
-      /* banka yok / şema — alış yine geçerli */
-    }
-  }
-
-  return { id, ficheNo, total };
-}
-
-async function createPurchaseInvoiceViaBridge(
+async function createPurchaseInvoiceLive(
   opts: {
     supplierId?: string;
     supplierName: string;
@@ -1510,7 +1063,7 @@ async function createPurchaseInvoiceViaBridge(
       currencyRate,
       opts.paymentMethod || 'Nakit',
       cashier,
-      opts.notes?.trim() || 'RetailEX Mobile Alış Faturası',
+      opts.notes?.trim() || 'Asin Mobile Alış Faturası',
       headerFieldsJson,
     ],
   );
@@ -1573,23 +1126,6 @@ async function createPurchaseInvoiceViaBridge(
   return { id, ficheNo, total };
 }
 
-async function createPurchaseInvoiceLive(
-  opts: {
-    supplierId?: string;
-    supplierName: string;
-    notes?: string;
-    paymentMethod?: string;
-    lines: InvoiceDraftLine[];
-  } & InvoiceCreateExtras,
-  writeOpts?: Pick<InvoiceWriteOptions, 'id' | 'ficheNo'>,
-): Promise<InvoiceWriteResult> {
-  return runInvoiceWriteTransport(
-    'createPurchaseInvoice',
-    () => createPurchaseInvoiceViaPostgrest(opts, writeOpts),
-    () => createPurchaseInvoiceViaBridge(opts, writeOpts),
-  );
-}
-
 export async function createPurchaseInvoice(
   opts: {
     supplierId?: string;
@@ -1639,7 +1175,7 @@ export async function createPurchaseInvoice(
       trcode: 1,
       payment_method: opts.paymentMethod || 'Nakit',
       is_cancelled: false,
-      notes: opts.notes?.trim() || 'RetailEX Mobile Alış Faturası',
+      notes: opts.notes?.trim() || 'Asin Mobile Alış Faturası',
       total_vat: totals.totalVat,
       total_discount: totals.lineDiscount + totals.footerDiscount,
       currency: 'TRY',
@@ -1661,67 +1197,22 @@ export async function createPurchaseInvoice(
   return createPurchaseInvoiceLive(opts, { id, ficheNo });
 }
 
-type ReturnInvoiceLiveOpts = {
-  trcode: 3 | 6;
-  accountId?: string;
-  accountName: string;
-  notes?: string;
-  paymentMethod?: string;
-  cashier?: string;
-  returnReason?: string;
-  lines: InvoiceDraftLine[];
-} & InvoiceCreateExtras;
-
-async function applyReturnInvoiceSideEffects(opts: {
-  isSalesReturn: boolean;
-  accountId?: string;
-  total: number;
-  ficheNo: string;
-  paymentMethod?: string;
-}): Promise<void> {
-  const pm = opts.paymentMethod || 'Nakit';
-  if (opts.total <= 0) return;
-  try {
-    if (opts.isSalesReturn) {
-      if (opts.accountId && paymentMethodImpliesCustomerDebt(pm)) {
-        await adjustCustomerBalance(opts.accountId, -opts.total);
-      } else if (paymentMethodImpliesCashOutKasa(pm)) {
-        await recordKasaCikisForReturn({
-          amount: opts.total,
-          ficheNo: opts.ficheNo,
-          description: `Satış iadesi — ${opts.ficheNo}`,
-          customerId: opts.accountId || null,
-        });
-      } else if (paymentMethodImpliesBankTransfer(pm)) {
-        await recordBankaCikisForReturn({
-          amount: opts.total,
-          ficheNo: opts.ficheNo,
-          description: `Satış iadesi (havale) — ${opts.ficheNo}`,
-        });
-      }
-    } else if (opts.accountId && paymentMethodImpliesSupplierDebt(pm)) {
-      await adjustSupplierBalance(opts.accountId, -opts.total);
-    } else if (paymentMethodImpliesCashOutKasa(pm)) {
-      await recordKasaGirisForPurchaseReturn({
-        amount: opts.total,
-        ficheNo: opts.ficheNo,
-        description: `Alış iadesi — ${opts.ficheNo}`,
-        supplierId: opts.accountId || null,
-      });
-    } else if (paymentMethodImpliesBankTransfer(pm)) {
-      await recordBankaGirisForPurchaseReturn({
-        amount: opts.total,
-        ficheNo: opts.ficheNo,
-        description: `Alış iadesi (havale) — ${opts.ficheNo}`,
-      });
-    }
-  } catch {
-    /* kart/kasa/banka yoksa sessiz */
-  }
-}
-
-async function createReturnInvoiceViaPostgrest(
-  opts: ReturnInvoiceLiveOpts,
+/**
+ * İade faturası — Logo trcode:
+ * - 3 satış iade: fiche_type=return_invoice, stok +, müşteri bakiyesi −
+ * - 6 alış iade: fiche_type=purchase_invoice, stok −, tedarikçi bakiyesi −
+ */
+async function createReturnInvoiceLive(
+  opts: {
+    trcode: 3 | 6;
+    accountId?: string;
+    accountName: string;
+    notes?: string;
+    paymentMethod?: string;
+    cashier?: string;
+    returnReason?: string;
+    lines: InvoiceDraftLine[];
+  } & InvoiceCreateExtras,
   writeOpts?: Pick<InvoiceWriteOptions, 'id' | 'ficheNo'>,
 ): Promise<InvoiceWriteResult> {
   if (!opts.lines.length) throw new Error('En az bir kalem gerekli');
@@ -1749,100 +1240,7 @@ async function createReturnInvoiceViaPostgrest(
   const notesParts = [
     opts.notes?.trim(),
     reasonNote ? `İade nedeni: ${reasonNote}` : null,
-    'RetailEX Mobile İade',
-  ].filter(Boolean);
-  const notes = notesParts.join(' · ');
-  const stockSign = isSalesReturn ? 1 : -1;
-
-  await postgrestPost(
-    `/${sales}`,
-    {
-      id,
-      firm_nr: fn,
-      period_nr: pn,
-      fiche_no: ficheNo,
-      document_no: documentNo,
-      date: new Date().toISOString(),
-      fiche_type: ficheType,
-      trcode: opts.trcode,
-      customer_id: opts.accountId || null,
-      customer_name: accountName,
-      total_net: total,
-      total_vat: totals.totalVat,
-      total_gross: totals.subtotal,
-      total_discount: discountTotal,
-      net_amount: total,
-      currency: 'TRY',
-      currency_rate: 1,
-      status: 'completed',
-      payment_method: opts.paymentMethod || 'Nakit',
-      cashier,
-      notes,
-    },
-    { schema: 'public', prefer: 'return=minimal' },
-  );
-
-  for (const line of opts.lines) {
-    await insertSaleItemViaPostgrest(items, {
-      invoiceId: id,
-      firmNr: fn,
-      periodNr: pn,
-      line,
-    });
-
-    if (!lineAffectsStock(line)) continue;
-    try {
-      await adjustProductStockViaPostgrest(
-        line.productId ?? '',
-        stockSign * line.qty,
-        fn,
-      );
-    } catch {
-      /* şema farkı */
-    }
-  }
-
-  await applyReturnInvoiceSideEffects({
-    isSalesReturn,
-    accountId: opts.accountId,
-    total,
-    ficheNo,
-    paymentMethod: opts.paymentMethod,
-  });
-
-  return { id, ficheNo, total };
-}
-
-async function createReturnInvoiceViaBridge(
-  opts: ReturnInvoiceLiveOpts,
-  writeOpts?: Pick<InvoiceWriteOptions, 'id' | 'ficheNo'>,
-): Promise<InvoiceWriteResult> {
-  if (!opts.lines.length) throw new Error('En az bir kalem gerekli');
-
-  const isSalesReturn = opts.trcode === 3;
-  const fn = firmNr();
-  const pn = periodNr();
-  const sales = salesTable(fn, pn);
-  const items = saleItemsTable(fn, pn);
-  const { useAuthStore } = await import('../store/authStore');
-
-  const id = writeOpts?.id || newUuid();
-  const ficheNo = writeOpts?.ficheNo || nextFicheNo(isSalesReturn ? 'SI' : 'AI');
-  const totals = invoiceTotalsFromLines(opts.lines, opts.footerDiscountAmount);
-  const total = totals.net;
-  const discountTotal = totals.lineDiscount + totals.footerDiscount;
-  const user = useAuthStore.getState().user;
-  const cashier =
-    opts.cashier?.trim() || user?.fullName || user?.username || 'mobile';
-  const accountName =
-    opts.accountName.trim() || (isSalesReturn ? 'Perakende' : 'Tedarikçi');
-  const documentNo = opts.documentNo?.trim() || ficheNo;
-  const ficheType = isSalesReturn ? 'return_invoice' : 'purchase_invoice';
-  const reasonNote = opts.returnReason?.trim();
-  const notesParts = [
-    opts.notes?.trim(),
-    reasonNote ? `İade nedeni: ${reasonNote}` : null,
-    'RetailEX Mobile İade',
+    'Asin Mobile İade',
   ].filter(Boolean);
   const notes = notesParts.join(' · ');
 
@@ -1902,26 +1300,53 @@ async function createReturnInvoiceViaBridge(
     }
   }
 
-  await applyReturnInvoiceSideEffects({
-    isSalesReturn,
-    accountId: opts.accountId,
-    total,
-    ficheNo,
-    paymentMethod: opts.paymentMethod,
-  });
+  // Yan etki (V2-R14 / V2-R16 / R5 P2):
+  // - Veresiye satış iade → müşteri bakiyesi −
+  // - Peşin satış iade nakit/kart → KASA_CIKIS; havale → BANKA_CIKIS
+  // - Açık hesap alış iade → tedarikçi bakiyesi −
+  // - Peşin alış iade nakit/kart → KASA_GIRIS; havale → BANKA_GIRIS
+  const pm = opts.paymentMethod || 'Nakit';
+  if (total > 0) {
+    try {
+      if (isSalesReturn) {
+        if (opts.accountId && paymentMethodImpliesCustomerDebt(pm)) {
+          await adjustCustomerBalance(opts.accountId, -total);
+        } else if (paymentMethodImpliesCashOutKasa(pm)) {
+          await recordKasaCikisForReturn({
+            amount: total,
+            ficheNo,
+            description: `Satış iadesi — ${ficheNo}`,
+            customerId: opts.accountId || null,
+          });
+        } else if (paymentMethodImpliesBankTransfer(pm)) {
+          await recordBankaCikisForReturn({
+            amount: total,
+            ficheNo,
+            description: `Satış iadesi (havale) — ${ficheNo}`,
+          });
+        }
+      } else if (opts.accountId && paymentMethodImpliesSupplierDebt(pm)) {
+        await adjustSupplierBalance(opts.accountId, -total);
+      } else if (paymentMethodImpliesCashOutKasa(pm)) {
+        await recordKasaGirisForPurchaseReturn({
+          amount: total,
+          ficheNo,
+          description: `Alış iadesi — ${ficheNo}`,
+          supplierId: opts.accountId || null,
+        });
+      } else if (paymentMethodImpliesBankTransfer(pm)) {
+        await recordBankaGirisForPurchaseReturn({
+          amount: total,
+          ficheNo,
+          description: `Alış iadesi (havale) — ${ficheNo}`,
+        });
+      }
+    } catch {
+      /* kart/kasa/banka yoksa sessiz */
+    }
+  }
 
   return { id, ficheNo, total };
-}
-
-async function createReturnInvoiceLive(
-  opts: ReturnInvoiceLiveOpts,
-  writeOpts?: Pick<InvoiceWriteOptions, 'id' | 'ficheNo'>,
-): Promise<InvoiceWriteResult> {
-  return runInvoiceWriteTransport(
-    'createReturnInvoice',
-    () => createReturnInvoiceViaPostgrest(opts, writeOpts),
-    () => createReturnInvoiceViaBridge(opts, writeOpts),
-  );
 }
 
 export async function createReturnInvoice(
@@ -1987,7 +1412,7 @@ export async function createReturnInvoice(
       trcode: opts.trcode,
       payment_method: opts.paymentMethod || 'Nakit',
       is_cancelled: false,
-      notes: opts.notes?.trim() || 'RetailEX Mobile İade',
+      notes: opts.notes?.trim() || 'Asin Mobile İade',
       total_vat: totals.totalVat,
       total_discount: totals.lineDiscount + totals.footerDiscount,
       currency: 'TRY',
@@ -2022,111 +1447,29 @@ export type InvoiceUpdatePatch = {
   footerDiscountAmount?: number;
 };
 
-function buildInvoiceHeaderPatchBody(patch: InvoiceUpdatePatch): Record<string, unknown> {
-  const body: Record<string, unknown> = {};
-  if (patch.notes !== undefined) body.notes = patch.notes.trim() || null;
-  if (patch.status !== undefined) body.status = patch.status.trim() || null;
-  if (patch.documentNo !== undefined) body.document_no = patch.documentNo.trim() || null;
-  if (patch.invoiceDate !== undefined) {
-    const d = normalizeInvoiceDate(patch.invoiceDate);
-    if (d) body.date = `${d}T12:00:00.000Z`;
-  }
-  if (patch.currency !== undefined) {
-    body.currency = (patch.currency || 'TRY').trim() || 'TRY';
-  }
-  if (patch.currencyRate !== undefined) {
-    body.currency_rate = Number(patch.currencyRate) > 0 ? Number(patch.currencyRate) : 1;
-  }
-  if (patch.headerFields !== undefined) {
-    body.header_fields = patch.headerFields || {};
-  }
-  if (patch.lines) {
-    const totals = invoiceTotalsFromLines(patch.lines, patch.footerDiscountAmount);
-    body.total_net = totals.net;
-    body.net_amount = totals.net;
-    body.total_vat = totals.totalVat;
-    body.total_gross = totals.subtotal;
-    body.total_discount = totals.lineDiscount + totals.footerDiscount;
-  }
-  return body;
-}
-
-async function assertInvoiceLineEditAllowed(
-  table: string,
+async function updateInvoiceHeaderLive(
   id: string,
   patch: InvoiceUpdatePatch,
-  readStatus: () => Promise<string | null>,
 ): Promise<void> {
-  if (patch.lines === undefined) return;
-  const currentStatus = await readStatus();
+  if (!id) throw new Error('Fatura id gerekli');
+  const table = salesTable();
+  const itemsTable = saleItemsTable();
+
+  const statusRes = await pgQuery<{ status: string | null }>(
+    `SELECT status FROM ${table} WHERE id::text = $1 LIMIT 1`,
+    [id],
+  );
+  const currentStatus = statusRes.rows[0]?.status ?? null;
   const allowLines = invoiceAllowsLineEdit(currentStatus);
-  if (!allowLines) {
-    throw new Error(
-      'Kalem düzenleme yalnızca taslak (draft) faturalarda mümkündür. Onaylı fişte stok/cari yan etkisi için web formu kullanın.',
-    );
-  }
-  if (!patch.lines.length) throw new Error('En az bir kalem gerekli');
-}
 
-async function updateInvoiceHeaderViaPostgrest(
-  id: string,
-  patch: InvoiceUpdatePatch,
-): Promise<void> {
-  if (!id) throw new Error('Fatura id gerekli');
-  const table = salesTable();
-  const itemsTable = saleItemsTable();
-
-  await assertInvoiceLineEditAllowed(table, id, patch, async () => {
-    const rows = await postgrestGet<Record<string, unknown>[]>(
-      `/${table}`,
-      { select: 'status', id: `eq.${id}`, limit: 1 },
-      { schema: 'public' },
-    );
-    const raw = Array.isArray(rows) ? rows[0] : null;
-    return raw?.status != null ? String(raw.status) : null;
-  });
-
-  const body = buildInvoiceHeaderPatchBody(patch);
-  if (Object.keys(body).length) {
-    await postgrestPatch(`/${table}?id=eq.${encodeURIComponent(id)}`, body, {
-      schema: 'public',
-      prefer: 'return=minimal',
-    });
-  }
-
-  if (patch.lines) {
-    await postgrestDelete(`/${itemsTable}?invoice_id=eq.${encodeURIComponent(id)}`, {
-      schema: 'public',
-      prefer: 'return=minimal',
-    });
-    const fn = firmNr();
-    const pn = periodNr();
-    for (const line of patch.lines) {
-      await insertSaleItemViaPostgrest(itemsTable, {
-        invoiceId: id,
-        firmNr: fn,
-        periodNr: pn,
-        line,
-      });
+  if (patch.lines !== undefined) {
+    if (!allowLines) {
+      throw new Error(
+        'Kalem düzenleme yalnızca taslak (draft) faturalarda mümkündür. Onaylı fişte stok/cari yan etkisi için web formu kullanın.',
+      );
     }
+    if (!patch.lines.length) throw new Error('En az bir kalem gerekli');
   }
-}
-
-async function updateInvoiceHeaderViaBridge(
-  id: string,
-  patch: InvoiceUpdatePatch,
-): Promise<void> {
-  if (!id) throw new Error('Fatura id gerekli');
-  const table = salesTable();
-  const itemsTable = saleItemsTable();
-
-  await assertInvoiceLineEditAllowed(table, id, patch, async () => {
-    const statusRes = await pgQuery<{ status: string | null }>(
-      `SELECT status FROM ${table} WHERE id::text = $1 LIMIT 1`,
-      [id],
-    );
-    return statusRes.rows[0]?.status ?? null;
-  });
 
   const sets: string[] = [];
   const vals: unknown[] = [];
@@ -2198,17 +1541,6 @@ async function updateInvoiceHeaderViaBridge(
   }
 }
 
-async function updateInvoiceHeaderLive(
-  id: string,
-  patch: InvoiceUpdatePatch,
-): Promise<void> {
-  return runInvoiceWriteTransport(
-    'updateInvoiceHeader',
-    () => updateInvoiceHeaderViaPostgrest(id, patch),
-    () => updateInvoiceHeaderViaBridge(id, patch),
-  );
-}
-
 /** Mevcut fatura — header (+ draft ise kalem) güncelleme */
 export async function updateInvoiceHeader(
   id: string,
@@ -2249,8 +1581,6 @@ type DocumentSpec = {
   applyCustomerDebt: boolean;
   applySupplierDebt: boolean;
   applyCashIn: boolean;
-  /** Peşin alınan hizmet / alış benzeri: KASA_CIKIS veya BANKA_CIKIS */
-  applyCashOut: boolean;
   /** Web Irsaliye/Siparis/Teklif stok=0; Hizmet de stok=0 */
   noteDefault: string;
   defaultStatus: 'approved' | 'draft';
@@ -2265,8 +1595,7 @@ const DOCUMENT_SPECS: Record<InvoiceDocumentKind, DocumentSpec> = {
     applyCustomerDebt: true,
     applySupplierDebt: false,
     applyCashIn: true,
-    applyCashOut: false,
-    noteDefault: 'RetailEX Mobile Verilen Hizmet',
+    noteDefault: 'Asin Mobile Verilen Hizmet',
     defaultStatus: 'approved',
   },
   'service-received': {
@@ -2277,8 +1606,7 @@ const DOCUMENT_SPECS: Record<InvoiceDocumentKind, DocumentSpec> = {
     applyCustomerDebt: false,
     applySupplierDebt: true,
     applyCashIn: false,
-    applyCashOut: true,
-    noteDefault: 'RetailEX Mobile Alınan Hizmet',
+    noteDefault: 'Asin Mobile Alınan Hizmet',
     defaultStatus: 'approved',
   },
   'waybill-sales': {
@@ -2289,8 +1617,7 @@ const DOCUMENT_SPECS: Record<InvoiceDocumentKind, DocumentSpec> = {
     applyCustomerDebt: false,
     applySupplierDebt: false,
     applyCashIn: false,
-    applyCashOut: false,
-    noteDefault: 'RetailEX Mobile Satış İrsaliyesi',
+    noteDefault: 'Asin Mobile Satış İrsaliyesi',
     defaultStatus: 'approved',
   },
   'waybill-purchase': {
@@ -2301,8 +1628,7 @@ const DOCUMENT_SPECS: Record<InvoiceDocumentKind, DocumentSpec> = {
     applyCustomerDebt: false,
     applySupplierDebt: false,
     applyCashIn: false,
-    applyCashOut: false,
-    noteDefault: 'RetailEX Mobile Alış İrsaliyesi',
+    noteDefault: 'Asin Mobile Alış İrsaliyesi',
     defaultStatus: 'approved',
   },
   'order-sales': {
@@ -2313,8 +1639,7 @@ const DOCUMENT_SPECS: Record<InvoiceDocumentKind, DocumentSpec> = {
     applyCustomerDebt: false,
     applySupplierDebt: false,
     applyCashIn: false,
-    applyCashOut: false,
-    noteDefault: 'RetailEX Mobile Satış Siparişi',
+    noteDefault: 'Asin Mobile Satış Siparişi',
     defaultStatus: 'draft',
   },
   'order-purchase': {
@@ -2325,8 +1650,7 @@ const DOCUMENT_SPECS: Record<InvoiceDocumentKind, DocumentSpec> = {
     applyCustomerDebt: false,
     applySupplierDebt: false,
     applyCashIn: false,
-    applyCashOut: false,
-    noteDefault: 'RetailEX Mobile Satınalma Siparişi',
+    noteDefault: 'Asin Mobile Satınalma Siparişi',
     defaultStatus: 'draft',
   },
   quote: {
@@ -2337,8 +1661,7 @@ const DOCUMENT_SPECS: Record<InvoiceDocumentKind, DocumentSpec> = {
     applyCustomerDebt: false,
     applySupplierDebt: false,
     applyCashIn: false,
-    applyCashOut: false,
-    noteDefault: 'RetailEX Mobile Teklif',
+    noteDefault: 'Asin Mobile Teklif',
     defaultStatus: 'draft',
   },
 };
@@ -2358,147 +1681,21 @@ export function documentSpecForKind(
   return base;
 }
 
-type DocumentInvoiceLiveOpts = {
-  accountId?: string;
-  accountName: string;
-  notes?: string;
-  paymentMethod?: string;
-  lines: InvoiceDraftLine[];
-  trcodeOverride?: number;
-} & InvoiceCreateExtras;
-
-async function applyDocumentInvoiceSideEffects(
-  spec: DocumentSpec,
-  opts: DocumentInvoiceLiveOpts,
-  total: number,
-  ficheNo: string,
-): Promise<void> {
-  const pm = opts.paymentMethod || 'Nakit';
-  if (total <= 0) return;
-  try {
-    if (spec.applyCustomerDebt && opts.accountId && paymentMethodImpliesCustomerDebt(pm)) {
-      await adjustCustomerBalance(opts.accountId, total);
-    } else if (
-      spec.applySupplierDebt &&
-      opts.accountId &&
-      paymentMethodImpliesSupplierDebt(pm)
-    ) {
-      await adjustSupplierBalance(opts.accountId, total);
-    }
-    if (spec.applyCashIn && paymentMethodImpliesCashInKasa(pm)) {
-      await recordKasaGirisForSale({
-        amount: total,
-        ficheNo,
-        description: `${spec.noteDefault} — ${ficheNo}`,
-        customerId: opts.accountId || null,
-        registerId: opts.cashRegisterId || null,
-      });
-    } else if (spec.applyCashIn && paymentMethodImpliesBankTransfer(pm)) {
-      await recordBankaGirisForSale({
-        amount: total,
-        ficheNo,
-        description: `${spec.noteDefault} (havale) — ${ficheNo}`,
-      });
-    } else if (spec.applyCashOut && paymentMethodImpliesCashOutKasa(pm)) {
-      await recordKasaCikisForPurchase({
-        amount: total,
-        ficheNo,
-        description: `${spec.noteDefault} — ${ficheNo}`,
-        supplierId: opts.accountId || null,
-        registerId: opts.cashRegisterId || null,
-      });
-    } else if (spec.applyCashOut && paymentMethodImpliesBankTransfer(pm)) {
-      await recordBankaCikisForPurchase({
-        amount: total,
-        ficheNo,
-        description: `${spec.noteDefault} (havale) — ${ficheNo}`,
-      });
-    }
-  } catch {
-    /* kart/kasa/banka yoksa sessiz */
-  }
-}
-
-async function createDocumentInvoiceViaPostgrest(
+/**
+ * Hizmet / irsaliye / sipariş / teklif create — web UniversalInvoice trcode + fiche_type.
+ * Stok yok (web `invoiceLineStockDelta` Irsaliye/Siparis/Teklif/Hizmet = 0).
+ * Hizmet: cari borç (veresiye) + verilen hizmette peşin kasa.
+ */
+async function createDocumentInvoiceLive(
   kind: InvoiceDocumentKind,
-  opts: DocumentInvoiceLiveOpts,
-  writeOpts?: Pick<InvoiceWriteOptions, 'id' | 'ficheNo'>,
-): Promise<InvoiceWriteResult> {
-  if (!opts.lines.length) throw new Error('En az bir kalem gerekli');
-
-  const spec = documentSpecForKind(kind, opts.trcodeOverride);
-  const fn = firmNr();
-  const pn = periodNr();
-  const sales = salesTable(fn, pn);
-  const items = saleItemsTable(fn, pn);
-  const { useAuthStore } = await import('../store/authStore');
-
-  const id = writeOpts?.id || newUuid();
-  const ficheNo = writeOpts?.ficheNo || nextFicheNo(spec.prefix);
-  const totals = invoiceTotalsFromLines(opts.lines, opts.footerDiscountAmount);
-  const total = totals.net;
-  const discountTotal = totals.lineDiscount + totals.footerDiscount;
-  const user = useAuthStore.getState().user;
-  const cashier = user?.fullName || user?.username || 'mobile';
-  const accountName =
-    opts.accountName.trim() ||
-    (spec.party === 'supplier' ? 'Tedarikçi' : 'Perakende');
-  const documentNo = opts.documentNo?.trim() || ficheNo;
-  const invDate = normalizeInvoiceDate(opts.invoiceDate);
-  const currency = (opts.currency || 'TRY').trim() || 'TRY';
-  const currencyRate = Number(opts.currencyRate) > 0 ? Number(opts.currencyRate) : 1;
-  const headerFields = JSON.parse(buildHeaderFieldsJson(opts, documentNo)) as Record<
-    string,
-    unknown
-  >;
-
-  await postgrestPost(
-    `/${sales}`,
-    {
-      id,
-      firm_nr: fn,
-      period_nr: pn,
-      fiche_no: ficheNo,
-      document_no: documentNo,
-      date: invDate ? `${invDate}T12:00:00.000Z` : new Date().toISOString(),
-      fiche_type: spec.ficheType,
-      trcode: spec.trcode,
-      customer_id: opts.accountId || null,
-      customer_name: accountName,
-      store_id: opts.storeId || null,
-      total_net: total,
-      total_vat: totals.totalVat,
-      total_gross: totals.subtotal,
-      total_discount: discountTotal,
-      net_amount: total,
-      currency,
-      currency_rate: currencyRate,
-      status: spec.defaultStatus,
-      payment_method: opts.paymentMethod || 'Nakit',
-      cashier,
-      notes: opts.notes?.trim() || spec.noteDefault,
-      header_fields: headerFields,
-    },
-    { schema: 'public', prefer: 'return=minimal' },
-  );
-
-  for (const line of opts.lines) {
-    await insertSaleItemViaPostgrest(items, {
-      invoiceId: id,
-      firmNr: fn,
-      periodNr: pn,
-      line,
-    });
-  }
-
-  await applyDocumentInvoiceSideEffects(spec, opts, total, ficheNo);
-
-  return { id, ficheNo, total };
-}
-
-async function createDocumentInvoiceViaBridge(
-  kind: InvoiceDocumentKind,
-  opts: DocumentInvoiceLiveOpts,
+  opts: {
+    accountId?: string;
+    accountName: string;
+    notes?: string;
+    paymentMethod?: string;
+    lines: InvoiceDraftLine[];
+    trcodeOverride?: number;
+  } & InvoiceCreateExtras,
   writeOpts?: Pick<InvoiceWriteOptions, 'id' | 'ficheNo'>,
 ): Promise<InvoiceWriteResult> {
   if (!opts.lines.length) throw new Error('En az bir kalem gerekli');
@@ -2574,21 +1771,39 @@ async function createDocumentInvoiceViaBridge(
     });
   }
 
-  await applyDocumentInvoiceSideEffects(spec, opts, total, ficheNo);
+  const pm = opts.paymentMethod || 'Nakit';
+  if (total > 0) {
+    try {
+      if (spec.applyCustomerDebt && opts.accountId && paymentMethodImpliesCustomerDebt(pm)) {
+        await adjustCustomerBalance(opts.accountId, total);
+      } else if (
+        spec.applySupplierDebt &&
+        opts.accountId &&
+        paymentMethodImpliesSupplierDebt(pm)
+      ) {
+        await adjustSupplierBalance(opts.accountId, total);
+      }
+      if (spec.applyCashIn && paymentMethodImpliesCashInKasa(pm)) {
+        await recordKasaGirisForSale({
+          amount: total,
+          ficheNo,
+          description: `${spec.noteDefault} — ${ficheNo}`,
+          customerId: opts.accountId || null,
+          registerId: opts.cashRegisterId || null,
+        });
+      } else if (spec.applyCashIn && paymentMethodImpliesBankTransfer(pm)) {
+        await recordBankaGirisForSale({
+          amount: total,
+          ficheNo,
+          description: `${spec.noteDefault} (havale) — ${ficheNo}`,
+        });
+      }
+    } catch {
+      /* kart/kasa/banka yoksa sessiz */
+    }
+  }
 
   return { id, ficheNo, total };
-}
-
-async function createDocumentInvoiceLive(
-  kind: InvoiceDocumentKind,
-  opts: DocumentInvoiceLiveOpts,
-  writeOpts?: Pick<InvoiceWriteOptions, 'id' | 'ficheNo'>,
-): Promise<InvoiceWriteResult> {
-  return runInvoiceWriteTransport(
-    'createDocumentInvoice',
-    () => createDocumentInvoiceViaPostgrest(kind, opts, writeOpts),
-    () => createDocumentInvoiceViaBridge(kind, opts, writeOpts),
-  );
 }
 
 export async function createDocumentInvoice(

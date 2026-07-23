@@ -278,13 +278,13 @@ export function ChartOfAccountsManagement() {
   return (
     <div className="h-full flex flex-col bg-gray-50">
       {/* Header */}
-      <div className="bg-gradient-to-r from-indigo-600 to-indigo-700 text-white px-6 py-4 border-b">
+      <div className="bg-[var(--asin-primary,#0E2433)] text-white px-6 py-4 border-b">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <BookOpen className="w-6 h-6" />
+            <BookOpen className="w-6 h-6 text-[var(--asin-accent,#1FA8A0)]" />
             <div>
               <h2 className="text-xl font-semibold">Hesap Planı Yönetimi</h2>
-              <p className="text-sm text-indigo-100 mt-0.5">
+              <p className="text-sm text-[var(--asin-accent-muted,#D5F0EE)] mt-0.5 opacity-90">
                 Tek Düzen Hesap Planı (TDHP) - Logo Uyumlu
               </p>
             </div>
@@ -292,14 +292,14 @@ export function ChartOfAccountsManagement() {
           <div className="flex items-center gap-2">
             <button
               onClick={() => importTDHP(selectedFirma?.id || '').then(() => toast.success('TDHP şablonu yüklendi')).catch(error => toast.error('TDHP şablonu yüklenirken hata oluştu'))}
-              className="flex items-center gap-2 px-4 py-2 bg-indigo-500 hover:bg-indigo-600 text-white rounded-lg transition-colors"
+              className="flex items-center gap-2 px-4 py-2 bg-[var(--asin-accent,#1FA8A0)] hover:bg-[#178f88] text-white rounded-lg transition-colors"
             >
               <Upload className="w-4 h-4" />
               TDHP Şablonu
             </button>
             <button
               onClick={() => setShowAddModal(true)}
-              className="flex items-center gap-2 px-4 py-2 bg-white text-indigo-700 rounded-lg hover:bg-indigo-50 transition-colors"
+              className="flex items-center gap-2 px-4 py-2 bg-white text-[var(--asin-primary,#0E2433)] rounded-lg hover:bg-[var(--asin-accent-muted,#D5F0EE)] transition-colors"
             >
               <Plus className="w-5 h-5" />
               Yeni Hesap

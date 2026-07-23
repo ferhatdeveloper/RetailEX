@@ -146,11 +146,11 @@ export function ContextMenu({ x, y, onClose, items, onEdit, onDelete, onHistory 
     if (items) {
         finalItems = items.map(item => ({
             ...item,
-            color: item.variant === 'danger' ? 'text-red-600' : 'text-blue-600',
+            color: item.variant === 'danger' ? 'text-red-600' : 'text-[var(--asin-accent,#1FA8A0)]',
         }));
     } else {
-        if (onEdit) finalItems.push({ id: 'edit', label: t.edit, icon: Edit, onClick: onEdit, color: 'text-blue-600' });
-        if (onHistory) finalItems.push({ id: 'history', label: t.historyMovements, icon: History, onClick: onHistory, color: 'text-purple-600' });
+        if (onEdit) finalItems.push({ id: 'edit', label: t.edit, icon: Edit, onClick: onEdit, color: 'text-[var(--asin-accent,#1FA8A0)]' });
+        if (onHistory) finalItems.push({ id: 'history', label: t.historyMovements, icon: History, onClick: onHistory, color: 'text-[var(--asin-accent,#1FA8A0)]' });
         if (onDelete) finalItems.push({ id: 'delete', label: t.deleteAction, icon: Trash2, onClick: onDelete, color: 'text-red-600' });
     }
 
@@ -214,7 +214,7 @@ export function ContextMenu({ x, y, onClose, items, onEdit, onDelete, onHistory 
                                     {item.icon ? (
                                         <item.icon
                                             className={`h-4 w-4 shrink-0 ${
-                                                item.variant === 'danger' ? 'text-red-600' : 'text-blue-600'
+                                                item.variant === 'danger' ? 'text-red-600' : 'text-[var(--asin-accent,#1FA8A0)]'
                                             }`}
                                         />
                                     ) : null}

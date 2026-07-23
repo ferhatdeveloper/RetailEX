@@ -289,14 +289,14 @@ function DateRangeFilterMenu({ column, onClose }: FilterMenuProps) {
             type="date"
             value={fromDate}
             onChange={(e) => setFromDate(e.target.value)}
-            className="w-full px-2 py-1.5 text-[11px] border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+            className="w-full px-2 py-1.5 text-[11px] border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-[var(--asin-accent,#1FA8A0)]"
           />
           {includeTime && (
             <input
               type="time"
               value={fromTime}
               onChange={(e) => setFromTime(e.target.value)}
-              className="w-full px-2 py-1.5 text-[11px] border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+              className="w-full px-2 py-1.5 text-[11px] border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-[var(--asin-accent,#1FA8A0)]"
             />
           )}
         </div>
@@ -307,14 +307,14 @@ function DateRangeFilterMenu({ column, onClose }: FilterMenuProps) {
             type="date"
             value={toDate}
             onChange={(e) => setToDate(e.target.value)}
-            className="w-full px-2 py-1.5 text-[11px] border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+            className="w-full px-2 py-1.5 text-[11px] border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-[var(--asin-accent,#1FA8A0)]"
           />
           {includeTime && (
             <input
               type="time"
               value={toTime}
               onChange={(e) => setToTime(e.target.value)}
-              className="w-full px-2 py-1.5 text-[11px] border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+              className="w-full px-2 py-1.5 text-[11px] border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-[var(--asin-accent,#1FA8A0)]"
             />
           )}
         </div>
@@ -326,7 +326,7 @@ function DateRangeFilterMenu({ column, onClose }: FilterMenuProps) {
         <button
           type="button"
           onClick={handleApply}
-          className="flex-1 px-2 py-1.5 text-[11px] bg-blue-600 text-white rounded hover:bg-blue-700 font-medium"
+          className="flex-1 px-2 py-1.5 text-[11px] bg-[var(--asin-accent,#1FA8A0)] text-white rounded hover:bg-[#178f88] font-medium"
         >
           {tm('apply')}
         </button>
@@ -475,7 +475,7 @@ function ValueListFilterMenu({ column, onClose }: FilterMenuProps) {
           value={listSearch}
           onChange={(e) => setListSearch(e.target.value)}
           placeholder={`${tm('search')}...`}
-          className="w-full px-2 py-1.5 text-[11px] border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+          className="w-full px-2 py-1.5 text-[11px] border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-[var(--asin-accent,#1FA8A0)]"
           autoFocus
         />
 
@@ -505,7 +505,7 @@ function ValueListFilterMenu({ column, onClose }: FilterMenuProps) {
             {filteredEntries.map((entry) => (
               <label
                 key={entry.key}
-                className="flex items-center gap-2 px-2 py-1.5 text-[11px] hover:bg-blue-50/60 cursor-pointer"
+                className="flex items-center gap-2 px-2 py-1.5 text-[11px] hover:bg-[var(--asin-accent-muted,#D5F0EE)]/80 cursor-pointer"
               >
                 <input
                   type="checkbox"
@@ -527,7 +527,7 @@ function ValueListFilterMenu({ column, onClose }: FilterMenuProps) {
         <button
           type="button"
           onClick={() => setShowTextFilter((v) => !v)}
-          className="text-[10px] text-blue-600 hover:underline"
+          className="text-[10px] text-[var(--asin-accent,#1FA8A0)] hover:underline"
         >
           {showTextFilter ? `▾ ${tm('gridFilterValueList')}` : `▸ ${tm('gridFilterTextFilter')}`}
         </button>
@@ -565,7 +565,7 @@ function ValueListFilterMenu({ column, onClose }: FilterMenuProps) {
           <button
             type="button"
             onClick={handleApplyValues}
-            className="flex-1 px-2 py-1.5 text-[11px] bg-blue-600 text-white rounded hover:bg-blue-700 font-medium"
+            className="flex-1 px-2 py-1.5 text-[11px] bg-[var(--asin-accent,#1FA8A0)] text-white rounded hover:bg-[#178f88] font-medium"
           >
             {tm('apply')}
           </button>
@@ -709,7 +709,7 @@ export function DevExDataGrid<T>({
           <div className="px-1">
             <input
               type="checkbox"
-              className="w-3.5 h-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              className="w-3.5 h-3.5 rounded border-gray-300 text-[var(--asin-accent,#1FA8A0)] focus:ring-[var(--asin-accent,#1FA8A0)]"
               title={tm('gridSelectAllTitle')}
               checked={allSelected}
               onChange={(e) => {
@@ -729,7 +729,7 @@ export function DevExDataGrid<T>({
         <div className="px-1" onClick={e => e.stopPropagation()}>
           <input
             type="checkbox"
-            className="w-3.5 h-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+            className="w-3.5 h-3.5 rounded border-gray-300 text-[var(--asin-accent,#1FA8A0)] focus:ring-[var(--asin-accent,#1FA8A0)]"
             checked={row.getIsSelected()}
             disabled={!row.getCanSelect()}
             onChange={row.getToggleSelectedHandler()}
@@ -919,7 +919,7 @@ export function DevExDataGrid<T>({
                 table.resetColumnFilters();
                 closeFilterMenu();
               }}
-              className="px-2 py-1 text-[10px] text-blue-700 bg-blue-50 border border-blue-200 rounded hover:bg-blue-100"
+              className="px-2 py-1 text-[10px] text-[var(--asin-accent,#1FA8A0)] bg-[var(--asin-accent-muted,#D5F0EE)] border border-[var(--asin-accent-muted,#D5F0EE)] rounded hover:bg-[var(--asin-accent-muted,#D5F0EE)]"
             >
               {tm('clear')} ({columnFilters.length})
             </button>
@@ -1011,7 +1011,7 @@ export function DevExDataGrid<T>({
                             e.stopPropagation();
                             openFilterForHeader(header.id, e.currentTarget, header.column);
                           }}
-                          className={`p-0.5 hover:bg-gray-200 rounded transition-colors ${header.column.getFilterValue() ? 'text-blue-600' : 'text-gray-500'
+                          className={`p-0.5 hover:bg-gray-200 rounded transition-colors ${header.column.getFilterValue() ? 'text-[var(--asin-accent,#1FA8A0)]' : 'text-gray-500'
                             }`}
                           title={tm('filterType')}
                         >
@@ -1038,7 +1038,7 @@ export function DevExDataGrid<T>({
                 }}
                 onDoubleClick={() => onRowDoubleClick?.(row.original)}
                 onContextMenu={(e) => onRowContextMenu?.(e, row.original)}
-                className={`border-b transition-colors cursor-pointer ${darkMode ? 'border-gray-700' : 'border-gray-200'} ${rowHover} ${idx % 2 === 0 ? rowStripeEven : rowStripeOdd} ${enableSelection && row.getIsSelected() ? (darkMode ? 'bg-blue-900/50' : 'bg-blue-100') : ''}`}
+                className={`border-b transition-colors cursor-pointer ${darkMode ? 'border-gray-700' : 'border-gray-200'} ${rowHover} ${idx % 2 === 0 ? rowStripeEven : rowStripeOdd} ${enableSelection && row.getIsSelected() ? (darkMode ? 'bg-[var(--asin-accent,#1FA8A0)]/25' : 'bg-[var(--asin-accent-muted,#D5F0EE)]') : ''}`}
               >
                 {row.getVisibleCells().map((cell) => (
                   <td
@@ -1054,7 +1054,7 @@ export function DevExDataGrid<T>({
           {showFooterRow && (
             <tfoot
               className={`sticky bottom-0 z-20 border-t-2 ${
-                darkMode ? 'bg-gray-900 border-blue-500' : 'bg-blue-50 border-blue-300'
+                darkMode ? 'bg-gray-900 border-[var(--asin-accent,#1FA8A0)]' : 'bg-[var(--asin-accent-muted,#D5F0EE)] border-[var(--asin-accent,#1FA8A0)]/50'
               }`}
             >
               <tr>
@@ -1069,15 +1069,15 @@ export function DevExDataGrid<T>({
                       <td
                         key={`footer-${col.id}`}
                         className={`px-2 py-1.5 border-r last:border-r-0 ${cellTextSize} font-bold tabular-nums ${
-                          darkMode ? 'text-blue-200 border-gray-600' : 'text-blue-900 border-blue-200'
+                          darkMode ? 'text-[var(--asin-accent-muted,#D5F0EE)] border-gray-600' : 'text-[var(--asin-primary,#0E2433)] border-[var(--asin-accent-muted,#D5F0EE)]'
                         }`}
                       >
                         {sumNode != null ? (
                           sumNode
                         ) : col.id === labelColId && footerLabel != null ? (
-                          <span className={darkMode ? 'text-blue-100' : 'text-blue-800'}>
+                          <span className={darkMode ? 'text-[var(--asin-accent-muted,#D5F0EE)]' : 'text-[var(--asin-primary,#0E2433)]'}>
                             {footerLabel}
-                            <span className={`ml-1 font-semibold ${darkMode ? 'text-gray-400' : 'text-blue-600/80'}`}>
+                            <span className={`ml-1 font-semibold ${darkMode ? 'text-gray-400' : 'text-[var(--asin-accent,#1FA8A0)]/80'}`}>
                               ({filteredRowsForFooter.length})
                             </span>
                           </span>
@@ -1171,7 +1171,7 @@ export function DevExDataGrid<T>({
                 if (!Number.isFinite(nextSize) || nextSize <= 0) return;
                 setPagination({ pageIndex: 0, pageSize: nextSize });
               }}
-              className="px-3 py-1.5 border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+              className="px-3 py-1.5 border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[var(--asin-accent,#1FA8A0)] text-sm"
             >
               {resolvedPageSizeOptions.map((size) => (
                 <option key={size} value={size}>

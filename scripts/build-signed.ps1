@@ -30,7 +30,7 @@ Write-Host "=== npm run tauri:build (imza hazirligi dahil) ===" -ForegroundColor
 npm run tauri:build
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-$exePath = Join-Path $root "DeskApp\target\release\retailex.exe"
+$exePath = Join-Path $root "DeskApp\target\release\AsinERP.exe"
 if (Test-Path $exePath) {
     $sig = Get-AuthenticodeSignature $exePath
     Write-Host "Imza durumu: $($sig.Status)" -ForegroundColor $(if ($sig.Status -eq "Valid") { "Green" } else { "Yellow" })

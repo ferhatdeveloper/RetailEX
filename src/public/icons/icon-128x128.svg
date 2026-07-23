@@ -1,22 +1,14 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 512 512" role="img" aria-label="RetailEX">
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" role="img" aria-label="Asin">
   <defs>
-    <linearGradient id="r128-bg" x1="6%" y1="0%" x2="94%" y2="100%">
-      <stop offset="0%" stop-color="#22d3ee"/>
-      <stop offset="42%" stop-color="#6366f1"/>
-      <stop offset="100%" stop-color="#1e1b4b"/>
-    </linearGradient>
-    <linearGradient id="r128-awn" x1="0%" y1="0%" x2="0%" y2="100%">
-      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.98"/>
-      <stop offset="100%" stop-color="#cbd5e1" stop-opacity="0.94"/>
+    <linearGradient id="asinG128" x1="8%" y1="0%" x2="92%" y2="100%">
+      <stop offset="0%" stop-color="#F3F5F7"/>
+      <stop offset="100%" stop-color="#1FA8A0"/>
     </linearGradient>
   </defs>
-  <rect x="36" y="36" width="440" height="440" rx="102" fill="url(#r128-bg)"/>
-  <rect x="52" y="52" width="408" height="408" rx="92" fill="none" stroke="#ffffff" stroke-opacity="0.11" stroke-width="5"/>
-  <path d="M 104 212 Q 256 124 408 212 L 408 236 L 104 236 Z" fill="#000" opacity="0.1"/>
-  <path d="M 96 200 Q 256 108 416 200 L 416 236 L 96 236 Z" fill="url(#r128-awn)"/>
-  <rect x="152" y="268" width="56" height="188" rx="18" fill="#f8fafc" fill-opacity="0.93"/>
-  <rect x="228" y="268" width="56" height="188" rx="18" fill="#f8fafc" fill-opacity="0.93"/>
-  <rect x="304" y="268" width="56" height="188" rx="18" fill="#f8fafc" fill-opacity="0.93"/>
-  <circle cx="400" cy="132" r="40" fill="#f59e0b"/>
-  <circle cx="400" cy="132" r="26" fill="#fbbf24"/>
+  <rect width="128" height="128" rx="28" fill="#0E2433"/>
+  <rect x="7.00" y="7.00" width="114.00" height="114.00" rx="24" fill="none" stroke="#1FA8A0" stroke-opacity="0.22" stroke-width="2"/>
+  <path d="M64.00 18.00 L105.00 42.00 L105.00 86.00 L64.00 110.00 L23.00 86.00 L23.00 42.00 Z" fill="none" stroke="#1FA8A0" stroke-width="3.5" stroke-linejoin="round" opacity="0.9"/>
+  <path d="M64.00 35.00 L90.00 93.00 H79.50 L73.00 78.00 H55.00 L48.50 93.00 H38.00 L64.00 35.00 Z M58.00 67.00 H70.00 L64.00 53.00 Z" fill="url(#asinG128)"/>
+  <rect x="93.00" y="49.00" width="7.00" height="30.00" rx="2.50" fill="#1FA8A0"/>
 </svg>

@@ -176,8 +176,8 @@ export function ReportChatAI({
       {/* Header */}
       <div className="bg-white border-b px-6 py-4 flex items-center justify-between flex-shrink-0">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
-            <Sparkles className="w-6 h-6 text-white" />
+          <div className="w-10 h-10 bg-[var(--asin-primary,#0E2433)] rounded-lg flex items-center justify-center">
+            <Sparkles className="w-6 h-6 text-[var(--asin-accent,#1FA8A0)]" />
           </div>
           <div>
             <h3 className="text-lg font-semibold">Chat AI (Beta)</h3>
@@ -201,14 +201,14 @@ export function ReportChatAI({
             className={`flex gap-3 ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
           >
             {message.role === 'assistant' && (
-              <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center flex-shrink-0">
-                <Bot className="w-5 h-5 text-white" />
+              <div className="w-8 h-8 bg-[var(--asin-primary,#0E2433)] rounded-full flex items-center justify-center flex-shrink-0">
+                <Bot className="w-5 h-5 text-[var(--asin-accent,#1FA8A0)]" />
               </div>
             )}
             <div
               className={`max-w-[75%] rounded-lg px-4 py-3 ${
                 message.role === 'user'
-                  ? 'bg-blue-600 text-white'
+                  ? 'bg-[var(--asin-accent,#1FA8A0)] text-white'
                   : 'bg-white border border-gray-200 text-gray-900'
               }`}
             >
@@ -236,7 +236,7 @@ export function ReportChatAI({
 
         {isLoading && (
           <div className="flex gap-3 justify-start">
-            <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center flex-shrink-0">
+            <div className="w-8 h-8 bg-[var(--asin-primary,#0E2433)] rounded-full flex items-center justify-center flex-shrink-0">
               <Bot className="w-5 h-5 text-white" />
             </div>
             <div className="bg-white border border-gray-200 rounded-lg px-4 py-3">
@@ -287,7 +287,7 @@ export function ReportChatAI({
           <button
             onClick={handleSend}
             disabled={!input.trim() || isLoading}
-            className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
+            className="px-6 py-3 bg-[var(--asin-accent,#1FA8A0)] text-white rounded-lg hover:bg-[#178f88] disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
           >
             {isLoading ? (
               <Loader2 className="w-5 h-5 animate-spin" />

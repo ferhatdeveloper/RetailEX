@@ -6,7 +6,7 @@ export function applyDocumentTheme(dark: boolean): void {
   html.classList.toggle('dark', dark);
   html.style.colorScheme = dark ? 'dark' : 'light';
 
-  const bgColor = dark ? '#0f172a' : '#f3f4f6';
+  const bgColor = dark ? '#0C141C' : '#F3F5F7';
   html.style.backgroundColor = bgColor;
   document.body.style.backgroundColor = bgColor;
 }

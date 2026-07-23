@@ -121,7 +121,7 @@ export const AppFooter: React.FC<AppFooterProps> = ({
 
                 {/* Database Status */}
                 <div className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-white/[0.02] border border-white/5">
-                    <Database className={`w-3 h-3 ${dbConnected ? 'text-blue-500' : 'text-rose-500'}`} />
+                    <Database className={`w-3 h-3 ${dbConnected ? 'text-[var(--asin-accent,#1FA8A0)]' : 'text-rose-500'}`} />
                     <span className={`font-medium text-[9px] ${dbConnected ? 'text-slate-400' : 'text-rose-400'}`}>
                         DB {dbConnected ? 'Connected' : 'Disconnected'}
                     </span>
@@ -135,7 +135,7 @@ export const AppFooter: React.FC<AppFooterProps> = ({
                     disabled={nextDisabled}
                     className={`flex items-center gap-2 px-8 py-2 rounded-lg transition-all ${nextDisabled
                         ? 'bg-white/5 text-slate-700 cursor-not-allowed'
-                        : 'bg-blue-600 hover:bg-blue-500 text-white shadow-lg hover:shadow-xl'
+                        : 'bg-[var(--asin-accent,#1FA8A0)] hover:bg-[#178f88] text-white shadow-lg hover:shadow-xl'
                         }`}
                 >
                     <span className="font-bold text-[10px] uppercase tracking-wider">
@@ -154,9 +154,9 @@ export const AppFooter: React.FC<AppFooterProps> = ({
                 {/* Last Sync */}
                 {!showNavigation && (
                     <div className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-white/[0.02] border border-white/5">
-                        <CheckCircle2 className="w-3 h-3 text-blue-500" />
+                        <CheckCircle2 className="w-3 h-3 text-[var(--asin-accent,#1FA8A0)]" />
                         <span className="text-slate-500 text-[9px] font-medium">Son Senkron:</span>
-                        <span className="text-blue-400 font-semibold text-[9px]">{lastSyncTime}</span>
+                        <span className="text-[var(--asin-accent,#1FA8A0)] font-semibold text-[9px]">{lastSyncTime}</span>
                     </div>
                 )}
 
@@ -168,7 +168,7 @@ export const AppFooter: React.FC<AppFooterProps> = ({
 
                 {/* System Version */}
                 <div className="flex flex-col items-end">
-                    <span className="text-white/50 font-bold uppercase tracking-wider text-[8px]">RetailEX ERP</span>
+                    <span className="text-white/50 font-bold uppercase tracking-wider text-[8px]">Asin ERP</span>
                     <span className="text-slate-600 font-semibold text-[7px] tracking-wide">v{APP_VERSION.full}</span>
                 </div>
             </div>

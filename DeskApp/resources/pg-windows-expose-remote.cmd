@@ -5,7 +5,7 @@ cd /d "%~dp0"
 net session >nul 2>&1
 if %errorlevel% equ 0 goto :_run
 
-echo [RetailEX] Yonetici izni isteniyor (UAC)...
+echo [AsinERP] Yonetici izni isteniyor (UAC)...
 set "RETAILEX_ELEV_ARGS=%*"
 set "_ROOT=%~dp0"
 if "%_ROOT:~-1%"=="\" set "_ROOT=%_ROOT:~0,-1%"

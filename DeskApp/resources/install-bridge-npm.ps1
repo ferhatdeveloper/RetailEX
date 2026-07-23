@@ -66,7 +66,7 @@ if (-not $npm) {
     Write-Host "  1) https://nodejs.org  adresinden LTS kurun (onerilen)."
     Write-Host "  2) Kurulumdan sonra bu scripti yeniden calistirin:"
     Write-Host "     $PSCommandPath"
-    Write-Host "  3) Veya: Start-Service RetailEX_SQL_Bridge; Start-Service RetailEX_Printer (node + node_modules hazirsa)"
+    Write-Host "  3) Veya: Start-Service AsinERP_SQL_Bridge; Start-Service AsinERP_Printer (node + node_modules hazirsa)"
     Write-Host ""
     Write-Host "Not: PostgREST (port 3002) Node gerektirmez; ayri kurulur."
     Write-Host "     Yalnizca bulut/online REST kullanacaksaniz yerel Bridge atlanabilir."

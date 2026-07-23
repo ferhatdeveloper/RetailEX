@@ -34,7 +34,7 @@ function WmsPageHeader({
   darkMode?: boolean;
 }) {
   return (
-    <div className="bg-gradient-to-r from-blue-600 to-blue-700 shadow-lg sticky top-0 z-50">
+    <div className="bg-[var(--asin-primary,#0E2433)] shadow-lg sticky top-0 z-50 border-b border-[var(--asin-accent,#1FA8A0)]/35">
       <div className="px-4 py-3 sm:px-6 flex items-center justify-between min-h-[64px]">
         <div className="flex items-center gap-4">
           <button
@@ -44,13 +44,13 @@ function WmsPageHeader({
             <Menu className="w-6 h-6" />
           </button>
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-white/15 backdrop-blur-sm rounded-xl flex items-center justify-center border border-white/10">
+            <div className="w-10 h-10 bg-[var(--asin-accent,#1FA8A0)]/20 backdrop-blur-sm rounded-xl flex items-center justify-center border border-[var(--asin-accent,#1FA8A0)]/35">
               <Warehouse className="w-5 h-5 text-white" />
             </div>
             <div>
-              <h1 className="text-white font-bold text-lg leading-none tracking-tight">{title}</h1>
+              <h1 className="text-white font-bold text-lg leading-none tracking-tight font-[family-name:var(--asin-font-brand,Outfit,system-ui,sans-serif)]">{title}</h1>
               {subtitle && (
-                <p className="text-blue-100 text-[11px] leading-none mt-1 opacity-80 uppercase tracking-wider font-semibold">
+                <p className="text-[var(--asin-accent-muted,#D5F0EE)] text-[11px] leading-none mt-1 opacity-90 uppercase tracking-wider font-semibold">
                   {subtitle}
                 </p>
               )}
@@ -187,7 +187,7 @@ export function Dashboard({ darkMode, onNavigate, onLogout }: DashboardProps) {
       <div className={`p-4 border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'} ${mobile ? 'sticky top-0 z-10 ' + sidebarClass : ''}`}>
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
-            <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center">
+            <div className="w-10 h-10 bg-[var(--asin-primary,#0E2433)] rounded-xl flex items-center justify-center ring-2 ring-[var(--asin-accent,#1FA8A0)]/40">
               <Grid3x3 className="w-6 h-6 text-white" />
             </div>
             <div>
@@ -203,8 +203,8 @@ export function Dashboard({ darkMode, onNavigate, onLogout }: DashboardProps) {
         </div>
         {/* Quick stats */}
         <div className="grid grid-cols-3 gap-2">
-          <div className={`${darkMode ? 'bg-gray-700' : 'bg-blue-50'} rounded-lg p-2 text-center`}>
-            <p className="text-lg font-bold text-blue-600">{stats?.totalProducts || 0}</p>
+          <div className={`${darkMode ? 'bg-gray-700' : 'bg-[var(--asin-accent-muted,#D5F0EE)]'} rounded-lg p-2 text-center`}>
+            <p className="text-lg font-bold text-[var(--asin-accent,#1FA8A0)]">{stats?.totalProducts || 0}</p>
             <p className="text-xs text-gray-500">{tm('productLabel')}</p>
           </div>
           <div className={`${darkMode ? 'bg-gray-700' : 'bg-green-50'} rounded-lg p-2 text-center`}>
@@ -220,8 +220,8 @@ export function Dashboard({ darkMode, onNavigate, onLogout }: DashboardProps) {
 
       {/* Active modules 2-column grid */}
       <nav className="flex-1 overflow-y-auto p-3 pb-6">
-        <h3 className="text-xs uppercase font-semibold text-blue-600 dark:text-blue-400 mb-3 flex items-center gap-2">
-          <div className="w-2 h-2 bg-blue-600 rounded-full animate-pulse" />
+        <h3 className="text-xs uppercase font-semibold text-[var(--asin-accent,#1FA8A0)] mb-3 flex items-center gap-2">
+          <div className="w-2 h-2 bg-[var(--asin-accent,#1FA8A0)] rounded-full animate-pulse" />
           {tm('activeModulesLabel')}
         </h3>
         <div className="grid grid-cols-2 gap-2 mb-6">
@@ -315,7 +315,7 @@ export function Dashboard({ darkMode, onNavigate, onLogout }: DashboardProps) {
                   <p className="text-white text-xs font-semibold leading-none tabular-nums">
                     {currentTime.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}
                   </p>
-                  <p className="text-blue-100 text-[10px] leading-none mt-0.5">
+                  <p className="text-[var(--asin-accent-muted,#D5F0EE)] text-[10px] leading-none mt-0.5">
                     {currentTime.toLocaleDateString('tr-TR', { day: '2-digit', month: 'short' })}
                   </p>
                 </div>
@@ -357,7 +357,7 @@ export function Dashboard({ darkMode, onNavigate, onLogout }: DashboardProps) {
                   onClick={() => setSelectedPeriod(p)}
                   className={`px-6 py-2.5 rounded-lg font-medium transition-colors ${
                     selectedPeriod === p
-                      ? 'bg-blue-600 text-white border border-blue-600'
+                      ? 'bg-[var(--asin-accent,#1FA8A0)] text-white border border-[var(--asin-accent,#1FA8A0)]'
                       : darkMode
                         ? 'border border-gray-700 text-gray-300 hover:bg-gray-800'
                         : 'border border-gray-300 text-gray-700 hover:bg-gray-50'
@@ -373,7 +373,7 @@ export function Dashboard({ darkMode, onNavigate, onLogout }: DashboardProps) {
               {/* Total Products */}
               <div className={`${cardClass} border rounded-lg p-6 hover:shadow-md transition-shadow`}>
                 <div className="flex items-center justify-between mb-4">
-                  <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center">
+                  <div className="w-10 h-10 bg-[var(--asin-accent,#1FA8A0)] rounded-lg flex items-center justify-center">
                     <Package className="w-5 h-5 text-white" />
                   </div>
                   <span className="text-xs text-gray-500">{tm('stockLabel')}</span>
@@ -517,7 +517,7 @@ export function Dashboard({ darkMode, onNavigate, onLogout }: DashboardProps) {
                   </button>
                   <button
                     onClick={() => onNavigate('transfer')}
-                    className="flex flex-col items-center justify-center gap-3 p-6 rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white transition-all shadow-lg hover:shadow-xl active:scale-95"
+                    className="flex flex-col items-center justify-center gap-3 p-6 rounded-xl bg-[var(--asin-primary,#0E2433)] hover:bg-[var(--asin-primary-hover,#163A52)] text-white transition-all shadow-lg hover:shadow-xl active:scale-95 ring-1 ring-[var(--asin-accent,#1FA8A0)]/40"
                   >
                     <Truck className="w-10 h-10" />
                     <span className="text-base font-bold">{tm('wmsTransfer')}</span>

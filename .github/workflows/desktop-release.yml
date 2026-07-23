@@ -1,6 +1,6 @@
 name: Desktop App Release
 
-# RetailEX Tauri masaüstü (Windows NSIS kurulumu)
+# AsinERP Tauri masaüstü (Windows NSIS kurulumu)
 # Tetikleme:
 #   git tag app-v0.1.85 && git push origin app-v0.1.85
 # veya Actions → "Desktop App Release" → Run workflow
@@ -133,7 +133,10 @@ jobs:
         if: env.CODESIGN_ENABLED == '1'
         shell: pwsh
         run: |
-          $setup = Get-ChildItem "dist" -Filter "RetailEX-Desktop-Setup-*.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+          $setup = Get-ChildItem "dist" -Filter "AsinERP-Desktop-Setup-*.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $setup) {
+            $setup = Get-ChildItem "dist" -Filter "RetailEX-Desktop-Setup-*.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+          }
           if (-not $setup) {
             $nsis = "DeskApp/target/release/bundle/nsis"
             $setup = Get-ChildItem $nsis -Filter "*setup.exe" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
@@ -151,7 +154,7 @@ jobs:
           if (-not (Test-Path $nsis)) { throw "NSIS klasoru yok: $nsis" }
           $setup = Get-ChildItem $nsis -Filter "*setup.exe" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
           if (-not $setup) { throw "setup.exe bulunamadi" }
-          $outName = "RetailEX-Desktop-Setup-$env:PACKAGE_VERSION.exe"
+          $outName = "AsinERP-Desktop-Setup-$env:PACKAGE_VERSION.exe"
           echo "INSTALLER_FILENAME=$outName" >> $env:GITHUB_ENV
           New-Item -ItemType Directory -Force -Path dist | Out-Null
           Copy-Item $setup.FullName "dist/$outName"
@@ -182,7 +185,7 @@ jobs:
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v4
         with:
-          name: RetailEX-Desktop-Setup-${{ env.PACKAGE_VERSION }}
+          name: AsinERP-Desktop-Setup-${{ env.PACKAGE_VERSION }}
           path: dist/${{ env.INSTALLER_FILENAME }}
           retention-days: 30
 
@@ -190,25 +193,24 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ env.RELEASE_TAG }}
-          name: RetailEX Desktop ${{ env.PACKAGE_VERSION }}
+          name: AsinERP Desktop ${{ env.PACKAGE_VERSION }}
           body: |
-            ## RetailEX Masaüstü (Windows)
+            ## AsinERP Masaüstü (Windows)
 
-            Tauri 2 + NSIS kurulum paketi.
+            Tauri 2 + NSIS kurulum paketi. Yerel PostgreSQL yok — girişte kiracı kodu + bulut PostgREST.
 
             ### Kurulum
-            1. `RetailEX-Desktop-Setup-${{ env.PACKAGE_VERSION }}.exe` indirin
+            1. `AsinERP-Desktop-Setup-${{ env.PACKAGE_VERSION }}.exe` indirin
             2. Yönetici olarak çalıştırın (per-machine kurulum)
-            3. Giriş: demo `admin` / `admin` (yerel PostgreSQL yapılandırmasına bağlı)
+            3. Giriş: önce kiracı kodu, sonra kullanıcı / şifre
 
             ### Notlar
-            - Kod imzasi: GitHub repo secrets (`WINDOWS_CODESIGN_PFX_BASE64` + sifre) ile imzali; secret yoksa imzasiz CI build
-            - Terazi köprüsü ayrı release: **RetailEX Terazi Köprüsü 0.1.91**
+            - Kod imzasi: GitHub repo secrets ile; secret yoksa imzasiz CI build
             - Sürüm: `${{ env.PACKAGE_VERSION }}` (kök `package.json`)
 
             ### Dosyalar
-            - **RetailEX-Desktop-Setup-${{ env.PACKAGE_VERSION }}.exe** — NSIS kurulumu
-            - **latest.json** + imzalı `.nsis.zip` — masaüstü otomatik güncelleme (TAURI_SIGNING_PRIVATE_KEY secret gerekir)
+            - **AsinERP-Desktop-Setup-${{ env.PACKAGE_VERSION }}.exe** — NSIS kurulumu
+            - **latest.json** + imzalı `.nsis.zip` — otomatik güncelleme (TAURI_SIGNING_PRIVATE_KEY secret gerekir)
           files: dist/**
           draft: false
           prerelease: false

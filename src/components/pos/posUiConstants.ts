@@ -1,4 +1,4 @@
-/** MarketPOS modalları — mavi üst çubuk (z-100) üzerinde görünmeli */
+/** MarketPOS modalları — Asin ink üst çubuk (z-100) üzerinde görünmeli */
 export const POS_MODAL_Z = 'z-[2147483646]';
 
 export const POS_MODAL_OVERLAY =
@@ -10,7 +10,7 @@ export const POS_MODAL_SHELL = (darkMode: boolean) =>
   }`;
 
 export const POS_MODAL_HEADER =
-  'p-3 border-b flex items-center shrink-0 border-gray-200 bg-gradient-to-r from-blue-600 to-blue-700';
+  'p-3 border-b flex items-center shrink-0 border-gray-200 bg-[var(--asin-primary,#0E2433)]';
 
 /** Müşteri modalı — body portalı üzerinde sabit % boyut (ürün sorgu z-index deseni) */
 export const POS_CUSTOMER_MODAL_PORTAL_CLASS =

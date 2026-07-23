@@ -391,8 +391,8 @@ export const restCallerUiTranslations: Record<string, Entry> = {
     ku: 'تەنها Desktop',
   },
   restCallerSerialOnlyWeb: {
-    tr: 'Bu mod yalnızca RetailEX masaüstü (Tauri) kurulumunda çalışır. Web sürümünde «Fiziksel cihaz / yerel köprü» ile küçük bir yerel HTTP servisi kullanın.',
-    en: 'This mode works only in the RetailEX desktop (Tauri) build. On web, use “Local device / bridge”.',
+    tr: 'Bu mod yalnızca Asin masaüstü (Tauri) kurulumunda çalışır. Web sürümünde «Fiziksel cihaz / yerel köprü» ile küçük bir yerel HTTP servisi kullanın.',
+    en: 'This mode works only in the Asin desktop (Tauri) build. On web, use “Local device / bridge”.',
     ar: 'يعمل هذا الوضع فقط في تطبيق سطح المكتب. على الويب استخدم «جهاز محلي / جسر».',
     ku: 'تەنها Tauri',
   },

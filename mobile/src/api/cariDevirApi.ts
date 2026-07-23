@@ -4,8 +4,6 @@
  */
 
 import { pgQuery } from './pgClient';
-import { postgrestGet, postgrestPatch, postgrestPost } from './postgrestClient';
-import { runDataTransport } from './dataTransport';
 import {
   customersTable,
   firmNr,
@@ -101,40 +99,7 @@ function mapDevirRow(r: {
   };
 }
 
-function firmNrOrFilter(): string {
-  const fn = firmNr();
-  const fnBare = fn.replace(/^0+/, '') || fn;
-  const parts = Array.from(new Set([fn, fnBare].filter(Boolean)));
-  return [...parts.map((f) => `firm_nr.eq.${f}`), 'firm_nr.is.null'].join(',');
-}
-
-async function queryAccountsViaRest(
-  table: string,
-  cardType: CariCardType,
-  limit: number,
-): Promise<CariAccountRow[]> {
-  const rows = await postgrestGet<Record<string, unknown>[]>(
-    `/${table}`,
-    {
-      select: 'id,code,name,balance,is_active',
-      is_active: 'eq.true',
-      or: `(${firmNrOrFilter()})`,
-      order: 'name.asc',
-      limit,
-    },
-    { schema: 'public' },
-  );
-  return (Array.isArray(rows) ? rows : []).map((r) => ({
-    id: String(r.id ?? ''),
-    code: r.code != null ? String(r.code) : null,
-    name: String(r.name ?? ''),
-    balance: Number(r.balance) || 0,
-    cardType,
-    is_active: true,
-  }));
-}
-
-async function queryAccountsViaBridge(
+async function queryAccounts(
   table: string,
   cardType: CariCardType,
   fn: string,
@@ -176,85 +141,41 @@ export async function fetchCariAccounts(limit = 2000): Promise<CariAccountRow[]>
   if (!shouldUseLiveData()) return [];
   try {
     const fn = firmNr();
-    return await runDataTransport({
-      label: 'fetchCariAccounts',
-      viaRest: async () => {
-        const [customers, suppliers] = await Promise.all([
-          queryAccountsViaRest(customersTable(), 'customer', limit),
-          queryAccountsViaRest(suppliersTable(), 'supplier', limit).catch(() => [] as CariAccountRow[]),
-        ]);
-        return [...customers, ...suppliers].sort((a, b) => a.name.localeCompare(b.name, 'tr'));
-      },
-      viaBridge: async () => {
-        const [customers, suppliers] = await Promise.all([
-          queryAccountsViaBridge(customersTable(), 'customer', fn, limit),
-          queryAccountsViaBridge(suppliersTable(), 'supplier', fn, limit),
-        ]);
-        return [...customers, ...suppliers].sort((a, b) => a.name.localeCompare(b.name, 'tr'));
-      },
-    });
+    const [customers, suppliers] = await Promise.all([
+      queryAccounts(customersTable(), 'customer', fn, limit),
+      queryAccounts(suppliersTable(), 'supplier', fn, limit),
+    ]);
+    return [...customers, ...suppliers].sort((a, b) =>
+      a.name.localeCompare(b.name, 'tr'),
+    );
   } catch (e) {
     if (getNetworkPolicy() === 'online') throw e;
     return [];
   }
 }
 
-async function listCariDevirRecordsViaRest(): Promise<CariDevirRecord[]> {
-  const table = salesTable();
-  const rows = await postgrestGet<Record<string, unknown>[]>(
-    `/${table}`,
-    {
-      select: 'id,fiche_no,date,customer_id,customer_name,net_amount,notes,is_cancelled,fiche_type',
-      fiche_type: `eq.${CARI_OPENING_FICHE_TYPE}`,
-      is_cancelled: 'eq.false',
-      order: 'date.desc',
-      limit: 5000,
-    },
-    { schema: 'public' },
-  );
-  return (Array.isArray(rows) ? rows : []).map((r) =>
-    mapDevirRow({
-      id: String(r.id ?? ''),
-      fiche_no: r.fiche_no != null ? String(r.fiche_no) : '',
-      date: r.date != null ? String(r.date) : '',
-      customer_id: r.customer_id != null ? String(r.customer_id) : '',
-      customer_name: r.customer_name != null ? String(r.customer_name) : '',
-      net_amount: Number(r.net_amount ?? 0) || 0,
-      notes: r.notes != null ? String(r.notes) : null,
-    }),
-  );
-}
-
-async function listCariDevirRecordsViaBridge(): Promise<CariDevirRecord[]> {
-  const table = salesTable();
-  const res = await pgQuery<{
-    id: string;
-    fiche_no: string | null;
-    date: string | null;
-    customer_id: string | null;
-    customer_name: string | null;
-    net_amount: string | number | null;
-    notes: string | null;
-  }>(
-    `SELECT id, fiche_no, date, customer_id, customer_name, net_amount, notes
-     FROM ${table}
-     WHERE fiche_type = $1
-       AND COALESCE(is_cancelled, false) = false
-     ORDER BY date DESC
-     LIMIT 5000`,
-    [CARI_OPENING_FICHE_TYPE],
-  );
-  return res.rows.map(mapDevirRow);
-}
-
 export async function listCariDevirRecords(): Promise<CariDevirRecord[]> {
   if (!shouldUseLiveData()) return [];
   try {
-    return await runDataTransport({
-      label: 'listCariDevirRecords',
-      viaRest: () => listCariDevirRecordsViaRest(),
-      viaBridge: () => listCariDevirRecordsViaBridge(),
-    });
+    const table = salesTable();
+    const res = await pgQuery<{
+      id: string;
+      fiche_no: string | null;
+      date: string | null;
+      customer_id: string | null;
+      customer_name: string | null;
+      net_amount: string | number | null;
+      notes: string | null;
+    }>(
+      `SELECT id, fiche_no, date, customer_id, customer_name, net_amount, notes
+       FROM ${table}
+       WHERE fiche_type = $1
+         AND COALESCE(is_cancelled, false) = false
+       ORDER BY date DESC
+       LIMIT 5000`,
+      [CARI_OPENING_FICHE_TYPE],
+    );
+    return res.rows.map(mapDevirRow);
   } catch (e) {
     if (getNetworkPolicy() === 'online') throw e;
     return [];
@@ -276,110 +197,32 @@ async function generateDevirFicheNo(accountCode?: string | null): Promise<string
   const prefix = `DEV-${String(accountCode || 'CARI').replace(/\s+/g, '').slice(0, 12)}`;
   const datePart = new Date().toISOString().slice(0, 10).replace(/-/g, '');
   const like = `${prefix}-${datePart}-%`;
-
-  try {
-    const rows = await postgrestGet<Array<{ fiche_no?: string }>>(
-      `/${table}`,
-      {
-        select: 'fiche_no',
-        fiche_type: `eq.${CARI_OPENING_FICHE_TYPE}`,
-        fiche_no: `like.${like}*`,
-        order: 'fiche_no.desc',
-        limit: 1,
-      },
-      { schema: 'public' },
-    );
-    const last = rows?.[0]?.fiche_no ? String(rows[0].fiche_no) : '';
-    const tail = last.match(/-(\d+)$/)?.[1];
-    const next = (tail ? parseInt(tail, 10) : 0) + 1;
-    return `${prefix}-${datePart}-${String(next).padStart(3, '0')}`;
-  } catch {
-    const res = await pgQuery<{ fiche_no: string }>(
-      `SELECT fiche_no FROM ${table}
-       WHERE fiche_type = $1 AND fiche_no LIKE $2
-       ORDER BY fiche_no DESC LIMIT 1`,
-      [CARI_OPENING_FICHE_TYPE, like],
-    );
-    const last = res.rows[0]?.fiche_no ? String(res.rows[0].fiche_no) : '';
-    const tail = last.match(/-(\d+)$/)?.[1];
-    const next = (tail ? parseInt(tail, 10) : 0) + 1;
-    return `${prefix}-${datePart}-${String(next).padStart(3, '0')}`;
-  }
+  const res = await pgQuery<{ fiche_no: string }>(
+    `SELECT fiche_no FROM ${table}
+     WHERE fiche_type = $1 AND fiche_no LIKE $2
+     ORDER BY fiche_no DESC LIMIT 1`,
+    [CARI_OPENING_FICHE_TYPE, like],
+  );
+  const last = res.rows[0]?.fiche_no ? String(res.rows[0].fiche_no) : '';
+  const tail = last.match(/-(\d+)$/)?.[1];
+  const next = (tail ? parseInt(tail, 10) : 0) + 1;
+  return `${prefix}-${datePart}-${String(next).padStart(3, '0')}`;
 }
 
 async function cancelExistingOpeningRows(accountId: string): Promise<number> {
   const table = salesTable();
-  try {
-    await postgrestPatch(
-      `/${table}?customer_id=eq.${encodeURIComponent(accountId)}&fiche_type=eq.${CARI_OPENING_FICHE_TYPE}&is_cancelled=eq.false`,
-      { is_cancelled: true, updated_at: new Date().toISOString() },
-      { schema: 'public', prefer: 'return=minimal' },
-    );
-    return 1;
-  } catch {
-    const res = await pgQuery(
-      `UPDATE ${table}
-       SET is_cancelled = true, updated_at = NOW()
-       WHERE customer_id::text = $1::text
-         AND fiche_type = $2
-         AND COALESCE(is_cancelled, false) = false`,
-      [accountId, CARI_OPENING_FICHE_TYPE],
-    );
-    return res.rowCount ?? 0;
-  }
-}
-
-async function insertOpeningRowViaRest(
-  line: CariDevirLineInput,
-  ficheNo: string,
-  dateIso: string,
-  batchNotes?: string,
-): Promise<string> {
-  const table = salesTable();
-  const fn = firmNr();
-  const pn = periodNr();
-  const net = signedNetAmount(line.amount, line.direction);
-  const abs = Math.abs(net);
-  const notes = [batchNotes, line.lineNotes, 'Cari devir fişi — eski program açılış bakiyesi']
-    .filter(Boolean)
-    .join(' | ');
-  const id = newUuid();
-
-  await postgrestPost(
-    `/${table}`,
-    {
-      id,
-      firm_nr: fn,
-      period_nr: pn,
-      fiche_no: ficheNo,
-      document_no: ficheNo,
-      date: dateIso,
-      fiche_type: CARI_OPENING_FICHE_TYPE,
-      trcode: CARI_OPENING_TRCODE,
-      customer_id: line.accountId,
-      customer_name: line.accountName || '',
-      total_net: abs,
-      total_vat: 0,
-      total_gross: abs,
-      total_discount: 0,
-      net_amount: net,
-      total_cost: 0,
-      gross_profit: 0,
-      profit_margin: 0,
-      currency: 'IQD',
-      currency_rate: 1,
-      status: 'completed',
-      payment_method: 'devir',
-      is_cancelled: false,
-      credit_amount: 0,
-      notes,
-    },
-    { schema: 'public', prefer: 'return=minimal' },
+  const res = await pgQuery(
+    `UPDATE ${table}
+     SET is_cancelled = true, updated_at = NOW()
+     WHERE customer_id::text = $1::text
+       AND fiche_type = $2
+       AND COALESCE(is_cancelled, false) = false`,
+    [accountId, CARI_OPENING_FICHE_TYPE],
   );
-  return id;
+  return res.rowCount ?? 0;
 }
 
-async function insertOpeningRowViaBridge(
+async function insertOpeningRow(
   line: CariDevirLineInput,
   ficheNo: string,
   dateIso: string,
@@ -425,19 +268,6 @@ async function insertOpeningRowViaBridge(
   return id;
 }
 
-async function insertOpeningRow(
-  line: CariDevirLineInput,
-  ficheNo: string,
-  dateIso: string,
-  batchNotes?: string,
-): Promise<string> {
-  return runDataTransport({
-    label: 'insertOpeningRow',
-    viaRest: () => insertOpeningRowViaRest(line, ficheNo, dateIso, batchNotes),
-    viaBridge: () => insertOpeningRowViaBridge(line, ficheNo, dateIso, batchNotes),
-  });
-}
-
 export async function updateCariDevirRecord(
   id: string,
   input: {
@@ -447,6 +277,7 @@ export async function updateCariDevirRecord(
     notes?: string;
   },
 ): Promise<void> {
+  const table = salesTable();
   const net = signedNetAmount(input.amount, input.direction);
   const abs = Math.abs(net);
   const dateIso = input.date
@@ -455,59 +286,25 @@ export async function updateCariDevirRecord(
       : `${input.date}T12:00:00.000Z`
     : null;
 
-  return runDataTransport({
-    label: 'updateCariDevirRecord',
-    viaRest: async () => {
-      const table = salesTable();
-      const body: Record<string, unknown> = {
-        net_amount: net,
-        total_net: abs,
-        total_gross: abs,
-        updated_at: new Date().toISOString(),
-      };
-      if (dateIso) body.date = dateIso;
-      if (input.notes !== undefined) body.notes = input.notes;
-      await postgrestPatch(`/${table}?id=eq.${encodeURIComponent(id)}`, body, {
-        schema: 'public',
-        prefer: 'return=minimal',
-      });
-    },
-    viaBridge: async () => {
-      const table = salesTable();
-      await pgQuery(
-        `UPDATE ${table} SET
-          net_amount = $1::numeric,
-          total_net = $2::numeric,
-          total_gross = $2::numeric,
-          date = COALESCE($3::timestamptz, date),
-          notes = COALESCE($4, notes),
-          updated_at = NOW()
-         WHERE id = $5::uuid`,
-        [net, abs, dateIso, input.notes ?? null, id],
-      );
-    },
-  });
+  await pgQuery(
+    `UPDATE ${table} SET
+      net_amount = $1::numeric,
+      total_net = $2::numeric,
+      total_gross = $2::numeric,
+      date = COALESCE($3::timestamptz, date),
+      notes = COALESCE($4, notes),
+      updated_at = NOW()
+     WHERE id = $5::uuid`,
+    [net, abs, dateIso, input.notes ?? null, id],
+  );
 }
 
 export async function cancelCariDevirRecord(id: string): Promise<void> {
-  return runDataTransport({
-    label: 'cancelCariDevirRecord',
-    viaRest: async () => {
-      const table = salesTable();
-      await postgrestPatch(
-        `/${table}?id=eq.${encodeURIComponent(id)}`,
-        { is_cancelled: true, updated_at: new Date().toISOString() },
-        { schema: 'public', prefer: 'return=minimal' },
-      );
-    },
-    viaBridge: async () => {
-      const table = salesTable();
-      await pgQuery(
-        `UPDATE ${table} SET is_cancelled = true, updated_at = NOW() WHERE id = $1::uuid`,
-        [id],
-      );
-    },
-  });
+  const table = salesTable();
+  await pgQuery(
+    `UPDATE ${table} SET is_cancelled = true, updated_at = NOW() WHERE id = $1::uuid`,
+    [id],
+  );
 }
 
 export async function createCariDevirBatch(

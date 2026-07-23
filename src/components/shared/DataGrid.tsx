@@ -120,7 +120,7 @@ export function DataGrid<T extends Record<string, any>>({
                 setSearchQuery(e.target.value);
                 setCurrentPage(1);
               }}
-              className="w-full pl-9 pr-4 py-1.5 border border-gray-300 focus:outline-none focus:border-blue-600 text-sm"
+              className="w-full pl-9 pr-4 py-1.5 border border-gray-300 focus:outline-none focus:border-[var(--asin-accent,#1FA8A0)] text-sm"
             />
           </div>
         </div>
@@ -139,7 +139,7 @@ export function DataGrid<T extends Record<string, any>>({
                 >
                   <button
                     onClick={() => handleSort(col.field as string)}
-                    className="flex items-center gap-1 hover:text-blue-600 transition-colors text-sm text-gray-700 w-full"
+                    className="flex items-center gap-1 hover:text-[var(--asin-accent,#1FA8A0)] transition-colors text-sm text-gray-700 w-full"
                   >
                     <span>{col.headerText}</span>
                     {sortField === col.field ? (
@@ -194,7 +194,7 @@ export function DataGrid<T extends Record<string, any>>({
                         {onEdit && (
                           <button
                             onClick={() => onEdit(item)}
-                            className="p-1.5 text-blue-600 hover:bg-blue-50 transition-colors"
+                            className="p-1.5 text-[var(--asin-accent,#1FA8A0)] hover:bg-[var(--asin-accent-muted,#D5F0EE)] transition-colors"
                             title="Düzenle"
                           >
                             <Edit2 className="w-4 h-4" />

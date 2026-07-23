@@ -1,6 +1,6 @@
 use std::fs::{self, OpenOptions};
 use std::io::Write;
-use std::path::Path;
+use std::path::PathBuf;
 use chrono::Local;
 
 pub fn log_sync_error(record_id: &str, action: &str, error: &str) {
@@ -59,12 +59,18 @@ pub fn log_from_frontend(level: String, context: String, details: String) {
     log_system_error(&level, &context, &details);
 }
 
-/// Writes a CRUD error as a JSON line to C:\RetailEX\log\crud_errors.json
+/// Writes a CRUD error as a JSON line (portable: `{exe}/data/logs`, kurulum: `C:\AsinERP\log`).
 #[tauri::command]
 pub fn log_crud_error(payload: String) {
-    let log_dir = Path::new(r"C:\RetailEX\log");
+    let log_dir = if crate::config::is_portable_mode() {
+        crate::config::get_logs_dir()
+    } else {
+        let d = PathBuf::from(r"C:\AsinERP\log");
+        let _ = fs::create_dir_all(&d);
+        d
+    };
     if !log_dir.exists() {
-        if let Err(e) = fs::create_dir_all(log_dir) {
+        if let Err(e) = fs::create_dir_all(&log_dir) {
             eprintln!("[logger] Failed to create log dir: {}", e);
             return;
         }

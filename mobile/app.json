@@ -1,17 +1,17 @@
 {
   "expo": {
-    "name": "RetailEX",
-    "slug": "retailex-mobile",
-    "version": "0.1.232",
+    "name": "Asin",
+    "slug": "asin-mobile",
+    "version": "0.1.233",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
-    "scheme": "retailex",
+    "scheme": "asinerp",
     "newArchEnabled": true,
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#2563eb"
+      "backgroundColor": "#0E2433"
     },
     "ios": {
       "supportsTablet": true,
@@ -21,23 +21,23 @@
           "NSAllowsArbitraryLoads": true,
           "NSAllowsLocalNetworking": true
         },
-        "NSLocationWhenInUseUsageDescription": "RetailEX teslimat kuryesi için canlı konum paylaşımı ister.",
-        "NSLocationAlwaysAndWhenInUseUsageDescription": "RetailEX teslimat sırasında konum güncellemesi ister.",
-        "NSBluetoothAlwaysUsageDescription": "RetailEX BLE tartı terazisine bağlanmak için Bluetooth ister."
+        "NSLocationWhenInUseUsageDescription": "Asin teslimat kuryesi için canlı konum paylaşımı ister.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "Asin teslimat sırasında konum güncellemesi ister.",
+        "NSBluetoothAlwaysUsageDescription": "Asin BLE tartı terazisine bağlanmak için Bluetooth ister."
       },
-      "buildNumber": "1232"
+      "buildNumber": "1233"
     },
     "android": {
       "package": "app.retailex.mobile",
       "adaptiveIcon": {
-        "backgroundColor": "#2563eb",
+        "backgroundColor": "#0E2433",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
       "usesCleartextTraffic": true,
-      "versionCode": 1232,
+      "versionCode": 1233,
       "permissions": [
         "ACCESS_COARSE_LOCATION",
         "ACCESS_FINE_LOCATION",
@@ -57,7 +57,7 @@
         "userLoginRequired": "npx eas-cli@latest login  (veya EXPO_TOKEN) → whoami → npm run mobile:eas:init",
         "init": "npm run mobile:eas:init | headless: npm run mobile:eas:init -- --non-interactive [--force|--id UUID]",
         "projectId": "eas init sonrası expo.extra.eas.projectId yazılır; UUID uydurulmaz — bağlanana kadar extra.eas bloğu yoktur.",
-        "ciAlign": "android-release.yml = assembleRelease APK (JS bundle gömülü; Metro yok). Opsiyonel Play: android-play-submit.yml. Bkz. PLAY_SUBMIT.md.",
+        "ciAlign": "android-release.yml = debug APK. Opsiyonel Play submit: android-play-submit.yml + EXPO_TOKEN, GOOGLE_SERVICE_ACCOUNT_JSON (JSON commit yasak). Bkz. PLAY_SUBMIT.md.",
         "profiles": "mobile/eas.json → debug | preview | production",
         "scripts": {
           "check": "npm run mobile:eas:check",
@@ -74,7 +74,7 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "RetailEX barkod okumak ve belge taramak için kameraya erişim ister.",
+          "cameraPermission": "Asin barkod okumak ve belge taramak için kameraya erişim ister.",
           "recordAudioAndroid": false,
           "barcodeScannerEnabled": true
         }
@@ -82,14 +82,14 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "RetailEX fatura belgesi seçmek için galeriye erişim ister.",
-          "cameraPermission": "RetailEX fatura belgesi çekmek için kameraya erişim ister."
+          "photosPermission": "Asin fatura belgesi seçmek için galeriye erişim ister.",
+          "cameraPermission": "Asin fatura belgesi çekmek için kameraya erişim ister."
         }
       ],
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "RetailEX teslimat kuryesi için canlı konum paylaşımı ister.",
+          "locationWhenInUsePermission": "Asin teslimat kuryesi için canlı konum paylaşımı ister.",
           "isAndroidForegroundServiceEnabled": false
         }
       ],
@@ -100,20 +100,20 @@
           "modes": [
             "central"
           ],
-          "bluetoothAlwaysPermission": "RetailEX BLE tartı terazisine bağlanmak için Bluetooth ister."
+          "bluetoothAlwaysPermission": "Asin BLE tartı terazisine bağlanmak için Bluetooth ister."
         }
       ],
       [
         "react-native-document-scanner-plugin",
         {
-          "cameraPermission": "RetailEX belge kenarlarını bulup taramak için kameraya erişim ister."
+          "cameraPermission": "Asin belge kenarlarını bulup taramak için kameraya erişim ister."
         }
       ],
       [
         "expo-media-library",
         {
-          "photosPermission": "RetailEX taranmış belgeleri galeriye kaydetmek için fotoğraflara erişim ister.",
-          "savePhotosPermission": "RetailEX taranmış belgeyi galeriye kaydetmek ister.",
+          "photosPermission": "Asin taranmış belgeleri galeriye kaydetmek için fotoğraflara erişim ister.",
+          "savePhotosPermission": "Asin taranmış belgeyi galeriye kaydetmek ister.",
           "isAccessMediaLocationEnabled": false
         }
       ]

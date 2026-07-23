@@ -36,11 +36,6 @@ import {
   scanLanServers,
   type LanScanHit,
 } from '../utils/lanServerScan';
-import {
-  DEFAULT_SAAS_TENANT_POSTGREST_ORIGIN,
-  resolveTenantByCode,
-  tenantCodeFromRemoteRestUrl,
-} from '../services/merkezTenantRegistry';
 
 type Props = NativeStackScreenProps<AuthStackParamList, 'Config'>;
 type ConnectionStatusTone = 'ok' | 'warn' | 'fail';
@@ -57,8 +52,6 @@ function cloneConfig(c: DbConfig): DbConfig {
     apiMode: c.apiMode ?? 'hybrid',
     remoteRestUrl: c.remoteRestUrl ?? '',
     postgrestAnonKey: c.postgrestAnonKey ?? '',
-    merkezTenantCode: c.merkezTenantCode ?? '',
-    merkezDisplayName: c.merkezDisplayName ?? '',
     local: { ...c.local },
     remote: { ...c.remote },
   };
@@ -118,8 +111,6 @@ export function ConfigScreen({ navigation }: Props) {
 
   const [draft, setDraft] = useState<DbConfig>(() => cloneConfig(stored));
   const [testing, setTesting] = useState(false);
-  const [resolvingTenant, setResolvingTenant] = useState(false);
-  const [showAdvancedApi, setShowAdvancedApi] = useState(false);
   const [scanning, setScanning] = useState(false);
   const [scanPct, setScanPct] = useState(0);
   const [scanFound, setScanFound] = useState(0);
@@ -157,20 +148,12 @@ export function ConfigScreen({ navigation }: Props) {
   );
 
   const onSave = () => {
-    let remoteRestUrl = (draft.remoteRestUrl || '').trim().replace(/\/+$/, '');
-    const code = (draft.merkezTenantCode || '').trim().toLowerCase();
-    if (!remoteRestUrl && code) {
-      remoteRestUrl = `${DEFAULT_SAAS_TENANT_POSTGREST_ORIGIN.replace(/\/+$/, '')}/${code}`;
-    }
     const next: DbConfig = {
       ...draft,
       bridgeHost: draft.bridgeHost.trim(),
-      remoteRestUrl,
+      remoteRestUrl: (draft.remoteRestUrl || '').trim().replace(/\/+$/, ''),
       postgrestAnonKey: draft.postgrestAnonKey || '',
-      merkezTenantCode: code || tenantCodeFromRemoteRestUrl(remoteRestUrl),
-      merkezDisplayName: draft.merkezDisplayName || '',
       apiMode: draft.apiMode ?? 'hybrid',
-      dbMode: remoteRestUrl ? 'online' : draft.dbMode,
       local: {
         ...draft.local,
         host: draft.local.host.trim(),
@@ -214,16 +197,7 @@ export function ConfigScreen({ navigation }: Props) {
 
   const onTestPostgrest = async () => {
     setTesting(true);
-    let remoteRestUrl = (draft.remoteRestUrl || '').trim().replace(/\/+$/, '');
-    const code = (draft.merkezTenantCode || '').trim().toLowerCase();
-    if (!remoteRestUrl && code) {
-      remoteRestUrl = `${DEFAULT_SAAS_TENANT_POSTGREST_ORIGIN.replace(/\/+$/, '')}/${code}`;
-    }
-    const result = await testPostgrestConnection({
-      ...draft,
-      remoteRestUrl,
-      merkezTenantCode: code || draft.merkezTenantCode,
-    });
+    const result = await testPostgrestConnection(draft);
     setTesting(false);
     setConnectionStatus({
       tone: result.ok ? 'ok' : 'fail',
@@ -234,70 +208,6 @@ export function ConfigScreen({ navigation }: Props) {
       result.ok ? t('connectionOk') : t('connectionFail'),
       result.detail,
     );
-  };
-
-  const onResolveTenant = async () => {
-    const code = (draft.merkezTenantCode || '').trim();
-    if (!code) {
-      Alert.alert(t('tenantCodeRequiredTitle'), t('tenantCodeRequired'));
-      return;
-    }
-    setResolvingTenant(true);
-    try {
-      const resolved = await resolveTenantByCode(code);
-      const nextDraft: DbConfig = {
-        ...draft,
-        merkezTenantCode: resolved.code,
-        merkezDisplayName: resolved.displayName,
-        remoteRestUrl: resolved.remoteRestUrl,
-        apiMode: draft.apiMode === 'bridge' ? 'hybrid' : (draft.apiMode ?? 'hybrid'),
-        dbMode: 'online',
-        remote: {
-          ...draft.remote,
-          database: resolved.databaseName || draft.remote.database,
-        },
-      };
-      setDraft(nextDraft);
-      const test = await testPostgrestConnection(nextDraft);
-      setConnectionStatus({
-        tone: test.ok ? 'ok' : resolved.warning ? 'warn' : 'fail',
-        title: test.ok
-          ? t('tenantResolvedOk')
-          : resolved.warning
-            ? t('tenantResolvedPartial')
-            : t('connectionFail'),
-        detail: [
-          resolved.displayName,
-          resolved.remoteRestUrl,
-          resolved.warning,
-          test.detail,
-        ]
-          .filter(Boolean)
-          .join('\n'),
-      });
-      Alert.alert(
-        test.ok ? t('tenantResolvedOk') : t('connectionFail'),
-        [
-          `${t('tenantCode')}: ${resolved.code}`,
-          resolved.displayName,
-          resolved.remoteRestUrl,
-          resolved.warning,
-          test.detail,
-        ]
-          .filter(Boolean)
-          .join('\n'),
-      );
-    } catch (e: unknown) {
-      const detail = e instanceof Error ? e.message : String(e);
-      setConnectionStatus({
-        tone: 'fail',
-        title: t('connectionFail'),
-        detail,
-      });
-      Alert.alert(t('connectionFail'), detail);
-    } finally {
-      setResolvingTenant(false);
-    }
   };
 
   const onScanLan = async () => {
@@ -633,91 +543,6 @@ export function ConfigScreen({ navigation }: Props) {
             />
 
             <View style={styles.form}>
-              <View
-                style={[
-                  styles.pgBox,
-                  {
-                    borderColor: darkMode ? 'rgba(96,165,250,0.55)' : '#93c5fd',
-                    backgroundColor: darkMode
-                      ? 'rgba(30,58,138,0.28)'
-                      : 'rgba(239,246,255,0.95)',
-                  },
-                ]}
-              >
-                <Text style={[styles.section, { color: colors.textMuted, marginTop: 0 }]}>
-                  {t('tenantCloudSection')}
-                </Text>
-                <Text style={[styles.hint, { color: colors.textSubtle }]}>
-                  {t('tenantCloudHint', { origin: DEFAULT_SAAS_TENANT_POSTGREST_ORIGIN })}
-                </Text>
-                <FormField
-                  label={t('tenantCode')}
-                  value={draft.merkezTenantCode || ''}
-                  onChangeText={(v) =>
-                    patch({
-                      merkezTenantCode: v.trim().toLowerCase().replace(/\s+/g, ''),
-                    })
-                  }
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  placeholder={t('tenantCodePlaceholder')}
-                />
-                {draft.merkezDisplayName ? (
-                  <Text style={[styles.activeTarget, { color: palette.blue500 }]}>
-                    {draft.merkezDisplayName}
-                    {draft.remoteRestUrl ? `\n${draft.remoteRestUrl}` : ''}
-                  </Text>
-                ) : draft.remoteRestUrl ? (
-                  <Text style={[styles.hint, { color: colors.textSubtle }]}>
-                    {draft.remoteRestUrl}
-                  </Text>
-                ) : null}
-                <PrimaryButton
-                  label={t('tenantConnect')}
-                  onPress={() => void onResolveTenant()}
-                  loading={resolvingTenant || testing}
-                />
-                <Pressable
-                  onPress={() => setShowAdvancedApi((v) => !v)}
-                  style={{ marginTop: 4 }}
-                >
-                  <Text style={{ color: palette.blue500, fontWeight: '700', fontSize: 13 }}>
-                    {showAdvancedApi ? t('tenantHideAdvanced') : t('tenantShowAdvanced')}
-                  </Text>
-                </Pressable>
-                {showAdvancedApi ? (
-                  <>
-                    <Text style={[styles.hint, { color: colors.textSubtle, marginTop: 8 }]}>
-                      {t('tenantAdvancedHint')}
-                    </Text>
-                    <FormField
-                      label={t('remoteRestUrl')}
-                      value={draft.remoteRestUrl || ''}
-                      onChangeText={(v) =>
-                        patch({
-                          remoteRestUrl: v,
-                          merkezTenantCode:
-                            draft.merkezTenantCode || tenantCodeFromRemoteRestUrl(v),
-                        })
-                      }
-                      autoCapitalize="none"
-                      placeholder="https://api.retailex.app/tenant"
-                    />
-                    <FormField
-                      label={t('postgrestAnonKey')}
-                      value={draft.postgrestAnonKey || ''}
-                      onChangeText={(v) => patch({ postgrestAnonKey: v })}
-                      autoCapitalize="none"
-                      secureTextEntry
-                      placeholder={t('postgrestAnonKeyPlaceholder')}
-                    />
-                    <Pressable onPress={() => void onTestPostgrest()} disabled={testing}>
-                      <Text style={[styles.testLink, { marginTop: 4 }]}>{t('testPostgrest')}</Text>
-                    </Pressable>
-                  </>
-                ) : null}
-              </View>
-
               <Text style={[styles.section, { color: colors.textMuted }]}>
                 {t('dbMode')}
               </Text>
@@ -854,12 +679,45 @@ export function ConfigScreen({ navigation }: Props) {
                 </Text>
               ) : null}
 
-              {(draft.apiMode === 'postgrest' || draft.apiMode === 'hybrid') &&
-              !showAdvancedApi &&
-              draft.remoteRestUrl ? (
-                <Text style={[styles.hint, { color: colors.textSubtle }]}>
-                  {t('tenantResolvedUrlHint', { url: draft.remoteRestUrl })}
-                </Text>
+              {(draft.apiMode === 'postgrest' || draft.apiMode === 'hybrid') ? (
+                <View
+                  style={[
+                    styles.pgBox,
+                    {
+                      borderColor: darkMode ? 'rgba(52,211,153,0.45)' : '#6ee7b7',
+                      backgroundColor: darkMode
+                        ? 'rgba(6,78,59,0.25)'
+                        : 'rgba(236,253,245,0.8)',
+                    },
+                  ]}
+                >
+                  <View style={styles.pgBoxHeader}>
+                    <Text style={[styles.section, { color: colors.textMuted, marginTop: 0 }]}>
+                      {t('postgrestSection')}
+                    </Text>
+                    <Pressable onPress={() => void onTestPostgrest()} disabled={testing}>
+                      <Text style={styles.testLink}>{t('testPostgrest')}</Text>
+                    </Pressable>
+                  </View>
+                  <Text style={[styles.hint, { color: colors.textSubtle }]}>
+                    {t('postgrestHint')}
+                  </Text>
+                  <FormField
+                    label={t('remoteRestUrl')}
+                    value={draft.remoteRestUrl || ''}
+                    onChangeText={(v) => patch({ remoteRestUrl: v })}
+                    autoCapitalize="none"
+                    placeholder="https://…/tenant"
+                  />
+                  <FormField
+                    label={t('postgrestAnonKey')}
+                    value={draft.postgrestAnonKey || ''}
+                    onChangeText={(v) => patch({ postgrestAnonKey: v })}
+                    autoCapitalize="none"
+                    secureTextEntry
+                    placeholder={t('postgrestAnonKeyPlaceholder')}
+                  />
+                </View>
               ) : null}
 
               <Text style={[styles.section, { color: colors.textMuted }]}>

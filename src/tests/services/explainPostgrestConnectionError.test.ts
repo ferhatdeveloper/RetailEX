@@ -7,11 +7,11 @@ describe('explainPostgrestConnectionError', () => {
       httpStatus: 404,
       bodySnippet: '{"ok":false,"error":"not_found"}',
     });
-    expect(msg).toMatch(/RetailEX bulutu/i);
+    expect(msg).toMatch(/Asin bulutu/i);
     expect(msg).toMatch(/ozbek/);
     expect(msg).not.toMatch(/TCP 3002/);
     expect(msg).not.toMatch(/Wi‑Fi ağında/);
-    expect(msg).not.toMatch(/RetailEX_PostgREST/);
+    expect(msg).not.toMatch(/AsinERP_PostgREST/);
   });
 
   it('SaaS ağ hatasında LAN Wi‑Fi metni vermez', () => {
@@ -28,7 +28,7 @@ describe('explainPostgrestConnectionError', () => {
       httpStatus: 404,
     });
     expect(msg).toMatch(/Port 3002/);
-    expect(msg).toMatch(/RetailEX_PostgREST/);
+    expect(msg).toMatch(/AsinERP_PostgREST/);
   });
 
   it('SaaS 503 için bulut teşhisi verir', () => {

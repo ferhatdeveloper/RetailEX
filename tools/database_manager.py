@@ -177,7 +177,7 @@ async def get_index():
                             <div class="space-y-2">
                                 <label class="text-[10px] font-bold uppercase text-slate-500">Supabase Access Token (PAT)</label>
                                 <div class="flex gap-2">
-                                    <input type="password" id="sb_pat" value="sbp_3090cc42bc5caf82edda3a84b8c5f52df3a1282f" placeholder="sbp_..." class="flex-1 bg-black/60 border border-slate-700 rounded-lg px-3 py-2 text-sm outline-none">
+                                    <input type="password" id="sb_pat" value="" placeholder="sbp_..." class="flex-1 bg-black/60 border border-slate-700 rounded-lg px-3 py-2 text-sm outline-none">
                                     <button onclick="fetchSupabaseProjects(event)" class="px-4 py-2 bg-indigo-600 rounded-lg text-sm font-bold">Listele</button>
                                 </div>
                                 <p class="text-[9px] text-slate-500 italic">Token yoksa: <a href="https://supabase.com/dashboard/account/tokens" target="_blank" class="text-indigo-400 underline">Buradan al</a></p>

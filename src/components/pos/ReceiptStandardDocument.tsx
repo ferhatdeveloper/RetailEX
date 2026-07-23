@@ -82,7 +82,7 @@ export function ReceiptStandardDocument({
   const barcodeH = isA5 ? 34 : 40;
 
   const r = translations.receipt;
-  const companyName = receiptSettings?.companyName?.trim() || 'RetailEX';
+  const companyName = receiptSettings?.companyName?.trim() || 'Asin';
   const logo = receiptSettings?.logoDataUrl?.trim();
   const logoSafe = logo && logo.startsWith('data:image/') ? logo : undefined;
   const noteText = receiptNotesForDisplay(sale.notes);

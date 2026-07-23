@@ -1,8 +1,8 @@
 {
-  "name": "retailex",
-  "description": "RetailEX Next-Gen ERP OS",
+  "name": "asin",
+  "description": "Asin — Next-Gen ERP",
   "type": "module",
-  "version": "0.1.232",
+  "version": "0.1.233",
   "private": true,
   "dependencies": {
     "@ant-design/icons": "^6.1.0",
@@ -137,8 +137,11 @@
     "postgrest:fetch": "powershell -NoProfile -ExecutionPolicy Bypass -File DeskApp/scripts/fetch-postgrest-windows.ps1",
     "tauri:dev": "npm run sumatra:fetch && cd DeskApp && tauri dev",
     "tauri:build": "npm run prebuild && npm run sumatra:fetch && npm run postgrest:fetch && node scripts/patch-installer-nsi-repo-root.mjs && node scripts/tauri-windows-signing-prep.mjs && node scripts/tauri-updater-ci-prep.mjs && node scripts/tauri-build-run.mjs && node scripts/verify-windows-installer-signature.mjs",
+    "tauri:build:portable": "npm run prebuild && npm run sumatra:fetch && npm run postgrest:fetch && node scripts/tauri-windows-signing-prep.mjs && node scripts/tauri-build-portable-run.mjs && node scripts/pack-asin-portable-zip.mjs",
     "desktop:ci:fetch": "node scripts/fetch-desktop-release-to-desktop.mjs",
     "desktop:ci:build": "node scripts/trigger-desktop-release.mjs",
+    "desktop:ci:portable": "node scripts/trigger-desktop-portable-release.mjs",
+    "brand:icons": "node scripts/generate-asin-brand-assets.mjs",
     "desktop:ci:cleanup": "node scripts/cleanup-github-desktop-releases.mjs",
     "tauri:windows-signing:example": "node -e \"const fs=require('fs');const p='DeskApp/tauri.windows.conf.json';if(fs.existsSync(p))throw new Error(p+' zaten var');fs.copyFileSync('DeskApp/tauri.windows.conf.json.example',p);console.log(p+' olusturuldu; certificateThumbprint doldurun.');\"",
     "electron:dev": "electron ./src/electron/main.js --dev",

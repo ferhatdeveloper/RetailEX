@@ -23,11 +23,7 @@ fn decode_base64(s: &str) -> String {
 }
 
 fn get_config_db_path() -> PathBuf {
-    let app_dir = PathBuf::from("C:\\RetailEx");
-    if !app_dir.exists() {
-        let _ = std::fs::create_dir_all(&app_dir);
-    }
-    app_dir.join("config.db")
+    config::get_db_path()
 }
 
 fn main() -> anyhow::Result<()> {
@@ -111,7 +107,7 @@ fn main() -> anyhow::Result<()> {
                     ui.set_status_msg("Configuration applied successfully!".into());
                     let _ = MessageDialog::new()
                         .set_title("Success")
-                        .set_text("RetailEX initialized. You can now launch the app.")
+                        .set_text("AsinERP initialized. You can now launch the app.")
                         .show_confirm();
                 }
             }
@@ -226,18 +222,18 @@ fn load_config() -> anyhow::Result<AppConfig> {
 fn install_services_nearby() -> anyhow::Result<String> {
     let exe = std::env::current_exe()?;
     let base = exe.parent().ok_or_else(|| anyhow::anyhow!("Install dir not found"))?;
-    let svc = base.join("RetailEX_Service.exe");
-    let bridge_exe = base.join("RetailEX_SQL_Bridge.exe");
-    let printer_exe = base.join("RetailEX_Printer.exe");
+    let svc = base.join("AsinERP_Service.exe");
+    let bridge_exe = base.join("AsinERP_SQL_Bridge.exe");
+    let printer_exe = base.join("AsinERP_Printer.exe");
     let bridge = base.join("install-bridge.ps1");
 
     if svc.exists() {
         let _ = std::process::Command::new(&svc).arg("--install").status();
-        let _ = std::process::Command::new("sc").args(["start", "RetailEX_Service"]).status();
+        let _ = std::process::Command::new("sc").args(["start", "AsinERP_Service"]).status();
     }
     if bridge_exe.exists() {
         let _ = std::process::Command::new(&bridge_exe).arg("--install").status();
-        let _ = std::process::Command::new("sc").args(["start", "RetailEX_SQL_Bridge"]).status();
+        let _ = std::process::Command::new("sc").args(["start", "AsinERP_SQL_Bridge"]).status();
     } else if bridge.exists() {
         let _ = std::process::Command::new("powershell")
             .args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", &bridge.to_string_lossy()])
@@ -245,7 +241,7 @@ fn install_services_nearby() -> anyhow::Result<String> {
     }
     if printer_exe.exists() {
         let _ = std::process::Command::new(&printer_exe).arg("--install").status();
-        let _ = std::process::Command::new("sc").args(["start", "RetailEX_Printer"]).status();
+        let _ = std::process::Command::new("sc").args(["start", "AsinERP_Printer"]).status();
     }
     let postgrest = base.join("install-postgrest-service.ps1");
     if base.join("postgrest.exe").exists() && postgrest.exists() {
@@ -261,13 +257,13 @@ fn install_services_nearby() -> anyhow::Result<String> {
                 &prefix,
             ])
             .status();
-        let _ = std::process::Command::new("sc").args(["start", "RetailEX_PostgREST"]).status();
+        let _ = std::process::Command::new("sc").args(["start", "AsinERP_PostgREST"]).status();
     }
     Ok("Servis kurulum islemleri tetiklendi. Yonetici olarak calistirdiginizden emin olun.".to_string())
 }
 
 fn get_services_health() -> anyhow::Result<String> {
-    let script = "Get-Service -Name RetailEX_Service,RetailEX_SQL_Bridge,RetailEX_Printer,RetailEX_PostgREST -ErrorAction SilentlyContinue | Select-Object Name,Status | Format-Table -HideTableHeaders";
+    let script = "Get-Service -Name AsinERP_Service,AsinERP_SQL_Bridge,AsinERP_Printer,AsinERP_PostgREST -ErrorAction SilentlyContinue | Select-Object Name,Status | Format-Table -HideTableHeaders";
     let out = std::process::Command::new("powershell")
         .args(["-NoProfile", "-Command", script])
         .output()?;

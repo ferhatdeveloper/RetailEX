@@ -5,10 +5,11 @@ import type { SetupAppConfig } from './setupTypes';
 export function createInitialSetupConfig(): SetupAppConfig {
   return {
     is_configured: false,
-    db_mode: 'hybrid',
+    // Terminal: doğrudan PostgreSQL (yerel kur / merkez seçim UI kaldırıldı)
+    db_mode: 'online',
     local_db: 'localhost:5432/retailex_local',
     remote_db: '',
-    connection_provider: 'rest_api',
+    connection_provider: 'db',
     remote_rest_url: DEFAULT_SAAS_TENANT_POSTGREST_ORIGIN,
     hybrid_read_preference: 'local_first',
     hybrid_sync_direction: 'local_to_remote',
@@ -23,7 +24,7 @@ export function createInitialSetupConfig(): SetupAppConfig {
     erp_user: 'sa',
     erp_pass: 'r9hWP3oJoC7cTfr',
     erp_db: 'LOGO',
-    title: 'RetailEx OS',
+    title: 'Asin OS',
     pg_local_user: 'postgres',
     pg_local_pass: 'Yq7xwQpt6c',
     pg_remote_user: '',
@@ -44,7 +45,7 @@ export function createInitialSetupConfig(): SetupAppConfig {
       daily_backup: true,
       hourly_backup: false,
       periodic_min: 0,
-      backup_path: 'C:\\RetailEx_Backups',
+      backup_path: 'C:\\Asin_Backups',
       last_run: '',
     },
     selected_cash_registers: [],

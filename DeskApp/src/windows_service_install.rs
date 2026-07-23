@@ -44,7 +44,7 @@ pub fn error_is_service_exists(e: &WsError) -> bool {
 
 /// Kurulum hatasını destek için ProgramData'ya yazar (konsol yok / UAC).
 pub fn log_install_any_error(log_stem: &str, err: &(dyn std::error::Error + 'static)) {
-    let dir = Path::new(r"C:\ProgramData\RetailEX");
+    let dir = Path::new(r"C:\ProgramData\AsinERP");
     if std::fs::create_dir_all(dir).is_err() {
         return;
     }
@@ -60,7 +60,7 @@ pub fn log_install_any_error(log_stem: &str, err: &(dyn std::error::Error + 'sta
 }
 
 pub fn log_service_install_failure(log_stem: &str, e: &WsError) {
-    let dir = Path::new(r"C:\ProgramData\RetailEX");
+    let dir = Path::new(r"C:\ProgramData\AsinERP");
     if std::fs::create_dir_all(dir).is_err() {
         return;
     }

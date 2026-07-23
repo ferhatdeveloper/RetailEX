@@ -11,7 +11,7 @@ export { printerTransportStatus } from './escpos/printerTransportStatus';
 
 function buildTestReceiptPreview(settings: MobilePrinterSettings): string {
   const now = new Date().toLocaleString('tr-TR');
-  const company = settings.companyName?.trim() || 'RetailEX';
+  const company = settings.companyName?.trim() || 'Asin';
   const transport = escposTransportStatus();
   const lines = [
     '================================',
@@ -121,7 +121,7 @@ async function printSystemReceipt(
   preview: string,
 ): Promise<TestPrintResult> {
   const html = receiptTextToHtml(preview, settings.paperSize);
-  const res = await printReceiptViaSystem(html, { jobName: 'RetailEX Test Receipt' });
+  const res = await printReceiptViaSystem(html, { jobName: 'Asin Test Receipt' });
   const codeMap = {
     expoPrintUnavailable: 'systemPrintUnavailable' as const,
     printFailed: 'systemPrintFailed' as const,

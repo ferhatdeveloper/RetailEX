@@ -44,7 +44,7 @@ export const printInvoice = async (invoice: Invoice, typeLabel: string = 'FATURA
       showLogo: !!receiptSettings.logoDataUrl,
       logoUrl: receiptSettings.logoDataUrl || undefined,
       showQRCode: true,
-      companyName: receiptSettings.companyName || firmDetails?.title || firmDetails?.name || 'RetailEX ERP',
+      companyName: receiptSettings.companyName || firmDetails?.title || firmDetails?.name || 'Asin ERP',
       companyAddress: receiptSettings.companyAddress || firmDetails?.address || 'Adres tanımlanmamış.',
       companyPhone: receiptSettings.companyPhone || firmDetails?.phone || '',
       companyTaxNo: receiptSettings.companyTaxNumber || firmDetails?.tax_nr || '',

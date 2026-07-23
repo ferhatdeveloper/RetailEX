@@ -1,130 +1,60 @@
 ﻿/**
- * RetailOS PWA Icon Generator
- * SVG ikonları PNG'ye dönüştürmek için kullanılabilir
- * 
- * Kullanım:
- * 1. npm install sharp (veya canvas kütüphanesi)
- * 2. node scripts/generate-pwa-icons.js
- * 
- * Not: Şu an SVG kullanıyoruz, PNG'ye ihtiyaç olursa bu script kullanılabilir
+ * Asin PWA Icon Generator
+ *
+ * Tercih: `node scripts/generate-asin-brand-assets.mjs` (kanonik marka + PNG/ICO).
+ * Bu dosya geriye dönük uyumluluk için ASIN mark SVG şablonunu yazar.
+ *
+ * Kullanım: node src/scripts/generate-pwa-icons.js
  */
 
 const fs = require('fs');
 const path = require('path');
 
-// İkon boyutları
 const sizes = [72, 96, 128, 144, 152, 192, 384, 512];
+const INK = '#0E2433';
+const ACCENT = '#1FA8A0';
+const SURFACE = '#F3F5F7';
 
-// Renk paleti
-const colors = {
-  gradient: {
-    start: '#2563eb',
-    end: '#1e40af'
-  },
-  text: '#ffffff'
-};
-
-console.log('ğŸ¨ RetailOS PWA Icon Generator');
+console.log('Asin PWA Icon Generator');
 console.log('================================\n');
 
-// SVG template
 function generateSVG(size) {
-  const borderRadius = Math.floor(size * 0.22); // %22 yuvarlaklık
-  const fontSize = Math.floor(size * 0.66); // %66 font boyutu
-  const textY = Math.floor(size * 0.74); // %74 Y pozisyonu
-
-  return `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" xmlns="http://www.w3.org/2000/svg">
+  const rx = Math.floor(size * 0.21875);
+  const s = size / 512;
+  const g = (n) => (n * s).toFixed(2);
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" role="img" aria-label="Asin">
   <defs>
-    <linearGradient id="bg${size}" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" style="stop-color:${colors.gradient.start};stop-opacity:1" />
-      <stop offset="100%" style="stop-color:${colors.gradient.end};stop-opacity:1" />
+    <linearGradient id="asinG${size}" x1="8%" y1="0%" x2="92%" y2="100%">
+      <stop offset="0%" stop-color="${SURFACE}"/>
+      <stop offset="100%" stop-color="${ACCENT}"/>
     </linearGradient>
   </defs>
-  <rect width="${size}" height="${size}" rx="${borderRadius}" fill="url(#bg${size})"/>
-  <text x="${size / 2}" y="${textY}" font-family="system-ui,-apple-system,sans-serif" font-size="${fontSize}" font-weight="bold" fill="${colors.text}" text-anchor="middle">R</text>
+  <rect width="${size}" height="${size}" rx="${rx}" fill="${INK}"/>
+  <path d="M${g(256)} ${g(72)} L${g(420)} ${g(168)} L${g(420)} ${g(344)} L${g(256)} ${g(440)} L${g(92)} ${g(344)} L${g(92)} ${g(168)} Z" fill="none" stroke="${ACCENT}" stroke-width="${Math.max(3, g(14))}" stroke-linejoin="round" opacity="0.9"/>
+  <path d="M${g(256)} ${g(140)} L${g(360)} ${g(372)} H${g(318)} L${g(292)} ${g(312)} H${g(220)} L${g(194)} ${g(372)} H${g(152)} L${g(256)} ${g(140)} Z M${g(232)} ${g(268)} H${g(280)} L${g(256)} ${g(212)} Z" fill="url(#asinG${size})"/>
+  <rect x="${g(372)}" y="${g(196)}" width="${g(28)}" height="${g(120)}" rx="${g(10)}" fill="${ACCENT}"/>
 </svg>`;
 }
 
-// İkon dizini oluştur
 const iconDir = path.join(__dirname, '../public/icons');
 if (!fs.existsSync(iconDir)) {
   fs.mkdirSync(iconDir, { recursive: true });
-  console.log('✅ Icons dizini oluşturuldu');
 }
 
-// SVG dosyalarını oluştur
-console.log('\n📝 SVG ikonları oluşturuluyor...\n');
-
-sizes.forEach(size => {
-  const svg = generateSVG(size);
-  const filename = `icon-${size}x${size}.svg`;
-  const filepath = path.join(iconDir, filename);
-
-  fs.writeFileSync(filepath, svg);
-  console.log(`✅ ${filename} oluşturuldu`);
+sizes.forEach((size) => {
+  const filepath = path.join(iconDir, `icon-${size}x${size}.svg`);
+  fs.writeFileSync(filepath, generateSVG(size));
+  console.log(`✅ ${path.basename(filepath)}`);
 });
 
-// Ana ikon (any size)
-const mainIcon = generateSVG(512);
-fs.writeFileSync(path.join(iconDir, 'icon.svg'), mainIcon);
-console.log('✅ icon.svg oluşturuldu');
+fs.writeFileSync(path.join(iconDir, 'icon.svg'), generateSVG(512));
+fs.writeFileSync(path.join(__dirname, '../public/favicon.svg'), generateSVG(32));
 
-// Favicon
-const favicon = generateSVG(32);
-fs.writeFileSync(path.join(__dirname, '../public/favicon.svg'), favicon);
-console.log('✅ favicon.svg oluşturuldu');
-
-// Safari pinned tab (monochrome)
-const safariIcon = `<svg width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
-  <path d="M0 0h16v16H0z" fill="${colors.gradient.start}"/>
-  <text x="8" y="12" font-family="system-ui,-apple-system,sans-serif" font-size="11" font-weight="bold" fill="${colors.text}" text-anchor="middle">R</text>
+const safari = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 512 512" role="img" aria-label="Asin">
+  <path fill="#000" d="M256 36 L456 152 L456 360 L256 476 L56 360 L56 152 Z"/>
+  <path fill="#000" d="M256 140 L360 372 H318 L292 312 H220 L194 372 H152 L256 140 Z M232 268 H280 L256 212 Z"/>
+  <rect x="372" y="196" width="28" height="120" rx="10" fill="#000"/>
 </svg>`;
-fs.writeFileSync(path.join(iconDir, 'safari-pinned-tab.svg'), safariIcon);
-console.log('✅ safari-pinned-tab.svg oluşturuldu');
+fs.writeFileSync(path.join(iconDir, 'safari-pinned-tab.svg'), safari);
 
-console.log('\n================================');
-console.log('✨ Tüm SVG ikonları başarıyla oluşturuldu!');
-console.log('\n📌 Not: PNG\'ye dönüştürmek için sharp kullanabilirsiniz:');
-console.log('   npm install sharp');
-console.log('   // sharp ile SVG -> PNG dönüşümü yapabilirsiniz\n');
-
-// PNG dönüşümü için örnek kod (sharp gerekli)
-console.log('ğŸ’¡ PNG dönüşümü için örnek kod:');
-console.log(`
-const sharp = require('sharp');
-
-async function convertToPNG(size) {
-  await sharp(path.join(iconDir, \`icon-\${size}x\${size}.svg\`))
-    .png()
-    .toFile(path.join(iconDir, \`icon-\${size}x\${size}.png\`));
-  console.log(\`✅ icon-\${size}x\${size}.png oluşturuldu\`);
-}
-
-// Tüm boyutları dönüştür
-Promise.all(sizes.map(size => convertToPNG(size)))
-  .then(() => console.log('✨ PNG dönüşümü tamamlandı!'));
-`);
-
-// Manifest.json güncelleme önerisi
-console.log('\n📑 manifest.json güncelleme önerisi:');
-console.log(`
-{
-  "icons": [
-    ${sizes.map(size => `{
-      "src": "/icons/icon-${size}x${size}.svg",
-      "sizes": "${size}x${size}",
-      "type": "image/svg+xml",
-      "purpose": "any maskable"
-    }`).join(',\n    ')},
-    {
-      "src": "/icons/icon.svg",
-      "sizes": "any",
-      "type": "image/svg+xml",
-      "purpose": "any maskable"
-    }
-  ]
-}
-`);
-
-console.log('\nğŸ‰ İşlem tamamlandı!\n');
-
+console.log('\n✨ Tamam. Tam raster set için: node scripts/generate-asin-brand-assets.mjs\n');

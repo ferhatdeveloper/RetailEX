@@ -1,7 +1,7 @@
 /**
  * ExRetailOS WebSocket Service
  * Kiracı merkez: wss://api.retailex.app/{kiracı}/ws
- * Yerel Windows servisi yedek: ws://127.0.0.1:9999/ws (RetailEX_Service)
+ * Yerel Windows servisi yedek: ws://127.0.0.1:9999/ws (AsinERP_Service)
  */
 
 const isTauri = typeof window !== 'undefined' && !!(window as any).__TAURI_INTERNALS__;
@@ -144,7 +144,7 @@ export class WebSocketService {
         if (isTauri && this.url.startsWith('ws://127.0.0.1:9999')) {
           import('@tauri-apps/api/core').then(({ invoke }) => {
             invoke('start_ws_server', { port: 9999 }).catch(err => {
-              logger.warn('[WS] Yerel WS servisi başlatılamadı (RetailEX_Service kullanın):', err);
+              logger.warn('[WS] Yerel WS servisi başlatılamadı (AsinERP_Service kullanın):', err);
             });
           });
         }

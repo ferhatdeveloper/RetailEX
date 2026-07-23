@@ -70,7 +70,7 @@ export function KasaDefinitionModal({ kasa, onClose, onSuccess }: KasaDefinition
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[60] p-4">
             <div className="bg-white dark:bg-gray-900 w-full max-w-lg shadow-2xl flex flex-col overflow-hidden">
                 {/* Header - Flat Blue Style */}
-                <div className="bg-gradient-to-r from-blue-600 to-blue-700 p-4 text-white flex items-center justify-between border-b dark:border-gray-700">
+                <div className="bg-[var(--asin-primary,#0E2433)] p-4 text-white flex items-center justify-between border-b dark:border-gray-700">
                     <div className="flex items-center gap-3">
                         <Wallet className="w-5 h-5" />
                         <h3 className="text-lg font-semibold">{kasa ? tm('editCashRegister') : tm('newCashRegister')}</h3>
@@ -152,7 +152,7 @@ export function KasaDefinitionModal({ kasa, onClose, onSuccess }: KasaDefinition
                         <button
                             type="submit"
                             disabled={loading}
-                            className="flex-[2] px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
+                            className="flex-[2] px-4 py-2.5 bg-[var(--asin-accent,#1FA8A0)] hover:bg-[#178f88] text-white font-bold rounded transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
                         >
                             <Save className="w-4 h-4" />
                             {loading ? tm('analyzing').toUpperCase() : tm('saveAccount').toUpperCase()}

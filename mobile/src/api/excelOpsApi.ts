@@ -33,7 +33,7 @@ export async function shareProductsCsv(): Promise<void> {
   );
   const csv = [header, ...lines].join('\n');
   await Share.share({
-    title: 'RetailEX ürünler',
+    title: 'Asin ürünler',
     message: csv,
   });
 }
@@ -46,7 +46,7 @@ export async function shareCustomersCsv(): Promise<void> {
   );
   const csv = [header, ...lines].join('\n');
   await Share.share({
-    title: 'RetailEX cariler',
+    title: 'Asin cariler',
     message: csv,
   });
 }

@@ -1,11 +1,11 @@
-//! RetailEX_Tools — Kurulum dizinindeki .ps1 yardımcılarını ExecutionPolicy Bypass ile çalıştırır.
-//! Önerilen konum: INSTDIR\RetailEXTools\RetailEX_Tools.exe (kurulum dosyaları INSTDIR kökünde).
+//! AsinERP_Tools — Kurulum dizinindeki .ps1 yardımcılarını ExecutionPolicy Bypass ile çalıştırır.
+//! Önerilen konum: INSTDIR\AsinERPTools\AsinERP_Tools.exe (kurulum dosyaları INSTDIR kökünde).
 
 use std::io::{self, BufRead, Write};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-/// INSTDIR\RetailEXTools\ içinden: üst dizinde servis/bridge dosyaları aranır.
+/// INSTDIR\AsinERPTools\ içinden: üst dizinde servis/bridge dosyaları aranır.
 /// Düz kurulum (exe ile aynı klasörde .ps1) veya üst klasörlerde arama da desteklenir.
 fn resolve_install_dir(exe_dir: &Path) -> PathBuf {
     let mut cur = Some(exe_dir);
@@ -23,15 +23,15 @@ fn resolve_install_dir(exe_dir: &Path) -> PathBuf {
 }
 
 fn marker_present(dir: &Path) -> bool {
-    dir.join("RetailEX_Service.exe").exists()
-        || dir.join("RetailEX_SQL_Bridge.exe").exists()
+    dir.join("AsinERP_Service.exe").exists()
+        || dir.join("AsinERP_SQL_Bridge.exe").exists()
         || dir.join("bridge.cjs").exists()
 }
 
 fn run_ps1(install_dir: &Path, script: &str, extra: &[String]) -> i32 {
     let ps1 = install_dir.join(script);
     if !ps1.exists() {
-        eprintln!("[RetailEX_Tools] Script bulunamadı: {}", ps1.display());
+        eprintln!("[AsinERP_Tools] Script bulunamadı: {}", ps1.display());
         return 1;
     }
     let mut cmd = Command::new("powershell.exe");
@@ -46,7 +46,7 @@ fn run_ps1(install_dir: &Path, script: &str, extra: &[String]) -> i32 {
     let st = match cmd.status() {
         Ok(s) => s,
         Err(e) => {
-            eprintln!("[RetailEX_Tools] powershell başlatılamadı: {}", e);
+            eprintln!("[AsinERP_Tools] powershell başlatılamadı: {}", e);
             return 1;
         }
     };
@@ -54,7 +54,7 @@ fn run_ps1(install_dir: &Path, script: &str, extra: &[String]) -> i32 {
 }
 
 fn print_banner(install_dir: &Path) {
-    println!("RetailEX Tools");
+    println!("AsinERP Tools");
     println!("Kurulum dizini: {}", install_dir.display());
     println!();
 }
@@ -64,7 +64,7 @@ fn list_scripts(install_dir: &Path) {
         "install-services-manual.ps1",
         "install-bridge-npm.ps1",
         "install-bridge.ps1",
-        "retailex-admin.ps1",
+        "asinerp-admin.ps1",
         "pg-windows-expose-remote.ps1",
     ];
     println!("Script durumu:");
@@ -73,21 +73,21 @@ fn list_scripts(install_dir: &Path) {
         let ok = p.exists();
         println!("  [{}] {}", if ok { "OK" } else { "--" }, n);
     }
-    let pgexe = install_dir.join("RetailEX_PostgreSQLRemote.exe");
+    let pgexe = install_dir.join("AsinERP_PostgreSQLRemote.exe");
     println!(
         "  [{}] {}",
         if pgexe.exists() { "OK" } else { "--" },
-        "RetailEX_PostgreSQLRemote.exe"
+        "AsinERP_PostgreSQLRemote.exe"
     );
     println!();
 }
 
-/// Yonetici (UAC) ile RetailEX_PostgreSQLRemote.exe — argümansız menü icin.
+/// Yonetici (UAC) ile AsinERP_PostgreSQLRemote.exe — argümansız menü icin.
 fn run_postgres_remote_elevated(install_dir: &Path) -> i32 {
-    let exe = install_dir.join("RetailEX_PostgreSQLRemote.exe");
+    let exe = install_dir.join("AsinERP_PostgreSQLRemote.exe");
     if !exe.exists() {
         eprintln!(
-            "[RetailEX_Tools] Bulunamadı: {} — tam kurulum (NSIS) veya projede cargo build.",
+            "[AsinERP_Tools] Bulunamadı: {} — tam kurulum (NSIS) veya projede cargo build.",
             exe.display()
         );
         return 1;
@@ -102,7 +102,7 @@ fn run_postgres_remote_elevated(install_dir: &Path) -> i32 {
     {
         Ok(s) => s,
         Err(e) => {
-            eprintln!("[RetailEX_Tools] powershell: {}", e);
+            eprintln!("[AsinERP_Tools] powershell: {}", e);
             return 1;
         }
     };
@@ -123,9 +123,9 @@ fn menu_loop(install_dir: &Path) -> i32 {
         println!("1) Servisleri elle kur (install-services-manual.ps1)");
         println!("2) SQL Bridge npm bağımlılıkları (install-bridge-npm.ps1)");
         println!("3) SQL Bridge kur / onar (install-bridge.ps1)");
-        println!("4) Yönetim menüsü (retailex-admin.ps1)");
+        println!("4) Yönetim menüsü (asinerp-admin.ps1)");
         println!("5) PostgreSQL uzaktan erisim (pg-windows-expose-remote.ps1)");
-        println!("6) PostgreSQL LAN (.exe, UAC) — RetailEX_PostgreSQLRemote.exe");
+        println!("6) PostgreSQL LAN (.exe, UAC) — AsinERP_PostgreSQLRemote.exe");
         println!("L) Script listesini yenile");
         println!("0) Çıkış");
         print!("Secim: ");
@@ -146,7 +146,7 @@ fn menu_loop(install_dir: &Path) -> i32 {
                 )
             }
             "3" => run_ps1(install_dir, "install-bridge.ps1", &[]),
-            "4" => run_ps1(install_dir, "retailex-admin.ps1", &["-Menu".into()]),
+            "4" => run_ps1(install_dir, "asinerp-admin.ps1", &["-Menu".into()]),
             "5" => run_ps1(install_dir, "pg-windows-expose-remote.ps1", &[]),
             "6" => run_postgres_remote_elevated(install_dir),
             "l" => {
@@ -183,13 +183,13 @@ fn dispatch_cli(install_dir: &Path, args: &[String]) -> i32 {
         "admin" => {
             let mut v = vec!["-Menu".into()];
             v.extend_from_slice(&args[1..]);
-            run_ps1(install_dir, "retailex-admin.ps1", &v)
+            run_ps1(install_dir, "asinerp-admin.ps1", &v)
         }
         "pg" | "expose" => run_ps1(install_dir, "pg-windows-expose-remote.ps1", &args[1..].to_vec()),
         "pg-remote" | "pgexe" => {
-            let exe = install_dir.join("RetailEX_PostgreSQLRemote.exe");
+            let exe = install_dir.join("AsinERP_PostgreSQLRemote.exe");
             if !exe.exists() {
-                eprintln!("RetailEX_PostgreSQLRemote.exe yok: {}", exe.display());
+                eprintln!("AsinERP_PostgreSQLRemote.exe yok: {}", exe.display());
                 return 1;
             }
             let mut c = Command::new(&exe);
@@ -206,9 +206,9 @@ fn dispatch_cli(install_dir: &Path, args: &[String]) -> i32 {
         }
         "help" | "-h" | "/?" => {
             println!(
-                "Kullanım: RetailEX_Tools.exe [komut]\n\
+                "Kullanım: AsinERP_Tools.exe [komut]\n\
                  Komutlar: services | bridge-npm | bridge | admin | pg | pg-remote\n\
-                 pg-remote: RetailEX_PostgreSQLRemote.exe (argümanları iletir; yönetici gerekir)\n\
+                 pg-remote: AsinERP_PostgreSQLRemote.exe (argümanları iletir; yönetici gerekir)\n\
                  Argümansız açılırsa etkileşimli menü."
             );
             0

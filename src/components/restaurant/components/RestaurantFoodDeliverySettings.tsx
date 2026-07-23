@@ -18,7 +18,7 @@ export function RestaurantFoodDeliverySettings() {
         <div className="max-w-3xl space-y-8">
             <div>
                 <div className="flex items-center gap-3 mb-2">
-                    <div className="p-2.5 rounded-xl bg-blue-50 text-blue-600">
+                    <div className="p-2.5 rounded-xl bg-[var(--asin-accent-muted,#D5F0EE)] text-[var(--asin-accent,#1FA8A0)]">
                         <Bike className="w-6 h-6" />
                     </div>
                     <div>
@@ -32,7 +32,7 @@ export function RestaurantFoodDeliverySettings() {
                     <ShieldAlert className="w-5 h-5 shrink-0 mt-0.5" />
                     <p>
                         Bu platformların resmi API anahtarları genelde restoran sözleşmesi veya Posentegra gibi aracılar üzerinden verilir.
-                        RetailEX tarafında kanal etiketi, harici sipariş numarası ve webhook ile sipariş oluşturma desteklenir; doğrudan YS/Getir sunucularına bağlanma bu ekrandan yapılmaz.
+                        Asin tarafında kanal etiketi, harici sipariş numarası ve webhook ile sipariş oluşturma desteklenir; doğrudan YS/Getir sunucularına bağlanma bu ekrandan yapılmaz.
                     </p>
                 </div>
             </div>

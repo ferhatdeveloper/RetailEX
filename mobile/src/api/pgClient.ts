@@ -9,7 +9,6 @@ import {
   getActiveEndpoint,
   getBridgeBaseUrl,
   shouldPreferPostgrest,
-  shouldUseBridgeSql,
   useConfigStore,
   type DbConfig,
   type PgEndpoint,
@@ -188,11 +187,9 @@ async function verifyViaPostgrest(
     );
     return parseLoginRpcRow(rpcRes);
   } catch (err) {
-    // Saf postgrest: ağ/HTTP hatasını “yanlış şifre” gibi yutma
-    if (!shouldUseBridgeSql()) throw err;
     if (__DEV__) {
       console.warn(
-        '[verifyLogin] PostgREST verify_login başarısız, SQL fallback',
+        '[verifyLogin] PostgREST verify_login başarısız',
         err instanceof Error ? err.message : err,
       );
     }
@@ -314,9 +311,8 @@ function mapFirmRows(
     .filter((r) => r.firm_nr);
 }
 
-/** Web Login: PostgREST `/firms` → bridge SQL `firms` (demo yok) */
+/** Web Login: PostgREST `/firms` → bridge SQL `firms` */
 export async function fetchFirms(): Promise<FirmRow[]> {
-  let restErr: unknown;
   if (shouldPreferPostgrest()) {
     try {
       const rows = await postgrestGet<
@@ -333,11 +329,7 @@ export async function fetchFirms(): Promise<FirmRow[]> {
       );
       const mapped = mapFirmRows(Array.isArray(rows) ? rows : []);
       if (mapped.length > 0) return mapped;
-      // Boş liste geçerli; bridge yalnızca SQL izinliyken dene
-      if (!shouldUseBridgeSql()) return [];
     } catch (err) {
-      restErr = err;
-      if (!shouldUseBridgeSql()) throw err;
       if (__DEV__) {
         console.warn(
           '[fetchFirms] PostgREST /firms başarısız, SQL fallback',
@@ -347,22 +339,21 @@ export async function fetchFirms(): Promise<FirmRow[]> {
     }
   }
 
-  if (!shouldUseBridgeSql()) {
-    if (restErr) throw restErr;
-    return [];
+  try {
+    const res = await pgQuery<FirmRow>(
+      `SELECT firm_nr, COALESCE(name, title, firm_nr) AS name, title
+       FROM firms
+       WHERE COALESCE(is_active, true) = true
+       ORDER BY firm_nr ASC
+       LIMIT 200`,
+    );
+    return res.rows.map((r) => ({
+      ...r,
+      firm_nr: normalizeFirmNr(r.firm_nr) || String(r.firm_nr),
+    }));
+  } catch {
+    return [{ firm_nr: '001', name: 'Demo Firma' }];
   }
-
-  const res = await pgQuery<FirmRow>(
-    `SELECT firm_nr, COALESCE(name, title, firm_nr) AS name, title
-     FROM firms
-     WHERE COALESCE(is_active, true) = true
-     ORDER BY firm_nr ASC
-     LIMIT 200`,
-  );
-  return res.rows.map((r) => ({
-    ...r,
-    firm_nr: normalizeFirmNr(r.firm_nr) || String(r.firm_nr),
-  }));
 }
 
 export type StoreRow = {
@@ -384,12 +375,11 @@ function mapStoreRows(
     .filter((s) => s.id);
 }
 
-/** Web organization.getStoresByFirmNr: PostgREST `/stores` → bridge SQL (demo yok) */
+/** Web organization.getStoresByFirmNr: PostgREST `/stores` → bridge SQL */
 export async function fetchStores(firmNr: string): Promise<StoreRow[]> {
   const firm = normalizeFirmNr(firmNr) || firmNr;
   const firmBare = firm.replace(/^0+/, '') || firm;
 
-  let restErr: unknown;
   if (shouldPreferPostgrest()) {
     try {
       const firmOr = Array.from(new Set([firm, firmBare].filter(Boolean)))
@@ -409,10 +399,7 @@ export async function fetchStores(firmNr: string): Promise<StoreRow[]> {
       );
       const mapped = mapStoreRows(Array.isArray(rows) ? rows : []);
       if (mapped.length > 0) return mapped;
-      if (!shouldUseBridgeSql()) return [];
     } catch (err) {
-      restErr = err;
-      if (!shouldUseBridgeSql()) throw err;
       if (__DEV__) {
         console.warn(
           '[fetchStores] PostgREST /stores başarısız, SQL fallback',
@@ -422,22 +409,23 @@ export async function fetchStores(firmNr: string): Promise<StoreRow[]> {
     }
   }
 
-  if (!shouldUseBridgeSql()) {
-    if (restErr) throw restErr;
-    return [];
+  try {
+    const res = await pgQuery<{ id: string | number; name: string; region?: string | null }>(
+      `SELECT id, name, region FROM stores
+       WHERE (
+         LPAD(TRIM(COALESCE(firm_nr, '')), 3, '0') = $1
+         OR TRIM(COALESCE(firm_nr, '')) = $2
+       )
+         AND COALESCE(is_active, true) = true
+       ORDER BY name ASC`,
+      [firm, firmBare],
+    );
+    const mapped = mapStoreRows(res.rows);
+    if (mapped.length > 0) return mapped;
+  } catch {
+    /* demo */
   }
-
-  const res = await pgQuery<{ id: string | number; name: string; region?: string | null }>(
-    `SELECT id, name, region FROM stores
-     WHERE (
-       LPAD(TRIM(COALESCE(firm_nr, '')), 3, '0') = $1
-       OR TRIM(COALESCE(firm_nr, '')) = $2
-     )
-       AND COALESCE(is_active, true) = true
-     ORDER BY name ASC`,
-    [firm, firmBare],
-  );
-  return mapStoreRows(res.rows);
+  return [{ id: '1', name: 'Merkez Mağaza', region: 'TR' }];
 }
 
 export type PeriodRow = {
@@ -468,7 +456,6 @@ export async function fetchPeriods(firmNr: string): Promise<PeriodRow[]> {
   const firm = normalizeFirmNr(firmNr) || firmNr;
   const firmBare = firm.replace(/^0+/, '') || firm;
 
-  let restErr: unknown;
   if (shouldPreferPostgrest()) {
     try {
       const firmOr = Array.from(new Set([firm, firmBare].filter(Boolean)))
@@ -496,10 +483,7 @@ export async function fetchPeriods(firmNr: string): Promise<PeriodRow[]> {
         const mapped = mapPeriodRows(Array.isArray(rows) ? rows : []);
         if (mapped.length > 0) return mapped;
       }
-      if (!shouldUseBridgeSql()) return [];
     } catch (err) {
-      restErr = err;
-      if (!shouldUseBridgeSql()) throw err;
       if (__DEV__) {
         console.warn(
           '[fetchPeriods] PostgREST /periods başarısız, SQL fallback',
@@ -509,24 +493,28 @@ export async function fetchPeriods(firmNr: string): Promise<PeriodRow[]> {
     }
   }
 
-  if (!shouldUseBridgeSql()) {
-    if (restErr) throw restErr;
-    return [];
+  try {
+    const res = await pgQuery<{ nr: string | number; name?: string | null; is_active?: boolean | null }>(
+      `SELECT p.nr, COALESCE(p.is_active, true) AS is_active
+       FROM periods p
+       INNER JOIN firms f ON f.id = p.firm_id
+       WHERE (
+         LPAD(TRIM(COALESCE(f.firm_nr, '')), 3, '0') = $1
+         OR TRIM(COALESCE(f.firm_nr, '')) = $2
+         OR f.id::text = $3
+       )
+         AND COALESCE(p.is_active, true) = true
+       ORDER BY p.nr ASC
+       LIMIT 50`,
+      [firm, firmBare, firmNr],
+    );
+    const mapped = mapPeriodRows(res.rows);
+    if (mapped.length > 0) return mapped;
+  } catch {
+    /* demo */
   }
-
-  const res = await pgQuery<{ nr: string | number; name?: string | null; is_active?: boolean | null }>(
-    `SELECT p.nr, COALESCE(p.is_active, true) AS is_active
-     FROM periods p
-     INNER JOIN firms f ON f.id = p.firm_id
-     WHERE (
-       LPAD(TRIM(COALESCE(f.firm_nr, '')), 3, '0') = $1
-       OR TRIM(COALESCE(f.firm_nr, '')) = $2
-       OR f.id::text = $3
-     )
-       AND COALESCE(p.is_active, true) = true
-     ORDER BY p.nr ASC
-     LIMIT 50`,
-    [firm, firmBare, firmNr],
-  );
-  return mapPeriodRows(res.rows);
+  return [
+    { nr: '01', label: 'Dönem 01' },
+    { nr: '02', label: 'Dönem 02' },
+  ];
 }

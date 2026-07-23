@@ -1,14 +1,14 @@
 #Requires -Version 5.1
-# RetailEX SQL Bridge - once npm install (hono/pg), sonra Windows hizmeti
+# AsinERP SQL Bridge - once npm install (hono/pg), sonra Windows hizmeti
 # Yonetici PowerShell. Eski bozuk kurulum: .\install-bridge.ps1 -Repair
 
 param(
     [switch]$Repair
 )
 
-$ServiceName = "RetailEX_SQL_Bridge"
-$DisplayName = "RetailEX SQL Bridge"
-$Description = "PostgreSQL connectivity bridge for RetailEX Browser mode."
+$ServiceName = "AsinERP_SQL_Bridge"
+$DisplayName = "AsinERP SQL Bridge"
+$Description = "PostgreSQL connectivity bridge for AsinERP Browser mode."
 
 $LogFile = "$env:TEMP\retailex_bridge_install.log"
 function Write-Log($m) { $m | Out-File $LogFile -Append; Write-Host $m }
@@ -84,8 +84,8 @@ if ($Existing) {
         $img = (Get-ItemProperty -LiteralPath $regPath -ErrorAction Stop).ImagePath
     }
     catch { }
-    # NSIS kurulum: hizmet RetailEX_SQL_Bridge.exe - ImagePath'i node'a cevirme
-    if ($img -and $img -match 'RetailEX_SQL_Bridge\.exe') {
+    # NSIS kurulum: hizmet AsinERP_SQL_Bridge.exe - ImagePath'i node'a cevirme
+    if ($img -and $img -match 'AsinERP_SQL_Bridge\.exe') {
         Write-Log "Hizmet exe saricisi kullaniyor; yalnizca npm deps guncelleniyor: $BaseDir"
         Push-Location $BaseDir
         try {

@@ -1,4 +1,4 @@
-﻿name: Terazi Build and Release
+name: Terazi Build and Release
 
 # RetailEX TeraziManager (WinForms + Inno Setup installer/)
 # Ilk surum:
@@ -141,7 +141,7 @@ jobs:
 
             ### Kurulum
             1. `RetailEX.TeraziManager-Setup-*.exe` indirin ve yonetici olarak calistirin
-            2. `C:\ProgramData\RetailEX\terazi-sync.json` icinde TenantCode ve ApiToken ayarlayin
+            2. `C:\ProgramData\AsinERP\terazi-sync.json` icinde TenantCode ve ApiToken ayarlayin
 
             ### Dosyalar
             - **Setup.exe** — Inno Setup kurulum paketi (Release | x86)

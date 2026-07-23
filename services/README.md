@@ -61,7 +61,7 @@ $env:LOGO_DATABASE_URL = "Server=LOGO-SERVER;Database=TIGERDB;User Id=sa;Passwor
 **Kaldırma:** `RetailEX-Logo-Connector.exe --uninstall`  
 **Konsol testi:** `RetailEX-Logo-Connector.exe --console`
 
-Windows servis adı: `RetailEXLogoConnector`
+Windows servis adı: `AsinERPLogoConnector`
 
 ## RetailEX-Sync-Service
 
@@ -76,7 +76,7 @@ Kiracı başına WebSocket + REST senkron (Caddy: `https://api.retailex.app/{kir
 
 **Windows (mağaza PC — yerel):**
 
-- **`RetailEX_Service.exe`** (Windows servisi): arka planda merkeze `wss://api.retailex.app/{kiracı}/ws` bağlanır; tarayıcı kapalıyken hibrit senkron devam eder.
+- **`AsinERP_Service.exe`** (Windows servisi): arka planda merkeze `wss://api.retailex.app/{kiracı}/ws` bağlanır; tarayıcı kapalıyken hibrit senkron devam eder.
 - Tarayıcı UI, kiracı bağlandıktan sonra aynı merkez WS adresine gider; yedek yerel dinleyici: `ws://127.0.0.1:9999/ws`.
 
 **Çalıştırma (merkez / kiracı sunucu):**

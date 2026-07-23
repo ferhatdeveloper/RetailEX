@@ -68,7 +68,7 @@ function queueTable(): string {
 }
 
 const DEFAULT_INVOICE_TEMPLATE =
-  'Sayın {customer_name}, {date} tarihli {fiche_no} numaralı {category} faturanız: {amount} {currency}. RetailEX';
+  'Sayın {customer_name}, {date} tarihli {fiche_no} numaralı {category} faturanız: {amount} {currency}. Asin';
 
 export function buildInvoiceWhatsAppText(
   template: string | undefined | null,
@@ -273,7 +273,7 @@ export const messagingService = {
         };
       }
     }
-    const text = (options?.message || 'RetailEX — WhatsApp test mesajı.').trim();
+    const text = (options?.message || 'Asin — WhatsApp test mesajı.').trim();
     if (provider === 'META' && merged) {
       const tpl = resolveMetaInvoiceTemplate(
         merged.meta_invoice_template_name,

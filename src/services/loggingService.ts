@@ -124,7 +124,7 @@ class LoggingService {
             ...(context ? { context } : {}),
         };
 
-        // Write to C:\RetailEX\log\crud_errors.json via Tauri (fire-and-forget)
+        // Write to C:\AsinERP\log\crud_errors.json via Tauri (fire-and-forget)
         try {
             import('@tauri-apps/api/core').then(({ invoke }) => {
                 invoke('log_crud_error', { payload: JSON.stringify(payload) }).catch(() => {/* silently ignore if Tauri unavailable */});

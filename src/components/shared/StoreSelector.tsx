@@ -73,7 +73,7 @@ export function StoreSelector() {
 
   const getSyncStatusColor = () => {
     if (!isOnline) return 'text-red-600';
-    if (syncStatus.isSyncing) return 'text-blue-600';
+    if (syncStatus.isSyncing) return 'text-[var(--asin-accent,#1FA8A0)]';
     if (syncStatus.pendingCount > 0) return 'text-yellow-600';
     return 'text-green-600';
   };
@@ -101,7 +101,7 @@ export function StoreSelector() {
         onClick={() => setShowDropdown(!showDropdown)}
         className="flex items-center gap-3 px-4 py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
       >
-        <StoreIcon className="h-5 w-5 text-blue-600" />
+        <StoreIcon className="h-5 w-5 text-[var(--asin-accent,#1FA8A0)]" />
         <div className="flex-1 text-left">
           {selectedStore ? (
             <>
@@ -139,7 +139,7 @@ export function StoreSelector() {
               </div>
               <button
                 onClick={() => setShowSyncDetails(!showSyncDetails)}
-                className="text-xs text-blue-600 hover:text-blue-700"
+                className="text-xs text-[var(--asin-accent,#1FA8A0)] hover:text-[var(--asin-accent,#1FA8A0)]"
               >
                 {showSyncDetails ? 'Gizle' : 'Detay'}
               </button>
@@ -172,8 +172,8 @@ export function StoreSelector() {
               <button
                 key={store.id}
                 onClick={() => handleStoreSelect(store.id)}
-                className={`w-full p-3 hover:bg-blue-50 border-b last:border-b-0 text-left transition-colors ${
-                  selectedStore?.id === store.id ? 'bg-blue-50 border-l-4 border-l-blue-600' : ''
+                className={`w-full p-3 hover:bg-[var(--asin-accent-muted,#D5F0EE)] border-b last:border-b-0 text-left transition-colors ${
+                  selectedStore?.id === store.id ? 'bg-[var(--asin-accent-muted,#D5F0EE)] border-l-4 border-l-[var(--asin-accent,#1FA8A0)]' : ''
                 }`}
               >
                 <div className="flex items-center justify-between">
@@ -182,7 +182,7 @@ export function StoreSelector() {
                     <div className="text-sm text-gray-600">{store.code} • {store.city}</div>
                   </div>
                   {selectedStore?.id === store.id && (
-                    <Check className="h-5 w-5 text-blue-600" />
+                    <Check className="h-5 w-5 text-[var(--asin-accent,#1FA8A0)]" />
                   )}
                 </div>
               </button>
@@ -194,7 +194,7 @@ export function StoreSelector() {
             <button
               onClick={handleSync}
               disabled={!isOnline || syncStatus.isSyncing}
-              className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
+              className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-[var(--asin-accent,#1FA8A0)] text-white rounded-lg hover:bg-[#178f88] disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
             >
               <Upload className="h-4 w-4" />
               <span>Şimdi Senkronize Et</span>
@@ -225,7 +225,7 @@ export function SyncStatusIndicator() {
 
   const getStatusColor = () => {
     if (!isOnline) return 'bg-red-500';
-    if (syncStatus.isSyncing) return 'bg-blue-500';
+    if (syncStatus.isSyncing) return 'bg-[var(--asin-accent,#1FA8A0)]';
     if (syncStatus.pendingCount > 0) return 'bg-yellow-500';
     return 'bg-green-500';
   };
@@ -264,7 +264,7 @@ export function SyncStatusPanel() {
       {/* Header */}
       <div className="p-4 border-b">
         <h3 className="font-semibold text-gray-900 flex items-center gap-2">
-          <Activity className="h-5 w-5 text-blue-600" />
+          <Activity className="h-5 w-5 text-[var(--asin-accent,#1FA8A0)]" />
           Senkronizasyon Durumu
         </h3>
       </div>
@@ -307,7 +307,7 @@ export function SyncStatusPanel() {
 
         <div className="bg-gray-50 rounded-lg p-3">
           <div className="flex items-center gap-2 mb-2">
-            <Database className="h-4 w-4 text-blue-600" />
+            <Database className="h-4 w-4 text-[var(--asin-accent,#1FA8A0)]" />
             <span className="text-sm text-gray-600">Son Sync</span>
           </div>
           <div className="text-sm font-medium text-gray-900">
@@ -326,7 +326,7 @@ export function SyncStatusPanel() {
             <button
               onClick={() => forceSync()}
               disabled={!isOnline || syncStatus.isSyncing}
-              className="text-xs px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
+              className="text-xs px-3 py-1 bg-[var(--asin-accent,#1FA8A0)] text-white rounded hover:bg-[#178f88] disabled:bg-gray-400 disabled:cursor-not-allowed"
             >
               {syncStatus.isSyncing ? 'Senkronize ediliyor...' : 'Şimdi Sync Et'}
             </button>
@@ -337,7 +337,7 @@ export function SyncStatusPanel() {
               <div key={op.id} className="flex items-center gap-3 p-2 bg-gray-50 rounded">
                 <div className={`w-2 h-2 rounded-full flex-shrink-0 ${
                   op.status === 'completed' ? 'bg-green-500' :
-                  op.status === 'syncing' ? 'bg-blue-500 animate-pulse' :
+                  op.status === 'syncing' ? 'bg-[var(--asin-accent,#1FA8A0)] animate-pulse' :
                   op.status === 'failed' ? 'bg-red-500' :
                   'bg-yellow-500'
                 }`}></div>

@@ -139,7 +139,7 @@ export function MizanReportModule() {
           <button
             onClick={loadMizan}
             disabled={loading}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 transition-colors"
+            className="flex items-center gap-2 px-4 py-2 bg-[var(--asin-accent,#1FA8A0)] text-white rounded hover:bg-[#178f88] disabled:opacity-50 transition-colors"
           >
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
             Yenile
@@ -311,15 +311,15 @@ export function MizanReportModule() {
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full">
-              <thead className="bg-gradient-to-r from-blue-600 to-blue-700 text-white">
+              <thead className="bg-[var(--asin-primary,#0E2433)] text-white">
                 <tr>
                   <th className="px-4 py-3 text-left text-sm" rowSpan={2}>Hesap Kodu</th>
                   <th className="px-4 py-3 text-left text-sm" rowSpan={2}>Hesap Adı</th>
                   <th className="px-4 py-3 text-center text-sm" rowSpan={2}>Tip</th>
-                  <th className="px-4 py-3 text-center text-sm border-l border-blue-500" colSpan={2}>Önceki Dönem</th>
-                  <th className="px-4 py-3 text-center text-sm border-l border-blue-500" colSpan={2}>Dönem Hareket</th>
-                  <th className="px-4 py-3 text-center text-sm border-l border-blue-500" colSpan={2}>Toplam</th>
-                  <th className="px-4 py-3 text-center text-sm border-l border-blue-500" colSpan={2}>Bakiye</th>
+                  <th className="px-4 py-3 text-center text-sm border-l border-[var(--asin-accent,#1FA8A0)]/40" colSpan={2}>Önceki Dönem</th>
+                  <th className="px-4 py-3 text-center text-sm border-l border-[var(--asin-accent,#1FA8A0)]/40" colSpan={2}>Dönem Hareket</th>
+                  <th className="px-4 py-3 text-center text-sm border-l border-[var(--asin-accent,#1FA8A0)]/40" colSpan={2}>Toplam</th>
+                  <th className="px-4 py-3 text-center text-sm border-l border-[var(--asin-accent,#1FA8A0)]/40" colSpan={2}>Bakiye</th>
                 </tr>
                 <tr>
                   <th className="px-4 py-2 text-center text-xs border-l border-blue-500">Borç</th>

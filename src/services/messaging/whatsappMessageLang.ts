@@ -20,10 +20,10 @@ export const FOLLOW_UP_REMINDER_TIME_LABEL: Record<WhatsAppMessageLang, string> 
 };
 
 export const CUSTOMER_BROADCAST_TEMPLATES: Record<WhatsAppMessageLang, string> = {
-  tr: 'Merhaba {customer_name}, sizinle iletişime geçmek istedik. RetailEX',
-  en: 'Hello {customer_name}, we would like to get in touch with you. RetailEX',
-  ar: 'مرحباً {customer_name}، نود التواصل معك. RetailEX',
-  ku: 'سڵاو {customer_name}، دەمانەوێت پەیوەندیت پێوە بکەین. RetailEX',
+  tr: 'Merhaba {customer_name}, sizinle iletişime geçmek istedik. Asin',
+  en: 'Hello {customer_name}, we would like to get in touch with you. Asin',
+  ar: 'مرحباً {customer_name}، نود التواصل معك. Asin',
+  ku: 'سڵاو {customer_name}، دەمانەوێت پەیوەندیت پێوە بکەین. Asin',
 };
 
 export function metaAppointmentTemplateIdForLang(lang: WhatsAppMessageLang): string {
@@ -38,13 +38,13 @@ export function buildFollowUpFreeText(
 ): string {
   switch (lang) {
     case 'en':
-      return `Hello ${name}, you have a follow-up reminder for ${service} on ${dueDate}. RetailEX`;
+      return `Hello ${name}, you have a follow-up reminder for ${service} on ${dueDate}. Asin`;
     case 'ar':
-      return `مرحباً ${name}، لديك تذكير متابعة لـ ${service} بتاريخ ${dueDate}. RetailEX`;
+      return `مرحباً ${name}، لديك تذكير متابعة لـ ${service} بتاريخ ${dueDate}. Asin`;
     case 'ku':
-      return `سڵاو ${name}، لە ${dueDate} بۆ ${service} بیرەوەرگرتنەکەت هەیە. RetailEX`;
+      return `سڵاو ${name}، لە ${dueDate} بۆ ${service} بیرەوەرگرتنەکەت هەیە. Asin`;
     default:
-      return `Merhaba ${name}, ${dueDate} tarihinde ${service} için takip hatırlatmanız bulunmaktadır. RetailEX`;
+      return `Merhaba ${name}, ${dueDate} tarihinde ${service} için takip hatırlatmanız bulunmaktadır. Asin`;
   }
 }
 
@@ -81,16 +81,16 @@ const FREE_TEXT_PRESET_TEMPLATES: Record<
 > = {
   customer_greeting: CUSTOMER_BROADCAST_TEMPLATES,
   appointment_reminder: {
-    tr: 'Merhaba {customer_name}, {date} tarihinde saat {time} için randevunuz bulunmaktadır. RetailEX',
-    en: 'Hello {customer_name}, you have an appointment on {date} at {time}. RetailEX',
-    ar: 'مرحباً {customer_name}، لديك موعد بتاريخ {date} الساعة {time}. RetailEX',
-    ku: 'سڵاو {customer_name}، لە {date} کاتژمێر {time} خزمەتگوزارییەکەت هەیە. RetailEX',
+    tr: 'Merhaba {customer_name}, {date} tarihinde saat {time} için randevunuz bulunmaktadır. Asin',
+    en: 'Hello {customer_name}, you have an appointment on {date} at {time}. Asin',
+    ar: 'مرحباً {customer_name}، لديك موعد بتاريخ {date} الساعة {time}. Asin',
+    ku: 'سڵاو {customer_name}، لە {date} کاتژمێر {time} خزمەتگوزارییەکەت هەیە. Asin',
   },
   payment_reminder: {
-    tr: 'Sayın {customer_name}, {date} vadesine kadar ödemeniz beklenmektedir. RetailEX',
-    en: 'Dear {customer_name}, your payment is expected by {date}. RetailEX',
-    ar: 'عزيزي {customer_name}، يُتوقع سدادك قبل {date}. RetailEX',
-    ku: 'ڕێزدار {customer_name}، پارەدان پێش {date} چاوەڕوان دەکرێت. RetailEX',
+    tr: 'Sayın {customer_name}, {date} vadesine kadar ödemeniz beklenmektedir. Asin',
+    en: 'Dear {customer_name}, your payment is expected by {date}. Asin',
+    ar: 'عزيزي {customer_name}، يُتوقع سدادك قبل {date}. Asin',
+    ku: 'ڕێزدار {customer_name}، پارەدان پێش {date} چاوەڕوان دەکرێت. Asin',
   },
 };
 

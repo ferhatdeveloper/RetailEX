@@ -1,21 +1,14 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 512 512" role="img" aria-label="RetailEX">
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 96 96" role="img" aria-label="Asin">
   <defs>
-    <linearGradient id="r96-bg" x1="6%" y1="0%" x2="94%" y2="100%">
-      <stop offset="0%" stop-color="#22d3ee"/>
-      <stop offset="42%" stop-color="#6366f1"/>
-      <stop offset="100%" stop-color="#1e1b4b"/>
-    </linearGradient>
-    <linearGradient id="r96-awn" x1="0%" y1="0%" x2="0%" y2="100%">
-      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.98"/>
-      <stop offset="100%" stop-color="#cbd5e1" stop-opacity="0.94"/>
+    <linearGradient id="asinG96" x1="8%" y1="0%" x2="92%" y2="100%">
+      <stop offset="0%" stop-color="#F3F5F7"/>
+      <stop offset="100%" stop-color="#1FA8A0"/>
     </linearGradient>
   </defs>
-  <rect x="36" y="36" width="440" height="440" rx="102" fill="url(#r96-bg)"/>
-  <path d="M 104 212 Q 256 124 408 212 L 408 236 L 104 236 Z" fill="#000" opacity="0.1"/>
-  <path d="M 96 200 Q 256 108 416 200 L 416 236 L 96 236 Z" fill="url(#r96-awn)"/>
-  <rect x="152" y="268" width="56" height="188" rx="18" fill="#f8fafc" fill-opacity="0.93"/>
-  <rect x="228" y="268" width="56" height="188" rx="18" fill="#f8fafc" fill-opacity="0.93"/>
-  <rect x="304" y="268" width="56" height="188" rx="18" fill="#f8fafc" fill-opacity="0.93"/>
-  <circle cx="400" cy="132" r="40" fill="#f59e0b"/>
-  <circle cx="400" cy="132" r="26" fill="#fbbf24"/>
+  <rect width="96" height="96" rx="21" fill="#0E2433"/>
+  <rect x="5.25" y="5.25" width="85.50" height="85.50" rx="18" fill="none" stroke="#1FA8A0" stroke-opacity="0.22" stroke-width="2"/>
+  <path d="M48.00 13.50 L78.75 31.50 L78.75 64.50 L48.00 82.50 L17.25 64.50 L17.25 31.50 Z" fill="none" stroke="#1FA8A0" stroke-width="3" stroke-linejoin="round" opacity="0.9"/>
+  <path d="M48.00 26.25 L67.50 69.75 H59.63 L54.75 58.50 H41.25 L36.38 69.75 H28.50 L48.00 26.25 Z M43.50 50.25 H52.50 L48.00 39.75 Z" fill="url(#asinG96)"/>
+  <rect x="69.75" y="36.75" width="5.25" height="22.50" rx="1.88" fill="#1FA8A0"/>
 </svg>

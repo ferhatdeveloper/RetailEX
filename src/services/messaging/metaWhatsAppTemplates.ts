@@ -7,7 +7,7 @@ import type { InvoiceNotificationContext } from './messagingTypes';
 export type MetaTemplateCategory = 'UTILITY' | 'MARKETING';
 
 export interface MetaWhatsAppTemplateDef {
-  /** RetailEX iç kimlik + Meta şablon adı (küçük harf, alt çizgi) */
+  /** Asin iç kimlik + Meta şablon adı (küçük harf, alt çizgi) */
   id: string;
   metaName: string;
   language: string;
@@ -93,7 +93,7 @@ export const META_INVOICE_TEMPLATES: MetaWhatsAppTemplateDef[] = [
     label: 'Fatura bildirimi (Türkçe)',
     headerForMetaConsole: 'Fatura Bilgilendirme',
     bodyForMetaConsole:
-      'Sayın {{1}}, {{2}} numaralı {{5}} faturanız {{3}} tarihinde düzenlenmiştir. Tutar: {{4}}. Teşekkürler — RetailEX',
+      'Sayın {{1}}, {{2}} numaralı {{5}} faturanız {{3}} tarihinde düzenlenmiştir. Tutar: {{4}}. Teşekkürler — Asin',
     parameterLabels: ['Müşteri adı', 'Fiş no', 'Tarih', 'Tutar (para birimi)', 'Fatura türü'],
     sampleValues: ['Ahmet Yılmaz', 'SF-2026-0042', '2026-06-09', '1.500 IQD', 'Satış'],
   },
@@ -106,7 +106,7 @@ export const META_INVOICE_TEMPLATES: MetaWhatsAppTemplateDef[] = [
     label: 'Invoice notification (English)',
     headerForMetaConsole: 'Invoice Notice',
     bodyForMetaConsole:
-      'Dear {{1}}, your {{5}} invoice {{2}} dated {{3}} has been issued. Amount: {{4}}. Thank you — RetailEX',
+      'Dear {{1}}, your {{5}} invoice {{2}} dated {{3}} has been issued. Amount: {{4}}. Thank you — Asin',
     parameterLabels: ['Customer name', 'Invoice no', 'Date', 'Amount', 'Type'],
     sampleValues: ['John Smith', 'INV-2026-0042', '2026-06-09', '1,500 IQD', 'Sales'],
   },
@@ -119,7 +119,7 @@ export const META_INVOICE_TEMPLATES: MetaWhatsAppTemplateDef[] = [
     label: 'إشعار فاتورة (عربي)',
     headerForMetaConsole: 'إشعار فاتورة',
     bodyForMetaConsole:
-      'عزيزي {{1}}، تم إصدار فاتورة {{5}} رقم {{2}} بتاريخ {{3}}. المبلغ: {{4}}. شكراً — RetailEX',
+      'عزيزي {{1}}، تم إصدار فاتورة {{5}} رقم {{2}} بتاريخ {{3}}. المبلغ: {{4}}. شكراً — Asin',
     parameterLabels: ['اسم العميل', 'رقم الفاتورة', 'التاريخ', 'المبلغ', 'النوع'],
     sampleValues: ['أحمد', 'SF-2026-0042', '2026-06-09', '1500 IQD', 'مبيعات'],
   },
@@ -130,7 +130,7 @@ export const META_INVOICE_TEMPLATES: MetaWhatsAppTemplateDef[] = [
     category: 'UTILITY',
     eventTypes: ['invoice_created'],
     label: 'Fatura bildirimi — kısa (TR)',
-    bodyForMetaConsole: '{{1}}, {{2}} no\'lu faturanız: {{3}} ({{4}}). RetailEX',
+    bodyForMetaConsole: '{{1}}, {{2}} no\'lu faturanız: {{3}} ({{4}}). Asin',
     parameterLabels: ['Müşteri', 'Fiş no', 'Tutar', 'Tarih'],
     sampleValues: ['Ahmet Yılmaz', 'SF-0042', '1.500 IQD', '09.06.2026'],
   },
@@ -147,7 +147,7 @@ export const META_APPOINTMENT_TEMPLATES: MetaWhatsAppTemplateDef[] = [
     label: 'Randevu hatırlatma (Türkçe)',
     headerForMetaConsole: 'Randevu Hatırlatma',
     bodyForMetaConsole:
-      'Merhaba {{1}}, {{2}} tarihinde saat {{3}} için {{4}} randevunuz bulunmaktadır. RetailEX',
+      'Merhaba {{1}}, {{2}} tarihinde saat {{3}} için {{4}} randevunuz bulunmaktadır. Asin',
     parameterLabels: ['Müşteri adı', 'Tarih', 'Saat', 'Hizmet'],
     sampleValues: ['Ayşe Demir', '10.06.2026', '14:30', 'Cilt bakımı'],
   },
@@ -160,7 +160,7 @@ export const META_APPOINTMENT_TEMPLATES: MetaWhatsAppTemplateDef[] = [
     label: 'Appointment reminder (English)',
     headerForMetaConsole: 'Appointment Reminder',
     bodyForMetaConsole:
-      'Hello {{1}}, you have an appointment for {{4}} on {{2}} at {{3}}. RetailEX',
+      'Hello {{1}}, you have an appointment for {{4}} on {{2}} at {{3}}. Asin',
     parameterLabels: ['Name', 'Date', 'Time', 'Service'],
     sampleValues: ['Jane Doe', '2026-06-10', '14:30', 'Facial care'],
   },
@@ -173,7 +173,7 @@ export const META_APPOINTMENT_TEMPLATES: MetaWhatsAppTemplateDef[] = [
     label: 'تذكير موعد (عربي)',
     headerForMetaConsole: 'تذكير الموعد',
     bodyForMetaConsole:
-      'مرحباً {{1}}، لديك موعد {{4}} بتاريخ {{2}} الساعة {{3}}. RetailEX',
+      'مرحباً {{1}}، لديك موعد {{4}} بتاريخ {{2}} الساعة {{3}}. Asin',
     parameterLabels: ['اسم العميل', 'التاريخ', 'الوقت', 'الخدمة'],
     sampleValues: ['أحمد', '10.06.2026', '14:30', 'العناية بالبشرة'],
   },
@@ -186,7 +186,7 @@ export const META_APPOINTMENT_TEMPLATES: MetaWhatsAppTemplateDef[] = [
     label: 'بیرەوەرگرتنی کات (کوردی)',
     headerForMetaConsole: 'بیرەوەرگرتنی کات',
     bodyForMetaConsole:
-      'سڵاو {{1}}، لە {{2}} کاتژمێر {{3}} بۆ {{4}} خزمەتگوزارییەکەت هەیە. RetailEX',
+      'سڵاو {{1}}، لە {{2}} کاتژمێر {{3}} بۆ {{4}} خزمەتگوزارییەکەت هەیە. Asin',
     parameterLabels: ['ناوی کڕیار', 'بەروار', 'کات', 'خزمەتگوزاری'],
     sampleValues: ['سارا', '10.06.2026', '14:30', 'چاودێری پێست'],
   },
@@ -202,7 +202,7 @@ export const META_PAYMENT_TEMPLATES: MetaWhatsAppTemplateDef[] = [
     eventTypes: ['payment_reminder'],
     label: 'Ödeme hatırlatma (Türkçe)',
     bodyForMetaConsole:
-      'Sayın {{1}}, {{2}} numaralı belgeniz için {{4}} vadesine kadar {{3}} ödemeniz beklenmektedir. RetailEX',
+      'Sayın {{1}}, {{2}} numaralı belgeniz için {{4}} vadesine kadar {{3}} ödemeniz beklenmektedir. Asin',
     parameterLabels: ['Müşteri', 'Belge no', 'Tutar', 'Vade tarihi'],
     sampleValues: ['Mehmet Kaya', 'SF-0099', '2.000 IQD', '15.06.2026'],
   },
@@ -273,7 +273,7 @@ export function metaTemplateSetupSteps(template: MetaWhatsAppTemplateDef): strin
   }
   steps.push(`Body: ${template.bodyForMetaConsole}`);
   steps.push(`Örnek değerler: ${template.sampleValues.join(' | ')}`);
-  steps.push('Onay sonrası RetailEX\'te aynı şablon adını seçin.');
+  steps.push('Onay sonrası Asin\'te aynı şablon adını seçin.');
   return steps;
 }
 

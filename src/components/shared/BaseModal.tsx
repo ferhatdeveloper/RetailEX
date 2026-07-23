@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
 import { X } from 'lucide-react';
+import { ASIN_MODAL_HEADER_CLASS } from './PercentBodyModal';
 
 interface BaseModalProps {
     isOpen: boolean;
@@ -47,8 +48,8 @@ export function BaseModal({
 
             {/* Modal Container */}
             <div className={`relative w-full ${maxWidth} bg-[var(--surface-modal)] rounded-lg shadow-2xl transform transition-all flex flex-col max-h-[95vh] border border-[var(--border-subtle)]`}>
-                {/* Header - Flat Blue Style */}
-                <div className="flex items-center justify-between px-4 py-3 bg-blue-600 rounded-t-lg">
+                {/* Header — Asin ink */}
+                <div className={`flex items-center justify-between px-4 py-3 ${ASIN_MODAL_HEADER_CLASS} rounded-t-lg`}>
                     <h3 className="text-base font-semibold text-white flex items-center gap-2">
                         {title}
                     </h3>

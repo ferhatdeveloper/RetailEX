@@ -10,8 +10,8 @@ const rootDir = path.resolve(__dirname, '..');
 
 // Create a new service object
 const svc = new Service({
-  name: 'RetailEX_SQL_Bridge',
-  description: 'RetailEX PostgreSQL Bridge for Browser Connectivity',
+  name: 'AsinERP_SQL_Bridge',
+  description: 'AsinERP PostgreSQL Bridge for Browser Connectivity',
   script: path.join(rootDir, 'dist', 'bridge.cjs'),
   nodeOptions: [
     '--no-warnings'

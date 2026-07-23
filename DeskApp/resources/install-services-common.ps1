@@ -1,5 +1,5 @@
 #Requires -Version 5.1
-# Ortak: RetailEX Windows hizmet kurulumu (GUI EXE exit code guvenilmez - servis kaydini dogrula).
+# Ortak: AsinERP Windows hizmet kurulumu (GUI EXE exit code guvenilmez - servis kaydini dogrula).
 # ONEMLI: Bu dosyada em-dash (U+2014) KULLANMA. Windows PowerShell 5.1 -File, BOM'suz UTF-8'i
 # CP1254 okur; em-dash baytlari (E2 80 94) sahte tirnak uretir ve script parse edilemez (exit 1).
 
@@ -35,13 +35,13 @@ function Install-RetailExWindowsService {
         throw "$Label bulunamadi: $ExePath"
     }
 
-    $logPath = "C:\ProgramData\RetailEX\${ServiceName}_install_last_error.txt"
-    Write-Host "[RetailEX] Kuruluyor: $Label ($ServiceName)"
+    $logPath = "C:\ProgramData\AsinERP\${ServiceName}_install_last_error.txt"
+    Write-Host "[AsinERP] Kuruluyor: $Label ($ServiceName)"
 
     $svc = $null
     for ($attempt = 1; $attempt -le $MaxAttempts; $attempt++) {
         if ($attempt -gt 1) {
-            Write-Host "[RetailEX] Yeniden deneme $attempt/$MaxAttempts : $ServiceName"
+            Write-Host "[AsinERP] Yeniden deneme $attempt/$MaxAttempts : $ServiceName"
             $existing = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
             if ($existing -and $existing.Status -eq 'Running') {
                 try {
@@ -70,17 +70,17 @@ function Install-RetailExWindowsService {
         throw "$Label kurulamadi ($ServiceName kaydi yok, $MaxAttempts deneme).$hint"
     }
 
-    Write-Host "[RetailEX] $Label hazir: $ServiceName ($($svc.Status))"
+    Write-Host "[AsinERP] $Label hazir: $ServiceName ($($svc.Status))"
     if ($svc.Status -ne 'Running') {
         try {
             Start-Service -Name $ServiceName -ErrorAction Stop
             Start-Sleep -Seconds 2
             $svc.Refresh()
             if ($svc.Status -eq 'Running') {
-                Write-Host "[RetailEX] Baslatildi: $ServiceName (Running)"
+                Write-Host "[AsinERP] Baslatildi: $ServiceName (Running)"
             }
             else {
-                Write-Warning "$ServiceName Start-Service tamamlandi ancak durum: $($svc.Status). Log: C:\ProgramData\RetailEX\ (service.log / sql_bridge_service.log). Manuel: Start-Service $ServiceName"
+                Write-Warning "$ServiceName Start-Service tamamlandi ancak durum: $($svc.Status). Log: C:\ProgramData\AsinERP\ (service.log / sql_bridge_service.log). Manuel: Start-Service $ServiceName"
             }
         }
         catch {
@@ -99,31 +99,31 @@ function Install-RetailExPostgrestService {
     $postgrestExe = Join-Path $Prefix 'postgrest.exe'
     $postgrestScript = Join-Path $Prefix 'install-postgrest-service.ps1'
     if (-not ((Test-Path -LiteralPath $postgrestExe) -and (Test-Path -LiteralPath $postgrestScript))) {
-        Write-Host '[RetailEX] PostgREST atlandi (postgrest.exe veya install-postgrest-service.ps1 yok).'
+        Write-Host '[AsinERP] PostgREST atlandi (postgrest.exe veya install-postgrest-service.ps1 yok).'
         return @{ Ok = $true; Skipped = $true; Code = 0 }
     }
 
-    Write-Host '[RetailEX] PostgREST Windows hizmeti kuruluyor (otomatik baslatma)...'
+    Write-Host '[AsinERP] PostgREST Windows hizmeti kuruluyor (otomatik baslatma)...'
     & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $postgrestScript -Prefix $Prefix
     $pgrCode = $LASTEXITCODE
     if ($null -eq $pgrCode) { $pgrCode = 0 }
-    $pgrSvc = Get-Service -Name 'RetailEX_PostgREST' -ErrorAction SilentlyContinue
+    $pgrSvc = Get-Service -Name 'AsinERP_PostgREST' -ErrorAction SilentlyContinue
 
     if ($pgrSvc) {
         if ($pgrSvc.Status -ne 'Running') {
-            Start-Service -Name 'RetailEX_PostgREST' -ErrorAction SilentlyContinue
+            Start-Service -Name 'AsinERP_PostgREST' -ErrorAction SilentlyContinue
             Start-Sleep -Seconds 2
             $pgrSvc.Refresh()
         }
-        Write-Host "[RetailEX] PostgREST hazir: RetailEX_PostgREST ($($pgrSvc.Status))"
+        Write-Host "[AsinERP] PostgREST hazir: AsinERP_PostgREST ($($pgrSvc.Status))"
         if ($pgrSvc.Status -ne 'Running') {
-            Write-Warning 'PostgREST kayitli ama calismiyor. PostgreSQL acik mi? Start-Service RetailEX_PostgREST - log: %TEMP%\retailex_postgrest_service_install.log'
+            Write-Warning 'PostgREST kayitli ama calismiyor. PostgreSQL acik mi? Start-Service AsinERP_PostgREST - log: %TEMP%\retailex_postgrest_service_install.log'
         }
         return @{ Ok = $true; Skipped = $false; Code = 0; Status = $pgrSvc.Status }
     }
 
     if ($pgrCode -eq 2) {
-        Write-Warning 'PostgREST hizmeti kuruldu ancak baslatilamadi (PostgreSQL hazir olmayabilir). Start-Service RetailEX_PostgREST'
+        Write-Warning 'PostgREST hizmeti kuruldu ancak baslatilamadi (PostgreSQL hazir olmayabilir). Start-Service AsinERP_PostgREST'
         # Kayit olmasa bile exit 2 = baslatma sorunu; yine de çekirdek kurulumu bozma
         return @{ Ok = $true; Skipped = $false; Code = 2 }
     }
@@ -138,7 +138,7 @@ function Invoke-RetailExServiceSetupElevation {
         [string]$Prefix
     )
 
-    Write-Host '[RetailEX] Windows hizmetleri icin yonetici izni gerekli; UAC acilacak...'
+    Write-Host '[AsinERP] Windows hizmetleri icin yonetici izni gerekli; UAC acilacak...'
     $argList = @(
         '-NoProfile',
         '-ExecutionPolicy', 'Bypass',

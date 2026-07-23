@@ -40,7 +40,7 @@ import { WhatsAppTestSendCard } from '../shared/WhatsAppTestSendCard';
 import { isStaleEmbeddedBridgeUrl } from '../../services/messaging/whatsappEmbeddedBridge';
 
 const DEFAULT_INVOICE_TEMPLATE =
-  'Sayın {customer_name}, {date} tarihli {fiche_no} numaralı {category} faturanız: {amount} {currency}. RetailEX';
+  'Sayın {customer_name}, {date} tarihli {fiche_no} numaralı {category} faturanız: {amount} {currency}. Asin';
 
 const PROVIDERS = [
   { id: 'NONE', label: 'Kapalı', icon: Zap, desc: 'WhatsApp bildirimleri devre dışı' },
@@ -83,7 +83,7 @@ export function WhatsAppIntegrationModule() {
   const [metaInvoiceTplId, setMetaInvoiceTplId] = useState('retailex_invoice_tr');
   const [metaAppointmentTplId, setMetaAppointmentTplId] = useState('retailex_appointment_tr');
   const [testPhone, setTestPhone] = useState('');
-  const [testMessage, setTestMessage] = useState('RetailEX — WhatsApp test mesajı. Bağlantınız çalışıyor.');
+  const [testMessage, setTestMessage] = useState('Asin — WhatsApp test mesajı. Bağlantınız çalışıyor.');
   const [testSending, setTestSending] = useState(false);
   const [embedStatus, setEmbedStatus] = useState('');
   const [stats, setStats] = useState({ pending: 0, sent: 0, failed: 0 });

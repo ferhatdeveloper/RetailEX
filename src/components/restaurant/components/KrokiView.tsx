@@ -181,7 +181,7 @@ function PinModal({ onSuccess, onClose }: { onSuccess: () => void; onClose: () =
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 animate-in fade-in duration-300">
             <div className="bg-white rounded-[48px] w-full max-w-sm shadow-2xl overflow-hidden flex flex-col animate-in zoom-in-95 duration-300 relative border border-white/50">
                 {/* Header with Blue Gradient */}
-                <div className="bg-gradient-to-r from-blue-600 to-indigo-700 p-8 flex items-center gap-6 text-white relative overflow-hidden shrink-0">
+                <div className="bg-[var(--asin-primary,#0E2433)] p-8 flex items-center gap-6 text-white relative overflow-hidden shrink-0">
                     <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -mr-16 -mt-16 blur-2xl opacity-50" />
 
                     <div className="w-16 h-16 bg-white/20 rounded-[24px] flex items-center justify-center backdrop-blur-md border border-white/20 shadow-xl relative z-10 transition-transform hover:scale-105 duration-500">

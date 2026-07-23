@@ -65,7 +65,7 @@ export function RecipeCostSummaryBar({
                             }
                             value={totalCost}
                             formatter={val => fmtTr(Number(val))}
-                            valueStyle={{ color: '#1677ff', fontSize: 20, fontWeight: 600, lineHeight: 1.2 }}
+                            valueStyle={{ color: '#1FA8A0', fontSize: 20, fontWeight: 600, lineHeight: 1.2 }}
                         />
                         <Typography.Text type="secondary" className="!mt-1 !block !text-[11px]" ellipsis={{ tooltip: entityName }}>
                             {entityName}

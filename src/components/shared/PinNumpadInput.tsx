@@ -81,7 +81,7 @@ export function PinNumpadInput({
           <Lock
             className={cn(
               'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 transition-colors',
-              darkMode ? 'text-gray-500 group-focus-within:text-blue-400' : 'text-slate-400 group-focus-within:text-blue-600',
+              darkMode ? 'text-gray-500 group-focus-within:text-[var(--asin-accent,#1FA8A0)]' : 'text-slate-400 group-focus-within:text-[var(--asin-accent,#1FA8A0)]',
             )}
           />
           <input
@@ -92,7 +92,7 @@ export function PinNumpadInput({
             placeholder={keyboardPlaceholder}
             onChange={(e) => onChange(e.target.value.slice(0, maxLength))}
             className={cn(
-              'w-full pl-10 pr-4 py-3 border-2 rounded-lg font-bold text-sm outline-none transition-all focus:border-blue-600',
+              'w-full pl-10 pr-4 py-3 border-2 rounded-lg font-bold text-sm outline-none transition-all focus:border-[var(--asin-accent,#1FA8A0)]',
               darkMode
                 ? 'bg-gray-900/80 border-gray-600 text-white placeholder-gray-600'
                 : 'bg-white border-slate-200 text-slate-900 placeholder-slate-400',
@@ -113,7 +113,7 @@ export function PinNumpadInput({
               className={cn(
                 'rounded-full transition-all',
                 compact ? 'w-2.5 h-2.5' : 'w-3 h-3',
-                filled ? 'bg-blue-600 scale-110' : darkMode ? 'bg-gray-600' : 'bg-slate-200',
+                filled ? 'bg-[var(--asin-accent,#1FA8A0)] scale-110' : darkMode ? 'bg-gray-600' : 'bg-slate-200',
               )}
             />
           );
@@ -121,7 +121,7 @@ export function PinNumpadInput({
       </div>
 
       {value.length > dotSlots && (
-        <p className="text-center text-[10px] font-bold text-blue-600 mb-2 tabular-nums">
+        <p className="text-center text-[10px] font-bold text-[var(--asin-accent,#1FA8A0)] mb-2 tabular-nums">
           {value.length}/{maxLength}
         </p>
       )}

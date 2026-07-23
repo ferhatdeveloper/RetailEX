@@ -1,5 +1,5 @@
 import { pgQuery } from './pgClient';
-import { postgrestGet, postgrestPatch, postgrestPost } from './postgrestClient';
+import { postgrestGet, postgrestPost } from './postgrestClient';
 import { firmNr, newUuid, productsTable } from './erpTables';
 import { shouldUseLiveData, getNetworkPolicy } from '../offline/policy';
 import { getCachedProducts, saveProductsSnapshot } from '../offline/snapshotCache';
@@ -96,7 +96,6 @@ async function fetchProductsViaPostgrest(search = '', limit = 200): Promise<Prod
 
   const query: Record<string, string | number> = {
     select: REST_SELECT,
-    is_active: 'eq.true',
     order: 'name.asc',
     limit,
     or: `(${firmOr})`,
@@ -322,57 +321,10 @@ export async function fetchProductById(id: string): Promise<ProductRow | null> {
   }
 }
 
-function nextPCode(last: string | null | undefined): string {
-  if (!last) return 'P001';
-  const num = parseInt(String(last).slice(1), 10);
-  if (Number.isNaN(num)) return 'P001';
-  return `P${String(num + 1).padStart(3, '0')}`;
-}
-
-/** Basit kod üretimi — P001, P002… (PostgREST önce, bridge yedek) */
+/** Basit kod üretimi — P001, P002… */
 export async function generateProductCode(): Promise<string> {
   const table = productsTable();
   const fn = firmNr();
-  const fnBare = fn.replace(/^0+/, '') || fn;
-  const cfg = useConfigStore.getState().config;
-
-  if (shouldPreferPostgrest(cfg)) {
-    try {
-      const firmOr = Array.from(new Set([fn, fnBare].filter(Boolean)))
-        .map((f) => `firm_nr.eq.${f}`)
-        .concat('firm_nr.is.null')
-        .join(',');
-      const rows = await postgrestGet<Array<{ code?: string | null }>>(
-        `/${table}`,
-        {
-          select: 'code',
-          and: `(or(${firmOr}),code.like.P*)`,
-          order: 'code.desc',
-          limit: 40,
-        },
-        { schema: 'public' },
-      );
-      const last = (Array.isArray(rows) ? rows : [])
-        .map((r) => String(r.code || ''))
-        .find((c) => /^P[0-9]+$/i.test(c));
-      return nextPCode(last);
-    } catch (e) {
-      if (!shouldUseBridgeSql(cfg)) {
-        return `P${Date.now().toString().slice(-3)}`;
-      }
-      if (__DEV__) {
-        console.warn(
-          '[generateProductCode] PostgREST → bridge',
-          e instanceof Error ? e.message : e,
-        );
-      }
-    }
-  }
-
-  if (!shouldUseBridgeSql(cfg)) {
-    return `P${Date.now().toString().slice(-3)}`;
-  }
-
   try {
     const res = await pgQuery<{ code: string | null }>(
       `SELECT code FROM ${table}
@@ -384,9 +336,13 @@ export async function generateProductCode(): Promise<string> {
        AND code ~ '^P[0-9]+$'
        ORDER BY code DESC
        LIMIT 1`,
-      [fn, fnBare],
+      [fn, fn.replace(/^0+/, '') || fn],
     );
-    return nextPCode(res.rows[0]?.code);
+    const last = res.rows[0]?.code;
+    if (!last) return 'P001';
+    const num = parseInt(String(last).slice(1), 10);
+    if (Number.isNaN(num)) return 'P001';
+    return `P${String(num + 1).padStart(3, '0')}`;
   } catch {
     return `P${Date.now().toString().slice(-3)}`;
   }
@@ -577,90 +533,40 @@ export async function createProduct(input: ProductInput): Promise<string> {
   return createProductViaBridge(input, id);
 }
 
-function buildProductPatchBody(input: Partial<ProductInput>): Record<string, unknown> {
-  const body: Record<string, unknown> = {};
-  if (input.code !== undefined) body.code = input.code.trim() || null;
-  if (input.barcode !== undefined) body.barcode = input.barcode.trim() || null;
-  if (input.name !== undefined) body.name = input.name.trim();
-  if (input.unit !== undefined) body.unit = input.unit.trim() || null;
-  if (input.price !== undefined) body.price = Math.max(0, Number(input.price) || 0);
-  if (input.cost !== undefined) body.cost = Math.max(0, Number(input.cost) || 0);
-  if (input.stock !== undefined) body.stock = Number(input.stock) || 0;
-  if (input.min_stock !== undefined) {
-    body.min_stock =
-      input.min_stock === null || Number.isNaN(Number(input.min_stock))
-        ? null
-        : Number(input.min_stock);
-  }
-  if (input.brand !== undefined) body.brand = input.brand.trim() || null;
-  if (input.category_code !== undefined) {
-    body.category_code = input.category_code.trim() || null;
-  }
-  return body;
-}
-
-async function updateProductViaPostgrest(
-  id: string,
-  body: Record<string, unknown>,
-): Promise<void> {
-  const table = productsTable();
-  await postgrestPatch(`/${table}?id=eq.${encodeURIComponent(id)}`, body, {
-    schema: 'public',
-    prefer: 'return=minimal',
-  });
-}
-
-async function updateProductViaBridge(
-  id: string,
-  body: Record<string, unknown>,
-): Promise<void> {
-  const table = productsTable();
-  const sets: string[] = [];
-  const vals: unknown[] = [];
-  let i = 1;
-  for (const [col, v] of Object.entries(body)) {
-    sets.push(`${col} = $${i++}`);
-    vals.push(v);
-  }
-  if (!sets.length) return;
-  vals.push(id);
-  await pgQuery(`UPDATE ${table} SET ${sets.join(', ')} WHERE id::text = $${i}`, vals);
-}
-
 export async function updateProduct(id: string, input: Partial<ProductInput>): Promise<void> {
   if (!id) throw new Error('Ürün id gerekli');
   if (!shouldUseLiveData()) {
     throw new Error('Çevrimdışı: ürün güncelleme için canlı bağlantı gerekir');
   }
-  const body = buildProductPatchBody(input);
-  if (!Object.keys(body).length) return;
+  const table = productsTable();
+  const sets: string[] = [];
+  const vals: unknown[] = [];
+  let i = 1;
 
-  const cfg = useConfigStore.getState().config;
-  const preferRest = shouldPreferPostgrest(cfg);
-  const canBridge = shouldUseBridgeSql(cfg);
+  const push = (col: string, v: unknown) => {
+    sets.push(`${col} = $${i++}`);
+    vals.push(v);
+  };
 
-  if (preferRest) {
-    try {
-      await updateProductViaPostgrest(id, body);
-      return;
-    } catch (e) {
-      if (!canBridge) throw e;
-      if (__DEV__) {
-        console.warn(
-          '[updateProduct] PostgREST → bridge',
-          e instanceof Error ? e.message : e,
-        );
-      }
-    }
-  }
-
-  if (!canBridge) {
-    throw new Error(
-      preferRest
-        ? 'PostgREST ürün güncelleme başarısız ve bridge kapalı (apiMode=postgrest)'
-        : 'Bridge yapılandırması eksik',
+  if (input.code !== undefined) push('code', input.code.trim() || null);
+  if (input.barcode !== undefined) push('barcode', input.barcode.trim() || null);
+  if (input.name !== undefined) push('name', input.name.trim());
+  if (input.unit !== undefined) push('unit', input.unit.trim() || null);
+  if (input.price !== undefined) push('price', Math.max(0, Number(input.price) || 0));
+  if (input.cost !== undefined) push('cost', Math.max(0, Number(input.cost) || 0));
+  if (input.stock !== undefined) push('stock', Number(input.stock) || 0);
+  if (input.min_stock !== undefined) {
+    push(
+      'min_stock',
+      input.min_stock === null || Number.isNaN(Number(input.min_stock))
+        ? null
+        : Number(input.min_stock),
     );
   }
+  if (input.brand !== undefined) push('brand', input.brand.trim() || null);
+  if (input.category_code !== undefined) push('category_code', input.category_code.trim() || null);
 
-  await updateProductViaBridge(id, body);
+  if (!sets.length) return;
+  vals.push(id);
+  await pgQuery(`UPDATE ${table} SET ${sets.join(', ')} WHERE id::text = $${i}`, vals);
 }

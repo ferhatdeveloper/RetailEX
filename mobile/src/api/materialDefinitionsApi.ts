@@ -1,5 +1,5 @@
 import { pgQuery } from './pgClient';
-import { postgrestGet, postgrestPatch, postgrestPost } from './postgrestClient';
+import { postgrestGet } from './postgrestClient';
 import { runDataTransport, rethrowTransportInfra } from './dataTransport';
 import {
   brandsTable,
@@ -186,103 +186,43 @@ export async function fetchUnitSets(limit = 100): Promise<UnitSetRow[]> {
   });
 }
 
-async function writeDefinitionTransport<T>(opts: {
-  label: string;
-  viaRest: () => Promise<T>;
-  viaBridge: () => Promise<T>;
-}): Promise<T> {
-  return runDataTransport(opts);
-}
-
 export async function createBrand(input: DefinitionInput): Promise<string> {
   const table = brandsTable();
   const id = newUuid();
-  return writeDefinitionTransport({
-    label: 'createBrand',
-    viaRest: async () => {
-      await postgrestPost(
-        `/${table}`,
-        {
-          id,
-          code: input.code.trim(),
-          name: input.name.trim(),
-          description: input.description?.trim() || null,
-          is_active: true,
-        },
-        { schema: 'public', prefer: 'return=minimal' },
-      );
-      return id;
-    },
-    viaBridge: async () => {
-      await pgQuery(
-        `INSERT INTO ${table} (id, code, name, description, is_active)
-         VALUES ($1, $2, $3, $4, true)`,
-        [id, input.code.trim(), input.name.trim(), input.description?.trim() || null],
-      );
-      return id;
-    },
-  });
+  await pgQuery(
+    `INSERT INTO ${table} (id, code, name, description, is_active)
+     VALUES ($1, $2, $3, $4, true)`,
+    [id, input.code.trim(), input.name.trim(), input.description?.trim() || null],
+  );
+  return id;
 }
 
 export async function createCategory(input: DefinitionInput): Promise<string> {
   const table = categoriesTable();
   const id = newUuid();
-  return writeDefinitionTransport({
-    label: 'createCategory',
-    viaRest: async () => {
-      await postgrestPost(
-        `/${table}`,
-        {
-          id,
-          code: input.code.trim(),
-          name: input.name.trim(),
-          description: input.description?.trim() || null,
-          is_restaurant: Boolean(input.is_restaurant),
-          is_active: true,
-        },
-        { schema: 'public', prefer: 'return=minimal' },
-      );
-      return id;
-    },
-    viaBridge: async () => {
-      await pgQuery(
-        `INSERT INTO ${table} (id, code, name, description, is_restaurant, is_active)
-         VALUES ($1, $2, $3, $4, $5, true)`,
-        [
-          id,
-          input.code.trim(),
-          input.name.trim(),
-          input.description?.trim() || null,
-          Boolean(input.is_restaurant),
-        ],
-      );
-      return id;
-    },
-  });
+  await pgQuery(
+    `INSERT INTO ${table} (id, code, name, description, is_restaurant, is_active)
+     VALUES ($1, $2, $3, $4, $5, true)`,
+    [
+      id,
+      input.code.trim(),
+      input.name.trim(),
+      input.description?.trim() || null,
+      Boolean(input.is_restaurant),
+    ],
+  );
+  return id;
 }
 
 export async function createUnitSet(input: UnitSetInput): Promise<string> {
   const table = unitsetsTable();
   const id = newUuid();
-  return writeDefinitionTransport({
-    label: 'createUnitSet',
-    viaRest: async () => {
-      await postgrestPost(
-        `/${table}`,
-        { id, code: input.code.trim(), name: input.name.trim(), is_active: true },
-        { schema: 'public', prefer: 'return=minimal' },
-      );
-      return id;
-    },
-    viaBridge: async () => {
-      await pgQuery(
-        `INSERT INTO ${table} (id, code, name, is_active)
-         VALUES ($1, $2, $3, true)`,
-        [id, input.code.trim(), input.name.trim()],
-      );
-      return id;
-    },
-  });
+  await pgQuery(
+    `INSERT INTO ${table} (id, code, name, is_active)
+     VALUES ($1, $2, $3, true)`,
+    [id, input.code.trim(), input.name.trim()],
+  );
+  return id;
 }
 
 export type ProductVariantRow = {
@@ -420,120 +360,49 @@ export async function fetchVariants(limit = 200): Promise<DefinitionRow[]> {
 export async function createSpecialCode(input: DefinitionInput): Promise<string> {
   const table = specialCodesTable();
   const id = newUuid();
-  return writeDefinitionTransport({
-    label: 'createSpecialCode',
-    viaRest: async () => {
-      await postgrestPost(
-        `/${table}`,
-        {
-          id,
-          code: input.code.trim(),
-          name: input.name.trim(),
-          description: input.description?.trim() || null,
-          is_active: true,
-        },
-        { schema: 'public', prefer: 'return=minimal' },
-      );
-      return id;
-    },
-    viaBridge: async () => {
-      await pgQuery(
-        `INSERT INTO ${table} (id, code, name, description, is_active)
-         VALUES ($1, $2, $3, $4, true)`,
-        [id, input.code.trim(), input.name.trim(), input.description?.trim() || null],
-      );
-      return id;
-    },
-  });
+  await pgQuery(
+    `INSERT INTO ${table} (id, code, name, description, is_active)
+     VALUES ($1, $2, $3, $4, true)`,
+    [id, input.code.trim(), input.name.trim(), input.description?.trim() || null],
+  );
+  return id;
 }
 
 export async function createGroupCode(input: DefinitionInput): Promise<string> {
   const table = productGroupsTable();
   const id = newUuid();
-  return writeDefinitionTransport({
-    label: 'createGroupCode',
-    viaRest: async () => {
-      await postgrestPost(
-        `/${table}`,
-        {
-          id,
-          code: input.code.trim(),
-          name: input.name.trim(),
-          description: input.description?.trim() || null,
-          is_active: true,
-        },
-        { schema: 'public', prefer: 'return=minimal' },
-      );
-      return id;
-    },
-    viaBridge: async () => {
-      await pgQuery(
-        `INSERT INTO ${table} (id, code, name, description, is_active)
-         VALUES ($1, $2, $3, $4, true)`,
-        [id, input.code.trim(), input.name.trim(), input.description?.trim() || null],
-      );
-      return id;
-    },
-  });
+  await pgQuery(
+    `INSERT INTO ${table} (id, code, name, description, is_active)
+     VALUES ($1, $2, $3, $4, true)`,
+    [id, input.code.trim(), input.name.trim(), input.description?.trim() || null],
+  );
+  return id;
 }
 
 export async function createVariantDefinition(input: DefinitionInput): Promise<string> {
   const table = variantsTable();
   const id = newUuid();
-  return writeDefinitionTransport({
-    label: 'createVariantDefinition',
-    viaRest: async () => {
-      try {
-        await postgrestPost(
-          `/${table}`,
-          {
-            id,
-            code: input.code.trim(),
-            name: input.name.trim(),
-            description: input.description?.trim() || null,
-            is_active: true,
-          },
-          { schema: 'public', prefer: 'return=minimal' },
-        );
-        return id;
-      } catch {
-        const pv = productVariantsTable();
-        const attrs = JSON.stringify({
-          name: input.name.trim(),
-          description: input.description?.trim() || null,
-        });
-        await postgrestPost(
-          `/${pv}`,
-          { id, product_id: null, sku: input.code.trim(), attributes: attrs },
-          { schema: 'public', prefer: 'return=minimal' },
-        );
-        return id;
-      }
-    },
-    viaBridge: async () => {
-      try {
-        await pgQuery(
-          `INSERT INTO ${table} (id, code, name, description, is_active)
-           VALUES ($1, $2, $3, $4, true)`,
-          [id, input.code.trim(), input.name.trim(), input.description?.trim() || null],
-        );
-        return id;
-      } catch {
-        /* tanım tablosu yoksa ürün varyantı olarak kaydet */
-      }
-      const pv = productVariantsTable();
-      const attrs = JSON.stringify({
-        name: input.name.trim(),
-        description: input.description?.trim() || null,
-      });
-      await pgQuery(
-        `INSERT INTO ${pv} (id, product_id, sku, attributes)
-         VALUES ($1, NULL, $2, $3::jsonb)`,
-        [id, input.code.trim(), attrs],
-      );
-      return id;
-    },
+  try {
+    await pgQuery(
+      `INSERT INTO ${table} (id, code, name, description, is_active)
+       VALUES ($1, $2, $3, $4, true)`,
+      [id, input.code.trim(), input.name.trim(), input.description?.trim() || null],
+    );
+    return id;
+  } catch {
+    /* tanım tablosu yoksa ürün varyantı olarak kaydet (product_id null olabilir) */
+  }
+  const pv = productVariantsTable();
+  const attrs = JSON.stringify({
+    name: input.name.trim(),
+    description: input.description?.trim() || null,
   });
+  await pgQuery(
+    `INSERT INTO ${pv} (id, product_id, sku, attributes)
+     VALUES ($1, NULL, $2, $3::jsonb)`,
+    [id, input.code.trim(), attrs],
+  );
+  return id;
 }
 
 export type DefinitionKind = 'brand' | 'category' | 'unitset' | 'special' | 'group' | 'variant';
@@ -640,36 +509,19 @@ export async function fetchDefinitionById(
 
 export async function updateBrand(id: string, input: DefinitionInput & { is_active?: boolean }): Promise<void> {
   const table = brandsTable();
-  const body: Record<string, unknown> = {
-    code: input.code.trim(),
-    name: input.name.trim(),
-    description: input.description?.trim() || null,
-  };
-  if (input.is_active !== undefined) body.is_active = input.is_active;
-  return writeDefinitionTransport({
-    label: 'updateBrand',
-    viaRest: async () => {
-      await postgrestPatch(`/${table}?id=eq.${encodeURIComponent(id)}`, body, {
-        schema: 'public',
-        prefer: 'return=minimal',
-      });
-    },
-    viaBridge: async () => {
-      await pgQuery(
-        `UPDATE ${table}
-         SET code = $2, name = $3, description = $4,
-             is_active = COALESCE($5, is_active)
-         WHERE id::text = $1`,
-        [
-          id,
-          input.code.trim(),
-          input.name.trim(),
-          input.description?.trim() || null,
-          input.is_active ?? null,
-        ],
-      );
-    },
-  });
+  await pgQuery(
+    `UPDATE ${table}
+     SET code = $2, name = $3, description = $4,
+         is_active = COALESCE($5, is_active)
+     WHERE id::text = $1`,
+    [
+      id,
+      input.code.trim(),
+      input.name.trim(),
+      input.description?.trim() || null,
+      input.is_active ?? null,
+    ],
+  );
 }
 
 export async function updateCategory(
@@ -677,39 +529,21 @@ export async function updateCategory(
   input: DefinitionInput & { is_active?: boolean },
 ): Promise<void> {
   const table = categoriesTable();
-  const body: Record<string, unknown> = {
-    code: input.code.trim(),
-    name: input.name.trim(),
-    description: input.description?.trim() || null,
-  };
-  if (input.is_restaurant !== undefined) body.is_restaurant = input.is_restaurant;
-  if (input.is_active !== undefined) body.is_active = input.is_active;
-  return writeDefinitionTransport({
-    label: 'updateCategory',
-    viaRest: async () => {
-      await postgrestPatch(`/${table}?id=eq.${encodeURIComponent(id)}`, body, {
-        schema: 'public',
-        prefer: 'return=minimal',
-      });
-    },
-    viaBridge: async () => {
-      await pgQuery(
-        `UPDATE ${table}
-         SET code = $2, name = $3, description = $4,
-             is_restaurant = COALESCE($5, is_restaurant),
-             is_active = COALESCE($6, is_active)
-         WHERE id::text = $1`,
-        [
-          id,
-          input.code.trim(),
-          input.name.trim(),
-          input.description?.trim() || null,
-          input.is_restaurant ?? null,
-          input.is_active ?? null,
-        ],
-      );
-    },
-  });
+  await pgQuery(
+    `UPDATE ${table}
+     SET code = $2, name = $3, description = $4,
+         is_restaurant = COALESCE($5, is_restaurant),
+         is_active = COALESCE($6, is_active)
+     WHERE id::text = $1`,
+    [
+      id,
+      input.code.trim(),
+      input.name.trim(),
+      input.description?.trim() || null,
+      input.is_restaurant ?? null,
+      input.is_active ?? null,
+    ],
+  );
 }
 
 export async function updateUnitSet(
@@ -717,28 +551,12 @@ export async function updateUnitSet(
   input: UnitSetInput & { is_active?: boolean },
 ): Promise<void> {
   const table = unitsetsTable();
-  const body: Record<string, unknown> = {
-    code: input.code.trim(),
-    name: input.name.trim(),
-  };
-  if (input.is_active !== undefined) body.is_active = input.is_active;
-  return writeDefinitionTransport({
-    label: 'updateUnitSet',
-    viaRest: async () => {
-      await postgrestPatch(`/${table}?id=eq.${encodeURIComponent(id)}`, body, {
-        schema: 'public',
-        prefer: 'return=minimal',
-      });
-    },
-    viaBridge: async () => {
-      await pgQuery(
-        `UPDATE ${table}
-         SET code = $2, name = $3, is_active = COALESCE($4, is_active)
-         WHERE id::text = $1`,
-        [id, input.code.trim(), input.name.trim(), input.is_active ?? null],
-      );
-    },
-  });
+  await pgQuery(
+    `UPDATE ${table}
+     SET code = $2, name = $3, is_active = COALESCE($4, is_active)
+     WHERE id::text = $1`,
+    [id, input.code.trim(), input.name.trim(), input.is_active ?? null],
+  );
 }
 
 export async function updateSpecialCode(
@@ -746,36 +564,19 @@ export async function updateSpecialCode(
   input: DefinitionInput & { is_active?: boolean },
 ): Promise<void> {
   const table = specialCodesTable();
-  const body: Record<string, unknown> = {
-    code: input.code.trim(),
-    name: input.name.trim(),
-    description: input.description?.trim() || null,
-  };
-  if (input.is_active !== undefined) body.is_active = input.is_active;
-  return writeDefinitionTransport({
-    label: 'updateSpecialCode',
-    viaRest: async () => {
-      await postgrestPatch(`/${table}?id=eq.${encodeURIComponent(id)}`, body, {
-        schema: 'public',
-        prefer: 'return=minimal',
-      });
-    },
-    viaBridge: async () => {
-      await pgQuery(
-        `UPDATE ${table}
-         SET code = $2, name = $3, description = $4,
-             is_active = COALESCE($5, is_active)
-         WHERE id::text = $1`,
-        [
-          id,
-          input.code.trim(),
-          input.name.trim(),
-          input.description?.trim() || null,
-          input.is_active ?? null,
-        ],
-      );
-    },
-  });
+  await pgQuery(
+    `UPDATE ${table}
+     SET code = $2, name = $3, description = $4,
+         is_active = COALESCE($5, is_active)
+     WHERE id::text = $1`,
+    [
+      id,
+      input.code.trim(),
+      input.name.trim(),
+      input.description?.trim() || null,
+      input.is_active ?? null,
+    ],
+  );
 }
 
 export async function updateGroupCode(
@@ -783,36 +584,19 @@ export async function updateGroupCode(
   input: DefinitionInput & { is_active?: boolean },
 ): Promise<void> {
   const table = productGroupsTable();
-  const body: Record<string, unknown> = {
-    code: input.code.trim(),
-    name: input.name.trim(),
-    description: input.description?.trim() || null,
-  };
-  if (input.is_active !== undefined) body.is_active = input.is_active;
-  return writeDefinitionTransport({
-    label: 'updateGroupCode',
-    viaRest: async () => {
-      await postgrestPatch(`/${table}?id=eq.${encodeURIComponent(id)}`, body, {
-        schema: 'public',
-        prefer: 'return=minimal',
-      });
-    },
-    viaBridge: async () => {
-      await pgQuery(
-        `UPDATE ${table}
-         SET code = $2, name = $3, description = $4,
-             is_active = COALESCE($5, is_active)
-         WHERE id::text = $1`,
-        [
-          id,
-          input.code.trim(),
-          input.name.trim(),
-          input.description?.trim() || null,
-          input.is_active ?? null,
-        ],
-      );
-    },
-  });
+  await pgQuery(
+    `UPDATE ${table}
+     SET code = $2, name = $3, description = $4,
+         is_active = COALESCE($5, is_active)
+     WHERE id::text = $1`,
+    [
+      id,
+      input.code.trim(),
+      input.name.trim(),
+      input.description?.trim() || null,
+      input.is_active ?? null,
+    ],
+  );
 }
 
 export async function updateVariantDefinition(
@@ -820,64 +604,33 @@ export async function updateVariantDefinition(
   input: DefinitionInput & { is_active?: boolean },
 ): Promise<void> {
   const table = variantsTable();
-  const body: Record<string, unknown> = {
-    code: input.code.trim(),
+  try {
+    await pgQuery(
+      `UPDATE ${table}
+       SET code = $2, name = $3, description = $4,
+           is_active = COALESCE($5, is_active)
+       WHERE id::text = $1`,
+      [
+        id,
+        input.code.trim(),
+        input.name.trim(),
+        input.description?.trim() || null,
+        input.is_active ?? null,
+      ],
+    );
+    return;
+  } catch {
+    /* ürün varyantı */
+  }
+  const pv = productVariantsTable();
+  const attrs = JSON.stringify({
     name: input.name.trim(),
     description: input.description?.trim() || null,
-  };
-  if (input.is_active !== undefined) body.is_active = input.is_active;
-
-  return writeDefinitionTransport({
-    label: 'updateVariantDefinition',
-    viaRest: async () => {
-      try {
-        await postgrestPatch(`/${table}?id=eq.${encodeURIComponent(id)}`, body, {
-          schema: 'public',
-          prefer: 'return=minimal',
-        });
-      } catch {
-        const pv = productVariantsTable();
-        const attrs = JSON.stringify({
-          name: input.name.trim(),
-          description: input.description?.trim() || null,
-        });
-        await postgrestPatch(
-          `/${pv}?id=eq.${encodeURIComponent(id)}`,
-          { sku: input.code.trim(), attributes: attrs },
-          { schema: 'public', prefer: 'return=minimal' },
-        );
-      }
-    },
-    viaBridge: async () => {
-      try {
-        await pgQuery(
-          `UPDATE ${table}
-           SET code = $2, name = $3, description = $4,
-               is_active = COALESCE($5, is_active)
-           WHERE id::text = $1`,
-          [
-            id,
-            input.code.trim(),
-            input.name.trim(),
-            input.description?.trim() || null,
-            input.is_active ?? null,
-          ],
-        );
-        return;
-      } catch {
-        /* ürün varyantı */
-      }
-      const pv = productVariantsTable();
-      const attrs = JSON.stringify({
-        name: input.name.trim(),
-        description: input.description?.trim() || null,
-      });
-      await pgQuery(
-        `UPDATE ${pv} SET sku = $2, attributes = $3::jsonb WHERE id::text = $1`,
-        [id, input.code.trim(), attrs],
-      );
-    },
   });
+  await pgQuery(
+    `UPDATE ${pv} SET sku = $2, attributes = $3::jsonb WHERE id::text = $1`,
+    [id, input.code.trim(), attrs],
+  );
 }
 
 export async function generateDefinitionCode(
@@ -905,37 +658,14 @@ export async function generateDefinitionCode(
             : kind === 'group'
               ? productGroupsTable()
               : variantsTable(fn);
-
-  return runDataTransport({
-    label: 'generateDefinitionCode',
-    viaRest: async () => {
-      try {
-        const rows = await postgrestGet<Array<{ code?: string }>>(
-          `/${table}`,
-          { code: `like.${prefix}-*`, select: 'code', order: 'code.desc', limit: 1 },
-          { schema: 'public' },
-        );
-        const last = Array.isArray(rows) ? rows[0]?.code : undefined;
-        if (last) {
-          const m = String(last).match(new RegExp(`^${prefix}-(\\d+)$`));
-          if (m) return `${prefix}-${String(parseInt(m[1], 10) + 1).padStart(3, '0')}`;
-        }
-      } catch {
-        /* fallback */
-      }
-      return `${prefix}-001`;
-    },
-    viaBridge: async () => {
-      try {
-        const res = await pgQuery<{ n: number }>(
-          `SELECT COUNT(*)::int AS n FROM ${table} WHERE code LIKE $1`,
-          [`${prefix}-%`],
-        );
-        const n = (res.rows[0]?.n ?? 0) + 1;
-        return `${prefix}-${String(n).padStart(3, '0')}`;
-      } catch {
-        return `${prefix}-001`;
-      }
-    },
-  });
+  try {
+    const res = await pgQuery<{ n: number }>(
+      `SELECT COUNT(*)::int AS n FROM ${table} WHERE code LIKE $1`,
+      [`${prefix}-%`],
+    );
+    const n = (res.rows[0]?.n ?? 0) + 1;
+    return `${prefix}-${String(n).padStart(3, '0')}`;
+  } catch {
+    return `${prefix}-001`;
+  }
 }

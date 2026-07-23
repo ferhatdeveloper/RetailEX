@@ -1,5 +1,5 @@
 import { pgQuery } from './pgClient';
-import { postgrestGet, postgrestPatch, postgrestPost } from './postgrestClient';
+import { postgrestGet, postgrestPost } from './postgrestClient';
 import { firmNr, newUuid, suppliersTable } from './erpTables';
 import { shouldUseLiveData, getNetworkPolicy } from '../offline/policy';
 import {
@@ -294,73 +294,4 @@ export async function createSupplier(input: SupplierInput, opts?: { id?: string 
   }
 
   return createSupplierViaBridge(input, id);
-}
-
-function buildSupplierPatchBody(input: Partial<SupplierInput>): Record<string, unknown> {
-  const map: Record<keyof CustomerInput, string> = {
-    code: 'code',
-    name: 'name',
-    phone: 'phone',
-    email: 'email',
-    city: 'city',
-    district: 'district',
-    address: 'address',
-    tax_nr: 'tax_nr',
-    tax_office: 'tax_office',
-    notes: 'notes',
-  };
-  const body: Record<string, unknown> = {};
-  for (const [key, col] of Object.entries(map) as [keyof CustomerInput, string][]) {
-    const v = input[key];
-    if (v === undefined) continue;
-    body[col] = typeof v === 'string' ? v.trim() || null : v;
-  }
-  return body;
-}
-
-/** Tedarikçi güncelle — PostgREST PATCH, bridge fallback */
-export async function updateSupplier(id: string, input: Partial<SupplierInput>): Promise<void> {
-  const body = buildSupplierPatchBody(input);
-  if (!Object.keys(body).length) return;
-
-  const table = suppliersTable();
-  const cfg = useConfigStore.getState().config;
-  const preferRest = shouldPreferPostgrest(cfg);
-  const canBridge = shouldUseBridgeSql(cfg);
-
-  if (preferRest) {
-    try {
-      await postgrestPatch(`/${table}?id=eq.${encodeURIComponent(id)}`, body, {
-        schema: 'public',
-        prefer: 'return=minimal',
-      });
-      return;
-    } catch (e) {
-      if (!canBridge) throw e;
-      if (__DEV__) {
-        console.warn(
-          '[updateSupplier] PostgREST → bridge',
-          e instanceof Error ? e.message : e,
-        );
-      }
-    }
-  }
-
-  if (!canBridge) {
-    throw new Error(
-      preferRest
-        ? 'PostgREST tedarikçi güncelleme başarısız ve bridge kapalı (apiMode=postgrest)'
-        : 'Bridge yapılandırması eksik',
-    );
-  }
-
-  const sets: string[] = [];
-  const vals: unknown[] = [];
-  let i = 1;
-  for (const [col, v] of Object.entries(body)) {
-    sets.push(`${col} = $${i++}`);
-    vals.push(v);
-  }
-  vals.push(id);
-  await pgQuery(`UPDATE ${table} SET ${sets.join(', ')} WHERE id::text = $${i}`, vals);
 }

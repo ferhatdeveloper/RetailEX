@@ -143,7 +143,7 @@ function CountPurchaseSurplusInfoModal({
                 <div
                     className={`flex w-full max-w-lg max-h-[min(90vh,100dvh)] min-h-0 flex-col overflow-hidden rounded-[2rem] border ${box} animate-in zoom-in-95 duration-200`}
                 >
-                    <div className="shrink-0 bg-gradient-to-r from-blue-600 to-indigo-600 px-6 py-5 text-white">
+                    <div className="shrink-0 bg-[var(--asin-primary,#0E2433)] px-6 py-5 text-white">
                         <div className="flex items-start justify-between gap-3">
                             <div className="min-w-0">
                                 <h2 id="count-purchase-info-title" className="text-lg font-black uppercase tracking-tight">
@@ -277,7 +277,7 @@ function CreateSlipView({ darkMode, onBack, onCreated }: {
     return (
         <div className={`h-full overflow-y-auto ${darkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
             {/* Header */}
-            <div className="bg-gradient-to-r from-blue-600 to-blue-700 text-white p-4 sticky top-0 z-10 shadow-lg">
+            <div className="bg-[var(--asin-primary,#0E2433)] text-white p-4 sticky top-0 z-10 shadow-lg">
                 <div className="flex items-center gap-3">
                     <button onClick={onBack} className="p-2 hover:bg-white/10 rounded-lg transition-colors">
                         <ArrowLeft className="w-5 h-5" />
@@ -385,7 +385,7 @@ function CreateSlipView({ darkMode, onBack, onCreated }: {
                 <button
                     onClick={handleCreate}
                     disabled={loading || !selectedStore}
-                    className="w-full py-4 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-xl font-bold text-lg shadow-lg hover:shadow-xl active:scale-[0.98] transition-all disabled:opacity-60 flex items-center justify-center gap-2"
+                    className="w-full py-4 bg-[var(--asin-accent,#1FA8A0)] hover:bg-[#178f88] text-white rounded-xl font-bold text-lg shadow-lg hover:shadow-xl active:scale-[0.98] transition-all disabled:opacity-60 flex items-center justify-center gap-2"
                 >
                     {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Plus className="w-5 h-5" />}
                     {loading ? tm('creating') : tm('createCountSlip')}
@@ -1209,7 +1209,7 @@ function ReconciliationView({ darkMode, slip, onBack, onComplete }: {
     return (
         <div className={`h-full overflow-y-auto ${bgClass}`}>
             {/* Header */}
-            <div className="bg-gradient-to-r from-purple-600 to-purple-700 text-white p-4 sticky top-0 z-10 shadow-lg">
+            <div className="bg-[var(--asin-primary,#0E2433)] text-white p-4 sticky top-0 z-10 shadow-lg">
                 <div className="flex items-center gap-3">
                     <button type="button" onClick={onBack} className="p-2 hover:bg-white/10 rounded-lg">
                         <ArrowLeft className="w-5 h-5" />
@@ -1592,7 +1592,7 @@ function OrdersView({ darkMode, onBack, onNewSlip, onEntry, onReconciliation }: 
     return (
         <div className={`h-full overflow-y-auto ${bgClass}`}>
             {/* Header */}
-            <div className="bg-gradient-to-r from-blue-600 to-indigo-700 text-white p-4 sticky top-0 z-10 shadow-lg">
+            <div className="bg-[var(--asin-primary,#0E2433)] text-white p-4 sticky top-0 z-10 shadow-lg">
                 <div className="flex items-center gap-3">
                     <button onClick={onBack} className="p-2 hover:bg-white/10 rounded-lg">
                         <ArrowLeft className="w-5 h-5" />

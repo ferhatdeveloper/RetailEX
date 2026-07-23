@@ -137,7 +137,7 @@ export class ErrorBoundary extends Component<Props, State> {
                     <button
                       type="button"
                       onClick={this.handleReset}
-                      className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                      className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-[var(--asin-accent,#1FA8A0)] text-white rounded-lg hover:bg-[#178f88] transition-colors"
                     >
                       <RefreshCw className="w-4 h-4 shrink-0" />
                       {t.refreshPage}
@@ -151,8 +151,8 @@ export class ErrorBoundary extends Component<Props, State> {
                     </button>
                   </div>
 
-                  <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-                    <p className="text-sm text-blue-900">
+                  <div className="mt-6 p-4 bg-[var(--asin-accent-muted,#D5F0EE)] border border-[var(--asin-accent-muted,#D5F0EE)] rounded-lg">
+                    <p className="text-sm text-[var(--asin-primary,#0E2433)]">
                       {t.helpMessage}
                     </p>
                   </div>

@@ -1,6 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-// This is the main entry point for the Windows Service (RetailEX_Service.exe)
+// This is the main entry point for the Windows Service (AsinERP_Service.exe)
 // It runs independently of the Tauri UI.
 
 use std::ffi::OsString;
@@ -65,9 +65,9 @@ mod windows_service_install;
 
 // ----------------------
 
-const SERVICE_NAME: &str = "RetailEX_Service";
-const DISPLAY_NAME: &str = "RetailEX Background Service";
-const LOG_FILE: &str = "C:\\ProgramData\\RetailEX\\service.log";
+const SERVICE_NAME: &str = "AsinERP_Service";
+const DISPLAY_NAME: &str = "AsinERP Background Service";
+const LOG_FILE: &str = "C:\\ProgramData\\AsinERP\\service.log";
 
 fn main() {
     if let Err(e) = run() {
@@ -82,16 +82,16 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
         Some(windows_service_install::BootstrapServiceCmd::Install) => return install_service(),
         Some(windows_service_install::BootstrapServiceCmd::Uninstall) => return uninstall_service(),
         Some(windows_service_install::BootstrapServiceCmd::Console) => {
-            println!("Usage: RetailEX_Service.exe [--install | --uninstall]");
+            println!("Usage: AsinERP_Service.exe [--install | --uninstall]");
             return Ok(());
         }
         None => {}
     }
     if args.len() > 1 {
-        println!("Usage: RetailEX_Service.exe [--install | --uninstall]");
+        println!("Usage: AsinERP_Service.exe [--install | --uninstall]");
         return Ok(());
     }
-    println!("Starting RetailEX Background Service...");
+    println!("Starting AsinERP Background Service...");
     service_dispatcher::start(SERVICE_NAME, ffi_service_main).map_err(|e| e.into())
 }
 
@@ -101,11 +101,11 @@ fn install_service() -> Result<(), Box<dyn std::error::Error>> {
         ServiceManagerAccess::CONNECT | ServiceManagerAccess::CREATE_SERVICE,
     )
     .map_err(|e| {
-        windows_service_install::log_service_install_failure("RetailEX_Service", &e);
+        windows_service_install::log_service_install_failure("AsinERP_Service", &e);
         Box::new(e) as Box<dyn std::error::Error>
     })?;
     let exe_path = env::current_exe().map_err(|e| {
-        windows_service_install::log_install_any_error("RetailEX_Service", &e);
+        windows_service_install::log_install_any_error("AsinERP_Service", &e);
         Box::new(e) as Box<dyn std::error::Error>
     })?;
     
@@ -126,7 +126,7 @@ fn install_service() -> Result<(), Box<dyn std::error::Error>> {
         &manager,
         &info,
         ServiceAccess::all(),
-        "RetailEX_Service",
+        "AsinERP_Service",
     )? {
         windows_service_install::CreateServiceOutcome::Created => {
             println!("Service installed successfully.");
@@ -182,7 +182,7 @@ fn run_service() -> windows_service::Result<()> {
         process_id: None,
     })?;
 
-    log("RetailEX Service Started.".to_string());
+    log("AsinERP Service Started.".to_string());
 
     // 1. Initialize Databases
     let _ = config::init_config_db();
@@ -248,7 +248,7 @@ fn run_service() -> windows_service::Result<()> {
 }
 
 fn log(msg: String) {
-    let _ = std::fs::create_dir_all("C:\\ProgramData\\RetailEX");
+    let _ = std::fs::create_dir_all("C:\\ProgramData\\AsinERP");
     if let Ok(mut file) = OpenOptions::new().create(true).append(true).open(LOG_FILE) {
          let _ = writeln!(file, "[{}] {}", chrono::Local::now(), msg);
     }

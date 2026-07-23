@@ -140,21 +140,21 @@ export function InvoiceListModule({
   }, [columnVisibility]);
 
   const INVOICE_TYPES: InvoiceType[] = [
-    { code: 8, name: tm('wholesale'), category: 'Satis', color: 'bg-purple-100 text-purple-700 border-purple-300', icon: 'FileText', translationKey: 'wholesale' },
-    { code: 7, name: tm('retailSale'), category: 'Satis', color: 'bg-blue-100 text-blue-700 border-blue-300', icon: 'FileText', translationKey: 'retailSale' },
+    { code: 8, name: tm('wholesale'), category: 'Satis', color: 'bg-[var(--asin-accent-muted,#D5F0EE)] text-[var(--asin-primary,#0E2433)] border-[var(--asin-accent,#1FA8A0)]/50', icon: 'FileText', translationKey: 'wholesale' },
+    { code: 7, name: tm('retailSale'), category: 'Satis', color: 'bg-[var(--asin-accent-muted,#D5F0EE)] text-[var(--asin-primary,#0E2433)] border-[var(--asin-accent,#1FA8A0)]/50', icon: 'FileText', translationKey: 'retailSale' },
     { code: 3, name: tm('salesReturn'), category: 'Iade', color: 'bg-red-100 text-red-700 border-red-300', icon: 'FileMinus', translationKey: 'salesReturn' },
     { code: 1, name: tm('purchaseInvoices'), category: 'Alis', color: 'bg-cyan-100 text-cyan-700 border-cyan-300', icon: 'FileCheck', translationKey: 'purchaseInvoices' },
     { code: 26, name: tm('invoiceTypeCountSurplus'), category: 'Alis', color: 'bg-amber-100 text-amber-800 border-amber-300', icon: 'FileCheck', translationKey: 'invoiceTypeCountSurplus' },
     { code: 6, name: tm('purchaseReturn'), category: 'Iade', color: 'bg-pink-100 text-pink-700 border-pink-300', icon: 'FileMinus', translationKey: 'purchaseReturn' },
-    { code: 9, name: tm('serviceGiven'), category: 'Hizmet', color: 'bg-indigo-100 text-indigo-700 border-indigo-300', icon: 'FileText', translationKey: 'serviceGiven' },
-    { code: 4, name: tm('serviceReceived'), category: 'Hizmet', color: 'bg-violet-100 text-violet-700 border-violet-300', icon: 'FileCheck', translationKey: 'serviceReceived' },
+    { code: 9, name: tm('serviceGiven'), category: 'Hizmet', color: 'bg-[var(--asin-accent-muted,#D5F0EE)] text-[var(--asin-primary,#0E2433)] border-[var(--asin-accent,#1FA8A0)]/50', icon: 'FileText', translationKey: 'serviceGiven' },
+    { code: 4, name: tm('serviceReceived'), category: 'Hizmet', color: 'bg-teal-100 text-teal-700 border-teal-300', icon: 'FileCheck', translationKey: 'serviceReceived' },
     { code: 10, name: tm('salesWaybill'), category: 'Irsaliye', color: 'bg-teal-100 text-teal-700 border-teal-300', icon: 'Truck', translationKey: 'salesWaybill' },
     { code: 11, name: tm('purchaseWaybill'), category: 'Irsaliye', color: 'bg-sky-100 text-sky-700 border-sky-300', icon: 'Truck', translationKey: 'purchaseWaybill' },
     { code: 12, name: tm('warehouseTransferWaybill'), category: 'Irsaliye', color: 'bg-orange-100 text-orange-700 border-orange-300', icon: 'Truck', translationKey: 'warehouseTransferWaybill' },
     { code: 13, name: tm('wastageWaybill'), category: 'Irsaliye', color: 'bg-red-100 text-red-700 border-red-300', icon: 'Truck', translationKey: 'wastageWaybill' },
     { code: 20, name: tm('salesOrder'), category: 'Siparis', color: 'bg-green-100 text-green-700 border-green-300', icon: 'ShoppingBag', translationKey: 'salesOrder' },
-    { code: 21, name: tm('purchaseOrder'), category: 'Siparis', color: 'bg-blue-100 text-blue-700 border-blue-300', icon: 'ShoppingBag', translationKey: 'purchaseOrder' },
-    { code: 30, name: tm('salesQuote'), category: 'Teklif', color: 'bg-purple-100 text-purple-700 border-purple-300', icon: 'FileSignature', translationKey: 'salesQuote' },
+    { code: 21, name: tm('purchaseOrder'), category: 'Siparis', color: 'bg-[var(--asin-accent-muted,#D5F0EE)] text-[var(--asin-primary,#0E2433)] border-[var(--asin-accent,#1FA8A0)]/50', icon: 'ShoppingBag', translationKey: 'purchaseOrder' },
+    { code: 30, name: tm('salesQuote'), category: 'Teklif', color: 'bg-[var(--asin-accent-muted,#D5F0EE)] text-[var(--asin-primary,#0E2433)] border-[var(--asin-accent,#1FA8A0)]/50', icon: 'FileSignature', translationKey: 'salesQuote' },
     { code: 31, name: tm('purchaseQuote'), category: 'Teklif', color: 'bg-cyan-100 text-cyan-700 border-cyan-300', icon: 'FileSignature', translationKey: 'purchaseQuote' },
   ];
   const {
@@ -1045,7 +1045,7 @@ export function InvoiceListModule({
     return (
       <div className="h-full flex items-center justify-center">
         <div className="text-center">
-          <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
+          <div className="w-12 h-12 border-4 border-[var(--asin-accent,#1FA8A0)] border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
           <p className="text-gray-600">{tm('loadingInvoices')}</p>
         </div>
       </div>
@@ -1055,14 +1055,14 @@ export function InvoiceListModule({
   return (
     <div className="h-full flex flex-col bg-gray-50 theme-lock-light" data-theme-lock="light">
       {/* Header */}
-      <div className="bg-gradient-to-r from-blue-600 to-blue-700 text-white px-4 py-2 flex-shrink-0">
+      <div className="bg-[var(--asin-primary,#0E2433)] text-white px-4 py-2 flex-shrink-0">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <FileText className="w-4 h-4" />
             <div className="flex items-center gap-2">
               <h2 className="text-sm font-medium">{title || tm('invoices')}</h2>
-              <span className="text-blue-100 text-[10px]">• {totalCount.toLocaleString(tm('localeCode'))} {tm('invoicesCount')}</span>
-              <span className="text-blue-100 text-[10px] ml-1">• {formatNumber(totalAmount, 2, true)} {headerTotalsCurrency}</span>
+              <span className="text-[var(--asin-accent-muted,#D5F0EE)] text-[10px]">• {totalCount.toLocaleString(tm('localeCode'))} {tm('invoicesCount')}</span>
+              <span className="text-[var(--asin-accent-muted,#D5F0EE)] text-[10px] ml-1">• {formatNumber(totalAmount, 2, true)} {headerTotalsCurrency}</span>
             </div>
           </div>
           <div className="flex items-center gap-1.5">
@@ -1075,7 +1075,7 @@ export function InvoiceListModule({
             </button>
             <button
               onClick={handleCreateInvoice}
-              className="flex items-center gap-1 px-3 py-1 bg-white text-blue-700 hover:bg-blue-50 transition-colors text-[10px] font-bold"
+              className="flex items-center gap-1 px-3 py-1 bg-white text-[var(--asin-primary,#0E2433)] hover:bg-[var(--asin-accent-muted,#D5F0EE)] transition-colors text-[10px] font-bold"
             >
               <Plus className="w-3 h-3" />
               {tm('newInvoice')}
@@ -1108,7 +1108,7 @@ export function InvoiceListModule({
                 placeholder={tm('searchPlaceholder')}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-8 pr-3 py-1.5 bg-gray-50 border border-gray-200 rounded text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 focus:bg-white transition-all"
+                className="w-full pl-8 pr-3 py-1.5 bg-gray-50 border border-gray-200 rounded text-xs focus:outline-none focus:ring-1 focus:ring-[var(--asin-accent,#1FA8A0)] focus:bg-white transition-all"
               />
             </div>
           </div>
@@ -1299,7 +1299,7 @@ export function InvoiceListModule({
                       <div className="flex justify-between gap-2 items-start">
                         <div className="min-w-0 flex-1">
                           <div className="text-[10px] text-gray-500 font-medium uppercase tracking-wide">{tm('invoiceNo')}</div>
-                          <div className="text-sm font-semibold text-blue-600 truncate">{inv.invoice_no}</div>
+                          <div className="text-sm font-semibold text-[var(--asin-accent,#1FA8A0)] truncate">{inv.invoice_no}</div>
                         </div>
                       </div>
                       <div className="mt-2 space-y-1 text-xs text-gray-700">
@@ -1339,11 +1339,11 @@ export function InvoiceListModule({
             </div>
             <div className="shrink-0 border-t border-gray-200 bg-white px-2 py-2 mt-1 rounded-b-lg">
               <div className="flex items-center justify-between gap-2 px-1 pb-2 mb-1 border-b border-gray-100">
-                <span className="text-[11px] font-bold text-blue-800">
+                <span className="text-[11px] font-bold text-[var(--asin-primary,#0E2433)]">
                   {tm('invoiceListDipTotal')}
-                  <span className="ml-1 font-semibold text-blue-600/80">({listFooterTotals.count})</span>
+                  <span className="ml-1 font-semibold text-[var(--asin-accent,#1FA8A0)]/80">({listFooterTotals.count})</span>
                 </span>
-                <span className="text-xs font-bold tabular-nums text-blue-900">
+                <span className="text-xs font-bold tabular-nums text-[var(--asin-primary,#0E2433)]">
                   {listFooterTotals.fmt(listFooterTotals.total)}
                 </span>
               </div>
@@ -1439,7 +1439,7 @@ export function InvoiceListModule({
                     setPageSize(Number(e.target.value));
                     setCurrentPage(1);
                   }}
-                  className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[var(--asin-accent,#1FA8A0)]"
                 >
                   {INVOICE_LIST_PAGE_SIZES.map((n) => (
                     <option key={n} value={n}>
@@ -1542,7 +1542,7 @@ export function InvoiceListModule({
               <div className="grid grid-cols-2 gap-2">
                 <button
                   type="button"
-                  className="py-2.5 px-2 text-xs font-semibold rounded-lg bg-blue-600 text-white"
+                  className="py-2.5 px-2 text-xs font-semibold rounded-lg bg-[var(--asin-accent,#1FA8A0)] text-white"
                   onClick={() => {
                     const inv = mobileActionInvoice;
                     setMobileActionInvoice(null);
@@ -1694,11 +1694,11 @@ export function InvoiceListModule({
 
       {specialPrintState && (
         <PercentBodyModal onClose={() => setSpecialPrintState(null)} size="list" ariaLabel="Özel Yazdır">
-              <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-8 py-6 text-white shrink-0">
+              <div className="bg-[var(--asin-primary,#0E2433)] px-8 py-6 text-white shrink-0">
                 <div className="flex items-center justify-between">
                   <div>
                     <h2 className="text-xl font-black uppercase tracking-tight">Özel Yazdır</h2>
-                    <p className="text-blue-100 text-xs font-semibold uppercase tracking-wider mt-0.5 opacity-90">
+                    <p className="text-[var(--asin-accent-muted,#D5F0EE)] text-xs font-semibold uppercase tracking-wider mt-0.5 opacity-90">
                       {specialPrintState.invoice.invoice_no || specialPrintState.invoice.id}
                     </p>
                   </div>
@@ -1735,7 +1735,7 @@ export function InvoiceListModule({
                             : prev,
                         )
                       }
-                      className="w-full px-4 py-3 pr-11 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-blue-500 focus:border-blue-400 outline-none appearance-none bg-white text-slate-800 font-medium"
+                      className="w-full px-4 py-3 pr-11 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-[var(--asin-accent,#1FA8A0)] focus:border-[var(--asin-accent,#1FA8A0)] outline-none appearance-none bg-white text-slate-800 font-medium"
                     >
                       {getTemplatesForScope('invoice', specialPrintState.scope).map((template) => (
                         <option key={template.id} value={template.id}>
@@ -1760,7 +1760,7 @@ export function InvoiceListModule({
                           : prev,
                       )
                     }
-                    className="mt-1 h-4 w-4 rounded border-slate-300 text-blue-600"
+                    className="mt-1 h-4 w-4 rounded border-slate-300 text-[var(--asin-accent,#1FA8A0)]"
                   />
                   <span className="text-sm text-slate-700 font-medium">
                     Bu belge türü için varsayılan tasarım olarak kaydet
@@ -1779,7 +1779,7 @@ export function InvoiceListModule({
                   type="button"
                   onClick={() => void handleSpecialPrint()}
                   disabled={specialPrintLoading}
-                  className="flex-1 rounded-2xl bg-blue-600 text-white font-bold uppercase text-sm tracking-wider shadow-lg shadow-blue-200/50 hover:bg-blue-700 disabled:opacity-50 active:scale-[0.98]"
+                  className="flex-1 rounded-2xl bg-[var(--asin-accent,#1FA8A0)] text-white font-bold uppercase text-sm tracking-wider shadow-lg shadow-[var(--asin-accent,#1FA8A0)]/25 hover:bg-[#178f88] disabled:opacity-50 active:scale-[0.98]"
                 >
                   {specialPrintLoading ? 'Hazırlanıyor...' : 'Özel Yazdır'}
                 </button>
@@ -1790,10 +1790,10 @@ export function InvoiceListModule({
       {/* Detail Modal */}
       {showDetailModal && selectedInvoice && (
         <PercentBodyModal onClose={() => setShowDetailModal(false)} size="wide" ariaLabel={tm('invoiceDetails')}>
-            <div className="bg-gradient-to-r from-blue-600 to-blue-700 text-white px-6 py-4 flex items-center justify-between shrink-0">
+            <div className="bg-[var(--asin-primary,#0E2433)] text-white px-6 py-4 flex items-center justify-between shrink-0">
               <div>
                 <h3 className="text-xl font-semibold">{tm('invoiceDetails')}</h3>
-                <p className="text-blue-100 text-sm">{selectedInvoice.invoice_no}</p>
+                <p className="text-[var(--asin-accent-muted,#D5F0EE)] text-sm">{selectedInvoice.invoice_no}</p>
               </div>
               <div className="flex items-center gap-2">
                 <button
@@ -1826,8 +1826,8 @@ export function InvoiceListModule({
                   }}
                 >
                   {/* Modern Invoice Header */}
-                  <div className="border-b-4 border-blue-600 pb-6 mb-8">
-                    <h1 className="text-4xl font-bold text-blue-600 mb-6">{tm('invoice').toUpperCase()}</h1>
+                  <div className="border-b-4 border-[var(--asin-accent,#1FA8A0)] pb-6 mb-8">
+                    <h1 className="text-4xl font-bold text-[var(--asin-accent,#1FA8A0)] mb-6">{tm('invoice').toUpperCase()}</h1>
                     <div className="grid grid-cols-3 gap-6">
                       <div>
                         <div className="text-xs text-gray-500 uppercase tracking-wide mb-1">{tm('invoiceNo')}</div>
@@ -1963,9 +1963,9 @@ export function InvoiceListModule({
                           <span className="font-semibold text-gray-900">{formatNumber(selectedInvoice.tax, 2, true)} {resolveListRowCurrency(selectedInvoice)}</span>
                         </div>
                       )}
-                      <div className="flex justify-between text-2xl font-bold border-t-2 border-blue-600 pt-4 mt-4">
+                      <div className="flex justify-between text-2xl font-bold border-t-2 border-[var(--asin-accent,#1FA8A0)] pt-4 mt-4">
                         <span className="text-gray-900">{tm('grandTotal')}:</span>
-                        <span className="text-blue-600">{formatNumber(selectedInvoice.total || selectedInvoice.total_amount || 0, 2, true)} {resolveListRowCurrency(selectedInvoice)}</span>
+                        <span className="text-[var(--asin-accent,#1FA8A0)]">{formatNumber(selectedInvoice.total || selectedInvoice.total_amount || 0, 2, true)} {resolveListRowCurrency(selectedInvoice)}</span>
                       </div>
                     </div>
                   </div>
@@ -1987,7 +1987,7 @@ export function InvoiceListModule({
       {/* Fatura Türü Seçim Modalı */}
       {showInvoiceTypeModal && (
         <PercentBodyModal onClose={() => setShowInvoiceTypeModal(false)} size="wide" ariaLabel={tm('selectInvoiceType')}>
-            <div className="p-4 border-b border-gray-200 bg-gradient-to-r from-blue-600 to-blue-700 flex items-center justify-between shrink-0">
+            <div className="p-4 border-b border-gray-200 bg-[var(--asin-primary,#0E2433)] flex items-center justify-between shrink-0">
               <div className="flex items-center gap-3">
                 <FileText className="w-6 h-6 text-white" />
                 <h3 className="text-xl font-semibold text-white">{tm('selectInvoiceType')}</h3>
@@ -2005,8 +2005,8 @@ export function InvoiceListModule({
                 {/* Sol Panel - Fatura Türleri */}
                 <div className="space-y-3">
                   {/* Kategori Filtreleri */}
-                  <div className="border border-gray-300 bg-blue-50 p-3 rounded-lg">
-                    <h4 className="text-sm text-blue-800 mb-2 flex items-center gap-2">
+                  <div className="border border-gray-300 bg-[var(--asin-accent-muted,#D5F0EE)] p-3 rounded-lg">
+                    <h4 className="text-sm text-[var(--asin-primary,#0E2433)] mb-2 flex items-center gap-2">
                       <FileText className="w-4 h-4" />
                       {tm('invoiceCategories')}
                     </h4>
@@ -2016,8 +2016,8 @@ export function InvoiceListModule({
                           key={cat.id}
                           onClick={() => setSelectedCategory(cat.id)}
                           className={`px-3 py-1.5 text-xs border transition-colors rounded ${selectedCategory === cat.id
-                            ? 'bg-blue-600 text-white border-blue-600'
-                            : 'bg-white text-gray-700 border-gray-300 hover:border-blue-400'
+                            ? 'bg-[var(--asin-accent,#1FA8A0)] text-white border-[var(--asin-accent,#1FA8A0)]'
+                            : 'bg-white text-gray-700 border-gray-300 hover:border-[var(--asin-accent,#1FA8A0)]'
                             }`}
                         >
                           {cat.label} ({cat.count})
@@ -2040,13 +2040,13 @@ export function InvoiceListModule({
                             onMouseEnter={() => setHoveredInvoiceType(type)}
                             onMouseLeave={() => setHoveredInvoiceType(null)}
                             className={`w-full p-3 rounded border-2 transition-all text-left ${isHovered
-                              ? 'border-blue-600 bg-blue-50 shadow-md'
-                              : 'border-gray-200 bg-white hover:border-blue-300 hover:bg-blue-50/50'
+                              ? 'border-[var(--asin-accent,#1FA8A0)] bg-[var(--asin-accent-muted,#D5F0EE)] shadow-md'
+                              : 'border-gray-200 bg-white hover:border-[var(--asin-accent,#1FA8A0)]/50 hover:bg-[var(--asin-accent-muted,#D5F0EE)]/50'
                               }`}
                           >
                             <div className="flex items-start justify-between mb-1">
                               <div className="flex items-center gap-2">
-                                <Icon className={`w-5 h-5 ${isHovered ? 'text-blue-600' : 'text-gray-600'}`} />
+                                <Icon className={`w-5 h-5 ${isHovered ? 'text-[var(--asin-accent,#1FA8A0)]' : 'text-gray-600'}`} />
                                 <span className="font-semibold text-sm text-gray-900">{type.name}</span>
                               </div>
                               <span className="text-[10px] font-mono bg-gray-100 px-1.5 py-0.5 rounded">
@@ -2066,7 +2066,7 @@ export function InvoiceListModule({
                   {hoveredInvoiceType ? (
                     <>
                       {/* Seçilen Tür Özeti */}
-                      <div className="border-2 border-blue-300 bg-gradient-to-br from-blue-50 to-blue-100 p-5 shadow-sm rounded-lg">
+                      <div className="border-2 border-[var(--asin-accent,#1FA8A0)]/50 bg-gradient-to-br from-[var(--asin-accent-muted,#D5F0EE)] to-[#c5e8e5] p-5 shadow-sm rounded-lg">
                         <h4 className="text-xs uppercase tracking-wide mb-3 text-gray-600 font-medium">
                           {tm('invoiceTypeDetails').toUpperCase()}
                         </h4>
@@ -2074,7 +2074,7 @@ export function InvoiceListModule({
                           <div className="flex items-center gap-3 mb-3">
                             {(() => {
                               const Icon = getIcon(hoveredInvoiceType.icon);
-                              return <Icon className="w-10 h-10 text-blue-600" />;
+                              return <Icon className="w-10 h-10 text-[var(--asin-accent,#1FA8A0)]" />;
                             })()}
                             <div>
                               <div className="text-xl font-bold text-gray-900">{hoveredInvoiceType.name}</div>

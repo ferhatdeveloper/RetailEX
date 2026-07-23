@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <title>Asin — Dashboard (login atla)</title>
+  <style>
+    body { font-family: system-ui, sans-serif; background: #0E2433; color: #F3F5F7; display: grid; place-items: center; min-height: 100vh; margin: 0; }
+    p { opacity: 0.8; }
+  </style>
+</head>
+<body>
+  <p>Oturum yazılıyor, dashboard açılıyor…</p>
+  <script>
+    (function () {
+      var webConfig = {
+        is_configured: true,
+        db_mode: 'online',
+        connection_provider: 'rest_api',
+        remote_rest_url: 'https://api.retailex.app/retailex_demo',
+        merkez_tenant_code: 'retailex_demo',
+        remote_db: '72.60.182.107:5432/retailex_demo',
+        erp_firm_nr: '001',
+        erp_period_nr: '01',
+        store_id: '001',
+        system_type: 'retail'
+      };
+      var user = {
+        id: '10000000-0000-4000-a000-000000000001',
+        username: 'admin',
+        email: 'admin@retailex.com',
+        full_name: 'System Administrator',
+        role: 'admin',
+        role_ids: ['00000000-0000-0000-0000-000000000001'],
+        roles: [{
+          id: '00000000-0000-0000-0000-000000000001',
+          name: 'admin',
+          permissions: ['*'],
+          color: '#9333ea',
+          landingRoute: 'management'
+        }],
+        firm_nr: '001',
+        period_nr: '01',
+        created_at: new Date().toISOString(),
+        allowed_firm_nrs: ['001', '002', '110'],
+        allowed_periods: ['01']
+      };
+      localStorage.setItem('retailex_web_config', JSON.stringify(webConfig));
+      localStorage.setItem('exretail_firma_donem_configured', 'true');
+      localStorage.setItem('exretail_user_meta', JSON.stringify({ firm_nr: '001', period_nr: '01' }));
+      localStorage.setItem('exretail_selected_firma_id', '001');
+      localStorage.setItem('retailex_active_module', 'management');
+      localStorage.setItem('exretail_session', JSON.stringify({ token: 'local-session-auth', user: user }));
+      location.replace('/');
+    })();
+  </script>
+</body>
+</html>

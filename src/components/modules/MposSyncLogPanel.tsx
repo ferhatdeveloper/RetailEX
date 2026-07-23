@@ -88,7 +88,7 @@ export function MposSyncLogPanel({ storeId, terminalName, theme }: Props) {
               Uygulama kapalıyken (Windows servisi)
             </h3>
             <p className={`text-xs ${muted}`}>
-              RetailEX_Service arka planda aldığı veriler — uygulama açık değilken
+              AsinERP_Service arka planda aldığı veriler — uygulama açık değilken
             </p>
           </div>
           <Button size="sm" variant="outline" disabled={loading} onClick={() => void refresh()} className="gap-1 h-8">

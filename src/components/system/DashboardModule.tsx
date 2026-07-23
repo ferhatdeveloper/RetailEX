@@ -1,13 +1,11 @@
 import {
-  TrendingUp, TrendingDown, Banknote, ShoppingCart, Package, Users,
-  AlertTriangle, Clock, Zap, FileText, UserPlus, PackagePlus,
+  TrendingUp, Banknote, ShoppingCart, Package, Users,
+  FileText, UserPlus, PackagePlus,
   BarChart3, Layers, ArrowRight, TrendingUpDown, Wallet, Settings, X,
-  Truck, Receipt, Building, Target, Wrench, Calendar, Globe, RefreshCw,
-  CreditCard, Shield, Database, Percent, Award, GitBranch, Calculator,
-  ClipboardList, Send, Mail, Phone, Smartphone, Bell, Download, Tag, UserCog,
-  FileSpreadsheet, Store, Sparkles, LayoutDashboard
+  Truck, Receipt, Target, Award, GitBranch, Calculator,
+  ClipboardList, Send, FileSpreadsheet, Store, Sparkles, Zap, UserCog
 } from 'lucide-react';
-import { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import type { Product, Customer, Sale } from '../../core/types';
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { formatNumber } from '../../utils/formatNumber';
@@ -60,23 +58,23 @@ export function DashboardModule({ products, customers, sales, setCurrentScreen, 
   const baseActions = useMemo(() => {
     const m = t.menu;
     return [
-      { id: 'newsale', icon: ShoppingCart, label: tLabel(t.posModule, 'Satış (POS)'), color: 'from-blue-500 to-blue-600', category: tLabel(m.retailSales, 'Satış') },
-      { id: 'salesorder', icon: ClipboardList, label: tLabel(m.salesOrder, 'Satış siparişi'), color: 'from-blue-400 to-blue-500', category: tLabel(m.orders, 'Siparişler') },
-      { id: 'salesinvoice', icon: FileText, label: tLabel(m.salesInvoices, 'Satış faturaları'), color: 'from-blue-600 to-blue-700', category: tLabel(m.invoices, 'Faturalar') },
+      { id: 'newsale', icon: ShoppingCart, label: tLabel(t.posModule, 'Satış (POS)'), color: 'from-[var(--asin-primary,#0E2433)] to-[var(--asin-accent,#1FA8A0)]', category: tLabel(m.retailSales, 'Satış') },
+      { id: 'salesorder', icon: ClipboardList, label: tLabel(m.salesOrder, 'Satış siparişi'), color: 'from-[var(--asin-accent,#1FA8A0)] to-[#178f88]', category: tLabel(m.orders, 'Siparişler') },
+      { id: 'salesinvoice', icon: FileText, label: tLabel(m.salesInvoices, 'Satış faturaları'), color: 'from-[var(--asin-primary,#0E2433)] to-[#163A52]', category: tLabel(m.invoices, 'Faturalar') },
       { id: 'addproduct', icon: PackagePlus, label: tLabel(t.productManagement, 'Ürün yönetimi'), color: 'from-green-500 to-green-600', category: tLabel(m.materialManagement, 'Malzeme') },
       { id: 'products', icon: Package, label: tLabel(m.materials, 'Malzemeler'), color: 'from-green-400 to-green-500', category: tLabel(m.materialManagement, 'Malzeme yönetimi') },
       { id: 'stock', icon: Layers, label: tLabel(m.stockManagementPanel, 'Stok paneli'), color: 'from-green-600 to-green-700', category: tLabel(m.inventoryManagement, 'Stok işlemleri') },
-      { id: 'addcustomer', icon: UserPlus, label: tLabel(t.newCustomer, 'Yeni müşteri'), color: 'from-purple-500 to-purple-600', category: tLabel(m.currentAccounts, 'Cari hesaplar') },
-      { id: 'customers', icon: Users, label: tLabel(m.currentAccounts, 'Cari kartlar'), color: 'from-purple-400 to-purple-500', category: tLabel(m.cards, 'Kartlar') },
-      { id: 'crm', icon: Target, label: tLabel(m.customerAnalysis, 'Müşteri analizi'), color: 'from-purple-600 to-purple-700', category: tLabel(m.reportsAndAnalysis, 'Raporlar') },
+      { id: 'addcustomer', icon: UserPlus, label: tLabel(t.newCustomer, 'Yeni müşteri'), color: 'from-[var(--asin-accent,#1FA8A0)] to-[#178f88]', category: tLabel(m.currentAccounts, 'Cari hesaplar') },
+      { id: 'customers', icon: Users, label: tLabel(m.currentAccounts, 'Cari kartlar'), color: 'from-[var(--asin-primary,#0E2433)] to-[var(--asin-accent,#1FA8A0)]', category: tLabel(m.cards, 'Kartlar') },
+      { id: 'crm', icon: Target, label: tLabel(m.customerAnalysis, 'Müşteri analizi'), color: 'from-[#163A52] to-[var(--asin-primary,#0E2433)]', category: tLabel(m.reportsAndAnalysis, 'Raporlar') },
       { id: 'finance', icon: Banknote, label: tLabel(m.cashOperations, 'Kasa işlemleri'), color: 'from-orange-500 to-orange-600', category: tLabel(m.financeManagement, 'Finans') },
       { id: 'accounting', icon: Calculator, label: tLabel(m.accountingManagement, 'Muhasebe'), color: 'from-orange-400 to-orange-500', category: tLabel(m.journalAndSlips, 'Yevmiye & fişler') },
       { id: 'budget', icon: Wallet, label: tLabel(m.incomeStatement, 'Gelir tablosu'), color: 'from-orange-600 to-orange-700', category: tLabel(m.financeManagement, 'Finans') },
       { id: 'invoices', icon: Receipt, label: tLabel(t.invoices, 'Faturalar'), color: 'from-pink-500 to-pink-600', category: tLabel(m.invoices, 'Faturalar') },
       { id: 'purchaseinvoice', icon: FileText, label: tLabel(m.purchaseInvoice, 'Alış faturası'), color: 'from-pink-400 to-pink-500', category: tLabel(m.invoices, 'Faturalar') },
       { id: 'etransform', icon: Send, label: tLabel(m.eInvoiceArchive, 'E-dönüşüm'), color: 'from-pink-600 to-pink-700', category: tLabel(m.invoices, 'Faturalar') },
-      { id: 'reports', icon: BarChart3, label: tLabel(m.reportsAndAnalysis, 'Raporlar'), color: 'from-indigo-500 to-indigo-600', category: tLabel(m.reports, 'Raporlar') },
-      { id: 'dashboard', icon: TrendingUpDown, label: tLabel(t.dashboard, 'Dashboard'), color: 'from-indigo-400 to-indigo-500', category: tLabel(m.reportsAndAnalysis, 'Raporlar') },
+      { id: 'reports', icon: BarChart3, label: tLabel(m.reportsAndAnalysis, 'Raporlar'), color: 'from-[var(--asin-primary,#0E2433)] to-[var(--asin-accent,#1FA8A0)]', category: tLabel(m.reports, 'Raporlar') },
+      { id: 'dashboard', icon: TrendingUpDown, label: tLabel(t.dashboard, 'Dashboard'), color: 'from-[var(--asin-accent,#1FA8A0)] to-[#178f88]', category: tLabel(m.reportsAndAnalysis, 'Raporlar') },
       { id: 'purchase', icon: ShoppingCart, label: tLabel(t.purchasing, 'Satın alma'), color: 'from-teal-500 to-teal-600', category: tLabel(m.purchasing, 'Satın alma') },
       { id: 'suppliers', icon: Truck, label: tLabel(m.supplierCards, 'Tedarikçi kartları'), color: 'from-teal-400 to-teal-500', category: tLabel(m.cards, 'Kartlar') },
       { id: 'logistics', icon: Truck, label: tLabel(m.logisticsShipping, 'Teslimat'), color: 'from-cyan-500 to-cyan-600', category: tLabel(m.waybills, 'İrsaliyeler') },
@@ -389,453 +387,435 @@ export function DashboardModule({ products, customers, sales, setCurrentScreen, 
 
   const categoryChartData = Object.values(categoryData);
 
-  const COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899', '#14B8A6', '#F97316'];
-
   const deepInsightPanels = useMemo(
     () => [
-      { id: 'profit-dashboard', title: 'Kar panosu', blurb: 'Ciro, marj ve kârlılık özeti', Icon: TrendingUp, grad: 'from-emerald-500 to-teal-600' },
-      { id: 'reports', title: 'Rapor merkezi', blurb: 'Satış, stok ve operasyon raporları', Icon: BarChart3, grad: 'from-indigo-500 to-violet-600' },
-      { id: 'new-modules', title: 'Modül vitrini', blurb: 'Yeni ve gelişmiş fonksiyonlar', Icon: Sparkles, grad: 'from-amber-500 to-orange-600' },
-      { id: 'accounting-mgmt', title: 'Muhasebe panosu', blurb: 'Mizan, bilanço, gelir tablosu', Icon: Calculator, grad: 'from-slate-600 to-slate-800' },
-      { id: 'product-analytics', title: 'Ürün analitiği', blurb: 'SKU, kategori ve fiyat performansı', Icon: Target, grad: 'from-pink-500 to-rose-600' },
-      { id: 'store-management', title: 'Mağaza paneli', blurb: 'Şube ve mağaza operasyonları', Icon: Store, grad: 'from-cyan-500 to-blue-600' },
+      { id: 'profit-dashboard', title: 'Kâr sinyali', blurb: 'Ciro ve marj', Icon: TrendingUp },
+      { id: 'reports', title: 'Rapor hattı', blurb: 'Satış · stok · operasyon', Icon: BarChart3 },
+      { id: 'new-modules', title: 'Modül kataloğu', blurb: 'Yeni yetenekler', Icon: Sparkles },
+      { id: 'accounting-mgmt', title: 'Muhasebe', blurb: 'Mizan · bilanço', Icon: Calculator },
+      { id: 'product-analytics', title: 'Ürün nabzı', blurb: 'SKU performansı', Icon: Target },
+      { id: 'store-management', title: 'Mağaza hattı', blurb: 'Şube operasyonu', Icon: Store },
     ],
     []
   );
 
+  const goScreen = useCallback(
+    (id: string) => {
+      if (id === 'newsale') setCurrentScreen('salesinvoice');
+      else if (id === 'addproduct') setCurrentScreen('products');
+      else if (id === 'addcustomer') setCurrentScreen('customers');
+      else setCurrentScreen(id);
+    },
+    [setCurrentScreen],
+  );
+
+  const paymentTotal = paymentChartData.reduce((s, p) => s + (Number(p.value) || 0), 0);
+  const dateLocale = t.locale || 'tr-TR';
+  const nowLabel = new Date().toLocaleDateString(dateLocale, {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  });
+
   return (
-    <div className="h-full overflow-auto bg-gradient-to-br from-gray-50 to-gray-100 scrollbar-thin scrollbar-thumb-gray-300">
-      {/* Modern Minimal Header */}
-      <div className="bg-gradient-to-r from-blue-600 to-blue-700 px-4 py-2">
-        <div className="flex items-center justify-between gap-3 flex-wrap">
-          <div className="min-w-0">
-            <h2 className="text-lg text-white">{tLabel(t.dashboard, 'Dashboard')}</h2>
-            <p className="text-blue-100 text-[10px] mt-0.5">{tLabel(t.welcomeDashboard, 'Hoş geldiniz, işletme performansınızı takip edin')}</p>
+    <div className="asin-pulse">
+      <header className="asin-pulse-hero">
+        <div className="asin-pulse-hero-inner">
+          <div>
+            <h1 className="asin-pulse-brand">
+              AS<span>IN</span>
+            </h1>
+            <p className="asin-pulse-tagline">
+              Operasyon nabzı — satış, stok ve kâr tek yüzeyde.
+            </p>
+          </div>
+          <div className="asin-pulse-meta">
+            {nowLabel}
             {(firmLabel || periodLabel) ? (
-              <p className="text-blue-200/95 text-[10px] mt-1 truncate max-w-[min(100%,28rem)]">
-                {[firmLabel, periodLabel].filter(Boolean).join(' · ')}
-              </p>
-            ) : null}
-          </div>
-          <div className="text-right">
-            <p className="text-blue-100 text-[10px]">{new Date().toLocaleDateString(t.locale || 'tr-TR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
-            <p className="text-blue-200 text-[9px] mt-0.5">{new Date().toLocaleTimeString(t.locale || 'tr-TR')}</p>
+              <strong>{[firmLabel, periodLabel].filter(Boolean).join(' · ')}</strong>
+            ) : (
+              <strong>Canlı oturum</strong>
+            )}
           </div>
         </div>
-      </div>
+      </header>
 
-      <div className="p-3 space-y-3">
-        {/* Quick Actions - Hızlı Kısayollar */}
-        <div>
-          <div className="flex items-center gap-1.5 mb-2">
-            <Zap className="w-4 h-4 text-blue-600" />
-            <h3 className="text-sm text-gray-800">{tLabel(t.quickAccess, 'Hızlı Erişim')}</h3>
-          </div>
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2">
-            {currentQuickActions.map((action) => {
-              const Icon = action.icon;
-              return (
-                <button
-                  key={action.id}
-                  onClick={() => {
-                    if (action.id === 'newsale') setCurrentScreen('salesinvoice');
-                    else if (action.id === 'addproduct') setCurrentScreen('products');
-                    else if (action.id === 'addcustomer') setCurrentScreen('customers');
-                    else setCurrentScreen(action.id);
-                  }}
-                  className={`group bg-gradient-to-br ${action.color} rounded-lg p-2 text-white transition-all duration-300 hover:scale-105 hover:shadow-lg`}
-                >
-                  <div className="flex flex-col items-center gap-1.5">
-                    <div className="w-8 h-8 bg-white/20 rounded flex items-center justify-center group-hover:bg-white/30 transition-all">
-                      <Icon className="w-4 h-4" />
-                    </div>
-                    <span className="text-[10px] text-center">{String(action.label)}</span>
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-          <div className="text-right mt-1">
-            <button
-              className="text-[10px] text-blue-500 hover:text-blue-600 font-medium"
-              onClick={() => setShowCustomizeModal(true)}
-            >
-              {tLabel(t.editQuickAccess, 'Hızlı Erişimleri Düzenle')}
-            </button>
-          </div>
-        </div>
-
-        {/* Analiz ve derin panolar — ana giriş tek menüde toplandı */}
-        <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
-          <div className="px-3 py-2 border-b border-gray-100 bg-gradient-to-r from-slate-50 to-blue-50/60 flex items-center gap-2">
-            <LayoutDashboard className="w-4 h-4 text-blue-600 shrink-0" />
-            <div className="min-w-0">
-              <h3 className="text-sm font-semibold text-gray-800">Analiz ve panolar</h3>
-              <p className="text-[10px] text-gray-500">Kâr, rapor, muhasebe ve mağaza ekranlarına tek tıkla gidin</p>
+      <div className="asin-pulse-body">
+        <section className="asin-pulse-span asin-pulse-strip" aria-label="Özet metrikler">
+          <div className="asin-pulse-stat">
+            <div className="asin-pulse-stat-label">
+              Bugün
+              {revenueChange !== 0 && (
+                <span className={`asin-pulse-stat-delta ${revenueChange > 0 ? 'up' : 'down'}`}>
+                  {revenueChange > 0 ? '↑' : '↓'}
+                  {formatNumber(Math.abs(revenueChange), 1, false)}%
+                </span>
+              )}
+            </div>
+            <div className="asin-pulse-stat-value">
+              {formatNumber(totalRevenue, 2, false)} {currency}
+            </div>
+            <div className="asin-pulse-stat-hint">
+              {todaysSales.length} işlem
             </div>
           </div>
-          <div className="p-3 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-2">
+          <div className="asin-pulse-stat">
+            <div className="asin-pulse-stat-label">7 gün</div>
+            <div className="asin-pulse-stat-value">
+              {formatNumber(weekRevenue, 2, false)} {currency}
+            </div>
+            <div className="asin-pulse-stat-hint">{weekSales.length} işlem</div>
+          </div>
+          <div className="asin-pulse-stat">
+            <div className="asin-pulse-stat-label">
+              Kâr
+              {profitChange !== 0 && (
+                <span className={`asin-pulse-stat-delta ${profitChange > 0 ? 'up' : 'down'}`}>
+                  {profitChange > 0 ? '↑' : '↓'}
+                  {formatNumber(Math.abs(profitChange), 1, false)}%
+                </span>
+              )}
+            </div>
+            <div className="asin-pulse-stat-value is-accent">
+              {formatNumber(totalProfitToday, 2, false)} {currency}
+            </div>
+            <div className="asin-pulse-stat-hint">
+              Marj{' '}
+              {totalRevenue > 0
+                ? formatNumber((totalProfitToday / totalRevenue) * 100, 1, false)
+                : 0}
+              %
+            </div>
+          </div>
+          <div className="asin-pulse-stat">
+            <div className="asin-pulse-stat-label">SKU</div>
+            <div className="asin-pulse-stat-value">{products.length}</div>
+            <div className="asin-pulse-stat-hint">
+              {lowStockProducts.length > 0
+                ? `${lowStockProducts.length} düşük stok`
+                : 'Stok dengeli'}
+            </div>
+          </div>
+          <div className="asin-pulse-stat">
+            <div className="asin-pulse-stat-label">Cari</div>
+            <div className="asin-pulse-stat-value">{customers.length}</div>
+            <div className="asin-pulse-stat-hint">Kayıtlı hesap</div>
+          </div>
+        </section>
+
+        <section className="asin-pulse-panel">
+          <div className="asin-pulse-panel-head">
+            <h2 className="asin-pulse-panel-title">Komutlar</h2>
+            <button type="button" className="asin-pulse-link" onClick={() => setShowCustomizeModal(true)}>
+              Düzenle
+            </button>
+          </div>
+          <div className="asin-pulse-cmd">
+            {isLoading ? (
+              <p className="asin-pulse-empty">Yükleniyor…</p>
+            ) : (
+              currentQuickActions.map((action) => {
+                const Icon = action.icon;
+                return (
+                  <button key={action.id} type="button" onClick={() => goScreen(action.id)}>
+                    <Icon aria-hidden />
+                    <span>{String(action.label)}</span>
+                    <ArrowRight className="asin-pulse-cmd-arrow" aria-hidden />
+                  </button>
+                );
+              })
+            )}
+          </div>
+        </section>
+
+        <section className="asin-pulse-panel">
+          <div className="asin-pulse-panel-head">
+            <h2 className="asin-pulse-panel-title">Derin ekranlar</h2>
+          </div>
+          <div className="asin-pulse-insight">
             {deepInsightPanels.map((p) => {
               const Icon = p.Icon;
               return (
-                <button
-                  key={p.id}
-                  type="button"
-                  onClick={() => setCurrentScreen(p.id)}
-                  className={`text-left rounded-lg border border-white/10 bg-gradient-to-br ${p.grad} p-3 text-white shadow-sm hover:shadow-md hover:brightness-105 active:scale-[0.99] transition-all`}
-                >
-                  <div className="flex items-start gap-2">
-                    <div className="shrink-0 w-9 h-9 rounded-lg bg-white/20 flex items-center justify-center">
-                      <Icon className="w-4 h-4" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-xs font-bold leading-tight">{p.title}</p>
-                      <p className="text-[10px] text-white/90 mt-0.5 leading-snug">{p.blurb}</p>
-                    </div>
-                    <ArrowRight className="w-4 h-4 shrink-0 opacity-90 mt-0.5" aria-hidden />
-                  </div>
+                <button key={p.id} type="button" onClick={() => setCurrentScreen(p.id)}>
+                  <span className="asin-pulse-insight-icon">
+                    <Icon className="w-4 h-4" aria-hidden />
+                  </span>
+                  <span>
+                    <span className="asin-pulse-insight-name">{p.title}</span>
+                    <p className="asin-pulse-insight-blurb">{p.blurb}</p>
+                  </span>
+                  <ArrowRight className="w-4 h-4 opacity-40" aria-hidden />
                 </button>
               );
             })}
           </div>
-        </div>
+        </section>
 
-        {/* Kurumsal Özet Panel - Modern KPI Cards yerine */}
-        <div className="bg-white border border-gray-300 rounded">
-          <div className="bg-[#E3F2FD] border-b border-gray-300 px-3 py-1.5">
-            <h3 className="text-[11px] text-gray-700">{tLabel(t.dailySummary, 'Günlük Özet')}</h3>
+        <section className="asin-pulse-span asin-pulse-panel">
+          <div className="asin-pulse-panel-head">
+            <h2 className="asin-pulse-panel-title">Envanter değeri</h2>
           </div>
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 divide-x divide-gray-200">
-            <div className="p-3">
-              <div className="flex items-center gap-2 mb-1">
-                <Banknote className="w-4 h-4 text-blue-600" />
-                <span className="text-[10px] text-gray-600">{tLabel(t.todaysSales, 'Bugünkü Satış')}</span>
-                {revenueChange !== 0 && (
-                  <span className={`text-[9px] ${revenueChange > 0 ? 'text-green-600' : 'text-red-600'}`}>
-                    {revenueChange > 0 ? '↑' : '↓'} {formatNumber(Math.abs(revenueChange), 1, false)}%
-                  </span>
-                )}
-              </div>
-              <div className="text-base text-gray-900">{formatNumber(totalRevenue, 2, false)} {currency}</div>
-              <div className="text-[9px] text-gray-500 mt-0.5">{todaysSales.length} {tLabel(t.transaction, 'işlem')}</div>
+          <dl className="asin-pulse-finance">
+            <div>
+              <dt>Maliyet</dt>
+              <dd>
+                {formatNumber(totalStockValue, 2, false)} {currency}
+              </dd>
             </div>
+            <div>
+              <dt>Satış değeri</dt>
+              <dd>
+                {formatNumber(totalStockSaleValue, 2, false)} {currency}
+              </dd>
+            </div>
+            <div>
+              <dt>Potansiyel</dt>
+              <dd className="accent">
+                {formatNumber(potentialProfit, 2, false)} {currency}
+              </dd>
+            </div>
+            <div>
+              <dt>Marj</dt>
+              <dd className="accent">
+                {totalStockValue > 0
+                  ? formatNumber((potentialProfit / totalStockValue) * 100, 1, false)
+                  : 0}
+                %
+              </dd>
+            </div>
+          </dl>
+        </section>
 
-            <div className="p-3">
-              <div className="flex items-center gap-2 mb-1">
-                <TrendingUp className="w-4 h-4 text-green-600" />
-                <span className="text-[10px] text-gray-600">{tLabel(t.weeklySales, 'Haftalık Satış')}</span>
-              </div>
-              <div className="text-base text-gray-900">{formatNumber(weekRevenue, 2, false)} {currency}</div>
-              <div className="text-[9px] text-gray-500 mt-0.5">{weekSales.length} {tLabel(t.transaction, 'işlem')}</div>
-            </div>
-
-            <div className="p-3">
-              <div className="flex items-center gap-2 mb-1">
-                <TrendingUp className="w-4 h-4 text-emerald-600" />
-                <span className="text-[10px] text-gray-600">{tLabel(t.todaysProfit, 'Bugünkü Kâr')}</span>
-                {profitChange !== 0 && (
-                  <span className={`text-[9px] ${profitChange > 0 ? 'text-green-600' : 'text-red-600'}`}>
-                    {profitChange > 0 ? '↑' : '↓'} {formatNumber(Math.abs(profitChange), 1, false)}%
-                  </span>
-                )}
-              </div>
-              <div className="text-base text-emerald-700 font-semibold">{formatNumber(totalProfitToday, 2, false)} {currency}</div>
-              <div className="text-[9px] text-gray-500 mt-0.5">{tLabel(t.profitMargin, 'Kâr Marjı')}: {totalRevenue > 0 ? formatNumber((totalProfitToday / totalRevenue) * 100, 1, false) : 0}%</div>
-            </div>
-
-            <div className="p-3">
-              <div className="flex items-center gap-2 mb-1">
-                <Package className="w-4 h-4 text-purple-600" />
-                <span className="text-[10px] text-gray-600">{tLabel(t.totalProductsDashboard, 'Toplam Ürün')}</span>
-                {lowStockProducts.length > 0 && (
-                  <span className="text-[9px] text-red-600">
-                    ⚠ {lowStockProducts.length}
-                  </span>
-                )}
-              </div>
-              <div className="text-base text-gray-900">{products.length}</div>
-              <div className="text-[9px] text-gray-500 mt-0.5">{tLabel(t.stockManagement, 'Stok')}: {formatNumber(totalStockSaleValue, 0, false)} {currency}</div>
-            </div>
-
-            <div className="p-3">
-              <div className="flex items-center gap-2 mb-1">
-                <Users className="w-4 h-4 text-orange-600" />
-                <span className="text-[10px] text-gray-600">{tLabel(t.activeCustomers, 'Aktif Müşteri')}</span>
-              </div>
-              <div className="text-base text-gray-900">{customers.length}</div>
-              <div className="text-[9px] text-gray-500 mt-0.5">{tLabel(t.registeredCustomers, 'Kayıtlı müşteri')}</div>
-            </div>
+        <section className="asin-pulse-panel">
+          <div className="asin-pulse-panel-head">
+            <h2 className="asin-pulse-panel-title">7 günlük trend</h2>
           </div>
-        </div>
-
-        {/* Finansal Özet - Kurumsal Tablo */}
-        <div className="bg-white border border-gray-300 rounded">
-          <div className="bg-[#E3F2FD] border-b border-gray-300 px-3 py-1.5">
-            <div className="flex items-center gap-2">
-              <Wallet className="w-4 h-4 text-blue-600" />
-              <h3 className="text-[11px] text-gray-700">{t.financialSummary || 'Finansal Özet'}</h3>
-            </div>
+          <div className="asin-pulse-chart">
+            <ResponsiveContainer width="100%" height={200}>
+              <LineChart data={last7Days}>
+                <CartesianGrid strokeDasharray="2 6" stroke="var(--asin-border)" vertical={false} />
+                <XAxis dataKey="date" stroke="var(--asin-text-muted)" style={{ fontSize: '10px' }} axisLine={false} tickLine={false} />
+                <YAxis stroke="var(--asin-text-muted)" style={{ fontSize: '10px' }} axisLine={false} tickLine={false} width={48} />
+                <Tooltip
+                  contentStyle={{
+                    background: '#0E2433',
+                    border: 'none',
+                    borderRadius: 0,
+                    color: '#fff',
+                    fontSize: 12,
+                  }}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="revenue"
+                  stroke="#1FA8A0"
+                  strokeWidth={2.5}
+                  dot={false}
+                  activeDot={{ r: 4, fill: '#1FA8A0' }}
+                />
+              </LineChart>
+            </ResponsiveContainer>
           </div>
-          <div className="grid grid-cols-4 divide-x divide-gray-200">
-            <div className="p-3">
-              <div className="text-[10px] text-gray-600 mb-1">{t.stockValueCost || 'Stok Değeri (Maliyet)'}</div>
-              <div className="text-sm text-gray-900">{formatNumber(totalStockValue, 2, false)} {currency}</div>
-            </div>
-            <div className="p-3">
-              <div className="text-[10px] text-gray-600 mb-1">{t.stockValueSales || 'Stok Değeri (Satış)'}</div>
-              <div className="text-sm text-gray-900">{formatNumber(totalStockSaleValue, 2, false)} {currency}</div>
-            </div>
-            <div className="p-3">
-              <div className="text-[10px] text-gray-600 mb-1">{t.potentialProfit || 'Potansiyel Kar'}</div>
-              <div className="text-sm text-green-600">{formatNumber(potentialProfit, 2, false)} {currency}</div>
-            </div>
-            <div className="p-3">
-              <div className="text-[10px] text-gray-600 mb-1">{t.profitMarginDashboard || 'Kar Marjı'}</div>
-              <div className="text-sm text-blue-600">
-                {totalStockValue > 0 ? formatNumber((potentialProfit / totalStockValue) * 100, 1, false) : 0}%
-              </div>
-            </div>
-          </div>
-        </div>
+        </section>
 
-        {/* Charts Row 1 */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-          {/* Sales Trend */}
-          <div className="bg-white rounded-lg overflow-hidden">
-            <div className="px-3 py-2 bg-gradient-to-r from-blue-50 to-blue-100">
-              <h3 className="text-sm text-gray-800">{t.last7DaysSalesTrend || 'Son 7 Gün Satış Trendi'}</h3>
-              <p className="text-[10px] text-gray-600 mt-0.5">{t.dailySalesPerformance || 'Günlük satış performansı'}</p>
+        <section className="asin-pulse-panel">
+          <div className="asin-pulse-panel-head">
+            <h2 className="asin-pulse-panel-title">Ödeme dağılımı</h2>
+          </div>
+          {paymentChartData.length === 0 ? (
+            <p className="asin-pulse-empty">Henüz ödeme verisi yok</p>
+          ) : (
+            <div className="asin-pulse-paybars">
+              {paymentChartData.map((row) => {
+                const pct = paymentTotal > 0 ? (Number(row.value) / paymentTotal) * 100 : 0;
+                return (
+                  <div key={String(row.name)} className="asin-pulse-paybar">
+                    <span>{String(row.name)}</span>
+                    <div className="asin-pulse-paybar-track">
+                      <div className="asin-pulse-paybar-fill" style={{ width: `${pct}%` }} />
+                    </div>
+                    <span>{formatNumber(pct, 0, false)}%</span>
+                  </div>
+                );
+              })}
             </div>
-            <div className="p-3">
+          )}
+        </section>
+
+        <section className="asin-pulse-panel">
+          <div className="asin-pulse-panel-head">
+            <h2 className="asin-pulse-panel-title">Öne çıkan ürünler</h2>
+          </div>
+          <div className="asin-pulse-chart">
+            {topProducts.length === 0 ? (
+              <p className="asin-pulse-empty">Satış verisi yok</p>
+            ) : (
               <ResponsiveContainer width="100%" height={200}>
-                <LineChart data={last7Days}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
-                  <XAxis dataKey="date" stroke="#6B7280" style={{ fontSize: '10px' }} />
-                  <YAxis stroke="#6B7280" style={{ fontSize: '10px' }} />
-                  <Tooltip />
-                  <Line type="monotone" dataKey="revenue" stroke="#3B82F6" strokeWidth={2} dot={{ fill: '#3B82F6', r: 3 }} activeDot={{ r: 5 }} />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-
-          {/* Payment Methods */}
-          <div className="bg-white rounded-lg overflow-hidden">
-            <div className="px-3 py-2 bg-gradient-to-r from-green-50 to-green-100">
-              <h3 className="text-sm text-gray-800">{t.paymentMethodsChart || 'Ödeme Yöntemleri'}</h3>
-              <p className="text-[10px] text-gray-600 mt-0.5">{t.customerPaymentPreferences || 'Müşteri ödeme tercihleri'}</p>
-            </div>
-            <div className="p-3">
-              <ResponsiveContainer width="100%" height={200}>
-                <PieChart>
-                  <Pie
-                    data={paymentChartData}
-                    cx="50%"
-                    cy="50%"
-                    labelLine={false}
-                    label={({ name, percent }) => `${name} ${formatNumber((percent * 100), 0, false)}%`}
-                    outerRadius={70}
-                    fill="#8884d8"
-                    dataKey="value"
-                  >
-                    {paymentChartData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                    ))}
-                  </Pie>
-                  <Tooltip />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-        </div>
-
-        {/* Charts Row 2 */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-          {/* Top Products */}
-          <div className="bg-white rounded-lg overflow-hidden">
-            <div className="px-3 py-2 bg-gradient-to-r from-purple-50 to-purple-100">
-              <h3 className="text-sm text-gray-800">{t.topSellingProductsInfo || 'En Çok Satan Ürünler'}</h3>
-              <p className="text-[10px] text-gray-600 mt-0.5">{t.rankingByRevenue || 'Ciro bazında sıralama'}</p>
-            </div>
-            <div className="p-3">
-              <ResponsiveContainer width="100%" height={200}>
-                <BarChart data={topProducts} layout="horizontal">
-                  <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
-                  <XAxis type="number" stroke="#6B7280" style={{ fontSize: '10px' }} />
-                  <YAxis type="category" dataKey="name" stroke="#6B7280" style={{ fontSize: '10px' }} width={80} />
-                  <Tooltip />
-                  <Bar dataKey="revenue" fill="#10B981" radius={[0, 6, 6, 0]} />
+                <BarChart data={topProducts} layout="vertical" margin={{ left: 8, right: 8 }}>
+                  <CartesianGrid strokeDasharray="2 6" stroke="var(--asin-border)" horizontal={false} />
+                  <XAxis type="number" stroke="var(--asin-text-muted)" style={{ fontSize: '10px' }} axisLine={false} tickLine={false} />
+                  <YAxis
+                    type="category"
+                    dataKey="name"
+                    stroke="var(--asin-text-muted)"
+                    style={{ fontSize: '10px' }}
+                    width={88}
+                    axisLine={false}
+                    tickLine={false}
+                  />
+                  <Tooltip
+                    contentStyle={{
+                      background: '#0E2433',
+                      border: 'none',
+                      borderRadius: 0,
+                      color: '#fff',
+                      fontSize: 12,
+                    }}
+                  />
+                  <Bar dataKey="revenue" fill="#0E2433" radius={0} />
                 </BarChart>
               </ResponsiveContainer>
-            </div>
+            )}
           </div>
+        </section>
 
-          {/* Category Distribution */}
-          <div className="bg-white rounded-lg overflow-hidden">
-            <div className="px-3 py-2 bg-gradient-to-r from-orange-50 to-orange-100">
-              <h3 className="text-sm text-gray-800">{t.categoryBasedStock || 'Kategori Bazlı Stok'}</h3>
-              <p className="text-[10px] text-gray-600 mt-0.5">{t.inventoryDistribution || 'Envanter dağılımı'}</p>
-            </div>
-            <div className="p-3">
+        <section className="asin-pulse-panel">
+          <div className="asin-pulse-panel-head">
+            <h2 className="asin-pulse-panel-title">Kategori stok</h2>
+          </div>
+          <div className="asin-pulse-chart">
+            {categoryChartData.length === 0 ? (
+              <p className="asin-pulse-empty">Kategori yok</p>
+            ) : (
               <ResponsiveContainer width="100%" height={200}>
                 <BarChart data={categoryChartData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
-                  <XAxis dataKey="name" stroke="#6B7280" style={{ fontSize: '10px' }} />
-                  <YAxis stroke="#6B7280" style={{ fontSize: '10px' }} />
-                  <Tooltip />
-                  <Bar dataKey="value" fill="#8B5CF6" radius={[6, 6, 0, 0]} />
+                  <CartesianGrid strokeDasharray="2 6" stroke="var(--asin-border)" vertical={false} />
+                  <XAxis dataKey="name" stroke="var(--asin-text-muted)" style={{ fontSize: '10px' }} axisLine={false} tickLine={false} />
+                  <YAxis stroke="var(--asin-text-muted)" style={{ fontSize: '10px' }} axisLine={false} tickLine={false} width={48} />
+                  <Tooltip
+                    contentStyle={{
+                      background: '#0E2433',
+                      border: 'none',
+                      borderRadius: 0,
+                      color: '#fff',
+                      fontSize: 12,
+                    }}
+                  />
+                  <Bar dataKey="value" fill="#1FA8A0" radius={0} />
                 </BarChart>
               </ResponsiveContainer>
-            </div>
+            )}
           </div>
-        </div>
+        </section>
 
-        {/* Alerts & Stock Warnings */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-          {/* Critical Stock Alerts */}
-          <div className="bg-white rounded-lg overflow-hidden">
-            <div className="px-3 py-2 bg-gradient-to-r from-red-50 to-red-100">
-              <div className="flex items-center gap-1.5">
-                <AlertTriangle className="w-4 h-4 text-red-600" />
-                <h3 className="text-sm text-gray-800">{t.criticalStockAlerts || 'Kritik Stok Uyarıları'}</h3>
-              </div>
-              <p className="text-[10px] text-gray-600 mt-0.5">{criticalStockProducts.length} {t.productsAtCriticalLevel || 'ürün kritik seviyede'}</p>
-            </div>
-            <div className="p-3 max-h-64 overflow-auto scrollbar-thin scrollbar-thumb-gray-400 scrollbar-track-gray-100">
-              {criticalStockProducts.length > 0 ? (
-                <div className="space-y-2">
-                  {criticalStockProducts.slice(0, 10).map(product => (
-                    <div key={product.id} className="flex items-center justify-between p-2 bg-red-50 rounded hover:bg-red-100 transition-colors">
-                      <div className="flex-1">
-                        <p className="text-[11px] text-gray-800">{product.name}</p>
-                        <p className="text-[9px] text-gray-500">{product.category}</p>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-[11px] text-red-600">{t.remainingQty || 'Kalan:'} {product.stock}</p>
-                        <p className="text-[9px] text-red-500">{t.urgentOrder || 'Acil sipariş!'}</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="text-center py-8">
-                  <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-2">
-                    <Package className="w-6 h-6 text-green-600" />
-                  </div>
-                  <p className="text-[11px] text-gray-500">{t.noCriticalStock || 'Kritik stok seviyesinde ürün yok'}</p>
-                </div>
-              )}
-            </div>
+        <section className="asin-pulse-panel">
+          <div className="asin-pulse-panel-head">
+            <h2 className="asin-pulse-panel-title">Kritik stok</h2>
+            <span className="asin-pulse-stat-hint">{criticalStockProducts.length} kalem</span>
           </div>
+          <div className="asin-pulse-alert-list">
+            {criticalStockProducts.length > 0 ? (
+              criticalStockProducts.slice(0, 10).map((product) => (
+                <div key={product.id} className="asin-pulse-alert-row">
+                  <div>
+                    <span className="name">{product.name}</span>
+                    <span className="cat">{product.category}</span>
+                  </div>
+                  <span className="qty crit">{product.stock}</span>
+                </div>
+              ))
+            ) : (
+              <p className="asin-pulse-empty">Kritik seviye yok</p>
+            )}
+          </div>
+        </section>
 
-          {/* Low Stock Warnings */}
-          <div className="bg-white rounded-lg overflow-hidden">
-            <div className="px-3 py-2 bg-gradient-to-r from-yellow-50 to-yellow-100">
-              <div className="flex items-center gap-1.5">
-                <Clock className="w-4 h-4 text-yellow-600" />
-                <h3 className="text-sm text-gray-800">{t.lowStockWarningsItem || 'Düşük Stok Uyarıları'}</h3>
-              </div>
-              <p className="text-[10px] text-gray-600 mt-0.5">{lowStockProducts.length} {t.productsAtLowLevel || 'ürün düşük seviyede'}</p>
-            </div>
-            <div className="p-3 max-h-64 overflow-auto scrollbar-thin scrollbar-thumb-gray-400 scrollbar-track-gray-100">
-              {lowStockProducts.length > 0 ? (
-                <div className="space-y-2">
-                  {lowStockProducts.slice(0, 10).map(product => (
-                    <div key={product.id} className="flex items-center justify-between p-2 bg-yellow-50 rounded hover:bg-yellow-100 transition-colors">
-                      <div className="flex-1">
-                        <p className="text-[11px] text-gray-800">{product.name}</p>
-                        <p className="text-[9px] text-gray-500">{product.category}</p>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-[11px] text-yellow-600">{t.remainingQty || 'Kalan:'} {product.stock}</p>
-                        <p className="text-[9px] text-yellow-500">{t.orderRecommended || 'Sipariş önerilir'}</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="text-center py-8">
-                  <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-2">
-                    <Package className="w-6 h-6 text-green-600" />
-                  </div>
-                  <p className="text-[11px] text-gray-500">{String(t.noLowStockInfo ?? 'Düşük stok seviyesinde ürün yok')}</p>
-                </div>
-              )}
-            </div>
+        <section className="asin-pulse-panel">
+          <div className="asin-pulse-panel-head">
+            <h2 className="asin-pulse-panel-title">Düşük stok</h2>
+            <span className="asin-pulse-stat-hint">{lowStockProducts.length} kalem</span>
           </div>
-        </div>
+          <div className="asin-pulse-alert-list">
+            {lowStockProducts.length > 0 ? (
+              lowStockProducts.slice(0, 10).map((product) => (
+                <div key={product.id} className="asin-pulse-alert-row">
+                  <div>
+                    <span className="name">{product.name}</span>
+                    <span className="cat">{product.category}</span>
+                  </div>
+                  <span className="qty low">{product.stock}</span>
+                </div>
+              ))
+            ) : (
+              <p className="asin-pulse-empty">Düşük seviye yok</p>
+            )}
+          </div>
+        </section>
       </div>
 
-      {/* Customize Quick Actions Modal */}
       {showCustomizeModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden">
-            {/* Modal Header */}
-            <div className="bg-gradient-to-r from-blue-600 to-blue-700 px-6 py-4 flex items-center justify-between">
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[2147483646] p-4" style={{ zIndex: 2147483646 }}>
+          <div className="bg-[var(--asin-surface-raised,#fff)] w-full max-w-3xl max-h-[90vh] overflow-hidden border border-[var(--asin-border)] flex flex-col">
+            <div className="asin-bg-ink px-5 py-4 flex items-center justify-between shrink-0">
               <div>
-                <h3 className="text-xl text-white">{String(t.customizeQuickAccess ?? 'Hızlı Erişimleri Özelleştir')}</h3>
-                <p className="text-blue-100 text-sm mt-1">{String(t.max8Shortcuts ?? 'En fazla 8 kısayol seçebilirsiniz')} ({selectedActions.length}/8)</p>
+                <h3 className="text-lg font-asin-brand text-white m-0">
+                  {String(t.customizeQuickAccess ?? 'Komutları özelleştir')}
+                </h3>
+                <p className="text-[var(--asin-accent-muted)] text-xs mt-1 m-0 opacity-90">
+                  {String(t.max8Shortcuts ?? 'En fazla 8')} ({selectedActions.length}/8)
+                </p>
               </div>
               <button
-                className="text-white hover:bg-white/20 rounded-lg p-2 transition-colors"
+                type="button"
+                className="asin-tool-btn"
                 onClick={() => setShowCustomizeModal(false)}
+                aria-label="Kapat"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
-
-            {/* Modal Content */}
-            <div className="p-6 overflow-y-auto max-h-[calc(90vh-180px)] scrollbar-thin scrollbar-thumb-gray-400 scrollbar-track-gray-100">
+            <div className="p-5 overflow-y-auto flex-1 min-h-0">
               <div className="space-y-6">
-                {Object.keys(groupedActions).map(category => (
+                {Object.keys(groupedActions).map((category) => (
                   <div key={category}>
-                    <h4 className="text-sm text-gray-600 uppercase tracking-wider mb-3 flex items-center gap-2">
-                      <div className="w-8 h-0.5 bg-gradient-to-r from-blue-500 to-transparent"></div>
+                    <h4 className="text-[10px] font-bold tracking-[0.16em] uppercase text-[var(--asin-text-muted)] mb-2">
                       {category}
                     </h4>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                       {groupedActions[category].map((action: any) => {
                         const Icon = action.icon;
                         const isSelected = selectedActions.includes(action.id);
                         const isDisabled = !isSelected && selectedActions.length >= 8;
-
                         return (
                           <button
                             key={action.id}
+                            type="button"
                             onClick={() => !isDisabled && toggleAction(action.id)}
                             disabled={isDisabled}
-                            className={`flex items-center gap-3 p-3 rounded-xl border-2 transition-all ${isSelected
-                              ? `border-blue-500 bg-blue-50 shadow-md`
-                              : isDisabled
-                                ? 'border-gray-200 bg-gray-50 opacity-50 cursor-not-allowed'
-                                : 'border-gray-200 hover:border-blue-300 hover:bg-gray-50'
-                              }`}
+                            className={`flex items-center gap-3 p-3 border text-left transition-colors ${
+                              isSelected
+                                ? 'border-[var(--asin-accent)] bg-[var(--asin-accent-muted)]'
+                                : isDisabled
+                                  ? 'border-[var(--asin-border)] opacity-40 cursor-not-allowed'
+                                  : 'border-[var(--asin-border)] hover:border-[var(--asin-accent)]'
+                            }`}
                           >
-                            {/* Icon */}
-                            <div className={`w-12 h-12 bg-gradient-to-br ${action.color} rounded-lg flex items-center justify-center flex-shrink-0`}>
-                              <div className="w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center">
-                                <Icon className="w-5 h-5 text-white" />
-                              </div>
-                            </div>
-
-                            {/* Label */}
-                            <div className="flex-1 text-left">
-                              <p className={`text-sm ${isSelected ? 'text-gray-900' : 'text-gray-700'}`}>
-                                {action.label}
-                              </p>
-                            </div>
-
-                            {/* Checkbox */}
-                            <div className={`w-6 h-6 rounded border-2 flex items-center justify-center flex-shrink-0 ${isSelected
-                              ? 'bg-blue-500 border-blue-500'
-                              : 'border-gray-300'
-                              }`}>
-                              {isSelected && (
-                                <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                                </svg>
-                              )}
-                            </div>
+                            <span className="asin-pulse-insight-icon shrink-0">
+                              <Icon className="w-4 h-4" />
+                            </span>
+                            <span className="flex-1 text-sm font-semibold text-[var(--asin-text)]">
+                              {action.label}
+                            </span>
+                            <span
+                              className={`w-5 h-5 border-2 flex items-center justify-center shrink-0 ${
+                                isSelected
+                                  ? 'bg-[var(--asin-accent)] border-[var(--asin-accent)] text-white'
+                                  : 'border-[var(--asin-border)]'
+                              }`}
+                            >
+                              {isSelected ? '✓' : ''}
+                            </span>
                           </button>
                         );
                       })}
@@ -844,35 +824,27 @@ export function DashboardModule({ products, customers, sales, setCurrentScreen, 
                 ))}
               </div>
             </div>
-
-            {/* Modal Footer */}
-            <div className="border-t border-gray-200 px-6 py-4 bg-gray-50 flex items-center justify-between">
-              <p className="text-sm text-gray-600">
+            <div className="border-t border-[var(--asin-border)] px-5 py-3 flex items-center justify-between shrink-0 bg-[var(--asin-surface)]">
+              <p className="text-sm text-[var(--asin-text-muted)] m-0">
                 {selectedActions.length === 0 ? (
-                  <span className="text-red-600">{String(t.min1Shortcut ?? 'En az 1 kısayol seçmelisiniz')}</span>
+                  <span className="text-amber-700">{String(t.min1Shortcut ?? 'En az 1 seçin')}</span>
                 ) : (
-                  <span>{selectedActions.length} {String(t.shortcutsSelected ?? 'kısayol seçildi')}</span>
+                  <span>
+                    {selectedActions.length} {String(t.shortcutsSelected ?? 'seçili')}
+                  </span>
                 )}
               </p>
-              <div className="flex gap-3">
+              <div className="flex gap-2">
                 <button
-                  className="px-4 py-2 text-gray-700 hover:bg-gray-200 rounded-lg transition-colors"
-                  onClick={() => {
-                    setShowCustomizeModal(false);
-                    // Reset to saved state
-                    const saved = localStorage.getItem('retailos_quick_actions');
-                    if (saved) {
-                      setSelectedActions(JSON.parse(saved));
-                    }
-                  }}
+                  type="button"
+                  className="px-4 py-2 text-sm font-semibold text-[var(--asin-text-muted)]"
+                  onClick={() => setShowCustomizeModal(false)}
                 >
                   {t.cancel || 'İptal'}
                 </button>
                 <button
-                  className={`px-6 py-2 rounded-lg transition-all ${selectedActions.length === 0
-                    ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                    : 'bg-gradient-to-r from-blue-600 to-blue-700 text-white hover:shadow-lg'
-                    }`}
+                  type="button"
+                  className="asin-bg-accent px-5 py-2 text-sm font-bold uppercase tracking-wider disabled:opacity-40"
                   onClick={saveQuickActions}
                   disabled={selectedActions.length === 0}
                 >

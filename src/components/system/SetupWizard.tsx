@@ -42,7 +42,6 @@ import type {
 import {
     parseSaaSOrCustomPostgrestUrl,
     buildSaaSTenantPostgrestUrl,
-    DEFAULT_SAAS_TENANT_POSTGREST_ORIGIN,
 } from '../../services/merkezTenantRegistry';
 
 const SetupWizard: React.FC = () => {
@@ -73,7 +72,7 @@ const SetupWizard: React.FC = () => {
     const [isFetchingSupabase, setIsFetchingSupabase] = useState(false);
     const [hasExistingConfig, setHasExistingConfig] = useState(false);
     const [showReinstallModal, setShowReinstallModal] = useState(false);
-    /** Varsayılan kapalı: C:\RetailEX silinsin mi */
+    /** Varsayılan kapalı: C:\AsinERP silinsin mi */
     const [reinstallDeleteCRetailex, setReinstallDeleteCRetailex] = useState(false);
     const [isUpdateMode, setIsUpdateMode] = useState(false);
     const [osUsername, setOsUsername] = useState<string>('');
@@ -190,8 +189,8 @@ const SetupWizard: React.FC = () => {
                 });
             }
 
-            // Target Path: C:\RetailEx
-            const downloadsPath = "C:\\RetailEx";
+            // Target Path: C:\AsinERP
+            const downloadsPath = "C:\\AsinERP";
             const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
             // Sanitize project name for filename
             const safeName = project.name.replace(/[^a-z0-9]/gi, '_').toLowerCase();
@@ -1078,11 +1077,11 @@ const SetupWizard: React.FC = () => {
                     await new Promise(r => setTimeout(r, 1000));
                     await emit('sync-event', '👥 Cari hesaplar ve iletişim bilgileri taşınıyor...');
                     await new Promise(r => setTimeout(r, 800));
-                    await emit('sync-event', '🔑 Personel hiyerarşisi ve yetki grupları RetailEX\'e uyarlanıyor...');
+                    await emit('sync-event', '🔑 Personel hiyerarşisi ve yetki grupları Asin\'e uyarlanıyor...');
                     await new Promise(r => setTimeout(r, 1200));
                     await emit('sync-event', '📈 Açılış stok bakiyeleri işleniyor...');
                     await new Promise(r => setTimeout(r, 1000));
-                    await emit('sync-event', '✅ Nebim verileri başarıyla RetailEX otonom yapısına aktarıldı.');
+                    await emit('sync-event', '✅ Nebim verileri başarıyla Asin otonom yapısına aktarıldı.');
                 } catch (nebErr) {
                     await emit('sync-event', `❌ Nebim geçiş hatası: ${nebErr}`);
                     throw nebErr;
@@ -1410,21 +1409,21 @@ const SetupWizard: React.FC = () => {
                     await emit('sync-event', '✅ Logo ERP aktarımı tamamlandı (kaynak: canlı ERP veritabanı, demo seed değil).');
                     toast.success('Logo ERP verileri PostgreSQL\'e aktarıldı.');
 
-                    // 000_master_schema "RetailEx OS" şablon firması (001) — Logo'da 002 vb. seçildiyse gereksiz ikinci kayıt oluşur
+                    // 000_master_schema şablon firması (001: Asin OS / eski RetailEx OS) — Logo'da 002 vb. seçildiyse gereksiz ikinci kayıt oluşur
                     const logoFirmNr = String(config.erp_firm_nr || '').padStart(3, '0');
                     if (logoFirmNr !== '001') {
                         try {
                             await postgres.query(
-                                `DELETE FROM periods WHERE firm_id IN (SELECT id FROM firms WHERE firm_nr = $1 AND name = $2)`,
-                                ['001', 'RetailEx OS']
+                                `DELETE FROM periods WHERE firm_id IN (SELECT id FROM firms WHERE firm_nr = $1 AND (name = $2 OR name = $3))`,
+                                ['001', 'Asin OS', 'RetailEx OS']
                             );
                             await postgres.query(`DELETE FROM stores WHERE firm_nr = $1`, ['001']);
                             const delTpl = await postgres.query<{ id: string }>(
-                                `DELETE FROM firms WHERE firm_nr = $1 AND name = $2 RETURNING id`,
-                                ['001', 'RetailEx OS']
+                                `DELETE FROM firms WHERE firm_nr = $1 AND (name = $2 OR name = $3) RETURNING id`,
+                                ['001', 'Asin OS', 'RetailEx OS']
                             );
                             if (delTpl.rowCount > 0) {
-                                await emit('sync-event', 'ℹ️ Şablon firma 001 (RetailEx OS) kaldırıldı — yalnızca Logo\'dan seçtiğiniz firma listelenir.');
+                                await emit('sync-event', 'ℹ️ Şablon firma 001 (Asin OS) kaldırıldı — yalnızca Logo\'dan seçtiğiniz firma listelenir.');
                                 await postgres.query(`UPDATE firms SET "default" = false`);
                                 await postgres.query(`UPDATE firms SET "default" = true WHERE firm_nr = $1`, [logoFirmNr]);
                             }
@@ -1813,8 +1812,17 @@ const SetupWizard: React.FC = () => {
                                             <button
                                                 key={r.id}
                                                 onClick={() => {
-                                                    const new_mode = r.id === 'center' ? 'offline' : 'hybrid';
-                                                    setConfig({ ...config, role: r.id as any, db_mode: new_mode });
+                                                    if (r.id === 'center') {
+                                                        setConfig({ ...config, role: 'center', db_mode: 'offline' });
+                                                    } else {
+                                                        // Terminal: doğrudan PostgreSQL (yerel/merkez DB seçim UI yok)
+                                                        setConfig({
+                                                            ...config,
+                                                            role: 'client',
+                                                            db_mode: 'online',
+                                                            connection_provider: 'db',
+                                                        });
+                                                    }
                                                 }}
                                                 className={`group relative p-3 rounded-xl border transition-all duration-300 ${config.role === r.id
                                                     ? 'bg-blue-600/10 border-blue-500 shadow-xl shadow-blue-500/10'
@@ -1843,71 +1851,7 @@ const SetupWizard: React.FC = () => {
                                 {/* Section Separator */}
                                 <div className="w-full h-px bg-gradient-to-r from-transparent via-white/10 to-transparent my-6" />
 
-                                {/* Section 1.6: Terminal Veritabanı (sadece Terminal seçiliyse) */}
-                                {config.role === 'client' && (
-                                    <>
-                                        <div className="space-y-4">
-                                            <div>
-                                                <h2 className="text-xl font-black mb-0.5 text-white tracking-tight">Terminal Veritabanı</h2>
-                                                <p className="text-blue-400/60 font-medium uppercase tracking-[0.2em] text-[10px]">Yerel kurulum mu, merkez DB’ye bağlantı mı?</p>
-                                            </div>
-                                            <div className="grid grid-cols-1 gap-3">
-                                                <button
-                                                    onClick={() => setConfig({ ...config, db_mode: 'hybrid', connection_provider: 'rest_api' })}
-                                                    className={`group relative p-4 rounded-2xl border transition-all duration-300 ${config.db_mode !== 'online'
-                                                        ? 'bg-blue-600/10 border-blue-500 shadow-lg shadow-blue-500/5'
-                                                        : 'bg-white/[0.03] border-white/5 hover:border-white/10 hover:bg-white/[0.08]'
-                                                    }`}
-                                                >
-                                                    <div className="flex items-center gap-4 relative z-10 text-left">
-                                                        <div className={`w-12 h-12 rounded-xl flex items-center justify-center transition-all ${config.db_mode !== 'online' ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-400'}`}>
-                                                            <Database className="w-6 h-6" />
-                                                        </div>
-                                                        <div className="flex-1">
-                                                            <div className={`text-base font-black mb-0.5 ${config.db_mode !== 'online' ? 'text-white' : 'text-slate-200'}`}>Yerel veritabanı kur</div>
-                                                            <div className={`text-[10px] font-bold leading-tight max-w-sm ${config.db_mode !== 'online' ? 'text-blue-200/60' : 'text-slate-500'}`}>Bu bilgisayarda veritabanı kurulur veya mevcut yerel PostgreSQL kullanılır.</div>
-                                                        </div>
-                                                        {config.db_mode !== 'online' && <CheckCircle className="w-5 h-5 text-blue-500" />}
-                                                    </div>
-                                                </button>
-                                                <button
-                                                    onClick={() => setConfig({ ...config, db_mode: 'online' })}
-                                                    className={`group relative p-4 rounded-2xl border transition-all duration-300 ${config.db_mode === 'online'
-                                                        ? 'bg-blue-600/10 border-blue-500 shadow-lg shadow-blue-500/5'
-                                                        : 'bg-white/[0.03] border-white/5 hover:border-white/10 hover:bg-white/[0.08]'
-                                                    }`}
-                                                >
-                                                    <div className="flex items-center gap-4 relative z-10 text-left">
-                                                        <div className={`w-12 h-12 rounded-xl flex items-center justify-center transition-all ${config.db_mode === 'online' ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-400'}`}>
-                                                            <Globe className="w-6 h-6" />
-                                                        </div>
-                                                        <div className="flex-1">
-                                                            <div className={`text-base font-black mb-0.5 ${config.db_mode === 'online' ? 'text-white' : 'text-slate-200'}`}>Merkez veritabanına bağlan</div>
-                                                            <div className={`text-[10px] font-bold leading-tight max-w-sm ${config.db_mode === 'online' ? 'text-blue-200/60' : 'text-slate-500'}`}>Veriler merkez sunucuda tutulur. Aşağıda merkez IP veya adresini girin.</div>
-                                                        </div>
-                                                        {config.db_mode === 'online' && <CheckCircle className="w-5 h-5 text-blue-500" />}
-                                                    </div>
-                                                </button>
-                                            </div>
-                                            {config.role === 'client' && config.db_mode === 'online' && (
-                                                <div className="space-y-2 pt-2 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                                                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest pl-1">Merkez sunucu adresi (IP veya domain)</label>
-                                                    <input
-                                                        type="text"
-                                                        value={config.central_api_url || ''}
-                                                        placeholder="https://merkez.example.com veya https://192.168.1.100"
-                                                        onChange={(e) => setConfig({ ...config, central_api_url: e.target.value })}
-                                                        className="w-full bg-black/40 border border-white/5 rounded-xl px-4 py-3 text-white text-[11px] outline-none focus:border-blue-500/50"
-                                                    />
-                                                    <p className="text-[9px] text-slate-500">Terminal, bu adres üzerinden merkez veritabanına online bağlanacaktır.</p>
-                                                </div>
-                                            )}
-                                        </div>
-                                        <div className="w-full h-px bg-gradient-to-r from-transparent via-white/10 to-transparent my-6" />
-                                    </>
-                                )}
-
-                                {/* Section 2: Infrastructure Mode — sadece Merkez seçiliyken göster (Terminal için yukarıdaki "Terminal Veritabanı" kullanılır) */}
+                                {/* Section 2: Infrastructure Mode — yalnızca Merkez (Terminal doğrudan PostgreSQL) */}
                                 {config.role === 'center' && (
                                 <div className="space-y-4">
                                     <div>
@@ -1950,8 +1894,8 @@ const SetupWizard: React.FC = () => {
                                 </div>
                                 )}
 
-                                {/* Hibrit senkron tercihleri — yerel + uzak birlikte kullanıldığında */}
-                                {config.db_mode === 'hybrid' && (
+                                {/* Hibrit senkron — yalnızca Merkez + hybrid */}
+                                {config.role === 'center' && config.db_mode === 'hybrid' && (
                                     <div className="space-y-4">
                                         <div>
                                             <h2 className="text-xl font-black mb-0.5 text-white tracking-tight">Hibrit Senkron</h2>
@@ -1998,7 +1942,7 @@ const SetupWizard: React.FC = () => {
                                                     <option value="polling">Yalnız Periyodik (timer)</option>
                                                 </select>
                                                 <p className="text-[9px] text-slate-500 pl-1 leading-relaxed">
-                                                    WebSocket: wss://api.retailex.app/&#123;kiracı&#125;/ws — PostgREST URL kiracı kodu içermeli.
+                                                    WebSocket: kiracı yolundaki /ws uç noktası — PostgREST URL kiracı kodu içermeli.
                                                 </p>
                                             </div>
                                             <div className="space-y-2">
@@ -2101,7 +2045,7 @@ const SetupWizard: React.FC = () => {
                                                 Nebim V3 Hızlı Geçiş
                                             </h3>
                                             <p className="text-xs font-semibold text-slate-500 leading-relaxed mb-8 group-hover:text-slate-400 transition-colors">
-                                                Mevcut Nebim V3 verilerinizi RetailEX'e otonom olarak taşıyın ve hemen başlayın.
+                                                Mevcut Nebim V3 verilerinizi Asin'e otonom olarak taşıyın ve hemen başlayın.
                                             </p>
 
                                             <div className="space-y-3">
@@ -2135,7 +2079,7 @@ const SetupWizard: React.FC = () => {
                                             </div>
                                             <div>
                                                 <h3 className={`text-lg font-black transition-colors ${config.skip_integration ? 'text-white' : 'text-slate-400'}`}>Bağımsız Mod (Standalone)</h3>
-                                                <p className="text-[10px] font-semibold text-slate-500">Herhangi bir dış ERP sistemi olmadan direkt RetailEX mimarisini kullanın.</p>
+                                                <p className="text-[10px] font-semibold text-slate-500">Herhangi bir dış ERP sistemi olmadan direkt Asin mimarisini kullanın.</p>
                                             </div>
                                         </div>
                                         <div className="flex items-center gap-4 relative z-10">
@@ -2212,7 +2156,7 @@ const SetupWizard: React.FC = () => {
                                                     <div className="space-y-2">
                                                         <h4 className="text-xl font-black text-white">PostgreSQL Bulunamadı!</h4>
                                                         <p className="text-red-200/70 text-sm font-medium leading-relaxed">
-                                                            Bilgisayarınızda çalışan bir PostgreSQL servisi tespit edilemedi. RetailEx'in çalışabilmesi için yerel bir veritabanı gereklidir.
+                                                            Bilgisayarınızda çalışan bir PostgreSQL servisi tespit edilemedi. Asin'in çalışabilmesi için yerel bir veritabanı gereklidir.
                                                         </p>
                                                         <div className="pt-4 flex flex-wrap gap-4">
                                                             <a
@@ -2492,7 +2436,7 @@ const SetupWizard: React.FC = () => {
                                                                                 : 'bg-white/5 text-slate-400 hover:text-white'
                                                                         }`}
                                                                     >
-                                                                        RetailEX bulutu
+                                                                        Asin bulutu
                                                                     </button>
                                                                     <button
                                                                         type="button"
@@ -2511,7 +2455,7 @@ const SetupWizard: React.FC = () => {
                                                                 {postgrestWizardEntryMode === 'retailex_cloud' ? (
                                                                     <div className="flex w-full overflow-hidden rounded-2xl border border-white/10 bg-black/40">
                                                                         <span className="flex shrink-0 items-center border-r border-white/10 bg-black/60 px-3 py-4 font-mono text-[10px] font-bold text-blue-200/80">
-                                                                            {DEFAULT_SAAS_TENANT_POSTGREST_ORIGIN}/
+                                                                            Asin/
                                                                         </span>
                                                                         <input
                                                                             type="text"
@@ -2534,7 +2478,7 @@ const SetupWizard: React.FC = () => {
                                                                                         buildSaaSTenantPostgrestUrl(slug),
                                                                                 }));
                                                                             }}
-                                                                            placeholder="retailex_demo"
+                                                                            placeholder="kiraci_kodu"
                                                                             autoComplete="off"
                                                                         />
                                                                     </div>
@@ -2556,11 +2500,7 @@ const SetupWizard: React.FC = () => {
                                                                 <p className="text-[9px] text-slate-400 mt-2">
                                                                     {postgrestWizardEntryMode === 'retailex_cloud' ? (
                                                                       <>
-                                                                        RetailEX bulutu: kayıtta{' '}
-                                                                        <span className="font-mono text-blue-200/90">
-                                                                          {DEFAULT_SAAS_TENANT_POSTGREST_ORIGIN}/kiracı
-                                                                        </span>{' '}
-                                                                        birleştirilir. LAN Wi‑Fi / port 3002 bu modda
+                                                                        Asin bulutu: yalnızca kiracı kodunu yazın; bulut adresi kayıtta otomatik birleştirilir. LAN Wi‑Fi / port 3002 bu modda
                                                                         geçerli değildir. Özbek Restoran kodu:{' '}
                                                                         <span className="font-mono text-blue-200/90">
                                                                           ozbek
@@ -2572,8 +2512,8 @@ const SetupWizard: React.FC = () => {
                                                                       <>
                                                                         Özel tam URL: örn.{' '}
                                                                         <span className="font-mono">http://IP:3002</span>{' '}
-                                                                        veya başka domain. RetailEX bulutu için üstteki
-                                                                        «RetailEX bulutu» sekmesini kullanın.
+                                                                        veya başka domain. Asin bulutu için üstteki
+                                                                        «Asin bulutu» sekmesini kullanın.
                                                                       </>
                                                                     )}
                                                                 </p>
@@ -2586,7 +2526,7 @@ const SetupWizard: React.FC = () => {
                                                                     className="w-full bg-black/40 border border-white/10 rounded-2xl px-6 py-4 text-white focus:outline-none focus:border-indigo-500 transition-all font-mono text-sm placeholder:text-blue-200/30"
                                                                     value={config.remote_db}
                                                                     onChange={(e) => setConfig({ ...config, remote_db: e.target.value })}
-                                                                    placeholder="72.60.182.107:5432/retailex_demo"
+                                                                    placeholder="72.60.182.107:5432/asin_demo"
                                                                 />
                                                             </>
                                                         )}
@@ -3195,7 +3135,7 @@ const SetupWizard: React.FC = () => {
                                     <div className="p-4 rounded-2xl bg-amber-500/5 border border-amber-500/10 flex items-center gap-3">
                                         <Shield className="w-4 h-4 text-amber-500" />
                                         <p className="text-[10px] font-bold text-amber-200/60 leading-tight">
-                                            RetailEX <span className="text-amber-400">Read-Only</span> modunda bağlanır.
+                                            Asin <span className="text-amber-400">Read-Only</span> modunda bağlanır.
                                             Orijinal verileriniz üzerinde silme işlemi yapılmaz.
                                         </p>
                                     </div>
@@ -3653,7 +3593,7 @@ const SetupWizard: React.FC = () => {
                                                 <div>
                                                     <h4 className="text-sm font-bold text-white mb-1">Zero-Touch Entegrasyon Aktif</h4>
                                                     <p className="text-xs text-slate-400 leading-relaxed">
-                                                        Ürün barkodları, cari bakiyeleri ve personel şifreleri RetailEX standartlarına tam uyumlu olarak taşınacaktır. Kurulum sonrası hiçbir ek yapılandırma gerekmez.
+                                                        Ürün barkodları, cari bakiyeleri ve personel şifreleri Asin standartlarına tam uyumlu olarak taşınacaktır. Kurulum sonrası hiçbir ek yapılandırma gerekmez.
                                                     </p>
                                                 </div>
                                             </div>
@@ -3667,7 +3607,7 @@ const SetupWizard: React.FC = () => {
                                             </div>
                                             <h2 className="text-4xl font-black text-white tracking-tight">Kasa Seçimi</h2>
                                             <p className="max-w-xl mx-auto text-slate-400 font-medium leading-relaxed font-bold">
-                                                RetailEX'in hangi kasalardan gelen hareketleri senkronize etmesini istiyorsunuz?
+                                                Asin'in hangi kasalardan gelen hareketleri senkronize etmesini istiyorsunuz?
                                             </p>
                                         </div>
 
@@ -4029,7 +3969,7 @@ const SetupWizard: React.FC = () => {
                             Yeniden kurulum
                         </h3>
                         <p className="text-sm text-slate-300 leading-relaxed mb-4">
-                            Mevcut yapılandırma silinir ve sihirbaz baştan başlar. Windows RetailEX hizmetleri (arka plan, SQL Bridge, Logo) kaldırılacak; kurulumdan sonra gerekirse yeniden yükleyebilirsiniz.
+                            Mevcut yapılandırma silinir ve sihirbaz baştan başlar. Windows Asin hizmetleri (arka plan, SQL Bridge, Logo) kaldırılacak; kurulumdan sonra gerekirse yeniden yükleyebilirsiniz.
                         </p>
                         <label className="flex items-start gap-3 cursor-pointer text-sm text-slate-200">
                             <input
@@ -4039,7 +3979,7 @@ const SetupWizard: React.FC = () => {
                                 onChange={(e) => setReinstallDeleteCRetailex(e.target.checked)}
                             />
                             <span>
-                                <span className="font-semibold text-white">C:\RetailEX</span> klasörünü de sil (eski kurulum dosyaları; geri alınamaz)
+                                <span className="font-semibold text-white">C:\AsinERP</span> klasörünü de sil (eski kurulum dosyaları; geri alınamaz)
                             </span>
                         </label>
                         <div className="flex gap-3 mt-6 justify-end">
@@ -4066,7 +4006,7 @@ const SetupWizard: React.FC = () => {
                                         if (delFolder) {
                                             const d = await deleteCRetailexFolderIfTauri();
                                             if (!d.ok) {
-                                                toast.error('C:\\RetailEX silinemedi: ' + (d.detail || ''));
+                                                toast.error('C:\\AsinERP silinemedi: ' + (d.detail || ''));
                                             } else if (d.detail) {
                                                 toast.success(d.detail);
                                             }

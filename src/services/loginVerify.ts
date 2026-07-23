@@ -39,22 +39,38 @@ function parseRpcRow(rpcRes: unknown): LoginVerifyRow | null {
   return r as unknown as LoginVerifyRow;
 }
 
+/** Son PostgREST login hatası (UI için). */
+let lastPostgrestLoginError: string | null = null;
+
+export function getLastPostgrestLoginError(): string | null {
+  return lastPostgrestLoginError;
+}
+
 async function verifyViaPostgrest(
   username: string,
   password: string,
   firmNr: string,
 ): Promise<LoginVerifyRow | null> {
-  if (DB_SETTINGS.connectionProvider !== 'rest_api') return null;
+  const restUrl = String(DB_SETTINGS.remoteRestUrl || '').trim();
+  const useRest =
+    DB_SETTINGS.connectionProvider === 'rest_api' ||
+    (restUrl.length > 0 && DB_SETTINGS.activeMode !== 'offline');
+  if (!useRest) return null;
   try {
     const rpcRes = await postgrest.post(
       '/rpc/verify_login',
       { username, password, firm_nr: firmNr },
       { schema: 'logic' },
     );
+    lastPostgrestLoginError = null;
     return parseRpcRow(rpcRes);
   } catch (err: unknown) {
+    const msg = (err as Error)?.message || String(err);
+    lastPostgrestLoginError = msg;
     logger.warn('LoginVerify', 'PostgREST verify_login başarısız', {
-      error: (err as Error)?.message || String(err),
+      error: msg,
+      restUrl: DB_SETTINGS.remoteRestUrl,
+      provider: DB_SETTINGS.connectionProvider,
     });
     alignRemoteConfigWithRestUrl();
     return null;

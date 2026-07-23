@@ -2,7 +2,7 @@
 /**
  * RetailEX Printer Service (unified).
  *
- * Windows hizmeti RetailEX_Printer tarafindan Node worker olarak calistirilir.
+ * Windows hizmeti AsinERP_Printer tarafindan Node worker olarak calistirilir.
  * config.db icinden local/cloud PostgreSQL hedeflerini okur, unified print_jobs
  * ve legacy kitchen_print_jobs kuyruklarini poll eder.
  */
@@ -21,11 +21,11 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
 const IS_WIN = process.platform === 'win32';
 const execFileAsync = promisify(execFile);
-const LOG_FILE = 'C:\\ProgramData\\RetailEX\\printer_service.log';
+const LOG_FILE = 'C:\\ProgramData\\AsinERP\\printer_service.log';
 const POLL_MS = clampNumber(process.env.PRINT_POLL_MS, 500, 60_000, 2500);
 const CLAIM_LIMIT = clampNumber(process.env.PRINT_CLAIM_LIMIT, 1, 50, 10);
 const TCP_TIMEOUT_MS = clampNumber(process.env.PRINT_TCP_TIMEOUT_MS, 1000, 60_000, 8000);
-const WORKER_ID = `RetailEX_Printer/${os.hostname()}/${process.pid}`;
+const WORKER_ID = `AsinERP_Printer/${os.hostname()}/${process.pid}`;
 const RUN_ONCE = process.argv.includes('--once') || process.env.PRINT_ONCE === '1';
 const SHOW_HELP = process.argv.includes('--help') || process.argv.includes('-h');
 const LEGACY_JOB_TYPE = 'kitchen_ticket';
@@ -140,6 +140,7 @@ function parsePgEndpoint(raw, fallback) {
 function resolveConfigDbPath() {
   const candidates = [
     process.env.CONFIG_DB,
+    'C:\\AsinERP\\config.db',
     'C:\\RetailEX\\config.db',
     'C:\\RetailEx\\config.db',
     path.join(process.cwd(), 'config.db'),
@@ -280,7 +281,7 @@ async function withClient(target, fn) {
     password: target.password,
     connectionTimeoutMillis: 3000,
     query_timeout: 20_000,
-    application_name: 'RetailEX_Printer',
+    application_name: 'AsinERP_Printer',
   });
   try {
     await client.connect();
@@ -1168,7 +1169,7 @@ Job tipleri:
   kitchen_ticket, escpos_raw, html_document, pos_receipt_80, account_receipt
   invoice_a4, report_html, product_label, fastreport_template, fastreport_frx, test_page
 
-Windows hizmeti: RetailEX_Printer.exe
+Windows hizmeti: AsinERP_Printer.exe
 Ayrıntı: DeskApp/resources/README_PRINTER_SERVICE.md
 `;
   console.log(text);

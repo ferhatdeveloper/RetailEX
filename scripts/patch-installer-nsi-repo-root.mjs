@@ -23,7 +23,7 @@ let content = fs.readFileSync(nsiPath, "utf8");
 const KNOWN_DEV_ROOTS = [
   "D:\\Developer\\App\\RetailEX-main",
   "D:\\RetailEX",
-  "C:\\RetailEX",
+  "C:\\AsinERP",
 ];
 
 if (!content.includes(MARKER)) {

@@ -1185,20 +1185,20 @@ export function UniversalInvoiceForm({
   // Header renk belirleme
   const getHeaderColor = () => {
     switch (invoiceType.category) {
-      case 'Satis': return { gradient: 'from-blue-600 to-blue-700', solid: 'bg-blue-600' };
+      case 'Satis': return { gradient: 'from-[var(--asin-primary,#0E2433)] to-[var(--asin-primary,#0E2433)]', solid: 'bg-[var(--asin-accent,#1FA8A0)]' };
       case 'Alis': return { gradient: 'from-teal-600 to-teal-700', solid: 'bg-teal-600' };
       case 'Hizmet':
-        // Hizmet faturaları için: Verilen (code 7) -> mavi, Alınan (code 8) -> teal
+        // Hizmet faturaları için: Verilen (code 7) -> Asin ink/accent, Alınan (code 8) -> teal
         if (invoiceType.code === 7) {
-          return { gradient: 'from-blue-600 to-blue-700', solid: 'bg-blue-600' };
+          return { gradient: 'from-[var(--asin-primary,#0E2433)] to-[var(--asin-primary,#0E2433)]', solid: 'bg-[var(--asin-accent,#1FA8A0)]' };
         } else if (invoiceType.code === 8) {
           return { gradient: 'from-teal-600 to-teal-700', solid: 'bg-teal-600' };
         }
-        return { gradient: 'from-indigo-600 to-indigo-700', solid: 'bg-indigo-600' };
+        return { gradient: 'from-[var(--asin-accent,#1FA8A0)] to-[#178f88]', solid: 'bg-[var(--asin-accent,#1FA8A0)]' };
       case 'Iade': return { gradient: 'from-red-600 to-red-700', solid: 'bg-red-600' };
       case 'Irsaliye': return { gradient: 'from-orange-600 to-orange-700', solid: 'bg-orange-600' };
-      case 'Siparis': return { gradient: 'from-purple-600 to-purple-700', solid: 'bg-purple-600' };
-      case 'Teklif': return { gradient: 'from-indigo-600 to-indigo-700', solid: 'bg-indigo-600' };
+      case 'Siparis': return { gradient: 'from-[var(--asin-primary,#0E2433)] to-[#163447]', solid: 'bg-[var(--asin-primary,#0E2433)]' };
+      case 'Teklif': return { gradient: 'from-[var(--asin-accent,#1FA8A0)] to-[#178f88]', solid: 'bg-[var(--asin-accent,#1FA8A0)]' };
       default: return { gradient: 'from-gray-600 to-gray-700', solid: 'bg-gray-600' };
     }
   };
@@ -1207,34 +1207,34 @@ export function UniversalInvoiceForm({
   const getCariBorderColor = () => {
     if (darkMode) {
       switch (invoiceType.category) {
-        case 'Satis': return 'border-blue-500 bg-gray-800';
+        case 'Satis': return 'border-[var(--asin-accent,#1FA8A0)] bg-gray-800';
         case 'Alis': return 'border-teal-500 bg-gray-800';
         case 'Hizmet':
-          if (invoiceType.code === 7) return 'border-blue-500 bg-gray-800';
+          if (invoiceType.code === 7) return 'border-[var(--asin-accent,#1FA8A0)] bg-gray-800';
           if (invoiceType.code === 8) return 'border-teal-500 bg-gray-800';
-          return 'border-indigo-500 bg-gray-800';
+          return 'border-[var(--asin-accent,#1FA8A0)] bg-gray-800';
         case 'Iade': return 'border-red-500 bg-gray-800';
         case 'Irsaliye': return 'border-orange-500 bg-gray-800';
-        case 'Siparis': return 'border-purple-500 bg-gray-800';
-        case 'Teklif': return 'border-indigo-500 bg-gray-800';
+        case 'Siparis': return 'border-[var(--asin-primary,#0E2433)] bg-gray-800';
+        case 'Teklif': return 'border-[var(--asin-accent,#1FA8A0)] bg-gray-800';
         default: return 'border-gray-500 bg-gray-800';
       }
     }
     switch (invoiceType.category) {
-      case 'Satis': return 'border-blue-600 bg-blue-50';
+      case 'Satis': return 'border-[var(--asin-accent,#1FA8A0)] bg-[var(--asin-accent-muted,#D5F0EE)]';
       case 'Alis': return 'border-teal-600 bg-teal-50';
       case 'Hizmet':
-        // Hizmet faturaları için: Verilen (code 7) -> mavi, Alınan (code 8) -> teal
+        // Hizmet faturaları için: Verilen (code 7) -> Asin ink/accent, Alınan (code 8) -> teal
         if (invoiceType.code === 7) {
-          return 'border-blue-600 bg-blue-50';
+          return 'border-[var(--asin-accent,#1FA8A0)] bg-[var(--asin-accent-muted,#D5F0EE)]';
         } else if (invoiceType.code === 8) {
           return 'border-teal-600 bg-teal-50';
         }
-        return 'border-indigo-600 bg-indigo-50';
+        return 'border-[var(--asin-accent,#1FA8A0)] bg-[var(--asin-accent-muted,#D5F0EE)]';
       case 'Iade': return 'border-red-600 bg-red-50';
       case 'Irsaliye': return 'border-orange-600 bg-orange-50';
-      case 'Siparis': return 'border-purple-600 bg-purple-50';
-      case 'Teklif': return 'border-indigo-600 bg-indigo-50';
+      case 'Siparis': return 'border-[var(--asin-primary,#0E2433)] bg-[var(--asin-accent-muted,#D5F0EE)]';
+      case 'Teklif': return 'border-[var(--asin-accent,#1FA8A0)] bg-[var(--asin-accent-muted,#D5F0EE)]';
       default: return 'border-gray-600 bg-gray-50';
     }
   };
@@ -1242,20 +1242,20 @@ export function UniversalInvoiceForm({
   // Cari hesap text rengi
   const getCariTextColor = () => {
     switch (invoiceType.category) {
-      case 'Satis': return 'text-blue-600';
+      case 'Satis': return 'text-[var(--asin-accent,#1FA8A0)]';
       case 'Alis': return 'text-teal-600';
       case 'Hizmet':
-        // Hizmet faturaları için: Verilen (code 7) -> mavi, Alınan (code 8) -> teal
+        // Hizmet faturaları için: Verilen (code 7) -> Asin ink/accent, Alınan (code 8) -> teal
         if (invoiceType.code === 7) {
-          return 'text-blue-600';
+          return 'text-[var(--asin-accent,#1FA8A0)]';
         } else if (invoiceType.code === 8) {
           return 'text-teal-600';
         }
-        return 'text-indigo-600';
+        return 'text-[var(--asin-accent,#1FA8A0)]';
       case 'Iade': return 'text-red-600';
       case 'Irsaliye': return 'text-orange-600';
-      case 'Siparis': return 'text-purple-600';
-      case 'Teklif': return 'text-indigo-600';
+      case 'Siparis': return 'text-[var(--asin-primary,#0E2433)]';
+      case 'Teklif': return 'text-[var(--asin-accent,#1FA8A0)]';
       default: return 'text-gray-600';
     }
   };
@@ -3659,7 +3659,7 @@ export function UniversalInvoiceForm({
                   <button
                     type="button"
                     onClick={() => setShowCameraScanner(true)}
-                    className="inline-flex items-center justify-center gap-2 shrink-0 px-3 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 active:scale-[0.99] transition-transform min-h-[44px] min-w-[44px]"
+                    className="inline-flex items-center justify-center gap-2 shrink-0 px-3 py-2 rounded-lg bg-[var(--asin-accent,#1FA8A0)] text-white text-sm font-medium hover:bg-[#178f88] active:scale-[0.99] transition-transform min-h-[44px] min-w-[44px]"
                     title={tm('cameraScan')}
                   >
                     <Camera className="w-4 h-4 shrink-0" />
@@ -3693,7 +3693,7 @@ export function UniversalInvoiceForm({
                           <button
                             type="button"
                             onClick={handleBulkPriceIncrease}
-                            className="px-4 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm transition-colors"
+                            className="px-4 py-1 bg-[var(--asin-accent,#1FA8A0)] text-white rounded hover:bg-[#178f88] text-sm transition-colors"
                           >
                             {tm('apply')}
                           </button>
@@ -3850,10 +3850,10 @@ export function UniversalInvoiceForm({
                             }}
                             className={`px-2 py-1 text-xs rounded border transition-colors ${
                               footerDiscountMode === 'percentage'
-                                ? 'bg-blue-600 text-white border-blue-600'
+                                ? 'bg-[var(--asin-accent,#1FA8A0)] text-white border-[var(--asin-accent,#1FA8A0)]'
                                 : darkMode
-                                  ? 'bg-gray-700 text-gray-200 border-gray-600 hover:border-blue-400'
-                                  : 'bg-white text-gray-700 border-gray-300 hover:border-blue-400'
+                                  ? 'bg-gray-700 text-gray-200 border-gray-600 hover:border-[var(--asin-accent,#1FA8A0)]'
+                                  : 'bg-white text-gray-700 border-gray-300 hover:border-[var(--asin-accent,#1FA8A0)]'
                             }`}
                           >
                             %
@@ -3871,10 +3871,10 @@ export function UniversalInvoiceForm({
                             }}
                             className={`px-2 py-1 text-xs rounded border transition-colors ${
                               footerDiscountMode === 'amount'
-                                ? 'bg-blue-600 text-white border-blue-600'
+                                ? 'bg-[var(--asin-accent,#1FA8A0)] text-white border-[var(--asin-accent,#1FA8A0)]'
                                 : darkMode
-                                  ? 'bg-gray-700 text-gray-200 border-gray-600 hover:border-blue-400'
-                                  : 'bg-white text-gray-700 border-gray-300 hover:border-blue-400'
+                                  ? 'bg-gray-700 text-gray-200 border-gray-600 hover:border-[var(--asin-accent,#1FA8A0)]'
+                                  : 'bg-white text-gray-700 border-gray-300 hover:border-[var(--asin-accent,#1FA8A0)]'
                             }`}
                           >
                             {currency || ledgerCurrency}
@@ -3902,7 +3902,7 @@ export function UniversalInvoiceForm({
                               }
                             }}
                             placeholder="0"
-                            className={`w-full px-2 py-1.5 text-sm text-right rounded border outline-none focus:ring-2 focus:ring-blue-500 ${
+                            className={`w-full px-2 py-1.5 text-sm text-right rounded border outline-none focus:ring-2 focus:ring-[var(--asin-accent,#1FA8A0)] ${
                               darkMode
                                 ? 'bg-gray-800 border-gray-600 text-gray-100'
                                 : 'bg-white border-gray-300 text-gray-800'
@@ -3930,7 +3930,7 @@ export function UniversalInvoiceForm({
                               }
                             }}
                             placeholder="0"
-                            className={`w-full px-2 py-1.5 text-sm text-right rounded border outline-none focus:ring-2 focus:ring-blue-500 ${
+                            className={`w-full px-2 py-1.5 text-sm text-right rounded border outline-none focus:ring-2 focus:ring-[var(--asin-accent,#1FA8A0)] ${
                               darkMode
                                 ? 'bg-gray-800 border-gray-600 text-gray-100'
                                 : 'bg-white border-gray-300 text-gray-800'
@@ -4071,7 +4071,7 @@ export function UniversalInvoiceForm({
                               setCurrencyRateStr('');
                             }
                           }}
-                          className="w-full px-3 py-2 border border-blue-300 bg-blue-50 rounded text-sm font-bold"
+                          className="w-full px-3 py-2 border border-[var(--asin-accent,#1FA8A0)]/50 bg-[var(--asin-accent-muted,#D5F0EE)] rounded text-sm font-bold"
                         >
                           {invoiceCurrencyCodes.map(code => (
                             <option key={code} value={code}>{code}</option>
@@ -4124,7 +4124,7 @@ export function UniversalInvoiceForm({
                             type="checkbox"
                             checked={isCurrencyTransaction}
                             onChange={(e) => setIsCurrencyTransaction(e.target.checked)}
-                            className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
+                            className="w-4 h-4 text-[var(--asin-accent,#1FA8A0)] rounded border-gray-300 focus:ring-[var(--asin-accent,#1FA8A0)]"
                           />
                           <span className="text-sm font-medium text-gray-700">{tm('currencyTransaction')}</span>
                         </label>
@@ -4329,7 +4329,7 @@ export function UniversalInvoiceForm({
                         <label className="block text-sm font-medium text-gray-700">{tm('description')}</label>
                         <button
                           onClick={() => setShowProductCatalogModal(true)}
-                          className="flex items-center gap-1 px-2 py-1 text-xs text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded transition-colors"
+                          className="flex items-center gap-1 px-2 py-1 text-xs text-[var(--asin-accent,#1FA8A0)] hover:text-[var(--asin-primary,#0E2433)] hover:bg-[var(--asin-accent-muted,#D5F0EE)] rounded transition-colors"
                           title={tm('selectProduct')}
                         >
                           <MoreHorizontal className="w-4 h-4" />
@@ -4339,7 +4339,7 @@ export function UniversalInvoiceForm({
                         rows={4}
                         value={description}
                         onChange={(e) => setDescription(e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-[var(--asin-accent,#1FA8A0)]"
                         placeholder={`${tm('invoice')} ${tm('description')}...`}
                       />
                     </div>

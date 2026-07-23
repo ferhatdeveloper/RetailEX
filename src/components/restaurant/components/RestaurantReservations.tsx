@@ -75,7 +75,7 @@ export function RestaurantReservations({ onBack }: RestaurantReservationsProps) 
             {/* Header */}
             <div
                 className="p-6 pb-24 relative overflow-hidden shrink-0 border-b shadow-lg"
-                style={{ backgroundColor: '#2563eb', borderColor: 'rgba(96,165,250,0.4)' }}
+                style={{ backgroundColor: 'var(--asin-primary, #0E2433)', borderColor: 'rgba(31,168,160,0.35)' }}
             >
                 {/* Decorative Elements */}
                 <div className="absolute top-[-20%] right-[-10%] w-64 h-64 bg-white/10 rounded-full blur-3xl pointer-events-none" />
@@ -220,7 +220,7 @@ export function RestaurantReservations({ onBack }: RestaurantReservationsProps) 
                 <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
                     <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={() => setIsAddModalOpen(false)} />
                     <div className="bg-white rounded-[2.5rem] w-full max-w-lg relative z-10 shadow-3xl overflow-hidden animate-in fade-in zoom-in duration-200">
-                        <div className="bg-gradient-to-r from-[#2563eb] to-[#3b82f6] p-6 flex justify-between items-center text-white">
+                        <div className="bg-gradient-to-r from-[var(--asin-primary,#0E2433)] to-[var(--asin-primary-hover,#163A52)] p-6 flex justify-between items-center text-white">
                             <h3 className="text-xl font-bold flex items-center gap-2">
                                 {editingRes ? <Edit2 className="w-5 h-5" /> : <Plus className="w-5 h-5" />}
                                 {editingRes ? tmR('resRvFormEdit') : tmR('resRvFormNew')}

@@ -746,7 +746,7 @@ pub async fn sync_logo_data(window: tauri::Window, config: AppConfig) -> Result<
 
     let _ = window.emit("sync-event", "Bağlantılar kuruluyor...");
 
-    // 1. Establish Connections — kaynak: Logo'nun canlı MSSQL veritabanı (RetailEX içi demo seed ile ilgisi yok)
+    // 1. Establish Connections — kaynak: Logo'nun canlı MSSQL veritabanı (AsinERP içi demo seed ile ilgisi yok)
     let mut mssql_client = get_client(&config).await.map_err(|e| format!("MSSQL Connection Error: {}", e))?;
     let _ = window.emit(
         "sync-event",

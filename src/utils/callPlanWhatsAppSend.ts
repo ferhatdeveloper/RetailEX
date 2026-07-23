@@ -21,10 +21,10 @@ import { customerCallWeekdaysLabel } from './customerCallPlan';
 export type CallPlanWhatsAppPreset = 'greeting' | 'call_reminder' | 'custom';
 
 const CALL_PLAN_REMINDER_TEMPLATES: Record<WhatsAppMessageLang, string> = {
-  tr: 'Merhaba {customer_name}, arama listenizde yer alıyorsunuz ({call_days}). Bugün sipariş vermek ister misiniz? RetailEX',
-  en: 'Hello {customer_name}, you are on our call list ({call_days}). Would you like to place an order today? RetailEX',
-  ar: 'مرحباً {customer_name}، أنت في قائمة الاتصال ({call_days}). هل ترغب في تقديم طلب اليوم؟ RetailEX',
-  ku: 'سڵاو {customer_name}، لە لیستی پەیوەندیدایت ({call_days}). ئەمڕۆ داواکاری دەدەیت؟ RetailEX',
+  tr: 'Merhaba {customer_name}, arama listenizde yer alıyorsunuz ({call_days}). Bugün sipariş vermek ister misiniz? Asin',
+  en: 'Hello {customer_name}, you are on our call list ({call_days}). Would you like to place an order today? Asin',
+  ar: 'مرحباً {customer_name}، أنت في قائمة الاتصال ({call_days}). هل ترغب في تقديم طلب اليوم؟ Asin',
+  ku: 'سڵاو {customer_name}، لە لیستی پەیوەندیدایت ({call_days}). ئەمڕۆ داواکاری دەدەیت؟ Asin',
 };
 
 function normalizePhone(raw: string | undefined | null): string {
@@ -111,7 +111,7 @@ export async function buildCallPlanWhatsAppPayload(
         name,
         date: new Date().toISOString().slice(0, 10),
         time: callDays,
-        service: preset === 'greeting' ? 'RetailEX' : 'Arama',
+        service: preset === 'greeting' ? 'Asin' : 'Arama',
       },
       lang,
     );

@@ -153,3 +153,8 @@ tools/*/
 
 # Tauri updater private key
 DeskApp/updater.key
+
+# Yerel SQLite bağlantı ayarı
+config.db
+*.db-journal
+scripts/.asin-brand-tmp/

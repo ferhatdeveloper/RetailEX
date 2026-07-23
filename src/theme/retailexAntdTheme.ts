@@ -1,16 +1,16 @@
 /**
- * RetailEX — tek kaynak Ant Design tema paketi (flat UI, mor birincil).
+ * Asin (RetailEX) — tek kaynak Ant Design tema paketi (flat UI, teal accent).
  * Tüm uygulama AppRouter üzerindeki ConfigProvider ile bu temayı alır;
  * modül içinde ayrı ConfigProvider yine de token birleştirmek için kullanılabilir.
  */
 import { theme as antdTheme } from 'antd';
 import type { ThemeConfig } from 'antd/es/config-provider/context';
 
-/** Uygulama birincil rengi — butonlar, linkler, odak halkaları */
-export const RETAILEX_PRIMARY = '#722ed1';
+/** Uygulama birincil rengi — butonlar, linkler, odak halkaları (Asin accent teal) */
+export const RETAILEX_PRIMARY = '#1FA8A0';
 
-/** Sayfa / layout arka planı (antd Layout + liste sayfaları) */
-export const RETAILEX_PAGE_BG = '#f5f5f5';
+/** Sayfa / layout arka planı (antd Layout + liste sayfaları) — Asin surface */
+export const RETAILEX_PAGE_BG = '#F3F5F7';
 
 /** İnce kenarlık (kart üst çizgileri, bölücüler) */
 export const RETAILEX_BORDER_SUBTLE = '#f0f0f0';

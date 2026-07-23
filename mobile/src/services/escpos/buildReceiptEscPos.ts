@@ -46,7 +46,7 @@ export function buildTestReceiptEscPos(settings: MobilePrinterSettings): Uint8Ar
   const lineW = lineWidthForPaper(settings.paperSize);
   const L = LABELS[settings.defaultLanguage] ?? LABELS.tr;
   const now = new Date().toLocaleString('tr-TR');
-  const company = settings.companyName?.trim() || 'RetailEX';
+  const company = settings.companyName?.trim() || 'Asin';
 
   const sampleLines: ReceiptLine[] = [
     { name: 'Ürün A', qty: 1, unitPrice: 10, lineTotal: 10 },
@@ -75,7 +75,7 @@ export function buildSaleReceiptEscPos(
   const lineW = lineWidthForPaper(settings.paperSize);
   const L = LABELS[settings.defaultLanguage] ?? LABELS.tr;
   const now = new Date().toLocaleString('tr-TR');
-  const company = settings.companyName?.trim() || 'RetailEX';
+  const company = settings.companyName?.trim() || 'Asin';
   const shortId = saleId.length > 12 ? `${saleId.slice(0, 8)}…` : saleId;
 
   return buildReceiptEscPosBuffer({

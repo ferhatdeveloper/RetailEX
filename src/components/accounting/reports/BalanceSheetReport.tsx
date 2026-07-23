@@ -99,7 +99,7 @@ export function BalanceSheetReport() {
           <button
             onClick={loadReport}
             disabled={loading}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 transition-colors"
+            className="flex items-center gap-2 px-4 py-2 bg-[var(--asin-accent,#1FA8A0)] text-white rounded hover:bg-[#178f88] disabled:opacity-50 transition-colors"
           >
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
             Yenile
@@ -205,7 +205,7 @@ export function BalanceSheetReport() {
           <div className="grid grid-cols-1 lg:grid-cols-2">
             {/* AKTİF (Sol Taraf) */}
             <div className="border-r border-gray-200">
-              <div className="bg-gradient-to-r from-blue-600 to-blue-700 text-white px-4 py-3">
+              <div className="bg-[var(--asin-primary,#0E2433)] text-white px-4 py-3">
                 <h3 className="font-semibold">AKTİF (Varlıklar)</h3>
               </div>
               
@@ -291,7 +291,7 @@ export function BalanceSheetReport() {
                 )}
                 
                 {/* Toplam Aktif */}
-                <div className="p-4 bg-gradient-to-r from-blue-700 to-blue-800 text-white">
+                <div className="p-4 bg-[var(--asin-primary,#0E2433)] text-white">
                   <div className="flex justify-between font-bold">
                     <span>TOPLAM AKTİF</span>
                     <span>{formatMoney(data.toplam_aktif)} IQD</span>

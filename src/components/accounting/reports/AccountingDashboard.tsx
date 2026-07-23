@@ -71,12 +71,12 @@ export function AccountingDashboard() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
-          <Save className="w-6 h-6 text-blue-600" />
+          <Save className="w-6 h-6 text-[var(--asin-accent,#1FA8A0)]" />
           Muhasebe - Yevmiye Defteri
         </h1>
         <button
           onClick={() => setShowNewFisModal(true)}
-          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-shadow shadow-sm"
+          className="flex items-center gap-2 px-4 py-2 bg-[var(--asin-accent,#1FA8A0)] text-white rounded-lg hover:bg-[#178f88] transition-shadow shadow-sm"
         >
           <Plus className="w-4 h-4" />
           Yeni Fiş
@@ -417,7 +417,7 @@ function YeniFisModal({ onClose, onSave, accounts }: { onClose: () => void, onSa
             <button
               onClick={handleSave}
               disabled={!isBalanced || loading}
-              className="px-8 py-2 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-blue-200 transition-all text-sm flex items-center gap-2"
+              className="px-8 py-2 bg-[var(--asin-accent,#1FA8A0)] text-white rounded-xl font-bold hover:bg-[#178f88] disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-[rgb(14_36_51/0.12)] transition-all text-sm flex items-center gap-2"
             >
               {loading ? 'Kaydediliyor...' : (
                 <>

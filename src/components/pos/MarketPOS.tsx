@@ -200,11 +200,11 @@ export default function MarketPOS({
     if (buttonColorStyle === 'outline') {
       // Sadece çerçeve - beyaz arkaplan, renkli border ve text
       const colorMap: Record<string, string> = {
-        'blue': 'bg-white hover:bg-blue-50 text-blue-600 border-2 border-blue-600',
+        'blue': 'bg-white hover:bg-[var(--asin-accent-muted,#D5F0EE)] text-[var(--asin-accent,#1FA8A0)] border-2 border-[var(--asin-accent,#1FA8A0)]',
         'teal': 'bg-white hover:bg-teal-50 text-teal-600 border-2 border-teal-600',
         'teal-light': 'bg-white hover:bg-teal-50 text-teal-500 border-2 border-teal-400',
         'red': 'bg-white hover:bg-red-50 text-red-500 border-2 border-red-400',
-        'purple': 'bg-white hover:bg-purple-50 text-purple-600 border-2 border-purple-600',
+        'purple': 'bg-white hover:bg-[var(--asin-accent-muted,#D5F0EE)] text-[var(--asin-primary,#0E2433)] border-2 border-[var(--asin-primary,#0E2433)]',
         'green': 'bg-white hover:bg-green-50 text-green-600 border-2 border-green-600',
         'red-dark': 'bg-white hover:bg-red-50 text-red-700 border-2 border-red-700',
         'green-dark': 'bg-white hover:bg-green-50 text-green-700 border-2 border-green-700',
@@ -215,11 +215,11 @@ export default function MarketPOS({
     } else {
       // Renkli arkaplan - klasik
       const colorMap: Record<string, string> = {
-        'blue': 'bg-blue-600 hover:bg-blue-700 text-white',
+        'blue': 'bg-[var(--asin-accent,#1FA8A0)] hover:bg-[#178f88] text-white',
         'teal': 'bg-teal-600 hover:bg-teal-700 text-white',
         'teal-light': 'bg-teal-400 hover:bg-teal-500 text-white',
         'red': 'bg-red-400 hover:bg-red-500 text-white',
-        'purple': 'bg-purple-600 hover:bg-purple-700 text-white',
+        'purple': 'bg-[var(--asin-primary,#0E2433)] hover:bg-[#163447] text-white',
         'green': 'bg-green-600 hover:bg-green-700 text-white',
         'red-dark': 'bg-red-700 hover:bg-red-800 text-white',
         'green-dark': 'bg-green-700 hover:bg-green-800 text-white',
@@ -1564,16 +1564,16 @@ export default function MarketPOS({
   };
 
   const quickActions = [
-    { label: t.campaign, color: 'bg-blue-50 text-blue-700 border-blue-400', onClick: () => setShowCampaignModal(true), icon: Tag },
-    { label: t.category, color: 'bg-blue-50 text-blue-700 border-blue-400', onClick: () => setShowCategoryModal(true), icon: Package },
-    { label: t.stockQuery, color: 'bg-blue-50 text-blue-700 border-blue-400', onClick: () => setShowStockQueryModal(true), icon: Package },
-    { label: t.salesHistory, color: 'bg-blue-50 text-blue-700 border-blue-400', onClick: () => setShowSalesHistoryModal(true), icon: History },
-    { label: t.returnTransaction, color: 'bg-blue-50 text-blue-700 border-blue-400', onClick: handleReturnAction, icon: RotateCcw },
+    { label: t.campaign, color: 'bg-[var(--asin-accent-muted,#D5F0EE)] text-[var(--asin-primary,#0E2433)] border-[var(--asin-accent,#1FA8A0)]', onClick: () => setShowCampaignModal(true), icon: Tag },
+    { label: t.category, color: 'bg-[var(--asin-accent-muted,#D5F0EE)] text-[var(--asin-primary,#0E2433)] border-[var(--asin-accent,#1FA8A0)]', onClick: () => setShowCategoryModal(true), icon: Package },
+    { label: t.stockQuery, color: 'bg-[var(--asin-accent-muted,#D5F0EE)] text-[var(--asin-primary,#0E2433)] border-[var(--asin-accent,#1FA8A0)]', onClick: () => setShowStockQueryModal(true), icon: Package },
+    { label: t.salesHistory, color: 'bg-[var(--asin-accent-muted,#D5F0EE)] text-[var(--asin-primary,#0E2433)] border-[var(--asin-accent,#1FA8A0)]', onClick: () => setShowSalesHistoryModal(true), icon: History },
+    { label: t.returnTransaction, color: 'bg-[var(--asin-accent-muted,#D5F0EE)] text-[var(--asin-primary,#0E2433)] border-[var(--asin-accent,#1FA8A0)]', onClick: handleReturnAction, icon: RotateCcw },
     { label: t.missingBarcodes, color: 'bg-red-50 text-red-700 border-red-400', onClick: () => setShowMissingBarcodesModal(true), icon: Barcode },
     { label: 'Gider İşlemleri', color: 'bg-orange-50 text-orange-700 border-orange-400', onClick: () => setShowExpenseScreen(true), icon: Receipt },
-    { label: t.scale, color: 'bg-blue-50 text-blue-700 border-blue-400', onClick: () => { }, icon: Scale },
-    { label: t.subtotalAction, color: 'bg-blue-50 text-blue-700 border-blue-400', onClick: () => showNotif(`${t.subtotalAction}: ${subtotal.toFixed(2)}`, 'info'), icon: Calculator },
-    { label: t.receiptNote, color: 'bg-blue-50 text-blue-700 border-blue-400', onClick: () => { }, icon: FileText },
+    { label: t.scale, color: 'bg-[var(--asin-accent-muted,#D5F0EE)] text-[var(--asin-primary,#0E2433)] border-[var(--asin-accent,#1FA8A0)]', onClick: () => { }, icon: Scale },
+    { label: t.subtotalAction, color: 'bg-[var(--asin-accent-muted,#D5F0EE)] text-[var(--asin-primary,#0E2433)] border-[var(--asin-accent,#1FA8A0)]', onClick: () => showNotif(`${t.subtotalAction}: ${subtotal.toFixed(2)}`, 'info'), icon: Calculator },
+    { label: t.receiptNote, color: 'bg-[var(--asin-accent-muted,#D5F0EE)] text-[var(--asin-primary,#0E2433)] border-[var(--asin-accent,#1FA8A0)]', onClick: () => { }, icon: FileText },
   ];
 
   // Helper function to get column order based on layoutOrder
@@ -1866,7 +1866,7 @@ export default function MarketPOS({
           className="pointer-events-none absolute left-0 right-0 top-0 z-[90] flex justify-center"
           style={{ transform: `translateY(${Math.min(pullPx, 80)}px)` }}
         >
-          <span className="rounded-full bg-blue-600/95 px-3 py-1 text-[10px] font-bold uppercase tracking-wide text-white shadow-lg">
+          <span className="rounded-full bg-[var(--asin-accent,#1FA8A0)]/95 px-3 py-1 text-[10px] font-bold uppercase tracking-wide text-white shadow-lg">
             {pullRefreshArmed ? 'Bırakın — yenileme sorulacak' : 'Yenilemek için çekin…'}
           </span>
         </div>
@@ -1876,7 +1876,7 @@ export default function MarketPOS({
         <div className={`fixed top-4 right-4 z-50 px-4 py-3 rounded border ${notificationType === 'success' ? 'bg-green-50 border-green-400 text-green-700' :
           notificationType === 'error' ? 'bg-red-50 border-red-400 text-red-700' :
             notificationType === 'warning' ? 'bg-yellow-50 border-yellow-400 text-yellow-700' :
-              'bg-blue-50 border-blue-400 text-blue-700'
+              'bg-[var(--asin-accent-muted,#D5F0EE)] border-[var(--asin-accent,#1FA8A0)] text-[var(--asin-primary,#0E2433)]'
           }`}>
           {notificationMessage}
         </div>
@@ -1927,8 +1927,8 @@ export default function MarketPOS({
                   }}
                   placeholder={t.barcodeSearchPlaceholder}
                   className={`w-full px-3 py-2.5 text-sm border transition-all ${numpadMode === 'barcode'
-                    ? 'border-blue-400 ring-2 ring-blue-200'
-                    : darkMode ? 'border-gray-600 focus:border-blue-400 bg-gray-700 text-white' : 'border-gray-300 focus:border-blue-400'
+                    ? 'border-[var(--asin-accent,#1FA8A0)] ring-2 ring-[var(--asin-accent-muted,#D5F0EE)]'
+                    : darkMode ? 'border-gray-600 focus:border-[var(--asin-accent,#1FA8A0)] bg-gray-700 text-white' : 'border-gray-300 focus:border-[var(--asin-accent,#1FA8A0)]'
                     } ${darkMode ? 'bg-gray-700 text-white placeholder-gray-400' : ''}`}
                   autoFocus
                   ref={barcodeInputRef}
@@ -1936,7 +1936,7 @@ export default function MarketPOS({
               </div>
               <button
                 onClick={handleBarcodeSearch}
-                className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm transition-colors flex items-center gap-2"
+                className="px-6 py-2.5 bg-[var(--asin-accent,#1FA8A0)] hover:bg-[#178f88] text-white text-sm transition-colors flex items-center gap-2"
               >
                 <Search className="w-4 h-4" />
                 {t.searchBtn}
@@ -2067,7 +2067,7 @@ export default function MarketPOS({
                     ? 'bg-orange-50 border-2 border-orange-400 ring-2 ring-orange-200 text-orange-900'
                     : numpadMode === 'quantity'
                       ? 'bg-green-50 border-2 border-green-400 ring-2 ring-green-200 text-gray-900'
-                      : darkMode ? 'bg-gray-700 border border-gray-600 text-white' : 'bg-blue-50 border border-blue-200 text-gray-900'
+                      : darkMode ? 'bg-gray-700 border border-gray-600 text-white' : 'bg-[var(--asin-accent-muted,#D5F0EE)] border border-[var(--asin-accent,#1FA8A0)]/40 text-gray-900'
                     }`}
                   placeholder={savedQuantity ? t.enterBarcode : t.zeroPlaceholder}
                 />
@@ -2083,21 +2083,21 @@ export default function MarketPOS({
                 </button>
                 <button
                   onClick={handleBarcodeButtonClick}
-                  className={`col-span-1 border py-3 text-sm transition-colors flex items-center justify-center ${darkMode ? 'bg-blue-900/50 hover:bg-blue-800/50 border-blue-700 text-blue-300' : 'bg-blue-50 hover:bg-blue-100 border-blue-400 text-blue-700'}`}
+                  className={`col-span-1 border py-3 text-sm transition-colors flex items-center justify-center ${darkMode ? 'bg-[var(--asin-primary,#0E2433)]/50 hover:bg-[var(--asin-primary,#0E2433)]/60 border-[var(--asin-accent,#1FA8A0)] text-[var(--asin-accent-muted,#D5F0EE)]' : 'bg-[var(--asin-accent-muted,#D5F0EE)] hover:bg-[var(--asin-accent-muted,#D5F0EE)] border-[var(--asin-accent,#1FA8A0)] text-[var(--asin-primary,#0E2433)]'}`}
                   title={t.addToCart}
                 >
                   <Barcode className="w-5 h-5" />
                 </button>
                 <button
                   onClick={handleQuantity}
-                  className={`col-span-1 border py-3 transition-colors ${darkMode ? 'bg-blue-900/50 hover:bg-blue-800/50 border-blue-700 text-blue-300' : 'bg-blue-50 hover:bg-blue-100 border-blue-400 text-blue-700'}`}
+                  className={`col-span-1 border py-3 transition-colors ${darkMode ? 'bg-[var(--asin-primary,#0E2433)]/50 hover:bg-[var(--asin-primary,#0E2433)]/60 border-[var(--asin-accent,#1FA8A0)] text-[var(--asin-accent-muted,#D5F0EE)]' : 'bg-[var(--asin-accent-muted,#D5F0EE)] hover:bg-[var(--asin-accent-muted,#D5F0EE)] border-[var(--asin-accent,#1FA8A0)] text-[var(--asin-primary,#0E2433)]'}`}
                   title={t.pcs}
                 >
                   *
                 </button>
                 <button
                   onClick={handleDelete}
-                  className={`col-span-1 border py-3 text-sm transition-colors ${darkMode ? 'bg-blue-900/50 hover:bg-blue-800/50 border-blue-700 text-blue-300' : 'bg-blue-50 hover:bg-blue-100 border-blue-400 text-blue-700'}`}
+                  className={`col-span-1 border py-3 text-sm transition-colors ${darkMode ? 'bg-[var(--asin-primary,#0E2433)]/50 hover:bg-[var(--asin-primary,#0E2433)]/60 border-[var(--asin-accent,#1FA8A0)] text-[var(--asin-accent-muted,#D5F0EE)]' : 'bg-[var(--asin-accent-muted,#D5F0EE)] hover:bg-[var(--asin-accent-muted,#D5F0EE)] border-[var(--asin-accent,#1FA8A0)] text-[var(--asin-primary,#0E2433)]'}`}
                 >
 
                 </button>
@@ -2113,7 +2113,7 @@ export default function MarketPOS({
                 ))}
                 <button
                   onClick={handleClear}
-                  className={`border py-3 text-xs transition-colors ${darkMode ? 'bg-blue-900/50 hover:bg-blue-800/50 border-blue-700 text-blue-300' : 'bg-blue-50 hover:bg-blue-100 border-blue-400 text-blue-700'}`}
+                  className={`border py-3 text-xs transition-colors ${darkMode ? 'bg-[var(--asin-primary,#0E2433)]/50 hover:bg-[var(--asin-primary,#0E2433)]/60 border-[var(--asin-accent,#1FA8A0)] text-[var(--asin-accent-muted,#D5F0EE)]' : 'bg-[var(--asin-accent-muted,#D5F0EE)] hover:bg-[var(--asin-accent-muted,#D5F0EE)] border-[var(--asin-accent,#1FA8A0)] text-[var(--asin-primary,#0E2433)]'}`}
                 >
                   C
                 </button>
@@ -2127,7 +2127,7 @@ export default function MarketPOS({
                     {num}
                   </button>
                 ))}
-                <button className={`border py-3 text-xs transition-colors ${darkMode ? 'bg-blue-900/50 hover:bg-blue-800/50 border-blue-700 text-blue-300' : 'bg-blue-50 hover:bg-blue-100 border-blue-400 text-blue-700'}`}>
+                <button className={`border py-3 text-xs transition-colors ${darkMode ? 'bg-[var(--asin-primary,#0E2433)]/50 hover:bg-[var(--asin-primary,#0E2433)]/60 border-[var(--asin-accent,#1FA8A0)] text-[var(--asin-accent-muted,#D5F0EE)]' : 'bg-[var(--asin-accent-muted,#D5F0EE)] hover:bg-[var(--asin-accent-muted,#D5F0EE)] border-[var(--asin-accent,#1FA8A0)] text-[var(--asin-primary,#0E2433)]'}`}>
                   {t.priceLabel}
                 </button>
 
@@ -2142,7 +2142,7 @@ export default function MarketPOS({
                 ))}
                 <button
                   onClick={handleNumpadEnter}
-                  className="row-span-2 bg-blue-600 hover:bg-blue-700 border border-blue-600 text-white text-sm transition-colors font-semibold flex items-center justify-center"
+                  className="row-span-2 bg-[var(--asin-accent,#1FA8A0)] hover:bg-[#178f88] border border-[var(--asin-accent,#1FA8A0)] text-white text-sm transition-colors font-semibold flex items-center justify-center"
                 >
                   <CornerDownLeft className="w-6 h-6" />
                 </button>
@@ -2163,7 +2163,7 @@ export default function MarketPOS({
             </div>
 
             {/* Total Display */}
-            <div className={`flex-1 flex flex-col justify-end p-3 ${darkMode ? 'bg-gradient-to-b from-gray-800 to-gray-800/90' : 'bg-gradient-to-b from-white to-blue-50/30'}`}>
+            <div className={`flex-1 flex flex-col justify-end p-3 ${darkMode ? 'bg-gradient-to-b from-gray-800 to-gray-800/90' : 'bg-gradient-to-b from-white to-[var(--asin-accent-muted,#D5F0EE)]/30'}`}>
               <div className="space-y-2 text-sm">
                 {/* Kampanya Bilgisi - Kampanya Adı ve İndirim Tutarı */}
                 {selectedCampaign && (
@@ -2202,7 +2202,7 @@ export default function MarketPOS({
                 <div className={`pt-2 border-t ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <Calculator className="w-5 h-5 text-blue-600" />
+                      <Calculator className="w-5 h-5 text-[var(--asin-accent,#1FA8A0)]" />
                       <span className={`font-semibold ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>{t.totalLabel}</span>
                     </div>
                     <div className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{formatNumber(total, 2, true)}</div>
@@ -2316,8 +2316,8 @@ export default function MarketPOS({
                       setShowProductCatalogModal(true);
                     }}
                     className={`aspect-square border transition-all flex flex-col items-center justify-center text-xs leading-tight p-2 relative ${product
-                      ? 'bg-blue-50 border-blue-400 text-blue-700 hover:bg-blue-100'
-                      : 'bg-white border-gray-300 text-gray-400 hover:border-blue-400 hover:bg-blue-50'
+                      ? 'bg-[var(--asin-accent-muted,#D5F0EE)] border-[var(--asin-accent,#1FA8A0)] text-[var(--asin-primary,#0E2433)] hover:bg-[var(--asin-accent-muted,#D5F0EE)]'
+                      : 'bg-white border-gray-300 text-gray-400 hover:border-[var(--asin-accent,#1FA8A0)] hover:bg-[var(--asin-accent-muted,#D5F0EE)]'
                       }`}
                   />
                 );
@@ -2326,7 +2326,7 @@ export default function MarketPOS({
               {/* 12th slot - Page selector button */}
               <button
                 onClick={() => setShowPageSelectorModal(true)}
-                className="aspect-square border-2 border-blue-600 bg-blue-600 hover:bg-blue-700 text-white transition-all flex flex-col items-center justify-center text-xs leading-tight p-2"
+                className="aspect-square border-2 border-[var(--asin-accent,#1FA8A0)] bg-[var(--asin-accent,#1FA8A0)] hover:bg-[#178f88] text-white transition-all flex flex-col items-center justify-center text-xs leading-tight p-2"
               >
                 <Grid3x3 className="w-6 h-6 mb-1" />
                 <div className="text-[10px] font-semibold">
@@ -2378,7 +2378,7 @@ export default function MarketPOS({
               >
                 <Receipt className="w-5 h-5" />
                 <span>{t.sales}</span>
-                {sales.length > 0 && <span className={`text-[10px] px-1.5 py-0.5 -mt-0.5 ${buttonColorStyle === 'outline' ? 'bg-blue-100 text-blue-600' : 'bg-blue-500 text-white'}`}>{sales.length}</span>}
+                {sales.length > 0 && <span className={`text-[10px] px-1.5 py-0.5 -mt-0.5 ${buttonColorStyle === 'outline' ? 'bg-[var(--asin-accent-muted,#D5F0EE)] text-[var(--asin-accent,#1FA8A0)]' : 'bg-[var(--asin-accent,#1FA8A0)] text-white'}`}>{sales.length}</span>}
               </button>
               <button
                 onClick={() => setShowParkedReceiptsModal(true)}
@@ -2387,7 +2387,7 @@ export default function MarketPOS({
               >
                 <Package className="w-5 h-5" />
                 <span>{t.parkedReceiptsButton}</span>
-                {parkedReceipts.length > 0 && <span className={`text-[10px] px-1.5 py-0.5 -mt-0.5 ${buttonColorStyle === 'outline' ? 'bg-blue-100 text-blue-600' : 'bg-blue-500 text-white'}`}>{parkedReceipts.length}</span>}
+                {parkedReceipts.length > 0 && <span className={`text-[10px] px-1.5 py-0.5 -mt-0.5 ${buttonColorStyle === 'outline' ? 'bg-[var(--asin-accent-muted,#D5F0EE)] text-[var(--asin-accent,#1FA8A0)]' : 'bg-[var(--asin-accent,#1FA8A0)] text-white'}`}>{parkedReceipts.length}</span>}
               </button>
               <button
                 onClick={() => setShowMissingBarcodesModal(true)}
@@ -2485,7 +2485,7 @@ export default function MarketPOS({
       <div className={`bg-gradient-to-r from-gray-800 to-gray-900 text-white px-3 py-1 flex items-center justify-between text-xs border-t border-gray-700`}>
         {/* Left - Receipt Number, Store, Cash Register, Shift */}
         <div className={`flex items-center gap-3`}>
-          <div className="text-blue-400 font-medium">
+          <div className="text-[var(--asin-accent,#1FA8A0)] font-medium">
             {t.receiptTitle}: {receiptNumber}
           </div>
           <div className={`flex items-center gap-1.5 ${rtlMode ? 'flex-row-reverse' : ''}`}>
@@ -2512,32 +2512,32 @@ export default function MarketPOS({
         <div className="flex items-center gap-3 text-gray-300">
           <button
             onClick={() => setShowLanguageModal(true)}
-            className="flex items-center gap-1.5 hover:text-blue-300 transition-colors cursor-pointer"
+            className="flex items-center gap-1.5 hover:text-[var(--asin-accent-muted,#D5F0EE)] transition-colors cursor-pointer"
             title={t.language}
           >
-            <Globe className="w-3 h-3 text-purple-400" />
-            <span className="text-purple-400 hidden xs:inline">{t.language}</span>
+            <Globe className="w-3 h-3 text-[var(--asin-accent,#1FA8A0)]" />
+            <span className="text-[var(--asin-accent,#1FA8A0)] hidden xs:inline">{t.language}</span>
           </button>
 
           <button
             onClick={() => window.dispatchEvent(new CustomEvent('voiceAssistantToggle'))}
-            className="flex items-center gap-1.5 hover:text-blue-300 transition-colors cursor-pointer"
+            className="flex items-center gap-1.5 hover:text-[var(--asin-accent-muted,#D5F0EE)] transition-colors cursor-pointer"
             title="Sesli Asistan"
           >
-            <Mic className="w-3 h-3 text-indigo-400" />
-            <span className="text-indigo-400 hidden xs:inline">Sesli</span>
+            <Mic className="w-3 h-3 text-[var(--asin-accent,#1FA8A0)]" />
+            <span className="text-[var(--asin-accent,#1FA8A0)] hidden xs:inline">Sesli</span>
           </button>
 
           <button
             onClick={() => setShowShortcutOverlay(!showShortcutOverlay)}
-            className="flex items-center gap-1.5 hover:text-blue-300 transition-colors cursor-pointer"
+            className="flex items-center gap-1.5 hover:text-[var(--asin-accent-muted,#D5F0EE)] transition-colors cursor-pointer"
             title={t.keyboardShortcutsTitle}
           >
             <Keyboard className="w-3 h-3 text-green-400" />
             <span className="text-green-400 hidden xs:inline">{t.shortcuts}</span>
           </button>
 
-          <div className="flex items-center gap-1.5 cursor-pointer hover:text-blue-300" title={t.versionTitle}>
+          <div className="flex items-center gap-1.5 cursor-pointer hover:text-[var(--asin-accent-muted,#D5F0EE)]" title={t.versionTitle}>
             <span className="w-3 h-3 text-gray-400">i</span>
           </div>
         </div>
