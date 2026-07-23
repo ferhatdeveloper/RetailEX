@@ -99,25 +99,23 @@ jobs:
           tag_name: ${{ env.RELEASE_TAG }}
           name: AsinERP Portable ${{ env.PACKAGE_VERSION }}
           body: |
-            ## AsinERP Taşınabilir (Windows / USB-HDD)
+            ## AsinERP Taşınabilir (Windows / USB)
 
-            Zip **bağlanmamıştır**. Kopyala-yapıştır ile çalışmaz — hedef diske **writer** ile basın.
+            Kurulum gerekmez — zip'i açıp klasörü flash belleğe kopyalayın.
 
-            ### Kullanım (CD-ROM mantığı)
+            ### Kullanım
             1. `AsinERP-Portable-${{ env.PACKAGE_VERSION }}.zip` indirin ve açın
-            2. Açılan klasörde: `tools\Burn-To-Drive.cmd E:`
-               (veya `tools\AsinERP-Portable-Writer.ps1 -SourceDir . -TargetDrive E:`)
-            3. Writer `E:\AsinERP` altına basar ve `volume.bind` yazar — yalnızca o diskte açılır
-            4. `E:\AsinERP\AsinERP.exe` — veri: `data\config.db`
+            2. Klasörün tamamını USB'ye kopyalayın
+            3. `AsinERP.exe` çalıştırın
+            4. Ayarlar / veri: `data\config.db` (exe yanında — flash harfi değişse de kalır)
 
-            `portable.dat` / `volume.bind` silmeyin.
+            `portable.dat` dosyasını silmeyin.
 
             ### Notlar
             - NSIS kurulumu değildir (ayrı: `app-v*` Desktop App Release)
             - CI imzasız build (`WINDOWS_CODESIGN_DISABLE=1`)
             - Sürüm: `${{ env.PACKAGE_VERSION }}` (kök `package.json`)
             - WebView2 Runtime gerekir
-            - Geliştirici: `ASIN_PORTABLE_SKIP_BIND=1`
           files: dist/${{ env.PORTABLE_ZIP }}
           draft: false
           prerelease: false
