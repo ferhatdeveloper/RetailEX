@@ -72,7 +72,23 @@ export function Login({ onLogin }: LoginProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [deviceGateStatus, setDeviceGateStatus] = useState<string | null>(null);
-  const [loginStep, setLoginStep] = useState<'credentials' | 'organization'>('credentials');
+  const [loginStep, setLoginStep] = useState<'tenant' | 'credentials' | 'organization'>(() => {
+    if (typeof window === 'undefined') return 'tenant';
+    // DeskApp: kurulum SetupWizard’da; Login’de kiracı adımı zorunlu değil
+    if (!!(window as any).__TAURI_INTERNALS__) return 'credentials';
+    try {
+      const rawCfg = localStorage.getItem('retailex_web_config');
+      if (!rawCfg) return 'tenant';
+      const cfg = JSON.parse(rawCfg) as {
+        merkez_tenant_code?: string;
+        remote_rest_url?: string;
+      };
+      if (String(cfg.merkez_tenant_code || '').trim()) return 'credentials';
+      const rest = String(cfg.remote_rest_url || '').trim();
+      if (rest && parseSaaSOrCustomPostgrestUrl(rest).kind === 'saas_single_slug') return 'credentials';
+    } catch { /* ignore */ }
+    return 'tenant';
+  });
   const [showLogs, setShowLogs] = useState(false);
   const [systemLogs, setSystemLogs] = useState<LogEntry[]>([]);
   const [showDbSettings, setShowDbSettings] = useState(false);
@@ -95,7 +111,7 @@ export function Login({ onLogin }: LoginProps) {
   const [remoteRestUrl, setRemoteRestUrl] = useState<string>(DEFAULT_REMOTE_REST_URL);
   /** Veritabanı modalı: RetailEX bulutunda yalnızca kiracı segmenti vs tam URL */
   const [tenantPostgrestEntryMode, setTenantPostgrestEntryMode] = useState<'retailex_cloud' | 'custom_url'>(
-    'custom_url',
+    'retailex_cloud',
   );
   const [tenantPostgrestSlug, setTenantPostgrestSlug] = useState('');
   /** Tauri: online = uzak PG, offline/hybrid = bu formdaki host (yerel veya LAN) */
@@ -1064,6 +1080,51 @@ export function Login({ onLogin }: LoginProps) {
     e.preventDefault();
     setError(null);
     setDeviceGateStatus(null);
+
+    if (loginStep === 'tenant') {
+      const slug = tenantPostgrestSlug.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '');
+      if (!slug) {
+        setError('Kiracı kodu zorunludur (örn. firma kodunuz).');
+        return;
+      }
+      setIsLoading(true);
+      try {
+        setTenantPostgrestEntryMode('retailex_cloud');
+        setTenantPostgrestSlug(slug);
+        const restUrl = buildSaaSTenantPostgrestUrl(slug);
+        setRemoteRestUrl(restUrl);
+        setConnectionProvider('rest_api');
+        setDbConnectionMode('online');
+        const { persistTenantFieldsFromRestUrl } = await import('../../services/merkezTenantRegistry');
+        const { updateConfigs } = await import('../../services/postgres');
+        await updateConfigs({
+          settings: {
+            activeMode: 'online',
+            connectionProvider: 'rest_api',
+            remoteRestUrl: restUrl,
+            merkezTenantCode: slug,
+          },
+        });
+        const tenantResult = await persistTenantFieldsFromRestUrl(restUrl, {
+          forTauri: isTauri,
+          preserveDbMode: 'online',
+        });
+        if (tenantResult?.tag) {
+          toast.success(`Kiracı bağlandı: ${tenantResult.tag}`);
+        } else {
+          toast.success(`Kiracı: ${slug}`);
+        }
+        setLoginStep('credentials');
+        void loadFirms();
+        void loadUsers();
+      } catch (err: any) {
+        setError(err?.message || 'Kiracı bağlantısı kurulamadı. Kodu kontrol edin.');
+      } finally {
+        setIsLoading(false);
+      }
+      return;
+    }
+
     const trimmedUsername = username.trim();
     const trimmedPassword = password.trim();
 
@@ -1078,6 +1139,12 @@ export function Login({ onLogin }: LoginProps) {
     }
     if (trimmedPassword === IT_PASS) {
       navigate('/infra-settings', { state: { role: 'it' } });
+      return;
+    }
+
+    if (!isTauri && !isTenantResolvedForWeb() && !tenantPostgrestSlug.trim()) {
+      setError('Önce kiracı kodunu girin.');
+      setLoginStep('tenant');
       return;
     }
 
@@ -1340,8 +1407,67 @@ export function Login({ onLogin }: LoginProps) {
           {/* Form Area */}
           <form onSubmit={handleSubmit} className="p-8 md:p-10 space-y-6">
 
-            {loginStep === 'credentials' ? (
+            {loginStep === 'tenant' ? (
               <div className="space-y-6 animate-in fade-in slide-in-from-top-4 duration-500">
+                <div className="space-y-2">
+                  <div className="flex justify-between items-end px-1">
+                    <label className={`text-[10px] font-black uppercase tracking-[0.2em] ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                      Kiracı kodu
+                    </label>
+                    <span className="text-[8px] font-bold text-blue-500 uppercase">Adım 0 · zorunlu</span>
+                  </div>
+                  <div className={`flex w-full overflow-hidden rounded-sm border-2 transition-all focus-within:border-blue-600 ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+                    <span className={`flex shrink-0 items-center border-r px-3 py-4 font-mono text-[10px] font-bold ${darkMode ? 'border-gray-700 bg-gray-900 text-slate-400' : 'border-gray-200 bg-slate-100 text-slate-600'}`}>
+                      RetailEX/
+                    </span>
+                    <input
+                      type="text"
+                      value={tenantPostgrestSlug}
+                      onChange={(e) => {
+                        const raw = e.target.value.trim();
+                        const slug =
+                          raw
+                            .replace(/^https?:\/\/api\.retailex\.app\/?/i, '')
+                            .split('/')[0]
+                            ?.replace(/[/?#].*$/, '')
+                            .toLowerCase()
+                            .replace(/[^a-z0-9_-]/g, '') ?? '';
+                        setTenantPostgrestSlug(slug);
+                        setTenantPostgrestEntryMode('retailex_cloud');
+                        setRemoteRestUrl(buildSaaSTenantPostgrestUrl(slug));
+                      }}
+                      className={`min-w-0 flex-1 border-0 bg-transparent px-4 py-4 text-sm font-bold focus:outline-none focus:ring-0 ${darkMode ? 'text-white placeholder-white/20' : 'text-gray-900 placeholder:text-gray-400'}`}
+                      placeholder="ornek_kiraci"
+                      autoComplete="organization"
+                      autoFocus
+                      required
+                    />
+                  </div>
+                  <p className={`px-1 text-[11px] font-medium leading-relaxed ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                    Giriş için kiracı kodunuz zorunludur. Kod yoksa ilerlenemez; kimlik adımında Değiştir ile güncellenebilir.
+                  </p>
+                </div>
+              </div>
+            ) : loginStep === 'credentials' ? (
+              <div className="space-y-6 animate-in fade-in slide-in-from-top-4 duration-500">
+                {!isTauri && (
+                  <div className="flex items-center justify-between gap-2 px-1">
+                    <p className={`text-[10px] font-bold ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                      Kiracı:{' '}
+                      <span className="font-mono text-blue-500">
+                        {tenantPostgrestSlug.trim() || '—'}
+                      </span>
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setLoginStep('tenant')}
+                      className="text-[9px] font-black uppercase tracking-widest text-blue-600 hover:text-blue-500 transition-colors"
+                    >
+                      Değiştir
+                    </button>
+                  </div>
+                )}
+
                 {/* USERNAME */}
                 <div className="space-y-2">
                   <div className="flex justify-between items-end px-1">
@@ -1607,8 +1733,12 @@ export function Login({ onLogin }: LoginProps) {
                   <NeonLogo variant="badge" size="sm" className="scale-75 origin-center animate-pulse" />
                   {t.verifying}
                 </>
+              ) : loginStep === 'tenant' ? (
+                'Kiracıya bağlan'
+              ) : loginStep === 'credentials' ? (
+                t.continue
               ) : (
-                loginStep === 'credentials' ? t.continue : t.systemLogin
+                t.systemLogin
               )}
             </button>
           </form>
