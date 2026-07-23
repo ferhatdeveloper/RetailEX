@@ -138,6 +138,7 @@
     "tauri:dev": "npm run sumatra:fetch && cd DeskApp && tauri dev",
     "tauri:build": "npm run prebuild && npm run sumatra:fetch && npm run postgrest:fetch && node scripts/patch-installer-nsi-repo-root.mjs && node scripts/tauri-windows-signing-prep.mjs && node scripts/tauri-updater-ci-prep.mjs && node scripts/tauri-build-run.mjs && node scripts/verify-windows-installer-signature.mjs",
     "tauri:build:portable": "npm run prebuild && npm run sumatra:fetch && npm run postgrest:fetch && node scripts/tauri-windows-signing-prep.mjs && node scripts/tauri-build-portable-run.mjs && node scripts/pack-asin-portable-zip.mjs",
+    "portable:writer": "node scripts/asin-portable-writer.mjs",
     "desktop:ci:fetch": "node scripts/fetch-desktop-release-to-desktop.mjs",
     "desktop:ci:build": "node scripts/trigger-desktop-release.mjs",
     "desktop:ci:portable": "node scripts/trigger-desktop-portable-release.mjs",

@@ -44,7 +44,7 @@ enigo = "0.1.2" # Input Simulation (Mouse/Keyboard)
 screenshots = "0.8" # Screen Capture
 image = "0.24" # Image Processing (JPEG Encoding)
 
-windows = { version = "0.52", features = ["Win32_UI_Shell", "Win32_UI_WindowsAndMessaging", "Win32_Foundation"] }
+windows = { version = "0.52", features = ["Win32_UI_Shell", "Win32_UI_WindowsAndMessaging", "Win32_Foundation", "Win32_Storage_FileSystem"] }
 sha2 = "0.10"
 rust_decimal = { version = "1.32", features = ["serde-float", "db-tokio-postgres"] }
 lapin = "2.3" # RabbitMQ Client

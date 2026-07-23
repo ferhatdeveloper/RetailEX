@@ -34,29 +34,33 @@ const COPY_NAMES = [
   'sumatra',
 ];
 
-const README_TR = `AsinERP — Taşınabilir (USB) sürüm ${version}
+const README_TR = `AsinERP — Taşınabilir (USB/HDD) sürüm ${version}
 ========================================
 
-Kurulum gerekmez. Flash belleğe kopyalayıp çalıştırın.
+Bu zip BAĞLANMAMIŞtır. Kopyala-yapıştır ile çalışmaz.
+Medyaya yalnızca yazıcı araç ile basın (CD-ROM mantığı).
 
-1) Bu klasörün tamamını USB flash belleğe kopyalayın
-   (ör. E:\\AsinERP\\). Zip'i açtıktan sonra tek klasör olarak tutun.
+1) Hedef USB/HDD'yi bilgisayara takın (ör. E:).
 
-2) AsinERP.exe dosyasını çift tıklayın (pencere başlığı: AsinERP).
-   Windows WebView2 Runtime gerekir.
+2) Zip'i geçici bir klasöre açın, sonra yazıcıyı çalıştırın:
+   tools\\Burn-To-Drive.cmd E:
+   veya:
+   powershell -ExecutionPolicy Bypass -File tools\\AsinERP-Portable-Writer.ps1 -List
+   powershell -ExecutionPolicy Bypass -File tools\\AsinERP-Portable-Writer.ps1 -SourceDir . -TargetDrive E:
 
-3) Girişte önce kiracı kodu istenir (api.retailex.app/{kod}).
-   Yerel PostgreSQL kullanılmaz — bulut PostgREST.
+   Repo kökünden (geliştirici):
+   npm run portable:writer -- --zip dist\\AsinERP-Portable-${version}.zip --target E:
 
-4) Ayarlar EXE yanındaki data\\ klasöründe tutulur:
-   - data\\config.db
-   - data\\logs\\
-   - data\\backups\\
+3) Yazıcı, E:\\AsinERP altına kopyalar ve volume.bind dosyasını
+   o diskin volume serial'ı ile yazar. Yalnızca o diskte açılır.
 
-Önemli: Flash harfi (D:, E:, …) değişse bile veri aynı klasörde kalır.
-         portable.dat dosyasını silmeyin — taşınabilir mod işaretidir.
+4) AsinERP.exe çalıştırın. WebView2 Runtime gerekir.
+   Ayarlar: data\\config.db (exe yanında).
 
-İsteğe bağlı: ASIN_PORTABLE=1 ortam değişkeni de portable modu açar.
+Önemli:
+- volume.bind / portable.dat silmeyin.
+- Başka diske kopyalanan klasör başlamaz (anlaşılır hata).
+- Geliştirici: ASIN_PORTABLE_SKIP_BIND=1 ile bağlama atlanır.
 
 Sürüm: ${version} (kök package.json)
 `;
@@ -118,6 +122,27 @@ function main() {
   fs.writeFileSync(
     path.join(stageRoot, 'data', '.keep'),
     'Bu klasör flash üzerinde config/log/yedek tutar.\n',
+    'utf8',
+  );
+
+  // Writer (CD-ROM mantığı) — CI zip'te volume.bind YOK; basım writer ile yapılır
+  const toolsDir = path.join(stageRoot, 'tools');
+  ensureDir(toolsDir);
+  const writerPs1 = path.join(root, 'scripts', 'AsinERP-Portable-Writer.ps1');
+  if (fs.existsSync(writerPs1)) {
+    fs.copyFileSync(writerPs1, path.join(toolsDir, 'AsinERP-Portable-Writer.ps1'));
+    console.log('[pack-portable] kopyalandı: tools/AsinERP-Portable-Writer.ps1');
+  } else {
+    console.warn('[pack-portable] UYARI: writer PS1 yok:', writerPs1);
+  }
+  const burnCmd = path.join(root, 'scripts', 'Burn-To-Drive.cmd');
+  if (fs.existsSync(burnCmd)) {
+    fs.copyFileSync(burnCmd, path.join(toolsDir, 'Burn-To-Drive.cmd'));
+    console.log('[pack-portable] kopyalandı: tools/Burn-To-Drive.cmd');
+  }
+  fs.writeFileSync(
+    path.join(stageRoot, 'UNBOUND.txt'),
+    'Bu paket bağlanmamıştır. Çalıştırmadan önce tools\\AsinERP-Portable-Writer.ps1 ile hedef diske basın.\n',
     'utf8',
   );
 

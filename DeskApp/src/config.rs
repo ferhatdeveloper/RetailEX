@@ -320,6 +320,7 @@ pub fn exe_dir() -> PathBuf {
 }
 
 /// Taşınabilir (USB) mod: `ASIN_PORTABLE=1` / `RETAILEX_PORTABLE=1` veya exe yanında `portable.dat`.
+/// Portable çalıştırma: `volume.bind` (writer ile basılır) — bkz. `portable_bind`.
 pub fn is_portable_mode() -> bool {
     for key in ["ASIN_PORTABLE", "RETAILEX_PORTABLE"] {
         if let Ok(v) = std::env::var(key) {

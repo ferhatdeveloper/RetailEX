@@ -16,6 +16,7 @@ mod db;
 mod backup_service;
 mod bank_ops;
 mod license;
+mod portable_bind;
 mod caller_id_serial;
 mod rongta_scale;
 mod platform;
@@ -2025,6 +2026,16 @@ fn check_bootstrap_config(app: &tauri::AppHandle) {
 }
 
 fn main() {
+    if let Err(msg) = portable_bind::enforce_portable_volume_binding() {
+        eprintln!("[portable_bind] {msg}");
+        let _ = native_dialog::MessageDialog::new()
+            .set_title("AsinERP — Disk bağlama")
+            .set_text(&msg)
+            .set_type(native_dialog::MessageType::Error)
+            .show_alert();
+        std::process::exit(2);
+    }
+
     tauri::Builder::default()
     .plugin(tauri_plugin_shell::init())
     .plugin(tauri_plugin_process::init())
