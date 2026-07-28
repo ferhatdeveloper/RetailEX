@@ -1595,8 +1595,10 @@ export const beautyService = {
                             })(),
             });
             if (Object.keys(patchBody).length === 0) return;
+            const { stripPostgrestOpPrefix } = await import('./api/postgrestClient');
+            const rawId = stripPostgrestOpPrefix(String(id));
             await postgrest.patch(
-                `/rex_${fn}_customers?id=eq.${encodeURIComponent(id)}`,
+                `/rex_${fn}_customers?id=eq.${encodeURIComponent(rawId)}`,
                 patchBody,
                 { schema: 'public', prefer: 'return=minimal' }
             );

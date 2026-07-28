@@ -86,6 +86,8 @@ type PreviewData = {
   /** Kayıtlı terminal adı (bilgi); şube senkronunu kasa moduna çevirmez */
   registeredTerminal?: string;
   receiveEnabled: boolean;
+  /** Özet kısmen/tamamen yüklenemezse kullanıcıya göster */
+  loadError?: string;
 };
 
 type Props = {
@@ -94,7 +96,7 @@ type Props = {
   onComplete?: () => void;
 };
 
-const AUTO_SYNC_INTERVAL_PRESETS = [15, 30, 60, 120, 300] as const;
+const AUTO_SYNC_INTERVAL_PRESETS = [5, 8, 10, 15, 30, 60, 120] as const;
 
 const TRANSPORT_OPTIONS: { value: HybridSyncTransport; label: string }[] = [
   { value: 'both', label: 'WebSocket + Periyodik' },
@@ -319,7 +321,7 @@ export function HybridSyncModal({ open, onOpenChange, onComplete }: Props) {
   const [autoSyncExpanded, setAutoSyncExpanded] = useState(false);
   const [autoSyncEnabled, setAutoSyncEnabled] = useState(() => isHybridPeriodicAutoSyncEnabled());
   const [autoSyncIntervalSec, setAutoSyncIntervalSec] = useState(
-    () => DB_SETTINGS.hybridSyncIntervalSec ?? 30,
+    () => DB_SETTINGS.hybridSyncIntervalSec ?? 8,
   );
   const [autoSyncTransport, setAutoSyncTransport] = useState<HybridSyncTransport>(
     () => DB_SETTINGS.hybridSyncTransport ?? 'both',
@@ -347,7 +349,7 @@ export function HybridSyncModal({ open, onOpenChange, onComplete }: Props) {
   useEffect(() => {
     if (!open) return;
     setAutoSyncEnabled(isHybridPeriodicAutoSyncEnabled());
-    setAutoSyncIntervalSec(DB_SETTINGS.hybridSyncIntervalSec ?? 30);
+    setAutoSyncIntervalSec(DB_SETTINGS.hybridSyncIntervalSec ?? 8);
     setAutoSyncTransport(DB_SETTINGS.hybridSyncTransport ?? 'both');
     setWsStatus(wsService.getStatus());
     const wsPoll = window.setInterval(() => setWsStatus(wsService.getStatus()), 2000);
@@ -426,9 +428,14 @@ export function HybridSyncModal({ open, onOpenChange, onComplete }: Props) {
 
   const loadPreview = useCallback(async () => {
     setLoadingPreview(true);
+    const receiveEnabled = DB_SETTINGS.hybridSyncDirection !== 'local_to_remote';
+    const emptyMaster: RemoteMasterSnapshot = {
+      queueAvailable: false,
+      queuePending: 0,
+      tables: [],
+    };
     try {
       const kasaCtx = await resolveKasaPullContext(user?.store_id || null);
-      const receiveEnabled = DB_SETTINGS.hybridSyncDirection !== 'local_to_remote';
       const outboundFilter = buildSyncFilter({
         storeId: user?.store_id || null,
         userId: null,
@@ -440,12 +447,40 @@ export function HybridSyncModal({ open, onOpenChange, onComplete }: Props) {
         terminalName: kasaCtx?.terminalName ?? null,
       });
 
-      await pruneRedundantSyncQueue(LOCAL_CONFIG, ERP_SETTINGS.firmNr);
+      try {
+        await pruneRedundantSyncQueue(LOCAL_CONFIG, ERP_SETTINGS.firmNr);
+      } catch {
+        /* prune opsiyonel */
+      }
 
-      const branchStats = await getBranchSyncStats(outboundFilter);
-      const remoteMaster = await getRemoteMasterSnapshot(ERP_SETTINGS.firmNr);
-      const outboundBreakdown = await getPendingQueueBreakdown(LOCAL_CONFIG, outboundFilter);
-      const recentQueueErrors = await getSyncQueueRecentErrors(LOCAL_CONFIG, outboundFilter, 40);
+      let branchStats = { localPending: 0, remotePending: -1, lastSyncedAt: null as string | null };
+      let loadError: string | undefined;
+      try {
+        branchStats = await getBranchSyncStats(outboundFilter);
+      } catch (e) {
+        loadError = e instanceof Error ? e.message : String(e);
+      }
+
+      let remoteMaster = emptyMaster;
+      try {
+        remoteMaster = await getRemoteMasterSnapshot(ERP_SETTINGS.firmNr);
+      } catch {
+        /* merkez snapshot yok */
+      }
+
+      let outboundBreakdown: SyncQueueBreakdownRow[] = [];
+      try {
+        outboundBreakdown = await getPendingQueueBreakdown(LOCAL_CONFIG, outboundFilter);
+      } catch {
+        /* yerel kırılım yok */
+      }
+
+      let recentQueueErrors: SyncQueueErrorRow[] = [];
+      try {
+        recentQueueErrors = await getSyncQueueRecentErrors(LOCAL_CONFIG, outboundFilter, 40);
+      } catch {
+        /* hata listesi opsiyonel */
+      }
 
       let inboundBreakdown: SyncQueueBreakdownRow[] = [];
       const inboundQueueAvailable = branchStats.remotePending >= 0;
@@ -466,7 +501,7 @@ export function HybridSyncModal({ open, onOpenChange, onComplete }: Props) {
         }
       }
 
-      setPreview({
+      const previewData: PreviewData = {
         localPending: branchStats.localPending,
         inboundPending,
         inboundQueueAvailable,
@@ -475,7 +510,9 @@ export function HybridSyncModal({ open, onOpenChange, onComplete }: Props) {
         inboundBreakdown,
         registeredTerminal: kasaCtx?.terminalName,
         receiveEnabled,
-      });
+        loadError,
+      };
+      setPreview(previewData);
       setQueueErrors(recentQueueErrors);
       setSessionErrors([]);
       setErrorsExpanded(recentQueueErrors.length > 0);
@@ -490,22 +527,37 @@ export function HybridSyncModal({ open, onOpenChange, onComplete }: Props) {
         {
           id: 'receive',
           title: 'Merkezden yerel al',
-          description: formatInboundPreview({
-            localPending: branchStats.localPending,
-            inboundPending,
-            inboundQueueAvailable,
-            remoteMaster,
-            outboundBreakdown,
-            inboundBreakdown,
-            receiveEnabled,
-          }),
+          description: formatInboundPreview(previewData),
           status: receiveEnabled ? 'pending' : 'skipped',
         },
       ]);
       setFinished(false);
-    } catch {
-      setPreview(null);
-      setSteps([]);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      setPreview({
+        localPending: 0,
+        inboundPending: -1,
+        inboundQueueAvailable: false,
+        remoteMaster: emptyMaster,
+        outboundBreakdown: [],
+        inboundBreakdown: [],
+        receiveEnabled,
+        loadError: msg,
+      });
+      setSteps([
+        {
+          id: 'send',
+          title: 'Yerelden merkeze gönder',
+          description: 'Özet alınamadı',
+          status: 'pending',
+        },
+        {
+          id: 'receive',
+          title: 'Merkezden yerel al',
+          description: receiveEnabled ? 'Özet alınamadı' : 'Senkron yönü yalnızca gönderim',
+          status: receiveEnabled ? 'pending' : 'skipped',
+        },
+      ]);
     } finally {
       setLoadingPreview(false);
     }
@@ -845,6 +897,11 @@ export function HybridSyncModal({ open, onOpenChange, onComplete }: Props) {
           </div>
         ) : preview ? (
           <div className="space-y-4">
+            {preview.loadError ? (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-950">
+                Yerel özet kısmen yüklenemedi: {preview.loadError}
+              </div>
+            ) : null}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="rounded-lg border border-blue-200 p-3 space-y-1 bg-blue-50/80">
                 <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-blue-800">
@@ -1142,7 +1199,27 @@ export function HybridSyncModal({ open, onOpenChange, onComplete }: Props) {
             ) : null}
           </div>
         ) : (
-          <p className="text-sm text-gray-600 py-4">Özet yüklenemedi. Hibrit mod ve bağlantıyı kontrol edin.</p>
+          <div className="space-y-3 py-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="rounded-lg border border-blue-200 p-3 space-y-1 bg-blue-50/80">
+                <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-blue-800">
+                  <ArrowUpFromLine className="h-3.5 w-3.5" />
+                  Gönderilecek
+                </div>
+                <p className="text-lg font-bold text-gray-900 tabular-nums">—</p>
+              </div>
+              <div className="rounded-lg border border-emerald-200 p-3 space-y-1 bg-emerald-50/80">
+                <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-emerald-800">
+                  <ArrowDownToLine className="h-3.5 w-3.5" />
+                  Alınacak
+                </div>
+                <p className="text-lg font-bold text-gray-900 tabular-nums">—</p>
+              </div>
+            </div>
+            <p className="text-sm text-gray-600">
+              Özet yüklenemedi. Merkez REST URL / köprü bağlantısını kontrol edip Yenile’yi deneyin.
+            </p>
+          </div>
         )}
         </PercentBodyModalScrollBody>
 

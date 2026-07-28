@@ -16,6 +16,7 @@ import { useAuthStore } from '../store/authStore';
 import { useConfigStore, type NetworkPolicy } from '../store/configStore';
 import { useConnectivityStore } from '../store/connectivityStore';
 import { flushPendingMutations } from '../offline/syncEngine';
+import { pullCatalogSnapshots } from '../offline/catalogSync';
 import { MENU_SECTIONS } from '../config/menuConfig';
 import { navigateToModule } from '../navigation/navigateToModule';
 import {
@@ -97,6 +98,21 @@ export function MoreScreen() {
     );
   };
 
+  const onCatalogPull = async () => {
+    const result = await pullCatalogSnapshots();
+    if (!result.productsOk && !result.customersOk) {
+      Alert.alert(
+        'Katalog yenile',
+        'Canlı bağlantı yok veya çekim tamamlanamadı (ürün+cari).',
+      );
+      return;
+    }
+    const parts: string[] = [];
+    parts.push(result.productsOk ? 'Ürünler güncellendi' : 'Ürünler başarısız');
+    parts.push(result.customersOk ? 'Cariler güncellendi' : 'Cariler başarısız');
+    Alert.alert('Katalog yenile (ürün+cari)', parts.join('\n'));
+  };
+
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
       <ScreenHeader
@@ -160,6 +176,12 @@ export function MoreScreen() {
             style={{ marginTop: 8 }}
           />
         ) : null}
+        <PrimaryButton
+          label="Katalog yenile (ürün+cari)"
+          onPress={() => void onCatalogPull()}
+          variant="ghost"
+          style={{ marginTop: 8 }}
+        />
 
         <Text style={[styles.sec, { color: colors.text, marginTop: 12 }]}>{t('settings')}</Text>
         <PrimaryButton

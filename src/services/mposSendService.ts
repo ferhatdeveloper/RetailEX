@@ -213,7 +213,7 @@ export async function sendMposInfoToKasa(opts: {
       const r = await enqueueEnterpriseBulk({
         type: 'product',
         onlyActive: true,
-        limit: 5000,
+        limit: 8000,
         targetStoreId: storeId,
         onlyChanged: syncMode === 'incremental',
         changedSince: syncMode === 'incremental' ? dateFrom : undefined,
@@ -231,7 +231,7 @@ export async function sendMposInfoToKasa(opts: {
       const r = await enqueueEnterpriseBulk({
         type: 'customer',
         onlyActive: true,
-        limit: 5000,
+        limit: 8000,
         targetStoreId: storeId,
         onlyChanged: syncMode === 'incremental',
         changedSince: syncMode === 'incremental' ? dateFrom : undefined,

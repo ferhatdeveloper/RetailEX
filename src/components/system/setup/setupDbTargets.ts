@@ -108,7 +108,7 @@ export function needsLocalDatabaseStep(
 
 function normalizeSetupSyncInterval(raw: unknown): number {
   const n = Number(raw);
-  if (!Number.isFinite(n)) return 30;
+  if (!Number.isFinite(n)) return 8;
   return Math.min(3600, Math.max(5, Math.round(n)));
 }
 

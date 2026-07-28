@@ -323,7 +323,7 @@ export function startUnifiedHybridAutoSync(opts?: {
   };
 
   void tick();
-  const sec = opts?.intervalSec ?? DB_SETTINGS.hybridSyncIntervalSec ?? 30;
+  const sec = opts?.intervalSec ?? DB_SETTINGS.hybridSyncIntervalSec ?? 8;
   unifiedTimer = window.setInterval(() => void tick(), Math.max(5, sec) * 1000);
 
   unifiedStopFn = () => {

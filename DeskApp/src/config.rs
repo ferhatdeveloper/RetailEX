@@ -104,7 +104,7 @@ fn default_hybrid_sync_direction() -> String {
 }
 
 fn default_hybrid_sync_interval_sec() -> i32 {
-    30
+    8
 }
 
 fn default_hybrid_sync_transport() -> String {

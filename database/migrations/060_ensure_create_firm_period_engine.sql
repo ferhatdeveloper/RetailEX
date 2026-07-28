@@ -146,7 +146,8 @@ BEGIN
       call_last_note TEXT,
       call_last_at TIMESTAMPTZ,
       is_active    BOOLEAN DEFAULT true,
-      created_at   TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+      created_at   TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+      updated_at   TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
     );
   ', v_prefix || '_customers');
 
@@ -173,7 +174,8 @@ BEGIN
       notes                TEXT,
       balance              DECIMAL(15,2) DEFAULT 0,
       is_active            BOOLEAN DEFAULT true,
-      created_at           TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+      created_at           TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+      updated_at           TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
     );
   ', v_prefix || '_suppliers');
 

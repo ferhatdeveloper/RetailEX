@@ -581,7 +581,7 @@ async fn fetch_pending_batch(
                          OR (data->>'store_id')::uuid = $1
                        )
                      ORDER BY created_at ASC
-                     LIMIT 50",
+                     LIMIT 120",
                     &[&sid],
                 )
                 .await
@@ -600,7 +600,7 @@ async fn fetch_pending_batch(
                              OR terminal_name = $2
                            )
                          ORDER BY created_at ASC
-                         LIMIT 50",
+                         LIMIT 120",
                         &[&sid, &tn],
                     )
                     .await
@@ -612,7 +612,7 @@ async fn fetch_pending_batch(
                          WHERE status = 'pending' AND retry_count < 10
                            AND target_store_id = $1
                          ORDER BY created_at ASC
-                         LIMIT 50",
+                         LIMIT 120",
                         &[&sid],
                     )
                     .await
@@ -626,7 +626,7 @@ async fn fetch_pending_batch(
                      FROM sync_queue
                      WHERE status = 'pending' AND retry_count < 10
                      ORDER BY created_at ASC
-                     LIMIT 50",
+                     LIMIT 120",
                     &[],
                 )
                 .await
@@ -646,7 +646,7 @@ async fn sync_one_direction(
         .filter(|s| !s.trim().is_empty())
         .and_then(|s| uuid::Uuid::parse_str(s).ok());
 
-    for _round in 0..100 {
+    for _round in 0..200 {
         let rows = fetch_pending_batch(source, store_uuid, terminal_name, select_mode)
             .await
             .map_err(|e| format_pg_error(e))?;
@@ -876,7 +876,7 @@ async fn sync_pg_to_postgrest(
         .filter(|s| !s.trim().is_empty())
         .and_then(|s| uuid::Uuid::parse_str(s).ok());
 
-    for _round in 0..100 {
+    for _round in 0..200 {
         let rows = fetch_pending_batch(source, store_uuid, None, QueueSelectMode::BranchOutbound)
             .await
             .map_err(|e| format_pg_error(e))?;
@@ -1056,23 +1056,23 @@ async fn sync_postgrest_to_pg(
     } else if let Some(sid) = store_id.filter(|s| !s.trim().is_empty()) {
         if let Ok(u) = uuid::Uuid::parse_str(sid) {
             format!(
-                "{}/sync_queue?status=eq.pending&retry_count=lt.10&or=(source_store_id.eq.{},target_store_id.eq.{})&order=created_at.asc&limit=50&select=id,table_name,record_id,action,data",
+                "{}/sync_queue?status=eq.pending&retry_count=lt.10&or=(source_store_id.eq.{},target_store_id.eq.{})&order=created_at.asc&limit=120&select=id,table_name,record_id,action,data",
                 base, u, u
             )
         } else {
             format!(
-                "{}/sync_queue?status=eq.pending&retry_count=lt.10&order=created_at.asc&limit=50&select=id,table_name,record_id,action,data",
+                "{}/sync_queue?status=eq.pending&retry_count=lt.10&order=created_at.asc&limit=120&select=id,table_name,record_id,action,data",
                 base
             )
         }
     } else {
         format!(
-            "{}/sync_queue?status=eq.pending&retry_count=lt.10&order=created_at.asc&limit=50&select=id,table_name,record_id,action,data",
+            "{}/sync_queue?status=eq.pending&retry_count=lt.10&order=created_at.asc&limit=120&select=id,table_name,record_id,action,data",
             base
         )
     };
 
-    for _round in 0..100 {
+    for _round in 0..200 {
         let res = http
             .get(&query)
             .header("Accept", "application/json")

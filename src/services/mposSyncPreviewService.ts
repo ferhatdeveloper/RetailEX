@@ -127,8 +127,8 @@ async function countMasterChanges(opts: {
       pg,
       `SELECT COUNT(*)::text AS cnt FROM ${table} t
        WHERE COALESCE(t.is_active, true) = true
-         AND ($1::date IS NULL OR t.updated_at >= $1::date)
-         AND ($2::date IS NULL OR t.updated_at < ($2::date + interval '1 day'))`,
+         AND ($1::date IS NULL OR COALESCE(t.updated_at, t.created_at) >= $1::date)
+         AND ($2::date IS NULL OR COALESCE(t.updated_at, t.created_at) < ($2::date + interval '1 day'))`,
       [changedSince, changedUntil],
     );
     return Number(rows[0]?.cnt ?? 0);

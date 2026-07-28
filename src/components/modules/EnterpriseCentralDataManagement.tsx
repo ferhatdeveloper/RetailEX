@@ -126,7 +126,7 @@ export function EnterpriseCentralDataManagement() {
 
   // Yeni ayarlar
   const [messageCheckInterval, setMessageCheckInterval] = useState(
-    () => DB_SETTINGS.hybridSyncIntervalSec ?? 30,
+    () => DB_SETTINGS.hybridSyncIntervalSec ?? 8,
   );
   const [dateFilter, setDateFilter] = useState({ start: '', end: '' });
   const [bulkSearch, setBulkSearch] = useState('');

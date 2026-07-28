@@ -1604,20 +1604,51 @@ BEGIN
     ) INTO v_has_updated_at;
 
     IF v_has_updated_at AND p_changed_since IS NOT NULL THEN
+      -- Artımlı: aynı imzadaki completed atlanır; updated_at değişmişse yeniden kuyruk
+      v_sql := format(
+        $q$
+        SELECT t.id, COALESCE(NULLIF(t.firm_nr, ''), %L)::varchar AS firm_nr, to_jsonb(t) AS data
+        FROM %I t
+        WHERE t.updated_at >= %L::timestamptz
+        AND NOT EXISTS (
+          SELECT 1 FROM sync_queue sq
+          WHERE sq.table_name = %L AND sq.record_id = t.id
+            AND sq.status = 'pending' AND sq.retry_count < 10
+        )
+        AND NOT EXISTS (
+          SELECT 1 FROM sync_queue sq
+          WHERE sq.table_name = %L AND sq.record_id = t.id
+            AND sq.status = 'completed'
+            AND COALESCE(sq.data->>'updated_at', md5(sq.data::text))
+                IS NOT DISTINCT FROM COALESCE(t.updated_at::text, md5(to_jsonb(t)::text))
+        )
+        ORDER BY t.updated_at ASC NULLS LAST
+        LIMIT %s
+        $q$,
+        v_firm_padded,
+        v_table.tablename,
+        p_changed_since,
+        v_table.tablename,
+        v_table.tablename,
+        v_limit
+      );
+    ELSIF v_has_updated_at THEN
       v_sql := format(
         $q$
         SELECT t.id, COALESCE(NULLIF(t.firm_nr, ''), %L)::varchar AS firm_nr, to_jsonb(t) AS data
         FROM %I t
         WHERE NOT EXISTS (
           SELECT 1 FROM sync_queue sq
-          WHERE sq.table_name = %L AND sq.record_id = t.id AND sq.status = 'completed'
+          WHERE sq.table_name = %L AND sq.record_id = t.id
+            AND sq.status = 'pending' AND sq.retry_count < 10
         )
         AND NOT EXISTS (
           SELECT 1 FROM sync_queue sq
           WHERE sq.table_name = %L AND sq.record_id = t.id
-            AND sq.status = 'pending' AND sq.retry_count < 10
+            AND sq.status = 'completed'
+            AND COALESCE(sq.data->>'updated_at', md5(sq.data::text))
+                IS NOT DISTINCT FROM COALESCE(t.updated_at::text, md5(to_jsonb(t)::text))
         )
-        AND t.updated_at >= %L::timestamptz
         ORDER BY t.updated_at ASC NULLS LAST
         LIMIT %s
         $q$,
@@ -1625,7 +1656,6 @@ BEGIN
         v_table.tablename,
         v_table.tablename,
         v_table.tablename,
-        p_changed_since,
         v_limit
       );
     ELSE
@@ -2199,7 +2229,8 @@ BEGIN
       call_last_note TEXT,
       call_last_at TIMESTAMPTZ,
       is_active    BOOLEAN DEFAULT true,
-      created_at   TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+      created_at   TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+      updated_at   TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
     );
   ', v_prefix || '_customers');
 
@@ -2226,7 +2257,8 @@ BEGIN
       notes                TEXT,
       balance              DECIMAL(15,2) DEFAULT 0,
       is_active            BOOLEAN DEFAULT true,
-      created_at           TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+      created_at           TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+      updated_at           TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
     );
   ', v_prefix || '_suppliers');
 

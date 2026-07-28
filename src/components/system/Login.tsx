@@ -118,7 +118,7 @@ export function Login({ onLogin }: LoginProps) {
   const [dbConnectionMode, setDbConnectionMode] = useState<ConnectionMode>('hybrid');
   const [hybridReadPreference, setHybridReadPreference] = useState<HybridReadPreference>('local_first');
   const [hybridSyncDirection, setHybridSyncDirection] = useState<HybridSyncDirection>('local_to_remote');
-  const [hybridSyncIntervalSec, setHybridSyncIntervalSec] = useState(30);
+  const [hybridSyncIntervalSec, setHybridSyncIntervalSec] = useState(8);
   const [hybridSyncTransport, setHybridSyncTransport] = useState<HybridSyncTransport>('both');
   const [isDbTestLoading, setIsDbTestLoading] = useState(false);
   const [isHybridSyncLoading, setIsHybridSyncLoading] = useState(false);
@@ -302,7 +302,7 @@ export function Login({ onLogin }: LoginProps) {
       setDbConnectionMode(DB_SETTINGS.activeMode);
       setHybridReadPreference(DB_SETTINGS.hybridReadPreference);
       setHybridSyncDirection(DB_SETTINGS.hybridSyncDirection);
-      setHybridSyncIntervalSec(DB_SETTINGS.hybridSyncIntervalSec ?? 30);
+      setHybridSyncIntervalSec(DB_SETTINGS.hybridSyncIntervalSec ?? 8);
       setHybridSyncTransport(DB_SETTINGS.hybridSyncTransport ?? 'both');
     });
   }, [isTauri]);
@@ -320,7 +320,7 @@ export function Login({ onLogin }: LoginProps) {
       applyRemoteRestUrlToTenantInputs(restLoaded);
       setHybridReadPreference(DB_SETTINGS.hybridReadPreference);
       setHybridSyncDirection(DB_SETTINGS.hybridSyncDirection);
-      setHybridSyncIntervalSec(DB_SETTINGS.hybridSyncIntervalSec ?? 30);
+      setHybridSyncIntervalSec(DB_SETTINGS.hybridSyncIntervalSec ?? 8);
       setHybridSyncTransport(DB_SETTINGS.hybridSyncTransport ?? 'both');
       setDbConfig({
         host: LOCAL_CONFIG.host,

@@ -63,11 +63,30 @@ export function normalizeHybridSyncDirection(raw: unknown): HybridSyncDirection 
   return 'local_to_remote';
 }
 
-/** Hibrit otomatik senkron aralığı (saniye): 5–3600, varsayılan 30 */
+/** Hibrit otomatik senkron aralığı (saniye): 5–3600, varsayılan 8 */
 export function normalizeHybridSyncIntervalSec(raw: unknown): number {
   const n = Number(raw);
-  if (!Number.isFinite(n)) return 30;
+  if (!Number.isFinite(n)) return 8;
   return Math.min(3600, Math.max(5, Math.round(n)));
+}
+
+const HYBRID_SYNC_INTERVAL_FAST_V1 = 'retailex_sync_interval_fast_v1';
+
+/**
+ * Config yüklerken bir kez: eski varsayılan 30 sn → 8 sn.
+ * Kullanıcı sonra bilinçli 30 seçerse flag sayesinde korunur.
+ */
+export function loadHybridSyncIntervalSec(raw: unknown): number {
+  try {
+    if (typeof localStorage !== 'undefined' && localStorage.getItem(HYBRID_SYNC_INTERVAL_FAST_V1) !== '1') {
+      localStorage.setItem(HYBRID_SYNC_INTERVAL_FAST_V1, '1');
+      const n = Number(raw);
+      if (!Number.isFinite(n) || n === 30) return 8;
+    }
+  } catch {
+    /* localStorage yok (SSR vb.) */
+  }
+  return normalizeHybridSyncIntervalSec(raw);
 }
 
 export function normalizeHybridSyncTransport(raw: unknown): HybridSyncTransport {
@@ -148,7 +167,7 @@ export let DB_SETTINGS = {
   lastSync: null as string | null,
   hybridReadPreference: 'local_first' as HybridReadPreference,
   hybridSyncDirection: 'local_to_remote' as HybridSyncDirection,
-  hybridSyncIntervalSec: 30,
+  hybridSyncIntervalSec: 8,
   hybridSyncTransport: 'both' as HybridSyncTransport,
   merkezTenantCode: '' as string,
   centralWsUrl: '' as string,
@@ -521,7 +540,7 @@ function applyWebLocalStorageConfig(config: any): void {
   DB_SETTINGS.hybridSyncDirection = normalizeHybridSyncDirection(
     config.hybrid_sync_direction ?? (config as { hybridSyncDirection?: unknown }).hybridSyncDirection
   );
-  DB_SETTINGS.hybridSyncIntervalSec = normalizeHybridSyncIntervalSec(
+  DB_SETTINGS.hybridSyncIntervalSec = loadHybridSyncIntervalSec(
     config.hybrid_sync_interval_sec ?? (config as { hybridSyncIntervalSec?: unknown }).hybridSyncIntervalSec
   );
   DB_SETTINGS.hybridSyncTransport = normalizeHybridSyncTransport(
@@ -679,7 +698,7 @@ export async function initializeFromSQLite(preloadedConfig?: any) {
           : '';
       DB_SETTINGS.hybridReadPreference = normalizeHybridReadPreference(config.hybrid_read_preference);
       DB_SETTINGS.hybridSyncDirection = normalizeHybridSyncDirection(config.hybrid_sync_direction);
-      DB_SETTINGS.hybridSyncIntervalSec = normalizeHybridSyncIntervalSec(config.hybrid_sync_interval_sec);
+      DB_SETTINGS.hybridSyncIntervalSec = loadHybridSyncIntervalSec(config.hybrid_sync_interval_sec);
       DB_SETTINGS.hybridSyncTransport = normalizeHybridSyncTransport(config.hybrid_sync_transport);
 
       DB_SETTINGS.merkezTenantCode = String(config.merkez_tenant_code ?? '').trim();

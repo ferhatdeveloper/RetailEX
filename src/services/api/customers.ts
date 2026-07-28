@@ -152,12 +152,13 @@ export const customerAPI = {
     try {
       const tableName = `rex_${ERP_SETTINGS.firmNr}_customers`;
       if (DB_SETTINGS.connectionProvider === 'rest_api') {
-        const { postgrest } = await import('./postgrestClient');
+        const { postgrest, stripPostgrestOpPrefix } = await import('./postgrestClient');
+        const rawId = stripPostgrestOpPrefix(String(id));
         const rows = await postgrest.get<any[]>(
           `/${tableName}`,
           {
             select: '*',
-            id: `eq.${id}`,
+            id: `eq.${rawId}`,
             firm_nr: `eq.${ERP_SETTINGS.firmNr}`,
             limit: 1,
           },
@@ -450,7 +451,8 @@ export const customerAPI = {
 
       const tableName = `rex_${ERP_SETTINGS.firmNr}_customers`;
       if (DB_SETTINGS.connectionProvider === 'rest_api') {
-        const { postgrest } = await import('./postgrestClient');
+        const { postgrest, stripPostgrestOpPrefix } = await import('./postgrestClient');
+        const rawId = stripPostgrestOpPrefix(String(id));
         const patchBody: Record<string, unknown> = {};
         Object.entries(updates).forEach(([key, value]) => {
           if (key === 'id' || value === undefined) return;
@@ -459,14 +461,14 @@ export const customerAPI = {
           const col = mapped ?? key;
           patchBody[col] = value;
         });
-        if (Object.keys(patchBody).length === 0) return this.getById(id);
+        if (Object.keys(patchBody).length === 0) return this.getById(rawId);
         const rows = await postgrest.patch<any[]>(
-          `/${tableName}?id=eq.${encodeURIComponent(id)}&firm_nr=eq.${encodeURIComponent(String(ERP_SETTINGS.firmNr))}`,
+          `/${tableName}?id=eq.${encodeURIComponent(rawId)}&firm_nr=eq.${encodeURIComponent(String(ERP_SETTINGS.firmNr))}`,
           patchBody,
           { schema: 'public', prefer: 'return=representation' }
         );
         const row = Array.isArray(rows) ? rows[0] : rows;
-        return row ? mapDatabaseCustomerToCustomer(row) : this.getById(id);
+        return row ? mapDatabaseCustomerToCustomer(row) : this.getById(rawId);
       }
       values.push(id);
       values.push(ERP_SETTINGS.firmNr);
@@ -489,9 +491,10 @@ export const customerAPI = {
     try {
       const tableName = `rex_${ERP_SETTINGS.firmNr}_customers`;
       if (DB_SETTINGS.connectionProvider === 'rest_api') {
-        const { postgrest } = await import('./postgrestClient');
+        const { postgrest, stripPostgrestOpPrefix } = await import('./postgrestClient');
+        const rawId = stripPostgrestOpPrefix(String(id));
         const rows = await postgrest.patch<any[]>(
-          `/${tableName}?id=eq.${encodeURIComponent(id)}&firm_nr=eq.${encodeURIComponent(String(ERP_SETTINGS.firmNr))}`,
+          `/${tableName}?id=eq.${encodeURIComponent(rawId)}&firm_nr=eq.${encodeURIComponent(String(ERP_SETTINGS.firmNr))}`,
           { is_active: false },
           { schema: 'public', prefer: 'return=representation' }
         );
@@ -516,12 +519,13 @@ export const customerAPI = {
     try {
       const tableName = `rex_${ERP_SETTINGS.firmNr}_customers`;
       if (DB_SETTINGS.connectionProvider === 'rest_api') {
-        const { postgrest } = await import('./postgrestClient');
+        const { postgrest, stripPostgrestOpPrefix } = await import('./postgrestClient');
+        const rawId = stripPostgrestOpPrefix(String(id));
         const cur = await postgrest.get<any[]>(
           `/${tableName}`,
           {
             select: 'points',
-            id: `eq.${id}`,
+            id: `eq.${rawId}`,
             firm_nr: `eq.${ERP_SETTINGS.firmNr}`,
             limit: 1,
           },
@@ -531,7 +535,7 @@ export const customerAPI = {
         if (!row) return false;
         const next = Number(row.points || 0) + Number(pointsToAdd);
         const patched = await postgrest.patch<any[]>(
-          `/${tableName}?id=eq.${encodeURIComponent(id)}&firm_nr=eq.${encodeURIComponent(String(ERP_SETTINGS.firmNr))}`,
+          `/${tableName}?id=eq.${encodeURIComponent(rawId)}&firm_nr=eq.${encodeURIComponent(String(ERP_SETTINGS.firmNr))}`,
           { points: next },
           { schema: 'public', prefer: 'return=representation' }
         );
@@ -556,12 +560,13 @@ export const customerAPI = {
     try {
       const tableName = `rex_${ERP_SETTINGS.firmNr}_customers`;
       if (DB_SETTINGS.connectionProvider === 'rest_api') {
-        const { postgrest } = await import('./postgrestClient');
+        const { postgrest, stripPostgrestOpPrefix } = await import('./postgrestClient');
+        const rawId = stripPostgrestOpPrefix(String(id));
         const cur = await postgrest.get<any[]>(
           `/${tableName}`,
           {
             select: 'balance',
-            id: `eq.${id}`,
+            id: `eq.${rawId}`,
             firm_nr: `eq.${ERP_SETTINGS.firmNr}`,
             limit: 1,
           },
@@ -571,7 +576,7 @@ export const customerAPI = {
         if (!row) return false;
         const next = Number(row.balance ?? 0) + Number(amount);
         const patched = await postgrest.patch<any[]>(
-          `/${tableName}?id=eq.${encodeURIComponent(id)}&firm_nr=eq.${encodeURIComponent(String(ERP_SETTINGS.firmNr))}`,
+          `/${tableName}?id=eq.${encodeURIComponent(rawId)}&firm_nr=eq.${encodeURIComponent(String(ERP_SETTINGS.firmNr))}`,
           { balance: next },
           { schema: 'public', prefer: 'return=representation' }
         );

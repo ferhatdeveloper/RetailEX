@@ -2008,7 +2008,7 @@ const SetupWizard: React.FC = () => {
                                                     min={5}
                                                     max={3600}
                                                     step={5}
-                                                    value={config.hybrid_sync_interval_sec ?? 30}
+                                                    value={config.hybrid_sync_interval_sec ?? 8}
                                                     onChange={(e) =>
                                                         setConfig({
                                                             ...config,

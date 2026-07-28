@@ -128,9 +128,30 @@ export type HybridSyncProgressEvent = {
   lastError?: string;
 };
 
-const BATCH_LIMIT = 50;
+const BATCH_LIMIT = 120;
 const MAX_RETRY = 10;
-const MAX_ALL_ROUNDS = 100;
+const MAX_ALL_ROUNDS = 200;
+/** Aynı parti içinde eşzamanlı UPSERT/apply sayısı */
+const APPLY_CONCURRENCY = 4;
+
+async function runApplyPool<T>(
+  items: T[],
+  concurrency: number,
+  worker: (item: T) => Promise<void>,
+): Promise<void> {
+  if (items.length === 0) return;
+  let next = 0;
+  const n = Math.min(Math.max(1, concurrency), items.length);
+  await Promise.all(
+    Array.from({ length: n }, async () => {
+      for (;;) {
+        const i = next++;
+        if (i >= items.length) return;
+        await worker(items[i]);
+      }
+    }),
+  );
+}
 
 function buildConnStr(config: PgEndpointConfig): string {
   const host = config.host === 'localhost' ? '127.0.0.1' : config.host;
@@ -646,7 +667,7 @@ export async function syncOneDirection(
     const pending = await fetchPendingQueue(source, filter);
     if (pending.length === 0) break;
 
-    for (const item of pending) {
+    await runApplyPool(pending, APPLY_CONCURRENCY, async (item) => {
       let localBefore: Record<string, unknown> | null = null;
       if (isReceiveLeg && /_products$/i.test(item.table_name)) {
         const priceSync = await import('./priceChangeSyncService');
@@ -658,7 +679,7 @@ export async function syncOneDirection(
       }
 
       try {
-        let outcome = await applyItem(target, item, schemaCache);
+        const outcome = await applyItem(target, item, schemaCache);
         recordApplyOutcome(totals, outcome);
         processedItems.push({
           table_name: item.table_name,
@@ -735,7 +756,7 @@ export async function syncOneDirection(
               });
               await markCompleted(source, item.id);
               emitProgress(item.table_name);
-              continue;
+              return;
             } catch {
               /* şema oluşturma veya retry başarısız — aşağıdaki hata akışı */
             }
@@ -750,7 +771,7 @@ export async function syncOneDirection(
           /* kaynak kuyruk güncellenemedi */
         }
       }
-    }
+    });
 
     synced = totals.synced;
     inserted = totals.inserted;
@@ -881,7 +902,7 @@ export async function prepareLocalSyncQueue(
     const rows = await queryPgRows(
       local,
       `SELECT public.enqueue_hybrid_backfill($1, $2, $3::timestamptz)::text AS cnt`,
-      [fn, 5000, changedSince],
+      [fn, 8000, changedSince],
     );
     enqueued = Number(rows[0]?.cnt ?? 0);
   } catch {
@@ -889,7 +910,7 @@ export async function prepareLocalSyncQueue(
       const rows = await queryPgRows(
         local,
         `SELECT public.enqueue_hybrid_backfill($1, $2)::text AS cnt`,
-        [fn, 5000],
+        [fn, 8000],
       );
       enqueued = Number(rows[0]?.cnt ?? 0);
     } catch {

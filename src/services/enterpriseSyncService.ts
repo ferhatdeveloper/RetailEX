@@ -577,7 +577,7 @@ export async function enqueueEnterpriseBulk(
 
   const pg = resolveSyncPgEndpoint();
   const firm = firmNrPadded();
-  const limit = Math.min(Math.max(filter.limit ?? 500, 1), 5000);
+  const limit = Math.min(Math.max(filter.limit ?? 1500, 1), 8000);
   const search = filter.search?.trim() || null;
   const categoryCode = filter.categoryCode?.trim() || null;
   const onlyActive = filter.onlyActive !== false;
@@ -589,9 +589,10 @@ export async function enqueueEnterpriseBulk(
     filter.targetStoreId && filter.targetStoreId !== 'all' ? filter.targetStoreId : null;
 
   try {
-    const rows = await queryPgRows(
-      pg,
-      `SELECT t.id::text AS id, to_jsonb(t) AS data
+    const isProduct = filter.type === 'product';
+    const effectiveCategoryCode = isProduct ? categoryCode : null;
+    const sql = isProduct
+      ? `SELECT t.id::text AS id, to_jsonb(t) AS data
        FROM ${table} t
        WHERE ($1::text IS NULL OR t.name ILIKE '%' || $1 || '%'
               OR COALESCE(t.barcode, '') ILIKE '%' || $1 || '%'
@@ -601,9 +602,27 @@ export async function enqueueEnterpriseBulk(
          AND ($4::date IS NULL OR t.updated_at >= $4::date)
          AND ($6::date IS NULL OR t.updated_at < ($6::date + interval '1 day'))
        ORDER BY t.updated_at DESC NULLS LAST
-       LIMIT $5`,
-      [search, categoryCode, onlyActive, changedSince, limit, changedUntil],
-    );
+       LIMIT $5`
+      : `SELECT t.id::text AS id, to_jsonb(t) AS data
+       FROM ${table} t
+       WHERE ($1::text IS NULL OR t.name ILIKE '%' || $1 || '%'
+              OR COALESCE(t.code, '') ILIKE '%' || $1 || '%'
+              OR COALESCE(t.phone, '') ILIKE '%' || $1 || '%'
+              OR COALESCE(t.email, '') ILIKE '%' || $1 || '%')
+         AND ($3::boolean IS false OR COALESCE(t.is_active, true) = true)
+         AND ($4::date IS NULL OR COALESCE(t.updated_at, t.created_at) >= $4::date)
+         AND ($6::date IS NULL OR COALESCE(t.updated_at, t.created_at) < ($6::date + interval '1 day'))
+       ORDER BY COALESCE(t.updated_at, t.created_at) DESC NULLS LAST
+       LIMIT $5`;
+
+    const rows = await queryPgRows(pg, sql, [
+      search,
+      effectiveCategoryCode,
+      onlyActive,
+      changedSince,
+      limit,
+      changedUntil,
+    ]);
 
     if (!rows.length) {
       return { ok: false, message: 'Filtreye uyan kayıt bulunamadı.', count: 0 };
@@ -660,13 +679,13 @@ export async function enqueueAllMasterData(
     const prod = await enqueueEnterpriseBulk({
       type: 'product',
       onlyActive: true,
-      limit: 5000,
+      limit: 8000,
       targetStoreId,
     });
     const cust = await enqueueEnterpriseBulk({
       type: 'customer',
       onlyActive: true,
-      limit: 5000,
+      limit: 8000,
       targetStoreId,
     });
     const count = prod.count + cust.count;
@@ -680,7 +699,7 @@ export async function enqueueAllMasterData(
   return enqueueEnterpriseBulk({
     type,
     onlyActive: true,
-    limit: 5000,
+    limit: 8000,
     targetStoreId,
   });
 }

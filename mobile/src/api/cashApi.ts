@@ -4,7 +4,13 @@
  */
 
 import { pgQuery } from './pgClient';
-import { postgrestGet, postgrestPatch, postgrestPost } from './postgrestClient';
+import {
+  postgrestEq,
+  postgrestGet,
+  postgrestPatch,
+  postgrestPost,
+  stripPostgrestOpPrefix,
+} from './postgrestClient';
 import { runDataTransport } from './dataTransport';
 import {
   appendStoreIdFilterAllowNull,
@@ -100,15 +106,16 @@ async function adjustPartnerBalanceViaPostgrest(
   delta: number,
 ): Promise<boolean> {
   if (!id || !delta) return false;
+  const rawId = stripPostgrestOpPrefix(String(id));
   const rows = await postgrestGet<Array<{ balance?: number }>>(
     `/${table}`,
-    { select: 'balance', id: `eq.${id}`, limit: 1 },
+    { select: 'balance', id: postgrestEq(rawId), limit: 1 },
     { schema: 'public' },
   );
   if (!rows?.length) return false;
   const cur = Number(rows[0]?.balance ?? 0);
   await postgrestPatch(
-    `/${table}?id=eq.${encodeURIComponent(id)}`,
+    `/${table}?id=eq.${encodeURIComponent(rawId)}`,
     { balance: cur + delta },
     { schema: 'public', prefer: 'return=minimal' },
   );

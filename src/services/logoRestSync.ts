@@ -603,6 +603,7 @@ async function upsertCustomersWithApi(
       tax_office: String(row.tax_office || ''),
       balance: numVal(row.balance, 0),
       is_active: true,
+      updated_at: new Date().toISOString(),
     }));
 
     try {
@@ -636,7 +637,8 @@ async function upsertCustomersWithApi(
         await postgres.query(
           `UPDATE ${table}
            SET ref_id = COALESCE($1, ref_id), code = $2, name = $3, phone = $4, email = $5,
-               address = $6, city = $7, tax_nr = $8, tax_office = $9, balance = $10
+               address = $6, city = $7, tax_nr = $8, tax_office = $9, balance = $10,
+               updated_at = NOW()
            WHERE id = $11`,
           [
             refId,
@@ -736,6 +738,7 @@ async function upsertSuppliersWithApi(
       tax_office: String(row.tax_office || ''),
       balance: numVal(row.balance, 0),
       is_active: true,
+      updated_at: new Date().toISOString(),
     }));
 
     try {
@@ -769,7 +772,8 @@ async function upsertSuppliersWithApi(
         await postgres.query(
           `UPDATE ${table}
            SET ref_id = COALESCE($1, ref_id), code = $2, name = $3, phone = $4, email = $5,
-               address = $6, city = $7, tax_nr = $8, tax_office = $9, balance = $10
+               address = $6, city = $7, tax_nr = $8, tax_office = $9, balance = $10,
+               updated_at = NOW()
            WHERE id = $11`,
           [
             refId,

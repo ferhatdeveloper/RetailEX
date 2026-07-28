@@ -155,7 +155,7 @@ async function postgrestUpsertWithSchemaFallback(
   throw new Error(`${label}: uzak şemada çok sayıda bilinmeyen kolon`);
 }
 
-export function buildPostgrestQueueQuery(filter?: HybridSyncFilter, limit = 50): string {
+export function buildPostgrestQueueQuery(filter?: HybridSyncFilter, limit = 120): string {
   const parts = [
     'status=eq.pending',
     'retry_count=lt.10',
@@ -279,8 +279,12 @@ export async function applyItemPostgrest(
   const id = item.record_id;
   const action = item.action.toUpperCase();
 
+  const rawId = String(id || '')
+    .trim()
+    .replace(/^(eq\.)+/i, '');
+
   if (action === 'DELETE') {
-    const url = restUrl(baseUrl, `/${table}`, `id=eq.${encodeURIComponent(id)}`);
+    const url = restUrl(baseUrl, `/${table}`, `id=eq.${encodeURIComponent(rawId)}`);
     const res = await fetchRetailexAware(url, {
       method: 'DELETE',
       headers: restHeaders(schema, 'return=minimal'),
@@ -291,12 +295,12 @@ export async function applyItemPostgrest(
 
   if (!item.data || typeof item.data !== 'object') return;
 
-  let payload = normalizeSyncRow(table, item.data as Record<string, unknown>, id);
+  let payload = normalizeSyncRow(table, item.data as Record<string, unknown>, rawId);
 
   if (/_products$/i.test(table)) {
-    payload = await remapPayloadByRefId(baseUrl, table, schema, payload, id);
+    payload = await remapPayloadByRefId(baseUrl, table, schema, payload, rawId);
   } else if (/_((customers|suppliers))$/i.test(table)) {
-    payload = await remapPayloadByCode(baseUrl, table, schema, payload, id);
+    payload = await remapPayloadByCode(baseUrl, table, schema, payload, rawId);
   }
 
   const url = restUrl(baseUrl, `/${table}`);

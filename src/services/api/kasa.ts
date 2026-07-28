@@ -461,9 +461,11 @@ async function createKasaIslemiViaPostgrest(
       const supPath = `/rex_${firmNr}_suppliers`;
       const patchPartner = async (path: string, withFirm: boolean) => {
         try {
+          const { stripPostgrestOpPrefix } = await import('./postgrestClient');
+          const partnerId = stripPostgrestOpPrefix(String(islem.cari_hesap_id));
           const q: Record<string, string> = {
             select: 'balance',
-            id: `eq.${islem.cari_hesap_id}`,
+            id: `eq.${partnerId}`,
             limit: '1',
           };
           if (withFirm) q.firm_nr = `eq.${firmNr}`;
@@ -472,8 +474,8 @@ async function createKasaIslemiViaPostgrest(
           if (!r) return false;
           const nb = Number(r.balance ?? 0) + delta;
           const url = withFirm
-            ? `${path}?id=eq.${encodeURIComponent(String(islem.cari_hesap_id))}&firm_nr=eq.${encodeURIComponent(firmNr)}`
-            : `${path}?id=eq.${encodeURIComponent(String(islem.cari_hesap_id))}`;
+            ? `${path}?id=eq.${encodeURIComponent(partnerId)}&firm_nr=eq.${encodeURIComponent(firmNr)}`
+            : `${path}?id=eq.${encodeURIComponent(partnerId)}`;
           await postgrest.patch(url, { balance: nb }, { schema: 'public', prefer: 'return=minimal' });
           return true;
         } catch {
@@ -1047,14 +1049,16 @@ async function deleteKasaIslemiViaPostgrest(id: string): Promise<void> {
       const supPath = `/rex_${firmNr}_suppliers`;
       const patchPartner = async (path: string, withFirm: boolean) => {
         try {
-          const q: Record<string, string> = { select: 'balance', id: `eq.${customerId}`, limit: '1' };
+          const { stripPostgrestOpPrefix } = await import('./postgrestClient');
+          const partnerId = stripPostgrestOpPrefix(String(customerId));
+          const q: Record<string, string> = { select: 'balance', id: `eq.${partnerId}`, limit: '1' };
           if (withFirm) q.firm_nr = `eq.${firmNr}`;
           const rsP = await postgrest.get<any[]>(path, q, { schema: 'public' });
           const rp = Array.isArray(rsP) ? rsP[0] : null;
           if (!rp) return false;
           const url = withFirm
-            ? `${path}?id=eq.${encodeURIComponent(String(customerId))}&firm_nr=eq.${encodeURIComponent(firmNr)}`
-            : `${path}?id=eq.${encodeURIComponent(String(customerId))}`;
+            ? `${path}?id=eq.${encodeURIComponent(partnerId)}&firm_nr=eq.${encodeURIComponent(firmNr)}`
+            : `${path}?id=eq.${encodeURIComponent(partnerId)}`;
           await postgrest.patch(
             url,
             { balance: Number(rp.balance ?? 0) + delta },

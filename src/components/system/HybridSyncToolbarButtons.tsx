@@ -99,9 +99,18 @@ function WsLiveIndicator({ status, compact }: { status: WsConnectionStatus; comp
   );
 }
 
+/** Web/online dahil: senkron ekranı açılabilecek mi? */
+function canOpenSyncUi(): boolean {
+  if (DB_SETTINGS.activeMode === 'offline') return false;
+  if (DB_SETTINGS.activeMode === 'hybrid') return true;
+  const rest = String(DB_SETTINGS.remoteRestUrl || '').trim();
+  return rest.length > 0 || DB_SETTINGS.connectionProvider === 'rest_api';
+}
+
 export function HybridSyncToolbarButtons({ compact = false }: Props) {
   const { user } = useAuth();
   const isHybrid = DB_SETTINGS.activeMode === 'hybrid';
+  const syncEnabled = canOpenSyncUi();
   const [modalOpen, setModalOpen] = useState(false);
   const [transportMenuOpen, setTransportMenuOpen] = useState(false);
   const [pending, setPending] = useState(0);
@@ -164,7 +173,7 @@ export function HybridSyncToolbarButtons({ compact = false }: Props) {
   }, [transportMenuOpen, updateMenuPosition]);
 
   const refreshPending = useCallback(async () => {
-    if (!isHybrid) return;
+    if (!syncEnabled) return;
     try {
       const kasaCtx = await resolveKasaPullContext(user?.store_id || null);
       setIsKasa(!!kasaCtx);
@@ -187,7 +196,7 @@ export function HybridSyncToolbarButtons({ compact = false }: Props) {
     } catch {
       /* PG hazır değil */
     }
-  }, [isHybrid, user?.store_id]);
+  }, [syncEnabled, user?.store_id]);
 
   useEffect(() => {
     void refreshPending();
@@ -196,10 +205,10 @@ export function HybridSyncToolbarButtons({ compact = false }: Props) {
   }, [refreshPending]);
 
   useEffect(() => {
-    if (isHybrid) {
+    if (syncEnabled) {
       logSyncTransportDiagnostics('ToolbarMount');
     }
-  }, [isHybrid]);
+  }, [syncEnabled]);
 
   const handleTransportChange = async (next: HybridSyncTransport) => {
     setTransportMenuOpen(false);
@@ -234,7 +243,7 @@ export function HybridSyncToolbarButtons({ compact = false }: Props) {
 
   const totalBadge = Math.max(0, pending) + Math.max(0, inboundPending);
   const hasError = inboundPending < 0;
-  const audit = isHybrid ? auditSyncTransportConfig() : null;
+  const audit = syncEnabled ? auditSyncTransportConfig() : null;
   const configIssue = audit?.issues.some((i) => i.severity === 'error') ?? false;
   const wsActive = transport === 'websocket' || transport === 'both';
 
@@ -243,7 +252,7 @@ export function HybridSyncToolbarButtons({ compact = false }: Props) {
   const btnClass = cn(
     'relative flex items-center justify-center rounded-xl border transition-colors touch-manipulation active:scale-95',
     compact ? 'h-8 min-w-[2.25rem] px-1.5 gap-1' : 'h-9 min-w-[2.75rem] px-2 gap-1.5',
-    isHybrid
+    syncEnabled
       ? 'border-white/25 bg-white/15 hover:bg-white/25 text-white'
       : 'border-white/10 bg-white/5 text-blue-200/70 cursor-not-allowed opacity-80',
   );
@@ -262,9 +271,9 @@ export function HybridSyncToolbarButtons({ compact = false }: Props) {
         ? 'bg-amber-50 text-amber-900 border-amber-200'
         : 'bg-gray-100 text-gray-700 border-gray-200';
 
-  if (!isHybrid) {
+  if (!syncEnabled) {
     return (
-      <div className={shellClass} title="Senkron yalnızca hibrit modda">
+      <div className={shellClass} title="Senkron için hibrit veya merkez REST API gerekli">
         <button type="button" disabled className={btnClass}>
           <RefreshCw className={cn(compact ? 'h-3.5 w-3.5' : 'h-4 w-4', 'opacity-60')} />
           <span className={labelClass}>Senkron</span>
@@ -276,7 +285,8 @@ export function HybridSyncToolbarButtons({ compact = false }: Props) {
   return (
     <>
       <div className={shellClass}>
-        {/* Taşıma modu + durum — tek dropdown */}
+        {/* Taşıma modu + durum — tek dropdown (yalnızca hibrit şube) */}
+        {isHybrid ? (
         <div className="relative">
           <button
             ref={triggerRef}
@@ -387,8 +397,9 @@ export function HybridSyncToolbarButtons({ compact = false }: Props) {
               document.body,
             )}
         </div>
+        ) : null}
 
-        {/* Manuel senkron */}
+        {/* Manuel senkron — Veri senkronu paneli (Gönderilecek / Alınacak) */}
         <button
           type="button"
           title="Veri senkronu"

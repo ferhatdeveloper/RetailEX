@@ -1,5 +1,11 @@
 import { pgQuery } from './pgClient';
-import { postgrestGet, postgrestPatch, postgrestPost } from './postgrestClient';
+import {
+  postgrestEq,
+  postgrestGet,
+  postgrestPatch,
+  postgrestPost,
+  stripPostgrestOpPrefix,
+} from './postgrestClient';
 import { runDataTransport } from './dataTransport';
 import { customersTable, firmNr, newUuid } from './erpTables';
 import { shouldUseLiveData, getNetworkPolicy } from '../offline/policy';
@@ -201,7 +207,7 @@ export async function fetchCustomerById(id: string): Promise<CustomerDetail | nu
         `/${table}`,
         {
           select: 'id,code,name,phone,email,city,balance,is_active,address,tax_nr,tax_office,district',
-          id: `eq.${id}`,
+          id: postgrestEq(id),
           limit: 1,
         },
         { schema: 'public' },
@@ -491,6 +497,7 @@ async function updateCustomerLive(id: string, input: Partial<CustomerInput>): Pr
   const body = buildCustomerPatchBody(input);
   if (!Object.keys(body).length) return;
 
+  const rawId = stripPostgrestOpPrefix(String(id));
   const table = customersTable();
   const cfg = useConfigStore.getState().config;
   const preferRest = shouldPreferPostgrest(cfg);
@@ -498,7 +505,7 @@ async function updateCustomerLive(id: string, input: Partial<CustomerInput>): Pr
 
   if (preferRest) {
     try {
-      await postgrestPatch(`/${table}?id=eq.${encodeURIComponent(id)}`, body, {
+      await postgrestPatch(`/${table}?id=eq.${encodeURIComponent(rawId)}`, body, {
         schema: 'public',
         prefer: 'return=minimal',
       });
@@ -529,7 +536,7 @@ async function updateCustomerLive(id: string, input: Partial<CustomerInput>): Pr
     sets.push(`${col} = $${i++}`);
     vals.push(v);
   }
-  vals.push(id);
+  vals.push(rawId);
   await pgQuery(`UPDATE ${table} SET ${sets.join(', ')} WHERE id::text = $${i}`, vals);
 }
 
@@ -598,7 +605,7 @@ async function fetchCustomerRecentSalesViaRest(
   const rows = await postgrestGet<Record<string, unknown>[]>(
     `/${table}`,
     {
-      customer_id: `eq.${customerId}`,
+      customer_id: postgrestEq(customerId),
       is_cancelled: 'eq.false',
       select: 'id,fiche_no,date,net_amount,total_net',
       order: 'date.desc',

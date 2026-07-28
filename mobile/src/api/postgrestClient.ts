@@ -71,10 +71,40 @@ function buildHeaders(options: PostgrestClientOptions = {}): Record<string, stri
   return h;
 }
 
+/**
+ * Filtre değerine yanlışlıkla yapışmış PostgREST operatörünü temizler.
+ * Örn. `eq.cf3b-…` → `cf3b-…` (çift `eq.eq.` 22P02 uuid hatasını önler).
+ */
+export function stripPostgrestOpPrefix(value: string): string {
+  let s = String(value ?? '').trim();
+  while (/^(eq|neq|gt|gte|lt|lte|like|ilike|match|imatch|in|is)\./i.test(s)) {
+    s = s.replace(/^(eq|neq|gt|gte|lt|lte|like|ilike|match|imatch|in|is)\./i, '');
+  }
+  return s;
+}
+
+/** Güvenli `eq.<değer>` — değer zaten `eq.` ile geliyorsa tekrar eklemez. */
+export function postgrestEq(value: string | number | boolean): string {
+  if (typeof value === 'boolean' || typeof value === 'number') return `eq.${value}`;
+  return `eq.${stripPostgrestOpPrefix(value)}`;
+}
+
+/** Query param: `eq.eq.uuid` gibi çift operatörü tekile indir. */
+function normalizeQueryParamValue(v: string): string {
+  const m = v.match(
+    /^(not\.)?(eq|neq|gt|gte|lt|lte|like|ilike|match|imatch|in|is|cs|cd|ov|sl|sr|nxr|nxl|adj)\.(.+)$/i,
+  );
+  if (!m) return v;
+  const notPrefix = m[1] ?? '';
+  const op = m[2];
+  const rest = stripPostgrestOpPrefix(m[3]);
+  return `${notPrefix}${op}.${rest}`;
+}
+
 function toQueryString(params: PostgrestQueryParams): string {
   const search = new URLSearchParams();
   Object.entries(params).forEach(([k, v]) => {
-    if (v !== undefined && v !== '') search.set(k, String(v));
+    if (v !== undefined && v !== '') search.set(k, normalizeQueryParamValue(String(v)));
   });
   const s = search.toString();
   return s ? `?${s}` : '';
@@ -267,7 +297,8 @@ export async function postgrestUpsert<T = unknown>(
 /** Tek kayıt path yardımcısı — örn. `/rex_001_products?id=eq.uuid` */
 export function postgrestPathOne(table: string, column: string, value: string): string {
   const t = table.startsWith('/') ? table : `/${table}`;
-  return `${t}?${column}=eq.${encodeURIComponent(value)}`;
+  const raw = stripPostgrestOpPrefix(String(value));
+  return `${t}?${column}=eq.${encodeURIComponent(raw)}`;
 }
 
 /**
@@ -318,6 +349,8 @@ export const postgrest = {
   delete: postgrestDelete,
   upsert: postgrestUpsert,
   pathOne: postgrestPathOne,
+  eq: postgrestEq,
+  stripOp: stripPostgrestOpPrefix,
   test: testPostgrestConnection,
   getBaseUrl: getPostgrestBaseUrl,
 };

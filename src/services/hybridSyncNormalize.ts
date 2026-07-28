@@ -20,6 +20,18 @@ export function firmNrFromSyncTableName(tableName: string): string | null {
   return m?.[1] ?? null;
 }
 
+/** PostgREST filtre öneki (eq.) UUID alanına sızmışsa temizle */
+function stripEqPrefixFromUuidish(value: unknown): unknown {
+  if (typeof value !== 'string') return value;
+  const s = value.trim();
+  if (!/^eq\./i.test(s)) return value;
+  const raw = s.replace(/^(eq\.)+/i, '');
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(raw)) {
+    return raw;
+  }
+  return value;
+}
+
 /** PostgREST / doğrudan UPSERT öncesi satır normalize */
 export function normalizeSyncRow(
   tableName: string,
@@ -28,8 +40,13 @@ export function normalizeSyncRow(
 ): Record<string, unknown> {
   const out: Record<string, unknown> = { ...data };
 
-  if (recordId && (!('id' in out) || out.id == null || out.id === 'null')) {
-    out.id = recordId;
+  const cleanRecordId =
+    recordId != null ? String(stripEqPrefixFromUuidish(recordId) ?? recordId) : undefined;
+
+  if (cleanRecordId && (!('id' in out) || out.id == null || out.id === 'null')) {
+    out.id = cleanRecordId;
+  } else if ('id' in out) {
+    out.id = stripEqPrefixFromUuidish(out.id);
   }
 
   const firmFromTable = firmNrFromSyncTableName(tableName);

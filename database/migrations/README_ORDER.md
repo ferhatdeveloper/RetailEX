@@ -97,6 +97,7 @@
 93. **108_kitchen_print_jobs.sql** – Restoran mutfak yazıcı servis kuyruğu: dönem bazlı `kitchen_print_jobs` tabloları + pending/failed indeks.
 94. **109_unified_print_jobs.sql** – RetailEX_Printer birleşik yazıcı kuyruğu: dönem bazlı `print_jobs` tabloları, job type/payload alanları ve eski `kitchen_print_jobs.job_type`.
 95. **110_print_design_bindings.sql** – Sistem → Yazdırma Seçenekleri: belge türü bazında FastReport `.frx`, Dizayn Merkezi veya yerleşik yazdırma eşleştirmeleri (`public.print_design_bindings`).
+96. **111_customers_suppliers_updated_at_sync.sql** – `rex_*_customers` / `rex_*_suppliers` `updated_at` + trigger; `enqueue_hybrid_backfill` değişen (imza farklı) kayıtları yeniden kuyruklar (cari artımlı senkron).
 
 **099 tüm kiracılara (tek dosya):**
 ```bash
