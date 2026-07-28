@@ -438,6 +438,9 @@ async function upsertProductsWithApi(
       stock: numVal(row.stock, 0),
       unit: String(row.unit || 'Adet'),
       is_active: row.is_active !== false,
+      logo_sync_status: 'success',
+      logo_sync_error: null,
+      logo_sync_date: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     }));
 
@@ -603,6 +606,9 @@ async function upsertCustomersWithApi(
       tax_office: String(row.tax_office || ''),
       balance: numVal(row.balance, 0),
       is_active: true,
+      logo_sync_status: 'success',
+      logo_sync_error: null,
+      logo_sync_date: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     }));
 
@@ -738,6 +744,9 @@ async function upsertSuppliersWithApi(
       tax_office: String(row.tax_office || ''),
       balance: numVal(row.balance, 0),
       is_active: true,
+      logo_sync_status: 'success',
+      logo_sync_error: null,
+      logo_sync_date: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     }));
 

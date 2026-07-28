@@ -9,22 +9,24 @@ export type LogoErpMode = 'rest' | 'mssql';
 const STORAGE_KEY = 'retailex_logo_erp_mode';
 
 export function loadLogoErpMode(): LogoErpMode {
-  if (typeof window === 'undefined') return IS_TAURI ? 'mssql' : 'rest';
+  // Web tarayıcıda LOBJECT/MSSQL yok — her zaman REST.
+  if (!IS_TAURI) return 'rest';
+  if (typeof window === 'undefined') return 'mssql';
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw === 'rest' || raw === 'mssql') return raw;
   } catch {
     /* ignore */
   }
-  return IS_TAURI ? 'mssql' : 'rest';
+  return 'mssql';
 }
 
 export async function resolveLogoErpModeFromConfig(): Promise<LogoErpMode> {
+  if (!IS_TAURI) return 'rest';
   const stored = loadLogoErpMode();
   if (typeof window !== 'undefined' && localStorage.getItem(STORAGE_KEY)) {
     return stored;
   }
-  if (!IS_TAURI) return 'rest';
   try {
     const cfg = await safeInvoke<Record<string, unknown>>('get_app_config');
     const method = String(cfg.erp_method || 'sql').toLowerCase();

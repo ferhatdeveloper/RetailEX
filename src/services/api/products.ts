@@ -5,6 +5,7 @@
 
 import { shouldUsePostgrestForCrud, shouldUseTenantPostgrestApi } from '../../config/postgrest.config';
 import { postgres, ERP_SETTINGS, DB_SETTINGS } from '../postgres';
+import { logoOutboundPendingFields } from '../logoRestOutbound';
 import type { Product } from '../../core/types';
 import { expandBarcodeLookupKeys } from '../../utils/barcodeParser';
 import { useAuthStore } from '../../store/useAuthStore';
@@ -251,6 +252,9 @@ const OPTIONAL_PRODUCT_DB_COLUMNS = [
   'is_scale_product',
   'plu_code',
   'follow_up_reminder_days',
+  'logo_sync_status',
+  'logo_sync_error',
+  'logo_sync_date',
 ] as const;
 
 function stripOptionalProductColumns(row: Record<string, unknown>, column: string): Record<string, unknown> {
@@ -1509,6 +1513,7 @@ export const productAPI = {
         shelf_life_days: normalizeProductShelfLifeDays(
           (product as any).shelfLifeDays ?? (product as any).shelf_life_days,
         ),
+        ...logoOutboundPendingFields(),
       };
 
       // PostgREST: yalnızca GET değil; INSERT de aynı uç üzerinden (pg_bridge / SQL yok)
@@ -1686,6 +1691,9 @@ export const productAPI = {
       });
 
       if (fieldValues.size === 0) return productAPI.getById(id);
+
+      const logoPending = logoOutboundPendingFields();
+      Object.entries(logoPending).forEach(([k, v]) => fieldValues.set(k, v));
 
       // Kur geçmişi
       if (fieldValues.has('custom_exchange_rate')) {

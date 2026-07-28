@@ -3,7 +3,6 @@
  */
 
 import { IS_TAURI } from '../utils/env';
-import { loadLogoErpMode } from './logoErpMode';
 import {
   loadLogoErpSyncFlowSettings,
   type LogoDataTopology,
@@ -13,7 +12,7 @@ import {
   runLogoRestSyncNow,
   subscribeLogoRestSyncLogs,
 } from './logoRestSyncService';
-import { pushPendingSalesToLogo } from './logoRestInvoicePush';
+import { pushPendingLogoOutbound } from './logoRestOutbound';
 import { loadLogoRestConfig } from './logoRestApi';
 import { DB_SETTINGS, postgres, type HybridSyncFlow } from './postgres';
 
@@ -65,7 +64,8 @@ export async function runLogoSyncAction(
 ): Promise<LogoSyncRunResult> {
   const flow = loadLogoErpSyncFlowSettings();
   const steps: string[] = [];
-  const mode = loadLogoErpMode();
+  // Web'de yalnızca Logo REST; LOBJECT/MSSQL masaüstü (Tauri) içindir.
+  const serviceType: 'rest' | 'lobject' = !IS_TAURI ? 'rest' : opts.serviceType;
   if (action === 'push' && flow.syncDirection === 'pull_only') {
     return { ok: false, message: "Senkron yönü «yalnızca Logo'dan çek» — gönderim devre dışı.", steps };
   }
@@ -79,15 +79,15 @@ export async function runLogoSyncAction(
     (action === 'full' && flow.syncDirection !== 'pull_only');
 
   if (wantPull) {
-    pushLog(opts.onLog, `[Logo] ${opts.serviceType === 'rest' ? 'REST' : 'MSSQL'} çekim başlıyor…`);
+    pushLog(opts.onLog, `[Logo] ${serviceType === 'rest' ? 'REST' : 'MSSQL'} çekim başlıyor…`);
     let unsub: (() => void) | undefined;
-    if (opts.serviceType === 'rest') {
+    if (serviceType === 'rest') {
       unsub = subscribeLogoRestSyncLogs((line) => pushLog(opts.onLog, line));
     }
 
     try {
       const pullResult =
-        opts.serviceType === 'rest'
+        serviceType === 'rest'
           ? await runLogoRestSyncNow()
           : await runLogoMssqlSyncNow();
 
@@ -113,17 +113,29 @@ export async function runLogoSyncAction(
   }
 
   if (wantPush) {
-    if (mode !== 'rest') {
-      const msg = 'Logo\'ya gönderim yalnızca REST modunda desteklenir (bekleyen faturalar).';
+    if (serviceType !== 'rest') {
+      const msg =
+        "Logo'ya gönderim yalnızca REST modunda desteklenir (ürün / müşteri / fatura — PostgREST kuyruk).";
       steps.push(msg);
       if (action === 'push') return { ok: false, message: msg, steps };
     } else {
-      pushLog(opts.onLog, '[Logo] Bekleyen faturalar gönderiliyor…');
+      pushLog(opts.onLog, '[Logo] Bekleyen ürün / müşteri / fatura gönderiliyor (PostgREST → Logo REST)…');
       try {
         const cfg = loadLogoRestConfig();
-        const pushResult = await pushPendingSalesToLogo(cfg, { limit: 25 });
-        const msg = pushResult.messages.join(' · ') || `${pushResult.success} fatura gönderildi`;
-        steps.push(msg);
+        const pushResult = await pushPendingLogoOutbound(cfg, {
+          limit: 25,
+          onLog: (entry) => {
+            if (entry.detail) pushLog(opts.onLog, `[${entry.entity}] ${entry.code}: ${entry.detail}`);
+          },
+        });
+        const msg =
+          pushResult.messages.filter(Boolean).slice(-8).join(' · ') ||
+          `${pushResult.success} kayıt Logo'ya yazıldı`;
+        steps.push(
+          `Gönderim: ürün ${pushResult.products.success}, müşteri ${pushResult.customers.success}, ` +
+            `tedarikçi ${pushResult.suppliers.success}, fatura ${pushResult.invoices.success}` +
+            (pushResult.errors ? ` · hata ${pushResult.errors}` : ''),
+        );
         pushLog(opts.onLog, msg);
         if (pushResult.errors > 0 && action === 'push') {
           return { ok: false, message: msg, steps };

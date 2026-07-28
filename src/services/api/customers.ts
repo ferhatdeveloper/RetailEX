@@ -4,6 +4,7 @@
  */
 
 import { postgres, ERP_SETTINGS, DB_SETTINGS } from '../postgres';
+import { logoOutboundPendingFields } from '../logoRestOutbound';
 import type { Customer } from '../../core/types';
 import {
   firmCustomersTable,
@@ -290,6 +291,8 @@ export const customerAPI = {
           ? String(customer.file_id).trim()
           : null;
 
+      const logoPending = logoOutboundPendingFields();
+
       if (DB_SETTINGS.connectionProvider === 'rest_api') {
         const { postgrest } = await import('./postgrestClient');
         const body: Record<string, unknown> = {
@@ -316,6 +319,7 @@ export const customerAPI = {
           total_spent: customer.totalSpent || 0,
           is_active: true,
           firm_nr: ERP_SETTINGS.firmNr,
+          ...logoPending,
         };
         const rows = await postgrest.post<any[]>(
           `/${tableName}`,
@@ -327,14 +331,15 @@ export const customerAPI = {
         return newId ? { ...customer, id: newId } as Customer : null;
       }
 
-      const { rows } = await postgres.query(
-        `INSERT INTO ${tableName} (
-           code, name, phone, phone2, email, address, notes, age, occupation, file_id, gender, customer_tier, heard_from,
-           call_plan_enabled, call_plan_weekdays, call_plan_note, call_last_status, call_last_note, call_last_at,
-           points, total_spent, is_active, firm_nr
-         )
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15::smallint[], $16, $17, $18, $19::timestamptz, $20, $21, $22, $23) RETURNING id`,
-        [
+      const logoCols = Object.keys(logoPending);
+      const logoVals = Object.values(logoPending);
+      const baseCols = [
+        'code', 'name', 'phone', 'phone2', 'email', 'address', 'notes', 'age', 'occupation', 'file_id',
+        'gender', 'customer_tier', 'heard_from', 'call_plan_enabled', 'call_plan_weekdays', 'call_plan_note',
+        'call_last_status', 'call_last_note', 'call_last_at', 'points', 'total_spent', 'is_active', 'firm_nr',
+        ...logoCols,
+      ];
+      const baseVals = [
           customer.code || '',
           customer.name,
           customer.phone,
@@ -357,8 +362,20 @@ export const customerAPI = {
           customer.points || 0,
           customer.totalSpent || 0,
           true,
-          ERP_SETTINGS.firmNr
-        ]
+          ERP_SETTINGS.firmNr,
+          ...logoVals,
+      ];
+      const placeholders = baseVals
+        .map((_, i) => {
+          if (baseCols[i] === 'call_plan_weekdays') return `$${i + 1}::smallint[]`;
+          if (baseCols[i] === 'call_last_at') return `$${i + 1}::timestamptz`;
+          return `$${i + 1}`;
+        })
+        .join(', ');
+      const { rows } = await postgres.query(
+        `INSERT INTO ${tableName} (${baseCols.join(', ')})
+         VALUES (${placeholders}) RETURNING id`,
+        baseVals,
       );
 
       const newId = rows[0]?.id;

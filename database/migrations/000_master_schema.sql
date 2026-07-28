@@ -2189,6 +2189,9 @@ BEGIN
       hasvariants       BOOLEAN DEFAULT false,
       "hasVariants"     BOOLEAN DEFAULT false,
       is_active         BOOLEAN DEFAULT true,
+      logo_sync_status  VARCHAR(20),
+      logo_sync_error   TEXT,
+      logo_sync_date    TIMESTAMPTZ,
       created_at        TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
       updated_at        TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
     );
@@ -2229,6 +2232,9 @@ BEGIN
       call_last_note TEXT,
       call_last_at TIMESTAMPTZ,
       is_active    BOOLEAN DEFAULT true,
+      logo_sync_status VARCHAR(20),
+      logo_sync_error  TEXT,
+      logo_sync_date   TIMESTAMPTZ,
       created_at   TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
       updated_at   TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
     );
@@ -2257,6 +2263,9 @@ BEGIN
       notes                TEXT,
       balance              DECIMAL(15,2) DEFAULT 0,
       is_active            BOOLEAN DEFAULT true,
+      logo_sync_status     VARCHAR(20),
+      logo_sync_error      TEXT,
+      logo_sync_date       TIMESTAMPTZ,
       created_at           TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
       updated_at           TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
     );

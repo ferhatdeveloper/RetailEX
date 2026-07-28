@@ -4,6 +4,7 @@
  */
 
 import { postgres, ERP_SETTINGS, DB_SETTINGS } from '../postgres';
+import { logoOutboundPendingFields } from '../logoRestOutbound';
 import type { Supplier } from '../../core/types';
 import {
   firmCustomersTable,
@@ -356,7 +357,7 @@ export const supplierAPI = {
         'code', 'name', 'phone', 'email', 'address', 'city',
         'tax_nr', 'tax_office', 'is_active'
       ];
-      const values = [
+      const values: unknown[] = [
         account.code, account.name, account.phone, account.email,
         account.address, account.city, account.tax_number,
         account.tax_office, true
@@ -376,8 +377,6 @@ export const supplierAPI = {
           account.call_last_at || null,
         );
       }
-
-      const placeholders = values.map((_, i) => `$${i + 1}`).join(', ');
 
       if (DB_SETTINGS.connectionProvider === 'rest_api') {
         const { postgrest } = await import('./postgrestClient');
@@ -400,6 +399,7 @@ export const supplierAPI = {
           { forceActive: true },
         );
         body.firm_nr = ERP_SETTINGS.firmNr;
+        Object.assign(body, logoOutboundPendingFields());
         const rows = await postgrest.post<any[]>(
           `/${tableName}`,
           body,
@@ -409,8 +409,14 @@ export const supplierAPI = {
         return { ...mapDatabaseSupplierToSupplier(row), cardType: account.cardType };
       }
 
+      const logoPending = logoOutboundPendingFields();
+      for (const [k, v] of Object.entries(logoPending)) {
+        columns.push(k);
+        values.push(v);
+      }
+      const placeholdersWithLogo = values.map((_, i) => `$${i + 1}`).join(', ');
       const { rows } = await postgres.query(
-        `INSERT INTO ${tableName} (${columns.join(', ')}) VALUES (${placeholders}) RETURNING *`,
+        `INSERT INTO ${tableName} (${columns.join(', ')}) VALUES (${placeholdersWithLogo}) RETURNING *`,
         values
       );
 

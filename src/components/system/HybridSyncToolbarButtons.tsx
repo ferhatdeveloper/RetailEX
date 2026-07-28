@@ -20,10 +20,26 @@ import {
   formatSyncTransportLabel,
   logSyncTransportDiagnostics,
 } from '../../services/syncTransportDiagnostics';
+import { loadLogoErpMode } from '../../services/logoErpMode';
+import {
+  loadLogoRestConfig,
+  loadLogoRestSession,
+  logoTestConnection,
+  resolveLogoRestUrlSource,
+} from '../../services/logoRestApi';
 import { wsService } from '../../services/websocket';
+import { IS_TAURI } from '../../utils/env';
 import { cn } from '../ui/utils';
 import { FULLSCREEN_BODY_PORTAL_Z } from '../shared/FullscreenBodyPortal';
+import { LogoSyncActionModal } from '../integrations/LogoSyncActionModal';
 import { HybridSyncModal } from './HybridSyncModal';
+
+/** Web'de Logo REST yapılandırması varsa üst çubuk Logo veri çekimine gider. */
+function hasWebLogoIntegration(): boolean {
+  if (IS_TAURI) return false;
+  if (loadLogoErpMode() !== 'rest') return false;
+  return resolveLogoRestUrlSource() !== 'none';
+}
 
 type Props = {
   /** Mobil üst çubuk — daha küçük düğme */
@@ -99,8 +115,8 @@ function WsLiveIndicator({ status, compact }: { status: WsConnectionStatus; comp
   );
 }
 
-/** Web/online dahil: senkron ekranı açılabilecek mi? */
-function canOpenSyncUi(): boolean {
+/** Hibrit / merkez REST — Logo dışı senkron paneli. */
+function canOpenHybridSyncUi(): boolean {
   if (DB_SETTINGS.activeMode === 'offline') return false;
   if (DB_SETTINGS.activeMode === 'hybrid') return true;
   const rest = String(DB_SETTINGS.remoteRestUrl || '').trim();
@@ -110,8 +126,10 @@ function canOpenSyncUi(): boolean {
 export function HybridSyncToolbarButtons({ compact = false }: Props) {
   const { user } = useAuth();
   const isHybrid = DB_SETTINGS.activeMode === 'hybrid';
-  const syncEnabled = canOpenSyncUi();
+  const [useLogoSync, setUseLogoSync] = useState(() => hasWebLogoIntegration());
+  const syncEnabled = useLogoSync || canOpenHybridSyncUi();
   const [modalOpen, setModalOpen] = useState(false);
+  const [logoConnected, setLogoConnected] = useState(false);
   const [transportMenuOpen, setTransportMenuOpen] = useState(false);
   const [pending, setPending] = useState(0);
   const [inboundPending, setInboundPending] = useState(0);
@@ -129,14 +147,49 @@ export function HybridSyncToolbarButtons({ compact = false }: Props) {
 
   useEffect(() => subscribeKasaDataArrival(setLastArrival), []);
 
+  const checkLogoRest = useCallback(async () => {
+    const logoOn = hasWebLogoIntegration();
+    setUseLogoSync(logoOn);
+    if (!logoOn) {
+      setLogoConnected(false);
+      return;
+    }
+    const session = loadLogoRestSession();
+    if (session && Date.now() < session.expiresAt) {
+      setLogoConnected(true);
+      return;
+    }
+    const cfg = loadLogoRestConfig();
+    if (!String(cfg.baseUrl || '').trim()) {
+      setLogoConnected(false);
+      return;
+    }
+    const r = await logoTestConnection(cfg);
+    setLogoConnected(r.ok);
+  }, []);
+
+  useEffect(() => {
+    void checkLogoRest();
+    const onSaved = () => void checkLogoRest();
+    window.addEventListener('retailex:logo-settings-saved', onSaved);
+    window.addEventListener('retailex:logo-rest-connected', onSaved);
+    window.addEventListener('retailex:logo-erp-mode', onSaved);
+    return () => {
+      window.removeEventListener('retailex:logo-settings-saved', onSaved);
+      window.removeEventListener('retailex:logo-rest-connected', onSaved);
+      window.removeEventListener('retailex:logo-erp-mode', onSaved);
+    };
+  }, [checkLogoRest]);
+
   useEffect(() => {
     setTransport(DB_SETTINGS.hybridSyncTransport);
   }, [DB_SETTINGS.hybridSyncTransport, DB_SETTINGS.activeMode]);
 
   useEffect(() => {
+    if (useLogoSync) return;
     const id = window.setInterval(() => setWsStatus(wsService.getStatus()), 2000);
     return () => window.clearInterval(id);
-  }, []);
+  }, [useLogoSync]);
 
   useEffect(() => {
     if (!transportMenuOpen) return;
@@ -173,7 +226,7 @@ export function HybridSyncToolbarButtons({ compact = false }: Props) {
   }, [transportMenuOpen, updateMenuPosition]);
 
   const refreshPending = useCallback(async () => {
-    if (!syncEnabled) return;
+    if (!syncEnabled || useLogoSync) return;
     try {
       const kasaCtx = await resolveKasaPullContext(user?.store_id || null);
       setIsKasa(!!kasaCtx);
@@ -196,19 +249,20 @@ export function HybridSyncToolbarButtons({ compact = false }: Props) {
     } catch {
       /* PG hazır değil */
     }
-  }, [syncEnabled, user?.store_id]);
+  }, [syncEnabled, useLogoSync, user?.store_id]);
 
   useEffect(() => {
+    if (useLogoSync) return;
     void refreshPending();
     const t = window.setInterval(() => void refreshPending(), 20_000);
     return () => window.clearInterval(t);
-  }, [refreshPending]);
+  }, [refreshPending, useLogoSync]);
 
   useEffect(() => {
-    if (syncEnabled) {
+    if (syncEnabled && !useLogoSync) {
       logSyncTransportDiagnostics('ToolbarMount');
     }
-  }, [syncEnabled]);
+  }, [syncEnabled, useLogoSync]);
 
   const handleTransportChange = async (next: HybridSyncTransport) => {
     setTransportMenuOpen(false);
@@ -273,7 +327,10 @@ export function HybridSyncToolbarButtons({ compact = false }: Props) {
 
   if (!syncEnabled) {
     return (
-      <div className={shellClass} title="Senkron için hibrit veya merkez REST API gerekli">
+      <div
+        className={shellClass}
+        title="Senkron için Logo entegrasyonu, hibrit veya merkez REST API gerekli"
+      >
         <button type="button" disabled className={btnClass}>
           <RefreshCw className={cn(compact ? 'h-3.5 w-3.5' : 'h-4 w-4', 'opacity-60')} />
           <span className={labelClass}>Senkron</span>
@@ -285,8 +342,8 @@ export function HybridSyncToolbarButtons({ compact = false }: Props) {
   return (
     <>
       <div className={shellClass}>
-        {/* Taşıma modu + durum — tek dropdown (yalnızca hibrit şube) */}
-        {isHybrid ? (
+        {/* Taşıma modu + durum — tek dropdown (yalnızca hibrit şube; Logo web yolu değil) */}
+        {isHybrid && !useLogoSync ? (
         <div className="relative">
           <button
             ref={triggerRef}
@@ -399,16 +456,16 @@ export function HybridSyncToolbarButtons({ compact = false }: Props) {
         </div>
         ) : null}
 
-        {/* Manuel senkron — Veri senkronu paneli (Gönderilecek / Alınacak) */}
+        {/* Web + Logo: Logo veri çekimi; aksi halde hibrit Veri senkronu paneli */}
         <button
           type="button"
-          title="Veri senkronu"
+          title={useLogoSync ? "Logo'dan veri çek" : 'Veri senkronu'}
           onClick={() => setModalOpen(true)}
           className={btnClass}
         >
           <RefreshCw className={cn(compact ? 'h-3.5 w-3.5' : 'h-4 w-4')} />
-          <span className={labelClass}>Senkron</span>
-          {(totalBadge > 0 || hasError) && (
+          <span className={labelClass}>{useLogoSync ? 'Logo' : 'Senkron'}</span>
+          {!useLogoSync && (totalBadge > 0 || hasError) && (
             <span
               className={cn(
                 'absolute -top-1 -right-1 min-w-[14px] h-[14px] px-0.5 rounded-full text-[9px] font-black leading-[14px] text-center',
@@ -421,11 +478,20 @@ export function HybridSyncToolbarButtons({ compact = false }: Props) {
         </button>
       </div>
 
-      <HybridSyncModal
-        open={modalOpen}
-        onOpenChange={setModalOpen}
-        onComplete={() => void refreshPending()}
-      />
+      {useLogoSync ? (
+        <LogoSyncActionModal
+          open={modalOpen}
+          onClose={() => setModalOpen(false)}
+          serviceType="rest"
+          connected={logoConnected}
+        />
+      ) : (
+        <HybridSyncModal
+          open={modalOpen}
+          onOpenChange={setModalOpen}
+          onComplete={() => void refreshPending()}
+        />
+      )}
     </>
   );
 }

@@ -97,7 +97,7 @@ export function labelDataTopology(topo: LogoDataTopology): string {
 export function describeDataTopology(topo: LogoDataTopology): string {
   switch (topo) {
     case 'logo_merkez':
-      return 'Web ve bulut kiracılarında Logo verisi doğrudan merkez PostgreSQL / PostgREST üzerine yazılır.';
+      return 'Web: Logo → PostgREST (çekim). Gönderimde bekleyen ürün/cari/fatura PostgREST kuyruğundan Logo REST\'e yazılır.';
     case 'logo_desktop_merkez':
       return 'Masaüstünde Logo verisi önce yerel veritabanına alınır; isteğe bağlı olarak hibrit «Gönder» ile merkeze aktarılır.';
     case 'logo_merkez_desktop':

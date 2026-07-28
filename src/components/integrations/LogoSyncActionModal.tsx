@@ -190,7 +190,7 @@ export function LogoSyncActionModal({ open, onClose, serviceType, connected }: P
             disabled={pushDisabled || (!connected && serviceType === 'rest')}
             onClick={() => void runAction('push')}
           >
-            Logo&apos;ya gönder
+            Logo&apos;ya gönder (ürün/cari/fatura)
           </Button>
           <Button
             icon={<SwapOutlined />}

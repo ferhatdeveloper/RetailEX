@@ -274,26 +274,35 @@ export function isLogoIdleLObjectsError(message: string | undefined | null): boo
   return (
     m.includes('no idle lobjects') ||
     m.includes('idle lobjects') ||
-    (m.includes('lobjects.exe') && (m.includes('yok') || m.includes('denied') || m.includes('idle')))
+    m.includes('logo object is not connected') ||
+    m.includes('there is no idle') ||
+    (m.includes('lobjects') &&
+      (m.includes('yok') ||
+        m.includes('denied') ||
+        m.includes('idle') ||
+        m.includes('not connected') ||
+        m.includes('bağlı değil') ||
+        m.includes('bagli degil')))
   );
+}
+
+/** Logo sunucu LObjects havuz hatası — kullanıcıya Türkçe operasyon mesajı. */
+export function formatLogoIdleLObjectsMessage(detail?: string): string {
+  const desc = (detail || '').trim();
+  return (
+    'Logo REST: Boşta LObjects.exe yok. Bu hata RetailEX kodundan çözülmez — Logo sunucusunda ' +
+    'Servis Yönetim Panelindeki Tiger kullanıcısı/şifre/firma ile LObjects havuzunun ayağa kalktığını doğrulayın; ' +
+    "Görev Yöneticisi'nde LObjects.exe oluşmalı; RESTServis\\Logs dosyasına bakın. " +
+    (desc ? `(${desc})` : '')
+  ).trim();
 }
 
 function formatLogoOAuthErrorCode(code: string, description?: string): string {
   const desc = (description || '').trim();
-  const descLower = desc.toLocaleLowerCase('en-US');
 
   // Logo Objects REST: token için sunucuda boşta LObjects.exe oturumu gerekir.
-  if (
-    descLower.includes('no idle lobjects') ||
-    descLower.includes('lobjects.exe') ||
-    descLower.includes('idle lobjects')
-  ) {
-    return (
-      'Logo REST: Boşta LObjects.exe yok. Bu hata RetailEX kodundan çözülmez — Logo sunucusunda ' +
-      'Servis Yönetim Panelindeki Tiger kullanıcısı/şifre/firma ile LObjects havuzunun ayağa kalktığını doğrulayın; ' +
-      "Görev Yöneticisi'nde LObjects.exe oluşmalı; RESTServis\\Logs dosyasına bakın. " +
-      (desc ? `(${desc})` : '')
-    ).trim();
+  if (isLogoIdleLObjectsError(desc) || isLogoIdleLObjectsError(code)) {
+    return formatLogoIdleLObjectsMessage(desc || code);
   }
 
   const known: Record<string, string> = {
@@ -313,6 +322,9 @@ function formatLogoHttpFailure(baseUrl: string, status: number, data: unknown, t
   if (data && typeof data === 'object') {
     const o = data as Record<string, unknown>;
     if (typeof o.upstreamError === 'string' && o.upstreamError) {
+      if (isLogoIdleLObjectsError(o.upstreamError)) {
+        return formatLogoIdleLObjectsMessage(o.upstreamError);
+      }
       return formatLogoUpstreamError(baseUrl, o.upstreamError);
     }
     const errCode = typeof o.error === 'string' ? o.error : '';
@@ -322,6 +334,9 @@ function formatLogoHttpFailure(baseUrl: string, status: number, data: unknown, t
         : typeof o.message === 'string'
           ? o.message
           : '';
+    if (isLogoIdleLObjectsError(errDesc) || isLogoIdleLObjectsError(errCode)) {
+      return formatLogoIdleLObjectsMessage(errDesc || errCode);
+    }
     if (errCode === 'fetch failed' || errCode.includes('fetch failed')) {
       return formatLogoUpstreamError(baseUrl, errCode);
     }
@@ -333,6 +348,9 @@ function formatLogoHttpFailure(baseUrl: string, status: number, data: unknown, t
     if (errCode) return errCode;
   }
   const blob = `${text || ''}`.trim();
+  if (blob && isLogoIdleLObjectsError(blob)) {
+    return formatLogoIdleLObjectsMessage(blob);
+  }
   if (blob && blob.length < 240) return blob;
   return `Logo REST hatası HTTP ${status}`;
 }
@@ -987,25 +1005,24 @@ export async function logoObtainToken(
     }
   }
 
-  // Geçici havuz doluluğu: tek kez kısa bekleyip aynı firmno ile yeniden dene (firma değiştirme).
-  if (!tokenRes.ok) {
+  // Geçici havuz doluluğu: kısa aralıklarla aynı firmno ile yeniden dene (firma değiştirme yok).
+  for (let idleRetry = 0; idleRetry < 2 && !tokenRes.ok; idleRetry++) {
     const failMsg = formatLogoHttpFailure(baseUrl, tokenRes.status, tokenRes.data, tokenRes.text);
-    if (isLogoIdleLObjectsError(failMsg)) {
-      await new Promise((r) => setTimeout(r, 4000));
-      if (clientId && clientSecret) {
-        const bodyRetry = new URLSearchParams(tokenBody);
-        bodyRetry.set('client_id', clientId);
-        bodyRetry.set('client_secret', clientSecret);
-        tokenRes = await logoHttp(baseUrl, 'POST', '/token', {
-          headers: tokenHeaders,
-          body: bodyRetry.toString(),
-        });
-      } else {
-        tokenRes = await logoHttp(baseUrl, 'POST', '/token', {
-          headers: { ...tokenHeaders, Authorization: basicAuth(clientId, clientSecret) },
-          body: tokenBody.toString(),
-        });
-      }
+    if (!isLogoIdleLObjectsError(failMsg)) break;
+    await new Promise((r) => setTimeout(r, 3500 + idleRetry * 1500));
+    if (clientId && clientSecret) {
+      const bodyRetry = new URLSearchParams(tokenBody);
+      bodyRetry.set('client_id', clientId);
+      bodyRetry.set('client_secret', clientSecret);
+      tokenRes = await logoHttp(baseUrl, 'POST', '/token', {
+        headers: tokenHeaders,
+        body: bodyRetry.toString(),
+      });
+    } else {
+      tokenRes = await logoHttp(baseUrl, 'POST', '/token', {
+        headers: { ...tokenHeaders, Authorization: basicAuth(clientId, clientSecret) },
+        body: tokenBody.toString(),
+      });
     }
   }
 
@@ -1451,6 +1468,33 @@ export async function logoGetResource<T = unknown>(
   });
   if (!res.ok) throw new Error(`${resource}/${id} HTTP ${res.status}`);
   return res.data as T;
+}
+
+/** Logo create/update yanıtından LOGICALREF / INTERNAL_REFERENCE çıkarır. */
+export function extractLogoInternalRef(data: unknown): number | null {
+  if (data == null) return null;
+  if (typeof data === 'number' && Number.isFinite(data) && data > 0) {
+    return Math.round(data);
+  }
+  if (typeof data !== 'object') return null;
+  const o = data as Record<string, unknown>;
+  const bags: unknown[] = [o, o.restRecord, o.Data, o.data, o.Result, o.result];
+  for (const bag of bags) {
+    if (!bag || typeof bag !== 'object') continue;
+    const rec = bag as Record<string, unknown>;
+    for (const k of [
+      'INTERNAL_REFERENCE',
+      'LOGICALREF',
+      'internalReference',
+      'internal_reference',
+      'REF',
+      'Ref',
+    ]) {
+      const n = Math.round(Number(rec[k]));
+      if (Number.isFinite(n) && n > 0) return n;
+    }
+  }
+  return null;
 }
 
 export async function logoCreateResource<T = unknown>(

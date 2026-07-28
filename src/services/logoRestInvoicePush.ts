@@ -9,6 +9,7 @@ import {
   loadLogoRestConfig,
   type LogoRestConfig,
 } from './logoRestApi';
+import { extractLogoInternalRef } from './logoRestApi';
 import type { LogoSyncLogEntry } from './logoRestSync';
 import { DB_SETTINGS, ERP_SETTINGS, postgres } from './postgres';
 
@@ -93,19 +94,35 @@ async function fetchSaleItems(invoiceId: string): Promise<Record<string, unknown
 async function markSaleSyncStatus(
   saleId: string,
   status: 'success' | 'error' | 'pending',
-  error?: string
+  error?: string,
+  refId?: number | null,
 ): Promise<void> {
   const table = salesTable();
+  const patch: Record<string, unknown> = {
+    logo_sync_status: status,
+    logo_sync_error: error || null,
+    logo_sync_date: new Date().toISOString(),
+  };
+  if (refId != null && refId > 0) patch.ref_id = refId;
+
   if (DB_SETTINGS.connectionProvider === 'rest_api') {
     const { postgrest } = await import('./api/postgrestClient');
     await postgrest.patch(
       `/${table}?id=eq.${encodeURIComponent(saleId)}`,
-      {
-        logo_sync_status: status,
-        logo_sync_error: error || null,
-        logo_sync_date: new Date().toISOString(),
-      },
+      patch,
       { schema: 'public', prefer: 'return=minimal' }
+    );
+    return;
+  }
+  if (refId != null && refId > 0) {
+    await postgres.query(
+      `UPDATE ${table}
+       SET logo_sync_status = $2,
+           logo_sync_error = $3,
+           logo_sync_date = NOW(),
+           ref_id = COALESCE($4, ref_id)
+       WHERE id = $1`,
+      [saleId, status, error || null, refId],
     );
     return;
   }
@@ -183,8 +200,9 @@ export async function pushPendingSalesToLogo(
       try {
         const lines = saleId ? await fetchSaleItems(saleId) : [];
         const restRecord = buildSalesInvoiceRecord(sale, lines);
-        await logoCreateResource(config, 'salesInvoices', restRecord);
-        await markSaleSyncStatus(saleId, 'success');
+        const created = await logoCreateResource(config, 'salesInvoices', restRecord);
+        const logoRef = extractLogoInternalRef(created);
+        await markSaleSyncStatus(saleId, 'success', undefined, logoRef);
         success += 1;
         log({
           at: new Date().toISOString(),
@@ -192,7 +210,9 @@ export async function pushPendingSalesToLogo(
           action: 'create',
           code: ficheNo,
           name: String(sale.customer_name || ''),
-          detail: `${lines.length} satır Logo'ya yazıldı`,
+          detail: logoRef
+            ? `${lines.length} satır Logo'ya yazıldı (ref ${logoRef})`
+            : `${lines.length} satır Logo'ya yazıldı`,
           ok: true,
         });
         messages.push(`Fatura ${ficheNo} → Logo OK`);
