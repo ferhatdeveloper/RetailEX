@@ -67,10 +67,13 @@ POSTGRES_PASSWORD='MEVCUT_SIFRE' bash database/scripts/dokploy-redeploy-frontend
 | Log | Anlam |
 |-----|--------|
 | `rendering chunks...` + uzun sessizlik | Normal ama ağır; 5–10 dk bekleyin veya `dokploy-deploy.sh` kullanın |
-| `Killed` / `signal 9` / exit **137** | OOM — `dokploy-deploy.sh` + swap veya daha büyük RAM |
-| `npm ERR!` / Vite hata | Build hatası; tam log satırını inceleyin |
+| `[frontend] vite build DONE` | Chunk render bitti — log kesilmişse bile başarı işareti |
+| `Killed` / `signal 9` / exit **137** | OOM — `dokploy-deploy.sh` + sync pause + swap veya daha büyük RAM |
+| `npm ERR!` / Vite hata | Build hatası; tam log satırını inceleyin (`BUILDKIT_PROGRESS=plain`) |
 | Deploy bitti ama `https://retailex.app` **404** | Traefik domain eşlemesi — Dokploy Domains → `retailex_frontend:80` |
 | `127.0.0.1:8080` **200**, dış **404** | Domain routing sorunu (uygulama ayakta) |
+
+**Not:** Tüm `sync_*` servisleri aynı `retailex-sync-service:latest` imajını paylaşır (tek binary). Bu “tag overwrite” değil; kasıtlıdır. Kiracı başına ayrı tag Vite OOM’unu çözmez.
 
 OOM sonrası kernel log:
 

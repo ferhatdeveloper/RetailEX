@@ -70,7 +70,13 @@ export default defineConfig({
       ...(process.env.DOCKER_BUILD === '1' ? { maxParallelFileOps: 1 } : {}),
       output: {
         manualChunks(id) {
-          if (id.includes('node_modules/react-dom') || id.includes('/react/') || id.includes('react-router')) {
+          // Geniş '/react/' eşlemesi (@emotion/react vb.) yanlış chunk birleşmesine yol açmasın
+          if (
+            id.includes('node_modules/react-dom/') ||
+            id.includes('node_modules/react/') ||
+            id.includes('node_modules/scheduler/') ||
+            id.includes('node_modules/react-router')
+          ) {
             return 'react-vendor';
           }
           if (

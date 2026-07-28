@@ -22,6 +22,7 @@ set -euo pipefail
 # Dockerfile.frontend / sync-service: RUN --mount=type=cache → BuildKit zorunlu
 # buildx yoksa bile DOCKER_BUILDKIT=1 dene (Docker 23+); yoksa: apt-get install -y docker-buildx-plugin
 export DOCKER_BUILDKIT=1
+export BUILDKIT_PROGRESS="${BUILDKIT_PROGRESS:-plain}"
 if ! docker buildx version >/dev/null 2>&1; then
   echo "Uyarı: docker-buildx-plugin yok — cache mount / hizli rebuild icin: apt-get install -y docker-buildx-plugin" >&2
 fi
@@ -61,6 +62,10 @@ fi
 
 cd "${TARGET}"
 
+echo "=== Host kaynak (frontend Vite chunk render 2–4 GB ister) ==="
+echo "RAM: $(free -h 2>/dev/null | awk '/Mem:/{print $3"/"$2}' || echo '?')"
+echo "Disk: $(df -h /var/lib/docker 2>/dev/null | awk 'NR==2{print $3"/"$2" ("$5")"}' || df -h / | awk 'NR==2{print $3"/"$2}')"
+
 VITE_BUILD_ARG=(--build-arg "VITE_BRIDGE_URL=")
 if [[ -n "${RETAILEX_PUBLIC_DOMAIN}" ]] && [[ "${SKIP_MERKEZ_API:-0}" != "1" ]]; then
   _api_dom="${MERKEZ_API_PUBLIC_DOMAIN:-api.${RETAILEX_PUBLIC_DOMAIN}}"
@@ -68,17 +73,22 @@ if [[ -n "${RETAILEX_PUBLIC_DOMAIN}" ]] && [[ "${SKIP_MERKEZ_API:-0}" != "1" ]];
   VITE_BUILD_ARG+=(--build-arg "VITE_MERKEZ_REST_URL=${_vite}")
   echo "Docker build: VITE_MERKEZ_REST_URL=${_vite}"
 fi
+if [[ -n "${NODE_MAX_OLD_SPACE:-}" ]]; then
+  VITE_BUILD_ARG+=(--build-arg "NODE_MAX_OLD_SPACE=${NODE_MAX_OLD_SPACE}")
+  echo "Docker build: NODE_MAX_OLD_SPACE=${NODE_MAX_OLD_SPACE}"
+fi
 
-docker build -f Dockerfile.frontend "${VITE_BUILD_ARG[@]}" -t retailex-web:latest .
+echo "=== Frontend imaji (plain log — rendering chunks / DONE izlenebilir) ==="
+docker build --progress=plain -f Dockerfile.frontend "${VITE_BUILD_ARG[@]}" -t retailex-web:latest .
 
 if [[ -f "${TARGET}/Dockerfile.bridge" ]] && [[ "${SKIP_BRIDGE:-0}" != "1" ]]; then
   echo "=== pg_bridge imaji (retailex-bridge) ==="
-  docker build -f Dockerfile.bridge -t retailex-bridge:latest "${TARGET}"
+  docker build --progress=plain -f Dockerfile.bridge -t retailex-bridge:latest "${TARGET}"
 fi
 
 if [[ -f "${TARGET}/Dockerfile.whatsapp-bridge" ]] && [[ "${SKIP_WHATSAPP_BRIDGE:-0}" != "1" ]]; then
   echo "=== WhatsApp Baileys köprüsü imaji ==="
-  docker build -f Dockerfile.whatsapp-bridge -t retailex-whatsapp-bridge:latest "${TARGET}"
+  docker build --progress=plain -f Dockerfile.whatsapp-bridge -t retailex-whatsapp-bridge:latest "${TARGET}"
 fi
 
 WEB_NET=$(docker inspect saas_postgres --format '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' 2>/dev/null | awk '{print $1}')

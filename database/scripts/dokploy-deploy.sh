@@ -77,7 +77,8 @@ if [[ "${DOKPLOY_PAUSE_SYNC}" == "1" ]]; then
 fi
 
 section "Build: frontend (+ köprüler, sync HARİÇ)"
-compose -f "${COMPOSE}" build retailex_frontend retailex_bridge retailex_whatsapp_bridge
+# --progress=plain: "rendering chunks" sonrası DONE / OOM ayrımı için log kesilmesin
+compose -f "${COMPOSE}" build --progress=plain retailex_frontend retailex_bridge retailex_whatsapp_bridge
 
 section "Stack: up -d --no-build (veri volume aynı)"
 compose -f "${COMPOSE}" up -d --remove-orphans --no-build

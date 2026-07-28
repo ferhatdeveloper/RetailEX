@@ -62,6 +62,8 @@ x-sync-env: &sync-env
   BIND_ADDRESS: 0.0.0.0:8080
   RUST_LOG: retailex_sync_service=info,tower_http=info
 
+# Tüm sync_* servisleri BİLİNÇLİ olarak aynı imajı paylaşır (tek Rust binary; DATABASE_URL farklı).
+# Kiracı başına ayrı tag üretmek disk/build israfıdır ve Vite OOM’unu çözmez — dokploy-deploy.sh bir kez build eder.
 x-sync-service: &sync-service
   build:
     context: .
