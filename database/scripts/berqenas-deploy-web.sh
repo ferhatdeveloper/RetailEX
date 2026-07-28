@@ -19,11 +19,11 @@
 
 set -euo pipefail
 
-# BuildKit ancak docker-buildx-plugin kuruluysa (aksi halde: "buildx component is missing")
-if docker buildx version >/dev/null 2>&1; then
-  export DOCKER_BUILDKIT=1
-else
-  export DOCKER_BUILDKIT=0
+# Dockerfile.frontend / sync-service: RUN --mount=type=cache → BuildKit zorunlu
+# buildx yoksa bile DOCKER_BUILDKIT=1 dene (Docker 23+); yoksa: apt-get install -y docker-buildx-plugin
+export DOCKER_BUILDKIT=1
+if ! docker buildx version >/dev/null 2>&1; then
+  echo "Uyarı: docker-buildx-plugin yok — cache mount / hizli rebuild icin: apt-get install -y docker-buildx-plugin" >&2
 fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

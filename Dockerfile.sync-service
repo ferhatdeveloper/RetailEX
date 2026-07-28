@@ -2,6 +2,7 @@
 #
 # Dokploy: git pull origin main sonrası cache’siz build:
 #   docker compose -f docker-compose.dokploy.yml build --no-cache --pull sync_lovan
+# BuildKit cache mount’ları (--mount=type=cache) --no-cache ile bile cargo registry’yi korur.
 #
 # Eski hata (Cargo 1.83 + getrandom 0.4): repo güncel değil veya Docker layer cache.
 FROM rust:1.88.0-bookworm AS builder
@@ -18,12 +19,17 @@ RUN grep -qF '=1.11.0' Cargo.toml \
 COPY src/sync-service/.sqlx ./.sqlx
 COPY src/sync-service/src ./src
 ENV SQLX_OFFLINE=true
-RUN cargo build --locked --release --bin RetailEX-Sync-Service
+# target cache mount’ta kalır; binary katmana kopyalanır (sonraki build’lerde crate yeniden derlenmez)
+RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
+    --mount=type=cache,target=/usr/local/cargo/git,sharing=locked \
+    --mount=type=cache,target=/build/target,sharing=locked \
+    cargo build --locked --release --bin RetailEX-Sync-Service \
+    && cp /build/target/release/RetailEX-Sync-Service /build/RetailEX-Sync-Service
 
 FROM debian:bookworm-slim
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates libssl3 && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
-COPY --from=builder /build/target/release/RetailEX-Sync-Service /app/RetailEX-Sync-Service
+COPY --from=builder /build/RetailEX-Sync-Service /app/RetailEX-Sync-Service
 ENV BIND_ADDRESS=0.0.0.0:8080
 EXPOSE 8080
 CMD ["/app/RetailEX-Sync-Service"]
