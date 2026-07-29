@@ -130,7 +130,7 @@ export function LogoErpSyncCollapse({ serviceType }: Props) {
         <Alert
           type="warning"
           showIcon
-          message="REST bağlantısı kurulmamış. Genel bölümünden bilgileri girip Bağlantı Test yapın."
+          message="REST bağlantısı yok. «Veri al / gönder» içinde Bağlantı kontrol ile bağlanın (URL Genel sekmesinde kayıtlı olmalı)."
         />
       ) : (
         <Text type="secondary">
@@ -149,6 +149,8 @@ export function LogoErpSyncCollapse({ serviceType }: Props) {
       <Text type="secondary">
         Yön: {labelSyncDirection(flow.syncDirection)} · Akış: {labelDataTopology(flow.dataTopology)}
         {' · '}
+        Çekim: {rest.pullMode === 'full' ? 'Tam' : 'Artımlı (değişenler)'}
+        {' · '}
         Otomatik çekim: {rest.enabled ? `Açık (${rest.intervalMinutes} dk)` : 'Kapalı'}
       </Text>
 
@@ -157,7 +159,6 @@ export function LogoErpSyncCollapse({ serviceType }: Props) {
           type="primary"
           size="large"
           icon={<CloudDownloadOutlined />}
-          disabled={!restConnected}
           onClick={() => setModalOpen(true)}
         >
           Veri al / gönder…
@@ -176,6 +177,7 @@ export function LogoErpSyncCollapse({ serviceType }: Props) {
         onClose={() => setModalOpen(false)}
         serviceType="rest"
         connected={restConnected}
+        onConnectedChange={setRestConnected}
       />
     </Space>
   );

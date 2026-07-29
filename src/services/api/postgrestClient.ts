@@ -99,6 +99,21 @@ export async function postgrestGet<T = unknown>(
 }
 
 /**
+ * UPSERT Prefer: resolution=merge-duplicates her zaman zorunlu.
+ * Yalnızca `return=representation` verilirse PostgREST düz INSERT yapar ve
+ * unique (fiche_no vb.) çakışmasında 409 / 23505 döner.
+ */
+function buildUpsertPrefer(
+  prefer?: 'return=representation' | 'return=minimal' | string
+): string {
+  const raw = String(prefer || '').trim();
+  const returnPart = /return=representation/i.test(raw)
+    ? 'return=representation'
+    : 'return=minimal';
+  return `resolution=merge-duplicates,${returnPart}`;
+}
+
+/**
  * POST upsert — on_conflict ile birleştirme (Logo senkron gibi toplu yazımlar)
  */
 export async function postgrestUpsert<T = unknown>(
@@ -110,7 +125,7 @@ export async function postgrestUpsert<T = unknown>(
   const sep = path.includes('?') ? '&' : '?';
   const url = getPostgrestUrl(`${path}${sep}on_conflict=${encodeURIComponent(onConflict)}`);
   const headers = buildHeaders(options);
-  headers.Prefer = options?.prefer ?? 'resolution=merge-duplicates,return=minimal';
+  headers.Prefer = buildUpsertPrefer(options?.prefer);
   const res = await fetchRetailexAware(url, {
     method: 'POST',
     headers,

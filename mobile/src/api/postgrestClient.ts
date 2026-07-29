@@ -270,6 +270,20 @@ export async function postgrestDelete<T = unknown>(
   return parseJsonBody<T>(res);
 }
 
+/**
+ * UPSERT Prefer: resolution=merge-duplicates her zaman zorunlu.
+ * Yalnızca return=representation verilirse PostgREST düz INSERT yapar → 409/23505.
+ */
+function buildUpsertPrefer(
+  prefer?: 'return=representation' | 'return=minimal' | string,
+): string {
+  const raw = String(prefer || '').trim();
+  const returnPart = /return=representation/i.test(raw)
+    ? 'return=representation'
+    : 'return=minimal';
+  return `resolution=merge-duplicates,${returnPart}`;
+}
+
 /** POST upsert — on_conflict ile birleştirme */
 export async function postgrestUpsert<T = unknown>(
   path: string,
@@ -282,7 +296,7 @@ export async function postgrestUpsert<T = unknown>(
     getPostgrestUrl(path, options?.cfg) +
     `${sep}on_conflict=${encodeURIComponent(onConflict)}`;
   const headers = buildHeaders(options);
-  headers.Prefer = options?.prefer ?? 'resolution=merge-duplicates,return=minimal';
+  headers.Prefer = buildUpsertPrefer(options?.prefer);
   const res = await fetchWithRetry(
     url,
     { method: 'POST', headers, body: JSON.stringify(body) },

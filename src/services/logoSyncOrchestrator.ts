@@ -9,8 +9,12 @@ import {
 } from './logoErpSyncFlow';
 import { runLogoMssqlSyncNow } from './logoMssqlSyncService';
 import {
+  loadLogoRestSyncSettings,
   runLogoRestSyncNow,
+  saveLogoRestSyncSettings,
   subscribeLogoRestSyncLogs,
+  type LogoPushModules,
+  type LogoRestSyncModules,
 } from './logoRestSyncService';
 import { pushPendingLogoOutbound } from './logoRestOutbound';
 import { loadLogoRestConfig } from './logoRestApi';
@@ -42,8 +46,7 @@ async function runHybridFollowUp(
   if (!flow) return null;
 
   pushLog(onLog, `[Hibrit] ${flow === 'send' ? 'Merkeze gönderiliyor…' : 'Merkezden alınıyor…'}`);
-  const pg = postgres.getInstance();
-  const result = await pg.sync({
+  const result = await postgres.sync({
     flow,
     scope: 'all',
     hybridSyncDirection: flow === 'send' ? 'local_to_remote' : 'remote_to_local',
@@ -60,6 +63,11 @@ export async function runLogoSyncAction(
   opts: {
     serviceType: 'rest' | 'lobject';
     onLog?: (line: string) => void;
+    /** Logo'dan çekilecek modüller */
+    pullModules?: Partial<LogoRestSyncModules>;
+    pullMode?: 'incremental' | 'full';
+    /** Logo'ya gönderilecek kuyruklar */
+    pushModules?: Partial<LogoPushModules>;
   },
 ): Promise<LogoSyncRunResult> {
   const flow = loadLogoErpSyncFlowSettings();
@@ -78,6 +86,16 @@ export async function runLogoSyncAction(
     action === 'push' ||
     (action === 'full' && flow.syncDirection !== 'pull_only');
 
+  if (opts.pullModules || opts.pullMode || opts.pushModules) {
+    saveLogoRestSyncSettings({
+      ...(opts.pullModules ? { modules: { ...loadLogoRestSyncSettings().modules, ...opts.pullModules } } : {}),
+      ...(opts.pullMode ? { pullMode: opts.pullMode } : {}),
+      ...(opts.pushModules
+        ? { pushModules: { ...loadLogoRestSyncSettings().pushModules, ...opts.pushModules } }
+        : {}),
+    });
+  }
+
   if (wantPull) {
     pushLog(opts.onLog, `[Logo] ${serviceType === 'rest' ? 'REST' : 'MSSQL'} çekim başlıyor…`);
     let unsub: (() => void) | undefined;
@@ -88,7 +106,10 @@ export async function runLogoSyncAction(
     try {
       const pullResult =
         serviceType === 'rest'
-          ? await runLogoRestSyncNow()
+          ? await runLogoRestSyncNow({
+              modules: opts.pullModules,
+              pullMode: opts.pullMode ?? loadLogoRestSyncSettings().pullMode,
+            })
           : await runLogoMssqlSyncNow();
 
       steps.push(pullResult.message);
@@ -119,11 +140,30 @@ export async function runLogoSyncAction(
       steps.push(msg);
       if (action === 'push') return { ok: false, message: msg, steps };
     } else {
-      pushLog(opts.onLog, '[Logo] Bekleyen ürün / müşteri / fatura gönderiliyor (PostgREST → Logo REST)…');
+      const pushMods = {
+        ...loadLogoRestSyncSettings().pushModules,
+        ...(opts.pushModules || {}),
+      };
+      const anyPush =
+        pushMods.products || pushMods.customers || pushMods.suppliers || pushMods.invoices;
+      if (!anyPush) {
+        const msg = "Logo'ya gönderim için en az bir tür seçin (ürün / cari / tedarikçi / fatura).";
+        steps.push(msg);
+        return { ok: false, message: msg, steps };
+      }
+
+      pushLog(
+        opts.onLog,
+        '[Logo] Seçili bekleyen kayıtlar gönderiliyor (PostgREST → Logo REST)…',
+      );
       try {
         const cfg = loadLogoRestConfig();
         const pushResult = await pushPendingLogoOutbound(cfg, {
           limit: 25,
+          products: pushMods.products,
+          customers: pushMods.customers,
+          suppliers: pushMods.suppliers,
+          invoices: pushMods.invoices,
           onLog: (entry) => {
             if (entry.detail) pushLog(opts.onLog, `[${entry.entity}] ${entry.code}: ${entry.detail}`);
           },
