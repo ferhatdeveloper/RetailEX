@@ -221,6 +221,7 @@ async function upsertTenantRegistry({ code, display, module, dbName, apiBase, dr
     const alterPaths = [
       'database/scripts/merkez_tenant_registry_add_connection_fields.sql',
       'database/scripts/merkez_tenant_registry_add_logo_rest_fields.sql',
+      'database/scripts/merkez_tenant_registry_add_logo_firm_fields.sql',
     ];
     for (const p of alterPaths) {
       const full = join(REPO_ROOT, p);

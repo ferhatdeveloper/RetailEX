@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react';
 import {
+  AutoComplete,
   Button,
   Card,
   Col,
@@ -15,7 +16,7 @@ import {
   Tag,
   Typography,
 } from 'antd';
-import { SaveOutlined, ApiOutlined, LinkOutlined } from '@ant-design/icons';
+import { SaveOutlined, ApiOutlined, LinkOutlined, ClearOutlined } from '@ant-design/icons';
 import { toast } from 'sonner';
 import { IS_TAURI } from '../../utils/env';
 import {
@@ -34,6 +35,9 @@ import {
   saveLogoFirmMappingForErp,
   saveLogoFirmCatalog,
   periodsForFirm,
+  clearLogoRestFirmContext,
+  normalizeLogoRestBaseUrl,
+  stripLogoRestFirmContext,
   type LogoRestConfig,
   type LogoFirmOption,
   type LogoPeriodOption,
@@ -229,6 +233,18 @@ export function LogoErpConnectorSection() {
     void loadAll();
   }, [loadAll]);
 
+  useEffect(() => {
+    const onMerkezLogo = () => {
+      void loadAll();
+    };
+    window.addEventListener('retailex:logo-rest-from-merkez', onMerkezLogo);
+    window.addEventListener('retailex:logo-settings-saved', onMerkezLogo);
+    return () => {
+      window.removeEventListener('retailex:logo-rest-from-merkez', onMerkezLogo);
+      window.removeEventListener('retailex:logo-settings-saved', onMerkezLogo);
+    };
+  }, [loadAll]);
+
   const refreshDatabases = useCallback(async () => {
     const lobject = form.getFieldValue('lobject') as LogoLobjectConfig | undefined;
     if (!IS_TAURI || !lobject?.erp_host?.trim() || !lobject?.erp_user?.trim()) {
@@ -345,6 +361,24 @@ export function LogoErpConnectorSection() {
 
   const restContextReady = restFirms.length > 0 || restDbOptions.length > 0;
 
+  const resetRestFirmUi = useCallback(() => {
+    setRestFirms([]);
+    setRestPeriods([]);
+    setRestDbOptions([]);
+    setRestLogoFirmNr(undefined);
+    setRestLogoPeriodNr(undefined);
+    setRestLogoDb(undefined);
+    setRestConnected(false);
+  }, []);
+
+  const handleClearRestFirmContext = useCallback(() => {
+    clearLogoRestFirmContext();
+    resetRestFirmUi();
+    toast.info(
+      'Logo firma / dönem / veritabanı önbelleği temizlendi. Yeni değerleri girip bağlantı testi yapın.'
+    );
+  }, [resetRestFirmUi]);
+
   const handleServiceTypeChange = useCallback(
     (next: ServiceType) => {
       const mode = serviceTypeToMode(next);
@@ -356,9 +390,13 @@ export function LogoErpConnectorSection() {
 
   const persistForm = useCallback(async (values: FormValues) => {
     const prevRest = loadLogoRestConfig();
-    const nextRest: LogoRestConfig = {
-      ...prevRest,
-      baseUrl: values.rest.baseUrl.trim(),
+    const nextUrl = normalizeLogoRestBaseUrl(values.rest.baseUrl.trim());
+    const prevUrl = normalizeLogoRestBaseUrl(prevRest.baseUrl);
+    const urlChanged = Boolean(prevUrl && nextUrl && prevUrl !== nextUrl);
+
+    let nextRest: LogoRestConfig = {
+      ...(urlChanged ? stripLogoRestFirmContext(prevRest) : prevRest),
+      baseUrl: nextUrl,
       username: values.rest.username,
       password: values.rest.password,
       clientId: values.rest.clientId || LOGO_DEFAULT_CLIENT_ID,
@@ -366,7 +404,16 @@ export function LogoErpConnectorSection() {
         ? values.rest.clientSecret
         : prevRest.clientSecret,
     };
+    // URL değişince önce bağlamı temizle; ardından tek kayıt yaz (eski katalog geri gelmesin).
     setLogoRestBaseUrl(nextRest.baseUrl, { manual: true });
+    if (urlChanged) {
+      nextRest = {
+        ...stripLogoRestFirmContext(loadLogoRestConfig()),
+        ...nextRest,
+        baseUrl: nextUrl,
+      };
+      resetRestFirmUi();
+    }
     saveLogoRestConfig(nextRest);
 
     // REST modunda LOBJECT Form.Item'ları unmount olabilir; validateFields lobject döndürmez.
@@ -407,7 +454,7 @@ export function LogoErpConnectorSection() {
 
     void saveLogoErpMode(serviceTypeToMode(values.serviceType));
     applyModeSideEffects(serviceTypeToMode(values.serviceType));
-  }, [applyModeSideEffects]);
+  }, [applyModeSideEffects, resetRestFirmUi]);
 
   const handleConnectionTest = useCallback(async () => {
     setTesting(true);
@@ -470,9 +517,15 @@ export function LogoErpConnectorSection() {
         toast.success('Logo REST bağlantısı başarılı');
         setRestConnected(true);
         window.dispatchEvent(new CustomEvent('retailex:logo-rest-connected'));
+        // Eski sunucu listelerini sil; yenisini bu API’den yaz.
+        setRestFirms([]);
+        setRestPeriods([]);
         if (result.databases?.length) {
-          saveLogoDatabaseList(cfg, result.databases);
-          setRestDbOptions(result.databases);
+          const withDbs = saveLogoDatabaseList(cfg, result.databases);
+          setRestDbOptions(withDbs.logoDbs || result.databases);
+          setRestLogoDb(withDbs.logoDb || undefined);
+        } else {
+          setRestDbOptions([]);
         }
         await refreshRestFirms();
         await refreshRestDatabases();
@@ -495,7 +548,36 @@ export function LogoErpConnectorSection() {
       // validateFields yalnızca kayıtlı alanları döner; unmount LOBJECT için tam değerleri al.
       const values = form.getFieldsValue(true) as FormValues;
       await persistForm(values);
-      toast.success('Entegrasyon ayarları kaydedildi');
+
+      const service = (values.serviceType ?? form.getFieldValue('serviceType')) as ServiceType;
+      if (service === 'rest') {
+        const { saveTenantLogoErpFields } = await import('../../services/merkezTenantRegistry');
+        const { clearLogoRestUrlManualOverride } = await import('../../services/logoRestApi');
+        clearLogoRestUrlManualOverride();
+        const merkez = await saveTenantLogoErpFields({
+          logo_rest_api_url: values.rest.baseUrl,
+          logo_firm_nr: restLogoFirmNr ?? null,
+          logo_period_nr: restLogoPeriodNr ?? null,
+          logo_db: restLogoDb ?? null,
+        });
+        if (merkez.saved) {
+          toast.success(
+            `Entegrasyon kaydedildi · merkez DB güncellendi (${merkez.via}${
+              merkez.columnsEnsured ? ', kolonlar hazır' : ''
+            })`
+          );
+        } else {
+          toast.success('Entegrasyon ayarları yerelde kaydedildi');
+          toast.warning(
+            merkez.error
+              ? `Merkez DB yazılamadı: ${merkez.error}`
+              : 'Merkez DB yazılamadı — kiracı kodu veya merkez erişimini kontrol edin',
+            { duration: 10_000 }
+          );
+        }
+      } else {
+        toast.success('Entegrasyon ayarları kaydedildi');
+      }
       window.dispatchEvent(new CustomEvent('retailex:logo-settings-saved'));
     } catch (e: unknown) {
       if (e && typeof e === 'object' && 'errorFields' in e) return;
@@ -700,31 +782,26 @@ export function LogoErpConnectorSection() {
 
                 <div style={sectionHeaderStyle}>
                   <span style={subsectionTitleStyle}>Logo firma, dönem ve veritabanı</span>
-                  {!restContextReady ? (
+                  <Space size={8} wrap>
                     <Text type="secondary" style={{ fontSize: 12 }}>
-                      Liste yoksa Logo firma no’yu elle girin (ör. 401), sonra bağlantı testi
+                      {restContextReady
+                        ? 'Kayıt → merkez tenant_registry. Öncelik merkez; yanlışsa «Bağlamı sıfırla»'
+                        : 'Merkezde logo_firm_nr yoksa elle girin (ör. 401). Kaydet merkeze yazar'}
                     </Text>
-                  ) : null}
+                    <Button
+                      size="small"
+                      icon={<ClearOutlined />}
+                      onClick={handleClearRestFirmContext}
+                    >
+                      Bağlamı sıfırla
+                    </Button>
+                  </Space>
                 </div>
 
                 <Row gutter={16}>
                   <Col xs={24} md={8}>
                     <Form.Item label="Firma" required>
-                      {restFirms.length > 0 ? (
-                        <Select
-                          showSearch
-                          allowClear
-                          loading={restFirmsLoading}
-                          placeholder="Firma seçin"
-                          value={restLogoFirmNr}
-                          onChange={handleRestFirmSelect}
-                          options={restFirms.map((f) => ({
-                            value: f.firmNr,
-                            label: `${f.firmNr} — ${f.title || f.name}`,
-                          }))}
-                          notFoundContent={restFirmsLoading ? <Spin size="small" /> : 'Firma bulunamadı'}
-                        />
-                      ) : (
+                      <Space direction="vertical" size={6} style={{ width: '100%' }}>
                         <InputNumber
                           min={1}
                           style={{ width: '100%' }}
@@ -735,30 +812,40 @@ export function LogoErpConnectorSection() {
                             setRestLogoFirmNr(n);
                             if (n != null && n > 0) {
                               const cfg = loadLogoRestConfig();
+                              const pList = periodsForFirm(restFirms, n);
+                              setRestPeriods(pList);
                               saveLogoFirmMappingForErp(cfg, {
                                 logoFirmNr: n,
-                                logoPeriodNr: restLogoPeriodNr && restLogoPeriodNr > 0 ? restLogoPeriodNr : 1,
+                                logoPeriodNr:
+                                  restLogoPeriodNr && restLogoPeriodNr > 0 ? restLogoPeriodNr : 1,
                                 logoDb: restLogoDb || cfg.logoDb,
                               });
                             }
                           }}
                         />
-                      )}
+                        {restFirms.length > 0 ? (
+                          <Select
+                            showSearch
+                            allowClear
+                            loading={restFirmsLoading}
+                            placeholder="Katalogdan seç (isteğe bağlı)"
+                            value={restLogoFirmNr}
+                            onChange={handleRestFirmSelect}
+                            options={restFirms.map((f) => ({
+                              value: f.firmNr,
+                              label: `${f.firmNr} — ${f.title || f.name}`,
+                            }))}
+                            notFoundContent={
+                              restFirmsLoading ? <Spin size="small" /> : 'Firma bulunamadı'
+                            }
+                          />
+                        ) : null}
+                      </Space>
                     </Form.Item>
                   </Col>
                   <Col xs={24} md={8}>
                     <Form.Item label="Dönem" required>
-                      {restPeriods.length > 0 ? (
-                        <Select
-                          placeholder="Dönem seçin"
-                          value={restLogoPeriodNr}
-                          onChange={handleRestPeriodSelect}
-                          options={restPeriods.map((p) => ({
-                            value: p.number,
-                            label: `${p.number}${p.active ? ' (aktif)' : ''}`,
-                          }))}
-                        />
-                      ) : (
+                      <Space direction="vertical" size={6} style={{ width: '100%' }}>
                         <InputNumber
                           min={1}
                           style={{ width: '100%' }}
@@ -777,31 +864,40 @@ export function LogoErpConnectorSection() {
                             }
                           }}
                         />
-                      )}
+                        {restPeriods.length > 0 ? (
+                          <Select
+                            placeholder="Katalogdan seç (isteğe bağlı)"
+                            value={restLogoPeriodNr}
+                            onChange={handleRestPeriodSelect}
+                            options={restPeriods.map((p) => ({
+                              value: p.number,
+                              label: `${p.number}${p.active ? ' (aktif)' : ''}`,
+                            }))}
+                          />
+                        ) : null}
+                      </Space>
                     </Form.Item>
                   </Col>
                   <Col xs={24} md={8}>
                     <Form.Item label="Veritabanı">
-                      <Select
-                        showSearch
-                        allowClear
-                        loading={restDbLoading}
-                        placeholder={restDbOptions.length ? 'DB seçin' : 'Önce bağlantı testi'}
-                        value={restLogoDb}
-                        onChange={handleRestDbSelect}
-                        disabled={!restDbOptions.length && !restDbLoading}
-                        options={restDbOptions.map((db) => ({ value: db, label: db }))}
-                        dropdownRender={(menu) => (
-                          <>
-                            {menu}
-                            <div style={{ padding: 8, borderTop: '1px solid #f0f0f0' }}>
-                              <Button size="small" block onClick={() => void refreshRestDatabases()}>
-                                Veritabanlarını yenile
-                              </Button>
-                            </div>
-                          </>
-                        )}
-                      />
+                      <Space direction="vertical" size={6} style={{ width: '100%' }}>
+                        <AutoComplete
+                          allowClear
+                          options={restDbOptions.map((db) => ({ value: db, label: db }))}
+                          value={restLogoDb}
+                          onChange={(v) => handleRestDbSelect(v?.trim() || undefined)}
+                          placeholder="DB adı yazın veya seçin"
+                          style={{ width: '100%' }}
+                        />
+                        <Button
+                          size="small"
+                          block
+                          loading={restDbLoading}
+                          onClick={() => void refreshRestDatabases()}
+                        >
+                          Veritabanlarını yenile
+                        </Button>
+                      </Space>
                     </Form.Item>
                   </Col>
                 </Row>
@@ -928,7 +1024,7 @@ export function LogoErpConnectorSection() {
         children: <LogoErpSyncCollapse serviceType={serviceType} />,
       },
     ],
-    [dbLoading, dbOptions, handleConnectionTest, handleServiceTypeChange, refreshDatabases, refreshRestDatabases, restConnected, restContextReady, restDbLoading, restDbOptions, restFirms, restFirmsLoading, restLogoDb, restLogoFirmNr, restLogoPeriodNr, restPeriods, serviceType, testing],
+    [dbLoading, dbOptions, handleClearRestFirmContext, handleConnectionTest, handleServiceTypeChange, refreshDatabases, refreshRestDatabases, restConnected, restContextReady, restDbLoading, restDbOptions, restFirms, restFirmsLoading, restLogoDb, restLogoFirmNr, restLogoPeriodNr, restPeriods, serviceType, testing],
   );
 
   if (!ready) {

@@ -99,6 +99,12 @@ function App() {
           localStorage.removeItem('exretail_firma_donem_configured');
         }
         localStorage.setItem('retailex_web_config', JSON.stringify(mergeRustIntoStoredWebConfig(config)));
+        void import('./services/logoRestApi')
+          .then(({ syncLogoRestFromWebConfig }) => syncLogoRestFromWebConfig(true))
+          .catch(() => {});
+        void import('./services/merkezTenantRegistry')
+          .then(({ refreshLogoErpFromMerkezTenant }) => refreshLogoErpFromMerkezTenant())
+          .catch(() => {});
       } else {
         setIsConfigured(false);
         // Clear ghost flags if backend says not configured
@@ -164,6 +170,15 @@ function App() {
           await initializeFromSQLite();
           setIsPgReady(true);
           setIsConfigured(hasWebTenantResolution());
+          try {
+            const { syncLogoRestFromWebConfig } = await import('./services/logoRestApi');
+            syncLogoRestFromWebConfig(true);
+          } catch {
+            /* yok */
+          }
+          void import('./services/merkezTenantRegistry')
+            .then(({ refreshLogoErpFromMerkezTenant }) => refreshLogoErpFromMerkezTenant())
+            .catch(() => {});
           startupCompleteRef.current = true;
           setIsInitialized(true);
           if ((window as any).removeLoader) (window as any).removeLoader();

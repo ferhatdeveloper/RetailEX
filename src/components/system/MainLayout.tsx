@@ -354,9 +354,28 @@ export function MainLayout({
     }
   }, [currentModule, firms, selectedFirm, firmaLoading]);
 
-  // Logo periyodik senkron (Entegrasyonlar modu: MSSQL veya REST)
+  // Logo ERP: merkez tenant_registry → local bağlam, sonra periyodik senkron
   useEffect(() => {
-    const mode = loadLogoErpMode();
+    let cancelled = false;
+    const bootLogo = async () => {
+      try {
+        const { refreshLogoErpFromMerkezTenant } = await import('../../services/merkezTenantRegistry');
+        if (!cancelled) await refreshLogoErpFromMerkezTenant();
+      } catch {
+        try {
+          const { syncLogoRestFromWebConfig } = await import('../../services/logoRestApi');
+          if (!cancelled) syncLogoRestFromWebConfig(true);
+        } catch {
+          /* yok */
+        }
+      }
+      if (cancelled) return;
+      const mode = loadLogoErpMode();
+      if (mode === 'mssql' && IS_TAURI) startLogoMssqlAutoSync();
+      if (mode === 'rest') startLogoRestAutoSync();
+    };
+    void bootLogo();
+
     const onMode = (ev: Event) => {
       const next = (ev as CustomEvent<LogoErpMode>).detail;
       stopLogoMssqlAutoSync();
@@ -364,14 +383,11 @@ export function MainLayout({
       if (next === 'mssql' && IS_TAURI) startLogoMssqlAutoSync();
       if (next === 'rest') startLogoRestAutoSync();
     };
-    let stopMssql = () => undefined;
-    let stopRest = () => undefined;
-    if (mode === 'mssql' && IS_TAURI) stopMssql = startLogoMssqlAutoSync();
-    if (mode === 'rest') stopRest = startLogoRestAutoSync();
     window.addEventListener('retailex:logo-erp-mode', onMode);
     return () => {
-      stopMssql();
-      stopRest();
+      cancelled = true;
+      stopLogoMssqlAutoSync();
+      stopLogoRestAutoSync();
       window.removeEventListener('retailex:logo-erp-mode', onMode);
     };
   }, []);

@@ -22,6 +22,10 @@ export type TenantRegistryRow = {
   scale_bridge_url?: string | null;
   scale_bridge_token?: string | null;
   logo_rest_api_url?: string | null;
+  /** Logo Tiger firma no (RetailEX firm_nr ile aynı olmak zorunda değil) */
+  logo_firm_nr?: number | null;
+  logo_period_nr?: number | null;
+  logo_db?: string | null;
   notes?: string | null;
   is_active?: boolean;
   eticaret_settings?: Record<string, unknown> | null;
@@ -516,6 +520,17 @@ export function tenantRowToAppConfigPatch(
   const logoRestUrl = (row.logo_rest_api_url || '').trim();
   if (logoRestUrl) patch.logo_rest_api_url = normalizeLogoRestBaseUrl(logoRestUrl);
 
+  const logoFirmNr = Number(row.logo_firm_nr ?? 0);
+  if (Number.isFinite(logoFirmNr) && logoFirmNr > 0) {
+    patch.logo_firm_nr = Math.floor(logoFirmNr);
+  }
+  const logoPeriodNr = Number(row.logo_period_nr ?? 0);
+  if (Number.isFinite(logoPeriodNr) && logoPeriodNr > 0) {
+    patch.logo_period_nr = Math.floor(logoPeriodNr);
+  }
+  const logoDb = String(row.logo_db ?? '').trim();
+  if (logoDb) patch.logo_db = logoDb;
+
   const host = (row.db_host || '').trim() || '127.0.0.1';
   const port = row.db_port && row.db_port > 0 ? row.db_port : 5432;
   const dbn = row.database_name;
@@ -666,8 +681,387 @@ export async function persistTenantFieldsFromRestUrl(
     if (tag) window.localStorage.setItem('exretail_selected_tenant', tag);
   }
 
+  try {
+    const { applyLogoRestAfterTenantMerge } = await import('../utils/logoRestTenantSync');
+    applyLogoRestAfterTenantMerge(prev, merged);
+  } catch (e) {
+    console.warn('[merkezTenantRegistry] Logo REST merkez senkronu:', e);
+  }
+
   const tag = String(
     merged.merkez_tenant_code || merged.merkez_tenant_id || patch.merkez_tenant_code || patch.merkez_tenant_id || '',
   );
   return { applied: true, tag };
+}
+
+/**
+ * Sistem yüklemesi / oturum açılışı: merkez tenant_registry'den Logo ERP alanlarını yeniler
+ * ve local Logo REST bağlamına uygular. Merkez erişilemezse önbellekteki web_config kullanılır.
+ */
+export async function refreshLogoErpFromMerkezTenant(): Promise<{
+  applied: boolean;
+  fromMerkez: boolean;
+  reason?: string;
+}> {
+  if (typeof window === 'undefined') {
+    return { applied: false, fromMerkez: false, reason: 'ssr' };
+  }
+
+  let prev: Record<string, unknown> = {};
+  const IS_TAURI = !!(window as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__;
+  try {
+    if (IS_TAURI) {
+      const { invoke } = await import('@tauri-apps/api/core');
+      prev = ((await invoke('get_app_config')) as Record<string, unknown>) || {};
+    } else {
+      const raw = window.localStorage.getItem('retailex_web_config');
+      prev = raw ? (JSON.parse(raw) as Record<string, unknown>) : {};
+    }
+  } catch {
+    prev = {};
+  }
+
+  const code = String(prev.merkez_tenant_code || '').trim();
+  const id = String(prev.merkez_tenant_id || '').trim();
+  if (!code && !id) {
+    try {
+      const { syncLogoRestFromWebConfig } = await import('./logoRestApi');
+      syncLogoRestFromWebConfig(true);
+    } catch {
+      /* yok */
+    }
+    return { applied: false, fromMerkez: false, reason: 'no_tenant' };
+  }
+
+  try {
+    const row = await fetchTenantRegistryRow(code || id);
+    const logoOnly: Record<string, unknown> = {
+      merkez_tenant_code: row.code,
+      merkez_tenant_id: row.id,
+      merkez_display_name: row.display_name,
+    };
+    const url = String(row.logo_rest_api_url ?? '').trim();
+    if (url) logoOnly.logo_rest_api_url = normalizeLogoRestBaseUrl(url);
+
+    const firmNr = Number(row.logo_firm_nr ?? 0);
+    if (Number.isFinite(firmNr) && firmNr > 0) {
+      logoOnly.logo_firm_nr = Math.floor(firmNr);
+    }
+
+    const periodNr = Number(row.logo_period_nr ?? 0);
+    if (Number.isFinite(periodNr) && periodNr > 0) {
+      logoOnly.logo_period_nr = Math.floor(periodNr);
+    }
+
+    const logoDb = String(row.logo_db ?? '').trim();
+    if (logoDb) logoOnly.logo_db = logoDb;
+
+    const merged: Record<string, unknown> = { ...prev, ...logoOnly };
+
+    if (IS_TAURI) {
+      const { invoke } = await import('@tauri-apps/api/core');
+      await invoke('save_app_config', { config: merged });
+    }
+    window.localStorage.setItem('retailex_web_config', JSON.stringify(merged));
+
+    const { applyLogoRestAfterTenantMerge } = await import('../utils/logoRestTenantSync');
+    applyLogoRestAfterTenantMerge(prev, merged);
+    return { applied: true, fromMerkez: true };
+  } catch (e) {
+    console.warn('[merkezTenantRegistry] refreshLogoErpFromMerkezTenant:', e);
+    try {
+      const { syncLogoRestFromWebConfig } = await import('./logoRestApi');
+      syncLogoRestFromWebConfig(true);
+    } catch {
+      /* yok */
+    }
+    return {
+      applied: true,
+      fromMerkez: false,
+      reason: e instanceof Error ? e.message : String(e),
+    };
+  }
+}
+
+export type TenantLogoErpFields = {
+  logo_rest_api_url?: string | null;
+  logo_firm_nr?: number | null;
+  logo_period_nr?: number | null;
+  logo_db?: string | null;
+};
+
+const MERKEZ_LOGO_COLUMNS_DDL = `
+ALTER TABLE public.tenant_registry ADD COLUMN IF NOT EXISTS logo_rest_api_url TEXT;
+ALTER TABLE public.tenant_registry ADD COLUMN IF NOT EXISTS logo_firm_nr INTEGER;
+ALTER TABLE public.tenant_registry ADD COLUMN IF NOT EXISTS logo_period_nr INTEGER;
+ALTER TABLE public.tenant_registry ADD COLUMN IF NOT EXISTS logo_db TEXT;
+SELECT pg_notify('pgrst', 'reload schema');
+`;
+
+function resolveCurrentTenantCode(): string {
+  if (typeof window === 'undefined') return '';
+  try {
+    const raw = window.localStorage.getItem('retailex_web_config');
+    const cfg = raw ? (JSON.parse(raw) as Record<string, unknown>) : {};
+    const code = String(cfg.merkez_tenant_code || '').trim().toLowerCase();
+    if (code) return code;
+    const selected = String(window.localStorage.getItem('exretail_selected_tenant') || '')
+      .trim()
+      .toLowerCase();
+    if (selected && !UUID_RE.test(selected)) return selected;
+  } catch {
+    /* yok */
+  }
+  return '';
+}
+
+function normalizeLogoFieldsPayload(fields: TenantLogoErpFields): {
+  logo_rest_api_url: string | null;
+  logo_firm_nr: number | null;
+  logo_period_nr: number | null;
+  logo_db: string | null;
+} {
+  const url = normalizeLogoRestBaseUrl(String(fields.logo_rest_api_url || ''));
+  const firmNr = Number(fields.logo_firm_nr ?? 0);
+  const periodNr = Number(fields.logo_period_nr ?? 0);
+  const logoDb = String(fields.logo_db ?? '').trim();
+  return {
+    logo_rest_api_url: url || null,
+    logo_firm_nr: Number.isFinite(firmNr) && firmNr > 0 ? Math.floor(firmNr) : null,
+    logo_period_nr: Number.isFinite(periodNr) && periodNr > 0 ? Math.floor(periodNr) : null,
+    logo_db: logoDb || null,
+  };
+}
+
+async function ensureLogoColumnsViaBridge(): Promise<boolean> {
+  try {
+    const { getBridgeUrl } = await import('../utils/env');
+    const res = await fetch(`${getBridgeUrl()}/api/merkez/ensure-logo-columns`, {
+      method: 'POST',
+      headers: { Accept: 'application/json' },
+    });
+    if (!res.ok) return false;
+    const data = (await res.json().catch(() => ({}))) as { ok?: boolean };
+    return data.ok === true;
+  } catch {
+    return false;
+  }
+}
+
+/** Aynı uzak PG kümesinde merkez_db’ye DDL (bridge /api/pg_query). */
+async function ensureLogoColumnsViaRemotePg(): Promise<boolean> {
+  try {
+    const { getCentralRemotePgConfig } = await import('./postgres');
+    const { getBridgeUrl, IS_TAURI, safeInvoke } = await import('../utils/env');
+    const remote = getCentralRemotePgConfig();
+    const host = String(remote.host || '').trim();
+    if (!host) return false;
+    const effectiveHost = host === 'localhost' ? '127.0.0.1' : host;
+    const u = encodeURIComponent(String(remote.user || 'postgres'));
+    const p = encodeURIComponent(String(remote.password || ''));
+    const connStr = `postgresql://${u}:${p}@${effectiveHost}:${Number(remote.port) || 5432}/merkez_db`;
+
+    if (IS_TAURI) {
+      await safeInvoke('pg_query', { connStr, sql: MERKEZ_LOGO_COLUMNS_DDL, params: [] });
+      return true;
+    }
+
+    const res = await fetch(`${getBridgeUrl()}/api/pg_query`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ connStr, sql: MERKEZ_LOGO_COLUMNS_DDL, params: [] }),
+    });
+    return res.ok;
+  } catch (e) {
+    console.warn('[merkezTenantRegistry] ensureLogoColumnsViaRemotePg:', e);
+    return false;
+  }
+}
+
+async function patchLogoViaBridge(
+  code: string,
+  payload: ReturnType<typeof normalizeLogoFieldsPayload>
+): Promise<boolean> {
+  try {
+    const { getBridgeUrl } = await import('../utils/env');
+    const res = await fetch(`${getBridgeUrl()}/api/merkez/tenant-logo`, {
+      method: 'PATCH',
+      headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code, ...payload }),
+    });
+    if (!res.ok) return false;
+    const data = (await res.json().catch(() => ({}))) as { ok?: boolean };
+    return data.ok === true;
+  } catch {
+    return false;
+  }
+}
+
+async function patchLogoViaPostgrest(
+  code: string,
+  payload: ReturnType<typeof normalizeLogoFieldsPayload>
+): Promise<void> {
+  const base = normalizeBaseUrl(getMerkezRestBaseUrl());
+  const body: Record<string, unknown> = { updated_at: new Date().toISOString() };
+  if (payload.logo_rest_api_url) body.logo_rest_api_url = payload.logo_rest_api_url;
+  if (payload.logo_firm_nr != null) body.logo_firm_nr = payload.logo_firm_nr;
+  if (payload.logo_period_nr != null) body.logo_period_nr = payload.logo_period_nr;
+  if (payload.logo_db) body.logo_db = payload.logo_db;
+
+  const url = `${base}/tenant_registry?code=eq.${encodeURIComponent(code)}`;
+  const res = await fetchRetailexAware(url, {
+    method: 'PATCH',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+      Prefer: 'return=minimal',
+    },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`Merkez PATCH başarısız (${res.status}): ${text || res.statusText}`);
+  }
+}
+
+async function patchLogoViaRemotePg(
+  code: string,
+  payload: ReturnType<typeof normalizeLogoFieldsPayload>
+): Promise<boolean> {
+  try {
+    const { getCentralRemotePgConfig } = await import('./postgres');
+    const { getBridgeUrl, IS_TAURI, safeInvoke } = await import('../utils/env');
+    const remote = getCentralRemotePgConfig();
+    const host = String(remote.host || '').trim();
+    if (!host) return false;
+    const effectiveHost = host === 'localhost' ? '127.0.0.1' : host;
+    const u = encodeURIComponent(String(remote.user || 'postgres'));
+    const p = encodeURIComponent(String(remote.password || ''));
+    const connStr = `postgresql://${u}:${p}@${effectiveHost}:${Number(remote.port) || 5432}/merkez_db`;
+    const sql = `UPDATE public.tenant_registry SET
+      logo_rest_api_url = COALESCE(NULLIF($2, ''), logo_rest_api_url),
+      logo_firm_nr = COALESCE($3::int, logo_firm_nr),
+      logo_period_nr = COALESCE($4::int, logo_period_nr),
+      logo_db = COALESCE(NULLIF($5, ''), logo_db),
+      updated_at = now()
+    WHERE lower(code) = $1`;
+    const params = [
+      code,
+      payload.logo_rest_api_url || '',
+      payload.logo_firm_nr,
+      payload.logo_period_nr,
+      payload.logo_db || '',
+    ];
+
+    if (IS_TAURI) {
+      await safeInvoke('pg_query', { connStr, sql, params });
+      return true;
+    }
+    const res = await fetch(`${getBridgeUrl()}/api/pg_query`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ connStr, sql, params }),
+    });
+    return res.ok;
+  } catch (e) {
+    console.warn('[merkezTenantRegistry] patchLogoViaRemotePg:', e);
+    return false;
+  }
+}
+
+function applyLogoFieldsToLocalWebConfig(payload: ReturnType<typeof normalizeLogoFieldsPayload>): void {
+  if (typeof window === 'undefined') return;
+  let prev: Record<string, unknown> = {};
+  try {
+    const raw = window.localStorage.getItem('retailex_web_config');
+    prev = raw ? (JSON.parse(raw) as Record<string, unknown>) : {};
+  } catch {
+    prev = {};
+  }
+  const merged: Record<string, unknown> = { ...prev };
+  if (payload.logo_rest_api_url) merged.logo_rest_api_url = payload.logo_rest_api_url;
+  if (payload.logo_firm_nr != null) merged.logo_firm_nr = payload.logo_firm_nr;
+  if (payload.logo_period_nr != null) merged.logo_period_nr = payload.logo_period_nr;
+  if (payload.logo_db) merged.logo_db = payload.logo_db;
+  window.localStorage.setItem('retailex_web_config', JSON.stringify(merged));
+  void import('../utils/logoRestTenantSync').then(({ applyLogoRestAfterTenantMerge }) => {
+    applyLogoRestAfterTenantMerge(prev, merged);
+  });
+}
+
+/**
+ * Entegrasyon sayfası: Logo ERP alanlarını merkez tenant_registry’ye yazar.
+ * Eksik kolon varsa uzak merkez_db’de ALTER IF NOT EXISTS dener.
+ */
+export async function saveTenantLogoErpFields(
+  fields: TenantLogoErpFields,
+  opts?: { tenantCode?: string }
+): Promise<{ saved: boolean; via: string; error?: string; columnsEnsured: boolean }> {
+  const code = String(opts?.tenantCode || resolveCurrentTenantCode()).trim().toLowerCase();
+  if (!code) {
+    return {
+      saved: false,
+      via: 'none',
+      columnsEnsured: false,
+      error: 'Kiracı kodu yok — önce Login’de kiracı bağlayın.',
+    };
+  }
+
+  const payload = normalizeLogoFieldsPayload(fields);
+  if (!payload.logo_rest_api_url && payload.logo_firm_nr == null && !payload.logo_db) {
+    return {
+      saved: false,
+      via: 'none',
+      columnsEnsured: false,
+      error: 'Kaydedilecek Logo alanı yok (URL / firma / DB).',
+    };
+  }
+
+  let columnsEnsured =
+    (await ensureLogoColumnsViaBridge()) || (await ensureLogoColumnsViaRemotePg());
+
+  // 1) Bridge doğrudan UPDATE (DDL dahil)
+  if (await patchLogoViaBridge(code, payload)) {
+    applyLogoFieldsToLocalWebConfig(payload);
+    return { saved: true, via: 'bridge', columnsEnsured: true };
+  }
+
+  // 2) PostgREST PATCH
+  try {
+    await patchLogoViaPostgrest(code, payload);
+    applyLogoFieldsToLocalWebConfig(payload);
+    return { saved: true, via: 'postgrest', columnsEnsured };
+  } catch (e1) {
+    const msg1 = e1 instanceof Error ? e1.message : String(e1);
+    const missingCol =
+      /column .* does not exist|PGRST204|Could not find the/i.test(msg1) ||
+      /logo_firm_nr|logo_period_nr|logo_db|logo_rest_api_url/i.test(msg1);
+
+    if (missingCol) {
+      columnsEnsured =
+        (await ensureLogoColumnsViaBridge()) ||
+        (await ensureLogoColumnsViaRemotePg()) ||
+        columnsEnsured;
+      try {
+        await patchLogoViaPostgrest(code, payload);
+        applyLogoFieldsToLocalWebConfig(payload);
+        return { saved: true, via: 'postgrest_retry', columnsEnsured: true };
+      } catch (e2) {
+        console.warn('[merkezTenantRegistry] PostgREST retry:', e2);
+      }
+    }
+
+    // 3) Uzak PG SQL UPDATE
+    if (await patchLogoViaRemotePg(code, payload)) {
+      applyLogoFieldsToLocalWebConfig(payload);
+      return { saved: true, via: 'remote_pg', columnsEnsured: true };
+    }
+
+    return {
+      saved: false,
+      via: 'none',
+      columnsEnsured,
+      error: msg1,
+    };
+  }
 }

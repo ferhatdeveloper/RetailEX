@@ -289,6 +289,24 @@ export function isLogoIdleLObjectsError(message: string | undefined | null): boo
 /** Logo sunucu LObjects havuz hatası — kullanıcıya Türkçe operasyon mesajı. */
 export function formatLogoIdleLObjectsMessage(detail?: string): string {
   const desc = (detail || '').trim();
+  const lower = desc.toLocaleLowerCase('en-US');
+  const loginDenied =
+    lower.includes('login denied') ||
+    lower.includes('login_error') ||
+    lower.includes('giriş reddedildi') ||
+    lower.includes('giris reddedildi');
+
+  if (loginDenied) {
+    return (
+      'Logo REST: Giriş reddedildi ve boşta LObjects.exe yok. RetailEX bunu sunucuda çözemez. ' +
+      '1) Entegrasyonda Logo kullanıcı/şifre (Tiger REST kullanıcısı) doğru mu? ' +
+      '2) Token firmno = Logo firma numarası mı (RetailEX 001 ≠ Logo 401 olabilir — Firma alanına Logo no yazın)? ' +
+      '3) Logo sunucusunda Servis Yönetim Paneli → aynı kullanıcı/şifre/firma ile LObjects havuzu ayağa kalkıyor mu; ' +
+      "Görev Yöneticisi'nde LObjects.exe görünmeli; RESTServis\\Logs kontrol edin. " +
+      (desc ? `(${desc})` : '')
+    ).trim();
+  }
+
   return (
     'Logo REST: Boşta LObjects.exe yok. Bu hata RetailEX kodundan çözülmez — Logo sunucusunda ' +
     'Servis Yönetim Panelindeki Tiger kullanıcısı/şifre/firma ile LObjects havuzunun ayağa kalktığını doğrulayın; ' +
@@ -586,20 +604,89 @@ export function clearLogoRestUrlManualOverride(): void {
   localStorage.removeItem(STORAGE_MANUAL_URL);
 }
 
-/** Kiracı girişinde tenant_registry.logo_rest_api_url → logo config */
-export function syncLogoRestUrlFromWebConfig(force = false): void {
+/**
+ * Önceki Logo REST sunucusundan kalan firma kataloğu / dönem / DB / eşleme.
+ * Aynı bilgisayarda farklı REST URL’ye geçince eski listeler karışmasın.
+ */
+export function stripLogoRestFirmContext(cfg: LogoRestConfig): LogoRestConfig {
+  return {
+    ...cfg,
+    firmCatalog: [],
+    firmMappings: {},
+    logoDbs: [],
+    logoDb: '',
+    selectedFirmNr: undefined,
+    selectedPeriodNr: undefined,
+  };
+}
+
+/** localStorage + oturumdaki firma/dönem/DB bağlamını sıfırlar */
+export function clearLogoRestFirmContext(cfg?: LogoRestConfig): LogoRestConfig {
+  const base = cfg ?? loadLogoRestConfig();
+  const next = stripLogoRestFirmContext(base);
+  saveLogoRestConfig(next);
+  saveLogoRestSession(null);
+  return next;
+}
+
+/** Kiracı girişinde tenant_registry Logo alanları → logo config (URL + firma/dönem/DB) */
+export function syncLogoRestFromWebConfig(force = false): void {
   if (typeof window === 'undefined') return;
-  if (!force && isLogoRestUrlManualOverride()) return;
-  const cfg = parseStoredRetailexWebConfig();
-  const url = normalizeLogoRestBaseUrl(String(cfg.logo_rest_api_url || ''));
-  if (!url) return;
+  const webCfg = parseStoredRetailexWebConfig();
+  const url = normalizeLogoRestBaseUrl(String(webCfg.logo_rest_api_url || ''));
+  const firmNr = Number(webCfg.logo_firm_nr ?? 0);
+  const periodNr = Number(webCfg.logo_period_nr ?? 0);
+  const logoDb = String(webCfg.logo_db ?? '').trim();
+
   const current = loadLogoRestConfig();
-  saveLogoRestConfig({ ...current, baseUrl: url });
+  const prevUrl = normalizeLogoRestBaseUrl(current.baseUrl);
+
+  if (url && (force || !isLogoRestUrlManualOverride())) {
+    if (prevUrl && prevUrl !== url) {
+      saveLogoRestConfig({ ...stripLogoRestFirmContext(current), baseUrl: url });
+      saveLogoRestSession(null);
+    } else if (prevUrl !== url) {
+      saveLogoRestConfig({ ...current, baseUrl: url });
+    }
+  }
+
+  // Merkezden gelen Logo firma/dönem/DB — sistem yüklemesinde kaynak doğruluk
+  if (Number.isFinite(firmNr) && firmNr > 0) {
+    let cfg = loadLogoRestConfig();
+    const nextDb = logoDb || cfg.logoDb || '';
+    cfg = saveLogoFirmMappingForErp(cfg, {
+      logoFirmNr: Math.floor(firmNr),
+      logoPeriodNr: Number.isFinite(periodNr) && periodNr > 0 ? Math.floor(periodNr) : 1,
+      logoDb: nextDb,
+    });
+    if (nextDb) {
+      const dbs = Array.from(new Set([...(cfg.logoDbs || []), nextDb].filter(Boolean))) as string[];
+      saveLogoRestConfig({ ...cfg, logoDb: nextDb, logoDbs: dbs });
+    }
+  } else if (logoDb) {
+    const cfg = loadLogoRestConfig();
+    const dbs = Array.from(new Set([...(cfg.logoDbs || []), logoDb].filter(Boolean))) as string[];
+    saveLogoRestConfig({ ...cfg, logoDb, logoDbs: dbs });
+  }
+}
+
+/** @deprecated syncLogoRestFromWebConfig kullanın */
+export function syncLogoRestUrlFromWebConfig(force = false): void {
+  syncLogoRestFromWebConfig(force);
 }
 
 export function setLogoRestBaseUrl(url: string, options?: { manual?: boolean }): void {
   const current = loadLogoRestConfig();
-  saveLogoRestConfig({ ...current, baseUrl: normalizeLogoRestBaseUrl(url) });
+  const nextUrl = normalizeLogoRestBaseUrl(url);
+  const prevUrl = normalizeLogoRestBaseUrl(current.baseUrl);
+  const next =
+    prevUrl && nextUrl && prevUrl !== nextUrl
+      ? { ...stripLogoRestFirmContext(current), baseUrl: nextUrl }
+      : { ...current, baseUrl: nextUrl };
+  if (prevUrl && nextUrl && prevUrl !== nextUrl) {
+    saveLogoRestSession(null);
+  }
+  saveLogoRestConfig(next);
   if (typeof window !== 'undefined') {
     if (options?.manual) localStorage.setItem(STORAGE_MANUAL_URL, '1');
     else if (!url.trim()) localStorage.removeItem(STORAGE_MANUAL_URL);
@@ -1285,7 +1372,10 @@ function parseLogoDbList(data: unknown): string[] {
 }
 
 /** Logo REST üzerinden bilinen veritabanı adlarını toplar (çoklu DB). */
-export async function logoListDatabases(cfg: LogoRestConfig): Promise<string[]> {
+export async function logoListDatabases(
+  cfg: LogoRestConfig,
+  opts?: { includeCachedLists?: boolean }
+): Promise<string[]> {
   const baseUrl = requireBaseUrl(cfg);
   assertLogoReachableInWebContext(baseUrl);
   const tokenFirm = getLogoMappingForErp(cfg)?.logoFirmNr ?? logoFirmNrFromErp();
@@ -1293,8 +1383,11 @@ export async function logoListDatabases(cfg: LogoRestConfig): Promise<string[]> 
   const auth = { Authorization: `Bearer ${session.accessToken}` };
   const discovered = new Set<string>();
   if (session.logoDb?.trim()) discovered.add(session.logoDb.trim());
-  if (cfg.logoDb?.trim()) discovered.add(cfg.logoDb.trim());
-  (cfg.logoDbs || []).forEach((d) => d?.trim() && discovered.add(d.trim()));
+  // Eski REST sunucusundan kalan logoDbs listesini varsayılan olarak karıştırma.
+  if (opts?.includeCachedLists) {
+    if (cfg.logoDb?.trim()) discovered.add(cfg.logoDb.trim());
+    (cfg.logoDbs || []).forEach((d) => d?.trim() && discovered.add(d.trim()));
+  }
 
   const paths = ['/methods/CAPI/Databases', '/methods/GetLogoDBs', '/methods/CAPI/LogoDBs'];
   for (const path of paths) {
@@ -1311,14 +1404,25 @@ export async function logoListDatabases(cfg: LogoRestConfig): Promise<string[]> 
   return [...discovered].filter(Boolean).sort((a, b) => a.localeCompare(b, 'tr'));
 }
 
-export function saveLogoDatabaseList(cfg: LogoRestConfig, dbs: string[]): LogoRestConfig {
-  const merged = Array.from(
-    new Set([...(cfg.logoDbs || []), ...(dbs || []), cfg.logoDb].filter((x) => x && String(x).trim()))
-  ) as string[];
+/** Yeni API listesini kaydeder. Varsayılan: eski logoDbs ile birleştirmez (replace). */
+export function saveLogoDatabaseList(
+  cfg: LogoRestConfig,
+  dbs: string[],
+  opts?: { merge?: boolean }
+): LogoRestConfig {
+  const incoming = Array.from(
+    new Set((dbs || []).map((x) => String(x || '').trim()).filter(Boolean))
+  );
+  const merged = opts?.merge
+    ? (Array.from(
+        new Set([...(cfg.logoDbs || []), ...incoming, cfg.logoDb].filter((x) => x && String(x).trim()))
+      ) as string[])
+    : incoming;
+  const currentDb = (cfg.logoDb || '').trim();
   const next: LogoRestConfig = {
     ...cfg,
     logoDbs: merged,
-    logoDb: cfg.logoDb || merged[0] || '',
+    logoDb: currentDb && merged.includes(currentDb) ? currentDb : merged[0] || '',
   };
   saveLogoRestConfig(next);
   return next;

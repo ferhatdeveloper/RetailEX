@@ -802,6 +802,108 @@ async function loadRegistryEticaretSettings(tenantCode: string): Promise<Record<
   }
 }
 
+/** merkez_db.tenant_registry Logo kolonları (idempotent) */
+const MERKEZ_LOGO_COLUMNS_DDL = `
+ALTER TABLE public.tenant_registry ADD COLUMN IF NOT EXISTS logo_rest_api_url TEXT;
+ALTER TABLE public.tenant_registry ADD COLUMN IF NOT EXISTS logo_firm_nr INTEGER;
+ALTER TABLE public.tenant_registry ADD COLUMN IF NOT EXISTS logo_period_nr INTEGER;
+ALTER TABLE public.tenant_registry ADD COLUMN IF NOT EXISTS logo_db TEXT;
+NOTIFY pgrst, 'reload schema';
+`;
+
+async function ensureMerkezLogoColumnsOnPool(pool: {
+  query: (sql: string, params?: unknown[]) => Promise<unknown>;
+}): Promise<void> {
+  await pool.query(MERKEZ_LOGO_COLUMNS_DDL);
+}
+
+/** Entegrasyon: uzak merkez_db’de Logo kolonlarını oluştur */
+app.post('/api/merkez/ensure-logo-columns', async (c) => {
+  try {
+    const { merkezPgUri } = await import('../../eticaret/core/server/tenantDbResolve');
+    const merkez = merkezPgUri();
+    if (!merkez) {
+      return c.json(
+        {
+          ok: false,
+          error:
+            'MERKEZ_PG_URI veya PG_DUMP_INTERNAL_URI tanımlı değil — merkez_db ALTER yapılamadı.',
+        },
+        503,
+      );
+    }
+    const pool = getEticaretPool(merkez);
+    await ensureMerkezLogoColumnsOnPool(pool);
+    return c.json({ ok: true, database: 'merkez_db' });
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : String(error);
+    console.error('[PG Bridge] ensure-logo-columns:', error);
+    return c.json({ ok: false, error: msg }, 500);
+  }
+});
+
+/**
+ * Entegrasyon: Logo ERP alanlarını tenant_registry’ye yazar.
+ * Eksik kolon varsa önce ALTER.
+ */
+app.patch('/api/merkez/tenant-logo', async (c) => {
+  try {
+    const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+    const code = String(body.code || '').trim().toLowerCase();
+    if (!code) return c.json({ ok: false, error: 'code zorunlu' }, 400);
+
+    const { merkezPgUri } = await import('../../eticaret/core/server/tenantDbResolve');
+    const merkez = merkezPgUri();
+    if (!merkez) {
+      return c.json(
+        {
+          ok: false,
+          error:
+            'MERKEZ_PG_URI veya PG_DUMP_INTERNAL_URI tanımlı değil — merkez_db yazılamadı.',
+        },
+        503,
+      );
+    }
+
+    const pool = getEticaretPool(merkez);
+    await ensureMerkezLogoColumnsOnPool(pool);
+
+    const logoUrl =
+      body.logo_rest_api_url != null ? String(body.logo_rest_api_url).trim() : null;
+    const firmRaw = body.logo_firm_nr;
+    const periodRaw = body.logo_period_nr;
+    const logoDb = body.logo_db != null ? String(body.logo_db).trim() : null;
+    const firmNr =
+      firmRaw != null && firmRaw !== '' && Number(firmRaw) > 0 ? Math.floor(Number(firmRaw)) : null;
+    const periodNr =
+      periodRaw != null && periodRaw !== '' && Number(periodRaw) > 0
+        ? Math.floor(Number(periodRaw))
+        : null;
+
+    const result = await pool.query(
+      `UPDATE public.tenant_registry SET
+         logo_rest_api_url = COALESCE(NULLIF($2, ''), logo_rest_api_url),
+         logo_firm_nr = COALESCE($3, logo_firm_nr),
+         logo_period_nr = COALESCE($4, logo_period_nr),
+         logo_db = COALESCE(NULLIF($5, ''), logo_db),
+         updated_at = now()
+       WHERE lower(code) = $1
+       RETURNING code, logo_rest_api_url, logo_firm_nr, logo_period_nr, logo_db`,
+      [code, logoUrl || '', firmNr, periodNr, logoDb || ''],
+    );
+
+    if (!result.rowCount) {
+      return c.json({ ok: false, error: `tenant_registry satırı bulunamadı: ${code}` }, 404);
+    }
+
+    return c.json({ ok: true, row: result.rows[0] });
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : String(error);
+    console.error('[PG Bridge] tenant-logo:', error);
+    return c.json({ ok: false, error: msg }, 500);
+  }
+});
+
 function mergeSettingsLayers(
   ...layers: Array<Record<string, unknown>>
 ): Record<string, unknown> {

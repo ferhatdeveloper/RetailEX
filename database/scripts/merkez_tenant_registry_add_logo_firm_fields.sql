@@ -1,16 +1,12 @@
--- merkez_db.tenant_registry: kiracı Logo Tiger REST API tabanı (değişken — sabit IP yok)
--- Örnek: http://185.206.80.132:32001/api/v1
-
-ALTER TABLE tenant_registry
-  ADD COLUMN IF NOT EXISTS logo_rest_api_url TEXT;
+-- merkez_db.tenant_registry: Logo REST firma / dönem / veritabanı (kiracı başına)
+-- URL: logo_rest_api_url (merkez_tenant_registry_add_logo_rest_fields.sql)
+-- Çalıştır: psql -d merkez_db -f database/scripts/merkez_tenant_registry_add_logo_firm_fields.sql
 
 ALTER TABLE tenant_registry
   ADD COLUMN IF NOT EXISTS logo_firm_nr INTEGER,
   ADD COLUMN IF NOT EXISTS logo_period_nr INTEGER,
   ADD COLUMN IF NOT EXISTS logo_db TEXT;
 
-COMMENT ON COLUMN tenant_registry.logo_rest_api_url IS
-  'Logo Objects REST API base URL (/api/v1). Kiracı başına farklı sunucu olabilir.';
 COMMENT ON COLUMN tenant_registry.logo_firm_nr IS
   'Logo Tiger firma numarası (örn. 401). RetailEX ERP firm_nr ile aynı olmak zorunda değil.';
 COMMENT ON COLUMN tenant_registry.logo_period_nr IS
