@@ -13,6 +13,7 @@ import {
   type LogoRestConfig,
 } from './logoRestApi';
 import { loadLogoErpMode } from './logoErpMode';
+import { buildLogoItemRestRecord } from './logoRestItemMap';
 import type { LogoSyncLogEntry } from './logoRestSync';
 import { pushPendingSalesToLogo, type LogoInvoicePushResult } from './logoRestInvoicePush';
 import { DB_SETTINGS, ERP_SETTINGS, postgres } from './postgres';
@@ -78,12 +79,6 @@ export function logoOutboundPulledFields(): Record<string, unknown> {
 
 function emptyEntity(): LogoOutboundEntityResult {
   return { processed: 0, success: 0, errors: 0, messages: [] };
-}
-
-function mapUnitToLogo(unit: unknown): string {
-  const u = String(unit || 'AD').trim().toLocaleUpperCase('tr-TR');
-  if (!u || u === 'ADET' || u === 'AD.') return 'AD';
-  return u.slice(0, 10);
 }
 
 async function fetchPendingRows(table: string, limit: number): Promise<Record<string, unknown>[]> {
@@ -156,27 +151,9 @@ async function markMasterSync(
   );
 }
 
+/** RetailEX ürün → Logo items restRecord (UNITSET/UNITS/barkod/KDV/PRCLIST) */
 function buildItemRecord(row: Record<string, unknown>): Record<string, unknown> {
-  const code = String(row.code || '').trim();
-  const name = String(row.name || code || 'Ürün').trim();
-  const vat = Number(row.vat_rate ?? row.vatRate) || 0;
-  const price = Number(row.price) || 0;
-  const barcode = String(row.barcode || '').trim();
-  return {
-    CODE: code.slice(0, 25),
-    NAME: name.slice(0, 50),
-    CARD_TYPE: 1,
-    VAT: vat,
-    SELLPURCHVAT: vat,
-    UNIT_CODE: mapUnitToLogo(row.unit),
-    ...(barcode ? { BARCODE_CODE: barcode.slice(0, 30) } : {}),
-    ...(price > 0
-      ? {
-          PRICE: price,
-          SELLPRICE: price,
-        }
-      : {}),
-  };
+  return buildLogoItemRestRecord(row);
 }
 
 function buildArpRecord(

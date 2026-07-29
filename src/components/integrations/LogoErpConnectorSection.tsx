@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react';
 import {
+  Alert,
   AutoComplete,
   Button,
   Card,
@@ -999,6 +1000,14 @@ export function LogoErpConnectorSection() {
                   <Form.Item name="restAutoInterval" label="Çekim aralığı (dk)">
                     <InputNumber min={5} max={1440} style={{ width: '100%' }} />
                   </Form.Item>
+                </Col>
+                <Col span={24}>
+                  <Alert
+                    type="warning"
+                    showIcon
+                    message="Uygulama kapalıyken senkron"
+                    description="Otomatik çekim kaydı pg_bridge üzerine yazılır. RetailEX penceresi kapalı olsa bile veri güncel kalır; bunun için köprünün (`npm run bridge` / retailex_bridge) sürekli çalışması gerekir."
+                  />
                 </Col>
               </>
             ) : (

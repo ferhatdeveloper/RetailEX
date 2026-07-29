@@ -144,6 +144,11 @@ export function LogoErpSyncCollapse({ serviceType }: Props) {
         type="info"
         showIcon
         message="Web senkronu Logo REST + pg_bridge üzerinden çalışır; ayrı connector kurulumu gerekmez."
+        description={
+          rest.enabled
+            ? 'Periyodik otomatik çekim köprü (pg_bridge) üzerinde çalışır — RetailEX kapalı olsa bile bridge açık kaldığı sürece veri güncellenir.'
+            : 'Periyodik otomatik çekimi Parametreler sekmesinden açın; kayıt köprüye yazılır.'
+        }
       />
 
       <Text type="secondary">
@@ -151,7 +156,7 @@ export function LogoErpSyncCollapse({ serviceType }: Props) {
         {' · '}
         Çekim: {rest.pullMode === 'full' ? 'Tam' : 'Artımlı (değişenler)'}
         {' · '}
-        Otomatik çekim: {rest.enabled ? `Açık (${rest.intervalMinutes} dk)` : 'Kapalı'}
+        Otomatik çekim: {rest.enabled ? `Açık (${rest.intervalMinutes} dk, köprü cron)` : 'Kapalı'}
       </Text>
 
       <Space wrap>

@@ -11,7 +11,8 @@ const STORAGE_KEY = 'retailex_logo_erp_mode';
 export function loadLogoErpMode(): LogoErpMode {
   // Web tarayıcıda LOBJECT/MSSQL yok — her zaman REST.
   if (!IS_TAURI) return 'rest';
-  if (typeof window === 'undefined') return 'mssql';
+  // Node / bridge cron — REST
+  if (typeof window === 'undefined') return 'rest';
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw === 'rest' || raw === 'mssql') return raw;

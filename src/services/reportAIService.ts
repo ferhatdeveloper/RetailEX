@@ -145,22 +145,23 @@ export async function generateAIResponse(
   conversationHistory: ChatMessage[] = [],
   useChatGPT: boolean = true
 ): Promise<AIResponse> {
-  // ChatGPT kullanılabilirse önce onu dene
+  // OpenRouter / legacy AI — yapılandırılmışsa önce onu dene
   if (useChatGPT) {
     try {
-      // Dinamik import - circular dependency önlemek için
       const { analyzeReportWithChatGPT } = await import('./openaiService');
-      const chatGPTResponse = await analyzeReportWithChatGPT(question, reportData, conversationHistory);
+      const chatGPTResponse = await analyzeReportWithChatGPT(
+        question,
+        reportData,
+        conversationHistory,
+      );
 
       return {
         answer: chatGPTResponse.answer,
         suggestedReports: chatGPTResponse.suggested_reports || [],
-        data: chatGPTResponse.data_summary
+        data: chatGPTResponse.data_summary,
       };
     } catch (error: any) {
-      // ChatGPT başarısız olursa fallback'e geç
-      console.warn('[ReportAI] ChatGPT kullanılamadı, fallback kullanılıyor:', error.message);
-      // Fallback ile devam et
+      console.warn('[ReportAI] LLM kullanılamadı, kural tabanlı fallback:', error.message);
     }
   }
 

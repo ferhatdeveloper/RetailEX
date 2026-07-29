@@ -212,7 +212,213 @@ app.get('/api/status', (c) => {
         logoProxy: true,
         logoProxyPaths: [...LOGO_PROXY_ROUTE_PATHS],
         marketRatesProxy: true,
+        logoAutosync: true,
+        openRouterProxy: true,
     });
+});
+
+/**
+ * OpenRouter chat completions proxy (CORS + anahtar iletimi).
+ * Body: { apiKey?, baseUrl?, model, messages, temperature?, max_tokens?, siteUrl?, siteName? }
+ * Sunucu env: OPENROUTER_API_KEY (body’de yoksa kullanılır)
+ */
+app.post('/api/openrouter/chat', async (c) => {
+    try {
+        const body = await c.req.json();
+        const apiKey =
+            String(body?.apiKey || '').trim() ||
+            String(process.env.OPENROUTER_API_KEY || '').trim();
+        if (!apiKey) {
+            return c.json(
+                {
+                    error:
+                        'OpenRouter API anahtarı yok. Entegrasyonlar’da girin veya OPENROUTER_API_KEY ortam değişkenini ayarlayın.',
+                },
+                400
+            );
+        }
+        const model = String(body?.model || '').trim();
+        const messages = body?.messages;
+        if (!model) return c.json({ error: 'model gerekli' }, 400);
+        if (!Array.isArray(messages) || messages.length === 0) {
+            return c.json({ error: 'messages gerekli' }, 400);
+        }
+
+        let baseUrl = String(body?.baseUrl || 'https://openrouter.ai/api/v1').trim();
+        baseUrl = baseUrl.replace(/\/+$/, '');
+        let parsedBase: URL;
+        try {
+            parsedBase = new URL(baseUrl);
+        } catch {
+            return c.json({ error: 'Geçersiz baseUrl' }, 400);
+        }
+        if (parsedBase.protocol !== 'https:') {
+            return c.json({ error: 'OpenRouter baseUrl yalnızca https olmalı' }, 400);
+        }
+        const host = parsedBase.hostname.toLowerCase();
+        if (host !== 'openrouter.ai' && host !== 'api.openrouter.ai') {
+            return c.json({ error: `Host izinli değil: ${host}` }, 403);
+        }
+
+        const temperature =
+            body?.temperature != null && Number.isFinite(Number(body.temperature))
+                ? Number(body.temperature)
+                : 0.3;
+        const maxTokens =
+            body?.max_tokens != null && Number.isFinite(Number(body.max_tokens))
+                ? Math.round(Number(body.max_tokens))
+                : 2048;
+
+        const headers: Record<string, string> = {
+            Authorization: `Bearer ${apiKey}`,
+            'Content-Type': 'application/json',
+        };
+        const siteUrl = String(body?.siteUrl || process.env.OPENROUTER_SITE_URL || '').trim();
+        const siteName = String(body?.siteName || process.env.OPENROUTER_SITE_NAME || 'RetailEX').trim();
+        if (siteUrl) headers['HTTP-Referer'] = siteUrl;
+        if (siteName) headers['X-Title'] = siteName;
+
+        const upstream = await fetch(`${baseUrl}/chat/completions`, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({
+                model,
+                messages,
+                temperature,
+                max_tokens: maxTokens,
+            }),
+        });
+        const text = await upstream.text();
+        let data: unknown = null;
+        try {
+            data = text ? JSON.parse(text) : null;
+        } catch {
+            data = { raw: text };
+        }
+        if (!upstream.ok) {
+            const errObj =
+                data && typeof data === 'object'
+                    ? (data as { error?: { message?: string } | string }).error
+                    : null;
+            const errMsg =
+                typeof errObj === 'string'
+                    ? errObj
+                    : errObj && typeof errObj === 'object'
+                      ? errObj.message
+                      : null;
+            return c.json(
+                {
+                    error: errMsg || `OpenRouter HTTP ${upstream.status}`,
+                    detail: data,
+                },
+                upstream.status >= 400 && upstream.status < 600 ? upstream.status : 502
+            );
+        }
+
+        const choices =
+            data && typeof data === 'object'
+                ? (data as { choices?: Array<{ message?: { content?: string } }> }).choices
+                : undefined;
+        const content = choices?.[0]?.message?.content || '';
+        const usage =
+            data && typeof data === 'object' ? (data as { usage?: unknown }).usage : undefined;
+        const usedModel =
+            data && typeof data === 'object' ? (data as { model?: string }).model : model;
+
+        return c.json({
+            ok: true,
+            content,
+            model: usedModel,
+            usage,
+            // İstemci uyumluluğu: ham OpenAI benzeri gövde
+            choices,
+        });
+    } catch (error: any) {
+        console.error('[OpenRouter proxy]', error);
+        return c.json({ error: error?.message || String(error) }, 500);
+    }
+});
+
+app.get('/api/openrouter/health', async (c) => {
+    const hasEnvKey = Boolean(String(process.env.OPENROUTER_API_KEY || '').trim());
+    return c.json({
+        ok: true,
+        openRouterProxy: true,
+        envKeyConfigured: hasEnvKey,
+    });
+});
+
+/** Logo REST otomatik senkron — tarayıcı kapalıyken bridge cron */
+app.post('/api/logo/autosync/register', async (c) => {
+    try {
+        const body = await c.req.json();
+        const {
+            registerLogoServerAutosyncJob,
+        } = await import('./logoRestBridgeAutosync');
+        const status = registerLogoServerAutosyncJob({
+            enabled: Boolean(body?.enabled),
+            intervalMinutes: Number(body?.intervalMinutes) || 30,
+            pullMode: body?.pullMode === 'full' ? 'full' : 'incremental',
+            modules: body?.modules || {},
+            logoConfig: body?.logoConfig || {},
+            firmNr: String(body?.firmNr || '001'),
+            periodNr: String(body?.periodNr || '01'),
+            postgrestUrl: body?.postgrestUrl ? String(body.postgrestUrl) : undefined,
+            postgrestJwt: body?.postgrestJwt ? String(body.postgrestJwt) : undefined,
+            documentTransferDays:
+                body?.documentTransferDays != null ? Number(body.documentTransferDays) : undefined,
+            lastSyncByModule: body?.lastSyncByModule || {},
+            updatedAt: new Date().toISOString(),
+        });
+        return c.json({
+            ok: true,
+            status,
+            message: status.enabled
+                ? 'Logo otomatik senkron köprüde aktif (uygulama kapalı olsa da çalışır).'
+                : 'Logo otomatik senkron köprüde kapatıldı.',
+        });
+    } catch (error: any) {
+        console.error('[LogoAutosync register]', error);
+        return c.json({ error: error?.message || String(error) }, 500);
+    }
+});
+
+app.get('/api/logo/autosync/status', async (c) => {
+    try {
+        const { getLogoBridgeAutosyncStatus } = await import('./logoRestBridgeAutosync');
+        return c.json(getLogoBridgeAutosyncStatus());
+    } catch (error: any) {
+        return c.json({ error: error?.message || String(error) }, 500);
+    }
+});
+
+app.post('/api/logo/autosync/unregister', async (c) => {
+    try {
+        const { registerLogoServerAutosyncJob } = await import('./logoRestBridgeAutosync');
+        const status = registerLogoServerAutosyncJob({
+            enabled: false,
+            intervalMinutes: 30,
+            pullMode: 'incremental',
+            modules: {} as any,
+            logoConfig: { baseUrl: '', username: '', password: '', clientId: '', clientSecret: '' },
+            firmNr: '001',
+            periodNr: '01',
+            updatedAt: new Date().toISOString(),
+        });
+        return c.json({ ok: true, status, message: 'Logo otomatik senkron kapatıldı.' });
+    } catch (error: any) {
+        return c.json({ error: error?.message || String(error) }, 500);
+    }
+});
+
+app.post('/api/logo/autosync/run-now', async (c) => {
+    try {
+        const { runLogoServerAutosyncTick } = await import('./logoRestBridgeAutosync');
+        const result = await runLogoServerAutosyncTick();
+        return c.json(result, result.ok ? 200 : 500);
+    } catch (error: any) {
+        return c.json({ ok: false, message: error?.message || String(error) }, 500);
+    }
 });
 
 /** Dış kur/altın kaynakları — tarayıcı CORS bypass */
@@ -1384,6 +1590,9 @@ const server = serve(
         } else {
             console.log('[PG Bridge] LAN IPv4 adresi bulunamadı; ipconfig/ifconfig ile PC LAN IP adresini kontrol edin.');
         }
+        void import('./logoRestBridgeAutosync')
+            .then((m) => m.restoreLogoBridgeAutosyncFromDisk())
+            .catch((e) => console.warn('[LogoAutosync] disk restore atlandı:', e));
     }
 );
 

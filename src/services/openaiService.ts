@@ -1,7 +1,8 @@
-﻿/**
- * OpenAI Service
- * ChatGPT API entegrasyonu için frontend servisi
+/**
+ * AI rapor analizi — öncelik OpenRouter; yoksa eski VITE_BACKEND_API_URL yolu.
  */
+
+import { loadOpenRouterConfig } from './openRouterConfig';
 
 const BACKEND_API_URL = import.meta.env.VITE_BACKEND_API_URL || 'http://localhost:8000';
 
@@ -47,13 +48,20 @@ interface AIAnalysisResponse {
 }
 
 /**
- * ChatGPT ile rapor analizi yap
+ * Rapor analizi — OpenRouter (tercih) veya legacy backend.
  */
 export async function analyzeReportWithChatGPT(
   question: string,
   reportData: ReportData,
   conversationHistory: ChatMessage[] = []
 ): Promise<AIAnalysisResponse> {
+  const orCfg = loadOpenRouterConfig();
+  // Etkinse OpenRouter (istemci anahtarı veya bridge OPENROUTER_API_KEY)
+  if (orCfg.enabled) {
+    const { analyzeReportWithOpenRouter } = await import('./openRouterService');
+    return analyzeReportWithOpenRouter(question, reportData, conversationHistory);
+  }
+
   try {
     const response = await fetch(`${BACKEND_API_URL}/api/v1/ai-reports/analyze`, {
       method: 'POST',
@@ -63,11 +71,11 @@ export async function analyzeReportWithChatGPT(
       body: JSON.stringify({
         question,
         report_data: reportData,
-        conversation_history: conversationHistory.map(msg => ({
+        conversation_history: conversationHistory.map((msg) => ({
           role: msg.role,
-          content: msg.content
-        }))
-      })
+          content: msg.content,
+        })),
+      }),
     });
 
     if (!response.ok) {
@@ -79,15 +87,13 @@ export async function analyzeReportWithChatGPT(
     return data;
   } catch (error: any) {
     console.error('[OpenAI Service] Error:', error);
-    
-    // Fallback: Eğer backend yoksa veya API key yoksa, basit analiz yap
+
     if (error.message?.includes('Failed to fetch') || error.message?.includes('API key')) {
       throw new Error(
-        'ChatGPT entegrasyonu şu anda kullanılamıyor. ' +
-        'Lütfen backend servisinin çalıştığından ve OPENAI_API_KEY\'in yapılandırıldığından emin olun.'
+        'Yapay zeka şu anda kullanılamıyor. Entegrasyonlar → Yapay Zeka (OpenRouter) bölümünden API anahtarını girip etkinleştirin.',
       );
     }
-    
+
     throw error;
   }
 }
@@ -95,19 +101,32 @@ export async function analyzeReportWithChatGPT(
 /**
  * AI servis sağlık kontrolü
  */
-export async function checkAIServiceHealth(): Promise<{ status: string; openai_configured: boolean }> {
+export async function checkAIServiceHealth(): Promise<{
+  status: string;
+  openai_configured: boolean;
+  openrouter_configured?: boolean;
+  provider?: string;
+}> {
+  const orCfg = loadOpenRouterConfig();
+  if (orCfg.enabled) {
+    const { checkOpenRouterHealth } = await import('./openRouterService');
+    const h = await checkOpenRouterHealth();
+    return {
+      status: h.status,
+      openai_configured: h.openrouter_configured,
+      openrouter_configured: h.openrouter_configured,
+      provider: 'openrouter',
+    };
+  }
+
   try {
     const response = await fetch(`${BACKEND_API_URL}/api/v1/ai-reports/health`);
     if (!response.ok) {
-      return { status: 'error', openai_configured: false };
+      return { status: 'error', openai_configured: false, provider: 'legacy' };
     }
     const data = await response.json();
-    return data;
-  } catch (error) {
-    return { status: 'error', openai_configured: false };
+    return { ...data, provider: 'legacy' };
+  } catch {
+    return { status: 'error', openai_configured: false, provider: 'none' };
   }
 }
-
-
-
-

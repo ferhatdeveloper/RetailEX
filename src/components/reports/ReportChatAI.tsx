@@ -54,7 +54,7 @@ export function ReportChatAI({
   const inputRef = useRef<HTMLInputElement>(null);
 
   const WELCOME_CONTENT =
-    'Merhaba! 👋\n\nRaporlar hakkında sorular sorabilirsiniz. Size yardımcı olmaya hazırım!\n\nÖrnek sorular:\n• "Bugünkü satışlar nasıl?"\n• "En çok satan ürünler neler?"\n• "Kasiyer performansı nasıl?"\n• "Stok durumu nedir?"';
+    'Merhaba!\n\nRaporlar hakkında sorular sorabilirsiniz. OpenRouter yapılandırıldıysa yanıtlar yapay zeka modelinden gelir (Entegrasyonlar → Yapay Zeka).\n\nÖrnek sorular:\n• "Bugünkü satışlar nasıl?"\n• "En çok satan ürünler neler?"\n• "Kasiyer performansı nasıl?"\n• "Stok durumu nedir?"';
 
   // Örnek sorular
   const exampleQuestions = [

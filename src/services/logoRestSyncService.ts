@@ -44,8 +44,10 @@ const DEFAULT_MODULES: LogoRestSyncModules = {
   purchaseInvoices: true,
   itemSlips: true,
   banks: true,
-  salesOrders: false,
-  purchaseOrders: false,
+  salesOrders: true,
+  purchaseOrders: true,
+  salesDispatches: false,
+  purchaseDispatches: false,
 };
 
 const DEFAULT_PUSH: LogoPushModules = {
@@ -101,6 +103,19 @@ export function saveLogoRestSyncSettings(patch: Partial<LogoRestSyncSettings>): 
   if (typeof window !== 'undefined') {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
     window.dispatchEvent(new CustomEvent('retailex:logo-rest-sync-settings'));
+    // enabled / interval / modules değişince köprü cron’unu güncelle (uygulama kapalıyken de çalışsın)
+    const structural =
+      patch.enabled !== undefined ||
+      patch.intervalMinutes !== undefined ||
+      patch.modules !== undefined ||
+      patch.pullMode !== undefined;
+    if (structural) {
+      void import('./logoRestBridgeAutosync').then((m) =>
+        m.pushLogoAutosyncJobToBridge(next).then((r) => {
+          if (!r.ok) console.warn('[LogoAutosync]', r.message);
+        }),
+      );
+    }
   }
   return next;
 }
@@ -169,6 +184,8 @@ export async function runLogoRestSyncNow(
         banks: modules.banks,
         salesOrders: modules.salesOrders,
         purchaseOrders: modules.purchaseOrders,
+        salesDispatches: modules.salesDispatches,
+        purchaseDispatches: modules.purchaseDispatches,
         fullSync: pullMode === 'full',
         lastSyncByModule: settings.lastSyncByModule,
         documentTransferDays: params.documentTransferDays,
@@ -224,7 +241,11 @@ export function startLogoRestAutoSync(): () => void {
   stopLogoRestAutoSync();
   if (loadLogoErpMode() !== 'rest') return () => undefined;
 
+  /** Köprü cron başarılıysa tarayıcı interval’ı açma (çift çekim olmasın) */
+  let bridgeCronOk = false;
+
   const tick = () => {
+    if (bridgeCronOk) return;
     const s = loadLogoRestSyncSettings();
     if (!s.enabled || running) return;
     void runLogoRestSyncNow({ pullMode: s.pullMode });
@@ -233,16 +254,45 @@ export function startLogoRestAutoSync(): () => void {
   const schedule = () => {
     if (timerId) clearInterval(timerId);
     const s = loadLogoRestSyncSettings();
-    if (!s.enabled) return;
+    if (!s.enabled || bridgeCronOk) return;
     timerId = setInterval(tick, s.intervalMinutes * 60 * 1000);
   };
 
+  const syncBridgeJob = () => {
+    const s = loadLogoRestSyncSettings();
+    if (typeof window === 'undefined') return;
+    void import('./logoRestBridgeAutosync').then((m) =>
+      m.pushLogoAutosyncJobToBridge(s).then((r) => {
+        if (r.ok && s.enabled) {
+          bridgeCronOk = true;
+          stopLogoRestAutoSync();
+          emitLog(
+            `[${new Date().toLocaleTimeString('tr-TR')}] Otomatik senkron köprüye devredildi (uygulama kapalıyken de çalışır).`,
+          );
+        } else {
+          bridgeCronOk = false;
+          if (s.enabled) {
+            if (!r.ok) console.warn('[LogoAutosync]', r.message);
+            schedule();
+          }
+        }
+      }),
+    );
+  };
+
+  syncBridgeJob();
   schedule();
 
   const onStorage = (ev: StorageEvent) => {
-    if (ev.key === STORAGE_KEY) schedule();
+    if (ev.key === STORAGE_KEY) {
+      syncBridgeJob();
+      schedule();
+    }
   };
-  const onCustom = () => schedule();
+  const onCustom = () => {
+    syncBridgeJob();
+    schedule();
+  };
   if (typeof window !== 'undefined') {
     window.addEventListener('storage', onStorage);
     window.addEventListener('retailex:logo-rest-sync-settings', onCustom);

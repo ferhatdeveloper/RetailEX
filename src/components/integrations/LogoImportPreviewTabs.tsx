@@ -12,6 +12,12 @@ import {
   type LogoArpBalanceRow,
   type LogoResourceName,
 } from '../../services/logoRestApi';
+import {
+  extractLogoItemBarcode,
+  extractLogoItemPrice,
+  extractLogoItemUnit,
+  extractLogoItemVat,
+} from '../../services/logoRestItemMap';
 import { logoField, numVal, unwrapLogoRecord } from '../../services/logoRestSync';
 
 const { Text } = Typography;
@@ -81,10 +87,10 @@ const PREVIEW_TABS: PreviewTabDef[] = [
         key: i,
         code,
         name: str(rec, 'NAME', 'name', 'DESCRIPTION', 'description') || '—',
-        barcode: str(rec, 'BARCODE', 'barcode'),
-        unit: str(rec, 'UNIT', 'unit') || 'Adet',
-        price: numVal(logoField(rec, 'PRICE', 'SELLPRICE', 'price'), 0),
-        vat: numVal(logoField(rec, 'VAT', 'SELLVAT', 'vat'), 0),
+        barcode: extractLogoItemBarcode(rec) || '—',
+        unit: extractLogoItemUnit(rec),
+        price: extractLogoItemPrice(rec),
+        vat: extractLogoItemVat(rec),
       };
     },
     columns: [
@@ -109,7 +115,7 @@ const PREVIEW_TABS: PreviewTabDef[] = [
         code,
         name: str(rec, 'NAME', 'name', 'DESCRIPTION') || '—',
         onhand: numVal(logoField(rec, 'ONHAND', 'onHand', 'STOCK', 'stock'), 0),
-        unit: str(rec, 'UNIT', 'unit') || 'Adet',
+        unit: extractLogoItemUnit(rec),
         warehouse: str(rec, 'WAREHOUSE', 'warehouse', 'INVENNO'),
       };
     },
@@ -400,6 +406,7 @@ export function LogoImportPreviewTabs({ connected }: Props) {
         const result = await logoListResource(cfg, resource, {
           limit: opts.limit,
           withCount: opts.withCount,
+          expandLevel: resource === 'items' || resource === 'Arps' ? 'full' : undefined,
         });
         const entry: ResourceCacheEntry = {
           items: result.items,

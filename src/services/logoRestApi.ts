@@ -702,6 +702,13 @@ export function resolveLogoRestUrlSource(): 'tenant' | 'manual' | 'none' {
   return 'none';
 }
 
+/** Bridge / Node cron için Logo yapılandırması (tarayıcı localStorage yerine) */
+let logoRestConfigOverride: LogoRestConfig | null = null;
+
+export function setLogoRestConfigOverride(cfg: LogoRestConfig | null): void {
+  logoRestConfigOverride = cfg;
+}
+
 export function loadLogoRestConfig(): LogoRestConfig {
   const defaults: LogoRestConfig = {
     baseUrl: '',
@@ -713,6 +720,9 @@ export function loadLogoRestConfig(): LogoRestConfig {
     logoDbs: [],
     useErpContext: true,
   };
+  if (logoRestConfigOverride) {
+    return migrateLegacyLogoMapping({ ...defaults, ...logoRestConfigOverride });
+  }
   if (typeof window === 'undefined') return defaults;
   try {
     const raw = localStorage.getItem(STORAGE_CONFIG);
@@ -926,6 +936,8 @@ async function logoHttpViaBridge(
 /** Web modunda senkron öncesi köprü erişilebilirliği */
 export async function ensureLogoBridgeReachable(): Promise<void> {
   if (IS_TAURI) return;
+  // Bridge sürecinin kendi içinde senkron: proxy zaten yerel
+  if (logoRestConfigOverride && typeof window === 'undefined') return;
   const bridge = getBridgeUrl();
   const status = await fetchLogoBridgeStatus(bridge);
   if (!status.ok) {
@@ -1680,7 +1692,7 @@ function parseLogoNextQuery(raw: unknown): Record<string, string> | null {
 export async function logoFetchAllPaginated<T = unknown>(
   cfg: LogoRestConfig,
   resource: LogoResourceName,
-  opts: { pageSize?: number; maxPages?: number; q?: string } = {}
+  opts: { pageSize?: number; maxPages?: number; q?: string; expandLevel?: string } = {}
 ): Promise<T[]> {
   const pageSize = Math.min(
     opts.pageSize ?? LOGO_REST_MAX_PAGE_SIZE,
@@ -1695,9 +1707,11 @@ export async function logoFetchAllPaginated<T = unknown>(
       limit: number;
       offset?: number;
       q?: string;
+      expandLevel?: string;
     } = { limit: pageSize };
     if (offset > 0) listOpts.offset = offset;
     if (opts.q) listOpts.q = opts.q;
+    if (opts.expandLevel) listOpts.expandLevel = opts.expandLevel;
 
     const batch = await logoListResource<T>(cfg, resource, listOpts);
     all.push(...batch.items);
@@ -1855,9 +1869,19 @@ export async function logoFetchArpBalanceMap(
         balance: logoNumVal(row.BALANCE ?? row.balance, 0),
       });
     }
+    // İstenen kodlar için hareket yoksa bakiye 0 (Logo ekstre ile uyum)
+    if (codes?.length) {
+      for (const c of codes) {
+        const code = String(c || '').trim();
+        if (code && !map.has(code)) {
+          map.set(code, { debit: 0, credit: 0, balance: 0 });
+        }
+      }
+    }
     return map;
-  } catch {
-    return new Map();
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    throw new Error(`Logo CLFLINE bakiye sorgusu başarısız (firma ${firm}/dönem ${period}): ${msg}`);
   }
 }
 

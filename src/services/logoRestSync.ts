@@ -9,6 +9,7 @@ import {
   logoFetchAllPaginated,
   logoFetchArpBalanceMap,
   logoFetchItemStockMap,
+  logoGetResource,
   logoListResource,
   resolveLogoContext,
   type LogoResourceName,
@@ -21,6 +22,7 @@ import {
   logoListDateField,
   resolveIncrementalSince,
 } from './logoRestIncremental';
+import { mapLogoItemFields } from './logoRestItemMap';
 import { DB_SETTINGS, ERP_SETTINGS, postgres } from './postgres';
 
 export type LogoSyncLogEntry = {
@@ -60,6 +62,10 @@ export type LogoRestSyncModules = {
   banks: boolean;
   salesOrders: boolean;
   purchaseOrders: boolean;
+  /** İrsaliye (Logo salesDispatches) */
+  salesDispatches: boolean;
+  /** İrsaliye (Logo purchaseDispatches) */
+  purchaseDispatches: boolean;
 };
 
 export type LogoSyncOptions = {
@@ -72,6 +78,8 @@ export type LogoSyncOptions = {
   banks?: boolean;
   salesOrders?: boolean;
   purchaseOrders?: boolean;
+  salesDispatches?: boolean;
+  purchaseDispatches?: boolean;
   pageSize?: number;
   maxPages?: number;
   /** true = tüm kayıtlar; false/undefined = artımlı (önerilen) */
@@ -176,11 +184,25 @@ async function fetchLogoResourceIncremental(
     });
   }
 
+  const DOC_EXPAND = new Set([
+    'items',
+    'Arps',
+    'salesInvoices',
+    'purchaseInvoices',
+    'salesOrders',
+    'purchaseOrders',
+    'itemSlips',
+    'salesDispatches',
+    'purchaseDispatches',
+  ]);
+  const expandLevel = DOC_EXPAND.has(String(resource)) ? 'full' : undefined;
+
   try {
     const items = await logoFetchAllPaginated<unknown>(cfg, resource, {
       maxPages: 500,
       pageSize,
       q: q || undefined,
+      expandLevel,
     });
     const filtered = filterLogoRecordsSince(items, since, unwrapLogoRecord);
     return { items: filtered, since, usedQuery: q };
@@ -197,6 +219,7 @@ async function fetchLogoResourceIncremental(
     const items = await logoFetchAllPaginated<unknown>(cfg, resource, {
       maxPages: 500,
       pageSize,
+      expandLevel,
     });
     return {
       items: filterLogoRecordsSince(items, since, unwrapLogoRecord),
@@ -460,33 +483,7 @@ async function ensurePeriodTables(firmNr: string, periodNr: string): Promise<voi
 function mapLogoItem(rec: Record<string, unknown>, firmNr: string): Record<string, unknown> | null {
   const code = trunc(logoField(rec, 'CODE', 'code'), 100);
   if (!code) return null;
-
-  const name = trunc(logoField(rec, 'NAME', 'name', 'DESCRIPTION', 'description'), 255) || 'İsimsiz';
-  const barcode = trunc(logoField(rec, 'BARCODE', 'barcode'), 100);
-  const vat = numVal(logoField(rec, 'VAT', 'SELLVAT', 'vat', 'sellvat'), 18);
-  const price = numVal(logoField(rec, 'PRICE', 'SELLPRICE', 'price', 'sellprice'), 0);
-  const unit = trunc(logoField(rec, 'UNIT', 'unit'), 50) || 'Adet';
-  const cancelled = numVal(logoField(rec, 'CANCELLED', 'cancelled'), 0);
-  const activeFlag = numVal(logoField(rec, 'ACTIVE', 'active'), 0);
-  const isActive = cancelled !== 1 && activeFlag !== 1;
-  const refId = logoRefId(rec);
-  const stock = numVal(
-    logoField(rec, 'ONHAND', 'onHand', 'STOCK', 'stock', 'TOTAL_ONHAND', 'REALAMOUNT'),
-    0
-  );
-
-  return {
-    firm_nr: firmNr,
-    ref_id: refId,
-    code,
-    name,
-    barcode: barcode || `L${code}`.slice(0, 100),
-    vat_rate: vat,
-    unit,
-    price,
-    stock,
-    is_active: isActive,
-  };
+  return mapLogoItemFields(rec, firmNr, logoRefId(rec));
 }
 
 function mapLogoArp(rec: Record<string, unknown>, firmNr: string): Record<string, unknown> | null {
@@ -531,11 +528,19 @@ async function upsertProductsWithApi(
       ref_id: row.ref_id ?? null,
       code: String(row.code || ''),
       name: String(row.name || 'İsimsiz'),
+      name2: row.name2 ? String(row.name2).slice(0, 255) : null,
       barcode: String(row.barcode || `L${row.code}`).slice(0, 100),
       vat_rate: numVal(row.vat_rate, 18),
       price: numVal(row.price, 0),
       stock: numVal(row.stock, 0),
       unit: String(row.unit || 'Adet'),
+      group_code: row.group_code ? String(row.group_code).slice(0, 50) : null,
+      brand: row.brand ? String(row.brand).slice(0, 100) : null,
+      special_code_1: row.special_code_1 ? String(row.special_code_1).slice(0, 50) : null,
+      special_code_2: row.special_code_2 ? String(row.special_code_2).slice(0, 50) : null,
+      special_code_3: row.special_code_3 ? String(row.special_code_3).slice(0, 50) : null,
+      special_code_4: row.special_code_4 ? String(row.special_code_4).slice(0, 50) : null,
+      special_code_5: row.special_code_5 ? String(row.special_code_5).slice(0, 50) : null,
       is_active: row.is_active !== false,
       logo_sync_status: 'success',
       logo_sync_error: null,
@@ -588,8 +593,18 @@ async function upsertProductsWithApi(
         await postgres.query(
           `UPDATE ${table}
            SET ref_id = COALESCE($1, ref_id), code = $2, name = $3, barcode = $4,
-               vat_rate = $5, price = $6, stock = $7, unit = $8, is_active = $9, updated_at = NOW()
-           WHERE id = $10`,
+               vat_rate = $5, price = $6, stock = $7, unit = $8, is_active = $9,
+               name2 = COALESCE($10, name2),
+               group_code = COALESCE($11, group_code),
+               brand = COALESCE($12, brand),
+               special_code_1 = COALESCE($13, special_code_1),
+               special_code_2 = COALESCE($14, special_code_2),
+               special_code_3 = COALESCE($15, special_code_3),
+               logo_sync_status = 'success',
+               logo_sync_error = NULL,
+               logo_sync_date = NOW(),
+               updated_at = NOW()
+           WHERE id = $16`,
           [
             refId,
             code,
@@ -600,6 +615,12 @@ async function upsertProductsWithApi(
             numVal(row.stock, 0),
             String(row.unit || 'Adet'),
             row.is_active !== false,
+            row.name2 ? String(row.name2) : null,
+            row.group_code ? String(row.group_code) : null,
+            row.brand ? String(row.brand) : null,
+            row.special_code_1 ? String(row.special_code_1) : null,
+            row.special_code_2 ? String(row.special_code_2) : null,
+            row.special_code_3 ? String(row.special_code_3) : null,
             existingId,
           ],
         );
@@ -624,19 +645,27 @@ async function upsertProductsWithApi(
       } else {
         await postgres.query(
           `INSERT INTO ${table}
-             (firm_nr, ref_id, code, name, barcode, vat_rate, price, stock, unit, is_active)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+             (firm_nr, ref_id, code, name, name2, barcode, vat_rate, price, stock, unit, is_active,
+              group_code, brand, special_code_1, special_code_2, special_code_3,
+              logo_sync_status, logo_sync_error, logo_sync_date)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,'success',NULL,NOW())`,
           [
             firmEq,
             refId,
             code,
             name,
+            row.name2 ? String(row.name2) : null,
             String(row.barcode || `L${code}`).slice(0, 100),
             numVal(row.vat_rate, 18),
             numVal(row.price, 0),
             numVal(row.stock, 0),
             String(row.unit || 'Adet'),
             row.is_active !== false,
+            row.group_code ? String(row.group_code) : null,
+            row.brand ? String(row.brand) : null,
+            row.special_code_1 ? String(row.special_code_1) : null,
+            row.special_code_2 ? String(row.special_code_2) : null,
+            row.special_code_3 ? String(row.special_code_3) : null,
           ],
         );
         upserted += 1;
@@ -1041,10 +1070,33 @@ export async function syncLogoArpsFromRest(
 
   if (customerRows.length > 0 || supplierRows.length > 0) {
     onProgress?.({ phase: 'customers', message: 'Logo cari bakiyeleri (CLFLINE) okunuyor…' });
-    const balanceMap = await logoFetchArpBalanceMap(cfg);
+    const codes = [...customerRows, ...supplierRows]
+      .map((r) => String(r.code || '').trim())
+      .filter(Boolean);
+    let balanceMap = new Map<string, { balance: number; debit: number; credit: number }>();
+    try {
+      balanceMap = await logoFetchArpBalanceMap(cfg, codes.length ? codes : undefined);
+      nowLog(opts.onLog, {
+        entity: 'customer',
+        action: 'read',
+        code: 'CLFLINE',
+        detail: `${balanceMap.size} cari bakiyesi Logo'dan okundu`,
+        ok: true,
+      });
+    } catch (e: unknown) {
+      nowLog(opts.onLog, {
+        entity: 'customer',
+        action: 'error',
+        code: 'CLFLINE',
+        detail: e instanceof Error ? e.message : String(e),
+        ok: false,
+      });
+    }
     for (const row of [...customerRows, ...supplierRows]) {
-      const bal = balanceMap.get(String(row.code || ''));
-      if (bal) row.balance = bal.balance;
+      const code = String(row.code || '').trim();
+      const bal = balanceMap.get(code);
+      // Logo ile birebir: CLFLINE bakiyesi varsa yaz; yoksa 0 (hareket yok)
+      row.balance = bal != null ? bal.balance : 0;
     }
   }
 
@@ -1289,15 +1341,58 @@ async function replaceStockMovementLines(
 }
 
 function extractInvoiceLines(rec: Record<string, unknown>): Record<string, unknown>[] {
-  const tx = logoField(rec, 'TRANSACTIONS', 'transactions');
-  if (!tx || typeof tx !== 'object') return [];
+  const tx = logoField(rec, 'TRANSACTIONS', 'transactions', 'ORDER_TRANSACTIONS', 'SLIP_TRANS');
+  if (!tx) return [];
+  if (Array.isArray(tx)) {
+    return tx.filter((x) => x && typeof x === 'object') as Record<string, unknown>[];
+  }
+  if (typeof tx !== 'object') return [];
   const o = tx as Record<string, unknown>;
-  const items = o.items ?? o.Items ?? o.item ?? o.Item;
+  const items = o.items ?? o.Items ?? o.item ?? o.Item ?? o.lines ?? o.Lines;
   if (!Array.isArray(items)) return [];
   return items.filter((x) => x && typeof x === 'object') as Record<string, unknown>[];
 }
 
+/** Liste kaydında TRANSACTIONS yoksa Logo GET /{resource}/{id}?expandLevel=full ile satırları doldur */
+async function enrichInvoiceRecordWithLines(
+  cfg: LogoRestConfig,
+  resource: string,
+  rec: Record<string, unknown>,
+  onLog?: LogoSyncOptions['onLog'],
+): Promise<Record<string, unknown>> {
+  if (extractInvoiceLines(rec).length > 0) return rec;
+  const refId = logoRefId(rec);
+  if (!refId) return rec;
+  try {
+    const detail = await logoGetResource(cfg, resource as LogoResourceName, refId, {
+      expandLevel: 'full',
+    });
+    const enriched = unwrapLogoRecord(detail);
+    const n = extractInvoiceLines(enriched).length;
+    if (n > 0) {
+      nowLog(onLog, {
+        entity: 'invoice',
+        action: 'read',
+        code: String(logoField(rec, 'NUMBER', 'FICHENO', 'number') || refId),
+        detail: `Detay: ${n} satır (expandLevel=full)`,
+        ok: true,
+      });
+      return { ...rec, ...enriched };
+    }
+  } catch (e: unknown) {
+    nowLog(onLog, {
+      entity: 'invoice',
+      action: 'skip',
+      code: String(refId),
+      detail: `Fatura detay okunamadı: ${e instanceof Error ? e.message : String(e)}`,
+      ok: false,
+    });
+  }
+  return rec;
+}
+
 async function upsertInvoiceBatch(
+  cfg: LogoRestConfig,
   resource: string,
   rawList: unknown[],
   ficheTypeDefault: string,
@@ -1311,9 +1406,15 @@ async function upsertInvoiceBatch(
   let upserted = 0;
   let errors = 0;
   let skipped = 0;
+  const isPurchase =
+    resource === 'purchaseInvoices' ||
+    resource === 'purchaseOrders' ||
+    resource === 'purchaseDispatches';
 
   await mapPool(rawList, INVOICE_WRITE_CONCURRENCY, async (raw) => {
-    const rec = unwrapLogoRecord(raw);
+    let rec = unwrapLogoRecord(raw);
+    rec = await enrichInvoiceRecordWithLines(cfg, resource, rec, onLog);
+
     const ficheNo = trunc(logoField(rec, 'NUMBER', 'FICHENO', 'number'), 100);
     if (!ficheNo) {
       skipped += 1;
@@ -1322,11 +1423,18 @@ async function upsertInvoiceBatch(
 
     const refId = logoRefId(rec);
     const arpCode = trunc(logoField(rec, 'ARP_CODE', 'arpCode', 'CLIENT_CODE'), 50);
+    const arpTitle = trunc(
+      logoField(rec, 'ARP_TITLE', 'TITLE', 'DEFINITION_', 'CLIENTNAME', 'arpTitle'),
+      255,
+    );
     const trcode = Math.round(numVal(logoField(rec, 'TYPE', 'TRCODE', 'type'), 0));
     const ficheType = ficheTypeFromLogoType(trcode, resource) || ficheTypeDefault;
     const net = numVal(logoField(rec, 'TOTAL_NET', 'totalNet', 'NETTOTAL'), 0);
     const vat = numVal(logoField(rec, 'TOTAL_VAT', 'totalVat', 'VATAMOUNT'), 0);
     const gross = numVal(logoField(rec, 'TOTAL_GROSS', 'totalGross', 'GROSSTOTAL'), net + vat);
+    const discount = numVal(logoField(rec, 'TOTAL_DISCOUNT', 'DISCOUNT', 'totalDiscount'), 0);
+    const notes = trunc(logoField(rec, 'NOTES1', 'GENEXP1', 'NOTES', 'notes'), 2000);
+    const documentNo = trunc(logoField(rec, 'DOC_NUMBER', 'DOCODE', 'doc_number'), 100);
     const date = logoDateVal(rec);
 
     const customerId = arpCode
@@ -1335,7 +1443,7 @@ async function upsertInvoiceBatch(
     const supplierId = arpCode
       ? await lookupIdByCode(`rex_${firmNr}_suppliers`, arpCode, firmNr, idCache)
       : null;
-    const accountId = customerId || supplierId;
+    const accountId = isPurchase ? supplierId || customerId : customerId || supplierId;
 
     const header: Record<string, unknown> = {
       firm_nr: firmNr,
@@ -1344,13 +1452,16 @@ async function upsertInvoiceBatch(
       logo_client_ref: refId,
       fiche_no: ficheNo,
       customer_id: accountId,
-      customer_name: arpCode || null,
+      customer_name: arpTitle || arpCode || null,
       trcode: trcode || null,
       fiche_type: ficheType,
       total_net: net,
       total_vat: vat,
       total_gross: gross,
+      total_discount: discount,
       net_amount: net,
+      notes: notes || null,
+      document_no: documentNo || null,
       date,
       is_cancelled: false,
     };
@@ -1379,16 +1490,19 @@ async function upsertInvoiceBatch(
         const { rows } = await postgres.query<{ id: string }>(
           `INSERT INTO ${stSales}
              (firm_nr, period_nr, ref_id, logo_client_ref, fiche_no, customer_id, customer_name, trcode, fiche_type,
-              total_net, total_vat, total_gross, net_amount, date, is_cancelled)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,false)
+              total_net, total_vat, total_gross, total_discount, net_amount, notes, document_no, date, is_cancelled)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,false)
            ON CONFLICT (fiche_no) DO UPDATE SET
-             ref_id = EXCLUDED.ref_id, customer_id = EXCLUDED.customer_id, trcode = EXCLUDED.trcode,
-             fiche_type = EXCLUDED.fiche_type, total_net = EXCLUDED.total_net, total_vat = EXCLUDED.total_vat,
-             total_gross = EXCLUDED.total_gross, net_amount = EXCLUDED.net_amount, date = EXCLUDED.date
+             ref_id = EXCLUDED.ref_id, customer_id = EXCLUDED.customer_id, customer_name = EXCLUDED.customer_name,
+             trcode = EXCLUDED.trcode, fiche_type = EXCLUDED.fiche_type,
+             total_net = EXCLUDED.total_net, total_vat = EXCLUDED.total_vat,
+             total_gross = EXCLUDED.total_gross, total_discount = EXCLUDED.total_discount,
+             net_amount = EXCLUDED.net_amount, notes = EXCLUDED.notes, document_no = EXCLUDED.document_no,
+             date = EXCLUDED.date
            RETURNING id`,
           [
-            firmNr, periodNr, refId, refId, ficheNo, accountId, arpCode || null, trcode || null, ficheType,
-            net, vat, gross, net, date,
+            firmNr, periodNr, refId, refId, ficheNo, accountId, arpTitle || arpCode || null,
+            trcode || null, ficheType, net, vat, gross, discount, net, notes || null, documentNo || null, date,
           ],
         );
         const invoiceId = rows[0]?.id;
@@ -1488,7 +1602,13 @@ async function processInvoiceLines(
 
 export async function syncLogoInvoicesFromRest(
   cfg: LogoRestConfig,
-  resource: 'salesInvoices' | 'purchaseInvoices' | 'salesOrders' | 'purchaseOrders',
+  resource:
+    | 'salesInvoices'
+    | 'purchaseInvoices'
+    | 'salesOrders'
+    | 'purchaseOrders'
+    | 'salesDispatches'
+    | 'purchaseDispatches',
   options: Pick<
     LogoSyncOptions,
     'onLog' | 'fullSync' | 'lastSyncByModule' | 'documentTransferDays'
@@ -1496,9 +1616,13 @@ export async function syncLogoInvoicesFromRest(
   onProgress?: (p: LogoSyncProgress) => void,
 ): Promise<LogoSyncEntityResult> {
   const ficheDefault =
-    resource === 'purchaseInvoices' || resource === 'purchaseOrders'
+    resource === 'purchaseInvoices' ||
+    resource === 'purchaseOrders' ||
+    resource === 'purchaseDispatches'
       ? 'purchase_invoice'
-      : 'sales_invoice';
+      : resource === 'salesDispatches'
+        ? 'sales_dispatch'
+        : 'sales_invoice';
 
   onProgress?.({ phase: 'invoices', message: `Logo ${resource} okunuyor…` });
   nowLog(options.onLog, { entity: 'invoice', action: 'read', code: resource, ok: true });
@@ -1506,11 +1630,11 @@ export async function syncLogoInvoicesFromRest(
   const { items: raw } = await fetchLogoResourceIncremental(cfg, resource, options);
   onProgress?.({
     phase: 'invoices',
-    message: `${raw.length} ${resource} kaydı yazılıyor…`,
+    message: `${raw.length} ${resource} kaydı (+satırlar) yazılıyor…`,
     total: raw.length,
   });
 
-  return upsertInvoiceBatch(resource, raw, ficheDefault, options.onLog);
+  return upsertInvoiceBatch(cfg, resource, raw, ficheDefault, options.onLog);
 }
 
 export async function syncLogoItemSlipsFromRest(
@@ -1537,7 +1661,8 @@ export async function syncLogoItemSlipsFromRest(
   const seenDocs = new Set<string>();
 
   await mapPool(raw, INVOICE_WRITE_CONCURRENCY, async (item) => {
-    const rec = unwrapLogoRecord(item);
+    let rec = unwrapLogoRecord(item);
+    rec = await enrichInvoiceRecordWithLines(cfg, 'itemSlips', rec, options.onLog);
     const refId = logoRefId(rec);
     const docNo =
       trunc(logoField(rec, 'NUMBER', 'FICHENO', 'number'), 50) || (refId ? `LG-${refId}` : '');
@@ -1710,6 +1835,8 @@ export async function syncLogoAllFromRest(
   const syncBanks = options.banks !== false;
   const syncSalesOrd = options.salesOrders === true;
   const syncPurchaseOrd = options.purchaseOrders === true;
+  const syncSalesDisp = options.salesDispatches === true;
+  const syncPurchaseDisp = options.purchaseDispatches === true;
 
   try {
     onProgress?.({ phase: 'prepare', message: 'Köprü bağlantısı kontrol ediliyor…' });
@@ -1789,6 +1916,18 @@ export async function syncLogoAllFromRest(
       result.purchaseInvoices.upserted += ord.upserted;
       result.purchaseInvoices.fetched += ord.fetched;
       messages.push(`Alış siparişleri: ${ord.upserted}/${ord.fetched}`);
+    }
+    if (syncSalesDisp) {
+      const d = await syncLogoInvoicesFromRest(cfg, 'salesDispatches', options, onProgress);
+      result.salesInvoices.upserted += d.upserted;
+      result.salesInvoices.fetched += d.fetched;
+      messages.push(`Satış irsaliyeleri: ${d.upserted}/${d.fetched}`);
+    }
+    if (syncPurchaseDisp) {
+      const d = await syncLogoInvoicesFromRest(cfg, 'purchaseDispatches', options, onProgress);
+      result.purchaseInvoices.upserted += d.upserted;
+      result.purchaseInvoices.fetched += d.fetched;
+      messages.push(`Alış irsaliyeleri: ${d.upserted}/${d.fetched}`);
     }
     if (syncSlips) {
       result.itemSlips = await syncLogoItemSlipsFromRest(cfg, options, onProgress);

@@ -50,18 +50,26 @@ type PullSel = {
   suppliers: boolean;
   salesInvoices: boolean;
   purchaseInvoices: boolean;
+  salesOrders: boolean;
+  purchaseOrders: boolean;
+  salesDispatches: boolean;
+  purchaseDispatches: boolean;
   itemSlips: boolean;
   banks: boolean;
 };
 
-const PULL_LABELS: { key: keyof PullSel; label: string }[] = [
-  { key: 'masterData', label: 'Ürün / stok kartları' },
-  { key: 'customers', label: 'Müşteri carileri' },
-  { key: 'suppliers', label: 'Tedarikçi carileri' },
-  { key: 'salesInvoices', label: 'Satış faturaları' },
-  { key: 'purchaseInvoices', label: 'Alış faturaları' },
-  { key: 'itemSlips', label: 'Malzeme / stok fişleri' },
-  { key: 'banks', label: 'Kasa / banka kartları' },
+const PULL_LABELS: { key: keyof PullSel; label: string; group: string }[] = [
+  { key: 'masterData', label: 'Ürün / stok kartları', group: 'Kartlar' },
+  { key: 'customers', label: 'Müşteri carileri (+ Logo bakiye)', group: 'Kartlar' },
+  { key: 'suppliers', label: 'Tedarikçi carileri (+ Logo bakiye)', group: 'Kartlar' },
+  { key: 'banks', label: 'Kasa / banka kartları', group: 'Kartlar' },
+  { key: 'salesInvoices', label: 'Satış faturaları (+ satırlar)', group: 'Belgeler' },
+  { key: 'purchaseInvoices', label: 'Alış faturaları (+ satırlar)', group: 'Belgeler' },
+  { key: 'salesOrders', label: 'Satış siparişleri', group: 'Belgeler' },
+  { key: 'purchaseOrders', label: 'Alış siparişleri', group: 'Belgeler' },
+  { key: 'salesDispatches', label: 'Satış irsaliyeleri', group: 'Belgeler' },
+  { key: 'purchaseDispatches', label: 'Alış irsaliyeleri', group: 'Belgeler' },
+  { key: 'itemSlips', label: 'Malzeme / stok fişleri (+ satırlar)', group: 'Stok' },
 ];
 
 const PUSH_LABELS: { key: keyof LogoPushModules; label: string }[] = [
@@ -88,6 +96,10 @@ export function LogoSyncActionModal({
     suppliers: true,
     salesInvoices: true,
     purchaseInvoices: true,
+    salesOrders: true,
+    purchaseOrders: true,
+    salesDispatches: false,
+    purchaseDispatches: false,
     itemSlips: true,
     banks: true,
   });
@@ -119,6 +131,10 @@ export function LogoSyncActionModal({
       suppliers: rest.modules.suppliers,
       salesInvoices: rest.modules.salesInvoices,
       purchaseInvoices: rest.modules.purchaseInvoices,
+      salesOrders: rest.modules.salesOrders !== false,
+      purchaseOrders: rest.modules.purchaseOrders !== false,
+      salesDispatches: !!rest.modules.salesDispatches,
+      purchaseDispatches: !!rest.modules.purchaseDispatches,
       itemSlips: rest.modules.itemSlips,
       banks: rest.modules.banks,
     });
@@ -144,8 +160,6 @@ export function LogoSyncActionModal({
       modules: {
         ...loadLogoRestSyncSettings().modules,
         ...pullSel,
-        salesOrders: false,
-        purchaseOrders: false,
       },
       pushModules: pushSel,
     });
@@ -227,11 +241,7 @@ export function LogoSyncActionModal({
     setResultMsg('');
     setLogLines([]);
 
-    const pullModules: Partial<LogoRestSyncModules> = {
-      ...pullSel,
-      salesOrders: false,
-      purchaseOrders: false,
-    };
+    const pullModules: Partial<LogoRestSyncModules> = { ...pullSel };
 
     try {
       const r = await runLogoSyncAction(action, {
@@ -382,18 +392,25 @@ export function LogoSyncActionModal({
               Artımlı mod son senkron tarihinden (ve belge gün penceresinden) sonraki kayıtları alır;
               her seferinde baştan tüm listeyi çekmez.
             </Text>
-            <div className="flex flex-wrap gap-x-4 gap-y-1">
-              {PULL_LABELS.map((o) => (
-                <Checkbox
-                  key={o.key}
-                  checked={pullSel[o.key]}
-                  disabled={running}
-                  onChange={(e) => setPullSel((p) => ({ ...p, [o.key]: e.target.checked }))}
-                >
-                  {o.label}
-                </Checkbox>
-              ))}
-            </div>
+            {(['Kartlar', 'Belgeler', 'Stok'] as const).map((group) => (
+              <div key={group} className="mb-2">
+                <Text type="secondary" className="text-xs block mb-1">
+                  {group}
+                </Text>
+                <div className="flex flex-wrap gap-x-4 gap-y-1">
+                  {PULL_LABELS.filter((o) => o.group === group).map((o) => (
+                    <Checkbox
+                      key={o.key}
+                      checked={pullSel[o.key]}
+                      disabled={running}
+                      onChange={(e) => setPullSel((p) => ({ ...p, [o.key]: e.target.checked }))}
+                    >
+                      {o.label}
+                    </Checkbox>
+                  ))}
+                </div>
+              </div>
+            ))}
           </div>
         ) : null}
 
