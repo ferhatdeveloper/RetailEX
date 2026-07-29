@@ -14,11 +14,21 @@ import type { LogoPullWatermarks } from './logoRestIncremental';
 
 const STORAGE_KEY = 'retailex_logo_rest_sync';
 
+/** Logo'ya gönderim — çekim modülleriyle simetrik */
 export type LogoPushModules = {
   products: boolean;
   customers: boolean;
   suppliers: boolean;
-  invoices: boolean;
+  banks: boolean;
+  /** @deprecated salesInvoices kullanın — geriye dönük */
+  invoices?: boolean;
+  salesInvoices: boolean;
+  purchaseInvoices: boolean;
+  salesOrders: boolean;
+  purchaseOrders: boolean;
+  salesDispatches: boolean;
+  purchaseDispatches: boolean;
+  itemSlips: boolean;
 };
 
 export type LogoRestSyncSettings = {
@@ -54,8 +64,25 @@ const DEFAULT_PUSH: LogoPushModules = {
   products: true,
   customers: true,
   suppliers: true,
-  invoices: true,
+  banks: false,
+  salesInvoices: true,
+  purchaseInvoices: false,
+  salesOrders: false,
+  purchaseOrders: false,
+  salesDispatches: false,
+  purchaseDispatches: false,
+  itemSlips: false,
 };
+
+function normalizePushModules(raw?: Partial<LogoPushModules> | null): LogoPushModules {
+  const merged = { ...DEFAULT_PUSH, ...(raw || {}) };
+  // Eski `invoices` anahtarı → salesInvoices
+  if (raw && raw.salesInvoices === undefined && typeof raw.invoices === 'boolean') {
+    merged.salesInvoices = raw.invoices;
+  }
+  merged.invoices = merged.salesInvoices;
+  return merged;
+}
 
 const DEFAULT_SETTINGS: LogoRestSyncSettings = {
   enabled: false,
@@ -70,22 +97,41 @@ const DEFAULT_SETTINGS: LogoRestSyncSettings = {
 };
 
 export function loadLogoRestSyncSettings(): LogoRestSyncSettings {
-  if (typeof window === 'undefined') return { ...DEFAULT_SETTINGS, modules: { ...DEFAULT_MODULES }, pushModules: { ...DEFAULT_PUSH }, lastSyncByModule: {} };
+  if (typeof window === 'undefined') {
+    return {
+      ...DEFAULT_SETTINGS,
+      modules: { ...DEFAULT_MODULES },
+      pushModules: { ...DEFAULT_PUSH },
+      lastSyncByModule: {},
+    };
+  }
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return { ...DEFAULT_SETTINGS, modules: { ...DEFAULT_MODULES }, pushModules: { ...DEFAULT_PUSH }, lastSyncByModule: {} };
+    if (!raw) {
+      return {
+        ...DEFAULT_SETTINGS,
+        modules: { ...DEFAULT_MODULES },
+        pushModules: { ...DEFAULT_PUSH },
+        lastSyncByModule: {},
+      };
+    }
     const parsed = JSON.parse(raw) as Partial<LogoRestSyncSettings>;
     return {
       ...DEFAULT_SETTINGS,
       ...parsed,
       modules: { ...DEFAULT_MODULES, ...(parsed.modules || {}) },
-      pushModules: { ...DEFAULT_PUSH, ...(parsed.pushModules || {}) },
+      pushModules: normalizePushModules(parsed.pushModules),
       lastSyncByModule: { ...(parsed.lastSyncByModule || {}) },
       pullMode: parsed.pullMode === 'full' ? 'full' : 'incremental',
       intervalMinutes: Math.min(1440, Math.max(5, Number(parsed.intervalMinutes) || 30)),
     };
   } catch {
-    return { ...DEFAULT_SETTINGS, modules: { ...DEFAULT_MODULES }, pushModules: { ...DEFAULT_PUSH }, lastSyncByModule: {} };
+    return {
+      ...DEFAULT_SETTINGS,
+      modules: { ...DEFAULT_MODULES },
+      pushModules: { ...DEFAULT_PUSH },
+      lastSyncByModule: {},
+    };
   }
 }
 
@@ -95,7 +141,9 @@ export function saveLogoRestSyncSettings(patch: Partial<LogoRestSyncSettings>): 
     ...prev,
     ...patch,
     modules: patch.modules ? { ...prev.modules, ...patch.modules } : prev.modules,
-    pushModules: patch.pushModules ? { ...prev.pushModules, ...patch.pushModules } : prev.pushModules,
+    pushModules: patch.pushModules
+      ? normalizePushModules({ ...prev.pushModules, ...patch.pushModules })
+      : prev.pushModules,
     lastSyncByModule: patch.lastSyncByModule
       ? { ...prev.lastSyncByModule, ...patch.lastSyncByModule }
       : prev.lastSyncByModule,

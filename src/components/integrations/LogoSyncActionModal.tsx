@@ -72,12 +72,23 @@ const PULL_LABELS: { key: keyof PullSel; label: string; group: string }[] = [
   { key: 'itemSlips', label: 'Malzeme / stok fişleri (+ satırlar)', group: 'Stok' },
 ];
 
-const PUSH_LABELS: { key: keyof LogoPushModules; label: string }[] = [
-  { key: 'products', label: 'Ürünler (bekleyen)' },
-  { key: 'customers', label: 'Müşteriler (bekleyen)' },
-  { key: 'suppliers', label: 'Tedarikçiler (bekleyen)' },
-  { key: 'invoices', label: 'Satış faturaları (bekleyen)' },
+type PushKey = Exclude<keyof LogoPushModules, 'invoices'>;
+
+const PUSH_LABELS: { key: PushKey; label: string; group: string }[] = [
+  { key: 'products', label: 'Ürün / stok kartları', group: 'Kartlar' },
+  { key: 'customers', label: 'Müşteri carileri', group: 'Kartlar' },
+  { key: 'suppliers', label: 'Tedarikçi carileri', group: 'Kartlar' },
+  { key: 'banks', label: 'Kasa / banka kartları', group: 'Kartlar' },
+  { key: 'salesInvoices', label: 'Satış faturaları (+ satırlar)', group: 'Belgeler' },
+  { key: 'purchaseInvoices', label: 'Alış faturaları (+ satırlar)', group: 'Belgeler' },
+  { key: 'salesOrders', label: 'Satış siparişleri', group: 'Belgeler' },
+  { key: 'purchaseOrders', label: 'Alış siparişleri', group: 'Belgeler' },
+  { key: 'salesDispatches', label: 'Satış irsaliyeleri', group: 'Belgeler' },
+  { key: 'purchaseDispatches', label: 'Alış irsaliyeleri', group: 'Belgeler' },
+  { key: 'itemSlips', label: 'Malzeme / stok fişleri (+ satırlar)', group: 'Stok' },
 ];
+
+const PUSH_GROUPS = ['Kartlar', 'Belgeler', 'Stok'] as const;
 
 export function LogoSyncActionModal({
   open,
@@ -103,12 +114,9 @@ export function LogoSyncActionModal({
     itemSlips: true,
     banks: true,
   });
-  const [pushSel, setPushSel] = useState<LogoPushModules>({
-    products: true,
-    customers: true,
-    suppliers: true,
-    invoices: true,
-  });
+  const [pushSel, setPushSel] = useState<LogoPushModules>(() => ({
+    ...loadLogoRestSyncSettings().pushModules,
+  }));
   const [isConnected, setIsConnected] = useState(connected);
   const [testingConn, setTestingConn] = useState(false);
   const [running, setRunning] = useState(false);
@@ -420,18 +428,34 @@ export function LogoSyncActionModal({
               Logo&apos;ya gönderilecekler
             </Text>
             <Text type="secondary" className="block mb-2 text-xs">
-              Yalnızca RetailEX&apos;te «bekleyen» (logo_sync_status=pending) kayıtlar gönderilir.
+              Sistemdeki tüm kart / belge / stok türleri. Yalnızca «bekleyen»
+              (logo_sync_status=pending) kayıtlar gönderilir.
             </Text>
-            <div className="flex flex-wrap gap-x-4 gap-y-1">
-              {PUSH_LABELS.map((o) => (
-                <Checkbox
-                  key={o.key}
-                  checked={pushSel[o.key]}
-                  disabled={running || pushDisabled}
-                  onChange={(e) => setPushSel((p) => ({ ...p, [o.key]: e.target.checked }))}
-                >
-                  {o.label}
-                </Checkbox>
+            <div className="space-y-3">
+              {PUSH_GROUPS.map((group) => (
+                <div key={group}>
+                  <Text type="secondary" className="text-xs uppercase tracking-wide">
+                    {group}
+                  </Text>
+                  <div className="flex flex-wrap gap-x-4 gap-y-1 mt-1">
+                    {PUSH_LABELS.filter((o) => o.group === group).map((o) => (
+                      <Checkbox
+                        key={o.key}
+                        checked={Boolean(pushSel[o.key])}
+                        disabled={running || pushDisabled}
+                        onChange={(e) =>
+                          setPushSel((p) => ({
+                            ...p,
+                            [o.key]: e.target.checked,
+                            ...(o.key === 'salesInvoices' ? { invoices: e.target.checked } : {}),
+                          }))
+                        }
+                      >
+                        {o.label}
+                      </Checkbox>
+                    ))}
+                  </div>
+                </div>
               ))}
             </div>
           </div>

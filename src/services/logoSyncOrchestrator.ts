@@ -136,7 +136,7 @@ export async function runLogoSyncAction(
   if (wantPush) {
     if (serviceType !== 'rest') {
       const msg =
-        "Logo'ya gönderim yalnızca REST modunda desteklenir (ürün / müşteri / fatura — PostgREST kuyruk).";
+        "Logo'ya gönderim yalnızca REST modunda desteklenir (kartlar / belgeler / stok — PostgREST kuyruk).";
       steps.push(msg);
       if (action === 'push') return { ok: false, message: msg, steps };
     } else {
@@ -144,10 +144,12 @@ export async function runLogoSyncAction(
         ...loadLogoRestSyncSettings().pushModules,
         ...(opts.pushModules || {}),
       };
-      const anyPush =
-        pushMods.products || pushMods.customers || pushMods.suppliers || pushMods.invoices;
+      const anyPush = Object.entries(pushMods).some(
+        ([k, v]) => k !== 'invoices' && Boolean(v),
+      );
       if (!anyPush) {
-        const msg = "Logo'ya gönderim için en az bir tür seçin (ürün / cari / tedarikçi / fatura).";
+        const msg =
+          "Logo'ya gönderim için en az bir tür seçin (kartlar / belgeler / stok).";
         steps.push(msg);
         return { ok: false, message: msg, steps };
       }
@@ -163,7 +165,14 @@ export async function runLogoSyncAction(
           products: pushMods.products,
           customers: pushMods.customers,
           suppliers: pushMods.suppliers,
-          invoices: pushMods.invoices,
+          banks: pushMods.banks,
+          salesInvoices: pushMods.salesInvoices,
+          purchaseInvoices: pushMods.purchaseInvoices,
+          salesOrders: pushMods.salesOrders,
+          purchaseOrders: pushMods.purchaseOrders,
+          salesDispatches: pushMods.salesDispatches,
+          purchaseDispatches: pushMods.purchaseDispatches,
+          itemSlips: pushMods.itemSlips,
           onLog: (entry) => {
             if (entry.detail) pushLog(opts.onLog, `[${entry.entity}] ${entry.code}: ${entry.detail}`);
           },
@@ -173,7 +182,11 @@ export async function runLogoSyncAction(
           `${pushResult.success} kayıt Logo'ya yazıldı`;
         steps.push(
           `Gönderim: ürün ${pushResult.products.success}, müşteri ${pushResult.customers.success}, ` +
-            `tedarikçi ${pushResult.suppliers.success}, fatura ${pushResult.invoices.success}` +
+            `tedarikçi ${pushResult.suppliers.success}, kasa ${pushResult.banks.success}, ` +
+            `sf ${pushResult.invoices.success}, af ${pushResult.purchaseInvoices.success}, ` +
+            `ss ${pushResult.salesOrders.success}, as ${pushResult.purchaseOrders.success}, ` +
+            `si ${pushResult.salesDispatches.success}, ai ${pushResult.purchaseDispatches.success}, ` +
+            `stok ${pushResult.itemSlips.success}` +
             (pushResult.errors ? ` · hata ${pushResult.errors}` : ''),
         );
         pushLog(opts.onLog, msg);

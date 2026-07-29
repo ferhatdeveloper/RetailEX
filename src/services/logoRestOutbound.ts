@@ -1,6 +1,6 @@
 /**
  * RetailEX (PostgREST / PG) → Logo Tiger REST giden yazım.
- * Bekleyen ürün (items), cari (Arps), fatura (salesInvoices) kayıtlarını işler.
+ * Kartlar + belgeler + stok fişleri (logo_sync_status=pending).
  */
 
 import {
@@ -15,7 +15,12 @@ import {
 import { loadLogoErpMode } from './logoErpMode';
 import { buildLogoItemRestRecord } from './logoRestItemMap';
 import type { LogoSyncLogEntry } from './logoRestSync';
-import { pushPendingSalesToLogo, type LogoInvoicePushResult } from './logoRestInvoicePush';
+import {
+  pushPendingDocumentsToLogo,
+  type LogoDocumentPushKind,
+  type LogoDocumentPushResult,
+} from './logoRestDocumentPush';
+import type { LogoInvoicePushResult } from './logoRestInvoicePush';
 import { DB_SETTINGS, ERP_SETTINGS, postgres } from './postgres';
 
 export { extractLogoInternalRef };
@@ -31,7 +36,14 @@ export type LogoOutboundPushResult = {
   products: LogoOutboundEntityResult;
   customers: LogoOutboundEntityResult;
   suppliers: LogoOutboundEntityResult;
+  banks: LogoOutboundEntityResult;
   invoices: LogoInvoicePushResult;
+  purchaseInvoices: LogoDocumentPushResult;
+  salesOrders: LogoDocumentPushResult;
+  purchaseOrders: LogoDocumentPushResult;
+  salesDispatches: LogoDocumentPushResult;
+  purchaseDispatches: LogoDocumentPushResult;
+  itemSlips: LogoOutboundEntityResult;
   messages: string[];
   success: number;
   errors: number;
@@ -51,6 +63,24 @@ function customersTable(): string {
 
 function suppliersTable(): string {
   return `rex_${firmNrPadded()}_suppliers`;
+}
+
+function cashRegistersTable(): string {
+  return `rex_${firmNrPadded()}_cash_registers`;
+}
+
+function stockMovementsTable(): string {
+  const period = String(ERP_SETTINGS.periodNr || '01').padStart(2, '0');
+  return `rex_${firmNrPadded()}_${period}_stock_movements`;
+}
+
+function stockMovementItemsTable(): string {
+  const period = String(ERP_SETTINGS.periodNr || '01').padStart(2, '0');
+  return `rex_${firmNrPadded()}_${period}_stock_movement_items`;
+}
+
+function emptyDoc(): LogoDocumentPushResult {
+  return { processed: 0, success: 0, errors: 0, messages: [] };
 }
 
 /** Web/masaüstü: Logo REST URL yapılandırılmış ve REST modu. */
@@ -182,7 +212,7 @@ async function pushPendingMasterEntity(
   cfg: LogoRestConfig,
   opts: {
     table: string;
-    resource: 'items' | 'Arps';
+    resource: 'items' | 'Arps' | 'banks' | 'bankAccounts';
     role?: 'customer' | 'supplier';
     entity: LogoSyncLogEntry['entity'];
     label: string;
@@ -228,7 +258,11 @@ async function pushPendingMasterEntity(
       }
       const newRef = extractLogoInternalRef(created) || existingRef || null;
       if (id) {
-        await markMasterSync(opts.table, id, 'success', { refId: newRef });
+        // cash_registers'ta ref_id yok — yalnızca ürün/cari tablolarına yaz
+        const canStoreRef = opts.resource === 'items' || opts.resource === 'Arps';
+        await markMasterSync(opts.table, id, 'success', {
+          refId: canStoreRef ? newRef : null,
+        });
       }
       success += 1;
       opts.onLog?.({
@@ -314,7 +348,180 @@ export async function pushPendingSuppliersToLogo(
   });
 }
 
-/** Ürün + cari + fatura — PostgREST kuyruk → Logo REST */
+function buildBankRecord(row: Record<string, unknown>): Record<string, unknown> {
+  const code = String(row.code || '').trim();
+  const name = String(row.name || code || 'Kasa').trim();
+  return {
+    CODE: code.slice(0, 25),
+    TITLE: name.slice(0, 100),
+    DEFINITION_: name.slice(0, 100),
+  };
+}
+
+export async function pushPendingBanksToLogo(
+  cfg?: LogoRestConfig,
+  opts: { limit?: number; onLog?: (entry: LogoSyncLogEntry) => void; refreshSession?: boolean } = {},
+): Promise<LogoOutboundEntityResult> {
+  const config = cfg ?? loadLogoRestConfig();
+  if (opts.refreshSession !== false) await logoRefreshSession(config);
+  return pushPendingMasterEntity(config, {
+    table: cashRegistersTable(),
+    resource: 'banks',
+    entity: 'bank',
+    label: 'kasa/banka',
+    limit: opts.limit ?? 40,
+    onLog: opts.onLog,
+    build: buildBankRecord,
+  });
+}
+
+async function fetchMovementLines(movementId: string): Promise<Record<string, unknown>[]> {
+  const table = stockMovementItemsTable();
+  if (DB_SETTINGS.connectionProvider === 'rest_api') {
+    const { postgrest } = await import('./api/postgrestClient');
+    const rows = await postgrest.get<Record<string, unknown>[]>(
+      `/${table}`,
+      { select: '*', movement_id: `eq.${movementId}`, limit: 500 },
+      { schema: 'public' },
+    );
+    return Array.isArray(rows) ? rows : [];
+  }
+  const { rows } = await postgres.query<Record<string, unknown>>(
+    `SELECT * FROM ${table} WHERE movement_id = $1`,
+    [movementId],
+  );
+  return rows;
+}
+
+async function resolveProductCode(productId: unknown, notes: unknown): Promise<string> {
+  const fromNotes = String(notes || '').trim();
+  if (fromNotes && !/^[0-9a-f-]{36}$/i.test(fromNotes)) return fromNotes.slice(0, 100);
+  const id = String(productId || '').trim();
+  if (!id) return fromNotes.slice(0, 100);
+  const table = productsTable();
+  try {
+    if (DB_SETTINGS.connectionProvider === 'rest_api') {
+      const { postgrest } = await import('./api/postgrestClient');
+      const rows = await postgrest.get<{ code?: string }[]>(
+        `/${table}`,
+        { select: 'code', id: `eq.${id}`, limit: 1 },
+        { schema: 'public' },
+      );
+      return String(rows?.[0]?.code || fromNotes || '').trim().slice(0, 100);
+    }
+    const { rows } = await postgres.query<{ code: string }>(
+      `SELECT code FROM ${table} WHERE id = $1 LIMIT 1`,
+      [id],
+    );
+    return String(rows[0]?.code || fromNotes || '').trim().slice(0, 100);
+  } catch {
+    return fromNotes.slice(0, 100);
+  }
+}
+
+export async function pushPendingItemSlipsToLogo(
+  cfg?: LogoRestConfig,
+  opts: { limit?: number; onLog?: (entry: LogoSyncLogEntry) => void; refreshSession?: boolean } = {},
+): Promise<LogoOutboundEntityResult> {
+  const config = cfg ?? loadLogoRestConfig();
+  if (opts.refreshSession !== false) await logoRefreshSession(config);
+
+  const messages: string[] = [];
+  let success = 0;
+  let errors = 0;
+  const table = stockMovementsTable();
+  const limit = opts.limit ?? 20;
+
+  let pending: Record<string, unknown>[] = [];
+  try {
+    pending = await fetchPendingRows(table, limit);
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (/logo_sync_status|42703|does not exist/i.test(msg)) {
+      messages.push(`Malzeme fişi: logo_sync kolonları yok — migration 113 (${msg})`);
+      return { processed: 0, success: 0, errors: 1, messages };
+    }
+    throw e;
+  }
+
+  messages.push(`${pending.length} bekleyen malzeme fişi bulundu.`);
+
+  for (const row of pending) {
+    const id = String(row.id || '');
+    const docNo = String(row.document_no || id).trim();
+    try {
+      const lines = id ? await fetchMovementLines(id) : [];
+      const trLines = [];
+      for (let i = 0; i < lines.length; i++) {
+        const ln = lines[i];
+        const code = await resolveProductCode(ln.product_id, ln.notes);
+        if (!code) continue;
+        trLines.push({
+          TYPE: 0,
+          MASTER_CODE: code,
+          QUANTITY: Number(ln.quantity) || 0,
+          PRICE: Number(ln.unit_price) || 0,
+          LINE_NO: i + 1,
+        });
+      }
+      const ioType =
+        Math.round(Number(row.trcode)) ||
+        (String(row.movement_type) === 'in' ? 1 : 2);
+      const restRecord = {
+        TYPE: ioType,
+        NUMBER: docNo.slice(0, 33) || `REX-ST-${id.slice(0, 8)}`,
+        DATE: String(row.movement_date || new Date().toISOString()).slice(0, 10),
+        NOTES1: String(row.description || 'RetailEX').slice(0, 50),
+        TRANSACTIONS: { items: trLines },
+      };
+      const created = await logoCreateResource(config, 'itemSlips', restRecord);
+      const newRef = extractLogoInternalRef(created);
+      if (id) await markMasterSync(table, id, 'success', { refId: newRef });
+      success += 1;
+      opts.onLog?.({
+        at: new Date().toISOString(),
+        entity: 'stock',
+        action: 'create',
+        code: docNo,
+        detail: newRef ? `Logo ref ${newRef}` : 'itemSlips yazıldı',
+        ok: true,
+      });
+      messages.push(`Malzeme fişi ${docNo} → Logo OK`);
+    } catch (e: unknown) {
+      errors += 1;
+      const msg = e instanceof Error ? e.message : String(e);
+      if (id) await markMasterSync(table, id, 'error', { error: msg }).catch(() => {});
+      opts.onLog?.({
+        at: new Date().toISOString(),
+        entity: 'stock',
+        action: 'error',
+        code: docNo,
+        detail: msg,
+        ok: false,
+      });
+      messages.push(`Malzeme fişi ${docNo} hata: ${msg}`);
+    }
+  }
+
+  return { processed: pending.length, success, errors, messages };
+}
+
+async function pushDocIf(
+  enabled: boolean | undefined,
+  kind: LogoDocumentPushKind,
+  config: LogoRestConfig,
+  limit: number,
+  onLog?: (entry: LogoSyncLogEntry) => void,
+): Promise<LogoDocumentPushResult> {
+  if (enabled === false) return emptyDoc();
+  return pushPendingDocumentsToLogo(kind, config, {
+    limit,
+    onLog,
+    refreshSession: false,
+  });
+}
+
+/** Kartlar + belgeler + stok — PostgREST kuyruk → Logo REST */
 export async function pushPendingLogoOutbound(
   cfg?: LogoRestConfig,
   opts: {
@@ -323,7 +530,16 @@ export async function pushPendingLogoOutbound(
     products?: boolean;
     customers?: boolean;
     suppliers?: boolean;
+    banks?: boolean;
+    /** @deprecated salesInvoices */
     invoices?: boolean;
+    salesInvoices?: boolean;
+    purchaseInvoices?: boolean;
+    salesOrders?: boolean;
+    purchaseOrders?: boolean;
+    salesDispatches?: boolean;
+    purchaseDispatches?: boolean;
+    itemSlips?: boolean;
   } = {},
 ): Promise<LogoOutboundPushResult> {
   const config = cfg ?? loadLogoRestConfig();
@@ -331,6 +547,9 @@ export async function pushPendingLogoOutbound(
   const messages: string[] = [];
 
   await logoRefreshSession(config);
+
+  const wantSalesInv =
+    opts.salesInvoices !== undefined ? opts.salesInvoices !== false : opts.invoices !== false;
 
   const products =
     opts.products === false
@@ -356,24 +575,89 @@ export async function pushPendingLogoOutbound(
           onLog: opts.onLog,
           refreshSession: false,
         });
-  const invoices =
-    opts.invoices === false
-      ? { processed: 0, success: 0, errors: 0, messages: [] }
-      : await pushPendingSalesToLogo(config, {
+  const banks =
+    opts.banks === true
+      ? await pushPendingBanksToLogo(config, {
           limit,
           onLog: opts.onLog,
           refreshSession: false,
-        });
+        })
+      : emptyEntity();
 
-  messages.push(...products.messages, ...customers.messages, ...suppliers.messages, ...invoices.messages);
+  const invoices = await pushDocIf(wantSalesInv, 'salesInvoices', config, limit, opts.onLog);
+  const purchaseInvoices = await pushDocIf(
+    opts.purchaseInvoices === true,
+    'purchaseInvoices',
+    config,
+    limit,
+    opts.onLog,
+  );
+  const salesOrders = await pushDocIf(
+    opts.salesOrders === true,
+    'salesOrders',
+    config,
+    limit,
+    opts.onLog,
+  );
+  const purchaseOrders = await pushDocIf(
+    opts.purchaseOrders === true,
+    'purchaseOrders',
+    config,
+    limit,
+    opts.onLog,
+  );
+  const salesDispatches = await pushDocIf(
+    opts.salesDispatches === true,
+    'salesDispatches',
+    config,
+    limit,
+    opts.onLog,
+  );
+  const purchaseDispatches = await pushDocIf(
+    opts.purchaseDispatches === true,
+    'purchaseDispatches',
+    config,
+    limit,
+    opts.onLog,
+  );
+  const itemSlips =
+    opts.itemSlips === true
+      ? await pushPendingItemSlipsToLogo(config, {
+          limit,
+          onLog: opts.onLog,
+          refreshSession: false,
+        })
+      : emptyEntity();
+
+  const parts = [
+    products,
+    customers,
+    suppliers,
+    banks,
+    invoices,
+    purchaseInvoices,
+    salesOrders,
+    purchaseOrders,
+    salesDispatches,
+    purchaseDispatches,
+    itemSlips,
+  ];
+  for (const p of parts) messages.push(...p.messages);
 
   return {
     products,
     customers,
     suppliers,
+    banks,
     invoices,
+    purchaseInvoices,
+    salesOrders,
+    purchaseOrders,
+    salesDispatches,
+    purchaseDispatches,
+    itemSlips,
     messages,
-    success: products.success + customers.success + suppliers.success + invoices.success,
-    errors: products.errors + customers.errors + suppliers.errors + invoices.errors,
+    success: parts.reduce((s, p) => s + p.success, 0),
+    errors: parts.reduce((s, p) => s + p.errors, 0),
   };
 }

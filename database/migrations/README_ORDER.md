@@ -99,6 +99,7 @@
 95. **110_print_design_bindings.sql** – Sistem → Yazdırma Seçenekleri: belge türü bazında FastReport `.frx`, Dizayn Merkezi veya yerleşik yazdırma eşleştirmeleri (`public.print_design_bindings`).
 96. **111_customers_suppliers_updated_at_sync.sql** – `rex_*_customers` / `rex_*_suppliers` `updated_at` + trigger; `enqueue_hybrid_backfill` değişen (imza farklı) kayıtları yeniden kuyruklar (cari artımlı senkron).
 97. **112_logo_outbound_sync_status.sql** – Ürün/müşteri/tedarikçi `logo_sync_status|error|date` (PostgREST kuyruk → Logo REST items/Arps gönderimi).
+98. **113_logo_outbound_banks_stock_sync.sql** – Kasa/banka (`cash_registers`) ve malzeme fişi (`stock_movements`) `logo_sync_*` kolonları (Logo REST banks / itemSlips gönderimi).
 
 **099 tüm kiracılara (tek dosya):**
 ```bash

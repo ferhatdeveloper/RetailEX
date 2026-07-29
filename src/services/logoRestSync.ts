@@ -396,8 +396,13 @@ function logoDateVal(rec: Record<string, unknown>): string {
 
 function ficheTypeFromLogoType(typeVal: unknown, resource: string): string {
   const t = Math.round(numVal(typeVal, 0));
-  if (resource === 'purchaseInvoices' || resource === 'purchaseOrders') return 'purchase_invoice';
-  if (resource === 'salesInvoices' || resource === 'salesOrders') return 'sales_invoice';
+  // Kaynak bazlı — sipariş/irsaliye fatura ile karışmasın (gönderim seçenekleri için)
+  if (resource === 'purchaseOrders') return 'purchase_order';
+  if (resource === 'salesOrders') return 'sales_order';
+  if (resource === 'purchaseDispatches') return 'purchase_dispatch';
+  if (resource === 'salesDispatches') return 'sales_dispatch';
+  if (resource === 'purchaseInvoices') return 'purchase_invoice';
+  if (resource === 'salesInvoices') return 'sales_invoice';
   if (t === 2 || t === 3) return 'return_invoice';
   if ([1, 4, 5, 6, 13, 26, 41, 42].includes(t)) return 'purchase_invoice';
   if ([7, 8, 9, 14, 29, 30, 31, 32].includes(t)) return 'sales_invoice';
@@ -1616,13 +1621,17 @@ export async function syncLogoInvoicesFromRest(
   onProgress?: (p: LogoSyncProgress) => void,
 ): Promise<LogoSyncEntityResult> {
   const ficheDefault =
-    resource === 'purchaseInvoices' ||
-    resource === 'purchaseOrders' ||
-    resource === 'purchaseDispatches'
-      ? 'purchase_invoice'
-      : resource === 'salesDispatches'
-        ? 'sales_dispatch'
-        : 'sales_invoice';
+    resource === 'purchaseOrders'
+      ? 'purchase_order'
+      : resource === 'salesOrders'
+        ? 'sales_order'
+        : resource === 'purchaseDispatches'
+          ? 'purchase_dispatch'
+          : resource === 'salesDispatches'
+            ? 'sales_dispatch'
+            : resource === 'purchaseInvoices'
+              ? 'purchase_invoice'
+              : 'sales_invoice';
 
   onProgress?.({ phase: 'invoices', message: `Logo ${resource} okunuyor…` });
   nowLog(options.onLog, { entity: 'invoice', action: 'read', code: resource, ok: true });
