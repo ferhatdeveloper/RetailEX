@@ -106,7 +106,7 @@ export type MainStackParamList = {
   WmsWavePickingExecute: { waveId: string };
   Restaurant:
     | {
-        initialTab?: 'tables' | 'orders' | 'schedule' | 'kitchen';
+        initialTab?: 'tables' | 'orders' | 'delivery' | 'takeaway' | 'schedule' | 'kitchen';
         /** Caller ID — hızlı sipariş bağlamı */
         callerPhone?: string;
       }

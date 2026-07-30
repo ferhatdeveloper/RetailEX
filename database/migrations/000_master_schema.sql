@@ -3345,6 +3345,23 @@ BEGIN
   ', v_prefix || '_rest_order_items', v_prefix || '_rest_orders');
   EXECUTE format('CREATE TABLE IF NOT EXISTS rest.%I (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), order_id UUID REFERENCES rest.%I(id) ON DELETE CASCADE, table_number VARCHAR(50), floor_name VARCHAR(100), waiter VARCHAR(255), staff_id UUID, status VARCHAR(20) DEFAULT ''new'', note TEXT, estimated_ready_at TIMESTAMPTZ, sent_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP);', v_prefix || '_rest_kitchen_orders', v_prefix || '_rest_orders');
   EXECUTE format('CREATE TABLE IF NOT EXISTS rest.%I (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), kitchen_order_id UUID REFERENCES rest.%I(id) ON DELETE CASCADE, order_item_id UUID REFERENCES rest.%I(id) ON DELETE CASCADE, product_name VARCHAR(255) NOT NULL, quantity DECIMAL(15,3) NOT NULL, course VARCHAR(50), note TEXT, status VARCHAR(20) DEFAULT ''new'', preparation_time INTEGER, start_at TIMESTAMPTZ, estimated_ready_at TIMESTAMPTZ, served_at TIMESTAMPTZ);', v_prefix || '_rest_kitchen_items', v_prefix || '_rest_kitchen_orders', v_prefix || '_rest_order_items');
+  EXECUTE format('
+    CREATE TABLE IF NOT EXISTS rest.%I (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      customer_id UUID,
+      customer_name TEXT NOT NULL,
+      phone TEXT NOT NULL DEFAULT '''',
+      reservation_date DATE NOT NULL,
+      reservation_time TIME NOT NULL,
+      guest_count INTEGER NOT NULL DEFAULT 2,
+      table_id UUID,
+      table_number TEXT,
+      status TEXT NOT NULL DEFAULT ''pending'',
+      note TEXT,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    );
+  ', v_prefix || '_rest_reservations');
   PERFORM INIT_RESTAURANT_KITCHEN_PRINT_JOBS_TABLE(p_firm_nr, p_period_nr);
   PERFORM INIT_RESTAURANT_PRINT_JOBS_TABLE(p_firm_nr, p_period_nr);
 END;

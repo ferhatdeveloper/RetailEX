@@ -148,12 +148,17 @@ export let REMOTE_CONFIG = {
 };
 
 // Local PostgreSQL (Branch/Local Offline Server)
+// Ortam: PGHOST / PGPORT / PGDATABASE / PGUSER / PGPASSWORD (pg_bridge / Cloud)
 export let LOCAL_CONFIG = {
-  host: '127.0.0.1', // Use 127.0.0.1 for better stability on Windows
-  port: 5432,
-  database: 'retailex_local',
-  user: 'postgres',
-  password: 'Yq7xwQpt6c',
+  host: (typeof process !== 'undefined' && process.env?.PGHOST?.trim()) || '127.0.0.1',
+  port: Number(typeof process !== 'undefined' && process.env?.PGPORT) || 5432,
+  database:
+    (typeof process !== 'undefined' && process.env?.PGDATABASE?.trim()) || 'retailex_local',
+  user: (typeof process !== 'undefined' && process.env?.PGUSER?.trim()) || 'postgres',
+  password:
+    (typeof process !== 'undefined' &&
+      (process.env?.PGPASSWORD ?? process.env?.PG_LOCAL_PASS)) ||
+    'Yq7xwQpt6c',
   isConfigured: false
 };
 
@@ -637,8 +642,17 @@ function applyWebLocalStorageConfig(config: any): void {
  */
 export async function initializeFromSQLite(preloadedConfig?: any) {
   if (!IS_TAURI) {
-    const pgFlat = localStorage.getItem('exretail_pg_config');
-    const webFull = localStorage.getItem('retailex_web_config');
+    // Node (pg_bridge) / SSR: localStorage yok — web cache yolunu atla
+    const webStorage =
+      typeof globalThis !== 'undefined' &&
+      typeof (globalThis as { localStorage?: Storage }).localStorage?.getItem === 'function'
+        ? (globalThis as { localStorage: Storage }).localStorage
+        : null;
+    if (!webStorage) {
+      return;
+    }
+    const pgFlat = webStorage.getItem('exretail_pg_config');
+    const webFull = webStorage.getItem('retailex_web_config');
     try {
       // Web'de tek kaynak gibi davran: iki cache birlikte varsa önce flat, üstüne full.
       // Böylece tenant/connection_provider/remote_rest_url gibi kritik alanlarda retailex_web_config öncelikli kalır.
@@ -1867,7 +1881,11 @@ export class PostgresConnection {
 }
 
 export const postgres = PostgresConnection.getInstance();
-postgres.connect().catch(console.error);
+// Node (pg_bridge): tarayıcı config yokken otomatik connect yanlış LOCAL_CONFIG
+// şifresiyle paylaşılan PG havuzunu zehirleyebilir — yalnızca web/Tauri'de bağlan.
+if (typeof window !== 'undefined' || IS_TAURI) {
+  postgres.connect().catch(console.error);
+}
 
 // Legacy exports for compatibility
 export const DB_CONFIG = REMOTE_CONFIG;

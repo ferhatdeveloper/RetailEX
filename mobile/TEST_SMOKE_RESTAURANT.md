@@ -38,6 +38,12 @@
 | 8 | Bugünkü akış → hızlı rezervasyon ekle → Onayla/Oturdu/İptal durumları | |
 | 9 | Config: aynı Wi‑Fi → Ağı tara → köprü seç → Test bağlantı | |
 | 10 | Ödeme al / kapat mevcut davranışı korur | |
+| 11 | Paket sekmesi → sipariş oluştur → durum Yolda/Teslim | |
+| 12 | Gel Al sekmesi → sipariş oluştur → Hazır/Teslim alındı | |
+| 13 | Kalem İptal / İkram / Sil (bekleyen) | |
+| 14 | İndirim % kaydet → ödeme tutarı düşer | |
+| 15 | Boş masaya taşı | |
+| 16 | Menü → Mutfak Ekranı yaprağı doğrudan kitchen sekmesi açar | |
 
 ## Geçti / Kaldı
 

@@ -39,6 +39,19 @@ import {
   createRestaurantReservation,
   updateRestaurantReservationStatus,
   completeTablePayment,
+  voidRestaurantOrderItem,
+  removeRestaurantOrderItem,
+  markRestaurantItemComplimentary,
+  updateRestaurantOrderItemNote,
+  updateOpenOrderDiscountPct,
+  transferRestaurantTable,
+  updateRestaurantTableStatus,
+  fetchDeliveryOrders,
+  createDeliveryOrder,
+  updateDeliveryStatus,
+  fetchTakeawayOrders,
+  createTakeawayOrder,
+  updateTakeawayStatus,
   type RestPaymentMethod,
   type RestTable,
   type RestOrder,
@@ -47,7 +60,13 @@ import {
   type RestReservationStatus,
   type RestMenuItem,
   type RestKitchenOrder,
+  type RestDeliveryOrder,
+  type RestDeliveryStatus,
+  type RestTakeawayOrder,
+  type RestTakeawayStatus,
 } from '../api/restaurantApi';
+import { RestaurantDeliveryPanel } from '../components/RestaurantDeliveryPanel';
+import { RestaurantTakeawayPanel } from '../components/RestaurantTakeawayPanel';
 import { formatMoney } from '../api/erpTables';
 import { useThemeStore } from '../store/themeStore';
 import { useOrgEpoch } from '../hooks/useOrgEpoch';
@@ -68,7 +87,7 @@ import { printKitchenTicketsForOrder } from '../services/kitchenTicketPrint';
 import { resolveKitchenTicketLocale } from '../services/escpos/buildKitchenTicketEscPos';
 import type { ReceiptLangCode } from '../types/printerSettings';
 
-type Tab = 'tables' | 'orders' | 'schedule' | 'kitchen';
+type Tab = 'tables' | 'orders' | 'delivery' | 'takeaway' | 'schedule' | 'kitchen';
 type Props = NativeStackScreenProps<MainStackParamList, 'Restaurant'>;
 
 const COLS = 3;
@@ -164,6 +183,8 @@ export function RestaurantScreen({ route }: Props) {
   const [todayOrders, setTodayOrders] = useState<RestOrder[]>([]);
   const [reservations, setReservations] = useState<RestReservation[]>([]);
   const [kitchenOrders, setKitchenOrders] = useState<RestKitchenOrder[]>([]);
+  const [deliveryOrders, setDeliveryOrders] = useState<RestDeliveryOrder[]>([]);
+  const [takeawayOrders, setTakeawayOrders] = useState<RestTakeawayOrder[]>([]);
   const [menuItems, setMenuItems] = useState<RestMenuItem[]>([]);
   const [menuSearch, setMenuSearch] = useState('');
   const [menuLoading, setMenuLoading] = useState(false);
@@ -178,6 +199,9 @@ export function RestaurantScreen({ route }: Props) {
   const [itemName, setItemName] = useState('');
   const [itemQty, setItemQty] = useState('1');
   const [itemPrice, setItemPrice] = useState('');
+  const [itemNote, setItemNote] = useState('');
+  const [discountPct, setDiscountPct] = useState('0');
+  const [moveTargetId, setMoveTargetId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [paying, setPaying] = useState(false);
   const [sendingKitchen, setSendingKitchen] = useState(false);
@@ -266,18 +290,22 @@ export function RestaurantScreen({ route }: Props) {
     else setError(null);
     try {
       const date = todayYmd();
-      const [t, o, todays, res, kitchen] = await Promise.all([
+      const [t, o, todays, res, kitchen, delivery, takeaway] = await Promise.all([
         fetchRestaurantTables(),
         fetchOpenOrders(),
         fetchTodayOrders(),
         fetchReservationsForDate(date),
         fetchActiveKitchenOrders(),
+        fetchDeliveryOrders(),
+        fetchTakeawayOrders(),
       ]);
       setTables(t);
       setOrders(o);
       setTodayOrders(todays);
       setReservations(res);
       setKitchenOrders(kitchen);
+      setDeliveryOrders(delivery);
+      setTakeawayOrders(takeaway);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -326,18 +354,21 @@ export function RestaurantScreen({ route }: Props) {
     setItemName('');
     setItemQty('1');
     setItemPrice('');
+    setItemNote('');
   };
 
   const openTable = async (table: RestTable) => {
     setSelectedTable(table);
     setOrderDetail(null);
     setModalError(null);
+    setMoveTargetId(null);
     setKitchenLocale(resolveKitchenTicketLocale());
     resetItemForm();
     setOrderLoading(true);
     try {
       const detail = await getActiveOrderForTable(table.id);
       setOrderDetail(detail);
+      setDiscountPct(String(detail?.order_discount_pct ?? 0));
     } catch (e) {
       setModalError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -360,12 +391,14 @@ export function RestaurantScreen({ route }: Props) {
     setSelectedTable(tbl);
     setOrderDetail(null);
     setModalError(null);
+    setMoveTargetId(null);
     setKitchenLocale(resolveKitchenTicketLocale());
     resetItemForm();
     setOrderLoading(true);
     try {
       const detail = await getOrderDetailById(order.id);
       setOrderDetail(detail);
+      setDiscountPct(String(detail?.order_discount_pct ?? 0));
     } catch (e) {
       setModalError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -378,7 +411,25 @@ export function RestaurantScreen({ route }: Props) {
     setOrderDetail(null);
     setModalError(null);
     setPayMethod('cash');
+    setDiscountPct('0');
+    setMoveTargetId(null);
   };
+
+  const payableTotal = useMemo(() => {
+    if (!orderDetail) return 0;
+    const pct = Math.min(100, Math.max(0, Number(String(discountPct).replace(',', '.')) || 0));
+    const base = Number(orderDetail.total_amount) || 0;
+    return Math.max(0, base * (1 - pct / 100));
+  }, [orderDetail, discountPct]);
+
+  const emptyTablesForMove = useMemo(
+    () =>
+      tables.filter((t) => {
+        const st = normalizeTableStatus(t.status);
+        return t.id !== selectedTable?.id && st === 'empty';
+      }),
+    [tables, selectedTable?.id],
+  );
 
   const isOrderOpen = (status: string | null | undefined) => {
     const s = String(status || '').toLowerCase();
@@ -392,9 +443,12 @@ export function RestaurantScreen({ route }: Props) {
       return;
     }
     const methodLabel = PAY_METHODS.find((m) => m.id === payMethod)?.label || payMethod;
+    const pct = Math.min(100, Math.max(0, Number(String(discountPct).replace(',', '.')) || 0));
     Alert.alert(
       'Ödeme / kapat',
-      `${formatMoney(orderDetail.total_amount)} ₺ — ${methodLabel}\nAdisyon kapatılsın mı?`,
+      `${formatMoney(payableTotal)} ₺ — ${methodLabel}${
+        pct > 0 ? `\nİndirim %${pct}` : ''
+      }\nAdisyon kapatılsın mı?`,
       [
         { text: 'İptal', style: 'cancel' },
         {
@@ -410,10 +464,17 @@ export function RestaurantScreen({ route }: Props) {
     setPaying(true);
     setModalError(null);
     try {
+      const pct = Math.min(100, Math.max(0, Number(String(discountPct).replace(',', '.')) || 0));
+      if (pct > 0) {
+        await updateOpenOrderDiscountPct(orderDetail.id, pct);
+      }
+      const base = Number(orderDetail.total_amount) || 0;
+      const discountAmount = pct > 0 ? base * (pct / 100) : 0;
       await completeTablePayment({
         tableId: selectedTable.id,
         orderId: orderDetail.id,
         paymentMethod: payMethod,
+        discountAmount,
       });
       closeModal();
       await load({ soft: true });
@@ -476,12 +537,203 @@ export function RestaurantScreen({ route }: Props) {
         unitPrice: price,
         productId: selectedMenuItem?.id,
       });
+      if (itemNote.trim()) {
+        const detail = await getOrderDetailById(oid);
+        const last = detail?.items[detail.items.length - 1];
+        if (last?.id) {
+          await updateRestaurantOrderItemNote(last.id, itemNote.trim());
+        }
+      }
       resetItemForm();
       if (selectedTable) await refreshOrder(selectedTable.id, oid);
     } catch (e) {
       setModalError(e instanceof Error ? e.message : String(e));
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleVoidItem = (itemId: string, productName: string) => {
+    Alert.alert('Kalem iptal', `"${productName}" iptal edilsin mi?`, [
+      { text: 'Vazgeç', style: 'cancel' },
+      {
+        text: 'İptal et',
+        style: 'destructive',
+        onPress: () =>
+          void (async () => {
+            if (!selectedTable || !orderDetail?.id) return;
+            setSaving(true);
+            setModalError(null);
+            try {
+              await voidRestaurantOrderItem(itemId, 'Mobil iptal');
+              await refreshOrder(selectedTable.id, orderDetail.id);
+            } catch (e) {
+              setModalError(e instanceof Error ? e.message : String(e));
+            } finally {
+              setSaving(false);
+            }
+          })(),
+      },
+    ]);
+  };
+
+  const handleRemoveItem = (itemId: string) => {
+    void (async () => {
+      if (!selectedTable || !orderDetail?.id) return;
+      setSaving(true);
+      setModalError(null);
+      try {
+        await removeRestaurantOrderItem(itemId);
+        await refreshOrder(selectedTable.id, orderDetail.id);
+      } catch (e) {
+        setModalError(e instanceof Error ? e.message : String(e));
+      } finally {
+        setSaving(false);
+      }
+    })();
+  };
+
+  const handleComplimentary = (itemId: string) => {
+    void (async () => {
+      if (!selectedTable || !orderDetail?.id) return;
+      setSaving(true);
+      setModalError(null);
+      try {
+        await markRestaurantItemComplimentary(itemId);
+        await refreshOrder(selectedTable.id, orderDetail.id);
+      } catch (e) {
+        setModalError(e instanceof Error ? e.message : String(e));
+      } finally {
+        setSaving(false);
+      }
+    })();
+  };
+
+  const handleSaveDiscount = async () => {
+    if (!orderDetail?.id || !selectedTable) return;
+    const pct = Number(String(discountPct).replace(',', '.'));
+    if (!Number.isFinite(pct) || pct < 0 || pct > 100) {
+      setModalError('İndirim 0–100 arasında olmalı');
+      return;
+    }
+    setSaving(true);
+    setModalError(null);
+    try {
+      await updateOpenOrderDiscountPct(orderDetail.id, pct);
+      await refreshOrder(selectedTable.id, orderDetail.id);
+    } catch (e) {
+      setModalError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleMoveTable = async () => {
+    if (!selectedTable || !moveTargetId) {
+      setModalError('Hedef masa seçin');
+      return;
+    }
+    setSaving(true);
+    setModalError(null);
+    try {
+      await transferRestaurantTable(selectedTable.id, moveTargetId);
+      closeModal();
+      await load({ soft: true });
+    } catch (e) {
+      setModalError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleMarkTableCleaning = async () => {
+    if (!selectedTable) return;
+    setSaving(true);
+    setModalError(null);
+    try {
+      await updateRestaurantTableStatus(selectedTable.id, 'cleaning');
+      closeModal();
+      await load({ soft: true });
+    } catch (e) {
+      setModalError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleMarkTableEmpty = async () => {
+    if (!selectedTable) return;
+    setSaving(true);
+    setModalError(null);
+    try {
+      await updateRestaurantTableStatus(selectedTable.id, 'empty');
+      closeModal();
+      await load({ soft: true });
+    } catch (e) {
+      setModalError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleCreateDelivery = async (params: {
+    customerName: string;
+    phone: string;
+    address: string;
+    itemsSummary?: string;
+    totalAmount?: number;
+    expectedPaymentMethod?: 'cash' | 'card' | 'transfer';
+  }) => {
+    setSaving(true);
+    setError(null);
+    try {
+      await createDeliveryOrder(params);
+      await load({ soft: true });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+      throw e;
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDeliveryStatus = async (orderId: string, status: RestDeliveryStatus) => {
+    setKitchenActionId(orderId);
+    setError(null);
+    try {
+      await updateDeliveryStatus(orderId, status);
+      await load({ soft: true });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setKitchenActionId(null);
+    }
+  };
+
+  const handleCreateTakeaway = async (params: { customerName: string; phone: string }) => {
+    setSaving(true);
+    setError(null);
+    try {
+      await createTakeawayOrder(params);
+      await load({ soft: true });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+      throw e;
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleTakeawayStatus = async (orderId: string, status: RestTakeawayStatus) => {
+    setKitchenActionId(orderId);
+    setError(null);
+    try {
+      await updateTakeawayStatus(orderId, status);
+      await load({ soft: true });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setKitchenActionId(null);
     }
   };
 
@@ -682,6 +934,8 @@ export function RestaurantScreen({ route }: Props) {
   const tabs: { id: Tab; label: string }[] = [
     { id: 'tables', label: `Masalar (${tables.length})` },
     { id: 'orders', label: `Adisyon (${orders.length})` },
+    { id: 'delivery', label: `Paket (${deliveryOrders.length})` },
+    { id: 'takeaway', label: `Gel Al (${takeawayOrders.length})` },
     { id: 'schedule', label: `Bugün (${scheduleItems.length})` },
     { id: 'kitchen', label: `Mutfak (${kitchenOrders.length})` },
   ];
@@ -693,7 +947,7 @@ export function RestaurantScreen({ route }: Props) {
         subtitle={
           callerPhone
             ? `Caller ID: ${callerPhone}`
-            : 'Masalar, adisyon ve bugünkü akış'
+            : 'Masalar, paket, gel-al, mutfak ve rezervasyon'
         }
       />
 
@@ -782,6 +1036,28 @@ export function RestaurantScreen({ route }: Props) {
               </Pressable>
             );
           }}
+        />
+      ) : tab === 'delivery' ? (
+        <RestaurantDeliveryPanel
+          orders={deliveryOrders}
+          refreshing={refreshing}
+          onRefresh={() => void load({ soft: true })}
+          onCreate={handleCreateDelivery}
+          onUpdateStatus={handleDeliveryStatus}
+          saving={saving}
+          actionId={kitchenActionId}
+          error={null}
+        />
+      ) : tab === 'takeaway' ? (
+        <RestaurantTakeawayPanel
+          orders={takeawayOrders}
+          refreshing={refreshing}
+          onRefresh={() => void load({ soft: true })}
+          onCreate={handleCreateTakeaway}
+          onUpdateStatus={handleTakeawayStatus}
+          saving={saving}
+          actionId={kitchenActionId}
+          error={null}
         />
       ) : tab === 'schedule' ? (
         <FlatList
@@ -1131,31 +1407,70 @@ export function RestaurantScreen({ route }: Props) {
                   {orderDetail.items.length === 0 ? (
                     <Text style={{ color: colors.textMuted, fontSize: 13 }}>Henüz kalem yok</Text>
                   ) : (
-                    orderDetail.items.map((it) => (
-                      <View
-                        key={it.id}
-                        style={[
-                          styles.itemRow,
-                          { borderColor: colors.cardBorder, backgroundColor: colors.card },
-                        ]}
-                      >
-                        <View style={{ flex: 1, minWidth: 0 }}>
-                          <Text style={{ color: colors.text, fontWeight: '600' }} numberOfLines={2}>
-                            {it.product_name}
-                          </Text>
-                          <Text style={{ color: colors.textMuted, fontSize: 10, marginTop: 2 }}>
-                            {kitchenStatusLabel(it.status)}
-                            {it.sent_to_kitchen_at ? ` · ${formatClock(it.sent_to_kitchen_at)}` : ''}
-                          </Text>
+                    orderDetail.items.map((it) => {
+                      const pending = isPendingKitchenLine(it);
+                      return (
+                        <View
+                          key={it.id}
+                          style={[
+                            styles.itemBlock,
+                            { borderColor: colors.cardBorder, backgroundColor: colors.card },
+                          ]}
+                        >
+                          <View style={styles.itemRow}>
+                            <View style={{ flex: 1, minWidth: 0 }}>
+                              <Text style={{ color: colors.text, fontWeight: '600' }} numberOfLines={2}>
+                                {it.product_name}
+                                {it.is_complimentary ? ' · İkram' : ''}
+                              </Text>
+                              <Text style={{ color: colors.textMuted, fontSize: 10, marginTop: 2 }}>
+                                {kitchenStatusLabel(it.status)}
+                                {it.sent_to_kitchen_at ? ` · ${formatClock(it.sent_to_kitchen_at)}` : ''}
+                                {it.note ? ` · ${it.note}` : ''}
+                              </Text>
+                            </View>
+                            <Text style={{ color: colors.textMuted, fontSize: 12 }}>
+                              {it.quantity} × {formatMoney(it.unit_price)}
+                            </Text>
+                            <Text style={{ color: palette.blue600, fontWeight: '700', marginLeft: 8 }}>
+                              {formatMoney(it.subtotal)} ₺
+                            </Text>
+                          </View>
+                          {isOrderOpen(orderDetail.status) ? (
+                            <View style={styles.itemActions}>
+                              {pending ? (
+                                <Pressable
+                                  onPress={() => handleRemoveItem(it.id)}
+                                  style={[styles.smallAction, { borderColor: colors.cardBorder }]}
+                                >
+                                  <Text style={{ color: colors.textMuted, fontSize: 10, fontWeight: '800' }}>
+                                    Sil
+                                  </Text>
+                                </Pressable>
+                              ) : null}
+                              <Pressable
+                                onPress={() => handleVoidItem(it.id, it.product_name)}
+                                style={[styles.smallAction, { borderColor: palette.red500 }]}
+                              >
+                                <Text style={{ color: palette.red500, fontSize: 10, fontWeight: '800' }}>
+                                  İptal
+                                </Text>
+                              </Pressable>
+                              {!it.is_complimentary ? (
+                                <Pressable
+                                  onPress={() => handleComplimentary(it.id)}
+                                  style={[styles.smallAction, { borderColor: colors.cardBorder }]}
+                                >
+                                  <Text style={{ color: colors.textMuted, fontSize: 10, fontWeight: '800' }}>
+                                    İkram
+                                  </Text>
+                                </Pressable>
+                              ) : null}
+                            </View>
+                          ) : null}
                         </View>
-                        <Text style={{ color: colors.textMuted, fontSize: 12 }}>
-                          {it.quantity} × {formatMoney(it.unit_price)}
-                        </Text>
-                        <Text style={{ color: palette.blue600, fontWeight: '700', marginLeft: 8 }}>
-                          {formatMoney(it.subtotal)} ₺
-                        </Text>
-                      </View>
-                    ))
+                      );
+                    })
                   )}
 
                   {isOrderOpen(orderDetail.status) ? (
@@ -1238,11 +1553,85 @@ export function RestaurantScreen({ route }: Props) {
                           />
                         </View>
                       </View>
+                      <FormField
+                        label="Kalem notu"
+                        value={itemNote}
+                        onChangeText={setItemNote}
+                        placeholder="Örn. az acılı"
+                      />
                       <PrimaryButton
                         label="Kalem ekle"
                         onPress={() => void handleAddItem()}
                         loading={saving}
                       />
+
+                      <Text style={[styles.sectionTitle, { color: colors.text, marginTop: 16 }]}>
+                        İndirim / masa işlemleri
+                      </Text>
+                      <View style={styles.rowFields}>
+                        <View style={{ flex: 1 }}>
+                          <FormField
+                            label="İndirim %"
+                            value={discountPct}
+                            onChangeText={setDiscountPct}
+                            keyboardType="decimal-pad"
+                          />
+                        </View>
+                        <View style={{ justifyContent: 'flex-end', paddingBottom: 4 }}>
+                          <PrimaryButton
+                            label="Kaydet"
+                            onPress={() => void handleSaveDiscount()}
+                            loading={saving}
+                          />
+                        </View>
+                      </View>
+                      {emptyTablesForMove.length > 0 ? (
+                        <>
+                          <Text style={{ color: colors.textMuted, fontSize: 11, fontWeight: '700' }}>
+                            Masaya taşı
+                          </Text>
+                          <ScrollView
+                            horizontal
+                            showsHorizontalScrollIndicator={false}
+                            contentContainerStyle={styles.menuPickerRow}
+                          >
+                            {emptyTablesForMove.map((t) => {
+                              const selected = moveTargetId === t.id;
+                              return (
+                                <Pressable
+                                  key={t.id}
+                                  onPress={() => setMoveTargetId(t.id)}
+                                  style={[
+                                    styles.menuChip,
+                                    {
+                                      width: 88,
+                                      backgroundColor: selected ? palette.blue600 : colors.card,
+                                      borderColor: selected ? palette.blue600 : colors.cardBorder,
+                                    },
+                                  ]}
+                                >
+                                  <Text
+                                    style={{
+                                      color: selected ? palette.white : colors.text,
+                                      fontWeight: '800',
+                                      fontSize: 13,
+                                      textAlign: 'center',
+                                    }}
+                                  >
+                                    {t.name || '—'}
+                                  </Text>
+                                </Pressable>
+                              );
+                            })}
+                          </ScrollView>
+                          <PrimaryButton
+                            label="Siparişi taşı"
+                            onPress={() => void handleMoveTable()}
+                            loading={saving}
+                            disabled={!moveTargetId}
+                          />
+                        </>
+                      ) : null}
                     </>
                   ) : (
                     <Text style={{ color: colors.textMuted, fontSize: 13, marginTop: 12 }}>
@@ -1268,6 +1657,23 @@ export function RestaurantScreen({ route }: Props) {
                     onPress={() => void handleCreateOrder()}
                     loading={saving}
                   />
+                  {normalizeTableStatus(selectedTable?.status) === 'cleaning' ? (
+                    <View style={{ marginTop: 10 }}>
+                      <PrimaryButton
+                        label="Temizlik bitti — boşalt"
+                        onPress={() => void handleMarkTableEmpty()}
+                        loading={saving}
+                      />
+                    </View>
+                  ) : (
+                    <View style={{ marginTop: 10 }}>
+                      <PrimaryButton
+                        label="Temizliğe al"
+                        onPress={() => void handleMarkTableCleaning()}
+                        loading={saving}
+                      />
+                    </View>
+                  )}
                 </View>
               )}
             </ScrollView>
@@ -1348,7 +1754,7 @@ export function RestaurantScreen({ route }: Props) {
                   ))}
                 </View>
                 <PrimaryButton
-                  label={`Ödeme al · ${formatMoney(orderDetail.total_amount)} ₺`}
+                  label={`Ödeme al · ${formatMoney(payableTotal)} ₺`}
                   onPress={handlePayment}
                   loading={paying}
                 />
@@ -1516,15 +1922,19 @@ const styles = StyleSheet.create({
   },
   metaChip: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   sectionTitle: { fontSize: 13, fontWeight: '800', marginTop: 8, marginBottom: 4 },
-  itemRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  itemBlock: {
     borderWidth: 1,
     borderRadius: 10,
     padding: 10,
     marginBottom: 6,
     gap: 8,
   },
+  itemRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  itemActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   menuPickerRow: { gap: 8, paddingVertical: 4 },
   menuChip: {
     width: 150,

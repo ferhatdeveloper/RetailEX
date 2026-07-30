@@ -7,7 +7,7 @@ type PoolEntry = { pool: Pool; lastUsed: number };
 
 const pools = new Map<string, PoolEntry>();
 
-/** Bağlantı dizesini havuz anahtarına indirger (aynı PG için tek havuz). */
+/** Bağlantı dizesini havuz anahtarına indirger (aynı PG + aynı kimlik için tek havuz). */
 export function normalizePgPoolKey(connStr: string): string {
   try {
     const raw = connStr.trim();
@@ -16,7 +16,11 @@ export function normalizePgPoolKey(connStr: string): string {
     const port = u.port || '5432';
     const user = decodeURIComponent(u.username || 'postgres');
     const host = u.hostname || '127.0.0.1';
-    return `postgresql://${user}@${host}:${port}/${db}`;
+    // Şifre anahtara dahil edilmeli — aksi halde yanlış parola ile açılan havuz,
+    // doğru connStr isteklerini de zehirler (pg_bridge /api/pg_query).
+    const pass = decodeURIComponent(u.password || '');
+    const passTag = pass ? `:${pass}` : '';
+    return `postgresql://${user}${passTag}@${host}:${port}/${db}`;
   } catch {
     return connStr.trim();
   }

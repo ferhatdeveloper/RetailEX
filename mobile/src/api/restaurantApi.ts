@@ -1,5 +1,5 @@
 import { pgQuery } from './pgClient';
-import { postgrestGet, postgrestPatch, postgrestPost } from './postgrestClient';
+import { postgrestDelete, postgrestGet, postgrestPatch, postgrestPost } from './postgrestClient';
 import { runDataTransport, rethrowTransportInfra } from './dataTransport';
 import { fetchProducts } from './productsApi';
 import {
@@ -48,6 +48,39 @@ export type RestOrder = {
   total_amount: number;
   waiter: string | null;
   created_at: string | null;
+  order_discount_pct?: number;
+  note?: string | null;
+  payment_method?: string | null;
+};
+
+export type RestDeliveryStatus = 'pending' | 'preparing' | 'on_way' | 'delivered';
+export type RestTakeawayStatus = 'pending' | 'preparing' | 'ready' | 'picked_up';
+export type RestDeliveryPayMethod = 'cash' | 'card' | 'transfer';
+
+export type RestDeliveryOrder = {
+  id: string;
+  order_no: string | null;
+  customer_name: string;
+  phone: string;
+  address: string;
+  courier: string;
+  delivery_status: RestDeliveryStatus;
+  total_amount: number;
+  items_summary: string;
+  expected_payment_method: RestDeliveryPayMethod;
+  created_at: string | null;
+  item_count: number;
+};
+
+export type RestTakeawayOrder = {
+  id: string;
+  order_no: string | null;
+  customer_name: string;
+  phone: string;
+  takeaway_status: RestTakeawayStatus;
+  total_amount: number;
+  created_at: string | null;
+  item_count: number;
 };
 
 export type RestReservation = {
@@ -80,6 +113,10 @@ export type RestOrderItem = {
   category_id?: string | null;
   category_code?: string | null;
   sent_to_kitchen_at: string | null;
+  discount_pct?: number;
+  is_void?: boolean;
+  is_complimentary?: boolean;
+  void_reason?: string | null;
 };
 
 export type RestOrderDetail = RestOrder & { items: RestOrderItem[] };
@@ -202,6 +239,10 @@ function mapRestOrderRow(
     total_amount: Number(r.total_amount) || 0,
     waiter: r.waiter == null ? null : String(r.waiter),
     created_at: created,
+    order_discount_pct:
+      r.order_discount_pct == null ? undefined : Number(r.order_discount_pct) || 0,
+    note: r.note == null ? null : String(r.note),
+    payment_method: r.payment_method == null ? null : String(r.payment_method),
   };
 }
 
@@ -932,28 +973,36 @@ export async function fetchRestaurantMenuItems(
   }
 }
 
+function mapOrderItemRow(it: Record<string, unknown>): RestOrderItem {
+  return {
+    id: String(it.id ?? ''),
+    product_id: it.product_id == null ? null : String(it.product_id),
+    product_name: String(it.product_name ?? ''),
+    quantity: Number(it.quantity) || 0,
+    unit_price: Number(it.unit_price) || 0,
+    subtotal: Number(it.subtotal) || 0,
+    status: it.status == null ? null : String(it.status),
+    course: it.course == null ? null : String(it.course),
+    note: it.note == null ? null : String(it.note),
+    options: it.options,
+    category_name: it.category_name == null ? null : String(it.category_name),
+    category_id: it.category_id == null ? null : String(it.category_id),
+    category_code: it.category_code == null ? null : String(it.category_code),
+    sent_to_kitchen_at:
+      it.sent_to_kitchen_at == null ? null : String(it.sent_to_kitchen_at),
+    discount_pct: it.discount_pct == null ? 0 : Number(it.discount_pct) || 0,
+    is_void: Boolean(it.is_void),
+    is_complimentary: Boolean(it.is_complimentary),
+    void_reason: it.void_reason == null ? null : String(it.void_reason),
+  };
+}
+
 function mapOrderDetail(
   row: RestOrder & { item_json?: RestOrderItem[] | null },
 ): RestOrderDetail {
   const rawItems = row.item_json;
   const itemsList: RestOrderItem[] = Array.isArray(rawItems)
-    ? rawItems.map((it) => ({
-        id: String(it.id),
-        product_id: it.product_id == null ? null : String(it.product_id),
-        product_name: String(it.product_name ?? ''),
-        quantity: Number(it.quantity) || 0,
-        unit_price: Number(it.unit_price) || 0,
-        subtotal: Number(it.subtotal) || 0,
-        status: it.status == null ? null : String(it.status),
-        course: it.course == null ? null : String(it.course),
-        note: it.note == null ? null : String(it.note),
-        options: it.options,
-        category_name: it.category_name == null ? null : String(it.category_name),
-        category_id: it.category_id == null ? null : String(it.category_id),
-        category_code: it.category_code == null ? null : String(it.category_code),
-        sent_to_kitchen_at:
-          it.sent_to_kitchen_at == null ? null : String(it.sent_to_kitchen_at),
-      }))
+    ? rawItems.map((it) => mapOrderItemRow(it as unknown as Record<string, unknown>))
     : [];
 
   return {
@@ -965,6 +1014,9 @@ function mapOrderDetail(
     total_amount: row.total_amount,
     waiter: row.waiter,
     created_at: row.created_at,
+    order_discount_pct: row.order_discount_pct,
+    note: row.note,
+    payment_method: row.payment_method,
     items: itemsList,
   };
 }
@@ -976,6 +1028,9 @@ const ORDER_DETAIL_SELECT = (orders: string, tables: string, items: string) =>
       COALESCE(o.total_amount, 0)::float8 AS total_amount,
       o.waiter,
       o.created_at::text AS created_at,
+      COALESCE(o.order_discount_pct, 0)::float8 AS order_discount_pct,
+      o.note,
+      o.payment_method,
       COALESCE(
         json_agg(
           json_build_object(
@@ -992,7 +1047,11 @@ const ORDER_DETAIL_SELECT = (orders: string, tables: string, items: string) =>
             'category_name', COALESCE(NULLIF(c.name, ''), NULLIF(p.category_code, ''), NULLIF(p.group_code, '')),
             'category_id', p.category_id,
             'category_code', p.category_code,
-            'sent_to_kitchen_at', i.sent_to_kitchen_at
+            'sent_to_kitchen_at', i.sent_to_kitchen_at,
+            'discount_pct', i.discount_pct,
+            'is_void', i.is_void,
+            'is_complimentary', i.is_complimentary,
+            'void_reason', i.void_reason
           )
           ORDER BY i.created_at
         ) FILTER (WHERE i.id IS NOT NULL),
@@ -1004,7 +1063,63 @@ const ORDER_DETAIL_SELECT = (orders: string, tables: string, items: string) =>
    LEFT JOIN ${productsTable()} p ON p.id = i.product_id
    LEFT JOIN ${categoriesTable()} c ON c.id = p.category_id OR c.code = p.category_code`;
 
-export async function getActiveOrderForTable(tableId: string): Promise<RestOrderDetail | null> {
+async function fetchOrderItemsViaRest(orderId: string): Promise<RestOrderItem[]> {
+  const itemsBare = restTableBare(restOrderItemsTable());
+  const rows = await postgrestGet<Record<string, unknown>[]>(
+    `/${itemsBare}`,
+    {
+      order_id: `eq.${orderId}`,
+      is_void: 'eq.false',
+      select:
+        'id,product_id,product_name,quantity,unit_price,subtotal,status,course,note,options,sent_to_kitchen_at,discount_pct,is_void,is_complimentary,void_reason',
+      order: 'created_at.asc',
+      limit: 500,
+    },
+    { schema: 'rest' },
+  );
+  return (Array.isArray(rows) ? rows : []).map(mapOrderItemRow).filter((r) => r.id);
+}
+
+async function getOrderDetailByIdViaRest(orderId: string): Promise<RestOrderDetail | null> {
+  const ordersBare = restTableBare(restOrdersTable());
+  const rows = await postgrestGet<Record<string, unknown>[]>(
+    `/${ordersBare}`,
+    {
+      id: `eq.${orderId}`,
+      select:
+        'id,order_no,table_id,status,total_amount,waiter,opened_at,created_at,order_discount_pct,note,payment_method',
+      limit: 1,
+    },
+    { schema: 'rest' },
+  );
+  const r = Array.isArray(rows) ? rows[0] : undefined;
+  if (!r?.id) return null;
+  const tableNames = await fetchTablesNameMapViaRest().catch(() => new Map<string, string>());
+  const base = mapRestOrderRow(r, tableNames);
+  const items = await fetchOrderItemsViaRest(String(r.id));
+  return { ...base, items };
+}
+
+async function getActiveOrderForTableViaRest(tableId: string): Promise<RestOrderDetail | null> {
+  const ordersBare = restTableBare(restOrdersTable());
+  const rows = await postgrestGet<Record<string, unknown>[]>(
+    `/${ordersBare}`,
+    {
+      table_id: `eq.${tableId}`,
+      status: 'eq.open',
+      select:
+        'id,order_no,table_id,status,total_amount,waiter,opened_at,created_at,order_discount_pct,note,payment_method',
+      order: 'opened_at.desc',
+      limit: 1,
+    },
+    { schema: 'rest' },
+  );
+  const r = Array.isArray(rows) ? rows[0] : undefined;
+  if (!r?.id) return null;
+  return getOrderDetailByIdViaRest(String(r.id));
+}
+
+async function getActiveOrderForTableViaBridge(tableId: string): Promise<RestOrderDetail | null> {
   const orders = restOrdersTable();
   const items = restOrderItemsTable();
   const tables = restTablesTable();
@@ -1024,8 +1139,7 @@ export async function getActiveOrderForTable(tableId: string): Promise<RestOrder
   return row ? mapOrderDetail(row) : null;
 }
 
-/** Açık adisyon listesinden id ile detay + kalemler */
-export async function getOrderDetailById(orderId: string): Promise<RestOrderDetail | null> {
+async function getOrderDetailByIdViaBridge(orderId: string): Promise<RestOrderDetail | null> {
   const orders = restOrdersTable();
   const items = restOrderItemsTable();
   const tables = restTablesTable();
@@ -1042,6 +1156,23 @@ export async function getOrderDetailById(orderId: string): Promise<RestOrderDeta
 
   const row = res[0];
   return row ? mapOrderDetail(row) : null;
+}
+
+export async function getActiveOrderForTable(tableId: string): Promise<RestOrderDetail | null> {
+  return runDataTransport({
+    label: 'getActiveOrderForTable',
+    viaRest: () => getActiveOrderForTableViaRest(tableId),
+    viaBridge: () => getActiveOrderForTableViaBridge(tableId),
+  });
+}
+
+/** Açık adisyon listesinden id ile detay + kalemler */
+export async function getOrderDetailById(orderId: string): Promise<RestOrderDetail | null> {
+  return runDataTransport({
+    label: 'getOrderDetailById',
+    viaRest: () => getOrderDetailByIdViaRest(orderId),
+    viaBridge: () => getOrderDetailByIdViaBridge(orderId),
+  });
 }
 
 export async function createRestaurantOrder(params: {
@@ -1181,17 +1312,19 @@ async function createRestaurantOrderViaBridge(params: {
 async function restRecalcOrderTotal(orderId: string): Promise<number> {
   const itemsBare = restTableBare(restOrderItemsTable());
   const ordersBare = restTableBare(restOrdersTable());
-  const rows = await postgrestGet<Array<{ subtotal?: number; is_void?: boolean }>>(
+  const rows = await postgrestGet<
+    Array<{ subtotal?: number; is_void?: boolean; is_complimentary?: boolean }>
+  >(
     `/${itemsBare}`,
     {
       order_id: `eq.${orderId}`,
-      select: 'subtotal,is_void',
+      select: 'subtotal,is_void,is_complimentary',
       limit: 5000,
     },
     { schema: 'rest' },
   );
   const total = (Array.isArray(rows) ? rows : [])
-    .filter((r) => !r.is_void)
+    .filter((r) => !r.is_void && !r.is_complimentary)
     .reduce((sum, r) => sum + (Number(r.subtotal) || 0), 0);
   await postgrestPatch(
     `/${ordersBare}?id=eq.${encodeURIComponent(orderId)}`,
@@ -1393,7 +1526,114 @@ function mapKitchenOrder(row: RestKitchenOrder & { item_json?: RestKitchenItem[]
   };
 }
 
-export async function fetchActiveKitchenOrders(limit = 50): Promise<RestKitchenOrder[]> {
+async function fetchActiveKitchenOrdersViaRest(limit = 50): Promise<RestKitchenOrder[]> {
+  const koBare = restTableBare(restKitchenOrdersTable());
+  const kiBare = restTableBare(restKitchenItemsTable());
+  const ordersBare = restTableBare(restOrdersTable());
+  const capped = Math.min(100, Math.max(1, limit));
+
+  const koRows = await postgrestGet<Record<string, unknown>[]>(
+    `/${koBare}`,
+    {
+      status: 'not.in.(served,cancelled)',
+      select: 'id,order_id,table_number,floor_name,waiter,status,note,sent_at,estimated_ready_at',
+      order: 'sent_at.asc',
+      limit: capped,
+    },
+    { schema: 'rest' },
+  );
+  const headers = Array.isArray(koRows) ? koRows : [];
+  if (headers.length === 0) return [];
+
+  const orderIds = headers
+    .map((h) => (h.order_id == null ? null : String(h.order_id)))
+    .filter((id): id is string => !!id);
+  const kitchenOrderIds = headers.map((h) => String(h.id)).filter(Boolean);
+
+  const orderTableMap = new Map<string, string | null>();
+  if (orderIds.length > 0) {
+    try {
+      const oRows = await postgrestGet<Array<{ id?: string; table_id?: string | null }>>(
+        `/${ordersBare}`,
+        {
+          id: `in.(${orderIds.join(',')})`,
+          select: 'id,table_id',
+          limit: capped,
+        },
+        { schema: 'rest' },
+      );
+      for (const o of Array.isArray(oRows) ? oRows : []) {
+        if (o.id != null) orderTableMap.set(String(o.id), o.table_id == null ? null : String(o.table_id));
+      }
+    } catch {
+      /* şema farkı */
+    }
+  }
+
+  let itemRows: Record<string, unknown>[] = [];
+  if (kitchenOrderIds.length > 0) {
+    try {
+      itemRows = await postgrestGet<Record<string, unknown>[]>(
+        `/${kiBare}`,
+        {
+          kitchen_order_id: `in.(${kitchenOrderIds.join(',')})`,
+          select:
+            'id,kitchen_order_id,order_item_id,product_name,quantity,course,note,status,preparation_time,start_at,estimated_ready_at',
+          limit: 2000,
+        },
+        { schema: 'rest' },
+      );
+      if (!Array.isArray(itemRows)) itemRows = [];
+    } catch {
+      itemRows = [];
+    }
+  }
+
+  const itemsByKo = new Map<string, RestKitchenItem[]>();
+  for (const it of itemRows) {
+    const kid = it.kitchen_order_id == null ? '' : String(it.kitchen_order_id);
+    if (!kid) continue;
+    const list = itemsByKo.get(kid) || [];
+    list.push({
+      id: String(it.id ?? ''),
+      order_item_id: it.order_item_id == null ? null : String(it.order_item_id),
+      product_name: String(it.product_name ?? ''),
+      quantity: Number(it.quantity) || 0,
+      course: it.course == null ? null : String(it.course),
+      note: it.note == null ? null : String(it.note),
+      status: it.status == null ? null : String(it.status),
+      preparation_time:
+        it.preparation_time == null ? null : Number(it.preparation_time) || null,
+      start_at: it.start_at == null ? null : String(it.start_at),
+      estimated_ready_at:
+        it.estimated_ready_at == null ? null : String(it.estimated_ready_at),
+    });
+    itemsByKo.set(kid, list);
+  }
+
+  return headers
+    .map((h) => {
+      const id = String(h.id ?? '');
+      const orderId = h.order_id == null ? '' : String(h.order_id);
+      return {
+        id,
+        order_id: orderId,
+        table_id: orderTableMap.get(orderId) ?? null,
+        table_number: h.table_number == null ? null : String(h.table_number),
+        floor_name: h.floor_name == null ? null : String(h.floor_name),
+        waiter: h.waiter == null ? null : String(h.waiter),
+        status: h.status == null ? null : String(h.status),
+        note: h.note == null ? null : String(h.note),
+        sent_at: h.sent_at == null ? null : String(h.sent_at),
+        estimated_ready_at:
+          h.estimated_ready_at == null ? null : String(h.estimated_ready_at),
+        items: itemsByKo.get(id) || [],
+      } satisfies RestKitchenOrder;
+    })
+    .filter((o) => o.id);
+}
+
+async function fetchActiveKitchenOrdersViaBridge(limit = 50): Promise<RestKitchenOrder[]> {
   const kitchenOrders = restKitchenOrdersTable();
   const kitchenItems = restKitchenItemsTable();
   const orders = restOrdersTable();
@@ -1438,6 +1678,14 @@ export async function fetchActiveKitchenOrders(limit = 50): Promise<RestKitchenO
     },
   ]);
   return rows.map(mapKitchenOrder);
+}
+
+export async function fetchActiveKitchenOrders(limit = 50): Promise<RestKitchenOrder[]> {
+  return runDataTransport({
+    label: 'fetchActiveKitchenOrders',
+    viaRest: () => fetchActiveKitchenOrdersViaRest(limit),
+    viaBridge: () => fetchActiveKitchenOrdersViaBridge(limit),
+  });
 }
 
 export async function updateRestaurantKitchenItemStatus(
@@ -1955,4 +2203,883 @@ async function completeTablePaymentViaBridge(params: {
       [params.tableId],
     );
   }
+}
+
+async function bridgeRecalcOrderTotal(orderId: string): Promise<void> {
+  const orders = restOrdersTable();
+  const items = restOrderItemsTable();
+  const tables = restTablesTable();
+  await pgQuery(
+    `UPDATE ${orders}
+     SET total_amount = (
+       SELECT COALESCE(SUM(subtotal), 0)
+       FROM ${items}
+       WHERE order_id = $1::uuid AND COALESCE(is_void, false) = false
+         AND COALESCE(is_complimentary, false) = false
+     ), updated_at = NOW()
+     WHERE id = $1::uuid`,
+    [orderId],
+  );
+  try {
+    await pgQuery(
+      `UPDATE ${tables} t
+       SET total = o.total_amount, updated_at = NOW()
+       FROM ${orders} o
+       WHERE o.id = $1::uuid AND t.id = o.table_id`,
+      [orderId],
+    );
+  } catch {
+    /* şema farkı */
+  }
+}
+
+/** Web RestaurantService.voidOrderItem — tam iptal (is_void) */
+export async function voidRestaurantOrderItem(
+  itemId: string,
+  reason: string,
+): Promise<void> {
+  return runDataTransport({
+    label: 'voidRestaurantOrderItem',
+    viaRest: async () => {
+      const itemsBare = restTableBare(restOrderItemsTable());
+      const rows = await postgrestGet<Array<{ order_id?: string; subtotal?: number }>>(
+        `/${itemsBare}`,
+        { id: `eq.${itemId}`, select: 'order_id,subtotal', limit: 1 },
+        { schema: 'rest' },
+      );
+      const row = Array.isArray(rows) ? rows[0] : undefined;
+      if (!row?.order_id) throw new Error('Kalem bulunamadı');
+      await postgrestPatch(
+        `/${itemsBare}?id=eq.${encodeURIComponent(itemId)}`,
+        { is_void: true, void_reason: reason.trim() || 'İptal' },
+        { schema: 'rest', prefer: 'return=minimal' },
+      );
+      await restRecalcOrderTotal(String(row.order_id));
+    },
+    viaBridge: async () => {
+      const items = restOrderItemsTable();
+      const res = await pgQuery<{ order_id: string; subtotal: number }>(
+        `SELECT order_id::text AS order_id, COALESCE(subtotal, 0)::float8 AS subtotal
+         FROM ${items} WHERE id = $1::uuid`,
+        [itemId],
+      );
+      const row = res.rows[0];
+      if (!row) throw new Error('Kalem bulunamadı');
+      await pgQuery(
+        `UPDATE ${items} SET is_void = TRUE, void_reason = $2 WHERE id = $1::uuid`,
+        [itemId, reason.trim() || 'İptal'],
+      );
+      await bridgeRecalcOrderTotal(row.order_id);
+    },
+  });
+}
+
+/** Mutfağa gitmemiş kalemi sil */
+export async function removeRestaurantOrderItem(itemId: string): Promise<void> {
+  return runDataTransport({
+    label: 'removeRestaurantOrderItem',
+    viaRest: async () => {
+      const itemsBare = restTableBare(restOrderItemsTable());
+      const rows = await postgrestGet<
+        Array<{ order_id?: string; sent_to_kitchen_at?: string | null; status?: string | null }>
+      >(
+        `/${itemsBare}`,
+        { id: `eq.${itemId}`, select: 'order_id,sent_to_kitchen_at,status', limit: 1 },
+        { schema: 'rest' },
+      );
+      const row = Array.isArray(rows) ? rows[0] : undefined;
+      if (!row?.order_id) throw new Error('Kalem bulunamadı');
+      const st = String(row.status || 'pending').toLowerCase();
+      if (
+        row.sent_to_kitchen_at ||
+        st === 'cooking' ||
+        st === 'ready' ||
+        st === 'served'
+      ) {
+        throw new Error('Mutfağa gönderilmiş kalem silinemez; iptal kullanın');
+      }
+      await postgrestDelete(`/${itemsBare}?id=eq.${encodeURIComponent(itemId)}`, {
+        schema: 'rest',
+      });
+      await restRecalcOrderTotal(String(row.order_id));
+    },
+    viaBridge: async () => {
+      const items = restOrderItemsTable();
+      const res = await pgQuery<{
+        order_id: string;
+        sent_to_kitchen_at: string | null;
+        status: string | null;
+      }>(
+        `SELECT order_id::text AS order_id, sent_to_kitchen_at::text AS sent_to_kitchen_at, status
+         FROM ${items} WHERE id = $1::uuid`,
+        [itemId],
+      );
+      const row = res.rows[0];
+      if (!row) throw new Error('Kalem bulunamadı');
+      const st = String(row.status || 'pending').toLowerCase();
+      if (
+        row.sent_to_kitchen_at ||
+        st === 'cooking' ||
+        st === 'ready' ||
+        st === 'served'
+      ) {
+        throw new Error('Mutfağa gönderilmiş kalem silinemez; iptal kullanın');
+      }
+      await pgQuery(`DELETE FROM ${items} WHERE id = $1::uuid`, [itemId]);
+      await bridgeRecalcOrderTotal(row.order_id);
+    },
+  });
+}
+
+/** Kalem notu */
+export async function updateRestaurantOrderItemNote(
+  itemId: string,
+  note: string,
+): Promise<void> {
+  return runDataTransport({
+    label: 'updateRestaurantOrderItemNote',
+    viaRest: async () => {
+      const itemsBare = restTableBare(restOrderItemsTable());
+      await postgrestPatch(
+        `/${itemsBare}?id=eq.${encodeURIComponent(itemId)}`,
+        { note: note.trim() || null },
+        { schema: 'rest', prefer: 'return=minimal' },
+      );
+    },
+    viaBridge: async () => {
+      const items = restOrderItemsTable();
+      await pgQuery(`UPDATE ${items} SET note = $2 WHERE id = $1::uuid`, [
+        itemId,
+        note.trim() || null,
+      ]);
+    },
+  });
+}
+
+/** İkram — toplamdan düş */
+export async function markRestaurantItemComplimentary(itemId: string): Promise<void> {
+  return runDataTransport({
+    label: 'markRestaurantItemComplimentary',
+    viaRest: async () => {
+      const itemsBare = restTableBare(restOrderItemsTable());
+      const rows = await postgrestGet<
+        Array<{ order_id?: string; is_complimentary?: boolean }>
+      >(
+        `/${itemsBare}`,
+        { id: `eq.${itemId}`, select: 'order_id,is_complimentary', limit: 1 },
+        { schema: 'rest' },
+      );
+      const row = Array.isArray(rows) ? rows[0] : undefined;
+      if (!row?.order_id) throw new Error('Kalem bulunamadı');
+      if (row.is_complimentary) return;
+      await postgrestPatch(
+        `/${itemsBare}?id=eq.${encodeURIComponent(itemId)}`,
+        { is_complimentary: true, subtotal: 0 },
+        { schema: 'rest', prefer: 'return=minimal' },
+      );
+      await restRecalcOrderTotal(String(row.order_id));
+    },
+    viaBridge: async () => {
+      const items = restOrderItemsTable();
+      const res = await pgQuery<{ order_id: string; is_complimentary: boolean }>(
+        `SELECT order_id::text AS order_id, COALESCE(is_complimentary, false) AS is_complimentary
+         FROM ${items} WHERE id = $1::uuid`,
+        [itemId],
+      );
+      const row = res.rows[0];
+      if (!row) throw new Error('Kalem bulunamadı');
+      if (row.is_complimentary) return;
+      await pgQuery(
+        `UPDATE ${items} SET is_complimentary = TRUE, subtotal = 0 WHERE id = $1::uuid`,
+        [itemId],
+      );
+      await bridgeRecalcOrderTotal(row.order_id);
+    },
+  });
+}
+
+/** Açık adisyon indirim % */
+export async function updateOpenOrderDiscountPct(
+  orderId: string,
+  pct: number,
+): Promise<void> {
+  const p = Math.min(100, Math.max(0, Number(pct) || 0));
+  return runDataTransport({
+    label: 'updateOpenOrderDiscountPct',
+    viaRest: async () => {
+      const ordersBare = restTableBare(restOrdersTable());
+      await postgrestPatch(
+        `/${ordersBare}?id=eq.${encodeURIComponent(orderId)}&status=eq.open`,
+        { order_discount_pct: p, updated_at: new Date().toISOString() },
+        { schema: 'rest', prefer: 'return=minimal' },
+      );
+    },
+    viaBridge: async () => {
+      const orders = restOrdersTable();
+      await pgQuery(
+        `UPDATE ${orders}
+         SET order_discount_pct = $2, updated_at = NOW()
+         WHERE id = $1::uuid AND status = 'open'`,
+        [orderId, p],
+      );
+    },
+  });
+}
+
+/** Masa durumu (ör. cleaning → empty) */
+export async function updateRestaurantTableStatus(
+  tableId: string,
+  status: string,
+): Promise<void> {
+  return runDataTransport({
+    label: 'updateRestaurantTableStatus',
+    viaRest: async () => {
+      const tablesBare = restTableBare(restTablesTable());
+      const patch: Record<string, unknown> = {
+        status,
+        updated_at: new Date().toISOString(),
+      };
+      if (status === 'empty' || status === 'cleaning') {
+        patch.waiter = null;
+        patch.total = 0;
+      }
+      await postgrestPatch(
+        `/${tablesBare}?id=eq.${encodeURIComponent(tableId)}`,
+        patch,
+        { schema: 'rest', prefer: 'return=minimal' },
+      );
+    },
+    viaBridge: async () => {
+      const tables = restTablesTable();
+      if (status === 'empty' || status === 'cleaning') {
+        await pgQuery(
+          `UPDATE ${tables}
+           SET status = $2, waiter = NULL, total = 0, updated_at = NOW()
+           WHERE id = $1::uuid`,
+          [tableId, status],
+        );
+      } else {
+        await pgQuery(
+          `UPDATE ${tables} SET status = $2, updated_at = NOW() WHERE id = $1::uuid`,
+          [tableId, status],
+        );
+      }
+    },
+  });
+}
+
+/** Web transferTable — açık siparişi hedef masaya taşı */
+export async function transferRestaurantTable(
+  sourceTableId: string,
+  targetTableId: string,
+): Promise<void> {
+  if (sourceTableId === targetTableId) return;
+  return runDataTransport({
+    label: 'transferRestaurantTable',
+    viaRest: async () => {
+      const detail = await getActiveOrderForTableViaRest(sourceTableId);
+      if (!detail) throw new Error('Bu masada taşınacak açık sipariş yok');
+      const targetOpen = await getActiveOrderForTableViaRest(targetTableId);
+      if (targetOpen) throw new Error('Hedef masada zaten açık adisyon var');
+
+      const ordersBare = restTableBare(restOrdersTable());
+      const tablesBare = restTableBare(restTablesTable());
+      const now = new Date().toISOString();
+      await postgrestPatch(
+        `/${ordersBare}?id=eq.${encodeURIComponent(detail.id)}`,
+        { table_id: targetTableId, updated_at: now },
+        { schema: 'rest', prefer: 'return=minimal' },
+      );
+      await postgrestPatch(
+        `/${tablesBare}?id=eq.${encodeURIComponent(targetTableId)}`,
+        {
+          status: 'occupied',
+          waiter: detail.waiter,
+          total: detail.total_amount,
+          updated_at: now,
+        },
+        { schema: 'rest', prefer: 'return=minimal' },
+      );
+      await postgrestPatch(
+        `/${tablesBare}?id=eq.${encodeURIComponent(sourceTableId)}`,
+        { status: 'empty', waiter: null, total: 0, updated_at: now },
+        { schema: 'rest', prefer: 'return=minimal' },
+      );
+    },
+    viaBridge: async () => {
+      const orders = restOrdersTable();
+      const tables = restTablesTable();
+      const detail = await getActiveOrderForTableViaBridge(sourceTableId);
+      if (!detail) throw new Error('Bu masada taşınacak açık sipariş yok');
+      const targetOpen = await getActiveOrderForTableViaBridge(targetTableId);
+      if (targetOpen) throw new Error('Hedef masada zaten açık adisyon var');
+
+      await pgQuery(
+        `UPDATE ${orders} SET table_id = $2::uuid, updated_at = NOW() WHERE id = $1::uuid`,
+        [detail.id, targetTableId],
+      );
+      await pgQuery(
+        `UPDATE ${tables}
+         SET status = 'occupied', waiter = $2, total = $3, updated_at = NOW()
+         WHERE id = $1::uuid`,
+        [targetTableId, detail.waiter, detail.total_amount],
+      );
+      await pgQuery(
+        `UPDATE ${tables}
+         SET status = 'empty', waiter = NULL, total = 0, updated_at = NOW()
+         WHERE id = $1::uuid`,
+        [sourceTableId],
+      );
+    },
+  });
+}
+
+function parseDeliveryNote(note: string | null | undefined): Record<string, unknown> {
+  if (!note) return {};
+  try {
+    const obj = JSON.parse(note);
+    return obj && typeof obj === 'object' ? (obj as Record<string, unknown>) : {};
+  } catch {
+    return {};
+  }
+}
+
+function mapDeliveryOrder(
+  r: Record<string, unknown>,
+  itemCount = 0,
+): RestDeliveryOrder {
+  const noteObj = parseDeliveryNote(r.note == null ? null : String(r.note));
+  const st = String(noteObj.delivery_status || 'pending').toLowerCase();
+  const deliveryStatus: RestDeliveryStatus =
+    st === 'preparing' || st === 'on_way' || st === 'delivered' ? st : 'pending';
+  const payRaw = noteObj.expected_payment_method;
+  const pay: RestDeliveryPayMethod =
+    payRaw === 'card' || payRaw === 'transfer' ? payRaw : 'cash';
+  const created =
+    r.opened_at != null
+      ? String(r.opened_at)
+      : r.created_at == null
+        ? null
+        : String(r.created_at);
+  return {
+    id: String(r.id ?? ''),
+    order_no: r.order_no == null ? null : String(r.order_no),
+    customer_name: String(noteObj.customer_name ?? '—'),
+    phone: String(noteObj.phone ?? ''),
+    address: String(noteObj.address ?? ''),
+    courier: String(noteObj.courier ?? ''),
+    delivery_status: deliveryStatus,
+    total_amount: Number(r.total_amount) || 0,
+    items_summary: String(noteObj.items_summary ?? ''),
+    expected_payment_method: pay,
+    created_at: created,
+    item_count: itemCount,
+  };
+}
+
+function mapTakeawayOrder(
+  r: Record<string, unknown>,
+  itemCount = 0,
+): RestTakeawayOrder {
+  const noteObj = parseDeliveryNote(r.note == null ? null : String(r.note));
+  const st = String(noteObj.takeaway_status || 'pending').toLowerCase();
+  const takeawayStatus: RestTakeawayStatus =
+    st === 'preparing' || st === 'ready' || st === 'picked_up' ? st : 'pending';
+  const created =
+    r.opened_at != null
+      ? String(r.opened_at)
+      : r.created_at == null
+        ? null
+        : String(r.created_at);
+  return {
+    id: String(r.id ?? ''),
+    order_no: r.order_no == null ? null : String(r.order_no),
+    customer_name: String(noteObj.customer_name ?? '—'),
+    phone: String(noteObj.phone ?? ''),
+    takeaway_status: takeawayStatus,
+    total_amount: Number(r.total_amount) || 0,
+    created_at: created,
+    item_count: itemCount,
+  };
+}
+
+async function fetchDeliveryOrdersViaRest(): Promise<RestDeliveryOrder[]> {
+  const ordersBare = restTableBare(restOrdersTable());
+  const rows = await postgrestGet<Record<string, unknown>[]>(
+    `/${ordersBare}`,
+    {
+      order_no: 'like.DLV-*',
+      status: 'eq.open',
+      select: 'id,order_no,status,total_amount,note,opened_at,created_at',
+      order: 'opened_at.desc',
+      limit: 100,
+    },
+    { schema: 'rest' },
+  );
+  return (Array.isArray(rows) ? rows : []).map((r) => mapDeliveryOrder(r)).filter((o) => o.id);
+}
+
+async function fetchDeliveryOrdersViaBridge(): Promise<RestDeliveryOrder[]> {
+  const orders = restOrdersTable();
+  const items = restOrderItemsTable();
+  const rows = await tryQueries<Record<string, unknown>>([
+    {
+      sql: `SELECT o.id, o.order_no, o.status, o.total_amount, o.note,
+              o.opened_at::text AS opened_at, o.created_at::text AS created_at,
+              COUNT(i.id)::int AS item_count
+       FROM ${orders} o
+       LEFT JOIN ${items} i ON i.order_id = o.id AND COALESCE(i.is_void, false) = false
+       WHERE o.order_no LIKE 'DLV-%' AND o.status = 'open'
+       GROUP BY o.id
+       ORDER BY o.opened_at DESC NULLS LAST
+       LIMIT 100`,
+    },
+  ]);
+  return rows.map((r) => mapDeliveryOrder(r, Number(r.item_count) || 0)).filter((o) => o.id);
+}
+
+export async function fetchDeliveryOrders(): Promise<RestDeliveryOrder[]> {
+  return runDataTransport({
+    label: 'fetchDeliveryOrders',
+    viaRest: fetchDeliveryOrdersViaRest,
+    viaBridge: fetchDeliveryOrdersViaBridge,
+  });
+}
+
+export async function createDeliveryOrder(params: {
+  customerName: string;
+  phone: string;
+  address: string;
+  itemsSummary?: string;
+  totalAmount?: number;
+  expectedPaymentMethod?: RestDeliveryPayMethod;
+}): Promise<RestDeliveryOrder> {
+  return runDataTransport({
+    label: 'createDeliveryOrder',
+    viaRest: async () => {
+      const ordersBare = restTableBare(restOrdersTable());
+      const year = new Date().getFullYear();
+      const prefix = `DLV-${year}-`;
+      const seqRows = await postgrestGet<Array<{ order_no?: string }>>(
+        `/${ordersBare}`,
+        {
+          order_no: `like.${prefix}*`,
+          select: 'order_no',
+          order: 'order_no.desc',
+          limit: 1,
+        },
+        { schema: 'rest' },
+      );
+      let next = 1;
+      const last = Array.isArray(seqRows) ? seqRows[0]?.order_no : undefined;
+      if (last) {
+        const m = String(last).match(new RegExp(`^DLV-${year}-(\\d+)$`));
+        if (m) next = parseInt(m[1], 10) + 1;
+      }
+      const orderNo = `${prefix}${String(next).padStart(4, '0')}`;
+      const pay: RestDeliveryPayMethod =
+        params.expectedPaymentMethod === 'card' || params.expectedPaymentMethod === 'transfer'
+          ? params.expectedPaymentMethod
+          : 'cash';
+      const note = JSON.stringify({
+        type: 'delivery',
+        customer_name: params.customerName.trim(),
+        phone: params.phone.trim(),
+        address: params.address.trim(),
+        delivery_status: 'pending',
+        channel: 'manual',
+        expected_payment_method: pay,
+        ...(params.itemsSummary?.trim()
+          ? { items_summary: params.itemsSummary.trim() }
+          : {}),
+      });
+      const id = newUuid();
+      const total =
+        typeof params.totalAmount === 'number' && !Number.isNaN(params.totalAmount)
+          ? Math.max(0, params.totalAmount)
+          : 0;
+      const user = useAuthStore.getState().user;
+      await postgrestPost(
+        `/${ordersBare}`,
+        {
+          id,
+          order_no: orderNo,
+          table_id: null,
+          waiter: user?.fullName || user?.username || 'mobile',
+          status: 'open',
+          note,
+          total_amount: total,
+        },
+        { schema: 'rest', prefer: 'return=minimal' },
+      );
+      return mapDeliveryOrder({
+        id,
+        order_no: orderNo,
+        total_amount: total,
+        note,
+        opened_at: new Date().toISOString(),
+      });
+    },
+    viaBridge: async () => {
+      const orders = restOrdersTable();
+      const year = new Date().getFullYear();
+      const seqRes = await pgQuery<{ seq: number }>(
+        `SELECT COUNT(*)+1 AS seq FROM ${orders} WHERE order_no LIKE $1`,
+        [`DLV-${year}-%`],
+      );
+      const seq = String(seqRes.rows[0]?.seq ?? 1).padStart(4, '0');
+      const orderNo = `DLV-${year}-${seq}`;
+      const pay: RestDeliveryPayMethod =
+        params.expectedPaymentMethod === 'card' || params.expectedPaymentMethod === 'transfer'
+          ? params.expectedPaymentMethod
+          : 'cash';
+      const note = JSON.stringify({
+        type: 'delivery',
+        customer_name: params.customerName.trim(),
+        phone: params.phone.trim(),
+        address: params.address.trim(),
+        delivery_status: 'pending',
+        channel: 'manual',
+        expected_payment_method: pay,
+        ...(params.itemsSummary?.trim()
+          ? { items_summary: params.itemsSummary.trim() }
+          : {}),
+      });
+      const id = newUuid();
+      const total =
+        typeof params.totalAmount === 'number' && !Number.isNaN(params.totalAmount)
+          ? Math.max(0, params.totalAmount)
+          : 0;
+      const user = useAuthStore.getState().user;
+      await pgQuery(
+        `INSERT INTO ${orders}
+           (id, order_no, table_id, waiter, status, note, total_amount)
+         VALUES ($1::uuid, $2, NULL, $3, 'open', $4, $5)`,
+        [id, orderNo, user?.fullName || user?.username || 'mobile', note, total],
+      );
+      return mapDeliveryOrder({
+        id,
+        order_no: orderNo,
+        total_amount: total,
+        note,
+        opened_at: new Date().toISOString(),
+      });
+    },
+  });
+}
+
+async function postDeliveryLedgerIfNeeded(
+  orderNo: string,
+  totalAmount: number,
+  noteObj: Record<string, unknown>,
+): Promise<void> {
+  if (noteObj.payment_posted_at) return;
+  const amt = Number(totalAmount) || 0;
+  if (amt <= 0) {
+    noteObj.payment_posted_at = new Date().toISOString();
+    noteObj.payment_posted_skip = 'zero_amount';
+    return;
+  }
+  const method: RestDeliveryPayMethod =
+    noteObj.expected_payment_method === 'card' || noteObj.expected_payment_method === 'transfer'
+      ? (noteObj.expected_payment_method as RestDeliveryPayMethod)
+      : 'cash';
+  try {
+    const { fetchCashRegisters, fetchBankRegisters, createSimpleCashMovement, createSimpleBankMovement } =
+      await import('./financeApi');
+    const today = todayYmdLocal();
+    const desc = `Paket servis teslim: ${orderNo}`;
+    if (method === 'transfer') {
+      const banks = await fetchBankRegisters(20);
+      const bank = banks.find((b) => b.is_active) || banks[0];
+      if (!bank) throw new Error('Aktif banka hesabı tanımlı değil');
+      await createSimpleBankMovement({
+        registerId: bank.id,
+        amount: amt,
+        direction: 'in',
+        date: today,
+        description: `${desc} (Havale/EFT)`,
+      });
+    } else {
+      const kasalar = await fetchCashRegisters(20);
+      const kasa = kasalar.find((k) => k.is_active) || kasalar[0];
+      if (!kasa) throw new Error('Aktif kasa tanımlı değil');
+      const label = method === 'card' ? 'Kart' : 'Nakit';
+      await createSimpleCashMovement({
+        registerId: kasa.id,
+        amount: amt,
+        direction: 'in',
+        date: today,
+        description: `${desc} (${label})`,
+      });
+    }
+    noteObj.payment_posted_at = new Date().toISOString();
+    noteObj.payment_posted_method = method;
+  } catch (e) {
+    /* kasa yoksa yine de teslim et — kullanıcıya üst katmanda gösterilebilir */
+    noteObj.payment_posted_error = e instanceof Error ? e.message : String(e);
+    noteObj.payment_posted_at = new Date().toISOString();
+  }
+}
+
+export async function updateDeliveryStatus(
+  orderId: string,
+  deliveryStatus: RestDeliveryStatus,
+  extra?: { courier?: string },
+): Promise<void> {
+  return runDataTransport({
+    label: 'updateDeliveryStatus',
+    viaRest: async () => {
+      const ordersBare = restTableBare(restOrdersTable());
+      const rows = await postgrestGet<
+        Array<{ note?: string | null; total_amount?: number; order_no?: string }>
+      >(
+        `/${ordersBare}`,
+        { id: `eq.${orderId}`, select: 'note,total_amount,order_no', limit: 1 },
+        { schema: 'rest' },
+      );
+      const row = Array.isArray(rows) ? rows[0] : undefined;
+      if (!row) throw new Error('Sipariş bulunamadı');
+      const noteObj = parseDeliveryNote(row.note);
+      if (deliveryStatus === 'delivered') {
+        await postDeliveryLedgerIfNeeded(
+          String(row.order_no || orderId),
+          Number(row.total_amount) || 0,
+          noteObj,
+        );
+      }
+      noteObj.delivery_status = deliveryStatus;
+      if (extra?.courier) noteObj.courier = extra.courier;
+      const patch: Record<string, unknown> = {
+        note: JSON.stringify(noteObj),
+        updated_at: new Date().toISOString(),
+      };
+      if (deliveryStatus === 'delivered') {
+        patch.status = 'closed';
+        patch.closed_at = new Date().toISOString();
+      }
+      await postgrestPatch(
+        `/${ordersBare}?id=eq.${encodeURIComponent(orderId)}`,
+        patch,
+        { schema: 'rest', prefer: 'return=minimal' },
+      );
+    },
+    viaBridge: async () => {
+      const orders = restOrdersTable();
+      const res = await pgQuery<{
+        note: string | null;
+        total_amount: number;
+        order_no: string;
+      }>(
+        `SELECT note, COALESCE(total_amount, 0)::float8 AS total_amount, order_no
+         FROM ${orders} WHERE id = $1::uuid`,
+        [orderId],
+      );
+      const row = res.rows[0];
+      if (!row) throw new Error('Sipariş bulunamadı');
+      const noteObj = parseDeliveryNote(row.note);
+      if (deliveryStatus === 'delivered') {
+        await postDeliveryLedgerIfNeeded(row.order_no, row.total_amount, noteObj);
+      }
+      noteObj.delivery_status = deliveryStatus;
+      if (extra?.courier) noteObj.courier = extra.courier;
+      await pgQuery(
+        `UPDATE ${orders} SET note = $2, updated_at = NOW() WHERE id = $1::uuid`,
+        [orderId, JSON.stringify(noteObj)],
+      );
+      if (deliveryStatus === 'delivered') {
+        await pgQuery(
+          `UPDATE ${orders} SET status = 'closed', closed_at = NOW() WHERE id = $1::uuid`,
+          [orderId],
+        );
+      }
+    },
+  });
+}
+
+async function fetchTakeawayOrdersViaRest(): Promise<RestTakeawayOrder[]> {
+  const ordersBare = restTableBare(restOrdersTable());
+  const rows = await postgrestGet<Record<string, unknown>[]>(
+    `/${ordersBare}`,
+    {
+      order_no: 'like.GEL-*',
+      status: 'eq.open',
+      select: 'id,order_no,status,total_amount,note,opened_at,created_at',
+      order: 'opened_at.desc',
+      limit: 100,
+    },
+    { schema: 'rest' },
+  );
+  return (Array.isArray(rows) ? rows : []).map((r) => mapTakeawayOrder(r)).filter((o) => o.id);
+}
+
+async function fetchTakeawayOrdersViaBridge(): Promise<RestTakeawayOrder[]> {
+  const orders = restOrdersTable();
+  const items = restOrderItemsTable();
+  const rows = await tryQueries<Record<string, unknown>>([
+    {
+      sql: `SELECT o.id, o.order_no, o.status, o.total_amount, o.note,
+              o.opened_at::text AS opened_at, o.created_at::text AS created_at,
+              COUNT(i.id)::int AS item_count
+       FROM ${orders} o
+       LEFT JOIN ${items} i ON i.order_id = o.id AND COALESCE(i.is_void, false) = false
+       WHERE o.order_no LIKE 'GEL-%' AND o.status = 'open'
+       GROUP BY o.id
+       ORDER BY o.opened_at DESC NULLS LAST
+       LIMIT 100`,
+    },
+  ]);
+  return rows.map((r) => mapTakeawayOrder(r, Number(r.item_count) || 0)).filter((o) => o.id);
+}
+
+export async function fetchTakeawayOrders(): Promise<RestTakeawayOrder[]> {
+  return runDataTransport({
+    label: 'fetchTakeawayOrders',
+    viaRest: fetchTakeawayOrdersViaRest,
+    viaBridge: fetchTakeawayOrdersViaBridge,
+  });
+}
+
+export async function createTakeawayOrder(params: {
+  customerName: string;
+  phone: string;
+}): Promise<RestTakeawayOrder> {
+  return runDataTransport({
+    label: 'createTakeawayOrder',
+    viaRest: async () => {
+      const ordersBare = restTableBare(restOrdersTable());
+      const year = new Date().getFullYear();
+      const prefix = `GEL-${year}-`;
+      const seqRows = await postgrestGet<Array<{ order_no?: string }>>(
+        `/${ordersBare}`,
+        {
+          order_no: `like.${prefix}*`,
+          select: 'order_no',
+          order: 'order_no.desc',
+          limit: 1,
+        },
+        { schema: 'rest' },
+      );
+      let next = 1;
+      const last = Array.isArray(seqRows) ? seqRows[0]?.order_no : undefined;
+      if (last) {
+        const m = String(last).match(new RegExp(`^GEL-${year}-(\\d+)$`));
+        if (m) next = parseInt(m[1], 10) + 1;
+      }
+      const orderNo = `${prefix}${String(next).padStart(4, '0')}`;
+      const note = JSON.stringify({
+        type: 'takeaway',
+        customer_name: params.customerName.trim(),
+        phone: params.phone.trim(),
+        takeaway_status: 'pending',
+      });
+      const id = newUuid();
+      const user = useAuthStore.getState().user;
+      await postgrestPost(
+        `/${ordersBare}`,
+        {
+          id,
+          order_no: orderNo,
+          table_id: null,
+          waiter: user?.fullName || user?.username || 'mobile',
+          status: 'open',
+          note,
+          total_amount: 0,
+        },
+        { schema: 'rest', prefer: 'return=minimal' },
+      );
+      return mapTakeawayOrder({
+        id,
+        order_no: orderNo,
+        total_amount: 0,
+        note,
+        opened_at: new Date().toISOString(),
+      });
+    },
+    viaBridge: async () => {
+      const orders = restOrdersTable();
+      const year = new Date().getFullYear();
+      const seqRes = await pgQuery<{ seq: number }>(
+        `SELECT COUNT(*)+1 AS seq FROM ${orders} WHERE order_no LIKE $1`,
+        [`GEL-${year}-%`],
+      );
+      const seq = String(seqRes.rows[0]?.seq ?? 1).padStart(4, '0');
+      const orderNo = `GEL-${year}-${seq}`;
+      const note = JSON.stringify({
+        type: 'takeaway',
+        customer_name: params.customerName.trim(),
+        phone: params.phone.trim(),
+        takeaway_status: 'pending',
+      });
+      const id = newUuid();
+      const user = useAuthStore.getState().user;
+      await pgQuery(
+        `INSERT INTO ${orders} (id, order_no, table_id, waiter, status, note)
+         VALUES ($1::uuid, $2, NULL, $3, 'open', $4)`,
+        [id, orderNo, user?.fullName || user?.username || 'mobile', note],
+      );
+      return mapTakeawayOrder({
+        id,
+        order_no: orderNo,
+        total_amount: 0,
+        note,
+        opened_at: new Date().toISOString(),
+      });
+    },
+  });
+}
+
+export async function updateTakeawayStatus(
+  orderId: string,
+  takeawayStatus: RestTakeawayStatus,
+): Promise<void> {
+  return runDataTransport({
+    label: 'updateTakeawayStatus',
+    viaRest: async () => {
+      const ordersBare = restTableBare(restOrdersTable());
+      const rows = await postgrestGet<Array<{ note?: string | null }>>(
+        `/${ordersBare}`,
+        { id: `eq.${orderId}`, select: 'note', limit: 1 },
+        { schema: 'rest' },
+      );
+      const row = Array.isArray(rows) ? rows[0] : undefined;
+      if (!row) throw new Error('Sipariş bulunamadı');
+      const noteObj = parseDeliveryNote(row.note);
+      noteObj.takeaway_status = takeawayStatus;
+      const patch: Record<string, unknown> = {
+        note: JSON.stringify(noteObj),
+        updated_at: new Date().toISOString(),
+      };
+      if (takeawayStatus === 'picked_up') {
+        patch.status = 'closed';
+        patch.closed_at = new Date().toISOString();
+      }
+      await postgrestPatch(
+        `/${ordersBare}?id=eq.${encodeURIComponent(orderId)}`,
+        patch,
+        { schema: 'rest', prefer: 'return=minimal' },
+      );
+    },
+    viaBridge: async () => {
+      const orders = restOrdersTable();
+      const res = await pgQuery<{ note: string | null }>(
+        `SELECT note FROM ${orders} WHERE id = $1::uuid`,
+        [orderId],
+      );
+      const row = res.rows[0];
+      if (!row) throw new Error('Sipariş bulunamadı');
+      const noteObj = parseDeliveryNote(row.note);
+      noteObj.takeaway_status = takeawayStatus;
+      await pgQuery(
+        `UPDATE ${orders} SET note = $2, updated_at = NOW() WHERE id = $1::uuid`,
+        [orderId, JSON.stringify(noteObj)],
+      );
+      if (takeawayStatus === 'picked_up') {
+        await pgQuery(
+          `UPDATE ${orders} SET status = 'closed', closed_at = NOW() WHERE id = $1::uuid`,
+          [orderId],
+        );
+      }
+    },
+  });
 }

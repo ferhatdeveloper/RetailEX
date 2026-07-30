@@ -156,6 +156,12 @@
 | Ana / Masalar / Adisyon | rest schema | `RestaurantScreen` | `[x]` liste + sekme (`initialTab`) |
 | Kalem ekleme | Restaurant POS | `RestaurantScreen` modal | `[x]` adisyon aç + kalem ekle (`getOrderDetailById`) |
 | Ödeme / kapatma | Restaurant POS | `RestaurantScreen` modal | `[x]` nakit/kart/veresiye → `completeTablePayment` |
+| Mutfak / KDS | KitchenDisplay | `RestaurantScreen` kitchen | `[x]` hazırla + ESC/POS fiş |
+| Rezervasyon | RestaurantReservations | schedule sekmesi | `[x]` oluştur + durum |
+| Paket servis | DeliveryManagement | delivery sekmesi | `[x]` oluştur + durum + kasa/banka |
+| Gel al | TakeawayManagement | takeaway sekmesi | `[x]` oluştur + durum |
+| İptal / ikram / indirim | RestPOS modals | adisyon modal | `[x]` void + ikram + % indirim |
+| Masa taşı / temizlik | FloorPlan | adisyon modal | `[x]` transfer + cleaning/empty |
 
 ---
 
