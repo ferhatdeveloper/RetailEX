@@ -13,7 +13,8 @@ import { Pencil } from 'lucide-react-native';
 import { ScreenHeader, ErrorBanner, EmptyState } from '../components/ScreenChrome';
 import { HeaderIconButton } from '../components/GradientHeader';
 import { fetchInvoiceById, invoiceKindLabel, isPurchaseInvoice, type InvoiceDetail } from '../api/invoicesApi';
-import { formatMoney } from '../api/erpTables';
+import { firmCurrency } from '../api/erpTables';
+import { formatMoneyWithCode } from '../utils/currency';
 import { useThemeStore } from '../store/themeStore';
 import { palette } from '../theme/colors';
 import type { MainStackParamList } from '../navigation/types';
@@ -98,17 +99,15 @@ export function InvoiceDetailScreen() {
                   {[doc.fiche_type, doc.payment_method, doc.status].filter(Boolean).join(' · ')}
                 </Text>
                 <Text style={[styles.total, { color: accent }]}>
-                  {formatMoney(doc.net_amount)} ₺
+                  {formatMoneyWithCode(doc.net_amount, doc.currency || firmCurrency())}
                 </Text>
                 <View style={styles.metaRow}>
                   <Text style={{ color: colors.textMuted, fontSize: 11 }}>
-                    KDV: {formatMoney(doc.total_vat)}
+                    KDV: {formatMoneyWithCode(doc.total_vat, doc.currency || firmCurrency())}
                   </Text>
                   <Text style={{ color: colors.textMuted, fontSize: 11 }}>
-                    İndirim: {formatMoney(doc.total_discount)}
-                  </Text>
-                  <Text style={{ color: colors.textMuted, fontSize: 11 }}>
-                    {doc.currency || 'TRY'}
+                    İndirim:{' '}
+                    {formatMoneyWithCode(doc.total_discount, doc.currency || firmCurrency())}
                   </Text>
                 </View>
                 {doc.notes ? (
@@ -140,10 +139,10 @@ export function InvoiceDetailScreen() {
               </View>
               <View style={{ alignItems: 'flex-end' }}>
                 <Text style={{ color: accent, fontWeight: '800' }}>
-                  {formatMoney(item.net_amount)} ₺
+                  {formatMoneyWithCode(item.net_amount, doc?.currency || firmCurrency())}
                 </Text>
                 <Text style={{ color: colors.textSubtle, fontSize: 10 }}>
-                  @{formatMoney(item.unit_price)}
+                  @{formatMoneyWithCode(item.unit_price, doc?.currency || firmCurrency())}
                 </Text>
               </View>
             </View>

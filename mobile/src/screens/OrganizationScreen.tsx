@@ -24,6 +24,7 @@ import {
   type PeriodRow,
 } from '../api/pgClient';
 import { saveLastOrg } from '../api/lastOrgPrefs';
+import { APP_DEFAULT_CURRENCY, normalizeCurrencyCode } from '../utils/currency';
 import { palette } from '../theme/colors';
 import type { AuthStackParamList, MainStackParamList, PendingUser } from '../navigation/types';
 
@@ -156,11 +157,23 @@ export function OrganizationScreen({ navigation, route }: Props) {
     firms.find((f) => f.firm_nr === firmNr)?.name || t('selectFirm');
 
   const onConfirm = () => {
+    const selected = firms.find((f) => f.firm_nr === firmNr);
+    const anaParaBirimi = normalizeCurrencyCode(
+      selected?.ana_para_birimi || seed?.anaParaBirimi || APP_DEFAULT_CURRENCY,
+    );
+    const raporlamaParaBirimi = normalizeCurrencyCode(
+      selected?.raporlama_para_birimi ||
+        selected?.ana_para_birimi ||
+        seed?.raporlamaParaBirimi ||
+        anaParaBirimi,
+    );
     const org = {
       firmNr,
       periodNr: periodNr || '01',
       storeId: storeId || null,
       storeName: storeName || null,
+      anaParaBirimi,
+      raporlamaParaBirimi,
     };
     void saveLastOrg(org);
     if (isSwitch) {

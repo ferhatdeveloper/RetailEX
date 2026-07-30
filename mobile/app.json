@@ -35,6 +35,7 @@
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
+      "icon": "./assets/icon.png",
       "predictiveBackGestureEnabled": false,
       "usesCleartextTraffic": true,
       "versionCode": 1233,

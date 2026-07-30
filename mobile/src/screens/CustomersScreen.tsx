@@ -129,7 +129,7 @@ export function CustomersScreen() {
                       color: item.balance < 0 ? palette.red500 : palette.green600,
                     }}
                   >
-                    Bakiye: {formatMoney(item.balance)} ₺
+                    Bakiye: {formatMoney(item.balance)}
                   </Text>
                 </View>
                 <ChevronRight size={16} color={colors.textMuted} />

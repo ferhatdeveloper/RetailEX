@@ -40,7 +40,8 @@ import { fetchSuppliers, type SupplierRow } from '../api/suppliersApi';
 import { fetchProducts, type ProductRow } from '../api/productsApi';
 import { fetchServices, type ServiceRow } from '../api/servicesApi';
 import { fetchCashRegisters, type CashRegisterRow } from '../api/financeApi';
-import { firmNr, formatMoney, storeId as sessionStoreId } from '../api/erpTables';
+import { firmCurrency, firmNr, storeId as sessionStoreId } from '../api/erpTables';
+import { formatMoneyWithCode } from '../utils/currency';
 import { fetchStores, type StoreRow } from '../api/pgClient';
 import { useThemeStore } from '../store/themeStore';
 import { useAuthStore } from '../store/authStore';
@@ -287,7 +288,7 @@ export function InvoiceFormScreen() {
 
   const [invoiceDate, setInvoiceDate] = useState(todayYmd());
   const [dueDate, setDueDate] = useState('');
-  const [currency, setCurrency] = useState<string>('TRY');
+  const [currency, setCurrency] = useState<string>(() => firmCurrency());
   const [currencyRate, setCurrencyRate] = useState('1');
   const [specialCode, setSpecialCode] = useState('');
   const [salespersonCode, setSalespersonCode] = useState('');
@@ -389,7 +390,7 @@ export function InvoiceFormScreen() {
       setDocumentNo(doc.document_no || '');
       const dateStr = String(doc.date || '').slice(0, 10);
       if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) setInvoiceDate(dateStr);
-      setCurrency((doc.currency || 'TRY').trim() || 'TRY');
+      setCurrency((doc.currency || firmCurrency()).trim() || firmCurrency());
       setCurrencyRate(String(doc.currency_rate ?? 1));
       const hf = doc.header_fields || {};
       setSpecialCode(hf.specialCode || '');
@@ -765,11 +766,11 @@ export function InvoiceFormScreen() {
         </View>
       ) : (
         <Text style={{ color: colors.textMuted, fontSize: 12 }}>
-          {line.qty} × {formatMoney(line.unitPrice)} · KDV %{line.vatRate ?? 0}
+          {line.qty} × {formatMoneyWithCode(line.unitPrice, currency)} · KDV %{line.vatRate ?? 0}
         </Text>
       )}
       <Text style={{ color: accent, fontWeight: '800', textAlign: 'right' }}>
-        {formatMoney(invoiceLineNet(line))} {currency}
+        {formatMoneyWithCode(invoiceLineNet(line), currency)}
       </Text>
     </View>
   );
@@ -1183,14 +1184,14 @@ export function InvoiceFormScreen() {
                           </Text>
                         </View>
                         <Text style={{ color: accent, fontSize: 11, fontWeight: '700' }}>
-                          {formatMoney(
+                          {formatMoneyWithCode(
                             isSupplierKind(resolvedKind)
                               ? item.purchase_price > 0
                                 ? item.purchase_price
                                 : item.unit_price
                               : item.unit_price,
-                          )}{' '}
-                          {currency}
+                            currency,
+                          )}
                         </Text>
                       </Pressable>
                     )}
@@ -1212,14 +1213,14 @@ export function InvoiceFormScreen() {
                           {item.name}
                         </Text>
                         <Text style={{ color: accent, fontSize: 11, fontWeight: '700' }}>
-                          {formatMoney(
+                          {formatMoneyWithCode(
                             isSupplierKind(resolvedKind)
                               ? item.cost > 0
                                 ? item.cost
                                 : item.price
                               : item.price,
-                          )}{' '}
-                          {currency}
+                            currency,
+                          )}
                         </Text>
                       </Pressable>
                     )}
@@ -1250,14 +1251,14 @@ export function InvoiceFormScreen() {
               <View style={styles.summaryRow}>
                 <Text style={{ color: colors.textMuted }}>Ara toplam</Text>
                 <Text style={{ color: colors.text, fontWeight: '600' }}>
-                  {formatMoney(totals.subtotal + totals.lineDiscount)} {currency}
+                  {formatMoneyWithCode(totals.subtotal + totals.lineDiscount, currency)}
                 </Text>
               </View>
               {totals.lineDiscount > 0 ? (
                 <View style={styles.summaryRow}>
                   <Text style={{ color: colors.textMuted }}>Satır indirimi</Text>
                   <Text style={{ color: palette.red500, fontWeight: '600' }}>
-                    −{formatMoney(totals.lineDiscount)} {currency}
+                    −{formatMoneyWithCode(totals.lineDiscount, currency)}
                   </Text>
                 </View>
               ) : null}
@@ -1265,14 +1266,14 @@ export function InvoiceFormScreen() {
                 <View style={styles.summaryRow}>
                   <Text style={{ color: colors.textMuted }}>Dip indirim</Text>
                   <Text style={{ color: palette.red500, fontWeight: '600' }}>
-                    −{formatMoney(totals.footerDiscount)} {currency}
+                    −{formatMoneyWithCode(totals.footerDiscount, currency)}
                   </Text>
                 </View>
               ) : null}
               <View style={styles.summaryRow}>
                 <Text style={{ color: colors.textMuted }}>KDV (satır)</Text>
                 <Text style={{ color: colors.textMuted, fontWeight: '600' }}>
-                  {formatMoney(totals.totalVat)} {currency}
+                  {formatMoneyWithCode(totals.totalVat, currency)}
                 </Text>
               </View>
               {currencyRateNum !== 1 ? (
@@ -1283,7 +1284,7 @@ export function InvoiceFormScreen() {
               <View style={[styles.summaryRow, { marginTop: 8 }]}>
                 <Text style={{ color: colors.text, fontWeight: '800' }}>Genel toplam</Text>
                 <Text style={{ color: accent, fontSize: 22, fontWeight: '800' }}>
-                  {formatMoney(totals.net)} {currency}
+                  {formatMoneyWithCode(totals.net, currency)}
                 </Text>
               </View>
             </View>

@@ -247,7 +247,7 @@ export function ScaleSaleScreen(_props: Props) {
     if (cart.length === 0 || saving) return;
     Alert.alert(
       'Ödeme',
-      `Nakit — toplam ${formatMoney(cartTotal)} ₺ kaydedilsin mi?`,
+      `Nakit — toplam ${formatMoney(cartTotal)} kaydedilsin mi?`,
       [
         { text: 'İptal', style: 'cancel' },
         {
@@ -269,7 +269,7 @@ export function ScaleSaleScreen(_props: Props) {
                 setCart([]);
                 Alert.alert(
                   res.queued ? 'Fiş kuyruğa alındı' : 'Fiş kaydedildi',
-                  `${res.ficheNo}\nToplam: ${formatMoney(res.total)} ₺`,
+                  `${res.ficheNo}\nToplam: ${formatMoney(res.total)}`,
                 );
               } catch (e) {
                 Alert.alert('Kayıt hatası', e instanceof Error ? e.message : String(e));
@@ -320,8 +320,8 @@ export function ScaleSaleScreen(_props: Props) {
         <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 4 }}>{weighSourceHint}</Text>
         {selected ? (
           <Text style={{ color: colors.text, marginTop: 8, fontWeight: '600' }}>
-            {selected.name} · {formatMoney(selected.price)} ₺/kg
-            {weightKg != null ? ` → ${formatMoney(lineTotal)} ₺` : ''}
+            {selected.name} · {formatMoney(selected.price)}/kg
+            {weightKg != null ? ` → ${formatMoney(lineTotal)}` : ''}
           </Text>
         ) : (
           <Text style={{ color: colors.textMuted, marginTop: 8 }}>Ürün seçilmedi</Text>
@@ -400,7 +400,7 @@ export function ScaleSaleScreen(_props: Props) {
 
       <View style={[styles.footer, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
         <Text style={[styles.total, { color: colors.text }]}>
-          Toplam: {formatMoney(cartTotal)} ₺
+          Toplam: {formatMoney(cartTotal)}
         </Text>
         {saving ? (
           <ActivityIndicator color={palette.blue600} />

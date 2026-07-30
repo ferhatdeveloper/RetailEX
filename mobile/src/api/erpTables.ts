@@ -5,6 +5,14 @@
 
 import { normalizeFirmNr } from './pgClient';
 import { useAuthStore } from '../store/authStore';
+import {
+  firmCurrency,
+  formatMoneyWithCode,
+  getCurrencyDecimalPlaces,
+  roundMoneyAmount,
+} from '../utils/currency';
+
+export { firmCurrency } from '../utils/currency';
 
 export function firmNr(): string {
   const u = useAuthStore.getState().user;
@@ -243,11 +251,25 @@ export function newUuid(): string {
   });
 }
 
+/**
+ * Tutar + oturumdaki firma para birimi (DB ana_para_birimi).
+ * Örn. `1.250 IQD` — UI’da ayrıca ₺ eklenmemeli.
+ */
 export function formatMoney(n: number | null | undefined, locale = 'tr-TR'): string {
-  const v = Number(n) || 0;
+  return formatMoneyWithCode(n, firmCurrency(), locale);
+}
+
+/** Yalnızca sayı (para kodu yok) — giriş alanları vb. */
+export function formatMoneyAmount(n: number | null | undefined, locale = 'tr-TR'): string {
+  const code = firmCurrency();
+  const decimals = getCurrencyDecimalPlaces(code);
+  const v = roundMoneyAmount(Number(n) || 0, code);
   try {
-    return v.toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    return v.toLocaleString(locale, {
+      minimumFractionDigits: decimals,
+      maximumFractionDigits: decimals,
+    });
   } catch {
-    return v.toFixed(2);
+    return decimals === 0 ? String(Math.round(v)) : v.toFixed(decimals);
   }
 }

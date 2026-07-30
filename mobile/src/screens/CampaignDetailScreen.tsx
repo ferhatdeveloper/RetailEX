@@ -192,13 +192,13 @@ export function CampaignDetailScreen() {
             <Row label="Öncelik" value={String(row.priority)} />
             <Row
               label="Min. alış tutarı"
-              value={row.minPurchaseAmount > 0 ? `${formatMoney(row.minPurchaseAmount)} ₺` : '—'}
+              value={row.minPurchaseAmount > 0 ? `${formatMoney(row.minPurchaseAmount)}` : '—'}
             />
             <Row
               label="Maks. indirim"
               value={
                 row.maxDiscountAmount != null && row.maxDiscountAmount > 0
-                  ? `${formatMoney(row.maxDiscountAmount)} ₺`
+                  ? `${formatMoney(row.maxDiscountAmount)}`
                   : '—'
               }
             />

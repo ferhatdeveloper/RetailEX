@@ -95,7 +95,7 @@ export function CustomerDetailScreen() {
                 color: row.balance < 0 ? palette.red500 : palette.green600,
               }}
             >
-              {formatMoney(row.balance)} ₺
+              {formatMoney(row.balance)}
             </Text>
             <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 2 }}>Bakiye</Text>
           </View>
@@ -172,7 +172,7 @@ export function CustomerDetailScreen() {
                   </Text>
                 </View>
                 <Text style={{ color: palette.blue600, fontWeight: '800' }}>
-                  {formatMoney(s.net_amount)} ₺
+                  {formatMoney(s.net_amount)}
                 </Text>
                 <ChevronRight size={16} color={colors.textMuted} />
               </Pressable>

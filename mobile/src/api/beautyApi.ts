@@ -12,6 +12,7 @@ import {
   beautyServicesTable,
   beautySpecialistsTable,
   customersTable,
+  firmCurrency,
   firmNr,
   newUuid,
   periodNr,
@@ -221,7 +222,7 @@ async function syncBeautySaleToErp(
        $1::uuid, $2, $3, $4, $4, NOW(),
        'sales_invoice', 7, $5::uuid, $6,
        $7, $8, $9, $10, $7,
-       'TRY', 1, 'completed', $11, $12, $13
+       $14, 1, 'completed', $11, $12, $13
      )`,
     [
       erpId,
@@ -237,6 +238,7 @@ async function syncBeautySaleToErp(
       pm,
       cashier,
       erpNotes,
+      firmCurrency(),
     ],
   );
 

@@ -519,7 +519,7 @@ export function BeautyScreen({ route }: Props) {
                     </Text>
                     {item.total_price > 0 ? (
                       <Text style={{ color: palette.blue600, fontWeight: '700', marginTop: 4 }}>
-                        {formatMoney(item.total_price)} ₺
+                        {formatMoney(item.total_price)}
                       </Text>
                     ) : null}
                   </Pressable>
@@ -557,7 +557,7 @@ export function BeautyScreen({ route }: Props) {
               <Text style={{ color: colors.textMuted, fontSize: 11 }}>
                 {item.duration_min ? `${item.duration_min} dk` : ''}
               </Text>
-              <Text style={{ color: palette.blue600, fontWeight: '700' }}>{formatMoney(item.price)} ₺</Text>
+              <Text style={{ color: palette.blue600, fontWeight: '700' }}>{formatMoney(item.price)}</Text>
             </View>
           )}
         />

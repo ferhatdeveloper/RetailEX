@@ -2,6 +2,7 @@ import { pgQuery } from './pgClient';
 import { postgrestDelete, postgrestGet, postgrestPatch, postgrestPost } from './postgrestClient';
 import { runDataTransport } from './dataTransport';
 import {
+  firmCurrency,
   appendStoreIdFilter,
   firmNr,
   newUuid,
@@ -1030,7 +1031,7 @@ async function createSalesInvoiceViaPostgrest(
   const customerName = opts.customerName.trim() || 'Perakende';
   const documentNo = opts.documentNo?.trim() || ficheNo;
   const invDate = normalizeInvoiceDate(opts.invoiceDate);
-  const currency = (opts.currency || 'TRY').trim() || 'TRY';
+  const currency = (opts.currency || firmCurrency()).trim() || firmCurrency();
   const currencyRate = Number(opts.currencyRate) > 0 ? Number(opts.currencyRate) : 1;
   const headerFields = JSON.parse(buildHeaderFieldsJson(opts, documentNo)) as Record<
     string,
@@ -1146,7 +1147,7 @@ async function createSalesInvoiceViaBridge(
   const customerName = opts.customerName.trim() || 'Perakende';
   const documentNo = opts.documentNo?.trim() || ficheNo;
   const invDate = normalizeInvoiceDate(opts.invoiceDate);
-  const currency = (opts.currency || 'TRY').trim() || 'TRY';
+  const currency = (opts.currency || firmCurrency()).trim() || firmCurrency();
   const currencyRate =
     Number(opts.currencyRate) > 0 ? Number(opts.currencyRate) : 1;
   const headerFieldsJson = buildHeaderFieldsJson(opts, documentNo);
@@ -1311,7 +1312,7 @@ export async function createSalesInvoice(
       notes: opts.notes?.trim() || 'RetailEX Mobile Fatura',
       total_vat: totals.totalVat,
       total_discount: totals.lineDiscount + totals.footerDiscount,
-      currency: 'TRY',
+      currency: firmCurrency(),
       lines: opts.lines.map((l) => ({
         id: newUuid(),
         item_code: l.code ?? null,
@@ -1359,7 +1360,7 @@ async function createPurchaseInvoiceViaPostgrest(
   const supplierName = opts.supplierName.trim() || 'Tedarikçi';
   const documentNo = opts.documentNo?.trim() || ficheNo;
   const invDate = normalizeInvoiceDate(opts.invoiceDate);
-  const currency = (opts.currency || 'TRY').trim() || 'TRY';
+  const currency = (opts.currency || firmCurrency()).trim() || firmCurrency();
   const currencyRate = Number(opts.currencyRate) > 0 ? Number(opts.currencyRate) : 1;
   const headerFields = JSON.parse(buildHeaderFieldsJson(opts, documentNo)) as Record<
     string,
@@ -1475,7 +1476,7 @@ async function createPurchaseInvoiceViaBridge(
   const supplierName = opts.supplierName.trim() || 'Tedarikçi';
   const documentNo = opts.documentNo?.trim() || ficheNo;
   const invDate = normalizeInvoiceDate(opts.invoiceDate);
-  const currency = (opts.currency || 'TRY').trim() || 'TRY';
+  const currency = (opts.currency || firmCurrency()).trim() || firmCurrency();
   const currencyRate =
     Number(opts.currencyRate) > 0 ? Number(opts.currencyRate) : 1;
   const headerFieldsJson = buildHeaderFieldsJson(opts, documentNo);
@@ -1642,7 +1643,7 @@ export async function createPurchaseInvoice(
       notes: opts.notes?.trim() || 'RetailEX Mobile Alış Faturası',
       total_vat: totals.totalVat,
       total_discount: totals.lineDiscount + totals.footerDiscount,
-      currency: 'TRY',
+      currency: firmCurrency(),
       lines: opts.lines.map((l) => ({
         id: newUuid(),
         item_code: l.code ?? null,
@@ -1772,7 +1773,7 @@ async function createReturnInvoiceViaPostgrest(
       total_gross: totals.subtotal,
       total_discount: discountTotal,
       net_amount: total,
-      currency: 'TRY',
+      currency: firmCurrency(),
       currency_rate: 1,
       status: 'completed',
       payment_method: opts.paymentMethod || 'Nakit',
@@ -1856,7 +1857,7 @@ async function createReturnInvoiceViaBridge(
        $1::uuid, $2, $3, $4, $5, NOW(),
        $6, $7, $8::uuid, $9,
        $10, $11, $12, $13, $10,
-       'TRY', 1, 'completed', $14, $15, $16
+       $17, 1, 'completed', $14, $15, $16
      )`,
     [
       id,
@@ -1875,6 +1876,7 @@ async function createReturnInvoiceViaBridge(
       opts.paymentMethod || 'Nakit',
       cashier,
       notes,
+      firmCurrency(),
     ],
   );
 
@@ -1990,7 +1992,7 @@ export async function createReturnInvoice(
       notes: opts.notes?.trim() || 'RetailEX Mobile İade',
       total_vat: totals.totalVat,
       total_discount: totals.lineDiscount + totals.footerDiscount,
-      currency: 'TRY',
+      currency: firmCurrency(),
       lines: opts.lines.map((l) => ({
         id: newUuid(),
         item_code: l.code ?? null,
@@ -2032,7 +2034,7 @@ function buildInvoiceHeaderPatchBody(patch: InvoiceUpdatePatch): Record<string, 
     if (d) body.date = `${d}T12:00:00.000Z`;
   }
   if (patch.currency !== undefined) {
-    body.currency = (patch.currency || 'TRY').trim() || 'TRY';
+    body.currency = (patch.currency || firmCurrency()).trim() || firmCurrency();
   }
   if (patch.currencyRate !== undefined) {
     body.currency_rate = Number(patch.currencyRate) > 0 ? Number(patch.currencyRate) : 1;
@@ -2153,7 +2155,7 @@ async function updateInvoiceHeaderViaBridge(
   }
   if (patch.currency !== undefined) {
     sets.push(`currency = $${i++}`);
-    vals.push((patch.currency || 'TRY').trim() || 'TRY');
+    vals.push((patch.currency || firmCurrency()).trim() || firmCurrency());
   }
   if (patch.currencyRate !== undefined) {
     sets.push(`currency_rate = $${i++}`);
@@ -2445,7 +2447,7 @@ async function createDocumentInvoiceViaPostgrest(
     (spec.party === 'supplier' ? 'Tedarikçi' : 'Perakende');
   const documentNo = opts.documentNo?.trim() || ficheNo;
   const invDate = normalizeInvoiceDate(opts.invoiceDate);
-  const currency = (opts.currency || 'TRY').trim() || 'TRY';
+  const currency = (opts.currency || firmCurrency()).trim() || firmCurrency();
   const currencyRate = Number(opts.currencyRate) > 0 ? Number(opts.currencyRate) : 1;
   const headerFields = JSON.parse(buildHeaderFieldsJson(opts, documentNo)) as Record<
     string,
@@ -2522,7 +2524,7 @@ async function createDocumentInvoiceViaBridge(
     (spec.party === 'supplier' ? 'Tedarikçi' : 'Perakende');
   const documentNo = opts.documentNo?.trim() || ficheNo;
   const invDate = normalizeInvoiceDate(opts.invoiceDate);
-  const currency = (opts.currency || 'TRY').trim() || 'TRY';
+  const currency = (opts.currency || firmCurrency()).trim() || firmCurrency();
   const currencyRate =
     Number(opts.currencyRate) > 0 ? Number(opts.currencyRate) : 1;
   const headerFieldsJson = buildHeaderFieldsJson(opts, documentNo);
@@ -2648,7 +2650,7 @@ export async function createDocumentInvoice(
       notes: opts.notes?.trim() || spec.noteDefault,
       total_vat: totals.totalVat,
       total_discount: totals.lineDiscount + totals.footerDiscount,
-      currency: 'TRY',
+      currency: firmCurrency(),
       lines: opts.lines.map((l) => ({
         id: newUuid(),
         item_code: l.code ?? null,

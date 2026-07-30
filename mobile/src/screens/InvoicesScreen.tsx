@@ -330,7 +330,7 @@ export function InvoicesScreen() {
                     </Text>
                   </View>
                   <Text style={[styles.amount, { color: accent }]}>
-                    {formatMoney(item.net_amount)} ₺
+                    {formatMoney(item.net_amount)}
                   </Text>
                   <ChevronRight size={16} color={colors.textMuted} />
                 </View>

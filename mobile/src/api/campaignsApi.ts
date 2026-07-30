@@ -1,7 +1,7 @@
 import { pgQuery } from './pgClient';
 import { postgrestGet, postgrestPatch, postgrestPost } from './postgrestClient';
 import { runDataTransport } from './dataTransport';
-import { campaignsTable, firmNr, newUuid } from './erpTables';
+import { campaignsTable, firmNr, formatMoney, newUuid } from './erpTables';
 import {
   shouldPreferPostgrest,
   shouldUseBridgeSql,
@@ -683,7 +683,7 @@ export function formatCampaignDiscount(c: CampaignDetail): string {
   if (c.discountType === 'percentage' || c.type === 'percentage') {
     return `%${c.discountValue}`;
   }
-  return `${c.discountValue.toLocaleString('tr-TR')} ₺`;
+  return formatMoney(c.discountValue);
 }
 
 export function formatCampaignPeriod(

@@ -299,17 +299,32 @@ export type FirmRow = {
   firm_nr: string;
   name: string;
   title?: string | null;
+  ana_para_birimi?: string | null;
+  raporlama_para_birimi?: string | null;
 };
 
 function mapFirmRows(
-  rows: Array<{ firm_nr?: string | number; name?: string | null; title?: string | null; is_active?: boolean | null }>,
+  rows: Array<{
+    firm_nr?: string | number;
+    name?: string | null;
+    title?: string | null;
+    is_active?: boolean | null;
+    ana_para_birimi?: string | null;
+    raporlama_para_birimi?: string | null;
+  }>,
 ): FirmRow[] {
   return rows
     .filter((r) => r.is_active !== false)
     .map((r) => {
       const firm_nr = normalizeFirmNr(r.firm_nr) || String(r.firm_nr ?? '');
       const name = String(r.name || r.title || firm_nr || 'Firma');
-      return { firm_nr, name, title: r.title ?? null };
+      return {
+        firm_nr,
+        name,
+        title: r.title ?? null,
+        ana_para_birimi: r.ana_para_birimi ?? null,
+        raporlama_para_birimi: r.raporlama_para_birimi ?? null,
+      };
     })
     .filter((r) => r.firm_nr);
 }
@@ -325,10 +340,16 @@ export async function fetchFirms(): Promise<FirmRow[]> {
           name?: string | null;
           title?: string | null;
           is_active?: boolean | null;
+          ana_para_birimi?: string | null;
+          raporlama_para_birimi?: string | null;
         }>
       >(
         '/firms',
-        { select: 'firm_nr,name,title,is_active', order: 'firm_nr.asc', limit: 200 },
+        {
+          select: 'firm_nr,name,title,is_active,ana_para_birimi,raporlama_para_birimi',
+          order: 'firm_nr.asc',
+          limit: 200,
+        },
         { schema: 'public' },
       );
       const mapped = mapFirmRows(Array.isArray(rows) ? rows : []);
@@ -353,7 +374,8 @@ export async function fetchFirms(): Promise<FirmRow[]> {
   }
 
   const res = await pgQuery<FirmRow>(
-    `SELECT firm_nr, COALESCE(name, title, firm_nr) AS name, title
+    `SELECT firm_nr, COALESCE(name, title, firm_nr) AS name, title,
+            ana_para_birimi, raporlama_para_birimi
      FROM firms
      WHERE COALESCE(is_active, true) = true
      ORDER BY firm_nr ASC
@@ -362,6 +384,8 @@ export async function fetchFirms(): Promise<FirmRow[]> {
   return res.rows.map((r) => ({
     ...r,
     firm_nr: normalizeFirmNr(r.firm_nr) || String(r.firm_nr),
+    ana_para_birimi: r.ana_para_birimi ?? null,
+    raporlama_para_birimi: r.raporlama_para_birimi ?? null,
   }));
 }
 

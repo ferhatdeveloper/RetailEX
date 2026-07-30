@@ -67,6 +67,7 @@ import {
 } from '../api/restaurantApi';
 import { RestaurantDeliveryPanel } from '../components/RestaurantDeliveryPanel';
 import { RestaurantTakeawayPanel } from '../components/RestaurantTakeawayPanel';
+import { RestaurantMenuCatalog } from '../components/RestaurantMenuCatalog';
 import { formatMoney } from '../api/erpTables';
 import { useThemeStore } from '../store/themeStore';
 import { useOrgEpoch } from '../hooks/useOrgEpoch';
@@ -87,7 +88,9 @@ import { printKitchenTicketsForOrder } from '../services/kitchenTicketPrint';
 import { resolveKitchenTicketLocale } from '../services/escpos/buildKitchenTicketEscPos';
 import type { ReceiptLangCode } from '../types/printerSettings';
 
-type Tab = 'tables' | 'orders' | 'delivery' | 'takeaway' | 'schedule' | 'kitchen';
+type Tab = 'tables' | 'orders' | 'delivery' | 'takeaway' | 'schedule' | 'kitchen' | 'reports';
+/** Adisyon modalı — sipariş odaklı; ödeme ayrı sekme */
+type OrderSheetTab = 'order' | 'pay';
 type Props = NativeStackScreenProps<MainStackParamList, 'Restaurant'>;
 
 const COLS = 3;
@@ -172,12 +175,14 @@ function isPendingKitchenLine(item: { status?: string | null; sent_to_kitchen_at
   );
 }
 
-export function RestaurantScreen({ route }: Props) {
+export function RestaurantScreen({ navigation, route }: Props) {
   const { colors, darkMode } = useThemeStore();
   const { width } = useWindowDimensions();
   const initialTab = route.params?.initialTab ?? 'tables';
   const callerPhone = route.params?.callerPhone?.trim() || '';
-  const [tab, setTab] = useState<Tab>(initialTab);
+  const [tab, setTab] = useState<Tab>(
+    initialTab === 'reports' ? 'tables' : initialTab,
+  );
   const [tables, setTables] = useState<RestTable[]>([]);
   const [orders, setOrders] = useState<RestOrder[]>([]);
   const [todayOrders, setTodayOrders] = useState<RestOrder[]>([]);
@@ -195,13 +200,16 @@ export function RestaurantScreen({ route }: Props) {
   const [selectedTable, setSelectedTable] = useState<RestTable | null>(null);
   const [orderDetail, setOrderDetail] = useState<RestOrderDetail | null>(null);
   const [orderLoading, setOrderLoading] = useState(false);
+  const [orderSheetTab, setOrderSheetTab] = useState<OrderSheetTab>('order');
   const [selectedMenuItem, setSelectedMenuItem] = useState<RestMenuItem | null>(null);
   const [itemName, setItemName] = useState('');
   const [itemQty, setItemQty] = useState('1');
   const [itemPrice, setItemPrice] = useState('');
   const [itemNote, setItemNote] = useState('');
+  const [showManualAdd, setShowManualAdd] = useState(false);
   const [discountPct, setDiscountPct] = useState('0');
   const [moveTargetId, setMoveTargetId] = useState<string | null>(null);
+  const [quickAddingId, setQuickAddingId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [paying, setPaying] = useState(false);
   const [sendingKitchen, setSendingKitchen] = useState(false);
@@ -328,26 +336,27 @@ export function RestaurantScreen({ route }: Props) {
   }, [callerPhone, route.params?.initialTab]);
 
   useEffect(() => {
-    if (route.params?.initialTab) {
-      setTab(route.params.initialTab);
+    const next = route.params?.initialTab;
+    if (!next) return;
+    if (next === 'reports') {
+      navigation.navigate('RestaurantReports');
+      return;
     }
-  }, [route.params?.initialTab]);
+    setTab(next);
+  }, [route.params?.initialTab, navigation]);
 
-  const loadMenuItems = useCallback(async (searchText = '') => {
+  const loadMenuItems = useCallback(async () => {
     setMenuLoading(true);
     try {
-      setMenuItems(await fetchRestaurantMenuItems(searchText, 120));
+      setMenuItems(await fetchRestaurantMenuItems('', 250));
     } finally {
       setMenuLoading(false);
     }
   }, [orgEpoch]);
 
   useEffect(() => {
-    const timer = setTimeout(() => {
-      void loadMenuItems(menuSearch);
-    }, 250);
-    return () => clearTimeout(timer);
-  }, [loadMenuItems, menuSearch]);
+    void loadMenuItems();
+  }, [loadMenuItems]);
 
   const resetItemForm = () => {
     setSelectedMenuItem(null);
@@ -355,6 +364,7 @@ export function RestaurantScreen({ route }: Props) {
     setItemQty('1');
     setItemPrice('');
     setItemNote('');
+    setShowManualAdd(false);
   };
 
   const openTable = async (table: RestTable) => {
@@ -362,6 +372,7 @@ export function RestaurantScreen({ route }: Props) {
     setOrderDetail(null);
     setModalError(null);
     setMoveTargetId(null);
+    setOrderSheetTab('order');
     setKitchenLocale(resolveKitchenTicketLocale());
     resetItemForm();
     setOrderLoading(true);
@@ -392,6 +403,7 @@ export function RestaurantScreen({ route }: Props) {
     setOrderDetail(null);
     setModalError(null);
     setMoveTargetId(null);
+    setOrderSheetTab('order');
     setKitchenLocale(resolveKitchenTicketLocale());
     resetItemForm();
     setOrderLoading(true);
@@ -413,6 +425,9 @@ export function RestaurantScreen({ route }: Props) {
     setPayMethod('cash');
     setDiscountPct('0');
     setMoveTargetId(null);
+    setOrderSheetTab('order');
+    setQuickAddingId(null);
+    resetItemForm();
   };
 
   const payableTotal = useMemo(() => {
@@ -446,7 +461,7 @@ export function RestaurantScreen({ route }: Props) {
     const pct = Math.min(100, Math.max(0, Number(String(discountPct).replace(',', '.')) || 0));
     Alert.alert(
       'Ödeme / kapat',
-      `${formatMoney(payableTotal)} ₺ — ${methodLabel}${
+      `${formatMoney(payableTotal)} — ${methodLabel}${
         pct > 0 ? `\nİndirim %${pct}` : ''
       }\nAdisyon kapatılsın mı?`,
       [
@@ -744,6 +759,31 @@ export function RestaurantScreen({ route }: Props) {
     setModalError(null);
   };
 
+  /** Tek dokunuş: menü ürününü 1 adet sepete ekle (sipariş odaklı) */
+  const handleQuickAddMenuItem = async (item: RestMenuItem) => {
+    if (!orderDetail?.id || !selectedTable) return;
+    if (!isOrderOpen(orderDetail.status)) {
+      setModalError('Adisyon kapalı');
+      return;
+    }
+    setQuickAddingId(item.id);
+    setModalError(null);
+    try {
+      const oid = orderDetail.id;
+      await addRestaurantOrderItem(oid, {
+        productName: item.name,
+        quantity: 1,
+        unitPrice: Number(item.price) || 0,
+        productId: item.id,
+      });
+      await refreshOrder(selectedTable.id, oid);
+    } catch (e) {
+      setModalError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setQuickAddingId(null);
+    }
+  };
+
   const handleSendToKitchen = async () => {
     if (!orderDetail?.id || !selectedTable) return;
     if (pendingKitchenCount === 0) {
@@ -925,7 +965,7 @@ export function RestaurantScreen({ route }: Props) {
           <Text style={styles.tableWaiter} numberOfLines={1}>
             {item.waiter || ' '}
           </Text>
-          <Text style={styles.tableTotal}>{formatMoney(item.total)} ₺</Text>
+          <Text style={styles.tableTotal}>{formatMoney(item.total)}</Text>
         </View>
       </Pressable>
     );
@@ -938,7 +978,16 @@ export function RestaurantScreen({ route }: Props) {
     { id: 'takeaway', label: `Gel Al (${takeawayOrders.length})` },
     { id: 'schedule', label: `Bugün (${scheduleItems.length})` },
     { id: 'kitchen', label: `Mutfak (${kitchenOrders.length})` },
+    { id: 'reports', label: 'Raporlar' },
   ];
+
+  const onChangeTab = (id: Tab) => {
+    if (id === 'reports') {
+      navigation.navigate('RestaurantReports');
+      return;
+    }
+    setTab(id);
+  };
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
@@ -947,14 +996,14 @@ export function RestaurantScreen({ route }: Props) {
         subtitle={
           callerPhone
             ? `Caller ID: ${callerPhone}`
-            : 'Masalar, paket, gel-al, mutfak ve rezervasyon'
+            : 'Masalar, paket, gel-al, mutfak, raporlar'
         }
       />
 
       <SegmentTabBar
         layout="scroll"
         value={tab}
-        onChange={setTab}
+        onChange={onChangeTab}
         items={tabs.map((t) => ({ id: t.id, label: t.label }))}
       />
 
@@ -1031,7 +1080,7 @@ export function RestaurantScreen({ route }: Props) {
                   </Text>
                 </View>
                 <Text style={{ color: palette.blue600, fontWeight: '800' }}>
-                  {formatMoney(item.total_amount)} ₺
+                  {formatMoney(item.total_amount)}
                 </Text>
               </Pressable>
             );
@@ -1217,7 +1266,7 @@ export function RestaurantScreen({ route }: Props) {
                     </View>
                     {row.amount != null ? (
                       <Text style={{ color: palette.blue600, fontWeight: '800', fontSize: 12 }}>
-                        {formatMoney(row.amount)} ₺
+                        {formatMoney(row.amount)}
                       </Text>
                     ) : (
                       <Users size={14} color={colors.textMuted} />
@@ -1349,6 +1398,7 @@ export function RestaurantScreen({ route }: Props) {
                   <Text style={{ color: palette.blue100, fontSize: 10, marginTop: 2 }} numberOfLines={1}>
                     {orderDetail?.order_no || 'Adisyon'}
                     {orderDetail?.status ? ` · ${orderStatusLabel(orderDetail.status)}` : ''}
+                    {orderDetail ? ` · ${formatMoney(orderDetail.total_amount)}` : ''}
                   </Text>
                 </View>
                 <View
@@ -1364,282 +1414,32 @@ export function RestaurantScreen({ route }: Props) {
               </View>
             </GradientHeader>
 
-            <ScrollView
-              style={{ flex: 1 }}
-              contentContainerStyle={styles.modalBody}
-              keyboardShouldPersistTaps="handled"
-            >
-              {modalError ? (
-                <ErrorBanner message={modalError} onRetry={() => setModalError(null)} />
-              ) : null}
-              {orderLoading ? (
-                <ActivityIndicator color={palette.blue600} style={{ marginTop: 24 }} />
-              ) : orderDetail ? (
-                <>
-                  <View
-                    style={[
-                      styles.totalHero,
-                      { backgroundColor: colors.card, borderColor: colors.cardBorder },
-                    ]}
-                  >
-                    <View style={{ flex: 1 }}>
-                      <Text style={{ color: colors.textMuted, fontSize: 11, fontWeight: '700' }}>
-                        TOPLAM
-                      </Text>
-                      <Text style={{ color: colors.text, fontSize: 28, fontWeight: '900', marginTop: 2 }}>
-                        {formatMoney(orderDetail.total_amount)} ₺
-                      </Text>
-                    </View>
-                    <View style={{ alignItems: 'flex-end', gap: 4 }}>
-                      <View style={styles.metaChip}>
-                        <Utensils size={12} color={palette.blue600} />
-                        <Text style={{ color: colors.textMuted, fontSize: 11 }}>
-                          {orderDetail.items.length} kalem
-                        </Text>
-                      </View>
-                      {orderDetail.waiter ? (
-                        <Text style={{ color: colors.textMuted, fontSize: 11 }}>{orderDetail.waiter}</Text>
-                      ) : null}
-                    </View>
-                  </View>
+            {orderDetail && isOrderOpen(orderDetail.status) ? (
+              <SegmentTabBar
+                layout="equal"
+                value={orderSheetTab}
+                onChange={setOrderSheetTab}
+                items={[
+                  {
+                    id: 'order' as OrderSheetTab,
+                    label: `Sipariş (${orderDetail.items.length})`,
+                  },
+                  {
+                    id: 'pay' as OrderSheetTab,
+                    label: `Ödeme · ${formatMoney(payableTotal)}`,
+                  },
+                ]}
+              />
+            ) : null}
 
-                  <Text style={[styles.sectionTitle, { color: colors.text }]}>Kalemler</Text>
-                  {orderDetail.items.length === 0 ? (
-                    <Text style={{ color: colors.textMuted, fontSize: 13 }}>Henüz kalem yok</Text>
-                  ) : (
-                    orderDetail.items.map((it) => {
-                      const pending = isPendingKitchenLine(it);
-                      return (
-                        <View
-                          key={it.id}
-                          style={[
-                            styles.itemBlock,
-                            { borderColor: colors.cardBorder, backgroundColor: colors.card },
-                          ]}
-                        >
-                          <View style={styles.itemRow}>
-                            <View style={{ flex: 1, minWidth: 0 }}>
-                              <Text style={{ color: colors.text, fontWeight: '600' }} numberOfLines={2}>
-                                {it.product_name}
-                                {it.is_complimentary ? ' · İkram' : ''}
-                              </Text>
-                              <Text style={{ color: colors.textMuted, fontSize: 10, marginTop: 2 }}>
-                                {kitchenStatusLabel(it.status)}
-                                {it.sent_to_kitchen_at ? ` · ${formatClock(it.sent_to_kitchen_at)}` : ''}
-                                {it.note ? ` · ${it.note}` : ''}
-                              </Text>
-                            </View>
-                            <Text style={{ color: colors.textMuted, fontSize: 12 }}>
-                              {it.quantity} × {formatMoney(it.unit_price)}
-                            </Text>
-                            <Text style={{ color: palette.blue600, fontWeight: '700', marginLeft: 8 }}>
-                              {formatMoney(it.subtotal)} ₺
-                            </Text>
-                          </View>
-                          {isOrderOpen(orderDetail.status) ? (
-                            <View style={styles.itemActions}>
-                              {pending ? (
-                                <Pressable
-                                  onPress={() => handleRemoveItem(it.id)}
-                                  style={[styles.smallAction, { borderColor: colors.cardBorder }]}
-                                >
-                                  <Text style={{ color: colors.textMuted, fontSize: 10, fontWeight: '800' }}>
-                                    Sil
-                                  </Text>
-                                </Pressable>
-                              ) : null}
-                              <Pressable
-                                onPress={() => handleVoidItem(it.id, it.product_name)}
-                                style={[styles.smallAction, { borderColor: palette.red500 }]}
-                              >
-                                <Text style={{ color: palette.red500, fontSize: 10, fontWeight: '800' }}>
-                                  İptal
-                                </Text>
-                              </Pressable>
-                              {!it.is_complimentary ? (
-                                <Pressable
-                                  onPress={() => handleComplimentary(it.id)}
-                                  style={[styles.smallAction, { borderColor: colors.cardBorder }]}
-                                >
-                                  <Text style={{ color: colors.textMuted, fontSize: 10, fontWeight: '800' }}>
-                                    İkram
-                                  </Text>
-                                </Pressable>
-                              ) : null}
-                            </View>
-                          ) : null}
-                        </View>
-                      );
-                    })
-                  )}
+            {modalError ? (
+              <ErrorBanner message={modalError} onRetry={() => setModalError(null)} />
+            ) : null}
 
-                  {isOrderOpen(orderDetail.status) ? (
-                    <>
-                      <Text style={[styles.sectionTitle, { color: colors.text, marginTop: 16 }]}>
-                        Kalem ekle
-                      </Text>
-                      <FormField
-                        label="Ürün ara"
-                        value={menuSearch}
-                        onChangeText={setMenuSearch}
-                        placeholder="Menüde ara"
-                        hintRight={menuLoading ? 'Yükleniyor' : `${menuItems.length} ürün`}
-                      />
-                      <ScrollView
-                        horizontal
-                        showsHorizontalScrollIndicator={false}
-                        keyboardShouldPersistTaps="handled"
-                        contentContainerStyle={styles.menuPickerRow}
-                      >
-                        {menuItems.map((mi) => {
-                          const selected = selectedMenuItem?.id === mi.id;
-                          return (
-                            <Pressable
-                              key={mi.id}
-                              onPress={() => selectMenuItem(mi)}
-                              style={[
-                                styles.menuChip,
-                                {
-                                  backgroundColor: selected ? palette.blue600 : colors.card,
-                                  borderColor: selected ? palette.blue600 : colors.cardBorder,
-                                },
-                              ]}
-                            >
-                              <Text
-                                style={{
-                                  color: selected ? palette.white : colors.text,
-                                  fontWeight: '800',
-                                  fontSize: 12,
-                                }}
-                                numberOfLines={1}
-                              >
-                                {mi.name}
-                              </Text>
-                              <Text
-                                style={{
-                                  color: selected ? palette.blue100 : colors.textMuted,
-                                  fontSize: 10,
-                                  marginTop: 2,
-                                }}
-                                numberOfLines={1}
-                              >
-                                {mi.category} · {formatMoney(mi.price)} ₺
-                              </Text>
-                            </Pressable>
-                          );
-                        })}
-                      </ScrollView>
-                      <FormField
-                        label="Ürün adı"
-                        value={itemName}
-                        onChangeText={setItemName}
-                        placeholder="Örn. Izgara köfte"
-                      />
-                      <View style={styles.rowFields}>
-                        <View style={{ flex: 1 }}>
-                          <FormField
-                            label="Miktar"
-                            value={itemQty}
-                            onChangeText={setItemQty}
-                            keyboardType="decimal-pad"
-                          />
-                        </View>
-                        <View style={{ flex: 1 }}>
-                          <FormField
-                            label="Birim fiyat"
-                            value={itemPrice}
-                            onChangeText={setItemPrice}
-                            keyboardType="decimal-pad"
-                          />
-                        </View>
-                      </View>
-                      <FormField
-                        label="Kalem notu"
-                        value={itemNote}
-                        onChangeText={setItemNote}
-                        placeholder="Örn. az acılı"
-                      />
-                      <PrimaryButton
-                        label="Kalem ekle"
-                        onPress={() => void handleAddItem()}
-                        loading={saving}
-                      />
-
-                      <Text style={[styles.sectionTitle, { color: colors.text, marginTop: 16 }]}>
-                        İndirim / masa işlemleri
-                      </Text>
-                      <View style={styles.rowFields}>
-                        <View style={{ flex: 1 }}>
-                          <FormField
-                            label="İndirim %"
-                            value={discountPct}
-                            onChangeText={setDiscountPct}
-                            keyboardType="decimal-pad"
-                          />
-                        </View>
-                        <View style={{ justifyContent: 'flex-end', paddingBottom: 4 }}>
-                          <PrimaryButton
-                            label="Kaydet"
-                            onPress={() => void handleSaveDiscount()}
-                            loading={saving}
-                          />
-                        </View>
-                      </View>
-                      {emptyTablesForMove.length > 0 ? (
-                        <>
-                          <Text style={{ color: colors.textMuted, fontSize: 11, fontWeight: '700' }}>
-                            Masaya taşı
-                          </Text>
-                          <ScrollView
-                            horizontal
-                            showsHorizontalScrollIndicator={false}
-                            contentContainerStyle={styles.menuPickerRow}
-                          >
-                            {emptyTablesForMove.map((t) => {
-                              const selected = moveTargetId === t.id;
-                              return (
-                                <Pressable
-                                  key={t.id}
-                                  onPress={() => setMoveTargetId(t.id)}
-                                  style={[
-                                    styles.menuChip,
-                                    {
-                                      width: 88,
-                                      backgroundColor: selected ? palette.blue600 : colors.card,
-                                      borderColor: selected ? palette.blue600 : colors.cardBorder,
-                                    },
-                                  ]}
-                                >
-                                  <Text
-                                    style={{
-                                      color: selected ? palette.white : colors.text,
-                                      fontWeight: '800',
-                                      fontSize: 13,
-                                      textAlign: 'center',
-                                    }}
-                                  >
-                                    {t.name || '—'}
-                                  </Text>
-                                </Pressable>
-                              );
-                            })}
-                          </ScrollView>
-                          <PrimaryButton
-                            label="Siparişi taşı"
-                            onPress={() => void handleMoveTable()}
-                            loading={saving}
-                            disabled={!moveTargetId}
-                          />
-                        </>
-                      ) : null}
-                    </>
-                  ) : (
-                    <Text style={{ color: colors.textMuted, fontSize: 13, marginTop: 12 }}>
-                      Adisyon kapalı ({orderDetail.status})
-                    </Text>
-                  )}
-                </>
-              ) : (
+            {orderLoading ? (
+              <ActivityIndicator color={palette.blue600} style={{ marginTop: 24 }} />
+            ) : !orderDetail ? (
+              <ScrollView contentContainerStyle={styles.modalBody} keyboardShouldPersistTaps="handled">
                 <View
                   style={[
                     styles.emptyOrderBox,
@@ -1675,88 +1475,412 @@ export function RestaurantScreen({ route }: Props) {
                     </View>
                   )}
                 </View>
-              )}
-            </ScrollView>
+              </ScrollView>
+            ) : orderSheetTab === 'order' ? (
+              <>
+                <ScrollView
+                  style={{ flex: 1 }}
+                  contentContainerStyle={styles.orderMenuList}
+                  keyboardShouldPersistTaps="handled"
+                >
+                  <View style={styles.orderHeaderBlock}>
+                    <View
+                      style={[
+                        styles.cartBar,
+                        { backgroundColor: colors.card, borderColor: colors.cardBorder },
+                      ]}
+                    >
+                      <View style={{ flex: 1, minWidth: 0 }}>
+                        <Text style={{ color: colors.textMuted, fontSize: 10, fontWeight: '800' }}>
+                          SEPET · {orderDetail.items.length} kalem
+                        </Text>
+                        <Text style={{ color: colors.text, fontSize: 20, fontWeight: '900', marginTop: 2 }}>
+                          {formatMoney(orderDetail.total_amount)}
+                        </Text>
+                      </View>
+                      <View style={styles.metaChip}>
+                        <Utensils size={12} color={palette.blue600} />
+                        <Text style={{ color: colors.textMuted, fontSize: 11 }}>
+                          {pendingKitchenCount} bekleyen
+                        </Text>
+                      </View>
+                    </View>
 
-            {orderDetail && isOrderOpen(orderDetail.status) ? (
+                    {orderDetail.items.length === 0 ? (
+                      <Text style={{ color: colors.textMuted, fontSize: 12, marginBottom: 4 }}>
+                        Menüden ürünlere dokunarak ekleyin · uzun basınca miktar
+                      </Text>
+                    ) : (
+                      <View style={styles.cartLines}>
+                        {orderDetail.items.map((it) => {
+                          const pending = isPendingKitchenLine(it);
+                          return (
+                            <View
+                              key={it.id}
+                              style={[
+                                styles.cartLine,
+                                { borderColor: colors.cardBorder, backgroundColor: colors.card },
+                              ]}
+                            >
+                              <View style={{ flex: 1, minWidth: 0 }}>
+                                <Text
+                                  style={{ color: colors.text, fontWeight: '700', fontSize: 13 }}
+                                  numberOfLines={1}
+                                >
+                                  {it.quantity}× {it.product_name}
+                                  {it.is_complimentary ? ' · İkram' : ''}
+                                </Text>
+                                <Text style={{ color: colors.textMuted, fontSize: 10, marginTop: 1 }}>
+                                  {formatMoney(it.subtotal)} · {kitchenStatusLabel(it.status)}
+                                </Text>
+                              </View>
+                              {isOrderOpen(orderDetail.status) && pending ? (
+                                <Pressable
+                                  onPress={() => handleRemoveItem(it.id)}
+                                  style={[styles.smallAction, { borderColor: colors.cardBorder }]}
+                                >
+                                  <Text
+                                    style={{
+                                      color: colors.textMuted,
+                                      fontSize: 10,
+                                      fontWeight: '800',
+                                    }}
+                                  >
+                                    Sil
+                                  </Text>
+                                </Pressable>
+                              ) : null}
+                            </View>
+                          );
+                        })}
+                      </View>
+                    )}
+
+                    {isOrderOpen(orderDetail.status) ? (
+                      <RestaurantMenuCatalog
+                        items={menuItems}
+                        loading={menuLoading}
+                        search={menuSearch}
+                        onSearchChange={setMenuSearch}
+                        busyId={quickAddingId}
+                        disabled={saving}
+                        onQuickAdd={(mi) => void handleQuickAddMenuItem(mi)}
+                        onLongPress={(mi) => {
+                          selectMenuItem(mi);
+                          setShowManualAdd(true);
+                          setItemQty('1');
+                        }}
+                      />
+                    ) : (
+                      <Text style={{ color: colors.textMuted, fontSize: 13, marginTop: 8 }}>
+                        Adisyon kapalı ({orderDetail.status})
+                      </Text>
+                    )}
+
+                    {isOrderOpen(orderDetail.status) ? (
+                      <View style={styles.manualAddWrap}>
+                        <Pressable
+                          onPress={() => setShowManualAdd((v) => !v)}
+                          style={[styles.manualToggle, { borderColor: colors.cardBorder }]}
+                        >
+                          <Text style={{ color: palette.blue600, fontWeight: '800', fontSize: 12 }}>
+                            {showManualAdd ? 'Manuel formu gizle' : 'Menüde yok? Manuel ekle'}
+                          </Text>
+                        </Pressable>
+                        {showManualAdd ? (
+                          <View style={{ gap: 8, marginTop: 8 }}>
+                            <FormField
+                              label="Ürün adı"
+                              value={itemName}
+                              onChangeText={setItemName}
+                              placeholder="Örn. Izgara köfte"
+                            />
+                            <View style={styles.rowFields}>
+                              <View style={{ flex: 1 }}>
+                                <FormField
+                                  label="Miktar"
+                                  value={itemQty}
+                                  onChangeText={setItemQty}
+                                  keyboardType="decimal-pad"
+                                />
+                              </View>
+                              <View style={{ flex: 1 }}>
+                                <FormField
+                                  label="Fiyat"
+                                  value={itemPrice}
+                                  onChangeText={setItemPrice}
+                                  keyboardType="decimal-pad"
+                                />
+                              </View>
+                            </View>
+                            <FormField
+                              label="Not"
+                              value={itemNote}
+                              onChangeText={setItemNote}
+                              placeholder="İsteğe bağlı"
+                            />
+                            <PrimaryButton
+                              label="Manuel kalem ekle"
+                              onPress={() => void handleAddItem()}
+                              loading={saving}
+                            />
+                          </View>
+                        ) : null}
+                      </View>
+                    ) : null}
+                  </View>
+                </ScrollView>
+                {isOrderOpen(orderDetail.status) ? (
+                  <View
+                    style={[
+                      styles.payFooter,
+                      { backgroundColor: colors.card, borderTopColor: colors.cardBorder },
+                    ]}
+                  >
+                    <PrimaryButton
+                      label={
+                        pendingKitchenCount > 0
+                          ? `Mutfağa gönder (${pendingKitchenCount})`
+                          : 'Mutfağa gönder'
+                      }
+                      onPress={() => void handleSendToKitchen()}
+                      loading={sendingKitchen}
+                      disabled={pendingKitchenCount === 0}
+                    />
+                    <PrimaryButton
+                      label="Ödeme sekmesine geç"
+                      variant="ghost"
+                      onPress={() => setOrderSheetTab('pay')}
+                    />
+                  </View>
+                ) : null}
+              </>
+            ) : (
+              <ScrollView
+                style={{ flex: 1 }}
+                contentContainerStyle={styles.modalBody}
+                keyboardShouldPersistTaps="handled"
+              >
+                <View
+                  style={[
+                    styles.totalHero,
+                    { backgroundColor: colors.card, borderColor: colors.cardBorder },
+                  ]}
+                >
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: colors.textMuted, fontSize: 11, fontWeight: '700' }}>
+                      ÖDENECEK
+                    </Text>
+                    <Text style={{ color: colors.text, fontSize: 28, fontWeight: '900', marginTop: 2 }}>
+                      {formatMoney(payableTotal)}
+                    </Text>
+                  </View>
+                  <Text style={{ color: colors.textMuted, fontSize: 11 }}>
+                    {orderDetail.items.length} kalem
+                  </Text>
+                </View>
+
+                <Text style={[styles.sectionTitle, { color: colors.text }]}>Kalem işlemleri</Text>
+                {orderDetail.items.map((it) => (
+                  <View
+                    key={it.id}
+                    style={[
+                      styles.itemBlock,
+                      { borderColor: colors.cardBorder, backgroundColor: colors.card },
+                    ]}
+                  >
+                    <View style={styles.itemRow}>
+                      <View style={{ flex: 1, minWidth: 0 }}>
+                        <Text style={{ color: colors.text, fontWeight: '600' }} numberOfLines={2}>
+                          {it.product_name}
+                          {it.is_complimentary ? ' · İkram' : ''}
+                        </Text>
+                        <Text style={{ color: colors.textMuted, fontSize: 10, marginTop: 2 }}>
+                          {it.quantity} × {formatMoney(it.unit_price)} = {formatMoney(it.subtotal)}
+                        </Text>
+                      </View>
+                    </View>
+                    {isOrderOpen(orderDetail.status) ? (
+                      <View style={styles.itemActions}>
+                        <Pressable
+                          onPress={() => handleVoidItem(it.id, it.product_name)}
+                          style={[styles.smallAction, { borderColor: palette.red500 }]}
+                        >
+                          <Text style={{ color: palette.red500, fontSize: 10, fontWeight: '800' }}>
+                            İptal
+                          </Text>
+                        </Pressable>
+                        {!it.is_complimentary ? (
+                          <Pressable
+                            onPress={() => handleComplimentary(it.id)}
+                            style={[styles.smallAction, { borderColor: colors.cardBorder }]}
+                          >
+                            <Text style={{ color: colors.textMuted, fontSize: 10, fontWeight: '800' }}>
+                              İkram
+                            </Text>
+                          </Pressable>
+                        ) : null}
+                      </View>
+                    ) : null}
+                  </View>
+                ))}
+
+                {isOrderOpen(orderDetail.status) ? (
+                  <>
+                    <Text style={[styles.sectionTitle, { color: colors.text, marginTop: 12 }]}>
+                      İndirim %
+                    </Text>
+                    <View style={styles.rowFields}>
+                      <View style={{ flex: 1 }}>
+                        <FormField
+                          label="İndirim"
+                          value={discountPct}
+                          onChangeText={setDiscountPct}
+                          keyboardType="decimal-pad"
+                        />
+                      </View>
+                      <View style={{ justifyContent: 'flex-end', paddingBottom: 4 }}>
+                        <PrimaryButton
+                          label="Uygula"
+                          onPress={() => void handleSaveDiscount()}
+                          loading={saving}
+                        />
+                      </View>
+                    </View>
+
+                    <Text style={[styles.sectionTitle, { color: colors.text }]}>Ödeme yöntemi</Text>
+                    <View style={styles.payRow}>
+                      {PAY_METHODS.map((m) => (
+                        <Pressable
+                          key={m.id}
+                          onPress={() => setPayMethod(m.id)}
+                          style={[
+                            styles.payChip,
+                            {
+                              backgroundColor:
+                                payMethod === m.id ? palette.blue600 : colors.backgroundAlt,
+                              borderColor: colors.cardBorder,
+                            },
+                          ]}
+                        >
+                          <Text
+                            style={{
+                              color: payMethod === m.id ? palette.white : colors.text,
+                              fontSize: 12,
+                              fontWeight: '700',
+                            }}
+                          >
+                            {m.label}
+                          </Text>
+                        </Pressable>
+                      ))}
+                    </View>
+
+                    <View style={styles.kitchenLangBlock}>
+                      <Text style={{ color: colors.textMuted, fontSize: 11, fontWeight: '800' }}>
+                        Mutfak fişi dili
+                      </Text>
+                      <View style={styles.payRow}>
+                        {KITCHEN_LANGS.map((lang) => (
+                          <Pressable
+                            key={lang.code}
+                            onPress={() => setKitchenLocale(lang.code)}
+                            style={[
+                              styles.langChip,
+                              {
+                                backgroundColor:
+                                  kitchenLocale === lang.code
+                                    ? palette.blue600
+                                    : colors.backgroundAlt,
+                                borderColor: colors.cardBorder,
+                              },
+                            ]}
+                          >
+                            <Text
+                              style={{
+                                color:
+                                  kitchenLocale === lang.code ? palette.white : colors.text,
+                                fontSize: 11,
+                                fontWeight: '900',
+                              }}
+                            >
+                              {lang.label}
+                            </Text>
+                          </Pressable>
+                        ))}
+                      </View>
+                    </View>
+
+                    {emptyTablesForMove.length > 0 ? (
+                      <>
+                        <Text style={[styles.sectionTitle, { color: colors.text }]}>Masaya taşı</Text>
+                        <ScrollView
+                          horizontal
+                          showsHorizontalScrollIndicator={false}
+                          contentContainerStyle={styles.menuPickerRow}
+                        >
+                          {emptyTablesForMove.map((t) => {
+                            const selected = moveTargetId === t.id;
+                            return (
+                              <Pressable
+                                key={t.id}
+                                onPress={() => setMoveTargetId(t.id)}
+                                style={[
+                                  styles.menuChip,
+                                  {
+                                    width: 88,
+                                    backgroundColor: selected ? palette.blue600 : colors.card,
+                                    borderColor: selected ? palette.blue600 : colors.cardBorder,
+                                  },
+                                ]}
+                              >
+                                <Text
+                                  style={{
+                                    color: selected ? palette.white : colors.text,
+                                    fontWeight: '800',
+                                    fontSize: 13,
+                                    textAlign: 'center',
+                                  }}
+                                >
+                                  {t.name || '—'}
+                                </Text>
+                              </Pressable>
+                            );
+                          })}
+                        </ScrollView>
+                        <PrimaryButton
+                          label="Siparişi taşı"
+                          onPress={() => void handleMoveTable()}
+                          loading={saving}
+                          disabled={!moveTargetId}
+                        />
+                      </>
+                    ) : null}
+                  </>
+                ) : (
+                  <Text style={{ color: colors.textMuted, fontSize: 13 }}>
+                    Adisyon kapalı ({orderDetail.status})
+                  </Text>
+                )}
+              </ScrollView>
+            )}
+
+            {orderDetail && isOrderOpen(orderDetail.status) && orderSheetTab === 'pay' ? (
               <View
                 style={[
                   styles.payFooter,
-                  {
-                    backgroundColor: colors.card,
-                    borderTopColor: colors.cardBorder,
-                  },
+                  { backgroundColor: colors.card, borderTopColor: colors.cardBorder },
                 ]}
               >
-                <Text style={[styles.sectionTitle, { color: colors.text, marginTop: 0 }]}>
-                  Ödeme / kapat
-                </Text>
-                <View style={styles.kitchenLangBlock}>
-                  <Text style={{ color: colors.textMuted, fontSize: 11, fontWeight: '800' }}>
-                    Mutfak fişi dili
-                  </Text>
-                  <View style={styles.payRow}>
-                    {KITCHEN_LANGS.map((lang) => (
-                      <Pressable
-                        key={lang.code}
-                        onPress={() => setKitchenLocale(lang.code)}
-                        style={[
-                          styles.langChip,
-                          {
-                            backgroundColor:
-                              kitchenLocale === lang.code ? palette.blue600 : colors.backgroundAlt,
-                            borderColor: colors.cardBorder,
-                          },
-                        ]}
-                      >
-                        <Text
-                          style={{
-                            color: kitchenLocale === lang.code ? palette.white : colors.text,
-                            fontSize: 11,
-                            fontWeight: '900',
-                          }}
-                        >
-                          {lang.label}
-                        </Text>
-                      </Pressable>
-                    ))}
-                  </View>
-                </View>
                 <PrimaryButton
-                  label={`Mutfağa gönder + yazdır (${pendingKitchenCount})`}
-                  onPress={() => void handleSendToKitchen()}
-                  loading={sendingKitchen}
-                  disabled={pendingKitchenCount === 0}
-                />
-                <View style={styles.payRow}>
-                  {PAY_METHODS.map((m) => (
-                    <Pressable
-                      key={m.id}
-                      onPress={() => setPayMethod(m.id)}
-                      style={[
-                        styles.payChip,
-                        {
-                          backgroundColor: payMethod === m.id ? palette.blue600 : colors.backgroundAlt,
-                          borderColor: colors.cardBorder,
-                        },
-                      ]}
-                    >
-                      <Text
-                        style={{
-                          color: payMethod === m.id ? palette.white : colors.text,
-                          fontSize: 12,
-                          fontWeight: '700',
-                        }}
-                      >
-                        {m.label}
-                      </Text>
-                    </Pressable>
-                  ))}
-                </View>
-                <PrimaryButton
-                  label={`Ödeme al · ${formatMoney(payableTotal)} ₺`}
+                  label={`Ödeme al · ${formatMoney(payableTotal)}`}
                   onPress={handlePayment}
                   loading={paying}
+                />
+                <PrimaryButton
+                  label="Siparişe dön"
+                  variant="ghost"
+                  onPress={() => setOrderSheetTab('order')}
                 />
               </View>
             ) : null}
@@ -1935,6 +2059,34 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   itemActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  orderMenuList: { paddingHorizontal: 16, paddingBottom: 24 },
+  orderHeaderBlock: { gap: 8, marginBottom: 8 },
+  cartBar: {
+    borderWidth: 1,
+    borderRadius: 14,
+    padding: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  cartLines: { gap: 6 },
+  cartLine: {
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  manualAddWrap: { marginTop: 12, marginBottom: 8 },
+  manualToggle: {
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    alignItems: 'center',
+  },
   menuPickerRow: { gap: 8, paddingVertical: 4 },
   menuChip: {
     width: 150,

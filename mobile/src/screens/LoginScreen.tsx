@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
+  Image,
   ScrollView,
   StyleSheet,
   KeyboardAvoidingView,
@@ -112,6 +113,10 @@ export function LoginScreen({ navigation }: Props) {
           periodNr: seedPeriod,
           storeId: seedStoreId,
           storeName: seedStoreName,
+          anaParaBirimi:
+            lastOrg && lastOrg.firmNr === firmNr ? lastOrg.anaParaBirimi : null,
+          raporlamaParaBirimi:
+            lastOrg && lastOrg.firmNr === firmNr ? lastOrg.raporlamaParaBirimi : null,
         },
         rememberMe,
       });
@@ -168,9 +173,11 @@ export function LoginScreen({ navigation }: Props) {
               </View>
 
               <View style={styles.logoBlock}>
-                <View style={styles.logoMark}>
-                  <Text style={styles.logoMarkText}>RX</Text>
-                </View>
+                <Image
+                  source={require('../../assets/icon.png')}
+                  style={styles.logoMark}
+                  accessibilityLabel="RetailEX"
+                />
                 <Text style={styles.logoTitle}>{t('appName')}</Text>
                 <View style={styles.taglineRow}>
                   <View style={styles.taglineLine} />
@@ -308,18 +315,10 @@ const styles = StyleSheet.create({
     zIndex: 2,
   },
   logoMark: {
-    width: 64,
-    height: 64,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.15)',
+    width: 72,
+    height: 72,
+    borderRadius: 18,
     marginBottom: 16,
-  },
-  logoMarkText: {
-    fontSize: 28,
-    fontWeight: '900',
-    color: palette.white,
   },
   logoTitle: {
     color: palette.white,

@@ -1,5 +1,10 @@
 import type { MobilePrinterSettings, ReceiptLangCode } from '../../types/printerSettings';
 import {
+  firmCurrency,
+  getCurrencyDecimalPlaces,
+  roundMoneyAmount,
+} from '../../utils/currency';
+import {
   cat,
   CUT_PARTIAL,
   ESC_ALIGN_CENTER,
@@ -35,7 +40,17 @@ const LABELS: Record<
 };
 
 function formatMoney(n: number): string {
-  return n.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const code = firmCurrency();
+  const decimals = getCurrencyDecimalPlaces(code);
+  const v = roundMoneyAmount(Number(n) || 0, code);
+  try {
+    return v.toLocaleString('tr-TR', {
+      minimumFractionDigits: decimals,
+      maximumFractionDigits: decimals,
+    });
+  } catch {
+    return decimals === 0 ? String(Math.round(v)) : v.toFixed(decimals);
+  }
 }
 
 function dashLine(width: number): Uint8Array {
@@ -140,7 +155,13 @@ function buildReceiptEscPosBuffer(input: {
   }
 
   parts.push(dash);
-  parts.push(ESC_BOLD_ON, txt(`${padEnd(input.labels.total, input.lineW - 10)}${formatMoney(input.total)} TL\n`), ESC_BOLD_OFF);
+  parts.push(
+    ESC_BOLD_ON,
+    txt(
+      `${padEnd(input.labels.total, input.lineW - 12)}${formatMoney(input.total)} ${firmCurrency()}\n`,
+    ),
+    ESC_BOLD_OFF,
+  );
   parts.push(dash);
   parts.push(ESC_ALIGN_CENTER, txt(`${input.footer}\n`));
   parts.push(NL, NL, NL, CUT_PARTIAL);

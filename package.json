@@ -180,6 +180,7 @@
     "mobile:ios": "npm --prefix mobile run ios",
     "mobile:typecheck": "npm --prefix mobile run typecheck",
     "mobile:sync-version": "node scripts/sync-mobile-version.mjs",
+    "mobile:icons": "python3 scripts/generate-mobile-app-icons.py",
     "mobile:eas:check": "node scripts/eas-mobile-check.mjs",
     "mobile:eas:init": "node scripts/eas-mobile-init.mjs",
     "mobile:eas:debug": "node scripts/eas-mobile-build.mjs --profile debug",

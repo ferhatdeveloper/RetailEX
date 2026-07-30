@@ -472,7 +472,7 @@ export function PosScreen() {
             </Text>
             {selectedCustomer ? (
               <Text style={{ color: colors.textMuted, fontSize: 11 }}>
-                {t('posUi.balance')}: {formatMoney(selectedCustomer.balance)} ₺
+                {t('posUi.balance')}: {formatMoney(selectedCustomer.balance)}
               </Text>
             ) : null}
           </View>
@@ -502,15 +502,15 @@ export function PosScreen() {
         {applied.discount > 0 ? (
           <View style={styles.totalsCol}>
             <Text style={{ color: colors.textMuted, fontSize: 12 }}>
-              {t('posUi.subtotal')}: {formatMoney(subtotal)} ₺
+              {t('posUi.subtotal')}: {formatMoney(subtotal)}
             </Text>
             <Text style={{ color: palette.green600, fontSize: 13, fontWeight: '700' }}>
-              {t('posUi.discount')}: −{formatMoney(applied.discount)} ₺
+              {t('posUi.discount')}: −{formatMoney(applied.discount)}
             </Text>
           </View>
         ) : null}
         <Text style={[styles.total, { color: colors.text }]}>
-          {t('posUi.total')}: {formatMoney(total)} ₺
+          {t('posUi.total')}: {formatMoney(total)}
         </Text>
         {saving ? (
           <ActivityIndicator color={palette.blue600} />
@@ -617,7 +617,7 @@ export function PosScreen() {
                           {c.name}
                         </Text>
                         <Text style={{ color: colors.textMuted, fontSize: 11 }}>
-                          {c.code || '—'} · {t('posUi.balance')}: {formatMoney(c.balance)} ₺
+                          {c.code || '—'} · {t('posUi.balance')}: {formatMoney(c.balance)}
                         </Text>
                       </View>
                       {selected ? (

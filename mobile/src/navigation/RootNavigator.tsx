@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { NavigationContainer, DefaultTheme, DarkTheme } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { ActivityIndicator, View } from 'react-native';
@@ -9,6 +9,7 @@ import { useThemeStore } from '../store/themeStore';
 import { useConfigStore } from '../store/configStore';
 import { CallerIdHost } from '../components/CallerIdHost';
 import { navigationRef } from './navigationRef';
+import { ensureFirmCurrency } from '../api/ensureFirmCurrency';
 import { palette } from '../theme/colors';
 import type { RootStackParamList } from './types';
 
@@ -34,6 +35,11 @@ export function RootNavigator() {
   const isHydrated = useAuthStore((s) => s.isHydrated);
   const configHydrated = useConfigStore((s) => s.isHydrated);
   const { darkMode, colors } = useThemeStore();
+
+  useEffect(() => {
+    if (!isHydrated || !configHydrated || !user?.firmNr) return;
+    void ensureFirmCurrency();
+  }, [isHydrated, configHydrated, user?.firmNr, user?.anaParaBirimi]);
 
   if (!isHydrated || !configHydrated) {
     return <BootSpinner bg={colors.background} />;

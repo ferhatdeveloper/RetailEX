@@ -715,7 +715,7 @@ export function DocumentScanScreen() {
                     >
                       <Text style={{ color: colors.text, fontWeight: '600' }}>{item.name}</Text>
                       <Text style={{ color: colors.textMuted, fontSize: 11 }}>
-                        {formatMoney(isSupplierKind(kind) ? item.cost || item.price : item.price)} ₺
+                        {formatMoney(isSupplierKind(kind) ? item.cost || item.price : item.price)}
                       </Text>
                     </Pressable>
                   )}
@@ -767,7 +767,7 @@ export function DocumentScanScreen() {
             <View style={[styles.totalBox, { borderColor: colors.cardBorder }]}>
               <Text style={{ color: colors.textMuted }}>Özet net</Text>
               <Text style={[styles.totalVal, { color: colors.text }]}>
-                {formatMoney(totals.net)} ₺
+                {formatMoney(totals.net)}
               </Text>
             </View>
 
@@ -820,7 +820,7 @@ export function DocumentScanScreen() {
               <Text style={{ color: colors.textMuted }}>Ödeme: {paymentMethod}</Text>
               <Text style={{ color: colors.textMuted }}>{lines.length} kalem</Text>
               <Text style={[styles.totalVal, { color: colors.text, marginTop: 12 }]}>
-                {formatMoney(totals.net)} ₺
+                {formatMoney(totals.net)}
               </Text>
             </View>
 

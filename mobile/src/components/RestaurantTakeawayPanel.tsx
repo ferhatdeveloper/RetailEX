@@ -162,7 +162,7 @@ export function RestaurantTakeawayPanel({
               {item.created_at ? ` · ${item.created_at.slice(0, 16)}` : ''}
             </Text>
             <Text style={{ color: palette.blue600, fontWeight: '800', marginTop: 4 }}>
-              {formatMoney(item.total_amount)} ₺
+              {formatMoney(item.total_amount)}
             </Text>
             <View style={styles.statusRow}>
               {STATUS_STEPS.map((step) => {

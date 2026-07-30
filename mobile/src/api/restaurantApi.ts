@@ -128,7 +128,17 @@ export type RestMenuItem = {
   price: number;
   category: string;
   preparation_time: number;
+  image_url?: string | null;
+  image_url_cdn?: string | null;
 };
+
+/** Görüntüleme: CDN öncelikli (web RestPOS ile aynı). */
+export function restMenuImageUrl(item: Pick<RestMenuItem, 'image_url' | 'image_url_cdn'>): string | null {
+  const cdn = String(item.image_url_cdn ?? '').trim();
+  if (cdn) return cdn;
+  const url = String(item.image_url ?? '').trim();
+  return url || null;
+}
 
 export type RestKitchenItem = {
   id: string;
@@ -848,25 +858,33 @@ export async function sendRestaurantItemsToKitchen(orderId: string): Promise<Sen
 
 export async function fetchRestaurantMenuItems(
   search = '',
-  limit = 120,
+  limit = 250,
 ): Promise<RestMenuItem[]> {
   const products = productsTable();
   const categories = categoriesTable();
   const q = search.trim();
   const like = `%${q}%`;
-  const capped = Math.max(10, Math.min(300, Number(limit) || 120));
+  const capped = Math.max(10, Math.min(400, Number(limit) || 250));
 
-  const mapMenu = (rows: RestMenuItem[]): RestMenuItem[] =>
+  const mapMenu = (rows: Array<Partial<RestMenuItem>>): RestMenuItem[] =>
     rows
       .map((r) => ({
-        id: String(r.id),
+        id: String(r.id ?? ''),
         code: r.code == null ? null : String(r.code),
         name: String(r.name ?? ''),
         price: Number(r.price) || 0,
         category: String(r.category || 'Genel'),
         preparation_time: Math.max(1, Number(r.preparation_time) || 5),
+        image_url: r.image_url == null || r.image_url === '' ? null : String(r.image_url),
+        image_url_cdn:
+          r.image_url_cdn == null || r.image_url_cdn === ''
+            ? null
+            : String(r.image_url_cdn),
       }))
       .filter((r) => r.id && r.name);
+
+  const imageSelect = `NULLIF(TRIM(p.image_url_cdn), '') AS image_url_cdn,
+              NULLIF(TRIM(p.image_url), '') AS image_url`;
 
   async function viaRest(): Promise<RestMenuItem[]> {
     const list = await fetchProducts(q, capped);
@@ -880,6 +898,8 @@ export async function fetchRestaurantMenuItems(
           price: Number(p.price) || 0,
           category: String(p.category_code || 'Genel'),
           preparation_time: 5,
+          image_url: null,
+          image_url_cdn: null,
         })),
     );
   }
@@ -892,7 +912,8 @@ export async function fetchRestaurantMenuItems(
               p.name,
               COALESCE(p.price, 0)::float8 AS price,
               COALESCE(NULLIF(c.name, ''), NULLIF(p.category_code, ''), NULLIF(p.group_code, ''), 'Genel') AS category,
-              COALESCE(p.preparation_time, 5)::int AS preparation_time
+              COALESCE(p.preparation_time, 5)::int AS preparation_time,
+              ${imageSelect}
        FROM ${products} p
        LEFT JOIN ${categories} c ON c.id = p.category_id OR c.code = p.category_code
        WHERE COALESCE(p.is_active, true) = true
@@ -915,7 +936,8 @@ export async function fetchRestaurantMenuItems(
               p.name,
               COALESCE(p.price, 0)::float8 AS price,
               COALESCE(NULLIF(c.name, ''), NULLIF(p.category_code, ''), NULLIF(p.group_code, ''), 'Genel') AS category,
-              COALESCE(p.preparation_time, 5)::int AS preparation_time
+              COALESCE(p.preparation_time, 5)::int AS preparation_time,
+              ${imageSelect}
        FROM ${products} p
        LEFT JOIN ${categories} c ON c.id = p.category_id OR c.code = p.category_code
        WHERE COALESCE(p.is_active, true) = true
@@ -937,7 +959,8 @@ export async function fetchRestaurantMenuItems(
               p.name,
               COALESCE(p.price, 0)::float8 AS price,
               COALESCE(NULLIF(p.category_code, ''), NULLIF(p.group_code, ''), 'Genel') AS category,
-              COALESCE(p.preparation_time, 5)::int AS preparation_time
+              COALESCE(p.preparation_time, 5)::int AS preparation_time,
+              ${imageSelect}
        FROM ${products} p
        WHERE COALESCE(p.is_active, true) = true
          AND COALESCE(p.price, 0) > 0
@@ -954,6 +977,31 @@ export async function fetchRestaurantMenuItems(
     ];
 
     for (const query of queries) {
+      try {
+        const rows = await tryQueries<RestMenuItem>([query]);
+        const mapped = mapMenu(rows);
+        if (mapped.length > 0) return mapped;
+      } catch {
+        /* image kolonları yoksa aşağıdaki sade sorgulara düş */
+      }
+    }
+
+    /* Eski şema: image kolonları yok */
+    const legacy = [
+      {
+        sql: `SELECT p.id::text AS id, p.code, p.name,
+              COALESCE(p.price, 0)::float8 AS price,
+              COALESCE(NULLIF(c.name, ''), NULLIF(p.category_code, ''), 'Genel') AS category,
+              COALESCE(p.preparation_time, 5)::int AS preparation_time
+       FROM ${products} p
+       LEFT JOIN ${categories} c ON c.id = p.category_id OR c.code = p.category_code
+       WHERE COALESCE(p.is_active, true) = true AND COALESCE(p.price, 0) > 0
+         AND ($1 = '%%' OR p.name ILIKE $1 OR COALESCE(p.code, '') ILIKE $1)
+       ORDER BY c.name ASC NULLS LAST, p.name ASC LIMIT $2`,
+        params: [like, capped],
+      },
+    ];
+    for (const query of legacy) {
       const rows = await tryQueries<RestMenuItem>([query]);
       const mapped = mapMenu(rows);
       if (mapped.length > 0) return mapped;

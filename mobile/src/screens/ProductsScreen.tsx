@@ -135,7 +135,7 @@ export function ProductsScreen() {
                   </Text>
                 </View>
                 <View style={{ alignItems: 'flex-end' }}>
-                  <Text style={styles.price}>{formatMoney(item.price)} ₺</Text>
+                  <Text style={styles.price}>{formatMoney(item.price)}</Text>
                   <Text
                     style={{
                       fontSize: 11,

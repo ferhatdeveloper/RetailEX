@@ -19,6 +19,8 @@ export async function loadLastOrg(): Promise<OrgFields | null> {
       periodNr: periodNr ? periodNr.padStart(2, '0').slice(0, 2) : '',
       storeId: o.storeId ?? null,
       storeName: o.storeName ?? null,
+      anaParaBirimi: o.anaParaBirimi ?? null,
+      raporlamaParaBirimi: o.raporlamaParaBirimi ?? null,
     };
   } catch {
     return null;
@@ -34,6 +36,8 @@ export async function saveLastOrg(org: OrgFields): Promise<void> {
         periodNr: org.periodNr,
         storeId: org.storeId ?? null,
         storeName: org.storeName ?? null,
+        anaParaBirimi: org.anaParaBirimi ?? null,
+        raporlamaParaBirimi: org.raporlamaParaBirimi ?? null,
       }),
     );
   } catch {

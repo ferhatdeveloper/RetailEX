@@ -6,6 +6,7 @@
 import { pgQuery } from './pgClient';
 import { postgrestGet, postgrestPatch, postgrestPost } from './postgrestClient';
 import {
+  firmCurrency,
   firmNr,
   newUuid,
   periodNr,
@@ -351,7 +352,7 @@ async function savePosSaleViaPostgrest(
       total_gross: ctx.totals.subtotal,
       total_discount: ctx.totals.headerDiscount,
       net_amount: ctx.total,
-      currency: 'TRY',
+      currency: firmCurrency(),
       currency_rate: 1,
       status: 'completed',
       payment_method: paymentMethod,
@@ -402,7 +403,7 @@ async function savePosSaleViaBridge(
        $1::uuid, $2, $3, $4, $4, NOW(),
        'sales_invoice', 7, $5::uuid, $6,
        $7, $8, $9, $10, $7,
-       'TRY', 1, 'completed', $11, $12, $13
+       $14, 1, 'completed', $11, $12, $13
      )`,
     [
       ctx.id,
@@ -418,6 +419,7 @@ async function savePosSaleViaBridge(
       paymentMethod,
       ctx.cashier,
       ctx.notes,
+      firmCurrency(),
     ],
   );
 

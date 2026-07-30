@@ -123,7 +123,7 @@ export function ReportSalesScreen() {
                 <Text style={[styles.sec, { color: colors.text }]}>En çok satanlar</Text>
                 {top.slice(0, 5).map((p, i) => (
                   <Text key={`${p.product_name}-${i}`} style={{ color: colors.textMuted, fontSize: 12, marginTop: 4 }}>
-                    {i + 1}. {p.product_name} — {formatMoney(p.amount)} ₺
+                    {i + 1}. {p.product_name} — {formatMoney(p.amount)}
                   </Text>
                 ))}
                 <Text style={[styles.sec, { color: colors.text, marginTop: 16 }]}>Günlük</Text>

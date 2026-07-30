@@ -13,9 +13,16 @@ export type AuthUser = {
   periodNr: string;
   storeId?: string | null;
   storeName?: string | null;
+  /** public.firms.ana_para_birimi */
+  anaParaBirimi?: string | null;
+  /** public.firms.raporlama_para_birimi */
+  raporlamaParaBirimi?: string | null;
 };
 
-export type OrgFields = Pick<AuthUser, 'firmNr' | 'periodNr' | 'storeId' | 'storeName'>;
+export type OrgFields = Pick<
+  AuthUser,
+  'firmNr' | 'periodNr' | 'storeId' | 'storeName' | 'anaParaBirimi' | 'raporlamaParaBirimi'
+>;
 
 type AuthState = {
   user: AuthUser | null;
@@ -32,7 +39,9 @@ function orgChanged(prev: AuthUser, next: AuthUser): boolean {
     prev.firmNr !== next.firmNr ||
     prev.periodNr !== next.periodNr ||
     (prev.storeId ?? '') !== (next.storeId ?? '') ||
-    (prev.storeName ?? '') !== (next.storeName ?? '')
+    (prev.storeName ?? '') !== (next.storeName ?? '') ||
+    (prev.anaParaBirimi ?? '') !== (next.anaParaBirimi ?? '') ||
+    (prev.raporlamaParaBirimi ?? '') !== (next.raporlamaParaBirimi ?? '')
   );
 }
 

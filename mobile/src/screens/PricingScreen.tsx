@@ -71,7 +71,7 @@ function ExpandedPrices({ row }: { row: ProductPriceRow }) {
             {opt.label}
           </Text>
           <Text style={{ color: colors.text, fontSize: 12, fontWeight: '700' }}>
-            {formatMoney(getPriceValue(row, opt.key))} ₺
+            {formatMoney(getPriceValue(row, opt.key))}
           </Text>
         </View>
       ))}
@@ -197,7 +197,7 @@ export function PricingScreen() {
                         { color: value > 0 ? palette.orange500 : colors.textMuted },
                       ]}
                     >
-                      {formatMoney(value)} ₺
+                      {formatMoney(value)}
                     </Text>
                     {item.unit ? (
                       <Text style={{ color: colors.textMuted, fontSize: 10 }}>{item.unit}</Text>

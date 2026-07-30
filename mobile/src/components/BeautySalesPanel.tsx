@@ -201,8 +201,8 @@ export function BeautySalesPanel({
       Alert.alert(
         'Satış kaydedildi',
         result.erpSynced === false
-          ? `${result.invoiceNumber}\nToplam: ${formatMoney(result.total)} ₺\n\nUyarı: Güzellik fişi yazıldı; ERP/kasa senkronu tamamlanamadı.`
-          : `${result.invoiceNumber}\nToplam: ${formatMoney(result.total)} ₺`,
+          ? `${result.invoiceNumber}\nToplam: ${formatMoney(result.total)}\n\nUyarı: Güzellik fişi yazıldı; ERP/kasa senkronu tamamlanamadı.`
+          : `${result.invoiceNumber}\nToplam: ${formatMoney(result.total)}`,
       );
     } catch (e) {
       setFormError(e instanceof Error ? e.message : String(e));
@@ -244,7 +244,7 @@ export function BeautySalesPanel({
               {payLabel(item.payment_method)}
             </Text>
             <Text style={{ color: palette.blue600, fontWeight: '700', marginTop: 4 }}>
-              {formatMoney(item.total)} ₺
+              {formatMoney(item.total)}
             </Text>
           </Pressable>
         )}
@@ -301,7 +301,7 @@ export function BeautySalesPanel({
                 >
                   <Text style={{ color: colors.text, fontSize: 11, fontWeight: '700' }}>{s.name}</Text>
                   <Text style={{ color: palette.blue600, fontSize: 10, marginTop: 2 }}>
-                    {formatMoney(s.price)} ₺
+                    {formatMoney(s.price)}
                   </Text>
                 </Pressable>
               ))}
@@ -324,7 +324,7 @@ export function BeautySalesPanel({
                         {line.name}
                       </Text>
                       <Text style={{ color: colors.textMuted, fontSize: 11 }}>
-                        {formatMoney(line.price)} ₺ × {line.qty}
+                        {formatMoney(line.price)} × {line.qty}
                       </Text>
                       {specialists.length > 0 ? (
                         <ScrollView
@@ -436,15 +436,15 @@ export function BeautySalesPanel({
 
             <View style={[styles.totalBox, { borderColor: colors.cardBorder }]}>
               <Text style={{ color: colors.textMuted, fontSize: 12 }}>
-                Ara toplam: {formatMoney(subtotal)} ₺
+                Ara toplam: {formatMoney(subtotal)}
               </Text>
               {discAmt > 0 ? (
                 <Text style={{ color: palette.red500, fontSize: 12 }}>
-                  İndirim: −{formatMoney(discAmt)} ₺
+                  İndirim: −{formatMoney(discAmt)}
                 </Text>
               ) : null}
               <Text style={{ color: palette.blue600, fontSize: 18, fontWeight: '800', marginTop: 4 }}>
-                Toplam: {formatMoney(total)} ₺
+                Toplam: {formatMoney(total)}
               </Text>
             </View>
 
@@ -489,7 +489,7 @@ export function BeautySalesPanel({
                 >
                   <Text style={{ color: colors.text, fontWeight: '600' }}>{it.name}</Text>
                   <Text style={{ color: colors.textMuted, fontSize: 12 }}>
-                    {it.qty} adet · {formatMoney(it.total)} ₺
+                    {it.qty} adet · {formatMoney(it.total)}
                   </Text>
                 </View>
               ))
@@ -500,7 +500,7 @@ export function BeautySalesPanel({
                   {payLabel(detailSale.payment_method)} · {statusLabel(detailSale.payment_status)}
                 </Text>
                 <Text style={{ color: palette.blue600, fontSize: 18, fontWeight: '800', marginTop: 4 }}>
-                  {formatMoney(detailSale.total)} ₺
+                  {formatMoney(detailSale.total)}
                 </Text>
               </View>
             ) : null}

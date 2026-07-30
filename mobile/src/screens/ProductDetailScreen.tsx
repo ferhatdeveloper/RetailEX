@@ -101,7 +101,7 @@ export function ProductDetailScreen() {
           <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
             <Text style={[styles.name, { color: colors.text }]}>{row.name}</Text>
             <Text style={{ color: palette.blue600, fontSize: 22, fontWeight: '800', marginTop: 8 }}>
-              {formatMoney(row.price)} ₺
+              {formatMoney(row.price)}
             </Text>
           </View>
           <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
@@ -110,7 +110,7 @@ export function ProductDetailScreen() {
             <Row label="Birim" value={row.unit || '—'} />
             <Row label="Marka" value={row.brand || '—'} />
             <Row label="Kategori" value={row.category_code || '—'} />
-            <Row label="Maliyet" value={`${formatMoney(row.cost)} ₺`} />
+            <Row label="Maliyet" value={`${formatMoney(row.cost)}`} />
             <Row
               label="Stok"
               value={`${row.stock}${row.unit ? ` ${row.unit}` : ''}`}

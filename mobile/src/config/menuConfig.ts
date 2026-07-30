@@ -282,6 +282,10 @@ export const MENU_SECTIONS: MenuSection[] = [
       { id: 'rest-takeaway', label: 'Gel Al', screen: 'restaurant-takeaway' },
       { id: 'rest-schedule', label: 'Bugünkü Akış', screen: 'restaurant-schedule' },
       { id: 'rest-kitchen', label: 'Mutfak Ekranı', screen: 'restaurant-kitchen' },
+      { id: 'rest-reports', label: 'Restoran Raporları', screen: 'restaurant-reports' },
+      { id: 'rest-z-report', label: 'Z Raporu', screen: 'restaurant-reports-z' },
+      { id: 'rest-void-report', label: 'İptal / İade Raporu', screen: 'restaurant-reports-void' },
+      { id: 'rest-product-qty', label: 'Ürün Satış Adedi', screen: 'restaurant-reports-product' },
     ],
   },
   {
@@ -321,6 +325,7 @@ export const MENU_SECTIONS: MenuSection[] = [
         ],
       },
       { id: 'customreports', label: 'Genel Rapor', screen: 'customreports' },
+      { id: 'rest-reports', label: 'Restoran Raporları', screen: 'restaurant-reports' },
       { id: 'cat-profit', label: 'Kategori grubu satış ve kar', screen: 'category-group-profit-report' },
       { id: 'report-sales-summary', label: 'Günlük Satış Özeti', screen: 'report-sales-summary' },
       { id: 'report-critical-stock', label: 'Kritik Stok Raporu', screen: 'report-critical-stock' },
@@ -369,6 +374,7 @@ export type LiveRoute =
   | 'WmsTransfer'
   | 'WmsWavePicking'
   | 'Restaurant'
+  | 'RestaurantReports'
   | 'Delivery'
   | 'Finance'
   | 'FinanceDefinitions'
@@ -533,6 +539,10 @@ const LIVE_MAP: Record<string, LiveRoute> = {
   'restaurant-takeaway': 'Restaurant',
   'restaurant-schedule': 'Restaurant',
   'restaurant-kitchen': 'Restaurant',
+  'restaurant-reports': 'RestaurantReports',
+  'restaurant-reports-z': 'RestaurantReports',
+  'restaurant-reports-void': 'RestaurantReports',
+  'restaurant-reports-product': 'RestaurantReports',
   logistics: 'Delivery',
   'delivery-live': 'Delivery',
   couriers: 'Delivery',

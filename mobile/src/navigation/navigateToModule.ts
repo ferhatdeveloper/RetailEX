@@ -49,6 +49,11 @@ export function restaurantRouteParams(screen: string): RestaurantRouteParams | u
       return { initialTab: 'schedule' };
     case 'restaurant-kitchen':
       return { initialTab: 'kitchen' };
+    case 'restaurant-reports':
+    case 'restaurant-reports-z':
+    case 'restaurant-reports-void':
+    case 'restaurant-reports-product':
+      return { initialTab: 'reports' };
     default:
       return undefined;
   }
@@ -297,6 +302,9 @@ export function navigateToModule(
       return;
     case 'Restaurant':
       nav.navigate('Restaurant', restaurantRouteParams(screen));
+      return;
+    case 'RestaurantReports':
+      nav.navigate('RestaurantReports');
       return;
     case 'Delivery':
       nav.navigate('Delivery', deliveryRouteParams(screen));

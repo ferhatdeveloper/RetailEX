@@ -10,6 +10,8 @@ export type PendingUser = {
   periodNr: string;
   storeId?: string | null;
   storeName?: string | null;
+  anaParaBirimi?: string | null;
+  raporlamaParaBirimi?: string | null;
 };
 
 export type AuthStackParamList = {
@@ -106,11 +108,20 @@ export type MainStackParamList = {
   WmsWavePickingExecute: { waveId: string };
   Restaurant:
     | {
-        initialTab?: 'tables' | 'orders' | 'delivery' | 'takeaway' | 'schedule' | 'kitchen';
+        initialTab?:
+          | 'tables'
+          | 'orders'
+          | 'delivery'
+          | 'takeaway'
+          | 'schedule'
+          | 'kitchen'
+          | 'reports';
         /** Caller ID — hızlı sipariş bağlamı */
         callerPhone?: string;
       }
     | undefined;
+  /** Restoran raporları hub — web DeskApp restoran raporlarıyla birebir */
+  RestaurantReports: undefined;
   /** Teslimat / kurye — menü yaprağı sekmesi */
   Delivery: { initialTab?: 'deliveries' | 'live' | 'couriers' } | undefined;
   /** Finans tanımları: ödeme planı, masraf merkezi, arama planı, gider */
