@@ -18,6 +18,7 @@ import { PrimaryButton } from '../components/PrimaryButton';
 import { useThemeStore } from '../store/themeStore';
 import { usePrinterSettingsStore } from '../store/printerSettingsStore';
 import { printerTransportStatus, testPrintReceipt } from '../services/printerService';
+import { scanLanPrinters, type DiscoveredPrinter } from '../utils/lanPrinterScan';
 import {
   type PrinterInterface,
   type ReceiptLangCode,
@@ -63,6 +64,14 @@ export function PrinterSettingsScreen(_props: Props) {
 
   const [testing, setTesting] = useState(false);
   const [lastPreview, setLastPreview] = useState<string | null>(null);
+  const [scanning, setScanning] = useState(false);
+  const [scanProgress, setScanProgress] = useState<{
+    done: number;
+    total: number;
+    found: number;
+    currentHost?: string;
+  } | null>(null);
+  const [scanHits, setScanHits] = useState<DiscoveredPrinter[]>([]);
 
   const transport = useMemo(() => printerTransportStatus(), []);
 
@@ -84,10 +93,6 @@ export function PrinterSettingsScreen(_props: Props) {
     [t],
   );
 
-  const networkCarrier = transport.network.nativeTcp
-    ? t('printerSettings.transportCarrierBoth')
-    : t('printerSettings.transportCarrierBridge');
-
   const onTestPrint = useCallback(async () => {
     setTesting(true);
     setLastPreview(null);
@@ -103,6 +108,54 @@ export function PrinterSettingsScreen(_props: Props) {
       setTesting(false);
     }
   }, [settings, t]);
+
+  const networkCarrier = transport.network.nativeTcp
+    ? t('printerSettings.transportCarrierBoth')
+    : t('printerSettings.transportCarrierBridge');
+
+  const defaultPrinterLabel =
+    settings.interface === 'network' && settings.ipAddress?.trim()
+      ? `${settings.ipAddress.trim()}:${settings.port ?? 9100}`
+      : null;
+
+  const onLanScan = useCallback(async () => {
+    setScanning(true);
+    setScanHits([]);
+    setScanProgress({ done: 0, total: 0, found: 0 });
+    try {
+      const hits = await scanLanPrinters({
+        hintHost: settings.ipAddress?.trim() || undefined,
+        onProgress: (p) =>
+          setScanProgress({
+            done: p.done,
+            total: p.total,
+            found: p.found,
+            currentHost: p.currentHost,
+          }),
+      });
+      setScanHits(hits);
+      if (hits.length === 0) {
+        Alert.alert(t('printerSettings.scanLanDone'), t('printerSettings.scanLanEmpty'));
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      Alert.alert(t('printerSettings.testPrintFail'), msg);
+    } finally {
+      setScanning(false);
+      setScanProgress(null);
+    }
+  }, [settings.ipAddress, t]);
+
+  const onPickPrinterHit = useCallback(
+    (hit: DiscoveredPrinter) => {
+      setSettings({ interface: 'network', ipAddress: hit.ip, port: hit.port });
+      Alert.alert(
+        t('printerSettings.defaultPrinterTitle'),
+        t('printerSettings.defaultPrinterSet', { address: `${hit.ip}:${hit.port}` }),
+      );
+    },
+    [setSettings, t],
+  );
 
   const onReset = () => {
     Alert.alert(t('printerSettings.resetConfirmTitle'), t('printerSettings.resetConfirmBody'), [
@@ -230,6 +283,24 @@ export function PrinterSettingsScreen(_props: Props) {
 
           {settings.interface === 'network' ? (
             <>
+              {defaultPrinterLabel ? (
+                <View
+                  style={[
+                    styles.defaultPrinterBox,
+                    {
+                      borderColor: colors.cardBorder,
+                      backgroundColor: darkMode ? palette.gray900 : palette.gray50,
+                    },
+                  ]}
+                >
+                  <Text style={[styles.sec, { color: colors.textMuted, marginTop: 0 }]}>
+                    {t('printerSettings.defaultPrinterTitle')}
+                  </Text>
+                  <Text style={{ color: colors.text, fontWeight: '800', fontSize: 14, marginTop: 4 }}>
+                    {defaultPrinterLabel}
+                  </Text>
+                </View>
+              ) : null}
               <FormField
                 label={t('printerSettings.printerIp')}
                 value={settings.ipAddress ?? ''}
@@ -248,6 +319,64 @@ export function PrinterSettingsScreen(_props: Props) {
               <Text style={[styles.hint, { color: colors.textSubtle }]}>
                 {t('printerSettings.networkHint', { port: settings.port ?? 9100 })}
               </Text>
+              {scanning ? (
+                <View style={styles.scanProgressRow}>
+                  <ActivityIndicator color={palette.blue600} />
+                  <Text style={{ color: colors.textMuted, fontSize: 12, flex: 1 }}>
+                    {scanProgress && scanProgress.total > 0
+                      ? t('printerSettings.scanLanProgress', {
+                          done: scanProgress.done,
+                          total: scanProgress.total,
+                          found: scanProgress.found,
+                        })
+                      : t('printerSettings.scanLanBusy')}
+                    {scanProgress?.currentHost ? ` · ${scanProgress.currentHost}` : ''}
+                  </Text>
+                </View>
+              ) : (
+                <PrimaryButton
+                  label={t('printerSettings.scanLan')}
+                  onPress={() => void onLanScan()}
+                  variant="ghost"
+                />
+              )}
+              {scanHits.length > 0 ? (
+                <View style={styles.scanHits}>
+                  <Text style={[styles.sec, { color: colors.textMuted, marginTop: 0 }]}>
+                    {t('printerSettings.scanLanFound', { count: scanHits.length })}
+                  </Text>
+                  {scanHits.map((hit) => {
+                    const addr = `${hit.ip}:${hit.port}`;
+                    const selected =
+                      settings.ipAddress?.trim() === hit.ip && (settings.port ?? 9100) === hit.port;
+                    return (
+                      <Pressable
+                        key={addr}
+                        onPress={() => onPickPrinterHit(hit)}
+                        style={[
+                          styles.scanHitRow,
+                          {
+                            borderColor: selected ? palette.blue600 : colors.cardBorder,
+                            backgroundColor: selected
+                              ? darkMode
+                                ? `${palette.blue600}30`
+                                : `${palette.blue600}12`
+                              : colors.backgroundAlt,
+                          },
+                        ]}
+                      >
+                        <Text style={{ color: colors.text, fontWeight: '700', fontSize: 13 }}>
+                          {addr}
+                        </Text>
+                        <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 2 }}>
+                          {t('printerSettings.scanLanResponseMs', { ms: hit.responseMs })}
+                          {selected ? ` · ${t('printerSettings.defaultPrinterTitle')}` : ''}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              ) : null}
             </>
           ) : null}
 
@@ -484,5 +613,23 @@ const styles = StyleSheet.create({
     fontFamily: 'monospace',
     fontSize: 11,
     lineHeight: 16,
+  },
+  defaultPrinterBox: {
+    borderWidth: 1,
+    borderRadius: 10,
+    padding: 12,
+  },
+  scanProgressRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 4,
+  },
+  scanHits: { gap: 8 },
+  scanHitRow: {
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
   },
 });

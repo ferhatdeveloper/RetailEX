@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { usePreferencesStore } from '../store/preferencesStore';
 import { MainTabNavigator } from './MainTabNavigator';
 import { ProductsScreen } from '../screens/ProductsScreen';
 import { ProductDetailScreen } from '../screens/ProductDetailScreen';
@@ -61,8 +62,19 @@ import type { MainStackParamList } from './types';
 const Stack = createNativeStackNavigator<MainStackParamList>();
 
 export function MainStackNavigator() {
+  const businessProfile = usePreferencesStore((s) => s.businessProfile);
+  const initialRouteName = useMemo(
+    (): keyof MainStackParamList =>
+      businessProfile === 'restaurant' ? 'Restaurant' : 'Tabs',
+    [businessProfile],
+  );
+
   return (
-    <Stack.Navigator screenOptions={{ headerShown: false }}>
+    <Stack.Navigator
+      key={initialRouteName}
+      initialRouteName={initialRouteName}
+      screenOptions={{ headerShown: false }}
+    >
       <Stack.Screen name="Tabs" component={MainTabNavigator} />
       <Stack.Screen name="Products" component={ProductsScreen} />
       <Stack.Screen name="ProductDetail" component={ProductDetailScreen} />

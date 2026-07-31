@@ -1,6 +1,6 @@
 import { firmNr } from './erpTables';
 import { pgQuery } from './pgClient';
-import { postgrestGet } from './postgrestClient';
+import { postgrestGet, postgrestUpsert } from './postgrestClient';
 import { runDataTransport, rethrowTransportInfra } from './dataTransport';
 
 const KEY_RESTAURANT_PRINTERS = 'restaurant_printer_config';
@@ -98,4 +98,59 @@ export async function getRestaurantPrinterConfig(
     console.warn('[restaurantPrinterConfigApi] get failed', e);
     return empty;
   }
+}
+
+function normalizeRestaurantPrinterConfig(
+  data: RestaurantPrinterConfig,
+): RestaurantPrinterConfig {
+  return {
+    printerProfiles: Array.isArray(data.printerProfiles) ? data.printerProfiles : [],
+    printerRoutes: Array.isArray(data.printerRoutes) ? data.printerRoutes : [],
+    commonPrinterId:
+      typeof data.commonPrinterId === 'string' ? data.commonPrinterId : undefined,
+    printViaWindowsService: data.printViaWindowsService === true,
+  };
+}
+
+async function saveRestaurantPrinterConfigViaRest(
+  fn: string,
+  data: RestaurantPrinterConfig,
+): Promise<void> {
+  const normalized = normalizeRestaurantPrinterConfig(data);
+  await postgrestUpsert(
+    '/app_settings',
+    {
+      key: KEY_RESTAURANT_PRINTERS,
+      value: normalized,
+      firm_nr: fn,
+    },
+    'key,firm_nr',
+    { schema: 'public', prefer: 'return=minimal' },
+  );
+}
+
+async function saveRestaurantPrinterConfigViaBridge(
+  fn: string,
+  data: RestaurantPrinterConfig,
+): Promise<void> {
+  const normalized = normalizeRestaurantPrinterConfig(data);
+  await pgQuery(
+    `INSERT INTO app_settings (key, value, firm_nr)
+     VALUES ($1, $2::jsonb, $3)
+     ON CONFLICT (key, firm_nr) DO UPDATE SET value = $2::jsonb`,
+    [KEY_RESTAURANT_PRINTERS, JSON.stringify(normalized), fn],
+  );
+}
+
+export async function saveRestaurantPrinterConfig(
+  config: RestaurantPrinterConfig,
+  firmNrOverride?: string,
+): Promise<void> {
+  const fn = firmNrOverride || firmNr() || '001';
+  const normalized = normalizeRestaurantPrinterConfig(config);
+  await runDataTransport({
+    label: 'saveRestaurantPrinterConfig',
+    viaRest: () => saveRestaurantPrinterConfigViaRest(fn, normalized),
+    viaBridge: () => saveRestaurantPrinterConfigViaBridge(fn, normalized),
+  });
 }

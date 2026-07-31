@@ -324,6 +324,65 @@ export async function fetchRestaurantTables(): Promise<RestTable[]> {
   });
 }
 
+export type RestFloor = {
+  id: string;
+  name: string | null;
+  display_order: number;
+  color: string | null;
+};
+
+function mapRestFloorRow(r: Record<string, unknown>): RestFloor | null {
+  const id = r.id == null ? '' : String(r.id);
+  if (!id) return null;
+  return {
+    id,
+    name: r.name == null ? null : String(r.name),
+    display_order: Number(r.display_order) || 0,
+    color: r.color == null ? null : String(r.color),
+  };
+}
+
+async function fetchRestaurantFloorsViaRest(): Promise<RestFloor[]> {
+  const rows = await postgrestGet<Record<string, unknown>[]>(
+    '/floors',
+    {
+      select: 'id,name,display_order,color',
+      order: 'display_order.asc',
+      limit: 100,
+    },
+    { schema: 'rest' },
+  );
+  return (Array.isArray(rows) ? rows : [])
+    .map(mapRestFloorRow)
+    .filter((f): f is RestFloor => !!f);
+}
+
+async function fetchRestaurantFloorsViaBridge(): Promise<RestFloor[]> {
+  const res = await pgQuery<Record<string, unknown>>(
+    `SELECT id::text AS id, name, COALESCE(display_order, 0)::int AS display_order, color
+     FROM rest.floors
+     ORDER BY display_order ASC NULLS LAST, name ASC
+     LIMIT 100`,
+  );
+  return (res.rows || [])
+    .map(mapRestFloorRow)
+    .filter((f): f is RestFloor => !!f);
+}
+
+export async function fetchRestaurantFloors(): Promise<RestFloor[]> {
+  try {
+    return await runDataTransport({
+      label: 'fetchRestaurantFloors',
+      viaRest: fetchRestaurantFloorsViaRest,
+      viaBridge: fetchRestaurantFloorsViaBridge,
+    });
+  } catch (e) {
+    rethrowTransportInfra(e, 'fetchRestaurantFloors');
+    console.warn('[restaurantApi] floors', e);
+    return [];
+  }
+}
+
 async function fetchOpenOrdersViaRest(limit: number): Promise<RestOrder[]> {
   const bare = restTableBare(restOrdersTable());
   const rows = await postgrestGet<Record<string, unknown>[]>(

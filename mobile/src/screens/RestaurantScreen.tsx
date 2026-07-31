@@ -40,6 +40,7 @@ import { FormField } from '../components/FormField';
 import { PrimaryButton } from '../components/PrimaryButton';
 import {
   fetchRestaurantTables,
+  fetchRestaurantFloors,
   fetchOpenOrders,
   fetchTodayOrders,
   fetchReservationsForDate,
@@ -71,6 +72,7 @@ import {
   updateTakeawayStatus,
   type RestPaymentMethod,
   type RestTable,
+  type RestFloor,
   type RestOrder,
   type RestOrderDetail,
   type RestReservation,
@@ -115,8 +117,8 @@ type Tab =
   | 'kitchen'
   | 'reports';
 type KitchenFilter = 'all' | 'new' | 'cooking' | 'ready';
-/** Adisyon modalı — sipariş odaklı; ödeme ayrı sekme */
-type OrderSheetTab = 'order' | 'pay';
+/** Adisyon modalı — flat tab’lar (Sipariş / Ödeme / Liste) */
+type OrderSheetTab = 'order' | 'pay' | 'list';
 type Props = NativeStackScreenProps<MainStackParamList, 'Restaurant'>;
 
 const COLS = 3;
@@ -225,6 +227,7 @@ export function RestaurantScreen({ navigation, route }: Props) {
     initialTab === 'reports' || initialTab === 'retail' ? 'dashboard' : initialTab,
   );
   const [tables, setTables] = useState<RestTable[]>([]);
+  const [floors, setFloors] = useState<RestFloor[]>([]);
   const [orders, setOrders] = useState<RestOrder[]>([]);
   const [todayOrders, setTodayOrders] = useState<RestOrder[]>([]);
   const [reservations, setReservations] = useState<RestReservation[]>([]);
@@ -359,18 +362,38 @@ export function RestaurantScreen({ navigation, route }: Props) {
     [orderDetail],
   );
 
-  const floorOptions = useMemo(() => {
+  const floorTabs = useMemo(() => {
+    const byId = new Map(floors.map((f) => [f.id, f]));
     const ids = new Set<string>();
     for (const t of tables) {
       if (t.floor_id) ids.add(t.floor_id);
     }
-    return Array.from(ids).sort((a, b) => a.localeCompare(b, 'tr'));
-  }, [tables]);
+    for (const f of floors) ids.add(f.id);
+    const ordered = Array.from(ids).sort((a, b) => {
+      const fa = byId.get(a);
+      const fb = byId.get(b);
+      const oa = fa?.display_order ?? 9999;
+      const ob = fb?.display_order ?? 9999;
+      if (oa !== ob) return oa - ob;
+      const na = fa?.name || a;
+      const nb = fb?.name || b;
+      return na.localeCompare(nb, 'tr');
+    });
+    return ordered.map((id, idx) => {
+      const floor = byId.get(id);
+      const count = tables.filter((t) => t.floor_id === id).length;
+      return {
+        id,
+        label: floor?.name?.trim() || `Bölge ${idx + 1}`,
+        count,
+      };
+    });
+  }, [tables, floors]);
 
   const filteredTables = useMemo(() => {
-    if (floorFilter === 'all' || floorOptions.length === 0) return tables;
+    if (floorFilter === 'all' || floorTabs.length === 0) return tables;
     return tables.filter((t) => t.floor_id === floorFilter);
-  }, [tables, floorFilter, floorOptions.length]);
+  }, [tables, floorFilter, floorTabs.length]);
 
   const filteredKitchenOrders = useMemo(() => {
     if (kitchenFilter === 'all') return kitchenOrders;
@@ -386,8 +409,9 @@ export function RestaurantScreen({ navigation, route }: Props) {
     else setError(null);
     try {
       const date = todayYmd();
-      const [t, o, todays, res, kitchen, delivery, takeaway] = await Promise.all([
+      const [t, fl, o, todays, res, kitchen, delivery, takeaway] = await Promise.all([
         fetchRestaurantTables(),
+        fetchRestaurantFloors(),
         fetchOpenOrders(),
         fetchTodayOrders(),
         fetchReservationsForDate(date),
@@ -396,6 +420,7 @@ export function RestaurantScreen({ navigation, route }: Props) {
         fetchTakeawayOrders(),
       ]);
       setTables(t);
+      setFloors(fl);
       setOrders(o);
       setTodayOrders(todays);
       setReservations(res);
@@ -426,10 +451,10 @@ export function RestaurantScreen({ navigation, route }: Props) {
   );
 
   useEffect(() => {
-    if (floorFilter !== 'all' && !floorOptions.includes(floorFilter)) {
+    if (floorFilter !== 'all' && !floorTabs.some((f) => f.id === floorFilter)) {
       setFloorFilter('all');
     }
-  }, [floorFilter, floorOptions]);
+  }, [floorFilter, floorTabs]);
 
   useEffect(() => {
     if (callerPhone && !route.params?.initialTab) {
@@ -1251,17 +1276,9 @@ export function RestaurantScreen({ navigation, route }: Props) {
     {
       id: 'settings',
       label: 'Ayarlar',
-      hint: 'Yazıcı · kanallar',
+      hint: 'Yazıcı · firma',
       color: '#64748b',
       Icon: Settings,
-      onPress: () => navigation.navigate('RestaurantSettings'),
-    },
-    {
-      id: 'channels',
-      label: 'Kanallar',
-      hint: 'Paket platformları',
-      color: '#0ea5e9',
-      Icon: Bike,
       onPress: () => navigation.navigate('RestaurantSettings'),
     },
     {
@@ -1281,81 +1298,60 @@ export function RestaurantScreen({ navigation, route }: Props) {
     { id: 'ready', label: 'Hazır' },
   ];
 
+  const regionBelow =
+    tab === 'tables' ? (
+      <View style={styles.flatTabs}>
+        <Pressable
+          onPress={() => setFloorFilter('all')}
+          style={[styles.flatTab, floorFilter === 'all' && styles.flatTabOn]}
+        >
+          <Text
+            style={[styles.flatTabText, floorFilter === 'all' && styles.flatTabTextOn]}
+            numberOfLines={1}
+          >
+            Tümü
+          </Text>
+        </Pressable>
+        {floorTabs.map((f) => {
+          const on = floorFilter === f.id;
+          return (
+            <Pressable
+              key={f.id}
+              onPress={() => setFloorFilter(f.id)}
+              style={[styles.flatTab, on && styles.flatTabOn]}
+            >
+              <Text style={[styles.flatTabText, on && styles.flatTabTextOn]} numberOfLines={1}>
+                {f.label}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+    ) : null;
+
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
       <ScreenHeader
-        title="Restoran"
+        title={tab === 'tables' ? 'Masalar' : 'Restoran'}
         subtitle={
           callerPhone
             ? `Caller ID: ${callerPhone}`
-            : 'Ana panel, masalar, paket, mutfak, raporlar'
+            : tab === 'tables'
+              ? `${filteredTables.length} masa`
+              : 'Masalar, paket, mutfak, raporlar'
         }
         showBack={tab !== 'dashboard'}
         onBack={() => setTab('dashboard')}
+        below={regionBelow}
       />
 
-      <SegmentTabBar
-        layout="scroll"
-        value={tab}
-        onChange={onChangeTab}
-        items={tabs.map((t) => ({ id: t.id, label: t.label }))}
-      />
-
-      {tab === 'tables' && floorOptions.length > 0 ? (
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          style={[styles.legendScroll, { backgroundColor: legendBg, borderColor: colors.cardBorder }]}
-          contentContainerStyle={styles.legendRow}
-        >
-          <Pressable
-            onPress={() => setFloorFilter('all')}
-            style={[
-              styles.filterChip,
-              {
-                backgroundColor: floorFilter === 'all' ? palette.blue600 : colors.card,
-                borderColor: floorFilter === 'all' ? palette.blue600 : colors.cardBorder,
-              },
-            ]}
-          >
-            <Text
-              style={{
-                color: floorFilter === 'all' ? palette.white : colors.text,
-                fontSize: 11,
-                fontWeight: '800',
-              }}
-            >
-              Tümü ({tables.length})
-            </Text>
-          </Pressable>
-          {floorOptions.map((fid, idx) => {
-            const count = tables.filter((t) => t.floor_id === fid).length;
-            const active = floorFilter === fid;
-            return (
-              <Pressable
-                key={fid}
-                onPress={() => setFloorFilter(fid)}
-                style={[
-                  styles.filterChip,
-                  {
-                    backgroundColor: active ? palette.blue600 : colors.card,
-                    borderColor: active ? palette.blue600 : colors.cardBorder,
-                  },
-                ]}
-              >
-                <Text
-                  style={{
-                    color: active ? palette.white : colors.text,
-                    fontSize: 11,
-                    fontWeight: '800',
-                  }}
-                >
-                  {`Bölge ${idx + 1} (${count})`}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </ScrollView>
+      {tab !== 'tables' ? (
+        <SegmentTabBar
+          layout="scroll"
+          value={tab}
+          onChange={onChangeTab}
+          items={tabs.map((t) => ({ id: t.id, label: t.label }))}
+        />
       ) : null}
 
       {tab === 'tables' ? (
@@ -1873,61 +1869,132 @@ export function RestaurantScreen({ navigation, route }: Props) {
             style={{ flex: 1 }}
             behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           >
-            <GradientHeader compact>
+            <GradientHeader compact style={styles.modalHeaderWithTabs}>
               <View style={styles.modalHeaderRow}>
                 <HeaderIconButton onPress={closeModal}>
                   <ArrowLeft size={18} color={palette.white} />
                 </HeaderIconButton>
                 <View style={{ flex: 1, minWidth: 0 }}>
                   <Text style={{ color: palette.white, fontSize: 16, fontWeight: '700' }} numberOfLines={1}>
-                    {isRetailPos ? 'Perakende satış' : selectedTable?.name || 'Masa'}
+                    {orderSheetTab === 'list'
+                      ? 'Açık adisyonlar'
+                      : isRetailPos
+                        ? 'Perakende satış'
+                        : selectedTable?.name || 'Masa'}
                   </Text>
                   <Text style={{ color: palette.blue100, fontSize: 10, marginTop: 2 }} numberOfLines={1}>
-                    {orderDetail?.order_no || 'Adisyon'}
-                    {orderDetail?.status ? ` · ${orderStatusLabel(orderDetail.status)}` : ''}
-                    {orderDetail ? ` · ${formatMoney(orderDetail.total_amount)}` : ''}
+                    {orderSheetTab === 'list'
+                      ? `${orders.length} sipariş`
+                      : `${orderDetail?.order_no || 'Adisyon'}${
+                          orderDetail?.status ? ` · ${orderStatusLabel(orderDetail.status)}` : ''
+                        }${orderDetail ? ` · ${formatMoney(orderDetail.total_amount)}` : ''}`}
                   </Text>
                 </View>
-                <View
-                  style={[
-                    styles.headerStatusChip,
+                {orderDetail &&
+                isOrderOpen(orderDetail.status) &&
+                pendingKitchenCount > 0 &&
+                orderSheetTab === 'order' &&
+                !sendingKitchen ? (
+                  <HeaderIconButton
+                    onPress={() => void handleSendToKitchen()}
+                    accent
+                  >
+                    <ChefHat size={18} color={palette.white} />
+                  </HeaderIconButton>
+                ) : sendingKitchen && orderSheetTab === 'order' ? (
+                  <ActivityIndicator color={palette.white} />
+                ) : (
+                  <View
+                    style={[
+                      styles.headerStatusChip,
+                      {
+                        backgroundColor: isRetailPos
+                          ? palette.green600
+                          : getStatusConfig(selectedTable?.status).bg,
+                      },
+                    ]}
+                  >
+                    <Text style={{ color: '#fff', fontSize: 10, fontWeight: '800' }}>
+                      {isRetailPos ? 'POS' : getStatusConfig(selectedTable?.status).label}
+                    </Text>
+                  </View>
+                )}
+              </View>
+              <View style={styles.modalFlatTabs}>
+                {(
+                  [
                     {
-                      backgroundColor: isRetailPos
-                        ? palette.green600
-                        : getStatusConfig(selectedTable?.status).bg,
+                      id: 'order' as OrderSheetTab,
+                      label: orderDetail
+                        ? `Sipariş (${orderDetail.items.length})`
+                        : 'Sipariş',
                     },
-                  ]}
-                >
-                  <Text style={{ color: '#fff', fontSize: 10, fontWeight: '800' }}>
-                    {isRetailPos ? 'POS' : getStatusConfig(selectedTable?.status).label}
-                  </Text>
-                </View>
+                    {
+                      id: 'pay' as OrderSheetTab,
+                      label: 'Ödeme',
+                    },
+                    {
+                      id: 'list' as OrderSheetTab,
+                      label: `Liste (${orders.length})`,
+                    },
+                  ] as const
+                ).map((item) => {
+                  const on = orderSheetTab === item.id;
+                  return (
+                    <Pressable
+                      key={item.id}
+                      onPress={() => setOrderSheetTab(item.id)}
+                      style={[styles.flatTab, on && styles.flatTabOn]}
+                    >
+                      <Text
+                        style={[styles.flatTabText, on && styles.flatTabTextOn]}
+                        numberOfLines={1}
+                      >
+                        {item.label}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
               </View>
             </GradientHeader>
-
-            {orderDetail && isOrderOpen(orderDetail.status) ? (
-              <SegmentTabBar
-                layout="equal"
-                value={orderSheetTab}
-                onChange={setOrderSheetTab}
-                items={[
-                  {
-                    id: 'order' as OrderSheetTab,
-                    label: `Sipariş (${orderDetail.items.length}) · ${formatMoney(orderDetail.total_amount)}`,
-                  },
-                  {
-                    id: 'pay' as OrderSheetTab,
-                    label: `Ödeme · ${formatMoney(payableTotal)}`,
-                  },
-                ]}
-              />
-            ) : null}
 
             {modalError ? (
               <ErrorBanner message={modalError} onRetry={() => setModalError(null)} />
             ) : null}
 
-            {orderLoading ? (
+            {orderSheetTab === 'list' ? (
+              <FlatList
+                data={orders}
+                keyExtractor={(item) => item.id}
+                contentContainerStyle={styles.modalBody}
+                ListEmptyComponent={<EmptyState message="Açık adisyon yok" />}
+                renderItem={({ item }) => (
+                  <Pressable
+                    onPress={() => {
+                      void openOrder(item);
+                      setOrderSheetTab('order');
+                    }}
+                    style={[
+                      styles.listOrderRow,
+                      { backgroundColor: colors.card, borderColor: colors.cardBorder },
+                    ]}
+                  >
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <Text style={{ color: colors.text, fontWeight: '800' }} numberOfLines={1}>
+                        {item.table_name || item.order_no || 'Adisyon'}
+                      </Text>
+                      <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 2 }}>
+                        {item.order_no || '—'} · {orderStatusLabel(item.status)}
+                        {item.waiter ? ` · ${item.waiter}` : ''}
+                      </Text>
+                    </View>
+                    <Text style={{ color: colors.text, fontWeight: '900' }}>
+                      {formatMoney(item.total_amount)}
+                    </Text>
+                  </Pressable>
+                )}
+              />
+            ) : orderLoading ? (
               <ActivityIndicator color={palette.blue600} style={{ marginTop: 24 }} />
             ) : !orderDetail ? (
               <ScrollView contentContainerStyle={styles.modalBody} keyboardShouldPersistTaps="handled">
@@ -2126,66 +2193,48 @@ export function RestaurantScreen({ navigation, route }: Props) {
                         ) : null}
                       </View>
                     ) : null}
+
+                    {isOrderOpen(orderDetail.status) && pendingKitchenCount > 0 ? (
+                      <View style={styles.kitchenLangInline}>
+                        <Text style={{ color: colors.textMuted, fontSize: 10, fontWeight: '800' }}>
+                          Mutfak dili
+                        </Text>
+                        <View style={styles.payRow}>
+                          {KITCHEN_LANGS.map((lang) => (
+                            <Pressable
+                              key={lang.code}
+                              onPress={() => setKitchenLocale(lang.code)}
+                              style={[
+                                styles.langChip,
+                                {
+                                  backgroundColor:
+                                    kitchenLocale === lang.code
+                                      ? palette.blue600
+                                      : colors.backgroundAlt,
+                                  borderColor: colors.cardBorder,
+                                },
+                              ]}
+                            >
+                              <Text
+                                style={{
+                                  color:
+                                    kitchenLocale === lang.code ? palette.white : colors.text,
+                                  fontSize: 10,
+                                  fontWeight: '900',
+                                }}
+                              >
+                                {lang.label}
+                              </Text>
+                            </Pressable>
+                          ))}
+                        </View>
+                        <Text style={{ color: colors.textSubtle, fontSize: 10 }}>
+                          Üstteki şef ikonu ile mutfağa gönder ({pendingKitchenCount})
+                        </Text>
+                      </View>
+                    ) : null}
                   </View>
                 </ScrollView>
-                {isOrderOpen(orderDetail.status) ? (
-                  <View
-                    style={[
-                      styles.payFooter,
-                      { backgroundColor: colors.card, borderTopColor: colors.cardBorder },
-                    ]}
-                  >
-                    <View style={styles.kitchenLangBlock}>
-                      <Text style={{ color: colors.textMuted, fontSize: 11, fontWeight: '800' }}>
-                        Mutfak fişi dili
-                      </Text>
-                      <View style={styles.payRow}>
-                        {KITCHEN_LANGS.map((lang) => (
-                          <Pressable
-                            key={lang.code}
-                            onPress={() => setKitchenLocale(lang.code)}
-                            style={[
-                              styles.langChip,
-                              {
-                                backgroundColor:
-                                  kitchenLocale === lang.code
-                                    ? palette.blue600
-                                    : colors.backgroundAlt,
-                                borderColor: colors.cardBorder,
-                              },
-                            ]}
-                          >
-                            <Text
-                              style={{
-                                color:
-                                  kitchenLocale === lang.code ? palette.white : colors.text,
-                                fontSize: 11,
-                                fontWeight: '900',
-                              }}
-                            >
-                              {lang.label}
-                            </Text>
-                          </Pressable>
-                        ))}
-                      </View>
-                    </View>
-                    <PrimaryButton
-                      label={
-                        pendingKitchenCount > 0
-                          ? `Mutfağa gönder (${pendingKitchenCount})`
-                          : 'Mutfağa gönder'
-                      }
-                      onPress={() => void handleSendToKitchen()}
-                      loading={sendingKitchen}
-                      disabled={pendingKitchenCount === 0}
-                    />
-                    <PrimaryButton
-                      label="Ödeme sekmesine geç"
-                      variant="ghost"
-                      onPress={() => setOrderSheetTab('pay')}
-                    />
-                  </View>
-                ) : null}
               </>
             ) : (
               <ScrollView
@@ -2418,11 +2467,6 @@ export function RestaurantScreen({ navigation, route }: Props) {
                   onPress={handlePayment}
                   loading={paying}
                 />
-                <PrimaryButton
-                  label="Siparişe dön"
-                  variant="ghost"
-                  onPress={() => setOrderSheetTab('order')}
-                />
               </View>
             ) : null}
           </KeyboardAvoidingView>
@@ -2434,6 +2478,52 @@ export function RestaurantScreen({ navigation, route }: Props) {
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
+  modalHeaderWithTabs: { paddingBottom: 0 },
+  flatTabs: {
+    flexDirection: 'row',
+    backgroundColor: 'rgba(0,0,0,0.12)',
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: 'rgba(255,255,255,0.14)',
+  },
+  modalFlatTabs: {
+    flexDirection: 'row',
+    marginHorizontal: -16,
+    marginTop: 10,
+    backgroundColor: 'rgba(0,0,0,0.12)',
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: 'rgba(255,255,255,0.14)',
+  },
+  flatTab: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 11,
+    borderBottomWidth: 2,
+    borderBottomColor: 'transparent',
+  },
+  flatTabOn: {
+    borderBottomColor: palette.white,
+    backgroundColor: 'rgba(255,255,255,0.10)',
+  },
+  flatTabText: {
+    color: 'rgba(255,255,255,0.70)',
+    fontWeight: '700',
+    fontSize: 11,
+  },
+  flatTabTextOn: {
+    color: palette.white,
+    fontWeight: '800',
+  },
+  kitchenLangInline: { gap: 6, marginTop: 10 },
+  listOrderRow: {
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
   legendScroll: {
     maxHeight: 40,
     borderTopWidth: StyleSheet.hairlineWidth,

@@ -1,6 +1,6 @@
 /**
  * Restoran ayarları hub — Gastro benzeri (masa/kat yok).
- * Firma, yazıcı, paket platformları, raporlar, entegrasyonlar.
+ * Firma, yazıcı, raporlar, entegrasyonlar.
  */
 import React, { useCallback, useState } from 'react';
 import {
@@ -9,6 +9,7 @@ import {
   StyleSheet,
   ScrollView,
   Pressable,
+  Alert,
   ActivityIndicator,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
@@ -16,16 +17,21 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import {
   Building2,
   Printer,
-  Bike,
   BarChart3,
   Plug,
   ChevronRight,
 } from 'lucide-react-native';
 import { ScreenHeader } from '../components/ScreenChrome';
-import { FOOD_DELIVERY_CHANNELS } from '../config/foodDeliveryChannels';
-import { getRestaurantPrinterConfig } from '../api/restaurantPrinterConfigApi';
+import {
+  getRestaurantPrinterConfig,
+  saveRestaurantPrinterConfig,
+  type RestaurantPrinterConfig,
+  type RestaurantPrinterProfile,
+} from '../api/restaurantPrinterConfigApi';
+import { newUuid } from '../api/erpTables';
+import { scanLanPrinters } from '../utils/lanPrinterScan';
+import { PrimaryButton } from '../components/PrimaryButton';
 import { useAuthStore } from '../store/authStore';
-import { getBridgeBaseUrl, useConfigStore } from '../store/configStore';
 import { useThemeStore } from '../store/themeStore';
 import { palette } from '../theme/colors';
 import type { MainStackParamList } from '../navigation/types';
@@ -35,24 +41,101 @@ type Props = NativeStackScreenProps<MainStackParamList, 'RestaurantSettings'>;
 export function RestaurantSettingsScreen({ navigation }: Props) {
   const { colors } = useThemeStore();
   const user = useAuthStore((s) => s.user);
-  const cfg = useConfigStore((s) => s.config);
-  const bridgeBase = getBridgeBaseUrl(cfg).replace(/\/+$/, '');
-  const webhookHint = `${bridgeBase}/api/delivery_order/push`;
 
   const [printerCount, setPrinterCount] = useState<number | null>(null);
   const [printerLoading, setPrinterLoading] = useState(false);
+  const [printerConfig, setPrinterConfig] = useState<RestaurantPrinterConfig | null>(null);
+  const [printerScanning, setPrinterScanning] = useState(false);
+  const [printerSaving, setPrinterSaving] = useState(false);
 
   const loadPrinters = useCallback(async () => {
     setPrinterLoading(true);
     try {
       const conf = await getRestaurantPrinterConfig();
+      setPrinterConfig(conf);
       setPrinterCount(conf.printerProfiles?.length ?? 0);
     } catch {
+      setPrinterConfig(null);
       setPrinterCount(null);
     } finally {
       setPrinterLoading(false);
     }
   }, []);
+
+  const networkProfiles = (printerConfig?.printerProfiles ?? []).filter(
+    (p) => p.connection === 'network',
+  );
+
+  const setCommonPrinter = useCallback(
+    async (profileId: string) => {
+      if (!printerConfig) return;
+      setPrinterSaving(true);
+      try {
+        const next: RestaurantPrinterConfig = {
+          ...printerConfig,
+          commonPrinterId: profileId,
+        };
+        await saveRestaurantPrinterConfig(next);
+        setPrinterConfig(next);
+        Alert.alert('Kaydedildi', 'Varsayılan yazıcı güncellendi.');
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        Alert.alert('Kayıt hatası', msg);
+      } finally {
+        setPrinterSaving(false);
+      }
+    },
+    [printerConfig],
+  );
+
+  const onScanAndAddPrinter = useCallback(async () => {
+    setPrinterScanning(true);
+    try {
+      const hits = await scanLanPrinters();
+      if (hits.length === 0) {
+        Alert.alert('Ağ taraması', 'Açık ESC/POS portu bulunamadı (9100–9102).');
+        return;
+      }
+      const hit = hits[0];
+      const addr = `${hit.ip}:${hit.port}`;
+      const base = printerConfig ?? { printerProfiles: [], printerRoutes: [] };
+      const existing = base.printerProfiles.find(
+        (p) =>
+          p.connection === 'network' &&
+          (p.address === hit.ip || p.address === addr) &&
+          (p.port == null || p.port === hit.port),
+      );
+      if (existing) {
+        await setCommonPrinter(existing.id);
+        return;
+      }
+      const profile: RestaurantPrinterProfile = {
+        id: newUuid(),
+        name: `Ağ yazıcı ${addr}`,
+        type: 'thermal',
+        connection: 'network',
+        address: hit.ip,
+        port: hit.port,
+        status: 'online',
+      };
+      const next: RestaurantPrinterConfig = {
+        ...base,
+        printerProfiles: [...base.printerProfiles, profile],
+        commonPrinterId: profile.id,
+      };
+      setPrinterSaving(true);
+      await saveRestaurantPrinterConfig(next);
+      setPrinterConfig(next);
+      setPrinterCount(next.printerProfiles.length);
+      Alert.alert('Kaydedildi', `${addr} profil olarak eklendi ve varsayılan yapıldı.`);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      Alert.alert('Tarama hatası', msg);
+    } finally {
+      setPrinterScanning(false);
+      setPrinterSaving(false);
+    }
+  }, [printerConfig, setCommonPrinter]);
 
   useFocusEffect(
     useCallback(() => {
@@ -108,7 +191,7 @@ export function RestaurantSettingsScreen({ navigation }: Props) {
     <View style={[styles.root, { backgroundColor: colors.background }]}>
       <ScreenHeader
         title="Restoran ayarları"
-        subtitle="Firma, yazıcı, paket kanalları, raporlar"
+        subtitle="Firma, yazıcı, raporlar"
         onBack={() => navigation.navigate('Restaurant', { initialTab: 'dashboard' })}
       />
       <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
@@ -171,6 +254,77 @@ export function RestaurantSettingsScreen({ navigation }: Props) {
         />
 
         <SectionTitle title="Servis / yazıcı" />
+        <View
+          style={[
+            styles.printerCard,
+            { backgroundColor: colors.card, borderColor: colors.cardBorder },
+          ]}
+        >
+          <View style={styles.hintHeader}>
+            <Printer size={18} color={palette.indigo500} />
+            <Text style={{ color: colors.text, fontWeight: '800', flex: 1 }}>
+              Restoran yazıcı profilleri
+            </Text>
+          </View>
+          {printerLoading ? (
+            <ActivityIndicator color={palette.blue600} style={{ marginVertical: 8 }} />
+          ) : null}
+          {!printerLoading && networkProfiles.length === 0 ? (
+            <Text style={{ color: colors.textMuted, fontSize: 12 }}>
+              Ağ yazıcı profili yok. Ağı tarayın veya yazıcı ayarlarından IP girin.
+            </Text>
+          ) : null}
+          {networkProfiles.map((p) => {
+            const port = p.port ?? 9100;
+            const addr = p.address?.includes(':') ? p.address : `${p.address ?? '—'}:${port}`;
+            const isDefault = printerConfig?.commonPrinterId === p.id;
+            return (
+              <View
+                key={p.id}
+                style={[
+                  styles.printerProfileRow,
+                  {
+                    borderColor: isDefault ? palette.indigo500 : colors.cardBorder,
+                    backgroundColor: colors.backgroundAlt,
+                  },
+                ]}
+              >
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={{ color: colors.text, fontWeight: '700', fontSize: 13 }}>
+                    {p.name}
+                  </Text>
+                  <Text
+                    style={{ color: colors.textMuted, fontSize: 11, marginTop: 2 }}
+                    numberOfLines={1}
+                  >
+                    {addr}
+                    {isDefault ? ' · Varsayılan' : ''}
+                  </Text>
+                </View>
+                {!isDefault ? (
+                  <Pressable
+                    onPress={() => void setCommonPrinter(p.id)}
+                    disabled={printerSaving}
+                    style={[styles.defaultBtn, { borderColor: palette.indigo500 }]}
+                  >
+                    <Text style={{ color: palette.indigo600, fontWeight: '800', fontSize: 11 }}>
+                      Varsayılan
+                    </Text>
+                  </Pressable>
+                ) : null}
+              </View>
+            );
+          })}
+          {printerScanning || printerSaving ? (
+            <ActivityIndicator color={palette.blue600} style={{ marginTop: 4 }} />
+          ) : (
+            <PrimaryButton
+              label="Ağı tara ve ekle"
+              onPress={() => void onScanAndAddPrinter()}
+              variant="ghost"
+            />
+          )}
+        </View>
         <LinkRow
           label="Yazıcı ayarları"
           hint={
@@ -187,56 +341,6 @@ export function RestaurantSettingsScreen({ navigation }: Props) {
         {printerLoading ? (
           <ActivityIndicator style={{ marginVertical: 4 }} color={palette.blue600} />
         ) : null}
-
-        <SectionTitle title="Paket platformları" />
-        <View
-          style={[
-            styles.hintCard,
-            { backgroundColor: colors.card, borderColor: colors.cardBorder },
-          ]}
-        >
-          <View style={styles.hintHeader}>
-            <Bike size={18} color={palette.blue600} />
-            <Text style={{ color: colors.text, fontWeight: '800', flex: 1 }}>
-              Desteklenen kanallar
-            </Text>
-          </View>
-          <Text style={{ color: colors.textMuted, fontSize: 12, marginBottom: 8 }}>
-            Platform API anahtarları genelde iş ortağı veya aracı entegratör üzerinden verilir.
-            RetailEX kanal etiketi, harici sipariş no ve webhook ile sipariş oluşturmayı destekler.
-          </Text>
-          {FOOD_DELIVERY_CHANNELS.map((c) => (
-            <View
-              key={c.id}
-              style={[
-                styles.channelItem,
-                { borderColor: colors.cardBorder, backgroundColor: colors.backgroundAlt },
-              ]}
-            >
-              <Text style={{ color: colors.text, fontWeight: '700', fontSize: 13 }}>
-                {c.label}
-              </Text>
-              <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 2 }}>
-                {c.description}
-              </Text>
-            </View>
-          ))}
-          <Text style={[styles.webhookLabel, { color: colors.textMuted }]}>
-            Webhook (pg_bridge)
-          </Text>
-          <Text
-            selectable
-            style={[
-              styles.webhookUrl,
-              { color: colors.text, backgroundColor: colors.backgroundAlt, borderColor: colors.cardBorder },
-            ]}
-          >
-            {webhookHint}
-          </Text>
-          <Text style={{ color: colors.textSubtle, fontSize: 11, marginTop: 6 }}>
-            POST · gövdede channel, customerName, address, phone, isteğe bağlı externalOrderId
-          </Text>
-        </View>
 
         <SectionTitle title="Raporlar" />
         <LinkRow
@@ -300,31 +404,26 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  hintCard: {
+  printerCard: {
     borderWidth: 1,
     borderRadius: 12,
     padding: 12,
     gap: 8,
   },
   hintHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 2 },
-  channelItem: {
+  printerProfileRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
     borderWidth: 1,
     borderRadius: 10,
     paddingHorizontal: 10,
     paddingVertical: 8,
   },
-  webhookLabel: {
-    fontSize: 10,
-    fontWeight: '900',
-    letterSpacing: 1.5,
-    textTransform: 'uppercase',
-    marginTop: 6,
-  },
-  webhookUrl: {
-    fontSize: 11,
-    fontFamily: 'monospace',
+  defaultBtn: {
     borderWidth: 1,
     borderRadius: 8,
-    padding: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
   },
 });

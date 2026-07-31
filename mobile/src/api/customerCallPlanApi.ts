@@ -82,22 +82,43 @@ function mapWeekly(r: Record<string, unknown>): CallPlanWeeklyRow {
 
 export async function fetchCallPlanCustomers(limit = 500): Promise<CallPlanCustomer[]> {
   const table = customersTable();
+  /** Gün seçili ama enabled bayrağı yanlış kalan kayıtları da göster (eski mobil kayıtlar). */
+  const asListRow = (c: CallPlanCustomer): CallPlanCustomer | null => {
+    if (!c.id || c.call_plan_weekdays.length === 0) return null;
+    return c.call_plan_enabled ? c : { ...c, call_plan_enabled: true };
+  };
+
   return runDataTransport({
     label: 'fetchCallPlanCustomers',
     viaRest: async () => {
-      const rows = await postgrestGet<Record<string, unknown>[]>(
-        `/${table}`,
-        {
-          select: LIVE_SELECT,
-          call_plan_enabled: 'eq.true',
-          order: 'name.asc',
-          limit,
-        },
-        { schema: 'public' },
-      );
+      let rows: Record<string, unknown>[] = [];
+      try {
+        rows = await postgrestGet<Record<string, unknown>[]>(
+          `/${table}`,
+          {
+            select: LIVE_SELECT,
+            or: '(call_plan_enabled.eq.true,call_plan_weekdays.neq.{})',
+            order: 'name.asc',
+            limit,
+          },
+          { schema: 'public' },
+        );
+      } catch {
+        rows = await postgrestGet<Record<string, unknown>[]>(
+          `/${table}`,
+          {
+            select: LIVE_SELECT,
+            call_plan_enabled: 'eq.true',
+            order: 'name.asc',
+            limit,
+          },
+          { schema: 'public' },
+        );
+      }
       return (Array.isArray(rows) ? rows : [])
         .map(mapLive)
-        .filter((c) => c.id && c.call_plan_enabled && c.call_plan_weekdays.length > 0);
+        .map(asListRow)
+        .filter((c): c is CallPlanCustomer => !!c);
     },
     viaBridge: async () => {
       const res = await pgQuery<Record<string, unknown>>(
@@ -108,13 +129,15 @@ export async function fetchCallPlanCustomers(limit = 500): Promise<CallPlanCusto
                 call_last_at::text AS call_last_at
          FROM ${table}
          WHERE COALESCE(call_plan_enabled, false) = true
+            OR COALESCE(cardinality(call_plan_weekdays), 0) > 0
          ORDER BY name ASC
          LIMIT $1`,
         [limit],
       );
       return (res.rows || [])
         .map(mapLive)
-        .filter((c) => c.call_plan_weekdays.length > 0);
+        .map(asListRow)
+        .filter((c): c is CallPlanCustomer => !!c);
     },
   });
 }
@@ -141,15 +164,24 @@ export async function updateCallPlanCustomer(
   }
   if (patch.call_last_note !== undefined) body.call_last_note = patch.call_last_note;
   if (patch.call_plan_enabled != null) body.call_plan_enabled = patch.call_plan_enabled;
+  // Gün yazıldıysa enabled’i gün sayısına kilitle (liste görünürlüğü)
+  if (body.call_plan_weekdays != null && patch.call_plan_enabled === undefined) {
+    body.call_plan_enabled =
+      (body.call_plan_weekdays as number[]).length > 0;
+  }
 
   await runDataTransport({
     label: 'updateCallPlanCustomer',
     viaRest: async () => {
-      await postgrestPatch(
+      const updated = await postgrestPatch<Record<string, unknown>[]>(
         `/${table}?id=eq.${encodeURIComponent(id)}`,
         body,
-        { schema: 'public', prefer: 'return=minimal' },
+        { schema: 'public', prefer: 'return=representation' },
       );
+      const n = Array.isArray(updated) ? updated.length : updated ? 1 : 0;
+      if (n < 1) {
+        throw new Error('Arama planı kaydı yazılamadı (cari bulunamadı veya yetki yok).');
+      }
       return true;
     },
     viaBridge: async () => {

@@ -163,9 +163,12 @@ export function CustomerDetailScreen() {
       const set = new Set(prev.call_plan_weekdays);
       if (set.has(day)) set.delete(day);
       else set.add(day);
+      const nextDays = Array.from(set).sort((a, b) => a - b);
+      // Web ile aynı: gün varsa plan aktif, yoksa pasif
       return {
         ...prev,
-        call_plan_weekdays: Array.from(set).sort((a, b) => a - b),
+        call_plan_weekdays: nextDays,
+        call_plan_enabled: nextDays.length > 0,
       };
     });
     setPlanDirty(true);
@@ -173,20 +176,33 @@ export function CustomerDetailScreen() {
 
   const saveCallPlan = async () => {
     if (!row) return;
-    if (plan.call_plan_enabled && plan.call_plan_weekdays.length === 0) {
+    const nextDays = plan.call_plan_weekdays;
+    if (plan.call_plan_enabled && nextDays.length === 0) {
       Alert.alert('Gün seçin', 'Arama planı açıkken en az bir hafta günü seçilmelidir.');
       return;
     }
+    // Switch kapalıysa planı kapat; açıksa günler zorunlu (yukarıda)
+    const enabled = plan.call_plan_enabled && nextDays.length > 0;
     setPlanSaving(true);
     try {
       await updateCallPlanCustomer(row.id, {
-        call_plan_enabled: plan.call_plan_enabled,
-        call_plan_weekdays: plan.call_plan_weekdays,
+        call_plan_enabled: enabled,
+        call_plan_weekdays: enabled ? nextDays : [],
         call_plan_note: plan.call_plan_note.trim() || null,
         call_last_status: plan.call_last_status,
       });
+      setPlan((prev) => ({
+        ...prev,
+        call_plan_enabled: enabled,
+        call_plan_weekdays: enabled ? nextDays : [],
+      }));
       setPlanDirty(false);
-      Alert.alert('Kaydedildi', 'Arama planı güncellendi.');
+      Alert.alert(
+        'Kaydedildi',
+        enabled
+          ? 'Arama planı aktif — listede görünür.'
+          : 'Arama planı kapatıldı.',
+      );
       await load();
     } catch (e) {
       Alert.alert('Hata', e instanceof Error ? e.message : String(e));
@@ -280,7 +296,18 @@ export function CustomerDetailScreen() {
                 </Text>
                 <Switch
                   value={plan.call_plan_enabled}
-                  onValueChange={(v) => patchPlan('call_plan_enabled', v)}
+                  onValueChange={(v) => {
+                    if (v) {
+                      patchPlan('call_plan_enabled', true);
+                    } else {
+                      setPlan((prev) => ({
+                        ...prev,
+                        call_plan_enabled: false,
+                        call_plan_weekdays: [],
+                      }));
+                      setPlanDirty(true);
+                    }
+                  }}
                   trackColor={{ true: palette.blue600, false: palette.gray300 }}
                 />
               </View>

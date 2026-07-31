@@ -341,7 +341,15 @@ export function CustomerCallPlanScreen() {
                   <RefreshControl refreshing={loading} onRefresh={() => void load()} />
                 }
                 ListEmptyComponent={
-                  <EmptyState message="Arama planında müşteri yok — cari kartından planı açın" />
+                  <EmptyState
+                    message={
+                      dayFilter !== 'all'
+                        ? 'Bu güne ait plan yok — “Tümü” sekmesine geçin veya cari kartından gün ekleyin'
+                        : customers.length > 0
+                          ? 'Arama / filtre sonucu boş'
+                          : 'Arama planında müşteri yok — cari detayda gün seçip kaydedin (plan otomatik aktif olur)'
+                    }
+                  />
                 }
                 contentContainerStyle={styles.list}
                 renderItem={({ item }) => renderCustomer(item)}
