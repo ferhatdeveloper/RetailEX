@@ -264,34 +264,28 @@ export function ConfigScreen({ navigation }: Props) {
       };
       setDraft(nextDraft);
       const test = await testPostgrestConnection(nextDraft);
-      setConnectionStatus({
-        tone: test.ok ? 'ok' : resolved.warning ? 'warn' : 'fail',
-        title: test.ok
+      const urlLine = t('tenantResolvedUrlHint', { url: resolved.remoteRestUrl });
+      const title = test.ok
+        ? resolved.fromRegistry
           ? t('tenantResolvedOk')
-          : resolved.warning
-            ? t('tenantResolvedPartial')
-            : t('connectionFail'),
-        detail: [
-          resolved.displayName,
-          resolved.remoteRestUrl,
-          resolved.warning,
-          test.detail,
-        ]
-          .filter(Boolean)
-          .join('\n'),
+          : t('tenantResolvedPartialOk')
+        : t('connectionFail');
+      const detailLines = [
+        `${t('tenantCode')}: ${resolved.code}`,
+        resolved.displayName && resolved.displayName !== resolved.code
+          ? resolved.displayName
+          : null,
+        urlLine,
+        test.ok && !resolved.fromRegistry ? t('tenantResolvedFallbackHint') : null,
+        test.ok ? t('tenantResolvedApiOk') : test.detail,
+      ].filter(Boolean) as string[];
+      const detail = detailLines.join('\n');
+      setConnectionStatus({
+        tone: test.ok ? (resolved.fromRegistry ? 'ok' : 'warn') : 'fail',
+        title,
+        detail,
       });
-      Alert.alert(
-        test.ok ? t('tenantResolvedOk') : t('connectionFail'),
-        [
-          `${t('tenantCode')}: ${resolved.code}`,
-          resolved.displayName,
-          resolved.remoteRestUrl,
-          resolved.warning,
-          test.detail,
-        ]
-          .filter(Boolean)
-          .join('\n'),
-      );
+      Alert.alert(title, detail);
     } catch (e: unknown) {
       const detail = e instanceof Error ? e.message : String(e);
       setConnectionStatus({

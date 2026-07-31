@@ -8,6 +8,9 @@ export type MenuViewMode = 'cards' | 'list';
 /** Restoran sipariş menü kataloğu — ızgara (resimli) / liste. */
 export type RestMenuCatalogView = 'grid' | 'list';
 
+/** Resimli menü ızgara sütun sayısı (2–6). */
+export type RestMenuCatalogGridCols = 2 | 3 | 4 | 5 | 6;
+
 /** Raporlar (ERP + restoran) — liste / grafik. */
 export type ReportsView = 'list' | 'chart';
 
@@ -20,6 +23,8 @@ type PreferencesState = {
   toggleMenuViewMode: () => void;
   restMenuCatalogView: RestMenuCatalogView;
   setRestMenuCatalogView: (mode: RestMenuCatalogView) => void;
+  restMenuCatalogGridCols: RestMenuCatalogGridCols;
+  setRestMenuCatalogGridCols: (cols: RestMenuCatalogGridCols) => void;
   reportsView: ReportsView;
   setReportsView: (mode: ReportsView) => void;
   /** RestaurantReportsScreen uyumluluğu — setReportsView alias */
@@ -30,12 +35,19 @@ type PreferencesState = {
 type PersistedPreferences = {
   menuViewMode?: MenuViewMode;
   restMenuCatalogView?: RestMenuCatalogView;
+  restMenuCatalogGridCols?: number;
   reportsView?: ReportsView;
   restReportsView?: ReportsView;
 };
 
 function normalizeReportsView(v: unknown): ReportsView {
   return v === 'chart' ? 'chart' : 'list';
+}
+
+function normalizeGridCols(v: unknown): RestMenuCatalogGridCols {
+  const n = Number(v);
+  if (n === 2 || n === 3 || n === 4 || n === 5 || n === 6) return n;
+  return 3;
 }
 
 export const usePreferencesStore = create<PreferencesState>()(
@@ -48,6 +60,9 @@ export const usePreferencesStore = create<PreferencesState>()(
         set({ menuViewMode: get().menuViewMode === 'cards' ? 'list' : 'cards' }),
       restMenuCatalogView: 'grid',
       setRestMenuCatalogView: (mode) => set({ restMenuCatalogView: mode }),
+      restMenuCatalogGridCols: 3,
+      setRestMenuCatalogGridCols: (cols) =>
+        set({ restMenuCatalogGridCols: normalizeGridCols(cols) }),
       reportsView: 'list',
       setReportsView: (mode) => set({ reportsView: mode, restReportsView: mode }),
       restReportsView: 'list',
@@ -55,11 +70,12 @@ export const usePreferencesStore = create<PreferencesState>()(
     }),
     {
       name: 'retailex_mobile_preferences',
-      version: 4,
+      version: 5,
       storage: createJSONStorage(() => AsyncStorage),
       partialize: (s) => ({
         menuViewMode: s.menuViewMode,
         restMenuCatalogView: s.restMenuCatalogView,
+        restMenuCatalogGridCols: s.restMenuCatalogGridCols,
         reportsView: s.reportsView,
       }),
       migrate: (persisted, fromVersion) => {
@@ -69,6 +85,7 @@ export const usePreferencesStore = create<PreferencesState>()(
           return {
             menuViewMode: 'list' as MenuViewMode,
             restMenuCatalogView: 'grid' as RestMenuCatalogView,
+            restMenuCatalogGridCols: 3 as RestMenuCatalogGridCols,
             reportsView: 'list' as ReportsView,
           };
         }
@@ -78,6 +95,7 @@ export const usePreferencesStore = create<PreferencesState>()(
         return {
           menuViewMode: prev.menuViewMode === 'cards' ? 'cards' : 'list',
           restMenuCatalogView: prev.restMenuCatalogView === 'list' ? 'list' : 'grid',
+          restMenuCatalogGridCols: normalizeGridCols(prev.restMenuCatalogGridCols),
           reportsView,
         };
       },
@@ -89,6 +107,9 @@ export const usePreferencesStore = create<PreferencesState>()(
           ...p,
           reportsView,
           restReportsView: reportsView,
+          restMenuCatalogGridCols: normalizeGridCols(
+            p.restMenuCatalogGridCols ?? current.restMenuCatalogGridCols,
+          ),
         };
       },
       onRehydrateStorage: () => (_state, error) => {

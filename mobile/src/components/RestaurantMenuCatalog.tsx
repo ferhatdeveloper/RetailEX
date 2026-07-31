@@ -26,8 +26,8 @@ import {
 } from '../store/preferencesStore';
 import { palette } from '../theme/colors';
 
-const GRID_COLS = 2;
-const GRID_GAP = 10;
+const GRID_GAP = 8;
+const GRID_COL_OPTIONS = [2, 3, 4, 5, 6] as const;
 const H_PAD = 0;
 
 const PLACEHOLDER_TONES = [
@@ -127,6 +127,8 @@ export function RestaurantMenuCatalog({
   const { width } = useWindowDimensions();
   const viewMode = usePreferencesStore((s) => s.restMenuCatalogView);
   const setViewMode = usePreferencesStore((s) => s.setRestMenuCatalogView);
+  const gridCols = usePreferencesStore((s) => s.restMenuCatalogGridCols);
+  const setGridCols = usePreferencesStore((s) => s.setRestMenuCatalogGridCols);
   const [category, setCategory] = useState<string | null>(null);
 
   const categories = useMemo(() => {
@@ -150,9 +152,10 @@ export function RestaurantMenuCatalog({
   }, [items, search, category]);
 
   const tileW = useMemo(() => {
-    const usable = width - 32 - GRID_GAP * (GRID_COLS - 1);
-    return Math.floor(usable / GRID_COLS);
-  }, [width]);
+    const cols = gridCols;
+    const usable = width - 32 - GRID_GAP * (cols - 1);
+    return Math.max(72, Math.floor(usable / cols));
+  }, [width, gridCols]);
 
   const setMode = (mode: RestMenuCatalogView) => setViewMode(mode);
 
@@ -197,6 +200,42 @@ export function RestaurantMenuCatalog({
           </Pressable>
         </View>
       </View>
+
+      {viewMode === 'grid' ? (
+        <View style={styles.colsRow}>
+          <Text style={{ color: colors.textMuted, fontSize: 11, fontWeight: '800' }}>
+            Sütun
+          </Text>
+          <View style={styles.colsChips}>
+            {GRID_COL_OPTIONS.map((n) => {
+              const on = gridCols === n;
+              return (
+                <Pressable
+                  key={n}
+                  onPress={() => setGridCols(n)}
+                  style={[
+                    styles.colChip,
+                    {
+                      backgroundColor: on ? palette.indigo600 : colors.card,
+                      borderColor: on ? palette.indigo600 : colors.cardBorder,
+                    },
+                  ]}
+                >
+                  <Text
+                    style={{
+                      color: on ? palette.white : colors.text,
+                      fontWeight: '900',
+                      fontSize: 12,
+                    }}
+                  >
+                    {n}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </View>
+      ) : null}
 
       <FormField
         label="Ara"
@@ -303,7 +342,7 @@ export function RestaurantMenuCatalog({
                   },
                 ]}
               >
-                <View style={styles.gridImageWrap}>
+                <View style={[styles.gridImageWrap, { height: gridCols >= 5 ? 72 : gridCols >= 4 ? 88 : 112 }]}>
                   <MenuThumb item={mi} size="fill" rounded={0} />
                   <View
                     style={[
@@ -420,6 +459,23 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  colsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 4,
+    paddingHorizontal: 0,
+  },
+  colsChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, flex: 1 },
+  colChip: {
+    minWidth: 36,
+    height: 32,
+    borderRadius: 8,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 8,
   },
   chipsScroll: { flexGrow: 0, marginHorizontal: H_PAD },
   chips: { gap: 8, paddingVertical: 2, paddingRight: 4 },

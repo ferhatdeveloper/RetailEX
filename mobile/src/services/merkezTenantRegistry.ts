@@ -145,13 +145,17 @@ export async function resolveTenantByCode(rawCode: string): Promise<ResolvedTena
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
     const guessed = buildSaaSTenantPostgrestUrl(code);
+    const notInDirectory = /bulunamadı|not found|404|no rows/i.test(msg);
     return {
       code,
       displayName: code,
       remoteRestUrl: guessed,
       databaseName: '',
       fromRegistry: false,
-      warning: `Merkez kaydı okunamadı (${msg}). Tahmini adres kullanıldı: ${guessed}`,
+      /** Kullanıcıya yumuşak not — iç hata metnini tekrarlama */
+      warning: notInDirectory
+        ? 'Merkez dizininde bu kod yok; standart bulut adresi kullanıldı.'
+        : 'Merkez dizinine ulaşılamadı; standart bulut adresi denendi.',
     };
   }
 }

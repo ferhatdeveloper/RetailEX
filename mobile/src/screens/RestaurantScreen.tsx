@@ -1637,6 +1637,40 @@ export function RestaurantScreen({ navigation, route }: Props) {
                       { backgroundColor: colors.card, borderTopColor: colors.cardBorder },
                     ]}
                   >
+                    <View style={styles.kitchenLangBlock}>
+                      <Text style={{ color: colors.textMuted, fontSize: 11, fontWeight: '800' }}>
+                        Mutfak fişi dili
+                      </Text>
+                      <View style={styles.payRow}>
+                        {KITCHEN_LANGS.map((lang) => (
+                          <Pressable
+                            key={lang.code}
+                            onPress={() => setKitchenLocale(lang.code)}
+                            style={[
+                              styles.langChip,
+                              {
+                                backgroundColor:
+                                  kitchenLocale === lang.code
+                                    ? palette.blue600
+                                    : colors.backgroundAlt,
+                                borderColor: colors.cardBorder,
+                              },
+                            ]}
+                          >
+                            <Text
+                              style={{
+                                color:
+                                  kitchenLocale === lang.code ? palette.white : colors.text,
+                                fontSize: 11,
+                                fontWeight: '900',
+                              }}
+                            >
+                              {lang.label}
+                            </Text>
+                          </Pressable>
+                        ))}
+                      </View>
+                    </View>
                     <PrimaryButton
                       label={
                         pendingKitchenCount > 0
@@ -1774,41 +1808,6 @@ export function RestaurantScreen({ navigation, route }: Props) {
                           </Text>
                         </Pressable>
                       ))}
-                    </View>
-
-                    <View style={styles.kitchenLangBlock}>
-                      <Text style={{ color: colors.textMuted, fontSize: 11, fontWeight: '800' }}>
-                        Mutfak fişi dili
-                      </Text>
-                      <View style={styles.payRow}>
-                        {KITCHEN_LANGS.map((lang) => (
-                          <Pressable
-                            key={lang.code}
-                            onPress={() => setKitchenLocale(lang.code)}
-                            style={[
-                              styles.langChip,
-                              {
-                                backgroundColor:
-                                  kitchenLocale === lang.code
-                                    ? palette.blue600
-                                    : colors.backgroundAlt,
-                                borderColor: colors.cardBorder,
-                              },
-                            ]}
-                          >
-                            <Text
-                              style={{
-                                color:
-                                  kitchenLocale === lang.code ? palette.white : colors.text,
-                                fontSize: 11,
-                                fontWeight: '900',
-                              }}
-                            >
-                              {lang.label}
-                            </Text>
-                          </Pressable>
-                        ))}
-                      </View>
                     </View>
 
                     {emptyTablesForMove.length > 0 ? (
