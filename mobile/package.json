@@ -1,6 +1,6 @@
 {
   "name": "mobile",
-  "version": "0.1.236",
+  "version": "0.1.237",
   "main": "index.ts",
   "dependencies": {
     "@react-native-async-storage/async-storage": "2.2.0",
