@@ -21,6 +21,7 @@ import {
   RestCompareBars,
   RestPieChart,
 } from '../components/RestReportCharts';
+import { ReportViewToggle } from '../components/ReportViewToggle';
 import { formatMoney } from '../api/erpTables';
 import {
   defaultRestReportRange,
@@ -100,8 +101,7 @@ function pctChange(cur: number, prev: number): string {
 export function RestaurantReportsScreen() {
   const { colors } = useThemeStore();
   const orgEpoch = useOrgEpoch();
-  const viewMode = usePreferencesStore((s) => s.restReportsView);
-  const setViewMode = usePreferencesStore((s) => s.setRestReportsView);
+  const viewMode = usePreferencesStore((s) => s.reportsView);
   const initial = useMemo(() => defaultRestReportRange(), []);
   const [kind, setKind] = useState<RestReportKind>('z');
   const [from, setFrom] = useState(initial.from);
@@ -551,39 +551,7 @@ export function RestaurantReportsScreen() {
         })}
       </ScrollView>
 
-      <View style={styles.viewToggle}>
-        {(
-          [
-            ['list', 'Liste'],
-            ['chart', 'Grafik'],
-          ] as const
-        ).map(([id, label]) => {
-          const on = viewMode === id;
-          return (
-            <Pressable
-              key={id}
-              onPress={() => setViewMode(id)}
-              style={[
-                styles.viewChip,
-                {
-                  backgroundColor: on ? palette.indigo600 : colors.card,
-                  borderColor: on ? palette.indigo600 : colors.cardBorder,
-                },
-              ]}
-            >
-              <Text
-                style={{
-                  color: on ? palette.white : colors.text,
-                  fontWeight: '800',
-                  fontSize: 12,
-                }}
-              >
-                {label}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </View>
+      <ReportViewToggle style={{ paddingHorizontal: 0, paddingTop: 0 }} />
 
       {kind !== 'compare' ? (
         <View style={styles.rangeBlock}>
@@ -1086,14 +1054,6 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     paddingHorizontal: 12,
     paddingVertical: 8,
-  },
-  viewToggle: { flexDirection: 'row', gap: 8 },
-  viewChip: {
-    flex: 1,
-    borderWidth: 1,
-    borderRadius: 10,
-    paddingVertical: 10,
-    alignItems: 'center',
   },
   chartBlock: { marginTop: 4 },
   rangeBlock: { gap: 8 },

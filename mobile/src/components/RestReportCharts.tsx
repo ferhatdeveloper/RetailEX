@@ -93,8 +93,16 @@ export function RestBarChart({
   );
 }
 
-/** Dikey sütun — saatlik satış */
-export function RestColumnChart({ data, money = true }: { data: ChartDatum[]; money?: boolean }) {
+/** Dikey sütun — saatlik / günlük satış */
+export function RestColumnChart({
+  data,
+  money = true,
+  title = 'Saatlik ciro',
+}: {
+  data: ChartDatum[];
+  money?: boolean;
+  title?: string;
+}) {
   const { colors } = useThemeStore();
   const { width } = useWindowDimensions();
   const chartW = Math.max(Math.min(width - 48, 520), data.length * 14 + 44);
@@ -115,7 +123,7 @@ export function RestColumnChart({ data, money = true }: { data: ChartDatum[]; mo
 
   return (
     <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
-      <Text style={[styles.cardTitle, { color: colors.textMuted }]}>Saatlik ciro</Text>
+      <Text style={[styles.cardTitle, { color: colors.textMuted }]}>{title}</Text>
       <ScrollView horizontal showsHorizontalScrollIndicator={false}>
         <Svg width={chartW} height={chartH}>
           {[0, 0.5, 1].map((t) => {

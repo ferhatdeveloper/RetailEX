@@ -1,15 +1,26 @@
 /**
  * Restoran raporları — web RestaurantService (Z / iptal / ürün / adisyon / analiz) ile uyumlu.
  * Tablo: rest.rex_{firm}_{period}_rest_orders / rest_order_items / rest_tables
+ * PostgREST-first: runDataTransport (viaRest + viaBridge).
  */
 import { pgQuery } from './pgClient';
-import { rethrowTransportInfra } from './dataTransport';
+import { postgrestGet } from './postgrestClient';
+import { runDataTransport, rethrowTransportInfra } from './dataTransport';
 import {
   restOrderItemsTable,
   restOrdersTable,
   restTablesTable,
   salesTable,
 } from './erpTables';
+
+function restTableBare(sqlName: string): string {
+  return sqlName.includes('.') ? sqlName.split('.').pop()! : sqlName;
+}
+
+/** ISO timestamptz — PostgREST `and(...)` içinde `:` / `.` için çift tırnak */
+function quoteIso(iso: string): string {
+  return `"${iso}"`;
+}
 
 function ymdToday(): string {
   const n = new Date();
@@ -70,6 +81,130 @@ async function trySql<T>(sql: string, params: unknown[] = []): Promise<T[]> {
     rethrowTransportInfra(e, 'restaurantReportsApi');
     return [];
   }
+}
+
+function isTruthyFlag(v: unknown): boolean {
+  return v === true || v === 'true' || v === 1 || v === '1';
+}
+
+function isVoidItem(r: Record<string, unknown>): boolean {
+  return isTruthyFlag(r.is_void);
+}
+
+function isComplimentaryItem(r: Record<string, unknown>): boolean {
+  return isTruthyFlag(r.is_complimentary);
+}
+
+function closedAtRangeAnd(start: string, end: string): string {
+  return `(closed_at.gte.${quoteIso(start)},closed_at.lte.${quoteIso(end)})`;
+}
+
+async function fetchTablesNameMapViaRest(): Promise<Map<string, string>> {
+  const bare = restTableBare(restTablesTable());
+  try {
+    const rows = await postgrestGet<Array<{ id?: string; number?: string | null }>>(
+      `/${bare}`,
+      { select: 'id,number', order: 'number.asc', limit: 500 },
+      { schema: 'rest' },
+    );
+    const map = new Map<string, string>();
+    for (const r of Array.isArray(rows) ? rows : []) {
+      if (r.id == null) continue;
+      map.set(String(r.id), r.number != null ? String(r.number) : '—');
+    }
+    return map;
+  } catch (e) {
+    rethrowTransportInfra(e, 'restaurantReportsApi.tables');
+    return new Map();
+  }
+}
+
+const CLOSED_ORDER_SELECT =
+  'id,order_no,table_id,waiter,total_amount,discount_amount,payment_method,opened_at,created_at,closed_at,status';
+
+async function fetchClosedOrdersRawViaRest(
+  start: string,
+  end: string,
+  limit = 10000,
+): Promise<Record<string, unknown>[]> {
+  const bare = restTableBare(restOrdersTable());
+  const rows = await postgrestGet<Record<string, unknown>[]>(
+    `/${bare}`,
+    {
+      status: 'eq.closed',
+      and: closedAtRangeAnd(start, end),
+      select: CLOSED_ORDER_SELECT,
+      order: 'closed_at.desc',
+      limit,
+    },
+    { schema: 'rest' },
+  );
+  return Array.isArray(rows) ? rows : [];
+}
+
+const ORDER_ITEM_SELECT =
+  'id,order_id,product_id,product_name,quantity,unit_price,subtotal,status,category_name,course,is_void,is_complimentary,void_reason';
+
+async function fetchOrderItemsForIdsViaRest(
+  orderIds: string[],
+  select = ORDER_ITEM_SELECT,
+): Promise<Record<string, unknown>[]> {
+  if (orderIds.length === 0) return [];
+  const bare = restTableBare(restOrderItemsTable());
+  const out: Record<string, unknown>[] = [];
+  const chunkSize = 50;
+  for (let i = 0; i < orderIds.length; i += chunkSize) {
+    const chunk = orderIds.slice(i, i + chunkSize);
+    const rows = await postgrestGet<Record<string, unknown>[]>(
+      `/${bare}`,
+      {
+        order_id: `in.(${chunk.join(',')})`,
+        select,
+        limit: 5000,
+      },
+      { schema: 'rest' },
+    );
+    if (Array.isArray(rows)) out.push(...rows);
+  }
+  return out;
+}
+
+async function fetchOrdersByIdsViaRest(
+  orderIds: string[],
+  select = CLOSED_ORDER_SELECT,
+): Promise<Record<string, unknown>[]> {
+  if (orderIds.length === 0) return [];
+  const bare = restTableBare(restOrdersTable());
+  const out: Record<string, unknown>[] = [];
+  const chunkSize = 50;
+  for (let i = 0; i < orderIds.length; i += chunkSize) {
+    const chunk = orderIds.slice(i, i + chunkSize);
+    const rows = await postgrestGet<Record<string, unknown>[]>(
+      `/${bare}`,
+      {
+        id: `in.(${chunk.join(',')})`,
+        select,
+        limit: 5000,
+      },
+      { schema: 'rest' },
+    );
+    if (Array.isArray(rows)) out.push(...rows);
+  }
+  return out;
+}
+
+function orderActivityTs(o: Record<string, unknown>): number | null {
+  const raw = o.closed_at ?? o.opened_at ?? o.created_at;
+  if (raw == null) return null;
+  const t = new Date(String(raw)).getTime();
+  return Number.isFinite(t) ? t : null;
+}
+
+function inIsoRange(ts: number | null, start: string, end: string): boolean {
+  if (ts == null) return false;
+  const a = new Date(start).getTime();
+  const b = new Date(end).getTime();
+  return ts >= a && ts <= b;
 }
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -177,9 +312,207 @@ export type RestDetailLineRow = {
   status: string | null;
 };
 
+function channelFromOrder(orderNo: string | null, tableName: string): string {
+  const n = String(orderNo || '').toUpperCase();
+  if (n.startsWith('DLV-') || n.startsWith('REST-DLV')) return 'Paket';
+  if (n.startsWith('GEL-') || n.startsWith('REST-GEL')) return 'Gel Al';
+  if (!tableName || tableName === '—' || /perakende|takeaway|delivery/i.test(tableName)) {
+    return 'Perakende';
+  }
+  return 'Masa';
+}
+
+function mapClosedOrderRow(
+  r: Record<string, unknown>,
+  tableNames: Map<string, string>,
+): RestClosedOrderRow {
+  const tableId = r.table_id == null ? null : String(r.table_id);
+  const tableName = tableId ? tableNames.get(tableId) ?? '—' : '—';
+  const orderNo = r.order_no == null ? null : String(r.order_no);
+  const opened =
+    r.opened_at != null ? String(r.opened_at) : r.created_at == null ? null : String(r.created_at);
+  return {
+    id: String(r.id ?? ''),
+    orderNo,
+    tableName,
+    waiter: r.waiter == null ? null : String(r.waiter),
+    totalAmount: Number(r.total_amount) || 0,
+    paymentMethod: r.payment_method == null ? null : String(r.payment_method),
+    openedAt: opened,
+    closedAt: r.closed_at == null ? null : String(r.closed_at),
+    status: r.status == null ? null : String(r.status),
+    channel: channelFromOrder(orderNo, tableName),
+  };
+}
+
+function isRestSaleFiche(r: Record<string, unknown>): boolean {
+  const fiche = String(r.fiche_no || '').toUpperCase();
+  const doc = String(r.document_no || '').toUpperCase();
+  return (
+    fiche.startsWith('REST-') ||
+    fiche.startsWith('GEL-') ||
+    fiche.startsWith('DLV-') ||
+    doc.startsWith('REST-') ||
+    doc.startsWith('GEL-') ||
+    doc.startsWith('DLV-')
+  );
+}
+
 // ─── Z Report ────────────────────────────────────────────────────────────────
 
-export async function fetchRestZReport(workDayYmd: string): Promise<RestZReport> {
+async function fetchRestZReportViaRest(workDayYmd: string): Promise<RestZReport> {
+  const range = restYmdRangeToUtcIso(workDayYmd, workDayYmd);
+  if (!range) throw new Error('Geçersiz tarih');
+  const { start, end } = range;
+
+  const orders = await fetchClosedOrdersRawViaRest(start, end, 10000);
+  const orderIds = orders.map((o) => String(o.id)).filter(Boolean);
+  const items = await fetchOrderItemsForIdsViaRest(orderIds);
+
+  // Ödeme dağılımı — önce siparişlerden; ERP sales varsa ve kayıt varsa onu tercih et
+  let paymentMap = new Map<string, { amount: number; count: number }>();
+  for (const o of orders) {
+    const method = String(o.payment_method || '')
+      .trim()
+      .toUpperCase() || 'DİĞER';
+    const amount =
+      (Number(o.total_amount) || 0) - (Number(o.discount_amount) || 0);
+    const cur = paymentMap.get(method) || { amount: 0, count: 0 };
+    cur.amount += amount;
+    cur.count += 1;
+    paymentMap.set(method, cur);
+  }
+
+  try {
+    const salesBare = restTableBare(salesTable());
+    const salesRows = await postgrestGet<Record<string, unknown>[]>(
+      `/${salesBare}`,
+      {
+        and: `(date.gte.${quoteIso(start)},date.lte.${quoteIso(end)})`,
+        select: 'payment_method,net_amount,is_cancelled,fiche_no,document_no,date',
+        limit: 8000,
+      },
+      { schema: 'public' },
+    );
+    const erpMap = new Map<string, { amount: number; count: number }>();
+    let erpCount = 0;
+    for (const r of Array.isArray(salesRows) ? salesRows : []) {
+      if (isTruthyFlag(r.is_cancelled)) continue;
+      if (!isRestSaleFiche(r)) continue;
+      const method =
+        String(r.payment_method || '')
+          .trim()
+          .toUpperCase() || 'DİĞER';
+      const cur = erpMap.get(method) || { amount: 0, count: 0 };
+      cur.amount += Number(r.net_amount) || 0;
+      cur.count += 1;
+      erpCount += 1;
+      erpMap.set(method, cur);
+    }
+    if (erpCount > 0) paymentMap = erpMap;
+  } catch (e) {
+    rethrowTransportInfra(e, 'fetchRestZReport.sales');
+  }
+
+  const paymentRows = [...paymentMap.entries()]
+    .map(([method, v]) => ({ method, amount: v.amount, count: v.count }))
+    .sort((a, b) => b.amount - a.amount);
+
+  const totalSales = paymentRows.reduce((s, r) => s + (Number(r.amount) || 0), 0);
+  const netCash = paymentRows
+    .filter((r) => /NAK[İI]T|CASH|^cash$/i.test(String(r.method || '')))
+    .reduce((s, r) => s + (Number(r.amount) || 0), 0);
+
+  let catAmount = 0;
+  const orderIdsWithSale = new Set<string>();
+  const voidMap = new Map<string, { amount: number; count: number }>();
+  let compAmount = 0;
+  let compCount = 0;
+  const productMap = new Map<string, { quantity: number; amount: number }>();
+
+  for (const oi of items) {
+    const oid = oi.order_id == null ? '' : String(oi.order_id);
+    const sub = Number(oi.subtotal) || 0;
+    if (isVoidItem(oi)) {
+      const reason = String(oi.void_reason || 'İptal');
+      const cur = voidMap.get(reason) || { amount: 0, count: 0 };
+      cur.amount += sub;
+      cur.count += 1;
+      voidMap.set(reason, cur);
+      continue;
+    }
+    catAmount += sub;
+    if (oid) orderIdsWithSale.add(oid);
+    if (isComplimentaryItem(oi)) {
+      compAmount += sub;
+      compCount += 1;
+    }
+    const name = String(oi.product_name ?? '');
+    const cur = productMap.get(name) || { quantity: 0, amount: 0 };
+    cur.quantity += Number(oi.quantity) || 0;
+    cur.amount += sub;
+    productMap.set(name, cur);
+  }
+
+  let returns = { amount: 0, count: 0 };
+  try {
+    const rr = await postgrestGet<Record<string, unknown>[]>(
+      '/return_log',
+      {
+        and: `(created_at.gte.${quoteIso(start)},created_at.lte.${quoteIso(end)})`,
+        select: 'id,total_amount',
+        limit: 5000,
+      },
+      { schema: 'rest' },
+    );
+    const list = Array.isArray(rr) ? rr : [];
+    returns = {
+      amount: list.reduce((s, r) => s + (Number(r.total_amount) || 0), 0),
+      count: list.length,
+    };
+  } catch (e) {
+    rethrowTransportInfra(e, 'fetchRestZReport.return_log');
+  }
+
+  const productRows = [...productMap.entries()]
+    .map(([product_name, v]) => ({
+      product_name,
+      qty: v.quantity,
+      amount: v.amount,
+    }))
+    .sort((a, b) => b.amount - a.amount);
+
+  return {
+    totalSales,
+    netCash,
+    paymentsByType: paymentRows.map((r) => ({
+      type: String(r.method || 'DİĞER'),
+      amount: Number(r.amount) || 0,
+      count: Number(r.count) || 0,
+    })),
+    salesByCategory: [
+      {
+        category: 'Satış',
+        amount: catAmount,
+        count: orderIdsWithSale.size,
+      },
+    ],
+    voids: [...voidMap.entries()].map(([reason, v]) => ({
+      reason,
+      amount: v.amount,
+      count: v.count,
+    })),
+    complements: { amount: compAmount, count: compCount },
+    returns,
+    salesByProduct: productRows.map((r) => ({
+      productName: String(r.product_name ?? ''),
+      quantity: Number(r.qty) || 0,
+      amount: Number(r.amount) || 0,
+    })),
+  };
+}
+
+async function fetchRestZReportViaBridge(workDayYmd: string): Promise<RestZReport> {
   const range = restYmdRangeToUtcIso(workDayYmd, workDayYmd);
   if (!range) throw new Error('Geçersiz tarih');
   const { start, end } = range;
@@ -219,8 +552,8 @@ export async function fetchRestZReport(workDayYmd: string): Promise<RestZReport>
     );
     const erpCount = (erp.rows || []).reduce((n, r) => n + (Number(r.count) || 0), 0);
     if (erpCount > 0) paymentRows = erp.rows;
-  } catch {
-    /* sales yok */
+  } catch (e) {
+    rethrowTransportInfra(e, 'fetchRestZReportViaBridge.sales');
   }
 
   const totalSales = paymentRows.reduce((s, r) => s + (Number(r.amount) || 0), 0);
@@ -277,8 +610,8 @@ export async function fetchRestZReport(workDayYmd: string): Promise<RestZReport>
       amount: Number(rr.rows[0]?.amount) || 0,
       count: Number(rr.rows[0]?.count) || 0,
     };
-  } catch {
-    /* return_log yok */
+  } catch (e) {
+    rethrowTransportInfra(e, 'fetchRestZReportViaBridge.return_log');
   }
 
   const productRows = await trySql<{ product_name: string; qty: number; amount: number }>(
@@ -328,9 +661,45 @@ export async function fetchRestZReport(workDayYmd: string): Promise<RestZReport>
   };
 }
 
+export async function fetchRestZReport(workDayYmd: string): Promise<RestZReport> {
+  return runDataTransport({
+    label: 'fetchRestZReport',
+    viaRest: () => fetchRestZReportViaRest(workDayYmd),
+    viaBridge: () => fetchRestZReportViaBridge(workDayYmd),
+  });
+}
+
 // ─── Product qty ─────────────────────────────────────────────────────────────
 
-export async function fetchRestProductQty(
+async function fetchRestProductQtyViaRest(
+  fromYmd: string,
+  toYmd: string,
+): Promise<RestProductQtyRow[]> {
+  const range = restYmdRangeToUtcIso(fromYmd, toYmd);
+  if (!range) throw new Error('Geçersiz tarih aralığı');
+  const orders = await fetchClosedOrdersRawViaRest(range.start, range.end, 10000);
+  const orderIds = orders.map((o) => String(o.id)).filter(Boolean);
+  const items = await fetchOrderItemsForIdsViaRest(orderIds);
+  const map = new Map<string, RestProductQtyRow>();
+  for (const oi of items) {
+    if (isVoidItem(oi)) continue;
+    const pid = oi.product_id == null || !String(oi.product_id).trim() ? null : String(oi.product_id);
+    const name = String(oi.product_name || '—');
+    const key = `${pid ?? ''}|${name}`;
+    const cur = map.get(key) || {
+      productId: pid,
+      productName: name,
+      quantity: 0,
+      revenue: 0,
+    };
+    cur.quantity += Number(oi.quantity) || 0;
+    cur.revenue += Number(oi.subtotal) || 0;
+    map.set(key, cur);
+  }
+  return [...map.values()].sort((a, b) => b.quantity - a.quantity);
+}
+
+async function fetchRestProductQtyViaBridge(
   fromYmd: string,
   toYmd: string,
 ): Promise<RestProductQtyRow[]> {
@@ -366,9 +735,74 @@ export async function fetchRestProductQty(
   }));
 }
 
+export async function fetchRestProductQty(
+  fromYmd: string,
+  toYmd: string,
+): Promise<RestProductQtyRow[]> {
+  return runDataTransport({
+    label: 'fetchRestProductQty',
+    viaRest: () => fetchRestProductQtyViaRest(fromYmd, toYmd),
+    viaBridge: () => fetchRestProductQtyViaBridge(fromYmd, toYmd),
+  });
+}
+
 // ─── Void / Return ───────────────────────────────────────────────────────────
 
-export async function fetchRestVoidReport(
+async function fetchRestVoidReportViaRest(
+  fromYmd: string,
+  toYmd: string,
+  limit = 200,
+): Promise<RestVoidRow[]> {
+  const range = restYmdRangeToUtcIso(fromYmd, toYmd);
+  if (!range) throw new Error('Geçersiz tarih aralığı');
+  const itemsBare = restTableBare(restOrderItemsTable());
+  let voidItems: Record<string, unknown>[] = [];
+  try {
+    voidItems = await postgrestGet<Record<string, unknown>[]>(
+      `/${itemsBare}`,
+      {
+        is_void: 'eq.true',
+        select: 'id,order_id,product_name,quantity,subtotal,void_reason',
+        limit: Math.max(limit * 5, 500),
+      },
+      { schema: 'rest' },
+    );
+  } catch (e) {
+    rethrowTransportInfra(e, 'fetchRestVoidReport.items');
+    throw e;
+  }
+  voidItems = Array.isArray(voidItems) ? voidItems : [];
+  const orderIds = [
+    ...new Set(voidItems.map((i) => (i.order_id == null ? '' : String(i.order_id))).filter(Boolean)),
+  ];
+  const orders = await fetchOrdersByIdsViaRest(orderIds);
+  const orderMap = new Map(orders.map((o) => [String(o.id), o]));
+  const tableNames = await fetchTablesNameMapViaRest();
+
+  const rows: RestVoidRow[] = [];
+  for (const oi of voidItems) {
+    const oid = oi.order_id == null ? '' : String(oi.order_id);
+    const o = orderMap.get(oid);
+    if (!o) continue;
+    if (!inIsoRange(orderActivityTs(o), range.start, range.end)) continue;
+    const tableId = o.table_id == null ? null : String(o.table_id);
+    rows.push({
+      itemId: String(oi.id),
+      productName: String(oi.product_name || '—'),
+      quantity: Number(oi.quantity) || 0,
+      subtotal: Number(oi.subtotal) || 0,
+      voidReason: String(oi.void_reason || 'İptal'),
+      orderNo: o.order_no == null ? null : String(o.order_no),
+      closedAt: o.closed_at == null ? null : String(o.closed_at),
+      waiter: o.waiter == null ? null : String(o.waiter),
+      tableNumber: tableId ? tableNames.get(tableId) ?? '—' : '—',
+    });
+  }
+  rows.sort((a, b) => String(b.closedAt || '').localeCompare(String(a.closedAt || '')));
+  return rows.slice(0, limit);
+}
+
+async function fetchRestVoidReportViaBridge(
   fromYmd: string,
   toYmd: string,
   limit = 200,
@@ -421,7 +855,55 @@ export async function fetchRestVoidReport(
   }));
 }
 
-export async function fetchRestReturnReport(
+export async function fetchRestVoidReport(
+  fromYmd: string,
+  toYmd: string,
+  limit = 200,
+): Promise<RestVoidRow[]> {
+  return runDataTransport({
+    label: 'fetchRestVoidReport',
+    viaRest: () => fetchRestVoidReportViaRest(fromYmd, toYmd, limit),
+    viaBridge: () => fetchRestVoidReportViaBridge(fromYmd, toYmd, limit),
+  });
+}
+
+async function fetchRestReturnReportViaRest(
+  fromYmd: string,
+  toYmd: string,
+  limit = 200,
+): Promise<RestReturnRow[]> {
+  const range = restYmdRangeToUtcIso(fromYmd, toYmd);
+  if (!range) return [];
+  try {
+    const rows = await postgrestGet<Record<string, unknown>[]>(
+      '/return_log',
+      {
+        and: `(created_at.gte.${quoteIso(range.start)},created_at.lte.${quoteIso(range.end)})`,
+        select:
+          'id,return_number,original_receipt,product_name,quantity,total_amount,return_reason,staff_name,created_at',
+        order: 'created_at.desc',
+        limit,
+      },
+      { schema: 'rest' },
+    );
+    return (Array.isArray(rows) ? rows : []).map((r) => ({
+      id: String(r.id),
+      returnNumber: String(r.return_number || ''),
+      originalReceipt: r.original_receipt == null ? null : String(r.original_receipt),
+      productName: String(r.product_name || '—'),
+      quantity: Number(r.quantity) || 0,
+      totalAmount: Number(r.total_amount) || 0,
+      returnReason: String(r.return_reason || ''),
+      staffName: r.staff_name == null ? null : String(r.staff_name),
+      createdAt: r.created_at == null ? null : String(r.created_at),
+    }));
+  } catch (e) {
+    rethrowTransportInfra(e, 'fetchRestReturnReport');
+    return [];
+  }
+}
+
+async function fetchRestReturnReportViaBridge(
   fromYmd: string,
   toYmd: string,
   limit = 200,
@@ -460,24 +942,41 @@ export async function fetchRestReturnReport(
       staffName: r.staff_name == null ? null : String(r.staff_name),
       createdAt: r.created_at,
     }));
-  } catch {
+  } catch (e) {
+    rethrowTransportInfra(e, 'fetchRestReturnReportViaBridge');
     return [];
   }
 }
 
-// ─── Closed orders / daily / analysis ────────────────────────────────────────
-
-function channelFromOrder(orderNo: string | null, tableName: string): string {
-  const n = String(orderNo || '').toUpperCase();
-  if (n.startsWith('DLV-') || n.startsWith('REST-DLV')) return 'Paket';
-  if (n.startsWith('GEL-') || n.startsWith('REST-GEL')) return 'Gel Al';
-  if (!tableName || tableName === '—' || /perakende|takeaway|delivery/i.test(tableName)) {
-    return 'Perakende';
-  }
-  return 'Masa';
+export async function fetchRestReturnReport(
+  fromYmd: string,
+  toYmd: string,
+  limit = 200,
+): Promise<RestReturnRow[]> {
+  return runDataTransport({
+    label: 'fetchRestReturnReport',
+    viaRest: () => fetchRestReturnReportViaRest(fromYmd, toYmd, limit),
+    viaBridge: () => fetchRestReturnReportViaBridge(fromYmd, toYmd, limit),
+  });
 }
 
-export async function fetchRestClosedOrders(
+// ─── Closed orders / daily / analysis ────────────────────────────────────────
+
+async function fetchRestClosedOrdersViaRest(
+  fromYmd: string,
+  toYmd: string,
+  limit = 200,
+): Promise<RestClosedOrderRow[]> {
+  const range = restYmdRangeToUtcIso(fromYmd, toYmd);
+  if (!range) throw new Error('Geçersiz tarih aralığı');
+  const [rows, tableNames] = await Promise.all([
+    fetchClosedOrdersRawViaRest(range.start, range.end, limit),
+    fetchTablesNameMapViaRest(),
+  ]);
+  return rows.map((r) => mapClosedOrderRow(r, tableNames)).filter((r) => r.id);
+}
+
+async function fetchRestClosedOrdersViaBridge(
   fromYmd: string,
   toYmd: string,
   limit = 200,
@@ -533,11 +1032,77 @@ export async function fetchRestClosedOrders(
   });
 }
 
-export async function fetchRestDailySummary(
+export async function fetchRestClosedOrders(
+  fromYmd: string,
+  toYmd: string,
+  limit = 200,
+): Promise<RestClosedOrderRow[]> {
+  return runDataTransport({
+    label: 'fetchRestClosedOrders',
+    viaRest: () => fetchRestClosedOrdersViaRest(fromYmd, toYmd, limit),
+    viaBridge: () => fetchRestClosedOrdersViaBridge(fromYmd, toYmd, limit),
+  });
+}
+
+function summarizeClosedOrders(
+  orders: RestClosedOrderRow[],
+  discount: number,
+  voidAmount: number,
+  complementaryAmount: number,
+): RestDailySummary {
+  let cash = 0;
+  let card = 0;
+  let other = 0;
+  let net = 0;
+  for (const o of orders) {
+    const amt = o.totalAmount;
+    net += amt;
+    const pm = String(o.paymentMethod || '').toUpperCase();
+    if (/NAK|CASH/.test(pm)) cash += amt;
+    else if (/KART|CARD|POS|CREDIT/.test(pm)) card += amt;
+    else other += amt;
+  }
+  return {
+    orderCount: orders.length,
+    gross: net + discount,
+    discount,
+    net,
+    cash,
+    card,
+    other,
+    voidAmount,
+    complementaryAmount,
+  };
+}
+
+async function fetchRestDailySummaryViaRest(
   fromYmd: string,
   toYmd: string,
 ): Promise<RestDailySummary> {
-  const orders = await fetchRestClosedOrders(fromYmd, toYmd, 5000);
+  const range = restYmdRangeToUtcIso(fromYmd, toYmd);
+  if (!range) throw new Error('Geçersiz tarih aralığı');
+  const rawOrders = await fetchClosedOrdersRawViaRest(range.start, range.end, 5000);
+  const tableNames = await fetchTablesNameMapViaRest();
+  const orders = rawOrders.map((r) => mapClosedOrderRow(r, tableNames)).filter((r) => r.id);
+  const orderIds = rawOrders.map((o) => String(o.id)).filter(Boolean);
+  const items = await fetchOrderItemsForIdsViaRest(orderIds);
+
+  let voidAmount = 0;
+  let complementaryAmount = 0;
+  for (const oi of items) {
+    const sub = Number(oi.subtotal) || 0;
+    if (isVoidItem(oi)) voidAmount += sub;
+    if (isComplimentaryItem(oi)) complementaryAmount += sub;
+  }
+  const discount = rawOrders.reduce((s, o) => s + (Number(o.discount_amount) || 0), 0);
+  return summarizeClosedOrders(orders, discount, voidAmount, complementaryAmount);
+}
+
+async function fetchRestDailySummaryViaBridge(
+  fromYmd: string,
+  toYmd: string,
+): Promise<RestDailySummary> {
+  const orders = await fetchRestClosedOrdersViaBridge(fromYmd, toYmd, 5000);
   const range = restYmdRangeToUtcIso(fromYmd, toYmd);
   let voidAmount = 0;
   let complementaryAmount = 0;
@@ -569,34 +1134,52 @@ export async function fetchRestDailySummary(
     );
     discount = Number(disc[0]?.amount) || 0;
   }
-
-  let cash = 0;
-  let card = 0;
-  let other = 0;
-  let net = 0;
-  for (const o of orders) {
-    const amt = o.totalAmount;
-    net += amt;
-    const pm = String(o.paymentMethod || '').toUpperCase();
-    if (/NAK|CASH/.test(pm)) cash += amt;
-    else if (/KART|CARD|POS|CREDIT/.test(pm)) card += amt;
-    else other += amt;
-  }
-
-  return {
-    orderCount: orders.length,
-    gross: net + discount,
-    discount,
-    net,
-    cash,
-    card,
-    other,
-    voidAmount,
-    complementaryAmount,
-  };
+  return summarizeClosedOrders(orders, discount, voidAmount, complementaryAmount);
 }
 
-export async function fetchRestCategoryReport(
+export async function fetchRestDailySummary(
+  fromYmd: string,
+  toYmd: string,
+): Promise<RestDailySummary> {
+  return runDataTransport({
+    label: 'fetchRestDailySummary',
+    viaRest: () => fetchRestDailySummaryViaRest(fromYmd, toYmd),
+    viaBridge: () => fetchRestDailySummaryViaBridge(fromYmd, toYmd),
+  });
+}
+
+async function fetchRestCategoryReportViaRest(
+  fromYmd: string,
+  toYmd: string,
+): Promise<RestCategoryRow[]> {
+  const range = restYmdRangeToUtcIso(fromYmd, toYmd);
+  if (!range) throw new Error('Geçersiz tarih aralığı');
+  const orders = await fetchClosedOrdersRawViaRest(range.start, range.end, 10000);
+  const orderIds = orders.map((o) => String(o.id)).filter(Boolean);
+  const items = await fetchOrderItemsForIdsViaRest(orderIds);
+  const map = new Map<string, { quantity: number; revenue: number }>();
+  for (const oi of items) {
+    if (isVoidItem(oi)) continue;
+    const cat =
+      String(oi.category_name || '').trim() ||
+      String(oi.course || '').trim() ||
+      'Genel';
+    const cur = map.get(cat) || { quantity: 0, revenue: 0 };
+    cur.quantity += Number(oi.quantity) || 0;
+    cur.revenue += Number(oi.subtotal) || 0;
+    map.set(cat, cur);
+  }
+  return [...map.entries()]
+    .filter(([, v]) => v.quantity > 0 || v.revenue > 0)
+    .map(([category, v]) => ({
+      category,
+      quantity: v.quantity,
+      revenue: v.revenue,
+    }))
+    .sort((a, b) => b.revenue - a.revenue);
+}
+
+async function fetchRestCategoryReportViaBridge(
   fromYmd: string,
   toYmd: string,
 ): Promise<RestCategoryRow[]> {
@@ -617,7 +1200,6 @@ export async function fetchRestCategoryReport(
      ORDER BY SUM(oi.subtotal) DESC`,
     [range.start, range.end],
   );
-  // category_name yoksa sade sorgu
   if (rows.length === 0) {
     const fallback = await trySql<{ category: string; quantity: number; revenue: number }>(
       `SELECT 'Genel' AS category,
@@ -645,7 +1227,40 @@ export async function fetchRestCategoryReport(
   }));
 }
 
-export async function fetchRestHourlyReport(
+export async function fetchRestCategoryReport(
+  fromYmd: string,
+  toYmd: string,
+): Promise<RestCategoryRow[]> {
+  return runDataTransport({
+    label: 'fetchRestCategoryReport',
+    viaRest: () => fetchRestCategoryReportViaRest(fromYmd, toYmd),
+    viaBridge: () => fetchRestCategoryReportViaBridge(fromYmd, toYmd),
+  });
+}
+
+async function fetchRestHourlyReportViaRest(
+  fromYmd: string,
+  toYmd: string,
+): Promise<RestHourlyRow[]> {
+  const range = restYmdRangeToUtcIso(fromYmd, toYmd);
+  if (!range) throw new Error('Geçersiz tarih aralığı');
+  const orders = await fetchClosedOrdersRawViaRest(range.start, range.end, 10000);
+  const map = new Map<number, { orderCount: number; revenue: number }>();
+  for (const o of orders) {
+    if (o.closed_at == null) continue;
+    const hour = new Date(String(o.closed_at)).getHours();
+    if (!Number.isFinite(hour)) continue;
+    const cur = map.get(hour) || { orderCount: 0, revenue: 0 };
+    cur.orderCount += 1;
+    cur.revenue += Number(o.total_amount) || 0;
+    map.set(hour, cur);
+  }
+  return [...map.entries()]
+    .map(([hour, v]) => ({ hour, orderCount: v.orderCount, revenue: v.revenue }))
+    .sort((a, b) => a.hour - b.hour);
+}
+
+async function fetchRestHourlyReportViaBridge(
   fromYmd: string,
   toYmd: string,
 ): Promise<RestHourlyRow[]> {
@@ -670,7 +1285,38 @@ export async function fetchRestHourlyReport(
   }));
 }
 
-export async function fetchRestWaiterReport(
+export async function fetchRestHourlyReport(
+  fromYmd: string,
+  toYmd: string,
+): Promise<RestHourlyRow[]> {
+  return runDataTransport({
+    label: 'fetchRestHourlyReport',
+    viaRest: () => fetchRestHourlyReportViaRest(fromYmd, toYmd),
+    viaBridge: () => fetchRestHourlyReportViaBridge(fromYmd, toYmd),
+  });
+}
+
+async function fetchRestWaiterReportViaRest(
+  fromYmd: string,
+  toYmd: string,
+): Promise<RestWaiterRow[]> {
+  const range = restYmdRangeToUtcIso(fromYmd, toYmd);
+  if (!range) throw new Error('Geçersiz tarih aralığı');
+  const orders = await fetchClosedOrdersRawViaRest(range.start, range.end, 10000);
+  const map = new Map<string, { orderCount: number; revenue: number }>();
+  for (const o of orders) {
+    const waiter = String(o.waiter || '').trim() || '—';
+    const cur = map.get(waiter) || { orderCount: 0, revenue: 0 };
+    cur.orderCount += 1;
+    cur.revenue += Number(o.total_amount) || 0;
+    map.set(waiter, cur);
+  }
+  return [...map.entries()]
+    .map(([waiter, v]) => ({ waiter, orderCount: v.orderCount, revenue: v.revenue }))
+    .sort((a, b) => b.revenue - a.revenue);
+}
+
+async function fetchRestWaiterReportViaBridge(
   fromYmd: string,
   toYmd: string,
 ): Promise<RestWaiterRow[]> {
@@ -695,7 +1341,46 @@ export async function fetchRestWaiterReport(
   }));
 }
 
-export async function fetchRestTableTurnover(
+export async function fetchRestWaiterReport(
+  fromYmd: string,
+  toYmd: string,
+): Promise<RestWaiterRow[]> {
+  return runDataTransport({
+    label: 'fetchRestWaiterReport',
+    viaRest: () => fetchRestWaiterReportViaRest(fromYmd, toYmd),
+    viaBridge: () => fetchRestWaiterReportViaBridge(fromYmd, toYmd),
+  });
+}
+
+async function fetchRestTableTurnoverViaRest(
+  fromYmd: string,
+  toYmd: string,
+): Promise<RestTableTurnoverRow[]> {
+  const range = restYmdRangeToUtcIso(fromYmd, toYmd);
+  if (!range) throw new Error('Geçersiz tarih aralığı');
+  const [orders, tableNames] = await Promise.all([
+    fetchClosedOrdersRawViaRest(range.start, range.end, 10000),
+    fetchTablesNameMapViaRest(),
+  ]);
+  const map = new Map<string, { orderCount: number; revenue: number }>();
+  for (const o of orders) {
+    const tableId = o.table_id == null ? null : String(o.table_id);
+    const tableName = tableId ? tableNames.get(tableId) ?? '—' : '—';
+    const cur = map.get(tableName) || { orderCount: 0, revenue: 0 };
+    cur.orderCount += 1;
+    cur.revenue += Number(o.total_amount) || 0;
+    map.set(tableName, cur);
+  }
+  return [...map.entries()]
+    .map(([tableName, v]) => ({
+      tableName,
+      orderCount: v.orderCount,
+      revenue: v.revenue,
+    }))
+    .sort((a, b) => b.revenue - a.revenue);
+}
+
+async function fetchRestTableTurnoverViaBridge(
   fromYmd: string,
   toYmd: string,
 ): Promise<RestTableTurnoverRow[]> {
@@ -722,7 +1407,64 @@ export async function fetchRestTableTurnover(
   }));
 }
 
-export async function fetchRestDetailLines(
+export async function fetchRestTableTurnover(
+  fromYmd: string,
+  toYmd: string,
+): Promise<RestTableTurnoverRow[]> {
+  return runDataTransport({
+    label: 'fetchRestTableTurnover',
+    viaRest: () => fetchRestTableTurnoverViaRest(fromYmd, toYmd),
+    viaBridge: () => fetchRestTableTurnoverViaBridge(fromYmd, toYmd),
+  });
+}
+
+async function fetchRestDetailLinesViaRest(
+  fromYmd: string,
+  toYmd: string,
+  limit = 300,
+): Promise<RestDetailLineRow[]> {
+  const range = restYmdRangeToUtcIso(fromYmd, toYmd);
+  if (!range) throw new Error('Geçersiz tarih aralığı');
+  const [orders, tableNames] = await Promise.all([
+    fetchClosedOrdersRawViaRest(range.start, range.end, 5000),
+    fetchTablesNameMapViaRest(),
+  ]);
+  const orderMap = new Map(orders.map((o) => [String(o.id), o]));
+  const orderIds = [...orderMap.keys()];
+  const items = await fetchOrderItemsForIdsViaRest(orderIds);
+  const lines: RestDetailLineRow[] = [];
+  for (const oi of items) {
+    if (isVoidItem(oi)) continue;
+    const o = orderMap.get(oi.order_id == null ? '' : String(oi.order_id));
+    if (!o) continue;
+    const tableId = o.table_id == null ? null : String(o.table_id);
+    const opened =
+      o.opened_at != null
+        ? String(o.opened_at)
+        : o.created_at == null
+          ? null
+          : String(o.created_at);
+    lines.push({
+      openedAt: opened,
+      closedAt: o.closed_at == null ? null : String(o.closed_at),
+      orderNo: o.order_no == null ? null : String(o.order_no),
+      tableName: tableId ? tableNames.get(tableId) ?? '—' : '—',
+      productName: String(oi.product_name || '—'),
+      quantity: Number(oi.quantity) || 0,
+      unitPrice: Number(oi.unit_price) || 0,
+      subtotal: Number(oi.subtotal) || 0,
+      status: oi.status == null ? null : String(oi.status),
+    });
+  }
+  lines.sort((a, b) => {
+    const c = String(b.closedAt || '').localeCompare(String(a.closedAt || ''));
+    if (c !== 0) return c;
+    return a.productName.localeCompare(b.productName);
+  });
+  return lines.slice(0, limit);
+}
+
+async function fetchRestDetailLinesViaBridge(
   fromYmd: string,
   toYmd: string,
   limit = 300,
@@ -775,6 +1517,18 @@ export async function fetchRestDetailLines(
   }));
 }
 
+export async function fetchRestDetailLines(
+  fromYmd: string,
+  toYmd: string,
+  limit = 300,
+): Promise<RestDetailLineRow[]> {
+  return runDataTransport({
+    label: 'fetchRestDetailLines',
+    viaRest: () => fetchRestDetailLinesViaRest(fromYmd, toYmd, limit),
+    viaBridge: () => fetchRestDetailLinesViaBridge(fromYmd, toYmd, limit),
+  });
+}
+
 export type RestPeriodCompare = {
   current: RestDailySummary;
   previous: RestDailySummary;
@@ -785,6 +1539,53 @@ export type RestPeriodCompare = {
 export async function fetchRestPeriodCompare(
   mode: 'week' | 'month',
 ): Promise<RestPeriodCompare> {
+  return runDataTransport({
+    label: 'fetchRestPeriodCompare',
+    viaRest: () => fetchRestPeriodCompareViaRest(mode),
+    viaBridge: () => fetchRestPeriodCompareViaBridge(mode),
+  });
+}
+
+async function fetchRestPeriodCompareViaRest(
+  mode: 'week' | 'month',
+): Promise<RestPeriodCompare> {
+  const ranges = periodCompareRanges(mode);
+  const [current, previous] = await Promise.all([
+    fetchRestDailySummaryViaRest(ranges.curFrom, ranges.curTo),
+    fetchRestDailySummaryViaRest(ranges.prevFrom, ranges.prevTo),
+  ]);
+  return {
+    current,
+    previous,
+    labelCurrent: ranges.labelCurrent,
+    labelPrevious: ranges.labelPrevious,
+  };
+}
+
+async function fetchRestPeriodCompareViaBridge(
+  mode: 'week' | 'month',
+): Promise<RestPeriodCompare> {
+  const ranges = periodCompareRanges(mode);
+  const [current, previous] = await Promise.all([
+    fetchRestDailySummaryViaBridge(ranges.curFrom, ranges.curTo),
+    fetchRestDailySummaryViaBridge(ranges.prevFrom, ranges.prevTo),
+  ]);
+  return {
+    current,
+    previous,
+    labelCurrent: ranges.labelCurrent,
+    labelPrevious: ranges.labelPrevious,
+  };
+}
+
+function periodCompareRanges(mode: 'week' | 'month'): {
+  curFrom: string;
+  curTo: string;
+  prevFrom: string;
+  prevTo: string;
+  labelCurrent: string;
+  labelPrevious: string;
+} {
   const n = new Date();
   const pad = (x: number) => String(x).padStart(2, '0');
   const ymd = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
@@ -797,11 +1598,11 @@ export async function fetchRestPeriodCompare(
     prevEnd.setDate(prevEnd.getDate() - 1);
     const prevStart = new Date(prevEnd);
     prevStart.setDate(prevStart.getDate() - 6);
-    const current = await fetchRestDailySummary(ymd(start), ymd(end));
-    const previous = await fetchRestDailySummary(ymd(prevStart), ymd(prevEnd));
     return {
-      current,
-      previous,
+      curFrom: ymd(start),
+      curTo: ymd(end),
+      prevFrom: ymd(prevStart),
+      prevTo: ymd(prevEnd),
       labelCurrent: `${ymd(start)} → ${ymd(end)}`,
       labelPrevious: `${ymd(prevStart)} → ${ymd(prevEnd)}`,
     };
@@ -811,11 +1612,11 @@ export async function fetchRestPeriodCompare(
   const curTo = ymd(n);
   const prevMonth = new Date(n.getFullYear(), n.getMonth() - 1, 1);
   const prevEnd = new Date(n.getFullYear(), n.getMonth(), 0);
-  const previous = await fetchRestDailySummary(ymd(prevMonth), ymd(prevEnd));
-  const current = await fetchRestDailySummary(curFrom, curTo);
   return {
-    current,
-    previous,
+    curFrom,
+    curTo,
+    prevFrom: ymd(prevMonth),
+    prevTo: ymd(prevEnd),
     labelCurrent: `${curFrom} → ${curTo}`,
     labelPrevious: `${ymd(prevMonth)} → ${ymd(prevEnd)}`,
   };

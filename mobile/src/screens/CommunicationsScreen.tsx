@@ -66,7 +66,7 @@ export function communicationsRouteTab(screenIdOrTab?: string): Tab {
     case 'databroadcast':
       return 'queue';
     case 'whatsapp':
-    case 'integrations':
+    case 'whatsapp-provider':
       return 'provider';
     case 'mesaj-bildirim':
     case 'emailcamp':

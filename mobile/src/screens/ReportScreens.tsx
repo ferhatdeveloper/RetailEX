@@ -10,6 +10,8 @@ import {
 } from 'react-native';
 import { useRoute, type RouteProp } from '@react-navigation/native';
 import { ScreenHeader, EmptyState, ErrorBanner, SearchBar } from '../components/ScreenChrome';
+import { ReportViewToggle } from '../components/ReportViewToggle';
+import { RestBarChart, RestColumnChart, RestPieChart } from '../components/RestReportCharts';
 import {
   fetchSalesByDay,
   fetchTopProducts,
@@ -40,6 +42,7 @@ import {
 import { fetchProducts } from '../api/productsApi';
 import { formatMoney, firmNr, periodNr, storeId, storeName } from '../api/erpTables';
 import { useThemeStore } from '../store/themeStore';
+import { usePreferencesStore } from '../store/preferencesStore';
 import { useOrgEpoch } from '../hooks/useOrgEpoch';
 import { palette } from '../theme/colors';
 import type { MainStackParamList } from '../navigation/types';
@@ -59,6 +62,7 @@ const REPORT_META: Record<ReportStockMode, { title: string; subtitle: string }> 
 export function ReportSalesScreen() {
   const { colors } = useThemeStore();
   const orgEpoch = useOrgEpoch();
+  const reportsView = usePreferencesStore((s) => s.reportsView);
   const [days, setDays] = useState<SalesDayRow[]>([]);
   const [top, setTop] = useState<TopProductRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -84,12 +88,33 @@ export function ReportSalesScreen() {
   const totalRev = days.reduce((s, d) => s + d.revenue, 0);
   const totalCnt = days.reduce((s, d) => s + d.count, 0);
 
+  const dayChart = useMemo(
+    () =>
+      days.map((d) => ({
+        key: d.day,
+        label: d.day.slice(5),
+        value: d.revenue,
+      })),
+    [days],
+  );
+
+  const topChart = useMemo(
+    () =>
+      top.map((p, i) => ({
+        key: `${p.product_name}-${i}`,
+        label: p.product_name,
+        value: p.amount,
+      })),
+    [top],
+  );
+
   const storeLbl = storeName() || storeId() || 'firma geneli';
   const orgLabel = `Firma ${firmNr()} · Dönem ${periodNr()} · ${storeLbl} · Son 14 gün`;
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
       <ScreenHeader title="Günlük Satış Özeti" subtitle={orgLabel} />
+      <ReportViewToggle />
       <View style={styles.kpiRow}>
         <View style={[styles.kpi, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
           <Text style={styles.lbl}>Ciro</Text>
@@ -118,17 +143,27 @@ export function ReportSalesScreen() {
             />
           }
           ListHeaderComponent={
-            top.length > 0 ? (
-              <View style={{ marginBottom: 12 }}>
-                <Text style={[styles.sec, { color: colors.text }]}>En çok satanlar</Text>
-                {top.slice(0, 5).map((p, i) => (
-                  <Text key={`${p.product_name}-${i}`} style={{ color: colors.textMuted, fontSize: 12, marginTop: 4 }}>
-                    {i + 1}. {p.product_name} — {formatMoney(p.amount)}
-                  </Text>
-                ))}
-                <Text style={[styles.sec, { color: colors.text, marginTop: 16 }]}>Günlük</Text>
-              </View>
-            ) : null
+            <View style={{ marginBottom: 12 }}>
+              {reportsView === 'chart' ? (
+                <View style={styles.chartBlock}>
+                  <RestColumnChart data={dayChart} title="Günlük ciro" money />
+                  <RestBarChart data={topChart} valueLabel="En çok satanlar" money maxBars={12} />
+                </View>
+              ) : top.length > 0 ? (
+                <>
+                  <Text style={[styles.sec, { color: colors.text }]}>En çok satanlar</Text>
+                  {top.slice(0, 5).map((p, i) => (
+                    <Text
+                      key={`${p.product_name}-${i}`}
+                      style={{ color: colors.textMuted, fontSize: 12, marginTop: 4 }}
+                    >
+                      {i + 1}. {p.product_name} — {formatMoney(p.amount)}
+                    </Text>
+                  ))}
+                  <Text style={[styles.sec, { color: colors.text, marginTop: 16 }]}>Günlük</Text>
+                </>
+              ) : null}
+            </View>
           }
           contentContainerStyle={{ padding: 12, paddingBottom: 40 }}
           renderItem={({ item }) => (
@@ -145,8 +180,6 @@ export function ReportSalesScreen() {
 }
 
 export function ReportStockScreen() {
-  const { colors } = useThemeStore();
-  const orgEpoch = useOrgEpoch();
   const route = useRoute<RouteProp<MainStackParamList, 'ReportStock'>>();
   const mode = route.params?.mode ?? 'critical';
   const meta = REPORT_META[mode];
@@ -164,6 +197,13 @@ export function ReportStockScreen() {
     return <ReportMaterialExtract meta={meta} />;
   }
 
+  return <ReportCriticalStock meta={meta} />;
+}
+
+function ReportCriticalStock({ meta }: { meta: { title: string; subtitle: string } }) {
+  const { colors } = useThemeStore();
+  const orgEpoch = useOrgEpoch();
+  const reportsView = usePreferencesStore((s) => s.reportsView);
   const [rows, setRows] = useState<Awaited<ReturnType<typeof import('../api/reportsApi').fetchCriticalStock>>>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -184,12 +224,23 @@ export function ReportStockScreen() {
     void load();
   }, [load]);
 
+  const chartData = useMemo(
+    () =>
+      rows.map((r) => ({
+        key: String(r.id),
+        label: r.name,
+        value: Math.max(0, (r.min_stock || 0) - r.stock) || Math.abs(r.stock),
+      })),
+    [rows],
+  );
+
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
       <ScreenHeader
         title={meta.title}
         subtitle={`Firma ${firmNr()} · ${rows.length} malzeme`}
       />
+      <ReportViewToggle />
       {error ? <ErrorBanner message={error} onRetry={() => void load()} /> : null}
       {loading ? (
         <ActivityIndicator style={{ marginTop: 40 }} color={palette.blue600} />
@@ -206,6 +257,13 @@ export function ReportStockScreen() {
                   : `Kritik stok yok (firma ${firmNr()}) — min/critical altı ürün bulunamadı`
               }
             />
+          }
+          ListHeaderComponent={
+            reportsView === 'chart' ? (
+              <View style={styles.chartBlock}>
+                <RestBarChart data={chartData} valueLabel="Eksik / stok adedi" maxBars={12} />
+              </View>
+            ) : null
           }
           contentContainerStyle={{ padding: 12, gap: 8, paddingBottom: 40 }}
           renderItem={({ item }) => (
@@ -226,6 +284,7 @@ export function ReportStockScreen() {
 function ReportMinMaxStock({ meta }: { meta: { title: string; subtitle: string } }) {
   const { colors } = useThemeStore();
   const orgEpoch = useOrgEpoch();
+  const reportsView = usePreferencesStore((s) => s.reportsView);
   const [filter, setFilter] = useState<'all' | 'low' | 'out'>('all');
   const [rows, setRows] = useState<MinMaxStockRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -260,9 +319,23 @@ function ReportMinMaxStock({ meta }: { meta: { title: string; subtitle: string }
     return colors.text;
   };
 
+  const chartData = useMemo(
+    () =>
+      rows.map((r) => ({
+        key: r.id,
+        label: r.name,
+        value:
+          r.min_stock != null && r.stock < r.min_stock
+            ? Math.max(0, r.min_stock - r.stock)
+            : Math.abs(r.stock),
+      })),
+    [rows],
+  );
+
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
       <ScreenHeader title={meta.title} subtitle={`${rows.length} malzeme · ${meta.subtitle}`} />
+      <ReportViewToggle />
       <View style={styles.filterRow}>
         {filters.map((f) => (
           <Pressable
@@ -291,6 +364,13 @@ function ReportMinMaxStock({ meta }: { meta: { title: string; subtitle: string }
           keyExtractor={(item) => item.id}
           refreshControl={<RefreshControl refreshing={loading} onRefresh={() => void load()} />}
           ListEmptyComponent={<EmptyState message="Kayıt yok" />}
+          ListHeaderComponent={
+            reportsView === 'chart' ? (
+              <View style={styles.chartBlock}>
+                <RestBarChart data={chartData} valueLabel="Stok / eksik adet" maxBars={12} />
+              </View>
+            ) : null
+          }
           contentContainerStyle={{ padding: 12, gap: 8, paddingBottom: 40 }}
           renderItem={({ item }) => (
             <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
@@ -313,6 +393,7 @@ function ReportMinMaxStock({ meta }: { meta: { title: string; subtitle: string }
 function ReportMaterialValue({ meta }: { meta: { title: string; subtitle: string } }) {
   const { colors } = useThemeStore();
   const orgEpoch = useOrgEpoch();
+  const reportsView = usePreferencesStore((s) => s.reportsView);
   const [rows, setRows] = useState<MaterialValueRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -335,9 +416,20 @@ function ReportMaterialValue({ meta }: { meta: { title: string; subtitle: string
 
   const total = useMemo(() => rows.reduce((s, r) => s + r.total_value, 0), [rows]);
 
+  const chartData = useMemo(
+    () =>
+      rows.map((r) => ({
+        key: r.id,
+        label: r.name,
+        value: r.total_value,
+      })),
+    [rows],
+  );
+
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
       <ScreenHeader title={meta.title} subtitle={`${rows.length} malzeme · ${meta.subtitle}`} />
+      <ReportViewToggle />
       <View style={styles.kpiRow}>
         <View style={[styles.kpi, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
           <Text style={styles.lbl}>Toplam değer</Text>
@@ -353,6 +445,13 @@ function ReportMaterialValue({ meta }: { meta: { title: string; subtitle: string
           keyExtractor={(item) => item.id}
           refreshControl={<RefreshControl refreshing={loading} onRefresh={() => void load()} />}
           ListEmptyComponent={<EmptyState message="Stoklu malzeme yok" />}
+          ListHeaderComponent={
+            reportsView === 'chart' ? (
+              <View style={styles.chartBlock}>
+                <RestBarChart data={chartData} valueLabel="Malzeme değeri" money maxBars={12} />
+              </View>
+            ) : null
+          }
           contentContainerStyle={{ padding: 12, gap: 8, paddingBottom: 40 }}
           renderItem={({ item }) => (
             <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
@@ -375,6 +474,7 @@ function ReportMaterialValue({ meta }: { meta: { title: string; subtitle: string
 function ReportWarehouseStatus({ meta }: { meta: { title: string; subtitle: string } }) {
   const { colors } = useThemeStore();
   const orgEpoch = useOrgEpoch();
+  const reportsView = usePreferencesStore((s) => s.reportsView);
   const [warehouseName, setWarehouseName] = useState<string | null>(null);
   const [rows, setRows] = useState<WarehouseStatusRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -398,12 +498,23 @@ function ReportWarehouseStatus({ meta }: { meta: { title: string; subtitle: stri
     void load();
   }, [load]);
 
+  const chartData = useMemo(
+    () =>
+      rows.map((r) => ({
+        key: r.id,
+        label: r.name,
+        value: Math.abs(r.total),
+      })),
+    [rows],
+  );
+
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
       <ScreenHeader
         title={meta.title}
         subtitle={warehouseName ? `${warehouseName} · ${rows.length} malzeme` : `${rows.length} malzeme`}
       />
+      <ReportViewToggle />
       {error ? <ErrorBanner message={error} onRetry={() => void load()} /> : null}
       {loading ? (
         <ActivityIndicator style={{ marginTop: 40 }} color={palette.blue600} />
@@ -413,6 +524,13 @@ function ReportWarehouseStatus({ meta }: { meta: { title: string; subtitle: stri
           keyExtractor={(item) => item.id}
           refreshControl={<RefreshControl refreshing={loading} onRefresh={() => void load()} />}
           ListEmptyComponent={<EmptyState message="Stok kaydı yok" />}
+          ListHeaderComponent={
+            reportsView === 'chart' ? (
+              <View style={styles.chartBlock}>
+                <RestBarChart data={chartData} valueLabel="Ambar stok toplamı" maxBars={12} />
+              </View>
+            ) : null
+          }
           contentContainerStyle={{ padding: 12, gap: 8, paddingBottom: 40 }}
           renderItem={({ item }) => (
             <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
@@ -433,6 +551,7 @@ function ReportWarehouseStatus({ meta }: { meta: { title: string; subtitle: stri
 function ReportMaterialExtract({ meta }: { meta: { title: string; subtitle: string } }) {
   const { colors } = useThemeStore();
   const orgEpoch = useOrgEpoch();
+  const reportsView = usePreferencesStore((s) => s.reportsView);
   const range = useMemo(() => defaultExtractRange(30), []);
   const [products, setProducts] = useState<Awaited<ReturnType<typeof fetchProducts>>>([]);
   const [productId, setProductId] = useState('');
@@ -514,6 +633,16 @@ function ReportMaterialExtract({ meta }: { meta: { title: string; subtitle: stri
 
   const closing = rows.length ? rows[rows.length - 1].running_balance : 0;
 
+  const chartData = useMemo(
+    () =>
+      rows.map((r, i) => ({
+        key: r.id || `m-${i}`,
+        label: r.date.slice(5) || r.movement_type,
+        value: Math.abs(r.quantity),
+      })),
+    [rows],
+  );
+
   if (picking) {
     return (
       <View style={[styles.root, { backgroundColor: colors.background }]}>
@@ -557,6 +686,7 @@ function ReportMaterialExtract({ meta }: { meta: { title: string; subtitle: stri
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
       <ScreenHeader title={meta.title} subtitle={`${range.start} → ${range.end}`} />
+      <ReportViewToggle />
       <Pressable
         onPress={() => setPicking(true)}
         style={[styles.picker, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}
@@ -588,6 +718,13 @@ function ReportMaterialExtract({ meta }: { meta: { title: string; subtitle: stri
           keyExtractor={(item) => item.id}
           refreshControl={<RefreshControl refreshing={loading} onRefresh={() => void load()} />}
           ListEmptyComponent={<EmptyState message="Hareket yok — malzeme seçin" />}
+          ListHeaderComponent={
+            reportsView === 'chart' ? (
+              <View style={styles.chartBlock}>
+                <RestBarChart data={chartData} valueLabel="Hareket miktarı" maxBars={14} />
+              </View>
+            ) : null
+          }
           contentContainerStyle={{ padding: 12, gap: 6, paddingBottom: 40 }}
           renderItem={({ item }) => (
             <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
@@ -624,6 +761,7 @@ type CardFilter = 'all' | 'customer' | 'supplier';
 export function ReportMizanScreen() {
   const { colors } = useThemeStore();
   const orgEpoch = useOrgEpoch();
+  const reportsView = usePreferencesStore((s) => s.reportsView);
   const [cardType, setCardType] = useState<CardFilter>('all');
   const [search, setSearch] = useState('');
   const [rows, setRows] = useState<CariBalanceRow[]>([]);
@@ -679,6 +817,16 @@ export function ReportMizanScreen() {
     return { recv, pay, net: recv - pay, cardRecv, cardPay, cardNet: cardRecv - cardPay };
   }, [rows]);
 
+  const chartData = useMemo(
+    () =>
+      filtered.map((r) => ({
+        key: `${r.cardType}-${r.accountId}`,
+        label: r.accountName,
+        value: Math.abs(r.balance),
+      })),
+    [filtered],
+  );
+
   const source = rows[0]?.balanceSource ?? 'period_ledger';
   const isLedger = source === 'period_ledger';
 
@@ -694,6 +842,7 @@ export function ReportMizanScreen() {
         title="Cari Bakiye Özeti"
         subtitle={`${orgLabel} · ${filtered.length} hesap · yasal GL mizanı değil`}
       />
+      <ReportViewToggle />
       <View
         style={[
           styles.hintBox,
@@ -757,6 +906,13 @@ export function ReportMizanScreen() {
           keyExtractor={(item) => `${item.cardType}-${item.accountId}`}
           refreshControl={<RefreshControl refreshing={loading} onRefresh={() => void load()} />}
           ListEmptyComponent={<EmptyState message="Dönemde bakiyesi olan cari yok" />}
+          ListHeaderComponent={
+            reportsView === 'chart' ? (
+              <View style={styles.chartBlock}>
+                <RestBarChart data={chartData} valueLabel="Mutlak bakiye (üst hesaplar)" money maxBars={12} />
+              </View>
+            ) : null
+          }
           contentContainerStyle={{ padding: 12, gap: 8, paddingBottom: 40 }}
           renderItem={({ item }) => {
             const cardDiffers = Math.abs(item.balance - item.cardBalance) > 0.009;
@@ -800,6 +956,7 @@ export function ReportCariExtractScreen() {
   const presetAccountId = route.params?.accountId;
   const presetCardType = route.params?.cardType;
   const orgEpoch = useOrgEpoch();
+  const reportsView = usePreferencesStore((s) => s.reportsView);
   const range = useMemo(() => defaultExtractRange(90), []);
   const [cardType, setCardType] = useState<'customer' | 'supplier'>(presetCardType ?? 'customer');
   const [accounts, setAccounts] = useState<CariBalanceRow[]>([]);
@@ -894,6 +1051,16 @@ export function ReportCariExtractScreen() {
 
   const closing = rows.length ? rows[rows.length - 1].balance : 0;
 
+  const chartData = useMemo(
+    () =>
+      rows.map((r, i) => ({
+        key: r.id || `x-${i}`,
+        label: r.date.slice(5) || r.ficheNo || `#${i + 1}`,
+        value: Math.abs(r.debit || r.credit || r.balance),
+      })),
+    [rows],
+  );
+
   if (picking) {
     return (
       <View style={[styles.root, { backgroundColor: colors.background }]}>
@@ -940,6 +1107,7 @@ export function ReportCariExtractScreen() {
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
       <ScreenHeader title="Cari Ekstre" subtitle={`${range.start} → ${range.end}`} />
+      <ReportViewToggle />
       <View style={styles.filterRow}>
         {(['customer', 'supplier'] as const).map((t) => (
           <Pressable
@@ -992,6 +1160,13 @@ export function ReportCariExtractScreen() {
           keyExtractor={(item) => item.id}
           refreshControl={<RefreshControl refreshing={loading} onRefresh={() => void load()} />}
           ListEmptyComponent={<EmptyState message="Hareket yok — cari veya tarih aralığı seçin" />}
+          ListHeaderComponent={
+            reportsView === 'chart' ? (
+              <View style={styles.chartBlock}>
+                <RestBarChart data={chartData} valueLabel="Hareket tutarı (mutlak)" money maxBars={14} />
+              </View>
+            ) : null
+          }
           contentContainerStyle={{ padding: 12, gap: 6, paddingBottom: 40 }}
           renderItem={({ item }) => (
             <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
@@ -1027,6 +1202,7 @@ export function ReportCariExtractScreen() {
 export function ReportProductSalesScreen() {
   const { colors } = useThemeStore();
   const orgEpoch = useOrgEpoch();
+  const reportsView = usePreferencesStore((s) => s.reportsView);
   const range = useMemo(() => defaultExtractRange(30), []);
   const [rows, setRows] = useState<ProductSalesRow[]>([]);
   const [search, setSearch] = useState('');
@@ -1070,12 +1246,33 @@ export function ReportProductSalesScreen() {
     return { qty, amount };
   }, [filtered]);
 
+  const amountChart = useMemo(
+    () =>
+      filtered.map((r) => ({
+        key: `${r.productId}-${r.productCode}`,
+        label: r.productName,
+        value: r.amount,
+      })),
+    [filtered],
+  );
+
+  const qtyChart = useMemo(
+    () =>
+      filtered.map((r) => ({
+        key: `q-${r.productId}-${r.productCode}`,
+        label: r.productName,
+        value: r.qty,
+      })),
+    [filtered],
+  );
+
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
       <ScreenHeader
         title="Ürün Satış Raporu"
         subtitle={`Firma ${firmNr()} · Dönem ${periodNr()} · ${range.start} → ${range.end}`}
       />
+      <ReportViewToggle />
       <SearchBar value={search} onChangeText={setSearch} placeholder="Ürün adı veya kod…" />
       <View style={styles.kpiRow}>
         <View style={[styles.kpi, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
@@ -1108,6 +1305,14 @@ export function ReportProductSalesScreen() {
               }
             />
           }
+          ListHeaderComponent={
+            reportsView === 'chart' ? (
+              <View style={styles.chartBlock}>
+                <RestBarChart data={amountChart} valueLabel="Tutara göre" money maxBars={12} />
+                <RestBarChart data={qtyChart} valueLabel="Miktara göre" maxBars={12} />
+              </View>
+            ) : null
+          }
           contentContainerStyle={{ padding: 12, gap: 8, paddingBottom: 40 }}
           renderItem={({ item, index }) => (
             <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
@@ -1132,6 +1337,7 @@ export function ReportProductSalesScreen() {
 export function ReportCashScreen() {
   const { colors } = useThemeStore();
   const orgEpoch = useOrgEpoch();
+  const reportsView = usePreferencesStore((s) => s.reportsView);
   const range = useMemo(() => defaultExtractRange(30), []);
   const [rows, setRows] = useState<CashMovementRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1164,9 +1370,38 @@ export function ReportCashScreen() {
     return { inflow, outflow, net: inflow - outflow };
   }, [rows]);
 
+  const byTypeChart = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const r of rows) {
+      const key = (r.transactionType || r.definition || 'Diğer').trim() || 'Diğer';
+      map.set(key, (map.get(key) || 0) + Math.abs(r.netAmount));
+    }
+    return [...map.entries()].map(([label, value]) => ({
+      key: label,
+      label,
+      value,
+    }));
+  }, [rows]);
+
+  const byDayChart = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const r of rows) {
+      const day = r.date.slice(0, 10);
+      map.set(day, (map.get(day) || 0) + Math.abs(r.netAmount));
+    }
+    return [...map.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([day, value]) => ({
+        key: day,
+        label: day.slice(5),
+        value,
+      }));
+  }, [rows]);
+
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
       <ScreenHeader title="Kasa Raporu" subtitle={`${range.start} → ${range.end}`} />
+      <ReportViewToggle />
       <View style={styles.kpiRow}>
         <View style={[styles.kpi, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
           <Text style={styles.lbl}>Giriş</Text>
@@ -1190,6 +1425,14 @@ export function ReportCashScreen() {
           keyExtractor={(item) => item.id}
           refreshControl={<RefreshControl refreshing={loading} onRefresh={() => void load()} />}
           ListEmptyComponent={<EmptyState message="Kasa hareketi yok" />}
+          ListHeaderComponent={
+            reportsView === 'chart' ? (
+              <View style={styles.chartBlock}>
+                <RestBarChart data={byTypeChart} valueLabel="Türe göre" money maxBars={10} />
+                <RestColumnChart data={byDayChart} title="Günlük hareket" money />
+              </View>
+            ) : null
+          }
           contentContainerStyle={{ padding: 12, gap: 8, paddingBottom: 40 }}
           renderItem={({ item }) => (
             <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
@@ -1222,6 +1465,7 @@ export function ReportCashScreen() {
 export function ReportAgingScreen() {
   const { colors } = useThemeStore();
   const orgEpoch = useOrgEpoch();
+  const reportsView = usePreferencesStore((s) => s.reportsView);
   const [cardType, setCardType] = useState<CardFilter>('all');
   const [rows, setRows] = useState<CariAgingRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1263,6 +1507,16 @@ export function ReportAgingScreen() {
     return init;
   }, [rows]);
 
+  const pieData = useMemo(
+    () =>
+      (['current', 'd1_30', 'd31_60', 'd61_90', 'd90_plus'] as AgingBucket[]).map((b) => ({
+        key: b,
+        label: agingBucketLabel(b),
+        value: bucketTotals[b],
+      })),
+    [bucketTotals],
+  );
+
   const filters: { id: CardFilter; label: string }[] = [
     { id: 'all', label: 'Tümü' },
     { id: 'customer', label: 'Müşteri' },
@@ -1275,6 +1529,7 @@ export function ReportAgingScreen() {
         title="Cari Yaşlandırma"
         subtitle={`${orgLabel} · ${rows.length} açık fiş`}
       />
+      <ReportViewToggle />
       <View
         style={[
           styles.hintBox,
@@ -1334,6 +1589,14 @@ export function ReportAgingScreen() {
             />
           }
           ListEmptyComponent={<EmptyState message="Açık vade fişi yok" />}
+          ListHeaderComponent={
+            reportsView === 'chart' ? (
+              <View style={styles.chartBlock}>
+                <RestPieChart data={pieData} title="Vade dilimleri" />
+                <RestBarChart data={pieData} valueLabel="Dilime göre tutar" money maxBars={5} />
+              </View>
+            ) : null
+          }
           renderItem={({ item }) => (
             <View
               style={[
@@ -1381,6 +1644,7 @@ const styles = StyleSheet.create({
   val: { fontSize: 16, fontWeight: '800', marginTop: 4 },
   valSm: { fontSize: 13, fontWeight: '800', marginTop: 4 },
   sec: { fontSize: 13, fontWeight: '700', marginBottom: 4 },
+  chartBlock: { marginBottom: 8, gap: 4 },
   row: {
     flexDirection: 'row',
     justifyContent: 'space-between',

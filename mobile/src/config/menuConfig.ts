@@ -390,6 +390,8 @@ export type LiveRoute =
   | 'Pricing'
   | 'Campaigns'
   | 'Communications'
+  | 'Integrations'
+  | 'CustomerCallPlan'
   | 'Notifications'
   | 'PrinterSettings'
   | 'ScaleManagement'
@@ -410,7 +412,7 @@ const LIVE_MAP: Record<string, LiveRoute> = {
   storeconfig: 'Organization',
   'hybrid-sync': 'System',
   databroadcast: 'Communications',
-  integrations: 'Communications',
+  integrations: 'Integrations',
   etransform: 'ETransform',
   'document-scan': 'DocumentScan',
   usermanagement: 'System',
@@ -444,7 +446,7 @@ const LIVE_MAP: Record<string, LiveRoute> = {
   'finance-cards': 'Customers',
   'payment-plans': 'FinanceDefinitions',
   'cost-centers': 'FinanceDefinitions',
-  'customer-call-plan': 'FinanceDefinitions',
+  'customer-call-plan': 'CustomerCallPlan',
   revenueexpense: 'FinanceDefinitions',
   'finance-definitions': 'FinanceDefinitions',
   'finance-other': 'FinanceDefinitions',

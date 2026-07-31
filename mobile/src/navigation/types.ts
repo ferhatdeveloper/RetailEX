@@ -124,8 +124,12 @@ export type MainStackParamList = {
   RestaurantReports: undefined;
   /** Teslimat / kurye — menü yaprağı sekmesi */
   Delivery: { initialTab?: 'deliveries' | 'live' | 'couriers' } | undefined;
-  /** Finans tanımları: ödeme planı, masraf merkezi, arama planı, gider */
+  /** Finans tanımları: ödeme planı, masraf merkezi, gider */
   FinanceDefinitions: { screenId?: string } | undefined;
+  /** Müşteri Arama Planı — web CustomerCallPlanModule */
+  CustomerCallPlan: undefined;
+  /** Entegrasyonlar — Logo / OpenRouter (WhatsApp değil) */
+  Integrations: undefined;
   /** Malzeme tanımları: sınıf, kategori, marka, birim seti, varyant, özel/grup kod */
   MaterialDefinitions: { screenId?: string } | undefined;
   MaterialDefinitionForm:

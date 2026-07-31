@@ -136,6 +136,12 @@ export function ModuleScreen() {
       case 'FinanceDefinitions':
         navigation.replace('FinanceDefinitions', financeDefinitionsRouteParams(screenId));
         break;
+      case 'CustomerCallPlan':
+        navigation.replace('CustomerCallPlan');
+        break;
+      case 'Integrations':
+        navigation.replace('Integrations');
+        break;
       case 'MaterialDefinitions':
         navigation.replace('MaterialDefinitions', materialDefinitionsRouteParams(screenId));
         break;
@@ -225,7 +231,7 @@ export function ModuleScreen() {
     aging: 'Cari yaşlandırma — veresiye fişler ve vade aralıkları.',
     'cari-aging': 'Cari yaşlandırma canlı.',
     'customer-extract': 'Cari ekstre canlı (hareket + satış fallback).',
-    'customer-call-plan': 'Müşteri arama planı — haftalık arşiv + cari plan canlı (FinanceDefinitions).',
+    'customer-call-plan': 'Müşteri Arama Planı — liste, durum, haftalık rapor (CustomerCallPlan).',
     'payment-plans': 'Ödeme planları listesi canlı (logic.pay_plans / FinanceDefinitions).',
     'cost-centers': 'Masraf merkezleri canlı (FinanceDefinitions).',
     revenueexpense: 'Gider kayıtları okuma canlı (FinanceDefinitions).',
@@ -242,7 +248,7 @@ export function ModuleScreen() {
     'financereports-cash': 'Kasa hareket raporu canlı (ReportCash).',
     'financereports-bank': 'Banka kartları / hareketleri canlı (FinanceScreen banka sekmesi).',
     whatsapp: 'WhatsApp entegrasyonu web’de; bildirim ayarları masaüstünden.',
-    integrations: 'Entegrasyon — WhatsApp sağlayıcı + fatura bildirimi yazma (Communications).',
+    integrations: 'Entegrasyonlar — Logo (masaüstü) + OpenRouter AI (IntegrationsScreen).',
     databroadcast: 'Bilgi gönder/al — bildirim kuyruğu işle / yeniden dene (Communications).',
     'store-management': 'Mağaza listesi canlı (public.stores) — StoreManagement.',
     multistore: 'Çoklu mağaza listesi canlı — StoreManagement.',

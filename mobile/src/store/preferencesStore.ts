@@ -8,8 +8,11 @@ export type MenuViewMode = 'cards' | 'list';
 /** Restoran sipariş menü kataloğu — ızgara (resimli) / liste. */
 export type RestMenuCatalogView = 'grid' | 'list';
 
-/** Restoran raporları — liste / grafik. */
-export type RestReportsView = 'list' | 'chart';
+/** Raporlar (ERP + restoran) — liste / grafik. */
+export type ReportsView = 'list' | 'chart';
+
+/** @deprecated reportsView kullanın */
+export type RestReportsView = ReportsView;
 
 type PreferencesState = {
   menuViewMode: MenuViewMode;
@@ -17,15 +20,23 @@ type PreferencesState = {
   toggleMenuViewMode: () => void;
   restMenuCatalogView: RestMenuCatalogView;
   setRestMenuCatalogView: (mode: RestMenuCatalogView) => void;
-  restReportsView: RestReportsView;
-  setRestReportsView: (mode: RestReportsView) => void;
+  reportsView: ReportsView;
+  setReportsView: (mode: ReportsView) => void;
+  /** RestaurantReportsScreen uyumluluğu — setReportsView alias */
+  restReportsView: ReportsView;
+  setRestReportsView: (mode: ReportsView) => void;
 };
 
 type PersistedPreferences = {
   menuViewMode?: MenuViewMode;
   restMenuCatalogView?: RestMenuCatalogView;
-  restReportsView?: RestReportsView;
+  reportsView?: ReportsView;
+  restReportsView?: ReportsView;
 };
+
+function normalizeReportsView(v: unknown): ReportsView {
+  return v === 'chart' ? 'chart' : 'list';
+}
 
 export const usePreferencesStore = create<PreferencesState>()(
   persist(
@@ -37,17 +48,19 @@ export const usePreferencesStore = create<PreferencesState>()(
         set({ menuViewMode: get().menuViewMode === 'cards' ? 'list' : 'cards' }),
       restMenuCatalogView: 'grid',
       setRestMenuCatalogView: (mode) => set({ restMenuCatalogView: mode }),
+      reportsView: 'list',
+      setReportsView: (mode) => set({ reportsView: mode, restReportsView: mode }),
       restReportsView: 'list',
-      setRestReportsView: (mode) => set({ restReportsView: mode }),
+      setRestReportsView: (mode) => set({ reportsView: mode, restReportsView: mode }),
     }),
     {
       name: 'retailex_mobile_preferences',
-      version: 3,
+      version: 4,
       storage: createJSONStorage(() => AsyncStorage),
       partialize: (s) => ({
         menuViewMode: s.menuViewMode,
         restMenuCatalogView: s.restMenuCatalogView,
-        restReportsView: s.restReportsView,
+        reportsView: s.reportsView,
       }),
       migrate: (persisted, fromVersion) => {
         const prev = (persisted ?? {}) as PersistedPreferences;
@@ -56,13 +69,26 @@ export const usePreferencesStore = create<PreferencesState>()(
           return {
             menuViewMode: 'list' as MenuViewMode,
             restMenuCatalogView: 'grid' as RestMenuCatalogView,
-            restReportsView: 'list' as RestReportsView,
+            reportsView: 'list' as ReportsView,
           };
         }
+        const reportsView = normalizeReportsView(
+          prev.reportsView ?? prev.restReportsView,
+        );
         return {
           menuViewMode: prev.menuViewMode === 'cards' ? 'cards' : 'list',
           restMenuCatalogView: prev.restMenuCatalogView === 'list' ? 'list' : 'grid',
-          restReportsView: prev.restReportsView === 'chart' ? 'chart' : 'list',
+          reportsView,
+        };
+      },
+      merge: (persisted, current) => {
+        const p = (persisted ?? {}) as PersistedPreferences;
+        const reportsView = normalizeReportsView(p.reportsView ?? p.restReportsView ?? current.reportsView);
+        return {
+          ...current,
+          ...p,
+          reportsView,
+          restReportsView: reportsView,
         };
       },
       onRehydrateStorage: () => (_state, error) => {

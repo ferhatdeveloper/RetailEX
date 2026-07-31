@@ -34,6 +34,8 @@ import { RestaurantScreen } from '../screens/RestaurantScreen';
 import { RestaurantReportsScreen } from '../screens/RestaurantReportsScreen';
 import { FinanceScreen } from '../screens/FinanceScreen';
 import { FinanceDefinitionsScreen } from '../screens/FinanceDefinitionsScreen';
+import { CustomerCallPlanScreen } from '../screens/CustomerCallPlanScreen';
+import { IntegrationsScreen } from '../screens/IntegrationsScreen';
 import { MaterialDefinitionsScreen } from '../screens/MaterialDefinitionsScreen';
 import { MaterialDefinitionFormScreen } from '../screens/MaterialDefinitionFormScreen';
 import { CashCollectionScreen } from '../screens/CashCollectionScreen';
@@ -122,6 +124,8 @@ export function MainStackNavigator() {
       />
       <Stack.Screen name="Finance" component={FinanceScreen} />
       <Stack.Screen name="FinanceDefinitions" component={FinanceDefinitionsScreen} />
+      <Stack.Screen name="CustomerCallPlan" component={CustomerCallPlanScreen} />
+      <Stack.Screen name="Integrations" component={IntegrationsScreen} />
       <Stack.Screen name="MaterialDefinitions" component={MaterialDefinitionsScreen} />
       <Stack.Screen name="MaterialDefinitionForm" component={MaterialDefinitionFormScreen} />
       <Stack.Screen name="ProductionOps" component={ProductionOpsScreen} />

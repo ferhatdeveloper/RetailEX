@@ -13,12 +13,9 @@ import { SegmentTabBar } from '../components/SegmentTabBar';
 import {
   fetchPaymentPlans,
   fetchCostCenters,
-  fetchCallPlanRows,
   fetchExpenses,
-  formatCallWeekdays,
   type PaymentPlanRow,
   type CostCenterRow,
-  type CallPlanRow,
   type ExpenseRow,
 } from '../api/financeDefinitionsApi';
 import { formatMoney } from '../api/erpTables';
@@ -28,15 +25,13 @@ import { useAuthStore } from '../store/authStore';
 import { palette } from '../theme/colors';
 import type { MainStackParamList } from '../navigation/types';
 
-type Tab = 'paymentPlans' | 'costCenters' | 'callPlan' | 'expenses';
+type Tab = 'paymentPlans' | 'costCenters' | 'expenses';
 type Props = NativeStackScreenProps<MainStackParamList, 'FinanceDefinitions'>;
 
 export function financeDefinitionsRouteTab(screenId?: string): Tab {
   switch (screenId) {
     case 'cost-centers':
       return 'costCenters';
-    case 'customer-call-plan':
-      return 'callPlan';
     case 'revenueexpense':
       return 'expenses';
     case 'payment-plans':
@@ -56,7 +51,6 @@ export function FinanceDefinitionsScreen({ route }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [paymentPlans, setPaymentPlans] = useState<PaymentPlanRow[]>([]);
   const [costCenters, setCostCenters] = useState<CostCenterRow[]>([]);
-  const [callPlan, setCallPlan] = useState<CallPlanRow[]>([]);
   const [expenses, setExpenses] = useState<ExpenseRow[]>([]);
 
   useEffect(() => {
@@ -66,15 +60,13 @@ export function FinanceDefinitionsScreen({ route }: Props) {
   const load = useCallback(async () => {
     setError(null);
     try {
-      const [pp, cc, cp, ex] = await Promise.all([
+      const [pp, cc, ex] = await Promise.all([
         fetchPaymentPlans(),
         fetchCostCenters(),
-        fetchCallPlanRows(),
         fetchExpenses(),
       ]);
       setPaymentPlans(pp);
       setCostCenters(cc);
-      setCallPlan(cp);
       setExpenses(ex);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -90,7 +82,6 @@ export function FinanceDefinitionsScreen({ route }: Props) {
   const tabs: { id: Tab; label: string }[] = [
     { id: 'paymentPlans', label: 'Ödeme planı' },
     { id: 'costCenters', label: 'Masraf mrk.' },
-    { id: 'callPlan', label: 'Arama planı' },
     { id: 'expenses', label: 'Gider' },
   ];
 
@@ -99,9 +90,7 @@ export function FinanceDefinitionsScreen({ route }: Props) {
       ? 'Ödeme planları'
       : tab === 'costCenters'
         ? 'Masraf merkezleri'
-        : tab === 'callPlan'
-          ? 'Müşteri arama planı'
-          : 'Gider yönetimi';
+        : 'Gider yönetimi';
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
@@ -138,25 +127,6 @@ export function FinanceDefinitionsScreen({ route }: Props) {
                 {item.code} · {item.name}
               </Text>
               <Text style={{ color: colors.textMuted, fontSize: 12 }}>{item.description || '—'}</Text>
-            </View>
-          )}
-        />
-      ) : tab === 'callPlan' ? (
-        <FlatList
-          data={callPlan}
-          keyExtractor={(item) => item.id}
-          ListEmptyComponent={<EmptyState message="Arama planı kaydı yok" />}
-          contentContainerStyle={styles.list}
-          renderItem={({ item }) => (
-            <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
-              <Text style={{ color: colors.text, fontWeight: '700' }}>{item.customer_name}</Text>
-              <Text style={{ color: colors.textMuted, fontSize: 12 }}>
-                {item.customer_code || '—'}
-                {item.week_start ? ` · hafta ${item.week_start}` : ''}
-              </Text>
-              <Text style={{ color: colors.textSubtle, fontSize: 11, marginTop: 4 }}>
-                Günler: {formatCallWeekdays(item.call_plan_weekdays)} · {item.call_last_status || 'planlı'}
-              </Text>
             </View>
           )}
         />

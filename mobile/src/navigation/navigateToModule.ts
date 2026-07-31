@@ -185,7 +185,6 @@ export function communicationsRouteParams(screen: string): CommunicationsRoutePa
     case 'databroadcast':
       return { screenId: screen, initialTab: 'queue' };
     case 'whatsapp':
-    case 'integrations':
       return { screenId: screen, initialTab: 'provider' };
     default:
       return { screenId: screen, initialTab: 'customers' };
@@ -314,6 +313,12 @@ export function navigateToModule(
       return;
     case 'FinanceDefinitions':
       nav.navigate('FinanceDefinitions', financeDefinitionsRouteParams(screen));
+      return;
+    case 'CustomerCallPlan':
+      nav.navigate('CustomerCallPlan');
+      return;
+    case 'Integrations':
+      nav.navigate('Integrations');
       return;
     case 'MaterialDefinitions':
       nav.navigate('MaterialDefinitions', materialDefinitionsRouteParams(screen));
