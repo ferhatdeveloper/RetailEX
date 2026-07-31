@@ -10,17 +10,20 @@ import {
   Alert,
   Pressable,
   FlatList,
+  TextInput,
 } from 'react-native';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { ChevronDown, Plus, Trash2 } from 'lucide-react-native';
+import { Camera, ChevronDown, Plus, ScanLine, Trash2 } from 'lucide-react-native';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 import { ScreenHeader, ErrorBanner, SearchBar } from '../components/ScreenChrome';
+import { HeaderIconButton } from '../components/GradientHeader';
 import { FormField } from '../components/FormField';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { SegmentTabBar } from '../components/SegmentTabBar';
 import { PercentBodySheet } from '../components/PercentBodySheet';
+import { BarcodeScannerModal } from '../components/BarcodeScannerModal';
 import {
   createPurchaseInvoice,
   createReturnInvoice,
@@ -39,7 +42,7 @@ import {
 } from '../api/invoicesApi';
 import { fetchCustomers, type CustomerRow } from '../api/customersApi';
 import { fetchSuppliers, type SupplierRow } from '../api/suppliersApi';
-import { fetchProducts, type ProductRow } from '../api/productsApi';
+import { fetchProducts, fetchProductByBarcode, type ProductRow } from '../api/productsApi';
 import { fetchServices, type ServiceRow } from '../api/servicesApi';
 import { fetchCashRegisters, type CashRegisterRow } from '../api/financeApi';
 import { firmCurrency, firmNr, storeId as sessionStoreId } from '../api/erpTables';
@@ -317,6 +320,10 @@ export function InvoiceFormScreen() {
   const [showPartyPicker, setShowPartyPicker] = useState(false);
   const [showProdPicker, setShowProdPicker] = useState(false);
   const [showStorePicker, setShowStorePicker] = useState(false);
+  const [showBarcodeCamera, setShowBarcodeCamera] = useState(false);
+  const [barcodeBuf, setBarcodeBuf] = useState('');
+  const [barcodeBusy, setBarcodeBusy] = useState(false);
+  const barcodeRef = React.useRef<TextInput>(null);
   const [stores, setStores] = useState<StoreRow[]>([]);
   const [cashRegs, setCashRegs] = useState<CashRegisterRow[]>([]);
   const [section, setSection] = useState<FormSection>('lines');
@@ -495,25 +502,61 @@ export function InvoiceFormScreen() {
         : p.price;
     const vatRate =
       Number.isFinite(p.vat_rate) && p.vat_rate >= 0 ? Number(p.vat_rate) : 20;
-    setLines((prev) => [
-      ...prev,
-      {
-        key: `${p.id}-${Date.now()}`,
-        productId: String(p.id),
-        code: p.code,
-        name: p.name,
-        qty: 1,
-        unitPrice,
-        unit: p.unit,
-        discountPercent: 0,
-        vatRate,
-        lineType: 'product',
-        itemType: 'Malzeme',
-      },
-    ]);
+    setLines((prev) => {
+      const existing = prev.find(
+        (l) => l.productId === String(p.id) && l.lineType !== 'service',
+      );
+      if (existing) {
+        return prev.map((l) =>
+          l.key === existing.key ? { ...l, qty: (Number(l.qty) || 0) + 1 } : l,
+        );
+      }
+      return [
+        ...prev,
+        {
+          key: `${p.id}-${Date.now()}`,
+          productId: String(p.id),
+          code: p.code,
+          name: p.name,
+          qty: 1,
+          unitPrice,
+          unit: p.unit,
+          discountPercent: 0,
+          vatRate,
+          lineType: 'product' as const,
+          itemType: 'Malzeme',
+        },
+      ];
+    });
     setShowProdPicker(false);
     setProdSearch('');
   };
+
+  const handleBarcodeLookup = useCallback(
+    async (raw: string) => {
+      const code = raw.trim();
+      if (!code || barcodeBusy || !canEditLines) return;
+      setBarcodeBusy(true);
+      setBarcodeBuf('');
+      try {
+        const product = await fetchProductByBarcode(code);
+        if (!product) {
+          Alert.alert('Barkod', `Ürün bulunamadı: ${code}`);
+          return;
+        }
+        addProduct(product);
+        setSection('lines');
+      } catch (e) {
+        Alert.alert('Barkod', e instanceof Error ? e.message : String(e));
+      } finally {
+        setBarcodeBusy(false);
+        requestAnimationFrame(() => barcodeRef.current?.focus());
+      }
+    },
+    // addProduct closes over resolvedKind/canEditLines via setLines — refresh on kind
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [barcodeBusy, canEditLines, resolvedKind],
+  );
 
   const addService = (s: ServiceRow) => {
     const unitPrice =
@@ -696,6 +739,13 @@ export function InvoiceFormScreen() {
   const showCashPicker =
     paymentMethod === 'Nakit' || paymentMethod === 'Kredi Kartı';
 
+  useEffect(() => {
+    if (section === 'lines' && showLinesEditor && !serviceMode) {
+      const t = setTimeout(() => barcodeRef.current?.focus(), 300);
+      return () => clearTimeout(t);
+    }
+  }, [section, showLinesEditor, serviceMode]);
+
   const renderLineEditor = (line: DraftLine, editable: boolean) => (
     <View
       key={line.key}
@@ -801,6 +851,26 @@ export function InvoiceFormScreen() {
               : isDocumentKind(resolvedKind)
                 ? `${titleForKind(resolvedKind, false).replace(/^Yeni /, '')} · ${customerName}`
                 : customerName
+        }
+        right={
+          <View style={styles.headerActions}>
+            {!isEdit || canEditLines ? (
+              <HeaderIconButton
+                onPress={() =>
+                  navigation.navigate('DocumentScan', {
+                    kind: resolvedKind,
+                  })
+                }
+              >
+                <ScanLine size={18} color={palette.white} />
+              </HeaderIconButton>
+            ) : null}
+            {canEditLines && !serviceMode ? (
+              <HeaderIconButton onPress={() => setShowBarcodeCamera(true)}>
+                <Camera size={18} color={palette.white} />
+              </HeaderIconButton>
+            ) : null}
+          </View>
         }
       />
       {error ? <ErrorBanner message={error} onRetry={() => void load()} /> : null}
@@ -1137,18 +1207,53 @@ export function InvoiceFormScreen() {
 
             {section === 'lines' ? (
               <>
+                {showLinesEditor && !serviceMode ? (
+                  <TextInput
+                    ref={barcodeRef}
+                    value={barcodeBuf}
+                    onChangeText={setBarcodeBuf}
+                    onSubmitEditing={() => void handleBarcodeLookup(barcodeBuf)}
+                    style={styles.hiddenBarcode}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    blurOnSubmit={false}
+                    showSoftInputOnFocus={false}
+                    caretHidden
+                    importantForAutofill="no"
+                    accessibilityLabel="Barkod okuyucu"
+                  />
+                ) : null}
                 <View style={styles.lineHeader}>
                   <Text style={[styles.sec, { color: colors.text }]}>
                     Kalemler ({lines.length})
+                    {barcodeBusy ? ' · okunuyor…' : ''}
                   </Text>
                   {showLinesEditor ? (
-                    <Pressable
-                      onPress={() => setShowProdPicker(true)}
-                      style={[styles.addBtn, { backgroundColor: accent }]}
-                    >
-                      <Plus size={16} color={palette.white} />
-                      <Text style={styles.addBtnText}>{lineButtonLabel}</Text>
-                    </Pressable>
+                    <View style={styles.lineHeaderActions}>
+                      {!serviceMode ? (
+                        <Pressable
+                          onPress={() => setShowBarcodeCamera(true)}
+                          style={[styles.addBtn, { backgroundColor: palette.blue600 }]}
+                        >
+                          <Camera size={16} color={palette.white} />
+                        </Pressable>
+                      ) : null}
+                      <Pressable
+                        onPress={() =>
+                          navigation.navigate('DocumentScan', { kind: resolvedKind })
+                        }
+                        style={[styles.addBtn, { backgroundColor: palette.indigo500 }]}
+                      >
+                        <ScanLine size={16} color={palette.white} />
+                      </Pressable>
+                      <Pressable
+                        onPress={() => setShowProdPicker(true)}
+                        style={[styles.addBtn, { backgroundColor: accent }]}
+                      >
+                        <Plus size={16} color={palette.white} />
+                        <Text style={styles.addBtnText}>{lineButtonLabel}</Text>
+                      </Pressable>
+                    </View>
                   ) : null}
                 </View>
 
@@ -1421,13 +1526,31 @@ export function InvoiceFormScreen() {
           }}
         />
       </PercentBodySheet>
+
+      <BarcodeScannerModal
+        visible={showBarcodeCamera}
+        onClose={() => setShowBarcodeCamera(false)}
+        onScanned={(data) => void handleBarcodeLookup(data)}
+        title="Fatura barkod oku"
+      />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
+  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  hiddenBarcode: {
+    position: 'absolute',
+    opacity: 0,
+    height: 1,
+    width: 1,
+    left: 0,
+    top: 0,
+    zIndex: -1,
+  },
   body: { padding: 16, gap: 14, paddingBottom: 24 },
+  lineHeaderActions: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   stickyFooter: {
     paddingHorizontal: 16,
     paddingTop: 10,

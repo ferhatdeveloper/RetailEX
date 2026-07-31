@@ -25,10 +25,13 @@ import {
   ChefHat,
   Bike,
   ShoppingBag,
+  ShoppingCart,
   CalendarDays,
   BarChart3,
   Plus,
   LayoutGrid,
+  Settings,
+  Building2,
 } from 'lucide-react-native';
 import { GradientHeader, HeaderIconButton } from '../components/GradientHeader';
 import { ScreenHeader, EmptyState, ErrorBanner } from '../components/ScreenChrome';
@@ -43,6 +46,7 @@ import {
   getActiveOrderForTable,
   getOrderDetailById,
   createRestaurantOrder,
+  createRetailOrder,
   addRestaurantOrderItem,
   fetchRestaurantMenuItems,
   sendRestaurantItemsToKitchen,
@@ -118,6 +122,21 @@ type Props = NativeStackScreenProps<MainStackParamList, 'Restaurant'>;
 const COLS = 3;
 const GRID_GAP = 8;
 const GRID_PAD = 12;
+
+/** Sanal masa — perakende POS (DB table_id null) */
+const RETAIL_POS_TABLE: RestTable = {
+  id: '__retail__',
+  name: 'Perakende',
+  status: 'occupied',
+  waiter: null,
+  total: 0,
+  floor_id: null,
+};
+
+function isRetailPosTable(table: RestTable | null | undefined): boolean {
+  return !!table && (table.id === RETAIL_POS_TABLE.id || !table.id);
+}
+
 const KITCHEN_LANGS: { code: ReceiptLangCode; label: string }[] = [
   { code: 'tr', label: 'TR' },
   { code: 'en', label: 'EN' },
@@ -203,7 +222,7 @@ export function RestaurantScreen({ navigation, route }: Props) {
   const initialTab = route.params?.initialTab ?? 'dashboard';
   const callerPhone = route.params?.callerPhone?.trim() || '';
   const [tab, setTab] = useState<Tab>(
-    initialTab === 'reports' ? 'dashboard' : initialTab,
+    initialTab === 'reports' || initialTab === 'retail' ? 'dashboard' : initialTab,
   );
   const [tables, setTables] = useState<RestTable[]>([]);
   const [orders, setOrders] = useState<RestOrder[]>([]);
@@ -220,6 +239,7 @@ export function RestaurantScreen({ navigation, route }: Props) {
   const [error, setError] = useState<string | null>(null);
 
   const [selectedTable, setSelectedTable] = useState<RestTable | null>(null);
+  const [isRetailPos, setIsRetailPos] = useState(false);
   const [orderDetail, setOrderDetail] = useState<RestOrderDetail | null>(null);
   const [orderLoading, setOrderLoading] = useState(false);
   const [orderSheetTab, setOrderSheetTab] = useState<OrderSheetTab>('order');
@@ -427,6 +447,10 @@ export function RestaurantScreen({ navigation, route }: Props) {
       navigation.navigate('RestaurantReports');
       return;
     }
+    if (next === 'retail') {
+      setTab('dashboard');
+      return;
+    }
     setTab(next);
   }, [route.params?.initialTab, navigation]);
 
@@ -453,6 +477,7 @@ export function RestaurantScreen({ navigation, route }: Props) {
   };
 
   const openTable = async (table: RestTable) => {
+    setIsRetailPos(false);
     setSelectedTable(table);
     setOrderDetail(null);
     setModalError(null);
@@ -472,17 +497,61 @@ export function RestaurantScreen({ navigation, route }: Props) {
     }
   };
 
+  /** Masasız perakende satış — Gastro retail POS */
+  const openRetailPos = async () => {
+    setIsRetailPos(true);
+    setSelectedTable(RETAIL_POS_TABLE);
+    setOrderDetail(null);
+    setModalError(null);
+    setMoveTargetId(null);
+    setOrderSheetTab('order');
+    setKitchenLocale(resolveKitchenTicketLocale());
+    resetItemForm();
+    setOrderLoading(true);
+    try {
+      const created = await createRetailOrder();
+      const detail = await getOrderDetailById(created.id);
+      setOrderDetail(
+        detail
+          ? { ...detail, table_name: detail.table_name || 'Perakende' }
+          : ({
+              ...created,
+              table_name: 'Perakende',
+              items: [],
+            } as RestOrderDetail),
+      );
+      setDiscountPct('0');
+    } catch (e) {
+      setModalError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setOrderLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (route.params?.initialTab !== 'retail') return;
+    void openRetailPos();
+    // Yalnızca menüden perakende ile gelince bir kez
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [route.params?.initialTab]);
+
   const openOrder = async (order: RestOrder) => {
-    const tbl =
-      tables.find((t) => t.id === order.table_id) ||
-      ({
-        id: order.table_id || '',
-        name: order.table_name,
-        status: order.status,
-        waiter: order.waiter,
-        total: order.total_amount,
-        floor_id: null,
-      } satisfies RestTable);
+    const retail =
+      !order.table_id ||
+      String(order.order_no || '').startsWith('RTL-') ||
+      (typeof order.note === 'string' && order.note.includes('"type":"retail"'));
+    setIsRetailPos(retail);
+    const tbl = retail
+      ? RETAIL_POS_TABLE
+      : tables.find((t) => t.id === order.table_id) ||
+        ({
+          id: order.table_id || '',
+          name: order.table_name,
+          status: order.status,
+          waiter: order.waiter,
+          total: order.total_amount,
+          floor_id: null,
+        } satisfies RestTable);
 
     setSelectedTable(tbl);
     setOrderDetail(null);
@@ -494,7 +563,11 @@ export function RestaurantScreen({ navigation, route }: Props) {
     setOrderLoading(true);
     try {
       const detail = await getOrderDetailById(order.id);
-      setOrderDetail(detail);
+      setOrderDetail(
+        detail && retail
+          ? { ...detail, table_name: detail.table_name || 'Perakende' }
+          : detail,
+      );
       setDiscountPct(String(detail?.order_discount_pct ?? 0));
     } catch (e) {
       setModalError(e instanceof Error ? e.message : String(e));
@@ -505,6 +578,7 @@ export function RestaurantScreen({ navigation, route }: Props) {
 
   const closeModal = () => {
     setSelectedTable(null);
+    setIsRetailPos(false);
     setOrderDetail(null);
     setModalError(null);
     setPayMethod('cash');
@@ -515,12 +589,26 @@ export function RestaurantScreen({ navigation, route }: Props) {
     resetItemForm();
   };
 
+  const linesSubtotal = useMemo(() => {
+    if (!orderDetail?.items?.length) return Number(orderDetail?.total_amount) || 0;
+    return orderDetail.items.reduce((sum, it) => sum + (Number(it.subtotal) || 0), 0);
+  }, [orderDetail]);
+
+  const discountPctNum = useMemo(
+    () => Math.min(100, Math.max(0, Number(String(discountPct).replace(',', '.')) || 0)),
+    [discountPct],
+  );
+
+  const discountAmountPreview = useMemo(() => {
+    const base = linesSubtotal || Number(orderDetail?.total_amount) || 0;
+    return discountPctNum > 0 ? base * (discountPctNum / 100) : 0;
+  }, [linesSubtotal, orderDetail?.total_amount, discountPctNum]);
+
   const payableTotal = useMemo(() => {
     if (!orderDetail) return 0;
-    const pct = Math.min(100, Math.max(0, Number(String(discountPct).replace(',', '.')) || 0));
-    const base = Number(orderDetail.total_amount) || 0;
-    return Math.max(0, base * (1 - pct / 100));
-  }, [orderDetail, discountPct]);
+    const base = linesSubtotal || Number(orderDetail.total_amount) || 0;
+    return Math.max(0, base * (1 - discountPctNum / 100));
+  }, [orderDetail, linesSubtotal, discountPctNum]);
 
   const emptyTablesForMove = useMemo(
     () =>
@@ -568,10 +656,11 @@ export function RestaurantScreen({ navigation, route }: Props) {
       if (pct > 0) {
         await updateOpenOrderDiscountPct(orderDetail.id, pct);
       }
-      const base = Number(orderDetail.total_amount) || 0;
+      const base = linesSubtotal || Number(orderDetail.total_amount) || 0;
       const discountAmount = pct > 0 ? base * (pct / 100) : 0;
+      const retail = isRetailPos || isRetailPosTable(selectedTable);
       await completeTablePayment({
-        tableId: selectedTable.id,
+        tableId: retail ? null : selectedTable.id,
         orderId: orderDetail.id,
         paymentMethod: payMethod,
         discountAmount,
@@ -586,10 +675,15 @@ export function RestaurantScreen({ navigation, route }: Props) {
   };
 
   const refreshOrder = async (tableId: string, orderId?: string) => {
-    const detail = orderId
-      ? await getOrderDetailById(orderId)
+    const oid = orderId || (isRetailPos || tableId === RETAIL_POS_TABLE.id ? orderDetail?.id : undefined);
+    const detail = oid
+      ? await getOrderDetailById(oid)
       : await getActiveOrderForTable(tableId);
-    setOrderDetail(detail);
+    if (detail && (isRetailPos || !detail.table_id)) {
+      setOrderDetail({ ...detail, table_name: detail.table_name || 'Perakende' });
+    } else {
+      setOrderDetail(detail);
+    }
     await load({ soft: true });
   };
 
@@ -598,11 +692,16 @@ export function RestaurantScreen({ navigation, route }: Props) {
     setSaving(true);
     setModalError(null);
     try {
-      await createRestaurantOrder({
-        tableId: selectedTable.id,
-        floorId: selectedTable.floor_id,
-      });
-      await refreshOrder(selectedTable.id);
+      if (isRetailPos || isRetailPosTable(selectedTable)) {
+        const created = await createRetailOrder();
+        await refreshOrder(RETAIL_POS_TABLE.id, created.id);
+      } else {
+        await createRestaurantOrder({
+          tableId: selectedTable.id,
+          floorId: selectedTable.floor_id,
+        });
+        await refreshOrder(selectedTable.id);
+      }
     } catch (e) {
       setModalError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -783,6 +882,8 @@ export function RestaurantScreen({ navigation, route }: Props) {
     itemsSummary?: string;
     totalAmount?: number;
     expectedPaymentMethod?: 'cash' | 'card' | 'transfer';
+    channel?: string;
+    externalOrderId?: string;
   }) => {
     setSaving(true);
     setError(null);
@@ -1100,6 +1201,14 @@ export function RestaurantScreen({ navigation, route }: Props) {
       onPress: () => setTab('tables'),
     },
     {
+      id: 'retail',
+      label: 'Perakende',
+      hint: 'Masasız satış',
+      color: '#10b981',
+      Icon: ShoppingCart,
+      onPress: () => void openRetailPos(),
+    },
+    {
       id: 'kitchen',
       label: 'Mutfak',
       hint: `${gastroKpis.kitchenPending} bekleyen`,
@@ -1139,6 +1248,30 @@ export function RestaurantScreen({ navigation, route }: Props) {
       Icon: CalendarDays,
       onPress: () => setTab('schedule'),
     },
+    {
+      id: 'settings',
+      label: 'Ayarlar',
+      hint: 'Yazıcı · kanallar',
+      color: '#64748b',
+      Icon: Settings,
+      onPress: () => navigation.navigate('RestaurantSettings'),
+    },
+    {
+      id: 'channels',
+      label: 'Kanallar',
+      hint: 'Paket platformları',
+      color: '#0ea5e9',
+      Icon: Bike,
+      onPress: () => navigation.navigate('RestaurantSettings'),
+    },
+    {
+      id: 'firm',
+      label: 'Firma',
+      hint: 'Organizasyon',
+      color: '#14b8a6',
+      Icon: Building2,
+      onPress: () => navigation.navigate('RestaurantSettings'),
+    },
   ];
 
   const kitchenFilterChips: { id: KitchenFilter; label: string }[] = [
@@ -1157,6 +1290,8 @@ export function RestaurantScreen({ navigation, route }: Props) {
             ? `Caller ID: ${callerPhone}`
             : 'Ana panel, masalar, paket, mutfak, raporlar'
         }
+        showBack={tab !== 'dashboard'}
+        onBack={() => setTab('dashboard')}
       />
 
       <SegmentTabBar
@@ -1423,7 +1558,8 @@ export function RestaurantScreen({ navigation, route }: Props) {
               >
                 <View style={{ flex: 1, minWidth: 0 }}>
                   <Text style={{ color: colors.text, fontWeight: '700' }} numberOfLines={1}>
-                    {item.order_no || item.id.slice(0, 8)} · {item.table_name || 'Masa'}
+                    {item.order_no || item.id.slice(0, 8)} ·{' '}
+                    {item.table_name || (!item.table_id ? 'Perakende' : 'Masa')}
                   </Text>
                   <Text style={{ color: colors.textMuted, fontSize: 12, marginTop: 2 }}>
                     {item.waiter || '—'} · {orderStatusLabel(item.status)}
@@ -1744,7 +1880,7 @@ export function RestaurantScreen({ navigation, route }: Props) {
                 </HeaderIconButton>
                 <View style={{ flex: 1, minWidth: 0 }}>
                   <Text style={{ color: palette.white, fontSize: 16, fontWeight: '700' }} numberOfLines={1}>
-                    {selectedTable?.name || 'Masa'}
+                    {isRetailPos ? 'Perakende satış' : selectedTable?.name || 'Masa'}
                   </Text>
                   <Text style={{ color: palette.blue100, fontSize: 10, marginTop: 2 }} numberOfLines={1}>
                     {orderDetail?.order_no || 'Adisyon'}
@@ -1755,11 +1891,15 @@ export function RestaurantScreen({ navigation, route }: Props) {
                 <View
                   style={[
                     styles.headerStatusChip,
-                    { backgroundColor: getStatusConfig(selectedTable?.status).bg },
+                    {
+                      backgroundColor: isRetailPos
+                        ? palette.green600
+                        : getStatusConfig(selectedTable?.status).bg,
+                    },
                   ]}
                 >
                   <Text style={{ color: '#fff', fontSize: 10, fontWeight: '800' }}>
-                    {getStatusConfig(selectedTable?.status).label}
+                    {isRetailPos ? 'POS' : getStatusConfig(selectedTable?.status).label}
                   </Text>
                 </View>
               </View>
@@ -1773,7 +1913,7 @@ export function RestaurantScreen({ navigation, route }: Props) {
                 items={[
                   {
                     id: 'order' as OrderSheetTab,
-                    label: `Sipariş (${orderDetail.items.length})`,
+                    label: `Sipariş (${orderDetail.items.length}) · ${formatMoney(orderDetail.total_amount)}`,
                   },
                   {
                     id: 'pay' as OrderSheetTab,
@@ -1798,33 +1938,37 @@ export function RestaurantScreen({ navigation, route }: Props) {
                   ]}
                 >
                   <Text style={{ color: colors.text, fontWeight: '700', fontSize: 15, marginBottom: 6 }}>
-                    Açık adisyon yok
+                    {isRetailPos ? 'Perakende adisyon yok' : 'Açık adisyon yok'}
                   </Text>
                   <Text style={{ color: colors.textMuted, marginBottom: 16, fontSize: 13 }}>
-                    Bu masada yeni adisyon açabilirsiniz.
+                    {isRetailPos
+                      ? 'Yeni perakende satışı başlatabilirsiniz.'
+                      : 'Bu masada yeni adisyon açabilirsiniz.'}
                   </Text>
                   <PrimaryButton
-                    label="Adisyon aç"
+                    label={isRetailPos ? 'Perakende satış aç' : 'Adisyon aç'}
                     onPress={() => void handleCreateOrder()}
                     loading={saving}
                   />
-                  {normalizeTableStatus(selectedTable?.status) === 'cleaning' ? (
-                    <View style={{ marginTop: 10 }}>
-                      <PrimaryButton
-                        label="Temizlik bitti — boşalt"
-                        onPress={() => void handleMarkTableEmpty()}
-                        loading={saving}
-                      />
-                    </View>
-                  ) : (
-                    <View style={{ marginTop: 10 }}>
-                      <PrimaryButton
-                        label="Temizliğe al"
-                        onPress={() => void handleMarkTableCleaning()}
-                        loading={saving}
-                      />
-                    </View>
-                  )}
+                  {!isRetailPos ? (
+                    normalizeTableStatus(selectedTable?.status) === 'cleaning' ? (
+                      <View style={{ marginTop: 10 }}>
+                        <PrimaryButton
+                          label="Temizlik bitti — boşalt"
+                          onPress={() => void handleMarkTableEmpty()}
+                          loading={saving}
+                        />
+                      </View>
+                    ) : (
+                      <View style={{ marginTop: 10 }}>
+                        <PrimaryButton
+                          label="Temizliğe al"
+                          onPress={() => void handleMarkTableCleaning()}
+                          loading={saving}
+                        />
+                      </View>
+                    )
+                  ) : null}
                 </View>
               </ScrollView>
             ) : orderSheetTab === 'order' ? (
@@ -1844,6 +1988,9 @@ export function RestaurantScreen({ navigation, route }: Props) {
                       <View style={{ flex: 1, minWidth: 0 }}>
                         <Text style={{ color: colors.textMuted, fontSize: 10, fontWeight: '800' }}>
                           SEPET · {orderDetail.items.length} kalem
+                          {orderDetail.items.length > 0
+                            ? ` · ${formatMoney(orderDetail.total_amount)}`
+                            : ''}
                         </Text>
                         <Text style={{ color: colors.text, fontSize: 20, fontWeight: '900', marginTop: 2 }}>
                           {formatMoney(orderDetail.total_amount)}
@@ -2133,6 +2280,50 @@ export function RestaurantScreen({ navigation, route }: Props) {
                       </View>
                     </View>
 
+                    <View
+                      style={[
+                        styles.orderSummaryCard,
+                        { backgroundColor: colors.card, borderColor: colors.cardBorder },
+                      ]}
+                    >
+                      <Text style={[styles.sectionTitle, { color: colors.text, marginTop: 0 }]}>
+                        Sipariş özeti
+                      </Text>
+                      <View style={styles.summaryRow}>
+                        <Text style={{ color: colors.textMuted, fontSize: 13 }}>Ara toplam</Text>
+                        <Text style={{ color: colors.text, fontWeight: '700', fontSize: 14 }}>
+                          {formatMoney(linesSubtotal)}
+                        </Text>
+                      </View>
+                      {discountAmountPreview > 0 ? (
+                        <View style={styles.summaryRow}>
+                          <Text style={{ color: colors.textMuted, fontSize: 13 }}>
+                            İndirim (%{discountPctNum})
+                          </Text>
+                          <Text style={{ color: palette.red500, fontWeight: '700', fontSize: 14 }}>
+                            −{formatMoney(discountAmountPreview)}
+                          </Text>
+                        </View>
+                      ) : null}
+                      <View
+                        style={[
+                          styles.summaryRow,
+                          styles.summaryTotalRow,
+                          { borderTopColor: colors.cardBorder },
+                        ]}
+                      >
+                        <Text style={{ color: colors.text, fontWeight: '900', fontSize: 15 }}>
+                          Genel toplam
+                        </Text>
+                        <Text style={{ color: palette.blue600, fontWeight: '900', fontSize: 18 }}>
+                          {formatMoney(payableTotal)}
+                        </Text>
+                      </View>
+                      <Text style={{ color: colors.textSubtle, fontSize: 12, marginTop: 4 }}>
+                        {orderDetail.items.length} kalem
+                      </Text>
+                    </View>
+
                     <Text style={[styles.sectionTitle, { color: colors.text }]}>Ödeme yöntemi</Text>
                     <View style={styles.payRow}>
                       {PAY_METHODS.map((m) => (
@@ -2161,7 +2352,7 @@ export function RestaurantScreen({ navigation, route }: Props) {
                       ))}
                     </View>
 
-                    {emptyTablesForMove.length > 0 ? (
+                    {!isRetailPos && emptyTablesForMove.length > 0 ? (
                       <>
                         <Text style={[styles.sectionTitle, { color: colors.text }]}>Masaya taşı</Text>
                         <ScrollView
@@ -2492,6 +2683,25 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
+  },
+  orderSummaryCard: {
+    borderWidth: 1,
+    borderRadius: 14,
+    padding: 14,
+    gap: 6,
+    marginTop: 4,
+    marginBottom: 4,
+  },
+  summaryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  summaryTotalRow: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    paddingTop: 8,
+    marginTop: 4,
   },
   metaChip: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   sectionTitle: { fontSize: 13, fontWeight: '800', marginTop: 8, marginBottom: 4 },

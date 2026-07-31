@@ -88,6 +88,26 @@ export type CourierLocationPoint = {
   deliveryId?: string | null;
 };
 
+export type CourierLocationHistoryRow = {
+  id: string;
+  lat: number;
+  lng: number;
+  speed_kmh: number | null;
+  recorded_at: string;
+  delivery_id: string | null;
+};
+
+/** Son N dakika içinde konum güncellendiyse “canlı” sayılır */
+export function isCourierLocationFresh(
+  lastLocationAt: string | null | undefined,
+  withinMinutes = 5,
+): boolean {
+  if (!lastLocationAt) return false;
+  const t = new Date(lastLocationAt).getTime();
+  if (!Number.isFinite(t)) return false;
+  return Date.now() - t <= withinMinutes * 60_000;
+}
+
 function normalizeStatus(s: string | undefined | null): DeliveryStatus {
   const v = String(s || 'draft').trim().toLowerCase() as DeliveryStatus;
   return v in DELIVERY_STATUS_LABELS ? v : 'draft';
@@ -528,4 +548,58 @@ export async function recordCourierLocation(
     });
     return 'local';
   }
+}
+
+/** Geçmiş rota — logistics.courier_locations (yeniden eskiye) */
+export async function listCourierLocationHistory(
+  courierId: string,
+  opts?: { limit?: number; sinceHours?: number },
+): Promise<CourierLocationHistoryRow[]> {
+  if (!courierId) return [];
+  const limit = Math.min(2000, Math.max(10, opts?.limit ?? 200));
+  const sinceHours = Math.min(168, Math.max(1, opts?.sinceHours ?? 24));
+  return runDataTransport({
+    label: 'listCourierLocationHistory',
+    viaRest: async () => {
+      const since = new Date(Date.now() - sinceHours * 3600_000).toISOString();
+      const rows = await postgrestGet<Record<string, unknown>[]>(
+        '/courier_locations',
+        {
+          select: 'id,lat,lng,speed_kmh,recorded_at,delivery_id',
+          courier_id: `eq.${courierId}`,
+          recorded_at: `gte.${since}`,
+          order: 'recorded_at.asc',
+          limit,
+        },
+        { schema: 'logistics' },
+      );
+      return (Array.isArray(rows) ? rows : []).map(mapLocationHistoryRow).filter((r) => r.id);
+    },
+    viaBridge: async () => {
+      const res = await pgQuery<Record<string, unknown>>(
+        `SELECT id::text AS id, lat::float8 AS lat, lng::float8 AS lng,
+                speed_kmh::float8 AS speed_kmh,
+                recorded_at::text AS recorded_at,
+                delivery_id::text AS delivery_id
+         FROM logistics.courier_locations
+         WHERE courier_id = $1::uuid
+           AND recorded_at >= now() - ($2::int || ' hours')::interval
+         ORDER BY recorded_at ASC
+         LIMIT $3`,
+        [courierId, sinceHours, limit],
+      );
+      return (res.rows || []).map(mapLocationHistoryRow).filter((r) => r.id);
+    },
+  });
+}
+
+function mapLocationHistoryRow(r: Record<string, unknown>): CourierLocationHistoryRow {
+  return {
+    id: String(r.id ?? ''),
+    lat: Number(r.lat),
+    lng: Number(r.lng),
+    speed_kmh: r.speed_kmh == null ? null : Number(r.speed_kmh),
+    recorded_at: String(r.recorded_at ?? ''),
+    delivery_id: r.delivery_id == null ? null : String(r.delivery_id),
+  };
 }

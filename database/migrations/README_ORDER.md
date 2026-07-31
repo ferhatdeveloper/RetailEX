@@ -101,6 +101,7 @@
 97. **112_logo_outbound_sync_status.sql** – Ürün/müşteri/tedarikçi `logo_sync_status|error|date` (PostgREST kuyruk → Logo REST items/Arps gönderimi).
 98. **113_logo_outbound_banks_stock_sync.sql** – Kasa/banka (`cash_registers`) ve malzeme fişi (`stock_movements`) `logo_sync_*` kolonları (Logo REST banks / itemSlips gönderimi).
 99. **114_rest_reservations.sql** – Restoran rezervasyon: dönem bazlı `rest.rex_{f}_{p}_rest_reservations` + `INIT_RESTAURANT_RESERVATIONS_TABLE`.
+100. **115_logic_pay_plans.sql** – `logic.pay_plans` / `logic.pay_plan_lines` (ödeme planı); mevcut firmalara `ensure_firm_expense_tables` (masraf merkezi / gider).
 
 **099 tüm kiracılara (tek dosya):**
 ```bash

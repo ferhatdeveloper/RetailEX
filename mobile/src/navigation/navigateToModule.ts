@@ -39,6 +39,8 @@ export function restaurantRouteParams(screen: string): RestaurantRouteParams | u
   switch (screen) {
     case 'restaurant-tables':
       return { initialTab: 'tables' };
+    case 'restaurant-retail':
+      return { initialTab: 'retail' };
     case 'restaurant-orders':
       return { initialTab: 'orders' };
     case 'restaurant-delivery':
@@ -304,6 +306,9 @@ export function navigateToModule(
       return;
     case 'RestaurantReports':
       nav.navigate('RestaurantReports');
+      return;
+    case 'RestaurantSettings':
+      nav.navigate('RestaurantSettings');
       return;
     case 'Delivery':
       nav.navigate('Delivery', deliveryRouteParams(screen));

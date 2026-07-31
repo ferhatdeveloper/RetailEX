@@ -15,6 +15,9 @@ import {
 import { ScreenHeader, EmptyState, ErrorBanner } from '../components/ScreenChrome';
 import { FormField } from '../components/FormField';
 import { PrimaryButton } from '../components/PrimaryButton';
+import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import type { MainStackParamList } from '../navigation/types';
 import {
   RestBarChart,
   RestColumnChart,
@@ -99,6 +102,7 @@ function pctChange(cur: number, prev: number): string {
 }
 
 export function RestaurantReportsScreen() {
+  const navigation = useNavigation<NativeStackNavigationProp<MainStackParamList>>();
   const { colors } = useThemeStore();
   const orgEpoch = useOrgEpoch();
   const viewMode = usePreferencesStore((s) => s.reportsView);
@@ -933,7 +937,11 @@ export function RestaurantReportsScreen() {
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
-      <ScreenHeader title="Restoran Raporları" subtitle={title} />
+      <ScreenHeader
+        title="Restoran Raporları"
+        subtitle={title}
+        onBack={() => navigation.navigate('Restaurant', { initialTab: 'dashboard' })}
+      />
       {kind === 'void' ? (
         <View style={styles.voidTabs}>
           {(

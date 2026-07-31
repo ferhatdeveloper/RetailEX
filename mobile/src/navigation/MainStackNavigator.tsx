@@ -32,6 +32,7 @@ import { WavePickingScreen } from '../screens/WavePickingScreen';
 import { WavePickingExecuteScreen } from '../screens/WavePickingExecuteScreen';
 import { RestaurantScreen } from '../screens/RestaurantScreen';
 import { RestaurantReportsScreen } from '../screens/RestaurantReportsScreen';
+import { RestaurantSettingsScreen } from '../screens/RestaurantSettingsScreen';
 import { FinanceScreen } from '../screens/FinanceScreen';
 import { FinanceDefinitionsScreen } from '../screens/FinanceDefinitionsScreen';
 import { CustomerCallPlanScreen } from '../screens/CustomerCallPlanScreen';
@@ -116,6 +117,7 @@ export function MainStackNavigator() {
       <Stack.Screen name="WmsWavePickingExecute" component={WavePickingExecuteScreen} />
       <Stack.Screen name="Restaurant" component={RestaurantScreen} />
       <Stack.Screen name="RestaurantReports" component={RestaurantReportsScreen} />
+      <Stack.Screen name="RestaurantSettings" component={RestaurantSettingsScreen} />
       <Stack.Screen
         name="Delivery"
         getComponent={() =>

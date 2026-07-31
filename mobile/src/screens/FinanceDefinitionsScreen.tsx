@@ -59,15 +59,31 @@ export function FinanceDefinitionsScreen({ route }: Props) {
 
   const load = useCallback(async () => {
     setError(null);
+    setLoading(true);
     try {
-      const [pp, cc, ex] = await Promise.all([
+      const settled = await Promise.allSettled([
         fetchPaymentPlans(),
         fetchCostCenters(),
         fetchExpenses(),
       ]);
-      setPaymentPlans(pp);
-      setCostCenters(cc);
-      setExpenses(ex);
+      const errs: string[] = [];
+      const [pp, cc, ex] = settled;
+      if (pp.status === 'fulfilled') setPaymentPlans(pp.value);
+      else {
+        setPaymentPlans([]);
+        errs.push(pp.reason instanceof Error ? pp.reason.message : String(pp.reason));
+      }
+      if (cc.status === 'fulfilled') setCostCenters(cc.value);
+      else {
+        setCostCenters([]);
+        errs.push(cc.reason instanceof Error ? cc.reason.message : String(cc.reason));
+      }
+      if (ex.status === 'fulfilled') setExpenses(ex.value);
+      else {
+        setExpenses([]);
+        errs.push(ex.reason instanceof Error ? ex.reason.message : String(ex.reason));
+      }
+      if (errs.length) setError(errs[0]);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {

@@ -66,6 +66,7 @@ export function ReportSalesScreen() {
   const { colors } = useThemeStore();
   const orgEpoch = useOrgEpoch();
   const reportsView = usePreferencesStore((s) => s.reportsView);
+  const [rangeDays, setRangeDays] = useState<7 | 14 | 30>(14);
   const [days, setDays] = useState<SalesDayRow[]>([]);
   const [top, setTop] = useState<TopProductRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -73,8 +74,12 @@ export function ReportSalesScreen() {
 
   const load = useCallback(async () => {
     setError(null);
+    setLoading(true);
     try {
-      const [d, t] = await Promise.all([fetchSalesByDay(14), fetchTopProducts(15)]);
+      const [d, t] = await Promise.all([
+        fetchSalesByDay(rangeDays),
+        fetchTopProducts(12, rangeDays),
+      ]);
       setDays(d);
       setTop(t);
     } catch (e) {
@@ -82,22 +87,34 @@ export function ReportSalesScreen() {
     } finally {
       setLoading(false);
     }
-  }, [orgEpoch]);
+  }, [orgEpoch, rangeDays]);
 
   useEffect(() => {
     void load();
   }, [load]);
 
-  const totalRev = days.reduce((s, d) => s + d.revenue, 0);
-  const totalCnt = days.reduce((s, d) => s + d.count, 0);
+  const totalRev = useMemo(() => days.reduce((s, d) => s + d.revenue, 0), [days]);
+  const totalCnt = useMemo(() => days.reduce((s, d) => s + d.count, 0), [days]);
+  const avgTicket = totalCnt > 0 ? totalRev / totalCnt : 0;
+  const bestDay = useMemo(() => {
+    if (!days.length) return null;
+    return days.reduce((a, b) => (b.revenue > a.revenue ? b : a), days[0]);
+  }, [days]);
+  const topAmountMax = useMemo(
+    () => Math.max(...top.map((p) => p.amount), 1),
+    [top],
+  );
 
   const dayChart = useMemo(
     () =>
-      days.map((d) => ({
-        key: d.day,
-        label: d.day.slice(5),
-        value: d.revenue,
-      })),
+      [...days]
+        .slice()
+        .sort((a, b) => a.day.localeCompare(b.day))
+        .map((d) => ({
+          key: d.day,
+          label: d.day.slice(5),
+          value: d.revenue,
+        })),
     [days],
   );
 
@@ -112,22 +129,100 @@ export function ReportSalesScreen() {
   );
 
   const storeLbl = storeName() || storeId() || 'firma geneli';
-  const orgLabel = `Firma ${firmNr()} · Dönem ${periodNr()} · ${storeLbl} · Son 14 gün`;
+  const orgLabel = `Firma ${firmNr()} · Dönem ${periodNr()} · ${storeLbl}`;
+
+  const formatDayLabel = (ymd: string) => {
+    const [y, m, d] = ymd.split('-').map(Number);
+    if (!y || !m || !d) return ymd;
+    try {
+      return new Date(y, m - 1, d).toLocaleDateString('tr-TR', {
+        day: 'numeric',
+        month: 'short',
+        weekday: 'short',
+      });
+    } catch {
+      return ymd;
+    }
+  };
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
       <ScreenHeader title="Günlük Satış Özeti" subtitle={orgLabel} />
       <ReportViewToggle />
-      <View style={styles.kpiRow}>
-        <View style={[styles.kpi, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
-          <Text style={styles.lbl}>Ciro</Text>
-          <Text style={[styles.val, { color: palette.blue600 }]}>{formatMoney(totalRev)}</Text>
-        </View>
-        <View style={[styles.kpi, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
-          <Text style={styles.lbl}>Fiş</Text>
-          <Text style={[styles.val, { color: colors.text }]}>{totalCnt}</Text>
-        </View>
+
+      <View style={styles.rangeRow}>
+        {([7, 14, 30] as const).map((n) => {
+          const on = rangeDays === n;
+          return (
+            <Pressable
+              key={n}
+              onPress={() => setRangeDays(n)}
+              style={[
+                styles.rangeChip,
+                {
+                  backgroundColor: on ? palette.blue600 : colors.card,
+                  borderColor: on ? palette.blue600 : colors.cardBorder,
+                },
+              ]}
+            >
+              <Text style={{ color: on ? palette.white : colors.text, fontWeight: '800', fontSize: 12 }}>
+                {n} gün
+              </Text>
+            </Pressable>
+          );
+        })}
       </View>
+
+      <View style={styles.kpiGrid}>
+        <View
+          style={[
+            styles.kpiCard,
+            styles.kpiWide,
+            { backgroundColor: colors.card, borderColor: colors.cardBorder },
+          ]}
+        >
+          <Text style={[styles.kpiLabel, { color: colors.textMuted }]}>Ciro</Text>
+          <Text style={[styles.kpiValueLg, { color: palette.blue600 }]} numberOfLines={1}>
+            {formatMoney(totalRev)}
+          </Text>
+          <Text style={{ color: colors.textSubtle, fontSize: 11, marginTop: 4 }}>
+            Son {rangeDays} gün · {days.length} gün kayıt
+          </Text>
+        </View>
+        <View style={[styles.kpiCard, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
+          <Text style={[styles.kpiLabel, { color: colors.textMuted }]}>Fiş</Text>
+          <Text style={[styles.kpiValue, { color: colors.text }]}>{totalCnt}</Text>
+        </View>
+        <View style={[styles.kpiCard, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
+          <Text style={[styles.kpiLabel, { color: colors.textMuted }]}>Ort. fiş</Text>
+          <Text style={[styles.kpiValue, { color: palette.indigo600 }]} numberOfLines={1}>
+            {formatMoney(avgTicket)}
+          </Text>
+        </View>
+        {bestDay ? (
+          <View
+            style={[
+              styles.kpiCard,
+              styles.kpiWide,
+              { backgroundColor: colors.card, borderColor: colors.cardBorder },
+            ]}
+          >
+            <Text style={[styles.kpiLabel, { color: colors.textMuted }]}>En iyi gün</Text>
+            <View style={styles.kpiBestRow}>
+              <Text style={[styles.kpiValueSm, { color: colors.text }]}>
+                {formatDayLabel(bestDay.day)}
+              </Text>
+              <Text style={{ color: palette.green600, fontWeight: '800', fontSize: 14 }}>
+                {formatMoney(bestDay.revenue)}
+              </Text>
+            </View>
+            <Text style={{ color: colors.textSubtle, fontSize: 11, marginTop: 2 }}>
+              {bestDay.count} fiş
+            </Text>
+          </View>
+        ) : null}
+      </View>
+
       {error ? <ErrorBanner message={error} onRetry={() => void load()} /> : null}
       {loading ? (
         <ActivityIndicator style={{ marginTop: 40 }} color={palette.blue600} />
@@ -141,41 +236,130 @@ export function ReportSalesScreen() {
               message={
                 error
                   ? 'Hata yukarıda — Yenile ile tekrar deneyin'
-                  : `Satış satırı yok (${orgLabel}). Tablo: rex_${firmNr()}_${periodNr()}_sales — Organizasyon’da firma/dönem doğru mu? (store_id boş fişler artık dahildir)`
+                  : `Son ${rangeDays} günde satış yok. Firma/dönem: ${orgLabel}`
               }
             />
           }
           ListHeaderComponent={
-            <View style={{ marginBottom: 12 }}>
+            <View style={{ marginBottom: 8 }}>
               {reportsView === 'chart' ? (
                 <View style={styles.chartBlock}>
-                  <RestColumnChart data={dayChart} title="Günlük ciro" money />
-                  <RestBarChart data={topChart} valueLabel="En çok satanlar" money maxBars={12} />
+                  <RestColumnChart data={dayChart} title={`Günlük ciro (${rangeDays}g)`} money />
+                  <RestBarChart
+                    data={topChart}
+                    valueLabel="En çok satanlar"
+                    money
+                    maxBars={10}
+                  />
                 </View>
-              ) : top.length > 0 ? (
+              ) : (
                 <>
                   <Text style={[styles.sec, { color: colors.text }]}>En çok satanlar</Text>
-                  {top.slice(0, 5).map((p, i) => (
-                    <Text
-                      key={`${p.product_name}-${i}`}
-                      style={{ color: colors.textMuted, fontSize: 12, marginTop: 4 }}
-                    >
-                      {i + 1}. {p.product_name} — {formatMoney(p.amount)}
+                  {top.length === 0 ? (
+                    <Text style={{ color: colors.textMuted, fontSize: 12, marginBottom: 12 }}>
+                      Bu aralıkta ürün satışı yok
                     </Text>
-                  ))}
-                  <Text style={[styles.sec, { color: colors.text, marginTop: 16 }]}>Günlük</Text>
+                  ) : (
+                    top.slice(0, 8).map((p, i) => {
+                      const pct = Math.max(4, (p.amount / topAmountMax) * 100);
+                      return (
+                        <View
+                          key={`${p.product_name}-${i}`}
+                          style={[
+                            styles.topCard,
+                            { backgroundColor: colors.card, borderColor: colors.cardBorder },
+                          ]}
+                        >
+                          <View style={styles.topRank}>
+                            <Text style={styles.topRankText}>{i + 1}</Text>
+                          </View>
+                          <View style={{ flex: 1, minWidth: 0 }}>
+                            <Text
+                              style={{ color: colors.text, fontWeight: '700', fontSize: 13 }}
+                              numberOfLines={1}
+                            >
+                              {p.product_name}
+                            </Text>
+                            <View
+                              style={[
+                                styles.topBarTrack,
+                                { backgroundColor: colors.backgroundAlt },
+                              ]}
+                            >
+                              <View
+                                style={[
+                                  styles.topBarFill,
+                                  {
+                                    width: `${pct}%`,
+                                    backgroundColor:
+                                      i === 0 ? palette.blue600 : palette.indigo500,
+                                  },
+                                ]}
+                              />
+                            </View>
+                            <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 3 }}>
+                              {Number(p.qty).toLocaleString('tr-TR')} adet
+                            </Text>
+                          </View>
+                          <Text
+                            style={{
+                              color: palette.blue600,
+                              fontWeight: '800',
+                              fontSize: 13,
+                              marginLeft: 8,
+                            }}
+                          >
+                            {formatMoney(p.amount)}
+                          </Text>
+                        </View>
+                      );
+                    })
+                  )}
+                  <Text style={[styles.sec, { color: colors.text, marginTop: 14 }]}>
+                    Günlük kırılım
+                  </Text>
                 </>
-              ) : null}
+              )}
             </View>
           }
-          contentContainerStyle={{ padding: 12, paddingBottom: 40 }}
-          renderItem={({ item }) => (
-            <View style={[styles.row, { borderColor: colors.cardBorder, backgroundColor: colors.card }]}>
-              <Text style={{ color: colors.text, fontWeight: '600' }}>{item.day}</Text>
-              <Text style={{ color: colors.textMuted }}>{item.count} fiş</Text>
-              <Text style={{ color: palette.blue600, fontWeight: '700' }}>{formatMoney(item.revenue)}</Text>
-            </View>
-          )}
+          contentContainerStyle={{ padding: 12, paddingBottom: 48 }}
+          renderItem={({ item }) => {
+            const share =
+              totalRev > 0 ? Math.min(100, Math.max(0, (item.revenue / totalRev) * 100)) : 0;
+            return (
+              <View
+                style={[
+                  styles.dayCard,
+                  { borderColor: colors.cardBorder, backgroundColor: colors.card },
+                ]}
+              >
+                <View style={styles.dayCardTop}>
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={{ color: colors.text, fontWeight: '800', fontSize: 14 }}>
+                      {formatDayLabel(item.day)}
+                    </Text>
+                    <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 2 }}>
+                      {item.day} · {item.count} fiş
+                      {item.count > 0
+                        ? ` · ort. ${formatMoney(item.revenue / item.count)}`
+                        : ''}
+                    </Text>
+                  </View>
+                  <Text style={{ color: palette.blue600, fontWeight: '900', fontSize: 15 }}>
+                    {formatMoney(item.revenue)}
+                  </Text>
+                </View>
+                <View style={[styles.dayTrack, { backgroundColor: colors.backgroundAlt }]}>
+                  <View
+                    style={[
+                      styles.dayFill,
+                      { width: `${Math.max(share > 0 ? 3 : 0, share)}%`, backgroundColor: palette.blue600 },
+                    ]}
+                  />
+                </View>
+              </View>
+            );
+          }}
         />
       )}
     </View>
@@ -1691,12 +1875,93 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
   },
+  rangeRow: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingTop: 8,
+  },
+  rangeChip: {
+    flex: 1,
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingVertical: 9,
+    alignItems: 'center',
+  },
+  kpiGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingTop: 10,
+    paddingBottom: 4,
+  },
+  kpiCard: {
+    width: '48%',
+    flexGrow: 1,
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 12,
+    minWidth: '46%',
+  },
+  kpiWide: { width: '100%', minWidth: '100%' },
+  kpiLabel: { fontSize: 10, fontWeight: '800', letterSpacing: 0.3, textTransform: 'uppercase' },
+  kpiValueLg: { fontSize: 22, fontWeight: '900', marginTop: 4, letterSpacing: -0.4 },
+  kpiValue: { fontSize: 18, fontWeight: '900', marginTop: 4 },
+  kpiValueSm: { fontSize: 15, fontWeight: '800' },
+  kpiBestRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+    marginTop: 4,
+  },
+  topCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 10,
+    marginBottom: 8,
+  },
+  topRank: {
+    width: 26,
+    height: 26,
+    borderRadius: 8,
+    backgroundColor: palette.blue600,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  topRankText: { color: '#fff', fontWeight: '900', fontSize: 12 },
+  topBarTrack: {
+    height: 6,
+    borderRadius: 999,
+    overflow: 'hidden',
+    marginTop: 6,
+  },
+  topBarFill: { height: '100%', borderRadius: 999 },
+  dayCard: {
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 8,
+    gap: 8,
+  },
+  dayCardTop: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  dayTrack: { height: 5, borderRadius: 999, overflow: 'hidden' },
+  dayFill: { height: '100%', borderRadius: 999 },
   kpiRow: { flexDirection: 'row', gap: 8, padding: 12, paddingBottom: 4 },
   kpi: { flex: 1, borderWidth: 1, borderRadius: 10, padding: 12 },
   lbl: { fontSize: 10, color: '#6b7280', fontWeight: '600' },
   val: { fontSize: 16, fontWeight: '800', marginTop: 4 },
   valSm: { fontSize: 13, fontWeight: '800', marginTop: 4 },
-  sec: { fontSize: 13, fontWeight: '700', marginBottom: 4 },
+  sec: { fontSize: 13, fontWeight: '800', marginBottom: 8 },
   chartBlock: { marginBottom: 8, gap: 4 },
   row: {
     flexDirection: 'row',

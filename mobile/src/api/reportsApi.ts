@@ -67,19 +67,47 @@ export function defaultExtractRange(days = 90): { start: string; end: string } {
 function isSalesRevenueRow(r: Record<string, unknown>): boolean {
   const ft = String(r.fiche_type || '').trim().toLowerCase();
   const tr = Number(r.trcode ?? 0) || 0;
+  /** Logo / demo kısa kodlar */
+  if (ft === 'a' || ft === 'purchase' || ft === 'purchase_invoice') return false;
   if (
     ft === 'sales_invoice' ||
     ft === 'sales' ||
     ft === 'retail' ||
     ft === 'service' ||
     ft === 'hizmet' ||
-    ft === 'return_invoice'
+    ft === 'return_invoice' ||
+    ft === 's' ||
+    ft === 'satış' ||
+    ft === 'satis'
   ) {
     return true;
   }
   /** Dashboard ile aynı — boş fiche_type, alış trcode değilse satış say */
   if (ft === '' && ![1, 4, 5, 6, 13, 26, 41, 42].includes(tr)) return true;
   return [0, 2, 3, 7, 8, 9, 14].includes(tr);
+}
+
+/**
+ * Fiş başlık tutarı — `net_amount` çoğu kayıtta 0; `??` 0’ı “yok” saymaz.
+ * Sıra: net_amount (≠0) → total_net (≠0) → total_gross.
+ */
+function salesHeaderAmount(r: Record<string, unknown>): number {
+  for (const key of ['net_amount', 'total_net', 'total_gross'] as const) {
+    const n = Number(r[key]);
+    if (Number.isFinite(n) && n !== 0) return Math.abs(n);
+  }
+  return Math.abs(Number(r.net_amount ?? r.total_net ?? r.total_gross ?? 0) || 0);
+}
+
+/** SQL karşılığı — NULLIF(0) zinciri */
+function sqlSalesHeaderAmountAbs(alias = ''): string {
+  const p = alias ? `${alias}.` : '';
+  return `ABS(COALESCE(
+    NULLIF(${p}net_amount, 0),
+    NULLIF(${p}total_net, 0),
+    NULLIF(${p}total_gross, 0),
+    0
+  ))`;
 }
 
 /** SQL `sqlSalesRevenueSign` istemci karşılığı */
@@ -123,7 +151,11 @@ function sqlSalesRevenueFt(alias = ''): string {
   const p = alias ? `${alias}.` : '';
   return `
   LOWER(TRIM(COALESCE(${p}fiche_type, ''))) IN (
-    'sales_invoice', 'sales', 'retail', 'service', 'hizmet', 'return_invoice'
+    'sales_invoice', 'sales', 'retail', 'service', 'hizmet', 'return_invoice', 's', 'satis', 'satış'
+  )
+  OR (
+    LOWER(TRIM(COALESCE(${p}fiche_type, ''))) = ''
+    AND COALESCE(${p}trcode, 0) NOT IN (1, 4, 5, 6, 13, 26, 41, 42)
   )
   OR COALESCE(${p}trcode, 0) IN (0, 2, 3, 7, 8, 9, 14)
 `;
@@ -162,7 +194,7 @@ async function fetchSalesByDayViaRest(days: number): Promise<SalesDayRow[]> {
     `/${table}`,
     {
       select:
-        'date,created_at,net_amount,total_net,fiche_type,trcode,is_cancelled,store_id,status',
+        'date,created_at,net_amount,total_net,total_gross,fiche_type,trcode,is_cancelled,store_id,status',
       order: 'date.desc',
       limit: 8000,
     },
@@ -181,7 +213,7 @@ async function fetchSalesByDayViaRest(days: number): Promise<SalesDayRow[]> {
     const day = String(r.date || r.created_at || '').slice(0, 10);
     if (!day || day < cutoffYmd) continue;
     const sign = salesRevenueSign(r);
-    const net = Math.abs(Number(r.net_amount ?? r.total_net ?? 0) || 0);
+    const net = salesHeaderAmount(r);
     const cur = byDay.get(day) || { revenue: 0, count: 0 };
     cur.revenue += sign * net;
     cur.count += 1;
@@ -196,12 +228,13 @@ async function fetchSalesByDayViaRest(days: number): Promise<SalesDayRow[]> {
 async function fetchSalesByDayViaBridge(days: number): Promise<SalesDayRow[]> {
   const table = salesTable(firmNr(), periodNr());
   const sign = sqlSalesRevenueSign();
+  const amt = sqlSalesHeaderAmountAbs();
   const params: unknown[] = [days];
   const storeSql = appendStoreIdFilterAllowNull('store_id', params);
   const res = await pgQuery<{ day: string; revenue: string | number; count: string | number }>(
     `SELECT date_trunc('day', COALESCE(date::timestamp, created_at))::date::text AS day,
             COALESCE(SUM(
-              (${sign}) * ABS(COALESCE(net_amount, total_net, 0))
+              (${sign}) * (${amt})
             ), 0)::float8 AS revenue,
             COUNT(*)::int AS count
      FROM ${table}
@@ -295,17 +328,23 @@ export type TopProductRow = {
   amount: number;
 };
 
-async function fetchTopProductsViaRest(limit: number): Promise<TopProductRow[]> {
+async function fetchTopProductsViaRest(
+  limit: number,
+  days = 14,
+): Promise<TopProductRow[]> {
   const fn = firmNr();
   const pn = periodNr();
   const items = saleItemsTable(fn, pn);
   const sales = salesTable(fn, pn);
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - Math.max(1, days));
+  const cutoffYmd = toYmd(cutoff);
 
   const [salesRows, itemRows] = await Promise.all([
     postgrestGet<Record<string, unknown>[]>(
       `/${sales}`,
       {
-        select: 'id,fiche_type,trcode,is_cancelled,store_id,status',
+        select: 'id,date,created_at,fiche_type,trcode,is_cancelled,store_id,status',
         limit: 8000,
       },
       { schema: 'public' },
@@ -327,6 +366,8 @@ async function fetchTopProductsViaRest(limit: number): Promise<TopProductRow[]> 
     const st = String(s.status ?? 'approved').trim().toLowerCase();
     if (st && st !== 'completed' && st !== 'approved') continue;
     if (!matchesSessionStore(s)) continue;
+    const day = String(s.date || s.created_at || '').slice(0, 10);
+    if (!day || day < cutoffYmd) continue;
     salesOk.set(String(s.id), salesRevenueSign(s));
   }
 
@@ -347,13 +388,16 @@ async function fetchTopProductsViaRest(limit: number): Promise<TopProductRow[]> 
     .slice(0, limit);
 }
 
-async function fetchTopProductsViaBridge(limit: number): Promise<TopProductRow[]> {
+async function fetchTopProductsViaBridge(
+  limit: number,
+  days = 14,
+): Promise<TopProductRow[]> {
   const fn = firmNr();
   const pn = periodNr();
   const items = saleItemsTable(fn, pn);
   const sales = salesTable(fn, pn);
   const sign = sqlSalesRevenueSign('s');
-  const params: unknown[] = [limit];
+  const params: unknown[] = [limit, days];
   const storeSql = appendStoreIdFilterAllowNull('s.store_id', params);
   const res = await pgQuery<TopProductRow>(
     `SELECT COALESCE(si.item_name, si.item_code, 'Ürün') AS product_name,
@@ -366,8 +410,10 @@ async function fetchTopProductsViaBridge(limit: number): Promise<TopProductRow[]
      WHERE COALESCE(s.is_cancelled, false) = false
        AND ${SQL_COUNTABLE_SALE}
        AND (${sqlSalesRevenueFt('s')})
+       AND COALESCE(s.date::date, s.created_at::date) >= (CURRENT_DATE - ($2::int || ' days')::interval)
        ${storeSql}
      GROUP BY 1
+     HAVING COALESCE(SUM(ABS(COALESCE(si.net_amount, si.total_amount, 0))), 0) > 0
      ORDER BY amount DESC
      LIMIT $1`,
     params,
@@ -375,12 +421,12 @@ async function fetchTopProductsViaBridge(limit: number): Promise<TopProductRow[]
   return res.rows;
 }
 
-export async function fetchTopProducts(limit = 20): Promise<TopProductRow[]> {
+export async function fetchTopProducts(limit = 20, days = 14): Promise<TopProductRow[]> {
   try {
     return await runReportTransport({
       label: 'fetchTopProducts',
-      viaRest: () => fetchTopProductsViaRest(limit),
-      viaBridge: () => fetchTopProductsViaBridge(limit),
+      viaRest: () => fetchTopProductsViaRest(limit, days),
+      viaBridge: () => fetchTopProductsViaBridge(limit, days),
     });
   } catch (err) {
     throwReportError(err, 'fetchTopProducts');

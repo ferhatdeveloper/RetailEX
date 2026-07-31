@@ -756,6 +756,28 @@ CREATE TABLE IF NOT EXISTS logic.campaigns (
   UNIQUE(firm_nr, code)
 );
 
+CREATE TABLE IF NOT EXISTS logic.pay_plans (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  firm_nr     VARCHAR(10) NOT NULL,
+  code        VARCHAR(50) NOT NULL,
+  name        VARCHAR(255) NOT NULL,
+  description TEXT,
+  is_active   BOOLEAN DEFAULT true,
+  created_at  TIMESTAMPTZ DEFAULT NOW(),
+  updated_at  TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(firm_nr, code)
+);
+
+CREATE TABLE IF NOT EXISTS logic.pay_plan_lines (
+  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  plan_id      UUID NOT NULL REFERENCES logic.pay_plans(id) ON DELETE CASCADE,
+  line_no      INTEGER NOT NULL DEFAULT 1,
+  day_offset   INTEGER NOT NULL DEFAULT 0,
+  percent      NUMERIC(8,4) NOT NULL DEFAULT 0,
+  amount       NUMERIC(18,2),
+  payment_type VARCHAR(50) DEFAULT 'cash'
+);
+
 -- ============================================================================
 -- 5. WMS SCHEMA (Warehouse Management)
 -- ============================================================================

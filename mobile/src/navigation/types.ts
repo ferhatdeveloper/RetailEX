@@ -116,13 +116,16 @@ export type MainStackParamList = {
           | 'takeaway'
           | 'schedule'
           | 'kitchen'
-          | 'reports';
+          | 'reports'
+          | 'retail';
         /** Caller ID — hızlı sipariş bağlamı */
         callerPhone?: string;
       }
     | undefined;
   /** Restoran raporları hub — web DeskApp restoran raporlarıyla birebir */
   RestaurantReports: undefined;
+  /** Restoran ayarları hub — firma / yazıcı / paket kanalları (masa yok) */
+  RestaurantSettings: undefined;
   /** Teslimat / kurye — menü yaprağı sekmesi */
   Delivery: { initialTab?: 'deliveries' | 'live' | 'couriers' } | undefined;
   /** Finans tanımları: ödeme planı, masraf merkezi, gider */

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+﻿import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Truck,
   Package,
@@ -8,8 +8,9 @@ import {
   Plus,
   ChevronRight,
   X,
+  Route,
 } from 'lucide-react';
-import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, Polyline } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import { PercentBodyModal, PercentBodyModalScrollBody } from '../shared/PercentBodyModal';
@@ -17,11 +18,13 @@ import {
   logisticsService,
   DELIVERY_STATUS_LABELS,
   nextStatuses,
+  isCourierLocationFresh,
   type DeliveryStatus,
   type LogisticsDelivery,
   type LogisticsDeliveryDetail,
   type LogisticsCourier,
   type LogisticsVehicle,
+  type CourierLocationHistoryRow,
 } from '../../services/logisticsService';
 import { invoicesAPI } from '../../services/api/invoices';
 import type { Invoice } from '../../core/types';
@@ -84,6 +87,10 @@ export function LogisticsModule() {
 
   const [liveMapTab, setLiveMapTab] = useState(true);
   const [liveRefreshAt, setLiveRefreshAt] = useState<string | null>(null);
+  const [mapFocusCourierId, setMapFocusCourierId] = useState<string | null>(null);
+  const [showCourierHistory, setShowCourierHistory] = useState(false);
+  const [historyRows, setHistoryRows] = useState<CourierLocationHistoryRow[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
 
   const loadList = useCallback(async (opts?: { silent?: boolean }) => {
     const silent = opts?.silent === true;
@@ -190,6 +197,7 @@ export function LogisticsModule() {
         lng: Number(c.last_lng),
         label: c.full_name,
         at: c.last_location_at || null,
+        fresh: isCourierLocationFresh(c.last_location_at, 5),
       }));
     const deliveryPts = deliveries
       .filter((d) => d.lat != null && d.lng != null)
@@ -200,14 +208,60 @@ export function LogisticsModule() {
         lng: Number(d.lng),
         label: `${d.delivery_no} · ${d.customer_name || '—'}`,
         at: null as string | null,
+        fresh: false,
       }));
     return [...courierPts, ...deliveryPts];
   }, [couriers, deliveries]);
 
+  const onMapCouriers = useMemo(
+    () => mapPoints.filter((p) => p.kind === 'courier'),
+    [mapPoints],
+  );
+
+  const liveCourierCount = useMemo(
+    () => onMapCouriers.filter((p) => p.fresh).length,
+    [onMapCouriers],
+  );
+
+  useEffect(() => {
+    if (!showCourierHistory || !mapFocusCourierId || !liveMapTab) {
+      setHistoryRows([]);
+      return;
+    }
+    let cancelled = false;
+    setHistoryLoading(true);
+    void logisticsService
+      .listCourierLocationHistory(mapFocusCourierId, { limit: 400, sinceHours: 24 })
+      .then((rows) => {
+        if (!cancelled) setHistoryRows(rows);
+      })
+      .catch(() => {
+        if (!cancelled) setHistoryRows([]);
+      })
+      .finally(() => {
+        if (!cancelled) setHistoryLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [showCourierHistory, mapFocusCourierId, liveMapTab]);
+
+  const historyLatLngs = useMemo(
+    (): [number, number][] =>
+      historyRows
+        .filter((r) => Number.isFinite(r.lat) && Number.isFinite(r.lng))
+        .map((r) => [r.lat, r.lng] as [number, number]),
+    [historyRows],
+  );
+
   const mapCenter = useMemo((): [number, number] => {
+    if (mapFocusCourierId) {
+      const c = mapPoints.find((p) => p.kind === 'courier' && p.id === mapFocusCourierId);
+      if (c) return [c.lat, c.lng];
+    }
     if (mapPoints[0]) return [mapPoints[0].lat, mapPoints[0].lng];
     return [36.19, 44.01];
-  }, [mapPoints]);
+  }, [mapPoints, mapFocusCourierId]);
 
   return (
     <div className="h-full flex flex-col min-h-0">
@@ -269,14 +323,89 @@ export function LogisticsModule() {
                 {liveMapTab ? 'Canlı açık' : 'Canlı kapalı'}
               </button>
               <span className="text-[10px] text-gray-500">
-                {mapPoints.length} nokta · kurye + teslimat
+                {liveCourierCount} canlı kurye · {mapPoints.length} nokta
                 {liveMapTab && liveRefreshAt ? ` · ${liveRefreshAt}` : ''}
               </span>
             </div>
           </div>
           {liveMapTab ? (
-            <div className="h-[240px] w-full relative z-0">
-              {mapPoints.length === 0 ? (
+            <div className="grid grid-cols-1 lg:grid-cols-4 gap-0 border-t border-gray-200">
+              <div className="lg:col-span-1 border-b lg:border-b-0 lg:border-r border-gray-200 max-h-[240px] overflow-auto p-2 space-y-1">
+                <div className="text-[10px] font-semibold text-gray-600 px-1 mb-1">
+                  Haritada kimler
+                </div>
+                {onMapCouriers.length === 0 ? (
+                  <div className="text-[10px] text-gray-400 px-1 py-2">
+                    Konumlu kurye yok
+                  </div>
+                ) : (
+                  onMapCouriers.map((p) => {
+                    const on = mapFocusCourierId === p.id;
+                    return (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => setMapFocusCourierId(p.id)}
+                        className={`w-full text-left rounded border px-2 py-1.5 text-[10px] ${
+                          on
+                            ? 'border-blue-500 bg-blue-50'
+                            : 'border-gray-200 bg-white hover:bg-gray-50'
+                        }`}
+                      >
+                        <div className="flex items-center gap-1.5">
+                          <span
+                            className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                              p.fresh ? 'bg-green-500' : 'bg-gray-400'
+                            }`}
+                          />
+                          <span className="font-semibold text-gray-800 truncate">{p.label}</span>
+                        </div>
+                        <div className="text-gray-400 mt-0.5 truncate">
+                          {p.fresh ? 'Canlı' : 'Son konum'}
+                          {p.at ? ` · ${String(p.at).slice(0, 19).replace('T', ' ')}` : ''}
+                        </div>
+                        <div className="mt-1 flex gap-1">
+                          <span
+                            role="button"
+                            tabIndex={0}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setMapFocusCourierId(p.id);
+                              setShowCourierHistory((v) => (mapFocusCourierId === p.id ? !v : true));
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.stopPropagation();
+                                setMapFocusCourierId(p.id);
+                                setShowCourierHistory(true);
+                              }
+                            }}
+                            className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded border ${
+                              showCourierHistory && mapFocusCourierId === p.id
+                                ? 'bg-violet-600 text-white border-violet-600'
+                                : 'bg-white text-gray-600 border-gray-300'
+                            }`}
+                          >
+                            <Route className="w-2.5 h-2.5" />
+                            Geçmiş
+                          </span>
+                        </div>
+                      </button>
+                    );
+                  })
+                )}
+                {showCourierHistory ? (
+                  <div className="text-[10px] text-violet-700 px-1 pt-1">
+                    {historyLoading
+                      ? 'Rota yükleniyor…'
+                      : historyLatLngs.length
+                        ? `Son 24s · ${historyLatLngs.length} nokta`
+                        : 'Geçmiş nokta yok'}
+                  </div>
+                ) : null}
+              </div>
+              <div className="lg:col-span-3 h-[240px] w-full relative z-0">
+              {mapPoints.length === 0 && historyLatLngs.length === 0 ? (
                 <div className="h-full flex items-center justify-center text-xs text-gray-500 px-4 text-center">
                   Konum kaydı yok. Mobil kurye uygulamasında canlı konum başlatıldığında burada görünür.
                 </div>
@@ -310,8 +439,12 @@ export function LogisticsModule() {
                       </Popup>
                     </Marker>
                   ))}
+                  {historyLatLngs.length >= 2 ? (
+                    <Polyline positions={historyLatLngs} pathOptions={{ color: '#7c3aed', weight: 4 }} />
+                  ) : null}
                 </MapContainer>
               )}
+              </div>
             </div>
           ) : (
             <div className="h-[72px] flex items-center justify-center text-xs text-gray-500">

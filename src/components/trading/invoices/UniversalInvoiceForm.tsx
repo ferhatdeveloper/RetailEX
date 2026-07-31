@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { FULLSCREEN_BODY_PORTAL_Z } from '../../shared/FullscreenBodyPortal';
-import { FileText, Plus, Search, X, Save, User, MoreVertical, AlertCircle, CheckCircle2, Calendar, Truck, Package, Clock, ChevronDown, ChevronRight, History, TrendingUp, TrendingDown, Percent, MoreHorizontal, Trash2, Settings, Minus, Square, Filter, ChevronUp, Check, Printer, PlusCircle, ArrowRight, ArrowLeft, RefreshCw, BarChart2, Edit3, Clipboard, ExternalLink, Camera, FileSpreadsheet, Upload } from 'lucide-react';
+import { FileText, Plus, Search, X, Save, User, MoreVertical, AlertCircle, CheckCircle2, Calendar, Truck, Package, Clock, ChevronDown, ChevronRight, History, TrendingUp, TrendingDown, Percent, MoreHorizontal, Trash2, Settings, Minus, Square, Filter, ChevronUp, Check, Printer, PlusCircle, ArrowRight, ArrowLeft, RefreshCw, BarChart2, Edit3, Clipboard, ExternalLink, Camera, FileSpreadsheet, Upload, ScanLine } from 'lucide-react';
 import { moduleTranslations, type Language } from '../../../locales/module-translations';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { useTheme } from '../../../contexts/ThemeContext';
@@ -521,6 +521,8 @@ export function UniversalInvoiceForm({
   const [customerBarcode, setCustomerBarcode] = useState(''); // Cari Hesap Barkodu
   const [showCameraScanner, setShowCameraScanner] = useState(false);
   const [quickBarcodeInput, setQuickBarcodeInput] = useState('');
+  const imageToInvoiceInputRef = React.useRef<HTMLInputElement>(null);
+  const quickBarcodeRef = React.useRef<HTMLInputElement>(null);
   const { isMobile } = useResponsive();
 
   // Fatura türüne özel alanlar
@@ -2328,7 +2330,42 @@ export function UniversalInvoiceForm({
     if (!code) return;
     handleCameraBarcodeScan(code);
     setQuickBarcodeInput('');
+    window.setTimeout(() => quickBarcodeRef.current?.focus(), 50);
   }, [quickBarcodeInput, handleCameraBarcodeScan]);
+
+  const handleImageToInvoice = useCallback(
+    async (file: File) => {
+      try {
+        toast.info('Resim okunuyor…');
+        const reader = new FileReader();
+        const dataUrl = await new Promise<string>((resolve, reject) => {
+          reader.onload = () => resolve(String(reader.result || ''));
+          reader.onerror = () => reject(new Error('Dosya okunamadı'));
+          reader.readAsDataURL(file);
+        });
+        const { visionService } = await import('../../../services/visionService');
+        const result = await visionService.analyzeImage(dataUrl);
+        if (!result.success || !result.items?.length) {
+          toast.error('Fatura satırları okunamadı');
+          return;
+        }
+        populateFromVoiceData({
+          items: result.items.map((it) => ({
+            code: it.code || it.barcode || '',
+            name: it.name || '',
+            quantity: it.quantity || 1,
+            price: it.price || 0,
+          })),
+          supplier_name: result.supplier,
+          customer_name: result.customer,
+        });
+        toast.success('Resimden fatura satırları aktarıldı');
+      } catch (err: any) {
+        toast.error(err?.message || String(err) || 'Resim işlenemedi');
+      }
+    },
+    [],
+  );
 
   useEffect(() => {
     // Form ilk açılışında kamera modalı kapalı başlasın.
@@ -3640,8 +3677,10 @@ export function UniversalInvoiceForm({
                   </div>
                 )}
 
-                <div className="mb-3 flex w-full items-center gap-2 justify-end">
+                <div className="mb-3 flex w-full items-center gap-2 justify-end relative">
+                  {/* Donanım barkod okuyucu — gizli alan; Enter ile satır ekler */}
                   <input
+                    ref={quickBarcodeRef}
                     type="text"
                     value={quickBarcodeInput}
                     onChange={(e) => setQuickBarcodeInput(e.target.value)}
@@ -3653,8 +3692,11 @@ export function UniversalInvoiceForm({
                     }}
                     placeholder={tm('barcodeScanOrType')}
                     autoComplete="off"
-                    inputMode="text"
-                    className="min-w-0 flex-1 sm:flex-none sm:w-64 touch-manipulation border border-gray-300 rounded-lg px-3 py-2 text-sm min-h-[44px]"
+                    inputMode="none"
+                    aria-label={tm('barcodeScanOrType')}
+                    className="absolute opacity-0 w-px h-px overflow-hidden"
+                    tabIndex={0}
+                    autoFocus
                   />
                   <button
                     type="button"
@@ -3665,6 +3707,26 @@ export function UniversalInvoiceForm({
                     <Camera className="w-4 h-4 shrink-0" />
                     <span className="whitespace-nowrap hidden sm:inline">{tm('cameraBtn')}</span>
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => imageToInvoiceInputRef.current?.click()}
+                    className="inline-flex items-center justify-center gap-2 shrink-0 px-3 py-2 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 active:scale-[0.99] transition-transform min-h-[44px] min-w-[44px]"
+                    title="Resimden fatura"
+                  >
+                    <ScanLine className="w-4 h-4 shrink-0" />
+                    <span className="whitespace-nowrap hidden sm:inline">Resim→Fatura</span>
+                  </button>
+                  <input
+                    ref={imageToInvoiceInputRef}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      e.target.value = '';
+                      if (file) void handleImageToInvoice(file);
+                    }}
+                  />
                   <ColumnVisibilityMenu
                     columns={itemColumns}
                     onToggle={handleToggleColumn}

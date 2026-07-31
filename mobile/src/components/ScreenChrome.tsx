@@ -11,7 +11,11 @@ type Props = {
   title: string;
   subtitle?: string;
   showBack?: boolean;
+  /** Varsayılan `navigation.goBack` yerine özel geri (ör. restoran hub) */
+  onBack?: () => void;
   right?: React.ReactNode;
+  /** App bar altına bitişik şerit (ör. flat gün tab’ları) */
+  below?: React.ReactNode;
   /** Ağ rozeti (varsayılan açık) */
   showConnectivity?: boolean;
 };
@@ -20,15 +24,23 @@ export function ScreenHeader({
   title,
   subtitle,
   showBack = true,
+  onBack,
   right,
+  below,
   showConnectivity = true,
 }: Props) {
   const navigation = useNavigation();
+  const canBack = showBack && (Boolean(onBack) || navigation.canGoBack());
   return (
-    <GradientHeader compact>
+    <GradientHeader compact style={below ? styles.headerWithBelow : undefined}>
       <View style={styles.row}>
-        {showBack && navigation.canGoBack() ? (
-          <HeaderIconButton onPress={() => navigation.goBack()}>
+        {canBack ? (
+          <HeaderIconButton
+            onPress={() => {
+              if (onBack) onBack();
+              else navigation.goBack();
+            }}
+          >
             <ArrowLeft size={18} color={palette.white} />
           </HeaderIconButton>
         ) : (
@@ -51,6 +63,7 @@ export function ScreenHeader({
         </View>
         {right ?? <View style={{ width: 36 }} />}
       </View>
+      {below ? <View style={styles.below}>{below}</View> : null}
     </GradientHeader>
   );
 }
@@ -106,6 +119,7 @@ export function ErrorBanner({ message, onRetry }: { message: string; onRetry?: (
 }
 
 const styles = StyleSheet.create({
+  headerWithBelow: { paddingBottom: 0 },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -116,6 +130,11 @@ const styles = StyleSheet.create({
   title: { color: palette.white, fontSize: 16, fontWeight: '700' },
   sub: { color: palette.blue100, fontSize: 10, marginTop: 2 },
   badgeRow: { marginTop: 6 },
+  below: {
+    marginHorizontal: -16,
+    marginTop: 10,
+    zIndex: 2,
+  },
   searchWrap: {
     flexDirection: 'row',
     alignItems: 'center',

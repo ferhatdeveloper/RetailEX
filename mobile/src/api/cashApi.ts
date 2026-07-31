@@ -628,9 +628,9 @@ async function fetchCashMovementsViaPostgrest(opts?: {
   const lines = cashLinesTable();
   const limit = opts?.limit ?? 120;
   const sid = storeId();
-  const andParts = [`or.(${firmNrOrFilter()})`, `or.(${periodNrOrFilter()})`];
+  const andParts = [`or(${firmNrOrFilter()})`, `or(${periodNrOrFilter()})`];
   if (sid) {
-    andParts.push(`or.(store_id.is.null,store_id.eq.${sid})`);
+    andParts.push(`or(store_id.is.null,store_id.eq.${sid})`);
   }
   const query: Record<string, string | number> = {
     select:
@@ -749,7 +749,7 @@ async function fetchBankMovementsViaPostgrest(opts?: {
   const limit = opts?.limit ?? 120;
   const query: Record<string, string | number> = {
     select: 'id,register_id,fiche_no,date,amount,sign,transaction_type,definition,created_at',
-    and: `(or.(${firmNrOrFilter()}),or.(${periodNrOrFilter()}))`,
+    and: `(or(${firmNrOrFilter()}),or(${periodNrOrFilter()}))`,
     order: 'date.desc,created_at.desc',
     limit,
   };

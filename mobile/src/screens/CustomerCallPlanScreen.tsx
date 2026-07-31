@@ -22,7 +22,9 @@ import {
   type LayoutChangeEvent,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
+import { List, BarChart3 } from 'lucide-react-native';
 import { ScreenHeader, EmptyState, ErrorBanner, SearchBar } from '../components/ScreenChrome';
+import { HeaderIconButton } from '../components/GradientHeader';
 import { PrimaryButton } from '../components/PrimaryButton';
 import {
   ensureCallPlanWeekRollover,
@@ -51,9 +53,12 @@ import { palette } from '../theme/colors';
 type Tab = 'list' | 'report';
 type DayFilter = 'all' | number;
 
-const TABS: { id: Tab; label: string }[] = [
-  { id: 'list', label: 'Liste' },
-  { id: 'report', label: 'Rapor' },
+const DAY_TABS: { value: DayFilter; label: string }[] = [
+  { value: 'all', label: 'Tümü' },
+  ...CUSTOMER_CALL_WEEKDAYS.map((d) => ({
+    value: d.value as DayFilter,
+    label: d.shortTr,
+  })),
 ];
 
 export function CustomerCallPlanScreen() {
@@ -275,30 +280,37 @@ export function CustomerCallPlanScreen() {
             ? `Firma ${user.firmNr} · ${formatCallPlanWeekRange(currentWeek)}`
             : formatCallPlanWeekRange(currentWeek)
         }
+        right={
+          <View style={styles.headerIcons}>
+            <HeaderIconButton onPress={() => goTab('list')} accent={tab === 'list'}>
+              <List size={18} color={palette.white} />
+            </HeaderIconButton>
+            <HeaderIconButton onPress={() => goTab('report')} accent={tab === 'report'}>
+              <BarChart3 size={18} color={palette.white} />
+            </HeaderIconButton>
+          </View>
+        }
+        below={
+          tab === 'list' ? (
+            <View style={styles.dayTabs}>
+              {DAY_TABS.map((item) => {
+                const on = dayFilter === item.value;
+                return (
+                  <Pressable
+                    key={String(item.value)}
+                    onPress={() => setDayFilter(item.value)}
+                    style={[styles.dayTab, on && styles.dayTabOn]}
+                  >
+                    <Text style={[styles.dayTabText, on && styles.dayTabTextOn]} numberOfLines={1}>
+                      {item.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          ) : null
+        }
       />
-
-      <View style={styles.tabRow}>
-        {TABS.map(({ id, label }) => {
-          const on = tab === id;
-          return (
-            <Pressable
-              key={id}
-              onPress={() => goTab(id)}
-              style={[
-                styles.tab,
-                {
-                  backgroundColor: on ? palette.blue600 : colors.card,
-                  borderColor: on ? palette.blue600 : colors.cardBorder,
-                },
-              ]}
-            >
-              <Text style={{ color: on ? palette.white : colors.text, fontWeight: '800' }}>
-                {label}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </View>
 
       {error ? <ErrorBanner message={error} onRetry={() => void load()} /> : null}
 
@@ -318,45 +330,6 @@ export function CustomerCallPlanScreen() {
               value={search}
               onChangeText={setSearch}
               placeholder="Müşteri adı, kod, telefon…"
-            />
-            <FlatList
-              horizontal
-              data={[
-                { value: 'all' as const, label: 'Tümü' },
-                ...CUSTOMER_CALL_WEEKDAYS.map((d) => ({
-                  value: d.value,
-                  label: d.shortTr,
-                })),
-              ]}
-              keyExtractor={(item) => String(item.value)}
-              showsHorizontalScrollIndicator={false}
-              style={{ maxHeight: 44, marginHorizontal: 12 }}
-              contentContainerStyle={{ gap: 8, paddingVertical: 4 }}
-              renderItem={({ item }) => {
-                const on = dayFilter === item.value;
-                return (
-                  <Pressable
-                    onPress={() => setDayFilter(item.value)}
-                    style={[
-                      styles.dayChip,
-                      {
-                        backgroundColor: on ? palette.indigo600 : colors.card,
-                        borderColor: on ? palette.indigo600 : colors.cardBorder,
-                      },
-                    ]}
-                  >
-                    <Text
-                      style={{
-                        color: on ? palette.white : colors.text,
-                        fontWeight: '700',
-                        fontSize: 12,
-                      }}
-                    >
-                      {item.label}
-                    </Text>
-                  </Pressable>
-                );
-              }}
             />
             {loading ? (
               <ActivityIndicator style={{ marginTop: 40 }} color={palette.blue600} />
@@ -522,13 +495,33 @@ export function CustomerCallPlanScreen() {
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
-  tabRow: { flexDirection: 'row', gap: 8, paddingHorizontal: 12, paddingBottom: 8 },
-  tab: {
+  headerIcons: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  dayTabs: {
+    flexDirection: 'row',
+    backgroundColor: 'rgba(0,0,0,0.12)',
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: 'rgba(255,255,255,0.14)',
+  },
+  dayTab: {
     flex: 1,
-    borderWidth: 1,
-    borderRadius: 10,
-    paddingVertical: 10,
     alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 11,
+    borderBottomWidth: 2,
+    borderBottomColor: 'transparent',
+  },
+  dayTabOn: {
+    borderBottomColor: palette.white,
+    backgroundColor: 'rgba(255,255,255,0.10)',
+  },
+  dayTabText: {
+    color: 'rgba(255,255,255,0.70)',
+    fontWeight: '700',
+    fontSize: 11,
+  },
+  dayTabTextOn: {
+    color: palette.white,
+    fontWeight: '800',
   },
   pagerWrap: { flex: 1 },
   page: { flex: 1 },
@@ -538,7 +531,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 12,
     marginBottom: 8,
-    gap: 4,
+    gap: 8,
   },
   rowBetween: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   name: { flex: 1, fontWeight: '800', fontSize: 14 },

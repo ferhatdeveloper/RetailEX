@@ -152,6 +152,26 @@ export interface LogisticsCourier {
   last_location_at?: string | null;
 }
 
+export interface CourierLocationHistoryRow {
+  id: string;
+  lat: number;
+  lng: number;
+  speed_kmh: number | null;
+  recorded_at: string;
+  delivery_id: string | null;
+}
+
+/** Son N dakika içinde konum güncellendiyse canlı */
+export function isCourierLocationFresh(
+  lastLocationAt: string | null | undefined,
+  withinMinutes = 5,
+): boolean {
+  if (!lastLocationAt) return false;
+  const t = new Date(lastLocationAt).getTime();
+  if (!Number.isFinite(t)) return false;
+  return Date.now() - t <= withinMinutes * 60_000;
+}
+
 export interface LogisticsVehicle {
   id: string;
   firm_nr: string;
@@ -402,6 +422,65 @@ export async function listCouriers(activeOnly = true): Promise<LogisticsCourier[
     [f]
   );
   return (r?.rows || []) as LogisticsCourier[];
+}
+
+/** Geçmiş rota — logistics.courier_locations */
+export async function listCourierLocationHistory(
+  courierId: string,
+  opts?: { limit?: number; sinceHours?: number },
+): Promise<CourierLocationHistoryRow[]> {
+  if (!courierId) return [];
+  const limit = Math.min(2000, Math.max(10, opts?.limit ?? 200));
+  const sinceHours = Math.min(168, Math.max(1, opts?.sinceHours ?? 24));
+  const f = firmNr();
+
+  if (isRestApi()) {
+    const { postgrest } = await import('./api/postgrestClient');
+    const since = new Date(Date.now() - sinceHours * 3600_000).toISOString();
+    const rows = await postgrest.get<any[]>(
+      '/courier_locations',
+      {
+        select: 'id,lat,lng,speed_kmh,recorded_at,delivery_id',
+        courier_id: `eq.${courierId}`,
+        firm_nr: `eq.${f}`,
+        recorded_at: `gte.${since}`,
+        order: 'recorded_at.asc',
+        limit,
+      },
+      { schema: 'logistics' },
+    );
+    return (Array.isArray(rows) ? rows : []).map((r) => ({
+      id: String(r.id ?? ''),
+      lat: Number(r.lat),
+      lng: Number(r.lng),
+      speed_kmh: r.speed_kmh == null ? null : Number(r.speed_kmh),
+      recorded_at: String(r.recorded_at ?? ''),
+      delivery_id: r.delivery_id == null ? null : String(r.delivery_id),
+    }));
+  }
+
+  const c = conn();
+  const r = await c.query(
+    `SELECT id::text AS id, lat::float8 AS lat, lng::float8 AS lng,
+            speed_kmh::float8 AS speed_kmh,
+            recorded_at::text AS recorded_at,
+            delivery_id::text AS delivery_id
+     FROM logistics.courier_locations
+     WHERE courier_id = $1::uuid
+       AND firm_nr = $2
+       AND recorded_at >= now() - ($3::int || ' hours')::interval
+     ORDER BY recorded_at ASC
+     LIMIT $4`,
+    [courierId, f, sinceHours, limit],
+  );
+  return (r?.rows || []).map((row: any) => ({
+    id: String(row.id ?? ''),
+    lat: Number(row.lat),
+    lng: Number(row.lng),
+    speed_kmh: row.speed_kmh == null ? null : Number(row.speed_kmh),
+    recorded_at: String(row.recorded_at ?? ''),
+    delivery_id: row.delivery_id == null ? null : String(row.delivery_id),
+  }));
 }
 
 export async function listVehicles(activeOnly = true): Promise<LogisticsVehicle[]> {
@@ -797,6 +876,7 @@ export const logisticsService = {
   listDeliveries,
   getDelivery,
   listCouriers,
+  listCourierLocationHistory,
   listVehicles,
   transitionStatus,
   assignCourierVehicle,
@@ -804,6 +884,7 @@ export const logisticsService = {
   getDeliveryStats,
   canTransition,
   nextStatuses,
+  isCourierLocationFresh,
   DELIVERY_STATUS_LABELS,
 };
 

@@ -159,155 +159,176 @@ export function RestaurantMenuCatalog({
 
   const setMode = (mode: RestMenuCatalogView) => setViewMode(mode);
 
+  const imageH =
+    gridCols <= 2 ? 152 : gridCols === 3 ? 136 : gridCols === 4 ? 96 : gridCols === 5 ? 80 : 68;
+
   return (
     <View style={styles.wrap}>
-      <View style={styles.toolbar}>
-        <Text style={[styles.title, { color: colors.text }]}>Menü</Text>
-        <View style={styles.viewToggle}>
-          <Pressable
-            onPress={() => setMode('grid')}
-            accessibilityRole="button"
-            accessibilityState={{ selected: viewMode === 'grid' }}
-            style={[
-              styles.viewBtn,
-              {
-                backgroundColor: viewMode === 'grid' ? palette.blue600 : colors.card,
-                borderColor: viewMode === 'grid' ? palette.blue600 : colors.cardBorder,
-              },
-            ]}
-          >
-            <LayoutGrid
-              size={16}
-              color={viewMode === 'grid' ? palette.white : colors.textMuted}
-            />
-          </Pressable>
-          <Pressable
-            onPress={() => setMode('list')}
-            accessibilityRole="button"
-            accessibilityState={{ selected: viewMode === 'list' }}
-            style={[
-              styles.viewBtn,
-              {
-                backgroundColor: viewMode === 'list' ? palette.blue600 : colors.card,
-                borderColor: viewMode === 'list' ? palette.blue600 : colors.cardBorder,
-              },
-            ]}
-          >
-            <List
-              size={16}
-              color={viewMode === 'list' ? palette.white : colors.textMuted}
-            />
-          </Pressable>
+      <View
+        style={[
+          styles.toolbarBlock,
+          {
+            backgroundColor: colors.background,
+            borderBottomColor: colors.cardBorder,
+          },
+        ]}
+      >
+        <View style={styles.toolbar}>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text style={[styles.title, { color: colors.text }]}>Menü</Text>
+            <Text style={{ color: colors.textMuted, fontSize: 11, fontWeight: '700', marginTop: 2 }}>
+              {loading ? 'Yükleniyor…' : `${filtered.length} ürün`}
+              {!loading && category ? ` · ${category}` : ''}
+            </Text>
+          </View>
+          <View style={styles.viewToggle}>
+            <Pressable
+              onPress={() => setMode('grid')}
+              accessibilityRole="button"
+              accessibilityState={{ selected: viewMode === 'grid' }}
+              style={[
+                styles.viewBtn,
+                {
+                  backgroundColor: viewMode === 'grid' ? palette.blue600 : colors.card,
+                  borderColor: viewMode === 'grid' ? palette.blue600 : colors.cardBorder,
+                },
+              ]}
+            >
+              <LayoutGrid
+                size={16}
+                color={viewMode === 'grid' ? palette.white : colors.textMuted}
+              />
+            </Pressable>
+            <Pressable
+              onPress={() => setMode('list')}
+              accessibilityRole="button"
+              accessibilityState={{ selected: viewMode === 'list' }}
+              style={[
+                styles.viewBtn,
+                {
+                  backgroundColor: viewMode === 'list' ? palette.blue600 : colors.card,
+                  borderColor: viewMode === 'list' ? palette.blue600 : colors.cardBorder,
+                },
+              ]}
+            >
+              <List
+                size={16}
+                color={viewMode === 'list' ? palette.white : colors.textMuted}
+              />
+            </Pressable>
+          </View>
         </View>
-      </View>
 
-      {viewMode === 'grid' ? (
-        <View style={styles.colsRow}>
-          <Text style={{ color: colors.textMuted, fontSize: 11, fontWeight: '800' }}>
-            Sütun
-          </Text>
-          <View style={styles.colsChips}>
-            {GRID_COL_OPTIONS.map((n) => {
-              const on = gridCols === n;
+        {viewMode === 'grid' ? (
+          <View style={styles.colsRow}>
+            <Text style={{ color: colors.textMuted, fontSize: 11, fontWeight: '800' }}>
+              Sütun
+            </Text>
+            <View style={styles.colsChips}>
+              {GRID_COL_OPTIONS.map((n) => {
+                const on = gridCols === n;
+                return (
+                  <Pressable
+                    key={n}
+                    onPress={() => setGridCols(n)}
+                    style={[
+                      styles.colChip,
+                      {
+                        backgroundColor: on ? palette.indigo600 : colors.card,
+                        borderColor: on ? palette.indigo600 : colors.cardBorder,
+                      },
+                    ]}
+                  >
+                    <Text
+                      style={{
+                        color: on ? palette.white : colors.text,
+                        fontWeight: '900',
+                        fontSize: 12,
+                      }}
+                    >
+                      {n}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
+        ) : null}
+
+        <FormField
+          label="Ara"
+          value={search}
+          onChangeText={onSearchChange}
+          placeholder="Ürün, kod veya kategori"
+          hintRight={loading ? '…' : `${filtered.length}/${items.length}`}
+        />
+
+        {categories.length > 0 ? (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.chips}
+            style={styles.chipsScroll}
+          >
+            <Pressable
+              onPress={() => setCategory(null)}
+              style={[
+                styles.chip,
+                !category ? styles.chipSelected : null,
+                {
+                  backgroundColor: !category ? palette.blue700 : colors.card,
+                  borderColor: !category ? palette.blue700 : colors.cardBorder,
+                },
+              ]}
+            >
+              <Text
+                style={{
+                  color: !category ? palette.white : colors.text,
+                  fontWeight: '900',
+                  fontSize: 13,
+                }}
+              >
+                Tümü · {items.length}
+              </Text>
+            </Pressable>
+            {categories.map(([name, count]) => {
+              const on = category === name;
+              const tone = toneFor(name);
               return (
                 <Pressable
-                  key={n}
-                  onPress={() => setGridCols(n)}
+                  key={name}
+                  onPress={() => setCategory(on ? null : name)}
                   style={[
-                    styles.colChip,
+                    styles.chip,
+                    on ? styles.chipSelected : null,
                     {
-                      backgroundColor: on ? palette.indigo600 : colors.card,
-                      borderColor: on ? palette.indigo600 : colors.cardBorder,
+                      backgroundColor: on ? palette.blue700 : colors.card,
+                      borderColor: on ? palette.blue700 : colors.cardBorder,
                     },
                   ]}
                 >
+                  <View
+                    style={[
+                      styles.chipDot,
+                      { backgroundColor: on ? 'rgba(255,255,255,0.9)' : tone.fg },
+                    ]}
+                  />
                   <Text
                     style={{
                       color: on ? palette.white : colors.text,
                       fontWeight: '900',
-                      fontSize: 12,
+                      fontSize: 13,
                     }}
+                    numberOfLines={1}
                   >
-                    {n}
+                    {name} · {count}
                   </Text>
                 </Pressable>
               );
             })}
-          </View>
-        </View>
-      ) : null}
-
-      <FormField
-        label="Ara"
-        value={search}
-        onChangeText={onSearchChange}
-        placeholder="Ürün, kod veya kategori"
-        hintRight={loading ? '…' : `${filtered.length}/${items.length}`}
-      />
-
-      {categories.length > 0 ? (
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.chips}
-          style={styles.chipsScroll}
-        >
-          <Pressable
-            onPress={() => setCategory(null)}
-            style={[
-              styles.chip,
-              {
-                backgroundColor: !category ? palette.blue600 : colors.card,
-                borderColor: !category ? palette.blue600 : colors.cardBorder,
-              },
-            ]}
-          >
-            <Text
-              style={{
-                color: !category ? palette.white : colors.text,
-                fontWeight: '800',
-                fontSize: 12,
-              }}
-            >
-              Tümü · {items.length}
-            </Text>
-          </Pressable>
-          {categories.map(([name, count]) => {
-            const on = category === name;
-            const tone = toneFor(name);
-            return (
-              <Pressable
-                key={name}
-                onPress={() => setCategory(on ? null : name)}
-                style={[
-                  styles.chip,
-                  {
-                    backgroundColor: on ? palette.blue600 : colors.card,
-                    borderColor: on ? palette.blue600 : colors.cardBorder,
-                  },
-                ]}
-              >
-                <View
-                  style={[
-                    styles.chipDot,
-                    { backgroundColor: on ? 'rgba(255,255,255,0.85)' : tone.fg },
-                  ]}
-                />
-                <Text
-                  style={{
-                    color: on ? palette.white : colors.text,
-                    fontWeight: '800',
-                    fontSize: 12,
-                  }}
-                  numberOfLines={1}
-                >
-                  {name} · {count}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </ScrollView>
-      ) : null}
+          </ScrollView>
+        ) : null}
+      </View>
 
       {filtered.length === 0 ? (
         <View
@@ -325,6 +346,7 @@ export function RestaurantMenuCatalog({
         <View style={styles.grid}>
           {filtered.map((mi) => {
             const busy = busyId === mi.id;
+            const catLabel = (mi.category || '').trim();
             return (
               <Pressable
                 key={mi.id}
@@ -337,24 +359,22 @@ export function RestaurantMenuCatalog({
                     width: tileW,
                     borderColor: busy ? palette.blue600 : colors.cardBorder,
                     backgroundColor: colors.card,
-                    opacity: busy ? 0.72 : pressed ? 0.92 : 1,
-                    transform: [{ scale: pressed ? 0.98 : 1 }],
+                    opacity: busy ? 0.55 : pressed ? 0.88 : 1,
+                    transform: [{ scale: pressed ? 0.97 : 1 }],
                   },
                 ]}
               >
-                <View style={[styles.gridImageWrap, { height: gridCols >= 5 ? 72 : gridCols >= 4 ? 88 : 112 }]}>
+                <View style={[styles.gridImageWrap, { height: imageH }]}>
                   <MenuThumb item={mi} size="fill" rounded={0} />
                   <View
                     style={[
                       styles.priceBadge,
                       {
-                        backgroundColor: darkMode
-                          ? 'rgba(15,23,42,0.88)'
-                          : 'rgba(255,255,255,0.94)',
+                        backgroundColor: darkMode ? palette.blue700 : palette.blue600,
                       },
                     ]}
                   >
-                    <Text style={{ color: palette.blue600, fontWeight: '900', fontSize: 12 }}>
+                    <Text style={{ color: palette.white, fontWeight: '900', fontSize: 12 }}>
                       {formatMoney(mi.price)}
                     </Text>
                   </View>
@@ -364,23 +384,24 @@ export function RestaurantMenuCatalog({
                 </View>
                 <View style={styles.gridBody}>
                   <Text
-                    style={{
-                      color: palette.blue600,
-                      fontSize: 9,
-                      fontWeight: '900',
-                      letterSpacing: 0.6,
-                      textTransform: 'uppercase',
-                    }}
-                    numberOfLines={1}
-                  >
-                    {mi.category || 'Menü'}
-                  </Text>
-                  <Text
-                    style={{ color: colors.text, fontWeight: '800', fontSize: 13, marginTop: 2 }}
+                    style={{ color: colors.text, fontWeight: '800', fontSize: 13 }}
                     numberOfLines={2}
                   >
                     {mi.name}
                   </Text>
+                  {catLabel ? (
+                    <Text
+                      style={{
+                        color: colors.textMuted,
+                        fontSize: 10,
+                        fontWeight: '700',
+                        marginTop: 3,
+                      }}
+                      numberOfLines={1}
+                    >
+                      {catLabel}
+                    </Text>
+                  ) : null}
                 </View>
               </Pressable>
             );
@@ -401,7 +422,8 @@ export function RestaurantMenuCatalog({
                   {
                     borderColor: busy ? palette.blue600 : colors.cardBorder,
                     backgroundColor: pressed || busy ? palette.blue50 : colors.card,
-                    opacity: busy ? 0.75 : 1,
+                    opacity: busy ? 0.6 : pressed ? 0.9 : 1,
+                    transform: [{ scale: pressed ? 0.99 : 1 }],
                   },
                 ]}
               >
@@ -444,13 +466,19 @@ export function RestaurantMenuCatalog({
 }
 
 const styles = StyleSheet.create({
-  wrap: { gap: 10, marginTop: 4 },
+  wrap: { gap: 12, marginTop: 4 },
+  toolbarBlock: {
+    gap: 10,
+    paddingBottom: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
   toolbar: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    gap: 10,
   },
-  title: { fontSize: 15, fontWeight: '900' },
+  title: { fontSize: 18, fontWeight: '900', letterSpacing: -0.3 },
   viewToggle: { flexDirection: 'row', gap: 6 },
   viewBtn: {
     width: 36,
@@ -464,7 +492,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    marginBottom: 4,
     paddingHorizontal: 0,
   },
   colsChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, flex: 1 },
@@ -482,14 +509,21 @@ const styles = StyleSheet.create({
   chip: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    borderWidth: 1,
+    gap: 7,
+    borderWidth: 1.5,
     borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    maxWidth: 220,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    maxWidth: 240,
   },
-  chipDot: { width: 7, height: 7, borderRadius: 4 },
+  chipSelected: {
+    shadowColor: '#1D4ED8',
+    shadowOpacity: 0.28,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 3,
+  },
+  chipDot: { width: 8, height: 8, borderRadius: 4 },
   empty: {
     borderWidth: 1,
     borderRadius: 14,
@@ -518,8 +552,13 @@ const styles = StyleSheet.create({
     left: 8,
     bottom: 8,
     borderRadius: 10,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+    shadowColor: '#0F172A',
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 2,
   },
   plusFab: {
     position: 'absolute',
@@ -532,7 +571,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  gridBody: { paddingHorizontal: 10, paddingVertical: 10, minHeight: 64 },
+  gridBody: { paddingHorizontal: 10, paddingVertical: 10, minHeight: 52 },
   list: { gap: 8 },
   listRow: {
     flexDirection: 'row',

@@ -1,5 +1,5 @@
 /**
- * OSM WebView haritası — kurye / cihaz konumları.
+ * OSM WebView haritası — kurye / cihaz konumları + isteğe bağlı rota geçmişi.
  */
 import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, Linking, Pressable, Platform } from 'react-native';
@@ -16,16 +16,29 @@ export type MapPoint = {
   color?: string;
 };
 
+export type MapPath = {
+  id: string;
+  points: { lat: number; lng: number }[];
+  color?: string;
+};
+
 type Props = {
   points: MapPoint[];
+  /** Geçmiş hareket polylinesi */
+  paths?: MapPath[];
   height?: number;
 };
 
-function buildMapHtml(points: MapPoint[]): string {
+function buildMapHtml(points: MapPoint[], paths: MapPath[]): string {
   const valid = points.filter(
     (p) => Number.isFinite(p.lat) && Number.isFinite(p.lng) && Math.abs(p.lat) <= 90,
   );
-  const center = valid[0] || { lat: 36.19, lng: 44.01 };
+  const pathPts = paths.flatMap((path) =>
+    path.points.filter(
+      (p) => Number.isFinite(p.lat) && Number.isFinite(p.lng) && Math.abs(p.lat) <= 90,
+    ),
+  );
+  const center = valid[0] || pathPts[0] || { lat: 36.19, lng: 44.01 };
   const markersJs = valid
     .map((p) => {
       const color = (p.color || '#2563eb').replace(/'/g, '');
@@ -33,9 +46,25 @@ function buildMapHtml(points: MapPoint[]): string {
       return `L.circleMarker([${p.lat},${p.lng}],{radius:9,color:'${color}',fillColor:'${color}',fillOpacity:0.85}).addTo(map).bindPopup('${label}');`;
     })
     .join('\n');
+  const pathsJs = paths
+    .map((path) => {
+      const pts = path.points.filter(
+        (p) => Number.isFinite(p.lat) && Number.isFinite(p.lng) && Math.abs(p.lat) <= 90,
+      );
+      if (pts.length < 2) return '';
+      const color = (path.color || '#7c3aed').replace(/'/g, '');
+      const latlngs = pts.map((p) => `[${p.lat},${p.lng}]`).join(',');
+      return `L.polyline([${latlngs}],{color:'${color}',weight:4,opacity:0.85}).addTo(map);`;
+    })
+    .filter(Boolean)
+    .join('\n');
+  const allForFit = [
+    ...valid.map((p) => `[${p.lat},${p.lng}]`),
+    ...pathPts.map((p) => `[${p.lat},${p.lng}]`),
+  ];
   const fitJs =
-    valid.length > 1
-      ? `map.fitBounds([${valid.map((p) => `[${p.lat},${p.lng}]`).join(',')}],{padding:[28,28]});`
+    allForFit.length > 1
+      ? `map.fitBounds([${allForFit.join(',')}],{padding:[28,28]});`
       : '';
 
   return `<!DOCTYPE html><html><head>
@@ -49,14 +78,19 @@ function buildMapHtml(points: MapPoint[]): string {
 var map=L.map('map',{zoomControl:true}).setView([${center.lat},${center.lng}],14);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OSM'}).addTo(map);
 ${markersJs}
+${pathsJs}
 ${fitJs}
 </script></body></html>`;
 }
 
-export function CourierLiveMap({ points, height = 220 }: Props) {
+export function CourierLiveMap({ points, paths = [], height = 220 }: Props) {
   const { colors } = useThemeStore();
-  const html = useMemo(() => buildMapHtml(points), [points]);
-  const first = points.find((p) => Number.isFinite(p.lat) && Number.isFinite(p.lng));
+  const html = useMemo(() => buildMapHtml(points, paths), [points, paths]);
+  const first =
+    points.find((p) => Number.isFinite(p.lat) && Number.isFinite(p.lng)) ||
+    paths
+      .flatMap((p) => p.points)
+      .find((p) => Number.isFinite(p.lat) && Number.isFinite(p.lng));
 
   if (!first) {
     return (
@@ -82,8 +116,8 @@ export function CourierLiveMap({ points, height = 220 }: Props) {
         onPress={() => {
           const url =
             Platform.OS === 'ios'
-              ? `http://maps.apple.com/?ll=${first.lat},${first.lng}&q=${encodeURIComponent(first.label)}`
-              : `geo:${first.lat},${first.lng}?q=${first.lat},${first.lng}(${encodeURIComponent(first.label)})`;
+              ? `http://maps.apple.com/?ll=${first.lat},${first.lng}&q=${encodeURIComponent('Konum')}`
+              : `geo:${first.lat},${first.lng}?q=${first.lat},${first.lng}`;
           void Linking.openURL(url);
         }}
         style={styles.openBtn}

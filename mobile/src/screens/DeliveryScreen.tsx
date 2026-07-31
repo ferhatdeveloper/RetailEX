@@ -19,14 +19,14 @@ import {
 import { useRoute, type RouteProp } from '@react-navigation/native';
 import { useTranslation } from 'react-i18next';
 import * as Location from 'expo-location';
-import { MapPin, Navigation, Radio } from 'lucide-react-native';
+import { MapPin, Navigation, Radio, Route } from 'lucide-react-native';
 import {
   ScreenHeader,
   SearchBar,
   EmptyState,
   ErrorBanner,
 } from '../components/ScreenChrome';
-import { CourierLiveMap, type MapPoint } from '../components/CourierLiveMap';
+import { CourierLiveMap, type MapPoint, type MapPath } from '../components/CourierLiveMap';
 import { SegmentTabBar } from '../components/SegmentTabBar';
 import {
   listDeliveries,
@@ -37,9 +37,12 @@ import {
   transitionDeliveryStatus,
   recordCourierLocation,
   flushLocalLocationQueue,
+  listCourierLocationHistory,
+  isCourierLocationFresh,
   type LogisticsDelivery,
   type LogisticsCourier,
   type DeliveryStatus,
+  type CourierLocationHistoryRow,
 } from '../api/logisticsApi';
 import { useThemeStore } from '../store/themeStore';
 import { useOrgEpoch } from '../hooks/useOrgEpoch';
@@ -77,6 +80,9 @@ export function DeliveryScreen() {
     sink: 'pg' | 'local' | 'device';
   } | null>(null);
   const [busyStatus, setBusyStatus] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
+  const [historyRows, setHistoryRows] = useState<CourierLocationHistoryRow[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
 
   const watchRef = useRef<Location.LocationSubscription | null>(null);
   const lastWriteRef = useRef(0);
@@ -87,6 +93,45 @@ export function DeliveryScreen() {
 
   const selected = rows.find((r) => r.id === selectedId) ?? null;
   const activeCourier = couriers.find((c) => c.id === courierId) ?? null;
+
+  const onMapCouriers = useMemo(
+    () =>
+      couriers.filter(
+        (c) =>
+          c.last_lat != null &&
+          c.last_lng != null &&
+          Number.isFinite(c.last_lat) &&
+          Number.isFinite(c.last_lng),
+      ),
+    [couriers],
+  );
+
+  const liveOnMap = useMemo(
+    () => onMapCouriers.filter((c) => isCourierLocationFresh(c.last_location_at, 5)),
+    [onMapCouriers],
+  );
+
+  useEffect(() => {
+    if (!showHistory || !courierId || tab !== 'live') {
+      setHistoryRows([]);
+      return;
+    }
+    let cancelled = false;
+    setHistoryLoading(true);
+    void listCourierLocationHistory(courierId, { limit: 400, sinceHours: 24 })
+      .then((rowsHist) => {
+        if (!cancelled) setHistoryRows(rowsHist);
+      })
+      .catch(() => {
+        if (!cancelled) setHistoryRows([]);
+      })
+      .finally(() => {
+        if (!cancelled) setHistoryLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [showHistory, courierId, tab]);
 
   useEffect(() => {
     setTab(initialTab);
@@ -320,6 +365,17 @@ export function DeliveryScreen() {
     return pts;
   }, [couriers, courierId, activeCourier, tracking, coords, selected]);
 
+  const mapPaths = useMemo((): MapPath[] => {
+    if (!showHistory || historyRows.length < 2) return [];
+    return [
+      {
+        id: `hist-${courierId || 'x'}`,
+        color: '#7c3aed',
+        points: historyRows.map((r) => ({ lat: r.lat, lng: r.lng })),
+      },
+    ];
+  }, [showHistory, historyRows, courierId]);
+
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
       <ScreenHeader
@@ -389,6 +445,96 @@ export function DeliveryScreen() {
             </Text>
           )}
 
+          {tab === 'live' && onMapCouriers.length > 0 ? (
+            <View style={styles.whoCard}>
+              <Text style={{ color: colors.text, fontWeight: '800', fontSize: 12, marginBottom: 6 }}>
+                Haritada kimler ({liveOnMap.length} canlı · {onMapCouriers.length} konumlu)
+              </Text>
+              {onMapCouriers.map((c) => {
+                const fresh = isCourierLocationFresh(c.last_location_at, 5);
+                const on = c.id === courierId;
+                return (
+                  <Pressable
+                    key={c.id}
+                    onPress={() => setCourierId(c.id)}
+                    style={[
+                      styles.whoRow,
+                      {
+                        backgroundColor: on ? palette.blue100 : colors.backgroundAlt,
+                        borderColor: on ? palette.blue600 : colors.cardBorder,
+                      },
+                    ]}
+                  >
+                    <View
+                      style={[
+                        styles.whoDot,
+                        { backgroundColor: fresh ? palette.green600 : palette.gray600 },
+                      ]}
+                    />
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <Text
+                        style={{ color: colors.text, fontWeight: '700', fontSize: 12 }}
+                        numberOfLines={1}
+                      >
+                        {c.full_name}
+                      </Text>
+                      <Text style={{ color: colors.textMuted, fontSize: 10 }} numberOfLines={1}>
+                        {fresh ? 'Canlı' : 'Son konum'}
+                        {c.last_location_at
+                          ? ` · ${String(c.last_location_at).slice(0, 19).replace('T', ' ')}`
+                          : ''}
+                      </Text>
+                    </View>
+                    <Pressable
+                      onPress={() => {
+                        setCourierId(c.id);
+                        setShowHistory((v) => (courierId === c.id ? !v : true));
+                      }}
+                      style={[
+                        styles.histBtn,
+                        {
+                          backgroundColor:
+                            showHistory && courierId === c.id
+                              ? palette.purple500
+                              : colors.card,
+                          borderColor: colors.cardBorder,
+                        },
+                      ]}
+                    >
+                      <Route
+                        size={12}
+                        color={
+                          showHistory && courierId === c.id ? palette.white : colors.textMuted
+                        }
+                      />
+                      <Text
+                        style={{
+                          color:
+                            showHistory && courierId === c.id
+                              ? palette.white
+                              : colors.textMuted,
+                          fontSize: 10,
+                          fontWeight: '800',
+                        }}
+                      >
+                        Geçmiş
+                      </Text>
+                    </Pressable>
+                  </Pressable>
+                );
+              })}
+              {showHistory ? (
+                <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 6 }}>
+                  {historyLoading
+                    ? 'Rota yükleniyor…'
+                    : historyRows.length
+                      ? `Son 24 saatte ${historyRows.length} nokta — haritada mor çizgi`
+                      : 'Bu kurye için geçmiş nokta yok'}
+                </Text>
+              ) : null}
+            </View>
+          ) : null}
+
           {tab === 'live' && couriers.length > 0 ? (
             <View style={styles.courierChips}>
               {couriers.slice(0, 8).map((c) => {
@@ -417,7 +563,9 @@ export function DeliveryScreen() {
             </View>
           ) : null}
 
-          {tab === 'live' ? <CourierLiveMap points={mapPoints} height={260} /> : null}
+          {tab === 'live' ? (
+            <CourierLiveMap points={mapPoints} paths={mapPaths} height={280} />
+          ) : null}
         </View>
       ) : null}
 
@@ -615,6 +763,33 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: 6,
     marginTop: 10,
+  },
+  whoCard: {
+    marginTop: 10,
+    gap: 6,
+  },
+  whoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  whoDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  histBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
   },
   chip: {
     paddingHorizontal: 10,

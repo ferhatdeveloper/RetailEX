@@ -276,6 +276,7 @@ export const MENU_SECTIONS: MenuSection[] = [
     title: 'Restoran',
     items: [
       { id: 'restaurant', label: 'Restoran Ana Ekran', screen: 'restaurant' },
+      { id: 'rest-retail', label: 'Perakende POS', screen: 'restaurant-retail' },
       { id: 'rest-tables', label: 'Masalar', screen: 'restaurant-tables' },
       { id: 'rest-orders', label: 'Açık Adisyonlar', screen: 'restaurant-orders' },
       { id: 'rest-delivery', label: 'Paket Servis', screen: 'restaurant-delivery' },
@@ -283,6 +284,7 @@ export const MENU_SECTIONS: MenuSection[] = [
       { id: 'rest-schedule', label: 'Bugünkü Akış', screen: 'restaurant-schedule' },
       { id: 'rest-kitchen', label: 'Mutfak Ekranı', screen: 'restaurant-kitchen' },
       { id: 'rest-reports', label: 'Restoran Raporları', screen: 'restaurant-reports' },
+      { id: 'rest-settings', label: 'Restoran Ayarları', screen: 'restaurant-settings' },
       { id: 'rest-z-report', label: 'Z Raporu', screen: 'restaurant-reports-z' },
       { id: 'rest-void-report', label: 'İptal / İade Raporu', screen: 'restaurant-reports-void' },
       { id: 'rest-product-qty', label: 'Ürün Satış Adedi', screen: 'restaurant-reports-product' },
@@ -375,6 +377,7 @@ export type LiveRoute =
   | 'WmsWavePicking'
   | 'Restaurant'
   | 'RestaurantReports'
+  | 'RestaurantSettings'
   | 'Delivery'
   | 'Finance'
   | 'FinanceDefinitions'
@@ -536,6 +539,7 @@ const LIVE_MAP: Record<string, LiveRoute> = {
   'stock-price-change-slips': 'StockMovements',
   restaurant: 'Restaurant',
   'restaurant-tables': 'Restaurant',
+  'restaurant-retail': 'Restaurant',
   'restaurant-orders': 'Restaurant',
   'restaurant-delivery': 'Restaurant',
   'restaurant-takeaway': 'Restaurant',
@@ -545,6 +549,9 @@ const LIVE_MAP: Record<string, LiveRoute> = {
   'restaurant-reports-z': 'RestaurantReports',
   'restaurant-reports-void': 'RestaurantReports',
   'restaurant-reports-product': 'RestaurantReports',
+  'restaurant-settings': 'RestaurantSettings',
+  'restaurant-channels': 'RestaurantSettings',
+  'restaurant-firm': 'RestaurantSettings',
   logistics: 'Delivery',
   'delivery-live': 'Delivery',
   couriers: 'Delivery',

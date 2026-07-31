@@ -70,6 +70,10 @@ export type RestDeliveryOrder = {
   expected_payment_method: RestDeliveryPayMethod;
   created_at: string | null;
   item_count: number;
+  /** note.channel — paket platformı */
+  channel: string;
+  /** note.external_order_id — harici platform sipariş no */
+  external_order_id: string | null;
 };
 
 export type RestTakeawayOrder = {
@@ -635,7 +639,8 @@ async function sendRestaurantItemsToKitchenViaRest(orderId: string): Promise<Sen
   const now = Date.now();
   const estimatedFinish = new Date(now + adjustedMaxPrepTime * 60_000).toISOString();
   const kitchenOrderId = newUuid();
-  const tableNumber = detail.table_name || detail.table_id || 'Masa';
+  const tableNumber =
+    detail.table_name || detail.table_id || 'Perakende';
 
   let kitchenOrderCreated = false;
   try {
@@ -775,7 +780,8 @@ async function sendRestaurantItemsToKitchenViaBridge(orderId: string): Promise<S
   const now = Date.now();
   const estimatedFinish = new Date(now + adjustedMaxPrepTime * 60_000).toISOString();
   const kitchenOrderId = newUuid();
-  const tableNumber = detail.table_name || detail.table_id || 'Masa';
+  const tableNumber =
+    detail.table_name || detail.table_id || 'Perakende';
 
   let kitchenOrderCreated = false;
   try {
@@ -1354,6 +1360,127 @@ async function createRestaurantOrderViaBridge(params: {
     total_amount: 0,
     waiter,
     created_at: new Date().toISOString(),
+  };
+}
+
+/** Masasız perakende POS — table_id NULL, note.type = retail (Gastro retail). */
+export async function createRetailOrder(params?: {
+  note?: string;
+}): Promise<RestOrder> {
+  return runDataTransport({
+    label: 'createRetailOrder',
+    viaRest: () => createRetailOrderViaRest(params),
+    viaBridge: () => createRetailOrderViaBridge(params),
+  });
+}
+
+async function createRetailOrderViaRest(params?: {
+  note?: string;
+}): Promise<RestOrder> {
+  const ordersBare = restTableBare(restOrdersTable());
+  const user = useAuthStore.getState().user;
+  const waiter = user?.fullName || user?.username || 'mobile';
+  const year = new Date().getFullYear();
+  const prefix = `RTL-${year}-`;
+
+  const seqRows = await postgrestGet<Array<{ order_no?: string }>>(
+    `/${ordersBare}`,
+    {
+      order_no: `like.${prefix}*`,
+      select: 'order_no',
+      order: 'order_no.desc',
+      limit: 1,
+    },
+    { schema: 'rest' },
+  );
+  let next = 1;
+  const last = Array.isArray(seqRows) ? seqRows[0]?.order_no : undefined;
+  if (last) {
+    const m = String(last).match(new RegExp(`^RTL-${year}-(\\d+)$`));
+    if (m) next = parseInt(m[1], 10) + 1;
+  }
+  const orderNo = `${prefix}${String(next).padStart(5, '0')}`;
+  const id = newUuid();
+  const notePayload = JSON.stringify({
+    type: 'retail',
+    ...(params?.note?.trim() ? { text: params.note.trim() } : {}),
+  });
+
+  await postgrestPost(
+    `/${ordersBare}`,
+    {
+      id,
+      order_no: orderNo,
+      table_id: null,
+      floor_id: null,
+      waiter,
+      status: 'open',
+      note: notePayload,
+      total_amount: 0,
+    },
+    { schema: 'rest', prefer: 'return=minimal' },
+  );
+
+  const detail = await getOrderDetailById(id);
+  if (detail) {
+    return { ...detail, table_name: detail.table_name || 'Perakende' };
+  }
+
+  return {
+    id,
+    order_no: orderNo,
+    table_id: null,
+    table_name: 'Perakende',
+    status: 'open',
+    total_amount: 0,
+    waiter,
+    created_at: new Date().toISOString(),
+    note: notePayload,
+  };
+}
+
+async function createRetailOrderViaBridge(params?: {
+  note?: string;
+}): Promise<RestOrder> {
+  const orders = restOrdersTable();
+  const user = useAuthStore.getState().user;
+  const waiter = user?.fullName || user?.username || 'mobile';
+  const year = new Date().getFullYear();
+
+  const seqRes = await pgQuery<{ seq: number }>(
+    `SELECT COUNT(*)+1 AS seq FROM ${orders} WHERE order_no LIKE $1`,
+    [`RTL-${year}-%`],
+  );
+  const seq = String(seqRes.rows[0]?.seq ?? 1).padStart(5, '0');
+  const orderNo = `RTL-${year}-${seq}`;
+  const id = newUuid();
+  const notePayload = JSON.stringify({
+    type: 'retail',
+    ...(params?.note?.trim() ? { text: params.note.trim() } : {}),
+  });
+
+  await pgQuery(
+    `INSERT INTO ${orders}
+       (id, order_no, table_id, floor_id, waiter, status, note, total_amount)
+     VALUES ($1::uuid, $2, NULL, NULL, $3, 'open', $4, 0)`,
+    [id, orderNo, waiter, notePayload],
+  );
+
+  const detail = await getOrderDetailById(id);
+  if (detail) {
+    return { ...detail, table_name: detail.table_name || 'Perakende' };
+  }
+
+  return {
+    id,
+    order_no: orderNo,
+    table_id: null,
+    table_name: 'Perakende',
+    status: 'open',
+    total_amount: 0,
+    waiter,
+    created_at: new Date().toISOString(),
+    note: notePayload,
   };
 }
 
@@ -2148,9 +2275,10 @@ async function closeRestaurantOrderViaBridge(
   );
 }
 
-/** Web RestaurantService.completeTablePayment — sipariş kapat + masa empty */
+/** Web RestaurantService.completeTablePayment — sipariş kapat + (varsa) masa empty */
 export async function completeTablePayment(params: {
-  tableId: string;
+  /** Boş / yoksa yalnız sipariş kapanır (perakende POS) */
+  tableId?: string | null;
   orderId: string;
   linkedOrderIds?: string[];
   discountAmount?: number;
@@ -2165,7 +2293,7 @@ export async function completeTablePayment(params: {
 }
 
 async function completeTablePaymentViaRest(params: {
-  tableId: string;
+  tableId?: string | null;
   orderId: string;
   linkedOrderIds?: string[];
   discountAmount?: number;
@@ -2187,11 +2315,14 @@ async function completeTablePaymentViaRest(params: {
     }
   }
 
+  const tableId = params.tableId?.trim();
+  if (!tableId || tableId.startsWith('__')) return;
+
   const tablesBare = restTableBare(restTablesTable());
   const now = new Date().toISOString();
   try {
     await postgrestPatch(
-      `/${tablesBare}?id=eq.${encodeURIComponent(params.tableId)}`,
+      `/${tablesBare}?id=eq.${encodeURIComponent(tableId)}`,
       {
         status: 'empty',
         waiter: null,
@@ -2204,7 +2335,7 @@ async function completeTablePaymentViaRest(params: {
     );
   } catch {
     await postgrestPatch(
-      `/${tablesBare}?id=eq.${encodeURIComponent(params.tableId)}`,
+      `/${tablesBare}?id=eq.${encodeURIComponent(tableId)}`,
       { status: 'empty', waiter: null, total: 0, updated_at: now },
       { schema: 'rest', prefer: 'return=minimal' },
     );
@@ -2212,7 +2343,7 @@ async function completeTablePaymentViaRest(params: {
 }
 
 async function completeTablePaymentViaBridge(params: {
-  tableId: string;
+  tableId?: string | null;
   orderId: string;
   linkedOrderIds?: string[];
   discountAmount?: number;
@@ -2235,20 +2366,23 @@ async function completeTablePaymentViaBridge(params: {
     }
   }
 
+  const tableId = params.tableId?.trim();
+  if (!tableId || tableId.startsWith('__')) return;
+
   try {
     await pgQuery(
       `UPDATE ${tables}
        SET status = 'empty', waiter = NULL, staff_id = NULL, total = 0,
            linked_order_ids = '{}', updated_at = NOW()
        WHERE id = $1::uuid`,
-      [params.tableId],
+      [tableId],
     );
   } catch {
     await pgQuery(
       `UPDATE ${tables}
        SET status = 'empty', waiter = NULL, total = 0, updated_at = NOW()
        WHERE id = $1::uuid`,
-      [params.tableId],
+      [tableId],
     );
   }
 }
@@ -2609,6 +2743,14 @@ function mapDeliveryOrder(
       : r.created_at == null
         ? null
         : String(r.created_at);
+  const channelRaw = noteObj.channel;
+  const channel =
+    channelRaw == null || String(channelRaw).trim() === ''
+      ? 'manual'
+      : String(channelRaw).trim();
+  const extRaw = noteObj.external_order_id;
+  const external_order_id =
+    extRaw == null || String(extRaw).trim() === '' ? null : String(extRaw).trim();
   return {
     id: String(r.id ?? ''),
     order_no: r.order_no == null ? null : String(r.order_no),
@@ -2622,6 +2764,8 @@ function mapDeliveryOrder(
     expected_payment_method: pay,
     created_at: created,
     item_count: itemCount,
+    channel,
+    external_order_id,
   };
 }
 
@@ -2701,7 +2845,15 @@ export async function createDeliveryOrder(params: {
   itemsSummary?: string;
   totalAmount?: number;
   expectedPaymentMethod?: RestDeliveryPayMethod;
+  /** Paket platformı — varsayılan manual */
+  channel?: string;
+  /** Harici platform sipariş numarası */
+  externalOrderId?: string;
 }): Promise<RestDeliveryOrder> {
+  const channel =
+    typeof params.channel === 'string' && params.channel.trim()
+      ? params.channel.trim()
+      : 'manual';
   return runDataTransport({
     label: 'createDeliveryOrder',
     viaRest: async () => {
@@ -2735,8 +2887,11 @@ export async function createDeliveryOrder(params: {
         phone: params.phone.trim(),
         address: params.address.trim(),
         delivery_status: 'pending',
-        channel: 'manual',
+        channel,
         expected_payment_method: pay,
+        ...(params.externalOrderId?.trim()
+          ? { external_order_id: params.externalOrderId.trim() }
+          : {}),
         ...(params.itemsSummary?.trim()
           ? { items_summary: params.itemsSummary.trim() }
           : {}),
@@ -2787,8 +2942,11 @@ export async function createDeliveryOrder(params: {
         phone: params.phone.trim(),
         address: params.address.trim(),
         delivery_status: 'pending',
-        channel: 'manual',
+        channel,
         expected_payment_method: pay,
+        ...(params.externalOrderId?.trim()
+          ? { external_order_id: params.externalOrderId.trim() }
+          : {}),
         ...(params.itemsSummary?.trim()
           ? { items_summary: params.itemsSummary.trim() }
           : {}),
