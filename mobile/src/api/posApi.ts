@@ -5,6 +5,7 @@
 
 import { pgQuery } from './pgClient';
 import { postgrestGet, postgrestPatch, postgrestPost } from './postgrestClient';
+import { runDataTransport, rethrowTransportInfra } from './dataTransport';
 import {
   firmCurrency,
   firmNr,
@@ -15,11 +16,6 @@ import {
   salesTable,
 } from './erpTables';
 import { useAuthStore } from '../store/authStore';
-import {
-  shouldPreferPostgrest,
-  shouldUseBridgeSql,
-  useConfigStore,
-} from '../store/configStore';
 import { shouldUseLiveData } from '../offline/policy';
 import {
   enqueueMutation,
@@ -461,33 +457,11 @@ async function savePosSaleLive(
 ): Promise<PosSaleResult> {
   if (!lines.length) throw new Error('Sepet boş');
 
-  const cfg = useConfigStore.getState().config;
-  const preferRest = shouldPreferPostgrest(cfg);
-  const canBridge = shouldUseBridgeSql(cfg);
-
-  if (preferRest) {
-    try {
-      return await savePosSaleViaPostgrest(lines, paymentMethod, opts);
-    } catch (e) {
-      if (!canBridge) throw e;
-      if (__DEV__) {
-        console.warn(
-          '[savePosSaleLive] PostgREST → bridge',
-          e instanceof Error ? e.message : e,
-        );
-      }
-    }
-  }
-
-  if (!canBridge) {
-    throw new Error(
-      preferRest
-        ? 'PostgREST POS kaydı başarısız ve bridge kapalı (apiMode=postgrest)'
-        : 'Bridge yapılandırması eksik',
-    );
-  }
-
-  return savePosSaleViaBridge(lines, paymentMethod, opts);
+  return runDataTransport({
+    label: 'savePosSale',
+    viaRest: () => savePosSaleViaPostgrest(lines, paymentMethod, opts),
+    viaBridge: () => savePosSaleViaBridge(lines, paymentMethod, opts),
+  });
 }
 
 export async function savePosSale(

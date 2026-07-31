@@ -207,6 +207,7 @@ export type PendingMutation =
         store_id: string;
         store_name?: string | null;
         count_type?: 'full' | 'cycle' | 'location';
+        location_code?: string | null;
         description?: string;
       };
     }

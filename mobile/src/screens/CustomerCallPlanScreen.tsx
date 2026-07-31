@@ -1,7 +1,8 @@
 /**
  * Müşteri Arama Planı — web CustomerCallPlanModule (Liste + Rapor).
+ * Liste/Rapor yatay kaydırmalı (paging) sekmeler.
  */
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -14,6 +15,11 @@ import {
   Alert,
   TextInput,
   Modal,
+  ScrollView,
+  Dimensions,
+  type NativeSyntheticEvent,
+  type NativeScrollEvent,
+  type LayoutChangeEvent,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { ScreenHeader, EmptyState, ErrorBanner, SearchBar } from '../components/ScreenChrome';
@@ -45,6 +51,11 @@ import { palette } from '../theme/colors';
 type Tab = 'list' | 'report';
 type DayFilter = 'all' | number;
 
+const TABS: { id: Tab; label: string }[] = [
+  { id: 'list', label: 'Liste' },
+  { id: 'report', label: 'Rapor' },
+];
+
 export function CustomerCallPlanScreen() {
   const { colors } = useThemeStore();
   const orgEpoch = useOrgEpoch();
@@ -52,6 +63,9 @@ export function CustomerCallPlanScreen() {
   const navigation = useNavigation<{ navigate: (name: string, params?: object) => void }>();
 
   const [tab, setTab] = useState<Tab>('list');
+  const [pageWidth, setPageWidth] = useState(Dimensions.get('window').width);
+  const pagerRef = useRef<ScrollView>(null);
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [customers, setCustomers] = useState<CallPlanCustomer[]>([]);
@@ -126,6 +140,32 @@ export function CustomerCallPlanScreen() {
       );
     });
   }, [customers, search, dayFilter]);
+
+  const goTab = (id: Tab, animated = true) => {
+    setTab(id);
+    const x = id === 'list' ? 0 : pageWidth;
+    pagerRef.current?.scrollTo({ x, animated });
+  };
+
+  const onPagerLayout = (e: LayoutChangeEvent) => {
+    const w = e.nativeEvent.layout.width;
+    if (w > 0 && Math.abs(w - pageWidth) > 1) {
+      setPageWidth(w);
+      requestAnimationFrame(() => {
+        pagerRef.current?.scrollTo({
+          x: tab === 'list' ? 0 : w,
+          animated: false,
+        });
+      });
+    }
+  };
+
+  const onPagerScrollEnd = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const x = e.nativeEvent.contentOffset.x;
+    const page = Math.round(x / Math.max(pageWidth, 1));
+    const next: Tab = page >= 1 ? 'report' : 'list';
+    if (next !== tab) setTab(next);
+  };
 
   const openEdit = (c: CallPlanCustomer) => {
     setEdit(c);
@@ -238,17 +278,12 @@ export function CustomerCallPlanScreen() {
       />
 
       <View style={styles.tabRow}>
-        {(
-          [
-            ['list', 'Liste'],
-            ['report', 'Rapor'],
-          ] as const
-        ).map(([id, label]) => {
+        {TABS.map(({ id, label }) => {
           const on = tab === id;
           return (
             <Pressable
               key={id}
-              onPress={() => setTab(id)}
+              onPress={() => goTab(id)}
               style={[
                 styles.tab,
                 {
@@ -267,139 +302,171 @@ export function CustomerCallPlanScreen() {
 
       {error ? <ErrorBanner message={error} onRetry={() => void load()} /> : null}
 
-      {tab === 'list' ? (
-        <>
-          <SearchBar
-            value={search}
-            onChangeText={setSearch}
-            placeholder="Müşteri adı, kod, telefon…"
-          />
-          <FlatList
-            horizontal
-            data={[{ value: 'all' as const, label: 'Tümü' }, ...CUSTOMER_CALL_WEEKDAYS.map((d) => ({ value: d.value, label: d.shortTr }))]}
-            keyExtractor={(item) => String(item.value)}
-            showsHorizontalScrollIndicator={false}
-            style={{ maxHeight: 44, marginHorizontal: 12 }}
-            contentContainerStyle={{ gap: 8, paddingVertical: 4 }}
-            renderItem={({ item }) => {
-              const on = dayFilter === item.value;
-              return (
-                <Pressable
-                  onPress={() => setDayFilter(item.value)}
-                  style={[
-                    styles.dayChip,
-                    {
-                      backgroundColor: on ? palette.indigo600 : colors.card,
-                      borderColor: on ? palette.indigo600 : colors.cardBorder,
-                    },
-                  ]}
-                >
-                  <Text style={{ color: on ? palette.white : colors.text, fontWeight: '700', fontSize: 12 }}>
-                    {item.label}
-                  </Text>
-                </Pressable>
-              );
-            }}
-          />
-          {loading ? (
-            <ActivityIndicator style={{ marginTop: 40 }} color={palette.blue600} />
-          ) : (
-            <FlatList
-              data={filtered}
-              keyExtractor={(item) => item.id}
-              refreshControl={
-                <RefreshControl refreshing={loading} onRefresh={() => void load()} />
-              }
-              ListEmptyComponent={
-                <EmptyState message="Arama planında müşteri yok — cari kartından planı açın" />
-              }
-              contentContainerStyle={styles.list}
-              renderItem={({ item }) => renderCustomer(item)}
+      <View style={styles.pagerWrap} onLayout={onPagerLayout}>
+        <ScrollView
+          ref={pagerRef}
+          horizontal
+          pagingEnabled
+          showsHorizontalScrollIndicator={false}
+          onMomentumScrollEnd={onPagerScrollEnd}
+          keyboardShouldPersistTaps="handled"
+          bounces={false}
+        >
+          {/* Liste */}
+          <View style={[styles.page, { width: pageWidth }]}>
+            <SearchBar
+              value={search}
+              onChangeText={setSearch}
+              placeholder="Müşteri adı, kod, telefon…"
             />
-          )}
-        </>
-      ) : (
-        <>
-          <FlatList
-            horizontal
-            data={weekOptions}
-            keyExtractor={(w) => w}
-            showsHorizontalScrollIndicator={false}
-            style={{ maxHeight: 44, marginHorizontal: 12 }}
-            contentContainerStyle={{ gap: 8, paddingVertical: 4 }}
-            renderItem={({ item: w }) => {
-              const on = reportWeek === w;
-              return (
-                <Pressable
-                  onPress={() => setReportWeek(w)}
-                  style={[
-                    styles.dayChip,
-                    {
-                      backgroundColor: on ? palette.blue600 : colors.card,
-                      borderColor: on ? palette.blue600 : colors.cardBorder,
-                    },
-                  ]}
-                >
-                  <Text style={{ color: on ? palette.white : colors.text, fontWeight: '700', fontSize: 11 }}>
-                    {w}
-                    {w === currentWeek ? ' (canlı)' : ''}
-                  </Text>
-                </Pressable>
-              );
-            }}
-          />
-          {reportLoading || loading ? (
-            <ActivityIndicator style={{ marginTop: 40 }} color={palette.blue600} />
-          ) : (
             <FlatList
-              data={reportRows}
-              keyExtractor={(item) => item.id}
-              refreshControl={
-                <RefreshControl
-                  refreshing={reportLoading}
-                  onRefresh={() => void loadReport(reportWeek, customers)}
-                />
-              }
-              ListEmptyComponent={<EmptyState message="Bu hafta için kayıt yok" />}
-              contentContainerStyle={styles.list}
-              ListHeaderComponent={
-                <Text style={[styles.reportHead, { color: colors.textMuted }]}>
-                  {formatCallPlanWeekRange(reportWeek)} · {reportRows.length} müşteri
-                </Text>
-              }
+              horizontal
+              data={[
+                { value: 'all' as const, label: 'Tümü' },
+                ...CUSTOMER_CALL_WEEKDAYS.map((d) => ({
+                  value: d.value,
+                  label: d.shortTr,
+                })),
+              ]}
+              keyExtractor={(item) => String(item.value)}
+              showsHorizontalScrollIndicator={false}
+              style={{ maxHeight: 44, marginHorizontal: 12 }}
+              contentContainerStyle={{ gap: 8, paddingVertical: 4 }}
               renderItem={({ item }) => {
-                const meta = customerCallStatusMeta(item.call_last_status);
+                const on = dayFilter === item.value;
                 return (
-                  <View
+                  <Pressable
+                    onPress={() => setDayFilter(item.value)}
                     style={[
-                      styles.card,
-                      { backgroundColor: colors.card, borderColor: colors.cardBorder },
+                      styles.dayChip,
+                      {
+                        backgroundColor: on ? palette.indigo600 : colors.card,
+                        borderColor: on ? palette.indigo600 : colors.cardBorder,
+                      },
                     ]}
                   >
-                    <View style={styles.rowBetween}>
-                      <Text style={[styles.name, { color: colors.text }]} numberOfLines={1}>
-                        {item.customer_name}
-                      </Text>
-                      <Text style={{ color: meta.color, fontWeight: '800', fontSize: 11 }}>
-                        {meta.label}
-                      </Text>
-                    </View>
-                    <Text style={{ color: colors.textMuted, fontSize: 12 }}>
-                      {item.customer_code || '—'} ·{' '}
-                      {customerCallWeekdaysLabel(item.call_plan_weekdays, true)}
+                    <Text
+                      style={{
+                        color: on ? palette.white : colors.text,
+                        fontWeight: '700',
+                        fontSize: 12,
+                      }}
+                    >
+                      {item.label}
                     </Text>
-                    {item.call_last_note ? (
-                      <Text style={{ color: colors.textSubtle, fontSize: 11, marginTop: 4 }}>
-                        {item.call_last_note}
-                      </Text>
-                    ) : null}
-                  </View>
+                  </Pressable>
                 );
               }}
             />
-          )}
-        </>
-      )}
+            {loading ? (
+              <ActivityIndicator style={{ marginTop: 40 }} color={palette.blue600} />
+            ) : (
+              <FlatList
+                data={filtered}
+                keyExtractor={(item) => item.id}
+                refreshControl={
+                  <RefreshControl refreshing={loading} onRefresh={() => void load()} />
+                }
+                ListEmptyComponent={
+                  <EmptyState message="Arama planında müşteri yok — cari kartından planı açın" />
+                }
+                contentContainerStyle={styles.list}
+                renderItem={({ item }) => renderCustomer(item)}
+                style={{ flex: 1 }}
+              />
+            )}
+          </View>
+
+          {/* Rapor */}
+          <View style={[styles.page, { width: pageWidth }]}>
+            <FlatList
+              horizontal
+              data={weekOptions}
+              keyExtractor={(w) => w}
+              showsHorizontalScrollIndicator={false}
+              style={{ maxHeight: 44, marginHorizontal: 12 }}
+              contentContainerStyle={{ gap: 8, paddingVertical: 4 }}
+              renderItem={({ item: w }) => {
+                const on = reportWeek === w;
+                return (
+                  <Pressable
+                    onPress={() => setReportWeek(w)}
+                    style={[
+                      styles.dayChip,
+                      {
+                        backgroundColor: on ? palette.blue600 : colors.card,
+                        borderColor: on ? palette.blue600 : colors.cardBorder,
+                      },
+                    ]}
+                  >
+                    <Text
+                      style={{
+                        color: on ? palette.white : colors.text,
+                        fontWeight: '700',
+                        fontSize: 11,
+                      }}
+                    >
+                      {w}
+                      {w === currentWeek ? ' (canlı)' : ''}
+                    </Text>
+                  </Pressable>
+                );
+              }}
+            />
+            {reportLoading || loading ? (
+              <ActivityIndicator style={{ marginTop: 40 }} color={palette.blue600} />
+            ) : (
+              <FlatList
+                data={reportRows}
+                keyExtractor={(item) => item.id}
+                refreshControl={
+                  <RefreshControl
+                    refreshing={reportLoading}
+                    onRefresh={() => void loadReport(reportWeek, customers)}
+                  />
+                }
+                ListEmptyComponent={<EmptyState message="Bu hafta için kayıt yok" />}
+                contentContainerStyle={styles.list}
+                style={{ flex: 1 }}
+                ListHeaderComponent={
+                  <Text style={[styles.reportHead, { color: colors.textMuted }]}>
+                    {formatCallPlanWeekRange(reportWeek)} · {reportRows.length} müşteri
+                  </Text>
+                }
+                renderItem={({ item }) => {
+                  const meta = customerCallStatusMeta(item.call_last_status);
+                  return (
+                    <View
+                      style={[
+                        styles.card,
+                        { backgroundColor: colors.card, borderColor: colors.cardBorder },
+                      ]}
+                    >
+                      <View style={styles.rowBetween}>
+                        <Text style={[styles.name, { color: colors.text }]} numberOfLines={1}>
+                          {item.customer_name}
+                        </Text>
+                        <Text style={{ color: meta.color, fontWeight: '800', fontSize: 11 }}>
+                          {meta.label}
+                        </Text>
+                      </View>
+                      <Text style={{ color: colors.textMuted, fontSize: 12 }}>
+                        {item.customer_code || '—'} ·{' '}
+                        {customerCallWeekdaysLabel(item.call_plan_weekdays, true)}
+                      </Text>
+                      {item.call_last_note ? (
+                        <Text style={{ color: colors.textSubtle, fontSize: 11, marginTop: 4 }}>
+                          {item.call_last_note}
+                        </Text>
+                      ) : null}
+                    </View>
+                  );
+                }}
+              />
+            )}
+          </View>
+        </ScrollView>
+      </View>
 
       <Modal visible={!!edit} transparent animationType="fade" onRequestClose={() => setEdit(null)}>
         <Pressable style={styles.modalOverlay} onPress={() => setEdit(null)}>
@@ -463,6 +530,8 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     alignItems: 'center',
   },
+  pagerWrap: { flex: 1 },
+  page: { flex: 1 },
   list: { padding: 12, paddingBottom: 40, gap: 8 },
   card: {
     borderWidth: 1,

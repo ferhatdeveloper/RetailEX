@@ -10,7 +10,7 @@ import {
   postgrestPatch,
   postgrestPost,
 } from './postgrestClient';
-import { runDataTransport } from './dataTransport';
+import { runDataTransport, rethrowTransportInfra } from './dataTransport';
 import {
   appendStoreIdFilter,
   firmNr,
@@ -184,7 +184,8 @@ async function restFetchCountingSlips(): Promise<CountingSlip[]> {
       { slip_id: `in.(${inList})`, select: 'slip_id,id' },
       WMS_SCHEMA,
     );
-  } catch {
+  } catch (e) {
+    rethrowTransportInfra(e, 'fetchCountingSlipsViaRest.lines');
     lineRows = [];
   }
   const countBySlip: Record<string, number> = {};
@@ -238,8 +239,8 @@ async function restFetchSlipWithLines(
       );
       const s0 = Array.isArray(sr) ? sr[0] : undefined;
       if (s0?.name) slip.store_name = String(s0.name);
-    } catch {
-      /* ignore */
+    } catch (e) {
+      rethrowTransportInfra(e, 'fetchSlipWithLinesViaRest.store');
     }
   }
   return { slip, lines };
@@ -249,6 +250,7 @@ async function restCreateCountingSlipLive(
   data: {
     store_id: string;
     count_type?: 'full' | 'cycle' | 'location';
+    location_code?: string | null;
     description?: string;
   },
   writeOpts?: Pick<WmsWriteOptions, 'id' | 'ficheNo'>,
@@ -269,6 +271,7 @@ async function restCreateCountingSlipLive(
     store_id: data.store_id,
     fiche_no: ficheNo,
     count_type: data.count_type || 'full',
+    location_code: data.location_code?.trim() || null,
     description: data.description ?? null,
     status: 'draft',
     created_by: user?.id ?? null,
@@ -437,8 +440,8 @@ async function restLookupProductByBarcode(barcode: string): Promise<ProductLooku
           unit: p.unit != null ? String(p.unit) : 'Adet',
         };
       }
-    } catch {
-      /* next */
+    } catch (e) {
+      rethrowTransportInfra(e, 'lookupProductByBarcode.rest');
     }
   }
   return null;
@@ -453,7 +456,8 @@ async function restGetProductStock(productId: string): Promise<number> {
       PUB_SCHEMA,
     );
     return Number((Array.isArray(rows) ? rows[0] : undefined)?.stock) || 0;
-  } catch {
+  } catch (e) {
+    rethrowTransportInfra(e, 'restGetProductStock');
     return 0;
   }
 }
@@ -667,8 +671,8 @@ export async function fetchCountingStores(): Promise<WmsStore[]> {
           [firm],
         );
         if (res.rows.length) return res.rows;
-      } catch {
-        /* fallback */
+      } catch (e) {
+        rethrowTransportInfra(e, 'fetchCountingStores.typed');
       }
       const all = await pgQuery<{ id: string; name: string; code: string }>(
         `SELECT id::text, name, COALESCE(code, '') AS code
@@ -829,6 +833,7 @@ async function createCountingSlipLive(
     store_id: string;
     store_name?: string | null;
     count_type?: 'full' | 'cycle' | 'location';
+    location_code?: string | null;
     description?: string;
   },
   writeOpts?: Pick<WmsWriteOptions, 'id' | 'ficheNo'>,
@@ -851,8 +856,8 @@ async function createCountingSlipLive(
       const user = useAuthStore.getState().user;
       const res = await pgQuery<CountingSlip>(
         `INSERT INTO wms.counting_slips
-           (id, firm_nr, store_id, fiche_no, count_type, description, status, created_by, date)
-         VALUES ($1::uuid, $2, $3::uuid, $4, $5, $6, 'draft', $7::uuid, CURRENT_DATE)
+           (id, firm_nr, store_id, fiche_no, count_type, location_code, description, status, created_by, date)
+         VALUES ($1::uuid, $2, $3::uuid, $4, $5, $6, $7, 'draft', $8::uuid, CURRENT_DATE)
          RETURNING *`,
         [
           writeOpts?.id || newUuid(),
@@ -860,6 +865,7 @@ async function createCountingSlipLive(
           data.store_id,
           ficheNo,
           data.count_type || 'full',
+          data.location_code?.trim() || null,
           data.description || null,
           user?.id || null,
         ],
@@ -876,6 +882,7 @@ export async function createCountingSlip(
     store_id: string;
     store_name?: string | null;
     count_type?: 'full' | 'cycle' | 'location';
+    location_code?: string | null;
     description?: string;
   },
   writeOpts?: WmsWriteOptions,
@@ -896,6 +903,7 @@ export async function createCountingSlip(
         store_id: data.store_id,
         store_name: data.store_name,
         count_type: data.count_type,
+        location_code: data.location_code,
         description: data.description,
       },
     });
@@ -906,6 +914,7 @@ export async function createCountingSlip(
       fiche_no: ficheNo,
       date: now.slice(0, 10),
       count_type: data.count_type || 'full',
+      location_code: data.location_code?.trim() || null,
       status: 'draft',
       description: data.description || null,
       created_by: user?.id || null,
@@ -1037,8 +1046,8 @@ export async function lookupProductByBarcode(barcode: string): Promise<ProductLo
           );
           if (prod.rows[0]) return { ...prod.rows[0], barcode: code };
         }
-      } catch {
-        /* product_barcodes yoksa atla */
+      } catch (e) {
+        rethrowTransportInfra(e, 'lookupProductByBarcode.product_barcodes');
       }
       return null;
     },

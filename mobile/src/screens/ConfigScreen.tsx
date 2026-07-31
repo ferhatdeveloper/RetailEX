@@ -27,6 +27,10 @@ import {
   type NetworkPolicy,
   type PgEndpoint,
 } from '../store/configStore';
+import {
+  usePreferencesStore,
+  type BusinessProfile,
+} from '../store/preferencesStore';
 import { testBridgeConnection } from '../api/pgClient';
 import { testPostgrestConnection } from '../api/postgrestClient';
 import { ConnectivityBadge } from '../components/ConnectivityBadge';
@@ -117,6 +121,8 @@ export function ConfigScreen({ navigation }: Props) {
   const { colors, darkMode } = useThemeStore();
   const stored = useConfigStore((s) => s.config);
   const setConfig = useConfigStore((s) => s.setConfig);
+  const businessProfile = usePreferencesStore((s) => s.businessProfile);
+  const setBusinessProfile = usePreferencesStore((s) => s.setBusinessProfile);
 
   const [draft, setDraft] = useState<DbConfig>(() => cloneConfig(stored));
   const [testing, setTesting] = useState(false);
@@ -577,6 +583,55 @@ export function ConfigScreen({ navigation }: Props) {
     );
   };
 
+  const BusinessProfileChip = ({
+    profile,
+    label,
+  }: {
+    profile: BusinessProfile;
+    label: string;
+  }) => {
+    const active = businessProfile === profile;
+    return (
+      <Pressable
+        onPress={() => setBusinessProfile(profile)}
+        style={[
+          styles.modeChip,
+          styles.profileChip,
+          {
+            backgroundColor: active
+              ? palette.blue600
+              : darkMode
+                ? palette.gray700
+                : palette.gray100,
+            borderColor: active
+              ? palette.blue600
+              : darkMode
+                ? palette.gray600
+                : palette.gray200,
+          },
+        ]}
+      >
+        <Text
+          style={[
+            styles.modeChipText,
+            { color: active ? palette.white : colors.textMuted },
+          ]}
+        >
+          {label}
+        </Text>
+      </Pressable>
+    );
+  };
+
+  const businessProfileLabel =
+    businessProfile === 'restaurant'
+      ? t('businessProfileRestaurant')
+      : businessProfile === 'retail'
+        ? t('businessProfileRetail')
+        : businessProfile === 'beauty'
+          ? t('businessProfileBeauty')
+          : t('businessProfileGeneral');
+
   const pendingCount = useConnectivityStore((s) => s.pendingCount);
   const syncing = useConnectivityStore((s) => s.syncing);
 
@@ -838,6 +893,33 @@ export function ConfigScreen({ navigation }: Props) {
                 {activeStepId === 'infra' ? (
                   <>
                     <Text style={[styles.section, { color: colors.textMuted, marginTop: 0 }]}>
+                      {t('businessProfile')}
+                    </Text>
+                    <View style={styles.profileRow}>
+                      <BusinessProfileChip
+                        profile="restaurant"
+                        label={t('businessProfileRestaurant')}
+                      />
+                      <BusinessProfileChip
+                        profile="retail"
+                        label={t('businessProfileRetail')}
+                      />
+                      <BusinessProfileChip
+                        profile="general"
+                        label={t('businessProfileGeneral')}
+                      />
+                      <BusinessProfileChip
+                        profile="beauty"
+                        label={t('businessProfileBeauty')}
+                      />
+                    </View>
+                    <Text style={[styles.hint, { color: colors.textSubtle }]}>
+                      {businessProfile === 'restaurant'
+                        ? t('businessProfileRestaurantHint')
+                        : t('businessProfileHint')}
+                    </Text>
+
+                    <Text style={[styles.section, { color: colors.textMuted }]}>
                       {t('dbMode')}
                     </Text>
                     <View style={styles.modeRow}>
@@ -1151,6 +1233,33 @@ export function ConfigScreen({ navigation }: Props) {
 
                 {activeStepId === 'summary' ? (
                   <>
+                    <Text style={[styles.section, { color: colors.textMuted, marginTop: 0 }]}>
+                      {t('businessProfile')}
+                    </Text>
+                    <View style={styles.profileRow}>
+                      <BusinessProfileChip
+                        profile="restaurant"
+                        label={t('businessProfileRestaurant')}
+                      />
+                      <BusinessProfileChip
+                        profile="retail"
+                        label={t('businessProfileRetail')}
+                      />
+                      <BusinessProfileChip
+                        profile="general"
+                        label={t('businessProfileGeneral')}
+                      />
+                      <BusinessProfileChip
+                        profile="beauty"
+                        label={t('businessProfileBeauty')}
+                      />
+                    </View>
+                    <Text style={[styles.hint, { color: colors.textSubtle }]}>
+                      {businessProfile === 'restaurant'
+                        ? t('businessProfileRestaurantHint')
+                        : t('businessProfileHint')}
+                    </Text>
+
                     <View
                       style={[
                         styles.summaryBox,
@@ -1160,6 +1269,11 @@ export function ConfigScreen({ navigation }: Props) {
                         },
                       ]}
                     >
+                      <SummaryRow
+                        label={t('businessProfile')}
+                        value={businessProfileLabel}
+                        colors={colors}
+                      />
                       <SummaryRow
                         label={t('dbMode')}
                         value={draft.dbMode === 'online' ? t('dbModeOnline') : t('dbModeLocal')}
@@ -1402,6 +1516,7 @@ const styles = StyleSheet.create({
     fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
   },
   modeRow: { flexDirection: 'row', gap: 8 },
+  profileRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   modeChip: {
     flex: 1,
     paddingVertical: 12,
@@ -1409,6 +1524,11 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     borderWidth: 2,
     alignItems: 'center',
+  },
+  profileChip: {
+    flexGrow: 1,
+    flexBasis: '45%',
+    minWidth: '40%',
   },
   modeChipText: {
     fontSize: 10,

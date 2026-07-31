@@ -40,6 +40,7 @@ import {
   type MenuItem,
 } from '../config/menuConfig';
 import { navigateToModule } from '../navigation/navigateToModule';
+import { tryConsumeRestaurantLanding } from '../navigation/restaurantLanding';
 import { fetchDashboardStats, type DashboardStats } from '../api/dashboardApi';
 import { formatMoney } from '../api/erpTables';
 import { ErrorBanner } from '../components/ScreenChrome';
@@ -51,6 +52,7 @@ export function DashboardScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<MainStackParamList>>();
   const { colors } = useThemeStore();
   const menuViewMode = usePreferencesStore((s) => s.menuViewMode);
+  const businessProfile = usePreferencesStore((s) => s.businessProfile);
   const isCards = menuViewMode === 'cards';
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
@@ -79,6 +81,16 @@ export function DashboardScreen() {
   useEffect(() => {
     void loadStats();
   }, [loadStats]);
+
+  /** Restoran profili: oturumda bir kez Restoran paneline in (backoffice menüleri kalır). */
+  useEffect(() => {
+    if (businessProfile !== 'restaurant') return;
+    if (!tryConsumeRestaurantLanding()) return;
+    const id = setTimeout(() => {
+      navigation.navigate('Restaurant');
+    }, 0);
+    return () => clearTimeout(id);
+  }, [businessProfile, navigation]);
 
   const now = new Date();
   const locale = localeTagForLanguage(i18n.language);

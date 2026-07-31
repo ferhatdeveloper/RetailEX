@@ -7,9 +7,11 @@ import {
   ActivityIndicator,
   RefreshControl,
   Pressable,
+  Alert,
 } from 'react-native';
 import { useRoute, type RouteProp } from '@react-navigation/native';
 import { ScreenHeader, EmptyState, ErrorBanner, SearchBar } from '../components/ScreenChrome';
+import { PrimaryButton } from '../components/PrimaryButton';
 import { ReportViewToggle } from '../components/ReportViewToggle';
 import { RestBarChart, RestColumnChart, RestPieChart } from '../components/RestReportCharts';
 import {
@@ -41,6 +43,7 @@ import {
 } from '../api/reportsApi';
 import { fetchProducts } from '../api/productsApi';
 import { formatMoney, firmNr, periodNr, storeId, storeName } from '../api/erpTables';
+import { shareReportPdf } from '../utils/shareReportPdf';
 import { useThemeStore } from '../store/themeStore';
 import { usePreferencesStore } from '../store/preferencesStore';
 import { useOrgEpoch } from '../hooks/useOrgEpoch';
@@ -967,6 +970,7 @@ export function ReportCariExtractScreen() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [picking, setPicking] = useState(false);
+  const [sharingPdf, setSharingPdf] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -1050,6 +1054,47 @@ export function ReportCariExtractScreen() {
   }, [load]);
 
   const closing = rows.length ? rows[rows.length - 1].balance : 0;
+
+  const onSharePdf = useCallback(async () => {
+    if (!selected) {
+      Alert.alert('Cari seçin', 'PDF için önce bir cari seçin.');
+      return;
+    }
+    if (!rows.length) {
+      Alert.alert('Hareket yok', 'Paylaşılacak ekstre satırı bulunamadı.');
+      return;
+    }
+    setSharingPdf(true);
+    try {
+      const result = await shareReportPdf({
+        title: `Cari ekstre — ${selected.accountName}`,
+        subtitle: `${selected.accountCode || '—'} · ${range.start} → ${range.end} · Kapanış ${formatMoney(closing)}`,
+        rows: rows.map((r) => ({
+          date: r.date?.slice(0, 10) || '',
+          title: r.definition || r.source || r.ficheNo || 'Hareket',
+          amount: r.debit
+            ? r.debit
+            : r.credit
+              ? -Math.abs(r.credit)
+              : r.balance,
+          meta: [
+            r.ficheNo ? `Fiş ${r.ficheNo}` : null,
+            r.debit ? `Borç ${formatMoney(r.debit)}` : null,
+            r.credit ? `Alacak ${formatMoney(r.credit)}` : null,
+            `Bakiye ${formatMoney(r.balance)}`,
+          ]
+            .filter(Boolean)
+            .join(' · '),
+        })),
+        footerNote: 'RetailEX · Cari ekstre',
+      });
+      Alert.alert(result.ok ? 'PDF' : 'Hata', result.message);
+    } catch (e) {
+      Alert.alert('Hata', e instanceof Error ? e.message : String(e));
+    } finally {
+      setSharingPdf(false);
+    }
+  }, [closing, range.end, range.start, rows, selected]);
 
   const chartData = useMemo(
     () =>
@@ -1150,6 +1195,14 @@ export function ReportCariExtractScreen() {
             {formatMoney(closing)}
           </Text>
         </View>
+      </View>
+      <View style={{ paddingHorizontal: 12, paddingBottom: 8 }}>
+        <PrimaryButton
+          label="PDF Paylaş"
+          onPress={() => void onSharePdf()}
+          loading={sharingPdf}
+          disabled={!rows.length || !selected}
+        />
       </View>
       {error ? <ErrorBanner message={error} onRetry={() => void load()} /> : null}
       {loading || loadingAccounts ? (

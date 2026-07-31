@@ -109,6 +109,7 @@ export type MainStackParamList = {
   Restaurant:
     | {
         initialTab?:
+          | 'dashboard'
           | 'tables'
           | 'orders'
           | 'delivery'

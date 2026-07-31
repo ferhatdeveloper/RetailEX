@@ -360,7 +360,111 @@ export type ButcherRecipeDetail = ButcherRecipeRow & {
   outputs: ButcherOutputRow[];
 };
 
-export async function fetchProductionRecipeById(id: string): Promise<ProductionRecipeDetail | null> {
+async function fetchProductionRecipeByIdViaRest(
+  id: string,
+): Promise<ProductionRecipeDetail | null> {
+  const table = productionRecipesTable();
+  const ing = productionRecipeIngredientsTable();
+  const products = productsTable();
+  const headers = await postgrestGet<Record<string, unknown>[]>(
+    `/${table}`,
+    {
+      select: 'id,name,description,product_id,total_cost,wastage_percent,is_active',
+      id: `eq.${id}`,
+      limit: 1,
+    },
+    { schema: 'public' },
+  );
+  const h = Array.isArray(headers) ? headers[0] : null;
+  if (!h?.id) return null;
+
+  let productName: string | null = null;
+  if (h.product_id) {
+    try {
+      const prows = await postgrestGet<Array<{ name?: string }>>(
+        `/${products}`,
+        { select: 'name', id: `eq.${String(h.product_id)}`, limit: 1 },
+        { schema: 'public' },
+      );
+      productName = Array.isArray(prows) && prows[0]?.name != null ? String(prows[0].name) : null;
+    } catch {
+      productName = null;
+    }
+  }
+
+  const header: ProductionRecipeRow = {
+    id: String(h.id),
+    name: String(h.name ?? ''),
+    description: h.description != null ? String(h.description) : null,
+    product_id: h.product_id != null ? String(h.product_id) : null,
+    product_name: productName,
+    total_cost: Number(h.total_cost ?? 0) || 0,
+    wastage_percent: Number(h.wastage_percent ?? 0) || 0,
+    is_active: !(h.is_active === false || String(h.is_active).toLowerCase() === 'false'),
+  };
+
+  let ingredients: ProductionIngredientRow[] = [];
+  try {
+    const irows = await postgrestGet<Record<string, unknown>[]>(
+      `/${ing}`,
+      {
+        select: 'id,material_id,quantity,unit,cost,created_at',
+        recipe_id: `eq.${id}`,
+        order: 'created_at.asc',
+      },
+      { schema: 'public' },
+    );
+    const list = Array.isArray(irows) ? irows : [];
+    const materialIds = [
+      ...new Set(list.map((r) => String(r.material_id ?? '')).filter(Boolean)),
+    ];
+    const materialById = new Map<string, { name?: string; code?: string }>();
+    if (materialIds.length) {
+      try {
+        const mrows = await postgrestGet<Record<string, unknown>[]>(
+          `/${products}`,
+          {
+            select: 'id,name,code',
+            id: `in.(${materialIds.map((x) => encodeURIComponent(x)).join(',')})`,
+            limit: materialIds.length,
+          },
+          { schema: 'public' },
+        );
+        for (const m of Array.isArray(mrows) ? mrows : []) {
+          if (m.id) {
+            materialById.set(String(m.id), {
+              name: m.name != null ? String(m.name) : undefined,
+              code: m.code != null ? String(m.code) : undefined,
+            });
+          }
+        }
+      } catch {
+        /* optional */
+      }
+    }
+    ingredients = list.map((r) => {
+      const mid = r.material_id != null ? String(r.material_id) : '';
+      const mat = materialById.get(mid);
+      return {
+        id: String(r.id ?? ''),
+        material_id: mid,
+        material_name: mat?.name ?? null,
+        material_code: mat?.code ?? null,
+        quantity: Number(r.quantity ?? 0) || 0,
+        unit: r.unit != null ? String(r.unit) : null,
+        cost: Number(r.cost ?? 0) || 0,
+      };
+    });
+  } catch {
+    ingredients = [];
+  }
+
+  return { ...header, ingredients };
+}
+
+async function fetchProductionRecipeByIdViaBridge(
+  id: string,
+): Promise<ProductionRecipeDetail | null> {
   const table = productionRecipesTable();
   const ing = productionRecipeIngredientsTable();
   const products = productsTable();
@@ -403,6 +507,14 @@ export async function fetchProductionRecipeById(id: string): Promise<ProductionR
   }
 
   return { ...header, ingredients };
+}
+
+export async function fetchProductionRecipeById(id: string): Promise<ProductionRecipeDetail | null> {
+  return runDataTransport({
+    label: 'fetchProductionRecipeById',
+    viaRest: () => fetchProductionRecipeByIdViaRest(id),
+    viaBridge: () => fetchProductionRecipeByIdViaBridge(id),
+  });
 }
 
 export async function saveProductionRecipeIngredients(
@@ -491,7 +603,92 @@ async function saveProductionRecipeIngredientsViaBridge(
   }
 }
 
-export async function fetchButcherRecipeById(id: string): Promise<ButcherRecipeDetail | null> {
+async function fetchButcherRecipeByIdViaRest(id: string): Promise<ButcherRecipeDetail | null> {
+  const table = butcherRecipesTable();
+  const out = butcherRecipeOutputsTable();
+  const products = productsTable();
+  const headers = await postgrestGet<Record<string, unknown>[]>(
+    `/${table}`,
+    {
+      select: 'id,code,name,animal_type,description,is_active',
+      id: `eq.${id}`,
+      limit: 1,
+    },
+    { schema: 'public' },
+  );
+  const h = Array.isArray(headers) ? headers[0] : null;
+  if (!h?.id) return null;
+
+  const header: ButcherRecipeRow = {
+    id: String(h.id),
+    code: h.code != null ? String(h.code) : null,
+    name: String(h.name ?? ''),
+    animal_type: String(h.animal_type ?? ''),
+    description: h.description != null ? String(h.description) : null,
+    is_active: !(h.is_active === false || String(h.is_active).toLowerCase() === 'false'),
+  };
+
+  let outputs: ButcherOutputRow[] = [];
+  try {
+    const orows = await postgrestGet<Record<string, unknown>[]>(
+      `/${out}`,
+      {
+        select: 'id,product_id,sort_order,standard_ratio_percent,coefficient,created_at',
+        recipe_id: `eq.${id}`,
+        order: 'sort_order.asc,created_at.asc',
+      },
+      { schema: 'public' },
+    );
+    const list = Array.isArray(orows) ? orows : [];
+    const productIds = [
+      ...new Set(list.map((r) => String(r.product_id ?? '')).filter(Boolean)),
+    ];
+    const productById = new Map<string, { name?: string; code?: string }>();
+    if (productIds.length) {
+      try {
+        const prows = await postgrestGet<Record<string, unknown>[]>(
+          `/${products}`,
+          {
+            select: 'id,name,code',
+            id: `in.(${productIds.map((x) => encodeURIComponent(x)).join(',')})`,
+            limit: productIds.length,
+          },
+          { schema: 'public' },
+        );
+        for (const p of Array.isArray(prows) ? prows : []) {
+          if (p.id) {
+            productById.set(String(p.id), {
+              name: p.name != null ? String(p.name) : undefined,
+              code: p.code != null ? String(p.code) : undefined,
+            });
+          }
+        }
+      } catch {
+        /* optional */
+      }
+    }
+    outputs = list.map((r) => {
+      const pid = r.product_id != null ? String(r.product_id) : '';
+      const prod = productById.get(pid);
+      return {
+        id: String(r.id ?? ''),
+        product_id: pid,
+        product_name: prod?.name ?? null,
+        product_code: prod?.code ?? null,
+        sort_order: Number(r.sort_order ?? 0) || 0,
+        standard_ratio_percent:
+          r.standard_ratio_percent != null ? Number(r.standard_ratio_percent) : null,
+        coefficient: Number(r.coefficient ?? 1) || 1,
+      };
+    });
+  } catch {
+    outputs = [];
+  }
+
+  return { ...header, outputs };
+}
+
+async function fetchButcherRecipeByIdViaBridge(id: string): Promise<ButcherRecipeDetail | null> {
   const table = butcherRecipesTable();
   const out = butcherRecipeOutputsTable();
   const products = productsTable();
@@ -530,6 +727,14 @@ export async function fetchButcherRecipeById(id: string): Promise<ButcherRecipeD
   }
 
   return { ...header, outputs };
+}
+
+export async function fetchButcherRecipeById(id: string): Promise<ButcherRecipeDetail | null> {
+  return runDataTransport({
+    label: 'fetchButcherRecipeById',
+    viaRest: () => fetchButcherRecipeByIdViaRest(id),
+    viaBridge: () => fetchButcherRecipeByIdViaBridge(id),
+  });
 }
 
 export async function saveButcherRecipeOutputs(

@@ -4,7 +4,7 @@ import {
   postgrestPatch,
   postgrestPost,
 } from './postgrestClient';
-import { runDataTransport } from './dataTransport';
+import { runDataTransport, rethrowTransportInfra } from './dataTransport';
 import {
   beautyAppointmentsTable,
   beautySaleItemsTable,
@@ -350,8 +350,9 @@ async function tryQueries<T>(queries: { sql: string; params?: unknown[] }[]): Pr
     try {
       const res = await pgQuery<T>(q.sql, q.params ?? []);
       return res.rows;
-    } catch {
-      /* next */
+    } catch (e) {
+      rethrowTransportInfra(e, 'beautyApi.tryQueries');
+      /* next schema fallback */
     }
   }
   return [];
@@ -400,8 +401,8 @@ async function fetchBeautyAppointmentsViaRest(limit = 80): Promise<BeautyAppoint
       for (const s of Array.isArray(svcs) ? svcs : []) {
         serviceMap.set(String(s.id), String(s.name ?? ''));
       }
-    } catch {
-      /* ignore */
+    } catch (e) {
+      rethrowTransportInfra(e, 'fetchBeautyAppointments.services');
     }
   }
 
@@ -416,8 +417,8 @@ async function fetchBeautyAppointmentsViaRest(limit = 80): Promise<BeautyAppoint
       for (const s of Array.isArray(sps) ? sps : []) {
         specialistMap.set(String(s.id), String(s.name ?? ''));
       }
-    } catch {
-      /* ignore */
+    } catch (e) {
+      rethrowTransportInfra(e, 'fetchBeautyAppointments.specialists');
     }
   }
 
@@ -542,7 +543,8 @@ async function fetchBeautySpecialistsViaRest(): Promise<BeautySpecialist[]> {
       name: String(r.name ?? ''),
       title: r.specialty != null ? String(r.specialty) : null,
     }));
-  } catch {
+  } catch (e) {
+    rethrowTransportInfra(e, 'fetchBeautySpecialists.specialty');
     const rows = await postgrestGet<Record<string, unknown>[]>(
       beautySpecialistsPath(),
       {
@@ -702,8 +704,8 @@ async function updateBeautyAppointmentViaRest(
         );
         const svc = Array.isArray(svcRows) ? svcRows[0] : undefined;
         if (svc) patch.total_price = Number(svc.price) || 0;
-      } catch {
-        /* fiyat güncellenemese devam */
+      } catch (e) {
+        rethrowTransportInfra(e, 'updateBeautyAppointment.servicePrice');
       }
     }
   }
@@ -751,8 +753,8 @@ async function updateBeautyAppointmentViaBridge(
         sets.push(`total_price = $${i++}`);
         vals.push(Number(svcRes.rows[0].price) || 0);
       }
-    } catch {
-      /* fiyat güncellenemese devam */
+    } catch (e) {
+      rethrowTransportInfra(e, 'updateBeautyAppointmentViaBridge.servicePrice');
     }
   }
   if (input.clearSpecialist) {
@@ -831,8 +833,8 @@ async function fetchBeautySalesViaRest(limit: number): Promise<BeautySale[]> {
       for (const c of Array.isArray(crows) ? crows : []) {
         if (c.id) customerMap.set(String(c.id), String(c.name ?? ''));
       }
-    } catch {
-      /* optional */
+    } catch (e) {
+      rethrowTransportInfra(e, 'fetchBeautySales.customers');
     }
   }
 
@@ -849,8 +851,8 @@ async function fetchBeautySalesViaRest(limit: number): Promise<BeautySale[]> {
         const sid = String(i.sale_id ?? '');
         if (sid) itemCounts.set(sid, (itemCounts.get(sid) || 0) + 1);
       }
-    } catch {
-      /* optional */
+    } catch (e) {
+      rethrowTransportInfra(e, 'fetchBeautySales.items');
     }
   }
 

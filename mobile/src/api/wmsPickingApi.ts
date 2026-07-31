@@ -5,7 +5,7 @@
 
 import { pgQuery } from './pgClient';
 import { postgrestGet, postgrestPatch, postgrestPost } from './postgrestClient';
-import { runDataTransport } from './dataTransport';
+import { runDataTransport, rethrowTransportInfra } from './dataTransport';
 import { firmNr, newUuid, periodNr, saleItemsTable } from './erpTables';
 
 const WMS_SCHEMA = { schema: 'wms' as const };
@@ -368,8 +368,8 @@ async function createWaveFromSalesViaBridge(salesIds: string[]): Promise<string>
         lot = alloc.lot_no ?? null;
         expiry = alloc.expiry_date ?? null;
       }
-    } catch {
-      /* FEFO opsiyonel */
+    } catch (e) {
+      rethrowTransportInfra(e, 'createWaveFromSales.fefo');
     }
 
     await pgQuery(

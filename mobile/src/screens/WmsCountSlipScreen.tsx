@@ -11,13 +11,15 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
-import { Trash2, ScanBarcode } from 'lucide-react-native';
-import { useRoute, type RouteProp } from '@react-navigation/native';
+import { Trash2, ScanBarcode, Minus, Plus, Equal } from 'lucide-react-native';
+import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { ScreenHeader, EmptyState, ErrorBanner } from '../components/ScreenChrome';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { BarcodeScannerModal } from '../components/BarcodeScannerModal';
 import {
   applyStockCount,
+  cancelCountingSlip,
   deleteCountingLine,
   fetchSlipWithLines,
   fetchVarianceSummary,
@@ -39,6 +41,7 @@ const EDITABLE = new Set(['draft', 'active', 'counting', 'reconciliation']);
 
 export function WmsCountSlipScreen() {
   const { colors } = useThemeStore();
+  const navigation = useNavigation<NativeStackNavigationProp<MainStackParamList>>();
   const route = useRoute<RouteProp<MainStackParamList, 'WmsCountSlip'>>();
   const { slipId } = route.params;
 
@@ -91,6 +94,34 @@ export function WmsCountSlipScreen() {
     setExpectedQty('0');
     setCountedQty('1');
     setPendingProductId(null);
+  };
+
+  const entryVariance = (() => {
+    const counted = parseFloat(countedQty.replace(',', '.'));
+    const expected = parseFloat(expectedQty.replace(',', '.'));
+    if (!Number.isFinite(counted) || !Number.isFinite(expected)) return null;
+    return counted - expected;
+  })();
+
+  const bumpCounted = (delta: number) => {
+    setCountedQty((prev) => {
+      const n = parseFloat(String(prev).replace(',', '.'));
+      const base = Number.isFinite(n) ? n : 0;
+      const next = Math.max(0, Math.round((base + delta) * 1000) / 1000);
+      return String(next);
+    });
+  };
+
+  const matchExpected = () => {
+    const expected = parseFloat(expectedQty.replace(',', '.'));
+    setCountedQty(Number.isFinite(expected) ? String(expected) : '0');
+  };
+
+  const lineVariance = (item: CountingLine) => {
+    if (item.variance != null && Number.isFinite(Number(item.variance))) {
+      return Number(item.variance);
+    }
+    return (Number(item.counted_qty) || 0) - (Number(item.expected_qty) || 0);
   };
 
   const resolveBarcode = useCallback(
@@ -306,6 +337,46 @@ export function WmsCountSlipScreen() {
     );
   }, [isReconciliation, load, slipId]);
 
+  const handleCancelSlip = useCallback(() => {
+    if (!slip || !EDITABLE.has(slip.status)) return;
+    Alert.alert(
+      'Fişi iptal et',
+      `${slip.fiche_no} iptal edilsin mi? Sayım satırları silinmez; fiş iptal durumuna alınır.`,
+      [
+        { text: 'Vazgeç', style: 'cancel' },
+        {
+          text: 'İptal et',
+          style: 'destructive',
+          onPress: () => {
+            void (async () => {
+              setSaving(true);
+              setError(null);
+              try {
+                const res = await cancelCountingSlip(slipId);
+                await load();
+                if (res.queued) {
+                  Alert.alert(
+                    'İptal kuyruğa alındı',
+                    'Bağlantı gelince otomatik senkron edilir.',
+                  );
+                } else {
+                  Alert.alert('İptal edildi', `${slip.fiche_no} iptal edildi.`);
+                }
+                navigation.goBack();
+              } catch (e) {
+                const msg = e instanceof Error ? e.message : String(e);
+                setError(msg);
+                Alert.alert('İptal hatası', msg);
+              } finally {
+                setSaving(false);
+              }
+            })();
+          },
+        },
+      ],
+    );
+  }, [load, navigation, slip, slipId]);
+
   if (loading && !slip) {
     return (
       <View style={[styles.root, { backgroundColor: colors.background }]}>
@@ -322,7 +393,22 @@ export function WmsCountSlipScreen() {
     >
       <ScreenHeader
         title={slip?.fiche_no || 'Sayım'}
-        subtitle={slip ? `${slipStatusLabel(slip.status)} · ${lines.length} satır` : undefined}
+        subtitle={
+          slip
+            ? `${slipStatusLabel(slip.status)} · ${lines.length} satır${
+                slip.count_type ? ` · ${slip.count_type}` : ''
+              }${slip.location_code ? ` · ${slip.location_code}` : ''}`
+            : undefined
+        }
+        right={
+          canEdit ? (
+            <Pressable onPress={handleCancelSlip} hitSlop={8} disabled={saving}>
+              <Text style={{ color: palette.red500, fontWeight: '800', fontSize: 12 }}>
+                İptal
+              </Text>
+            </Pressable>
+          ) : undefined
+        }
       />
 
       {error ? <ErrorBanner message={error} onRetry={() => void load()} /> : null}
@@ -377,13 +463,65 @@ export function WmsCountSlipScreen() {
             </View>
             <View style={{ flex: 1 }}>
               <Text style={[styles.lbl, { color: colors.textMuted }]}>Sayılan</Text>
-              <TextInput
-                value={countedQty}
-                onChangeText={setCountedQty}
-                keyboardType="decimal-pad"
-                style={[styles.input, { color: colors.text, borderColor: colors.cardBorder }]}
-              />
+              <View style={styles.countedRow}>
+                <Pressable
+                  onPress={() => bumpCounted(-1)}
+                  style={[styles.stepBtn, { borderColor: colors.cardBorder, backgroundColor: colors.background }]}
+                  accessibilityLabel="Sayılanı azalt"
+                >
+                  <Minus size={18} color={colors.text} />
+                </Pressable>
+                <TextInput
+                  value={countedQty}
+                  onChangeText={setCountedQty}
+                  keyboardType="decimal-pad"
+                  style={[
+                    styles.input,
+                    styles.countedInput,
+                    { color: colors.text, borderColor: colors.cardBorder },
+                  ]}
+                />
+                <Pressable
+                  onPress={() => bumpCounted(1)}
+                  style={[styles.stepBtn, { borderColor: colors.cardBorder, backgroundColor: colors.background }]}
+                  accessibilityLabel="Sayılanı artır"
+                >
+                  <Plus size={18} color={colors.text} />
+                </Pressable>
+              </View>
             </View>
+          </View>
+
+          <View style={styles.quickRow}>
+            <Pressable
+              onPress={matchExpected}
+              style={[
+                styles.matchBtn,
+                { borderColor: palette.blue600, backgroundColor: colors.background },
+              ]}
+            >
+              <Equal size={16} color={palette.blue600} />
+              <Text style={{ color: palette.blue600, fontSize: 12, fontWeight: '700' }}>
+                Beklenene eşitle
+              </Text>
+            </Pressable>
+            {entryVariance != null ? (
+              <Text
+                style={{
+                  color:
+                    entryVariance > 0
+                      ? palette.green600
+                      : entryVariance < 0
+                        ? palette.red500
+                        : colors.textMuted,
+                  fontSize: 12,
+                  fontWeight: '800',
+                }}
+              >
+                Fark: {entryVariance >= 0 ? '+' : ''}
+                {entryVariance.toFixed(2)}
+              </Text>
+            ) : null}
           </View>
 
           <PrimaryButton
@@ -441,8 +579,25 @@ export function WmsCountSlipScreen() {
       {canEdit && lines.length > 0 && (slip?.status === 'counting' || slip?.status === 'draft' || slip?.status === 'active') ? (
         <View style={styles.finishRow}>
           <PrimaryButton
+            label="Fişi iptal et"
+            variant="danger"
+            onPress={handleCancelSlip}
+            loading={saving}
+            style={{ flex: 1 }}
+          />
+          <PrimaryButton
             label="Mutabakata geç"
             onPress={() => finishCounting()}
+            loading={saving}
+            style={{ flex: 1 }}
+          />
+        </View>
+      ) : canEdit ? (
+        <View style={styles.finishRow}>
+          <PrimaryButton
+            label="Fişi iptal et"
+            variant="danger"
+            onPress={handleCancelSlip}
             loading={saving}
           />
         </View>
@@ -461,7 +616,7 @@ export function WmsCountSlipScreen() {
         ListEmptyComponent={<EmptyState message="Henüz sayım satırı yok" />}
         contentContainerStyle={{ padding: 12, gap: 8, paddingBottom: 40 }}
         renderItem={({ item }) => {
-          const variance = Number(item.variance ?? 0);
+          const variance = lineVariance(item);
           const vColor =
             variance > 0 ? palette.green600 : variance < 0 ? palette.red500 : colors.textMuted;
           return (
@@ -475,7 +630,7 @@ export function WmsCountSlipScreen() {
                   {item.counted_qty ?? '—'}
                 </Text>
                 <Text style={{ color: vColor, fontSize: 11, fontWeight: '700', marginTop: 2 }}>
-                  Fark: {variance >= 0 ? '+' : ''}
+                  Fark (sayılan − beklenen): {variance >= 0 ? '+' : ''}
                   {variance.toFixed(2)}
                 </Text>
               </View>
@@ -513,11 +668,43 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   qtyRow: { flexDirection: 'row', gap: 8 },
+  countedRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  countedInput: { flex: 1, textAlign: 'center' },
+  stepBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 8,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  quickRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+    marginTop: 2,
+    marginBottom: 4,
+  },
+  matchBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
   readonly: { margin: 12, borderWidth: 1, borderRadius: 10, padding: 12 },
   summary: { marginHorizontal: 12, marginBottom: 4, borderWidth: 1, borderRadius: 10, padding: 12, gap: 4 },
   summaryTitle: { fontSize: 13, fontWeight: '800', marginBottom: 4 },
   summaryRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  finishRow: { paddingHorizontal: 12, paddingBottom: 4 },
+  finishRow: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingBottom: 4,
+  },
   line: {
     flexDirection: 'row',
     alignItems: 'center',

@@ -13,12 +13,14 @@ import {
 } from 'react-native';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { Plus, Trash2 } from 'lucide-react-native';
+import { ChevronDown, Plus, Trash2 } from 'lucide-react-native';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 import { ScreenHeader, ErrorBanner, SearchBar } from '../components/ScreenChrome';
 import { FormField } from '../components/FormField';
 import { PrimaryButton } from '../components/PrimaryButton';
+import { SegmentTabBar } from '../components/SegmentTabBar';
+import { PercentBodySheet } from '../components/PercentBodySheet';
 import {
   createPurchaseInvoice,
   createReturnInvoice,
@@ -49,6 +51,14 @@ import { palette } from '../theme/colors';
 import type { MainStackParamList } from '../navigation/types';
 
 type DraftLine = InvoiceDraftLine & { key: string };
+
+type FormSection = 'lines' | 'header' | 'payment';
+
+const FORM_SECTIONS: ReadonlyArray<{ id: FormSection; label: string }> = [
+  { id: 'lines', label: 'Kalemler' },
+  { id: 'header', label: 'Başlık' },
+  { id: 'payment', label: 'Ödeme' },
+];
 
 const STATUS_OPTIONS = ['approved', 'draft', 'completed', 'cancelled'] as const;
 
@@ -306,8 +316,10 @@ export function InvoiceFormScreen() {
   const [svcRows, setSvcRows] = useState<ServiceRow[]>([]);
   const [showPartyPicker, setShowPartyPicker] = useState(false);
   const [showProdPicker, setShowProdPicker] = useState(false);
+  const [showStorePicker, setShowStorePicker] = useState(false);
   const [stores, setStores] = useState<StoreRow[]>([]);
   const [cashRegs, setCashRegs] = useState<CashRegisterRow[]>([]);
+  const [section, setSection] = useState<FormSection>('lines');
 
   const footerDiscountNum = useMemo(() => {
     const n = parseFloat(String(footerDiscount).replace(',', '.'));
@@ -799,522 +811,654 @@ export function InvoiceFormScreen() {
           style={{ flex: 1 }}
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         >
-          <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
-            {isEdit && !canEditLines ? (
-              <View
-                style={[styles.info, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}
-              >
-                <Text style={{ color: colors.textMuted, fontSize: 12 }}>
-                  Onaylı/tamamlanmış fişte kalem değişimi stok ve cari bakiyeyi etkiler; mobil
-                  yalnızca tarih, döviz, depo, vade, özel kod, satış elemanı, not ve durum
-                  günceller. Taslak faturalarda kalem düzenlenebilir.
-                </Text>
-              </View>
-            ) : null}
-
-            {!isEdit || canEditLines ? (
+          <SegmentTabBar
+            layout="equal"
+            value={section}
+            onChange={setSection}
+            items={FORM_SECTIONS}
+          />
+          <ScrollView
+            style={{ flex: 1 }}
+            contentContainerStyle={styles.body}
+            keyboardShouldPersistTaps="handled"
+          >
+            {section === 'header' ? (
               <>
-                <Pressable
-                  onPress={() => setShowPartyPicker((v) => !v)}
-                  style={[
-                    styles.pickerBtn,
-                    { borderColor: colors.cardBorder, backgroundColor: colors.card },
-                  ]}
-                >
-                  <Text style={{ color: colors.textMuted, fontSize: 10, fontWeight: '700' }}>
-                    {partyLabel}
-                    {resolvedKind === 'sales-return' || !requiresParty(resolvedKind)
-                      ? ' (opsiyonel)'
-                      : ' *'}
-                  </Text>
-                  <Text style={{ color: colors.text, fontWeight: '700', marginTop: 4 }}>
-                    {customerName}
-                  </Text>
-                </Pressable>
-                {showPartyPicker ? (
-                  <View style={[styles.pickerPanel, { borderColor: colors.cardBorder }]}>
-                    <SearchBar
-                      value={partySearch}
-                      onChangeText={setPartySearch}
-                      placeholder={partyHint}
+                {isEdit && !canEditLines ? (
+                  <View
+                    style={[
+                      styles.info,
+                      { backgroundColor: colors.card, borderColor: colors.cardBorder },
+                    ]}
+                  >
+                    <Text style={{ color: colors.textMuted, fontSize: 12 }}>
+                      Onaylı/tamamlanmış fişte kalem değişimi stok ve cari bakiyeyi etkiler; mobil
+                      yalnızca tarih, döviz, depo, vade, özel kod, satış elemanı, not ve durum
+                      günceller. Taslak faturalarda kalem düzenlenebilir.
+                    </Text>
+                  </View>
+                ) : null}
+
+                {!isEdit || canEditLines ? (
+                  <Pressable
+                    onPress={() => setShowPartyPicker(true)}
+                    style={[
+                      styles.pickerBtn,
+                      { borderColor: colors.cardBorder, backgroundColor: colors.card },
+                    ]}
+                  >
+                    <Text style={{ color: colors.textMuted, fontSize: 10, fontWeight: '700' }}>
+                      {partyLabel}
+                      {resolvedKind === 'sales-return' || !requiresParty(resolvedKind)
+                        ? ' (opsiyonel)'
+                        : ' *'}
+                    </Text>
+                    <View style={styles.pickerBtnRow}>
+                      <Text
+                        style={{ color: colors.text, fontWeight: '700', marginTop: 4, flex: 1 }}
+                        numberOfLines={1}
+                      >
+                        {customerName}
+                      </Text>
+                      <ChevronDown size={18} color={colors.textMuted} />
+                    </View>
+                  </Pressable>
+                ) : (
+                  <View
+                    style={[
+                      styles.pickerBtn,
+                      { borderColor: colors.cardBorder, backgroundColor: colors.card },
+                    ]}
+                  >
+                    <Text style={{ color: colors.textMuted, fontSize: 10, fontWeight: '700' }}>
+                      {partyLabel}
+                    </Text>
+                    <Text style={{ color: colors.text, fontWeight: '700', marginTop: 4 }}>
+                      {customerName}
+                    </Text>
+                  </View>
+                )}
+
+                <FormField
+                  label="Belge no"
+                  value={documentNo}
+                  onChangeText={setDocumentNo}
+                  placeholder="Opsiyonel belge / irsaliye no"
+                />
+
+                <View style={styles.row2}>
+                  <FormField
+                    label="Fatura tarihi"
+                    value={invoiceDate}
+                    onChangeText={setInvoiceDate}
+                    placeholder="YYYY-MM-DD"
+                    containerStyle={{ flex: 1 }}
+                  />
+                  <FormField
+                    label="Vade"
+                    value={dueDate}
+                    onChangeText={setDueDate}
+                    placeholder="YYYY-MM-DD"
+                    containerStyle={{ flex: 1 }}
+                  />
+                </View>
+
+                <View style={styles.row2}>
+                  <FormField
+                    label="Özel kod"
+                    value={specialCode}
+                    onChangeText={setSpecialCode}
+                    placeholder="Opsiyonel"
+                    containerStyle={{ flex: 1 }}
+                  />
+                  <FormField
+                    label="Satış elemanı"
+                    value={salespersonCode}
+                    onChangeText={setSalespersonCode}
+                    placeholder="Kod / ad"
+                    containerStyle={{ flex: 1 }}
+                  />
+                </View>
+
+                {stores.length ? (
+                  <Pressable
+                    onPress={() => setShowStorePicker(true)}
+                    style={[
+                      styles.pickerBtn,
+                      { borderColor: colors.cardBorder, backgroundColor: colors.card },
+                    ]}
+                  >
+                    <Text style={{ color: colors.textMuted, fontSize: 10, fontWeight: '700' }}>
+                      DEPO / MAĞAZA
+                    </Text>
+                    <View style={styles.pickerBtnRow}>
+                      <Text
+                        style={{ color: colors.text, fontWeight: '700', marginTop: 4, flex: 1 }}
+                        numberOfLines={1}
+                      >
+                        {warehouseLabel ||
+                          stores.find((s) => s.id === selectedStoreId)?.name ||
+                          'Seçin'}
+                      </Text>
+                      <ChevronDown size={18} color={colors.textMuted} />
+                    </View>
+                  </Pressable>
+                ) : (
+                  <FormField
+                    label="Depo / ambar"
+                    value={warehouseLabel}
+                    onChangeText={setWarehouseLabel}
+                    placeholder="Merkez"
+                  />
+                )}
+
+                {isReturnKind(resolvedKind) && (!isEdit || canEditLines) ? (
+                  <>
+                    <FormField
+                      label={resolvedKind === 'sales-return' ? 'Kasiyer *' : 'Kasiyer'}
+                      value={cashier}
+                      onChangeText={setCashier}
+                      placeholder="İşlemi yapan"
                     />
-                    <FlatList
-                      data={partyRows}
-                      keyExtractor={(item) => String(item.id)}
-                      scrollEnabled={false}
-                      ListEmptyComponent={
-                        <Text style={{ color: colors.textMuted, padding: 8, fontSize: 12 }}>
-                          Sonuç yok
-                        </Text>
-                      }
-                      renderItem={({ item }) => (
+                    <FormField
+                      label="İade nedeni"
+                      value={returnReason}
+                      onChangeText={setReturnReason}
+                      placeholder="Hasar, yanlış ürün…"
+                    />
+                  </>
+                ) : null}
+
+                <FormField
+                  label="Not"
+                  value={notes}
+                  onChangeText={setNotes}
+                  multiline
+                  numberOfLines={3}
+                  style={{ minHeight: 72, textAlignVertical: 'top' }}
+                />
+
+                {isEdit ? (
+                  <View style={styles.statusWrap}>
+                    <Text style={[styles.statusLabel, { color: colors.textMuted }]}>DURUM</Text>
+                    <View style={styles.statusRow}>
+                      {STATUS_OPTIONS.map((s) => (
                         <Pressable
-                          onPress={() => {
-                            setCustomerId(String(item.id));
-                            setCustomerName(item.name);
-                            setShowPartyPicker(false);
-                          }}
-                          style={[styles.pickRow, { borderBottomColor: colors.cardBorder }]}
+                          key={s}
+                          onPress={() => setStatus(s)}
+                          style={[
+                            styles.chip,
+                            {
+                              borderColor:
+                                status === s ? palette.blue600 : colors.cardBorder,
+                              backgroundColor:
+                                status === s ? palette.blue600 : colors.card,
+                            },
+                          ]}
                         >
-                          <Text style={{ color: colors.text, fontWeight: '600' }}>{item.name}</Text>
-                          <Text style={{ color: colors.textMuted, fontSize: 11 }}>
-                            {item.code || '—'}
+                          <Text
+                            style={{
+                              color: status === s ? palette.white : colors.text,
+                              fontSize: 11,
+                              fontWeight: '700',
+                            }}
+                          >
+                            {s}
                           </Text>
                         </Pressable>
-                      )}
-                    />
+                      ))}
+                    </View>
                   </View>
                 ) : null}
               </>
-            ) : (
-              <View
-                style={[
-                  styles.pickerBtn,
-                  { borderColor: colors.cardBorder, backgroundColor: colors.card },
-                ]}
-              >
-                <Text style={{ color: colors.textMuted, fontSize: 10, fontWeight: '700' }}>
-                  {partyLabel}
-                </Text>
-                <Text style={{ color: colors.text, fontWeight: '700', marginTop: 4 }}>
-                  {customerName}
-                </Text>
-              </View>
-            )}
+            ) : null}
 
-            <FormField
-              label="Belge no"
-              value={documentNo}
-              onChangeText={setDocumentNo}
-              placeholder="Opsiyonel belge / irsaliye no"
-            />
-
-            <View style={styles.row2}>
-              <FormField
-                label="Fatura tarihi"
-                value={invoiceDate}
-                onChangeText={setInvoiceDate}
-                placeholder="YYYY-MM-DD"
-                containerStyle={{ flex: 1 }}
-              />
-              <FormField
-                label="Vade"
-                value={dueDate}
-                onChangeText={setDueDate}
-                placeholder="YYYY-MM-DD"
-                containerStyle={{ flex: 1 }}
-              />
-            </View>
-
-            <View style={styles.statusWrap}>
-              <Text style={[styles.statusLabel, { color: colors.textMuted }]}>DÖVİZ</Text>
-              <View style={styles.statusRow}>
-                {CURRENCY_OPTIONS.map((c) => (
-                  <Pressable
-                    key={c}
-                    onPress={() => setCurrency(c)}
-                    style={[
-                      styles.chip,
-                      {
-                        borderColor: currency === c ? accent : colors.cardBorder,
-                        backgroundColor: currency === c ? accent : colors.card,
-                      },
-                    ]}
-                  >
-                    <Text
-                      style={{
-                        color: currency === c ? palette.white : colors.text,
-                        fontSize: 11,
-                        fontWeight: '700',
-                      }}
-                    >
-                      {c}
-                    </Text>
-                  </Pressable>
-                ))}
-              </View>
-            </View>
-            <FormField
-              label="Kur"
-              value={currencyRate}
-              onChangeText={setCurrencyRate}
-              keyboardType="decimal-pad"
-              placeholder="1"
-            />
-
-            <View style={styles.row2}>
-              <FormField
-                label="Özel kod"
-                value={specialCode}
-                onChangeText={setSpecialCode}
-                placeholder="Opsiyonel"
-                containerStyle={{ flex: 1 }}
-              />
-              <FormField
-                label="Satış elemanı"
-                value={salespersonCode}
-                onChangeText={setSalespersonCode}
-                placeholder="Kod / ad"
-                containerStyle={{ flex: 1 }}
-              />
-            </View>
-
-            {stores.length ? (
-              <View style={styles.statusWrap}>
-                <Text style={[styles.statusLabel, { color: colors.textMuted }]}>DEPO / MAĞAZA</Text>
-                <View style={styles.statusRow}>
-                  {stores.slice(0, 8).map((s) => {
-                    const active = selectedStoreId === s.id;
-                    return (
+            {section === 'payment' ? (
+              <>
+                <View style={styles.statusWrap}>
+                  <Text style={[styles.statusLabel, { color: colors.textMuted }]}>DÖVİZ</Text>
+                  <View style={styles.statusRow}>
+                    {CURRENCY_OPTIONS.map((c) => (
                       <Pressable
-                        key={s.id}
-                        onPress={() => {
-                          setSelectedStoreId(s.id);
-                          setWarehouseLabel(s.name);
-                        }}
+                        key={c}
+                        onPress={() => setCurrency(c)}
                         style={[
                           styles.chip,
                           {
-                            borderColor: active ? accent : colors.cardBorder,
-                            backgroundColor: active ? accent : colors.card,
+                            borderColor: currency === c ? accent : colors.cardBorder,
+                            backgroundColor: currency === c ? accent : colors.card,
                           },
                         ]}
                       >
                         <Text
                           style={{
-                            color: active ? palette.white : colors.text,
+                            color: currency === c ? palette.white : colors.text,
                             fontSize: 11,
                             fontWeight: '700',
                           }}
-                          numberOfLines={1}
                         >
-                          {s.name}
+                          {c}
                         </Text>
                       </Pressable>
-                    );
-                  })}
+                    ))}
+                  </View>
                 </View>
-              </View>
-            ) : (
-              <FormField
-                label="Depo / ambar"
-                value={warehouseLabel}
-                onChangeText={setWarehouseLabel}
-                placeholder="Merkez"
-              />
-            )}
+                <FormField
+                  label="Kur"
+                  value={currencyRate}
+                  onChangeText={setCurrencyRate}
+                  keyboardType="decimal-pad"
+                  placeholder="1"
+                />
 
-            {isReturnKind(resolvedKind) && (!isEdit || canEditLines) ? (
-              <>
-                <FormField
-                  label={resolvedKind === 'sales-return' ? 'Kasiyer *' : 'Kasiyer'}
-                  value={cashier}
-                  onChangeText={setCashier}
-                  placeholder="İşlemi yapan"
-                />
-                <FormField
-                  label="İade nedeni"
-                  value={returnReason}
-                  onChangeText={setReturnReason}
-                  placeholder="Hasar, yanlış ürün…"
-                />
+                {(!isEdit || canEditLines) && showPaymentChips(resolvedKind) ? (
+                  <View style={styles.statusWrap}>
+                    <Text style={[styles.statusLabel, { color: colors.textMuted }]}>ÖDEME</Text>
+                    <View style={styles.statusRow}>
+                      {PAYMENT_OPTIONS.map((pm) => (
+                        <Pressable
+                          key={pm}
+                          onPress={() => setPaymentMethod(pm)}
+                          style={[
+                            styles.chip,
+                            {
+                              borderColor:
+                                paymentMethod === pm ? accent : colors.cardBorder,
+                              backgroundColor:
+                                paymentMethod === pm ? accent : colors.card,
+                            },
+                          ]}
+                        >
+                          <Text
+                            style={{
+                              color:
+                                paymentMethod === pm ? palette.white : colors.text,
+                              fontSize: 11,
+                              fontWeight: '700',
+                            }}
+                          >
+                            {pm}
+                          </Text>
+                        </Pressable>
+                      ))}
+                    </View>
+                    {serviceMode ? (
+                      <Text
+                        style={{
+                          color: colors.textSubtle,
+                          fontSize: 10,
+                          paddingHorizontal: 4,
+                        }}
+                      >
+                        Hizmet: stok düşmez · verilen hizmette peşin → kasa; veresiye → cari borç
+                      </Text>
+                    ) : null}
+                  </View>
+                ) : null}
+
+                {showCashPicker && cashRegs.length && (!isEdit || canEditLines) ? (
+                  <View style={styles.statusWrap}>
+                    <Text style={[styles.statusLabel, { color: colors.textMuted }]}>KASA</Text>
+                    <View style={styles.statusRow}>
+                      {cashRegs.slice(0, 6).map((r) => {
+                        const active = cashRegisterId === r.id;
+                        return (
+                          <Pressable
+                            key={r.id}
+                            onPress={() => {
+                              setCashRegisterId(r.id);
+                              setCashRegisterName(r.name);
+                            }}
+                            style={[
+                              styles.chip,
+                              {
+                                borderColor: active ? accent : colors.cardBorder,
+                                backgroundColor: active ? accent : colors.card,
+                              },
+                            ]}
+                          >
+                            <Text
+                              style={{
+                                color: active ? palette.white : colors.text,
+                                fontSize: 11,
+                                fontWeight: '700',
+                              }}
+                            >
+                              {r.name}
+                            </Text>
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+                  </View>
+                ) : null}
               </>
             ) : null}
 
-            <FormField
-              label="Not"
-              value={notes}
-              onChangeText={setNotes}
-              multiline
-              numberOfLines={3}
-              style={{ minHeight: 72, textAlignVertical: 'top' }}
-            />
-
-            {(!isEdit || canEditLines) && showPaymentChips(resolvedKind) ? (
-              <View style={styles.statusWrap}>
-                <Text style={[styles.statusLabel, { color: colors.textMuted }]}>ÖDEME</Text>
-                <View style={styles.statusRow}>
-                  {PAYMENT_OPTIONS.map((pm) => (
-                    <Pressable
-                      key={pm}
-                      onPress={() => setPaymentMethod(pm)}
-                      style={[
-                        styles.chip,
-                        {
-                          borderColor: paymentMethod === pm ? accent : colors.cardBorder,
-                          backgroundColor: paymentMethod === pm ? accent : colors.card,
-                        },
-                      ]}
-                    >
-                      <Text
-                        style={{
-                          color: paymentMethod === pm ? palette.white : colors.text,
-                          fontSize: 11,
-                          fontWeight: '700',
-                        }}
-                      >
-                        {pm}
-                      </Text>
-                    </Pressable>
-                  ))}
-                </View>
-                {serviceMode ? (
-                  <Text style={{ color: colors.textSubtle, fontSize: 10, paddingHorizontal: 4 }}>
-                    Hizmet: stok düşmez · verilen hizmette peşin → kasa; veresiye → cari borç
+            {section === 'lines' ? (
+              <>
+                <View style={styles.lineHeader}>
+                  <Text style={[styles.sec, { color: colors.text }]}>
+                    Kalemler ({lines.length})
                   </Text>
+                  {showLinesEditor ? (
+                    <Pressable
+                      onPress={() => setShowProdPicker(true)}
+                      style={[styles.addBtn, { backgroundColor: accent }]}
+                    >
+                      <Plus size={16} color={palette.white} />
+                      <Text style={styles.addBtnText}>{lineButtonLabel}</Text>
+                    </Pressable>
+                  ) : null}
+                </View>
+
+                {lines.map((line) => renderLineEditor(line, showLinesEditor))}
+
+                {showLinesEditor ? (
+                  <FormField
+                    label="Dip indirim (tutar)"
+                    value={footerDiscount}
+                    onChangeText={setFooterDiscount}
+                    keyboardType="decimal-pad"
+                    placeholder="0"
+                  />
                 ) : null}
-              </View>
-            ) : null}
 
-            {showCashPicker && cashRegs.length && (!isEdit || canEditLines) ? (
-              <View style={styles.statusWrap}>
-                <Text style={[styles.statusLabel, { color: colors.textMuted }]}>KASA</Text>
-                <View style={styles.statusRow}>
-                  {cashRegs.slice(0, 6).map((r) => {
-                    const active = cashRegisterId === r.id;
-                    return (
-                      <Pressable
-                        key={r.id}
-                        onPress={() => {
-                          setCashRegisterId(r.id);
-                          setCashRegisterName(r.name);
-                        }}
-                        style={[
-                          styles.chip,
-                          {
-                            borderColor: active ? accent : colors.cardBorder,
-                            backgroundColor: active ? accent : colors.card,
-                          },
-                        ]}
-                      >
-                        <Text
-                          style={{
-                            color: active ? palette.white : colors.text,
-                            fontSize: 11,
-                            fontWeight: '700',
-                          }}
-                        >
-                          {r.name}
-                        </Text>
-                      </Pressable>
-                    );
-                  })}
-                </View>
-              </View>
-            ) : null}
-
-            {isEdit ? (
-              <View style={styles.statusWrap}>
-                <Text style={[styles.statusLabel, { color: colors.textMuted }]}>DURUM</Text>
-                <View style={styles.statusRow}>
-                  {STATUS_OPTIONS.map((s) => (
-                    <Pressable
-                      key={s}
-                      onPress={() => setStatus(s)}
-                      style={[
-                        styles.chip,
-                        {
-                          borderColor: status === s ? palette.blue600 : colors.cardBorder,
-                          backgroundColor: status === s ? palette.blue600 : colors.card,
-                        },
-                      ]}
-                    >
-                      <Text
-                        style={{
-                          color: status === s ? palette.white : colors.text,
-                          fontSize: 11,
-                          fontWeight: '700',
-                        }}
-                      >
-                        {s}
-                      </Text>
-                    </Pressable>
-                  ))}
-                </View>
-              </View>
-            ) : null}
-
-            <View style={styles.lineHeader}>
-              <Text style={[styles.sec, { color: colors.text }]}>
-                Kalemler ({lines.length})
-              </Text>
-              {showLinesEditor ? (
-                <Pressable
-                  onPress={() => setShowProdPicker((v) => !v)}
-                  style={[styles.addBtn, { backgroundColor: accent }]}
+                <View
+                  style={[
+                    styles.totalCard,
+                    { backgroundColor: colors.card, borderColor: colors.cardBorder },
+                  ]}
                 >
-                  <Plus size={16} color={palette.white} />
-                  <Text style={styles.addBtnText}>{lineButtonLabel}</Text>
-                </Pressable>
-              ) : null}
-            </View>
-
-            {showLinesEditor && showProdPicker ? (
-              <View style={[styles.pickerPanel, { borderColor: colors.cardBorder }]}>
-                <SearchBar
-                  value={prodSearch}
-                  onChangeText={setProdSearch}
-                  placeholder={serviceMode ? 'Hizmet ara…' : 'Ürün ara…'}
-                />
-                {serviceMode ? (
-                  <FlatList
-                    data={svcRows}
-                    keyExtractor={(item) => String(item.id)}
-                    scrollEnabled={false}
-                    ListEmptyComponent={
-                      <Text style={{ color: colors.textMuted, padding: 8, fontSize: 12 }}>
-                        Hizmet kartı bulunamadı
+                  <Text style={[styles.summaryTitle, { color: colors.text }]}>Özet</Text>
+                  <View style={styles.summaryRow}>
+                    <Text style={{ color: colors.textMuted }}>Ara toplam</Text>
+                    <Text style={{ color: colors.text, fontWeight: '600' }}>
+                      {formatMoneyWithCode(totals.subtotal + totals.lineDiscount, currency)}
+                    </Text>
+                  </View>
+                  {totals.lineDiscount > 0 ? (
+                    <View style={styles.summaryRow}>
+                      <Text style={{ color: colors.textMuted }}>Satır indirimi</Text>
+                      <Text style={{ color: palette.red500, fontWeight: '600' }}>
+                        −{formatMoneyWithCode(totals.lineDiscount, currency)}
                       </Text>
-                    }
-                    renderItem={({ item }) => (
-                      <Pressable
-                        onPress={() => addService(item)}
-                        style={[styles.pickRow, { borderBottomColor: colors.cardBorder }]}
-                      >
-                        <View style={{ flex: 1 }}>
-                          <Text
-                            style={{ color: colors.text, fontWeight: '600' }}
-                            numberOfLines={1}
-                          >
-                            {item.name}
-                          </Text>
-                          <Text style={{ color: colors.textMuted, fontSize: 10 }}>
-                            {item.code || '—'}
-                            {item.category ? ` · ${item.category}` : ''}
-                          </Text>
-                        </View>
-                        <Text style={{ color: accent, fontSize: 11, fontWeight: '700' }}>
-                          {formatMoneyWithCode(
-                            isSupplierKind(resolvedKind)
-                              ? item.purchase_price > 0
-                                ? item.purchase_price
-                                : item.unit_price
-                              : item.unit_price,
-                            currency,
-                          )}
-                        </Text>
-                      </Pressable>
-                    )}
-                  />
-                ) : (
-                  <FlatList
-                    data={prodRows}
-                    keyExtractor={(item) => String(item.id)}
-                    scrollEnabled={false}
-                    renderItem={({ item }) => (
-                      <Pressable
-                        onPress={() => addProduct(item)}
-                        style={[styles.pickRow, { borderBottomColor: colors.cardBorder }]}
-                      >
-                        <Text
-                          style={{ color: colors.text, fontWeight: '600', flex: 1 }}
-                          numberOfLines={1}
-                        >
-                          {item.name}
-                        </Text>
-                        <Text style={{ color: accent, fontSize: 11, fontWeight: '700' }}>
-                          {formatMoneyWithCode(
-                            isSupplierKind(resolvedKind)
-                              ? item.cost > 0
-                                ? item.cost
-                                : item.price
-                              : item.price,
-                            currency,
-                          )}
-                        </Text>
-                      </Pressable>
-                    )}
-                  />
-                )}
-              </View>
-            ) : null}
-
-            {lines.map((line) => renderLineEditor(line, showLinesEditor))}
-
-            {showLinesEditor ? (
-              <FormField
-                label="Dip indirim (tutar)"
-                value={footerDiscount}
-                onChangeText={setFooterDiscount}
-                keyboardType="decimal-pad"
-                placeholder="0"
-              />
-            ) : null}
-
-            <View
-              style={[
-                styles.totalCard,
-                { backgroundColor: colors.card, borderColor: colors.cardBorder },
-              ]}
-            >
-              <Text style={[styles.summaryTitle, { color: colors.text }]}>Özet</Text>
-              <View style={styles.summaryRow}>
-                <Text style={{ color: colors.textMuted }}>Ara toplam</Text>
-                <Text style={{ color: colors.text, fontWeight: '600' }}>
-                  {formatMoneyWithCode(totals.subtotal + totals.lineDiscount, currency)}
-                </Text>
-              </View>
-              {totals.lineDiscount > 0 ? (
-                <View style={styles.summaryRow}>
-                  <Text style={{ color: colors.textMuted }}>Satır indirimi</Text>
-                  <Text style={{ color: palette.red500, fontWeight: '600' }}>
-                    −{formatMoneyWithCode(totals.lineDiscount, currency)}
-                  </Text>
+                    </View>
+                  ) : null}
+                  {totals.footerDiscount > 0 ? (
+                    <View style={styles.summaryRow}>
+                      <Text style={{ color: colors.textMuted }}>Dip indirim</Text>
+                      <Text style={{ color: palette.red500, fontWeight: '600' }}>
+                        −{formatMoneyWithCode(totals.footerDiscount, currency)}
+                      </Text>
+                    </View>
+                  ) : null}
+                  <View style={styles.summaryRow}>
+                    <Text style={{ color: colors.textMuted }}>KDV (satır)</Text>
+                    <Text style={{ color: colors.textMuted, fontWeight: '600' }}>
+                      {formatMoneyWithCode(totals.totalVat, currency)}
+                    </Text>
+                  </View>
+                  {currencyRateNum !== 1 ? (
+                    <Text style={{ color: colors.textSubtle, fontSize: 10, marginTop: 2 }}>
+                      Kur {currencyRateNum} · {currency}
+                    </Text>
+                  ) : null}
+                  <View style={[styles.summaryRow, { marginTop: 8 }]}>
+                    <Text style={{ color: colors.text, fontWeight: '800' }}>Genel toplam</Text>
+                    <Text style={{ color: accent, fontSize: 22, fontWeight: '800' }}>
+                      {formatMoneyWithCode(totals.net, currency)}
+                    </Text>
+                  </View>
                 </View>
-              ) : null}
-              {totals.footerDiscount > 0 ? (
-                <View style={styles.summaryRow}>
-                  <Text style={{ color: colors.textMuted }}>Dip indirim</Text>
-                  <Text style={{ color: palette.red500, fontWeight: '600' }}>
-                    −{formatMoneyWithCode(totals.footerDiscount, currency)}
-                  </Text>
-                </View>
-              ) : null}
-              <View style={styles.summaryRow}>
-                <Text style={{ color: colors.textMuted }}>KDV (satır)</Text>
-                <Text style={{ color: colors.textMuted, fontWeight: '600' }}>
-                  {formatMoneyWithCode(totals.totalVat, currency)}
-                </Text>
-              </View>
-              {currencyRateNum !== 1 ? (
-                <Text style={{ color: colors.textSubtle, fontSize: 10, marginTop: 2 }}>
-                  Kur {currencyRateNum} · {currency}
-                </Text>
-              ) : null}
-              <View style={[styles.summaryRow, { marginTop: 8 }]}>
-                <Text style={{ color: colors.text, fontWeight: '800' }}>Genel toplam</Text>
-                <Text style={{ color: accent, fontSize: 22, fontWeight: '800' }}>
-                  {formatMoneyWithCode(totals.net, currency)}
-                </Text>
-              </View>
-            </View>
+              </>
+            ) : null}
+          </ScrollView>
 
+          <View
+            style={[
+              styles.stickyFooter,
+              { backgroundColor: colors.background, borderTopColor: colors.cardBorder },
+            ]}
+          >
             <PrimaryButton
               label={saveButtonLabel(resolvedKind, isEdit)}
               onPress={() => void handleSave()}
               loading={saving}
-              style={{ marginTop: 8 }}
             />
-          </ScrollView>
+          </View>
         </KeyboardAvoidingView>
       )}
+
+      <PercentBodySheet
+        visible={showPartyPicker}
+        onClose={() => setShowPartyPicker(false)}
+        title={partyLabel}
+        subtitle={partyHint}
+        size="list"
+        scrollBody={false}
+      >
+        <View style={styles.modalBody}>
+          <SearchBar
+            value={partySearch}
+            onChangeText={setPartySearch}
+            placeholder={partyHint}
+          />
+          <FlatList
+            data={partyRows}
+            keyExtractor={(item) => String(item.id)}
+            keyboardShouldPersistTaps="handled"
+            style={{ flex: 1 }}
+            contentContainerStyle={{ paddingBottom: 16 }}
+            ListEmptyComponent={
+              <Text style={{ color: colors.textMuted, padding: 12, fontSize: 12 }}>
+                Sonuç yok
+              </Text>
+            }
+            renderItem={({ item }) => (
+              <Pressable
+                onPress={() => {
+                  setCustomerId(String(item.id));
+                  setCustomerName(item.name);
+                  setShowPartyPicker(false);
+                }}
+                style={[styles.pickRow, { borderBottomColor: colors.cardBorder }]}
+              >
+                <Text style={{ color: colors.text, fontWeight: '600', flex: 1 }} numberOfLines={1}>
+                  {item.name}
+                </Text>
+                <Text style={{ color: colors.textMuted, fontSize: 11 }}>{item.code || '—'}</Text>
+              </Pressable>
+            )}
+          />
+        </View>
+      </PercentBodySheet>
+
+      <PercentBodySheet
+        visible={showProdPicker}
+        onClose={() => setShowProdPicker(false)}
+        title={serviceMode ? 'Hizmet seç' : 'Ürün seç'}
+        subtitle={serviceMode ? 'Hizmet ara…' : 'Ürün ara…'}
+        size="list"
+        scrollBody={false}
+      >
+        <View style={styles.modalBody}>
+          <SearchBar
+            value={prodSearch}
+            onChangeText={setProdSearch}
+            placeholder={serviceMode ? 'Hizmet ara…' : 'Ürün ara…'}
+          />
+          {serviceMode ? (
+            <FlatList
+              data={svcRows}
+              keyExtractor={(item) => String(item.id)}
+              keyboardShouldPersistTaps="handled"
+              style={{ flex: 1 }}
+              contentContainerStyle={{ paddingBottom: 16 }}
+              ListEmptyComponent={
+                <Text style={{ color: colors.textMuted, padding: 12, fontSize: 12 }}>
+                  Hizmet kartı bulunamadı
+                </Text>
+              }
+              renderItem={({ item }) => (
+                <Pressable
+                  onPress={() => {
+                    addService(item);
+                    setShowProdPicker(false);
+                  }}
+                  style={[styles.pickRow, { borderBottomColor: colors.cardBorder }]}
+                >
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: colors.text, fontWeight: '600' }} numberOfLines={1}>
+                      {item.name}
+                    </Text>
+                    <Text style={{ color: colors.textMuted, fontSize: 10 }}>
+                      {item.code || '—'}
+                      {item.category ? ` · ${item.category}` : ''}
+                    </Text>
+                  </View>
+                  <Text style={{ color: accent, fontSize: 11, fontWeight: '700' }}>
+                    {formatMoneyWithCode(
+                      isSupplierKind(resolvedKind)
+                        ? item.purchase_price > 0
+                          ? item.purchase_price
+                          : item.unit_price
+                        : item.unit_price,
+                      currency,
+                    )}
+                  </Text>
+                </Pressable>
+              )}
+            />
+          ) : (
+            <FlatList
+              data={prodRows}
+              keyExtractor={(item) => String(item.id)}
+              keyboardShouldPersistTaps="handled"
+              style={{ flex: 1 }}
+              contentContainerStyle={{ paddingBottom: 16 }}
+              ListEmptyComponent={
+                <Text style={{ color: colors.textMuted, padding: 12, fontSize: 12 }}>
+                  Ürün bulunamadı
+                </Text>
+              }
+              renderItem={({ item }) => (
+                <Pressable
+                  onPress={() => {
+                    addProduct(item);
+                    setShowProdPicker(false);
+                  }}
+                  style={[styles.pickRow, { borderBottomColor: colors.cardBorder }]}
+                >
+                  <Text
+                    style={{ color: colors.text, fontWeight: '600', flex: 1 }}
+                    numberOfLines={1}
+                  >
+                    {item.name}
+                  </Text>
+                  <Text style={{ color: accent, fontSize: 11, fontWeight: '700' }}>
+                    {formatMoneyWithCode(
+                      isSupplierKind(resolvedKind)
+                        ? item.cost > 0
+                          ? item.cost
+                          : item.price
+                        : item.price,
+                      currency,
+                    )}
+                  </Text>
+                </Pressable>
+              )}
+            />
+          )}
+        </View>
+      </PercentBodySheet>
+
+      <PercentBodySheet
+        visible={showStorePicker}
+        onClose={() => setShowStorePicker(false)}
+        title="Depo / mağaza"
+        subtitle="Tek seçim"
+        size="compact"
+        scrollBody={false}
+      >
+        <FlatList
+          data={stores}
+          keyExtractor={(item) => item.id}
+          style={{ flex: 1 }}
+          contentContainerStyle={{ padding: 12, paddingBottom: 24 }}
+          renderItem={({ item }) => {
+            const active = selectedStoreId === item.id;
+            return (
+              <Pressable
+                onPress={() => {
+                  setSelectedStoreId(item.id);
+                  setWarehouseLabel(item.name);
+                  setShowStorePicker(false);
+                }}
+                style={[
+                  styles.storePickRow,
+                  {
+                    borderColor: active ? accent : colors.cardBorder,
+                    backgroundColor: active ? `${accent}18` : colors.card,
+                  },
+                ]}
+              >
+                <Text
+                  style={{
+                    color: active ? accent : colors.text,
+                    fontWeight: '700',
+                    flex: 1,
+                  }}
+                  numberOfLines={1}
+                >
+                  {item.name}
+                </Text>
+                {active ? (
+                  <Text style={{ color: accent, fontSize: 11, fontWeight: '800' }}>Seçili</Text>
+                ) : null}
+              </Pressable>
+            );
+          }}
+        />
+      </PercentBodySheet>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
-  body: { padding: 16, gap: 14, paddingBottom: 48 },
+  body: { padding: 16, gap: 14, paddingBottom: 24 },
+  stickyFooter: {
+    paddingHorizontal: 16,
+    paddingTop: 10,
+    paddingBottom: Platform.OS === 'ios' ? 20 : 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
   info: { borderWidth: 1, borderRadius: 10, padding: 12 },
   pickerBtn: { borderWidth: 1, borderRadius: 10, padding: 12 },
+  pickerBtnRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   pickerPanel: { borderWidth: 1, borderRadius: 10, padding: 8, gap: 8 },
+  modalBody: { flex: 1, minHeight: 0, padding: 12, gap: 8 },
   pickRow: {
-    paddingVertical: 10,
-    paddingHorizontal: 4,
+    paddingVertical: 12,
+    paddingHorizontal: 8,
     borderBottomWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+  },
+  storePickRow: {
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
   },
   statusWrap: { gap: 8 },
   statusLabel: { fontSize: 10, fontWeight: '900', letterSpacing: 2, paddingHorizontal: 4 },

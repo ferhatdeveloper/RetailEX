@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
+import { resetRestaurantLandingSession } from '../navigation/restaurantLanding';
 import { bumpOrgSession } from './orgSessionStore';
 
 export type AuthUser = {
@@ -57,7 +58,10 @@ export const useAuthStore = create<AuthState>()(
           user,
           token: `mobile_${user.id}_${Date.now()}`,
         }),
-      logout: () => set({ user: null, token: null }),
+      logout: () => {
+        resetRestaurantLandingSession();
+        set({ user: null, token: null });
+      },
       updateOrg: (partial) => {
         const u = get().user;
         if (!u) return;

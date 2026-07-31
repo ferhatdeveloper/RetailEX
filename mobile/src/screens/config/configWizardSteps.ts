@@ -25,7 +25,7 @@ export type ConfigWizardStep = {
   icon: LucideIcon;
 };
 
-/** Windows: Altyapı → DB → Özet — mobilde bağlantı odaklı 5 adım. */
+/** Windows: Altyapı (işletme tipi + DB) → DB → Özet — mobilde bağlantı odaklı 5 adım. */
 export function getConfigWizardSteps(apiMode: ApiMode): ConfigWizardStep[] {
   const steps: ConfigWizardStep[] = [
     {

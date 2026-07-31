@@ -1,13 +1,9 @@
 import { pgQuery } from './pgClient';
 import { postgrestGet } from './postgrestClient';
+import { runDataTransport } from './dataTransport';
 import { firmNr, productsTable } from './erpTables';
 import { shouldUseLiveData, getNetworkPolicy } from '../offline/policy';
 import { getCachedProducts } from '../offline/snapshotCache';
-import {
-  shouldPreferPostgrest,
-  shouldUseBridgeSql,
-  useConfigStore,
-} from '../store/configStore';
 
 export type PriceListKey =
   | 'price'
@@ -221,28 +217,11 @@ async function fetchProductPricesLiveBridge(
 }
 
 async function fetchProductPricesLive(search = '', limit = 300): Promise<ProductPriceRow[]> {
-  const cfg = useConfigStore.getState().config;
-  const preferRest = shouldPreferPostgrest(cfg);
-  const canBridge = shouldUseBridgeSql(cfg);
-
-  if (preferRest) {
-    try {
-      return await fetchProductPricesViaPostgrest(search, limit);
-    } catch (e) {
-      if (!canBridge) throw e;
-      // hybrid: PostgREST başarısız → bridge
-    }
-  }
-
-  if (!canBridge) {
-    throw new Error(
-      preferRest
-        ? 'PostgREST fiyat okuma başarısız ve bridge kapalı (apiMode=postgrest)'
-        : 'Bridge yapılandırması eksik',
-    );
-  }
-
-  return fetchProductPricesLiveBridge(search, limit);
+  return runDataTransport({
+    label: 'fetchProductPrices',
+    viaRest: () => fetchProductPricesViaPostgrest(search, limit),
+    viaBridge: () => fetchProductPricesLiveBridge(search, limit),
+  });
 }
 
 export async function fetchProductPrices(search = '', limit = 300): Promise<ProductPriceRow[]> {

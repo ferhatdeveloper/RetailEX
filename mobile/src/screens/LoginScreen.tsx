@@ -88,20 +88,17 @@ export function LoginScreen({ navigation }: Props) {
       }
       const firmNr = normalizeFirmNr(row.firm_nr) || '001';
       const lastOrg = await loadLastOrg();
-      const seedPeriod =
-        lastOrg && lastOrg.firmNr === firmNr && lastOrg.periodNr
-          ? lastOrg.periodNr
-          : '';
+      // lastOrg aynı firmadaysa seed et — Organization listelerde doğrularsa otomatik giriş
+      const sameFirm = !!(lastOrg && String(lastOrg.firmNr) === String(firmNr));
+      const seedPeriod = sameFirm && lastOrg.periodNr ? lastOrg.periodNr : '';
       const seedStoreId =
-        lastOrg && lastOrg.firmNr === firmNr && lastOrg.storeId
-          ? lastOrg.storeId
+        sameFirm && lastOrg.storeId
+          ? String(lastOrg.storeId)
           : row.store_id
             ? String(row.store_id)
             : null;
       const seedStoreName =
-        lastOrg && lastOrg.firmNr === firmNr && lastOrg.storeName
-          ? lastOrg.storeName
-          : null;
+        sameFirm && lastOrg.storeName ? lastOrg.storeName : null;
       navigation.navigate('Organization', {
         pendingUser: {
           id: String(row.id),
@@ -113,10 +110,8 @@ export function LoginScreen({ navigation }: Props) {
           periodNr: seedPeriod,
           storeId: seedStoreId,
           storeName: seedStoreName,
-          anaParaBirimi:
-            lastOrg && lastOrg.firmNr === firmNr ? lastOrg.anaParaBirimi : null,
-          raporlamaParaBirimi:
-            lastOrg && lastOrg.firmNr === firmNr ? lastOrg.raporlamaParaBirimi : null,
+          anaParaBirimi: sameFirm && lastOrg ? lastOrg.anaParaBirimi : null,
+          raporlamaParaBirimi: sameFirm && lastOrg ? lastOrg.raporlamaParaBirimi : null,
         },
         rememberMe,
       });

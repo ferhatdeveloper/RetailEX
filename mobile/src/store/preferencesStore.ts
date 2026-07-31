@@ -17,6 +17,9 @@ export type ReportsView = 'list' | 'chart';
 /** @deprecated reportsView kullanın */
 export type RestReportsView = ReportsView;
 
+/** Kurulum / giriş varsayılan kabuğu — backoffice menüleri her tipte açık kalır. */
+export type BusinessProfile = 'general' | 'restaurant' | 'retail' | 'beauty';
+
 type PreferencesState = {
   menuViewMode: MenuViewMode;
   setMenuViewMode: (mode: MenuViewMode) => void;
@@ -30,6 +33,8 @@ type PreferencesState = {
   /** RestaurantReportsScreen uyumluluğu — setReportsView alias */
   restReportsView: ReportsView;
   setRestReportsView: (mode: ReportsView) => void;
+  businessProfile: BusinessProfile;
+  setBusinessProfile: (profile: BusinessProfile) => void;
 };
 
 type PersistedPreferences = {
@@ -38,6 +43,7 @@ type PersistedPreferences = {
   restMenuCatalogGridCols?: number;
   reportsView?: ReportsView;
   restReportsView?: ReportsView;
+  businessProfile?: BusinessProfile;
 };
 
 function normalizeReportsView(v: unknown): ReportsView {
@@ -48,6 +54,13 @@ function normalizeGridCols(v: unknown): RestMenuCatalogGridCols {
   const n = Number(v);
   if (n === 2 || n === 3 || n === 4 || n === 5 || n === 6) return n;
   return 3;
+}
+
+function normalizeBusinessProfile(v: unknown): BusinessProfile {
+  if (v === 'restaurant' || v === 'retail' || v === 'beauty' || v === 'general') {
+    return v;
+  }
+  return 'general';
 }
 
 export const usePreferencesStore = create<PreferencesState>()(
@@ -67,16 +80,20 @@ export const usePreferencesStore = create<PreferencesState>()(
       setReportsView: (mode) => set({ reportsView: mode, restReportsView: mode }),
       restReportsView: 'list',
       setRestReportsView: (mode) => set({ reportsView: mode, restReportsView: mode }),
+      businessProfile: 'general',
+      setBusinessProfile: (profile) =>
+        set({ businessProfile: normalizeBusinessProfile(profile) }),
     }),
     {
       name: 'retailex_mobile_preferences',
-      version: 5,
+      version: 6,
       storage: createJSONStorage(() => AsyncStorage),
       partialize: (s) => ({
         menuViewMode: s.menuViewMode,
         restMenuCatalogView: s.restMenuCatalogView,
         restMenuCatalogGridCols: s.restMenuCatalogGridCols,
         reportsView: s.reportsView,
+        businessProfile: s.businessProfile,
       }),
       migrate: (persisted, fromVersion) => {
         const prev = (persisted ?? {}) as PersistedPreferences;
@@ -87,6 +104,7 @@ export const usePreferencesStore = create<PreferencesState>()(
             restMenuCatalogView: 'grid' as RestMenuCatalogView,
             restMenuCatalogGridCols: 3 as RestMenuCatalogGridCols,
             reportsView: 'list' as ReportsView,
+            businessProfile: 'general' as BusinessProfile,
           };
         }
         const reportsView = normalizeReportsView(
@@ -97,6 +115,7 @@ export const usePreferencesStore = create<PreferencesState>()(
           restMenuCatalogView: prev.restMenuCatalogView === 'list' ? 'list' : 'grid',
           restMenuCatalogGridCols: normalizeGridCols(prev.restMenuCatalogGridCols),
           reportsView,
+          businessProfile: normalizeBusinessProfile(prev.businessProfile),
         };
       },
       merge: (persisted, current) => {
@@ -109,6 +128,9 @@ export const usePreferencesStore = create<PreferencesState>()(
           restReportsView: reportsView,
           restMenuCatalogGridCols: normalizeGridCols(
             p.restMenuCatalogGridCols ?? current.restMenuCatalogGridCols,
+          ),
+          businessProfile: normalizeBusinessProfile(
+            p.businessProfile ?? current.businessProfile,
           ),
         };
       },

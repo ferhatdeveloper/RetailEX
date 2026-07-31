@@ -1,4 +1,4 @@
-﻿import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Truck,
   Package,
@@ -9,6 +9,9 @@ import {
   ChevronRight,
   X,
 } from 'lucide-react';
+import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
+import 'leaflet/dist/leaflet.css';
+import L from 'leaflet';
 import { PercentBodyModal, PercentBodyModalScrollBody } from '../shared/PercentBodyModal';
 import {
   logisticsService,
@@ -22,6 +25,21 @@ import {
 } from '../../services/logisticsService';
 import { invoicesAPI } from '../../services/api/invoices';
 import type { Invoice } from '../../core/types';
+
+/** Leaflet default icon (bundler path fix) */
+const courierIcon = L.divIcon({
+  className: '',
+  html: `<div style="width:14px;height:14px;border-radius:50%;background:#2563eb;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.35)"></div>`,
+  iconSize: [14, 14],
+  iconAnchor: [7, 7],
+});
+
+const deliveryIcon = L.divIcon({
+  className: '',
+  html: `<div style="width:12px;height:12px;border-radius:3px;background:#16a34a;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.35)"></div>`,
+  iconSize: [12, 12],
+  iconAnchor: [6, 6],
+});
 
 function statusBadgeClass(status: string): string {
   switch (status) {
@@ -64,9 +82,15 @@ export function LogisticsModule() {
   const [vehicles, setVehicles] = useState<LogisticsVehicle[]>([]);
   const [busy, setBusy] = useState(false);
 
-  const loadList = useCallback(async () => {
-    setLoading(true);
-    setError(null);
+  const [liveMapTab, setLiveMapTab] = useState(true);
+  const [liveRefreshAt, setLiveRefreshAt] = useState<string | null>(null);
+
+  const loadList = useCallback(async (opts?: { silent?: boolean }) => {
+    const silent = opts?.silent === true;
+    if (!silent) {
+      setLoading(true);
+      setError(null);
+    }
     try {
       const [list, st, c, v] = await Promise.all([
         logisticsService.listDeliveries({
@@ -82,17 +106,31 @@ export function LogisticsModule() {
       setStats(st);
       setCouriers(c);
       setVehicles(v);
+      if (silent) {
+        setLiveRefreshAt(new Date().toLocaleTimeString('tr-TR'));
+      }
     } catch (e: any) {
-      setError(e?.message || String(e) || 'Teslimat listesi yüklenemedi');
-      setDeliveries([]);
+      if (!silent) {
+        setError(e?.message || String(e) || 'Teslimat listesi yüklenemedi');
+        setDeliveries([]);
+      }
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [statusFilter, search]);
 
   useEffect(() => {
     void loadList();
   }, [loadList]);
+
+  /** Canlı harita açıkken kurye / teslimat konumlarını 12 sn’de bir yenile */
+  useEffect(() => {
+    if (!liveMapTab) return;
+    const id = window.setInterval(() => {
+      void loadList({ silent: true });
+    }, 12_000);
+    return () => window.clearInterval(id);
+  }, [liveMapTab, loadList]);
 
   const openDetail = async (id: string) => {
     setSelectedId(id);
@@ -142,6 +180,35 @@ export function LogisticsModule() {
     }
   };
 
+  const mapPoints = useMemo(() => {
+    const courierPts = couriers
+      .filter((c) => c.last_lat != null && c.last_lng != null)
+      .map((c) => ({
+        kind: 'courier' as const,
+        id: c.id,
+        lat: Number(c.last_lat),
+        lng: Number(c.last_lng),
+        label: c.full_name,
+        at: c.last_location_at || null,
+      }));
+    const deliveryPts = deliveries
+      .filter((d) => d.lat != null && d.lng != null)
+      .map((d) => ({
+        kind: 'delivery' as const,
+        id: d.id,
+        lat: Number(d.lat),
+        lng: Number(d.lng),
+        label: `${d.delivery_no} · ${d.customer_name || '—'}`,
+        at: null as string | null,
+      }));
+    return [...courierPts, ...deliveryPts];
+  }, [couriers, deliveries]);
+
+  const mapCenter = useMemo((): [number, number] => {
+    if (mapPoints[0]) return [mapPoints[0].lat, mapPoints[0].lng];
+    return [36.19, 44.01];
+  }, [mapPoints]);
+
   return (
     <div className="h-full flex flex-col min-h-0">
       <div className="bg-gradient-to-r from-lime-600 to-lime-700 text-white px-4 py-2 shrink-0">
@@ -182,6 +249,76 @@ export function LogisticsModule() {
             </button>
           </div>
         )}
+
+        <div className="bg-white border border-gray-300 rounded">
+          <div className="bg-[#E3F2FD] border-b border-gray-300 px-3 py-1.5 flex items-center justify-between gap-2">
+            <h3 className="text-[11px] text-gray-700 flex items-center gap-1">
+              <MapPin className="w-3.5 h-3.5 text-blue-600" />
+              Canlı konum haritası
+            </h3>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setLiveMapTab((v) => !v)}
+                className={`text-[10px] px-2 py-0.5 rounded border ${
+                  liveMapTab
+                    ? 'bg-blue-600 text-white border-blue-600'
+                    : 'bg-white text-gray-600 border-gray-300'
+                }`}
+              >
+                {liveMapTab ? 'Canlı açık' : 'Canlı kapalı'}
+              </button>
+              <span className="text-[10px] text-gray-500">
+                {mapPoints.length} nokta · kurye + teslimat
+                {liveMapTab && liveRefreshAt ? ` · ${liveRefreshAt}` : ''}
+              </span>
+            </div>
+          </div>
+          {liveMapTab ? (
+            <div className="h-[240px] w-full relative z-0">
+              {mapPoints.length === 0 ? (
+                <div className="h-full flex items-center justify-center text-xs text-gray-500 px-4 text-center">
+                  Konum kaydı yok. Mobil kurye uygulamasında canlı konum başlatıldığında burada görünür.
+                </div>
+              ) : (
+                <MapContainer
+                  center={mapCenter}
+                  zoom={13}
+                  className="h-full w-full"
+                  scrollWheelZoom={false}
+                >
+                  <TileLayer
+                    attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a>'
+                    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                  />
+                  {mapPoints.map((p) => (
+                    <Marker
+                      key={`${p.kind}-${p.id}`}
+                      position={[p.lat, p.lng]}
+                      icon={p.kind === 'courier' ? courierIcon : deliveryIcon}
+                    >
+                      <Popup>
+                        <div className="text-xs">
+                          <div className="font-semibold">{p.label}</div>
+                          <div className="text-gray-500 font-mono">
+                            {p.lat.toFixed(5)}, {p.lng.toFixed(5)}
+                          </div>
+                          {p.at ? (
+                            <div className="text-gray-400">{String(p.at).slice(0, 19).replace('T', ' ')}</div>
+                          ) : null}
+                        </div>
+                      </Popup>
+                    </Marker>
+                  ))}
+                </MapContainer>
+              )}
+            </div>
+          ) : (
+            <div className="h-[72px] flex items-center justify-center text-xs text-gray-500">
+              Canlı harita kapalı — açınca konumlar ~12 sn’de bir yenilenir.
+            </div>
+          )}
+        </div>
 
         <div className="bg-white border border-gray-300 rounded">
           <div className="bg-[#E3F2FD] border-b border-gray-300 px-3 py-1.5">

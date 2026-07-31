@@ -15,8 +15,11 @@ export function isTransportInfrastructureError(err: unknown): boolean {
   const msg = (err instanceof Error ? err.message : String(err || '')).toLowerCase();
   return (
     msg.includes('apimode=postgrest') ||
+    msg.includes('henüz yalnızca postgrest') ||
+    msg.includes('api modunu hybrid') ||
     msg.includes('ham sql') ||
     msg.includes('bu işlem hâlâ bridge') ||
+    msg.includes('bu ekran henüz yalnızca') ||
     msg.includes('köprü') ||
     msg.includes('bridge') ||
     msg.includes('pg_query') ||

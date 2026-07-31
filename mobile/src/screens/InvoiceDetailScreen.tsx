@@ -6,15 +6,17 @@ import {
   StyleSheet,
   ActivityIndicator,
   RefreshControl,
+  Alert,
 } from 'react-native';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { Pencil } from 'lucide-react-native';
+import { Pencil, Share2 } from 'lucide-react-native';
 import { ScreenHeader, ErrorBanner, EmptyState } from '../components/ScreenChrome';
 import { HeaderIconButton } from '../components/GradientHeader';
 import { fetchInvoiceById, invoiceKindLabel, isPurchaseInvoice, type InvoiceDetail } from '../api/invoicesApi';
-import { firmCurrency } from '../api/erpTables';
+import { firmCurrency, formatMoney } from '../api/erpTables';
 import { formatMoneyWithCode } from '../utils/currency';
+import { shareReportPdf } from '../utils/shareReportPdf';
 import { useThemeStore } from '../store/themeStore';
 import { palette } from '../theme/colors';
 import type { MainStackParamList } from '../navigation/types';
@@ -26,6 +28,7 @@ export function InvoiceDetailScreen() {
   const { invoiceId } = route.params;
   const [doc, setDoc] = useState<InvoiceDetail | null>(null);
   const [loading, setLoading] = useState(true);
+  const [sharingPdf, setSharingPdf] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -45,6 +48,59 @@ export function InvoiceDetailScreen() {
     void load();
   }, [load]);
 
+  const onSharePdf = useCallback(async () => {
+    if (!doc) return;
+    setSharingPdf(true);
+    try {
+      const cur = doc.currency || firmCurrency();
+      const kind = invoiceKindLabel(doc);
+      const result = await shareReportPdf({
+        title: `Fatura — ${doc.fiche_no || invoiceId.slice(0, 8)}`,
+        subtitle: [
+          kind,
+          doc.customer_name || (isPurchaseInvoice(doc) ? 'Tedarikçi' : 'Perakende'),
+          doc.date?.slice(0, 10) || '',
+          `Net ${formatMoneyWithCode(doc.net_amount, cur)}`,
+        ]
+          .filter(Boolean)
+          .join(' · '),
+        rows: [
+          {
+            date: doc.date?.slice(0, 10) || '',
+            title: 'Fatura toplamı',
+            amount: doc.net_amount,
+            meta: [
+              doc.total_vat != null ? `KDV ${formatMoney(doc.total_vat)}` : null,
+              doc.total_discount != null ? `İndirim ${formatMoney(doc.total_discount)}` : null,
+              doc.payment_method || null,
+              doc.status || null,
+            ]
+              .filter(Boolean)
+              .join(' · '),
+          },
+          ...doc.lines.map((line) => ({
+            date: '',
+            title: line.item_name || line.item_code || 'Kalem',
+            amount: line.net_amount,
+            meta: [
+              line.item_code || null,
+              `${line.quantity} ${line.unit || ''}`.trim(),
+              `@ ${formatMoney(line.unit_price)}`,
+            ]
+              .filter(Boolean)
+              .join(' · '),
+          })),
+        ],
+        footerNote: 'RetailEX · Fatura PDF',
+      });
+      Alert.alert(result.ok ? 'PDF' : 'Hata', result.message);
+    } catch (e) {
+      Alert.alert('Hata', e instanceof Error ? e.message : String(e));
+    } finally {
+      setSharingPdf(false);
+    }
+  }, [doc, invoiceId]);
+
   const isPurchase = doc ? isPurchaseInvoice(doc) : false;
   const accent = isPurchase ? palette.orange500 : palette.blue600;
   const partyLabel = isPurchase ? 'Tedarikçi' : 'Müşteri';
@@ -56,12 +112,17 @@ export function InvoiceDetailScreen() {
         subtitle={doc?.fiche_no || invoiceId.slice(0, 8)}
         right={
           doc ? (
-            <HeaderIconButton
-              accent
-              onPress={() => navigation.navigate('InvoiceForm', { invoiceId })}
-            >
-              <Pencil size={16} color={palette.white} />
-            </HeaderIconButton>
+            <View style={styles.headerActions}>
+              <HeaderIconButton onPress={() => !sharingPdf && void onSharePdf()}>
+                <Share2 size={16} color={palette.white} />
+              </HeaderIconButton>
+              <HeaderIconButton
+                accent
+                onPress={() => navigation.navigate('InvoiceForm', { invoiceId })}
+              >
+                <Pencil size={16} color={palette.white} />
+              </HeaderIconButton>
+            </View>
           ) : (
             <View style={{ width: 36 }} />
           )
@@ -118,6 +179,7 @@ export function InvoiceDetailScreen() {
               </View>
               <Text style={[styles.sec, { color: colors.text }]}>
                 Kalemler ({doc.lines.length})
+                {sharingPdf ? ' · PDF hazırlanıyor…' : ''}
               </Text>
             </View>
           }
@@ -155,6 +217,7 @@ export function InvoiceDetailScreen() {
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
+  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   card: { borderWidth: 1, borderRadius: 12, padding: 14 },
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
   kindBadge: { borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 },

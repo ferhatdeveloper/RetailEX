@@ -23,7 +23,7 @@ import {
   type StoreRow,
   type PeriodRow,
 } from '../api/pgClient';
-import { saveLastOrg } from '../api/lastOrgPrefs';
+import { isLastOrgValidAgainstLists, saveLastOrg } from '../api/lastOrgPrefs';
 import { APP_DEFAULT_CURRENCY, normalizeCurrencyCode } from '../utils/currency';
 import { palette } from '../theme/colors';
 import type { AuthStackParamList, MainStackParamList, PendingUser } from '../navigation/types';
@@ -61,10 +61,20 @@ export function OrganizationScreen({ navigation, route }: Props) {
   const [showFirms, setShowFirms] = useState(false);
   const [showStores, setShowStores] = useState(false);
   const [showPeriods, setShowPeriods] = useState(false);
+  /** Özet görünümü — dolu seçimlerde SelectRow yerine özet + Devam/Değiştir */
+  const [editingOrg, setEditingOrg] = useState(false);
   const storeIdRef = useRef(storeId);
   const periodNrRef = useRef(periodNr);
+  const firmNrRef = useRef(firmNr);
+  const didAutoContinueRef = useRef(false);
+  /** lastOrg çekilen listelerde doğrulandı → otomatik giriş */
+  const lastOrgValidatedRef = useRef(false);
+  const initialFirmLoadDoneRef = useRef(false);
+  /** null = henüz ilk yükleme sonrası senkron yok; firma değişiminde yeniden çek */
+  const syncedFirmNrRef = useRef<string | null>(null);
   storeIdRef.current = storeId;
   periodNrRef.current = periodNr;
+  firmNrRef.current = firmNr;
 
   useEffect(() => {
     let cancelled = false;
@@ -77,6 +87,7 @@ export function OrganizationScreen({ navigation, route }: Props) {
           { nr: '01', label: 'Dönem 01' },
           { nr: '02', label: 'Dönem 02' },
         ]);
+        setFirmNr('001');
         if (!storeIdRef.current) {
           setStoreId('1');
           setStoreName('Merkez Mağaza');
@@ -84,30 +95,99 @@ export function OrganizationScreen({ navigation, route }: Props) {
         if (!periodNrRef.current) {
           setPeriodNr('02');
         }
+        lastOrgValidatedRef.current = isLastOrgValidAgainstLists(
+          {
+            firmNr: firmNrRef.current || '001',
+            periodNr: periodNrRef.current || '02',
+            storeId: storeIdRef.current || '1',
+          },
+          {
+            firms: [{ firm_nr: '001' }],
+            stores: [{ id: '1' }],
+            periods: [{ nr: '01' }, { nr: '02' }],
+          },
+        );
+        initialFirmLoadDoneRef.current = true;
         setLoading(false);
         return;
       }
-      const fn = firmNr;
+      const fn = firmNrRef.current;
       const [f, p, s] = await Promise.all([
         fetchFirms(),
         fetchPeriods(fn),
         fetchStores(fn),
       ]);
       if (cancelled) return;
-      setFirms(f.length ? f : [{ firm_nr: fn, name: `Firma ${fn}` }]);
-      setPeriods(p);
-      setStores(s);
-      if (s.length && !storeIdRef.current) {
-        setStoreId(s[0]!.id);
-        setStoreName(s[0]!.name);
+      const firmList = f.length ? f : [{ firm_nr: fn, name: `Firma ${fn}` }];
+      setFirms(firmList);
+      // Tek firma → otomatik seç (dropdown açmaya gerek yok)
+      let activeFirm = fn;
+      if (firmList.length === 1) {
+        activeFirm = firmList[0]!.firm_nr;
+        setFirmNr(activeFirm);
+      } else if (fn && firmList.some((x) => String(x.firm_nr) === String(fn))) {
+        activeFirm = fn;
+      } else if (firmList[0]) {
+        activeFirm = firmList[0].firm_nr;
+        setFirmNr(activeFirm);
       }
+      let periodsForFirm = p;
+      let storesForFirm = s;
+      if (activeFirm !== fn) {
+        const [p2, s2] = await Promise.all([
+          fetchPeriods(activeFirm),
+          fetchStores(activeFirm),
+        ]);
+        if (cancelled) return;
+        periodsForFirm = p2;
+        storesForFirm = s2;
+      }
+      setPeriods(periodsForFirm);
+      setStores(storesForFirm);
+
+      const seedStore = storeIdRef.current;
+      const seedPeriod = periodNrRef.current;
+      const keepStore = seedStore
+        ? storesForFirm.find((x) => String(x.id) === String(seedStore))
+        : undefined;
+      if (keepStore) {
+        setStoreId(String(keepStore.id));
+        setStoreName(keepStore.name);
+      } else if (storesForFirm.length === 1) {
+        setStoreId(String(storesForFirm[0]!.id));
+        setStoreName(storesForFirm[0]!.name);
+      } else if (storesForFirm.length && !seedStore) {
+        setStoreId(String(storesForFirm[0]!.id));
+        setStoreName(storesForFirm[0]!.name);
+      } else if (storesForFirm.length) {
+        setStoreId(String(storesForFirm[0]!.id));
+        setStoreName(storesForFirm[0]!.name);
+      } else {
+        setStoreId('');
+        setStoreName('');
+      }
+
       // R12: seed boş/geçersizse sunucudaki en yüksek (son) aktif dönem
-      if (p.length) {
-        const ok = p.find((x) => x.nr === periodNrRef.current);
-        if (!ok) {
-          setPeriodNr(p[p.length - 1]!.nr);
-        }
+      const keepPeriod = seedPeriod
+        ? periodsForFirm.find((x) => String(x.nr) === String(seedPeriod))
+        : undefined;
+      if (keepPeriod) {
+        setPeriodNr(keepPeriod.nr);
+      } else if (periodsForFirm.length) {
+        setPeriodNr(periodsForFirm[periodsForFirm.length - 1]!.nr);
       }
+
+      // lastOrg yalnızca seed'teki üçlü listelerde duruyorsa otomatik giriş
+      lastOrgValidatedRef.current = isLastOrgValidAgainstLists(
+        {
+          firmNr: seed?.firmNr || '',
+          periodNr: seed?.periodNr || '',
+          storeId: seed?.storeId || null,
+        },
+        { firms: firmList, stores: storesForFirm, periods: periodsForFirm },
+      );
+
+      initialFirmLoadDoneRef.current = true;
       setLoading(false);
     })();
     return () => {
@@ -118,24 +198,36 @@ export function OrganizationScreen({ navigation, route }: Props) {
   }, [offlineDemo]);
 
   useEffect(() => {
-    if (offlineDemo || loading) return;
+    if (offlineDemo || loading || !initialFirmLoadDoneRef.current) return;
+    // İlk yükleme zaten firm/store/period doldurdu; yalnızca kullanıcı firma değişince yenile
+    if (syncedFirmNrRef.current === null) {
+      syncedFirmNrRef.current = firmNr;
+      return;
+    }
+    if (syncedFirmNrRef.current === firmNr) return;
+    syncedFirmNrRef.current = firmNr;
+    lastOrgValidatedRef.current = false;
     let cancelled = false;
     void (async () => {
       const [s, p] = await Promise.all([fetchStores(firmNr), fetchPeriods(firmNr)]);
       if (cancelled) return;
       setStores(s);
       setPeriods(p);
-      const keepStore = s.find((x) => x.id === storeIdRef.current);
+      const keepStore = s.find((x) => String(x.id) === String(storeIdRef.current));
       if (keepStore) {
+        setStoreId(String(keepStore.id));
         setStoreName(keepStore.name);
+      } else if (s.length === 1) {
+        setStoreId(String(s[0]!.id));
+        setStoreName(s[0]!.name);
       } else if (s[0]) {
-        setStoreId(s[0].id);
+        setStoreId(String(s[0].id));
         setStoreName(s[0].name);
       } else {
         setStoreId('');
         setStoreName('');
       }
-      if (!p.find((x) => x.nr === periodNrRef.current) && p.length) {
+      if (!p.find((x) => String(x.nr) === String(periodNrRef.current)) && p.length) {
         setPeriodNr(p[p.length - 1]!.nr);
       }
     })();
@@ -144,27 +236,17 @@ export function OrganizationScreen({ navigation, route }: Props) {
     };
   }, [firmNr, offlineDemo, loading]);
 
-  if (!seed) {
-    return (
-      <SafeAreaView style={[styles.safe, { backgroundColor: colors.background }]} edges={['top']}>
-        <Text style={{ color: colors.text, padding: 24 }}>{t('loginRequired')}</Text>
-        <PrimaryButton label={t('back')} onPress={() => navigation.goBack()} variant="ghost" />
-      </SafeAreaView>
-    );
-  }
-
-  const selectedFirmName =
-    firms.find((f) => f.firm_nr === firmNr)?.name || t('selectFirm');
-
-  const onConfirm = () => {
+  const onConfirmRef = useRef<() => void>(() => {});
+  onConfirmRef.current = () => {
+    if (!seed) return;
     const selected = firms.find((f) => f.firm_nr === firmNr);
     const anaParaBirimi = normalizeCurrencyCode(
-      selected?.ana_para_birimi || seed?.anaParaBirimi || APP_DEFAULT_CURRENCY,
+      selected?.ana_para_birimi || seed.anaParaBirimi || APP_DEFAULT_CURRENCY,
     );
     const raporlamaParaBirimi = normalizeCurrencyCode(
       selected?.raporlama_para_birimi ||
         selected?.ana_para_birimi ||
-        seed?.raporlamaParaBirimi ||
+        seed.raporlamaParaBirimi ||
         anaParaBirimi,
     );
     const org = {
@@ -188,6 +270,45 @@ export function OrganizationScreen({ navigation, route }: Props) {
     });
   };
 
+  // Login: lastOrg listelerde doğrulandıysa üç dropdown’a zorlamadan otomatik giriş
+  useEffect(() => {
+    if (loading || isSwitch || !seed || didAutoContinueRef.current) return;
+    if (!lastOrgValidatedRef.current) return;
+    if (!firmNr || !periodNr || !storeId) return;
+    const timer = setTimeout(() => {
+      if (didAutoContinueRef.current) return;
+      didAutoContinueRef.current = true;
+      onConfirmRef.current();
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [loading, isSwitch, seed, firmNr, periodNr, storeId]);
+
+  if (!seed) {
+    return (
+      <SafeAreaView style={[styles.safe, { backgroundColor: colors.background }]} edges={['top']}>
+        <Text style={{ color: colors.text, padding: 24 }}>{t('loginRequired')}</Text>
+        <PrimaryButton label={t('back')} onPress={() => navigation.goBack()} variant="ghost" />
+      </SafeAreaView>
+    );
+  }
+
+  const selectedFirmName =
+    firms.find((f) => f.firm_nr === firmNr)?.name || t('selectFirm');
+  const selectedPeriodLabel =
+    periods.find((p) => p.nr === periodNr)?.label || t('selectPeriod');
+
+  const onConfirm = () => onConfirmRef.current();
+
+  const selectionsReady = !loading && !!firmNr && !!periodNr && !!storeId;
+  const showSummary = selectionsReady && !editingOrg;
+
+  const openDropdown = (which: 'firms' | 'stores' | 'periods') => {
+    setEditingOrg(true);
+    setShowFirms(which === 'firms' ? (v) => !v : false);
+    setShowStores(which === 'stores' ? (v) => !v : false);
+    setShowPeriods(which === 'periods' ? (v) => !v : false);
+  };
+
   const listStyle = {
     backgroundColor: darkMode ? palette.gray800 : palette.white,
     borderColor: darkMode ? palette.gray700 : palette.gray100,
@@ -196,6 +317,8 @@ export function OrganizationScreen({ navigation, route }: Props) {
   const subtitle = isSwitch
     ? `${seed.fullName} · ${t('changeOrganizationHint')}`
     : `${seed.fullName} · ${t('step02Scope')}`;
+
+  const continueLabel = isSwitch ? t('applyOrganization') : t('enterApp');
 
   return (
     <SafeAreaView
@@ -228,6 +351,48 @@ export function OrganizationScreen({ navigation, route }: Props) {
 
             {loading ? (
               <ActivityIndicator color={palette.blue600} style={{ marginVertical: 24 }} />
+            ) : showSummary ? (
+              <>
+                <View
+                  style={[
+                    styles.summaryBox,
+                    {
+                      backgroundColor: darkMode ? palette.gray800 : palette.gray50,
+                      borderColor: darkMode ? palette.gray700 : palette.gray200,
+                    },
+                  ]}
+                >
+                  <SummaryLine
+                    icon={<Building2 size={16} color={palette.blue500} />}
+                    label={t('firmSelection')}
+                    value={selectedFirmName}
+                    colors={colors}
+                  />
+                  <SummaryLine
+                    icon={<Store size={16} color={palette.blue500} />}
+                    label={t('storeSelection')}
+                    value={storeName || t('selectStore')}
+                    colors={colors}
+                  />
+                  <SummaryLine
+                    icon={<Calendar size={16} color={palette.blue500} />}
+                    label={t('periodSelection')}
+                    value={selectedPeriodLabel}
+                    colors={colors}
+                  />
+                </View>
+                <PrimaryButton label={continueLabel} onPress={onConfirm} />
+                <PrimaryButton
+                  label="Değiştir"
+                  onPress={() => {
+                    setEditingOrg(true);
+                    setShowFirms(false);
+                    setShowStores(false);
+                    setShowPeriods(false);
+                  }}
+                  variant="ghost"
+                />
+              </>
             ) : (
               <>
                 <SelectRow
@@ -237,11 +402,7 @@ export function OrganizationScreen({ navigation, route }: Props) {
                   value={selectedFirmName}
                   colors={colors}
                   darkMode={darkMode}
-                  onPress={() => {
-                    setShowFirms((v) => !v);
-                    setShowStores(false);
-                    setShowPeriods(false);
-                  }}
+                  onPress={() => openDropdown('firms')}
                 />
                 {showFirms && (
                   <View style={[styles.dropdown, listStyle]}>
@@ -273,11 +434,7 @@ export function OrganizationScreen({ navigation, route }: Props) {
                   value={storeName || t('selectStore')}
                   colors={colors}
                   darkMode={darkMode}
-                  onPress={() => {
-                    setShowStores((v) => !v);
-                    setShowFirms(false);
-                    setShowPeriods(false);
-                  }}
+                  onPress={() => openDropdown('stores')}
                 />
                 {showStores && (
                   <View style={[styles.dropdown, listStyle]}>
@@ -288,7 +445,7 @@ export function OrganizationScreen({ navigation, route }: Props) {
                         <Pressable
                           key={s.id}
                           onPress={() => {
-                            setStoreId(s.id);
+                            setStoreId(String(s.id));
                             setStoreName(s.name);
                             setShowStores(false);
                           }}
@@ -307,17 +464,10 @@ export function OrganizationScreen({ navigation, route }: Props) {
                 <SelectRow
                   icon={<Calendar size={16} color={palette.gray400} />}
                   label={t('periodSelection')}
-                  value={
-                    periods.find((p) => p.nr === periodNr)?.label ||
-                    t('selectPeriod')
-                  }
+                  value={selectedPeriodLabel}
                   colors={colors}
                   darkMode={darkMode}
-                  onPress={() => {
-                    setShowPeriods((v) => !v);
-                    setShowFirms(false);
-                    setShowStores(false);
-                  }}
+                  onPress={() => openDropdown('periods')}
                 />
                 {showPeriods && (
                   <View style={[styles.dropdown, listStyle]}>
@@ -338,14 +488,27 @@ export function OrganizationScreen({ navigation, route }: Props) {
                     ))}
                   </View>
                 )}
+
+                <PrimaryButton
+                  label={continueLabel}
+                  onPress={onConfirm}
+                  disabled={loading || !firmNr || !periodNr || !storeId}
+                />
+                {selectionsReady ? (
+                  <PrimaryButton
+                    label="Özet"
+                    onPress={() => {
+                      setEditingOrg(false);
+                      setShowFirms(false);
+                      setShowStores(false);
+                      setShowPeriods(false);
+                    }}
+                    variant="ghost"
+                  />
+                ) : null}
               </>
             )}
 
-            <PrimaryButton
-              label={isSwitch ? t('applyOrganization') : t('enterApp')}
-              onPress={onConfirm}
-              disabled={loading}
-            />
             <PrimaryButton
               label={t('back')}
               onPress={() => navigation.goBack()}
@@ -355,6 +518,30 @@ export function OrganizationScreen({ navigation, route }: Props) {
         </View>
       </ScrollView>
     </SafeAreaView>
+  );
+}
+
+function SummaryLine({
+  icon,
+  label,
+  value,
+  colors,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+  colors: { textMuted: string; text: string };
+}) {
+  return (
+    <View style={styles.summaryLine}>
+      <View style={styles.summaryIcon}>{icon}</View>
+      <View style={{ flex: 1 }}>
+        <Text style={[styles.summaryLabel, { color: colors.textMuted }]}>{label}</Text>
+        <Text style={[styles.summaryValue, { color: colors.text }]} numberOfLines={2}>
+          {value}
+        </Text>
+      </View>
+    </View>
   );
 }
 
@@ -485,5 +672,30 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     opacity: 0.6,
     marginTop: 2,
+  },
+  summaryBox: {
+    borderWidth: 1,
+    borderRadius: 8,
+    padding: 14,
+    gap: 14,
+  },
+  summaryLine: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+  },
+  summaryIcon: {
+    marginTop: 2,
+  },
+  summaryLabel: {
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+    marginBottom: 2,
+  },
+  summaryValue: {
+    fontSize: 14,
+    fontWeight: '700',
   },
 });

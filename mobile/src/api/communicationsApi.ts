@@ -500,12 +500,28 @@ async function markNotificationRow(
 ): Promise<void> {
   const fn = firmNr();
   const qt = notificationQueueTable(fn);
-  await pgQuery(
-    `UPDATE ${qt}
+  await runDataTransport({
+    label: 'markNotificationRow',
+    viaRest: async () => {
+      await postgrestPatch(
+        `/${qt}?id=eq.${encodeURIComponent(id)}`,
+        {
+          status: patch.status,
+          error_text: patch.error_text ?? null,
+          sent_at: patch.sent_at ?? null,
+        },
+        { schema: 'public', prefer: 'return=minimal' },
+      );
+    },
+    viaBridge: async () => {
+      await pgQuery(
+        `UPDATE ${qt}
      SET status = $2, error_text = $3, sent_at = $4
      WHERE id = $1::uuid`,
-    [id, patch.status, patch.error_text ?? null, patch.sent_at ?? null],
-  );
+        [id, patch.status, patch.error_text ?? null, patch.sent_at ?? null],
+      );
+    },
+  });
 }
 
 async function sendWhatsAppHttp(
@@ -616,9 +632,37 @@ export async function processPendingQueue(limit = 20): Promise<ProcessQueueResul
 
   const fn = firmNr();
   const qt = notificationQueueTable(fn);
-  const pending = await tryQueries<NotificationQueueRow>([
-    {
-      sql: `SELECT id,
+  const pending = await runDataTransport({
+    label: 'processPendingQueue.fetch',
+    viaRest: async () => {
+      const rows = await postgrestGet<Record<string, unknown>[]>(
+        `/${qt}`,
+        {
+          select:
+            'id,event_type,channel,recipient_phone,recipient_name,message_text,status,created_at,sent_at,error_text',
+          status: 'eq.pending',
+          order: 'created_at.asc',
+          limit,
+        },
+        { schema: 'public' },
+      );
+      return (Array.isArray(rows) ? rows : []).map((r) => ({
+        id: String(r.id ?? ''),
+        event_type: String(r.event_type ?? ''),
+        channel: String(r.channel ?? 'whatsapp'),
+        recipient_phone: r.recipient_phone != null ? String(r.recipient_phone) : null,
+        recipient_name: r.recipient_name != null ? String(r.recipient_name) : null,
+        message_text: r.message_text != null ? String(r.message_text) : null,
+        status: String(r.status ?? 'pending'),
+        created_at: r.created_at != null ? String(r.created_at) : null,
+        sent_at: r.sent_at != null ? String(r.sent_at) : null,
+        error_text: r.error_text != null ? String(r.error_text) : null,
+      }));
+    },
+    viaBridge: () =>
+      tryQueries<NotificationQueueRow>([
+        {
+          sql: `SELECT id,
               COALESCE(event_type, '') AS event_type,
               COALESCE(channel, 'whatsapp') AS channel,
               recipient_phone,
@@ -632,9 +676,10 @@ export async function processPendingQueue(limit = 20): Promise<ProcessQueueResul
        WHERE status = 'pending'
        ORDER BY created_at ASC NULLS LAST
        LIMIT $1`,
-      params: [limit],
-    },
-  ]);
+          params: [limit],
+        },
+      ]),
+  });
 
   const errors: string[] = [];
   let processed = 0;

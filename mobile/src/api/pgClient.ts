@@ -32,10 +32,9 @@ export function assertBridgeSqlAllowed(cfg?: DbConfig): void {
   const config = cfg ?? useConfigStore.getState().config;
   if (config.apiMode !== 'postgrest') return;
   throw new Error(
-    'Bu işlem hâlâ Bridge SQL ister (apiMode=postgrest). ' +
-      'Giriş, firma/dönem/mağaza, ürün/cari listesi, dashboard ve ana raporlar PostgREST ile gelir. ' +
-      'Kalan SQL (bazı yazma/WMS) için Config → Hybrid veya Bridge; host = PC LAN IP, port 3001. ' +
-      'Port 3002 PostgREST’tir — /api/pg_query yoktur.',
+    'Bu ekran henüz yalnızca PostgREST ile çalışmıyor. ' +
+      'Config → API modunu Hybrid (veya Bridge) yapın; Bridge host = PC LAN IP, port 3001. ' +
+      'Port 3002 yalnızca PostgREST’tir — ham SQL (/api/pg_query) orada yoktur.',
   );
 }
 

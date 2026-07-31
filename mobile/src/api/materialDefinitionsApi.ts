@@ -545,12 +545,125 @@ export async function fetchDefinitionById(
   const raw = String(id || '').trim();
   if (!raw) return null;
 
-  if (kind === 'unitset') {
-    const header = unitsetsTable();
-    const lines = unitsetLinesTable();
-    const rows = await tryQueries<UnitSetRow>([
-      {
-        sql: `SELECT u.id::text AS id, u.code, u.name,
+  return runDataTransport({
+    label: `fetchDefinitionById:${kind}`,
+    viaRest: async () => {
+      if (kind === 'unitset') {
+        const header = unitsetsTable();
+        const lines = unitsetLinesTable();
+        const rows = await postgrestGet<Record<string, unknown>[]>(
+          `/${header}`,
+          {
+            select: 'id,code,name,is_active',
+            id: `eq.${raw}`,
+            limit: 1,
+          },
+          { schema: 'public' },
+        );
+        const u = Array.isArray(rows) ? rows[0] : null;
+        if (!u?.id) return null;
+        let lineCount = 0;
+        try {
+          const lrows = await postgrestGet<Array<{ id?: string }>>(
+            `/${lines}`,
+            { select: 'id', unitset_id: `eq.${raw}`, limit: 500 },
+            { schema: 'public' },
+          );
+          lineCount = Array.isArray(lrows) ? lrows.length : 0;
+        } catch {
+          lineCount = 0;
+        }
+        return {
+          id: String(u.id),
+          code: String(u.code ?? ''),
+          name: String(u.name ?? ''),
+          is_active: !(
+            u.is_active === false ||
+            u.is_active === 0 ||
+            String(u.is_active).toLowerCase() === 'false'
+          ),
+          line_count: lineCount,
+        } satisfies UnitSetRow;
+      }
+
+      const table =
+        kind === 'brand'
+          ? brandsTable()
+          : kind === 'category'
+            ? categoriesTable()
+            : kind === 'special'
+              ? specialCodesTable()
+              : kind === 'group'
+                ? productGroupsTable()
+                : variantsTable();
+
+      try {
+        const select =
+          kind === 'category'
+            ? 'id,code,name,description,is_active,is_restaurant'
+            : 'id,code,name,description,is_active';
+        const rows = await postgrestGet<Record<string, unknown>[]>(
+          `/${table}`,
+          { select, id: `eq.${raw}`, limit: 1 },
+          { schema: 'public' },
+        );
+        const r = Array.isArray(rows) ? rows[0] : null;
+        if (r?.id) return mapDefinitionRow(r);
+      } catch (e) {
+        rethrowTransportInfra(e, `fetchDefinitionById.${kind}`);
+      }
+
+      if (kind === 'variant') {
+        const pv = productVariantsTable();
+        const pt = productsTable();
+        const vrows = await postgrestGet<Record<string, unknown>[]>(
+          `/${pv}`,
+          { select: 'id,sku,product_id,attributes', id: `eq.${raw}`, limit: 1 },
+          { schema: 'public' },
+        );
+        const v = Array.isArray(vrows) ? vrows[0] : null;
+        if (!v?.id) return null;
+        let productName: string | null = null;
+        if (v.product_id) {
+          try {
+            const prows = await postgrestGet<Array<{ name?: string }>>(
+              `/${pt}`,
+              { select: 'name', id: `eq.${String(v.product_id)}`, limit: 1 },
+              { schema: 'public' },
+            );
+            productName =
+              Array.isArray(prows) && prows[0]?.name != null ? String(prows[0].name) : null;
+          } catch {
+            productName = null;
+          }
+        }
+        const attrs = v.attributes;
+        return {
+          id: String(v.id),
+          code: String(v.sku || String(v.id).slice(0, 8)),
+          name:
+            typeof attrs === 'object' && attrs && 'name' in (attrs as object)
+              ? String((attrs as { name?: string }).name || productName || v.sku || 'Varyant')
+              : productName || String(v.sku || 'Varyant'),
+          description:
+            typeof attrs === 'string'
+              ? attrs
+              : attrs
+                ? JSON.stringify(attrs)
+                : null,
+          is_active: true,
+        };
+      }
+
+      return null;
+    },
+    viaBridge: async () => {
+      if (kind === 'unitset') {
+        const header = unitsetsTable();
+        const lines = unitsetLinesTable();
+        const rows = await tryQueries<UnitSetRow>([
+          {
+            sql: `SELECT u.id::text AS id, u.code, u.name,
                      COALESCE(u.is_active, true) AS is_active,
                      COALESCE(lc.cnt, 0)::int AS line_count
               FROM ${header} u
@@ -558,84 +671,86 @@ export async function fetchDefinitionById(
                 SELECT unitset_id, COUNT(*)::int AS cnt FROM ${lines} GROUP BY unitset_id
               ) lc ON lc.unitset_id = u.id
               WHERE u.id::text = $1 LIMIT 1`,
-        params: [raw],
-      },
-      {
-        sql: `SELECT id::text AS id, code, name,
+            params: [raw],
+          },
+          {
+            sql: `SELECT id::text AS id, code, name,
                      COALESCE(is_active, true) AS is_active, 0::int AS line_count
               FROM ${header} WHERE id::text = $1 LIMIT 1`,
-        params: [raw],
-      },
-    ]);
-    return rows[0] ?? null;
-  }
+            params: [raw],
+          },
+        ]);
+        return rows[0] ?? null;
+      }
 
-  const table =
-    kind === 'brand'
-      ? brandsTable()
-      : kind === 'category'
-        ? categoriesTable()
-        : kind === 'special'
-          ? specialCodesTable()
-          : kind === 'group'
-            ? productGroupsTable()
-            : variantsTable();
+      const table =
+        kind === 'brand'
+          ? brandsTable()
+          : kind === 'category'
+            ? categoriesTable()
+            : kind === 'special'
+              ? specialCodesTable()
+              : kind === 'group'
+                ? productGroupsTable()
+                : variantsTable();
 
-  const rows = await tryQueries<DefinitionRow>([
-    {
-      sql: `SELECT id::text AS id, code, name, description,
+      const rows = await tryQueries<DefinitionRow>([
+        {
+          sql: `SELECT id::text AS id, code, name, description,
                    COALESCE(is_active, true) AS is_active,
                    COALESCE(is_restaurant, false) AS is_restaurant
             FROM ${table} WHERE id::text = $1 LIMIT 1`,
-      params: [raw],
-    },
-    {
-      sql: `SELECT id::text AS id, COALESCE(code, '') AS code, name, description,
+          params: [raw],
+        },
+        {
+          sql: `SELECT id::text AS id, COALESCE(code, '') AS code, name, description,
                    COALESCE(is_active, true) AS is_active
             FROM ${table} WHERE id::text = $1 LIMIT 1`,
-      params: [raw],
-    },
-  ]);
-  if (rows[0]) return rows[0];
+          params: [raw],
+        },
+      ]);
+      if (rows[0]) return rows[0];
 
-  if (kind === 'variant') {
-    const pv = productVariantsTable();
-    const pt = productsTable();
-    const variantRows = await tryQueries<{
-      id: string;
-      sku: string;
-      product_name: string | null;
-      attributes: unknown;
-    }>([
-      {
-        sql: `SELECT v.id::text AS id, COALESCE(v.sku, '') AS sku,
+      if (kind === 'variant') {
+        const pv = productVariantsTable();
+        const pt = productsTable();
+        const variantRows = await tryQueries<{
+          id: string;
+          sku: string;
+          product_name: string | null;
+          attributes: unknown;
+        }>([
+          {
+            sql: `SELECT v.id::text AS id, COALESCE(v.sku, '') AS sku,
                      p.name AS product_name, v.attributes
               FROM ${pv} v
               LEFT JOIN ${pt} p ON p.id = v.product_id
               WHERE v.id::text = $1 LIMIT 1`,
-        params: [raw],
-      },
-    ]);
-    const v = variantRows[0];
-    if (!v) return null;
-    return {
-      id: v.id,
-      code: v.sku || v.id.slice(0, 8),
-      name:
-        typeof v.attributes === 'object' && v.attributes && 'name' in (v.attributes as object)
-          ? String((v.attributes as { name?: string }).name || v.product_name || v.sku || 'Varyant')
-          : v.product_name || v.sku || 'Varyant',
-      description:
-        typeof v.attributes === 'string'
-          ? v.attributes
-          : v.attributes
-            ? JSON.stringify(v.attributes)
-            : null,
-      is_active: true,
-    };
-  }
+            params: [raw],
+          },
+        ]);
+        const v = variantRows[0];
+        if (!v) return null;
+        return {
+          id: v.id,
+          code: v.sku || v.id.slice(0, 8),
+          name:
+            typeof v.attributes === 'object' && v.attributes && 'name' in (v.attributes as object)
+              ? String((v.attributes as { name?: string }).name || v.product_name || v.sku || 'Varyant')
+              : v.product_name || v.sku || 'Varyant',
+          description:
+            typeof v.attributes === 'string'
+              ? v.attributes
+              : v.attributes
+                ? JSON.stringify(v.attributes)
+                : null,
+          is_active: true,
+        };
+      }
 
-  return null;
+      return null;
+    },
+  });
 }
 
 export async function updateBrand(id: string, input: DefinitionInput & { is_active?: boolean }): Promise<void> {

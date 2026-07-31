@@ -117,7 +117,8 @@
           "savePhotosPermission": "RetailEX taranmış belgeyi galeriye kaydetmek ister.",
           "isAccessMediaLocationEnabled": false
         }
-      ]
+      ],
+      "expo-sharing"
     ]
   }
 }

@@ -1,12 +1,8 @@
 import { pgQuery } from './pgClient';
 import { postgrestGet, postgrestPatch, postgrestPost } from './postgrestClient';
+import { runDataTransport, rethrowTransportInfra } from './dataTransport';
 import { firmNr, newUuid, suppliersTable } from './erpTables';
 import { shouldUseLiveData, getNetworkPolicy } from '../offline/policy';
-import {
-  shouldPreferPostgrest,
-  shouldUseBridgeSql,
-  useConfigStore,
-} from '../store/configStore';
 import type { CustomerInput } from '../offline/mutationQueue';
 
 export type SupplierRow = {
@@ -70,22 +66,11 @@ function escapeIlike(q: string): string {
 }
 
 async function fetchSuppliersLive(search = '', limit = 200): Promise<SupplierRow[]> {
-  const cfg = useConfigStore.getState().config;
-  if (shouldPreferPostgrest(cfg)) {
-    try {
-      return await fetchSuppliersViaPostgrest(search, limit);
-    } catch (e) {
-      if (!shouldUseBridgeSql(cfg)) throw e;
-    }
-  }
-  if (!shouldUseBridgeSql(cfg)) {
-    throw new Error(
-      shouldPreferPostgrest(cfg)
-        ? 'PostgREST tedarikçi okuma başarısız ve bridge kapalı (apiMode=postgrest)'
-        : 'Bridge yapılandırması eksik',
-    );
-  }
-  return fetchSuppliersLiveBridge(search, limit);
+  return runDataTransport({
+    label: 'fetchSuppliers',
+    viaRest: () => fetchSuppliersViaPostgrest(search, limit),
+    viaBridge: () => fetchSuppliersLiveBridge(search, limit),
+  });
 }
 
 async function fetchSuppliersLiveBridge(search = '', limit = 200): Promise<SupplierRow[]> {
@@ -157,54 +142,50 @@ export async function generateSupplierCode(): Promise<string> {
 
   const table = suppliersTable();
   const fn = firmNr();
-  const cfg = useConfigStore.getState().config;
-
-  if (shouldPreferPostgrest(cfg)) {
-    try {
-      const rows = await postgrestGet<{ code?: string }[]>(
-        `/${table}`,
-        {
-          select: 'code',
-          code: 'like.T*',
-          order: 'code.desc',
-          limit: 1,
-          or: `(firm_nr.eq.${fn},firm_nr.is.null)`,
-        },
-        { schema: 'public' },
-      );
-      const last = Array.isArray(rows) ? rows[0]?.code : undefined;
-      if (!last) return 'T001';
-      const num = parseInt(String(last).replace(/^T/i, ''), 10);
-      if (Number.isNaN(num)) return 'T001';
-      return `T${String(num + 1).padStart(3, '0')}`;
-    } catch {
-      /* bridge fallback */
-    }
-  }
-
-  if (!shouldUseBridgeSql(cfg) && shouldPreferPostgrest(cfg)) {
-    return `T${Date.now().toString().slice(-3)}`;
-  }
 
   try {
-    const res = await pgQuery<{ code: string | null }>(
-      `SELECT code FROM ${table}
-       WHERE (
-         LPAD(TRIM(COALESCE(firm_nr, '')), 3, '0') = $1
-         OR TRIM(COALESCE(firm_nr, '')) = $2
-         OR firm_nr IS NULL
-       )
-       AND code LIKE 'T%'
-       ORDER BY code DESC
-       LIMIT 1`,
-      [fn, fn.replace(/^0+/, '') || fn],
-    );
-    const last = res.rows[0]?.code;
-    if (!last) return 'T001';
-    const num = parseInt(String(last).slice(1), 10);
-    if (Number.isNaN(num)) return 'T001';
-    return `T${String(num + 1).padStart(3, '0')}`;
-  } catch {
+    return await runDataTransport({
+      label: 'generateSupplierCode',
+      viaRest: async () => {
+        const rows = await postgrestGet<{ code?: string }[]>(
+          `/${table}`,
+          {
+            select: 'code',
+            code: 'like.T*',
+            order: 'code.desc',
+            limit: 1,
+            or: `(firm_nr.eq.${fn},firm_nr.is.null)`,
+          },
+          { schema: 'public' },
+        );
+        const last = Array.isArray(rows) ? rows[0]?.code : undefined;
+        if (!last) return 'T001';
+        const num = parseInt(String(last).replace(/^T/i, ''), 10);
+        if (Number.isNaN(num)) return 'T001';
+        return `T${String(num + 1).padStart(3, '0')}`;
+      },
+      viaBridge: async () => {
+        const res = await pgQuery<{ code: string | null }>(
+          `SELECT code FROM ${table}
+           WHERE (
+             LPAD(TRIM(COALESCE(firm_nr, '')), 3, '0') = $1
+             OR TRIM(COALESCE(firm_nr, '')) = $2
+             OR firm_nr IS NULL
+           )
+           AND code LIKE 'T%'
+           ORDER BY code DESC
+           LIMIT 1`,
+          [fn, fn.replace(/^0+/, '') || fn],
+        );
+        const last = res.rows[0]?.code;
+        if (!last) return 'T001';
+        const num = parseInt(String(last).slice(1), 10);
+        if (Number.isNaN(num)) return 'T001';
+        return `T${String(num + 1).padStart(3, '0')}`;
+      },
+    });
+  } catch (e) {
+    rethrowTransportInfra(e, 'generateSupplierCode');
     return `T${Date.now().toString().slice(-3)}`;
   }
 }
@@ -273,27 +254,11 @@ export async function createSupplier(input: SupplierInput, opts?: { id?: string 
   const id = opts?.id || newUuid();
   if (!input.name?.trim()) throw new Error('Tedarikçi adı zorunludur');
 
-  const cfg = useConfigStore.getState().config;
-  const preferRest = shouldPreferPostgrest(cfg);
-  const canBridge = shouldUseBridgeSql(cfg);
-
-  if (preferRest) {
-    try {
-      return await createSupplierViaPostgrest(input, id);
-    } catch (e) {
-      if (!canBridge) throw e;
-    }
-  }
-
-  if (!canBridge) {
-    throw new Error(
-      preferRest
-        ? 'PostgREST tedarikçi kaydı başarısız ve bridge kapalı (apiMode=postgrest)'
-        : 'Bridge yapılandırması eksik',
-    );
-  }
-
-  return createSupplierViaBridge(input, id);
+  return runDataTransport({
+    label: 'createSupplier',
+    viaRest: () => createSupplierViaPostgrest(input, id),
+    viaBridge: () => createSupplierViaBridge(input, id),
+  });
 }
 
 function buildSupplierPatchBody(input: Partial<SupplierInput>): Record<string, unknown> {
@@ -324,43 +289,24 @@ export async function updateSupplier(id: string, input: Partial<SupplierInput>):
   if (!Object.keys(body).length) return;
 
   const table = suppliersTable();
-  const cfg = useConfigStore.getState().config;
-  const preferRest = shouldPreferPostgrest(cfg);
-  const canBridge = shouldUseBridgeSql(cfg);
-
-  if (preferRest) {
-    try {
+  await runDataTransport({
+    label: 'updateSupplier',
+    viaRest: async () => {
       await postgrestPatch(`/${table}?id=eq.${encodeURIComponent(id)}`, body, {
         schema: 'public',
         prefer: 'return=minimal',
       });
-      return;
-    } catch (e) {
-      if (!canBridge) throw e;
-      if (__DEV__) {
-        console.warn(
-          '[updateSupplier] PostgREST → bridge',
-          e instanceof Error ? e.message : e,
-        );
+    },
+    viaBridge: async () => {
+      const sets: string[] = [];
+      const vals: unknown[] = [];
+      let i = 1;
+      for (const [col, v] of Object.entries(body)) {
+        sets.push(`${col} = $${i++}`);
+        vals.push(v);
       }
-    }
-  }
-
-  if (!canBridge) {
-    throw new Error(
-      preferRest
-        ? 'PostgREST tedarikçi güncelleme başarısız ve bridge kapalı (apiMode=postgrest)'
-        : 'Bridge yapılandırması eksik',
-    );
-  }
-
-  const sets: string[] = [];
-  const vals: unknown[] = [];
-  let i = 1;
-  for (const [col, v] of Object.entries(body)) {
-    sets.push(`${col} = $${i++}`);
-    vals.push(v);
-  }
-  vals.push(id);
-  await pgQuery(`UPDATE ${table} SET ${sets.join(', ')} WHERE id::text = $${i}`, vals);
+      vals.push(id);
+      await pgQuery(`UPDATE ${table} SET ${sets.join(', ')} WHERE id::text = $${i}`, vals);
+    },
+  });
 }

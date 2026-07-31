@@ -105,6 +105,9 @@ export interface LogisticsDelivery {
   line_count?: number;
   courier_name?: string | null;
   vehicle_plate?: string | null;
+  /** Teslimat adresi koordinatı (varsa) */
+  lat?: number | null;
+  lng?: number | null;
 }
 
 export interface LogisticsDeliveryLine {
@@ -144,6 +147,9 @@ export interface LogisticsCourier {
   phone?: string | null;
   default_vehicle_id?: string | null;
   is_active: boolean;
+  last_lat?: number | null;
+  last_lng?: number | null;
+  last_location_at?: string | null;
 }
 
 export interface LogisticsVehicle {

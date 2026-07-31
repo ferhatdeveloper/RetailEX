@@ -1,13 +1,9 @@
 import { pgQuery } from './pgClient';
 import { postgrestGet, postgrestPatch, postgrestPost } from './postgrestClient';
+import { runDataTransport, rethrowTransportInfra } from './dataTransport';
 import { firmNr, newUuid, productsTable } from './erpTables';
 import { shouldUseLiveData, getNetworkPolicy } from '../offline/policy';
 import { getCachedProducts, saveProductsSnapshot } from '../offline/snapshotCache';
-import {
-  shouldPreferPostgrest,
-  shouldUseBridgeSql,
-  useConfigStore,
-} from '../store/configStore';
 
 export type ProductRow = {
   id: string;
@@ -132,8 +128,11 @@ async function selectProducts(
       ...r,
       vat_rate: Number(r.vat_rate) >= 0 ? Number(r.vat_rate) : 20,
     }));
-  } catch {
-    if (cols === LIST_COLS_FALLBACK) throw new Error('Ürün listesi okunamadı');
+  } catch (e) {
+    rethrowTransportInfra(e, 'selectProducts');
+    if (cols === LIST_COLS_FALLBACK) {
+      throw e instanceof Error ? e : new Error('Ürün listesi okunamadı');
+    }
     return selectProducts(LIST_COLS_FALLBACK, whereSql, params);
   }
 }
@@ -177,30 +176,11 @@ async function fetchProductsLiveBridge(search = '', limit = 200): Promise<Produc
 }
 
 async function fetchProductsLive(search = '', limit = 200): Promise<ProductRow[]> {
-  const cfg = useConfigStore.getState().config;
-  const preferRest = shouldPreferPostgrest(cfg);
-  const canBridge = shouldUseBridgeSql(cfg);
-
-  if (preferRest) {
-    try {
-      const rows = await fetchProductsViaPostgrest(search, limit);
-      if (!search.trim()) await saveProductsSnapshot(rows);
-      return rows;
-    } catch (e) {
-      if (!canBridge) throw e;
-      // hybrid: PostgREST başarısız → bridge
-    }
-  }
-
-  if (!canBridge) {
-    throw new Error(
-      preferRest
-        ? 'PostgREST okuma başarısız ve bridge kapalı (apiMode=postgrest)'
-        : 'Bridge yapılandırması eksik',
-    );
-  }
-
-  const rows = await fetchProductsLiveBridge(search, limit);
+  const rows = await runDataTransport({
+    label: 'fetchProducts',
+    viaRest: () => fetchProductsViaPostgrest(search, limit),
+    viaBridge: () => fetchProductsLiveBridge(search, limit),
+  });
   if (!search.trim()) await saveProductsSnapshot(rows);
   return rows;
 }
@@ -236,42 +216,37 @@ export async function fetchProductByBarcode(barcode: string): Promise<ProductRow
     return hit ? { ...hit, vat_rate: hit.vat_rate ?? 20 } : null;
   }
 
-  const cfg = useConfigStore.getState().config;
-  if (shouldPreferPostgrest(cfg)) {
-    try {
-      const table = productsTable();
-      const rows = await postgrestGet<Record<string, unknown>[]>(
-        `/${table}`,
-        {
-          select: REST_SELECT,
-          or: `(barcode.eq.${code},code.eq.${code})`,
-          is_active: 'eq.true',
-          limit: 1,
-        },
-        { schema: 'public' },
-      );
-      const list = (Array.isArray(rows) ? rows : []).map(mapProductRow).filter((r) => r.id);
-      if (list[0]) return list[0];
-    } catch (e) {
-      if (!shouldUseBridgeSql(cfg)) {
-        const rows = await getCachedProducts(code, 50);
-        const hit = rows.find((r) => r.barcode === code || r.code === code);
-        if (hit) return { ...hit, vat_rate: hit.vat_rate ?? 20 };
-        throw e;
-      }
-    }
-  }
-
   try {
-    const rows = await selectProducts(
-      LIST_COLS,
-      `COALESCE(is_active, true) = true
-         AND (barcode = $1 OR code = $1)
-       LIMIT 1`,
-      [code],
-    );
-    return rows[0] ?? null;
-  } catch {
+    return await runDataTransport({
+      label: 'fetchProductByBarcode',
+      viaRest: async () => {
+        const table = productsTable();
+        const rows = await postgrestGet<Record<string, unknown>[]>(
+          `/${table}`,
+          {
+            select: REST_SELECT,
+            or: `(barcode.eq.${code},code.eq.${code})`,
+            is_active: 'eq.true',
+            limit: 1,
+          },
+          { schema: 'public' },
+        );
+        const list = (Array.isArray(rows) ? rows : []).map(mapProductRow).filter((r) => r.id);
+        return list[0] ?? null;
+      },
+      viaBridge: async () => {
+        const rows = await selectProducts(
+          LIST_COLS,
+          `COALESCE(is_active, true) = true
+             AND (barcode = $1 OR code = $1)
+           LIMIT 1`,
+          [code],
+        );
+        return rows[0] ?? null;
+      },
+    });
+  } catch (e) {
+    rethrowTransportInfra(e, 'fetchProductByBarcode');
     const rows = await getCachedProducts(code, 50);
     const hit = rows.find((r) => r.barcode === code || r.code === code);
     return hit ? { ...hit, vat_rate: hit.vat_rate ?? 20 } : null;
@@ -287,35 +262,30 @@ export async function fetchProductById(id: string): Promise<ProductRow | null> {
     return hit ? { ...hit, vat_rate: hit.vat_rate ?? 20 } : null;
   }
 
-  const cfg = useConfigStore.getState().config;
-  if (shouldPreferPostgrest(cfg)) {
-    try {
-      const table = productsTable();
-      const rows = await postgrestGet<Record<string, unknown>[]>(
-        `/${table}`,
-        {
-          select: REST_SELECT,
-          id: `eq.${id}`,
-          limit: 1,
-        },
-        { schema: 'public' },
-      );
-      const list = (Array.isArray(rows) ? rows : []).map(mapProductRow).filter((r) => r.id);
-      if (list[0]) return list[0];
-    } catch (e) {
-      if (!shouldUseBridgeSql(cfg)) {
-        const rows = await getCachedProducts('', 500);
-        const hit = rows.find((r) => String(r.id) === String(id));
-        if (hit) return { ...hit, vat_rate: hit.vat_rate ?? 20 };
-        throw e;
-      }
-    }
-  }
-
   try {
-    const rows = await selectProducts(LIST_COLS, `id::text = $1 LIMIT 1`, [id]);
-    return rows[0] ?? null;
-  } catch {
+    return await runDataTransport({
+      label: 'fetchProductById',
+      viaRest: async () => {
+        const table = productsTable();
+        const rows = await postgrestGet<Record<string, unknown>[]>(
+          `/${table}`,
+          {
+            select: REST_SELECT,
+            id: `eq.${id}`,
+            limit: 1,
+          },
+          { schema: 'public' },
+        );
+        const list = (Array.isArray(rows) ? rows : []).map(mapProductRow).filter((r) => r.id);
+        return list[0] ?? null;
+      },
+      viaBridge: async () => {
+        const rows = await selectProducts(LIST_COLS, `id::text = $1 LIMIT 1`, [id]);
+        return rows[0] ?? null;
+      },
+    });
+  } catch (e) {
+    rethrowTransportInfra(e, 'fetchProductById');
     const rows = await getCachedProducts('', 500);
     const hit = rows.find((r) => String(r.id) === String(id));
     return hit ? { ...hit, vat_rate: hit.vat_rate ?? 20 } : null;
@@ -334,60 +304,48 @@ export async function generateProductCode(): Promise<string> {
   const table = productsTable();
   const fn = firmNr();
   const fnBare = fn.replace(/^0+/, '') || fn;
-  const cfg = useConfigStore.getState().config;
-
-  if (shouldPreferPostgrest(cfg)) {
-    try {
-      const firmOr = Array.from(new Set([fn, fnBare].filter(Boolean)))
-        .map((f) => `firm_nr.eq.${f}`)
-        .concat('firm_nr.is.null')
-        .join(',');
-      const rows = await postgrestGet<Array<{ code?: string | null }>>(
-        `/${table}`,
-        {
-          select: 'code',
-          and: `(or(${firmOr}),code.like.P*)`,
-          order: 'code.desc',
-          limit: 40,
-        },
-        { schema: 'public' },
-      );
-      const last = (Array.isArray(rows) ? rows : [])
-        .map((r) => String(r.code || ''))
-        .find((c) => /^P[0-9]+$/i.test(c));
-      return nextPCode(last);
-    } catch (e) {
-      if (!shouldUseBridgeSql(cfg)) {
-        return `P${Date.now().toString().slice(-3)}`;
-      }
-      if (__DEV__) {
-        console.warn(
-          '[generateProductCode] PostgREST → bridge',
-          e instanceof Error ? e.message : e,
-        );
-      }
-    }
-  }
-
-  if (!shouldUseBridgeSql(cfg)) {
-    return `P${Date.now().toString().slice(-3)}`;
-  }
 
   try {
-    const res = await pgQuery<{ code: string | null }>(
-      `SELECT code FROM ${table}
-       WHERE (
-         LPAD(TRIM(COALESCE(firm_nr, '')), 3, '0') = $1
-         OR TRIM(COALESCE(firm_nr, '')) = $2
-         OR firm_nr IS NULL
-       )
-       AND code ~ '^P[0-9]+$'
-       ORDER BY code DESC
-       LIMIT 1`,
-      [fn, fnBare],
-    );
-    return nextPCode(res.rows[0]?.code);
-  } catch {
+    return await runDataTransport({
+      label: 'generateProductCode',
+      viaRest: async () => {
+        const firmOr = Array.from(new Set([fn, fnBare].filter(Boolean)))
+          .map((f) => `firm_nr.eq.${f}`)
+          .concat('firm_nr.is.null')
+          .join(',');
+        const rows = await postgrestGet<Array<{ code?: string | null }>>(
+          `/${table}`,
+          {
+            select: 'code',
+            and: `(or(${firmOr}),code.like.P*)`,
+            order: 'code.desc',
+            limit: 40,
+          },
+          { schema: 'public' },
+        );
+        const last = (Array.isArray(rows) ? rows : [])
+          .map((r) => String(r.code || ''))
+          .find((c) => /^P[0-9]+$/i.test(c));
+        return nextPCode(last);
+      },
+      viaBridge: async () => {
+        const res = await pgQuery<{ code: string | null }>(
+          `SELECT code FROM ${table}
+           WHERE (
+             LPAD(TRIM(COALESCE(firm_nr, '')), 3, '0') = $1
+             OR TRIM(COALESCE(firm_nr, '')) = $2
+             OR firm_nr IS NULL
+           )
+           AND code ~ '^P[0-9]+$'
+           ORDER BY code DESC
+           LIMIT 1`,
+          [fn, fnBare],
+        );
+        return nextPCode(res.rows[0]?.code);
+      },
+    });
+  } catch (e) {
+    rethrowTransportInfra(e, 'generateProductCode');
     return `P${Date.now().toString().slice(-3)}`;
   }
 }
@@ -554,27 +512,11 @@ export async function createProduct(input: ProductInput): Promise<string> {
   const name = input.name.trim();
   if (!name) throw new Error('Ürün adı zorunlu');
 
-  const cfg = useConfigStore.getState().config;
-  const preferRest = shouldPreferPostgrest(cfg);
-  const canBridge = shouldUseBridgeSql(cfg);
-
-  if (preferRest) {
-    try {
-      return await createProductViaPostgrest(input, id);
-    } catch (e) {
-      if (!canBridge) throw e;
-    }
-  }
-
-  if (!canBridge) {
-    throw new Error(
-      preferRest
-        ? 'PostgREST ürün kaydı başarısız ve bridge kapalı (apiMode=postgrest)'
-        : 'Bridge yapılandırması eksik',
-    );
-  }
-
-  return createProductViaBridge(input, id);
+  return runDataTransport({
+    label: 'createProduct',
+    viaRest: () => createProductViaPostgrest(input, id),
+    viaBridge: () => createProductViaBridge(input, id),
+  });
 }
 
 function buildProductPatchBody(input: Partial<ProductInput>): Record<string, unknown> {
@@ -635,32 +577,9 @@ export async function updateProduct(id: string, input: Partial<ProductInput>): P
   const body = buildProductPatchBody(input);
   if (!Object.keys(body).length) return;
 
-  const cfg = useConfigStore.getState().config;
-  const preferRest = shouldPreferPostgrest(cfg);
-  const canBridge = shouldUseBridgeSql(cfg);
-
-  if (preferRest) {
-    try {
-      await updateProductViaPostgrest(id, body);
-      return;
-    } catch (e) {
-      if (!canBridge) throw e;
-      if (__DEV__) {
-        console.warn(
-          '[updateProduct] PostgREST → bridge',
-          e instanceof Error ? e.message : e,
-        );
-      }
-    }
-  }
-
-  if (!canBridge) {
-    throw new Error(
-      preferRest
-        ? 'PostgREST ürün güncelleme başarısız ve bridge kapalı (apiMode=postgrest)'
-        : 'Bridge yapılandırması eksik',
-    );
-  }
-
-  await updateProductViaBridge(id, body);
+  await runDataTransport({
+    label: 'updateProduct',
+    viaRest: () => updateProductViaPostgrest(id, body),
+    viaBridge: () => updateProductViaBridge(id, body),
+  });
 }

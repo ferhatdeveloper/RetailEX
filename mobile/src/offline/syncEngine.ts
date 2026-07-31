@@ -158,6 +158,7 @@ async function applyOne(m: PendingMutation): Promise<void> {
         store_id: m.payload.store_id,
         store_name: m.payload.store_name,
         count_type: m.payload.count_type,
+        location_code: m.payload.location_code,
         description: m.payload.description,
       },
       {

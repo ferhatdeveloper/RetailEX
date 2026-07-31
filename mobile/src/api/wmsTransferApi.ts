@@ -10,7 +10,7 @@ import {
   postgrestPatch,
   postgrestPost,
 } from './postgrestClient';
-import { runDataTransport } from './dataTransport';
+import { runDataTransport, rethrowTransportInfra } from './dataTransport';
 import { firmNr, newUuid, productsTable } from './erpTables';
 import { fetchCountingStores, lookupProductByBarcode, type WmsStore } from './wmsStockCountApi';
 
@@ -118,7 +118,8 @@ async function fetchTransfersViaRest(limit = 100): Promise<WmsTransfer[]> {
       { transfer_id: `in.(${inList})`, select: 'transfer_id,id' },
       WMS_SCHEMA,
     );
-  } catch {
+  } catch (e) {
+    rethrowTransportInfra(e, 'fetchTransfersViaRest.items');
     itemRows = [];
   }
   const countByTransfer: Record<string, number> = {};
@@ -229,8 +230,8 @@ async function fetchTransferWithItemsViaRest(
           unit: p.unit != null ? String(p.unit) : undefined,
         });
       }
-    } catch {
-      /* ürün adları opsiyonel */
+    } catch (e) {
+      rethrowTransportInfra(e, 'fetchTransferWithItems.products');
     }
   }
 

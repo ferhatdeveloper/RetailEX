@@ -1,6 +1,6 @@
 import { pgQuery } from './pgClient';
 import { postgrestGet } from './postgrestClient';
-import { runDataTransport } from './dataTransport';
+import { runDataTransport, rethrowTransportInfra } from './dataTransport';
 import { firmNr, productsTable } from './erpTables';
 
 export type WmsStockRow = {
@@ -176,7 +176,8 @@ async function fetchWmsSummaryViaBridge(): Promise<WmsCountSummary> {
       zeroStock: Number(r?.zero_stock ?? 0),
       totalStockValue: Number(r?.total_value ?? 0),
     };
-  } catch {
+  } catch (e) {
+    rethrowTransportInfra(e, 'fetchWmsSummaryViaBridge');
     return { productCount: 0, belowMin: 0, zeroStock: 0, totalStockValue: 0 };
   }
 }

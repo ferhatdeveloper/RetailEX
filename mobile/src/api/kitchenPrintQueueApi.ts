@@ -1,5 +1,7 @@
-import { restKitchenPrintJobsTable } from './erpTables';
+import { newUuid, restKitchenPrintJobsTable } from './erpTables';
 import { pgQuery } from './pgClient';
+import { postgrestPost } from './postgrestClient';
+import { runDataTransport, rethrowTransportInfra } from './dataTransport';
 import {
   getRestaurantPrinterConfig,
   type RestaurantPrinterConfig,
@@ -32,6 +34,10 @@ export type EnqueueKitchenPrintJobsResult = {
   jobCount: number;
   itemCount: number;
 };
+
+function restTableBare(sqlName: string): string {
+  return sqlName.replace(/^rest\./, '');
+}
 
 function normKitchenCategory(s: string | undefined | null): string {
   if (s == null) return '';
@@ -138,6 +144,60 @@ export async function isWindowsPrinterServiceEnabled(): Promise<boolean> {
   return cfg.printViaWindowsService === true;
 }
 
+type KitchenJobInsert = {
+  kitchenOrderId: string | null;
+  orderId: string;
+  target: KitchenResolvedTarget;
+  locale: string;
+  payload: Record<string, unknown>;
+  sourceDb: 'local' | 'remote';
+};
+
+async function insertKitchenPrintJobViaRest(job: KitchenJobInsert): Promise<void> {
+  const table = restTableBare(restKitchenPrintJobsTable());
+  const body: Record<string, unknown> = {
+    id: newUuid(),
+    kitchen_order_id: job.kitchenOrderId,
+    order_id: job.orderId,
+    printer_profile_id: job.target.profile?.id ?? null,
+    printer_name: job.target.printerName ?? null,
+    connection: job.target.connection,
+    address: job.target.address ?? null,
+    port: job.target.port ?? null,
+    locale: job.locale,
+    payload: job.payload,
+    status: 'pending',
+    source_system: 'mobile',
+    source_db: job.sourceDb,
+  };
+  await postgrestPost(`/${table}`, body, {
+    schema: 'rest',
+    prefer: 'return=minimal',
+  });
+}
+
+async function insertKitchenPrintJobViaBridge(job: KitchenJobInsert): Promise<void> {
+  const jobs = restKitchenPrintJobsTable();
+  await pgQuery(
+    `INSERT INTO ${jobs}
+      (kitchen_order_id, order_id, printer_profile_id, printer_name, connection, address, port,
+       locale, payload, status, source_system, source_db)
+     VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7, $8, $9::jsonb, 'pending', 'mobile', $10)`,
+    [
+      job.kitchenOrderId,
+      job.orderId,
+      job.target.profile?.id ?? null,
+      job.target.printerName ?? null,
+      job.target.connection,
+      job.target.address ?? null,
+      job.target.port ?? null,
+      job.locale,
+      JSON.stringify(job.payload),
+      job.sourceDb,
+    ],
+  );
+}
+
 export async function enqueueKitchenPrintJobs(
   request: EnqueueKitchenPrintJobsRequest,
 ): Promise<EnqueueKitchenPrintJobsResult> {
@@ -161,7 +221,6 @@ export async function enqueueKitchenPrintJobs(
   const tableName = request.tableName || request.order.table_name || request.order.table_id || 'Masa';
   const locale = request.locale ?? 'tr';
   const sourceDb = currentSourceDb();
-  const jobs = restKitchenPrintJobsTable();
   let jobCount = 0;
   let itemCount = 0;
 
@@ -176,24 +235,25 @@ export async function enqueueKitchenPrintJobs(
       sourceDb,
     };
 
-    await pgQuery(
-      `INSERT INTO ${jobs}
-        (kitchen_order_id, order_id, printer_profile_id, printer_name, connection, address, port,
-         locale, payload, status, source_system, source_db)
-       VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7, $8, $9::jsonb, 'pending', 'mobile', $10)`,
-      [
-        request.kitchenResult.kitchenOrderId ?? null,
-        request.order.id,
-        target.profile?.id ?? null,
-        target.printerName ?? null,
-        target.connection,
-        target.address ?? null,
-        target.port ?? null,
-        locale,
-        JSON.stringify(payload),
-        sourceDb,
-      ],
-    );
+    const job: KitchenJobInsert = {
+      kitchenOrderId: request.kitchenResult.kitchenOrderId ?? null,
+      orderId: request.order.id,
+      target,
+      locale,
+      payload,
+      sourceDb,
+    };
+
+    try {
+      await runDataTransport({
+        label: 'enqueueKitchenPrintJobs',
+        viaRest: () => insertKitchenPrintJobViaRest(job),
+        viaBridge: () => insertKitchenPrintJobViaBridge(job),
+      });
+    } catch (e) {
+      rethrowTransportInfra(e, 'enqueueKitchenPrintJobs');
+      throw e;
+    }
 
     jobCount += 1;
     itemCount += lines.length;

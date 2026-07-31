@@ -15,8 +15,21 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { ArrowLeft, Clock, Users, Utensils } from 'lucide-react-native';
+import {
+  ArrowLeft,
+  Clock,
+  Users,
+  Utensils,
+  ChefHat,
+  Bike,
+  ShoppingBag,
+  CalendarDays,
+  BarChart3,
+  Plus,
+  LayoutGrid,
+} from 'lucide-react-native';
 import { GradientHeader, HeaderIconButton } from '../components/GradientHeader';
 import { ScreenHeader, EmptyState, ErrorBanner } from '../components/ScreenChrome';
 import { SegmentTabBar } from '../components/SegmentTabBar';
@@ -88,7 +101,16 @@ import { printKitchenTicketsForOrder } from '../services/kitchenTicketPrint';
 import { resolveKitchenTicketLocale } from '../services/escpos/buildKitchenTicketEscPos';
 import type { ReceiptLangCode } from '../types/printerSettings';
 
-type Tab = 'tables' | 'orders' | 'delivery' | 'takeaway' | 'schedule' | 'kitchen' | 'reports';
+type Tab =
+  | 'dashboard'
+  | 'tables'
+  | 'orders'
+  | 'delivery'
+  | 'takeaway'
+  | 'schedule'
+  | 'kitchen'
+  | 'reports';
+type KitchenFilter = 'all' | 'new' | 'cooking' | 'ready';
 /** Adisyon modalı — sipariş odaklı; ödeme ayrı sekme */
 type OrderSheetTab = 'order' | 'pay';
 type Props = NativeStackScreenProps<MainStackParamList, 'Restaurant'>;
@@ -178,10 +200,10 @@ function isPendingKitchenLine(item: { status?: string | null; sent_to_kitchen_at
 export function RestaurantScreen({ navigation, route }: Props) {
   const { colors, darkMode } = useThemeStore();
   const { width } = useWindowDimensions();
-  const initialTab = route.params?.initialTab ?? 'tables';
+  const initialTab = route.params?.initialTab ?? 'dashboard';
   const callerPhone = route.params?.callerPhone?.trim() || '';
   const [tab, setTab] = useState<Tab>(
-    initialTab === 'reports' ? 'tables' : initialTab,
+    initialTab === 'reports' ? 'dashboard' : initialTab,
   );
   const [tables, setTables] = useState<RestTable[]>([]);
   const [orders, setOrders] = useState<RestOrder[]>([]);
@@ -214,6 +236,8 @@ export function RestaurantScreen({ navigation, route }: Props) {
   const [paying, setPaying] = useState(false);
   const [sendingKitchen, setSendingKitchen] = useState(false);
   const [kitchenActionId, setKitchenActionId] = useState<string | null>(null);
+  const [kitchenFilter, setKitchenFilter] = useState<KitchenFilter>('all');
+  const [floorFilter, setFloorFilter] = useState<string | 'all'>('all');
   const [kitchenLocale, setKitchenLocale] = useState<ReceiptLangCode>(() => resolveKitchenTicketLocale());
   const [payMethod, setPayMethod] = useState<RestPaymentMethod>('cash');
   const [modalError, setModalError] = useState<string | null>(null);
@@ -246,6 +270,28 @@ export function RestaurantScreen({ navigation, route }: Props) {
     }
     return counts;
   }, [tables]);
+
+  /** Gastro tarzı KPI — açık masa / sipariş / mutfak / bugün ciro */
+  const gastroKpis = useMemo(() => {
+    const openTables = tables.filter((t) => {
+      const st = normalizeTableStatus(t.status);
+      return st === 'occupied' || st === 'kitchen' || st === 'served' || st === 'billing';
+    }).length;
+    const kitchenPending = kitchenOrders.filter((k) => {
+      const s = String(k.status || '').toLowerCase();
+      return s !== 'ready' && s !== 'served' && s !== 'cancelled' && s !== 'closed';
+    }).length;
+    const todayRevenue = todayOrders.reduce(
+      (sum, o) => sum + (Number(o.total_amount) || 0),
+      0,
+    );
+    return {
+      openTables,
+      openOrders: orders.length,
+      kitchenPending,
+      todayRevenue,
+    };
+  }, [tables, orders, kitchenOrders, todayOrders]);
 
   const scheduleItems = useMemo((): ScheduleItem[] => {
     const items: ScheduleItem[] = [];
@@ -293,6 +339,28 @@ export function RestaurantScreen({ navigation, route }: Props) {
     [orderDetail],
   );
 
+  const floorOptions = useMemo(() => {
+    const ids = new Set<string>();
+    for (const t of tables) {
+      if (t.floor_id) ids.add(t.floor_id);
+    }
+    return Array.from(ids).sort((a, b) => a.localeCompare(b, 'tr'));
+  }, [tables]);
+
+  const filteredTables = useMemo(() => {
+    if (floorFilter === 'all' || floorOptions.length === 0) return tables;
+    return tables.filter((t) => t.floor_id === floorFilter);
+  }, [tables, floorFilter, floorOptions.length]);
+
+  const filteredKitchenOrders = useMemo(() => {
+    if (kitchenFilter === 'all') return kitchenOrders;
+    return kitchenOrders.filter((o) => {
+      const s = String(o.status || '').toLowerCase();
+      if (kitchenFilter === 'new') return !s || s === 'new' || s === 'pending';
+      return s === kitchenFilter;
+    });
+  }, [kitchenOrders, kitchenFilter]);
+
   const load = useCallback(async (opts?: { soft?: boolean }) => {
     if (opts?.soft) setRefreshing(true);
     else setError(null);
@@ -325,6 +393,23 @@ export function RestaurantScreen({ navigation, route }: Props) {
   useEffect(() => {
     void load();
   }, [load]);
+
+  /** Mutfak sekmesi odaktayken 5 sn otomatik yenileme (GastroPOS KDS) */
+  useFocusEffect(
+    useCallback(() => {
+      if (tab !== 'kitchen') return undefined;
+      const id = setInterval(() => {
+        void load({ soft: true });
+      }, 5000);
+      return () => clearInterval(id);
+    }, [tab, load]),
+  );
+
+  useEffect(() => {
+    if (floorFilter !== 'all' && !floorOptions.includes(floorFilter)) {
+      setFloorFilter('all');
+    }
+  }, [floorFilter, floorOptions]);
 
   useEffect(() => {
     if (callerPhone && !route.params?.initialTab) {
@@ -972,6 +1057,7 @@ export function RestaurantScreen({ navigation, route }: Props) {
   };
 
   const tabs: { id: Tab; label: string }[] = [
+    { id: 'dashboard', label: 'Ana panel' },
     { id: 'tables', label: `Masalar (${tables.length})` },
     { id: 'orders', label: `Adisyon (${orders.length})` },
     { id: 'delivery', label: `Paket (${deliveryOrders.length})` },
@@ -989,6 +1075,79 @@ export function RestaurantScreen({ navigation, route }: Props) {
     setTab(id);
   };
 
+  const onQuickNewOrder = () => {
+    setTab('tables');
+    const empty = tables.find((t) => normalizeTableStatus(t.status) === 'empty');
+    if (empty) {
+      void openTable(empty);
+    }
+  };
+
+  const dashboardTiles: {
+    id: string;
+    label: string;
+    hint: string;
+    color: string;
+    Icon: typeof Utensils;
+    onPress: () => void;
+  }[] = [
+    {
+      id: 'tables',
+      label: 'Masalar',
+      hint: `${gastroKpis.openTables} açık`,
+      color: '#ef4444',
+      Icon: LayoutGrid,
+      onPress: () => setTab('tables'),
+    },
+    {
+      id: 'kitchen',
+      label: 'Mutfak',
+      hint: `${gastroKpis.kitchenPending} bekleyen`,
+      color: '#ec4899',
+      Icon: ChefHat,
+      onPress: () => setTab('kitchen'),
+    },
+    {
+      id: 'delivery',
+      label: 'Paket',
+      hint: `${deliveryOrders.length} sipariş`,
+      color: '#3b82f6',
+      Icon: Bike,
+      onPress: () => setTab('delivery'),
+    },
+    {
+      id: 'takeaway',
+      label: 'Gel-Al',
+      hint: `${takeawayOrders.length} sipariş`,
+      color: '#f59e0b',
+      Icon: ShoppingBag,
+      onPress: () => setTab('takeaway'),
+    },
+    {
+      id: 'reports',
+      label: 'Raporlar',
+      hint: 'Z / iptal / adet',
+      color: '#6366f1',
+      Icon: BarChart3,
+      onPress: () => navigation.navigate('RestaurantReports'),
+    },
+    {
+      id: 'schedule',
+      label: 'Rezervasyon',
+      hint: `${reservations.length} bugün`,
+      color: '#f43f5e',
+      Icon: CalendarDays,
+      onPress: () => setTab('schedule'),
+    },
+  ];
+
+  const kitchenFilterChips: { id: KitchenFilter; label: string }[] = [
+    { id: 'all', label: 'Tümü' },
+    { id: 'new', label: 'Yeni' },
+    { id: 'cooking', label: 'Hazırlanıyor' },
+    { id: 'ready', label: 'Hazır' },
+  ];
+
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
       <ScreenHeader
@@ -996,7 +1155,7 @@ export function RestaurantScreen({ navigation, route }: Props) {
         subtitle={
           callerPhone
             ? `Caller ID: ${callerPhone}`
-            : 'Masalar, paket, gel-al, mutfak, raporlar'
+            : 'Ana panel, masalar, paket, mutfak, raporlar'
         }
       />
 
@@ -1006,6 +1165,63 @@ export function RestaurantScreen({ navigation, route }: Props) {
         onChange={onChangeTab}
         items={tabs.map((t) => ({ id: t.id, label: t.label }))}
       />
+
+      {tab === 'tables' && floorOptions.length > 0 ? (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={[styles.legendScroll, { backgroundColor: legendBg, borderColor: colors.cardBorder }]}
+          contentContainerStyle={styles.legendRow}
+        >
+          <Pressable
+            onPress={() => setFloorFilter('all')}
+            style={[
+              styles.filterChip,
+              {
+                backgroundColor: floorFilter === 'all' ? palette.blue600 : colors.card,
+                borderColor: floorFilter === 'all' ? palette.blue600 : colors.cardBorder,
+              },
+            ]}
+          >
+            <Text
+              style={{
+                color: floorFilter === 'all' ? palette.white : colors.text,
+                fontSize: 11,
+                fontWeight: '800',
+              }}
+            >
+              Tümü ({tables.length})
+            </Text>
+          </Pressable>
+          {floorOptions.map((fid, idx) => {
+            const count = tables.filter((t) => t.floor_id === fid).length;
+            const active = floorFilter === fid;
+            return (
+              <Pressable
+                key={fid}
+                onPress={() => setFloorFilter(fid)}
+                style={[
+                  styles.filterChip,
+                  {
+                    backgroundColor: active ? palette.blue600 : colors.card,
+                    borderColor: active ? palette.blue600 : colors.cardBorder,
+                  },
+                ]}
+              >
+                <Text
+                  style={{
+                    color: active ? palette.white : colors.text,
+                    fontSize: 11,
+                    fontWeight: '800',
+                  }}
+                >
+                  {`Bölge ${idx + 1} (${count})`}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+      ) : null}
 
       {tab === 'tables' ? (
         <ScrollView
@@ -1030,13 +1246,148 @@ export function RestaurantScreen({ navigation, route }: Props) {
         </ScrollView>
       ) : null}
 
+      {tab === 'kitchen' ? (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={[styles.legendScroll, { backgroundColor: legendBg, borderColor: colors.cardBorder }]}
+          contentContainerStyle={styles.legendRow}
+        >
+          {kitchenFilterChips.map((chip) => {
+            const active = kitchenFilter === chip.id;
+            const count =
+              chip.id === 'all'
+                ? kitchenOrders.length
+                : kitchenOrders.filter((o) => {
+                    const s = String(o.status || '').toLowerCase();
+                    if (chip.id === 'new') return !s || s === 'new' || s === 'pending';
+                    return s === chip.id;
+                  }).length;
+            return (
+              <Pressable
+                key={chip.id}
+                onPress={() => setKitchenFilter(chip.id)}
+                style={[
+                  styles.filterChip,
+                  {
+                    backgroundColor: active ? palette.blue600 : colors.card,
+                    borderColor: active ? palette.blue600 : colors.cardBorder,
+                  },
+                ]}
+              >
+                <Text
+                  style={{
+                    color: active ? palette.white : colors.text,
+                    fontSize: 11,
+                    fontWeight: '800',
+                  }}
+                >
+                  {chip.label} ({count})
+                </Text>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+      ) : null}
+
       {error ? <ErrorBanner message={error} onRetry={() => void load()} /> : null}
 
       {loading ? (
         <ActivityIndicator style={{ marginTop: 40 }} color={palette.blue600} />
+      ) : tab === 'dashboard' ? (
+        <ScrollView
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={() => void load({ soft: true })} />
+          }
+          contentContainerStyle={styles.dashboardPad}
+        >
+          <View style={styles.dashboardKpiRow}>
+            {[
+              {
+                key: 'openTables',
+                label: 'Açık masa',
+                value: String(gastroKpis.openTables),
+                accent: palette.blue600,
+              },
+              {
+                key: 'openOrders',
+                label: 'Açık sipariş',
+                value: String(gastroKpis.openOrders),
+                accent: palette.indigo600,
+              },
+              {
+                key: 'kitchen',
+                label: 'Mutfak bekleyen',
+                value: String(gastroKpis.kitchenPending),
+                accent: palette.amber600,
+              },
+              {
+                key: 'revenue',
+                label: 'Bugün ciro',
+                value: formatCompactTotal(gastroKpis.todayRevenue),
+                accent: palette.green600,
+              },
+            ].map((kpi) => (
+              <View
+                key={kpi.key}
+                style={[
+                  styles.gastroKpiCard,
+                  {
+                    flexGrow: 1,
+                    flexBasis: '46%',
+                    backgroundColor: darkMode ? palette.gray800 : palette.white,
+                    borderColor: darkMode ? palette.gray700 : palette.gray200,
+                  },
+                ]}
+              >
+                <Text style={[styles.gastroKpiLabel, { color: colors.textMuted }]}>
+                  {kpi.label}
+                </Text>
+                <Text style={[styles.gastroKpiValue, { color: kpi.accent }]}>{kpi.value}</Text>
+              </View>
+            ))}
+          </View>
+          <View style={styles.dashboardTileGrid}>
+            {dashboardTiles.map((tile) => {
+              const Icon = tile.Icon;
+              return (
+                <Pressable
+                  key={tile.id}
+                  onPress={tile.onPress}
+                  style={({ pressed }) => [
+                    styles.dashboardTile,
+                    {
+                      backgroundColor: tile.color,
+                      opacity: pressed ? 0.88 : 1,
+                    },
+                  ]}
+                >
+                  <Icon size={28} color="#fff" />
+                  <Text style={styles.dashboardTileLabel}>{tile.label}</Text>
+                  <Text style={styles.dashboardTileHint}>{tile.hint}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+          <Pressable
+            onPress={onQuickNewOrder}
+            style={[
+              styles.quickNewOrderBtn,
+              {
+                backgroundColor: darkMode ? palette.gray800 : palette.white,
+                borderColor: darkMode ? palette.gray600 : palette.gray200,
+              },
+            ]}
+          >
+            <Plus size={16} color={palette.blue600} />
+            <Text style={{ color: colors.text, fontWeight: '800', fontSize: 13 }}>
+              Yeni sipariş (boş masa)
+            </Text>
+          </Pressable>
+        </ScrollView>
       ) : tab === 'tables' ? (
         <FlatList
-          data={tables}
+          data={filteredTables}
           keyExtractor={(item) => String(item.id)}
           numColumns={COLS}
           refreshControl={
@@ -1277,9 +1628,9 @@ export function RestaurantScreen({ navigation, route }: Props) {
             </View>
           )}
         />
-      ) : (
+      ) : tab === 'kitchen' ? (
         <FlatList
-          data={kitchenOrders}
+          data={filteredKitchenOrders}
           keyExtractor={(item) => String(item.id)}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={() => void load({ soft: true })} />
@@ -1378,7 +1729,7 @@ export function RestaurantScreen({ navigation, route }: Props) {
             );
           }}
         />
-      )}
+      ) : null}
 
       <Modal visible={!!selectedTable} animationType="slide" onRequestClose={closeModal}>
         <SafeAreaView style={[styles.modalRoot, { backgroundColor: colors.background }]} edges={['bottom']}>
@@ -1896,6 +2247,105 @@ const styles = StyleSheet.create({
     maxHeight: 40,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  gastroStrip: {
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    paddingTop: 10,
+    paddingBottom: 8,
+    gap: 8,
+  },
+  gastroKpiRow: {
+    paddingHorizontal: 12,
+    gap: 8,
+    alignItems: 'stretch',
+  },
+  gastroKpiCard: {
+    minWidth: 100,
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  gastroKpiLabel: {
+    fontSize: 9,
+    fontWeight: '800',
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
+  },
+  gastroKpiValue: {
+    marginTop: 4,
+    fontSize: 18,
+    fontWeight: '900',
+    letterSpacing: -0.3,
+  },
+  gastroChipRow: {
+    paddingHorizontal: 12,
+    gap: 8,
+    paddingBottom: 2,
+  },
+  gastroChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  gastroChipText: {
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  dashboardPad: {
+    padding: 12,
+    paddingBottom: 40,
+    gap: 12,
+  },
+  dashboardKpiRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  dashboardTileGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+  },
+  dashboardTile: {
+    width: '48%',
+    flexGrow: 1,
+    minHeight: 112,
+    borderRadius: 16,
+    padding: 14,
+    justifyContent: 'flex-end',
+    gap: 4,
+  },
+  dashboardTileLabel: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '900',
+    marginTop: 8,
+  },
+  dashboardTileHint: {
+    color: 'rgba(255,255,255,0.85)',
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  quickNewOrderBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+  },
+  filterChip: {
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
   },
   legendRow: {
     flexDirection: 'row',

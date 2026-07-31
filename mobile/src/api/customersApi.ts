@@ -187,7 +187,57 @@ export type CustomerDetail = CustomerRow & {
   tax_no?: string | null;
   tax_office?: string | null;
   district?: string | null;
+  call_plan_enabled?: boolean;
+  call_plan_weekdays?: number[];
+  call_plan_note?: string | null;
+  call_last_status?: string | null;
+  call_last_note?: string | null;
+  call_last_at?: string | null;
 };
+
+function mapCustomerDetailExtras(r: Record<string, unknown>): Partial<CustomerDetail> {
+  const extras: Partial<CustomerDetail> = {
+    address: r.address != null ? String(r.address) : null,
+    tax_no:
+      r.tax_no != null
+        ? String(r.tax_no)
+        : r.tax_nr != null
+          ? String(r.tax_nr)
+          : null,
+    tax_office: r.tax_office != null ? String(r.tax_office) : null,
+    district: r.district != null ? String(r.district) : null,
+  };
+  if ('call_plan_enabled' in r) {
+    extras.call_plan_enabled =
+      r.call_plan_enabled === true ||
+      r.call_plan_enabled === 'true' ||
+      r.call_plan_enabled === 1;
+  }
+  if ('call_plan_weekdays' in r) {
+    const raw = r.call_plan_weekdays;
+    extras.call_plan_weekdays = Array.isArray(raw)
+      ? raw.map((n) => Number(n)).filter((n) => Number.isFinite(n))
+      : [];
+  }
+  if ('call_plan_note' in r) {
+    extras.call_plan_note = r.call_plan_note != null ? String(r.call_plan_note) : null;
+  }
+  if ('call_last_status' in r) {
+    extras.call_last_status = r.call_last_status != null ? String(r.call_last_status) : null;
+  }
+  if ('call_last_note' in r) {
+    extras.call_last_note = r.call_last_note != null ? String(r.call_last_note) : null;
+  }
+  if ('call_last_at' in r) {
+    extras.call_last_at = r.call_last_at != null ? String(r.call_last_at) : null;
+  }
+  return extras;
+}
+
+const DETAIL_SELECT_WITH_CALL =
+  'id,code,name,phone,email,city,balance,is_active,address,tax_nr,tax_office,district,call_plan_enabled,call_plan_weekdays,call_plan_note,call_last_status,call_last_note,call_last_at';
+const DETAIL_SELECT_BASIC =
+  'id,code,name,phone,email,city,balance,is_active,address,tax_nr,tax_office,district';
 
 export async function fetchCustomerById(id: string): Promise<CustomerDetail | null> {
   if (!id) return null;
@@ -203,23 +253,33 @@ export async function fetchCustomerById(id: string): Promise<CustomerDetail | nu
 
   if (shouldPreferPostgrest(cfg)) {
     try {
-      const rows = await postgrestGet<Record<string, unknown>[]>(
-        `/${table}`,
-        {
-          select: 'id,code,name,phone,email,city,balance,is_active,address,tax_nr,tax_office,district',
-          id: postgrestEq(id),
-          limit: 1,
-        },
-        { schema: 'public' },
-      );
+      let rows: Record<string, unknown>[] | null = null;
+      try {
+        rows = await postgrestGet<Record<string, unknown>[]>(
+          `/${table}`,
+          {
+            select: DETAIL_SELECT_WITH_CALL,
+            id: postgrestEq(id),
+            limit: 1,
+          },
+          { schema: 'public' },
+        );
+      } catch {
+        rows = await postgrestGet<Record<string, unknown>[]>(
+          `/${table}`,
+          {
+            select: DETAIL_SELECT_BASIC,
+            id: postgrestEq(id),
+            limit: 1,
+          },
+          { schema: 'public' },
+        );
+      }
       const r = Array.isArray(rows) ? rows[0] : null;
       if (r) {
         return {
           ...mapCustomerRow(r),
-          address: r.address != null ? String(r.address) : null,
-          tax_no: r.tax_nr != null ? String(r.tax_nr) : null,
-          tax_office: r.tax_office != null ? String(r.tax_office) : null,
-          district: r.district != null ? String(r.district) : null,
+          ...mapCustomerDetailExtras(r),
         };
       }
     } catch {
@@ -233,28 +293,53 @@ export async function fetchCustomerById(id: string): Promise<CustomerDetail | nu
 
   try {
     try {
-      const res = await pgQuery<CustomerDetail>(
+      const res = await pgQuery<Record<string, unknown>>(
         `SELECT id, code, name, phone, email, city,
                 COALESCE(balance, 0)::float8 AS balance,
                 COALESCE(is_active, true) AS is_active,
-                address, tax_nr AS tax_no, tax_office, district
+                address, tax_nr AS tax_no, tax_office, district,
+                COALESCE(call_plan_enabled, false) AS call_plan_enabled,
+                COALESCE(call_plan_weekdays, ARRAY[]::int[]) AS call_plan_weekdays,
+                call_plan_note, call_last_status, call_last_note,
+                call_last_at::text AS call_last_at
          FROM ${table}
          WHERE id::text = $1
          LIMIT 1`,
         [id],
       );
-      return res.rows[0] ?? null;
+      const r = res.rows[0];
+      if (!r) return null;
+      return {
+        ...mapCustomerRow(r),
+        ...mapCustomerDetailExtras(r),
+        balance: Number(r.balance) || 0,
+        is_active: !(r.is_active === false || r.is_active === 0),
+      };
     } catch {
-      const res = await pgQuery<CustomerDetail>(
-        `SELECT id, code, name, phone, email, city,
-                COALESCE(balance, 0)::float8 AS balance,
-                COALESCE(is_active, true) AS is_active
-         FROM ${table}
-         WHERE id::text = $1
-         LIMIT 1`,
-        [id],
-      );
-      return res.rows[0] ?? null;
+      try {
+        const res = await pgQuery<CustomerDetail>(
+          `SELECT id, code, name, phone, email, city,
+                  COALESCE(balance, 0)::float8 AS balance,
+                  COALESCE(is_active, true) AS is_active,
+                  address, tax_nr AS tax_no, tax_office, district
+           FROM ${table}
+           WHERE id::text = $1
+           LIMIT 1`,
+          [id],
+        );
+        return res.rows[0] ?? null;
+      } catch {
+        const res = await pgQuery<CustomerDetail>(
+          `SELECT id, code, name, phone, email, city,
+                  COALESCE(balance, 0)::float8 AS balance,
+                  COALESCE(is_active, true) AS is_active
+           FROM ${table}
+           WHERE id::text = $1
+           LIMIT 1`,
+          [id],
+        );
+        return res.rows[0] ?? null;
+      }
     }
   } catch {
     const rows = await getCachedCustomers('', 500);

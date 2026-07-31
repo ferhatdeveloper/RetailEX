@@ -26,6 +26,7 @@ import {
   EmptyState,
   ErrorBanner,
 } from '../components/ScreenChrome';
+import { CourierLiveMap, type MapPoint } from '../components/CourierLiveMap';
 import { SegmentTabBar } from '../components/SegmentTabBar';
 import {
   listDeliveries,
@@ -127,6 +128,15 @@ export function DeliveryScreen() {
     const t = setTimeout(() => void load(), search ? 280 : 0);
     return () => clearTimeout(t);
   }, [load, search]);
+
+  /** Canlı sekmede kurye konumlarını ~12 sn’de bir yenile */
+  useEffect(() => {
+    if (tab !== 'live') return;
+    const id = setInterval(() => {
+      void load();
+    }, TRACK_INTERVAL_MS);
+    return () => clearInterval(id);
+  }, [tab, load]);
 
   const pushLocation = useCallback(async (loc: Location.LocationObject) => {
     const lat = loc.coords.latitude;
@@ -248,6 +258,68 @@ export function DeliveryScreen() {
   const showLive = tab === 'live' || tab === 'deliveries';
   const showDeliveries = tab === 'deliveries';
 
+  const mapPoints = useMemo((): MapPoint[] => {
+    const pts: MapPoint[] = [];
+    const seen = new Set<string>();
+
+    for (const c of couriers) {
+      if (c.last_lat == null || c.last_lng == null) continue;
+      if (!Number.isFinite(c.last_lat) || !Number.isFinite(c.last_lng)) continue;
+      seen.add(c.id);
+      pts.push({
+        id: c.id,
+        lat: c.last_lat,
+        lng: c.last_lng,
+        label: c.id === courierId ? `${c.full_name} (seçili)` : c.full_name,
+        color: c.id === courierId ? '#16a34a' : '#2563eb',
+      });
+    }
+
+    if (
+      activeCourier &&
+      activeCourier.last_lat != null &&
+      activeCourier.last_lng != null &&
+      !seen.has(activeCourier.id)
+    ) {
+      pts.unshift({
+        id: activeCourier.id,
+        lat: activeCourier.last_lat,
+        lng: activeCourier.last_lng,
+        label: `${activeCourier.full_name} (seçili)`,
+        color: '#16a34a',
+      });
+    }
+
+    if (tracking && coords) {
+      pts.push({
+        id: 'device',
+        lat: coords.lat,
+        lng: coords.lng,
+        label: 'Bu cihaz',
+        color: '#dc2626',
+      });
+    }
+
+    /** Seçili teslimatın hedef (varış) konumu */
+    if (
+      selected &&
+      selected.lat != null &&
+      selected.lng != null &&
+      Number.isFinite(selected.lat) &&
+      Number.isFinite(selected.lng)
+    ) {
+      pts.push({
+        id: `dest-${selected.id}`,
+        lat: selected.lat,
+        lng: selected.lng,
+        label: `Hedef · ${selected.delivery_no}${selected.customer_name ? ` · ${selected.customer_name}` : ''}`,
+        color: '#ea580c',
+      });
+    }
+
+    return pts;
+  }, [couriers, courierId, activeCourier, tracking, coords, selected]);
+
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
       <ScreenHeader
@@ -344,6 +416,8 @@ export function DeliveryScreen() {
               })}
             </View>
           ) : null}
+
+          {tab === 'live' ? <CourierLiveMap points={mapPoints} height={260} /> : null}
         </View>
       ) : null}
 
