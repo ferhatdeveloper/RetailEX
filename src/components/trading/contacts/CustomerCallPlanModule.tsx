@@ -441,34 +441,38 @@ export function CustomerCallPlanModule() {
       ),
       size: 220,
     }),
-    columnHelper.display({
-      id: 'lastStatus',
-      header: tm('callPlanLastStatus'),
-      cell: ({ row }) => {
-        const meta = customerCallStatusMeta(row.original.call_last_status);
-        return (
-          <div className="flex flex-col gap-1">
-            <span className={`w-fit rounded-full px-2 py-0.5 text-[10px] font-black uppercase ${meta.tone}`}>
-              {tm(meta.label)}
-            </span>
-            {row.original.call_last_at ? (
-              <span className="text-[10px] font-semibold text-slate-400">
-                {new Date(row.original.call_last_at).toLocaleString('tr-TR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+    columnHelper.accessor(
+      row => tm(customerCallStatusMeta(row.call_last_status).label),
+      {
+        id: 'lastStatus',
+        header: tm('callPlanLastStatus'),
+        cell: ({ row }) => {
+          const meta = customerCallStatusMeta(row.original.call_last_status);
+          return (
+            <div className="flex flex-col gap-1">
+              <span className={`w-fit rounded-full px-2 py-0.5 text-[10px] font-black uppercase ${meta.tone}`}>
+                {tm(meta.label)}
               </span>
-            ) : null}
-            {row.original.call_last_note ? (
-              <span className="max-w-[180px] truncate text-[10px] text-slate-500" title={row.original.call_last_note}>
-                {row.original.call_last_note}
-              </span>
-            ) : null}
-          </div>
-        );
+              {row.original.call_last_at ? (
+                <span className="text-[10px] font-semibold text-slate-400">
+                  {new Date(row.original.call_last_at).toLocaleString('tr-TR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                </span>
+              ) : null}
+              {row.original.call_last_note ? (
+                <span className="max-w-[180px] truncate text-[10px] text-slate-500" title={row.original.call_last_note}>
+                  {row.original.call_last_note}
+                </span>
+              ) : null}
+            </div>
+          );
+        },
+        size: 170,
       },
-      size: 170,
-    }),
+    ),
     columnHelper.display({
       id: 'actions',
       header: tm('actions'),
+      enableColumnFilter: false,
       cell: ({ row }) => (
         <button
           type="button"
@@ -520,31 +524,34 @@ export function CustomerCallPlanModule() {
       ),
       size: 180,
     }),
-    reportColumnHelper.display({
-      id: 'lastStatus',
-      header: tm('callPlanLastStatus'),
-      cell: ({ row }) => {
-        const meta = customerCallStatusMeta(row.original.call_last_status);
-        return (
-          <div className="flex flex-col gap-1">
-            <span className={`w-fit rounded-full px-2 py-0.5 text-[10px] font-black uppercase ${meta.tone}`}>
-              {tm(meta.label)}
-            </span>
-            {row.original.call_last_at ? (
-              <span className="text-[10px] font-semibold text-slate-400">
-                {new Date(row.original.call_last_at).toLocaleString('tr-TR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+    reportColumnHelper.accessor(
+      row => tm(customerCallStatusMeta(row.call_last_status).label),
+      {
+        id: 'lastStatus',
+        header: tm('callPlanLastStatus'),
+        cell: ({ row }) => {
+          const meta = customerCallStatusMeta(row.original.call_last_status);
+          return (
+            <div className="flex flex-col gap-1">
+              <span className={`w-fit rounded-full px-2 py-0.5 text-[10px] font-black uppercase ${meta.tone}`}>
+                {tm(meta.label)}
               </span>
-            ) : null}
-            {row.original.call_last_note ? (
-              <span className="max-w-[180px] truncate text-[10px] text-slate-500" title={row.original.call_last_note}>
-                {row.original.call_last_note}
-              </span>
-            ) : null}
-          </div>
-        );
+              {row.original.call_last_at ? (
+                <span className="text-[10px] font-semibold text-slate-400">
+                  {new Date(row.original.call_last_at).toLocaleString('tr-TR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                </span>
+              ) : null}
+              {row.original.call_last_note ? (
+                <span className="max-w-[180px] truncate text-[10px] text-slate-500" title={row.original.call_last_note}>
+                  {row.original.call_last_note}
+                </span>
+              ) : null}
+            </div>
+          );
+        },
+        size: 200,
       },
-      size: 200,
-    }),
+    ),
   ];
 
   const isReportCurrentWeek = reportWeekStart === customerCallPlanWeeklyAPI.getCurrentWeekStart();
