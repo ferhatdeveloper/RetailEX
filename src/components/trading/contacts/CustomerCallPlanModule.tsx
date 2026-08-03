@@ -672,7 +672,7 @@ export function CustomerCallPlanModule() {
                   data={filteredReportRows}
                   columns={reportColumns}
                   enableSorting
-                  enableFiltering={false}
+                  enableFiltering
                   enableColumnResizing
                   pageSize={50}
                 />
@@ -717,7 +717,7 @@ export function CustomerCallPlanModule() {
             data={filtered}
             columns={columns}
             enableSorting
-            enableFiltering={false}
+            enableFiltering
             enableColumnResizing
             pageSize={50}
             onRowContextMenu={handleRowContextMenu}
